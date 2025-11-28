@@ -65,7 +65,8 @@ cmake --build build
 ### 3.4 Shader Hot-Reload
 - [x] Implement `reloadShader()`
 - [x] Track shader file paths for reload matching
-- [ ] Test: Edit .wgsl file, see changes without restart (manual test: press 'R' to reload)
+- [x] Test: Edit .wgsl file, see changes without restart (press 'R' to reload)
+- [x] Shader compilation error capture and display
 
 ---
 
@@ -315,6 +316,112 @@ Build and test each operator individually:
 
 ---
 
+## Phase 12: Extended Media Support
+
+### 12.0 Core Workflow Features
+**Priority: High — These enable cleaner creative coding workflows**
+
+- [ ] **Parameter References** — `"$nodeName"` syntax to reference other node outputs
+- [ ] **Value Binding** — Automatically drive parameters from value-producing nodes
+- [ ] **Passthrough** — Pass-through node for organization and explicit outputs
+- [ ] **Reference** — Reference another operator by name
+- [ ] **Switch** — Choose between multiple inputs by index
+- [ ] **Math** — Combine, add, multiply, clamp, remap numeric values
+- [ ] **Logic** — Comparisons, triggers, gates for control flow
+- [ ] **Constant** — Generate solid colors or fixed values
+- [ ] **Gradient** — Color gradient lookup/remapping
+- [ ] **Resolution Independence** — Operators adapt to input resolution
+- [ ] **Lazy Evaluation** — Only process nodes whose inputs changed
+
+### 12.1 Image Loading
+- [ ] Integrate stb_image for image loading
+- [ ] Implement `ImageFile` operator (loads PNG, JPG, BMP, etc.)
+- [ ] Support image reload on file change
+- [ ] Handle various pixel formats (RGB, RGBA, grayscale)
+
+### 12.2 Video Playback
+- [ ] Integrate FFmpeg or similar for video decoding
+- [ ] Implement `VideoFile` operator (MP4, MOV, WebM, etc.)
+- [ ] Video playback controls (play, pause, seek, loop)
+- [ ] Frame-accurate timing sync
+
+### 12.3 Camera Input
+- [ ] Integrate camera capture (platform-specific: AVFoundation/DirectShow/V4L2)
+- [ ] Implement `Webcam` operator
+- [ ] Camera selection (multiple devices)
+- [ ] Resolution and format configuration
+
+### 12.4 Audio Input & Analysis
+- [ ] Integrate audio input (PortAudio or miniaudio)
+- [ ] Implement `AudioIn` operator (microphone/line-in)
+- [ ] Implement `FFT` operator (frequency spectrum)
+- [ ] Implement `AudioBands` operator (bass, mid, treble, etc.)
+- [ ] Beat detection
+
+### 12.5 Audio Synthesis & Output
+- [ ] Audio output support
+- [ ] Basic oscillators (sine, saw, square, triangle)
+- [ ] Implement `Oscillator` operator
+- [ ] Implement `Envelope` operator (ADSR)
+- [ ] Implement `Filter` operator (lowpass, highpass, bandpass)
+- [ ] Audio file playback (WAV, MP3, OGG)
+
+### 12.6 MIDI
+- [ ] Integrate MIDI library (RtMidi or similar)
+- [ ] Implement `MidiIn` operator
+- [ ] Implement `MidiOut` operator
+- [ ] MIDI learn functionality
+- [ ] CC, note, and clock messages
+
+### 12.7 OSC (Open Sound Control)
+- [ ] Integrate OSC library (oscpack or liblo)
+- [ ] Implement `OscIn` operator
+- [ ] Implement `OscOut` operator
+- [ ] Address pattern matching
+
+### 12.8 3D Graphics & Instancing
+**Instancing Path: 2D sprites → 3D geometry → Full instancing**
+
+- [ ] **Point Sprites** — Render texture at positions from value arrays (2D instancing)
+- [ ] **Tile/Grid** — Repeat texture in grid with per-tile transforms
+- [ ] **Particle System** — Emit/update points with position, velocity, color, life
+- [ ] 3D primitive generation (cube, sphere, plane, cylinder, torus)
+- [ ] Implement `Geometry` operator base
+- [ ] Basic 3D transforms (translate, rotate, scale)
+- [ ] Camera/view matrix support
+- [ ] **GPU Instancing** — Render geometry N times with instance buffer (transforms, colors)
+- [ ] **Instance from Values** — Generate instance transforms from numeric arrays
+- [ ] **Instance from Texture** — Use texture pixels as instance data (RGBA → transform)
+- [ ] OBJ model loading
+- [ ] GLTF model loading (optional)
+
+### 12.9 Text & Vector
+- [ ] Integrate font rendering (stb_truetype or FreeType)
+- [ ] Implement `Text` operator
+- [ ] Font selection and styling
+- [ ] SVG loading and rendering (optional)
+
+### 12.10 Recording & Output
+- [ ] Image sequence export (PNG, JPG)
+- [ ] Video recording (FFmpeg encoding)
+- [ ] Implement `Record` operator or command
+- [ ] Frame-accurate recording sync
+
+### 12.11 Texture Sharing
+- [ ] Syphon support (macOS)
+- [ ] Spout support (Windows)
+- [ ] NDI support (cross-platform, optional)
+- [ ] Implement `SyphonOut`/`SpoutOut` operators
+- [ ] Implement `SyphonIn`/`SpoutIn` operators
+
+### 12.12 Input Devices
+- [ ] Mouse position and button state in Context
+- [ ] Keyboard state in Context
+- [ ] Game controller support (SDL_GameController or similar)
+- [ ] Implement `GamepadIn` operator
+
+---
+
 ## Quick Reference: Test Commands
 
 ```bash
@@ -347,3 +454,4 @@ npx wscat -c ws://localhost:9876
 | Phase 8 complete | Run the full hello example |
 | Phase 10 complete | See inline previews in VS Code |
 | Phase 11 complete | Share with others |
+| Phase 12 complete | Load images/video, use audio, render 3D |

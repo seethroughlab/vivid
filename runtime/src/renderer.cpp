@@ -778,6 +778,7 @@ std::vector<uint8_t> Renderer::readTexturePixels(const Texture& texture) {
 
 Shader Renderer::loadShader(const std::string& wgslSource) {
     Shader shader = {};
+    lastShaderError_.clear();
 
     // Combine wrapper prefix with user shader
     std::string fullSource = std::string(SHADER_WRAPPER_PREFIX) + wgslSource;
@@ -792,8 +793,52 @@ Shader Renderer::loadShader(const std::string& wgslSource) {
 
     shader.module = wgpuDeviceCreateShaderModule(device_, &moduleDesc);
     if (!shader.module) {
-        std::cerr << "[Renderer] Failed to create shader module\n";
+        lastShaderError_ = "Failed to create shader module";
+        std::cerr << "[Renderer] " << lastShaderError_ << "\n";
         return shader;
+    }
+
+    // Get compilation info to check for errors
+    struct CompileData {
+        bool done = false;
+        std::string error;
+    } compileData;
+
+    WGPUCompilationInfoCallbackInfo callbackInfo = {};
+    callbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
+    callbackInfo.callback = [](WGPUCompilationInfoRequestStatus status,
+                               WGPUCompilationInfo const* info,
+                               void* userdata1, void* userdata2) {
+        auto* data = static_cast<CompileData*>(userdata1);
+        if (info && info->messageCount > 0) {
+            for (size_t i = 0; i < info->messageCount; i++) {
+                const auto& msg = info->messages[i];
+                if (msg.type == WGPUCompilationMessageType_Error) {
+                    std::string msgStr = msg.message.data
+                        ? std::string(msg.message.data, msg.message.length)
+                        : "Unknown error";
+                    // Adjust line number: subtract wrapper prefix lines (around 48)
+                    int userLine = static_cast<int>(msg.lineNum) - 48;
+                    if (userLine < 1) userLine = msg.lineNum;
+                    data->error += "Line " + std::to_string(userLine) + ": " + msgStr + "\n";
+                }
+            }
+        }
+        data->done = true;
+    };
+    callbackInfo.userdata1 = &compileData;
+
+    wgpuShaderModuleGetCompilationInfo(shader.module, callbackInfo);
+
+    // Wait for callback
+    while (!compileData.done) {
+        wgpuDevicePoll(device_, true, nullptr);
+    }
+
+    if (!compileData.error.empty()) {
+        lastShaderError_ = compileData.error;
+        std::cerr << "[Renderer] Shader compilation errors:\n" << lastShaderError_;
+        // Module might still be created but pipeline will fail
     }
 
     // Create bind group layout

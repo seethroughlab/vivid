@@ -94,10 +94,16 @@ int main(int argc, char* argv[]) {
             // Check for 'R' key to reload shader
             bool rKeyPressed = glfwGetKey(window.handle(), GLFW_KEY_R) == GLFW_PRESS;
             if (rKeyPressed && !rKeyWasPressed) {
-                std::cout << "Reloading shader...\n";
+                std::cout << "\n--- Reloading shader ---\n";
                 if (renderer.reloadShader(noiseShader)) {
-                    std::cout << "Shader reloaded! Edit shaders/noise.wgsl and press R again.\n";
+                    std::cout << "Shader reloaded successfully!\n";
+                } else {
+                    std::cout << "Shader reload FAILED. Old shader still running.\n";
+                    if (renderer.hasShaderError()) {
+                        std::cout << "Error:\n" << renderer.lastShaderError() << "\n";
+                    }
                 }
+                std::cout << "------------------------\n\n";
             }
             rKeyWasPressed = rKeyPressed;
 

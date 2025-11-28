@@ -80,6 +80,10 @@ public:
     bool reloadShader(Shader& shader);  // Reload from original file path
     void destroyShader(Shader& shader);
 
+    // Shader error info (empty if last compile succeeded)
+    const std::string& lastShaderError() const { return lastShaderError_; }
+    bool hasShaderError() const { return !lastShaderError_.empty(); }
+
     // Run a shader to render to a texture
     // input can be nullptr if shader doesn't need an input texture
     void runShader(Shader& shader, Texture& output, const Texture* input,
@@ -125,6 +129,9 @@ private:
     int width_ = 0;
     int height_ = 0;
     bool initialized_ = false;
+
+    // Last shader compilation error
+    std::string lastShaderError_;
 };
 
 } // namespace vivid
