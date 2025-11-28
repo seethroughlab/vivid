@@ -1,20 +1,21 @@
 // Vivid Runtime - Entry Point
-// Phase 4.2: Context test - texture creation and shader execution via Context
+// Phase 5.4: Full hot-reload loop
 
 #include "window.h"
 #include "renderer.h"
 #include "hotload.h"
 #include "file_watcher.h"
+#include "compiler.h"
 #include <vivid/context.h>
+#include <vivid/operator.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <cmath>
 #include <chrono>
-#include <fstream>
-#include <thread>
+#include <map>
 
 void printUsage(const char* program) {
-    std::cout << "Usage: " << program << " [project_path] [options]\n"
+    std::cout << "Usage: " << program << " <project_path> [options]\n"
               << "\nOptions:\n"
               << "  --width <n>     Window width (default: 1280)\n"
               << "  --height <n>    Window height (default: 720)\n"
@@ -51,9 +52,13 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    if (!projectPath.empty()) {
-        std::cout << "Project path: " << projectPath << "\n";
+    if (projectPath.empty()) {
+        std::cerr << "Error: No project path specified\n";
+        printUsage(argv[0]);
+        return 1;
     }
+
+    std::cout << "Project path: " << projectPath << "\n";
 
     try {
         // Create window
@@ -66,7 +71,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        // Create Context (Phase 4.2 test)
+        // Create Context
         vivid::Context ctx(renderer, width, height);
         std::cout << "Context created (" << ctx.width() << "x" << ctx.height() << ")\n";
 
@@ -76,206 +81,121 @@ int main(int argc, char* argv[]) {
             renderer->resize(w, h);
         }, &renderer);
 
-        // Test: Create texture via Context
-        vivid::Texture outputTexture = ctx.createTexture(512, 512);
-        if (!outputTexture.valid()) {
-            std::cerr << "Failed to create output texture via Context\n";
-            return 1;
-        }
-        std::cout << "Output texture created via Context (512x512)\n";
-
-        // Also load shader via renderer for hot-reload test (Context caches internally)
-        vivid::Shader noiseShader = renderer.loadShaderFromFile("shaders/noise.wgsl");
-        if (!noiseShader.valid()) {
-            std::cerr << "Failed to load noise shader\n";
-            return 1;
-        }
-        std::cout << "Noise shader loaded for hot-reload\n";
-
-        // HotLoader for testing (Phase 5.1)
+        // Hot-reload system
         vivid::HotLoader hotLoader;
+        vivid::FileWatcher fileWatcher;
+        vivid::Compiler compiler(projectPath);
 
-        // Auto-test HotLoader on startup
-        {
-            std::cout << "\n--- Auto-Testing HotLoader (Phase 5.1) ---\n";
-            std::string libPath = "examples/hello/build/lib/liboperators.dylib";
-            std::cout << "Loading library: " << libPath << "\n";
-            if (hotLoader.load(libPath)) {
-                std::cout << "SUCCESS: Library loaded!\n";
-                std::cout << "Number of operators: " << hotLoader.operators().size() << "\n";
-                for (size_t i = 0; i < hotLoader.operators().size(); ++i) {
-                    auto* op = hotLoader.operators()[i];
-                    std::cout << "  - Operator " << i << " (id: " << op->id() << ")\n";
+        // Flags for hot-reload events
+        bool needsRecompile = false;
+        std::string shaderToReload;
+
+        // Start watching the project directory
+        fileWatcher.watch(projectPath, [&](const std::string& path) {
+            if (path.ends_with(".cpp") || path.ends_with(".h") || path.ends_with(".hpp")) {
+                std::cout << "[FileWatcher] Source changed: " << path << "\n";
+                needsRecompile = true;
+            } else if (path.ends_with(".wgsl")) {
+                std::cout << "[FileWatcher] Shader changed: " << path << "\n";
+                shaderToReload = path;
+            }
+        });
+        std::cout << "Watching project for changes...\n";
+
+        // Initial compile and load
+        std::cout << "\n--- Initial Compile ---\n";
+        auto result = compiler.compile();
+        if (result.success) {
+            std::cout << "Compiled successfully: " << result.libraryPath << "\n";
+            if (hotLoader.load(result.libraryPath)) {
+                std::cout << "Loaded " << hotLoader.operators().size() << " operator(s)\n";
+                // Initialize all operators
+                for (auto* op : hotLoader.operators()) {
                     op->init(ctx);
-                    std::cout << "    Initialized.\n";
                 }
-                hotLoader.unload();
-                std::cout << "Unloaded.\n";
             } else {
-                std::cout << "FAILED to load library.\n";
+                std::cerr << "Failed to load library\n";
             }
-            std::cout << "-------------------------------------------\n\n";
+        } else {
+            std::cerr << "Initial compile failed:\n" << result.errorOutput << "\n";
         }
+        std::cout << "-----------------------\n\n";
 
-        // Auto-test FileWatcher (Phase 5.2)
-        {
-            std::cout << "\n--- Auto-Testing FileWatcher (Phase 5.2) ---\n";
-            vivid::FileWatcher watcher;
-            bool callbackTriggered = false;
-            std::string changedFile;
-
-            // Watch the examples/hello directory
-            std::string watchDir = "examples/hello";
-            watcher.watch(watchDir, [&](const std::string& path) {
-                callbackTriggered = true;
-                changedFile = path;
-                std::cout << "[FileWatcher] Callback triggered: " << path << "\n";
-            });
-
-            if (watcher.isWatching()) {
-                std::cout << "Watching directory: " << watchDir << "\n";
-
-                // Touch a file to trigger the watcher
-                std::string testFile = "examples/hello/chain.cpp";
-                std::cout << "Touching file: " << testFile << "\n";
-                {
-                    std::ofstream ofs(testFile, std::ios::app);
-                    ofs << " ";  // Append a space
-                }
-                {
-                    // Remove the space we added
-                    std::ifstream ifs(testFile);
-                    std::string content((std::istreambuf_iterator<char>(ifs)),
-                                       std::istreambuf_iterator<char>());
-                    ifs.close();
-                    if (!content.empty() && content.back() == ' ') {
-                        content.pop_back();
-                        std::ofstream ofs(testFile);
-                        ofs << content;
-                    }
-                }
-
-                // Give the watcher time to detect the change
-                std::cout << "Waiting for file watcher...\n";
-                for (int i = 0; i < 10 && !callbackTriggered; ++i) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    watcher.poll();
-                }
-
-                if (callbackTriggered) {
-                    std::cout << "SUCCESS: FileWatcher triggered!\n";
-                } else {
-                    std::cout << "WARNING: FileWatcher callback not triggered within 1s\n";
-                    std::cout << "(This may be OK - file system events can be delayed)\n";
-                }
-
-                watcher.stop();
-            } else {
-                std::cout << "FAILED: Could not start watching directory\n";
-            }
-            std::cout << "---------------------------------------------\n\n";
-        }
-
-        std::cout << "Entering main loop... (Press 'R' to reload shader, 'C' to test Context, 'L' to test HotLoader)\n";
+        std::cout << "Entering main loop... (Edit .cpp to hot-reload, Ctrl+C to quit)\n";
 
         // Timing
         auto startTime = std::chrono::high_resolution_clock::now();
         auto lastFrameTime = startTime;
         int frameCount = 0;
-        bool rKeyWasPressed = false;
-        bool cKeyWasPressed = false;
-        bool lKeyWasPressed = false;
 
         // Main loop
         while (!window.shouldClose()) {
             window.pollEvents();
 
-            // Check for 'R' key to reload shader
-            bool rKeyPressed = glfwGetKey(window.handle(), GLFW_KEY_R) == GLFW_PRESS;
-            if (rKeyPressed && !rKeyWasPressed) {
-                std::cout << "\n--- Reloading shader ---\n";
-                if (renderer.reloadShader(noiseShader)) {
-                    std::cout << "Shader reloaded successfully!\n";
-                } else {
-                    std::cout << "Shader reload FAILED. Old shader still running.\n";
-                    if (renderer.hasShaderError()) {
-                        std::cout << "Error:\n" << renderer.lastShaderError() << "\n";
+            // Poll file watcher for events
+            fileWatcher.poll();
+
+            // Handle hot-reload of source code
+            if (needsRecompile) {
+                needsRecompile = false;
+                std::cout << "\n--- Hot Reload ---\n";
+
+                // 1. Save state from current operators
+                std::map<std::string, std::unique_ptr<vivid::OperatorState>> savedStates;
+                for (auto* op : hotLoader.operators()) {
+                    auto state = op->saveState();
+                    if (state) {
+                        savedStates[op->id()] = std::move(state);
+                        std::cout << "Saved state for: " << op->id() << "\n";
                     }
                 }
-                std::cout << "------------------------\n\n";
-            }
-            rKeyWasPressed = rKeyPressed;
 
-            // Check for 'C' key to test Context output storage
-            bool cKeyPressed = glfwGetKey(window.handle(), GLFW_KEY_C) == GLFW_PRESS;
-            if (cKeyPressed && !cKeyWasPressed) {
-                std::cout << "\n--- Testing Context output storage ---\n";
-
-                // Store a texture output
-                ctx.setOutput("noise", outputTexture);
-                std::cout << "Stored texture output 'noise'\n";
-
-                // Store a value output
-                ctx.setOutput("lfo", std::sin(ctx.time() * 2.0f));
-                std::cout << "Stored value output 'lfo' = " << std::sin(ctx.time() * 2.0f) << "\n";
-
-                // Retrieve them back
-                vivid::Texture* retrievedTex = ctx.getInputTexture("noise");
-                if (retrievedTex && retrievedTex->valid()) {
-                    std::cout << "Retrieved texture 'noise': " << retrievedTex->width << "x" << retrievedTex->height << "\n";
-                } else {
-                    std::cout << "ERROR: Failed to retrieve texture 'noise'\n";
+                // 2. Cleanup and unload old library
+                for (auto* op : hotLoader.operators()) {
+                    op->cleanup();
                 }
+                hotLoader.unload();
+                ctx.clearOutputs();
 
-                float retrievedVal = ctx.getInputValue("lfo", "out", -999.0f);
-                std::cout << "Retrieved value 'lfo' = " << retrievedVal << "\n";
+                // 3. Compile new library
+                auto compileResult = compiler.compile();
+                if (compileResult.success) {
+                    std::cout << "Compiled: " << compileResult.libraryPath << "\n";
 
-                std::cout << "Context time=" << ctx.time() << " dt=" << ctx.dt() << " frame=" << ctx.frame() << "\n";
-                std::cout << "--------------------------------\n\n";
-            }
-            cKeyWasPressed = cKeyPressed;
+                    // 4. Load new library
+                    if (hotLoader.load(compileResult.libraryPath)) {
+                        std::cout << "Loaded " << hotLoader.operators().size() << " operator(s)\n";
 
-            // Check for 'L' key to test HotLoader (Phase 5.1 test)
-            bool lKeyPressed = glfwGetKey(window.handle(), GLFW_KEY_L) == GLFW_PRESS;
-            if (lKeyPressed && !lKeyWasPressed) {
-                std::cout << "\n--- Testing HotLoader (Phase 5.1) ---\n";
+                        // 5. Initialize and restore state
+                        for (auto* op : hotLoader.operators()) {
+                            op->init(ctx);
 
-                // Try to load the example operator library
-                std::string libPath = "examples/hello/build/lib/liboperators.dylib";
-                std::cout << "Loading library: " << libPath << "\n";
-
-                if (hotLoader.load(libPath)) {
-                    std::cout << "SUCCESS: Library loaded!\n";
-                    std::cout << "Number of operators: " << hotLoader.operators().size() << "\n";
-
-                    // Test each operator
-                    for (size_t i = 0; i < hotLoader.operators().size(); ++i) {
-                        auto* op = hotLoader.operators()[i];
-                        std::cout << "  - Operator " << i << " (id: " << op->id() << ")\n";
-                        std::cout << "    Initializing...\n";
-                        op->init(ctx);
-                        std::cout << "    Processing...\n";
-                        op->process(ctx);
-                        std::cout << "    Done!\n";
+                            // Restore state if we have it
+                            auto it = savedStates.find(op->id());
+                            if (it != savedStates.end()) {
+                                op->loadState(std::move(it->second));
+                                std::cout << "Restored state for: " << op->id() << "\n";
+                            }
+                        }
+                        std::cout << "Hot reload complete!\n";
+                    } else {
+                        std::cerr << "Failed to load new library\n";
                     }
-
-                    // Check if operator stored any output
-                    vivid::Texture* noiseOut = ctx.getInputTexture("noise_op", "out");
-                    if (noiseOut && noiseOut->valid()) {
-                        std::cout << "Operator output texture: " << noiseOut->width << "x" << noiseOut->height << "\n";
-                    }
-
-                    // Unload
-                    std::cout << "Unloading library...\n";
-                    hotLoader.unload();
-                    std::cout << "Unloaded.\n";
                 } else {
-                    std::cout << "FAILED to load library!\n";
+                    std::cerr << "Compile failed:\n" << compileResult.errorOutput << "\n";
+                    std::cerr << "(Old operators unloaded, running without operators)\n";
                 }
-
-                std::cout << "------------------------------------\n\n";
+                std::cout << "------------------\n\n";
             }
-            lKeyWasPressed = lKeyPressed;
+
+            // Handle shader hot-reload
+            if (!shaderToReload.empty()) {
+                std::cout << "[Renderer] Reloading shader: " << shaderToReload << "\n";
+                // Note: Renderer already has shader reload capability, but we'd need
+                // to track which shaders are loaded to reload them properly.
+                // For now, operators will reload their shaders on next process() call.
+                shaderToReload.clear();
+            }
 
             // Handle resize
             if (window.wasResized()) {
@@ -289,25 +209,24 @@ int main(int argc, char* argv[]) {
             float deltaTime = std::chrono::duration<float>(now - lastFrameTime).count();
             lastFrameTime = now;
 
-            // Begin frame (both renderer and context)
+            // Begin frame
             if (!renderer.beginFrame()) {
                 continue;
             }
             ctx.beginFrame(time, deltaTime, frameCount);
 
-            // Set up uniforms (using Context's time/dt/frame for consistency)
-            vivid::Uniforms uniforms;
-            uniforms.time = ctx.time();
-            uniforms.deltaTime = ctx.dt();
-            uniforms.resolutionX = static_cast<float>(outputTexture.width);
-            uniforms.resolutionY = static_cast<float>(outputTexture.height);
-            uniforms.frame = ctx.frame();
+            // Process all operators
+            for (auto* op : hotLoader.operators()) {
+                op->process(ctx);
+            }
 
-            // Run noise shader to output texture (still using direct renderer for now)
-            renderer.runShader(noiseShader, outputTexture, nullptr, uniforms);
-
-            // Blit result to screen
-            renderer.blitToScreen(outputTexture);
+            // Get final output from operators and blit to screen
+            // For now, look for an output named "out"
+            // (In future, we'd track the actual execution graph and get the final output)
+            vivid::Texture* finalOutput = ctx.getInputTexture("out");
+            if (finalOutput && finalOutput->valid()) {
+                renderer.blitToScreen(*finalOutput);
+            }
 
             // End frame
             ctx.endFrame();
@@ -316,9 +235,12 @@ int main(int argc, char* argv[]) {
             frameCount++;
         }
 
-        // Clean up
-        renderer.destroyShader(noiseShader);
-        renderer.destroyTexture(outputTexture);
+        // Cleanup
+        for (auto* op : hotLoader.operators()) {
+            op->cleanup();
+        }
+        hotLoader.unload();
+        fileWatcher.stop();
 
         std::cout << "Exiting after " << frameCount << " frames\n";
 

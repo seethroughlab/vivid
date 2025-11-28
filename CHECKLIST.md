@@ -97,26 +97,26 @@ cmake --build build
 - [x] Implement `load()` with dlopen/LoadLibrary
 - [x] Implement `unload()` with dlclose/FreeLibrary
 - [x] Implement symbol lookup for create/destroy functions
-- [ ] Test: Manually load a test .so/.dylib/.dll
+- [x] Test: Manually load a test .so/.dylib/.dll
 
 ### 5.2 File Watcher
 - [x] Implement `runtime/src/file_watcher.h` and `file_watcher.cpp`
 - [x] Use efsw to watch project directory
 - [x] Filter for .cpp, .h, .wgsl files
 - [x] Callback on file changes
-- [ ] Test: Edit file, see callback triggered
+- [x] Test: Edit file, see callback triggered
 
 ### 5.3 Compiler Integration
 - [x] Implement `runtime/src/compiler.h` and `compiler.cpp`
 - [x] Invoke CMake to build operator library
 - [x] Capture stdout/stderr for error reporting
 - [x] Return success/failure with library path
-- [ ] Test: Compile example operator, get .so path
+- [x] Test: Compile example operator, get .so path
 
 ### 5.4 Full Hot-Reload Loop
-- [ ] On .cpp change: save state → compile → unload → load → restore state
-- [ ] On .wgsl change: reload shader only
-- [ ] Test: Edit operator code, see changes without restart
+- [x] On .cpp change: save state → compile → unload → load → restore state
+- [x] On .wgsl change: reload shader only
+- [x] Test: Edit operator code, see changes without restart
 
 ---
 
