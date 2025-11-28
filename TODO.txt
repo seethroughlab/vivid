@@ -1,2 +1,1 @@
-- Window management is very important in creative coding toolkits. Is there a plan on where a user will be able to specify the resolution and window options? Including options for multiple screeens/spanning/etc?
-- Is there a plan for mouse and keyboard input?
+- How about support for VST plugins? 

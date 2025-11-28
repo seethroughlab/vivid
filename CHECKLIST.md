@@ -417,8 +417,75 @@ Build and test each operator individually:
 ### 12.12 Input Devices
 - [ ] Mouse position and button state in Context
 - [ ] Keyboard state in Context
+- [ ] Key event callbacks (key down, key up, key repeat)
+- [ ] Mouse event callbacks (click, drag, scroll)
 - [ ] Game controller support (SDL_GameController or similar)
 - [ ] Implement `GamepadIn` operator
+
+### 12.13 Advanced Window Management
+**Priority: High — Essential for performance/installation work**
+
+- [ ] User-configurable resolution (from project config or runtime args)
+- [ ] Window modes: windowed, borderless, fullscreen
+- [ ] Multi-monitor support and monitor selection
+- [ ] Window spanning across multiple displays
+- [ ] Custom window positioning
+- [ ] Window always-on-top option
+- [ ] Cursor hiding/showing
+- [ ] Implement `WindowSettings` in Context or config file
+
+### 12.14 Native GUI / WebView
+- [ ] Integrate native WebView (WebView2 on Windows, WKWebView on macOS)
+- [ ] Optional control panel window for parameter tweaking
+- [ ] HTML/CSS/JS-based UI for custom operator interfaces
+- [ ] Communication bridge between WebView and runtime
+
+---
+
+## Phase 13: Export & Distribution
+
+### 13.1 Video/Movie Export
+- [ ] High-quality offline rendering mode (fixed timestep)
+- [ ] Video encoding via FFmpeg (H.264, H.265, ProRes)
+- [ ] Audio mixdown to video
+- [ ] Configurable output resolution and framerate
+- [ ] Progress indicator during export
+
+### 13.2 WASM Export
+- [ ] WebGPU backend for browser (via Emscripten)
+- [ ] Compile operators to WASM
+- [ ] HTML/JS wrapper for web deployment
+- [ ] Asset bundling for web
+- [ ] Touch input support for mobile browsers
+
+### 13.3 Standalone Export
+- [ ] Bundle runtime + operators into single executable
+- [ ] Embed shaders and assets
+- [ ] Cross-platform packaging (macOS .app, Windows .exe, Linux AppImage)
+
+---
+
+## Phase 14: Examples & Templates
+
+### 14.1 Core Feature Examples
+**Each example demonstrates a specific capability**
+
+- [ ] `examples/hello` — Basic noise operator (exists)
+- [ ] `examples/feedback` — Feedback/trail effect
+- [ ] `examples/audio-reactive` — Audio input driving visuals
+- [ ] `examples/midi-control` — MIDI CC controlling parameters
+- [ ] `examples/webcam` — Camera input processing
+- [ ] `examples/particles` — Particle system
+- [ ] `examples/3d-geometry` — 3D rendering basics
+- [ ] `examples/text` — Text rendering
+- [ ] `examples/multi-window` — Multiple output windows
+- [ ] `examples/video-playback` — Video file input
+
+### 14.2 Template Projects
+- [ ] Minimal template (single operator)
+- [ ] VJ performance template (audio-reactive + MIDI)
+- [ ] Installation template (multi-screen + OSC)
+- [ ] Generative art template (recording-ready)
 
 ---
 
@@ -455,3 +522,5 @@ npx wscat -c ws://localhost:9876
 | Phase 10 complete | See inline previews in VS Code |
 | Phase 11 complete | Share with others |
 | Phase 12 complete | Load images/video, use audio, render 3D |
+| Phase 13 complete | Export video files, deploy to web |
+| Phase 14 complete | Have examples demonstrating all features |
