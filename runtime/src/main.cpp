@@ -1,5 +1,5 @@
 // Vivid Runtime - Entry Point
-// Phase 9: Preview Server Integration
+// Phase 9: Preview Server Integration + Async Readback
 
 #include "window.h"
 #include "renderer.h"
@@ -8,12 +8,16 @@
 #include "file_watcher.h"
 #include "compiler.h"
 #include "preview_server.h"
+#include "async_readback.h"
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <GLFW/glfw3.h>
+#include <stb_image_write.h>
 #include <iostream>
 #include <cmath>
 #include <chrono>
+#include <algorithm>
+#include <mutex>
 
 void printUsage(const char* program) {
     std::cout << "Usage: " << program << " <project_path> [options]\n"
@@ -86,6 +90,10 @@ int main(int argc, char* argv[]) {
             renderer->resize(w, h);
         }, &renderer);
 
+        // Async readback for non-blocking preview capture
+        vivid::AsyncReadback asyncReadback;
+        asyncReadback.init(renderer.device(), renderer.queue());
+
         // Hot-reload system
         vivid::HotLoader hotLoader;
         vivid::FileWatcher fileWatcher;
@@ -112,9 +120,13 @@ int main(int argc, char* argv[]) {
         });
         previewServer.start();
 
-        // Preview update throttling
+        // Preview update throttling - keep low to avoid frame drops
         auto lastPreviewUpdate = std::chrono::high_resolution_clock::now();
-        const float previewUpdateInterval = 0.1f;  // 10 fps for previews
+        const float previewUpdateInterval = 0.1f;  // 10 fps for previews (async readback makes this fast)
+
+        // Pending preview data collected from async readbacks
+        std::vector<vivid::NodePreview> pendingPreviews;
+        std::mutex previewMutex;
 
         // Start watching the project directory
         fileWatcher.watch(projectPath, [&](const std::string& path) {
@@ -172,6 +184,7 @@ int main(int argc, char* argv[]) {
                 graph.clear();
                 hotLoader.unload();
                 ctx.clearOutputs();
+                ctx.clearShaderCache();
 
                 // 3. Compile new library
                 auto compileResult = compiler.compile();
@@ -238,29 +251,122 @@ int main(int argc, char* argv[]) {
                 renderer.blitToScreen(*finalOutput);
             }
 
-            // Send preview updates to connected clients (throttled)
+            // Process any completed async readbacks
+            asyncReadback.processCompleted();
+
+            // Queue new preview captures (throttled, non-blocking)
             float timeSincePreview = std::chrono::duration<float>(now - lastPreviewUpdate).count();
             if (timeSincePreview >= previewUpdateInterval && previewServer.clientCount() > 0) {
                 lastPreviewUpdate = now;
 
-                // Capture previews from graph
-                auto graphPreviews = graph.capturePreviews(ctx, renderer, 128);
-
-                // Convert to NodePreview format
-                std::vector<vivid::NodePreview> nodePreviews;
-                for (const auto& preview : graphPreviews) {
-                    vivid::NodePreview np;
-                    np.id = preview.operatorId;
-                    np.sourceLine = preview.sourceLine;
-                    np.kind = preview.outputKind;
-                    np.base64Image = preview.base64Jpeg;
-                    np.width = preview.width;
-                    np.height = preview.height;
-                    np.value = preview.value;
-                    nodePreviews.push_back(np);
+                // Clear pending previews for this batch
+                {
+                    std::lock_guard<std::mutex> lock(previewMutex);
+                    pendingPreviews.clear();
                 }
 
-                previewServer.sendNodeUpdates(nodePreviews);
+                // Queue async readbacks for each operator
+                for (auto* op : graph.operators()) {
+                    if (!op) continue;
+
+                    if (op->outputKind() == vivid::OutputKind::Texture) {
+                        // Get the operator's output texture
+                        vivid::Texture* tex = ctx.getInputTexture(op->id(), "out");
+                        if (!tex) tex = ctx.getInputTexture("out");
+
+                        if (tex && tex->valid()) {
+                            // Capture metadata now (non-blocking)
+                            std::string opId = op->id();
+                            int sourceLine = op->sourceLine();
+                            int texWidth = tex->width;
+                            int texHeight = tex->height;
+
+                            // Queue async readback with callback
+                            asyncReadback.queueReadback(*tex, opId,
+                                [&previewServer, &previewMutex, &pendingPreviews,
+                                 opId, sourceLine, texWidth, texHeight]
+                                (const std::string& id, const std::vector<uint8_t>& pixels,
+                                 int width, int height) {
+
+                                    // Downsample to thumbnail
+                                    constexpr int thumbSize = 128;
+                                    int dstWidth = width;
+                                    int dstHeight = height;
+
+                                    if (width > thumbSize || height > thumbSize) {
+                                        float scale = std::min(
+                                            static_cast<float>(thumbSize) / width,
+                                            static_cast<float>(thumbSize) / height
+                                        );
+                                        dstWidth = std::max(1, static_cast<int>(width * scale));
+                                        dstHeight = std::max(1, static_cast<int>(height * scale));
+                                    }
+
+                                    // Downsample RGBA to RGB
+                                    std::vector<uint8_t> rgbPixels;
+                                    rgbPixels.reserve(dstWidth * dstHeight * 3);
+
+                                    for (int y = 0; y < dstHeight; y++) {
+                                        int srcY = y * height / dstHeight;
+                                        for (int x = 0; x < dstWidth; x++) {
+                                            int srcX = x * width / dstWidth;
+                                            size_t srcIdx = (srcY * width + srcX) * 4;
+                                            rgbPixels.push_back(pixels[srcIdx]);     // R
+                                            rgbPixels.push_back(pixels[srcIdx + 1]); // G
+                                            rgbPixels.push_back(pixels[srcIdx + 2]); // B
+                                        }
+                                    }
+
+                                    // Encode as JPEG (this is still synchronous but small data)
+                                    std::vector<uint8_t> jpegData;
+                                    auto jpegCallback = [](void* context, void* data, int size) {
+                                        auto* vec = static_cast<std::vector<uint8_t>*>(context);
+                                        auto* bytes = static_cast<uint8_t*>(data);
+                                        vec->insert(vec->end(), bytes, bytes + size);
+                                    };
+
+                                    stbi_write_jpg_to_func(jpegCallback, &jpegData,
+                                        dstWidth, dstHeight, 3, rgbPixels.data(), 60);
+
+                                    // Base64 encode
+                                    std::string base64 = vivid::base64Encode(jpegData);
+
+                                    // Create preview and add to pending
+                                    vivid::NodePreview np;
+                                    np.id = id;
+                                    np.sourceLine = sourceLine;
+                                    np.kind = vivid::OutputKind::Texture;
+                                    np.base64Image = base64;
+                                    np.width = texWidth;
+                                    np.height = texHeight;
+
+                                    {
+                                        std::lock_guard<std::mutex> lock(previewMutex);
+                                        pendingPreviews.push_back(np);
+                                    }
+                                });
+                        }
+                    } else if (op->outputKind() == vivid::OutputKind::Value) {
+                        // Values don't need GPU readback - capture immediately
+                        vivid::NodePreview np;
+                        np.id = op->id();
+                        np.sourceLine = op->sourceLine();
+                        np.kind = vivid::OutputKind::Value;
+                        np.value = ctx.getInputValue(op->id(), "out", 0.0f);
+
+                        std::lock_guard<std::mutex> lock(previewMutex);
+                        pendingPreviews.push_back(np);
+                    }
+                }
+            }
+
+            // Send any pending previews that are ready
+            {
+                std::lock_guard<std::mutex> lock(previewMutex);
+                if (!pendingPreviews.empty()) {
+                    previewServer.sendNodeUpdates(pendingPreviews);
+                    pendingPreviews.clear();
+                }
             }
 
             // End frame
@@ -271,11 +377,13 @@ int main(int argc, char* argv[]) {
         }
 
         // Cleanup
+        asyncReadback.shutdown();
         previewServer.stop();
         graph.cleanupAll();
         graph.clear();
         hotLoader.unload();
         fileWatcher.stop();
+        ctx.clearShaderCache();
 
         std::cout << "Exiting after " << frameCount << " frames\n";
 

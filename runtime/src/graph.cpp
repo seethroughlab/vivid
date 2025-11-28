@@ -156,25 +156,45 @@ std::vector<Graph::Preview> Graph::capturePreviews(Context& ctx, Renderer& rende
                 std::vector<uint8_t> pixels = renderer.readTexturePixels(*tex);
 
                 if (!pixels.empty()) {
-                    // Encode as JPEG
-                    std::vector<uint8_t> jpegData;
-                    int quality = 80;
+                    // Calculate downscale factor to fit within thumbSize
+                    int srcWidth = tex->width;
+                    int srcHeight = tex->height;
+                    int dstWidth = srcWidth;
+                    int dstHeight = srcHeight;
 
-                    // Note: stbi_write_jpg_to_func expects RGB, but we have RGBA
-                    // We need to convert RGBA to RGB for proper JPEG encoding
-                    std::vector<uint8_t> rgbPixels;
-                    rgbPixels.reserve(tex->width * tex->height * 3);
-                    for (size_t i = 0; i < pixels.size(); i += 4) {
-                        rgbPixels.push_back(pixels[i]);     // R
-                        rgbPixels.push_back(pixels[i + 1]); // G
-                        rgbPixels.push_back(pixels[i + 2]); // B
+                    if (srcWidth > thumbSize || srcHeight > thumbSize) {
+                        float scale = std::min(
+                            static_cast<float>(thumbSize) / srcWidth,
+                            static_cast<float>(thumbSize) / srcHeight
+                        );
+                        dstWidth = std::max(1, static_cast<int>(srcWidth * scale));
+                        dstHeight = std::max(1, static_cast<int>(srcHeight * scale));
                     }
+
+                    // Downsample RGBA to RGB in one pass using nearest-neighbor
+                    std::vector<uint8_t> rgbPixels;
+                    rgbPixels.reserve(dstWidth * dstHeight * 3);
+
+                    for (int y = 0; y < dstHeight; y++) {
+                        int srcY = y * srcHeight / dstHeight;
+                        for (int x = 0; x < dstWidth; x++) {
+                            int srcX = x * srcWidth / dstWidth;
+                            size_t srcIdx = (srcY * srcWidth + srcX) * 4;
+                            rgbPixels.push_back(pixels[srcIdx]);     // R
+                            rgbPixels.push_back(pixels[srcIdx + 1]); // G
+                            rgbPixels.push_back(pixels[srcIdx + 2]); // B
+                        }
+                    }
+
+                    // Encode as JPEG at reduced quality for smaller payloads
+                    std::vector<uint8_t> jpegData;
+                    int quality = 60;
 
                     stbi_write_jpg_to_func(
                         jpegWriteCallback,
                         &jpegData,
-                        tex->width,
-                        tex->height,
+                        dstWidth,
+                        dstHeight,
                         3,  // RGB channels
                         rgbPixels.data(),
                         quality

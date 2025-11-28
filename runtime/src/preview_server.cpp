@@ -60,7 +60,8 @@ void PreviewServer::sendNodeUpdates(const std::vector<NodePreview>& previews) {
             case OutputKind::Texture:
                 node["kind"] = "texture";
                 if (!preview.base64Image.empty()) {
-                    node["preview"] = preview.base64Image;
+                    // Add data URL prefix for browser/VS Code display
+                    node["preview"] = "data:image/jpeg;base64," + preview.base64Image;
                 }
                 if (preview.width > 0 && preview.height > 0) {
                     node["width"] = preview.width;

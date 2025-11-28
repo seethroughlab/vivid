@@ -11,6 +11,8 @@ set(RUNTIME_SOURCES
     src/compiler.cpp
     src/graph.cpp
     src/preview_server.cpp
+    src/async_readback.cpp
+    src/shared_preview.cpp
 )
 
 # Platform-specific source files

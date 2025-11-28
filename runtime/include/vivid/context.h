@@ -1,5 +1,6 @@
 #pragma once
 #include "types.h"
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -8,6 +9,7 @@ namespace vivid {
 
 // Forward declarations
 class Renderer;
+struct Shader;
 
 class Context {
 public:
@@ -64,7 +66,12 @@ public:
     // Clear all stored outputs (called between frames or on reload)
     void clearOutputs();
 
+    // Clear shader cache (called on hot-reload)
+    void clearShaderCache();
+
 private:
+    // Get or load a cached shader
+    Shader* getCachedShader(const std::string& path);
     Renderer& renderer_;
     int width_;
     int height_;
@@ -76,6 +83,9 @@ private:
     std::unordered_map<std::string, Texture> textureOutputs_;
     std::unordered_map<std::string, float> valueOutputs_;
     std::unordered_map<std::string, std::vector<float>> valueArrayOutputs_;
+
+    // Shader cache to avoid recompiling every frame
+    std::unordered_map<std::string, std::unique_ptr<Shader>> shaderCache_;
 };
 
 } // namespace vivid

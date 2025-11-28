@@ -51,12 +51,19 @@ protected:
 #endif
 
 #define VIVID_OPERATOR(ClassName) \
+    static const int vivid_source_line_ = __LINE__; \
     VIVID_EXPORT vivid::Operator* vivid_create_operator() { \
-        return new ClassName(); \
+        auto* op = new ClassName(); \
+        op->setId(#ClassName); \
+        op->setSourceLine(vivid_source_line_); \
+        return op; \
     } \
     VIVID_EXPORT void vivid_destroy_operator(vivid::Operator* op) { \
         delete op; \
     } \
     VIVID_EXPORT const char* vivid_operator_name() { \
         return #ClassName; \
+    } \
+    VIVID_EXPORT int vivid_operator_source_line() { \
+        return vivid_source_line_; \
     }

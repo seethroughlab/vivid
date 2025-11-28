@@ -322,10 +322,44 @@ Build and test each operator individually:
 - [ ] Show errors inline in VS Code (DiagnosticCollection)
 - [ ] Handle runtime crashes without breaking extension
 
-### 11.2 Performance
-- [ ] Throttle preview updates (10-20 fps)
-- [ ] Limit thumbnail size for network efficiency
-- [ ] Profile and optimize hot path
+### 11.2 Performance — Async Shared Memory Previews
+**Reference: [PLAN-04-extension.md](PLAN-04-extension.md) — Async Shared Memory Preview Architecture**
+
+#### Phase 1: Async GPU Readback
+- [x] Implement `runtime/src/async_readback.h` and `.cpp`
+- [x] Use `wgpuBufferMapAsync` instead of blocking poll
+- [x] Ring buffer of staging buffers (avoid per-frame allocation)
+- [x] Callback-based completion notification
+- [x] Test: Readback doesn't block main render thread
+
+#### Phase 2: Preview Thread
+- [ ] Implement `runtime/src/preview_thread.h` and `.cpp`
+- [ ] Separate thread for readback completion polling
+- [ ] Queue-based communication with main thread
+- [ ] Thumbnail downsampling on preview thread (not render thread)
+- [ ] Test: Render loop stays at 60fps during preview capture
+
+#### Phase 3: Shared Memory Segment
+- [ ] Implement `runtime/src/shared_preview.h` and `.cpp`
+- [ ] POSIX `shm_open`/`mmap` for macOS/Linux
+- [ ] Windows `CreateFileMapping`/`MapViewOfFile` implementation
+- [ ] Fixed layout: header + 64 operator slots
+- [ ] 128x128 RGB thumbnails per slot
+- [ ] Test: Runtime creates shared memory, can read from another process
+
+#### Phase 4: Extension Native Module
+- [ ] Create `extension/native/` with node-gyp build
+- [ ] Implement `shared_preview_native.node` binding
+- [ ] Read shared memory from Node.js/VS Code
+- [ ] Convert raw RGB to displayable format
+- [ ] Test: Extension reads preview data from shared memory
+
+#### Phase 5: Integration
+- [ ] WebSocket sends only metadata (operator list, slot indices, frame number)
+- [ ] Extension reads image data from shared memory on notification
+- [ ] Fallback to WebSocket base64 if shared memory unavailable
+- [ ] Remove blocking preview capture from main loop
+- [ ] Test: 60fps render with 64 operators and live previews
 
 ### 11.3 Documentation
 - [ ] Write user-facing README with screenshots

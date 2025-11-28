@@ -25,9 +25,9 @@ void Context::runShader(const std::string& shaderPath, const Texture* input, Tex
 
 void Context::runShader(const std::string& shaderPath, const Texture* input,
                         Texture& output, const ShaderParams& params) {
-    // Load shader if not already loaded (with caching in future)
-    Shader shader = renderer_.loadShaderFromFile(shaderPath);
-    if (!shader.valid()) {
+    // Get shader from cache (or load and cache it)
+    Shader* shader = getCachedShader(shaderPath);
+    if (!shader || !shader->valid()) {
         return;
     }
 
@@ -54,8 +54,7 @@ void Context::runShader(const std::string& shaderPath, const Texture* input,
     uniforms.vec1X = params.vec1X;
     uniforms.vec1Y = params.vec1Y;
 
-    renderer_.runShader(shader, output, input, uniforms);
-    renderer_.destroyShader(shader);  // TODO: Cache shaders instead
+    renderer_.runShader(*shader, output, input, uniforms);
 }
 
 void Context::runShader(const std::string& shaderPath, const Texture* input1,
@@ -132,6 +131,32 @@ void Context::clearOutputs() {
     textureOutputs_.clear();
     valueOutputs_.clear();
     valueArrayOutputs_.clear();
+}
+
+void Context::clearShaderCache() {
+    for (auto& [path, shader] : shaderCache_) {
+        if (shader) {
+            renderer_.destroyShader(*shader);
+        }
+    }
+    shaderCache_.clear();
+}
+
+Shader* Context::getCachedShader(const std::string& path) {
+    auto it = shaderCache_.find(path);
+    if (it != shaderCache_.end()) {
+        return it->second.get();
+    }
+
+    // Load and cache the shader
+    auto shader = std::make_unique<Shader>(renderer_.loadShaderFromFile(path));
+    if (!shader->valid()) {
+        return nullptr;
+    }
+
+    Shader* result = shader.get();
+    shaderCache_[path] = std::move(shader);
+    return result;
 }
 
 } // namespace vivid

@@ -1223,6 +1223,456 @@ void PreviewServer::broadcast(const std::string& message) {
 
 ---
 
+## Async Shared Memory Preview Architecture
+
+The WebSocket-based preview system works for basic use cases, but has scalability limitations:
+- GPU readback (`readTexturePixels`) blocks the main render thread
+- Base64 encoding inflates image data by ~33%
+- JSON parsing overhead for large preview payloads
+- Linear scaling: more operators = more blocking readbacks per frame
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        MAIN RENDER THREAD                        │
+│  ┌─────────┐    ┌─────────┐    ┌─────────┐                      │
+│  │ Op1     │───▶│ Op2     │───▶│ Op3     │───▶ Display          │
+│  │ process │    │ process │    │ process │                      │
+│  └────┬────┘    └────┬────┘    └────┬────┘                      │
+│       │              │              │                            │
+│       ▼              ▼              ▼                            │
+│  Queue async    Queue async    Queue async   ◀── non-blocking   │
+│  readback       readback       readback                         │
+└─────────────────────────────────────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      PREVIEW THREAD                              │
+│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
+│  │ Wait for GPU │───▶│ Downsample   │───▶│ Write to     │       │
+│  │ fence/callback│    │ to thumbnail │    │ shared mem   │       │
+│  └──────────────┘    └──────────────┘    └──────────────┘       │
+│                                                 │                │
+│                                                 ▼                │
+│                                          ┌──────────────┐       │
+│                                          │ Signal ready │       │
+│                                          │ (WebSocket)  │       │
+│                                          └──────────────┘       │
+└─────────────────────────────────────────────────────────────────┘
+                       │
+        ───────────────┴───────────────
+       │                               │
+       ▼                               ▼
+┌─────────────────┐           ┌─────────────────┐
+│  SHARED MEMORY  │           │    WEBSOCKET    │
+│  ┌───────────┐  │           │  (metadata only)│
+│  │ Op1: RGB  │  │           │  {              │
+│  │ 128x128   │  │           │    "op1": {     │
+│  ├───────────┤  │           │      "ready": 1,│
+│  │ Op2: RGB  │  │           │      "frame": 42│
+│  │ 128x128   │  │           │    }            │
+│  ├───────────┤  │           │  }              │
+│  │ Op3: RGB  │  │           │                 │
+│  │ 128x128   │  │           │                 │
+│  └───────────┘  │           │                 │
+└─────────────────┘           └─────────────────┘
+        │                               │
+        └───────────────┬───────────────┘
+                        ▼
+              ┌─────────────────┐
+              │  VS CODE EXT    │
+              │  (reads mmap    │
+              │   on metadata   │
+              │   notification) │
+              └─────────────────┘
+```
+
+### Key Components
+
+#### 1. Async GPU Readback
+
+Instead of blocking `wgpuDevicePoll`, use `wgpuBufferMapAsync` with callbacks:
+
+```cpp
+// runtime/src/async_readback.h
+#pragma once
+#include <webgpu/webgpu.h>
+#include <functional>
+#include <queue>
+#include <mutex>
+
+namespace vivid {
+
+struct ReadbackRequest {
+    WGPUBuffer stagingBuffer;
+    int width, height;
+    std::string operatorId;
+    int frameNumber;
+    std::function<void(const uint8_t* data, size_t size)> callback;
+};
+
+class AsyncReadback {
+public:
+    AsyncReadback(WGPUDevice device, WGPUQueue queue);
+    ~AsyncReadback();
+
+    // Queue a texture for async readback (non-blocking)
+    void queueReadback(const Texture& texture, const std::string& operatorId,
+                       int frameNumber, std::function<void(const uint8_t*, size_t)> callback);
+
+    // Poll for completed readbacks (call from preview thread)
+    void pollCompletions();
+
+    // Get number of pending readbacks
+    size_t pendingCount() const;
+
+private:
+    WGPUDevice device_;
+    WGPUQueue queue_;
+
+    std::queue<ReadbackRequest> pendingRequests_;
+    std::queue<ReadbackRequest> completedRequests_;
+    std::mutex mutex_;
+
+    // Ring buffer of staging buffers to avoid allocation per frame
+    static constexpr int RING_BUFFER_SIZE = 8;
+    WGPUBuffer stagingBuffers_[RING_BUFFER_SIZE];
+    int nextBuffer_ = 0;
+};
+
+} // namespace vivid
+```
+
+#### 2. Shared Memory Segment
+
+Platform-specific shared memory with a fixed layout:
+
+```cpp
+// runtime/src/shared_preview.h
+#pragma once
+#include <string>
+#include <cstdint>
+
+namespace vivid {
+
+// Fixed thumbnail size for predictable memory layout
+constexpr int THUMB_WIDTH = 128;
+constexpr int THUMB_HEIGHT = 128;
+constexpr int THUMB_CHANNELS = 3;  // RGB
+constexpr int THUMB_SIZE = THUMB_WIDTH * THUMB_HEIGHT * THUMB_CHANNELS;
+constexpr int MAX_OPERATORS = 64;
+
+// Header at start of shared memory
+struct SharedPreviewHeader {
+    uint32_t magic;              // 'VIVD' for validation
+    uint32_t version;            // Protocol version
+    uint32_t operatorCount;      // Number of active operators
+    uint32_t frameNumber;        // Current frame for sync
+    uint64_t timestamp;          // Microseconds since epoch
+};
+
+// Per-operator slot in shared memory
+struct SharedPreviewSlot {
+    char operatorId[64];         // Operator name (null-terminated)
+    int32_t sourceLine;          // Source file line number
+    uint32_t frameNumber;        // Frame when this was captured
+    uint32_t width, height;      // Original texture dimensions
+    uint8_t kind;                // OutputKind enum
+    uint8_t ready;               // 1 if data is valid
+    uint8_t padding[2];
+
+    union {
+        uint8_t pixels[THUMB_SIZE];   // RGB thumbnail data
+        float value;                   // For Value outputs
+        float values[256];             // For ValueArray outputs
+    } data;
+};
+
+// Total shared memory layout
+struct SharedPreviewMemory {
+    SharedPreviewHeader header;
+    SharedPreviewSlot slots[MAX_OPERATORS];
+};
+
+class SharedPreview {
+public:
+    SharedPreview();
+    ~SharedPreview();
+
+    // Create/open shared memory (returns false on failure)
+    bool create(const std::string& name);  // Runtime calls this
+    bool open(const std::string& name);    // Extension calls this
+    void close();
+
+    // Access the shared memory
+    SharedPreviewMemory* memory() { return memory_; }
+    const SharedPreviewMemory* memory() const { return memory_; }
+
+    // Convenience methods
+    void updateSlot(int index, const std::string& operatorId, int sourceLine,
+                    int width, int height, const uint8_t* rgbPixels);
+    void updateSlotValue(int index, const std::string& operatorId, int sourceLine, float value);
+    void setOperatorCount(int count);
+    void incrementFrame();
+
+private:
+    void* handle_ = nullptr;        // Platform-specific handle
+    SharedPreviewMemory* memory_ = nullptr;
+    std::string name_;
+    bool isCreator_ = false;
+};
+
+} // namespace vivid
+```
+
+#### 3. Platform-Specific Implementation
+
+```cpp
+// runtime/src/shared_preview_unix.cpp (macOS/Linux)
+#include "shared_preview.h"
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstring>
+
+namespace vivid {
+
+bool SharedPreview::create(const std::string& name) {
+    name_ = "/" + name;  // POSIX shared memory names must start with /
+    isCreator_ = true;
+
+    // Remove any existing segment
+    shm_unlink(name_.c_str());
+
+    // Create shared memory
+    int fd = shm_open(name_.c_str(), O_CREAT | O_RDWR, 0666);
+    if (fd < 0) return false;
+
+    // Set size
+    if (ftruncate(fd, sizeof(SharedPreviewMemory)) < 0) {
+        ::close(fd);
+        shm_unlink(name_.c_str());
+        return false;
+    }
+
+    // Map into address space
+    memory_ = static_cast<SharedPreviewMemory*>(
+        mmap(nullptr, sizeof(SharedPreviewMemory), PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0)
+    );
+    ::close(fd);  // Can close fd after mmap
+
+    if (memory_ == MAP_FAILED) {
+        memory_ = nullptr;
+        shm_unlink(name_.c_str());
+        return false;
+    }
+
+    // Initialize header
+    std::memset(memory_, 0, sizeof(SharedPreviewMemory));
+    memory_->header.magic = 0x56495644;  // 'VIVD'
+    memory_->header.version = 1;
+
+    return true;
+}
+
+bool SharedPreview::open(const std::string& name) {
+    name_ = "/" + name;
+    isCreator_ = false;
+
+    int fd = shm_open(name_.c_str(), O_RDONLY, 0);
+    if (fd < 0) return false;
+
+    memory_ = static_cast<SharedPreviewMemory*>(
+        mmap(nullptr, sizeof(SharedPreviewMemory), PROT_READ, MAP_SHARED, fd, 0)
+    );
+    ::close(fd);
+
+    if (memory_ == MAP_FAILED) {
+        memory_ = nullptr;
+        return false;
+    }
+
+    // Validate magic
+    if (memory_->header.magic != 0x56495644) {
+        munmap(memory_, sizeof(SharedPreviewMemory));
+        memory_ = nullptr;
+        return false;
+    }
+
+    return true;
+}
+
+void SharedPreview::close() {
+    if (memory_) {
+        munmap(memory_, sizeof(SharedPreviewMemory));
+        memory_ = nullptr;
+    }
+    if (isCreator_ && !name_.empty()) {
+        shm_unlink(name_.c_str());
+    }
+}
+
+} // namespace vivid
+```
+
+#### 4. Preview Thread
+
+Separate thread that handles async readback completion and shared memory updates:
+
+```cpp
+// runtime/src/preview_thread.h
+#pragma once
+#include "async_readback.h"
+#include "shared_preview.h"
+#include "preview_server.h"
+#include <thread>
+#include <atomic>
+
+namespace vivid {
+
+class PreviewThread {
+public:
+    PreviewThread(WGPUDevice device, WGPUQueue queue, PreviewServer& server);
+    ~PreviewThread();
+
+    // Start/stop the preview thread
+    void start(const std::string& sharedMemName);
+    void stop();
+
+    // Queue a preview capture (called from main thread, non-blocking)
+    void queuePreview(const Texture& texture, const std::string& operatorId,
+                      int sourceLine, int slotIndex);
+    void queueValuePreview(const std::string& operatorId, int sourceLine,
+                           int slotIndex, float value);
+
+    // Signal frame complete (increments frame counter, sends WebSocket notification)
+    void frameComplete();
+
+private:
+    void threadMain();
+
+    AsyncReadback readback_;
+    SharedPreview sharedMem_;
+    PreviewServer& server_;
+
+    std::thread thread_;
+    std::atomic<bool> running_{false};
+    std::atomic<int> frameNumber_{0};
+};
+
+} // namespace vivid
+```
+
+#### 5. VS Code Extension Changes
+
+The extension needs a native module to read shared memory:
+
+```typescript
+// extension/src/sharedPreview.ts
+import * as path from 'path';
+
+// Native module for shared memory access (compiled with node-gyp)
+interface SharedPreviewNative {
+    open(name: string): boolean;
+    close(): void;
+    getHeader(): { magic: number; version: number; operatorCount: number; frameNumber: number };
+    getSlot(index: number): {
+        operatorId: string;
+        sourceLine: number;
+        frameNumber: number;
+        width: number;
+        height: number;
+        kind: number;
+        ready: boolean;
+        pixels?: Buffer;  // For textures
+        value?: number;   // For values
+    } | null;
+}
+
+let native: SharedPreviewNative | null = null;
+
+export function initSharedPreview(): boolean {
+    try {
+        // Load native module (built with node-gyp)
+        native = require('../build/Release/shared_preview_native.node');
+        return native.open('vivid_preview');
+    } catch (e) {
+        console.error('Failed to load shared preview native module:', e);
+        return false;
+    }
+}
+
+export function closeSharedPreview(): void {
+    if (native) {
+        native.close();
+        native = null;
+    }
+}
+
+export function readPreviewSlot(index: number): NodeUpdate | null {
+    if (!native) return null;
+
+    const slot = native.getSlot(index);
+    if (!slot || !slot.ready) return null;
+
+    const update: NodeUpdate = {
+        id: slot.operatorId,
+        line: slot.sourceLine,
+        kind: ['texture', 'value', 'value_array', 'geometry'][slot.kind] as any,
+    };
+
+    if (slot.kind === 0 && slot.pixels) {
+        // Convert RGB pixels to base64 JPEG (or use raw for canvas)
+        update.preview = `data:image/raw;base64,${slot.pixels.toString('base64')}`;
+        update.width = slot.width;
+        update.height = slot.height;
+    } else if (slot.kind === 1) {
+        update.value = slot.value;
+    }
+
+    return update;
+}
+```
+
+### WebSocket Protocol Changes
+
+With shared memory, WebSocket only carries metadata:
+
+```typescript
+// New lightweight message format
+interface PreviewMetadata {
+    type: 'preview_ready';
+    frame: number;
+    operators: {
+        id: string;
+        slot: number;      // Index in shared memory
+        updated: boolean;  // True if changed since last frame
+    }[];
+}
+```
+
+### Migration Path
+
+1. **Phase 1**: Implement async readback (non-blocking GPU reads)
+2. **Phase 2**: Add preview thread (decouple from render loop)
+3. **Phase 3**: Implement shared memory (zero-copy to extension)
+4. **Phase 4**: Update extension with native module
+5. **Phase 5**: Deprecate base64 WebSocket previews
+
+### Performance Comparison
+
+| Metric | Current (WebSocket) | Shared Memory |
+|--------|---------------------|---------------|
+| GPU readback | Blocking | Async (non-blocking) |
+| Data transfer | ~33% overhead (base64) | Zero-copy |
+| Latency | ~10-50ms | ~1-5ms |
+| CPU overhead | JSON encode/decode | Direct memory access |
+| Max operators | ~10-20 at 60fps | 64+ at 60fps |
+
+---
+
 ## Build and Run Instructions
 
 ### Building the Extension
