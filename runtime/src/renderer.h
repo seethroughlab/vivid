@@ -1,4 +1,5 @@
 #pragma once
+#include <vivid/types.h>
 #include <webgpu/webgpu.h>
 #include <string>
 #include <memory>
@@ -10,15 +11,22 @@ struct GLFWwindow;
 
 namespace vivid {
 
-// Simple texture handle for the renderer
-struct Texture {
+// Internal texture data - stored in Texture::handle
+struct TextureData {
     WGPUTexture texture = nullptr;
     WGPUTextureView view = nullptr;
-    int width = 0;
-    int height = 0;
-
-    bool valid() const { return texture != nullptr && view != nullptr; }
 };
+
+// Helper to get TextureData from public Texture
+inline TextureData* getTextureData(const Texture& tex) {
+    return static_cast<TextureData*>(tex.handle);
+}
+
+// Helper to check if texture has valid GPU resources
+inline bool hasValidGPU(const Texture& tex) {
+    auto* data = getTextureData(tex);
+    return data && data->texture && data->view;
+}
 
 // Standard uniforms passed to all shaders
 struct Uniforms {

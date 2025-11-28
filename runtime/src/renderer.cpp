@@ -538,6 +538,9 @@ Texture Renderer::createTexture(int width, int height) {
     tex.width = width;
     tex.height = height;
 
+    // Create internal texture data
+    auto* data = new TextureData();
+
     WGPUTextureDescriptor texDesc = {};
     texDesc.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
     texDesc.format = WGPUTextureFormat_RGBA8Unorm;
@@ -549,9 +552,10 @@ Texture Renderer::createTexture(int width, int height) {
     texDesc.sampleCount = 1;
     texDesc.dimension = WGPUTextureDimension_2D;
 
-    tex.texture = wgpuDeviceCreateTexture(device_, &texDesc);
-    if (!tex.texture) {
+    data->texture = wgpuDeviceCreateTexture(device_, &texDesc);
+    if (!data->texture) {
         std::cerr << "[Renderer] Failed to create texture\n";
+        delete data;
         return tex;
     }
 
@@ -561,38 +565,45 @@ Texture Renderer::createTexture(int width, int height) {
     viewDesc.mipLevelCount = 1;
     viewDesc.arrayLayerCount = 1;
 
-    tex.view = wgpuTextureCreateView(tex.texture, &viewDesc);
-    if (!tex.view) {
+    data->view = wgpuTextureCreateView(data->texture, &viewDesc);
+    if (!data->view) {
         std::cerr << "[Renderer] Failed to create texture view\n";
-        wgpuTextureRelease(tex.texture);
-        tex.texture = nullptr;
+        wgpuTextureRelease(data->texture);
+        delete data;
+        return tex;
     }
 
+    tex.handle = data;
     return tex;
 }
 
 void Renderer::destroyTexture(Texture& texture) {
-    if (texture.view) {
-        wgpuTextureViewRelease(texture.view);
-        texture.view = nullptr;
+    auto* data = getTextureData(texture);
+    if (data) {
+        if (data->view) {
+            wgpuTextureViewRelease(data->view);
+        }
+        if (data->texture) {
+            wgpuTextureRelease(data->texture);
+        }
+        delete data;
     }
-    if (texture.texture) {
-        wgpuTextureRelease(texture.texture);
-        texture.texture = nullptr;
-    }
+    texture.handle = nullptr;
     texture.width = 0;
     texture.height = 0;
 }
 
 void Renderer::blitToScreen(const Texture& texture) {
-    if (!currentTextureView_ || !texture.valid()) return;
+    if (!currentTextureView_ || !hasValidGPU(texture)) return;
+
+    auto* texData = getTextureData(texture);
 
     // Create bind group for this texture
     WGPUBindGroupEntry entries[2] = {};
     entries[0].binding = 0;
     entries[0].sampler = blitSampler_;
     entries[1].binding = 1;
-    entries[1].textureView = texture.view;
+    entries[1].textureView = texData->view;
 
     WGPUBindGroupDescriptor bindGroupDesc = {};
     bindGroupDesc.layout = blitBindGroupLayout_;
@@ -636,7 +647,9 @@ void Renderer::blitToScreen(const Texture& texture) {
 }
 
 void Renderer::fillTexture(Texture& texture, float r, float g, float b, float a) {
-    if (!texture.valid()) return;
+    if (!hasValidGPU(texture)) return;
+
+    auto* texData = getTextureData(texture);
 
     // Create gradient/pattern pixel data to verify texture sampling works
     std::vector<uint8_t> pixels(texture.width * texture.height * 4);
@@ -663,7 +676,7 @@ void Renderer::fillTexture(Texture& texture, float r, float g, float b, float a)
 
     // Write to texture (using new wgpu API types)
     WGPUTexelCopyTextureInfo destination = {};
-    destination.texture = texture.texture;
+    destination.texture = texData->texture;
 
     WGPUTexelCopyBufferLayout dataLayout = {};
     dataLayout.bytesPerRow = texture.width * 4;
@@ -679,7 +692,9 @@ void Renderer::fillTexture(Texture& texture, float r, float g, float b, float a)
 }
 
 std::vector<uint8_t> Renderer::readTexturePixels(const Texture& texture) {
-    if (!texture.valid()) return {};
+    if (!hasValidGPU(texture)) return {};
+
+    auto* texData = getTextureData(texture);
 
     size_t pixelCount = texture.width * texture.height;
     size_t bytesPerRow = texture.width * 4;
@@ -704,7 +719,7 @@ std::vector<uint8_t> Renderer::readTexturePixels(const Texture& texture) {
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &encoderDesc);
 
     WGPUTexelCopyTextureInfo source = {};
-    source.texture = texture.texture;
+    source.texture = texData->texture;
 
     WGPUTexelCopyBufferInfo destination = {};
     destination.buffer = stagingBuffer;
@@ -798,48 +813,8 @@ Shader Renderer::loadShader(const std::string& wgslSource) {
         return shader;
     }
 
-    // Get compilation info to check for errors
-    struct CompileData {
-        bool done = false;
-        std::string error;
-    } compileData;
-
-    WGPUCompilationInfoCallbackInfo callbackInfo = {};
-    callbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
-    callbackInfo.callback = [](WGPUCompilationInfoRequestStatus status,
-                               WGPUCompilationInfo const* info,
-                               void* userdata1, void* userdata2) {
-        auto* data = static_cast<CompileData*>(userdata1);
-        if (info && info->messageCount > 0) {
-            for (size_t i = 0; i < info->messageCount; i++) {
-                const auto& msg = info->messages[i];
-                if (msg.type == WGPUCompilationMessageType_Error) {
-                    std::string msgStr = msg.message.data
-                        ? std::string(msg.message.data, msg.message.length)
-                        : "Unknown error";
-                    // Adjust line number: subtract wrapper prefix lines (around 48)
-                    int userLine = static_cast<int>(msg.lineNum) - 48;
-                    if (userLine < 1) userLine = msg.lineNum;
-                    data->error += "Line " + std::to_string(userLine) + ": " + msgStr + "\n";
-                }
-            }
-        }
-        data->done = true;
-    };
-    callbackInfo.userdata1 = &compileData;
-
-    wgpuShaderModuleGetCompilationInfo(shader.module, callbackInfo);
-
-    // Wait for callback
-    while (!compileData.done) {
-        wgpuDevicePoll(device_, true, nullptr);
-    }
-
-    if (!compileData.error.empty()) {
-        lastShaderError_ = compileData.error;
-        std::cerr << "[Renderer] Shader compilation errors:\n" << lastShaderError_;
-        // Module might still be created but pipeline will fail
-    }
+    // NOTE: wgpuShaderModuleGetCompilationInfo is not implemented in wgpu-native v24.0.0.2
+    // Shader errors will be reported via the uncaptured error callback instead
 
     // Create bind group layout
     // Binding 0: Uniforms
@@ -996,7 +971,9 @@ void Renderer::destroyShader(Shader& shader) {
 
 void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
                          const Uniforms& uniforms) {
-    if (!shader.valid() || !output.valid()) return;
+    if (!shader.valid() || !hasValidGPU(output)) return;
+
+    auto* outputData = getTextureData(output);
 
     // Create uniform buffer
     WGPUBufferDescriptor uniformBufferDesc = {};
@@ -1012,8 +989,9 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
     WGPUTexture dummyTexture = nullptr;
     WGPUTextureView dummyView = nullptr;
 
-    if (input && input->valid()) {
-        inputView = input->view;
+    if (input && hasValidGPU(*input)) {
+        auto* inputData = getTextureData(*input);
+        inputView = inputData->view;
     } else {
         // Create a 1x1 dummy texture for shaders that don't use input
         WGPUTextureDescriptor dummyDesc = {};
@@ -1058,7 +1036,7 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &encoderDesc);
 
     WGPURenderPassColorAttachment colorAttachment = {};
-    colorAttachment.view = output.view;
+    colorAttachment.view = outputData->view;
     colorAttachment.loadOp = WGPULoadOp_Clear;
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {0, 0, 0, 1};

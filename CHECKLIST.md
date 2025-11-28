@@ -74,18 +74,18 @@ cmake --build build
 **Reference: [PLAN-02-runtime.md](PLAN-02-runtime.md) — Header files section**
 
 ### 4.1 Core Headers
-- [ ] Create `runtime/include/vivid/types.h`
-- [ ] Create `runtime/include/vivid/context.h`
-- [ ] Create `runtime/include/vivid/operator.h`
-- [ ] Create `runtime/include/vivid/node_macro.h`
-- [ ] Create `runtime/include/vivid/params.h`
-- [ ] Create `runtime/include/vivid/vivid.h` (main include)
+- [x] Create `runtime/include/vivid/types.h`
+- [x] Create `runtime/include/vivid/context.h`
+- [x] Create `runtime/include/vivid/operator.h`
+- [x] Create `runtime/include/vivid/node_macro.h`
+- [x] Create `runtime/include/vivid/params.h`
+- [x] Create `runtime/include/vivid/vivid.h` (main include)
 
 ### 4.2 Context Implementation
-- [ ] Implement Context class
-- [ ] Wire Context to Renderer for texture creation and shader execution
-- [ ] Implement input/output storage for operator communication
-- [ ] Test: Context can create textures and run shaders
+- [x] Implement Context class
+- [x] Wire Context to Renderer for texture creation and shader execution
+- [x] Implement input/output storage for operator communication
+- [x] Test: Context can create textures and run shaders
 
 ---
 
@@ -93,24 +93,24 @@ cmake --build build
 **Reference: [PLAN-02-runtime.md](PLAN-02-runtime.md) — HotLoader section**
 
 ### 5.1 Shared Library Loading
-- [ ] Implement `runtime/src/hotload.h` and `hotload.cpp`
-- [ ] Implement `load()` with dlopen/LoadLibrary
-- [ ] Implement `unload()` with dlclose/FreeLibrary
-- [ ] Implement symbol lookup for create/destroy functions
+- [x] Implement `runtime/src/hotload.h` and `hotload.cpp`
+- [x] Implement `load()` with dlopen/LoadLibrary
+- [x] Implement `unload()` with dlclose/FreeLibrary
+- [x] Implement symbol lookup for create/destroy functions
 - [ ] Test: Manually load a test .so/.dylib/.dll
 
 ### 5.2 File Watcher
-- [ ] Implement `runtime/src/file_watcher.h` and `file_watcher.cpp`
-- [ ] Use efsw to watch project directory
-- [ ] Filter for .cpp, .h, .wgsl files
-- [ ] Callback on file changes
+- [x] Implement `runtime/src/file_watcher.h` and `file_watcher.cpp`
+- [x] Use efsw to watch project directory
+- [x] Filter for .cpp, .h, .wgsl files
+- [x] Callback on file changes
 - [ ] Test: Edit file, see callback triggered
 
 ### 5.3 Compiler Integration
-- [ ] Implement `runtime/src/compiler.h` and `compiler.cpp`
-- [ ] Invoke CMake to build operator library
-- [ ] Capture stdout/stderr for error reporting
-- [ ] Return success/failure with library path
+- [x] Implement `runtime/src/compiler.h` and `compiler.cpp`
+- [x] Invoke CMake to build operator library
+- [x] Capture stdout/stderr for error reporting
+- [x] Return success/failure with library path
 - [ ] Test: Compile example operator, get .so path
 
 ### 5.4 Full Hot-Reload Loop

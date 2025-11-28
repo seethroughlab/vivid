@@ -1,10 +1,14 @@
-# Runtime CMakeLists.txt - Phase 2: Window and WebGPU
-# Additional source files will be added in later phases
+# Runtime CMakeLists.txt - Phase 4: Core Types and Context
+# Building on Phase 2 & 3 with operator framework
 
 set(RUNTIME_SOURCES
     src/main.cpp
     src/window.cpp
     src/renderer.cpp
+    src/context.cpp
+    src/hotload.cpp
+    src/file_watcher.cpp
+    src/compiler.cpp
 )
 
 # Platform-specific source files
@@ -35,7 +39,7 @@ target_link_libraries(vivid-runtime
     ${CMAKE_DL_LIBS}
 )
 
-# Platform-specific libraries
+# Platform-specific libraries and export symbols for dynamic loading
 if(APPLE)
     target_link_libraries(vivid-runtime PRIVATE
         "-framework Cocoa"
@@ -43,8 +47,12 @@ if(APPLE)
         "-framework Metal"
         "-framework QuartzCore"
     )
+    # Export symbols so dynamically loaded operators can find Context, etc.
+    target_link_options(vivid-runtime PRIVATE -Wl,-export_dynamic)
 elseif(UNIX)
     target_link_libraries(vivid-runtime PRIVATE pthread dl)
+    # Export symbols for dlopen'd libraries
+    target_link_options(vivid-runtime PRIVATE -rdynamic)
 endif()
 
 # Copy include headers to build directory for operator compilation
