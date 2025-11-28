@@ -8,6 +8,18 @@ Vivid is a C++ framework for real-time visual programming. Unlike node-based too
 
 The framework hot-reloads your C++ operators as you edit them. A VS Code extension shows live previews inline with your code, so you can see exactly what each stage of your pipeline produces without switching windows or mentally tracing connections.
 
+## Inspirations
+
+**TouchDesigner** pioneered the idea that every node should show its output. You can see the data flowing through the graph, which makes creative exploration intuitive. But the node graph is a black box to text tools and LLMs.
+
+**openFrameworks** proved that a C++ creative coding toolkit can be both powerful and approachable. Its addon ecosystem and "batteries included" philosophy make complex things accessible without hiding the underlying tech. Vivid aims for that same extensibility.
+
+**Jupyter Notebooks** put output directly below code. Each cell shows its result, making iteration fast and debugging visual. But notebooks are awkward for structured programs and don't hot-reload.
+
+**Strudel.cc** takes this further—the code *is* the live performance. Type a pattern, hear it immediately. The text and the output are unified, not separate windows you switch between.
+
+Vivid combines these ideas: the inspect-anywhere philosophy of TouchDesigner, the extensibility of openFrameworks, the inline output of notebooks, and the immediacy of Strudel—but with plain C++ that LLMs can read and write.
+
 ## Why Build This?
 
 **TouchDesigner is powerful but opaque.** The node graph is a binary blob that language models can't read or write. Diffing changes is painful. Version control is an afterthought. Collaboration means sharing screenshots and hoping.

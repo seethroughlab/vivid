@@ -1,8 +1,9 @@
 // Vivid Runtime - Entry Point
-// Phase 3.3: Shader System test
+// Phase 3.4: Shader Hot-Reload test
 
 #include "window.h"
 #include "renderer.h"
+#include <GLFW/glfw3.h>
 #include <iostream>
 #include <cmath>
 #include <chrono>
@@ -78,16 +79,27 @@ int main(int argc, char* argv[]) {
         }
         std::cout << "Noise shader loaded\n";
 
-        std::cout << "Entering main loop...\n";
+        std::cout << "Entering main loop... (Press 'R' to reload shader)\n";
 
         // Timing
         auto startTime = std::chrono::high_resolution_clock::now();
         auto lastFrameTime = startTime;
         int frameCount = 0;
+        bool rKeyWasPressed = false;
 
         // Main loop
         while (!window.shouldClose()) {
             window.pollEvents();
+
+            // Check for 'R' key to reload shader
+            bool rKeyPressed = glfwGetKey(window.handle(), GLFW_KEY_R) == GLFW_PRESS;
+            if (rKeyPressed && !rKeyWasPressed) {
+                std::cout << "Reloading shader...\n";
+                if (renderer.reloadShader(noiseShader)) {
+                    std::cout << "Shader reloaded! Edit shaders/noise.wgsl and press R again.\n";
+                }
+            }
+            rKeyWasPressed = rKeyPressed;
 
             // Handle resize
             if (window.wasResized()) {

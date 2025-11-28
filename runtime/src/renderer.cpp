@@ -892,6 +892,47 @@ Shader Renderer::loadShaderFromFile(const std::string& path) {
     return shader;
 }
 
+bool Renderer::reloadShader(Shader& shader) {
+    if (shader.path.empty()) {
+        std::cerr << "[Renderer] Cannot reload shader: no source path\n";
+        return false;
+    }
+
+    std::cout << "[Renderer] Reloading shader from: " << shader.path << "\n";
+
+    // Read updated source
+    std::ifstream file(shader.path);
+    if (!file.is_open()) {
+        std::cerr << "[Renderer] Failed to open shader file: " << shader.path << "\n";
+        return false;
+    }
+
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    std::string source = buffer.str();
+
+    // Try to compile new shader
+    Shader newShader = loadShader(source);
+    if (!newShader.valid()) {
+        std::cerr << "[Renderer] Failed to compile updated shader\n";
+        return false;
+    }
+
+    // Preserve the path
+    newShader.path = shader.path;
+
+    // Release old resources
+    if (shader.pipeline) wgpuRenderPipelineRelease(shader.pipeline);
+    if (shader.bindGroupLayout) wgpuBindGroupLayoutRelease(shader.bindGroupLayout);
+    if (shader.module) wgpuShaderModuleRelease(shader.module);
+
+    // Swap in new shader
+    shader = newShader;
+
+    std::cout << "[Renderer] Shader reloaded successfully\n";
+    return true;
+}
+
 void Renderer::destroyShader(Shader& shader) {
     if (shader.pipeline) {
         wgpuRenderPipelineRelease(shader.pipeline);

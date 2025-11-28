@@ -63,9 +63,9 @@ cmake --build build
 - [x] Test: Load noise shader, render to texture, display result
 
 ### 3.4 Shader Hot-Reload
-- [ ] Implement `reloadShader()`
-- [ ] Track shader file paths for reload matching
-- [ ] Test: Edit .wgsl file, see changes without restart
+- [x] Implement `reloadShader()`
+- [x] Track shader file paths for reload matching
+- [ ] Test: Edit .wgsl file, see changes without restart (manual test: press 'R' to reload)
 
 ---
 

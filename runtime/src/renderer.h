@@ -77,6 +77,7 @@ public:
     // Shader management
     Shader loadShader(const std::string& wgslSource);
     Shader loadShaderFromFile(const std::string& path);
+    bool reloadShader(Shader& shader);  // Reload from original file path
     void destroyShader(Shader& shader);
 
     // Run a shader to render to a texture
