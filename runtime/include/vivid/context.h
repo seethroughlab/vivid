@@ -82,6 +82,32 @@ public:
      * @return A new texture, or default resolution if input not found.
      */
     Texture createTextureMatching(const std::string& nodeId, const std::string& output = "out");
+
+    /**
+     * @brief Load an image file and create a texture from it.
+     * @param path Path to the image file (PNG, JPG, BMP, etc.).
+     * @return A valid texture if successful, invalid texture on failure.
+     *
+     * Supports PNG, JPG, JPEG, BMP, TGA, GIF, PSD, HDR, PIC formats.
+     * The texture dimensions match the image dimensions.
+     */
+    Texture loadImageAsTexture(const std::string& path);
+
+    /**
+     * @brief Upload pixel data to an existing texture.
+     * @param texture The texture to upload to.
+     * @param pixels RGBA8 pixel data (width * height * 4 bytes).
+     * @param width Image width (must match texture width).
+     * @param height Image height (must match texture height).
+     */
+    void uploadTexturePixels(Texture& texture, const uint8_t* pixels, int width, int height);
+
+    /**
+     * @brief Check if a file is a supported image format.
+     * @param path Path to check.
+     * @return true if the extension is supported by loadImageAsTexture().
+     */
+    static bool isImageSupported(const std::string& path);
     /// @}
 
     /// @name Shader Execution

@@ -1,5 +1,6 @@
 #include <vivid/context.h>
 #include "renderer.h"
+#include "image_loader.h"
 
 namespace vivid {
 
@@ -27,6 +28,19 @@ Texture Context::createTextureMatching(const std::string& nodeId, const std::str
         return renderer_.createTexture(input->width, input->height);
     }
     return renderer_.createTexture(width_, height_);
+}
+
+Texture Context::loadImageAsTexture(const std::string& path) {
+    ImageLoader loader;
+    return loader.loadAsTexture(path, renderer_);
+}
+
+void Context::uploadTexturePixels(Texture& texture, const uint8_t* pixels, int width, int height) {
+    renderer_.uploadTexturePixels(texture, pixels, width, height);
+}
+
+bool Context::isImageSupported(const std::string& path) {
+    return ImageLoader::isSupported(path);
 }
 
 void Context::runShader(const std::string& shaderPath, Texture& output) {

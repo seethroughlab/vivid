@@ -14,6 +14,7 @@ set(RUNTIME_SOURCES
     src/async_readback.cpp
     src/shared_preview.cpp
     src/preview_thread.cpp
+    src/image_loader.cpp
 )
 
 # Platform-specific source files

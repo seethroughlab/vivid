@@ -164,6 +164,28 @@ Adjusts hue, saturation, and value of an input texture
 
 ---
 
+### ImageFile
+
+Loads an image from disk and outputs it as a texture. Supports hot-reload.
+
+**Parameters:**
+
+| Parameter | Type | Default | Range |
+|-----------|------|---------|-------|
+| path | string | - | - |
+
+**Output:** Texture
+
+**Additional Outputs:**
+- `width` (float): Image width in pixels
+- `height` (float): Image height in pixels
+
+**Supported Formats:** PNG, JPG, JPEG, BMP, TGA, GIF, PSD, HDR, PIC
+
+**Fluent Methods:** `.path()`, `.file()`
+
+---
+
 ### Noise
 
 Generates animated fractal noise texture

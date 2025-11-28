@@ -90,6 +90,10 @@ public:
     Texture createTexture(int width, int height);
     void destroyTexture(Texture& texture);
 
+    // Upload pixel data to a texture (RGBA8 format, width*height*4 bytes)
+    void uploadTexturePixels(Texture& texture, const uint8_t* pixels,
+                             int width, int height);
+
     // Blit a texture to the screen
     void blitToScreen(const Texture& texture);
 

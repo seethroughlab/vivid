@@ -396,10 +396,10 @@ Build and test each operator individually:
 - [x] **Lazy Evaluation** — `needsUpdate()` virtual method, Graph checks before process()
 
 ### 12.1 Image Loading
-- [ ] Integrate stb_image for image loading
-- [ ] Implement `ImageFile` operator (loads PNG, JPG, BMP, etc.)
-- [ ] Support image reload on file change
-- [ ] Handle various pixel formats (RGB, RGBA, grayscale)
+- [x] Integrate stb_image for image loading (`runtime/src/image_loader.cpp`)
+- [x] Implement `ImageFile` operator (`operators/imagefile.cpp`)
+- [x] Support image reload on file change (via mtime checking)
+- [x] Handle various pixel formats (converted to RGBA8 on load)
 
 ### 12.2 Video Playback
 - [ ] Integrate FFmpeg or similar for video decoding

@@ -704,6 +704,39 @@ void Renderer::fillTexture(Texture& texture, float r, float g, float b, float a)
     wgpuQueueWriteTexture(queue_, &destination, pixels.data(), pixels.size(), &dataLayout, &extent);
 }
 
+void Renderer::uploadTexturePixels(Texture& texture, const uint8_t* pixels,
+                                    int width, int height) {
+    if (!hasValidGPU(texture)) return;
+    if (!pixels) return;
+
+    // Verify dimensions match
+    if (texture.width != width || texture.height != height) {
+        std::cerr << "[Renderer] uploadTexturePixels: dimension mismatch ("
+                  << width << "x" << height << " vs "
+                  << texture.width << "x" << texture.height << ")\n";
+        return;
+    }
+
+    auto* texData = getTextureData(texture);
+
+    // Write pixel data to texture
+    WGPUTexelCopyTextureInfo destination = {};
+    destination.texture = texData->texture;
+
+    WGPUTexelCopyBufferLayout dataLayout = {};
+    dataLayout.bytesPerRow = width * 4;  // RGBA8
+    dataLayout.rowsPerImage = height;
+
+    WGPUExtent3D extent = {
+        static_cast<uint32_t>(width),
+        static_cast<uint32_t>(height),
+        1
+    };
+
+    size_t dataSize = width * height * 4;
+    wgpuQueueWriteTexture(queue_, &destination, pixels, dataSize, &dataLayout, &extent);
+}
+
 std::vector<uint8_t> Renderer::readTexturePixels(const Texture& texture) {
     if (!hasValidGPU(texture)) return {};
 
