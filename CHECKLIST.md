@@ -368,12 +368,12 @@ Build and test each operator individually:
 - [x] Create more example projects (feedback, gradient-blend, lfo-modulation, shapes)
 - [x] Configure Doxygen for API documentation (Doxyfile created, run `doxygen` to generate)
 - [x] Add doc comments to `runtime/include/vivid/*.h`
-- [ ] Auto-generate operator reference from code
+- [x] Auto-generate operator reference from code (scripts/generate-operator-docs.js → docs/OPERATORS.md)
 
 ### 11.4 Distribution
 - [x] Create build scripts for all platforms (scripts/build-*.sh, scripts/build-windows.bat)
 - [x] Package VS Code extension (.vsix) - run `cd extension && npm run package`
-- [ ] Create release binaries
+- [x] Create release binaries (scripts/package-release.sh)
 - [x] Write installation guide (docs/INSTALL.md)
 
 ---

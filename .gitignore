@@ -42,6 +42,12 @@ extension/*.vsix
 # Dependencies (downloaded by CMake)
 _deps/
 
+# Release packages
+release/
+
+# Generated documentation
+docs/api/
+
 # Temporary files
 *.tmp
 *.temp

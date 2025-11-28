@@ -316,6 +316,7 @@ Edit any parameter, save, and watch the preview update instantly in VS Code.
 - **[Installation Guide](docs/INSTALL.md)** — Complete setup instructions for all platforms
 - **[Operator API Guide](docs/OPERATOR-API.md)** — How to create custom operators
 - **[Shader Conventions](docs/SHADER-CONVENTIONS.md)** — WGSL shader structure and uniforms
+- **[Operator Reference](docs/OPERATORS.md)** — Built-in operator parameters (auto-generated)
 
 ## Implementation Plan
 
