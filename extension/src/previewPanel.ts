@@ -44,12 +44,21 @@ export class PreviewPanel {
 
     updateNodes(nodes: NodeUpdate[]) {
         this.nodes = nodes;
-        this.updateContent();
+        if (this.panel) {
+            // Send incremental update instead of replacing entire HTML
+            this.panel.webview.postMessage({ type: 'update', nodes });
+        }
     }
 
     private updateContent() {
         if (!this.panel) return;
         this.panel.webview.html = this.getHtml();
+        // Send initial data after HTML is set
+        setTimeout(() => {
+            if (this.panel) {
+                this.panel.webview.postMessage({ type: 'update', nodes: this.nodes });
+            }
+        }, 100);
     }
 
     private getHtml(): string {
@@ -169,7 +178,83 @@ export class PreviewPanel {
 
     <script>
         const vscode = acquireVsCodeApi();
+        const container = document.querySelector('.container');
 
+        function updateNodes(nodes) {
+            if (!nodes || nodes.length === 0) {
+                container.innerHTML = '<div class="empty-state">No nodes yet.<br>Start the Vivid runtime to see previews.</div>';
+                return;
+            }
+
+            // Build a map of existing cards
+            const existingCards = {};
+            container.querySelectorAll('.node-card').forEach(card => {
+                existingCards[card.dataset.nodeId] = card;
+            });
+
+            // Update or create cards
+            const nodeIds = new Set();
+            nodes.forEach(node => {
+                nodeIds.add(node.id);
+                let card = existingCards[node.id];
+
+                if (card) {
+                    // Update existing card
+                    const img = card.querySelector('img');
+                    if (img && node.preview) {
+                        img.src = node.preview;
+                    }
+                    const lineSpan = card.querySelector('.node-line');
+                    if (lineSpan) {
+                        lineSpan.textContent = ':' + node.line;
+                    }
+                    const valueSpan = card.querySelector('.node-value');
+                    if (valueSpan && node.value !== undefined) {
+                        valueSpan.textContent = node.value.toFixed(4);
+                    }
+                } else {
+                    // Create new card
+                    card = document.createElement('div');
+                    card.className = 'node-card';
+                    card.dataset.nodeId = node.id;
+                    card.innerHTML = renderNode(node);
+                    card.addEventListener('click', () => {
+                        vscode.postMessage({ type: 'nodeClick', nodeId: node.id });
+                    });
+                    container.appendChild(card);
+                }
+            });
+
+            // Remove cards for nodes that no longer exist
+            for (const id in existingCards) {
+                if (!nodeIds.has(id)) {
+                    existingCards[id].remove();
+                }
+            }
+        }
+
+        function renderNode(node) {
+            let preview = '';
+            if (node.kind === 'texture' && node.preview) {
+                preview = '<div class="node-preview"><img src="' + node.preview + '" alt="' + node.id + '"></div>';
+            } else if (node.kind === 'value') {
+                preview = '<div class="node-preview"><span class="node-value">' + (node.value?.toFixed(4) ?? '-') + '</span></div>';
+            } else if (node.kind === 'geometry') {
+                preview = '<div class="node-preview"><span class="node-value">[geo]</span></div>';
+            }
+            return '<div class="node-header"><span class="node-id">' + node.id + '</span><span class="node-line">:' + node.line + '</span></div>' +
+                   '<div class="node-kind">' + node.kind + '</div>' + preview;
+        }
+
+        // Listen for updates from extension
+        window.addEventListener('message', event => {
+            const message = event.data;
+            if (message.type === 'update') {
+                updateNodes(message.nodes);
+            }
+        });
+
+        // Setup click handlers for initial cards
         document.querySelectorAll('.node-card').forEach(card => {
             card.addEventListener('click', () => {
                 vscode.postMessage({

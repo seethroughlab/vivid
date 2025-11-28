@@ -10,6 +10,7 @@
 #include "preview_server.h"
 #include "async_readback.h"
 #include "shared_preview.h"
+#include "preview_thread.h"
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <GLFW/glfw3.h>
@@ -19,6 +20,35 @@
 #include <chrono>
 #include <algorithm>
 #include <mutex>
+
+// Callback for stb_image_write JPEG encoding to memory
+static void jpegWriteCallback(void* context, void* data, int size) {
+    auto* vec = static_cast<std::vector<uint8_t>*>(context);
+    auto* bytes = static_cast<uint8_t*>(data);
+    vec->insert(vec->end(), bytes, bytes + size);
+}
+
+// Base64 encoding
+static std::string base64Encode(const std::vector<uint8_t>& data) {
+    static const char b64chars[] =
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string result;
+    result.reserve((data.size() + 2) / 3 * 4);
+
+    size_t i = 0;
+    while (i < data.size()) {
+        uint32_t a = i < data.size() ? data[i++] : 0;
+        uint32_t b = i < data.size() ? data[i++] : 0;
+        uint32_t c = i < data.size() ? data[i++] : 0;
+        uint32_t triple = (a << 16) + (b << 8) + c;
+
+        result += b64chars[(triple >> 18) & 0x3F];
+        result += b64chars[(triple >> 12) & 0x3F];
+        result += (i > data.size() + 1) ? '=' : b64chars[(triple >> 6) & 0x3F];
+        result += (i > data.size()) ? '=' : b64chars[triple & 0x3F];
+    }
+    return result;
+}
 
 void printUsage(const char* program) {
     std::cout << "Usage: " << program << " <project_path> [options]\n"
@@ -102,6 +132,12 @@ int main(int argc, char* argv[]) {
             std::cerr << "Warning: Failed to create shared memory, falling back to WebSocket\n";
         }
 
+        // Preview thread for off-main-thread thumbnail processing
+        vivid::PreviewThread previewThread;
+        if (sharedPreview.isOpen()) {
+            previewThread.start(&sharedPreview);
+        }
+
         // Hot-reload system
         vivid::HotLoader hotLoader;
         vivid::FileWatcher fileWatcher;
@@ -130,11 +166,12 @@ int main(int argc, char* argv[]) {
 
         // Preview update throttling
         auto lastPreviewUpdate = std::chrono::high_resolution_clock::now();
-        const float previewUpdateInterval = 0.1f;  // 10 fps for previews
+        const float previewUpdateInterval = 0.033f;  // ~30 fps for previews
 
-        // Track which slots have been updated this frame
-        std::vector<vivid::PreviewSlotInfo> slotInfo;
-        std::mutex slotMutex;
+        // Fallback: buffer for WebSocket base64 previews when shared memory unavailable
+        std::vector<vivid::NodePreview> fallbackPreviews;
+        std::mutex fallbackMutex;
+        bool useSharedMemory = sharedPreview.isOpen();
 
         // Start watching the project directory
         fileWatcher.watch(projectPath, [&](const std::string& path) {
@@ -267,12 +304,6 @@ int main(int argc, char* argv[]) {
             if (timeSincePreview >= previewUpdateInterval && previewServer.clientCount() > 0) {
                 lastPreviewUpdate = now;
 
-                // Clear slot info for this batch
-                {
-                    std::lock_guard<std::mutex> lock(slotMutex);
-                    slotInfo.clear();
-                }
-
                 // Update operator count in shared memory
                 if (sharedPreview.isOpen()) {
                     sharedPreview.setOperatorCount(static_cast<uint32_t>(graph.operators().size()));
@@ -296,95 +327,140 @@ int main(int argc, char* argv[]) {
                             int texWidth = tex->width;
                             int texHeight = tex->height;
 
-                            // Queue async readback - writes directly to shared memory
-                            asyncReadback.queueReadback(*tex, opId,
-                                [&sharedPreview, &slotMutex, &slotInfo,
-                                 currentSlot, opId, sourceLine, texWidth, texHeight]
-                                (const std::string& id, const std::vector<uint8_t>& pixels,
-                                 int width, int height) {
+                            if (useSharedMemory && previewThread.isRunning()) {
+                                // Queue async readback - minimal callback, heavy work on preview thread
+                                asyncReadback.queueReadback(*tex, opId,
+                                    [&previewThread, currentSlot, opId, sourceLine]
+                                    (const std::string& id, const std::vector<uint8_t>& pixels,
+                                     int width, int height) {
+                                        // Queue work to preview thread (moves pixel data)
+                                        vivid::PreviewWorkItem item;
+                                        item.operatorId = id;
+                                        item.sourceLine = sourceLine;
+                                        item.slotIndex = currentSlot;
+                                        item.srcWidth = width;
+                                        item.srcHeight = height;
+                                        item.rgbaPixels = pixels;  // Copy here, move below
+                                        previewThread.queueWork(std::move(item));
+                                    });
+                            } else {
+                                // Fallback: encode to JPEG and base64 for WebSocket (on main thread)
+                                asyncReadback.queueReadback(*tex, opId,
+                                    [&fallbackMutex, &fallbackPreviews, opId, sourceLine, texWidth, texHeight]
+                                    (const std::string& id, const std::vector<uint8_t>& pixels,
+                                     int width, int height) {
+                                        // Downsample RGBA to RGB thumbnail
+                                        constexpr int thumbSize = vivid::PREVIEW_THUMB_WIDTH;
+                                        int dstWidth = width;
+                                        int dstHeight = height;
 
-                                    // Downsample RGBA to RGB thumbnail
-                                    constexpr int thumbSize = vivid::PREVIEW_THUMB_WIDTH;
-                                    int dstWidth = width;
-                                    int dstHeight = height;
-
-                                    if (width > thumbSize || height > thumbSize) {
-                                        float scale = std::min(
-                                            static_cast<float>(thumbSize) / width,
-                                            static_cast<float>(thumbSize) / height
-                                        );
-                                        dstWidth = std::max(1, static_cast<int>(width * scale));
-                                        dstHeight = std::max(1, static_cast<int>(height * scale));
-                                    }
-
-                                    // Downsample RGBA to RGB
-                                    std::vector<uint8_t> rgbPixels;
-                                    rgbPixels.reserve(dstWidth * dstHeight * 3);
-
-                                    for (int y = 0; y < dstHeight; y++) {
-                                        int srcY = y * height / dstHeight;
-                                        for (int x = 0; x < dstWidth; x++) {
-                                            int srcX = x * width / dstWidth;
-                                            size_t srcIdx = (srcY * width + srcX) * 4;
-                                            rgbPixels.push_back(pixels[srcIdx]);     // R
-                                            rgbPixels.push_back(pixels[srcIdx + 1]); // G
-                                            rgbPixels.push_back(pixels[srcIdx + 2]); // B
+                                        if (width > thumbSize || height > thumbSize) {
+                                            float scale = std::min(
+                                                static_cast<float>(thumbSize) / width,
+                                                static_cast<float>(thumbSize) / height
+                                            );
+                                            dstWidth = std::max(1, static_cast<int>(width * scale));
+                                            dstHeight = std::max(1, static_cast<int>(height * scale));
                                         }
-                                    }
 
-                                    // Write directly to shared memory (no JPEG, no base64!)
-                                    if (sharedPreview.isOpen()) {
-                                        sharedPreview.updateTextureSlot(
-                                            currentSlot, id, sourceLine,
-                                            texWidth, texHeight,
-                                            rgbPixels.data(), dstWidth, dstHeight
+                                        std::vector<uint8_t> rgbPixels;
+                                        rgbPixels.reserve(dstWidth * dstHeight * 3);
+
+                                        for (int y = 0; y < dstHeight; y++) {
+                                            int srcY = y * height / dstHeight;
+                                            for (int x = 0; x < dstWidth; x++) {
+                                                int srcX = x * width / dstWidth;
+                                                size_t srcIdx = (srcY * width + srcX) * 4;
+                                                rgbPixels.push_back(pixels[srcIdx]);
+                                                rgbPixels.push_back(pixels[srcIdx + 1]);
+                                                rgbPixels.push_back(pixels[srcIdx + 2]);
+                                            }
+                                        }
+
+                                        std::vector<uint8_t> jpegData;
+                                        stbi_write_jpg_to_func(
+                                            jpegWriteCallback,
+                                            &jpegData,
+                                            dstWidth,
+                                            dstHeight,
+                                            3,
+                                            rgbPixels.data(),
+                                            60
                                         );
-                                    }
 
-                                    // Record slot info for metadata message
-                                    {
-                                        std::lock_guard<std::mutex> lock(slotMutex);
-                                        vivid::PreviewSlotInfo info;
-                                        info.id = id;
-                                        info.slot = currentSlot;
-                                        info.sourceLine = sourceLine;
-                                        info.kind = vivid::OutputKind::Texture;
-                                        info.updated = true;
-                                        slotInfo.push_back(info);
-                                    }
-                                });
+                                        if (!jpegData.empty()) {
+                                            std::string base64 = base64Encode(jpegData);
+                                            std::lock_guard<std::mutex> lock(fallbackMutex);
+                                            vivid::NodePreview preview;
+                                            preview.id = id;
+                                            preview.sourceLine = sourceLine;
+                                            preview.kind = vivid::OutputKind::Texture;
+                                            preview.base64Image = base64;
+                                            preview.width = texWidth;
+                                            preview.height = texHeight;
+                                            fallbackPreviews.push_back(preview);
+                                        }
+                                    });
+                            }
                         }
                     } else if (op->outputKind() == vivid::OutputKind::Value) {
-                        // Values don't need GPU readback - write to shared memory immediately
+                        // Values don't need GPU readback - update synchronously
                         float value = ctx.getInputValue(op->id(), "out", 0.0f);
 
-                        if (sharedPreview.isOpen()) {
+                        if (useSharedMemory && sharedPreview.isOpen()) {
                             sharedPreview.updateValueSlot(currentSlot, opId, sourceLine, value);
+                            // Value slots are tracked via shared memory directly
+                        } else {
+                            // Fallback: send via WebSocket
+                            std::lock_guard<std::mutex> lock(fallbackMutex);
+                            vivid::NodePreview preview;
+                            preview.id = opId;
+                            preview.sourceLine = sourceLine;
+                            preview.kind = vivid::OutputKind::Value;
+                            preview.value = value;
+                            fallbackPreviews.push_back(preview);
                         }
-
-                        std::lock_guard<std::mutex> lock(slotMutex);
-                        vivid::PreviewSlotInfo info;
-                        info.id = opId;
-                        info.slot = currentSlot;
-                        info.sourceLine = sourceLine;
-                        info.kind = vivid::OutputKind::Value;
-                        info.updated = true;
-                        slotInfo.push_back(info);
                     }
                 }
             }
 
-            // Send metadata to WebSocket clients (no image data!)
-            {
-                std::lock_guard<std::mutex> lock(slotMutex);
-                if (!slotInfo.empty() && sharedPreview.isOpen()) {
-                    sharedPreview.incrementFrame();
-                    previewServer.sendPreviewMetadata(
-                        slotInfo,
-                        sharedPreview.memory()->header.frameNumber,
-                        sharedMemName
-                    );
-                    slotInfo.clear();
+            // Send preview data to WebSocket clients
+            if (useSharedMemory && previewThread.isRunning()) {
+                // Check for slots updated by the preview thread
+                auto updatedSlots = previewThread.getUpdatedSlots();
+                if (!updatedSlots.empty() && sharedPreview.isOpen()) {
+                    // Build slot info from updated slots
+                    std::vector<vivid::PreviewSlotInfo> slotInfo;
+                    for (int slotIdx : updatedSlots) {
+                        if (slotIdx >= 0 && slotIdx < vivid::PREVIEW_MAX_OPERATORS) {
+                            auto& slot = sharedPreview.memory()->slots[slotIdx];
+                            if (slot.ready) {
+                                vivid::PreviewSlotInfo info;
+                                info.id = slot.operatorId;
+                                info.slot = slotIdx;
+                                info.sourceLine = slot.sourceLine;
+                                info.kind = vivid::OutputKind::Texture;
+                                info.updated = true;
+                                slotInfo.push_back(info);
+                            }
+                        }
+                    }
+
+                    if (!slotInfo.empty()) {
+                        sharedPreview.incrementFrame();
+                        previewServer.sendPreviewMetadata(
+                            slotInfo,
+                            sharedPreview.memory()->header.frameNumber,
+                            sharedMemName
+                        );
+                    }
+                }
+            } else {
+                // Fallback: send base64 images via WebSocket
+                std::lock_guard<std::mutex> lock(fallbackMutex);
+                if (!fallbackPreviews.empty()) {
+                    previewServer.sendNodeUpdates(fallbackPreviews);
+                    fallbackPreviews.clear();
                 }
             }
 
@@ -396,6 +472,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Cleanup
+        previewThread.stop();
         sharedPreview.close();
         asyncReadback.shutdown();
         previewServer.stop();

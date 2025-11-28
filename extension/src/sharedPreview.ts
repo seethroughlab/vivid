@@ -143,22 +143,61 @@ export function getConstants() {
 }
 
 // Convert RGB pixel buffer to base64 data URL (for display in webviews)
+// Uses BMP format which is universally supported by browsers
 export function pixelsToDataUrl(pixels: Buffer, width: number = 128, height: number = 128): string {
-    // Create a simple PPM image (easy to generate, browsers can display)
-    // PPM format: P6\n<width> <height>\n255\n<rgb data>
-    const header = `P6\n${width} ${height}\n255\n`;
-    const headerBuffer = Buffer.from(header, 'ascii');
-    const ppmBuffer = Buffer.concat([headerBuffer, pixels]);
+    // BMP file format (Windows Bitmap)
+    // BMP stores pixels bottom-to-top and in BGR order
 
-    // Convert to base64
-    const base64 = ppmBuffer.toString('base64');
-    return `data:image/x-portable-pixmap;base64,${base64}`;
+    const rowSize = Math.ceil((width * 3) / 4) * 4;  // Rows must be 4-byte aligned
+    const pixelDataSize = rowSize * height;
+    const fileSize = 54 + pixelDataSize;  // 14 (file header) + 40 (info header) + pixel data
+
+    const bmp = Buffer.alloc(fileSize);
+    let offset = 0;
+
+    // BMP File Header (14 bytes)
+    bmp.write('BM', offset); offset += 2;                    // Signature
+    bmp.writeUInt32LE(fileSize, offset); offset += 4;        // File size
+    bmp.writeUInt32LE(0, offset); offset += 4;               // Reserved
+    bmp.writeUInt32LE(54, offset); offset += 4;              // Pixel data offset
+
+    // DIB Header (BITMAPINFOHEADER - 40 bytes)
+    bmp.writeUInt32LE(40, offset); offset += 4;              // Header size
+    bmp.writeInt32LE(width, offset); offset += 4;            // Width
+    bmp.writeInt32LE(height, offset); offset += 4;           // Height (positive = bottom-up)
+    bmp.writeUInt16LE(1, offset); offset += 2;               // Color planes
+    bmp.writeUInt16LE(24, offset); offset += 2;              // Bits per pixel (24 = RGB)
+    bmp.writeUInt32LE(0, offset); offset += 4;               // Compression (0 = none)
+    bmp.writeUInt32LE(pixelDataSize, offset); offset += 4;   // Image size
+    bmp.writeInt32LE(2835, offset); offset += 4;             // X pixels per meter
+    bmp.writeInt32LE(2835, offset); offset += 4;             // Y pixels per meter
+    bmp.writeUInt32LE(0, offset); offset += 4;               // Colors in color table
+    bmp.writeUInt32LE(0, offset); offset += 4;               // Important colors
+
+    // Pixel data (bottom-to-top, BGR order)
+    for (let y = height - 1; y >= 0; y--) {
+        for (let x = 0; x < width; x++) {
+            const srcIdx = (y * width + x) * 3;
+            const r = pixels[srcIdx] || 0;
+            const g = pixels[srcIdx + 1] || 0;
+            const b = pixels[srcIdx + 2] || 0;
+
+            // BMP uses BGR order
+            bmp[offset++] = b;
+            bmp[offset++] = g;
+            bmp[offset++] = r;
+        }
+        // Pad row to 4-byte boundary
+        const padding = rowSize - (width * 3);
+        for (let p = 0; p < padding; p++) {
+            bmp[offset++] = 0;
+        }
+    }
+
+    return `data:image/bmp;base64,${bmp.toString('base64')}`;
 }
 
-// Alternative: Convert to PNG using a simple encoder
-// For VS Code webviews, we might need a more compatible format
+// Alias for compatibility
 export function pixelsToPngDataUrl(pixels: Buffer, width: number = 128, height: number = 128): string {
-    // For now, just use PPM which most browsers support
-    // Could add proper PNG encoding later if needed
     return pixelsToDataUrl(pixels, width, height);
 }

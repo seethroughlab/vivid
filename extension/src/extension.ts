@@ -9,6 +9,7 @@ let previewPanel: PreviewPanel | undefined;
 let decorationManager: DecorationManager | undefined;
 let statusBar: StatusBar | undefined;
 let outputChannel: vscode.OutputChannel;
+let diagnosticCollection: vscode.DiagnosticCollection;
 
 export function activate(context: vscode.ExtensionContext) {
     outputChannel = vscode.window.createOutputChannel('Vivid');
@@ -16,6 +17,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Store extension path for native module loading
     extensionPath = context.extensionPath;
+
+    // Create diagnostic collection for compile errors
+    diagnosticCollection = vscode.languages.createDiagnosticCollection('vivid');
+    context.subscriptions.push(diagnosticCollection);
 
     decorationManager = new DecorationManager(context);
     statusBar = new StatusBar();
@@ -84,6 +89,7 @@ function connectToRuntime() {
     runtimeClient.onDisconnected(() => {
         outputChannel.appendLine('Disconnected from Vivid runtime');
         statusBar?.setConnected(false);
+        vscode.window.setStatusBarMessage('$(warning) Vivid: Disconnected from runtime', 5000);
     });
 
     runtimeClient.onNodeUpdate((nodes) => {
@@ -103,6 +109,8 @@ function connectToRuntime() {
         if (success) {
             vscode.window.setStatusBarMessage('$(check) Vivid: Compiled', 3000);
             outputChannel.appendLine('Compilation successful');
+            // Clear any previous compile errors
+            diagnosticCollection.clear();
         } else {
             vscode.window.showErrorMessage(`Vivid compile error: ${message}`);
             outputChannel.appendLine(`Compile error: ${message}`);
@@ -113,6 +121,13 @@ function connectToRuntime() {
 
     runtimeClient.onError((error) => {
         outputChannel.appendLine(`Runtime error: ${error}`);
+        // Show error to user for important errors
+        if (error.includes('ECONNREFUSED')) {
+            vscode.window.showWarningMessage('Vivid: Cannot connect to runtime. Is it running?');
+        } else if (!error.includes('Parse error')) {
+            // Show other errors that aren't just JSON parse issues
+            vscode.window.showErrorMessage(`Vivid runtime error: ${error}`);
+        }
     });
 
     runtimeClient.connect();
@@ -125,32 +140,77 @@ function isVividFile(document: vscode.TextDocument): boolean {
 }
 
 function showCompileErrors(message: string) {
-    // Parse error message and show diagnostics
-    const diagnostics: vscode.Diagnostic[] = [];
+    // Clear previous diagnostics
+    diagnosticCollection.clear();
 
-    // Simple regex to parse GCC/Clang error format
-    const errorRegex = /([^:]+):(\d+):(\d+):\s*(error|warning):\s*(.+)/g;
+    // Group diagnostics by file
+    const diagnosticsByFile = new Map<string, vscode.Diagnostic[]>();
+
+    // Parse GCC/Clang error format: file:line:col: error/warning: message
+    const errorRegex = /([^:\s][^:]*):(\d+):(\d+):\s*(error|warning|note):\s*(.+)/g;
     let match;
 
     while ((match = errorRegex.exec(message)) !== null) {
         const [, file, line, col, severity, text] = match;
+        const lineNum = parseInt(line) - 1;
+        const colNum = parseInt(col) - 1;
+
         const range = new vscode.Range(
-            parseInt(line) - 1, parseInt(col) - 1,
-            parseInt(line) - 1, parseInt(col) + 20
+            lineNum, colNum,
+            lineNum, colNum + Math.min(text.length, 50)
         );
 
-        const diagnostic = new vscode.Diagnostic(
-            range,
-            text,
-            severity === 'error'
-                ? vscode.DiagnosticSeverity.Error
-                : vscode.DiagnosticSeverity.Warning
-        );
+        let diagSeverity: vscode.DiagnosticSeverity;
+        switch (severity) {
+            case 'error':
+                diagSeverity = vscode.DiagnosticSeverity.Error;
+                break;
+            case 'warning':
+                diagSeverity = vscode.DiagnosticSeverity.Warning;
+                break;
+            case 'note':
+                diagSeverity = vscode.DiagnosticSeverity.Information;
+                break;
+            default:
+                diagSeverity = vscode.DiagnosticSeverity.Error;
+        }
+
+        const diagnostic = new vscode.Diagnostic(range, text, diagSeverity);
         diagnostic.source = 'Vivid';
-        diagnostics.push(diagnostic);
+
+        // Group by file
+        if (!diagnosticsByFile.has(file)) {
+            diagnosticsByFile.set(file, []);
+        }
+        diagnosticsByFile.get(file)!.push(diagnostic);
     }
 
-    // Would need a DiagnosticCollection to actually show these
+    // Set diagnostics for each file
+    for (const [file, diagnostics] of diagnosticsByFile) {
+        const uri = vscode.Uri.file(file);
+        diagnosticCollection.set(uri, diagnostics);
+    }
+
+    // If we found any errors, try to open and reveal the first one
+    if (diagnosticsByFile.size > 0) {
+        const firstFile = diagnosticsByFile.keys().next().value as string | undefined;
+        if (firstFile) {
+            const firstDiag = diagnosticsByFile.get(firstFile)?.[0];
+            if (firstDiag) {
+                const uri = vscode.Uri.file(firstFile);
+                vscode.workspace.openTextDocument(uri).then(
+                    doc => {
+                        vscode.window.showTextDocument(doc).then(editor => {
+                            editor.revealRange(firstDiag.range, vscode.TextEditorRevealType.InCenter);
+                        });
+                    },
+                    () => {
+                        // File might not exist or not be accessible
+                    }
+                );
+            }
+        }
+    }
 }
 
 async function startRuntime(context: vscode.ExtensionContext) {

@@ -283,13 +283,13 @@ Build and test each operator individually:
 - [x] Connect to WebSocket server
 - [x] Parse incoming messages
 - [x] Implement reconnection logic
-- [ ] Test: Connect to running runtime
+- [x] Test: Connect to running runtime
 
 ### 10.3 Status Bar
 - [x] Implement `extension/src/statusBar.ts`
 - [x] Show connection status
 - [x] Show compile status
-- [ ] Test: Status updates when runtime starts/stops
+- [x] Test: Status updates when runtime starts/stops
 
 ### 10.4 Inline Decorations
 - [x] Implement `extension/src/decorations.ts`
@@ -297,30 +297,30 @@ Build and test each operator individually:
 - [x] Map line numbers to nodes
 - [x] Show inline indicators (~ for values, [img] for textures)
 - [x] Implement hover previews with MarkdownString
-- [ ] Test: See decorations next to NODE() calls
+- [x] Test: See decorations next to NODE() calls
 
 ### 10.5 Preview Panel
 - [x] Implement `extension/src/previewPanel.ts`
 - [x] Create webview with node cards
 - [x] Show texture previews, values, sparklines
 - [x] Handle click to jump to source
-- [ ] Test: Panel shows all nodes with live updates
+- [x] Test: Panel shows all nodes with live updates
 
 ### 10.6 Extension Entry Point
 - [x] Implement `extension/src/extension.ts`
 - [x] Register all commands
 - [x] Auto-connect on project open
 - [x] Wire up all components
-- [ ] Test: Full extension functionality
+- [x] Test: Full extension functionality
 
 ---
 
 ## Phase 11: Polish and Documentation
 
 ### 11.1 Error Handling
-- [ ] Graceful handling of compile errors
-- [ ] Show errors inline in VS Code (DiagnosticCollection)
-- [ ] Handle runtime crashes without breaking extension
+- [x] Graceful handling of compile errors
+- [x] Show errors inline in VS Code (DiagnosticCollection)
+- [x] Handle runtime crashes without breaking extension
 
 ### 11.2 Performance — Async Shared Memory Previews
 **Reference: [PLAN-04-extension.md](PLAN-04-extension.md) — Async Shared Memory Preview Architecture**
@@ -333,11 +333,11 @@ Build and test each operator individually:
 - [x] Test: Readback doesn't block main render thread
 
 #### Phase 2: Preview Thread
-- [ ] Implement `runtime/src/preview_thread.h` and `.cpp`
-- [ ] Separate thread for readback completion polling
-- [ ] Queue-based communication with main thread
-- [ ] Thumbnail downsampling on preview thread (not render thread)
-- [ ] Test: Render loop stays at 60fps during preview capture
+- [x] Implement `runtime/src/preview_thread.h` and `.cpp`
+- [x] Separate thread for readback completion polling
+- [x] Queue-based communication with main thread
+- [x] Thumbnail downsampling on preview thread (not render thread)
+- [x] Test: Render loop stays at 60fps during preview capture
 
 #### Phase 3: Shared Memory Segment
 - [x] Implement `runtime/src/shared_preview.h` and `.cpp`
@@ -357,7 +357,7 @@ Build and test each operator individually:
 #### Phase 5: Integration
 - [x] WebSocket sends only metadata (operator list, slot indices, frame number)
 - [x] Extension reads image data from shared memory on notification
-- [ ] Fallback to WebSocket base64 if shared memory unavailable
+- [x] Fallback to WebSocket base64 if shared memory unavailable
 - [x] Remove blocking preview capture from main loop
 - [x] Test: Full integration - runtime + extension shared memory
 

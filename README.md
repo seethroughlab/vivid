@@ -102,6 +102,30 @@ Inspired by TouchDesigner's operator families:
 
 Each operator type has appropriate preview rendering: textures show thumbnails, channels show values or sparklines, geometry shows wireframe previews.
 
+## Built-in Operators
+
+### Texture Operators (TOPs)
+
+| Operator | Description |
+|----------|-------------|
+| **Noise** | Simplex noise with FBM. Scale, speed, octaves, lacunarity, persistence. |
+| **Gradient** | Linear, radial, angular, diamond gradients with configurable colors. |
+| **Shape** | SDF shapes: circle, rectangle, triangle, line, ring, star. Fill/stroke modes. |
+| **Blur** | Separable Gaussian blur with configurable radius. |
+| **Feedback** | Frame feedback with decay, zoom, rotate, translate. |
+| **Composite** | Blend modes: over, add, multiply, screen, difference. |
+| **Brightness** | Brightness and contrast adjustment. |
+| **HSVAdjust** | Hue shift, saturation, and value adjustment. |
+| **Transform** | Translate, scale, rotate with configurable pivot. |
+| **Displacement** | UV displacement using a texture. |
+| **Edge** | Sobel edge detection with multiple output modes. |
+
+### Channel Operators (CHOPs)
+
+| Operator | Description |
+|----------|-------------|
+| **LFO** | Low-frequency oscillator. Sine, saw, square, triangle waveforms. |
+
 ## Benefits
 
 ### For Creative Coders
@@ -126,18 +150,96 @@ Each operator type has appropriate preview rendering: textures show thumbnails, 
 
 ## Getting Started
 
+### Prerequisites
+
+- CMake 3.16+
+- C++20 compiler (Clang 14+, GCC 11+, MSVC 2022+)
+- Node.js 18+ (for VS Code extension)
+
+### Build the Runtime
+
 ```bash
 # Clone and build
 git clone https://github.com/your-org/vivid
 cd vivid
 cmake -B build -DCMAKE_BUILD_TYPE=Release
-cmake --build build
+cmake --build build -j8
 
-# Start the runtime with an example project
-./build/vivid-runtime examples/hello
+# Verify it works
+./build/bin/vivid-runtime examples/hello
+```
 
-# Open the project folder in VS Code with the Vivid extension installed
-code examples/hello
+You should see a window with animated noise.
+
+### Install the VS Code Extension
+
+```bash
+# Build the extension
+cd extension
+npm install
+npm run compile
+
+# Build the native module for shared memory previews
+cd native
+npm install
+npm run build
+cd ../..
+```
+
+Then in VS Code:
+1. Open the `extension` folder
+2. Press `F5` to launch Extension Development Host
+3. Open your Vivid project folder
+
+### Create Your First Project
+
+```bash
+mkdir my-project && cd my-project
+```
+
+Create `CMakeLists.txt`:
+```cmake
+cmake_minimum_required(VERSION 3.16)
+project(my_operators)
+
+# Find Vivid headers (set VIVID_ROOT to your vivid directory)
+set(VIVID_ROOT "${CMAKE_SOURCE_DIR}/.." CACHE PATH "Path to Vivid")
+include_directories(${VIVID_ROOT}/build/include)
+
+add_library(operators SHARED chain.cpp)
+set_target_properties(operators PROPERTIES PREFIX "lib")
+```
+
+Create `chain.cpp`:
+```cpp
+#include <vivid/vivid.h>
+
+class MyNoise : public vivid::Operator {
+public:
+    void init(vivid::Context& ctx) override {
+        output_ = ctx.createTexture(ctx.width(), ctx.height());
+    }
+
+    void process(vivid::Context& ctx) override {
+        ctx.runShader("shaders/noise.wgsl", {}, output_);
+        ctx.setOutput("out", output_);
+    }
+
+    vivid::OutputKind outputKind() const override {
+        return vivid::OutputKind::Texture;
+    }
+
+private:
+    vivid::Texture output_;
+};
+
+VIVID_OPERATOR(MyNoise)
+```
+
+Run it:
+```bash
+cd /path/to/vivid
+./build/bin/vivid-runtime /path/to/my-project
 ```
 
 ## Example: Audio-Reactive Visuals

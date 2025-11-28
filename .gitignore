@@ -34,6 +34,8 @@ Makefile
 
 # Node modules (for VS Code extension)
 extension/node_modules/
+extension/native/node_modules/
+extension/native/build/
 extension/out/
 extension/*.vsix
 
