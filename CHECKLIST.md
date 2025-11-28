@@ -402,16 +402,60 @@ Build and test each operator individually:
 - [x] Handle various pixel formats (converted to RGBA8 on load)
 
 ### 12.2 Video Playback
-- [ ] Integrate FFmpeg or similar for video decoding
-- [ ] Implement `VideoFile` operator (MP4, MOV, WebM, etc.)
-- [ ] Video playback controls (play, pause, seek, loop)
-- [ ] Frame-accurate timing sync
+**Reference: [PLAN-05-media.md](PLAN-05-media.md)**
+**Architecture: Platform-native (AVFoundation/Media Foundation) + HAP support**
+
+#### 12.2a Core Infrastructure
+- [ ] Create `VideoLoader` interface (`runtime/src/video_loader.h`)
+- [ ] Add Snappy dependency to CMakeLists.txt (for HAP)
+- [ ] Add platform framework links (AVFoundation, Media Foundation)
+- [ ] Factory method for platform-appropriate loader
+
+#### 12.2b macOS Implementation (Primary)
+- [ ] Implement `VideoLoaderMacOS` (`runtime/src/video_loader_macos.mm`)
+- [ ] AVAssetReader setup and frame extraction
+- [ ] CVPixelBuffer → Texture upload (zero-copy via IOSurface)
+- [ ] Hardware-accelerated decode (automatic via VideoToolbox)
+- [ ] Frame-accurate seeking with AVSampleCursor
+- [ ] Test: H.264, ProRes, HEVC playback
+
+#### 12.2c HAP Codec Support (All Platforms)
+- [ ] Add FFmpeg for container demuxing only (not decoding)
+- [ ] Implement `HAPDecoder` (`runtime/src/hap_decoder.cpp`)
+- [ ] Snappy decompression for HAP frames
+- [ ] DXT/BC texture upload (BC1 for HAP, BC3 for HAP Alpha/Q)
+- [ ] Test: HAP, HAP Alpha, HAP Q playback
+
+#### 12.2d VideoFile Operator
+- [ ] Implement `VideoFile` operator (`operators/videofile.cpp`)
+- [ ] Fluent API: `.path()`, `.loop()`, `.speed()`, `.play()`, `.pause()`, `.seek()`
+- [ ] Playback controls (play, pause, seek, loop, variable speed)
+- [ ] File change detection for hot-reload
+- [ ] Output: texture + duration/position/fps values
+
+#### 12.2e Windows Implementation
+- [ ] Implement `VideoLoaderWindows` (`runtime/src/video_loader_windows.cpp`)
+- [ ] Media Foundation Source Reader integration
+- [ ] Hardware decode via MFTs
+- [ ] D3D11 texture → WebGPU path
+
+#### 12.2f Linux Implementation
+- [ ] Implement `VideoLoaderLinux` (`runtime/src/video_loader_linux.cpp`)
+- [ ] Full FFmpeg decode path (libavformat + libavcodec)
+- [ ] Optional VAAPI/VDPAU hardware acceleration
 
 ### 12.3 Camera Input
-- [ ] Integrate camera capture (platform-specific: AVFoundation/DirectShow/V4L2)
-- [ ] Implement `Webcam` operator
-- [ ] Camera selection (multiple devices)
+**Architecture: Platform-native (shares infrastructure with 12.2)**
+
+- [ ] Create `CameraCapture` interface (`runtime/src/camera_capture.h`)
+- [ ] macOS: AVFoundation `AVCaptureSession` (`runtime/src/camera_capture_macos.mm`)
+- [ ] Windows: Media Foundation or DirectShow (`runtime/src/camera_capture_windows.cpp`)
+- [ ] Linux: V4L2 (`runtime/src/camera_capture_linux.cpp`)
+- [ ] Implement `Webcam` operator (`operators/webcam.cpp`)
+- [ ] Camera enumeration (list available devices)
+- [ ] Camera selection by index or name
 - [ ] Resolution and format configuration
+- [ ] Hot-swap camera detection
 
 ### 12.4 Audio Input & Analysis
 - [ ] Integrate audio input (PortAudio or miniaudio)
@@ -464,10 +508,14 @@ Build and test each operator individually:
 - [ ] SVG loading and rendering (optional)
 
 ### 12.10 Recording & Output
-- [ ] Image sequence export (PNG, JPG)
-- [ ] Video recording (FFmpeg encoding)
-- [ ] Implement `Record` operator or command
-- [ ] Frame-accurate recording sync
+**Note: FFmpeg used for encoding (separate from decode path)**
+
+- [ ] Image sequence export (PNG, JPG via stb_image_write)
+- [ ] Video encoding via FFmpeg (H.264, H.265, ProRes)
+- [ ] HAP encoding support (for VJ interchange)
+- [ ] Implement `Record` operator or global record command
+- [ ] Frame-accurate offline rendering (fixed timestep)
+- [ ] Audio mixdown to video (when audio support added)
 
 ### 12.11 Texture Sharing
 - [ ] Syphon support (macOS)
