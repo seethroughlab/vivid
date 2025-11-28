@@ -29,13 +29,31 @@ inline bool hasValidGPU(const Texture& tex) {
 }
 
 // Standard uniforms passed to all shaders
+// Layout must match WGSL struct exactly (32 bytes base + 48 bytes params = 80 bytes)
 struct Uniforms {
+    // Core uniforms (32 bytes)
     float time = 0.0f;          // Time in seconds
     float deltaTime = 0.016f;   // Time since last frame
     float resolutionX = 0.0f;   // Output width
     float resolutionY = 0.0f;   // Output height
     int32_t frame = 0;          // Frame counter
-    float _padding[3] = {};     // Padding to align to 16 bytes
+    int32_t mode = 0;           // Generic mode/type selector
+    float _pad0 = 0.0f;
+    float _pad1 = 0.0f;
+
+    // Operator parameters (48 bytes)
+    float param0 = 0.0f;        // Generic float params
+    float param1 = 0.0f;
+    float param2 = 0.0f;
+    float param3 = 0.0f;
+    float param4 = 0.0f;
+    float param5 = 0.0f;
+    float param6 = 0.0f;
+    float param7 = 0.0f;
+    float vec0X = 0.0f;         // Generic vec2 params
+    float vec0Y = 0.0f;
+    float vec1X = 0.0f;
+    float vec1Y = 0.0f;
 };
 
 // Shader handle for custom WGSL shaders

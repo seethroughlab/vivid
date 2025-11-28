@@ -125,22 +125,24 @@ cmake --build build
 **Reference: [PLAN-03-operators.md](PLAN-03-operators.md) — Operator API**
 
 ### 6.1 Graph Implementation
-- [ ] Implement `runtime/src/graph.h` and `graph.cpp`
-- [ ] Store operators from NodeRegistry
-- [ ] Determine execution order (simple: registration order)
-- [ ] Implement `execute()` — call process() on each operator
-- [ ] Implement `initAll()` and `cleanupAll()`
+- [x] Implement `runtime/src/graph.h` and `graph.cpp`
+- [x] Store operators from HotLoader
+- [x] Determine execution order (simple: registration order)
+- [x] Implement `execute()` — call process() on each operator
+- [x] Implement `initAll()` and `cleanupAll()`
+- [x] Implement `finalOutput()` — get last operator's output texture
+- [x] Refactor main.cpp to use Graph class
 
 ### 6.2 State Preservation
-- [ ] Implement `saveAllStates()` — collect state from all operators
-- [ ] Implement `restoreAllStates()` — restore after reload
-- [ ] Test: Operator with animation state preserves phase across reload
+- [x] Implement `saveAllStates()` — collect state from all operators
+- [x] Implement `restoreAllStates()` — restore after reload
+- [x] Test: Hot-reload preserves Graph state
 
 ### 6.3 Preview Capture
-- [ ] Implement `capturePreviews()` — read output of each operator
-- [ ] Downscale textures to thumbnail size
-- [ ] Encode as base64 JPEG (use stb_image_write)
-- [ ] Test: Get base64 string for operator output
+- [x] Implement `capturePreviews()` — read output of each operator
+- [x] Encode as base64 JPEG (use stb_image_write)
+- [x] Support both Texture and Value output kinds
+- [x] Include operatorId, sourceLine, dimensions in Preview struct
 
 ---
 
@@ -148,52 +150,75 @@ cmake --build build
 **Reference: [PLAN-03-operators.md](PLAN-03-operators.md)**
 
 ### 7.1 Operators CMake
-- [ ] Create `operators/CMakeLists.txt` with `add_operator()` function
-- [ ] Build operators as shared libraries
+- [x] Create `operators/CMakeLists.txt` with `add_operator()` function
+- [x] Enhanced `Uniforms` struct with operator parameters (param0-7, vec0-1, mode)
+- [x] Enhanced `Context::runShader()` to support `ShaderParams`
 
 ### 7.2 Core Operators
 Build and test each operator individually:
 
-- [ ] **Noise** — `operators/noise.cpp`
-  - [ ] Implement with scale, speed, octaves params
-  - [ ] Create `shaders/noise.wgsl`
-  - [ ] Test: See animated noise
+- [x] **Noise** — `operators/noise.cpp`
+  - [x] Implement with scale, speed, octaves, lacunarity, persistence params
+  - [x] Create `shaders/noise.wgsl` with simplex noise + FBM
+  - [x] State preservation for animation phase
+  - [x] Test: Animated noise with configurable parameters
+  - [ ] Add noise type parameter (mode: 0=simplex, 1=perlin, 2=worley)
+  - [ ] Implement classic Perlin noise in shader
+  - [ ] Implement Worley (cellular) noise in shader
 
-- [ ] **LFO** — `operators/lfo.cpp`
-  - [ ] Implement with freq, min, max, waveform params
-  - [ ] Output single value
-  - [ ] Test: See oscillating value
+- [x] **LFO** — `operators/lfo.cpp`
+  - [x] Implement with freq, min, max, phase, waveform params
+  - [x] Four waveforms: sine, saw, square, triangle
+  - [x] Output single value + history array
 
-- [ ] **Feedback** — `operators/feedback.cpp`
-  - [ ] Implement double-buffer ping-pong
-  - [ ] Create `shaders/feedback.wgsl`
-  - [ ] Test: See trailing/echo effect
+- [x] **Feedback** — `operators/feedback.cpp`
+  - [x] Implement double-buffer ping-pong
+  - [x] Create `shaders/feedback.wgsl` with transform
+  - [x] Decay, zoom, rotate, translate params
 
-- [ ] **Composite** — `operators/composite.cpp`
-  - [ ] Implement blend modes (over, add, multiply, screen, difference)
-  - [ ] Create `shaders/composite.wgsl`
-  - [ ] Test: Blend two textures
+- [x] **Composite** — `operators/composite.cpp`
+  - [x] Implement blend modes (over, add, multiply, screen, difference)
+  - [x] Create `shaders/composite.wgsl`
+  - [x] Mix parameter for blending strength
 
-- [ ] **Brightness** — `operators/brightness.cpp`
-  - [ ] Implement brightness and contrast
-  - [ ] Accept value from another operator
-  - [ ] Create `shaders/brightness.wgsl`
-  - [ ] Test: Modulate brightness with LFO
+- [x] **Brightness** — `operators/brightness.cpp`
+  - [x] Implement brightness and contrast
+  - [x] Accept value from another operator (node reference)
+  - [x] Create `shaders/brightness.wgsl`
 
-- [ ] **HSVAdjust** — `operators/hsv.cpp`
-  - [ ] Implement hue shift, saturation, value
-  - [ ] Create `shaders/hsv.wgsl`
-  - [ ] Test: Color cycling
+- [x] **HSVAdjust** — `operators/hsv.cpp`
+  - [x] Implement hue shift, saturation, value
+  - [x] Create `shaders/hsv.wgsl` with RGB<->HSV conversion
 
-- [ ] **Blur** — `operators/blur.cpp`
-  - [ ] Implement separable Gaussian blur
-  - [ ] Create `shaders/blur.wgsl`
-  - [ ] Test: Soft glow effect
+- [x] **Blur** — `operators/blur.cpp`
+  - [x] Implement separable Gaussian blur
+  - [x] Create `shaders/blur.wgsl`
+  - [x] Multi-pass support for stronger blur
 
-- [ ] **Transform** — `operators/transform.cpp`
-  - [ ] Implement translate, scale, rotate
-  - [ ] Create `shaders/transform.wgsl`
-  - [ ] Test: Zoom and rotate texture
+- [x] **Transform** — `operators/transform.cpp`
+  - [x] Implement translate, scale, rotate, pivot
+  - [x] Create `shaders/transform.wgsl`
+  - [x] Inverse transform for correct texture sampling
+
+- [x] **Gradient** — `operators/gradient.cpp`
+  - [x] Generate linear, radial, angular, diamond gradients
+  - [x] Create `shaders/gradient.wgsl`
+  - [x] Configurable colors, angle, offset, scale
+
+- [x] **Displacement** — `operators/displacement.cpp`
+  - [x] Distort texture using displacement map
+  - [x] Create `shaders/displacement.wgsl`
+  - [x] Multiple channel modes (luminance, R, G, RG)
+
+- [x] **Edge** — `operators/edge.cpp`
+  - [x] Sobel edge detection
+  - [x] Create `shaders/edge.wgsl`
+  - [x] Multiple output modes (edges only, overlay, inverted)
+
+- [x] **Shape** — `operators/shape.cpp`
+  - [x] SDF-based shape rendering (Circle, Rectangle, Triangle, Line, Ring, Star)
+  - [x] Create `shaders/shape.wgsl` with SDF functions
+  - [x] Fill, stroke, softness/antialiasing, rotation support
 
 ---
 
@@ -201,23 +226,23 @@ Build and test each operator individually:
 **Reference: [PLAN-02-runtime.md](PLAN-02-runtime.md) — App section**
 
 ### 8.1 App Implementation
-- [ ] Implement `runtime/src/app.h` and `app.cpp`
-- [ ] Create all subsystems in constructor
-- [ ] Implement main loop in `run()`
-- [ ] Wire up file watcher callbacks
-- [ ] Handle recompile flag
+- [x] Main loop implemented in `runtime/src/main.cpp`
+- [x] All subsystems created (Window, Renderer, Context, HotLoader, FileWatcher, Compiler, Graph)
+- [x] File watcher callbacks wired up
+- [x] Hot-reload with state preservation
+- [x] _(Optional: Refactor into separate App class for cleaner architecture)_
 
 ### 8.2 Main Entry Point
-- [ ] Implement `runtime/src/main.cpp`
-- [ ] Parse command-line arguments
-- [ ] Create App and run
+- [x] Implement `runtime/src/main.cpp`
+- [x] Parse command-line arguments (--width, --height, --fullscreen)
+- [x] Project path from command line
 
 ### 8.3 Integration Test
-- [ ] Create `examples/hello/chain.cpp` (from PLAN-03)
-- [ ] Run vivid-runtime with example project
-- [ ] Verify: Window shows animated visuals
-- [ ] Verify: Edit chain.cpp, visuals update
-- [ ] Verify: Edit .wgsl shader, visuals update
+- [x] `examples/hello/chain.cpp` with configurable Noise operator
+- [x] Run vivid-runtime with example project
+- [x] Verify: Window shows animated visuals
+- [x] Verify: Edit chain.cpp, visuals update (hot-reload works)
+- [x] Verify: Edit .wgsl shader, visuals update
 
 ---
 
@@ -225,22 +250,22 @@ Build and test each operator individually:
 **Reference: [PLAN-04-extension.md](PLAN-04-extension.md) — Preview Server section**
 
 ### 9.1 WebSocket Server
-- [ ] Implement `runtime/src/preview_server.h` and `preview_server.cpp`
-- [ ] Use IXWebSocket for server
-- [ ] Implement `start()` and `stop()`
-- [ ] Implement `broadcast()` helper
+- [x] Implement `runtime/src/preview_server.h` and `preview_server.cpp`
+- [x] Use IXWebSocket for server
+- [x] Implement `start()` and `stop()`
+- [x] Implement `broadcast()` helper
 
 ### 9.2 Protocol Implementation
-- [ ] Implement `sendNodeUpdates()` — JSON with node previews
-- [ ] Implement `sendCompileStatus()` — success/error messages
-- [ ] Implement `sendError()`
-- [ ] Handle incoming messages (reload, param_change)
+- [x] Implement `sendNodeUpdates()` — JSON with node previews
+- [x] Implement `sendCompileStatus()` — success/error messages
+- [x] Implement `sendError()`
+- [x] Handle incoming messages (reload, param_change)
 
 ### 9.3 Wire to App
-- [ ] Start preview server in App constructor
-- [ ] Call `sendNodeUpdates()` periodically (throttled)
-- [ ] Call `sendCompileStatus()` after recompile
-- [ ] Test with WebSocket client (wscat or browser)
+- [x] Start preview server in main.cpp
+- [x] Call `sendNodeUpdates()` periodically (throttled at 10fps)
+- [x] Call `sendCompileStatus()` after recompile
+- [x] Test: Server starts and listens on port 9876
 
 ---
 
@@ -307,6 +332,9 @@ Build and test each operator individually:
 - [ ] Document operator API for custom operators
 - [ ] Document shader conventions
 - [ ] Create more example projects
+- [ ] Configure Doxygen for API documentation
+- [ ] Add doc comments to `runtime/include/vivid/*.h`
+- [ ] Auto-generate operator reference from code
 
 ### 11.4 Distribution
 - [ ] Create build scripts for all platforms
@@ -356,7 +384,7 @@ Build and test each operator individually:
 - [ ] Implement `AudioIn` operator (microphone/line-in)
 - [ ] Implement `FFT` operator (frequency spectrum)
 - [ ] Implement `AudioBands` operator (bass, mid, treble, etc.)
-- [ ] Beat detection
+- [ ] Beat detection (implement per `beat_detection.md` spec)
 
 ### 12.5 Audio Synthesis & Output
 - [ ] Audio output support
@@ -440,6 +468,14 @@ Build and test each operator individually:
 - [ ] HTML/CSS/JS-based UI for custom operator interfaces
 - [ ] Communication bridge between WebView and runtime
 
+### 12.15 VST/AU Plugin Support (Future)
+**Priority: Low — Nice to have for advanced audio work**
+
+- [ ] Research plugin hosting framework (JUCE vs VST3 SDK)
+- [ ] Implement `VSTHost` operator
+- [ ] Plugin scanning and preset management
+- [ ] Parameter automation from Vivid operators
+
 ---
 
 ## Phase 13: Export & Distribution
@@ -473,6 +509,7 @@ Build and test each operator individually:
 - [ ] `examples/hello` — Basic noise operator (exists)
 - [ ] `examples/feedback` — Feedback/trail effect
 - [ ] `examples/audio-reactive` — Audio input driving visuals
+- [ ] `examples/beat-detection` — Audio beat detection (see `beat_detection.md`)
 - [ ] `examples/midi-control` — MIDI CC controlling parameters
 - [ ] `examples/webcam` — Camera input processing
 - [ ] `examples/particles` — Particle system

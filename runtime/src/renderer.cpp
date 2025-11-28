@@ -16,13 +16,26 @@ namespace vivid {
 // (vec3f has 16-byte alignment which inflates struct size)
 static const char* SHADER_WRAPPER_PREFIX = R"(
 struct Uniforms {
+    // Core uniforms
     time: f32,
     deltaTime: f32,
     resolution: vec2f,
     frame: i32,
+    mode: i32,
     _pad0: f32,
     _pad1: f32,
-    _pad2: f32,
+
+    // Operator parameters
+    param0: f32,
+    param1: f32,
+    param2: f32,
+    param3: f32,
+    param4: f32,
+    param5: f32,
+    param6: f32,
+    param7: f32,
+    vec0: vec2f,
+    vec1: vec2f,
 }
 
 struct VertexOutput {

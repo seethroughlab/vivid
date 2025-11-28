@@ -1,18 +1,19 @@
 // Vivid Runtime - Entry Point
-// Phase 5.4: Full hot-reload loop
+// Phase 9: Preview Server Integration
 
 #include "window.h"
 #include "renderer.h"
+#include "graph.h"
 #include "hotload.h"
 #include "file_watcher.h"
 #include "compiler.h"
+#include "preview_server.h"
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <cmath>
 #include <chrono>
-#include <map>
 
 void printUsage(const char* program) {
     std::cout << "Usage: " << program << " <project_path> [options]\n"
@@ -20,6 +21,7 @@ void printUsage(const char* program) {
               << "  --width <n>     Window width (default: 1280)\n"
               << "  --height <n>    Window height (default: 720)\n"
               << "  --fullscreen    Start in fullscreen mode\n"
+              << "  --port <n>      WebSocket port for preview server (default: 9876)\n"
               << "  --help          Show this help message\n";
 }
 
@@ -33,6 +35,7 @@ int main(int argc, char* argv[]) {
     // Parse command line arguments
     int width = 1280;
     int height = 720;
+    int wsPort = 9876;
     bool fullscreen = false;
     std::string projectPath;
 
@@ -42,6 +45,8 @@ int main(int argc, char* argv[]) {
             width = std::stoi(argv[++i]);
         } else if (arg == "--height" && i + 1 < argc) {
             height = std::stoi(argv[++i]);
+        } else if (arg == "--port" && i + 1 < argc) {
+            wsPort = std::stoi(argv[++i]);
         } else if (arg == "--fullscreen") {
             fullscreen = true;
         } else if (arg == "--help" || arg == "-h") {
@@ -85,10 +90,31 @@ int main(int argc, char* argv[]) {
         vivid::HotLoader hotLoader;
         vivid::FileWatcher fileWatcher;
         vivid::Compiler compiler(projectPath);
+        vivid::Graph graph;
 
         // Flags for hot-reload events
         bool needsRecompile = false;
         std::string shaderToReload;
+
+        // Preview server for VS Code extension
+        vivid::PreviewServer previewServer(wsPort);
+        previewServer.setCommandCallback([&](const std::string& type, const nlohmann::json& data) {
+            if (type == "reload") {
+                std::cout << "[PreviewServer] Reload requested\n";
+                needsRecompile = true;
+            } else if (type == "param_change") {
+                // Future: live parameter updates
+                std::cout << "[PreviewServer] Param change: " << data.dump() << "\n";
+            } else if (type == "pause") {
+                // Future: pause/resume
+                std::cout << "[PreviewServer] Pause: " << data.dump() << "\n";
+            }
+        });
+        previewServer.start();
+
+        // Preview update throttling
+        auto lastPreviewUpdate = std::chrono::high_resolution_clock::now();
+        const float previewUpdateInterval = 0.1f;  // 10 fps for previews
 
         // Start watching the project directory
         fileWatcher.watch(projectPath, [&](const std::string& path) {
@@ -109,10 +135,8 @@ int main(int argc, char* argv[]) {
             std::cout << "Compiled successfully: " << result.libraryPath << "\n";
             if (hotLoader.load(result.libraryPath)) {
                 std::cout << "Loaded " << hotLoader.operators().size() << " operator(s)\n";
-                // Initialize all operators
-                for (auto* op : hotLoader.operators()) {
-                    op->init(ctx);
-                }
+                graph.rebuild(hotLoader.operators());
+                graph.initAll(ctx);
             } else {
                 std::cerr << "Failed to load library\n";
             }
@@ -141,19 +165,11 @@ int main(int argc, char* argv[]) {
                 std::cout << "\n--- Hot Reload ---\n";
 
                 // 1. Save state from current operators
-                std::map<std::string, std::unique_ptr<vivid::OperatorState>> savedStates;
-                for (auto* op : hotLoader.operators()) {
-                    auto state = op->saveState();
-                    if (state) {
-                        savedStates[op->id()] = std::move(state);
-                        std::cout << "Saved state for: " << op->id() << "\n";
-                    }
-                }
+                auto savedStates = graph.saveAllStates();
 
                 // 2. Cleanup and unload old library
-                for (auto* op : hotLoader.operators()) {
-                    op->cleanup();
-                }
+                graph.cleanupAll();
+                graph.clear();
                 hotLoader.unload();
                 ctx.clearOutputs();
 
@@ -166,24 +182,22 @@ int main(int argc, char* argv[]) {
                     if (hotLoader.load(compileResult.libraryPath)) {
                         std::cout << "Loaded " << hotLoader.operators().size() << " operator(s)\n";
 
-                        // 5. Initialize and restore state
-                        for (auto* op : hotLoader.operators()) {
-                            op->init(ctx);
-
-                            // Restore state if we have it
-                            auto it = savedStates.find(op->id());
-                            if (it != savedStates.end()) {
-                                op->loadState(std::move(it->second));
-                                std::cout << "Restored state for: " << op->id() << "\n";
-                            }
-                        }
+                        // 5. Rebuild graph, initialize, and restore state
+                        graph.rebuild(hotLoader.operators());
+                        graph.initAll(ctx);
+                        graph.restoreAllStates(savedStates);
                         std::cout << "Hot reload complete!\n";
+
+                        // Notify connected clients
+                        previewServer.sendCompileStatus(true, "Compiled successfully");
                     } else {
                         std::cerr << "Failed to load new library\n";
+                        previewServer.sendCompileStatus(false, "Failed to load library");
                     }
                 } else {
                     std::cerr << "Compile failed:\n" << compileResult.errorOutput << "\n";
                     std::cerr << "(Old operators unloaded, running without operators)\n";
+                    previewServer.sendCompileStatus(false, compileResult.errorOutput);
                 }
                 std::cout << "------------------\n\n";
             }
@@ -215,17 +229,38 @@ int main(int argc, char* argv[]) {
             }
             ctx.beginFrame(time, deltaTime, frameCount);
 
-            // Process all operators
-            for (auto* op : hotLoader.operators()) {
-                op->process(ctx);
-            }
+            // Execute operator graph
+            graph.execute(ctx);
 
-            // Get final output from operators and blit to screen
-            // For now, look for an output named "out"
-            // (In future, we'd track the actual execution graph and get the final output)
-            vivid::Texture* finalOutput = ctx.getInputTexture("out");
+            // Get final output from graph and blit to screen
+            vivid::Texture* finalOutput = graph.finalOutput(ctx);
             if (finalOutput && finalOutput->valid()) {
                 renderer.blitToScreen(*finalOutput);
+            }
+
+            // Send preview updates to connected clients (throttled)
+            float timeSincePreview = std::chrono::duration<float>(now - lastPreviewUpdate).count();
+            if (timeSincePreview >= previewUpdateInterval && previewServer.clientCount() > 0) {
+                lastPreviewUpdate = now;
+
+                // Capture previews from graph
+                auto graphPreviews = graph.capturePreviews(ctx, renderer, 128);
+
+                // Convert to NodePreview format
+                std::vector<vivid::NodePreview> nodePreviews;
+                for (const auto& preview : graphPreviews) {
+                    vivid::NodePreview np;
+                    np.id = preview.operatorId;
+                    np.sourceLine = preview.sourceLine;
+                    np.kind = preview.outputKind;
+                    np.base64Image = preview.base64Jpeg;
+                    np.width = preview.width;
+                    np.height = preview.height;
+                    np.value = preview.value;
+                    nodePreviews.push_back(np);
+                }
+
+                previewServer.sendNodeUpdates(nodePreviews);
             }
 
             // End frame
@@ -236,9 +271,9 @@ int main(int argc, char* argv[]) {
         }
 
         // Cleanup
-        for (auto* op : hotLoader.operators()) {
-            op->cleanup();
-        }
+        previewServer.stop();
+        graph.cleanupAll();
+        graph.clear();
         hotLoader.unload();
         fileWatcher.stop();
 

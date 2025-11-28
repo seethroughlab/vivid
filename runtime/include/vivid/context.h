@@ -30,6 +30,20 @@ public:
     void runShader(const std::string& shaderPath, Texture& output);
     void runShader(const std::string& shaderPath, const Texture* input, Texture& output);
 
+    // Shader execution with custom parameters
+    // Set params via uniforms() before calling, or use the Uniforms overload
+    struct ShaderParams {
+        float param0 = 0.0f, param1 = 0.0f, param2 = 0.0f, param3 = 0.0f;
+        float param4 = 0.0f, param5 = 0.0f, param6 = 0.0f, param7 = 0.0f;
+        float vec0X = 0.0f, vec0Y = 0.0f;
+        float vec1X = 0.0f, vec1Y = 0.0f;
+        int mode = 0;
+    };
+    void runShader(const std::string& shaderPath, const Texture* input,
+                   Texture& output, const ShaderParams& params);
+    void runShader(const std::string& shaderPath, const Texture* input1,
+                   const Texture* input2, Texture& output, const ShaderParams& params);
+
     // Output storage for operator communication
     void setOutput(const std::string& name, const Texture& tex);
     void setOutput(const std::string& name, float value);

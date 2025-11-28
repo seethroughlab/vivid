@@ -9,6 +9,8 @@ set(RUNTIME_SOURCES
     src/hotload.cpp
     src/file_watcher.cpp
     src/compiler.cpp
+    src/graph.cpp
+    src/preview_server.cpp
 )
 
 # Platform-specific source files

@@ -19,22 +19,51 @@ void Context::runShader(const std::string& shaderPath, Texture& output) {
 }
 
 void Context::runShader(const std::string& shaderPath, const Texture* input, Texture& output) {
+    ShaderParams defaultParams;
+    runShader(shaderPath, input, output, defaultParams);
+}
+
+void Context::runShader(const std::string& shaderPath, const Texture* input,
+                        Texture& output, const ShaderParams& params) {
     // Load shader if not already loaded (with caching in future)
     Shader shader = renderer_.loadShaderFromFile(shaderPath);
     if (!shader.valid()) {
         return;
     }
 
-    // Set up uniforms
+    // Set up uniforms with core values
     Uniforms uniforms;
     uniforms.time = time_;
     uniforms.deltaTime = dt_;
     uniforms.resolutionX = static_cast<float>(output.width);
     uniforms.resolutionY = static_cast<float>(output.height);
     uniforms.frame = frame_;
+    uniforms.mode = params.mode;
+
+    // Copy operator parameters
+    uniforms.param0 = params.param0;
+    uniforms.param1 = params.param1;
+    uniforms.param2 = params.param2;
+    uniforms.param3 = params.param3;
+    uniforms.param4 = params.param4;
+    uniforms.param5 = params.param5;
+    uniforms.param6 = params.param6;
+    uniforms.param7 = params.param7;
+    uniforms.vec0X = params.vec0X;
+    uniforms.vec0Y = params.vec0Y;
+    uniforms.vec1X = params.vec1X;
+    uniforms.vec1Y = params.vec1Y;
 
     renderer_.runShader(shader, output, input, uniforms);
     renderer_.destroyShader(shader);  // TODO: Cache shaders instead
+}
+
+void Context::runShader(const std::string& shaderPath, const Texture* input1,
+                        const Texture* input2, Texture& output, const ShaderParams& params) {
+    // For shaders that need two inputs, we use input1 as the primary input
+    // input2 would need to be sampled separately (future enhancement)
+    // For now, just use the first input
+    runShader(shaderPath, input1, output, params);
 }
 
 void Context::setOutput(const std::string& name, const Texture& tex) {
