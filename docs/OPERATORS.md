@@ -55,6 +55,22 @@ Blends two textures using various blend modes
 
 ---
 
+### Constant
+
+Generates a solid color texture or outputs a fixed numeric value
+
+**Parameters:**
+
+| Parameter | Type | Default | Range |
+|-----------|------|---------|-------|
+| value | float | 0.0 | -1000.0 - 1000.0 |
+
+**Output:** Texture
+
+**Fluent Methods:** `.color()`, `.color()`, `.color()`, `.value()`
+
+---
+
 ### Displacement
 
 Distorts a texture using a displacement map
@@ -168,6 +184,31 @@ Generates animated fractal noise texture
 
 ---
 
+### Passthrough
+
+Passes through an input texture unchanged - useful for organization
+
+**Output:** Texture
+
+---
+
+### Reference
+
+References another operator's output by name
+
+**Parameters:**
+
+| Parameter | Type | Default | Range |
+|-----------|------|---------|-------|
+| source | string | - | - |
+| output | string | - | - |
+
+**Output:** Texture
+
+**Fluent Methods:** `.source()`, `.output()`
+
+---
+
 ### Shape
 
 Generates basic shapes using Signed Distance Fields (SDF)
@@ -189,6 +230,23 @@ Generates basic shapes using Signed Distance Fields (SDF)
 **Output:** Texture
 
 **Fluent Methods:** `.type()`, `.center()`, `.size()`, `.radius()`, `.innerRadius()`, `.rotation()`, `.strokeWidth()`, `.color()`, `.softness()`, `.points()`
+
+---
+
+### Switch
+
+Selects between multiple texture inputs based on an index
+
+**Parameters:**
+
+| Parameter | Type | Default | Range |
+|-----------|------|---------|-------|
+| index | int | 0 | 0 - 7 |
+| blend | bool | - | - |
+
+**Output:** Texture
+
+**Fluent Methods:** `.index()`, `.indexFrom()`, `.blend()`
 
 ---
 
@@ -230,6 +288,49 @@ Outputs a single oscillating value that can drive other parameters
 **Output:** Value
 
 **Fluent Methods:** `.freq()`, `.min()`, `.max()`, `.phase()`, `.waveform()`
+
+---
+
+### Logic
+
+Performs comparisons and logical operations on numeric values
+
+**Parameters:**
+
+| Parameter | Type | Default | Range |
+|-----------|------|---------|-------|
+| op | int | 0 | 0 - 14 |
+| threshold | float | 0.5 | -1000.0 - 1000.0 |
+| rangeMin | float | 0.0 | -1000.0 - 1000.0 |
+| rangeMax | float | 1.0 | -1000.0 - 1000.0 |
+| constA | float | 0.0 | -1000.0 - 1000.0 |
+| constB | float | 0.0 | -1000.0 - 1000.0 |
+
+**Output:** Value
+
+**Fluent Methods:** `.a()`, `.b()`, `.a()`, `.b()`, `.op()`, `.greaterThan()`, `.lessThan()`, `.equal()`, `.threshold()`, `.inRange()`, `.toggle()`, `.trigger()`, `.gate()`
+
+---
+
+### Math
+
+Performs arithmetic operations on numeric values from other operators
+
+**Parameters:**
+
+| Parameter | Type | Default | Range |
+|-----------|------|---------|-------|
+| op | int | 0 | 0 - 16 |
+| constA | float | 0.0 | -1000.0 - 1000.0 |
+| constB | float | 1.0 | -1000.0 - 1000.0 |
+| inMin | float | 0.0 | -1000.0 - 1000.0 |
+| inMax | float | 1.0 | -1000.0 - 1000.0 |
+| outMin | float | 0.0 | -1000.0 - 1000.0 |
+| outMax | float | 1.0 | -1000.0 - 1000.0 |
+
+**Output:** Value
+
+**Fluent Methods:** `.a()`, `.b()`, `.a()`, `.b()`, `.op()`, `.add()`, `.subtract()`, `.multiply()`, `.divide()`, `.min()`, `.max()`, `.clamp()`, `.remap()`, `.inMin()`, `.inMax()`, `.outMin()`, `.outMax()`
 
 ---
 

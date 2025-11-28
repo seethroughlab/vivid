@@ -14,6 +14,21 @@ Texture Context::createTexture() {
     return renderer_.createTexture(width_, height_);
 }
 
+Texture Context::createTextureMatching(const Texture& matchTexture) {
+    if (matchTexture.valid()) {
+        return renderer_.createTexture(matchTexture.width, matchTexture.height);
+    }
+    return renderer_.createTexture(width_, height_);
+}
+
+Texture Context::createTextureMatching(const std::string& nodeId, const std::string& output) {
+    Texture* input = getInputTexture(nodeId, output);
+    if (input && input->valid()) {
+        return renderer_.createTexture(input->width, input->height);
+    }
+    return renderer_.createTexture(width_, height_);
+}
+
 void Context::runShader(const std::string& shaderPath, Texture& output) {
     runShader(shaderPath, nullptr, output);
 }

@@ -13,6 +13,7 @@
 #include "operator.h"
 #include "node_macro.h"
 #include "params.h"
+#include "param_ref.h"
 
 // User implements this function in their project
 // Called once at startup and after each hot-reload

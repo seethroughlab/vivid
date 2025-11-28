@@ -67,7 +67,7 @@ void Graph::initAll(Context& ctx) {
 
 void Graph::execute(Context& ctx) {
     for (auto* op : operators_) {
-        if (op) {
+        if (op && op->needsUpdate(ctx)) {
             op->process(ctx);
         }
     }

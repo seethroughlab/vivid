@@ -120,6 +120,20 @@ public:
      */
     virtual OutputKind outputKind() { return OutputKind::Texture; }
 
+    /**
+     * @brief Check if this operator needs to be processed this frame.
+     * @param ctx The context for checking time, inputs, etc.
+     * @return true if process() should be called, false to skip.
+     *
+     * Override this for lazy evaluation optimization. By default, operators
+     * are always processed every frame. Return false to skip processing
+     * when inputs haven't changed.
+     *
+     * @note This is an optimization hint. The runtime may still call process()
+     * if needed for dependency resolution.
+     */
+    virtual bool needsUpdate(Context& ctx) { return true; }
+
     /// @brief Set the operator's unique identifier (called by VIVID_OPERATOR macro).
     void setId(const std::string& id) { id_ = id; }
 

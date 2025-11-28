@@ -383,17 +383,17 @@ Build and test each operator individually:
 ### 12.0 Core Workflow Features
 **Priority: High — These enable cleaner creative coding workflows**
 
-- [ ] **Parameter References** — `"$nodeName"` syntax to reference other node outputs
-- [ ] **Value Binding** — Automatically drive parameters from value-producing nodes
-- [ ] **Passthrough** — Pass-through node for organization and explicit outputs
-- [ ] **Reference** — Reference another operator by name
-- [ ] **Switch** — Choose between multiple inputs by index
-- [ ] **Math** — Combine, add, multiply, clamp, remap numeric values
-- [ ] **Logic** — Comparisons, triggers, gates for control flow
-- [ ] **Constant** — Generate solid colors or fixed values
-- [ ] **Gradient** — Color gradient lookup/remapping
-- [ ] **Resolution Independence** — Operators adapt to input resolution
-- [ ] **Lazy Evaluation** — Only process nodes whose inputs changed
+- [x] **Constant** — Generate solid colors or fixed values (`operators/constant.cpp`)
+- [x] **Math** — Combine, add, multiply, clamp, remap numeric values (`operators/math.cpp`)
+- [x] **Logic** — Comparisons, triggers, gates for control flow (`operators/logic.cpp`)
+- [x] **Switch** — Choose between multiple inputs by index (`operators/switch.cpp`)
+- [x] **Passthrough** — Pass-through node for organization and explicit outputs (`operators/passthrough.cpp`)
+- [x] **Resolution Independence** — `ctx.createTextureMatching()` adapts to input resolution
+- [x] **Gradient** — Already exists (`operators/gradient.cpp`)
+- [x] **Parameter References** — `ParamRef<T>` template with `"$nodeName"` syntax (`param_ref.h`)
+- [x] **Value Binding** — `ParamRef<T>::get(ctx)` resolves references at runtime
+- [x] **Reference** — Reference another operator by name (`operators/reference.cpp`)
+- [x] **Lazy Evaluation** — `needsUpdate()` virtual method, Graph checks before process()
 
 ### 12.1 Image Loading
 - [ ] Integrate stb_image for image loading

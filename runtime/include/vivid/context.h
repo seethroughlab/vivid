@@ -64,6 +64,24 @@ public:
      * @return A new texture handle at width() x height().
      */
     Texture createTexture();
+
+    /**
+     * @brief Create a texture matching the dimensions of another texture.
+     * @param matchTexture The texture to match dimensions from.
+     * @return A new texture handle with matching width and height.
+     *
+     * Useful for resolution-independent operators that should adapt
+     * to their input's resolution.
+     */
+    Texture createTextureMatching(const Texture& matchTexture);
+
+    /**
+     * @brief Create a texture matching the dimensions of an input from another operator.
+     * @param nodeId The operator's ID to get input dimensions from.
+     * @param output The output name (default "out").
+     * @return A new texture, or default resolution if input not found.
+     */
+    Texture createTextureMatching(const std::string& nodeId, const std::string& output = "out");
     /// @}
 
     /// @name Shader Execution
