@@ -273,44 +273,44 @@ Build and test each operator individually:
 **Reference: [PLAN-04-extension.md](PLAN-04-extension.md)**
 
 ### 10.1 Extension Setup
-- [ ] Create `extension/package.json`
-- [ ] Create `extension/tsconfig.json`
-- [ ] Run `npm install`
-- [ ] Verify `npm run compile` works
+- [x] Create `extension/package.json`
+- [x] Create `extension/tsconfig.json`
+- [x] Run `npm install`
+- [x] Verify `npm run compile` works
 
 ### 10.2 Runtime Client
-- [ ] Implement `extension/src/runtimeClient.ts`
-- [ ] Connect to WebSocket server
-- [ ] Parse incoming messages
-- [ ] Implement reconnection logic
+- [x] Implement `extension/src/runtimeClient.ts`
+- [x] Connect to WebSocket server
+- [x] Parse incoming messages
+- [x] Implement reconnection logic
 - [ ] Test: Connect to running runtime
 
 ### 10.3 Status Bar
-- [ ] Implement `extension/src/statusBar.ts`
-- [ ] Show connection status
-- [ ] Show compile status
+- [x] Implement `extension/src/statusBar.ts`
+- [x] Show connection status
+- [x] Show compile status
 - [ ] Test: Status updates when runtime starts/stops
 
 ### 10.4 Inline Decorations
-- [ ] Implement `extension/src/decorations.ts`
-- [ ] Create decoration types for values and textures
-- [ ] Map line numbers to nodes
-- [ ] Show inline indicators (∿ for values, 🖼 for textures)
-- [ ] Implement hover previews with MarkdownString
+- [x] Implement `extension/src/decorations.ts`
+- [x] Create decoration types for values and textures
+- [x] Map line numbers to nodes
+- [x] Show inline indicators (~ for values, [img] for textures)
+- [x] Implement hover previews with MarkdownString
 - [ ] Test: See decorations next to NODE() calls
 
 ### 10.5 Preview Panel
-- [ ] Implement `extension/src/previewPanel.ts`
-- [ ] Create webview with node cards
-- [ ] Show texture previews, values, sparklines
-- [ ] Handle click to jump to source
+- [x] Implement `extension/src/previewPanel.ts`
+- [x] Create webview with node cards
+- [x] Show texture previews, values, sparklines
+- [x] Handle click to jump to source
 - [ ] Test: Panel shows all nodes with live updates
 
 ### 10.6 Extension Entry Point
-- [ ] Implement `extension/src/extension.ts`
-- [ ] Register all commands
-- [ ] Auto-connect on project open
-- [ ] Wire up all components
+- [x] Implement `extension/src/extension.ts`
+- [x] Register all commands
+- [x] Auto-connect on project open
+- [x] Wire up all components
 - [ ] Test: Full extension functionality
 
 ---
