@@ -39,23 +39,33 @@ Your project is C++ files, shader files, and a simple YAML config. No binary for
 When you define an operator chain, each step shows its output. Textures render as thumbnails. Numeric values display inline. You never have to guess what's happening inside the pipeline.
 
 ```cpp
-auto noise = NODE(Noise())       // [preview: perlin texture]
-    .scale(4.0)
-    .speed(0.5);
+// chain.cpp - Each operator shows its output in VS Code
+#include <vivid/vivid.h>
 
-auto lfo = NODE(LFO(2.0));       // ∿ 0.73
-
-auto modulated = NODE(Brightness(noise))
-    .amount(lfo);                // [preview: pulsing texture]
-
-Output(modulated);
+class NoiseOp : public vivid::Operator {
+    vivid::Texture output_;
+public:
+    void init(vivid::Context& ctx) override {
+        output_ = ctx.createTexture(ctx.width(), ctx.height());
+    }
+    void process(vivid::Context& ctx) override {
+        ctx.runShader("shaders/noise.wgsl", {}, output_);  // [preview]
+        ctx.setOutput("out", output_);
+    }
+    vivid::OutputKind outputKind() const override {
+        return vivid::OutputKind::Texture;
+    }
+};
+VIVID_OPERATOR(NoiseOp)
 ```
+
+The VS Code extension shows `[img]` decorations with hover previews for each operator's output.
 
 ### Hot Reload Everything
 
 Edit a `.cpp` file, save, and see the change immediately. No restart, no lost state. The runtime recompiles only what changed, swaps the shared library, and preserves operator state across the reload.
 
-Shaders hot-reload too. Edit a `.frag` file and watch the output update in real time.
+Shaders hot-reload too. Edit a `.wgsl` file and watch the output update in real time.
 
 ### LLM-Native Workflow
 
@@ -242,52 +252,69 @@ cd /path/to/vivid
 ./build/bin/vivid-runtime /path/to/my-project
 ```
 
-## Example: Audio-Reactive Visuals
+## Example: Feedback Loop
+
+Here's a complete example showing animated noise with feedback:
 
 ```cpp
+// chain.cpp
 #include <vivid/vivid.h>
 
-void setup(Context& ctx) {
-    // Audio input analysis
-    auto audio = NODE(AudioIn())
-        .device("default")
-        .fftSize(1024);
-    
-    auto bass = NODE(FFTBand(audio))
-        .lowFreq(20)
-        .highFreq(200);
-    
-    // Generative texture
-    auto noise = NODE(Noise())
-        .scale(Mix(2.0, 8.0, bass))  // Bass controls noise scale
-        .speed(0.3);
-    
-    // Feedback with zoom
-    auto fb = NODE(Feedback(noise))
-        .decay(0.92)
-        .zoom(1.0 + bass * 0.02);    // Bass creates zoom pulse
-    
-    // Color grading
-    auto final = NODE(HSVAdjust(fb))
-        .hueShift(ctx.time() * 0.1)
-        .saturation(1.2);
-    
-    Output(final);
-}
+class AnimatedNoise : public vivid::Operator {
+    vivid::Texture output_;
+public:
+    void init(vivid::Context& ctx) override {
+        output_ = ctx.createTexture(ctx.width(), ctx.height());
+    }
+
+    void process(vivid::Context& ctx) override {
+        float time = ctx.time();
+        ctx.runShader("shaders/noise.wgsl", {
+            {"u_time", time},
+            {"u_scale", 4.0f}
+        }, output_);
+        ctx.setOutput("out", output_);
+    }
+
+    vivid::OutputKind outputKind() const override {
+        return vivid::OutputKind::Texture;
+    }
+};
+VIVID_OPERATOR(AnimatedNoise)
 ```
 
-Each `NODE()` macro registers the operator with source location information. The VS Code extension receives live previews and displays them inline, so you see the audio reactivity at every stage of the chain.
+Edit any parameter, save, and watch the preview update instantly in VS Code.
 
 ## Status
 
-This project is in early development. The current focus is:
+**Core Runtime** — Complete
+- WebGPU-based rendering with fullscreen output
+- Hot-reload of C++ operators (save and see changes instantly)
+- Hot-reload of WGSL shaders
+- Async GPU readback for preview capture
+- Shared memory preview transfer to VS Code (zero-copy)
 
-1. Core runtime with hot-reload C++ operators
-2. Basic operator library (noise, math, feedback, composite)
-3. VS Code extension with inline previews
-4. Shader hot-reload
+**Operator Library** — 12 operators implemented
+- Noise, Gradient, Shape, Blur, Feedback, Composite
+- Brightness, HSVAdjust, Transform, Displacement, Edge, LFO
 
-Future plans include geometry operators, audio/MIDI integration, and a library of community-contributed operators.
+**VS Code Extension** — Complete
+- Inline `[img]` decorations with hover previews
+- Live preview panel with 30fps updates
+- Compile error diagnostics inline in editor
+- Auto-connect to running runtime
+
+**Coming Soon**
+- Image/video file loading
+- Audio input with FFT analysis
+- MIDI/OSC input
+- 3D geometry and particle systems
+- Video recording/export
+
+## Documentation
+
+- **[Operator API Guide](docs/OPERATOR-API.md)** — How to create custom operators
+- **[Shader Conventions](docs/SHADER-CONVENTIONS.md)** — WGSL shader structure and uniforms
 
 ## Implementation Plan
 

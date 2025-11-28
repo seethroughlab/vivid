@@ -362,12 +362,12 @@ Build and test each operator individually:
 - [x] Test: Full integration - runtime + extension shared memory
 
 ### 11.3 Documentation
-- [ ] Write user-facing README with screenshots
-- [ ] Document operator API for custom operators
-- [ ] Document shader conventions
+- [x] Write user-facing README with accurate examples
+- [x] Document operator API for custom operators (docs/OPERATOR-API.md)
+- [x] Document shader conventions (docs/SHADER-CONVENTIONS.md)
 - [ ] Create more example projects
 - [ ] Configure Doxygen for API documentation
-- [ ] Add doc comments to `runtime/include/vivid/*.h`
+- [x] Add doc comments to `runtime/include/vivid/*.h`
 - [ ] Auto-generate operator reference from code
 
 ### 11.4 Distribution

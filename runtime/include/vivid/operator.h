@@ -7,33 +7,129 @@
 
 namespace vivid {
 
-// Base class for serializable operator state (for hot-reload)
+/**
+ * @brief Base class for serializable operator state.
+ *
+ * Derive from this to store state that should be preserved across hot-reload.
+ * Return your derived state from Operator::saveState() and restore it in
+ * Operator::loadState().
+ *
+ * @code
+ * struct MyState : OperatorState {
+ *     float phase = 0.0f;
+ * };
+ * @endcode
+ */
 struct OperatorState {
     virtual ~OperatorState() = default;
 };
 
-// Base class for all operators
+/**
+ * @brief Base class for all Vivid operators.
+ *
+ * Operators are the building blocks of Vivid pipelines. Each operator takes
+ * inputs (textures or values), processes them, and produces outputs.
+ *
+ * ## Lifecycle
+ * - `init()`: Called once when the operator is created. Create textures here.
+ * - `process()`: Called every frame. Generate your output here.
+ * - `cleanup()`: Called before destruction. Release resources here.
+ *
+ * ## Hot Reload
+ * Override `saveState()` and `loadState()` to preserve state across hot-reload.
+ *
+ * ## Example
+ * @code
+ * class MyOperator : public Operator {
+ *     Texture output_;
+ * public:
+ *     void init(Context& ctx) override {
+ *         output_ = ctx.createTexture();
+ *     }
+ *     void process(Context& ctx) override {
+ *         ctx.runShader("shaders/my.wgsl", nullptr, output_);
+ *         ctx.setOutput("out", output_);
+ *     }
+ *     OutputKind outputKind() override { return OutputKind::Texture; }
+ * };
+ * VIVID_OPERATOR(MyOperator)
+ * @endcode
+ */
 class Operator {
 public:
     virtual ~Operator() = default;
 
-    // Lifecycle
+    /**
+     * @brief Called once when the operator is first created.
+     * @param ctx The context for accessing runtime services.
+     *
+     * Use this to create textures and initialize state. Not called on hot-reload.
+     */
     virtual void init(Context& ctx) {}
+
+    /**
+     * @brief Called every frame to produce output.
+     * @param ctx The context for accessing time, shaders, and other operators.
+     *
+     * This is the main processing function. Read inputs, run shaders, and
+     * set outputs here.
+     */
     virtual void process(Context& ctx) = 0;
+
+    /**
+     * @brief Called before the operator is destroyed.
+     *
+     * Use this to release any resources not managed by the runtime.
+     * Textures created via Context are automatically cleaned up.
+     */
     virtual void cleanup() {}
 
-    // Hot reload support
+    /**
+     * @brief Save state for hot-reload.
+     * @return State object to preserve, or nullptr if no state to save.
+     *
+     * Called before the operator is destroyed during hot-reload. Return
+     * a custom OperatorState subclass containing any state that should
+     * survive the reload (e.g., animation phase, accumulated values).
+     */
     virtual std::unique_ptr<OperatorState> saveState() { return nullptr; }
+
+    /**
+     * @brief Restore state after hot-reload.
+     * @param state The state previously returned by saveState().
+     *
+     * Called after the operator is recreated during hot-reload. Cast
+     * the state to your custom subclass and restore values.
+     */
     virtual void loadState(std::unique_ptr<OperatorState> state) {}
 
-    // Introspection for editor
+    /**
+     * @brief Declare parameters for the editor.
+     * @return Vector of parameter declarations.
+     *
+     * Override this to expose tweakable parameters in the VS Code extension.
+     * Use helper functions like floatParam(), intParam(), etc.
+     */
     virtual std::vector<ParamDecl> params() { return {}; }
+
+    /**
+     * @brief Specify the type of output this operator produces.
+     * @return The output kind (Texture, Value, ValueArray, or Geometry).
+     *
+     * This affects how the preview is displayed in VS Code.
+     */
     virtual OutputKind outputKind() { return OutputKind::Texture; }
 
-    // Identity (set by NODE macro)
+    /// @brief Set the operator's unique identifier (called by VIVID_OPERATOR macro).
     void setId(const std::string& id) { id_ = id; }
+
+    /// @brief Set the source line number (called by VIVID_OPERATOR macro).
     void setSourceLine(int line) { sourceLine_ = line; }
+
+    /// @brief Get the operator's unique identifier.
     const std::string& id() const { return id_; }
+
+    /// @brief Get the source line where this operator was defined.
     int sourceLine() const { return sourceLine_; }
 
 protected:
