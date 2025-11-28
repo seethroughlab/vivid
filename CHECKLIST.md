@@ -8,18 +8,18 @@ A step-by-step guide for building Vivid. Each phase builds on the previous one. 
 **Reference: [PLAN-01-overview.md](PLAN-01-overview.md)**
 
 ### 1.1 Initial Setup
-- [ ] Create project directory structure as shown in PLAN-01
-- [ ] Create root `CMakeLists.txt` with FetchContent dependencies
-- [ ] Create `runtime/CMakeLists.txt`
-- [ ] Verify CMake configures successfully and downloads dependencies
-- [ ] Verify wgpu-native downloads and links correctly
+- [x] Create project directory structure as shown in PLAN-01
+- [x] Create root `CMakeLists.txt` with FetchContent dependencies
+- [x] Create `runtime/CMakeLists.txt`
+- [x] Verify CMake configures successfully and downloads dependencies
+- [x] Verify wgpu-native downloads and links correctly
 
 ### 1.2 Verify Build
 ```bash
 cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
 ```
-- [ ] Build completes without errors (even if runtime does nothing yet)
+- [x] Build completes without errors (even if runtime does nothing yet)
 
 ---
 
@@ -27,43 +27,42 @@ cmake --build build
 **Reference: [PLAN-02-runtime.md](PLAN-02-runtime.md) — Window and Renderer sections**
 
 ### 2.1 Window Creation
-- [ ] Implement `runtime/src/window.h` and `window.cpp`
-- [ ] Create GLFW window with proper hints for WebGPU
-- [ ] Handle resize and close events
-- [ ] Test: Window opens and stays open
+- [x] Implement `runtime/src/window.h` and `window.cpp`
+- [x] Create GLFW window with proper hints for WebGPU
+- [x] Handle resize and close events
+- [x] Test: Window opens and stays open
 
 ### 2.2 WebGPU Initialization
-- [ ] Implement `runtime/src/renderer.h` and `renderer.cpp`
-- [ ] Create WebGPU instance, surface, adapter, device, queue
-- [ ] Create swap chain
-- [ ] Implement `beginFrame()` and `endFrame()`
-- [ ] Test: Window clears to a solid color each frame
-
-### 2.3 Basic Rendering
-- [ ] Implement fullscreen triangle (no vertex buffer needed)
-- [ ] Load and compile the blit shader
-- [ ] Implement `blitToScreen()`
-- [ ] Test: Solid color fills the window via shader
+- [x] Implement `runtime/src/renderer.h` and `renderer.cpp`
+- [x] Create WebGPU instance, surface, adapter, device, queue
+- [x] Create swap chain (using wgpuSurfaceConfigure in modern wgpu API)
+- [x] Implement `beginFrame()` and `endFrame()`
+- [x] Test: Window clears to a solid color each frame
 
 ---
 
 ## Phase 3: Texture and Shader System
 **Reference: [PLAN-02-runtime.md](PLAN-02-runtime.md) — Renderer sections**
 
-### 3.1 Texture Management
-- [ ] Implement `createTexture()`
-- [ ] Implement `destroyTexture()`
-- [ ] Implement `readTexturePixels()` (for preview capture)
-- [ ] Test: Create texture, render to it, blit to screen
+### 3.1 Blit to Screen
+- [x] Implement fullscreen triangle (no vertex buffer needed)
+- [x] Load and compile the blit shader
+- [x] Implement `blitToScreen()`
 
-### 3.2 Shader System
-- [ ] Implement `loadShader()` and `loadShaderFromFile()`
-- [ ] Implement uniform buffer creation and updates
-- [ ] Implement bind group creation for uniforms + textures
-- [ ] Implement `runShader()` — render to texture with uniforms
-- [ ] Test: Load noise shader, render to texture, display result
+### 3.2 Texture Management
+- [x] Implement `createTexture()`
+- [x] Implement `destroyTexture()`
+- [x] Implement `readTexturePixels()` (for preview capture)
+- [x] Test: Create texture, render to it, blit to screen
 
-### 3.3 Shader Hot-Reload
+### 3.3 Shader System
+- [x] Implement `loadShader()` and `loadShaderFromFile()`
+- [x] Implement uniform buffer creation and updates
+- [x] Implement bind group creation for uniforms + textures
+- [x] Implement `runShader()` — render to texture with uniforms
+- [x] Test: Load noise shader, render to texture, display result
+
+### 3.4 Shader Hot-Reload
 - [ ] Implement `reloadShader()`
 - [ ] Track shader file paths for reload matching
 - [ ] Test: Edit .wgsl file, see changes without restart
