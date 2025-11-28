@@ -13,11 +13,20 @@ struct NodePreview {
     std::string id;
     int sourceLine = 0;
     OutputKind kind = OutputKind::Texture;
-    std::string base64Image;   // For textures (JPEG base64)
+    std::string base64Image;   // For textures (JPEG base64) - legacy mode
     float value = 0.0f;        // For single values
     std::vector<float> values; // For value arrays
     int width = 0;             // Texture dimensions
     int height = 0;
+};
+
+// Lightweight metadata for shared memory mode
+struct PreviewSlotInfo {
+    std::string id;
+    int slot;           // Index in shared memory
+    int sourceLine;
+    OutputKind kind;
+    bool updated;       // True if changed this frame
 };
 
 class PreviewServer {
@@ -30,7 +39,9 @@ public:
     bool isRunning() const { return running_; }
 
     // Send updates to all connected clients
-    void sendNodeUpdates(const std::vector<NodePreview>& previews);
+    void sendNodeUpdates(const std::vector<NodePreview>& previews);  // Legacy: full image data
+    void sendPreviewMetadata(const std::vector<PreviewSlotInfo>& slots, uint32_t frame,
+                             const std::string& sharedMemName);  // New: metadata only
     void sendCompileStatus(bool success, const std::string& message);
     void sendError(const std::string& error);
 

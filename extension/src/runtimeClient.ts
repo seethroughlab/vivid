@@ -1,19 +1,31 @@
 import WebSocket from 'ws';
+import * as sharedPreview from './sharedPreview';
 
 export interface NodeUpdate {
     id: string;
     line: number;
     kind: 'texture' | 'value' | 'value_array' | 'geometry';
-    preview?: string;  // base64 image for textures
+    preview?: string;  // base64 image for textures (or data URL from shared memory)
     value?: number;    // single value
     values?: number[]; // value array / history
     width?: number;
     height?: number;
 }
 
+export interface PreviewSlotInfo {
+    id: string;
+    slot: number;
+    line: number;
+    kind: 'texture' | 'value' | 'value_array' | 'geometry';
+    updated: boolean;
+}
+
 export interface RuntimeMessage {
     type: string;
     nodes?: NodeUpdate[];
+    slots?: PreviewSlotInfo[];
+    frame?: number;
+    sharedMem?: string;
     success?: boolean;
     message?: string;
 }
@@ -26,6 +38,8 @@ export class RuntimeClient {
     private reconnectTimer: NodeJS.Timeout | null = null;
     private reconnectAttempts = 0;
     private maxReconnectAttempts = 10;
+    private sharedMemName: string | null = null;
+    private sharedMemConnected = false;
 
     private connectedCallbacks: Callback<void>[] = [];
     private disconnectedCallbacks: Callback<void>[] = [];
@@ -35,6 +49,11 @@ export class RuntimeClient {
 
     constructor(port: number) {
         this.port = port;
+    }
+
+    // Initialize shared memory support
+    initSharedMemory(extensionPath: string): boolean {
+        return sharedPreview.initSharedPreview(extensionPath);
     }
 
     connect() {
@@ -101,9 +120,15 @@ export class RuntimeClient {
 
             switch (msg.type) {
                 case 'node_update':
+                    // Legacy: full image data in WebSocket
                     if (msg.nodes) {
                         this.nodeUpdateCallbacks.forEach(cb => cb(msg.nodes!));
                     }
+                    break;
+
+                case 'preview_ready':
+                    // New: metadata only, read from shared memory
+                    this.handlePreviewReady(msg);
                     break;
 
                 case 'compile_status':
@@ -117,6 +142,51 @@ export class RuntimeClient {
             }
         } catch (e) {
             this.errorCallbacks.forEach(cb => cb(`Parse error: ${e}`));
+        }
+    }
+
+    private handlePreviewReady(msg: RuntimeMessage) {
+        // Connect to shared memory if not already
+        if (msg.sharedMem && msg.sharedMem !== this.sharedMemName) {
+            this.sharedMemName = msg.sharedMem;
+            this.sharedMemConnected = sharedPreview.openSharedMemory(msg.sharedMem);
+        }
+
+        if (!this.sharedMemConnected || !msg.slots) {
+            return;
+        }
+
+        // Read from shared memory and build NodeUpdate array
+        const updates: NodeUpdate[] = [];
+
+        for (const slotInfo of msg.slots) {
+            if (!slotInfo.updated) continue;
+
+            const slot = sharedPreview.getSlot(slotInfo.slot);
+            if (!slot || !slot.ready) continue;
+
+            const update: NodeUpdate = {
+                id: slot.operatorId,
+                line: slot.sourceLine,
+                kind: slotInfo.kind,
+                width: slot.width,
+                height: slot.height
+            };
+
+            if (slot.kind === sharedPreview.PREVIEW_KIND.TEXTURE && slot.pixels) {
+                // Convert raw pixels to displayable format
+                update.preview = sharedPreview.pixelsToDataUrl(slot.pixels);
+            } else if (slot.kind === sharedPreview.PREVIEW_KIND.VALUE && slot.value !== undefined) {
+                update.value = slot.value;
+            } else if (slot.kind === sharedPreview.PREVIEW_KIND.VALUE_ARRAY && slot.values) {
+                update.values = slot.values;
+            }
+
+            updates.push(update);
+        }
+
+        if (updates.length > 0) {
+            this.nodeUpdateCallbacks.forEach(cb => cb(updates));
         }
     }
 

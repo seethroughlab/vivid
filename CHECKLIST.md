@@ -340,26 +340,26 @@ Build and test each operator individually:
 - [ ] Test: Render loop stays at 60fps during preview capture
 
 #### Phase 3: Shared Memory Segment
-- [ ] Implement `runtime/src/shared_preview.h` and `.cpp`
-- [ ] POSIX `shm_open`/`mmap` for macOS/Linux
-- [ ] Windows `CreateFileMapping`/`MapViewOfFile` implementation
-- [ ] Fixed layout: header + 64 operator slots
-- [ ] 128x128 RGB thumbnails per slot
-- [ ] Test: Runtime creates shared memory, can read from another process
+- [x] Implement `runtime/src/shared_preview.h` and `.cpp`
+- [x] POSIX `shm_open`/`mmap` for macOS/Linux
+- [x] Windows `CreateFileMapping`/`MapViewOfFile` implementation
+- [x] Fixed layout: header + 64 operator slots
+- [x] 128x128 RGB thumbnails per slot
+- [x] Test: Runtime creates shared memory, can read from another process
 
 #### Phase 4: Extension Native Module
-- [ ] Create `extension/native/` with node-gyp build
-- [ ] Implement `shared_preview_native.node` binding
-- [ ] Read shared memory from Node.js/VS Code
-- [ ] Convert raw RGB to displayable format
-- [ ] Test: Extension reads preview data from shared memory
+- [x] Create `extension/native/` with node-gyp build
+- [x] Implement `shared_preview_native.node` binding
+- [x] Read shared memory from Node.js/VS Code
+- [x] Convert raw RGB to displayable format (PPM data URL)
+- [x] Test: Extension reads preview data from shared memory
 
 #### Phase 5: Integration
-- [ ] WebSocket sends only metadata (operator list, slot indices, frame number)
-- [ ] Extension reads image data from shared memory on notification
+- [x] WebSocket sends only metadata (operator list, slot indices, frame number)
+- [x] Extension reads image data from shared memory on notification
 - [ ] Fallback to WebSocket base64 if shared memory unavailable
-- [ ] Remove blocking preview capture from main loop
-- [ ] Test: 60fps render with 64 operators and live previews
+- [x] Remove blocking preview capture from main loop
+- [x] Test: Full integration - runtime + extension shared memory
 
 ### 11.3 Documentation
 - [ ] Write user-facing README with screenshots

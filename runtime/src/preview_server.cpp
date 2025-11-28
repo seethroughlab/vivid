@@ -111,6 +111,44 @@ void PreviewServer::sendError(const std::string& error) {
     broadcast(msg.dump());
 }
 
+void PreviewServer::sendPreviewMetadata(const std::vector<PreviewSlotInfo>& slots, uint32_t frame,
+                                         const std::string& sharedMemName) {
+    if (!running_) return;
+
+    nlohmann::json msg;
+    msg["type"] = "preview_ready";
+    msg["frame"] = frame;
+    msg["sharedMem"] = sharedMemName;
+    msg["slots"] = nlohmann::json::array();
+
+    for (const auto& slot : slots) {
+        nlohmann::json s;
+        s["id"] = slot.id;
+        s["slot"] = slot.slot;
+        s["line"] = slot.sourceLine;
+        s["updated"] = slot.updated;
+
+        switch (slot.kind) {
+            case OutputKind::Texture:
+                s["kind"] = "texture";
+                break;
+            case OutputKind::Value:
+                s["kind"] = "value";
+                break;
+            case OutputKind::ValueArray:
+                s["kind"] = "value_array";
+                break;
+            case OutputKind::Geometry:
+                s["kind"] = "geometry";
+                break;
+        }
+
+        msg["slots"].push_back(s);
+    }
+
+    broadcast(msg.dump());
+}
+
 void PreviewServer::onMessage(std::shared_ptr<ix::ConnectionState> state,
                                ix::WebSocket& ws,
                                const ix::WebSocketMessagePtr& msg) {

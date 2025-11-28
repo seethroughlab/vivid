@@ -9,6 +9,7 @@
 #include "compiler.h"
 #include "preview_server.h"
 #include "async_readback.h"
+#include "shared_preview.h"
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <GLFW/glfw3.h>
@@ -94,6 +95,13 @@ int main(int argc, char* argv[]) {
         vivid::AsyncReadback asyncReadback;
         asyncReadback.init(renderer.device(), renderer.queue());
 
+        // Shared memory for zero-copy preview transfer to VS Code extension
+        vivid::SharedPreview sharedPreview;
+        const std::string sharedMemName = "vivid_preview";
+        if (!sharedPreview.create(sharedMemName)) {
+            std::cerr << "Warning: Failed to create shared memory, falling back to WebSocket\n";
+        }
+
         // Hot-reload system
         vivid::HotLoader hotLoader;
         vivid::FileWatcher fileWatcher;
@@ -120,13 +128,13 @@ int main(int argc, char* argv[]) {
         });
         previewServer.start();
 
-        // Preview update throttling - keep low to avoid frame drops
+        // Preview update throttling
         auto lastPreviewUpdate = std::chrono::high_resolution_clock::now();
-        const float previewUpdateInterval = 0.1f;  // 10 fps for previews (async readback makes this fast)
+        const float previewUpdateInterval = 0.1f;  // 10 fps for previews
 
-        // Pending preview data collected from async readbacks
-        std::vector<vivid::NodePreview> pendingPreviews;
-        std::mutex previewMutex;
+        // Track which slots have been updated this frame
+        std::vector<vivid::PreviewSlotInfo> slotInfo;
+        std::mutex slotMutex;
 
         // Start watching the project directory
         fileWatcher.watch(projectPath, [&](const std::string& path) {
@@ -259,15 +267,25 @@ int main(int argc, char* argv[]) {
             if (timeSincePreview >= previewUpdateInterval && previewServer.clientCount() > 0) {
                 lastPreviewUpdate = now;
 
-                // Clear pending previews for this batch
+                // Clear slot info for this batch
                 {
-                    std::lock_guard<std::mutex> lock(previewMutex);
-                    pendingPreviews.clear();
+                    std::lock_guard<std::mutex> lock(slotMutex);
+                    slotInfo.clear();
+                }
+
+                // Update operator count in shared memory
+                if (sharedPreview.isOpen()) {
+                    sharedPreview.setOperatorCount(static_cast<uint32_t>(graph.operators().size()));
                 }
 
                 // Queue async readbacks for each operator
+                int slotIndex = 0;
                 for (auto* op : graph.operators()) {
                     if (!op) continue;
+
+                    int currentSlot = slotIndex++;
+                    std::string opId = op->id();
+                    int sourceLine = op->sourceLine();
 
                     if (op->outputKind() == vivid::OutputKind::Texture) {
                         // Get the operator's output texture
@@ -275,21 +293,18 @@ int main(int argc, char* argv[]) {
                         if (!tex) tex = ctx.getInputTexture("out");
 
                         if (tex && tex->valid()) {
-                            // Capture metadata now (non-blocking)
-                            std::string opId = op->id();
-                            int sourceLine = op->sourceLine();
                             int texWidth = tex->width;
                             int texHeight = tex->height;
 
-                            // Queue async readback with callback
+                            // Queue async readback - writes directly to shared memory
                             asyncReadback.queueReadback(*tex, opId,
-                                [&previewServer, &previewMutex, &pendingPreviews,
-                                 opId, sourceLine, texWidth, texHeight]
+                                [&sharedPreview, &slotMutex, &slotInfo,
+                                 currentSlot, opId, sourceLine, texWidth, texHeight]
                                 (const std::string& id, const std::vector<uint8_t>& pixels,
                                  int width, int height) {
 
-                                    // Downsample to thumbnail
-                                    constexpr int thumbSize = 128;
+                                    // Downsample RGBA to RGB thumbnail
+                                    constexpr int thumbSize = vivid::PREVIEW_THUMB_WIDTH;
                                     int dstWidth = width;
                                     int dstHeight = height;
 
@@ -317,55 +332,59 @@ int main(int argc, char* argv[]) {
                                         }
                                     }
 
-                                    // Encode as JPEG (this is still synchronous but small data)
-                                    std::vector<uint8_t> jpegData;
-                                    auto jpegCallback = [](void* context, void* data, int size) {
-                                        auto* vec = static_cast<std::vector<uint8_t>*>(context);
-                                        auto* bytes = static_cast<uint8_t*>(data);
-                                        vec->insert(vec->end(), bytes, bytes + size);
-                                    };
+                                    // Write directly to shared memory (no JPEG, no base64!)
+                                    if (sharedPreview.isOpen()) {
+                                        sharedPreview.updateTextureSlot(
+                                            currentSlot, id, sourceLine,
+                                            texWidth, texHeight,
+                                            rgbPixels.data(), dstWidth, dstHeight
+                                        );
+                                    }
 
-                                    stbi_write_jpg_to_func(jpegCallback, &jpegData,
-                                        dstWidth, dstHeight, 3, rgbPixels.data(), 60);
-
-                                    // Base64 encode
-                                    std::string base64 = vivid::base64Encode(jpegData);
-
-                                    // Create preview and add to pending
-                                    vivid::NodePreview np;
-                                    np.id = id;
-                                    np.sourceLine = sourceLine;
-                                    np.kind = vivid::OutputKind::Texture;
-                                    np.base64Image = base64;
-                                    np.width = texWidth;
-                                    np.height = texHeight;
-
+                                    // Record slot info for metadata message
                                     {
-                                        std::lock_guard<std::mutex> lock(previewMutex);
-                                        pendingPreviews.push_back(np);
+                                        std::lock_guard<std::mutex> lock(slotMutex);
+                                        vivid::PreviewSlotInfo info;
+                                        info.id = id;
+                                        info.slot = currentSlot;
+                                        info.sourceLine = sourceLine;
+                                        info.kind = vivid::OutputKind::Texture;
+                                        info.updated = true;
+                                        slotInfo.push_back(info);
                                     }
                                 });
                         }
                     } else if (op->outputKind() == vivid::OutputKind::Value) {
-                        // Values don't need GPU readback - capture immediately
-                        vivid::NodePreview np;
-                        np.id = op->id();
-                        np.sourceLine = op->sourceLine();
-                        np.kind = vivid::OutputKind::Value;
-                        np.value = ctx.getInputValue(op->id(), "out", 0.0f);
+                        // Values don't need GPU readback - write to shared memory immediately
+                        float value = ctx.getInputValue(op->id(), "out", 0.0f);
 
-                        std::lock_guard<std::mutex> lock(previewMutex);
-                        pendingPreviews.push_back(np);
+                        if (sharedPreview.isOpen()) {
+                            sharedPreview.updateValueSlot(currentSlot, opId, sourceLine, value);
+                        }
+
+                        std::lock_guard<std::mutex> lock(slotMutex);
+                        vivid::PreviewSlotInfo info;
+                        info.id = opId;
+                        info.slot = currentSlot;
+                        info.sourceLine = sourceLine;
+                        info.kind = vivid::OutputKind::Value;
+                        info.updated = true;
+                        slotInfo.push_back(info);
                     }
                 }
             }
 
-            // Send any pending previews that are ready
+            // Send metadata to WebSocket clients (no image data!)
             {
-                std::lock_guard<std::mutex> lock(previewMutex);
-                if (!pendingPreviews.empty()) {
-                    previewServer.sendNodeUpdates(pendingPreviews);
-                    pendingPreviews.clear();
+                std::lock_guard<std::mutex> lock(slotMutex);
+                if (!slotInfo.empty() && sharedPreview.isOpen()) {
+                    sharedPreview.incrementFrame();
+                    previewServer.sendPreviewMetadata(
+                        slotInfo,
+                        sharedPreview.memory()->header.frameNumber,
+                        sharedMemName
+                    );
+                    slotInfo.clear();
                 }
             }
 
@@ -377,6 +396,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Cleanup
+        sharedPreview.close();
         asyncReadback.shutdown();
         previewServer.stop();
         graph.cleanupAll();

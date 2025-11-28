@@ -14,6 +14,9 @@ export function activate(context: vscode.ExtensionContext) {
     outputChannel = vscode.window.createOutputChannel('Vivid');
     outputChannel.appendLine('Vivid extension activated');
 
+    // Store extension path for native module loading
+    extensionPath = context.extensionPath;
+
     decorationManager = new DecorationManager(context);
     statusBar = new StatusBar();
 
@@ -55,6 +58,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(outputChannel, statusBar);
 }
 
+let extensionPath: string = '';
+
 function connectToRuntime() {
     const config = vscode.workspace.getConfiguration('vivid');
     const port = config.get<number>('websocketPort') || 9876;
@@ -64,6 +69,12 @@ function connectToRuntime() {
     }
 
     runtimeClient = new RuntimeClient(port);
+
+    // Initialize shared memory support
+    if (extensionPath) {
+        const hasSharedMem = runtimeClient.initSharedMemory(extensionPath);
+        outputChannel.appendLine(`Shared memory support: ${hasSharedMem ? 'enabled' : 'disabled (native module not found)'}`);
+    }
 
     runtimeClient.onConnected(() => {
         outputChannel.appendLine('Connected to Vivid runtime');
