@@ -207,7 +207,10 @@ int main(int argc, char* argv[]) {
         // Timing
         auto startTime = std::chrono::high_resolution_clock::now();
         auto lastFrameTime = startTime;
+        auto lastFpsUpdate = startTime;
         int frameCount = 0;
+        int fpsFrameCount = 0;
+        float currentFps = 0.0f;
 
         // Main loop
         while (!window.shouldClose()) {
@@ -470,6 +473,20 @@ int main(int argc, char* argv[]) {
             window.clearInputState();
 
             frameCount++;
+            fpsFrameCount++;
+
+            // Update FPS display every 0.5 seconds
+            float timeSinceFpsUpdate = std::chrono::duration<float>(now - lastFpsUpdate).count();
+            if (timeSinceFpsUpdate >= 0.5f) {
+                currentFps = static_cast<float>(fpsFrameCount) / timeSinceFpsUpdate;
+                fpsFrameCount = 0;
+                lastFpsUpdate = now;
+
+                // Update window title with FPS
+                char titleBuf[128];
+                snprintf(titleBuf, sizeof(titleBuf), "Vivid - %.1f FPS", currentFps);
+                window.setTitle(titleBuf);
+            }
         }
 
         // Cleanup

@@ -46,6 +46,7 @@ struct VertexOutput {
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var inputSampler: sampler;
 @group(0) @binding(2) var inputTexture: texture_2d<f32>;
+@group(0) @binding(3) var inputTexture2: texture_2d<f32>;
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
@@ -866,7 +867,8 @@ Shader Renderer::loadShader(const std::string& wgslSource) {
     // Binding 0: Uniforms
     // Binding 1: Sampler
     // Binding 2: Input texture
-    WGPUBindGroupLayoutEntry layoutEntries[3] = {};
+    // Binding 3: Input texture 2 (for compositing, etc.)
+    WGPUBindGroupLayoutEntry layoutEntries[4] = {};
 
     layoutEntries[0].binding = 0;
     layoutEntries[0].visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Vertex;
@@ -882,8 +884,13 @@ Shader Renderer::loadShader(const std::string& wgslSource) {
     layoutEntries[2].texture.sampleType = WGPUTextureSampleType_Float;
     layoutEntries[2].texture.viewDimension = WGPUTextureViewDimension_2D;
 
+    layoutEntries[3].binding = 3;
+    layoutEntries[3].visibility = WGPUShaderStage_Fragment;
+    layoutEntries[3].texture.sampleType = WGPUTextureSampleType_Float;
+    layoutEntries[3].texture.viewDimension = WGPUTextureViewDimension_2D;
+
     WGPUBindGroupLayoutDescriptor layoutDesc = {};
-    layoutDesc.entryCount = 3;
+    layoutDesc.entryCount = 4;
     layoutDesc.entries = layoutEntries;
 
     shader.bindGroupLayout = wgpuDeviceCreateBindGroupLayout(device_, &layoutDesc);

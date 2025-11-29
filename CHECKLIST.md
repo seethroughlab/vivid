@@ -460,35 +460,39 @@ Build and test each operator individually:
 - [ ] Resolution and format configuration
 - [ ] Hot-swap camera detection
 
-### 12.4 Audio Input & Analysis
-- [ ] Integrate audio input (PortAudio or miniaudio)
-- [ ] Implement `AudioIn` operator (microphone/line-in)
+### 12.4 Audio Playback (Video)
+- [x] Integrate miniaudio for audio playback
+- [x] AudioPlayer class with ring buffer
+- [x] Video audio track decoding (AVFoundation)
+- [x] A/V sync support (audio plays alongside video)
+
+### 12.5 Audio Input & Analysis
+- [ ] Implement `AudioIn` operator (microphone/line-in via miniaudio)
 - [ ] Implement `FFT` operator (frequency spectrum)
 - [ ] Implement `AudioBands` operator (bass, mid, treble, etc.)
 - [ ] Beat detection (implement per `beat_detection.md` spec)
 
-### 12.5 Audio Synthesis & Output
-- [ ] Audio output support
+### 12.6 Audio Synthesis & Output
 - [ ] Basic oscillators (sine, saw, square, triangle)
 - [ ] Implement `Oscillator` operator
 - [ ] Implement `Envelope` operator (ADSR)
 - [ ] Implement `Filter` operator (lowpass, highpass, bandpass)
 - [ ] Audio file playback (WAV, MP3, OGG)
 
-### 12.6 MIDI
+### 12.7 MIDI
 - [ ] Integrate MIDI library (RtMidi or similar)
 - [ ] Implement `MidiIn` operator
 - [ ] Implement `MidiOut` operator
 - [ ] MIDI learn functionality
 - [ ] CC, note, and clock messages
 
-### 12.7 OSC (Open Sound Control)
+### 12.8 OSC (Open Sound Control)
 - [ ] Integrate OSC library (oscpack or liblo)
 - [ ] Implement `OscIn` operator
 - [ ] Implement `OscOut` operator
 - [ ] Address pattern matching
 
-### 12.8 3D Graphics & Instancing
+### 12.9 3D Graphics & Instancing
 **Instancing Path: 2D sprites → 3D geometry → Full instancing**
 
 - [ ] **Point Sprites** — Render texture at positions from value arrays (2D instancing)
@@ -504,13 +508,25 @@ Build and test each operator individually:
 - [ ] OBJ model loading
 - [ ] GLTF model loading (optional)
 
-### 12.9 Text & Vector
-- [ ] Integrate font rendering (stb_truetype or FreeType)
-- [ ] Implement `Text` operator
-- [ ] Font selection and styling
+### 12.10 Text, Debug Display & Vector
+
+#### Debug Display
+- [x] FPS counter in window title (updates every 0.5s)
+- [ ] On-screen FPS overlay via stb_truetype
+- [ ] Debug info overlay (resolution, frame time, operator count)
+
+#### Text Rendering
+- [ ] Integrate stb_truetype for font rendering
+- [ ] Font atlas generation from TTF files
+- [ ] TextRenderer class for GPU text rendering
+- [ ] Implement `Text` operator with text string input
+- [ ] Font selection and styling (size, color, alignment)
+- [ ] Multi-line text support
+
+#### Vector Graphics
 - [ ] SVG loading and rendering (optional)
 
-### 12.10 Recording & Output
+### 12.11 Recording & Output
 **Note: FFmpeg used for encoding (separate from decode path)**
 
 - [ ] Image sequence export (PNG, JPG via stb_image_write)
@@ -520,14 +536,14 @@ Build and test each operator individually:
 - [ ] Frame-accurate offline rendering (fixed timestep)
 - [ ] Audio mixdown to video (when audio support added)
 
-### 12.11 Texture Sharing
+### 12.12 Texture Sharing
 - [ ] Syphon support (macOS)
 - [ ] Spout support (Windows)
 - [ ] NDI support (cross-platform, optional)
 - [ ] Implement `SyphonOut`/`SpoutOut` operators
 - [ ] Implement `SyphonIn`/`SpoutIn` operators
 
-### 12.12 Input Devices
+### 12.13 Input Devices
 - [ ] Mouse position and button state in Context
 - [x] Keyboard state in Context (`isKeyDown`, `wasKeyPressed`, `wasKeyReleased`)
 - [x] Key constants in `vivid/keys.h` (matching GLFW codes)
@@ -535,7 +551,7 @@ Build and test each operator individually:
 - [ ] Game controller support (SDL_GameController or similar)
 - [ ] Implement `GamepadIn` operator
 
-### 12.13 Advanced Window Management
+### 12.14 Advanced Window Management
 **Priority: High — Essential for performance/installation work**
 
 - [ ] User-configurable resolution (from project config or runtime args)
@@ -547,13 +563,13 @@ Build and test each operator individually:
 - [ ] Cursor hiding/showing
 - [ ] Implement `WindowSettings` in Context or config file
 
-### 12.14 Native GUI / WebView
+### 12.15 Native GUI / WebView
 - [ ] Integrate native WebView (WebView2 on Windows, WKWebView on macOS)
 - [ ] Optional control panel window for parameter tweaking
 - [ ] HTML/CSS/JS-based UI for custom operator interfaces
 - [ ] Communication bridge between WebView and runtime
 
-### 12.15 VST/AU Plugin Support (Future)
+### 12.16 VST/AU Plugin Support (Future)
 **Priority: Low — Nice to have for advanced audio work**
 
 - [ ] Research plugin hosting framework (JUCE vs VST3 SDK)

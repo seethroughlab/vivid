@@ -58,6 +58,12 @@ void Window::swapBuffers() {
     // But kept for potential future use
 }
 
+void Window::setTitle(const std::string& title) {
+    if (window_) {
+        glfwSetWindowTitle(window_, title.c_str());
+    }
+}
+
 void Window::setResizeCallback(void (*callback)(int, int, void*), void* userdata) {
     resizeCallback_ = callback;
     resizeUserdata_ = userdata;

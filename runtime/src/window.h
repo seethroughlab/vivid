@@ -28,6 +28,9 @@ public:
     bool wasResized() const { return resized_; }
     void clearResizedFlag() { resized_ = false; }
 
+    // Window properties
+    void setTitle(const std::string& title);
+
     // Set resize callback
     void setResizeCallback(void (*callback)(int width, int height, void* userdata), void* userdata);
 

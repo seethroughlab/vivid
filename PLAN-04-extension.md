@@ -1720,6 +1720,66 @@ code --install-extension vivid-0.1.0.vsix
 
 ---
 
+## On-Screen Text Rendering (Future)
+
+For debug overlays and text operators, implement GPU text rendering using stb_truetype.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        TextRenderer                              │
+├─────────────────────────────────────────────────────────────────┤
+│  1. Load TTF font via stb_truetype                              │
+│  2. Generate font atlas texture (glyph bitmaps packed)          │
+│  3. Cache glyph metrics (advance, bearing, UV coords)           │
+│  4. Render text as textured quads using instanced rendering     │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Steps
+
+1. **Font Atlas Generation** (`runtime/src/font_atlas.cpp`)
+   - Load TTF file with `stb_truetype.h` (already have stb)
+   - Render ASCII glyphs (32-126) to bitmap
+   - Pack into single texture atlas (512x512 or 1024x1024)
+   - Store glyph metrics: x0, y0, x1, y1, xoff, yoff, advance
+
+2. **TextRenderer Class** (`runtime/src/text_renderer.cpp`)
+   - Single instance owned by Renderer or Context
+   - `loadFont(path, size)` - generate atlas for font/size combo
+   - `drawText(text, x, y, color)` - queue text for rendering
+   - `flush()` - render all queued text (called after main content)
+   - Use instanced rendering for efficiency
+
+3. **Debug Overlay** (optional)
+   - Toggle with F3 or config option
+   - Show: FPS, frame time, resolution, operator count
+   - Fixed position (top-left corner)
+
+4. **Text Operator** (`operators/text.cpp`)
+   - Input: text string (potentially from other operators)
+   - Parameters: font, size, color, position, alignment
+   - Output: texture with rendered text (for compositing)
+
+### Example Usage
+
+```cpp
+// In main loop, after rendering operators:
+if (showDebugOverlay) {
+    textRenderer.drawText(fmt::format("FPS: {:.1f}", fps), 10, 10, {1,1,1,1});
+    textRenderer.drawText(fmt::format("{}x{}", width, height), 10, 30, {1,1,1,1});
+    textRenderer.flush();
+}
+```
+
+### Dependencies
+
+- `stb_truetype.h` (already available via stb)
+- Optionally bundle a default font (e.g., Roboto Mono)
+
+---
+
 ## Complete Project Checklist
 
 After implementing all four parts, you should have:
