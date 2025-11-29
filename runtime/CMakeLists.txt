@@ -25,6 +25,7 @@ set(RUNTIME_SOURCES
     src/audio_player.cpp
     src/mesh.cpp
     src/pipeline3d.cpp
+    src/pipeline3d_instanced.cpp
     src/pipeline2d.cpp
 )
 

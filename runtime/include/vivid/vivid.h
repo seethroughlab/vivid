@@ -48,6 +48,8 @@
 #include "operators/chromatic_aberration.h"
 #include "operators/pixelate.h"
 #include "operators/scanlines.h"
+#include "operators/bloom.h"
+#include "operators/vignette.h"
 
 // Built-in Operators - Utility
 #include "operators/switch.h"

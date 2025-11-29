@@ -99,6 +99,30 @@ struct Mesh3D {
 };
 
 /**
+ * @brief Per-instance data for GPU instanced rendering.
+ *
+ * Contains transform and color for each instance. Used with drawMeshInstanced().
+ */
+struct Instance3D {
+    glm::mat4 model{1.0f};     // Model transform matrix (64 bytes)
+    glm::vec4 color{1.0f};     // Instance color (16 bytes)
+
+    Instance3D() = default;
+
+    Instance3D(const glm::mat4& m, const glm::vec4& c)
+        : model(m), color(c) {}
+
+    Instance3D(const glm::vec3& position, const glm::vec3& scale, const glm::vec4& c)
+        : color(c) {
+        model = glm::translate(glm::mat4(1.0f), position);
+        model = glm::scale(model, scale);
+    }
+
+    Instance3D(const glm::vec3& position, float uniformScale, const glm::vec4& c)
+        : Instance3D(position, glm::vec3(uniformScale), c) {}
+};
+
+/**
  * @brief Opaque handle to a 3D render pipeline.
  */
 struct Pipeline3D {

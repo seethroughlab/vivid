@@ -6,6 +6,7 @@
 #include "camera_capture.h"
 #include "mesh.h"
 #include "pipeline3d.h"
+#include "pipeline3d_instanced.h"
 #include "pipeline2d.h"
 #include <unordered_set>
 #include <iostream>
@@ -625,6 +626,26 @@ private:
     Pipeline2DInternal pipeline_;
 };
 
+// 3D Instanced Rendering Implementation
+class Renderer3DInstancedImpl {
+public:
+    Renderer3DInstancedImpl(Renderer& renderer) : renderer_(renderer) {
+        instancedRenderer_.init(renderer);
+    }
+
+    ~Renderer3DInstancedImpl() = default;
+
+    void drawInstanced(const Mesh& mesh, const std::vector<Instance3D>& instances,
+                       const Camera3D& camera, Texture& output,
+                       const glm::vec4& clearColor) {
+        instancedRenderer_.drawInstanced(mesh, instances, camera, output, clearColor);
+    }
+
+private:
+    Renderer& renderer_;
+    Renderer3DInstanced instancedRenderer_;
+};
+
 // Destructor must be defined after Renderer3DImpl/Renderer2DImpl are complete
 Context::~Context() = default;
 
@@ -729,6 +750,24 @@ Renderer2DImpl& Context::getRenderer2D() {
 void Context::drawCircles(const std::vector<Circle2D>& circles, Texture& output,
                           const glm::vec4& clearColor) {
     getRenderer2D().drawCircles(circles, output, clearColor);
+}
+
+// 3D Instanced Rendering
+Renderer3DInstancedImpl& Context::getRenderer3DInstanced() {
+    if (!renderer3dInstanced_) {
+        renderer3dInstanced_ = std::make_unique<Renderer3DInstancedImpl>(renderer_);
+    }
+    return *renderer3dInstanced_;
+}
+
+void Context::drawMeshInstanced(const Mesh3D& mesh,
+                                 const std::vector<Instance3D>& instances,
+                                 const Camera3D& camera, Texture& output,
+                                 const glm::vec4& clearColor) {
+    if (!mesh.valid() || instances.empty()) return;
+    getRenderer3DInstanced().drawInstanced(
+        *static_cast<const Mesh*>(mesh.handle),
+        instances, camera, output, clearColor);
 }
 
 } // namespace vivid

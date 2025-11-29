@@ -14,6 +14,7 @@ class Window;
 struct Shader;
 class Renderer3DImpl;
 class Renderer2DImpl;
+class Renderer3DInstancedImpl;
 
 /**
  * @brief Runtime context providing access to time, textures, shaders, and operator communication.
@@ -512,6 +513,24 @@ public:
                   const Camera3D& camera, Texture& output,
                   const glm::vec4& clearColor = {0, 0, 0, 1});
 
+    /**
+     * @brief Render many instances of a mesh using GPU instancing.
+     *
+     * Efficiently renders thousands of instances in a single draw call.
+     * Each instance has its own transform matrix and color.
+     * Uses hemisphere lighting.
+     *
+     * @param mesh The mesh to render (shared by all instances).
+     * @param instances Per-instance data (transform + color).
+     * @param camera The camera viewpoint.
+     * @param output Target texture to render into.
+     * @param clearColor Background color (default dark blue).
+     */
+    void drawMeshInstanced(const Mesh3D& mesh,
+                           const std::vector<Instance3D>& instances,
+                           const Camera3D& camera, Texture& output,
+                           const glm::vec4& clearColor = {0.05f, 0.05f, 0.1f, 1.0f});
+
     /// @}
 
     /// @name 2D Instanced Rendering
@@ -573,6 +592,10 @@ private:
     // 2D instanced rendering support (lazy initialized)
     std::unique_ptr<Renderer2DImpl> renderer2d_;
     Renderer2DImpl& getRenderer2D();
+
+    // 3D instanced rendering support (lazy initialized)
+    std::unique_ptr<Renderer3DInstancedImpl> renderer3dInstanced_;
+    Renderer3DInstancedImpl& getRenderer3DInstanced();
 };
 
 } // namespace vivid

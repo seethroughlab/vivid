@@ -58,6 +58,8 @@ public:
     uint32_t vertexCount() const { return vertexCount_; }
     uint32_t indexCount() const { return indexCount_; }
     const BoundingBox& bounds() const { return bounds_; }
+    WGPUBuffer vertexBuffer() const { return vertexBuffer_; }
+    WGPUBuffer indexBuffer() const { return indexBuffer_; }
 
     /**
      * @brief Get the vertex buffer layout for pipeline creation.
