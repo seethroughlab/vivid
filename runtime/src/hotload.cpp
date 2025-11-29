@@ -40,10 +40,22 @@ bool HotLoader::load(const std::string& libraryPath) {
 
     libraryPath_ = libraryPath;
 
-    // Get create function
+    // First, try Chain API (setup/update pattern)
+    setupFunc_ = reinterpret_cast<SetupFunc>(GET_SYMBOL(handle_, "vivid_setup"));
+    updateFunc_ = reinterpret_cast<UpdateFunc>(GET_SYMBOL(handle_, "vivid_update"));
+
+    if (setupFunc_) {
+        std::cout << "[HotLoader] Found Chain API (vivid_setup) in " << libraryPath << "\n";
+        if (updateFunc_) {
+            std::cout << "[HotLoader] Found vivid_update for per-frame updates\n";
+        }
+        return true;
+    }
+
+    // Fall back to legacy single-operator API
     auto createFunc = reinterpret_cast<CreateFunc>(GET_SYMBOL(handle_, "vivid_create_operator"));
     if (!createFunc) {
-        std::cerr << "[HotLoader] Missing vivid_create_operator in " << libraryPath << "\n";
+        std::cerr << "[HotLoader] No vivid_setup or vivid_create_operator in " << libraryPath << "\n";
         CLOSE_LIBRARY(handle_);
         handle_ = nullptr;
         libraryPath_.clear();
@@ -69,12 +81,12 @@ bool HotLoader::load(const std::string& libraryPath) {
         std::cerr << "[HotLoader] vivid_create_operator returned nullptr\n";
     }
 
-    std::cout << "[HotLoader] Loaded " << libraryPath << " (" << operators_.size() << " operators)\n";
+    std::cout << "[HotLoader] Loaded " << libraryPath << " (legacy mode, " << operators_.size() << " operators)\n";
     return true;
 }
 
 void HotLoader::unload() {
-    // Destroy operators
+    // Destroy operators (legacy mode)
     if (destroyFunc_) {
         for (auto* op : operators_) {
             if (op) {
@@ -93,6 +105,8 @@ void HotLoader::unload() {
 
     libraryPath_.clear();
     destroyFunc_ = nullptr;
+    setupFunc_ = nullptr;
+    updateFunc_ = nullptr;
 }
 
 } // namespace vivid

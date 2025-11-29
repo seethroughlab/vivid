@@ -1,6 +1,8 @@
 // Video Playback Example
-// Demonstrates the built-in VideoFile operator with multiple videos
+// Demonstrates the VideoFile operator with Chain API
 // Press SPACE to switch between videos
+// Press LEFT/RIGHT to seek
+// Press P to pause/play
 
 #include <vivid/vivid.h>
 #include <filesystem>
@@ -10,83 +12,89 @@
 namespace fs = std::filesystem;
 using namespace vivid;
 
-class VideoChain : public Operator {
-public:
-    void init(Context& ctx) override {
-        // Find all video files in the assets folder
-        videoPaths_ = findVideoFiles("examples/video-playback/assets");
+// Track video files and current index
+static std::vector<std::string> videoPaths;
+static size_t currentIndex = 0;
 
-        if (videoPaths_.empty()) {
-            std::cerr << "[VideoChain] No video files found in assets folder\n";
-            return;
-        }
+std::vector<std::string> findVideoFiles(const std::string& directory) {
+    std::vector<std::string> videos;
+    static const std::vector<std::string> videoExtensions = {
+        ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".MP4", ".MOV"
+    };
 
-        std::cout << "[VideoChain] Found " << videoPaths_.size() << " video(s):\n";
-        for (const auto& path : videoPaths_) {
-            std::cout << "  - " << path << "\n";
-        }
-
-        currentIndex_ = 0;
-        loadCurrentVideo();
-    }
-
-    static std::vector<std::string> findVideoFiles(const std::string& directory) {
-        std::vector<std::string> videos;
-
-        // Video extensions to look for
-        static const std::vector<std::string> videoExtensions = {
-            ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".MP4", ".MOV"
-        };
-
-        try {
-            // Recursively search directory and subdirectories
-            for (const auto& entry : fs::recursive_directory_iterator(directory)) {
-                if (!entry.is_regular_file()) continue;
-
-                std::string ext = entry.path().extension().string();
-                for (const auto& videoExt : videoExtensions) {
-                    if (ext == videoExt) {
-                        videos.push_back(entry.path().string());
-                        break;
-                    }
+    try {
+        for (const auto& entry : fs::recursive_directory_iterator(directory)) {
+            if (!entry.is_regular_file()) continue;
+            std::string ext = entry.path().extension().string();
+            for (const auto& videoExt : videoExtensions) {
+                if (ext == videoExt) {
+                    videos.push_back(entry.path().string());
+                    break;
                 }
             }
-
-            // Sort alphabetically for consistent ordering
-            std::sort(videos.begin(), videos.end());
-        } catch (const std::exception& e) {
-            std::cerr << "[VideoChain] Error scanning directory: " << e.what() << "\n";
         }
+        std::sort(videos.begin(), videos.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[VideoPlayback] Error scanning directory: " << e.what() << "\n";
+    }
+    return videos;
+}
 
-        return videos;
+void setup(Chain& chain) {
+    // Find all video files
+    videoPaths = findVideoFiles("examples/video-playback/assets");
+
+    if (videoPaths.empty()) {
+        std::cerr << "[VideoPlayback] No video files found in assets folder\n";
+        std::cerr << "[VideoPlayback] Place .mp4/.mov files in examples/video-playback/assets/\n";
+        return;
     }
 
-    void process(Context& ctx) override {
-        if (videoPaths_.empty()) return;
-
-        // Switch video on spacebar press
-        if (ctx.wasKeyPressed(Key::Space)) {
-            currentIndex_ = (currentIndex_ + 1) % videoPaths_.size();
-            loadCurrentVideo();
-            std::cout << "[VideoChain] Switched to: " << videoPaths_[currentIndex_] << "\n";
-        }
-
-        video_.process(ctx);
+    std::cout << "[VideoPlayback] Found " << videoPaths.size() << " video(s):\n";
+    for (const auto& path : videoPaths) {
+        std::cout << "  - " << path << "\n";
     }
 
-    OutputKind outputKind() override { return OutputKind::Texture; }
+    // Create video player with first video
+    chain.add<VideoFile>("video")
+        .path(videoPaths[0])
+        .loop(true)
+        .speed(1.0f)
+        .play();
 
-private:
-    void loadCurrentVideo() {
-        video_.path(videoPaths_[currentIndex_])
-              .loop(true)
-              .speed(1.0f)
-              .play();
+    // Add some color enhancement
+    chain.add<HSV>("color")
+        .input("video")
+        .saturation(1.1f)
+        .brightness(1.0f);
+
+    chain.setOutput("color");
+}
+
+void update(Chain& chain, Context& ctx) {
+    if (videoPaths.empty()) return;
+
+    // SPACE: Switch to next video
+    if (ctx.wasKeyPressed(Key::Space)) {
+        currentIndex = (currentIndex + 1) % videoPaths.size();
+        chain.get<VideoFile>("video")
+            .path(videoPaths[currentIndex])
+            .play();
+        std::cout << "[VideoPlayback] Now playing: " << videoPaths[currentIndex] << "\n";
     }
 
-    VideoFile video_;
-    std::vector<std::string> videoPaths_;
-    size_t currentIndex_ = 0;
-};
+    // P: Toggle pause
+    if (ctx.wasKeyPressed(Key::P)) {
+        chain.get<VideoFile>("video").toggle();
+    }
 
-VIVID_OPERATOR(VideoChain)
+    // LEFT/RIGHT: Seek
+    if (ctx.wasKeyPressed(Key::Left)) {
+        chain.get<VideoFile>("video").seek(0.0f);  // Back to start
+    }
+    if (ctx.wasKeyPressed(Key::Right)) {
+        chain.get<VideoFile>("video").seek(0.5f);  // Jump to middle
+    }
+}
+
+VIVID_CHAIN(setup, update)

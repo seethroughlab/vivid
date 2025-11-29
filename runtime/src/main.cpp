@@ -20,6 +20,7 @@
 #include <chrono>
 #include <algorithm>
 #include <mutex>
+#include <map>
 
 // Callback for stb_image_write JPEG encoding to memory
 static void jpegWriteCallback(void* context, void* data, int size) {
@@ -144,6 +145,10 @@ int main(int argc, char* argv[]) {
         vivid::Compiler compiler(projectPath);
         vivid::Graph graph;
 
+        // Chain API support
+        std::unique_ptr<vivid::Chain> chain;
+        bool usingChainAPI = false;
+
         // Flags for hot-reload events
         bool needsRecompile = false;
         std::string shaderToReload;
@@ -191,9 +196,20 @@ int main(int argc, char* argv[]) {
         if (result.success) {
             std::cout << "Compiled successfully: " << result.libraryPath << "\n";
             if (hotLoader.load(result.libraryPath)) {
-                std::cout << "Loaded " << hotLoader.operators().size() << " operator(s)\n";
-                graph.rebuild(hotLoader.operators());
-                graph.initAll(ctx);
+                if (hotLoader.usesChainAPI()) {
+                    // Chain API: create chain, call setup(), then init()
+                    usingChainAPI = true;
+                    chain = std::make_unique<vivid::Chain>();
+                    hotLoader.callSetup(*chain);
+                    chain->init(ctx);
+                    std::cout << "Chain initialized with " << chain->size() << " operator(s)\n";
+                } else {
+                    // Legacy API: single operator
+                    usingChainAPI = false;
+                    std::cout << "Loaded " << hotLoader.operators().size() << " operator(s)\n";
+                    graph.rebuild(hotLoader.operators());
+                    graph.initAll(ctx);
+                }
             } else {
                 std::cerr << "Failed to load library\n";
             }
@@ -225,11 +241,21 @@ int main(int argc, char* argv[]) {
                 std::cout << "\n--- Hot Reload ---\n";
 
                 // 1. Save state from current operators
-                auto savedStates = graph.saveAllStates();
+                std::map<std::string, std::unique_ptr<vivid::OperatorState>> savedStates;
+                if (usingChainAPI && chain) {
+                    savedStates = chain->saveAllStates();
+                } else {
+                    savedStates = graph.saveAllStates();
+                }
 
                 // 2. Cleanup and unload old library
-                graph.cleanupAll();
-                graph.clear();
+                if (usingChainAPI && chain) {
+                    chain->cleanup();
+                    chain.reset();
+                } else {
+                    graph.cleanupAll();
+                    graph.clear();
+                }
                 hotLoader.unload();
                 ctx.clearOutputs();
                 ctx.clearShaderCache();
@@ -241,12 +267,22 @@ int main(int argc, char* argv[]) {
 
                     // 4. Load new library
                     if (hotLoader.load(compileResult.libraryPath)) {
-                        std::cout << "Loaded " << hotLoader.operators().size() << " operator(s)\n";
-
-                        // 5. Rebuild graph, initialize, and restore state
-                        graph.rebuild(hotLoader.operators());
-                        graph.initAll(ctx);
-                        graph.restoreAllStates(savedStates);
+                        if (hotLoader.usesChainAPI()) {
+                            // Chain API reload
+                            usingChainAPI = true;
+                            chain = std::make_unique<vivid::Chain>();
+                            hotLoader.callSetup(*chain);
+                            chain->init(ctx);
+                            chain->restoreAllStates(savedStates);
+                            std::cout << "Chain reloaded with " << chain->size() << " operator(s)\n";
+                        } else {
+                            // Legacy API reload
+                            usingChainAPI = false;
+                            std::cout << "Loaded " << hotLoader.operators().size() << " operator(s)\n";
+                            graph.rebuild(hotLoader.operators());
+                            graph.initAll(ctx);
+                            graph.restoreAllStates(savedStates);
+                        }
                         std::cout << "Hot reload complete!\n";
 
                         // Notify connected clients
@@ -290,11 +326,20 @@ int main(int argc, char* argv[]) {
             }
             ctx.beginFrame(time, deltaTime, frameCount);
 
-            // Execute operator graph
-            graph.execute(ctx);
+            // Execute operators
+            vivid::Texture* finalOutput = nullptr;
+            if (usingChainAPI && chain) {
+                // Chain API: call update() then process()
+                hotLoader.callUpdate(*chain, ctx);
+                chain->process(ctx);
+                finalOutput = chain->getOutput(ctx);
+            } else {
+                // Legacy API: execute graph
+                graph.execute(ctx);
+                finalOutput = graph.finalOutput(ctx);
+            }
 
-            // Get final output from graph and blit to screen
-            vivid::Texture* finalOutput = graph.finalOutput(ctx);
+            // Blit final output to screen
             if (finalOutput && finalOutput->valid()) {
                 renderer.blitToScreen(*finalOutput);
             }
@@ -494,8 +539,13 @@ int main(int argc, char* argv[]) {
         sharedPreview.close();
         asyncReadback.shutdown();
         previewServer.stop();
-        graph.cleanupAll();
-        graph.clear();
+        if (usingChainAPI && chain) {
+            chain->cleanup();
+            chain.reset();
+        } else {
+            graph.cleanupAll();
+            graph.clear();
+        }
         hotLoader.unload();
         fileWatcher.stop();
         ctx.clearShaderCache();

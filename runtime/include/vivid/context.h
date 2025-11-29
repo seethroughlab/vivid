@@ -420,6 +420,12 @@ public:
     void clearOutputs();
     void clearShaderCache();
 
+    /// @brief Set the current node name for output prefixing (used by Chain API)
+    void setCurrentNode(const std::string& nodeId) { currentNode_ = nodeId; }
+
+    /// @brief Clear the current node name
+    void clearCurrentNode() { currentNode_.clear(); }
+
 private:
     // Get or load a cached shader
     Shader* getCachedShader(const std::string& path);
@@ -438,6 +444,9 @@ private:
 
     // Shader cache to avoid recompiling every frame
     std::unordered_map<std::string, std::unique_ptr<Shader>> shaderCache_;
+
+    // Current node name for Chain API output prefixing
+    std::string currentNode_;
 };
 
 } // namespace vivid

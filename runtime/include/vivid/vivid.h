@@ -12,6 +12,7 @@
 #include "types.h"
 #include "context.h"
 #include "operator.h"
+#include "chain.h"
 #include "node_macro.h"
 #include "params.h"
 #include "param_ref.h"
@@ -20,6 +21,7 @@
 // Built-in Operators - Media
 #include "operators/videofile.h"
 #include "operators/imagefile.h"
+#include "operators/webcam.h"
 
 // Built-in Operators - Generators
 #include "operators/noise.h"
@@ -41,12 +43,12 @@
 #include "operators/transform.h"
 #include "operators/displacement.h"
 #include "operators/edge.h"
+#include "operators/mirror.h"
+#include "operators/chromatic_aberration.h"
+#include "operators/pixelate.h"
+#include "operators/scanlines.h"
 
 // Built-in Operators - Utility
 #include "operators/switch.h"
 #include "operators/passthrough.h"
 #include "operators/reference.h"
-
-// User implements this function in their project
-// Called once at startup and after each hot-reload
-extern void setup(vivid::Context& ctx);

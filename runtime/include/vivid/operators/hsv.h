@@ -27,10 +27,14 @@ public:
     HSVAdjust& input(const std::string& node) { inputNode_ = node; return *this; }
     /// Set hue shift (-1.0 to 1.0, wraps around)
     HSVAdjust& hueShift(float h) { hueShift_ = h; return *this; }
-    /// Set saturation multiplier (1.0 = unchanged)
+    /// Set saturation multiplier (1.0 = unchanged) or absolute value in colorize mode
     HSVAdjust& saturation(float s) { saturation_ = s; return *this; }
     /// Set value/brightness multiplier (1.0 = unchanged)
     HSVAdjust& value(float v) { value_ = v; return *this; }
+    /// Alias for value()
+    HSVAdjust& brightness(float b) { value_ = b; return *this; }
+    /// Enable colorize mode (sets saturation absolutely, good for grayscale input)
+    HSVAdjust& colorize(bool c = true) { colorize_ = c; return *this; }
 
     void init(Context& ctx) override {
         output_ = ctx.createTexture();
@@ -43,6 +47,7 @@ public:
         params.param0 = hueShift_;
         params.param1 = saturation_;
         params.param2 = value_;
+        params.mode = colorize_ ? 1 : 0;
 
         ctx.runShader("shaders/hsv.wgsl", input, output_, params);
         ctx.setOutput("out", output_);
@@ -63,7 +68,11 @@ private:
     float hueShift_ = 0.0f;
     float saturation_ = 1.0f;
     float value_ = 1.0f;
+    bool colorize_ = false;
     Texture output_;
 };
+
+// Convenient alias
+using HSV = HSVAdjust;
 
 } // namespace vivid

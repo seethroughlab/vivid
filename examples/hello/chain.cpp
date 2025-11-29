@@ -1,78 +1,37 @@
 // Hello World Vivid Example
-// A simple operator chain that outputs animated noise with parameters
+// A simple operator chain that outputs animated noise
+//
+// This demonstrates the Chain API using built-in operators.
+// Parameters can be adjusted via the VS Code extension.
 
 #include <vivid/vivid.h>
-#include <cmath>
 
 using namespace vivid;
 
-// State for preserving animation phase across hot-reload
-struct NoiseState : OperatorState {
-    float phase = 0.0f;
-};
+// Setup is called once when the chain is first loaded
+void setup(Chain& chain) {
+    // Create animated noise
+    chain.add<Noise>("noise")
+        .scale(4.0f)
+        .speed(1.0f)
+        .octaves(4);
 
-// Noise operator with configurable parameters
-class NoiseOperator : public Operator {
-public:
-    NoiseOperator() = default;
+    // Apply HSV color transformation
+    chain.add<HSV>("color")
+        .input("noise")
+        .saturation(1.5f)
+        .brightness(1.0f);
 
-    void init(Context& ctx) override {
-        output_ = ctx.createTexture();
-    }
+    // Set the output
+    chain.setOutput("color");
+}
 
-    void process(Context& ctx) override {
-        // Animate the phase over time
-        phase_ += ctx.dt() * speed_;
+// Update is called every frame - use for dynamic parameter changes
+void update(Chain& chain, Context& ctx) {
+    // Cycle hue over time for animated colors
+    float hue = std::fmod(ctx.time() * 0.1f, 1.0f);
+    chain.get<HSV>("color").hueShift(hue);
+}
 
-        // Set up shader parameters
-        Context::ShaderParams params;
-        params.param0 = scale_;      // scale
-        params.param1 = phase_;      // phase (animated)
-        params.param2 = static_cast<float>(octaves_);
-        params.param3 = lacunarity_;
-        params.param4 = persistence_;
-
-        ctx.runShader("shaders/noise.wgsl", nullptr, output_, params);
-        ctx.setOutput("out", output_);
-    }
-
-    void cleanup() override {}
-
-    std::unique_ptr<OperatorState> saveState() override {
-        auto state = std::make_unique<NoiseState>();
-        state->phase = phase_;
-        return state;
-    }
-
-    void loadState(std::unique_ptr<OperatorState> state) override {
-        if (auto* s = dynamic_cast<NoiseState*>(state.get())) {
-            phase_ = s->phase;
-        }
-    }
-
-    OutputKind outputKind() override {
-        return OutputKind::Texture;
-    }
-
-    std::vector<ParamDecl> params() override {
-        return {
-            floatParam("scale", scale_, 0.1f, 50.0f),
-            floatParam("speed", speed_, 0.0f, 10.0f),
-            intParam("octaves", octaves_, 1, 8),
-            floatParam("lacunarity", lacunarity_, 1.0f, 4.0f),
-            floatParam("persistence", persistence_, 0.0f, 1.0f)
-        };
-    }
-
-private:
-    float scale_ = 4.0f;
-    float speed_ = 1.0f;
-    int octaves_ = 4;
-    float lacunarity_ = 2.0f;
-    float persistence_ = 0.5f;
-    float phase_ = 0.0f;
-    Texture output_;
-};
-
-// Export the operator for hot-loading
-VIVID_OPERATOR(NoiseOperator)
+// Export the entry points
+VIVID_CHAIN(setup, update)

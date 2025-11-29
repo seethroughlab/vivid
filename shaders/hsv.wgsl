@@ -1,8 +1,9 @@
 // HSV Adjustment shader
 // Uses uniforms:
 //   u.param0 = hueShift (-1 to 1, wraps)
-//   u.param1 = saturation multiplier
-//   u.param2 = value multiplier
+//   u.param1 = saturation (multiplier in mode 0, absolute in mode 1)
+//   u.param2 = value/brightness multiplier
+//   u.mode = 0: multiply saturation, 1: colorize (set saturation for grayscale)
 
 fn rgb2hsv(c: vec3f) -> vec3f {
     let K = vec4f(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
@@ -25,12 +26,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let hueShift = u.param0;
     let saturation = u.param1;
     let value = u.param2;
+    let mode = u.mode;
 
     let color = textureSample(inputTexture, inputSampler, in.uv).rgb;
 
     var hsv = rgb2hsv(color);
     hsv.x = fract(hsv.x + hueShift);
-    hsv.y = hsv.y * saturation;
+
+    if (mode == 1) {
+        // Colorize mode: set saturation to a fixed value (good for grayscale input)
+        hsv.y = saturation;
+    } else {
+        // Normal mode: multiply existing saturation
+        hsv.y = hsv.y * saturation;
+    }
+
     hsv.z = hsv.z * value;
 
     let rgb = hsv2rgb(hsv);

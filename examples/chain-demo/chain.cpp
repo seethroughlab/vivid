@@ -1,53 +1,52 @@
-// Feedback Example
-// Demonstrates video feedback with trails and motion effects
+// Chain API Demo
+// Demonstrates the declarative Chain API for composing operators
 //
-// This example creates a hypnotic feedback loop using the Chain API:
-// - Noise generator as seed pattern
-// - Feedback for zoom/rotation tunnel effect
+// This example creates an animated visual using:
+// - Noise generator as the base pattern
+// - Feedback for trails effect
 // - Mirror for kaleidoscope symmetry
 // - HSV for color cycling
 //
 // Controls:
 //   Mouse X: Rotation speed
 //   Mouse Y: Zoom amount
-//   Left click: Clear/reset feedback
-//   Right click: Toggle kaleidoscope
 
 #include <vivid/vivid.h>
 
 using namespace vivid;
 
-// Track interactive state
-static bool kaleidoEnabled = true;
-
+// Setup is called once when the chain is first loaded
 void setup(Chain& chain) {
-    // Stage 1: Animated noise as seed pattern
+    // Create animated noise as the base pattern
     chain.add<Noise>("noise")
         .scale(4.0f)
         .speed(0.3f)
-        .octaves(3);
+        .octaves(4);  // Fractal noise
 
-    // Stage 2: Feedback with zoom/rotation for tunnel effect
+    // Feedback creates trails/tunnel effect
     chain.add<Feedback>("feedback")
         .input("noise")
         .decay(0.92f)
         .zoom(1.02f)
         .rotate(0.01f);
 
-    // Stage 3: Kaleidoscope mirror for symmetry
+    // Mirror adds kaleidoscope symmetry
     chain.add<Mirror>("mirror")
         .input("feedback")
         .kaleidoscope(6);
 
-    // Stage 4: HSV color adjustment
+    // HSV for color cycling (colorize mode for grayscale input)
     chain.add<HSV>("color")
         .input("mirror")
-        .saturation(1.2f)
+        .colorize(true)
+        .saturation(0.8f)
         .brightness(1.05f);
 
+    // Set the output
     chain.setOutput("color");
 }
 
+// Update is called every frame - use for dynamic parameter changes
 void update(Chain& chain, Context& ctx) {
     // Mouse X controls rotation speed
     float rotation = (ctx.mouseNormX() - 0.5f) * 0.1f;
@@ -57,28 +56,17 @@ void update(Chain& chain, Context& ctx) {
     float zoom = 0.98f + ctx.mouseNormY() * 0.06f;
     chain.get<Feedback>("feedback").zoom(zoom);
 
-    // Left click clears feedback
+    // Cycle hue over time
+    float hue = std::fmod(ctx.time() * 0.05f, 1.0f);
+    chain.get<HSV>("color").hueShift(hue);
+
+    // Clear feedback on click
     if (ctx.wasMousePressed(0)) {
         chain.get<Feedback>("feedback").decay(0.0f);
     } else {
         chain.get<Feedback>("feedback").decay(0.92f);
     }
-
-    // Right click toggles kaleidoscope
-    if (ctx.wasMousePressed(1)) {
-        kaleidoEnabled = !kaleidoEnabled;
-    }
-
-    // Adjust mirror based on kaleidoscope state
-    if (kaleidoEnabled) {
-        chain.get<Mirror>("mirror").kaleidoscope(6);
-    } else {
-        chain.get<Mirror>("mirror").mode(0);  // No mirroring
-    }
-
-    // Cycle hue over time
-    float hue = std::fmod(ctx.time() * 0.05f, 1.0f);
-    chain.get<HSV>("color").hueShift(hue);
 }
 
+// Export the entry points
 VIVID_CHAIN(setup, update)

@@ -160,6 +160,7 @@ protected:
     #define VIVID_EXPORT extern "C" __attribute__((visibility("default")))
 #endif
 
+// Legacy single-operator macro (for backwards compatibility)
 #define VIVID_OPERATOR(ClassName) \
     static const int vivid_source_line_ = __LINE__; \
     VIVID_EXPORT vivid::Operator* vivid_create_operator() { \
@@ -177,3 +178,31 @@ protected:
     VIVID_EXPORT int vivid_operator_source_line() { \
         return vivid_source_line_; \
     }
+
+// Chain API macros - use these for declarative operator chains
+// User defines: void setup(Chain& chain) and optionally void update(Chain& chain, Context& ctx)
+
+// Forward declarations for Chain API
+namespace vivid {
+    class Chain;
+    class Context;
+}
+
+#define VIVID_CHAIN_SETUP(setupFunc) \
+    VIVID_EXPORT void vivid_setup(vivid::Chain& chain) { \
+        setupFunc(chain); \
+    }
+
+#define VIVID_CHAIN_UPDATE(updateFunc) \
+    VIVID_EXPORT void vivid_update(vivid::Chain& chain, vivid::Context& ctx) { \
+        updateFunc(chain, ctx); \
+    }
+
+// Convenience macro that exports both setup and update
+#define VIVID_CHAIN(setupFunc, updateFunc) \
+    VIVID_CHAIN_SETUP(setupFunc) \
+    VIVID_CHAIN_UPDATE(updateFunc)
+
+// Use this if you only need setup (no per-frame update)
+#define VIVID_CHAIN_SETUP_ONLY(setupFunc) \
+    VIVID_CHAIN_SETUP(setupFunc)

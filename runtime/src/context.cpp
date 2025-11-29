@@ -289,15 +289,28 @@ void Context::runShader(const std::string& shaderPath, const Texture* input1,
 }
 
 void Context::setOutput(const std::string& name, const Texture& tex) {
-    textureOutputs_[name] = tex;
+    // If currentNode_ is set (Chain API), prefix the output with node name
+    if (!currentNode_.empty()) {
+        textureOutputs_[currentNode_ + "." + name] = tex;
+    } else {
+        textureOutputs_[name] = tex;
+    }
 }
 
 void Context::setOutput(const std::string& name, float value) {
-    valueOutputs_[name] = value;
+    if (!currentNode_.empty()) {
+        valueOutputs_[currentNode_ + "." + name] = value;
+    } else {
+        valueOutputs_[name] = value;
+    }
 }
 
 void Context::setOutput(const std::string& name, const std::vector<float>& values) {
-    valueArrayOutputs_[name] = values;
+    if (!currentNode_.empty()) {
+        valueArrayOutputs_[currentNode_ + "." + name] = values;
+    } else {
+        valueArrayOutputs_[name] = values;
+    }
 }
 
 Texture* Context::getInputTexture(const std::string& nodeId, const std::string& output) {

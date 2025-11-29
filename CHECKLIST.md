@@ -30,20 +30,20 @@ void update(Chain& chain, Context& ctx) {
 ```
 
 ### 0.1 Chain Class Design
-- [ ] Create `runtime/include/vivid/chain.h`
-- [ ] `Chain` class to hold operator instances by name
-- [ ] `add<T>(name)` — instantiate operator and register by name
-- [ ] `get<T>(name)` — retrieve operator for parameter updates
-- [ ] `setOutput(name)` — designate final output operator
+- [x] Create `runtime/include/vivid/chain.h`
+- [x] `Chain` class to hold operator instances by name
+- [x] `add<T>(name)` — instantiate operator and register by name
+- [x] `get<T>(name)` — retrieve operator for parameter updates
+- [x] `setOutput(name)` — designate final output operator
 - [ ] `connect(fromNode, toNode)` — explicit wiring (alternative to `.input()`)
-- [ ] Store operator instances in `std::unordered_map<std::string, std::unique_ptr<Operator>>`
+- [x] Store operator instances in `std::unordered_map<std::string, std::unique_ptr<Operator>>`
 
 ### 0.2 Operator Registry
-- [ ] Create `runtime/src/operator_registry.h` and `.cpp`
-- [ ] Registration macro: `VIVID_REGISTER_OPERATOR(ClassName)`
-- [ ] Factory function: `createOperator(typeName)` → `std::unique_ptr<Operator>`
-- [ ] Auto-registration at static init time (or explicit registry population)
-- [ ] All built-in operators registered (`Noise`, `Feedback`, `Mirror`, `HSV`, `Blur`, etc.)
+- [x] Create `runtime/include/vivid/chain.h` (OperatorRegistry in same file)
+- [x] Registration macro: `VIVID_REGISTER_OPERATOR(ClassName)`
+- [x] Factory function: `createOperator(typeName)` → `std::unique_ptr<Operator>`
+- [x] Auto-registration at static init time (or explicit registry population)
+- [x] All built-in operators registered (`Noise`, `Feedback`, `Mirror`, `HSV`, `Blur`, etc.)
 
 ### 0.3 Dependency Resolution
 - [ ] Track input dependencies from `.input("nodeName")` calls on operators
@@ -53,38 +53,38 @@ void update(Chain& chain, Context& ctx) {
 - [ ] Handle missing input references gracefully (warning, not crash)
 
 ### 0.4 Chain Execution
-- [ ] `Chain::init(Context&)` — call `init()` on all operators in dependency order
-- [ ] `Chain::process(Context&)` — call `process()` on all operators in dependency order
-- [ ] `Chain::cleanup()` — call `cleanup()` on all operators
-- [ ] Output routing: each operator's `setOutput()` stores in Context for next operator's `getInputTexture()`
-- [ ] Final output: `Chain::getOutput()` returns the designated output texture
+- [x] `Chain::init(Context&)` — call `init()` on all operators in dependency order
+- [x] `Chain::process(Context&)` — call `process()` on all operators in dependency order
+- [x] `Chain::cleanup()` — call `cleanup()` on all operators
+- [x] Output routing: each operator's `setOutput()` stores in Context for next operator's `getInputTexture()`
+- [x] Final output: `Chain::getOutput()` returns the designated output texture
 
 ### 0.5 Entry Point Detection
-- [ ] Modify `HotLoader` to look for `setup` and `update` symbols
-- [ ] Signature: `void setup(Chain& chain)`
-- [ ] Signature: `void update(Chain& chain, Context& ctx)`
-- [ ] Fallback: if no `setup` found, use legacy single-operator pattern
-- [ ] Runtime creates Chain, calls `setup()` once, calls `update()` each frame
+- [x] Modify `HotLoader` to look for `setup` and `update` symbols
+- [x] Signature: `void setup(Chain& chain)`
+- [x] Signature: `void update(Chain& chain, Context& ctx)`
+- [x] Fallback: if no `setup` found, use legacy single-operator pattern
+- [x] Runtime creates Chain, calls `setup()` once, calls `update()` each frame
 
 ### 0.6 Hot-Reload Integration
-- [ ] On reload: save operator states via `saveState()`
-- [ ] Recreate Chain from new library
-- [ ] Call `setup()` to rebuild operator graph
-- [ ] Restore states to matching operator names via `loadState()`
-- [ ] Handle added/removed operators gracefully
+- [x] On reload: save operator states via `saveState()`
+- [x] Recreate Chain from new library
+- [x] Call `setup()` to rebuild operator graph
+- [x] Restore states to matching operator names via `loadState()`
+- [x] Handle added/removed operators gracefully
 
 ### 0.7 Built-in Operator Updates
-- [ ] Ensure all operators have proper `input()` method returning `*this`
-- [ ] Standardize fluent API across all operators
-- [ ] Add `VIVID_REGISTER_OPERATOR` to all built-in operators
-- [ ] Verify each operator works in Chain context
+- [x] Ensure all operators have proper `input()` method returning `*this`
+- [x] Standardize fluent API across all operators
+- [x] Add `VIVID_REGISTER_OPERATOR` to all built-in operators
+- [x] Verify each operator works in Chain context
 
 ### 0.8 Example Migration
-- [ ] Migrate `examples/hello` to Chain API
-- [ ] Migrate `examples/feedback` to Chain API
-- [ ] Migrate `examples/webcam` to Chain API
+- [x] Migrate `examples/hello` to Chain API
+- [x] Migrate `examples/feedback` to Chain API
+- [x] Migrate `examples/webcam` to Chain API
 - [ ] Migrate `examples/video-playback` to Chain API
-- [ ] Create new `examples/chain-demo` showcasing the API
+- [x] Create new `examples/chain-demo` showcasing the API
 - [ ] Update documentation with Chain API examples
 
 ### 0.9 Documentation
