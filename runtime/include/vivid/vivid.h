@@ -17,6 +17,7 @@
 #include "params.h"
 #include "param_ref.h"
 #include "keys.h"
+#include "graphics3d.h"
 
 // Built-in Operators - Media
 #include "operators/videofile.h"

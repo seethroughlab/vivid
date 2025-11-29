@@ -111,11 +111,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 
 // Pipeline3D implementation
 
-Pipeline3D::~Pipeline3D() {
+Pipeline3DInternal::~Pipeline3DInternal() {
     destroy();
 }
 
-Pipeline3D::Pipeline3D(Pipeline3D&& other) noexcept
+Pipeline3DInternal::Pipeline3DInternal(Pipeline3DInternal&& other) noexcept
     : pipeline_(other.pipeline_)
     , cameraBindGroupLayout_(other.cameraBindGroupLayout_)
     , transformBindGroupLayout_(other.transformBindGroupLayout_)
@@ -132,7 +132,7 @@ Pipeline3D::Pipeline3D(Pipeline3D&& other) noexcept
     other.device_ = nullptr;
 }
 
-Pipeline3D& Pipeline3D::operator=(Pipeline3D&& other) noexcept {
+Pipeline3DInternal& Pipeline3DInternal::operator=(Pipeline3DInternal&& other) noexcept {
     if (this != &other) {
         destroy();
         pipeline_ = other.pipeline_;
@@ -153,7 +153,7 @@ Pipeline3D& Pipeline3D::operator=(Pipeline3D&& other) noexcept {
     return *this;
 }
 
-bool Pipeline3D::create(Renderer& renderer, const std::string& wgslSource) {
+bool Pipeline3DInternal::create(Renderer& renderer, const std::string& wgslSource) {
     destroy();
     lastError_.clear();
 
@@ -274,7 +274,7 @@ bool Pipeline3D::create(Renderer& renderer, const std::string& wgslSource) {
     return true;
 }
 
-bool Pipeline3D::createFromFile(Renderer& renderer, const std::string& path) {
+bool Pipeline3DInternal::createFromFile(Renderer& renderer, const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open()) {
         lastError_ = "Failed to open file: " + path;
@@ -288,7 +288,7 @@ bool Pipeline3D::createFromFile(Renderer& renderer, const std::string& path) {
     return create(renderer, buffer.str());
 }
 
-void Pipeline3D::destroy() {
+void Pipeline3DInternal::destroy() {
     if (pipeline_) {
         wgpuRenderPipelineRelease(pipeline_);
         pipeline_ = nullptr;

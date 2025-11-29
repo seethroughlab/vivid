@@ -1,12 +1,34 @@
 #pragma once
 #include "renderer.h"
 #include "mesh.h"
-#include "camera3d.h"
+#include <vivid/graphics3d.h>
 #include <webgpu/webgpu.h>
 #include <glm/glm.hpp>
 #include <string>
 
 namespace vivid {
+
+/**
+ * @brief Camera uniform buffer layout for shaders.
+ * Must match the WGSL struct layout exactly.
+ */
+struct CameraUniform {
+    glm::mat4 view;             // 64 bytes
+    glm::mat4 projection;       // 64 bytes
+    glm::mat4 viewProjection;   // 64 bytes
+    glm::vec3 cameraPosition;   // 12 bytes
+    float _pad;                 // 4 bytes
+};
+
+inline CameraUniform makeCameraUniform(const Camera3D& camera, float aspectRatio) {
+    CameraUniform u;
+    u.view = camera.viewMatrix();
+    u.projection = camera.projectionMatrix(aspectRatio);
+    u.viewProjection = camera.viewProjectionMatrix(aspectRatio);
+    u.cameraPosition = camera.position;
+    u._pad = 0.0f;
+    return u;
+}
 
 /**
  * @brief Transform uniform buffer for 3D objects.
@@ -20,21 +42,21 @@ struct TransformUniform {
 };
 
 /**
- * @brief 3D render pipeline for mesh rendering with depth testing.
+ * @brief 3D render pipeline for mesh rendering with depth testing (internal).
  *
  * Creates and manages a WebGPU render pipeline configured for 3D geometry.
  * Supports vertex input (Vertex3D), depth testing, and uniform buffers.
  */
-class Pipeline3D {
+class Pipeline3DInternal {
 public:
-    Pipeline3D() = default;
-    ~Pipeline3D();
+    Pipeline3DInternal() = default;
+    ~Pipeline3DInternal();
 
     // Non-copyable, movable
-    Pipeline3D(const Pipeline3D&) = delete;
-    Pipeline3D& operator=(const Pipeline3D&) = delete;
-    Pipeline3D(Pipeline3D&& other) noexcept;
-    Pipeline3D& operator=(Pipeline3D&& other) noexcept;
+    Pipeline3DInternal(const Pipeline3DInternal&) = delete;
+    Pipeline3DInternal& operator=(const Pipeline3DInternal&) = delete;
+    Pipeline3DInternal(Pipeline3DInternal&& other) noexcept;
+    Pipeline3DInternal& operator=(Pipeline3DInternal&& other) noexcept;
 
     /**
      * @brief Create a 3D pipeline from WGSL shader source.
@@ -134,14 +156,14 @@ public:
 
     /**
      * @brief Create a camera bind group for the current camera.
-     * @param layout Bind group layout from Pipeline3D.
+     * @param layout Bind group layout from Pipeline3DInternal.
      * @return Bind group, or nullptr on failure.
      */
     WGPUBindGroup createCameraBindGroup(WGPUBindGroupLayout layout);
 
     /**
      * @brief Create a transform bind group for an object.
-     * @param layout Bind group layout from Pipeline3D.
+     * @param layout Bind group layout from Pipeline3DInternal.
      * @param transform Model transform matrix.
      * @return Bind group, or nullptr on failure.
      */

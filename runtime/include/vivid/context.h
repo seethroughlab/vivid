@@ -1,5 +1,6 @@
 #pragma once
 #include "types.h"
+#include "graphics3d.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -11,6 +12,7 @@ namespace vivid {
 class Renderer;
 class Window;
 struct Shader;
+class Renderer3DImpl;
 
 /**
  * @brief Runtime context providing access to time, textures, shaders, and operator communication.
@@ -26,6 +28,7 @@ class Context {
 public:
     Context(Renderer& renderer, int width, int height);
     Context(Renderer& renderer, Window& window, int width, int height);
+    ~Context();  // Destructor needed for unique_ptr with forward-declared type
 
     /// @name Time and Frame Info
     /// @{
@@ -414,6 +417,87 @@ public:
     /// @brief Access the underlying renderer (advanced use only).
     Renderer& renderer() { return renderer_; }
 
+    /// @name 3D Graphics
+    /// @{
+
+    /**
+     * @brief Create a 3D mesh from vertex and index data.
+     * @param vertices Vector of Vertex3D data.
+     * @param indices Vector of triangle indices (must be multiple of 3).
+     * @return A valid Mesh3D if successful.
+     */
+    Mesh3D createMesh(const std::vector<Vertex3D>& vertices,
+                      const std::vector<uint32_t>& indices);
+
+    /**
+     * @brief Create a cube mesh.
+     * @return A unit cube mesh centered at origin.
+     */
+    Mesh3D createCube();
+
+    /**
+     * @brief Create a sphere mesh.
+     * @param radius Sphere radius.
+     * @param segments Horizontal segments.
+     * @param rings Vertical rings.
+     * @return A sphere mesh centered at origin.
+     */
+    Mesh3D createSphere(float radius = 0.5f, int segments = 32, int rings = 16);
+
+    /**
+     * @brief Create a plane mesh in the XZ plane.
+     * @param width Width in X direction.
+     * @param height Height in Z direction.
+     * @return A plane mesh centered at origin.
+     */
+    Mesh3D createPlane(float width = 1.0f, float height = 1.0f);
+
+    /**
+     * @brief Create a torus mesh.
+     * @param majorRadius Distance from center to tube center.
+     * @param minorRadius Tube radius.
+     * @return A torus mesh centered at origin.
+     */
+    Mesh3D createTorus(float majorRadius = 0.5f, float minorRadius = 0.2f);
+
+    /**
+     * @brief Destroy a mesh and release resources.
+     * @param mesh The mesh to destroy.
+     */
+    void destroyMesh(Mesh3D& mesh);
+
+    /**
+     * @brief Render a 3D scene to a texture.
+     *
+     * This is a high-level method that renders a mesh with a camera.
+     * Uses the built-in normal visualization shader.
+     *
+     * @param mesh The mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform (default identity).
+     * @param output Target texture to render into.
+     * @param clearColor Background color (default black).
+     */
+    void render3D(const Mesh3D& mesh, const Camera3D& camera,
+                  const glm::mat4& transform, Texture& output,
+                  const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
+     * @brief Render multiple meshes to a texture.
+     *
+     * @param meshes Vector of meshes to render.
+     * @param transforms Transform for each mesh.
+     * @param camera The camera viewpoint.
+     * @param output Target texture to render into.
+     * @param clearColor Background color.
+     */
+    void render3D(const std::vector<Mesh3D>& meshes,
+                  const std::vector<glm::mat4>& transforms,
+                  const Camera3D& camera, Texture& output,
+                  const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /// @}
+
     // Internal methods - called by runtime
     void beginFrame(float time, float dt, int frame);
     void endFrame();
@@ -447,6 +531,10 @@ private:
 
     // Current node name for Chain API output prefixing
     std::string currentNode_;
+
+    // 3D rendering support (lazy initialized)
+    std::unique_ptr<Renderer3DImpl> renderer3d_;
+    Renderer3DImpl& getRenderer3D();
 };
 
 } // namespace vivid

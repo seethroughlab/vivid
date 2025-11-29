@@ -4,6 +4,8 @@
 #include "image_loader.h"
 #include "video_loader.h"
 #include "camera_capture.h"
+#include "mesh.h"
+#include "pipeline3d.h"
 #include <unordered_set>
 #include <iostream>
 
@@ -450,6 +452,212 @@ Shader* Context::getCachedShader(const std::string& path) {
     Shader* result = shader.get();
     shaderCache_[path] = std::move(shader);
     return result;
+}
+
+// 3D Rendering Implementation
+class Renderer3DImpl {
+public:
+    Renderer3DImpl(Renderer& renderer) : renderer_(renderer) {
+        renderer3d_.init(renderer);
+        // Create the default pipeline with unlit normal shader
+        pipeline_.create(renderer, shaders3d::UNLIT_NORMAL);
+    }
+
+    ~Renderer3DImpl() = default;
+
+    Mesh* createMesh(const std::vector<Vertex3D>& vertices,
+                     const std::vector<uint32_t>& indices) {
+        auto mesh = std::make_unique<Mesh>();
+        if (mesh->create(renderer_, vertices, indices)) {
+            Mesh* result = mesh.get();
+            meshes_.push_back(std::move(mesh));
+            return result;
+        }
+        return nullptr;
+    }
+
+    void destroyMesh(Mesh* mesh) {
+        auto it = std::find_if(meshes_.begin(), meshes_.end(),
+            [mesh](const std::unique_ptr<Mesh>& m) { return m.get() == mesh; });
+        if (it != meshes_.end()) {
+            meshes_.erase(it);
+        }
+    }
+
+    void render(const Mesh* mesh, const Camera3D& camera,
+                const glm::mat4& transform, Texture& output,
+                const glm::vec4& clearColor) {
+        if (!mesh || !mesh->valid() || !pipeline_.valid()) return;
+
+        float aspectRatio = static_cast<float>(output.width) / output.height;
+        renderer3d_.setCamera(camera, aspectRatio);
+
+        auto renderPass = renderer3d_.beginRenderPass(output, clearColor);
+        if (!renderPass) return;
+
+        // Set pipeline
+        wgpuRenderPassEncoderSetPipeline(renderPass, pipeline_.pipeline());
+
+        // Create and set camera bind group
+        auto cameraBindGroup = renderer3d_.createCameraBindGroup(pipeline_.cameraBindGroupLayout());
+        wgpuRenderPassEncoderSetBindGroup(renderPass, 0, cameraBindGroup, 0, nullptr);
+
+        // Create and set transform bind group
+        auto transformBindGroup = renderer3d_.createTransformBindGroup(
+            pipeline_.transformBindGroupLayout(), transform);
+        wgpuRenderPassEncoderSetBindGroup(renderPass, 1, transformBindGroup, 0, nullptr);
+
+        // Draw the mesh
+        mesh->draw(renderPass);
+
+        renderer3d_.endRenderPass();
+
+        // Clean up bind groups
+        renderer3d_.releaseBindGroup(cameraBindGroup);
+        renderer3d_.releaseBindGroup(transformBindGroup);
+    }
+
+    void renderMultiple(const std::vector<const Mesh*>& meshes,
+                        const std::vector<glm::mat4>& transforms,
+                        const Camera3D& camera, Texture& output,
+                        const glm::vec4& clearColor) {
+        if (meshes.empty() || !pipeline_.valid()) return;
+
+        float aspectRatio = static_cast<float>(output.width) / output.height;
+        renderer3d_.setCamera(camera, aspectRatio);
+
+        auto renderPass = renderer3d_.beginRenderPass(output, clearColor);
+        if (!renderPass) return;
+
+        wgpuRenderPassEncoderSetPipeline(renderPass, pipeline_.pipeline());
+
+        auto cameraBindGroup = renderer3d_.createCameraBindGroup(pipeline_.cameraBindGroupLayout());
+        wgpuRenderPassEncoderSetBindGroup(renderPass, 0, cameraBindGroup, 0, nullptr);
+
+        for (size_t i = 0; i < meshes.size(); ++i) {
+            const Mesh* mesh = meshes[i];
+            if (!mesh || !mesh->valid()) continue;
+
+            glm::mat4 transform = (i < transforms.size()) ? transforms[i] : glm::mat4(1.0f);
+            auto transformBindGroup = renderer3d_.createTransformBindGroup(
+                pipeline_.transformBindGroupLayout(), transform);
+            wgpuRenderPassEncoderSetBindGroup(renderPass, 1, transformBindGroup, 0, nullptr);
+
+            mesh->draw(renderPass);
+
+            renderer3d_.releaseBindGroup(transformBindGroup);
+        }
+
+        renderer3d_.endRenderPass();
+        renderer3d_.releaseBindGroup(cameraBindGroup);
+    }
+
+private:
+    Renderer& renderer_;
+    Renderer3D renderer3d_;
+    Pipeline3DInternal pipeline_;
+    std::vector<std::unique_ptr<Mesh>> meshes_;
+};
+
+// Destructor must be defined after Renderer3DImpl is complete
+Context::~Context() = default;
+
+Renderer3DImpl& Context::getRenderer3D() {
+    if (!renderer3d_) {
+        renderer3d_ = std::make_unique<Renderer3DImpl>(renderer_);
+    }
+    return *renderer3d_;
+}
+
+Mesh3D Context::createMesh(const std::vector<Vertex3D>& vertices,
+                           const std::vector<uint32_t>& indices) {
+    Mesh3D result;
+    // Convert public Vertex3D to internal Vertex3D (they're the same layout)
+    std::vector<vivid::Vertex3D> internalVertices(vertices.size());
+    for (size_t i = 0; i < vertices.size(); ++i) {
+        internalVertices[i].position = vertices[i].position;
+        internalVertices[i].normal = vertices[i].normal;
+        internalVertices[i].uv = vertices[i].uv;
+        internalVertices[i].tangent = vertices[i].tangent;
+    }
+
+    Mesh* mesh = getRenderer3D().createMesh(internalVertices, indices);
+    if (mesh) {
+        result.handle = mesh;
+        result.vertexCount = mesh->vertexCount();
+        result.indexCount = mesh->indexCount();
+        result.bounds.min = mesh->bounds().min;
+        result.bounds.max = mesh->bounds().max;
+    }
+    return result;
+}
+
+Mesh3D Context::createCube() {
+    std::vector<Vertex3D> vertices;
+    std::vector<uint32_t> indices;
+    primitives::generateCube(vertices, indices);
+    auto mesh = createMesh(vertices, indices);
+    if (!mesh.valid()) {
+        std::cerr << "[createCube] Failed to create cube mesh\n";
+    } else {
+        std::cout << "[createCube] Created cube with " << mesh.vertexCount << " vertices\n";
+    }
+    return mesh;
+}
+
+Mesh3D Context::createSphere(float radius, int segments, int rings) {
+    std::vector<Vertex3D> vertices;
+    std::vector<uint32_t> indices;
+    primitives::generateSphere(vertices, indices, radius, segments, rings);
+    return createMesh(vertices, indices);
+}
+
+Mesh3D Context::createPlane(float width, float height) {
+    std::vector<Vertex3D> vertices;
+    std::vector<uint32_t> indices;
+    primitives::generatePlane(vertices, indices, width, height);
+    return createMesh(vertices, indices);
+}
+
+Mesh3D Context::createTorus(float majorRadius, float minorRadius) {
+    std::vector<Vertex3D> vertices;
+    std::vector<uint32_t> indices;
+    primitives::generateTorus(vertices, indices, majorRadius, minorRadius);
+    return createMesh(vertices, indices);
+}
+
+void Context::destroyMesh(Mesh3D& mesh) {
+    if (mesh.handle) {
+        getRenderer3D().destroyMesh(static_cast<Mesh*>(mesh.handle));
+        mesh.handle = nullptr;
+        mesh.vertexCount = 0;
+        mesh.indexCount = 0;
+    }
+}
+
+void Context::render3D(const Mesh3D& mesh, const Camera3D& camera,
+                       const glm::mat4& transform, Texture& output,
+                       const glm::vec4& clearColor) {
+    if (!mesh.valid()) return;
+    getRenderer3D().render(static_cast<const Mesh*>(mesh.handle),
+                           camera, transform, output, clearColor);
+}
+
+void Context::render3D(const std::vector<Mesh3D>& meshes,
+                       const std::vector<glm::mat4>& transforms,
+                       const Camera3D& camera, Texture& output,
+                       const glm::vec4& clearColor) {
+    std::vector<const Mesh*> internalMeshes;
+    for (const auto& m : meshes) {
+        if (m.valid()) {
+            internalMeshes.push_back(static_cast<const Mesh*>(m.handle));
+        }
+    }
+    if (internalMeshes.empty()) {
+        std::cerr << "[render3D] Warning: no valid meshes to render\n";
+        return;
+    }
+    getRenderer3D().renderMultiple(internalMeshes, transforms, camera, output, clearColor);
 }
 
 } // namespace vivid
