@@ -96,6 +96,10 @@ ctx.runShader("shaders/noise.wgsl", nullptr, output_, params);
 
 // With two input textures
 ctx.runShader("shaders/composite.wgsl", &tex1, &tex2, output_, params);
+
+// With multiple input textures (up to 8)
+std::vector<const Texture*> inputs = {&tex1, &tex2, &tex3, &tex4};
+ctx.runShaderMulti("shaders/composite_multi.wgsl", inputs, output_, params);
 ```
 
 ### Setting Outputs
@@ -122,6 +126,46 @@ Texture* input = ctx.getInputTexture("NoiseOp");
 // Get value from another operator
 float val = ctx.getInputValue("LFO", "out", 0.0f);  // default if not found
 ```
+
+### 2D Instanced Rendering
+
+For efficient rendering of many 2D shapes (like particles, physics simulations, data visualizations), use GPU instancing:
+
+```cpp
+#include <vivid/vivid.h>
+
+void update(Chain& chain, Context& ctx) {
+    // Create circle data
+    std::vector<Circle2D> circles;
+
+    for (int i = 0; i < 100; i++) {
+        circles.emplace_back(
+            glm::vec2(x, y),           // position (0-1 normalized)
+            0.02f,                      // radius (normalized)
+            glm::vec4(1, 0, 0, 1)      // color (RGBA)
+        );
+    }
+
+    // Render all circles in ONE draw call
+    Texture output = ctx.createTexture();
+    ctx.drawCircles(circles, output, glm::vec4(0, 0, 0, 1));  // clearColor
+    ctx.setOutput("out", output);
+}
+```
+
+The `Circle2D` struct has multiple constructors:
+
+```cpp
+// Using glm types
+Circle2D(glm::vec2 position, float radius, glm::vec4 color);
+
+// Using individual floats
+Circle2D(float x, float y, float radius, float r, float g, float b, float alpha = 1.0f);
+```
+
+**Performance:** All circles are rendered in a single GPU draw call using instancing, making it efficient for thousands of shapes.
+
+**See:** `examples/2d-instancing/` for a complete physics simulation example.
 
 ## Shader Parameters
 

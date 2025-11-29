@@ -40,18 +40,30 @@ Adjusts brightness and contrast of an input texture
 
 ### Composite
 
-Blends two textures using various blend modes
+Blends textures using alpha compositing (Porter-Duff "over" operation).
 
-**Parameters:**
+**Two-Input Mode:**
 
 | Parameter | Type | Default | Range |
 |-----------|------|---------|-------|
 | mode | int | 0 | 0 - 4 |
-| mix | float | 0.5 | 0.0 - 1.0 |
+| opacity | float | 1.0 | 0.0 - 1.0 |
+
+**Fluent Methods:** `.a()`, `.b()`, `.mode()`, `.opacity()`
+
+**Multi-Input Mode (up to 8 inputs):**
+
+For compositing more than 2 layers, use `.inputs()`:
+
+```cpp
+chain.add<Composite>("comp")
+    .inputs({"layer1", "layer2", "layer3", "layer4"})
+    .opacity(1.0f);
+```
+
+All layers are alpha-composited in order (first = bottom, last = top).
 
 **Output:** Texture
-
-**Fluent Methods:** `.a()`, `.b()`, `.mode()`, `.mix()`
 
 ---
 

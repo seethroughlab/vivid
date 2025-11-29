@@ -119,18 +119,39 @@ chain.connect("noise", "blur");   // noise.out -> blur.in
 chain.connect("blur", "color");   // blur.out -> color.in
 ```
 
-### Multiple Inputs
+### Two Inputs
 
-Some operators (like `Composite`) take multiple inputs:
+Some operators (like `Composite`) take two inputs:
 
 ```cpp
 chain.add<Noise>("noise");
 chain.add<Gradient>("gradient");
 chain.add<Composite>("comp")
-    .input("gradient")      // Background
-    .input2("noise")        // Foreground
-    .mode(BlendMode::Add);
+    .a("gradient")          // Background
+    .b("noise")             // Foreground
+    .opacity(0.8f);
 ```
+
+### Multi-Input Composite (Up to 8 Layers)
+
+For compositing many layers efficiently, use `.inputs()`:
+
+```cpp
+// Create 4 shape layers
+chain.add<Shape>("circle1").type(ShapeType::Circle).center(0.2f, 0.5f).color(1, 0, 0, 1);
+chain.add<Shape>("circle2").type(ShapeType::Circle).center(0.4f, 0.5f).color(0, 1, 0, 1);
+chain.add<Shape>("circle3").type(ShapeType::Circle).center(0.6f, 0.5f).color(0, 0, 1, 1);
+chain.add<Shape>("circle4").type(ShapeType::Circle).center(0.8f, 0.5f).color(1, 1, 0, 1);
+
+// Composite all 4 in a single operator (instead of 3 nested Composites!)
+chain.add<Composite>("combined")
+    .inputs({"circle1", "circle2", "circle3", "circle4"})
+    .opacity(1.0f);
+
+chain.setOutput("combined");
+```
+
+Layers are composited in order (first = bottom, last = top) using alpha over blending.
 
 ## Dynamic Updates
 
@@ -254,3 +275,6 @@ VIVID_CHAIN(setup, update)
 - [OPERATOR-API.md](OPERATOR-API.md) - Creating custom operators
 - [SHADER-CONVENTIONS.md](SHADER-CONVENTIONS.md) - Writing shaders
 - `examples/chain-demo/` - Full working example
+- `examples/multi-composite/` - Multi-input compositing example
+- `examples/2d-instancing/` - GPU-instanced 2D physics simulation
+- `examples/3d-demo/` - 3D mesh rendering
