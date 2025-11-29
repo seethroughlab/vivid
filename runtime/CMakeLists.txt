@@ -23,6 +23,8 @@ set(RUNTIME_SOURCES
     src/image_loader.cpp
     src/video_loader.cpp
     src/audio_player.cpp
+    src/mesh.cpp
+    src/pipeline3d.cpp
 )
 
 # Add HAP decoder if FFmpeg is available

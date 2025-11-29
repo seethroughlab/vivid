@@ -296,12 +296,75 @@ void Renderer::configureSurface() {
     std::cout << "[Renderer] Surface configured\n";
 }
 
+void Renderer::destroyDepthBuffer() {
+    if (depthView_) {
+        wgpuTextureViewRelease(depthView_);
+        depthView_ = nullptr;
+    }
+    if (depthTexture_) {
+        wgpuTextureRelease(depthTexture_);
+        depthTexture_ = nullptr;
+    }
+    depthWidth_ = 0;
+    depthHeight_ = 0;
+}
+
+void Renderer::createDepthBuffer(int width, int height) {
+    // Don't recreate if same size
+    if (depthTexture_ && depthWidth_ == width && depthHeight_ == height) {
+        return;
+    }
+
+    // Destroy existing depth buffer
+    destroyDepthBuffer();
+
+    if (width <= 0 || height <= 0) return;
+
+    // Create depth texture
+    WGPUTextureDescriptor depthDesc = {};
+    depthDesc.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+    depthDesc.format = DEPTH_FORMAT;
+    depthDesc.usage = WGPUTextureUsage_RenderAttachment;
+    depthDesc.mipLevelCount = 1;
+    depthDesc.sampleCount = 1;
+    depthDesc.dimension = WGPUTextureDimension_2D;
+
+    depthTexture_ = wgpuDeviceCreateTexture(device_, &depthDesc);
+    if (!depthTexture_) {
+        std::cerr << "[Renderer] Failed to create depth texture\n";
+        return;
+    }
+
+    // Create depth texture view
+    WGPUTextureViewDescriptor viewDesc = {};
+    viewDesc.format = DEPTH_FORMAT;
+    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.mipLevelCount = 1;
+    viewDesc.arrayLayerCount = 1;
+    viewDesc.aspect = WGPUTextureAspect_DepthOnly;
+
+    depthView_ = wgpuTextureCreateView(depthTexture_, &viewDesc);
+    if (!depthView_) {
+        std::cerr << "[Renderer] Failed to create depth texture view\n";
+        wgpuTextureRelease(depthTexture_);
+        depthTexture_ = nullptr;
+        return;
+    }
+
+    depthWidth_ = width;
+    depthHeight_ = height;
+    std::cout << "[Renderer] Depth buffer created (" << width << "x" << height << ")\n";
+}
+
 void Renderer::shutdown() {
     if (currentTextureView_) {
         wgpuTextureViewRelease(currentTextureView_);
         currentTextureView_ = nullptr;
     }
     // Note: currentTexture_ is owned by the surface, don't release it
+
+    // Release depth buffer
+    destroyDepthBuffer();
 
     // Release shader sampler
     if (shaderSampler_) {
@@ -439,6 +502,11 @@ void Renderer::resize(int width, int height) {
 
     // Reconfigure surface with new size
     configureSurface();
+
+    // Recreate depth buffer if one exists
+    if (depthTexture_) {
+        createDepthBuffer(width, height);
+    }
 }
 
 void Renderer::setVSync(bool enabled) {

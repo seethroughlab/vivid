@@ -609,8 +609,8 @@ Build and test each operator individually:
 - [ ] **Point Sprites** — Render texture at positions from value arrays (2D instancing)
 - [ ] **Tile/Grid** — Repeat texture in grid with per-tile transforms
 - [ ] **Particle System** — Emit/update points with position, velocity, color, life
-- [ ] 3D primitive generation (cube, sphere, plane, cylinder, torus, cone)
-- [ ] Implement `Geometry` operator base with Vertex3D format (position, normal, UV, tangent)
+- [x] 3D primitive generation (cube, sphere, plane, cylinder, torus, cone) — `runtime/src/mesh.cpp`
+- [x] Implement `Geometry` operator base with Vertex3D format (position, normal, UV, tangent) — `runtime/src/mesh.h`
 - [ ] Basic 3D transforms (translate, rotate, scale)
 - [ ] **GPU Instancing** — Render geometry N times with instance buffer (transforms, colors)
 - [ ] **Instance from Values** — Generate instance transforms from numeric arrays
@@ -619,10 +619,10 @@ Build and test each operator individually:
 - [ ] GLTF model loading (with embedded materials)
 
 #### Camera System
-- [ ] `Camera3D` class with position, target, FOV, near/far planes
-- [ ] View matrix generation (lookAt)
-- [ ] Projection matrix (perspective)
-- [ ] Camera uniform buffer for shaders
+- [x] `Camera3D` class with position, target, FOV, near/far planes — `runtime/src/camera3d.h`
+- [x] View matrix generation (lookAt) — `Camera3D::viewMatrix()`
+- [x] Projection matrix (perspective) — `Camera3D::projectionMatrix()`
+- [x] Camera uniform buffer for shaders — `CameraUniform` struct
 - [ ] **Orbit Camera** — Mouse-controlled orbit around target (drag to rotate, scroll to zoom)
 - [ ] **Fly Camera** — WASD + mouse look for free navigation
 
@@ -634,8 +634,8 @@ Build and test each operator individually:
 - [ ] Light uniform buffer (support up to 16 lights per pass)
 
 #### Shading Models
-- [ ] Depth buffer support in Renderer
-- [ ] 3D render pipeline (vertex + fragment with depth test)
+- [x] Depth buffer support in Renderer — `Renderer::createDepthBuffer()`
+- [x] 3D render pipeline (vertex + fragment with depth test) — `runtime/src/pipeline3d.cpp`
 - [ ] **Phong/Blinn-Phong** shader (`shaders/phong.wgsl`)
   - [ ] Ambient, diffuse, specular components
   - [ ] Shininess parameter

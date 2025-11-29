@@ -28,6 +28,9 @@ inline bool hasValidGPU(const Texture& tex) {
     return data && data->texture && data->view;
 }
 
+// Depth texture format used for 3D rendering
+constexpr WGPUTextureFormat DEPTH_FORMAT = WGPUTextureFormat_Depth24Plus;
+
 // Standard uniforms passed to all shaders
 // Layout must match WGSL struct exactly (32 bytes base + 48 bytes params = 80 bytes)
 struct Uniforms {
@@ -127,6 +130,13 @@ public:
     // Resize handling
     void resize(int width, int height);
 
+    // Depth buffer management for 3D rendering
+    // Creates or recreates a depth buffer at the specified size
+    void createDepthBuffer(int width, int height);
+    void destroyDepthBuffer();
+    WGPUTextureView depthView() const { return depthView_; }
+    bool hasDepthBuffer() const { return depthTexture_ != nullptr; }
+
     // VSync control
     void setVSync(bool enabled);
     bool vsyncEnabled() const { return vsync_; }
@@ -159,6 +169,12 @@ private:
 
     // Shared sampler for shader input textures
     WGPUSampler shaderSampler_ = nullptr;
+
+    // Depth buffer for 3D rendering
+    WGPUTexture depthTexture_ = nullptr;
+    WGPUTextureView depthView_ = nullptr;
+    int depthWidth_ = 0;
+    int depthHeight_ = 0;
 
     // Current frame state
     WGPUTexture currentTexture_ = nullptr;
