@@ -307,7 +307,7 @@ add_custom_command(TARGET vivid-runtime POST_BUILD
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/vivid
+git clone https://github.com/seethroughlab/vivid
 cd vivid
 
 # Configure (downloads dependencies automatically)
