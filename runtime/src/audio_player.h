@@ -96,7 +96,7 @@ public:
 
 private:
     // Called by miniaudio to request more audio data
-    static void dataCallback(void* device, void* output, const void* input, uint32_t frameCount);
+    static void dataCallback(struct ma_device* device, void* output, const void* input, unsigned int frameCount);
     void fillBuffer(float* output, uint32_t frameCount);
 
     struct Impl;

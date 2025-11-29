@@ -121,6 +121,11 @@ public:
             }
             [assetReader_ addOutput:readerOutput_];
 
+            // Setup audio reader if video has audio
+            if (info_.hasAudio) {
+                setupAudioReader();
+            }
+
             // Start reading
             if (![assetReader_ startReading]) {
                 std::cerr << "[VideoLoaderMacOS] Failed to start reading: "
@@ -135,7 +140,8 @@ public:
             std::cout << "[VideoLoaderMacOS] Opened " << path
                       << " (" << info_.width << "x" << info_.height
                       << ", " << info_.frameRate << "fps"
-                      << ", " << info_.codecName << ")\n";
+                      << ", " << info_.codecName
+                      << (info_.hasAudio ? ", with audio" : "") << ")\n";
 
             return true;
         }
@@ -143,6 +149,14 @@ public:
 
     void close() override {
         @autoreleasepool {
+            // Stop and cleanup audio
+            if (audioPlayer_) {
+                audioPlayer_->pause();
+                audioPlayer_->shutdown();
+                audioPlayer_.reset();
+            }
+            audioReaderOutput_ = nil;
+
             if (assetReader_) {
                 [assetReader_ cancelReading];
                 assetReader_ = nil;
@@ -154,6 +168,8 @@ public:
             currentFrame_ = 0;
             info_ = VideoInfo{};
             path_.clear();
+            audioSampleRate_ = 0;
+            audioChannels_ = 0;
         }
     }
 
@@ -169,8 +185,14 @@ public:
         // This is expensive but necessary for frame-accurate seeking
 
         @autoreleasepool {
+            // Flush audio buffer before seeking
+            if (audioPlayer_) {
+                audioPlayer_->flush();
+            }
+
             // Cancel current reader
             [assetReader_ cancelReading];
+            audioReaderOutput_ = nil;
 
             // Create new reader with time range (use alloc/init for owned object)
             NSError* error = nil;
@@ -196,6 +218,31 @@ public:
             assetReader_.timeRange = CMTimeRangeMake(startTime, duration);
 
             [assetReader_ addOutput:readerOutput_];
+
+            // Re-setup audio reader if we have audio
+            if (info_.hasAudio && audioPlayer_) {
+                NSArray* audioTracks = [asset_ tracksWithMediaType:AVMediaTypeAudio];
+                if ([audioTracks count] > 0) {
+                    AVAssetTrack* audioTrack = [audioTracks objectAtIndex:0];
+
+                    NSDictionary* audioSettings = @{
+                        AVFormatIDKey: @(kAudioFormatLinearPCM),
+                        AVLinearPCMBitDepthKey: @32,
+                        AVLinearPCMIsFloatKey: @YES,
+                        AVLinearPCMIsNonInterleaved: @NO,
+                        AVSampleRateKey: @(audioSampleRate_),
+                        AVNumberOfChannelsKey: @(audioChannels_)
+                    };
+
+                    audioReaderOutput_ = [AVAssetReaderAudioMixOutput assetReaderAudioMixOutputWithAudioTracks:@[audioTrack]
+                                                                                                audioSettings:audioSettings];
+                    audioReaderOutput_.alwaysCopiesSampleData = NO;
+
+                    if ([assetReader_ canAddOutput:audioReaderOutput_]) {
+                        [assetReader_ addOutput:audioReaderOutput_];
+                    }
+                }
+            }
 
             if (![assetReader_ startReading]) {
                 std::cerr << "[VideoLoaderMacOS] Seek failed - cannot start reading\n";
@@ -233,6 +280,14 @@ public:
                 }
                 std::cerr << "\n";
                 return false;
+            }
+
+            // Decode audio samples (keeps audio buffer filled)
+            decodeAudioSamples();
+
+            // Start audio playback on first frame
+            if (audioPlayer_ && audioEnabled_ && !audioPlayer_->isPlaying()) {
+                audioPlayer_->play();
             }
 
             // Get next sample buffer

@@ -139,10 +139,9 @@ void AudioPlayer::setVolume(float volume) {
     volume_ = std::clamp(volume, 0.0f, 1.0f);
 }
 
-void AudioPlayer::dataCallback(void* device, void* output, const void* input, uint32_t frameCount) {
+void AudioPlayer::dataCallback(ma_device* pDevice, void* output, const void* input, ma_uint32 frameCount) {
     (void)input;
 
-    ma_device* pDevice = static_cast<ma_device*>(device);
     AudioPlayer* player = static_cast<AudioPlayer*>(pDevice->pUserData);
     player->fillBuffer(static_cast<float*>(output), frameCount);
 }
