@@ -423,11 +423,11 @@ Build and test each operator individually:
 - [ ] Zero-copy via IOSurface (optimization for later)
 
 #### 12.2c HAP Codec Support (All Platforms)
-- [ ] Add FFmpeg for container demuxing only (not decoding)
-- [ ] Implement `HAPDecoder` (`runtime/src/hap_decoder.cpp`)
-- [ ] Snappy decompression for HAP frames
-- [ ] DXT/BC texture upload (BC1 for HAP, BC3 for HAP Alpha/Q)
-- [ ] Test: HAP, HAP Alpha, HAP Q playback
+- [x] Add FFmpeg for container demuxing and HAP decoding
+- [x] Implement `HAPDecoder` (`runtime/src/hap_decoder.cpp`)
+- [x] FFmpeg's built-in HAP decoder with swscale conversion
+- [x] Auto-detection of HAP codec in video files
+- [x] Test: HAP playback (Hap1 format tested at 1920x1080@60fps)
 
 #### 12.2d VideoFile Operator
 - [x] Implement `VideoFile` operator (`operators/videofile.cpp`)
@@ -529,8 +529,8 @@ Build and test each operator individually:
 
 ### 12.12 Input Devices
 - [ ] Mouse position and button state in Context
-- [ ] Keyboard state in Context
-- [ ] Key event callbacks (key down, key up, key repeat)
+- [x] Keyboard state in Context (`isKeyDown`, `wasKeyPressed`, `wasKeyReleased`)
+- [x] Key constants in `vivid/keys.h` (matching GLFW codes)
 - [ ] Mouse event callbacks (click, drag, scroll)
 - [ ] Game controller support (SDL_GameController or similar)
 - [ ] Implement `GamepadIn` operator

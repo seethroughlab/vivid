@@ -39,7 +39,8 @@ public:
         };
 
         try {
-            for (const auto& entry : fs::directory_iterator(directory)) {
+            // Recursively search directory and subdirectories
+            for (const auto& entry : fs::recursive_directory_iterator(directory)) {
                 if (!entry.is_regular_file()) continue;
 
                 std::string ext = entry.path().extension().string();

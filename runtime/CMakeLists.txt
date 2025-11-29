@@ -1,6 +1,12 @@
 # Runtime CMakeLists.txt - Phase 4: Core Types and Context
 # Building on Phase 2 & 3 with operator framework
 
+# Find FFmpeg for HAP codec demuxing
+find_package(PkgConfig)
+if(PKG_CONFIG_FOUND)
+    pkg_check_modules(FFMPEG libavformat libavcodec libavutil libswscale)
+endif()
+
 set(RUNTIME_SOURCES
     src/main.cpp
     src/window.cpp
@@ -16,7 +22,16 @@ set(RUNTIME_SOURCES
     src/preview_thread.cpp
     src/image_loader.cpp
     src/video_loader.cpp
+    src/audio_player.cpp
 )
+
+# Add HAP decoder if FFmpeg is available
+if(FFMPEG_FOUND)
+    list(APPEND RUNTIME_SOURCES src/hap_decoder.cpp)
+    message(STATUS "FFmpeg found - HAP codec support enabled")
+else()
+    message(STATUS "FFmpeg not found - HAP codec support disabled")
+endif()
 
 # Platform-specific source files
 if(APPLE)
@@ -42,7 +57,14 @@ target_include_directories(vivid-runtime
     PUBLIC include
     PRIVATE src
     PRIVATE ${stb_SOURCE_DIR}
+    PRIVATE ${miniaudio_SOURCE_DIR}
 )
+
+# Add FFmpeg include directories if available
+if(FFMPEG_FOUND)
+    target_include_directories(vivid-runtime PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    target_compile_definitions(vivid-runtime PRIVATE VIVID_HAS_FFMPEG=1)
+endif()
 
 target_link_libraries(vivid-runtime
     PRIVATE
@@ -56,6 +78,12 @@ target_link_libraries(vivid-runtime
     ${CMAKE_DL_LIBS}
 )
 
+# Link FFmpeg libraries if available
+if(FFMPEG_FOUND)
+    target_link_libraries(vivid-runtime PRIVATE ${FFMPEG_LIBRARIES})
+    target_link_directories(vivid-runtime PRIVATE ${FFMPEG_LIBRARY_DIRS})
+endif()
+
 # Platform-specific libraries and export symbols for dynamic loading
 if(APPLE)
     target_link_libraries(vivid-runtime PRIVATE
@@ -67,6 +95,8 @@ if(APPLE)
         "-framework CoreMedia"
         "-framework CoreVideo"
         "-framework VideoToolbox"
+        "-framework AudioToolbox"
+        "-framework CoreAudio"
     )
     # Export symbols so dynamically loaded operators can find Context, etc.
     target_link_options(vivid-runtime PRIVATE -Wl,-export_dynamic)

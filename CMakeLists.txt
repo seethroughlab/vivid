@@ -71,7 +71,14 @@ set(SNAPPY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(SNAPPY_INSTALL OFF CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(glfw glm ixwebsocket nlohmann_json efsw stb snappy)
+# miniaudio for audio playback (single-header library)
+FetchContent_Declare(
+    miniaudio
+    GIT_REPOSITORY https://github.com/mackron/miniaudio.git
+    GIT_TAG 0.11.21
+)
+
+FetchContent_MakeAvailable(glfw glm ixwebsocket nlohmann_json efsw stb snappy miniaudio)
 
 # WebGPU via wgpu-native
 # Note: wgpu-native releases provide prebuilt binaries

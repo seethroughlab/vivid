@@ -51,7 +51,7 @@ bool Context::isImageSupported(const std::string& path) {
 // Video playback methods
 VideoPlayer Context::createVideoPlayer(const std::string& path) {
     VideoPlayer player;
-    auto loader = VideoLoader::create();
+    auto loader = createVideoLoaderForPath(path);  // Auto-detects HAP
     if (loader && loader->open(path)) {
         player.handle = loader.release();  // Transfer ownership
     }

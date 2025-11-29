@@ -1,5 +1,6 @@
 #include "video_loader.h"
 #include "renderer.h"
+#include "audio_player.h"
 #include <iostream>
 
 #if defined(__APPLE__)
@@ -7,6 +8,7 @@
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
 #import <CoreVideo/CoreVideo.h>
+#import <AudioToolbox/AudioToolbox.h>
 
 namespace vivid {
 
@@ -301,17 +303,147 @@ public:
     double currentTime() const override { return currentTime_; }
     int64_t currentFrame() const override { return currentFrame_; }
 
+    // === Audio Support ===
+
+    void setAudioEnabled(bool enabled) override {
+        audioEnabled_ = enabled;
+        if (audioPlayer_) {
+            if (enabled) {
+                audioPlayer_->play();
+            } else {
+                audioPlayer_->pause();
+            }
+        }
+    }
+
+    bool isAudioEnabled() const override { return audioEnabled_; }
+
+    void setAudioVolume(float volume) override {
+        audioVolume_ = volume;
+        if (audioPlayer_) {
+            audioPlayer_->setVolume(volume);
+        }
+    }
+
+    float getAudioVolume() const override { return audioVolume_; }
+
+    AudioPlayer* getAudioPlayer() override { return audioPlayer_.get(); }
+
 private:
+    bool setupAudioReader() {
+        @autoreleasepool {
+            NSArray* audioTracks = [asset_ tracksWithMediaType:AVMediaTypeAudio];
+            if ([audioTracks count] == 0) {
+                return false;
+            }
+
+            AVAssetTrack* audioTrack = [audioTracks objectAtIndex:0];
+
+            // Get audio format info
+            NSArray* formatDescriptions = audioTrack.formatDescriptions;
+            if ([formatDescriptions count] > 0) {
+                CMFormatDescriptionRef desc = (__bridge CMFormatDescriptionRef)[formatDescriptions objectAtIndex:0];
+                const AudioStreamBasicDescription* asbd = CMAudioFormatDescriptionGetStreamBasicDescription(desc);
+                if (asbd) {
+                    audioSampleRate_ = static_cast<uint32_t>(asbd->mSampleRate);
+                    audioChannels_ = asbd->mChannelsPerFrame;
+                }
+            }
+
+            // Default to common values if not detected
+            if (audioSampleRate_ == 0) audioSampleRate_ = 48000;
+            if (audioChannels_ == 0) audioChannels_ = 2;
+
+            // Configure output for float PCM
+            NSDictionary* audioSettings = @{
+                AVFormatIDKey: @(kAudioFormatLinearPCM),
+                AVLinearPCMBitDepthKey: @32,
+                AVLinearPCMIsFloatKey: @YES,
+                AVLinearPCMIsNonInterleaved: @NO,
+                AVSampleRateKey: @(audioSampleRate_),
+                AVNumberOfChannelsKey: @(audioChannels_)
+            };
+
+            audioReaderOutput_ = [AVAssetReaderAudioMixOutput assetReaderAudioMixOutputWithAudioTracks:@[audioTrack]
+                                                                                        audioSettings:audioSettings];
+            audioReaderOutput_.alwaysCopiesSampleData = NO;
+
+            if (![assetReader_ canAddOutput:audioReaderOutput_]) {
+                std::cerr << "[VideoLoaderMacOS] Cannot add audio reader output\n";
+                audioReaderOutput_ = nil;
+                return false;
+            }
+            [assetReader_ addOutput:audioReaderOutput_];
+
+            // Create audio player
+            audioPlayer_ = std::make_unique<AudioPlayer>();
+            if (!audioPlayer_->init(audioSampleRate_, audioChannels_)) {
+                std::cerr << "[VideoLoaderMacOS] Failed to initialize audio player\n";
+                audioPlayer_.reset();
+                return false;
+            }
+
+            audioPlayer_->setVolume(audioVolume_);
+            std::cout << "[VideoLoaderMacOS] Audio: " << audioSampleRate_ << "Hz, "
+                      << audioChannels_ << " channel(s)\n";
+
+            return true;
+        }
+    }
+
+    void decodeAudioSamples() {
+        if (!audioReaderOutput_ || !audioPlayer_ || !audioEnabled_) return;
+
+        @autoreleasepool {
+            // Decode audio samples to stay ahead of video
+            // Try to buffer ~0.5 seconds of audio
+            uint32_t targetBufferFrames = audioSampleRate_ / 2;
+
+            while (audioPlayer_->getBufferedFrames() < targetBufferFrames) {
+                CMSampleBufferRef sampleBuffer = [audioReaderOutput_ copyNextSampleBuffer];
+                if (!sampleBuffer) break;
+
+                // Get audio buffer list
+                CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
+                if (!blockBuffer) {
+                    CFRelease(sampleBuffer);
+                    continue;
+                }
+
+                size_t totalLength = 0;
+                char* dataPointer = nullptr;
+                OSStatus status = CMBlockBufferGetDataPointer(blockBuffer, 0, nullptr, &totalLength, &dataPointer);
+
+                if (status == noErr && dataPointer) {
+                    // Data is interleaved float samples
+                    const float* samples = reinterpret_cast<const float*>(dataPointer);
+                    uint32_t frameCount = static_cast<uint32_t>(totalLength / (sizeof(float) * audioChannels_));
+                    audioPlayer_->pushSamples(samples, frameCount);
+                }
+
+                CFRelease(sampleBuffer);
+            }
+        }
+    }
+
     // Use __strong to ensure ARC properly retains ObjC objects in C++ class
     __strong AVAsset* asset_ = nil;
     __strong AVAssetReader* assetReader_ = nil;
     __strong AVAssetReaderTrackOutput* readerOutput_ = nil;
+    __strong AVAssetReaderAudioMixOutput* audioReaderOutput_ = nil;
 
     VideoInfo info_;
     std::string path_;
     bool isOpen_ = false;
     double currentTime_ = 0;
     int64_t currentFrame_ = 0;
+
+    // Audio
+    std::unique_ptr<AudioPlayer> audioPlayer_;
+    uint32_t audioSampleRate_ = 0;
+    uint32_t audioChannels_ = 0;
+    bool audioEnabled_ = true;
+    float audioVolume_ = 1.0f;
 };
 
 std::unique_ptr<VideoLoader> createVideoLoaderMacOS() {

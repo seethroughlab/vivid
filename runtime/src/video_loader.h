@@ -8,6 +8,7 @@ namespace vivid {
 
 class Context;
 class Renderer;
+class AudioPlayer;
 
 // VideoCodecType and VideoInfo are now defined in types.h
 
@@ -98,6 +99,38 @@ public:
                type == VideoCodecType::HAPQAlpha;
     }
 
+    // === Audio Support ===
+
+    /**
+     * @brief Enable or disable audio playback.
+     * @param enabled true to enable audio.
+     *
+     * Audio is enabled by default if the video has an audio track.
+     */
+    virtual void setAudioEnabled(bool enabled) { (void)enabled; }
+
+    /**
+     * @brief Check if audio playback is enabled.
+     */
+    virtual bool isAudioEnabled() const { return false; }
+
+    /**
+     * @brief Set audio volume.
+     * @param volume Volume level (0.0 to 1.0).
+     */
+    virtual void setAudioVolume(float volume) { (void)volume; }
+
+    /**
+     * @brief Get current audio volume.
+     */
+    virtual float getAudioVolume() const { return 1.0f; }
+
+    /**
+     * @brief Get the audio player (if audio is supported).
+     * @return Pointer to AudioPlayer, or nullptr if no audio.
+     */
+    virtual AudioPlayer* getAudioPlayer() { return nullptr; }
+
     /**
      * @brief Check if a file extension is supported.
      * @param path File path to check.
@@ -128,5 +161,14 @@ protected:
  * This is used to determine whether to use platform decode or HAP path.
  */
 VideoCodecType detectVideoCodec(const std::string& path);
+
+/**
+ * @brief Create a VideoLoader appropriate for the given file.
+ * @param path Path to video file.
+ * @return VideoLoader instance (HAP decoder for HAP files, platform loader otherwise).
+ *
+ * This function probes the file to detect HAP codec and uses the appropriate loader.
+ */
+std::unique_ptr<VideoLoader> createVideoLoaderForPath(const std::string& path);
 
 } // namespace vivid

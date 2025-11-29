@@ -1,9 +1,60 @@
 #include "video_loader.h"
+#ifdef VIVID_HAS_FFMPEG
+#include "hap_decoder.h"
+#endif
 #include <algorithm>
 #include <cctype>
 #include <iostream>
 
 namespace vivid {
+
+#ifdef VIVID_HAS_FFMPEG
+/**
+ * @brief VideoLoader implementation that wraps HAPDecoder.
+ */
+class VideoLoaderHAP : public VideoLoader {
+public:
+    bool open(const std::string& path) override {
+        return decoder_.open(path);
+    }
+
+    void close() override {
+        decoder_.close();
+    }
+
+    bool isOpen() const override {
+        return decoder_.isOpen();
+    }
+
+    const VideoInfo& info() const override {
+        return decoder_.info();
+    }
+
+    bool seek(double timeSeconds) override {
+        return decoder_.seek(timeSeconds);
+    }
+
+    bool seekToFrame(int64_t frameNumber) override {
+        double time = frameNumber / decoder_.info().frameRate;
+        return decoder_.seek(time);
+    }
+
+    bool getFrame(Texture& output, Renderer& renderer) override {
+        return decoder_.getFrame(output, renderer);
+    }
+
+    double currentTime() const override {
+        return decoder_.currentTime();
+    }
+
+    int64_t currentFrame() const override {
+        return static_cast<int64_t>(decoder_.currentTime() * decoder_.info().frameRate);
+    }
+
+private:
+    HAPDecoder decoder_;
+};
+#endif
 
 bool VideoLoader::isSupported(const std::string& path) {
     // Get file extension
@@ -50,23 +101,35 @@ bool VideoLoader::isSupported(const std::string& path) {
 #endif
 
 VideoCodecType detectVideoCodec(const std::string& path) {
-    // For now, return Unknown - full detection requires reading file headers
-    // This will be implemented properly when we add FFmpeg for HAP demuxing
-    //
-    // HAP detection requires checking:
-    // 1. Container is MOV or AVI
-    // 2. Video codec fourcc is 'Hap1', 'Hap5', 'HapY', or 'HapM'
-    //
-    // For now, we'll detect based on the platform loader's probe
-
     // Quick check: if file doesn't exist or isn't a video, return Unknown
     if (!VideoLoader::isSupported(path)) {
         return VideoCodecType::Unknown;
     }
 
-    // Default to Standard - platform loaders will update this
-    // HAP detection will be added in phase 12.2c
+#ifdef VIVID_HAS_FFMPEG
+    // Check if it's a HAP file
+    if (HAPDecoder::isHAPFile(path)) {
+        // We detected it's HAP, but don't know the exact variant yet
+        // The HAPDecoder will determine the specific type when opened
+        return VideoCodecType::HAP;
+    }
+#endif
+
+    // Default to Standard for platform-native decoding
     return VideoCodecType::Standard;
+}
+
+// Factory that checks for HAP first
+std::unique_ptr<VideoLoader> createVideoLoaderForPath(const std::string& path) {
+#ifdef VIVID_HAS_FFMPEG
+    // Check if it's a HAP file
+    if (HAPDecoder::isHAPFile(path)) {
+        std::cout << "[VideoLoader] Detected HAP codec, using HAPDecoder\n";
+        return std::make_unique<VideoLoaderHAP>();
+    }
+#endif
+    // Fall back to platform-native loader
+    return VideoLoader::create();
 }
 
 } // namespace vivid
