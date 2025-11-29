@@ -35,7 +35,7 @@ void update(Chain& chain, Context& ctx) {
 - [x] `add<T>(name)` — instantiate operator and register by name
 - [x] `get<T>(name)` — retrieve operator for parameter updates
 - [x] `setOutput(name)` — designate final output operator
-- [ ] `connect(fromNode, toNode)` — explicit wiring (alternative to `.input()`)
+- [x] `connect(fromNode, toNode)` — explicit wiring (alternative to `.input()`)
 - [x] Store operator instances in `std::unordered_map<std::string, std::unique_ptr<Operator>>`
 
 ### 0.2 Operator Registry
@@ -46,11 +46,11 @@ void update(Chain& chain, Context& ctx) {
 - [x] All built-in operators registered (`Noise`, `Feedback`, `Mirror`, `HSV`, `Blur`, etc.)
 
 ### 0.3 Dependency Resolution
-- [ ] Track input dependencies from `.input("nodeName")` calls on operators
-- [ ] Build dependency graph from input references
-- [ ] Topological sort for execution order
-- [ ] Detect and report circular dependencies
-- [ ] Handle missing input references gracefully (warning, not crash)
+- [x] Track input dependencies from `.input("nodeName")` calls on operators
+- [x] Build dependency graph from input references
+- [x] Topological sort for execution order (`computeExecutionOrder()`)
+- [x] Detect and report circular dependencies
+- [x] Handle missing input references gracefully (warning, not crash)
 
 ### 0.4 Chain Execution
 - [x] `Chain::init(Context&)` — call `init()` on all operators in dependency order
@@ -83,15 +83,15 @@ void update(Chain& chain, Context& ctx) {
 - [x] Migrate `examples/hello` to Chain API
 - [x] Migrate `examples/feedback` to Chain API
 - [x] Migrate `examples/webcam` to Chain API
-- [ ] Migrate `examples/video-playback` to Chain API
+- [x] Migrate `examples/video-playback` to Chain API
 - [x] Create new `examples/chain-demo` showcasing the API
-- [ ] Update documentation with Chain API examples
+- [x] Update documentation with Chain API examples
 
 ### 0.9 Documentation
-- [ ] Document Chain API in `docs/CHAIN-API.md`
-- [ ] Update `docs/OPERATOR-API.md` with fluent interface requirements
-- [ ] Update README with Chain API examples
-- [ ] Add inline comments to `chain.h`
+- [x] Document Chain API in `docs/CHAIN-API.md`
+- [x] Update `docs/OPERATOR-API.md` with fluent interface requirements
+- [x] Update README with Chain API examples
+- [x] Add inline comments to `chain.h`
 
 ---
 
@@ -623,6 +623,8 @@ Build and test each operator individually:
 - [ ] View matrix generation (lookAt)
 - [ ] Projection matrix (perspective)
 - [ ] Camera uniform buffer for shaders
+- [ ] **Orbit Camera** — Mouse-controlled orbit around target (drag to rotate, scroll to zoom)
+- [ ] **Fly Camera** — WASD + mouse look for free navigation
 
 #### Lighting System
 - [ ] Light base class with color and intensity
@@ -653,11 +655,41 @@ Build and test each operator individually:
 #### Render Operator
 - [ ] `Render3D` — Combines geometry + material + lights + camera → texture
 
+#### Stencil & Decals
+- [ ] **Stencil Buffer** — Enable stencil testing in render pipeline
+- [ ] **Stencil Operators** — Write/test stencil for masking effects
+- [ ] **Decal Projection** — Project textures onto 3D geometry (team logos, grime, weathering)
+- [ ] **Decal Blending** — Multiply, overlay, additive modes for decals
+
 #### Advanced (Future)
 - [ ] Shadow mapping (directional + point light shadows)
 - [ ] IBL / environment maps (image-based lighting)
 - [ ] Screen-space reflections
 - [ ] Ambient occlusion (SSAO)
+
+### 12.9b Post-Processing Effects
+**Priority: High — Essential for polished visuals**
+
+#### Bloom & Glow
+- [ ] **Bloom** — HDR-style bright area glow (`operators/bloom.cpp`)
+  - [ ] Brightness threshold extraction
+  - [ ] Multi-pass Gaussian blur on bright areas
+  - [ ] Additive blend back to source
+- [ ] **Glow** — Per-object glow via alpha channel or mask
+
+#### Color & Tone
+- [ ] **Vignette** — Darkened edges effect
+- [ ] **ColorGrade** — LUT-based color grading
+- [ ] **Tonemap** — HDR to SDR mapping (ACES, Reinhard, etc.)
+
+#### Distortion
+- [ ] **LensDistortion** — Barrel/pincushion distortion
+- [ ] **LensFlare** — Anamorphic lens flare from bright spots
+- [ ] **FilmGrain** — Animated noise overlay for cinematic look
+
+#### Motion
+- [ ] **MotionBlur** — Per-pixel velocity-based blur
+- [ ] **RadialBlur** — Speed/zoom blur effect
 
 ### 12.10 Text, Debug Display & Vector
 
@@ -793,19 +825,67 @@ Build and test each operator individually:
 ### 14.1 Core Feature Examples
 **Each example demonstrates a specific capability**
 
-- [ ] `examples/hello` — Basic noise operator (exists)
-- [ ] `examples/feedback` — Feedback/trail effect
-- [ ] `examples/audio-reactive` — Audio input driving visuals
-- [ ] `examples/beat-detection` — Audio beat detection (see `beat_detection.md`)
-- [ ] `examples/midi-control` — MIDI CC controlling parameters
+#### Input & Interaction
 - [x] `examples/webcam` — Camera input processing
-- [ ] `examples/pose-detection` — MoveNet skeleton tracking from webcam (requires ONNX)
-- [ ] `examples/particles` — Particle system
-- [ ] `examples/3d-geometry` — 3D rendering basics
-- [ ] `examples/text` — Text rendering
-- [ ] `examples/multi-window` — Multiple output windows
 - [x] `examples/video-playback` — Video file input (H.264 tested, VideoFile operator)
-- [ ] `examples/web-server` - Host a simple web interface that interacts with nodes
+- [ ] `examples/mouse-draw` — Mouse position/click to draw trails or control effects
+- [ ] `examples/keyboard-control` — Keyboard triggers and parameter control
+- [ ] `examples/gamepad` — Game controller input for live performance
+- [ ] `examples/image-sequence` — Load and animate through image sequences
+
+#### Audio & Music
+- [ ] `examples/audio-reactive` — Audio input driving visuals (mic/line-in)
+- [ ] `examples/beat-detection` — Audio beat detection (see `beat_detection.md`)
+- [ ] `examples/fft-visualizer` — Frequency spectrum display
+- [ ] `examples/midi-control` — MIDI CC controlling parameters
+- [ ] `examples/osc-remote` — OSC input for remote control (TouchOSC, etc.)
+
+#### Texture Sharing & Output
+- [ ] `examples/syphon-out` — Send texture to other apps via Syphon (macOS)
+- [ ] `examples/spout-out` — Send texture to other apps via Spout (Windows)
+- [ ] `examples/syphon-in` — Receive texture from other apps via Syphon
+- [ ] `examples/spout-in` — Receive texture from other apps via Spout
+- [ ] `examples/ndi-stream` — NDI network video streaming
+- [ ] `examples/record-video` — Export to H.264/ProRes video file
+
+#### Effects & Processing
+- [x] `examples/hello` — Basic noise operator
+- [x] `examples/chain-demo` — Chain API with kaleidoscope feedback
+- [ ] `examples/feedback` — Feedback/trail effect variations
+- [ ] `examples/composite-modes` — Blend mode comparison (add, multiply, screen, etc.)
+- [ ] `examples/displacement` — Texture displacement techniques
+- [ ] `examples/lfo-modulation` — LFO driving parameters over time
+- [ ] `examples/post-processing` — Bloom, vignette, color grading chain
+
+#### 3D & Geometry
+- [ ] `examples/3d-geometry` — 3D rendering basics (primitives, camera, lighting)
+- [ ] `examples/model-loader` — Load OBJ/glTF models
+- [ ] `examples/particles` — Particle system with emitters
+- [ ] `examples/instancing` — GPU instancing for many objects
+- [ ] `examples/orbit-camera` — Interactive 3D camera controls
+
+#### Text & Overlay
+- [ ] `examples/text` — Text rendering with fonts
+- [ ] `examples/debug-overlay` — On-screen debug info display
+
+#### Advanced
+- [ ] `examples/multi-window` — Multiple output windows
+- [ ] `examples/pose-detection` — MoveNet skeleton tracking from webcam (requires ONNX)
+- [ ] `examples/web-server` — Host a simple web interface that interacts with nodes
+- [ ] `examples/time-machine` — 3D texture frame cache with temporal displacement
+
+### 14.1b Showcase Examples
+**Larger examples demonstrating multiple features working together**
+
+- [ ] `examples/wipeout-vehicle` — Audio-reactive Wipeout 2097-style hover vehicle generator
+  - [ ] Procedural angular 3D geometry (wedge shapes, fins, cockpit)
+  - [ ] PBR metallic materials with roughness variation
+  - [ ] Team livery decals via stencil projection
+  - [ ] Grime/weathering texture overlays
+  - [ ] Glowing engine exhaust (emissive + bloom)
+  - [ ] Orbit camera for viewing
+  - [ ] Audio reactivity: beat → engine glow, bass → hover height, mids → color cycle
+  - [ ] Particle exhaust trail
 
 ### 14.2 Template Projects
 - [ ] Minimal template (single operator)

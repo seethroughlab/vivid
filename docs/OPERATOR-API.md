@@ -193,20 +193,86 @@ std::vector<ParamDecl> params() override {
 | `colorParam(name, default)` | `glm::vec3` | `colorParam("tint", vec3(1, 0.5, 0))` |
 | `stringParam(name, default)` | `std::string` | `stringParam("label", "hello")` |
 
-## Fluent API Pattern
+## Fluent API Pattern (Chain API Compatible)
 
-Operators can use a fluent API for clean configuration:
+For operators to work with the Chain API, they should follow the fluent interface pattern.
+Each setter returns `*this` to enable method chaining.
+
+### Required Methods for Chain API
 
 ```cpp
-class Noise : public vivid::Operator {
-    float scale_ = 4.0f;
-    float speed_ = 1.0f;
+class MyEffect : public vivid::Operator {
+    std::string inputNode_;  // Store input reference
+    float amount_ = 1.0f;
+    Texture output_;
 
 public:
-    Noise& scale(float s) { scale_ = s; return *this; }
-    Noise& speed(float s) { speed_ = s; return *this; }
+    // REQUIRED: input() method for chaining operators
+    MyEffect& input(const std::string& node) {
+        inputNode_ = node;
+        return *this;
+    }
 
-    // ... lifecycle methods
+    // Parameter setters return *this for fluent chaining
+    MyEffect& amount(float a) { amount_ = a; return *this; }
+
+    void process(Context& ctx) override {
+        // Use inputNode_ to get source texture
+        Texture* src = ctx.getInputTexture(inputNode_, "out");
+        if (!src) return;  // Handle gracefully
+
+        Context::ShaderParams params;
+        params.param0 = amount_;
+        ctx.runShader("shaders/my_effect.wgsl", src, output_, params);
+        ctx.setOutput("out", output_);
+    }
+};
+```
+
+### Usage in Chain API
+
+```cpp
+void setup(Chain& chain) {
+    chain.add<Noise>("noise").scale(4.0f);
+    chain.add<MyEffect>("effect")
+        .input("noise")    // Connect to noise operator
+        .amount(0.5f);
+    chain.setOutput("effect");
+}
+```
+
+### Generator Operators (No Input)
+
+Generators don't need an `input()` method:
+
+```cpp
+class MyGenerator : public vivid::Operator {
+    float scale_ = 4.0f;
+
+public:
+    MyGenerator& scale(float s) { scale_ = s; return *this; }
+
+    void process(Context& ctx) override {
+        // Generators create output from nothing
+        ctx.runShader("shaders/generator.wgsl", nullptr, output_, params);
+        ctx.setOutput("out", output_);
+    }
+};
+```
+
+### Multiple Inputs
+
+For operators that take multiple inputs (like Composite):
+
+```cpp
+class Blend : public vivid::Operator {
+    std::string input1_;
+    std::string input2_;
+
+public:
+    Blend& input(const std::string& node) { input1_ = node; return *this; }
+    Blend& input2(const std::string& node) { input2_ = node; return *this; }
+    // Or use: background(), foreground(), etc.
 };
 ```
 

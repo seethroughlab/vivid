@@ -8,6 +8,7 @@
 #include <vector>
 #include <functional>
 #include <stdexcept>
+#include <iostream>
 
 namespace vivid {
 
@@ -365,12 +366,77 @@ public:
         return initialized_;
     }
 
+    /**
+     * @brief Compute execution order via topological sort.
+     *
+     * Call this after all operators are added and connections made.
+     * Ensures operators are processed in dependency order.
+     * Returns false if circular dependency detected.
+     */
+    bool computeExecutionOrder() {
+        // Build complete dependency graph from both explicit connections
+        // and implicit .input() calls (dependencies_ already tracks connect() calls)
+
+        // Kahn's algorithm for topological sort
+        std::unordered_map<std::string, int> inDegree;
+        std::unordered_map<std::string, std::vector<std::string>> graph;
+
+        // Initialize in-degree for all operators
+        for (const auto& name : executionOrder_) {
+            inDegree[name] = 0;
+        }
+
+        // Build graph from dependencies
+        for (const auto& [node, deps] : dependencies_) {
+            for (const auto& dep : deps) {
+                graph[dep].push_back(node);
+                inDegree[node]++;
+            }
+        }
+
+        // Find all nodes with no dependencies
+        std::vector<std::string> queue;
+        for (const auto& name : executionOrder_) {
+            if (inDegree[name] == 0) {
+                queue.push_back(name);
+            }
+        }
+
+        // Process nodes in topological order
+        std::vector<std::string> sorted;
+        while (!queue.empty()) {
+            std::string node = queue.back();
+            queue.pop_back();
+            sorted.push_back(node);
+
+            for (const auto& dependent : graph[node]) {
+                inDegree[dependent]--;
+                if (inDegree[dependent] == 0) {
+                    queue.push_back(dependent);
+                }
+            }
+        }
+
+        // Check for circular dependency
+        if (sorted.size() != executionOrder_.size()) {
+            std::cerr << "[Chain] Circular dependency detected!\n";
+            return false;
+        }
+
+        executionOrder_ = sorted;
+        return true;
+    }
+
 private:
     std::unordered_map<std::string, std::unique_ptr<Operator>> operators_;
     std::vector<std::string> executionOrder_;
     std::string outputNode_;
     Context* ctx_ = nullptr;
     bool initialized_ = false;
+
+    // Connection graph for explicit wiring
+    std::vector<Connection> connections_;
+    std::unordered_map<std::string, std::vector<std::string>> dependencies_;
 };
 
 } // namespace vivid

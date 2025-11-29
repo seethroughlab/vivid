@@ -4,6 +4,8 @@
 #include "image_loader.h"
 #include "video_loader.h"
 #include "camera_capture.h"
+#include <unordered_set>
+#include <iostream>
 
 namespace vivid {
 
@@ -323,6 +325,13 @@ Texture* Context::getInputTexture(const std::string& nodeId, const std::string& 
     it = textureOutputs_.find(nodeId);
     if (it != textureOutputs_.end()) {
         return &it->second;
+    }
+
+    // Warn about missing input (only once per key)
+    static std::unordered_set<std::string> warnedInputs;
+    if (warnedInputs.find(key) == warnedInputs.end()) {
+        std::cerr << "[Context] Warning: Input texture not found: " << key << "\n";
+        warnedInputs.insert(key);
     }
     return nullptr;
 }

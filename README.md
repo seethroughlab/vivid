@@ -101,6 +101,41 @@ The framework is designed so that an LLM can be a genuine collaborator, not just
 └──────────────────────────────────────────────────────────┘
 ```
 
+## Chain API
+
+The Chain API is the recommended way to build Vivid projects. It provides a declarative, fluent interface for composing operators:
+
+```cpp
+#include <vivid/vivid.h>
+using namespace vivid;
+
+void setup(Chain& chain) {
+    // Build your operator pipeline
+    chain.add<Noise>("noise").scale(4.0f).speed(0.3f);
+    chain.add<Feedback>("fb").input("noise").decay(0.9f).zoom(1.02f);
+    chain.add<Mirror>("mirror").input("fb").kaleidoscope(6);
+    chain.add<HSV>("color").input("mirror").colorize(true).saturation(0.8f);
+    chain.setOutput("color");
+}
+
+void update(Chain& chain, Context& ctx) {
+    // Dynamic updates each frame
+    chain.get<Feedback>("fb").rotate(ctx.mouseNormX() * 0.1f);
+    chain.get<HSV>("color").hueShift(ctx.time() * 0.1f);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+Key features:
+- **Fluent configuration** — chain setters with `.scale().speed().octaves()`
+- **Named operators** — reference by name with `.input("nodeName")`
+- **Dynamic updates** — modify parameters in `update()` for interactivity
+- **State preservation** — animation states survive hot-reload
+- **Automatic execution order** — operators run in dependency order
+
+See [docs/CHAIN-API.md](docs/CHAIN-API.md) for the complete guide.
+
 ## Operator Types
 
 Inspired by TouchDesigner's operator families:
@@ -223,27 +258,21 @@ set_target_properties(operators PROPERTIES PREFIX "lib")
 Create `chain.cpp`:
 ```cpp
 #include <vivid/vivid.h>
+using namespace vivid;
 
-class MyNoise : public vivid::Operator {
-public:
-    void init(vivid::Context& ctx) override {
-        output_ = ctx.createTexture(ctx.width(), ctx.height());
-    }
+void setup(Chain& chain) {
+    // Animated noise with color
+    chain.add<Noise>("noise").scale(4.0f).speed(1.0f);
+    chain.add<HSV>("color").input("noise").colorize(true).saturation(0.7f);
+    chain.setOutput("color");
+}
 
-    void process(vivid::Context& ctx) override {
-        ctx.runShader("shaders/noise.wgsl", {}, output_);
-        ctx.setOutput("out", output_);
-    }
+void update(Chain& chain, Context& ctx) {
+    // Cycle hue over time
+    chain.get<HSV>("color").hueShift(ctx.time() * 0.1f);
+}
 
-    vivid::OutputKind outputKind() const override {
-        return vivid::OutputKind::Texture;
-    }
-
-private:
-    vivid::Texture output_;
-};
-
-VIVID_OPERATOR(MyNoise)
+VIVID_CHAIN(setup, update)
 ```
 
 Run it:
@@ -252,35 +281,41 @@ cd /path/to/vivid
 ./build/bin/vivid-runtime /path/to/my-project
 ```
 
-## Example: Feedback Loop
+## Example: Feedback Kaleidoscope
 
-Here's a complete example showing animated noise with feedback:
+Here's a complete example showing animated noise with feedback and kaleidoscope effects:
 
 ```cpp
 // chain.cpp
 #include <vivid/vivid.h>
+using namespace vivid;
 
-class AnimatedNoise : public vivid::Operator {
-    vivid::Texture output_;
-public:
-    void init(vivid::Context& ctx) override {
-        output_ = ctx.createTexture(ctx.width(), ctx.height());
-    }
+void setup(Chain& chain) {
+    // Noise as the seed pattern
+    chain.add<Noise>("noise").scale(4.0f).speed(0.3f).octaves(4);
 
-    void process(vivid::Context& ctx) override {
-        float time = ctx.time();
-        ctx.runShader("shaders/noise.wgsl", {
-            {"u_time", time},
-            {"u_scale", 4.0f}
-        }, output_);
-        ctx.setOutput("out", output_);
-    }
+    // Feedback creates evolving trails
+    chain.add<Feedback>("fb").input("noise").decay(0.92f).zoom(1.02f);
 
-    vivid::OutputKind outputKind() const override {
-        return vivid::OutputKind::Texture;
-    }
-};
-VIVID_OPERATOR(AnimatedNoise)
+    // Kaleidoscope symmetry
+    chain.add<Mirror>("mirror").input("fb").kaleidoscope(6);
+
+    // Colorize the grayscale result
+    chain.add<HSV>("color").input("mirror").colorize(true).saturation(0.8f);
+
+    chain.setOutput("color");
+}
+
+void update(Chain& chain, Context& ctx) {
+    // Mouse X controls rotation
+    float rot = (ctx.mouseNormX() - 0.5f) * 0.1f;
+    chain.get<Feedback>("fb").rotate(rot);
+
+    // Cycle hue over time
+    chain.get<HSV>("color").hueShift(ctx.time() * 0.05f);
+}
+
+VIVID_CHAIN(setup, update)
 ```
 
 Edit any parameter, save, and watch the preview update instantly in VS Code.
@@ -293,10 +328,13 @@ Edit any parameter, save, and watch the preview update instantly in VS Code.
 - Hot-reload of WGSL shaders
 - Async GPU readback for preview capture
 - Shared memory preview transfer to VS Code (zero-copy)
+- Chain API for declarative operator composition
 
-**Operator Library** — 12 operators implemented
-- Noise, Gradient, Shape, Blur, Feedback, Composite
-- Brightness, HSVAdjust, Transform, Displacement, Edge, LFO
+**Operator Library** — 14+ operators implemented
+- Generators: Noise, Gradient, Shape, Constant
+- Effects: Blur, Feedback, Mirror, HSVAdjust, Transform, Displacement, Edge, Composite
+- Channel: LFO
+- Media: VideoFile, ImageFile, Webcam
 
 **VS Code Extension** — Complete
 - Inline `[img]` decorations with hover previews
@@ -305,7 +343,6 @@ Edit any parameter, save, and watch the preview update instantly in VS Code.
 - Auto-connect to running runtime
 
 **Coming Soon**
-- Image/video file loading
 - Audio input with FFT analysis
 - MIDI/OSC input
 - 3D geometry and particle systems
@@ -313,6 +350,7 @@ Edit any parameter, save, and watch the preview update instantly in VS Code.
 
 ## Documentation
 
+- **[Chain API Guide](docs/CHAIN-API.md)** — Composing operators with the fluent Chain API
 - **[Installation Guide](docs/INSTALL.md)** — Complete setup instructions for all platforms
 - **[Operator API Guide](docs/OPERATOR-API.md)** — How to create custom operators
 - **[Shader Conventions](docs/SHADER-CONVENTIONS.md)** — WGSL shader structure and uniforms
