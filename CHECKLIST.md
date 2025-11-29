@@ -414,9 +414,10 @@ Build and test each operator individually:
 #### 12.2b macOS Implementation (Primary)
 - [x] Implement `VideoLoaderMacOS` (`runtime/src/video_loader_macos.mm`)
 - [x] AVAssetReader setup and frame extraction
-- [x] CVPixelBuffer → Texture upload
+- [x] CVPixelBuffer → Texture upload (BGRA to RGBA conversion)
 - [x] Hardware-accelerated decode (automatic via VideoToolbox)
 - [x] Frame-accurate seeking (via reader recreation with time range)
+- [x] Frame rate limiting (decode only at video's native framerate)
 - [x] Test: H.264 playback (avc1 codec tested successfully)
 - [ ] Test: ProRes, HEVC playback
 - [ ] Zero-copy via IOSurface (optimization for later)

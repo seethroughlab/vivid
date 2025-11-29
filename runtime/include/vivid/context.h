@@ -9,6 +9,7 @@ namespace vivid {
 
 // Forward declarations
 class Renderer;
+class Window;
 struct Shader;
 
 /**
@@ -24,6 +25,7 @@ struct Shader;
 class Context {
 public:
     Context(Renderer& renderer, int width, int height);
+    Context(Renderer& renderer, Window& window, int width, int height);
 
     /// @name Time and Frame Info
     /// @{
@@ -46,6 +48,25 @@ public:
 
     /// @brief Get the output height in pixels.
     int height() const { return height_; }
+    /// @}
+
+    /// @name Keyboard Input
+    /// @{
+
+    /// @brief Check if a key is currently held down.
+    /// @param key GLFW key code (e.g., GLFW_KEY_SPACE, GLFW_KEY_A).
+    /// @return true if the key is currently pressed.
+    bool isKeyDown(int key) const;
+
+    /// @brief Check if a key was just pressed this frame.
+    /// @param key GLFW key code.
+    /// @return true if the key was pressed this frame (edge trigger).
+    bool wasKeyPressed(int key) const;
+
+    /// @brief Check if a key was just released this frame.
+    /// @param key GLFW key code.
+    /// @return true if the key was released this frame (edge trigger).
+    bool wasKeyReleased(int key) const;
     /// @}
 
     /// @name Texture Creation
@@ -287,6 +308,7 @@ private:
     // Get or load a cached shader
     Shader* getCachedShader(const std::string& path);
     Renderer& renderer_;
+    Window* window_ = nullptr;  // Optional, for keyboard input
     int width_;
     int height_;
     float time_ = 0;

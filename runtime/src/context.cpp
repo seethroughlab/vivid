@@ -1,5 +1,6 @@
 #include <vivid/context.h>
 #include "renderer.h"
+#include "window.h"
 #include "image_loader.h"
 #include "video_loader.h"
 
@@ -7,6 +8,9 @@ namespace vivid {
 
 Context::Context(Renderer& renderer, int width, int height)
     : renderer_(renderer), width_(width), height_(height) {}
+
+Context::Context(Renderer& renderer, Window& window, int width, int height)
+    : renderer_(renderer), window_(&window), width_(width), height_(height) {}
 
 Texture Context::createTexture(int width, int height) {
     return renderer_.createTexture(width, height);
@@ -225,6 +229,18 @@ void Context::clearShaderCache() {
         }
     }
     shaderCache_.clear();
+}
+
+bool Context::isKeyDown(int key) const {
+    return window_ ? window_->isKeyDown(key) : false;
+}
+
+bool Context::wasKeyPressed(int key) const {
+    return window_ ? window_->wasKeyPressed(key) : false;
+}
+
+bool Context::wasKeyReleased(int key) const {
+    return window_ ? window_->wasKeyReleased(key) : false;
 }
 
 Shader* Context::getCachedShader(const std::string& path) {

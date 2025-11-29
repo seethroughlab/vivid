@@ -2,3 +2,4 @@
 - How do I install the VS Code extension locally? And how do I upload it to make it generally available?
 - One thing that I DON'T like about TD is that you can't really instantiatye anything. Lots of the advantages of OOP are lost in TD because you can't create objects. I want to make sure the long-term plan for Vivid is still firmly in the C++ world, even though TD is the inspiration. What can we add to the PLAN to ensure that happens?
 - Please comgine all of the PLAN*.txt files into one big PLAN.txt file.
+- Please make an example of video playback with noise displacement

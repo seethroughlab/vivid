@@ -111,8 +111,8 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        // Create Context
-        vivid::Context ctx(renderer, width, height);
+        // Create Context (with Window for keyboard input)
+        vivid::Context ctx(renderer, window, width, height);
         std::cout << "Context created (" << ctx.width() << "x" << ctx.height() << ")\n";
 
         // Set up resize callback
@@ -467,6 +467,7 @@ int main(int argc, char* argv[]) {
             // End frame
             ctx.endFrame();
             renderer.endFrame();
+            window.clearInputState();
 
             frameCount++;
         }

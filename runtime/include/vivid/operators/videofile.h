@@ -1,19 +1,42 @@
-// VideoFile Operator
-// Loads and plays video files with playback controls
-// Supports hot-reload: automatically reloads when the file changes
+#pragma once
 
-#include <vivid/vivid.h>
+#include "../operator.h"
+#include "../context.h"
+#include "../types.h"
 #include <sys/stat.h>
 #include <iostream>
 #include <cmath>
+#include <string>
 
-using namespace vivid;
+namespace vivid {
 
+/**
+ * @brief Video file playback operator.
+ *
+ * Loads and plays video files with full playback controls including
+ * play/pause, seeking, looping, and variable speed playback.
+ *
+ * Outputs:
+ * - "out": Current video frame as texture
+ * - "duration": Total video duration in seconds
+ * - "position": Current playback position in seconds
+ * - "progress": Normalized position (0.0 to 1.0)
+ * - "fps": Video frame rate
+ * - "width": Video width in pixels
+ * - "height": Video height in pixels
+ * - "playing": 1.0 if playing, 0.0 if paused
+ *
+ * Example:
+ * @code
+ * VideoFile video_;
+ * video_.path("video.mp4").loop(true).play();
+ * @endcode
+ */
 class VideoFile : public Operator {
 public:
     VideoFile() = default;
 
-    // Fluent API
+    /// Set the video file path
     VideoFile& path(const std::string& p) {
         if (p != path_) {
             path_ = p;
@@ -22,39 +45,47 @@ public:
         return *this;
     }
 
+    /// Alias for path()
     VideoFile& file(const std::string& p) { return path(p); }
 
+    /// Enable or disable looping
     VideoFile& loop(bool enabled = true) {
         loop_ = enabled;
         return *this;
     }
 
+    /// Set playback speed (1.0 = normal, negative = reverse)
     VideoFile& speed(float s) {
         speed_ = s;
         return *this;
     }
 
+    /// Start playback
     VideoFile& play() {
         playing_ = true;
         return *this;
     }
 
+    /// Pause playback
     VideoFile& pause() {
         playing_ = false;
         return *this;
     }
 
+    /// Toggle play/pause state
     VideoFile& toggle() {
         playing_ = !playing_;
         return *this;
     }
 
+    /// Seek to normalized position (0.0 to 1.0)
     VideoFile& seek(float normalizedPosition) {
         seekTarget_ = glm::clamp(normalizedPosition, 0.0f, 1.0f);
         needsSeek_ = true;
         return *this;
     }
 
+    /// Seek to specific time in seconds
     VideoFile& seekTime(float seconds) {
         seekTimeTarget_ = seconds;
         needsSeekTime_ = true;
@@ -71,7 +102,7 @@ public:
             return;
         }
 
-        // Check if file changed on disk
+        // Check if file changed on disk (hot-reload)
         if (checkFileChanged()) {
             needsLoad_ = true;
         }
@@ -92,14 +123,14 @@ public:
             double seekTime = seekTarget_ * duration_;
             ctx.videoSeek(player_, seekTime);
             playhead_ = seekTime;
-            lastFrameTime_ = -1.0;  // Force new frame after seek
+            lastFrameTime_ = -1.0;
             needsSeek_ = false;
         }
 
         if (needsSeekTime_) {
             ctx.videoSeek(player_, seekTimeTarget_);
             playhead_ = seekTimeTarget_;
-            lastFrameTime_ = -1.0;  // Force new frame after seek
+            lastFrameTime_ = -1.0;
             needsSeekTime_ = false;
         }
 
@@ -112,7 +143,7 @@ public:
                 if (loop_) {
                     playhead_ = std::fmod(playhead_, duration_);
                     ctx.videoSeek(player_, playhead_);
-                    lastFrameTime_ = -1.0;  // Force new frame after loop
+                    lastFrameTime_ = -1.0;
                 } else {
                     playhead_ = duration_;
                     playing_ = false;
@@ -121,7 +152,7 @@ public:
                 if (loop_) {
                     playhead_ = duration_ + std::fmod(playhead_, duration_);
                     ctx.videoSeek(player_, playhead_);
-                    lastFrameTime_ = -1.0;  // Force new frame after loop
+                    lastFrameTime_ = -1.0;
                 } else {
                     playhead_ = 0;
                     playing_ = false;
@@ -139,14 +170,14 @@ public:
             }
         }
 
-        // Output current frame (even if not newly decoded)
+        // Output current frame
         if (output_.valid()) {
             ctx.setOutput("out", output_);
         } else {
             ctx.setOutput("out", Texture{});
         }
 
-        // Output video metadata as values
+        // Output video metadata
         ctx.setOutput("duration", static_cast<float>(duration_));
         ctx.setOutput("position", static_cast<float>(playhead_));
         ctx.setOutput("progress", duration_ > 0 ? static_cast<float>(playhead_ / duration_) : 0.0f);
@@ -156,11 +187,9 @@ public:
         ctx.setOutput("playing", playing_ ? 1.0f : 0.0f);
     }
 
-    void cleanup(Context& ctx) override {
-        if (player_.valid()) {
-            ctx.destroyVideoPlayer(player_);
-        }
-    }
+    // Note: Video player cleanup is handled by the destructor and
+    // when loadVideo() replaces the player. The Context may not be
+    // available during cleanup() since it takes no parameters.
 
     std::vector<ParamDecl> params() override {
         return {
@@ -179,42 +208,35 @@ public:
 private:
     bool checkFileChanged() {
         if (path_.empty()) return false;
-
         struct stat st;
-        if (stat(path_.c_str(), &st) != 0) {
-            return false;
-        }
-
+        if (stat(path_.c_str(), &st) != 0) return false;
         time_t currentMtime = st.st_mtime;
         if (currentMtime != lastMtime_) {
             lastMtime_ = currentMtime;
-            return lastMtime_ != 0;  // Don't trigger on first check
+            return lastMtime_ != 0;
         }
         return false;
     }
 
     void loadVideo(Context& ctx) {
-        // Destroy existing player
         if (player_.valid()) {
             ctx.destroyVideoPlayer(player_);
         }
 
-        // Create new player
         player_ = ctx.createVideoPlayer(path_);
         if (!player_.valid()) {
             std::cerr << "[VideoFile] Failed to open: " << path_ << "\n";
             return;
         }
 
-        // Get video info
         VideoInfo info = ctx.getVideoInfo(player_);
         width_ = info.width;
         height_ = info.height;
         duration_ = info.duration;
         frameRate_ = info.frameRate;
         playhead_ = 0;
+        lastFrameTime_ = -1.0;
 
-        // Update mtime for hot-reload detection
         struct stat st;
         if (stat(path_.c_str(), &st) == 0) {
             lastMtime_ = st.st_mtime;
@@ -251,4 +273,4 @@ private:
     double lastFrameTime_ = -1.0;
 };
 
-VIVID_OPERATOR(VideoFile)
+} // namespace vivid

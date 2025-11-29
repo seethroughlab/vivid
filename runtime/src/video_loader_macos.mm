@@ -93,11 +93,12 @@ public:
             }
 
             // Create asset reader for standard codecs
+            // Use alloc/init to get an owned object (not autoreleased)
             NSError* error = nil;
-            assetReader_ = [AVAssetReader assetReaderWithAsset:asset_ error:&error];
-            if (error) {
+            assetReader_ = [[AVAssetReader alloc] initWithAsset:asset_ error:&error];
+            if (error || !assetReader_) {
                 std::cerr << "[VideoLoaderMacOS] Failed to create reader: "
-                          << [[error localizedDescription] UTF8String] << "\n";
+                          << (error ? [[error localizedDescription] UTF8String] : "unknown") << "\n";
                 close();
                 return false;
             }
@@ -169,10 +170,10 @@ public:
             // Cancel current reader
             [assetReader_ cancelReading];
 
-            // Create new reader with time range
+            // Create new reader with time range (use alloc/init for owned object)
             NSError* error = nil;
-            assetReader_ = [AVAssetReader assetReaderWithAsset:asset_ error:&error];
-            if (error) {
+            assetReader_ = [[AVAssetReader alloc] initWithAsset:asset_ error:&error];
+            if (error || !assetReader_) {
                 std::cerr << "[VideoLoaderMacOS] Seek failed - reader creation error\n";
                 return false;
             }
@@ -213,22 +214,11 @@ public:
     }
 
     bool getFrame(Texture& output, Renderer& renderer) override {
-        std::cerr << "[VideoLoaderMacOS] getFrame called, this=" << this << "\n" << std::flush;
-        if (!isOpen_) {
-            std::cerr << "[VideoLoaderMacOS] getFrame: not open\n";
-            return false;
-        }
-        std::cerr << "[VideoLoaderMacOS] isOpen_=true\n" << std::flush;
+        if (!isOpen_) return false;
 
         @autoreleasepool {
-            std::cerr << "[VideoLoaderMacOS] inside autoreleasepool\n" << std::flush;
             // Check reader status
-            std::cerr << "[VideoLoaderMacOS] checking assetReader_=" << (void*)assetReader_ << "\n" << std::flush;
-            if (!assetReader_) {
-                std::cerr << "[VideoLoaderMacOS] assetReader_ is nil!\n";
-                return false;
-            }
-            std::cerr << "[VideoLoaderMacOS] getting status\n" << std::flush;
+            if (!assetReader_) return false;
             AVAssetReaderStatus status = assetReader_.status;
             if (status != AVAssetReaderStatusReading) {
                 if (status == AVAssetReaderStatusCompleted) {
@@ -244,15 +234,9 @@ public:
             }
 
             // Get next sample buffer
-            if (!readerOutput_) {
-                std::cerr << "[VideoLoaderMacOS] readerOutput_ is nil!\n";
-                return false;
-            }
+            if (!readerOutput_) return false;
             CMSampleBufferRef sampleBuffer = [readerOutput_ copyNextSampleBuffer];
-            if (!sampleBuffer) {
-                std::cerr << "[VideoLoaderMacOS] No sample buffer available\n";
-                return false;
-            }
+            if (!sampleBuffer) return false;
 
             // Get pixel buffer
             CVPixelBufferRef pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
@@ -276,49 +260,39 @@ public:
 
             // Ensure output texture has correct dimensions
             if (!output.valid() || output.width != width || output.height != height) {
-                std::cout << "[VideoLoaderMacOS] Creating texture " << width << "x" << height << "\n";
                 if (output.valid()) {
                     renderer.destroyTexture(output);
                 }
                 output = renderer.createTexture(width, height);
                 if (!output.valid()) {
-                    std::cerr << "[VideoLoaderMacOS] Failed to create texture!\n";
                     CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
                     CFRelease(sampleBuffer);
                     return false;
                 }
-                std::cout << "[VideoLoaderMacOS] Created texture successfully\n";
             }
 
             // Upload to GPU texture
-            // Note: CVPixelBuffer is BGRA, we need to convert or handle in shader
-            // For now, upload as-is and swap in the blit shader
+            // CVPixelBuffer is BGRA, convert to RGBA for WebGPU
             if (output.valid() && baseAddress) {
-                // Handle potential row padding
-                if (bytesPerRow == static_cast<size_t>(width * 4)) {
-                    // No padding, direct upload
-                    renderer.uploadTexturePixels(output, baseAddress, width, height);
-                } else {
-                    // Has padding, need to copy row by row
-                    std::vector<uint8_t> pixels(width * height * 4);
-                    for (int y = 0; y < height; y++) {
-                        memcpy(pixels.data() + y * width * 4,
-                               baseAddress + y * bytesPerRow,
-                               width * 4);
+                std::vector<uint8_t> pixels(width * height * 4);
+                for (int y = 0; y < height; y++) {
+                    uint8_t* src = baseAddress + y * bytesPerRow;
+                    uint8_t* dst = pixels.data() + y * width * 4;
+                    for (int x = 0; x < width; x++) {
+                        // BGRA -> RGBA
+                        dst[0] = src[2];  // R <- B
+                        dst[1] = src[1];  // G <- G
+                        dst[2] = src[0];  // B <- R
+                        dst[3] = src[3];  // A <- A
+                        src += 4;
+                        dst += 4;
                     }
-                    renderer.uploadTexturePixels(output, pixels.data(), width, height);
                 }
+                renderer.uploadTexturePixels(output, pixels.data(), width, height);
             }
 
             CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
             CFRelease(sampleBuffer);
-
-            // Debug: only print first frame success
-            static bool firstFrame = true;
-            if (firstFrame) {
-                std::cerr << "[VideoLoaderMacOS] First frame decoded successfully\n" << std::flush;
-                firstFrame = false;
-            }
 
             return true;
         }

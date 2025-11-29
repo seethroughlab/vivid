@@ -32,6 +32,9 @@ Window::Window(int width, int height, const std::string& title, bool fullscreen)
     // Set up resize callback
     glfwSetFramebufferSizeCallback(window_, framebufferResizeCallback);
 
+    // Set up key callback
+    glfwSetKeyCallback(window_, keyCallback);
+
     std::cout << "[Window] Created " << width << "x" << height << " window\n";
 }
 
@@ -71,6 +74,38 @@ void Window::framebufferResizeCallback(GLFWwindow* glfwWindow, int width, int he
             window->resizeCallback_(width, height, window->resizeUserdata_);
         }
     }
+}
+
+void Window::keyCallback(GLFWwindow* glfwWindow, int key, int scancode, int action, int mods) {
+    (void)scancode;
+    (void)mods;
+    auto* window = static_cast<Window*>(glfwGetWindowUserPointer(glfwWindow));
+    if (!window || key < 0) return;
+
+    if (action == GLFW_PRESS) {
+        window->keysDown_.insert(key);
+        window->keysPressed_.insert(key);
+    } else if (action == GLFW_RELEASE) {
+        window->keysDown_.erase(key);
+        window->keysReleased_.insert(key);
+    }
+}
+
+bool Window::isKeyDown(int key) const {
+    return keysDown_.count(key) > 0;
+}
+
+bool Window::wasKeyPressed(int key) const {
+    return keysPressed_.count(key) > 0;
+}
+
+bool Window::wasKeyReleased(int key) const {
+    return keysReleased_.count(key) > 0;
+}
+
+void Window::clearInputState() {
+    keysPressed_.clear();
+    keysReleased_.clear();
 }
 
 } // namespace vivid
