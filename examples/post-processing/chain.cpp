@@ -23,49 +23,49 @@ void setup(Chain& chain) {
     chain.add<Gradient>("bg")
         .mode(0)  // Linear
         .angle(0.0f)
-        .color1(0.1f, 0.0f, 0.2f)  // Dark purple
-        .color2(0.0f, 0.1f, 0.2f); // Dark blue
+        .color1(glm::vec3(0.1f, 0.0f, 0.2f))  // Dark purple
+        .color2(glm::vec3(0.0f, 0.1f, 0.2f)); // Dark blue
 
     // Bright animated shape 1 - Pulsing circle
     chain.add<Shape>("circle1")
-        .type(ShapeType::Circle)
-        .center(0.3f, 0.5f)
+        .type(Shape::Circle)
+        .center(glm::vec2(0.3f, 0.5f))
         .radius(0.12f)
-        .color(1.0f, 0.8f, 0.2f, 1.0f);  // Bright yellow
+        .color(glm::vec3(1.0f, 0.8f, 0.2f));  // Bright yellow
 
     // Bright animated shape 2 - Another circle
     chain.add<Shape>("circle2")
-        .type(ShapeType::Circle)
-        .center(0.7f, 0.5f)
+        .type(Shape::Circle)
+        .center(glm::vec2(0.7f, 0.5f))
         .radius(0.10f)
-        .color(0.2f, 0.8f, 1.0f, 1.0f);  // Cyan
+        .color(glm::vec3(0.2f, 0.8f, 1.0f));  // Cyan
 
     // Bright animated shape 3 - Star
     chain.add<Shape>("star")
-        .type(ShapeType::Star)
-        .center(0.5f, 0.3f)
+        .type(Shape::Star)
+        .center(glm::vec2(0.5f, 0.3f))
         .radius(0.08f)
         .points(5)
-        .color(1.0f, 0.3f, 0.5f, 1.0f);  // Pink
+        .color(glm::vec3(1.0f, 0.3f, 0.5f));  // Pink
 
     // Small bright dots (simulating particles)
     chain.add<Shape>("dot1")
-        .type(ShapeType::Circle)
-        .center(0.2f, 0.7f)
+        .type(Shape::Circle)
+        .center(glm::vec2(0.2f, 0.7f))
         .radius(0.03f)
-        .color(1.0f, 1.0f, 1.0f, 1.0f);  // White
+        .color(glm::vec3(1.0f, 1.0f, 1.0f));  // White
 
     chain.add<Shape>("dot2")
-        .type(ShapeType::Circle)
-        .center(0.8f, 0.3f)
+        .type(Shape::Circle)
+        .center(glm::vec2(0.8f, 0.3f))
         .radius(0.025f)
-        .color(1.0f, 0.9f, 0.5f, 1.0f);  // Light yellow
+        .color(glm::vec3(1.0f, 0.9f, 0.5f));  // Light yellow
 
     chain.add<Shape>("dot3")
-        .type(ShapeType::Circle)
-        .center(0.6f, 0.8f)
+        .type(Shape::Circle)
+        .center(glm::vec2(0.6f, 0.8f))
         .radius(0.02f)
-        .color(0.5f, 1.0f, 0.8f, 1.0f);  // Light green
+        .color(glm::vec3(0.5f, 1.0f, 0.8f));  // Light green
 
     // Composite all shapes together
     chain.add<Composite>("scene")
@@ -98,8 +98,8 @@ void update(Chain& chain, Context& ctx) {
     float wave1 = sinf(time * 2.0f) * 0.05f;
     float wave2 = cosf(time * 1.5f) * 0.05f;
 
-    chain.get<Shape>("circle1").center(0.3f + wave1, 0.5f + wave2);
-    chain.get<Shape>("circle2").center(0.7f - wave1, 0.5f - wave2);
+    chain.get<Shape>("circle1").center(glm::vec2(0.3f + wave1, 0.5f + wave2));
+    chain.get<Shape>("circle2").center(glm::vec2(0.7f - wave1, 0.5f - wave2));
 
     // Animate star rotation and size
     float pulse = 0.08f + sinf(time * 3.0f) * 0.02f;
@@ -108,9 +108,9 @@ void update(Chain& chain, Context& ctx) {
         .rotation(time * 0.5f);
 
     // Animate small dots
-    chain.get<Shape>("dot1").center(0.2f + sinf(time) * 0.1f, 0.7f);
-    chain.get<Shape>("dot2").center(0.8f, 0.3f + cosf(time * 1.2f) * 0.1f);
-    chain.get<Shape>("dot3").center(0.6f + sinf(time * 0.8f) * 0.08f, 0.8f);
+    chain.get<Shape>("dot1").center(glm::vec2(0.2f + sinf(time) * 0.1f, 0.7f));
+    chain.get<Shape>("dot2").center(glm::vec2(0.8f, 0.3f + cosf(time * 1.2f) * 0.1f));
+    chain.get<Shape>("dot3").center(glm::vec2(0.6f + sinf(time * 0.8f) * 0.08f, 0.8f));
 
     // Mouse control for bloom parameters
     // Mouse X: bloom intensity (0 to 2)

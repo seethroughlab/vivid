@@ -12,7 +12,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let mixAmount = u.param1;
 
     let original = textureSample(inputTexture, inputSampler, in.uv);
-    let bloom = textureSample(inputTexture2, inputSampler2, in.uv);
+    let bloom = textureSample(inputTexture2, inputSampler, in.uv);
 
     // Additive blending with intensity control
     let bloomed = original.rgb + bloom.rgb * intensity;
