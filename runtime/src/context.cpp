@@ -3,6 +3,7 @@
 #include "window.h"
 #include "image_loader.h"
 #include "video_loader.h"
+#include "camera_capture.h"
 
 namespace vivid {
 
@@ -101,6 +102,105 @@ double Context::videoGetTime(const VideoPlayer& player) {
 
 bool Context::isVideoSupported(const std::string& path) {
     return VideoLoader::isSupported(path);
+}
+
+// Camera capture methods
+std::vector<CameraDevice> Context::enumerateCameras() {
+    auto capture = CameraCapture::create();
+    if (!capture) return {};
+
+    auto devices = capture->enumerateDevices();
+    std::vector<CameraDevice> result;
+    result.reserve(devices.size());
+
+    for (const auto& dev : devices) {
+        CameraDevice d;
+        d.deviceId = dev.deviceId;
+        d.name = dev.name;
+        d.isDefault = dev.isDefault;
+        result.push_back(d);
+    }
+    return result;
+}
+
+Camera Context::createCamera(int width, int height, float frameRate) {
+    Camera camera;
+    auto capture = CameraCapture::create();
+    if (capture) {
+        CameraConfig config;
+        config.width = width;
+        config.height = height;
+        config.frameRate = frameRate;
+
+        if (capture->open(config) && capture->startCapture()) {
+            camera.handle = capture.release();
+        }
+    }
+    return camera;
+}
+
+Camera Context::createCamera(const std::string& deviceId, int width, int height, float frameRate) {
+    Camera camera;
+    auto capture = CameraCapture::create();
+    if (capture) {
+        CameraConfig config;
+        config.width = width;
+        config.height = height;
+        config.frameRate = frameRate;
+
+        if (capture->open(deviceId, config) && capture->startCapture()) {
+            camera.handle = capture.release();
+        }
+    }
+    return camera;
+}
+
+void Context::destroyCamera(Camera& camera) {
+    if (camera.handle) {
+        auto* capture = static_cast<CameraCapture*>(camera.handle);
+        capture->stopCapture();
+        capture->close();
+        delete capture;
+        camera.handle = nullptr;
+    }
+}
+
+CameraInfo Context::getCameraInfo(const Camera& camera) {
+    if (camera.handle) {
+        auto* capture = static_cast<CameraCapture*>(camera.handle);
+        auto info = capture->info();
+        CameraInfo result;
+        result.width = info.width;
+        result.height = info.height;
+        result.frameRate = info.frameRate;
+        result.deviceName = info.deviceName;
+        result.isCapturing = info.isCapturing;
+        return result;
+    }
+    return CameraInfo{};
+}
+
+bool Context::cameraGetFrame(Camera& camera, Texture& output) {
+    if (camera.handle) {
+        auto* capture = static_cast<CameraCapture*>(camera.handle);
+        return capture->getFrame(output, renderer_);
+    }
+    return false;
+}
+
+bool Context::cameraStart(Camera& camera) {
+    if (camera.handle) {
+        auto* capture = static_cast<CameraCapture*>(camera.handle);
+        return capture->startCapture();
+    }
+    return false;
+}
+
+void Context::cameraStop(Camera& camera) {
+    if (camera.handle) {
+        auto* capture = static_cast<CameraCapture*>(camera.handle);
+        capture->stopCapture();
+    }
 }
 
 void Context::runShader(const std::string& shaderPath, Texture& output) {

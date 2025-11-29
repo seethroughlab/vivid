@@ -113,4 +113,37 @@ struct VideoPlayer {
     bool valid() const { return handle != nullptr; }
 };
 
+/**
+ * @brief Information about a camera device.
+ */
+struct CameraDevice {
+    std::string deviceId;       ///< Unique device identifier
+    std::string name;           ///< Human-readable device name
+    bool isDefault = false;     ///< True if this is the system default camera
+};
+
+/**
+ * @brief Camera capture metadata.
+ */
+struct CameraInfo {
+    int width = 0;              ///< Capture width in pixels.
+    int height = 0;             ///< Capture height in pixels.
+    float frameRate = 0.0f;     ///< Capture frame rate.
+    std::string deviceName;     ///< Name of the active device.
+    bool isCapturing = false;   ///< True if actively capturing.
+};
+
+/**
+ * @brief Opaque handle to a camera capture.
+ *
+ * Created via Context::createCamera(). Manages camera capture
+ * and frame extraction. The actual implementation is platform-specific.
+ */
+struct Camera {
+    void* handle = nullptr;     ///< Opaque pointer to internal capture.
+
+    /// @brief Check if this camera handle is valid.
+    bool valid() const { return handle != nullptr; }
+};
+
 } // namespace vivid

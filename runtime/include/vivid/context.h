@@ -188,6 +188,71 @@ public:
     static bool isVideoSupported(const std::string& path);
     /// @}
 
+    /// @name Camera Capture
+    /// @{
+
+    /**
+     * @brief Enumerate available camera devices.
+     * @return List of available cameras.
+     */
+    std::vector<CameraDevice> enumerateCameras();
+
+    /**
+     * @brief Create a camera capture using the default camera.
+     * @param width Requested capture width (default 1280).
+     * @param height Requested capture height (default 720).
+     * @param frameRate Requested frame rate (default 30).
+     * @return A valid Camera if successful, invalid on failure.
+     */
+    Camera createCamera(int width = 1280, int height = 720, float frameRate = 30.0f);
+
+    /**
+     * @brief Create a camera capture using a specific device.
+     * @param deviceId Device ID from enumerateCameras().
+     * @param width Requested capture width (default 1280).
+     * @param height Requested capture height (default 720).
+     * @param frameRate Requested frame rate (default 30).
+     * @return A valid Camera if successful, invalid on failure.
+     */
+    Camera createCamera(const std::string& deviceId, int width = 1280, int height = 720, float frameRate = 30.0f);
+
+    /**
+     * @brief Destroy a camera capture and release resources.
+     * @param camera The camera to destroy.
+     */
+    void destroyCamera(Camera& camera);
+
+    /**
+     * @brief Get camera metadata.
+     * @param camera The camera capture.
+     * @return CameraInfo with dimensions, frame rate, etc.
+     */
+    CameraInfo getCameraInfo(const Camera& camera);
+
+    /**
+     * @brief Get the latest frame from the camera.
+     * @param camera The camera capture.
+     * @param output Texture to receive the frame.
+     * @return true if a new frame was available.
+     *
+     * This is non-blocking - returns false if no new frame since last call.
+     */
+    bool cameraGetFrame(Camera& camera, Texture& output);
+
+    /**
+     * @brief Start camera capture.
+     * @param camera The camera capture.
+     * @return true if capture started successfully.
+     */
+    bool cameraStart(Camera& camera);
+
+    /**
+     * @brief Stop camera capture.
+     * @param camera The camera capture.
+     */
+    void cameraStop(Camera& camera);
+    /// @}
+
     /// @name Shader Execution
     /// @{
 

@@ -38,11 +38,13 @@ if(APPLE)
     list(APPEND RUNTIME_SOURCES
         src/platform_surface_macos.mm
         src/video_loader_macos.mm
+        src/camera_capture_macos.mm
     )
     # Enable Objective-C++ for .mm files
     set_source_files_properties(
         src/platform_surface_macos.mm
         src/video_loader_macos.mm
+        src/camera_capture_macos.mm
         PROPERTIES COMPILE_FLAGS "-x objective-c++"
     )
 elseif(WIN32)

@@ -454,14 +454,14 @@ Build and test each operator individually:
 ### 12.3 Camera Input
 **Architecture: Platform-native (shares infrastructure with 12.2)**
 
-- [ ] Create `CameraCapture` interface (`runtime/src/camera_capture.h`)
-- [ ] macOS: AVFoundation `AVCaptureSession` (`runtime/src/camera_capture_macos.mm`)
+- [x] Create `CameraCapture` interface (`runtime/src/camera_capture.h`)
+- [x] macOS: AVFoundation `AVCaptureSession` (`runtime/src/camera_capture_macos.mm`)
 - [ ] Windows: Media Foundation or DirectShow (`runtime/src/camera_capture_windows.cpp`)
 - [ ] Linux: V4L2 (`runtime/src/camera_capture_linux.cpp`)
-- [ ] Implement `Webcam` operator (`operators/webcam.cpp`)
-- [ ] Camera enumeration (list available devices)
-- [ ] Camera selection by index or name
-- [ ] Resolution and format configuration
+- [x] Implement `Webcam` operator (`operators/webcam.cpp`)
+- [x] Camera enumeration (list available devices)
+- [x] Camera selection by index or name
+- [x] Resolution and format configuration
 - [ ] Hot-swap camera detection
 
 ### 12.4 Audio Playback (Video)
@@ -616,7 +616,7 @@ Build and test each operator individually:
 - [ ] `examples/audio-reactive` — Audio input driving visuals
 - [ ] `examples/beat-detection` — Audio beat detection (see `beat_detection.md`)
 - [ ] `examples/midi-control` — MIDI CC controlling parameters
-- [ ] `examples/webcam` — Camera input processing
+- [x] `examples/webcam` — Camera input processing
 - [ ] `examples/particles` — Particle system
 - [ ] `examples/3d-geometry` — 3D rendering basics
 - [ ] `examples/text` — Text rendering
