@@ -895,6 +895,69 @@ Build and test each operator individually:
 
 ---
 
+## Phase 15: Community & Package Registry
+**Reference: [PLAN-07-community.md](PLAN-07-community.md)**
+
+A package management system for sharing and distributing Vivid operators (like npm/pip/Cargo).
+
+### 15.1 Package Format (Foundation)
+- [ ] Define `vivid.toml` manifest schema
+- [ ] Document package directory structure
+- [ ] Create `vivid init` command — scaffold new package
+- [ ] Package template with README, LICENSE, examples
+- [ ] Update runtime to read manifest metadata
+- [ ] Operator discovery from manifest
+
+### 15.2 Local Package Management
+- [ ] Package cache directory (`~/.vivid/packages/`)
+- [ ] `vivid install <path>` — install from local path
+- [ ] `vivid install <git-url>` — install from git repository
+- [ ] `vivid list` — show installed packages
+- [ ] `vivid uninstall` — remove packages
+- [ ] `vivid build` — build package locally
+- [ ] Dependency resolution for local packages
+
+### 15.3 Registry Server
+- [ ] Design registry REST API
+- [ ] Package metadata storage (PostgreSQL)
+- [ ] Package file storage (S3/MinIO)
+- [ ] User accounts and authentication
+- [ ] API token management
+- [ ] Package upload/download endpoints
+- [ ] Search and discovery API
+- [ ] Rate limiting
+
+### 15.4 Publishing & Distribution
+- [ ] `vivid register` — create account
+- [ ] `vivid login` / `vivid logout` — authentication
+- [ ] `vivid check` — validate package before publish
+- [ ] `vivid publish` — upload to registry
+- [ ] Pre-publish validation (manifest, build, security scan)
+- [ ] Version yanking (soft delete)
+- [ ] Package ownership management
+- [ ] README and documentation extraction
+
+### 15.5 Web Interface
+- [ ] Package browser (featured, recent, popular)
+- [ ] Package detail pages with README rendering
+- [ ] Version history and changelogs
+- [ ] Download statistics
+- [ ] User profiles
+- [ ] Search with filters (category, keyword, author)
+- [ ] Documentation pages
+
+### 15.6 Advanced Features (Future)
+- [ ] Semantic version resolution (^, ~, ranges)
+- [ ] Transitive dependency resolution
+- [ ] Package namespacing (`@author/package`)
+- [ ] Package signing (GPG)
+- [ ] Checksum verification
+- [ ] Private/enterprise registries
+- [ ] Organization accounts
+- [ ] 2FA support
+
+---
+
 ## Quick Reference: Test Commands
 
 ```bash
@@ -931,3 +994,4 @@ npx wscat -c ws://localhost:9876
 | Phase 12 complete | Load images/video, use audio, render 3D |
 | Phase 13 complete | Export video files, deploy to web |
 | Phase 14 complete | Have examples demonstrating all features |
+| Phase 15 complete | Share operators via community registry |

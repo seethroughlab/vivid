@@ -2,5 +2,3 @@
 - How do I install the VS Code extension locally? And how do I upload it to make it generally available?
 - One thing that I DON'T like about TD is that you can't really instantiatye anything. Lots of the advantages of OOP are lost in TD because you can't create objects. I want to make sure the long-term plan for Vivid is still firmly in the C++ world, even though TD is the inspiration. What can we add to the PLAN to ensure that happens?
 - One of my favorite things in TD is a video (file or webcam) feeding into a 3D Texture operator that cahces frames, and then a TimeMachine operator where you can use a grayscale operator to choose some frame from the cache for a particular part of the image. 
-
-- Eventually I want to build a system where users can contribute their own nodes. I'm thinking about a kind of registry like pip or npm. This is a big project but I want to lay the groundwork for it now so that we're ready for it later. Please add a plan for community involvement to the PLAN and CHECKLIST
