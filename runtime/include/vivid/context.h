@@ -110,6 +110,63 @@ public:
     static bool isImageSupported(const std::string& path);
     /// @}
 
+    /// @name Video Playback
+    /// @{
+
+    /**
+     * @brief Create a video player for a video file.
+     * @param path Path to the video file (MP4, MOV, etc.).
+     * @return A valid VideoPlayer if successful, invalid on failure.
+     *
+     * Supports MP4, MOV, M4V, AVI, MKV, WebM (platform-dependent).
+     * HAP codec is detected automatically.
+     */
+    VideoPlayer createVideoPlayer(const std::string& path);
+
+    /**
+     * @brief Destroy a video player and release resources.
+     * @param player The video player to destroy.
+     */
+    void destroyVideoPlayer(VideoPlayer& player);
+
+    /**
+     * @brief Get video metadata.
+     * @param player The video player.
+     * @return VideoInfo with dimensions, duration, codec, etc.
+     */
+    VideoInfo getVideoInfo(const VideoPlayer& player);
+
+    /**
+     * @brief Seek to a position in the video.
+     * @param player The video player.
+     * @param timeSeconds Time in seconds from the start.
+     * @return true if seek succeeded.
+     */
+    bool videoSeek(VideoPlayer& player, double timeSeconds);
+
+    /**
+     * @brief Get the next frame from the video.
+     * @param player The video player.
+     * @param output Texture to receive the frame.
+     * @return true if a new frame was decoded.
+     */
+    bool videoGetFrame(VideoPlayer& player, Texture& output);
+
+    /**
+     * @brief Get current playback position.
+     * @param player The video player.
+     * @return Current time in seconds.
+     */
+    double videoGetTime(const VideoPlayer& player);
+
+    /**
+     * @brief Check if a file is a supported video format.
+     * @param path Path to check.
+     * @return true if the extension is a known video format.
+     */
+    static bool isVideoSupported(const std::string& path);
+    /// @}
+
     /// @name Shader Execution
     /// @{
 

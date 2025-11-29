@@ -9,31 +9,7 @@ namespace vivid {
 class Context;
 class Renderer;
 
-/**
- * @brief Video codec type detection.
- */
-enum class VideoCodecType {
-    Unknown,
-    Standard,   // H.264, H.265, ProRes, VP9, etc. (platform decode)
-    HAP,        // HAP (DXT1/BC1)
-    HAPAlpha,   // HAP Alpha (DXT5/BC3)
-    HAPQ,       // HAP Q (Scaled DXT5)
-    HAPQAlpha   // HAP Q Alpha (Scaled DXT5 with alpha)
-};
-
-/**
- * @brief Video file metadata.
- */
-struct VideoInfo {
-    int width = 0;
-    int height = 0;
-    double duration = 0.0;      // Total duration in seconds
-    double frameRate = 0.0;     // Frames per second
-    int64_t frameCount = 0;     // Total frame count
-    VideoCodecType codecType = VideoCodecType::Unknown;
-    bool hasAudio = false;
-    std::string codecName;      // Human-readable codec name
-};
+// VideoCodecType and VideoInfo are now defined in types.h
 
 /**
  * @brief Abstract interface for video loading and playback.

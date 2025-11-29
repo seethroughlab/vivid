@@ -213,23 +213,44 @@ public:
     }
 
     bool getFrame(Texture& output, Renderer& renderer) override {
-        if (!isOpen_) return false;
+        std::cerr << "[VideoLoaderMacOS] getFrame called, this=" << this << "\n" << std::flush;
+        if (!isOpen_) {
+            std::cerr << "[VideoLoaderMacOS] getFrame: not open\n";
+            return false;
+        }
+        std::cerr << "[VideoLoaderMacOS] isOpen_=true\n" << std::flush;
 
         @autoreleasepool {
+            std::cerr << "[VideoLoaderMacOS] inside autoreleasepool\n" << std::flush;
             // Check reader status
-            if (assetReader_.status != AVAssetReaderStatusReading) {
-                if (assetReader_.status == AVAssetReaderStatusCompleted) {
-                    // End of video
+            std::cerr << "[VideoLoaderMacOS] checking assetReader_=" << (void*)assetReader_ << "\n" << std::flush;
+            if (!assetReader_) {
+                std::cerr << "[VideoLoaderMacOS] assetReader_ is nil!\n";
+                return false;
+            }
+            std::cerr << "[VideoLoaderMacOS] getting status\n" << std::flush;
+            AVAssetReaderStatus status = assetReader_.status;
+            if (status != AVAssetReaderStatusReading) {
+                if (status == AVAssetReaderStatusCompleted) {
+                    // End of video - don't log every frame
                     return false;
                 }
-                std::cerr << "[VideoLoaderMacOS] Reader not in reading state: "
-                          << static_cast<int>(assetReader_.status) << "\n";
+                std::cerr << "[VideoLoaderMacOS] Reader not in reading state: " << static_cast<int>(status);
+                if (status == AVAssetReaderStatusFailed) {
+                    std::cerr << " (failed: " << [[assetReader_.error localizedDescription] UTF8String] << ")";
+                }
+                std::cerr << "\n";
                 return false;
             }
 
             // Get next sample buffer
+            if (!readerOutput_) {
+                std::cerr << "[VideoLoaderMacOS] readerOutput_ is nil!\n";
+                return false;
+            }
             CMSampleBufferRef sampleBuffer = [readerOutput_ copyNextSampleBuffer];
             if (!sampleBuffer) {
+                std::cerr << "[VideoLoaderMacOS] No sample buffer available\n";
                 return false;
             }
 
@@ -255,10 +276,18 @@ public:
 
             // Ensure output texture has correct dimensions
             if (!output.valid() || output.width != width || output.height != height) {
+                std::cout << "[VideoLoaderMacOS] Creating texture " << width << "x" << height << "\n";
                 if (output.valid()) {
                     renderer.destroyTexture(output);
                 }
                 output = renderer.createTexture(width, height);
+                if (!output.valid()) {
+                    std::cerr << "[VideoLoaderMacOS] Failed to create texture!\n";
+                    CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
+                    CFRelease(sampleBuffer);
+                    return false;
+                }
+                std::cout << "[VideoLoaderMacOS] Created texture successfully\n";
             }
 
             // Upload to GPU texture
@@ -284,6 +313,13 @@ public:
             CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
             CFRelease(sampleBuffer);
 
+            // Debug: only print first frame success
+            static bool firstFrame = true;
+            if (firstFrame) {
+                std::cerr << "[VideoLoaderMacOS] First frame decoded successfully\n" << std::flush;
+                firstFrame = false;
+            }
+
             return true;
         }
     }
@@ -292,9 +328,10 @@ public:
     int64_t currentFrame() const override { return currentFrame_; }
 
 private:
-    AVAsset* asset_ = nil;
-    AVAssetReader* assetReader_ = nil;
-    AVAssetReaderTrackOutput* readerOutput_ = nil;
+    // Use __strong to ensure ARC properly retains ObjC objects in C++ class
+    __strong AVAsset* asset_ = nil;
+    __strong AVAssetReader* assetReader_ = nil;
+    __strong AVAssetReaderTrackOutput* readerOutput_ = nil;
 
     VideoInfo info_;
     std::string path_;

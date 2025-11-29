@@ -1,6 +1,7 @@
 #include <vivid/context.h>
 #include "renderer.h"
 #include "image_loader.h"
+#include "video_loader.h"
 
 namespace vivid {
 
@@ -41,6 +42,61 @@ void Context::uploadTexturePixels(Texture& texture, const uint8_t* pixels, int w
 
 bool Context::isImageSupported(const std::string& path) {
     return ImageLoader::isSupported(path);
+}
+
+// Video playback methods
+VideoPlayer Context::createVideoPlayer(const std::string& path) {
+    VideoPlayer player;
+    auto loader = VideoLoader::create();
+    if (loader && loader->open(path)) {
+        player.handle = loader.release();  // Transfer ownership
+    }
+    return player;
+}
+
+void Context::destroyVideoPlayer(VideoPlayer& player) {
+    if (player.handle) {
+        auto* loader = static_cast<VideoLoader*>(player.handle);
+        loader->close();
+        delete loader;
+        player.handle = nullptr;
+    }
+}
+
+VideoInfo Context::getVideoInfo(const VideoPlayer& player) {
+    if (player.handle) {
+        auto* loader = static_cast<VideoLoader*>(player.handle);
+        return loader->info();
+    }
+    return VideoInfo{};
+}
+
+bool Context::videoSeek(VideoPlayer& player, double timeSeconds) {
+    if (player.handle) {
+        auto* loader = static_cast<VideoLoader*>(player.handle);
+        return loader->seek(timeSeconds);
+    }
+    return false;
+}
+
+bool Context::videoGetFrame(VideoPlayer& player, Texture& output) {
+    if (player.handle) {
+        auto* loader = static_cast<VideoLoader*>(player.handle);
+        return loader->getFrame(output, renderer_);
+    }
+    return false;
+}
+
+double Context::videoGetTime(const VideoPlayer& player) {
+    if (player.handle) {
+        auto* loader = static_cast<VideoLoader*>(player.handle);
+        return loader->currentTime();
+    }
+    return 0.0;
+}
+
+bool Context::isVideoSupported(const std::string& path) {
+    return VideoLoader::isSupported(path);
 }
 
 void Context::runShader(const std::string& shaderPath, Texture& output) {

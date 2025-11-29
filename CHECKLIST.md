@@ -417,7 +417,8 @@ Build and test each operator individually:
 - [x] CVPixelBuffer → Texture upload
 - [x] Hardware-accelerated decode (automatic via VideoToolbox)
 - [x] Frame-accurate seeking (via reader recreation with time range)
-- [ ] Test: H.264, ProRes, HEVC playback
+- [x] Test: H.264 playback (avc1 codec tested successfully)
+- [ ] Test: ProRes, HEVC playback
 - [ ] Zero-copy via IOSurface (optimization for later)
 
 #### 12.2c HAP Codec Support (All Platforms)
@@ -428,11 +429,11 @@ Build and test each operator individually:
 - [ ] Test: HAP, HAP Alpha, HAP Q playback
 
 #### 12.2d VideoFile Operator
-- [ ] Implement `VideoFile` operator (`operators/videofile.cpp`)
-- [ ] Fluent API: `.path()`, `.loop()`, `.speed()`, `.play()`, `.pause()`, `.seek()`
-- [ ] Playback controls (play, pause, seek, loop, variable speed)
-- [ ] File change detection for hot-reload
-- [ ] Output: texture + duration/position/fps values
+- [x] Implement `VideoFile` operator (`operators/videofile.cpp`)
+- [x] Fluent API: `.path()`, `.loop()`, `.speed()`, `.play()`, `.pause()`, `.seek()`
+- [x] Playback controls (play, pause, seek, loop, variable speed)
+- [x] File change detection for hot-reload
+- [x] Output: texture + duration/position/fps values
 
 #### 12.2e Windows Implementation
 - [ ] Implement `VideoLoaderWindows` (`runtime/src/video_loader_windows.cpp`)
@@ -599,7 +600,7 @@ Build and test each operator individually:
 - [ ] `examples/3d-geometry` — 3D rendering basics
 - [ ] `examples/text` — Text rendering
 - [ ] `examples/multi-window` — Multiple output windows
-- [ ] `examples/video-playback` — Video file input
+- [x] `examples/video-playback` — Video file input (H.264 tested, VideoFile operator)
 - [ ] `examples/web-server` - Host a simple web interface that interacts with nodes
 
 ### 14.2 Template Projects

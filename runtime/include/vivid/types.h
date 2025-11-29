@@ -74,4 +74,43 @@ struct NodeInfo {
     std::vector<ParamDecl> params;           ///< Parameter declarations.
 };
 
+/**
+ * @brief Video codec types.
+ */
+enum class VideoCodecType {
+    Unknown,
+    Standard,   ///< H.264, H.265, ProRes, VP9, etc.
+    HAP,        ///< HAP (DXT1/BC1)
+    HAPAlpha,   ///< HAP Alpha (DXT5/BC3)
+    HAPQ,       ///< HAP Q (Scaled DXT5)
+    HAPQAlpha   ///< HAP Q Alpha
+};
+
+/**
+ * @brief Video file metadata.
+ */
+struct VideoInfo {
+    int width = 0;              ///< Video width in pixels.
+    int height = 0;             ///< Video height in pixels.
+    double duration = 0.0;      ///< Total duration in seconds.
+    double frameRate = 0.0;     ///< Frames per second.
+    int64_t frameCount = 0;     ///< Total frame count.
+    VideoCodecType codecType = VideoCodecType::Unknown;
+    bool hasAudio = false;      ///< Whether video has audio track.
+    std::string codecName;      ///< Human-readable codec name.
+};
+
+/**
+ * @brief Opaque handle to a video player.
+ *
+ * Created via Context::createVideoPlayer(). Manages video decoding
+ * and frame extraction. The actual implementation is platform-specific.
+ */
+struct VideoPlayer {
+    void* handle = nullptr;     ///< Opaque pointer to internal player.
+
+    /// @brief Check if this video player handle is valid.
+    bool valid() const { return handle != nullptr; }
+};
+
 } // namespace vivid
