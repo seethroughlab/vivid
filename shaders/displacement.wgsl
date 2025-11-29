@@ -1,22 +1,26 @@
 // Displacement shader
-// Distorts input texture using itself or another texture as displacement map
+// Distorts source texture using a separate displacement map texture
 // Uses uniforms:
+//   u.mode = channel mode (0=luminance, 1=R, 2=G, 3=RG for x/y)
 //   u.param0 = amount (displacement strength)
-//   u.param1 = channel (0=luminance, 1=R, 2=G, 3=RG for x/y)
 //   u.vec0 = direction multiplier (for directional displacement)
+//
+// Inputs:
+//   inputTexture = source texture to distort
+//   inputTexture2 = displacement map (any texture - noise, gradient, image, etc.)
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let mode = u.mode;
     let amount = u.param0;
-    let channel = i32(u.param1);
     let direction = u.vec0;
 
-    // Sample the displacement map (using input texture)
-    let dispSample = textureSample(inputTexture, inputSampler, in.uv);
+    // Sample the displacement map (inputTexture2)
+    let dispSample = textureSample(inputTexture2, inputSampler, in.uv);
 
     var displacement: vec2f;
 
-    switch (channel) {
+    switch (mode) {
         case 0: {  // Luminance
             let lum = dot(dispSample.rgb, vec3f(0.299, 0.587, 0.114));
             displacement = vec2f(lum - 0.5) * 2.0;
@@ -41,6 +45,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     // Calculate displaced UV
     let displacedUv = in.uv + displacement * amount;
 
-    // Sample with displaced coordinates
+    // Sample source texture with displaced coordinates
     return textureSample(inputTexture, inputSampler, displacedUv);
 }

@@ -1024,6 +1024,12 @@ void Renderer::destroyShader(Shader& shader) {
 
 void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
                          const Uniforms& uniforms) {
+    // Forward to the two-texture version with nullptr for input2
+    runShader(shader, output, input, nullptr, uniforms);
+}
+
+void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
+                         const Texture* input2, const Uniforms& uniforms) {
     if (!shader.valid() || !hasValidGPU(output)) return;
 
     auto* outputData = getTextureData(output);
@@ -1039,14 +1045,14 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
 
     // Use input texture or create a dummy 1x1 texture if no input
     WGPUTextureView inputView = nullptr;
+    WGPUTextureView inputView2 = nullptr;
     WGPUTexture dummyTexture = nullptr;
     WGPUTextureView dummyView = nullptr;
+    WGPUTexture dummyTexture2 = nullptr;
+    WGPUTextureView dummyView2 = nullptr;
 
-    if (input && hasValidGPU(*input)) {
-        auto* inputData = getTextureData(*input);
-        inputView = inputData->view;
-    } else {
-        // Create a 1x1 dummy texture for shaders that don't use input
+    // Helper to create dummy texture
+    auto createDummyTexture = [this]() -> std::pair<WGPUTexture, WGPUTextureView> {
         WGPUTextureDescriptor dummyDesc = {};
         dummyDesc.size = {1, 1, 1};
         dummyDesc.format = WGPUTextureFormat_RGBA8Unorm;
@@ -1054,19 +1060,39 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
         dummyDesc.mipLevelCount = 1;
         dummyDesc.sampleCount = 1;
         dummyDesc.dimension = WGPUTextureDimension_2D;
-        dummyTexture = wgpuDeviceCreateTexture(device_, &dummyDesc);
+        WGPUTexture tex = wgpuDeviceCreateTexture(device_, &dummyDesc);
 
         WGPUTextureViewDescriptor viewDesc = {};
         viewDesc.format = WGPUTextureFormat_RGBA8Unorm;
         viewDesc.dimension = WGPUTextureViewDimension_2D;
         viewDesc.mipLevelCount = 1;
         viewDesc.arrayLayerCount = 1;
-        dummyView = wgpuTextureCreateView(dummyTexture, &viewDesc);
+        WGPUTextureView view = wgpuTextureCreateView(tex, &viewDesc);
+        return {tex, view};
+    };
+
+    if (input && hasValidGPU(*input)) {
+        auto* inputData = getTextureData(*input);
+        inputView = inputData->view;
+    } else {
+        auto [tex, view] = createDummyTexture();
+        dummyTexture = tex;
+        dummyView = view;
         inputView = dummyView;
     }
 
-    // Create bind group
-    WGPUBindGroupEntry entries[3] = {};
+    if (input2 && hasValidGPU(*input2)) {
+        auto* inputData2 = getTextureData(*input2);
+        inputView2 = inputData2->view;
+    } else {
+        auto [tex, view] = createDummyTexture();
+        dummyTexture2 = tex;
+        dummyView2 = view;
+        inputView2 = dummyView2;
+    }
+
+    // Create bind group with 4 entries
+    WGPUBindGroupEntry entries[4] = {};
     entries[0].binding = 0;
     entries[0].buffer = uniformBuffer;
     entries[0].size = sizeof(Uniforms);
@@ -1077,9 +1103,12 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
     entries[2].binding = 2;
     entries[2].textureView = inputView;
 
+    entries[3].binding = 3;
+    entries[3].textureView = inputView2;
+
     WGPUBindGroupDescriptor bindGroupDesc = {};
     bindGroupDesc.layout = shader.bindGroupLayout;
-    bindGroupDesc.entryCount = 3;
+    bindGroupDesc.entryCount = 4;
     bindGroupDesc.entries = entries;
 
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device_, &bindGroupDesc);
@@ -1117,6 +1146,8 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
 
     if (dummyView) wgpuTextureViewRelease(dummyView);
     if (dummyTexture) wgpuTextureRelease(dummyTexture);
+    if (dummyView2) wgpuTextureViewRelease(dummyView2);
+    if (dummyTexture2) wgpuTextureRelease(dummyTexture2);
 }
 
 } // namespace vivid

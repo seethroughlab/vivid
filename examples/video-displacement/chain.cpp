@@ -1,6 +1,6 @@
 // Video Displacement Example
-// Demonstrates video playback with animated noise displacement
-// The noise pattern distorts the video in a fluid, organic way
+// Demonstrates video playback with noise displacement
+// Uses: VideoFile → Noise → Displacement pipeline
 
 #include <vivid/vivid.h>
 #include <filesystem>
@@ -29,6 +29,12 @@ public:
             std::cerr << "  or examples/video-playback/assets/\n";
         }
 
+        // Configure noise generator for displacement map
+        noise_
+            .scale(3.0f)      // Pattern size
+            .speed(0.3f)      // Animation speed
+            .octaves(2);      // Keep it simple for displacement
+
         output_ = ctx.createTexture();
     }
 
@@ -52,10 +58,8 @@ public:
     }
 
     void process(Context& ctx) override {
-        // Process video to get current frame
+        // Step 1: Process video to get current frame
         video_.process(ctx);
-
-        // Get video output texture (VideoFile sets "out" key)
         Texture* videoTex = ctx.getInputTexture("out", "");
         if (!videoTex || !videoTex->valid()) {
             return;
@@ -66,17 +70,19 @@ public:
             output_ = ctx.createTexture(videoTex->width, videoTex->height);
         }
 
-        // Apply displacement shader with animated noise
-        // The shader computes simplex noise internally and uses it to distort the video
+        // Step 2: Generate animated noise texture for displacement map
+        noise_.process(ctx);
+        Texture* noiseTex = ctx.getInputTexture("out", "");
+
+        // Step 3: Apply displacement using video as source, noise as map
         Context::ShaderParams params;
-        params.param0 = displacementAmount_;  // How much to displace
-        params.param1 = noiseScale_;          // Noise pattern size
-        params.param2 = noiseSpeed_;          // Animation speed
+        params.mode = 0;                      // Luminance mode
+        params.param0 = displacementAmount_;  // Displacement strength
+        params.vec0X = 1.0f;                  // Direction X
+        params.vec0Y = 1.0f;                  // Direction Y
 
-        ctx.runShader("examples/video-displacement/shaders/video_displacement.wgsl",
-                      videoTex, output_, params);
+        ctx.runShader("shaders/displacement.wgsl", videoTex, noiseTex, output_, params);
 
-        // Overwrite "out" with our displaced result
         ctx.setOutput("out", output_);
     }
 
@@ -84,12 +90,11 @@ public:
 
 private:
     VideoFile video_;
+    Noise noise_;
     Texture output_;
 
-    // Displacement parameters - tweak these for different effects!
-    float displacementAmount_ = 0.04f;   // How much to displace (0.01-0.1 typical)
-    float noiseScale_ = 3.0f;            // Noise scale (larger = bigger patterns)
-    float noiseSpeed_ = 0.3f;            // Noise animation speed
+    // Displacement strength - tweak for different effects
+    float displacementAmount_ = 0.04f;
 };
 
 VIVID_OPERATOR(VideoDisplacement)

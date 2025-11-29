@@ -11,7 +11,7 @@ public:
     Gradient() = default;
 
     // Fluent API
-    Gradient& mode(int m) { mode_ = m; return *this; }  // 0=linear, 1=radial, 2=angular, 3=diamond
+    Gradient& mode(int m) { mode_ = m; return *this; }  // 0=linear, 1=radial, 2=angular, 3=diamond, 4=animated
     Gradient& angle(float a) { angle_ = a; return *this; }
     Gradient& offset(float o) { offset_ = o; return *this; }
     Gradient& scale(float s) { scale_ = s; return *this; }
@@ -44,7 +44,7 @@ public:
 
     std::vector<ParamDecl> params() override {
         return {
-            intParam("mode", mode_, 0, 3),
+            intParam("mode", mode_, 0, 4),  // Added mode 4 (animated)
             floatParam("angle", angle_, 0.0f, 6.28318f),
             floatParam("offset", offset_, 0.0f, 1.0f),
             floatParam("scale", scale_, 0.1f, 10.0f),
@@ -55,7 +55,7 @@ public:
     OutputKind outputKind() override { return OutputKind::Texture; }
 
 private:
-    int mode_ = 0;  // 0=linear, 1=radial, 2=angular, 3=diamond
+    int mode_ = 0;  // 0=linear, 1=radial, 2=angular, 3=diamond, 4=animated
     float angle_ = 0.0f;
     float offset_ = 0.0f;
     float scale_ = 1.0f;

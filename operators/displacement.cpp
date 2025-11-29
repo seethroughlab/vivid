@@ -1,5 +1,6 @@
 // Displacement Operator
-// Distorts a texture using a displacement map
+// Distorts a source texture using a separate displacement map texture
+// Chain any texture (Noise, Gradient, ImageFile, etc.) as the displacement map
 
 #include <vivid/vivid.h>
 #include <glm/glm.hpp>
@@ -23,17 +24,31 @@ public:
     }
 
     void process(Context& ctx) override {
-        // Use input as both source and displacement map if no separate map specified
-        Texture* input = ctx.getInputTexture(inputNode_, "out");
-        // Texture* dispMap = mapNode_.empty() ? input : ctx.getInputTexture(mapNode_, "out");
+        Texture* source = ctx.getInputTexture(inputNode_, "out");
+        Texture* dispMap = ctx.getInputTexture(mapNode_, "out");
+
+        // If no displacement map specified, use source as map (self-displacement)
+        if (!dispMap || !dispMap->valid()) {
+            dispMap = source;
+        }
+
+        if (!source || !source->valid()) {
+            return;
+        }
+
+        // Resize output to match source
+        if (output_.width != source->width || output_.height != source->height) {
+            output_ = ctx.createTexture(source->width, source->height);
+        }
 
         Context::ShaderParams params;
+        params.mode = channel_;  // 0=lum, 1=R, 2=G, 3=RG
         params.param0 = amount_;
-        params.param1 = static_cast<float>(channel_);
         params.vec0X = direction_.x;
         params.vec0Y = direction_.y;
 
-        ctx.runShader("shaders/displacement.wgsl", input, output_, params);
+        // source = inputTexture, dispMap = inputTexture2
+        ctx.runShader("shaders/displacement.wgsl", source, dispMap, output_, params);
         ctx.setOutput("out", output_);
     }
 
@@ -49,7 +64,7 @@ public:
 
 private:
     std::string inputNode_;
-    std::string mapNode_;  // Optional separate displacement map
+    std::string mapNode_;  // Displacement map node (Noise, Gradient, any texture)
     float amount_ = 0.1f;
     int channel_ = 0;  // 0=luminance, 1=R, 2=G, 3=RG
     glm::vec2 direction_ = glm::vec2(1.0f, 1.0f);

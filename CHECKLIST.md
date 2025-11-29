@@ -153,6 +153,7 @@ cmake --build build
 - [x] Create `operators/CMakeLists.txt` with `add_operator()` function
 - [x] Enhanced `Uniforms` struct with operator parameters (param0-7, vec0-1, mode)
 - [x] Enhanced `Context::runShader()` to support `ShaderParams`
+- [x] Two-texture support in `Context::runShader()` and `Renderer::runShader()` for compositing
 
 ### 7.2 Core Operators
 Build and test each operator individually:
@@ -180,6 +181,7 @@ Build and test each operator individually:
   - [x] Implement blend modes (over, add, multiply, screen, difference)
   - [x] Create `shaders/composite.wgsl`
   - [x] Mix parameter for blending strength
+  - [x] Two-texture support (proper alpha-over compositing with separate background/foreground)
 
 - [x] **Brightness** — `operators/brightness.cpp`
   - [x] Implement brightness and contrast
@@ -204,11 +206,13 @@ Build and test each operator individually:
   - [x] Generate linear, radial, angular, diamond gradients
   - [x] Create `shaders/gradient.wgsl`
   - [x] Configurable colors, angle, offset, scale
+  - [x] Animated mode (mode 4) with HSV color cycling
 
 - [x] **Displacement** — `operators/displacement.cpp`
   - [x] Distort texture using displacement map
   - [x] Create `shaders/displacement.wgsl`
   - [x] Multiple channel modes (luminance, R, G, RG)
+  - [x] Two-texture support (source + any displacement map from Noise, Gradient, etc.)
 
 - [x] **Edge** — `operators/edge.cpp`
   - [x] Sobel edge detection

@@ -119,6 +119,11 @@ public:
     void runShader(Shader& shader, Texture& output, const Texture* input,
                    const Uniforms& uniforms);
 
+    // Run a shader with two input textures (for compositing, etc.)
+    // input2 can be nullptr if shader only needs one texture
+    void runShader(Shader& shader, Texture& output, const Texture* input,
+                   const Texture* input2, const Uniforms& uniforms);
+
     // Resize handling
     void resize(int width, int height);
 

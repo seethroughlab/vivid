@@ -2,6 +2,18 @@
 
 Demonstrates loading an image with alpha transparency, applying animated noise displacement, and compositing over an animated gradient background.
 
+## Pipeline
+
+```
+ImageFile → ─────────────────┐
+                             ├→ Displacement → ─┐
+Noise (animated) → ──────────┘                  ├→ Composite → Output
+                                                │
+Gradient (animated) → ──────────────────────────┘
+```
+
+This demonstrates **node composition**: the Displacement uses a Noise texture as its map, and the Composite blends the displaced image over an animated gradient.
+
 ## Usage
 
 1. Place an image file in the `assets/` folder:
@@ -19,17 +31,21 @@ Demonstrates loading an image with alpha transparency, applying animated noise d
 - **Image with alpha** - Your image composited over the gradient (transparent areas show the gradient)
 - **Noise displacement** - Flowing, liquid-like distortion applied to the image
 
-This proves that alpha transparency is working correctly!
+This demonstrates alpha transparency working correctly with the built-in Composite operator.
 
 ## Effect Parameters
 
 Edit `chain.cpp` to adjust the effect:
 
 ```cpp
-float displacementAmount_ = 0.03f;   // Displacement strength (0.01 - 0.1)
-float noiseScale_ = 4.0f;            // Noise pattern size (1.0 - 10.0)
-float noiseSpeed_ = 0.5f;            // Noise animation speed (0.1 - 2.0)
-float gradientSpeed_ = 1.0f;         // Background gradient animation speed
+// Noise parameters for displacement map
+noise_
+    .scale(4.0f)      // Pattern size
+    .speed(0.5f)      // Animation speed
+    .octaves(2);      // Noise complexity
+
+// Displacement strength
+float displacementAmount_ = 0.03f;
 ```
 
 ## Sample Images
@@ -39,11 +55,3 @@ Try these types of images for interesting effects:
 - Silhouette or cutout shape
 - Text rendered as PNG with transparency
 - Photo with alpha mask
-
-## Shaders
-
-- `image_over_gradient.wgsl` - Combined shader that:
-  1. Generates animated HSV-based radial gradient
-  2. Applies simplex noise displacement to image UVs
-  3. Composites image over gradient using alpha blending
-  4. Fades edges smoothly where displacement samples outside bounds

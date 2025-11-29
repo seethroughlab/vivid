@@ -20,15 +20,21 @@ public:
     }
 
     void process(Context& ctx) override {
-        Texture* texA = ctx.getInputTexture(nodeA_, "out");
-        Texture* texB = ctx.getInputTexture(nodeB_, "out");
+        Texture* texA = ctx.getInputTexture(nodeA_, "out");  // Background
+        Texture* texB = ctx.getInputTexture(nodeB_, "out");  // Foreground
 
-        // For now, use texA as input (two-texture support needs renderer enhancement)
+        // Resize output to match input A (background)
+        if (texA && texA->valid() &&
+            (output_.width != texA->width || output_.height != texA->height)) {
+            output_ = ctx.createTexture(texA->width, texA->height);
+        }
+
         Context::ShaderParams params;
         params.mode = mode_;
         params.param0 = mix_;
 
-        ctx.runShader("shaders/composite.wgsl", texA, output_, params);
+        // Use two-texture shader (A=background, B=foreground)
+        ctx.runShader("shaders/composite.wgsl", texA, texB, output_, params);
         ctx.setOutput("out", output_);
     }
 
@@ -42,10 +48,10 @@ public:
     OutputKind outputKind() override { return OutputKind::Texture; }
 
 private:
-    std::string nodeA_;
-    std::string nodeB_;
+    std::string nodeA_;  // Background
+    std::string nodeB_;  // Foreground
     int mode_ = 0;  // 0=over, 1=add, 2=multiply, 3=screen, 4=difference
-    float mix_ = 0.5f;
+    float mix_ = 1.0f;  // Foreground opacity (default: fully opaque)
     Texture output_;
 };
 

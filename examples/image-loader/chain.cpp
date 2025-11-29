@@ -1,6 +1,6 @@
 // Image Loader Example
-// Demonstrates loading an image with alpha and applying animated noise displacement
-// Place a PNG image with transparency in the assets/ folder
+// Demonstrates loading an image with alpha and applying noise displacement
+// Uses: ImageFile + Noise → Displacement + Gradient → Composite pipeline
 
 #include <vivid/vivid.h>
 #include <filesystem>
@@ -24,7 +24,16 @@ public:
             needsLoad_ = true;
         }
 
+        // Configure noise generator for displacement map
+        noise_
+            .scale(4.0f)      // Pattern size
+            .speed(0.5f)      // Animation speed
+            .octaves(2);      // Keep it simple
+
         output_ = ctx.createTexture();
+        gradient_ = ctx.createTexture();
+        displaced_ = ctx.createTexture();
+        noiseTexture_ = ctx.createTexture();
     }
 
     static std::string findImageFile(const std::string& directory) {
@@ -54,8 +63,10 @@ public:
                 std::cout << "[ImageNoiseDisplacement] Loaded " << imagePath_
                           << " (" << imageTexture_.width << "x" << imageTexture_.height << ")\n";
 
-                // Resize output to match image
+                // Resize outputs to match image
                 output_ = ctx.createTexture(imageTexture_.width, imageTexture_.height);
+                gradient_ = ctx.createTexture(imageTexture_.width, imageTexture_.height);
+                displaced_ = ctx.createTexture(imageTexture_.width, imageTexture_.height);
             }
             needsLoad_ = false;
         }
@@ -64,17 +75,30 @@ public:
             return;
         }
 
-        // Apply animated noise displacement with gradient background
-        // The shader generates a colorful animated gradient, then composites
-        // the displaced image over it - proving alpha transparency works!
-        Context::ShaderParams params;
-        params.param0 = displacementAmount_;  // How much to displace
-        params.param1 = noiseScale_;          // Noise pattern size
-        params.param2 = noiseSpeed_;          // Animation speed
-        params.param3 = gradientSpeed_;       // Gradient animation speed
+        // Step 1: Generate animated gradient background
+        Context::ShaderParams gradientParams;
+        gradientParams.mode = 4;  // Mode 4 = animated HSV gradient
+        ctx.runShader("shaders/gradient.wgsl", nullptr, gradient_, gradientParams);
 
-        ctx.runShader("examples/image-loader/shaders/image_over_gradient.wgsl",
-                      &imageTexture_, output_, params);
+        // Step 2: Generate noise texture for displacement map
+        noise_.process(ctx);
+        Texture* noiseTex = ctx.getInputTexture("out", "");
+
+        // Step 3: Apply displacement to the image using noise as map
+        Context::ShaderParams displacementParams;
+        displacementParams.mode = 0;                      // Luminance mode
+        displacementParams.param0 = displacementAmount_;  // Displacement strength
+        displacementParams.vec0X = 1.0f;
+        displacementParams.vec0Y = 1.0f;
+
+        ctx.runShader("shaders/displacement.wgsl", &imageTexture_, noiseTex, displaced_, displacementParams);
+
+        // Step 4: Composite displaced image over gradient
+        Context::ShaderParams compositeParams;
+        compositeParams.mode = 0;     // Mode 0 = alpha over
+        compositeParams.param0 = 1.0f;  // Full opacity
+
+        ctx.runShader("shaders/composite.wgsl", &gradient_, &displaced_, output_, compositeParams);
 
         ctx.setOutput("out", output_);
     }
@@ -84,14 +108,15 @@ public:
 private:
     std::string imagePath_;
     Texture imageTexture_;
+    Texture gradient_;
+    Texture displaced_;
+    Texture noiseTexture_;
     Texture output_;
+    Noise noise_;
     bool needsLoad_ = false;
 
-    // Displacement parameters - adjust these for different effects!
-    float displacementAmount_ = 0.03f;   // Displacement strength (0.01 - 0.1 typical)
-    float noiseScale_ = 4.0f;            // Noise pattern size (1.0 - 10.0)
-    float noiseSpeed_ = 0.5f;            // Animation speed (0.1 - 2.0)
-    float gradientSpeed_ = 1.0f;         // Background gradient animation speed
+    // Displacement strength
+    float displacementAmount_ = 0.03f;
 };
 
 VIVID_OPERATOR(ImageNoiseDisplacement)

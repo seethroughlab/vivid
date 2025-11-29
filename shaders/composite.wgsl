@@ -1,46 +1,54 @@
 // Composite/Blend shader
+// Blends two textures using various blend modes
 // Uses uniforms:
 //   u.mode = blend mode (0=over, 1=add, 2=multiply, 3=screen, 4=difference)
-//   u.param0 = mix amount
-
-// Note: This shader uses inputTexture for texture A
-// For texture B, we'll need a second input texture (future enhancement)
-// For now, we just output the input with the mix effect
+//   u.param0 = mix/opacity amount (0-1)
+//
+// Inputs:
+//   inputTexture = background (A)
+//   inputTexture2 = foreground (B)
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let mode = u.mode;
-    let mixAmount = u.param0;
+    let opacity = u.param0;
 
-    let a = textureSample(inputTexture, inputSampler, in.uv);
+    // Sample both textures
+    let bg = textureSample(inputTexture, inputSampler, in.uv);
+    let fg = textureSample(inputTexture2, inputSampler, in.uv);
 
-    // For now, since we only have one input, we'll just demonstrate the modes
-    // by blending with a solid color or pattern
-    // In a real implementation, we'd have a second texture input
-    let b = vec4f(0.5, 0.5, 0.5, 1.0);
+    // Apply opacity to foreground
+    let fgAlpha = fg.a * opacity;
 
     var result: vec4f;
 
     switch (mode) {
-        case 0: {  // Over (lerp)
-            result = mix(a, b, mixAmount);
+        case 0: {  // Alpha Over (standard compositing)
+            // Porter-Duff "over" operation
+            let outAlpha = fgAlpha + bg.a * (1.0 - fgAlpha);
+            let outRgb = (fg.rgb * fgAlpha + bg.rgb * bg.a * (1.0 - fgAlpha)) / max(outAlpha, 0.001);
+            result = vec4f(outRgb, outAlpha);
         }
-        case 1: {  // Add
-            result = a + b * mixAmount;
+        case 1: {  // Add (Linear Dodge)
+            let blended = bg.rgb + fg.rgb * fgAlpha;
+            result = vec4f(min(blended, vec3f(1.0)), max(bg.a, fgAlpha));
         }
         case 2: {  // Multiply
-            result = mix(a, a * b, mixAmount);
+            let blended = mix(bg.rgb, bg.rgb * fg.rgb, fgAlpha);
+            result = vec4f(blended, max(bg.a, fgAlpha));
         }
         case 3: {  // Screen
-            result = mix(a, 1.0 - (1.0 - a) * (1.0 - b), mixAmount);
+            let blended = mix(bg.rgb, 1.0 - (1.0 - bg.rgb) * (1.0 - fg.rgb), fgAlpha);
+            result = vec4f(blended, max(bg.a, fgAlpha));
         }
         case 4: {  // Difference
-            result = mix(a, abs(a - b), mixAmount);
+            let blended = mix(bg.rgb, abs(bg.rgb - fg.rgb), fgAlpha);
+            result = vec4f(blended, max(bg.a, fgAlpha));
         }
         default: {
-            result = a;
+            result = bg;
         }
     }
 
-    return vec4f(result.rgb, 1.0);
+    return result;
 }
