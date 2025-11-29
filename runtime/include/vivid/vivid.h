@@ -23,6 +23,7 @@
 #include "operators/videofile.h"
 #include "operators/imagefile.h"
 #include "operators/webcam.h"
+#include "operators/audioin.h"
 
 // Built-in Operators - Generators
 #include "operators/noise.h"

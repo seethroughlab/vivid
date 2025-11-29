@@ -23,6 +23,9 @@ set(RUNTIME_SOURCES
     src/image_loader.cpp
     src/video_loader.cpp
     src/audio_player.cpp
+    src/audio_capture.cpp
+    src/fft.cpp
+    src/audioin.cpp
     src/mesh.cpp
     src/pipeline3d.cpp
     src/pipeline3d_instanced.cpp
