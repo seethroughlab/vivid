@@ -406,18 +406,19 @@ Build and test each operator individually:
 **Architecture: Platform-native (AVFoundation/Media Foundation) + HAP support**
 
 #### 12.2a Core Infrastructure
-- [ ] Create `VideoLoader` interface (`runtime/src/video_loader.h`)
-- [ ] Add Snappy dependency to CMakeLists.txt (for HAP)
-- [ ] Add platform framework links (AVFoundation, Media Foundation)
-- [ ] Factory method for platform-appropriate loader
+- [x] Create `VideoLoader` interface (`runtime/src/video_loader.h`)
+- [x] Add Snappy dependency to CMakeLists.txt (for HAP)
+- [x] Add platform framework links (AVFoundation, Media Foundation)
+- [x] Factory method for platform-appropriate loader (`VideoLoader::create()`)
 
 #### 12.2b macOS Implementation (Primary)
-- [ ] Implement `VideoLoaderMacOS` (`runtime/src/video_loader_macos.mm`)
-- [ ] AVAssetReader setup and frame extraction
-- [ ] CVPixelBuffer → Texture upload (zero-copy via IOSurface)
-- [ ] Hardware-accelerated decode (automatic via VideoToolbox)
-- [ ] Frame-accurate seeking with AVSampleCursor
+- [x] Implement `VideoLoaderMacOS` (`runtime/src/video_loader_macos.mm`)
+- [x] AVAssetReader setup and frame extraction
+- [x] CVPixelBuffer → Texture upload
+- [x] Hardware-accelerated decode (automatic via VideoToolbox)
+- [x] Frame-accurate seeking (via reader recreation with time range)
 - [ ] Test: H.264, ProRes, HEVC playback
+- [ ] Zero-copy via IOSurface (optimization for later)
 
 #### 12.2c HAP Codec Support (All Platforms)
 - [ ] Add FFmpeg for container demuxing only (not decoding)
@@ -599,6 +600,7 @@ Build and test each operator individually:
 - [ ] `examples/text` — Text rendering
 - [ ] `examples/multi-window` — Multiple output windows
 - [ ] `examples/video-playback` — Video file input
+- [ ] `examples/web-server` - Host a simple web interface that interacts with nodes
 
 ### 14.2 Template Projects
 - [ ] Minimal template (single operator)

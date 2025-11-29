@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
+cmake_policy(SET CMP0077 NEW)  # Allow setting options before FetchContent
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)  # For older dependencies
 project(vivid VERSION 0.1.0 LANGUAGES CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -59,7 +61,17 @@ FetchContent_Declare(
     GIT_TAG master
 )
 
-FetchContent_MakeAvailable(glfw glm ixwebsocket nlohmann_json efsw stb)
+# Snappy compression (for HAP video codec)
+FetchContent_Declare(
+    snappy
+    GIT_REPOSITORY https://github.com/google/snappy.git
+    GIT_TAG 1.2.1
+)
+set(SNAPPY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(SNAPPY_INSTALL OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(glfw glm ixwebsocket nlohmann_json efsw stb snappy)
 
 # WebGPU via wgpu-native
 # Note: wgpu-native releases provide prebuilt binaries

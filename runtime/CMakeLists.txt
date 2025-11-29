@@ -15,15 +15,25 @@ set(RUNTIME_SOURCES
     src/shared_preview.cpp
     src/preview_thread.cpp
     src/image_loader.cpp
+    src/video_loader.cpp
 )
 
 # Platform-specific source files
 if(APPLE)
-    list(APPEND RUNTIME_SOURCES src/platform_surface_macos.mm)
-    # Enable Objective-C++ for the .mm file
-    set_source_files_properties(src/platform_surface_macos.mm PROPERTIES
-        COMPILE_FLAGS "-x objective-c++"
+    list(APPEND RUNTIME_SOURCES
+        src/platform_surface_macos.mm
+        src/video_loader_macos.mm
     )
+    # Enable Objective-C++ for .mm files
+    set_source_files_properties(
+        src/platform_surface_macos.mm
+        src/video_loader_macos.mm
+        PROPERTIES COMPILE_FLAGS "-x objective-c++"
+    )
+elseif(WIN32)
+    list(APPEND RUNTIME_SOURCES src/video_loader_windows.cpp)
+else()
+    list(APPEND RUNTIME_SOURCES src/video_loader_linux.cpp)
 endif()
 
 add_executable(vivid-runtime ${RUNTIME_SOURCES})
@@ -42,6 +52,7 @@ target_link_libraries(vivid-runtime
     ixwebsocket
     nlohmann_json::nlohmann_json
     efsw
+    snappy
     ${CMAKE_DL_LIBS}
 )
 
@@ -52,6 +63,10 @@ if(APPLE)
         "-framework IOKit"
         "-framework Metal"
         "-framework QuartzCore"
+        "-framework AVFoundation"
+        "-framework CoreMedia"
+        "-framework CoreVideo"
+        "-framework VideoToolbox"
     )
     # Export symbols so dynamically loaded operators can find Context, etc.
     target_link_options(vivid-runtime PRIVATE -Wl,-export_dynamic)
