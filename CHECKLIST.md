@@ -577,9 +577,9 @@ Build and test each operator individually:
 - [x] A/V sync support (audio plays alongside video)
 
 ### 12.5 Audio Input & Analysis
-- [ ] Implement `AudioIn` operator (microphone/line-in via miniaudio)
-- [ ] Implement `FFT` operator (frequency spectrum)
-- [ ] Implement `AudioBands` operator (bass, mid, treble, etc.)
+- [x] Implement `AudioIn` operator (microphone/line-in via miniaudio)
+- [x] Implement `FFT` operator (frequency spectrum) — integrated into AudioIn
+- [x] Implement `AudioBands` operator (bass, mid, treble, etc.) — integrated into AudioIn
 - [ ] Beat detection (implement per `beat_detection.md` spec)
 
 ### 12.6 Audio Synthesis & Output
@@ -612,11 +612,15 @@ Build and test each operator individually:
 - [x] 3D primitive generation (cube, sphere, plane, cylinder, torus, cone) — `runtime/src/mesh.cpp`
 - [x] Implement `Geometry` operator base with Vertex3D format (position, normal, UV, tangent) — `runtime/src/mesh.h`
 - [ ] Basic 3D transforms (translate, rotate, scale)
-- [ ] **GPU Instancing** — Render geometry N times with instance buffer (transforms, colors)
+- [x] **GPU Instancing** — Render geometry N times with instance buffer (transforms, colors) — `drawMeshInstanced()`
 - [ ] **Instance from Values** — Generate instance transforms from numeric arrays
 - [ ] **Instance from Texture** — Use texture pixels as instance data (RGBA → transform)
-- [ ] OBJ model loading
-- [ ] GLTF model loading (with embedded materials)
+- [x] 3D model loading via Assimp (`runtime/src/model_loader.cpp`, `ctx.loadMesh()`)
+  - [x] FBX format support (tested with Wolf model: 8K vertices, 11K triangles)
+  - [x] OBJ format support
+  - [x] glTF/GLB format support
+  - [x] COLLADA (.dae), 3DS, Blender, and 40+ other formats
+- [x] `examples/model-loader` — Demonstrates FBX/OBJ/glTF loading with camera orbit
 
 #### Camera System
 - [x] `Camera3D` class with position, target, FOV, near/far planes — `runtime/src/camera3d.h`
@@ -671,14 +675,14 @@ Build and test each operator individually:
 **Priority: High — Essential for polished visuals**
 
 #### Bloom & Glow
-- [ ] **Bloom** — HDR-style bright area glow (`operators/bloom.cpp`)
-  - [ ] Brightness threshold extraction
-  - [ ] Multi-pass Gaussian blur on bright areas
-  - [ ] Additive blend back to source
+- [x] **Bloom** — HDR-style bright area glow (`operators/bloom.h`)
+  - [x] Brightness threshold extraction
+  - [x] Multi-pass Gaussian blur on bright areas
+  - [x] Additive blend back to source
 - [ ] **Glow** — Per-object glow via alpha channel or mask
 
 #### Color & Tone
-- [ ] **Vignette** — Darkened edges effect
+- [x] **Vignette** — Darkened edges effect (`operators/vignette.h`)
 - [ ] **ColorGrade** — LUT-based color grading
 - [ ] **Tonemap** — HDR to SDR mapping (ACES, Reinhard, etc.)
 
@@ -834,7 +838,7 @@ Build and test each operator individually:
 - [ ] `examples/image-sequence` — Load and animate through image sequences
 
 #### Audio & Music
-- [ ] `examples/audio-reactive` — Audio input driving visuals (mic/line-in)
+- [x] `examples/audio-reactive` — Audio input driving visuals (mic/line-in)
 - [ ] `examples/beat-detection` — Audio beat detection (see `beat_detection.md`)
 - [ ] `examples/fft-visualizer` — Frequency spectrum display
 - [ ] `examples/midi-control` — MIDI CC controlling parameters
@@ -855,13 +859,14 @@ Build and test each operator individually:
 - [ ] `examples/composite-modes` — Blend mode comparison (add, multiply, screen, etc.)
 - [ ] `examples/displacement` — Texture displacement techniques
 - [ ] `examples/lfo-modulation` — LFO driving parameters over time
-- [ ] `examples/post-processing` — Bloom, vignette, color grading chain
+- [x] `examples/post-processing` — Bloom, vignette, color grading chain
 
 #### 3D & Geometry
+- [x] `examples/3d-demo` — 3D rendering basics (primitives, camera, instancing)
 - [ ] `examples/3d-geometry` — 3D rendering basics (primitives, camera, lighting)
-- [ ] `examples/model-loader` — Load OBJ/glTF models
+- [x] `examples/model-loader` — Load OBJ models with orbit camera
 - [ ] `examples/particles` — Particle system with emitters
-- [ ] `examples/instancing` — GPU instancing for many objects
+- [x] `examples/3d-instancing` — GPU instancing for many objects
 - [ ] `examples/orbit-camera` — Interactive 3D camera controls
 
 #### Text & Overlay

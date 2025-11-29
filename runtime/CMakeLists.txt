@@ -27,6 +27,7 @@ set(RUNTIME_SOURCES
     src/fft.cpp
     src/audioin.cpp
     src/mesh.cpp
+    src/model_loader.cpp
     src/pipeline3d.cpp
     src/pipeline3d_instanced.cpp
     src/pipeline2d.cpp
@@ -84,6 +85,7 @@ target_link_libraries(vivid-runtime
     nlohmann_json::nlohmann_json
     efsw
     snappy
+    assimp
     ${CMAKE_DL_LIBS}
 )
 

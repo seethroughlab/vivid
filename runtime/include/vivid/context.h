@@ -478,6 +478,41 @@ public:
     Mesh3D createTorus(float majorRadius = 0.5f, float minorRadius = 0.2f);
 
     /**
+     * @brief Create a cylinder mesh.
+     * @param radius Cylinder radius.
+     * @param height Cylinder height.
+     * @param segments Number of segments around the circumference.
+     * @return A cylinder mesh centered at origin.
+     */
+    Mesh3D createCylinder(float radius = 0.5f, float height = 1.0f, int segments = 32);
+
+    /**
+     * @brief Load a mesh from a 3D model file.
+     * @param path Path to the model file.
+     * @return A valid Mesh3D if successful, invalid if load failed.
+     *
+     * Supported formats (via Assimp):
+     * - FBX (.fbx)
+     * - OBJ (.obj)
+     * - glTF/GLB (.gltf, .glb)
+     * - COLLADA (.dae)
+     * - 3DS (.3ds)
+     * - Blender (.blend)
+     * - And 40+ more formats
+     *
+     * All meshes in the file are combined into a single mesh.
+     * Normals and tangents are computed automatically if not present.
+     */
+    Mesh3D loadMesh(const std::string& path);
+
+    /**
+     * @brief Check if a file is a supported 3D model format.
+     * @param path Path to check.
+     * @return true if the extension is a known model format.
+     */
+    static bool isMeshSupported(const std::string& path);
+
+    /**
      * @brief Destroy a mesh and release resources.
      * @param mesh The mesh to destroy.
      */

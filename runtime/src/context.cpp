@@ -5,11 +5,13 @@
 #include "video_loader.h"
 #include "camera_capture.h"
 #include "mesh.h"
+#include "model_loader.h"
 #include "pipeline3d.h"
 #include "pipeline3d_instanced.h"
 #include "pipeline2d.h"
 #include <unordered_set>
 #include <iostream>
+#include <algorithm>
 
 namespace vivid {
 
@@ -705,6 +707,29 @@ Mesh3D Context::createTorus(float majorRadius, float minorRadius) {
     std::vector<uint32_t> indices;
     primitives::generateTorus(vertices, indices, majorRadius, minorRadius);
     return createMesh(vertices, indices);
+}
+
+Mesh3D Context::createCylinder(float radius, float height, int segments) {
+    std::vector<Vertex3D> vertices;
+    std::vector<uint32_t> indices;
+    primitives::generateCylinder(vertices, indices, radius, height, segments);
+    return createMesh(vertices, indices);
+}
+
+Mesh3D Context::loadMesh(const std::string& path) {
+    std::vector<Vertex3D> vertices;
+    std::vector<uint32_t> indices;
+
+    if (!loadModel(path, vertices, indices)) {
+        std::cerr << "[Context] Failed to load mesh: " << path << "\n";
+        return Mesh3D{};
+    }
+
+    return createMesh(vertices, indices);
+}
+
+bool Context::isMeshSupported(const std::string& path) {
+    return isModelSupported(path);
 }
 
 void Context::destroyMesh(Mesh3D& mesh) {
