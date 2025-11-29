@@ -35,6 +35,11 @@ Window::Window(int width, int height, const std::string& title, bool fullscreen)
     // Set up key callback
     glfwSetKeyCallback(window_, keyCallback);
 
+    // Set up mouse callbacks
+    glfwSetMouseButtonCallback(window_, mouseButtonCallback);
+    glfwSetCursorPosCallback(window_, cursorPosCallback);
+    glfwSetScrollCallback(window_, scrollCallback);
+
     std::cout << "[Window] Created " << width << "x" << height << " window\n";
 }
 
@@ -97,6 +102,36 @@ void Window::keyCallback(GLFWwindow* glfwWindow, int key, int scancode, int acti
     }
 }
 
+void Window::mouseButtonCallback(GLFWwindow* glfwWindow, int button, int action, int mods) {
+    (void)mods;
+    auto* window = static_cast<Window*>(glfwGetWindowUserPointer(glfwWindow));
+    if (!window || button < 0) return;
+
+    if (action == GLFW_PRESS) {
+        window->mouseButtonsDown_.insert(button);
+        window->mouseButtonsPressed_.insert(button);
+    } else if (action == GLFW_RELEASE) {
+        window->mouseButtonsDown_.erase(button);
+        window->mouseButtonsReleased_.insert(button);
+    }
+}
+
+void Window::cursorPosCallback(GLFWwindow* glfwWindow, double xpos, double ypos) {
+    auto* window = static_cast<Window*>(glfwGetWindowUserPointer(glfwWindow));
+    if (!window) return;
+
+    window->mouseX_ = static_cast<float>(xpos);
+    window->mouseY_ = static_cast<float>(ypos);
+}
+
+void Window::scrollCallback(GLFWwindow* glfwWindow, double xoffset, double yoffset) {
+    auto* window = static_cast<Window*>(glfwGetWindowUserPointer(glfwWindow));
+    if (!window) return;
+
+    window->scrollDeltaX_ += static_cast<float>(xoffset);
+    window->scrollDeltaY_ += static_cast<float>(yoffset);
+}
+
 bool Window::isKeyDown(int key) const {
     return keysDown_.count(key) > 0;
 }
@@ -109,9 +144,25 @@ bool Window::wasKeyReleased(int key) const {
     return keysReleased_.count(key) > 0;
 }
 
+bool Window::isMouseDown(int button) const {
+    return mouseButtonsDown_.count(button) > 0;
+}
+
+bool Window::wasMousePressed(int button) const {
+    return mouseButtonsPressed_.count(button) > 0;
+}
+
+bool Window::wasMouseReleased(int button) const {
+    return mouseButtonsReleased_.count(button) > 0;
+}
+
 void Window::clearInputState() {
     keysPressed_.clear();
     keysReleased_.clear();
+    mouseButtonsPressed_.clear();
+    mouseButtonsReleased_.clear();
+    scrollDeltaX_ = 0.0f;
+    scrollDeltaY_ = 0.0f;
 }
 
 } // namespace vivid

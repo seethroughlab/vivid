@@ -377,6 +377,42 @@ bool Context::wasKeyReleased(int key) const {
     return window_ ? window_->wasKeyReleased(key) : false;
 }
 
+float Context::mouseX() const {
+    return window_ ? window_->mouseX() : 0.0f;
+}
+
+float Context::mouseY() const {
+    return window_ ? window_->mouseY() : 0.0f;
+}
+
+float Context::mouseNormX() const {
+    return window_ ? window_->mouseNormX() : 0.0f;
+}
+
+float Context::mouseNormY() const {
+    return window_ ? window_->mouseNormY() : 0.0f;
+}
+
+bool Context::isMouseDown(int button) const {
+    return window_ ? window_->isMouseDown(button) : false;
+}
+
+bool Context::wasMousePressed(int button) const {
+    return window_ ? window_->wasMousePressed(button) : false;
+}
+
+bool Context::wasMouseReleased(int button) const {
+    return window_ ? window_->wasMouseReleased(button) : false;
+}
+
+float Context::scrollDeltaX() const {
+    return window_ ? window_->scrollDeltaX() : 0.0f;
+}
+
+float Context::scrollDeltaY() const {
+    return window_ ? window_->scrollDeltaY() : 0.0f;
+}
+
 Shader* Context::getCachedShader(const std::string& path) {
     auto it = shaderCache_.find(path);
     if (it != shaderCache_.end()) {

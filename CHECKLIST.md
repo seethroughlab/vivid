@@ -4,6 +4,97 @@ A step-by-step guide for building Vivid. Each phase builds on the previous one. 
 
 ---
 
+## Phase 0: Chain API (HIGHEST PRIORITY)
+**The declarative operator chaining system — the core of Vivid's workflow**
+
+The Chain API enables declarative composition of operators, replacing the current pattern where each example is a monolithic operator class. This is fundamental to Vivid's node-based visual programming paradigm.
+
+### Target API
+```cpp
+// In chain.cpp
+#include <vivid/vivid.h>
+using namespace vivid;
+
+void setup(Chain& chain) {
+    chain.add<Noise>("noise").scale(4.0).speed(0.3);
+    chain.add<Feedback>("fb").input("noise").decay(0.9);
+    chain.add<Mirror>("mirror").input("fb").kaleidoscope(6);
+    chain.add<HSV>("color").input("mirror").hueShift(0.1);
+    chain.setOutput("color");
+}
+
+void update(Chain& chain, Context& ctx) {
+    // Dynamic parameter changes based on time/input
+    chain.get<Feedback>("fb").rotate(ctx.mouseNormX() * 0.1);
+}
+```
+
+### 0.1 Chain Class Design
+- [ ] Create `runtime/include/vivid/chain.h`
+- [ ] `Chain` class to hold operator instances by name
+- [ ] `add<T>(name)` — instantiate operator and register by name
+- [ ] `get<T>(name)` — retrieve operator for parameter updates
+- [ ] `setOutput(name)` — designate final output operator
+- [ ] `connect(fromNode, toNode)` — explicit wiring (alternative to `.input()`)
+- [ ] Store operator instances in `std::unordered_map<std::string, std::unique_ptr<Operator>>`
+
+### 0.2 Operator Registry
+- [ ] Create `runtime/src/operator_registry.h` and `.cpp`
+- [ ] Registration macro: `VIVID_REGISTER_OPERATOR(ClassName)`
+- [ ] Factory function: `createOperator(typeName)` → `std::unique_ptr<Operator>`
+- [ ] Auto-registration at static init time (or explicit registry population)
+- [ ] All built-in operators registered (`Noise`, `Feedback`, `Mirror`, `HSV`, `Blur`, etc.)
+
+### 0.3 Dependency Resolution
+- [ ] Track input dependencies from `.input("nodeName")` calls on operators
+- [ ] Build dependency graph from input references
+- [ ] Topological sort for execution order
+- [ ] Detect and report circular dependencies
+- [ ] Handle missing input references gracefully (warning, not crash)
+
+### 0.4 Chain Execution
+- [ ] `Chain::init(Context&)` — call `init()` on all operators in dependency order
+- [ ] `Chain::process(Context&)` — call `process()` on all operators in dependency order
+- [ ] `Chain::cleanup()` — call `cleanup()` on all operators
+- [ ] Output routing: each operator's `setOutput()` stores in Context for next operator's `getInputTexture()`
+- [ ] Final output: `Chain::getOutput()` returns the designated output texture
+
+### 0.5 Entry Point Detection
+- [ ] Modify `HotLoader` to look for `setup` and `update` symbols
+- [ ] Signature: `void setup(Chain& chain)`
+- [ ] Signature: `void update(Chain& chain, Context& ctx)`
+- [ ] Fallback: if no `setup` found, use legacy single-operator pattern
+- [ ] Runtime creates Chain, calls `setup()` once, calls `update()` each frame
+
+### 0.6 Hot-Reload Integration
+- [ ] On reload: save operator states via `saveState()`
+- [ ] Recreate Chain from new library
+- [ ] Call `setup()` to rebuild operator graph
+- [ ] Restore states to matching operator names via `loadState()`
+- [ ] Handle added/removed operators gracefully
+
+### 0.7 Built-in Operator Updates
+- [ ] Ensure all operators have proper `input()` method returning `*this`
+- [ ] Standardize fluent API across all operators
+- [ ] Add `VIVID_REGISTER_OPERATOR` to all built-in operators
+- [ ] Verify each operator works in Chain context
+
+### 0.8 Example Migration
+- [ ] Migrate `examples/hello` to Chain API
+- [ ] Migrate `examples/feedback` to Chain API
+- [ ] Migrate `examples/webcam` to Chain API
+- [ ] Migrate `examples/video-playback` to Chain API
+- [ ] Create new `examples/chain-demo` showcasing the API
+- [ ] Update documentation with Chain API examples
+
+### 0.9 Documentation
+- [ ] Document Chain API in `docs/CHAIN-API.md`
+- [ ] Update `docs/OPERATOR-API.md` with fluent interface requirements
+- [ ] Update README with Chain API examples
+- [ ] Add inline comments to `chain.h`
+
+---
+
 ## Phase 1: Project Foundation
 **Reference: [PLAN-01-overview.md](PLAN-01-overview.md)**
 
@@ -749,6 +840,7 @@ npx wscat -c ws://localhost:9876
 
 | Milestone | You should be able to... |
 |-----------|--------------------------|
+| **Phase 0 complete** | **Declaratively chain operators with `setup()` / `update()` API** |
 | Phase 2 complete | See a window with a solid color |
 | Phase 3 complete | See animated noise via shader |
 | Phase 5 complete | Edit .cpp, see changes without restart |

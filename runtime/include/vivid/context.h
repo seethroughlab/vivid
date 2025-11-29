@@ -86,6 +86,40 @@ public:
     bool wasKeyReleased(int key) const;
     /// @}
 
+    /// @name Mouse Input
+    /// @{
+
+    /// @brief Get the mouse X position in pixels.
+    float mouseX() const;
+
+    /// @brief Get the mouse Y position in pixels.
+    float mouseY() const;
+
+    /// @brief Get the mouse X position normalized to [0, 1].
+    float mouseNormX() const;
+
+    /// @brief Get the mouse Y position normalized to [0, 1].
+    float mouseNormY() const;
+
+    /// @brief Check if a mouse button is currently held down.
+    /// @param button Button index (0=left, 1=right, 2=middle).
+    bool isMouseDown(int button = 0) const;
+
+    /// @brief Check if a mouse button was just pressed this frame.
+    /// @param button Button index (0=left, 1=right, 2=middle).
+    bool wasMousePressed(int button = 0) const;
+
+    /// @brief Check if a mouse button was just released this frame.
+    /// @param button Button index (0=left, 1=right, 2=middle).
+    bool wasMouseReleased(int button = 0) const;
+
+    /// @brief Get horizontal scroll delta this frame.
+    float scrollDeltaX() const;
+
+    /// @brief Get vertical scroll delta this frame.
+    float scrollDeltaY() const;
+    /// @}
+
     /// @name Texture Creation
     /// @{
 

@@ -21,6 +21,8 @@ public:
     Feedback& zoom(float z) { zoom_ = z; return *this; }
     Feedback& rotate(float r) { rotate_ = r; return *this; }
     Feedback& translate(glm::vec2 t) { translate_ = t; return *this; }
+    Feedback& translate(float x, float y) { translate_ = glm::vec2(x, y); return *this; }
+    Feedback& mode(int m) { mode_ = m; return *this; }  // 0=max, 1=add, 2=screen, 3=mix
 
     void init(Context& ctx) override {
         buffer_[0] = ctx.createTexture();
@@ -30,18 +32,28 @@ public:
 
     void process(Context& ctx) override {
         Texture* input = ctx.getInputTexture(inputNode_, "out");
+        if (!input || !input->valid()) return;
+
         Texture& current = buffer_[currentBuffer_];
         Texture& previous = buffer_[1 - currentBuffer_];
 
-        // For now, use input only (true ping-pong needs two-texture support)
+        // Resize buffers if input size changed
+        if (current.width != input->width || current.height != input->height) {
+            buffer_[0] = ctx.createTexture(input->width, input->height);
+            buffer_[1] = ctx.createTexture(input->width, input->height);
+        }
+
+        // Set up shader params
         Context::ShaderParams params;
         params.param0 = decay_;
         params.param1 = zoom_;
         params.param2 = rotate_;
         params.vec0X = translate_.x;
         params.vec0Y = translate_.y;
+        params.mode = mode_;
 
-        ctx.runShader("shaders/feedback.wgsl", input, current, params);
+        // Run feedback shader with input + previous frame → current buffer
+        ctx.runShader("shaders/feedback.wgsl", input, &previous, current, params);
         ctx.setOutput("out", current);
 
         // Swap buffers for next frame
@@ -76,6 +88,7 @@ private:
     float zoom_ = 1.0f;
     float rotate_ = 0.0f;
     glm::vec2 translate_ = glm::vec2(0.0f);
+    int mode_ = 0;  // 0=max, 1=add, 2=screen, 3=mix
     Texture buffer_[2];
     int currentBuffer_ = 0;
 };
