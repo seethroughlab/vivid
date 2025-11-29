@@ -146,4 +146,22 @@ struct Camera {
     bool valid() const { return handle != nullptr; }
 };
 
+/**
+ * @brief 2D circle instance data for instanced rendering.
+ *
+ * Used with Context::drawCircles() for efficient rendering of many circles.
+ */
+struct Circle2D {
+    glm::vec2 position;     ///< Center position (0-1 normalized).
+    float radius;           ///< Radius in normalized coordinates.
+    float _pad = 0.0f;      ///< Padding for GPU alignment.
+    glm::vec4 color;        ///< RGBA color.
+
+    Circle2D() = default;
+    Circle2D(glm::vec2 pos, float r, glm::vec4 c)
+        : position(pos), radius(r), _pad(0.0f), color(c) {}
+    Circle2D(float x, float y, float r, float red, float green, float blue, float alpha = 1.0f)
+        : position(x, y), radius(r), _pad(0.0f), color(red, green, blue, alpha) {}
+};
+
 } // namespace vivid

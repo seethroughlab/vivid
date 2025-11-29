@@ -13,6 +13,7 @@ class Renderer;
 class Window;
 struct Shader;
 class Renderer3DImpl;
+class Renderer2DImpl;
 
 /**
  * @brief Runtime context providing access to time, textures, shaders, and operator communication.
@@ -358,6 +359,21 @@ public:
      */
     void runShader(const std::string& shaderPath, const Texture* input1,
                    const Texture* input2, Texture& output, const ShaderParams& params);
+
+    /**
+     * @brief Run a shader with multiple input textures (up to 8).
+     *
+     * For multi-layer compositing and effects that need more than 2 inputs.
+     * Inputs are bound to inputTexture, inputTexture2, inputTexture3, etc.
+     *
+     * @param shaderPath Path to the WGSL shader file.
+     * @param inputs Vector of input textures (up to 8).
+     * @param output The texture to render into.
+     * @param params Shader parameters to pass as uniforms.
+     */
+    void runShaderMulti(const std::string& shaderPath,
+                        const std::vector<const Texture*>& inputs,
+                        Texture& output, const ShaderParams& params);
     /// @}
 
     /// @name Output Storage
@@ -498,6 +514,24 @@ public:
 
     /// @}
 
+    /// @name 2D Instanced Rendering
+    /// @{
+
+    /**
+     * @brief Draw multiple circles using GPU instancing.
+     *
+     * Efficiently renders many circles in a single draw call.
+     * Each circle has its own position, radius, and color.
+     *
+     * @param circles Vector of circle instances to draw.
+     * @param output Target texture to render into.
+     * @param clearColor Background color (default black).
+     */
+    void drawCircles(const std::vector<Circle2D>& circles, Texture& output,
+                     const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /// @}
+
     // Internal methods - called by runtime
     void beginFrame(float time, float dt, int frame);
     void endFrame();
@@ -535,6 +569,10 @@ private:
     // 3D rendering support (lazy initialized)
     std::unique_ptr<Renderer3DImpl> renderer3d_;
     Renderer3DImpl& getRenderer3D();
+
+    // 2D instanced rendering support (lazy initialized)
+    std::unique_ptr<Renderer2DImpl> renderer2d_;
+    Renderer2DImpl& getRenderer2D();
 };
 
 } // namespace vivid

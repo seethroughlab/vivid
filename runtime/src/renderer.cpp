@@ -47,6 +47,12 @@ struct VertexOutput {
 @group(0) @binding(1) var inputSampler: sampler;
 @group(0) @binding(2) var inputTexture: texture_2d<f32>;
 @group(0) @binding(3) var inputTexture2: texture_2d<f32>;
+@group(0) @binding(4) var inputTexture3: texture_2d<f32>;
+@group(0) @binding(5) var inputTexture4: texture_2d<f32>;
+@group(0) @binding(6) var inputTexture5: texture_2d<f32>;
+@group(0) @binding(7) var inputTexture6: texture_2d<f32>;
+@group(0) @binding(8) var inputTexture7: texture_2d<f32>;
+@group(0) @binding(9) var inputTexture8: texture_2d<f32>;
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
@@ -944,9 +950,8 @@ Shader Renderer::loadShader(const std::string& wgslSource) {
     // Create bind group layout
     // Binding 0: Uniforms
     // Binding 1: Sampler
-    // Binding 2: Input texture
-    // Binding 3: Input texture 2 (for compositing, etc.)
-    WGPUBindGroupLayoutEntry layoutEntries[4] = {};
+    // Binding 2-9: Input textures (up to 8 for multi-input compositing)
+    WGPUBindGroupLayoutEntry layoutEntries[10] = {};
 
     layoutEntries[0].binding = 0;
     layoutEntries[0].visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Vertex;
@@ -957,18 +962,16 @@ Shader Renderer::loadShader(const std::string& wgslSource) {
     layoutEntries[1].visibility = WGPUShaderStage_Fragment;
     layoutEntries[1].sampler.type = WGPUSamplerBindingType_Filtering;
 
-    layoutEntries[2].binding = 2;
-    layoutEntries[2].visibility = WGPUShaderStage_Fragment;
-    layoutEntries[2].texture.sampleType = WGPUTextureSampleType_Float;
-    layoutEntries[2].texture.viewDimension = WGPUTextureViewDimension_2D;
-
-    layoutEntries[3].binding = 3;
-    layoutEntries[3].visibility = WGPUShaderStage_Fragment;
-    layoutEntries[3].texture.sampleType = WGPUTextureSampleType_Float;
-    layoutEntries[3].texture.viewDimension = WGPUTextureViewDimension_2D;
+    // Texture bindings 2-9 (8 textures)
+    for (int i = 0; i < 8; i++) {
+        layoutEntries[2 + i].binding = 2 + i;
+        layoutEntries[2 + i].visibility = WGPUShaderStage_Fragment;
+        layoutEntries[2 + i].texture.sampleType = WGPUTextureSampleType_Float;
+        layoutEntries[2 + i].texture.viewDimension = WGPUTextureViewDimension_2D;
+    }
 
     WGPUBindGroupLayoutDescriptor layoutDesc = {};
-    layoutDesc.entryCount = 4;
+    layoutDesc.entryCount = 10;
     layoutDesc.entries = layoutEntries;
 
     shader.bindGroupLayout = wgpuDeviceCreateBindGroupLayout(device_, &layoutDesc);
@@ -1108,6 +1111,16 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
 
 void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
                          const Texture* input2, const Uniforms& uniforms) {
+    // Forward to multi-input version with up to 2 inputs
+    std::vector<const Texture*> inputs;
+    if (input) inputs.push_back(input);
+    if (input2) inputs.push_back(input2);
+    runShaderMulti(shader, output, inputs, uniforms);
+}
+
+void Renderer::runShaderMulti(Shader& shader, Texture& output,
+                              const std::vector<const Texture*>& inputs,
+                              const Uniforms& uniforms) {
     if (!shader.valid() || !hasValidGPU(output)) return;
 
     auto* outputData = getTextureData(output);
@@ -1120,14 +1133,6 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
 
     // Upload uniforms
     wgpuQueueWriteBuffer(queue_, uniformBuffer, 0, &uniforms, sizeof(Uniforms));
-
-    // Use input texture or create a dummy 1x1 texture if no input
-    WGPUTextureView inputView = nullptr;
-    WGPUTextureView inputView2 = nullptr;
-    WGPUTexture dummyTexture = nullptr;
-    WGPUTextureView dummyView = nullptr;
-    WGPUTexture dummyTexture2 = nullptr;
-    WGPUTextureView dummyView2 = nullptr;
 
     // Helper to create dummy texture
     auto createDummyTexture = [this]() -> std::pair<WGPUTexture, WGPUTextureView> {
@@ -1149,28 +1154,25 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
         return {tex, view};
     };
 
-    if (input && hasValidGPU(*input)) {
-        auto* inputData = getTextureData(*input);
-        inputView = inputData->view;
-    } else {
-        auto [tex, view] = createDummyTexture();
-        dummyTexture = tex;
-        dummyView = view;
-        inputView = dummyView;
+    // Prepare texture views for all 8 slots
+    WGPUTextureView textureViews[8] = {};
+    std::vector<WGPUTexture> dummyTextures;
+    std::vector<WGPUTextureView> dummyViews;
+
+    for (int i = 0; i < 8; i++) {
+        if (i < static_cast<int>(inputs.size()) && inputs[i] && hasValidGPU(*inputs[i])) {
+            auto* inputData = getTextureData(*inputs[i]);
+            textureViews[i] = inputData->view;
+        } else {
+            auto [tex, view] = createDummyTexture();
+            dummyTextures.push_back(tex);
+            dummyViews.push_back(view);
+            textureViews[i] = view;
+        }
     }
 
-    if (input2 && hasValidGPU(*input2)) {
-        auto* inputData2 = getTextureData(*input2);
-        inputView2 = inputData2->view;
-    } else {
-        auto [tex, view] = createDummyTexture();
-        dummyTexture2 = tex;
-        dummyView2 = view;
-        inputView2 = dummyView2;
-    }
-
-    // Create bind group with 4 entries
-    WGPUBindGroupEntry entries[4] = {};
+    // Create bind group with 10 entries (uniform + sampler + 8 textures)
+    WGPUBindGroupEntry entries[10] = {};
     entries[0].binding = 0;
     entries[0].buffer = uniformBuffer;
     entries[0].size = sizeof(Uniforms);
@@ -1178,15 +1180,14 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
     entries[1].binding = 1;
     entries[1].sampler = shaderSampler_;
 
-    entries[2].binding = 2;
-    entries[2].textureView = inputView;
-
-    entries[3].binding = 3;
-    entries[3].textureView = inputView2;
+    for (int i = 0; i < 8; i++) {
+        entries[2 + i].binding = 2 + i;
+        entries[2 + i].textureView = textureViews[i];
+    }
 
     WGPUBindGroupDescriptor bindGroupDesc = {};
     bindGroupDesc.layout = shader.bindGroupLayout;
-    bindGroupDesc.entryCount = 4;
+    bindGroupDesc.entryCount = 10;
     bindGroupDesc.entries = entries;
 
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device_, &bindGroupDesc);
@@ -1222,10 +1223,8 @@ void Renderer::runShader(Shader& shader, Texture& output, const Texture* input,
     wgpuBindGroupRelease(bindGroup);
     wgpuBufferRelease(uniformBuffer);
 
-    if (dummyView) wgpuTextureViewRelease(dummyView);
-    if (dummyTexture) wgpuTextureRelease(dummyTexture);
-    if (dummyView2) wgpuTextureViewRelease(dummyView2);
-    if (dummyTexture2) wgpuTextureRelease(dummyTexture2);
+    for (auto view : dummyViews) wgpuTextureViewRelease(view);
+    for (auto tex : dummyTextures) wgpuTextureRelease(tex);
 }
 
 } // namespace vivid

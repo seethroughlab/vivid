@@ -127,6 +127,12 @@ public:
     void runShader(Shader& shader, Texture& output, const Texture* input,
                    const Texture* input2, const Uniforms& uniforms);
 
+    // Run a shader with multiple input textures (up to 8)
+    // For multi-layer compositing and effects
+    void runShaderMulti(Shader& shader, Texture& output,
+                        const std::vector<const Texture*>& inputs,
+                        const Uniforms& uniforms);
+
     // Resize handling
     void resize(int width, int height);
 

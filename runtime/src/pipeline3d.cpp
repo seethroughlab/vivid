@@ -240,11 +240,22 @@ bool Pipeline3DInternal::create(Renderer& renderer, const std::string& wgslSourc
     pipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
     pipelineDesc.primitive.cullMode = WGPUCullMode_Back;  // Enable backface culling
 
-    // Depth stencil state
+    // Depth stencil state - must initialize all fields explicitly
     WGPUDepthStencilState depthStencilState = {};
     depthStencilState.format = DEPTH_FORMAT;
     depthStencilState.depthWriteEnabled = WGPUOptionalBool_True;
     depthStencilState.depthCompare = WGPUCompareFunction_Less;
+    // Stencil state (required even if not using stencil)
+    depthStencilState.stencilFront.compare = WGPUCompareFunction_Always;
+    depthStencilState.stencilFront.failOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilFront.depthFailOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilFront.passOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilBack.compare = WGPUCompareFunction_Always;
+    depthStencilState.stencilBack.failOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilBack.depthFailOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilBack.passOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilReadMask = 0xFFFFFFFF;
+    depthStencilState.stencilWriteMask = 0xFFFFFFFF;
     pipelineDesc.depthStencil = &depthStencilState;
 
     // Fragment state - output to RGBA8 texture
@@ -407,6 +418,11 @@ WGPURenderPassEncoder Renderer3D::beginRenderPass(Texture& output, const glm::ve
     depthAttachment.depthLoadOp = WGPULoadOp_Clear;
     depthAttachment.depthStoreOp = WGPUStoreOp_Store;
     depthAttachment.depthClearValue = 1.0f;
+    depthAttachment.depthReadOnly = false;
+    // Stencil ops must be defined even for depth-only formats
+    depthAttachment.stencilLoadOp = WGPULoadOp_Undefined;
+    depthAttachment.stencilStoreOp = WGPUStoreOp_Undefined;
+    depthAttachment.stencilReadOnly = true;
 
     // Render pass descriptor
     WGPURenderPassDescriptor renderPassDesc = {};

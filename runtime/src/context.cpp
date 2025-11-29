@@ -6,6 +6,7 @@
 #include "camera_capture.h"
 #include "mesh.h"
 #include "pipeline3d.h"
+#include "pipeline2d.h"
 #include <unordered_set>
 #include <iostream>
 
@@ -292,6 +293,41 @@ void Context::runShader(const std::string& shaderPath, const Texture* input1,
     renderer_.runShader(*shader, output, input1, input2, uniforms);
 }
 
+void Context::runShaderMulti(const std::string& shaderPath,
+                             const std::vector<const Texture*>& inputs,
+                             Texture& output, const ShaderParams& params) {
+    // Get shader from cache (or load and cache it)
+    Shader* shader = getCachedShader(shaderPath);
+    if (!shader || !shader->valid()) {
+        return;
+    }
+
+    // Set up uniforms with core values
+    Uniforms uniforms;
+    uniforms.time = time_;
+    uniforms.deltaTime = dt_;
+    uniforms.resolutionX = static_cast<float>(output.width);
+    uniforms.resolutionY = static_cast<float>(output.height);
+    uniforms.frame = frame_;
+    uniforms.mode = params.mode;
+
+    // Copy operator parameters
+    uniforms.param0 = params.param0;
+    uniforms.param1 = params.param1;
+    uniforms.param2 = params.param2;
+    uniforms.param3 = params.param3;
+    uniforms.param4 = params.param4;
+    uniforms.param5 = params.param5;
+    uniforms.param6 = params.param6;
+    uniforms.param7 = params.param7;
+    uniforms.vec0X = params.vec0X;
+    uniforms.vec0Y = params.vec0Y;
+    uniforms.vec1X = params.vec1X;
+    uniforms.vec1Y = params.vec1Y;
+
+    renderer_.runShaderMulti(*shader, output, inputs, uniforms);
+}
+
 void Context::setOutput(const std::string& name, const Texture& tex) {
     // If currentNode_ is set (Chain API), prefix the output with node name
     if (!currentNode_.empty()) {
@@ -559,7 +595,37 @@ private:
     std::vector<std::unique_ptr<Mesh>> meshes_;
 };
 
-// Destructor must be defined after Renderer3DImpl is complete
+// 2D Instanced Rendering Implementation
+class Renderer2DImpl {
+public:
+    Renderer2DImpl(Renderer& renderer) : renderer_(renderer) {
+        pipeline_.init(renderer);
+    }
+
+    ~Renderer2DImpl() = default;
+
+    void drawCircles(const std::vector<Circle2D>& circles, Texture& output,
+                     const glm::vec4& clearColor) {
+        // Convert Circle2D to CircleInstance
+        std::vector<CircleInstance> instances;
+        instances.reserve(circles.size());
+        for (const auto& c : circles) {
+            CircleInstance inst;
+            inst.position = c.position;
+            inst.radius = c.radius;
+            inst._pad = 0.0f;
+            inst.color = c.color;
+            instances.push_back(inst);
+        }
+        pipeline_.drawCircles(instances, output, clearColor);
+    }
+
+private:
+    Renderer& renderer_;
+    Pipeline2DInternal pipeline_;
+};
+
+// Destructor must be defined after Renderer3DImpl/Renderer2DImpl are complete
 Context::~Context() = default;
 
 Renderer3DImpl& Context::getRenderer3D() {
@@ -596,13 +662,7 @@ Mesh3D Context::createCube() {
     std::vector<Vertex3D> vertices;
     std::vector<uint32_t> indices;
     primitives::generateCube(vertices, indices);
-    auto mesh = createMesh(vertices, indices);
-    if (!mesh.valid()) {
-        std::cerr << "[createCube] Failed to create cube mesh\n";
-    } else {
-        std::cout << "[createCube] Created cube with " << mesh.vertexCount << " vertices\n";
-    }
-    return mesh;
+    return createMesh(vertices, indices);
 }
 
 Mesh3D Context::createSphere(float radius, int segments, int rings) {
@@ -653,11 +713,22 @@ void Context::render3D(const std::vector<Mesh3D>& meshes,
             internalMeshes.push_back(static_cast<const Mesh*>(m.handle));
         }
     }
-    if (internalMeshes.empty()) {
-        std::cerr << "[render3D] Warning: no valid meshes to render\n";
-        return;
+    if (!internalMeshes.empty()) {
+        getRenderer3D().renderMultiple(internalMeshes, transforms, camera, output, clearColor);
     }
-    getRenderer3D().renderMultiple(internalMeshes, transforms, camera, output, clearColor);
+}
+
+// 2D Instanced Rendering
+Renderer2DImpl& Context::getRenderer2D() {
+    if (!renderer2d_) {
+        renderer2d_ = std::make_unique<Renderer2DImpl>(renderer_);
+    }
+    return *renderer2d_;
+}
+
+void Context::drawCircles(const std::vector<Circle2D>& circles, Texture& output,
+                          const glm::vec4& clearColor) {
+    getRenderer2D().drawCircles(circles, output, clearColor);
 }
 
 } // namespace vivid

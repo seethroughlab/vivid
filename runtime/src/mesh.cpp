@@ -484,13 +484,14 @@ void generateTorus(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indic
             uint32_t current = i * vertsPerRow + j;
             uint32_t next = current + vertsPerRow;
 
+            // CCW winding for front faces (outward normals)
             indices.push_back(current);
-            indices.push_back(next);
             indices.push_back(current + 1);
+            indices.push_back(next);
 
             indices.push_back(current + 1);
-            indices.push_back(next);
             indices.push_back(next + 1);
+            indices.push_back(next);
         }
     }
 }
