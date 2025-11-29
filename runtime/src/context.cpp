@@ -13,6 +13,14 @@ Context::Context(Renderer& renderer, int width, int height)
 Context::Context(Renderer& renderer, Window& window, int width, int height)
     : renderer_(renderer), window_(&window), width_(width), height_(height) {}
 
+void Context::setVSync(bool enabled) {
+    renderer_.setVSync(enabled);
+}
+
+bool Context::vsyncEnabled() const {
+    return renderer_.vsyncEnabled();
+}
+
 Texture Context::createTexture(int width, int height) {
     return renderer_.createTexture(width, height);
 }

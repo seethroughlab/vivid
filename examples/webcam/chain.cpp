@@ -12,6 +12,9 @@ public:
     void init(Context& ctx) override {
         ctx_ = &ctx;
 
+        // Disable vsync for maximum framerate (optional)
+        // ctx.setVSync(false);
+
         // List available cameras
         auto cameras = ctx.enumerateCameras();
         std::cout << "[WebcamGlitch] Available cameras:\n";

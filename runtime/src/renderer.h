@@ -127,6 +127,10 @@ public:
     // Resize handling
     void resize(int width, int height);
 
+    // VSync control
+    void setVSync(bool enabled);
+    bool vsyncEnabled() const { return vsync_; }
+
     // Accessors
     int width() const { return width_; }
     int height() const { return height_; }
@@ -164,6 +168,7 @@ private:
     int width_ = 0;
     int height_ = 0;
     bool initialized_ = false;
+    bool vsync_ = true;  // VSync enabled by default
 
     // Last shader compilation error
     std::string lastShaderError_;

@@ -50,6 +50,23 @@ public:
     int height() const { return height_; }
     /// @}
 
+    /// @name Display Settings
+    /// @{
+
+    /**
+     * @brief Enable or disable vertical synchronization.
+     * @param enabled true for VSync on (60fps cap), false for uncapped.
+     *
+     * VSync prevents screen tearing by synchronizing frame presentation
+     * with the monitor's refresh rate. Disable for higher framerates
+     * when testing performance.
+     */
+    void setVSync(bool enabled);
+
+    /// @brief Check if VSync is currently enabled.
+    bool vsyncEnabled() const;
+    /// @}
+
     /// @name Keyboard Input
     /// @{
 

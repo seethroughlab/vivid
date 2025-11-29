@@ -285,7 +285,7 @@ void Renderer::configureSurface() {
     config.usage = WGPUTextureUsage_RenderAttachment;
     config.width = static_cast<uint32_t>(width_);
     config.height = static_cast<uint32_t>(height_);
-    config.presentMode = WGPUPresentMode_Fifo;  // VSync
+    config.presentMode = vsync_ ? WGPUPresentMode_Fifo : WGPUPresentMode_Immediate;
     config.alphaMode = WGPUCompositeAlphaMode_Auto;
 
     wgpuSurfaceConfigure(surface_, &config);
@@ -439,6 +439,16 @@ void Renderer::resize(int width, int height) {
 
     // Reconfigure surface with new size
     configureSurface();
+}
+
+void Renderer::setVSync(bool enabled) {
+    if (vsync_ == enabled) return;
+    vsync_ = enabled;
+
+    // Reconfigure surface with new present mode
+    configureSurface();
+
+    std::cout << "[Renderer] VSync " << (enabled ? "enabled" : "disabled") << "\n";
 }
 
 bool Renderer::createBlitPipeline() {

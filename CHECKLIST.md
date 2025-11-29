@@ -224,6 +224,21 @@ Build and test each operator individually:
   - [x] Create `shaders/shape.wgsl` with SDF functions
   - [x] Fill, stroke, softness/antialiasing, rotation support
 
+- [x] **ChromaticAberration** — `operators/chromatic_aberration.cpp`
+  - [x] RGB channel separation for VHS/glitch aesthetic
+  - [x] Create `shaders/chromatic_aberration.wgsl`
+  - [x] Three modes: directional, radial, barrel distortion
+
+- [x] **Pixelate** — `operators/pixelate.cpp`
+  - [x] Reduce effective resolution for blocky mosaic effect
+  - [x] Create `shaders/pixelate.wgsl`
+  - [x] Square and aspect-corrected block modes
+
+- [x] **Scanlines** — `operators/scanlines.cpp`
+  - [x] CRT-style horizontal lines for retro monitor effect
+  - [x] Create `shaders/scanlines.wgsl`
+  - [x] Three modes: simple, alternating, RGB sub-pixel simulation
+
 ---
 
 ## Phase 8: Main Application Loop
@@ -499,18 +514,59 @@ Build and test each operator individually:
 ### 12.9 3D Graphics & Instancing
 **Instancing Path: 2D sprites → 3D geometry → Full instancing**
 
+#### Geometry & Instancing
 - [ ] **Point Sprites** — Render texture at positions from value arrays (2D instancing)
 - [ ] **Tile/Grid** — Repeat texture in grid with per-tile transforms
 - [ ] **Particle System** — Emit/update points with position, velocity, color, life
-- [ ] 3D primitive generation (cube, sphere, plane, cylinder, torus)
-- [ ] Implement `Geometry` operator base
+- [ ] 3D primitive generation (cube, sphere, plane, cylinder, torus, cone)
+- [ ] Implement `Geometry` operator base with Vertex3D format (position, normal, UV, tangent)
 - [ ] Basic 3D transforms (translate, rotate, scale)
-- [ ] Camera/view matrix support
 - [ ] **GPU Instancing** — Render geometry N times with instance buffer (transforms, colors)
 - [ ] **Instance from Values** — Generate instance transforms from numeric arrays
 - [ ] **Instance from Texture** — Use texture pixels as instance data (RGBA → transform)
 - [ ] OBJ model loading
-- [ ] GLTF model loading (optional)
+- [ ] GLTF model loading (with embedded materials)
+
+#### Camera System
+- [ ] `Camera3D` class with position, target, FOV, near/far planes
+- [ ] View matrix generation (lookAt)
+- [ ] Projection matrix (perspective)
+- [ ] Camera uniform buffer for shaders
+
+#### Lighting System
+- [ ] Light base class with color and intensity
+- [ ] `DirectionalLight` — Sun/moon style parallel rays
+- [ ] `PointLight` — Omnidirectional with radius/attenuation
+- [ ] `SpotLight` — Cone with inner/outer angle falloff
+- [ ] Light uniform buffer (support up to 16 lights per pass)
+
+#### Shading Models
+- [ ] Depth buffer support in Renderer
+- [ ] 3D render pipeline (vertex + fragment with depth test)
+- [ ] **Phong/Blinn-Phong** shader (`shaders/phong.wgsl`)
+  - [ ] Ambient, diffuse, specular components
+  - [ ] Shininess parameter
+  - [ ] Multiple light support
+- [ ] **PBR** shader (`shaders/pbr.wgsl`) — Cook-Torrance BRDF
+  - [ ] Metallic-roughness workflow
+  - [ ] GGX normal distribution
+  - [ ] Smith geometry function
+  - [ ] Fresnel-Schlick approximation
+- [ ] Normal mapping (tangent space transforms)
+- [ ] PBR texture maps (albedo, metallic/roughness, AO, emissive)
+
+#### Material Operators
+- [ ] `PhongMaterial` — ambient, diffuse, specular, shininess
+- [ ] `PBRMaterial` — albedo, metallic, roughness, AO, texture maps
+
+#### Render Operator
+- [ ] `Render3D` — Combines geometry + material + lights + camera → texture
+
+#### Advanced (Future)
+- [ ] Shadow mapping (directional + point light shadows)
+- [ ] IBL / environment maps (image-based lighting)
+- [ ] Screen-space reflections
+- [ ] Ambient occlusion (SSAO)
 
 ### 12.10 Text, Debug Display & Vector
 
@@ -581,6 +637,41 @@ Build and test each operator individually:
 - [ ] Plugin scanning and preset management
 - [ ] Parameter automation from Vivid operators
 
+### 12.17 Machine Learning / ONNX Runtime
+**Priority: Medium — Enables pose detection, style transfer, segmentation**
+
+#### Core Infrastructure
+- [ ] Integrate ONNX Runtime (cross-platform ML inference)
+- [ ] Create `runtime/src/ml_inference.h` interface
+- [ ] GPU acceleration via DirectML (Windows), CoreML (macOS), CUDA (optional)
+- [ ] Texture → Tensor conversion (GPU-side if possible)
+- [ ] Tensor → Texture conversion for output masks/heatmaps
+- [ ] Model loading and caching
+
+#### ML Operators
+- [ ] **ONNXModel** — Generic ONNX model runner (`operators/onnx_model.cpp`)
+  - [ ] Load .onnx model file
+  - [ ] Configure input/output bindings
+  - [ ] Run inference on texture input
+  - [ ] Output tensor data as texture or values
+
+#### Pose Detection (MoveNet Demo)
+- [ ] Download/bundle MoveNet ONNX model (Lightning or Thunder variant)
+- [ ] Implement `PoseDetector` operator
+  - [ ] Input: webcam/video texture
+  - [ ] Output: keypoint positions (17 joints × 3 values: x, y, confidence)
+  - [ ] Output: skeleton overlay texture (optional)
+- [ ] Create `examples/pose-detection` demo
+  - [ ] Webcam → PoseDetector → Skeleton visualization
+  - [ ] Drive other operators with keypoint data (e.g., particles at hand positions)
+
+#### Future ML Models
+- [ ] Background segmentation (MediaPipe Selfie Segmentation)
+- [ ] Hand tracking (MediaPipe Hands)
+- [ ] Face mesh (MediaPipe Face Mesh)
+- [ ] Style transfer models
+- [ ] Depth estimation (MiDaS)
+
 ---
 
 ## Phase 13: Export & Distribution
@@ -617,6 +708,7 @@ Build and test each operator individually:
 - [ ] `examples/beat-detection` — Audio beat detection (see `beat_detection.md`)
 - [ ] `examples/midi-control` — MIDI CC controlling parameters
 - [x] `examples/webcam` — Camera input processing
+- [ ] `examples/pose-detection` — MoveNet skeleton tracking from webcam (requires ONNX)
 - [ ] `examples/particles` — Particle system
 - [ ] `examples/3d-geometry` — 3D rendering basics
 - [ ] `examples/text` — Text rendering
