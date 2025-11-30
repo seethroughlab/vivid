@@ -92,7 +92,22 @@ set(ASSIMP_INSTALL OFF CACHE BOOL "" FORCE)
 set(ASSIMP_INJECT_DEBUG_POSTFIX OFF CACHE BOOL "" FORCE)
 set(ASSIMP_NO_EXPORT ON CACHE BOOL "" FORCE)
 
-FetchContent_MakeAvailable(glfw glm ixwebsocket nlohmann_json efsw stb snappy miniaudio assimp)
+# ozz-animation for skeletal animation runtime
+FetchContent_Declare(
+    ozz-animation
+    GIT_REPOSITORY https://github.com/guillaumeblanc/ozz-animation.git
+    GIT_TAG 0.15.0
+)
+# Disable ozz samples/tests/tools to speed up build
+set(ozz_build_samples OFF CACHE BOOL "" FORCE)
+set(ozz_build_howtos OFF CACHE BOOL "" FORCE)
+set(ozz_build_tests OFF CACHE BOOL "" FORCE)
+set(ozz_build_tools OFF CACHE BOOL "" FORCE)
+set(ozz_build_fbx OFF CACHE BOOL "" FORCE)
+set(ozz_build_gltf OFF CACHE BOOL "" FORCE)
+set(ozz_build_data OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(glfw glm ixwebsocket nlohmann_json efsw stb snappy miniaudio assimp ozz-animation)
 
 # WebGPU via wgpu-native
 # Note: wgpu-native releases provide prebuilt binaries

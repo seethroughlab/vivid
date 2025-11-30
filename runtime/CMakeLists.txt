@@ -29,6 +29,7 @@ set(RUNTIME_SOURCES
     src/mesh.cpp
     src/model_loader.cpp
     src/animation.cpp
+    src/ozz_animation.cpp
     src/pipeline3d.cpp
     src/pipeline3d_instanced.cpp
     src/pipeline3d_skinned.cpp
@@ -88,6 +89,9 @@ target_link_libraries(vivid-runtime
     efsw
     snappy
     assimp
+    ozz_animation
+    ozz_animation_offline
+    ozz_base
     ${CMAKE_DL_LIBS}
 )
 

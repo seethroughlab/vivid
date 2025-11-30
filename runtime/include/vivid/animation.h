@@ -162,6 +162,9 @@ private:
     bool loop_ = true;
 };
 
+// Forward declaration for ozz animation system
+class OzzAnimationSystem;
+
 /**
  * @brief Skinned mesh with skeleton and animations.
  */
@@ -174,8 +177,18 @@ struct SkinnedMesh3D {
     std::vector<AnimationClip> animations;
     AnimationPlayer player;
 
+    // ozz-animation system (optional, used if available)
+    OzzAnimationSystem* ozzSystem = nullptr;
+
     // Current bone matrices (computed each frame)
     std::vector<glm::mat4> boneMatrices;
+
+    // Current animation state
+    int currentAnimIndex = -1;
+    float currentTime = 0.0f;
+    float speed = 1.0f;
+    bool playing = false;
+    bool looping = true;
 
     bool valid() const { return handle != nullptr; }
     bool hasSkeleton() const { return !skeleton.bones.empty(); }
@@ -183,6 +196,11 @@ struct SkinnedMesh3D {
 
     void playAnimation(int index, bool loop = true) {
         if (index >= 0 && index < static_cast<int>(animations.size())) {
+            currentAnimIndex = index;
+            currentTime = 0.0f;
+            looping = loop;
+            playing = true;
+            // Also update old player for fallback
             player.setClip(&animations[index], loop);
             player.play();
         }
@@ -197,13 +215,8 @@ struct SkinnedMesh3D {
         }
     }
 
-    void update(float deltaTime) {
-        player.update(deltaTime);
-        if (hasSkeleton()) {
-            boneMatrices.resize(skeleton.bones.size());
-            player.computeBoneMatrices(skeleton, boneMatrices);
-        }
-    }
+    // Update animation - implemented in context.cpp to use ozz
+    void update(float deltaTime);
 };
 
 } // namespace vivid

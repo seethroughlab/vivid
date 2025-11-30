@@ -10,6 +10,7 @@
 #include "pipeline3d_instanced.h"
 #include "pipeline3d_skinned.h"
 #include "pipeline2d.h"
+#include "ozz_animation.h"
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
@@ -925,6 +926,21 @@ SkinnedMesh3D Context::loadSkinnedMesh(const std::string& path) {
         // Initialize bone matrices to identity
         result.boneMatrices.resize(result.skeleton.bones.size(), glm::mat4(1.0f));
 
+        // Create ozz animation system
+        auto* ozzSystem = new OzzAnimationSystem();
+        if (ozzSystem->buildSkeleton(result.skeleton)) {
+            // Build all animations
+            for (const auto& clip : result.animations) {
+                ozzSystem->buildAnimation(clip, result.skeleton);
+            }
+            result.ozzSystem = ozzSystem;
+            std::cout << "[Context] Using ozz-animation for " << result.skeleton.bones.size()
+                      << " bones, " << result.animations.size() << " animations\n";
+        } else {
+            std::cerr << "[Context] Failed to build ozz skeleton, using fallback animation\n";
+            delete ozzSystem;
+        }
+
         // Auto-play a good animation if available (skip very short ones)
         if (!result.animations.empty()) {
             int bestAnim = 0;
@@ -946,6 +962,10 @@ SkinnedMesh3D Context::loadSkinnedMesh(const std::string& path) {
 }
 
 void Context::destroySkinnedMesh(SkinnedMesh3D& mesh) {
+    if (mesh.ozzSystem) {
+        delete mesh.ozzSystem;
+        mesh.ozzSystem = nullptr;
+    }
     if (mesh.handle) {
         auto* gpuMesh = static_cast<SkinnedMeshGPU*>(mesh.handle);
         getSkinnedMeshRenderer().destroyMesh(*gpuMesh);
@@ -960,6 +980,16 @@ void Context::renderSkinned3D(SkinnedMesh3D& mesh, const Camera3D& camera,
                                const glm::mat4& transform, Texture& output,
                                const glm::vec4& clearColor) {
     if (!mesh.valid()) return;
+
+    // If using ozz, sample the animation to compute bone matrices
+    if (mesh.ozzSystem && mesh.currentAnimIndex >= 0) {
+        mesh.ozzSystem->sample(
+            static_cast<size_t>(mesh.currentAnimIndex),
+            mesh.currentTime,
+            mesh.boneMatrices
+        );
+    }
+
     getSkinnedMeshRenderer().render(mesh, camera, transform, output, clearColor);
 }
 
