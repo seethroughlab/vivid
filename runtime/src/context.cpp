@@ -988,6 +988,31 @@ void Context::render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
     getPBRIBLPipeline().renderPBRWithIBL(mesh, camera, transform, material, lighting, environment, output, clearColor);
 }
 
+Pipeline3DLit& Context::getPBRIBLTexturedPipeline() {
+    if (!pbrIBLTexturedPipeline_) {
+        pbrIBLTexturedPipeline_ = std::make_unique<Pipeline3DLit>();
+        pbrIBLTexturedPipeline_->init(renderer_, Pipeline3DLit::ShadingModel::PBR_IBL_Textured);
+    }
+    return *pbrIBLTexturedPipeline_;
+}
+
+void Context::render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
+                          const glm::mat4& transform,
+                          const TexturedPBRMaterial& material,
+                          const SceneLighting& lighting,
+                          const Environment& environment,
+                          Texture& output,
+                          const glm::vec4& clearColor) {
+    if (!mesh.valid()) return;
+    if (!environment.valid()) {
+        // For textured PBR, we require a valid environment
+        // Could add a non-IBL textured path later if needed
+        std::cerr << "render3DPBR with textures requires a valid environment\n";
+        return;
+    }
+    getPBRIBLTexturedPipeline().renderPBRTexturedWithIBL(mesh, camera, transform, material, lighting, environment, output, clearColor);
+}
+
 // IBL/Cubemap Processing
 CubemapProcessor& Context::getCubemapProcessor() {
     if (!cubemapProcessor_) {

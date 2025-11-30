@@ -128,6 +128,45 @@ inline PBRMaterialUniform makePBRMaterialUniform(const PBRMaterial& mat) {
 }
 
 /**
+ * @brief GPU-compatible textured PBR material uniform.
+ * Contains base values and flags for which textures are present.
+ */
+struct TexturedPBRMaterialUniform {
+    glm::vec3 albedo;
+    float metallic;
+    float roughness;
+    float ao;
+    float normalStrength;
+    float emissiveStrength;
+    glm::vec3 emissive;
+    uint32_t textureFlags;  // Bit flags: 1=albedo, 2=normal, 4=metallicRoughness, 8=ao, 16=emissive
+};
+
+// Helper to convert TexturedPBRMaterial to GPU uniform
+inline TexturedPBRMaterialUniform makeTexturedPBRMaterialUniform(const TexturedPBRMaterial& mat) {
+    TexturedPBRMaterialUniform u = {};
+    u.albedo = mat.albedo;
+    u.metallic = mat.metallic;
+    u.roughness = mat.roughness;
+    u.ao = mat.ao;
+    u.normalStrength = mat.normalStrength;
+    u.emissiveStrength = mat.emissiveStrength;
+    u.emissive = mat.emissive;
+
+    // Set texture flags based on which textures are present
+    u.textureFlags = 0;
+    if (mat.albedoMap) u.textureFlags |= 1;
+    if (mat.normalMap) u.textureFlags |= 2;
+    if (mat.metallicRoughnessMap) u.textureFlags |= 4;
+    if (mat.aoMap) u.textureFlags |= 8;
+    if (mat.emissiveMap) u.textureFlags |= 16;
+    if (mat.roughnessMap) u.textureFlags |= 32;
+    if (mat.metallicMap) u.textureFlags |= 64;
+
+    return u;
+}
+
+/**
  * @brief Lit 3D rendering pipeline supporting Phong and PBR shading.
  *
  * Bind groups:
@@ -141,7 +180,8 @@ public:
     enum class ShadingModel {
         Phong,
         PBR,
-        PBR_IBL
+        PBR_IBL,
+        PBR_IBL_Textured  // With texture maps support
     };
 
     Pipeline3DLit() = default;
@@ -193,6 +233,16 @@ public:
                           Texture& output, const glm::vec4& clearColor = {0, 0, 0, 1});
 
     /**
+     * @brief Render a mesh with textured PBR shading and IBL.
+     * @param material The textured PBR material with optional texture maps.
+     * @param env The IBL environment (irradiance, radiance, BRDF LUT)
+     */
+    void renderPBRTexturedWithIBL(const Mesh3D& mesh, const Camera3D& camera, const glm::mat4& transform,
+                                   const TexturedPBRMaterial& material, const SceneLighting& lighting,
+                                   const Environment& env,
+                                   Texture& output, const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
      * @brief Get the shading model.
      */
     ShadingModel shadingModel() const { return model_; }
@@ -212,8 +262,9 @@ private:
     WGPUBindGroupLayout materialLayout_ = nullptr;  // Combined with IBL for PBR_IBL mode
     WGPUPipelineLayout pipelineLayout_ = nullptr;
     WGPUShaderModule shaderModule_ = nullptr;
-    WGPUSampler iblSampler_ = nullptr;   // Filtering sampler for IBL cubemaps
-    WGPUSampler brdfSampler_ = nullptr;  // Non-filtering sampler for BRDF LUT
+    WGPUSampler iblSampler_ = nullptr;      // Filtering sampler for IBL cubemaps
+    WGPUSampler brdfSampler_ = nullptr;     // Non-filtering sampler for BRDF LUT
+    WGPUSampler textureSampler_ = nullptr;  // Filtering sampler for material textures
 
     // Reusable buffers
     WGPUBuffer cameraBuffer_ = nullptr;
@@ -241,6 +292,7 @@ namespace shaders3d {
 extern const char* PHONG_LIT;
 extern const char* PBR_LIT;
 extern const char* PBR_IBL;
+extern const char* PBR_IBL_TEXTURED;
 
 } // namespace shaders3d
 

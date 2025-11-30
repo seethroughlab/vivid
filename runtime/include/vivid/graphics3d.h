@@ -314,6 +314,46 @@ struct PBRMaterial {
     }
 };
 
+// Forward declaration for Texture handle
+struct Texture;
+
+/**
+ * @brief Textured PBR material with full texture map support.
+ *
+ * Supports albedo, normal, metallic-roughness, AO, and emissive maps
+ * following the glTF 2.0 material model.
+ */
+struct TexturedPBRMaterial {
+    // Base values (used when texture is null or as multipliers)
+    glm::vec3 albedo{1.0f, 1.0f, 1.0f};     ///< Base color (multiplied with albedoMap)
+    float metallic = 0.0f;                   ///< Base metallic (multiplied with map)
+    float roughness = 0.5f;                  ///< Base roughness (multiplied with map)
+    float ao = 1.0f;                         ///< Base AO (multiplied with map)
+    glm::vec3 emissive{0.0f, 0.0f, 0.0f};   ///< Emissive color (multiplied with map)
+    float emissiveStrength = 1.0f;           ///< Emissive intensity multiplier
+    float normalStrength = 1.0f;             ///< Normal map intensity (0 = flat)
+
+    // Texture maps (nullptr = use base values)
+    Texture* albedoMap = nullptr;            ///< RGB: base color, A: opacity
+    Texture* normalMap = nullptr;            ///< RGB: tangent-space normal
+    Texture* metallicRoughnessMap = nullptr; ///< G: roughness, B: metallic (glTF style)
+    Texture* roughnessMap = nullptr;         ///< R: roughness (separate map, overrides metallicRoughnessMap)
+    Texture* metallicMap = nullptr;          ///< R: metallic (separate map, overrides metallicRoughnessMap)
+    Texture* aoMap = nullptr;                ///< R: ambient occlusion
+    Texture* emissiveMap = nullptr;          ///< RGB: emissive color
+
+    // Convenience constructors
+    static TexturedPBRMaterial fromBase(const PBRMaterial& base) {
+        TexturedPBRMaterial m;
+        m.albedo = base.albedo;
+        m.metallic = base.metallic;
+        m.roughness = base.roughness;
+        m.ao = base.ao;
+        m.emissive = base.emissive;
+        return m;
+    }
+};
+
 /**
  * @brief Scene lighting configuration.
  *

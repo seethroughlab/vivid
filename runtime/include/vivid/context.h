@@ -650,6 +650,45 @@ public:
                      const glm::vec4& clearColor = {0, 0, 0, 1});
 
     /**
+     * @brief Render a mesh with textured PBR and Image-Based Lighting (IBL).
+     *
+     * Uses texture maps for detailed material properties including:
+     * - Albedo (base color) map
+     * - Normal map for surface detail
+     * - Metallic-Roughness map (glTF format: G=roughness, B=metallic)
+     * - Ambient Occlusion (AO) map
+     * - Emissive map for glowing surfaces
+     *
+     * @code
+     * // Load textures and create material
+     * TexturedPBRMaterial material;
+     * material.albedo = glm::vec3(1.0f);  // Base tint
+     * material.albedoMap = ctx.loadImageAsTexture("albedo.png");
+     * material.normalMap = ctx.loadImageAsTexture("normal.png");
+     * material.metallicRoughnessMap = ctx.loadImageAsTexture("metallic_roughness.png");
+     *
+     * // Render with textured PBR
+     * ctx.render3DPBR(mesh, camera, transform, material, lighting, env, output);
+     * @endcode
+     *
+     * @param mesh The mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform matrix.
+     * @param material Textured PBR material with optional texture maps.
+     * @param lighting Direct light sources (combined with IBL).
+     * @param environment IBL environment maps.
+     * @param output Target texture to render into.
+     * @param clearColor Background color.
+     */
+    void render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
+                     const glm::mat4& transform,
+                     const TexturedPBRMaterial& material,
+                     const SceneLighting& lighting,
+                     const Environment& environment,
+                     Texture& output,
+                     const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
      * @brief Load an HDR environment map for Image-Based Lighting.
      *
      * Loads an HDR equirectangular image and pre-computes the necessary
@@ -908,9 +947,11 @@ private:
     std::unique_ptr<Pipeline3DLit> phongPipeline_;
     std::unique_ptr<Pipeline3DLit> pbrPipeline_;
     std::unique_ptr<Pipeline3DLit> pbrIBLPipeline_;
+    std::unique_ptr<Pipeline3DLit> pbrIBLTexturedPipeline_;
     Pipeline3DLit& getPhongPipeline();
     Pipeline3DLit& getPBRPipeline();
     Pipeline3DLit& getPBRIBLPipeline();
+    Pipeline3DLit& getPBRIBLTexturedPipeline();
 
     // Cubemap/IBL processing (lazy initialized)
     std::unique_ptr<CubemapProcessor> cubemapProcessor_;
