@@ -21,6 +21,9 @@
 #include <algorithm>
 #include <mutex>
 #include <map>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 // Callback for stb_image_write JPEG encoding to memory
 static void jpegWriteCallback(void* context, void* data, int size) {
@@ -51,12 +54,37 @@ static std::string base64Encode(const std::vector<uint8_t>& data) {
     return result;
 }
 
+// Get the shared assets path (where shaders/ directory is located)
+static std::string getSharedAssetsPath(const char* argv0) {
+    fs::path runtimePath = fs::weakly_canonical(argv0);
+    fs::path runtimeDir = runtimePath.parent_path();
+
+    // Check for release layout: bin/vivid-runtime with shaders/ at parent level
+    fs::path releaseShaders = runtimeDir.parent_path() / "shaders";
+    if (fs::exists(releaseShaders)) {
+        return runtimeDir.parent_path().string();
+    }
+
+    // Check for dev layout: build/bin/vivid-runtime with shaders/ at repo root
+    fs::path devShaders = runtimeDir.parent_path().parent_path() / "shaders";
+    if (fs::exists(devShaders)) {
+        return runtimeDir.parent_path().parent_path().string();
+    }
+
+    // Try current working directory
+    if (fs::exists("shaders")) {
+        return fs::current_path().string();
+    }
+
+    return "";
+}
+
 void printUsage(const char* program) {
     std::cout << "Usage: " << program << " <project_path> [options]\n"
               << "\nOptions:\n"
-              << "  --width <n>     Window width (default: 1280)\n"
-              << "  --height <n>    Window height (default: 720)\n"
-              << "  --windowed      Start in windowed mode (default is fullscreen)\n"
+              << "  --width <n>     Window width (default: 1920)\n"
+              << "  --height <n>    Window height (default: 1080)\n"
+              << "  --fullscreen    Start in fullscreen mode\n"
               << "  --port <n>      WebSocket port for preview server (default: 9876)\n"
               << "  --help          Show this help message\n";
 }
@@ -69,10 +97,10 @@ int main(int argc, char* argv[]) {
     std::cout << "Vivid Runtime v0.1.0\n";
 
     // Parse command line arguments
-    int width = 1280;
-    int height = 720;
+    int width = 1920;
+    int height = 1080;
     int wsPort = 9876;
-    bool fullscreen = true;  // Fullscreen by default
+    bool fullscreen = false;
     std::string projectPath;
 
     for (int i = 1; i < argc; i++) {
@@ -83,8 +111,8 @@ int main(int argc, char* argv[]) {
             height = std::stoi(argv[++i]);
         } else if (arg == "--port" && i + 1 < argc) {
             wsPort = std::stoi(argv[++i]);
-        } else if (arg == "--windowed") {
-            fullscreen = false;
+        } else if (arg == "--fullscreen") {
+            fullscreen = true;
         } else if (arg == "--help" || arg == "-h") {
             printUsage(argv[0]);
             return 0;
@@ -114,7 +142,15 @@ int main(int argc, char* argv[]) {
 
         // Create Context (with Window for keyboard input)
         vivid::Context ctx(renderer, window, width, height);
+
+        // Set up project path for asset resolution
+        std::string absoluteProjectPath = fs::canonical(projectPath).string();
+        ctx.setProjectPath(absoluteProjectPath);
+        ctx.setSharedAssetsPath(getSharedAssetsPath(argv[0]));
+
         std::cout << "Context created (" << ctx.width() << "x" << ctx.height() << ")\n";
+        std::cout << "Project path: " << ctx.projectPath() << "\n";
+        std::cout << "Shared assets: " << getSharedAssetsPath(argv[0]) << "\n";
 
         // Set up resize callback
         window.setResizeCallback([](int w, int h, void* userdata) {

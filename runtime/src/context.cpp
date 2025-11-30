@@ -14,6 +14,9 @@
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 namespace vivid {
 
@@ -29,6 +32,48 @@ void Context::setVSync(bool enabled) {
 
 bool Context::vsyncEnabled() const {
     return renderer_.vsyncEnabled();
+}
+
+void Context::setProjectPath(const std::string& projectPath) {
+    projectPath_ = projectPath;
+    // Normalize to remove trailing slashes
+    while (!projectPath_.empty() && projectPath_.back() == '/') {
+        projectPath_.pop_back();
+    }
+}
+
+void Context::setSharedAssetsPath(const std::string& sharedPath) {
+    sharedAssetsPath_ = sharedPath;
+    while (!sharedAssetsPath_.empty() && sharedAssetsPath_.back() == '/') {
+        sharedAssetsPath_.pop_back();
+    }
+}
+
+std::string Context::resolvePath(const std::string& relativePath) const {
+    // If already absolute, return as-is
+    if (!relativePath.empty() && (relativePath[0] == '/' ||
+        (relativePath.length() > 1 && relativePath[1] == ':'))) {
+        return relativePath;
+    }
+
+    // Check project-relative path first
+    if (!projectPath_.empty()) {
+        std::string projectRelative = projectPath_ + "/" + relativePath;
+        if (fs::exists(projectRelative)) {
+            return projectRelative;
+        }
+    }
+
+    // Fallback to shared assets
+    if (!sharedAssetsPath_.empty()) {
+        std::string sharedRelative = sharedAssetsPath_ + "/" + relativePath;
+        if (fs::exists(sharedRelative)) {
+            return sharedRelative;
+        }
+    }
+
+    // Return original path (caller will handle missing file error)
+    return relativePath;
 }
 
 Texture Context::createTexture(int width, int height) {
@@ -55,8 +100,9 @@ Texture Context::createTextureMatching(const std::string& nodeId, const std::str
 }
 
 Texture Context::loadImageAsTexture(const std::string& path) {
+    std::string resolvedPath = resolvePath(path);
     ImageLoader loader;
-    return loader.loadAsTexture(path, renderer_);
+    return loader.loadAsTexture(resolvedPath, renderer_);
 }
 
 void Context::uploadTexturePixels(Texture& texture, const uint8_t* pixels, int width, int height) {
@@ -69,9 +115,10 @@ bool Context::isImageSupported(const std::string& path) {
 
 // Video playback methods
 VideoPlayer Context::createVideoPlayer(const std::string& path) {
+    std::string resolvedPath = resolvePath(path);
     VideoPlayer player;
-    auto loader = createVideoLoaderForPath(path);  // Auto-detects HAP
-    if (loader && loader->open(path)) {
+    auto loader = createVideoLoaderForPath(resolvedPath);  // Auto-detects HAP
+    if (loader && loader->open(resolvedPath)) {
         player.handle = loader.release();  // Transfer ownership
     }
     return player;
@@ -479,19 +526,23 @@ float Context::scrollDeltaY() const {
 }
 
 Shader* Context::getCachedShader(const std::string& path) {
+    // Use original path as cache key for consistency
     auto it = shaderCache_.find(path);
     if (it != shaderCache_.end()) {
         return it->second.get();
     }
 
+    // Resolve path for actual file loading
+    std::string resolvedPath = resolvePath(path);
+
     // Load and cache the shader
-    auto shader = std::make_unique<Shader>(renderer_.loadShaderFromFile(path));
+    auto shader = std::make_unique<Shader>(renderer_.loadShaderFromFile(resolvedPath));
     if (!shader->valid()) {
         return nullptr;
     }
 
     Shader* result = shader.get();
-    shaderCache_[path] = std::move(shader);
+    shaderCache_[path] = std::move(shader);  // Cache with original key
     return result;
 }
 
@@ -813,11 +864,12 @@ Mesh3D Context::createCylinder(float radius, float height, int segments) {
 }
 
 Mesh3D Context::loadMesh(const std::string& path) {
+    std::string resolvedPath = resolvePath(path);
     std::vector<Vertex3D> vertices;
     std::vector<uint32_t> indices;
 
-    if (!loadModel(path, vertices, indices)) {
-        std::cerr << "[Context] Failed to load mesh: " << path << "\n";
+    if (!loadModel(resolvedPath, vertices, indices)) {
+        std::cerr << "[Context] Failed to load mesh: " << resolvedPath << "\n";
         return Mesh3D{};
     }
 
@@ -901,13 +953,14 @@ SkinnedMeshRendererImpl& Context::getSkinnedMeshRenderer() {
 }
 
 SkinnedMesh3D Context::loadSkinnedMesh(const std::string& path) {
+    std::string resolvedPath = resolvePath(path);
     SkinnedMesh3D result;
 
     std::vector<SkinnedVertex3D> vertices;
     std::vector<uint32_t> indices;
 
-    if (!loadSkinnedModel(path, vertices, indices, result.skeleton, result.animations)) {
-        std::cerr << "[Context] Failed to load skinned mesh: " << path << "\n";
+    if (!loadSkinnedModel(resolvedPath, vertices, indices, result.skeleton, result.animations)) {
+        std::cerr << "[Context] Failed to load skinned mesh: " << resolvedPath << "\n";
         return result;
     }
 

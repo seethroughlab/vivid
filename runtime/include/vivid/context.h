@@ -633,6 +633,42 @@ public:
 
     /// @}
 
+    /// @name Project Path Resolution
+    /// @{
+
+    /**
+     * @brief Set the project path for asset resolution.
+     * @param projectPath Absolute path to the project directory.
+     *
+     * When set, relative paths in asset loading functions will be
+     * resolved against this directory first.
+     */
+    void setProjectPath(const std::string& projectPath);
+
+    /**
+     * @brief Set the shared assets path for fallback resolution.
+     * @param sharedPath Absolute path to shared assets directory.
+     */
+    void setSharedAssetsPath(const std::string& sharedPath);
+
+    /**
+     * @brief Resolve a relative path to an absolute path.
+     * @param relativePath Relative path to resolve.
+     * @return Absolute path - checks project folder first, then shared assets.
+     *
+     * Resolution order:
+     * 1. If path is already absolute, return as-is
+     * 2. Check projectPath/relativePath
+     * 3. Check sharedAssetsPath/relativePath
+     * 4. Return original path if not found (let caller handle error)
+     */
+    std::string resolvePath(const std::string& relativePath) const;
+
+    /// @brief Get the current project path.
+    const std::string& projectPath() const { return projectPath_; }
+
+    /// @}
+
     // Internal methods - called by runtime
     void beginFrame(float time, float dt, int frame);
     void endFrame();
@@ -682,6 +718,10 @@ private:
     // Skinned mesh rendering support (lazy initialized)
     std::unique_ptr<SkinnedMeshRendererImpl> skinnedMeshRenderer_;
     SkinnedMeshRendererImpl& getSkinnedMeshRenderer();
+
+    // Project path resolution
+    std::string projectPath_;
+    std::string sharedAssetsPath_;
 };
 
 } // namespace vivid

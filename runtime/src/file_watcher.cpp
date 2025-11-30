@@ -23,6 +23,12 @@ public:
             return;
         }
 
+        // Ignore files in build directories (CMake artifacts)
+        if (dir.find("/build/") != std::string::npos ||
+            dir.find("/build") == dir.length() - 6) {
+            return;
+        }
+
         // Build full path
         std::string fullPath = dir;
         if (!fullPath.empty() && fullPath.back() != '/') {

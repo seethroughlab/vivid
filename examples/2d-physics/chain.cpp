@@ -155,8 +155,8 @@ void update(Chain& chain, Context& ctx) {
     params.vec1Y = circles[3].radius;
 
     // Render using shader (2D approach)
-    // Path is relative to where runtime is invoked (project root)
-    ctx.runShader("examples/2d-physics/shaders/circles.wgsl", nullptr, output, params);
+    // Path is relative to project folder
+    ctx.runShader("shaders/circles.wgsl", nullptr, output, params);
     ctx.setOutput("out", output);
 }
 

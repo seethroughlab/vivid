@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 
 namespace vivid {
 
@@ -29,6 +30,15 @@ public:
 private:
     // Run a shell command and capture output
     bool runCommand(const std::string& command, std::string& output, std::string& error);
+
+    // Find source files (.cpp, .cc, .cxx) in project directory
+    std::vector<std::string> findSourceFiles() const;
+
+    // Generate CMakeLists.txt for project, returns path to generated file
+    bool generateCMakeLists(std::string& generatedPath);
+
+    // Locate vivid headers relative to project
+    std::string getVividIncludeDir() const;
 
     std::string projectPath_;
     std::string buildDir_;

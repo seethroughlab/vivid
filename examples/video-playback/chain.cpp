@@ -41,12 +41,12 @@ std::vector<std::string> findVideoFiles(const std::string& directory) {
 }
 
 void setup(Chain& chain) {
-    // Find all video files
-    videoPaths = findVideoFiles("examples/video-playback/assets");
+    // Find all video files (relative to project folder)
+    videoPaths = findVideoFiles("assets");
 
     if (videoPaths.empty()) {
         std::cerr << "[VideoPlayback] No video files found in assets folder\n";
-        std::cerr << "[VideoPlayback] Place .mp4/.mov files in examples/video-playback/assets/\n";
+        std::cerr << "[VideoPlayback] Place .mp4/.mov files in assets/\n";
         return;
     }
 

@@ -12,12 +12,12 @@ using namespace vivid;
 class VideoDisplacement : public Operator {
 public:
     void init(Context& ctx) override {
-        // Find a video file in the assets folder
-        std::string videoPath = findVideoFile("examples/video-displacement/assets");
+        // Find a video file in the assets folder (relative to project folder)
+        std::string videoPath = findVideoFile("assets");
 
         if (videoPath.empty()) {
             // Try the video-playback assets as fallback
-            videoPath = findVideoFile("examples/video-playback/assets");
+            videoPath = findVideoFile("../video-playback/assets");
         }
 
         if (!videoPath.empty()) {
@@ -25,8 +25,8 @@ public:
             video_.path(videoPath).loop(true).play();
         } else {
             std::cerr << "[VideoDisplacement] No video file found!\n";
-            std::cerr << "  Place a video in examples/video-displacement/assets/\n";
-            std::cerr << "  or examples/video-playback/assets/\n";
+            std::cerr << "  Place a video in assets/\n";
+            std::cerr << "  or ../video-playback/assets/\n";
         }
 
         // Configure noise generator for displacement map

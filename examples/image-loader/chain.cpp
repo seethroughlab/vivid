@@ -12,12 +12,12 @@ using namespace vivid;
 class ImageNoiseDisplacement : public Operator {
 public:
     void init(Context& ctx) override {
-        // Find an image file in the assets folder
-        imagePath_ = findImageFile("examples/image-loader/assets");
+        // Find an image file in the assets folder (relative to project folder)
+        imagePath_ = findImageFile("assets");
 
         if (imagePath_.empty()) {
             std::cerr << "[ImageNoiseDisplacement] No image found in assets/\n";
-            std::cerr << "  Place a PNG or JPG image in examples/image-loader/assets/\n";
+            std::cerr << "  Place a PNG or JPG image in assets/\n";
             std::cerr << "  Try an image with transparency for best results!\n";
         } else {
             std::cout << "[ImageNoiseDisplacement] Loading: " << imagePath_ << "\n";

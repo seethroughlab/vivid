@@ -42,8 +42,8 @@ void update(Chain& chain, Context& ctx) {
     if (!loadAttempted) {
         loadAttempted = true;
 
-        // Paths are relative to project root (where runtime is invoked from)
-        const std::string assetDir = "examples/model-loader/assets/";
+        // Paths are relative to project folder
+        const std::string assetDir = "assets/";
 
         // Try to load the Wolf FBX model with animations
         model = ctx.loadSkinnedMesh(assetDir + "Wolf_One_fbx7.4_binary.fbx");
