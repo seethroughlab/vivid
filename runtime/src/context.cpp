@@ -74,6 +74,25 @@ std::string Context::resolvePath(const std::string& relativePath) const {
     return relativePath;
 }
 
+// WebGPU access methods
+void* Context::webgpuDevice() const {
+    return renderer_.device();
+}
+
+void* Context::webgpuQueue() const {
+    return renderer_.queue();
+}
+
+int Context::webgpuTextureFormat() const {
+    // WGPUTextureFormat_RGBA8Unorm = 0x00000012 (18)
+    return 18;
+}
+
+void* Context::webgpuTextureView(const Texture& texture) const {
+    auto* data = getTextureData(texture);
+    return data ? data->view : nullptr;
+}
+
 Texture Context::createTexture(int width, int height) {
     return renderer_.createTexture(width, height);
 }

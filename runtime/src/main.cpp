@@ -82,8 +82,8 @@ static std::string getSharedAssetsPath(const char* argv0) {
 void printUsage(const char* program) {
     std::cout << "Usage: " << program << " <project_path> [options]\n"
               << "\nOptions:\n"
-              << "  --width <n>     Window width (default: 1920)\n"
-              << "  --height <n>    Window height (default: 1080)\n"
+              << "  --width <n>     Window width (default: 1280)\n"
+              << "  --height <n>    Window height (default: 720)\n"
               << "  --fullscreen    Start in fullscreen mode\n"
               << "  --port <n>      WebSocket port for preview server (default: 9876)\n"
               << "  --help          Show this help message\n";
@@ -97,8 +97,8 @@ int main(int argc, char* argv[]) {
     std::cout << "Vivid Runtime v0.1.0\n";
 
     // Parse command line arguments
-    int width = 1920;
-    int height = 1080;
+    int width = 1280;
+    int height = 720;
     int wsPort = 9876;
     bool fullscreen = false;
     std::string projectPath;
@@ -147,6 +147,9 @@ int main(int argc, char* argv[]) {
         std::string absoluteProjectPath = fs::canonical(projectPath).string();
         ctx.setProjectPath(absoluteProjectPath);
         ctx.setSharedAssetsPath(getSharedAssetsPath(argv[0]));
+
+        // Remember original working directory for later restoration
+        std::string originalWorkingDir = fs::current_path().string();
 
         std::cout << "Context created (" << ctx.width() << "x" << ctx.height() << ")\n";
         std::cout << "Project path: " << ctx.projectPath() << "\n";
@@ -236,7 +239,10 @@ int main(int argc, char* argv[]) {
                     // Chain API: create chain, call setup(), then init()
                     usingChainAPI = true;
                     chain = std::make_unique<vivid::Chain>();
+                    // Change to project dir so setup() can use relative paths like "assets/"
+                    fs::current_path(absoluteProjectPath);
                     hotLoader.callSetup(*chain);
+                    fs::current_path(originalWorkingDir);
                     chain->init(ctx);
                     std::cout << "Chain initialized with " << chain->size() << " operator(s)\n";
                 } else {
@@ -307,7 +313,10 @@ int main(int argc, char* argv[]) {
                             // Chain API reload
                             usingChainAPI = true;
                             chain = std::make_unique<vivid::Chain>();
+                            // Change to project dir so setup() can use relative paths like "assets/"
+                            fs::current_path(absoluteProjectPath);
                             hotLoader.callSetup(*chain);
+                            fs::current_path(originalWorkingDir);
                             chain->init(ctx);
                             chain->restoreAllStates(savedStates);
                             std::cout << "Chain reloaded with " << chain->size() << " operator(s)\n";

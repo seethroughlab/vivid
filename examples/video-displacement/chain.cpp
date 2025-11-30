@@ -9,92 +9,100 @@
 namespace fs = std::filesystem;
 using namespace vivid;
 
-class VideoDisplacement : public Operator {
-public:
-    void init(Context& ctx) override {
-        // Find a video file in the assets folder (relative to project folder)
-        std::string videoPath = findVideoFile("assets");
+// Track video files and current index
+static std::vector<std::string> videoPaths;
+static size_t currentIndex = 0;
 
-        if (videoPath.empty()) {
-            // Try the video-playback assets as fallback
-            videoPath = findVideoFile("../video-playback/assets");
-        }
+std::vector<std::string> findVideoFiles(const std::string& directory) {
+    std::vector<std::string> videos;
+    static const std::vector<std::string> videoExtensions = {
+        ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".MP4", ".MOV"
+    };
 
-        if (!videoPath.empty()) {
-            std::cout << "[VideoDisplacement] Loading: " << videoPath << "\n";
-            video_.path(videoPath).loop(true).play();
-        } else {
-            std::cerr << "[VideoDisplacement] No video file found!\n";
-            std::cerr << "  Place a video in assets/\n";
-            std::cerr << "  or ../video-playback/assets/\n";
-        }
-
-        // Configure noise generator for displacement map
-        noise_
-            .scale(3.0f)      // Pattern size
-            .speed(0.3f)      // Animation speed
-            .octaves(2);      // Keep it simple for displacement
-
-        output_ = ctx.createTexture();
-    }
-
-    static std::string findVideoFile(const std::string& directory) {
-        static const std::vector<std::string> videoExtensions = {
-            ".mp4", ".mov", ".m4v", ".avi", ".mkv", ".webm", ".MP4", ".MOV"
-        };
-
-        try {
-            for (const auto& entry : fs::recursive_directory_iterator(directory)) {
-                if (!entry.is_regular_file()) continue;
-                std::string ext = entry.path().extension().string();
-                for (const auto& videoExt : videoExtensions) {
-                    if (ext == videoExt) {
-                        return entry.path().string();
-                    }
+    try {
+        for (const auto& entry : fs::recursive_directory_iterator(directory)) {
+            if (!entry.is_regular_file()) continue;
+            std::string ext = entry.path().extension().string();
+            for (const auto& videoExt : videoExtensions) {
+                if (ext == videoExt) {
+                    videos.push_back(entry.path().string());
+                    break;
                 }
             }
-        } catch (...) {}
-        return "";
+        }
+        std::sort(videos.begin(), videos.end());
+    } catch (const std::exception& e) {
+        std::cerr << "[VideoDisplacement] Error scanning directory: " << e.what() << "\n";
+    }
+    return videos;
+}
+
+void setup(Chain& chain) {
+    // Find all video files (try current assets, then video-playback assets)
+    videoPaths = findVideoFiles("assets");
+    if (videoPaths.empty()) {
+        videoPaths = findVideoFiles("../video-playback/assets");
     }
 
-    void process(Context& ctx) override {
-        // Step 1: Process video to get current frame
-        video_.process(ctx);
-        Texture* videoTex = ctx.getInputTexture("out", "");
-        if (!videoTex || !videoTex->valid()) {
-            return;
-        }
-
-        // Resize output to match video
-        if (!output_.valid() || output_.width != videoTex->width || output_.height != videoTex->height) {
-            output_ = ctx.createTexture(videoTex->width, videoTex->height);
-        }
-
-        // Step 2: Generate animated noise texture for displacement map
-        noise_.process(ctx);
-        Texture* noiseTex = ctx.getInputTexture("out", "");
-
-        // Step 3: Apply displacement using video as source, noise as map
-        Context::ShaderParams params;
-        params.mode = 0;                      // Luminance mode
-        params.param0 = displacementAmount_;  // Displacement strength
-        params.vec0X = 1.0f;                  // Direction X
-        params.vec0Y = 1.0f;                  // Direction Y
-
-        ctx.runShader("shaders/displacement.wgsl", videoTex, noiseTex, output_, params);
-
-        ctx.setOutput("out", output_);
+    if (videoPaths.empty()) {
+        std::cerr << "[VideoDisplacement] No video files found!\n";
+        std::cerr << "[VideoDisplacement] Place .mp4/.mov files in assets/\n";
+        return;
     }
 
-    OutputKind outputKind() override { return OutputKind::Texture; }
+    std::cout << "[VideoDisplacement] Found " << videoPaths.size() << " video(s):\n";
+    for (const auto& path : videoPaths) {
+        std::cout << "  - " << path << "\n";
+    }
 
-private:
-    VideoFile video_;
-    Noise noise_;
-    Texture output_;
+    // Video player
+    chain.add<VideoFile>("video")
+        .path(videoPaths[0])
+        .loop(true)
+        .play();
 
-    // Displacement strength - tweak for different effects
-    float displacementAmount_ = 0.04f;
-};
+    // Noise for displacement map
+    chain.add<Noise>("noise")
+        .scale(3.0f)
+        .speed(0.3f)
+        .octaves(2);
 
-VIVID_OPERATOR(VideoDisplacement)
+    // Apply displacement to video
+    chain.add<Displacement>("displaced")
+        .input("video")
+        .map("noise")
+        .amount(0.04f);
+
+    chain.setOutput("displaced");
+}
+
+void update(Chain& chain, Context& ctx) {
+    if (videoPaths.empty()) return;
+
+    // SPACE: Switch to next video
+    if (ctx.wasKeyPressed(Key::Space)) {
+        currentIndex = (currentIndex + 1) % videoPaths.size();
+        chain.get<VideoFile>("video")
+            .path(videoPaths[currentIndex])
+            .play();
+        std::cout << "[VideoDisplacement] Now playing: " << videoPaths[currentIndex] << "\n";
+    }
+
+    // P: Toggle pause
+    if (ctx.wasKeyPressed(Key::P)) {
+        chain.get<VideoFile>("video").toggle();
+    }
+
+    // UP/DOWN: Adjust displacement amount
+    static float amount = 0.04f;
+    if (ctx.isKeyDown(Key::Up)) {
+        amount = std::min(amount + 0.001f, 0.2f);
+        chain.get<Displacement>("displaced").amount(amount);
+    }
+    if (ctx.isKeyDown(Key::Down)) {
+        amount = std::max(amount - 0.001f, 0.0f);
+        chain.get<Displacement>("displaced").amount(amount);
+    }
+}
+
+VIVID_CHAIN(setup, update)

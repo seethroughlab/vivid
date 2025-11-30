@@ -670,6 +670,49 @@ public:
 
     /// @}
 
+    /// @name GPU Access (Advanced)
+    /// @{
+
+    /**
+     * @brief Get the raw WebGPU device handle.
+     * @return Opaque pointer to WGPUDevice (cast to WGPUDevice when using).
+     *
+     * This is for advanced usage like ImGUI integration. The handle is valid
+     * for the lifetime of the Context. Operators using this should include
+     * webgpu.h and cast the return value:
+     *
+     *     WGPUDevice device = static_cast<WGPUDevice>(ctx.webgpuDevice());
+     */
+    void* webgpuDevice() const;
+
+    /**
+     * @brief Get the raw WebGPU queue handle.
+     * @return Opaque pointer to WGPUQueue (cast to WGPUQueue when using).
+     */
+    void* webgpuQueue() const;
+
+    /**
+     * @brief Get the WebGPU texture format used for render targets.
+     * @return The WGPUTextureFormat enum value as an integer.
+     *
+     * Returns the format used for output textures (typically RGBA8Unorm).
+     * Cast to WGPUTextureFormat when using:
+     *
+     *     WGPUTextureFormat format = static_cast<WGPUTextureFormat>(ctx.webgpuTextureFormat());
+     */
+    int webgpuTextureFormat() const;
+
+    /**
+     * @brief Get the raw WebGPU texture view from a Texture.
+     * @param texture The texture to get the view from.
+     * @return Opaque pointer to WGPUTextureView, or nullptr if invalid.
+     *
+     * Used for ImGUI integration to render to a vivid Texture.
+     */
+    void* webgpuTextureView(const Texture& texture) const;
+
+    /// @}
+
     // Internal methods - called by runtime
     void beginFrame(float time, float dt, int frame);
     void endFrame();

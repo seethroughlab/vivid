@@ -167,51 +167,63 @@ void update(Chain& chain, Context& ctx) {
         isReplaying = false;
     }
 
-    // Draw
-    ctx.clear(output, glm::vec4(0.1f, 0.1f, 0.15f, 1.0f));
+    // Build circle list for drawing
+    std::vector<Circle2D> circles;
 
-    // Draw recorded path as a trail
-    if (recordedPath.size() > 1) {
-        for (size_t i = 1; i < recordedPath.size(); ++i) {
-            float alpha = 0.3f;
-            // Highlight the portion already played
-            if (isReplaying && static_cast<int>(i) <= replayIndex) {
-                alpha = 0.8f;
-            }
-
-            glm::vec2 p1 = recordedPath[i - 1];
-            glm::vec2 p2 = recordedPath[i];
-
-            // Draw line segment as a thin rectangle
-            ctx.drawLine(output, p1, p2, glm::vec4(0.4f, 0.4f, 0.6f, alpha), 2.0f);
+    // Draw recorded path as a trail of small circles
+    for (size_t i = 0; i < recordedPath.size(); ++i) {
+        float alpha = 0.3f;
+        // Highlight the portion already played
+        if (isReplaying && static_cast<int>(i) <= replayIndex) {
+            alpha = 0.8f;
         }
+
+        Circle2D dot;
+        dot.position = recordedPath[i];
+        dot.radius = 0.004f;  // Small trail dots
+        dot.color = glm::vec4(0.4f, 0.4f, 0.6f, alpha);
+        circles.push_back(dot);
+    }
+
+    // Draw start/end markers
+    if (!recordedPath.empty()) {
+        // Start marker (green)
+        Circle2D startDot;
+        startDot.position = recordedPath.front();
+        startDot.radius = 0.008f;
+        startDot.color = glm::vec4(0.2f, 0.8f, 0.2f, 0.8f);
+        circles.push_back(startDot);
+
+        // End marker (red)
+        Circle2D endDot;
+        endDot.position = recordedPath.back();
+        endDot.radius = 0.008f;
+        endDot.color = glm::vec4(0.8f, 0.2f, 0.2f, 0.8f);
+        circles.push_back(endDot);
     }
 
     // Draw current position indicator
-    glm::vec2 currentPos;
-    glm::vec4 dotColor;
-
+    Circle2D cursor;
     if (isRecording) {
         // Recording: show red dot at mouse
-        currentPos = glm::vec2(ctx.mouseNormX(), ctx.mouseNormY());
-        dotColor = glm::vec4(1.0f, 0.2f, 0.2f, 1.0f);
+        cursor.position = glm::vec2(ctx.mouseNormX(), ctx.mouseNormY());
+        cursor.color = glm::vec4(1.0f, 0.2f, 0.2f, 1.0f);
+        cursor.radius = 0.015f;
     } else if (isReplaying && !recordedPath.empty()) {
         // Replaying: show green dot at replay position
-        currentPos = recordedPath[replayIndex];
-        dotColor = glm::vec4(0.2f, 1.0f, 0.4f, 1.0f);
+        cursor.position = recordedPath[replayIndex];
+        cursor.color = glm::vec4(0.2f, 1.0f, 0.4f, 1.0f);
+        cursor.radius = 0.015f;
     } else {
         // Idle: show dim dot at mouse
-        currentPos = glm::vec2(ctx.mouseNormX(), ctx.mouseNormY());
-        dotColor = glm::vec4(0.5f, 0.5f, 0.5f, 0.5f);
+        cursor.position = glm::vec2(ctx.mouseNormX(), ctx.mouseNormY());
+        cursor.color = glm::vec4(0.5f, 0.5f, 0.5f, 0.5f);
+        cursor.radius = 0.012f;
     }
+    circles.push_back(cursor);
 
-    ctx.drawCircle(output, currentPos, 0.015f, dotColor);
-
-    // Draw small dots at path start/end
-    if (!recordedPath.empty()) {
-        ctx.drawCircle(output, recordedPath.front(), 0.008f, glm::vec4(0.2f, 0.8f, 0.2f, 0.8f));
-        ctx.drawCircle(output, recordedPath.back(), 0.008f, glm::vec4(0.8f, 0.2f, 0.2f, 0.8f));
-    }
+    // Draw all circles with background color
+    ctx.drawCircles(circles, output, glm::vec4(0.1f, 0.1f, 0.15f, 1.0f));
 
     ctx.setOutput("out", output);
 }
