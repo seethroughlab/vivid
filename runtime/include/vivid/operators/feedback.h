@@ -40,6 +40,8 @@ public:
     Feedback& rotate(float r) { rotate_ = r; return *this; }
     /// Set translation per frame
     Feedback& translate(glm::vec2 t) { translate_ = t; return *this; }
+    /// Set blend mode (0=max, 1=add, 2=screen, 3=mix)
+    Feedback& mode(int m) { mode_ = m; return *this; }
 
     void init(Context& ctx) override {
         buffer_[0] = ctx.createTexture();
@@ -58,6 +60,7 @@ public:
         params.param2 = rotate_;
         params.vec0X = translate_.x;
         params.vec0Y = translate_.y;
+        params.mode = mode_;
 
         // Pass input as inputTexture, previous frame as inputTexture2
         ctx.runShader("shaders/feedback.wgsl", input, &previous, current, params);
@@ -91,6 +94,7 @@ private:
     float zoom_ = 1.0f;
     float rotate_ = 0.0f;
     glm::vec2 translate_ = glm::vec2(0.0f);
+    int mode_ = 2;  // Default to screen blend for visible trails
     Texture buffer_[2];
     int currentBuffer_ = 0;
 };
