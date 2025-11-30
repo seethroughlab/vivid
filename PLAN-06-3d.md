@@ -373,6 +373,77 @@ fn getNormalFromMap(
 
 ---
 
+## Image-Based Lighting (IBL)
+
+IBL provides realistic ambient lighting by sampling environment maps. Without IBL, PBR materials look flat because metallic surfaces have nothing to reflect.
+
+### Environment Structure
+
+```cpp
+struct Environment {
+    Texture irradianceMap;   // Diffuse IBL (low-res blurred cubemap)
+    Texture radianceMap;     // Specular IBL (mip-mapped cubemap)
+    Texture brdfLUT;         // Pre-computed BRDF lookup table (256x256)
+    float intensity = 1.0f;
+};
+```
+
+### Cubemap Processing Pipeline
+
+1. **Load HDR panorama** — Equirectangular format (.hdr files)
+2. **Convert to cubemap** — Render to 6 faces using projection shader
+3. **Compute irradiance map** — Hemispherical integral for diffuse lighting (64x64 per face)
+4. **Compute radiance map** — Pre-filtered environment map with roughness mip levels (512x512, 5 mip levels)
+5. **Generate BRDF LUT** — Pre-computed Fresnel-geometry term lookup (256x256, once globally)
+
+### IBL Shader Functions
+
+```wgsl
+// Sample irradiance for diffuse IBL
+fn sampleIrradiance(N: vec3f) -> vec3f {
+    return textureSample(irradianceMap, envSampler, N).rgb;
+}
+
+// Sample pre-filtered radiance for specular IBL
+fn sampleRadiance(R: vec3f, roughness: f32) -> vec3f {
+    let mipLevel = roughness * f32(textureNumLevels(radianceMap) - 1);
+    return textureSampleLevel(radianceMap, envSampler, R, mipLevel).rgb;
+}
+
+// Combine IBL with material
+fn applyIBL(N: vec3f, V: vec3f, albedo: vec3f, metallic: f32, roughness: f32) -> vec3f {
+    let R = reflect(-V, N);
+    let NdotV = max(dot(N, V), 0.0);
+    let F0 = mix(vec3f(0.04), albedo, metallic);
+
+    // Diffuse IBL
+    let irradiance = sampleIrradiance(N);
+    let diffuse = irradiance * albedo * (1.0 - metallic);
+
+    // Specular IBL
+    let prefilteredColor = sampleRadiance(R, roughness);
+    let brdf = textureSample(brdfLUT, lutSampler, vec2f(NdotV, roughness)).rg;
+    let specular = prefilteredColor * (F0 * brdf.x + brdf.y);
+
+    return diffuse + specular;
+}
+```
+
+### API Integration
+
+```cpp
+// Load environment from HDR file
+Environment loadEnvironment(const std::string& hdrPath);
+
+// Add to SceneLighting for optional IBL
+struct SceneLighting {
+    // ... existing fields ...
+    Environment* environment = nullptr;  // Optional IBL
+};
+```
+
+---
+
 ## Operators
 
 ### Geometry Operators
@@ -435,7 +506,6 @@ fn getNormalFromMap(
 ## Future Extensions
 
 - **Shadow mapping** - Directional and omnidirectional shadows
-- **Image-based lighting (IBL)** - Environment maps, irradiance convolution
 - **Screen-space ambient occlusion (SSAO)**
 - **Screen-space reflections (SSR)**
 - **Bloom and tone mapping** - HDR rendering pipeline

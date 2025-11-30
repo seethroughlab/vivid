@@ -8,7 +8,9 @@
 #include "pipeline3d.h"
 #include "pipeline3d_instanced.h"
 #include "pipeline3d_skinned.h"
+#include "pipeline3d_lit.h"
 #include "pipeline2d.h"
+#include "cubemap.h"
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
@@ -922,6 +924,93 @@ void Context::render3D(const std::vector<Mesh3D>& meshes,
     if (!internalMeshes.empty()) {
         getRenderer3D().renderMultiple(internalMeshes, transforms, camera, output, clearColor);
     }
+}
+
+// Lit 3D Rendering
+
+Pipeline3DLit& Context::getPhongPipeline() {
+    if (!phongPipeline_) {
+        phongPipeline_ = std::make_unique<Pipeline3DLit>();
+        phongPipeline_->init(renderer_, Pipeline3DLit::ShadingModel::Phong);
+    }
+    return *phongPipeline_;
+}
+
+Pipeline3DLit& Context::getPBRPipeline() {
+    if (!pbrPipeline_) {
+        pbrPipeline_ = std::make_unique<Pipeline3DLit>();
+        pbrPipeline_->init(renderer_, Pipeline3DLit::ShadingModel::PBR);
+    }
+    return *pbrPipeline_;
+}
+
+Pipeline3DLit& Context::getPBRIBLPipeline() {
+    if (!pbrIBLPipeline_) {
+        pbrIBLPipeline_ = std::make_unique<Pipeline3DLit>();
+        pbrIBLPipeline_->init(renderer_, Pipeline3DLit::ShadingModel::PBR_IBL);
+    }
+    return *pbrIBLPipeline_;
+}
+
+void Context::render3DPhong(const Mesh3D& mesh, const Camera3D& camera,
+                            const glm::mat4& transform,
+                            const PhongMaterial& material,
+                            const SceneLighting& lighting,
+                            Texture& output,
+                            const glm::vec4& clearColor) {
+    if (!mesh.valid()) return;
+    getPhongPipeline().renderPhong(mesh, camera, transform, material, lighting, output, clearColor);
+}
+
+void Context::render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
+                          const glm::mat4& transform,
+                          const PBRMaterial& material,
+                          const SceneLighting& lighting,
+                          Texture& output,
+                          const glm::vec4& clearColor) {
+    if (!mesh.valid()) return;
+    getPBRPipeline().renderPBR(mesh, camera, transform, material, lighting, output, clearColor);
+}
+
+void Context::render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
+                          const glm::mat4& transform,
+                          const PBRMaterial& material,
+                          const SceneLighting& lighting,
+                          const Environment& environment,
+                          Texture& output,
+                          const glm::vec4& clearColor) {
+    if (!mesh.valid()) return;
+    if (!environment.valid()) {
+        // Fallback to non-IBL PBR if environment is invalid
+        getPBRPipeline().renderPBR(mesh, camera, transform, material, lighting, output, clearColor);
+        return;
+    }
+    getPBRIBLPipeline().renderPBRWithIBL(mesh, camera, transform, material, lighting, environment, output, clearColor);
+}
+
+// IBL/Cubemap Processing
+CubemapProcessor& Context::getCubemapProcessor() {
+    if (!cubemapProcessor_) {
+        cubemapProcessor_ = std::make_unique<CubemapProcessor>();
+        cubemapProcessor_->init(renderer_);
+    }
+    return *cubemapProcessor_;
+}
+
+Environment Context::loadEnvironment(const std::string& path) {
+    std::string resolvedPath = resolvePath(path);
+    return getCubemapProcessor().loadEnvironment(resolvedPath);
+}
+
+void Context::destroyEnvironment(Environment& environment) {
+    if (!cubemapProcessor_) return;
+
+    // Destroy the cubemaps
+    cubemapProcessor_->destroyCubemap(environment.irradianceMap);
+    cubemapProcessor_->destroyCubemap(environment.radianceMap);
+    // BRDF LUT is shared/cached, don't destroy it
+
+    environment.brdfLUT = nullptr;
 }
 
 // 2D Instanced Rendering

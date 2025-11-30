@@ -31,7 +31,9 @@ set(RUNTIME_SOURCES
     src/pipeline3d.cpp
     src/pipeline3d_instanced.cpp
     src/pipeline3d_skinned.cpp
+    src/pipeline3d_lit.cpp
     src/pipeline2d.cpp
+    src/cubemap.cpp
 )
 
 # Add HAP decoder if FFmpeg is available

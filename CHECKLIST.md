@@ -644,26 +644,39 @@ Build and test each operator individually:
 - [ ] **Fly Camera** — WASD + mouse look for free navigation
 
 #### Lighting System
-- [ ] Light base class with color and intensity
-- [ ] `DirectionalLight` — Sun/moon style parallel rays
-- [ ] `PointLight` — Omnidirectional with radius/attenuation
-- [ ] `SpotLight` — Cone with inner/outer angle falloff
-- [ ] Light uniform buffer (support up to 16 lights per pass)
+- [x] Light base class with color and intensity — `Light` struct in `graphics3d.h`
+- [x] `DirectionalLight` — Sun/moon style parallel rays — `Light::directional()`
+- [x] `PointLight` — Omnidirectional with radius/attenuation — `Light::point()`
+- [x] `SpotLight` — Cone with inner/outer angle falloff — `Light::spot()`
+- [x] Light uniform buffer (support up to 8 lights per pass) — `LightsUniform` in `pipeline3d_lit.h`
+- [x] `SceneLighting` class with ambient + light array — `graphics3d.h`
 
 #### Shading Models
 - [x] Depth buffer support in Renderer — `Renderer::createDepthBuffer()`
 - [x] 3D render pipeline (vertex + fragment with depth test) — `runtime/src/pipeline3d.cpp`
-- [ ] **Phong/Blinn-Phong** shader (`shaders/phong.wgsl`)
-  - [ ] Ambient, diffuse, specular components
-  - [ ] Shininess parameter
-  - [ ] Multiple light support
-- [ ] **PBR** shader (`shaders/pbr.wgsl`) — Cook-Torrance BRDF
-  - [ ] Metallic-roughness workflow
-  - [ ] GGX normal distribution
-  - [ ] Smith geometry function
-  - [ ] Fresnel-Schlick approximation
+- [x] **Phong/Blinn-Phong** shader — `pipeline3d_lit.cpp` (embedded WGSL)
+  - [x] Ambient, diffuse, specular components
+  - [x] Shininess parameter
+  - [x] Multiple light support
+- [x] **PBR** shader — `pipeline3d_lit.cpp` (embedded WGSL), Cook-Torrance BRDF
+  - [x] Metallic-roughness workflow
+  - [x] GGX normal distribution
+  - [x] Smith geometry function
+  - [x] Fresnel-Schlick approximation
 - [ ] Normal mapping (tangent space transforms)
 - [ ] PBR texture maps (albedo, metallic/roughness, AO, emissive)
+
+#### Image-Based Lighting (IBL)
+- [x] `Environment` struct (irradianceMap, radianceMap, brdfLUT) — `graphics3d.h`
+- [x] `Cubemap` struct — `graphics3d.h`
+- [x] `loadEnvironment()` / `destroyEnvironment()` API — `context.h/cpp`
+- [x] `render3DPBR()` overload with Environment parameter — `context.h/cpp`
+- [x] `CubemapProcessor` class — `runtime/src/cubemap.h/cpp`
+  - [x] WGSL compute shaders for IBL processing (equirect, irradiance, radiance, BRDF)
+  - [ ] GPU execution of compute shaders (currently TODO stubs)
+- [ ] Update PBR shader with IBL sampling (`PBR_IBL` shader variant)
+- [ ] Environment bind group in `Pipeline3DLit`
+- [ ] `examples/lighting-demo` with HDR environment
 
 #### Material Operators
 - [ ] `PhongMaterial` — ambient, diffuse, specular, shininess
@@ -680,7 +693,6 @@ Build and test each operator individually:
 
 #### Advanced (Future)
 - [ ] Shadow mapping (directional + point light shadows)
-- [ ] IBL / environment maps (image-based lighting)
 - [ ] Screen-space reflections
 - [ ] Ambient occlusion (SSAO)
 
@@ -878,6 +890,7 @@ Build and test each operator individually:
 - [x] `examples/3d-demo` — 3D rendering basics (primitives, camera, instancing)
 - [ ] `examples/3d-geometry` — 3D rendering basics (primitives, camera, lighting)
 - [x] `examples/model-loader` — Load OBJ models with orbit camera
+- [x] `examples/lighting-demo` — Phong/PBR shading with multiple lights
 - [ ] `examples/particles` — Particle system with emitters
 - [x] `examples/3d-instancing` — GPU instancing for many objects
 - [ ] `examples/orbit-camera` — Interactive 3D camera controls

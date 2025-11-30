@@ -17,6 +17,8 @@ class Renderer3DImpl;
 class Renderer2DImpl;
 class Renderer3DInstancedImpl;
 class SkinnedMeshRendererImpl;
+class Pipeline3DLit;
+class CubemapProcessor;
 
 /**
  * @brief Runtime context providing access to time, textures, shaders, and operator communication.
@@ -554,6 +556,123 @@ public:
                   const glm::vec4& clearColor = {0, 0, 0, 1});
 
     /**
+     * @brief Render a mesh with Phong (Blinn-Phong) lighting.
+     *
+     * Classic ambient/diffuse/specular shading model.
+     *
+     * @code
+     * // Setup lighting
+     * SceneLighting lighting = SceneLighting::threePoint();
+     *
+     * // Create material
+     * PhongMaterial material = PhongMaterial::shiny(glm::vec3(0.8f, 0.2f, 0.2f));
+     *
+     * // Render with lighting
+     * ctx.render3DPhong(mesh, camera, transform, material, lighting, output);
+     * @endcode
+     *
+     * @param mesh The mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform matrix.
+     * @param material Phong material properties.
+     * @param lighting Scene lighting configuration.
+     * @param output Target texture to render into.
+     * @param clearColor Background color.
+     */
+    void render3DPhong(const Mesh3D& mesh, const Camera3D& camera,
+                       const glm::mat4& transform,
+                       const PhongMaterial& material,
+                       const SceneLighting& lighting,
+                       Texture& output,
+                       const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
+     * @brief Render a mesh with PBR (Physically Based Rendering).
+     *
+     * Uses Cook-Torrance BRDF with metallic-roughness workflow.
+     * Includes HDR tone mapping and gamma correction.
+     *
+     * @code
+     * // Setup lighting
+     * SceneLighting lighting = SceneLighting::outdoor();
+     *
+     * // Create PBR material
+     * PBRMaterial material = PBRMaterial::gold();
+     *
+     * // Render with PBR
+     * ctx.render3DPBR(mesh, camera, transform, material, lighting, output);
+     * @endcode
+     *
+     * @param mesh The mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform matrix.
+     * @param material PBR material properties.
+     * @param lighting Scene lighting configuration.
+     * @param output Target texture to render into.
+     * @param clearColor Background color.
+     */
+    void render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
+                     const glm::mat4& transform,
+                     const PBRMaterial& material,
+                     const SceneLighting& lighting,
+                     Texture& output,
+                     const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
+     * @brief Render a mesh with PBR and Image-Based Lighting (IBL).
+     *
+     * Uses IBL for ambient lighting, providing realistic reflections
+     * and diffuse lighting from an environment map.
+     *
+     * @code
+     * // Load HDR environment map once in setup()
+     * Environment env = ctx.loadEnvironment("studio.hdr");
+     *
+     * // Render with IBL
+     * ctx.render3DPBR(mesh, camera, transform, material, lighting, env, output);
+     * @endcode
+     *
+     * @param mesh The mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform matrix.
+     * @param material PBR material properties.
+     * @param lighting Direct light sources (combined with IBL).
+     * @param environment IBL environment maps.
+     * @param output Target texture to render into.
+     * @param clearColor Background color.
+     */
+    void render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
+                     const glm::mat4& transform,
+                     const PBRMaterial& material,
+                     const SceneLighting& lighting,
+                     const Environment& environment,
+                     Texture& output,
+                     const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
+     * @brief Load an HDR environment map for Image-Based Lighting.
+     *
+     * Loads an HDR equirectangular image and pre-computes the necessary
+     * cubemaps for diffuse and specular IBL:
+     * - Irradiance map for diffuse lighting
+     * - Pre-filtered radiance map for specular reflections
+     * - BRDF lookup table (cached, shared across environments)
+     *
+     * @param path Path to HDR file (.hdr format).
+     * @return Environment ready for use with render3DPBR(), or invalid if failed.
+     *
+     * Supported formats: Radiance HDR (.hdr)
+     * Recommended resolution: 2048x1024 or higher for quality reflections.
+     */
+    Environment loadEnvironment(const std::string& path);
+
+    /**
+     * @brief Destroy an environment and release GPU resources.
+     * @param environment The environment to destroy.
+     */
+    void destroyEnvironment(Environment& environment);
+
+    /**
      * @brief Render many instances of a mesh using GPU instancing.
      *
      * Efficiently renders thousands of instances in a single draw call.
@@ -784,6 +903,18 @@ private:
     // Skinned mesh rendering support (lazy initialized)
     std::unique_ptr<SkinnedMeshRendererImpl> skinnedMeshRenderer_;
     SkinnedMeshRendererImpl& getSkinnedMeshRenderer();
+
+    // Lit 3D rendering pipelines (lazy initialized)
+    std::unique_ptr<Pipeline3DLit> phongPipeline_;
+    std::unique_ptr<Pipeline3DLit> pbrPipeline_;
+    std::unique_ptr<Pipeline3DLit> pbrIBLPipeline_;
+    Pipeline3DLit& getPhongPipeline();
+    Pipeline3DLit& getPBRPipeline();
+    Pipeline3DLit& getPBRIBLPipeline();
+
+    // Cubemap/IBL processing (lazy initialized)
+    std::unique_ptr<CubemapProcessor> cubemapProcessor_;
+    CubemapProcessor& getCubemapProcessor();
 
     // Project path resolution
     std::string projectPath_;
