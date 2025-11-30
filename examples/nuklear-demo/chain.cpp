@@ -37,10 +37,12 @@ void setup(Chain& chain) {
         .zoom(feedbackZoom)
         .rotate(feedbackRotate);
 
+    // HSV with colorize mode since input is grayscale
     chain.add<HSV>("colored")
         .input("feedback")
         .hueShift(hueShift)
-        .saturation(saturation);
+        .saturation(saturation)
+        .colorize(true);  // Required for grayscale input!
 
     // Composite UI overlay on top of the visual effect
     chain.add<Composite>("final")

@@ -50,6 +50,7 @@ public:
     void process(Context& ctx) override {
         Texture* input = ctx.getInputTexture(inputNode_, "out");
         Texture& current = buffer_[currentBuffer_];
+        Texture& previous = buffer_[1 - currentBuffer_];
 
         Context::ShaderParams params;
         params.param0 = decay_;
@@ -58,7 +59,8 @@ public:
         params.vec0X = translate_.x;
         params.vec0Y = translate_.y;
 
-        ctx.runShader("shaders/feedback.wgsl", input, current, params);
+        // Pass input as inputTexture, previous frame as inputTexture2
+        ctx.runShader("shaders/feedback.wgsl", input, &previous, current, params);
         ctx.setOutput("out", current);
 
         currentBuffer_ = 1 - currentBuffer_;

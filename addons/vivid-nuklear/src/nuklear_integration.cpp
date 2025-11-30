@@ -435,6 +435,9 @@ void NuklearUI::renderToBuffer() {
     nk_draw_foreach(cmd, ctx_, &cmds) {
         if (!cmd->elem_count) continue;
 
+        // Check if this command uses the font atlas texture
+        bool useTexture = (cmd->texture.ptr == fontAtlasImage_.data()) && !fontAtlasImage_.empty();
+
         // Get scissor rect
         int scissorX = clampInt((int)cmd->clip_rect.x, 0, width_);
         int scissorY = clampInt((int)cmd->clip_rect.y, 0, height_);
@@ -482,6 +485,20 @@ void NuklearUI::renderToBuffer() {
                         color[1] = (unsigned char)(v0.color[1] * w0 + v1.color[1] * w1 + v2.color[1] * w2);
                         color[2] = (unsigned char)(v0.color[2] * w0 + v1.color[2] * w1 + v2.color[2] * w2);
                         color[3] = (unsigned char)(v0.color[3] * w0 + v1.color[3] * w1 + v2.color[3] * w2);
+
+                        // Sample font atlas texture if this is a textured draw (text rendering)
+                        if (useTexture) {
+                            // Interpolate UV coordinates
+                            float u = v0.uv[0] * w0 + v1.uv[0] * w1 + v2.uv[0] * w2;
+                            float v = v0.uv[1] * w0 + v1.uv[1] * w1 + v2.uv[1] * w2;
+
+                            // Sample font atlas
+                            unsigned char texel[4];
+                            sampleTexture(fontAtlasImage_.data(), fontAtlasW_, fontAtlasH_, u, v, texel);
+
+                            // Modulate vertex color by texture alpha (font glyphs are alpha masks)
+                            color[3] = (unsigned char)((color[3] * texel[3]) / 255);
+                        }
 
                         // Blend to framebuffer
                         unsigned char* dst = &pixels_[(y * width_ + x) * 4];
