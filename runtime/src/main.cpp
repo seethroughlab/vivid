@@ -56,7 +56,7 @@ void printUsage(const char* program) {
               << "\nOptions:\n"
               << "  --width <n>     Window width (default: 1280)\n"
               << "  --height <n>    Window height (default: 720)\n"
-              << "  --fullscreen    Start in fullscreen mode\n"
+              << "  --windowed      Start in windowed mode (default is fullscreen)\n"
               << "  --port <n>      WebSocket port for preview server (default: 9876)\n"
               << "  --help          Show this help message\n";
 }
@@ -72,7 +72,7 @@ int main(int argc, char* argv[]) {
     int width = 1280;
     int height = 720;
     int wsPort = 9876;
-    bool fullscreen = false;
+    bool fullscreen = true;  // Fullscreen by default
     std::string projectPath;
 
     for (int i = 1; i < argc; i++) {
@@ -83,8 +83,8 @@ int main(int argc, char* argv[]) {
             height = std::stoi(argv[++i]);
         } else if (arg == "--port" && i + 1 < argc) {
             wsPort = std::stoi(argv[++i]);
-        } else if (arg == "--fullscreen") {
-            fullscreen = true;
+        } else if (arg == "--windowed") {
+            fullscreen = false;
         } else if (arg == "--help" || arg == "-h") {
             printUsage(argv[0]);
             return 0;

@@ -66,11 +66,10 @@ bool OzzAnimationSystem::buildSkeleton(const Skeleton& skeleton) {
         // Record the mapping
         boneToJoint_[boneIndex] = ozzJointIndex++;
 
-        // Use pure bone-local transform (without preTransform)
-        // preTransform will be applied separately after animation sampling
+        // Use bone-local transform only
         glm::mat4 m = bone.localTransform;
 
-        // Store preTransform from root bone (only need to do once)
+        // Store preTransform from root bone for reference
         if (isRoot && globalPreTransform_ == glm::mat4(1.0f)) {
             globalPreTransform_ = bone.preTransform;
         }
@@ -126,25 +125,31 @@ bool OzzAnimationSystem::buildSkeleton(const Skeleton& skeleton) {
     localTransforms_.resize(numSoaJoints);
     modelMatrices_.resize(skeleton_.num_joints());
 
-    // Use Assimp's offset matrices as inverse bind pose (indexed by bone index)
-    // These are the authoritative inverse bind poses from the model file
+    // Compute inverse bind pose from ozz's rest poses
+    // This ensures consistency between animated pose and bind pose (both from ozz)
+    ozz::animation::LocalToModelJob ltmJob;
+    ltmJob.skeleton = &skeleton_;
+    ltmJob.input = skeleton_.joint_rest_poses();
+    ltmJob.output = ozz::make_span(modelMatrices_);
+
+    if (!ltmJob.Run()) {
+        std::cerr << "[OzzAnimation] Failed to compute bind pose\n";
+        return false;
+    }
+
+    // Compute inverse bind pose from ozz rest poses
+    // This ensures consistency between animated pose and bind pose (both from ozz)
     inverseBindPose_.resize(skeleton.bones.size());
     for (size_t i = 0; i < skeleton.bones.size(); ++i) {
-        inverseBindPose_[i] = skeleton.bones[i].offsetMatrix;
-    }
-
-    std::cout << "[OzzAnimation] Using Assimp offset matrices for " << skeleton.bones.size() << " bones\n";
-
-    // Debug: print bone to joint mapping
-    std::cout << "[OzzAnimation] Bone to joint mapping:\n";
-    for (size_t i = 0; i < std::min(size_t(10), boneToJoint_.size()); ++i) {
-        int j = boneToJoint_[i];
-        std::cout << "  Bone " << i << " (" << skeleton.bones[i].name << ") -> Joint " << j;
-        if (j >= 0 && j < skeleton_.num_joints()) {
-            std::cout << " (" << skeleton_.joint_names()[j] << ")";
+        int jointIndex = boneToJoint_[i];
+        if (jointIndex >= 0 && jointIndex < skeleton_.num_joints()) {
+            glm::mat4 bindPose = ozzToGlm(modelMatrices_[jointIndex]);
+            inverseBindPose_[i] = glm::inverse(bindPose);
+        } else {
+            inverseBindPose_[i] = glm::mat4(1.0f);
         }
-        std::cout << "\n";
     }
+
 
     // Initialize sampling context
     samplingContext_.Resize(skeleton_.num_joints());
@@ -153,7 +158,7 @@ bool OzzAnimationSystem::buildSkeleton(const Skeleton& skeleton) {
     return true;
 }
 
-bool OzzAnimationSystem::buildAnimation(const AnimationClip& clip, const Skeleton& skeleton) {
+bool OzzAnimationSystem::buildAnimation(const AnimationClip& clip, const Skeleton& skeleton, int originalIndex) {
     if (!valid()) {
         std::cerr << "[OzzAnimation] Cannot build animation without skeleton\n";
         return false;
@@ -173,6 +178,8 @@ bool OzzAnimationSystem::buildAnimation(const AnimationClip& clip, const Skeleto
     }
 
     // Fill in animation tracks from our AnimationClip channels
+    int channelsUsed = 0;
+    int channelsWithMultipleKeys = 0;
     for (const auto& channel : clip.channels) {
         auto it = jointNameToOzzIndex.find(channel.boneName);
         if (it == jointNameToOzzIndex.end()) {
@@ -180,11 +187,19 @@ bool OzzAnimationSystem::buildAnimation(const AnimationClip& clip, const Skeleto
         }
         int trackIndex = it->second;
         auto& track = rawAnim.tracks[trackIndex];
+        channelsUsed++;
 
-        // Copy translation keyframes
+        bool hasMultipleKeys = channel.positionKeys.size() > 1 ||
+                               channel.rotationKeys.size() > 1 ||
+                               channel.scaleKeys.size() > 1;
+        if (hasMultipleKeys) {
+            channelsWithMultipleKeys++;
+        }
+
+        // Copy translation keyframes (times should be in [0, duration] range, not normalized)
         for (const auto& key : channel.positionKeys) {
             ozz::animation::offline::RawAnimation::TranslationKey tk;
-            tk.time = key.time / clip.duration;  // Normalize to [0, 1]
+            tk.time = std::min(key.time, clip.duration);  // Clamp to [0, duration]
             tk.value = ozz::math::Float3(key.value.x, key.value.y, key.value.z);
             track.translations.push_back(tk);
         }
@@ -192,7 +207,7 @@ bool OzzAnimationSystem::buildAnimation(const AnimationClip& clip, const Skeleto
         // Copy rotation keyframes
         for (const auto& key : channel.rotationKeys) {
             ozz::animation::offline::RawAnimation::RotationKey rk;
-            rk.time = key.time / clip.duration;
+            rk.time = std::min(key.time, clip.duration);
             rk.value = ozz::math::Quaternion(key.value.x, key.value.y, key.value.z, key.value.w);
             track.rotations.push_back(rk);
         }
@@ -200,60 +215,76 @@ bool OzzAnimationSystem::buildAnimation(const AnimationClip& clip, const Skeleto
         // Copy scale keyframes
         for (const auto& key : channel.scaleKeys) {
             ozz::animation::offline::RawAnimation::ScaleKey sk;
-            sk.time = key.time / clip.duration;
+            sk.time = std::min(key.time, clip.duration);
             sk.value = ozz::math::Float3(key.value.x, key.value.y, key.value.z);
             track.scales.push_back(sk);
         }
     }
 
-    // For joints without animation data, add identity keyframes at the bind pose
+    // For joints without animation data, add bind pose keyframes
     for (int i = 0; i < skeleton_.num_joints(); ++i) {
         auto& track = rawAnim.tracks[i];
 
-        // Get bind pose for this joint
+        // Get bind pose for this joint from SoA rest poses
         const ozz::math::SoaTransform& soaBind = skeleton_.joint_rest_poses()[i / 4];
         int lane = i % 4;
 
-        float bindTx, bindTy, bindTz;
-        float bindRx, bindRy, bindRz, bindRw;
-        float bindSx, bindSy, bindSz;
+        // Extract values by storing all 4 lanes to arrays then picking the right one
+        float txArr[4], tyArr[4], tzArr[4];
+        float rxArr[4], ryArr[4], rzArr[4], rwArr[4];
+        float sxArr[4], syArr[4], szArr[4];
 
-        // Extract lane from SoA data
-        ozz::math::StorePtrU(soaBind.translation.x, &bindTx - lane);
-        ozz::math::StorePtrU(soaBind.translation.y, &bindTy - lane);
-        ozz::math::StorePtrU(soaBind.translation.z, &bindTz - lane);
-        ozz::math::StorePtrU(soaBind.rotation.x, &bindRx - lane);
-        ozz::math::StorePtrU(soaBind.rotation.y, &bindRy - lane);
-        ozz::math::StorePtrU(soaBind.rotation.z, &bindRz - lane);
-        ozz::math::StorePtrU(soaBind.rotation.w, &bindRw - lane);
-        ozz::math::StorePtrU(soaBind.scale.x, &bindSx - lane);
-        ozz::math::StorePtrU(soaBind.scale.y, &bindSy - lane);
-        ozz::math::StorePtrU(soaBind.scale.z, &bindSz - lane);
+        ozz::math::StorePtrU(soaBind.translation.x, txArr);
+        ozz::math::StorePtrU(soaBind.translation.y, tyArr);
+        ozz::math::StorePtrU(soaBind.translation.z, tzArr);
+        ozz::math::StorePtrU(soaBind.rotation.x, rxArr);
+        ozz::math::StorePtrU(soaBind.rotation.y, ryArr);
+        ozz::math::StorePtrU(soaBind.rotation.z, rzArr);
+        ozz::math::StorePtrU(soaBind.rotation.w, rwArr);
+        ozz::math::StorePtrU(soaBind.scale.x, sxArr);
+        ozz::math::StorePtrU(soaBind.scale.y, syArr);
+        ozz::math::StorePtrU(soaBind.scale.z, szArr);
 
         // Add bind pose keyframes if track is empty
         if (track.translations.empty()) {
             ozz::animation::offline::RawAnimation::TranslationKey tk;
             tk.time = 0.0f;
-            tk.value = ozz::math::Float3(bindTx, bindTy, bindTz);
+            tk.value = ozz::math::Float3(txArr[lane], tyArr[lane], tzArr[lane]);
             track.translations.push_back(tk);
         }
         if (track.rotations.empty()) {
             ozz::animation::offline::RawAnimation::RotationKey rk;
             rk.time = 0.0f;
-            rk.value = ozz::math::Quaternion(bindRx, bindRy, bindRz, bindRw);
+            rk.value = ozz::math::Quaternion(rxArr[lane], ryArr[lane], rzArr[lane], rwArr[lane]);
             track.rotations.push_back(rk);
         }
         if (track.scales.empty()) {
             ozz::animation::offline::RawAnimation::ScaleKey sk;
             sk.time = 0.0f;
-            sk.value = ozz::math::Float3(bindSx, bindSy, bindSz);
+            sk.value = ozz::math::Float3(sxArr[lane], syArr[lane], szArr[lane]);
             track.scales.push_back(sk);
+        }
+    }
+
+    // Ensure mapping vector is large enough
+    if (originalIndex >= 0) {
+        while (originalToOzzIndex_.size() <= static_cast<size_t>(originalIndex)) {
+            originalToOzzIndex_.push_back(-1);  // -1 means not built
         }
     }
 
     // Validate raw animation
     if (!rawAnim.Validate()) {
         std::cerr << "[OzzAnimation] Raw animation validation failed for: " << clip.name << "\n";
+        std::cerr << "  Duration: " << rawAnim.duration << "s (times should be in [0, " << rawAnim.duration << "])\n";
+        // Check for common issues
+        for (int i = 0; i < std::min(3, (int)rawAnim.tracks.size()); ++i) {
+            const auto& track = rawAnim.tracks[i];
+            if (!track.translations.empty()) {
+                std::cerr << "  Track " << i << " pos: [" << track.translations[0].time
+                          << " - " << track.translations.back().time << "], " << track.translations.size() << " keys\n";
+            }
+        }
         return false;
     }
 
@@ -265,11 +296,19 @@ bool OzzAnimationSystem::buildAnimation(const AnimationClip& clip, const Skeleto
         return false;
     }
 
+    // Store the mapping from original index to ozz index
+    int ozzIndex = static_cast<int>(animations_.size());
+    if (originalIndex >= 0) {
+        originalToOzzIndex_[originalIndex] = ozzIndex;
+    }
+
     animations_.push_back(std::move(*animPtr));
     animationNames_.push_back(clip.name);
 
     std::cout << "[OzzAnimation] Built animation: " << clip.name
-              << " (" << clip.duration << "s)\n";
+              << " (ozz index " << ozzIndex << ", original index " << originalIndex << ", "
+              << clip.duration << "s, " << channelsUsed << "/" << skeleton_.num_joints() << " joints with channels, "
+              << channelsWithMultipleKeys << " with actual keyframes)\n";
     return true;
 }
 
@@ -331,20 +370,16 @@ void OzzAnimationSystem::sample(size_t animIndex, float time,
     int numBones = static_cast<int>(boneToJoint_.size());
     boneMatrices.resize(numBones);
 
+    // Compute skinning matrices: modelMatrix * inverseBindPose
     for (int boneIndex = 0; boneIndex < numBones; ++boneIndex) {
         int jointIndex = boneToJoint_[boneIndex];
         if (jointIndex >= 0 && jointIndex < skeleton_.num_joints()) {
             glm::mat4 modelMatrix = ozzToGlm(modelMatrices_[jointIndex]);
-            // Apply global preTransform to convert from bone hierarchy space to world space
-            // This includes the FBX global scale that Assimp's offset matrices expect
-            glm::mat4 worldMatrix = globalPreTransform_ * modelMatrix;
-            // Skinning matrix = world-space transform * inverse bind pose
-            boneMatrices[boneIndex] = worldMatrix * inverseBindPose_[boneIndex];
+            boneMatrices[boneIndex] = modelMatrix * inverseBindPose_[boneIndex];
         } else {
             boneMatrices[boneIndex] = glm::mat4(1.0f);
         }
     }
-
 }
 
 void OzzAnimationSystem::getBindPose(std::vector<glm::mat4>& boneMatrices) {
@@ -373,13 +408,29 @@ void OzzAnimationSystem::getBindPose(std::vector<glm::mat4>& boneMatrices) {
         int jointIndex = boneToJoint_[boneIndex];
         if (jointIndex >= 0 && jointIndex < skeleton_.num_joints()) {
             glm::mat4 modelMatrix = ozzToGlm(modelMatrices_[jointIndex]);
-            // Apply global preTransform to convert from bone hierarchy space to world space
-            glm::mat4 worldMatrix = globalPreTransform_ * modelMatrix;
-            boneMatrices[boneIndex] = worldMatrix * inverseBindPose_[boneIndex];
+            boneMatrices[boneIndex] = modelMatrix * inverseBindPose_[boneIndex];
         } else {
             boneMatrices[boneIndex] = glm::mat4(1.0f);
         }
     }
+}
+
+int OzzAnimationSystem::getOzzIndex(int originalIndex) const {
+    if (originalIndex < 0 || static_cast<size_t>(originalIndex) >= originalToOzzIndex_.size()) {
+        return -1;
+    }
+    return originalToOzzIndex_[originalIndex];
+}
+
+void OzzAnimationSystem::sampleByOriginalIndex(int originalIndex, float time,
+                                                std::vector<glm::mat4>& boneMatrices) {
+    int ozzIndex = getOzzIndex(originalIndex);
+    if (ozzIndex < 0) {
+        // Animation failed to build, use bind pose
+        getBindPose(boneMatrices);
+        return;
+    }
+    sample(static_cast<size_t>(ozzIndex), time, boneMatrices);
 }
 
 } // namespace vivid

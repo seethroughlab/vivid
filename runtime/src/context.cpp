@@ -929,9 +929,9 @@ SkinnedMesh3D Context::loadSkinnedMesh(const std::string& path) {
         // Create ozz animation system
         auto* ozzSystem = new OzzAnimationSystem();
         if (ozzSystem->buildSkeleton(result.skeleton)) {
-            // Build all animations
-            for (const auto& clip : result.animations) {
-                ozzSystem->buildAnimation(clip, result.skeleton);
+            // Build all animations (pass original index for index mapping)
+            for (size_t i = 0; i < result.animations.size(); ++i) {
+                ozzSystem->buildAnimation(result.animations[i], result.skeleton, static_cast<int>(i));
             }
             result.ozzSystem = ozzSystem;
             std::cout << "[Context] Using ozz-animation for " << result.skeleton.bones.size()
@@ -983,8 +983,8 @@ void Context::renderSkinned3D(SkinnedMesh3D& mesh, const Camera3D& camera,
 
     // If using ozz, sample the animation to compute bone matrices
     if (mesh.ozzSystem && mesh.currentAnimIndex >= 0) {
-        mesh.ozzSystem->sample(
-            static_cast<size_t>(mesh.currentAnimIndex),
+        mesh.ozzSystem->sampleByOriginalIndex(
+            mesh.currentAnimIndex,
             mesh.currentTime,
             mesh.boneMatrices
         );

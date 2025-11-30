@@ -39,8 +39,11 @@ public:
 
     /**
      * @brief Build ozz animation from our AnimationClip structure.
+     * @param clip The animation clip to build
+     * @param skeleton The skeleton structure
+     * @param originalIndex The index in the original animation array (for index mapping)
      */
-    bool buildAnimation(const AnimationClip& clip, const Skeleton& skeleton);
+    bool buildAnimation(const AnimationClip& clip, const Skeleton& skeleton, int originalIndex = -1);
 
     /**
      * @brief Get number of loaded animations.
@@ -60,11 +63,25 @@ public:
     /**
      * @brief Sample animation and compute skinning matrices.
      *
-     * @param animIndex Animation index to sample
+     * @param animIndex Ozz animation index to sample
      * @param time Current time in seconds
      * @param boneMatrices Output skinning matrices (model-space * inverse-bind-pose)
      */
     void sample(size_t animIndex, float time, std::vector<glm::mat4>& boneMatrices);
+
+    /**
+     * @brief Sample animation by original AnimationClip index.
+     *
+     * This method handles the mapping from original animation indices to ozz indices,
+     * accounting for animations that may have failed to build.
+     */
+    void sampleByOriginalIndex(int originalIndex, float time, std::vector<glm::mat4>& boneMatrices);
+
+    /**
+     * @brief Get the ozz animation index for an original AnimationClip index.
+     * @return The ozz index, or -1 if that animation failed to build.
+     */
+    int getOzzIndex(int originalIndex) const;
 
     /**
      * @brief Get bind pose matrices (for when no animation is playing).
@@ -88,6 +105,9 @@ private:
     // ozz animations
     std::vector<ozz::animation::Animation> animations_;
     std::vector<std::string> animationNames_;
+
+    // Mapping from original animation index to ozz index (-1 if failed to build)
+    std::vector<int> originalToOzzIndex_;
 
     // Sampling cache (reused each frame)
     ozz::animation::SamplingJob::Context samplingContext_;
