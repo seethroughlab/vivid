@@ -28,8 +28,10 @@ set(RUNTIME_SOURCES
     src/audioin.cpp
     src/mesh.cpp
     src/model_loader.cpp
+    src/animation.cpp
     src/pipeline3d.cpp
     src/pipeline3d_instanced.cpp
+    src/pipeline3d_skinned.cpp
     src/pipeline2d.cpp
 )
 

@@ -8,6 +8,7 @@
 #include "model_loader.h"
 #include "pipeline3d.h"
 #include "pipeline3d_instanced.h"
+#include "pipeline3d_skinned.h"
 #include "pipeline2d.h"
 #include <unordered_set>
 #include <iostream>
@@ -648,6 +649,100 @@ private:
     Renderer3DInstanced instancedRenderer_;
 };
 
+// Skinned Mesh Renderer Implementation
+class SkinnedMeshRendererImpl {
+public:
+    SkinnedMeshRendererImpl(Renderer& renderer) : renderer_(renderer) {
+        skinnedRenderer_.init(renderer);
+        renderer3d_.init(renderer);
+    }
+
+    ~SkinnedMeshRendererImpl() = default;
+
+    SkinnedMeshGPU createMesh(const std::vector<SkinnedVertex3D>& vertices,
+                               const std::vector<uint32_t>& indices) {
+        return skinnedRenderer_.createMesh(vertices, indices);
+    }
+
+    void destroyMesh(SkinnedMeshGPU& mesh) {
+        skinnedRenderer_.destroyMesh(mesh);
+    }
+
+    void render(SkinnedMesh3D& mesh, const Camera3D& camera,
+                const glm::mat4& transform, Texture& output,
+                const glm::vec4& clearColor) {
+        if (!mesh.valid()) return;
+
+        // Initialize pipeline lazily
+        if (!pipeline_.valid()) {
+            if (!pipeline_.create(renderer_)) {
+                std::cerr << "[SkinnedMeshRenderer] Failed to create pipeline\n";
+                return;
+            }
+        }
+
+        // Create bone bind group if not exists
+        if (!boneBindGroup_) {
+            boneBindGroup_ = skinnedRenderer_.createBoneBindGroup(
+                pipeline_.boneBindGroupLayout(), mesh.boneMatrices);
+            boneBuffer_ = nullptr;  // Will be retrieved from first update
+        }
+
+        // Update bone matrices from animation
+        if (!mesh.boneMatrices.empty()) {
+            // Get the buffer from the bind group - we need to update it
+            // For now we just recreate the bind group each frame (not optimal but works)
+            if (boneBindGroup_) {
+                skinnedRenderer_.releaseBindGroup(boneBindGroup_);
+            }
+            boneBindGroup_ = skinnedRenderer_.createBoneBindGroup(
+                pipeline_.boneBindGroupLayout(), mesh.boneMatrices);
+        }
+
+        // Begin render pass
+        auto pass = renderer3d_.beginRenderPass(output, clearColor);
+        if (!pass) return;
+
+        // Set camera
+        float aspectRatio = static_cast<float>(output.width) / output.height;
+        renderer3d_.setCamera(camera, aspectRatio);
+
+        // Create camera and transform bind groups
+        auto cameraBindGroup = renderer3d_.createCameraBindGroup(pipeline_.cameraBindGroupLayout());
+        auto transformBindGroup = renderer3d_.createTransformBindGroup(
+            pipeline_.transformBindGroupLayout(), transform);
+
+        // Draw the skinned mesh
+        wgpuRenderPassEncoderSetPipeline(pass, pipeline_.pipeline());
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, cameraBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 1, transformBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 2, boneBindGroup_, 0, nullptr);
+
+        auto* gpuMesh = static_cast<SkinnedMeshGPU*>(mesh.handle);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, gpuMesh->vertexBuffer, 0,
+                                              gpuMesh->vertexCount * sizeof(SkinnedVertex3D));
+        wgpuRenderPassEncoderSetIndexBuffer(pass, gpuMesh->indexBuffer,
+                                             WGPUIndexFormat_Uint32, 0,
+                                             gpuMesh->indexCount * sizeof(uint32_t));
+        wgpuRenderPassEncoderDrawIndexed(pass, gpuMesh->indexCount, 1, 0, 0, 0);
+
+        // End pass
+        renderer3d_.endRenderPass();
+
+        // Clean up bind groups
+        renderer3d_.releaseBindGroup(cameraBindGroup);
+        renderer3d_.releaseBindGroup(transformBindGroup);
+    }
+
+private:
+    Renderer& renderer_;
+    SkinnedMeshRenderer skinnedRenderer_;
+    Renderer3D renderer3d_;
+    Pipeline3DSkinnedInternal pipeline_;
+    WGPUBindGroup boneBindGroup_ = nullptr;
+    WGPUBuffer boneBuffer_ = nullptr;
+};
+
 // Destructor must be defined after Renderer3DImpl/Renderer2DImpl are complete
 Context::~Context() = default;
 
@@ -793,6 +888,79 @@ void Context::drawMeshInstanced(const Mesh3D& mesh,
     getRenderer3DInstanced().drawInstanced(
         *static_cast<const Mesh*>(mesh.handle),
         instances, camera, output, clearColor);
+}
+
+// Skinned Mesh Methods
+
+SkinnedMeshRendererImpl& Context::getSkinnedMeshRenderer() {
+    if (!skinnedMeshRenderer_) {
+        skinnedMeshRenderer_ = std::make_unique<SkinnedMeshRendererImpl>(renderer_);
+    }
+    return *skinnedMeshRenderer_;
+}
+
+SkinnedMesh3D Context::loadSkinnedMesh(const std::string& path) {
+    SkinnedMesh3D result;
+
+    std::vector<SkinnedVertex3D> vertices;
+    std::vector<uint32_t> indices;
+
+    if (!loadSkinnedModel(path, vertices, indices, result.skeleton, result.animations)) {
+        std::cerr << "[Context] Failed to load skinned mesh: " << path << "\n";
+        return result;
+    }
+
+    // Create GPU mesh
+    auto gpuMesh = new SkinnedMeshGPU(getSkinnedMeshRenderer().createMesh(vertices, indices));
+    if (gpuMesh->valid()) {
+        result.handle = gpuMesh;
+        result.vertexCount = gpuMesh->vertexCount;
+        result.indexCount = gpuMesh->indexCount;
+
+        // Link animations to skeleton
+        for (auto& clip : result.animations) {
+            clip.linkToSkeleton(result.skeleton);
+        }
+
+        // Initialize bone matrices to identity
+        result.boneMatrices.resize(result.skeleton.bones.size(), glm::mat4(1.0f));
+
+        // Auto-play a good animation if available (skip very short ones)
+        if (!result.animations.empty()) {
+            int bestAnim = 0;
+            for (size_t i = 0; i < result.animations.size(); ++i) {
+                if (result.animations[i].duration > 1.0f) {
+                    bestAnim = static_cast<int>(i);
+                    break;
+                }
+            }
+            result.playAnimation(bestAnim, true);
+            std::cout << "[Context] Auto-playing animation " << bestAnim << ": "
+                      << result.animations[bestAnim].name << "\n";
+        }
+    } else {
+        delete gpuMesh;
+    }
+
+    return result;
+}
+
+void Context::destroySkinnedMesh(SkinnedMesh3D& mesh) {
+    if (mesh.handle) {
+        auto* gpuMesh = static_cast<SkinnedMeshGPU*>(mesh.handle);
+        getSkinnedMeshRenderer().destroyMesh(*gpuMesh);
+        delete gpuMesh;
+        mesh.handle = nullptr;
+        mesh.vertexCount = 0;
+        mesh.indexCount = 0;
+    }
+}
+
+void Context::renderSkinned3D(SkinnedMesh3D& mesh, const Camera3D& camera,
+                               const glm::mat4& transform, Texture& output,
+                               const glm::vec4& clearColor) {
+    if (!mesh.valid()) return;
+    getSkinnedMeshRenderer().render(mesh, camera, transform, output, clearColor);
 }
 
 } // namespace vivid

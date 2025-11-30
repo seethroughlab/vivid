@@ -621,6 +621,19 @@ Build and test each operator individually:
   - [x] glTF/GLB format support
   - [x] COLLADA (.dae), 3DS, Blender, and 40+ other formats
 - [x] `examples/model-loader` — Demonstrates FBX/OBJ/glTF loading with camera orbit
+- [ ] **Skeletal Animation** — Full bone-based animation system (WIP - deformation issues)
+  - [x] Skeleton extraction from FBX/glTF (bone hierarchy, inverse bind matrices) — `model_loader.cpp`
+  - [x] Bone weights and IDs per vertex (max 4 bones per vertex) — `SkinnedVertex3D`
+  - [x] Animation keyframe extraction (position, rotation, scale) — `AnimationClip`
+  - [x] Keyframe interpolation with quaternion slerp — `animation.cpp`
+  - [x] GPU skinning shader (WGSL) — `pipeline3d_skinned.cpp`
+  - [x] `ctx.loadSkinnedMesh()`, `ctx.renderSkinned3D()` — `context.cpp`
+  - [x] Animation playback controls (play, pause, loop, switch animations) — `AnimationPlayer`
+  - [ ] Fix bone matrix computation (model deforms incorrectly during animation)
+  - [ ] **Backup plan**: Integrate [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) library
+    - Production-quality skeletal animation runtime
+    - Handles FBX coordinate systems and bone hierarchy correctly
+    - SIMD-optimized, supports blending, IK, animation layers
 
 #### Camera System
 - [x] `Camera3D` class with position, target, FOV, near/far planes — `runtime/src/camera3d.h`

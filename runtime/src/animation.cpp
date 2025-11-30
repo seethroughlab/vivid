@@ -1,6 +1,11 @@
 #include <vivid/animation.h>
 #include <glm/gtc/matrix_transform.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/gtx/matrix_decompose.hpp>
 #include <algorithm>
+#include <functional>
+#include <unordered_map>
+#include <iostream>
 
 namespace vivid {
 
@@ -79,6 +84,25 @@ glm::mat4 AnimationChannel::getLocalTransform(float t) const {
     return T * R * S;
 }
 
+glm::mat4 AnimationChannel::getLocalTransformWithFallback(float t, const glm::mat4& bindPose) const {
+    // Decompose bind pose to get fallback values
+    glm::vec3 bindPos, bindScale, bindSkew;
+    glm::quat bindRot;
+    glm::vec4 bindPerspective;
+    glm::decompose(bindPose, bindScale, bindRot, bindPos, bindSkew, bindPerspective);
+
+    // Use animation values if available, otherwise use bind pose
+    glm::vec3 pos = positionKeys.empty() ? bindPos : interpolatePosition(t);
+    glm::quat rot = rotationKeys.empty() ? bindRot : interpolateRotation(t);
+    glm::vec3 scale = scaleKeys.empty() ? bindScale : interpolateScale(t);
+
+    glm::mat4 T = glm::translate(glm::mat4(1.0f), pos);
+    glm::mat4 R = glm::mat4_cast(rot);
+    glm::mat4 S = glm::scale(glm::mat4(1.0f), scale);
+
+    return T * R * S;
+}
+
 void AnimationPlayer::setClip(const AnimationClip* clip, bool loop) {
     clip_ = clip;
     loop_ = loop;
@@ -126,39 +150,53 @@ void AnimationPlayer::computeBoneMatrices(const Skeleton& skeleton,
         boneMatrices.resize(numBones);
     }
 
-    // Initialize with identity
-    std::vector<glm::mat4> globalTransforms(numBones, glm::mat4(1.0f));
+    if (numBones == 0) return;
 
-    // Build map from bone index to animation channel
-    std::vector<const AnimationChannel*> boneChannels(numBones, nullptr);
-    if (clip_) {
-        for (const auto& channel : clip_->channels) {
-            if (channel.boneIndex >= 0 && channel.boneIndex < static_cast<int>(numBones)) {
-                boneChannels[channel.boneIndex] = &channel;
-            }
+    // If no animation clip, use identity matrices (bind pose)
+    if (!clip_ || clip_->channels.empty()) {
+        for (size_t i = 0; i < numBones; ++i) {
+            boneMatrices[i] = glm::mat4(1.0f);
         }
+        return;
     }
 
-    // Compute global transforms (assumes bones are sorted parent-first)
+    // Build a map from bone name to animation channel for quick lookup
+    std::unordered_map<std::string, const AnimationChannel*> channelMap;
+    for (const auto& channel : clip_->channels) {
+        channelMap[channel.boneName] = &channel;
+    }
+
+    // Temporary storage for global transforms (world space)
+    std::vector<glm::mat4> globalTransforms(numBones);
+
+    // Process bones in order (assumes parent comes before children in array)
     for (size_t i = 0; i < numBones; ++i) {
         const Bone& bone = skeleton.bones[i];
 
-        // Get local transform from animation or default
-        glm::mat4 localTransform;
-        if (boneChannels[i] && clip_) {
-            localTransform = boneChannels[i]->getLocalTransform(currentTime_);
-        } else {
-            localTransform = bone.localTransform;
+        // Get the node-local transform for this bone
+        // Use animated transform if available, otherwise use bind pose local transform
+        glm::mat4 nodeLocalTransform = bone.localTransform;
+        auto it = channelMap.find(bone.name);
+        if (it != channelMap.end()) {
+            // Use animation with bind pose fallback for missing position/rotation/scale keys
+            nodeLocalTransform = it->second->getLocalTransformWithFallback(currentTime_, bone.localTransform);
         }
 
-        // Combine with parent transform
-        if (bone.parentIndex >= 0 && bone.parentIndex < static_cast<int>(i)) {
-            globalTransforms[i] = globalTransforms[bone.parentIndex] * localTransform;
+        // Note: We do NOT apply preTransform here because Assimp's offset matrices
+        // already include the full bind pose transform chain. Applying preTransform
+        // would double-apply ancestor transforms.
+        glm::mat4 fullLocalTransform = nodeLocalTransform;
+
+        // Compute global transform by combining with parent
+        if (bone.parentIndex >= 0 && bone.parentIndex < static_cast<int>(numBones)) {
+            globalTransforms[i] = globalTransforms[bone.parentIndex] * fullLocalTransform;
         } else {
-            globalTransforms[i] = localTransform;
+            // Root bone - use full local transform directly
+            globalTransforms[i] = fullLocalTransform;
         }
 
-        // Final bone matrix = global transform * offset matrix (inverse bind pose)
+        // Final skinning matrix = globalTransform * offsetMatrix
+        // This transforms vertices from bind pose to current animated pose
         boneMatrices[i] = globalTransforms[i] * bone.offsetMatrix;
     }
 }

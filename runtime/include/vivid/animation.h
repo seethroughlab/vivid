@@ -60,7 +60,8 @@ struct Bone {
     std::string name;
     int parentIndex = -1;  // -1 for root bones
     glm::mat4 offsetMatrix{1.0f};  // Inverse bind pose (mesh space to bone space)
-    glm::mat4 localTransform{1.0f}; // Default local transform (from parent)
+    glm::mat4 localTransform{1.0f}; // Node's own local transform (bind pose)
+    glm::mat4 preTransform{1.0f};   // Accumulated transforms from non-bone ancestors
 };
 
 /**
@@ -111,6 +112,8 @@ struct AnimationChannel {
     glm::vec3 interpolateScale(float t) const;
     // Get local transform matrix at time t
     glm::mat4 getLocalTransform(float t) const;
+    // Get local transform with bind pose fallback for missing keyframes
+    glm::mat4 getLocalTransformWithFallback(float t, const glm::mat4& bindPose) const;
 };
 
 /**

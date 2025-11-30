@@ -179,28 +179,37 @@ static glm::mat4 aiToGlm(const aiMatrix4x4& m) {
 }
 
 // Build skeleton from scene node hierarchy
+// accumulatedTransform collects transforms from non-bone ancestor nodes
 static void buildSkeletonFromNode(const aiNode* node, const aiScene* scene,
-                                   Skeleton& skeleton, int parentIndex,
+                                   Skeleton& skeleton, int parentBoneIndex,
+                                   const glm::mat4& accumulatedTransform,
                                    const std::unordered_set<std::string>& boneNames) {
     std::string nodeName(node->mName.C_Str());
+    glm::mat4 nodeTransform = aiToGlm(node->mTransformation);
 
     // Only add nodes that are bones (referenced by mesh bones)
     if (boneNames.count(nodeName) > 0) {
         Bone bone;
         bone.name = nodeName;
-        bone.parentIndex = parentIndex;
-        bone.localTransform = aiToGlm(node->mTransformation);
+        bone.parentIndex = parentBoneIndex;
+        // Store accumulated non-bone ancestor transforms separately
+        bone.preTransform = accumulatedTransform;
+        // Store the node's own local transform (used when no animation channel)
+        bone.localTransform = nodeTransform;
         // offsetMatrix will be set when processing meshes
         int boneIndex = skeleton.addBone(bone);
 
-        // Process children with this bone as parent
+        // Process children with this bone as parent, reset accumulated transform
         for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-            buildSkeletonFromNode(node->mChildren[i], scene, skeleton, boneIndex, boneNames);
+            buildSkeletonFromNode(node->mChildren[i], scene, skeleton, boneIndex,
+                                  glm::mat4(1.0f), boneNames);
         }
     } else {
-        // Not a bone, but children might be - pass through parent index
+        // Not a bone - accumulate its transform for child bones
+        glm::mat4 newAccumulated = accumulatedTransform * nodeTransform;
         for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-            buildSkeletonFromNode(node->mChildren[i], scene, skeleton, parentIndex, boneNames);
+            buildSkeletonFromNode(node->mChildren[i], scene, skeleton, parentBoneIndex,
+                                  newAccumulated, boneNames);
         }
     }
 }
@@ -397,7 +406,7 @@ bool loadSkinnedModel(const std::string& path,
     auto boneNames = collectBoneNames(scene);
 
     // Build skeleton hierarchy from node tree
-    buildSkeletonFromNode(scene->mRootNode, scene, skeleton, -1, boneNames);
+    buildSkeletonFromNode(scene->mRootNode, scene, skeleton, -1, glm::mat4(1.0f), boneNames);
 
     // Process all meshes
     for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
@@ -424,14 +433,6 @@ bool loadSkinnedModel(const std::string& path,
               << indices.size() / 3 << " triangles\n";
     std::cout << "[ModelLoader]   " << skeleton.bones.size() << " bones, "
               << animations.size() << " animation(s)\n";
-
-    if (!animations.empty()) {
-        for (const auto& anim : animations) {
-            std::cout << "[ModelLoader]   Animation: \"" << anim.name
-                      << "\" (" << anim.duration << "s, "
-                      << anim.channels.size() << " channels)\n";
-        }
-    }
 
     return true;
 }

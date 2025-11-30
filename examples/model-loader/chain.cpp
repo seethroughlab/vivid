@@ -1,10 +1,12 @@
-// Model Loader Example
-// Demonstrates loading and rendering 3D model files (FBX, OBJ, glTF, etc.)
+// Model Loader Example with Skeletal Animation
+// Demonstrates loading and rendering animated 3D models (FBX, glTF, etc.)
 //
 // Controls:
 //   Mouse X: Camera orbit horizontal
 //   Mouse Y: Camera orbit vertical
 //   Click: Reset camera
+//   Space: Switch animation (if multiple)
+//   P: Pause/resume animation
 
 #include <vivid/vivid.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -12,13 +14,14 @@
 
 using namespace vivid;
 
-// Store mesh and camera globally
-static Mesh3D model;
+// Store skinned mesh and camera globally
+static SkinnedMesh3D model;
 static Mesh3D fallbackCube;
 static Camera3D camera;
 static Texture output;
 static bool loadAttempted = false;
 static float cameraDistance = 3.0f;
+static int currentAnimIndex = 0;
 
 void setup(Chain& chain) {
     chain.setOutput("out");
@@ -42,40 +45,60 @@ void update(Chain& chain, Context& ctx) {
         // Paths are relative to project root (where runtime is invoked from)
         const std::string assetDir = "examples/model-loader/assets/";
 
-        // Try to load the Wolf FBX model (FBX 7.4 binary format works with Assimp)
-        model = ctx.loadMesh(assetDir + "Wolf_One_fbx7.4_binary.fbx");
+        // Try to load the Wolf FBX model with animations
+        model = ctx.loadSkinnedMesh(assetDir + "Wolf_One_fbx7.4_binary.fbx");
 
         // Fallback to other Wolf versions
         if (!model.valid()) {
-            model = ctx.loadMesh(assetDir + "Wolf.fbx");
-        }
-        // Fallback to generic model files
-        if (!model.valid()) {
-            model = ctx.loadMesh(assetDir + "model.obj");
-        }
-        if (!model.valid()) {
-            model = ctx.loadMesh(assetDir + "model.gltf");
+            model = ctx.loadSkinnedMesh(assetDir + "Wolf.fbx");
         }
 
-        if (!model.valid()) {
-            // No model found - create a fallback cube
-            std::cout << "[model-loader] No model found in assets/\n";
-            std::cout << "[model-loader] Supported: FBX, OBJ, glTF, COLLADA, 3DS, etc.\n";
-            fallbackCube = ctx.createCube();
-            cameraDistance = 3.0f;
-        } else {
-            std::cout << "[model-loader] Loaded model with "
+        if (model.valid()) {
+            std::cout << "[model-loader] Loaded skinned model with "
                       << model.vertexCount << " vertices, "
                       << model.indexCount / 3 << " triangles\n";
+            std::cout << "[model-loader] Skeleton: " << model.skeleton.bones.size() << " bones\n";
+            std::cout << "[model-loader] Animations: " << model.animations.size() << "\n";
 
-            // Auto-fit camera to model bounds
-            glm::vec3 center = model.bounds.center();
-            glm::vec3 size = model.bounds.size();
-            float maxDim = std::max({size.x, size.y, size.z});
-            cameraDistance = maxDim * 2.0f;
+            for (size_t i = 0; i < model.animations.size(); ++i) {
+                std::cout << "  [" << i << "] " << model.animations[i].name
+                          << " (" << model.animations[i].duration << "s)\n";
+            }
 
-            camera.target = center;
-            camera.position = center + glm::vec3(0, maxDim * 0.5f, cameraDistance);
+            // Camera for raw vertex positions (no skinning, small scale ~0.1 units)
+            cameraDistance = 1.5f;
+            camera.target = glm::vec3(0, 0, 0);
+            camera.position = glm::vec3(0, 0.5f, cameraDistance);
+        } else {
+            // No skinned model found - create a fallback cube
+            std::cout << "[model-loader] No animated model found in assets/\n";
+            std::cout << "[model-loader] Supported: FBX, glTF with animations\n";
+            fallbackCube = ctx.createCube();
+            cameraDistance = 3.0f;
+        }
+    }
+
+    // Update animation
+    if (model.valid()) {
+        model.update(ctx.dt());
+    }
+
+    // Handle input
+    if (ctx.wasKeyPressed(Key::Space) && model.hasAnimations()) {
+        // Switch to next animation
+        currentAnimIndex = (currentAnimIndex + 1) % static_cast<int>(model.animations.size());
+        model.playAnimation(currentAnimIndex, true);
+        std::cout << "[model-loader] Playing: " << model.animations[currentAnimIndex].name << "\n";
+    }
+
+    if (ctx.wasKeyPressed(Key::P)) {
+        // Toggle pause
+        if (model.player.isPlaying()) {
+            model.player.pause();
+            std::cout << "[model-loader] Paused\n";
+        } else {
+            model.player.play();
+            std::cout << "[model-loader] Playing\n";
         }
     }
 
@@ -91,22 +114,18 @@ void update(Chain& chain, Context& ctx) {
 
     // Reset on click
     if (ctx.wasMousePressed(0)) {
-        if (model.valid()) {
-            glm::vec3 center = model.bounds.center();
-            camera.position = center + glm::vec3(0, cameraDistance * 0.3f, cameraDistance);
-        } else {
-            camera.position = glm::vec3(0, 1, 3);
-        }
+        camera.position = glm::vec3(0, 2, cameraDistance);
     }
 
-    // Create transform (rotate model slowly)
-    float t = ctx.time();
-    glm::mat4 transform = glm::rotate(glm::mat4(1.0f), t * 0.3f, glm::vec3(0, 1, 0));
+    // Identity transform for now (debugging skinning)
+    glm::mat4 transform = glm::mat4(1.0f);
 
     // Render the model (or fallback cube)
     if (model.valid()) {
-        ctx.render3D(model, camera, transform, output, glm::vec4(0.1f, 0.1f, 0.15f, 1.0f));
+        ctx.renderSkinned3D(model, camera, transform, output, glm::vec4(0.1f, 0.1f, 0.15f, 1.0f));
     } else if (fallbackCube.valid()) {
+        float t = ctx.time();
+        transform = glm::rotate(glm::mat4(1.0f), t * 0.3f, glm::vec3(0, 1, 0));
         ctx.render3D(fallbackCube, camera, transform, output, glm::vec4(0.1f, 0.1f, 0.15f, 1.0f));
     }
 

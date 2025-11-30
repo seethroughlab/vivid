@@ -1,6 +1,7 @@
 #pragma once
 #include "types.h"
 #include "graphics3d.h"
+#include "animation.h"
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -15,6 +16,7 @@ struct Shader;
 class Renderer3DImpl;
 class Renderer2DImpl;
 class Renderer3DInstancedImpl;
+class SkinnedMeshRendererImpl;
 
 /**
  * @brief Runtime context providing access to time, textures, shaders, and operator communication.
@@ -568,6 +570,51 @@ public:
 
     /// @}
 
+    /// @name Skeletal Animation
+    /// @{
+
+    /**
+     * @brief Load a skinned mesh with skeleton and animations.
+     * @param path Path to the model file (FBX, glTF, etc.).
+     * @return A valid SkinnedMesh3D if successful, with skeleton and animation data.
+     *
+     * Loads mesh geometry along with:
+     * - Bone hierarchy (skeleton)
+     * - Bone weights per vertex
+     * - Animation clips with keyframes
+     *
+     * Use SkinnedMesh3D::playAnimation() to start animation playback.
+     * Call SkinnedMesh3D::update(deltaTime) each frame before rendering.
+     */
+    SkinnedMesh3D loadSkinnedMesh(const std::string& path);
+
+    /**
+     * @brief Destroy a skinned mesh and free GPU resources.
+     * @param mesh The skinned mesh to destroy.
+     */
+    void destroySkinnedMesh(SkinnedMesh3D& mesh);
+
+    /**
+     * @brief Render a skinned mesh with bone transforms.
+     *
+     * Before calling, ensure the mesh has been updated with current bone matrices:
+     * @code
+     * mesh.update(ctx.deltaTime());  // Updates animation and bone matrices
+     * ctx.renderSkinned3D(mesh, camera, transform, output);
+     * @endcode
+     *
+     * @param mesh The skinned mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform matrix.
+     * @param output Target texture to render into.
+     * @param clearColor Background color (default black).
+     */
+    void renderSkinned3D(SkinnedMesh3D& mesh, const Camera3D& camera,
+                         const glm::mat4& transform, Texture& output,
+                         const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /// @}
+
     /// @name 2D Instanced Rendering
     /// @{
 
@@ -631,6 +678,10 @@ private:
     // 3D instanced rendering support (lazy initialized)
     std::unique_ptr<Renderer3DInstancedImpl> renderer3dInstanced_;
     Renderer3DInstancedImpl& getRenderer3DInstanced();
+
+    // Skinned mesh rendering support (lazy initialized)
+    std::unique_ptr<SkinnedMeshRendererImpl> skinnedMeshRenderer_;
+    SkinnedMeshRendererImpl& getSkinnedMeshRenderer();
 };
 
 } // namespace vivid
