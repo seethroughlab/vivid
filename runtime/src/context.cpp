@@ -422,6 +422,11 @@ void Context::setOutput(const std::string& name, const std::vector<float>& value
     }
 }
 
+void Context::setTextureForNode(const std::string& nodeId, const Texture& tex, const std::string& output) {
+    // Store directly with the nodeId.output key (no currentNode_ prefix)
+    textureOutputs_[nodeId + "." + output] = tex;
+}
+
 Texture* Context::getInputTexture(const std::string& nodeId, const std::string& output) {
     std::string key = nodeId + "." + output;
     auto it = textureOutputs_.find(key);

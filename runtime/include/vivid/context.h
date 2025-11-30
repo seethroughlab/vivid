@@ -402,6 +402,28 @@ public:
      * @param values The values to store.
      */
     void setOutput(const std::string& name, const std::vector<float>& values);
+
+    /**
+     * @brief Provide a texture to be used as input by a chain node.
+     * @param nodeId The node ID that will consume this texture.
+     * @param tex The texture to provide.
+     * @param output The output name (default "out").
+     *
+     * This allows external textures (e.g., from Nuklear UI, video, etc.)
+     * to be fed into the operator chain. The texture will be accessible
+     * via getInputTexture(nodeId) by other nodes.
+     *
+     * Example:
+     * @code
+     * // In update():
+     * ui.render(ctx, uiTexture);
+     * ctx.setTextureForNode("ui_overlay", uiTexture);
+     *
+     * // In setup():
+     * chain.add<Composite>("final").a("visual").b("ui_overlay");
+     * @endcode
+     */
+    void setTextureForNode(const std::string& nodeId, const Texture& tex, const std::string& output = "out");
     /// @}
 
     /// @name Input Retrieval

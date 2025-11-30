@@ -23,6 +23,7 @@ static const std::vector<AddonInfo> AVAILABLE_ADDONS = {
     {"<vivid/models/", "addons/vivid-models", "vivid_use_models"},
     {"<vivid/storage/", "addons/vivid-storage", "vivid_use_storage"},
     {"<vivid/imgui/", "addons/vivid-imgui", "vivid_use_imgui"},
+    {"<vivid/nuklear/", "addons/vivid-nuklear", "vivid_use_nuklear"},
 };
 
 Compiler::Compiler(const std::string& projectPath)
