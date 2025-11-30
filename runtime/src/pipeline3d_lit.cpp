@@ -930,6 +930,12 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         albedo *= pow(albedoSample, vec3f(2.2));
     }
 
+    // DEBUG: Set to true to visualize albedo directly
+    let debugAlbedo = false;
+    if (debugAlbedo) {
+        return vec4f(albedo, 1.0);
+    }
+
     // Metallic-Roughness map (glTF convention: G=roughness, B=metallic)
     if ((material.textureFlags & HAS_METALLIC_ROUGHNESS_MAP) != 0u) {
         let mrSample = textureSample(metallicRoughnessMap, textureSampler, in.uv);
@@ -1008,8 +1014,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let envBRDF = textureSample(brdfLUT, brdfSampler, vec2f(NdotV, roughness)).rg;
     let specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
 
+    // IBL intensity (tune this if environment is too bright)
+    let iblIntensity = 0.3;  // Scale down HDR environment
+
     // Combined ambient from IBL
-    let ambient = (kD * diffuse + specular) * ao;
+    let ambient = (kD * diffuse + specular) * ao * iblIntensity;
+
+    // DEBUG: Visualize components
+    let debugMode = 2; // 0=normal, 1=diffuse only, 2=specular only, 3=kD value
+    if (debugMode == 1) {
+        return vec4f(pow(kD * diffuse * ao, vec3f(1.0/2.2)), 1.0);
+    } else if (debugMode == 2) {
+        return vec4f(pow(specular * ao, vec3f(1.0/2.2)), 1.0);
+    } else if (debugMode == 3) {
+        return vec4f(vec3f(kD), 1.0);
+    }
 
     // -----------------------------------------------------------------
     // Direct Lighting
@@ -1877,6 +1896,19 @@ void Pipeline3DLit::renderPBRTexturedWithIBL(const Mesh3D& mesh, const Camera3D&
     wgpuQueueWriteBuffer(queue, lightsBuffer_, 0, &lightsUniform, sizeof(LightsUniform));
 
     TexturedPBRMaterialUniform materialUniform = makeTexturedPBRMaterialUniform(material);
+
+    // Debug: print texture flags once
+    static bool debugPrinted = false;
+    if (!debugPrinted) {
+        std::cout << "[DEBUG] TexturedPBR textureFlags: " << materialUniform.textureFlags << std::endl;
+        std::cout << "  - albedoMap ptr: " << material.albedoMap << std::endl;
+        std::cout << "  - normalMap ptr: " << material.normalMap << std::endl;
+        std::cout << "  - roughnessMap ptr: " << material.roughnessMap << std::endl;
+        std::cout << "  - metallicMap ptr: " << material.metallicMap << std::endl;
+        std::cout << "  - sizeof(TexturedPBRMaterialUniform): " << sizeof(TexturedPBRMaterialUniform) << std::endl;
+        debugPrinted = true;
+    }
+
     wgpuQueueWriteBuffer(queue, materialBuffer_, 0, &materialUniform, sizeof(TexturedPBRMaterialUniform));
 
     // Create bind groups for camera, transform, lights

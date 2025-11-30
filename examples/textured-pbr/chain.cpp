@@ -99,7 +99,7 @@ void update(Chain& chain, Context& ctx) {
 
         brickMaterial.albedo = glm::vec3(1.0f);  // No tint
         brickMaterial.metallic = 0.0f;
-        brickMaterial.roughness = 0.8f;  // Base roughness (will be overridden if map loads)
+        brickMaterial.roughness = 1.0f;  // Will be multiplied by texture
         brickMaterial.ao = 1.0f;
         brickMaterial.normalStrength = 1.0f;
 
@@ -110,6 +110,10 @@ void update(Chain& chain, Context& ctx) {
         if (brickNormal.valid()) {
             brickMaterial.normalMap = &brickNormal;
             std::cout << "  - Normal map loaded\n";
+        }
+        if (brickRoughness.valid()) {
+            brickMaterial.roughnessMap = &brickRoughness;
+            std::cout << "  - Roughness map loaded\n";
         }
         if (brickAO.valid()) {
             brickMaterial.aoMap = &brickAO;
@@ -124,8 +128,8 @@ void update(Chain& chain, Context& ctx) {
         metalMetallic = ctx.loadImageAsTexture("textures/metal/metal_plate_metal_1k.jpg");
 
         metalMaterial.albedo = glm::vec3(1.0f);
-        metalMaterial.metallic = 1.0f;  // Fully metallic
-        metalMaterial.roughness = 0.3f;
+        metalMaterial.metallic = 1.0f;  // Will be multiplied by texture
+        metalMaterial.roughness = 1.0f;  // Will be multiplied by texture
         metalMaterial.ao = 1.0f;
         metalMaterial.normalStrength = 1.0f;
 
@@ -136,6 +140,14 @@ void update(Chain& chain, Context& ctx) {
         if (metalNormal.valid()) {
             metalMaterial.normalMap = &metalNormal;
             std::cout << "  - Normal map loaded\n";
+        }
+        if (metalRoughness.valid()) {
+            metalMaterial.roughnessMap = &metalRoughness;
+            std::cout << "  - Roughness map loaded\n";
+        }
+        if (metalMetallic.valid()) {
+            metalMaterial.metallicMap = &metalMetallic;
+            std::cout << "  - Metallic map loaded\n";
         }
 
         // Try to load IBL environment
