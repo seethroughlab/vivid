@@ -488,31 +488,12 @@ public:
      */
     Mesh3D createCylinder(float radius = 0.5f, float height = 1.0f, int segments = 32);
 
-    /**
-     * @brief Load a mesh from a 3D model file.
-     * @param path Path to the model file.
-     * @return A valid Mesh3D if successful, invalid if load failed.
-     *
-     * Supported formats (via Assimp):
-     * - FBX (.fbx)
-     * - OBJ (.obj)
-     * - glTF/GLB (.gltf, .glb)
-     * - COLLADA (.dae)
-     * - 3DS (.3ds)
-     * - Blender (.blend)
-     * - And 40+ more formats
-     *
-     * All meshes in the file are combined into a single mesh.
-     * Normals and tangents are computed automatically if not present.
-     */
-    Mesh3D loadMesh(const std::string& path);
-
-    /**
-     * @brief Check if a file is a supported 3D model format.
-     * @param path Path to check.
-     * @return true if the extension is a known model format.
-     */
-    static bool isMeshSupported(const std::string& path);
+    // Note: loadMesh() has been moved to the vivid-models addon.
+    // Use vivid::models::parseModel() and ctx.createMesh() instead:
+    //
+    //   #include <vivid/models/model_loader.h>
+    //   auto parsed = vivid::models::parseModel("model.fbx");
+    //   auto mesh = ctx.createMesh(parsed.vertices, parsed.indices);
 
     /**
      * @brief Destroy a mesh and release resources.
@@ -574,19 +555,39 @@ public:
     /// @{
 
     /**
-     * @brief Load a skinned mesh with skeleton and animations.
-     * @param path Path to the model file (FBX, glTF, etc.).
-     * @return A valid SkinnedMesh3D if successful, with skeleton and animation data.
+     * @brief Create a skinned mesh from vertex and index data.
      *
-     * Loads mesh geometry along with:
-     * - Bone hierarchy (skeleton)
-     * - Bone weights per vertex
-     * - Animation clips with keyframes
+     * Use the vivid-models addon to parse model files, then pass the parsed
+     * data to this function to create GPU resources:
      *
-     * Use SkinnedMesh3D::playAnimation() to start animation playback.
-     * Call SkinnedMesh3D::update(deltaTime) each frame before rendering.
+     * @code
+     * // Using vivid-models addon
+     * auto parsed = vivid::models::parseSkinnedModel("model.fbx");
+     * auto mesh = ctx.createSkinnedMesh(parsed.vertices, parsed.indices,
+     *                                    parsed.skeleton, parsed.animations);
+     *
+     * // Set up animation system (from addon)
+     * vivid::models::AnimationSystem animSystem;
+     * animSystem.init(parsed.skeleton, parsed.animations);
+     * animSystem.playAnimation(0, true);
+     *
+     * // In render loop
+     * animSystem.update(ctx.deltaTime());
+     * mesh.boneMatrices = animSystem.getBoneMatrices();
+     * ctx.renderSkinned3D(mesh, camera, transform, output);
+     * @endcode
+     *
+     * @param vertices Skinned vertex data with bone weights.
+     * @param indices Index buffer.
+     * @param skeleton Bone hierarchy (optional, for built-in animation).
+     * @param animations Animation clips (optional, for built-in animation).
+     * @return A valid SkinnedMesh3D ready for rendering.
      */
-    SkinnedMesh3D loadSkinnedMesh(const std::string& path);
+    SkinnedMesh3D createSkinnedMesh(
+        const std::vector<SkinnedVertex3D>& vertices,
+        const std::vector<uint32_t>& indices,
+        const Skeleton& skeleton = {},
+        const std::vector<AnimationClip>& animations = {});
 
     /**
      * @brief Destroy a skinned mesh and free GPU resources.

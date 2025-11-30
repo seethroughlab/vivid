@@ -12,6 +12,19 @@ namespace fs = std::filesystem;
 
 namespace vivid {
 
+// Addon configuration - maps include patterns to addon paths and setup functions
+struct AddonInfo {
+    std::string includePattern;  // Pattern to detect in source (e.g., "<vivid/models/")
+    std::string addonPath;       // Relative path from vivid root (e.g., "addons/vivid-models")
+    std::string setupFunction;   // CMake function to call (e.g., "vivid_use_models")
+};
+
+static const std::vector<AddonInfo> AVAILABLE_ADDONS = {
+    {"<vivid/models/", "addons/vivid-models", "vivid_use_models"},
+    {"<vivid/storage/", "addons/vivid-storage", "vivid_use_storage"},
+    {"<vivid/imgui/", "addons/vivid-imgui", "vivid_use_imgui"},
+};
+
 Compiler::Compiler(const std::string& projectPath)
     : projectPath_(projectPath) {
     // Default build directory is projectPath/build
@@ -96,33 +109,36 @@ CompileResult Compiler::compile() {
     std::string libExt = ".so";
 #endif
 
-    // Search for library in build directory
+    // First try common locations for the operators library
     std::string libPath;
-    for (const auto& entry : fs::recursive_directory_iterator(buildDir_)) {
-        if (entry.is_regular_file()) {
-            std::string path = entry.path().string();
-            if (path.find(libExt) != std::string::npos &&
-                path.find("lib") != std::string::npos) {
-                libPath = path;
-                break;
-            }
+    std::vector<std::string> candidates = {
+        buildDir_ + "/lib/liboperators" + libExt,
+        buildDir_ + "/liboperators" + libExt,
+        buildDir_ + "/operators" + libExt,
+        buildDir_ + "/Release/operators" + libExt,
+        buildDir_ + "/lib/operators" + libExt,
+    };
+
+    for (const auto& candidate : candidates) {
+        if (fs::exists(candidate)) {
+            libPath = candidate;
+            break;
         }
     }
 
+    // Search recursively if not found in common locations
+    // Look specifically for "operators" library to avoid picking up dependency libs
     if (libPath.empty()) {
-        // Try common locations
-        std::vector<std::string> candidates = {
-            buildDir_ + "/lib/liboperators" + libExt,
-            buildDir_ + "/liboperators" + libExt,
-            buildDir_ + "/operators" + libExt,
-            buildDir_ + "/Release/operators" + libExt,
-            buildDir_ + "/lib/operators" + libExt,
-        };
-
-        for (const auto& candidate : candidates) {
-            if (fs::exists(candidate)) {
-                libPath = candidate;
-                break;
+        for (const auto& entry : fs::recursive_directory_iterator(buildDir_)) {
+            if (entry.is_regular_file()) {
+                std::string path = entry.path().string();
+                std::string filename = entry.path().filename().string();
+                // Look for liboperators or operators specifically
+                if (path.find(libExt) != std::string::npos &&
+                    filename.find("operators") != std::string::npos) {
+                    libPath = path;
+                    break;
+                }
             }
         }
     }
@@ -184,6 +200,66 @@ std::vector<std::string> Compiler::findSourceFiles() const {
     return sources;
 }
 
+std::vector<AddonInfo> Compiler::detectAddons() const {
+    std::vector<AddonInfo> detected;
+
+    // Scan source files for addon includes
+    for (const auto& entry : fs::directory_iterator(projectPath_)) {
+        if (!entry.is_regular_file()) continue;
+
+        std::string ext = entry.path().extension().string();
+        if (ext != ".cpp" && ext != ".cc" && ext != ".cxx" && ext != ".h" && ext != ".hpp") continue;
+
+        std::ifstream file(entry.path());
+        if (!file.is_open()) continue;
+
+        std::string line;
+        while (std::getline(file, line)) {
+            // Check for #include directives
+            if (line.find("#include") == std::string::npos) continue;
+
+            for (const auto& addon : AVAILABLE_ADDONS) {
+                if (line.find(addon.includePattern) != std::string::npos) {
+                    // Check if we already added this addon
+                    bool alreadyAdded = false;
+                    for (const auto& d : detected) {
+                        if (d.addonPath == addon.addonPath) {
+                            alreadyAdded = true;
+                            break;
+                        }
+                    }
+                    if (!alreadyAdded) {
+                        detected.push_back(addon);
+                        std::cout << "[Compiler] Detected addon: " << addon.addonPath << "\n";
+                    }
+                }
+            }
+        }
+    }
+
+    return detected;
+}
+
+std::string Compiler::getVividRootDir() const {
+    // Start from project path, go up to find the vivid root (contains addons/)
+    fs::path projectDir(projectPath_);
+
+    std::vector<fs::path> candidates = {
+        projectDir / ".." / "..",  // examples/foo -> vivid root
+        projectDir / "..",
+        projectDir / ".." / ".." / "..",
+    };
+
+    for (const auto& candidate : candidates) {
+        if (fs::exists(candidate / "addons")) {
+            return fs::canonical(candidate).string();
+        }
+    }
+
+    // Fallback
+    return (projectDir / ".." / "..").string();
+}
+
 bool Compiler::generateCMakeLists(std::string& generatedPath) {
     // Find source files
     auto sources = findSourceFiles();
@@ -191,8 +267,12 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
         return false;
     }
 
-    // Get absolute path to project
+    // Detect required addons based on includes
+    auto addons = detectAddons();
+
+    // Get absolute path to project and vivid root
     std::string absoluteProjectPath = fs::canonical(projectPath_).string();
+    std::string vividRoot = getVividRootDir();
 
     // Determine project name from folder
     std::string projectName = fs::path(projectPath_).filename().string();
@@ -229,6 +309,16 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "    )\n";
     cmake << "    FetchContent_MakeAvailable(glm)\n";
     cmake << "endif()\n\n";
+
+    // Include detected addons
+    if (!addons.empty()) {
+        cmake << "# Vivid addons (auto-detected from includes)\n";
+        for (const auto& addon : addons) {
+            cmake << "include(\"" << vividRoot << "/" << addon.addonPath << "/addon.cmake\")\n";
+        }
+        cmake << "\n";
+    }
+
     cmake << "# Source files (auto-detected)\n";
     cmake << "add_library(operators SHARED\n";
     cmake << sourceList;
@@ -239,6 +329,16 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "target_link_libraries(operators PRIVATE\n";
     cmake << "    glm::glm\n";
     cmake << ")\n\n";
+
+    // Apply addon configurations to the operators target
+    if (!addons.empty()) {
+        cmake << "# Apply addon configurations\n";
+        for (const auto& addon : addons) {
+            cmake << addon.setupFunction << "(operators)\n";
+        }
+        cmake << "\n";
+    }
+
     cmake << "set_target_properties(operators PROPERTIES\n";
     cmake << "    OUTPUT_NAME \"operators\"\n";
     cmake << "    LIBRARY_OUTPUT_DIRECTORY \"${CMAKE_BINARY_DIR}/lib\"\n";

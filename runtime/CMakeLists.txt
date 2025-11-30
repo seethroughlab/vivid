@@ -27,9 +27,7 @@ set(RUNTIME_SOURCES
     src/fft.cpp
     src/audioin.cpp
     src/mesh.cpp
-    src/model_loader.cpp
     src/animation.cpp
-    src/ozz_animation.cpp
     src/pipeline3d.cpp
     src/pipeline3d_instanced.cpp
     src/pipeline3d_skinned.cpp
@@ -88,10 +86,6 @@ target_link_libraries(vivid-runtime
     nlohmann_json::nlohmann_json
     efsw
     snappy
-    assimp
-    ozz_animation
-    ozz_animation_offline
-    ozz_base
     ${CMAKE_DL_LIBS}
 )
 

@@ -1,5 +1,5 @@
 // Model Loader Example with Skeletal Animation
-// Demonstrates loading and rendering animated 3D models (FBX, glTF, etc.)
+// Demonstrates loading and rendering animated 3D models using the vivid-models addon
 //
 // Controls:
 //   Mouse X: Camera orbit horizontal
@@ -9,13 +9,16 @@
 //   P: Pause/resume animation
 
 #include <vivid/vivid.h>
+#include <vivid/models/model_loader.h>
+#include <vivid/models/animation_system.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 
 using namespace vivid;
 
-// Store skinned mesh and camera globally
+// Store skinned mesh and animation system
 static SkinnedMesh3D model;
+static models::AnimationSystem animSystem;
 static Mesh3D fallbackCube;
 static Camera3D camera;
 static Texture output;
@@ -45,24 +48,46 @@ void update(Chain& chain, Context& ctx) {
         // Paths are relative to project folder
         const std::string assetDir = "assets/";
 
-        // Try to load the Wolf FBX model with animations
-        model = ctx.loadSkinnedMesh(assetDir + "Wolf_One_fbx7.4_binary.fbx");
+        // Try to load the Wolf FBX model with animations using the vivid-models addon
+        auto parsed = models::parseSkinnedModel(assetDir + "Wolf_One_fbx7.4_binary.fbx");
 
         // Fallback to other Wolf versions
-        if (!model.valid()) {
-            model = ctx.loadSkinnedMesh(assetDir + "Wolf.fbx");
+        if (!parsed.valid()) {
+            parsed = models::parseSkinnedModel(assetDir + "Wolf.fbx");
         }
 
-        if (model.valid()) {
+        if (parsed.valid()) {
+            // Create GPU mesh from parsed data
+            model = ctx.createSkinnedMesh(
+                parsed.vertices,
+                parsed.indices,
+                parsed.skeleton,
+                parsed.animations
+            );
+
+            // Initialize animation system
+            if (animSystem.init(parsed.skeleton, parsed.animations)) {
+                // Auto-play the best animation (skip very short ones)
+                int bestAnim = 0;
+                for (size_t i = 0; i < parsed.animations.size(); ++i) {
+                    if (parsed.animations[i].duration > 1.0f) {
+                        bestAnim = static_cast<int>(i);
+                        break;
+                    }
+                }
+                animSystem.playAnimation(bestAnim, true);
+                currentAnimIndex = bestAnim;
+            }
+
             std::cout << "[model-loader] Loaded skinned model with "
                       << model.vertexCount << " vertices, "
                       << model.indexCount / 3 << " triangles\n";
             std::cout << "[model-loader] Skeleton: " << model.skeleton.bones.size() << " bones\n";
-            std::cout << "[model-loader] Animations: " << model.animations.size() << "\n";
+            std::cout << "[model-loader] Animations: " << animSystem.animationCount() << "\n";
 
-            for (size_t i = 0; i < model.animations.size(); ++i) {
-                std::cout << "  [" << i << "] " << model.animations[i].name
-                          << " (" << model.animations[i].duration << "s)\n";
+            for (size_t i = 0; i < animSystem.animationCount(); ++i) {
+                std::cout << "  [" << i << "] " << animSystem.animationName(i)
+                          << " (" << animSystem.animationDuration(i) << "s)\n";
             }
 
             // Camera for raw vertex positions (no skinning, small scale ~0.1 units)
@@ -78,26 +103,27 @@ void update(Chain& chain, Context& ctx) {
         }
     }
 
-    // Update animation
-    if (model.valid()) {
-        model.update(ctx.dt());
+    // Update animation and copy bone matrices to mesh
+    if (model.valid() && animSystem.valid()) {
+        animSystem.update(ctx.dt());
+        model.boneMatrices = animSystem.getBoneMatrices();
     }
 
     // Handle input
-    if (ctx.wasKeyPressed(Key::Space) && model.hasAnimations()) {
+    if (ctx.wasKeyPressed(Key::Space) && animSystem.animationCount() > 0) {
         // Switch to next animation
-        currentAnimIndex = (currentAnimIndex + 1) % static_cast<int>(model.animations.size());
-        model.playAnimation(currentAnimIndex, true);
-        std::cout << "[model-loader] Playing: " << model.animations[currentAnimIndex].name << "\n";
+        currentAnimIndex = (currentAnimIndex + 1) % static_cast<int>(animSystem.animationCount());
+        animSystem.playAnimation(currentAnimIndex, true);
+        std::cout << "[model-loader] Playing: " << animSystem.animationName(currentAnimIndex) << "\n";
     }
 
     if (ctx.wasKeyPressed(Key::P)) {
         // Toggle pause
-        if (model.player.isPlaying()) {
-            model.player.pause();
+        if (animSystem.isPlaying()) {
+            animSystem.pause();
             std::cout << "[model-loader] Paused\n";
         } else {
-            model.player.play();
+            animSystem.resume();
             std::cout << "[model-loader] Playing\n";
         }
     }

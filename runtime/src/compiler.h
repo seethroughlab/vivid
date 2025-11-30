@@ -11,6 +11,9 @@ struct CompileResult {
     std::string buildOutput;     // stdout from build
 };
 
+// Forward declaration for addon detection
+struct AddonInfo;
+
 class Compiler {
 public:
     // projectPath: path to the user's vivid project directory
@@ -34,11 +37,17 @@ private:
     // Find source files (.cpp, .cc, .cxx) in project directory
     std::vector<std::string> findSourceFiles() const;
 
+    // Detect addons based on #include directives in source files
+    std::vector<AddonInfo> detectAddons() const;
+
     // Generate CMakeLists.txt for project, returns path to generated file
     bool generateCMakeLists(std::string& generatedPath);
 
     // Locate vivid headers relative to project
     std::string getVividIncludeDir() const;
+
+    // Locate vivid root directory (contains addons/)
+    std::string getVividRootDir() const;
 
     std::string projectPath_;
     std::string buildDir_;

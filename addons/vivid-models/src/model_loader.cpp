@@ -1,4 +1,4 @@
-#include "model_loader.h"
+#include <vivid/models/model_loader.h>
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <unordered_set>
 
-namespace vivid {
+namespace vivid::models {
 
 // Supported file extensions
 static const std::vector<std::string> SUPPORTED_EXTENSIONS = {
@@ -18,7 +18,7 @@ static const std::vector<std::string> SUPPORTED_EXTENSIONS = {
     ".pk3", ".raw", ".ter", ".xml"
 };
 
-bool isModelSupported(const std::string& path) {
+bool isFormatSupported(const std::string& path) {
     size_t dotPos = path.rfind('.');
     if (dotPos == std::string::npos) return false;
 
@@ -31,23 +31,28 @@ bool isModelSupported(const std::string& path) {
     return false;
 }
 
-std::vector<std::string> getSupportedModelExtensions() {
+std::vector<std::string> getSupportedExtensions() {
     return SUPPORTED_EXTENSIONS;
 }
 
-// Process a single Assimp mesh
+// Convert Assimp matrix to GLM
+static glm::mat4 aiToGlm(const aiMatrix4x4& m) {
+    return glm::mat4(
+        m.a1, m.b1, m.c1, m.d1,
+        m.a2, m.b2, m.c2, m.d2,
+        m.a3, m.b3, m.c3, m.d3,
+        m.a4, m.b4, m.c4, m.d4
+    );
+}
+
+// Process a single Assimp mesh for static models
 static void processMesh(const aiMesh* mesh, const aiMatrix4x4& transform,
                         std::vector<Vertex3D>& vertices,
                         std::vector<uint32_t>& indices) {
     uint32_t baseIndex = static_cast<uint32_t>(vertices.size());
 
     // Convert transform to column-major for GLM
-    glm::mat4 mat(
-        transform.a1, transform.b1, transform.c1, transform.d1,
-        transform.a2, transform.b2, transform.c2, transform.d2,
-        transform.a3, transform.b3, transform.c3, transform.d3,
-        transform.a4, transform.b4, transform.c4, transform.d4
-    );
+    glm::mat4 mat = aiToGlm(transform);
     glm::mat3 normalMat = glm::transpose(glm::inverse(glm::mat3(mat)));
 
     // Process vertices
@@ -80,11 +85,9 @@ static void processMesh(const aiMesh* mesh, const aiMatrix4x4& transform,
             aiVector3D tan = mesh->mTangents[i];
             aiVector3D bitan = mesh->mBitangents[i];
 
-            // Transform tangent
             glm::vec3 t = glm::normalize(normalMat * glm::vec3(tan.x, tan.y, tan.z));
             glm::vec3 b = glm::normalize(normalMat * glm::vec3(bitan.x, bitan.y, bitan.z));
 
-            // Calculate handedness
             float handedness = (glm::dot(glm::cross(vertex.normal, t), b) < 0.0f) ? -1.0f : 1.0f;
             vertex.tangent = glm::vec4(t, handedness);
         } else {
@@ -97,121 +100,64 @@ static void processMesh(const aiMesh* mesh, const aiMatrix4x4& transform,
     // Process indices
     for (unsigned int i = 0; i < mesh->mNumFaces; ++i) {
         const aiFace& face = mesh->mFaces[i];
-        // Assimp triangulates by default with aiProcess_Triangulate
         for (unsigned int j = 0; j < face.mNumIndices; ++j) {
             indices.push_back(baseIndex + face.mIndices[j]);
         }
     }
 }
 
-// Recursively process nodes
+// Recursively process nodes for static models
 static void processNode(const aiNode* node, const aiScene* scene,
                         const aiMatrix4x4& parentTransform,
                         std::vector<Vertex3D>& vertices,
                         std::vector<uint32_t>& indices) {
-    // Combine transforms
     aiMatrix4x4 nodeTransform = parentTransform * node->mTransformation;
 
-    // Process all meshes in this node
     for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
         const aiMesh* mesh = scene->mMeshes[node->mMeshes[i]];
         processMesh(mesh, nodeTransform, vertices, indices);
     }
 
-    // Process children
     for (unsigned int i = 0; i < node->mNumChildren; ++i) {
         processNode(node->mChildren[i], scene, nodeTransform, vertices, indices);
     }
 }
 
-bool loadModel(const std::string& path,
-               std::vector<Vertex3D>& vertices,
-               std::vector<uint32_t>& indices) {
-    vertices.clear();
-    indices.clear();
+ParsedMesh parseModel(const std::string& path) {
+    ParsedMesh result;
 
     Assimp::Importer importer;
 
-    // Set import flags for optimal mesh processing
     unsigned int flags =
-        aiProcess_Triangulate |           // Triangulate all faces
-        aiProcess_GenNormals |            // Generate normals if missing
-        aiProcess_CalcTangentSpace |      // Calculate tangents
-        aiProcess_JoinIdenticalVertices | // Optimize vertex count
-        aiProcess_SortByPType |           // Sort by primitive type
-        aiProcess_FlipUVs |               // Flip V coordinate (OpenGL convention)
-        aiProcess_ValidateDataStructure;  // Validate the data
+        aiProcess_Triangulate |
+        aiProcess_GenNormals |
+        aiProcess_CalcTangentSpace |
+        aiProcess_JoinIdenticalVertices |
+        aiProcess_SortByPType |
+        aiProcess_FlipUVs |
+        aiProcess_ValidateDataStructure;
 
     const aiScene* scene = importer.ReadFile(path, flags);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-        std::cerr << "[ModelLoader] Failed to load: " << path << "\n";
-        std::cerr << "[ModelLoader] Error: " << importer.GetErrorString() << "\n";
-        return false;
+        std::cerr << "[vivid-models] Failed to load: " << path << "\n";
+        std::cerr << "[vivid-models] Error: " << importer.GetErrorString() << "\n";
+        return result;
     }
 
-    // Process the scene starting from root node
     aiMatrix4x4 identity;
-    processNode(scene->mRootNode, scene, identity, vertices, indices);
+    processNode(scene->mRootNode, scene, identity, result.vertices, result.indices);
 
-    if (vertices.empty() || indices.empty()) {
-        std::cerr << "[ModelLoader] No geometry found in: " << path << "\n";
-        return false;
+    if (result.vertices.empty() || result.indices.empty()) {
+        std::cerr << "[vivid-models] No geometry found in: " << path << "\n";
+        return ParsedMesh{};
     }
 
-    std::cout << "[ModelLoader] Loaded " << path << "\n";
-    std::cout << "[ModelLoader]   " << vertices.size() << " vertices, "
-              << indices.size() / 3 << " triangles\n";
-    std::cout << "[ModelLoader]   " << scene->mNumMeshes << " mesh(es), "
-              << scene->mNumMaterials << " material(s)\n";
+    std::cout << "[vivid-models] Loaded " << path << "\n";
+    std::cout << "[vivid-models]   " << result.vertices.size() << " vertices, "
+              << result.indices.size() / 3 << " triangles\n";
 
-    return true;
-}
-
-// Convert Assimp matrix to GLM
-static glm::mat4 aiToGlm(const aiMatrix4x4& m) {
-    return glm::mat4(
-        m.a1, m.b1, m.c1, m.d1,
-        m.a2, m.b2, m.c2, m.d2,
-        m.a3, m.b3, m.c3, m.d3,
-        m.a4, m.b4, m.c4, m.d4
-    );
-}
-
-// Build skeleton from scene node hierarchy
-// accumulatedTransform collects transforms from non-bone ancestor nodes
-static void buildSkeletonFromNode(const aiNode* node, const aiScene* scene,
-                                   Skeleton& skeleton, int parentBoneIndex,
-                                   const glm::mat4& accumulatedTransform,
-                                   const std::unordered_set<std::string>& boneNames) {
-    std::string nodeName(node->mName.C_Str());
-    glm::mat4 nodeTransform = aiToGlm(node->mTransformation);
-
-    // Only add nodes that are bones (referenced by mesh bones)
-    if (boneNames.count(nodeName) > 0) {
-        Bone bone;
-        bone.name = nodeName;
-        bone.parentIndex = parentBoneIndex;
-        // Store accumulated non-bone ancestor transforms separately
-        bone.preTransform = accumulatedTransform;
-        // Store the node's own local transform (used when no animation channel)
-        bone.localTransform = nodeTransform;
-        // offsetMatrix will be set when processing meshes
-        int boneIndex = skeleton.addBone(bone);
-
-        // Process children with this bone as parent, reset accumulated transform
-        for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-            buildSkeletonFromNode(node->mChildren[i], scene, skeleton, boneIndex,
-                                  glm::mat4(1.0f), boneNames);
-        }
-    } else {
-        // Not a bone - accumulate its transform for child bones
-        glm::mat4 newAccumulated = accumulatedTransform * nodeTransform;
-        for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-            buildSkeletonFromNode(node->mChildren[i], scene, skeleton, parentBoneIndex,
-                                  newAccumulated, boneNames);
-        }
-    }
+    return result;
 }
 
 // Collect all bone names from meshes
@@ -226,35 +172,59 @@ static std::unordered_set<std::string> collectBoneNames(const aiScene* scene) {
     return names;
 }
 
+// Build skeleton from scene node hierarchy
+static void buildSkeletonFromNode(const aiNode* node, const aiScene* scene,
+                                   Skeleton& skeleton, int parentBoneIndex,
+                                   const glm::mat4& accumulatedTransform,
+                                   const std::unordered_set<std::string>& boneNames) {
+    std::string nodeName(node->mName.C_Str());
+    glm::mat4 nodeTransform = aiToGlm(node->mTransformation);
+
+    if (boneNames.count(nodeName) > 0) {
+        Bone bone;
+        bone.name = nodeName;
+        bone.parentIndex = parentBoneIndex;
+        bone.preTransform = accumulatedTransform;
+        bone.localTransform = nodeTransform;
+        int boneIndex = skeleton.addBone(bone);
+
+        for (unsigned int i = 0; i < node->mNumChildren; ++i) {
+            buildSkeletonFromNode(node->mChildren[i], scene, skeleton, boneIndex,
+                                  glm::mat4(1.0f), boneNames);
+        }
+    } else {
+        glm::mat4 newAccumulated = accumulatedTransform * nodeTransform;
+        for (unsigned int i = 0; i < node->mNumChildren; ++i) {
+            buildSkeletonFromNode(node->mChildren[i], scene, skeleton, parentBoneIndex,
+                                  newAccumulated, boneNames);
+        }
+    }
+}
+
 // Process skinned mesh with bone weights
 static void processSkinnedMesh(const aiMesh* mesh, const aiScene* scene,
                                std::vector<SkinnedVertex3D>& vertices,
                                std::vector<uint32_t>& indices,
-                               Skeleton& skeleton,
-                               uint32_t baseVertexIndex) {
+                               Skeleton& skeleton) {
     uint32_t baseIndex = static_cast<uint32_t>(vertices.size());
 
-    // Process vertices (without bone data first)
+    // Process vertices
     for (unsigned int i = 0; i < mesh->mNumVertices; ++i) {
         SkinnedVertex3D vertex;
 
-        // Position
         aiVector3D pos = mesh->mVertices[i];
         vertex.position = glm::vec3(pos.x, pos.y, pos.z);
 
-        // Normal
         if (mesh->HasNormals()) {
             aiVector3D norm = mesh->mNormals[i];
             vertex.normal = glm::vec3(norm.x, norm.y, norm.z);
         }
 
-        // UV
         if (mesh->HasTextureCoords(0)) {
             vertex.uv = glm::vec2(mesh->mTextureCoords[0][i].x,
                                    mesh->mTextureCoords[0][i].y);
         }
 
-        // Tangent
         if (mesh->HasTangentsAndBitangents()) {
             aiVector3D tan = mesh->mTangents[i];
             aiVector3D bitan = mesh->mBitangents[i];
@@ -274,7 +244,6 @@ static void processSkinnedMesh(const aiMesh* mesh, const aiScene* scene,
         const aiBone* bone = mesh->mBones[b];
         std::string boneName(bone->mName.C_Str());
 
-        // Find or add bone to skeleton
         int boneIndex = skeleton.findBone(boneName);
         if (boneIndex < 0) {
             Bone newBone;
@@ -282,11 +251,9 @@ static void processSkinnedMesh(const aiMesh* mesh, const aiScene* scene,
             newBone.offsetMatrix = aiToGlm(bone->mOffsetMatrix);
             boneIndex = skeleton.addBone(newBone);
         } else {
-            // Update offset matrix (inverse bind pose)
             skeleton.bones[boneIndex].offsetMatrix = aiToGlm(bone->mOffsetMatrix);
         }
 
-        // Apply bone weights to vertices
         for (unsigned int w = 0; w < bone->mNumWeights; ++w) {
             unsigned int vertexId = bone->mWeights[w].mVertexId;
             float weight = bone->mWeights[w].mWeight;
@@ -297,7 +264,7 @@ static void processSkinnedMesh(const aiMesh* mesh, const aiScene* scene,
         }
     }
 
-    // Normalize bone weights for all vertices
+    // Normalize bone weights
     for (uint32_t i = baseIndex; i < vertices.size(); ++i) {
         vertices[i].normalizeBoneWeights();
     }
@@ -327,7 +294,6 @@ static void extractAnimations(const aiScene* scene, Skeleton& skeleton,
                                static_cast<float>(anim->mTicksPerSecond) : 25.0f;
         clip.duration = static_cast<float>(anim->mDuration) / clip.ticksPerSecond;
 
-        // Process each channel (bone animation)
         for (unsigned int c = 0; c < anim->mNumChannels; ++c) {
             const aiNodeAnim* channel = anim->mChannels[c];
 
@@ -349,7 +315,6 @@ static void extractAnimations(const aiScene* scene, Skeleton& skeleton,
             for (unsigned int k = 0; k < channel->mNumRotationKeys; ++k) {
                 const aiQuatKey& key = channel->mRotationKeys[k];
                 float time = static_cast<float>(key.mTime) / clip.ticksPerSecond;
-                // Assimp uses wxyz order, GLM uses wxyz as well
                 animChannel.rotationKeys.push_back({
                     time,
                     glm::quat(key.mValue.w, key.mValue.x, key.mValue.y, key.mValue.z)
@@ -373,68 +338,59 @@ static void extractAnimations(const aiScene* scene, Skeleton& skeleton,
     }
 }
 
-bool loadSkinnedModel(const std::string& path,
-                      std::vector<SkinnedVertex3D>& vertices,
-                      std::vector<uint32_t>& indices,
-                      Skeleton& skeleton,
-                      std::vector<AnimationClip>& animations) {
-    vertices.clear();
-    indices.clear();
-    skeleton = Skeleton{};
-    animations.clear();
+ParsedSkinnedMesh parseSkinnedModel(const std::string& path) {
+    ParsedSkinnedMesh result;
 
     Assimp::Importer importer;
 
-    // Import flags - don't limit bone weights for animation
     unsigned int flags =
         aiProcess_Triangulate |
         aiProcess_GenNormals |
         aiProcess_CalcTangentSpace |
-        aiProcess_LimitBoneWeights |      // Limit to 4 bones per vertex
+        aiProcess_LimitBoneWeights |
         aiProcess_FlipUVs |
         aiProcess_ValidateDataStructure;
 
     const aiScene* scene = importer.ReadFile(path, flags);
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-        std::cerr << "[ModelLoader] Failed to load: " << path << "\n";
-        std::cerr << "[ModelLoader] Error: " << importer.GetErrorString() << "\n";
-        return false;
+        std::cerr << "[vivid-models] Failed to load: " << path << "\n";
+        std::cerr << "[vivid-models] Error: " << importer.GetErrorString() << "\n";
+        return result;
     }
 
-    // Collect bone names first
+    // Collect bone names
     auto boneNames = collectBoneNames(scene);
 
-    // Build skeleton hierarchy from node tree
-    buildSkeletonFromNode(scene->mRootNode, scene, skeleton, -1, glm::mat4(1.0f), boneNames);
+    // Build skeleton hierarchy
+    buildSkeletonFromNode(scene->mRootNode, scene, result.skeleton, -1, glm::mat4(1.0f), boneNames);
 
     // Process all meshes
     for (unsigned int m = 0; m < scene->mNumMeshes; ++m) {
         const aiMesh* mesh = scene->mMeshes[m];
-        uint32_t baseVertex = static_cast<uint32_t>(vertices.size());
-        processSkinnedMesh(mesh, scene, vertices, indices, skeleton, baseVertex);
+        processSkinnedMesh(mesh, scene, result.vertices, result.indices, result.skeleton);
     }
 
     // Extract animations
-    extractAnimations(scene, skeleton, animations);
+    extractAnimations(scene, result.skeleton, result.animations);
 
     // Link animation channels to skeleton
-    for (auto& clip : animations) {
-        clip.linkToSkeleton(skeleton);
+    for (auto& clip : result.animations) {
+        clip.linkToSkeleton(result.skeleton);
     }
 
-    if (vertices.empty()) {
-        std::cerr << "[ModelLoader] No geometry found in: " << path << "\n";
-        return false;
+    if (result.vertices.empty()) {
+        std::cerr << "[vivid-models] No geometry found in: " << path << "\n";
+        return ParsedSkinnedMesh{};
     }
 
-    std::cout << "[ModelLoader] Loaded skinned model: " << path << "\n";
-    std::cout << "[ModelLoader]   " << vertices.size() << " vertices, "
-              << indices.size() / 3 << " triangles\n";
-    std::cout << "[ModelLoader]   " << skeleton.bones.size() << " bones, "
-              << animations.size() << " animation(s)\n";
+    std::cout << "[vivid-models] Loaded skinned model: " << path << "\n";
+    std::cout << "[vivid-models]   " << result.vertices.size() << " vertices, "
+              << result.indices.size() / 3 << " triangles\n";
+    std::cout << "[vivid-models]   " << result.skeleton.bones.size() << " bones, "
+              << result.animations.size() << " animation(s)\n";
 
-    return true;
+    return result;
 }
 
-} // namespace vivid
+} // namespace vivid::models

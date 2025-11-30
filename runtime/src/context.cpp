@@ -5,12 +5,10 @@
 #include "video_loader.h"
 #include "camera_capture.h"
 #include "mesh.h"
-#include "model_loader.h"
 #include "pipeline3d.h"
 #include "pipeline3d_instanced.h"
 #include "pipeline3d_skinned.h"
 #include "pipeline2d.h"
-#include "ozz_animation.h"
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
@@ -863,22 +861,12 @@ Mesh3D Context::createCylinder(float radius, float height, int segments) {
     return createMesh(vertices, indices);
 }
 
-Mesh3D Context::loadMesh(const std::string& path) {
-    std::string resolvedPath = resolvePath(path);
-    std::vector<Vertex3D> vertices;
-    std::vector<uint32_t> indices;
-
-    if (!loadModel(resolvedPath, vertices, indices)) {
-        std::cerr << "[Context] Failed to load mesh: " << resolvedPath << "\n";
-        return Mesh3D{};
-    }
-
-    return createMesh(vertices, indices);
-}
-
-bool Context::isMeshSupported(const std::string& path) {
-    return isModelSupported(path);
-}
+// Note: loadMesh() has been moved to the vivid-models addon.
+// Use vivid::models::parseModel() and ctx.createMesh() instead.
+//
+// Example:
+//   auto parsed = vivid::models::parseModel("model.fbx");
+//   auto mesh = ctx.createMesh(parsed.vertices, parsed.indices);
 
 void Context::destroyMesh(Mesh3D& mesh) {
     if (mesh.handle) {
@@ -952,15 +940,15 @@ SkinnedMeshRendererImpl& Context::getSkinnedMeshRenderer() {
     return *skinnedMeshRenderer_;
 }
 
-SkinnedMesh3D Context::loadSkinnedMesh(const std::string& path) {
-    std::string resolvedPath = resolvePath(path);
+SkinnedMesh3D Context::createSkinnedMesh(
+        const std::vector<SkinnedVertex3D>& vertices,
+        const std::vector<uint32_t>& indices,
+        const Skeleton& skeleton,
+        const std::vector<AnimationClip>& animations) {
     SkinnedMesh3D result;
 
-    std::vector<SkinnedVertex3D> vertices;
-    std::vector<uint32_t> indices;
-
-    if (!loadSkinnedModel(resolvedPath, vertices, indices, result.skeleton, result.animations)) {
-        std::cerr << "[Context] Failed to load skinned mesh: " << resolvedPath << "\n";
+    if (vertices.empty() || indices.empty()) {
+        std::cerr << "[Context] Cannot create skinned mesh: empty vertex or index data\n";
         return result;
     }
 
@@ -971,42 +959,30 @@ SkinnedMesh3D Context::loadSkinnedMesh(const std::string& path) {
         result.vertexCount = gpuMesh->vertexCount;
         result.indexCount = gpuMesh->indexCount;
 
+        // Copy skeleton and animations
+        result.skeleton = skeleton;
+        result.animations = animations;
+
         // Link animations to skeleton
         for (auto& clip : result.animations) {
             clip.linkToSkeleton(result.skeleton);
         }
 
         // Initialize bone matrices to identity
-        result.boneMatrices.resize(result.skeleton.bones.size(), glm::mat4(1.0f));
-
-        // Create ozz animation system
-        auto* ozzSystem = new OzzAnimationSystem();
-        if (ozzSystem->buildSkeleton(result.skeleton)) {
-            // Build all animations (pass original index for index mapping)
-            for (size_t i = 0; i < result.animations.size(); ++i) {
-                ozzSystem->buildAnimation(result.animations[i], result.skeleton, static_cast<int>(i));
-            }
-            result.ozzSystem = ozzSystem;
-            std::cout << "[Context] Using ozz-animation for " << result.skeleton.bones.size()
-                      << " bones, " << result.animations.size() << " animations\n";
-        } else {
-            std::cerr << "[Context] Failed to build ozz skeleton, using fallback animation\n";
-            delete ozzSystem;
+        if (!result.skeleton.bones.empty()) {
+            result.boneMatrices.resize(result.skeleton.bones.size(), glm::mat4(1.0f));
         }
 
-        // Auto-play a good animation if available (skip very short ones)
+        std::cout << "[Context] Created skinned mesh: "
+                  << vertices.size() << " vertices, "
+                  << indices.size() / 3 << " triangles";
+        if (!result.skeleton.bones.empty()) {
+            std::cout << ", " << result.skeleton.bones.size() << " bones";
+        }
         if (!result.animations.empty()) {
-            int bestAnim = 0;
-            for (size_t i = 0; i < result.animations.size(); ++i) {
-                if (result.animations[i].duration > 1.0f) {
-                    bestAnim = static_cast<int>(i);
-                    break;
-                }
-            }
-            result.playAnimation(bestAnim, true);
-            std::cout << "[Context] Auto-playing animation " << bestAnim << ": "
-                      << result.animations[bestAnim].name << "\n";
+            std::cout << ", " << result.animations.size() << " animation(s)";
         }
+        std::cout << "\n";
     } else {
         delete gpuMesh;
     }
@@ -1015,10 +991,6 @@ SkinnedMesh3D Context::loadSkinnedMesh(const std::string& path) {
 }
 
 void Context::destroySkinnedMesh(SkinnedMesh3D& mesh) {
-    if (mesh.ozzSystem) {
-        delete mesh.ozzSystem;
-        mesh.ozzSystem = nullptr;
-    }
     if (mesh.handle) {
         auto* gpuMesh = static_cast<SkinnedMeshGPU*>(mesh.handle);
         getSkinnedMeshRenderer().destroyMesh(*gpuMesh);
@@ -1034,15 +1006,9 @@ void Context::renderSkinned3D(SkinnedMesh3D& mesh, const Camera3D& camera,
                                const glm::vec4& clearColor) {
     if (!mesh.valid()) return;
 
-    // If using ozz, sample the animation to compute bone matrices
-    if (mesh.ozzSystem && mesh.currentAnimIndex >= 0) {
-        mesh.ozzSystem->sampleByOriginalIndex(
-            mesh.currentAnimIndex,
-            mesh.currentTime,
-            mesh.boneMatrices
-        );
-    }
-
+    // Note: Bone matrices should be set by the caller, either via:
+    // - mesh.update(deltaTime) for built-in animation
+    // - mesh.boneMatrices = animSystem.getBoneMatrices() using vivid-models addon
     getSkinnedMeshRenderer().render(mesh, camera, transform, output, clearColor);
 }
 

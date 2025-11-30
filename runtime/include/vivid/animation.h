@@ -162,11 +162,11 @@ private:
     bool loop_ = true;
 };
 
-// Forward declaration for ozz animation system
-class OzzAnimationSystem;
-
 /**
  * @brief Skinned mesh with skeleton and animations.
+ *
+ * For animated meshes, use the vivid-models addon's AnimationSystem
+ * to compute bone matrices, then assign them to boneMatrices before rendering.
  */
 struct SkinnedMesh3D {
     void* handle = nullptr;  // GPU buffer handle
@@ -177,10 +177,7 @@ struct SkinnedMesh3D {
     std::vector<AnimationClip> animations;
     AnimationPlayer player;
 
-    // ozz-animation system (optional, used if available)
-    OzzAnimationSystem* ozzSystem = nullptr;
-
-    // Current bone matrices (computed each frame)
+    // Current bone matrices (set by animation system or addon)
     std::vector<glm::mat4> boneMatrices;
 
     // Current animation state
@@ -215,7 +212,7 @@ struct SkinnedMesh3D {
         }
     }
 
-    // Update animation - implemented in context.cpp to use ozz
+    // Update animation state (time tracking and fallback bone matrix computation)
     void update(float deltaTime);
 };
 

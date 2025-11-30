@@ -201,7 +201,9 @@ void AnimationPlayer::computeBoneMatrices(const Skeleton& skeleton,
     }
 }
 
-// SkinnedMesh3D::update - use ozz if available, otherwise fallback to old system
+// SkinnedMesh3D::update - update animation time and compute bone matrices with fallback system
+// Note: For better animation quality, use the vivid-models addon's AnimationSystem
+// and set boneMatrices directly from animSystem.getBoneMatrices()
 void SkinnedMesh3D::update(float deltaTime) {
     // Update time if playing
     if (playing && currentAnimIndex >= 0) {
@@ -221,14 +223,7 @@ void SkinnedMesh3D::update(float deltaTime) {
         }
     }
 
-    // Use ozz if available
-    if (ozzSystem) {
-        // This is set up and called from context.cpp where OzzAnimationSystem is included
-        // The actual ozz sampling happens in context.cpp
-        return;
-    }
-
-    // Fallback to old animation system
+    // Update using built-in animation player (basic interpolation)
     player.update(deltaTime);
     if (hasSkeleton()) {
         boneMatrices.resize(skeleton.bones.size());
