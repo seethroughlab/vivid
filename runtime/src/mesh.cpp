@@ -496,5 +496,77 @@ void generateTorus(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indic
     }
 }
 
+void generateEllipticTorus(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                           float majorRadiusX, float majorRadiusZ, float minorRadius,
+                           int majorSegments, int minorSegments) {
+    vertices.clear();
+    indices.clear();
+
+    majorSegments = std::max(3, majorSegments);
+    minorSegments = std::max(3, minorSegments);
+
+    const float PI = 3.14159265359f;
+
+    for (int i = 0; i <= majorSegments; ++i) {
+        float u = static_cast<float>(i) / majorSegments;
+        float theta = u * 2.0f * PI;
+        float cosTheta = std::cos(theta);
+        float sinTheta = std::sin(theta);
+
+        // Center of the tube at this major segment (elliptical path)
+        glm::vec3 center = {majorRadiusX * cosTheta, 0.0f, majorRadiusZ * sinTheta};
+
+        // Calculate tangent along ellipse for proper orientation
+        // Derivative of (a*cos(t), 0, b*sin(t)) = (-a*sin(t), 0, b*cos(t))
+        glm::vec3 tangent = glm::normalize(glm::vec3(-majorRadiusX * sinTheta, 0.0f, majorRadiusZ * cosTheta));
+
+        // Normal to the ellipse path (outward from center in XZ plane)
+        glm::vec3 pathNormal = glm::normalize(glm::vec3(cosTheta / majorRadiusX, 0.0f, sinTheta / majorRadiusZ));
+        pathNormal = glm::normalize(pathNormal);  // Re-normalize for numerical stability
+
+        for (int j = 0; j <= minorSegments; ++j) {
+            float v = static_cast<float>(j) / minorSegments;
+            float phi = v * 2.0f * PI;
+            float cosPhi = std::cos(phi);
+            float sinPhi = std::sin(phi);
+
+            Vertex3D vert;
+
+            // Normal pointing outward from tube center
+            // Combine path normal (outward in XZ) with up vector for tube cross-section
+            glm::vec3 normal = pathNormal * cosPhi + glm::vec3(0.0f, 1.0f, 0.0f) * sinPhi;
+            vert.normal = glm::normalize(normal);
+
+            // Position: center + normal * minorRadius
+            vert.position = center + vert.normal * minorRadius;
+
+            vert.uv = {u, v};
+
+            // Tangent: direction along the major ellipse
+            vert.tangent = glm::vec4(tangent, 1.0f);
+
+            vertices.push_back(vert);
+        }
+    }
+
+    // Generate indices
+    int vertsPerRow = minorSegments + 1;
+    for (int i = 0; i < majorSegments; ++i) {
+        for (int j = 0; j < minorSegments; ++j) {
+            uint32_t current = i * vertsPerRow + j;
+            uint32_t next = current + vertsPerRow;
+
+            // CCW winding for front faces (outward normals)
+            indices.push_back(current);
+            indices.push_back(current + 1);
+            indices.push_back(next);
+
+            indices.push_back(current + 1);
+            indices.push_back(next + 1);
+            indices.push_back(next);
+        }
+    }
+}
+
 } // namespace primitives
 } // namespace vivid

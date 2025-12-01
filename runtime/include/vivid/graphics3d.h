@@ -149,6 +149,11 @@ void generateTorus(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indic
                    float majorRadius = 0.5f, float minorRadius = 0.2f,
                    int majorSegments = 32, int minorSegments = 16);
 
+void generateEllipticTorus(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                           float majorRadiusX = 0.6f, float majorRadiusZ = 0.4f,
+                           float minorRadius = 0.15f,
+                           int majorSegments = 32, int minorSegments = 16);
+
 } // namespace primitives
 
 // ============================================================================

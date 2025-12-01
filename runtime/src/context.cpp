@@ -880,6 +880,13 @@ Mesh3D Context::createTorus(float majorRadius, float minorRadius) {
     return createMesh(vertices, indices);
 }
 
+Mesh3D Context::createEllipticTorus(float majorRadiusX, float majorRadiusZ, float minorRadius) {
+    std::vector<Vertex3D> vertices;
+    std::vector<uint32_t> indices;
+    primitives::generateEllipticTorus(vertices, indices, majorRadiusX, majorRadiusZ, minorRadius);
+    return createMesh(vertices, indices);
+}
+
 Mesh3D Context::createCylinder(float radius, float height, int segments) {
     std::vector<Vertex3D> vertices;
     std::vector<uint32_t> indices;

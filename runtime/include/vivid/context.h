@@ -504,6 +504,16 @@ public:
     Mesh3D createTorus(float majorRadius = 0.5f, float minorRadius = 0.2f);
 
     /**
+     * @brief Create an elliptic torus mesh.
+     * @param majorRadiusX Distance from center to tube center along X axis.
+     * @param majorRadiusZ Distance from center to tube center along Z axis.
+     * @param minorRadius Tube radius.
+     * @return An elliptic torus mesh centered at origin.
+     */
+    Mesh3D createEllipticTorus(float majorRadiusX = 0.6f, float majorRadiusZ = 0.4f,
+                               float minorRadius = 0.15f);
+
+    /**
      * @brief Create a cylinder mesh.
      * @param radius Cylinder radius.
      * @param height Cylinder height.

@@ -679,8 +679,14 @@ Build and test each operator individually:
 - [ ] `examples/lighting-demo` with HDR environment
 
 #### Material Operators
-- [ ] `PhongMaterial` — ambient, diffuse, specular, shininess
-- [ ] `PBRMaterial` — albedo, metallic, roughness, AO, texture maps
+- [x] `PhongMat` — ambient, diffuse, specular, shininess, emissive (`operators/phong_material.cpp`)
+  - [x] Fluent API with presets: matte(), shiny(), metallic()
+  - [x] getMaterial() accessor for use with ctx.render3DPhong()
+- [x] `PBRMat` — albedo, metallic, roughness, AO, emissive (`operators/pbr_material.cpp`)
+  - [x] Fluent API with material presets
+  - [x] Metal presets: gold(), silver(), copper(), iron(), aluminum(), chrome()
+  - [x] Dielectric presets: plastic(), rubber(), glass(), ceramic(), wood(), fabric(), skin()
+  - [x] getMaterial() accessor for use with ctx.render3DPBR()
 
 #### Render Operator
 - [x] `Render3D` — Combines geometry + material + lights + camera → texture — `operators/render3d.cpp`

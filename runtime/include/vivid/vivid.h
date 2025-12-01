@@ -56,3 +56,7 @@
 #include "operators/switch.h"
 #include "operators/passthrough.h"
 #include "operators/reference.h"
+
+// Built-in Operators - 3D Materials
+#include "operators/pbr_material.h"
+#include "operators/phong_material.h"
