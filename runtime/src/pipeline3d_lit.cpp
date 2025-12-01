@@ -1516,7 +1516,9 @@ void Pipeline3DLit::beginRenderPass(Texture& output, const glm::vec4& clearColor
 
     WGPURenderPassDepthStencilAttachment depthAttachment = {};
     depthAttachment.view = depthView_;
-    depthAttachment.depthLoadOp = shouldClear ? WGPULoadOp_Clear : WGPULoadOp_Load;
+    // Always clear depth buffer to 1.0f - noClear convention only applies to color
+    // This is necessary because 2D shaders don't use depth, so loading would bring garbage
+    depthAttachment.depthLoadOp = WGPULoadOp_Clear;
     depthAttachment.depthStoreOp = WGPUStoreOp_Store;
     depthAttachment.depthClearValue = 1.0f;
     depthAttachment.depthReadOnly = false;

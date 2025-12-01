@@ -184,6 +184,11 @@ int main(int argc, char* argv[]) {
         vivid::Compiler compiler(projectPath);
         vivid::Graph graph;
 
+        // Enable progress bar for compilation
+        compiler.setProgressCallback([](int phase, int percent, const std::string& file) {
+            // Progress bar is rendered inside runCommand, callback enables the feature
+        });
+
         // Chain API support
         std::unique_ptr<vivid::Chain> chain;
         bool usingChainAPI = false;

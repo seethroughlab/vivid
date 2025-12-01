@@ -157,7 +157,13 @@ void update(Chain& chain, Context& ctx) {
 
     // Animation
     float t = ctx.time();
-    glm::vec4 clearColor(0.08f, 0.08f, 0.12f, 1.0f);
+
+    // Render gradient background (dark vignette effect)
+    Context::ShaderParams bgParams;
+    ctx.runShader(ctx.projectPath() + "/gradient.wgsl", nullptr, output, bgParams);
+
+    // Use negative alpha to signal "don't clear" - render 3D on top of gradient
+    glm::vec4 noClear(0.0f, 0.0f, 0.0f, -1.0f);
 
     // Render skull - slowly rotating
     if (skull.valid()) {
@@ -171,14 +177,14 @@ void update(Chain& chain, Context& ctx) {
 
         if (hasIBL && skullTexture.valid()) {
             // Use textured PBR with IBL
-            ctx.render3DPBR(skull, camera, skullTransform, skullMaterial, lighting, iblEnvironment, output, clearColor);
+            ctx.render3DPBR(skull, camera, skullTransform, skullMaterial, lighting, iblEnvironment, output, noClear);
         } else {
             // Fallback to non-textured PBR
             PBRMaterial fallbackMat;
             fallbackMat.albedo = glm::vec3(0.9f, 0.85f, 0.75f);  // Bone color
             fallbackMat.roughness = 0.7f;
             fallbackMat.metallic = 0.0f;
-            ctx.render3DPBR(skull, camera, skullTransform, fallbackMat, lighting, output, clearColor);
+            ctx.render3DPBR(skull, camera, skullTransform, fallbackMat, lighting, output, noClear);
         }
     } else {
         // Fallback: render a sphere if skull failed to load
@@ -191,7 +197,7 @@ void update(Chain& chain, Context& ctx) {
         fallback.roughness = 0.5f;
         fallback.metallic = 0.0f;
 
-        ctx.render3DPBR(sphere, camera, sphereTransform, fallback, lighting, output, clearColor);
+        ctx.render3DPBR(sphere, camera, sphereTransform, fallback, lighting, output, noClear);
     }
 
     ctx.setOutput("out", output);

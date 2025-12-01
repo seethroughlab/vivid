@@ -7,6 +7,7 @@
 #include <fstream>
 #include <sstream>
 #include <algorithm>
+#include <regex>
 
 namespace fs = std::filesystem;
 
@@ -78,7 +79,8 @@ CompileResult Compiler::compile() {
                            "-DVIVID_INCLUDE_DIR=\"" + vividIncludeDir + "\" 2>&1";
 
     std::string configOutput, configError;
-    if (!runCommand(configCmd, configOutput, configError)) {
+    // Phase 0 = configure
+    if (!runCommand(configCmd, configOutput, configError, progressCallback_ ? 0 : -1)) {
         result.errorOutput = "CMake configure failed:\n" + configOutput;
         lastError_ = result.errorOutput;
         std::cerr << "[Compiler] " << result.errorOutput << "\n";
@@ -92,7 +94,8 @@ CompileResult Compiler::compile() {
     std::string buildCmd = "cmake --build \"" + buildDir_ + "\" --config Release 2>&1";
 
     std::string buildOutput, buildError;
-    if (!runCommand(buildCmd, buildOutput, buildError)) {
+    // Phase 1 = build
+    if (!runCommand(buildCmd, buildOutput, buildError, progressCallback_ ? 1 : -1)) {
         result.errorOutput = "CMake build failed:\n" + buildOutput;
         lastError_ = result.errorOutput;
         std::cerr << "[Compiler] " << result.errorOutput << "\n";
@@ -159,7 +162,30 @@ CompileResult Compiler::compile() {
     return result;
 }
 
-bool Compiler::runCommand(const std::string& command, std::string& output, std::string& error) {
+// Helper to render a progress bar in terminal
+static void renderProgressBar(int percent, const std::string& phase, const std::string& file) {
+    const int barWidth = 30;
+    int filled = (percent * barWidth) / 100;
+
+    // Build progress bar string
+    std::string bar = "[";
+    for (int i = 0; i < barWidth; ++i) {
+        if (i < filled) bar += "█";
+        else bar += "░";
+    }
+    bar += "]";
+
+    // Clear line and print progress
+    std::cout << "\r\033[K";  // Clear line
+    std::cout << "[Compiler] " << phase << " " << bar << " " << percent << "%";
+    if (!file.empty()) {
+        std::cout << " - " << file;
+    }
+    std::cout << std::flush;
+}
+
+bool Compiler::runCommand(const std::string& command, std::string& output, std::string& error,
+                          int phase) {
     std::array<char, 4096> buffer;
     output.clear();
     error.clear();
@@ -171,8 +197,47 @@ bool Compiler::runCommand(const std::string& command, std::string& output, std::
         return false;
     }
 
+    // Regex to parse CMake progress: [ XX%] or [XXX%]
+    std::regex progressRegex(R"(\[\s*(\d+)%\])");
+    // Regex to extract filename from "Building CXX object ... /file.cpp.o"
+    std::regex buildingRegex(R"(Building (?:CXX|C) object .*/([^/]+\.(?:cpp|cc|cxx|c))\.o)");
+
+    std::string phaseName = (phase == 0) ? "Configuring" : "Building";
+    std::string currentLine;
+    int lastPercent = -1;
+    std::string currentFile;
+
     while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
         output += buffer.data();
+        currentLine = buffer.data();
+
+        // Only parse progress if we have a callback or phase is specified
+        if (phase >= 0 && progressCallback_) {
+            std::smatch match;
+
+            // Try to extract percentage
+            if (std::regex_search(currentLine, match, progressRegex)) {
+                int percent = std::stoi(match[1].str());
+
+                // Try to extract filename from build lines
+                std::smatch fileMatch;
+                if (std::regex_search(currentLine, fileMatch, buildingRegex)) {
+                    currentFile = fileMatch[1].str();
+                }
+
+                // Only update if percentage changed
+                if (percent != lastPercent) {
+                    lastPercent = percent;
+                    progressCallback_(phase, percent, currentFile);
+                    renderProgressBar(percent, phaseName, currentFile);
+                }
+            }
+        }
+    }
+
+    // Clear progress line when done
+    if (phase >= 0 && lastPercent >= 0) {
+        std::cout << "\r\033[K" << std::flush;  // Clear the progress line
     }
 
     // Get exit status

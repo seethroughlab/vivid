@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <functional>
 
 namespace vivid {
 
@@ -10,6 +11,9 @@ struct CompileResult {
     std::string errorOutput;     // stderr if compile failed
     std::string buildOutput;     // stdout from build
 };
+
+// Progress callback: phase (0=configure, 1=build), percentage (0-100), current file
+using ProgressCallback = std::function<void(int phase, int percent, const std::string& file)>;
 
 // Forward declaration for addon detection
 struct AddonInfo;
@@ -23,6 +27,9 @@ public:
     // Returns the path to the compiled library on success
     CompileResult compile();
 
+    // Set progress callback for build progress updates
+    void setProgressCallback(ProgressCallback callback) { progressCallback_ = callback; }
+
     // Get/set build directory (default: projectPath/build)
     const std::string& buildDirectory() const { return buildDir_; }
     void setBuildDirectory(const std::string& dir) { buildDir_ = dir; }
@@ -31,8 +38,9 @@ public:
     const std::string& lastError() const { return lastError_; }
 
 private:
-    // Run a shell command and capture output
-    bool runCommand(const std::string& command, std::string& output, std::string& error);
+    // Run a shell command and capture output, with optional progress streaming
+    bool runCommand(const std::string& command, std::string& output, std::string& error,
+                    int phase = -1);  // phase: 0=configure, 1=build, -1=no progress
 
     // Find source files (.cpp, .cc, .cxx) in project directory
     std::vector<std::string> findSourceFiles() const;
@@ -52,6 +60,7 @@ private:
     std::string projectPath_;
     std::string buildDir_;
     std::string lastError_;
+    ProgressCallback progressCallback_;
 };
 
 } // namespace vivid
