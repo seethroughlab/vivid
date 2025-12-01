@@ -606,9 +606,9 @@ Build and test each operator individually:
 **Instancing Path: 2D sprites → 3D geometry → Full instancing**
 
 #### Geometry & Instancing
-- [ ] **Point Sprites** — Render texture at positions from value arrays (2D instancing)
-- [ ] **Tile/Grid** — Repeat texture in grid with per-tile transforms
-- [ ] **Particle System** — Emit/update points with position, velocity, color, life
+- [x] **Point Sprites** — Render circles at positions with patterns (grid, random, circle, spiral) — `operators/pointsprites.cpp`
+- [x] **Tile/Grid** — Repeat texture in grid with per-tile transforms — `operators/tile.cpp`, `shaders/tile.wgsl`
+- [x] **Particle System** — Emit/update particles with position, velocity, color, life — `operators/particles.cpp`
 - [x] 3D primitive generation (cube, sphere, plane, cylinder, torus, cone) — `runtime/src/mesh.cpp`
 - [x] Implement `Geometry` operator base with Vertex3D format (position, normal, UV, tangent) — `runtime/src/mesh.h`
 - [ ] Basic 3D transforms (translate, rotate, scale)
@@ -683,7 +683,7 @@ Build and test each operator individually:
 - [ ] `PBRMaterial` — albedo, metallic, roughness, AO, texture maps
 
 #### Render Operator
-- [ ] `Render3D` — Combines geometry + material + lights + camera → texture
+- [x] `Render3D` — Combines geometry + material + lights + camera → texture — `operators/render3d.cpp`
 
 #### Stencil & Decals
 - [ ] **Stencil Buffer** — Enable stencil testing in render pipeline
