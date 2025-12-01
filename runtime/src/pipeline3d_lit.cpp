@@ -652,7 +652,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let specular = prefilteredColor * (F * envBRDF.x + envBRDF.y);
 
     // Combined ambient from IBL
-    let ambient = (kD * diffuse + specular) * material.ao;
+    // IBL intensity (tune this if environment is too bright)
+    let iblIntensity = 0.3;
+    let ambient = (kD * diffuse + specular) * material.ao * iblIntensity;
 
     // -----------------------------------------------------------------
     // Direct Lighting
@@ -1019,16 +1021,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 
     // Combined ambient from IBL
     let ambient = (kD * diffuse + specular) * ao * iblIntensity;
-
-    // DEBUG: Visualize components
-    let debugMode = 2; // 0=normal, 1=diffuse only, 2=specular only, 3=kD value
-    if (debugMode == 1) {
-        return vec4f(pow(kD * diffuse * ao, vec3f(1.0/2.2)), 1.0);
-    } else if (debugMode == 2) {
-        return vec4f(pow(specular * ao, vec3f(1.0/2.2)), 1.0);
-    } else if (debugMode == 3) {
-        return vec4f(vec3f(kD), 1.0);
-    }
 
     // -----------------------------------------------------------------
     // Direct Lighting
@@ -1896,19 +1888,6 @@ void Pipeline3DLit::renderPBRTexturedWithIBL(const Mesh3D& mesh, const Camera3D&
     wgpuQueueWriteBuffer(queue, lightsBuffer_, 0, &lightsUniform, sizeof(LightsUniform));
 
     TexturedPBRMaterialUniform materialUniform = makeTexturedPBRMaterialUniform(material);
-
-    // Debug: print texture flags once
-    static bool debugPrinted = false;
-    if (!debugPrinted) {
-        std::cout << "[DEBUG] TexturedPBR textureFlags: " << materialUniform.textureFlags << std::endl;
-        std::cout << "  - albedoMap ptr: " << material.albedoMap << std::endl;
-        std::cout << "  - normalMap ptr: " << material.normalMap << std::endl;
-        std::cout << "  - roughnessMap ptr: " << material.roughnessMap << std::endl;
-        std::cout << "  - metallicMap ptr: " << material.metallicMap << std::endl;
-        std::cout << "  - sizeof(TexturedPBRMaterialUniform): " << sizeof(TexturedPBRMaterialUniform) << std::endl;
-        debugPrinted = true;
-    }
-
     wgpuQueueWriteBuffer(queue, materialBuffer_, 0, &materialUniform, sizeof(TexturedPBRMaterialUniform));
 
     // Create bind groups for camera, transform, lights
