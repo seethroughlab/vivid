@@ -704,21 +704,41 @@ Build and test each operator individually:
   - [x] Brightness threshold extraction
   - [x] Multi-pass Gaussian blur on bright areas
   - [x] Additive blend back to source
-- [ ] **Glow** — Per-object glow via alpha channel or mask
+- [x] **Glow** — Per-object glow via alpha channel or mask (`shaders/glow.wgsl`)
 
 #### Color & Tone
 - [x] **Vignette** — Darkened edges effect (`operators/vignette.h`)
-- [ ] **ColorGrade** — LUT-based color grading
-- [ ] **Tonemap** — HDR to SDR mapping (ACES, Reinhard, etc.)
+- [x] **ColorGrade** — Math-based color grading with presets (`shaders/color_grade.wgsl`)
+  - [x] Saturation, contrast, temperature, tint controls
+  - [x] Shadows/midtones/highlights color offsets
+  - [x] Presets: Vintage film, Teal & Orange, Bleach bypass
+- [x] **Tonemap** — HDR to SDR mapping (`shaders/tonemap.wgsl`)
+  - [x] ACES Filmic tone mapping
+  - [x] Reinhard tone mapping
+  - [x] Uncharted 2 (John Hable's formula)
+  - [x] Exposure and gamma controls
 
 #### Distortion
-- [ ] **LensDistortion** — Barrel/pincushion distortion
-- [ ] **LensFlare** — Anamorphic lens flare from bright spots
-- [ ] **FilmGrain** — Animated noise overlay for cinematic look
+- [x] **LensDistortion** — Barrel/pincushion distortion (`shaders/lens_distortion.wgsl`)
+  - [x] Brown-Conrady model (camera calibration style)
+  - [x] Simple polynomial model
+  - [x] Fisheye projection mode
+- [x] **LensFlare** — Anamorphic lens flare from bright spots (`shaders/lens_flare.wgsl`)
+  - [x] Horizontal anamorphic streaks
+  - [x] Circular ghost artifacts
+  - [x] Full cinematic mode combining both
+- [x] **FilmGrain** — Animated noise overlay for cinematic look (`shaders/film_grain.wgsl`)
+  - [x] Configurable intensity, size, speed
+  - [x] Luminance-responsive grain (stronger in midtones)
 
 #### Motion
-- [ ] **MotionBlur** — Per-pixel velocity-based blur
-- [ ] **RadialBlur** — Speed/zoom blur effect
+- [x] **MotionBlur** — Direction/camera motion blur (`shaders/motion_blur.wgsl`)
+  - [x] Directional (linear) blur
+  - [x] Camera shake blur
+  - [x] Simulated object motion (radial from center)
+- [x] **RadialBlur** — Speed/zoom blur effect (`shaders/radial_blur.wgsl`)
+  - [x] Zoom blur (outward from center)
+  - [x] Spin blur (rotational)
 
 ### 12.10 Text, Debug Display & Vector
 
