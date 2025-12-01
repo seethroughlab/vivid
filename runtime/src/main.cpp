@@ -16,6 +16,7 @@
 #include <GLFW/glfw3.h>
 #include <stb_image_write.h>
 #include <iostream>
+#include <fstream>
 #include <cmath>
 #include <chrono>
 #include <algorithm>
@@ -24,6 +25,103 @@
 #include <filesystem>
 
 namespace fs = std::filesystem;
+
+// === PROJECT TEMPLATES ===
+// These are embedded directly so the binary is self-contained
+
+static const char* TEMPLATE_CHAIN_CPP = R"(// See SPEC.md for project description
+#include <vivid/vivid.h>
+using namespace vivid;
+
+// === GLOBALS ===
+// GOAL: Define scene objects here
+
+void setup(Chain& chain) {
+    chain.setOutput("out");
+}
+
+void update(Chain& chain, Context& ctx) {
+    // === SETUP (first frame) ===
+    // GOAL: Create meshes, materials, camera
+
+    // === UPDATE ===
+    // GOAL: Animation and interaction logic
+
+    // === RENDER ===
+    // GOAL: Render the scene
+}
+
+VIVID_CHAIN(setup, update)
+)";
+
+static const char* TEMPLATE_SPEC_MD = R"(# Project Name
+
+## Goal
+Describe what this project should do.
+
+## Done
+- [ ] First task
+
+## Current Focus
+What you're working on now.
+
+## Notes
+Any additional context for the LLM.
+)";
+
+static const char* TEMPLATE_CLAUDE_MD = R"(# Project Context for Claude
+
+## About This Project
+[Describe what this project does]
+
+## Key Files
+- `chain.cpp` - Main chain code
+- `SPEC.md` - Project specification
+
+## Conventions
+- Use `// GOAL:` comments to describe intent
+- Use `// === SECTION ===` to mark code sections
+- Update SPEC.md checkboxes when completing tasks
+)";
+
+// Create a new project from templates
+static int createNewProject(const std::string& projectName) {
+    fs::path projectPath = fs::current_path() / projectName;
+
+    if (fs::exists(projectPath)) {
+        std::cerr << "Error: Directory '" << projectName << "' already exists\n";
+        return 1;
+    }
+
+    try {
+        // Create project directory
+        fs::create_directories(projectPath);
+
+        // Write template files
+        std::ofstream chainFile(projectPath / "chain.cpp");
+        chainFile << TEMPLATE_CHAIN_CPP;
+        chainFile.close();
+
+        std::ofstream specFile(projectPath / "SPEC.md");
+        specFile << TEMPLATE_SPEC_MD;
+        specFile.close();
+
+        std::ofstream claudeFile(projectPath / "CLAUDE.md");
+        claudeFile << TEMPLATE_CLAUDE_MD;
+        claudeFile.close();
+
+        std::cout << "Created new Vivid project: " << projectName << "/\n";
+        std::cout << "  chain.cpp  - Main chain code (edit this!)\n";
+        std::cout << "  SPEC.md    - Project specification\n";
+        std::cout << "  CLAUDE.md  - Context for Claude Code\n";
+        std::cout << "\nTo run: vivid " << projectName << "\n";
+
+        return 0;
+    } catch (const std::exception& e) {
+        std::cerr << "Error creating project: " << e.what() << "\n";
+        return 1;
+    }
+}
 
 // Callback for stb_image_write JPEG encoding to memory
 static void jpegWriteCallback(void* context, void* data, int size) {
@@ -80,8 +178,11 @@ static std::string getSharedAssetsPath(const char* argv0) {
 }
 
 void printUsage(const char* program) {
-    std::cout << "Usage: " << program << " <project_path> [options]\n"
-              << "\nOptions:\n"
+    std::cout << "Usage: " << program << " <command|project_path> [options]\n"
+              << "\nCommands:\n"
+              << "  new <name>      Create a new Vivid project\n"
+              << "  <project_path>  Run an existing project\n"
+              << "\nOptions (for running projects):\n"
               << "  --width <n>     Window width (default: 1280)\n"
               << "  --height <n>    Window height (default: 720)\n"
               << "  --fullscreen    Start in fullscreen mode\n"
@@ -95,6 +196,16 @@ int main(int argc, char* argv[]) {
     std::cerr << std::unitbuf;
 
     std::cout << "Vivid Runtime v0.1.0\n";
+
+    // Handle "new" subcommand
+    if (argc >= 2 && std::string(argv[1]) == "new") {
+        if (argc < 3) {
+            std::cerr << "Error: 'new' command requires a project name\n";
+            std::cerr << "Usage: vivid new <project_name>\n";
+            return 1;
+        }
+        return createNewProject(argv[2]);
+    }
 
     // Parse command line arguments
     int width = 1280;
