@@ -167,6 +167,18 @@ inline TexturedPBRMaterialUniform makeTexturedPBRMaterialUniform(const TexturedP
 }
 
 /**
+ * @brief Stencil modes for lit 3D rendering.
+ *
+ * Used to enable different stencil buffer operations.
+ */
+enum class StencilMode {
+    None,           ///< No stencil operations (default)
+    Write,          ///< Write stencil reference value where rendered
+    TestEqual,      ///< Only render where stencil == reference
+    TestNotEqual    ///< Only render where stencil != reference
+};
+
+/**
  * @brief Lit 3D rendering pipeline supporting Phong and PBR shading.
  *
  * Bind groups:
@@ -242,6 +254,30 @@ public:
                                    const Environment& env,
                                    Texture& output, const glm::vec4& clearColor = {0, 0, 0, 1});
 
+    // ========================================================================
+    // Stencil-enabled rendering methods
+    // ========================================================================
+
+    /**
+     * @brief Render with PBR shading and stencil operations.
+     * @param stencilMode The stencil operation mode.
+     * @param stencilRef The stencil reference value (0-255).
+     */
+    void renderPBRWithStencil(const Mesh3D& mesh, const Camera3D& camera, const glm::mat4& transform,
+                              const PBRMaterial& material, const SceneLighting& lighting,
+                              StencilMode stencilMode, uint8_t stencilRef,
+                              Texture& output, const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
+     * @brief Render with Phong shading and stencil operations.
+     * @param stencilMode The stencil operation mode.
+     * @param stencilRef The stencil reference value (0-255).
+     */
+    void renderPhongWithStencil(const Mesh3D& mesh, const Camera3D& camera, const glm::mat4& transform,
+                                const PhongMaterial& material, const SceneLighting& lighting,
+                                StencilMode stencilMode, uint8_t stencilRef,
+                                Texture& output, const glm::vec4& clearColor = {0, 0, 0, 1});
+
     /**
      * @brief Get the shading model.
      */
@@ -249,13 +285,20 @@ public:
 
 private:
     bool createPipeline(const std::string& shaderSource);
+    bool createStencilPipeline(const std::string& shaderSource, StencilMode mode);
     void beginRenderPass(Texture& output, const glm::vec4& clearColor);
     void endRenderPass();
+    WGPURenderPipeline getStencilPipeline(StencilMode mode);
 
     Renderer* renderer_ = nullptr;
     ShadingModel model_ = ShadingModel::Phong;
 
-    WGPURenderPipeline pipeline_ = nullptr;
+    WGPURenderPipeline pipeline_ = nullptr;  // StencilMode::None
+
+    // Stencil pipeline variants (indexed by StencilMode)
+    static constexpr int STENCIL_MODE_COUNT = 4;
+    WGPURenderPipeline stencilPipelines_[STENCIL_MODE_COUNT] = {nullptr, nullptr, nullptr, nullptr};
+    uint8_t stencilRef_ = 0;  // Current stencil reference for render pass
     WGPUBindGroupLayout cameraLayout_ = nullptr;
     WGPUBindGroupLayout transformLayout_ = nullptr;
     WGPUBindGroupLayout lightsLayout_ = nullptr;

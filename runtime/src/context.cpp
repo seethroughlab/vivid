@@ -9,6 +9,7 @@
 #include "pipeline3d_instanced.h"
 #include "pipeline3d_skinned.h"
 #include "pipeline3d_lit.h"
+#include "pipeline3d_decal.h"
 #include "pipeline2d.h"
 #include "cubemap.h"
 #include <unordered_set>
@@ -1043,6 +1044,29 @@ void Context::destroyEnvironment(Environment& environment) {
     // BRDF LUT is shared/cached, don't destroy it
 
     environment.brdfLUT = nullptr;
+}
+
+// Decal Rendering
+Texture Context::getSceneDepthTexture() {
+    return renderer_.getDepthTexture();
+}
+
+Pipeline3DDecal& Context::getDecalPipeline() {
+    if (!decalPipeline_) {
+        decalPipeline_ = std::make_unique<Pipeline3DDecal>();
+        decalPipeline_->init(renderer_);
+    }
+    return *decalPipeline_;
+}
+
+void Context::renderDecal(const Decal& decal, const Camera3D& camera,
+                          const Texture& depthTexture, Texture& colorOutput) {
+    getDecalPipeline().renderDecal(decal, camera, depthTexture, colorOutput);
+}
+
+void Context::renderDecals(const std::vector<Decal>& decals, const Camera3D& camera,
+                           const Texture& depthTexture, Texture& colorOutput) {
+    getDecalPipeline().renderDecals(decals, camera, depthTexture, colorOutput);
 }
 
 // 2D Instanced Rendering

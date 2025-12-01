@@ -689,10 +689,10 @@ Build and test each operator individually:
 - [x] `Render3D` — Combines geometry + material + lights + camera → texture — `operators/render3d.cpp`
 
 #### Stencil & Decals
-- [ ] **Stencil Buffer** — Enable stencil testing in render pipeline
-- [ ] **Stencil Operators** — Write/test stencil for masking effects
-- [ ] **Decal Projection** — Project textures onto 3D geometry (team logos, grime, weathering)
-- [ ] **Decal Blending** — Multiply, overlay, additive modes for decals
+- [x] **Stencil Buffer** — Enable stencil testing in render pipeline — `pipeline3d_lit.cpp`
+- [x] **Stencil Operators** — Write/test stencil for masking effects — `pipeline3d_lit.h:StencilMode`
+- [x] **Decal Projection** — Project textures onto 3D geometry (team logos, grime, weathering) — `pipeline3d_decal.cpp`
+- [x] **Decal Blending** — Multiply, overlay, additive modes for decals — `pipeline3d_decal.cpp:createBlendPipeline()`
 
 #### Advanced (Future)
 - [ ] Shadow mapping (directional + point light shadows)

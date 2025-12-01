@@ -1423,6 +1423,15 @@ bool Pipeline3DLit::createPipeline(const std::string& shaderSource) {
 
 void Pipeline3DLit::destroy() {
     if (pipeline_) wgpuRenderPipelineRelease(pipeline_);
+
+    // Release stencil pipeline variants
+    for (int i = 0; i < STENCIL_MODE_COUNT; ++i) {
+        if (stencilPipelines_[i]) {
+            wgpuRenderPipelineRelease(stencilPipelines_[i]);
+            stencilPipelines_[i] = nullptr;
+        }
+    }
+
     if (pipelineLayout_) wgpuPipelineLayoutRelease(pipelineLayout_);
     if (cameraLayout_) wgpuBindGroupLayoutRelease(cameraLayout_);
     if (transformLayout_) wgpuBindGroupLayoutRelease(transformLayout_);
@@ -1458,38 +1467,15 @@ void Pipeline3DLit::destroy() {
 }
 
 void Pipeline3DLit::ensureDepthBuffer(int width, int height) {
-    if (depthTexture_ && depthWidth_ == width && depthHeight_ == height) {
-        return;
-    }
-
-    destroyDepthBuffer();
-
-    WGPUTextureDescriptor depthDesc = {};
-    depthDesc.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
-    depthDesc.format = DEPTH_FORMAT;
-    depthDesc.usage = WGPUTextureUsage_RenderAttachment;
-    depthDesc.mipLevelCount = 1;
-    depthDesc.sampleCount = 1;
-    depthDesc.dimension = WGPUTextureDimension_2D;
-
-    depthTexture_ = wgpuDeviceCreateTexture(renderer_->device(), &depthDesc);
-
-    WGPUTextureViewDescriptor viewDesc = {};
-    viewDesc.format = DEPTH_FORMAT;
-    viewDesc.dimension = WGPUTextureViewDimension_2D;
-    viewDesc.mipLevelCount = 1;
-    viewDesc.arrayLayerCount = 1;
-    viewDesc.aspect = WGPUTextureAspect_DepthOnly;
-
-    depthView_ = wgpuTextureCreateView(depthTexture_, &viewDesc);
-
+    // Use the renderer's shared depth buffer (which has TextureBinding usage for decals)
+    renderer_->createDepthBuffer(width, height);
+    depthView_ = renderer_->depthView();
     depthWidth_ = width;
     depthHeight_ = height;
 }
 
 void Pipeline3DLit::destroyDepthBuffer() {
-    if (depthView_) wgpuTextureViewRelease(depthView_);
-    if (depthTexture_) wgpuTextureRelease(depthTexture_);
+    // Don't release - we're using the renderer's shared depth buffer
     depthView_ = nullptr;
     depthTexture_ = nullptr;
     depthWidth_ = 0;
@@ -1522,9 +1508,10 @@ void Pipeline3DLit::beginRenderPass(Texture& output, const glm::vec4& clearColor
     depthAttachment.depthStoreOp = WGPUStoreOp_Store;
     depthAttachment.depthClearValue = 1.0f;
     depthAttachment.depthReadOnly = false;
-    depthAttachment.stencilLoadOp = WGPULoadOp_Undefined;
-    depthAttachment.stencilStoreOp = WGPUStoreOp_Undefined;
-    depthAttachment.stencilReadOnly = true;
+    depthAttachment.stencilLoadOp = WGPULoadOp_Clear;
+    depthAttachment.stencilStoreOp = WGPUStoreOp_Store;
+    depthAttachment.stencilClearValue = 0;
+    depthAttachment.stencilReadOnly = false;
 
     WGPURenderPassDescriptor renderPassDesc = {};
     renderPassDesc.colorAttachmentCount = 1;
@@ -2079,6 +2066,354 @@ void Pipeline3DLit::renderPBRTexturedWithIBL(const Mesh3D& mesh, const Camera3D&
     for (auto tex : dummyTextures) {
         wgpuTextureRelease(tex);
     }
+}
+
+// ============================================================================
+// Stencil Pipeline Implementation
+// ============================================================================
+
+bool Pipeline3DLit::createStencilPipeline(const std::string& shaderSource, StencilMode mode) {
+    if (!renderer_ || !pipelineLayout_) return false;
+
+    // Get stencil configuration based on mode
+    WGPUCompareFunction compareFunc = WGPUCompareFunction_Always;
+    WGPUStencilOperation passOp = WGPUStencilOperation_Keep;
+
+    switch (mode) {
+        case StencilMode::None:
+            // No special stencil, use default pipeline
+            return true;
+        case StencilMode::Write:
+            // Write reference value where rendered
+            compareFunc = WGPUCompareFunction_Always;
+            passOp = WGPUStencilOperation_Replace;
+            break;
+        case StencilMode::TestEqual:
+            // Only render where stencil == reference
+            compareFunc = WGPUCompareFunction_Equal;
+            passOp = WGPUStencilOperation_Keep;
+            break;
+        case StencilMode::TestNotEqual:
+            // Only render where stencil != reference
+            compareFunc = WGPUCompareFunction_NotEqual;
+            passOp = WGPUStencilOperation_Keep;
+            break;
+    }
+
+    WGPUDevice device = renderer_->device();
+
+    // Vertex layout - same as main pipeline
+    WGPUVertexAttribute attributes[4];
+    attributes[0].format = WGPUVertexFormat_Float32x3;  // position
+    attributes[0].offset = 0;
+    attributes[0].shaderLocation = 0;
+
+    attributes[1].format = WGPUVertexFormat_Float32x3;  // normal
+    attributes[1].offset = sizeof(glm::vec3);
+    attributes[1].shaderLocation = 1;
+
+    attributes[2].format = WGPUVertexFormat_Float32x2;  // uv
+    attributes[2].offset = sizeof(glm::vec3) * 2;
+    attributes[2].shaderLocation = 2;
+
+    attributes[3].format = WGPUVertexFormat_Float32x4;  // tangent
+    attributes[3].offset = sizeof(glm::vec3) * 2 + sizeof(glm::vec2);
+    attributes[3].shaderLocation = 3;
+
+    WGPUVertexBufferLayout vertexLayout = {};
+    vertexLayout.arrayStride = sizeof(Vertex3D);
+    vertexLayout.stepMode = WGPUVertexStepMode_Vertex;
+    vertexLayout.attributeCount = 4;
+    vertexLayout.attributes = attributes;
+
+    WGPURenderPipelineDescriptor pipelineDesc = {};
+    pipelineDesc.layout = pipelineLayout_;
+
+    pipelineDesc.vertex.module = shaderModule_;
+    pipelineDesc.vertex.entryPoint = WGPUStringView{.data = "vs_main", .length = 7};
+    pipelineDesc.vertex.bufferCount = 1;
+    pipelineDesc.vertex.buffers = &vertexLayout;
+
+    pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    pipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
+    pipelineDesc.primitive.cullMode = WGPUCullMode_Back;
+
+    // Depth stencil with custom stencil operations
+    WGPUDepthStencilState depthStencilState = {};
+    depthStencilState.format = DEPTH_FORMAT;
+    depthStencilState.depthWriteEnabled = WGPUOptionalBool_True;
+    depthStencilState.depthCompare = WGPUCompareFunction_Less;
+    depthStencilState.stencilFront.compare = compareFunc;
+    depthStencilState.stencilFront.failOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilFront.depthFailOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilFront.passOp = passOp;
+    depthStencilState.stencilBack = depthStencilState.stencilFront;
+    depthStencilState.stencilReadMask = 0xFFFFFFFF;
+    depthStencilState.stencilWriteMask = 0xFFFFFFFF;
+    pipelineDesc.depthStencil = &depthStencilState;
+
+    // Fragment state
+    WGPUColorTargetState colorTarget = {};
+    colorTarget.format = WGPUTextureFormat_RGBA8Unorm;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState fragmentState = {};
+    fragmentState.module = shaderModule_;
+    fragmentState.entryPoint = WGPUStringView{.data = "fs_main", .length = 7};
+    fragmentState.targetCount = 1;
+    fragmentState.targets = &colorTarget;
+    pipelineDesc.fragment = &fragmentState;
+
+    pipelineDesc.multisample.count = 1;
+    pipelineDesc.multisample.mask = ~0u;
+
+    int modeIndex = static_cast<int>(mode);
+    stencilPipelines_[modeIndex] = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
+
+    if (!stencilPipelines_[modeIndex]) {
+        std::cerr << "[Pipeline3DLit] Failed to create stencil pipeline for mode " << modeIndex << "\n";
+        return false;
+    }
+
+    std::cout << "[Pipeline3DLit] Created stencil pipeline for mode " << modeIndex << "\n";
+    return true;
+}
+
+WGPURenderPipeline Pipeline3DLit::getStencilPipeline(StencilMode mode) {
+    int modeIndex = static_cast<int>(mode);
+
+    // Return default pipeline for None mode
+    if (mode == StencilMode::None) {
+        return pipeline_;
+    }
+
+    // Lazily create stencil pipeline if needed
+    if (!stencilPipelines_[modeIndex]) {
+        const char* shaderSource;
+        switch (model_) {
+            case ShadingModel::PBR_IBL_Textured:
+                shaderSource = shaders3d::PBR_IBL_TEXTURED;
+                break;
+            case ShadingModel::PBR_IBL:
+                shaderSource = shaders3d::PBR_IBL;
+                break;
+            case ShadingModel::PBR:
+                shaderSource = shaders3d::PBR_LIT;
+                break;
+            default:
+                shaderSource = shaders3d::PHONG_LIT;
+                break;
+        }
+        createStencilPipeline(shaderSource, mode);
+    }
+
+    return stencilPipelines_[modeIndex];
+}
+
+void Pipeline3DLit::renderPBRWithStencil(const Mesh3D& mesh, const Camera3D& camera, const glm::mat4& transform,
+                                          const PBRMaterial& material, const SceneLighting& lighting,
+                                          StencilMode stencilMode, uint8_t stencilRef,
+                                          Texture& output, const glm::vec4& clearColor) {
+    if (!valid() || !mesh.valid() || !hasValidGPU(output)) return;
+    if (model_ != ShadingModel::PBR && model_ != ShadingModel::PBR_IBL) {
+        std::cerr << "[Pipeline3DLit] renderPBRWithStencil called on non-PBR pipeline\n";
+        return;
+    }
+
+    WGPURenderPipeline stencilPipeline = getStencilPipeline(stencilMode);
+    if (!stencilPipeline) {
+        std::cerr << "[Pipeline3DLit] Failed to get stencil pipeline\n";
+        return;
+    }
+
+    WGPUDevice device = renderer_->device();
+    WGPUQueue queue = renderer_->queue();
+    float aspectRatio = static_cast<float>(output.width) / output.height;
+
+    // Upload uniforms
+    CameraUniform cameraUniform = makeCameraUniform(camera, aspectRatio);
+    wgpuQueueWriteBuffer(queue, cameraBuffer_, 0, &cameraUniform, sizeof(CameraUniform));
+
+    TransformUniform transformUniform;
+    transformUniform.model = transform;
+    transformUniform.normalMatrix = glm::transpose(glm::inverse(transform));
+    wgpuQueueWriteBuffer(queue, transformBuffer_, 0, &transformUniform, sizeof(TransformUniform));
+
+    LightsUniform lightsUniform = makeLightsUniform(lighting);
+    wgpuQueueWriteBuffer(queue, lightsBuffer_, 0, &lightsUniform, sizeof(LightsUniform));
+
+    PBRMaterialUniform materialUniform = makePBRMaterialUniform(material);
+    wgpuQueueWriteBuffer(queue, materialBuffer_, 0, &materialUniform, sizeof(PBRMaterialUniform));
+
+    // Create bind groups
+    WGPUBindGroupEntry cameraEntry = {};
+    cameraEntry.binding = 0;
+    cameraEntry.buffer = cameraBuffer_;
+    cameraEntry.size = sizeof(CameraUniform);
+
+    WGPUBindGroupDescriptor cameraBindGroupDesc = {};
+    cameraBindGroupDesc.layout = cameraLayout_;
+    cameraBindGroupDesc.entryCount = 1;
+    cameraBindGroupDesc.entries = &cameraEntry;
+    WGPUBindGroup cameraBindGroup = wgpuDeviceCreateBindGroup(device, &cameraBindGroupDesc);
+
+    WGPUBindGroupEntry transformEntry = {};
+    transformEntry.binding = 0;
+    transformEntry.buffer = transformBuffer_;
+    transformEntry.size = sizeof(TransformUniform);
+
+    WGPUBindGroupDescriptor transformBindGroupDesc = {};
+    transformBindGroupDesc.layout = transformLayout_;
+    transformBindGroupDesc.entryCount = 1;
+    transformBindGroupDesc.entries = &transformEntry;
+    WGPUBindGroup transformBindGroup = wgpuDeviceCreateBindGroup(device, &transformBindGroupDesc);
+
+    WGPUBindGroupEntry lightsEntry = {};
+    lightsEntry.binding = 0;
+    lightsEntry.buffer = lightsBuffer_;
+    lightsEntry.size = sizeof(LightsUniform);
+
+    WGPUBindGroupDescriptor lightsBindGroupDesc = {};
+    lightsBindGroupDesc.layout = lightsLayout_;
+    lightsBindGroupDesc.entryCount = 1;
+    lightsBindGroupDesc.entries = &lightsEntry;
+    WGPUBindGroup lightsBindGroup = wgpuDeviceCreateBindGroup(device, &lightsBindGroupDesc);
+
+    WGPUBindGroupEntry materialEntry = {};
+    materialEntry.binding = 0;
+    materialEntry.buffer = materialBuffer_;
+    materialEntry.size = sizeof(PBRMaterialUniform);
+
+    WGPUBindGroupDescriptor materialBindGroupDesc = {};
+    materialBindGroupDesc.layout = materialLayout_;
+    materialBindGroupDesc.entryCount = 1;
+    materialBindGroupDesc.entries = &materialEntry;
+    WGPUBindGroup materialBindGroup = wgpuDeviceCreateBindGroup(device, &materialBindGroupDesc);
+
+    // Render
+    stencilRef_ = stencilRef;
+    beginRenderPass(output, clearColor);
+    if (renderPass_) {
+        wgpuRenderPassEncoderSetPipeline(renderPass_, stencilPipeline);
+        wgpuRenderPassEncoderSetStencilReference(renderPass_, stencilRef);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 0, cameraBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 1, transformBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 2, lightsBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 3, materialBindGroup, 0, nullptr);
+
+        Mesh* meshData = static_cast<Mesh*>(mesh.handle);
+        meshData->draw(renderPass_);
+    }
+    endRenderPass();
+
+    // Cleanup
+    wgpuBindGroupRelease(cameraBindGroup);
+    wgpuBindGroupRelease(transformBindGroup);
+    wgpuBindGroupRelease(lightsBindGroup);
+    wgpuBindGroupRelease(materialBindGroup);
+}
+
+void Pipeline3DLit::renderPhongWithStencil(const Mesh3D& mesh, const Camera3D& camera, const glm::mat4& transform,
+                                            const PhongMaterial& material, const SceneLighting& lighting,
+                                            StencilMode stencilMode, uint8_t stencilRef,
+                                            Texture& output, const glm::vec4& clearColor) {
+    if (!valid() || !mesh.valid() || !hasValidGPU(output)) return;
+    if (model_ != ShadingModel::Phong) {
+        std::cerr << "[Pipeline3DLit] renderPhongWithStencil called on non-Phong pipeline\n";
+        return;
+    }
+
+    WGPURenderPipeline stencilPipeline = getStencilPipeline(stencilMode);
+    if (!stencilPipeline) {
+        std::cerr << "[Pipeline3DLit] Failed to get stencil pipeline\n";
+        return;
+    }
+
+    WGPUDevice device = renderer_->device();
+    WGPUQueue queue = renderer_->queue();
+    float aspectRatio = static_cast<float>(output.width) / output.height;
+
+    // Upload uniforms
+    CameraUniform cameraUniform = makeCameraUniform(camera, aspectRatio);
+    wgpuQueueWriteBuffer(queue, cameraBuffer_, 0, &cameraUniform, sizeof(CameraUniform));
+
+    TransformUniform transformUniform;
+    transformUniform.model = transform;
+    transformUniform.normalMatrix = glm::transpose(glm::inverse(transform));
+    wgpuQueueWriteBuffer(queue, transformBuffer_, 0, &transformUniform, sizeof(TransformUniform));
+
+    LightsUniform lightsUniform = makeLightsUniform(lighting);
+    wgpuQueueWriteBuffer(queue, lightsBuffer_, 0, &lightsUniform, sizeof(LightsUniform));
+
+    PhongMaterialUniform materialUniform = makePhongMaterialUniform(material);
+    wgpuQueueWriteBuffer(queue, materialBuffer_, 0, &materialUniform, sizeof(PhongMaterialUniform));
+
+    // Create bind groups
+    WGPUBindGroupEntry cameraEntry = {};
+    cameraEntry.binding = 0;
+    cameraEntry.buffer = cameraBuffer_;
+    cameraEntry.size = sizeof(CameraUniform);
+
+    WGPUBindGroupDescriptor cameraBindGroupDesc = {};
+    cameraBindGroupDesc.layout = cameraLayout_;
+    cameraBindGroupDesc.entryCount = 1;
+    cameraBindGroupDesc.entries = &cameraEntry;
+    WGPUBindGroup cameraBindGroup = wgpuDeviceCreateBindGroup(device, &cameraBindGroupDesc);
+
+    WGPUBindGroupEntry transformEntry = {};
+    transformEntry.binding = 0;
+    transformEntry.buffer = transformBuffer_;
+    transformEntry.size = sizeof(TransformUniform);
+
+    WGPUBindGroupDescriptor transformBindGroupDesc = {};
+    transformBindGroupDesc.layout = transformLayout_;
+    transformBindGroupDesc.entryCount = 1;
+    transformBindGroupDesc.entries = &transformEntry;
+    WGPUBindGroup transformBindGroup = wgpuDeviceCreateBindGroup(device, &transformBindGroupDesc);
+
+    WGPUBindGroupEntry lightsEntry = {};
+    lightsEntry.binding = 0;
+    lightsEntry.buffer = lightsBuffer_;
+    lightsEntry.size = sizeof(LightsUniform);
+
+    WGPUBindGroupDescriptor lightsBindGroupDesc = {};
+    lightsBindGroupDesc.layout = lightsLayout_;
+    lightsBindGroupDesc.entryCount = 1;
+    lightsBindGroupDesc.entries = &lightsEntry;
+    WGPUBindGroup lightsBindGroup = wgpuDeviceCreateBindGroup(device, &lightsBindGroupDesc);
+
+    WGPUBindGroupEntry materialEntry = {};
+    materialEntry.binding = 0;
+    materialEntry.buffer = materialBuffer_;
+    materialEntry.size = sizeof(PhongMaterialUniform);
+
+    WGPUBindGroupDescriptor materialBindGroupDesc = {};
+    materialBindGroupDesc.layout = materialLayout_;
+    materialBindGroupDesc.entryCount = 1;
+    materialBindGroupDesc.entries = &materialEntry;
+    WGPUBindGroup materialBindGroup = wgpuDeviceCreateBindGroup(device, &materialBindGroupDesc);
+
+    // Render
+    stencilRef_ = stencilRef;
+    beginRenderPass(output, clearColor);
+    if (renderPass_) {
+        wgpuRenderPassEncoderSetPipeline(renderPass_, stencilPipeline);
+        wgpuRenderPassEncoderSetStencilReference(renderPass_, stencilRef);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 0, cameraBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 1, transformBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 2, lightsBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 3, materialBindGroup, 0, nullptr);
+
+        Mesh* meshData = static_cast<Mesh*>(mesh.handle);
+        meshData->draw(renderPass_);
+    }
+    endRenderPass();
+
+    // Cleanup
+    wgpuBindGroupRelease(cameraBindGroup);
+    wgpuBindGroupRelease(transformBindGroup);
+    wgpuBindGroupRelease(lightsBindGroup);
+    wgpuBindGroupRelease(materialBindGroup);
 }
 
 } // namespace vivid

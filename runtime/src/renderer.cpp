@@ -303,6 +303,10 @@ void Renderer::configureSurface() {
 }
 
 void Renderer::destroyDepthBuffer() {
+    if (depthSampleView_) {
+        wgpuTextureViewRelease(depthSampleView_);
+        depthSampleView_ = nullptr;
+    }
     if (depthView_) {
         wgpuTextureViewRelease(depthView_);
         depthView_ = nullptr;
@@ -310,6 +314,11 @@ void Renderer::destroyDepthBuffer() {
     if (depthTexture_) {
         wgpuTextureRelease(depthTexture_);
         depthTexture_ = nullptr;
+    }
+    // Clear references in TextureData wrapper (but keep the wrapper for reuse)
+    if (depthTextureData_) {
+        depthTextureData_->texture = nullptr;
+        depthTextureData_->view = nullptr;
     }
     depthWidth_ = 0;
     depthHeight_ = 0;
@@ -330,7 +339,7 @@ void Renderer::createDepthBuffer(int width, int height) {
     WGPUTextureDescriptor depthDesc = {};
     depthDesc.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
     depthDesc.format = DEPTH_FORMAT;
-    depthDesc.usage = WGPUTextureUsage_RenderAttachment;
+    depthDesc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
     depthDesc.mipLevelCount = 1;
     depthDesc.sampleCount = 1;
     depthDesc.dimension = WGPUTextureDimension_2D;
@@ -341,15 +350,16 @@ void Renderer::createDepthBuffer(int width, int height) {
         return;
     }
 
-    // Create depth texture view
+    // Create depth texture view for render attachment (default aspect)
+    // Note: For depth-stencil formats, we use undefined aspect to let the driver decide
     WGPUTextureViewDescriptor viewDesc = {};
-    viewDesc.format = DEPTH_FORMAT;
-    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.format = WGPUTextureFormat_Undefined;  // Let it inherit from texture
+    viewDesc.dimension = WGPUTextureViewDimension_Undefined;
     viewDesc.mipLevelCount = 1;
     viewDesc.arrayLayerCount = 1;
-    viewDesc.aspect = WGPUTextureAspect_DepthOnly;
+    viewDesc.aspect = WGPUTextureAspect_All;  // Access both depth and stencil
 
-    depthView_ = wgpuTextureCreateView(depthTexture_, &viewDesc);
+    depthView_ = wgpuTextureCreateView(depthTexture_, nullptr);  // Use default view
     if (!depthView_) {
         std::cerr << "[Renderer] Failed to create depth texture view\n";
         wgpuTextureRelease(depthTexture_);
@@ -357,9 +367,45 @@ void Renderer::createDepthBuffer(int width, int height) {
         return;
     }
 
+    // Create separate view for sampling (DepthOnly aspect for shader reads)
+    WGPUTextureViewDescriptor sampleViewDesc = {};
+    sampleViewDesc.format = WGPUTextureFormat_Depth24Plus;  // Just the depth portion
+    sampleViewDesc.dimension = WGPUTextureViewDimension_2D;
+    sampleViewDesc.mipLevelCount = 1;
+    sampleViewDesc.arrayLayerCount = 1;
+    sampleViewDesc.aspect = WGPUTextureAspect_DepthOnly;  // Only depth for sampling
+
+    depthSampleView_ = wgpuTextureCreateView(depthTexture_, &sampleViewDesc);
+    if (!depthSampleView_) {
+        std::cerr << "[Renderer] Failed to create depth sample view\n";
+        wgpuTextureViewRelease(depthView_);
+        wgpuTextureRelease(depthTexture_);
+        depthView_ = nullptr;
+        depthTexture_ = nullptr;
+        return;
+    }
+
     depthWidth_ = width;
     depthHeight_ = height;
+
+    // Create TextureData wrapper for decal sampling (uses sample view, not render view)
+    if (!depthTextureData_) {
+        depthTextureData_ = new TextureData();
+    }
+    depthTextureData_->texture = depthTexture_;
+    depthTextureData_->view = depthSampleView_;  // Use DepthOnly view for sampling
+
     std::cout << "[Renderer] Depth buffer created (" << width << "x" << height << ")\n";
+}
+
+Texture Renderer::getDepthTexture() const {
+    Texture tex = {};
+    if (depthTextureData_ && depthTexture_) {
+        tex.handle = depthTextureData_;
+        tex.width = depthWidth_;
+        tex.height = depthHeight_;
+    }
+    return tex;
 }
 
 void Renderer::shutdown() {
@@ -371,6 +417,10 @@ void Renderer::shutdown() {
 
     // Release depth buffer
     destroyDepthBuffer();
+    if (depthTextureData_) {
+        delete depthTextureData_;
+        depthTextureData_ = nullptr;
+    }
 
     // Release shader sampler
     if (shaderSampler_) {

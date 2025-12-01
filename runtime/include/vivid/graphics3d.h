@@ -476,4 +476,202 @@ struct Environment {
     }
 };
 
+// ============================================================================
+// Stencil Buffer Operations
+// ============================================================================
+
+/**
+ * @brief Stencil comparison function.
+ *
+ * Determines how the stencil test compares the reference value against
+ * the value in the stencil buffer.
+ */
+enum class StencilCompare : int {
+    Never = 0,        ///< Always fails
+    Less = 1,         ///< Pass if reference < buffer
+    Equal = 2,        ///< Pass if reference == buffer
+    LessEqual = 3,    ///< Pass if reference <= buffer
+    Greater = 4,      ///< Pass if reference > buffer
+    NotEqual = 5,     ///< Pass if reference != buffer
+    GreaterEqual = 6, ///< Pass if reference >= buffer
+    Always = 7        ///< Always passes (default)
+};
+
+/**
+ * @brief Stencil operation to perform on buffer values.
+ *
+ * Specifies what happens to the stencil buffer when stencil/depth tests
+ * pass or fail.
+ */
+enum class StencilOp : int {
+    Keep = 0,           ///< Keep current value
+    Zero = 1,           ///< Set to zero
+    Replace = 2,        ///< Replace with reference value
+    Invert = 3,         ///< Bitwise invert
+    IncrementClamp = 4, ///< Increment, clamp to max
+    DecrementClamp = 5, ///< Decrement, clamp to zero
+    IncrementWrap = 6,  ///< Increment with wrapping
+    DecrementWrap = 7   ///< Decrement with wrapping
+};
+
+/**
+ * @brief Stencil test configuration.
+ *
+ * Controls how the stencil buffer is read and written during rendering.
+ * Used for masking effects, decals, portals, outlines, and more.
+ *
+ * Example - Write to stencil:
+ * @code
+ *   StencilState write;
+ *   write.enabled = true;
+ *   write.compare = StencilCompare::Always;
+ *   write.passOp = StencilOp::Replace;
+ *   write.reference = 1;
+ * @endcode
+ *
+ * Example - Test against stencil:
+ * @code
+ *   StencilState test;
+ *   test.enabled = true;
+ *   test.compare = StencilCompare::Equal;
+ *   test.reference = 1;
+ *   // Only draws where stencil == 1
+ * @endcode
+ */
+struct StencilState {
+    bool enabled = false;               ///< Enable stencil testing
+
+    StencilCompare compare = StencilCompare::Always;  ///< Comparison function
+    StencilOp failOp = StencilOp::Keep;               ///< Op when stencil test fails
+    StencilOp depthFailOp = StencilOp::Keep;          ///< Op when depth test fails
+    StencilOp passOp = StencilOp::Keep;               ///< Op when both tests pass
+
+    uint8_t reference = 0;              ///< Reference value for compare
+    uint8_t readMask = 0xFF;            ///< Mask applied before compare
+    uint8_t writeMask = 0xFF;           ///< Mask applied when writing
+
+    /// Create a state that writes a value to the stencil buffer
+    static StencilState write(uint8_t value, StencilCompare cmp = StencilCompare::Always) {
+        StencilState s;
+        s.enabled = true;
+        s.compare = cmp;
+        s.passOp = StencilOp::Replace;
+        s.reference = value;
+        return s;
+    }
+
+    /// Create a state that tests against a stencil value
+    static StencilState test(uint8_t value, StencilCompare cmp = StencilCompare::Equal) {
+        StencilState s;
+        s.enabled = true;
+        s.compare = cmp;
+        s.reference = value;
+        return s;
+    }
+
+    /// Create a state for masking (write where rendered)
+    static StencilState mask() {
+        return write(1);
+    }
+
+    /// Create a state to render only inside mask
+    static StencilState insideMask() {
+        return test(1, StencilCompare::Equal);
+    }
+
+    /// Create a state to render only outside mask
+    static StencilState outsideMask() {
+        return test(1, StencilCompare::NotEqual);
+    }
+};
+
+// ============================================================================
+// Decal System
+// ============================================================================
+
+/**
+ * @brief Decal blend modes for combining decal with surface.
+ *
+ * Controls how the decal texture is combined with the underlying surface.
+ */
+enum class DecalBlendMode : int {
+    Normal = 0,     ///< Standard alpha blending (lerp based on alpha)
+    Multiply = 1,   ///< Multiply decal color with surface (darken)
+    Additive = 2,   ///< Add decal color to surface (brighten)
+    Overlay = 3     ///< Overlay blend (darken darks, lighten lights)
+};
+
+/**
+ * @brief Decal projection configuration.
+ *
+ * Decals are textures projected onto 3D geometry from a box-shaped projector.
+ * Common uses include team logos, grime, weathering, bullet holes, etc.
+ *
+ * The decal projects along the -Z axis of its transform (forward direction).
+ * The projection box defines the volume where the decal is visible.
+ *
+ * Example - Simple decal:
+ * @code
+ *   Decal decal;
+ *   decal.texture = &myTexture;
+ *   decal.position = glm::vec3(0, 0.01f, 0);  // Slightly above surface
+ *   decal.rotation = glm::vec3(-90, 0, 0);    // Project downward
+ *   decal.size = glm::vec3(1.0f);             // 1x1x1 projection box
+ * @endcode
+ */
+struct Decal {
+    // Transform
+    glm::vec3 position{0.0f};                   ///< World position of decal center
+    glm::vec3 rotation{0.0f};                   ///< Euler rotation (degrees) - projects along -Z
+    glm::vec3 size{1.0f, 1.0f, 1.0f};          ///< Projection box dimensions (width, height, depth)
+
+    // Appearance
+    Texture* texture = nullptr;                 ///< Decal texture (required)
+    glm::vec4 color{1.0f, 1.0f, 1.0f, 1.0f};   ///< Tint color and opacity
+    DecalBlendMode blendMode = DecalBlendMode::Normal;
+
+    // Projection settings
+    float depthBias = 0.001f;                   ///< Z-bias to prevent z-fighting
+    bool wrapU = false;                         ///< Repeat texture in U direction
+    bool wrapV = false;                         ///< Repeat texture in V direction
+
+    /// Get the projection matrix for this decal
+    glm::mat4 projectionMatrix() const {
+        // Build transform matrix
+        glm::mat4 transform = glm::translate(glm::mat4(1.0f), position);
+        transform = glm::rotate(transform, glm::radians(rotation.x), glm::vec3(1, 0, 0));
+        transform = glm::rotate(transform, glm::radians(rotation.y), glm::vec3(0, 1, 0));
+        transform = glm::rotate(transform, glm::radians(rotation.z), glm::vec3(0, 0, 1));
+        transform = glm::scale(transform, size);
+
+        // Projection is inverse of transform, scaled to [-0.5, 0.5] box
+        return glm::inverse(transform);
+    }
+
+    /// Create a decal at position projecting along direction
+    static Decal create(Texture* tex, const glm::vec3& pos, const glm::vec3& dir,
+                        const glm::vec3& sz = glm::vec3(1.0f)) {
+        Decal d;
+        d.texture = tex;
+        d.position = pos;
+        d.size = sz;
+
+        // Calculate rotation from direction
+        glm::vec3 forward = glm::normalize(dir);
+        glm::vec3 up = glm::abs(forward.y) > 0.99f ? glm::vec3(0, 0, 1) : glm::vec3(0, 1, 0);
+        glm::vec3 right = glm::normalize(glm::cross(up, forward));
+        up = glm::cross(forward, right);
+
+        glm::mat4 rot = glm::mat4(glm::vec4(right, 0), glm::vec4(up, 0),
+                                   glm::vec4(-forward, 0), glm::vec4(0, 0, 0, 1));
+
+        // Extract euler angles (approximate)
+        d.rotation.x = glm::degrees(std::atan2(-rot[2][1], rot[2][2]));
+        d.rotation.y = glm::degrees(std::asin(rot[2][0]));
+        d.rotation.z = glm::degrees(std::atan2(-rot[1][0], rot[0][0]));
+
+        return d;
+    }
+};
+
 } // namespace vivid

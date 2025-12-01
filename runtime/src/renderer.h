@@ -28,8 +28,10 @@ inline bool hasValidGPU(const Texture& tex) {
     return data && data->texture && data->view;
 }
 
-// Depth texture format used for 3D rendering
-constexpr WGPUTextureFormat DEPTH_FORMAT = WGPUTextureFormat_Depth24Plus;
+// Depth-stencil texture format used for 3D rendering
+constexpr WGPUTextureFormat DEPTH_STENCIL_FORMAT = WGPUTextureFormat_Depth24PlusStencil8;
+// Legacy alias for backwards compatibility
+constexpr WGPUTextureFormat DEPTH_FORMAT = DEPTH_STENCIL_FORMAT;
 
 // Standard uniforms passed to all shaders
 // Layout must match WGSL struct exactly (32 bytes base + 48 bytes params = 80 bytes)
@@ -142,6 +144,7 @@ public:
     void destroyDepthBuffer();
     WGPUTextureView depthView() const { return depthView_; }
     bool hasDepthBuffer() const { return depthTexture_ != nullptr; }
+    Texture getDepthTexture() const;  // Get depth buffer as Texture (for decals)
 
     // VSync control
     void setVSync(bool enabled);
@@ -178,7 +181,9 @@ private:
 
     // Depth buffer for 3D rendering
     WGPUTexture depthTexture_ = nullptr;
-    WGPUTextureView depthView_ = nullptr;
+    WGPUTextureView depthView_ = nullptr;        // All aspect - for render attachment
+    WGPUTextureView depthSampleView_ = nullptr;  // DepthOnly aspect - for sampling in shaders
+    TextureData* depthTextureData_ = nullptr;    // Wraps depth buffer for decals (uses sample view)
     int depthWidth_ = 0;
     int depthHeight_ = 0;
 

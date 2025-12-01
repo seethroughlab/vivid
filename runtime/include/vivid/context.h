@@ -18,6 +18,7 @@ class Renderer2DImpl;
 class Renderer3DInstancedImpl;
 class SkinnedMeshRendererImpl;
 class Pipeline3DLit;
+class Pipeline3DDecal;
 class CubemapProcessor;
 
 /**
@@ -739,6 +740,67 @@ public:
                            const Camera3D& camera, Texture& output,
                            const glm::vec4& clearColor = {0.05f, 0.05f, 0.1f, 1.0f});
 
+    /**
+     * @brief Get the scene depth texture from the last 3D render.
+     *
+     * Returns a handle to the internal depth buffer used by render3DPBR and other
+     * 3D rendering functions. Use this for decal projection or depth-based effects.
+     *
+     * @code
+     * // Render scene to get depth
+     * ctx.render3DPBR(mesh, camera, transform, material, lighting, output);
+     *
+     * // Get depth buffer for decals
+     * Texture depth = ctx.getSceneDepthTexture();
+     *
+     * // Apply decal using depth
+     * ctx.renderDecal(decal, camera, depth, output);
+     * @endcode
+     *
+     * @return Texture handle to the scene depth buffer, or invalid if no 3D render has occurred.
+     */
+    Texture getSceneDepthTexture();
+
+    /**
+     * @brief Render a decal onto an existing color buffer.
+     *
+     * Projects a texture onto 3D geometry using depth buffer reconstruction.
+     * The decal is blended with the existing color based on its blend mode.
+     *
+     * @code
+     * // Create a decal
+     * Decal decal;
+     * decal.texture = &logoTexture;
+     * decal.position = glm::vec3(0.0f, 1.0f, 0.0f);
+     * decal.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
+     * decal.size = glm::vec3(2.0f, 2.0f, 1.0f);  // Width, height, depth
+     * decal.blendMode = DecalBlendMode::Multiply;
+     *
+     * // Render scene first
+     * ctx.render3DPBR(mesh, camera, transform, material, lighting, output);
+     *
+     * // Get depth and apply decal
+     * ctx.renderDecal(decal, camera, ctx.getSceneDepthTexture(), output);
+     * @endcode
+     *
+     * @param decal The decal configuration.
+     * @param camera The camera used to render the scene.
+     * @param depthTexture The depth buffer from the scene render (use getSceneDepthTexture()).
+     * @param colorOutput The color buffer to blend the decal onto (read-write).
+     */
+    void renderDecal(const Decal& decal, const Camera3D& camera,
+                     const Texture& depthTexture, Texture& colorOutput);
+
+    /**
+     * @brief Render multiple decals onto an existing color buffer.
+     * @param decals Vector of decals to render.
+     * @param camera The camera used to render the scene.
+     * @param depthTexture The depth buffer from the scene render.
+     * @param colorOutput The color buffer to blend decals onto.
+     */
+    void renderDecals(const std::vector<Decal>& decals, const Camera3D& camera,
+                      const Texture& depthTexture, Texture& colorOutput);
+
     /// @}
 
     /// @name Skeletal Animation
@@ -962,6 +1024,10 @@ private:
     Pipeline3DLit& getPBRPipeline();
     Pipeline3DLit& getPBRIBLPipeline();
     Pipeline3DLit& getPBRIBLTexturedPipeline();
+
+    // Decal rendering pipeline (lazy initialized)
+    std::unique_ptr<Pipeline3DDecal> decalPipeline_;
+    Pipeline3DDecal& getDecalPipeline();
 
     // Cubemap/IBL processing (lazy initialized)
     std::unique_ptr<CubemapProcessor> cubemapProcessor_;
