@@ -55,7 +55,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=%BUILD_TYPE%
 cmake --build build --config %BUILD_TYPE% -j
 
 echo.
-echo Runtime built: %PROJECT_ROOT%\build\bin\%BUILD_TYPE%\vivid-runtime.exe
+echo Runtime built: %PROJECT_ROOT%\build\bin\%BUILD_TYPE%\vivid.exe
 
 REM Build VS Code extension
 echo.
@@ -76,12 +76,12 @@ call npm run build
 echo.
 echo === Build Complete ===
 echo.
-echo Runtime: %PROJECT_ROOT%\build\bin\%BUILD_TYPE%\vivid-runtime.exe
+echo Runtime: %PROJECT_ROOT%\build\bin\%BUILD_TYPE%\vivid.exe
 echo Extension: %PROJECT_ROOT%\extension (run 'npm run package' to create .vsix)
 echo.
 echo To test:
 echo   1. Open extension folder in VS Code and press F5
 echo   2. In the Extension Development Host, open an example project
-echo   3. Run: %PROJECT_ROOT%\build\bin\%BUILD_TYPE%\vivid-runtime.exe examples\hello
+echo   3. Run: %PROJECT_ROOT%\build\bin\%BUILD_TYPE%\vivid.exe examples\hello
 
 endlocal

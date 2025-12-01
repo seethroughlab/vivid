@@ -4,7 +4,7 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-RUNTIME="$PROJECT_ROOT/build/bin/vivid-runtime"
+RUNTIME="$PROJECT_ROOT/build/bin/vivid"
 EXAMPLES_DIR="$PROJECT_ROOT/examples"
 RUN_SECONDS=5
 
@@ -92,8 +92,8 @@ for example_path in $EXAMPLES; do
     rm -f "$OUTPUT_FILE"
 done
 
-# Kill any remaining vivid-runtime processes
-killall vivid-runtime 2>/dev/null || true
+# Kill any remaining vivid processes
+killall vivid 2>/dev/null || true
 
 echo ""
 echo "========================================"

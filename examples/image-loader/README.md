@@ -22,7 +22,7 @@ This demonstrates **node composition**: the Displacement uses a Noise texture as
 
 2. Run the example:
    ```bash
-   ./build/bin/vivid-runtime examples/image-loader
+   ./build/bin/vivid examples/image-loader
    ```
 
 ## What You'll See

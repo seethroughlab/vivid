@@ -49,9 +49,9 @@ echo ""
 echo "=== Copying Runtime ==="
 mkdir -p "${RELEASE_DIR}/bin"
 if [ "$PLATFORM" = "windows" ]; then
-    cp "${PROJECT_ROOT}/build/bin/Release/vivid-runtime.exe" "${RELEASE_DIR}/bin/"
+    cp "${PROJECT_ROOT}/build/bin/Release/vivid.exe" "${RELEASE_DIR}/bin/"
 else
-    cp "${PROJECT_ROOT}/build/bin/vivid-runtime" "${RELEASE_DIR}/bin/"
+    cp "${PROJECT_ROOT}/build/bin/vivid" "${RELEASE_DIR}/bin/"
 fi
 
 # Copy headers
@@ -112,13 +112,13 @@ echo "=== Creating Quick Start Script ==="
 if [ "$PLATFORM" = "windows" ]; then
     cat > "${RELEASE_DIR}/run-example.bat" << 'EOF'
 @echo off
-bin\vivid-runtime.exe examples\hello
+bin\vivid.exe examples\hello
 EOF
 else
     cat > "${RELEASE_DIR}/run-example.sh" << 'EOF'
 #!/bin/bash
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-"${SCRIPT_DIR}/bin/vivid-runtime" "${SCRIPT_DIR}/examples/hello"
+"${SCRIPT_DIR}/bin/vivid" "${SCRIPT_DIR}/examples/hello"
 EOF
     chmod +x "${RELEASE_DIR}/run-example.sh"
 fi

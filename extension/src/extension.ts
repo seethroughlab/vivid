@@ -219,8 +219,8 @@ async function startRuntime(context: vscode.ExtensionContext) {
 
     if (!runtimePath) {
         runtimePath = await vscode.window.showInputBox({
-            prompt: 'Path to vivid-runtime executable',
-            placeHolder: '/path/to/vivid-runtime'
+            prompt: 'Path to vivid executable',
+            placeHolder: '/path/to/vivid'
         });
         if (!runtimePath) return;
         await config.update('runtimePath', runtimePath, vscode.ConfigurationTarget.Global);
@@ -232,8 +232,8 @@ async function startRuntime(context: vscode.ExtensionContext) {
         return;
     }
 
-    // Derive vivid root from runtime path (runtime is at vivid/build/bin/vivid-runtime)
-    const vividRoot = runtimePath.replace(/\/build\/bin\/vivid-runtime$/, '');
+    // Derive vivid root from runtime path (runtime is at vivid/build/bin/vivid)
+    const vividRoot = runtimePath.replace(/\/build\/bin\/vivid$/, '');
 
     const terminal = vscode.window.createTerminal('Vivid Runtime');
     terminal.show();

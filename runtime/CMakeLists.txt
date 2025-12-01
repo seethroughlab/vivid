@@ -64,9 +64,9 @@ else()
     list(APPEND RUNTIME_SOURCES src/video_loader_linux.cpp)
 endif()
 
-add_executable(vivid-runtime ${RUNTIME_SOURCES})
+add_executable(vivid ${RUNTIME_SOURCES})
 
-target_include_directories(vivid-runtime
+target_include_directories(vivid
     PUBLIC include
     PRIVATE src
     PRIVATE ${stb_SOURCE_DIR}
@@ -75,11 +75,11 @@ target_include_directories(vivid-runtime
 
 # Add FFmpeg include directories if available
 if(FFMPEG_FOUND)
-    target_include_directories(vivid-runtime PRIVATE ${FFMPEG_INCLUDE_DIRS})
-    target_compile_definitions(vivid-runtime PRIVATE VIVID_HAS_FFMPEG=1)
+    target_include_directories(vivid PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    target_compile_definitions(vivid PRIVATE VIVID_HAS_FFMPEG=1)
 endif()
 
-target_link_libraries(vivid-runtime
+target_link_libraries(vivid
     PRIVATE
     glfw
     glm::glm
@@ -93,13 +93,13 @@ target_link_libraries(vivid-runtime
 
 # Link FFmpeg libraries if available
 if(FFMPEG_FOUND)
-    target_link_libraries(vivid-runtime PRIVATE ${FFMPEG_LIBRARIES})
-    target_link_directories(vivid-runtime PRIVATE ${FFMPEG_LIBRARY_DIRS})
+    target_link_libraries(vivid PRIVATE ${FFMPEG_LIBRARIES})
+    target_link_directories(vivid PRIVATE ${FFMPEG_LIBRARY_DIRS})
 endif()
 
 # Platform-specific libraries and export symbols for dynamic loading
 if(APPLE)
-    target_link_libraries(vivid-runtime PRIVATE
+    target_link_libraries(vivid PRIVATE
         "-framework Cocoa"
         "-framework IOKit"
         "-framework Metal"
@@ -112,22 +112,22 @@ if(APPLE)
         "-framework CoreAudio"
     )
     # Export symbols so dynamically loaded operators can find Context, etc.
-    target_link_options(vivid-runtime PRIVATE -Wl,-export_dynamic)
+    target_link_options(vivid PRIVATE -Wl,-export_dynamic)
 elseif(UNIX)
-    target_link_libraries(vivid-runtime PRIVATE pthread dl)
+    target_link_libraries(vivid PRIVATE pthread dl)
     # Export symbols for dlopen'd libraries
-    target_link_options(vivid-runtime PRIVATE -rdynamic)
+    target_link_options(vivid PRIVATE -rdynamic)
 endif()
 
 # Copy include headers to build directory for operator compilation
-add_custom_command(TARGET vivid-runtime POST_BUILD
+add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_BINARY_DIR}/include
 )
 
 # Copy shaders to build directory
-add_custom_command(TARGET vivid-runtime POST_BUILD
+add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/shaders
     ${CMAKE_BINARY_DIR}/shaders

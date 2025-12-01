@@ -20,7 +20,7 @@ This demonstrates the **node composition** approach: instead of a specialized "n
 
 2. Run the example:
    ```bash
-   ./build/bin/vivid-runtime examples/video-displacement
+   ./build/bin/vivid examples/video-displacement
    ```
 
 ## What You'll See

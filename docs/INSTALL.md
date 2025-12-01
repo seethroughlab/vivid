@@ -77,8 +77,8 @@ cmake --build build -j8
 ```
 
 The runtime executable will be at:
-- macOS/Linux: `build/bin/vivid-runtime`
-- Windows: `build/bin/Release/vivid-runtime.exe`
+- macOS/Linux: `build/bin/vivid`
+- Windows: `build/bin/Release/vivid.exe`
 
 #### Step 2: Build the VS Code Extension
 
@@ -102,7 +102,7 @@ npm run build
 
 ```bash
 # From the vivid directory
-./build/bin/vivid-runtime examples/hello
+./build/bin/vivid examples/hello
 ```
 
 You should see a window with animated noise.
@@ -143,7 +143,7 @@ The extension provides these settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `vivid.runtimePath` | `""` | Path to vivid-runtime executable |
+| `vivid.runtimePath` | `""` | Path to vivid executable |
 | `vivid.websocketPort` | `9876` | WebSocket port for runtime communication |
 | `vivid.showInlineDecorations` | `true` | Show inline preview decorations |
 | `vivid.previewSize` | `48` | Thumbnail size in pixels |
@@ -151,11 +151,11 @@ The extension provides these settings:
 
 ### Setting the Runtime Path
 
-If vivid-runtime isn't in your PATH, set it in VS Code settings:
+If vivid isn't in your PATH, set it in VS Code settings:
 
 ```json
 {
-  "vivid.runtimePath": "/path/to/vivid/build/bin/vivid-runtime"
+  "vivid.runtimePath": "/path/to/vivid/build/bin/vivid"
 }
 ```
 
@@ -167,7 +167,7 @@ After building, your Vivid directory looks like:
 vivid/
 ├── build/
 │   ├── bin/
-│   │   └── vivid-runtime      # The runtime executable
+│   │   └── vivid      # The runtime executable
 │   ├── include/               # Headers for operators
 │   └── shaders/               # Copied shaders
 ├── extension/
@@ -216,7 +216,7 @@ VIVID_OPERATOR(MyOperator)
 EOF
 
 # Run it
-/path/to/vivid-runtime .
+/path/to/vivid .
 ```
 
 ## Troubleshooting

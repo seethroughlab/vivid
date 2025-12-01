@@ -12,7 +12,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j8
 
 # Run an example
-./build/bin/vivid-runtime examples/hello
+./build/bin/vivid examples/hello
 ```
 
 ## Usage
@@ -38,7 +38,7 @@ VIVID_CHAIN(setup, update)
 
 Run it:
 ```bash
-./build/bin/vivid-runtime /path/to/your/project
+./build/bin/vivid /path/to/your/project
 ```
 
 Edit any `.cpp` or `.wgsl` file and watch it hot-reload instantly.
@@ -115,7 +115,7 @@ cmake -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build -j8
 
 # Run with an example
-./build/bin/vivid-runtime examples/hello
+./build/bin/vivid examples/hello
 ```
 
 Issues and PRs welcome at [github.com/seethroughlab/vivid](https://github.com/seethroughlab/vivid).

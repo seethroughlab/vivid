@@ -37,7 +37,7 @@ cmake -B build -DCMAKE_BUILD_TYPE="$BUILD_TYPE"
 cmake --build build -j$(nproc)
 
 echo ""
-echo "Runtime built: $PROJECT_ROOT/build/bin/vivid-runtime"
+echo "Runtime built: $PROJECT_ROOT/build/bin/vivid"
 
 # Build VS Code extension
 echo ""
@@ -58,10 +58,10 @@ npm run build
 echo ""
 echo "=== Build Complete ==="
 echo ""
-echo "Runtime: $PROJECT_ROOT/build/bin/vivid-runtime"
+echo "Runtime: $PROJECT_ROOT/build/bin/vivid"
 echo "Extension: $PROJECT_ROOT/extension (run 'npm run package' to create .vsix)"
 echo ""
 echo "To test:"
 echo "  1. Open extension folder in VS Code and press F5"
 echo "  2. In the Extension Development Host, open an example project"
-echo "  3. Run: $PROJECT_ROOT/build/bin/vivid-runtime examples/hello"
+echo "  3. Run: $PROJECT_ROOT/build/bin/vivid examples/hello"

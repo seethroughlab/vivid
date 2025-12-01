@@ -47,7 +47,7 @@
         "vivid.runtimePath": {
           "type": "string",
           "default": "",
-          "description": "Path to vivid-runtime executable"
+          "description": "Path to vivid executable"
         },
         "vivid.websocketPort": {
           "type": "number",

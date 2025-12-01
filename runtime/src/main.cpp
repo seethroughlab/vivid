@@ -59,13 +59,13 @@ static std::string getSharedAssetsPath(const char* argv0) {
     fs::path runtimePath = fs::weakly_canonical(argv0);
     fs::path runtimeDir = runtimePath.parent_path();
 
-    // Check for release layout: bin/vivid-runtime with shaders/ at parent level
+    // Check for release layout: bin/vivid with shaders/ at parent level
     fs::path releaseShaders = runtimeDir.parent_path() / "shaders";
     if (fs::exists(releaseShaders)) {
         return runtimeDir.parent_path().string();
     }
 
-    // Check for dev layout: build/bin/vivid-runtime with shaders/ at repo root
+    // Check for dev layout: build/bin/vivid with shaders/ at repo root
     fs::path devShaders = runtimeDir.parent_path().parent_path() / "shaders";
     if (fs::exists(devShaders)) {
         return runtimeDir.parent_path().parent_path().string();

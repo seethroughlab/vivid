@@ -15,7 +15,7 @@ Webcam -> Chromatic Aberration -> Pixelate -> Scanlines
 ## Usage
 
 ```bash
-./build/bin/vivid-runtime examples/webcam
+./build/bin/vivid examples/webcam
 ```
 
 ## What You'll See
