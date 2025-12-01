@@ -630,10 +630,7 @@ Build and test each operator individually:
   - [x] `ctx.loadSkinnedMesh()`, `ctx.renderSkinned3D()` — `context.cpp`
   - [x] Animation playback controls (play, pause, loop, switch animations) — `AnimationPlayer`
   - [ ] Fix bone matrix computation (model deforms incorrectly during animation)
-  - [ ] **Backup plan**: Integrate [ozz-animation](https://github.com/guillaumeblanc/ozz-animation) library
-    - Production-quality skeletal animation runtime
-    - Handles FBX coordinate systems and bone hierarchy correctly
-    - SIMD-optimized, supports blending, IK, animation layers
+  - [x] ~~ozz-animation integration~~ (removed - not working correctly)
 
 #### Camera System
 - [x] `Camera3D` class with position, target, FOV, near/far planes — `runtime/src/camera3d.h`
@@ -663,8 +660,8 @@ Build and test each operator individually:
   - [x] GGX normal distribution
   - [x] Smith geometry function
   - [x] Fresnel-Schlick approximation
-- [ ] Normal mapping (tangent space transforms)
-- [ ] PBR texture maps (albedo, metallic/roughness, AO, emissive)
+- [x] Normal mapping (tangent space transforms) — `TexturedPBRMaterial.normalMap`, `normalStrength`
+- [x] PBR texture maps (albedo, metallic/roughness, AO, emissive) — `TexturedPBRMaterial` struct
 
 #### Image-Based Lighting (IBL)
 - [x] `Environment` struct (irradianceMap, radianceMap, brdfLUT) — `graphics3d.h`
@@ -673,10 +670,10 @@ Build and test each operator individually:
 - [x] `render3DPBR()` overload with Environment parameter — `context.h/cpp`
 - [x] `CubemapProcessor` class — `runtime/src/cubemap.h/cpp`
   - [x] WGSL compute shaders for IBL processing (equirect, irradiance, radiance, BRDF)
-  - [ ] GPU execution of compute shaders (currently TODO stubs)
-- [ ] Update PBR shader with IBL sampling (`PBR_IBL` shader variant)
-- [ ] Environment bind group in `Pipeline3DLit`
-- [ ] `examples/lighting-demo` with HDR environment
+  - [x] GPU execution of compute shaders
+- [x] Update PBR shader with IBL sampling (`PBR_IBL` shader variant) — `shaders3d::PBR_IBL`
+- [x] Environment bind group in `Pipeline3DLit` — `renderPBRWithIBL()`, `renderPBRTexturedWithIBL()`
+- [x] `examples/lighting-demo` with HDR environment — `environment.hdr`
 
 #### Material Operators
 - [x] `PhongMat` — ambient, diffuse, specular, shininess, emissive (`operators/phong_material.cpp`)

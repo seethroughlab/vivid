@@ -1102,7 +1102,6 @@ When deciding whether a feature belongs in core or an addon, use these criteria:
 ### Put in ADDON when:
 - **Heavy dependencies** - Adds significant binary size or build time
   - Example: Assimp adds ~15 MB and 5-10 min build time
-  - Example: ozz-animation adds ~3-5 MB
 - **Specialized** - Only a subset of projects need it
 - **Optional** - Nice to have but not essential for basic visual output
 
@@ -1110,7 +1109,7 @@ When deciding whether a feature belongs in core or an addon, use these criteria:
 
 | Core (~15 MB, 25 operators) | Addons (opt-in) |
 |----------------------------|-----------------|
-| VideoFile, Webcam, ImageFile, AudioIn | vivid-models (Assimp, ozz) |
+| VideoFile, Webcam, ImageFile, AudioIn | vivid-models (Assimp) |
 | Noise, Gradient, Shape, Constant | vivid-storage (JSON persistence) |
 | LFO, Math, Logic | vivid-imgui (pending) |
 | All shader-based effects (Blur, Composite, etc.) | |

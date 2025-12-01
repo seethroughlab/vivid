@@ -78,8 +78,8 @@ FetchContent_Declare(
     GIT_TAG 0.11.21
 )
 
-# Note: Assimp and ozz-animation have been moved to optional addons
-# Use addons/vivid-models for 3D model loading and skeletal animation
+# Note: Assimp has been moved to optional addons
+# Use addons/vivid-models for 3D model loading
 
 FetchContent_MakeAvailable(glfw glm ixwebsocket nlohmann_json efsw stb snappy miniaudio)
 
