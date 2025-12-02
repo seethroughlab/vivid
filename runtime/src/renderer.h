@@ -209,6 +209,10 @@ private:
     int height_ = 0;
     bool initialized_ = false;
     bool vsync_ = true;  // VSync enabled by default
+    bool surfaceConfigured_ = false;  // Track if surface needs unconfigure before reconfigure
+    bool resizePending_ = false;  // Defer resize until safe point between frames
+    int pendingWidth_ = 0;
+    int pendingHeight_ = 0;
 
     // Last shader compilation error
     std::string lastShaderError_;

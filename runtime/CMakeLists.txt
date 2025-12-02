@@ -127,8 +127,11 @@ if(APPLE)
 elseif(WIN32)
     # Windows-specific libraries
     target_link_libraries(vivid PRIVATE
-        # For video loader (Media Foundation) - not yet implemented but linked for future use
-        # mfplat mfreadwrite mfuuid
+        # Media Foundation for video/camera
+        mf
+        mfplat
+        mfreadwrite
+        mfuuid
         # Core Windows libraries
         ole32
         oleaut32

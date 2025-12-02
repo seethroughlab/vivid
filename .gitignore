@@ -60,3 +60,4 @@ examples/video-playback/assets/*.mov
 examples/video-playback/assets/*.mp4
 examples/video-playback/assets/*.mxf
 JEFF_NOTES.txt
+.claude
