@@ -369,12 +369,15 @@ void Renderer3DInstanced::ensureDepthBuffer(int width, int height) {
         return;
     }
 
+    // Create depth texture view
+    // Use WGPUTextureAspect_All with full format for render attachments
+    // (DepthOnly aspect requires Depth24Plus format, not Depth24PlusStencil8)
     WGPUTextureViewDescriptor viewDesc = {};
     viewDesc.format = DEPTH_FORMAT;
     viewDesc.dimension = WGPUTextureViewDimension_2D;
     viewDesc.mipLevelCount = 1;
     viewDesc.arrayLayerCount = 1;
-    viewDesc.aspect = WGPUTextureAspect_DepthOnly;
+    viewDesc.aspect = WGPUTextureAspect_All;
 
     depthView_ = wgpuTextureCreateView(depthTexture_, &viewDesc);
 
@@ -457,16 +460,17 @@ void Renderer3DInstanced::drawInstanced(const Mesh& mesh,
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {clearColor.r, clearColor.g, clearColor.b, clearColor.a};
 
-    // Depth attachment
+    // Depth attachment (using Aspect_All view, so we must handle stencil too)
     WGPURenderPassDepthStencilAttachment depthAttachment = {};
     depthAttachment.view = depthView_;
     depthAttachment.depthLoadOp = WGPULoadOp_Clear;
     depthAttachment.depthStoreOp = WGPUStoreOp_Store;
     depthAttachment.depthClearValue = 1.0f;
     depthAttachment.depthReadOnly = false;
-    depthAttachment.stencilLoadOp = WGPULoadOp_Undefined;
-    depthAttachment.stencilStoreOp = WGPUStoreOp_Undefined;
-    depthAttachment.stencilReadOnly = true;
+    depthAttachment.stencilLoadOp = WGPULoadOp_Clear;
+    depthAttachment.stencilStoreOp = WGPUStoreOp_Store;
+    depthAttachment.stencilClearValue = 0;
+    depthAttachment.stencilReadOnly = false;
 
     // Begin render pass
     WGPURenderPassDescriptor renderPassDesc = {};
