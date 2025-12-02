@@ -1122,99 +1122,19 @@ When deciding whether a feature belongs in core or an addon, use these criteria:
 
 Vivid supports operator-level addons that extend functionality beyond the core runtime. Addons are detected automatically based on `#include` patterns in user code.
 
-### Addon Structure
-
-```
-addons/
-├── vivid-storage/           # Persistent key/value storage
-│   ├── addon.cmake          # CMake integration
-│   └── include/
-│       └── vivid/storage/
-│           └── storage.h
-├── vivid-models/            # 3D model loading (Assimp)
-│   ├── addon.cmake
-│   └── include/
-│       └── vivid/models/
-│           └── model_loader.h
-└── vivid-imgui/             # GUI controls (BLOCKED - see below)
-    ├── addon.cmake
-    └── include/
-        └── vivid/imgui/
-            └── imgui_integration.h
-```
-
-### Auto-Detection
-
-The compiler detects addon usage via `#include` patterns:
-- `#include <vivid/storage/...>` → links `vivid-storage`
-- `#include <vivid/models/...>` → links `vivid-models`
-- `#include <vivid/imgui/...>` → links `vivid-imgui`
+> **See [PLAN-08-addons.md](PLAN-08-addons.md) for full addon system documentation.**
 
 ### Current Addons
 
-| Addon | Status | Description |
-|-------|--------|-------------|
-| vivid-storage | ✅ Working | JSON-based persistent key/value storage |
-| vivid-models | ✅ Working | 3D model loading via Assimp |
-| vivid-imgui | ⏳ Blocked | GUI controls for operators |
-
-### ImGUI Integration (Future)
-
-The `vivid-imgui` addon is scaffolded but blocked on WebGPU API compatibility:
-
-**Problem**: wgpu-native v24.0.0.2 uses the new WebGPU spec with breaking API changes:
-- `const char*` → `WGPUStringView`
-- `WGPUShaderModuleWGSLDescriptor` → `nextInChain` approach
-- `WGPUImageCopyTexture` → `WGPUTexelCopyTextureInfo`
-- `WGPUTextureDataLayout` → `WGPUTexelCopyBufferLayout`
-- `bool` → `WGPUOptionalBool`
-
-ImGUI's `imgui_impl_wgpu.cpp` expects the older API (all versions tested including v1.91.5 and v1.89.8).
-
-**Resolution options** (when ready to implement):
-
-1. **Patch imgui_impl_wgpu.cpp** (~200-300 lines of changes)
-   - Most sustainable long-term solution
-   - Wrap string parameters with `WGPUStringView` helper
-   - Update struct names and field types
-   - Could submit upstream to ImGUI project
-
-2. **Downgrade wgpu-native** to v22.1.0.x (Sep 2023)
-   - Quick fix but may break existing runtime code
-   - Not recommended for long-term
-
-3. **Wait for ImGUI update**
-   - ImGUI maintainers will likely update their WebGPU backend
-   - Currently chosen approach
-
-**Planned API** (when implemented):
-
-```cpp
-#include <vivid/imgui/imgui_integration.h>
-#include <imgui.h>
-
-void update(Chain& chain, Context& ctx) {
-    if (!output.valid()) {
-        output = ctx.createTexture();
-        vivid::imgui::init(ctx);
-    }
-
-    vivid::imgui::beginFrame(ctx);
-
-    ImGui::Begin("Controls");
-    ImGui::SliderFloat("Value", &myValue, 0.0f, 1.0f);
-    ImGui::ColorEdit3("Color", &color.x);
-    ImGui::End();
-
-    vivid::imgui::render(ctx, output);
-}
-```
-
-**WebGPU access methods** (already added to Context in preparation):
-- `ctx.webgpuDevice()` - Raw WGPUDevice handle
-- `ctx.webgpuQueue()` - Raw WGPUQueue handle
-- `ctx.webgpuTextureFormat()` - Surface texture format
-- `ctx.webgpuTextureView(texture)` - Get WGPUTextureView for a Texture
+| Addon | Platform | Status | Description |
+|-------|----------|--------|-------------|
+| vivid-spout | Windows | ✅ Working | Spout texture sharing |
+| vivid-syphon | macOS | ✅ Working | Syphon texture sharing |
+| vivid-models | All | ✅ Working | 3D model loading (Assimp) |
+| vivid-storage | All | ✅ Working | JSON key/value storage |
+| vivid-nuklear | All | ✅ Working | Nuklear GUI integration |
+| vivid-csg | All | ✅ Working | CSG boolean operations |
+| vivid-imgui | All | ⏳ Blocked | ImGUI (WebGPU API mismatch, see PLAN-09) |
 
 ---
 
