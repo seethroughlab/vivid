@@ -166,12 +166,17 @@ public:
     WGPUDevice device() const { return device_; }
     WGPUQueue queue() const { return queue_; }
 
+    // Recreate the surface (needed for fullscreen toggle on Windows)
+    void recreateSurface(GLFWwindow* window);
+
 private:
     bool createSurface(GLFWwindow* window);
     bool requestAdapter();
     bool requestDevice();
     void configureSurface();
     bool createBlitPipeline();
+
+    GLFWwindow* window_ = nullptr;  // Stored for surface recreation
 
     // WebGPU objects
     WGPUInstance instance_ = nullptr;

@@ -92,6 +92,9 @@ if(FFMPEG_FOUND)
     target_compile_definitions(vivid PRIVATE VIVID_HAS_FFMPEG=1)
 endif()
 
+# Mark this as building the runtime (for Windows DLL export)
+target_compile_definitions(vivid PRIVATE VIVID_BUILDING_RUNTIME=1)
+
 target_link_libraries(vivid
     PRIVATE
     glfw
@@ -148,8 +151,9 @@ elseif(WIN32)
         ws2_32       # Networking (for ixwebsocket)
     )
     # Export symbols for dynamically loaded operators (DLLs)
+    # Note: WINDOWS_EXPORT_ALL_SYMBOLS has issues with operator== symbols,
+    # so we disable it and rely on explicit __declspec(dllexport) in headers
     set_target_properties(vivid PROPERTIES
-        WINDOWS_EXPORT_ALL_SYMBOLS ON
         ENABLE_EXPORTS ON
     )
 elseif(UNIX)

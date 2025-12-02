@@ -116,6 +116,7 @@ Renderer::~Renderer() {
 }
 
 bool Renderer::init(GLFWwindow* window, int width, int height) {
+    window_ = window;  // Store for surface recreation
     width_ = width;
     height_ = height;
 
@@ -125,7 +126,10 @@ bool Renderer::init(GLFWwindow* window, int width, int height) {
 #if defined(__APPLE__)
     instanceExtras.backends = WGPUInstanceBackend_Metal;
 #elif defined(_WIN32)
-    instanceExtras.backends = WGPUInstanceBackend_DX12;
+    // Use Vulkan on Windows - D3D12 has issues with surface reconfiguration
+    // during resize/fullscreen (wgpu-native issue with ResizeBuffers)
+    // See: https://github.com/gfx-rs/wgpu/issues/3967
+    instanceExtras.backends = WGPUInstanceBackend_Vulkan;
 #else
     instanceExtras.backends = WGPUInstanceBackend_Vulkan;
 #endif
@@ -284,6 +288,17 @@ void Renderer::configureSurface() {
         return;
     }
 
+    // On Windows/D3D12, we need to:
+    // 1. Wait for GPU to finish all operations (release resource references)
+    // 2. Unconfigure the surface before reconfiguring
+    // See: https://github.com/gfx-rs/wgpu/issues/3967
+    if (surfaceConfigured_) {
+        // Poll device to ensure all GPU work is complete and resources released
+        wgpuDevicePoll(device_, true, nullptr);
+        wgpuSurfaceUnconfigure(surface_);
+        surfaceConfigured_ = false;
+    }
+
     // Get surface capabilities
     WGPUSurfaceCapabilities capabilities = {};
     wgpuSurfaceGetCapabilities(surface_, adapter_, &capabilities);
@@ -306,11 +321,54 @@ void Renderer::configureSurface() {
     config.alphaMode = WGPUCompositeAlphaMode_Auto;
 
     wgpuSurfaceConfigure(surface_, &config);
+    surfaceConfigured_ = true;
 
     // Clean up capabilities
     wgpuSurfaceCapabilitiesFreeMembers(capabilities);
 
-    std::cout << "[Renderer] Surface configured\n";
+    std::cout << "[Renderer] Surface configured (" << width_ << "x" << height_ << ")\n";
+}
+
+void Renderer::recreateSurface(GLFWwindow* window) {
+    // On Windows/D3D12, fullscreen toggle may require surface recreation
+    // The old surface becomes invalid when the window is recreated by GLFW
+
+    window_ = window;
+
+    // Unconfigure and release old surface
+    if (surfaceConfigured_) {
+        wgpuSurfaceUnconfigure(surface_);
+        surfaceConfigured_ = false;
+    }
+    if (surface_) {
+        wgpuSurfaceRelease(surface_);
+        surface_ = nullptr;
+    }
+
+    // Create new surface
+    if (!createSurface(window)) {
+        std::cerr << "[Renderer] Failed to recreate surface\n";
+        return;
+    }
+
+    std::cout << "[Renderer] Surface recreated (surface=" << surface_ << ")\n";
+
+    // Get updated window size from GLFW in case it changed
+    int w, h;
+    glfwGetFramebufferSize(window, &w, &h);
+    if (w > 0 && h > 0) {
+        width_ = w;
+        height_ = h;
+    }
+
+    std::cout << "[Renderer] Configuring for " << width_ << "x" << height_ << "\n";
+
+    // Poll the device to ensure any pending operations are complete
+    // This may help with D3D12 surface timing issues
+    wgpuDevicePoll(device_, true, nullptr);
+
+    // Configure the new surface
+    configureSurface();
 }
 
 void Renderer::destroyDepthBuffer() {
@@ -510,6 +568,7 @@ bool Renderer::beginFrame() {
         }
 
         // Reconfigure surface with new size
+        // On Windows, we try just reconfiguring - surface recreation only if this fails
         configureSurface();
 
         // Recreate depth buffer if one exists

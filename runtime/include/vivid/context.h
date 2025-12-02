@@ -36,7 +36,7 @@ class TextRenderer;
  * - Read inputs from other operators
  * - Set outputs for other operators to consume
  */
-class Context {
+class VIVID_API Context {
 public:
     Context(Renderer& renderer, int width, int height);
     Context(Renderer& renderer, Window& window, int width, int height);
