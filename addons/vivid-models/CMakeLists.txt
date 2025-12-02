@@ -88,12 +88,6 @@ add_custom_command(TARGET vivid-models POST_BUILD
     COMMENT "[vivid-models] Installing assimp library"
 )
 
-# Copy zlib library to addons/lib (assimp depends on zlib)
-add_custom_command(TARGET vivid-models POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        "$<TARGET_FILE:zlibstatic>"
-        "${VIVID_ADDONS_LIB_DIR}/"
-    COMMENT "[vivid-models] Installing zlib library"
-)
+# Note: Assimp uses system zlib on macOS/Linux, no need to copy
 
 message(STATUS "[vivid-models] Configured successfully")

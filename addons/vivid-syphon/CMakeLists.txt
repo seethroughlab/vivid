@@ -7,13 +7,16 @@
 
 cmake_minimum_required(VERSION 3.20)
 
+# Temporarily disabled - requires OBJCXX language support
+# TODO: Fix OBJCXX compatibility with GLFW
+message(STATUS "[vivid-syphon] Skipping (OBJCXX disabled)")
+return()
+
 # Only build on macOS
 if(NOT APPLE)
     message(STATUS "[vivid-syphon] Skipping (macOS only)")
     return()
 endif()
-
-project(vivid-syphon VERSION 1.0.0 LANGUAGES CXX OBJCXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
