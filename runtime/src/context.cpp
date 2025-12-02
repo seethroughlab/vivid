@@ -40,6 +40,60 @@ bool Context::vsyncEnabled() const {
     return renderer_.vsyncEnabled();
 }
 
+// === Window Management ===
+
+void Context::setFullscreen(bool fullscreen, int monitorIndex) {
+    if (window_) window_->setFullscreen(fullscreen, monitorIndex);
+}
+
+void Context::toggleFullscreen() {
+    if (window_) window_->toggleFullscreen();
+}
+
+bool Context::isFullscreen() const {
+    return window_ ? window_->isFullscreen() : false;
+}
+
+void Context::setBorderless(bool borderless) {
+    if (window_) window_->setBorderless(borderless);
+}
+
+bool Context::isBorderless() const {
+    return window_ ? window_->isBorderless() : false;
+}
+
+void Context::setCursorVisible(bool visible) {
+    if (window_) window_->setCursorVisible(visible);
+}
+
+bool Context::isCursorVisible() const {
+    return window_ ? window_->isCursorVisible() : true;
+}
+
+void Context::setAlwaysOnTop(bool alwaysOnTop) {
+    if (window_) window_->setAlwaysOnTop(alwaysOnTop);
+}
+
+bool Context::isAlwaysOnTop() const {
+    return window_ ? window_->isAlwaysOnTop() : false;
+}
+
+void Context::setWindowPosition(int x, int y) {
+    if (window_) window_->setPosition(x, y);
+}
+
+void Context::setWindowSize(int width, int height) {
+    if (window_) window_->setSize(width, height);
+}
+
+void Context::moveToMonitor(int monitorIndex) {
+    if (window_) window_->moveToMonitor(monitorIndex);
+}
+
+void Context::printMonitors() {
+    Window::printMonitors();
+}
+
 void Context::setProjectPath(const std::string& projectPath) {
     projectPath_ = projectPath;
     // Normalize to remove trailing slashes
@@ -140,6 +194,13 @@ void Context::uploadTexturePixels(Texture& texture, const uint8_t* pixels, int w
     renderer_.uploadTexturePixels(texture, pixels, width, height);
 }
 
+void Context::readbackTexture(const Texture& texture, uint8_t* pixels) {
+    auto data = renderer_.readTexturePixels(texture);
+    if (!data.empty() && pixels) {
+        memcpy(pixels, data.data(), data.size());
+    }
+}
+
 bool Context::isImageSupported(const std::string& path) {
     return ImageLoader::isSupported(path);
 }
@@ -217,6 +278,13 @@ std::vector<CameraDevice> Context::enumerateCameras() {
         result.push_back(d);
     }
     return result;
+}
+
+void Context::printCameraModes(const std::string& deviceId) {
+    auto capture = CameraCapture::create();
+    if (capture) {
+        capture->printModes(deviceId);
+    }
 }
 
 Camera Context::createCamera(int width, int height, float frameRate) {

@@ -2,6 +2,7 @@
 #include <GLFW/glfw3.h>
 #include <stdexcept>
 #include <iostream>
+#include <iomanip>
 
 namespace vivid {
 
@@ -169,6 +170,170 @@ void Window::clearInputState() {
     mouseButtonsReleased_.clear();
     scrollDeltaX_ = 0.0f;
     scrollDeltaY_ = 0.0f;
+}
+
+// === Window Management Implementation ===
+
+void Window::setFullscreen(bool fullscreen, int monitorIndex) {
+    if (fullscreen == isFullscreen_) return;
+
+    if (fullscreen) {
+        // Save current windowed position/size
+        glfwGetWindowPos(window_, &windowedX_, &windowedY_);
+        glfwGetWindowSize(window_, &windowedWidth_, &windowedHeight_);
+
+        // Get target monitor
+        int monitorCount;
+        GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+        GLFWmonitor* monitor = nullptr;
+
+        if (monitorIndex >= 0 && monitorIndex < monitorCount) {
+            monitor = monitors[monitorIndex];
+        } else {
+            // Use monitor the window is currently on
+            monitor = glfwGetPrimaryMonitor();
+
+            // Find which monitor the window center is on
+            int wx, wy;
+            glfwGetWindowPos(window_, &wx, &wy);
+            int centerX = wx + width_ / 2;
+            int centerY = wy + height_ / 2;
+
+            for (int i = 0; i < monitorCount; i++) {
+                int mx, my;
+                glfwGetMonitorPos(monitors[i], &mx, &my);
+                const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+                if (centerX >= mx && centerX < mx + mode->width &&
+                    centerY >= my && centerY < my + mode->height) {
+                    monitor = monitors[i];
+                    break;
+                }
+            }
+        }
+
+        const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+        glfwSetWindowMonitor(window_, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+        isFullscreen_ = true;
+        std::cout << "[Window] Entered fullscreen (" << mode->width << "x" << mode->height << ")\n";
+    } else {
+        // Restore windowed mode
+        glfwSetWindowMonitor(window_, nullptr, windowedX_, windowedY_, windowedWidth_, windowedHeight_, 0);
+        isFullscreen_ = false;
+        std::cout << "[Window] Exited fullscreen (" << windowedWidth_ << "x" << windowedHeight_ << ")\n";
+    }
+}
+
+void Window::toggleFullscreen() {
+    setFullscreen(!isFullscreen_);
+}
+
+void Window::setBorderless(bool borderless) {
+    if (borderless == isBorderless_) return;
+
+    glfwSetWindowAttrib(window_, GLFW_DECORATED, borderless ? GLFW_FALSE : GLFW_TRUE);
+    isBorderless_ = borderless;
+    std::cout << "[Window] Borderless: " << (borderless ? "ON" : "OFF") << "\n";
+}
+
+void Window::setCursorVisible(bool visible) {
+    if (visible == cursorVisible_) return;
+
+    glfwSetInputMode(window_, GLFW_CURSOR, visible ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
+    cursorVisible_ = visible;
+}
+
+void Window::setAlwaysOnTop(bool alwaysOnTop) {
+    if (alwaysOnTop == alwaysOnTop_) return;
+
+    glfwSetWindowAttrib(window_, GLFW_FLOATING, alwaysOnTop ? GLFW_TRUE : GLFW_FALSE);
+    alwaysOnTop_ = alwaysOnTop;
+    std::cout << "[Window] Always on top: " << (alwaysOnTop ? "ON" : "OFF") << "\n";
+}
+
+void Window::setPosition(int x, int y) {
+    glfwSetWindowPos(window_, x, y);
+}
+
+void Window::getPosition(int& x, int& y) const {
+    glfwGetWindowPos(window_, &x, &y);
+}
+
+void Window::setSize(int width, int height) {
+    glfwSetWindowSize(window_, width, height);
+}
+
+std::vector<MonitorInfo> Window::enumerateMonitors() {
+    std::vector<MonitorInfo> result;
+
+    // Ensure GLFW is initialized
+    if (!glfwInit()) return result;
+
+    int count;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+    GLFWmonitor* primary = glfwGetPrimaryMonitor();
+
+    for (int i = 0; i < count; i++) {
+        MonitorInfo info;
+        info.index = i;
+        info.name = glfwGetMonitorName(monitors[i]);
+
+        const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+        info.width = mode->width;
+        info.height = mode->height;
+        info.refreshRate = mode->refreshRate;
+
+        glfwGetMonitorPos(monitors[i], &info.posX, &info.posY);
+        info.isPrimary = (monitors[i] == primary);
+
+        result.push_back(info);
+    }
+
+    return result;
+}
+
+void Window::printMonitors() {
+    auto monitors = enumerateMonitors();
+
+    std::cout << "\n[Window] Available monitors:\n";
+    std::cout << std::string(70, '-') << "\n";
+
+    for (const auto& m : monitors) {
+        std::cout << "  [" << m.index << "] " << m.name;
+        if (m.isPrimary) std::cout << " (primary)";
+        std::cout << "\n";
+        std::cout << "      " << m.width << "x" << m.height << " @ " << m.refreshRate << "Hz";
+        std::cout << "  pos: (" << m.posX << ", " << m.posY << ")\n";
+    }
+
+    std::cout << std::string(70, '-') << "\n\n";
+}
+
+void Window::moveToMonitor(int monitorIndex) {
+    int count;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+
+    if (monitorIndex < 0 || monitorIndex >= count) {
+        std::cerr << "[Window] Invalid monitor index: " << monitorIndex << "\n";
+        return;
+    }
+
+    GLFWmonitor* monitor = monitors[monitorIndex];
+    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+    int mx, my;
+    glfwGetMonitorPos(monitor, &mx, &my);
+
+    if (isFullscreen_) {
+        // Switch to fullscreen on new monitor
+        glfwSetWindowMonitor(window_, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+    } else {
+        // Center window on new monitor
+        int newX = mx + (mode->width - width_) / 2;
+        int newY = my + (mode->height - height_) / 2;
+        glfwSetWindowPos(window_, newX, newY);
+    }
+
+    std::cout << "[Window] Moved to monitor " << monitorIndex << " (" << glfwGetMonitorName(monitor) << ")\n";
 }
 
 } // namespace vivid

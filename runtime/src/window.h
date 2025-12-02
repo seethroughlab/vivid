@@ -1,11 +1,27 @@
 #pragma once
 #include <string>
+#include <vector>
 #include <unordered_set>
 
 // Forward declare GLFW types
 struct GLFWwindow;
+struct GLFWmonitor;
 
 namespace vivid {
+
+/**
+ * @brief Information about a display monitor.
+ */
+struct MonitorInfo {
+    int index;              ///< Monitor index (0 = primary)
+    std::string name;       ///< Monitor name
+    int width;              ///< Resolution width
+    int height;             ///< Resolution height
+    int refreshRate;        ///< Refresh rate in Hz
+    int posX;               ///< Position X in virtual screen space
+    int posY;               ///< Position Y in virtual screen space
+    bool isPrimary;         ///< Is this the primary monitor?
+};
 
 class Window {
 public:
@@ -33,6 +49,53 @@ public:
 
     // Set resize callback
     void setResizeCallback(void (*callback)(int width, int height, void* userdata), void* userdata);
+
+    // === Window Management ===
+
+    /// Set fullscreen mode on the current or specified monitor
+    void setFullscreen(bool fullscreen, int monitorIndex = -1);
+
+    /// Toggle fullscreen mode
+    void toggleFullscreen();
+
+    /// Check if currently fullscreen
+    bool isFullscreen() const { return isFullscreen_; }
+
+    /// Set borderless window mode (no decorations)
+    void setBorderless(bool borderless);
+
+    /// Check if borderless
+    bool isBorderless() const { return isBorderless_; }
+
+    /// Set cursor visibility
+    void setCursorVisible(bool visible);
+
+    /// Check if cursor is visible
+    bool isCursorVisible() const { return cursorVisible_; }
+
+    /// Set always-on-top (floating) mode
+    void setAlwaysOnTop(bool alwaysOnTop);
+
+    /// Check if always-on-top
+    bool isAlwaysOnTop() const { return alwaysOnTop_; }
+
+    /// Set window position
+    void setPosition(int x, int y);
+
+    /// Get window position
+    void getPosition(int& x, int& y) const;
+
+    /// Set window size (content area)
+    void setSize(int width, int height);
+
+    /// Enumerate available monitors
+    static std::vector<MonitorInfo> enumerateMonitors();
+
+    /// Print monitor info to stdout
+    static void printMonitors();
+
+    /// Move window to specified monitor (centers on monitor)
+    void moveToMonitor(int monitorIndex);
 
     // Keyboard input
     bool isKeyDown(int key) const;           // Key is currently held
@@ -66,6 +129,18 @@ private:
 
     void (*resizeCallback_)(int, int, void*) = nullptr;
     void* resizeUserdata_ = nullptr;
+
+    // Window state
+    bool isFullscreen_ = false;
+    bool isBorderless_ = false;
+    bool cursorVisible_ = true;
+    bool alwaysOnTop_ = false;
+
+    // Saved windowed position/size for restoring from fullscreen
+    int windowedX_ = 100;
+    int windowedY_ = 100;
+    int windowedWidth_ = 1280;
+    int windowedHeight_ = 720;
 
     // Keyboard state
     std::unordered_set<int> keysDown_;       // Currently held keys

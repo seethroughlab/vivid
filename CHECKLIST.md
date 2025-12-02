@@ -789,14 +789,38 @@ Build and test each operator individually:
 ### 12.14 Advanced Window Management
 **Priority: High — Essential for performance/installation work**
 
-- [ ] User-configurable resolution (from project config or runtime args)
-- [ ] Window modes: windowed, borderless, fullscreen
-- [ ] Multi-monitor support and monitor selection
-- [ ] Window spanning across multiple displays
-- [ ] Custom window positioning
-- [ ] Window always-on-top option
-- [ ] Cursor hiding/showing
-- [ ] Implement `WindowSettings` in Context or config file
+> **Note:** GLFW provides cross-platform windowing. Most features work on all platforms
+> with the same code, but need testing. Platform tags indicate tested/verified status.
+
+**Cross-platform API (GLFW-based):**
+- [ ] Implement `WindowSettings` struct
+- [x] `ctx.setFullscreen(bool)` / `ctx.toggleFullscreen()`
+- [x] `ctx.setBorderless(bool)` - borderless window mode
+- [x] `ctx.setWindowSize(w, h)` / `ctx.setWindowPosition(x, y)`
+- [x] `ctx.setAlwaysOnTop(bool)`
+- [x] `ctx.setCursorVisible(bool)`
+- [x] `ctx.printMonitors()` - list available displays
+- [x] `ctx.moveToMonitor(index)` - move window to specific monitor
+- [ ] Command-line args: `--fullscreen`, `--width`, `--height`, `--monitor`, `--borderless`
+
+**Tested/Verified:**
+- [x] Fullscreen toggle (macOS)
+- [ ] Fullscreen toggle (Windows)
+- [ ] Fullscreen toggle (Linux)
+- [x] Borderless mode (macOS)
+- [ ] Borderless mode (Windows)
+- [ ] Borderless mode (Linux)
+- [x] Multi-monitor (macOS)
+- [ ] Multi-monitor (Windows)
+- [ ] Multi-monitor (Linux)
+- [x] Always-on-top (macOS)
+- [ ] Always-on-top (Windows)
+- [ ] Always-on-top (Linux)
+
+**Platform-specific (if needed):**
+- [ ] macOS: Native fullscreen vs GLFW fullscreen behavior
+- [ ] Windows: Exclusive fullscreen for lowest latency
+- [ ] Linux: X11 vs Wayland considerations
 
 ### 12.15 Native GUI / WebView
 - [ ] Integrate native WebView (WebView2 on Windows, WKWebView on macOS)

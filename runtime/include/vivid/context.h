@@ -82,6 +82,59 @@ public:
     bool vsyncEnabled() const;
     /// @}
 
+    /// @name Window Management
+    /// @{
+
+    /// @brief Enter or exit fullscreen mode.
+    /// @param fullscreen true for fullscreen, false for windowed.
+    /// @param monitorIndex Optional monitor index (-1 = current monitor).
+    void setFullscreen(bool fullscreen, int monitorIndex = -1);
+
+    /// @brief Toggle between fullscreen and windowed mode.
+    void toggleFullscreen();
+
+    /// @brief Check if currently in fullscreen mode.
+    bool isFullscreen() const;
+
+    /// @brief Set borderless window mode (no title bar/decorations).
+    /// @param borderless true for borderless, false for decorated.
+    void setBorderless(bool borderless);
+
+    /// @brief Check if window is borderless.
+    bool isBorderless() const;
+
+    /// @brief Show or hide the mouse cursor.
+    /// @param visible true to show cursor, false to hide.
+    void setCursorVisible(bool visible);
+
+    /// @brief Check if cursor is visible.
+    bool isCursorVisible() const;
+
+    /// @brief Set window always-on-top (floating).
+    /// @param alwaysOnTop true to keep window above others.
+    void setAlwaysOnTop(bool alwaysOnTop);
+
+    /// @brief Check if window is always-on-top.
+    bool isAlwaysOnTop() const;
+
+    /// @brief Set window position.
+    /// @param x X position in screen coordinates.
+    /// @param y Y position in screen coordinates.
+    void setWindowPosition(int x, int y);
+
+    /// @brief Set window size.
+    /// @param width New width in pixels.
+    /// @param height New height in pixels.
+    void setWindowSize(int width, int height);
+
+    /// @brief Move window to a specific monitor.
+    /// @param monitorIndex Monitor index (0 = primary).
+    void moveToMonitor(int monitorIndex);
+
+    /// @brief Print available monitors to stdout.
+    void printMonitors();
+    /// @}
+
     /// @name Keyboard Input
     /// @{
 
@@ -188,6 +241,16 @@ public:
      * @param height Image height (must match texture height).
      */
     void uploadTexturePixels(Texture& texture, const uint8_t* pixels, int width, int height);
+
+    /**
+     * @brief Read texture pixels back from GPU to CPU memory.
+     * @param texture The texture to read.
+     * @param pixels Output buffer (must be width * height * 4 bytes).
+     *
+     * This is a synchronous operation that blocks until complete.
+     * Use sparingly as GPU->CPU transfers are slow.
+     */
+    void readbackTexture(const Texture& texture, uint8_t* pixels);
 
     /**
      * @brief Load raw image data from a file.
@@ -324,6 +387,12 @@ public:
      * @return List of available cameras.
      */
     std::vector<CameraDevice> enumerateCameras();
+
+    /**
+     * @brief Print all available camera modes (resolutions + fps) to stdout.
+     * @param deviceId Device ID (empty for default camera).
+     */
+    void printCameraModes(const std::string& deviceId = "");
 
     /**
      * @brief Create a camera capture using the default camera.

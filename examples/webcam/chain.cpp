@@ -35,6 +35,10 @@ void setup(Chain& chain) {
 }
 
 void update(Chain& chain, Context& ctx) {
+    // Uncomment to print available camera modes:
+    // static bool once = false;
+    // if (!once) { ctx.printCameraModes(); once = true; }
+
     // Rotate chromatic aberration angle for dynamic effect
     chain.get<ChromaticAberration>("chroma").angle(ctx.time() * 0.3f);
 

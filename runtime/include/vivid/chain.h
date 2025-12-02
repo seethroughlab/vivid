@@ -367,6 +367,18 @@ public:
     }
 
     /**
+     * @brief Get the context (available after init/process).
+     * @return Reference to the context.
+     * @throws std::runtime_error if context not yet available.
+     */
+    Context& context() {
+        if (!ctx_) {
+            throw std::runtime_error("Context not available (call after init)");
+        }
+        return *ctx_;
+    }
+
+    /**
      * @brief Compute execution order via topological sort.
      *
      * Call this after all operators are added and connections made.

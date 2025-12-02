@@ -31,6 +31,34 @@ void update(Chain& chain, Context& ctx) {
     // Cycle hue over time for animated colors
     float hue = std::fmod(ctx.time() * 0.1f, 1.0f);
     chain.get<HSV>("color").hueShift(hue);
+
+    // === Window Management Keys ===
+    // F11 or F: Toggle fullscreen
+    if (ctx.wasKeyPressed(Key::F11) || ctx.wasKeyPressed(Key::F)) {
+        ctx.toggleFullscreen();
+    }
+    // B: Toggle borderless
+    if (ctx.wasKeyPressed(Key::B)) {
+        ctx.setBorderless(!ctx.isBorderless());
+    }
+    // C: Toggle cursor visibility
+    if (ctx.wasKeyPressed(Key::C)) {
+        ctx.setCursorVisible(!ctx.isCursorVisible());
+    }
+    // T: Toggle always-on-top
+    if (ctx.wasKeyPressed(Key::T)) {
+        ctx.setAlwaysOnTop(!ctx.isAlwaysOnTop());
+    }
+    // M: Print monitors
+    if (ctx.wasKeyPressed(Key::M)) {
+        ctx.printMonitors();
+    }
+    // 1-9: Move to monitor
+    for (int i = 0; i < 9; i++) {
+        if (ctx.wasKeyPressed(Key::Num1 + i)) {
+            ctx.moveToMonitor(i);
+        }
+    }
 }
 
 // Export the entry points

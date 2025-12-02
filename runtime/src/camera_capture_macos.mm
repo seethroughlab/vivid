@@ -78,6 +78,53 @@ public:
         return devices;
     }
 
+    std::vector<CameraMode> enumerateModes(const std::string& deviceId = "") override {
+        std::vector<CameraMode> modes;
+
+        @autoreleasepool {
+            AVCaptureDevice* device = nil;
+            if (deviceId.empty()) {
+                device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
+            } else {
+                NSString* nsDeviceId = [NSString stringWithUTF8String:deviceId.c_str()];
+                device = [AVCaptureDevice deviceWithUniqueID:nsDeviceId];
+            }
+
+            if (!device) {
+                return modes;
+            }
+
+            // Iterate through all formats
+            for (AVCaptureDeviceFormat* format in device.formats) {
+                CMFormatDescriptionRef formatDesc = format.formatDescription;
+                CMVideoDimensions dims = CMVideoFormatDescriptionGetDimensions(formatDesc);
+
+                // Get pixel format
+                FourCharCode pixelFormat = CMFormatDescriptionGetMediaSubType(formatDesc);
+                char fourCC[5] = {
+                    static_cast<char>((pixelFormat >> 24) & 0xFF),
+                    static_cast<char>((pixelFormat >> 16) & 0xFF),
+                    static_cast<char>((pixelFormat >> 8) & 0xFF),
+                    static_cast<char>(pixelFormat & 0xFF),
+                    '\0'
+                };
+
+                // Get frame rate ranges
+                for (AVFrameRateRange* range in format.videoSupportedFrameRateRanges) {
+                    CameraMode mode;
+                    mode.width = dims.width;
+                    mode.height = dims.height;
+                    mode.minFrameRate = static_cast<float>(range.minFrameRate);
+                    mode.maxFrameRate = static_cast<float>(range.maxFrameRate);
+                    mode.pixelFormat = std::string(fourCC);
+                    modes.push_back(mode);
+                }
+            }
+        }
+
+        return modes;
+    }
+
     bool open(const CameraConfig& config) override {
         @autoreleasepool {
             AVCaptureDevice* device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
@@ -278,19 +325,60 @@ private:
                 }
             }
 
-            // Configure frame rate
+            // Configure format and frame rate
+            // Strategy: Find the best resolution that supports a reasonable frame rate.
+            // Prioritize resolution match over exact frame rate (24-30fps is fine).
             [device lockForConfiguration:&error];
             if (!error) {
-                // Find best format for requested frame rate
+                AVCaptureDeviceFormat* bestFormat = nil;
+                AVFrameRateRange* bestRange = nil;
+                int bestResScore = -1;
+                float bestFrameRate = 0;
+
                 for (AVCaptureDeviceFormat* format in device.formats) {
+                    CMFormatDescriptionRef formatDesc = format.formatDescription;
+                    CMVideoDimensions dims = CMVideoFormatDescriptionGetDimensions(formatDesc);
+
+                    // Score resolution: prefer formats close to requested size
+                    // but not too small. Penalize formats much larger than needed.
+                    int resScore = dims.width * dims.height;
+                    if (dims.width > config.width * 1.5 || dims.height > config.height * 1.5) {
+                        resScore = resScore / 4;  // Heavy penalty for oversized
+                    } else if (dims.width > config.width || dims.height > config.height) {
+                        resScore = resScore / 2;  // Light penalty for slightly larger
+                    }
+                    // Bonus for formats that match or exceed requested size
+                    if (dims.width >= config.width && dims.height >= config.height) {
+                        resScore = resScore * 2;
+                    }
+
+                    // Find best frame rate range for this format
                     for (AVFrameRateRange* range in format.videoSupportedFrameRateRanges) {
+                        float effectiveRate = range.maxFrameRate;
+                        // Only consider if frame rate is usable (at least 15fps)
+                        if (effectiveRate < 15) continue;
+
+                        // Combined score: resolution + frame rate bonus
+                        int score = resScore;
+                        // Small bonus for supporting the exact requested frame rate
                         if (range.maxFrameRate >= config.frameRate) {
-                            device.activeFormat = format;
-                            device.activeVideoMinFrameDuration = CMTimeMake(1, static_cast<int32_t>(config.frameRate));
-                            device.activeVideoMaxFrameDuration = CMTimeMake(1, static_cast<int32_t>(config.frameRate));
-                            break;
+                            score += 10000;
+                        }
+
+                        if (score > bestResScore ||
+                            (score == bestResScore && effectiveRate > bestFrameRate)) {
+                            bestFormat = format;
+                            bestRange = range;
+                            bestResScore = score;
+                            bestFrameRate = effectiveRate;
                         }
                     }
+                }
+
+                if (bestFormat && bestRange) {
+                    device.activeFormat = bestFormat;
+                    device.activeVideoMinFrameDuration = bestRange.minFrameDuration;
+                    device.activeVideoMaxFrameDuration = bestRange.maxFrameDuration;
                 }
                 [device unlockForConfiguration];
             }
@@ -346,7 +434,13 @@ private:
 
             // Update info
             info_.deviceName = std::string([device.localizedName UTF8String]);
-            info_.frameRate = config.frameRate;
+            // Report actual frame rate from device
+            CMTime minDuration = device.activeVideoMinFrameDuration;
+            if (minDuration.timescale > 0 && minDuration.value > 0) {
+                info_.frameRate = static_cast<float>(minDuration.timescale) / minDuration.value;
+            } else {
+                info_.frameRate = config.frameRate;
+            }
 
             // Get actual dimensions from format
             CMFormatDescriptionRef formatDesc = device.activeFormat.formatDescription;
