@@ -108,7 +108,8 @@ public:
 
     // Blit a texture as an overlay on the screen (with alpha blending)
     // Renders on top of existing screen content without clearing
-    void blitOverlay(const Texture& texture);
+    // Position is in pixels from top-left corner
+    void blitOverlay(const Texture& texture, int x = 0, int y = 0);
 
     // Fill a texture with a solid color (for testing)
     void fillTexture(Texture& texture, float r, float g, float b, float a = 1.0f);
@@ -186,6 +187,7 @@ private:
 
     // Overlay blit pipeline (with alpha blending)
     WGPURenderPipeline overlayPipeline_ = nullptr;
+    WGPUSampler overlaySampler_ = nullptr;  // Nearest-neighbor for crisp overlays
 
     // Shared sampler for shader input textures
     WGPUSampler shaderSampler_ = nullptr;

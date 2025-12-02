@@ -747,16 +747,16 @@ Build and test each operator individually:
 
 #### Debug Display
 - [x] FPS counter in window title (updates every 0.5s)
-- [ ] On-screen FPS overlay via stb_truetype
-- [ ] Debug info overlay (resolution, frame time, operator count)
+- [x] On-screen FPS overlay via stb_truetype (F1 to toggle)
+- [x] Debug info overlay (resolution, frame time, operator count)
 
 #### Text Rendering
 - [x] Integrate stb_truetype for font rendering
 - [x] Font atlas generation from TTF files (FontAtlas class)
 - [x] TextRenderer class for GPU text rendering
-- [ ] Implement Text operator with text string input
+- [x] Implement Text operator with text string input
 - [x] Font selection and styling (size, color, alignment)
-- [ ] Multi-line text support
+- [x] Multi-line text support
 
 #### Vector Graphics
 - [ ] SVG loading and rendering (optional)

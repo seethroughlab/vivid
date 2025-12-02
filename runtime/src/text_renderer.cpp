@@ -3,6 +3,7 @@
 #include "renderer.h"
 #include <iostream>
 #include <cstring>
+#include <cmath>
 
 namespace vivid {
 
@@ -77,13 +78,15 @@ bool TextRenderer::init(Renderer& renderer) {
     bufferDesc.size = 16;  // vec2 screenSize + padding
     uniformBuffer_ = wgpuDeviceCreateBuffer(renderer_->device(), &bufferDesc);
 
-    // Create sampler
+    // Create sampler - use Nearest for crisp pixel fonts
     WGPUSamplerDescriptor samplerDesc = {};
     samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
     samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
-    samplerDesc.magFilter = WGPUFilterMode_Linear;
-    samplerDesc.minFilter = WGPUFilterMode_Linear;
-    samplerDesc.mipmapFilter = WGPUMipmapFilterMode_Linear;
+    samplerDesc.addressModeW = WGPUAddressMode_ClampToEdge;
+    samplerDesc.magFilter = WGPUFilterMode_Nearest;
+    samplerDesc.minFilter = WGPUFilterMode_Nearest;
+    samplerDesc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+    samplerDesc.maxAnisotropy = 1;  // Required to be at least 1
     sampler_ = wgpuDeviceCreateSampler(renderer_->device(), &samplerDesc);
 
     std::cout << "[TextRenderer] Initialized\n";
@@ -232,9 +235,9 @@ void TextRenderer::renderText(FontAtlas& font, const std::string& text,
         const GlyphInfo* glyph = font.getGlyph(c);
         if (!glyph) continue;
 
-        // Calculate quad corners
-        float x0 = cursorX + glyph->xoff;
-        float y0 = cursorY + glyph->yoff;
+        // Calculate quad corners (round to integers for crisp pixel fonts)
+        float x0 = std::floor(cursorX + glyph->xoff);
+        float y0 = std::floor(cursorY + glyph->yoff);
         float x1 = x0 + glyph->width;
         float y1 = y0 + glyph->height;
 
@@ -253,7 +256,7 @@ void TextRenderer::renderText(FontAtlas& font, const std::string& text,
         indices_.push_back(vertexIndex + 3);
 
         vertexIndex += 4;
-        cursorX += glyph->xadvance;
+        cursorX += std::floor(glyph->xadvance);
     }
 
     if (!vertices_.empty()) {

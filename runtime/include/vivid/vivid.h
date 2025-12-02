@@ -30,6 +30,7 @@
 #include "operators/gradient.h"
 #include "operators/shape.h"
 #include "operators/constant.h"
+#include "operators/text.h"
 
 // Built-in Operators - Modulation
 #include "operators/lfo.h"

@@ -64,8 +64,9 @@ bool FontAtlas::loadFromMemory(Renderer& renderer, const uint8_t* data, size_t s
         return false;
     }
 
-    // Enable oversampling for better quality
-    stbtt_PackSetOversampling(&packContext, 2, 2);
+    // Disable oversampling for crisp pixel fonts
+    // (Use 1,1 for pixel fonts; could use 2,2 for smooth fonts)
+    stbtt_PackSetOversampling(&packContext, 1, 1);
 
     // Pack ASCII characters 32-126
     const int firstChar = 32;
@@ -172,23 +173,29 @@ const GlyphInfo* FontAtlas::getGlyph(char c) const {
 }
 
 glm::vec2 FontAtlas::measureText(const std::string& text) const {
-    float width = 0;
-    float maxHeight = 0;
+    float maxWidth = 0;
+    float currentWidth = 0;
+    int lineCount = 1;
 
     for (char c : text) {
         if (c == '\n') {
-            // For multi-line, we'd need more complex handling
+            // Track widest line and start new line
+            maxWidth = std::max(maxWidth, currentWidth);
+            currentWidth = 0;
+            lineCount++;
             continue;
         }
 
         const GlyphInfo* glyph = getGlyph(c);
         if (glyph) {
-            width += glyph->xadvance;
-            maxHeight = std::max(maxHeight, glyph->height);
+            currentWidth += glyph->xadvance;
         }
     }
 
-    return glm::vec2(width, lineHeight_);
+    // Don't forget the last line
+    maxWidth = std::max(maxWidth, currentWidth);
+
+    return glm::vec2(maxWidth, lineCount * lineHeight_);
 }
 
 } // namespace vivid

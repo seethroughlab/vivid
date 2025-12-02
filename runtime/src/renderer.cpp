@@ -445,6 +445,10 @@ void Renderer::shutdown() {
         wgpuRenderPipelineRelease(overlayPipeline_);
         overlayPipeline_ = nullptr;
     }
+    if (overlaySampler_) {
+        wgpuSamplerRelease(overlaySampler_);
+        overlaySampler_ = nullptr;
+    }
 
     if (surface_) {
         wgpuSurfaceUnconfigure(surface_);
@@ -744,6 +748,22 @@ bool Renderer::createBlitPipeline() {
             std::cerr << "[Renderer] Failed to create overlay pipeline\n";
             return false;
         }
+
+        // Create nearest-neighbor sampler for crisp overlay rendering
+        WGPUSamplerDescriptor overlaySamplerDesc = {};
+        overlaySamplerDesc.magFilter = WGPUFilterMode_Nearest;
+        overlaySamplerDesc.minFilter = WGPUFilterMode_Nearest;
+        overlaySamplerDesc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+        overlaySamplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
+        overlaySamplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
+        overlaySamplerDesc.addressModeW = WGPUAddressMode_ClampToEdge;
+        overlaySamplerDesc.maxAnisotropy = 1;
+
+        overlaySampler_ = wgpuDeviceCreateSampler(device_, &overlaySamplerDesc);
+        if (!overlaySampler_) {
+            std::cerr << "[Renderer] Failed to create overlay sampler\n";
+            return false;
+        }
     }
 
     return true;
@@ -869,15 +889,15 @@ void Renderer::blitToScreen(const Texture& texture) {
     wgpuBindGroupRelease(bindGroup);
 }
 
-void Renderer::blitOverlay(const Texture& texture) {
+void Renderer::blitOverlay(const Texture& texture, int x, int y) {
     if (!currentTextureView_ || !hasValidGPU(texture)) return;
 
     auto* texData = getTextureData(texture);
 
-    // Create bind group for this texture
+    // Create bind group for this texture (use nearest-neighbor sampler for crisp pixels)
     WGPUBindGroupEntry entries[2] = {};
     entries[0].binding = 0;
-    entries[0].sampler = blitSampler_;
+    entries[0].sampler = overlaySampler_;
     entries[1].binding = 1;
     entries[1].textureView = texData->view;
 
@@ -902,10 +922,17 @@ void Renderer::blitOverlay(const Texture& texture) {
     renderPassDesc.colorAttachmentCount = 1;
     renderPassDesc.colorAttachments = &colorAttachment;
 
-    // Render fullscreen triangle with alpha blending
+    // Render with viewport set to overlay position and size
     WGPURenderPassEncoder renderPass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
     wgpuRenderPassEncoderSetPipeline(renderPass, overlayPipeline_);
     wgpuRenderPassEncoderSetBindGroup(renderPass, 0, bindGroup, 0, nullptr);
+
+    // Set viewport to position the overlay at (x, y) with texture dimensions
+    wgpuRenderPassEncoderSetViewport(renderPass,
+        static_cast<float>(x), static_cast<float>(y),
+        static_cast<float>(texture.width), static_cast<float>(texture.height),
+        0.0f, 1.0f);
+
     wgpuRenderPassEncoderDraw(renderPass, 3, 1, 0, 0);
     wgpuRenderPassEncoderEnd(renderPass);
 

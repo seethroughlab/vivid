@@ -136,3 +136,10 @@ add_custom_command(TARGET vivid POST_BUILD
     ${CMAKE_SOURCE_DIR}/shaders
     ${CMAKE_BINARY_DIR}/shaders
 )
+
+# Copy fonts to build directory
+add_custom_command(TARGET vivid POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/fonts
+    ${CMAKE_BINARY_DIR}/fonts
+)

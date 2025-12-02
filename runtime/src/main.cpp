@@ -27,6 +27,7 @@
 #include <filesystem>
 #include <sstream>
 #include <iomanip>
+#include <glm/glm.hpp>
 
 namespace fs = std::filesystem;
 
@@ -390,6 +391,35 @@ int main(int argc, char* argv[]) {
         int fpsFrameCount = 0;
         float currentFps = 0.0f;
 
+        // Debug overlay (FPS display)
+        bool showDebugOverlay = true;  // Can toggle with F1
+        vivid::FontAtlas debugFont;
+        vivid::TextRenderer debugTextRenderer;
+        vivid::Texture debugOverlayTexture;
+        std::string lastDebugText;
+
+        // Load debug font from shared assets
+        std::string debugFontPath = getSharedAssetsPath(argv[0]) + "/fonts/Pixeled.ttf";
+        bool fontLoaded = false;
+        if (fs::exists(debugFontPath)) {
+            // Pixel font at readable size
+            if (debugFont.load(renderer, debugFontPath, 16.0f, 256)) {
+                fontLoaded = true;
+                std::cout << "[Debug] Loaded debug font: " << debugFontPath << "\n";
+            }
+        } else {
+            std::cerr << "[Debug] Font not found: " << debugFontPath << "\n";
+        }
+
+        if (fontLoaded) {
+            debugTextRenderer.init(renderer);
+            debugOverlayTexture = renderer.createTexture(180, 60);
+            std::cout << "[Debug] Debug overlay initialized\n";
+        } else {
+            showDebugOverlay = false;
+            std::cout << "[Debug] No system font found, debug overlay disabled\n";
+        }
+
         // Main loop
         while (!window.shouldClose()) {
             window.pollEvents();
@@ -507,6 +537,38 @@ int main(int argc, char* argv[]) {
             // Blit final output to screen
             if (finalOutput && finalOutput->valid()) {
                 renderer.blitToScreen(*finalOutput);
+            }
+
+            // Render debug overlay (FPS display)
+            if (showDebugOverlay && fontLoaded && debugOverlayTexture.valid()) {
+                // Build debug text
+                std::ostringstream oss;
+                oss << std::fixed << std::setprecision(1);
+                oss << "FPS: " << currentFps << "\n";
+                oss << ctx.width() << "x" << ctx.height() << "\n";
+                oss << "dt: " << std::setprecision(2) << (deltaTime * 1000.0f) << "ms";
+                std::string debugText = oss.str();
+
+                // Only re-render text if it changed
+                if (debugText != lastDebugText) {
+                    lastDebugText = debugText;
+                    debugTextRenderer.renderText(
+                        debugFont, debugText,
+                        glm::vec2(6.0f, 4.0f),
+                        glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
+                        debugOverlayTexture,
+                        glm::vec4(0.0f, 0.0f, 0.0f, 0.7f)  // Semi-transparent black background
+                    );
+                }
+
+                // Blit overlay on top of the scene (top-left with margin)
+                renderer.blitOverlay(debugOverlayTexture, 8, 8);
+            }
+
+            // Toggle debug overlay with F1
+            if (ctx.wasKeyPressed(GLFW_KEY_F1)) {
+                showDebugOverlay = !showDebugOverlay;
+                std::cout << "[Debug] Overlay " << (showDebugOverlay ? "enabled" : "disabled") << "\n";
             }
 
             // Process any completed async readbacks
@@ -714,6 +776,11 @@ int main(int argc, char* argv[]) {
         hotLoader.unload();
         fileWatcher.stop();
         ctx.clearShaderCache();
+
+        // Clean up debug overlay
+        if (debugOverlayTexture.valid()) {
+            renderer.destroyTexture(debugOverlayTexture);
+        }
 
         std::cout << "Exiting after " << frameCount << " frames\n";
 
