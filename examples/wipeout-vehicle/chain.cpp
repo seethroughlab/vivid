@@ -50,7 +50,7 @@ static int liveryTeam = -1;  // Track which team the livery was generated for
 // Camera control
 static float cameraYaw = 0.5f;
 static float cameraPitch = 0.25f;
-static float cameraDistance = 10.0f;
+static float cameraDistance = 14.0f;  // Increased for larger vehicle
 static float lastMouseX = 0;
 static float lastMouseY = 0;
 static bool isDragging = false;
@@ -165,30 +165,33 @@ void addTriangleUV(std::vector<Vertex3D>& verts, std::vector<uint32_t>& indices,
 }
 
 // === FUSELAGE ===
-// Long, aerodynamic body with raised center spine and multiple segments
+// Very long needle-like central body (catamaran style from reference)
 
 Mesh3D buildFuselage(Context& ctx) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
-    // Fuselage dimensions (longer and sleeker)
-    float length = 5.0f;
-    float width = 0.8f;
-    float height = 0.35f;
-    float spineHeight = 0.15f;
-    int segments = 8;
+    // Fuselage dimensions - much longer and narrower needle shape
+    float length = 9.0f;    // Much longer
+    float width = 0.45f;    // Narrower
+    float height = 0.25f;   // Lower profile
+    float spineHeight = 0.08f;
+    int segments = 10;
 
     // Cross-section profile at each segment
     // Format: {x-position, width-scale, height-scale, spine-scale}
+    // Long needle taper from front, wider at rear where hulls attach
     float profile[][4] = {
-        {-0.50f, 0.00f, 0.50f, 0.0f},   // Nose tip
-        {-0.35f, 0.30f, 0.70f, 0.3f},   // Nose taper
-        {-0.20f, 0.60f, 0.85f, 0.6f},   // Front section
-        {-0.05f, 0.85f, 1.00f, 0.9f},   // Cockpit area
-        { 0.10f, 1.00f, 1.00f, 1.0f},   // Max width
-        { 0.25f, 0.95f, 0.95f, 0.9f},   // Mid body
-        { 0.40f, 0.80f, 0.85f, 0.7f},   // Rear taper start
-        { 0.50f, 0.50f, 0.70f, 0.4f},   // Rear end
+        {-0.50f, 0.00f, 0.30f, 0.0f},   // Sharp nose tip
+        {-0.42f, 0.12f, 0.45f, 0.1f},   // Nose taper
+        {-0.32f, 0.28f, 0.60f, 0.3f},   // Front needle
+        {-0.20f, 0.45f, 0.75f, 0.5f},   // Mid-front
+        {-0.05f, 0.65f, 0.88f, 0.7f},   // Mid
+        { 0.10f, 0.85f, 1.00f, 0.9f},   // Widening toward rear
+        { 0.25f, 1.00f, 1.00f, 1.0f},   // Max width (hull attachment)
+        { 0.35f, 0.95f, 0.95f, 0.9f},   // Rear body
+        { 0.42f, 0.75f, 0.80f, 0.6f},   // Rear taper
+        { 0.50f, 0.40f, 0.55f, 0.3f},   // Rear end
     };
 
     // V coordinates for each ring point (around the cross-section)
@@ -280,7 +283,7 @@ Mesh3D buildSidePod(Context& ctx, float side) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
-    float podLength = 2.5f;
+    float podLength = 3.0f;    // Longer to match sleeker fuselage
     float podWidth = 0.5f;
     float podHeight = 0.4f;
     float intakeDepth = 0.3f;
@@ -526,7 +529,7 @@ Mesh3D buildRearWing(Context& ctx) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
-    float span = 2.8f;
+    float span = 2.4f;     // Span to match pod width
     float chord = 0.5f;
     float thickness = 0.06f;
     float sweep = 0.15f;
@@ -658,9 +661,9 @@ Mesh3D buildCockpit(Context& ctx) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
-    float length = 0.8f;
-    float width = 0.35f;
-    float height = 0.25f;
+    float length = 0.9f;
+    float width = 0.38f;
+    float height = 0.28f;
 
     // Angular canopy shape (6 segments for faceted look)
     glm::vec3 frontTip = {length * 0.5f, height * 0.3f, 0};
@@ -678,7 +681,7 @@ Mesh3D buildCockpit(Context& ctx) {
     glm::vec3 baseBL = {-length * 0.45f, 0, -width * 0.6f};
     glm::vec3 baseBR = {-length * 0.45f, 0, width * 0.6f};
 
-    // Front facet
+    // Front facet (angled windshield)
     addTriangle(verts, indices, frontTip, frontL, frontR, faceNormal(frontTip, frontL, frontR));
 
     // Front-left facet
@@ -868,7 +871,7 @@ void update(Chain& chain, Context& ctx) {
 
     float scroll = ctx.scrollDeltaY();
     if (scroll != 0) {
-        cameraDistance = glm::clamp(cameraDistance - scroll * 0.5f, 4.0f, 25.0f);
+        cameraDistance = glm::clamp(cameraDistance - scroll * 0.5f, 6.0f, 35.0f);
         updateCamera();
     }
 
@@ -1020,109 +1023,109 @@ void update(Chain& chain, Context& ctx) {
         VertexLitMaterial vlCanardMat = VertexLitMaterial::ps1(palette.primary * 0.6f);
         vlCanardMat.diffuseMap = useLivery ? &liveryTexture : nullptr;
 
-        // Fuselage
+        // Fuselage (long needle body)
         ctx.render3DVertexLit(fuselageMesh, camera, baseXform, vlBodyMat, lightDir, output, clearColor, lightColor);
 
-        // Cockpit
+        // Cockpit (toward front of fuselage)
         glm::mat4 cockpitXform = baseXform;
-        cockpitXform = glm::translate(cockpitXform, glm::vec3(-0.8f, 0.35f, 0));
+        cockpitXform = glm::translate(cockpitXform, glm::vec3(-1.2f, 0.25f, 0));
         ctx.render3DVertexLit(cockpitMesh, camera, cockpitXform, vlCockpitMat, lightDir, output, noClear, lightColor);
 
-        // Side pods
+        // Side pods (alongside fuselage)
         glm::mat4 leftPodXform = baseXform;
-        leftPodXform = glm::translate(leftPodXform, glm::vec3(0.3f, -0.15f, -0.9f));
+        leftPodXform = glm::translate(leftPodXform, glm::vec3(0.8f, -0.1f, -0.8f));
         ctx.render3DVertexLit(leftPodMesh, camera, leftPodXform, vlPodMat, lightDir, output, noClear, lightColor);
 
         glm::mat4 rightPodXform = baseXform;
-        rightPodXform = glm::translate(rightPodXform, glm::vec3(0.3f, -0.15f, 0.9f));
+        rightPodXform = glm::translate(rightPodXform, glm::vec3(0.8f, -0.1f, 0.8f));
         ctx.render3DVertexLit(rightPodMesh, camera, rightPodXform, vlPodMat, lightDir, output, noClear, lightColor);
 
-        // Engines
+        // Engines (at rear of pods)
         glm::mat4 leftEngineXform = baseXform;
-        leftEngineXform = glm::translate(leftEngineXform, glm::vec3(1.8f, -0.1f, -1.0f));
+        leftEngineXform = glm::translate(leftEngineXform, glm::vec3(2.6f, -0.05f, -0.9f));
         leftEngineXform = glm::rotate(leftEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
         ctx.render3DVertexLit(leftEngineMesh, camera, leftEngineXform, vlEngineMat, lightDir, output, noClear, lightColor);
 
         glm::mat4 rightEngineXform = baseXform;
-        rightEngineXform = glm::translate(rightEngineXform, glm::vec3(1.8f, -0.1f, 1.0f));
+        rightEngineXform = glm::translate(rightEngineXform, glm::vec3(2.6f, -0.05f, 0.9f));
         rightEngineXform = glm::rotate(rightEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
         ctx.render3DVertexLit(rightEngineMesh, camera, rightEngineXform, vlEngineMat, lightDir, output, noClear, lightColor);
 
-        // Fins
+        // Fins (on pods)
         glm::mat4 leftFinXform = baseXform;
-        leftFinXform = glm::translate(leftFinXform, glm::vec3(1.5f, 0.2f, -1.0f));
+        leftFinXform = glm::translate(leftFinXform, glm::vec3(2.2f, 0.2f, -0.95f));
         ctx.render3DVertexLit(leftFinMesh, camera, leftFinXform, vlFinMat, lightDir, output, noClear, lightColor);
 
         glm::mat4 rightFinXform = baseXform;
-        rightFinXform = glm::translate(rightFinXform, glm::vec3(1.5f, 0.2f, 1.0f));
+        rightFinXform = glm::translate(rightFinXform, glm::vec3(2.2f, 0.2f, 0.95f));
         ctx.render3DVertexLit(rightFinMesh, camera, rightFinXform, vlFinMat, lightDir, output, noClear, lightColor);
 
         // Rear wing
         glm::mat4 wingXform = baseXform;
-        wingXform = glm::translate(wingXform, glm::vec3(2.0f, 0.35f, 0));
+        wingXform = glm::translate(wingXform, glm::vec3(3.0f, 0.35f, 0));
         ctx.render3DVertexLit(rearWingMesh, camera, wingXform, vlWingMat, lightDir, output, noClear, lightColor);
 
-        // Front canards
+        // Front canards (far forward on needle nose)
         glm::mat4 leftCanardXform = baseXform;
-        leftCanardXform = glm::translate(leftCanardXform, glm::vec3(-2.0f, 0.1f, -0.4f));
+        leftCanardXform = glm::translate(leftCanardXform, glm::vec3(-3.2f, 0.05f, -0.3f));
         ctx.render3DVertexLit(leftCanardMesh, camera, leftCanardXform, vlCanardMat, lightDir, output, noClear, lightColor);
 
         glm::mat4 rightCanardXform = baseXform;
-        rightCanardXform = glm::translate(rightCanardXform, glm::vec3(-2.0f, 0.1f, 0.4f));
+        rightCanardXform = glm::translate(rightCanardXform, glm::vec3(-3.2f, 0.05f, 0.3f));
         ctx.render3DVertexLit(rightCanardMesh, camera, rightCanardXform, vlCanardMat, lightDir, output, noClear, lightColor);
 
     } else {
         // === PBR RENDERING ===
 
-        // Fuselage (main body)
+        // Fuselage (long needle body)
         ctx.render3DPBR(fuselageMesh, camera, baseXform, bodyMat, lighting, iblEnvironment, output, clearColor);
 
-        // Cockpit (on fuselage, toward front)
+        // Cockpit (toward front of fuselage)
         glm::mat4 cockpitXform = baseXform;
-        cockpitXform = glm::translate(cockpitXform, glm::vec3(-0.8f, 0.35f, 0));
+        cockpitXform = glm::translate(cockpitXform, glm::vec3(-1.2f, 0.25f, 0));
         ctx.render3DPBR(cockpitMesh, camera, cockpitXform, cockpitMat, lighting, iblEnvironment, output, noClear);
 
-        // Side pods
+        // Side pods (alongside fuselage)
         glm::mat4 leftPodXform = baseXform;
-        leftPodXform = glm::translate(leftPodXform, glm::vec3(0.3f, -0.15f, -0.9f));
+        leftPodXform = glm::translate(leftPodXform, glm::vec3(0.8f, -0.1f, -0.8f));
         ctx.render3DPBR(leftPodMesh, camera, leftPodXform, podMat, lighting, iblEnvironment, output, noClear);
 
         glm::mat4 rightPodXform = baseXform;
-        rightPodXform = glm::translate(rightPodXform, glm::vec3(0.3f, -0.15f, 0.9f));
+        rightPodXform = glm::translate(rightPodXform, glm::vec3(0.8f, -0.1f, 0.8f));
         ctx.render3DPBR(rightPodMesh, camera, rightPodXform, podMat, lighting, iblEnvironment, output, noClear);
 
         // Engines (at rear of pods)
         glm::mat4 leftEngineXform = baseXform;
-        leftEngineXform = glm::translate(leftEngineXform, glm::vec3(1.8f, -0.1f, -1.0f));
+        leftEngineXform = glm::translate(leftEngineXform, glm::vec3(2.6f, -0.05f, -0.9f));
         leftEngineXform = glm::rotate(leftEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
         ctx.render3DPBR(leftEngineMesh, camera, leftEngineXform, engineMat, lighting, iblEnvironment, output, noClear);
 
         glm::mat4 rightEngineXform = baseXform;
-        rightEngineXform = glm::translate(rightEngineXform, glm::vec3(1.8f, -0.1f, 1.0f));
+        rightEngineXform = glm::translate(rightEngineXform, glm::vec3(2.6f, -0.05f, 0.9f));
         rightEngineXform = glm::rotate(rightEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
         ctx.render3DPBR(rightEngineMesh, camera, rightEngineXform, engineMat, lighting, iblEnvironment, output, noClear);
 
-        // Vertical fins
+        // Vertical fins (on pods)
         glm::mat4 leftFinXform = baseXform;
-        leftFinXform = glm::translate(leftFinXform, glm::vec3(1.5f, 0.2f, -1.0f));
+        leftFinXform = glm::translate(leftFinXform, glm::vec3(2.2f, 0.2f, -0.95f));
         ctx.render3DPBR(leftFinMesh, camera, leftFinXform, finMat, lighting, iblEnvironment, output, noClear);
 
         glm::mat4 rightFinXform = baseXform;
-        rightFinXform = glm::translate(rightFinXform, glm::vec3(1.5f, 0.2f, 1.0f));
+        rightFinXform = glm::translate(rightFinXform, glm::vec3(2.2f, 0.2f, 0.95f));
         ctx.render3DPBR(rightFinMesh, camera, rightFinXform, finMat, lighting, iblEnvironment, output, noClear);
 
         // Rear wing
         glm::mat4 wingXform = baseXform;
-        wingXform = glm::translate(wingXform, glm::vec3(2.0f, 0.35f, 0));
+        wingXform = glm::translate(wingXform, glm::vec3(3.0f, 0.35f, 0));
         ctx.render3DPBR(rearWingMesh, camera, wingXform, wingMat, lighting, iblEnvironment, output, noClear);
 
-        // Front canards
+        // Front canards (far forward on needle nose)
         glm::mat4 leftCanardXform = baseXform;
-        leftCanardXform = glm::translate(leftCanardXform, glm::vec3(-2.0f, 0.1f, -0.4f));
+        leftCanardXform = glm::translate(leftCanardXform, glm::vec3(-3.2f, 0.05f, -0.3f));
         ctx.render3DPBR(leftCanardMesh, camera, leftCanardXform, canardMat, lighting, iblEnvironment, output, noClear);
 
         glm::mat4 rightCanardXform = baseXform;
-        rightCanardXform = glm::translate(rightCanardXform, glm::vec3(-2.0f, 0.1f, 0.4f));
+        rightCanardXform = glm::translate(rightCanardXform, glm::vec3(-3.2f, 0.05f, 0.3f));
         ctx.render3DPBR(rightCanardMesh, camera, rightCanardXform, canardMat, lighting, iblEnvironment, output, noClear);
     }
 
