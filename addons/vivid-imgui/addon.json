@@ -1,0 +1,37 @@
+{
+  "name": "imgui",
+  "version": "1.0.0",
+  "description": "Dear ImGui integration for Vivid - immediate mode GUI for parameter tweaking and debug overlays",
+  "author": "Vivid Contributors",
+  "license": "MIT",
+
+  "platforms": ["macos", "windows", "linux"],
+
+  "detect_headers": [
+    "vivid/imgui/imgui_integration.h"
+  ],
+
+  "include_dirs": ["include"],
+
+  "libraries": {
+    "macos": {
+      "static": ["libvivid-imgui.a"]
+    },
+    "windows": {
+      "static": ["vivid-imgui.lib"]
+    },
+    "linux": {
+      "static": ["libvivid-imgui.a"]
+    }
+  },
+
+  "dependencies": {
+    "external": {
+      "imgui": {
+        "git": "https://github.com/ocornut/imgui.git",
+        "tag": "v1.91.6",
+        "description": "Dear ImGui - Bloat-free Graphical User interface with minimal dependencies"
+      }
+    }
+  }
+}

@@ -86,13 +86,14 @@ void beginFrame(Context& ctx) {
     ImGuiIO& io = ImGui::GetIO();
     io.DeltaTime = ctx.dt() > 0 ? ctx.dt() : 1.0f / 60.0f;
 
-    // Mouse position (convert from normalized to screen space)
-    io.MousePos = ImVec2(ctx.mouseNormX() * g_width, (1.0f - ctx.mouseNormY()) * g_height);
+    // Mouse position - use pixel coordinates directly
+    // ctx.mouseX/Y are already in screen space with Y=0 at top
+    io.MousePos = ImVec2(ctx.mouseX(), ctx.mouseY());
 
-    // Mouse buttons
-    io.MouseDown[0] = ctx.isMouseDown(0);  // Left
-    io.MouseDown[1] = ctx.isMouseDown(1);  // Right
-    io.MouseDown[2] = ctx.isMouseDown(2);  // Middle
+    // Mouse buttons - use AddMouseButtonEvent for proper input handling
+    io.AddMouseButtonEvent(0, ctx.isMouseDown(0));  // Left
+    io.AddMouseButtonEvent(1, ctx.isMouseDown(1));  // Right
+    io.AddMouseButtonEvent(2, ctx.isMouseDown(2));  // Middle
 
     // Start new frame
     ImGui_ImplWGPU_NewFrame();
@@ -116,13 +117,11 @@ void render(Context& ctx, Texture& output, glm::vec4 clearColor) {
     WGPUCommandEncoderDescriptor encoderDesc = {};
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(g_device, &encoderDesc);
 
-    // Create render pass
-    // If clearColor has alpha=0, load existing content instead of clearing
-    bool shouldClear = clearColor.a > 0.0f;
-
+    // Create render pass - always clear to the specified color
+    // Use {0,0,0,0} for transparent overlay on other content
     WGPURenderPassColorAttachment colorAttachment = {};
     colorAttachment.view = textureView;
-    colorAttachment.loadOp = shouldClear ? WGPULoadOp_Clear : WGPULoadOp_Load;
+    colorAttachment.loadOp = WGPULoadOp_Clear;
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {clearColor.r, clearColor.g, clearColor.b, clearColor.a};
 #if !defined(__EMSCRIPTEN__)
