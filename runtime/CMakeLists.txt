@@ -15,6 +15,7 @@ set(RUNTIME_SOURCES
     src/hotload.cpp
     src/file_watcher.cpp
     src/compiler.cpp
+    src/addon_registry.cpp
     src/graph.cpp
     src/preview_server.cpp
     src/async_readback.cpp

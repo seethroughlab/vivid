@@ -695,7 +695,17 @@ Build and test each operator individually:
 - [x] **Decal Blending** — Multiply, overlay, additive modes for decals — `pipeline3d_decal.cpp:createBlendPipeline()`
 
 #### Advanced (Future)
-- [ ] Shadow mapping (directional + point light shadows)
+- [ ] Shadow mapping (see PLAN-06-3d.md for full details)
+  - [ ] Depth-only render pass for shadow maps
+  - [ ] Directional light shadow mapping (orthographic projection)
+  - [ ] Shadow sampling in Phong/PBR shaders
+  - [ ] PCF (Percentage Closer Filtering) soft shadows
+  - [ ] Shadow bias controls (depth bias, normal bias)
+  - [ ] Spot light shadows (perspective projection)
+  - [ ] Point light cubemap shadows (6-face cubemap)
+  - [ ] Cascaded shadow maps for large scenes
+  - [ ] Shadow distance fade
+  - [ ] Per-object shadow cast/receive flags
 - [ ] Screen-space reflections
 - [ ] Ambient occlusion (SSAO)
 
@@ -773,52 +783,57 @@ Build and test each operator individually:
 
 ### 12.12 Texture Sharing
 
-#### Addon Architecture
+#### Addon Architecture ✅ COMPLETE
 **Pre-built static libraries with auto-detection for fast hot-reload**
 
 Each addon compiles once into a static library during Vivid's build. User projects automatically link against pre-built libraries when addon headers are detected in source files.
 
-- [ ] **Addon Build System** — Addons compile as static libraries during Vivid build
-  - [ ] Create `addons/CMakeLists.txt` to build all addons
-  - [ ] Each addon produces `lib/vivid-{name}.lib` (Windows) / `libvivid-{name}.a` (Unix)
-  - [ ] Addon metadata in `addon.json` (name, platforms, detect_headers, libraries, dependencies)
+- [x] **Addon Build System** — Addons compile as static libraries during Vivid build
+  - [x] Create `addons/CMakeLists.txt` to build all addons
+  - [x] Each addon produces `lib/vivid-{name}.lib` (Windows) / `libvivid-{name}.a` (Unix)
+  - [x] Addon metadata in `addon.json` (name, platforms, detect_headers, libraries, dependencies)
 
-- [ ] **Auto-Detection** — Compiler scans source for addon includes
-  - [ ] Scan `chain.cpp` for `#include <vivid/{addon}/...>` patterns
-  - [ ] Match includes against `addon.json` `detect_headers` field
-  - [ ] Auto-generate CMakeLists with required addon linkage
-  - [ ] No custom CMakeLists.txt required for addon usage
+- [x] **Auto-Detection** — Compiler scans source for addon includes
+  - [x] Scan `chain.cpp` for `#include <vivid/{addon}/...>` patterns
+  - [x] Match includes against `addon.json` `detect_headers` field
+  - [x] Auto-generate CMakeLists with required addon linkage
+  - [x] No custom CMakeLists.txt required for addon usage
 
-- [ ] **Addon JSON Schema**
+- [x] **Addon JSON Schema**
   ```json
   {
     "name": "spout",
     "platforms": ["windows"],
     "detect_headers": ["vivid/spout/spout.h"],
     "include_dirs": ["include"],
-    "libraries": ["lib/vivid-spout.lib"],
-    "dependencies": ["opengl32"]
+    "libraries": {
+      "windows": {
+        "static": ["vivid-spout.lib"],
+        "system": ["opengl32.lib"]
+      }
+    }
   }
   ```
 
-#### Spout (Windows)
+#### Spout (Windows) ✅ COMPLETE
 - [x] Create `addons/vivid-spout/` directory structure
 - [x] Implement `spout.h` public API (Sender, Receiver, SenderInfo)
 - [x] Implement `spout_sender.cpp` using Spout2 SDK
 - [x] Implement `spout_receiver.cpp` using Spout2 SDK
-- [x] Create `addon.cmake` build integration (builds Spout2 from source)
+- [x] Create `addon.json` and `CMakeLists.txt` (pre-built static library)
 - [x] Create `examples/spout-out` — send textures to other apps
 - [x] Create `examples/spout-in` — receive textures from other apps
 - [x] Test sender functionality (verified working)
 - [x] Test receiver functionality (verified working)
-- [ ] Migrate to pre-built static library architecture
+- [x] Migrated to pre-built static library architecture
 
-#### Syphon (macOS)
-- [ ] Create `addons/vivid-syphon/` directory structure
-- [ ] Implement `syphon.h` public API (Sender, Receiver, ServerInfo)
-- [ ] Implement `syphon_sender.mm` using Syphon framework
-- [ ] Implement `syphon_receiver.mm` using Syphon framework
-- [ ] Create `addon.json` metadata
+#### Syphon (macOS) ✅ COMPLETE
+- [x] Create `addons/vivid-syphon/` directory structure
+- [x] Implement `syphon.h` public API (Sender, Receiver, ServerInfo)
+- [x] Implement `syphon_sender.mm` using Syphon framework
+- [x] Implement `syphon_receiver.mm` using Syphon framework
+- [x] Create `addon.json` metadata
+- [x] Create `CMakeLists.txt` (pre-built static library)
 - [ ] Create `examples/syphon-out` — send textures to other apps
 - [ ] Create `examples/syphon-in` — receive textures from other apps
 
@@ -1021,12 +1036,12 @@ Each addon compiles once into a static library during Vivid's build. User projec
 
 ---
 
-## Phase 14b: Addon System Architecture
+## Phase 14b: Addon System Architecture ✅ COMPLETE
 **Foundation for community-contributed addons with fast hot-reload**
 
 The addon system enables modular extensions (Spout, Syphon, NDI, etc.) that compile once and link quickly during hot-reload. This is foundational for community contributions.
 
-### 14b.1 Addon Directory Structure
+### 14b.1 Addon Directory Structure ✅
 ```
 addons/
   vivid-spout/           # Example addon
@@ -1044,19 +1059,19 @@ addons/
 ```
 
 ### 14b.2 Addon Build System
-- [ ] Create `addons/CMakeLists.txt` — master addon builder
-- [ ] Integrate addon building into main Vivid CMake build
-- [ ] Each addon builds as static library (`add_library(vivid-spout STATIC ...)`)
-- [ ] Install addon libraries to `build/addons/lib/`
-- [ ] Install addon headers to `build/addons/include/`
-- [ ] Copy `addon.json` to `build/addons/`
+- [x] Create `addons/CMakeLists.txt` — master addon builder
+- [x] Integrate addon building into main Vivid CMake build
+- [x] Each addon builds as static library (`add_library(vivid-spout STATIC ...)`)
+- [x] Install addon libraries to `build/addons/lib/`
+- [x] Install addon headers to `build/addons/include/`
+- [x] Copy `addon.json` to `build/addons/meta/`
 
 ### 14b.3 Addon Metadata (addon.json)
-- [ ] Define JSON schema for addon metadata
-- [ ] Required fields: `name`, `version`, `platforms`, `detect_headers`
-- [ ] Optional fields: `dependencies`, `description`, `author`, `license`
-- [ ] Platform-specific library paths
-- [ ] Example:
+- [x] Define JSON schema for addon metadata
+- [x] Required fields: `name`, `version`, `platforms`, `detect_headers`
+- [x] Optional fields: `dependencies`, `description`, `author`, `license`
+- [x] Platform-specific library paths
+- [x] Example:
   ```json
   {
     "name": "spout",
@@ -1066,37 +1081,44 @@ addons/
     "detect_headers": ["vivid/spout/spout.h"],
     "include_dirs": ["include"],
     "libraries": {
-      "windows": ["lib/vivid-spout.lib", "opengl32.lib"]
+      "windows": {
+        "static": ["vivid-spout.lib"],
+        "system": ["opengl32.lib"]
+      }
     }
   }
   ```
 
 ### 14b.4 Compiler Auto-Detection
-- [ ] Implement `AddonRegistry` class in `runtime/src/addon_registry.h`
-- [ ] Load all `addon.json` files from `addons/` directory at startup
-- [ ] Implement `scanSourceForAddons(path)` — parse #include directives
-- [ ] Match includes against `detect_headers` patterns
-- [ ] Return list of required addons for a project
-- [ ] Generate CMakeLists.txt with addon linkage automatically
+- [x] Implement `AddonRegistry` class in `runtime/src/addon_registry.h`
+- [x] Load all `addon.json` files from `addons/` directory at startup
+- [x] Implement `scanSourceForAddons(path)` — parse #include directives
+- [x] Match includes against `detect_headers` patterns
+- [x] Return list of required addons for a project
+- [x] Generate CMakeLists.txt with addon linkage automatically
 
 ### 14b.5 CMakeLists Generation
-- [ ] Update `Compiler` class to use addon detection
-- [ ] Template-based CMakeLists generation with addon includes
-- [ ] Add addon include directories to generated CMake
-- [ ] Add addon libraries to `target_link_libraries`
-- [ ] Handle platform-specific addon selection
+- [x] Update `Compiler` class to use addon detection
+- [x] Template-based CMakeLists generation with addon includes
+- [x] Add addon include directories to generated CMake
+- [x] Add addon libraries to `target_link_libraries`
+- [x] Handle platform-specific addon selection
 
 ### 14b.6 User Experience
-- [ ] No custom CMakeLists.txt needed when using addons
-- [ ] Just `#include <vivid/spout/spout.h>` and it works
-- [ ] Fast hot-reload (only user code recompiles)
-- [ ] Clear error messages if addon not found/not built
+- [x] No custom CMakeLists.txt needed when using addons
+- [x] Just `#include <vivid/spout/spout.h>` and it works
+- [x] Fast hot-reload (only user code recompiles)
+- [x] Clear error messages if addon not found/not built
 
-### 14b.7 Migration
-- [ ] Update vivid-spout to new architecture
-- [ ] Create vivid-syphon with new architecture
-- [ ] Remove need for custom CMakeLists in spout-in/spout-out examples
-- [ ] Document addon creation process
+### 14b.7 Addon Migration
+- [x] Update vivid-spout to new architecture
+- [x] Create vivid-syphon with new architecture
+- [x] Create vivid-models with new architecture
+- [x] Create vivid-storage with new architecture
+- [x] Create vivid-nuklear with new architecture
+- [x] Create vivid-csg with new architecture
+- [x] Remove need for custom CMakeLists in examples
+- [x] Document addon creation process (see PLAN-08-addons.md)
 
 ---
 

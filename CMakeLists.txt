@@ -151,3 +151,10 @@ endif()
 add_subdirectory(runtime)
 # Operators will be added in Phase 7
 # add_subdirectory(operators)
+
+# Build addons as static libraries
+option(VIVID_BUILD_ADDONS "Build addon libraries" ON)
+if(VIVID_BUILD_ADDONS)
+    message(STATUS "Building Vivid addons...")
+    add_subdirectory(addons)
+endif()
