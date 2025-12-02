@@ -765,6 +765,29 @@ public:
                   const glm::vec4& clearColor = {0, 0, 0, 1});
 
     /**
+     * @brief Render a 3D mesh with PBR material and shadow mapping.
+     *
+     * Uses the shadow map previously rendered with renderShadowMap().
+     * The light matrix and resolution are cached from the last renderShadowMap call.
+     *
+     * @param mesh The mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform matrix.
+     * @param material PBR material.
+     * @param lighting Scene lighting.
+     * @param shadowMap Shadow map from renderShadowMap().
+     * @param output Target texture to render into.
+     * @param clearColor Background color (default black).
+     */
+    void render3DWithShadow(const Mesh3D& mesh, const Camera3D& camera,
+                            const glm::mat4& transform,
+                            const PBRMaterial& material,
+                            const SceneLighting& lighting,
+                            const Texture& shadowMap,
+                            Texture& output,
+                            const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
      * @brief Load an HDR environment map for Image-Based Lighting.
      *
      * Loads an HDR equirectangular image and pre-computes the necessary
@@ -1119,10 +1142,12 @@ private:
     // Lit 3D rendering pipelines (lazy initialized)
     std::unique_ptr<Pipeline3DLit> phongPipeline_;
     std::unique_ptr<Pipeline3DLit> pbrPipeline_;
+    std::unique_ptr<Pipeline3DLit> pbrShadowPipeline_;
     std::unique_ptr<Pipeline3DLit> pbrIBLPipeline_;
     std::unique_ptr<Pipeline3DLit> pbrIBLTexturedPipeline_;
     Pipeline3DLit& getPhongPipeline();
     Pipeline3DLit& getPBRPipeline();
+    Pipeline3DLit& getPBRShadowPipeline();
     Pipeline3DLit& getPBRIBLPipeline();
     Pipeline3DLit& getPBRIBLTexturedPipeline();
 
@@ -1151,6 +1176,8 @@ private:
     std::unique_ptr<DepthVisualizer> depthVisualizer_;
     ShadowManager& getShadowManager();
     DepthVisualizer& getDepthVisualizer();
+    glm::mat4 lastLightMatrix_{1.0f};      // Cached light matrix from renderShadowMap
+    int lastShadowResolution_ = 0;          // Resolution of last rendered shadow map
 
     // Text rendering (lazy initialized)
     std::unique_ptr<TextRenderer> textRenderer_;

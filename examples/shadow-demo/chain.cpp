@@ -17,6 +17,8 @@ static Mesh3D groundPlane;
 static Mesh3D boxMesh;
 static Mesh3D sphereMesh;
 static Mesh3D torusMesh;
+static Mesh3D lightSphere;   // Light position indicator
+static Mesh3D arrowMesh;     // Light arrow body
 static Texture output;
 static Texture shadowDebugOutput;
 
@@ -35,8 +37,8 @@ void setup(Chain& chain) {
 
 // === HELPER: Create scene geometry ===
 void createGeometry(Context& ctx) {
-    // Ground plane (10x10 units)
-    groundPlane = ctx.createPlane(10.0f, 10.0f);
+    // Ground plane (20x20 units) - large floor
+    groundPlane = ctx.createPlane(20.0f, 20.0f);
 
     // Box mesh for shadow casters
     boxMesh = ctx.createCube();
@@ -46,6 +48,12 @@ void createGeometry(Context& ctx) {
 
     // Torus mesh
     torusMesh = ctx.createTorus(0.5f, 0.2f);
+
+    // Light indicator (small sphere)
+    lightSphere = ctx.createSphere(0.2f, 16, 8);
+
+    // Arrow body (cylinder)
+    arrowMesh = ctx.createCylinder(0.05f, 2.0f, 8);
 }
 
 // === UPDATE ===
@@ -93,16 +101,16 @@ void update(Chain& chain, Context& ctx) {
     float t = animateLights ? ctx.time() : 0.0f;
 
     // === CAMERA ===
-    // Orbiting camera
-    float camAngle = t * 0.2f;
-    float camDist = 8.0f;
-    float camHeight = 5.0f;
+    // Fixed camera looking down at the scene from an angle
+    float camAngle = t * 0.1f;  // Slower rotation
+    float camDist = 12.0f;
+    float camHeight = 8.0f;
     glm::vec3 camPos(
         std::cos(camAngle) * camDist,
         camHeight,
         std::sin(camAngle) * camDist
     );
-    glm::vec3 camTarget(0.0f, 0.5f, 0.0f);
+    glm::vec3 camTarget(0.0f, 0.0f, 0.0f);  // Look at floor center
 
     Camera3D camera;
     camera.position = camPos;
@@ -164,11 +172,19 @@ void update(Chain& chain, Context& ctx) {
     torusMat.roughness = 0.2f;
     torusMat.metallic = 0.5f;
 
+    // Light indicator material (bright yellow, emissive)
+    PBRMaterial lightMat;
+    lightMat.albedo = glm::vec3(1.0f, 0.9f, 0.2f);
+    lightMat.roughness = 0.8f;
+    lightMat.metallic = 0.0f;
+    lightMat.emissive = glm::vec3(1.0f, 0.8f, 0.0f);  // Glowing yellow
+
     // === SCENE LIGHTING ===
     SceneLighting lighting;
-    lighting.ambientColor = glm::vec3(0.2f, 0.2f, 0.3f);
-    lighting.ambientIntensity = 0.3f;
+    lighting.ambientColor = glm::vec3(0.15f, 0.15f, 0.2f);
+    lighting.ambientIntensity = 0.15f;  // Lower ambient = more visible shadows
     lighting.addLight(sun);
+    // Note: Only sun casts shadows, other lights just add fill
     lighting.addLight(flashlight);
     lighting.addLight(lamp);
 
@@ -176,9 +192,8 @@ void update(Chain& chain, Context& ctx) {
     std::vector<Mesh3D> meshes;
     std::vector<glm::mat4> transforms;
 
-    // Ground plane
-    glm::mat4 groundTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
-    groundTransform = glm::rotate(groundTransform, -glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+    // Ground plane (already horizontal - createPlane makes XZ plane with +Y normal)
+    glm::mat4 groundTransform = glm::mat4(1.0f);
     meshes.push_back(groundPlane);
     transforms.push_back(groundTransform);
 
@@ -220,27 +235,50 @@ void update(Chain& chain, Context& ctx) {
     Texture shadowMap = ctx.renderShadowMap(sun, meshes, transforms,
                                              sceneCenter, sceneRadius, shadowResolution);
 
-    // === RENDER SCENE ===
-    // Render each mesh with PBR material
+    // === RENDER SCENE WITH SHADOWS ===
+    // Render each mesh with PBR material and shadow mapping
     // First render clears, subsequent renders don't
     bool firstRender = true;
 
     // Ground
-    ctx.render3D(groundPlane, camera, groundTransform, Material(groundMat), lighting, output,
-                 firstRender ? glm::vec4(0.1f, 0.1f, 0.15f, 1.0f) : glm::vec4(0, 0, 0, -1));
+    ctx.render3DWithShadow(groundPlane, camera, groundTransform, groundMat, lighting, shadowMap, output,
+                           firstRender ? glm::vec4(0.1f, 0.1f, 0.15f, 1.0f) : glm::vec4(0, 0, 0, -1));
     firstRender = false;
 
     // Boxes
-    ctx.render3D(boxMesh, camera, box1, Material(boxMat), lighting, output, glm::vec4(0, 0, 0, -1));
-    ctx.render3D(boxMesh, camera, box2, Material(boxMat), lighting, output, glm::vec4(0, 0, 0, -1));
-    ctx.render3D(boxMesh, camera, box3, Material(boxMat), lighting, output, glm::vec4(0, 0, 0, -1));
+    ctx.render3DWithShadow(boxMesh, camera, box1, boxMat, lighting, shadowMap, output, glm::vec4(0, 0, 0, -1));
+    ctx.render3DWithShadow(boxMesh, camera, box2, boxMat, lighting, shadowMap, output, glm::vec4(0, 0, 0, -1));
+    ctx.render3DWithShadow(boxMesh, camera, box3, boxMat, lighting, shadowMap, output, glm::vec4(0, 0, 0, -1));
 
     // Spheres
-    ctx.render3D(sphereMesh, camera, sphere1, Material(sphereMat), lighting, output, glm::vec4(0, 0, 0, -1));
-    ctx.render3D(sphereMesh, camera, sphere2, Material(sphereMat), lighting, output, glm::vec4(0, 0, 0, -1));
+    ctx.render3DWithShadow(sphereMesh, camera, sphere1, sphereMat, lighting, shadowMap, output, glm::vec4(0, 0, 0, -1));
+    ctx.render3DWithShadow(sphereMesh, camera, sphere2, sphereMat, lighting, shadowMap, output, glm::vec4(0, 0, 0, -1));
 
     // Torus
-    ctx.render3D(torusMesh, camera, torusT, Material(torusMat), lighting, output, glm::vec4(0, 0, 0, -1));
+    ctx.render3DWithShadow(torusMesh, camera, torusT, torusMat, lighting, shadowMap, output, glm::vec4(0, 0, 0, -1));
+
+    // === LIGHT DIRECTION INDICATOR ===
+    // Show a sphere + cylinder pointing in the light direction
+    glm::vec3 lightDir = glm::normalize(sun.direction);
+    glm::vec3 lightIndicatorPos = glm::vec3(0.0f, 5.0f, 0.0f);  // Above the scene
+
+    // Calculate rotation to align cylinder with light direction
+    // Cylinder is vertical by default (+Y), we need to rotate it to point in lightDir
+    glm::vec3 defaultDir(0.0f, 1.0f, 0.0f);
+    glm::vec3 rotAxis = glm::cross(defaultDir, lightDir);
+    float rotAngle = std::acos(glm::clamp(glm::dot(defaultDir, lightDir), -1.0f, 1.0f));
+
+    glm::mat4 lightIndicatorT = glm::translate(glm::mat4(1.0f), lightIndicatorPos);
+    if (glm::length(rotAxis) > 0.001f) {
+        lightIndicatorT = glm::rotate(lightIndicatorT, rotAngle, glm::normalize(rotAxis));
+    }
+
+    // Render arrow body (cylinder aligned with light direction)
+    ctx.render3D(arrowMesh, camera, lightIndicatorT, Material(lightMat), lighting, output, glm::vec4(0, 0, 0, -1));
+
+    // Render sphere at tip (end of arrow pointing towards scene)
+    glm::mat4 sphereT = glm::translate(lightIndicatorT, lightDir * 1.2f);
+    ctx.render3D(lightSphere, camera, sphereT, Material(lightMat), lighting, output, glm::vec4(0, 0, 0, -1));
 
     // === DEBUG OVERLAY ===
     if (showDebug && shadowMap.valid()) {

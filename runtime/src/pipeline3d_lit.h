@@ -128,6 +128,20 @@ inline PBRMaterialUniform makePBRMaterialUniform(const PBRMaterial& mat) {
 }
 
 /**
+ * @brief GPU-compatible shadow uniform.
+ * Contains shadow map projection and shadow parameters.
+ */
+struct ShadowUniformGPU {
+    glm::mat4 lightViewProj;    // Light space view-projection matrix
+    float bias;                  // Depth bias to prevent shadow acne
+    float normalBias;            // Normal-based bias
+    float strength;              // Shadow strength (0 = no shadow, 1 = full shadow)
+    float texelSize;             // 1.0 / shadowMapResolution for PCF
+    int32_t pcfEnabled;          // 0 = hard shadows, 1 = PCF soft shadows
+    float _pad[3];               // Padding to 16-byte alignment
+};
+
+/**
  * @brief GPU-compatible textured PBR material uniform.
  * Contains base values and flags for which textures are present.
  */
@@ -192,6 +206,7 @@ public:
     enum class ShadingModel {
         Phong,
         PBR,
+        PBR_Shadow,       // PBR with shadow mapping
         PBR_IBL,
         PBR_IBL_Textured  // With texture maps support
     };
@@ -234,6 +249,20 @@ public:
     void renderPBR(const Mesh3D& mesh, const Camera3D& camera, const glm::mat4& transform,
                    const PBRMaterial& material, const SceneLighting& lighting,
                    Texture& output, const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
+     * @brief Render a mesh with PBR shading and shadow mapping.
+     * @param shadowMap The depth texture from shadow map rendering.
+     * @param lightViewProj The light's view-projection matrix.
+     * @param shadowBias Depth bias to prevent shadow acne.
+     * @param shadowStrength Shadow darkness (0-1).
+     * @param pcfEnabled Whether to use PCF soft shadows.
+     */
+    void renderPBRWithShadow(const Mesh3D& mesh, const Camera3D& camera, const glm::mat4& transform,
+                             const PBRMaterial& material, const SceneLighting& lighting,
+                             WGPUTextureView shadowMap, const glm::mat4& lightViewProj,
+                             float shadowBias, float shadowStrength, bool pcfEnabled, int shadowMapResolution,
+                             Texture& output, const glm::vec4& clearColor = {0, 0, 0, 1});
 
     /**
      * @brief Render a mesh with PBR shading and Image-Based Lighting.
@@ -308,12 +337,14 @@ private:
     WGPUSampler iblSampler_ = nullptr;      // Filtering sampler for IBL cubemaps
     WGPUSampler brdfSampler_ = nullptr;     // Non-filtering sampler for BRDF LUT
     WGPUSampler textureSampler_ = nullptr;  // Filtering sampler for material textures
+    WGPUSampler shadowSampler_ = nullptr;   // Comparison sampler for shadow mapping
 
     // Reusable buffers
     WGPUBuffer cameraBuffer_ = nullptr;
     WGPUBuffer transformBuffer_ = nullptr;
     WGPUBuffer lightsBuffer_ = nullptr;
     WGPUBuffer materialBuffer_ = nullptr;
+    WGPUBuffer shadowBuffer_ = nullptr;     // Shadow uniform buffer
 
     // Depth buffer
     WGPUTexture depthTexture_ = nullptr;
@@ -334,6 +365,7 @@ namespace shaders3d {
 
 extern const char* PHONG_LIT;
 extern const char* PBR_LIT;
+extern const char* PBR_LIT_SHADOW;
 extern const char* PBR_IBL;
 extern const char* PBR_IBL_TEXTURED;
 

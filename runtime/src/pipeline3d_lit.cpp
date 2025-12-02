@@ -412,6 +412,327 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 )";
 
 // ============================================================================
+// PBR + Shadow Shader (Cook-Torrance BRDF with Shadow Mapping)
+// ============================================================================
+
+const char* PBR_LIT_SHADOW = R"(
+// ============================================================================
+// Physically Based Rendering with Shadow Mapping
+// ============================================================================
+
+const MAX_LIGHTS: u32 = 8u;
+const PI: f32 = 3.14159265359;
+
+// Camera uniform - group 0
+struct CameraUniform {
+    view: mat4x4f,
+    projection: mat4x4f,
+    viewProjection: mat4x4f,
+    cameraPosition: vec3f,
+    _pad: f32,
+}
+
+// Transform uniform - group 1
+struct TransformUniform {
+    model: mat4x4f,
+    normalMatrix: mat4x4f,
+}
+
+// Light data - group 2
+struct LightData {
+    lightType: i32,
+    _pad1: f32,
+    _pad2: f32,
+    _pad3: f32,
+    position: vec3f,
+    _pad4: f32,
+    direction: vec3f,
+    _pad5: f32,
+    color: vec3f,
+    intensity: f32,
+    radius: f32,
+    innerAngle: f32,
+    outerAngle: f32,
+    _pad6: f32,
+}
+
+struct LightsUniform {
+    lights: array<LightData, MAX_LIGHTS>,
+    lightCount: i32,
+    _pad1: f32,
+    _pad2: f32,
+    _pad3: f32,
+    ambientColor: vec3f,
+    ambientIntensity: f32,
+}
+
+// Shadow uniform - group 2 binding 1
+struct ShadowUniform {
+    lightViewProj: mat4x4f,
+    bias: f32,
+    normalBias: f32,
+    strength: f32,
+    texelSize: f32,
+    pcfEnabled: i32,
+    _pad1: f32,
+    _pad2: f32,
+    _pad3: f32,
+}
+
+// PBR material - group 3
+struct PBRMaterial {
+    albedo: vec3f,
+    _pad0: f32,
+    metallic: f32,
+    roughness: f32,
+    ao: f32,
+    _pad1: f32,
+    emissive: vec3f,
+    _pad2: f32,
+    _pad3: vec4f,
+}
+
+@group(0) @binding(0) var<uniform> camera: CameraUniform;
+@group(1) @binding(0) var<uniform> transform: TransformUniform;
+@group(2) @binding(0) var<uniform> lights: LightsUniform;
+@group(2) @binding(1) var<uniform> shadow: ShadowUniform;
+@group(2) @binding(2) var shadowMap: texture_depth_2d;
+@group(2) @binding(3) var shadowSampler: sampler_comparison;
+@group(3) @binding(0) var<uniform> material: PBRMaterial;
+
+struct VertexInput {
+    @location(0) position: vec3f,
+    @location(1) normal: vec3f,
+    @location(2) uv: vec2f,
+    @location(3) tangent: vec4f,
+}
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) worldPos: vec3f,
+    @location(1) worldNormal: vec3f,
+    @location(2) uv: vec2f,
+    @location(3) shadowCoord: vec4f,
+}
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+
+    let worldPos = transform.model * vec4f(in.position, 1.0);
+    out.worldPos = worldPos.xyz;
+    out.position = camera.viewProjection * worldPos;
+    out.worldNormal = normalize((transform.normalMatrix * vec4f(in.normal, 0.0)).xyz);
+    out.uv = in.uv;
+
+    // Calculate shadow coordinates
+    out.shadowCoord = shadow.lightViewProj * worldPos;
+
+    return out;
+}
+
+// Shadow calculation with PCF
+fn calculateShadow(shadowCoord: vec4f, normal: vec3f, lightDir: vec3f) -> f32 {
+    // Perspective divide
+    let projCoords = shadowCoord.xyz / shadowCoord.w;
+
+    // Transform to [0,1] range (NDC is [-1,1], shadow map uses [0,1])
+    let shadowUV = vec2f(
+        projCoords.x * 0.5 + 0.5,
+        -projCoords.y * 0.5 + 0.5  // Flip Y for texture coordinates
+    );
+
+    // Check if outside shadow map bounds
+    if (shadowUV.x < 0.0 || shadowUV.x > 1.0 || shadowUV.y < 0.0 || shadowUV.y > 1.0) {
+        return 1.0;  // No shadow outside bounds
+    }
+
+    // Current depth from light's perspective
+    let currentDepth = projCoords.z;
+
+    // Check if behind light's far plane
+    if (currentDepth > 1.0) {
+        return 1.0;
+    }
+
+    // Calculate bias based on surface angle
+    let cosTheta = max(dot(normal, lightDir), 0.0);
+    let bias = max(shadow.bias * (1.0 - cosTheta), shadow.bias * 0.1);
+
+    var shadowFactor: f32;
+
+    if (shadow.pcfEnabled != 0) {
+        // PCF (Percentage Closer Filtering) for soft shadows
+        shadowFactor = 0.0;
+        let texelSize = shadow.texelSize;
+        for (var x: i32 = -1; x <= 1; x++) {
+            for (var y: i32 = -1; y <= 1; y++) {
+                let offset = vec2f(f32(x), f32(y)) * texelSize;
+                shadowFactor += textureSampleCompare(
+                    shadowMap, shadowSampler,
+                    shadowUV + offset, currentDepth - bias
+                );
+            }
+        }
+        shadowFactor /= 9.0;
+    } else {
+        // Hard shadows
+        shadowFactor = textureSampleCompare(
+            shadowMap, shadowSampler,
+            shadowUV, currentDepth - bias
+        );
+    }
+
+    // Apply shadow strength
+    return mix(1.0 - shadow.strength, 1.0, shadowFactor);
+}
+
+// Normal Distribution Function (GGX/Trowbridge-Reitz)
+fn distributionGGX(N: vec3f, H: vec3f, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let NdotH = max(dot(N, H), 0.0);
+    let NdotH2 = NdotH * NdotH;
+
+    let denom = NdotH2 * (a2 - 1.0) + 1.0;
+    return a2 / (PI * denom * denom);
+}
+
+// Geometry Function (Schlick-GGX)
+fn geometrySchlickGGX(NdotV: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k);
+}
+
+// Smith's method for geometry
+fn geometrySmith(N: vec3f, V: vec3f, L: vec3f, roughness: f32) -> f32 {
+    let NdotV = max(dot(N, V), 0.0);
+    let NdotL = max(dot(N, L), 0.0);
+    return geometrySchlickGGX(NdotV, roughness) * geometrySchlickGGX(NdotL, roughness);
+}
+
+// Fresnel (Schlick approximation)
+fn fresnelSchlick(cosTheta: f32, F0: vec3f) -> vec3f {
+    return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
+}
+
+// Attenuation for point/spot lights
+fn getAttenuation(distance: f32, radius: f32) -> f32 {
+    let d = distance / radius;
+    let d2 = d * d;
+    let falloff = saturate(1.0 - d2 * d2);
+    return falloff * falloff / (distance * distance + 1.0);
+}
+
+// Spot light intensity
+fn getSpotIntensity(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f32) -> f32 {
+    let theta = dot(lightDir, normalize(-spotDir));
+    let epsilon = cos(innerAngle) - cos(outerAngle);
+    return saturate((theta - cos(outerAngle)) / epsilon);
+}
+
+// Calculate PBR contribution from a single light (with shadow for directional lights)
+fn calculatePBRLightWithShadow(light: LightData, worldPos: vec3f, N: vec3f, V: vec3f, F0: vec3f,
+                                albedo: vec3f, shadowCoord: vec4f, lightIndex: i32) -> vec3f {
+    var L: vec3f;
+    var attenuation: f32 = 1.0;
+    var shadowFactor: f32 = 1.0;
+
+    // Directional light
+    if (light.lightType == 0) {
+        L = normalize(-light.direction);
+        // Apply shadow only to first directional light (index 0)
+        if (lightIndex == 0) {
+            shadowFactor = calculateShadow(shadowCoord, N, L);
+        }
+    }
+    // Point light
+    else if (light.lightType == 1) {
+        let toLight = light.position - worldPos;
+        let distance = length(toLight);
+        L = toLight / distance;
+        attenuation = getAttenuation(distance, light.radius);
+    }
+    // Spot light
+    else {
+        let toLight = light.position - worldPos;
+        let distance = length(toLight);
+        L = toLight / distance;
+        attenuation = getAttenuation(distance, light.radius);
+        attenuation *= getSpotIntensity(L, light.direction, light.innerAngle, light.outerAngle);
+    }
+
+    if (attenuation < 0.001) {
+        return vec3f(0.0);
+    }
+
+    let radiance = light.color * light.intensity * attenuation * shadowFactor;
+    let H = normalize(V + L);
+
+    // Cook-Torrance BRDF
+    let NDF = distributionGGX(N, H, material.roughness);
+    let G = geometrySmith(N, V, L, material.roughness);
+    let F = fresnelSchlick(max(dot(H, V), 0.0), F0);
+
+    // Specular contribution
+    let numerator = NDF * G * F;
+    let denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0) + 0.0001;
+    let specular = numerator / denominator;
+
+    // Energy conservation
+    let kS = F;
+    let kD = (vec3f(1.0) - kS) * (1.0 - material.metallic);
+
+    let NdotL = max(dot(N, L), 0.0);
+    return (kD * albedo / PI + specular) * radiance * NdotL;
+}
+
+// Procedural checkerboard for floor surfaces (based on world XZ)
+fn checkerboard(worldPos: vec3f, scale: f32) -> f32 {
+    let x = floor(worldPos.x * scale);
+    let z = floor(worldPos.z * scale);
+    let checker = (i32(x) + i32(z)) % 2;
+    return select(0.85, 1.0, checker == 0);
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let N = normalize(in.worldNormal);
+    let V = normalize(camera.cameraPosition - in.worldPos);
+
+    // Apply subtle checkerboard to floor-like surfaces (normal facing up)
+    var albedo = material.albedo;
+    if (N.y > 0.9) {
+        let checker = checkerboard(in.worldPos, 1.0);  // 1 unit grid
+        albedo = albedo * checker;
+    }
+
+    // F0 (reflectance at normal incidence)
+    let F0 = mix(vec3f(0.04), albedo, material.metallic);
+
+    // Ambient (simplified)
+    let ambient = lights.ambientColor * lights.ambientIntensity * albedo * material.ao;
+
+    // Emissive
+    var color = ambient + material.emissive;
+
+    // Accumulate light contributions with shadow
+    for (var i = 0; i < lights.lightCount; i++) {
+        color += calculatePBRLightWithShadow(lights.lights[i], in.worldPos, N, V, F0, albedo, in.shadowCoord, i);
+    }
+
+    // HDR tone mapping (Reinhard)
+    color = color / (color + vec3f(1.0));
+
+    // Gamma correction
+    color = pow(color, vec3f(1.0 / 2.2));
+
+    return vec4f(color, 1.0);
+}
+)";
+
+// ============================================================================
 // PBR + IBL Shader (Cook-Torrance BRDF with Image-Based Lighting)
 // ============================================================================
 
@@ -1070,6 +1391,9 @@ bool Pipeline3DLit::init(Renderer& renderer, ShadingModel model) {
         case ShadingModel::PBR_IBL:
             shaderSource = shaders3d::PBR_IBL;
             break;
+        case ShadingModel::PBR_Shadow:
+            shaderSource = shaders3d::PBR_LIT_SHADOW;
+            break;
         case ShadingModel::PBR:
             shaderSource = shaders3d::PBR_LIT;
             break;
@@ -1123,17 +1447,65 @@ bool Pipeline3DLit::createPipeline(const std::string& shaderSource) {
     transformLayoutDesc.entries = &transformEntry;
     transformLayout_ = wgpuDeviceCreateBindGroupLayout(device, &transformLayoutDesc);
 
-    // Group 2: Lights
-    WGPUBindGroupLayoutEntry lightsEntry = {};
-    lightsEntry.binding = 0;
-    lightsEntry.visibility = WGPUShaderStage_Fragment;
-    lightsEntry.buffer.type = WGPUBufferBindingType_Uniform;
-    lightsEntry.buffer.minBindingSize = sizeof(LightsUniform);
+    // Group 2: Lights (and shadow for PBR_Shadow mode)
+    if (model_ == ShadingModel::PBR_Shadow) {
+        // Extended layout with shadow map bindings
+        WGPUBindGroupLayoutEntry entries[4] = {};
 
-    WGPUBindGroupLayoutDescriptor lightsLayoutDesc = {};
-    lightsLayoutDesc.entryCount = 1;
-    lightsLayoutDesc.entries = &lightsEntry;
-    lightsLayout_ = wgpuDeviceCreateBindGroupLayout(device, &lightsLayoutDesc);
+        // @binding(0) = lights uniform
+        entries[0].binding = 0;
+        entries[0].visibility = WGPUShaderStage_Fragment;
+        entries[0].buffer.type = WGPUBufferBindingType_Uniform;
+        entries[0].buffer.minBindingSize = sizeof(LightsUniform);
+
+        // @binding(1) = shadow uniform
+        entries[1].binding = 1;
+        entries[1].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+        entries[1].buffer.type = WGPUBufferBindingType_Uniform;
+        entries[1].buffer.minBindingSize = sizeof(ShadowUniformGPU);
+
+        // @binding(2) = shadow map (depth texture)
+        entries[2].binding = 2;
+        entries[2].visibility = WGPUShaderStage_Fragment;
+        entries[2].texture.sampleType = WGPUTextureSampleType_Depth;
+        entries[2].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+        // @binding(3) = shadow sampler (comparison sampler)
+        entries[3].binding = 3;
+        entries[3].visibility = WGPUShaderStage_Fragment;
+        entries[3].sampler.type = WGPUSamplerBindingType_Comparison;
+
+        WGPUBindGroupLayoutDescriptor lightsLayoutDesc = {};
+        lightsLayoutDesc.entryCount = 4;
+        lightsLayoutDesc.entries = entries;
+        lightsLayout_ = wgpuDeviceCreateBindGroupLayout(device, &lightsLayoutDesc);
+
+        // Create comparison sampler for shadow mapping
+        WGPUSamplerDescriptor shadowSamplerDesc = {};
+        shadowSamplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
+        shadowSamplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
+        shadowSamplerDesc.addressModeW = WGPUAddressMode_ClampToEdge;
+        shadowSamplerDesc.magFilter = WGPUFilterMode_Linear;
+        shadowSamplerDesc.minFilter = WGPUFilterMode_Linear;
+        shadowSamplerDesc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+        shadowSamplerDesc.compare = WGPUCompareFunction_Less;
+        shadowSamplerDesc.lodMinClamp = 0.0f;
+        shadowSamplerDesc.lodMaxClamp = 1.0f;
+        shadowSamplerDesc.maxAnisotropy = 1;
+        shadowSampler_ = wgpuDeviceCreateSampler(device, &shadowSamplerDesc);
+    } else {
+        // Standard lights-only layout
+        WGPUBindGroupLayoutEntry lightsEntry = {};
+        lightsEntry.binding = 0;
+        lightsEntry.visibility = WGPUShaderStage_Fragment;
+        lightsEntry.buffer.type = WGPUBufferBindingType_Uniform;
+        lightsEntry.buffer.minBindingSize = sizeof(LightsUniform);
+
+        WGPUBindGroupLayoutDescriptor lightsLayoutDesc = {};
+        lightsLayoutDesc.entryCount = 1;
+        lightsLayoutDesc.entries = &lightsEntry;
+        lightsLayout_ = wgpuDeviceCreateBindGroupLayout(device, &lightsLayoutDesc);
+    }
 
     // Group 3: Material (for non-IBL) or Material + IBL textures (for PBR_IBL)
     if (model_ == ShadingModel::PBR_IBL_Textured) {
@@ -1441,11 +1813,13 @@ void Pipeline3DLit::destroy() {
     if (iblSampler_) wgpuSamplerRelease(iblSampler_);
     if (brdfSampler_) wgpuSamplerRelease(brdfSampler_);
     if (textureSampler_) wgpuSamplerRelease(textureSampler_);
+    if (shadowSampler_) wgpuSamplerRelease(shadowSampler_);
 
     if (cameraBuffer_) wgpuBufferRelease(cameraBuffer_);
     if (transformBuffer_) wgpuBufferRelease(transformBuffer_);
     if (lightsBuffer_) wgpuBufferRelease(lightsBuffer_);
     if (materialBuffer_) wgpuBufferRelease(materialBuffer_);
+    if (shadowBuffer_) wgpuBufferRelease(shadowBuffer_);
 
     destroyDepthBuffer();
 
@@ -1459,10 +1833,12 @@ void Pipeline3DLit::destroy() {
     iblSampler_ = nullptr;
     brdfSampler_ = nullptr;
     textureSampler_ = nullptr;
+    shadowSampler_ = nullptr;
     cameraBuffer_ = nullptr;
     transformBuffer_ = nullptr;
     lightsBuffer_ = nullptr;
     materialBuffer_ = nullptr;
+    shadowBuffer_ = nullptr;
     renderer_ = nullptr;
 }
 
@@ -1692,6 +2068,135 @@ void Pipeline3DLit::renderPBR(const Mesh3D& mesh, const Camera3D& camera, const 
     lightsBindGroupDesc.layout = lightsLayout_;
     lightsBindGroupDesc.entryCount = 1;
     lightsBindGroupDesc.entries = &lightsEntry;
+    WGPUBindGroup lightsBindGroup = wgpuDeviceCreateBindGroup(device, &lightsBindGroupDesc);
+
+    WGPUBindGroupEntry materialEntry = {};
+    materialEntry.binding = 0;
+    materialEntry.buffer = materialBuffer_;
+    materialEntry.size = sizeof(PBRMaterialUniform);
+
+    WGPUBindGroupDescriptor materialBindGroupDesc = {};
+    materialBindGroupDesc.layout = materialLayout_;
+    materialBindGroupDesc.entryCount = 1;
+    materialBindGroupDesc.entries = &materialEntry;
+    WGPUBindGroup materialBindGroup = wgpuDeviceCreateBindGroup(device, &materialBindGroupDesc);
+
+    // Render
+    beginRenderPass(output, clearColor);
+    if (renderPass_) {
+        wgpuRenderPassEncoderSetPipeline(renderPass_, pipeline_);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 0, cameraBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 1, transformBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 2, lightsBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(renderPass_, 3, materialBindGroup, 0, nullptr);
+
+        Mesh* meshData = static_cast<Mesh*>(mesh.handle);
+        meshData->draw(renderPass_);
+    }
+    endRenderPass();
+
+    // Cleanup bind groups
+    wgpuBindGroupRelease(cameraBindGroup);
+    wgpuBindGroupRelease(transformBindGroup);
+    wgpuBindGroupRelease(lightsBindGroup);
+    wgpuBindGroupRelease(materialBindGroup);
+}
+
+void Pipeline3DLit::renderPBRWithShadow(const Mesh3D& mesh, const Camera3D& camera, const glm::mat4& transform,
+                                        const PBRMaterial& material, const SceneLighting& lighting,
+                                        WGPUTextureView shadowMap, const glm::mat4& lightViewProj,
+                                        float shadowBias, float shadowStrength, bool pcfEnabled, int shadowMapResolution,
+                                        Texture& output, const glm::vec4& clearColor) {
+    if (!valid() || !mesh.valid() || !hasValidGPU(output)) return;
+    if (model_ != ShadingModel::PBR_Shadow) {
+        std::cerr << "[Pipeline3DLit] renderPBRWithShadow called on non-shadow pipeline\n";
+        return;
+    }
+    if (!shadowMap) {
+        std::cerr << "[Pipeline3DLit] renderPBRWithShadow: shadow map is null\n";
+        return;
+    }
+
+    WGPUDevice device = renderer_->device();
+    WGPUQueue queue = renderer_->queue();
+    float aspectRatio = static_cast<float>(output.width) / output.height;
+
+    // Create shadow buffer if needed
+    if (!shadowBuffer_) {
+        WGPUBufferDescriptor bufferDesc = {};
+        bufferDesc.size = sizeof(ShadowUniformGPU);
+        bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        shadowBuffer_ = wgpuDeviceCreateBuffer(device, &bufferDesc);
+    }
+
+    // Upload uniforms
+    CameraUniform cameraUniform = makeCameraUniform(camera, aspectRatio);
+    wgpuQueueWriteBuffer(queue, cameraBuffer_, 0, &cameraUniform, sizeof(CameraUniform));
+
+    TransformUniform transformUniform;
+    transformUniform.model = transform;
+    transformUniform.normalMatrix = glm::transpose(glm::inverse(transform));
+    wgpuQueueWriteBuffer(queue, transformBuffer_, 0, &transformUniform, sizeof(TransformUniform));
+
+    LightsUniform lightsUniform = makeLightsUniform(lighting);
+    wgpuQueueWriteBuffer(queue, lightsBuffer_, 0, &lightsUniform, sizeof(LightsUniform));
+
+    ShadowUniformGPU shadowUniform = {};
+    shadowUniform.lightViewProj = lightViewProj;
+    shadowUniform.bias = shadowBias;
+    shadowUniform.normalBias = shadowBias * 0.5f;
+    shadowUniform.strength = shadowStrength;
+    shadowUniform.texelSize = 1.0f / static_cast<float>(shadowMapResolution);
+    shadowUniform.pcfEnabled = pcfEnabled ? 1 : 0;
+    wgpuQueueWriteBuffer(queue, shadowBuffer_, 0, &shadowUniform, sizeof(ShadowUniformGPU));
+
+    PBRMaterialUniform materialUniform = makePBRMaterialUniform(material);
+    wgpuQueueWriteBuffer(queue, materialBuffer_, 0, &materialUniform, sizeof(PBRMaterialUniform));
+
+    // Create bind groups
+    WGPUBindGroupEntry cameraEntry = {};
+    cameraEntry.binding = 0;
+    cameraEntry.buffer = cameraBuffer_;
+    cameraEntry.size = sizeof(CameraUniform);
+
+    WGPUBindGroupDescriptor cameraBindGroupDesc = {};
+    cameraBindGroupDesc.layout = cameraLayout_;
+    cameraBindGroupDesc.entryCount = 1;
+    cameraBindGroupDesc.entries = &cameraEntry;
+    WGPUBindGroup cameraBindGroup = wgpuDeviceCreateBindGroup(device, &cameraBindGroupDesc);
+
+    WGPUBindGroupEntry transformEntry = {};
+    transformEntry.binding = 0;
+    transformEntry.buffer = transformBuffer_;
+    transformEntry.size = sizeof(TransformUniform);
+
+    WGPUBindGroupDescriptor transformBindGroupDesc = {};
+    transformBindGroupDesc.layout = transformLayout_;
+    transformBindGroupDesc.entryCount = 1;
+    transformBindGroupDesc.entries = &transformEntry;
+    WGPUBindGroup transformBindGroup = wgpuDeviceCreateBindGroup(device, &transformBindGroupDesc);
+
+    // Lights bind group with shadow map (4 entries)
+    WGPUBindGroupEntry lightsEntries[4] = {};
+
+    lightsEntries[0].binding = 0;
+    lightsEntries[0].buffer = lightsBuffer_;
+    lightsEntries[0].size = sizeof(LightsUniform);
+
+    lightsEntries[1].binding = 1;
+    lightsEntries[1].buffer = shadowBuffer_;
+    lightsEntries[1].size = sizeof(ShadowUniformGPU);
+
+    lightsEntries[2].binding = 2;
+    lightsEntries[2].textureView = shadowMap;
+
+    lightsEntries[3].binding = 3;
+    lightsEntries[3].sampler = shadowSampler_;
+
+    WGPUBindGroupDescriptor lightsBindGroupDesc = {};
+    lightsBindGroupDesc.layout = lightsLayout_;
+    lightsBindGroupDesc.entryCount = 4;
+    lightsBindGroupDesc.entries = lightsEntries;
     WGPUBindGroup lightsBindGroup = wgpuDeviceCreateBindGroup(device, &lightsBindGroupDesc);
 
     WGPUBindGroupEntry materialEntry = {};

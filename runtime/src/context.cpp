@@ -1152,6 +1152,14 @@ Pipeline3DLit& Context::getPBRIBLPipeline() {
     return *pbrIBLPipeline_;
 }
 
+Pipeline3DLit& Context::getPBRShadowPipeline() {
+    if (!pbrShadowPipeline_) {
+        pbrShadowPipeline_ = std::make_unique<Pipeline3DLit>();
+        pbrShadowPipeline_->init(renderer_, Pipeline3DLit::ShadingModel::PBR_Shadow);
+    }
+    return *pbrShadowPipeline_;
+}
+
 Pipeline3DVertexLit& Context::getVertexLitPipeline() {
     if (!vertexLitPipeline_) {
         vertexLitPipeline_ = std::make_unique<Pipeline3DVertexLit>();
@@ -1283,6 +1291,10 @@ Texture Context::renderShadowMap(const Light& light,
         light.direction, sceneCenter, sceneRadius
     );
 
+    // Cache light matrix and resolution for render3DWithShadow
+    lastLightMatrix_ = lightMatrix;
+    lastShadowResolution_ = resolution;
+
     // Begin shadow pass
     ShadowMapPipeline& pipeline = shadowMgr.pipeline();
     if (!pipeline.beginShadowPass(*shadowMap, lightMatrix)) {
@@ -1337,6 +1349,37 @@ void Context::debugVisualizeShadowMap(const Texture& shadowMap, Texture& output)
 
     // Use the depth visualizer to render
     getDepthVisualizer().visualize(depthView, outputData->view, output.width, output.height);
+}
+
+void Context::render3DWithShadow(const Mesh3D& mesh, const Camera3D& camera,
+                                  const glm::mat4& transform,
+                                  const PBRMaterial& material,
+                                  const SceneLighting& lighting,
+                                  const Texture& shadowMap,
+                                  Texture& output,
+                                  const glm::vec4& clearColor) {
+    if (!mesh.valid()) return;
+    if (!shadowMap.handle) {
+        std::cerr << "[Context] render3DWithShadow: Shadow map is null, falling back to regular PBR\n";
+        getPBRPipeline().renderPBR(mesh, camera, transform, material, lighting, output, clearColor);
+        return;
+    }
+
+    // Get the shadow map view - it's stored directly as the handle
+    WGPUTextureView shadowView = static_cast<WGPUTextureView>(shadowMap.handle);
+
+    // Get shadow settings from the shadow manager
+    ShadowManager& shadowMgr = getShadowManager();
+    ShadowSettings settings = shadowMgr.settings();
+
+    // Use cached light matrix and resolution from renderShadowMap
+    getPBRShadowPipeline().renderPBRWithShadow(
+        mesh, camera, transform, material, lighting,
+        shadowView, lastLightMatrix_,
+        settings.bias, settings.strength, settings.pcfEnabled,
+        lastShadowResolution_ > 0 ? lastShadowResolution_ : settings.resolution,
+        output, clearColor
+    );
 }
 
 // 2D Instanced Rendering
