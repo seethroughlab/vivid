@@ -117,24 +117,24 @@ void update(Chain& chain, Context& ctx) {
     glm::mat4 cubeTransform = glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, 0, 0));
     cubeTransform = glm::rotate(cubeTransform, t * 0.5f, glm::vec3(0, 1, 0));
     cubeTransform = glm::rotate(cubeTransform, t * 0.3f, glm::vec3(1, 0, 0));
-    ctx.render3DPBR(cube, camera, cubeTransform, goldMat, lighting, output, bgColor);
+    ctx.render3D(cube, camera, cubeTransform, goldMat, lighting, output, bgColor);
 
     // Sphere: copper, bobbing in center
     glm::mat4 sphereTransform = glm::translate(glm::mat4(1.0f),
         glm::vec3(0, std::sin(t) * 0.5f, 0));
-    ctx.render3DPBR(sphere, camera, sphereTransform, copperMat, lighting, output, noClear);
+    ctx.render3D(sphere, camera, sphereTransform, copperMat, lighting, output, noClear);
 
     // Torus: red rubber, rotating on right
     glm::mat4 torusTransform = glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0, 0));
     torusTransform = glm::rotate(torusTransform, t * 0.7f, glm::vec3(1, 0, 0));
     torusTransform = glm::rotate(torusTransform, t * 0.4f, glm::vec3(0, 1, 0));
-    ctx.render3DPBR(torus, camera, torusTransform, rubberMat, lighting, output, noClear);
+    ctx.render3D(torus, camera, torusTransform, rubberMat, lighting, output, noClear);
 
     // Elliptic torus: silver, rotating above the scene
     glm::mat4 ellipticTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0, 1.5f, 0));
     ellipticTransform = glm::rotate(ellipticTransform, t * 0.3f, glm::vec3(0, 1, 0));
     ellipticTransform = glm::rotate(ellipticTransform, glm::radians(90.0f), glm::vec3(1, 0, 0));
-    ctx.render3DPBR(ellipticTorus, camera, ellipticTransform, silverMat, lighting, output, noClear);
+    ctx.render3D(ellipticTorus, camera, ellipticTransform, silverMat, lighting, output, noClear);
 
     // Set output for display
     ctx.setOutput("out", output);

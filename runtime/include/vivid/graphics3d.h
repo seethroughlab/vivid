@@ -4,6 +4,7 @@
 #include <vector>
 #include <cstdint>
 #include <limits>
+#include <variant>
 
 namespace vivid {
 
@@ -383,6 +384,52 @@ struct VertexLitMaterial {
 };
 
 /**
+ * @brief Unlit material - no lighting calculations, just color/texture.
+ *
+ * Useful for UI elements, debug visualization, emissive-only objects,
+ * or stylized rendering that doesn't need lighting.
+ */
+struct UnlitMaterial {
+    glm::vec3 color{1.0f, 1.0f, 1.0f};      ///< Base color
+    float opacity = 1.0f;                    ///< Opacity (1 = opaque)
+    Texture* colorMap = nullptr;             ///< Optional color texture
+
+    static UnlitMaterial solid(const glm::vec3& col) {
+        UnlitMaterial m;
+        m.color = col;
+        return m;
+    }
+
+    static UnlitMaterial white() { return solid(glm::vec3(1.0f)); }
+    static UnlitMaterial black() { return solid(glm::vec3(0.0f)); }
+    static UnlitMaterial red() { return solid(glm::vec3(1.0f, 0.0f, 0.0f)); }
+    static UnlitMaterial green() { return solid(glm::vec3(0.0f, 1.0f, 0.0f)); }
+    static UnlitMaterial blue() { return solid(glm::vec3(0.0f, 0.0f, 1.0f)); }
+};
+
+/**
+ * @brief Wireframe material for debug/stylized rendering.
+ *
+ * Renders mesh edges only, useful for debugging geometry,
+ * technical visualization, or stylized effects.
+ */
+struct WireframeMaterial {
+    glm::vec3 color{1.0f, 1.0f, 1.0f};      ///< Wire color
+    float opacity = 1.0f;                    ///< Wire opacity
+    float thickness = 1.0f;                  ///< Line thickness (GPU-dependent)
+
+    static WireframeMaterial solid(const glm::vec3& col) {
+        WireframeMaterial m;
+        m.color = col;
+        return m;
+    }
+
+    static WireframeMaterial white() { return solid(glm::vec3(1.0f)); }
+    static WireframeMaterial green() { return solid(glm::vec3(0.0f, 1.0f, 0.0f)); }
+    static WireframeMaterial cyan() { return solid(glm::vec3(0.0f, 1.0f, 1.0f)); }
+};
+
+/**
  * @brief Textured PBR material with full texture map support.
  *
  * Supports albedo, normal, metallic-roughness, AO, and emissive maps
@@ -418,6 +465,43 @@ struct TexturedPBRMaterial {
         return m;
     }
 };
+
+// ============================================================================
+// Unified Material Type
+// ============================================================================
+
+/**
+ * @brief Unified material type for flexible rendering.
+ *
+ * A variant that can hold any material type. The render function automatically
+ * selects the appropriate shader/pipeline based on the material type.
+ *
+ * Example usage:
+ * @code
+ * // Materials can be any type
+ * Material mat = PBRMaterial::gold();
+ * mat = PhongMaterial::shiny(RED);
+ * mat = WireframeMaterial::cyan();
+ *
+ * // Single render call handles all types
+ * ctx.render3D(mesh, camera, transform, mat, lighting, output);
+ *
+ * // Store mixed materials in collections
+ * std::vector<Material> materials = {
+ *     PBRMaterial::gold(),
+ *     WireframeMaterial::white(),
+ *     UnlitMaterial::red()
+ * };
+ * @endcode
+ */
+using Material = std::variant<
+    PBRMaterial,
+    TexturedPBRMaterial,
+    PhongMaterial,
+    VertexLitMaterial,
+    UnlitMaterial,
+    WireframeMaterial
+>;
 
 /**
  * @brief Scene lighting configuration.

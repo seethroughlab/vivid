@@ -216,9 +216,9 @@ void update(Chain& chain, Context& ctx) {
     glm::mat4 sphereTransform = glm::translate(glm::mat4(1.0f), glm::vec3(1.5f, 0.6f, 0.0f));
 
     // Render the 3D scene
-    ctx.render3DPBR(groundPlane, camera, groundTransform, groundMaterial, lighting, output, clearColor);
-    ctx.render3DPBR(cube, camera, cubeTransform, cubeMaterial, lighting, output, noClear);
-    ctx.render3DPBR(sphere, camera, sphereTransform, sphereMaterial, lighting, output, noClear);
+    ctx.render3D(groundPlane, camera, groundTransform, groundMaterial, lighting, output, clearColor);
+    ctx.render3D(cube, camera, cubeTransform, cubeMaterial, lighting, output, noClear);
+    ctx.render3D(sphere, camera, sphereTransform, sphereMaterial, lighting, output, noClear);
 
     // Get the depth texture from the scene render
     Texture depthTex = ctx.getSceneDepthTexture();

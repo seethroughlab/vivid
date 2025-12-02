@@ -225,13 +225,13 @@ void update(Chain& chain, Context& ctx) {
     cubeTransform = glm::rotate(cubeTransform, t * 0.2f, glm::vec3(1, 0, 0));
 
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(cube, camera, cubeTransform, metalMaterial, lighting, iblEnvironment, output, clearColor);
+        ctx.render3D(cube, camera, cubeTransform, metalMaterial, lighting, iblEnvironment, output, clearColor);
     } else {
         PBRMaterial fallbackMetal;
         fallbackMetal.albedo = glm::vec3(0.8f, 0.8f, 0.9f);
         fallbackMetal.roughness = 0.3f;
         fallbackMetal.metallic = 1.0f;
-        ctx.render3DPBR(cube, camera, cubeTransform, fallbackMetal, lighting, output, clearColor);
+        ctx.render3D(cube, camera, cubeTransform, fallbackMetal, lighting, output, clearColor);
     }
 
     // Brick sphere
@@ -239,13 +239,13 @@ void update(Chain& chain, Context& ctx) {
     sphereTransform = glm::rotate(sphereTransform, t * 0.2f, glm::vec3(0, 1, 0));
 
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(sphere, camera, sphereTransform, brickMaterial, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(sphere, camera, sphereTransform, brickMaterial, lighting, iblEnvironment, output, noClear);
     } else {
         PBRMaterial fallbackBrick;
         fallbackBrick.albedo = glm::vec3(0.6f, 0.3f, 0.2f);
         fallbackBrick.roughness = 0.8f;
         fallbackBrick.metallic = 0.0f;
-        ctx.render3DPBR(sphere, camera, sphereTransform, fallbackBrick, lighting, output, noClear);
+        ctx.render3D(sphere, camera, sphereTransform, fallbackBrick, lighting, output, noClear);
     }
 
     // Metal sphere - hovering
@@ -253,13 +253,13 @@ void update(Chain& chain, Context& ctx) {
     glm::mat4 metalSphereTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, hoverY, 1.0f));
 
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(sphere, camera, metalSphereTransform, metalMaterial, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(sphere, camera, metalSphereTransform, metalMaterial, lighting, iblEnvironment, output, noClear);
     } else {
         PBRMaterial fallbackMetal;
         fallbackMetal.albedo = glm::vec3(0.8f, 0.8f, 0.9f);
         fallbackMetal.roughness = 0.3f;
         fallbackMetal.metallic = 1.0f;
-        ctx.render3DPBR(sphere, camera, metalSphereTransform, fallbackMetal, lighting, output, noClear);
+        ctx.render3D(sphere, camera, metalSphereTransform, fallbackMetal, lighting, output, noClear);
     }
 
     // Teapot - center, slowly rotating
@@ -269,13 +269,13 @@ void update(Chain& chain, Context& ctx) {
         teapotTransform = glm::scale(teapotTransform, glm::vec3(0.5f));  // Scale down if needed
 
         if (hasIBL && useIBL) {
-            ctx.render3DPBR(teapot, camera, teapotTransform, metalMaterial, lighting, iblEnvironment, output, noClear);
+            ctx.render3D(teapot, camera, teapotTransform, metalMaterial, lighting, iblEnvironment, output, noClear);
         } else {
             PBRMaterial fallbackMetal;
             fallbackMetal.albedo = glm::vec3(0.8f, 0.8f, 0.9f);
             fallbackMetal.roughness = 0.3f;
             fallbackMetal.metallic = 1.0f;
-            ctx.render3DPBR(teapot, camera, teapotTransform, fallbackMetal, lighting, output, noClear);
+            ctx.render3D(teapot, camera, teapotTransform, fallbackMetal, lighting, output, noClear);
         }
     }
 

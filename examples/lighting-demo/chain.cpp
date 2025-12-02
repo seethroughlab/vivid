@@ -222,17 +222,17 @@ void update(Chain& chain, Context& ctx) {
     if (renderMode == 0) {
         // === PHONG RENDERING ===
         // Render ground first
-        ctx.render3DPhong(groundPlane, camera, groundTransform, phongWhite, lighting, output, clearColor);
+        ctx.render3D(groundPlane, camera, groundTransform, phongWhite, lighting, output, clearColor);
 
         // Render spheres (note: each call clears, so we need multi-object support)
         // For now, just render the middle sphere to show the lighting
-        ctx.render3DPhong(sphere, camera, sphere2Transform, phongRed, lighting, output, clearColor);
+        ctx.render3D(sphere, camera, sphere2Transform, phongRed, lighting, output, clearColor);
     } else if (renderMode == 1) {
         // === PBR RENDERING ===
-        ctx.render3DPBR(sphere, camera, sphere2Transform, pbrShiny, lighting, output, clearColor);
+        ctx.render3D(sphere, camera, sphere2Transform, pbrShiny, lighting, output, clearColor);
     } else {
         // === PBR + IBL RENDERING ===
-        ctx.render3DPBR(sphere, camera, sphere2Transform, pbrMetal, lighting, iblEnvironment, output, clearColor);
+        ctx.render3D(sphere, camera, sphere2Transform, pbrMetal, lighting, iblEnvironment, output, clearColor);
     }
 
     // Set output for display

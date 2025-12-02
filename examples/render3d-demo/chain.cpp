@@ -177,14 +177,14 @@ void update(Chain& chain, Context& ctx) {
 
         if (hasIBL && skullTexture.valid()) {
             // Use textured PBR with IBL
-            ctx.render3DPBR(skull, camera, skullTransform, skullMaterial, lighting, iblEnvironment, output, noClear);
+            ctx.render3D(skull, camera, skullTransform, skullMaterial, lighting, iblEnvironment, output, noClear);
         } else {
             // Fallback to non-textured PBR
             PBRMaterial fallbackMat;
             fallbackMat.albedo = glm::vec3(0.9f, 0.85f, 0.75f);  // Bone color
             fallbackMat.roughness = 0.7f;
             fallbackMat.metallic = 0.0f;
-            ctx.render3DPBR(skull, camera, skullTransform, fallbackMat, lighting, output, noClear);
+            ctx.render3D(skull, camera, skullTransform, fallbackMat, lighting, output, noClear);
         }
     } else {
         // Fallback: render a sphere if skull failed to load
@@ -197,7 +197,7 @@ void update(Chain& chain, Context& ctx) {
         fallback.roughness = 0.5f;
         fallback.metallic = 0.0f;
 
-        ctx.render3DPBR(sphere, camera, sphereTransform, fallback, lighting, output, noClear);
+        ctx.render3D(sphere, camera, sphereTransform, fallback, lighting, output, noClear);
     }
 
     ctx.setOutput("out", output);

@@ -168,9 +168,9 @@ void update(Chain& chain, Context& ctx) {
 
     // Render ground
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(groundPlane, camera, groundTransform, groundMaterial, lighting, iblEnvironment, output, clearColor);
+        ctx.render3D(groundPlane, camera, groundTransform, groundMaterial, lighting, iblEnvironment, output, clearColor);
     } else {
-        ctx.render3DPBR(groundPlane, camera, groundTransform, groundMaterial, lighting, output, clearColor);
+        ctx.render3D(groundPlane, camera, groundTransform, groundMaterial, lighting, output, clearColor);
     }
 
     // Render material grid spheres
@@ -187,9 +187,9 @@ void update(Chain& chain, Context& ctx) {
             glm::mat4 sphereTransform = glm::translate(glm::mat4(1.0f), glm::vec3(x, y, z));
 
             if (hasIBL && useIBL) {
-                ctx.render3DPBR(sphere, camera, sphereTransform, materials[r][m], lighting, iblEnvironment, output, noClear);
+                ctx.render3D(sphere, camera, sphereTransform, materials[r][m], lighting, iblEnvironment, output, noClear);
             } else {
-                ctx.render3DPBR(sphere, camera, sphereTransform, materials[r][m], lighting, output, noClear);
+                ctx.render3D(sphere, camera, sphereTransform, materials[r][m], lighting, output, noClear);
             }
         }
     }
@@ -201,9 +201,9 @@ void update(Chain& chain, Context& ctx) {
     torusTransform = glm::rotate(torusTransform, t * 0.3f, glm::vec3(1, 0, 0));
 
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(torus, camera, torusTransform, torusMaterial, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(torus, camera, torusTransform, torusMaterial, lighting, iblEnvironment, output, noClear);
     } else {
-        ctx.render3DPBR(torus, camera, torusTransform, torusMaterial, lighting, output, noClear);
+        ctx.render3D(torus, camera, torusTransform, torusMaterial, lighting, output, noClear);
     }
 
     // Silver torus on other side
@@ -213,9 +213,9 @@ void update(Chain& chain, Context& ctx) {
     silverTransform = glm::rotate(silverTransform, -t * 0.25f, glm::vec3(0, 0, 1));
 
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(torus, camera, silverTransform, silverTorus, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(torus, camera, silverTransform, silverTorus, lighting, iblEnvironment, output, noClear);
     } else {
-        ctx.render3DPBR(torus, camera, silverTransform, silverTorus, lighting, output, noClear);
+        ctx.render3D(torus, camera, silverTransform, silverTorus, lighting, output, noClear);
     }
 
     // Copper sphere with rough surface
@@ -225,9 +225,9 @@ void update(Chain& chain, Context& ctx) {
     copperTransform = glm::scale(copperTransform, glm::vec3(1.5f));
 
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(sphere, camera, copperTransform, roughCopper, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(sphere, camera, copperTransform, roughCopper, lighting, iblEnvironment, output, noClear);
     } else {
-        ctx.render3DPBR(sphere, camera, copperTransform, roughCopper, lighting, output, noClear);
+        ctx.render3D(sphere, camera, copperTransform, roughCopper, lighting, output, noClear);
     }
 
     // Emissive cylinders (glowing pedestals)
@@ -239,9 +239,9 @@ void update(Chain& chain, Context& ctx) {
     glm::mat4 cylinder1Transform = glm::translate(glm::mat4(1.0f), glm::vec3(-4.5f, 0.4f, -3.5f));
 
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(cylinder, camera, cylinder1Transform, blueGlow, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(cylinder, camera, cylinder1Transform, blueGlow, lighting, iblEnvironment, output, noClear);
     } else {
-        ctx.render3DPBR(cylinder, camera, cylinder1Transform, blueGlow, lighting, output, noClear);
+        ctx.render3D(cylinder, camera, cylinder1Transform, blueGlow, lighting, output, noClear);
     }
 
     // Orange emissive
@@ -250,9 +250,9 @@ void update(Chain& chain, Context& ctx) {
     glm::mat4 cylinder2Transform = glm::translate(glm::mat4(1.0f), glm::vec3(4.5f, 0.4f, -3.5f));
 
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(cylinder, camera, cylinder2Transform, orangeGlow, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(cylinder, camera, cylinder2Transform, orangeGlow, lighting, iblEnvironment, output, noClear);
     } else {
-        ctx.render3DPBR(cylinder, camera, cylinder2Transform, orangeGlow, lighting, output, noClear);
+        ctx.render3D(cylinder, camera, cylinder2Transform, orangeGlow, lighting, output, noClear);
     }
 
     // Green emissive
@@ -261,9 +261,9 @@ void update(Chain& chain, Context& ctx) {
     glm::mat4 cylinder3Transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.4f, -4.5f));
 
     if (hasIBL && useIBL) {
-        ctx.render3DPBR(cylinder, camera, cylinder3Transform, greenGlow, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(cylinder, camera, cylinder3Transform, greenGlow, lighting, iblEnvironment, output, noClear);
     } else {
-        ctx.render3DPBR(cylinder, camera, cylinder3Transform, greenGlow, lighting, output, noClear);
+        ctx.render3D(cylinder, camera, cylinder3Transform, greenGlow, lighting, output, noClear);
     }
 
     ctx.setOutput("out", output);

@@ -10,6 +10,8 @@
 #include "pipeline3d_skinned.h"
 #include "pipeline3d_lit.h"
 #include "pipeline3d_vertex_lit.h"
+#include "pipeline3d_unlit.h"
+#include "pipeline3d_wireframe.h"
 #include "pipeline3d_decal.h"
 #include "pipeline2d.h"
 #include "cubemap.h"
@@ -943,6 +945,118 @@ void Context::render3D(const std::vector<Mesh3D>& meshes,
     }
 }
 
+// Unified Material Rendering
+
+void Context::render3D(const Mesh3D& mesh, const Camera3D& camera,
+                       const glm::mat4& transform,
+                       const Material& material,
+                       const SceneLighting& lighting,
+                       Texture& output,
+                       const glm::vec4& clearColor) {
+    if (!mesh.valid()) return;
+
+    std::visit([&](auto&& mat) {
+        using T = std::decay_t<decltype(mat)>;
+
+        if constexpr (std::is_same_v<T, PBRMaterial>) {
+            getPBRPipeline().renderPBR(mesh, camera, transform, mat, lighting, output, clearColor);
+        }
+        else if constexpr (std::is_same_v<T, TexturedPBRMaterial>) {
+            // TexturedPBR without IBL - fallback to basic PBR with base values
+            PBRMaterial baseMat;
+            baseMat.albedo = mat.albedo;
+            baseMat.metallic = mat.metallic;
+            baseMat.roughness = mat.roughness;
+            baseMat.ao = mat.ao;
+            baseMat.emissive = mat.emissive;
+            getPBRPipeline().renderPBR(mesh, camera, transform, baseMat, lighting, output, clearColor);
+        }
+        else if constexpr (std::is_same_v<T, PhongMaterial>) {
+            getPhongPipeline().renderPhong(mesh, camera, transform, mat, lighting, output, clearColor);
+        }
+        else if constexpr (std::is_same_v<T, VertexLitMaterial>) {
+            // Extract primary light direction from lighting
+            glm::vec3 lightDir(0.5f, -1.0f, 0.3f);
+            glm::vec3 lightColor(1.0f);
+            if (!lighting.lights.empty()) {
+                const auto& light = lighting.lights[0];
+                if (light.type == LightType::Directional) {
+                    lightDir = light.direction;
+                    lightColor = light.color * light.intensity;
+                }
+            }
+            getVertexLitPipeline().render(mesh, camera, transform, mat, lightDir, lightColor, output, clearColor);
+        }
+        else if constexpr (std::is_same_v<T, UnlitMaterial>) {
+            getUnlitPipeline().render(mesh, camera, transform, mat, output, clearColor);
+        }
+        else if constexpr (std::is_same_v<T, WireframeMaterial>) {
+            getWireframePipeline().render(mesh, camera, transform, mat, output, clearColor);
+        }
+    }, material);
+}
+
+void Context::render3D(const Mesh3D& mesh, const Camera3D& camera,
+                       const glm::mat4& transform,
+                       const Material& material,
+                       const SceneLighting& lighting,
+                       const Environment& environment,
+                       Texture& output,
+                       const glm::vec4& clearColor) {
+    if (!mesh.valid()) return;
+
+    std::visit([&](auto&& mat) {
+        using T = std::decay_t<decltype(mat)>;
+
+        if constexpr (std::is_same_v<T, PBRMaterial>) {
+            if (environment.valid()) {
+                getPBRIBLPipeline().renderPBRWithIBL(mesh, camera, transform, mat, lighting, environment, output, clearColor);
+            } else {
+                getPBRPipeline().renderPBR(mesh, camera, transform, mat, lighting, output, clearColor);
+            }
+        }
+        else if constexpr (std::is_same_v<T, TexturedPBRMaterial>) {
+            if (environment.valid()) {
+                getPBRIBLTexturedPipeline().renderPBRTexturedWithIBL(mesh, camera, transform, mat, lighting, environment, output, clearColor);
+            } else {
+                // Fallback to basic PBR
+                PBRMaterial baseMat;
+                baseMat.albedo = mat.albedo;
+                baseMat.metallic = mat.metallic;
+                baseMat.roughness = mat.roughness;
+                baseMat.ao = mat.ao;
+                baseMat.emissive = mat.emissive;
+                getPBRPipeline().renderPBR(mesh, camera, transform, baseMat, lighting, output, clearColor);
+            }
+        }
+        else if constexpr (std::is_same_v<T, PhongMaterial>) {
+            // Phong doesn't use IBL, just render normally
+            getPhongPipeline().renderPhong(mesh, camera, transform, mat, lighting, output, clearColor);
+        }
+        else if constexpr (std::is_same_v<T, VertexLitMaterial>) {
+            // VertexLit doesn't use IBL
+            glm::vec3 lightDir(0.5f, -1.0f, 0.3f);
+            glm::vec3 lightColor(1.0f);
+            if (!lighting.lights.empty()) {
+                const auto& light = lighting.lights[0];
+                if (light.type == LightType::Directional) {
+                    lightDir = light.direction;
+                    lightColor = light.color * light.intensity;
+                }
+            }
+            getVertexLitPipeline().render(mesh, camera, transform, mat, lightDir, lightColor, output, clearColor);
+        }
+        else if constexpr (std::is_same_v<T, UnlitMaterial>) {
+            // Unlit ignores lighting and environment
+            getUnlitPipeline().render(mesh, camera, transform, mat, output, clearColor);
+        }
+        else if constexpr (std::is_same_v<T, WireframeMaterial>) {
+            // Wireframe ignores lighting and environment
+            getWireframePipeline().render(mesh, camera, transform, mat, output, clearColor);
+        }
+    }, material);
+}
+
 // Lit 3D Rendering
 
 Pipeline3DLit& Context::getPhongPipeline() {
@@ -969,16 +1083,6 @@ Pipeline3DLit& Context::getPBRIBLPipeline() {
     return *pbrIBLPipeline_;
 }
 
-void Context::render3DPhong(const Mesh3D& mesh, const Camera3D& camera,
-                            const glm::mat4& transform,
-                            const PhongMaterial& material,
-                            const SceneLighting& lighting,
-                            Texture& output,
-                            const glm::vec4& clearColor) {
-    if (!mesh.valid()) return;
-    getPhongPipeline().renderPhong(mesh, camera, transform, material, lighting, output, clearColor);
-}
-
 Pipeline3DVertexLit& Context::getVertexLitPipeline() {
     if (!vertexLitPipeline_) {
         vertexLitPipeline_ = std::make_unique<Pipeline3DVertexLit>();
@@ -987,41 +1091,20 @@ Pipeline3DVertexLit& Context::getVertexLitPipeline() {
     return *vertexLitPipeline_;
 }
 
-void Context::render3DVertexLit(const Mesh3D& mesh, const Camera3D& camera,
-                                const glm::mat4& transform,
-                                const VertexLitMaterial& material,
-                                const glm::vec3& lightDir,
-                                Texture& output,
-                                const glm::vec4& clearColor,
-                                const glm::vec3& lightColor) {
-    if (!mesh.valid()) return;
-    getVertexLitPipeline().render(mesh, camera, transform, material, lightDir, lightColor, output, clearColor);
-}
-
-void Context::render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
-                          const glm::mat4& transform,
-                          const PBRMaterial& material,
-                          const SceneLighting& lighting,
-                          Texture& output,
-                          const glm::vec4& clearColor) {
-    if (!mesh.valid()) return;
-    getPBRPipeline().renderPBR(mesh, camera, transform, material, lighting, output, clearColor);
-}
-
-void Context::render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
-                          const glm::mat4& transform,
-                          const PBRMaterial& material,
-                          const SceneLighting& lighting,
-                          const Environment& environment,
-                          Texture& output,
-                          const glm::vec4& clearColor) {
-    if (!mesh.valid()) return;
-    if (!environment.valid()) {
-        // Fallback to non-IBL PBR if environment is invalid
-        getPBRPipeline().renderPBR(mesh, camera, transform, material, lighting, output, clearColor);
-        return;
+Pipeline3DUnlit& Context::getUnlitPipeline() {
+    if (!unlitPipeline_) {
+        unlitPipeline_ = std::make_unique<Pipeline3DUnlit>();
+        unlitPipeline_->init(renderer_);
     }
-    getPBRIBLPipeline().renderPBRWithIBL(mesh, camera, transform, material, lighting, environment, output, clearColor);
+    return *unlitPipeline_;
+}
+
+Pipeline3DWireframe& Context::getWireframePipeline() {
+    if (!wireframePipeline_) {
+        wireframePipeline_ = std::make_unique<Pipeline3DWireframe>();
+        wireframePipeline_->init(renderer_);
+    }
+    return *wireframePipeline_;
 }
 
 Pipeline3DLit& Context::getPBRIBLTexturedPipeline() {
@@ -1030,23 +1113,6 @@ Pipeline3DLit& Context::getPBRIBLTexturedPipeline() {
         pbrIBLTexturedPipeline_->init(renderer_, Pipeline3DLit::ShadingModel::PBR_IBL_Textured);
     }
     return *pbrIBLTexturedPipeline_;
-}
-
-void Context::render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
-                          const glm::mat4& transform,
-                          const TexturedPBRMaterial& material,
-                          const SceneLighting& lighting,
-                          const Environment& environment,
-                          Texture& output,
-                          const glm::vec4& clearColor) {
-    if (!mesh.valid()) return;
-    if (!environment.valid()) {
-        // For textured PBR, we require a valid environment
-        // Could add a non-IBL textured path later if needed
-        std::cerr << "render3DPBR with textures requires a valid environment\n";
-        return;
-    }
-    getPBRIBLTexturedPipeline().renderPBRTexturedWithIBL(mesh, camera, transform, material, lighting, environment, output, clearColor);
 }
 
 // IBL/Cubemap Processing

@@ -1,6 +1,7 @@
 // See SPEC.md for project description
 // Wipeout 2097-style hover vehicle generator with audio reactivity
 #include <vivid/vivid.h>
+#include <vivid/csg/csg.h>  // CSG boolean operations
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 #include <vector>
@@ -86,6 +87,7 @@ static const livery::TeamPalette* palettes[] = {
 static int currentTeam = 4;  // Start with PIRANHA (black/orange) for visibility
 static bool useVertexLit = false;  // Toggle for retro vertex-lit rendering (press V)
 static bool useWireframe = false;  // Toggle for wireframe/debug mode (press W)
+static bool useCSG = true;  // Toggle for CSG geometry (press C) - more detailed parts
 
 // === MESH GENERATION HELPERS ===
 
@@ -820,6 +822,160 @@ Mesh3D buildCockpit(Context& ctx, Mesh3D* wireOut = nullptr) {
     return ctx.createMesh(verts, indices);
 }
 
+// === CSG-BASED GEOMETRY ===
+// Complex parts built using boolean operations
+
+// Build engine nacelle with exhaust vents using CSG
+Mesh3D buildEngineCSG(Context& ctx, Mesh3D* wireOut = nullptr) {
+    using namespace csg;
+
+    // Main engine body - elongated cylinder
+    float outerRadius = 0.28f;
+    float length = 0.7f;
+
+    // Create main engine housing
+    Solid housing = Solid::cylinder(outerRadius, length, 24)
+        .rotateZ(3.14159265359f / 2.0f);  // Align along X axis
+
+    // Exhaust cone at the back
+    Solid exhaustCone = Solid::cylinder(outerRadius * 0.85f, 0.25f, 24)
+        .rotateZ(3.14159265359f / 2.0f)
+        .translate(length * 0.45f, 0, 0);
+
+    // Inner exhaust tube (subtract to create hollow)
+    Solid innerTube = Solid::cylinder(outerRadius * 0.65f, length * 1.2f, 20)
+        .rotateZ(3.14159265359f / 2.0f);
+
+    // Exhaust vents - radial array of rectangular slots
+    Solid ventSlot = Solid::box(0.15f, 0.04f, outerRadius * 0.6f)
+        .translate(0, 0, outerRadius * 0.85f);
+
+    // Create 6 vent slots around the circumference
+    Solid vents;
+    for (int i = 0; i < 6; ++i) {
+        float angle = 3.14159265359f * 2.0f * i / 6.0f;
+        Solid rotatedVent = ventSlot.rotateX(angle);
+        if (i == 0) {
+            vents = rotatedVent;
+        } else {
+            vents = vents + rotatedVent;
+        }
+    }
+
+    // Cooling intake scoops (front of engine)
+    Solid intakeScoop = Solid::box(0.12f, 0.08f, 0.06f)
+        .translate(-length * 0.35f, outerRadius * 0.7f, 0);
+
+    Solid intakeScoop2 = intakeScoop.rotateX(3.14159265359f);  // Bottom scoop
+
+    // Combine: housing + exhaust cone - inner tube - vents + scoops
+    Solid engine = housing + exhaustCone;
+    engine = engine - innerTube;
+    engine = engine - vents;
+    engine = engine + intakeScoop + intakeScoop2;
+
+    // Convert to mesh
+    CSGMesh csgMesh = engine.toMesh();
+
+    if (wireOut) *wireOut = meshToWireframe(ctx, csgMesh.vertices, csgMesh.indices);
+    return ctx.createMesh(csgMesh.vertices, csgMesh.indices);
+}
+
+// Build side pod with cooling vents using CSG
+Mesh3D buildSidePodCSG(Context& ctx, float side, Mesh3D* wireOut = nullptr) {
+    using namespace csg;
+
+    float podLength = 3.0f;
+    float podWidth = 0.55f;
+    float podHeight = 0.45f;
+
+    // Main pod body - stretched box with rounded ends
+    Solid podBody = Solid::box(podLength, podHeight, podWidth);
+
+    // Front intake scoop (subtract to create opening)
+    Solid intakeBox = Solid::box(0.4f, 0.25f, podWidth * 0.7f)
+        .translate(-podLength * 0.4f, 0, 0);
+
+    // Rear taper (intersect with wedge to create streamlined back)
+    Solid taperWedge = Solid::box(podLength * 0.4f, podHeight * 1.5f, podWidth * 1.5f)
+        .translate(podLength * 0.35f, -podHeight * 0.1f, 0);
+
+    // Side cooling vents - 3 slots along the side
+    Solid ventSlot = Solid::box(0.3f, podHeight * 0.3f, 0.08f);
+    Solid sideVents;
+    for (int i = 0; i < 3; ++i) {
+        float xOffset = -0.3f + i * 0.5f;
+        Solid vent = ventSlot.translate(xOffset, 0, side * podWidth * 0.45f);
+        if (i == 0) {
+            sideVents = vent;
+        } else {
+            sideVents = sideVents + vent;
+        }
+    }
+
+    // Top cooling duct (recessed channel)
+    Solid topDuct = Solid::box(1.2f, 0.1f, podWidth * 0.4f)
+        .translate(-0.2f, podHeight * 0.4f, 0);
+
+    // Build the pod
+    Solid pod = podBody;
+    pod = pod - intakeBox;    // Front intake
+    pod = pod - sideVents;    // Side cooling vents
+    pod = pod - topDuct;      // Top duct
+
+    // Offset to correct position (original pod was at side offset)
+    pod = pod.scale(1.0f, 1.0f, side > 0 ? 1.0f : 1.0f);
+
+    // Convert to mesh
+    CSGMesh csgMesh = pod.toMesh();
+
+    if (wireOut) *wireOut = meshToWireframe(ctx, csgMesh.vertices, csgMesh.indices);
+    return ctx.createMesh(csgMesh.vertices, csgMesh.indices);
+}
+
+// Build rear wing with endplate cutouts using CSG
+Mesh3D buildRearWingCSG(Context& ctx, Mesh3D* wireOut = nullptr) {
+    using namespace csg;
+
+    float span = 2.4f;
+    float chord = 0.5f;
+    float thickness = 0.08f;
+    float endplateHeight = 0.3f;
+
+    // Main wing element
+    Solid wingMain = Solid::box(chord, thickness, span);
+
+    // Endplates
+    Solid leftEndplate = Solid::box(chord * 1.2f, endplateHeight, thickness)
+        .translate(-chord * 0.1f, endplateHeight * 0.4f, -span * 0.5f);
+
+    Solid rightEndplate = Solid::box(chord * 1.2f, endplateHeight, thickness)
+        .translate(-chord * 0.1f, endplateHeight * 0.4f, span * 0.5f);
+
+    // Cutout holes in endplates (weight reduction / aero)
+    Solid endplateCutout = Solid::cylinder(0.06f, thickness * 2.0f, 12)
+        .rotateX(3.14159265359f / 2.0f);
+
+    Solid leftCutout1 = endplateCutout.translate(0, endplateHeight * 0.3f, -span * 0.5f);
+    Solid leftCutout2 = endplateCutout.translate(-chord * 0.2f, endplateHeight * 0.5f, -span * 0.5f);
+    Solid rightCutout1 = endplateCutout.translate(0, endplateHeight * 0.3f, span * 0.5f);
+    Solid rightCutout2 = endplateCutout.translate(-chord * 0.2f, endplateHeight * 0.5f, span * 0.5f);
+
+    // Gurney flap (small vertical lip at trailing edge)
+    Solid gurneyFlap = Solid::box(0.02f, 0.04f, span * 0.8f)
+        .translate(-chord * 0.5f, -thickness * 0.5f - 0.02f, 0);
+
+    // Combine all elements
+    Solid wing = wingMain + leftEndplate + rightEndplate + gurneyFlap;
+    wing = wing - leftCutout1 - leftCutout2 - rightCutout1 - rightCutout2;
+
+    // Convert to mesh
+    CSGMesh csgMesh = wing.toMesh();
+
+    if (wireOut) *wireOut = meshToWireframe(ctx, csgMesh.vertices, csgMesh.indices);
+    return ctx.createMesh(csgMesh.vertices, csgMesh.indices);
+}
+
 // === CAMERA ===
 
 void updateCamera() {
@@ -875,15 +1031,27 @@ void update(Chain& chain, Context& ctx) {
         std::cout << "[wipeout-vehicle] Building complex procedural craft...\n";
 
         // Build all vehicle parts (with wireframe versions)
+        // CSG versions have more detailed geometry (vents, cutouts, etc.)
         fuselageMesh = buildFuselage(ctx, &fuselageWire);
         cockpitMesh = buildCockpit(ctx, &cockpitWire);
-        leftPodMesh = buildSidePod(ctx, -1.0f, &leftPodWire);
-        rightPodMesh = buildSidePod(ctx, 1.0f, &rightPodWire);
-        leftEngineMesh = buildEngine(ctx, &leftEngineWire);
-        rightEngineMesh = buildEngine(ctx, &rightEngineWire);
+
+        if (useCSG) {
+            std::cout << "[wipeout-vehicle] Using CSG for detailed geometry\n";
+            leftPodMesh = buildSidePodCSG(ctx, -1.0f, &leftPodWire);
+            rightPodMesh = buildSidePodCSG(ctx, 1.0f, &rightPodWire);
+            leftEngineMesh = buildEngineCSG(ctx, &leftEngineWire);
+            rightEngineMesh = buildEngineCSG(ctx, &rightEngineWire);
+            rearWingMesh = buildRearWingCSG(ctx, &rearWingWire);
+        } else {
+            leftPodMesh = buildSidePod(ctx, -1.0f, &leftPodWire);
+            rightPodMesh = buildSidePod(ctx, 1.0f, &rightPodWire);
+            leftEngineMesh = buildEngine(ctx, &leftEngineWire);
+            rightEngineMesh = buildEngine(ctx, &rightEngineWire);
+            rearWingMesh = buildRearWing(ctx, &rearWingWire);
+        }
+
         leftFinMesh = buildFin(ctx, -1.0f, &leftFinWire);
         rightFinMesh = buildFin(ctx, 1.0f, &rightFinWire);
-        rearWingMesh = buildRearWing(ctx, &rearWingWire);
         leftCanardMesh = buildCanard(ctx, -1.0f, &leftCanardWire);
         rightCanardMesh = buildCanard(ctx, 1.0f, &rightCanardWire);
 
@@ -957,7 +1125,8 @@ void update(Chain& chain, Context& ctx) {
         std::cout << "Drag mouse to orbit, scroll to zoom\n";
         std::cout << "Press 1-5 to change team colors\n";
         std::cout << "Press V to toggle Vertex-Lit/PBR rendering\n";
-        std::cout << "Press W to toggle Wireframe mode\n\n";
+        std::cout << "Press W to toggle Wireframe mode\n";
+        std::cout << "Press C to toggle CSG geometry (vents/cutouts)\n\n";
     }
 
     // Camera control
@@ -1006,6 +1175,13 @@ void update(Chain& chain, Context& ctx) {
     if (ctx.wasKeyPressed(Key::W)) {
         useWireframe = !useWireframe;
         std::cout << "Wireframe: " << (useWireframe ? "ON (edge lines)" : "OFF") << "\n";
+    }
+
+    // Toggle CSG geometry (C key) - requires mesh rebuild
+    if (ctx.wasKeyPressed(Key::C)) {
+        useCSG = !useCSG;
+        std::cout << "CSG geometry: " << (useCSG ? "ON (vents, cutouts)" : "OFF (simple)") << "\n";
+        std::cout << "  Note: Restart to apply CSG change\n";
     }
 
     float t = ctx.time();
@@ -1111,76 +1287,69 @@ void update(Chain& chain, Context& ctx) {
     glm::vec4 clearColor(0.02f, 0.02f, 0.04f, 1.0f);
     glm::vec4 noClear(0, 0, 0, -1);
 
-    // Light direction for vertex-lit rendering
-    glm::vec3 lightDir = glm::normalize(glm::vec3(0.5f, -1.0f, 0.3f));
-    glm::vec3 lightColor(1.0f, 0.95f, 0.9f);  // Warm white
-
     if (useWireframe) {
         // === TRUE WIREFRAME MODE ===
         // Renders actual edge geometry (thin line strips for each triangle edge)
 
-        // Bright colors for wireframe lines (each component different color)
-        VertexLitMaterial wireFuselageMat = VertexLitMaterial::flat(glm::vec3(0.3f, 0.8f, 1.0f));   // Cyan
-        VertexLitMaterial wirePodMat = VertexLitMaterial::flat(glm::vec3(1.0f, 0.6f, 0.2f));        // Orange
-        VertexLitMaterial wireCockpitMat = VertexLitMaterial::flat(glm::vec3(0.2f, 1.0f, 0.4f));    // Green
-        VertexLitMaterial wireEngineMat = VertexLitMaterial::flat(glm::vec3(1.0f, 0.3f, 0.3f));     // Red
-        VertexLitMaterial wireFinMat = VertexLitMaterial::flat(glm::vec3(1.0f, 1.0f, 0.3f));        // Yellow
-        VertexLitMaterial wireWingMat = VertexLitMaterial::flat(glm::vec3(1.0f, 0.4f, 1.0f));       // Magenta
-        VertexLitMaterial wireCanardMat = VertexLitMaterial::flat(glm::vec3(0.4f, 1.0f, 1.0f));     // Cyan-ish
-
-        glm::vec3 wireLightDir = glm::normalize(glm::vec3(0.3f, -1.0f, 0.5f));
-        glm::vec3 wireLightColor(1.0f, 1.0f, 1.0f);
+        // Bright colors for wireframe lines using Unlit materials
+        UnlitMaterial wireFuselageMat = UnlitMaterial::solid(glm::vec3(0.3f, 0.8f, 1.0f));   // Cyan
+        UnlitMaterial wirePodMat = UnlitMaterial::solid(glm::vec3(1.0f, 0.6f, 0.2f));        // Orange
+        UnlitMaterial wireCockpitMat = UnlitMaterial::solid(glm::vec3(0.2f, 1.0f, 0.4f));    // Green
+        UnlitMaterial wireEngineMat = UnlitMaterial::solid(glm::vec3(1.0f, 0.3f, 0.3f));     // Red
+        UnlitMaterial wireFinMat = UnlitMaterial::solid(glm::vec3(1.0f, 1.0f, 0.3f));        // Yellow
+        UnlitMaterial wireWingMat = UnlitMaterial::solid(glm::vec3(1.0f, 0.4f, 1.0f));       // Magenta
+        UnlitMaterial wireCanardMat = UnlitMaterial::solid(glm::vec3(0.4f, 1.0f, 1.0f));     // Cyan-ish
 
         // Fuselage wireframe
-        ctx.render3DVertexLit(fuselageWire, camera, baseXform, wireFuselageMat, wireLightDir, output, clearColor, wireLightColor);
+        ctx.render3D(fuselageWire, camera, baseXform, wireFuselageMat, lighting, output, clearColor);
 
         // Cockpit wireframe
         glm::mat4 cockpitXform = baseXform;
         cockpitXform = glm::translate(cockpitXform, glm::vec3(-1.2f, 0.25f, 0));
-        ctx.render3DVertexLit(cockpitWire, camera, cockpitXform, wireCockpitMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(cockpitWire, camera, cockpitXform, wireCockpitMat, lighting, output, noClear);
 
         // Side pods wireframe
         glm::mat4 leftPodXform = baseXform;
         leftPodXform = glm::translate(leftPodXform, glm::vec3(0.8f, -0.1f, -0.8f));
-        ctx.render3DVertexLit(leftPodWire, camera, leftPodXform, wirePodMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(leftPodWire, camera, leftPodXform, wirePodMat, lighting, output, noClear);
 
         glm::mat4 rightPodXform = baseXform;
         rightPodXform = glm::translate(rightPodXform, glm::vec3(0.8f, -0.1f, 0.8f));
-        ctx.render3DVertexLit(rightPodWire, camera, rightPodXform, wirePodMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(rightPodWire, camera, rightPodXform, wirePodMat, lighting, output, noClear);
 
         // Engines wireframe
         glm::mat4 leftEngineXform = baseXform;
         leftEngineXform = glm::translate(leftEngineXform, glm::vec3(2.6f, -0.05f, -0.9f));
         leftEngineXform = glm::rotate(leftEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
-        ctx.render3DVertexLit(leftEngineWire, camera, leftEngineXform, wireEngineMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(leftEngineWire, camera, leftEngineXform, wireEngineMat, lighting, output, noClear);
 
         glm::mat4 rightEngineXform = baseXform;
         rightEngineXform = glm::translate(rightEngineXform, glm::vec3(2.6f, -0.05f, 0.9f));
         rightEngineXform = glm::rotate(rightEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
-        ctx.render3DVertexLit(rightEngineWire, camera, rightEngineXform, wireEngineMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(rightEngineWire, camera, rightEngineXform, wireEngineMat, lighting, output, noClear);
 
         // Fins wireframe
         glm::mat4 leftFinXform = baseXform;
         leftFinXform = glm::translate(leftFinXform, glm::vec3(2.2f, 0.2f, -0.95f));
-        ctx.render3DVertexLit(leftFinWire, camera, leftFinXform, wireFinMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(leftFinWire, camera, leftFinXform, wireFinMat, lighting, output, noClear);
 
         glm::mat4 rightFinXform = baseXform;
         rightFinXform = glm::translate(rightFinXform, glm::vec3(2.2f, 0.2f, 0.95f));
-        ctx.render3DVertexLit(rightFinWire, camera, rightFinXform, wireFinMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(rightFinWire, camera, rightFinXform, wireFinMat, lighting, output, noClear);
 
         // Rear wing wireframe
         glm::mat4 wingXform = baseXform;
         wingXform = glm::translate(wingXform, glm::vec3(3.0f, 0.35f, 0));
-        ctx.render3DVertexLit(rearWingWire, camera, wingXform, wireWingMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(rearWingWire, camera, wingXform, wireWingMat, lighting, output, noClear);
 
         // Front canards wireframe
         glm::mat4 leftCanardXform = baseXform;
         leftCanardXform = glm::translate(leftCanardXform, glm::vec3(-3.2f, 0.05f, -0.3f));
-        ctx.render3DVertexLit(leftCanardWire, camera, leftCanardXform, wireCanardMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(leftCanardWire, camera, leftCanardXform, wireCanardMat, lighting, output, noClear);
 
         glm::mat4 rightCanardXform = baseXform;
         rightCanardXform = glm::translate(rightCanardXform, glm::vec3(-3.2f, 0.05f, 0.3f));
-        ctx.render3DVertexLit(rightCanardWire, camera, rightCanardXform, wireCanardMat, wireLightDir, output, noClear, wireLightColor);
+        ctx.render3D(rightCanardWire, camera, rightCanardXform, wireCanardMat, lighting, output, noClear);
 
     } else if (useVertexLit) {
         // === VERTEX-LIT RENDERING (PS1/Retro Style) ===
@@ -1210,109 +1379,109 @@ void update(Chain& chain, Context& ctx) {
         vlCanardMat.diffuseMap = useLivery ? &liveryTexture : nullptr;
 
         // Fuselage (long needle body)
-        ctx.render3DVertexLit(fuselageMesh, camera, baseXform, vlBodyMat, lightDir, output, clearColor, lightColor);
+        ctx.render3D(fuselageMesh, camera, baseXform, vlBodyMat, lighting, output, clearColor);
 
         // Cockpit (toward front of fuselage)
         glm::mat4 cockpitXform = baseXform;
         cockpitXform = glm::translate(cockpitXform, glm::vec3(-1.2f, 0.25f, 0));
-        ctx.render3DVertexLit(cockpitMesh, camera, cockpitXform, vlCockpitMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(cockpitMesh, camera, cockpitXform, vlCockpitMat, lighting, output, noClear);
 
         // Side pods (alongside fuselage)
         glm::mat4 leftPodXform = baseXform;
         leftPodXform = glm::translate(leftPodXform, glm::vec3(0.8f, -0.1f, -0.8f));
-        ctx.render3DVertexLit(leftPodMesh, camera, leftPodXform, vlPodMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(leftPodMesh, camera, leftPodXform, vlPodMat, lighting, output, noClear);
 
         glm::mat4 rightPodXform = baseXform;
         rightPodXform = glm::translate(rightPodXform, glm::vec3(0.8f, -0.1f, 0.8f));
-        ctx.render3DVertexLit(rightPodMesh, camera, rightPodXform, vlPodMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(rightPodMesh, camera, rightPodXform, vlPodMat, lighting, output, noClear);
 
         // Engines (at rear of pods)
         glm::mat4 leftEngineXform = baseXform;
         leftEngineXform = glm::translate(leftEngineXform, glm::vec3(2.6f, -0.05f, -0.9f));
         leftEngineXform = glm::rotate(leftEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
-        ctx.render3DVertexLit(leftEngineMesh, camera, leftEngineXform, vlEngineMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(leftEngineMesh, camera, leftEngineXform, vlEngineMat, lighting, output, noClear);
 
         glm::mat4 rightEngineXform = baseXform;
         rightEngineXform = glm::translate(rightEngineXform, glm::vec3(2.6f, -0.05f, 0.9f));
         rightEngineXform = glm::rotate(rightEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
-        ctx.render3DVertexLit(rightEngineMesh, camera, rightEngineXform, vlEngineMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(rightEngineMesh, camera, rightEngineXform, vlEngineMat, lighting, output, noClear);
 
         // Fins (on pods)
         glm::mat4 leftFinXform = baseXform;
         leftFinXform = glm::translate(leftFinXform, glm::vec3(2.2f, 0.2f, -0.95f));
-        ctx.render3DVertexLit(leftFinMesh, camera, leftFinXform, vlFinMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(leftFinMesh, camera, leftFinXform, vlFinMat, lighting, output, noClear);
 
         glm::mat4 rightFinXform = baseXform;
         rightFinXform = glm::translate(rightFinXform, glm::vec3(2.2f, 0.2f, 0.95f));
-        ctx.render3DVertexLit(rightFinMesh, camera, rightFinXform, vlFinMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(rightFinMesh, camera, rightFinXform, vlFinMat, lighting, output, noClear);
 
         // Rear wing
         glm::mat4 wingXform = baseXform;
         wingXform = glm::translate(wingXform, glm::vec3(3.0f, 0.35f, 0));
-        ctx.render3DVertexLit(rearWingMesh, camera, wingXform, vlWingMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(rearWingMesh, camera, wingXform, vlWingMat, lighting, output, noClear);
 
         // Front canards (far forward on needle nose)
         glm::mat4 leftCanardXform = baseXform;
         leftCanardXform = glm::translate(leftCanardXform, glm::vec3(-3.2f, 0.05f, -0.3f));
-        ctx.render3DVertexLit(leftCanardMesh, camera, leftCanardXform, vlCanardMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(leftCanardMesh, camera, leftCanardXform, vlCanardMat, lighting, output, noClear);
 
         glm::mat4 rightCanardXform = baseXform;
         rightCanardXform = glm::translate(rightCanardXform, glm::vec3(-3.2f, 0.05f, 0.3f));
-        ctx.render3DVertexLit(rightCanardMesh, camera, rightCanardXform, vlCanardMat, lightDir, output, noClear, lightColor);
+        ctx.render3D(rightCanardMesh, camera, rightCanardXform, vlCanardMat, lighting, output, noClear);
 
     } else {
         // === PBR RENDERING ===
 
         // Fuselage (long needle body)
-        ctx.render3DPBR(fuselageMesh, camera, baseXform, bodyMat, lighting, iblEnvironment, output, clearColor);
+        ctx.render3D(fuselageMesh, camera, baseXform, bodyMat, lighting, iblEnvironment, output, clearColor);
 
         // Cockpit (toward front of fuselage)
         glm::mat4 cockpitXform = baseXform;
         cockpitXform = glm::translate(cockpitXform, glm::vec3(-1.2f, 0.25f, 0));
-        ctx.render3DPBR(cockpitMesh, camera, cockpitXform, cockpitMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(cockpitMesh, camera, cockpitXform, cockpitMat, lighting, iblEnvironment, output, noClear);
 
         // Side pods (alongside fuselage)
         glm::mat4 leftPodXform = baseXform;
         leftPodXform = glm::translate(leftPodXform, glm::vec3(0.8f, -0.1f, -0.8f));
-        ctx.render3DPBR(leftPodMesh, camera, leftPodXform, podMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(leftPodMesh, camera, leftPodXform, podMat, lighting, iblEnvironment, output, noClear);
 
         glm::mat4 rightPodXform = baseXform;
         rightPodXform = glm::translate(rightPodXform, glm::vec3(0.8f, -0.1f, 0.8f));
-        ctx.render3DPBR(rightPodMesh, camera, rightPodXform, podMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(rightPodMesh, camera, rightPodXform, podMat, lighting, iblEnvironment, output, noClear);
 
         // Engines (at rear of pods)
         glm::mat4 leftEngineXform = baseXform;
         leftEngineXform = glm::translate(leftEngineXform, glm::vec3(2.6f, -0.05f, -0.9f));
         leftEngineXform = glm::rotate(leftEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
-        ctx.render3DPBR(leftEngineMesh, camera, leftEngineXform, engineMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(leftEngineMesh, camera, leftEngineXform, engineMat, lighting, iblEnvironment, output, noClear);
 
         glm::mat4 rightEngineXform = baseXform;
         rightEngineXform = glm::translate(rightEngineXform, glm::vec3(2.6f, -0.05f, 0.9f));
         rightEngineXform = glm::rotate(rightEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
-        ctx.render3DPBR(rightEngineMesh, camera, rightEngineXform, engineMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(rightEngineMesh, camera, rightEngineXform, engineMat, lighting, iblEnvironment, output, noClear);
 
         // Vertical fins (on pods)
         glm::mat4 leftFinXform = baseXform;
         leftFinXform = glm::translate(leftFinXform, glm::vec3(2.2f, 0.2f, -0.95f));
-        ctx.render3DPBR(leftFinMesh, camera, leftFinXform, finMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(leftFinMesh, camera, leftFinXform, finMat, lighting, iblEnvironment, output, noClear);
 
         glm::mat4 rightFinXform = baseXform;
         rightFinXform = glm::translate(rightFinXform, glm::vec3(2.2f, 0.2f, 0.95f));
-        ctx.render3DPBR(rightFinMesh, camera, rightFinXform, finMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(rightFinMesh, camera, rightFinXform, finMat, lighting, iblEnvironment, output, noClear);
 
         // Rear wing
         glm::mat4 wingXform = baseXform;
         wingXform = glm::translate(wingXform, glm::vec3(3.0f, 0.35f, 0));
-        ctx.render3DPBR(rearWingMesh, camera, wingXform, wingMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(rearWingMesh, camera, wingXform, wingMat, lighting, iblEnvironment, output, noClear);
 
         // Front canards (far forward on needle nose)
         glm::mat4 leftCanardXform = baseXform;
         leftCanardXform = glm::translate(leftCanardXform, glm::vec3(-3.2f, 0.05f, -0.3f));
-        ctx.render3DPBR(leftCanardMesh, camera, leftCanardXform, canardMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(leftCanardMesh, camera, leftCanardXform, canardMat, lighting, iblEnvironment, output, noClear);
 
         glm::mat4 rightCanardXform = baseXform;
         rightCanardXform = glm::translate(rightCanardXform, glm::vec3(-3.2f, 0.05f, 0.3f));
-        ctx.render3DPBR(rightCanardMesh, camera, rightCanardXform, canardMat, lighting, iblEnvironment, output, noClear);
+        ctx.render3D(rightCanardMesh, camera, rightCanardXform, canardMat, lighting, iblEnvironment, output, noClear);
     }
 
     ctx.setOutput("out", output);

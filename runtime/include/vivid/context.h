@@ -20,6 +20,8 @@ class SkinnedMeshRendererImpl;
 class Pipeline3DLit;
 class Pipeline3DVertexLit;
 class Pipeline3DDecal;
+class Pipeline3DUnlit;
+class Pipeline3DWireframe;
 class CubemapProcessor;
 class FontAtlas;
 class TextRenderer;
@@ -602,10 +604,70 @@ public:
     void destroyMesh(Mesh3D& mesh);
 
     /**
-     * @brief Render a 3D scene to a texture.
+     * @brief Render a 3D mesh with unified material system.
      *
-     * This is a high-level method that renders a mesh with a camera.
-     * Uses the built-in normal visualization shader.
+     * This is the primary 3D rendering method. The material type determines
+     * which shader/pipeline is used automatically.
+     *
+     * @code
+     * // PBR rendering
+     * Material mat = PBRMaterial::gold();
+     * ctx.render3D(mesh, camera, transform, mat, lighting, output);
+     *
+     * // Wireframe rendering
+     * mat = WireframeMaterial::cyan();
+     * ctx.render3D(mesh, camera, transform, mat, lighting, output);
+     *
+     * // Switch materials at runtime
+     * mat = showWireframe ? Material(WireframeMaterial::white())
+     *                     : Material(PBRMaterial::copper());
+     * ctx.render3D(mesh, camera, transform, mat, lighting, output);
+     * @endcode
+     *
+     * @param mesh The mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform matrix.
+     * @param material Any material type (PBR, Phong, Wireframe, Unlit, etc.)
+     * @param lighting Scene lighting (ignored for Unlit/Wireframe materials).
+     * @param output Target texture to render into.
+     * @param clearColor Background color (default black).
+     */
+    void render3D(const Mesh3D& mesh, const Camera3D& camera,
+                  const glm::mat4& transform,
+                  const Material& material,
+                  const SceneLighting& lighting,
+                  Texture& output,
+                  const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
+     * @brief Render a 3D mesh with material and IBL environment.
+     *
+     * For PBR materials, adding an environment enables image-based lighting
+     * for realistic reflections and ambient lighting. Other material types
+     * ignore the environment parameter.
+     *
+     * @param mesh The mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform matrix.
+     * @param material Any material type.
+     * @param lighting Scene lighting.
+     * @param environment IBL environment for PBR (ignored by other materials).
+     * @param output Target texture to render into.
+     * @param clearColor Background color (default black).
+     */
+    void render3D(const Mesh3D& mesh, const Camera3D& camera,
+                  const glm::mat4& transform,
+                  const Material& material,
+                  const SceneLighting& lighting,
+                  const Environment& environment,
+                  Texture& output,
+                  const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
+     * @brief Render a 3D scene to a texture (debug/normal visualization).
+     *
+     * Simple normal visualization shader - useful for debugging geometry.
+     * For production rendering, use the Material-based render3D overload.
      *
      * @param mesh The mesh to render.
      * @param camera The camera viewpoint.
@@ -630,172 +692,6 @@ public:
                   const std::vector<glm::mat4>& transforms,
                   const Camera3D& camera, Texture& output,
                   const glm::vec4& clearColor = {0, 0, 0, 1});
-
-    /**
-     * @brief Render a mesh with Phong (Blinn-Phong) lighting.
-     *
-     * Classic ambient/diffuse/specular shading model.
-     *
-     * @code
-     * // Setup lighting
-     * SceneLighting lighting = SceneLighting::threePoint();
-     *
-     * // Create material
-     * PhongMaterial material = PhongMaterial::shiny(glm::vec3(0.8f, 0.2f, 0.2f));
-     *
-     * // Render with lighting
-     * ctx.render3DPhong(mesh, camera, transform, material, lighting, output);
-     * @endcode
-     *
-     * @param mesh The mesh to render.
-     * @param camera The camera viewpoint.
-     * @param transform Model transform matrix.
-     * @param material Phong material properties.
-     * @param lighting Scene lighting configuration.
-     * @param output Target texture to render into.
-     * @param clearColor Background color.
-     */
-    void render3DPhong(const Mesh3D& mesh, const Camera3D& camera,
-                       const glm::mat4& transform,
-                       const PhongMaterial& material,
-                       const SceneLighting& lighting,
-                       Texture& output,
-                       const glm::vec4& clearColor = {0, 0, 0, 1});
-
-    /**
-     * @brief Render a mesh with retro vertex-lit shading.
-     *
-     * Simple N·L diffuse lighting with optional quantization for PS1/toon look.
-     * No PBR, no environment mapping - just classic vertex lighting.
-     *
-     * @code
-     * // Create retro material
-     * VertexLitMaterial material = VertexLitMaterial::ps1(glm::vec3(0.8f, 0.2f, 0.2f));
-     * material.diffuseMap = &liveryTexture;
-     *
-     * // Render with vertex lighting
-     * glm::vec3 lightDir(0.5f, -1.0f, 0.3f);
-     * ctx.render3DVertexLit(mesh, camera, transform, material, lightDir, output);
-     * @endcode
-     *
-     * @param mesh The mesh to render.
-     * @param camera The camera viewpoint.
-     * @param transform Model transform matrix.
-     * @param material Vertex-lit material properties.
-     * @param lightDir Directional light direction.
-     * @param output Target texture to render into.
-     * @param clearColor Background color.
-     * @param lightColor Light color (default white).
-     */
-    void render3DVertexLit(const Mesh3D& mesh, const Camera3D& camera,
-                           const glm::mat4& transform,
-                           const VertexLitMaterial& material,
-                           const glm::vec3& lightDir,
-                           Texture& output,
-                           const glm::vec4& clearColor = {0, 0, 0, 1},
-                           const glm::vec3& lightColor = {1, 1, 1});
-
-    /**
-     * @brief Render a mesh with PBR (Physically Based Rendering).
-     *
-     * Uses Cook-Torrance BRDF with metallic-roughness workflow.
-     * Includes HDR tone mapping and gamma correction.
-     *
-     * @code
-     * // Setup lighting
-     * SceneLighting lighting = SceneLighting::outdoor();
-     *
-     * // Create PBR material
-     * PBRMaterial material = PBRMaterial::gold();
-     *
-     * // Render with PBR
-     * ctx.render3DPBR(mesh, camera, transform, material, lighting, output);
-     * @endcode
-     *
-     * @param mesh The mesh to render.
-     * @param camera The camera viewpoint.
-     * @param transform Model transform matrix.
-     * @param material PBR material properties.
-     * @param lighting Scene lighting configuration.
-     * @param output Target texture to render into.
-     * @param clearColor Background color.
-     */
-    void render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
-                     const glm::mat4& transform,
-                     const PBRMaterial& material,
-                     const SceneLighting& lighting,
-                     Texture& output,
-                     const glm::vec4& clearColor = {0, 0, 0, 1});
-
-    /**
-     * @brief Render a mesh with PBR and Image-Based Lighting (IBL).
-     *
-     * Uses IBL for ambient lighting, providing realistic reflections
-     * and diffuse lighting from an environment map.
-     *
-     * @code
-     * // Load HDR environment map once in setup()
-     * Environment env = ctx.loadEnvironment("studio.hdr");
-     *
-     * // Render with IBL
-     * ctx.render3DPBR(mesh, camera, transform, material, lighting, env, output);
-     * @endcode
-     *
-     * @param mesh The mesh to render.
-     * @param camera The camera viewpoint.
-     * @param transform Model transform matrix.
-     * @param material PBR material properties.
-     * @param lighting Direct light sources (combined with IBL).
-     * @param environment IBL environment maps.
-     * @param output Target texture to render into.
-     * @param clearColor Background color.
-     */
-    void render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
-                     const glm::mat4& transform,
-                     const PBRMaterial& material,
-                     const SceneLighting& lighting,
-                     const Environment& environment,
-                     Texture& output,
-                     const glm::vec4& clearColor = {0, 0, 0, 1});
-
-    /**
-     * @brief Render a mesh with textured PBR and Image-Based Lighting (IBL).
-     *
-     * Uses texture maps for detailed material properties including:
-     * - Albedo (base color) map
-     * - Normal map for surface detail
-     * - Metallic-Roughness map (glTF format: G=roughness, B=metallic)
-     * - Ambient Occlusion (AO) map
-     * - Emissive map for glowing surfaces
-     *
-     * @code
-     * // Load textures and create material
-     * TexturedPBRMaterial material;
-     * material.albedo = glm::vec3(1.0f);  // Base tint
-     * material.albedoMap = ctx.loadImageAsTexture("albedo.png");
-     * material.normalMap = ctx.loadImageAsTexture("normal.png");
-     * material.metallicRoughnessMap = ctx.loadImageAsTexture("metallic_roughness.png");
-     *
-     * // Render with textured PBR
-     * ctx.render3DPBR(mesh, camera, transform, material, lighting, env, output);
-     * @endcode
-     *
-     * @param mesh The mesh to render.
-     * @param camera The camera viewpoint.
-     * @param transform Model transform matrix.
-     * @param material Textured PBR material with optional texture maps.
-     * @param lighting Direct light sources (combined with IBL).
-     * @param environment IBL environment maps.
-     * @param output Target texture to render into.
-     * @param clearColor Background color.
-     */
-    void render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
-                     const glm::mat4& transform,
-                     const TexturedPBRMaterial& material,
-                     const SceneLighting& lighting,
-                     const Environment& environment,
-                     Texture& output,
-                     const glm::vec4& clearColor = {0, 0, 0, 1});
 
     /**
      * @brief Load an HDR environment map for Image-Based Lighting.
@@ -1126,6 +1022,14 @@ private:
     // Vertex-lit pipeline (lazy initialized)
     std::unique_ptr<Pipeline3DVertexLit> vertexLitPipeline_;
     Pipeline3DVertexLit& getVertexLitPipeline();
+
+    // Unlit pipeline (lazy initialized)
+    std::unique_ptr<Pipeline3DUnlit> unlitPipeline_;
+    Pipeline3DUnlit& getUnlitPipeline();
+
+    // Wireframe pipeline (lazy initialized)
+    std::unique_ptr<Pipeline3DWireframe> wireframePipeline_;
+    Pipeline3DWireframe& getWireframePipeline();
 
     // Decal rendering pipeline (lazy initialized)
     std::unique_ptr<Pipeline3DDecal> decalPipeline_;
