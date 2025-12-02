@@ -15,7 +15,13 @@ Window::Window(int width, int height, const std::string& title, bool fullscreen)
 
     // Set hints for WebGPU (no OpenGL context)
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+#ifdef _WIN32
+    // Disable resize on Windows due to wgpu-native D3D12 surface reconfigure issue
+    // TODO: Fix proper surface recreation on resize
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+#else
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+#endif
 
     // Create window
     GLFWmonitor* monitor = fullscreen ? glfwGetPrimaryMonitor() : nullptr;

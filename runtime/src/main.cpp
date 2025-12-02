@@ -1,6 +1,13 @@
 // Vivid Runtime - Entry Point
 // Phase 9: Preview Server Integration + Async Readback
 
+// Windows compatibility - prevent min/max macro conflicts
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include "window.h"
 #include "renderer.h"
 #include "graph.h"
@@ -271,11 +278,10 @@ int main(int argc, char* argv[]) {
         std::cout << "Project path: " << ctx.projectPath() << "\n";
         std::cout << "Shared assets: " << getSharedAssetsPath(argv[0]) << "\n";
 
-        // Set up resize callback
-        window.setResizeCallback([](int w, int h, void* userdata) {
-            auto* renderer = static_cast<vivid::Renderer*>(userdata);
-            renderer->resize(w, h);
-        }, &renderer);
+        // Note: We don't use a resize callback here because on Windows/D3D12,
+        // the callback fires from inside glfwPollEvents() which can cause
+        // "Invalid surface" errors. Instead, we check wasResized() in the main loop
+        // and handle resize between frames via deferred resize in beginFrame().
 
         // Async readback for non-blocking preview capture
         vivid::AsyncReadback asyncReadback;

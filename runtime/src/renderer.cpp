@@ -119,10 +119,16 @@ bool Renderer::init(GLFWwindow* window, int width, int height) {
     width_ = width;
     height_ = height;
 
-    // Create WebGPU instance
+    // Create WebGPU instance with platform-appropriate backend
     WGPUInstanceExtras instanceExtras = {};
     instanceExtras.chain.sType = static_cast<WGPUSType>(WGPUSType_InstanceExtras);
+#if defined(__APPLE__)
     instanceExtras.backends = WGPUInstanceBackend_Metal;
+#elif defined(_WIN32)
+    instanceExtras.backends = WGPUInstanceBackend_DX12;
+#else
+    instanceExtras.backends = WGPUInstanceBackend_Vulkan;
+#endif
     instanceExtras.flags = WGPUInstanceFlag_Default;
 
     WGPUInstanceDescriptor instanceDesc = {};
@@ -273,6 +279,11 @@ bool Renderer::requestDevice() {
 }
 
 void Renderer::configureSurface() {
+    // Don't configure with invalid dimensions (e.g., minimized window)
+    if (width_ <= 0 || height_ <= 0) {
+        return;
+    }
+
     // Get surface capabilities
     WGPUSurfaceCapabilities capabilities = {};
     wgpuSurfaceGetCapabilities(surface_, adapter_, &capabilities);
@@ -486,9 +497,49 @@ void Renderer::shutdown() {
 bool Renderer::beginFrame() {
     if (!initialized_) return false;
 
+    // Handle pending resize BEFORE acquiring surface texture
+    // wgpu-native requires no SurfaceOutput to be held when reconfiguring
+    if (resizePending_) {
+        resizePending_ = false;
+        width_ = pendingWidth_;
+        height_ = pendingHeight_;
+
+        // Skip this frame if dimensions are invalid
+        if (width_ <= 0 || height_ <= 0) {
+            return false;
+        }
+
+        // Reconfigure surface with new size
+        configureSurface();
+
+        // Recreate depth buffer if one exists
+        if (depthTexture_) {
+            createDepthBuffer(width_, height_);
+        }
+    }
+
     // Get the current texture from the surface
     WGPUSurfaceTexture surfaceTexture = {};
     wgpuSurfaceGetCurrentTexture(surface_, &surfaceTexture);
+
+    // Handle surface status
+    if (surfaceTexture.status == WGPUSurfaceGetCurrentTextureStatus_OutOfMemory) {
+        std::cerr << "[Renderer] Surface out of memory\n";
+        return false;
+    }
+
+    // If surface is outdated or lost, we need to reconfigure
+    // But we've already acquired a texture reference, so we must skip this frame
+    // and reconfigure on the next one
+    if (surfaceTexture.status == WGPUSurfaceGetCurrentTextureStatus_Outdated ||
+        surfaceTexture.status == WGPUSurfaceGetCurrentTextureStatus_Lost) {
+        // Mark for reconfigure next frame - the acquired texture will be dropped
+        // when this function returns without using it
+        resizePending_ = true;
+        pendingWidth_ = width_;
+        pendingHeight_ = height_;
+        return false;
+    }
 
     // Check for success (either optimal or suboptimal)
     if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
@@ -561,16 +612,11 @@ void Renderer::resize(int width, int height) {
     if (width == width_ && height == height_) return;
     if (width <= 0 || height <= 0) return;
 
-    width_ = width;
-    height_ = height;
-
-    // Reconfigure surface with new size
-    configureSurface();
-
-    // Recreate depth buffer if one exists
-    if (depthTexture_) {
-        createDepthBuffer(width, height);
-    }
+    // Defer resize until beginFrame - don't reconfigure while a frame may be in progress
+    // This is critical on D3D12 where reconfiguring mid-frame causes "Invalid surface" errors
+    pendingWidth_ = width;
+    pendingHeight_ = height;
+    resizePending_ = true;
 }
 
 void Renderer::setVSync(bool enabled) {

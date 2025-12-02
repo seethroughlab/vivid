@@ -6,9 +6,19 @@
 //   u.param3 = lacunarity
 //   u.param4 = persistence
 
+// Cross-platform modulo that avoids precision issues on D3D12
+// Using x - y * floor(x / y) instead of x % y for consistency
+fn mod289(x: vec3f) -> vec3f {
+    return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+fn mod289_2(x: vec2f) -> vec2f {
+    return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
 // Permutation polynomial for simplex noise
 fn permute3(x: vec3f) -> vec3f {
-    return (((x * 34.0) + 1.0) * x) % 289.0;
+    return mod289(((x * 34.0) + 1.0) * x);
 }
 
 // Simplex 2D noise
@@ -29,7 +39,7 @@ fn snoise2(v: vec2f) -> f32 {
     var x12 = x0.xyxy + C.xxzz;
     x12 = vec4f(x12.xy - i1, x12.zw);
 
-    i = i % 289.0;
+    i = mod289_2(i);
     let p = permute3(permute3(i.y + vec3f(0.0, i1.y, 1.0)) + i.x + vec3f(0.0, i1.x, 1.0));
 
     var m = max(0.5 - vec3f(dot(x0, x0), dot(x12.xy, x12.xy), dot(x12.zw, x12.zw)), vec3f(0.0));

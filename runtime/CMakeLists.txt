@@ -65,9 +65,16 @@ if(APPLE)
         PROPERTIES COMPILE_FLAGS "-x objective-c++"
     )
 elseif(WIN32)
-    list(APPEND RUNTIME_SOURCES src/video_loader_windows.cpp)
+    list(APPEND RUNTIME_SOURCES
+        src/platform_surface_windows.cpp
+        src/video_loader_windows.cpp
+        src/camera_capture_windows.cpp
+    )
 else()
-    list(APPEND RUNTIME_SOURCES src/video_loader_linux.cpp)
+    list(APPEND RUNTIME_SOURCES
+        src/platform_surface_linux.cpp
+        src/video_loader_linux.cpp
+    )
 endif()
 
 add_executable(vivid ${RUNTIME_SOURCES})
@@ -119,6 +126,32 @@ if(APPLE)
     )
     # Export symbols so dynamically loaded operators can find Context, etc.
     target_link_options(vivid PRIVATE -Wl,-export_dynamic)
+elseif(WIN32)
+    # Windows-specific libraries
+    target_link_libraries(vivid PRIVATE
+        # Media Foundation for video/camera
+        mf
+        mfplat
+        mfreadwrite
+        mfuuid
+        # Core Windows libraries
+        ole32
+        oleaut32
+        uuid
+        # Required by wgpu-native on Windows
+        userenv      # GetUserProfileDirectoryW
+        ntdll        # NtReadFile, NtWriteFile, etc.
+        propsys      # VariantToPropVariant
+        d3dcompiler  # D3DCompile
+        opengl32     # wgl* functions
+        RuntimeObject # RoOriginateErrorW
+        ws2_32       # Networking (for ixwebsocket)
+    )
+    # Export symbols for dynamically loaded operators (DLLs)
+    set_target_properties(vivid PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+        ENABLE_EXPORTS ON
+    )
 elseif(UNIX)
     target_link_libraries(vivid PRIVATE pthread dl)
     # Export symbols for dlopen'd libraries
