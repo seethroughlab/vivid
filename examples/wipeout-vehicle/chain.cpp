@@ -36,6 +36,13 @@ static Texture grimeDetail;    // Fins/details grime
 static Environment iblEnvironment;
 static bool hasIBL = false;
 
+// Metal025 PBR textures for engine/metallic parts
+static Texture metalAlbedo;
+static Texture metalRoughness;
+static Texture metalMetallic;
+static Texture metalNormal;
+static bool hasMetalTextures = false;
+
 // Procedural livery texture (generated with team colors, numbers, stripes)
 static Texture liveryTexture;
 static int liveryTeam = -1;  // Track which team the livery was generated for
@@ -272,7 +279,7 @@ Mesh3D buildSidePod(Context& ctx, float side) {
 }
 
 // === ENGINE NACELLE ===
-// Hexagonal exhaust with internal rings for detail
+// Smooth cylindrical exhaust with internal rings for detail
 
 Mesh3D buildEngine(Context& ctx) {
     std::vector<Vertex3D> verts;
@@ -281,56 +288,112 @@ Mesh3D buildEngine(Context& ctx) {
     float outerRadius = 0.28f;
     float innerRadius = 0.20f;
     float length = 0.6f;
-    int segments = 6;
+    int segments = 32;  // High segment count for smooth appearance
 
     const float PI = 3.14159265359f;
 
-    // Generate rings for outer shell
-    std::vector<glm::vec3> frontOuter, backOuter, frontInner, backInner, deepInner;
+    // Helper to add a vertex with smooth radial normal
+    auto addSmoothVert = [&](glm::vec3 pos, float nx, float ny, float nz, float u, float v) -> uint32_t {
+        uint32_t idx = static_cast<uint32_t>(verts.size());
+        verts.push_back({pos, glm::normalize(glm::vec3(nx, ny, nz)), {u, v}});
+        return idx;
+    };
 
-    for (int i = 0; i < segments; ++i) {
-        float theta = 2.0f * PI * static_cast<float>(i) / segments;
-        float x = std::cos(theta);
-        float y = std::sin(theta);
+    // Create vertex rings with smooth normals (shared vertices)
+    std::vector<uint32_t> frontOuterIdx, backOuterIdx, frontInnerIdx, backInnerIdx, deepInnerIdx;
+    std::vector<uint32_t> frontRimOuterIdx, frontRimInnerIdx;  // Front face vertices (normal = +X)
+    std::vector<uint32_t> backCapOuterIdx, backCapInnerIdx;    // Back face vertices (normal = -X)
 
-        frontOuter.push_back({length * 0.5f, x * outerRadius, y * outerRadius});
-        backOuter.push_back({-length * 0.5f, x * outerRadius, y * outerRadius});
-        frontInner.push_back({length * 0.5f, x * innerRadius, y * innerRadius});
-        backInner.push_back({-length * 0.3f, x * innerRadius, y * innerRadius});
-        deepInner.push_back({-length * 0.5f, x * innerRadius * 0.6f, y * innerRadius * 0.6f});
+    for (int i = 0; i <= segments; ++i) {
+        float t = static_cast<float>(i) / segments;
+        float theta = 2.0f * PI * t;
+        float cosT = std::cos(theta);
+        float sinT = std::sin(theta);
+
+        // Outer shell - smooth outward normals
+        glm::vec3 outerNorm(0, cosT, sinT);
+        frontOuterIdx.push_back(addSmoothVert(
+            {length * 0.5f, cosT * outerRadius, sinT * outerRadius},
+            0, cosT, sinT, t, 0));
+        backOuterIdx.push_back(addSmoothVert(
+            {-length * 0.5f, cosT * outerRadius, sinT * outerRadius},
+            0, cosT, sinT, t, 1));
+
+        // Inner tube - smooth inward normals
+        frontInnerIdx.push_back(addSmoothVert(
+            {length * 0.5f, cosT * innerRadius, sinT * innerRadius},
+            0, -cosT, -sinT, t, 0));
+        backInnerIdx.push_back(addSmoothVert(
+            {-length * 0.3f, cosT * innerRadius, sinT * innerRadius},
+            0, -cosT, -sinT, t, 1));
+
+        // Deep inner (narrowing cone) - angled inward normals
+        float deepRadius = innerRadius * 0.6f;
+        glm::vec3 deepNorm = glm::normalize(glm::vec3(-0.5f, -cosT, -sinT));
+        deepInnerIdx.push_back(addSmoothVert(
+            {-length * 0.5f, cosT * deepRadius, sinT * deepRadius},
+            deepNorm.x, deepNorm.y, deepNorm.z, t, 1));
+
+        // Front rim vertices (flat normal pointing forward)
+        frontRimOuterIdx.push_back(addSmoothVert(
+            {length * 0.5f, cosT * outerRadius, sinT * outerRadius},
+            1, 0, 0, t, 0));
+        frontRimInnerIdx.push_back(addSmoothVert(
+            {length * 0.5f, cosT * innerRadius, sinT * innerRadius},
+            1, 0, 0, t, 1));
+
+        // Back cap vertices (flat normal pointing backward)
+        backCapOuterIdx.push_back(addSmoothVert(
+            {-length * 0.5f, cosT * outerRadius, sinT * outerRadius},
+            -1, 0, 0, t, 0));
+        backCapInnerIdx.push_back(addSmoothVert(
+            {-length * 0.5f, cosT * deepRadius, sinT * deepRadius},
+            -1, 0, 0, t, 1));
     }
 
-    // Outer shell sides
+    // Generate quads by connecting adjacent vertices in rings
     for (int i = 0; i < segments; ++i) {
-        int j = (i + 1) % segments;
-        glm::vec3 n = glm::normalize(glm::vec3(0, frontOuter[i].y, frontOuter[i].z));
-        addQuad(verts, indices, frontOuter[i], frontOuter[j], backOuter[j], backOuter[i], n);
-    }
+        int j = i + 1;
 
-    // Front rim (outer to inner)
-    for (int i = 0; i < segments; ++i) {
-        int j = (i + 1) % segments;
-        addQuad(verts, indices, frontOuter[i], frontInner[i], frontInner[j], frontOuter[j], {1, 0, 0});
-    }
+        // Outer shell (smooth)
+        indices.push_back(frontOuterIdx[i]);
+        indices.push_back(frontOuterIdx[j]);
+        indices.push_back(backOuterIdx[j]);
+        indices.push_back(frontOuterIdx[i]);
+        indices.push_back(backOuterIdx[j]);
+        indices.push_back(backOuterIdx[i]);
 
-    // Inner tube
-    for (int i = 0; i < segments; ++i) {
-        int j = (i + 1) % segments;
-        glm::vec3 n = -glm::normalize(glm::vec3(0, frontInner[i].y, frontInner[i].z));
-        addQuad(verts, indices, frontInner[i], backInner[i], backInner[j], frontInner[j], n);
-    }
+        // Inner tube (smooth) - reversed winding for inward-facing surface
+        indices.push_back(frontInnerIdx[i]);
+        indices.push_back(backInnerIdx[j]);
+        indices.push_back(backInnerIdx[i]);
+        indices.push_back(frontInnerIdx[i]);
+        indices.push_back(frontInnerIdx[j]);
+        indices.push_back(backInnerIdx[j]);
 
-    // Inner to deep (narrowing)
-    for (int i = 0; i < segments; ++i) {
-        int j = (i + 1) % segments;
-        glm::vec3 n = faceNormal(backInner[i], backInner[j], deepInner[i]);
-        addQuad(verts, indices, backInner[i], backInner[j], deepInner[j], deepInner[i], n);
-    }
+        // Inner to deep narrowing - reversed winding for inward-facing surface
+        indices.push_back(backInnerIdx[i]);
+        indices.push_back(deepInnerIdx[j]);
+        indices.push_back(deepInnerIdx[i]);
+        indices.push_back(backInnerIdx[i]);
+        indices.push_back(backInnerIdx[j]);
+        indices.push_back(deepInnerIdx[j]);
 
-    // Back cap (between outer and deep inner)
-    for (int i = 0; i < segments; ++i) {
-        int j = (i + 1) % segments;
-        addQuad(verts, indices, backOuter[j], backOuter[i], deepInner[i], deepInner[j], {-1, 0, 0});
+        // Front rim (flat)
+        indices.push_back(frontRimOuterIdx[i]);
+        indices.push_back(frontRimInnerIdx[i]);
+        indices.push_back(frontRimInnerIdx[j]);
+        indices.push_back(frontRimOuterIdx[i]);
+        indices.push_back(frontRimInnerIdx[j]);
+        indices.push_back(frontRimOuterIdx[j]);
+
+        // Back cap (flat)
+        indices.push_back(backCapOuterIdx[j]);
+        indices.push_back(backCapOuterIdx[i]);
+        indices.push_back(backCapInnerIdx[i]);
+        indices.push_back(backCapOuterIdx[j]);
+        indices.push_back(backCapInnerIdx[i]);
+        indices.push_back(backCapInnerIdx[j]);
     }
 
     return ctx.createMesh(verts, indices);
@@ -651,6 +714,21 @@ void update(Chain& chain, Context& ctx) {
             std::cout << "  - No IBL environment (grime textures disabled)\n";
         }
 
+        // Load Metal025 PBR textures for engine/metallic parts
+        std::cout << "[wipeout-vehicle] Loading Metal025 PBR textures...\n";
+        metalAlbedo = ctx.loadImageAsTexture("textures/Metal025_1K-JPG/Metal025_1K-JPG_Color.jpg");
+        metalRoughness = ctx.loadImageAsTexture("textures/Metal025_1K-JPG/Metal025_1K-JPG_Roughness.jpg");
+        metalMetallic = ctx.loadImageAsTexture("textures/Metal025_1K-JPG/Metal025_1K-JPG_Metalness.jpg");
+        metalNormal = ctx.loadImageAsTexture("textures/Metal025_1K-JPG/Metal025_1K-JPG_NormalGL.jpg");
+
+        if (metalAlbedo.valid() && metalRoughness.valid() && metalMetallic.valid()) {
+            hasMetalTextures = true;
+            std::cout << "  - Metal025 albedo, roughness, metallic loaded\n";
+            if (metalNormal.valid()) std::cout << "  - Metal025 normal map loaded\n";
+        } else {
+            std::cout << "  - Metal025 textures not found\n";
+        }
+
         std::cout << "\n=== Wipeout Anti-Gravity Racer ===\n";
         std::cout << "Drag mouse to orbit, scroll to zoom\n";
         std::cout << "Press 1-5 to change team colors\n\n";
@@ -737,19 +815,45 @@ void update(Chain& chain, Context& ctx) {
     cockpitMat.metallic = 0.1f;
     cockpitMat.roughness = 0.05f;
 
-    // Engines - chrome with glow (clean metal, no livery)
+    // Engines - use Metal025 PBR textures for realistic worn metal look
     TexturedPBRMaterial engineMat;
-    engineMat.albedo = glm::vec3(0.9f, 0.9f, 0.92f);
-    engineMat.metallic = 1.0f;
-    engineMat.roughness = 0.15f;
+    if (hasMetalTextures) {
+        engineMat.albedo = glm::vec3(1.0f);  // White base, texture provides color
+        engineMat.metallic = 1.0f;
+        engineMat.roughness = 0.3f;
+        engineMat.albedoMap = &metalAlbedo;
+        engineMat.roughnessMap = &metalRoughness;
+        engineMat.metallicMap = &metalMetallic;
+        engineMat.normalMap = &metalNormal;
+    } else {
+        engineMat.albedo = glm::vec3(0.9f, 0.9f, 0.92f);
+        engineMat.metallic = 1.0f;
+        engineMat.roughness = 0.15f;
+    }
     engineMat.emissive = glm::vec3(1.0f, 0.5f, 0.2f) * (0.5f + engineGlow);
 
-    // Fins and wing - use livery texture (accent region)
-    TexturedPBRMaterial accentMat;
-    accentMat.albedo = useLivery ? glm::vec3(1.0f) : palette.accent;
-    accentMat.metallic = 0.3f;
-    accentMat.roughness = 0.45f;
-    if (useLivery) accentMat.albedoMap = &liveryTexture;
+    // Fins - use livery texture (accent region)
+    TexturedPBRMaterial finMat;
+    finMat.albedo = useLivery ? glm::vec3(1.0f) : palette.accent;
+    finMat.metallic = 0.3f;
+    finMat.roughness = 0.45f;
+    if (useLivery) finMat.albedoMap = &liveryTexture;
+
+    // Rear wing - use Metal025 PBR textures for industrial metal look
+    TexturedPBRMaterial wingMat;
+    if (hasMetalTextures) {
+        wingMat.albedo = glm::vec3(0.8f);  // Slightly darker base
+        wingMat.metallic = 0.9f;
+        wingMat.roughness = 0.4f;
+        wingMat.albedoMap = &metalAlbedo;
+        wingMat.roughnessMap = &metalRoughness;
+        wingMat.metallicMap = &metalMetallic;
+        wingMat.normalMap = &metalNormal;
+    } else {
+        wingMat.albedo = palette.accent;
+        wingMat.metallic = 0.3f;
+        wingMat.roughness = 0.45f;
+    }
 
     // Canards - use livery (darker area)
     TexturedPBRMaterial canardMat;
@@ -800,16 +904,16 @@ void update(Chain& chain, Context& ctx) {
     // Vertical fins
     glm::mat4 leftFinXform = baseXform;
     leftFinXform = glm::translate(leftFinXform, glm::vec3(1.5f, 0.2f, -1.0f));
-    ctx.render3DPBR(leftFinMesh, camera, leftFinXform, accentMat, lighting, iblEnvironment, output, noClear);
+    ctx.render3DPBR(leftFinMesh, camera, leftFinXform, finMat, lighting, iblEnvironment, output, noClear);
 
     glm::mat4 rightFinXform = baseXform;
     rightFinXform = glm::translate(rightFinXform, glm::vec3(1.5f, 0.2f, 1.0f));
-    ctx.render3DPBR(rightFinMesh, camera, rightFinXform, accentMat, lighting, iblEnvironment, output, noClear);
+    ctx.render3DPBR(rightFinMesh, camera, rightFinXform, finMat, lighting, iblEnvironment, output, noClear);
 
     // Rear wing
     glm::mat4 wingXform = baseXform;
     wingXform = glm::translate(wingXform, glm::vec3(2.0f, 0.35f, 0));
-    ctx.render3DPBR(rearWingMesh, camera, wingXform, accentMat, lighting, iblEnvironment, output, noClear);
+    ctx.render3DPBR(rearWingMesh, camera, wingXform, wingMat, lighting, iblEnvironment, output, noClear);
 
     // Front canards
     glm::mat4 leftCanardXform = baseXform;
