@@ -160,6 +160,135 @@ public:
         return devices;
     }
 
+    std::vector<CameraMode> enumerateModes(const std::string& deviceId) override {
+        std::vector<CameraMode> modes;
+
+        if (!mfInitialized_) return modes;
+
+        // Enumerate devices to find the target device
+        IMFAttributes* attributes = nullptr;
+        HRESULT hr = MFCreateAttributes(&attributes, 1);
+        if (FAILED(hr)) return modes;
+
+        hr = attributes->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
+                                  MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
+        if (FAILED(hr)) {
+            attributes->Release();
+            return modes;
+        }
+
+        IMFActivate** deviceArray = nullptr;
+        UINT32 deviceCount = 0;
+
+        hr = MFEnumDeviceSources(attributes, &deviceArray, &deviceCount);
+        attributes->Release();
+
+        if (FAILED(hr) || !deviceArray || deviceCount == 0) {
+            return modes;
+        }
+
+        // Find target device (default to first if deviceId is empty)
+        IMFActivate* targetDevice = nullptr;
+        if (deviceId.empty()) {
+            targetDevice = deviceArray[0];
+            targetDevice->AddRef();
+        } else {
+            std::wstring wideDeviceId = utf8ToWide(deviceId);
+            for (UINT32 i = 0; i < deviceCount; i++) {
+                WCHAR* symbolicLink = nullptr;
+                UINT32 linkLength = 0;
+                hr = deviceArray[i]->GetAllocatedString(
+                    MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_SYMBOLIC_LINK,
+                    &symbolicLink, &linkLength);
+
+                if (SUCCEEDED(hr) && symbolicLink) {
+                    if (wcscmp(symbolicLink, wideDeviceId.c_str()) == 0) {
+                        targetDevice = deviceArray[i];
+                        targetDevice->AddRef();
+                    }
+                    CoTaskMemFree(symbolicLink);
+                }
+                if (targetDevice) break;
+            }
+        }
+
+        // Clean up device array
+        for (UINT32 i = 0; i < deviceCount; i++) {
+            deviceArray[i]->Release();
+        }
+        CoTaskMemFree(deviceArray);
+
+        if (!targetDevice) return modes;
+
+        // Create media source
+        IMFMediaSource* mediaSource = nullptr;
+        hr = targetDevice->ActivateObject(IID_PPV_ARGS(&mediaSource));
+        targetDevice->Release();
+
+        if (FAILED(hr) || !mediaSource) return modes;
+
+        // Create source reader to enumerate formats
+        IMFSourceReader* reader = nullptr;
+        hr = MFCreateSourceReaderFromMediaSource(mediaSource, nullptr, &reader);
+        mediaSource->Release();
+
+        if (FAILED(hr) || !reader) return modes;
+
+        // Enumerate native media types
+        for (DWORD i = 0; ; i++) {
+            IMFMediaType* mediaType = nullptr;
+            hr = reader->GetNativeMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, i, &mediaType);
+            if (FAILED(hr)) break;
+
+            CameraMode mode;
+
+            // Get dimensions
+            UINT32 width = 0, height = 0;
+            hr = MFGetAttributeSize(mediaType, MF_MT_FRAME_SIZE, &width, &height);
+            if (SUCCEEDED(hr)) {
+                mode.width = static_cast<int>(width);
+                mode.height = static_cast<int>(height);
+            }
+
+            // Get frame rate
+            UINT32 fpsNum = 0, fpsDenom = 1;
+            hr = MFGetAttributeRatio(mediaType, MF_MT_FRAME_RATE, &fpsNum, &fpsDenom);
+            if (SUCCEEDED(hr) && fpsDenom > 0) {
+                float fps = static_cast<float>(fpsNum) / fpsDenom;
+                mode.minFrameRate = fps;
+                mode.maxFrameRate = fps;
+            } else {
+                mode.minFrameRate = 30.0f;
+                mode.maxFrameRate = 30.0f;
+            }
+
+            // Get pixel format
+            GUID subtype = GUID_NULL;
+            hr = mediaType->GetGUID(MF_MT_SUBTYPE, &subtype);
+            if (SUCCEEDED(hr)) {
+                if (subtype == MFVideoFormat_NV12) {
+                    mode.pixelFormat = "NV12";
+                } else if (subtype == MFVideoFormat_YUY2) {
+                    mode.pixelFormat = "YUY2";
+                } else if (subtype == MFVideoFormat_RGB32) {
+                    mode.pixelFormat = "BGRA";
+                } else if (subtype == MFVideoFormat_RGB24) {
+                    mode.pixelFormat = "RGB24";
+                } else if (subtype == MFVideoFormat_MJPG) {
+                    mode.pixelFormat = "MJPG";
+                } else {
+                    mode.pixelFormat = "Unknown";
+                }
+            }
+
+            mediaType->Release();
+            modes.push_back(mode);
+        }
+
+        reader->Release();
+        return modes;
+    }
+
     bool open(const CameraConfig& config) override {
         return openByIndex(0, config);
     }

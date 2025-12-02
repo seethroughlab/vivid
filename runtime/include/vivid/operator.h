@@ -20,7 +20,7 @@ namespace vivid {
  * };
  * @endcode
  */
-struct OperatorState {
+struct VIVID_API OperatorState {
     virtual ~OperatorState() = default;
 };
 
@@ -55,7 +55,7 @@ struct OperatorState {
  * VIVID_OPERATOR(MyOperator)
  * @endcode
  */
-class Operator {
+class VIVID_API Operator {
 public:
     virtual ~Operator() = default;
 

@@ -5,6 +5,19 @@
 #include <vector>
 #include <cstdint>
 
+// Export/import macro for Windows DLL support
+// When building the vivid runtime, VIVID_BUILDING_RUNTIME should be defined
+// When building operators that link against vivid, it should not be defined
+#ifdef _WIN32
+    #ifdef VIVID_BUILDING_RUNTIME
+        #define VIVID_API __declspec(dllexport)
+    #else
+        #define VIVID_API __declspec(dllimport)
+    #endif
+#else
+    #define VIVID_API
+#endif
+
 namespace vivid {
 
 /**

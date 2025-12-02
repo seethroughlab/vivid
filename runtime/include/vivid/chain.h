@@ -18,7 +18,7 @@ namespace vivid {
  * Operators register themselves using VIVID_REGISTER_OPERATOR macro.
  * The Chain uses this to instantiate operators via add<T>().
  */
-class OperatorRegistry {
+class VIVID_API OperatorRegistry {
 public:
     using FactoryFunc = std::function<std::unique_ptr<Operator>()>;
 
@@ -99,14 +99,14 @@ struct OperatorRegistrar {
  */
 
 /// Represents a connection between two operators
-struct Connection {
+struct VIVID_API Connection {
     std::string from;       ///< Source operator name
     std::string to;         ///< Destination operator name
     std::string fromOutput; ///< Source output port (default "out")
     std::string toInput;    ///< Destination input port (default "in")
 };
 
-class Chain {
+class VIVID_API Chain {
 public:
     Chain() = default;
     ~Chain() = default;

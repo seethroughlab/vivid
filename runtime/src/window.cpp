@@ -178,9 +178,10 @@ void Window::setFullscreen(bool fullscreen, int monitorIndex) {
     if (fullscreen == isFullscreen_) return;
 
     if (fullscreen) {
-        // Save current windowed position/size
+        // Save current windowed position/size and state
         glfwGetWindowPos(window_, &windowedX_, &windowedY_);
         glfwGetWindowSize(window_, &windowedWidth_, &windowedHeight_);
+        wasDecoratedBeforeFullscreen_ = !isBorderless_;
 
         // Get target monitor
         int monitorCount;
@@ -212,12 +213,36 @@ void Window::setFullscreen(bool fullscreen, int monitorIndex) {
         }
 
         const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+#ifdef _WIN32
+        // On Windows, use borderless fullscreen to avoid wgpu surface invalidation
+        // True exclusive fullscreen via glfwSetWindowMonitor causes D3D12 surface issues
+        int mx, my;
+        glfwGetMonitorPos(monitor, &mx, &my);
+
+        // Make window borderless and cover the full monitor
+        glfwSetWindowAttrib(window_, GLFW_DECORATED, GLFW_FALSE);
+        glfwSetWindowPos(window_, mx, my);
+        glfwSetWindowSize(window_, mode->width, mode->height);
+        isBorderless_ = true;
+#else
         glfwSetWindowMonitor(window_, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+#endif
         isFullscreen_ = true;
         std::cout << "[Window] Entered fullscreen (" << mode->width << "x" << mode->height << ")\n";
     } else {
+#ifdef _WIN32
+        // Restore windowed mode
+        if (wasDecoratedBeforeFullscreen_) {
+            glfwSetWindowAttrib(window_, GLFW_DECORATED, GLFW_TRUE);
+            isBorderless_ = false;
+        }
+        glfwSetWindowPos(window_, windowedX_, windowedY_);
+        glfwSetWindowSize(window_, windowedWidth_, windowedHeight_);
+#else
         // Restore windowed mode
         glfwSetWindowMonitor(window_, nullptr, windowedX_, windowedY_, windowedWidth_, windowedHeight_, 0);
+#endif
         isFullscreen_ = false;
         std::cout << "[Window] Exited fullscreen (" << windowedWidth_ << "x" << windowedHeight_ << ")\n";
     }

@@ -141,6 +141,7 @@ private:
     int windowedY_ = 100;
     int windowedWidth_ = 1280;
     int windowedHeight_ = 720;
+    bool wasDecoratedBeforeFullscreen_ = true;  // For Windows borderless fullscreen
 
     // Keyboard state
     std::unordered_set<int> keysDown_;       // Currently held keys
