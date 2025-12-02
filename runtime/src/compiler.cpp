@@ -9,6 +9,16 @@
 #include <algorithm>
 #include <regex>
 
+// Windows compatibility for popen/pclose
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#define popen _popen
+#define pclose _pclose
+#endif
+
 namespace fs = std::filesystem;
 
 namespace vivid {
@@ -26,6 +36,42 @@ static const std::vector<AddonInfo> AVAILABLE_ADDONS = {
     {"<vivid/imgui/", "addons/vivid-imgui", "vivid_use_imgui"},
     {"<vivid/nuklear/", "addons/vivid-nuklear", "vivid_use_nuklear"},
 };
+
+// Find cmake executable - needed on Windows where it may not be in PATH
+static std::string findCMake() {
+#ifdef _WIN32
+    // Common Visual Studio cmake locations
+    std::vector<std::string> candidates = {
+        "C:/Program Files/Microsoft Visual Studio/2022/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+        "C:/Program Files/Microsoft Visual Studio/2022/Professional/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+        "C:/Program Files/Microsoft Visual Studio/2022/Enterprise/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/cmake.exe",
+        "C:/Program Files/CMake/bin/cmake.exe",
+        "C:/Program Files (x86)/CMake/bin/cmake.exe",
+    };
+
+    for (const auto& path : candidates) {
+        if (fs::exists(path)) {
+            // Convert to short path to avoid spaces issues with popen/cmd.exe
+            char shortPath[MAX_PATH];
+            DWORD len = GetShortPathNameA(path.c_str(), shortPath, MAX_PATH);
+            if (len > 0 && len < MAX_PATH) {
+                return std::string(shortPath);
+            }
+            // Fallback: wrap in quotes (may not work with all popen implementations)
+            return "\"" + path + "\"";
+        }
+    }
+#endif
+    // Fall back to assuming cmake is in PATH
+    return "cmake";
+}
+
+// Convert Windows backslashes to forward slashes for CMake compatibility
+static std::string toCMakePath(const std::string& path) {
+    std::string result = path;
+    std::replace(result.begin(), result.end(), '\\', '/');
+    return result;
+}
 
 Compiler::Compiler(const std::string& projectPath)
     : projectPath_(projectPath) {
@@ -68,19 +114,42 @@ CompileResult Compiler::compile() {
     // Create build directory if needed
     fs::create_directories(buildDir_);
 
-    // Get vivid include directory
-    std::string vividIncludeDir = getVividIncludeDir();
+    // Get vivid include directory (use forward slashes for CMake)
+    std::string vividIncludeDir = toCMakePath(getVividIncludeDir());
 
     std::cout << "[Compiler] Configuring " << projectPath_ << "...\n";
 
     // Get stb include directory (relative to vivid include dir)
     fs::path stbIncludeDir = fs::path(vividIncludeDir).parent_path() / "_deps" / "stb-src";
+    std::string stbIncludeDirStr = toCMakePath(stbIncludeDir.string());
 
     // Configure with CMake - pass vivid and stb include directories
-    std::string configCmd = "cmake -B \"" + buildDir_ + "\" -S \"" + cmakeSourceDir + "\" "
-                           "-DCMAKE_BUILD_TYPE=Release "
+    // Note: CMAKE_BUILD_TYPE is for single-config generators (Make/Ninja)
+    // For multi-config generators (MSVC), use --config at build time
+    std::string cmake = findCMake();
+#ifdef _WIN32
+    std::string buildTypeArg = "";  // MSVC uses --config at build time
+#else
+    std::string buildTypeArg = "-DCMAKE_BUILD_TYPE=Release ";
+#endif
+    std::string configCmd = cmake + " -B \"" + toCMakePath(buildDir_) + "\" -S \"" + toCMakePath(cmakeSourceDir) + "\" "
+                           + buildTypeArg +
                            "-DVIVID_INCLUDE_DIR=\"" + vividIncludeDir + "\" "
-                           "-DSTB_INCLUDE_DIR=\"" + stbIncludeDir.string() + "\" 2>&1";
+                           "-DSTB_INCLUDE_DIR=\"" + stbIncludeDirStr + "\"";
+
+#ifdef _WIN32
+    // On Windows, pass the vivid.lib import library so DLLs can link against the exe's symbols
+    fs::path vividLibPath = fs::path(vividIncludeDir).parent_path() / "runtime" / "Debug" / "vivid.lib";
+    if (!fs::exists(vividLibPath)) {
+        // Try Release build
+        vividLibPath = fs::path(vividIncludeDir).parent_path() / "runtime" / "Release" / "vivid.lib";
+    }
+    if (fs::exists(vividLibPath)) {
+        configCmd += " -DVIVID_LIBRARY=\"" + toCMakePath(vividLibPath.string()) + "\"";
+    }
+#endif
+
+    configCmd += " 2>&1";
 
     std::string configOutput, configError;
     // Phase 0 = configure
@@ -94,8 +163,13 @@ CompileResult Compiler::compile() {
 
     std::cout << "[Compiler] Building...\n";
 
-    // Build
-    std::string buildCmd = "cmake --build \"" + buildDir_ + "\" --config Release 2>&1";
+    // Build - use Debug config on Windows to match vivid.exe Debug build
+#ifdef _WIN32
+    std::string buildConfig = "Debug";
+#else
+    std::string buildConfig = "Release";
+#endif
+    std::string buildCmd = cmake + " --build \"" + buildDir_ + "\" --config " + buildConfig + " 2>&1";
 
     std::string buildOutput, buildError;
     // Phase 1 = build
@@ -123,7 +197,9 @@ CompileResult Compiler::compile() {
         buildDir_ + "/lib/liboperators" + libExt,
         buildDir_ + "/liboperators" + libExt,
         buildDir_ + "/operators" + libExt,
+        buildDir_ + "/" + buildConfig + "/operators" + libExt,  // Windows: Debug or Release folder
         buildDir_ + "/Release/operators" + libExt,
+        buildDir_ + "/Debug/operators" + libExt,
         buildDir_ + "/lib/operators" + libExt,
     };
 
@@ -211,7 +287,7 @@ bool Compiler::runCommand(const std::string& command, std::string& output, std::
     int lastPercent = -1;
     std::string currentFile;
 
-    while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
+    while (fgets(buffer.data(), static_cast<int>(buffer.size()), pipe.get()) != nullptr) {
         output += buffer.data();
         currentLine = buffer.data();
 
@@ -340,9 +416,9 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     // Detect required addons based on includes
     auto addons = detectAddons();
 
-    // Get absolute path to project and vivid root
-    std::string absoluteProjectPath = fs::canonical(projectPath_).string();
-    std::string vividRoot = getVividRootDir();
+    // Get absolute path to project and vivid root (use forward slashes for CMake)
+    std::string absoluteProjectPath = toCMakePath(fs::canonical(projectPath_).string());
+    std::string vividRoot = toCMakePath(getVividRootDir());
 
     // Determine project name from folder
     std::string projectName = fs::path(projectPath_).filename().string();
@@ -366,9 +442,10 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "set(CMAKE_CXX_STANDARD 20)\n";
     cmake << "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n";
     cmake << "set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n\n";
-    cmake << "# Vivid headers (passed by runtime)\n";
+    cmake << "# Vivid headers and library (passed by runtime)\n";
     cmake << "set(VIVID_INCLUDE_DIR \"\" CACHE PATH \"Vivid include directory\")\n";
-    cmake << "set(STB_INCLUDE_DIR \"\" CACHE PATH \"STB include directory\")\n\n";
+    cmake << "set(STB_INCLUDE_DIR \"\" CACHE PATH \"STB include directory\")\n";
+    cmake << "set(VIVID_LIBRARY \"\" CACHE FILEPATH \"Vivid import library (Windows only)\")\n\n";
     cmake << "# GLM for math\n";
     cmake << "find_package(glm CONFIG QUIET)\n";
     cmake << "if(NOT glm_FOUND)\n";
@@ -401,6 +478,10 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "target_link_libraries(operators PRIVATE\n";
     cmake << "    glm::glm\n";
     cmake << ")\n\n";
+    cmake << "# On Windows, link against vivid.lib to import symbols from the exe\n";
+    cmake << "if(WIN32 AND VIVID_LIBRARY)\n";
+    cmake << "    target_link_libraries(operators PRIVATE ${VIVID_LIBRARY})\n";
+    cmake << "endif()\n\n";
 
     // Apply addon configurations to the operators target
     if (!addons.empty()) {

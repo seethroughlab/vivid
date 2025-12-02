@@ -119,10 +119,16 @@ bool Renderer::init(GLFWwindow* window, int width, int height) {
     width_ = width;
     height_ = height;
 
-    // Create WebGPU instance
+    // Create WebGPU instance with platform-appropriate backend
     WGPUInstanceExtras instanceExtras = {};
     instanceExtras.chain.sType = static_cast<WGPUSType>(WGPUSType_InstanceExtras);
+#if defined(__APPLE__)
     instanceExtras.backends = WGPUInstanceBackend_Metal;
+#elif defined(_WIN32)
+    instanceExtras.backends = WGPUInstanceBackend_DX12;
+#else
+    instanceExtras.backends = WGPUInstanceBackend_Vulkan;
+#endif
     instanceExtras.flags = WGPUInstanceFlag_Default;
 
     WGPUInstanceDescriptor instanceDesc = {};

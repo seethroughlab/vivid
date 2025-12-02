@@ -24,8 +24,25 @@ public:
         }
 
         // Ignore files in build directories (CMake artifacts)
-        if (dir.find("/build/") != std::string::npos ||
-            dir.find("/build") == dir.length() - 6) {
+        // Must exclude: /build/, \build\, /build at end, \build at end,
+        // and any subdirectory under build (e.g., build\_deps\...)
+        // Use a helper lambda to check if "build" appears as a path component
+        auto containsBuildDir = [](const std::string& path) -> bool {
+            // Check for /build/ or \build\ anywhere in path
+            if (path.find("/build/") != std::string::npos) return true;
+            if (path.find("\\build\\") != std::string::npos) return true;
+            // Check for path ending in /build or \build
+            if (path.length() >= 6) {
+                std::string ending = path.substr(path.length() - 6);
+                if (ending == "/build" || ending == "\\build") return true;
+            }
+            // Also check for build\ at beginning (relative paths)
+            if (path.length() >= 6 && path.substr(0, 6) == "build\\") return true;
+            if (path.length() >= 6 && path.substr(0, 6) == "build/") return true;
+            return false;
+        };
+
+        if (containsBuildDir(dir)) {
             return;
         }
 

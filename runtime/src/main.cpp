@@ -1,6 +1,13 @@
 // Vivid Runtime - Entry Point
 // Phase 9: Preview Server Integration + Async Readback
 
+// Windows compatibility - prevent min/max macro conflicts
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include "window.h"
 #include "renderer.h"
 #include "graph.h"

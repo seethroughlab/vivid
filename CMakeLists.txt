@@ -39,6 +39,7 @@ FetchContent_Declare(
     GIT_TAG v11.4.5
 )
 set(USE_TLS OFF CACHE BOOL "" FORCE)
+set(USE_ZLIB OFF CACHE BOOL "" FORCE)  # Disable ZLIB to avoid dependency on Windows
 
 # JSON library
 FetchContent_Declare(
@@ -90,6 +91,7 @@ set(WGPU_VERSION "v24.0.0.2")
 if(WIN32)
     set(WGPU_OS "windows")
     set(WGPU_ARCH "x86_64")
+    set(WGPU_TOOLCHAIN "-msvc")  # Windows uses MSVC toolchain
     set(WGPU_EXT "zip")
 elseif(APPLE)
     set(WGPU_OS "macos")
@@ -104,14 +106,16 @@ elseif(APPLE)
     else()
         set(WGPU_ARCH "x86_64")
     endif()
+    set(WGPU_TOOLCHAIN "")  # macOS doesn't use toolchain suffix
     set(WGPU_EXT "zip")
 else()
     set(WGPU_OS "linux")
     set(WGPU_ARCH "x86_64")
+    set(WGPU_TOOLCHAIN "-gnu")  # Linux uses gnu toolchain
     set(WGPU_EXT "zip")
 endif()
 
-set(WGPU_URL "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/wgpu-${WGPU_OS}-${WGPU_ARCH}-release.${WGPU_EXT}")
+set(WGPU_URL "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/wgpu-${WGPU_OS}-${WGPU_ARCH}${WGPU_TOOLCHAIN}-release.${WGPU_EXT}")
 set(WGPU_DIR "${CMAKE_BINARY_DIR}/_deps/wgpu")
 
 message(STATUS "Downloading wgpu-native from: ${WGPU_URL}")

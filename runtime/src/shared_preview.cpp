@@ -2,6 +2,7 @@
 #include <iostream>
 #include <cstring>
 #include <chrono>
+#include <algorithm>
 
 #if defined(__APPLE__) || defined(__linux__)
     #include <sys/mman.h>
@@ -10,6 +11,9 @@
     #include <unistd.h>
     #define POSIX_SHM 1
 #elif defined(_WIN32)
+    #ifndef NOMINMAX
+    #define NOMINMAX  // Prevent Windows.h from defining min/max macros
+    #endif
     #include <windows.h>
     #define WIN32_SHM 1
 #endif
