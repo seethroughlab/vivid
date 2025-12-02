@@ -292,4 +292,41 @@ private:
     std::vector<glm::mat4> lightMatrices_;  // Cached light matrices
 };
 
+/**
+ * @brief Utility to visualize depth textures for debugging.
+ */
+class DepthVisualizer {
+public:
+    DepthVisualizer() = default;
+    ~DepthVisualizer();
+
+    /**
+     * @brief Initialize the depth visualizer.
+     * @param renderer The renderer for GPU resources.
+     * @return true if successful.
+     */
+    bool init(Renderer& renderer);
+
+    /**
+     * @brief Destroy GPU resources.
+     */
+    void destroy();
+
+    /**
+     * @brief Render depth texture to a color output.
+     * @param depthView The depth texture view to visualize.
+     * @param outputView The color texture view to render to.
+     * @param width Output width.
+     * @param height Output height.
+     */
+    void visualize(WGPUTextureView depthView, WGPUTextureView outputView, int width, int height);
+
+private:
+    Renderer* renderer_ = nullptr;
+    WGPURenderPipeline pipeline_ = nullptr;
+    WGPUBindGroupLayout bindGroupLayout_ = nullptr;
+    WGPUSampler sampler_ = nullptr;
+    WGPUShaderModule shaderModule_ = nullptr;
+};
+
 } // namespace vivid

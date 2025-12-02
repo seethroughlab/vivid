@@ -578,4 +578,217 @@ ShadowUniform ShadowManager::getShadowUniform(int lightIndex) const {
     return uniform;
 }
 
+// ============================================================================
+// DepthVisualizer Implementation
+// ============================================================================
+
+static const char* DEPTH_VIS_SHADER = R"(
+// Depth visualization shader - renders depth buffer to color output
+
+@group(0) @binding(0) var depthTexture: texture_depth_2d;
+@group(0) @binding(1) var texSampler: sampler;
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    // Full-screen triangle (more efficient than quad)
+    var positions = array<vec2f, 3>(
+        vec2f(-1.0, -3.0),
+        vec2f(-1.0, 1.0),
+        vec2f(3.0, 1.0)
+    );
+    var uvs = array<vec2f, 3>(
+        vec2f(0.0, 2.0),
+        vec2f(0.0, 0.0),
+        vec2f(2.0, 0.0)
+    );
+
+    var out: VertexOutput;
+    out.position = vec4f(positions[vertexIndex], 0.0, 1.0);
+    out.uv = uvs[vertexIndex];
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let depth = textureSample(depthTexture, texSampler, in.uv);
+    // Apply gamma for better visualization (near = white, far = black)
+    let visualDepth = pow(depth, 0.4);
+    return vec4f(vec3f(visualDepth), 1.0);
+}
+)";
+
+DepthVisualizer::~DepthVisualizer() {
+    destroy();
+}
+
+bool DepthVisualizer::init(Renderer& renderer) {
+    destroy();
+    renderer_ = &renderer;
+
+    // Create shader module
+    WGPUShaderSourceWGSL wgslSource = {};
+    wgslSource.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgslSource.code = WGPUStringView{.data = DEPTH_VIS_SHADER, .length = strlen(DEPTH_VIS_SHADER)};
+
+    WGPUShaderModuleDescriptor shaderDesc = {};
+    shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslSource);
+
+    shaderModule_ = wgpuDeviceCreateShaderModule(renderer_->device(), &shaderDesc);
+    if (!shaderModule_) {
+        std::cerr << "[DepthVisualizer] Failed to create shader module\n";
+        return false;
+    }
+
+    // Create bind group layout
+    WGPUBindGroupLayoutEntry entries[2] = {};
+    // Depth texture
+    entries[0].binding = 0;
+    entries[0].visibility = WGPUShaderStage_Fragment;
+    entries[0].texture.sampleType = WGPUTextureSampleType_Depth;
+    entries[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+    // Sampler
+    entries[1].binding = 1;
+    entries[1].visibility = WGPUShaderStage_Fragment;
+    entries[1].sampler.type = WGPUSamplerBindingType_Filtering;
+
+    WGPUBindGroupLayoutDescriptor layoutDesc = {};
+    layoutDesc.entryCount = 2;
+    layoutDesc.entries = entries;
+    bindGroupLayout_ = wgpuDeviceCreateBindGroupLayout(renderer_->device(), &layoutDesc);
+
+    // Create pipeline layout
+    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {};
+    pipelineLayoutDesc.bindGroupLayoutCount = 1;
+    pipelineLayoutDesc.bindGroupLayouts = &bindGroupLayout_;
+    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(renderer_->device(), &pipelineLayoutDesc);
+
+    // Create render pipeline
+    WGPURenderPipelineDescriptor pipelineDesc = {};
+    pipelineDesc.layout = pipelineLayout;
+
+    // Vertex state
+    pipelineDesc.vertex.module = shaderModule_;
+    pipelineDesc.vertex.entryPoint = WGPUStringView{.data = "vs_main", .length = 7};
+
+    // Fragment state - use RGBA8Unorm to match texture format
+    WGPUColorTargetState colorTarget = {};
+    colorTarget.format = WGPUTextureFormat_RGBA8Unorm;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState fragmentState = {};
+    fragmentState.module = shaderModule_;
+    fragmentState.entryPoint = WGPUStringView{.data = "fs_main", .length = 7};
+    fragmentState.targetCount = 1;
+    fragmentState.targets = &colorTarget;
+    pipelineDesc.fragment = &fragmentState;
+
+    // Primitive state
+    pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+
+    // Multisample state
+    pipelineDesc.multisample.count = 1;
+    pipelineDesc.multisample.mask = 0xFFFFFFFF;
+
+    pipeline_ = wgpuDeviceCreateRenderPipeline(renderer_->device(), &pipelineDesc);
+    wgpuPipelineLayoutRelease(pipelineLayout);
+
+    if (!pipeline_) {
+        std::cerr << "[DepthVisualizer] Failed to create pipeline\n";
+        return false;
+    }
+
+    // Create sampler for depth texture sampling
+    WGPUSamplerDescriptor samplerDesc = {};
+    samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
+    samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
+    samplerDesc.addressModeW = WGPUAddressMode_ClampToEdge;
+    samplerDesc.magFilter = WGPUFilterMode_Linear;
+    samplerDesc.minFilter = WGPUFilterMode_Linear;
+    samplerDesc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
+    samplerDesc.lodMinClamp = 0.0f;
+    samplerDesc.lodMaxClamp = 1.0f;
+    samplerDesc.maxAnisotropy = 1;
+    sampler_ = wgpuDeviceCreateSampler(renderer_->device(), &samplerDesc);
+
+    if (!sampler_) {
+        std::cerr << "[DepthVisualizer] Failed to create sampler\n";
+        return false;
+    }
+
+    std::cout << "[DepthVisualizer] Initialized successfully\n";
+    return true;
+}
+
+void DepthVisualizer::destroy() {
+    if (sampler_) {
+        wgpuSamplerRelease(sampler_);
+        sampler_ = nullptr;
+    }
+    if (pipeline_) {
+        wgpuRenderPipelineRelease(pipeline_);
+        pipeline_ = nullptr;
+    }
+    if (bindGroupLayout_) {
+        wgpuBindGroupLayoutRelease(bindGroupLayout_);
+        bindGroupLayout_ = nullptr;
+    }
+    if (shaderModule_) {
+        wgpuShaderModuleRelease(shaderModule_);
+        shaderModule_ = nullptr;
+    }
+    renderer_ = nullptr;
+}
+
+void DepthVisualizer::visualize(WGPUTextureView depthView, WGPUTextureView outputView, int width, int height) {
+    if (!pipeline_ || !depthView || !outputView) return;
+
+    // Create bind group
+    WGPUBindGroupEntry entries[2] = {};
+    entries[0].binding = 0;
+    entries[0].textureView = depthView;
+    entries[1].binding = 1;
+    entries[1].sampler = sampler_;
+
+    WGPUBindGroupDescriptor bgDesc = {};
+    bgDesc.layout = bindGroupLayout_;
+    bgDesc.entryCount = 2;
+    bgDesc.entries = entries;
+    WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(renderer_->device(), &bgDesc);
+
+    // Create command encoder
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(renderer_->device(), nullptr);
+
+    // Create render pass
+    WGPURenderPassColorAttachment colorAttachment = {};
+    colorAttachment.view = outputView;
+    colorAttachment.loadOp = WGPULoadOp_Clear;
+    colorAttachment.storeOp = WGPUStoreOp_Store;
+    colorAttachment.clearValue = {0.0, 0.0, 0.0, 1.0};
+
+    WGPURenderPassDescriptor passDesc = {};
+    passDesc.colorAttachmentCount = 1;
+    passDesc.colorAttachments = &colorAttachment;
+
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
+    wgpuRenderPassEncoderSetPipeline(pass, pipeline_);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+    wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);  // Full-screen triangle
+    wgpuRenderPassEncoderEnd(pass);
+    wgpuRenderPassEncoderRelease(pass);
+
+    // Submit
+    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, nullptr);
+    wgpuQueueSubmit(renderer_->queue(), 1, &cmdBuffer);
+
+    // Cleanup
+    wgpuCommandBufferRelease(cmdBuffer);
+    wgpuCommandEncoderRelease(encoder);
+    wgpuBindGroupRelease(bindGroup);
+}
+
 } // namespace vivid

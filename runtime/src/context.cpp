@@ -1241,6 +1241,14 @@ ShadowManager& Context::getShadowManager() {
     return *shadowManager_;
 }
 
+DepthVisualizer& Context::getDepthVisualizer() {
+    if (!depthVisualizer_) {
+        depthVisualizer_ = std::make_unique<DepthVisualizer>();
+        depthVisualizer_->init(renderer_);
+    }
+    return *depthVisualizer_;
+}
+
 Texture Context::renderShadowMap(const Light& light,
                                   const std::vector<Mesh3D>& meshes,
                                   const std::vector<glm::mat4>& transforms,
@@ -1312,54 +1320,23 @@ Texture Context::renderShadowMap(const Light& light,
 void Context::debugVisualizeShadowMap(const Texture& shadowMap, Texture& output) {
     if (!shadowMap.handle) return;
 
-    // Use a simple shader to visualize depth values
-    // For now, just copy using the blit shader - depth will show as grayscale
-    // TODO: Add proper depth visualization shader
-    static const char* DEPTH_VIS_SHADER = R"(
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var depthTexture: texture_depth_2d;
-@group(0) @binding(2) var texSampler: sampler;
+    // Ensure output texture exists
+    if (!output.valid()) {
+        output = createTexture(shadowMap.width, shadowMap.height);
+    }
 
-struct Uniforms {
-    resolution: vec2f,
-    time: f32,
-    frame: f32,
-}
+    // Get the depth view (shadowMap.handle is the WGPUTextureView from ShadowMap)
+    WGPUTextureView depthView = static_cast<WGPUTextureView>(shadowMap.handle);
 
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
+    // Get the output texture view
+    auto* outputData = getTextureData(output);
+    if (!outputData || !outputData->view) {
+        std::cerr << "[Context] debugVisualizeShadowMap: Invalid output texture\n";
+        return;
+    }
 
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 6>(
-        vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
-        vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0)
-    );
-    var uvs = array<vec2f, 6>(
-        vec2f(0.0, 1.0), vec2f(1.0, 1.0), vec2f(0.0, 0.0),
-        vec2f(0.0, 0.0), vec2f(1.0, 1.0), vec2f(1.0, 0.0)
-    );
-
-    var out: VertexOutput;
-    out.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    out.uv = uvs[vertexIndex];
-    return out;
-}
-
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    let depth = textureSample(depthTexture, texSampler, in.uv);
-    // Linearize and visualize depth (near = white, far = black)
-    let linearDepth = pow(depth, 0.4);  // Gamma for better visualization
-    return vec4f(vec3f(linearDepth), 1.0);
-}
-)";
-
-    // For now, just log that this needs implementation
-    // The shader above needs proper depth texture binding support
-    std::cout << "[Context] debugVisualizeShadowMap: Depth visualization shader pending\n";
+    // Use the depth visualizer to render
+    getDepthVisualizer().visualize(depthView, outputData->view, output.width, output.height);
 }
 
 // 2D Instanced Rendering

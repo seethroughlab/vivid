@@ -26,6 +26,7 @@ class CubemapProcessor;
 class FontAtlas;
 class TextRenderer;
 class ShadowManager;
+class DepthVisualizer;
 
 /**
  * @brief Runtime context providing access to time, textures, shaders, and operator communication.
@@ -1147,7 +1148,9 @@ private:
 
     // Shadow mapping (lazy initialized)
     std::unique_ptr<ShadowManager> shadowManager_;
+    std::unique_ptr<DepthVisualizer> depthVisualizer_;
     ShadowManager& getShadowManager();
+    DepthVisualizer& getDepthVisualizer();
 
     // Text rendering (lazy initialized)
     std::unique_ptr<TextRenderer> textRenderer_;

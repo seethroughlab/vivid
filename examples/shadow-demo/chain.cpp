@@ -8,14 +8,15 @@
 // Press 'D' to toggle shadow map debug view
 
 #include <vivid/vivid.h>
+#include <iostream>
 
 using namespace vivid;
 
 // === SCENE STATE ===
-static Mesh groundPlane;
-static Mesh boxMesh;
-static Mesh sphereMesh;
-static Mesh torusMesh;
+static Mesh3D groundPlane;
+static Mesh3D boxMesh;
+static Mesh3D sphereMesh;
+static Mesh3D torusMesh;
 static Texture output;
 static Texture shadowDebugOutput;
 
@@ -29,7 +30,6 @@ static bool animateLights = true;
 
 // === SETUP ===
 void setup(Chain& chain) {
-    chain.setResolution(1920, 1080);
     chain.setOutput("out");
 }
 
@@ -244,12 +244,14 @@ void update(Chain& chain, Context& ctx) {
 
     // === DEBUG OVERLAY ===
     if (showDebug && shadowMap.valid()) {
-        // Show shadow map in corner
+        // Visualize shadow map - this overwrites the output with the depth view
         ctx.debugVisualizeShadowMap(shadowMap, shadowDebugOutput);
+        // When debug mode is on, show the shadow map instead of the scene
+        ctx.setOutput("out", shadowDebugOutput);
+    } else {
+        // Normal mode - show the rendered scene
+        ctx.setOutput("out", output);
     }
-
-    // === OUTPUT ===
-    chain.setOutput("out", output);
 }
 
 VIVID_CHAIN(setup, update)
