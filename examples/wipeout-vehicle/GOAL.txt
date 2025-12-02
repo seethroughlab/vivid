@@ -1,0 +1,55 @@
+Aesthetic Description
+
+The Wipeout 2097 aesthetic is defined by retro-futuristic minimalism: fast, aerodynamic anti-gravity craft built from clean low-poly forms, bold graphic silhouettes, and flat, brightly-colored textures that feel like early PlayStation-era art but with elegant industrial design. Surfaces are smooth and simplified rather than mechanically detailed; the illusion of complexity comes from color blocking, decals, and sharp contrast rather than geometry. The world feels like a frictionless, high-speed visual language—sleek curves reduced to faceted polygons, hand-painted shading, and tight palettes that pop even under simple lighting.
+
+For a procedural generator, the style is less about photorealism and more about controlled abstraction. You want clean polygonal geometry, deliberate faceting, UV-friendly shapes, simple material definitions, and a rendering pipeline that embraces imperfections: low-resolution textures, vertex-lit shading, dithering, and perspective distortions that mimic early 3D hardware. The result should feel fast, graphic, and slightly imperfect—evoking the PS1 era without directly imitating it.
+
+# Rendering Techniques & Procedural Modeling Details
+
+## Geometry & Procedural Modeling
+
+- Low-poly construction: Limit segments on curves; build wings and fuselage using faceted polygons instead of smoothed normals.
+- Chunky silhouette logic: Procedurally generate wide side-pods, slim fuselages, and strong top-view shapes.
+- Symmetry tooling: Procedural mirroring along the X-axis ensures classic anti-grav racer balance.
+- Modular “pod/fin” library: Procedurally attach winglets, spoilers, and vents as low-poly prefabs.
+- Avoid micro-details: Keep features large enough to be represented by a handful of quads.
+- Vertex coloring: Use baked vertex colors to reinforce stylized shading.
+
+## Texture & Material Style
+
+- Single diffuse texture per craft (e.g., 256×256):
+- Procedurally generate color blocks, racing stripes, decals, numeric IDs, sponsor graphics.
+- Avoid normal, roughness, or metallic maps entirely.
+- Palette control: Limit to 8–16 key colors with high contrast.
+- UV unwrap simplification: Use large, contiguous UV islands to mimic hand-painted PS1 mapping.
+- Procedural decal placement: Stickers, arrows, hazard stripes generated at random but symmetrical positions.
+
+## Shading & Lighting
+
+- Vertex-lit shading (no PBR): Emulate early fixed-function pipelines.
+- Flat shading option: Per-face normals for crisp, faceted lighting.
+- Toon ramp or step-shading: 2–3-step diffuse ramps to give a painted, graphic look.
+- Specular as a simple white highlight: Small, hard specular spots with no BRDF.
+- No environment maps: Keep reflections minimal or nonexistent.
+
+## Post-processing & Retro Effects
+
+- Dithering (Bayer, blue-noise, or ordered):
+- Apply to shading, shadows, and gradients to recreate early GPU limitations.
+- Affine texture warping simulation: Mild UV wobble dependent on screen space, imitating PS1 affine inaccuracies.
+- Low-resolution render buffer: e.g., render at 480p → upscale with nearest-neighbor filtering.
+- Vignetting + subtle chromatic fringing for a CRT-era “speed” look.
+- Optional motion streaks: Procedurally generated mesh trails or screen-space streaks to emphasize velocity.
+
+Camera & Motion
+
+- Aggressive FOV (70–90°) to exaggerate speed.
+- Camera shake depending on thrust: Simple noise-based offsets.
+- Motion blur simulation (if desired): Fake with streak sprites, not full TAA blur.
+
+Procedural Craft Variation
+
+- Parametric hull curves: Sweep or loft shapes along Bézier curves with quantized segments.
+- Randomized wing sweep angles, pod thickness, cockpit shape.
+- Symmetrical decal generation synced to UV layout.
+- LOD system that intentionally ends at low resolution, not high.
