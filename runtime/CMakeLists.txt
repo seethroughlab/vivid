@@ -37,6 +37,7 @@ set(RUNTIME_SOURCES
     src/pipeline3d_unlit.cpp
     src/pipeline3d_wireframe.cpp
     src/pipeline3d_decal.cpp
+    src/shadow_map.cpp
     src/pipeline2d.cpp
     src/cubemap.cpp
     src/font_atlas.cpp

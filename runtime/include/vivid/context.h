@@ -25,6 +25,7 @@ class Pipeline3DWireframe;
 class CubemapProcessor;
 class FontAtlas;
 class TextRenderer;
+class ShadowManager;
 
 /**
  * @brief Runtime context providing access to time, textures, shaders, and operator communication.
@@ -866,6 +867,42 @@ public:
 
     /// @}
 
+    /// @name Shadow Mapping
+    /// @{
+
+    /**
+     * @brief Render a shadow map for a directional light.
+     *
+     * This renders the scene from the light's perspective to generate a depth map.
+     * The shadow map can be visualized for debugging or used for shadow sampling.
+     *
+     * @param light The directional light to render shadows for.
+     * @param meshes Meshes to include in shadow map.
+     * @param transforms Transforms for each mesh.
+     * @param sceneCenter Center of the scene for shadow bounds calculation.
+     * @param sceneRadius Radius encompassing the scene.
+     * @param resolution Shadow map resolution (default 2048).
+     * @return Texture containing the shadow map depth (for debug visualization).
+     */
+    Texture renderShadowMap(const Light& light,
+                            const std::vector<Mesh3D>& meshes,
+                            const std::vector<glm::mat4>& transforms,
+                            const glm::vec3& sceneCenter,
+                            float sceneRadius,
+                            int resolution = 2048);
+
+    /**
+     * @brief Visualize a shadow map depth texture for debugging.
+     *
+     * Converts the depth values to a grayscale image for visualization.
+     *
+     * @param shadowMap The shadow map depth texture.
+     * @param output Target texture to render the visualization.
+     */
+    void debugVisualizeShadowMap(const Texture& shadowMap, Texture& output);
+
+    /// @}
+
     /// @name Skeletal Animation
     /// @{
 
@@ -1107,6 +1144,10 @@ private:
     // Cubemap/IBL processing (lazy initialized)
     std::unique_ptr<CubemapProcessor> cubemapProcessor_;
     CubemapProcessor& getCubemapProcessor();
+
+    // Shadow mapping (lazy initialized)
+    std::unique_ptr<ShadowManager> shadowManager_;
+    ShadowManager& getShadowManager();
 
     // Text rendering (lazy initialized)
     std::unique_ptr<TextRenderer> textRenderer_;

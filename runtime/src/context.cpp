@@ -15,6 +15,7 @@
 #include "pipeline3d_decal.h"
 #include "pipeline2d.h"
 #include "cubemap.h"
+#include "shadow_map.h"
 #include "font_atlas.h"
 #include "text_renderer.h"
 #include <unordered_set>
@@ -1229,6 +1230,136 @@ void Context::renderDecal(const Decal& decal, const Camera3D& camera,
 void Context::renderDecals(const std::vector<Decal>& decals, const Camera3D& camera,
                            const Texture& depthTexture, Texture& colorOutput) {
     getDecalPipeline().renderDecals(decals, camera, depthTexture, colorOutput);
+}
+
+// Shadow Mapping
+ShadowManager& Context::getShadowManager() {
+    if (!shadowManager_) {
+        shadowManager_ = std::make_unique<ShadowManager>();
+        shadowManager_->init(renderer_);
+    }
+    return *shadowManager_;
+}
+
+Texture Context::renderShadowMap(const Light& light,
+                                  const std::vector<Mesh3D>& meshes,
+                                  const std::vector<glm::mat4>& transforms,
+                                  const glm::vec3& sceneCenter,
+                                  float sceneRadius,
+                                  int resolution) {
+    // Only directional lights for now
+    if (light.type != LightType::Directional) {
+        std::cerr << "[Context] renderShadowMap: Only directional lights supported\n";
+        return Texture{};
+    }
+
+    // Ensure shadow manager is initialized
+    ShadowManager& shadowMgr = getShadowManager();
+
+    // Update resolution if needed
+    ShadowSettings settings = shadowMgr.settings();
+    if (settings.resolution != resolution) {
+        settings.resolution = resolution;
+        shadowMgr.setSettings(settings);
+    }
+
+    // Get shadow map for this light
+    ShadowMap* shadowMap = shadowMgr.getDirectionalShadowMap(0);
+    if (!shadowMap) {
+        std::cerr << "[Context] renderShadowMap: Failed to create shadow map\n";
+        return Texture{};
+    }
+
+    // Calculate light matrix
+    glm::mat4 lightMatrix = ShadowMap::calcDirectionalLightMatrix(
+        light.direction, sceneCenter, sceneRadius
+    );
+
+    // Begin shadow pass
+    ShadowMapPipeline& pipeline = shadowMgr.pipeline();
+    if (!pipeline.beginShadowPass(*shadowMap, lightMatrix)) {
+        std::cerr << "[Context] renderShadowMap: Failed to begin shadow pass\n";
+        return Texture{};
+    }
+
+    // Render all meshes
+    for (size_t i = 0; i < meshes.size() && i < transforms.size(); ++i) {
+        const Mesh3D& mesh = meshes[i];
+        if (!mesh.valid()) continue;
+
+        const Mesh* internalMesh = static_cast<const Mesh*>(mesh.handle);
+        pipeline.renderMesh(
+            internalMesh->vertexBuffer(),
+            internalMesh->indexBuffer(),
+            internalMesh->indexCount(),
+            transforms[i]
+        );
+    }
+
+    // End shadow pass
+    pipeline.endShadowPass();
+
+    // Create a texture wrapper for the shadow map depth
+    // Note: This creates a reference to the internal depth texture
+    Texture result;
+    result.handle = shadowMap->depthView();
+    result.width = resolution;
+    result.height = resolution;
+
+    return result;
+}
+
+void Context::debugVisualizeShadowMap(const Texture& shadowMap, Texture& output) {
+    if (!shadowMap.handle) return;
+
+    // Use a simple shader to visualize depth values
+    // For now, just copy using the blit shader - depth will show as grayscale
+    // TODO: Add proper depth visualization shader
+    static const char* DEPTH_VIS_SHADER = R"(
+@group(0) @binding(0) var<uniform> u: Uniforms;
+@group(0) @binding(1) var depthTexture: texture_depth_2d;
+@group(0) @binding(2) var texSampler: sampler;
+
+struct Uniforms {
+    resolution: vec2f,
+    time: f32,
+    frame: f32,
+}
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    var positions = array<vec2f, 6>(
+        vec2f(-1.0, -1.0), vec2f(1.0, -1.0), vec2f(-1.0, 1.0),
+        vec2f(-1.0, 1.0), vec2f(1.0, -1.0), vec2f(1.0, 1.0)
+    );
+    var uvs = array<vec2f, 6>(
+        vec2f(0.0, 1.0), vec2f(1.0, 1.0), vec2f(0.0, 0.0),
+        vec2f(0.0, 0.0), vec2f(1.0, 1.0), vec2f(1.0, 0.0)
+    );
+
+    var out: VertexOutput;
+    out.position = vec4f(positions[vertexIndex], 0.0, 1.0);
+    out.uv = uvs[vertexIndex];
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let depth = textureSample(depthTexture, texSampler, in.uv);
+    // Linearize and visualize depth (near = white, far = black)
+    let linearDepth = pow(depth, 0.4);  // Gamma for better visualization
+    return vec4f(vec3f(linearDepth), 1.0);
+}
+)";
+
+    // For now, just log that this needs implementation
+    // The shader above needs proper depth texture binding support
+    std::cout << "[Context] debugVisualizeShadowMap: Depth visualization shader pending\n";
 }
 
 // 2D Instanced Rendering

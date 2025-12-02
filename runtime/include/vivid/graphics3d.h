@@ -194,6 +194,10 @@ struct Light {
     float innerAngle = glm::radians(15.0f);  ///< Full intensity cone
     float outerAngle = glm::radians(30.0f);  ///< Falloff cone
 
+    // Shadow settings
+    bool castShadows = false;    ///< Enable shadow casting for this light
+    float shadowStrength = 1.0f; ///< Shadow intensity (0 = no shadow, 1 = full)
+
     // Factory methods for common light types
     static Light directional(const glm::vec3& dir, const glm::vec3& col = {1, 1, 1}, float intensity = 1.0f) {
         Light l;

@@ -2,12 +2,10 @@
 //
 // This example demonstrates:
 // - Directional light shadows (sun)
-// - Spot light shadows (flashlight)
-// - Point light shadows (omnidirectional)
-// - PCF soft shadows
+// - Shadow map rendering from light's perspective
+// - Debug shadow map visualization
 //
-// NOTE: Shadow mapping is not yet implemented in the Vivid runtime.
-// This file serves as a template/specification for when shadows are added.
+// Press 'D' to toggle shadow map debug view
 
 #include <vivid/vivid.h>
 
@@ -19,6 +17,7 @@ static Mesh boxMesh;
 static Mesh sphereMesh;
 static Mesh torusMesh;
 static Texture output;
+static Texture shadowDebugOutput;
 
 // Shadow settings (will be adjustable via keyboard)
 static int shadowResolution = 2048;
@@ -37,17 +36,16 @@ void setup(Chain& chain) {
 // === HELPER: Create scene geometry ===
 void createGeometry(Context& ctx) {
     // Ground plane (10x10 units)
-    // GOAL: Large flat surface to receive shadows
-    groundPlane = ctx.createPlane(10.0f, 10.0f, 1, 1);
+    groundPlane = ctx.createPlane(10.0f, 10.0f);
 
     // Box mesh for shadow casters
-    boxMesh = ctx.createBox(1.0f);
+    boxMesh = ctx.createCube();
 
     // Sphere mesh
     sphereMesh = ctx.createSphere(0.5f, 32, 16);
 
     // Torus mesh
-    torusMesh = ctx.createTorus(0.5f, 0.2f, 32, 16);
+    torusMesh = ctx.createTorus(0.5f, 0.2f);
 }
 
 // === UPDATE ===
@@ -113,35 +111,32 @@ void update(Chain& chain, Context& ctx) {
 
     // === LIGHTS ===
 
-    // Directional light (sun)
-    DirectionalLight sun;
-    sun.direction = glm::normalize(glm::vec3(-0.5f, -1.0f, -0.3f));
-    sun.color = glm::vec3(1.0f, 0.95f, 0.9f);
-    sun.intensity = 1.0f;
-    // sun.castShadows = true;  // When implemented
+    // Directional light (sun) - creates shadows
+    Light sun = Light::directional(
+        glm::vec3(-0.5f, -1.0f, -0.3f),  // direction
+        glm::vec3(1.0f, 0.95f, 0.9f),    // warm white color
+        1.0f                              // intensity
+    );
+    sun.castShadows = true;
 
-    // Spot light (flashlight)
+    // Spot light (flashlight) - orbiting
     float spotAngle = t * 0.5f;
-    SpotLight flashlight;
-    flashlight.position = glm::vec3(
+    glm::vec3 spotPos(
         std::cos(spotAngle) * 3.0f,
         4.0f,
         std::sin(spotAngle) * 3.0f
     );
-    flashlight.direction = glm::normalize(glm::vec3(0.0f, 0.0f, 0.0f) - flashlight.position);
-    flashlight.color = glm::vec3(1.0f, 0.9f, 0.7f);
-    flashlight.intensity = 2.0f;
-    flashlight.innerAngle = 15.0f;
-    flashlight.outerAngle = 25.0f;
-    // flashlight.castShadows = true;  // When implemented
+    glm::vec3 spotDir = glm::normalize(-spotPos);
+    Light flashlight = Light::spot(spotPos, spotDir, 15.0f, 25.0f,
+                                   glm::vec3(1.0f, 0.9f, 0.7f), 2.0f);
 
     // Point light (lamp)
-    PointLight lamp;
-    lamp.position = glm::vec3(-2.0f, 2.0f, 0.0f);
-    lamp.color = glm::vec3(0.8f, 0.9f, 1.0f);
-    lamp.intensity = 1.5f;
-    lamp.radius = 8.0f;
-    // lamp.castShadows = true;  // When implemented
+    Light lamp = Light::point(
+        glm::vec3(-2.0f, 2.0f, 0.0f),
+        glm::vec3(0.8f, 0.9f, 1.0f),
+        1.5f,
+        8.0f
+    );
 
     // === MATERIALS ===
 
@@ -169,21 +164,23 @@ void update(Chain& chain, Context& ctx) {
     torusMat.roughness = 0.2f;
     torusMat.metallic = 0.5f;
 
-    // === RENDER SCENE ===
-    ctx.beginRender3D(output, camera);
+    // === SCENE LIGHTING ===
+    SceneLighting lighting;
+    lighting.ambientColor = glm::vec3(0.2f, 0.2f, 0.3f);
+    lighting.ambientIntensity = 0.3f;
+    lighting.addLight(sun);
+    lighting.addLight(flashlight);
+    lighting.addLight(lamp);
 
-    // GOAL: When shadow mapping is implemented, the render call would be:
-    // ctx.setShadowSettings(shadowResolution, shadowBias, pcfRadius, pcfEnabled);
-
-    // Add lights
-    ctx.addLight(sun);
-    ctx.addLight(flashlight);
-    ctx.addLight(lamp);
+    // === BUILD MESH AND TRANSFORM LISTS ===
+    std::vector<Mesh3D> meshes;
+    std::vector<glm::mat4> transforms;
 
     // Ground plane
     glm::mat4 groundTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f));
     groundTransform = glm::rotate(groundTransform, -glm::half_pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
-    ctx.render3DPBR(groundPlane, groundMat, groundTransform);
+    meshes.push_back(groundPlane);
+    transforms.push_back(groundTransform);
 
     // Boxes at different positions
     glm::mat4 box1 = glm::translate(glm::mat4(1.0f), glm::vec3(-1.5f, 0.5f, 0.0f));
@@ -192,30 +189,63 @@ void update(Chain& chain, Context& ctx) {
     glm::mat4 box3 = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, -1.0f));
     box3 = glm::scale(box3, glm::vec3(0.7f));
 
-    ctx.render3DPBR(boxMesh, boxMat, box1);
-    ctx.render3DPBR(boxMesh, boxMat, box2);
-    ctx.render3DPBR(boxMesh, boxMat, box3);
+    meshes.push_back(boxMesh);
+    transforms.push_back(box1);
+    meshes.push_back(boxMesh);
+    transforms.push_back(box2);
+    meshes.push_back(boxMesh);
+    transforms.push_back(box3);
 
     // Spheres
     glm::mat4 sphere1 = glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.5f, -0.5f));
     glm::mat4 sphere2 = glm::translate(glm::mat4(1.0f), glm::vec3(-0.5f, 1.2f, 1.5f));
 
-    ctx.render3DPBR(sphereMesh, sphereMat, sphere1);
-    ctx.render3DPBR(sphereMesh, sphereMat, sphere2);
+    meshes.push_back(sphereMesh);
+    transforms.push_back(sphere1);
+    meshes.push_back(sphereMesh);
+    transforms.push_back(sphere2);
 
     // Torus (rotating)
     glm::mat4 torusT = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
     torusT = glm::rotate(torusT, t * 0.5f, glm::vec3(0.0f, 1.0f, 0.0f));
     torusT = glm::rotate(torusT, glm::radians(30.0f), glm::vec3(1.0f, 0.0f, 0.0f));
 
-    ctx.render3DPBR(torusMesh, torusMat, torusT);
+    meshes.push_back(torusMesh);
+    transforms.push_back(torusT);
 
-    ctx.endRender3D();
+    // === RENDER SHADOW MAP ===
+    glm::vec3 sceneCenter(0.0f, 0.5f, 0.0f);
+    float sceneRadius = 6.0f;
+
+    Texture shadowMap = ctx.renderShadowMap(sun, meshes, transforms,
+                                             sceneCenter, sceneRadius, shadowResolution);
+
+    // === RENDER SCENE ===
+    // Render each mesh with PBR material
+    // First render clears, subsequent renders don't
+    bool firstRender = true;
+
+    // Ground
+    ctx.render3D(groundPlane, camera, groundTransform, Material(groundMat), lighting, output,
+                 firstRender ? glm::vec4(0.1f, 0.1f, 0.15f, 1.0f) : glm::vec4(0, 0, 0, -1));
+    firstRender = false;
+
+    // Boxes
+    ctx.render3D(boxMesh, camera, box1, Material(boxMat), lighting, output, glm::vec4(0, 0, 0, -1));
+    ctx.render3D(boxMesh, camera, box2, Material(boxMat), lighting, output, glm::vec4(0, 0, 0, -1));
+    ctx.render3D(boxMesh, camera, box3, Material(boxMat), lighting, output, glm::vec4(0, 0, 0, -1));
+
+    // Spheres
+    ctx.render3D(sphereMesh, camera, sphere1, Material(sphereMat), lighting, output, glm::vec4(0, 0, 0, -1));
+    ctx.render3D(sphereMesh, camera, sphere2, Material(sphereMat), lighting, output, glm::vec4(0, 0, 0, -1));
+
+    // Torus
+    ctx.render3D(torusMesh, camera, torusT, Material(torusMat), lighting, output, glm::vec4(0, 0, 0, -1));
 
     // === DEBUG OVERLAY ===
-    if (showDebug) {
-        // GOAL: When implemented, show shadow map texture in corner
-        // ctx.debugShowTexture(sunShadowMap, 0, 0, 256, 256);
+    if (showDebug && shadowMap.valid()) {
+        // Show shadow map in corner
+        ctx.debugVisualizeShadowMap(shadowMap, shadowDebugOutput);
     }
 
     // === OUTPUT ===
