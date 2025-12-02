@@ -2,10 +2,19 @@
 #include <cmath>
 #include <algorithm>
 #include <iostream>
+#include <fstream>
+
+// stb_truetype for CPU-side font rendering
+#include <stb_truetype.h>
 
 // Note: Uses Context::loadImageData() from vivid core instead of bundled stb_image
 
 namespace livery {
+
+// Font destructor
+Font::~Font() {
+    delete info;
+}
 
 // Team palettes
 const TeamPalette FEISAR = {
@@ -204,6 +213,131 @@ void LiveryGenerator::drawTeamNumber(int x, int y, int scale, glm::vec3 color) {
     } else {
         drawNumber(x + 3 * scale, y, teamNumber_, scale, color);
     }
+}
+
+// ============================================================================
+// Font-based text rendering
+// ============================================================================
+
+Font* LiveryGenerator::loadFont(const std::string& path, float size) {
+    // Read font file
+    std::ifstream file(path, std::ios::binary | std::ios::ate);
+    if (!file.is_open()) {
+        std::cerr << "[livery] Failed to open font: " << path << "\n";
+        return nullptr;
+    }
+
+    size_t fileSize = file.tellg();
+    file.seekg(0);
+
+    auto font = std::make_unique<Font>();
+    font->data.resize(fileSize);
+    file.read(reinterpret_cast<char*>(font->data.data()), fileSize);
+    file.close();
+
+    // Initialize stb_truetype
+    font->info = new stbtt_fontinfo();
+    if (!stbtt_InitFont(font->info, font->data.data(), 0)) {
+        std::cerr << "[livery] Failed to initialize font: " << path << "\n";
+        return nullptr;
+    }
+
+    // Calculate scale and metrics
+    font->scale = stbtt_ScaleForPixelHeight(font->info, size);
+    stbtt_GetFontVMetrics(font->info, &font->ascent, &font->descent, &font->lineGap);
+
+    Font* result = font.get();
+    fontCache_.push_back(std::move(font));
+
+    std::cout << "[livery] Loaded font: " << path << " (" << size << "px)\n";
+    return result;
+}
+
+glm::ivec2 LiveryGenerator::measureText(Font* font, const std::string& text) {
+    if (!font || !font->valid()) return {0, 0};
+
+    int width = 0;
+    for (size_t i = 0; i < text.size(); i++) {
+        int advanceWidth, leftBearing;
+        stbtt_GetCodepointHMetrics(font->info, text[i], &advanceWidth, &leftBearing);
+        width += static_cast<int>(advanceWidth * font->scale);
+
+        // Add kerning
+        if (i + 1 < text.size()) {
+            int kern = stbtt_GetCodepointKernAdvance(font->info, text[i], text[i + 1]);
+            width += static_cast<int>(kern * font->scale);
+        }
+    }
+
+    int height = static_cast<int>((font->ascent - font->descent) * font->scale);
+    return {width, height};
+}
+
+void LiveryGenerator::drawText(Font* font, int x, int y, const std::string& text, glm::vec3 color, float alpha) {
+    if (!font || !font->valid()) return;
+
+    float xpos = static_cast<float>(x);
+    float ypos = static_cast<float>(y);
+
+    for (size_t i = 0; i < text.size(); i++) {
+        int c = text[i];
+
+        // Get glyph bitmap
+        int w, h, xoff, yoff;
+        unsigned char* bitmap = stbtt_GetCodepointBitmap(font->info, font->scale, font->scale, c, &w, &h, &xoff, &yoff);
+
+        if (bitmap) {
+            // Calculate baseline-relative position
+            int baselineY = static_cast<int>(ypos + font->ascent * font->scale);
+
+            // Render glyph to pixel buffer
+            for (int py = 0; py < h; py++) {
+                for (int px = 0; px < w; px++) {
+                    int destX = static_cast<int>(xpos) + xoff + px;
+                    int destY = baselineY + yoff + py;
+
+                    if (destX >= 0 && destX < width_ && destY >= 0 && destY < height_) {
+                        float coverage = bitmap[py * w + px] / 255.0f;
+                        if (coverage > 0.01f) {
+                            // Alpha blend
+                            int idx = (destY * width_ + destX) * 4;
+                            float srcAlpha = coverage * alpha;
+
+                            float dstR = pixels_[idx + 0] / 255.0f;
+                            float dstG = pixels_[idx + 1] / 255.0f;
+                            float dstB = pixels_[idx + 2] / 255.0f;
+
+                            float outR = color.r * srcAlpha + dstR * (1.0f - srcAlpha);
+                            float outG = color.g * srcAlpha + dstG * (1.0f - srcAlpha);
+                            float outB = color.b * srcAlpha + dstB * (1.0f - srcAlpha);
+
+                            pixels_[idx + 0] = static_cast<uint8_t>(std::clamp(outR, 0.0f, 1.0f) * 255.0f);
+                            pixels_[idx + 1] = static_cast<uint8_t>(std::clamp(outG, 0.0f, 1.0f) * 255.0f);
+                            pixels_[idx + 2] = static_cast<uint8_t>(std::clamp(outB, 0.0f, 1.0f) * 255.0f);
+                        }
+                    }
+                }
+            }
+
+            stbtt_FreeBitmap(bitmap, nullptr);
+        }
+
+        // Advance cursor
+        int advanceWidth, leftBearing;
+        stbtt_GetCodepointHMetrics(font->info, c, &advanceWidth, &leftBearing);
+        xpos += advanceWidth * font->scale;
+
+        // Add kerning
+        if (i + 1 < text.size()) {
+            int kern = stbtt_GetCodepointKernAdvance(font->info, c, text[i + 1]);
+            xpos += kern * font->scale;
+        }
+    }
+}
+
+void LiveryGenerator::drawTextCentered(Font* font, int cx, int cy, const std::string& text, glm::vec3 color, float alpha) {
+    glm::ivec2 size = measureText(font, text);
+    drawText(font, cx - size.x / 2, cy - size.y / 2, text, color, alpha);
 }
 
 void LiveryGenerator::generateBodyTop() {
@@ -443,10 +577,36 @@ void LiveryGenerator::generate(vivid::Context* ctx) {
     drawChevron(width_ / 3, height_ / 2, chevronSize, palette_.primary);
 
     // === TEAM NUMBER (large, centered in stripe) ===
-    int numX = width_ / 2;
-    int numY = stripeY + stripeH / 4;
-    int numScale = 6;
-    drawTeamNumber(numX, numY, numScale, palette_.primary);
+    // Try to use custom font if available
+    Font* numberFont = nullptr;
+    if (!numberFontPath_.empty()) {
+        numberFont = loadFont(numberFontPath_, 80.0f);  // Large font for numbers
+    }
+
+    std::string numStr = std::to_string(teamNumber_);
+    int numCenterX = width_ / 2;
+    int numCenterY = stripeY + stripeH / 2;
+
+    if (numberFont) {
+        // Use stylized font for team number
+        drawTextCentered(numberFont, numCenterX, numCenterY, numStr, palette_.primary, 1.0f);
+    } else {
+        // Fallback to bitmap numbers
+        int numX = numCenterX - 18;  // Approximate centering
+        int numY = stripeY + stripeH / 4;
+        int numScale = 6;
+        drawTeamNumber(numX, numY, numScale, palette_.primary);
+    }
+
+    // === TEAM NAME/BRANDING (if text font available) ===
+    if (!textFontPath_.empty()) {
+        Font* textFont = loadFont(textFontPath_, 24.0f);
+        if (textFont) {
+            // Draw team name below the number
+            std::string teamName = "TEAM " + numStr;
+            drawTextCentered(textFont, numCenterX, numCenterY + 50, teamName, palette_.accent, 0.9f);
+        }
+    }
 
     // === PANEL LINES (subtle tech detail) ===
     drawPanelLines(64, palette_.dark * 0.7f);

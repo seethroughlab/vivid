@@ -11,6 +11,8 @@
 #include "async_readback.h"
 #include "shared_preview.h"
 #include "preview_thread.h"
+#include "font_atlas.h"
+#include "text_renderer.h"
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <GLFW/glfw3.h>
@@ -23,6 +25,8 @@
 #include <mutex>
 #include <map>
 #include <filesystem>
+#include <sstream>
+#include <iomanip>
 
 namespace fs = std::filesystem;
 

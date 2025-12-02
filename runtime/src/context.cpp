@@ -9,9 +9,12 @@
 #include "pipeline3d_instanced.h"
 #include "pipeline3d_skinned.h"
 #include "pipeline3d_lit.h"
+#include "pipeline3d_vertex_lit.h"
 #include "pipeline3d_decal.h"
 #include "pipeline2d.h"
 #include "cubemap.h"
+#include "font_atlas.h"
+#include "text_renderer.h"
 #include <unordered_set>
 #include <iostream>
 #include <algorithm>
@@ -976,6 +979,25 @@ void Context::render3DPhong(const Mesh3D& mesh, const Camera3D& camera,
     getPhongPipeline().renderPhong(mesh, camera, transform, material, lighting, output, clearColor);
 }
 
+Pipeline3DVertexLit& Context::getVertexLitPipeline() {
+    if (!vertexLitPipeline_) {
+        vertexLitPipeline_ = std::make_unique<Pipeline3DVertexLit>();
+        vertexLitPipeline_->init(renderer_);
+    }
+    return *vertexLitPipeline_;
+}
+
+void Context::render3DVertexLit(const Mesh3D& mesh, const Camera3D& camera,
+                                const glm::mat4& transform,
+                                const VertexLitMaterial& material,
+                                const glm::vec3& lightDir,
+                                Texture& output,
+                                const glm::vec4& clearColor,
+                                const glm::vec3& lightColor) {
+    if (!mesh.valid()) return;
+    getVertexLitPipeline().render(mesh, camera, transform, material, lightDir, lightColor, output, clearColor);
+}
+
 void Context::render3DPBR(const Mesh3D& mesh, const Camera3D& camera,
                           const glm::mat4& transform,
                           const PBRMaterial& material,
@@ -1185,6 +1207,58 @@ void Context::renderSkinned3D(SkinnedMesh3D& mesh, const Camera3D& camera,
     // - mesh.update(deltaTime) for built-in animation
     // - mesh.boneMatrices = animSystem.getBoneMatrices() using vivid-models addon
     getSkinnedMeshRenderer().render(mesh, camera, transform, output, clearColor);
+}
+
+// ============================================================================
+// Font & Text Rendering
+// ============================================================================
+
+TextRenderer& Context::getTextRenderer() {
+    if (!textRenderer_) {
+        textRenderer_ = std::make_unique<TextRenderer>();
+        textRenderer_->init(renderer_);
+    }
+    return *textRenderer_;
+}
+
+FontAtlas* Context::loadFont(const std::string& path, float fontSize, int atlasSize) {
+    // Create cache key from path and size
+    std::string cacheKey = path + "@" + std::to_string(static_cast<int>(fontSize));
+
+    auto it = fontCache_.find(cacheKey);
+    if (it != fontCache_.end()) {
+        return it->second.get();
+    }
+
+    // Resolve path relative to project
+    std::string resolvedPath = resolvePath(path);
+
+    // Load the font
+    auto font = std::make_unique<FontAtlas>();
+    if (!font->load(renderer_, resolvedPath, fontSize, atlasSize)) {
+        std::cerr << "[Context] Failed to load font: " << path << "\n";
+        return nullptr;
+    }
+
+    FontAtlas* result = font.get();
+    fontCache_[cacheKey] = std::move(font);
+    return result;
+}
+
+void Context::renderText(FontAtlas& font, const std::string& text,
+                         float x, float y, const glm::vec4& color,
+                         Texture& output, const glm::vec4& clearColor) {
+    getTextRenderer().renderText(font, text, glm::vec2(x, y), color, output, clearColor);
+}
+
+void Context::renderTextCentered(FontAtlas& font, const std::string& text,
+                                  float centerX, float centerY, const glm::vec4& color,
+                                  Texture& output, const glm::vec4& clearColor) {
+    getTextRenderer().renderTextCentered(font, text, glm::vec2(centerX, centerY), color, output, clearColor);
+}
+
+glm::vec2 Context::measureText(FontAtlas& font, const std::string& text) {
+    return font.measureText(text);
 }
 
 } // namespace vivid

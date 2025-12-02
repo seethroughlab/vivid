@@ -173,10 +173,10 @@ vec3 vertexLight(vec3 position, vec3 normal) {
 ```
 
 **Core features needed:**
-- [ ] `ctx.render3DVertexLit()` - New rendering function
-- [ ] Flat shading mode (per-face normals)
-- [ ] 2-3 step diffuse quantization option
-- [ ] Hard specular highlight (no BRDF)
+- [x] `ctx.render3DVertexLit()` - New rendering function
+- [x] Flat shading mode (per-face normals) - use flat normals in geometry
+- [x] 2-3 step diffuse quantization option - `quantizeSteps` parameter
+- [x] Hard specular highlight (no BRDF) - `hardSpecular` parameter
 
 ### Flat Shading Option
 
@@ -347,10 +347,10 @@ enum class Team {
 - [ ] Panel line overlay
 
 ### Phase 3: Retro Shading (REQUIRES CORE CHANGES)
-- [ ] Vertex-lit shader in runtime
-- [ ] Flat shading mode
-- [ ] Diffuse quantization (toon steps)
-- [ ] Hard specular highlights
+- [x] Vertex-lit shader in runtime - `ctx.render3DVertexLit()`
+- [x] Flat shading mode - per-face normals in geometry
+- [x] Diffuse quantization (toon steps) - `quantizeSteps` parameter
+- [x] Hard specular highlights - `hardSpecular` parameter
 
 ### Phase 4: Post-Processing (REQUIRES CORE CHANGES)
 - [ ] Dithering operator
@@ -372,16 +372,17 @@ These features must be added to the Vivid runtime to achieve the full aesthetic:
 
 ### High Priority
 
-1. **Vertex-Lit Rendering Pipeline**
+1. **Vertex-Lit Rendering Pipeline** ✅ COMPLETE
    - New `render3DVertexLit()` function
    - Simple N·L diffuse calculation
-   - Optional quantization for toon look
-   - Vertex color support (pre-baked lighting)
+   - Optional quantization for toon look (`quantizeSteps`)
+   - Hard specular highlights (`hardSpecular`)
+   - Diffuse texture support
 
-2. **Flat Shading Mode**
-   - Per-face normals instead of per-vertex
+2. **Flat Shading Mode** ✅ COMPLETE
+   - Per-face normals instead of per-vertex (build geometry with flat normals)
    - Sharp, faceted appearance
-   - Toggle on existing render functions
+   - Works with vertex-lit and PBR pipelines
 
 3. **Dithering Post-Process**
    - Bayer matrix or blue-noise pattern

@@ -441,6 +441,10 @@ void Renderer::shutdown() {
         wgpuRenderPipelineRelease(blitPipeline_);
         blitPipeline_ = nullptr;
     }
+    if (overlayPipeline_) {
+        wgpuRenderPipelineRelease(overlayPipeline_);
+        overlayPipeline_ = nullptr;
+    }
 
     if (surface_) {
         wgpuSurfaceUnconfigure(surface_);
@@ -678,6 +682,70 @@ bool Renderer::createBlitPipeline() {
         return false;
     }
 
+    // Create overlay pipeline with alpha blending (reuses same shader module)
+    {
+        // Recreate shader module
+        WGPUShaderSourceWGSL overlayWgslSource = {};
+        overlayWgslSource.chain.sType = WGPUSType_ShaderSourceWGSL;
+        overlayWgslSource.code = WGPUStringView{.data = BLIT_SHADER_SOURCE, .length = strlen(BLIT_SHADER_SOURCE)};
+
+        WGPUShaderModuleDescriptor overlayShaderDesc = {};
+        overlayShaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&overlayWgslSource);
+
+        WGPUShaderModule overlayShaderModule = wgpuDeviceCreateShaderModule(device_, &overlayShaderDesc);
+
+        // Create pipeline layout
+        WGPUPipelineLayoutDescriptor overlayPipelineLayoutDesc = {};
+        overlayPipelineLayoutDesc.bindGroupLayoutCount = 1;
+        overlayPipelineLayoutDesc.bindGroupLayouts = &blitBindGroupLayout_;
+        WGPUPipelineLayout overlayPipelineLayout = wgpuDeviceCreatePipelineLayout(device_, &overlayPipelineLayoutDesc);
+
+        // Create render pipeline with alpha blending
+        WGPURenderPipelineDescriptor overlayPipelineDesc = {};
+        overlayPipelineDesc.layout = overlayPipelineLayout;
+
+        overlayPipelineDesc.vertex.module = overlayShaderModule;
+        overlayPipelineDesc.vertex.entryPoint = WGPUStringView{.data = "vs_main", .length = 7};
+
+        overlayPipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        overlayPipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
+        overlayPipelineDesc.primitive.cullMode = WGPUCullMode_None;
+
+        // Alpha blending state
+        WGPUBlendState blendState = {};
+        blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
+        blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+        blendState.color.operation = WGPUBlendOperation_Add;
+        blendState.alpha.srcFactor = WGPUBlendFactor_One;
+        blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+        blendState.alpha.operation = WGPUBlendOperation_Add;
+
+        WGPUColorTargetState overlayColorTarget = {};
+        overlayColorTarget.format = surfaceFormat_;
+        overlayColorTarget.blend = &blendState;
+        overlayColorTarget.writeMask = WGPUColorWriteMask_All;
+
+        WGPUFragmentState overlayFragmentState = {};
+        overlayFragmentState.module = overlayShaderModule;
+        overlayFragmentState.entryPoint = WGPUStringView{.data = "fs_main", .length = 7};
+        overlayFragmentState.targetCount = 1;
+        overlayFragmentState.targets = &overlayColorTarget;
+        overlayPipelineDesc.fragment = &overlayFragmentState;
+
+        overlayPipelineDesc.multisample.count = 1;
+        overlayPipelineDesc.multisample.mask = ~0u;
+
+        overlayPipeline_ = wgpuDeviceCreateRenderPipeline(device_, &overlayPipelineDesc);
+
+        wgpuPipelineLayoutRelease(overlayPipelineLayout);
+        wgpuShaderModuleRelease(overlayShaderModule);
+
+        if (!overlayPipeline_) {
+            std::cerr << "[Renderer] Failed to create overlay pipeline\n";
+            return false;
+        }
+    }
+
     return true;
 }
 
@@ -741,6 +809,13 @@ void Renderer::destroyTexture(Texture& texture) {
     texture.height = 0;
 }
 
+void* Renderer::registerFontTexture(WGPUTexture texture, WGPUTextureView view, int width, int height) {
+    auto* data = new TextureData();
+    data->texture = texture;
+    data->view = view;
+    return data;
+}
+
 void Renderer::blitToScreen(const Texture& texture) {
     if (!currentTextureView_ || !hasValidGPU(texture)) return;
 
@@ -780,6 +855,58 @@ void Renderer::blitToScreen(const Texture& texture) {
     wgpuRenderPassEncoderSetPipeline(renderPass, blitPipeline_);
     wgpuRenderPassEncoderSetBindGroup(renderPass, 0, bindGroup, 0, nullptr);
     wgpuRenderPassEncoderDraw(renderPass, 3, 1, 0, 0);  // 3 vertices, 1 instance
+    wgpuRenderPassEncoderEnd(renderPass);
+
+    // Submit
+    WGPUCommandBufferDescriptor cmdBufferDesc = {};
+    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
+    wgpuQueueSubmit(queue_, 1, &cmdBuffer);
+
+    // Clean up
+    wgpuCommandBufferRelease(cmdBuffer);
+    wgpuRenderPassEncoderRelease(renderPass);
+    wgpuCommandEncoderRelease(encoder);
+    wgpuBindGroupRelease(bindGroup);
+}
+
+void Renderer::blitOverlay(const Texture& texture) {
+    if (!currentTextureView_ || !hasValidGPU(texture)) return;
+
+    auto* texData = getTextureData(texture);
+
+    // Create bind group for this texture
+    WGPUBindGroupEntry entries[2] = {};
+    entries[0].binding = 0;
+    entries[0].sampler = blitSampler_;
+    entries[1].binding = 1;
+    entries[1].textureView = texData->view;
+
+    WGPUBindGroupDescriptor bindGroupDesc = {};
+    bindGroupDesc.layout = blitBindGroupLayout_;
+    bindGroupDesc.entryCount = 2;
+    bindGroupDesc.entries = entries;
+
+    WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device_, &bindGroupDesc);
+
+    // Create command encoder
+    WGPUCommandEncoderDescriptor encoderDesc = {};
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device_, &encoderDesc);
+
+    // Set up render pass - use Load instead of Clear to preserve existing content
+    WGPURenderPassColorAttachment colorAttachment = {};
+    colorAttachment.view = currentTextureView_;
+    colorAttachment.loadOp = WGPULoadOp_Load;
+    colorAttachment.storeOp = WGPUStoreOp_Store;
+
+    WGPURenderPassDescriptor renderPassDesc = {};
+    renderPassDesc.colorAttachmentCount = 1;
+    renderPassDesc.colorAttachments = &colorAttachment;
+
+    // Render fullscreen triangle with alpha blending
+    WGPURenderPassEncoder renderPass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
+    wgpuRenderPassEncoderSetPipeline(renderPass, overlayPipeline_);
+    wgpuRenderPassEncoderSetBindGroup(renderPass, 0, bindGroup, 0, nullptr);
+    wgpuRenderPassEncoderDraw(renderPass, 3, 1, 0, 0);
     wgpuRenderPassEncoderEnd(renderPass);
 
     // Submit

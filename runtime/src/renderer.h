@@ -95,12 +95,20 @@ public:
     Texture createTexture(int width, int height);
     void destroyTexture(Texture& texture);
 
+    // Register an externally-created texture (for font atlases, etc.)
+    // Takes ownership of the WGPUTexture and WGPUTextureView
+    void* registerFontTexture(WGPUTexture texture, WGPUTextureView view, int width, int height);
+
     // Upload pixel data to a texture (RGBA8 format, width*height*4 bytes)
     void uploadTexturePixels(Texture& texture, const uint8_t* pixels,
                              int width, int height);
 
     // Blit a texture to the screen
     void blitToScreen(const Texture& texture);
+
+    // Blit a texture as an overlay on the screen (with alpha blending)
+    // Renders on top of existing screen content without clearing
+    void blitOverlay(const Texture& texture);
 
     // Fill a texture with a solid color (for testing)
     void fillTexture(Texture& texture, float r, float g, float b, float a = 1.0f);
@@ -175,6 +183,9 @@ private:
     WGPURenderPipeline blitPipeline_ = nullptr;
     WGPUBindGroupLayout blitBindGroupLayout_ = nullptr;
     WGPUSampler blitSampler_ = nullptr;
+
+    // Overlay blit pipeline (with alpha blending)
+    WGPURenderPipeline overlayPipeline_ = nullptr;
 
     // Shared sampler for shader input textures
     WGPUSampler shaderSampler_ = nullptr;

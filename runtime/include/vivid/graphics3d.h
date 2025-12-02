@@ -323,6 +323,66 @@ struct PBRMaterial {
 struct Texture;
 
 /**
+ * @brief Retro vertex-lit material for PS1-era aesthetics.
+ *
+ * Simple N·L diffuse lighting with optional quantization for toon/retro look.
+ * No PBR, no environment mapping - just classic vertex lighting.
+ *
+ * Features:
+ * - Simple directional diffuse (N·L)
+ * - Quantized shading steps for toon/PS1 look
+ * - Optional hard specular highlight
+ * - Single diffuse texture support
+ */
+struct VertexLitMaterial {
+    glm::vec3 diffuse{1.0f, 1.0f, 1.0f};    ///< Base diffuse color
+    glm::vec3 ambient{0.2f, 0.2f, 0.2f};    ///< Ambient light contribution
+    glm::vec3 emissive{0.0f, 0.0f, 0.0f};   ///< Self-illumination
+    float ambientAmount = 0.3f;              ///< How much ambient affects final color
+    int quantizeSteps = 0;                   ///< 0 = smooth, 2-5 = toon/PS1 steps
+    bool hardSpecular = false;               ///< Enable hard white specular highlight
+    float specularPower = 32.0f;             ///< Specular exponent (if hardSpecular)
+    float specularThreshold = 0.5f;          ///< Cutoff for hard specular
+    Texture* diffuseMap = nullptr;           ///< Optional diffuse texture
+
+    /// Create a basic flat-shaded material
+    static VertexLitMaterial flat(const glm::vec3& color) {
+        VertexLitMaterial m;
+        m.diffuse = color;
+        m.quantizeSteps = 0;
+        return m;
+    }
+
+    /// Create a PS1-style 3-step quantized material
+    static VertexLitMaterial ps1(const glm::vec3& color) {
+        VertexLitMaterial m;
+        m.diffuse = color;
+        m.quantizeSteps = 3;
+        m.ambientAmount = 0.25f;
+        return m;
+    }
+
+    /// Create a toon-shaded material with 2 steps
+    static VertexLitMaterial toon(const glm::vec3& color) {
+        VertexLitMaterial m;
+        m.diffuse = color;
+        m.quantizeSteps = 2;
+        m.ambientAmount = 0.2f;
+        m.hardSpecular = true;
+        m.specularThreshold = 0.8f;
+        return m;
+    }
+
+    /// Create a material with texture
+    static VertexLitMaterial textured(Texture* tex, int steps = 3) {
+        VertexLitMaterial m;
+        m.diffuseMap = tex;
+        m.quantizeSteps = steps;
+        return m;
+    }
+};
+
+/**
  * @brief Textured PBR material with full texture map support.
  *
  * Supports albedo, normal, metallic-roughness, AO, and emissive maps

@@ -751,11 +751,11 @@ Build and test each operator individually:
 - [ ] Debug info overlay (resolution, frame time, operator count)
 
 #### Text Rendering
-- [ ] Integrate stb_truetype for font rendering
-- [ ] Font atlas generation from TTF files
-- [ ] TextRenderer class for GPU text rendering
-- [ ] Implement `Text` operator with text string input
-- [ ] Font selection and styling (size, color, alignment)
+- [x] Integrate stb_truetype for font rendering
+- [x] Font atlas generation from TTF files (FontAtlas class)
+- [x] TextRenderer class for GPU text rendering
+- [ ] Implement Text operator with text string input
+- [x] Font selection and styling (size, color, alignment)
 - [ ] Multi-line text support
 
 #### Vector Graphics

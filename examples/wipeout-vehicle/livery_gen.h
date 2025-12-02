@@ -5,8 +5,25 @@
 #include <vivid/vivid.h>
 #include <vector>
 #include <cstdint>
+#include <memory>
+
+// Forward declare stb_truetype types
+struct stbtt_fontinfo;
 
 namespace livery {
+
+// Font handle for text rendering
+struct Font {
+    std::vector<uint8_t> data;
+    stbtt_fontinfo* info = nullptr;
+    float scale = 0;
+    int ascent = 0;
+    int descent = 0;
+    int lineGap = 0;
+
+    ~Font();
+    bool valid() const { return info != nullptr; }
+};
 
 // Team color palette
 struct TeamPalette {
@@ -58,6 +75,10 @@ public:
     // Set path to grime texture for weathering effect
     void setGrimePath(const std::string& path) { grimePath_ = path; }
 
+    // Set font paths for text rendering
+    void setNumberFont(const std::string& path) { numberFontPath_ = path; }
+    void setTextFont(const std::string& path) { textFontPath_ = path; }
+
     // Generate the complete livery texture
     // Pass context to enable grime overlay loading
     void generate(vivid::Context* ctx = nullptr);
@@ -93,6 +114,12 @@ private:
     void drawNumber(int x, int y, int digit, int scale, glm::vec3 color);
     void drawTeamNumber(int x, int y, int scale, glm::vec3 color);
 
+    // Font-based text rendering
+    Font* loadFont(const std::string& path, float size);
+    void drawText(Font* font, int x, int y, const std::string& text, glm::vec3 color, float alpha = 1.0f);
+    void drawTextCentered(Font* font, int cx, int cy, const std::string& text, glm::vec3 color, float alpha = 1.0f);
+    glm::ivec2 measureText(Font* font, const std::string& text);
+
     // Region-specific generation
     void generateBodyTop();
     void generateBodySide();
@@ -107,6 +134,11 @@ private:
     // Grime overlay blending (needs Context for image loading)
     void blendGrimeOverlay(vivid::Context& ctx, const std::string& grimePath, float intensity = 0.4f);
     std::string grimePath_;  // Path to grime texture
+
+    // Font paths and cache
+    std::string numberFontPath_;
+    std::string textFontPath_;
+    std::vector<std::unique_ptr<Font>> fontCache_;
 };
 
 // Convenience function to generate a livery texture

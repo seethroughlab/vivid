@@ -18,8 +18,11 @@ class Renderer2DImpl;
 class Renderer3DInstancedImpl;
 class SkinnedMeshRendererImpl;
 class Pipeline3DLit;
+class Pipeline3DVertexLit;
 class Pipeline3DDecal;
 class CubemapProcessor;
+class FontAtlas;
+class TextRenderer;
 
 /**
  * @brief Runtime context providing access to time, textures, shaders, and operator communication.
@@ -200,6 +203,58 @@ public:
      * @return true if the extension is supported by loadImageAsTexture().
      */
     static bool isImageSupported(const std::string& path);
+    /// @}
+
+    /// @name Font & Text Rendering
+    /// @{
+
+    /**
+     * @brief Load a font from a TTF file.
+     * @param path Path to the TTF file.
+     * @param fontSize Font size in pixels.
+     * @param atlasSize Size of the font atlas texture (default 512).
+     * @return Reference to the loaded FontAtlas, or nullptr on failure.
+     *
+     * Fonts are cached by path and size. Calling this multiple times with
+     * the same parameters returns the cached font.
+     */
+    FontAtlas* loadFont(const std::string& path, float fontSize, int atlasSize = 512);
+
+    /**
+     * @brief Render text to a texture.
+     * @param font The font atlas to use.
+     * @param text The text string to render.
+     * @param x X position in pixels.
+     * @param y Y position in pixels.
+     * @param color Text color (RGBA).
+     * @param output Target texture.
+     * @param clearColor Clear color (default = no clear, preserves existing content).
+     */
+    void renderText(FontAtlas& font, const std::string& text,
+                    float x, float y, const glm::vec4& color,
+                    Texture& output, const glm::vec4& clearColor = {0, 0, 0, -1});
+
+    /**
+     * @brief Render text centered at a position.
+     * @param font The font atlas to use.
+     * @param text The text string to render.
+     * @param centerX Center X position in pixels.
+     * @param centerY Center Y position in pixels.
+     * @param color Text color (RGBA).
+     * @param output Target texture.
+     * @param clearColor Clear color (default = no clear).
+     */
+    void renderTextCentered(FontAtlas& font, const std::string& text,
+                            float centerX, float centerY, const glm::vec4& color,
+                            Texture& output, const glm::vec4& clearColor = {0, 0, 0, -1});
+
+    /**
+     * @brief Measure the size of rendered text.
+     * @param font The font atlas to use.
+     * @param text The text string to measure.
+     * @return glm::vec2(width, height) in pixels.
+     */
+    glm::vec2 measureText(FontAtlas& font, const std::string& text);
     /// @}
 
     /// @name Video Playback
@@ -606,6 +661,39 @@ public:
                        const SceneLighting& lighting,
                        Texture& output,
                        const glm::vec4& clearColor = {0, 0, 0, 1});
+
+    /**
+     * @brief Render a mesh with retro vertex-lit shading.
+     *
+     * Simple N·L diffuse lighting with optional quantization for PS1/toon look.
+     * No PBR, no environment mapping - just classic vertex lighting.
+     *
+     * @code
+     * // Create retro material
+     * VertexLitMaterial material = VertexLitMaterial::ps1(glm::vec3(0.8f, 0.2f, 0.2f));
+     * material.diffuseMap = &liveryTexture;
+     *
+     * // Render with vertex lighting
+     * glm::vec3 lightDir(0.5f, -1.0f, 0.3f);
+     * ctx.render3DVertexLit(mesh, camera, transform, material, lightDir, output);
+     * @endcode
+     *
+     * @param mesh The mesh to render.
+     * @param camera The camera viewpoint.
+     * @param transform Model transform matrix.
+     * @param material Vertex-lit material properties.
+     * @param lightDir Directional light direction.
+     * @param output Target texture to render into.
+     * @param clearColor Background color.
+     * @param lightColor Light color (default white).
+     */
+    void render3DVertexLit(const Mesh3D& mesh, const Camera3D& camera,
+                           const glm::mat4& transform,
+                           const VertexLitMaterial& material,
+                           const glm::vec3& lightDir,
+                           Texture& output,
+                           const glm::vec4& clearColor = {0, 0, 0, 1},
+                           const glm::vec3& lightColor = {1, 1, 1});
 
     /**
      * @brief Render a mesh with PBR (Physically Based Rendering).
@@ -1035,6 +1123,10 @@ private:
     Pipeline3DLit& getPBRIBLPipeline();
     Pipeline3DLit& getPBRIBLTexturedPipeline();
 
+    // Vertex-lit pipeline (lazy initialized)
+    std::unique_ptr<Pipeline3DVertexLit> vertexLitPipeline_;
+    Pipeline3DVertexLit& getVertexLitPipeline();
+
     // Decal rendering pipeline (lazy initialized)
     std::unique_ptr<Pipeline3DDecal> decalPipeline_;
     Pipeline3DDecal& getDecalPipeline();
@@ -1042,6 +1134,11 @@ private:
     // Cubemap/IBL processing (lazy initialized)
     std::unique_ptr<CubemapProcessor> cubemapProcessor_;
     CubemapProcessor& getCubemapProcessor();
+
+    // Text rendering (lazy initialized)
+    std::unique_ptr<TextRenderer> textRenderer_;
+    TextRenderer& getTextRenderer();
+    std::unordered_map<std::string, std::unique_ptr<FontAtlas>> fontCache_;
 
     // Project path resolution
     std::string projectPath_;

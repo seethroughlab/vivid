@@ -73,10 +73,14 @@ CompileResult Compiler::compile() {
 
     std::cout << "[Compiler] Configuring " << projectPath_ << "...\n";
 
-    // Configure with CMake - pass vivid include directory
+    // Get stb include directory (relative to vivid include dir)
+    fs::path stbIncludeDir = fs::path(vividIncludeDir).parent_path() / "_deps" / "stb-src";
+
+    // Configure with CMake - pass vivid and stb include directories
     std::string configCmd = "cmake -B \"" + buildDir_ + "\" -S \"" + cmakeSourceDir + "\" "
                            "-DCMAKE_BUILD_TYPE=Release "
-                           "-DVIVID_INCLUDE_DIR=\"" + vividIncludeDir + "\" 2>&1";
+                           "-DVIVID_INCLUDE_DIR=\"" + vividIncludeDir + "\" "
+                           "-DSTB_INCLUDE_DIR=\"" + stbIncludeDir.string() + "\" 2>&1";
 
     std::string configOutput, configError;
     // Phase 0 = configure
@@ -363,7 +367,8 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "set(CMAKE_CXX_STANDARD_REQUIRED ON)\n";
     cmake << "set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n\n";
     cmake << "# Vivid headers (passed by runtime)\n";
-    cmake << "set(VIVID_INCLUDE_DIR \"\" CACHE PATH \"Vivid include directory\")\n\n";
+    cmake << "set(VIVID_INCLUDE_DIR \"\" CACHE PATH \"Vivid include directory\")\n";
+    cmake << "set(STB_INCLUDE_DIR \"\" CACHE PATH \"STB include directory\")\n\n";
     cmake << "# GLM for math\n";
     cmake << "find_package(glm CONFIG QUIET)\n";
     cmake << "if(NOT glm_FOUND)\n";
@@ -391,6 +396,7 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << ")\n\n";
     cmake << "target_include_directories(operators PRIVATE\n";
     cmake << "    ${VIVID_INCLUDE_DIR}\n";
+    cmake << "    ${STB_INCLUDE_DIR}\n";
     cmake << ")\n\n";
     cmake << "target_link_libraries(operators PRIVATE\n";
     cmake << "    glm::glm\n";
