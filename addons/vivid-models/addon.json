@@ -15,13 +15,14 @@
 
   "libraries": {
     "windows": {
-      "static": ["vivid-models.lib", "assimp.lib"]
+      "static": ["vivid-models.lib", "assimp-vc143-mt.lib", "zlibstaticd.lib"]
     },
     "macos": {
-      "static": ["libvivid-models.a", "libassimp.a"]
+      "static": ["libvivid-models.a", "libassimp.a", "libz.a"]
     },
     "linux": {
-      "static": ["libvivid-models.a", "libassimp.a"]
+      "static": ["libvivid-models.a", "libassimp.a"],
+      "system": ["z"]
     }
   },
 

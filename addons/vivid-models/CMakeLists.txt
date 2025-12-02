@@ -81,20 +81,19 @@ add_custom_command(TARGET vivid-models POST_BUILD
 )
 
 # Copy assimp library to addons/lib
-if(WIN32)
-    add_custom_command(TARGET vivid-models POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:assimp>"
-            "${VIVID_ADDONS_LIB_DIR}/"
-        COMMENT "[vivid-models] Installing assimp library"
-    )
-else()
-    add_custom_command(TARGET vivid-models POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:assimp>"
-            "${VIVID_ADDONS_LIB_DIR}/"
-        COMMENT "[vivid-models] Installing assimp library"
-    )
-endif()
+add_custom_command(TARGET vivid-models POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:assimp>"
+        "${VIVID_ADDONS_LIB_DIR}/"
+    COMMENT "[vivid-models] Installing assimp library"
+)
+
+# Copy zlib library to addons/lib (assimp depends on zlib)
+add_custom_command(TARGET vivid-models POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "$<TARGET_FILE:zlibstatic>"
+        "${VIVID_ADDONS_LIB_DIR}/"
+    COMMENT "[vivid-models] Installing zlib library"
+)
 
 message(STATUS "[vivid-models] Configured successfully")

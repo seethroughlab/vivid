@@ -695,7 +695,17 @@ Build and test each operator individually:
 - [x] **Decal Blending** — Multiply, overlay, additive modes for decals — `pipeline3d_decal.cpp:createBlendPipeline()`
 
 #### Advanced (Future)
-- [ ] Shadow mapping (directional + point light shadows)
+- [ ] Shadow mapping (see PLAN-06-3d.md for full details)
+  - [ ] Depth-only render pass for shadow maps
+  - [ ] Directional light shadow mapping (orthographic projection)
+  - [ ] Shadow sampling in Phong/PBR shaders
+  - [ ] PCF (Percentage Closer Filtering) soft shadows
+  - [ ] Shadow bias controls (depth bias, normal bias)
+  - [ ] Spot light shadows (perspective projection)
+  - [ ] Point light cubemap shadows (6-face cubemap)
+  - [ ] Cascaded shadow maps for large scenes
+  - [ ] Shadow distance fade
+  - [ ] Per-object shadow cast/receive flags
 - [ ] Screen-space reflections
 - [ ] Ambient occlusion (SSAO)
 

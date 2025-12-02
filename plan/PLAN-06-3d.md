@@ -503,9 +503,312 @@ struct SceneLighting {
 
 ---
 
+## Shadow Mapping
+
+Real-time shadows using shadow maps for directional, point, and spot lights.
+
+### Shadow Map Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    SHADOW MAPPING PIPELINE                       │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Pass 1: Shadow Map                Pass 2: Main Render          │
+│  ┌──────────────────┐              ┌──────────────────┐         │
+│  │ Render from      │              │ Sample shadow    │         │
+│  │ light's POV      │─────────────▶│ map to determine │         │
+│  │ (depth only)     │              │ visibility       │         │
+│  └──────────────────┘              └──────────────────┘         │
+│                                                                 │
+│  Light Types:                                                   │
+│  ┌────────────┐  ┌────────────┐  ┌────────────┐                │
+│  │Directional │  │   Point    │  │   Spot     │                │
+│  │ (2D map)   │  │ (cubemap)  │  │ (2D map)   │                │
+│  └────────────┘  └────────────┘  └────────────┘                │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Shadow Map Texture
+
+```cpp
+struct ShadowMap {
+    Texture depthTexture;      // Depth-only texture
+    int resolution = 2048;     // Shadow map resolution
+    glm::mat4 lightViewProj;   // Light's view-projection matrix
+};
+
+// For point lights: cubemap with 6 faces
+struct PointShadowMap {
+    Texture depthCubemap;
+    int resolution = 1024;
+    glm::mat4 lightViewProj[6]; // One per face
+    float farPlane = 25.0f;
+};
+```
+
+### Directional Light Shadows
+
+Orthographic projection from light direction:
+
+```cpp
+glm::mat4 getLightViewProj(const DirectionalLight& light, const BoundingBox& sceneBounds) {
+    // View: look along light direction
+    glm::vec3 lightPos = sceneBounds.center - light.direction * sceneBounds.radius * 2.0f;
+    glm::mat4 view = glm::lookAt(lightPos, sceneBounds.center, glm::vec3(0, 1, 0));
+
+    // Projection: orthographic to cover scene
+    float size = sceneBounds.radius * 1.5f;
+    glm::mat4 proj = glm::ortho(-size, size, -size, size, 0.1f, sceneBounds.radius * 4.0f);
+
+    return proj * view;
+}
+```
+
+### Shadow Map Shader (Depth Pass)
+
+`shaders/shadow_map.wgsl`:
+
+```wgsl
+struct Uniforms {
+    lightViewProj: mat4x4f,
+    model: mat4x4f,
+}
+
+@group(0) @binding(0) var<uniform> u: Uniforms;
+
+struct VertexInput {
+    @location(0) position: vec3f,
+}
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+}
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    let worldPos = u.model * vec4f(in.position, 1.0);
+    out.position = u.lightViewProj * worldPos;
+    return out;
+}
+
+// No fragment shader needed for depth-only pass
+// Or minimal fragment shader:
+@fragment
+fn fs_main() {
+    // Empty - depth is written automatically
+}
+```
+
+### Shadow Sampling (Main Pass)
+
+```wgsl
+@group(1) @binding(0) var shadowMap: texture_depth_2d;
+@group(1) @binding(1) var shadowSampler: sampler_comparison;
+
+struct ShadowUniforms {
+    lightViewProj: mat4x4f,
+    shadowBias: f32,
+    pcfRadius: f32,
+}
+
+@group(1) @binding(2) var<uniform> shadow: ShadowUniforms;
+
+fn getShadow(worldPos: vec3f) -> f32 {
+    // Transform to light space
+    let lightSpacePos = shadow.lightViewProj * vec4f(worldPos, 1.0);
+    var projCoords = lightSpacePos.xyz / lightSpacePos.w;
+
+    // Convert to [0, 1] UV space
+    projCoords = projCoords * 0.5 + 0.5;
+    projCoords.y = 1.0 - projCoords.y;  // Flip Y
+
+    // Check bounds
+    if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0 ||
+        projCoords.z < 0.0 || projCoords.z > 1.0) {
+        return 1.0;  // Outside shadow map = lit
+    }
+
+    // Apply bias to reduce shadow acne
+    let currentDepth = projCoords.z - shadow.shadowBias;
+
+    // PCF (Percentage Closer Filtering) for soft shadows
+    var shadowSum = 0.0;
+    let texelSize = 1.0 / f32(textureDimensions(shadowMap).x);
+
+    for (var x = -1; x <= 1; x++) {
+        for (var y = -1; y <= 1; y++) {
+            let offset = vec2f(f32(x), f32(y)) * texelSize * shadow.pcfRadius;
+            shadowSum += textureSampleCompare(
+                shadowMap,
+                shadowSampler,
+                projCoords.xy + offset,
+                currentDepth
+            );
+        }
+    }
+
+    return shadowSum / 9.0;
+}
+
+// In fragment shader:
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    // ... existing lighting code ...
+
+    let shadow = getShadow(in.worldPos);
+    let finalColor = ambient + (diffuse + specular) * shadow;
+
+    return vec4f(finalColor, 1.0);
+}
+```
+
+### Point Light Shadows (Omnidirectional)
+
+Use a cubemap for 360° shadow coverage:
+
+```cpp
+// Render 6 faces of cubemap
+const glm::vec3 directions[6] = {
+    { 1,  0,  0}, {-1,  0,  0},  // +X, -X
+    { 0,  1,  0}, { 0, -1,  0},  // +Y, -Y
+    { 0,  0,  1}, { 0,  0, -1}   // +Z, -Z
+};
+
+const glm::vec3 ups[6] = {
+    {0, -1,  0}, {0, -1,  0},
+    {0,  0,  1}, {0,  0, -1},
+    {0, -1,  0}, {0, -1,  0}
+};
+
+for (int face = 0; face < 6; face++) {
+    glm::mat4 view = glm::lookAt(light.position,
+                                  light.position + directions[face],
+                                  ups[face]);
+    glm::mat4 proj = glm::perspective(glm::radians(90.0f), 1.0f, 0.1f, light.radius);
+    renderShadowPass(proj * view, face);
+}
+```
+
+```wgsl
+// Point light shadow sampling
+fn getPointShadow(worldPos: vec3f, lightPos: vec3f, farPlane: f32) -> f32 {
+    let fragToLight = worldPos - lightPos;
+    let currentDepth = length(fragToLight);
+
+    // Sample cubemap with direction vector
+    let shadow = textureSampleCompare(
+        shadowCubemap,
+        shadowSampler,
+        fragToLight,
+        (currentDepth - bias) / farPlane
+    );
+
+    return shadow;
+}
+```
+
+### Spot Light Shadows
+
+Same as directional but with perspective projection:
+
+```cpp
+glm::mat4 getSpotLightViewProj(const SpotLight& light) {
+    glm::mat4 view = glm::lookAt(light.position,
+                                  light.position + light.direction,
+                                  glm::vec3(0, 1, 0));
+    glm::mat4 proj = glm::perspective(
+        glm::radians(light.outerAngle * 2.0f),
+        1.0f,
+        0.1f,
+        light.radius
+    );
+    return proj * view;
+}
+```
+
+### Shadow Quality Settings
+
+| Setting | Resolution | PCF Samples | Use Case |
+|---------|------------|-------------|----------|
+| Low | 512 | 1 (hard) | Performance |
+| Medium | 1024 | 4 | Balanced |
+| High | 2048 | 9 | Quality |
+| Ultra | 4096 | 16+ | Cinematics |
+
+### Cascaded Shadow Maps (CSM)
+
+For large outdoor scenes, use multiple shadow maps at different distances:
+
+```cpp
+struct CascadedShadowMap {
+    static const int CASCADE_COUNT = 4;
+
+    Texture cascades[CASCADE_COUNT];       // Depth textures
+    glm::mat4 viewProj[CASCADE_COUNT];     // View-proj per cascade
+    float splitDistances[CASCADE_COUNT];    // Split planes
+
+    // Typical splits: 10m, 30m, 100m, 500m
+};
+```
+
+### Shadow Configuration API
+
+```cpp
+struct ShadowSettings {
+    bool enabled = true;
+    int resolution = 2048;
+    float bias = 0.001f;
+    float normalBias = 0.01f;
+    int pcfSamples = 9;
+    float pcfRadius = 1.5f;
+    float maxDistance = 100.0f;  // Fade shadows at distance
+    bool softShadows = true;
+};
+
+// Per-light shadow control
+struct Light {
+    // ... existing fields ...
+    bool castShadows = true;
+    float shadowStrength = 1.0f;  // 0 = no shadow, 1 = full shadow
+};
+```
+
+### Render3D Operator with Shadows
+
+```cpp
+class Render3D : public Operator {
+public:
+    Render3D& shadows(bool enable);
+    Render3D& shadowResolution(int res);
+    Render3D& shadowBias(float bias);
+    Render3D& shadowSoftness(float softness);
+    Render3D& cascades(int count);  // For directional lights
+
+    // ... existing methods ...
+};
+```
+
+### Implementation Tasks
+
+- [ ] Create depth-only render pass for shadow maps
+- [ ] Implement directional light shadow mapping
+- [ ] Add shadow sampling to Phong/PBR shaders
+- [ ] Implement PCF soft shadows
+- [ ] Add shadow bias controls (depth bias, normal bias)
+- [ ] Implement spot light shadows
+- [ ] Implement point light cubemap shadows
+- [ ] Add cascaded shadow maps for directional lights
+- [ ] Shadow distance fade
+- [ ] Per-object shadow cast/receive flags
+- [ ] Shadow map caching (static objects)
+
+---
+
 ## Future Extensions
 
-- **Shadow mapping** - Directional and omnidirectional shadows
 - **Screen-space ambient occlusion (SSAO)**
 - **Screen-space reflections (SSR)**
 - **Bloom and tone mapping** - HDR rendering pipeline
