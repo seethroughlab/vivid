@@ -403,7 +403,7 @@ int main(int argc, char* argv[]) {
         bool fontLoaded = false;
         if (fs::exists(debugFontPath)) {
             // Pixel font at readable size
-            if (debugFont.load(renderer, debugFontPath, 16.0f, 256)) {
+            if (debugFont.load(renderer, debugFontPath, 32.0f, 512)) {
                 fontLoaded = true;
                 std::cout << "[Debug] Loaded debug font: " << debugFontPath << "\n";
             }
@@ -413,7 +413,7 @@ int main(int argc, char* argv[]) {
 
         if (fontLoaded) {
             debugTextRenderer.init(renderer);
-            debugOverlayTexture = renderer.createTexture(180, 60);
+            debugOverlayTexture = renderer.createTexture(360, 120);
             std::cout << "[Debug] Debug overlay initialized\n";
         } else {
             showDebugOverlay = false;
@@ -554,7 +554,7 @@ int main(int argc, char* argv[]) {
                     lastDebugText = debugText;
                     debugTextRenderer.renderText(
                         debugFont, debugText,
-                        glm::vec2(6.0f, 4.0f),
+                        glm::vec2(12.0f, 8.0f),
                         glm::vec4(1.0f, 1.0f, 1.0f, 1.0f),
                         debugOverlayTexture,
                         glm::vec4(0.0f, 0.0f, 0.0f, 0.7f)  // Semi-transparent black background
