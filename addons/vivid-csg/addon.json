@@ -1,0 +1,37 @@
+{
+  "name": "csg",
+  "version": "1.0.0",
+  "description": "CSG (Constructive Solid Geometry) boolean operations via Manifold library",
+  "author": "Vivid Contributors",
+  "license": "MIT",
+
+  "platforms": ["windows", "macos", "linux"],
+
+  "detect_headers": [
+    "vivid/csg/csg.h"
+  ],
+
+  "include_dirs": ["include"],
+
+  "libraries": {
+    "windows": {
+      "static": ["vivid-csg.lib", "manifold.lib"]
+    },
+    "macos": {
+      "static": ["libvivid-csg.a", "libmanifold.a"]
+    },
+    "linux": {
+      "static": ["libvivid-csg.a", "libmanifold.a"]
+    }
+  },
+
+  "dependencies": {
+    "external": {
+      "manifold": {
+        "git": "https://github.com/elalish/manifold.git",
+        "version": "v3.0.1",
+        "description": "Fast, robust CSG boolean operations library"
+      }
+    }
+  }
+}

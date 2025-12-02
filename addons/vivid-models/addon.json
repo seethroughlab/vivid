@@ -1,0 +1,37 @@
+{
+  "name": "models",
+  "version": "1.0.0",
+  "description": "3D model loading via Assimp - supports OBJ, FBX, GLTF, and many other formats",
+  "author": "Vivid Contributors",
+  "license": "MIT",
+
+  "platforms": ["windows", "macos", "linux"],
+
+  "detect_headers": [
+    "vivid/models/model_loader.h"
+  ],
+
+  "include_dirs": ["include"],
+
+  "libraries": {
+    "windows": {
+      "static": ["vivid-models.lib", "assimp.lib"]
+    },
+    "macos": {
+      "static": ["libvivid-models.a", "libassimp.a"]
+    },
+    "linux": {
+      "static": ["libvivid-models.a", "libassimp.a"]
+    }
+  },
+
+  "dependencies": {
+    "external": {
+      "assimp": {
+        "git": "https://github.com/assimp/assimp.git",
+        "version": "v5.4.3",
+        "description": "Open Asset Import Library for 3D model loading"
+      }
+    }
+  }
+}

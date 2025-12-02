@@ -1,4 +1,5 @@
 #include "compiler.h"
+#include "addon_registry.h"
 #include <iostream>
 #include <array>
 #include <cstdio>
@@ -22,20 +23,6 @@
 namespace fs = std::filesystem;
 
 namespace vivid {
-
-// Addon configuration - maps include patterns to addon paths and setup functions
-struct AddonInfo {
-    std::string includePattern;  // Pattern to detect in source (e.g., "<vivid/models/")
-    std::string addonPath;       // Relative path from vivid root (e.g., "addons/vivid-models")
-    std::string setupFunction;   // CMake function to call (e.g., "vivid_use_models")
-};
-
-static const std::vector<AddonInfo> AVAILABLE_ADDONS = {
-    {"<vivid/models/", "addons/vivid-models", "vivid_use_models"},
-    {"<vivid/storage/", "addons/vivid-storage", "vivid_use_storage"},
-    {"<vivid/imgui/", "addons/vivid-imgui", "vivid_use_imgui"},
-    {"<vivid/nuklear/", "addons/vivid-nuklear", "vivid_use_nuklear"},
-};
 
 // Find cmake executable - needed on Windows where it may not be in PATH
 static std::string findCMake() {
@@ -74,9 +61,30 @@ static std::string toCMakePath(const std::string& path) {
 }
 
 Compiler::Compiler(const std::string& projectPath)
-    : projectPath_(projectPath) {
+    : projectPath_(projectPath),
+      addonRegistry_(std::make_unique<AddonRegistry>()) {
     // Default build directory is projectPath/build
     buildDir_ = projectPath_ + "/build";
+
+    // Load addon registry from build/addons/meta
+    std::string addonsMetaDir = getAddonsDir() + "/meta";
+    if (fs::exists(addonsMetaDir)) {
+        addonRegistry_->loadFromDirectory(addonsMetaDir);
+        addonRegistry_->setAddonsBasePath(getAddonsDir());
+    }
+}
+
+Compiler::~Compiler() = default;
+
+AddonRegistry& Compiler::addonRegistry() {
+    return *addonRegistry_;
+}
+
+std::string Compiler::getAddonsDir() const {
+    // Addons are in build/addons relative to vivid root
+    fs::path vividInclude = getVividIncludeDir();
+    fs::path addonsDir = fs::path(vividInclude).parent_path() / "addons";
+    return addonsDir.string();
 }
 
 CompileResult Compiler::compile() {
@@ -123,9 +131,10 @@ CompileResult Compiler::compile() {
     fs::path stbIncludeDir = fs::path(vividIncludeDir).parent_path() / "_deps" / "stb-src";
     std::string stbIncludeDirStr = toCMakePath(stbIncludeDir.string());
 
-    // Configure with CMake - pass vivid and stb include directories
-    // Note: CMAKE_BUILD_TYPE is for single-config generators (Make/Ninja)
-    // For multi-config generators (MSVC), use --config at build time
+    // Get addons directory
+    std::string addonsDir = toCMakePath(getAddonsDir());
+
+    // Configure with CMake - pass vivid, stb, and addons include directories
     std::string cmake = findCMake();
 #ifdef _WIN32
     std::string buildTypeArg = "";  // MSVC uses --config at build time
@@ -135,7 +144,8 @@ CompileResult Compiler::compile() {
     std::string configCmd = cmake + " -B \"" + toCMakePath(buildDir_) + "\" -S \"" + toCMakePath(cmakeSourceDir) + "\" "
                            + buildTypeArg +
                            "-DVIVID_INCLUDE_DIR=\"" + vividIncludeDir + "\" "
-                           "-DSTB_INCLUDE_DIR=\"" + stbIncludeDirStr + "\"";
+                           "-DSTB_INCLUDE_DIR=\"" + stbIncludeDirStr + "\" "
+                           "-DVIVID_ADDONS_DIR=\"" + addonsDir + "\"";
 
 #ifdef _WIN32
     // On Windows, pass the vivid.lib import library so DLLs can link against the exe's symbols
@@ -211,13 +221,11 @@ CompileResult Compiler::compile() {
     }
 
     // Search recursively if not found in common locations
-    // Look specifically for "operators" library to avoid picking up dependency libs
     if (libPath.empty()) {
         for (const auto& entry : fs::recursive_directory_iterator(buildDir_)) {
             if (entry.is_regular_file()) {
                 std::string path = entry.path().string();
                 std::string filename = entry.path().filename().string();
-                // Look for liboperators or operators specifically
                 if (path.find(libExt) != std::string::npos &&
                     filename.find("operators") != std::string::npos) {
                     libPath = path;
@@ -346,66 +354,6 @@ std::vector<std::string> Compiler::findSourceFiles() const {
     return sources;
 }
 
-std::vector<AddonInfo> Compiler::detectAddons() const {
-    std::vector<AddonInfo> detected;
-
-    // Scan source files for addon includes
-    for (const auto& entry : fs::directory_iterator(projectPath_)) {
-        if (!entry.is_regular_file()) continue;
-
-        std::string ext = entry.path().extension().string();
-        if (ext != ".cpp" && ext != ".cc" && ext != ".cxx" && ext != ".h" && ext != ".hpp") continue;
-
-        std::ifstream file(entry.path());
-        if (!file.is_open()) continue;
-
-        std::string line;
-        while (std::getline(file, line)) {
-            // Check for #include directives
-            if (line.find("#include") == std::string::npos) continue;
-
-            for (const auto& addon : AVAILABLE_ADDONS) {
-                if (line.find(addon.includePattern) != std::string::npos) {
-                    // Check if we already added this addon
-                    bool alreadyAdded = false;
-                    for (const auto& d : detected) {
-                        if (d.addonPath == addon.addonPath) {
-                            alreadyAdded = true;
-                            break;
-                        }
-                    }
-                    if (!alreadyAdded) {
-                        detected.push_back(addon);
-                        std::cout << "[Compiler] Detected addon: " << addon.addonPath << "\n";
-                    }
-                }
-            }
-        }
-    }
-
-    return detected;
-}
-
-std::string Compiler::getVividRootDir() const {
-    // Start from project path, go up to find the vivid root (contains addons/)
-    fs::path projectDir(projectPath_);
-
-    std::vector<fs::path> candidates = {
-        projectDir / ".." / "..",  // examples/foo -> vivid root
-        projectDir / "..",
-        projectDir / ".." / ".." / "..",
-    };
-
-    for (const auto& candidate : candidates) {
-        if (fs::exists(candidate / "addons")) {
-            return fs::canonical(candidate).string();
-        }
-    }
-
-    // Fallback
-    return (projectDir / ".." / "..").string();
-}
-
 bool Compiler::generateCMakeLists(std::string& generatedPath) {
     // Find source files
     auto sources = findSourceFiles();
@@ -413,12 +361,11 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
         return false;
     }
 
-    // Detect required addons based on includes
-    auto addons = detectAddons();
+    // Detect required addons using the registry
+    auto requiredAddons = addonRegistry_->scanSourceForAddons(projectPath_);
 
-    // Get absolute path to project and vivid root (use forward slashes for CMake)
+    // Get absolute path to project (use forward slashes for CMake)
     std::string absoluteProjectPath = toCMakePath(fs::canonical(projectPath_).string());
-    std::string vividRoot = toCMakePath(getVividRootDir());
 
     // Determine project name from folder
     std::string projectName = fs::path(projectPath_).filename().string();
@@ -445,6 +392,7 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "# Vivid headers and library (passed by runtime)\n";
     cmake << "set(VIVID_INCLUDE_DIR \"\" CACHE PATH \"Vivid include directory\")\n";
     cmake << "set(STB_INCLUDE_DIR \"\" CACHE PATH \"STB include directory\")\n";
+    cmake << "set(VIVID_ADDONS_DIR \"\" CACHE PATH \"Vivid addons directory\")\n";
     cmake << "set(VIVID_LIBRARY \"\" CACHE FILEPATH \"Vivid import library (Windows only)\")\n\n";
     cmake << "# GLM for math\n";
     cmake << "find_package(glm CONFIG QUIET)\n";
@@ -458,15 +406,6 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "    FetchContent_MakeAvailable(glm)\n";
     cmake << "endif()\n\n";
 
-    // Include detected addons
-    if (!addons.empty()) {
-        cmake << "# Vivid addons (auto-detected from includes)\n";
-        for (const auto& addon : addons) {
-            cmake << "include(\"" << vividRoot << "/" << addon.addonPath << "/addon.cmake\")\n";
-        }
-        cmake << "\n";
-    }
-
     cmake << "# Source files (auto-detected)\n";
     cmake << "add_library(operators SHARED\n";
     cmake << sourceList;
@@ -474,6 +413,7 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "target_include_directories(operators PRIVATE\n";
     cmake << "    ${VIVID_INCLUDE_DIR}\n";
     cmake << "    ${STB_INCLUDE_DIR}\n";
+    cmake << "    ${VIVID_ADDONS_DIR}/include\n";
     cmake << ")\n\n";
     cmake << "target_link_libraries(operators PRIVATE\n";
     cmake << "    glm::glm\n";
@@ -483,13 +423,56 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "    target_link_libraries(operators PRIVATE ${VIVID_LIBRARY})\n";
     cmake << "endif()\n\n";
 
-    // Apply addon configurations to the operators target
-    if (!addons.empty()) {
-        cmake << "# Apply addon configurations\n";
-        for (const auto& addon : addons) {
-            cmake << addon.setupFunction << "(operators)\n";
+    // Add pre-built addon libraries
+    if (!requiredAddons.empty()) {
+        cmake << "# === AUTO-DETECTED ADDONS ===\n";
+        cmake << "# Linking against pre-built static libraries for fast hot-reload\n\n";
+
+        for (const auto& addonName : requiredAddons) {
+            const AddonInfo* addon = addonRegistry_->getAddon(addonName);
+            if (!addon) continue;
+
+            cmake << "# Addon: " << addonName << " - " << addon->description << "\n";
+            cmake << "target_link_libraries(operators PRIVATE\n";
+
+            // Static libraries
+            for (const auto& lib : addon->staticLibs) {
+                cmake << "    \"${VIVID_ADDONS_DIR}/lib/" << lib << "\"\n";
+            }
+
+            // System libraries
+            for (const auto& lib : addon->systemLibs) {
+                cmake << "    " << lib << "\n";
+            }
+
+            cmake << ")\n";
+
+            // macOS frameworks
+            if (!addon->frameworks.empty()) {
+                cmake << "if(APPLE)\n";
+                cmake << "    target_link_libraries(operators PRIVATE\n";
+                for (const auto& fw : addon->frameworks) {
+                    cmake << "        \"-framework " << fw << "\"\n";
+                }
+                cmake << "    )\n";
+                cmake << "endif()\n";
+            }
+
+            // Copy runtime DLLs (Windows)
+            for (const auto& dll : addon->runtimeDlls) {
+                cmake << "# Copy " << dll << " to output directory\n";
+                cmake << "add_custom_command(TARGET operators POST_BUILD\n";
+                cmake << "    COMMAND ${CMAKE_COMMAND} -E copy_if_different\n";
+                cmake << "        \"${VIVID_ADDONS_DIR}/lib/" << dll << "\"\n";
+                cmake << "        \"$<TARGET_FILE_DIR:operators>\"\n";
+                cmake << "    COMMENT \"Copying " << dll << "\"\n";
+                cmake << ")\n";
+            }
+
+            cmake << "\n";
         }
-        cmake << "\n";
+
+        cmake << "# === END ADDONS ===\n\n";
     }
 
     cmake << "set_target_properties(operators PROPERTIES\n";
@@ -501,7 +484,6 @@ bool Compiler::generateCMakeLists(std::string& generatedPath) {
     cmake << "endif()\n";
 
     // Create a subdirectory for the generated CMakeLists.txt
-    // CMake expects the source directory to contain a file named CMakeLists.txt
     std::string generatedDir = buildDir_ + "/_generated";
     fs::create_directories(generatedDir);
     generatedPath = generatedDir + "/CMakeLists.txt";
@@ -536,6 +518,26 @@ std::string Compiler::getVividIncludeDir() const {
 
     // Fallback to the CMakeLists.txt pattern (relative path)
     return (projectDir / ".." / ".." / "build" / "include").string();
+}
+
+std::string Compiler::getVividRootDir() const {
+    // Start from project path, go up to find the vivid root (contains addons/)
+    fs::path projectDir(projectPath_);
+
+    std::vector<fs::path> candidates = {
+        projectDir / ".." / "..",  // examples/foo -> vivid root
+        projectDir / "..",
+        projectDir / ".." / ".." / "..",
+    };
+
+    for (const auto& candidate : candidates) {
+        if (fs::exists(candidate / "addons")) {
+            return fs::canonical(candidate).string();
+        }
+    }
+
+    // Fallback
+    return (projectDir / ".." / "..").string();
 }
 
 } // namespace vivid

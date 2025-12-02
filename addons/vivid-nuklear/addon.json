@@ -1,0 +1,36 @@
+{
+  "name": "nuklear",
+  "version": "1.0.0",
+  "description": "Nuklear immediate-mode GUI integration with software rendering to GPU texture",
+  "author": "Vivid Contributors",
+  "license": "MIT",
+
+  "platforms": ["windows", "macos", "linux"],
+
+  "detect_headers": [
+    "vivid/nuklear/nuklear_integration.h"
+  ],
+
+  "include_dirs": ["include"],
+
+  "libraries": {
+    "windows": {
+      "static": ["vivid-nuklear.lib"]
+    },
+    "macos": {
+      "static": ["libvivid-nuklear.a"]
+    },
+    "linux": {
+      "static": ["libvivid-nuklear.a"]
+    }
+  },
+
+  "dependencies": {
+    "external": {
+      "nuklear": {
+        "git": "https://github.com/Immediate-Mode-UI/Nuklear.git",
+        "description": "Single-header ANSI C immediate mode cross-platform GUI library"
+      }
+    }
+  }
+}
