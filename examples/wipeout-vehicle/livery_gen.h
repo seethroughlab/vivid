@@ -59,7 +59,8 @@ public:
     void setGrimePath(const std::string& path) { grimePath_ = path; }
 
     // Generate the complete livery texture
-    void generate();
+    // Pass context to enable grime overlay loading
+    void generate(vivid::Context* ctx = nullptr);
 
     // Get the pixel data (RGBA, 4 bytes per pixel)
     const std::vector<uint8_t>& getPixels() const { return pixels_; }
@@ -103,8 +104,8 @@ private:
     void generateFin();
     void generateEngine();
 
-    // Grime overlay blending
-    void blendGrimeOverlay(const std::string& grimePath, float intensity = 0.4f);
+    // Grime overlay blending (needs Context for image loading)
+    void blendGrimeOverlay(vivid::Context& ctx, const std::string& grimePath, float intensity = 0.4f);
     std::string grimePath_;  // Path to grime texture
 };
 

@@ -118,6 +118,51 @@ glm::vec3 faceNormal(glm::vec3 p0, glm::vec3 p1, glm::vec3 p2) {
     return glm::normalize(glm::cross(p1 - p0, p2 - p0));
 }
 
+// Add quad with explicit UV coordinates (for proper texture mapping)
+void addQuadUV(std::vector<Vertex3D>& verts, std::vector<uint32_t>& indices,
+               glm::vec3 p0, glm::vec3 p1, glm::vec3 p2, glm::vec3 p3,
+               glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2, glm::vec2 uv3,
+               glm::vec3 normal) {
+    uint32_t base = static_cast<uint32_t>(verts.size());
+    verts.push_back({p0, normal, uv0});
+    verts.push_back({p1, normal, uv1});
+    verts.push_back({p2, normal, uv2});
+    verts.push_back({p3, normal, uv3});
+    // Front face
+    indices.push_back(base + 0);
+    indices.push_back(base + 1);
+    indices.push_back(base + 2);
+    indices.push_back(base + 0);
+    indices.push_back(base + 2);
+    indices.push_back(base + 3);
+    // Back face
+    indices.push_back(base + 0);
+    indices.push_back(base + 2);
+    indices.push_back(base + 1);
+    indices.push_back(base + 0);
+    indices.push_back(base + 3);
+    indices.push_back(base + 2);
+}
+
+// Add triangle with explicit UV coordinates
+void addTriangleUV(std::vector<Vertex3D>& verts, std::vector<uint32_t>& indices,
+                   glm::vec3 p0, glm::vec3 p1, glm::vec3 p2,
+                   glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2,
+                   glm::vec3 normal) {
+    uint32_t base = static_cast<uint32_t>(verts.size());
+    verts.push_back({p0, normal, uv0});
+    verts.push_back({p1, normal, uv1});
+    verts.push_back({p2, normal, uv2});
+    // Front face
+    indices.push_back(base + 0);
+    indices.push_back(base + 1);
+    indices.push_back(base + 2);
+    // Back face
+    indices.push_back(base + 0);
+    indices.push_back(base + 2);
+    indices.push_back(base + 1);
+}
+
 // === FUSELAGE ===
 // Long, aerodynamic body with raised center spine and multiple segments
 
@@ -145,16 +190,25 @@ Mesh3D buildFuselage(Context& ctx) {
         { 0.50f, 0.50f, 0.70f, 0.4f},   // Rear end
     };
 
-    // Generate cross-section rings
+    // V coordinates for each ring point (around the cross-section)
+    // Maps the 7 points (0-6) to V range 0-1
+    float ringV[] = {0.0f, 0.15f, 0.35f, 0.5f, 0.65f, 0.85f, 1.0f};
+
+    // Generate cross-section rings with UV data
     std::vector<std::vector<glm::vec3>> rings;
+    std::vector<float> ringU;  // U coordinate for each segment (along length)
+
     for (int s = 0; s < segments; ++s) {
         float x = profile[s][0] * length;
         float w = profile[s][1] * width;
         float h = profile[s][2] * height;
         float sp = profile[s][3] * spineHeight;
 
+        // U coordinate: 0 at nose, 1 at rear
+        float u = (profile[s][0] + 0.5f);  // profile x goes -0.5 to 0.5, map to 0-1
+        ringU.push_back(u);
+
         std::vector<glm::vec3> ring;
-        // 6-point cross section: bottom-left, left, top-left-spine, top-right-spine, right, bottom-right
         ring.push_back({x, -h, -w});          // 0: bottom-left
         ring.push_back({x, 0, -w * 1.1f});    // 1: left bulge
         ring.push_back({x, h, -w * 0.3f});    // 2: top-left
@@ -165,45 +219,55 @@ Mesh3D buildFuselage(Context& ctx) {
         rings.push_back(ring);
     }
 
-    // Connect rings with quads
+    // Connect rings with quads using proper UVs
     for (int s = 0; s < segments - 1; ++s) {
         auto& r0 = rings[s];
         auto& r1 = rings[s + 1];
+        float u0 = ringU[s];
+        float u1 = ringU[s + 1];
 
         // Connect each pair of adjacent points
         for (int i = 0; i < 6; ++i) {
-            int j = (i + 1) % 7;
-            if (i == 6) j = 0;  // Wrap around
+            int j = i + 1;
+            float v0 = ringV[i];
+            float v1 = ringV[j];
 
             glm::vec3 n = faceNormal(r0[i], r0[j], r1[i]);
-            addQuad(verts, indices, r0[i], r0[j], r1[j], r1[i], n);
+            addQuadUV(verts, indices, r0[i], r0[j], r1[j], r1[i],
+                      {u0, v0}, {u0, v1}, {u1, v1}, {u1, v0}, n);
         }
-        // Bottom panel
+        // Bottom panel (connects point 6 back to point 0)
         glm::vec3 bn = faceNormal(r0[0], r0[6], r1[0]);
-        addQuad(verts, indices, r0[6], r0[0], r1[0], r1[6], bn);
+        addQuadUV(verts, indices, r0[6], r0[0], r1[0], r1[6],
+                  {u0, ringV[6]}, {u0, ringV[0]}, {u1, ringV[0]}, {u1, ringV[6]}, bn);
     }
 
     // Nose cap (first ring)
     auto& nose = rings[0];
     glm::vec3 noseTip = {-length * 0.5f - 0.1f, 0, 0};
+    float noseU = 0.0f;
     for (int i = 0; i < 6; ++i) {
-        int j = (i + 1) % 7;
-        if (i == 6) j = 0;
+        int j = i + 1;
         glm::vec3 n = faceNormal(noseTip, nose[i], nose[j]);
-        addTriangle(verts, indices, noseTip, nose[i], nose[j], n);
+        addTriangleUV(verts, indices, noseTip, nose[i], nose[j],
+                      {noseU, 0.5f}, {ringU[0], ringV[i]}, {ringU[0], ringV[j]}, n);
     }
     // Nose bottom
-    addTriangle(verts, indices, noseTip, nose[6], nose[0], {0, -1, 0});
+    addTriangleUV(verts, indices, noseTip, nose[6], nose[0],
+                  {noseU, 0.5f}, {ringU[0], ringV[6]}, {ringU[0], ringV[0]}, {0, -1, 0});
 
     // Rear cap (last ring)
     auto& rear = rings[segments - 1];
+    float rearU = 1.0f;
+    glm::vec3 rearTip = {length * 0.5f, 0, 0};
     for (int i = 0; i < 6; ++i) {
-        int j = (i + 1) % 7;
-        if (i == 6) j = 0;
+        int j = i + 1;
         glm::vec3 n = faceNormal(rear[0], rear[j], rear[i]);
-        addTriangle(verts, indices, {length * 0.5f, 0, 0}, rear[j], rear[i], n);
+        addTriangleUV(verts, indices, rearTip, rear[j], rear[i],
+                      {rearU, 0.5f}, {ringU[segments-1], ringV[j]}, {ringU[segments-1], ringV[i]}, n);
     }
-    addTriangle(verts, indices, {length * 0.5f, 0, 0}, rear[0], rear[6], {0, -1, 0});
+    addTriangleUV(verts, indices, rearTip, rear[0], rear[6],
+                  {rearU, 0.5f}, {ringU[segments-1], ringV[0]}, {ringU[segments-1], ringV[6]}, {0, -1, 0});
 
     return ctx.createMesh(verts, indices);
 }
@@ -229,16 +293,23 @@ Mesh3D buildSidePod(Context& ctx, float side) {
         { 0.50f, 0.4f, 0.6f},   // Rear (engine mount)
     };
 
+    // V coordinates for ring points (around cross-section)
+    float ringV[] = {0.0f, 0.33f, 0.66f, 1.0f};
+
     int segments = 5;
     std::vector<std::vector<glm::vec3>> rings;
+    std::vector<float> ringU;
 
     for (int s = 0; s < segments; ++s) {
         float x = profile[s][0] * podLength;
         float w = profile[s][1] * podWidth;
         float h = profile[s][2] * podHeight;
 
+        // U coordinate along length
+        float u = (profile[s][0] + 0.5f);
+        ringU.push_back(u);
+
         std::vector<glm::vec3> ring;
-        // 4-point cross section
         ring.push_back({x, -h, side * w * 0.8f});   // bottom-inner
         ring.push_back({x, -h * 0.3f, side * w});   // outer-bottom
         ring.push_back({x, h * 0.5f, side * w});    // outer-top
@@ -246,33 +317,41 @@ Mesh3D buildSidePod(Context& ctx, float side) {
         rings.push_back(ring);
     }
 
-    // Connect rings
+    // Connect rings with proper UVs
     for (int s = 0; s < segments - 1; ++s) {
         auto& r0 = rings[s];
         auto& r1 = rings[s + 1];
+        float u0 = ringU[s];
+        float u1 = ringU[s + 1];
 
         for (int i = 0; i < 4; ++i) {
             int j = (i + 1) % 4;
+            float v0 = ringV[i];
+            float v1 = ringV[j];
             glm::vec3 n = faceNormal(r0[i], r0[j], r1[i]);
-            addQuad(verts, indices, r0[i], r0[j], r1[j], r1[i], n);
+            addQuadUV(verts, indices, r0[i], r0[j], r1[j], r1[i],
+                      {u0, v0}, {u0, v1}, {u1, v1}, {u1, v0}, n);
         }
     }
 
-    // Front face with intake scoop (dark recessed area)
+    // Front face with intake scoop
     auto& front = rings[0];
     glm::vec3 intakeCenter = {front[0].x - intakeDepth, 0, side * podWidth * 0.5f};
     for (int i = 0; i < 4; ++i) {
         int j = (i + 1) % 4;
         glm::vec3 n = faceNormal(intakeCenter, front[j], front[i]);
-        addTriangle(verts, indices, intakeCenter, front[j], front[i], n);
+        addTriangleUV(verts, indices, intakeCenter, front[j], front[i],
+                      {0.0f, 0.5f}, {ringU[0], ringV[j]}, {ringU[0], ringV[i]}, n);
     }
 
     // Rear face
     auto& rear = rings[segments - 1];
+    glm::vec3 rearCenter = {rear[0].x + 0.1f, 0, side * podWidth * 0.3f};
     for (int i = 0; i < 4; ++i) {
         int j = (i + 1) % 4;
         glm::vec3 n = faceNormal(rear[0], rear[i], rear[j]);
-        addTriangle(verts, indices, {rear[0].x + 0.1f, 0, side * podWidth * 0.3f}, rear[i], rear[j], n);
+        addTriangleUV(verts, indices, rearCenter, rear[i], rear[j],
+                      {1.0f, 0.5f}, {ringU[segments-1], ringV[i]}, {ringU[segments-1], ringV[j]}, n);
     }
 
     return ctx.createMesh(verts, indices);
@@ -351,49 +430,34 @@ Mesh3D buildEngine(Context& ctx) {
             -1, 0, 0, t, 1));
     }
 
+    // Helper to add a quad with both windings (double-sided)
+    auto addDoubleSidedQuad = [&](uint32_t a, uint32_t b, uint32_t c, uint32_t d) {
+        // First winding
+        indices.push_back(a); indices.push_back(b); indices.push_back(c);
+        indices.push_back(a); indices.push_back(c); indices.push_back(d);
+        // Reverse winding
+        indices.push_back(a); indices.push_back(c); indices.push_back(b);
+        indices.push_back(a); indices.push_back(d); indices.push_back(c);
+    };
+
     // Generate quads by connecting adjacent vertices in rings
     for (int i = 0; i < segments; ++i) {
         int j = i + 1;
 
-        // Outer shell (smooth)
-        indices.push_back(frontOuterIdx[i]);
-        indices.push_back(frontOuterIdx[j]);
-        indices.push_back(backOuterIdx[j]);
-        indices.push_back(frontOuterIdx[i]);
-        indices.push_back(backOuterIdx[j]);
-        indices.push_back(backOuterIdx[i]);
+        // Outer shell (double-sided)
+        addDoubleSidedQuad(frontOuterIdx[i], frontOuterIdx[j], backOuterIdx[j], backOuterIdx[i]);
 
-        // Inner tube (smooth) - reversed winding for inward-facing surface
-        indices.push_back(frontInnerIdx[i]);
-        indices.push_back(backInnerIdx[j]);
-        indices.push_back(backInnerIdx[i]);
-        indices.push_back(frontInnerIdx[i]);
-        indices.push_back(frontInnerIdx[j]);
-        indices.push_back(backInnerIdx[j]);
+        // Inner tube (double-sided)
+        addDoubleSidedQuad(frontInnerIdx[i], frontInnerIdx[j], backInnerIdx[j], backInnerIdx[i]);
 
-        // Inner to deep narrowing - reversed winding for inward-facing surface
-        indices.push_back(backInnerIdx[i]);
-        indices.push_back(deepInnerIdx[j]);
-        indices.push_back(deepInnerIdx[i]);
-        indices.push_back(backInnerIdx[i]);
-        indices.push_back(backInnerIdx[j]);
-        indices.push_back(deepInnerIdx[j]);
+        // Inner to deep narrowing (double-sided)
+        addDoubleSidedQuad(backInnerIdx[i], backInnerIdx[j], deepInnerIdx[j], deepInnerIdx[i]);
 
-        // Front rim (flat)
-        indices.push_back(frontRimOuterIdx[i]);
-        indices.push_back(frontRimInnerIdx[i]);
-        indices.push_back(frontRimInnerIdx[j]);
-        indices.push_back(frontRimOuterIdx[i]);
-        indices.push_back(frontRimInnerIdx[j]);
-        indices.push_back(frontRimOuterIdx[j]);
+        // Front rim (double-sided)
+        addDoubleSidedQuad(frontRimOuterIdx[i], frontRimOuterIdx[j], frontRimInnerIdx[j], frontRimInnerIdx[i]);
 
-        // Back cap (flat)
-        indices.push_back(backCapOuterIdx[j]);
-        indices.push_back(backCapOuterIdx[i]);
-        indices.push_back(backCapInnerIdx[i]);
-        indices.push_back(backCapOuterIdx[j]);
-        indices.push_back(backCapInnerIdx[i]);
-        indices.push_back(backCapInnerIdx[j]);
+        // Back cap (double-sided)
+        addDoubleSidedQuad(backCapOuterIdx[i], backCapOuterIdx[j], backCapInnerIdx[j], backCapInnerIdx[i]);
     }
 
     return ctx.createMesh(verts, indices);
@@ -409,7 +473,7 @@ Mesh3D buildFin(Context& ctx, float side) {
     float finHeight = 0.7f;
     float finLength = 0.9f;
     float finThickness = 0.05f;
-    float sweep = 0.3f;  // How far back the tip is
+    float sweep = 0.3f;
 
     float halfT = finThickness / 2.0f;
 
@@ -422,22 +486,34 @@ Mesh3D buildFin(Context& ctx, float side) {
     glm::vec3 backBotI = {-finLength * 0.5f, 0, -side * halfT};
     glm::vec3 tipI = {-finLength * 0.3f + sweep, finHeight, -side * halfT * 0.5f};
 
+    // UV mapping based on position (X along length, Y along height)
+    auto finUV = [&](glm::vec3 p) -> glm::vec2 {
+        float u = (p.x / finLength) + 0.5f;  // 0-1 along length
+        float v = p.y / finHeight;            // 0-1 along height
+        return {u, v};
+    };
+
     // Outer face
-    addTriangle(verts, indices, frontBot, backBot, tip, {0, 0, side});
+    addTriangleUV(verts, indices, frontBot, backBot, tip,
+                  finUV(frontBot), finUV(backBot), finUV(tip), {0, 0, side});
 
     // Inner face
-    addTriangle(verts, indices, backBotI, frontBotI, tipI, {0, 0, -side});
+    addTriangleUV(verts, indices, backBotI, frontBotI, tipI,
+                  finUV(backBotI), finUV(frontBotI), finUV(tipI), {0, 0, -side});
 
     // Bottom edge
-    addQuad(verts, indices, frontBot, frontBotI, backBotI, backBot, {0, -1, 0});
+    addQuadUV(verts, indices, frontBot, frontBotI, backBotI, backBot,
+              finUV(frontBot), finUV(frontBotI), finUV(backBotI), finUV(backBot), {0, -1, 0});
 
     // Front edge
     glm::vec3 frontN = faceNormal(frontBot, tip, frontBotI);
-    addQuad(verts, indices, frontBot, tip, tipI, frontBotI, frontN);
+    addQuadUV(verts, indices, frontBot, tip, tipI, frontBotI,
+              finUV(frontBot), finUV(tip), finUV(tipI), finUV(frontBotI), frontN);
 
     // Back edge
     glm::vec3 backN = faceNormal(backBot, backBotI, tip);
-    addQuad(verts, indices, backBot, backBotI, tipI, tip, backN);
+    addQuadUV(verts, indices, backBot, backBotI, tipI, tip,
+              finUV(backBot), finUV(backBotI), finUV(tipI), finUV(tip), backN);
 
     return ctx.createMesh(verts, indices);
 }
@@ -449,14 +525,21 @@ Mesh3D buildRearWing(Context& ctx) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
-    float span = 2.8f;       // Total width
-    float chord = 0.5f;      // Front-to-back
+    float span = 2.8f;
+    float chord = 0.5f;
     float thickness = 0.06f;
-    float sweep = 0.15f;     // Swept back angle
+    float sweep = 0.15f;
     float endplateHeight = 0.25f;
 
     float halfSpan = span / 2.0f;
     float halfT = thickness / 2.0f;
+
+    // UV mapping based on position (Z across span, X along chord)
+    auto wingUV = [&](glm::vec3 p) -> glm::vec2 {
+        float u = (p.z / span) + 0.5f;  // 0-1 across span
+        float v = (p.x / chord) + 0.5f; // 0-1 along chord
+        return {u, v};
+    };
 
     // Main wing surface
     glm::vec3 frontL = {chord / 2, halfT, -halfSpan};
@@ -470,31 +553,40 @@ Mesh3D buildRearWing(Context& ctx) {
     glm::vec3 backRB = {-chord / 2 - sweep, -halfT, halfSpan};
 
     // Top surface
-    addQuad(verts, indices, frontL, frontR, backR, backL, {0, 1, 0});
+    addQuadUV(verts, indices, frontL, frontR, backR, backL,
+              wingUV(frontL), wingUV(frontR), wingUV(backR), wingUV(backL), {0, 1, 0});
 
     // Bottom surface
-    addQuad(verts, indices, frontRB, frontLB, backLB, backRB, {0, -1, 0});
+    addQuadUV(verts, indices, frontRB, frontLB, backLB, backRB,
+              wingUV(frontRB), wingUV(frontLB), wingUV(backLB), wingUV(backRB), {0, -1, 0});
 
     // Front edge
-    addQuad(verts, indices, frontL, frontLB, frontRB, frontR, {1, 0, 0});
+    addQuadUV(verts, indices, frontL, frontLB, frontRB, frontR,
+              {0, 1}, {0, 0}, {1, 0}, {1, 1}, {1, 0, 0});
 
     // Back edge
-    addQuad(verts, indices, backR, backRB, backLB, backL, {-1, 0, 0});
+    addQuadUV(verts, indices, backR, backRB, backLB, backL,
+              {1, 1}, {1, 0}, {0, 0}, {0, 1}, {-1, 0, 0});
 
     // Left endplate
     glm::vec3 epLT = {chord / 2, halfT + endplateHeight, -halfSpan};
     glm::vec3 epLB = {-chord / 2 - sweep, halfT + endplateHeight, -halfSpan};
-    addQuad(verts, indices, frontL, backL, epLB, epLT, {0, 0, -1});
-    addQuad(verts, indices, epLT, epLB, backL, frontL, {0, 0, 1});  // Inner face
+    addQuadUV(verts, indices, frontL, backL, epLB, epLT,
+              {1, 0}, {0, 0}, {0, 1}, {1, 1}, {0, 0, -1});
+    addQuadUV(verts, indices, epLT, epLB, backL, frontL,
+              {1, 1}, {0, 1}, {0, 0}, {1, 0}, {0, 0, 1});
 
     // Right endplate
     glm::vec3 epRT = {chord / 2, halfT + endplateHeight, halfSpan};
     glm::vec3 epRB = {-chord / 2 - sweep, halfT + endplateHeight, halfSpan};
-    addQuad(verts, indices, backR, frontR, epRT, epRB, {0, 0, 1});
-    addQuad(verts, indices, frontR, backR, epRB, epRT, {0, 0, -1});  // Inner face
+    addQuadUV(verts, indices, backR, frontR, epRT, epRB,
+              {0, 0}, {1, 0}, {1, 1}, {0, 1}, {0, 0, 1});
+    addQuadUV(verts, indices, frontR, backR, epRB, epRT,
+              {1, 0}, {0, 0}, {0, 1}, {1, 1}, {0, 0, -1});
 
     // Endplate tops
-    addQuad(verts, indices, epLT, epLB, epRB, epRT, {0, 1, 0});
+    addQuadUV(verts, indices, epLT, epLB, epRB, epRT,
+              {0, 0}, {0, 1}, {1, 1}, {1, 0}, {0, 1, 0});
 
     return ctx.createMesh(verts, indices);
 }
@@ -509,9 +601,16 @@ Mesh3D buildCanard(Context& ctx, float side) {
     float span = 0.6f;
     float chord = 0.25f;
     float thickness = 0.04f;
-    float angle = -0.15f;  // Angled down slightly
+    float angle = -0.15f;
 
     float halfT = thickness / 2.0f;
+
+    // UV mapping based on position
+    auto canardUV = [&](glm::vec3 p) -> glm::vec2 {
+        float u = std::abs(p.z) / span;        // 0-1 along span
+        float v = (p.x / chord) + 0.5f;        // 0-1 along chord
+        return {u, v};
+    };
 
     // Wing points (angled down at tip)
     glm::vec3 rootFront = {chord / 2, halfT, 0};
@@ -525,22 +624,28 @@ Mesh3D buildCanard(Context& ctx, float side) {
     glm::vec3 tipBackB = {-chord / 2, -halfT + angle, side * span};
 
     // Top
-    addQuad(verts, indices, rootFront, tipFront, tipBack, rootBack, {0, 1, 0});
+    addQuadUV(verts, indices, rootFront, tipFront, tipBack, rootBack,
+              canardUV(rootFront), canardUV(tipFront), canardUV(tipBack), canardUV(rootBack), {0, 1, 0});
 
     // Bottom
-    addQuad(verts, indices, tipFrontB, rootFrontB, rootBackB, tipBackB, {0, -1, 0});
+    addQuadUV(verts, indices, tipFrontB, rootFrontB, rootBackB, tipBackB,
+              canardUV(tipFrontB), canardUV(rootFrontB), canardUV(rootBackB), canardUV(tipBackB), {0, -1, 0});
 
     // Front edge
-    addQuad(verts, indices, rootFront, rootFrontB, tipFrontB, tipFront, {1, 0, 0});
+    addQuadUV(verts, indices, rootFront, rootFrontB, tipFrontB, tipFront,
+              {0, 1}, {0, 0}, {1, 0}, {1, 1}, {1, 0, 0});
 
     // Back edge
-    addQuad(verts, indices, tipBack, tipBackB, rootBackB, rootBack, {-1, 0, 0});
+    addQuadUV(verts, indices, tipBack, tipBackB, rootBackB, rootBack,
+              {1, 1}, {1, 0}, {0, 0}, {0, 1}, {-1, 0, 0});
 
     // Tip
-    addQuad(verts, indices, tipFront, tipFrontB, tipBackB, tipBack, {0, 0, side});
+    addQuadUV(verts, indices, tipFront, tipFrontB, tipBackB, tipBack,
+              {1, 1}, {1, 0}, {0, 0}, {0, 1}, {0, 0, side});
 
     // Root (attaches to body)
-    addQuad(verts, indices, rootBack, rootBackB, rootFrontB, rootFront, {0, 0, -side});
+    addQuadUV(verts, indices, rootBack, rootBackB, rootFrontB, rootFront,
+              {0, 1}, {0, 0}, {1, 0}, {1, 1}, {0, 0, -side});
 
     return ctx.createMesh(verts, indices);
 }
@@ -622,7 +727,7 @@ void regenerateLivery(Context& ctx) {
     gen.setPalette(palette);
     gen.setTeamNumber(teamNumber);
     gen.setGrimePath("examples/wipeout-vehicle/textures/grime/cement_concrete_wall.jpg");
-    gen.generate();
+    gen.generate(&ctx);  // Pass context for grime texture loading
     gen.uploadTo(ctx, liveryTexture);
 
     liveryTeam = currentTeam;

@@ -3,9 +3,7 @@
 #include <algorithm>
 #include <iostream>
 
-// Include stb_image for loading grime textures
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+// Note: Uses Context::loadImageData() from vivid core instead of bundled stb_image
 
 namespace livery {
 
@@ -411,7 +409,7 @@ void LiveryGenerator::generateEngine() {
     }
 }
 
-void LiveryGenerator::generate() {
+void LiveryGenerator::generate(vivid::Context* ctx) {
     // Create a full-coverage livery texture (not atlas-based)
     // This works with simple 0-1 UV mapping on any mesh
 
@@ -457,21 +455,25 @@ void LiveryGenerator::generate() {
     int vStripeW = width_ / 20;
     fillRect(width_ - vStripeW * 2, 0, vStripeW, height_, palette_.secondary, 0.8f);
 
-    // === GRIME OVERLAY (if path is set) ===
-    if (!grimePath_.empty()) {
-        blendGrimeOverlay(grimePath_, 0.8f);  // Strong grime effect with overlay blend
+    // === GRIME OVERLAY (if path is set and context provided) ===
+    if (!grimePath_.empty() && ctx) {
+        blendGrimeOverlay(*ctx, grimePath_, 0.8f);  // Strong grime effect with overlay blend
     }
 }
 
-void LiveryGenerator::blendGrimeOverlay(const std::string& grimePath, float intensity) {
-    // Load the grime texture
-    int grimeW, grimeH, grimeChannels;
-    unsigned char* grimeData = stbi_load(grimePath.c_str(), &grimeW, &grimeH, &grimeChannels, 0);
-    if (!grimeData) {
+void LiveryGenerator::blendGrimeOverlay(vivid::Context& ctx, const std::string& grimePath, float intensity) {
+    // Load the grime texture using Vivid's core image loader
+    vivid::ImageData grimeData = ctx.loadImageData(grimePath);
+    if (!grimeData.valid()) {
         std::cerr << "[livery] Failed to load grime texture: " << grimePath << std::endl;
         return;
     }
-    std::cout << "[livery] Loaded grime texture: " << grimePath << " (" << grimeW << "x" << grimeH << ")" << std::endl;
+    std::cout << "[livery] Loaded grime texture: " << grimePath << " (" << grimeData.width << "x" << grimeData.height << ")" << std::endl;
+
+    int grimeW = grimeData.width;
+    int grimeH = grimeData.height;
+    // ImageData always returns RGBA (4 channels)
+    const int grimeChannels = 4;
 
     // Blend grime over the procedural livery using multiply blend
     // Scale the grime texture to cover the entire livery (not tiled)
@@ -482,18 +484,11 @@ void LiveryGenerator::blendGrimeOverlay(const std::string& grimePath, float inte
             int gy = (y * grimeH) / height_;
             int grimeIdx = (gy * grimeW + gx) * grimeChannels;
 
-            // Get grime luminance (grayscale value)
-            float grimeLum;
-            if (grimeChannels >= 3) {
-                // RGB - convert to luminance
-                float gr = grimeData[grimeIdx] / 255.0f;
-                float gg = grimeData[grimeIdx + 1] / 255.0f;
-                float gb = grimeData[grimeIdx + 2] / 255.0f;
-                grimeLum = 0.299f * gr + 0.587f * gg + 0.114f * gb;
-            } else {
-                // Grayscale
-                grimeLum = grimeData[grimeIdx] / 255.0f;
-            }
+            // Get grime luminance (grayscale value from RGBA)
+            float gr = grimeData.pixels[grimeIdx] / 255.0f;
+            float gg = grimeData.pixels[grimeIdx + 1] / 255.0f;
+            float gb = grimeData.pixels[grimeIdx + 2] / 255.0f;
+            float grimeLum = 0.299f * gr + 0.587f * gg + 0.114f * gb;
 
             // Get current pixel
             int idx = (y * width_ + x) * 4;
@@ -528,8 +523,7 @@ void LiveryGenerator::blendGrimeOverlay(const std::string& grimePath, float inte
             pixels_[idx + 2] = static_cast<uint8_t>(std::clamp(b * 255.0f, 0.0f, 255.0f));
         }
     }
-
-    stbi_image_free(grimeData);
+    // ImageData automatically cleans up via vector destructor
 }
 
 void LiveryGenerator::uploadTo(vivid::Context& ctx, vivid::Texture& tex) {

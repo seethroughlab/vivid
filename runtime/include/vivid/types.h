@@ -147,6 +147,22 @@ struct Camera {
 };
 
 /**
+ * @brief Raw image data loaded from a file.
+ *
+ * Used for CPU-side image processing before uploading to GPU.
+ * Pixels are always in RGBA format (4 bytes per pixel).
+ */
+struct ImageData {
+    std::vector<uint8_t> pixels;  ///< Pixel data in RGBA format.
+    int width = 0;                ///< Image width in pixels.
+    int height = 0;               ///< Image height in pixels.
+    int channels = 0;             ///< Original channel count (1, 3, or 4).
+
+    /// @brief Check if this image data is valid.
+    bool valid() const { return !pixels.empty() && width > 0 && height > 0; }
+};
+
+/**
  * @brief 2D circle instance data for instanced rendering.
  *
  * Used with Context::drawCircles() for efficient rendering of many circles.

@@ -185,6 +185,16 @@ public:
     void uploadTexturePixels(Texture& texture, const uint8_t* pixels, int width, int height);
 
     /**
+     * @brief Load raw image data from a file.
+     * @param path Path to the image file (PNG, JPG, BMP, etc.).
+     * @return ImageData with pixels in RGBA format, or invalid ImageData on failure.
+     *
+     * Use this when you need access to raw pixel data for CPU-side processing
+     * (e.g., procedural texture blending, analysis).
+     */
+    ImageData loadImageData(const std::string& path);
+
+    /**
      * @brief Check if a file is a supported image format.
      * @param path Path to check.
      * @return true if the extension is supported by loadImageAsTexture().

@@ -125,6 +125,12 @@ Texture Context::loadImageAsTexture(const std::string& path) {
     return loader.loadAsTexture(resolvedPath, renderer_);
 }
 
+ImageData Context::loadImageData(const std::string& path) {
+    std::string resolvedPath = resolvePath(path);
+    ImageLoader loader;
+    return loader.load(resolvedPath);
+}
+
 void Context::uploadTexturePixels(Texture& texture, const uint8_t* pixels, int width, int height) {
     renderer_.uploadTexturePixels(texture, pixels, width, height);
 }

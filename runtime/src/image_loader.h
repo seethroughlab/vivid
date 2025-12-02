@@ -8,16 +8,7 @@ namespace vivid {
 
 class Renderer;
 
-/**
- * @brief Image data loaded from a file.
- */
-struct ImageData {
-    std::vector<uint8_t> pixels;  ///< Pixel data (always RGBA after loading)
-    int width = 0;
-    int height = 0;
-    int channels = 0;             ///< Original channel count (1, 3, or 4)
-    bool valid = false;
-};
+// Note: ImageData is now defined in vivid/types.h for public API access
 
 /**
  * @brief Loads images from disk using stb_image.

@@ -53,7 +53,7 @@ ImageData ImageLoader::load(const std::string& path) {
     result.height = height;
     result.channels = channels;
     result.pixels.assign(pixels, pixels + (width * height * 4));
-    result.valid = true;
+    // Note: valid() method checks for non-empty pixels, width > 0, height > 0
 
     stbi_image_free(pixels);
 
@@ -66,7 +66,7 @@ ImageData ImageLoader::load(const std::string& path) {
 
 Texture ImageLoader::loadAsTexture(const std::string& path, Renderer& renderer) {
     ImageData data = load(path);
-    if (!data.valid) {
+    if (!data.valid()) {
         return Texture{};
     }
 
