@@ -4,6 +4,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <cmath>
 #include <vector>
+#include <set>
 #include <iostream>
 #include "livery_gen.h"  // Team palettes
 
@@ -23,6 +24,19 @@ static Mesh3D rightFinMesh;
 static Mesh3D rearWingMesh;
 static Mesh3D leftCanardMesh;
 static Mesh3D rightCanardMesh;
+
+// Wireframe versions of meshes (generated from triangle meshes)
+static Mesh3D fuselageWire;
+static Mesh3D cockpitWire;
+static Mesh3D leftPodWire;
+static Mesh3D rightPodWire;
+static Mesh3D leftEngineWire;
+static Mesh3D rightEngineWire;
+static Mesh3D leftFinWire;
+static Mesh3D rightFinWire;
+static Mesh3D rearWingWire;
+static Mesh3D leftCanardWire;
+static Mesh3D rightCanardWire;
 
 // Scene objects
 static Camera3D camera;
@@ -71,6 +85,7 @@ static const livery::TeamPalette* palettes[] = {
 };
 static int currentTeam = 4;  // Start with PIRANHA (black/orange) for visibility
 static bool useVertexLit = false;  // Toggle for retro vertex-lit rendering (press V)
+static bool useWireframe = false;  // Toggle for wireframe/debug mode (press W)
 
 // === MESH GENERATION HELPERS ===
 
@@ -164,10 +179,100 @@ void addTriangleUV(std::vector<Vertex3D>& verts, std::vector<uint32_t>& indices,
     indices.push_back(base + 1);
 }
 
+// === WIREFRAME GENERATION ===
+// Convert a triangle mesh to wireframe (thin lines for each edge)
+
+void generateWireframe(Context& ctx, const std::vector<Vertex3D>& srcVerts,
+                       const std::vector<uint32_t>& srcIndices,
+                       std::vector<Vertex3D>& wireVerts,
+                       std::vector<uint32_t>& wireIndices,
+                       float lineWidth = 0.015f) {
+    // Track edges to avoid duplicates (using a simple hash)
+    std::set<uint64_t> seenEdges;
+
+    auto makeEdgeKey = [](uint32_t a, uint32_t b) -> uint64_t {
+        if (a > b) std::swap(a, b);
+        return (uint64_t(a) << 32) | uint64_t(b);
+    };
+
+    // Process each triangle
+    for (size_t i = 0; i + 2 < srcIndices.size(); i += 3) {
+        uint32_t i0 = srcIndices[i];
+        uint32_t i1 = srcIndices[i + 1];
+        uint32_t i2 = srcIndices[i + 2];
+
+        // Get the 3 vertices
+        glm::vec3 p0 = srcVerts[i0].position;
+        glm::vec3 p1 = srcVerts[i1].position;
+        glm::vec3 p2 = srcVerts[i2].position;
+
+        // Calculate face normal for the offset direction
+        glm::vec3 faceNorm = glm::normalize(glm::cross(p1 - p0, p2 - p0));
+
+        // Process the 3 edges of this triangle
+        uint32_t edgePairs[3][2] = {{i0, i1}, {i1, i2}, {i2, i0}};
+        glm::vec3 edgeVerts[3][2] = {{p0, p1}, {p1, p2}, {p2, p0}};
+
+        for (int e = 0; e < 3; e++) {
+            uint64_t edgeKey = makeEdgeKey(edgePairs[e][0], edgePairs[e][1]);
+
+            // Skip if we've already processed this edge
+            if (seenEdges.count(edgeKey)) continue;
+            seenEdges.insert(edgeKey);
+
+            glm::vec3 a = edgeVerts[e][0];
+            glm::vec3 b = edgeVerts[e][1];
+
+            // Calculate perpendicular direction for line width
+            glm::vec3 edgeDir = glm::normalize(b - a);
+            glm::vec3 perpDir = glm::normalize(glm::cross(edgeDir, faceNorm));
+
+            // Create a thin quad (2 triangles) for this edge
+            glm::vec3 offset = perpDir * lineWidth * 0.5f;
+            glm::vec3 q0 = a - offset;
+            glm::vec3 q1 = a + offset;
+            glm::vec3 q2 = b + offset;
+            glm::vec3 q3 = b - offset;
+
+            // Add as a quad (both sides visible)
+            uint32_t base = static_cast<uint32_t>(wireVerts.size());
+            wireVerts.push_back({q0, faceNorm, {0, 0}});
+            wireVerts.push_back({q1, faceNorm, {1, 0}});
+            wireVerts.push_back({q2, faceNorm, {1, 1}});
+            wireVerts.push_back({q3, faceNorm, {0, 1}});
+
+            // Front face
+            wireIndices.push_back(base + 0);
+            wireIndices.push_back(base + 1);
+            wireIndices.push_back(base + 2);
+            wireIndices.push_back(base + 0);
+            wireIndices.push_back(base + 2);
+            wireIndices.push_back(base + 3);
+
+            // Back face
+            wireIndices.push_back(base + 0);
+            wireIndices.push_back(base + 2);
+            wireIndices.push_back(base + 1);
+            wireIndices.push_back(base + 0);
+            wireIndices.push_back(base + 3);
+            wireIndices.push_back(base + 2);
+        }
+    }
+}
+
+// Convert an existing mesh to wireframe
+Mesh3D meshToWireframe(Context& ctx, const std::vector<Vertex3D>& verts,
+                       const std::vector<uint32_t>& indices, float lineWidth = 0.015f) {
+    std::vector<Vertex3D> wireVerts;
+    std::vector<uint32_t> wireIndices;
+    generateWireframe(ctx, verts, indices, wireVerts, wireIndices, lineWidth);
+    return ctx.createMesh(wireVerts, wireIndices);
+}
+
 // === FUSELAGE ===
 // Very long needle-like central body (catamaran style from reference)
 
-Mesh3D buildFuselage(Context& ctx) {
+Mesh3D buildFuselage(Context& ctx, Mesh3D* wireOut = nullptr) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
@@ -273,13 +378,14 @@ Mesh3D buildFuselage(Context& ctx) {
     addTriangleUV(verts, indices, rearTip, rear[0], rear[6],
                   {rearU, 0.5f}, {ringU[segments-1], ringV[0]}, {ringU[segments-1], ringV[6]}, {0, -1, 0});
 
+    if (wireOut) *wireOut = meshToWireframe(ctx, verts, indices);
     return ctx.createMesh(verts, indices);
 }
 
 // === SIDE POD ===
 // Aerodynamic pod with air intake scoop
 
-Mesh3D buildSidePod(Context& ctx, float side) {
+Mesh3D buildSidePod(Context& ctx, float side, Mesh3D* wireOut = nullptr) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
@@ -358,13 +464,14 @@ Mesh3D buildSidePod(Context& ctx, float side) {
                       {1.0f, 0.5f}, {ringU[segments-1], ringV[i]}, {ringU[segments-1], ringV[j]}, n);
     }
 
+    if (wireOut) *wireOut = meshToWireframe(ctx, verts, indices);
     return ctx.createMesh(verts, indices);
 }
 
 // === ENGINE NACELLE ===
 // Smooth cylindrical exhaust with internal rings for detail
 
-Mesh3D buildEngine(Context& ctx) {
+Mesh3D buildEngine(Context& ctx, Mesh3D* wireOut = nullptr) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
@@ -464,13 +571,14 @@ Mesh3D buildEngine(Context& ctx) {
         addDoubleSidedQuad(backCapOuterIdx[i], backCapOuterIdx[j], backCapInnerIdx[j], backCapInnerIdx[i]);
     }
 
+    if (wireOut) *wireOut = meshToWireframe(ctx, verts, indices);
     return ctx.createMesh(verts, indices);
 }
 
 // === VERTICAL FIN ===
 // Swept triangular fin
 
-Mesh3D buildFin(Context& ctx, float side) {
+Mesh3D buildFin(Context& ctx, float side, Mesh3D* wireOut = nullptr) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
@@ -519,13 +627,14 @@ Mesh3D buildFin(Context& ctx, float side) {
     addQuadUV(verts, indices, backBot, backBotI, tipI, tip,
               finUV(backBot), finUV(backBotI), finUV(tipI), finUV(tip), backN);
 
+    if (wireOut) *wireOut = meshToWireframe(ctx, verts, indices);
     return ctx.createMesh(verts, indices);
 }
 
 // === REAR WING ===
 // Wide spanning wing with endplates
 
-Mesh3D buildRearWing(Context& ctx) {
+Mesh3D buildRearWing(Context& ctx, Mesh3D* wireOut = nullptr) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
@@ -592,13 +701,14 @@ Mesh3D buildRearWing(Context& ctx) {
     addQuadUV(verts, indices, epLT, epLB, epRB, epRT,
               {0, 0}, {0, 1}, {1, 1}, {1, 0}, {0, 1, 0});
 
+    if (wireOut) *wireOut = meshToWireframe(ctx, verts, indices);
     return ctx.createMesh(verts, indices);
 }
 
 // === FRONT CANARD ===
 // Small angular front wing
 
-Mesh3D buildCanard(Context& ctx, float side) {
+Mesh3D buildCanard(Context& ctx, float side, Mesh3D* wireOut = nullptr) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
@@ -651,13 +761,14 @@ Mesh3D buildCanard(Context& ctx, float side) {
     addQuadUV(verts, indices, rootBack, rootBackB, rootFrontB, rootFront,
               {0, 1}, {0, 0}, {1, 0}, {1, 1}, {0, 0, -side});
 
+    if (wireOut) *wireOut = meshToWireframe(ctx, verts, indices);
     return ctx.createMesh(verts, indices);
 }
 
 // === COCKPIT ===
 // Low-profile angular canopy
 
-Mesh3D buildCockpit(Context& ctx) {
+Mesh3D buildCockpit(Context& ctx, Mesh3D* wireOut = nullptr) {
     std::vector<Vertex3D> verts;
     std::vector<uint32_t> indices;
 
@@ -705,6 +816,7 @@ Mesh3D buildCockpit(Context& ctx) {
     // Back facet
     addTriangle(verts, indices, backL, backR, backTip, faceNormal(backL, backR, backTip));
 
+    if (wireOut) *wireOut = meshToWireframe(ctx, verts, indices);
     return ctx.createMesh(verts, indices);
 }
 
@@ -762,20 +874,20 @@ void update(Chain& chain, Context& ctx) {
 
         std::cout << "[wipeout-vehicle] Building complex procedural craft...\n";
 
-        // Build all vehicle parts
-        fuselageMesh = buildFuselage(ctx);
-        cockpitMesh = buildCockpit(ctx);
-        leftPodMesh = buildSidePod(ctx, -1.0f);
-        rightPodMesh = buildSidePod(ctx, 1.0f);
-        leftEngineMesh = buildEngine(ctx);
-        rightEngineMesh = buildEngine(ctx);
-        leftFinMesh = buildFin(ctx, -1.0f);
-        rightFinMesh = buildFin(ctx, 1.0f);
-        rearWingMesh = buildRearWing(ctx);
-        leftCanardMesh = buildCanard(ctx, -1.0f);
-        rightCanardMesh = buildCanard(ctx, 1.0f);
+        // Build all vehicle parts (with wireframe versions)
+        fuselageMesh = buildFuselage(ctx, &fuselageWire);
+        cockpitMesh = buildCockpit(ctx, &cockpitWire);
+        leftPodMesh = buildSidePod(ctx, -1.0f, &leftPodWire);
+        rightPodMesh = buildSidePod(ctx, 1.0f, &rightPodWire);
+        leftEngineMesh = buildEngine(ctx, &leftEngineWire);
+        rightEngineMesh = buildEngine(ctx, &rightEngineWire);
+        leftFinMesh = buildFin(ctx, -1.0f, &leftFinWire);
+        rightFinMesh = buildFin(ctx, 1.0f, &rightFinWire);
+        rearWingMesh = buildRearWing(ctx, &rearWingWire);
+        leftCanardMesh = buildCanard(ctx, -1.0f, &leftCanardWire);
+        rightCanardMesh = buildCanard(ctx, 1.0f, &rightCanardWire);
 
-        std::cout << "[wipeout-vehicle] All meshes created\n";
+        std::cout << "[wipeout-vehicle] All meshes created (with wireframes)\n";
 
         camera.fov = 50.0f;
         camera.nearPlane = 0.1f;
@@ -844,7 +956,8 @@ void update(Chain& chain, Context& ctx) {
         std::cout << "\n=== Wipeout Anti-Gravity Racer ===\n";
         std::cout << "Drag mouse to orbit, scroll to zoom\n";
         std::cout << "Press 1-5 to change team colors\n";
-        std::cout << "Press V to toggle Vertex-Lit/PBR rendering\n\n";
+        std::cout << "Press V to toggle Vertex-Lit/PBR rendering\n";
+        std::cout << "Press W to toggle Wireframe mode\n\n";
     }
 
     // Camera control
@@ -887,6 +1000,12 @@ void update(Chain& chain, Context& ctx) {
     if (ctx.wasKeyPressed(Key::V)) {
         useVertexLit = !useVertexLit;
         std::cout << "Rendering: " << (useVertexLit ? "Vertex-Lit (PS1 style)" : "PBR") << "\n";
+    }
+
+    // Toggle wireframe/debug mode (W key)
+    if (ctx.wasKeyPressed(Key::W)) {
+        useWireframe = !useWireframe;
+        std::cout << "Wireframe: " << (useWireframe ? "ON (edge lines)" : "OFF") << "\n";
     }
 
     float t = ctx.time();
@@ -996,7 +1115,74 @@ void update(Chain& chain, Context& ctx) {
     glm::vec3 lightDir = glm::normalize(glm::vec3(0.5f, -1.0f, 0.3f));
     glm::vec3 lightColor(1.0f, 0.95f, 0.9f);  // Warm white
 
-    if (useVertexLit) {
+    if (useWireframe) {
+        // === TRUE WIREFRAME MODE ===
+        // Renders actual edge geometry (thin line strips for each triangle edge)
+
+        // Bright colors for wireframe lines (each component different color)
+        VertexLitMaterial wireFuselageMat = VertexLitMaterial::flat(glm::vec3(0.3f, 0.8f, 1.0f));   // Cyan
+        VertexLitMaterial wirePodMat = VertexLitMaterial::flat(glm::vec3(1.0f, 0.6f, 0.2f));        // Orange
+        VertexLitMaterial wireCockpitMat = VertexLitMaterial::flat(glm::vec3(0.2f, 1.0f, 0.4f));    // Green
+        VertexLitMaterial wireEngineMat = VertexLitMaterial::flat(glm::vec3(1.0f, 0.3f, 0.3f));     // Red
+        VertexLitMaterial wireFinMat = VertexLitMaterial::flat(glm::vec3(1.0f, 1.0f, 0.3f));        // Yellow
+        VertexLitMaterial wireWingMat = VertexLitMaterial::flat(glm::vec3(1.0f, 0.4f, 1.0f));       // Magenta
+        VertexLitMaterial wireCanardMat = VertexLitMaterial::flat(glm::vec3(0.4f, 1.0f, 1.0f));     // Cyan-ish
+
+        glm::vec3 wireLightDir = glm::normalize(glm::vec3(0.3f, -1.0f, 0.5f));
+        glm::vec3 wireLightColor(1.0f, 1.0f, 1.0f);
+
+        // Fuselage wireframe
+        ctx.render3DVertexLit(fuselageWire, camera, baseXform, wireFuselageMat, wireLightDir, output, clearColor, wireLightColor);
+
+        // Cockpit wireframe
+        glm::mat4 cockpitXform = baseXform;
+        cockpitXform = glm::translate(cockpitXform, glm::vec3(-1.2f, 0.25f, 0));
+        ctx.render3DVertexLit(cockpitWire, camera, cockpitXform, wireCockpitMat, wireLightDir, output, noClear, wireLightColor);
+
+        // Side pods wireframe
+        glm::mat4 leftPodXform = baseXform;
+        leftPodXform = glm::translate(leftPodXform, glm::vec3(0.8f, -0.1f, -0.8f));
+        ctx.render3DVertexLit(leftPodWire, camera, leftPodXform, wirePodMat, wireLightDir, output, noClear, wireLightColor);
+
+        glm::mat4 rightPodXform = baseXform;
+        rightPodXform = glm::translate(rightPodXform, glm::vec3(0.8f, -0.1f, 0.8f));
+        ctx.render3DVertexLit(rightPodWire, camera, rightPodXform, wirePodMat, wireLightDir, output, noClear, wireLightColor);
+
+        // Engines wireframe
+        glm::mat4 leftEngineXform = baseXform;
+        leftEngineXform = glm::translate(leftEngineXform, glm::vec3(2.6f, -0.05f, -0.9f));
+        leftEngineXform = glm::rotate(leftEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
+        ctx.render3DVertexLit(leftEngineWire, camera, leftEngineXform, wireEngineMat, wireLightDir, output, noClear, wireLightColor);
+
+        glm::mat4 rightEngineXform = baseXform;
+        rightEngineXform = glm::translate(rightEngineXform, glm::vec3(2.6f, -0.05f, 0.9f));
+        rightEngineXform = glm::rotate(rightEngineXform, glm::radians(90.0f), glm::vec3(0, 0, 1));
+        ctx.render3DVertexLit(rightEngineWire, camera, rightEngineXform, wireEngineMat, wireLightDir, output, noClear, wireLightColor);
+
+        // Fins wireframe
+        glm::mat4 leftFinXform = baseXform;
+        leftFinXform = glm::translate(leftFinXform, glm::vec3(2.2f, 0.2f, -0.95f));
+        ctx.render3DVertexLit(leftFinWire, camera, leftFinXform, wireFinMat, wireLightDir, output, noClear, wireLightColor);
+
+        glm::mat4 rightFinXform = baseXform;
+        rightFinXform = glm::translate(rightFinXform, glm::vec3(2.2f, 0.2f, 0.95f));
+        ctx.render3DVertexLit(rightFinWire, camera, rightFinXform, wireFinMat, wireLightDir, output, noClear, wireLightColor);
+
+        // Rear wing wireframe
+        glm::mat4 wingXform = baseXform;
+        wingXform = glm::translate(wingXform, glm::vec3(3.0f, 0.35f, 0));
+        ctx.render3DVertexLit(rearWingWire, camera, wingXform, wireWingMat, wireLightDir, output, noClear, wireLightColor);
+
+        // Front canards wireframe
+        glm::mat4 leftCanardXform = baseXform;
+        leftCanardXform = glm::translate(leftCanardXform, glm::vec3(-3.2f, 0.05f, -0.3f));
+        ctx.render3DVertexLit(leftCanardWire, camera, leftCanardXform, wireCanardMat, wireLightDir, output, noClear, wireLightColor);
+
+        glm::mat4 rightCanardXform = baseXform;
+        rightCanardXform = glm::translate(rightCanardXform, glm::vec3(-3.2f, 0.05f, 0.3f));
+        ctx.render3DVertexLit(rightCanardWire, camera, rightCanardXform, wireCanardMat, wireLightDir, output, noClear, wireLightColor);
+
+    } else if (useVertexLit) {
         // === VERTEX-LIT RENDERING (PS1/Retro Style) ===
         // Create vertex-lit materials with 3-step quantization
 
