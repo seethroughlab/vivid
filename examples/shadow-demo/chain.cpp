@@ -4,8 +4,13 @@
 // - Directional light shadows (sun)
 // - Shadow map rendering from light's perspective
 // - Debug shadow map visualization
+// - Light gizmo visualization (Unity-style)
 //
-// Press 'D' to toggle shadow map debug view
+// Controls:
+// - 'L' to toggle light gizmos (directional=lines, spot=cone, point=sphere)
+// - 'D' to toggle shadow map debug view
+// - 'Space' to pause/resume animation
+// - '1-4' to change shadow resolution (512/1024/2048/4096)
 
 #include <vivid/vivid.h>
 #include <iostream>
@@ -17,8 +22,6 @@ static Mesh3D groundPlane;
 static Mesh3D boxMesh;
 static Mesh3D sphereMesh;
 static Mesh3D torusMesh;
-static Mesh3D lightSphere;   // Light position indicator
-static Mesh3D arrowMesh;     // Light arrow body
 static Texture output;
 static Texture shadowDebugOutput;
 
@@ -28,6 +31,7 @@ static float shadowBias = 0.001f;
 static float pcfRadius = 1.5f;
 static bool pcfEnabled = true;
 static bool showDebug = false;
+static bool showLightGizmos = true;  // Toggle light visualization gizmos
 static bool animateLights = true;
 
 // === SETUP ===
@@ -48,12 +52,6 @@ void createGeometry(Context& ctx) {
 
     // Torus mesh
     torusMesh = ctx.createTorus(0.5f, 0.2f);
-
-    // Light indicator (small sphere)
-    lightSphere = ctx.createSphere(0.2f, 16, 8);
-
-    // Arrow body (cylinder)
-    arrowMesh = ctx.createCylinder(0.05f, 2.0f, 8);
 }
 
 // === UPDATE ===
@@ -95,6 +93,11 @@ void update(Chain& chain, Context& ctx) {
     // Animation toggle
     if (ctx.wasKeyPressed(Key::Space)) {
         animateLights = !animateLights;
+    }
+
+    // Light gizmos toggle
+    if (ctx.wasKeyPressed(Key::L)) {
+        showLightGizmos = !showLightGizmos;
     }
 
     // === TIME ===
@@ -172,13 +175,6 @@ void update(Chain& chain, Context& ctx) {
     torusMat.roughness = 0.2f;
     torusMat.metallic = 0.5f;
 
-    // Light indicator material (bright yellow, emissive)
-    PBRMaterial lightMat;
-    lightMat.albedo = glm::vec3(1.0f, 0.9f, 0.2f);
-    lightMat.roughness = 0.8f;
-    lightMat.metallic = 0.0f;
-    lightMat.emissive = glm::vec3(1.0f, 0.8f, 0.0f);  // Glowing yellow
-
     // === SCENE LIGHTING ===
     SceneLighting lighting;
     lighting.ambientColor = glm::vec3(0.15f, 0.15f, 0.2f);
@@ -255,28 +251,11 @@ void update(Chain& chain, Context& ctx) {
     // Torus
     ctx.render3DWithShadow(torusMesh, camera, torusT, torusMat, lighting, shadowMap, output, glm::vec4(0, 0, 0, -1));
 
-    // === LIGHT DIRECTION INDICATOR ===
-    // Show a sphere + cylinder pointing in the light direction
-    glm::vec3 lightDir = glm::normalize(sun.direction);
-    glm::vec3 lightIndicatorPos = glm::vec3(0.0f, 5.0f, 0.0f);  // Above the scene
-
-    // Calculate rotation to align cylinder with light direction
-    // Cylinder is vertical by default (+Y), we need to rotate it to point in lightDir
-    glm::vec3 defaultDir(0.0f, 1.0f, 0.0f);
-    glm::vec3 rotAxis = glm::cross(defaultDir, lightDir);
-    float rotAngle = std::acos(glm::clamp(glm::dot(defaultDir, lightDir), -1.0f, 1.0f));
-
-    glm::mat4 lightIndicatorT = glm::translate(glm::mat4(1.0f), lightIndicatorPos);
-    if (glm::length(rotAxis) > 0.001f) {
-        lightIndicatorT = glm::rotate(lightIndicatorT, rotAngle, glm::normalize(rotAxis));
+    // === LIGHT GIZMOS ===
+    // Unity-style visualization: directional=parallel lines, spot=cone, point=sphere
+    if (showLightGizmos) {
+        ctx.drawLightGizmos(lighting, camera, output);
     }
-
-    // Render arrow body (cylinder aligned with light direction)
-    ctx.render3D(arrowMesh, camera, lightIndicatorT, Material(lightMat), lighting, output, glm::vec4(0, 0, 0, -1));
-
-    // Render sphere at tip (end of arrow pointing towards scene)
-    glm::mat4 sphereT = glm::translate(lightIndicatorT, lightDir * 1.2f);
-    ctx.render3D(lightSphere, camera, sphereT, Material(lightMat), lighting, output, glm::vec4(0, 0, 0, -1));
 
     // === DEBUG OVERLAY ===
     if (showDebug && shadowMap.valid()) {

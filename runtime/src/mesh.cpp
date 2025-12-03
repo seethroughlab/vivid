@@ -568,5 +568,293 @@ void generateEllipticTorus(std::vector<Vertex3D>& vertices, std::vector<uint32_t
     }
 }
 
+void generateCone(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                  float radius, float height, int segments) {
+    vertices.clear();
+    indices.clear();
+
+    segments = std::max(3, segments);
+
+    const float PI = 3.14159265359f;
+
+    // Apex at origin, base at -height (pointing down -Y by default)
+    glm::vec3 apex = {0.0f, 0.0f, 0.0f};
+    float baseY = -height;
+
+    // Side vertices - for each segment, we need apex and base edge vertex
+    // Using separate vertices per face for flat shading
+    for (int i = 0; i < segments; ++i) {
+        float theta0 = 2.0f * PI * static_cast<float>(i) / segments;
+        float theta1 = 2.0f * PI * static_cast<float>(i + 1) / segments;
+
+        float cos0 = std::cos(theta0);
+        float sin0 = std::sin(theta0);
+        float cos1 = std::cos(theta1);
+        float sin1 = std::sin(theta1);
+
+        glm::vec3 base0 = {radius * cos0, baseY, radius * sin0};
+        glm::vec3 base1 = {radius * cos1, baseY, radius * sin1};
+
+        // Calculate face normal
+        glm::vec3 edge1 = base0 - apex;
+        glm::vec3 edge2 = base1 - apex;
+        glm::vec3 normal = glm::normalize(glm::cross(edge2, edge1));
+
+        uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
+
+        // Triangle: apex, base0, base1
+        vertices.push_back({apex, normal, {0.5f, 0.0f}, {1, 0, 0, 1}});
+        vertices.push_back({base0, normal, {static_cast<float>(i) / segments, 1.0f}, {1, 0, 0, 1}});
+        vertices.push_back({base1, normal, {static_cast<float>(i + 1) / segments, 1.0f}, {1, 0, 0, 1}});
+
+        indices.push_back(baseIdx);
+        indices.push_back(baseIdx + 1);
+        indices.push_back(baseIdx + 2);
+    }
+
+    // Base cap center
+    uint32_t baseCenter = static_cast<uint32_t>(vertices.size());
+    vertices.push_back({{0.0f, baseY, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.5f, 0.5f}, {1, 0, 0, 1}});
+
+    // Base cap ring
+    uint32_t baseRingStart = static_cast<uint32_t>(vertices.size());
+    for (int i = 0; i <= segments; ++i) {
+        float theta = 2.0f * PI * static_cast<float>(i) / segments;
+        float cosT = std::cos(theta);
+        float sinT = std::sin(theta);
+
+        Vertex3D vert;
+        vert.position = {radius * cosT, baseY, radius * sinT};
+        vert.normal = {0.0f, -1.0f, 0.0f};
+        vert.uv = {cosT * 0.5f + 0.5f, sinT * 0.5f + 0.5f};
+        vert.tangent = {1.0f, 0.0f, 0.0f, 1.0f};
+        vertices.push_back(vert);
+    }
+
+    // Base cap indices (reversed winding for downward normal)
+    for (int i = 0; i < segments; ++i) {
+        indices.push_back(baseCenter);
+        indices.push_back(baseRingStart + i);
+        indices.push_back(baseRingStart + i + 1);
+    }
+}
+
+void generateDirectionalLightGizmo(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                                    float lineLength, float lineSpacing, int lineCount) {
+    vertices.clear();
+    indices.clear();
+
+    // Generate a grid of parallel lines pointing in -Y direction
+    // Lines are thin quads for visibility
+    const float lineWidth = 0.02f;
+
+    int gridSize = static_cast<int>(std::sqrt(static_cast<float>(lineCount)));
+    if (gridSize < 1) gridSize = 1;
+
+    float halfExtent = (gridSize - 1) * lineSpacing * 0.5f;
+
+    for (int x = 0; x < gridSize; ++x) {
+        for (int z = 0; z < gridSize; ++z) {
+            float px = -halfExtent + x * lineSpacing;
+            float pz = -halfExtent + z * lineSpacing;
+
+            // Line starts at (px, 0, pz) and goes to (px, -lineLength, pz)
+            // Create as thin quad facing outward
+            uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
+
+            // Quad in XY plane (line thickness in X)
+            glm::vec3 p0 = {px - lineWidth, 0.0f, pz};
+            glm::vec3 p1 = {px + lineWidth, 0.0f, pz};
+            glm::vec3 p2 = {px + lineWidth, -lineLength, pz};
+            glm::vec3 p3 = {px - lineWidth, -lineLength, pz};
+            glm::vec3 normal = {0.0f, 0.0f, 1.0f};
+
+            vertices.push_back({p0, normal, {0, 0}, {1, 0, 0, 1}});
+            vertices.push_back({p1, normal, {1, 0}, {1, 0, 0, 1}});
+            vertices.push_back({p2, normal, {1, 1}, {1, 0, 0, 1}});
+            vertices.push_back({p3, normal, {0, 1}, {1, 0, 0, 1}});
+
+            indices.push_back(baseIdx);
+            indices.push_back(baseIdx + 1);
+            indices.push_back(baseIdx + 2);
+            indices.push_back(baseIdx);
+            indices.push_back(baseIdx + 2);
+            indices.push_back(baseIdx + 3);
+
+            // Add arrowhead at end of each line
+            float arrowSize = lineWidth * 3.0f;
+            uint32_t arrowIdx = static_cast<uint32_t>(vertices.size());
+
+            // Triangle pointing down
+            glm::vec3 a0 = {px, -lineLength, pz};  // tip
+            glm::vec3 a1 = {px - arrowSize, -lineLength + arrowSize * 2, pz};
+            glm::vec3 a2 = {px + arrowSize, -lineLength + arrowSize * 2, pz};
+
+            vertices.push_back({a0, normal, {0.5f, 1}, {1, 0, 0, 1}});
+            vertices.push_back({a1, normal, {0, 0}, {1, 0, 0, 1}});
+            vertices.push_back({a2, normal, {1, 0}, {1, 0, 0, 1}});
+
+            indices.push_back(arrowIdx);
+            indices.push_back(arrowIdx + 2);
+            indices.push_back(arrowIdx + 1);
+        }
+    }
+}
+
+void generateSpotLightGizmo(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                            float length, float angle, int segments) {
+    vertices.clear();
+    indices.clear();
+
+    segments = std::max(4, segments);
+
+    const float PI = 3.14159265359f;
+
+    // Cone apex at origin, opening toward -Y
+    // angle is half-angle in radians
+    float radius = length * std::tan(angle);
+
+    // Generate wireframe cone - just the edges, not filled faces
+    // For wireframe rendering, we still need triangles, but thin ones
+
+    const float lineWidth = 0.015f;
+
+    // Lines from apex to base circle
+    for (int i = 0; i < segments; ++i) {
+        float theta = 2.0f * PI * static_cast<float>(i) / segments;
+        float cosT = std::cos(theta);
+        float sinT = std::sin(theta);
+
+        glm::vec3 basePoint = {radius * cosT, -length, radius * sinT};
+        glm::vec3 apex = {0.0f, 0.0f, 0.0f};
+
+        // Create thin quad from apex to base point
+        glm::vec3 dir = glm::normalize(basePoint - apex);
+        glm::vec3 right = glm::normalize(glm::cross(dir, glm::vec3(0, 0, 1)));
+        if (glm::length(right) < 0.001f) {
+            right = glm::normalize(glm::cross(dir, glm::vec3(1, 0, 0)));
+        }
+
+        uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
+
+        glm::vec3 p0 = apex - right * lineWidth;
+        glm::vec3 p1 = apex + right * lineWidth;
+        glm::vec3 p2 = basePoint + right * lineWidth;
+        glm::vec3 p3 = basePoint - right * lineWidth;
+        glm::vec3 normal = glm::normalize(glm::cross(p1 - p0, p3 - p0));
+
+        vertices.push_back({p0, normal, {0, 0}, {1, 0, 0, 1}});
+        vertices.push_back({p1, normal, {1, 0}, {1, 0, 0, 1}});
+        vertices.push_back({p2, normal, {1, 1}, {1, 0, 0, 1}});
+        vertices.push_back({p3, normal, {0, 1}, {1, 0, 0, 1}});
+
+        indices.push_back(baseIdx);
+        indices.push_back(baseIdx + 1);
+        indices.push_back(baseIdx + 2);
+        indices.push_back(baseIdx);
+        indices.push_back(baseIdx + 2);
+        indices.push_back(baseIdx + 3);
+    }
+
+    // Base circle
+    for (int i = 0; i < segments; ++i) {
+        float theta0 = 2.0f * PI * static_cast<float>(i) / segments;
+        float theta1 = 2.0f * PI * static_cast<float>(i + 1) / segments;
+
+        float cos0 = std::cos(theta0);
+        float sin0 = std::sin(theta0);
+        float cos1 = std::cos(theta1);
+        float sin1 = std::sin(theta1);
+
+        glm::vec3 p0 = {radius * cos0, -length, radius * sin0};
+        glm::vec3 p1 = {radius * cos1, -length, radius * sin1};
+
+        // Create thin quad for circle segment
+        glm::vec3 up = {0.0f, 1.0f, 0.0f};
+        glm::vec3 dir = glm::normalize(p1 - p0);
+        glm::vec3 out = glm::normalize(glm::cross(dir, up));
+
+        uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
+
+        glm::vec3 q0 = p0 - out * lineWidth;
+        glm::vec3 q1 = p0 + out * lineWidth;
+        glm::vec3 q2 = p1 + out * lineWidth;
+        glm::vec3 q3 = p1 - out * lineWidth;
+
+        vertices.push_back({q0, up, {0, 0}, {1, 0, 0, 1}});
+        vertices.push_back({q1, up, {1, 0}, {1, 0, 0, 1}});
+        vertices.push_back({q2, up, {1, 1}, {1, 0, 0, 1}});
+        vertices.push_back({q3, up, {0, 1}, {1, 0, 0, 1}});
+
+        indices.push_back(baseIdx);
+        indices.push_back(baseIdx + 1);
+        indices.push_back(baseIdx + 2);
+        indices.push_back(baseIdx);
+        indices.push_back(baseIdx + 2);
+        indices.push_back(baseIdx + 3);
+    }
+}
+
+void generatePointLightGizmo(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                              float radius, int segments) {
+    // Generate 3 wireframe circles (XY, XZ, YZ planes) for point light
+    vertices.clear();
+    indices.clear();
+
+    segments = std::max(8, segments);
+
+    const float PI = 3.14159265359f;
+    const float lineWidth = 0.015f;
+
+    auto addCircle = [&](int axis1, int axis2, int normalAxis) {
+        for (int i = 0; i < segments; ++i) {
+            float theta0 = 2.0f * PI * static_cast<float>(i) / segments;
+            float theta1 = 2.0f * PI * static_cast<float>(i + 1) / segments;
+
+            glm::vec3 p0 = glm::vec3(0.0f);
+            glm::vec3 p1 = glm::vec3(0.0f);
+
+            p0[axis1] = radius * std::cos(theta0);
+            p0[axis2] = radius * std::sin(theta0);
+            p1[axis1] = radius * std::cos(theta1);
+            p1[axis2] = radius * std::sin(theta1);
+
+            // Normal perpendicular to circle plane
+            glm::vec3 normal = glm::vec3(0.0f);
+            normal[normalAxis] = 1.0f;
+
+            // Direction along circle
+            glm::vec3 dir = glm::normalize(p1 - p0);
+            glm::vec3 out = glm::normalize(glm::cross(dir, normal));
+
+            uint32_t baseIdx = static_cast<uint32_t>(vertices.size());
+
+            glm::vec3 q0 = p0 - out * lineWidth;
+            glm::vec3 q1 = p0 + out * lineWidth;
+            glm::vec3 q2 = p1 + out * lineWidth;
+            glm::vec3 q3 = p1 - out * lineWidth;
+
+            vertices.push_back({q0, normal, {0, 0}, {1, 0, 0, 1}});
+            vertices.push_back({q1, normal, {1, 0}, {1, 0, 0, 1}});
+            vertices.push_back({q2, normal, {1, 1}, {1, 0, 0, 1}});
+            vertices.push_back({q3, normal, {0, 1}, {1, 0, 0, 1}});
+
+            indices.push_back(baseIdx);
+            indices.push_back(baseIdx + 1);
+            indices.push_back(baseIdx + 2);
+            indices.push_back(baseIdx);
+            indices.push_back(baseIdx + 2);
+            indices.push_back(baseIdx + 3);
+        }
+    };
+
+    // XY plane circle (around Z axis)
+    addCircle(0, 1, 2);
+    // XZ plane circle (around Y axis)
+    addCircle(0, 2, 1);
+    // YZ plane circle (around X axis)
+    addCircle(1, 2, 0);
+}
+
 } // namespace primitives
 } // namespace vivid

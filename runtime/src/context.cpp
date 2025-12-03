@@ -1546,4 +1546,126 @@ glm::vec2 Context::measureText(FontAtlas& font, const std::string& text) {
     return font.measureText(text);
 }
 
+// ============================================================================
+// Light Gizmos (Editor Visualization)
+// ============================================================================
+
+void Context::ensureLightGizmoMeshes() {
+    if (!directionalLightGizmoMesh_) {
+        directionalLightGizmoMesh_ = std::make_unique<Mesh>();
+        std::vector<Vertex3D> vertices;
+        std::vector<uint32_t> indices;
+        primitives::generateDirectionalLightGizmo(vertices, indices, 1.5f, 0.4f, 9);
+        directionalLightGizmoMesh_->create(renderer_, vertices, indices);
+    }
+
+    if (!spotLightGizmoMesh_) {
+        spotLightGizmoMesh_ = std::make_unique<Mesh>();
+        std::vector<Vertex3D> vertices;
+        std::vector<uint32_t> indices;
+        primitives::generateSpotLightGizmo(vertices, indices, 2.0f, 0.5f, 16);
+        spotLightGizmoMesh_->create(renderer_, vertices, indices);
+    }
+
+    if (!pointLightGizmoMesh_) {
+        pointLightGizmoMesh_ = std::make_unique<Mesh>();
+        std::vector<Vertex3D> vertices;
+        std::vector<uint32_t> indices;
+        primitives::generatePointLightGizmo(vertices, indices, 0.5f, 24);
+        pointLightGizmoMesh_->create(renderer_, vertices, indices);
+    }
+}
+
+void Context::drawLightGizmo(const Light& light, const Camera3D& camera, Texture& output,
+                              const glm::vec3& color, float scale) {
+    ensureLightGizmoMeshes();
+
+    // Create unlit material with the gizmo color
+    UnlitMaterial material;
+    material.color = color;
+    material.opacity = 1.0f;
+
+    // Calculate transform based on light type
+    glm::mat4 transform = glm::mat4(1.0f);
+
+    Mesh3D meshHandle;
+
+    switch (light.type) {
+        case LightType::Directional: {
+            // For directional light, place the gizmo at a fixed position and rotate to point in light direction
+            // Default gizmo points in -Y, we need to rotate to match light.direction
+            glm::vec3 lightDir = glm::normalize(light.direction);
+            glm::vec3 defaultDir(0.0f, -1.0f, 0.0f);
+
+            // Position the gizmo above the scene
+            transform = glm::translate(transform, glm::vec3(0.0f, 5.0f, 0.0f));
+
+            // Rotate to align with light direction
+            if (glm::length(glm::cross(defaultDir, lightDir)) > 0.001f) {
+                glm::vec3 rotAxis = glm::normalize(glm::cross(defaultDir, lightDir));
+                float rotAngle = std::acos(glm::clamp(glm::dot(defaultDir, lightDir), -1.0f, 1.0f));
+                transform = glm::rotate(transform, rotAngle, rotAxis);
+            } else if (glm::dot(defaultDir, lightDir) < 0) {
+                // 180 degree rotation
+                transform = glm::rotate(transform, glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+            }
+
+            transform = glm::scale(transform, glm::vec3(scale));
+
+            meshHandle.handle = directionalLightGizmoMesh_.get();
+            meshHandle.vertexCount = directionalLightGizmoMesh_->vertexCount();
+            meshHandle.indexCount = directionalLightGizmoMesh_->indexCount();
+            break;
+        }
+
+        case LightType::Spot: {
+            // Position at light position, rotate to point in light direction
+            transform = glm::translate(transform, light.position);
+
+            glm::vec3 lightDir = glm::normalize(light.direction);
+            glm::vec3 defaultDir(0.0f, -1.0f, 0.0f);
+
+            if (glm::length(glm::cross(defaultDir, lightDir)) > 0.001f) {
+                glm::vec3 rotAxis = glm::normalize(glm::cross(defaultDir, lightDir));
+                float rotAngle = std::acos(glm::clamp(glm::dot(defaultDir, lightDir), -1.0f, 1.0f));
+                transform = glm::rotate(transform, rotAngle, rotAxis);
+            } else if (glm::dot(defaultDir, lightDir) < 0) {
+                transform = glm::rotate(transform, glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
+            }
+
+            // Scale based on outer angle
+            float coneScale = scale * (light.outerAngle / 0.5f);  // Normalize to default angle
+            transform = glm::scale(transform, glm::vec3(coneScale, scale * 2.0f, coneScale));
+
+            meshHandle.handle = spotLightGizmoMesh_.get();
+            meshHandle.vertexCount = spotLightGizmoMesh_->vertexCount();
+            meshHandle.indexCount = spotLightGizmoMesh_->indexCount();
+            break;
+        }
+
+        case LightType::Point: {
+            // Position at light position, scale by radius
+            transform = glm::translate(transform, light.position);
+            float radiusScale = scale * light.radius * 0.2f;  // Scale proportional to radius
+            transform = glm::scale(transform, glm::vec3(radiusScale));
+
+            meshHandle.handle = pointLightGizmoMesh_.get();
+            meshHandle.vertexCount = pointLightGizmoMesh_->vertexCount();
+            meshHandle.indexCount = pointLightGizmoMesh_->indexCount();
+            break;
+        }
+    }
+
+    // Render with unlit pipeline (no lighting calculations, just color)
+    // Use negative alpha in clearColor to prevent clearing (additive rendering)
+    getUnlitPipeline().render(meshHandle, camera, transform, material, output, glm::vec4(0, 0, 0, -1));
+}
+
+void Context::drawLightGizmos(const SceneLighting& lighting, const Camera3D& camera, Texture& output,
+                               const glm::vec3& color, float scale) {
+    for (const auto& light : lighting.lights) {
+        drawLightGizmo(light, camera, output, color, scale);
+    }
+}
+
 } // namespace vivid

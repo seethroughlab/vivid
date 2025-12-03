@@ -155,6 +155,19 @@ void generateEllipticTorus(std::vector<Vertex3D>& vertices, std::vector<uint32_t
                            float minorRadius = 0.15f,
                            int majorSegments = 32, int minorSegments = 16);
 
+void generateCone(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                  float radius = 0.5f, float height = 1.0f, int segments = 32);
+
+// Light gizmo generators - for editor-style light visualization
+void generateDirectionalLightGizmo(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                                    float lineLength = 1.0f, float lineSpacing = 0.3f, int lineCount = 9);
+
+void generateSpotLightGizmo(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                            float length = 1.0f, float angle = 0.5f, int segments = 16);
+
+void generatePointLightGizmo(std::vector<Vertex3D>& vertices, std::vector<uint32_t>& indices,
+                              float radius = 0.5f, int segments = 24);
+
 } // namespace primitives
 
 // ============================================================================

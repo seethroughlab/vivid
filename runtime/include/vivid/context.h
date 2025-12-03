@@ -27,6 +27,7 @@ class FontAtlas;
 class TextRenderer;
 class ShadowManager;
 class DepthVisualizer;
+class Mesh;
 
 /**
  * @brief Runtime context providing access to time, textures, shaders, and operator communication.
@@ -927,6 +928,42 @@ public:
 
     /// @}
 
+    /// @name Light Gizmos (Editor Visualization)
+    /// @{
+
+    /**
+     * @brief Draw a visualization gizmo for a single light.
+     *
+     * Renders Unity-style editor gizmos for lights:
+     * - Directional: Parallel lines/arrows pointing in light direction
+     * - Spot: Wireframe cone showing light cone angle
+     * - Point: Wireframe sphere showing light radius
+     *
+     * @param light The light to visualize.
+     * @param camera Camera for 3D rendering.
+     * @param output Target texture (renders additively, doesn't clear).
+     * @param color Gizmo color (default yellow).
+     * @param scale Scale factor for gizmo size (default 1.0).
+     */
+    void drawLightGizmo(const Light& light, const Camera3D& camera, Texture& output,
+                        const glm::vec3& color = {1.0f, 0.9f, 0.2f}, float scale = 1.0f);
+
+    /**
+     * @brief Draw visualization gizmos for all lights in a scene.
+     *
+     * Convenience method to visualize all lights in a SceneLighting setup.
+     *
+     * @param lighting Scene lighting containing lights to visualize.
+     * @param camera Camera for 3D rendering.
+     * @param output Target texture (renders additively, doesn't clear).
+     * @param color Gizmo color (default yellow).
+     * @param scale Scale factor for gizmo size (default 1.0).
+     */
+    void drawLightGizmos(const SceneLighting& lighting, const Camera3D& camera, Texture& output,
+                         const glm::vec3& color = {1.0f, 0.9f, 0.2f}, float scale = 1.0f);
+
+    /// @}
+
     /// @name Skeletal Animation
     /// @{
 
@@ -1178,6 +1215,12 @@ private:
     DepthVisualizer& getDepthVisualizer();
     glm::mat4 lastLightMatrix_{1.0f};      // Cached light matrix from renderShadowMap
     int lastShadowResolution_ = 0;          // Resolution of last rendered shadow map
+
+    // Light gizmo meshes (lazy initialized)
+    std::unique_ptr<Mesh> directionalLightGizmoMesh_;
+    std::unique_ptr<Mesh> spotLightGizmoMesh_;
+    std::unique_ptr<Mesh> pointLightGizmoMesh_;
+    void ensureLightGizmoMeshes();
 
     // Text rendering (lazy initialized)
     std::unique_ptr<TextRenderer> textRenderer_;
