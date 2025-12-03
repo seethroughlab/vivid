@@ -188,14 +188,12 @@ void update(Chain& chain, Context& ctx) {
     lighting.addLight(flashlight);
     lighting.addLight(lamp);
 
-    // === BUILD MESH AND TRANSFORM LISTS ===
+    // === BUILD MESH AND TRANSFORM LISTS (for shadow casters) ===
     std::vector<Mesh3D> meshes;
     std::vector<glm::mat4> transforms;
 
-    // Ground plane (already horizontal - createPlane makes XZ plane with +Y normal)
+    // Ground plane transform (NOT added to shadow casters - it only receives shadows)
     glm::mat4 groundTransform = glm::mat4(1.0f);
-    meshes.push_back(groundPlane);
-    transforms.push_back(groundTransform);
 
     // Boxes at different positions
     glm::mat4 box1 = glm::translate(glm::mat4(1.0f), glm::vec3(-1.5f, 0.5f, 0.0f));

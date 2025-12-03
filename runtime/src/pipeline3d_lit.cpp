@@ -547,11 +547,11 @@ fn calculateShadow(shadowCoord: vec4f, normal: vec3f, lightDir: vec3f) -> f32 {
         return 1.0;  // No shadow outside bounds
     }
 
-    // Current depth from light's perspective
+    // Current depth from light's perspective (already in [0,1] from orthoZO projection)
     let currentDepth = projCoords.z;
 
-    // Check if behind light's far plane
-    if (currentDepth > 1.0) {
+    // Check if outside valid depth range
+    if (currentDepth < 0.0 || currentDepth > 1.0) {
         return 1.0;
     }
 
@@ -1488,7 +1488,8 @@ bool Pipeline3DLit::createPipeline(const std::string& shaderSource) {
         shadowSamplerDesc.magFilter = WGPUFilterMode_Linear;
         shadowSamplerDesc.minFilter = WGPUFilterMode_Linear;
         shadowSamplerDesc.mipmapFilter = WGPUMipmapFilterMode_Nearest;
-        shadowSamplerDesc.compare = WGPUCompareFunction_Less;
+        // LessEqual: returns 1.0 (lit) when shadow_depth <= fragment_depth (fragment at or in front of shadow caster)
+        shadowSamplerDesc.compare = WGPUCompareFunction_LessEqual;
         shadowSamplerDesc.lodMinClamp = 0.0f;
         shadowSamplerDesc.lodMaxClamp = 1.0f;
         shadowSamplerDesc.maxAnisotropy = 1;

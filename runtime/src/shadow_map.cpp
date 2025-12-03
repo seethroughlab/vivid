@@ -154,8 +154,9 @@ glm::mat4 ShadowMap::calcDirectionalLightMatrix(
     glm::mat4 view = glm::lookAt(lightPos, sceneCenter, up);
 
     // Orthographic projection to cover the scene
+    // Use orthoZO for [0,1] depth range (WebGPU/Vulkan convention)
     float size = sceneRadius * 1.5f;
-    glm::mat4 proj = glm::ortho(-size, size, -size, size, 0.1f, sceneRadius * 4.0f);
+    glm::mat4 proj = glm::orthoZO(-size, size, -size, size, 0.1f, sceneRadius * 4.0f);
 
     return proj * view;
 }
