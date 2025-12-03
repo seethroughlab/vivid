@@ -4,10 +4,15 @@
 #include <vector>
 #include <cstdint>
 
+#ifdef VIVID_USE_DILIGENT
+#include "diligent_pbr.h"
+#endif
+
 namespace vivid {
 
 // Forward declarations
 class Renderer;
+class DiligentPBR;
 
 /**
  * @brief 3D mesh with vertex and index buffers.
@@ -67,12 +72,36 @@ public:
      */
     static WGPUVertexBufferLayout getVertexLayout();
 
+#ifdef VIVID_USE_DILIGENT
+    /**
+     * @brief Create Diligent mesh buffers from the same vertex/index data.
+     * Call this after create() to enable Diligent rendering.
+     */
+    bool createDiligentMesh(DiligentPBR& pbr,
+                            const std::vector<Vertex3D>& vertices,
+                            const std::vector<uint32_t>& indices);
+
+    /**
+     * @brief Check if Diligent mesh data is available.
+     */
+    bool hasDiligentMesh() const { return diligentMesh_.vertexBuffer != nullptr; }
+
+    /**
+     * @brief Get Diligent mesh data for rendering.
+     */
+    const DiligentMeshData& diligentMesh() const { return diligentMesh_; }
+#endif
+
 private:
     WGPUBuffer vertexBuffer_ = nullptr;
     WGPUBuffer indexBuffer_ = nullptr;
     uint32_t vertexCount_ = 0;
     uint32_t indexCount_ = 0;
     BoundingBox bounds_;
+
+#ifdef VIVID_USE_DILIGENT
+    DiligentMeshData diligentMesh_;
+#endif
 };
 
 // Primitive generators are declared in graphics3d.h and implemented in mesh.cpp

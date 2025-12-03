@@ -52,3 +52,56 @@ WGPUSurface createSurfaceForWindow(WGPUInstance instance, GLFWwindow* window) {
 }
 
 } // namespace vivid
+
+// Diligent backend support - get Metal layer for Vulkan/Metal initialization
+extern "C" void* getMetalLayerFromGLFW(GLFWwindow* window) {
+    if (!window) {
+        return nullptr;
+    }
+
+    // Get the Cocoa window from GLFW
+    NSWindow* nsWindow = glfwGetCocoaWindow(window);
+    if (!nsWindow) {
+        return nullptr;
+    }
+
+    // Get or create Metal layer
+    NSView* view = [nsWindow contentView];
+    [view setWantsLayer:YES];
+
+    CALayer* layer = [view layer];
+    if (![layer isKindOfClass:[CAMetalLayer class]]) {
+        CAMetalLayer* metalLayer = [CAMetalLayer layer];
+        [view setLayer:metalLayer];
+        layer = metalLayer;
+    }
+
+    return (__bridge void*)layer;
+}
+
+// Diligent backend support - get NSView for Diligent's MacOSNativeWindow.pNSView
+// Diligent will internally get the CAMetalLayer from the view
+extern "C" void* getNSViewFromGLFW(GLFWwindow* window) {
+    if (!window) {
+        return nullptr;
+    }
+
+    // Get the Cocoa window from GLFW
+    NSWindow* nsWindow = glfwGetCocoaWindow(window);
+    if (!nsWindow) {
+        return nullptr;
+    }
+
+    // Get content view and ensure it uses layer backing with Metal layer
+    NSView* view = [nsWindow contentView];
+    [view setWantsLayer:YES];
+
+    // Ensure it's a CAMetalLayer
+    CALayer* layer = [view layer];
+    if (![layer isKindOfClass:[CAMetalLayer class]]) {
+        CAMetalLayer* metalLayer = [CAMetalLayer layer];
+        [view setLayer:metalLayer];
+    }
+
+    return (__bridge void*)view;
+}

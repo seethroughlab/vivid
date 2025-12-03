@@ -51,11 +51,18 @@ Mesh::Mesh(Mesh&& other) noexcept
     , indexBuffer_(other.indexBuffer_)
     , vertexCount_(other.vertexCount_)
     , indexCount_(other.indexCount_)
-    , bounds_(other.bounds_) {
+    , bounds_(other.bounds_)
+#ifdef VIVID_USE_DILIGENT
+    , diligentMesh_(other.diligentMesh_)
+#endif
+{
     other.vertexBuffer_ = nullptr;
     other.indexBuffer_ = nullptr;
     other.vertexCount_ = 0;
     other.indexCount_ = 0;
+#ifdef VIVID_USE_DILIGENT
+    other.diligentMesh_ = DiligentMeshData{};
+#endif
 }
 
 Mesh& Mesh::operator=(Mesh&& other) noexcept {
@@ -66,10 +73,16 @@ Mesh& Mesh::operator=(Mesh&& other) noexcept {
         vertexCount_ = other.vertexCount_;
         indexCount_ = other.indexCount_;
         bounds_ = other.bounds_;
+#ifdef VIVID_USE_DILIGENT
+        diligentMesh_ = other.diligentMesh_;
+#endif
         other.vertexBuffer_ = nullptr;
         other.indexBuffer_ = nullptr;
         other.vertexCount_ = 0;
         other.indexCount_ = 0;
+#ifdef VIVID_USE_DILIGENT
+        other.diligentMesh_ = DiligentMeshData{};
+#endif
     }
     return *this;
 }
@@ -146,7 +159,23 @@ void Mesh::destroy() {
     vertexCount_ = 0;
     indexCount_ = 0;
     bounds_ = BoundingBox{};
+#ifdef VIVID_USE_DILIGENT
+    // Note: DiligentMeshData buffers are owned by DiligentPBR
+    diligentMesh_ = DiligentMeshData{};
+#endif
 }
+
+#ifdef VIVID_USE_DILIGENT
+bool Mesh::createDiligentMesh(DiligentPBR& pbr,
+                               const std::vector<Vertex3D>& vertices,
+                               const std::vector<uint32_t>& indices) {
+    if (vertices.empty() || indices.empty()) {
+        return false;
+    }
+    diligentMesh_ = pbr.createMesh(vertices, indices);
+    return diligentMesh_.vertexBuffer != nullptr;
+}
+#endif
 
 void Mesh::draw(WGPURenderPassEncoder encoder, uint32_t instanceCount) const {
     if (!valid()) return;

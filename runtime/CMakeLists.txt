@@ -7,6 +7,7 @@ if(PKG_CONFIG_FOUND)
     pkg_check_modules(FFMPEG libavformat libavcodec libavutil libswscale)
 endif()
 
+# Vivid runtime sources - uses Diligent Engine for rendering
 set(RUNTIME_SOURCES
     src/main.cpp
     src/window.cpp
@@ -42,6 +43,10 @@ set(RUNTIME_SOURCES
     src/cubemap.cpp
     src/font_atlas.cpp
     src/text_renderer.cpp
+    # Diligent Engine backend (always included)
+    src/diligent_backend.cpp
+    src/diligent_renderer.cpp
+    src/diligent_pbr.cpp
 )
 
 # Add HAP decoder if FFmpeg is available
@@ -79,7 +84,18 @@ else()
     )
 endif()
 
+# Diligent Engine is always enabled
+message(STATUS "Diligent Engine backend enabled (Vulkan via MoltenVK)")
+
 add_executable(vivid ${RUNTIME_SOURCES})
+
+# Diligent compile definitions and linking (always enabled)
+target_compile_definitions(vivid PRIVATE VIVID_USE_DILIGENT=1)
+target_link_libraries(vivid PRIVATE
+    Diligent-GraphicsEngineVk-static
+    Diligent-GraphicsTools
+    DiligentFX
+)
 
 target_include_directories(vivid
     PUBLIC include
@@ -184,3 +200,6 @@ add_custom_command(TARGET vivid POST_BUILD
     ${CMAKE_SOURCE_DIR}/fonts
     ${CMAKE_BINARY_DIR}/fonts
 )
+
+# Note: vivid-diligent target has been merged into main vivid target
+# The main vivid executable now uses Diligent Engine by default

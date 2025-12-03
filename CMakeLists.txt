@@ -84,6 +84,34 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(glfw glm ixwebsocket nlohmann_json efsw stb snappy miniaudio)
 
+# === DILIGENT ENGINE ===
+# High-level rendering abstraction with built-in PBR, shadows, post-processing
+# Primary rendering backend using Vulkan (cross-platform via MoltenVK on macOS)
+message(STATUS "Building with Diligent Engine (Vulkan backend)...")
+
+# Diligent build options - disable components we don't need
+set(DILIGENT_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+set(DILIGENT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(DILIGENT_BUILD_DEMOS OFF CACHE BOOL "" FORCE)
+set(DILIGENT_BUILD_TOOLS ON CACHE BOOL "" FORCE)  # Needed for asset loading, ImGui
+set(DILIGENT_BUILD_FX ON CACHE BOOL "" FORCE)     # Needed for PBR, shadows, post-fx
+
+# Backend configuration
+# - Vulkan: Primary backend (works on Windows, Linux, macOS via MoltenVK)
+# - OpenGL: Disabled (deprecated on macOS)
+# - D3D11/D3D12: Disabled for now (Windows-only)
+# - Metal: Requires DiligentCorePro (proprietary)
+# - WebGPU: Disabled (we use Vulkan directly)
+set(DILIGENT_NO_OPENGL ON CACHE BOOL "" FORCE)
+set(DILIGENT_NO_DIRECT3D11 ON CACHE BOOL "" FORCE)
+set(DILIGENT_NO_DIRECT3D12 ON CACHE BOOL "" FORCE)
+set(DILIGENT_NO_METAL ON CACHE BOOL "" FORCE)
+set(DILIGENT_NO_WEBGPU ON CACHE BOOL "" FORCE)
+# Vulkan will be enabled automatically when DILIGENT_NO_VULKAN is not set
+
+# Add Diligent Engine
+add_subdirectory(external/DiligentEngine)
+
 # WebGPU via wgpu-native
 # Note: wgpu-native releases provide prebuilt binaries
 set(WGPU_VERSION "v24.0.0.2")
@@ -151,6 +179,10 @@ endif()
 add_subdirectory(runtime)
 # Operators will be added in Phase 7
 # add_subdirectory(operators)
+
+# Diligent examples
+add_subdirectory(examples/diligent-test)
+add_subdirectory(examples/diligent-chain-test)
 
 # Build addons as static libraries
 option(VIVID_BUILD_ADDONS "Build addon libraries" ON)
