@@ -22,6 +22,16 @@ Vivid combines the inspect-anywhere philosophy of TouchDesigner, the extensibili
 
 ## Core Principles
 
+### Don't Reinvent the Wheel
+
+Before building something from scratch, research existing solutions. If a well-maintained library, engine feature, or standard approach exists, use it. Custom code should only be written when:
+
+- No suitable solution exists
+- Existing solutions don't fit our architecture
+- The integration cost exceeds the implementation cost
+
+This applies to everything: rendering techniques, UI components, algorithms, file formats. Diligent Engine's DiligentFX already provides PBR, shadows, and post-processing—use it rather than reimplementing. When a new feature seems complex, first ask: "Who has solved this before?"
+
 ### Text Is the Source of Truth
 
 Your project is C++ files, shader files, and a simple YAML config. No binary formats, no proprietary containers. Everything diffs cleanly, merges sanely, and fits in a Git repository.

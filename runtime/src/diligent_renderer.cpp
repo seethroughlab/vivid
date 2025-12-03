@@ -1,322 +1,308 @@
-#include "diligent_renderer.h"
+#include "vivid/diligent_renderer.h"
 
-#ifdef VIVID_USE_DILIGENT
-
-#include "MapHelper.hpp"
-#include "GraphicsUtilities.h"
+// GLFW
+#define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
-#include <iostream>
 
-#if PLATFORM_MACOS
-extern "C" void* getNSViewFromGLFW(GLFWwindow* window);
+#if defined(__APPLE__)
+    #define GLFW_EXPOSE_NATIVE_COCOA
+#elif defined(_WIN32)
+    #define GLFW_EXPOSE_NATIVE_WIN32
+#else
+    #define GLFW_EXPOSE_NATIVE_X11
+#endif
+#include <GLFW/glfw3native.h>
+
+// Diligent Engine
+#include "EngineFactoryVk.h"
+#include "RenderDevice.h"
+#include "DeviceContext.h"
+#include "SwapChain.h"
+#include "RefCntAutoPtr.hpp"
+
+#include <iostream>
+#include <stdexcept>
+
+#if defined(__APPLE__)
+// Helper function defined in macos_helpers.mm
+extern "C" void* getContentViewFromWindow(void* nsWindow);
 #endif
 
 namespace vivid {
 
-DiligentRenderer::DiligentRenderer() = default;
+using namespace Diligent;
+
+// Internal state holding Diligent objects
+struct DiligentRenderer::DiligentState {
+    RefCntAutoPtr<IRenderDevice> device;
+    RefCntAutoPtr<IDeviceContext> context;
+    RefCntAutoPtr<ISwapChain> swapChain;
+    RefCntAutoPtr<IEngineFactoryVk> engineFactory;
+};
+
+DiligentRenderer::DiligentRenderer()
+    : m_state(std::make_unique<DiligentState>()) {
+}
 
 DiligentRenderer::~DiligentRenderer() {
     shutdown();
 }
 
-bool DiligentRenderer::init(GLFWwindow* window, int width, int height) {
-    width_ = width;
-    height_ = height;
+bool DiligentRenderer::initialize(const RendererConfig& config) {
+    if (!initGLFW(config)) {
+        return false;
+    }
 
-#if PLATFORM_MACOS
-    // On macOS, Diligent expects an NSView pointer (it gets the CAMetalLayer internally)
-    void* nsView = getNSViewFromGLFW(window);
-    if (!nsView) {
-        std::cerr << "DiligentRenderer: Failed to get NSView from GLFW" << std::endl;
+    if (!initDiligent()) {
+        glfwDestroyWindow(m_window);
+        glfwTerminate();
         return false;
     }
-    if (!backend_.init(nsView, width, height)) {
-        std::cerr << "DiligentRenderer: Failed to initialize Diligent backend" << std::endl;
+
+    m_lastFrameTime = glfwGetTime();
+    return true;
+}
+
+bool DiligentRenderer::initGLFW(const RendererConfig& config) {
+    if (!glfwInit()) {
+        std::cerr << "Failed to initialize GLFW" << std::endl;
         return false;
     }
-#elif PLATFORM_WIN32
-    HWND hwnd = glfwGetWin32Window(window);
-    if (!backend_.init(hwnd, width, height)) {
-        std::cerr << "DiligentRenderer: Failed to initialize Diligent backend" << std::endl;
+
+    // No OpenGL context needed - we're using Vulkan
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+    glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
+
+    // Create window
+    GLFWmonitor* monitor = config.fullscreen ? glfwGetPrimaryMonitor() : nullptr;
+    m_window = glfwCreateWindow(
+        config.windowWidth,
+        config.windowHeight,
+        config.windowTitle.c_str(),
+        monitor,
+        nullptr
+    );
+
+    if (!m_window) {
+        std::cerr << "Failed to create GLFW window" << std::endl;
+        glfwTerminate();
         return false;
     }
-#else
-    // Linux - use X11 window
-    Window x11Window = glfwGetX11Window(window);
-    if (!backend_.init(reinterpret_cast<void*>(x11Window), width, height)) {
-        std::cerr << "DiligentRenderer: Failed to initialize Diligent backend" << std::endl;
-        return false;
-    }
+
+    // Store this pointer for callbacks
+    glfwSetWindowUserPointer(m_window, this);
+    glfwSetFramebufferSizeCallback(m_window, framebufferSizeCallback);
+
+    // Get actual framebuffer size (may differ on HiDPI displays)
+    glfwGetFramebufferSize(m_window, &m_windowWidth, &m_windowHeight);
+
+    return true;
+}
+
+bool DiligentRenderer::initDiligent() {
+    // Get the Vulkan engine factory
+    auto* factoryVk = GetEngineFactoryVk();
+    m_state->engineFactory = factoryVk;
+
+    // Engine creation info
+    EngineVkCreateInfo engineCI;
+    engineCI.EnableValidation = true;  // Enable validation in debug builds
+
+#ifdef NDEBUG
+    engineCI.EnableValidation = false;
 #endif
 
-    if (!createBlitPipeline()) {
-        std::cerr << "DiligentRenderer: Failed to create blit pipeline" << std::endl;
+    // Create render device and context
+    factoryVk->CreateDeviceAndContextsVk(engineCI, &m_state->device, &m_state->context);
+
+    if (!m_state->device || !m_state->context) {
+        std::cerr << "Failed to create Vulkan device and context" << std::endl;
         return false;
     }
 
-    std::cout << "DiligentRenderer: Initialized successfully" << std::endl;
+    // Create swap chain
+    SwapChainDesc swapChainDesc;
+    swapChainDesc.Width = m_windowWidth;
+    swapChainDesc.Height = m_windowHeight;
+    swapChainDesc.ColorBufferFormat = TEX_FORMAT_RGBA8_UNORM_SRGB;
+    swapChainDesc.DepthBufferFormat = TEX_FORMAT_D32_FLOAT;
+
+    // Get native window handle
+#if defined(__APPLE__)
+    // macOS: Get the Cocoa window's content view
+    void* cocoaWindow = glfwGetCocoaWindow(m_window);
+    void* contentView = getContentViewFromWindow(cocoaWindow);
+
+    if (!contentView) {
+        std::cerr << "Failed to get NSView from window" << std::endl;
+        return false;
+    }
+
+    // Create swap chain with the NSView
+    factoryVk->CreateSwapChainVk(
+        m_state->device,
+        m_state->context,
+        swapChainDesc,
+        NativeWindow{contentView},
+        &m_state->swapChain
+    );
+#elif defined(_WIN32)
+    HWND hwnd = glfwGetWin32Window(m_window);
+    factoryVk->CreateSwapChainVk(
+        m_state->device,
+        m_state->context,
+        swapChainDesc,
+        Win32NativeWindow{hwnd},
+        &m_state->swapChain
+    );
+#else
+    // Linux X11
+    Window x11Window = glfwGetX11Window(m_window);
+    Display* x11Display = glfwGetX11Display();
+    factoryVk->CreateSwapChainVk(
+        m_state->device,
+        m_state->context,
+        swapChainDesc,
+        LinuxNativeWindow{x11Window, x11Display},
+        &m_state->swapChain
+    );
+#endif
+
+    if (!m_state->swapChain) {
+        std::cerr << "Failed to create swap chain" << std::endl;
+        return false;
+    }
+
+    std::cout << "Vivid renderer initialized successfully" << std::endl;
+    std::cout << "  Backend: Vulkan" << std::endl;
+    std::cout << "  Window size: " << m_windowWidth << "x" << m_windowHeight << std::endl;
+
     return true;
 }
 
 void DiligentRenderer::shutdown() {
-    blitPipeline_.Release();
-    blitSRB_.Release();
-    blitSampler_.Release();
-    backend_.shutdown();
+    if (m_state) {
+        // Release Diligent objects in order
+        m_state->swapChain.Release();
+        m_state->context.Release();
+        m_state->device.Release();
+        m_state->engineFactory.Release();
+    }
+
+    if (m_window) {
+        glfwDestroyWindow(m_window);
+        m_window = nullptr;
+    }
+
+    glfwTerminate();
 }
 
-bool DiligentRenderer::beginFrame() {
-    backend_.beginFrame();
-    return true;
+void DiligentRenderer::beginFrame() {
+    // Update timing
+    double currentTime = glfwGetTime();
+    m_deltaTime = currentTime - m_lastFrameTime;
+    m_lastFrameTime = currentTime;
+    m_frameCount++;
+
+    // Set render targets to swap chain back buffer
+    auto* pRTV = m_state->swapChain->GetCurrentBackBufferRTV();
+    auto* pDSV = m_state->swapChain->GetDepthBufferDSV();
+    m_state->context->SetRenderTargets(1, &pRTV, pDSV, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+
+    // Set viewport
+    Viewport vp;
+    vp.TopLeftX = 0;
+    vp.TopLeftY = 0;
+    vp.Width = static_cast<float>(m_windowWidth);
+    vp.Height = static_cast<float>(m_windowHeight);
+    vp.MinDepth = 0.0f;
+    vp.MaxDepth = 1.0f;
+    m_state->context->SetViewports(1, &vp, m_windowWidth, m_windowHeight);
 }
 
 void DiligentRenderer::endFrame() {
-    backend_.endFrame();
-    backend_.present();
+    // Flush all commands
+    m_state->context->Flush();
+}
+
+void DiligentRenderer::present() {
+    m_state->swapChain->Present();
 }
 
 void DiligentRenderer::clear(float r, float g, float b, float a) {
-    backend_.clear(glm::vec4(r, g, b, a));
+    auto* pRTV = m_state->swapChain->GetCurrentBackBufferRTV();
+    auto* pDSV = m_state->swapChain->GetDepthBufferDSV();
+
+    float clearColor[] = {r, g, b, a};
+    m_state->context->ClearRenderTarget(pRTV, clearColor, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    m_state->context->ClearDepthStencil(pDSV, CLEAR_DEPTH_FLAG, 1.0f, 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 }
 
-Texture DiligentRenderer::createTexture(int width, int height) {
-    using namespace Diligent;
+bool DiligentRenderer::shouldClose() const {
+    return glfwWindowShouldClose(m_window);
+}
 
-    Texture tex;
-    tex.width = width;
-    tex.height = height;
+void DiligentRenderer::pollEvents() {
+    glfwPollEvents();
+}
 
-    TextureDesc TexDesc;
-    TexDesc.Name = "Vivid Texture";
-    TexDesc.Type = RESOURCE_DIM_TEX_2D;
-    TexDesc.Width = width;
-    TexDesc.Height = height;
-    TexDesc.Format = TEX_FORMAT_RGBA8_UNORM;
-    TexDesc.BindFlags = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET;
-    TexDesc.Usage = USAGE_DEFAULT;
+float DiligentRenderer::getAspectRatio() const {
+    if (m_windowHeight == 0) return 1.0f;
+    return static_cast<float>(m_windowWidth) / static_cast<float>(m_windowHeight);
+}
 
-    RefCntAutoPtr<ITexture> pTexture;
-    backend_.device()->CreateTexture(TexDesc, nullptr, &pTexture);
+void DiligentRenderer::setResizeCallback(std::function<void(int, int)> callback) {
+    m_resizeCallback = std::move(callback);
+}
 
-    if (!pTexture) {
-        std::cerr << "DiligentRenderer: Failed to create texture" << std::endl;
-        return tex;
+IRenderDevice* DiligentRenderer::getDevice() const {
+    return m_state->device.RawPtr();
+}
+
+IDeviceContext* DiligentRenderer::getContext() const {
+    return m_state->context.RawPtr();
+}
+
+ISwapChain* DiligentRenderer::getSwapChain() const {
+    return m_state->swapChain.RawPtr();
+}
+
+ITextureView* DiligentRenderer::getCurrentRTV() const {
+    return m_state->swapChain->GetCurrentBackBufferRTV();
+}
+
+ITextureView* DiligentRenderer::getDepthDSV() const {
+    return m_state->swapChain->GetDepthBufferDSV();
+}
+
+double DiligentRenderer::getTime() const {
+    return glfwGetTime();
+}
+
+void DiligentRenderer::handleResize(int width, int height) {
+    if (width == 0 || height == 0) {
+        return;  // Window minimized
     }
 
-    // Create texture data
-    auto* data = new DiligentTextureData();
-    data->texture = pTexture;
-    data->view = pTexture->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
-    data->rtv = pTexture->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
+    m_windowWidth = width;
+    m_windowHeight = height;
 
-    tex.handle = data;
-    return tex;
-}
-
-void DiligentRenderer::destroyTexture(Texture& texture) {
-    if (texture.handle) {
-        auto* data = static_cast<DiligentTextureData*>(texture.handle);
-        delete data;
-        texture.handle = nullptr;
-    }
-    texture.width = 0;
-    texture.height = 0;
-}
-
-void DiligentRenderer::uploadTexturePixels(Texture& texture, const uint8_t* pixels, int width, int height) {
-    if (!texture.handle) return;
-
-    auto* data = static_cast<DiligentTextureData*>(texture.handle);
-    if (!data->texture) return;
-
-    Diligent::Box UpdateBox;
-    UpdateBox.MinX = 0;
-    UpdateBox.MinY = 0;
-    UpdateBox.MaxX = width;
-    UpdateBox.MaxY = height;
-
-    Diligent::TextureSubResData SubResData;
-    SubResData.pData = pixels;
-    SubResData.Stride = width * 4;
-
-    backend_.context()->UpdateTexture(
-        data->texture,
-        0, 0,
-        UpdateBox,
-        SubResData,
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION,
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION
-    );
-}
-
-void DiligentRenderer::blitToScreen(const Texture& texture) {
-    if (!texture.handle || !blitPipeline_) return;
-
-    auto* data = static_cast<DiligentTextureData*>(texture.handle);
-    if (!data->view) return;
-
-    using namespace Diligent;
-
-    auto* pRTV = backend_.swapChain()->GetCurrentBackBufferRTV();
-
-    // Set render target
-    backend_.context()->SetRenderTargets(1, &pRTV, nullptr,
-        RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-
-    // Set pipeline and resources
-    backend_.context()->SetPipelineState(blitPipeline_);
-
-    // Update SRB with texture
-    if (blitSRB_) {
-        auto* pVar = blitSRB_->GetVariableByName(SHADER_TYPE_PIXEL, "g_Texture");
-        if (pVar) {
-            pVar->Set(data->view);
-        }
-        backend_.context()->CommitShaderResources(blitSRB_,
-            RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    // Resize the swap chain
+    if (m_state->swapChain) {
+        m_state->swapChain->Resize(width, height);
     }
 
-    // Draw fullscreen triangle
-    DrawAttribs drawAttrs;
-    drawAttrs.NumVertices = 3;
-    backend_.context()->Draw(drawAttrs);
-}
-
-void DiligentRenderer::fillTexture(Texture& texture, float r, float g, float b, float a) {
-    if (!texture.handle) return;
-
-    auto* data = static_cast<DiligentTextureData*>(texture.handle);
-    if (!data->rtv) return;
-
-    float clearColor[4] = {r, g, b, a};
-    backend_.context()->ClearRenderTarget(data->rtv, clearColor,
-        Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
-}
-
-std::vector<uint8_t> DiligentRenderer::readTexturePixels(const Texture& texture) {
-    // TODO: Implement texture readback
-    std::vector<uint8_t> pixels(texture.width * texture.height * 4, 0);
-    return pixels;
-}
-
-void DiligentRenderer::resize(int width, int height) {
-    width_ = width;
-    height_ = height;
-    backend_.resize(width, height);
-}
-
-void DiligentRenderer::setVSync(bool enabled) {
-    vsync_ = enabled;
-    // Diligent handles VSync through swap chain present mode
-}
-
-bool DiligentRenderer::createBlitPipeline() {
-    using namespace Diligent;
-
-    // Simple fullscreen blit shader
-    const char* VSSource = R"(
-        struct VSOutput {
-            float4 Pos : SV_POSITION;
-            float2 UV  : TEXCOORD;
-        };
-
-        void main(uint VertId : SV_VertexID, out VSOutput Out) {
-            // Fullscreen triangle
-            Out.UV = float2((VertId << 1) & 2, VertId & 2);
-            Out.Pos = float4(Out.UV * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-        }
-    )";
-
-    const char* PSSource = R"(
-        Texture2D    g_Texture;
-        SamplerState g_Sampler;
-
-        struct VSOutput {
-            float4 Pos : SV_POSITION;
-            float2 UV  : TEXCOORD;
-        };
-
-        float4 main(VSOutput In) : SV_Target {
-            return g_Texture.Sample(g_Sampler, In.UV);
-        }
-    )";
-
-    // Create shaders
-    ShaderCreateInfo ShaderCI;
-    ShaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
-    ShaderCI.ShaderCompiler = SHADER_COMPILER_DEFAULT;
-
-    RefCntAutoPtr<IShader> pVS;
-    {
-        ShaderCI.Desc.ShaderType = SHADER_TYPE_VERTEX;
-        ShaderCI.Desc.Name = "Blit VS";
-        ShaderCI.Source = VSSource;
-        ShaderCI.EntryPoint = "main";
-        backend_.device()->CreateShader(ShaderCI, &pVS);
-        if (!pVS) {
-            std::cerr << "DiligentRenderer: Failed to create blit vertex shader" << std::endl;
-            return false;
-        }
+    // Call user callback if set
+    if (m_resizeCallback) {
+        m_resizeCallback(width, height);
     }
+}
 
-    RefCntAutoPtr<IShader> pPS;
-    {
-        ShaderCI.Desc.ShaderType = SHADER_TYPE_PIXEL;
-        ShaderCI.Desc.Name = "Blit PS";
-        ShaderCI.Source = PSSource;
-        ShaderCI.EntryPoint = "main";
-        backend_.device()->CreateShader(ShaderCI, &pPS);
-        if (!pPS) {
-            std::cerr << "DiligentRenderer: Failed to create blit pixel shader" << std::endl;
-            return false;
-        }
+void DiligentRenderer::framebufferSizeCallback(GLFWwindow* window, int width, int height) {
+    auto* renderer = static_cast<DiligentRenderer*>(glfwGetWindowUserPointer(window));
+    if (renderer) {
+        renderer->handleResize(width, height);
     }
-
-    // Create sampler
-    SamplerDesc SamDesc;
-    SamDesc.MinFilter = FILTER_TYPE_LINEAR;
-    SamDesc.MagFilter = FILTER_TYPE_LINEAR;
-    SamDesc.MipFilter = FILTER_TYPE_LINEAR;
-    SamDesc.AddressU = TEXTURE_ADDRESS_CLAMP;
-    SamDesc.AddressV = TEXTURE_ADDRESS_CLAMP;
-    SamDesc.AddressW = TEXTURE_ADDRESS_CLAMP;
-    backend_.device()->CreateSampler(SamDesc, &blitSampler_);
-
-    // Create pipeline state
-    GraphicsPipelineStateCreateInfo PSOCreateInfo;
-    PSOCreateInfo.PSODesc.Name = "Blit PSO";
-    PSOCreateInfo.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
-    PSOCreateInfo.GraphicsPipeline.NumRenderTargets = 1;
-    PSOCreateInfo.GraphicsPipeline.RTVFormats[0] = backend_.swapChain()->GetDesc().ColorBufferFormat;
-    PSOCreateInfo.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    PSOCreateInfo.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
-    PSOCreateInfo.GraphicsPipeline.DepthStencilDesc.DepthEnable = False;
-    PSOCreateInfo.pVS = pVS;
-    PSOCreateInfo.pPS = pPS;
-
-    // Define shader resources
-    ShaderResourceVariableDesc Vars[] = {
-        {SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC}
-    };
-    PSOCreateInfo.PSODesc.ResourceLayout.Variables = Vars;
-    PSOCreateInfo.PSODesc.ResourceLayout.NumVariables = _countof(Vars);
-
-    ImmutableSamplerDesc ImtblSamplers[] = {
-        {SHADER_TYPE_PIXEL, "g_Sampler", SamDesc}
-    };
-    PSOCreateInfo.PSODesc.ResourceLayout.ImmutableSamplers = ImtblSamplers;
-    PSOCreateInfo.PSODesc.ResourceLayout.NumImmutableSamplers = _countof(ImtblSamplers);
-
-    backend_.device()->CreateGraphicsPipelineState(PSOCreateInfo, &blitPipeline_);
-    if (!blitPipeline_) {
-        std::cerr << "DiligentRenderer: Failed to create blit pipeline" << std::endl;
-        return false;
-    }
-
-    blitPipeline_->CreateShaderResourceBinding(&blitSRB_, true);
-    return true;
 }
 
 } // namespace vivid
-
-#endif // VIVID_USE_DILIGENT

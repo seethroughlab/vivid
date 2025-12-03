@@ -1,205 +1,106 @@
-# Runtime CMakeLists.txt - Phase 4: Core Types and Context
-# Building on Phase 2 & 3 with operator framework
-
-# Find FFmpeg for HAP codec demuxing
-find_package(PkgConfig)
-if(PKG_CONFIG_FOUND)
-    pkg_check_modules(FFMPEG libavformat libavcodec libavutil libswscale)
-endif()
-
-# Vivid runtime sources - uses Diligent Engine for rendering
 set(RUNTIME_SOURCES
     src/main.cpp
-    src/window.cpp
-    src/renderer.cpp
-    src/context.cpp
-    src/hotload.cpp
-    src/file_watcher.cpp
-    src/compiler.cpp
-    src/addon_registry.cpp
-    src/graph.cpp
-    src/preview_server.cpp
-    src/async_readback.cpp
-    src/shared_preview.cpp
-    src/preview_thread.cpp
-    src/image_loader.cpp
-    src/video_loader.cpp
-    src/audio_player.cpp
-    src/audio_capture.cpp
-    src/fft.cpp
-    src/audioin.cpp
-    src/mesh.cpp
-    src/animation.cpp
-    src/pipeline3d.cpp
-    src/pipeline3d_instanced.cpp
-    src/pipeline3d_skinned.cpp
-    src/pipeline3d_lit.cpp
-    src/pipeline3d_vertex_lit.cpp
-    src/pipeline3d_unlit.cpp
-    src/pipeline3d_wireframe.cpp
-    src/pipeline3d_decal.cpp
-    src/shadow_map.cpp
-    src/pipeline2d.cpp
-    src/cubemap.cpp
-    src/font_atlas.cpp
-    src/text_renderer.cpp
-    # Diligent Engine backend (always included)
-    src/diligent_backend.cpp
     src/diligent_renderer.cpp
-    src/diligent_pbr.cpp
+    src/shader_utils.cpp
+    src/texture_utils.cpp
+    src/mesh.cpp
+    src/camera.cpp
 )
 
-# Add HAP decoder if FFmpeg is available
-if(FFMPEG_FOUND)
-    list(APPEND RUNTIME_SOURCES src/hap_decoder.cpp)
-    message(STATUS "FFmpeg found - HAP codec support enabled")
-else()
-    message(STATUS "FFmpeg not found - HAP codec support disabled")
-endif()
-
-# Platform-specific source files
+# macOS-specific Objective-C++ sources
 if(APPLE)
-    list(APPEND RUNTIME_SOURCES
-        src/platform_surface_macos.mm
-        src/video_loader_macos.mm
-        src/camera_capture_macos.mm
-    )
-    # Enable Objective-C++ for .mm files
-    set_source_files_properties(
-        src/platform_surface_macos.mm
-        src/video_loader_macos.mm
-        src/camera_capture_macos.mm
-        PROPERTIES COMPILE_FLAGS "-x objective-c++"
-    )
-elseif(WIN32)
-    list(APPEND RUNTIME_SOURCES
-        src/platform_surface_windows.cpp
-        src/video_loader_windows.cpp
-        src/camera_capture_windows.cpp
-    )
-else()
-    list(APPEND RUNTIME_SOURCES
-        src/platform_surface_linux.cpp
-        src/video_loader_linux.cpp
-    )
+    list(APPEND RUNTIME_SOURCES src/macos_helpers.mm)
 endif()
 
-# Diligent Engine is always enabled
-message(STATUS "Diligent Engine backend enabled (Vulkan via MoltenVK)")
+set(RUNTIME_HEADERS
+    include/vivid/diligent_renderer.h
+)
 
-add_executable(vivid ${RUNTIME_SOURCES})
+add_executable(vivid-runtime
+    ${RUNTIME_SOURCES}
+    ${RUNTIME_HEADERS}
+)
 
-# Diligent compile definitions and linking (always enabled)
-target_compile_definitions(vivid PRIVATE VIVID_USE_DILIGENT=1)
-target_link_libraries(vivid PRIVATE
+target_include_directories(vivid-runtime PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# Link to Diligent targets - these should propagate include directories
+target_link_libraries(vivid-runtime PRIVATE
+    glfw
+    glm::glm
     Diligent-GraphicsEngineVk-static
+    Diligent-Common
     Diligent-GraphicsTools
+    Diligent-TextureLoader
     DiligentFX
 )
 
-target_include_directories(vivid
-    PUBLIC include
-    PRIVATE src
-    PRIVATE ${stb_SOURCE_DIR}
-    PRIVATE ${miniaudio_SOURCE_DIR}
+# Let Diligent targets provide include directories through target properties
+target_link_libraries(vivid-runtime PRIVATE
+    Diligent-PublicBuildSettings
 )
 
-# Add FFmpeg include directories if available
-if(FFMPEG_FOUND)
-    target_include_directories(vivid PRIVATE ${FFMPEG_INCLUDE_DIRS})
-    target_compile_definitions(vivid PRIVATE VIVID_HAS_FFMPEG=1)
-endif()
-
-# Mark this as building the runtime (for Windows DLL export)
-target_compile_definitions(vivid PRIVATE VIVID_BUILDING_RUNTIME=1)
-
-target_link_libraries(vivid
-    PRIVATE
-    glfw
-    glm::glm
-    wgpu
-    ixwebsocket
-    nlohmann_json::nlohmann_json
-    efsw
-    snappy
-    ${CMAKE_DL_LIBS}
-)
-
-# Link FFmpeg libraries if available
-if(FFMPEG_FOUND)
-    target_link_libraries(vivid PRIVATE ${FFMPEG_LIBRARIES})
-    target_link_directories(vivid PRIVATE ${FFMPEG_LIBRARY_DIRS})
-endif()
-
-# Platform-specific libraries and export symbols for dynamic loading
-if(APPLE)
-    target_link_libraries(vivid PRIVATE
-        "-framework Cocoa"
-        "-framework IOKit"
-        "-framework Metal"
-        "-framework QuartzCore"
-        "-framework AVFoundation"
-        "-framework CoreMedia"
-        "-framework CoreVideo"
-        "-framework VideoToolbox"
-        "-framework AudioToolbox"
-        "-framework CoreAudio"
-    )
-    # Export symbols so dynamically loaded operators can find Context, etc.
-    target_link_options(vivid PRIVATE -Wl,-export_dynamic)
-elseif(WIN32)
-    # Windows-specific libraries
-    target_link_libraries(vivid PRIVATE
-        # Media Foundation for video/camera
-        mf
-        mfplat
-        mfreadwrite
-        mfuuid
-        # Core Windows libraries
-        ole32
-        oleaut32
-        uuid
-        # Required by wgpu-native on Windows
-        userenv      # GetUserProfileDirectoryW
-        ntdll        # NtReadFile, NtWriteFile, etc.
-        propsys      # VariantToPropVariant
-        d3dcompiler  # D3DCompile
-        opengl32     # wgl* functions
-        RuntimeObject # RoOriginateErrorW
-        ws2_32       # Networking (for ixwebsocket)
-    )
-    # Export symbols for dynamically loaded operators (DLLs)
-    # Note: WINDOWS_EXPORT_ALL_SYMBOLS has issues with operator== symbols,
-    # so we disable it and rely on explicit __declspec(dllexport) in headers
-    set_target_properties(vivid PROPERTIES
-        ENABLE_EXPORTS ON
-    )
-elseif(UNIX)
-    target_link_libraries(vivid PRIVATE pthread dl)
-    # Export symbols for dlopen'd libraries
-    target_link_options(vivid PRIVATE -rdynamic)
-endif()
-
-# Copy include headers to build directory for operator compilation
-add_custom_command(TARGET vivid POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_BINARY_DIR}/include
+# Additional include paths for internal headers not exposed by targets
+target_include_directories(vivid-runtime PRIVATE
+    ${diligentengine_SOURCE_DIR}/DiligentCore/Graphics/GraphicsEngine/include
+    ${diligentengine_SOURCE_DIR}/DiligentFX/PBR/interface
+    ${diligentengine_SOURCE_DIR}/DiligentFX
+    ${diligentengine_SOURCE_DIR}/DiligentTools/ThirdParty/stb
 )
 
 # Copy shaders to build directory
-add_custom_command(TARGET vivid POST_BUILD
+add_custom_command(TARGET vivid-runtime POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
     ${CMAKE_SOURCE_DIR}/shaders
-    ${CMAKE_BINARY_DIR}/shaders
+    $<TARGET_FILE_DIR:vivid-runtime>/shaders
 )
 
-# Copy fonts to build directory
-add_custom_command(TARGET vivid POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/fonts
-    ${CMAKE_BINARY_DIR}/fonts
-)
+# macOS specific frameworks
+if(APPLE)
+    find_library(METAL_FRAMEWORK Metal REQUIRED)
+    find_library(QUARTZCORE_FRAMEWORK QuartzCore REQUIRED)
+    find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
+    target_link_libraries(vivid-runtime PRIVATE
+        ${METAL_FRAMEWORK}
+        ${QUARTZCORE_FRAMEWORK}
+        ${COCOA_FRAMEWORK}
+    )
+endif()
 
-# Note: vivid-diligent target has been merged into main vivid target
-# The main vivid executable now uses Diligent Engine by default
+# macOS specific: Set environment variables for MoltenVK
+if(APPLE)
+    # Find MoltenVK paths
+    find_path(MOLTENVK_ICD_PATH
+        NAMES MoltenVK_icd.json
+        PATHS
+            /opt/homebrew/etc/vulkan/icd.d
+            /usr/local/etc/vulkan/icd.d
+            /opt/homebrew/share/vulkan/icd.d
+            /usr/local/share/vulkan/icd.d
+    )
+
+    find_path(MOLTENVK_LIB_PATH
+        NAMES libMoltenVK.dylib
+        PATHS
+            /opt/homebrew/lib
+            /usr/local/lib
+    )
+
+    if(MOLTENVK_ICD_PATH AND MOLTENVK_LIB_PATH)
+        message(STATUS "MoltenVK ICD found at: ${MOLTENVK_ICD_PATH}")
+        message(STATUS "MoltenVK library found at: ${MOLTENVK_LIB_PATH}")
+
+        # Create a run script with proper environment
+        file(WRITE ${CMAKE_BINARY_DIR}/run-vivid.sh
+"#!/bin/bash
+export VK_ICD_FILENAMES=${MOLTENVK_ICD_PATH}/MoltenVK_icd.json
+export DYLD_LIBRARY_PATH=${MOLTENVK_LIB_PATH}:\$DYLD_LIBRARY_PATH
+cd \"$(dirname \"$0\")/runtime\"
+./vivid-runtime \"$@\"
+")
+        execute_process(COMMAND chmod +x ${CMAKE_BINARY_DIR}/run-vivid.sh)
+    else()
+        message(WARNING "MoltenVK not found. Install via: brew install molten-vk")
+    endif()
+endif()

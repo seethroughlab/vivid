@@ -17,6 +17,80 @@ The existing codebase was built around wgpu-native/WebGPU patterns. Retrofitting
 - HLSL as universal shader language (cross-compiles to all backends)
 - Future flexibility: can switch to Vulkan/Metal by changing one line
 
+**Guiding principle: Don't reinvent the wheel.** Before implementing any feature, research existing solutions. Use DiligentFX's built-in renderers, standard libraries, and proven algorithms. Custom code is a last resort.
+
+---
+
+## Diligent Engine Components
+
+**CRITICAL:** Diligent Engine is not just DiligentCore. It has three major components that must be used together:
+
+### 1. DiligentCore (Low-Level API)
+The graphics abstraction layer. Use for:
+- Device/context creation
+- Swap chain management
+- Basic pipeline state objects
+- Buffer and texture creation
+
+### 2. DiligentFX (High-Level Rendering)
+**Battle-tested rendering components - USE THESE INSTEAD OF CUSTOM CODE:**
+
+| Component | What It Provides | Use Instead Of |
+|-----------|------------------|----------------|
+| `PBR_Renderer` | Full PBR pipeline with shaders | Custom PBR shaders |
+| `ShadowMapManager` | Cascaded shadow maps, PCF/VSM filtering | Custom shadow mapping |
+| `GLTF_PBR_Renderer` | GLTF model rendering with PBR | Custom model rendering |
+| `PostFXContext` | Post-processing framework | Custom post-FX passes |
+| `ScreenSpaceAmbientOcclusion` | SSAO | Custom AO |
+| `ScreenSpaceReflection` | SSR | Custom reflections |
+| `TemporalAntiAliasing` | TAA | Custom AA |
+
+**Key files to study:**
+- `DiligentFX/PBR/interface/PBR_Renderer.hpp` - PBR pipeline
+- `DiligentFX/Components/interface/ShadowMapManager.hpp` - Shadows
+- `DiligentFX/Shaders/PBR/*.fxh` - PBR shader structures
+
+### 3. DiligentTools (Utilities)
+**Helper utilities - USE THESE INSTEAD OF CUSTOM CODE:**
+
+| Component | What It Provides | Use Instead Of |
+|-----------|------------------|----------------|
+| `TextureLoader` | Image loading (PNG, JPG, HDR, etc.) | stb_image |
+| `ImGuiImplDiligent` | ImGui integration | Custom ImGui backend |
+| `AssetLoader` | Asset management | Custom loaders |
+| `RenderStateNotationLoader` | PSO from JSON | Manual PSO creation |
+
+### Implementation Rule
+
+**Before writing ANY rendering code, check:**
+1. Does DiligentFX have a component for this? → Use it
+2. Does DiligentTools have a utility for this? → Use it
+3. Does DiligentSamples have an example? → Study it first
+
+**NEVER write custom shaders/code for:**
+- PBR lighting (use `PBR_Renderer`)
+- Shadow mapping (use `ShadowMapManager`)
+- IBL/Environment maps (use `PBR_Renderer` with `EnableIBL`)
+- Image loading (use `TextureLoader`)
+- ImGui (use `ImGuiImplDiligent`)
+
+---
+
+## Why Diligent Engine (Not Filament)
+
+Evaluated Google Filament as an alternative (native Metal support), but rejected for Vivid's use case:
+
+| Factor | Filament | Diligent |
+|--------|----------|----------|
+| Metal support | Native | Via MoltenVK |
+| Custom shaders | GLSL only, limited to material DSL | HLSL, full low-level control |
+| Post-processing | **Not directly supported** | Full control via render targets |
+| Documentation | Generic PBR book only | API docs + samples |
+
+**Critical issue:** Filament's post-processing effects (blur, bloom, feedback) are "not directly possible" ([discussion #7676](https://github.com/google/filament/discussions/7676)). For a creative coding framework built around 2D texture effects, this is a dealbreaker.
+
+Diligent's low-level approach with MoltenVK on macOS is the right trade-off.
+
 ---
 
 ## Architecture Overview
@@ -37,7 +111,7 @@ DiligentRenderer
     └── Texture/Mesh management
     │
     ▼
-Diligent Core (WebGPU backend initially, Vulkan/Metal later)
+Diligent Core (Vulkan backend, MoltenVK on macOS)
     │
     ▼
 Native GPU API
@@ -45,17 +119,26 @@ Native GPU API
 
 ---
 
-## Phase 1: Foundation
+## Phase 1: Foundation ✅ COMPLETE
 
 **Goal:** Window creation, Diligent initialization, clear screen to color
 
 ### Tasks
-- [ ] Create minimal `main.cpp` with GLFW window
-- [ ] Initialize Diligent Engine with WebGPU backend
-- [ ] Create swap chain
-- [ ] Implement frame loop: beginFrame → clear → endFrame → present
-- [ ] Handle window resize
-- [ ] Verify on macOS (primary target)
+- [x] Create minimal `main.cpp` with GLFW window
+- [x] Initialize Diligent Engine with Vulkan backend (MoltenVK on macOS)
+- [x] Create swap chain
+- [x] Implement frame loop: beginFrame → clear → endFrame → present
+- [x] Handle window resize
+- [x] Verify on macOS (primary target)
+
+### Notes
+- Using **Vulkan** backend instead of WebGPU (Metal backend requires proprietary DiligentCorePro)
+- macOS requires MoltenVK environment variables:
+  ```bash
+  VK_ICD_FILENAMES=/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json
+  DYLD_LIBRARY_PATH=/opt/homebrew/lib
+  ```
+- Example: `examples/diligent-test/` demonstrates working PBR rendering
 
 ### Files to Create
 ```
@@ -81,17 +164,26 @@ FetchContent_Declare(glm ...)
 
 ---
 
-## Phase 2: Shader System
+## Phase 2: Shader System ✅ COMPLETE
 
 **Goal:** Load and compile HLSL shaders, create pipelines
 
 ### Tasks
-- [ ] Create shader loading utility (from file and embedded)
-- [ ] Implement fullscreen triangle vertex shader
-- [ ] Create basic fragment shader (solid color)
-- [ ] Build pipeline state object (PSO) creation helpers
-- [ ] Add runtime shader compilation with error reporting
-- [ ] Hot-reload shader files in dev mode
+- [x] Create shader loading utility (from file and embedded)
+- [x] Implement fullscreen triangle vertex shader
+- [x] Create basic fragment shader (solid color)
+- [x] Build pipeline state object (PSO) creation helpers
+- [x] Add runtime shader compilation with error reporting
+- [ ] Hot-reload shader files in dev mode (deferred to Phase 8)
+
+### Notes
+- Uses Diligent's built-in shader compilation (HLSL → SPIRV)
+- `ShaderUtils` class wraps Diligent's `DefaultShaderSourceStreamFactory`
+- `ShaderMacroHelper` available for shader variants
+- Example: `examples/shader-test/` demonstrates shader loading and fullscreen rendering
+- **Important:** Must call `SetViewports()` before drawing in Vulkan (required, not optional)
+- **Important:** Vulkan clip space Y is inverted - use `pos.y = uv.y * -2.0 + 1.0` pattern
+- Static cbuffer variables bind via `pipeline->GetStaticVariableByName()`, not SRB
 
 ### Core Shaders (HLSL)
 ```
@@ -110,66 +202,75 @@ shaders/
 // fullscreen.hlsl - Base for all 2D effects
 struct VSOutput {
     float4 position : SV_Position;
-    float2 uv : TEXCOORD;
+    float2 uv : TEXCOORD0;
 };
 
-VSOutput VS_Main(uint vertexId : SV_VertexID) {
+VSOutput main(uint vertexId : SV_VertexID) {
     VSOutput output;
-    // Fullscreen triangle from vertex ID
+    // Fullscreen triangle from vertex ID (0,1,2)
     output.uv = float2((vertexId << 1) & 2, vertexId & 2);
-    output.position = float4(output.uv * 2.0 - 1.0, 0.0, 1.0);
-    output.uv.y = 1.0 - output.uv.y;  // Flip Y for texture coords
+    // Map UV to clip space, flipping Y for Vulkan's inverted clip space
+    output.position = float4(output.uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
     return output;
 }
 ```
 
 ---
 
-## Phase 3: Texture System
+## Phase 3: Texture System ✅ COMPLETE
 
 **Goal:** Create, sample, and render to textures
 
 ### Tasks
-- [ ] Implement `Texture` struct with Diligent handles
-- [ ] Create texture from dimensions (empty render target)
-- [ ] Create texture from image file (stb_image)
-- [ ] Create texture from pixel data
-- [ ] Implement render-to-texture (framebuffer)
-- [ ] Sampler creation (linear, nearest, wrap modes)
-- [ ] Texture format handling (RGBA8, RGBA16F, etc.)
+- [x] Implement `TextureUtils` class with Diligent handles
+- [x] Create texture from dimensions (empty render target)
+- [x] Create texture from image file (uses Diligent's TextureLoader - not stb_image)
+- [x] Create texture from pixel data
+- [x] Sampler creation (linear, nearest, wrap modes)
+- [x] Texture format handling (RGBA8, RGBA16F, etc.)
+- [ ] Render-to-texture (deferred to Phase 4 effects)
 
-### Texture Structure
-```cpp
-struct Texture {
-    Diligent::RefCntAutoPtr<ITexture> texture;
-    Diligent::RefCntAutoPtr<ITextureView> rtv;   // Render target view
-    Diligent::RefCntAutoPtr<ITextureView> srv;   // Shader resource view
-    int width = 0;
-    int height = 0;
-    TextureFormat format = TextureFormat::RGBA8;
-};
+### Notes
+- Uses Diligent's built-in `TextureLoader` for image files (PNG, JPG, etc.) - no stb_image needed
+- `TextureUtils` provides: `loadFromFile`, `loadFromPixels`, `create`, `createSampler`
+- Supports multiple formats: RGBA8, RGBA8_SRGB, RGBA16F, RGBA32F, R8, R16F, R32F, RG8, RG16F
+- Example: `examples/texture-test/` demonstrates procedural texture creation and rendering
+
+### Files Created
+```
+runtime/src/
+├── texture_utils.h     # Texture loading utilities
+├── texture_utils.cpp   # Implementation using Diligent TextureLoader
+examples/
+└── texture-test/       # Texture system demo
 ```
 
 ---
 
-## Phase 4: 2D Effects Pipeline
+## Phase 4: 2D Effects Pipeline 🔄 IN PROGRESS
 
 **Goal:** Implement all 2D texture processing operators
 
 ### Core Effects (Priority Order)
-1. [ ] **Passthrough** - Identity transform, base for all effects
-2. [ ] **Solid Color** - Fill with constant color
-3. [ ] **Noise** - Perlin/Simplex noise generation
-4. [ ] **Blur** - Gaussian blur (separable, two-pass)
-5. [ ] **Brightness/Contrast** - Basic color correction
-6. [ ] **HSV** - Hue/Saturation/Value adjustment
-7. [ ] **Composite** - Blend two textures (add, multiply, screen, etc.)
-8. [ ] **Transform** - Translate, rotate, scale
+1. [x] **Passthrough** - Identity transform, base for all effects
+2. [x] **Solid Color** - Fill with constant color
+3. [x] **Noise** - Simplex noise generation with FBM
+4. [x] **Blur** - Gaussian blur (separable, two-pass)
+5. [x] **Brightness/Contrast** - Basic color correction (+ exposure, gamma)
+6. [x] **HSV** - Hue/Saturation/Value adjustment (+ colorize mode)
+7. [x] **Composite** - Blend two textures (16 blend modes)
+8. [x] **Transform** - Translate, rotate, scale, pivot, repeat modes
 9. [ ] **Edge Detection** - Sobel/Canny edge filter
-10. [ ] **Feedback** - Recursive buffer with decay
+10. [x] **Feedback** - Recursive buffer with decay, motion trails
+
+### Notes
+- All shaders in `shaders/effects/`
+- Example: `examples/effect-test/` demonstrates Noise -> Blur -> Output chain
+- Pipelines with texture input need `MUTABLE` variable type for `g_Texture`
+- Use `ImmutableSamplerDesc` for samplers (more efficient than mutable)
 
 ### Additional Effects
-- [ ] Gradient (linear, radial, angular)
+- [x] Gradient (linear, radial, angular)
 - [ ] Shape (circle, rectangle, polygon)
 - [ ] Displacement mapping
 - [ ] Chromatic aberration
@@ -223,20 +324,20 @@ blur.input(noise).radius(5.0f).process(ctx);
 
 ---
 
-## Phase 5: 3D Rendering Foundation
+## Phase 5: 3D Rendering Foundation ✅ COMPLETE
 
 **Goal:** Basic 3D mesh rendering with transforms and camera
 
 ### Tasks
-- [ ] Implement `Mesh` struct (vertex buffer, index buffer)
-- [ ] Vertex format: position, normal, UV, tangent
-- [ ] Primitive generators: cube, sphere, plane, cylinder, torus, cone, elliptic torus
+- [x] Implement `Mesh` struct (vertex buffer, index buffer)
+- [x] Vertex format: position, normal, UV, tangent
+- [x] Primitive generators: cube, sphere, plane, cylinder, torus, cone, elliptic torus
 - [ ] Model loading via DiligentTools GLTF loader (handles OBJ, glTF, FBX)
-- [ ] Camera3D class (perspective projection, view matrix)
-- [ ] Camera helpers: orbit(), zoom() for interactive control
-- [ ] Model transform uniform buffer
-- [ ] Depth buffer management
-- [ ] Basic unlit 3D rendering
+- [x] Camera3D class (perspective projection, view matrix)
+- [x] Camera helpers: orbit(), zoom() for interactive control
+- [x] Model transform uniform buffer
+- [x] Depth buffer management
+- [x] Basic unlit 3D rendering
 - [ ] GPU instancing support (Instance3D, drawMeshInstanced)
 
 ### Mesh Structure
@@ -285,20 +386,26 @@ ctx.drawMeshInstanced(mesh, instances, camera, output);
 
 ---
 
-## Phase 6: PBR & Advanced Lighting
+## Phase 6: PBR & Advanced Lighting 🔄 IN PROGRESS
 
 **Goal:** Physically-based rendering using DiligentFX
 
 ### Tasks
-- [ ] Integrate DiligentFX PBR_Renderer
-- [ ] Material system (albedo, metallic, roughness, AO, emissive)
-- [ ] Normal mapping
-- [ ] Light types: directional, point, spot
+- [x] Integrate DiligentFX PBR_Renderer (for IBL generation)
+- [x] Material system (albedo, metallic, roughness, AO, emissive)
+- [x] Normal mapping
+- [x] Light types: directional (point, spot deferred)
 - [ ] Multiple lights in single pass
 - [ ] Shadow mapping (using DiligentFX ShadowMapManager)
-- [ ] Image-based lighting (IBL)
-- [ ] Environment map loading (HDR → cubemap)
-- [ ] Irradiance and radiance map generation
+- [x] Image-based lighting (IBL) via DiligentFX PrecomputeCubemaps()
+- [x] Environment map loading (HDR → cubemap)
+- [x] Irradiance and radiance map generation
+
+### Notes
+- Using hybrid approach: DiligentFX `PBR_Renderer` for IBL cubemap generation, custom shaders for rendering
+- `PrecomputeCubemaps()` generates irradiance and prefiltered environment maps from HDR
+- IBL textures retrieved via `GetIrradianceCubeSRV()`, `GetPrefilteredEnvMapSRV()`, `GetPreintegratedGGX_SRV()`
+- Custom `pbr_ibl.hlsl` shader handles PBR rendering with IBL support
 
 ### Material Structure
 ```cpp
@@ -1552,40 +1659,45 @@ endif()
 
 ## Implementation Order
 
-### Sprint 1: Core Loop
+> **Note:** Phase 9 (Chain API) was pulled forward to immediately follow Phase 4.
+> This enables working with the `chain.cpp` pattern early, rather than building
+> more standalone test examples. Effects become operators as soon as they're built.
+
+### Sprint 1: Core Loop ✅ COMPLETE
 1. Phase 1 (Foundation) - Window, Diligent init, clear screen
 2. Phase 2 (Shaders) - HLSL loading, basic PSO
 3. Phase 3 (Textures) - Create, load, render-to-texture
 
-### Sprint 2: 2D Effects & Chain
-4. Phase 4 (Effects) - Essential 2D operators
-5. Phase 8 (Hot Reload) - Basic compile/reload cycle
-6. Phase 9 (Chain API) - Operator system, fluent API
+### Sprint 2: 2D Effects & Chain API
+4. Phase 4 (Effects) - Core 2D operators (Passthrough, Noise, Blur, Composite)
+5. **Phase 9 (Chain API)** - Operator system, fluent API, chain.cpp pattern ⬅️ PULLED FORWARD
+6. Phase 4b (More Effects) - Remaining 2D effects as operators
 
 ### Sprint 3: 3D Rendering
 7. Phase 5 (3D Foundation) - Mesh, camera, basic 3D
 8. Phase 6 (PBR) - DiligentFX integration
 
-### Sprint 4: Media & Input
+### Sprint 4: Media & Hot Reload
 9. Phase 7 (Media) - Video playback, HAP, webcam
-10. Phase 15 (Input) - Mouse, keyboard, gamepad
+10. Phase 8 (Hot Reload) - Live code recompilation
 
-### Sprint 5: Tooling
-11. Phase 10 (VS Code) - Extension and previews
-12. Phase 11 (Addons) - Addon system + ImGui
-13. Phase 12 (CLI) - Command-line and templates
+### Sprint 5: Input & Tooling
+11. Phase 15 (Input) - Mouse, keyboard, gamepad
+12. Phase 10 (VS Code) - Extension and previews
+13. Phase 11 (Addons) - Addon system + ImGui
+14. Phase 12 (CLI) - Command-line and templates
 
 ### Sprint 6: Audio
-14. Phase 13 (Audio) - Audio input, FFT, beat detection
-15. Phase 13b (Protocols) - MIDI, OSC support
+15. Phase 13 (Audio) - Audio input, FFT, beat detection
+16. Phase 13b (Protocols) - MIDI, OSC support
 
 ### Sprint 7: Export
-16. Phase 14 (Recording) - Video recording, image sequences
-17. Phase 14b (Distribution) - WASM, standalone apps
+17. Phase 14 (Recording) - Video recording, image sequences
+18. Phase 14b (Distribution) - WASM, standalone apps
 
 ### Sprint 8: Advanced
-18. Phase 16 (ML) - ONNX, pose detection, segmentation
-19. Phase 17 (Registry) - Community package registry
+19. Phase 16 (ML) - ONNX, pose detection, segmentation
+20. Phase 17 (Registry) - Community package registry
 
 ### Ongoing: Testing (Phase 18)
 - Set up Catch2 after Sprint 1 (test core utilities)
