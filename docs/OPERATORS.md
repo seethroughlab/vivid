@@ -1,6 +1,8 @@
 # Built-in Operator Reference
 
-This reference is auto-generated from the operator source files.
+> **Note:** Operators are being reimplemented for Diligent Engine. This reference shows the target API.
+
+This reference documents the built-in operators.
 
 ## Texture Operators (TOPs)
 

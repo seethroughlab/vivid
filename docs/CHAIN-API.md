@@ -1,5 +1,7 @@
 # Vivid Chain API
 
+> **Note:** Code examples show the target API. Implementation in progress with Diligent Engine.
+
 The Chain API is Vivid's declarative system for composing operators into visual effects pipelines. It provides a clean, fluent interface for building operator graphs with automatic dependency resolution.
 
 ## Quick Start

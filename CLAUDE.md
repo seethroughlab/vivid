@@ -1,55 +1,40 @@
 # Vivid - Claude Code Context
 
-A real-time visual programming runtime for creative coding, inspired by TouchDesigner.
+Real-time visual programming runtime for creative coding, built on Diligent Engine.
+
+## Current Status
+
+**Fresh start in progress** - Rebuilding with Diligent Engine as core renderer.
+
+See `ROADMAP.md` for the implementation plan (18 phases).
 
 ## Project Structure
 
 ```
 vivid/
-├── runtime/           # C++ runtime (WebGPU renderer, hot-reload, preview server)
-├── vscode-extension/  # VS Code extension for live previews
+├── runtime/           # C++ runtime (Diligent renderer, hot-reload)
+├── extension/         # VS Code extension for live previews
+├── external/          # DiligentEngine submodule
+├── shaders/           # HLSL shaders (being rebuilt)
 ├── examples/          # Example projects
-├── templates/         # Project templates for `vivid new`
-├── shaders/           # Shared WebGPU shaders
-└── addons/            # Optional addon modules
+├── addons/            # Optional addon modules
+└── docs/              # API documentation
 ```
 
-## Quick Start
+## Key Files
+
+- `ROADMAP.md` - Implementation plan (18 phases)
+- `docs/PHILOSOPHY.md` - Design principles
+- `docs/CHAIN-API.md` - Chain API reference
+- `docs/OPERATORS.md` - Operator reference
+
+## Building
 
 ```bash
-# Create a new project
-vivid new my-project
-
-# Run a project
-vivid my-project
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j8
+./build/bin/vivid examples/diligent-test
 ```
-
-## LLM-First Coding Patterns
-
-Vivid projects are designed for iterative development with Claude Code. When working on a Vivid project:
-
-### Project Files
-
-Each project has these key files:
-- `chain.cpp` - Main chain code with setup/update functions
-- `SPEC.md` - Project specification and task tracking
-- `CLAUDE.md` - Project-specific context for Claude
-
-### Intent Comments
-
-Use these comment conventions to communicate intent:
-
-```cpp
-// === SECTION NAME ===     // Mark logical sections
-// GOAL: description        // Describe what code should accomplish
-```
-
-### Workflow
-
-1. **Start with SPEC.md** - Define what the project should do
-2. **Use stub templates** - `vivid new` creates scaffolded code with GOAL comments
-3. **Iterative refinement** - Update SPEC.md checkboxes as tasks complete
-4. **Hot-reload** - Changes auto-compile and refresh in the runtime
 
 ## Chain API
 
@@ -60,34 +45,22 @@ The Chain API is the recommended way to build Vivid projects:
 using namespace vivid;
 
 void setup(Chain& chain) {
-    // Called once at startup
-    chain.setOutput("out");  // Set which operator provides final output
+    chain.add<Noise>("noise").scale(4.0f);
+    chain.add<Blur>("blur").input("noise").radius(5.0f);
+    chain.setOutput("blur");
 }
 
 void update(Chain& chain, Context& ctx) {
-    // Called every frame
-    // Access operators via chain, render with ctx
+    chain.get<Noise>("noise").speed(ctx.time() * 0.5f);
 }
 
 VIVID_CHAIN(setup, update)
 ```
 
-## Shader Editing
+## LLM-First Patterns
 
-In dev mode (binary at `build/bin/vivid`), the runtime loads shaders directly from the source `shaders/` folder. Edit `shaders/*.wgsl` and changes take effect immediately - no copying needed.
+Vivid projects are designed for iterative development with Claude Code:
 
-In release builds, shaders are loaded from the installed `shaders/` directory alongside the binary.
-
-## Building
-
-```bash
-mkdir build && cd build
-cmake ..
-make vivid
-```
-
-## Testing Examples
-
-```bash
-./build/bin/vivid examples/hello
-```
+- `chain.cpp` - Main chain code with setup/update functions
+- `SPEC.md` - Project specification and task tracking
+- Use `// GOAL:` comments to describe intent

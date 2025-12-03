@@ -1,5 +1,7 @@
 # Vivid Operator API
 
+> **Note:** Code examples show the target API. Implementation in progress with Diligent Engine.
+
 This guide explains how to create custom operators for Vivid.
 
 ## Quick Start
