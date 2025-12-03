@@ -169,19 +169,25 @@ static std::string getSharedAssetsPath(const char* argv0) {
     fs::path runtimePath = fs::weakly_canonical(argv0);
     fs::path runtimeDir = runtimePath.parent_path();
 
-    // Check for release layout: bin/vivid with shaders/ at parent level
+    // Detect dev layout: build/bin/vivid (binary in build/bin/)
+    // In dev mode, prefer source shaders at repo root for hot-reload
+    fs::path parentDir = runtimeDir.parent_path();
+    if (parentDir.filename() == "build") {
+        // Dev layout: build/bin/vivid -> use repo root shaders
+        fs::path repoRoot = parentDir.parent_path();
+        fs::path devShaders = repoRoot / "shaders";
+        if (fs::exists(devShaders)) {
+            return repoRoot.string();
+        }
+    }
+
+    // Release layout: bin/vivid with shaders/ at parent level
     fs::path releaseShaders = runtimeDir.parent_path() / "shaders";
     if (fs::exists(releaseShaders)) {
         return runtimeDir.parent_path().string();
     }
 
-    // Check for dev layout: build/bin/vivid with shaders/ at repo root
-    fs::path devShaders = runtimeDir.parent_path().parent_path() / "shaders";
-    if (fs::exists(devShaders)) {
-        return runtimeDir.parent_path().parent_path().string();
-    }
-
-    // Try current working directory
+    // Fallback: current working directory
     if (fs::exists("shaders")) {
         return fs::current_path().string();
     }

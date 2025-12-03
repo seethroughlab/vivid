@@ -72,6 +72,12 @@ void update(Chain& chain, Context& ctx) {
 VIVID_CHAIN(setup, update)
 ```
 
+## Shader Editing
+
+In dev mode (binary at `build/bin/vivid`), the runtime loads shaders directly from the source `shaders/` folder. Edit `shaders/*.wgsl` and changes take effect immediately - no copying needed.
+
+In release builds, shaders are loaded from the installed `shaders/` directory alongside the binary.
+
 ## Building
 
 ```bash
