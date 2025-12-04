@@ -15,6 +15,8 @@ set(VIVID_HEADERS
     include/vivid/camera.h
     include/vivid/pbr_material.h
     include/vivid/ibl.h
+    # Phase 5: Hot Reload
+    include/vivid/hot_reload.h
     # Phase 2: Core operators
     include/vivid/operators/solid_color.h
     include/vivid/operators/noise.h
@@ -49,6 +51,8 @@ set(VIVID_SOURCES
     src/camera.cpp
     src/pbr_material.cpp
     src/ibl.cpp
+    # Phase 5: Hot Reload
+    src/hot_reload.cpp
     # Phase 2: Core operators
     src/operators/solid_color.cpp
     src/operators/noise.cpp

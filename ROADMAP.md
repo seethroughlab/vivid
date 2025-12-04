@@ -678,46 +678,167 @@ runtime/
 
 ---
 
-## Phase 5: Hot Reload System
+## Phase 5: Hot Reload System ✓
 
 **Goal:** Live code recompilation without restart
 
-### Zero-Config Build
-Vivid projects don't require CMakeLists.txt. The runtime automatically infers build configuration:
-- [ ] Scan chain.cpp for `#include` directives
-- [ ] Auto-detect required libraries and addons
-- [ ] Generate compiler flags dynamically
-- [ ] Addons auto-linked when their headers are included
+**Status:** Complete (macOS verified)
 
 ### Tasks
-- [ ] File watcher for chain.cpp changes
-- [ ] Invoke compiler (clang/MSVC) to build shared library
-- [ ] Dynamic library loading/unloading
-- [ ] Symbol resolution (setup, update functions)
-- [ ] State preservation across reloads
+- [x] File watcher for chain.cpp changes (polling-based, cross-platform)
+- [x] Invoke compiler (clang++) to build shared library (.dylib/.so/.dll)
+- [x] Dynamic library loading/unloading (dlopen/dlclose on Unix, LoadLibrary on Windows)
+- [x] Symbol resolution (vivid_setup, vivid_update functions)
+- [x] VIVID_CHAIN macro for exporting entry points
+- [x] Platform-specific defines (PLATFORM_MACOS=1) for Diligent headers
+- [x] Build artifact management (unique library names, cleanup old builds)
+- [ ] State preservation across reloads (future)
+- [ ] Zero-config build with auto-detection of includes (future)
 
 ### Error Handling
-Errors must be shown to the user **before** replacing running code:
-- [ ] Compile errors: Display in window overlay, keep old code running
-- [ ] Shader errors: Show shader name, line number, error message
-- [ ] Runtime errors: Catch and display, don't crash
-- [ ] Error overlay: Non-intrusive display that doesn't block the visualization
+- [x] Compile errors: Print to console, keep old code running
+- [ ] Compile errors: Display in window overlay (future)
+- [ ] Shader errors: Show shader name, line number, error message (future)
+- [ ] Error overlay: Non-intrusive display (future)
 
-### Compiler Interface
+---
+
+### Hot Reload Architecture
+
+#### File Structure
+```
+runtime/
+├── include/vivid/
+│   ├── vivid.h             # VIVID_CHAIN macro
+│   └── hot_reload.h        # Hot reload system
+└── src/
+    └── hot_reload.cpp      # Implementation
+
+examples/
+└── hello-noise/
+    └── chain.cpp           # User code (dynamically compiled)
+```
+
+#### Usage
+```bash
+# Run with a project path to enable hot reload
+vivid /path/to/my-project
+
+# The runtime will:
+# 1. Find chain.cpp in the project directory
+# 2. Compile it to a shared library
+# 3. Load and execute setup() and update() functions
+# 4. Watch for changes and recompile/reload on save
+```
+
+#### User Code Structure (chain.cpp)
 ```cpp
-class Compiler {
-public:
-    bool compile(const std::filesystem::path& projectPath);
-    bool load();
-    void unload();
-    std::string lastError() const;
+#include <vivid/vivid.h>
 
-    using SetupFn = void(*)(Chain&);
-    using UpdateFn = void(*)(Chain&, Context&);
-    SetupFn getSetup();
-    UpdateFn getUpdate();
+using namespace vivid;
+
+void setup(Context& ctx) {
+    // Called once when the chain is loaded (or reloaded)
+}
+
+void update(Context& ctx) {
+    // Called every frame
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+#### VIVID_CHAIN Macro
+```cpp
+// Exports entry points with extern "C" to prevent name mangling
+#define VIVID_CHAIN(setup_fn, update_fn) \
+    extern "C" { \
+        void vivid_setup(vivid::Context& ctx) { setup_fn(ctx); } \
+        void vivid_update(vivid::Context& ctx) { update_fn(ctx); } \
+    }
+```
+
+---
+
+### HotReload Class API
+
+```cpp
+class HotReload {
+public:
+    // Set up for a project directory (finds chain.cpp)
+    bool init(const fs::path& projectPath);
+
+    // Set vivid runtime path (for includes)
+    void setRuntimePath(const fs::path& path);
+
+    // Poll for file changes, recompile if needed
+    // Returns true if a reload occurred
+    bool poll();
+
+    // Force a reload
+    bool reload();
+
+    // Check if code is loaded and ready
+    bool isReady() const;
+
+    // Get function pointers
+    SetupFn setup() const;
+    UpdateFn update() const;
+
+    // Error info
+    bool hasCompileError() const;
+    const std::string& lastError() const;
+    const std::string& compilerOutput() const;
 };
 ```
+
+---
+
+### Compiler Configuration
+
+The Compiler class automatically configures include paths:
+- Vivid runtime headers
+- Diligent Engine headers (Core, Tools, FX)
+- GLM
+- GLFW
+
+Platform-specific flags:
+```cpp
+// macOS
+clang++ -std=c++17 -O2 -shared -fPIC -dynamiclib -undefined dynamic_lookup
+        -DPLATFORM_MACOS=1 ...
+
+// Linux (future)
+g++ -std=c++17 -O2 -shared -fPIC -DPLATFORM_LINUX=1 ...
+
+// Windows (future)
+cl.exe /nologo /EHsc /O2 /LD /DPLATFORM_WIN32=1 ...
+```
+
+---
+
+### Build Artifact Management
+
+Each compilation creates a unique library name to avoid caching issues:
+```
+project/.vivid-build/
+├── chain_1.dylib   # Build 1
+├── chain_2.dylib   # Build 2 (after code change)
+└── chain_3.dylib   # Build 3 (current)
+```
+
+Old builds are automatically cleaned up (keeps last 3).
+
+---
+
+### Common Pitfalls & Solutions
+
+| Problem | Symptom | Solution |
+|---------|---------|----------|
+| Missing PLATFORM_MACOS | "Unknown platform" compile error | Add `-DPLATFORM_MACOS=1` to compiler |
+| Library caching | Changes don't take effect | Use unique library names per build |
+| Symbol not found | dlsym returns null | Ensure `extern "C"` on exported functions |
+| Context mismatch | Crash or undefined behavior | Context passed by reference, not copied |
 
 ---
 

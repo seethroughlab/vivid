@@ -87,6 +87,7 @@ bool Context::init(int width, int height, const std::string& title) {
     glfwSetFramebufferSizeCallback(window_, onFramebufferResize);
     glfwSetCursorPosCallback(window_, onMouseMove);
     glfwSetMouseButtonCallback(window_, onMouseButton);
+    glfwSetKeyCallback(window_, onKey);
 
     // Set minimum window size
     glfwSetWindowSizeLimits(window_, 320, 240, GLFW_DONT_CARE, GLFW_DONT_CARE);
@@ -226,11 +227,6 @@ void Context::beginFrame() {
     time_ = static_cast<float>(currentTime);
     frame_++;
 
-    // Reset per-frame input state
-    for (int i = 0; i < 8; i++) {
-        mouseButtonsPressed_[i] = false;
-    }
-
     // Get current render target
     auto* rtv = swapChain_->GetCurrentBackBufferRTV();
     auto* dsv = swapChain_->GetDepthBufferDSV();
@@ -256,6 +252,14 @@ bool Context::shouldClose() const {
 }
 
 void Context::pollEvents() {
+    // Reset per-frame input state BEFORE polling (so callbacks can set them)
+    for (int i = 0; i < 8; i++) {
+        mouseButtonsPressed_[i] = false;
+    }
+    for (int i = 0; i < 512; i++) {
+        keysPressed_[i] = false;
+    }
+
     glfwPollEvents();
 
     // Check for ESC key to close
@@ -312,6 +316,32 @@ void Context::onMouseButton(GLFWwindow* window, int button, int action, int mods
             ctx->mouseButtons_[button] = false;
         }
     }
+}
+
+void Context::onKey(GLFWwindow* window, int key, int scancode, int action, int mods) {
+    auto* ctx = static_cast<Context*>(glfwGetWindowUserPointer(window));
+    if (ctx && key >= 0 && key < 512) {
+        if (action == GLFW_PRESS) {
+            ctx->keys_[key] = true;
+            ctx->keysPressed_[key] = true;
+        } else if (action == GLFW_RELEASE) {
+            ctx->keys_[key] = false;
+        }
+    }
+}
+
+bool Context::wasKeyPressed(int key) const {
+    if (key >= 0 && key < 512) {
+        return keysPressed_[key];
+    }
+    return false;
+}
+
+bool Context::isKeyDown(int key) const {
+    if (key >= 0 && key < 512) {
+        return keys_[key];
+    }
+    return false;
 }
 
 } // namespace vivid

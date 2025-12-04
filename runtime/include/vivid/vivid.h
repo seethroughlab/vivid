@@ -17,9 +17,13 @@ constexpr int VERSION_PATCH = 0;
 
 } // namespace vivid
 
-// Macro to export chain entry points
+// Macro to export chain entry points for hot reload
+// Usage:
+//   void setup(vivid::Context& ctx) { /* called once on load */ }
+//   void update(vivid::Context& ctx) { /* called every frame */ }
+//   VIVID_CHAIN(setup, update)
 #define VIVID_CHAIN(setup_fn, update_fn) \
     extern "C" { \
-        void vivid_setup(vivid::Chain& chain) { setup_fn(chain); } \
-        void vivid_update(vivid::Chain& chain, vivid::Context& ctx) { update_fn(chain, ctx); } \
+        void vivid_setup(vivid::Context& ctx) { setup_fn(ctx); } \
+        void vivid_update(vivid::Context& ctx) { update_fn(ctx); } \
     }

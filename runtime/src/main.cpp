@@ -6,12 +6,14 @@
 #include "vivid/camera.h"
 #include "vivid/pbr_material.h"
 #include "vivid/ibl.h"
+#include "vivid/hot_reload.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <chrono>
 #include <memory>
 #include <cmath>
 #include <functional>
+#include <thread>
 
 // Platform-specific defines for GLFW native access
 #if defined(PLATFORM_WIN32)
@@ -776,6 +778,117 @@ bool testPBRTextures(Context& ctx) {
     return true;
 }
 
+// PBR Material Gallery - cycles through all materials with spacebar
+void runPBRMaterialGallery(Context& ctx) {
+    std::cout << "\n=== PBR Material Gallery ===" << std::endl;
+    std::cout << "Press SPACE to cycle through materials" << std::endl;
+    std::cout << "Press ESC to exit" << std::endl;
+
+    // Asset path (in app bundle)
+    std::string assetPath = "runtime/vivid.app/Contents/MacOS/assets/";
+
+    // Material definitions
+    struct MaterialInfo {
+        std::string folder;
+        std::string prefix;
+        std::string displayName;
+    };
+
+    std::vector<MaterialInfo> materialInfos = {
+        {"bronze-bl", "bronze", "Bronze"},
+        {"hexagon-pavers1-bl", "hexagon-pavers1", "Hexagon Pavers"},
+        {"roughrockface2-bl", "roughrockface2", "Rough Rock Face"},
+        {"speckled-granite-tiles-bl", "speckled-granite-tiles", "Speckled Granite Tiles"},
+        {"square-damp-blocks-bl", "square-damp-blocks", "Square Damp Blocks"},
+        {"whispy-grass-meadow-bl", "wispy-grass-meadow", "Whispy Grass Meadow"}
+    };
+
+    // Load all materials
+    std::vector<PBRMaterial> materials(materialInfos.size());
+    for (size_t i = 0; i < materialInfos.size(); i++) {
+        std::string path = assetPath + "materials/" + materialInfos[i].folder;
+        if (!materials[i].loadFromDirectory(ctx, path, materialInfos[i].prefix)) {
+            std::cout << "Warning: Could not load " << materialInfos[i].displayName << " material" << std::endl;
+            materials[i].createDefaults(ctx);
+        } else {
+            std::cout << "Loaded: " << materialInfos[i].displayName << std::endl;
+        }
+    }
+
+    // Create render3d operator
+    auto render3d = std::make_unique<Render3D>();
+    auto output = std::make_unique<Output>();
+
+    output->setInput(render3d.get());
+
+    render3d->init(ctx);
+    output->init(ctx);
+
+    // Create sphere mesh
+    MeshData sphereData = MeshUtils::createSphere(64, 32, 1.0f);
+    Mesh sphereMesh;
+    sphereMesh.create(ctx.device(), sphereData);
+
+    // Add sphere to scene
+    int sphereIdx = render3d->addObject(&sphereMesh, glm::mat4(1.0f));
+
+    // Setup camera
+    render3d->camera().setOrbit(glm::vec3(0, 0, 0), 3.5f, 45.0f, 15.0f);
+
+    // Scene settings
+    render3d->backgroundColor(0.02f, 0.02f, 0.04f);
+    render3d->ambientColor(0.3f, 0.3f, 0.35f);
+
+    // Current material index
+    int currentMaterial = 0;
+
+    // Set initial material
+    if (auto* obj = render3d->getObject(sphereIdx)) {
+        obj->material = &materials[currentMaterial];
+        obj->uvScale = 2.0f;
+        obj->color = glm::vec4(1.0f);
+    }
+
+    std::cout << "\nShowing: " << materialInfos[currentMaterial].displayName << std::endl;
+
+    // Main loop
+    while (!ctx.shouldClose()) {
+        ctx.pollEvents();
+
+        // Check for spacebar to cycle materials
+        if (ctx.wasKeyPressed(GLFW_KEY_SPACE)) {
+            currentMaterial = (currentMaterial + 1) % static_cast<int>(materials.size());
+            if (auto* obj = render3d->getObject(sphereIdx)) {
+                obj->material = &materials[currentMaterial];
+            }
+            std::cout << "Showing: " << materialInfos[currentMaterial].displayName
+                      << " (" << (currentMaterial + 1) << "/" << materials.size() << ")" << std::endl;
+        }
+
+        ctx.beginFrame();
+
+        // Slowly rotate the camera
+        render3d->camera().orbitRotate(0.2f, 0.0f);
+
+        render3d->process(ctx);
+        output->process(ctx);
+
+        ctx.endFrame();
+    }
+
+    // Cleanup
+    output->cleanup();
+    render3d->cleanup();
+
+    for (auto& mat : materials) {
+        mat.cleanup();
+    }
+
+    sphereMesh.release();
+
+    std::cout << "PBR Material Gallery: Done" << std::endl;
+}
+
 // ============================================
 // TEST RUNNER
 // ============================================
@@ -867,21 +980,136 @@ void runOperatorTests(Context& ctx) {
 
 } // namespace vivid
 
+// Hot reload mode: run a project with live code reloading
+void runHotReload(vivid::Context& ctx, const std::string& projectPath) {
+    std::cout << "Hot Reload Mode: " << projectPath << std::endl;
+
+    vivid::HotReload hotReload;
+
+    // Set runtime path (for includes)
+    // The runtime is in the build directory, sources are in runtime/
+    vivid::fs::path execPath = vivid::fs::current_path();
+    vivid::fs::path runtimePath = execPath.parent_path().parent_path() / "runtime";
+    if (!vivid::fs::exists(runtimePath / "include")) {
+        // Try relative to source tree
+        runtimePath = vivid::fs::path(projectPath).parent_path().parent_path() / "runtime";
+    }
+    hotReload.setRuntimePath(runtimePath);
+
+    // Initialize hot reload
+    if (!hotReload.init(projectPath)) {
+        std::cerr << "[Hot Reload] Failed to initialize: " << hotReload.lastError() << std::endl;
+        return;
+    }
+
+    // Call setup if available
+    bool needsSetup = true;
+
+    // Main loop
+    auto lastPollTime = std::chrono::steady_clock::now();
+    const auto pollInterval = std::chrono::milliseconds(100);
+
+    while (!ctx.shouldClose()) {
+        ctx.pollEvents();
+
+        // Poll for file changes periodically
+        auto now = std::chrono::steady_clock::now();
+        if (now - lastPollTime >= pollInterval) {
+            lastPollTime = now;
+            if (hotReload.poll()) {
+                needsSetup = true;
+            }
+        }
+
+        // Call setup after load/reload
+        if (needsSetup && hotReload.isReady()) {
+            if (auto setup = hotReload.setup()) {
+                setup(ctx);
+            }
+            needsSetup = false;
+        }
+
+        ctx.beginFrame();
+
+        // Call update every frame
+        if (hotReload.isReady()) {
+            if (auto update = hotReload.update()) {
+                update(ctx);
+            }
+        } else if (hotReload.hasCompileError()) {
+            // Show compile error - for now just clear to red
+            // TODO: Render error overlay
+        }
+
+        ctx.endFrame();
+    }
+}
+
+void printUsage(const char* programName) {
+    std::cout << "Usage: " << programName << " [options] [project-path]\n"
+              << "\n"
+              << "Options:\n"
+              << "  --pbr-gallery   Run the PBR material gallery (spacebar cycles materials)\n"
+              << "  -h, --help      Show this help message\n"
+              << "\n"
+              << "  project-path    Path to a Vivid project directory containing chain.cpp\n"
+              << "                  If not specified, runs the built-in test suite.\n"
+              << "\n"
+              << "Examples:\n"
+              << "  " << programName << " examples/hello-noise    Run hello-noise example\n"
+              << "  " << programName << " --pbr-gallery           Run PBR material gallery\n"
+              << "  " << programName << "                          Run test suite\n";
+}
+
 int main(int argc, char** argv) {
     std::cout << "Starting Vivid..." << std::endl;
 
+    // Parse command line arguments
+    std::string projectPath;
+    bool runPBRGallery = false;
+
+    for (int i = 1; i < argc; i++) {
+        std::string arg = argv[i];
+        if (arg == "-h" || arg == "--help") {
+            printUsage(argv[0]);
+            return 0;
+        } else if (arg == "--pbr-gallery") {
+            runPBRGallery = true;
+        } else if (arg[0] != '-') {
+            projectPath = arg;
+        }
+    }
+
     vivid::Context ctx;
 
+    // Determine window title based on mode
+    std::string title;
+    if (runPBRGallery) {
+        title = "Vivid - PBR Material Gallery";
+    } else if (projectPath.empty()) {
+        title = "Vivid - Operator Tests";
+    } else {
+        title = "Vivid - " + vivid::fs::path(projectPath).filename().string();
+    }
+
     // Initialize with default window
-    if (!ctx.init(1280, 720, "Vivid - Operator Tests")) {
+    if (!ctx.init(1280, 720, title.c_str())) {
         std::cerr << "Failed to initialize Vivid context" << std::endl;
         return -1;
     }
 
     std::cout << "Context initialized successfully" << std::endl;
 
-    // Run operator test suite
-    vivid::runOperatorTests(ctx);
+    if (runPBRGallery) {
+        // PBR material gallery mode
+        vivid::runPBRMaterialGallery(ctx);
+    } else if (!projectPath.empty()) {
+        // Hot reload mode
+        runHotReload(ctx, projectPath);
+    } else {
+        // Run operator test suite
+        vivid::runOperatorTests(ctx);
+    }
 
     ctx.shutdown();
 

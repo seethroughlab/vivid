@@ -83,6 +83,14 @@ public:
     /// Check if mouse button was pressed this frame
     bool wasMousePressed(int button) const;
 
+    // --- Keyboard Input ---
+
+    /// Check if a key was pressed this frame (single trigger, not held)
+    bool wasKeyPressed(int key) const;
+
+    /// Check if a key is currently held down
+    bool isKeyDown(int key) const;
+
     // --- Diligent Engine Access ---
 
     Diligent::IRenderDevice* device() const { return device_; }
@@ -123,6 +131,8 @@ private:
     glm::vec2 mousePos_{0.0f, 0.0f};
     bool mouseButtons_[8] = {false};
     bool mouseButtonsPressed_[8] = {false};
+    bool keys_[512] = {false};        // Current key state
+    bool keysPressed_[512] = {false}; // Keys pressed this frame
 
     // Utilities
     std::unique_ptr<TextureUtils> textureUtils_;
@@ -133,6 +143,7 @@ private:
     static void onFramebufferResize(GLFWwindow* window, int width, int height);
     static void onMouseMove(GLFWwindow* window, double x, double y);
     static void onMouseButton(GLFWwindow* window, int button, int action, int mods);
+    static void onKey(GLFWwindow* window, int key, int scancode, int action, int mods);
 };
 
 } // namespace vivid
