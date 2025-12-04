@@ -7,6 +7,11 @@
 #include <vector>
 #include <memory>
 
+// Forward declarations
+namespace Diligent {
+    class PBR_Renderer;
+}
+
 namespace vivid {
 
 class PBRMaterial;
@@ -34,7 +39,7 @@ struct Light3D {
     float intensity = 1.0f;
 };
 
-/// 3D rendering operator with basic lighting
+/// 3D rendering operator using DiligentFX PBR_Renderer
 class Render3D : public Operator {
 public:
     Render3D();
@@ -89,7 +94,6 @@ public:
 
 private:
     void createPipeline(Context& ctx);
-    void createTexturedPipeline(Context& ctx);
     void createRenderTargets(Context& ctx);
     void renderScene(Context& ctx);
 
@@ -101,24 +105,21 @@ private:
     glm::vec3 ambientColor_{0.1f, 0.1f, 0.1f};
     IBLEnvironment* environment_ = nullptr;
 
-    // GPU resources
+    // GPU resources - render targets
     Diligent::ITexture* colorTexture_ = nullptr;
     Diligent::ITextureView* colorRTV_ = nullptr;
     Diligent::ITextureView* colorSRV_ = nullptr;
     Diligent::ITexture* depthTexture_ = nullptr;
     Diligent::ITextureView* depthDSV_ = nullptr;
 
-    // Simple (untextured) pipeline
-    Diligent::IPipelineState* pso_ = nullptr;
+    // DiligentFX PBR Renderer
+    std::unique_ptr<Diligent::PBR_Renderer> pbrRenderer_;
     Diligent::IShaderResourceBinding* srb_ = nullptr;
 
-    // Textured PBR pipeline
-    Diligent::IPipelineState* texturedPso_ = nullptr;
-    Diligent::IShaderResourceBinding* texturedSrb_ = nullptr;
-
-    Diligent::IBuffer* transformBuffer_ = nullptr;
-    Diligent::IBuffer* lightBuffer_ = nullptr;
-    Diligent::ISampler* textureSampler_ = nullptr;
+    // Constant buffers
+    Diligent::IBuffer* frameAttribsBuffer_ = nullptr;
+    Diligent::IBuffer* primitiveAttribsBuffer_ = nullptr;
+    Diligent::IBuffer* materialAttribsBuffer_ = nullptr;
 
     int outputWidth_ = 0;
     int outputHeight_ = 0;

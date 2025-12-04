@@ -1,201 +1,55 @@
 // Render3D Operator Implementation
+// Uses DiligentFX PBR_Renderer for physically-based rendering
 
 #include "vivid/operators/render3d.h"
 #include "vivid/context.h"
-#include "vivid/shader_utils.h"
 #include "vivid/pbr_material.h"
 #include "vivid/ibl.h"
 
 #include <iostream>
+#include <cstring>
 
 #include "RenderDevice.h"
 #include "DeviceContext.h"
 #include "MapHelper.hpp"
 #include "GraphicsTypesX.hpp"
+#include "PBR_Renderer.hpp"
+#include "BasicMath.hpp"
+
+// Include HLSL structures from DiligentFX
+namespace Diligent {
+namespace HLSL {
+#include "Shaders/Common/public/BasicStructures.fxh"
+#include "Shaders/PBR/public/PBR_Structures.fxh"
+} // namespace HLSL
+} // namespace Diligent
 
 namespace vivid {
 
 using namespace Diligent;
 
-// Vertex shader for 3D rendering
-static const char* Render3D_VS_Source = R"(
-cbuffer TransformConstants : register(b0)
-{
-    float4x4 g_WorldViewProj;
-    float4x4 g_World;
-    float4x4 g_NormalMatrix;
-    float4 g_ObjectColor;
-    float4 g_MaterialParams; // x=metallic, y=roughness
-};
-
-struct VSInput
-{
-    float3 position : ATTRIB0;
-    float3 normal : ATTRIB1;
-    float2 uv : ATTRIB2;
-    float3 tangent : ATTRIB3;
-};
-
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float3 worldPos : TEXCOORD0;
-    float3 normal : TEXCOORD1;
-    float2 uv : TEXCOORD2;
-    float4 color : TEXCOORD3;
-};
-
-void main(in VSInput vs_in, out PSInput ps_in)
-{
-    ps_in.position = mul(g_WorldViewProj, float4(vs_in.position, 1.0));
-    ps_in.worldPos = mul(g_World, float4(vs_in.position, 1.0)).xyz;
-    ps_in.normal = normalize(mul((float3x3)g_NormalMatrix, vs_in.normal));
-    ps_in.uv = vs_in.uv;
-    ps_in.color = g_ObjectColor;
-}
-)";
-
-// Pixel shader with Cook-Torrance PBR lighting (simple - no textures)
-static const char* Render3D_PS_Source = R"(
-static const float PI = 3.14159265359;
-
-cbuffer LightConstants : register(b1)
-{
-    float4 g_CameraPos;
-    float4 g_AmbientColor;
-    float4 g_LightDir;      // xyz = direction (normalized), w = intensity
-    float4 g_LightColor;    // xyz = color, w = unused
-    float4 g_MaterialParams; // x=metallic, y=roughness
-};
-
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float3 worldPos : TEXCOORD0;
-    float3 normal : TEXCOORD1;
-    float2 uv : TEXCOORD2;
-    float4 color : TEXCOORD3;
-};
-
-// Normal Distribution Function - GGX/Trowbridge-Reitz
-float DistributionGGX(float3 N, float3 H, float roughness)
-{
-    float a = roughness * roughness;
-    float a2 = a * a;
-    float NdotH = max(dot(N, H), 0.0);
-    float NdotH2 = NdotH * NdotH;
-
-    float num = a2;
-    float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-
-    return num / max(denom, 0.0001);
+// Convert glm::mat4 to Diligent float4x4
+// GLM uses column-major (mat[col][row]), Diligent uses row-major (mat[row][col])
+// So we need to transpose during conversion
+static float4x4 ToFloat4x4(const glm::mat4& m) {
+    float4x4 result;
+    for (int row = 0; row < 4; ++row) {
+        for (int col = 0; col < 4; ++col) {
+            result[row][col] = m[col][row];  // Transpose: GLM col/row -> Diligent row/col
+        }
+    }
+    return result;
 }
 
-// Geometry Function - Schlick-GGX
-float GeometrySchlickGGX(float NdotV, float roughness)
-{
-    float r = roughness + 1.0;
-    float k = (r * r) / 8.0;
-
-    float num = NdotV;
-    float denom = NdotV * (1.0 - k) + k;
-
-    return num / max(denom, 0.0001);
+// Convert glm::vec3 to Diligent float3
+static float3 ToFloat3(const glm::vec3& v) {
+    return float3(v.x, v.y, v.z);
 }
 
-// Geometry Function - Smith's method
-float GeometrySmith(float3 N, float3 V, float3 L, float roughness)
-{
-    float NdotV = max(dot(N, V), 0.0);
-    float NdotL = max(dot(N, L), 0.0);
-    float ggx2 = GeometrySchlickGGX(NdotV, roughness);
-    float ggx1 = GeometrySchlickGGX(NdotL, roughness);
-
-    return ggx1 * ggx2;
+// Convert glm::vec4 to Diligent float4
+static float4 ToFloat4(const glm::vec4& v) {
+    return float4(v.x, v.y, v.z, v.w);
 }
-
-// Fresnel Function - Schlick's approximation
-float3 FresnelSchlick(float cosTheta, float3 F0)
-{
-    return F0 + (1.0 - F0) * pow(saturate(1.0 - cosTheta), 5.0);
-}
-
-float4 main(in PSInput ps_in) : SV_TARGET
-{
-    float3 N = normalize(ps_in.normal);
-    float3 V = normalize(g_CameraPos.xyz - ps_in.worldPos);
-
-    // Material properties
-    float3 albedo = ps_in.color.rgb;
-    float metallic = g_MaterialParams.x;
-    float roughness = max(0.04, g_MaterialParams.y);
-
-    // Calculate F0 (surface reflectance at zero incidence)
-    // Dielectrics use 0.04, metals use albedo color
-    float3 F0 = float3(0.04, 0.04, 0.04);
-    F0 = lerp(F0, albedo, metallic);
-
-    // Reflectance equation
-    float3 Lo = float3(0.0, 0.0, 0.0);
-
-    // Light direction and radiance
-    float3 L = normalize(-g_LightDir.xyz);
-    float3 H = normalize(V + L);
-    float3 radiance = g_LightColor.rgb * g_LightDir.w;
-
-    // Cook-Torrance BRDF
-    float NDF = DistributionGGX(N, H, roughness);
-    float G = GeometrySmith(N, V, L, roughness);
-    float3 F = FresnelSchlick(max(dot(H, V), 0.0), F0);
-
-    // Specular component
-    float3 numerator = NDF * G * F;
-    float denominator = 4.0 * max(dot(N, V), 0.0) * max(dot(N, L), 0.0);
-    float3 specular = numerator / max(denominator, 0.001);
-
-    // Energy conservation: kS + kD = 1
-    float3 kS = F;
-    float3 kD = float3(1.0, 1.0, 1.0) - kS;
-    // Metals have no diffuse component
-    kD *= (1.0 - metallic);
-
-    // Outgoing radiance
-    float NdotL = max(dot(N, L), 0.0);
-    Lo += (kD * albedo / PI + specular) * radiance * NdotL;
-
-    // Ambient lighting (approximation without IBL)
-    float3 ambient = g_AmbientColor.rgb * albedo;
-
-    // Final color
-    float3 color = ambient + Lo;
-
-    // HDR tone mapping (Reinhard)
-    color = color / (color + float3(1.0, 1.0, 1.0));
-
-    // Gamma correction
-    color = pow(color, float3(1.0/2.2, 1.0/2.2, 1.0/2.2));
-
-    return float4(color, ps_in.color.a);
-}
-)";
-
-// Uniform buffer structures
-struct TransformConstants {
-    glm::mat4 worldViewProj;
-    glm::mat4 world;
-    glm::mat4 normalMatrix;
-    glm::vec4 objectColor;
-    glm::vec4 materialParams;
-};
-
-struct LightConstants {
-    glm::vec4 cameraPos;
-    glm::vec4 ambientColor;
-    glm::vec4 lightDir;
-    glm::vec4 lightColor;
-    glm::vec4 materialParams;
-};
 
 Render3D::Render3D() {
     // Add a default directional light
@@ -250,98 +104,104 @@ void Render3D::createRenderTargets(Context& ctx) {
 
 void Render3D::createPipeline(Context& ctx) {
     auto* device = ctx.device();
+    auto* context = ctx.immediateContext();
 
-    // Create shaders
-    ShaderCreateInfo shaderCI;
-    shaderCI.SourceLanguage = SHADER_SOURCE_LANGUAGE_HLSL;
+    // Configure PBR_Renderer
+    PBR_Renderer::CreateInfo pbrCI;
+    pbrCI.EnableIBL = false;  // Start without IBL
+    pbrCI.EnableAO = true;    // Enable AO for textured materials
+    pbrCI.EnableEmissive = false;
+    pbrCI.EnableClearCoat = false;
+    pbrCI.EnableSheen = false;
+    pbrCI.EnableAnisotropy = false;
+    pbrCI.EnableIridescence = false;
+    pbrCI.EnableTransmission = false;
+    pbrCI.EnableVolume = false;
+    pbrCI.CreateDefaultTextures = true;
+    pbrCI.EnableShadows = false;
+    pbrCI.UseSeparateMetallicRoughnessTextures = true;  // Use separate metallic/roughness maps
 
-    RefCntAutoPtr<IShader> vs;
-    {
-        shaderCI.Desc.ShaderType = SHADER_TYPE_VERTEX;
-        shaderCI.Desc.Name = "Render3D VS";
-        shaderCI.EntryPoint = "main";
-        shaderCI.Source = Render3D_VS_Source;
-        device->CreateShader(shaderCI, &vs);
-    }
+    // Configure texture attribute indices - these map TEXTURE_ATTRIB_ID to material texture slots
+    // Required for shader macros like MetallicTextureAttribId to be defined
+    pbrCI.TextureAttribIndices[PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR] = 0;
+    pbrCI.TextureAttribIndices[PBR_Renderer::TEXTURE_ATTRIB_ID_NORMAL] = 1;
+    pbrCI.TextureAttribIndices[PBR_Renderer::TEXTURE_ATTRIB_ID_METALLIC] = 2;
+    pbrCI.TextureAttribIndices[PBR_Renderer::TEXTURE_ATTRIB_ID_ROUGHNESS] = 3;
+    pbrCI.TextureAttribIndices[PBR_Renderer::TEXTURE_ATTRIB_ID_OCCLUSION] = 4;
 
-    RefCntAutoPtr<IShader> ps;
-    {
-        shaderCI.Desc.ShaderType = SHADER_TYPE_PIXEL;
-        shaderCI.Desc.Name = "Render3D PS";
-        shaderCI.EntryPoint = "main";
-        shaderCI.Source = Render3D_PS_Source;
-        device->CreateShader(shaderCI, &ps);
-    }
+    // Configure max lights
+    pbrCI.MaxLightCount = 4;
+    pbrCI.MaxShadowCastingLightCount = 0;
 
-    if (!vs || !ps) return;
-
-    // Create pipeline state
-    GraphicsPipelineStateCreateInfo psoCI;
-    psoCI.PSODesc.Name = "Render3D PSO";
-    psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
-
-    psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0] = TEX_FORMAT_RGBA8_UNORM;
-    psoCI.GraphicsPipeline.DSVFormat = TEX_FORMAT_D32_FLOAT;
-    psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-    psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_BACK;
-    psoCI.GraphicsPipeline.RasterizerDesc.FrontCounterClockwise = True;
-    psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = True;
-    psoCI.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = True;
-    psoCI.GraphicsPipeline.DepthStencilDesc.DepthFunc = COMPARISON_FUNC_LESS;
-
-    // Input layout for Vertex3D (position: 12, normal: 12, uv: 8, tangent: 12 = 44 bytes total)
+    // Input layout for our Vertex3D structure (44 bytes total)
+    // Layout: position(vec3, 12), normal(vec3, 12), uv(vec2, 8), tangent(vec3, 12)
+    // DiligentFX expects: ATTRIB0=Pos, ATTRIB1=Normal, ATTRIB2=UV0, ATTRIB7=Tangent
+    // Must explicitly set stride for ALL elements since we have non-contiguous indices
+    constexpr Uint32 stride = sizeof(Vertex3D);  // 44 bytes
     LayoutElement layoutElements[] = {
-        // InputIndex, BufferSlot, NumComponents, ValueType, IsNormalized, RelativeOffset, Stride
-        {0, 0, 3, VT_FLOAT32, False, LAYOUT_ELEMENT_AUTO_OFFSET, LAYOUT_ELEMENT_AUTO_STRIDE},  // Position
-        {1, 0, 3, VT_FLOAT32, False, LAYOUT_ELEMENT_AUTO_OFFSET, LAYOUT_ELEMENT_AUTO_STRIDE},  // Normal
-        {2, 0, 2, VT_FLOAT32, False, LAYOUT_ELEMENT_AUTO_OFFSET, LAYOUT_ELEMENT_AUTO_STRIDE},  // UV
-        {3, 0, 3, VT_FLOAT32, False, LAYOUT_ELEMENT_AUTO_OFFSET, LAYOUT_ELEMENT_AUTO_STRIDE},  // Tangent
+        {0, 0, 3, VT_FLOAT32, False, 0, stride},   // Position at offset 0
+        {1, 0, 3, VT_FLOAT32, False, 12, stride},  // Normal at offset 12
+        {2, 0, 2, VT_FLOAT32, False, 24, stride},  // UV at offset 24
+        {7, 0, 3, VT_FLOAT32, False, 32, stride},  // Tangent at offset 32
     };
-    psoCI.GraphicsPipeline.InputLayout.LayoutElements = layoutElements;
-    psoCI.GraphicsPipeline.InputLayout.NumElements = _countof(layoutElements);
+    pbrCI.InputLayout.LayoutElements = layoutElements;
+    pbrCI.InputLayout.NumElements = _countof(layoutElements);
 
-    psoCI.pVS = vs;
-    psoCI.pPS = ps;
+    // Create PBR_Renderer
+    pbrRenderer_ = std::make_unique<PBR_Renderer>(device, nullptr, context, pbrCI);
 
-    // Create uniform buffers first (before PSO) so we can set default resources
+    if (!pbrRenderer_) {
+        std::cerr << "Failed to create PBR_Renderer" << std::endl;
+        return;
+    }
+    std::cout << "Created DiligentFX PBR_Renderer" << std::endl;
+
+    // Create frame attribs buffer
+    // Size depends on max lights
+    Uint32 frameAttribsSize = PBR_Renderer::GetPRBFrameAttribsSize(pbrCI.MaxLightCount, 0);
+
     BufferDesc bufDesc;
+    bufDesc.Name = "PBR Frame Attribs";
     bufDesc.Usage = USAGE_DYNAMIC;
     bufDesc.BindFlags = BIND_UNIFORM_BUFFER;
     bufDesc.CPUAccessFlags = CPU_ACCESS_WRITE;
+    bufDesc.Size = frameAttribsSize;
+    device->CreateBuffer(bufDesc, nullptr, &frameAttribsBuffer_);
 
-    bufDesc.Name = "Transform Constants";
-    bufDesc.Size = sizeof(TransformConstants);
-    device->CreateBuffer(bufDesc, nullptr, &transformBuffer_);
+    // Create primitive attribs buffer (per-object transforms)
+    PBR_Renderer::PSO_FLAGS psoFlags = PBR_Renderer::PSO_FLAG_USE_VERTEX_NORMALS |
+                                        PBR_Renderer::PSO_FLAG_USE_TEXCOORD0 |
+                                        PBR_Renderer::PSO_FLAG_USE_LIGHTS;
+    Uint32 primAttribsSize = pbrRenderer_->GetPBRPrimitiveAttribsSize(psoFlags);
 
-    bufDesc.Name = "Light Constants";
-    bufDesc.Size = sizeof(LightConstants);
-    device->CreateBuffer(bufDesc, nullptr, &lightBuffer_);
+    bufDesc.Name = "PBR Primitive Attribs";
+    bufDesc.Size = primAttribsSize;
+    device->CreateBuffer(bufDesc, nullptr, &primitiveAttribsBuffer_);
 
-    // Define resource layout - make them MUTABLE since we update per-frame
-    ShaderResourceVariableDesc variables[] = {
-        {SHADER_TYPE_VERTEX, "TransformConstants", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE},
-        {SHADER_TYPE_PIXEL, "LightConstants", SHADER_RESOURCE_VARIABLE_TYPE_MUTABLE}
-    };
-    psoCI.PSODesc.ResourceLayout.Variables = variables;
-    psoCI.PSODesc.ResourceLayout.NumVariables = _countof(variables);
+    // Create material attribs buffer
+    Uint32 matAttribsSize = pbrRenderer_->GetPBRMaterialAttribsSize(psoFlags);
 
-    device->CreateGraphicsPipelineState(psoCI, &pso_);
+    bufDesc.Name = "PBR Material Attribs";
+    bufDesc.Size = matAttribsSize;
+    device->CreateBuffer(bufDesc, nullptr, &materialAttribsBuffer_);
 
-    if (!pso_) {
-        std::cout << "Failed to create Render3D PSO" << std::endl;
-        return;
-    }
+    // Calculate size for textured PSO (to verify buffer size)
+    PBR_Renderer::PSO_FLAGS texturedFlags = psoFlags |
+        PBR_Renderer::PSO_FLAG_USE_COLOR_MAP |
+        PBR_Renderer::PSO_FLAG_USE_NORMAL_MAP |
+        PBR_Renderer::PSO_FLAG_USE_METALLIC_MAP |
+        PBR_Renderer::PSO_FLAG_USE_ROUGHNESS_MAP |
+        PBR_Renderer::PSO_FLAG_USE_AO_MAP;
+    Uint32 texturedMatSize = pbrRenderer_->GetPBRMaterialAttribsSize(texturedFlags);
 
-    // Create SRB and bind buffers as mutable variables
-    pso_->CreateShaderResourceBinding(&srb_, true);
+    std::cout << "Created PBR constant buffers (frame=" << frameAttribsSize
+              << ", prim=" << primAttribsSize << ", mat(base)=" << matAttribsSize
+              << ", mat(textured)=" << texturedMatSize << ")" << std::endl;
 
-    if (auto* var = srb_->GetVariableByName(SHADER_TYPE_VERTEX, "TransformConstants")) {
-        var->Set(transformBuffer_);
-    }
-    if (auto* var = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "LightConstants")) {
-        var->Set(lightBuffer_);
+    // Check internal buffer size
+    auto* internalMatCB = pbrRenderer_->GetPBRMaterialAttribsCB();
+    if (internalMatCB) {
+        std::cout << "Internal material CB size: " << internalMatCB->GetDesc().Size << std::endl;
     }
 }
 
@@ -374,43 +234,313 @@ void Render3D::renderScene(Context& ctx) {
     vp.MaxDepth = 1.0f;
     context->SetViewports(1, &vp, outputWidth_, outputHeight_);
 
-    if (!pso_ || objects_.empty()) return;
+    if (!pbrRenderer_ || objects_.empty()) return;
 
-    // Set pipeline
-    context->SetPipelineState(pso_);
+    // Configure graphics pipeline description for PSO lookup
+    GraphicsPipelineDesc graphicsDesc;
+    graphicsDesc.NumRenderTargets = 1;
+    graphicsDesc.RTVFormats[0] = TEX_FORMAT_RGBA8_UNORM;
+    graphicsDesc.DSVFormat = TEX_FORMAT_D32_FLOAT;
+    graphicsDesc.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    graphicsDesc.RasterizerDesc.CullMode = CULL_MODE_BACK;
+    graphicsDesc.RasterizerDesc.FrontCounterClockwise = True;
+    graphicsDesc.DepthStencilDesc.DepthEnable = True;
+    graphicsDesc.DepthStencilDesc.DepthWriteEnable = True;
+    graphicsDesc.DepthStencilDesc.DepthFunc = COMPARISON_FUNC_LESS;
 
-    // Update light constants
-    {
-        MapHelper<LightConstants> lightData(context, lightBuffer_, MAP_WRITE, MAP_FLAG_DISCARD);
-        lightData->cameraPos = glm::vec4(camera_.position(), 1.0f);
-        lightData->ambientColor = glm::vec4(ambientColor_, 1.0f);
-
-        if (!lights_.empty()) {
-            const Light3D& light = lights_[0];
-            lightData->lightDir = glm::vec4(light.direction, light.intensity);
-            lightData->lightColor = glm::vec4(light.color, 1.0f);
-        } else {
-            lightData->lightDir = glm::vec4(0, -1, 0, 1);
-            lightData->lightColor = glm::vec4(1, 1, 1, 1);
-        }
-        lightData->materialParams = glm::vec4(0);  // Will be set per-object
+    // Get PSO cache accessor
+    auto psoCache = pbrRenderer_->GetPsoCacheAccessor(graphicsDesc);
+    if (!psoCache) {
+        std::cerr << "Failed to get PSO cache accessor" << std::endl;
+        return;
     }
 
-    // Get view-projection matrix
-    glm::mat4 viewProj = camera_.viewProjectionMatrix();
+    // Base PSO flags for our rendering
+    PBR_Renderer::PSO_FLAGS basePsoFlags =
+        PBR_Renderer::PSO_FLAG_USE_VERTEX_NORMALS |
+        PBR_Renderer::PSO_FLAG_USE_TEXCOORD0 |
+        PBR_Renderer::PSO_FLAG_USE_LIGHTS;
+
+    // Textured PSO flags (includes all texture maps)
+    PBR_Renderer::PSO_FLAGS texturedPsoFlags = basePsoFlags |
+        PBR_Renderer::PSO_FLAG_USE_COLOR_MAP |
+        PBR_Renderer::PSO_FLAG_USE_NORMAL_MAP |
+        PBR_Renderer::PSO_FLAG_USE_METALLIC_MAP |
+        PBR_Renderer::PSO_FLAG_USE_ROUGHNESS_MAP |
+        PBR_Renderer::PSO_FLAG_USE_AO_MAP |
+        PBR_Renderer::PSO_FLAG_ENABLE_TEXCOORD_TRANSFORM;
+
+    // Update frame attribs buffer
+    {
+        MapHelper<Uint8> frameData(context, frameAttribsBuffer_, MAP_WRITE, MAP_FLAG_DISCARD);
+        if (!frameData) {
+            std::cerr << "Failed to map frame attribs buffer" << std::endl;
+            return;
+        }
+
+        // The buffer layout depends on PBR_MAX_LIGHTS define
+        // Structure: CameraAttribs + CameraAttribs(prev) + PBRRendererShaderParameters + PBRLightAttribs[N]
+        Uint8* ptr = frameData;
+
+        // Camera attribs
+        HLSL::CameraAttribs* camera = reinterpret_cast<HLSL::CameraAttribs*>(ptr);
+        memset(camera, 0, sizeof(HLSL::CameraAttribs));
+
+        camera->f4Position = ToFloat4(glm::vec4(camera_.position(), 1.0f));
+        camera->f4ViewportSize = float4(
+            static_cast<float>(outputWidth_),
+            static_cast<float>(outputHeight_),
+            1.0f / outputWidth_,
+            1.0f / outputHeight_
+        );
+        camera->fNearPlaneZ = camera_.nearPlane();
+        camera->fFarPlaneZ = camera_.farPlane();
+        camera->fHandness = 1.0f;  // Right-handed
+
+        // View and projection matrices
+        glm::mat4 view = camera_.viewMatrix();
+        glm::mat4 proj = camera_.projectionMatrix();
+        glm::mat4 viewProj = proj * view;
+
+        camera->mView = ToFloat4x4(view);
+        camera->mProj = ToFloat4x4(proj);
+        camera->mViewProj = ToFloat4x4(viewProj);
+        camera->mViewInv = ToFloat4x4(glm::inverse(view));
+        camera->mProjInv = ToFloat4x4(glm::inverse(proj));
+        camera->mViewProjInv = ToFloat4x4(glm::inverse(viewProj));
+
+        ptr += sizeof(HLSL::CameraAttribs);
+
+        // Previous camera (same as current for now)
+        HLSL::CameraAttribs* prevCamera = reinterpret_cast<HLSL::CameraAttribs*>(ptr);
+        memcpy(prevCamera, camera, sizeof(HLSL::CameraAttribs));
+        ptr += sizeof(HLSL::CameraAttribs);
+
+        // Renderer shader parameters
+        HLSL::PBRRendererShaderParameters* renderer = reinterpret_cast<HLSL::PBRRendererShaderParameters*>(ptr);
+        memset(renderer, 0, sizeof(HLSL::PBRRendererShaderParameters));
+
+        renderer->AverageLogLum = 0.3f;
+        renderer->MiddleGray = 0.18f;
+        renderer->WhitePoint = 3.0f;
+        renderer->OcclusionStrength = 1.0f;
+        renderer->EmissionScale = 1.0f;
+        renderer->IBLScale = float4(1.0f, 1.0f, 1.0f, 1.0f);
+        renderer->LightCount = static_cast<int>(std::min(lights_.size(), size_t(4)));
+
+        ptr += sizeof(HLSL::PBRRendererShaderParameters);
+
+        // Lights
+        for (size_t i = 0; i < 4 && i < lights_.size(); ++i) {
+            HLSL::PBRLightAttribs* light = reinterpret_cast<HLSL::PBRLightAttribs*>(ptr);
+            memset(light, 0, sizeof(HLSL::PBRLightAttribs));
+
+            const Light3D& src = lights_[i];
+            if (src.type == Light3D::Type::Directional) {
+                light->Type = 1;  // Directional
+                light->DirectionX = src.direction.x;
+                light->DirectionY = src.direction.y;
+                light->DirectionZ = src.direction.z;
+            } else {
+                light->Type = 2;  // Point
+                light->PosX = src.position.x;
+                light->PosY = src.position.y;
+                light->PosZ = src.position.z;
+            }
+
+            light->IntensityR = src.color.r * src.intensity;
+            light->IntensityG = src.color.g * src.intensity;
+            light->IntensityB = src.color.b * src.intensity;
+            light->ShadowMapIndex = -1;
+
+            ptr += sizeof(HLSL::PBRLightAttribs);
+        }
+    }
 
     // Draw each object
+    IPipelineState* currentPso = nullptr;
+    IShaderResourceBinding* currentSrb = nullptr;
+
     for (const Object3D& obj : objects_) {
         if (!obj.mesh || !obj.mesh->vertexBuffer()) continue;
 
-        // Update transform constants
+        // Determine PSO flags based on material
+        bool hasTextures = obj.material != nullptr;
+        PBR_Renderer::PSO_FLAGS psoFlags = hasTextures ? texturedPsoFlags : basePsoFlags;
+
+        // Get PSO for this object
+        PBR_Renderer::PSOKey psoKey(
+            PBR_Renderer::RenderPassType::Main,
+            psoFlags,
+            PBR_Renderer::ALPHA_MODE_OPAQUE,
+            CULL_MODE_BACK
+        );
+
+        IPipelineState* pso = psoCache.Get(psoKey, PBR_Renderer::PsoCacheAccessor::GET_FLAG_CREATE_IF_NULL);
+        if (!pso) {
+            std::cerr << "Failed to get PBR PSO" << std::endl;
+            continue;
+        }
+
+        // Switch PSO if needed
+        if (pso != currentPso) {
+            currentPso = pso;
+            context->SetPipelineState(pso);
+
+            // Create new SRB for this PSO
+            if (currentSrb) {
+                currentSrb->Release();
+            }
+            pbrRenderer_->CreateResourceBinding(&currentSrb);
+            if (!currentSrb) {
+                std::cerr << "Failed to create SRB" << std::endl;
+                continue;
+            }
+
+            // Bind frame attribs
+            pbrRenderer_->InitCommonSRBVars(currentSrb, frameAttribsBuffer_, true, true, nullptr);
+        }
+
+        // Bind textures if material is present
+        if (hasTextures && obj.material) {
+            static bool debugOnce = true;
+            if (debugOnce) {
+                debugOnce = false;
+                std::cout << "Binding textures to SRB:" << std::endl;
+                std::cout << "  albedoSRV: " << (obj.material->albedoSRV() ? "valid" : "NULL") << std::endl;
+                std::cout << "  normalSRV: " << (obj.material->normalSRV() ? "valid" : "NULL") << std::endl;
+                std::cout << "  metallicSRV: " << (obj.material->metallicSRV() ? "valid" : "NULL") << std::endl;
+                std::cout << "  roughnessSRV: " << (obj.material->roughnessSRV() ? "valid" : "NULL") << std::endl;
+                std::cout << "  aoSRV: " << (obj.material->aoSRV() ? "valid" : "NULL") << std::endl;
+
+                // Check if shader variables exist
+                auto checkVar = [&](const char* name) {
+                    if (auto* var = currentSrb->GetVariableByName(SHADER_TYPE_PIXEL, name)) {
+                        std::cout << "  Shader var '" << name << "': found" << std::endl;
+                    } else {
+                        std::cout << "  Shader var '" << name << "': NOT FOUND" << std::endl;
+                    }
+                };
+                checkVar("g_BaseColorMap");
+                checkVar("g_NormalMap");
+                checkVar("g_MetallicMap");
+                checkVar("g_RoughnessMap");
+                checkVar("g_OcclusionMap");
+            }
+
+            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->albedoSRV(),
+                PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR);
+            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->normalSRV(),
+                PBR_Renderer::TEXTURE_ATTRIB_ID_NORMAL);
+            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->metallicSRV(),
+                PBR_Renderer::TEXTURE_ATTRIB_ID_METALLIC);
+            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->roughnessSRV(),
+                PBR_Renderer::TEXTURE_ATTRIB_ID_ROUGHNESS);
+            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->aoSRV(),
+                PBR_Renderer::TEXTURE_ATTRIB_ID_OCCLUSION);
+        }
+
+        // Update primitive attribs
         {
-            MapHelper<TransformConstants> transformData(context, transformBuffer_, MAP_WRITE, MAP_FLAG_DISCARD);
-            transformData->worldViewProj = viewProj * obj.transform;
-            transformData->world = obj.transform;
-            transformData->normalMatrix = glm::transpose(glm::inverse(obj.transform));
-            transformData->objectColor = obj.color;
-            transformData->materialParams = glm::vec4(obj.metallic, obj.roughness, 0, 0);
+            MapHelper<Uint8> primData(context, pbrRenderer_->GetPBRPrimitiveAttribsCB(), MAP_WRITE, MAP_FLAG_DISCARD);
+            if (primData) {
+                Uint8* ptr = primData;
+
+                // Node matrix (world transform)
+                float4x4* nodeMatrix = reinterpret_cast<float4x4*>(ptr);
+                *nodeMatrix = ToFloat4x4(obj.transform);
+                ptr += sizeof(float4x4);
+
+                // Joint count and first joint
+                int* jointCount = reinterpret_cast<int*>(ptr);
+                *jointCount = 0;
+                ptr += sizeof(int);
+
+                int* firstJoint = reinterpret_cast<int*>(ptr);
+                *firstJoint = 0;
+                ptr += sizeof(int);
+
+                // Position bias and scale (identity)
+                float* posBias = reinterpret_cast<float*>(ptr);
+                posBias[0] = posBias[1] = posBias[2] = 0.0f;
+                ptr += sizeof(float) * 3;
+
+                float* posScale = reinterpret_cast<float*>(ptr);
+                posScale[0] = posScale[1] = posScale[2] = 1.0f;
+                ptr += sizeof(float) * 3;
+
+                // Fallback color
+                float4* fallbackColor = reinterpret_cast<float4*>(ptr);
+                *fallbackColor = ToFloat4(obj.color);
+                ptr += sizeof(float4);
+
+                // Custom data
+                float4* customData = reinterpret_cast<float4*>(ptr);
+                *customData = float4(0, 0, 0, 0);
+            }
+        }
+
+        // Update material attribs
+        {
+            MapHelper<Uint8> matData(context, pbrRenderer_->GetPBRMaterialAttribsCB(), MAP_WRITE, MAP_FLAG_DISCARD);
+            if (matData) {
+                Uint8* ptr = matData;
+
+                // Write PBRMaterialBasicAttribs first
+                HLSL::PBRMaterialBasicAttribs* basic = reinterpret_cast<HLSL::PBRMaterialBasicAttribs*>(ptr);
+                memset(basic, 0, sizeof(HLSL::PBRMaterialBasicAttribs));
+
+                // For textured materials, use white base color so texture shows properly
+                // For untextured materials, use the object's color
+                if (hasTextures) {
+                    basic->BaseColorFactor = float4(1.0f, 1.0f, 1.0f, 1.0f);
+                    basic->MetallicFactor = 1.0f;   // Use texture values
+                    basic->RoughnessFactor = 1.0f;  // Use texture values
+                } else {
+                    basic->BaseColorFactor = ToFloat4(obj.color);
+                    basic->MetallicFactor = obj.metallic;
+                    basic->RoughnessFactor = obj.roughness;
+                }
+                basic->OcclusionFactor = 1.0f;
+                basic->Workflow = 0;  // Metallic-roughness
+                basic->AlphaMode = 0;  // Opaque
+                basic->AlphaMaskCutoff = 0.5f;
+                basic->NormalScale = 1.0f;
+
+                ptr += sizeof(HLSL::PBRMaterialBasicAttribs);
+
+                // Write PBRMaterialTextureAttribs for each texture (5 textures: base color, normal, metallic, roughness, AO)
+                // These define UV transformation and which UV set to use
+                if (hasTextures) {
+                    static bool debugOnce2 = true;
+                    if (debugOnce2) {
+                        debugOnce2 = false;
+                        std::cout << "Writing " << 5 << " texture attribs to material buffer" << std::endl;
+                        std::cout << "  Basic attribs size: " << sizeof(HLSL::PBRMaterialBasicAttribs) << std::endl;
+                        std::cout << "  Each texture attrib size: " << sizeof(HLSL::PBRMaterialTextureAttribs) << std::endl;
+                        std::cout << "  Total write size: " << (sizeof(HLSL::PBRMaterialBasicAttribs) + 5 * sizeof(HLSL::PBRMaterialTextureAttribs)) << std::endl;
+                    }
+
+                    for (int i = 0; i < 5; ++i) {
+                        HLSL::PBRMaterialTextureAttribs* texAttrib = reinterpret_cast<HLSL::PBRMaterialTextureAttribs*>(ptr);
+
+                        // PackedProps: UV selector in bits [0-2]
+                        // Value of 1 means UV selector = 0 (use UV0) because unpacking does: (PackedProps & 7) - 1
+                        texAttrib->PackedProps = 1;  // Use UV0
+                        texAttrib->TextureSlice = 0.0f;
+                        texAttrib->UBias = 0.0f;
+                        texAttrib->VBias = 0.0f;
+
+                        // Identity UV transform
+                        texAttrib->UVScaleAndRotation = float4(1.0f, 0.0f, 0.0f, 1.0f);
+
+                        // Atlas scale and bias (no atlas, full texture)
+                        texAttrib->AtlasUVScaleAndBias = float4(1.0f, 1.0f, 0.0f, 0.0f);
+
+                        ptr += sizeof(HLSL::PBRMaterialTextureAttribs);
+                    }
+                }
+            }
         }
 
         // Bind vertex and index buffers
@@ -420,7 +550,7 @@ void Render3D::renderScene(Context& ctx) {
         context->SetIndexBuffer(obj.mesh->indexBuffer(), 0, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         // Commit resources
-        context->CommitShaderResources(srb_, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+        context->CommitShaderResources(currentSrb, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
         // Draw
         DrawIndexedAttribs drawAttrs;
@@ -429,17 +559,23 @@ void Render3D::renderScene(Context& ctx) {
         drawAttrs.Flags = DRAW_FLAG_VERIFY_ALL;
         context->DrawIndexed(drawAttrs);
     }
+
+    // Clean up temporary SRB
+    if (currentSrb) {
+        currentSrb->Release();
+    }
 }
 
 void Render3D::cleanup() {
     if (srb_) { srb_->Release(); srb_ = nullptr; }
-    if (pso_) { pso_->Release(); pso_ = nullptr; }
-    if (lightBuffer_) { lightBuffer_->Release(); lightBuffer_ = nullptr; }
-    if (transformBuffer_) { transformBuffer_->Release(); transformBuffer_ = nullptr; }
-    if (depthDSV_) { depthDSV_ = nullptr; }  // View, don't release
+    if (materialAttribsBuffer_) { materialAttribsBuffer_->Release(); materialAttribsBuffer_ = nullptr; }
+    if (primitiveAttribsBuffer_) { primitiveAttribsBuffer_->Release(); primitiveAttribsBuffer_ = nullptr; }
+    if (frameAttribsBuffer_) { frameAttribsBuffer_->Release(); frameAttribsBuffer_ = nullptr; }
+    pbrRenderer_.reset();
+    if (depthDSV_) { depthDSV_ = nullptr; }
     if (depthTexture_) { depthTexture_->Release(); depthTexture_ = nullptr; }
-    if (colorSRV_) { colorSRV_ = nullptr; }  // View, don't release
-    if (colorRTV_) { colorRTV_ = nullptr; }  // View, don't release
+    if (colorSRV_) { colorSRV_ = nullptr; }
+    if (colorRTV_) { colorRTV_ = nullptr; }
     if (colorTexture_) { colorTexture_->Release(); colorTexture_ = nullptr; }
 }
 
@@ -503,6 +639,11 @@ Render3D& Render3D::ambientColor(float r, float g, float b) {
 
 Render3D& Render3D::ambientColor(const glm::vec3& color) {
     ambientColor_ = color;
+    return *this;
+}
+
+Render3D& Render3D::setEnvironment(IBLEnvironment* env) {
+    environment_ = env;
     return *this;
 }
 

@@ -6,10 +6,13 @@
 #include "RenderDevice.h"
 #include "DeviceContext.h"
 #include "TextureUtilities.h"
+#include "TextureLoader.h"
 #include "GraphicsTypesX.hpp"
+#include "RefCntAutoPtr.hpp"
 
 #include <filesystem>
 #include <iostream>
+#include <vector>
 
 namespace vivid {
 
@@ -69,16 +72,49 @@ bool PBRMaterial::loadTexture(Context& ctx, const std::string& path,
         return false;
     }
 
+    // Use texture loader to get image data
     TextureLoadInfo loadInfo;
     loadInfo.IsSRGB = srgb;
     loadInfo.GenerateMips = true;
     loadInfo.Name = path.c_str();
 
+    RefCntAutoPtr<ITextureLoader> pLoader;
+    CreateTextureLoaderFromFile(path.c_str(), IMAGE_FILE_FORMAT_UNKNOWN, loadInfo, &pLoader);
+    if (!pLoader) {
+        std::cerr << "Failed to create texture loader: " << path << std::endl;
+        return false;
+    }
+
+    // Get original texture description
+    const TextureDesc& srcDesc = pLoader->GetTextureDesc();
+
+    // Create a texture array with 1 slice (DiligentFX PBR shaders expect Texture2DArray)
+    TextureDesc arrayDesc;
+    arrayDesc.Name = path.c_str();
+    arrayDesc.Type = RESOURCE_DIM_TEX_2D_ARRAY;  // Array texture required by DiligentFX PBR
+    arrayDesc.Width = srcDesc.Width;
+    arrayDesc.Height = srcDesc.Height;
+    arrayDesc.ArraySize = 1;  // Single slice
+    arrayDesc.MipLevels = srcDesc.MipLevels;
+    arrayDesc.Format = srcDesc.Format;
+    arrayDesc.BindFlags = BIND_SHADER_RESOURCE;
+    arrayDesc.Usage = USAGE_IMMUTABLE;
+
+    // Get subresource data for all mip levels
+    std::vector<TextureSubResData> subResData(srcDesc.MipLevels);
+    for (Uint32 mip = 0; mip < srcDesc.MipLevels; ++mip) {
+        subResData[mip] = pLoader->GetSubresourceData(mip, 0);
+    }
+
+    TextureData initData;
+    initData.pSubResources = subResData.data();
+    initData.NumSubresources = srcDesc.MipLevels;
+
     RefCntAutoPtr<ITexture> texture;
-    CreateTextureFromFile(path.c_str(), loadInfo, ctx.device(), &texture);
+    ctx.device()->CreateTexture(arrayDesc, &initData, &texture);
 
     if (!texture) {
-        std::cerr << "Failed to load texture: " << path << std::endl;
+        std::cerr << "Failed to create texture array: " << path << std::endl;
         return false;
     }
 
@@ -115,6 +151,7 @@ bool PBRMaterial::loadFromDirectory(Context& ctx, const std::string& dirPath, co
         basePath + filePrefix + "_Albedo.png",
         basePath + filePrefix + "_basecolor.png",
         basePath + filePrefix + "_BaseColor.png",
+        basePath + filePrefix + "_Base_Color.png",
         basePath + filePrefix + "_diffuse.png"
     };
 
@@ -217,12 +254,14 @@ void PBRMaterial::createDefaults(Context& ctx) {
     auto* device = ctx.device();
 
     // Create default white texture (for albedo, metallic, roughness fallbacks)
+    // Use RESOURCE_DIM_TEX_2D_ARRAY to match DiligentFX PBR shader expectations
     if (!defaultWhiteTex_) {
         TextureDesc texDesc;
         texDesc.Name = "Default White";
-        texDesc.Type = RESOURCE_DIM_TEX_2D;
+        texDesc.Type = RESOURCE_DIM_TEX_2D_ARRAY;  // Array for DiligentFX PBR
         texDesc.Width = 1;
         texDesc.Height = 1;
+        texDesc.ArraySize = 1;
         texDesc.Format = TEX_FORMAT_RGBA8_UNORM;
         texDesc.BindFlags = BIND_SHADER_RESOURCE;
         texDesc.Usage = USAGE_IMMUTABLE;
@@ -244,9 +283,10 @@ void PBRMaterial::createDefaults(Context& ctx) {
     if (!defaultNormalTex_) {
         TextureDesc texDesc;
         texDesc.Name = "Default Normal";
-        texDesc.Type = RESOURCE_DIM_TEX_2D;
+        texDesc.Type = RESOURCE_DIM_TEX_2D_ARRAY;  // Array for DiligentFX PBR
         texDesc.Width = 1;
         texDesc.Height = 1;
+        texDesc.ArraySize = 1;
         texDesc.Format = TEX_FORMAT_RGBA8_UNORM;
         texDesc.BindFlags = BIND_SHADER_RESOURCE;
         texDesc.Usage = USAGE_IMMUTABLE;

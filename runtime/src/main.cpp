@@ -4,6 +4,8 @@
 #include "vivid/operators.h"
 #include "vivid/mesh.h"
 #include "vivid/camera.h"
+#include "vivid/pbr_material.h"
+#include "vivid/ibl.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <chrono>
@@ -695,6 +697,85 @@ bool testRender3D(Context& ctx) {
     return true;
 }
 
+// Test: PBR Textures with IBL
+bool testPBRTextures(Context& ctx) {
+    std::cout << "\n=== Test: PBR Textures ===" << std::endl;
+
+    // Load PBR material - assets are in the app bundle
+    std::string assetPath = "runtime/vivid.app/Contents/MacOS/assets/";
+
+    // Load PBR material
+    PBRMaterial rockMaterial;
+    if (!rockMaterial.loadFromDirectory(ctx, assetPath + "materials/roughrockface2-bl", "roughrockface2")) {
+        std::cout << "Warning: Could not load rock material, using defaults" << std::endl;
+        rockMaterial.createDefaults(ctx);
+    }
+
+    // Create render3d operator
+    auto render3d = std::make_unique<Render3D>();
+    auto output = std::make_unique<Output>();
+
+    output->setInput(render3d.get());
+
+    render3d->init(ctx);
+    output->init(ctx);
+
+    // Create meshes
+    MeshData sphereData = MeshUtils::createSphere(64, 32, 0.8f);
+    MeshData planeData = MeshUtils::createPlane(6.0f, 6.0f, 4, 4);
+
+    Mesh sphereMesh, planeMesh;
+    sphereMesh.create(ctx.device(), sphereData);
+    planeMesh.create(ctx.device(), planeData);
+
+    // Add objects
+    int sphereIdx = render3d->addObject(&sphereMesh, glm::translate(glm::mat4(1.0f), glm::vec3(0, 0.3f, 0)));
+    int planeIdx = render3d->addObject(&planeMesh,
+        glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(1, 0, 0)) *
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -0.5f)));
+
+    // Assign material to sphere
+    if (auto* obj = render3d->getObject(sphereIdx)) {
+        obj->material = &rockMaterial;
+        obj->uvScale = 2.0f;
+        obj->color = glm::vec4(1.0f);  // Material provides color
+    }
+
+    // Plane uses simple PBR
+    if (auto* obj = render3d->getObject(planeIdx)) {
+        obj->color = glm::vec4(0.2f, 0.2f, 0.25f, 1.0f);
+        obj->metallic = 0.0f;
+        obj->roughness = 0.8f;
+    }
+
+    // Setup camera
+    render3d->camera().setOrbit(glm::vec3(0, 0.2f, 0), 3.0f, 45.0f, 20.0f);
+
+    // Scene settings
+    render3d->backgroundColor(0.02f, 0.02f, 0.04f);
+    render3d->ambientColor(0.2f, 0.2f, 0.25f);
+
+    std::cout << "PBR Textures: Bronze sphere with orbit camera for 2s..." << std::endl;
+
+    runFor(ctx, 2.0f, [&]() {
+        // Orbit camera
+        render3d->camera().orbitRotate(0.4f, 0.0f);
+
+        render3d->process(ctx);
+        output->process(ctx);
+    });
+
+    output->cleanup();
+    render3d->cleanup();
+    rockMaterial.cleanup();
+
+    sphereMesh.release();
+    planeMesh.release();
+
+    std::cout << "PBR Textures: PASSED" << std::endl;
+    return true;
+}
+
 // ============================================
 // TEST RUNNER
 // ============================================
@@ -707,10 +788,15 @@ void runOperatorTests(Context& ctx) {
     std::cout << "Press ESC at any time to exit\n" << std::endl;
 
     int passed = 0;
-    int total = 17;
+    int total = 18;
+
+    // Phase 4 tests (run first for faster iteration during development)
+    std::cout << "--- PHASE 4: 3D Rendering ---" << std::endl;
+    if (!ctx.shouldClose() && testRender3D(ctx)) passed++;
+    if (!ctx.shouldClose() && testPBRTextures(ctx)) passed++;
 
     // Phase 2 tests
-    std::cout << "--- PHASE 2: Core Operators ---" << std::endl;
+    std::cout << "\n--- PHASE 2: Core Operators ---" << std::endl;
     if (!ctx.shouldClose() && testSolidColor(ctx)) passed++;
     if (!ctx.shouldClose() && testNoise(ctx)) passed++;
     if (!ctx.shouldClose() && testBlur(ctx)) passed++;
@@ -729,10 +815,6 @@ void runOperatorTests(Context& ctx) {
     if (!ctx.shouldClose() && testChromaticAberration(ctx)) passed++;
     if (!ctx.shouldClose() && testPixelate(ctx)) passed++;
     if (!ctx.shouldClose() && testMirror(ctx)) passed++;
-
-    // Phase 4 tests
-    std::cout << "\n--- PHASE 4: 3D Rendering ---" << std::endl;
-    if (!ctx.shouldClose() && testRender3D(ctx)) passed++;
 
     // Full chain test
     std::cout << "\n--- Integration Test ---" << std::endl;

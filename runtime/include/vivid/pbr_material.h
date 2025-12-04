@@ -37,14 +37,18 @@ public:
     /// Release all resources
     void cleanup();
 
-    // Texture accessors
-    Diligent::ITextureView* albedoSRV() const { return albedoSRV_; }
-    Diligent::ITextureView* normalSRV() const { return normalSRV_; }
-    Diligent::ITextureView* metallicSRV() const { return metallicSRV_; }
-    Diligent::ITextureView* roughnessSRV() const { return roughnessSRV_; }
-    Diligent::ITextureView* aoSRV() const { return aoSRV_; }
+    // Texture accessors (return defaults if texture not loaded)
+    Diligent::ITextureView* albedoSRV() const { return albedoSRV_ ? albedoSRV_ : defaultWhiteSRV_; }
+    Diligent::ITextureView* normalSRV() const { return normalSRV_ ? normalSRV_ : defaultNormalSRV_; }
+    Diligent::ITextureView* metallicSRV() const { return metallicSRV_ ? metallicSRV_ : defaultWhiteSRV_; }
+    Diligent::ITextureView* roughnessSRV() const { return roughnessSRV_ ? roughnessSRV_ : defaultWhiteSRV_; }
+    Diligent::ITextureView* aoSRV() const { return aoSRV_ ? aoSRV_ : defaultWhiteSRV_; }
     Diligent::ITextureView* emissiveSRV() const { return emissiveSRV_; }
     Diligent::ISampler* sampler() const { return sampler_; }
+
+    // Default texture accessors
+    Diligent::ITextureView* defaultWhiteSRV() const { return defaultWhiteSRV_; }
+    Diligent::ITextureView* defaultNormalSRV() const { return defaultNormalSRV_; }
 
     /// Check if material has textures loaded
     bool hasAlbedo() const { return albedoTex_ != nullptr; }

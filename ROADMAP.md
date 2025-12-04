@@ -18,6 +18,37 @@ See [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) for the full vision.
 
 ---
 
+## ⚠️ CRITICAL: Use DiligentFX for 3D/PBR Rendering
+
+**DO NOT write custom PBR shaders.** DiligentFX provides production-quality, tested implementations:
+
+| Feature | DiligentFX Class | DO NOT Write Custom |
+|---------|------------------|---------------------|
+| PBR Rendering | `PBR_Renderer` | No custom Cook-Torrance shaders |
+| IBL Precomputation | `PBR_Renderer::PrecomputeCubemaps()` | No custom irradiance/prefilter code |
+| GLTF Loading | `GLTF_PBR_Renderer` | No custom model loaders |
+| Shadow Mapping | `ShadowMapManager` | No custom shadow code |
+| Post-Processing | `PostFXContext` | No custom bloom/tonemap shaders |
+
+**Why this matters:**
+- DiligentFX shaders are tested across all platforms and backends
+- IBL precomputation is complex (spherical harmonics, GGX filtering)
+- Material system handles all PBR texture permutations
+- Shadow cascades, PCF filtering already implemented
+- Code is maintained by Diligent team, not us
+
+**The only custom shaders should be for:**
+- 2D image effects (blur, color correction, etc.)
+- Novel effects not covered by DiligentFX
+- Chain-specific compositing operations
+
+**Before writing ANY shader code, verify:**
+1. Is this a 3D/PBR feature? → Use DiligentFX
+2. Is this a standard effect (shadows, SSAO, bloom)? → Check DiligentFX first
+3. Is this truly a novel 2D effect? → Then custom HLSL is appropriate
+
+---
+
 ## Project Structure
 
 A minimal vivid project requires only:

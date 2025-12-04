@@ -58,6 +58,18 @@ public:
     /// Get combined view-projection matrix
     glm::mat4 viewProjectionMatrix() const { return projectionMatrix_ * viewMatrix_; }
 
+    /// Get near clip plane distance
+    float nearPlane() const { return nearPlane_; }
+
+    /// Get far clip plane distance
+    float farPlane() const { return farPlane_; }
+
+    /// Get field of view in degrees
+    float fov() const { return fovDegrees_; }
+
+    /// Get aspect ratio
+    float aspectRatio() const { return aspectRatio_; }
+
     // --- Orbit Controls ---
 
     /// Set orbit parameters
