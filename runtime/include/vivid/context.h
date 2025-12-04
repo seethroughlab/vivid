@@ -86,6 +86,9 @@ public:
     /// Check if mouse button is currently held down
     bool isMouseDown(int button) const;
 
+    /// Get scroll wheel delta since last frame (y is vertical scroll)
+    glm::vec2 scrollDelta() const { return scrollDelta_; }
+
     // --- Keyboard Input ---
 
     /// Check if a key was pressed this frame (single trigger, not held)
@@ -132,6 +135,7 @@ private:
 
     // Input state
     glm::vec2 mousePos_{0.0f, 0.0f};
+    glm::vec2 scrollDelta_{0.0f, 0.0f};
     bool mouseButtons_[8] = {false};
     bool mouseButtonsPressed_[8] = {false};
     bool keys_[512] = {false};        // Current key state
@@ -146,6 +150,7 @@ private:
     static void onFramebufferResize(GLFWwindow* window, int width, int height);
     static void onMouseMove(GLFWwindow* window, double x, double y);
     static void onMouseButton(GLFWwindow* window, int button, int action, int mods);
+    static void onScroll(GLFWwindow* window, double xoffset, double yoffset);
     static void onKey(GLFWwindow* window, int key, int scancode, int action, int mods);
 };
 

@@ -8,6 +8,7 @@
 
 #include <iostream>
 #include <cstring>
+#include <cmath>
 
 #include "RenderDevice.h"
 #include "DeviceContext.h"
@@ -341,16 +342,49 @@ void Render3D::renderScene(Context& ctx) {
             memset(light, 0, sizeof(HLSL::PBRLightAttribs));
 
             const Light3D& src = lights_[i];
-            if (src.type == Light3D::Type::Directional) {
-                light->Type = 1;  // Directional
-                light->DirectionX = src.direction.x;
-                light->DirectionY = src.direction.y;
-                light->DirectionZ = src.direction.z;
-            } else {
-                light->Type = 2;  // Point
-                light->PosX = src.position.x;
-                light->PosY = src.position.y;
-                light->PosZ = src.position.z;
+            switch (src.type) {
+                case Light3D::Type::Directional:
+                    light->Type = 1;
+                    light->DirectionX = src.direction.x;
+                    light->DirectionY = src.direction.y;
+                    light->DirectionZ = src.direction.z;
+                    break;
+
+                case Light3D::Type::Point:
+                    light->Type = 2;
+                    light->PosX = src.position.x;
+                    light->PosY = src.position.y;
+                    light->PosZ = src.position.z;
+                    if (src.range > 0) {
+                        float r4 = src.range * src.range * src.range * src.range;
+                        light->Range4 = r4;
+                    }
+                    break;
+
+                case Light3D::Type::Spot:
+                    light->Type = 3;
+                    light->PosX = src.position.x;
+                    light->PosY = src.position.y;
+                    light->PosZ = src.position.z;
+                    light->DirectionX = src.direction.x;
+                    light->DirectionY = src.direction.y;
+                    light->DirectionZ = src.direction.z;
+                    if (src.range > 0) {
+                        float r4 = src.range * src.range * src.range * src.range;
+                        light->Range4 = r4;
+                    }
+                    // SpotAngleScale = 1.0 / (cos(inner) - cos(outer))
+                    // SpotAngleOffset = -cos(outer) * SpotAngleScale
+                    {
+                        float cosInner = std::cos(src.innerConeAngle);
+                        float cosOuter = std::cos(src.outerConeAngle);
+                        float denom = cosInner - cosOuter;
+                        if (std::abs(denom) > 1e-6f) {
+                            light->SpotAngleScale = 1.0f / denom;
+                            light->SpotAngleOffset = -cosOuter * light->SpotAngleScale;
+                        }
+                    }
+                    break;
             }
 
             light->IntensityR = src.color.r * src.intensity;
@@ -645,6 +679,12 @@ Light3D* Render3D::getLight(int index) {
         return &lights_[index];
     }
     return nullptr;
+}
+
+void Render3D::setLight(int index, const Light3D& light) {
+    if (index >= 0 && index < static_cast<int>(lights_.size())) {
+        lights_[index] = light;
+    }
 }
 
 void Render3D::clearLights() {

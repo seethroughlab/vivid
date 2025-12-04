@@ -268,15 +268,18 @@ MeshData createCylinder(int segments, float radius, float height) {
         mesh.vertices.push_back({{radius * cosT,  halfHeight, radius * sinT}, normal, {u, 1}, tangent});
     }
 
-    // Side indices
+    // Side indices - CCW winding when viewed from outside
+    // Vertices: base=bottom_i, base+1=top_i, base+2=bottom_{i+1}, base+3=top_{i+1}
     for (int i = 0; i < segments; i++) {
         uint32_t base = i * 2;
+        // Triangle 1: bottom_i -> top_i -> bottom_{i+1}
         mesh.indices.push_back(base);
-        mesh.indices.push_back(base + 2);
         mesh.indices.push_back(base + 1);
+        mesh.indices.push_back(base + 2);
 
-        mesh.indices.push_back(base + 1);
+        // Triangle 2: bottom_{i+1} -> top_i -> top_{i+1}
         mesh.indices.push_back(base + 2);
+        mesh.indices.push_back(base + 1);
         mesh.indices.push_back(base + 3);
     }
 
@@ -296,9 +299,10 @@ MeshData createCylinder(int segments, float radius, float height) {
     }
 
     for (int i = 0; i < segments; i++) {
+        // CCW winding when viewed from above (+Y)
         mesh.indices.push_back(topCenterIdx);
-        mesh.indices.push_back(topCenterIdx + 1 + i);
         mesh.indices.push_back(topCenterIdx + 2 + i);
+        mesh.indices.push_back(topCenterIdx + 1 + i);
     }
 
     // Bottom cap
@@ -317,9 +321,10 @@ MeshData createCylinder(int segments, float radius, float height) {
     }
 
     for (int i = 0; i < segments; i++) {
+        // CCW winding when viewed from below (-Y)
         mesh.indices.push_back(botCenterIdx);
-        mesh.indices.push_back(botCenterIdx + 2 + i);
         mesh.indices.push_back(botCenterIdx + 1 + i);
+        mesh.indices.push_back(botCenterIdx + 2 + i);
     }
 
     return mesh;
@@ -354,13 +359,14 @@ MeshData createTorus(int segments, int rings, float radius, float tubeRadius) {
             uint32_t current = ring * (segments + 1) + seg;
             uint32_t next = current + segments + 1;
 
+            // CCW winding when viewed from outside (matches sphere)
             mesh.indices.push_back(current);
-            mesh.indices.push_back(next);
             mesh.indices.push_back(current + 1);
+            mesh.indices.push_back(next);
 
             mesh.indices.push_back(current + 1);
-            mesh.indices.push_back(next);
             mesh.indices.push_back(next + 1);
+            mesh.indices.push_back(next);
         }
     }
 
@@ -393,11 +399,11 @@ MeshData createCone(int segments, float radius, float height) {
         mesh.vertices.push_back({{radius * cosT, -halfHeight, radius * sinT}, normal, {u, 1}, tangent});
     }
 
-    // Side indices
+    // Side indices - CCW winding when viewed from outside
     for (int i = 0; i < segments; i++) {
         mesh.indices.push_back(apexIdx);
-        mesh.indices.push_back(1 + i);
         mesh.indices.push_back(2 + i);
+        mesh.indices.push_back(1 + i);
     }
 
     // Bottom cap
@@ -416,9 +422,10 @@ MeshData createCone(int segments, float radius, float height) {
     }
 
     for (int i = 0; i < segments; i++) {
+        // CCW winding when viewed from below (-Y)
         mesh.indices.push_back(botCenterIdx);
-        mesh.indices.push_back(botCenterIdx + 2 + i);
         mesh.indices.push_back(botCenterIdx + 1 + i);
+        mesh.indices.push_back(botCenterIdx + 2 + i);
     }
 
     return mesh;

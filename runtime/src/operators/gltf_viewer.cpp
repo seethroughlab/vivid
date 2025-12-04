@@ -3,6 +3,7 @@
 #include "vivid/operators/gltf_viewer.h"
 #include "vivid/context.h"
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/constants.hpp>
 #include <iostream>
 
 // DiligentFX for GLTF PBR rendering
@@ -30,7 +31,6 @@ struct GLTFViewer::Impl {
     std::unique_ptr<GLTF_PBR_Renderer> renderer;
     RefCntAutoPtr<IBuffer> frameAttribsCB;
     std::vector<GLTF_PBR_Renderer::ModelResourceBindings> modelBindings;
-    GLTF::Light defaultLight;
     GLTF_PBR_Renderer::RenderInfo renderParams;
     TEXTURE_FORMAT colorFormat = TEX_FORMAT_UNKNOWN;
     TEXTURE_FORMAT depthFormat = TEX_FORMAT_UNKNOWN;
@@ -44,9 +44,9 @@ struct GLTFViewer::Impl {
 };
 
 GLTFViewer::GLTFViewer() : impl_(std::make_unique<Impl>()) {
-    // Setup default light
-    impl_->defaultLight.Type = GLTF::Light::TYPE::DIRECTIONAL;
-    impl_->defaultLight.Intensity = lightIntensity_;
+    // Setup default light (single directional light for backward compatibility)
+    Light defaultLight = Light::directional(glm::vec3(0.5f, 0.6f, -0.2f), 3.0f);
+    lights_.push_back(defaultLight);
 }
 
 GLTFViewer::~GLTFViewer() = default;
@@ -99,12 +99,41 @@ std::string GLTFViewer::modelName(int index) const {
 }
 
 void GLTFViewer::lightDirection(float x, float y, float z) {
-    lightDir_ = glm::normalize(glm::vec3(x, y, z));
+    // Legacy API: update first light if it exists and is directional
+    if (!lights_.empty() && lights_[0].type == LightType::Directional) {
+        lights_[0].direction = glm::normalize(glm::vec3(x, y, z));
+    }
 }
 
 void GLTFViewer::lightIntensity(float intensity) {
-    lightIntensity_ = intensity;
-    impl_->defaultLight.Intensity = intensity;
+    // Legacy API: update first light if it exists
+    if (!lights_.empty()) {
+        lights_[0].intensity = intensity;
+    }
+}
+
+int GLTFViewer::addLight(const Light& light) {
+    if (lights_.size() >= MAX_LIGHTS) {
+        return -1;
+    }
+    lights_.push_back(light);
+    return static_cast<int>(lights_.size()) - 1;
+}
+
+void GLTFViewer::setLight(int index, const Light& light) {
+    if (index >= 0 && index < static_cast<int>(lights_.size())) {
+        lights_[index] = light;
+    }
+}
+
+void GLTFViewer::removeLight(int index) {
+    if (index >= 0 && index < static_cast<int>(lights_.size())) {
+        lights_.erase(lights_.begin() + index);
+    }
+}
+
+void GLTFViewer::clearLights() {
+    lights_.clear();
 }
 
 void GLTFViewer::backgroundColor(float r, float g, float b) {
@@ -261,7 +290,9 @@ void GLTFViewer::process(Context& ctx) {
     float scale = (maxDim > 0.01f) ? (1.0f / maxDim) : 1.0f;
 
     // Build model transform matrix
+    // Rotate 180° around X to correct for glTF Y-up vs our coordinate system
     glm::mat4 modelTransform = glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+    modelTransform = modelTransform * glm::rotate(glm::mat4(1.0f), glm::pi<float>(), glm::vec3(1.0f, 0.0f, 0.0f));
     modelTransform = modelTransform * glm::translate(glm::mat4(1.0f), -modelCenter);
 
     // Build view and projection matrices
@@ -328,10 +359,34 @@ void GLTFViewer::process(Context& ctx) {
         // Previous camera (same as current for now)
         FrameAttribs->PrevCamera = cam;
 
-        // Light setup
-        float3 lightDir = normalize(float3{lightDir_.x, lightDir_.y, lightDir_.z});
+        // Light setup - write all lights
         HLSL::PBRLightAttribs* Lights = reinterpret_cast<HLSL::PBRLightAttribs*>(FrameAttribs + 1);
-        GLTF_PBR_Renderer::WritePBRLightShaderAttribs({&impl_->defaultLight, nullptr, &lightDir, scale}, Lights);
+        int numLights = std::min(static_cast<int>(lights_.size()), MAX_LIGHTS);
+
+        for (int i = 0; i < numLights; i++) {
+            const Light& light = lights_[i];
+
+            // Create GLTF::Light structure for the renderer
+            GLTF::Light gltfLight;
+            gltfLight.Type = static_cast<GLTF::Light::TYPE>(static_cast<int>(light.type));
+            gltfLight.Color = float3{light.color.r, light.color.g, light.color.b};
+            gltfLight.Intensity = light.intensity;
+            gltfLight.Range = light.range;
+            gltfLight.InnerConeAngle = light.innerConeAngle;
+            gltfLight.OuterConeAngle = light.outerConeAngle;
+
+            // Convert position and direction
+            float3 pos{light.position.x, light.position.y, light.position.z};
+            float3 dir = normalize(float3{light.direction.x, light.direction.y, light.direction.z});
+
+            // Use the renderer's helper to write light attributes
+            GLTF_PBR_Renderer::WritePBRLightShaderAttribs(
+                {&gltfLight,
+                 (light.type != LightType::Directional) ? &pos : nullptr,
+                 (light.type != LightType::Point) ? &dir : nullptr,
+                 scale},
+                &Lights[i]);
+        }
 
         // Renderer parameters
         auto& Renderer = FrameAttribs->Renderer;
@@ -342,7 +397,7 @@ void GLTFViewer::process(Context& ctx) {
         Renderer.MiddleGray = 0.18f;
         Renderer.WhitePoint = 3.0f;
         Renderer.IBLScale = float4{1.0f, 1.0f, 1.0f, 1.0f};
-        Renderer.LightCount = 1;
+        Renderer.LightCount = numLights;
     }
 
     // Set scene index and model transform

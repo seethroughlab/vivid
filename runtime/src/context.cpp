@@ -87,6 +87,7 @@ bool Context::init(int width, int height, const std::string& title) {
     glfwSetFramebufferSizeCallback(window_, onFramebufferResize);
     glfwSetCursorPosCallback(window_, onMouseMove);
     glfwSetMouseButtonCallback(window_, onMouseButton);
+    glfwSetScrollCallback(window_, onScroll);
     glfwSetKeyCallback(window_, onKey);
 
     // Set minimum window size
@@ -259,6 +260,7 @@ void Context::pollEvents() {
     for (int i = 0; i < 512; i++) {
         keysPressed_[i] = false;
     }
+    scrollDelta_ = glm::vec2(0.0f, 0.0f);
 
     glfwPollEvents();
 
@@ -322,6 +324,14 @@ void Context::onMouseButton(GLFWwindow* window, int button, int action, int mods
         } else if (action == GLFW_RELEASE) {
             ctx->mouseButtons_[button] = false;
         }
+    }
+}
+
+void Context::onScroll(GLFWwindow* window, double xoffset, double yoffset) {
+    auto* ctx = static_cast<Context*>(glfwGetWindowUserPointer(window));
+    if (ctx) {
+        ctx->scrollDelta_.x += static_cast<float>(xoffset);
+        ctx->scrollDelta_.y += static_cast<float>(yoffset);
     }
 }
 

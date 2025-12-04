@@ -377,11 +377,12 @@ shaders/
 - [x] DiligentFX PBR_Renderer integration
 - [x] IBL cubemap precomputation from HDR environment
 - [x] PBR material textures (albedo, normal, metallic, roughness, AO)
-- [ ] MeshUtils: cube, plane, cylinder, torus, cone (future)
-- [ ] Multiple light support (future)
+- [x] MeshUtils: cube, plane, cylinder, torus, cone
+- [x] Multiple light support (directional, point, spot)
+- [x] GLTF model loading via GLTF_PBR_Renderer (GLTFViewer operator)
+- [x] IBL environment loading and skybox rendering
+- [x] glTF-Sample-Models as git submodule in `external/glTF-Sample-Models/`
 - [ ] Shadow mapping via ShadowMapManager (future)
-- [ ] GLTF model loading via GLTF_PBR_Renderer (future)
-
 ---
 
 ### Procedural Geometry

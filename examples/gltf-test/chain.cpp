@@ -31,7 +31,7 @@ void setup(Context& ctx) {
     }
 
     // Asset path (in app bundle)
-    std::string assetPath = "runtime/vivid.app/Contents/MacOS/assets/";
+    std::string assetPath = "build/runtime/vivid.app/Contents/MacOS/assets/";
 
     // Load HDR environment for IBL reflections
     std::string hdrPath = assetPath + "hdris/bryanston_park_sunrise_4k.hdr";
@@ -41,13 +41,14 @@ void setup(Context& ctx) {
         std::cout << "[GLTF Gallery] No IBL environment (using direct lighting only)" << std::endl;
     }
 
-    // Load sample models
+    // Load sample models from glTF-Sample-Models submodule
+    std::string modelBasePath = "external/glTF-Sample-Models/2.0/";
     std::vector<std::string> modelPaths = {
-        assetPath + "models/2.0/DamagedHelmet/glTF-Binary/DamagedHelmet.glb",
-        assetPath + "models/2.0/Avocado/glTF-Binary/Avocado.glb",
-        assetPath + "models/2.0/SciFiHelmet/glTF/SciFiHelmet.gltf",
-        assetPath + "models/2.0/BoomBox/glTF-Binary/BoomBox.glb",
-        assetPath + "models/2.0/AntiqueCamera/glTF-Binary/AntiqueCamera.glb",
+        modelBasePath + "DamagedHelmet/glTF-Binary/DamagedHelmet.glb",
+        modelBasePath + "Avocado/glTF-Binary/Avocado.glb",
+        modelBasePath + "SciFiHelmet/glTF/SciFiHelmet.gltf",
+        modelBasePath + "BoomBox/glTF-Binary/BoomBox.glb",
+        modelBasePath + "AntiqueCamera/glTF-Binary/AntiqueCamera.glb",
     };
 
     int loaded = 0;

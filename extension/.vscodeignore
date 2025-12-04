@@ -1,0 +1,32 @@
+# Source files (compiled to out/)
+src/
+*.ts
+tsconfig.json
+
+# Development files
+.vscode/
+*.map
+test_*.js
+*.test.js
+
+# Native module build artifacts (keep only the built module)
+native/src/
+native/build/Release/.deps/
+native/build/Release/obj*/
+native/node_modules/
+native/*.json
+native/*.md
+native/*.gyp
+
+# Package manager files
+node_modules/
+package-lock.json
+
+# Git files
+.git/
+.gitignore
+
+# Documentation and config
+*.md
+.eslintrc*
+.prettier*

@@ -30,13 +30,54 @@ struct Object3D {
 
 /// A light in the scene
 struct Light3D {
-    enum class Type { Directional, Point };
+    enum class Type { Directional, Point, Spot };
 
     Type type = Type::Directional;
-    glm::vec3 position{0, 10, 0};      // Position for point lights
-    glm::vec3 direction{-0.5f, -1.0f, -0.5f};  // Direction for directional lights
+    glm::vec3 position{0, 10, 0};      // Position for point/spot lights
+    glm::vec3 direction{-0.5f, -1.0f, -0.5f};  // Direction for directional/spot lights
     glm::vec3 color{1.0f, 1.0f, 1.0f};
     float intensity = 1.0f;
+    float range = 10.0f;               // Range for point/spot lights (0 = infinite)
+    float innerConeAngle = 0.0f;       // Spot light inner cone (radians)
+    float outerConeAngle = 0.7854f;    // Spot light outer cone (radians, ~45 degrees)
+
+    // Factory methods for convenience
+    static Light3D directional(const glm::vec3& dir, float intensity = 3.0f,
+                               const glm::vec3& color = glm::vec3(1.0f)) {
+        Light3D l;
+        l.type = Type::Directional;
+        l.direction = glm::normalize(dir);
+        l.intensity = intensity;
+        l.color = color;
+        return l;
+    }
+
+    static Light3D point(const glm::vec3& pos, float intensity = 100.0f,
+                         float range = 10.0f, const glm::vec3& color = glm::vec3(1.0f)) {
+        Light3D l;
+        l.type = Type::Point;
+        l.position = pos;
+        l.intensity = intensity;
+        l.range = range;
+        l.color = color;
+        return l;
+    }
+
+    static Light3D spot(const glm::vec3& pos, const glm::vec3& dir,
+                        float intensity = 200.0f, float innerAngle = 0.2f,
+                        float outerAngle = 0.5f, float range = 15.0f,
+                        const glm::vec3& color = glm::vec3(1.0f)) {
+        Light3D l;
+        l.type = Type::Spot;
+        l.position = pos;
+        l.direction = glm::normalize(dir);
+        l.intensity = intensity;
+        l.innerConeAngle = innerAngle;
+        l.outerConeAngle = outerAngle;
+        l.range = range;
+        l.color = color;
+        return l;
+    }
 };
 
 /// 3D rendering operator using DiligentFX PBR_Renderer
@@ -70,11 +111,17 @@ public:
     /// Clear all objects
     void clearObjects();
 
-    /// Add a light (returns light index)
+    /// Add a light (returns light index, -1 if max lights reached)
     int addLight(const Light3D& light);
 
     /// Get light at index
     Light3D* getLight(int index);
+
+    /// Set light at index
+    void setLight(int index, const Light3D& light);
+
+    /// Get number of lights
+    int lightCount() const { return static_cast<int>(lights_.size()); }
 
     /// Clear all lights
     void clearLights();
