@@ -298,22 +298,24 @@ public:
 
 ---
 
-## Phase 3: Additional 2D Operators
+## Phase 3: Additional 2D Operators ✓
 
 **Goal:** Expand the operator library with more effects
 
+**Status:** Complete (macOS verified)
+
 ### Effects
-- [ ] **Passthrough** - Identity transform
-- [ ] **Brightness/Contrast** - Basic color correction
-- [ ] **HSV** - Hue/Saturation/Value adjustment
-- [ ] **Transform** - Translate, rotate, scale
-- [ ] **Feedback** - Recursive buffer with decay
-- [ ] **Gradient** - Linear, radial, angular gradients
-- [ ] **Edge Detection** - Sobel filter
-- [ ] **Displacement** - UV displacement mapping
-- [ ] **Chromatic Aberration** - RGB channel separation
-- [ ] Pixelate
-- [ ] Mirror/Kaleidoscope
+- [x] **Passthrough** - Identity transform
+- [x] **Brightness/Contrast** - Basic color correction
+- [x] **HSV** - Hue/Saturation/Value adjustment
+- [x] **Transform** - Translate, rotate, scale
+- [x] **Feedback** - Recursive buffer with decay
+- [x] **Gradient** - Linear, radial, angular gradients
+- [x] **Edge Detection** - Sobel filter
+- [x] **Displacement** - UV displacement mapping
+- [x] **Chromatic Aberration** - RGB channel separation
+- [x] **Pixelate** - Pixelation effect
+- [x] **Mirror** - Mirror/Kaleidoscope effect
 
 ### Shaders
 ```

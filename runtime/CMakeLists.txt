@@ -10,11 +10,24 @@ set(VIVID_HEADERS
     include/vivid/texture_utils.h
     include/vivid/shader_utils.h
     include/vivid/operators.h
+    # Phase 2: Core operators
     include/vivid/operators/solid_color.h
     include/vivid/operators/noise.h
     include/vivid/operators/composite.h
     include/vivid/operators/blur.h
     include/vivid/operators/output.h
+    # Phase 3: Additional 2D operators
+    include/vivid/operators/passthrough.h
+    include/vivid/operators/gradient.h
+    include/vivid/operators/brightness_contrast.h
+    include/vivid/operators/hsv.h
+    include/vivid/operators/transform.h
+    include/vivid/operators/feedback.h
+    include/vivid/operators/edge_detect.h
+    include/vivid/operators/displacement.h
+    include/vivid/operators/chromatic_aberration.h
+    include/vivid/operators/pixelate.h
+    include/vivid/operators/mirror.h
 )
 
 set(VIVID_SOURCES
@@ -24,11 +37,24 @@ set(VIVID_SOURCES
     src/texture_utils.cpp
     src/shader_utils.cpp
     src/operator.cpp
+    # Phase 2: Core operators
     src/operators/solid_color.cpp
     src/operators/noise.cpp
     src/operators/composite.cpp
     src/operators/blur.cpp
     src/operators/output.cpp
+    # Phase 3: Additional 2D operators
+    src/operators/passthrough.cpp
+    src/operators/gradient.cpp
+    src/operators/brightness_contrast.cpp
+    src/operators/hsv.cpp
+    src/operators/transform.cpp
+    src/operators/feedback.cpp
+    src/operators/edge_detect.cpp
+    src/operators/displacement.cpp
+    src/operators/chromatic_aberration.cpp
+    src/operators/pixelate.cpp
+    src/operators/mirror.cpp
 )
 
 # Add macOS-specific sources
@@ -108,12 +134,9 @@ set_target_properties(vivid PROPERTIES
     CXX_STANDARD_REQUIRED YES
 )
 
-# Copy assets to build directory
+# Copy assets to build directory (shaders are now in assets/shaders)
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/assets"
         "$<TARGET_FILE_DIR:vivid>/assets"
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${CMAKE_SOURCE_DIR}/shaders"
-        "$<TARGET_FILE_DIR:vivid>/shaders"
 )
