@@ -7,6 +7,7 @@
 #include "vivid/pbr_material.h"
 #include "vivid/ibl.h"
 #include "vivid/hot_reload.h"
+#include "vivid/gltf_model.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <chrono>
@@ -26,6 +27,20 @@
 
 #include <GLFW/glfw3.h>
 #include <GLFW/glfw3native.h>
+
+// DiligentFX for GLTF PBR rendering - must come after GLFW includes to avoid BOOL macro conflict
+#include "GLTF_PBR_Renderer.hpp"
+#include "MapHelper.hpp"
+#include "GraphicsUtilities.h"
+
+// Include PBR shader structures - after GLFW to avoid macro conflicts
+namespace Diligent {
+namespace HLSL {
+#include "Shaders/Common/public/BasicStructures.fxh"
+#include "Shaders/PBR/public/PBR_Structures.fxh"
+#include "Shaders/PBR/private/RenderPBR_Structures.fxh"
+} // namespace HLSL
+} // namespace Diligent
 
 // Undef Windows macros that conflict with our code
 #ifdef GetObject

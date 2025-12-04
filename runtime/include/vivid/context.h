@@ -83,6 +83,9 @@ public:
     /// Check if mouse button was pressed this frame
     bool wasMousePressed(int button) const;
 
+    /// Check if mouse button is currently held down
+    bool isMouseDown(int button) const;
+
     // --- Keyboard Input ---
 
     /// Check if a key was pressed this frame (single trigger, not held)

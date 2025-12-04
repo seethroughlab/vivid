@@ -275,6 +275,13 @@ bool Context::wasMousePressed(int button) const {
     return false;
 }
 
+bool Context::isMouseDown(int button) const {
+    if (button >= 0 && button < 8) {
+        return mouseButtons_[button];
+    }
+    return false;
+}
+
 Diligent::ITextureView* Context::currentRTV() const {
     return swapChain_ ? swapChain_->GetCurrentBackBufferRTV() : nullptr;
 }

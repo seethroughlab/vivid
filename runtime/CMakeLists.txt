@@ -15,6 +15,7 @@ set(VIVID_HEADERS
     include/vivid/camera.h
     include/vivid/pbr_material.h
     include/vivid/ibl.h
+    include/vivid/gltf_model.h
     # Phase 5: Hot Reload
     include/vivid/hot_reload.h
     # Phase 2: Core operators
@@ -37,6 +38,7 @@ set(VIVID_HEADERS
     include/vivid/operators/mirror.h
     # Phase 4: 3D operators
     include/vivid/operators/render3d.h
+    include/vivid/operators/gltf_viewer.h
 )
 
 set(VIVID_SOURCES
@@ -51,6 +53,7 @@ set(VIVID_SOURCES
     src/camera.cpp
     src/pbr_material.cpp
     src/ibl.cpp
+    src/gltf_model.cpp
     # Phase 5: Hot Reload
     src/hot_reload.cpp
     # Phase 2: Core operators
@@ -73,6 +76,7 @@ set(VIVID_SOURCES
     src/operators/mirror.cpp
     # Phase 4: 3D operators
     src/operators/render3d.cpp
+    src/operators/gltf_viewer.cpp
 )
 
 # Add macOS-specific sources
@@ -101,6 +105,7 @@ target_link_libraries(vivid
         Diligent-Common
         Diligent-GraphicsTools
         Diligent-TextureLoader
+        Diligent-AssetLoader
         glfw
         glm::glm
 )

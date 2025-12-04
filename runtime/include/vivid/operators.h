@@ -24,3 +24,4 @@
 
 // Phase 4: 3D operators
 #include "vivid/operators/render3d.h"
+#include "vivid/operators/gltf_viewer.h"
