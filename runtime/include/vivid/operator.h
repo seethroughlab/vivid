@@ -14,6 +14,7 @@ namespace Diligent {
     struct IPipelineState;
     struct IShaderResourceBinding;
     struct IBuffer;
+    struct ISampler;
 }
 
 namespace vivid {

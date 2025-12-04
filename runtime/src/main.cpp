@@ -2,6 +2,9 @@
 
 #include "vivid/vivid.h"
 #include "vivid/operators.h"
+#include "vivid/mesh.h"
+#include "vivid/camera.h"
+#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <chrono>
 #include <memory>
@@ -603,6 +606,96 @@ bool testMirror(Context& ctx) {
 }
 
 // ============================================
+// PHASE 4 TESTS
+// ============================================
+
+// Test: Render3D operator
+bool testRender3D(Context& ctx) {
+    std::cout << "\n=== Test: Render3D ===" << std::endl;
+
+    auto render3d = std::make_unique<Render3D>();
+    auto output = std::make_unique<Output>();
+
+    output->setInput(render3d.get());
+
+    render3d->init(ctx);
+    output->init(ctx);
+
+    // Create meshes
+    MeshData cubeData = MeshUtils::createCube();
+    MeshData sphereData = MeshUtils::createSphere(32, 16, 0.4f);
+    MeshData planeData = MeshUtils::createPlane(5.0f, 5.0f, 1, 1);
+
+    Mesh cubeMesh, sphereMesh, planeMesh;
+    cubeMesh.create(ctx.device(), cubeData);
+    sphereMesh.create(ctx.device(), sphereData);
+    planeMesh.create(ctx.device(), planeData);
+
+    // Add objects to scene
+    int planeIdx = render3d->addObject(&planeMesh, glm::translate(glm::mat4(1.0f), glm::vec3(0, -0.5f, 0)));
+    int cubeIdx = render3d->addObject(&cubeMesh, glm::translate(glm::mat4(1.0f), glm::vec3(-1.0f, 0, 0)));
+    int sphereIdx = render3d->addObject(&sphereMesh, glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, 0, 0)));
+
+    // Set material properties
+    if (auto* obj = render3d->getObject(planeIdx)) {
+        obj->color = glm::vec4(0.3f, 0.3f, 0.35f, 1.0f);
+        obj->roughness = 0.9f;
+    }
+    if (auto* obj = render3d->getObject(cubeIdx)) {
+        obj->color = glm::vec4(0.8f, 0.2f, 0.1f, 1.0f);
+        obj->metallic = 0.0f;
+        obj->roughness = 0.5f;
+    }
+    if (auto* obj = render3d->getObject(sphereIdx)) {
+        obj->color = glm::vec4(0.2f, 0.5f, 0.9f, 1.0f);
+        obj->metallic = 0.8f;
+        obj->roughness = 0.2f;
+    }
+
+    // Setup camera
+    render3d->camera().setOrbit(glm::vec3(0, 0, 0), 4.0f, 45.0f, 30.0f);
+
+    // Scene settings
+    render3d->backgroundColor(0.05f, 0.05f, 0.1f);
+    render3d->ambientColor(0.15f, 0.15f, 0.2f);
+
+    std::cout << "Render3D: 3D scene with orbit camera for 4s..." << std::endl;
+
+    runFor(ctx, 4.0f, [&]() {
+        float t = ctx.time();
+
+        // Orbit camera
+        render3d->camera().orbitRotate(0.5f, 0.0f);
+
+        // Animate cube rotation
+        if (auto* obj = render3d->getObject(cubeIdx)) {
+            obj->transform = glm::translate(glm::mat4(1.0f), glm::vec3(-1.0f, 0.0f, 0.0f)) *
+                            glm::rotate(glm::mat4(1.0f), t * 0.5f, glm::vec3(0, 1, 0)) *
+                            glm::rotate(glm::mat4(1.0f), t * 0.3f, glm::vec3(1, 0, 0));
+        }
+
+        // Animate sphere bounce
+        if (auto* obj = render3d->getObject(sphereIdx)) {
+            float bounce = 0.2f * std::abs(std::sin(t * 3.0f));
+            obj->transform = glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, bounce, 0.0f));
+        }
+
+        render3d->process(ctx);
+        output->process(ctx);
+    });
+
+    output->cleanup();
+    render3d->cleanup();
+
+    sphereMesh.release();
+    cubeMesh.release();
+    planeMesh.release();
+
+    std::cout << "Render3D: PASSED" << std::endl;
+    return true;
+}
+
+// ============================================
 // TEST RUNNER
 // ============================================
 
@@ -614,7 +707,7 @@ void runOperatorTests(Context& ctx) {
     std::cout << "Press ESC at any time to exit\n" << std::endl;
 
     int passed = 0;
-    int total = 16;
+    int total = 17;
 
     // Phase 2 tests
     std::cout << "--- PHASE 2: Core Operators ---" << std::endl;
@@ -636,6 +729,10 @@ void runOperatorTests(Context& ctx) {
     if (!ctx.shouldClose() && testChromaticAberration(ctx)) passed++;
     if (!ctx.shouldClose() && testPixelate(ctx)) passed++;
     if (!ctx.shouldClose() && testMirror(ctx)) passed++;
+
+    // Phase 4 tests
+    std::cout << "\n--- PHASE 4: 3D Rendering ---" << std::endl;
+    if (!ctx.shouldClose() && testRender3D(ctx)) passed++;
 
     // Full chain test
     std::cout << "\n--- Integration Test ---" << std::endl;

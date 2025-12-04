@@ -10,6 +10,11 @@ set(VIVID_HEADERS
     include/vivid/texture_utils.h
     include/vivid/shader_utils.h
     include/vivid/operators.h
+    # Phase 4: 3D support
+    include/vivid/mesh.h
+    include/vivid/camera.h
+    include/vivid/pbr_material.h
+    include/vivid/ibl.h
     # Phase 2: Core operators
     include/vivid/operators/solid_color.h
     include/vivid/operators/noise.h
@@ -28,6 +33,8 @@ set(VIVID_HEADERS
     include/vivid/operators/chromatic_aberration.h
     include/vivid/operators/pixelate.h
     include/vivid/operators/mirror.h
+    # Phase 4: 3D operators
+    include/vivid/operators/render3d.h
 )
 
 set(VIVID_SOURCES
@@ -37,6 +44,11 @@ set(VIVID_SOURCES
     src/texture_utils.cpp
     src/shader_utils.cpp
     src/operator.cpp
+    # Phase 4: 3D support
+    src/mesh.cpp
+    src/camera.cpp
+    src/pbr_material.cpp
+    src/ibl.cpp
     # Phase 2: Core operators
     src/operators/solid_color.cpp
     src/operators/noise.cpp
@@ -55,6 +67,8 @@ set(VIVID_SOURCES
     src/operators/chromatic_aberration.cpp
     src/operators/pixelate.cpp
     src/operators/mirror.cpp
+    # Phase 4: 3D operators
+    src/operators/render3d.cpp
 )
 
 # Add macOS-specific sources
