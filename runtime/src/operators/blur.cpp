@@ -18,9 +18,9 @@ using namespace Diligent;
 static const char* BlurPS_Source = R"(
 cbuffer Constants : register(b0)
 {
-    float g_Radius;
-    float2 g_Resolution;
-    float padding;
+    float2 g_Resolution;  // offset 0, aligned to 8
+    float g_Radius;       // offset 8
+    float _pad;           // offset 12
 };
 
 Texture2D g_Texture : register(t0);
@@ -110,9 +110,9 @@ void Blur::updateUniforms(Context& ctx) {
     if (!uniformBuffer_) return;
 
     MapHelper<Constants> cb(ctx.immediateContext(), uniformBuffer_, MAP_WRITE, MAP_FLAG_DISCARD);
-    cb->radius = radius_;
     cb->resolution[0] = static_cast<float>(ctx.width());
     cb->resolution[1] = static_cast<float>(ctx.height());
+    cb->radius = radius_;
 }
 
 void Blur::process(Context& ctx) {

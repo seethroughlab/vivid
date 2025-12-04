@@ -36,9 +36,9 @@ private:
     std::string inputName_;
 
     struct Constants {
-        float radius;
-        float2 resolution;
-        float padding;
+        float resolution[2];  // offset 0
+        float radius;         // offset 8
+        float padding;        // offset 12
     };
 };
 

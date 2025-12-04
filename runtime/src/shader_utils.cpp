@@ -12,6 +12,7 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include <vector>
 
 namespace vivid {
 
@@ -138,9 +139,9 @@ IPipelineState* ShaderUtils::createFullscreenPipeline(
     // Primitive topology
     psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
 
-    // Render target format - use swap chain format
+    // Render target format - use BGRA which is preferred on macOS
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0] = TEX_FORMAT_RGBA8_UNORM_SRGB;
+    psoCI.GraphicsPipeline.RTVFormats[0] = TEX_FORMAT_BGRA8_UNORM_SRGB;
 
     // No depth testing for 2D effects
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
@@ -152,36 +153,112 @@ IPipelineState* ShaderUtils::createFullscreenPipeline(
     // Default blending (opaque)
     psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0].BlendEnable = false;
 
-    // Resource layout
+    // Resource layout - make all shader resources dynamic for flexibility
+    std::vector<ShaderResourceVariableDesc> vars;
+
+    // Always add Constants uniform buffer as dynamic
+    vars.push_back({SHADER_TYPE_PIXEL, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
+
     if (hasInputTexture) {
-        // Define shader resources
-        ShaderResourceVariableDesc vars[] = {
-            {SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC}
-        };
-        psoCI.PSODesc.ResourceLayout.Variables = vars;
-        psoCI.PSODesc.ResourceLayout.NumVariables = 1;
-
-        // Immutable sampler
-        SamplerDesc samplerDesc;
-        samplerDesc.MinFilter = FILTER_TYPE_LINEAR;
-        samplerDesc.MagFilter = FILTER_TYPE_LINEAR;
-        samplerDesc.MipFilter = FILTER_TYPE_LINEAR;
-        samplerDesc.AddressU = TEXTURE_ADDRESS_CLAMP;
-        samplerDesc.AddressV = TEXTURE_ADDRESS_CLAMP;
-        samplerDesc.AddressW = TEXTURE_ADDRESS_CLAMP;
-
-        ImmutableSamplerDesc immutableSamplers[] = {
-            {SHADER_TYPE_PIXEL, "g_Texture", samplerDesc}
-        };
-        psoCI.PSODesc.ResourceLayout.ImmutableSamplers = immutableSamplers;
-        psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = 1;
+        vars.push_back({SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC});
     }
+
+    psoCI.PSODesc.ResourceLayout.Variables = vars.data();
+    psoCI.PSODesc.ResourceLayout.NumVariables = static_cast<Uint32>(vars.size());
+
+    // Sampler for textures
+    SamplerDesc samplerDesc;
+    samplerDesc.MinFilter = FILTER_TYPE_LINEAR;
+    samplerDesc.MagFilter = FILTER_TYPE_LINEAR;
+    samplerDesc.MipFilter = FILTER_TYPE_LINEAR;
+    samplerDesc.AddressU = TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.AddressV = TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.AddressW = TEXTURE_ADDRESS_CLAMP;
+
+    ImmutableSamplerDesc immutableSamplers[] = {
+        {SHADER_TYPE_PIXEL, "g_Sampler", samplerDesc},
+        {SHADER_TYPE_PIXEL, "g_Texture", samplerDesc}  // Also assign sampler to g_Texture
+    };
+    psoCI.PSODesc.ResourceLayout.ImmutableSamplers = immutableSamplers;
+    psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = 2;
 
     RefCntAutoPtr<IPipelineState> pso;
     device_->CreateGraphicsPipelineState(psoCI, &pso);
 
     if (!pso) {
         std::cerr << "Failed to create pipeline: " << name << std::endl;
+        return nullptr;
+    }
+
+    return pso.Detach();
+}
+
+IPipelineState* ShaderUtils::createOutputPipeline(
+    const std::string& name,
+    IShader* pixelShader,
+    TEXTURE_FORMAT rtFormat) {
+
+    IShader* vs = getFullscreenVS();
+    if (!vs || !pixelShader) {
+        return nullptr;
+    }
+
+    GraphicsPipelineStateCreateInfo psoCI;
+    psoCI.PSODesc.Name = name.c_str();
+    psoCI.PSODesc.PipelineType = PIPELINE_TYPE_GRAPHICS;
+
+    psoCI.pVS = vs;
+    psoCI.pPS = pixelShader;
+
+    // No vertex input - we generate vertices in the shader
+    psoCI.GraphicsPipeline.InputLayout.NumElements = 0;
+
+    // Primitive topology
+    psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+
+    // Use the swap chain's render target format
+    psoCI.GraphicsPipeline.NumRenderTargets = 1;
+    psoCI.GraphicsPipeline.RTVFormats[0] = rtFormat;
+
+    // No depth testing for output - we render directly to swap chain
+    psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
+    psoCI.GraphicsPipeline.DepthStencilDesc.DepthWriteEnable = false;
+    psoCI.GraphicsPipeline.DSVFormat = TEX_FORMAT_UNKNOWN;
+
+    // No culling for fullscreen triangle
+    psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
+
+    // Default blending (opaque)
+    psoCI.GraphicsPipeline.BlendDesc.RenderTargets[0].BlendEnable = false;
+
+    // Resource layout - texture is dynamic
+    ShaderResourceVariableDesc vars[] = {
+        {SHADER_TYPE_PIXEL, "g_Texture", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC}
+    };
+    psoCI.PSODesc.ResourceLayout.Variables = vars;
+    psoCI.PSODesc.ResourceLayout.NumVariables = 1;
+
+    // Sampler for input texture
+    SamplerDesc samplerDesc;
+    samplerDesc.MinFilter = FILTER_TYPE_LINEAR;
+    samplerDesc.MagFilter = FILTER_TYPE_LINEAR;
+    samplerDesc.MipFilter = FILTER_TYPE_LINEAR;
+    samplerDesc.AddressU = TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.AddressV = TEXTURE_ADDRESS_CLAMP;
+    samplerDesc.AddressW = TEXTURE_ADDRESS_CLAMP;
+
+    ImmutableSamplerDesc immutableSamplers[] = {
+        {SHADER_TYPE_PIXEL, "g_Sampler", samplerDesc},
+        {SHADER_TYPE_PIXEL, "g_Texture", samplerDesc}
+    };
+    psoCI.PSODesc.ResourceLayout.ImmutableSamplers = immutableSamplers;
+    psoCI.PSODesc.ResourceLayout.NumImmutableSamplers = 2;
+
+    RefCntAutoPtr<IPipelineState> pso;
+    device_->CreateGraphicsPipelineState(psoCI, &pso);
+
+    if (!pso) {
+        std::cerr << "Failed to create output pipeline: " << name << std::endl;
         return nullptr;
     }
 

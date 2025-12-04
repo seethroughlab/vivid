@@ -50,6 +50,13 @@ public:
         Diligent::IShader* pixelShader,
         bool hasInputTexture = true);
 
+    /// Create an output pipeline that renders to the swap chain
+    /// Uses the specified render target format (should match swap chain)
+    Diligent::IPipelineState* createOutputPipeline(
+        const std::string& name,
+        Diligent::IShader* pixelShader,
+        Diligent::TEXTURE_FORMAT rtFormat);
+
     /// Get the built-in fullscreen vertex shader
     Diligent::IShader* getFullscreenVS();
 

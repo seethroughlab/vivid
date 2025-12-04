@@ -4,6 +4,7 @@
 #include "vivid/context.h"
 #include "vivid/shader_utils.h"
 
+#include "RenderDevice.h"
 #include "Shader.h"
 #include "PipelineState.h"
 #include "Buffer.h"
@@ -115,15 +116,15 @@ void Composite::createPipeline(Context& ctx) {
     psoCI.GraphicsPipeline.InputLayout.NumElements = 0;
     psoCI.GraphicsPipeline.PrimitiveTopology = PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     psoCI.GraphicsPipeline.NumRenderTargets = 1;
-    psoCI.GraphicsPipeline.RTVFormats[0] = TEX_FORMAT_RGBA8_UNORM_SRGB;
+    psoCI.GraphicsPipeline.RTVFormats[0] = TEX_FORMAT_BGRA8_UNORM_SRGB;  // Match macOS swap chain
     psoCI.GraphicsPipeline.DepthStencilDesc.DepthEnable = false;
     psoCI.GraphicsPipeline.RasterizerDesc.CullMode = CULL_MODE_NONE;
 
-    // Resource layout for two textures
+    // Resource layout for two textures and constants
     ShaderResourceVariableDesc vars[] = {
         {SHADER_TYPE_PIXEL, "g_TextureA", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
         {SHADER_TYPE_PIXEL, "g_TextureB", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC},
-        {SHADER_TYPE_PIXEL, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_STATIC}
+        {SHADER_TYPE_PIXEL, "Constants", SHADER_RESOURCE_VARIABLE_TYPE_DYNAMIC}
     };
     psoCI.PSODesc.ResourceLayout.Variables = vars;
     psoCI.PSODesc.ResourceLayout.NumVariables = 3;
@@ -160,9 +161,9 @@ void Composite::createPipeline(Context& ctx) {
     // Create SRB
     pso_->CreateShaderResourceBinding(&srb_, true);
 
-    // Bind uniform buffer
+    // Bind uniform buffer to SRB (dynamic variable)
     if (srb_ && uniformBuffer_) {
-        auto* cbVar = pso_->GetStaticVariableByName(SHADER_TYPE_PIXEL, "Constants");
+        auto* cbVar = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "Constants");
         if (cbVar) {
             cbVar->Set(uniformBuffer_);
         }

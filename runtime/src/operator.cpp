@@ -35,7 +35,7 @@ void TextureOperator::init(Context& ctx) {
     texDesc.Type = RESOURCE_DIM_TEX_2D;
     texDesc.Width = outputWidth_;
     texDesc.Height = outputHeight_;
-    texDesc.Format = TEX_FORMAT_RGBA8_UNORM_SRGB;
+    texDesc.Format = TEX_FORMAT_BGRA8_UNORM_SRGB;  // Use BGRA for macOS compatibility
     texDesc.BindFlags = BIND_SHADER_RESOURCE | BIND_RENDER_TARGET;
     texDesc.Usage = USAGE_DEFAULT;
 
@@ -51,13 +51,8 @@ void TextureOperator::init(Context& ctx) {
     outputSRV_ = outputTexture_->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
     outputRTV_ = outputTexture_->GetDefaultView(TEXTURE_VIEW_RENDER_TARGET);
 
-    // Let subclass create the pipeline
+    // Let subclass create the pipeline and SRB
     createPipeline(ctx);
-
-    // Create SRB if pipeline was created
-    if (pso_) {
-        pso_->CreateShaderResourceBinding(&srb_, true);
-    }
 }
 
 void TextureOperator::cleanup() {

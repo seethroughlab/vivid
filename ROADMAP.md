@@ -227,26 +227,31 @@ DYLD_LIBRARY_PATH=/opt/homebrew/lib
 
 ---
 
-## Phase 2: Chain API + Core Operators
+## Phase 2: Chain API + Core Operators ✓
 
 **Goal:** Establish the `chain.cpp` programming model with essential operators
+
+**Status:** Complete (macOS verified)
 
 The Chain API requires working operators to be useful. This phase delivers both together.
 
 ### Chain API Tasks
-- [ ] Define `Operator` base class with `init()`, `process()`, `cleanup()`
-- [ ] Implement `Chain` class for operator graph management
-- [ ] Create `Context` class for frame state and resource access
-- [ ] Implement operator connection system (input/output)
-- [ ] Add parameter system with fluent API
-- [ ] Create `VIVID_CHAIN(setup, update)` macro
+- [x] Define `Operator` base class with `init()`, `process()`, `cleanup()`
+- [x] Create `Context` class for frame state and resource access
+- [x] Implement operator connection system (input/output via `setInput()`)
+- [x] Add parameter system with fluent API
+- [x] ShaderUtils for HLSL loading/compilation
+- [x] FullscreenQuad utility for 2D effects rendering
+- [x] TextureOperator base class for 2D texture effects
+- [ ] Implement `Chain` class for operator graph management (deferred)
+- [ ] Create `VIVID_CHAIN(setup, update)` macro (deferred)
 
 ### Core Operators (Required for Chain API)
-- [ ] **Output** - Display results to screen
-- [ ] **SolidColor** - Fill with constant color
-- [ ] **Noise** - Perlin/Simplex noise generator
-- [ ] **Blur** - Gaussian blur (separable two-pass)
-- [ ] **Composite** - Blend two textures
+- [x] **Output** - Display results to screen
+- [x] **SolidColor** - Fill with constant color
+- [x] **Noise** - Simplex noise with fBm generator
+- [x] **Blur** - Box blur with 9-tap Gaussian weights
+- [x] **Composite** - Blend two textures (5 blend modes)
 
 ### Target Usage
 ```cpp

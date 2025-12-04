@@ -57,9 +57,6 @@ Context::~Context() {
 }
 
 bool Context::init(int width, int height, const std::string& title) {
-    width_ = width;
-    height_ = height;
-
     // Initialize GLFW
     if (glfwInit() != GLFW_TRUE) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
@@ -76,6 +73,12 @@ bool Context::init(int width, int height, const std::string& title) {
         glfwTerminate();
         return false;
     }
+
+    // Get actual framebuffer size (accounts for Retina/HiDPI scaling)
+    int fbWidth, fbHeight;
+    glfwGetFramebufferSize(window_, &fbWidth, &fbHeight);
+    width_ = fbWidth;
+    height_ = fbHeight;
 
     // Set user pointer for callbacks
     glfwSetWindowUserPointer(window_, this);
@@ -110,10 +113,10 @@ bool Context::init(int width, int height, const std::string& title) {
         return false;
     }
 
-    // Create swap chain
+    // Create swap chain with framebuffer dimensions
     SwapChainDesc scDesc;
-    scDesc.Width = width;
-    scDesc.Height = height;
+    scDesc.Width = width_;
+    scDesc.Height = height_;
     scDesc.ColorBufferFormat = TEX_FORMAT_RGBA8_UNORM_SRGB;
     scDesc.DepthBufferFormat = TEX_FORMAT_D32_FLOAT;
 

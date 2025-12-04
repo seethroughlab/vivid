@@ -24,7 +24,9 @@ cbuffer Constants : register(b0)
     int g_Octaves;
     float g_Lacunarity;
     float g_Persistence;
-    float3 padding;
+    float _pad0;
+    float _pad1;
+    float _pad2;
 };
 
 struct PSInput

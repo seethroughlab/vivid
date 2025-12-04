@@ -10,6 +10,8 @@
 #include "DeviceContext.h"
 #include "MapHelper.hpp"
 
+#include <iostream>
+
 namespace vivid {
 
 using namespace Diligent;
@@ -43,6 +45,7 @@ void SolidColor::createPipeline(Context& ctx) {
     );
 
     if (!ps) {
+        std::cerr << "SolidColor: Failed to compile shader" << std::endl;
         return;
     }
 
@@ -52,6 +55,7 @@ void SolidColor::createPipeline(Context& ctx) {
     ps->Release();
 
     if (!pso_) {
+        std::cerr << "SolidColor: Failed to create PSO" << std::endl;
         return;
     }
 

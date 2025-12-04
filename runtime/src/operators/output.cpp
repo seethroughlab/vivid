@@ -8,6 +8,7 @@
 #include "Shader.h"
 #include "PipelineState.h"
 #include "DeviceContext.h"
+#include "SwapChain.h"
 #include "RefCntAutoPtr.hpp"
 
 namespace vivid {
@@ -44,8 +45,12 @@ void Output::init(Context& ctx) {
         return;
     }
 
-    // Create pipeline
-    pso_ = ctx.shaderUtils().createFullscreenPipeline("OutputPSO", ps, true);
+    // Get the swap chain's actual render target format
+    const auto& scDesc = ctx.swapChain()->GetDesc();
+    TEXTURE_FORMAT rtFormat = scDesc.ColorBufferFormat;
+
+    // Create pipeline with matching format (no depth buffer)
+    pso_ = ctx.shaderUtils().createOutputPipeline("OutputPSO", ps, rtFormat);
 
     ps->Release();
 
@@ -75,10 +80,9 @@ void Output::process(Context& ctx) {
 
     auto* immediateCtx = ctx.immediateContext();
 
-    // Set render target to swap chain back buffer
+    // Set render target to swap chain back buffer (no depth buffer needed for 2D output)
     auto* rtv = ctx.currentRTV();
-    auto* dsv = ctx.currentDSV();
-    immediateCtx->SetRenderTargets(1, &rtv, dsv, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    immediateCtx->SetRenderTargets(1, &rtv, nullptr, RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 
     // Set viewport
     Viewport vp;
