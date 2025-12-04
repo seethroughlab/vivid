@@ -7,6 +7,7 @@
 
 // DiligentFX for GLTF PBR rendering
 #include "GLTF_PBR_Renderer.hpp"
+#include "EnvMapRenderer.hpp"
 #include "MapHelper.hpp"
 #include "GraphicsUtilities.h"
 #include "TextureUtilities.h"
@@ -17,6 +18,7 @@ namespace HLSL {
 #include "Shaders/Common/public/BasicStructures.fxh"
 #include "Shaders/PBR/public/PBR_Structures.fxh"
 #include "Shaders/PBR/private/RenderPBR_Structures.fxh"
+#include "Shaders/PostProcess/ToneMapping/public/ToneMappingStructures.fxh"
 } // namespace HLSL
 } // namespace Diligent
 
@@ -35,6 +37,10 @@ struct GLTFViewer::Impl {
     bool initialized = false;
     RefCntAutoPtr<ITexture> envMapTex;
     RefCntAutoPtr<ITextureView> envMapSRV;
+
+    // Skybox rendering
+    std::unique_ptr<EnvMapRenderer> envMapRenderer;
+    RefCntAutoPtr<IBuffer> cameraAttribsCB;
 };
 
 GLTFViewer::GLTFViewer() : impl_(std::make_unique<Impl>()) {
@@ -135,6 +141,21 @@ bool GLTFViewer::loadEnvironment(Context& ctx, const std::string& hdrPath) {
 
     std::cout << "Generated IBL cubemaps (irradiance + prefiltered)" << std::endl;
 
+    // Create EnvMapRenderer for skybox rendering
+    EnvMapRenderer::CreateInfo EnvMapRndrCI;
+    EnvMapRndrCI.pDevice = ctx.device();
+    EnvMapRndrCI.pCameraAttribsCB = impl_->cameraAttribsCB;
+    EnvMapRndrCI.NumRenderTargets = 1;
+    EnvMapRndrCI.RTVFormats[0] = impl_->colorFormat;
+    EnvMapRndrCI.DSVFormat = impl_->depthFormat;
+
+    try {
+        impl_->envMapRenderer = std::make_unique<EnvMapRenderer>(EnvMapRndrCI);
+        std::cout << "Created EnvMapRenderer for skybox" << std::endl;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to create EnvMapRenderer: " << e.what() << std::endl;
+    }
+
     hasEnvironment_ = true;
 
     // Enable IBL in render params
@@ -178,10 +199,16 @@ void GLTFViewer::init(Context& ctx) {
     CreateUniformBuffer(ctx.device(), impl_->renderer->GetPRBFrameAttribsSize(),
                        "PBR frame attribs buffer", &impl_->frameAttribsCB);
 
-    // Transition buffer to constant buffer state
-    StateTransitionDesc Barrier{impl_->frameAttribsCB, RESOURCE_STATE_UNKNOWN,
-                               RESOURCE_STATE_CONSTANT_BUFFER, STATE_TRANSITION_FLAG_UPDATE_STATE};
-    ctx.immediateContext()->TransitionResourceStates(1, &Barrier);
+    // Create camera attribs constant buffer for skybox renderer
+    CreateUniformBuffer(ctx.device(), sizeof(HLSL::CameraAttribs),
+                       "Camera attribs buffer", &impl_->cameraAttribsCB);
+
+    // Transition buffers to constant buffer state
+    StateTransitionDesc Barriers[] = {
+        {impl_->frameAttribsCB, RESOURCE_STATE_UNKNOWN, RESOURCE_STATE_CONSTANT_BUFFER, STATE_TRANSITION_FLAG_UPDATE_STATE},
+        {impl_->cameraAttribsCB, RESOURCE_STATE_UNKNOWN, RESOURCE_STATE_CONSTANT_BUFFER, STATE_TRANSITION_FLAG_UPDATE_STATE}
+    };
+    ctx.immediateContext()->TransitionResourceStates(2, Barriers);
 
     // Create resource bindings for already loaded models
     for (size_t i = 0; i < models_.size(); i++) {
@@ -336,12 +363,87 @@ void GLTFViewer::process(Context& ctx) {
     // Render the model
     impl_->renderer->Render(ctx.immediateContext(), *diligentModel, *transforms, nullptr,
                            impl_->renderParams, &impl_->modelBindings[currentModelIndex_]);
+
+    // Render skybox AFTER model (renders only where depth == 1.0, i.e. no geometry)
+    if (hasEnvironment_ && impl_->envMapRenderer) {
+        // Update camera attribs constant buffer for skybox
+        {
+            MapHelper<HLSL::CameraAttribs> CamAttribs{ctx.immediateContext(), impl_->cameraAttribsCB, MAP_WRITE, MAP_FLAG_DISCARD};
+
+            // Convert glm matrices to Diligent float4x4 (transpose for row-major)
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    CamAttribs->mView.m[i][j] = viewMatrix[j][i];
+                    CamAttribs->mProj.m[i][j] = projMatrix[j][i];
+                }
+            }
+
+            // View-projection
+            glm::mat4 viewProj = projMatrix * viewMatrix;
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    CamAttribs->mViewProj.m[i][j] = viewProj[j][i];
+                }
+            }
+
+            // Inverse matrices
+            glm::mat4 invView = glm::inverse(viewMatrix);
+            glm::mat4 invProj = glm::inverse(projMatrix);
+            glm::mat4 invViewProj = glm::inverse(viewProj);
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    CamAttribs->mViewInv.m[i][j] = invView[j][i];
+                    CamAttribs->mProjInv.m[i][j] = invProj[j][i];
+                    CamAttribs->mViewProjInv.m[i][j] = invViewProj[j][i];
+                }
+            }
+
+            // Camera position
+            glm::vec3 camPos = camera_.position();
+            CamAttribs->f4Position = float4{camPos.x, camPos.y, camPos.z, 1.0f};
+            CamAttribs->f4ViewportSize = float4{static_cast<float>(ctx.width()),
+                                               static_cast<float>(ctx.height()),
+                                               1.0f / ctx.width(), 1.0f / ctx.height()};
+
+            // Depth values - critical for skybox rendering at far plane
+            // Using standard depth (near=0, far=1), not reverse depth
+            CamAttribs->fNearPlaneZ = 0.1f;
+            CamAttribs->fFarPlaneZ = 100.0f;
+            CamAttribs->fNearPlaneDepth = 0.0f;
+            CamAttribs->fFarPlaneDepth = 1.0f;
+        }
+
+        // Setup env map render attributes
+        EnvMapRenderer::RenderAttribs EnvMapAttribs;
+        EnvMapAttribs.pEnvMap = impl_->renderer->GetPrefilteredEnvMapSRV();
+        EnvMapAttribs.AverageLogLum = 0.3f;
+        EnvMapAttribs.MipLevel = 1.0f;  // Slight blur for skybox
+
+        // Convert to sRGB if output format is not sRGB
+        if (impl_->colorFormat == TEX_FORMAT_RGBA8_UNORM ||
+            impl_->colorFormat == TEX_FORMAT_BGRA8_UNORM) {
+            EnvMapAttribs.Options |= EnvMapRenderer::OPTION_FLAG_CONVERT_OUTPUT_TO_SRGB;
+        }
+
+        // Setup tone mapping
+        HLSL::ToneMappingAttribs TMAttribs;
+        TMAttribs.iToneMappingMode = TONE_MAPPING_MODE_UNCHARTED2;
+        TMAttribs.bAutoExposure = false;
+        TMAttribs.fMiddleGray = 0.18f;
+        TMAttribs.fWhitePoint = 3.0f;
+        TMAttribs.fLuminanceSaturation = 1.0f;
+
+        impl_->envMapRenderer->Prepare(ctx.immediateContext(), EnvMapAttribs, TMAttribs);
+        impl_->envMapRenderer->Render(ctx.immediateContext());
+    }
 }
 
 void GLTFViewer::cleanup() {
     impl_->modelBindings.clear();
+    impl_->envMapRenderer.reset();
     impl_->renderer.reset();
     impl_->frameAttribsCB.Release();
+    impl_->cameraAttribsCB.Release();
     impl_->envMapTex.Release();
     impl_->envMapSRV.Release();
     impl_->initialized = false;
