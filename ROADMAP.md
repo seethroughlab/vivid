@@ -170,31 +170,37 @@ MoltenVK (macOS) / Native Vulkan (Windows/Linux)
 
 ---
 
-## Phase 1: Core Rendering Infrastructure
+## Phase 1: Core Rendering Infrastructure ✓
 
 **Goal:** Window, Vulkan initialization, texture management
 
+**Status:** Complete (macOS verified)
+
 ### Tasks
-- [ ] GLFW window creation and event handling
-- [ ] Diligent Engine initialization with Vulkan backend
-- [ ] Swap chain management and resize handling
-- [ ] Frame loop: beginFrame → render → endFrame → present
-- [ ] TextureUtils: load from file, create render targets
-- [ ] TextureUtils: `loadFromFileAsArray()` for DiligentFX compatibility
-- [ ] ShaderUtils: HLSL loading and compilation
-- [ ] Basic pipeline state object (PSO) creation
+- [x] GLFW window creation and event handling
+- [x] Diligent Engine initialization with Vulkan backend
+- [x] Swap chain management and resize handling
+- [x] Frame loop: beginFrame → render → endFrame → present
+- [x] TextureUtils: load from file, create render targets
+- [x] TextureUtils: `loadFromFileAsArray()` for DiligentFX compatibility
+- [ ] ShaderUtils: HLSL loading and compilation (deferred to Phase 2)
+- [ ] Basic pipeline state object (PSO) creation (deferred to Phase 2)
 
 ### Files
 ```
 runtime/
 ├── src/
-│   ├── diligent_renderer.cpp   # Core renderer
+│   ├── main.cpp                # Entry point
+│   ├── context.cpp             # Vulkan/GLFW init, frame loop
+│   ├── chain.cpp               # Operator chain management
 │   ├── texture_utils.cpp       # Texture loading
-│   └── shader_utils.cpp        # Shader compilation
+│   └── macos_helpers.mm        # CAMetalLayer setup
 ├── include/vivid/
-│   ├── diligent_renderer.h
-│   ├── texture_utils.h
-│   └── shader_utils.h
+│   ├── vivid.h                 # Main include
+│   ├── context.h               # Frame context
+│   ├── chain.h                 # Chain API
+│   ├── operator.h              # Base operator class
+│   └── texture_utils.h         # Texture utilities
 ```
 
 ### Cross-Platform Setup
@@ -214,7 +220,9 @@ DYLD_LIBRARY_PATH=/opt/homebrew/lib
 - GCC or Clang for compilation
 
 ### Cross-Platform Validation
-- [ ] Verify build on all three platforms before moving to Phase 2
+- [x] Verify build on macOS (Apple M4 Max, MoltenVK)
+- [ ] Verify build on Windows
+- [ ] Verify build on Linux
 - [ ] Document any platform-specific workarounds
 
 ---

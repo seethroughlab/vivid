@@ -2,6 +2,7 @@
 
 #include "vivid/context.h"
 #include "vivid/texture_utils.h"
+#include "vivid/shader_utils.h"
 
 // Platform-specific defines for GLFW native access
 #if defined(PLATFORM_WIN32)
@@ -170,8 +171,10 @@ bool Context::init(int width, int height, const std::string& title) {
     return false;
 #endif
 
-    // Initialize texture utilities
+    // Initialize utilities
     textureUtils_ = std::make_unique<TextureUtils>(device_, immediateContext_);
+    shaderUtils_ = std::make_unique<ShaderUtils>(device_, immediateContext_);
+    fullscreenQuad_ = std::make_unique<FullscreenQuad>(device_, immediateContext_);
 
     // Initialize timing
     lastFrameTime_ = glfwGetTime();
@@ -182,6 +185,8 @@ bool Context::init(int width, int height, const std::string& title) {
 }
 
 void Context::shutdown() {
+    fullscreenQuad_.reset();
+    shaderUtils_.reset();
     textureUtils_.reset();
 
     if (immediateContext_) {

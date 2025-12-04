@@ -21,6 +21,8 @@ namespace vivid {
 
 // Forward declarations
 class TextureUtils;
+class ShaderUtils;
+class FullscreenQuad;
 
 /// Context provides access to the rendering system and frame state
 class Context {
@@ -95,6 +97,8 @@ public:
 
     // --- Utility Access ---
     TextureUtils& textureUtils() { return *textureUtils_; }
+    ShaderUtils& shaderUtils() { return *shaderUtils_; }
+    FullscreenQuad& fullscreenQuad() { return *fullscreenQuad_; }
 
 private:
     // GLFW window
@@ -122,6 +126,8 @@ private:
 
     // Utilities
     std::unique_ptr<TextureUtils> textureUtils_;
+    std::unique_ptr<ShaderUtils> shaderUtils_;
+    std::unique_ptr<FullscreenQuad> fullscreenQuad_;
 
     // GLFW callbacks
     static void onFramebufferResize(GLFWwindow* window, int width, int height);

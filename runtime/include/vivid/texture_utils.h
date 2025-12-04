@@ -4,13 +4,15 @@
 #include <memory>
 #include <unordered_map>
 
+// Include Diligent types for TEXTURE_FORMAT
+#include "GraphicsTypes.h"
+
 // Forward declarations for Diligent types
 namespace Diligent {
     struct IRenderDevice;
     struct IDeviceContext;
     struct ITexture;
     struct ITextureView;
-    enum TEXTURE_FORMAT : int;
 }
 
 namespace vivid {

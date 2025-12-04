@@ -8,6 +8,13 @@ set(VIVID_HEADERS
     include/vivid/chain.h
     include/vivid/operator.h
     include/vivid/texture_utils.h
+    include/vivid/shader_utils.h
+    include/vivid/operators.h
+    include/vivid/operators/solid_color.h
+    include/vivid/operators/noise.h
+    include/vivid/operators/composite.h
+    include/vivid/operators/blur.h
+    include/vivid/operators/output.h
 )
 
 set(VIVID_SOURCES
@@ -15,6 +22,13 @@ set(VIVID_SOURCES
     src/context.cpp
     src/chain.cpp
     src/texture_utils.cpp
+    src/shader_utils.cpp
+    src/operator.cpp
+    src/operators/solid_color.cpp
+    src/operators/noise.cpp
+    src/operators/composite.cpp
+    src/operators/blur.cpp
+    src/operators/output.cpp
 )
 
 # Add macOS-specific sources
