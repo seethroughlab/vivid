@@ -363,41 +363,317 @@ shaders/
 
 ---
 
-## Phase 4: 3D Rendering
+## Phase 4: 3D Rendering ✓
 
 **Goal:** Basic 3D with camera, meshes, and PBR materials
 
-### Tasks
-- [ ] Vertex format: position, normal, UV, tangent (vec3)
-- [ ] MeshUtils: cube, sphere, plane, cylinder, torus, cone
-- [ ] Camera3D: perspective, view matrix, orbit/zoom helpers
-- [ ] Depth buffer management
-- [ ] DiligentFX PBR_Renderer integration
-- [ ] IBL cubemap precomputation from HDR environment
-- [ ] PBR material textures (albedo, normal, metallic, roughness, AO)
-- [ ] Multiple light support
-- [ ] Shadow mapping via ShadowMapManager
-- [ ] GLTF model loading via GLTF_PBR_Renderer
+**Status:** Complete (macOS verified)
 
-### Vertex Structure
+### Tasks
+- [x] Vertex format: position, normal, UV, tangent (vec3)
+- [x] MeshUtils: sphere (UV sphere with proper tangents)
+- [x] Camera3D: perspective, view matrix, orbit helpers
+- [x] Depth buffer management
+- [x] DiligentFX PBR_Renderer integration
+- [x] IBL cubemap precomputation from HDR environment
+- [x] PBR material textures (albedo, normal, metallic, roughness, AO)
+- [ ] MeshUtils: cube, plane, cylinder, torus, cone (future)
+- [ ] Multiple light support (future)
+- [ ] Shadow mapping via ShadowMapManager (future)
+- [ ] GLTF model loading via GLTF_PBR_Renderer (future)
+
+---
+
+### Procedural Geometry
+
+#### Vertex Structure (44 bytes, must match exactly)
 ```cpp
 struct Vertex3D {
-    glm::vec3 position;
-    glm::vec3 normal;
-    glm::vec2 uv;
-    glm::vec3 tangent;  // DiligentFX expects float3 at ATTRIB7
+    glm::vec3 position;   // 12 bytes - ATTRIB0
+    glm::vec3 normal;     // 12 bytes - ATTRIB1
+    glm::vec2 uv;         // 8 bytes  - ATTRIB2
+    glm::vec3 tangent;    // 12 bytes - ATTRIB7 (DiligentFX expects float3, not float4)
+};
+// Total: 44 bytes stride
+```
+
+**Critical:** DiligentFX shaders expect tangent as `float3` at ATTRIB7, not `float4`. Using a 4-component tangent causes vertex stride mismatch and rendering corruption.
+
+#### UV Sphere Generation
+```cpp
+void generateUVSphere(std::vector<Vertex3D>& vertices,
+                      std::vector<uint32_t>& indices,
+                      float radius, int segments, int rings) {
+    for (int ring = 0; ring <= rings; ++ring) {
+        float phi = glm::pi<float>() * ring / rings;  // 0 to PI
+        float y = cos(phi);
+        float ringRadius = sin(phi);
+
+        for (int seg = 0; seg <= segments; ++seg) {
+            float theta = 2.0f * glm::pi<float>() * seg / segments;  // 0 to 2PI
+
+            Vertex3D v;
+            v.position = glm::vec3(
+                ringRadius * cos(theta),
+                y,
+                ringRadius * sin(theta)
+            ) * radius;
+            v.normal = glm::normalize(v.position);
+            v.uv = glm::vec2(
+                static_cast<float>(seg) / segments,
+                static_cast<float>(ring) / rings
+            );
+
+            // Tangent: derivative of position w.r.t. theta
+            v.tangent = glm::normalize(glm::vec3(
+                -sin(theta),
+                0.0f,
+                cos(theta)
+            ));
+
+            vertices.push_back(v);
+        }
+    }
+
+    // Generate indices (triangle strips converted to triangles)
+    for (int ring = 0; ring < rings; ++ring) {
+        for (int seg = 0; seg < segments; ++seg) {
+            int curr = ring * (segments + 1) + seg;
+            int next = curr + segments + 1;
+
+            indices.push_back(curr);
+            indices.push_back(next);
+            indices.push_back(curr + 1);
+
+            indices.push_back(curr + 1);
+            indices.push_back(next);
+            indices.push_back(next + 1);
+        }
+    }
+}
+```
+
+**Key insight:** Tangent is the partial derivative of position with respect to the UV.x direction (theta for a sphere). This ensures normal mapping works correctly.
+
+---
+
+### PBR Material System
+
+#### Texture Array Requirement (CRITICAL)
+DiligentFX PBR shaders declare all texture maps as `Texture2DArray`, not `Texture2D`:
+```hlsl
+// In DiligentFX shaders:
+Texture2DArray g_BaseColorMap;
+Texture2DArray g_NormalMap;
+Texture2DArray g_MetallicMap;
+// etc.
+```
+
+**All material textures must be created as `RESOURCE_DIM_TEX_2D_ARRAY` with ArraySize=1**, even for single textures. Using `RESOURCE_DIM_TEX_2D` will fail silently - the shader will sample but get undefined values.
+
+#### Loading Textures as Arrays
+```cpp
+bool loadTextureAsArray(Context& ctx, const std::string& path,
+                        ITexture*& tex, ITextureView*& srv, bool srgb) {
+    TextureLoadInfo loadInfo;
+    loadInfo.IsSRGB = srgb;
+    loadInfo.GenerateMips = true;
+    loadInfo.Name = path.c_str();
+
+    RefCntAutoPtr<ITextureLoader> pLoader;
+    CreateTextureLoaderFromFile(path.c_str(), IMAGE_FILE_FORMAT_UNKNOWN,
+                                loadInfo, &pLoader);
+    if (!pLoader) return false;
+
+    const TextureDesc& srcDesc = pLoader->GetTextureDesc();
+
+    // Create as texture array with 1 slice
+    TextureDesc arrayDesc;
+    arrayDesc.Name = path.c_str();
+    arrayDesc.Type = RESOURCE_DIM_TEX_2D_ARRAY;  // CRITICAL!
+    arrayDesc.Width = srcDesc.Width;
+    arrayDesc.Height = srcDesc.Height;
+    arrayDesc.ArraySize = 1;
+    arrayDesc.MipLevels = srcDesc.MipLevels;
+    arrayDesc.Format = srcDesc.Format;
+    arrayDesc.BindFlags = BIND_SHADER_RESOURCE;
+    arrayDesc.Usage = USAGE_IMMUTABLE;
+
+    // Copy subresource data for all mip levels
+    std::vector<TextureSubResData> subResData(srcDesc.MipLevels);
+    for (Uint32 mip = 0; mip < srcDesc.MipLevels; ++mip) {
+        subResData[mip] = pLoader->GetSubresourceData(mip, 0);
+    }
+
+    TextureData initData;
+    initData.pSubResources = subResData.data();
+    initData.NumSubresources = srcDesc.MipLevels;
+
+    RefCntAutoPtr<ITexture> texture;
+    ctx.device()->CreateTexture(arrayDesc, &initData, &texture);
+    if (!texture) return false;
+
+    tex = texture.Detach();
+    srv = tex->GetDefaultView(TEXTURE_VIEW_SHADER_RESOURCE);
+    return true;
+}
+```
+
+#### PBRMaterial Class
+```cpp
+class PBRMaterial {
+public:
+    // Texture SRVs (all Texture2DArray)
+    ITexture* albedoTex_ = nullptr;      // sRGB
+    ITextureView* albedoSRV_ = nullptr;
+
+    ITexture* normalTex_ = nullptr;      // Linear
+    ITextureView* normalSRV_ = nullptr;
+
+    ITexture* metallicTex_ = nullptr;    // Linear, single channel
+    ITextureView* metallicSRV_ = nullptr;
+
+    ITexture* roughnessTex_ = nullptr;   // Linear, single channel
+    ITextureView* roughnessSRV_ = nullptr;
+
+    ITexture* aoTex_ = nullptr;          // Linear, single channel
+    ITextureView* aoSRV_ = nullptr;
+
+    // Default fallback textures (also Texture2DArray)
+    ITexture* defaultWhiteTex_ = nullptr;
+    ITextureView* defaultWhiteSRV_ = nullptr;
+
+    ITexture* defaultNormalTex_ = nullptr;  // (0.5, 0.5, 1.0) flat normal
+    ITextureView* defaultNormalSRV_ = nullptr;
+
+    ISampler* sampler_ = nullptr;
+
+    bool loadFromDirectory(Context& ctx, const std::string& dirPath);
+    ITextureView* getAlbedoSRV() const { return albedoSRV_ ? albedoSRV_ : defaultWhiteSRV_; }
+    // ... similar getters for other textures
 };
 ```
 
-### PBR Material
+---
+
+### DiligentFX PBR_Renderer Integration
+
+#### Constant Buffer Structures
+The PBR_Renderer requires specific constant buffer layouts:
+
 ```cpp
-struct PBRMaterial {
-    ManagedTexture albedoMap;      // sRGB, Texture2DArray
-    ManagedTexture normalMap;      // Linear, Texture2DArray
-    ManagedTexture metallicMap;    // Linear, Texture2DArray
-    ManagedTexture roughnessMap;   // Linear, Texture2DArray
-    ManagedTexture aoMap;          // Linear, Texture2DArray
+// Frame-level constants (1552 bytes)
+// Use PBRFrameAttribs from PBR_Structures.fxh
+
+// Per-primitive constants (128 bytes)
+struct alignas(16) PrimitiveCB {
+    glm::mat4 model;      // 64 bytes - row-major for Diligent
+    glm::mat4 normalMat;  // 64 bytes - inverse transpose of model
 };
+
+// Material constants - basic (96 bytes)
+// Use PBRMaterialBasicAttribs from RenderPBR_Structures.fxh
+
+// Material constants - textured (336 bytes for 5 textures)
+// PBRMaterialBasicAttribs (96) + 5 * PBRMaterialTextureAttribs (48 each)
+```
+
+#### Matrix Conventions (GLM vs Diligent)
+**Critical:** GLM uses column-major matrices, Diligent expects row-major.
+
+```cpp
+// WRONG - will cause inverted/corrupted rendering
+glm::mat4 view = glm::lookAt(eye, target, up);
+glm::mat4 proj = glm::perspective(fov, aspect, near, far);
+
+// CORRECT - transpose before uploading to GPU
+glm::mat4 viewT = glm::transpose(view);
+glm::mat4 projT = glm::transpose(proj);
+// Upload viewT and projT to constant buffer
+```
+
+#### PBRMaterialTextureAttribs Structure
+```cpp
+// Each texture needs these attributes (48 bytes)
+struct PBRMaterialTextureAttribs {
+    uint32_t PackedProps;           // Bits [0-2]: UVSelector (1 = UV0)
+    float TextureSlice;             // Array slice (0.0 for single textures)
+    float UBias;                    // UV offset
+    float VBias;
+    float4 UVScaleAndRotation;      // (scaleX, rotateXY, rotateYX, scaleY)
+    float4 AtlasUVScaleAndBias;     // For texture atlases
+};
+```
+
+**PackedProps UV selector:** The low 3 bits select which UV set to use. Value `1` means use UV0 (the primary UV coordinates). Value `0` means don't sample (uses default).
+
+#### Setting Up Texture Attributes
+```cpp
+void setupTextureAttribs(PBRMaterialTextureAttribs* texAttrib) {
+    texAttrib->PackedProps = 1;  // Use UV0
+    texAttrib->TextureSlice = 0.0f;
+    texAttrib->UBias = 0.0f;
+    texAttrib->VBias = 0.0f;
+    texAttrib->UVScaleAndRotation = float4(1.0f, 0.0f, 0.0f, 1.0f);  // Identity
+    texAttrib->AtlasUVScaleAndBias = float4(1.0f, 1.0f, 0.0f, 0.0f);
+}
+```
+
+#### PSO Flags for Textured Materials
+```cpp
+PBR_Renderer::PSO_FLAGS texturedPsoFlags =
+    PBR_Renderer::PSO_FLAG_USE_COLOR_MAP |
+    PBR_Renderer::PSO_FLAG_USE_NORMAL_MAP |
+    PBR_Renderer::PSO_FLAG_USE_METALLIC_MAP |
+    PBR_Renderer::PSO_FLAG_USE_ROUGHNESS_MAP |
+    PBR_Renderer::PSO_FLAG_USE_AO_MAP |
+    PBR_Renderer::PSO_FLAG_ENABLE_TEXCOORD_TRANSFORM;  // Required for UV attribs
+```
+
+#### Binding Textures to SRB
+```cpp
+void bindMaterialTextures(IShaderResourceBinding* srb, PBRMaterial& mat) {
+    auto setTex = [&](const char* name, ITextureView* srv) {
+        if (auto* var = srb->GetVariableByName(SHADER_TYPE_PIXEL, name)) {
+            var->Set(srv);
+        }
+    };
+
+    setTex("g_BaseColorMap", mat.getAlbedoSRV());
+    setTex("g_NormalMap", mat.getNormalSRV());
+    setTex("g_MetallicMap", mat.getMetallicSRV());
+    setTex("g_RoughnessMap", mat.getRoughnessSRV());
+    setTex("g_OcclusionMap", mat.getAoSRV());
+}
+```
+
+---
+
+### Common Pitfalls & Solutions
+
+| Problem | Symptom | Solution |
+|---------|---------|----------|
+| Texture2D instead of Texture2DArray | Textures don't appear, default color shows | Load all textures with `RESOURCE_DIM_TEX_2D_ARRAY` |
+| Wrong vertex stride | Mesh appears corrupted/exploded | Ensure 44-byte stride, tangent as float3 not float4 |
+| Matrix not transposed | Scene rendered inverted/wrong orientation | Transpose GLM matrices before uploading |
+| BaseColorFactor gray | Textures appear darker than expected | Set to white (1,1,1,1) for textured materials |
+| UV selector not set | Textures mapped but show default color | Set `PackedProps = 1` to enable UV0 |
+| Missing ENABLE_TEXCOORD_TRANSFORM | UV transforms ignored | Add PSO flag when using texture attribs |
+| Wrong constant buffer size | Validation errors or corruption | Basic=96 bytes, +48 per texture with attribs |
+
+---
+
+### Files
+```
+runtime/
+├── include/vivid/
+│   ├── pbr_material.h      # PBR material class
+│   └── mesh.h              # Procedural geometry
+└── src/
+    ├── pbr_material.cpp    # Texture loading as arrays
+    ├── mesh.cpp            # UV sphere generation
+    └── operators/
+        └── render3d.cpp    # DiligentFX PBR_Renderer integration
 ```
 
 ---
