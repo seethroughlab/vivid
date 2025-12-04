@@ -1,0 +1,132 @@
+#pragma once
+
+#include <memory>
+#include <string>
+#include <glm/glm.hpp>
+
+// Forward declarations for Diligent types
+namespace Diligent {
+    struct IRenderDevice;
+    struct IDeviceContext;
+    struct ISwapChain;
+    struct ITexture;
+    struct ITextureView;
+    struct IPipelineState;
+    struct IShaderResourceBinding;
+}
+
+struct GLFWwindow;
+
+namespace vivid {
+
+// Forward declarations
+class TextureUtils;
+
+/// Context provides access to the rendering system and frame state
+class Context {
+public:
+    Context();
+    ~Context();
+
+    // Non-copyable
+    Context(const Context&) = delete;
+    Context& operator=(const Context&) = delete;
+
+    /// Initialize the rendering context with a window
+    bool init(int width, int height, const std::string& title);
+
+    /// Shutdown and cleanup resources
+    void shutdown();
+
+    /// Begin a new frame
+    void beginFrame();
+
+    /// End the current frame and present
+    void endFrame();
+
+    /// Check if the window should close
+    bool shouldClose() const;
+
+    /// Poll window events
+    void pollEvents();
+
+    // --- Time and Frame Info ---
+
+    /// Seconds since start
+    float time() const { return time_; }
+
+    /// Delta time (seconds since last frame)
+    float dt() const { return dt_; }
+
+    /// Current frame number
+    int frame() const { return frame_; }
+
+    // --- Resolution ---
+
+    /// Output width in pixels
+    int width() const { return width_; }
+
+    /// Output height in pixels
+    int height() const { return height_; }
+
+    // --- Mouse Input ---
+
+    /// Mouse position in pixels
+    glm::vec2 mousePosition() const { return mousePos_; }
+
+    /// Mouse position normalized (0-1)
+    float mouseNormX() const { return mousePos_.x / static_cast<float>(width_); }
+    float mouseNormY() const { return mousePos_.y / static_cast<float>(height_); }
+
+    /// Check if mouse button was pressed this frame
+    bool wasMousePressed(int button) const;
+
+    // --- Diligent Engine Access ---
+
+    Diligent::IRenderDevice* device() const { return device_; }
+    Diligent::IDeviceContext* immediateContext() const { return immediateContext_; }
+    Diligent::ISwapChain* swapChain() const { return swapChain_; }
+
+    /// Get the current render target view (back buffer)
+    Diligent::ITextureView* currentRTV() const;
+
+    /// Get the depth stencil view
+    Diligent::ITextureView* currentDSV() const;
+
+    // --- Utility Access ---
+    TextureUtils& textureUtils() { return *textureUtils_; }
+
+private:
+    // GLFW window
+    GLFWwindow* window_ = nullptr;
+
+    // Diligent Engine objects (raw pointers, ref-counted by Diligent)
+    Diligent::IRenderDevice* device_ = nullptr;
+    Diligent::IDeviceContext* immediateContext_ = nullptr;
+    Diligent::ISwapChain* swapChain_ = nullptr;
+
+    // Frame timing
+    float time_ = 0.0f;
+    float dt_ = 0.0f;
+    int frame_ = 0;
+    double lastFrameTime_ = 0.0;
+
+    // Resolution
+    int width_ = 0;
+    int height_ = 0;
+
+    // Input state
+    glm::vec2 mousePos_{0.0f, 0.0f};
+    bool mouseButtons_[8] = {false};
+    bool mouseButtonsPressed_[8] = {false};
+
+    // Utilities
+    std::unique_ptr<TextureUtils> textureUtils_;
+
+    // GLFW callbacks
+    static void onFramebufferResize(GLFWwindow* window, int width, int height);
+    static void onMouseMove(GLFWwindow* window, double x, double y);
+    static void onMouseButton(GLFWwindow* window, int button, int action, int mods);
+};
+
+} // namespace vivid
