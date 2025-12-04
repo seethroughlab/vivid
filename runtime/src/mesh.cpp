@@ -186,19 +186,21 @@ MeshData createSphere(int segments, int rings, float radius) {
         }
     }
 
-    // Generate indices
+    // Generate indices (CCW winding for front faces when viewed from outside)
     for (int ring = 0; ring < rings; ring++) {
         for (int seg = 0; seg < segments; seg++) {
             uint32_t current = ring * (segments + 1) + seg;
             uint32_t next = current + segments + 1;
 
+            // First triangle: current -> current+1 -> next (CCW from outside)
             mesh.indices.push_back(current);
-            mesh.indices.push_back(next);
             mesh.indices.push_back(current + 1);
+            mesh.indices.push_back(next);
 
+            // Second triangle: current+1 -> next+1 -> next (CCW from outside)
             mesh.indices.push_back(current + 1);
-            mesh.indices.push_back(next);
             mesh.indices.push_back(next + 1);
+            mesh.indices.push_back(next);
         }
     }
 
