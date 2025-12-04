@@ -1,95 +1,145 @@
-# Vivid Rebuild Roadmap
+# Vivid Roadmap
 
-A complete reimplementation of Vivid with **Diligent Engine** at its core from the ground up.
+A **LLM-first creative coding framework** built on Diligent Engine. Plain C++ that language models can read, write, and reason about—combining TouchDesigner's inspect-anywhere philosophy with the portability of text-based code.
 
-## Why Start Fresh
+See [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) for the full vision.
 
-The existing codebase was built around wgpu-native/WebGPU patterns. Retrofitting Diligent Engine on top created architectural friction:
+---
 
-- WebGPU assumptions embedded in context management, shader handling, and pipeline state
-- Awkward seams where two paradigms clashed
-- "Basic" rendering tasks becoming complex due to legacy abstractions
-- ~5000 lines of custom pipeline code that Diligent can replace
+## Guiding Principles
 
-**Starting fresh allows:**
-- Designing around Diligent's idioms (RenderDevice → SwapChain → Pipeline → Draw)
-- Using DiligentFX for PBR, shadows, IBL out of the box
-- HLSL as universal shader language (cross-compiles to all backends)
-- Future flexibility: can switch to Vulkan/Metal by changing one line
+1. **Don't reinvent the wheel.** Before implementing any feature, check if Diligent Engine already provides it. Search DiligentCore (low-level utilities), DiligentTools (texture loading, asset management), DiligentFX (PBR, shadows, post-processing), and DiligentSamples (reference implementations). Only write custom code when Diligent doesn't have a solution.
 
-**Guiding principle: Don't reinvent the wheel.** Before implementing any feature, research existing solutions. Use DiligentFX's built-in renderers, standard libraries, and proven algorithms. Custom code is a last resort.
+2. **Get to the chain API fast.** The core value of Vivid is the `chain.cpp` programming model. All infrastructure work serves this goal.
+
+3. **Cross-platform from day one.** Test on macOS, Windows, and Linux continuously. Catch platform-specific issues early, not after the API is locked in.
+
+4. **HLSL as universal shader language.** Cross-compiles to all backends via Diligent's shader tools.
+
+---
+
+## Project Structure
+
+A minimal vivid project requires only:
+
+```
+my-project/
+├── chain.cpp       # Required: Your visual program
+├── ROADMAP.md      # Recommended: For LLM-assisted development
+└── assets/         # Optional: Project-specific assets
+    ├── textures/
+    ├── hdris/
+    └── models/
+```
+
+**Asset loading:** The runtime searches for assets in this order:
+1. Project's `assets/` folder
+2. Vivid runtime's `assets/` folder (fallback for shared resources)
+
+---
+
+## Dependencies
+
+| Library | Purpose | Notes |
+|---------|---------|-------|
+| Diligent Engine | Graphics abstraction | Core, Tools, FX, Samples |
+| GLFW | Window/input management | Cross-platform |
+| glm | Math library | Vectors, matrices, transforms |
+| stb_image | Image loading | Via DiligentTools |
+
+---
+
+## Testing Strategy
+
+Testing is continuous, not a phase. Every operator and example must be testable from day one.
+
+### Visual Regression Testing
+- Reference images for each operator (golden master approach)
+- Pixel-diff comparison with tolerance for floating-point variance
+- Automated screenshot capture during CI
+
+### Example Project Testing
+- All examples in `examples/` must run without errors
+- Each example renders for N frames and captures output
+- CI runs examples on all three platforms
+
+### Operator Testing
+- Each operator has a test chain that exercises its parameters
+- Test edge cases: zero, negative, extreme values
+- Output comparison against reference images
+
+### CI Pipeline (GitHub Actions)
+- Triggered on every PR and push to main
+- Matrix: macOS, Windows, Linux
+- Steps: Build → Run unit tests → Run examples → Visual diff report
+- Block merge if tests fail or visual regressions detected
 
 ---
 
 ## Diligent Engine Components
 
-**CRITICAL:** Diligent Engine is not just DiligentCore. It has three major components that must be used together:
+Vivid uses specific parts of Diligent Engine. Understanding what we use (and don't use) is critical.
 
-### 1. DiligentCore (Low-Level API)
-The graphics abstraction layer. Use for:
-- Device/context creation
-- Swap chain management
-- Basic pipeline state objects
-- Buffer and texture creation
+### DiligentCore (Graphics Abstraction)
 
-### 2. DiligentFX (High-Level Rendering)
-**Battle-tested rendering components - USE THESE INSTEAD OF CUSTOM CODE:**
+The low-level graphics API abstraction. We use:
 
-| Component | What It Provides | Use Instead Of |
-|-----------|------------------|----------------|
-| `PBR_Renderer` | Full PBR pipeline with shaders | Custom PBR shaders |
-| `ShadowMapManager` | Cascaded shadow maps, PCF/VSM filtering | Custom shadow mapping |
-| `GLTF_PBR_Renderer` | GLTF model rendering with PBR | Custom model rendering |
-| `PostFXContext` | Post-processing framework | Custom post-FX passes |
-| `ScreenSpaceAmbientOcclusion` | SSAO | Custom AO |
-| `ScreenSpaceReflection` | SSR | Custom reflections |
-| `TemporalAntiAliasing` | TAA | Custom AA |
+| Component | Purpose |
+|-----------|---------|
+| `IRenderDevice` | GPU resource creation |
+| `IDeviceContext` | Command submission, state management |
+| `ISwapChain` | Window surface presentation |
+| `IPipelineState` | Shader pipeline configuration |
+| `IBuffer` | Vertex, index, and uniform buffers |
+| `ITexture` / `ITextureView` | 2D textures and render targets |
+| `IShader` | Compiled shader programs |
+| `IShaderResourceBinding` | Binding textures/buffers to shaders |
 
-**Key files to study:**
-- `DiligentFX/PBR/interface/PBR_Renderer.hpp` - PBR pipeline
-- `DiligentFX/Components/interface/ShadowMapManager.hpp` - Shadows
-- `DiligentFX/Shaders/PBR/*.fxh` - PBR shader structures
+**Backend:** Vulkan (via MoltenVK on macOS). Metal backend requires proprietary DiligentCorePro.
 
-### 3. DiligentTools (Utilities)
-**Helper utilities - USE THESE INSTEAD OF CUSTOM CODE:**
+### DiligentFX (High-Level Rendering)
 
-| Component | What It Provides | Use Instead Of |
-|-----------|------------------|----------------|
-| `TextureLoader` | Image loading (PNG, JPG, HDR, etc.) | stb_image |
-| `ImGuiImplDiligent` | ImGui integration | Custom ImGui backend |
-| `AssetLoader` | Asset management | Custom loaders |
-| `RenderStateNotationLoader` | PSO from JSON | Manual PSO creation |
+Battle-tested rendering components. We use selectively:
 
-### Implementation Rule
+| Component | What We Use | Notes |
+|-----------|-------------|-------|
+| `PBR_Renderer` | IBL cubemap precomputation, PBR shader infrastructure | `PrecomputeCubemaps()`, `GetIrradianceCubeSRV()`, `GetPrefilteredEnvMapSRV()` |
+| `PBR_Renderer::CreateInfo` | Configuration for PBR pipeline | `EnableIBL`, `UseSeparateMetallicRoughnessTextures`, `TextureAttribIndices` |
+| `GLTF_PBR_Renderer` | (Future) GLTF model rendering | Not yet integrated |
+| `ShadowMapManager` | (Future) Cascaded shadow maps | Not yet integrated |
 
-**Before writing ANY rendering code, check:**
-1. Does DiligentFX have a component for this? → Use it
-2. Does DiligentTools have a utility for this? → Use it
-3. Does DiligentSamples have an example? → Study it first
+**Key insight:** DiligentFX expects material textures as `Texture2DArray` (even with single slices), not `Texture2D`. Our `TextureUtils::loadFromFileAsArray()` handles this.
 
-**NEVER write custom shaders/code for:**
-- PBR lighting (use `PBR_Renderer`)
-- Shadow mapping (use `ShadowMapManager`)
-- IBL/Environment maps (use `PBR_Renderer` with `EnableIBL`)
-- Image loading (use `TextureLoader`)
-- ImGui (use `ImGuiImplDiligent`)
+**Shader structures we include:**
+```cpp
+namespace Diligent { namespace HLSL {
+#include "Shaders/Common/public/BasicStructures.fxh"
+#include "Shaders/PBR/public/PBR_Structures.fxh"
+#include "Shaders/PBR/private/RenderPBR_Structures.fxh"
+}}
+```
 
----
+### DiligentTools (Utilities)
 
-## Why Diligent Engine (Not Filament)
+Helper utilities. We use:
 
-Evaluated Google Filament as an alternative (native Metal support), but rejected for Vivid's use case:
+| Component | Purpose |
+|-----------|---------|
+| `TextureLoader` | Loading PNG, JPG, HDR images |
+| `Image` | Raw image data access for custom texture creation |
+| `CreateTextureFromFile()` | Quick texture loading |
 
-| Factor | Filament | Diligent |
-|--------|----------|----------|
-| Metal support | Native | Via MoltenVK |
-| Custom shaders | GLSL only, limited to material DSL | HLSL, full low-level control |
-| Post-processing | **Not directly supported** | Full control via render targets |
-| Documentation | Generic PBR book only | API docs + samples |
+**Not using (yet):**
+- `ImGuiImplDiligent` - ImGui integration (future addon)
+- `AssetLoader` - Asset management
+- `RenderStateNotationLoader` - PSO from JSON
 
-**Critical issue:** Filament's post-processing effects (blur, bloom, feedback) are "not directly possible" ([discussion #7676](https://github.com/google/filament/discussions/7676)). For a creative coding framework built around 2D texture effects, this is a dealbreaker.
+### DiligentSamples (Reference)
 
-Diligent's low-level approach with MoltenVK on macOS is the right trade-off.
+We study these for implementation patterns:
+- `Tutorials/Tutorial03_Texturing` - Texture binding
+- `Tutorials/Tutorial19_RenderPasses` - Render target management
+- `SampleBase` - Application structure patterns
 
 ---
 
@@ -106,434 +156,92 @@ Context (frame lifecycle, resource management)
     │
     ▼
 DiligentRenderer
-    ├── DiligentFX (PBR, Shadows, IBL, Post-FX)
-    ├── Custom shaders (HLSL) for effects
-    └── Texture/Mesh management
+    ├── DiligentFX (PBR, IBL)
+    ├── Custom shaders (HLSL) for 2D effects
+    ├── MeshUtils (primitives, buffers)
+    └── TextureUtils (loading, render targets)
     │
     ▼
-Diligent Core (Vulkan backend, MoltenVK on macOS)
+Diligent Core (Vulkan backend)
     │
     ▼
-Native GPU API
+MoltenVK (macOS) / Native Vulkan (Windows/Linux)
 ```
 
 ---
 
-## Phase 1: Foundation ✅ COMPLETE
+## Phase 1: Core Rendering Infrastructure
 
-**Goal:** Window creation, Diligent initialization, clear screen to color
+**Goal:** Window, Vulkan initialization, texture management
 
 ### Tasks
-- [x] Create minimal `main.cpp` with GLFW window
-- [x] Initialize Diligent Engine with Vulkan backend (MoltenVK on macOS)
-- [x] Create swap chain
-- [x] Implement frame loop: beginFrame → clear → endFrame → present
-- [x] Handle window resize
-- [x] Verify on macOS (primary target)
+- [ ] GLFW window creation and event handling
+- [ ] Diligent Engine initialization with Vulkan backend
+- [ ] Swap chain management and resize handling
+- [ ] Frame loop: beginFrame → render → endFrame → present
+- [ ] TextureUtils: load from file, create render targets
+- [ ] TextureUtils: `loadFromFileAsArray()` for DiligentFX compatibility
+- [ ] ShaderUtils: HLSL loading and compilation
+- [ ] Basic pipeline state object (PSO) creation
 
-### Notes
-- Using **Vulkan** backend instead of WebGPU (Metal backend requires proprietary DiligentCorePro)
-- macOS requires MoltenVK environment variables:
-  ```bash
-  VK_ICD_FILENAMES=/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json
-  DYLD_LIBRARY_PATH=/opt/homebrew/lib
-  ```
-- Example: `examples/diligent-test/` demonstrates working PBR rendering
-
-### Files to Create
+### Files
 ```
 runtime/
-├── CMakeLists.txt
 ├── src/
-│   ├── main.cpp              # Entry point, GLFW window
-│   ├── diligent_renderer.h   # Core renderer class
-│   └── diligent_renderer.cpp
+│   ├── diligent_renderer.cpp   # Core renderer
+│   ├── texture_utils.cpp       # Texture loading
+│   └── shader_utils.cpp        # Shader compilation
+├── include/vivid/
+│   ├── diligent_renderer.h
+│   ├── texture_utils.h
+│   └── shader_utils.h
 ```
 
-### Dependencies
-```cmake
-# Diligent Engine (submodule)
-add_subdirectory(external/DiligentEngine)
+### Cross-Platform Setup
 
-# GLFW for windowing
-FetchContent_Declare(glfw ...)
-
-# GLM for math
-FetchContent_Declare(glm ...)
+**macOS (MoltenVK):**
+```bash
+VK_ICD_FILENAMES=/opt/homebrew/etc/vulkan/icd.d/MoltenVK_icd.json
+DYLD_LIBRARY_PATH=/opt/homebrew/lib
 ```
+
+**Windows:**
+- Native Vulkan via GPU drivers
+- MSVC or Clang for compilation
+
+**Linux:**
+- Native Vulkan via Mesa or proprietary drivers
+- GCC or Clang for compilation
+
+### Cross-Platform Validation
+- [ ] Verify build on all three platforms before moving to Phase 2
+- [ ] Document any platform-specific workarounds
 
 ---
 
-## Phase 2: Shader System ✅ COMPLETE
+## Phase 2: Chain API + Core Operators
 
-**Goal:** Load and compile HLSL shaders, create pipelines
+**Goal:** Establish the `chain.cpp` programming model with essential operators
 
-### Tasks
-- [x] Create shader loading utility (from file and embedded)
-- [x] Implement fullscreen triangle vertex shader
-- [x] Create basic fragment shader (solid color)
-- [x] Build pipeline state object (PSO) creation helpers
-- [x] Add runtime shader compilation with error reporting
-- [ ] Hot-reload shader files in dev mode (deferred to Phase 8)
+The Chain API requires working operators to be useful. This phase delivers both together.
 
-### Notes
-- Uses Diligent's built-in shader compilation (HLSL → SPIRV)
-- `ShaderUtils` class wraps Diligent's `DefaultShaderSourceStreamFactory`
-- `ShaderMacroHelper` available for shader variants
-- Example: `examples/shader-test/` demonstrates shader loading and fullscreen rendering
-- **Important:** Must call `SetViewports()` before drawing in Vulkan (required, not optional)
-- **Important:** Vulkan clip space Y is inverted - use `pos.y = uv.y * -2.0 + 1.0` pattern
-- Static cbuffer variables bind via `pipeline->GetStaticVariableByName()`, not SRB
+### Chain API Tasks
+- [ ] Define `Operator` base class with `init()`, `process()`, `cleanup()`
+- [ ] Implement `Chain` class for operator graph management
+- [ ] Create `Context` class for frame state and resource access
+- [ ] Implement operator connection system (input/output)
+- [ ] Add parameter system with fluent API
+- [ ] Create `VIVID_CHAIN(setup, update)` macro
 
-### Core Shaders (HLSL)
-```
-shaders/
-├── common/
-│   ├── fullscreen.hlsl       # Fullscreen triangle vertex shader
-│   └── uniforms.hlsl         # Common uniform structures
-├── effects/
-│   ├── passthrough.hlsl
-│   ├── solid_color.hlsl
-│   └── ... (more later)
-```
+### Core Operators (Required for Chain API)
+- [ ] **Output** - Display results to screen
+- [ ] **SolidColor** - Fill with constant color
+- [ ] **Noise** - Perlin/Simplex noise generator
+- [ ] **Blur** - Gaussian blur (separable two-pass)
+- [ ] **Composite** - Blend two textures
 
-### Shader Structure
-```hlsl
-// fullscreen.hlsl - Base for all 2D effects
-struct VSOutput {
-    float4 position : SV_Position;
-    float2 uv : TEXCOORD0;
-};
-
-VSOutput main(uint vertexId : SV_VertexID) {
-    VSOutput output;
-    // Fullscreen triangle from vertex ID (0,1,2)
-    output.uv = float2((vertexId << 1) & 2, vertexId & 2);
-    // Map UV to clip space, flipping Y for Vulkan's inverted clip space
-    output.position = float4(output.uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
-    return output;
-}
-```
-
----
-
-## Phase 3: Texture System ✅ COMPLETE
-
-**Goal:** Create, sample, and render to textures
-
-### Tasks
-- [x] Implement `TextureUtils` class with Diligent handles
-- [x] Create texture from dimensions (empty render target)
-- [x] Create texture from image file (uses Diligent's TextureLoader - not stb_image)
-- [x] Create texture from pixel data
-- [x] Sampler creation (linear, nearest, wrap modes)
-- [x] Texture format handling (RGBA8, RGBA16F, etc.)
-- [ ] Render-to-texture (deferred to Phase 4 effects)
-
-### Notes
-- Uses Diligent's built-in `TextureLoader` for image files (PNG, JPG, etc.) - no stb_image needed
-- `TextureUtils` provides: `loadFromFile`, `loadFromPixels`, `create`, `createSampler`
-- Supports multiple formats: RGBA8, RGBA8_SRGB, RGBA16F, RGBA32F, R8, R16F, R32F, RG8, RG16F
-- Example: `examples/texture-test/` demonstrates procedural texture creation and rendering
-
-### Files Created
-```
-runtime/src/
-├── texture_utils.h     # Texture loading utilities
-├── texture_utils.cpp   # Implementation using Diligent TextureLoader
-examples/
-└── texture-test/       # Texture system demo
-```
-
----
-
-## Phase 4: 2D Effects Pipeline 🔄 IN PROGRESS
-
-**Goal:** Implement all 2D texture processing operators
-
-### Core Effects (Priority Order)
-1. [x] **Passthrough** - Identity transform, base for all effects
-2. [x] **Solid Color** - Fill with constant color
-3. [x] **Noise** - Simplex noise generation with FBM
-4. [x] **Blur** - Gaussian blur (separable, two-pass)
-5. [x] **Brightness/Contrast** - Basic color correction (+ exposure, gamma)
-6. [x] **HSV** - Hue/Saturation/Value adjustment (+ colorize mode)
-7. [x] **Composite** - Blend two textures (16 blend modes)
-8. [x] **Transform** - Translate, rotate, scale, pivot, repeat modes
-9. [ ] **Edge Detection** - Sobel/Canny edge filter
-10. [x] **Feedback** - Recursive buffer with decay, motion trails
-
-### Notes
-- All shaders in `shaders/effects/`
-- Example: `examples/effect-test/` demonstrates Noise -> Blur -> Output chain
-- Pipelines with texture input need `MUTABLE` variable type for `g_Texture`
-- Use `ImmutableSamplerDesc` for samplers (more efficient than mutable)
-
-### Additional Effects
-- [x] Gradient (linear, radial, angular)
-- [ ] Shape (circle, rectangle, polygon)
-- [ ] Displacement mapping
-- [ ] Chromatic aberration
-- [ ] Pixelate
-- [ ] Scanlines
-- [ ] Mirror/Kaleidoscope
-- [ ] Tile/Repeat
-
-### Post-Processing Effects
-- [ ] **Bloom** - Multi-pass glow (threshold → blur → composite)
-- [ ] **Vignette** - Darkened edges
-- [ ] **Film Grain** - Noise overlay for cinematic look
-- [ ] **Tonemap** - HDR to LDR conversion (ACES, Reinhard, etc.)
-- [ ] **Color Grade** - Lift/gamma/gain, color LUT
-- [ ] **Radial Blur** - Zoom/spin blur from center point
-- [ ] **Lens Distortion** - Barrel/pincushion distortion
-- [ ] **Lens Flare** - Anamorphic streaks, ghosts
-- [ ] **Glow** - Soft glow around bright areas
-- [ ] **Motion Blur** - Velocity-based blur
-
-### Text Rendering
-- [ ] **Text** operator - Render text to texture
-- [ ] Font loading (TTF via stb_truetype)
-- [ ] Font atlas generation and caching
-- [ ] Text alignment (left, center, right)
-- [ ] `measureText()` for layout calculations
-
+### Target Usage
 ```cpp
-// Text operator usage
-auto title = chain.op<Text>("title")
-    .text("Hello World")
-    .font("fonts/Roboto.ttf", 48.0f)
-    .color({1, 1, 1, 1})
-    .align(TextAlign::Center)
-    .position(width/2, 100);
-```
-
-### Effect Pipeline Architecture
-```cpp
-class Effect {
-public:
-    virtual void init(DiligentRenderer& renderer) = 0;
-    virtual void apply(const Texture& input, Texture& output,
-                       const EffectParams& params) = 0;
-};
-
-// Usage in chain
-noise.process(ctx);
-blur.input(noise).radius(5.0f).process(ctx);
-```
-
----
-
-## Phase 5: 3D Rendering Foundation ✅ COMPLETE
-
-**Goal:** Basic 3D mesh rendering with transforms and camera
-
-### Tasks
-- [x] Implement `Mesh` struct (vertex buffer, index buffer)
-- [x] Vertex format: position, normal, UV, tangent
-- [x] Primitive generators: cube, sphere, plane, cylinder, torus, cone, elliptic torus
-- [ ] Model loading via DiligentTools GLTF loader (handles OBJ, glTF, FBX)
-- [x] Camera3D class (perspective projection, view matrix)
-- [x] Camera helpers: orbit(), zoom() for interactive control
-- [x] Model transform uniform buffer
-- [x] Depth buffer management
-- [x] Basic unlit 3D rendering
-- [ ] GPU instancing support (Instance3D, drawMeshInstanced)
-
-### Mesh Structure
-```cpp
-struct Vertex3D {
-    glm::vec3 position;
-    glm::vec3 normal;
-    glm::vec2 uv;
-    glm::vec4 tangent;
-};
-
-struct Mesh {
-    Diligent::RefCntAutoPtr<IBuffer> vertexBuffer;
-    Diligent::RefCntAutoPtr<IBuffer> indexBuffer;
-    uint32_t vertexCount;
-    uint32_t indexCount;
-    BoundingBox bounds;
-};
-```
-
-### Camera3D Helpers
-```cpp
-class Camera3D {
-    glm::vec3 position, target, up;
-    float fov, nearPlane, farPlane;
-
-    glm::mat4 viewMatrix() const;
-    glm::mat4 projectionMatrix(float aspectRatio) const;
-
-    // Interactive helpers
-    void orbit(float yawDelta, float pitchDelta);  // Orbit around target
-    void zoom(float delta);                         // Move toward/away from target
-};
-```
-
-### GPU Instancing
-```cpp
-struct Instance3D {
-    glm::mat4 model;   // Per-instance transform
-    glm::vec4 color;   // Per-instance color
-};
-
-// Render thousands of instances in one draw call
-ctx.drawMeshInstanced(mesh, instances, camera, output);
-```
-
----
-
-## Phase 6: PBR & Advanced Lighting 🔄 IN PROGRESS
-
-**Goal:** Physically-based rendering using DiligentFX
-
-### Tasks
-- [x] Integrate DiligentFX PBR_Renderer (for IBL generation)
-- [x] Material system (albedo, metallic, roughness, AO, emissive)
-- [x] Normal mapping
-- [x] Light types: directional (point, spot deferred)
-- [ ] Multiple lights in single pass
-- [ ] Shadow mapping (using DiligentFX ShadowMapManager)
-- [x] Image-based lighting (IBL) via DiligentFX PrecomputeCubemaps()
-- [x] Environment map loading (HDR → cubemap)
-- [x] Irradiance and radiance map generation
-
-### Notes
-- Using hybrid approach: DiligentFX `PBR_Renderer` for IBL cubemap generation, custom shaders for rendering
-- `PrecomputeCubemaps()` generates irradiance and prefiltered environment maps from HDR
-- IBL textures retrieved via `GetIrradianceCubeSRV()`, `GetPrefilteredEnvMapSRV()`, `GetPreintegratedGGX_SRV()`
-- Custom `pbr_ibl.hlsl` shader handles PBR rendering with IBL support
-
-### Material Structure
-```cpp
-struct PBRMaterial {
-    Texture albedoMap;
-    Texture normalMap;
-    Texture metallicRoughnessMap;  // G = roughness, B = metallic
-    Texture aoMap;
-    Texture emissiveMap;
-
-    glm::vec3 albedo = {1, 1, 1};
-    float metallic = 0.0f;
-    float roughness = 0.5f;
-    float ao = 1.0f;
-    glm::vec3 emissive = {0, 0, 0};
-};
-```
-
-### Lighting Structure
-```cpp
-struct Light {
-    enum Type { Directional, Point, Spot };
-    Type type;
-    glm::vec3 position;
-    glm::vec3 direction;
-    glm::vec3 color;
-    float intensity;
-    float radius;        // Point/spot falloff
-    float innerAngle;    // Spot cone
-    float outerAngle;
-    bool castShadows;
-};
-
-struct SceneLighting {
-    std::vector<Light> lights;
-    glm::vec3 ambientColor;
-    float ambientIntensity;
-    Texture* environmentMap;  // Optional IBL
-
-    // Convenience presets
-    static SceneLighting outdoor();    // Sun + sky ambient
-    static SceneLighting indoor();     // Warm point light + cool ambient
-    static SceneLighting threePoint(); // Key, fill, rim lights
-};
-```
-
-### Decals
-Project textures onto 3D geometry (bullet holes, grime, logos):
-```cpp
-auto decal = chain.op<Decal>("logo")
-    .texture("logo.png")
-    .position({0, 1, 0})
-    .rotation({-90, 0, 0})  // Project downward
-    .size({2, 2, 1})
-    .blendMode(DecalBlend::Multiply);
-```
-
----
-
-## Phase 7: Media Pipeline
-
-**Goal:** Video playback, HAP codec, camera input
-
-### Video Playback
-- [ ] VideoLoader interface (platform-agnostic)
-- [ ] macOS implementation (AVFoundation)
-- [ ] HAP codec support (FFmpeg demux + DXT upload)
-- [ ] Playback controls: play, pause, seek, loop, speed
-- [ ] Frame-accurate seeking
-- [ ] Audio track extraction (future)
-
-### Camera Input
-- [ ] Webcam capture interface
-- [ ] macOS implementation (AVFoundation)
-- [ ] Device enumeration
-- [ ] Resolution/framerate selection
-
-### Platform Support
-| Feature | macOS | Windows | Linux |
-|---------|-------|---------|-------|
-| H.264/H.265 | AVFoundation | Media Foundation | FFmpeg |
-| HAP | FFmpeg | FFmpeg | FFmpeg |
-| ProRes | AVFoundation | FFmpeg | FFmpeg |
-| Webcam | AVFoundation | Media Foundation | V4L2 |
-
----
-
-## Phase 8: Hot Reload System
-
-**Goal:** Live code recompilation and reload
-
-### Tasks
-- [ ] File watcher for chain.cpp changes
-- [ ] Invoke compiler (clang/MSVC) to build shared library
-- [ ] Dynamic library loading/unloading
-- [ ] Symbol resolution (setup, update functions)
-- [ ] Error capture and display
-- [ ] State preservation across reloads
-- [ ] CMakeLists.txt generation for user code
-
-### Compiler Interface
-```cpp
-class Compiler {
-public:
-    bool compile(const std::filesystem::path& projectPath);
-    bool load();
-    void unload();
-
-    std::string lastError() const;
-
-    // User-defined entry points
-    using SetupFn = void(*)(Chain&);
-    using UpdateFn = void(*)(Chain&, Context&);
-
-    SetupFn getSetup();
-    UpdateFn getUpdate();
-};
-```
-
----
-
-## Phase 9: Chain API & Operators
-
-**Goal:** High-level visual programming interface
-
-### Core Concepts
-```cpp
-// User's chain.cpp
 #include <vivid/vivid.h>
 using namespace vivid;
 
@@ -563,36 +271,342 @@ VIVID_CHAIN(setup, update)
 class Operator {
 public:
     virtual ~Operator() = default;
-
     virtual void init(Context& ctx) {}
     virtual void process(Context& ctx) = 0;
     virtual void cleanup() {}
 
-    // Metadata for UI/serialization
     virtual std::string name() const = 0;
     virtual std::vector<ParamDecl> params() = 0;
     virtual OutputKind outputKind() = 0;  // Texture, Value, Geometry
 
-    // Line tracking for VS Code decorations
-    int sourceLine = 0;
+    int sourceLine = 0;  // For VS Code decorations
 };
 ```
 
-### Operator Categories
+---
 
-#### Generators (no input)
+## Phase 3: Additional 2D Operators
+
+**Goal:** Expand the operator library with more effects
+
+### Effects
+- [ ] **Passthrough** - Identity transform
+- [ ] **Brightness/Contrast** - Basic color correction
+- [ ] **HSV** - Hue/Saturation/Value adjustment
+- [ ] **Transform** - Translate, rotate, scale
+- [ ] **Feedback** - Recursive buffer with decay
+- [ ] **Gradient** - Linear, radial, angular gradients
+- [ ] **Edge Detection** - Sobel filter
+- [ ] **Displacement** - UV displacement mapping
+- [ ] **Chromatic Aberration** - RGB channel separation
+- [ ] Pixelate
+- [ ] Mirror/Kaleidoscope
+
+### Shaders
+```
+shaders/
+├── common/
+│   ├── fullscreen.hlsl    # Fullscreen triangle vertex shader
+│   └── uniforms.hlsl      # Common structures
+└── effects/
+    ├── passthrough.hlsl
+    ├── noise.hlsl
+    ├── blur.hlsl
+    └── ...
+```
+
+---
+
+## Phase 4: 3D Rendering
+
+**Goal:** Basic 3D with camera, meshes, and PBR materials
+
+### Tasks
+- [ ] Vertex format: position, normal, UV, tangent (vec3)
+- [ ] MeshUtils: cube, sphere, plane, cylinder, torus, cone
+- [ ] Camera3D: perspective, view matrix, orbit/zoom helpers
+- [ ] Depth buffer management
+- [ ] DiligentFX PBR_Renderer integration
+- [ ] IBL cubemap precomputation from HDR environment
+- [ ] PBR material textures (albedo, normal, metallic, roughness, AO)
+- [ ] Multiple light support
+- [ ] Shadow mapping via ShadowMapManager
+- [ ] GLTF model loading via GLTF_PBR_Renderer
+
+### Vertex Structure
+```cpp
+struct Vertex3D {
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 uv;
+    glm::vec3 tangent;  // DiligentFX expects float3 at ATTRIB7
+};
+```
+
+### PBR Material
+```cpp
+struct PBRMaterial {
+    ManagedTexture albedoMap;      // sRGB, Texture2DArray
+    ManagedTexture normalMap;      // Linear, Texture2DArray
+    ManagedTexture metallicMap;    // Linear, Texture2DArray
+    ManagedTexture roughnessMap;   // Linear, Texture2DArray
+    ManagedTexture aoMap;          // Linear, Texture2DArray
+};
+```
+
+---
+
+## Phase 5: Hot Reload System
+
+**Goal:** Live code recompilation without restart
+
+### Zero-Config Build
+Vivid projects don't require CMakeLists.txt. The runtime automatically infers build configuration:
+- [ ] Scan chain.cpp for `#include` directives
+- [ ] Auto-detect required libraries and addons
+- [ ] Generate compiler flags dynamically
+- [ ] Addons auto-linked when their headers are included
+
+### Tasks
+- [ ] File watcher for chain.cpp changes
+- [ ] Invoke compiler (clang/MSVC) to build shared library
+- [ ] Dynamic library loading/unloading
+- [ ] Symbol resolution (setup, update functions)
+- [ ] State preservation across reloads
+
+### Error Handling
+Errors must be shown to the user **before** replacing running code:
+- [ ] Compile errors: Display in window overlay, keep old code running
+- [ ] Shader errors: Show shader name, line number, error message
+- [ ] Runtime errors: Catch and display, don't crash
+- [ ] Error overlay: Non-intrusive display that doesn't block the visualization
+
+### Compiler Interface
+```cpp
+class Compiler {
+public:
+    bool compile(const std::filesystem::path& projectPath);
+    bool load();
+    void unload();
+    std::string lastError() const;
+
+    using SetupFn = void(*)(Chain&);
+    using UpdateFn = void(*)(Chain&, Context&);
+    SetupFn getSetup();
+    UpdateFn getUpdate();
+};
+```
+
+---
+
+## Phase 6: Addon System
+
+**Goal:** Modular extensions with zero-config detection
+
+Establishing the addon system early allows future features (media, audio, ML) to be implemented as optional addons rather than core dependencies.
+
+### Built-in Addons
+| Addon | Platform | Description |
+|-------|----------|-------------|
+| vivid-imgui | All | ImGui via DiligentTools (includes FPS display, parameter tweaking) |
+| vivid-spout | Windows | Texture sharing |
+| vivid-syphon | macOS | Texture sharing |
+| vivid-models | All | 3D model loading |
+
+### Usage
+```cpp
+// Just include - addon auto-detected from #include
+#include <vivid/imgui/imgui.h>
+
+void update(Chain& chain, Context& ctx) {
+    imgui::beginFrame();
+    ImGui::SliderFloat("Speed", &speed, 0.0f, 10.0f);
+    imgui::endFrame();
+}
+```
+
+---
+
+## Phase 7: VS Code Extension
+
+**Goal:** Live previews and editor integration
+
+### Features
+- [ ] WebSocket connection to runtime
+- [ ] Inline preview decorations
+- [ ] Hover for full preview
+- [ ] Preview panel (all operators)
+- [ ] Compile error diagnostics
+- [ ] Status bar (connection state, FPS)
+
+### Protocol
+```typescript
+interface NodeUpdate {
+    id: string;
+    line: number;
+    kind: 'texture' | 'value' | 'geometry';
+    preview?: string;  // base64 thumbnail
+}
+```
+
+---
+
+## Phase 8: Media Pipeline
+
+**Goal:** Video playback and camera input
+
+### Tasks
+- [ ] VideoLoader interface (platform-agnostic)
+- [ ] macOS: AVFoundation implementation
+- [ ] HAP codec support (FFmpeg demux + DXT upload)
+- [ ] Webcam capture
+- [ ] Playback controls: play, pause, seek, loop, speed
+
+### Platform Support
+| Feature | macOS | Windows | Linux |
+|---------|-------|---------|-------|
+| H.264/H.265 | AVFoundation | Media Foundation | FFmpeg |
+| HAP | FFmpeg | FFmpeg | FFmpeg |
+| Webcam | AVFoundation | Media Foundation | V4L2 |
+
+---
+
+## Phase 9: Input & Window Management
+
+**Goal:** Mouse, keyboard, gamepad, advanced window control
+
+### Input Tasks
+- [ ] Mouse: position, buttons, drag, scroll
+- [ ] Keyboard: key state, text input
+- [ ] Gamepad: axes, buttons, triggers
+- [ ] Cursor visibility control
+
+### Window Management
+- [ ] Fullscreen toggle
+- [ ] Borderless window mode
+- [ ] Multi-monitor support (select display, span displays)
+- [ ] Multi-window support (secondary output windows)
+- [ ] Window positioning and sizing API
+
+```cpp
+void update(Chain& chain, Context& ctx) {
+    glm::vec2 mouse = ctx.mousePosition();
+    bool clicked = ctx.wasMouseButtonPressed(MouseButton::Left);
+
+    if (ctx.wasKeyPressed(Key::F)) {
+        ctx.toggleFullscreen();
+    }
+}
+```
+
+---
+
+## Phase 10: Audio System
+
+**Goal:** Audio input, FFT analysis, MIDI, OSC
+
+### Tasks
+- [ ] Audio capture (system, microphone)
+- [ ] FFT spectrum analysis
+- [ ] Beat detection
+- [ ] MIDI input/output
+- [ ] OSC input/output
+
+### Dependencies
+| Library | Purpose |
+|---------|---------|
+| miniaudio | Audio I/O |
+| KissFFT | FFT analysis |
+| RtMidi | MIDI |
+| oscpack | OSC protocol |
+
+---
+
+## Phase 11: Export & CLI
+
+**Goal:** Video recording, standalone apps, CLI
+
+### CLI Commands
+```bash
+vivid new my-project           # Create project
+vivid my-project               # Run project
+vivid my-project --record      # Record to video
+vivid my-project --headless    # Run without window (for CI/rendering)
+vivid export --standalone      # Build standalone app
+```
+
+### Headless Mode
+- [ ] Run without creating a window
+- [ ] Render to offscreen framebuffer
+- [ ] Useful for CI pipelines, batch rendering, server-side generation
+
+### Export Formats
+- Video: H.264, ProRes, HAP
+- Image sequence: PNG, EXR
+- Standalone: macOS .app, Windows .exe, Linux AppImage
+
+---
+
+## Phase 12: ML Integration
+
+**Goal:** ONNX Runtime for ML inference
+
+### Operators
+- PoseDetector (MoveNet, BlazePose)
+- SegmentBackground (MediaPipe Selfie, MODNet)
+- StyleTransfer (arbitrary style)
+- ObjectDetector (YOLO)
+- FaceDetector (landmarks, expressions)
+
+---
+
+## Implementation Order
+
+### Sprint 1: Foundation (Current)
+1. Phase 1 (Rendering) - Window, Vulkan, textures
+2. Phase 2 (Chain API + Core Operators) - Operator system + Output, Noise, Blur, Composite
+
+### Sprint 2: More Effects
+3. Phase 3 (Additional 2D Operators) - Expand operator library
+
+### Sprint 3: 3D & PBR
+4. Phase 4 (3D Rendering) - Using DiligentFX PBR_Renderer
+
+### Sprint 4: Live Development + Extensibility
+5. Phase 5 (Hot Reload) - Live code recompilation
+6. Phase 6 (Addon System) - Enable extensibility early so future features can be addons
+
+### Sprint 5: Editor Integration
+7. Phase 7 (VS Code) - Editor integration
+
+### Sprint 6: Media & Input (can be addons)
+8. Phase 8 (Media) - Video, webcam
+9. Phase 9 (Input) - Mouse, keyboard, gamepad
+
+### Sprint 7: Audio (can be addon)
+10. Phase 10 (Audio) - FFT, MIDI, OSC
+
+### Sprint 8: Polish
+11. Phase 11 (Export) - Recording, CLI
+12. Phase 12 (ML) - ONNX integration (addon)
+
+---
+
+## Operator Categories
+
+### Generators (no input)
 | Operator | Output | Description |
 |----------|--------|-------------|
-| Noise | Texture | Perlin/Simplex/Worley noise |
-| Gradient | Texture | Linear/radial/angular gradient |
+| Noise | Texture | Perlin/Simplex/Worley |
+| Gradient | Texture | Linear/radial/angular |
 | Shape | Texture | Geometric shapes |
-| Constant | Value | Constant float value |
-| LFO | Value | Low-frequency oscillator |
-| ImageFile | Texture | Load image from disk |
+| Constant | Value | Constant float |
+| LFO | Value | Oscillator |
+| ImageFile | Texture | Load from disk |
 | VideoFile | Texture | Video playback |
 | Webcam | Texture | Camera capture |
 
-#### Filters (texture → texture)
+### Filters (texture → texture)
 | Operator | Description |
 |----------|-------------|
 | Blur | Gaussian blur |
@@ -601,1198 +615,73 @@ public:
 | Edge | Edge detection |
 | Transform | 2D transform |
 | Displacement | UV displacement |
-| ChromaticAberration | RGB channel offset |
-| Pixelate | Pixelation |
-| Scanlines | CRT scanline effect |
-| Mirror | Mirror/kaleidoscope |
-| Tile | Tiling/repeat |
 
-#### Compositors (multiple inputs)
+### Compositors
 | Operator | Description |
 |----------|-------------|
 | Composite | Blend two textures |
 | Switch | Select between inputs |
 | Feedback | Recursive buffer |
 
-#### 3D Operators
+### 3D Operators
 | Operator | Description |
 |----------|-------------|
 | Render3D | 3D scene to texture |
-| Camera3D | 3D perspective camera |
+| Camera3D | Perspective camera |
 | Mesh | 3D geometry |
-| PointSprites | GPU particle rendering |
 | Particles | Particle system |
 
-#### Utility
-| Operator | Description |
-|----------|-------------|
-| Math | Arithmetic operations |
-| Logic | Boolean operations |
-| Reference | Reference another node |
-| Passthrough | Identity (debugging) |
-
 ---
 
-## Phase 10: VS Code Extension
+## Directory Structure
 
-**Goal:** Live previews and editor integration
-
-### Features
-- [ ] WebSocket connection to runtime
-- [ ] Inline preview decorations (thumbnail next to code)
-- [ ] Hover for full preview
-- [ ] Preview panel (all operators)
-- [ ] Compile error diagnostics
-- [ ] Status bar (connection state, FPS)
-- [ ] Commands: Start/Stop Runtime, Reload, Show Preview
-
-### Architecture
-```
-┌─────────────────┐         WebSocket          ┌─────────────────┐
-│   VS Code       │◄───────────────────────────│    Runtime      │
-│   Extension     │                            │                 │
-│                 │    node_update (previews)  │                 │
-│  - Decorations  │◄───────────────────────────│  - Renderer     │
-│  - Preview Panel│    compile_status          │  - Compiler     │
-│  - Status Bar   │◄───────────────────────────│  - PreviewServer│
-└─────────────────┘                            └─────────────────┘
-```
-
-### Protocol
-```typescript
-// Runtime → Extension
-interface NodeUpdate {
-    id: string;
-    line: number;
-    kind: 'texture' | 'value' | 'geometry';
-    preview?: string;  // base64 image (fallback)
-    value?: number;
-}
-
-interface CompileStatus {
-    success: boolean;
-    message: string;
-}
-
-// Extension → Runtime
-interface ReloadCommand { type: 'reload' }
-interface PauseCommand { type: 'pause', paused: boolean }
-```
-
-### Shared Memory Preview System (High Performance)
-
-WebSocket + base64 works for prototyping but doesn't scale (GPU readback blocks, base64 inflates data 33%). For production, use shared memory:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        MAIN RENDER THREAD                        │
-│  ┌─────────┐    ┌─────────┐    ┌─────────┐                      │
-│  │ Op1     │───▶│ Op2     │───▶│ Op3     │───▶ Display          │
-│  └────┬────┘    └────┬────┘    └────┬────┘                      │
-│       │              │              │                            │
-│       ▼              ▼              ▼                            │
-│  Queue async    Queue async    Queue async   ◀── non-blocking   │
-│  readback       readback       readback                         │
-└─────────────────────────────────────────────────────────────────┘
-                       │
-                       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      PREVIEW THREAD                              │
-│  ┌──────────────┐    ┌──────────────┐    ┌──────────────┐       │
-│  │ Wait for GPU │───▶│ Downsample   │───▶│ Write to     │       │
-│  │ fence        │    │ to thumbnail │    │ shared mem   │       │
-│  └──────────────┘    └──────────────┘    └──────────────┘       │
-└─────────────────────────────────────────────────────────────────┘
-                       │
-        ───────────────┴───────────────
-       │                               │
-       ▼                               ▼
-┌─────────────────┐           ┌─────────────────┐
-│  SHARED MEMORY  │           │    WEBSOCKET    │
-│  ┌───────────┐  │           │  (metadata only)│
-│  │ Op1: RGB  │  │           │  {              │
-│  │ 128x128   │  │           │    "ready": 1,  │
-│  ├───────────┤  │           │    "frame": 42  │
-│  │ Op2: RGB  │  │           │  }              │
-│  └───────────┘  │           └─────────────────┘
-└─────────────────┘                   │
-        │                             │
-        └──────────────┬──────────────┘
-                       ▼
-              ┌─────────────────┐
-              │  VS CODE EXT    │
-              │  (native module │
-              │   reads mmap)   │
-              └─────────────────┘
-```
-
-#### Shared Memory Layout
-```cpp
-constexpr int THUMB_SIZE = 128 * 128 * 3;  // RGB thumbnails
-constexpr int MAX_OPERATORS = 64;
-
-struct SharedPreviewHeader {
-    uint32_t magic;              // 'VIVD'
-    uint32_t version;
-    uint32_t operatorCount;
-    uint32_t frameNumber;
-};
-
-struct SharedPreviewSlot {
-    char operatorId[64];
-    int32_t sourceLine;
-    uint32_t frameNumber;
-    uint8_t kind;                // Texture, Value, Geometry
-    uint8_t ready;
-    uint8_t pixels[THUMB_SIZE];  // RGB thumbnail
-};
-```
-
-#### Implementation Tasks
-- [ ] Async GPU readback (non-blocking texture copy)
-- [ ] Preview thread (separate from render loop)
-- [ ] Shared memory segment (POSIX shm_open / Windows CreateFileMapping)
-- [ ] VS Code native module (node-gyp) to read shared memory
-- [ ] Fallback to WebSocket+base64 when native module unavailable
-
-#### Performance Target
-| Metric | WebSocket | Shared Memory |
-|--------|-----------|---------------|
-| Latency | 10-50ms | 1-5ms |
-| Max operators at 60fps | ~10-20 | 64+ |
-| CPU overhead | JSON encode/decode | Direct memory access |
-
----
-
-## Phase 11: Addon System
-
-**Goal:** Modular community extensions
-
-### Architecture
-- Pre-built static libraries (fast hot-reload)
-- Auto-detection via `#include` directives
-- Zero configuration for users
-- Platform-aware (Windows/macOS/Linux)
-
-### Addon Structure
-```
-addons/
-├── vivid-spout/           # Windows texture sharing
-│   ├── include/vivid/spout/
-│   ├── src/
-│   ├── addon.json
-│   └── CMakeLists.txt
-├── vivid-syphon/          # macOS texture sharing
-├── vivid-ndi/             # Network video (NDI)
-├── vivid-models/          # 3D model loading (Assimp)
-├── vivid-storage/         # JSON persistence
-├── vivid-nuklear/         # Nuklear GUI
-└── vivid-csg/             # CSG boolean operations
-```
-
-### addon.json Schema
-```json
-{
-    "name": "spout",
-    "version": "1.0.0",
-    "platforms": ["windows"],
-    "detect_headers": ["vivid/spout/spout.h"],
-    "libraries": {
-        "windows": {
-            "static": ["lib/vivid-spout.lib"],
-            "system": ["opengl32.lib"]
-        }
-    }
-}
-```
-
-### Usage
-```cpp
-// Just include and use - addon auto-detected
-#include <vivid/spout/spout.h>
-
-void update(Chain& chain, Context& ctx) {
-    spout::send("OutputName", chain.get("final"));
-}
-```
-
-### ImGui Addon (vivid-imgui)
-
-Previously blocked due to WebGPU API mismatch. With Diligent Engine, ImGui integration is straightforward using DiligentTools:
-
-```cpp
-// addons/vivid-imgui/include/vivid/imgui/imgui.h
-#pragma once
-#include <imgui.h>
-
-namespace vivid {
-namespace imgui {
-
-// Initialize ImGui with Diligent backend
-void init(DiligentRenderer& renderer);
-
-// Begin/End frame (call in update loop)
-void beginFrame();
-void endFrame();
-
-// Render ImGui draw data
-void render();
-
-// Cleanup
-void shutdown();
-
-} // namespace imgui
-} // namespace vivid
-```
-
-**Implementation:**
-```cpp
-// Uses DiligentTools ImGui integration
-#include <DiligentTools/Imgui/interface/ImGuiImplDiligent.hpp>
-
-class ImGuiImpl {
-    std::unique_ptr<Diligent::ImGuiImplDiligent> impl_;
-
-public:
-    void init(IRenderDevice* device, IDeviceContext* ctx,
-              TEXTURE_FORMAT rtFormat, TEXTURE_FORMAT dsFormat) {
-        impl_ = std::make_unique<Diligent::ImGuiImplDiligent>(
-            device, rtFormat, dsFormat);
-    }
-
-    void render(IDeviceContext* ctx) {
-        impl_->Render(ctx);
-    }
-};
-```
-
-**Usage in chain.cpp:**
-```cpp
-#include <vivid/imgui/imgui.h>
-
-void update(Chain& chain, Context& ctx) {
-    imgui::beginFrame();
-
-    ImGui::Begin("Controls");
-    static float speed = 1.0f;
-    ImGui::SliderFloat("Speed", &speed, 0.0f, 10.0f);
-    ImGui::End();
-
-    imgui::endFrame();
-
-    auto noise = chain.op<Noise>("noise").speed(speed);
-    // ...
-
-    imgui::render();  // Render UI on top
-}
-```
-
-### Addon Registry & Auto-CMake Generation
-
-The compiler scans user code for addon `#include` directives and auto-generates CMakeLists.txt with proper linkage:
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    AUTO-CMAKE GENERATION                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  1. User writes chain.cpp with addon includes:                  │
-│     #include <vivid/spout/spout.h>                              │
-│     #include <vivid/imgui/imgui.h>                              │
-│                                                                 │
-│  2. AddonRegistry scans source for #include patterns:           │
-│     → Matches against addon detect_headers in addon.json        │
-│     → Filters by current platform                               │
-│                                                                 │
-│  3. Compiler generates CMakeLists.txt:                          │
-│     → Adds addon include directories                            │
-│     → Links addon static libraries                              │
-│     → Links system dependencies                                 │
-│                                                                 │
-│  4. User code compiles with zero configuration                  │
-│                                                                 │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-#### AddonRegistry Class
-```cpp
-class AddonRegistry {
-public:
-    // Load all addon.json files from addons directory
-    void loadFromDirectory(const std::filesystem::path& addonsDir);
-
-    // Scan source file for #include directives, return required addons
-    std::vector<std::string> scanSourceForAddons(
-        const std::filesystem::path& sourcePath) const;
-
-    // Get addon info by name
-    const AddonInfo* getAddon(const std::string& name) const;
-
-    // Check if addon is available on current platform
-    bool isAvailable(const std::string& name) const;
-
-private:
-    std::unordered_map<std::string, AddonInfo> addons_;
-    std::unordered_map<std::string, std::string> headerToAddon_;
-};
-```
-
-#### Generated CMakeLists.txt Template
-```cmake
-# Auto-generated CMakeLists.txt for Vivid project
-cmake_minimum_required(VERSION 3.20)
-project(vivid_operators)
-
-set(CMAKE_CXX_STANDARD 20)
-
-# Vivid paths (passed by runtime)
-set(VIVID_INCLUDE_DIR "${VIVID_ROOT}/include")
-set(VIVID_ADDONS_DIR "${VIVID_ROOT}/addons")
-
-# Build operators shared library
-add_library(operators SHARED
-    "${CMAKE_CURRENT_SOURCE_DIR}/chain.cpp"
-)
-
-target_include_directories(operators PRIVATE
-    ${VIVID_INCLUDE_DIR}
-    ${VIVID_ADDONS_DIR}/include
-)
-
-# === AUTO-DETECTED ADDONS ===
-# Generated based on #include directives in chain.cpp
-
-# Addon: imgui
-target_link_libraries(operators PRIVATE
-    ${VIVID_ADDONS_DIR}/lib/libvivid-imgui.a
-)
-
-# Addon: spout (Windows only)
-if(WIN32)
-    target_link_libraries(operators PRIVATE
-        ${VIVID_ADDONS_DIR}/lib/vivid-spout.lib
-        opengl32.lib
-    )
-endif()
-
-# === END ADDONS ===
-```
-
-#### Error Messages
-```
-[Addon] Error: 'spout' is not available on this platform (macOS)
-        Spout is Windows-only. Use 'syphon' on macOS instead.
-
-        Replace:
-          #include <vivid/spout/spout.h>
-        With:
-          #include <vivid/syphon/syphon.h>
-```
-
-```
-[Addon] Error: 'imgui' addon library not found
-        Expected: build/addons/lib/libvivid-imgui.a
-
-        Rebuild Vivid with addons:
-          cmake --build build --target vivid-imgui
-```
-
----
-
-## Phase 12: CLI & Project Templates
-
-**Goal:** User-friendly command-line interface
-
-### Commands
-```bash
-# Create new project
-vivid new my-project
-
-# Run a project
-vivid my-project
-vivid run my-project
-
-# Run in specific mode
-vivid my-project --headless    # No window (render to file)
-vivid my-project --record      # Record to video
-
-# Development
-vivid --version
-vivid --help
-```
-
-### Project Template Structure
-```
-my-project/
-├── chain.cpp       # Main code (setup/update)
-├── SPEC.md         # Project specification
-├── CLAUDE.md       # AI context
-└── assets/         # Images, videos, models
-```
-
-### Template chain.cpp
-```cpp
-#include <vivid/vivid.h>
-using namespace vivid;
-
-void setup(Chain& chain) {
-    // GOAL: Configure output resolution and format
-    chain.setResolution(1920, 1080);
-    chain.setOutput("output");
-}
-
-void update(Chain& chain, Context& ctx) {
-    // GOAL: Create visual output
-    auto noise = chain.op<Noise>("noise")
-        .scale(4.0f)
-        .speed(0.5f);
-
-    chain.op<Output>("output")
-        .input(noise);
-}
-
-VIVID_CHAIN(setup, update)
-```
-
----
-
-## Phase 13: Audio System
-
-**Goal:** Audio input, analysis, synthesis, and external protocols
-
-### Audio Input & Analysis
-```cpp
-class AudioIn : public Operator {
-    AudioIn& source(AudioSource src);  // System, Microphone, File
-    AudioIn& fftSize(int size);        // 512, 1024, 2048, 4096
-    AudioIn& smoothing(float s);       // 0.0-1.0
-
-    // Outputs: spectrum, bass, mids, highs, volume, waveform
-};
-```
-
-### Beat Detection
-```cpp
-struct BeatInfo {
-    bool isBeat;           // True on beat onset
-    float confidence;      // 0-1
-    float bpm;             // Estimated tempo
-    float phase;           // 0-1, position in beat cycle
-};
-
-class BeatDetector {
-    void process(const float* samples, int count);
-    BeatInfo getInfo() const;
-    void setSensitivity(float s);  // 0-1
-};
-```
-
-### Audio Synthesis
-- Oscillators: sine, square, sawtooth, triangle, noise
-- ADSR envelope generator
-- Filters: lowpass, highpass, bandpass, notch
-
-### MIDI Support
-```cpp
-class MidiIn : public Operator {
-    MidiIn& port(const std::string& name);
-    MidiIn& channel(int ch);  // 1-16, or 0 for all
-    // Outputs: noteOn, noteOff, velocity, cc:{n}, pitchBend
-};
-
-class MidiOut : public Operator {
-    void noteOn(int note, int velocity);
-    void controlChange(int cc, int value);
-};
-```
-
-### OSC Support
-```cpp
-class OscIn : public Operator {
-    OscIn& port(int port);
-    OscIn& address(const std::string& pattern);
-};
-
-class OscOut : public Operator {
-    OscOut& host(const std::string& hostname);
-    OscOut& port(int port);
-    void send(const std::string& address, float value);
-};
-```
-
-### Dependencies
-| Library | Purpose | License |
-|---------|---------|---------|
-| KissFFT | FFT analysis | BSD |
-| RtMidi | MIDI I/O | MIT |
-| oscpack | OSC protocol | Public Domain |
-| miniaudio | Audio I/O | Public Domain |
-
----
-
-## Phase 14: Export & Distribution
-
-**Goal:** Video export, image sequences, WASM, standalone apps
-
-### Video Recording
-```cpp
-class Record : public Operator {
-    Record& output(const std::string& path);
-    Record& codec(VideoCodec codec);  // H264, ProRes, HAP
-    Record& fps(float framerate);
-    Record& quality(float q);
-    void start();
-    void stop();
-};
-```
-
-### Supported Codecs
-| Codec | Format | Platform |
-|-------|--------|----------|
-| H.264 | MP4 | All |
-| H.265/HEVC | MP4 | All |
-| ProRes 422/4444 | MOV | macOS |
-| HAP / HAP Alpha | MOV | All (VJ-friendly) |
-
-### Image Sequence Export
-```cpp
-class ImageSequence : public Operator {
-    ImageSequence& output(const std::string& pattern);  // "frame_%04d.png"
-    ImageSequence& format(ImageFormat fmt);  // PNG, EXR, TIFF
-    void saveFrame();
-};
-```
-
-### WASM Export
-```bash
-vivid export --wasm my-project --output dist/
-```
-- Compile to WebAssembly for browser playback
-- WebGPU rendering in browser
-- Asset bundling
-- HTML template generation
-
-### Standalone Export
-```bash
-vivid export --standalone my-project --output MyProject.app
-```
-- macOS .app bundle
-- Windows .exe with dependencies
-- Linux AppImage
-- Minimal runtime (no hot-reload)
-- Embedded assets
-
-### Offline Rendering
-```cpp
-class OfflineRenderer {
-    void setFrameRate(float fps);
-    void setDuration(float seconds);
-    void render();  // Fixed timestep, deterministic output
-};
-```
-
----
-
-## Phase 15: Input & Interaction
-
-**Goal:** Mouse, keyboard, gamepad, touch input, and window management
-
-### Window Management
-```cpp
-// Display modes
-ctx.setFullscreen(true);           // Enter fullscreen
-ctx.toggleFullscreen();            // Toggle fullscreen/windowed
-ctx.setBorderless(true);           // Borderless window mode
-
-// Window properties
-ctx.setWindowPosition(100, 100);
-ctx.setWindowSize(1920, 1080);
-ctx.moveToMonitor(1);              // Move to specific monitor
-ctx.setAlwaysOnTop(true);          // Keep window above others
-
-// Cursor
-ctx.setCursorVisible(false);       // Hide cursor (for installations)
-
-// VSync
-ctx.setVSync(true);                // Cap to monitor refresh rate
-```
-
-### Mouse Input
-```cpp
-void update(Chain& chain, Context& ctx) {
-    glm::vec2 pos = ctx.mousePosition();  // Normalized 0-1
-    bool leftDown = ctx.isMouseButtonDown(MouseButton::Left);
-    bool rightPressed = ctx.wasMouseButtonPressed(MouseButton::Right);
-    glm::vec2 scroll = ctx.mouseScroll();
-
-    if (ctx.isMouseDragging(MouseButton::Left)) {
-        glm::vec2 dragDelta = ctx.mouseDragDelta();
-    }
-}
-```
-
-### Keyboard Input
-```cpp
-bool spaceDown = ctx.isKeyDown(Key::Space);
-bool enterPressed = ctx.wasKeyPressed(Key::Enter);
-std::string text = ctx.textInput();  // Characters typed this frame
-```
-
-### Gamepad Input
-```cpp
-if (ctx.isGamepadConnected(0)) {
-    glm::vec2 leftStick = ctx.gamepadAxis(0, GamepadAxis::LeftStick);
-    float leftTrigger = ctx.gamepadTrigger(0, GamepadTrigger::Left);
-    bool aPressed = ctx.wasGamepadButtonPressed(0, GamepadButton::A);
-}
-```
-
-### Touch Input (Mobile/Tablet)
-```cpp
-int touchCount = ctx.touchCount();
-for (int i = 0; i < touchCount; i++) {
-    Touch touch = ctx.getTouch(i);
-    // touch.position, touch.id, touch.phase
-}
-
-if (ctx.wasPinchGesture()) {
-    float scale = ctx.pinchScale();
-}
-```
-
----
-
-## Phase 16: ML Integration
-
-**Goal:** Machine learning via ONNX Runtime
-
-### ONNX Runtime Infrastructure
-```cpp
-class ONNXSession {
-    bool load(const std::string& modelPath);
-    bool run(const Tensor& input, Tensor& output);
-};
-```
-
-Execution Providers: CPU, CUDA, DirectML, CoreML, Metal
-
-### Pose Detection
-```cpp
-class PoseDetector : public Operator {
-    PoseDetector& input(const std::string& node);
-    PoseDetector& model(PoseModel model);  // MoveNet, BlazePose
-    // Outputs: keypoints, connections, mask
-};
-```
-
-Models: MoveNet Lightning/Thunder, BlazePose Lite/Full/Heavy
-
-### Background Segmentation
-```cpp
-class SegmentBackground : public Operator {
-    SegmentBackground& input(const std::string& node);
-    SegmentBackground& model(SegmentModel model);
-    // Outputs: mask, foreground, background
-};
-```
-
-Models: MediaPipe Selfie, BodyPix, MODNet, Robust Video Matting
-
-### Style Transfer
-```cpp
-class StyleTransfer : public Operator {
-    StyleTransfer& input(const std::string& node);
-    StyleTransfer& style(const std::string& stylePath);  // Image or .onnx
-    StyleTransfer& strength(float s);  // 0-1
-};
-```
-
-Pre-trained: Mosaic, Candy, Udnie, Starry Night, etc.
-Arbitrary: Any style image
-
-### Object Detection
-```cpp
-class ObjectDetector : public Operator {
-    ObjectDetector& input(const std::string& node);
-    ObjectDetector& model(DetectionModel model);  // YOLO, SSD
-    // Outputs: boxes, labels, overlay
-};
-```
-
-### Face Detection & Landmarks
-```cpp
-class FaceDetector : public Operator {
-    FaceDetector& input(const std::string& node);
-    FaceDetector& landmarks(bool enable);  // 68/468 points
-    FaceDetector& expressions(bool enable);
-    // Outputs: faces, landmarks, expressions, mesh
-};
-```
-
-### Model Registry
-```
-~/.vivid/models/
-├── movenet_lightning.onnx
-├── mediapipe_selfie.onnx
-├── yolov8n.onnx
-└── style_mosaic.onnx
-```
-
-Models downloaded on first use and cached locally.
-
----
-
-## Phase 17: Community Operator Registry
-
-**Goal:** Package management for sharing operators (like npm/cargo)
-
-### Package Manifest (vivid.toml)
-```toml
-[package]
-name = "glitch-fx"
-version = "1.0.0"
-description = "Glitch and datamosh effects"
-authors = ["Jane Doe <jane@example.com>"]
-license = "MIT"
-
-[vivid]
-version = ">=0.2.0"
-
-[dependencies]
-noise-utils = "^1.0"
-
-[[operators]]
-name = "Glitch"
-file = "src/glitch.cpp"
-
-[[shaders]]
-path = "shaders/glitch.hlsl"
-```
-
-### CLI Commands
-```bash
-vivid init my-effects      # Create new package
-vivid install glitch-fx    # Install from registry
-vivid search glitch        # Search packages
-vivid publish              # Publish to registry
-vivid build                # Build package
-```
-
-### Registry Infrastructure
-- REST API at registry.vivid.dev
-- Package index with versioning
-- Web interface for browsing/search
-- User accounts and ownership
-
-### Package Structure
-```
-my-package/
-├── vivid.toml
-├── README.md
-├── LICENSE
-├── src/
-│   └── *.cpp
-├── shaders/
-│   └── *.hlsl
-├── assets/
-└── examples/
-```
-
-### Features
-- Semantic versioning with constraints
-- Dependency resolution
-- Scoped packages (@user/package)
-- Optional package signing
-- Private registry support
-
----
-
-## Phase 18: Testing Infrastructure
-
-**Goal:** Systematic verification that everything works as expected
-
-### Testing Layers
-
-| Layer | What | How |
-|-------|------|-----|
-| Unit Tests | Core logic (math, parsing, data structures) | Catch2 |
-| Operator Tests | Individual operator correctness | Golden image comparison |
-| Integration Tests | Full chain execution | Example-based smoke tests |
-| Visual Regression | Detect unintended rendering changes | Automated screenshot diff |
-
-### Unit Testing (Non-Visual)
-- [ ] Integrate Catch2 (header-only, simple setup)
-- [ ] Test math utilities, parameter parsing, file loading
-- [ ] Test Chain API graph construction
-- [ ] Test addon detection and CMake generation
-- [ ] CMake `add_test()` targets for `ctest` integration
-
-```cpp
-// tests/test_chain.cpp
-TEST_CASE("Chain builds operator graph") {
-    Chain chain;
-    auto noise = chain.op<Noise>("n1");
-    auto blur = chain.op<Blur>("b1").input(noise);
-
-    REQUIRE(chain.getOperator("n1") != nullptr);
-    REQUIRE(chain.getInputFor("b1") == "n1");
-}
-```
-
-### Golden Image Testing (Visual)
-
-Capture reference screenshots, compare new renders with tolerance:
-
-```
-tests/golden/
-├── noise_perlin.png
-├── blur_radius_10.png
-├── composite_add.png
-├── pbr_gold_sphere.png
-└── ...
-```
-
-**Workflow:**
-1. `--capture` mode: Render operator → save as golden image
-2. `--compare` mode: Render operator → compare to golden (tolerance threshold)
-3. `--update` mode: Compare, and update golden if different
-
-```bash
-# Capture new golden images
-./vivid-test --capture --output tests/golden/
-
-# Compare against golden (CI mode)
-./vivid-test --compare --tolerance 0.01
-
-# Update golden images after intentional changes
-./vivid-test --update
-```
-
-**Tolerance:** Allow small pixel differences (anti-aliasing, floating point) - typically 1-2% threshold.
-
-### Headless Rendering
-
-For CI/CD without a display:
-- [ ] Software rasterizer fallback (Mesa llvmpipe on Linux, WARP on Windows)
-- [ ] Offscreen render targets (no swap chain required)
-- [ ] Fixed resolution for reproducible results (e.g., 256x256 for speed)
-
-### Integration Tests (Example-Based)
-
-Extend existing `test-examples.sh` approach:
-- [ ] Run each example for N frames
-- [ ] Check for crashes, error messages, memory leaks
-- [ ] Optional: capture final frame for visual regression
-
-```bash
-./scripts/test-examples.sh --frames 60 --capture-final
-```
-
-### Operator Test Matrix
-
-Each operator should have tests covering:
-- Default parameters
-- Edge cases (zero radius blur, 100% feedback, etc.)
-- Different input resolutions
-- Chain combinations
-
-| Operator | Unit Test | Golden Image | Edge Cases |
-|----------|-----------|--------------|------------|
-| Noise | ✓ params | ✓ perlin, simplex, worley | scale=0, speed=negative |
-| Blur | ✓ params | ✓ radius 1,5,20 | radius=0, large radius |
-| Composite | ✓ modes | ✓ add, multiply, screen | alpha=0, alpha=1 |
-| ... | | | |
-
-### CI/CD Integration (GitHub Actions)
-
-```yaml
-# .github/workflows/test.yml
-name: Tests
-on: [push, pull_request]
-
-jobs:
-  unit-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: cmake -B build && cmake --build build
-      - run: ctest --test-dir build
-
-  visual-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: apt-get install -y mesa-utils  # Software renderer
-      - run: ./vivid-test --compare --tolerance 0.02
-      - uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: visual-diff
-          path: tests/diff/
-```
-
-### Test Utilities
-
-```cpp
-namespace vivid::test {
-    // Render operator to texture, return pixels
-    std::vector<uint8_t> renderOperator(Operator& op, int width, int height);
-
-    // Compare two images with tolerance (returns similarity 0-1)
-    float compareImages(const uint8_t* a, const uint8_t* b, int w, int h);
-
-    // Save/load golden images
-    void saveGolden(const std::string& name, const uint8_t* pixels, int w, int h);
-    bool compareToGolden(const std::string& name, const uint8_t* pixels, int w, int h, float tolerance);
-}
-```
-
-### Test Directory Structure
-
-```
-vivid/
-├── tests/
-│   ├── CMakeLists.txt
-│   ├── unit/
-│   │   ├── test_chain.cpp
-│   │   ├── test_math.cpp
-│   │   └── test_params.cpp
-│   ├── visual/
-│   │   ├── test_operators.cpp
-│   │   └── test_3d.cpp
-│   ├── golden/
-│   │   └── *.png
-│   └── diff/              # Generated on comparison failure
-│       └── *.png
-├── scripts/
-│   └── test-examples.sh
-└── .github/
-    └── workflows/
-        └── test.yml
-```
-
-### Success Criteria
-
-- [ ] `ctest` runs all unit tests
-- [ ] `vivid-test --compare` validates visual output
-- [ ] CI passes on every PR
-- [ ] Golden images updated intentionally (reviewed in PR)
-- [ ] No flaky tests (deterministic rendering)
-
----
-
-## Build System
-
-### Directory Structure (Final)
 ```
 vivid/
 ├── CMakeLists.txt
-├── external/
-│   └── DiligentEngine/     # Git submodule
 ├── runtime/
 │   ├── CMakeLists.txt
 │   ├── include/vivid/
-│   │   ├── vivid.h         # Main include
-│   │   ├── chain.h
-│   │   ├── context.h
-│   │   ├── operators.h
-│   │   └── types.h
+│   │   ├── vivid.h           # Main include
+│   │   ├── chain.h           # Chain API
+│   │   ├── context.h         # Frame context
+│   │   ├── operator.h        # Base class
+│   │   ├── diligent_renderer.h
+│   │   ├── texture_utils.h
+│   │   ├── mesh.h
+│   │   └── camera.h
 │   └── src/
 │       ├── main.cpp
-│       ├── diligent_renderer.cpp
 │       ├── chain.cpp
 │       ├── context.cpp
-│       ├── compiler.cpp
-│       ├── texture.cpp
+│       ├── diligent_renderer.cpp
+│       ├── texture_utils.cpp
 │       ├── mesh.cpp
-│       ├── video_loader.cpp
-│       └── preview_server.cpp
+│       └── camera.cpp
 ├── operators/
-│   ├── CMakeLists.txt
-│   └── *.cpp               # Built-in operators
+│   └── *.cpp                 # Built-in operators
 ├── shaders/
-│   └── hlsl/
-│       ├── common/
-│       └── effects/
-├── vscode-extension/
-│   ├── package.json
-│   └── src/
+│   ├── common/
+│   └── effects/
 ├── addons/
 │   └── vivid-*/
-├── examples/
-│   └── hello/
-└── templates/
-    └── default/
+├── assets/
+│   ├── materials/
+│   └── hdris/
+└── examples/
 ```
-
-### CMake Configuration
-```cmake
-cmake_minimum_required(VERSION 3.20)
-project(vivid)
-
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# Diligent Engine
-add_subdirectory(external/DiligentEngine)
-
-# Dependencies
-include(FetchContent)
-FetchContent_Declare(glfw GIT_REPOSITORY https://github.com/glfw/glfw.git GIT_TAG 3.3.8)
-FetchContent_Declare(glm GIT_REPOSITORY https://github.com/g-truc/glm.git GIT_TAG 1.0.1)
-FetchContent_Declare(json GIT_REPOSITORY https://github.com/nlohmann/json.git GIT_TAG v3.11.3)
-FetchContent_MakeAvailable(glfw glm json)
-
-# Runtime
-add_subdirectory(runtime)
-
-# Operators
-add_subdirectory(operators)
-
-# Addons (optional)
-if(VIVID_BUILD_ADDONS)
-    add_subdirectory(addons)
-endif()
-```
-
----
-
-## Implementation Order
-
-> **Note:** Phase 9 (Chain API) was pulled forward to immediately follow Phase 4.
-> This enables working with the `chain.cpp` pattern early, rather than building
-> more standalone test examples. Effects become operators as soon as they're built.
-
-### Sprint 1: Core Loop ✅ COMPLETE
-1. Phase 1 (Foundation) - Window, Diligent init, clear screen
-2. Phase 2 (Shaders) - HLSL loading, basic PSO
-3. Phase 3 (Textures) - Create, load, render-to-texture
-
-### Sprint 2: 2D Effects & Chain API
-4. Phase 4 (Effects) - Core 2D operators (Passthrough, Noise, Blur, Composite)
-5. **Phase 9 (Chain API)** - Operator system, fluent API, chain.cpp pattern ⬅️ PULLED FORWARD
-6. Phase 4b (More Effects) - Remaining 2D effects as operators
-
-### Sprint 3: 3D Rendering
-7. Phase 5 (3D Foundation) - Mesh, camera, basic 3D
-8. Phase 6 (PBR) - DiligentFX integration
-
-### Sprint 4: Media & Hot Reload
-9. Phase 7 (Media) - Video playback, HAP, webcam
-10. Phase 8 (Hot Reload) - Live code recompilation
-
-### Sprint 5: Input & Tooling
-11. Phase 15 (Input) - Mouse, keyboard, gamepad
-12. Phase 10 (VS Code) - Extension and previews
-13. Phase 11 (Addons) - Addon system + ImGui
-14. Phase 12 (CLI) - Command-line and templates
-
-### Sprint 6: Audio
-15. Phase 13 (Audio) - Audio input, FFT, beat detection
-16. Phase 13b (Protocols) - MIDI, OSC support
-
-### Sprint 7: Export
-17. Phase 14 (Recording) - Video recording, image sequences
-18. Phase 14b (Distribution) - WASM, standalone apps
-
-### Sprint 8: Advanced
-19. Phase 16 (ML) - ONNX, pose detection, segmentation
-20. Phase 17 (Registry) - Community package registry
-
-### Ongoing: Testing (Phase 18)
-- Set up Catch2 after Sprint 1 (test core utilities)
-- Add golden image tests as each operator is implemented (Sprint 2+)
-- CI/CD integration after Sprint 5 (when tooling is ready)
-- Expand operator test matrix throughout development
-
----
-
-## Reference: Previous Operators
-
-These operators existed in the original codebase and should be reimplemented:
-
-### Texture Operators
-- blur, brightness, chromatic_aberration, composite, displacement
-- edge, feedback, gradient, hsv, imagefile, mirror
-- noise, passthrough, pixelate, scanlines, shape, tile, transform
-
-### Post-Processing Operators
-- bloom, vignette, film_grain, tonemap, color_grade
-- radial_blur, lens_distortion, lens_flare, glow, motion_blur
-
-### Text Operators
-- text
-
-### Value Operators
-- constant, lfo, math, logic, switch
-
-### Media Operators
-- videofile, webcam
-
-### 3D Operators
-- render3d, pointsprites, particles, decal
-
-### Audio Operators
-- audioin, beat
-
-### Protocol Operators
-- midiin, midiout, oscin, oscout
-
-### ML Operators
-- posedetector, segmentbackground, styletransfer, objectdetector, facedetector
-
-### Export Operators
-- record, imagesequence
-
-### Utility
-- reference
-
----
-
-## Reference: VS Code Extension Features
-
-From the original PLAN-04:
-
-- Runtime connection via WebSocket (port 9876)
-- Inline decorations showing operator output type
-- Hover previews with base64 images
-- Preview panel with all operators
-- Status bar showing connection state
-- Commands: Start/Stop Runtime, Reload, Toggle Decorations
-- Auto-connect when opening Vivid project
-- Compile error diagnostics in Problems panel
-
----
-
-## Reference: Addon List
-
-Addons that existed or were planned:
-
-| Addon | Platform | Description | Status |
-|-------|----------|-------------|--------|
-| vivid-spout | Windows | Texture sharing (Spout2) | Reimplement |
-| vivid-syphon | macOS | Texture sharing (Syphon) | Reimplement |
-| vivid-models | All | 3D model loading (Assimp) | Reimplement |
-| vivid-storage | All | JSON key/value persistence | Reimplement |
-| vivid-nuklear | All | Nuklear GUI integration | Reimplement |
-| vivid-csg | All | CSG boolean operations (Manifold) | Reimplement |
-| vivid-imgui | All | ImGui integration (via DiligentTools) | **Now Possible** |
-| vivid-ndi | All | Network video (NDI SDK) | Planned |
 
 ---
 
 ## Success Criteria
 
 Each phase is complete when:
-
-- [ ] All tests pass
-- [ ] Examples render correctly
-- [ ] Hot-reload works
-- [ ] Performance is acceptable (60fps for 1080p)
-- [ ] No memory leaks (validated with sanitizers)
+- All features work as documented
+- Examples render correctly
+- Performance: 60fps at 1080p
+- No memory leaks
 
 Final success:
-- [ ] All original examples work with new implementation
-- [ ] VS Code extension connects and shows previews
-- [ ] Addons can be used with zero configuration
-- [ ] `vivid new` and `vivid run` work as expected
+- `chain.cpp` workflow is intuitive
+- Hot reload enables rapid iteration
+- VS Code extension shows live previews
+- Built-in operators cover common use cases
