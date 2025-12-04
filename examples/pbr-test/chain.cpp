@@ -6,6 +6,7 @@
 #include <vivid/operators.h>
 #include <vivid/mesh.h>
 #include <vivid/pbr_material.h>
+#include <vivid/ibl.h>
 #include <iostream>
 #include <vector>
 #include <memory>
@@ -15,6 +16,7 @@ using namespace vivid;
 // Static state that persists across frames
 static std::unique_ptr<Render3D> render3d;
 static std::unique_ptr<Output> output;
+static std::unique_ptr<IBLEnvironment> iblEnv;
 static std::vector<PBRMaterial> materials;
 static Mesh sphereMesh;
 static int sphereIdx = -1;
@@ -55,6 +57,17 @@ void setup(Context& ctx) {
         }
     }
 
+    // Load IBL environment (HDR for metallic reflections)
+    iblEnv = std::make_unique<IBLEnvironment>();
+    if (iblEnv->init(ctx)) {
+        std::string hdrPath = assetPath + "hdris/bryanston_park_sunrise_4k.hdr";
+        if (iblEnv->loadHDR(ctx, hdrPath)) {
+            std::cout << "Loaded IBL environment: " << hdrPath << std::endl;
+        } else {
+            std::cout << "Warning: Could not load IBL HDR, metallic reflections may not work" << std::endl;
+        }
+    }
+
     // Create operators
     render3d = std::make_unique<Render3D>();
     output = std::make_unique<Output>();
@@ -62,6 +75,12 @@ void setup(Context& ctx) {
 
     render3d->init(ctx);
     output->init(ctx);
+
+    // Set IBL environment for metallic reflections
+    if (iblEnv && iblEnv->isLoaded()) {
+        render3d->setEnvironment(iblEnv.get());
+        std::cout << "IBL environment connected to Render3D" << std::endl;
+    }
 
     // Create sphere mesh
     MeshData sphereData = MeshUtils::createSphere(64, 32, 1.0f);

@@ -108,7 +108,7 @@ void Render3D::createPipeline(Context& ctx) {
 
     // Configure PBR_Renderer
     PBR_Renderer::CreateInfo pbrCI;
-    pbrCI.EnableIBL = false;  // Start without IBL
+    pbrCI.EnableIBL = true;  // Enable IBL for environment reflections
     pbrCI.EnableAO = true;    // Enable AO for textured materials
     pbrCI.EnableEmissive = false;
     pbrCI.EnableClearCoat = false;
@@ -261,6 +261,11 @@ void Render3D::renderScene(Context& ctx) {
         PBR_Renderer::PSO_FLAG_USE_TEXCOORD0 |
         PBR_Renderer::PSO_FLAG_USE_LIGHTS;
 
+    // Add IBL flag if environment is set
+    if (environment_ && environment_->isLoaded()) {
+        basePsoFlags |= PBR_Renderer::PSO_FLAG_USE_IBL;
+    }
+
     // Textured PSO flags (includes all texture maps)
     PBR_Renderer::PSO_FLAGS texturedPsoFlags = basePsoFlags |
         PBR_Renderer::PSO_FLAG_USE_COLOR_MAP |
@@ -397,8 +402,24 @@ void Render3D::renderScene(Context& ctx) {
                 continue;
             }
 
-            // Bind frame attribs
-            pbrRenderer_->InitCommonSRBVars(currentSrb, frameAttribsBuffer_, true, true, nullptr);
+            // Bind frame attribs with optional IBL prefiltered env map
+            ITextureView* prefilteredEnvMap = nullptr;
+            if (environment_ && environment_->isLoaded()) {
+                prefilteredEnvMap = environment_->prefilteredSRV();
+            }
+            pbrRenderer_->InitCommonSRBVars(currentSrb, frameAttribsBuffer_, true, true, prefilteredEnvMap);
+
+            // Bind additional IBL textures if environment is set
+            if (environment_ && environment_->isLoaded()) {
+                // Bind irradiance map for diffuse IBL
+                if (auto* var = currentSrb->GetVariableByName(SHADER_TYPE_PIXEL, "g_IrradianceMap")) {
+                    var->Set(environment_->irradianceSRV());
+                }
+                // Bind BRDF LUT for specular IBL
+                if (auto* var = currentSrb->GetVariableByName(SHADER_TYPE_PIXEL, "g_PreintegratedGGX")) {
+                    var->Set(environment_->brdfLutSRV());
+                }
+            }
         }
 
         // Bind textures if material is present
