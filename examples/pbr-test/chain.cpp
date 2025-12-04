@@ -1,12 +1,13 @@
 // Vivid Example: PBR Test
-// Demonstrates PBR materials on a rotating sphere
-// Press SPACE to cycle through materials
+// Demonstrates PBR materials - all 6 materials shown at once on different spheres
+// Press SPACE to cycle between spheres for close-up view
 
 #include <vivid/vivid.h>
 #include <vivid/operators.h>
 #include <vivid/mesh.h>
 #include <vivid/pbr_material.h>
 #include <vivid/ibl.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <vector>
 #include <memory>
@@ -18,10 +19,13 @@ static std::unique_ptr<Render3D> render3d;
 static std::unique_ptr<Output> output;
 static std::unique_ptr<IBLEnvironment> iblEnv;
 static std::vector<PBRMaterial> materials;
-static Mesh sphereMesh;
-static int sphereIdx = -1;
-static int currentMaterial = 0;
+static std::vector<Mesh> sphereMeshes;  // Separate mesh per sphere for separate SRBs
+static std::vector<int> sphereIndices;
+static float sphereRotation = 0.0f;
 static bool initialized = false;
+
+// Focus control
+static int currentSphereIndex = -1;  // -1 = overview mode, 0-5 = focused on specific sphere
 
 // Material info
 struct MaterialInfo {
@@ -38,6 +42,25 @@ static std::vector<MaterialInfo> materialInfos = {
     {"square-damp-blocks-bl", "square-damp-blocks", "Square Damp Blocks"},
     {"whispy-grass-meadow-bl", "wispy-grass-meadow", "Whispy Grass Meadow"}
 };
+
+// Sphere positions
+static float spacing = 1.1f;
+static float startX = -spacing * 2.5f;
+
+glm::vec3 getSpherePosition(int index) {
+    return glm::vec3(startX + index * spacing, 0.0f, 0.0f);
+}
+
+void updateCamera() {
+    if (currentSphereIndex < 0) {
+        // Overview mode - see all spheres
+        render3d->camera().setOrbit(glm::vec3(0, 0, 0), 6.0f, 90.0f, 15.0f);
+    } else {
+        // Focus on specific sphere - close up view
+        glm::vec3 spherePos = getSpherePosition(currentSphereIndex);
+        render3d->camera().setOrbit(spherePos, 1.5f, 90.0f, 10.0f);
+    }
+}
 
 void setup(Context& ctx) {
     std::cout << "[PBR Test] Setup - initializing..." << std::endl;
@@ -82,24 +105,42 @@ void setup(Context& ctx) {
         std::cout << "IBL environment connected to Render3D" << std::endl;
     }
 
-    // Create sphere mesh
-    MeshData sphereData = MeshUtils::createSphere(64, 32, 1.0f);
-    sphereMesh.create(ctx.device(), sphereData);
+    // Create separate mesh for each sphere (needed for separate material bindings)
+    MeshData sphereData = MeshUtils::createSphere(64, 32, 0.45f);  // Small spheres
+    MeshUtils::calculateTangents(sphereData);
 
-    // Add to scene
-    sphereIdx = render3d->addObject(&sphereMesh, glm::mat4(1.0f));
+    sphereMeshes.resize(6);
+    for (int i = 0; i < 6; i++) {
+        sphereMeshes[i].create(ctx.device(), sphereData);
+    }
 
-    // Setup camera
-    render3d->camera().setOrbit(glm::vec3(0, 0, 0), 3.5f, 45.0f, 15.0f);
+    // Add 6 spheres in a single row for easy comparison
+    sphereIndices.resize(6);
+    for (int i = 0; i < 6; i++) {
+        glm::vec3 pos = getSpherePosition(i);
+        glm::mat4 transform = glm::translate(glm::mat4(1.0f), pos);
+        sphereIndices[i] = render3d->addObject(&sphereMeshes[i], transform);
 
-    // Scene settings - brighter background and ambient
+        if (auto* obj = render3d->getObject(sphereIndices[i])) {
+            obj->material = &materials[i];
+            obj->uvScale = 2.0f;
+            obj->color = glm::vec4(1.0f);
+            std::cout << "Sphere " << i << " assigned material: " << materialInfos[i].displayName << std::endl;
+        }
+    }
+
+    // Setup camera - start in overview mode
+    currentSphereIndex = -1;
+    updateCamera();
+
+    // Scene settings
     render3d->backgroundColor(0.1f, 0.1f, 0.15f);
     render3d->ambientColor(0.5f, 0.5f, 0.55f);
 
     // Clear default light and add brighter lights
     render3d->clearLights();
 
-    // Main key light - bright, from upper right front
+    // Main key light
     Light3D keyLight;
     keyLight.type = Light3D::Type::Directional;
     keyLight.direction = glm::normalize(glm::vec3(-0.5f, -0.8f, -0.5f));
@@ -107,7 +148,7 @@ void setup(Context& ctx) {
     keyLight.intensity = 3.0f;
     render3d->addLight(keyLight);
 
-    // Fill light - from left, softer
+    // Fill light
     Light3D fillLight;
     fillLight.type = Light3D::Type::Directional;
     fillLight.direction = glm::normalize(glm::vec3(0.8f, -0.3f, 0.5f));
@@ -115,7 +156,7 @@ void setup(Context& ctx) {
     fillLight.intensity = 1.5f;
     render3d->addLight(fillLight);
 
-    // Rim light - from behind, for edge definition
+    // Rim light
     Light3D rimLight;
     rimLight.type = Light3D::Type::Directional;
     rimLight.direction = glm::normalize(glm::vec3(0.0f, -0.5f, 1.0f));
@@ -123,34 +164,45 @@ void setup(Context& ctx) {
     rimLight.intensity = 2.0f;
     render3d->addLight(rimLight);
 
-    // Set initial material
-    currentMaterial = 0;
-    if (auto* obj = render3d->getObject(sphereIdx)) {
-        obj->material = &materials[currentMaterial];
-        obj->uvScale = 2.0f;
-        obj->color = glm::vec4(1.0f);
-    }
-
     initialized = true;
-    std::cout << "[PBR Test] Ready! Press SPACE to cycle materials." << std::endl;
-    std::cout << "Showing: " << materialInfos[currentMaterial].displayName << std::endl;
+    std::cout << "[PBR Test] Ready! Press SPACE to cycle between spheres." << std::endl;
+    std::cout << "Materials: Bronze, Hexagon, Rock, Granite, Blocks, Grass" << std::endl;
 }
 
 void update(Context& ctx) {
     if (!initialized) return;
 
-    // Check for spacebar to cycle materials
-    if (ctx.wasKeyPressed(32)) {  // GLFW_KEY_SPACE = 32
-        currentMaterial = (currentMaterial + 1) % static_cast<int>(materials.size());
-        if (auto* obj = render3d->getObject(sphereIdx)) {
-            obj->material = &materials[currentMaterial];
+    // Check for spacebar press (wasKeyPressed handles debouncing)
+    // GLFW_KEY_SPACE = 32
+    if (ctx.wasKeyPressed(32)) {
+        // Cycle to next sphere (-1 -> 0 -> 1 -> ... -> 5 -> -1)
+        currentSphereIndex++;
+        if (currentSphereIndex >= 6) {
+            currentSphereIndex = -1;
         }
-        std::cout << "Showing: " << materialInfos[currentMaterial].displayName
-                  << " (" << (currentMaterial + 1) << "/" << materials.size() << ")" << std::endl;
+
+        if (currentSphereIndex < 0) {
+            std::cout << "[View] Overview - all 6 materials" << std::endl;
+        } else {
+            std::cout << "[View] " << materialInfos[currentSphereIndex].displayName
+                      << " (sphere " << currentSphereIndex << ")" << std::endl;
+        }
+
+        updateCamera();
     }
 
-    // Slowly rotate camera
-    render3d->camera().orbitRotate(0.2f, 0.0f);
+    // Slowly rotate all spheres
+    sphereRotation += 0.5f * ctx.dt();
+
+    for (int i = 0; i < 6; i++) {
+        glm::vec3 pos = getSpherePosition(i);
+
+        if (auto* obj = render3d->getObject(sphereIndices[i])) {
+            glm::mat4 transform = glm::translate(glm::mat4(1.0f), pos);
+            transform = glm::rotate(transform, sphereRotation, glm::vec3(0, 1, 0));
+            obj->transform = transform;
+        }
+    }
 
     // Render
     render3d->process(ctx);

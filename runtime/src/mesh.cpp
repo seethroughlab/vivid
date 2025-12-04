@@ -444,6 +444,18 @@ void calculateTangents(MeshData& mesh) {
         glm::vec2 deltaUV1 = v1.uv - v0.uv;
         glm::vec2 deltaUV2 = v2.uv - v0.uv;
 
+        // Handle UV seam wrapping - when U wraps from ~1.0 to ~0.0, delta is large and negative
+        // Correct by adding 1.0 to bring delta into the expected small positive range
+        if (deltaUV1.x < -0.5f) deltaUV1.x += 1.0f;
+        if (deltaUV1.x > 0.5f) deltaUV1.x -= 1.0f;
+        if (deltaUV2.x < -0.5f) deltaUV2.x += 1.0f;
+        if (deltaUV2.x > 0.5f) deltaUV2.x -= 1.0f;
+        // Also handle V wrapping (for poles or other UV layouts)
+        if (deltaUV1.y < -0.5f) deltaUV1.y += 1.0f;
+        if (deltaUV1.y > 0.5f) deltaUV1.y -= 1.0f;
+        if (deltaUV2.y < -0.5f) deltaUV2.y += 1.0f;
+        if (deltaUV2.y > 0.5f) deltaUV2.y -= 1.0f;
+
         float det = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
         if (std::abs(det) > 1e-6f) {
             float f = 1.0f / det;

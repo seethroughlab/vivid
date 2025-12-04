@@ -365,6 +365,7 @@ void Render3D::renderScene(Context& ctx) {
     // Draw each object
     IPipelineState* currentPso = nullptr;
     IShaderResourceBinding* currentSrb = nullptr;
+    const PBRMaterial* currentMaterial = nullptr;
 
     for (const Object3D& obj : objects_) {
         if (!obj.mesh || !obj.mesh->vertexBuffer()) continue;
@@ -387,12 +388,17 @@ void Render3D::renderScene(Context& ctx) {
             continue;
         }
 
+        // Check if we need a new SRB (PSO changed or material changed)
+        bool needNewSrb = (pso != currentPso) || (obj.material != currentMaterial);
+
         // Switch PSO if needed
         if (pso != currentPso) {
             currentPso = pso;
             context->SetPipelineState(pso);
+        }
 
-            // Create new SRB for this PSO
+        // Create new SRB if PSO or material changed
+        if (needNewSrb) {
             if (currentSrb) {
                 currentSrb->Release();
             }
@@ -420,45 +426,47 @@ void Render3D::renderScene(Context& ctx) {
                     var->Set(environment_->brdfLutSRV());
                 }
             }
-        }
 
-        // Bind textures if material is present
-        if (hasTextures && obj.material) {
-            static bool debugOnce = true;
-            if (debugOnce) {
-                debugOnce = false;
-                std::cout << "Binding textures to SRB:" << std::endl;
-                std::cout << "  albedoSRV: " << (obj.material->albedoSRV() ? "valid" : "NULL") << std::endl;
-                std::cout << "  normalSRV: " << (obj.material->normalSRV() ? "valid" : "NULL") << std::endl;
-                std::cout << "  metallicSRV: " << (obj.material->metallicSRV() ? "valid" : "NULL") << std::endl;
-                std::cout << "  roughnessSRV: " << (obj.material->roughnessSRV() ? "valid" : "NULL") << std::endl;
-                std::cout << "  aoSRV: " << (obj.material->aoSRV() ? "valid" : "NULL") << std::endl;
+            // Bind textures if material is present
+            if (hasTextures && obj.material) {
+                static bool debugOnce = true;
+                if (debugOnce) {
+                    debugOnce = false;
+                    std::cout << "Binding textures to SRB:" << std::endl;
+                    std::cout << "  albedoSRV: " << (obj.material->albedoSRV() ? "valid" : "NULL") << std::endl;
+                    std::cout << "  normalSRV: " << (obj.material->normalSRV() ? "valid" : "NULL") << std::endl;
+                    std::cout << "  metallicSRV: " << (obj.material->metallicSRV() ? "valid" : "NULL") << std::endl;
+                    std::cout << "  roughnessSRV: " << (obj.material->roughnessSRV() ? "valid" : "NULL") << std::endl;
+                    std::cout << "  aoSRV: " << (obj.material->aoSRV() ? "valid" : "NULL") << std::endl;
 
-                // Check if shader variables exist
-                auto checkVar = [&](const char* name) {
-                    if (auto* var = currentSrb->GetVariableByName(SHADER_TYPE_PIXEL, name)) {
-                        std::cout << "  Shader var '" << name << "': found" << std::endl;
-                    } else {
-                        std::cout << "  Shader var '" << name << "': NOT FOUND" << std::endl;
-                    }
-                };
-                checkVar("g_BaseColorMap");
-                checkVar("g_NormalMap");
-                checkVar("g_MetallicMap");
-                checkVar("g_RoughnessMap");
-                checkVar("g_OcclusionMap");
+                    // Check if shader variables exist
+                    auto checkVar = [&](const char* name) {
+                        if (auto* var = currentSrb->GetVariableByName(SHADER_TYPE_PIXEL, name)) {
+                            std::cout << "  Shader var '" << name << "': found" << std::endl;
+                        } else {
+                            std::cout << "  Shader var '" << name << "': NOT FOUND" << std::endl;
+                        }
+                    };
+                    checkVar("g_BaseColorMap");
+                    checkVar("g_NormalMap");
+                    checkVar("g_MetallicMap");
+                    checkVar("g_RoughnessMap");
+                    checkVar("g_OcclusionMap");
+                }
+
+                pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->albedoSRV(),
+                    PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR);
+                pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->normalSRV(),
+                    PBR_Renderer::TEXTURE_ATTRIB_ID_NORMAL);
+                pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->metallicSRV(),
+                    PBR_Renderer::TEXTURE_ATTRIB_ID_METALLIC);
+                pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->roughnessSRV(),
+                    PBR_Renderer::TEXTURE_ATTRIB_ID_ROUGHNESS);
+                pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->aoSRV(),
+                    PBR_Renderer::TEXTURE_ATTRIB_ID_OCCLUSION);
             }
 
-            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->albedoSRV(),
-                PBR_Renderer::TEXTURE_ATTRIB_ID_BASE_COLOR);
-            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->normalSRV(),
-                PBR_Renderer::TEXTURE_ATTRIB_ID_NORMAL);
-            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->metallicSRV(),
-                PBR_Renderer::TEXTURE_ATTRIB_ID_METALLIC);
-            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->roughnessSRV(),
-                PBR_Renderer::TEXTURE_ATTRIB_ID_ROUGHNESS);
-            pbrRenderer_->SetMaterialTexture(currentSrb, obj.material->aoSRV(),
-                PBR_Renderer::TEXTURE_ATTRIB_ID_OCCLUSION);
+            currentMaterial = obj.material;
         }
 
         // Update primitive attribs
