@@ -12,7 +12,7 @@
 
 // HAP decoder (FFmpeg-based)
 #ifdef VIVID_HAS_FFMPEG
-#include "hap_decoder.h"
+#include "ffmpeg_decoder.h"
 #endif
 
 // Diligent Engine includes
@@ -33,7 +33,7 @@ using namespace Diligent;
 struct VideoPlayer::Impl {
 #ifdef VIVID_HAS_FFMPEG
     // HAP decoder (used when file is HAP codec)
-    std::unique_ptr<HAPDecoder> hapDecoder;
+    std::unique_ptr<FFmpegDecoder> ffmpegDecoder;
     bool isHAP = false;
 #endif
     // AVFoundation objects
@@ -74,9 +74,9 @@ struct VideoPlayer::Impl {
 
     void close() {
 #ifdef VIVID_HAS_FFMPEG
-        if (hapDecoder) {
-            hapDecoder->close();
-            hapDecoder.reset();
+        if (ffmpegDecoder) {
+            ffmpegDecoder->close();
+            ffmpegDecoder.reset();
         }
         isHAP = false;
 #endif
@@ -102,10 +102,10 @@ struct VideoPlayer::Impl {
         isLooping = loop;
 
 #ifdef VIVID_HAS_FFMPEG
-        // Check if this is a HAP file - use FFmpeg decoder for HAP
-        if (HAPDecoder::isHAPFile(path)) {
-            std::cout << "[VideoPlayer] Detected HAP codec, using FFmpeg decoder" << std::endl;
-            hapDecoder = std::make_unique<HAPDecoder>();
+        // Check if this codec needs FFmpeg decoder (HAP, HEVC, etc.)
+        if (FFmpegDecoder::needsFFmpegDecoder(path)) {
+            std::cout << "[VideoPlayer] Using FFmpeg decoder" << std::endl;
+            ffmpegDecoder = std::make_unique<FFmpegDecoder>();
             if (hapDecoder->open(ctx, path, loop)) {
                 isHAP = true;
                 videoWidth = hapDecoder->width();
@@ -387,6 +387,13 @@ struct VideoPlayer::Impl {
             CVImageBufferRef imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer);
             if (imageBuffer) {
                 uploadFrame(imageBuffer);
+            } else {
+                static bool loggedNull = false;
+                if (!loggedNull) {
+                    std::cerr << "[VideoPlayer] CMSampleBufferGetImageBuffer returned NULL - "
+                              << "codec may require FFmpeg decoder" << std::endl;
+                    loggedNull = true;
+                }
             }
 
             CFRelease(sampleBuffer);
@@ -399,6 +406,19 @@ struct VideoPlayer::Impl {
         size_t height = CVPixelBufferGetHeight(imageBuffer);
         size_t width = CVPixelBufferGetWidth(imageBuffer);
         OSType pixelFormat = CVPixelBufferGetPixelFormatType(imageBuffer);
+
+        // Debug: Log pixel format on first frame
+        static OSType lastLoggedFormat = 0;
+        if (pixelFormat != lastLoggedFormat) {
+            char formatStr[5] = {0};
+            formatStr[0] = (pixelFormat >> 24) & 0xFF;
+            formatStr[1] = (pixelFormat >> 16) & 0xFF;
+            formatStr[2] = (pixelFormat >> 8) & 0xFF;
+            formatStr[3] = pixelFormat & 0xFF;
+            std::cout << "[VideoPlayer] Frame pixel format: " << pixelFormat
+                      << " ('" << formatStr << "') " << width << "x" << height << std::endl;
+            lastLoggedFormat = pixelFormat;
+        }
 
         uint8_t* dst = pixelBuffer.data();
         size_t dstRowBytes = width * 4;
@@ -463,7 +483,18 @@ struct VideoPlayer::Impl {
                 }
             }
         } else {
-            // Unknown format - try treating as BGRA
+            // Unknown format - log and try treating as BGRA
+            static bool loggedFormat = false;
+            if (!loggedFormat) {
+                char formatStr[5] = {0};
+                formatStr[0] = (pixelFormat >> 24) & 0xFF;
+                formatStr[1] = (pixelFormat >> 16) & 0xFF;
+                formatStr[2] = (pixelFormat >> 8) & 0xFF;
+                formatStr[3] = pixelFormat & 0xFF;
+                std::cerr << "[VideoPlayer] Unsupported pixel format: " << pixelFormat
+                          << " ('" << formatStr << "')" << std::endl;
+                loggedFormat = true;
+            }
             void* baseAddress = CVPixelBufferGetBaseAddress(imageBuffer);
             size_t bytesPerRow = CVPixelBufferGetBytesPerRow(imageBuffer);
             if (baseAddress && bytesPerRow >= dstRowBytes) {

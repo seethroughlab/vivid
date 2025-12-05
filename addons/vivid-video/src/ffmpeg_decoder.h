@@ -28,28 +28,30 @@ class Context;
 namespace vivid::video {
 
 /**
- * @brief HAP video decoder using FFmpeg.
+ * @brief General-purpose video decoder using FFmpeg.
  *
- * HAP is a GPU-accelerated video codec that stores DXT compressed data.
- * FFmpeg decodes HAP to standard pixel formats, then we convert to BGRA
+ * Decodes video formats that AVFoundation cannot handle properly,
+ * including HAP (DXT compressed) and HEVC (which returns NULL image buffers).
+ * FFmpeg decodes to standard pixel formats, then we convert to BGRA
  * using swscale and upload to GPU texture.
  */
-class HAPDecoder {
+class FFmpegDecoder {
 public:
-    HAPDecoder();
-    ~HAPDecoder();
+    FFmpegDecoder();
+    ~FFmpegDecoder();
 
     // Non-copyable
-    HAPDecoder(const HAPDecoder&) = delete;
-    HAPDecoder& operator=(const HAPDecoder&) = delete;
+    FFmpegDecoder(const FFmpegDecoder&) = delete;
+    FFmpegDecoder& operator=(const FFmpegDecoder&) = delete;
 
     /**
-     * @brief Check if a file contains HAP codec.
+     * @brief Check if a file needs FFmpeg decoder (HAP, HEVC, etc).
+     * Some codecs work poorly with AVFoundation and need FFmpeg.
      */
-    static bool isHAPFile(const std::string& path);
+    static bool needsFFmpegDecoder(const std::string& path);
 
     /**
-     * @brief Open a HAP video file.
+     * @brief Open a video file.
      */
     bool open(Context& ctx, const std::string& path, bool loop = false);
 
@@ -165,6 +167,9 @@ private:
     Diligent::ITexture* texture_ = nullptr;
     Diligent::ITextureView* srv_ = nullptr;
 };
+
+// Alias for backward compatibility
+using HAPDecoder = FFmpegDecoder;
 
 } // namespace vivid::video
 

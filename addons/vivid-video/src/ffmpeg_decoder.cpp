@@ -1,6 +1,6 @@
 #ifdef VIVID_HAS_FFMPEG
 
-#include "hap_decoder.h"
+#include "ffmpeg_decoder.h"
 #include "vivid/context.h"
 
 extern "C" {
@@ -23,13 +23,13 @@ namespace vivid::video {
 
 using namespace Diligent;
 
-HAPDecoder::HAPDecoder() = default;
+FFmpegDecoder::FFmpegDecoder() = default;
 
-HAPDecoder::~HAPDecoder() {
+FFmpegDecoder::~FFmpegDecoder() {
     close();
 }
 
-bool HAPDecoder::isHAPFile(const std::string& path) {
+bool FFmpegDecoder::needsFFmpegDecoder(const std::string& path) {
     AVFormatContext* ctx = nullptr;
     if (avformat_open_input(&ctx, path.c_str(), nullptr, nullptr) < 0) {
         return false;
@@ -40,21 +40,35 @@ bool HAPDecoder::isHAPFile(const std::string& path) {
         return false;
     }
 
-    bool isHAP = false;
+    bool needsFFmpeg = false;
+    const char* codecName = nullptr;
     for (unsigned int i = 0; i < ctx->nb_streams; i++) {
         if (ctx->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-            if (ctx->streams[i]->codecpar->codec_id == AV_CODEC_ID_HAP) {
-                isHAP = true;
+            AVCodecID codecId = ctx->streams[i]->codecpar->codec_id;
+
+            // Codecs that need FFmpeg on macOS:
+            // - HAP: DXT compressed, AVFoundation returns raw DXT data
+            // - HEVC: AVFoundation returns NULL image buffers in native format
+            if (codecId == AV_CODEC_ID_HAP ||
+                codecId == AV_CODEC_ID_HEVC) {
+                needsFFmpeg = true;
+                codecName = avcodec_get_name(codecId);
                 break;
             }
         }
     }
 
     avformat_close_input(&ctx);
-    return isHAP;
+
+    if (needsFFmpeg && codecName) {
+        std::cout << "[FFmpegDecoder] Codec '" << codecName
+                  << "' requires FFmpeg" << std::endl;
+    }
+
+    return needsFFmpeg;
 }
 
-bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
+bool FFmpegDecoder::open(Context& ctx, const std::string& path, bool loop) {
     close();
 
     device_ = ctx.device();
@@ -64,33 +78,34 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
 
     // Open input file
     if (avformat_open_input(&formatCtx_, path.c_str(), nullptr, nullptr) < 0) {
-        std::cerr << "[HAPDecoder] Failed to open: " << path << std::endl;
+        std::cerr << "[FFmpegDecoder] Failed to open: " << path << std::endl;
         return false;
     }
 
     // Find stream info
     if (avformat_find_stream_info(formatCtx_, nullptr) < 0) {
-        std::cerr << "[HAPDecoder] Failed to find stream info" << std::endl;
+        std::cerr << "[FFmpegDecoder] Failed to find stream info" << std::endl;
         close();
         return false;
     }
 
-    // Find video stream with HAP codec
+    // Find first video stream
     videoStreamIndex_ = -1;
     const AVCodec* codec = nullptr;
+    AVCodecID codecId = AV_CODEC_ID_NONE;
 
     for (unsigned int i = 0; i < formatCtx_->nb_streams; i++) {
         if (formatCtx_->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-            if (formatCtx_->streams[i]->codecpar->codec_id == AV_CODEC_ID_HAP) {
-                videoStreamIndex_ = i;
-                codec = avcodec_find_decoder(AV_CODEC_ID_HAP);
-                break;
-            }
+            videoStreamIndex_ = i;
+            codecId = formatCtx_->streams[i]->codecpar->codec_id;
+            codec = avcodec_find_decoder(codecId);
+            break;
         }
     }
 
     if (videoStreamIndex_ < 0 || !codec) {
-        std::cerr << "[HAPDecoder] No HAP video stream found or no decoder" << std::endl;
+        std::cerr << "[FFmpegDecoder] No video stream found or no decoder for codec "
+                  << avcodec_get_name(codecId) << std::endl;
         close();
         return false;
     }
@@ -101,19 +116,19 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
     // Create codec context
     codecCtx_ = avcodec_alloc_context3(codec);
     if (!codecCtx_) {
-        std::cerr << "[HAPDecoder] Failed to allocate codec context" << std::endl;
+        std::cerr << "[FFmpegDecoder] Failed to allocate codec context" << std::endl;
         close();
         return false;
     }
 
     if (avcodec_parameters_to_context(codecCtx_, codecpar) < 0) {
-        std::cerr << "[HAPDecoder] Failed to copy codec params" << std::endl;
+        std::cerr << "[FFmpegDecoder] Failed to copy codec params" << std::endl;
         close();
         return false;
     }
 
     if (avcodec_open2(codecCtx_, codec, nullptr) < 0) {
-        std::cerr << "[HAPDecoder] Failed to open codec" << std::endl;
+        std::cerr << "[FFmpegDecoder] Failed to open codec" << std::endl;
         close();
         return false;
     }
@@ -139,22 +154,17 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
     timeBase_ = av_q2d(stream->time_base);
 
     // Log codec info
-    uint32_t tag = codecpar->codec_tag;
-    char tagStr[5] = {0};
-    tagStr[0] = tag & 0xFF;
-    tagStr[1] = (tag >> 8) & 0xFF;
-    tagStr[2] = (tag >> 16) & 0xFF;
-    tagStr[3] = (tag >> 24) & 0xFF;
+    const char* codecName = avcodec_get_name(codecId);
 
-    std::cout << "[HAPDecoder] Opened " << path
+    std::cout << "[FFmpegDecoder] Opened " << path
               << " (" << width_ << "x" << height_
-              << ", " << frameRate_ << "fps, " << tagStr << ")" << std::endl;
+              << ", " << frameRate_ << "fps, " << codecName << ")" << std::endl;
 
     // Allocate packet and frame
     packet_ = av_packet_alloc();
     frame_ = av_frame_alloc();
     if (!packet_ || !frame_) {
-        std::cerr << "[HAPDecoder] Failed to allocate packet/frame" << std::endl;
+        std::cerr << "[FFmpegDecoder] Failed to allocate packet/frame" << std::endl;
         close();
         return false;
     }
@@ -164,7 +174,7 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
 
     // Create GPU texture
     TextureDesc desc;
-    desc.Name = "HAPVideoFrame";
+    desc.Name = "FFmpegVideoFrame";
     desc.Type = RESOURCE_DIM_TEX_2D;
     desc.Width = width_;
     desc.Height = height_;
@@ -177,7 +187,7 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
     device_->CreateTexture(desc, nullptr, &tex);
 
     if (!tex) {
-        std::cerr << "[HAPDecoder] Failed to create texture" << std::endl;
+        std::cerr << "[FFmpegDecoder] Failed to create texture" << std::endl;
         close();
         return false;
     }
@@ -194,7 +204,7 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
     return true;
 }
 
-void HAPDecoder::close() {
+void FFmpegDecoder::close() {
     if (swsCtx_) {
         sws_freeContext(swsCtx_);
         swsCtx_ = nullptr;
@@ -226,11 +236,11 @@ void HAPDecoder::close() {
     currentTime_ = 0.0f;
 }
 
-bool HAPDecoder::isOpen() const {
+bool FFmpegDecoder::isOpen() const {
     return formatCtx_ != nullptr;
 }
 
-void HAPDecoder::update(Context& ctx) {
+void FFmpegDecoder::update(Context& ctx) {
     if (!isPlaying_ || isFinished_ || !formatCtx_) {
         return;
     }
@@ -261,7 +271,7 @@ void HAPDecoder::update(Context& ctx) {
     }
 }
 
-bool HAPDecoder::decodeFrame() {
+bool FFmpegDecoder::decodeFrame() {
     // Read packets until we get a video frame
     while (true) {
         int ret = av_read_frame(formatCtx_, packet_);
@@ -269,7 +279,7 @@ bool HAPDecoder::decodeFrame() {
             if (ret == AVERROR_EOF) {
                 return false;
             }
-            std::cerr << "[HAPDecoder] Error reading frame" << std::endl;
+            std::cerr << "[FFmpegDecoder] Error reading frame" << std::endl;
             return false;
         }
 
@@ -283,7 +293,12 @@ bool HAPDecoder::decodeFrame() {
         av_packet_unref(packet_);
 
         if (ret < 0) {
-            std::cerr << "[HAPDecoder] Error sending packet to decoder" << std::endl;
+            // Log error only once per second to avoid spam
+            static float lastErrorTime = 0;
+            if (currentTime_ - lastErrorTime > 1.0f) {
+                std::cerr << "[FFmpegDecoder] Error sending packet to decoder" << std::endl;
+                lastErrorTime = currentTime_;
+            }
             continue;
         }
 
@@ -292,7 +307,7 @@ bool HAPDecoder::decodeFrame() {
             // Need more packets
             continue;
         } else if (ret < 0) {
-            std::cerr << "[HAPDecoder] Error receiving frame from decoder" << std::endl;
+            std::cerr << "[FFmpegDecoder] Error receiving frame from decoder" << std::endl;
             return false;
         }
 
@@ -308,7 +323,7 @@ bool HAPDecoder::decodeFrame() {
     return true;
 }
 
-void HAPDecoder::uploadFrame() {
+void FFmpegDecoder::uploadFrame() {
     if (!frame_ || !texture_) return;
 
     int width = frame_->width;
@@ -323,7 +338,7 @@ void HAPDecoder::uploadFrame() {
 
         if (!swsCtx_) {
             const char* fmtName = av_get_pix_fmt_name(static_cast<AVPixelFormat>(frame_->format));
-            std::cerr << "[HAPDecoder] Cannot convert pixel format: "
+            std::cerr << "[FFmpegDecoder] Cannot convert pixel format: "
                       << (fmtName ? fmtName : "unknown") << std::endl;
             av_frame_unref(frame_);
             return;
@@ -354,7 +369,7 @@ void HAPDecoder::uploadFrame() {
                            RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
 }
 
-void HAPDecoder::seek(float seconds) {
+void FFmpegDecoder::seek(float seconds) {
     if (!formatCtx_) return;
 
     // Clamp seek time
@@ -365,7 +380,7 @@ void HAPDecoder::seek(float seconds) {
     int ret = av_seek_frame(formatCtx_, videoStreamIndex_, timestamp,
                             AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
-        std::cerr << "[HAPDecoder] Seek failed" << std::endl;
+        std::cerr << "[FFmpegDecoder] Seek failed" << std::endl;
         return;
     }
 
@@ -386,11 +401,11 @@ void HAPDecoder::seek(float seconds) {
     isFinished_ = false;
 }
 
-ITexture* HAPDecoder::texture() const {
+ITexture* FFmpegDecoder::texture() const {
     return texture_;
 }
 
-ITextureView* HAPDecoder::textureView() const {
+ITextureView* FFmpegDecoder::textureView() const {
     return srv_;
 }
 
