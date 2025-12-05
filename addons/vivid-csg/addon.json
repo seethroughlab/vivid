@@ -1,0 +1,13 @@
+{
+  "name": "csg",
+  "version": "1.0.0",
+  "description": "CSG (Constructive Solid Geometry) boolean operations via Manifold library",
+  "platforms": ["macos", "windows", "linux"],
+  "detect_headers": ["vivid/csg/csg.h"],
+  "include_dirs": ["include"],
+  "libraries": {
+    "macos": { "static": ["libvivid-csg.dylib"] },
+    "windows": { "static": ["vivid-csg.dll"] },
+    "linux": { "static": ["libvivid-csg.so"] }
+  }
+}

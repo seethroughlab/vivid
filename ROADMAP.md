@@ -274,8 +274,8 @@ The Chain API requires working operators to be useful. This phase delivers both 
 - [x] ShaderUtils for HLSL loading/compilation
 - [x] FullscreenQuad utility for 2D effects rendering
 - [x] TextureOperator base class for 2D texture effects
-- [ ] Implement `Chain` class for operator graph management (deferred)
-- [ ] Create `VIVID_CHAIN(setup, update)` macro (deferred)
+- [x] Create `VIVID_CHAIN(setup, update)` macro
+- [~] `Chain` class for operator graph management - not needed, manual approach preferred
 
 ### Core Operators (Required for Chain API)
 - [x] **Output** - Display results to screen
@@ -284,27 +284,34 @@ The Chain API requires working operators to be useful. This phase delivers both 
 - [x] **Blur** - Box blur with 9-tap Gaussian weights
 - [x] **Composite** - Blend two textures (5 blend modes)
 
-### Target Usage
+### Actual Usage
 ```cpp
 #include <vivid/vivid.h>
+#include <vivid/operators.h>
 using namespace vivid;
 
-void setup(Chain& chain) {
-    chain.setResolution(1920, 1080);
-    chain.setOutput("final");
+static std::unique_ptr<Noise> noise;
+static std::unique_ptr<Blur> blur;
+static std::unique_ptr<Output> output;
+
+void setup(Context& ctx) {
+    noise = std::make_unique<Noise>();
+    blur = std::make_unique<Blur>();
+    output = std::make_unique<Output>();
+
+    noise->scale(4.0f).speed(0.5f);
+    blur->setInput(noise.get()).radius(10.0f);
+    output->setInput(blur.get());
+
+    noise->init(ctx);
+    blur->init(ctx);
+    output->init(ctx);
 }
 
-void update(Chain& chain, Context& ctx) {
-    auto noise = chain.op<Noise>("noise")
-        .scale(4.0f)
-        .speed(0.5f);
-
-    auto blur = chain.op<Blur>("blur")
-        .input(noise)
-        .radius(10.0f);
-
-    chain.op<Output>("final")
-        .input(blur);
+void update(Context& ctx) {
+    noise->process(ctx);
+    blur->process(ctx);
+    output->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)
