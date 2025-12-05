@@ -1,0 +1,13 @@
+{
+  "name": "imgui",
+  "version": "1.0.0",
+  "description": "Dear ImGui integration for Vivid",
+  "platforms": ["macos", "windows", "linux"],
+  "detect_headers": ["vivid/imgui/imgui_integration.h"],
+  "include_dirs": ["include"],
+  "libraries": {
+    "macos": { "static": ["libvivid-imgui.a"] },
+    "windows": { "static": ["vivid-imgui.lib"] },
+    "linux": { "static": ["libvivid-imgui.a"] }
+  }
+}
