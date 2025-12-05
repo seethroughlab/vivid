@@ -44,6 +44,7 @@ set(VIVID_HEADERS
     # Phase 4: 3D operators
     include/vivid/operators/render3d.h
     include/vivid/operators/gltf_viewer.h
+    include/vivid/operators/instanced_render3d.h
 )
 
 set(VIVID_SOURCES
@@ -90,6 +91,7 @@ set(VIVID_SOURCES
     # Phase 4: 3D operators
     src/operators/render3d.cpp
     src/operators/gltf_viewer.cpp
+    src/operators/instanced_render3d.cpp
 )
 
 # Add macOS-specific sources

@@ -389,7 +389,94 @@ shaders/
 - [x] GLTF model loading via GLTF_PBR_Renderer (GLTFViewer operator)
 - [x] IBL environment loading and skybox rendering
 - [x] glTF-Sample-Models as git submodule in `external/glTF-Sample-Models/`
-- [ ] Shadow mapping via ShadowMapManager 
+- [ ] Shadow mapping via ShadowMapManager
+- [ ] **Unified Scene3D** - Combine GLTF models and procedural geometry in one scene
+
+---
+
+### The Two Renderer Problem
+
+Vivid currently has **two separate 3D rendering operators** that cannot render objects together in the same scene:
+
+| Operator | Purpose | DiligentFX Class | Use Case |
+|----------|---------|------------------|----------|
+| `Render3D` | Procedural geometry | `PBR_Renderer` | Spheres, cubes, planes created in code |
+| `GLTFViewer` | GLTF model files | `GLTF_PBR_Renderer` | Artist-created 3D assets |
+
+**Why can't they work together?**
+
+DiligentFX provides two different renderer classes that were not designed to interoperate:
+
+1. **Different shader pipelines** - Each renderer builds its own PSOs (Pipeline State Objects) with different shader permutations
+2. **Different vertex formats** - `Render3D` uses our `Vertex3D` (44 bytes), GLTF uses variable formats with joints/weights/morph targets
+3. **Different constant buffer layouts** - Frame, primitive, and material buffers have different structures
+4. **Different SRB patterns** - Shader Resource Bindings are incompatible
+
+This means you **cannot** have a GLTF robot standing on a procedural floor, or add procedural particles to a GLTF scene.
+
+### Unified Scene3D Solution
+
+Create a new `Scene3D` operator that manages both renderers with a **shared depth buffer**, enabling proper depth sorting between GLTF models and procedural geometry.
+
+**Approach:**
+```cpp
+class Scene3D : public Operator {
+    // Manages both:
+    std::vector<Object3D> proceduralObjects_;     // → PBR_Renderer
+    std::vector<GLTFModelInstance> gltfModels_;   // → GLTF_PBR_Renderer
+
+    void renderScene(Context& ctx) {
+        // Shared render targets
+        context->SetRenderTargets(1, &colorRTV_, depthDSV_, ...);
+        context->ClearDepthStencil(depthDSV_, ...);
+
+        // Render GLTF models (writes to shared depth buffer)
+        for (auto& model : gltfModels_) {
+            gltfRenderer_->Render(...);
+        }
+
+        // Render procedural meshes (same depth buffer = correct occlusion)
+        for (auto& obj : proceduralObjects_) {
+            pbrRenderer_->Render(...);
+        }
+
+        // Skybox last
+        envMapRenderer_->Render(...);
+    }
+};
+```
+
+**What works:**
+- Depth sorting / occlusion between both systems
+- Objects intersecting each other
+- Shared camera, lights, and IBL environment
+
+**What doesn't work (yet):**
+- Shadows cast between the two systems
+- Reflections/SSR between objects from different renderers
+
+**Proposed API:**
+```cpp
+auto scene = std::make_unique<Scene3D>();
+
+// Load GLTF models
+int robotId = scene->loadModel(ctx, "robot.gltf");
+scene->setModelTransform(robotId, robotTransform);
+
+// Add procedural geometry
+Mesh floor;
+floor.create(ctx.device(), MeshUtils::createPlane(10, 10));
+int floorId = scene->addMesh(&floor, floorTransform);
+scene->getMesh(floorId)->material = &concreteMaterial;
+
+// Shared lighting
+scene->addLight(Light3D::directional(glm::vec3(-1, -1, -1), 3.0f));
+scene->setEnvironment(iblEnv.get());
+
+// Single process call renders everything
+scene->process(ctx);
+```
+
 ---
 
 ### Procedural Geometry

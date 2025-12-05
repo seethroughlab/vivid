@@ -5,3 +5,5 @@
 [x] Currently, on MacOS, the runtime is compiled into an app package, which makes it confusing to run it from the command line. I believe interacting with it CLI is going to be the most common way, so I think it would make more sense to hav eit be a regular executable, not in an app bundle. What are the advantages and disadvantages of doing this?
 
 **Decision:** Changed to regular executable. Removed `MACOSX_BUNDLE` from CMakeLists.txt. The vivid runtime is now at `build/runtime/vivid` instead of `build/runtime/vivid.app/Contents/MacOS/vivid`. Assets are copied alongside the executable.
+
+[ ] Does Diligent have any kind of Particle System implementation that we can use?
