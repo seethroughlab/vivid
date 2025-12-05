@@ -1,4 +1,4 @@
-// Chain Visualizer Implementation
+// Chain Visualizer Implementation - Node Graph with imnodes
 
 #include "vivid/chain_visualizer.h"
 #include "vivid/operator.h"
@@ -6,6 +6,7 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <ImGuiImplDiligent.hpp>
+#include <imnodes.h>
 
 #include <SwapChain.h>
 #include <DeviceContext.h>
@@ -15,6 +16,8 @@
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <unordered_map>
+#include <vector>
+#include <algorithm>
 
 namespace vivid {
 
@@ -23,8 +26,12 @@ namespace {
     std::unique_ptr<Diligent::ImGuiImplDiligent> g_imguiRenderer;
     bool g_imguiInitialized = false;
 
-    // Texture ID cache for operator output thumbnails
-    std::unordered_map<Diligent::ITextureView*, ImTextureID> g_textureCache;
+    // Attribute ID scheme:
+    // - Output attribute: nodeId * 100
+    // - Input attribute N: nodeId * 100 + N + 1
+    inline int outputAttrId(int nodeId) { return nodeId * 100; }
+    inline int inputAttrId(int nodeId, int inputIndex) { return nodeId * 100 + inputIndex + 1; }
+    inline int nodeIdFromAttr(int attrId) { return attrId / 100; }
 }
 
 ChainVisualizer::~ChainVisualizer() {
@@ -42,40 +49,60 @@ void ChainVisualizer::init(Context& ctx) {
         g_imguiInitialized = false;  // Not our responsibility to clean up
         initialized_ = true;
         std::cout << "[ChainVisualizer] Using existing ImGui context" << std::endl;
-        return;
+    } else {
+        // Initialize ImGui ourselves
+        auto* swapChain = ctx.swapChain();
+        if (!swapChain) {
+            std::cerr << "[ChainVisualizer] No swap chain available" << std::endl;
+            return;
+        }
+
+        Diligent::ImGuiDiligentCreateInfo ci;
+        ci.pDevice = ctx.device();
+        const auto& scDesc = swapChain->GetDesc();
+        ci.BackBufferFmt = scDesc.ColorBufferFormat;
+        ci.DepthBufferFmt = scDesc.DepthBufferFormat;
+
+        g_imguiRenderer = std::make_unique<Diligent::ImGuiImplDiligent>(ci);
+
+        ImGuiIO& io = ImGui::GetIO();
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+
+        ImGui::StyleColorsDark();
+
+        GLFWwindow* window = ctx.window();
+        if (!window) {
+            std::cerr << "[ChainVisualizer] No GLFW window available" << std::endl;
+            g_imguiRenderer.reset();
+            return;
+        }
+        ImGui_ImplGlfw_InitForOther(window, true);
+
+        g_imguiInitialized = true;
+        initialized_ = true;
+        std::cout << "[ChainVisualizer] Initialized with new ImGui context" << std::endl;
     }
 
-    // Initialize ImGui ourselves
-    auto* swapChain = ctx.swapChain();
-    if (!swapChain) {
-        std::cerr << "[ChainVisualizer] No swap chain available" << std::endl;
-        return;
-    }
+    // Initialize imnodes
+    ImNodes::CreateContext();
+    ImNodes::StyleColorsDark();
 
-    Diligent::ImGuiDiligentCreateInfo ci;
-    ci.pDevice = ctx.device();
-    const auto& scDesc = swapChain->GetDesc();
-    ci.BackBufferFmt = scDesc.ColorBufferFormat;
-    ci.DepthBufferFmt = scDesc.DepthBufferFormat;
+    // Configure imnodes style
+    ImNodesStyle& style = ImNodes::GetStyle();
+    style.NodeCornerRounding = 4.0f;
+    style.NodePadding = ImVec2(8.0f, 8.0f);
+    style.NodeBorderThickness = 1.0f;
+    style.LinkThickness = 3.0f;
+    style.LinkLineSegmentsPerLength = 0.1f;
+    style.PinCircleRadius = 4.0f;
+    style.PinOffset = 0.0f;
 
-    g_imguiRenderer = std::make_unique<Diligent::ImGuiImplDiligent>(ci);
+    // Make links more visible
+    ImNodes::PushColorStyle(ImNodesCol_Link, IM_COL32(100, 180, 255, 255));
+    ImNodes::PushColorStyle(ImNodesCol_LinkHovered, IM_COL32(150, 200, 255, 255));
+    ImNodes::PushColorStyle(ImNodesCol_LinkSelected, IM_COL32(200, 220, 255, 255));
 
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
-
-    ImGui::StyleColorsDark();
-
-    GLFWwindow* window = ctx.window();
-    if (!window) {
-        std::cerr << "[ChainVisualizer] No GLFW window available" << std::endl;
-        g_imguiRenderer.reset();
-        return;
-    }
-    ImGui_ImplGlfw_InitForOther(window, true);
-
-    g_imguiInitialized = true;
-    initialized_ = true;
-    std::cout << "[ChainVisualizer] Initialized with new ImGui context" << std::endl;
+    imnodesInitialized_ = true;
 }
 
 void ChainVisualizer::shutdown() {
@@ -83,7 +110,13 @@ void ChainVisualizer::shutdown() {
         return;
     }
 
-    g_textureCache.clear();
+    if (imnodesInitialized_) {
+        ImNodes::PopColorStyle();  // LinkSelected
+        ImNodes::PopColorStyle();  // LinkHovered
+        ImNodes::PopColorStyle();  // Link
+        ImNodes::DestroyContext();
+        imnodesInitialized_ = false;
+    }
 
     if (g_imguiInitialized) {
         ImGui_ImplGlfw_Shutdown();
@@ -143,34 +176,8 @@ void ChainVisualizer::render(Context& ctx) {
         return;
     }
 
-    const auto& operators = ctx.registeredOperators();
-    if (operators.empty()) {
-        // Still render a minimal window to show status
-        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(windowWidth_, 100), ImGuiCond_FirstUseEver);
-
-        if (ImGui::Begin("Chain Visualizer", &visible_)) {
-            ImGui::TextWrapped("No operators registered.");
-            ImGui::TextWrapped("Call ctx.registerOperator() in setup()");
-        }
-        ImGui::End();
-    } else {
-        // Main visualization window
-        ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-        float estimatedHeight = 120.0f + operators.size() * (thumbnailSize_ + nodeSpacing_);
-        ImGui::SetNextWindowSize(ImVec2(windowWidth_, std::min(estimatedHeight, 600.0f)), ImGuiCond_FirstUseEver);
-
-        if (ImGui::Begin("Chain Visualizer", &visible_)) {
-            ImGui::Text("Operators: %zu", operators.size());
-            ImGui::Separator();
-
-            // Render each operator as a node
-            for (size_t i = 0; i < operators.size(); ++i) {
-                renderOperatorNode(ctx, operators[i], static_cast<int>(i));
-            }
-        }
-        ImGui::End();
-    }
+    // Render the node graph
+    renderNodeGraph(ctx);
 
     // Render ImGui if we own the context
     if (g_imguiInitialized && g_imguiRenderer) {
@@ -185,113 +192,196 @@ void ChainVisualizer::render(Context& ctx) {
     }
 }
 
-void ChainVisualizer::renderOperatorNode(Context& ctx, const OperatorInfo& info, int index) {
-    if (!info.op) {
-        return;
+void ChainVisualizer::buildGraphLayout(Context& ctx) {
+    const auto& operators = ctx.registeredOperators();
+    if (operators.empty()) return;
+
+    // Build operator -> node ID mapping
+    std::unordered_map<Operator*, int> opToNodeId;
+    for (size_t i = 0; i < operators.size(); ++i) {
+        opToNodeId[operators[i].op] = static_cast<int>(i);
     }
 
-    ImGui::PushID(index);
+    // Calculate depth for each operator (distance from sources)
+    std::vector<int> depths(operators.size(), 0);
 
-    // Node header with operator type and name
-    std::string header = info.op->typeName();
-    if (!info.name.empty() && info.name != header) {
-        header = info.name + " (" + info.op->typeName() + ")";
+    // Find max depth for each operator by traversing inputs
+    for (size_t i = 0; i < operators.size(); ++i) {
+        Operator* op = operators[i].op;
+        int maxInputDepth = -1;
+
+        for (int inputIdx = 0; inputIdx < 4; ++inputIdx) {
+            Operator* input = op->getInput(inputIdx);
+            if (input && opToNodeId.count(input)) {
+                int inputNodeId = opToNodeId[input];
+                maxInputDepth = std::max(maxInputDepth, depths[inputNodeId]);
+            }
+        }
+
+        depths[i] = maxInputDepth + 1;
     }
 
-    bool nodeOpen = ImGui::CollapsingHeader(header.c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+    // Group operators by depth
+    int maxDepth = *std::max_element(depths.begin(), depths.end());
+    std::vector<std::vector<int>> depthGroups(maxDepth + 1);
+    for (size_t i = 0; i < operators.size(); ++i) {
+        depthGroups[depths[i]].push_back(static_cast<int>(i));
+    }
 
-    if (nodeOpen) {
-        ImGui::Indent();
+    // Position nodes: left-to-right by depth, top-to-bottom within each depth
+    float nodeWidth = static_cast<float>(thumbnailSize_) + 40.0f;
+    float nodeHeight = static_cast<float>(thumbnailSize_) + 80.0f;
+    float horizontalSpacing = 80.0f;
+    float verticalSpacing = 40.0f;
 
-        // Show thumbnail if this is a texture operator
-        if (info.op->outputKind() == OutputKind::Texture) {
-            auto* srv = info.op->getOutputSRV();
-            if (srv) {
-                auto* tex = srv->GetTexture();
-                float displayWidth = static_cast<float>(thumbnailSize_);
-                float displayHeight = static_cast<float>(thumbnailSize_);
+    for (int depth = 0; depth <= maxDepth; ++depth) {
+        float x = 50.0f + depth * (nodeWidth + horizontalSpacing);
+        float startY = 50.0f;
 
-                // Calculate correct aspect ratio
-                if (tex) {
-                    const auto& desc = tex->GetDesc();
-                    float aspect = static_cast<float>(desc.Width) / static_cast<float>(desc.Height);
-                    if (aspect > 1.0f) {
-                        // Wider than tall - fit to width
-                        displayHeight = displayWidth / aspect;
+        for (size_t i = 0; i < depthGroups[depth].size(); ++i) {
+            int nodeId = depthGroups[depth][i];
+            float y = startY + i * (nodeHeight + verticalSpacing);
+            ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(x, y));
+        }
+    }
+
+    needsLayout_ = false;
+    lastOperatorCount_ = operators.size();
+}
+
+void ChainVisualizer::renderNodeGraph(Context& ctx) {
+    const auto& operators = ctx.registeredOperators();
+
+    // Check if we need to relayout (operator count changed)
+    if (operators.size() != lastOperatorCount_) {
+        needsLayout_ = true;
+    }
+
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(800, 600), ImGuiCond_FirstUseEver);
+
+    if (ImGui::Begin("Chain Visualizer", &visible_, ImGuiWindowFlags_NoScrollbar)) {
+        if (operators.empty()) {
+            ImGui::TextWrapped("No operators registered.");
+            ImGui::TextWrapped("Call ctx.registerOperator() in setup()");
+        } else {
+            // Build operator -> node ID mapping for links
+            std::unordered_map<Operator*, int> opToNodeId;
+            for (size_t i = 0; i < operators.size(); ++i) {
+                opToNodeId[operators[i].op] = static_cast<int>(i);
+            }
+
+            ImNodes::BeginNodeEditor();
+
+            // Auto-layout on first render or when operators change
+            if (needsLayout_) {
+                buildGraphLayout(ctx);
+            }
+
+            // Render each operator as a node
+            for (size_t i = 0; i < operators.size(); ++i) {
+                const OperatorInfo& info = operators[i];
+                int nodeId = static_cast<int>(i);
+
+                if (!info.op) continue;
+
+                ImNodes::BeginNode(nodeId);
+
+                // Title bar
+                ImNodes::BeginNodeTitleBar();
+                std::string title = info.name.empty() ? info.op->typeName() : info.name;
+                ImGui::TextUnformatted(title.c_str());
+                ImNodes::EndNodeTitleBar();
+
+                // Count actual inputs
+                int inputCount = 0;
+                for (int inputIdx = 0; inputIdx < 4; ++inputIdx) {
+                    if (info.op->getInput(inputIdx)) {
+                        inputCount = inputIdx + 1;
+                    }
+                }
+                // Show at least 1 input pin for operators that can have inputs
+                if (inputCount == 0 && info.op->typeName() != "Noise" &&
+                    info.op->typeName() != "SolidColor" &&
+                    info.op->typeName() != "Gradient" &&
+                    info.op->typeName() != "Shape") {
+                    inputCount = 1;
+                }
+
+                // Input attributes (pins on left)
+                for (int inputIdx = 0; inputIdx < inputCount; ++inputIdx) {
+                    ImNodes::BeginInputAttribute(inputAttrId(nodeId, inputIdx));
+                    if (inputCount > 1) {
+                        ImGui::Text("In %d", inputIdx);
                     } else {
-                        // Taller than wide - fit to height
-                        displayWidth = displayHeight * aspect;
+                        ImGui::Text("In");
+                    }
+                    ImNodes::EndInputAttribute();
+                }
+
+                // Thumbnail
+                if (info.op->outputKind() == OutputKind::Texture) {
+                    auto* srv = info.op->getOutputSRV();
+                    if (srv) {
+                        auto* tex = srv->GetTexture();
+                        float displayWidth = static_cast<float>(thumbnailSize_);
+                        float displayHeight = static_cast<float>(thumbnailSize_);
+
+                        // Calculate correct aspect ratio
+                        if (tex) {
+                            const auto& desc = tex->GetDesc();
+                            float aspect = static_cast<float>(desc.Width) / static_cast<float>(desc.Height);
+                            if (aspect > 1.0f) {
+                                displayHeight = displayWidth / aspect;
+                            } else {
+                                displayWidth = displayHeight * aspect;
+                            }
+                        }
+
+                        ImTextureID texId = reinterpret_cast<ImTextureID>(srv);
+                        ImGui::Image(texId, ImVec2(displayWidth, displayHeight));
+                    } else {
+                        // Placeholder
+                        ImVec2 size(static_cast<float>(thumbnailSize_), static_cast<float>(thumbnailSize_) * 0.5625f);
+                        ImVec2 pos = ImGui::GetCursorScreenPos();
+                        ImGui::GetWindowDrawList()->AddRectFilled(
+                            pos,
+                            ImVec2(pos.x + size.x, pos.y + size.y),
+                            IM_COL32(40, 40, 50, 255)
+                        );
+                        ImGui::Dummy(size);
                     }
                 }
 
-                // Use the texture view pointer as the texture ID for ImGui
-                // ImGuiImplDiligent expects ITextureView* cast to ImTextureID
-                ImTextureID texId = reinterpret_cast<ImTextureID>(srv);
-                ImGui::Image(texId, ImVec2(displayWidth, displayHeight));
+                // Output attribute (pin on right)
+                ImNodes::BeginOutputAttribute(outputAttrId(nodeId));
+                ImGui::Text("Out");
+                ImNodes::EndOutputAttribute();
 
-                // Show texture dimensions on hover
-                if (ImGui::IsItemHovered() && tex) {
-                    const auto& desc = tex->GetDesc();
-                    ImGui::SetTooltip("%s\n%dx%d", info.op->typeName().c_str(),
-                                      desc.Width, desc.Height);
-                }
-            } else {
-                // No output yet - show placeholder
-                ImVec2 size(static_cast<float>(thumbnailSize_), static_cast<float>(thumbnailSize_));
-                ImVec2 pos = ImGui::GetCursorScreenPos();
-                ImGui::GetWindowDrawList()->AddRectFilled(
-                    pos,
-                    ImVec2(pos.x + size.x, pos.y + size.y),
-                    IM_COL32(40, 40, 50, 255)
-                );
-                ImGui::GetWindowDrawList()->AddRect(
-                    pos,
-                    ImVec2(pos.x + size.x, pos.y + size.y),
-                    IM_COL32(80, 80, 100, 255)
-                );
-                ImGui::Dummy(size);
+                ImNodes::EndNode();
             }
-        }
 
-        // Show parameters with current values (read-only)
-        auto paramStrings = info.op->getParamStrings();
-        if (!paramStrings.empty()) {
-            ImGui::TextDisabled("Parameters:");
-            for (const auto& [name, value] : paramStrings) {
-                ImGui::BulletText("%s: %s", name.c_str(), value.c_str());
-            }
-        } else {
-            // Fallback to showing just param names if getParamStrings not implemented
-            auto params = info.op->params();
-            if (!params.empty()) {
-                ImGui::TextDisabled("Parameters:");
-                for (const auto& param : params) {
-                    ImGui::BulletText("%s", param.name.c_str());
+            // Render links
+            int linkId = 0;
+            for (size_t i = 0; i < operators.size(); ++i) {
+                Operator* op = operators[i].op;
+                int destNodeId = static_cast<int>(i);
+
+                for (int inputIdx = 0; inputIdx < 4; ++inputIdx) {
+                    Operator* inputOp = op->getInput(inputIdx);
+                    if (inputOp && opToNodeId.count(inputOp)) {
+                        int sourceNodeId = opToNodeId[inputOp];
+                        ImNodes::Link(linkId++,
+                            outputAttrId(sourceNodeId),
+                            inputAttrId(destNodeId, inputIdx));
+                    }
                 }
             }
-        }
 
-        // Show input connections
-        int inputCount = 0;
-        for (int i = 0; i < 4; ++i) {  // Max 4 inputs
-            if (info.op->getInput(i)) {
-                inputCount++;
-            }
+            ImNodes::EndNodeEditor();
         }
-        if (inputCount > 0) {
-            ImGui::TextDisabled("Inputs: %d", inputCount);
-        }
-
-        ImGui::Unindent();
     }
-
-    ImGui::PopID();
-    ImGui::Spacing();
-}
-
-void ChainVisualizer::renderConnections(Context& ctx) {
-    // TODO: Draw lines between connected operators
-    // This requires knowing the screen positions of each operator node
+    ImGui::End();
 }
 
 void ChainVisualizer::setError(const std::string& errorMessage) {
@@ -363,12 +453,6 @@ void ChainVisualizer::renderErrorOverlay() {
     ImGui::End();
 
     ImGui::PopStyleColor(3);
-
-    // If user closed the window, clear the error display (but keep the error state)
-    if (!open) {
-        // User dismissed - could clear hasError_ here if desired
-        // For now, keep it so it reappears on next error
-    }
 }
 
 } // namespace vivid

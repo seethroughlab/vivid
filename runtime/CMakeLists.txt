@@ -109,6 +109,12 @@ list(APPEND VIVID_SOURCES
     ${IMGUI_BACKENDS_DIR}/imgui_impl_glfw.cpp
 )
 
+# Add imnodes for node graph visualization
+set(IMNODES_DIR "${CMAKE_SOURCE_DIR}/external/imnodes")
+list(APPEND VIVID_SOURCES
+    ${IMNODES_DIR}/imnodes.cpp
+)
+
 # Create executable (regular executable on all platforms for simpler CLI usage)
 add_executable(vivid ${VIVID_HEADERS} ${VIVID_SOURCES})
 
@@ -125,6 +131,8 @@ target_include_directories(vivid
         ${IMGUI_DIR}
         ${IMGUI_BACKENDS_DIR}
         ${DILIGENT_DIR}/DiligentTools/Imgui/interface
+        # imnodes for node graph visualization
+        ${IMNODES_DIR}
 )
 
 # Link libraries

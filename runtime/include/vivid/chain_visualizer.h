@@ -47,16 +47,17 @@ public:
 
 private:
     void renderErrorOverlay();
-    void renderOperatorNode(Context& ctx, const OperatorInfo& info, int index);
-    void renderConnections(Context& ctx);
+    void renderNodeGraph(Context& ctx);
+    void buildGraphLayout(Context& ctx);
 
     bool initialized_ = false;
     bool visible_ = true;
+    bool imnodesInitialized_ = false;
 
-    // Window state
-    float windowWidth_ = 400.0f;
-    float nodeSpacing_ = 80.0f;
-    int thumbnailSize_ = 180;
+    // Node graph state
+    int thumbnailSize_ = 120;
+    bool needsLayout_ = true;
+    size_t lastOperatorCount_ = 0;
 
     // Error display state
     bool hasError_ = false;
