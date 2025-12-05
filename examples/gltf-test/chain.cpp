@@ -113,6 +113,13 @@ void update(Context& ctx) {
 
     lastMousePos = mousePos;
 
+    // Scroll wheel zoom
+    glm::vec2 scroll = ctx.scrollDelta();
+    if (std::abs(scroll.y) > 0.01f) {
+        float zoomFactor = 1.0f - scroll.y * 0.1f;
+        gltfViewer->camera().orbitZoom(zoomFactor);
+    }
+
     // Render - GLTFViewer renders directly to the swap chain
     gltfViewer->process(ctx);
 }

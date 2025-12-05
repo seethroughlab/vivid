@@ -5,6 +5,7 @@
 #include <memory>
 #include <glm/glm.hpp>
 
+#include "export.h"
 #include "GraphicsTypes.h"
 
 // Forward declarations
@@ -79,7 +80,7 @@ inline ParamDecl colorParam(const std::string& name, float r = 1, float g = 1, f
 }
 
 /// Base class for all operators
-class Operator {
+class VIVID_API Operator {
 public:
     virtual ~Operator() = default;
 
@@ -149,7 +150,7 @@ protected:
 
 /// Base class for 2D texture effect operators
 /// Provides common infrastructure for fullscreen shader effects
-class TextureOperator : public Operator {
+class VIVID_API TextureOperator : public Operator {
 public:
     virtual ~TextureOperator();
 

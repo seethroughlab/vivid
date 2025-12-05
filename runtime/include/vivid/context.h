@@ -3,6 +3,7 @@
 #include <memory>
 #include <string>
 #include <glm/glm.hpp>
+#include "export.h"
 
 // Forward declarations for Diligent types
 namespace Diligent {
@@ -25,7 +26,7 @@ class ShaderUtils;
 class FullscreenQuad;
 
 /// Context provides access to the rendering system and frame state
-class Context {
+class VIVID_API Context {
 public:
     Context();
     ~Context();

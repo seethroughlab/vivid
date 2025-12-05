@@ -129,6 +129,10 @@ private:
     std::string output_;
     std::string lastError_;
 
+    // MSVC-specific paths (Windows only)
+    std::string vcToolsPath_;
+    std::string vsInstallPath_;
+
     std::string buildCompileCommand(const fs::path& source,
                                     const fs::path& output);
 };

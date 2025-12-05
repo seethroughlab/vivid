@@ -2,6 +2,7 @@
 
 #include <string>
 #include <glm/glm.hpp>
+#include "export.h"
 
 namespace Diligent {
     struct ITexture;
@@ -14,7 +15,7 @@ namespace vivid {
 class Context;
 
 /// PBR Material with texture maps
-class PBRMaterial {
+class VIVID_API PBRMaterial {
 public:
     PBRMaterial() = default;
     ~PBRMaterial();

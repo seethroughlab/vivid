@@ -6,6 +6,7 @@
 #include <unordered_map>
 #include <typeindex>
 #include <functional>
+#include "export.h"
 
 namespace vivid {
 
@@ -13,7 +14,7 @@ class Operator;
 class Context;
 
 /// Chain manages operator instances and their connections
-class Chain {
+class VIVID_API Chain {
 public:
     Chain();
     ~Chain();

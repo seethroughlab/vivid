@@ -22,8 +22,15 @@ constexpr int VERSION_PATCH = 0;
 //   void setup(vivid::Context& ctx) { /* called once on load */ }
 //   void update(vivid::Context& ctx) { /* called every frame */ }
 //   VIVID_CHAIN(setup, update)
+
+#if defined(_WIN32) || defined(_WIN64)
+    #define VIVID_EXPORT __declspec(dllexport)
+#else
+    #define VIVID_EXPORT __attribute__((visibility("default")))
+#endif
+
 #define VIVID_CHAIN(setup_fn, update_fn) \
     extern "C" { \
-        void vivid_setup(vivid::Context& ctx) { setup_fn(ctx); } \
-        void vivid_update(vivid::Context& ctx) { update_fn(ctx); } \
+        VIVID_EXPORT void vivid_setup(vivid::Context& ctx) { setup_fn(ctx); } \
+        VIVID_EXPORT void vivid_update(vivid::Context& ctx) { update_fn(ctx); } \
     }

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "vivid/operator.h"
+#include "vivid/export.h"
 #include "vivid/mesh.h"
 #include "vivid/camera.h"
 #include <glm/glm.hpp>
@@ -18,7 +19,7 @@ class PBRMaterial;
 class IBLEnvironment;
 
 /// A 3D object in the scene
-struct Object3D {
+struct VIVID_API Object3D {
     Mesh* mesh = nullptr;
     PBRMaterial* material = nullptr;  // Optional PBR material with textures
     glm::mat4 transform{1.0f};
@@ -29,7 +30,7 @@ struct Object3D {
 };
 
 /// A light in the scene
-struct Light3D {
+struct VIVID_API Light3D {
     enum class Type { Directional, Point, Spot };
 
     Type type = Type::Directional;
@@ -81,7 +82,7 @@ struct Light3D {
 };
 
 /// 3D rendering operator using DiligentFX PBR_Renderer
-class Render3D : public Operator {
+class VIVID_API Render3D : public Operator {
 public:
     Render3D();
     ~Render3D() override;

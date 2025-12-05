@@ -3,6 +3,7 @@
 #include <string>
 #include <memory>
 #include <glm/glm.hpp>
+#include "export.h"
 
 // Forward declarations
 namespace Diligent {
@@ -19,7 +20,7 @@ namespace vivid {
 class Context;
 
 /// GLTF Model wrapper for loading and managing 3D models
-class GLTFModel {
+class VIVID_API GLTFModel {
 public:
     GLTFModel();
     ~GLTFModel();

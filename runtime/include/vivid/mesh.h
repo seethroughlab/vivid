@@ -3,6 +3,7 @@
 #include <vector>
 #include <memory>
 #include <glm/glm.hpp>
+#include "export.h"
 
 // Forward declarations for Diligent types
 namespace Diligent {
@@ -14,7 +15,7 @@ namespace vivid {
 
 /// Vertex structure for 3D rendering
 /// Layout matches DiligentFX PBR_Renderer expectations
-struct Vertex3D {
+struct VIVID_API Vertex3D {
     glm::vec3 position;
     glm::vec3 normal;
     glm::vec2 uv;
@@ -26,7 +27,7 @@ struct Vertex3D {
 };
 
 /// Mesh data container
-struct MeshData {
+struct VIVID_API MeshData {
     std::vector<Vertex3D> vertices;
     std::vector<uint32_t> indices;
 
@@ -39,7 +40,7 @@ struct MeshData {
 };
 
 /// GPU mesh with vertex and index buffers
-class Mesh {
+class VIVID_API Mesh {
 public:
     Mesh() = default;
     ~Mesh();
@@ -81,42 +82,42 @@ private:
 namespace MeshUtils {
 
 /// Create a unit cube centered at origin (side length 1)
-MeshData createCube();
+VIVID_API MeshData createCube();
 
 /// Create a UV sphere
 /// @param segments Number of horizontal segments (longitude)
 /// @param rings Number of vertical segments (latitude)
 /// @param radius Sphere radius
-MeshData createSphere(int segments = 32, int rings = 16, float radius = 0.5f);
+VIVID_API MeshData createSphere(int segments = 32, int rings = 16, float radius = 0.5f);
 
 /// Create a plane in XZ space
 /// @param width Width of the plane
 /// @param depth Depth of the plane
 /// @param segmentsX Number of segments along X
 /// @param segmentsZ Number of segments along Z
-MeshData createPlane(float width = 1.0f, float depth = 1.0f, int segmentsX = 1, int segmentsZ = 1);
+VIVID_API MeshData createPlane(float width = 1.0f, float depth = 1.0f, int segmentsX = 1, int segmentsZ = 1);
 
 /// Create a cylinder
 /// @param segments Number of radial segments
 /// @param radius Cylinder radius
 /// @param height Cylinder height
-MeshData createCylinder(int segments = 32, float radius = 0.5f, float height = 1.0f);
+VIVID_API MeshData createCylinder(int segments = 32, float radius = 0.5f, float height = 1.0f);
 
 /// Create a torus (donut)
 /// @param segments Number of segments around the tube
 /// @param rings Number of segments around the torus
 /// @param radius Major radius (center to tube center)
 /// @param tubeRadius Minor radius (tube thickness)
-MeshData createTorus(int segments = 32, int rings = 16, float radius = 0.5f, float tubeRadius = 0.2f);
+VIVID_API MeshData createTorus(int segments = 32, int rings = 16, float radius = 0.5f, float tubeRadius = 0.2f);
 
 /// Create a cone
 /// @param segments Number of radial segments
 /// @param radius Base radius
 /// @param height Cone height
-MeshData createCone(int segments = 32, float radius = 0.5f, float height = 1.0f);
+VIVID_API MeshData createCone(int segments = 32, float radius = 0.5f, float height = 1.0f);
 
 /// Calculate tangent vectors for a mesh
-void calculateTangents(MeshData& mesh);
+VIVID_API void calculateTangents(MeshData& mesh);
 
 } // namespace MeshUtils
 

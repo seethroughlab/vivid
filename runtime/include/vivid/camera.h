@@ -3,11 +3,12 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include "export.h"
 
 namespace vivid {
 
 /// 3D camera with perspective projection and orbit controls
-class Camera3D {
+class VIVID_API Camera3D {
 public:
     Camera3D();
 

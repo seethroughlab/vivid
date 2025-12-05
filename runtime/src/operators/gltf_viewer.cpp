@@ -229,7 +229,8 @@ void GLTFViewer::init(Context& ctx) {
                        "PBR frame attribs buffer", &impl_->frameAttribsCB);
 
     // Create camera attribs constant buffer for skybox renderer
-    CreateUniformBuffer(ctx.device(), sizeof(HLSL::CameraAttribs),
+    // Shader expects current + previous camera attribs (2x size)
+    CreateUniformBuffer(ctx.device(), sizeof(HLSL::CameraAttribs) * 2,
                        "Camera attribs buffer", &impl_->cameraAttribsCB);
 
     // Transition buffers to constant buffer state
@@ -422,8 +423,11 @@ void GLTFViewer::process(Context& ctx) {
     // Render skybox AFTER model (renders only where depth == 1.0, i.e. no geometry)
     if (hasEnvironment_ && impl_->envMapRenderer) {
         // Update camera attribs constant buffer for skybox
+        // Buffer contains current + previous camera attribs (we use same for both)
         {
-            MapHelper<HLSL::CameraAttribs> CamAttribs{ctx.immediateContext(), impl_->cameraAttribsCB, MAP_WRITE, MAP_FLAG_DISCARD};
+            MapHelper<Uint8> CamData{ctx.immediateContext(), impl_->cameraAttribsCB, MAP_WRITE, MAP_FLAG_DISCARD};
+            HLSL::CameraAttribs* CamAttribs = reinterpret_cast<HLSL::CameraAttribs*>(static_cast<Uint8*>(CamData));
+            memset(CamAttribs, 0, sizeof(HLSL::CameraAttribs));
 
             // Convert glm matrices to Diligent float4x4 (transpose for row-major)
             for (int i = 0; i < 4; i++) {
@@ -466,6 +470,10 @@ void GLTFViewer::process(Context& ctx) {
             CamAttribs->fFarPlaneZ = 100.0f;
             CamAttribs->fNearPlaneDepth = 0.0f;
             CamAttribs->fFarPlaneDepth = 1.0f;
+
+            // Copy to previous camera slot (same data, no motion)
+            HLSL::CameraAttribs* PrevCamAttribs = CamAttribs + 1;
+            memcpy(PrevCamAttribs, CamAttribs, sizeof(HLSL::CameraAttribs));
         }
 
         // Setup env map render attributes

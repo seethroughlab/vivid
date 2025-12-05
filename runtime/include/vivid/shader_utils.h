@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "GraphicsTypes.h"
+#include "export.h"
 
 // Diligent forward declarations
 namespace Diligent {
@@ -19,7 +20,7 @@ namespace Diligent {
 namespace vivid {
 
 /// Utility class for shader operations
-class ShaderUtils {
+class VIVID_API ShaderUtils {
 public:
     ShaderUtils(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context);
     ~ShaderUtils();
@@ -73,7 +74,7 @@ private:
 };
 
 /// Manages fullscreen quad rendering for 2D effects
-class FullscreenQuad {
+class VIVID_API FullscreenQuad {
 public:
     FullscreenQuad(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context);
     ~FullscreenQuad();

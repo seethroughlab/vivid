@@ -1,12 +1,15 @@
 #pragma once
 
 #include "vivid/operator.h"
+#include "vivid/export.h"
 
 namespace vivid {
 
 /// Outputs a texture to the screen (swap chain)
-class Output : public Operator {
+class VIVID_API Output : public Operator {
 public:
+    Output() = default;
+
     std::string typeName() const override { return "Output"; }
 
     void init(Context& ctx) override;

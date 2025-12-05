@@ -6,6 +6,7 @@
 
 // Include Diligent types for TEXTURE_FORMAT
 #include "GraphicsTypes.h"
+#include "export.h"
 
 // Forward declarations for Diligent types
 namespace Diligent {
@@ -18,7 +19,7 @@ namespace Diligent {
 namespace vivid {
 
 /// Managed texture with automatic resource management
-struct ManagedTexture {
+struct VIVID_API ManagedTexture {
     Diligent::ITexture* texture = nullptr;
     Diligent::ITextureView* srv = nullptr;  // Shader resource view
     Diligent::ITextureView* rtv = nullptr;  // Render target view (if applicable)
@@ -30,7 +31,7 @@ struct ManagedTexture {
 };
 
 /// Utility class for texture operations
-class TextureUtils {
+class VIVID_API TextureUtils {
 public:
     TextureUtils(Diligent::IRenderDevice* device, Diligent::IDeviceContext* context);
     ~TextureUtils();

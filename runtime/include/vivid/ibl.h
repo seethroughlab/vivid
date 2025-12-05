@@ -2,6 +2,7 @@
 
 #include <string>
 #include <memory>
+#include "export.h"
 
 namespace Diligent {
     struct ITexture;
@@ -14,7 +15,7 @@ namespace vivid {
 class Context;
 
 /// Image-Based Lighting environment using DiligentFX PBR_Renderer
-class IBLEnvironment {
+class VIVID_API IBLEnvironment {
 public:
     IBLEnvironment();
     ~IBLEnvironment();
