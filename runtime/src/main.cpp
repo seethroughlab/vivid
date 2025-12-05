@@ -9,6 +9,7 @@
 #include "vivid/hot_reload.h"
 #include "vivid/gltf_model.h"
 #include "vivid/preview_server.h"
+#include "vivid/chain_visualizer.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <chrono>
@@ -1037,6 +1038,10 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPor
 
     previewServer.start();
 
+    // Initialize chain visualizer
+    vivid::ChainVisualizer visualizer;
+    visualizer.init(ctx);
+
     // Call setup if available
     bool needsSetup = true;
     bool lastCompileSuccess = true;
@@ -1055,6 +1060,7 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPor
 
             // Check for extension reload request
             if (needsReload) {
+                ctx.clearRegisteredOperators();  // Clear before reload
                 hotReload.reload();
                 needsReload = false;
                 needsSetup = true;
@@ -1070,6 +1076,7 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPor
             }
 
             if (hotReload.poll()) {
+                ctx.clearRegisteredOperators();  // Clear before reload
                 needsSetup = true;
 
                 // Send compile status to VS Code extension
@@ -1083,6 +1090,11 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPor
             }
         }
 
+        // Toggle visualizer with 'V' key
+        if (ctx.wasKeyPressed(GLFW_KEY_V)) {
+            visualizer.toggleVisible();
+        }
+
         // Call setup after load/reload
         if (needsSetup && hotReload.isReady()) {
             if (auto setup = hotReload.setup()) {
@@ -1092,6 +1104,9 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPor
         }
 
         ctx.beginFrame();
+
+        // Begin visualizer frame (ImGui new frame)
+        visualizer.beginFrame(ctx);
 
         // Call update every frame
         if (hotReload.isReady()) {
@@ -1103,9 +1118,13 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPor
             // TODO: Render error overlay
         }
 
+        // Render chain visualizer overlay
+        visualizer.render(ctx);
+
         ctx.endFrame();
     }
 
+    visualizer.shutdown();
     previewServer.stop();
 }
 

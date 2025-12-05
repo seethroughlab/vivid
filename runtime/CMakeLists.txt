@@ -20,6 +20,7 @@ set(VIVID_HEADERS
     include/vivid/hot_reload.h
     # Phase 7: VS Code Extension
     include/vivid/preview_server.h
+    include/vivid/chain_visualizer.h
     # Phase 2: Core operators
     include/vivid/operators/solid_color.h
     include/vivid/operators/noise.h
@@ -62,6 +63,7 @@ set(VIVID_SOURCES
     src/addon_registry.cpp
     # Phase 7: VS Code Extension
     src/preview_server.cpp
+    src/chain_visualizer.cpp
     # Phase 2: Core operators
     src/operators/solid_color.cpp
     src/operators/noise.cpp
@@ -91,6 +93,10 @@ if(PLATFORM_MACOS)
     list(APPEND VIVID_SOURCES src/macos_helpers.mm)
 endif()
 
+# Add ImGui GLFW implementation for chain visualizer
+set(IMGUI_BACKENDS_DIR "${CMAKE_SOURCE_DIR}/external/DiligentEngine/DiligentTools/ThirdParty/imgui/backends")
+list(APPEND VIVID_SOURCES ${IMGUI_BACKENDS_DIR}/imgui_impl_glfw.cpp)
+
 # Create executable
 if(PLATFORM_MACOS)
     add_executable(vivid MACOSX_BUNDLE ${VIVID_HEADERS} ${VIVID_SOURCES})
@@ -98,12 +104,21 @@ else()
     add_executable(vivid ${VIVID_HEADERS} ${VIVID_SOURCES})
 endif()
 
+# ImGui directories (for chain visualizer)
+set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/external/DiligentEngine/DiligentTools/ThirdParty/imgui")
+set(IMGUI_BACKENDS_DIR "${IMGUI_DIR}/backends")
+set(DILIGENT_DIR "${CMAKE_SOURCE_DIR}/external/DiligentEngine")
+
 # Include directories
 target_include_directories(vivid
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        # ImGui includes (for chain visualizer)
+        ${IMGUI_DIR}
+        ${IMGUI_BACKENDS_DIR}
+        ${DILIGENT_DIR}/DiligentTools/Imgui/interface
 )
 
 # Link libraries
@@ -113,6 +128,7 @@ target_link_libraries(vivid
         Diligent-GraphicsTools
         Diligent-TextureLoader
         Diligent-AssetLoader
+        Diligent-Imgui  # For chain visualization
         glfw
         glm::glm
         # Phase 7: VS Code Extension

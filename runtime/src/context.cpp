@@ -361,4 +361,8 @@ bool Context::isKeyDown(int key) const {
     return false;
 }
 
+void Context::registerOperator(const std::string& name, Operator* op) {
+    operators_.push_back({name, op});
+}
+
 } // namespace vivid

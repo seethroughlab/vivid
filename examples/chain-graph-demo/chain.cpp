@@ -139,8 +139,7 @@ void setup(Context& ctx) {
     noise->init(ctx);
     noise->scale(300.0f)        // Fine grain
         .octaves(1)
-        .color(glm::vec3(1.0f, 1.0f, 1.0f))
-        .backgroundColor(glm::vec4(0.5f, 0.5f, 0.5f, 0.0f));
+        .speed(60.0f);          // Fast animation for grain effect
 
     // Vignette shape (dark corners)
     vignette = std::make_unique<Shape>();
@@ -167,9 +166,20 @@ void setup(Context& ctx) {
     output->init(ctx);
     output->setInput(composite.get());
 
+    // Register operators for visualization (press 'V' to toggle)
+    ctx.registerOperator("render3d", render3d.get());
+    ctx.registerOperator("hsv", hsv.get());
+    ctx.registerOperator("chromaAberr", chromaAberr.get());
+    ctx.registerOperator("blur", blur.get());
+    ctx.registerOperator("noise", noise.get());
+    ctx.registerOperator("vignette", vignette.get());
+    ctx.registerOperator("composite", composite.get());
+    ctx.registerOperator("output", output.get());
+
     initialized = true;
 
     std::cout << "[Chain Graph Demo] Chain initialized!" << std::endl;
+    std::cout << "  Press 'V' to toggle chain visualization" << std::endl;
     std::cout << "  Operators in chain:" << std::endl;
     std::cout << "    1. Render3D (3 meshes: cube, sphere, torus)" << std::endl;
     std::cout << "    2. HSV (color grading)" << std::endl;
@@ -227,8 +237,7 @@ void update(Context& ctx) {
     float aberration = 0.002f + std::sin(time * 0.8f) * 0.001f;
     chromaAberr->amount(aberration);
 
-    // Animate noise seed for film grain
-    noise->seed(static_cast<int>(time * 60.0f) % 1000);
+    // Note: Noise is animated via speed parameter set in setup
 
     // ========== PROCESS CHAIN ==========
 

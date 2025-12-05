@@ -2,6 +2,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 #include <glm/glm.hpp>
 #include "export.h"
 
@@ -24,6 +25,13 @@ namespace vivid {
 class TextureUtils;
 class ShaderUtils;
 class FullscreenQuad;
+class Operator;
+
+/// Information about a registered operator for visualization
+struct OperatorInfo {
+    std::string name;
+    Operator* op = nullptr;
+};
 
 /// Context provides access to the rendering system and frame state
 class VIVID_API Context {
@@ -118,6 +126,22 @@ public:
     // --- Window Access (for addons like ImGui) ---
     GLFWwindow* window() const { return window_; }
 
+    // --- Operator Registration (for visualization) ---
+
+    /// Register an operator for chain visualization
+    /// Call this in setup() for each operator you want to visualize
+    void registerOperator(const std::string& name, Operator* op);
+
+    /// Get all registered operators
+    const std::vector<OperatorInfo>& registeredOperators() const { return operators_; }
+
+    /// Clear all registered operators (called automatically on hot reload)
+    void clearRegisteredOperators() { operators_.clear(); }
+
+    /// Enable/disable the chain visualization overlay
+    void setVisualizationEnabled(bool enabled) { visualizationEnabled_ = enabled; }
+    bool isVisualizationEnabled() const { return visualizationEnabled_; }
+
 private:
     // GLFW window
     GLFWwindow* window_ = nullptr;
@@ -149,6 +173,10 @@ private:
     std::unique_ptr<TextureUtils> textureUtils_;
     std::unique_ptr<ShaderUtils> shaderUtils_;
     std::unique_ptr<FullscreenQuad> fullscreenQuad_;
+
+    // Operator registration for visualization
+    std::vector<OperatorInfo> operators_;
+    bool visualizationEnabled_ = true;
 
     // GLFW callbacks
     static void onFramebufferResize(GLFWwindow* window, int width, int height);
