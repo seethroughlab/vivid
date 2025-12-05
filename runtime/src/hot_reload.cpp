@@ -461,11 +461,6 @@ void HotReload::setupAddonCompilerPaths() {
 
 bool HotReload::compileAndLoad() {
     hasCompileError_ = false;
-    setup_ = nullptr;
-    update_ = nullptr;
-
-    // Unload old library
-    library_.unload();
 
     // Scan for addon usage and configure compiler
     setupAddonCompilerPaths();
@@ -482,32 +477,49 @@ bool HotReload::compileAndLoad() {
     std::string libExt = ".so";
 #endif
 
-    libraryPath_ = buildDir / ("chain_" + std::to_string(buildNumber_) + libExt);
+    fs::path newLibraryPath = buildDir / ("chain_" + std::to_string(buildNumber_) + libExt);
 
-    // Compile
-    if (!compiler_.compile(sourcePath_, libraryPath_)) {
+    // Compile - if this fails, keep the old library running
+    if (!compiler_.compile(sourcePath_, newLibraryPath)) {
         hasCompileError_ = true;
         lastError_ = compiler_.lastError();
+        std::cerr << "[Hot Reload] Compilation failed - keeping previous version" << std::endl;
+        // Don't unload old library, don't clear function pointers
         return false;
     }
 
-    // Load
-    if (!library_.load(libraryPath_)) {
-        lastError_ = "Failed to load library: " + library_.lastError();
+    // Load new library into a temporary handle first
+    DynamicLibrary newLibrary;
+    if (!newLibrary.load(newLibraryPath)) {
+        hasCompileError_ = true;
+        lastError_ = "Failed to load library: " + newLibrary.lastError();
+        std::cerr << "[Hot Reload] Load failed - keeping previous version" << std::endl;
+        // Don't unload old library, don't clear function pointers
         return false;
     }
 
-    // Get symbols
-    setup_ = library_.getFunction<SetupFn>("vivid_setup");
-    update_ = library_.getFunction<UpdateFn>("vivid_update");
+    // Get symbols from new library
+    SetupFn newSetup = newLibrary.getFunction<SetupFn>("vivid_setup");
+    UpdateFn newUpdate = newLibrary.getFunction<UpdateFn>("vivid_update");
 
-    if (!setup_) {
+    if (!newSetup) {
         std::cerr << "[Hot Reload] Warning: vivid_setup not found" << std::endl;
     }
-    if (!update_) {
+    if (!newUpdate) {
+        hasCompileError_ = true;
         lastError_ = "vivid_update function not found in library";
+        std::cerr << "[Hot Reload] Symbol lookup failed - keeping previous version" << std::endl;
+        // newLibrary will be unloaded by destructor, old library stays loaded
         return false;
     }
+
+    // SUCCESS: Now it's safe to swap
+    // Unload old library and replace with new one
+    library_.unload();
+    library_ = std::move(newLibrary);
+    libraryPath_ = newLibraryPath;
+    setup_ = newSetup;
+    update_ = newUpdate;
 
     std::cout << "[Hot Reload] Loaded successfully" << std::endl;
 

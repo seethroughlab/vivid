@@ -111,7 +111,7 @@ void setup(Context& ctx) {
     ));
     render3d->addLight(Light3D::point(
         glm::vec3(2.0f, 2.0f, 3.0f),
-        60.0f,
+        20.0f,
         6.0f,
         glm::vec3(0.8f, 0.9f, 1.0f)
     ));
