@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.16)
 
 project(vivid-video CXX OBJCXX)
 
-# Find FFmpeg for HAP codec support
+# Find FFmpeg for codec support (HAP, HEVC, etc.)
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(FFMPEG QUIET
@@ -12,13 +12,14 @@ if(PkgConfig_FOUND)
         libavcodec
         libavutil
         libswscale
+        libswresample
     )
 endif()
 
 if(FFMPEG_FOUND)
-    message(STATUS "[vivid-video] FFmpeg found - HAP codec support enabled")
+    message(STATUS "[vivid-video] FFmpeg found - audio/video codec support enabled")
 else()
-    message(STATUS "[vivid-video] FFmpeg not found - HAP codec support disabled")
+    message(STATUS "[vivid-video] FFmpeg not found - codec support disabled")
 endif()
 
 # Sources (platform-specific)
@@ -30,9 +31,12 @@ if(PLATFORM_MACOS)
     set(VIDEO_ADDON_SOURCES
         src/video_macos.mm
     )
-    # Add HAP decoder if FFmpeg available
+    # Add FFmpeg decoder and audio player if available
     if(FFMPEG_FOUND)
-        list(APPEND VIDEO_ADDON_SOURCES src/hap_decoder.cpp)
+        list(APPEND VIDEO_ADDON_SOURCES
+            src/ffmpeg_decoder.cpp
+            src/audio_player.cpp
+        )
     endif()
 endif()
 
@@ -70,12 +74,14 @@ endif()
 if(PLATFORM_MACOS)
     target_compile_definitions(vivid-video PRIVATE PLATFORM_MACOS=1)
 
-    # Link macOS frameworks for video
+    # Link macOS frameworks for video and audio
     target_link_libraries(vivid-video PRIVATE
         "-framework AVFoundation"
         "-framework CoreMedia"
         "-framework CoreVideo"
         "-framework Foundation"
+        "-framework AudioToolbox"
+        "-framework CoreAudio"
     )
 
     set_target_properties(vivid-video PROPERTIES

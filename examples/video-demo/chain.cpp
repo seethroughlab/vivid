@@ -73,10 +73,10 @@ void setup(Context& ctx) {
     videoDisplay = std::make_unique<VideoDisplay>();
 
     // Find all video files in assets directory
-    videoFiles = findVideoFiles("examples/video-demo/assets");
+    videoFiles = findVideoFiles("assets/videos");
 
     if (videoFiles.empty()) {
-        std::cerr << "[VideoDemo] No video files found in examples/video-demo/assets/" << std::endl;
+        std::cerr << "[VideoDemo] No video files found in assets/videos/" << std::endl;
         std::cerr << "[VideoDemo] Supported formats: .mp4, .mov, .mkv, .avi, .m4v, .webm" << std::endl;
         initialized = false;
         return;

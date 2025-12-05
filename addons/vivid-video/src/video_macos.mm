@@ -106,17 +106,17 @@ struct VideoPlayer::Impl {
         if (FFmpegDecoder::needsFFmpegDecoder(path)) {
             std::cout << "[VideoPlayer] Using FFmpeg decoder" << std::endl;
             ffmpegDecoder = std::make_unique<FFmpegDecoder>();
-            if (hapDecoder->open(ctx, path, loop)) {
+            if (ffmpegDecoder->open(ctx, path, loop)) {
                 isHAP = true;
-                videoWidth = hapDecoder->width();
-                videoHeight = hapDecoder->height();
-                videoDuration = hapDecoder->duration();
-                videoFrameRate = hapDecoder->frameRate();
+                videoWidth = ffmpegDecoder->width();
+                videoHeight = ffmpegDecoder->height();
+                videoDuration = ffmpegDecoder->duration();
+                videoFrameRate = ffmpegDecoder->frameRate();
                 isPlaying_ = true;
                 isFinished_ = false;
                 return true;
             } else {
-                hapDecoder.reset();
+                ffmpegDecoder.reset();
                 std::cerr << "[VideoPlayer] HAP decoder failed, falling back to AVFoundation" << std::endl;
             }
         }
@@ -321,11 +321,11 @@ struct VideoPlayer::Impl {
 
     void update(Context& ctx) {
 #ifdef VIVID_HAS_FFMPEG
-        if (isHAP && hapDecoder) {
-            hapDecoder->update(ctx);
-            currentTime_ = hapDecoder->currentTime();
-            isPlaying_ = hapDecoder->isPlaying();
-            isFinished_ = hapDecoder->isFinished();
+        if (isHAP && ffmpegDecoder) {
+            ffmpegDecoder->update(ctx);
+            currentTime_ = ffmpegDecoder->currentTime();
+            isPlaying_ = ffmpegDecoder->isPlaying();
+            isFinished_ = ffmpegDecoder->isFinished();
             return;
         }
 #endif
@@ -525,10 +525,10 @@ struct VideoPlayer::Impl {
 
     void seek(float seconds) {
 #ifdef VIVID_HAS_FFMPEG
-        if (isHAP && hapDecoder) {
-            hapDecoder->seek(seconds);
-            currentTime_ = hapDecoder->currentTime();
-            isFinished_ = hapDecoder->isFinished();
+        if (isHAP && ffmpegDecoder) {
+            ffmpegDecoder->seek(seconds);
+            currentTime_ = ffmpegDecoder->currentTime();
+            isFinished_ = ffmpegDecoder->isFinished();
             return;
         }
 #endif
@@ -638,8 +638,8 @@ void VideoPlayer::seek(float seconds) {
 
 void VideoPlayer::pause() {
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->hapDecoder) {
-        impl_->hapDecoder->pause();
+    if (impl_->isHAP && impl_->ffmpegDecoder) {
+        impl_->ffmpegDecoder->pause();
         impl_->isPlaying_ = false;
         return;
     }
@@ -649,9 +649,9 @@ void VideoPlayer::pause() {
 
 void VideoPlayer::play() {
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->hapDecoder) {
-        impl_->hapDecoder->play();
-        impl_->isPlaying_ = impl_->hapDecoder->isPlaying();
+    if (impl_->isHAP && impl_->ffmpegDecoder) {
+        impl_->ffmpegDecoder->play();
+        impl_->isPlaying_ = impl_->ffmpegDecoder->isPlaying();
         return;
     }
 #endif
@@ -670,8 +670,8 @@ bool VideoPlayer::isFinished() const {
 
 bool VideoPlayer::isOpen() const {
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->hapDecoder) {
-        return impl_->hapDecoder->isOpen();
+    if (impl_->isHAP && impl_->ffmpegDecoder) {
+        return impl_->ffmpegDecoder->isOpen();
     }
 #endif
     return impl_->asset != nil;
@@ -699,8 +699,8 @@ float VideoPlayer::frameRate() const {
 
 Diligent::ITexture* VideoPlayer::texture() const {
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->hapDecoder) {
-        return impl_->hapDecoder->texture();
+    if (impl_->isHAP && impl_->ffmpegDecoder) {
+        return impl_->ffmpegDecoder->texture();
     }
 #endif
     return impl_->texture;
@@ -708,8 +708,8 @@ Diligent::ITexture* VideoPlayer::texture() const {
 
 Diligent::ITextureView* VideoPlayer::textureView() const {
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->hapDecoder) {
-        return impl_->hapDecoder->textureView();
+    if (impl_->isHAP && impl_->ffmpegDecoder) {
+        return impl_->ffmpegDecoder->textureView();
     }
 #endif
     return impl_->srv;

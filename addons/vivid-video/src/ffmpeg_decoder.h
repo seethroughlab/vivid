@@ -5,6 +5,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <memory>
 
 // Forward declarations for FFmpeg types
 struct AVFormatContext;
@@ -12,6 +13,7 @@ struct AVCodecContext;
 struct AVPacket;
 struct AVFrame;
 struct SwsContext;
+struct SwrContext;
 
 // Forward declarations for Diligent types
 namespace Diligent {
@@ -27,6 +29,8 @@ class Context;
 
 namespace vivid::video {
 
+class AudioPlayer;
+
 /**
  * @brief General-purpose video decoder using FFmpeg.
  *
@@ -34,6 +38,8 @@ namespace vivid::video {
  * including HAP (DXT compressed) and HEVC (which returns NULL image buffers).
  * FFmpeg decodes to standard pixel formats, then we convert to BGRA
  * using swscale and upload to GPU texture.
+ *
+ * Also decodes audio and plays it via AudioPlayer.
  */
 class FFmpegDecoder {
 public:
@@ -78,12 +84,12 @@ public:
     /**
      * @brief Pause playback.
      */
-    void pause() { isPlaying_ = false; }
+    void pause();
 
     /**
      * @brief Resume playback.
      */
-    void play() { if (!isFinished_) isPlaying_ = true; }
+    void play();
 
     /**
      * @brief Check if playing.
@@ -121,6 +127,21 @@ public:
     float frameRate() const { return frameRate_; }
 
     /**
+     * @brief Check if file has audio.
+     */
+    bool hasAudio() const { return audioStreamIndex_ >= 0; }
+
+    /**
+     * @brief Set audio volume (0.0 - 1.0).
+     */
+    void setVolume(float volume);
+
+    /**
+     * @brief Get audio volume.
+     */
+    float getVolume() const;
+
+    /**
      * @brief Get texture.
      */
     Diligent::ITexture* texture() const;
@@ -133,15 +154,30 @@ public:
 private:
     bool decodeFrame();
     void uploadFrame();
+    bool decodeAudioFrame();
+    void processAudioPacket();
 
-    // FFmpeg state
+    // FFmpeg state - Video
     AVFormatContext* formatCtx_ = nullptr;
-    AVCodecContext* codecCtx_ = nullptr;
+    AVCodecContext* videoCodecCtx_ = nullptr;
     AVPacket* packet_ = nullptr;
     AVFrame* frame_ = nullptr;
     SwsContext* swsCtx_ = nullptr;
     int videoStreamIndex_ = -1;
-    double timeBase_ = 0.0;
+    double videoTimeBase_ = 0.0;
+
+    // FFmpeg state - Audio
+    AVCodecContext* audioCodecCtx_ = nullptr;
+    AVFrame* audioFrame_ = nullptr;
+    SwrContext* swrCtx_ = nullptr;
+    int audioStreamIndex_ = -1;
+    double audioTimeBase_ = 0.0;
+    int audioSampleRate_ = 0;
+    int audioChannels_ = 0;
+
+    // Audio player
+    std::unique_ptr<AudioPlayer> audioPlayer_;
+    std::vector<float> audioBuffer_;
 
     // Video info
     int width_ = 0;

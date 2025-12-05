@@ -1,13 +1,16 @@
 #ifdef VIVID_HAS_FFMPEG
 
 #include "ffmpeg_decoder.h"
+#include "audio_player.h"
 #include "vivid/context.h"
 
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/opt.h>
 #include <libswscale/swscale.h>
+#include <libswresample/swresample.h>
 }
 
 // Diligent Engine includes
@@ -89,73 +92,133 @@ bool FFmpegDecoder::open(Context& ctx, const std::string& path, bool loop) {
         return false;
     }
 
-    // Find first video stream
+    // Find video and audio streams
     videoStreamIndex_ = -1;
-    const AVCodec* codec = nullptr;
-    AVCodecID codecId = AV_CODEC_ID_NONE;
+    audioStreamIndex_ = -1;
+    const AVCodec* videoCodec = nullptr;
+    const AVCodec* audioCodec = nullptr;
 
     for (unsigned int i = 0; i < formatCtx_->nb_streams; i++) {
-        if (formatCtx_->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+        AVCodecParameters* codecpar = formatCtx_->streams[i]->codecpar;
+        if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO && videoStreamIndex_ < 0) {
             videoStreamIndex_ = i;
-            codecId = formatCtx_->streams[i]->codecpar->codec_id;
-            codec = avcodec_find_decoder(codecId);
-            break;
+            videoCodec = avcodec_find_decoder(codecpar->codec_id);
+        } else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO && audioStreamIndex_ < 0) {
+            audioStreamIndex_ = i;
+            audioCodec = avcodec_find_decoder(codecpar->codec_id);
         }
     }
 
-    if (videoStreamIndex_ < 0 || !codec) {
-        std::cerr << "[FFmpegDecoder] No video stream found or no decoder for codec "
-                  << avcodec_get_name(codecId) << std::endl;
+    if (videoStreamIndex_ < 0 || !videoCodec) {
+        std::cerr << "[FFmpegDecoder] No video stream found" << std::endl;
         close();
         return false;
     }
 
-    AVStream* stream = formatCtx_->streams[videoStreamIndex_];
-    AVCodecParameters* codecpar = stream->codecpar;
+    // Setup video decoder
+    AVStream* videoStream = formatCtx_->streams[videoStreamIndex_];
+    AVCodecParameters* videoCodecpar = videoStream->codecpar;
 
-    // Create codec context
-    codecCtx_ = avcodec_alloc_context3(codec);
-    if (!codecCtx_) {
-        std::cerr << "[FFmpegDecoder] Failed to allocate codec context" << std::endl;
+    videoCodecCtx_ = avcodec_alloc_context3(videoCodec);
+    if (!videoCodecCtx_) {
+        std::cerr << "[FFmpegDecoder] Failed to allocate video codec context" << std::endl;
         close();
         return false;
     }
 
-    if (avcodec_parameters_to_context(codecCtx_, codecpar) < 0) {
-        std::cerr << "[FFmpegDecoder] Failed to copy codec params" << std::endl;
+    if (avcodec_parameters_to_context(videoCodecCtx_, videoCodecpar) < 0) {
+        std::cerr << "[FFmpegDecoder] Failed to copy video codec params" << std::endl;
         close();
         return false;
     }
 
-    if (avcodec_open2(codecCtx_, codec, nullptr) < 0) {
-        std::cerr << "[FFmpegDecoder] Failed to open codec" << std::endl;
+    if (avcodec_open2(videoCodecCtx_, videoCodec, nullptr) < 0) {
+        std::cerr << "[FFmpegDecoder] Failed to open video codec" << std::endl;
         close();
         return false;
     }
 
     // Store video info
-    width_ = codecpar->width;
-    height_ = codecpar->height;
+    width_ = videoCodecpar->width;
+    height_ = videoCodecpar->height;
     duration_ = (formatCtx_->duration > 0) ?
                 static_cast<float>(formatCtx_->duration) / AV_TIME_BASE : 0.0f;
 
     // Calculate frame rate
-    if (stream->avg_frame_rate.den > 0) {
-        frameRate_ = static_cast<float>(stream->avg_frame_rate.num) /
-                     stream->avg_frame_rate.den;
-    } else if (stream->r_frame_rate.den > 0) {
-        frameRate_ = static_cast<float>(stream->r_frame_rate.num) /
-                     stream->r_frame_rate.den;
+    if (videoStream->avg_frame_rate.den > 0) {
+        frameRate_ = static_cast<float>(videoStream->avg_frame_rate.num) /
+                     videoStream->avg_frame_rate.den;
+    } else if (videoStream->r_frame_rate.den > 0) {
+        frameRate_ = static_cast<float>(videoStream->r_frame_rate.num) /
+                     videoStream->r_frame_rate.den;
     } else {
         frameRate_ = 30.0f;
     }
 
-    // Calculate time base
-    timeBase_ = av_q2d(stream->time_base);
+    videoTimeBase_ = av_q2d(videoStream->time_base);
+
+    // Setup audio decoder if audio stream exists
+    if (audioStreamIndex_ >= 0 && audioCodec) {
+        AVStream* audioStream = formatCtx_->streams[audioStreamIndex_];
+        AVCodecParameters* audioCodecpar = audioStream->codecpar;
+
+        audioCodecCtx_ = avcodec_alloc_context3(audioCodec);
+        if (audioCodecCtx_) {
+            if (avcodec_parameters_to_context(audioCodecCtx_, audioCodecpar) >= 0) {
+                if (avcodec_open2(audioCodecCtx_, audioCodec, nullptr) >= 0) {
+                    audioTimeBase_ = av_q2d(audioStream->time_base);
+                    audioSampleRate_ = audioCodecCtx_->sample_rate;
+                    audioChannels_ = audioCodecCtx_->ch_layout.nb_channels;
+
+                    // Setup resampler to convert to float stereo
+                    swrCtx_ = swr_alloc();
+                    if (swrCtx_) {
+                        AVChannelLayout outLayout = AV_CHANNEL_LAYOUT_STEREO;
+                        av_opt_set_chlayout(swrCtx_, "in_chlayout", &audioCodecCtx_->ch_layout, 0);
+                        av_opt_set_chlayout(swrCtx_, "out_chlayout", &outLayout, 0);
+                        av_opt_set_int(swrCtx_, "in_sample_rate", audioSampleRate_, 0);
+                        av_opt_set_int(swrCtx_, "out_sample_rate", audioSampleRate_, 0);
+                        av_opt_set_sample_fmt(swrCtx_, "in_sample_fmt", audioCodecCtx_->sample_fmt, 0);
+                        av_opt_set_sample_fmt(swrCtx_, "out_sample_fmt", AV_SAMPLE_FMT_FLT, 0);
+
+                        if (swr_init(swrCtx_) >= 0) {
+                            // Initialize audio player
+                            audioPlayer_ = std::make_unique<AudioPlayer>();
+                            if (audioPlayer_->init(audioSampleRate_, 2)) {
+                                audioFrame_ = av_frame_alloc();
+                                std::cout << "[FFmpegDecoder] Audio: " << audioSampleRate_
+                                          << "Hz, " << audioChannels_ << " ch" << std::endl;
+                            } else {
+                                audioPlayer_.reset();
+                            }
+                        } else {
+                            swr_free(&swrCtx_);
+                            swrCtx_ = nullptr;
+                        }
+                    }
+
+                    if (!audioPlayer_) {
+                        avcodec_free_context(&audioCodecCtx_);
+                        audioCodecCtx_ = nullptr;
+                        audioStreamIndex_ = -1;
+                    }
+                } else {
+                    avcodec_free_context(&audioCodecCtx_);
+                    audioCodecCtx_ = nullptr;
+                    audioStreamIndex_ = -1;
+                }
+            } else {
+                avcodec_free_context(&audioCodecCtx_);
+                audioCodecCtx_ = nullptr;
+                audioStreamIndex_ = -1;
+            }
+        } else {
+            audioStreamIndex_ = -1;
+        }
+    }
 
     // Log codec info
-    const char* codecName = avcodec_get_name(codecId);
-
+    const char* codecName = avcodec_get_name(videoCodecpar->codec_id);
     std::cout << "[FFmpegDecoder] Opened " << path
               << " (" << width_ << "x" << height_
               << ", " << frameRate_ << "fps, " << codecName << ")" << std::endl;
@@ -201,10 +264,35 @@ bool FFmpegDecoder::open(Context& ctx, const std::string& path, bool loop) {
     playbackTime_ = 0.0f;
     nextFrameTime_ = 0.0f;
 
+    // Start audio playback
+    if (audioPlayer_) {
+        audioPlayer_->play();
+    }
+
     return true;
 }
 
 void FFmpegDecoder::close() {
+    // Stop and cleanup audio
+    if (audioPlayer_) {
+        audioPlayer_->pause();
+        audioPlayer_->shutdown();
+        audioPlayer_.reset();
+    }
+    if (swrCtx_) {
+        swr_free(&swrCtx_);
+        swrCtx_ = nullptr;
+    }
+    if (audioFrame_) {
+        av_frame_free(&audioFrame_);
+        audioFrame_ = nullptr;
+    }
+    if (audioCodecCtx_) {
+        avcodec_free_context(&audioCodecCtx_);
+        audioCodecCtx_ = nullptr;
+    }
+
+    // Cleanup video
     if (swsCtx_) {
         sws_freeContext(swsCtx_);
         swsCtx_ = nullptr;
@@ -217,9 +305,9 @@ void FFmpegDecoder::close() {
         av_packet_free(&packet_);
         packet_ = nullptr;
     }
-    if (codecCtx_) {
-        avcodec_free_context(&codecCtx_);
-        codecCtx_ = nullptr;
+    if (videoCodecCtx_) {
+        avcodec_free_context(&videoCodecCtx_);
+        videoCodecCtx_ = nullptr;
     }
     if (formatCtx_) {
         avformat_close_input(&formatCtx_);
@@ -231,6 +319,7 @@ void FFmpegDecoder::close() {
     }
     srv_ = nullptr;
     videoStreamIndex_ = -1;
+    audioStreamIndex_ = -1;
     isPlaying_ = false;
     isFinished_ = true;
     currentTime_ = 0.0f;
@@ -238,6 +327,32 @@ void FFmpegDecoder::close() {
 
 bool FFmpegDecoder::isOpen() const {
     return formatCtx_ != nullptr;
+}
+
+void FFmpegDecoder::pause() {
+    isPlaying_ = false;
+    if (audioPlayer_) {
+        audioPlayer_->pause();
+    }
+}
+
+void FFmpegDecoder::play() {
+    if (!isFinished_) {
+        isPlaying_ = true;
+        if (audioPlayer_) {
+            audioPlayer_->play();
+        }
+    }
+}
+
+void FFmpegDecoder::setVolume(float volume) {
+    if (audioPlayer_) {
+        audioPlayer_->setVolume(volume);
+    }
+}
+
+float FFmpegDecoder::getVolume() const {
+    return audioPlayer_ ? audioPlayer_->getVolume() : 1.0f;
 }
 
 void FFmpegDecoder::update(Context& ctx) {
@@ -267,6 +382,9 @@ void FFmpegDecoder::update(Context& ctx) {
         } else {
             isFinished_ = true;
             isPlaying_ = false;
+            if (audioPlayer_) {
+                audioPlayer_->pause();
+            }
         }
     }
 }
@@ -283,13 +401,20 @@ bool FFmpegDecoder::decodeFrame() {
             return false;
         }
 
+        // Handle audio packets
+        if (packet_->stream_index == audioStreamIndex_ && audioCodecCtx_ && audioPlayer_) {
+            processAudioPacket();
+            av_packet_unref(packet_);
+            continue;  // Keep reading for video
+        }
+
         if (packet_->stream_index != videoStreamIndex_) {
             av_packet_unref(packet_);
             continue;
         }
 
-        // Decode the packet
-        ret = avcodec_send_packet(codecCtx_, packet_);
+        // Decode the video packet
+        ret = avcodec_send_packet(videoCodecCtx_, packet_);
         av_packet_unref(packet_);
 
         if (ret < 0) {
@@ -302,7 +427,7 @@ bool FFmpegDecoder::decodeFrame() {
             continue;
         }
 
-        ret = avcodec_receive_frame(codecCtx_, frame_);
+        ret = avcodec_receive_frame(videoCodecCtx_, frame_);
         if (ret == AVERROR(EAGAIN)) {
             // Need more packets
             continue;
@@ -317,10 +442,41 @@ bool FFmpegDecoder::decodeFrame() {
 
     // Update current time
     if (frame_->pts != AV_NOPTS_VALUE) {
-        currentTime_ = static_cast<float>(frame_->pts * timeBase_);
+        currentTime_ = static_cast<float>(frame_->pts * videoTimeBase_);
     }
 
     return true;
+}
+
+void FFmpegDecoder::processAudioPacket() {
+    int ret = avcodec_send_packet(audioCodecCtx_, packet_);
+    if (ret < 0) {
+        return;
+    }
+
+    while (ret >= 0) {
+        ret = avcodec_receive_frame(audioCodecCtx_, audioFrame_);
+        if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) {
+            break;
+        } else if (ret < 0) {
+            break;
+        }
+
+        // Convert audio to float stereo
+        int outSamples = swr_get_out_samples(swrCtx_, audioFrame_->nb_samples);
+        audioBuffer_.resize(outSamples * 2);  // stereo
+
+        uint8_t* outBuffer = reinterpret_cast<uint8_t*>(audioBuffer_.data());
+        int converted = swr_convert(swrCtx_,
+                                    &outBuffer, outSamples,
+                                    (const uint8_t**)audioFrame_->data, audioFrame_->nb_samples);
+
+        if (converted > 0) {
+            audioPlayer_->pushSamples(audioBuffer_.data(), converted);
+        }
+
+        av_frame_unref(audioFrame_);
+    }
 }
 
 void FFmpegDecoder::uploadFrame() {
@@ -376,7 +532,7 @@ void FFmpegDecoder::seek(float seconds) {
     if (seconds < 0) seconds = 0;
     if (seconds > duration_) seconds = duration_;
 
-    int64_t timestamp = static_cast<int64_t>(seconds / timeBase_);
+    int64_t timestamp = static_cast<int64_t>(seconds / videoTimeBase_);
     int ret = av_seek_frame(formatCtx_, videoStreamIndex_, timestamp,
                             AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
@@ -385,8 +541,16 @@ void FFmpegDecoder::seek(float seconds) {
     }
 
     // Flush codec buffers after seek
-    if (codecCtx_) {
-        avcodec_flush_buffers(codecCtx_);
+    if (videoCodecCtx_) {
+        avcodec_flush_buffers(videoCodecCtx_);
+    }
+    if (audioCodecCtx_) {
+        avcodec_flush_buffers(audioCodecCtx_);
+    }
+
+    // Flush audio buffer
+    if (audioPlayer_) {
+        audioPlayer_->flush();
     }
 
     // Reset sws context (in case format changes)

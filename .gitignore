@@ -56,10 +56,6 @@ docs/api/
 Thumbs.db
 ehthumbs.db
 Desktop.ini
-examples/video-playback/assets/*.mov
-examples/video-playback/assets/*.mp4
-examples/video-playback/assets/*.mxf
 .claude
-examples/video-playback/assets
 vivid_old
-examples/video-demo/assets/Drums_Verse_BG.mov
+
