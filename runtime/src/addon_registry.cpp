@@ -45,31 +45,29 @@ std::vector<std::string> extractStringArray(const std::string& json, const std::
 std::map<std::string, std::vector<std::string>> extractLibraries(const std::string& json) {
     std::map<std::string, std::vector<std::string>> result;
 
-    // Find libraries object
-    std::regex libsRe("\"libraries\"\\s*:\\s*\\{([^}]*)\\}");
-    std::smatch libsMatch;
+    // Simpler approach: find platform-specific static library arrays directly
+    // Pattern: "macos": { "static": ["lib1.a", "lib2.a"] }
+    std::regex platformLibRe("\"(macos|windows|linux)\"\\s*:\\s*\\{\\s*\"static\"\\s*:\\s*\\[([^\\]]*)\\]");
+    auto begin = std::sregex_iterator(json.begin(), json.end(), platformLibRe);
+    auto end = std::sregex_iterator();
 
-    std::string searchStr = json;
-    while (std::regex_search(searchStr, libsMatch, libsRe)) {
-        std::string libsContent = libsMatch[1].str();
+    for (auto it = begin; it != end; ++it) {
+        std::string platform = (*it)[1].str();
+        std::string arrayContent = (*it)[2].str();
 
-        // Find each platform
-        std::regex platformRe("\"(\\w+)\"\\s*:\\s*\\{([^}]*)\\}");
-        auto begin = std::sregex_iterator(libsContent.begin(), libsContent.end(), platformRe);
-        auto end = std::sregex_iterator();
+        // Extract strings from the array content
+        std::regex stringRe("\"([^\"]*)\"");
+        auto strBegin = std::sregex_iterator(arrayContent.begin(), arrayContent.end(), stringRe);
+        auto strEnd = std::sregex_iterator();
 
-        for (auto it = begin; it != end; ++it) {
-            std::string platform = (*it)[1].str();
-            std::string platformContent = (*it)[2].str();
-
-            // Extract static libraries
-            std::vector<std::string> libs = extractStringArray("{\"static\":" + platformContent + "}", "static");
-            if (!libs.empty()) {
-                result[platform] = libs;
-            }
+        std::vector<std::string> libs;
+        for (auto strIt = strBegin; strIt != strEnd; ++strIt) {
+            libs.push_back((*strIt)[1].str());
         }
 
-        searchStr = libsMatch.suffix();
+        if (!libs.empty()) {
+            result[platform] = libs;
+        }
     }
 
     return result;

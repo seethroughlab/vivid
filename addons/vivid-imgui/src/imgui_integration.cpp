@@ -6,6 +6,11 @@
 #include <imgui_impl_glfw.h>
 #include <ImGuiImplDiligent.hpp>
 
+// Diligent includes for complete types
+#include <SwapChain.h>
+#include <DeviceContext.h>
+#include <RenderDevice.h>
+
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <memory>

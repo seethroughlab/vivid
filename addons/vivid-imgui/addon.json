@@ -6,8 +6,8 @@
   "detect_headers": ["vivid/imgui/imgui_integration.h"],
   "include_dirs": ["include"],
   "libraries": {
-    "macos": { "static": ["libvivid-imgui.a"] },
-    "windows": { "static": ["vivid-imgui.lib"] },
-    "linux": { "static": ["libvivid-imgui.a"] }
+    "macos": { "static": ["libvivid-imgui.dylib"] },
+    "windows": { "static": ["vivid-imgui.dll"] },
+    "linux": { "static": ["libvivid-imgui.so"] }
   }
 }

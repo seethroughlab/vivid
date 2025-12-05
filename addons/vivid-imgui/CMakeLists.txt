@@ -26,12 +26,15 @@ set(IMGUI_SOURCES
     ${IMGUI_BACKENDS_DIR}/imgui_impl_glfw.cpp
 )
 
-# Create static library
-add_library(vivid-imgui STATIC
+# Create shared library (needed for runtime loading with all dependencies)
+add_library(vivid-imgui SHARED
     ${IMGUI_ADDON_SOURCES}
     ${IMGUI_ADDON_HEADERS}
     ${IMGUI_SOURCES}
 )
+
+# Diligent include directories
+set(DILIGENT_DIR "${CMAKE_SOURCE_DIR}/external/DiligentEngine")
 
 # Include directories
 target_include_directories(vivid-imgui
@@ -39,8 +42,16 @@ target_include_directories(vivid-imgui
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_SOURCE_DIR}/runtime/include
+        ${CMAKE_SOURCE_DIR}/external/glm
         ${IMGUI_DIR}
         ${IMGUI_BACKENDS_DIR}
+        # Diligent includes
+        ${DILIGENT_DIR}/DiligentCore/Primitives/interface
+        ${DILIGENT_DIR}/DiligentCore/Common/interface
+        ${DILIGENT_DIR}/DiligentCore/Graphics/GraphicsEngine/interface
+        ${DILIGENT_DIR}/DiligentCore/Graphics/GraphicsAccessories/interface
+        ${DILIGENT_DIR}/DiligentCore/Graphics/GraphicsTools/interface
+        ${DILIGENT_DIR}/DiligentTools/Imgui/interface
 )
 
 # Link against DiligentTools ImGui implementation
@@ -68,8 +79,17 @@ target_compile_features(vivid-imgui PUBLIC cxx_std_17)
 set_target_properties(vivid-imgui PROPERTIES
     ARCHIVE_OUTPUT_DIRECTORY "${VIVID_ADDONS_LIB_DIR}"
     LIBRARY_OUTPUT_DIRECTORY "${VIVID_ADDONS_LIB_DIR}"
+    RUNTIME_OUTPUT_DIRECTORY "${VIVID_ADDONS_LIB_DIR}"
     FOLDER "Vivid/Addons"
 )
+
+# On macOS, set install name for proper linking
+if(PLATFORM_MACOS)
+    set_target_properties(vivid-imgui PROPERTIES
+        INSTALL_NAME_DIR "@rpath"
+        BUILD_WITH_INSTALL_RPATH TRUE
+    )
+endif()
 
 # Copy headers to output directory
 add_custom_command(TARGET vivid-imgui POST_BUILD
@@ -78,11 +98,14 @@ add_custom_command(TARGET vivid-imgui POST_BUILD
         "${VIVID_ADDONS_INCLUDE_DIR}"
 )
 
-# Also copy imgui.h so users can use ImGui directly
+# Also copy imgui headers so users can use ImGui directly
 add_custom_command(TARGET vivid-imgui POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         "${IMGUI_DIR}/imgui.h"
         "${VIVID_ADDONS_INCLUDE_DIR}/imgui.h"
+    COMMAND ${CMAKE_COMMAND} -E copy
+        "${IMGUI_DIR}/imconfig.h"
+        "${VIVID_ADDONS_INCLUDE_DIR}/imconfig.h"
 )
 
 # Copy addon.json to meta directory

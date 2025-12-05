@@ -218,6 +218,12 @@ std::string Compiler::buildCompileCommand(const fs::path& source,
 
     for (const auto& libPath : libraryPaths_) {
         cmd << "-L\"" << libPath.string() << "\" ";
+#if defined(__APPLE__)
+        // Add rpath so the dylib can find dependencies
+        cmd << "-Wl,-rpath,\"" << fs::absolute(libPath).string() << "\" ";
+#else
+        cmd << "-Wl,-rpath,\"" << libPath.string() << "\" ";
+#endif
     }
 
     for (const auto& lib : libraries_) {
@@ -354,23 +360,40 @@ bool HotReload::init(const fs::path& projectPath) {
         fs::create_directories(buildDir);
     }
 
-    // Set up addon paths (relative to runtime)
+    // Set up addon paths - try multiple locations
+    // 1. From runtime path's parent (source tree: /path/to/vivid/build/addons)
+    // 2. From project path's parent (working dir based: /path/to/vivid/build/addons)
+    fs::path addonsBuildDir;
     if (!runtimePath_.empty()) {
-        fs::path buildDir = runtimePath_.parent_path() / "build";
-        addonsLibDir_ = buildDir / "addons" / "lib";
-        addonsIncludeDir_ = buildDir / "addons" / "include";
-        fs::path addonsMetaDir = buildDir / "addons" / "meta";
+        addonsBuildDir = runtimePath_.parent_path() / "build";
+    }
+    if (addonsBuildDir.empty() || !fs::exists(addonsBuildDir / "addons")) {
+        // Try from project path
+        addonsBuildDir = fs::absolute(projectPath_).parent_path().parent_path() / "build";
+    }
+    if (!fs::exists(addonsBuildDir / "addons")) {
+        // Try current working directory based
+        addonsBuildDir = fs::current_path() / "build";
+    }
+
+    if (fs::exists(addonsBuildDir / "addons")) {
+        addonsLibDir_ = addonsBuildDir / "addons" / "lib";
+        addonsIncludeDir_ = addonsBuildDir / "addons" / "include";
+        fs::path addonsMetaDir = addonsBuildDir / "addons" / "meta";
 
         // Load addon registry
         int addonCount = addonRegistry_->loadFromDirectory(addonsMetaDir);
         if (addonCount > 0) {
             std::cout << "[Hot Reload] Loaded " << addonCount << " addon(s)" << std::endl;
+            std::cout << "[Hot Reload] Addon lib dir: " << addonsLibDir_ << std::endl;
 
             // Add addon include directory
             if (fs::exists(addonsIncludeDir_)) {
                 compiler_.addIncludePath(addonsIncludeDir_);
             }
         }
+    } else {
+        std::cout << "[Hot Reload] No addons directory found at: " << addonsBuildDir / "addons" << std::endl;
     }
 
     // Set up file watcher
@@ -421,9 +444,16 @@ void HotReload::setupAddonCompilerPaths() {
                     // Use full path for static libraries
                     fs::path libPath = addonsLibDir_ / lib;
                     if (fs::exists(libPath)) {
+                        std::cout << "[Hot Reload] Adding library: " << libPath << std::endl;
                         compiler_.addLibrary(libPath.string());
+                    } else {
+                        std::cerr << "[Hot Reload] Library not found: " << libPath << std::endl;
                     }
                 }
+            } else if (addon) {
+                std::cerr << "[Hot Reload] Addon " << addonName << " does not support platform " << platform << std::endl;
+            } else {
+                std::cerr << "[Hot Reload] Addon not found: " << addonName << std::endl;
             }
         }
     }
