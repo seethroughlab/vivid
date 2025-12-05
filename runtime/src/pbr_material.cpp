@@ -145,37 +145,51 @@ bool PBRMaterial::loadFromDirectory(Context& ctx, const std::string& dirPath, co
         }
     }
 
-    // Try various naming conventions
+    // Try various naming conventions (underscore and dash separators, various suffixes)
     std::vector<std::string> albedoNames = {
         basePath + filePrefix + "_albedo.png",
         basePath + filePrefix + "_Albedo.png",
+        basePath + filePrefix + "-albedo.png",
         basePath + filePrefix + "_basecolor.png",
         basePath + filePrefix + "_BaseColor.png",
         basePath + filePrefix + "_Base_Color.png",
-        basePath + filePrefix + "_diffuse.png"
+        basePath + filePrefix + "_diffuse.png",
+        basePath + filePrefix + "-albedo2b.png"  // plywood variant
     };
 
     std::vector<std::string> normalNames = {
         basePath + filePrefix + "_normal-ogl.png",
+        basePath + filePrefix + "_Normal-ogl.png",
+        basePath + filePrefix + "-normal-ogl.png",
+        basePath + filePrefix + "-Normal-ogl.png",
         basePath + filePrefix + "_normal.png",
         basePath + filePrefix + "_Normal.png",
-        basePath + filePrefix + "_Normal-ogl.png"
+        basePath + filePrefix + "-normal.png",
+        basePath + filePrefix + "-normal1.png"  // plywood variant
     };
 
     std::vector<std::string> metallicNames = {
         basePath + filePrefix + "_metallic.png",
         basePath + filePrefix + "_Metallic.png",
-        basePath + filePrefix + "_metalness.png"
+        basePath + filePrefix + "-metallic.png",
+        basePath + filePrefix + "_metalness.png",
+        basePath + filePrefix + "-metalness.png",
+        basePath + filePrefix + "-metal.png"  // metal-splotchy variant
     };
 
     std::vector<std::string> roughnessNames = {
         basePath + filePrefix + "_roughness.png",
-        basePath + filePrefix + "_Roughness.png"
+        basePath + filePrefix + "_Roughness.png",
+        basePath + filePrefix + "-roughness.png",
+        basePath + filePrefix + "-Roughness.png",
+        basePath + filePrefix + "-roughnness.png",  // corkboard typo
+        basePath + filePrefix + "-rough.png"  // plywood/metal-splotchy variant
     };
 
     std::vector<std::string> aoNames = {
         basePath + filePrefix + "_ao.png",
         basePath + filePrefix + "_AO.png",
+        basePath + filePrefix + "-ao.png",
         basePath + filePrefix + "_Ambient_Occlusion.png",
         basePath + filePrefix + "_ambient_occlusion.png"
     };

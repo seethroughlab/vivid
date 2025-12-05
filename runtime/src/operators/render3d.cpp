@@ -14,7 +14,9 @@
 #include "DeviceContext.h"
 #include "MapHelper.hpp"
 #include "GraphicsTypesX.hpp"
+#include "GraphicsUtilities.h"
 #include "PBR_Renderer.hpp"
+#include "EnvMapRenderer.hpp"
 #include "BasicMath.hpp"
 
 // Include HLSL structures from DiligentFX
@@ -22,6 +24,7 @@ namespace Diligent {
 namespace HLSL {
 #include "Shaders/Common/public/BasicStructures.fxh"
 #include "Shaders/PBR/public/PBR_Structures.fxh"
+#include "Shaders/PostProcess/ToneMapping/public/ToneMappingStructures.fxh"
 } // namespace HLSL
 } // namespace Diligent
 
@@ -627,6 +630,110 @@ void Render3D::renderScene(Context& ctx) {
     if (currentSrb) {
         currentSrb->Release();
     }
+
+    // Render skybox AFTER scene (renders only where depth == 1.0, i.e. no geometry)
+    if (showSkybox_ && environment_ && environment_->isLoaded()) {
+        // Lazy init EnvMapRenderer
+        if (!envMapRenderer_) {
+            // Create camera attribs buffer for skybox renderer
+            if (!cameraAttribsBuffer_) {
+                CreateUniformBuffer(ctx.device(), sizeof(HLSL::CameraAttribs) * 2,
+                                   "Render3D Camera Attribs", &cameraAttribsBuffer_);
+            }
+
+            // Create EnvMapRenderer
+            EnvMapRenderer::CreateInfo EnvMapRndrCI;
+            EnvMapRndrCI.pDevice = ctx.device();
+            EnvMapRndrCI.pCameraAttribsCB = cameraAttribsBuffer_;
+            EnvMapRndrCI.NumRenderTargets = 1;
+            EnvMapRndrCI.RTVFormats[0] = TEX_FORMAT_RGBA8_UNORM;
+            EnvMapRndrCI.DSVFormat = TEX_FORMAT_D32_FLOAT;
+
+            try {
+                envMapRenderer_ = std::make_unique<EnvMapRenderer>(EnvMapRndrCI);
+                std::cout << "Created EnvMapRenderer for skybox" << std::endl;
+            } catch (const std::exception& e) {
+                std::cerr << "Failed to create EnvMapRenderer: " << e.what() << std::endl;
+            }
+        }
+
+        if (!envMapRenderer_) return;  // Failed to create renderer
+        // Get view and projection matrices
+        glm::mat4 viewMatrix = camera_.viewMatrix();
+        glm::mat4 projMatrix = camera_.projectionMatrix();
+
+        // Update camera attribs constant buffer for skybox
+        {
+            MapHelper<Uint8> CamData{context, cameraAttribsBuffer_, MAP_WRITE, MAP_FLAG_DISCARD};
+            HLSL::CameraAttribs* CamAttribs = reinterpret_cast<HLSL::CameraAttribs*>(static_cast<Uint8*>(CamData));
+            memset(CamAttribs, 0, sizeof(HLSL::CameraAttribs));
+
+            // Convert glm matrices to Diligent float4x4 (transpose for row-major)
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    CamAttribs->mView.m[i][j] = viewMatrix[j][i];
+                    CamAttribs->mProj.m[i][j] = projMatrix[j][i];
+                }
+            }
+
+            // View-projection
+            glm::mat4 viewProj = projMatrix * viewMatrix;
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    CamAttribs->mViewProj.m[i][j] = viewProj[j][i];
+                }
+            }
+
+            // Inverse matrices
+            glm::mat4 invView = glm::inverse(viewMatrix);
+            glm::mat4 invProj = glm::inverse(projMatrix);
+            glm::mat4 invViewProj = glm::inverse(viewProj);
+            for (int i = 0; i < 4; i++) {
+                for (int j = 0; j < 4; j++) {
+                    CamAttribs->mViewInv.m[i][j] = invView[j][i];
+                    CamAttribs->mProjInv.m[i][j] = invProj[j][i];
+                    CamAttribs->mViewProjInv.m[i][j] = invViewProj[j][i];
+                }
+            }
+
+            // Camera position
+            glm::vec3 camPos = camera_.position();
+            CamAttribs->f4Position = float4{camPos.x, camPos.y, camPos.z, 1.0f};
+            CamAttribs->f4ViewportSize = float4{static_cast<float>(outputWidth_),
+                                               static_cast<float>(outputHeight_),
+                                               1.0f / outputWidth_, 1.0f / outputHeight_};
+
+            // Depth values
+            CamAttribs->fNearPlaneZ = 0.1f;
+            CamAttribs->fFarPlaneZ = 100.0f;
+            CamAttribs->fNearPlaneDepth = 0.0f;
+            CamAttribs->fFarPlaneDepth = 1.0f;
+
+            // Copy to previous camera slot (same data, no motion)
+            HLSL::CameraAttribs* PrevCamAttribs = CamAttribs + 1;
+            memcpy(PrevCamAttribs, CamAttribs, sizeof(HLSL::CameraAttribs));
+        }
+
+        // Setup env map render attributes
+        EnvMapRenderer::RenderAttribs EnvMapAttribs;
+        EnvMapAttribs.pEnvMap = environment_->prefilteredSRV();
+        EnvMapAttribs.AverageLogLum = 0.3f;
+        EnvMapAttribs.MipLevel = 1.0f;  // Slight blur for skybox
+
+        // Convert to sRGB (output format is RGBA8_UNORM)
+        EnvMapAttribs.Options |= EnvMapRenderer::OPTION_FLAG_CONVERT_OUTPUT_TO_SRGB;
+
+        // Setup tone mapping
+        HLSL::ToneMappingAttribs TMAttribs;
+        TMAttribs.iToneMappingMode = TONE_MAPPING_MODE_UNCHARTED2;
+        TMAttribs.bAutoExposure = false;
+        TMAttribs.fMiddleGray = 0.18f;
+        TMAttribs.fWhitePoint = 3.0f;
+        TMAttribs.fLuminanceSaturation = 1.0f;
+
+        envMapRenderer_->Prepare(context, EnvMapAttribs, TMAttribs);
+        envMapRenderer_->Render(context);
+    }
 }
 
 void Render3D::cleanup() {
@@ -634,6 +741,8 @@ void Render3D::cleanup() {
     if (materialAttribsBuffer_) { materialAttribsBuffer_->Release(); materialAttribsBuffer_ = nullptr; }
     if (primitiveAttribsBuffer_) { primitiveAttribsBuffer_->Release(); primitiveAttribsBuffer_ = nullptr; }
     if (frameAttribsBuffer_) { frameAttribsBuffer_->Release(); frameAttribsBuffer_ = nullptr; }
+    if (cameraAttribsBuffer_) { cameraAttribsBuffer_->Release(); cameraAttribsBuffer_ = nullptr; }
+    envMapRenderer_.reset();
     pbrRenderer_.reset();
     if (depthDSV_) { depthDSV_ = nullptr; }
     if (depthTexture_) { depthTexture_->Release(); depthTexture_ = nullptr; }

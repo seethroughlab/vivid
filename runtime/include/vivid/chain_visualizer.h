@@ -51,7 +51,7 @@ private:
     void buildGraphLayout(Context& ctx);
 
     bool initialized_ = false;
-    bool visible_ = true;
+    bool visible_ = false;  // Start collapsed
     bool imnodesInitialized_ = false;
 
     // Node graph state

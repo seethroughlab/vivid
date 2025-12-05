@@ -11,6 +11,8 @@
 // Forward declarations
 namespace Diligent {
     class PBR_Renderer;
+    class EnvMapRenderer;
+    struct IBuffer;
 }
 
 namespace vivid {
@@ -140,6 +142,9 @@ public:
     /// Set IBL environment for image-based lighting
     Render3D& setEnvironment(IBLEnvironment* env);
 
+    /// Enable/disable skybox rendering (environment map as background)
+    Render3D& showSkybox(bool show) { showSkybox_ = show; return *this; }
+
 private:
     void createPipeline(Context& ctx);
     void createRenderTargets(Context& ctx);
@@ -168,6 +173,11 @@ private:
     Diligent::IBuffer* frameAttribsBuffer_ = nullptr;
     Diligent::IBuffer* primitiveAttribsBuffer_ = nullptr;
     Diligent::IBuffer* materialAttribsBuffer_ = nullptr;
+
+    // Environment map (skybox) rendering
+    std::unique_ptr<Diligent::EnvMapRenderer> envMapRenderer_;
+    Diligent::IBuffer* cameraAttribsBuffer_ = nullptr;
+    bool showSkybox_ = true;
 
     int outputWidth_ = 0;
     int outputHeight_ = 0;
