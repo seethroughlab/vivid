@@ -56,6 +56,8 @@ set(VIVID_SOURCES
     src/gltf_model.cpp
     # Phase 5: Hot Reload
     src/hot_reload.cpp
+    # Phase 6: Addon System
+    src/addon_registry.cpp
     # Phase 2: Core operators
     src/operators/solid_color.cpp
     src/operators/noise.cpp

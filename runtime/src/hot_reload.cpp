@@ -1,6 +1,7 @@
 // Hot Reload Implementation
 
 #include "vivid/hot_reload.h"
+#include "addon_registry.h"
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -220,7 +221,14 @@ std::string Compiler::buildCompileCommand(const fs::path& source,
     }
 
     for (const auto& lib : libraries_) {
-        cmd << "-l" << lib << " ";
+        // Check if it's a full path or just a library name
+        if (lib.find('/') != std::string::npos || lib.find('\\') != std::string::npos) {
+            // Full path - use directly
+            cmd << "\"" << lib << "\" ";
+        } else {
+            // Library name - use -l flag
+            cmd << "-l" << lib << " ";
+        }
     }
 #endif
 
@@ -284,7 +292,9 @@ bool Compiler::compile(const fs::path& source, const fs::path& output) {
 // HotReload Implementation
 // ============================================
 
-HotReload::HotReload() = default;
+HotReload::HotReload()
+    : addonRegistry_(std::make_unique<AddonRegistry>()) {
+}
 
 HotReload::~HotReload() {
     library_.unload();
@@ -344,6 +354,25 @@ bool HotReload::init(const fs::path& projectPath) {
         fs::create_directories(buildDir);
     }
 
+    // Set up addon paths (relative to runtime)
+    if (!runtimePath_.empty()) {
+        fs::path buildDir = runtimePath_.parent_path() / "build";
+        addonsLibDir_ = buildDir / "addons" / "lib";
+        addonsIncludeDir_ = buildDir / "addons" / "include";
+        fs::path addonsMetaDir = buildDir / "addons" / "meta";
+
+        // Load addon registry
+        int addonCount = addonRegistry_->loadFromDirectory(addonsMetaDir);
+        if (addonCount > 0) {
+            std::cout << "[Hot Reload] Loaded " << addonCount << " addon(s)" << std::endl;
+
+            // Add addon include directory
+            if (fs::exists(addonsIncludeDir_)) {
+                compiler_.addIncludePath(addonsIncludeDir_);
+            }
+        }
+    }
+
     // Set up file watcher
     watcher_.watch(sourcePath_);
 
@@ -363,6 +392,43 @@ bool HotReload::reload() {
     return compileAndLoad();
 }
 
+void HotReload::setupAddonCompilerPaths() {
+    requiredAddons_.clear();
+
+    // Scan source for addon includes
+    requiredAddons_ = addonRegistry_->scanSourceForAddons(sourcePath_);
+
+    if (!requiredAddons_.empty()) {
+        std::cout << "[Hot Reload] Detected addons: ";
+        for (size_t i = 0; i < requiredAddons_.size(); ++i) {
+            if (i > 0) std::cout << ", ";
+            std::cout << requiredAddons_[i];
+        }
+        std::cout << std::endl;
+
+        // Add library path for addons
+        if (fs::exists(addonsLibDir_)) {
+            compiler_.addLibraryPath(addonsLibDir_);
+        }
+
+        // Add libraries for each addon
+        std::string platform = AddonRegistry::currentPlatform();
+        for (const auto& addonName : requiredAddons_) {
+            const AddonInfo* addon = addonRegistry_->getAddon(addonName);
+            if (addon && addon->supportsPlatform(platform)) {
+                auto libs = addon->getLibraries(platform);
+                for (const auto& lib : libs) {
+                    // Use full path for static libraries
+                    fs::path libPath = addonsLibDir_ / lib;
+                    if (fs::exists(libPath)) {
+                        compiler_.addLibrary(libPath.string());
+                    }
+                }
+            }
+        }
+    }
+}
+
 bool HotReload::compileAndLoad() {
     hasCompileError_ = false;
     setup_ = nullptr;
@@ -370,6 +436,9 @@ bool HotReload::compileAndLoad() {
 
     // Unload old library
     library_.unload();
+
+    // Scan for addon usage and configure compiler
+    setupAddonCompilerPaths();
 
     // Create unique library name (to avoid caching issues)
     buildNumber_++;

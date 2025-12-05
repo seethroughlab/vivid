@@ -60,6 +60,9 @@ if(NOT TARGET glfw)
     add_subdirectory(${GLFW_DIR})
 endif()
 
+# Add Vivid addons
+add_subdirectory(addons)
+
 # Add Vivid runtime
 add_subdirectory(runtime)
 

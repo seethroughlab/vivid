@@ -115,6 +115,9 @@ public:
     ShaderUtils& shaderUtils() { return *shaderUtils_; }
     FullscreenQuad& fullscreenQuad() { return *fullscreenQuad_; }
 
+    // --- Window Access (for addons like ImGui) ---
+    GLFWwindow* window() const { return window_; }
+
 private:
     // GLFW window
     GLFWwindow* window_ = nullptr;

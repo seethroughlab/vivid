@@ -7,6 +7,7 @@
 #include <functional>
 #include <chrono>
 #include <vector>
+#include <memory>
 
 // Filesystem support
 #if __has_include(<filesystem>)
@@ -22,6 +23,7 @@
 namespace vivid {
 
 class Context;
+class AddonRegistry;
 
 // Function signatures for user chain code
 using SetupFn = void(*)(Context&);
@@ -175,6 +177,12 @@ public:
     // Check if there was a compile error
     bool hasCompileError() const { return hasCompileError_; }
 
+    // Get the addon registry
+    const AddonRegistry& addonRegistry() const { return *addonRegistry_; }
+
+    // Get required addons for current source
+    const std::vector<std::string>& requiredAddons() const { return requiredAddons_; }
+
 private:
     FileWatcher watcher_;
     Compiler compiler_;
@@ -192,7 +200,14 @@ private:
     bool hasCompileError_ = false;
     int buildNumber_ = 0;  // Incremented each build to create unique library names
 
+    // Addon system
+    std::unique_ptr<AddonRegistry> addonRegistry_;
+    fs::path addonsLibDir_;
+    fs::path addonsIncludeDir_;
+    std::vector<std::string> requiredAddons_;
+
     bool compileAndLoad();
+    void setupAddonCompilerPaths();
 };
 
 } // namespace vivid
