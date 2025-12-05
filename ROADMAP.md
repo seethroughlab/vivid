@@ -1123,6 +1123,85 @@ vivid/
 
 ---
 
+## Example Projects
+
+Target examples to implement, organized by feature area:
+
+### Core / Getting Started
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| hello | Minimal chain.cpp | Phase 2 | ✓ |
+| chain-demo | Basic operator chain | Phase 2 | ✓ |
+| shapes | Shape generation | Phase 2 | |
+
+### 2D Effects
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| gradient-blend | Gradient + compositing | Phase 3 | |
+| feedback | Feedback loop effects | Phase 3 | |
+| post-processing | 2D filter chain | Phase 3 | |
+| image-loader | Load and process images | Phase 2 | |
+| tile-demo | Tiling/repetition effects | Phase 3 | |
+
+### 3D Rendering
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| 3d-demo | Basic 3D scene | Phase 4 | |
+| lighting-demo | Multi-light PBR | Phase 4 | |
+| model-loader | glTF model loading | Phase 4 | |
+| pbr-showcase | PBR material showcase | Phase 4 | |
+| textured-pbr | Textured PBR materials | Phase 4 | |
+| render3d-demo | Render3D operator usage | Phase 4 | |
+| shadow-demo | Shadow mapping | Phase 4 | |
+| decal-demo | Decal rendering | Phase 4 | |
+
+### Instancing & Particles
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| 2d-instancing | 2D GPU instancing | Phase 3 | |
+| 3d-instancing | 3D GPU instancing | Phase 4 | |
+| particles-demo | Particle systems | Phase 4 | |
+| pointsprites-demo | Point sprite rendering | Phase 4 | |
+
+### Physics & Simulation
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| 2d-physics | 2D physics simulation | Future | |
+
+### Media
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| video-playback | Basic video player | Phase 8 | ✓ |
+| video-displacement | Video + displacement | Phase 8 | |
+| webcam | Live camera input | Phase 8 | |
+
+### UI Integration
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| imgui-demo | ImGui integration | Phase 6 | ✓ |
+| nuklear-demo | Nuklear UI | Phase 6 | |
+
+### Audio
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| audio-reactive | FFT visualization | Phase 10 | |
+| lfo-modulation | LFO-driven animation | Phase 10 | |
+
+### Texture Sharing
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| syphon-out | Syphon output (macOS) | Phase 6 | |
+| spout-in | Spout input (Windows) | Phase 6 | |
+| spout-out | Spout output (Windows) | Phase 6 | |
+
+### Advanced
+| Example | Description | Phase | Status |
+|---------|-------------|-------|--------|
+| multi-composite | Multi-input compositing | Phase 3 | |
+| storage-demo | Storage buffer usage | Phase 4 | |
+
+---
+
 ## Success Criteria
 
 Each phase is complete when:

@@ -21,6 +21,7 @@
 #include "vivid/operators/chromatic_aberration.h"
 #include "vivid/operators/pixelate.h"
 #include "vivid/operators/mirror.h"
+#include "vivid/operators/shape.h"
 
 // Phase 4: 3D operators
 #include "vivid/operators/render3d.h"

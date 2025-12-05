@@ -76,6 +76,7 @@ set(VIVID_SOURCES
     src/operators/chromatic_aberration.cpp
     src/operators/pixelate.cpp
     src/operators/mirror.cpp
+    src/operators/shape.cpp
     # Phase 4: 3D operators
     src/operators/render3d.cpp
     src/operators/gltf_viewer.cpp
