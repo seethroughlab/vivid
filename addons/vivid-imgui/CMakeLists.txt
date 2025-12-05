@@ -55,12 +55,19 @@ target_include_directories(vivid-imgui
 )
 
 # Link against DiligentTools ImGui implementation
+# NOTE: Don't link glfw here - the main runtime already has it
+# We use -undefined dynamic_lookup on macOS to resolve symbols at load time
 target_link_libraries(vivid-imgui
     PRIVATE
         Diligent-Imgui
         Diligent-Common
         Diligent-GraphicsTools
-        glfw
+)
+
+# GLFW include directory (for imgui_impl_glfw.cpp)
+target_include_directories(vivid-imgui
+    PRIVATE
+        ${CMAKE_SOURCE_DIR}/external/DiligentEngine/DiligentSamples/ThirdParty/glfw/include
 )
 
 # Platform-specific settings
@@ -84,10 +91,13 @@ set_target_properties(vivid-imgui PROPERTIES
 )
 
 # On macOS, set install name for proper linking
+# Also use -undefined dynamic_lookup so GLFW symbols can be resolved at runtime
+# from the main executable (which links GLFW)
 if(PLATFORM_MACOS)
     set_target_properties(vivid-imgui PROPERTIES
         INSTALL_NAME_DIR "@rpath"
         BUILD_WITH_INSTALL_RPATH TRUE
+        LINK_FLAGS "-undefined dynamic_lookup"
     )
 endif()
 

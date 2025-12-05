@@ -31,36 +31,37 @@ void init(Context& ctx) {
         return;
     }
 
-    // Initialize ImGui context
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
+    // Get swap chain info for renderer
+    auto* swapChain = ctx.swapChain();
+    if (!swapChain) {
+        std::cerr << "[vivid::imgui] No swap chain available" << std::endl;
+        return;
+    }
 
+    // Initialize Diligent renderer FIRST - it creates the ImGui context internally
+    Diligent::ImGuiDiligentCreateInfo ci;
+    ci.pDevice = ctx.device();
+    const auto& scDesc = swapChain->GetDesc();
+    ci.BackBufferFmt = scDesc.ColorBufferFormat;
+    ci.DepthBufferFmt = scDesc.DepthBufferFormat;
+
+    g_imguiRenderer = std::make_unique<Diligent::ImGuiImplDiligent>(ci);
+
+    // Now configure the context that Diligent created
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
 
     // Setup style
     ImGui::StyleColorsDark();
 
-    // Initialize GLFW backend for input
+    // Initialize GLFW backend for input (uses the context Diligent created)
     GLFWwindow* window = ctx.window();
     if (!window) {
         std::cerr << "[vivid::imgui] No GLFW window available" << std::endl;
+        g_imguiRenderer.reset();
         return;
     }
     ImGui_ImplGlfw_InitForOther(window, true);
-
-    // Initialize Diligent renderer
-    Diligent::ImGuiDiligentCreateInfo ci;
-    ci.pDevice = ctx.device();
-
-    auto* swapChain = ctx.swapChain();
-    if (swapChain) {
-        const auto& scDesc = swapChain->GetDesc();
-        ci.BackBufferFmt = scDesc.ColorBufferFormat;
-        ci.DepthBufferFmt = scDesc.DepthBufferFormat;
-    }
-
-    g_imguiRenderer = std::make_unique<Diligent::ImGuiImplDiligent>(ci);
 
     g_initialized = true;
     std::cout << "[vivid::imgui] Initialized" << std::endl;
@@ -71,9 +72,11 @@ void shutdown() {
         return;
     }
 
-    g_imguiRenderer.reset();
+    // Shutdown GLFW backend first
     ImGui_ImplGlfw_Shutdown();
-    ImGui::DestroyContext();
+
+    // Reset renderer - its destructor calls ImGui::DestroyContext()
+    g_imguiRenderer.reset();
 
     g_initialized = false;
     std::cout << "[vivid::imgui] Shutdown" << std::endl;
@@ -101,11 +104,20 @@ void beginFrame(Context& ctx) {
 
 void render(Context& ctx) {
     if (!g_initialized) {
+        std::cerr << "[vivid::imgui] render called but not initialized" << std::endl;
         return;
     }
 
-    // End frame and render
-    g_imguiRenderer->EndFrame();
+    // Ensure render target is set to swap chain
+    auto* swapChain = ctx.swapChain();
+    if (swapChain) {
+        auto* rtv = swapChain->GetCurrentBackBufferRTV();
+        auto* dsv = swapChain->GetDepthBufferDSV();
+        ctx.immediateContext()->SetRenderTargets(1, &rtv, dsv, Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+    }
+
+    // Render ImGui - this internally calls ImGui::Render() which calls EndFrame()
+    // Do NOT call EndFrame() separately!
     g_imguiRenderer->Render(ctx.immediateContext());
 }
 
