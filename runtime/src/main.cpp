@@ -1065,12 +1065,14 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPor
                 needsReload = false;
                 needsSetup = true;
 
-                // Send compile status to VS Code extension
+                // Send compile status to VS Code extension and update visualizer
                 if (hotReload.isReady()) {
                     previewServer.sendCompileStatus(true, "Compiled successfully");
+                    visualizer.clearError();
                     lastCompileSuccess = true;
                 } else if (hotReload.hasCompileError()) {
                     previewServer.sendCompileStatus(false, hotReload.lastError());
+                    visualizer.setError(hotReload.compilerOutput());
                     lastCompileSuccess = false;
                 }
             }
@@ -1079,12 +1081,14 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPor
                 ctx.clearRegisteredOperators();  // Clear before reload
                 needsSetup = true;
 
-                // Send compile status to VS Code extension
+                // Send compile status to VS Code extension and update visualizer
                 if (hotReload.isReady()) {
                     previewServer.sendCompileStatus(true, "Compiled successfully");
+                    visualizer.clearError();
                     lastCompileSuccess = true;
                 } else if (hotReload.hasCompileError()) {
                     previewServer.sendCompileStatus(false, hotReload.lastError());
+                    visualizer.setError(hotReload.compilerOutput());
                     lastCompileSuccess = false;
                 }
             }
@@ -1108,15 +1112,13 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPor
         // Begin visualizer frame (ImGui new frame)
         visualizer.beginFrame(ctx);
 
-        // Call update every frame
+        // Call update every frame (if no compile error)
         if (hotReload.isReady()) {
             if (auto update = hotReload.update()) {
                 update(ctx);
             }
-        } else if (hotReload.hasCompileError()) {
-            // Show compile error - for now just clear to red
-            // TODO: Render error overlay
         }
+        // Note: Error overlay is rendered by visualizer.render() when hasError_
 
         // Render chain visualizer overlay
         visualizer.render(ctx);

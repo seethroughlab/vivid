@@ -3,6 +3,7 @@
 #pragma once
 
 #include "vivid/context.h"
+#include <string>
 
 namespace vivid {
 
@@ -35,7 +36,17 @@ public:
     /// Toggle the window (for keyboard shortcut)
     void toggleVisible() { visible_ = !visible_; }
 
+    /// Set compile error to display (shows error overlay)
+    void setError(const std::string& errorMessage);
+
+    /// Clear compile error (hides error overlay)
+    void clearError();
+
+    /// Check if there's an error being displayed
+    bool hasError() const { return hasError_; }
+
 private:
+    void renderErrorOverlay();
     void renderOperatorNode(Context& ctx, const OperatorInfo& info, int index);
     void renderConnections(Context& ctx);
 
@@ -46,6 +57,10 @@ private:
     float windowWidth_ = 400.0f;
     float nodeSpacing_ = 80.0f;
     int thumbnailSize_ = 180;
+
+    // Error display state
+    bool hasError_ = false;
+    std::string errorMessage_;
 };
 
 } // namespace vivid

@@ -95,7 +95,8 @@ void ChainVisualizer::shutdown() {
 }
 
 void ChainVisualizer::beginFrame(Context& ctx) {
-    if (!initialized_ || !visible_) {
+    // Need to run if visible OR if there's an error to display
+    if (!initialized_ || (!visible_ && !hasError_)) {
         return;
     }
 
@@ -116,7 +117,29 @@ void ChainVisualizer::beginFrame(Context& ctx) {
 }
 
 void ChainVisualizer::render(Context& ctx) {
-    if (!initialized_ || !visible_) {
+    // Need to run if visible OR if there's an error to display
+    if (!initialized_ || (!visible_ && !hasError_)) {
+        return;
+    }
+
+    // Always render error overlay first (if any)
+    if (hasError_) {
+        renderErrorOverlay();
+    }
+
+    // Only render chain visualization if visible (not just for errors)
+    if (!visible_) {
+        // Render ImGui (for error overlay) and return
+        if (g_imguiInitialized && g_imguiRenderer) {
+            auto* swapChain = ctx.swapChain();
+            if (swapChain) {
+                auto* rtv = swapChain->GetCurrentBackBufferRTV();
+                auto* dsv = swapChain->GetDepthBufferDSV();
+                ctx.immediateContext()->SetRenderTargets(1, &rtv, dsv,
+                    Diligent::RESOURCE_STATE_TRANSITION_MODE_TRANSITION);
+            }
+            g_imguiRenderer->Render(ctx.immediateContext());
+        }
         return;
     }
 
@@ -269,6 +292,83 @@ void ChainVisualizer::renderOperatorNode(Context& ctx, const OperatorInfo& info,
 void ChainVisualizer::renderConnections(Context& ctx) {
     // TODO: Draw lines between connected operators
     // This requires knowing the screen positions of each operator node
+}
+
+void ChainVisualizer::setError(const std::string& errorMessage) {
+    hasError_ = true;
+    errorMessage_ = errorMessage;
+}
+
+void ChainVisualizer::clearError() {
+    hasError_ = false;
+    errorMessage_.clear();
+}
+
+void ChainVisualizer::renderErrorOverlay() {
+    if (!hasError_ || errorMessage_.empty()) {
+        return;
+    }
+
+    // Get window size for centering
+    ImGuiIO& io = ImGui::GetIO();
+    float windowWidth = 600.0f;
+    float windowHeight = 400.0f;
+    float posX = (io.DisplaySize.x - windowWidth) * 0.5f;
+    float posY = (io.DisplaySize.y - windowHeight) * 0.5f;
+
+    ImGui::SetNextWindowPos(ImVec2(posX, posY), ImGuiCond_Always);
+    ImGui::SetNextWindowSize(ImVec2(windowWidth, windowHeight), ImGuiCond_Always);
+
+    // Red-tinted window style for errors
+    ImGui::PushStyleColor(ImGuiCol_TitleBg, ImVec4(0.6f, 0.1f, 0.1f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_TitleBgActive, ImVec4(0.8f, 0.2f, 0.2f, 1.0f));
+    ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.15f, 0.1f, 0.1f, 0.95f));
+
+    bool open = true;
+    if (ImGui::Begin("Compilation Error", &open, ImGuiWindowFlags_NoCollapse)) {
+        // Header
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.4f, 0.4f, 1.0f));
+        ImGui::TextWrapped("Failed to compile chain.cpp");
+        ImGui::PopStyleColor();
+
+        ImGui::Spacing();
+        ImGui::Separator();
+        ImGui::Spacing();
+
+        // Compiler output in scrollable region
+        ImGui::Text("Compiler Output:");
+        ImGui::Spacing();
+
+        // Scrollable child region for error text
+        float footerHeight = ImGui::GetFrameHeightWithSpacing() + 10.0f;
+        ImVec2 childSize(0, -footerHeight);
+
+        ImGui::PushStyleColor(ImGuiCol_ChildBg, ImVec4(0.08f, 0.08f, 0.08f, 1.0f));
+        if (ImGui::BeginChild("ErrorText", childSize, true)) {
+            // Use monospace-style rendering
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.9f, 0.8f, 1.0f));
+            ImGui::TextUnformatted(errorMessage_.c_str());
+            ImGui::PopStyleColor();
+        }
+        ImGui::EndChild();
+        ImGui::PopStyleColor();
+
+        ImGui::Spacing();
+
+        // Footer hint
+        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.6f, 0.6f, 0.6f, 1.0f));
+        ImGui::Text("Fix the error and save to reload");
+        ImGui::PopStyleColor();
+    }
+    ImGui::End();
+
+    ImGui::PopStyleColor(3);
+
+    // If user closed the window, clear the error display (but keep the error state)
+    if (!open) {
+        // User dismissed - could clear hasError_ here if desired
+        // For now, keep it so it reappears on next error
+    }
 }
 
 } // namespace vivid
