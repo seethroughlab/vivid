@@ -34,7 +34,7 @@ std::vector<std::string> findVideoFiles(const std::string& directory) {
         // Convert to lowercase for comparison
         for (auto& c : ext) c = std::tolower(c);
 
-        if (ext == ".mp4" || ext == ".mov" || ext == ".mkv" ||
+        if (ext == ".mp4" || ext == ".mov" || ext == ".mkv" || ext == ".hevc" ||
             ext == ".avi" || ext == ".m4v" || ext == ".webm" || ext == ".ts") {
             files.push_back(entry.path().string());
         }
