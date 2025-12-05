@@ -97,16 +97,22 @@ if(PLATFORM_MACOS)
     list(APPEND VIVID_SOURCES src/macos_helpers.mm)
 endif()
 
-# Add ImGui GLFW implementation for chain visualizer
-set(IMGUI_BACKENDS_DIR "${CMAKE_SOURCE_DIR}/external/DiligentEngine/DiligentTools/ThirdParty/imgui/backends")
-list(APPEND VIVID_SOURCES ${IMGUI_BACKENDS_DIR}/imgui_impl_glfw.cpp)
+# Add ImGui sources directly for symbol export to hot-reloaded chains
+set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/external/DiligentEngine/DiligentTools/ThirdParty/imgui")
+set(IMGUI_BACKENDS_DIR "${IMGUI_DIR}/backends")
+list(APPEND VIVID_SOURCES
+    ${IMGUI_DIR}/imgui.cpp
+    ${IMGUI_DIR}/imgui_draw.cpp
+    ${IMGUI_DIR}/imgui_tables.cpp
+    ${IMGUI_DIR}/imgui_widgets.cpp
+    ${IMGUI_DIR}/imgui_demo.cpp
+    ${IMGUI_BACKENDS_DIR}/imgui_impl_glfw.cpp
+)
 
 # Create executable (regular executable on all platforms for simpler CLI usage)
 add_executable(vivid ${VIVID_HEADERS} ${VIVID_SOURCES})
 
-# ImGui directories (for chain visualizer)
-set(IMGUI_DIR "${CMAKE_SOURCE_DIR}/external/DiligentEngine/DiligentTools/ThirdParty/imgui")
-set(IMGUI_BACKENDS_DIR "${IMGUI_DIR}/backends")
+# DiligentEngine directory for ImGuiImplDiligent
 set(DILIGENT_DIR "${CMAKE_SOURCE_DIR}/external/DiligentEngine")
 
 # Include directories
@@ -190,6 +196,7 @@ if(PLATFORM_MACOS)
     set_target_properties(vivid PROPERTIES
         BUILD_RPATH "${VULKAN_RPATH_DIRS}"
     )
+
 
     message(STATUS "[Vivid] Vulkan RPATH: ${VULKAN_RPATH_DIRS}")
 elseif(PLATFORM_WIN32)

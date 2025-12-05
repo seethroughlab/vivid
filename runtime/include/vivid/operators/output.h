@@ -18,6 +18,9 @@ public:
 
     OutputKind outputKind() const override { return OutputKind::Texture; }
 
+    // Return input's SRV for visualization (Output has no intermediate texture)
+    Diligent::ITextureView* getOutputSRV() override { return getInputSRV(0); }
+
     // Fluent API - set input by name
     Output& input(const std::string& name) { inputName_ = name; return *this; }
 

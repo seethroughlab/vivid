@@ -3,9 +3,11 @@
 // Used to test the runtime visualization window that displays the node graph
 //
 // Chain structure:
-//   [Render3D] ─┬─► [HSV] ─► [ChromaticAberration] ─► [Blur] ─┐
-//               │                                              ├─► [Composite] ─► [Output]
-//   [Noise] ────┴─► [Shape] ─────────────────────────────────►─┘
+//   [bgNoise] ──┬─► [bgColorize] ───────────────────────────────────────────────┐
+//   [bgGradient]┘                                                                ├─► [bgComposite] ─┐
+//   [Render3D] ─► [HSV] ─► [ChromaticAberration] ─► [Blur] ────────────────────┘                    │
+//                                                                                                    ├─► [Composite] ─► [Output]
+//   [Noise] ─► [Shape/Vignette] ────────────────────────────────────────────────────────────────────┘
 
 #include <vivid/vivid.h>
 #include <vivid/operators.h>
@@ -20,6 +22,12 @@ using namespace vivid;
 static std::unique_ptr<Render3D> render3d;
 static std::vector<Mesh> meshes;
 static std::vector<int> objectIndices;
+
+// Background
+static std::unique_ptr<Noise> bgNoise;
+static std::unique_ptr<Gradient> bgGradient;
+static std::unique_ptr<Composite> bgColorize;
+static std::unique_ptr<Composite> bgComposite;
 
 // 2D Post-processing chain
 static std::unique_ptr<HSV> hsv;
@@ -91,8 +99,8 @@ void setup(Context& ctx) {
     // Camera
     render3d->camera().setOrbit(glm::vec3(0, 0, 0), 5.0f, 45.0f, 25.0f);
 
-    // Scene settings
-    render3d->backgroundColor(0.05f, 0.05f, 0.1f, 1.0f);
+    // Scene settings - transparent background so noise shows through
+    render3d->backgroundColor(0.0f, 0.0f, 0.0f, 0.0f);
     render3d->ambientColor(0.15f, 0.15f, 0.2f);
 
     // Lights
@@ -107,6 +115,33 @@ void setup(Context& ctx) {
         6.0f,
         glm::vec3(0.8f, 0.9f, 1.0f)
     ));
+
+    // ========== ANIMATED BACKGROUND ==========
+
+    // Noise background with slow animation
+    bgNoise = std::make_unique<Noise>();
+    bgNoise->init(ctx);
+    bgNoise->scale(3.0f)
+        .octaves(4)
+        .lacunarity(2.0f)
+        .persistence(0.5f)
+        .speed(0.3f);
+
+    // Gradient for color - purple to blue
+    bgGradient = std::make_unique<Gradient>();
+    bgGradient->init(ctx);
+    bgGradient->type(GradientType::Linear)
+        .angle(45.0f)
+        .colorA(glm::vec4(0.3f, 0.1f, 0.5f, 1.0f))   // Purple
+        .colorB(glm::vec4(0.1f, 0.2f, 0.4f, 1.0f));  // Deep blue
+
+    // Multiply gradient by noise to colorize
+    bgColorize = std::make_unique<Composite>();
+    bgColorize->init(ctx);
+    bgColorize->setInput(0, bgGradient.get());
+    bgColorize->setInput(1, bgNoise.get());
+    bgColorize->mode(BlendMode::Multiply)
+        .opacity(1.0f);
 
     // ========== 2D POST-PROCESSING ==========
 
@@ -132,6 +167,14 @@ void setup(Context& ctx) {
     blur->radius(2.0f)
         .passes(1);
 
+    // Composite 3D scene over animated background
+    bgComposite = std::make_unique<Composite>();
+    bgComposite->init(ctx);
+    bgComposite->setInput(0, bgColorize.get()); // Colorized background
+    bgComposite->setInput(1, blur.get());       // 3D scene on top
+    bgComposite->mode(BlendMode::Over)
+        .opacity(1.0f);
+
     // ========== OVERLAY ELEMENTS ==========
 
     // Animated noise texture for film grain effect
@@ -153,10 +196,10 @@ void setup(Context& ctx) {
 
     // ========== COMPOSITING ==========
 
-    // Composite: post-processed 3D + vignette overlay
+    // Composite: background + 3D scene + vignette overlay
     composite = std::make_unique<Composite>();
     composite->init(ctx);
-    composite->setInput(0, blur.get());
+    composite->setInput(0, bgComposite.get());
     composite->setInput(1, vignette.get());
     composite->mode(BlendMode::Multiply)
         .opacity(0.7f);
@@ -167,10 +210,14 @@ void setup(Context& ctx) {
     output->setInput(composite.get());
 
     // Register operators for visualization (press 'V' to toggle)
+    ctx.registerOperator("bgNoise", bgNoise.get());
+    ctx.registerOperator("bgGradient", bgGradient.get());
+    ctx.registerOperator("bgColorize", bgColorize.get());
     ctx.registerOperator("render3d", render3d.get());
     ctx.registerOperator("hsv", hsv.get());
     ctx.registerOperator("chromaAberr", chromaAberr.get());
     ctx.registerOperator("blur", blur.get());
+    ctx.registerOperator("bgComposite", bgComposite.get());
     ctx.registerOperator("noise", noise.get());
     ctx.registerOperator("vignette", vignette.get());
     ctx.registerOperator("composite", composite.get());
@@ -181,14 +228,11 @@ void setup(Context& ctx) {
     std::cout << "[Chain Graph Demo] Chain initialized!" << std::endl;
     std::cout << "  Press 'V' to toggle chain visualization" << std::endl;
     std::cout << "  Operators in chain:" << std::endl;
-    std::cout << "    1. Render3D (3 meshes: cube, sphere, torus)" << std::endl;
-    std::cout << "    2. HSV (color grading)" << std::endl;
-    std::cout << "    3. ChromaticAberration (RGB split)" << std::endl;
-    std::cout << "    4. Blur (soft bloom)" << std::endl;
-    std::cout << "    5. Noise (film grain - not composited)" << std::endl;
-    std::cout << "    6. Shape/Vignette (dark corners)" << std::endl;
-    std::cout << "    7. Composite (combine blur + vignette)" << std::endl;
-    std::cout << "    8. Output" << std::endl;
+    std::cout << "    Background: bgNoise + bgGradient -> bgColorize" << std::endl;
+    std::cout << "    3D Scene: Render3D -> HSV -> ChromaticAberration -> Blur" << std::endl;
+    std::cout << "    bgComposite: background + 3D scene" << std::endl;
+    std::cout << "    Overlay: Noise (film grain), Vignette" << std::endl;
+    std::cout << "    Final: Composite -> Output" << std::endl;
 }
 
 void update(Context& ctx) {
@@ -229,6 +273,19 @@ void update(Context& ctx) {
 
     // ========== ANIMATE POST-PROCESSING ==========
 
+    // Animate background gradient colors
+    float colorPhase = time * 0.3f;
+    bgGradient->colorA(glm::vec4(
+        0.3f + 0.2f * std::sin(colorPhase),
+        0.1f + 0.1f * std::sin(colorPhase * 1.3f),
+        0.5f + 0.2f * std::cos(colorPhase * 0.7f),
+        1.0f))
+    .colorB(glm::vec4(
+        0.1f + 0.1f * std::cos(colorPhase * 0.8f),
+        0.2f + 0.15f * std::sin(colorPhase * 1.1f),
+        0.4f + 0.2f * std::sin(colorPhase * 0.9f),
+        1.0f));
+
     // Animate hue shift over time
     float hueShift = std::sin(time * 0.5f) * 20.0f;
     hsv->hueShift(hueShift);
@@ -241,17 +298,25 @@ void update(Context& ctx) {
 
     // ========== PROCESS CHAIN ==========
 
+    // Animated background
+    bgNoise->process(ctx);
+    bgGradient->process(ctx);
+    bgColorize->process(ctx);
+
     // Main 3D pipeline
     render3d->process(ctx);
     hsv->process(ctx);
     chromaAberr->process(ctx);
     blur->process(ctx);
 
-    // Overlay elements (processed but noise not used in final composite)
+    // Composite 3D over background
+    bgComposite->process(ctx);
+
+    // Overlay elements
     noise->process(ctx);
     vignette->process(ctx);
 
-    // Final composite
+    // Final composite with vignette
     composite->process(ctx);
     output->process(ctx);
 }
