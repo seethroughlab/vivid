@@ -8,6 +8,7 @@
 #include "vivid/ibl.h"
 #include "vivid/hot_reload.h"
 #include "vivid/gltf_model.h"
+#include "vivid/preview_server.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <chrono>
@@ -996,7 +997,7 @@ void runOperatorTests(Context& ctx) {
 } // namespace vivid
 
 // Hot reload mode: run a project with live code reloading
-void runHotReload(vivid::Context& ctx, const std::string& projectPath) {
+void runHotReload(vivid::Context& ctx, const std::string& projectPath, int wsPort = 9876) {
     std::cout << "Hot Reload Mode: " << projectPath << std::endl;
 
     vivid::HotReload hotReload;
@@ -1017,8 +1018,28 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath) {
         return;
     }
 
+    // Start preview server for VS Code extension
+    vivid::PreviewServer previewServer(wsPort);
+    bool needsReload = false;
+
+    previewServer.setCommandCallback([&](const std::string& type, const nlohmann::json& data) {
+        if (type == "reload") {
+            std::cout << "[PreviewServer] Reload requested" << std::endl;
+            needsReload = true;
+        } else if (type == "param_change") {
+            std::cout << "[PreviewServer] Param change: " << data.dump() << std::endl;
+            // TODO: Live parameter updates
+        } else if (type == "pause") {
+            std::cout << "[PreviewServer] Pause: " << data.dump() << std::endl;
+            // TODO: Pause/resume
+        }
+    });
+
+    previewServer.start();
+
     // Call setup if available
     bool needsSetup = true;
+    bool lastCompileSuccess = true;
 
     // Main loop
     auto lastPollTime = std::chrono::steady_clock::now();
@@ -1031,8 +1052,34 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath) {
         auto now = std::chrono::steady_clock::now();
         if (now - lastPollTime >= pollInterval) {
             lastPollTime = now;
+
+            // Check for extension reload request
+            if (needsReload) {
+                hotReload.reload();
+                needsReload = false;
+                needsSetup = true;
+
+                // Send compile status to VS Code extension
+                if (hotReload.isReady()) {
+                    previewServer.sendCompileStatus(true, "Compiled successfully");
+                    lastCompileSuccess = true;
+                } else if (hotReload.hasCompileError()) {
+                    previewServer.sendCompileStatus(false, hotReload.lastError());
+                    lastCompileSuccess = false;
+                }
+            }
+
             if (hotReload.poll()) {
                 needsSetup = true;
+
+                // Send compile status to VS Code extension
+                if (hotReload.isReady()) {
+                    previewServer.sendCompileStatus(true, "Compiled successfully");
+                    lastCompileSuccess = true;
+                } else if (hotReload.hasCompileError()) {
+                    previewServer.sendCompileStatus(false, hotReload.lastError());
+                    lastCompileSuccess = false;
+                }
             }
         }
 
@@ -1058,6 +1105,8 @@ void runHotReload(vivid::Context& ctx, const std::string& projectPath) {
 
         ctx.endFrame();
     }
+
+    previewServer.stop();
 }
 
 void printUsage(const char* programName) {

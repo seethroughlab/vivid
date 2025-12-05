@@ -18,6 +18,8 @@ set(VIVID_HEADERS
     include/vivid/gltf_model.h
     # Phase 5: Hot Reload
     include/vivid/hot_reload.h
+    # Phase 7: VS Code Extension
+    include/vivid/preview_server.h
     # Phase 2: Core operators
     include/vivid/operators/solid_color.h
     include/vivid/operators/noise.h
@@ -58,6 +60,8 @@ set(VIVID_SOURCES
     src/hot_reload.cpp
     # Phase 6: Addon System
     src/addon_registry.cpp
+    # Phase 7: VS Code Extension
+    src/preview_server.cpp
     # Phase 2: Core operators
     src/operators/solid_color.cpp
     src/operators/noise.cpp
@@ -111,6 +115,9 @@ target_link_libraries(vivid
         Diligent-AssetLoader
         glfw
         glm::glm
+        # Phase 7: VS Code Extension
+        ixwebsocket
+        nlohmann_json::nlohmann_json
 )
 
 # Link Vulkan backend

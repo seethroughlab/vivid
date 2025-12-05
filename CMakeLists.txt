@@ -60,6 +60,25 @@ if(NOT TARGET glfw)
     add_subdirectory(${GLFW_DIR})
 endif()
 
+# Add IXWebSocket for VS Code extension communication
+include(FetchContent)
+set(USE_TLS OFF CACHE BOOL "" FORCE)  # Disable TLS for simplicity
+set(USE_ZLIB OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    ixwebsocket
+    GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
+    GIT_TAG v11.4.5
+)
+FetchContent_MakeAvailable(ixwebsocket)
+
+# Add nlohmann_json for JSON serialization
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(nlohmann_json)
+
 # Add Vivid addons
 add_subdirectory(addons)
 

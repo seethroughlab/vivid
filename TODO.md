@@ -1,0 +1,3 @@
+[x] What are the advantages of using a VS Code extension for visualization of the chain instead of having the runtime launch its own visualization window?
+
+**Decision:** Hybrid approach - VS Code extension for lightweight features (compile errors, reload commands, status bar) + runtime visualization window for **view-only inspection** (node graph, previews, performance metrics). All parameter changes happen in code to keep Vivid LLM-first and text-based.

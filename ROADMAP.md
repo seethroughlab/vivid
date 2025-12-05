@@ -878,26 +878,43 @@ void update(Chain& chain, Context& ctx) {
 
 ---
 
-## Phase 7: VS Code Extension
+## Phase 7: Editor Integration & Runtime Visualization
 
-**Goal:** Live previews and editor integration
+**Goal:** IDE integration for errors/commands + runtime visualization window for previews
 
-### Features
-- [ ] WebSocket connection to runtime
-- [ ] Inline preview decorations
-- [ ] Hover for full preview
-- [ ] Preview panel (all operators)
-- [ ] Compile error diagnostics
-- [ ] Status bar (connection state, FPS)
+### VS Code Extension (Lightweight)
+- [x] WebSocket connection to runtime (port 9876)
+- [x] Compile error diagnostics in Problems panel
+- [x] Status bar (connection state, compile status)
+- [x] Reload command from extension
+
+### Runtime Visualization Window (View-Only)
+Inspect the chain without leaving the code-first workflow:
+
+- [ ] Node graph view (operators, connections)
+- [ ] Thumbnail previews of each operator output
+- [ ] Performance metrics (FPS, frame time graph)
+- [ ] Current parameter values (read-only display)
+
+**Note:** All parameter changes happen in code (chain.cpp). The visualization window is for **inspection only** - this keeps Vivid LLM-first and text-based.
+
+### Why This Approach
+| Feature | VS Code Extension | Runtime Window |
+|---------|-------------------|----------------|
+| Full-res preview | ❌ WebSocket overhead | ✅ Direct GPU |
+| Compile errors | ✅ Problems panel | ❌ |
+| Node graph | Limited | ✅ Visual inspection |
+| Latency | ~30fps thumbnails | ✅ 60fps+ real-time |
 
 ### Protocol
 ```typescript
-interface NodeUpdate {
-    id: string;
-    line: number;
-    kind: 'texture' | 'value' | 'geometry';
-    preview?: string;  // base64 thumbnail
-}
+// VS Code → Runtime
+{ type: "reload" }
+{ type: "param_change", node: string, param: string, value: any }
+
+// Runtime → VS Code
+{ type: "compile_status", success: boolean, message: string }
+{ type: "error", message: string }
 ```
 
 ---
