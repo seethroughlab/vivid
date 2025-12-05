@@ -1,19 +1,9 @@
 #pragma once
 
-#ifdef VIVID_HAS_FFMPEG
-
 #include <string>
 #include <vector>
 #include <cstdint>
 #include <memory>
-
-// Forward declarations for FFmpeg types
-struct AVFormatContext;
-struct AVCodecContext;
-struct AVPacket;
-struct AVFrame;
-struct SwsContext;
-struct SwrContext;
 
 // Forward declarations for Diligent types
 namespace Diligent {
@@ -32,35 +22,31 @@ namespace vivid::video {
 class AudioPlayer;
 
 /**
- * @brief HEVC video decoder using FFmpeg.
+ * @brief HAP video decoder using Vidvox HAP library.
  *
- * Decodes HEVC video which AVFoundation cannot handle properly
- * (returns NULL image buffers in native format).
- * FFmpeg decodes to standard pixel formats, then we convert to BGRA
- * using swscale and upload to GPU texture.
+ * Uses AVFoundation to demux the MOV container and extract raw HAP frame data,
+ * then uses the Vidvox HAP library to decompress to DXT-compressed textures.
+ * DXT data is uploaded directly to GPU as BC1/BC3 compressed textures,
+ * avoiding CPU pixel conversion entirely.
  *
- * Note: HAP is handled by the dedicated HAPDecoder (Vidvox library)
- * which uploads DXT textures directly to the GPU.
- *
- * Also decodes audio and plays it via AudioPlayer.
+ * Audio is decoded via AVFoundation's AVAssetReader.
  */
-class FFmpegDecoder {
+class HAPDecoder {
 public:
-    FFmpegDecoder();
-    ~FFmpegDecoder();
+    HAPDecoder();
+    ~HAPDecoder();
 
     // Non-copyable
-    FFmpegDecoder(const FFmpegDecoder&) = delete;
-    FFmpegDecoder& operator=(const FFmpegDecoder&) = delete;
+    HAPDecoder(const HAPDecoder&) = delete;
+    HAPDecoder& operator=(const HAPDecoder&) = delete;
 
     /**
-     * @brief Check if a file needs FFmpeg decoder (HAP, HEVC, etc).
-     * Some codecs work poorly with AVFoundation and need FFmpeg.
+     * @brief Check if a file is a HAP-encoded video.
      */
-    static bool needsFFmpegDecoder(const std::string& path);
+    static bool isHAPFile(const std::string& path);
 
     /**
-     * @brief Open a video file.
+     * @brief Open a HAP video file.
      */
     bool open(Context& ctx, const std::string& path, bool loop = false);
 
@@ -132,7 +118,7 @@ public:
     /**
      * @brief Check if file has audio.
      */
-    bool hasAudio() const { return audioStreamIndex_ >= 0; }
+    bool hasAudio() const { return hasAudio_; }
 
     /**
      * @brief Set audio volume (0.0 - 1.0).
@@ -155,34 +141,8 @@ public:
     Diligent::ITextureView* textureView() const;
 
 private:
-    bool decodeFrame();
-    void uploadFrame();
-    bool decodeAudioFrame();
-    void processAudioPacket();
-    void prebufferAudio();
-    void feedAudio();
-
-    // FFmpeg state - Video
-    AVFormatContext* formatCtx_ = nullptr;
-    AVCodecContext* videoCodecCtx_ = nullptr;
-    AVPacket* packet_ = nullptr;
-    AVFrame* frame_ = nullptr;
-    SwsContext* swsCtx_ = nullptr;
-    int videoStreamIndex_ = -1;
-    double videoTimeBase_ = 0.0;
-
-    // FFmpeg state - Audio
-    AVCodecContext* audioCodecCtx_ = nullptr;
-    AVFrame* audioFrame_ = nullptr;
-    SwrContext* swrCtx_ = nullptr;
-    int audioStreamIndex_ = -1;
-    double audioTimeBase_ = 0.0;
-    int audioSampleRate_ = 0;
-    int audioChannels_ = 0;
-
-    // Audio player
-    std::unique_ptr<AudioPlayer> audioPlayer_;
-    std::vector<float> audioBuffer_;
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
 
     // Video info
     int width_ = 0;
@@ -194,21 +154,25 @@ private:
     bool isPlaying_ = false;
     bool isFinished_ = false;
     bool isLooping_ = false;
+    bool hasAudio_ = false;
     float currentTime_ = 0.0f;
     float playbackTime_ = 0.0f;
     float nextFrameTime_ = 0.0f;
     std::string filePath_;
 
-    // Pixel buffer for BGRA conversion
-    std::vector<uint8_t> pixelBuffer_;
+    // DXT buffer for decoded frames
+    std::vector<uint8_t> dxtBuffer_;
 
     // GPU resources
     Diligent::IRenderDevice* device_ = nullptr;
     Diligent::IDeviceContext* context_ = nullptr;
     Diligent::ITexture* texture_ = nullptr;
     Diligent::ITextureView* srv_ = nullptr;
+
+    // Audio player
+    std::unique_ptr<AudioPlayer> audioPlayer_;
+
+    void prebufferAudio();
 };
 
 } // namespace vivid::video
-
-#endif // VIVID_HAS_FFMPEG

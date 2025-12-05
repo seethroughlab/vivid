@@ -2,9 +2,24 @@
 
 cmake_minimum_required(VERSION 3.16)
 
-project(vivid-video CXX OBJCXX)
+project(vivid-video CXX OBJCXX C)
 
-# Find FFmpeg for codec support (HAP, HEVC, etc.)
+include(FetchContent)
+
+# Fetch snappy for HAP codec decompression
+FetchContent_Declare(
+    snappy
+    GIT_REPOSITORY https://github.com/google/snappy.git
+    GIT_TAG main
+)
+set(SNAPPY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(SNAPPY_INSTALL OFF CACHE BOOL "" FORCE)
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+FetchContent_MakeAvailable(snappy)
+message(STATUS "[vivid-video] Snappy fetched for HAP codec support")
+
+# Find FFmpeg for HEVC and audio support
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
     pkg_check_modules(FFMPEG QUIET
@@ -17,9 +32,9 @@ if(PkgConfig_FOUND)
 endif()
 
 if(FFMPEG_FOUND)
-    message(STATUS "[vivid-video] FFmpeg found - audio/video codec support enabled")
+    message(STATUS "[vivid-video] FFmpeg found - HEVC and audio codec support enabled")
 else()
-    message(STATUS "[vivid-video] FFmpeg not found - codec support disabled")
+    message(STATUS "[vivid-video] FFmpeg not found - HEVC codec support disabled")
 endif()
 
 # Sources (platform-specific)
@@ -30,12 +45,14 @@ set(VIDEO_ADDON_HEADERS
 if(PLATFORM_MACOS)
     set(VIDEO_ADDON_SOURCES
         src/video_macos.mm
+        src/hap.c
+        src/hap_decoder.mm
+        src/audio_player.cpp
     )
-    # Add FFmpeg decoder and audio player if available
+    # Add FFmpeg decoder for HEVC if available
     if(FFMPEG_FOUND)
         list(APPEND VIDEO_ADDON_SOURCES
             src/ffmpeg_decoder.cpp
-            src/audio_player.cpp
         )
     endif()
 endif()
@@ -61,7 +78,12 @@ target_include_directories(vivid-video
         ${DILIGENT_DIR}/DiligentCore/Graphics/GraphicsEngine/interface
         ${DILIGENT_DIR}/DiligentCore/Graphics/GraphicsAccessories/interface
         ${DILIGENT_DIR}/DiligentCore/Graphics/GraphicsTools/interface
+        ${snappy_SOURCE_DIR}
+        ${snappy_BINARY_DIR}
 )
+
+# Link snappy for HAP codec
+target_link_libraries(vivid-video PRIVATE snappy)
 
 # FFmpeg support for HAP codec
 if(FFMPEG_FOUND)

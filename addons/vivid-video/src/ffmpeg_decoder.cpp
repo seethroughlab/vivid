@@ -9,6 +9,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/imgutils.h>
 #include <libavutil/opt.h>
+#include <libavutil/log.h>
 #include <libswscale/swscale.h>
 #include <libswresample/swresample.h>
 }
@@ -33,6 +34,9 @@ FFmpegDecoder::~FFmpegDecoder() {
 }
 
 bool FFmpegDecoder::needsFFmpegDecoder(const std::string& path) {
+    // Suppress FFmpeg info/warning messages (only show errors)
+    av_log_set_level(AV_LOG_ERROR);
+
     AVFormatContext* ctx = nullptr;
     if (avformat_open_input(&ctx, path.c_str(), nullptr, nullptr) < 0) {
         return false;
@@ -50,10 +54,9 @@ bool FFmpegDecoder::needsFFmpegDecoder(const std::string& path) {
             AVCodecID codecId = ctx->streams[i]->codecpar->codec_id;
 
             // Codecs that need FFmpeg on macOS:
-            // - HAP: DXT compressed, AVFoundation returns raw DXT data
             // - HEVC: AVFoundation returns NULL image buffers in native format
-            if (codecId == AV_CODEC_ID_HAP ||
-                codecId == AV_CODEC_ID_HEVC) {
+            // Note: HAP is handled by the dedicated HAPDecoder (Vidvox library)
+            if (codecId == AV_CODEC_ID_HEVC) {
                 needsFFmpeg = true;
                 codecName = avcodec_get_name(codecId);
                 break;
@@ -264,8 +267,9 @@ bool FFmpegDecoder::open(Context& ctx, const std::string& path, bool loop) {
     playbackTime_ = 0.0f;
     nextFrameTime_ = 0.0f;
 
-    // Start audio playback
+    // Pre-buffer audio before starting playback
     if (audioPlayer_) {
+        prebufferAudio();
         audioPlayer_->play();
     }
 
@@ -363,6 +367,11 @@ void FFmpegDecoder::update(Context& ctx) {
     // Advance playback time
     playbackTime_ += ctx.dt();
 
+    // Always keep audio buffer fed, regardless of video frame timing
+    if (audioPlayer_ && audioCodecCtx_) {
+        feedAudio();
+    }
+
     // Check if it's time for the next frame
     if (playbackTime_ < nextFrameTime_) {
         return;
@@ -377,6 +386,7 @@ void FFmpegDecoder::update(Context& ctx) {
         nextFrameTime_ = playbackTime_ + frameDuration;
     } else {
         // No more frames
+        std::cout << "[FFmpegDecoder] EOF at " << currentTime_ << "s, looping=" << isLooping_ << std::endl;
         if (isLooping_) {
             seek(0.0f);
         } else {
@@ -389,15 +399,62 @@ void FFmpegDecoder::update(Context& ctx) {
     }
 }
 
+void FFmpegDecoder::feedAudio() {
+    // Keep audio buffer reasonably full (~0.25 seconds minimum)
+    const uint32_t minBufferFrames = audioSampleRate_ / 4;
+
+    while (audioPlayer_->getBufferedFrames() < minBufferFrames) {
+        AVPacket* packet = av_packet_alloc();
+        if (!packet) break;
+
+        int ret = av_read_frame(formatCtx_, packet);
+        if (ret < 0) {
+            av_packet_free(&packet);
+            break;  // EOF or error - let decodeFrame handle it
+        }
+
+        if (packet->stream_index == audioStreamIndex_) {
+            ret = avcodec_send_packet(audioCodecCtx_, packet);
+            if (ret >= 0) {
+                while (ret >= 0) {
+                    ret = avcodec_receive_frame(audioCodecCtx_, audioFrame_);
+                    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+                    if (ret < 0) break;
+
+                    int outSamples = swr_get_out_samples(swrCtx_, audioFrame_->nb_samples);
+                    audioBuffer_.resize(outSamples * 2);
+                    uint8_t* outBuffer = reinterpret_cast<uint8_t*>(audioBuffer_.data());
+                    int converted = swr_convert(swrCtx_,
+                                                &outBuffer, outSamples,
+                                                (const uint8_t**)audioFrame_->data, audioFrame_->nb_samples);
+                    if (converted > 0) {
+                        audioPlayer_->pushSamples(audioBuffer_.data(), converted);
+                    }
+                    av_frame_unref(audioFrame_);
+                }
+            }
+        } else if (packet->stream_index == videoStreamIndex_) {
+            // Queue video packet - will be decoded in decodeFrame()
+            avcodec_send_packet(videoCodecCtx_, packet);
+        }
+
+        av_packet_unref(packet);
+        av_packet_free(&packet);
+    }
+}
+
 bool FFmpegDecoder::decodeFrame() {
     // Read packets until we get a video frame
     while (true) {
         int ret = av_read_frame(formatCtx_, packet_);
         if (ret < 0) {
             if (ret == AVERROR_EOF) {
+                std::cout << "[FFmpegDecoder] av_read_frame returned EOF" << std::endl;
                 return false;
             }
-            std::cerr << "[FFmpegDecoder] Error reading frame" << std::endl;
+            char errBuf[256];
+            av_strerror(ret, errBuf, sizeof(errBuf));
+            std::cerr << "[FFmpegDecoder] Error reading frame: " << errBuf << std::endl;
             return false;
         }
 
@@ -477,6 +534,65 @@ void FFmpegDecoder::processAudioPacket() {
 
         av_frame_unref(audioFrame_);
     }
+}
+
+void FFmpegDecoder::prebufferAudio() {
+    if (!audioPlayer_ || !audioCodecCtx_ || !formatCtx_) return;
+
+    // Target: buffer ~0.5 seconds of audio before starting playback
+    const uint32_t targetFrames = audioSampleRate_ / 2;
+    AVPacket* prebufPacket = av_packet_alloc();
+    if (!prebufPacket) return;
+
+    std::cout << "[FFmpegDecoder] Pre-buffering audio..." << std::endl;
+
+    while (audioPlayer_->getBufferedFrames() < targetFrames) {
+        int ret = av_read_frame(formatCtx_, prebufPacket);
+        if (ret < 0) {
+            // Hit EOF or error during prebuffer - seek back to start
+            av_seek_frame(formatCtx_, -1, 0, AVSEEK_FLAG_BACKWARD);
+            break;
+        }
+
+        if (prebufPacket->stream_index == audioStreamIndex_) {
+            // Process audio packet
+            ret = avcodec_send_packet(audioCodecCtx_, prebufPacket);
+            if (ret >= 0) {
+                while (ret >= 0) {
+                    ret = avcodec_receive_frame(audioCodecCtx_, audioFrame_);
+                    if (ret == AVERROR(EAGAIN) || ret == AVERROR_EOF) break;
+                    if (ret < 0) break;
+
+                    int outSamples = swr_get_out_samples(swrCtx_, audioFrame_->nb_samples);
+                    audioBuffer_.resize(outSamples * 2);
+                    uint8_t* outBuffer = reinterpret_cast<uint8_t*>(audioBuffer_.data());
+                    int converted = swr_convert(swrCtx_,
+                                                &outBuffer, outSamples,
+                                                (const uint8_t**)audioFrame_->data, audioFrame_->nb_samples);
+                    if (converted > 0) {
+                        audioPlayer_->pushSamples(audioBuffer_.data(), converted);
+                    }
+                    av_frame_unref(audioFrame_);
+                }
+            }
+        } else if (prebufPacket->stream_index == videoStreamIndex_) {
+            // Queue video packet for later - decode first frame
+            avcodec_send_packet(videoCodecCtx_, prebufPacket);
+            int ret = avcodec_receive_frame(videoCodecCtx_, frame_);
+            if (ret >= 0) {
+                if (frame_->pts != AV_NOPTS_VALUE) {
+                    currentTime_ = static_cast<float>(frame_->pts * videoTimeBase_);
+                }
+                uploadFrame();
+            }
+        }
+
+        av_packet_unref(prebufPacket);
+    }
+
+    av_packet_free(&prebufPacket);
+    std::cout << "[FFmpegDecoder] Pre-buffered " << audioPlayer_->getBufferedFrames()
+              << " audio frames" << std::endl;
 }
 
 void FFmpegDecoder::uploadFrame() {

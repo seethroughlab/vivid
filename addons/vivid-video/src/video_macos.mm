@@ -1,6 +1,7 @@
 // Vivid Video Addon - macOS Implementation
 // Uses AVFoundation for hardware-accelerated video decoding
-// HAP codec uses FFmpeg when available
+// HAP codec uses Vidvox HAP library for direct DXT texture upload
+// HEVC codec uses FFmpeg when available
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
@@ -10,7 +11,10 @@
 #include "vivid/video/video.h"
 #include "vivid/context.h"
 
-// HAP decoder (FFmpeg-based)
+// HAP decoder (Vidvox HAP library - direct DXT upload)
+#include "hap_decoder.h"
+
+// HEVC decoder (FFmpeg-based)
 #ifdef VIVID_HAS_FFMPEG
 #include "ffmpeg_decoder.h"
 #endif
@@ -31,10 +35,14 @@ namespace vivid::video {
 using namespace Diligent;
 
 struct VideoPlayer::Impl {
-#ifdef VIVID_HAS_FFMPEG
-    // HAP decoder (used when file is HAP codec)
-    std::unique_ptr<FFmpegDecoder> ffmpegDecoder;
+    // HAP decoder (Vidvox library - direct DXT upload)
+    std::unique_ptr<HAPDecoder> hapDecoder;
     bool isHAP = false;
+
+#ifdef VIVID_HAS_FFMPEG
+    // HEVC decoder (FFmpeg-based)
+    std::unique_ptr<FFmpegDecoder> ffmpegDecoder;
+    bool isHEVC = false;
 #endif
     // AVFoundation objects
     AVAsset* asset = nil;
@@ -73,12 +81,20 @@ struct VideoPlayer::Impl {
     }
 
     void close() {
+        // Close HAP decoder
+        if (hapDecoder) {
+            hapDecoder->close();
+            hapDecoder.reset();
+        }
+        isHAP = false;
+
 #ifdef VIVID_HAS_FFMPEG
+        // Close HEVC decoder
         if (ffmpegDecoder) {
             ffmpegDecoder->close();
             ffmpegDecoder.reset();
         }
-        isHAP = false;
+        isHEVC = false;
 #endif
         if (reader) {
             [reader cancelReading];
@@ -101,13 +117,32 @@ struct VideoPlayer::Impl {
         filePath = path;
         isLooping = loop;
 
+        // Check if this is a HAP file - use Vidvox HAP library for direct DXT upload
+        if (HAPDecoder::isHAPFile(path)) {
+            std::cout << "[VideoPlayer] Using HAP decoder (direct DXT upload)" << std::endl;
+            hapDecoder = std::make_unique<HAPDecoder>();
+            if (hapDecoder->open(ctx, path, loop)) {
+                isHAP = true;
+                videoWidth = hapDecoder->width();
+                videoHeight = hapDecoder->height();
+                videoDuration = hapDecoder->duration();
+                videoFrameRate = hapDecoder->frameRate();
+                isPlaying_ = true;
+                isFinished_ = false;
+                return true;
+            } else {
+                hapDecoder.reset();
+                std::cerr << "[VideoPlayer] HAP decoder failed, falling back to AVFoundation" << std::endl;
+            }
+        }
+
 #ifdef VIVID_HAS_FFMPEG
-        // Check if this codec needs FFmpeg decoder (HAP, HEVC, etc.)
+        // Check if this codec needs FFmpeg decoder (HEVC, etc.)
         if (FFmpegDecoder::needsFFmpegDecoder(path)) {
-            std::cout << "[VideoPlayer] Using FFmpeg decoder" << std::endl;
+            std::cout << "[VideoPlayer] Using FFmpeg decoder for HEVC" << std::endl;
             ffmpegDecoder = std::make_unique<FFmpegDecoder>();
             if (ffmpegDecoder->open(ctx, path, loop)) {
-                isHAP = true;
+                isHEVC = true;
                 videoWidth = ffmpegDecoder->width();
                 videoHeight = ffmpegDecoder->height();
                 videoDuration = ffmpegDecoder->duration();
@@ -117,7 +152,7 @@ struct VideoPlayer::Impl {
                 return true;
             } else {
                 ffmpegDecoder.reset();
-                std::cerr << "[VideoPlayer] HAP decoder failed, falling back to AVFoundation" << std::endl;
+                std::cerr << "[VideoPlayer] FFmpeg decoder failed, falling back to AVFoundation" << std::endl;
             }
         }
 #endif
@@ -320,8 +355,18 @@ struct VideoPlayer::Impl {
     }
 
     void update(Context& ctx) {
+        // HAP decoder (Vidvox library)
+        if (isHAP && hapDecoder) {
+            hapDecoder->update(ctx);
+            currentTime_ = hapDecoder->currentTime();
+            isPlaying_ = hapDecoder->isPlaying();
+            isFinished_ = hapDecoder->isFinished();
+            return;
+        }
+
 #ifdef VIVID_HAS_FFMPEG
-        if (isHAP && ffmpegDecoder) {
+        // HEVC decoder (FFmpeg)
+        if (isHEVC && ffmpegDecoder) {
             ffmpegDecoder->update(ctx);
             currentTime_ = ffmpegDecoder->currentTime();
             isPlaying_ = ffmpegDecoder->isPlaying();
@@ -524,8 +569,17 @@ struct VideoPlayer::Impl {
     }
 
     void seek(float seconds) {
+        // HAP decoder (Vidvox library)
+        if (isHAP && hapDecoder) {
+            hapDecoder->seek(seconds);
+            currentTime_ = hapDecoder->currentTime();
+            isFinished_ = hapDecoder->isFinished();
+            return;
+        }
+
 #ifdef VIVID_HAS_FFMPEG
-        if (isHAP && ffmpegDecoder) {
+        // HEVC decoder (FFmpeg)
+        if (isHEVC && ffmpegDecoder) {
             ffmpegDecoder->seek(seconds);
             currentTime_ = ffmpegDecoder->currentTime();
             isFinished_ = ffmpegDecoder->isFinished();
@@ -637,8 +691,16 @@ void VideoPlayer::seek(float seconds) {
 }
 
 void VideoPlayer::pause() {
+    // HAP decoder
+    if (impl_->isHAP && impl_->hapDecoder) {
+        impl_->hapDecoder->pause();
+        impl_->isPlaying_ = false;
+        return;
+    }
+
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->ffmpegDecoder) {
+    // HEVC decoder
+    if (impl_->isHEVC && impl_->ffmpegDecoder) {
         impl_->ffmpegDecoder->pause();
         impl_->isPlaying_ = false;
         return;
@@ -648,8 +710,16 @@ void VideoPlayer::pause() {
 }
 
 void VideoPlayer::play() {
+    // HAP decoder
+    if (impl_->isHAP && impl_->hapDecoder) {
+        impl_->hapDecoder->play();
+        impl_->isPlaying_ = impl_->hapDecoder->isPlaying();
+        return;
+    }
+
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->ffmpegDecoder) {
+    // HEVC decoder
+    if (impl_->isHEVC && impl_->ffmpegDecoder) {
         impl_->ffmpegDecoder->play();
         impl_->isPlaying_ = impl_->ffmpegDecoder->isPlaying();
         return;
@@ -669,8 +739,14 @@ bool VideoPlayer::isFinished() const {
 }
 
 bool VideoPlayer::isOpen() const {
+    // HAP decoder
+    if (impl_->isHAP && impl_->hapDecoder) {
+        return impl_->hapDecoder->isOpen();
+    }
+
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->ffmpegDecoder) {
+    // HEVC decoder
+    if (impl_->isHEVC && impl_->ffmpegDecoder) {
         return impl_->ffmpegDecoder->isOpen();
     }
 #endif
@@ -698,8 +774,14 @@ float VideoPlayer::frameRate() const {
 }
 
 Diligent::ITexture* VideoPlayer::texture() const {
+    // HAP decoder
+    if (impl_->isHAP && impl_->hapDecoder) {
+        return impl_->hapDecoder->texture();
+    }
+
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->ffmpegDecoder) {
+    // HEVC decoder
+    if (impl_->isHEVC && impl_->ffmpegDecoder) {
         return impl_->ffmpegDecoder->texture();
     }
 #endif
@@ -707,8 +789,14 @@ Diligent::ITexture* VideoPlayer::texture() const {
 }
 
 Diligent::ITextureView* VideoPlayer::textureView() const {
+    // HAP decoder
+    if (impl_->isHAP && impl_->hapDecoder) {
+        return impl_->hapDecoder->textureView();
+    }
+
 #ifdef VIVID_HAS_FFMPEG
-    if (impl_->isHAP && impl_->ffmpegDecoder) {
+    // HEVC decoder
+    if (impl_->isHEVC && impl_->ffmpegDecoder) {
         return impl_->ffmpegDecoder->textureView();
     }
 #endif
