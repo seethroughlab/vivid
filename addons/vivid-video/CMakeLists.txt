@@ -4,6 +4,23 @@ cmake_minimum_required(VERSION 3.16)
 
 project(vivid-video CXX OBJCXX)
 
+# Find FFmpeg for HAP codec support
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(FFMPEG QUIET
+        libavformat
+        libavcodec
+        libavutil
+        libswscale
+    )
+endif()
+
+if(FFMPEG_FOUND)
+    message(STATUS "[vivid-video] FFmpeg found - HAP codec support enabled")
+else()
+    message(STATUS "[vivid-video] FFmpeg not found - HAP codec support disabled")
+endif()
+
 # Sources (platform-specific)
 set(VIDEO_ADDON_HEADERS
     include/vivid/video/video.h
@@ -13,6 +30,10 @@ if(PLATFORM_MACOS)
     set(VIDEO_ADDON_SOURCES
         src/video_macos.mm
     )
+    # Add HAP decoder if FFmpeg available
+    if(FFMPEG_FOUND)
+        list(APPEND VIDEO_ADDON_SOURCES src/hap_decoder.cpp)
+    endif()
 endif()
 
 # Create shared library
@@ -37,6 +58,13 @@ target_include_directories(vivid-video
         ${DILIGENT_DIR}/DiligentCore/Graphics/GraphicsAccessories/interface
         ${DILIGENT_DIR}/DiligentCore/Graphics/GraphicsTools/interface
 )
+
+# FFmpeg support for HAP codec
+if(FFMPEG_FOUND)
+    target_compile_definitions(vivid-video PRIVATE VIVID_HAS_FFMPEG=1)
+    target_include_directories(vivid-video PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    target_link_libraries(vivid-video PRIVATE ${FFMPEG_LINK_LIBRARIES})
+endif()
 
 # Platform-specific settings
 if(PLATFORM_MACOS)

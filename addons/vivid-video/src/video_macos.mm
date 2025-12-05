@@ -1,5 +1,6 @@
 // Vivid Video Addon - macOS Implementation
 // Uses AVFoundation for hardware-accelerated video decoding
+// HAP codec uses FFmpeg when available
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
@@ -8,6 +9,11 @@
 
 #include "vivid/video/video.h"
 #include "vivid/context.h"
+
+// HAP decoder (FFmpeg-based)
+#ifdef VIVID_HAS_FFMPEG
+#include "hap_decoder.h"
+#endif
 
 // Diligent Engine includes
 #include "RenderDevice.h"
@@ -25,6 +31,11 @@ namespace vivid::video {
 using namespace Diligent;
 
 struct VideoPlayer::Impl {
+#ifdef VIVID_HAS_FFMPEG
+    // HAP decoder (used when file is HAP codec)
+    std::unique_ptr<HAPDecoder> hapDecoder;
+    bool isHAP = false;
+#endif
     // AVFoundation objects
     AVAsset* asset = nil;
     AVAssetReader* reader = nil;
@@ -62,6 +73,13 @@ struct VideoPlayer::Impl {
     }
 
     void close() {
+#ifdef VIVID_HAS_FFMPEG
+        if (hapDecoder) {
+            hapDecoder->close();
+            hapDecoder.reset();
+        }
+        isHAP = false;
+#endif
         if (reader) {
             [reader cancelReading];
             reader = nil;
@@ -82,6 +100,27 @@ struct VideoPlayer::Impl {
         context = ctx.immediateContext();
         filePath = path;
         isLooping = loop;
+
+#ifdef VIVID_HAS_FFMPEG
+        // Check if this is a HAP file - use FFmpeg decoder for HAP
+        if (HAPDecoder::isHAPFile(path)) {
+            std::cout << "[VideoPlayer] Detected HAP codec, using FFmpeg decoder" << std::endl;
+            hapDecoder = std::make_unique<HAPDecoder>();
+            if (hapDecoder->open(ctx, path, loop)) {
+                isHAP = true;
+                videoWidth = hapDecoder->width();
+                videoHeight = hapDecoder->height();
+                videoDuration = hapDecoder->duration();
+                videoFrameRate = hapDecoder->frameRate();
+                isPlaying_ = true;
+                isFinished_ = false;
+                return true;
+            } else {
+                hapDecoder.reset();
+                std::cerr << "[VideoPlayer] HAP decoder failed, falling back to AVFoundation" << std::endl;
+            }
+        }
+#endif
 
         @autoreleasepool {
             // Create asset from file
@@ -281,6 +320,15 @@ struct VideoPlayer::Impl {
     }
 
     void update(Context& ctx) {
+#ifdef VIVID_HAS_FFMPEG
+        if (isHAP && hapDecoder) {
+            hapDecoder->update(ctx);
+            currentTime_ = hapDecoder->currentTime();
+            isPlaying_ = hapDecoder->isPlaying();
+            isFinished_ = hapDecoder->isFinished();
+            return;
+        }
+#endif
         if (!isPlaying_ || isFinished_ || !reader) {
             return;
         }
@@ -445,6 +493,14 @@ struct VideoPlayer::Impl {
     }
 
     void seek(float seconds) {
+#ifdef VIVID_HAS_FFMPEG
+        if (isHAP && hapDecoder) {
+            hapDecoder->seek(seconds);
+            currentTime_ = hapDecoder->currentTime();
+            isFinished_ = hapDecoder->isFinished();
+            return;
+        }
+#endif
         if (!asset) return;
 
         @autoreleasepool {
@@ -550,10 +606,24 @@ void VideoPlayer::seek(float seconds) {
 }
 
 void VideoPlayer::pause() {
+#ifdef VIVID_HAS_FFMPEG
+    if (impl_->isHAP && impl_->hapDecoder) {
+        impl_->hapDecoder->pause();
+        impl_->isPlaying_ = false;
+        return;
+    }
+#endif
     impl_->isPlaying_ = false;
 }
 
 void VideoPlayer::play() {
+#ifdef VIVID_HAS_FFMPEG
+    if (impl_->isHAP && impl_->hapDecoder) {
+        impl_->hapDecoder->play();
+        impl_->isPlaying_ = impl_->hapDecoder->isPlaying();
+        return;
+    }
+#endif
     if (!impl_->isFinished_) {
         impl_->isPlaying_ = true;
     }
@@ -568,6 +638,11 @@ bool VideoPlayer::isFinished() const {
 }
 
 bool VideoPlayer::isOpen() const {
+#ifdef VIVID_HAS_FFMPEG
+    if (impl_->isHAP && impl_->hapDecoder) {
+        return impl_->hapDecoder->isOpen();
+    }
+#endif
     return impl_->asset != nil;
 }
 
@@ -592,10 +667,20 @@ float VideoPlayer::frameRate() const {
 }
 
 Diligent::ITexture* VideoPlayer::texture() const {
+#ifdef VIVID_HAS_FFMPEG
+    if (impl_->isHAP && impl_->hapDecoder) {
+        return impl_->hapDecoder->texture();
+    }
+#endif
     return impl_->texture;
 }
 
 Diligent::ITextureView* VideoPlayer::textureView() const {
+#ifdef VIVID_HAS_FFMPEG
+    if (impl_->isHAP && impl_->hapDecoder) {
+        return impl_->hapDecoder->textureView();
+    }
+#endif
     return impl_->srv;
 }
 

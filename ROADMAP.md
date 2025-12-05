@@ -136,8 +136,8 @@ Battle-tested rendering components. We use selectively:
 |-----------|-------------|-------|
 | `PBR_Renderer` | IBL cubemap precomputation, PBR shader infrastructure | `PrecomputeCubemaps()`, `GetIrradianceCubeSRV()`, `GetPrefilteredEnvMapSRV()` |
 | `PBR_Renderer::CreateInfo` | Configuration for PBR pipeline | `EnableIBL`, `UseSeparateMetallicRoughnessTextures`, `TextureAttribIndices` |
-| `GLTF_PBR_Renderer` | (Future) GLTF model rendering | Not yet integrated |
-| `ShadowMapManager` | (Future) Cascaded shadow maps | Not yet integrated |
+| `GLTF_PBR_Renderer` | GLTF model rendering | Not yet integrated |
+| `ShadowMapManager` | Cascaded shadow maps | Not yet integrated |
 
 **Key insight:** DiligentFX expects material textures as `Texture2DArray` (even with single slices), not `Texture2D`. Our `TextureUtils::loadFromFileAsArray()` handles this.
 
@@ -389,7 +389,7 @@ shaders/
 - [x] GLTF model loading via GLTF_PBR_Renderer (GLTFViewer operator)
 - [x] IBL environment loading and skybox rendering
 - [x] glTF-Sample-Models as git submodule in `external/glTF-Sample-Models/`
-- [ ] Shadow mapping via ShadowMapManager (future)
+- [ ] Shadow mapping via ShadowMapManager 
 ---
 
 ### Procedural Geometry
@@ -700,14 +700,14 @@ runtime/
 - [x] VIVID_CHAIN macro for exporting entry points
 - [x] Platform-specific defines (PLATFORM_MACOS=1) for Diligent headers
 - [x] Build artifact management (unique library names, cleanup old builds)
-- [ ] State preservation across reloads (future)
-- [ ] Zero-config build with auto-detection of includes (future)
+- [ ] State preservation across reloads 
+- [ ] Zero-config build with auto-detection of includes 
 
 ### Error Handling
 - [x] Compile errors: Print to console, keep old code running
-- [ ] Compile errors: Display in window overlay (future)
-- [ ] Shader errors: Show shader name, line number, error message (future)
-- [ ] Error overlay: Non-intrusive display (future)
+- [ ] Compile errors: Display in window overlay 
+- [ ] Shader errors: Show shader name, line number, error message 
+- [ ] Error overlay: Non-intrusive display 
 
 ---
 
@@ -816,10 +816,10 @@ Platform-specific flags:
 clang++ -std=c++17 -O2 -shared -fPIC -dynamiclib -undefined dynamic_lookup
         -DPLATFORM_MACOS=1 ...
 
-// Linux (future)
+// Linux 
 g++ -std=c++17 -O2 -shared -fPIC -DPLATFORM_LINUX=1 ...
 
-// Windows (future)
+// Windows 
 cl.exe /nologo /EHsc /O2 /LD /DPLATFORM_WIN32=1 ...
 ```
 

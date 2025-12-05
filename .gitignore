@@ -62,3 +62,4 @@ examples/video-playback/assets/*.mxf
 .claude
 examples/video-playback/assets
 vivid_old
+examples/video-demo/assets/Drums_Verse_BG.mov
