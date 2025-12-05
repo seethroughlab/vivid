@@ -1,18 +1,3 @@
-// SolidColor Pixel Shader
-// Outputs a constant color for every pixel
-
-cbuffer Constants : register(b0)
-{
-    float4 g_Color;
-};
-
-struct PSInput
-{
-    float4 position : SV_POSITION;
-    float2 uv : TEXCOORD0;
-};
-
-float4 main(in PSInput input) : SV_TARGET
-{
-    return g_Color;
-}
+version https://git-lfs.github.com/spec/v1
+oid sha256:fc69f3fcbe50a7a52cc8f05cc364c8eb469f425644a0775a192ebb9e9be235c7
+size 280
