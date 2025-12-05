@@ -34,6 +34,21 @@ public:
         };
     }
 
+    std::vector<std::pair<std::string, std::string>> getParamStrings() const override {
+        const char* typeNames[] = {"Circle", "Rectangle", "Triangle", "Line", "Ring", "Star"};
+        char buf[64];
+        std::vector<std::pair<std::string, std::string>> result;
+        int t = static_cast<int>(type_);
+        result.push_back({"type", (t >= 0 && t <= 5) ? typeNames[t] : "Unknown"});
+        snprintf(buf, sizeof(buf), "(%.2f, %.2f)", centerX_, centerY_);
+        result.push_back({"center", buf});
+        snprintf(buf, sizeof(buf), "%.2f", radius_);
+        result.push_back({"radius", buf});
+        snprintf(buf, sizeof(buf), "%.3f", softness_);
+        result.push_back({"softness", buf});
+        return result;
+    }
+
     // Fluent API
     Shape& type(ShapeType t) { type_ = t; return *this; }
     Shape& center(float x, float y) { centerX_ = x; centerY_ = y; return *this; }

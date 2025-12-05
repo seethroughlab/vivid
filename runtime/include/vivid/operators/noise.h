@@ -19,6 +19,18 @@ public:
         };
     }
 
+    std::vector<std::pair<std::string, std::string>> getParamStrings() const override {
+        char buf[64];
+        std::vector<std::pair<std::string, std::string>> result;
+        snprintf(buf, sizeof(buf), "%.1f", scale_);
+        result.push_back({"scale", buf});
+        snprintf(buf, sizeof(buf), "%.1f", speed_);
+        result.push_back({"speed", buf});
+        snprintf(buf, sizeof(buf), "%d", octaves_);
+        result.push_back({"octaves", buf});
+        return result;
+    }
+
     // Fluent API
     Noise& scale(float s) { scale_ = s; return *this; }
     Noise& speed(float s) { speed_ = s; return *this; }

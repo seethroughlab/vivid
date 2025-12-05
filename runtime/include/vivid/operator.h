@@ -102,6 +102,9 @@ public:
     /// Return parameter declarations for editor
     virtual std::vector<ParamDecl> params() { return {}; }
 
+    /// Return current parameter values as name-value string pairs (for visualization)
+    virtual std::vector<std::pair<std::string, std::string>> getParamStrings() const { return {}; }
+
     /// Return the output type
     virtual OutputKind outputKind() const { return OutputKind::Texture; }
 

@@ -16,6 +16,16 @@ public:
         };
     }
 
+    std::vector<std::pair<std::string, std::string>> getParamStrings() const override {
+        char buf[64];
+        std::vector<std::pair<std::string, std::string>> result;
+        snprintf(buf, sizeof(buf), "%.1f", radius_);
+        result.push_back({"radius", buf});
+        snprintf(buf, sizeof(buf), "%d", passes_);
+        result.push_back({"passes", buf});
+        return result;
+    }
+
     // Fluent API
     Blur& radius(float r) { radius_ = r; return *this; }
     Blur& passes(int p) { passes_ = p; return *this; }

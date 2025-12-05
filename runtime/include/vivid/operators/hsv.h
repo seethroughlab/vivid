@@ -17,6 +17,18 @@ public:
         };
     }
 
+    std::vector<std::pair<std::string, std::string>> getParamStrings() const override {
+        char buf[64];
+        std::vector<std::pair<std::string, std::string>> result;
+        snprintf(buf, sizeof(buf), "%.1f", hueShift_);
+        result.push_back({"hueShift", buf});
+        snprintf(buf, sizeof(buf), "%.2f", saturation_);
+        result.push_back({"saturation", buf});
+        snprintf(buf, sizeof(buf), "%.2f", value_);
+        result.push_back({"value", buf});
+        return result;
+    }
+
     // Fluent API
     HSV& hueShift(float h) { hueShift_ = h; return *this; }
     HSV& saturation(float s) { saturation_ = s; return *this; }

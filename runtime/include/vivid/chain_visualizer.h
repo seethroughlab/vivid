@@ -43,9 +43,9 @@ private:
     bool visible_ = true;
 
     // Window state
-    float windowWidth_ = 350.0f;
+    float windowWidth_ = 400.0f;
     float nodeSpacing_ = 80.0f;
-    int thumbnailSize_ = 64;
+    int thumbnailSize_ = 180;
 };
 
 } // namespace vivid

@@ -184,20 +184,33 @@ void ChainVisualizer::renderOperatorNode(Context& ctx, const OperatorInfo& info,
         if (info.op->outputKind() == OutputKind::Texture) {
             auto* srv = info.op->getOutputSRV();
             if (srv) {
+                auto* tex = srv->GetTexture();
+                float displayWidth = static_cast<float>(thumbnailSize_);
+                float displayHeight = static_cast<float>(thumbnailSize_);
+
+                // Calculate correct aspect ratio
+                if (tex) {
+                    const auto& desc = tex->GetDesc();
+                    float aspect = static_cast<float>(desc.Width) / static_cast<float>(desc.Height);
+                    if (aspect > 1.0f) {
+                        // Wider than tall - fit to width
+                        displayHeight = displayWidth / aspect;
+                    } else {
+                        // Taller than wide - fit to height
+                        displayWidth = displayHeight * aspect;
+                    }
+                }
+
                 // Use the texture view pointer as the texture ID for ImGui
                 // ImGuiImplDiligent expects ITextureView* cast to ImTextureID
                 ImTextureID texId = reinterpret_cast<ImTextureID>(srv);
-                ImGui::Image(texId, ImVec2(static_cast<float>(thumbnailSize_),
-                                           static_cast<float>(thumbnailSize_)));
+                ImGui::Image(texId, ImVec2(displayWidth, displayHeight));
 
                 // Show texture dimensions on hover
-                if (ImGui::IsItemHovered()) {
-                    auto* tex = srv->GetTexture();
-                    if (tex) {
-                        const auto& desc = tex->GetDesc();
-                        ImGui::SetTooltip("%s\n%dx%d", info.op->typeName().c_str(),
-                                          desc.Width, desc.Height);
-                    }
+                if (ImGui::IsItemHovered() && tex) {
+                    const auto& desc = tex->GetDesc();
+                    ImGui::SetTooltip("%s\n%dx%d", info.op->typeName().c_str(),
+                                      desc.Width, desc.Height);
                 }
             } else {
                 // No output yet - show placeholder
@@ -217,12 +230,21 @@ void ChainVisualizer::renderOperatorNode(Context& ctx, const OperatorInfo& info,
             }
         }
 
-        // Show parameters (read-only)
-        auto params = info.op->params();
-        if (!params.empty()) {
+        // Show parameters with current values (read-only)
+        auto paramStrings = info.op->getParamStrings();
+        if (!paramStrings.empty()) {
             ImGui::TextDisabled("Parameters:");
-            for (const auto& param : params) {
-                ImGui::BulletText("%s", param.name.c_str());
+            for (const auto& [name, value] : paramStrings) {
+                ImGui::BulletText("%s: %s", name.c_str(), value.c_str());
+            }
+        } else {
+            // Fallback to showing just param names if getParamStrings not implemented
+            auto params = info.op->params();
+            if (!params.empty()) {
+                ImGui::TextDisabled("Parameters:");
+                for (const auto& param : params) {
+                    ImGui::BulletText("%s", param.name.c_str());
+                }
             }
         }
 

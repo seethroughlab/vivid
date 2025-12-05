@@ -25,6 +25,16 @@ public:
         };
     }
 
+    std::vector<std::pair<std::string, std::string>> getParamStrings() const override {
+        const char* modeNames[] = {"Over", "Add", "Multiply", "Screen", "Overlay"};
+        char buf[64];
+        std::vector<std::pair<std::string, std::string>> result;
+        result.push_back({"mode", (mode_ >= 0 && mode_ <= 4) ? modeNames[mode_] : "Unknown"});
+        snprintf(buf, sizeof(buf), "%.2f", opacity_);
+        result.push_back({"opacity", buf});
+        return result;
+    }
+
     // Fluent API
     Composite& mode(BlendMode m) { mode_ = static_cast<int>(m); return *this; }
     Composite& mode(int m) { mode_ = m; return *this; }

@@ -18,6 +18,18 @@ public:
         };
     }
 
+    std::vector<std::pair<std::string, std::string>> getParamStrings() const override {
+        char buf[64];
+        std::vector<std::pair<std::string, std::string>> result;
+        snprintf(buf, sizeof(buf), "%.4f", amount_);
+        result.push_back({"amount", buf});
+        snprintf(buf, sizeof(buf), "%.1f", angle_);
+        result.push_back({"angle", buf});
+        snprintf(buf, sizeof(buf), "(%.2f, %.2f)", centerX_, centerY_);
+        result.push_back({"center", buf});
+        return result;
+    }
+
     // Fluent API
     ChromaticAberration& amount(float a) { amount_ = a; return *this; }
     ChromaticAberration& angle(float a) { angle_ = a; return *this; }
