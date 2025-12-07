@@ -1144,6 +1144,7 @@ chain.add<Output>("out").input("scanlines");
 - [ ] Dither produces correct Bayer patterns
 - [ ] CRTEffect curvature doesn't clip edges
 - [ ] examples/retro-demo runs on all platforms
+- [ ] Update README.md with new operators and usage examples
 
 ### Phase 6: ImGui Addon
 
@@ -1159,6 +1160,7 @@ chain.add<Output>("out").input("scanlines");
 - [ ] Nodes display correct connections
 - [ ] Thumbnails update in real-time
 - [ ] UI doesn't impact rendering performance (<1ms overhead)
+- [ ] Update README.md with UI/editor features
 
 ### Phase 7: Media Addon
 
@@ -1188,6 +1190,7 @@ Use the official HAP implementation from Vidvox: https://github.com/Vidvox/hap
 - [ ] Webcam works on macOS (AVFoundation)
 - [ ] Webcam works on Windows (Media Foundation)
 - [ ] examples/video-demo runs on macOS and Windows
+- [ ] Update README.md with media playback documentation
 
 ### Phase 8: 3D Addon (vivid-render3d)
 
@@ -1491,6 +1494,7 @@ ctx.drawCircles(circles, output, clearColor);
 - [ ] examples/procedural-mesh runs on all platforms
 - [ ] examples/csg-demo runs on all platforms
 - [ ] examples/wipeout-craft runs on all platforms
+- [ ] Update README.md with 3D rendering documentation
 
 ### Phase 9: Editor Integration
 
@@ -1633,6 +1637,7 @@ void update(Context& ctx) {
 - [ ] AudioFilter applies HPF/LPF in real-time
 - [ ] examples/audio-reactive runs on all platforms
 - [ ] examples/sample-trigger runs on all platforms
+- [ ] Update README.md with audio features documentation
 
 ### Phase 11: MIDI & OSC Addon
 
