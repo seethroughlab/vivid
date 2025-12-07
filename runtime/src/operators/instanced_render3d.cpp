@@ -97,13 +97,13 @@ cbuffer FrameConstants {
     float4 g_IBLParams;       // x = iblScale, y = useIBL (1.0 or 0.0), z = prefilteredMipLevels
 };
 
-// PBR material textures
-Texture2D    g_AlbedoMap;
-Texture2D    g_NormalMap;
-Texture2D    g_MetallicMap;
-Texture2D    g_RoughnessMap;
-Texture2D    g_AOMap;
-SamplerState g_Sampler;
+// PBR material textures (Texture2DArray for DiligentFX compatibility)
+Texture2DArray g_AlbedoMap;
+Texture2DArray g_NormalMap;
+Texture2DArray g_MetallicMap;
+Texture2DArray g_RoughnessMap;
+Texture2DArray g_AOMap;
+SamplerState   g_Sampler;
 
 // IBL textures
 TextureCube  g_IrradianceMap;    // Diffuse IBL (pre-convolved)
@@ -172,16 +172,17 @@ float4 main(in PSInput input) : SV_TARGET {
     float3 N;
 
     if (useTextures) {
-        // Sample PBR textures
-        float4 albedoSample = g_AlbedoMap.Sample(g_Sampler, input.uv);
-        albedo = albedoSample.rgb * input.color.rgb;  // Tint by instance color
+        // Sample PBR textures using 3D UV (u, v, arrayIndex=0) for Texture2DArray
+        float3 texUV = float3(input.uv.x, input.uv.y, 0.0);
+        float4 albedoSample = g_AlbedoMap.Sample(g_Sampler, texUV);
+        albedo = albedoSample.rgb;  // Use texture directly
 
-        metallic = g_MetallicMap.Sample(g_Sampler, input.uv).r;
-        roughness = g_RoughnessMap.Sample(g_Sampler, input.uv).r;
-        ao = g_AOMap.Sample(g_Sampler, input.uv).r;
+        metallic = g_MetallicMap.Sample(g_Sampler, texUV).r;
+        roughness = g_RoughnessMap.Sample(g_Sampler, texUV).r;
+        ao = g_AOMap.Sample(g_Sampler, texUV).r;
 
         // Sample and transform normal map
-        float3 normalSample = g_NormalMap.Sample(g_Sampler, input.uv).rgb;
+        float3 normalSample = g_NormalMap.Sample(g_Sampler, texUV).rgb;
         normalSample = normalSample * 2.0 - 1.0;  // Convert from [0,1] to [-1,1]
 
         // Simple tangent space to world space (approximate for cubes)
@@ -200,6 +201,7 @@ float4 main(in PSInput input) : SV_TARGET {
     }
 
     roughness = max(roughness, 0.04); // Clamp to avoid divide by zero
+    roughness = roughness * 0.3;  // Scale down roughness to make shinier
 
     // Vectors
     float3 V = normalize(g_CameraPos.xyz - input.worldPos);
@@ -258,18 +260,18 @@ float4 main(in PSInput input) : SV_TARGET {
         float2 envBRDF = g_BRDFLut.Sample(g_IBLSampler, brdfUV).rg;
         float3 specularIBL = prefilteredColor * (kS_IBL * envBRDF.x + envBRDF.y);
 
-        // Combine IBL components
+        // Combine IBL components (for metals, kD_IBL is ~0)
         ambient = (kD_IBL * diffuseIBL + specularIBL) * ao * iblScale;
     } else {
         // Fallback to simple ambient
         ambient = g_AmbientColor.rgb * albedo * ao * (1.0 - metallic * 0.5);
     }
 
-    // Final color with tone mapping
+    // Final color
     float3 color = ambient + Lo;
 
-    // Simple Reinhard tone mapping
-    color = color / (color + 1.0);
+    // ACES-ish tone mapping (simple approximation)
+    color = color / (color + 0.5);  // Softer than Reinhard
 
     // Gamma correction
     color = pow(color, float3(1.0/2.2, 1.0/2.2, 1.0/2.2));
@@ -573,9 +575,19 @@ void InstancedRender3D::renderScene(Context& ctx) {
 
             // Material params
             constants->materialParams[0] = uvScale_;
-            constants->materialParams[1] = (material_ && material_->hasAlbedo()) ? 1.0f : 0.0f;
+            bool hasMaterialTextures = material_ && material_->hasAlbedo();
+            constants->materialParams[1] = hasMaterialTextures ? 1.0f : 0.0f;
             constants->materialParams[2] = 0.0f;
             constants->materialParams[3] = 0.0f;
+
+            // Debug output (once)
+            static bool debugPrinted = false;
+            if (!debugPrinted) {
+                std::cout << "[InstancedRender3D] Material: " << (material_ ? "set" : "null")
+                          << ", hasAlbedo: " << (material_ ? (material_->hasAlbedo() ? "true" : "false") : "n/a")
+                          << ", useTextures: " << hasMaterialTextures << std::endl;
+                debugPrinted = true;
+            }
 
             // IBL params
             bool hasIBL = environment_ && environment_->isLoaded();
@@ -588,14 +600,28 @@ void InstancedRender3D::renderScene(Context& ctx) {
 
     // Bind textures if we have a material
     if (material_ && srb_) {
-        if (auto* var = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "g_AlbedoMap")) {
-            var->Set(material_->albedoSRV());
+        static bool textureDebugPrinted = false;
+        auto* albedoVar = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "g_AlbedoMap");
+        if (albedoVar) {
+            albedoVar->Set(material_->albedoSRV());
+            if (!textureDebugPrinted) {
+                std::cout << "[InstancedRender3D] Bound albedo texture, SRV: "
+                          << (material_->albedoSRV() ? "valid" : "null") << std::endl;
+            }
+        } else if (!textureDebugPrinted) {
+            std::cout << "[InstancedRender3D] WARNING: g_AlbedoMap variable not found!" << std::endl;
         }
         if (auto* var = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "g_NormalMap")) {
             var->Set(material_->normalSRV());
         }
         if (auto* var = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "g_MetallicMap")) {
             var->Set(material_->metallicSRV());
+            if (!textureDebugPrinted) {
+                std::cout << "[InstancedRender3D] Metallic SRV: "
+                          << (material_->metallicSRV() ? "valid" : "NULL") << std::endl;
+            }
+        } else if (!textureDebugPrinted) {
+            std::cout << "[InstancedRender3D] WARNING: g_MetallicMap variable not found!" << std::endl;
         }
         if (auto* var = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "g_RoughnessMap")) {
             var->Set(material_->roughnessSRV());
@@ -603,6 +629,7 @@ void InstancedRender3D::renderScene(Context& ctx) {
         if (auto* var = srb_->GetVariableByName(SHADER_TYPE_PIXEL, "g_AOMap")) {
             var->Set(material_->aoSRV());
         }
+        textureDebugPrinted = true;
     }
 
     // Bind IBL textures if we have an environment

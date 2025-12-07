@@ -98,8 +98,8 @@ void update(Context& ctx) {
         // Load PBR material
         bronzeMaterial = std::make_unique<PBRMaterial>();
         bronzeMaterial->createDefaults(ctx);
-        if (bronzeMaterial->loadFromDirectory(ctx, "assets/materials/alien-panels-bl", "alien-panels")) {
-            std::cout << "[3D Instancing] Loaded alien-panels material" << std::endl;
+        if (bronzeMaterial->loadFromDirectory(ctx, "assets/materials/bronze-bl", "bronze")) {
+            std::cout << "[3D Instancing] Loaded bronze material" << std::endl;
         } else {
             std::cout << "[3D Instancing] Warning: Could not load alien-panels material" << std::endl;
         }
@@ -118,18 +118,18 @@ void update(Context& ctx) {
         renderer->setMesh(&cubeMesh);
         renderer->setMaterial(bronzeMaterial.get());
         renderer->setEnvironment(iblEnv.get());
-        renderer->uvScale(2.0f);  // Tile the texture
+        renderer->uvScale(2.0f);  // Match pbr-test UV scale
         renderer->iblScale(1.0f);  // IBL intensity
-        renderer->backgroundColor(0.02f, 0.02f, 0.05f);
-        renderer->ambientColor(0.15f, 0.15f, 0.2f);
+        renderer->backgroundColor(0.08f, 0.08f, 0.1f);  // Match pbr-test
+        renderer->ambientColor(0.4f, 0.4f, 0.45f);       // Match pbr-test
         renderer->setLight(InstancedLight(
-            glm::vec3(-0.5f, -1.0f, -0.5f),  // direction
-            0.8f,                             // reduced intensity (IBL provides ambient)
-            glm::vec3(1.0f, 0.98f, 0.95f)    // warm white
+            glm::vec3(-0.5f, -0.8f, -0.5f),  // direction (similar to pbr-test key light)
+            2.5f,                             // Match pbr-test key light intensity
+            glm::vec3(1.0f, 0.95f, 0.9f)     // warm white
         ));
 
         // Create particles in a sphere distribution
-        const int numParticles = 1000;
+        const int numParticles = 50;  // Fewer, larger cubes
         particles.reserve(numParticles);
 
         for (int i = 0; i < numParticles; i++) {
@@ -156,18 +156,17 @@ void update(Context& ctx) {
             tangent = glm::normalize(tangent);
             p.velocity = tangent * (0.5f + 1.5f * (float)rand() / RAND_MAX);
 
-            p.rotationSpeed = 1.0f + 3.0f * (float)rand() / RAND_MAX;
+            p.rotationSpeed = 0.5f + 1.0f * (float)rand() / RAND_MAX;
             p.rotation = 2.0f * 3.14159f * (float)rand() / RAND_MAX;
-            p.scale = 0.1f + 0.2f * (float)rand() / RAND_MAX;
+            p.scale = 1.0f + 1.5f * (float)rand() / RAND_MAX;  // Very large cubes
 
-            // Color based on distance from center
-            float hue = r / 10.0f;
-            p.color = hueToRGB(hue);
+            // Use white/light gray to let the texture show through
+            float brightness = 0.8f + 0.2f * (float)rand() / RAND_MAX;
+            p.color = glm::vec4(brightness, brightness, brightness, 1.0f);
 
-            // Vary metallic and roughness based on position
-            // Inner particles are more metallic, outer are more rough/matte
-            p.metallic = glm::clamp(1.0f - (r / 10.0f), 0.0f, 1.0f);
-            p.roughness = glm::clamp(0.1f + (r / 12.0f), 0.05f, 0.9f);
+            // Material properties from texture, not per-instance
+            p.metallic = 0.0f;   // Let texture define metallic
+            p.roughness = 0.5f;  // Let texture define roughness
 
             particles.push_back(p);
         }
