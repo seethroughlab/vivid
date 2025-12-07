@@ -33,6 +33,12 @@ add_library(vivid-effects-2d SHARED
     src/chromatic_aberration.cpp
     src/switch_op.cpp
     src/bloom.cpp
+    src/gradient.cpp
+    src/dither.cpp
+    src/quantize.cpp
+    src/scanlines.cpp
+    src/crt_effect.cpp
+    src/downsample.cpp
 )
 
 target_include_directories(vivid-effects-2d PUBLIC

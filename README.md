@@ -9,6 +9,7 @@ A creative coding framework for real-time graphics with hot-reloadable C++ chain
 - **Chain-Based Architecture** - Connect operators to build visual pipelines
 - **Addon System** - Modular design with optional feature packages
 - **State Preservation** - Feedback loops and animations survive hot reloads
+- **LLM-Friendly** - Designed for AI-assisted development (see below)
 
 ## Quick Start
 
@@ -85,7 +86,8 @@ Edit your code while it's running - changes apply automatically.
 ### Generators
 - `Noise` - Fractal noise (Perlin, Simplex, Worley, Value)
 - `SolidColor` - Constant color
-- `Ramp` - Gradient generator
+- `Ramp` - Linear gradient
+- `Gradient` - Multi-mode gradients (linear, radial, angular, diamond)
 - `Shape` - SDF shapes (circle, rect, triangle, star, polygon)
 - `LFO` - Oscillators (sine, triangle, saw, square)
 - `Image` - Load images from disk
@@ -104,6 +106,17 @@ Edit your code while it's running - changes apply automatically.
 - `Tile` - Texture tiling
 - `Feedback` - Frame feedback with decay
 
+### Retro/Post-Processing
+- `Dither` - Ordered dithering (Bayer 2x2, 4x4, 8x8)
+- `Quantize` - Color palette reduction
+- `Scanlines` - CRT-style lines
+- `CRTEffect` - Full CRT simulation (curvature, vignette, phosphor)
+- `Downsample` - Low-res pixelated look
+
+### Modulation
+- `Math` - Mathematical operations (add, multiply, clamp, remap, etc.)
+- `Logic` - Comparison and logic (greater than, in range, toggle, etc.)
+
 ### Compositing
 - `Composite` - Blend multiple inputs
 - `Switch` - Select between inputs
@@ -119,6 +132,23 @@ vivid/
 ├── examples/       # Demo projects
 └── assets/         # Shared resources
 ```
+
+## LLM-Friendly Design
+
+Vivid is designed with AI-assisted development in mind:
+
+- **Minimal Core** - ~600 lines of runtime code that fits in context windows
+- **Self-Contained Operators** - Each operator is a single .h/.cpp pair with embedded shaders
+- **Consistent Patterns** - All operators follow the same structure (init/process/cleanup)
+- **Fluent API** - Method chaining makes code readable and easy to generate
+- **Comprehensive ROADMAP** - Detailed documentation helps LLMs understand the architecture
+- **Hot Reload** - Instant feedback loop when iterating with AI assistance
+
+The codebase is structured so an LLM can:
+1. Understand the full architecture from ROADMAP.md
+2. Read any operator as a complete, self-contained example
+3. Generate new operators following established patterns
+4. Modify chain.cpp files without needing deep context
 
 ## License
 

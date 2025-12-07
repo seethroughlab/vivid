@@ -94,7 +94,13 @@ Vivid V3 is the third attempt at this framework. Understanding why V1 and V2 fai
 
 3. **Get to the chain API fast.** The core value of Vivid is the `chain.cpp` programming model. All infrastructure work serves this goal.
 
-4. **LLM-friendly.** Everything is plain text (C++, WGSL shaders, JSON metadata). Models can read, write, and reason about the entire codebase.
+4. **LLM-friendly.** Designed for AI-assisted development:
+   - Everything is plain text (C++, WGSL shaders, JSON metadata)
+   - Minimal core (~600 lines) fits in context windows
+   - Self-contained operators with embedded shaders (no external dependencies)
+   - Consistent patterns across all operators (init/process/cleanup)
+   - Fluent API makes generated code readable
+   - This ROADMAP serves as comprehensive architectural documentation
 
 5. **Hot reload everything.** Edit C++ or WGSL, save, see changes. No restart, no lost state.
 
@@ -966,21 +972,21 @@ We encountered a blank/dark gray window despite all WebGPU operations appearing 
 - [x] `chain.get<T>("name")` retrieves correct operator
 - [x] examples/chain-demo runs on macOS (other platforms pending)
 
-### Phase 4: State Preservation
+### Phase 4: State Preservation ✓
 
 **Goal:** Feedback survives hot-reload
 
-- [ ] OperatorState struct
-- [ ] saveState/loadState
-- [ ] Feedback operator
+- [x] OperatorState struct
+- [x] saveState/loadState
+- [x] Feedback operator
 
 **Milestone:** Feedback buffer survives code edit
 
 **Validation:**
-- [ ] Feedback trails persist across hot-reload
-- [ ] Animation phase (e.g., LFO) continues after reload
-- [ ] No visual discontinuity during reload
-- [ ] examples/feedback runs on all platforms
+- [x] Feedback trails persist across hot-reload
+- [x] Animation phase (e.g., LFO) continues after reload
+- [x] No visual discontinuity during reload
+- [x] examples/feedback runs on all platforms
 
 ### Phase 5: 2D Effects Library
 
