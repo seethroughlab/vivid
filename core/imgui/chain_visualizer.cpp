@@ -1,7 +1,7 @@
 // Vivid Chain Visualizer Implementation
 // Shows registered operators as nodes with connections
 
-#include <vivid/imgui/chain_visualizer.h>
+#include "chain_visualizer.h"
 #include <imgui.h>
 #include <imnodes.h>
 #include <iostream>
@@ -138,8 +138,8 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f),
             "No operators registered.");
         ImGui::TextWrapped(
-            "Call ctx.registerOperator(\"name\", op) in your chain's setup() "
-            "function to visualize your operator graph.");
+            "Operators are auto-registered when using chain->init(ctx). "
+            "Press Tab to hide this UI.");
         ImGui::End();
         return;
     }

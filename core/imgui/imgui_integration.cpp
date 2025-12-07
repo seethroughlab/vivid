@@ -1,6 +1,6 @@
 // Vivid ImGui Integration Implementation
 
-#include <vivid/imgui/imgui_integration.h>
+#include "imgui_integration.h"
 #include <imgui.h>
 #include <imgui_impl_wgpu.h>
 #include <iostream>

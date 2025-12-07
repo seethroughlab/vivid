@@ -69,11 +69,11 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glfw3webgpu)
 
 # -----------------------------------------------------------------------------
-# Addons
+# Addons (optional libraries with external dependencies)
+# Note: ImGui is now integrated into core - it's not optional
 # -----------------------------------------------------------------------------
 add_subdirectory(addons/vivid-effects-2d)
 add_subdirectory(addons/vivid-video)
-add_subdirectory(addons/vivid-imgui)
 add_subdirectory(addons/vivid-render3d)
 
 # -----------------------------------------------------------------------------

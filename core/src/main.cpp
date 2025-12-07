@@ -5,8 +5,8 @@
 #include <vivid/context.h>
 #include <vivid/display.h>
 #include <vivid/hot_reload.h>
-#include <vivid/imgui/imgui_integration.h>
-#include <vivid/imgui/chain_visualizer.h>
+#include "imgui/imgui_integration.h"
+#include "imgui/chain_visualizer.h"
 #include <webgpu/webgpu.h>
 #include <glfw3webgpu.h>
 #include <GLFW/glfw3.h>
