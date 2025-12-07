@@ -26,6 +26,11 @@ void ChainVisualizer::init() {
     style.LinkThickness = 3.0f;
     style.PinCircleRadius = 4.0f;
 
+    // Dim the grid - it's too bright/distracting
+    ImNodes::GetStyle().Colors[ImNodesCol_GridBackground] = IM_COL32(20, 20, 20, 255);
+    ImNodes::GetStyle().Colors[ImNodesCol_GridLine] = IM_COL32(40, 40, 40, 255);
+    ImNodes::GetStyle().Colors[ImNodesCol_GridLinePrimary] = IM_COL32(50, 50, 50, 255);
+
     m_initialized = true;
 }
 
@@ -169,7 +174,14 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         // Show parameters if operator declares them
         auto params = info.op->params();
         if (!params.empty()) {
-            ImGui::Separator();
+            // Draw a separator line within the node (ImGui::Separator extends too far)
+            ImVec2 pos = ImGui::GetCursorScreenPos();
+            ImGui::GetWindowDrawList()->AddLine(
+                ImVec2(pos.x, pos.y + 2),
+                ImVec2(pos.x + 100, pos.y + 2),  // Match thumbnail width
+                IM_COL32(80, 80, 90, 255), 1.0f);
+            ImGui::Dummy(ImVec2(0, 6));  // Space for the line
+
             for (const auto& p : params) {
                 switch (p.type) {
                     case vivid::ParamType::Float:

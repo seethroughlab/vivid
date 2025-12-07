@@ -4,6 +4,7 @@
 // Generates gradient patterns: linear, radial, angular, diamond
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/param.h>
 
 namespace vivid::effects {
 
@@ -21,17 +22,16 @@ public:
 
     // Fluent API
     Gradient& mode(GradientMode m) { m_mode = m; return *this; }
-    Gradient& angle(float a) { m_angle = a; return *this; }          // Rotation in radians
-    Gradient& centerX(float x) { m_centerX = x; return *this; }      // 0-1, center position
-    Gradient& centerY(float y) { m_centerY = y; return *this; }
-    Gradient& scale(float s) { m_scale = s; return *this; }          // Gradient scale
-    Gradient& offset(float o) { m_offset = o; return *this; }        // Shift gradient position
+    Gradient& angle(float a) { m_angle = a; return *this; }
+    Gradient& center(float x, float y) { m_center.set(x, y); return *this; }
+    Gradient& scale(float s) { m_scale = s; return *this; }
+    Gradient& offset(float o) { m_offset = o; return *this; }
     Gradient& colorA(float r, float g, float b, float a = 1.0f) {
-        m_colorA[0] = r; m_colorA[1] = g; m_colorA[2] = b; m_colorA[3] = a;
+        m_colorA.set(r, g, b, a);
         return *this;
     }
     Gradient& colorB(float r, float g, float b, float a = 1.0f) {
-        m_colorB[0] = r; m_colorB[1] = g; m_colorB[2] = b; m_colorB[3] = a;
+        m_colorB.set(r, g, b, a);
         return *this;
     }
 
@@ -41,17 +41,23 @@ public:
     void cleanup() override;
     std::string name() const override { return "Gradient"; }
 
+    std::vector<ParamDecl> params() override {
+        return {
+            m_angle.decl(), m_scale.decl(), m_offset.decl(),
+            m_center.decl(), m_colorA.decl(), m_colorB.decl()
+        };
+    }
+
 private:
     void createPipeline(Context& ctx);
 
     GradientMode m_mode = GradientMode::Linear;
-    float m_angle = 0.0f;
-    float m_centerX = 0.5f;
-    float m_centerY = 0.5f;
-    float m_scale = 1.0f;
-    float m_offset = 0.0f;
-    float m_colorA[4] = {0.0f, 0.0f, 0.0f, 1.0f};
-    float m_colorB[4] = {1.0f, 1.0f, 1.0f, 1.0f};
+    Param<float> m_angle{"angle", 0.0f, 0.0f, 6.283f};
+    Param<float> m_scale{"scale", 1.0f, 0.1f, 10.0f};
+    Param<float> m_offset{"offset", 0.0f, -1.0f, 1.0f};
+    Vec2Param m_center{"center", 0.5f, 0.5f, 0.0f, 1.0f};
+    ColorParam m_colorA{"colorA", 0.0f, 0.0f, 0.0f, 1.0f};
+    ColorParam m_colorB{"colorB", 1.0f, 1.0f, 1.0f, 1.0f};
 
     WGPURenderPipeline m_pipeline = nullptr;
     WGPUBindGroup m_bindGroup = nullptr;

@@ -12,6 +12,7 @@ static bool g_visible = false;
 static WGPUDevice g_device = nullptr;
 static WGPUQueue g_queue = nullptr;
 static WGPUTextureFormat g_format = WGPUTextureFormat_RGBA8Unorm;
+static std::string g_iniFilePath;  // Persisted path for imgui.ini
 
 void init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
     if (g_initialized) return;
@@ -55,6 +56,16 @@ void init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
     g_initialized = true;
     g_visible = false;  // Start hidden
     std::cout << "[vivid-imgui] Initialized successfully\n";
+}
+
+void setIniDirectory(const char* path) {
+    if (!g_initialized) return;
+
+    // Build full path: directory + "/imgui.ini"
+    g_iniFilePath = std::string(path) + "/imgui.ini";
+
+    // Set ImGui to use this path (must persist for lifetime of ImGui)
+    ImGui::GetIO().IniFilename = g_iniFilePath.c_str();
 }
 
 void shutdown() {

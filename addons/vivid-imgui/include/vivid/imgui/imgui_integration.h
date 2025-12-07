@@ -23,6 +23,9 @@ struct FrameInput {
 // Call once at startup
 void init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format);
 
+// Set the directory for imgui.ini (call after init, before first frame)
+void setIniDirectory(const char* path);
+
 // Shutdown ImGui
 void shutdown();
 

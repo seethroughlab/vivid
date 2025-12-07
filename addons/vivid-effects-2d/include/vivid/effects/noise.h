@@ -4,6 +4,7 @@
 // Generates animated fractal noise with multiple algorithms
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/param.h>
 
 namespace vivid::effects {
 
@@ -27,7 +28,7 @@ public:
     Noise& octaves(int o) { m_octaves = o; return *this; }
     Noise& lacunarity(float l) { m_lacunarity = l; return *this; }
     Noise& persistence(float p) { m_persistence = p; return *this; }
-    Noise& offset(float x, float y) { m_offsetX = x; m_offsetY = y; return *this; }
+    Noise& offset(float x, float y) { m_offset.set(x, y); return *this; }
 
     // Operator interface
     void init(Context& ctx) override;
@@ -38,11 +39,8 @@ public:
     // Parameter declarations for UI
     std::vector<ParamDecl> params() override {
         return {
-            {"scale", ParamType::Float, 0.1f, 20.0f, {m_scale}},
-            {"speed", ParamType::Float, 0.0f, 5.0f, {m_speed}},
-            {"octaves", ParamType::Int, 1.0f, 8.0f, {static_cast<float>(m_octaves)}},
-            {"lacunarity", ParamType::Float, 1.0f, 4.0f, {m_lacunarity}},
-            {"persistence", ParamType::Float, 0.0f, 1.0f, {m_persistence}}
+            m_scale.decl(), m_speed.decl(), m_octaves.decl(),
+            m_lacunarity.decl(), m_persistence.decl(), m_offset.decl()
         };
     }
 
@@ -51,13 +49,12 @@ private:
 
     // Parameters
     NoiseType m_type = NoiseType::Perlin;
-    float m_scale = 4.0f;
-    float m_speed = 0.5f;
-    int m_octaves = 4;
-    float m_lacunarity = 2.0f;
-    float m_persistence = 0.5f;
-    float m_offsetX = 0.0f;
-    float m_offsetY = 0.0f;
+    Param<float> m_scale{"scale", 4.0f, 0.1f, 20.0f};
+    Param<float> m_speed{"speed", 0.5f, 0.0f, 5.0f};
+    Param<int> m_octaves{"octaves", 4, 1, 8};
+    Param<float> m_lacunarity{"lacunarity", 2.0f, 1.0f, 4.0f};
+    Param<float> m_persistence{"persistence", 0.5f, 0.0f, 1.0f};
+    Vec2Param m_offset{"offset", 0.0f, 0.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

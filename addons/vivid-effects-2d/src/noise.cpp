@@ -404,8 +404,8 @@ void Noise::process(Context& ctx) {
     uniforms.speed = m_speed;
     uniforms.lacunarity = m_lacunarity;
     uniforms.persistence = m_persistence;
-    uniforms.offsetX = m_offsetX;
-    uniforms.offsetY = m_offsetY;
+    uniforms.offsetX = m_offset.x();
+    uniforms.offsetY = m_offset.y();
     uniforms.octaves = m_octaves;
     uniforms.noiseType = static_cast<int>(m_type);
 

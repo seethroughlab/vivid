@@ -260,8 +260,8 @@ void Ramp::process(Context& ctx) {
     uniforms.time = static_cast<float>(ctx.time());
     uniforms.rampType = static_cast<int>(m_type);
     uniforms.angle = m_angle;
-    uniforms.offsetX = m_offsetX;
-    uniforms.offsetY = m_offsetY;
+    uniforms.offsetX = m_offset.x();
+    uniforms.offsetY = m_offset.y();
     uniforms.scale = m_scale;
     uniforms.repeat = m_repeat;
     uniforms.hueOffset = m_hueOffset;

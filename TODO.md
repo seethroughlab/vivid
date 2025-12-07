@@ -27,4 +27,4 @@
     - Fixed AVFDecoder: Changed from BGRA8Unorm to RGBA8Unorm with explicit BGRA→RGBA channel swap during pixel copy
     - Fixed HSV effect: Replaced buggy compact rgb2hsv/hsv2rgb functions with clearer standard implementations
 [x] Why are you setting VK_ICD_FILENAMES, VK_DRIVER_FILES, and DYLD_LIBRARY_PATH when you launch examples. We don't need those anymore, right?
-[ ] When you run a vivid program, the imgui.ini file should be saved in the local folder, not in the root folder
+[x] When you run a vivid program, the imgui.ini file should be saved in the local folder, not in the root folder

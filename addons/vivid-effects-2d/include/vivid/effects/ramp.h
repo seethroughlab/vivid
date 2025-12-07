@@ -4,6 +4,7 @@
 // Generates animated color gradients with HSV support
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/param.h>
 
 namespace vivid::effects {
 
@@ -22,7 +23,7 @@ public:
     // Fluent API
     Ramp& type(RampType t) { m_type = t; return *this; }
     Ramp& angle(float a) { m_angle = a; return *this; }
-    Ramp& offset(float x, float y) { m_offsetX = x; m_offsetY = y; return *this; }
+    Ramp& offset(float x, float y) { m_offset.set(x, y); return *this; }
     Ramp& scale(float s) { m_scale = s; return *this; }
     Ramp& repeat(float r) { m_repeat = r; return *this; }
 
@@ -41,11 +42,9 @@ public:
 
     std::vector<ParamDecl> params() override {
         return {
-            {"hueOffset", ParamType::Float, 0.0f, 1.0f, {m_hueOffset}},
-            {"hueSpeed", ParamType::Float, 0.0f, 2.0f, {m_hueSpeed}},
-            {"hueRange", ParamType::Float, 0.0f, 1.0f, {m_hueRange}},
-            {"saturation", ParamType::Float, 0.0f, 1.0f, {m_saturation}},
-            {"brightness", ParamType::Float, 0.0f, 1.0f, {m_brightness}}
+            m_angle.decl(), m_scale.decl(), m_repeat.decl(),
+            m_hueOffset.decl(), m_hueSpeed.decl(), m_hueRange.decl(),
+            m_saturation.decl(), m_brightness.decl(), m_offset.decl()
         };
     }
 
@@ -54,18 +53,17 @@ private:
 
     // Parameters
     RampType m_type = RampType::Linear;
-    float m_angle = 0.0f;
-    float m_offsetX = 0.0f;
-    float m_offsetY = 0.0f;
-    float m_scale = 1.0f;
-    float m_repeat = 1.0f;
+    Param<float> m_angle{"angle", 0.0f, 0.0f, 6.283f};
+    Param<float> m_scale{"scale", 1.0f, 0.1f, 10.0f};
+    Param<float> m_repeat{"repeat", 1.0f, 1.0f, 10.0f};
+    Vec2Param m_offset{"offset", 0.0f, 0.0f};
 
     // HSV parameters
-    float m_hueOffset = 0.0f;
-    float m_hueSpeed = 0.5f;
-    float m_hueRange = 1.0f;
-    float m_saturation = 1.0f;
-    float m_brightness = 1.0f;
+    Param<float> m_hueOffset{"hueOffset", 0.0f, 0.0f, 1.0f};
+    Param<float> m_hueSpeed{"hueSpeed", 0.5f, 0.0f, 2.0f};
+    Param<float> m_hueRange{"hueRange", 1.0f, 0.0f, 1.0f};
+    Param<float> m_saturation{"saturation", 1.0f, 0.0f, 1.0f};
+    Param<float> m_brightness{"brightness", 1.0f, 0.0f, 1.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

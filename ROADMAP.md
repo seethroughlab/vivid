@@ -775,6 +775,52 @@ protected:
 } // namespace vivid
 ```
 
+### Parameter Wrappers (`Param<T>`)
+
+To avoid redundant parameter declarations (member variable + ParamDecl in `params()`), use the `Param<T>` wrapper class from `vivid/param.h`. It combines the value with its metadata.
+
+**Before (redundant):**
+```cpp
+class Noise : public TextureOperator {
+    float m_scale = 4.0f;  // 1. Member
+
+    Noise& scale(float s) { m_scale = s; return *this; }  // 2. Setter
+
+    std::vector<ParamDecl> params() override {
+        return {
+            {"scale", ParamType::Float, 0.1f, 20.0f, {m_scale}}  // 3. ParamDecl
+        };
+    }
+};
+```
+
+**After (unified):**
+```cpp
+#include <vivid/param.h>
+
+class Noise : public TextureOperator {
+    Param<float> m_scale{"scale", 4.0f, 0.1f, 20.0f};  // Value + metadata together
+
+    Noise& scale(float s) { m_scale = s; return *this; }  // Fluent setter
+
+    std::vector<ParamDecl> params() override {
+        return { m_scale.decl() };  // Trivial - just call .decl()
+    }
+};
+```
+
+**Available param types:**
+- `Param<float>` - scalar float with min/max range
+- `Param<int>` - scalar int with min/max range
+- `Param<bool>` - boolean toggle
+- `Vec2Param` - 2D vector (x, y) with range
+- `ColorParam` - RGBA color (r, g, b, a)
+
+**Key features:**
+- Implicit conversion: `m_scale` works as a float in shader uniforms
+- Self-documenting: member declaration includes name, default, and range
+- Type-safe: `Param<float>` → `ParamType::Float` mapping is automatic
+
 ---
 
 ## Chain API

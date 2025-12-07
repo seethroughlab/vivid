@@ -284,15 +284,23 @@ int main(int argc, char** argv) {
 
     // Extract project name for title bar
     std::string projectName;
+    fs::path projectDir;
     if (!projectPath.empty()) {
         // Look for chain.cpp in the project path
         fs::path chainPath;
         if (fs::is_directory(projectPath)) {
             chainPath = projectPath / "chain.cpp";
             projectName = projectPath.filename().string();
+            projectDir = projectPath;
         } else if (fs::is_regular_file(projectPath)) {
             chainPath = projectPath;
             projectName = projectPath.parent_path().filename().string();
+            projectDir = projectPath.parent_path();
+        }
+
+        // Set imgui.ini to save in the project directory
+        if (!projectDir.empty()) {
+            vivid::imgui::setIniDirectory(projectDir.string().c_str());
         }
 
         if (fs::exists(chainPath)) {

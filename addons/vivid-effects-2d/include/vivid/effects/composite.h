@@ -4,6 +4,7 @@
 // Blends two textures using various blend modes
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/param.h>
 
 namespace vivid::effects {
 
@@ -36,11 +37,11 @@ public:
     std::string name() const override { return "Composite"; }
 
     std::vector<ParamDecl> params() override {
-        // Use String type with mode name embedded in the param name
+        // Enum displayed as string with mode name embedded
         std::string modeStr = std::string("mode: ") + modeName(m_mode);
         return {
             {modeStr, ParamType::String, 0.0f, 0.0f, {}},
-            {"opacity", ParamType::Float, 0.0f, 1.0f, {m_opacity}}
+            m_opacity.decl()
         };
     }
 
@@ -63,7 +64,7 @@ private:
 
     // Parameters
     BlendMode m_mode = BlendMode::Over;
-    float m_opacity = 1.0f;
+    Param<float> m_opacity{"opacity", 1.0f, 0.0f, 1.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

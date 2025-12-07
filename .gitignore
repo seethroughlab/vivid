@@ -61,3 +61,4 @@ Desktop.ini
 # Old versions of vivid - for reference
 vivid_v1
 vivid_v2
+**/imgui.ini

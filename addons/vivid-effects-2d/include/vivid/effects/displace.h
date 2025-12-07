@@ -4,6 +4,7 @@
 // Distorts one texture using another as a displacement map
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/param.h>
 
 namespace vivid::effects {
 
@@ -26,19 +27,15 @@ public:
     std::string name() const override { return "Displace"; }
 
     std::vector<ParamDecl> params() override {
-        return {
-            {"strength", ParamType::Float, 0.0f, 1.0f, {m_strength}},
-            {"strengthX", ParamType::Float, 0.0f, 2.0f, {m_strengthX}},
-            {"strengthY", ParamType::Float, 0.0f, 2.0f, {m_strengthY}}
-        };
+        return { m_strength.decl(), m_strengthX.decl(), m_strengthY.decl() };
     }
 
 private:
     void createPipeline(Context& ctx);
 
-    float m_strength = 0.1f;    // Overall displacement strength
-    float m_strengthX = 1.0f;   // X-axis multiplier
-    float m_strengthY = 1.0f;   // Y-axis multiplier
+    Param<float> m_strength{"strength", 0.1f, 0.0f, 1.0f};
+    Param<float> m_strengthX{"strengthX", 1.0f, 0.0f, 2.0f};
+    Param<float> m_strengthY{"strengthY", 1.0f, 0.0f, 2.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;
