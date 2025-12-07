@@ -1,5 +1,5 @@
 // AVFoundation Decoder - Uses macOS native video decoding
-// Decodes to BGRA pixels and uploads to GPU texture
+// Decodes to RGBA pixels and uploads to GPU texture
 
 #import <AVFoundation/AVFoundation.h>
 #import <CoreMedia/CoreMedia.h>
@@ -60,7 +60,7 @@ void AVFDecoder::createTexture() {
     desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
     desc.dimension = WGPUTextureDimension_2D;
     desc.size = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1};
-    desc.format = WGPUTextureFormat_BGRA8Unorm;
+    desc.format = WGPUTextureFormat_RGBA8Unorm;
     desc.mipLevelCount = 1;
     desc.sampleCount = 1;
 
@@ -72,7 +72,7 @@ void AVFDecoder::createTexture() {
 
     WGPUTextureViewDescriptor viewDesc = {};
     viewDesc.label = toStringView("AVFVideoFrameView");
-    viewDesc.format = WGPUTextureFormat_BGRA8Unorm;
+    viewDesc.format = WGPUTextureFormat_RGBA8Unorm;
     viewDesc.dimension = WGPUTextureViewDimension_2D;
     viewDesc.baseMipLevel = 0;
     viewDesc.mipLevelCount = 1;
@@ -383,19 +383,23 @@ void AVFDecoder::update(Context& ctx) {
             void* baseAddress = CVPixelBufferGetBaseAddress(imageBuffer);
 
             if (baseAddress) {
-                // Copy pixels to our buffer (handle stride)
+                // Copy pixels and convert BGRA -> RGBA
+                uint8_t* src = static_cast<uint8_t*>(baseAddress);
+                uint8_t* dst = pixelBuffer_.data();
                 size_t expectedStride = width_ * 4;
-                if (bytesPerRow == expectedStride) {
-                    memcpy(pixelBuffer_.data(), baseAddress, width_ * height_ * 4);
-                } else {
-                    // Copy row by row to handle different stride
-                    uint8_t* src = static_cast<uint8_t*>(baseAddress);
-                    uint8_t* dst = pixelBuffer_.data();
-                    for (int y = 0; y < height_; y++) {
-                        memcpy(dst, src, width_ * 4);
-                        src += bytesPerRow;
-                        dst += expectedStride;
+
+                for (int y = 0; y < height_; y++) {
+                    for (int x = 0; x < width_; x++) {
+                        int srcIdx = x * 4;
+                        int dstIdx = x * 4;
+                        // BGRA -> RGBA: swap B and R
+                        dst[dstIdx + 0] = src[srcIdx + 2];  // R <- B
+                        dst[dstIdx + 1] = src[srcIdx + 1];  // G <- G
+                        dst[dstIdx + 2] = src[srcIdx + 0];  // B <- R
+                        dst[dstIdx + 3] = src[srcIdx + 3];  // A <- A
                     }
+                    src += bytesPerRow;
+                    dst += expectedStride;
                 }
 
                 // Upload to GPU

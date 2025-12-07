@@ -55,19 +55,54 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
     return output;
 }
 
-fn rgb2hsv(c: vec3f) -> vec3f {
-    let K = vec4f(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
-    let p = mix(vec4f(c.bg, K.wz), vec4f(c.gb, K.xy), step(c.b, c.g));
-    let q = mix(vec4f(p.xyw, c.r), vec4f(c.r, p.yzx), step(p.x, c.r));
-    let d = q.x - min(q.w, q.y);
-    let e = 1.0e-10;
-    return vec3f(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);
+fn rgb2hsv(rgb: vec3f) -> vec3f {
+    let r = rgb.r;
+    let g = rgb.g;
+    let b = rgb.b;
+
+    let maxC = max(max(r, g), b);
+    let minC = min(min(r, g), b);
+    let delta = maxC - minC;
+
+    var h = 0.0;
+    if (delta > 0.0001) {
+        if (maxC == r) {
+            h = (g - b) / delta;
+            if (h < 0.0) { h += 6.0; }
+        } else if (maxC == g) {
+            h = 2.0 + (b - r) / delta;
+        } else {
+            h = 4.0 + (r - g) / delta;
+        }
+        h /= 6.0;
+    }
+
+    var s = 0.0;
+    if (maxC > 0.0001) {
+        s = delta / maxC;
+    }
+
+    return vec3f(h, s, maxC);
 }
 
-fn hsv2rgb(c: vec3f) -> vec3f {
-    let K = vec4f(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);
-    let p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);
-    return c.z * mix(K.xxx, clamp(p - K.xxx, vec3f(0.0), vec3f(1.0)), c.y);
+fn hsv2rgb(hsv: vec3f) -> vec3f {
+    let h = hsv.x * 6.0;
+    let s = hsv.y;
+    let v = hsv.z;
+
+    let i = floor(h);
+    let f = h - i;
+    let p = v * (1.0 - s);
+    let q = v * (1.0 - s * f);
+    let t = v * (1.0 - s * (1.0 - f));
+
+    let idx = i32(i) % 6;
+    if (idx == 0) { return vec3f(v, t, p); }
+    if (idx == 1) { return vec3f(q, v, p); }
+    if (idx == 2) { return vec3f(p, v, t); }
+    if (idx == 3) { return vec3f(p, q, v); }
+    if (idx == 4) { return vec3f(t, p, v); }
+    return vec3f(v, p, q);
 }
 
 @fragment

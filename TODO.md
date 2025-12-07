@@ -23,3 +23,6 @@
     - **vivid_v2 design (correct)**: FFmpeg demux + Vidvox hap.c → DXT upload (planned for all platforms, only macOS implemented)
     - **vivid_v1 (incorrect)**: Used FFmpeg's built-in HAP decoder which converts to RGBA, losing DXT benefit
     - **TODO**: For Windows/Linux HAP support, use FFmpeg for container demux only (libavformat), then Vidvox hap.c for DXT decompression, then upload BC1/BC3 compressed texture to GPU
+[x] At some point, the video player was working fine. but now it looks like some channels are mixed up. blue is green.
+    - Fixed AVFDecoder: Changed from BGRA8Unorm to RGBA8Unorm with explicit BGRA→RGBA channel swap during pixel copy
+    - Fixed HSV effect: Replaced buggy compact rgb2hsv/hsv2rgb functions with clearer standard implementations
