@@ -7,6 +7,18 @@ if(NOT APPLE)
     return()
 endif()
 
+# Fetch snappy for HAP codec decompression
+include(FetchContent)
+FetchContent_Declare(
+    snappy
+    GIT_REPOSITORY https://github.com/google/snappy.git
+    GIT_TAG        1.2.1
+    GIT_SHALLOW    TRUE
+)
+set(SNAPPY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(snappy)
+
 add_library(vivid-video SHARED
     src/audio_player.cpp
     src/hap.c
@@ -19,11 +31,20 @@ target_include_directories(vivid-video PUBLIC
     ${CMAKE_SOURCE_DIR}/core/include
 )
 
+# Include snappy headers (generated config is in binary dir)
+target_include_directories(vivid-video PRIVATE
+    ${snappy_SOURCE_DIR}
+    ${snappy_BINARY_DIR}
+)
+
 target_link_libraries(vivid-video PUBLIC
     webgpu
     glm
     glfw
 )
+
+# Link snappy for HAP codec
+target_link_libraries(vivid-video PRIVATE snappy)
 
 # macOS frameworks for AVFoundation
 if(APPLE)
