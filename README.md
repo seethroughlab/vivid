@@ -7,7 +7,7 @@ A creative coding framework for real-time graphics with hot-reloadable C++ chain
 - **Hot Reload** - Edit your C++ code and see changes instantly without restarting
 - **WebGPU Backend** - Modern GPU API via wgpu-native (Metal on macOS, Vulkan/DX12 elsewhere)
 - **Chain-Based Architecture** - Connect operators to build visual pipelines
-- **Addon System** - Modular design with optional feature packages
+- **Addon System** - Modular design with automatic dependency discovery
 - **State Preservation** - Feedback loops and animations survive hot reloads
 - **LLM-Friendly** - Designed for AI-assisted development (see below)
 
@@ -162,12 +162,38 @@ void setup(Context& ctx) {
 
 ```
 vivid/
-├── core/           # Runtime engine (~600 lines)
-├── addons/         # Optional feature packages
-│   └── vivid-effects-2d/
-├── examples/       # Demo projects
-└── assets/         # Shared resources
+├── core/                     # Runtime engine with integrated UI
+│   ├── src/                  # Main runtime, hot-reload, addon discovery
+│   ├── include/vivid/        # Public API headers
+│   ├── imgui/                # Chain visualizer (ImGui/ImNodes)
+│   └── shaders/              # Blit and text shaders
+├── addons/                   # Optional feature packages
+│   ├── vivid-effects-2d/     # 2D texture operators (always linked)
+│   ├── vivid-video/          # Video playback (HAP, H.264, etc.)
+│   └── vivid-render3d/       # 3D rendering (CSG, Manifold)
+├── examples/                 # Demo projects
+└── assets/                   # Shared resources
 ```
+
+## Addon System
+
+Addons are automatically discovered by scanning your chain.cpp `#include` directives:
+
+```cpp
+#include <vivid/effects/noise.h>   // → vivid-effects-2d addon
+#include <vivid/video/player.h>    // → vivid-video addon
+```
+
+Each addon has an `addon.json` with metadata:
+```json
+{
+  "name": "vivid-video",
+  "version": "0.1.0",
+  "operators": ["VideoPlayer", "AudioPlayer"]
+}
+```
+
+The hot-reload system automatically adds include paths and links libraries for discovered addons.
 
 ## LLM-Friendly Design
 

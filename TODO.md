@@ -51,5 +51,10 @@
     - Converted all demos to use Chain API: hello-noise, particles, pointsprites, template
     - Removed all manual ctx.registerOperator() calls from examples
     - Updated docs/CHAIN-API.md with current API patterns and architecture notes 
-[ ] I definitely could be wrong, but it seems like we're bending over backwards to keep the core lightweight by putting everything in addons, but it would make our lives a lot easier to move SOME stuff from addons to core. Do you agree? If so, what would help to move to core? I'm thinking MAYBE imgui since it is used for chain visualization. 
+[x] I definitely could be wrong, but it seems like we're bending over backwards to keep the core lightweight by putting everything in addons, but it would make our lives a lot easier to move SOME stuff from addons to core. Do you agree? If so, what would help to move to core? I'm thinking MAYBE imgui since it is used for chain visualization.
+    - Merged ImGui/ImNodes into core - chain visualization is now a core feature, not an addon
+    - Created AddonRegistry class for dynamic addon discovery
+    - Hot-reload now scans chain.cpp `#include` directives to discover needed addons
+    - Removed hardcoded addon paths from hot_reload.cpp
+    - Added addon.json to vivid-video 
 [ ] It seems to me that the Chain should be constructed by the core and passed in setup and update. This way 1) we don't have to have the awkward "delete chain;" in setup for hotloading, and 2) we can automatically call chain->init(ctx) after setup() is called so that the user doesn't have to. Please help me explore the pros and cons of this approach.

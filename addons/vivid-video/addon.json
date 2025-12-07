@@ -1,0 +1,12 @@
+{
+  "name": "vivid-video",
+  "version": "0.1.0",
+  "description": "Video playback with HAP, H.264, and other codecs via AVFoundation/FFmpeg",
+  "author": "Vivid",
+  "license": "MIT",
+  "vivid": ">=3.0.0",
+  "operators": [
+    "VideoPlayer",
+    "AudioPlayer"
+  ]
+}

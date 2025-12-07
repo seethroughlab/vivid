@@ -6,12 +6,14 @@
 #include <string>
 #include <filesystem>
 #include <functional>
+#include <memory>
 
 namespace fs = std::filesystem;
 
 namespace vivid {
 
 class Context;
+class AddonRegistry;
 
 // Chain function types
 using SetupFn = void(*)(Context&);
@@ -66,6 +68,8 @@ private:
 
     std::string m_error;
     bool m_needsSetup = false;      // True after reload, before setup is called
+
+    std::unique_ptr<AddonRegistry> m_addonRegistry;
 };
 
 } // namespace vivid

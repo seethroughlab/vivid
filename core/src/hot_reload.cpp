@@ -1,6 +1,7 @@
 // Vivid - Hot Reload Implementation
 
 #include <vivid/hot_reload.h>
+#include <vivid/addon_registry.h>
 #include <vivid/context.h>
 
 #include <iostream>
@@ -57,7 +58,9 @@ static std::pair<int, std::string> executeCommand(const std::string& cmd) {
     return {exitCode, output};
 }
 
-HotReload::HotReload() {
+HotReload::HotReload()
+    : m_addonRegistry(std::make_unique<AddonRegistry>())
+{
     // Create a build directory in temp
 #ifdef _WIN32
     char tempPath[MAX_PATH];
@@ -184,7 +187,6 @@ bool HotReload::compile() {
 
     // Find vivid include directories (look relative to exe or in source tree)
     fs::path vividInclude;
-    fs::path addonsInclude;
     fs::path addonsLib;
     std::vector<fs::path> depIncludes;
 
@@ -192,26 +194,27 @@ bool HotReload::compile() {
     // exe is at build/bin/vivid, so ../ twice gets to vivid root
     fs::path rootDir = exeDir / ".." / "..";
     fs::path devVividInclude = rootDir / "core" / "include";
-    fs::path devEffectsInclude = rootDir / "addons" / "vivid-effects-2d" / "include";
-    fs::path devVideoInclude = rootDir / "addons" / "vivid-video" / "include";
-    fs::path devRender3dInclude = rootDir / "addons" / "vivid-render3d" / "include";
 
-    if (fs::exists(devVividInclude / "vivid")) {
+    bool isDevelopmentMode = fs::exists(devVividInclude / "vivid");
+
+    if (isDevelopmentMode) {
         vividInclude = fs::canonical(devVividInclude);
-        addonsInclude = fs::canonical(devEffectsInclude);
         addonsLib = exeDir;
 
-        // Add video addon include if it exists
-        if (fs::exists(devVideoInclude / "vivid")) {
-            depIncludes.push_back(fs::canonical(devVideoInclude));
+        // Set up addon registry for dynamic discovery
+        m_addonRegistry->setRootDir(fs::canonical(rootDir));
+
+        // Discover addons needed by this chain
+        auto addons = m_addonRegistry->discoverFromChain(m_sourcePath);
+
+        // Add include paths for each discovered addon
+        for (const auto& addon : addons) {
+            if (fs::exists(addon.includePath)) {
+                depIncludes.push_back(addon.includePath);
+            }
         }
 
-        // Add render3d addon include if it exists
-        if (fs::exists(devRender3dInclude / "vivid")) {
-            depIncludes.push_back(fs::canonical(devRender3dInclude));
-        }
-
-        // Find dependency includes in build/_deps
+        // Find dependency includes in build/_deps (GLM, etc.)
         fs::path depsDir = rootDir / "build" / "_deps";
         if (fs::exists(depsDir)) {
             for (const auto& entry : fs::directory_iterator(depsDir)) {
@@ -222,7 +225,6 @@ bool HotReload::compile() {
                         depIncludes.push_back(incDir);
                     }
                     // Also add root for deps like GLM that put headers at root
-                    // Check if glm/glm.hpp exists at root level
                     if (fs::exists(entry.path() / "glm" / "glm.hpp")) {
                         depIncludes.push_back(entry.path());
                     }
@@ -232,7 +234,6 @@ bool HotReload::compile() {
     } else {
         // Fallback to installed location
         vividInclude = exeDir / ".." / "include";
-        addonsInclude = exeDir / ".." / "include";
         addonsLib = exeDir;
     }
 
@@ -241,21 +242,21 @@ bool HotReload::compile() {
 
 #ifdef _WIN32
     // MSVC or Clang on Windows
-    // Note: Requires Visual Studio Developer Command Prompt or cl.exe in PATH
     cmd << "cl /nologo /EHsc /LD /O2 /std:c++17 ";
     cmd << "/I\"" << sourceDir.string() << "\" ";
     cmd << "/I\"" << vividInclude.string() << "\" ";
-    cmd << "/I\"" << addonsInclude.string() << "\" ";
     for (const auto& inc : depIncludes) {
         cmd << "/I\"" << inc.string() << "\" ";
     }
     cmd << "/Fe\"" << m_libraryPath.string() << "\" ";
     cmd << "\"" << m_sourcePath.string() << "\" ";
     cmd << "/link ";
-    cmd << "\"" << (addonsLib / "vivid-effects-2d.lib").string() << "\" ";
-    // Link video addon if library exists
-    if (fs::exists(addonsLib / "vivid-video.lib")) {
-        cmd << "\"" << (addonsLib / "vivid-video.lib").string() << "\" ";
+    // Link discovered addons
+    for (const auto& addon : m_addonRegistry->addons()) {
+        fs::path libPath = addonsLib / (addon.libraryName + ".lib");
+        if (fs::exists(libPath)) {
+            cmd << "\"" << libPath.string() << "\" ";
+        }
     }
     cmd << "2>&1";
 #else
@@ -263,7 +264,6 @@ bool HotReload::compile() {
     cmd << "clang++ -std=c++17 -O2 -shared -fPIC ";
     cmd << "-I\"" << sourceDir.string() << "\" ";
     cmd << "-I\"" << vividInclude.string() << "\" ";
-    cmd << "-I\"" << addonsInclude.string() << "\" ";
     for (const auto& inc : depIncludes) {
         cmd << "-I\"" << inc.string() << "\" ";
     }
@@ -271,26 +271,22 @@ bool HotReload::compile() {
 #ifdef __APPLE__
     cmd << "-undefined dynamic_lookup ";  // Allow symbols from vivid executable
     cmd << "-L\"" << addonsLib.string() << "\" ";
-    cmd << "-lvivid-effects-2d ";
-    // Link video addon if library exists
-    if (fs::exists(addonsLib / "libvivid-video.dylib")) {
-        cmd << "-lvivid-video ";
-    }
-    // Link render3d addon if library exists
-    if (fs::exists(addonsLib / "libvivid-render3d.dylib")) {
-        cmd << "-lvivid-render3d ";
+    // Link discovered addons
+    for (const auto& addon : m_addonRegistry->addons()) {
+        fs::path libPath = addonsLib / ("lib" + addon.libraryName + ".dylib");
+        if (fs::exists(libPath)) {
+            cmd << "-l" << addon.libraryName << " ";
+        }
     }
     cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
 #else
     cmd << "-L\"" << addonsLib.string() << "\" ";
-    cmd << "-lvivid-effects-2d ";
-    // Link video addon if library exists
-    if (fs::exists(addonsLib / "libvivid-video.so")) {
-        cmd << "-lvivid-video ";
-    }
-    // Link render3d addon if library exists
-    if (fs::exists(addonsLib / "libvivid-render3d.so")) {
-        cmd << "-lvivid-render3d ";
+    // Link discovered addons
+    for (const auto& addon : m_addonRegistry->addons()) {
+        fs::path libPath = addonsLib / ("lib" + addon.libraryName + ".so");
+        if (fs::exists(libPath)) {
+            cmd << "-l" << addon.libraryName << " ";
+        }
     }
     cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
 #endif

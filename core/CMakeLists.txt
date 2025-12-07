@@ -54,6 +54,7 @@ set(VIVID_CORE_SOURCES
     src/hot_reload.cpp
     src/chain.cpp
     src/operator.cpp
+    src/addon_registry.cpp
     imgui/imgui_integration.cpp
     imgui/chain_visualizer.cpp
 )
@@ -65,6 +66,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/hot_reload.h
     include/vivid/operator.h
     include/vivid/chain.h
+    include/vivid/addon_registry.h
     imgui/imgui_integration.h
     imgui/chain_visualizer.h
 )
