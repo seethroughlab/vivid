@@ -39,6 +39,10 @@ add_library(vivid-effects-2d SHARED
     src/scanlines.cpp
     src/crt_effect.cpp
     src/downsample.cpp
+    # Particle systems (Phase 5)
+    src/particle_renderer.cpp
+    src/particles.cpp
+    src/point_sprites.cpp
 )
 
 target_include_directories(vivid-effects-2d PUBLIC

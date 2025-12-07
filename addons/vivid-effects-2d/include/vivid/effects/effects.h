@@ -33,3 +33,9 @@
 #include <vivid/effects/downsample.h>
 #include <vivid/effects/math_op.h>
 #include <vivid/effects/logic_op.h>
+
+// Particle systems (Phase 5)
+#include <vivid/effects/types.h>
+#include <vivid/effects/particle_renderer.h>
+#include <vivid/effects/particles.h>
+#include <vivid/effects/point_sprites.h>

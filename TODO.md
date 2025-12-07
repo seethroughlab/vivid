@@ -27,3 +27,4 @@
     - Fixed AVFDecoder: Changed from BGRA8Unorm to RGBA8Unorm with explicit BGRA→RGBA channel swap during pixel copy
     - Fixed HSV effect: Replaced buggy compact rgb2hsv/hsv2rgb functions with clearer standard implementations
 [ ] Why are you setting VK_ICD_FILENAMES, VK_DRIVER_FILES, and DYLD_LIBRARY_PATH when you launch examples. We don't need those anymore, right?
+[ ] I'm working on a creative coding toolkit called Vivid. Please read the ROADMAP and docs, and then we will get started on Phase 5: Particle Systems. I think I remember vivid_v1 (older, fasle-starts of the same project) having good 2d shapes -- and maybe vivid_v2. Please see if there is anything useful there. 

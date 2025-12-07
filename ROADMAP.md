@@ -1013,8 +1013,18 @@ We encountered a blank/dark gray window despite all WebGPU operations appearing 
 - [x] Tile - Texture tiling/repetition with offset and scale
 
 **Particle Systems:**
-- [ ] Particles2D - 2D GPU particle system with emitters, forces, and lifetime
-- [ ] PointSprites - Point-based rendering with size, color, and texture
+- [x] Particles2D - 2D GPU particle system with emitters, forces, and lifetime
+- [x] PointSprites - Point-based rendering with size, color, and texture
+
+**Implementation Notes (Phase 5 Particles):**
+- `ParticleRenderer` provides GPU-instanced circle and sprite rendering (ported from v1)
+- Single draw call per operator regardless of particle count (up to 10,000)
+- SDF antialiasing for smooth circle edges
+- Dynamic instance buffer resizing for efficient memory use
+- Emitter shapes: Point, Line, Ring, Disc, Rectangle
+- Color modes: Solid, Gradient, Rainbow, Random
+- Physics: gravity, drag, turbulence, attractors
+- Texture sprite support for custom particle images
 
 **Compositing:**
 - [x] Composite - Two-input or multi-input (up to 8) blending
