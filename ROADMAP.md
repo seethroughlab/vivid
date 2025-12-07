@@ -1337,9 +1337,58 @@ Use the official HAP implementation from Vidvox: https://github.com/Vidvox/hap
 
 ### Phase 8: 3D Addon (vivid-render3d)
 
-**Goal:** Reliable PBR rendering with IBL
+**Goal:** 3D rendering with procedural geometry, CSG, and multiple shading modes
 
-#### PBR Implementation Strategy
+#### Step 1: Geometry & Flat Rendering (Current)
+
+**Goal:** Procedural mesh generation, CSG boolean operations, basic flat/unlit rendering.
+
+**Status:** 🔄 In Progress
+
+**Core Data Structures:**
+```cpp
+struct Vertex3D {
+    glm::vec3 position;
+    glm::vec3 normal;
+    glm::vec2 uv;
+    glm::vec4 color;
+};
+
+struct SceneObject {
+    Mesh* mesh;
+    glm::mat4 transform = glm::mat4(1.0f);
+    glm::vec4 color = {1, 1, 1, 1};
+};
+
+class Scene {
+public:
+    Scene& add(Mesh& mesh);
+    Scene& add(Mesh& mesh, const glm::mat4& transform);
+    Scene& add(Mesh& mesh, const glm::mat4& transform, const glm::vec4& color);
+    void clear();
+    const std::vector<SceneObject>& objects() const;
+};
+```
+
+**Step 1 Tasks:**
+- [ ] Addon scaffolding (CMakeLists.txt, addon.json, directory structure)
+- [ ] Mesh class with GPU upload
+- [ ] MeshBuilder primitives (box, sphere, cylinder, cone, torus, plane)
+- [ ] MeshBuilder modifiers (transform, computeNormals, computeFlatNormals)
+- [ ] CSG operations via Manifold (add, subtract, intersect)
+- [ ] Camera3D (perspective, lookAt, orbit)
+- [ ] Scene class (multiple objects with transforms)
+- [ ] Render3D operator with flat.wgsl shader
+- [ ] Shading modes: Unlit, Flat, Gouraud
+- [ ] examples/render3d-demo
+
+**Step 2: PBR & Materials (Future)**
+
+Deferred to Step 2: PBR materials, IBL, glTF loading, GPU instancing, toon shading.
+
+---
+
+#### PBR Implementation Strategy (Step 2)
 
 **Reference Implementation:** Port from [webgpu-native-examples](https://github.com/samdauwe/webgpu-native-examples) (Apache-2.0)
 - Already C/Dawn-based

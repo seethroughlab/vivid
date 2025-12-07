@@ -38,3 +38,17 @@
     - Added Doxygen-style comments to core headers (operator.h, context.h, chain.h, param.h)
     - Added Doxygen-style comments to key operator headers (noise.h, output.h, composite.h, texture_operator.h)
     - Added `make docs` target to CMakeLists.txt (requires Doxygen to be installed)
+[ ] Is there currently a "make install" command that will put vivid into my PATH?
+[x] The README still mentions ctx.registerOperator, which is now automatic.
+    - Updated README to show auto-registration via chain->init(ctx)
+[x] The Mesh generators should include normals and UVs
+[x] The Render3D node should still have to be conected to an Output node, right? Shouldn't that be fundamental to the whole vivid system? or am I misunderstanding something?
+    - Yes, fundamental. Refactored render3d-demo to use Chain + Output pattern.
+[x] The canvas-demo still includes the ctx.registerOperator call, which should be automatic.
+    - Refactored canvas-demo to use Chain + Output pattern. Auto-registration now happens via Chain. 
+[x] Please confirm that 1) all operators are auto-registered. This should be enforced as part of the operator architecture 2) All nodes use the proper chain API. 3) The documentation is updated to reflect 1 and 2.
+    - Verified: Chain::init() auto-registers all operators for visualization (chain.cpp:164-170)
+    - Converted all demos to use Chain API: hello-noise, particles, pointsprites, template
+    - Removed all manual ctx.registerOperator() calls from examples
+    - Updated docs/CHAIN-API.md with current API patterns and architecture notes 
+[ ] I definitely could be wrong, but it seems like we're bending over backwards to keep the core lightweight by putting everything in addons, but it would make our lives a lot easier to move SOME stuff from addons to core. Do you agree? If so, what would help to move to core? I'm thinking MAYBE imgui since it is used for chain visualization. 

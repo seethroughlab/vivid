@@ -14,7 +14,7 @@
 //   update() - Called every frame (typically 60fps)
 //
 // Tips:
-//   - Operators connect via .input("name")
+//   - Operators connect via .input(&operator)
 //   - Every chain needs an Output operator
 //   - Check the terminal for compile errors if hot-reload fails
 //   - See docs/LLM-REFERENCE.md for all operators
@@ -27,16 +27,16 @@ using namespace vivid;
 using namespace vivid::effects;
 
 // Global chain pointer - must be global for hot-reload to work
-Chain* chain = nullptr;
+static Chain* chain = nullptr;
 
 void setup(Context& ctx) {
     // Clean up previous chain on hot-reload
     // This is required to prevent memory leaks
     delete chain;
+    chain = nullptr;
 
-    // Create a new chain with output dimensions
-    // Common sizes: 1280x720 (720p), 1920x1080 (1080p), 3840x2160 (4K)
-    chain = new Chain(ctx, 1280, 720);
+    // Create a new chain
+    chain = new Chain();
 
     // =========================================
     // Add your operators below
@@ -45,7 +45,7 @@ void setup(Context& ctx) {
     // GENERATORS create images from nothing:
     //   Noise, SolidColor, Gradient, Ramp, Shape, LFO, Image
 
-    chain->add<Noise>("noise")
+    auto& noise = chain->add<Noise>("noise")
         .scale(4.0f)      // Size of noise pattern (higher = smaller details)
         .speed(0.5f)      // Animation speed
         .type(NoiseType::Simplex)
@@ -55,29 +55,30 @@ void setup(Context& ctx) {
     //   Blur, HSV, Brightness, Transform, Mirror, Displace, Edge,
     //   Pixelate, Tile, ChromaticAberration, Bloom, Feedback
 
-    chain->add<HSV>("colorize")
-        .input("noise")       // Connect to the noise generator
+    auto& colorize = chain->add<HSV>("colorize")
+        .input(&noise)        // Connect to the noise generator
         .hueShift(0.6f)       // Shift hue (0-1 wraps around color wheel)
         .saturation(0.8f)     // Color intensity (0 = grayscale)
         .value(1.0f);         // Brightness multiplier
 
     // OUTPUT sends to screen - every chain needs exactly one
-    chain->add<Output>("out")
-        .input("colorize");
+    chain->add<Output>("out").input(&colorize);
+    chain->setOutput("out");
+    chain->init(ctx);
 
-    // =========================================
-    // Register operators for the visualizer (Tab key)
-    // This is optional but helpful for debugging
-    // =========================================
+    // Operators are automatically registered for the visualizer (Tab key)
+    // based on their names in the chain
 
-    ctx.registerOperator("noise", &chain->get<Noise>("noise"));
-    ctx.registerOperator("colorize", &chain->get<HSV>("colorize"));
-    ctx.registerOperator("out", &chain->get<Output>("out"));
+    if (chain->hasError()) {
+        ctx.setError(chain->error());
+    }
 }
 
 void update(Context& ctx) {
+    if (!chain) return;
+
     // Process the chain every frame
-    chain->process();
+    chain->process(ctx);
 
     // =========================================
     // Dynamic updates go here

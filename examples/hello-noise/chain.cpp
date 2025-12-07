@@ -7,36 +7,40 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-// Operators (persistent across hot-reloads)
-static Noise* noise = nullptr;
-static Output* output = nullptr;
+// Chain (persistent across hot-reloads)
+static Chain* chain = nullptr;
 
 void setup(Context& ctx) {
-    // Clean up previous operators if hot-reloading
-    delete noise;
-    delete output;
-    noise = nullptr;
-    output = nullptr;
+    // Clean up previous chain if hot-reloading
+    delete chain;
+    chain = nullptr;
 
-    // Create operators
-    noise = new Noise();
-    output = new Output();
+    // Create chain
+    chain = new Chain();
 
-    // Configure noise
-    noise->scale(4.0f)
-         .speed(0.5f)
-         .octaves(4)
-         .lacunarity(2.0f)
-         .persistence(0.5f);
+    // Configure noise generator
+    auto& noise = chain->add<Noise>("noise");
+    noise.scale(4.0f)
+        .speed(0.5f)
+        .octaves(4)
+        .lacunarity(2.0f)
+        .persistence(0.5f);
 
-    // Connect chain: Noise → Output
-    output->input(noise);
+    // Connect to output
+    chain->add<Output>("output").input(&noise);
+    chain->setOutput("output");
+    chain->init(ctx);
+
+    if (chain->hasError()) {
+        ctx.setError(chain->error());
+    }
 }
 
 void update(Context& ctx) {
+    if (!chain) return;
+
     // Process the chain
-    noise->process(ctx);
-    output->process(ctx);
+    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

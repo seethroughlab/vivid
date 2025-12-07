@@ -144,6 +144,95 @@ void update(Context& ctx) {
 - `textCentered(str, x, y, color)` - Centered text
 - `measureText(str)` - Returns glm::vec2 size
 
+### 3D Rendering (vivid-render3d)
+
+```cpp
+#include <vivid/render3d/render3d.h>
+using namespace vivid::render3d;
+```
+
+| Class | Description | Key Methods |
+|-------|-------------|-------------|
+| `MeshBuilder` | Procedural geometry | `.box()` `.sphere()` `.cylinder()` `.cone()` `.torus()` `.plane()` |
+| `Mesh` | GPU mesh data | `.upload(ctx)` `.release()` `.valid()` |
+| `Camera3D` | Perspective camera | `.lookAt()` `.orbit()` `.fov()` `.near()` `.far()` |
+| `Scene` | Multiple objects | `.add(mesh)` `.add(mesh, transform)` `.add(mesh, transform, color)` |
+| `Render3D` | 3D renderer | `.scene()` `.camera()` `.shadingMode()` `.lightDirection()` |
+
+**MeshBuilder primitives:**
+```cpp
+auto cube = MeshBuilder::box(1.0f, 1.0f, 1.0f);
+auto sphere = MeshBuilder::sphere(0.5f, 24);        // radius, segments
+auto cylinder = MeshBuilder::cylinder(0.5f, 2.0f, 16);  // radius, height, segments
+auto cone = MeshBuilder::cone(0.5f, 2.0f, 16);
+auto torus = MeshBuilder::torus(1.0f, 0.3f, 24, 12);  // outer, inner, segs, rings
+auto plane = MeshBuilder::plane(10.0f, 10.0f, 4, 4);   // w, h, subdivX, subdivY
+```
+
+**MeshBuilder modifiers:**
+```cpp
+builder.transform(glm::mat4)     // Apply matrix
+builder.translate(glm::vec3)     // Move vertices
+builder.scale(float or vec3)     // Scale vertices
+builder.rotate(angle, axis)      // Rotate (radians)
+builder.computeNormals()         // Smooth normals
+builder.computeFlatNormals()     // Faceted look
+builder.mirror(Axis::X)          // Mirror + merge
+builder.invert()                 // Flip normals
+```
+
+**CSG Boolean Operations:**
+```cpp
+auto cube = MeshBuilder::box(1.5f, 1.5f, 1.5f);
+auto sphere = MeshBuilder::sphere(1.0f, 24);
+cube.subtract(sphere);           // Carve sphere from cube
+cube.add(otherMesh);             // Union
+cube.intersect(otherMesh);       // Intersection
+cube.computeFlatNormals();       // Recompute normals after CSG
+Mesh mesh = cube.build();
+mesh.upload(ctx);
+```
+
+**Scene setup:**
+```cpp
+Scene scene;
+scene.add(mesh1);  // Identity transform, white
+scene.add(mesh2, glm::translate(glm::mat4(1), glm::vec3(2, 0, 0)));
+scene.add(mesh3, transform, glm::vec4(1, 0, 0, 1));  // Red color
+```
+
+**Render3D usage:**
+```cpp
+Camera3D camera;
+camera.lookAt(glm::vec3(5, 3, 5), glm::vec3(0, 0, 0))
+      .fov(45.0f)
+      .nearPlane(0.1f)
+      .farPlane(100.0f);
+
+Render3D* renderer = new Render3D();
+renderer->scene(scene)
+        .camera(camera)
+        .shadingMode(ShadingMode::Flat)  // Unlit, Flat, or Gouraud
+        .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
+        .lightColor(glm::vec3(1, 1, 1))
+        .ambient(0.15f)
+        .clearColor(0.1f, 0.1f, 0.15f)
+        .resolution(1280, 720);
+
+// In update():
+camera.orbit(5.0f, time * 0.3f, 0.4f);  // distance, azimuth, elevation
+renderer->camera(camera);
+renderer->process(ctx);
+ctx.setOutputTexture(renderer->outputView());
+```
+
+**Shading modes:**
+```cpp
+ShadingMode::Unlit    // No lighting, color only
+ShadingMode::Flat     // Per-fragment lighting (faceted)
+ShadingMode::Gouraud  // Per-vertex lighting (PS1-style smooth)
+```
+
 ## Enum Types
 
 ```cpp

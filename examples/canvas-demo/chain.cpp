@@ -8,42 +8,47 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-// Operators (persistent across hot-reloads)
-static Canvas* canvas = nullptr;
-static Output* output = nullptr;
+// Chain (persistent across hot-reloads)
+static Chain* chain = nullptr;
 
 void setup(Context& ctx) {
-    // Clean up previous operators if hot-reloading
-    delete canvas;
-    delete output;
-    canvas = nullptr;
-    output = nullptr;
+    // Clean up previous chain if hot-reloading
+    delete chain;
+    chain = nullptr;
 
-    // Create operators
-    canvas = new Canvas();
-    output = new Output();
+    // Create chain with Canvas -> HSV -> Output
+    chain = new Chain();
 
-    // Canvas for 2D drawing
-    canvas->size(1280, 720);
+    auto& canvas = chain->add<Canvas>("canvas");
+    canvas.size(1280, 720);
 
-    // Output directly from canvas
-    output->input(canvas);
+    // Add HSV color cycling effect
+    auto& hsv = chain->add<HSV>("hsv");
+    hsv.input(&canvas);
 
-    // Register operators for visualization
-    ctx.registerOperator("canvas", canvas);
-    ctx.registerOperator("output", output);
+    chain->add<Output>("output").input(&hsv);
+    chain->setOutput("output");
+    chain->init(ctx);
+
+    if (chain->hasError()) {
+        ctx.setError(chain->error());
+    }
 }
 
 void update(Context& ctx) {
+    if (!chain) return;
+
     float time = static_cast<float>(ctx.time());
 
+    auto& canvas = chain->get<Canvas>("canvas");
+
     // Clear canvas with dark blue background
-    canvas->clear(0.1f, 0.1f, 0.2f, 1.0f);
+    canvas.clear(0.1f, 0.1f, 0.2f, 1.0f);
 
     // Bouncing ball
     float ballX = 640.0f + 200.0f * std::sin(time * 1.5f);
     float ballY = 360.0f + 100.0f * std::sin(time * 2.3f);
-    canvas->circleFilled(ballX, ballY, 40.0f, {1.0f, 0.4f, 0.2f, 1.0f});
+    canvas.circleFilled(ballX, ballY, 40.0f, {1.0f, 0.4f, 0.2f, 1.0f});
 
     // Rotating squares
     for (int i = 0; i < 4; i++) {
@@ -58,12 +63,12 @@ void update(Context& ctx) {
             1.0f
         };
 
-        canvas->rectFilled(x - 25.0f, y - 25.0f, 50.0f, 50.0f, color);
+        canvas.rectFilled(x - 25.0f, y - 25.0f, 50.0f, 50.0f, color);
     }
 
     // Pulsing ring in center
     float ringRadius = 80.0f + 20.0f * std::sin(time * 3.0f);
-    canvas->circle(640.0f, 360.0f, ringRadius, 4.0f, {0.2f, 0.8f, 1.0f, 1.0f});
+    canvas.circle(640.0f, 360.0f, ringRadius, 4.0f, {0.2f, 0.8f, 1.0f, 1.0f});
 
     // Lines radiating from center
     for (int i = 0; i < 12; i++) {
@@ -72,20 +77,23 @@ void update(Context& ctx) {
         float y1 = 360.0f + 100.0f * std::sin(angle);
         float x2 = 640.0f + 250.0f * std::cos(angle);
         float y2 = 360.0f + 250.0f * std::sin(angle);
-        canvas->line(x1, y1, x2, y2, 2.0f, {1.0f, 1.0f, 1.0f, 0.5f});
+        canvas.line(x1, y1, x2, y2, 2.0f, {1.0f, 1.0f, 1.0f, 0.5f});
     }
 
     // Triangle decoration
-    canvas->triangleFilled(
+    canvas.triangleFilled(
         {100.0f, 650.0f},
         {150.0f, 550.0f},
         {200.0f, 650.0f},
         {0.8f, 0.2f, 0.8f, 1.0f}
     );
 
-    // Process the chain
-    canvas->process(ctx);
-    output->process(ctx);
+    // Animate HSV hue shift
+    auto& hsv = chain->get<HSV>("hsv");
+    hsv.hueShift(time * 0.1f);  // Slowly cycle through colors
+
+    // Process chain (Output handles ctx.setOutputTexture internally)
+    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

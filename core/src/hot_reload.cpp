@@ -194,6 +194,7 @@ bool HotReload::compile() {
     fs::path devVividInclude = rootDir / "core" / "include";
     fs::path devEffectsInclude = rootDir / "addons" / "vivid-effects-2d" / "include";
     fs::path devVideoInclude = rootDir / "addons" / "vivid-video" / "include";
+    fs::path devRender3dInclude = rootDir / "addons" / "vivid-render3d" / "include";
 
     if (fs::exists(devVividInclude / "vivid")) {
         vividInclude = fs::canonical(devVividInclude);
@@ -203,6 +204,11 @@ bool HotReload::compile() {
         // Add video addon include if it exists
         if (fs::exists(devVideoInclude / "vivid")) {
             depIncludes.push_back(fs::canonical(devVideoInclude));
+        }
+
+        // Add render3d addon include if it exists
+        if (fs::exists(devRender3dInclude / "vivid")) {
+            depIncludes.push_back(fs::canonical(devRender3dInclude));
         }
 
         // Find dependency includes in build/_deps
@@ -270,6 +276,10 @@ bool HotReload::compile() {
     if (fs::exists(addonsLib / "libvivid-video.dylib")) {
         cmd << "-lvivid-video ";
     }
+    // Link render3d addon if library exists
+    if (fs::exists(addonsLib / "libvivid-render3d.dylib")) {
+        cmd << "-lvivid-render3d ";
+    }
     cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
 #else
     cmd << "-L\"" << addonsLib.string() << "\" ";
@@ -277,6 +287,10 @@ bool HotReload::compile() {
     // Link video addon if library exists
     if (fs::exists(addonsLib / "libvivid-video.so")) {
         cmd << "-lvivid-video ";
+    }
+    // Link render3d addon if library exists
+    if (fs::exists(addonsLib / "libvivid-render3d.so")) {
+        cmd << "-lvivid-render3d ";
     }
     cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
 #endif

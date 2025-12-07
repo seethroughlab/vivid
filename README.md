@@ -143,20 +143,18 @@ Vivid includes a built-in chain visualizer powered by ImGui and ImNodes.
 - **Connection Visualization** - See how operators are wired together
 - **Performance Overlay** - FPS, frame time, and resolution display
 
-### Registering Operators for Visualization
+### Automatic Operator Registration
 
-To see your operators in the visualizer, register them in your setup function:
+Operators are automatically registered for visualization when you call `chain->init(ctx)`:
 
 ```cpp
 void setup(Context& ctx) {
     chain->add<Noise>("noise").scale(4.0f);
     chain->add<HSV>("color").input("noise");
     chain->add<Output>("out").input("color");
+    chain->setOutput("out");
 
-    // Register for visualization
-    ctx.registerOperator("noise", &chain->get<Noise>("noise"));
-    ctx.registerOperator("color", &chain->get<HSV>("color"));
-    ctx.registerOperator("out", &chain->get<Output>("out"));
+    chain->init(ctx);  // Auto-registers all operators for visualization
 }
 ```
 

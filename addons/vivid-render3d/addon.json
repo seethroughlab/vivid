@@ -1,0 +1,14 @@
+{
+  "name": "vivid-render3d",
+  "version": "0.1.0",
+  "description": "3D rendering: procedural geometry, CSG operations, flat/PBR shading",
+  "author": "Vivid",
+  "license": "MIT",
+  "vivid": ">=3.0.0",
+  "operators": [
+    "Render3D",
+    "MeshBuilder",
+    "Camera3D",
+    "Scene"
+  ]
+}

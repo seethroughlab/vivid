@@ -6,6 +6,7 @@
 #include <queue>
 #include <unordered_set>
 #include <algorithm>
+#include <iostream>
 
 namespace vivid {
 

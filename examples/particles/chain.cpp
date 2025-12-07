@@ -8,39 +8,20 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-// Operators (persistent across hot-reloads)
-static Particles* fire = nullptr;
-static Particles* fountain = nullptr;
-static Particles* ring = nullptr;
-static Composite* comp1 = nullptr;
-static Composite* comp2 = nullptr;
-static Output* output = nullptr;
+// Chain (persistent across hot-reloads)
+static Chain* chain = nullptr;
 
 void setup(Context& ctx) {
-    // Clean up previous operators if hot-reloading
-    delete fire;
-    delete fountain;
-    delete ring;
-    delete comp1;
-    delete comp2;
-    delete output;
-    fire = nullptr;
-    fountain = nullptr;
-    ring = nullptr;
-    comp1 = nullptr;
-    comp2 = nullptr;
-    output = nullptr;
+    // Clean up previous chain if hot-reloading
+    delete chain;
+    chain = nullptr;
 
-    // Create operators
-    fire = new Particles();
-    fountain = new Particles();
-    ring = new Particles();
-    comp1 = new Composite();
-    comp2 = new Composite();
-    output = new Output();
+    // Create chain
+    chain = new Chain();
 
     // Fire particles - rising flame effect
-    fire->emitter(EmitterShape::Point)
+    auto& fire = chain->add<Particles>("fire");
+    fire.emitter(EmitterShape::Point)
         .position(0.5f, 0.85f)
         .emitRate(100.0f)
         .velocity(0.0f, -0.15f)
@@ -55,7 +36,8 @@ void setup(Context& ctx) {
         .clearColor(0.02f, 0.02f, 0.05f, 1.0f);
 
     // Fountain particles - arcing water effect
-    fountain->emitter(EmitterShape::Point)
+    auto& fountain = chain->add<Particles>("fountain");
+    fountain.emitter(EmitterShape::Point)
         .position(0.5f, 0.7f)
         .emitRate(80.0f)
         .velocity(0.0f, -0.25f)
@@ -69,7 +51,8 @@ void setup(Context& ctx) {
         .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Ring particles - expanding ring
-    ring->emitter(EmitterShape::Ring)
+    auto& ring = chain->add<Particles>("ring");
+    ring.emitter(EmitterShape::Ring)
         .position(0.5f, 0.5f)
         .emitterSize(0.1f)
         .emitRate(60.0f)
@@ -83,50 +66,49 @@ void setup(Context& ctx) {
         .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Composite: fire + fountain
-    comp1->inputA(fire);
-    comp1->inputB(fountain);
-    comp1->mode(BlendMode::Add);
+    auto& comp1 = chain->add<Composite>("comp1");
+    comp1.inputA(&fire);
+    comp1.inputB(&fountain);
+    comp1.mode(BlendMode::Add);
 
     // Composite: (fire + fountain) + ring
-    comp2->inputA(comp1);
-    comp2->inputB(ring);
-    comp2->mode(BlendMode::Add);
+    auto& comp2 = chain->add<Composite>("comp2");
+    comp2.inputA(&comp1);
+    comp2.inputB(&ring);
+    comp2.mode(BlendMode::Add);
 
     // Output
-    output->input(comp2);
+    chain->add<Output>("output").input(&comp2);
+    chain->setOutput("output");
+    chain->init(ctx);
 
-    // Register operators for visualization (press Tab to toggle)
-    ctx.registerOperator("fire", fire);
-    ctx.registerOperator("fountain", fountain);
-    ctx.registerOperator("ring", ring);
-    ctx.registerOperator("comp1", comp1);
-    ctx.registerOperator("comp2", comp2);
-    ctx.registerOperator("output", output);
+    if (chain->hasError()) {
+        ctx.setError(chain->error());
+    }
 }
 
 void update(Context& ctx) {
+    if (!chain) return;
+
     float time = static_cast<float>(ctx.time());
 
-    // Animate fire position side to side
-    float fireX = 0.5f + 0.15f * std::sin(time * 0.5f);
-    fire->position(fireX, 0.85f);
+    // Fire follows mouse position
+    glm::vec2 mouse = ctx.mouseNorm();
+    float fireX = mouse.x * 0.5f + 0.5f;  // Convert from [-1,1] to [0,1]
+    float fireY = mouse.y * -0.5f + 0.5f; // Flip Y and convert
+    chain->get<Particles>("fire").position(fireX, fireY);
 
     // Pulsing emit rate for fountain
     float rate = 60.0f + 30.0f * std::sin(time * 2.0f);
-    fountain->emitRate(rate);
+    chain->get<Particles>("fountain").emitRate(rate);
 
     // Rotating ring emitter
     float ringX = 0.5f + 0.12f * std::cos(time * 0.8f);
     float ringY = 0.5f + 0.12f * std::sin(time * 0.8f);
-    ring->position(ringX, ringY);
+    chain->get<Particles>("ring").position(ringX, ringY);
 
-    // Process the chain
-    fire->process(ctx);
-    fountain->process(ctx);
-    ring->process(ctx);
-    comp1->process(ctx);
-    comp2->process(ctx);
-    output->process(ctx);
+    // Process chain (Output handles ctx.setOutputTexture internally)
+    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

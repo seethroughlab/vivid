@@ -8,35 +8,24 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-// Operators (persistent across hot-reloads)
-static PointSprites* grid = nullptr;
-static PointSprites* spiral = nullptr;
-static PointSprites* scatter = nullptr;
-static Output* output = nullptr;
+// Chain (persistent across hot-reloads)
+static Chain* chain = nullptr;
 
 // Current demo index
 static int currentDemo = 0;
 static double lastSwitch = 0.0;
 
 void setup(Context& ctx) {
-    // Clean up previous operators if hot-reloading
-    delete grid;
-    delete spiral;
-    delete scatter;
-    delete output;
-    grid = nullptr;
-    spiral = nullptr;
-    scatter = nullptr;
-    output = nullptr;
+    // Clean up previous chain if hot-reloading
+    delete chain;
+    chain = nullptr;
 
-    // Create operators
-    grid = new PointSprites();
-    spiral = new PointSprites();
-    scatter = new PointSprites();
-    output = new Output();
+    // Create chain
+    chain = new Chain();
 
     // Grid pattern - regular arrangement
-    grid->pattern(Pattern::Grid)
+    chain->add<PointSprites>("grid")
+        .pattern(Pattern::Grid)
         .count(400)
         .size(0.015f)
         .colorMode(PointColorMode::Gradient)
@@ -47,7 +36,8 @@ void setup(Context& ctx) {
         .clearColor(0.02f, 0.02f, 0.05f, 1.0f);
 
     // Spiral pattern - golden spiral
-    spiral->pattern(Pattern::Spiral)
+    chain->add<PointSprites>("spiral")
+        .pattern(Pattern::Spiral)
         .count(300)
         .size(0.012f)
         .sizeVariation(0.3f)
@@ -59,7 +49,8 @@ void setup(Context& ctx) {
         .clearColor(0.02f, 0.02f, 0.05f, 1.0f);
 
     // Random scatter - chaotic points
-    scatter->pattern(Pattern::Random)
+    chain->add<PointSprites>("scatter")
+        .pattern(Pattern::Random)
         .count(500)
         .size(0.01f)
         .sizeVariation(0.5f)
@@ -68,13 +59,23 @@ void setup(Context& ctx) {
         .animateSpeed(0.8f)
         .clearColor(0.02f, 0.02f, 0.05f, 1.0f);
 
-    // Start with grid
-    output->input(grid);
+    // Output starts with grid
+    auto& grid = chain->get<PointSprites>("grid");
+    chain->add<Output>("output").input(&grid);
+    chain->setOutput("output");
+    chain->init(ctx);
+
     currentDemo = 0;
     lastSwitch = ctx.time();
+
+    if (chain->hasError()) {
+        ctx.setError(chain->error());
+    }
 }
 
 void update(Context& ctx) {
+    if (!chain) return;
+
     double time = ctx.time();
 
     // Switch demos every 4 seconds
@@ -82,24 +83,22 @@ void update(Context& ctx) {
         currentDemo = (currentDemo + 1) % 3;
         lastSwitch = time;
 
+        auto& output = chain->get<Output>("output");
         switch (currentDemo) {
             case 0:
-                output->input(grid);
+                output.input(&chain->get<PointSprites>("grid"));
                 break;
             case 1:
-                output->input(spiral);
+                output.input(&chain->get<PointSprites>("spiral"));
                 break;
             case 2:
-                output->input(scatter);
+                output.input(&chain->get<PointSprites>("scatter"));
                 break;
         }
     }
 
-    // Process all (only the active one will render to output)
-    grid->process(ctx);
-    spiral->process(ctx);
-    scatter->process(ctx);
-    output->process(ctx);
+    // Process chain (all operators processed in dependency order)
+    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

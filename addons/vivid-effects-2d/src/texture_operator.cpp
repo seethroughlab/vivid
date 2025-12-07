@@ -13,10 +13,9 @@ WGPUTextureView TextureOperator::inputView(int index) const {
     Operator* input = getInput(index);
     if (!input) return nullptr;
 
-    // Try to cast to TextureOperator
-    TextureOperator* texOp = dynamic_cast<TextureOperator*>(input);
-    if (texOp) {
-        return texOp->outputView();
+    // Any operator with OutputKind::Texture has an outputView()
+    if (input->outputKind() == OutputKind::Texture) {
+        return input->outputView();
     }
     return nullptr;
 }

@@ -115,8 +115,21 @@ public:
      * @param ctx Runtime context with time, input, etc.
      *
      * Called every frame. Read inputs, compute output.
+     *
+     * Note: Operators automatically register themselves for visualization
+     * the first time process() is called. Set autoRegisterName before
+     * calling process() to specify a custom registration name.
      */
     virtual void process(Context& ctx) = 0;
+
+    /**
+     * @brief Process with automatic registration
+     * @param ctx Runtime context
+     * @param registerName Name to use for auto-registration
+     *
+     * Calls process() and ensures operator is registered for visualization.
+     */
+    void processAndRegister(Context& ctx, const std::string& registerName);
 
     /**
      * @brief Clean up resources
@@ -220,8 +233,12 @@ public:
 
     int sourceLine = 0; ///< Source line number (for editor integration)
 
+    /// @brief Name used for auto-registration (set before process if needed)
+    std::string autoRegisterName;
+
 protected:
     std::vector<Operator*> inputs_; ///< Connected input operators
+    bool m_registered = false;      ///< Whether already registered for visualization
 };
 
 } // namespace vivid

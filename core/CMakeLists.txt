@@ -7,6 +7,7 @@ set(VIVID_CORE_SOURCES
     src/display.cpp
     src/hot_reload.cpp
     src/chain.cpp
+    src/operator.cpp
 )
 
 set(VIVID_CORE_HEADERS
