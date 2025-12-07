@@ -7,4 +7,6 @@
 #include <vivid/effects/noise.h>
 #include <vivid/effects/solid_color.h>
 #include <vivid/effects/composite.h>
+#include <vivid/effects/ramp.h>
+#include <vivid/effects/feedback.h>
 #include <vivid/effects/output.h>

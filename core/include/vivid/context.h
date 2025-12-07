@@ -8,6 +8,14 @@
 #include <glm/glm.hpp>
 
 #include <string>
+#include <map>
+#include <memory>
+
+// Forward declaration
+namespace vivid {
+struct OperatorState;
+class Chain;
+}
 
 namespace vivid {
 
@@ -106,6 +114,19 @@ public:
     void setError(const std::string& message) { m_errorMessage = message; }
     void clearError() { m_errorMessage.clear(); }
 
+    // -------------------------------------------------------------------------
+    // State Preservation (for hot-reload)
+    // -------------------------------------------------------------------------
+
+    // Save states from a chain before hot-reload
+    void preserveStates(Chain& chain);
+
+    // Restore states to a chain after hot-reload
+    void restoreStates(Chain& chain);
+
+    // Check if there are preserved states waiting to be restored
+    bool hasPreservedStates() const { return !m_preservedStates.empty(); }
+
 private:
     GLFWwindow* m_window;
     WGPUDevice m_device;
@@ -138,6 +159,9 @@ private:
 
     // Error
     std::string m_errorMessage;
+
+    // Preserved operator states (for hot-reload)
+    std::map<std::string, std::unique_ptr<OperatorState>> m_preservedStates;
 
     // Default state for out-of-range queries
     static const KeyState s_defaultKeyState;

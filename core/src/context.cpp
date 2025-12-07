@@ -1,6 +1,7 @@
 // Vivid V3 - Context Implementation
 
 #include <vivid/context.h>
+#include <vivid/chain.h>
 #include <cstring>
 
 namespace vivid {
@@ -96,6 +97,17 @@ const MouseButtonState& Context::mouseButton(int button) const {
 const KeyState& Context::key(int keyCode) const {
     if (keyCode < 0 || keyCode >= MAX_KEYS) return s_defaultKeyState;
     return m_keys[keyCode];
+}
+
+void Context::preserveStates(Chain& chain) {
+    m_preservedStates = chain.saveAllStates();
+}
+
+void Context::restoreStates(Chain& chain) {
+    if (!m_preservedStates.empty()) {
+        chain.restoreAllStates(m_preservedStates);
+        m_preservedStates.clear();
+    }
 }
 
 } // namespace vivid

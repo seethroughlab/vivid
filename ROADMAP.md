@@ -911,6 +911,26 @@ The Chain uses Kahn's algorithm for topological sort, automatically determining 
 - [ ] Error text displays correctly
 - [ ] Hot-reload detects file changes
 
+**Troubleshooting Notes (wgpu-native on macOS):**
+
+We encountered a blank/dark gray window despite all WebGPU operations appearing successful. The fixes (learned from vivid_v1):
+
+1. **Query surface capabilities for format** - Don't hardcode `BGRA8Unorm`. Use `wgpuSurfaceGetCapabilities()` to get the preferred format (Metal on macOS wants `BGRA8UnormSrgb`):
+   ```cpp
+   WGPUSurfaceCapabilities capabilities = {};
+   wgpuSurfaceGetCapabilities(surface, adapter, &capabilities);
+   WGPUTextureFormat surfaceFormat = capabilities.formats[0];
+   ```
+
+2. **Present before releasing texture view** - Call `wgpuSurfacePresent()` BEFORE `wgpuTextureViewRelease()`:
+   ```cpp
+   wgpuQueueSubmit(queue, 1, &cmdBuffer);
+   wgpuSurfacePresent(surface);        // Present first
+   wgpuTextureViewRelease(view);       // Then release view
+   ```
+
+3. **Don't release surface texture** - The texture from `wgpuSurfaceGetCurrentTexture()` is owned by the surface. Don't call `wgpuTextureRelease()` on it.
+
 ### Phase 2: First Addon (vivid-effects-2d) ✓
 
 **Goal:** Basic 2D operators working

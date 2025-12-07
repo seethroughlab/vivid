@@ -280,6 +280,7 @@ static fs::path getExecutableDir() {
 
 static std::string findShader(const std::string& name) {
     fs::path exeDir = getExecutableDir();
+    std::cout << "Looking for shader: " << name << " from exeDir: " << exeDir << std::endl;
     std::vector<fs::path> searchPaths = {
         exeDir / "shaders" / name,
         fs::path("shaders") / name,
@@ -289,7 +290,12 @@ static std::string findShader(const std::string& name) {
 
     for (const auto& path : searchPaths) {
         std::string code = loadShaderFile(path.string());
-        if (!code.empty()) return code;
+        if (!code.empty()) {
+            std::cout << "Found shader at: " << path << std::endl;
+            // Show first 100 chars to verify content
+            std::cout << "Shader preview: " << code.substr(0, 100) << "..." << std::endl;
+            return code;
+        }
     }
     return "";
 }
@@ -660,7 +666,10 @@ void Display::setScreenSize(int width, int height) {
 }
 
 void Display::blit(WGPURenderPassEncoder pass, WGPUTextureView texture) {
-    if (!m_blitPipeline || !texture) return;
+    if (!m_blitPipeline || !texture) {
+        std::cerr << "Blit early return: pipeline=" << m_blitPipeline << ", texture=" << texture << std::endl;
+        return;
+    }
 
     WGPUBindGroupEntry entries[2] = {};
     entries[0].binding = 0;
@@ -675,7 +684,14 @@ void Display::blit(WGPURenderPassEncoder pass, WGPUTextureView texture) {
     bindGroupDesc.entries = entries;
 
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(m_device, &bindGroupDesc);
-    if (!bindGroup) return;
+    if (!bindGroup) {
+        std::cerr << "Blit: failed to create bind group" << std::endl;
+        return;
+    }
+
+    // Set viewport to cover the entire screen
+    wgpuRenderPassEncoderSetViewport(pass, 0, 0, (float)m_screenWidth, (float)m_screenHeight, 0, 1);
+    wgpuRenderPassEncoderSetScissorRect(pass, 0, 0, m_screenWidth, m_screenHeight);
 
     wgpuRenderPassEncoderSetPipeline(pass, m_blitPipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);

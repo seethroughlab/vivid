@@ -38,6 +38,15 @@ struct OperatorState {
     virtual ~OperatorState() = default;
 };
 
+// Texture state - preserves texture pixel data across hot-reload
+struct TextureState : public OperatorState {
+    std::vector<uint8_t> pixels;
+    int width = 0;
+    int height = 0;
+
+    bool hasData() const { return !pixels.empty() && width > 0 && height > 0; }
+};
+
 // Base class for all operators
 class Operator {
 public:

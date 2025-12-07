@@ -5,6 +5,8 @@ add_library(vivid-effects-2d SHARED
     src/noise.cpp
     src/solid_color.cpp
     src/composite.cpp
+    src/ramp.cpp
+    src/feedback.cpp
     src/output.cpp
 )
 

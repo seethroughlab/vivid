@@ -224,12 +224,30 @@ int main(int argc, char** argv) {
     int width, height;
     glfwGetFramebufferSize(window, &width, &height);
 
+    // Query surface capabilities to get preferred format
+    WGPUSurfaceCapabilities capabilities = {};
+    wgpuSurfaceGetCapabilities(surface, adapter, &capabilities);
+
+    WGPUTextureFormat surfaceFormat = WGPUTextureFormat_BGRA8Unorm;  // Default
+    if (capabilities.formatCount > 0) {
+        surfaceFormat = capabilities.formats[0];
+        std::cout << "Using surface format: " << surfaceFormat << std::endl;
+    }
+
+    WGPUPresentMode presentMode = WGPUPresentMode_Fifo;  // Default
+    if (capabilities.presentModeCount > 0) {
+        presentMode = capabilities.presentModes[0];
+        std::cout << "Using present mode: " << presentMode << std::endl;
+    }
+
+    wgpuSurfaceCapabilitiesFreeMembers(capabilities);
+
     WGPUSurfaceConfiguration config = {};
     config.device = device;
-    config.format = WGPUTextureFormat_BGRA8Unorm;
+    config.format = surfaceFormat;
     config.width = static_cast<uint32_t>(width);
     config.height = static_cast<uint32_t>(height);
-    config.presentMode = WGPUPresentMode_Fifo;
+    config.presentMode = presentMode;
     config.alphaMode = WGPUCompositeAlphaMode_Auto;
     config.usage = WGPUTextureUsage_RenderAttachment;
     wgpuSurfaceConfigure(surface, &config);
@@ -241,7 +259,7 @@ int main(int argc, char** argv) {
     Context ctx(window, device, queue);
 
     // Create display
-    Display display(device, queue, WGPUTextureFormat_BGRA8Unorm);
+    Display display(device, queue, surfaceFormat);
     if (!display.isValid()) {
         std::cerr << "Warning: Display initialization failed (shaders may be missing)" << std::endl;
     }
@@ -304,14 +322,13 @@ int main(int argc, char** argv) {
         wgpuSurfaceGetCurrentTexture(surface, &surfaceTexture);
         if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
             surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
-            std::cerr << "Failed to get current texture" << std::endl;
             ctx.endFrame();
             continue;
         }
 
         // Create view with explicit format matching the surface texture
         WGPUTextureViewDescriptor viewDesc = {};
-        viewDesc.format = WGPUTextureFormat_BGRA8Unorm;
+        viewDesc.format = surfaceFormat;
         viewDesc.dimension = WGPUTextureViewDimension_2D;
         viewDesc.baseMipLevel = 0;
         viewDesc.mipLevelCount = 1;
@@ -348,12 +365,12 @@ int main(int argc, char** argv) {
         WGPUCommandEncoderDescriptor encoderDesc = {};
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &encoderDesc);
 
-        // Render pass - clear to dark gray
+        // Render pass - clear to black
         WGPURenderPassColorAttachment colorAttachment = {};
         colorAttachment.view = view;
         colorAttachment.loadOp = WGPULoadOp_Clear;
         colorAttachment.storeOp = WGPUStoreOp_Store;
-        colorAttachment.clearValue = {0.1, 0.1, 0.12, 1.0};  // Dark background
+        colorAttachment.clearValue = {0.0, 0.0, 0.0, 1.0};
 
         WGPURenderPassDescriptor renderPassDesc = {};
         renderPassDesc.colorAttachmentCount = 1;
@@ -367,10 +384,6 @@ int main(int argc, char** argv) {
         // If chain set an output texture, blit it to the screen
         if (ctx.outputTexture() && display.isValid()) {
             display.blit(pass, ctx.outputTexture());
-        } else if (ctx.frame() < 5) {
-            std::cout << "Frame " << ctx.frame() << ": outputTexture="
-                      << (ctx.outputTexture() ? "SET" : "NULL")
-                      << ", display.isValid=" << display.isValid() << std::endl;
         }
 
         // Render error message if present
@@ -386,14 +399,16 @@ int main(int argc, char** argv) {
         WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
         wgpuQueueSubmit(queue, 1, &cmdBuffer);
 
-        // Release resources
+        // Release command resources
         wgpuCommandBufferRelease(cmdBuffer);
         wgpuCommandEncoderRelease(encoder);
-        wgpuTextureViewRelease(view);
-        wgpuTextureRelease(surfaceTexture.texture);
 
-        // Present
+        // Present BEFORE releasing the texture view
         wgpuSurfacePresent(surface);
+
+        // Release texture view after present (surface owns the texture)
+        wgpuTextureViewRelease(view);
+        // Note: Don't release surfaceTexture.texture - it's owned by the surface
 
         // End frame
         ctx.endFrame();

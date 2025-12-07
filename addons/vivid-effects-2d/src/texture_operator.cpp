@@ -45,7 +45,7 @@ void TextureOperator::createOutput(Context& ctx, int width, int height) {
     desc.sampleCount = 1;
     desc.dimension = WGPUTextureDimension_2D;
     desc.format = EFFECTS_FORMAT;
-    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
+    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
 
     m_output = wgpuDeviceCreateTexture(ctx.device(), &desc);
 
