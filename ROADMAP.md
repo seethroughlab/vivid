@@ -903,6 +903,12 @@ The Chain uses Kahn's algorithm for topological sort, automatically determining 
 - [ ] ChromaticAberration - RGB channel separation
 - [ ] Pixelate - Mosaic/pixelation effect
 - [ ] Feedback - Double-buffered with decay, zoom, rotate
+- [ ] Bloom - Threshold, blur, and add-back glow effect
+- [ ] Tile - Texture tiling/repetition with offset and scale
+
+**Particle Systems:**
+- [ ] Particles2D - 2D GPU particle system with emitters, forces, and lifetime
+- [ ] PointSprites - Point-based rendering with size, color, and texture
 
 **Compositing:**
 - [ ] Composite - Two-input or multi-input (up to 8) blending
@@ -1250,6 +1256,8 @@ Mesh vehicleMesh = craft.build();
 - [ ] InstancedRender3D - GPU instancing for thousands of objects
 - [ ] GLTFLoader (cgltf + stb_image)
 - [ ] Default HDRI environment
+- [ ] Particles3D - 3D GPU particle system with world-space physics
+- [ ] PointSprites3D - 3D point-based rendering with billboarding
 
 **Non-PBR Shading Modes:**
 
