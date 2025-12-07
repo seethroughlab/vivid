@@ -235,7 +235,8 @@ bool HotReload::compile() {
 
 #ifdef _WIN32
     // MSVC or Clang on Windows
-    cmd << "cl /nologo /EHsc /LD /O2 ";
+    // Note: Requires Visual Studio Developer Command Prompt or cl.exe in PATH
+    cmd << "cl /nologo /EHsc /LD /O2 /std:c++17 ";
     cmd << "/I\"" << sourceDir.string() << "\" ";
     cmd << "/I\"" << vividInclude.string() << "\" ";
     cmd << "/I\"" << addonsInclude.string() << "\" ";
@@ -244,7 +245,12 @@ bool HotReload::compile() {
     }
     cmd << "/Fe\"" << m_libraryPath.string() << "\" ";
     cmd << "\"" << m_sourcePath.string() << "\" ";
-    cmd << "/link \"" << (addonsLib / "vivid-effects-2d.lib").string() << "\" ";
+    cmd << "/link ";
+    cmd << "\"" << (addonsLib / "vivid-effects-2d.lib").string() << "\" ";
+    // Link video addon if library exists
+    if (fs::exists(addonsLib / "vivid-video.lib")) {
+        cmd << "\"" << (addonsLib / "vivid-video.lib").string() << "\" ";
+    }
     cmd << "2>&1";
 #else
     // Clang/GCC on Unix

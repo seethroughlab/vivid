@@ -1,11 +1,10 @@
 # Vivid Video Addon
-# Video playback with HAP codec support (GPU-compressed textures)
-
-# macOS-only for now (uses AVFoundation)
-if(NOT APPLE)
-    message(WARNING "vivid-video addon is currently macOS-only")
-    return()
-endif()
+# Cross-platform video playback
+# - HAP codec: GPU-compressed textures (all platforms)
+# - Standard codecs: Platform-specific decoders
+#   - macOS: AVFoundation
+#   - Windows: Media Foundation
+#   - Linux: FFmpeg (stub)
 
 # Fetch snappy for HAP codec decompression
 include(FetchContent)
@@ -24,13 +23,33 @@ set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(SNAPPY_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(snappy)
 
-add_library(vivid-video SHARED
+# Common sources (all platforms)
+set(VIDEO_SOURCES
     src/audio_player.cpp
     src/hap.c
-    src/hap_decoder.mm
-    src/avf_decoder.mm
     src/video_player.cpp
 )
+
+# Platform-specific sources
+if(APPLE)
+    list(APPEND VIDEO_SOURCES
+        src/hap_decoder.mm
+        src/avf_decoder.mm
+    )
+elseif(WIN32)
+    list(APPEND VIDEO_SOURCES
+        src/hap_decoder.cpp      # Windows version without Obj-C
+        src/mf_decoder.cpp
+    )
+else()
+    # Linux
+    list(APPEND VIDEO_SOURCES
+        src/hap_decoder.cpp      # Linux version without Obj-C
+        src/ffmpeg_decoder.cpp
+    )
+endif()
+
+add_library(vivid-video SHARED ${VIDEO_SOURCES})
 
 target_include_directories(vivid-video PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -54,8 +73,9 @@ target_link_libraries(vivid-video PUBLIC
 # Link snappy for HAP codec
 target_link_libraries(vivid-video PRIVATE snappy)
 
-# macOS frameworks for AVFoundation
+# Platform-specific configuration
 if(APPLE)
+    # macOS frameworks
     target_link_libraries(vivid-video PRIVATE
         "-framework AVFoundation"
         "-framework CoreMedia"
@@ -74,6 +94,31 @@ if(APPLE)
         INSTALL_RPATH "@executable_path"
         BUILD_WITH_INSTALL_RPATH TRUE
     )
+
+elseif(WIN32)
+    # Windows Media Foundation libraries
+    target_link_libraries(vivid-video PRIVATE
+        mf
+        mfplat
+        mfreadwrite
+        mfuuid
+        ole32
+        oleaut32
+        propsys
+    )
+
+    # Enable exports for DLL
+    set_target_properties(vivid-video PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+    )
+
+else()
+    # Linux - FFmpeg libraries (when implemented)
+    # find_package(PkgConfig REQUIRED)
+    # pkg_check_modules(FFMPEG REQUIRED libavformat libavcodec libswscale)
+    # target_include_directories(vivid-video PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    # target_link_libraries(vivid-video PRIVATE ${FFMPEG_LIBRARIES})
+    message(STATUS "vivid-video: Linux FFmpeg support is a stub - video playback not yet implemented")
 endif()
 
 # Copy library next to vivid executable

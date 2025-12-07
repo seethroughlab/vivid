@@ -2,6 +2,10 @@
 
 // Vivid Video - VideoPlayer Operator
 // Video playback as a texture source in chains
+// Platform support:
+//   - macOS: HAP (direct DXT) + AVFoundation (H.264, HEVC, ProRes, etc.)
+//   - Windows: HAP (direct DXT) + Media Foundation (H.264, HEVC, etc.)
+//   - Linux: HAP (direct DXT) + FFmpeg (stub - not yet implemented)
 
 #include <vivid/effects/texture_operator.h>
 #include <string>
@@ -9,7 +13,15 @@
 
 namespace vivid::video {
 class HAPDecoder;
+
+// Platform-specific standard codec decoders
+#if defined(__APPLE__)
 class AVFDecoder;
+#elif defined(_WIN32)
+class MFDecoder;
+#else
+class FFmpegDecoder;
+#endif
 }
 
 namespace vivid::video {
@@ -133,7 +145,16 @@ private:
 
     // Decoders - one will be active based on codec
     std::unique_ptr<HAPDecoder> m_hapDecoder;
-    std::unique_ptr<AVFDecoder> m_avfDecoder;
+
+    // Platform-specific standard codec decoder
+#if defined(__APPLE__)
+    std::unique_ptr<AVFDecoder> m_standardDecoder;
+#elif defined(_WIN32)
+    std::unique_ptr<MFDecoder> m_standardDecoder;
+#else
+    std::unique_ptr<FFmpegDecoder> m_standardDecoder;
+#endif
+
     bool m_isHAP = false;
 };
 

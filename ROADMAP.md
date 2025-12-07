@@ -2637,6 +2637,7 @@ Before publishing, addons must pass:
 - [ ] vivid.json parsing and validation
 - [ ] vivid.lock generation
 - [ ] Addon build caching
+- [ ] **Update hot-reloader for dynamic addon discovery** - Scan `#include` directives in chain.cpp or read vivid.json to find addon dependencies (replaces current hard-coded addon paths in hot_reload.cpp)
 
 **Phase 16b: Git-based Installation**
 - [ ] `vivid addon install github:user/repo` - Clone and install
