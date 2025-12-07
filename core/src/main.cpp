@@ -187,6 +187,13 @@ int main(int argc, char** argv) {
     WGPUDeviceDescriptor deviceDesc = {};
     deviceDesc.label = toStringView("Vivid Device");
 
+    // Request BC texture compression for HAP video codec support
+    WGPUFeatureName requiredFeatures[] = {
+        WGPUFeatureName_TextureCompressionBC
+    };
+    deviceDesc.requiredFeatures = requiredFeatures;
+    deviceDesc.requiredFeatureCount = 1;
+
     // Use default limits (don't require specific limits)
 
     // Set error callbacks

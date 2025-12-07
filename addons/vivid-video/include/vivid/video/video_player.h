@@ -9,6 +9,7 @@
 
 namespace vivid::video {
 class HAPDecoder;
+class AVFDecoder;
 }
 
 namespace vivid::video {
@@ -130,7 +131,10 @@ private:
     bool m_needsReload = false;
     bool m_autoPlay = true;
 
-    std::unique_ptr<HAPDecoder> m_decoder;
+    // Decoders - one will be active based on codec
+    std::unique_ptr<HAPDecoder> m_hapDecoder;
+    std::unique_ptr<AVFDecoder> m_avfDecoder;
+    bool m_isHAP = false;
 };
 
 } // namespace vivid::video

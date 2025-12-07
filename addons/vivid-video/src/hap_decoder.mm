@@ -11,6 +11,14 @@
 
 #include <iostream>
 
+// Helper to create WGPUStringView from C string
+inline WGPUStringView toStringView(const char* str) {
+    WGPUStringView sv;
+    sv.data = str;
+    sv.length = WGPU_STRLEN;
+    return sv;
+}
+
 namespace vivid::video {
 
 // HAP decode callback for single-threaded decoding
@@ -82,7 +90,7 @@ void HAPDecoder::createTexture() {
     }
 
     WGPUTextureDescriptor desc = {};
-    desc.label = "HAPVideoFrame";
+    desc.label = toStringView("HAPVideoFrame");
     desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
     desc.dimension = WGPUTextureDimension_2D;
     desc.size = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1};
@@ -97,7 +105,7 @@ void HAPDecoder::createTexture() {
     }
 
     WGPUTextureViewDescriptor viewDesc = {};
-    viewDesc.label = "HAPVideoFrameView";
+    viewDesc.label = toStringView("HAPVideoFrameView");
     viewDesc.format = textureFormat_;
     viewDesc.dimension = WGPUTextureViewDimension_2D;
     viewDesc.baseMipLevel = 0;
@@ -339,13 +347,13 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
         }
 
         // Upload first frame
-        WGPUImageCopyTexture destination = {};
+        WGPUTexelCopyTextureInfo destination = {};
         destination.texture = texture_;
         destination.mipLevel = 0;
         destination.origin = {0, 0, 0};
         destination.aspect = WGPUTextureAspect_All;
 
-        WGPUTextureDataLayout dataLayout = {};
+        WGPUTexelCopyBufferLayout dataLayout = {};
         dataLayout.offset = 0;
         dataLayout.bytesPerRow = blocksX * bytesPerBlock;
         dataLayout.rowsPerImage = blocksY;
@@ -564,13 +572,13 @@ void HAPDecoder::update(Context& ctx) {
             size_t bytesPerBlock = (impl_->hapTextureFormat == HapTextureFormat_RGB_DXT1 ||
                                     impl_->hapTextureFormat == HapTextureFormat_A_RGTC1) ? 8 : 16;
 
-            WGPUImageCopyTexture destination = {};
+            WGPUTexelCopyTextureInfo destination = {};
             destination.texture = texture_;
             destination.mipLevel = 0;
             destination.origin = {0, 0, 0};
             destination.aspect = WGPUTextureAspect_All;
 
-            WGPUTextureDataLayout dataLayout = {};
+            WGPUTexelCopyBufferLayout dataLayout = {};
             dataLayout.offset = 0;
             dataLayout.bytesPerRow = blocksX * bytesPerBlock;
             dataLayout.rowsPerImage = (height_ + 3) / 4;

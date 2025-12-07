@@ -192,12 +192,18 @@ bool HotReload::compile() {
     // exe is at build/bin/vivid, so ../ twice gets to vivid root
     fs::path rootDir = exeDir / ".." / "..";
     fs::path devVividInclude = rootDir / "core" / "include";
-    fs::path devAddonsInclude = rootDir / "addons" / "vivid-effects-2d" / "include";
+    fs::path devEffectsInclude = rootDir / "addons" / "vivid-effects-2d" / "include";
+    fs::path devVideoInclude = rootDir / "addons" / "vivid-video" / "include";
 
     if (fs::exists(devVividInclude / "vivid")) {
         vividInclude = fs::canonical(devVividInclude);
-        addonsInclude = fs::canonical(devAddonsInclude);
+        addonsInclude = fs::canonical(devEffectsInclude);
         addonsLib = exeDir;
+
+        // Add video addon include if it exists
+        if (fs::exists(devVideoInclude / "vivid")) {
+            depIncludes.push_back(fs::canonical(devVideoInclude));
+        }
 
         // Find dependency includes in build/_deps
         fs::path depsDir = rootDir / "build" / "_deps";
@@ -254,10 +260,18 @@ bool HotReload::compile() {
     cmd << "-undefined dynamic_lookup ";  // Allow symbols from vivid executable
     cmd << "-L\"" << addonsLib.string() << "\" ";
     cmd << "-lvivid-effects-2d ";
+    // Link video addon if library exists
+    if (fs::exists(addonsLib / "libvivid-video.dylib")) {
+        cmd << "-lvivid-video ";
+    }
     cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
 #else
     cmd << "-L\"" << addonsLib.string() << "\" ";
     cmd << "-lvivid-effects-2d ";
+    // Link video addon if library exists
+    if (fs::exists(addonsLib / "libvivid-video.so")) {
+        cmd << "-lvivid-video ";
+    }
     cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
 #endif
 

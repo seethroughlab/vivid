@@ -8,3 +8,5 @@
 [x] Add reminders to the ROADMAP to update the readme at the end of major phases.
 [x] PLAN: we just finished phase 4. what kind of examples would best illustrate (and test) everyting we added? 
 [x] It seems that, in the jump to v3, we lost some of the emphasis on vivid bring LLM-first in the documentation. Let's update the README and the ROADMAP so that they reflect that one of the core philosophies of the project is to be LLM-friendly. It's already mentioned in docs/PHILOSOPHY.md in the "LLM-Native Workflow" section.
+[ ] Is everything we've done so far likely to work on Windows when I test? vivid_v1 was fully croass platform, so maybe it's a good idea to see how it was handled there.
+[ ] The hot-reloader shouldn't have hardcoded addon paths. Will that be changed when we create the addon registry?

@@ -9,26 +9,33 @@ endif()
 
 # Fetch snappy for HAP codec decompression
 include(FetchContent)
+
+# Set policy version for older snappy CMakeLists
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+
 FetchContent_Declare(
     snappy
     GIT_REPOSITORY https://github.com/google/snappy.git
-    GIT_TAG        1.2.1
+    GIT_TAG        main
     GIT_SHALLOW    TRUE
 )
 set(SNAPPY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+set(SNAPPY_INSTALL OFF CACHE BOOL "" FORCE)
 FetchContent_MakeAvailable(snappy)
 
 add_library(vivid-video SHARED
     src/audio_player.cpp
     src/hap.c
     src/hap_decoder.mm
+    src/avf_decoder.mm
     src/video_player.cpp
 )
 
 target_include_directories(vivid-video PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
 )
 
 # Include snappy headers (generated config is in binary dir)
@@ -41,6 +48,7 @@ target_link_libraries(vivid-video PUBLIC
     webgpu
     glm
     glfw
+    vivid-effects-2d
 )
 
 # Link snappy for HAP codec
@@ -51,12 +59,13 @@ if(APPLE)
     target_link_libraries(vivid-video PRIVATE
         "-framework AVFoundation"
         "-framework CoreMedia"
+        "-framework CoreVideo"
         "-framework CoreAudio"
         "-framework AudioToolbox"
     )
 
     # Enable Objective-C++
-    set_source_files_properties(src/hap_decoder.mm PROPERTIES
+    set_source_files_properties(src/hap_decoder.mm src/avf_decoder.mm PROPERTIES
         COMPILE_FLAGS "-x objective-c++"
     )
 

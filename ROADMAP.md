@@ -1027,7 +1027,7 @@ We encountered a blank/dark gray window despite all WebGPU operations appearing 
 
 **Media (vivid-media addon):**
 - [x] ImageFile - Load PNG/JPG with hot-reload
-- [ ] VideoPlayer - Video playback (HAP codec support)
+- [x] VideoPlayer - Video playback (HAP codec support)
 - [ ] Webcam - Camera capture
 
 **Canvas (Procedural Texture Generation):**
