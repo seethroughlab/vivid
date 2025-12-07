@@ -39,3 +39,6 @@
 #include <vivid/effects/particle_renderer.h>
 #include <vivid/effects/particles.h>
 #include <vivid/effects/point_sprites.h>
+
+// Canvas (Phase 5)
+#include <vivid/effects/canvas.h>

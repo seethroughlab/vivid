@@ -1084,12 +1084,13 @@ We encountered a blank/dark gray window despite all WebGPU operations appearing 
 - [x] Math - Add, subtract, multiply, divide, clamp, remap
 - [x] Logic - Greater than, less than, in range, toggle
 
-**Media (vivid-media addon):**
+**Media (vivid-video addon):**
 - [x] ImageFile - Load PNG/JPG with hot-reload
 - [x] VideoPlayer - Video playback (HAP codec support)
-- [ ] Webcam - Camera capture
+- [x] Webcam - Camera capture (AVFoundation on macOS, Media Foundation on Windows)
 
 **Canvas (Procedural Texture Generation):**
+- [x] Canvas - Imperative 2D drawing with shapes and text
 
 Draw 2D primitives to a texture for procedural graphics, liveries, UI elements:
 

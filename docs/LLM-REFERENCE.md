@@ -110,6 +110,40 @@ VIVID_CHAIN(setup, update)
 | `Math` | Math operations | `.operation(MathOp::Add)` `.value(0.5)` |
 | `Logic` | Comparisons | `.operation(LogicOp::GreaterThan)` `.threshold(0.5)` |
 
+### Canvas (2D Drawing)
+
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `Canvas` | Imperative 2D drawing | `.size(w, h)` `.loadFont(ctx, path, size)` |
+
+Canvas is unique: you call draw methods in `update()` before `process()`:
+
+```cpp
+Canvas* canvas = new Canvas();
+canvas->size(1280, 720);
+canvas->loadFont(ctx, "assets/fonts/Pixeled.ttf", 24.0f);
+
+void update(Context& ctx) {
+    canvas->clear(0, 0, 0, 0);  // Transparent background
+    canvas->rectFilled(10, 10, 200, 50, {0.2f, 0.2f, 0.2f, 0.8f});
+    canvas->circleFilled(640, 360, 50, {1, 0, 0, 1});
+    canvas->text("Hello!", 20, 40, {1, 1, 1, 1});
+    canvas->process(ctx);
+}
+```
+
+**Canvas drawing methods:**
+- `clear(r, g, b, a)` - Clear canvas (call first)
+- `rectFilled(x, y, w, h, color)` - Filled rectangle
+- `rect(x, y, w, h, lineWidth, color)` - Rectangle outline
+- `circleFilled(x, y, radius, color)` - Filled circle
+- `circle(x, y, radius, lineWidth, color)` - Circle outline
+- `line(x1, y1, x2, y2, width, color)` - Line segment
+- `triangleFilled(a, b, c, color)` - Filled triangle (vec2 vertices)
+- `text(str, x, y, color)` - Draw text (requires loadFont)
+- `textCentered(str, x, y, color)` - Centered text
+- `measureText(str)` - Returns glm::vec2 size
+
 ## Enum Types
 
 ```cpp
