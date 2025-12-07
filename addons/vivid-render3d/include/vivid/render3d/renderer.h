@@ -130,6 +130,9 @@ private:
     WGPURenderPipeline m_wireframePipeline = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
+    std::vector<WGPUBindGroup> m_bindGroups;  // One per object
+    size_t m_uniformAlignment = 256;  // WebGPU minimum uniform buffer alignment
+    static constexpr size_t MAX_OBJECTS = 256;
 
     bool m_initialized = false;
 };

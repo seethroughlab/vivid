@@ -203,18 +203,27 @@ void Render3D::createPipeline(Context& ctx) {
 
     WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderDesc);
 
-    // Create uniform buffer
+    // Query device limits for uniform buffer alignment
+    WGPULimits limits = {};
+    wgpuDeviceGetLimits(device, &limits);
+    m_uniformAlignment = limits.minUniformBufferOffsetAlignment;
+    if (m_uniformAlignment < sizeof(Uniforms)) {
+        m_uniformAlignment = ((sizeof(Uniforms) + 255) / 256) * 256;  // Round up to 256
+    }
+
+    // Create uniform buffer large enough for MAX_OBJECTS
     WGPUBufferDescriptor bufferDesc = {};
     bufferDesc.label = toStringView("Render3D Uniforms");
-    bufferDesc.size = sizeof(Uniforms);
+    bufferDesc.size = m_uniformAlignment * MAX_OBJECTS;
     bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_uniformBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
 
-    // Create bind group layout
+    // Create bind group layout with dynamic offset
     WGPUBindGroupLayoutEntry layoutEntry = {};
     layoutEntry.binding = 0;
     layoutEntry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     layoutEntry.buffer.type = WGPUBufferBindingType_Uniform;
+    layoutEntry.buffer.hasDynamicOffset = true;
     layoutEntry.buffer.minBindingSize = sizeof(Uniforms);
 
     WGPUBindGroupLayoutDescriptor layoutDesc = {};
@@ -346,8 +355,10 @@ void Render3D::process(Context& ctx) {
     // Set pipeline
     wgpuRenderPassEncoderSetPipeline(pass, m_wireframe ? m_wireframePipeline : m_pipeline);
 
-    // Render each object in the scene
-    for (const auto& obj : m_scene->objects()) {
+    // First pass: write all uniform data to buffer at different offsets
+    size_t numObjects = m_scene->objects().size();
+    for (size_t i = 0; i < numObjects && i < MAX_OBJECTS; i++) {
+        const auto& obj = m_scene->objects()[i];
         if (!obj.mesh || !obj.mesh->valid()) {
             continue;
         }
@@ -373,31 +384,42 @@ void Render3D::process(Context& ctx) {
         uniforms.baseColor[3] = objColor.a;
         uniforms.shadingMode = static_cast<uint32_t>(m_shadingMode);
 
-        wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
+        // Write to buffer at offset for this object
+        size_t offset = i * m_uniformAlignment;
+        wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, offset, &uniforms, sizeof(uniforms));
+    }
 
-        // Create bind group for this draw
-        WGPUBindGroupEntry bindEntry = {};
-        bindEntry.binding = 0;
-        bindEntry.buffer = m_uniformBuffer;
-        bindEntry.offset = 0;
-        bindEntry.size = sizeof(Uniforms);
+    // Create a single bind group for dynamic offset usage
+    WGPUBindGroupEntry bindEntry = {};
+    bindEntry.binding = 0;
+    bindEntry.buffer = m_uniformBuffer;
+    bindEntry.offset = 0;
+    bindEntry.size = sizeof(Uniforms);
 
-        WGPUBindGroupDescriptor bindDesc = {};
-        bindDesc.layout = m_bindGroupLayout;
-        bindDesc.entryCount = 1;
-        bindDesc.entries = &bindEntry;
-        WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+    WGPUBindGroupDescriptor bindDesc = {};
+    bindDesc.layout = m_bindGroupLayout;
+    bindDesc.entryCount = 1;
+    bindDesc.entries = &bindEntry;
+    WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
 
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+    // Second pass: render each object with its dynamic offset
+    for (size_t i = 0; i < numObjects && i < MAX_OBJECTS; i++) {
+        const auto& obj = m_scene->objects()[i];
+        if (!obj.mesh || !obj.mesh->valid()) {
+            continue;
+        }
+
+        uint32_t dynamicOffset = static_cast<uint32_t>(i * m_uniformAlignment);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 1, &dynamicOffset);
         wgpuRenderPassEncoderSetVertexBuffer(pass, 0, obj.mesh->vertexBuffer(), 0,
                                               obj.mesh->vertexCount() * sizeof(Vertex3D));
         wgpuRenderPassEncoderSetIndexBuffer(pass, obj.mesh->indexBuffer(),
                                              WGPUIndexFormat_Uint32, 0,
                                              obj.mesh->indexCount() * sizeof(uint32_t));
         wgpuRenderPassEncoderDrawIndexed(pass, obj.mesh->indexCount(), 1, 0, 0, 0);
-
-        wgpuBindGroupRelease(bindGroup);
     }
+
+    wgpuBindGroupRelease(bindGroup);
 
     // End render pass
     wgpuRenderPassEncoderEnd(pass);

@@ -87,6 +87,9 @@ void MeshBuilder::syncFromManifold() {
     for (uint32_t idx : mesh.triVerts) {
         m_indices.push_back(idx);
     }
+
+    // Compute proper normals from geometry
+    computeNormals();
 }
 
 void MeshBuilder::syncToManifold() {
