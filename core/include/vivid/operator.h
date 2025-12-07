@@ -1,6 +1,6 @@
 #pragma once
 
-// Vivid V3 - Operator Base Class
+// Vivid - Operator Base Class
 // Base class for all operators (effects, generators, etc.)
 
 #include <string>

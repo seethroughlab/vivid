@@ -9,4 +9,6 @@
 #include <vivid/effects/composite.h>
 #include <vivid/effects/ramp.h>
 #include <vivid/effects/feedback.h>
+#include <vivid/effects/image.h>
+#include <vivid/effects/displace.h>
 #include <vivid/effects/output.h>

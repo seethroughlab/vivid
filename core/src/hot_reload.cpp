@@ -1,4 +1,4 @@
-// Vivid V3 - Hot Reload Implementation
+// Vivid - Hot Reload Implementation
 
 #include <vivid/hot_reload.h>
 #include <vivid/context.h>

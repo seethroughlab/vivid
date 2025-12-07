@@ -1,6 +1,6 @@
 #pragma once
 
-// Vivid V3 - Display
+// Vivid - Display
 // Handles blitting textures to screen and text rendering
 
 #include <webgpu/webgpu.h>

@@ -1,5 +1,15 @@
 # Vivid Effects 2D Addon
 
+# Fetch stb for image loading
+include(FetchContent)
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(stb)
+
 add_library(vivid-effects-2d SHARED
     src/texture_operator.cpp
     src/noise.cpp
@@ -8,11 +18,14 @@ add_library(vivid-effects-2d SHARED
     src/ramp.cpp
     src/feedback.cpp
     src/output.cpp
+    src/image.cpp
+    src/displace.cpp
 )
 
 target_include_directories(vivid-effects-2d PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/core/include
+    ${stb_SOURCE_DIR}
 )
 
 target_link_libraries(vivid-effects-2d PUBLIC

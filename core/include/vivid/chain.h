@@ -1,6 +1,6 @@
 #pragma once
 
-// Vivid V3 - Chain API
+// Vivid - Chain API
 // Manages operator graph with dependency resolution and state preservation
 
 #include <vivid/operator.h>

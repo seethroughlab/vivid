@@ -1,4 +1,4 @@
-// Vivid V3 - Core Runtime
+// Vivid - Core Runtime
 // Minimal core: window, timing, input, hot-reload, display
 
 #include <vivid/vivid.h>
@@ -85,7 +85,7 @@ void onDeviceError(WGPUDevice const* device, WGPUErrorType type,
 // -----------------------------------------------------------------------------
 
 int main(int argc, char** argv) {
-    std::cout << "Vivid V3 - Starting..." << std::endl;
+    std::cout << "Vivid - Starting..." << std::endl;
 
     // Parse arguments
     fs::path projectPath;
@@ -267,14 +267,17 @@ int main(int argc, char** argv) {
     // Create hot-reload system
     HotReload hotReload;
 
-    // Set up the chain if path was provided
+    // Extract project name for title bar
+    std::string projectName;
     if (!projectPath.empty()) {
         // Look for chain.cpp in the project path
         fs::path chainPath;
         if (fs::is_directory(projectPath)) {
             chainPath = projectPath / "chain.cpp";
+            projectName = projectPath.filename().string();
         } else if (fs::is_regular_file(projectPath)) {
             chainPath = projectPath;
+            projectName = projectPath.parent_path().filename().string();
         }
 
         if (fs::exists(chainPath)) {
@@ -290,12 +293,44 @@ int main(int argc, char** argv) {
     // Track if setup has been called
     bool chainNeedsSetup = true;
 
+    // Fullscreen state tracking
+    bool isFullscreen = false;
+    int windowedX = 0, windowedY = 0, windowedWidth = 1280, windowedHeight = 720;
+    glfwGetWindowPos(window, &windowedX, &windowedY);
+    glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
+
     // Main loop
     double lastFpsTime = glfwGetTime();
     int frameCount = 0;
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        // Toggle fullscreen on 'F' key (edge detection)
+        {
+            static bool fKeyWasPressed = false;
+            bool fKeyPressed = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
+            if (fKeyPressed && !fKeyWasPressed) {
+                if (!isFullscreen) {
+                    // Save windowed position and size
+                    glfwGetWindowPos(window, &windowedX, &windowedY);
+                    glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
+
+                    // Get primary monitor
+                    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+                    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+                    // Enter fullscreen
+                    glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+                    isFullscreen = true;
+                } else {
+                    // Exit fullscreen - restore windowed mode
+                    glfwSetWindowMonitor(window, nullptr, windowedX, windowedY, windowedWidth, windowedHeight, 0);
+                    isFullscreen = false;
+                }
+            }
+            fKeyWasPressed = fKeyPressed;
+        }
 
         // Begin frame (updates time, input, etc.)
         ctx.beginFrame();
@@ -413,11 +448,16 @@ int main(int argc, char** argv) {
         // End frame
         ctx.endFrame();
 
-        // FPS counter
+        // FPS counter and title update
         frameCount++;
         double currentTime = glfwGetTime();
         if (currentTime - lastFpsTime >= 1.0) {
-            std::string title = "Vivid - " + std::to_string(frameCount) + " fps";
+            std::string title;
+            if (!projectName.empty()) {
+                title = projectName + " - Vivid (" + std::to_string(frameCount) + " fps)";
+            } else {
+                title = "Vivid (" + std::to_string(frameCount) + " fps)";
+            }
             glfwSetWindowTitle(window, title.c_str());
             frameCount = 0;
             lastFpsTime = currentTime;

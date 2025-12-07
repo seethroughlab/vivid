@@ -1,4 +1,4 @@
-// Feedback Demo - Vivid V3 Example
+// Feedback Demo - Vivid Example
 // Demonstrates feedback trails with state preservation across hot-reload
 
 #include <vivid/vivid.h>

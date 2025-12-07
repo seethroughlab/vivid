@@ -1,6 +1,6 @@
 #pragma once
 
-// Vivid V3 - Hot Reload
+// Vivid - Hot Reload
 // Watches for file changes, recompiles, and reloads chain code
 
 #include <string>

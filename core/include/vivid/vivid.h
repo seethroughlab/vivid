@@ -1,6 +1,6 @@
 #pragma once
 
-// Vivid V3 - Main header
+// Vivid - Main header
 // Include this in your chain.cpp
 
 #include <vivid/context.h>

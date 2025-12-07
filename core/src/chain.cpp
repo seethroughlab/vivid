@@ -1,4 +1,4 @@
-// Vivid V3 - Chain Implementation
+// Vivid - Chain Implementation
 
 #include <vivid/chain.h>
 #include <vivid/context.h>

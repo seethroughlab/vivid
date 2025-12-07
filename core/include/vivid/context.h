@@ -1,6 +1,6 @@
 #pragma once
 
-// Vivid V3 - Context
+// Vivid - Context
 // Runtime state passed to chain setup/update functions
 
 #include <webgpu/webgpu.h>

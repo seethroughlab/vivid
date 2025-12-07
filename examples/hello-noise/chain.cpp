@@ -1,4 +1,4 @@
-// Hello Noise - Vivid V3 Example
+// Hello Noise - Vivid Example
 // Demonstrates the basic Noise → Output chain
 
 #include <vivid/vivid.h>

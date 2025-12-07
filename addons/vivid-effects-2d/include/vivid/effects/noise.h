@@ -1,11 +1,19 @@
 #pragma once
 
 // Vivid Effects 2D - Noise Operator
-// Generates animated fractal Perlin noise
+// Generates animated fractal noise with multiple algorithms
 
 #include <vivid/effects/texture_operator.h>
 
 namespace vivid::effects {
+
+// Noise algorithm types
+enum class NoiseType {
+    Perlin,     // Classic gradient noise - smooth, natural looking
+    Simplex,    // Improved gradient noise - fewer artifacts, faster
+    Worley,     // Cellular/Voronoi noise - organic cell patterns
+    Value       // Simple interpolated random values - blocky, retro
+};
 
 class Noise : public TextureOperator {
 public:
@@ -13,6 +21,7 @@ public:
     ~Noise() override;
 
     // Fluent API
+    Noise& type(NoiseType t) { m_type = t; return *this; }
     Noise& scale(float s) { m_scale = s; return *this; }
     Noise& speed(float s) { m_speed = s; return *this; }
     Noise& octaves(int o) { m_octaves = o; return *this; }
@@ -30,6 +39,7 @@ private:
     void createPipeline(Context& ctx);
 
     // Parameters
+    NoiseType m_type = NoiseType::Perlin;
     float m_scale = 4.0f;
     float m_speed = 0.5f;
     int m_octaves = 4;

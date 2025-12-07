@@ -1,5 +1,5 @@
-// Chain Demo - Vivid V3 Example
-// Demonstrates the Chain API with animated HSV color cycling
+// Chain Demo - Vivid Example
+// Demonstrates the Chain API with image distortion and HSV color cycling
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -16,32 +16,40 @@ void setup(Context& ctx) {
     chain = new Chain();
 
     // Add operators with names
-    auto& noise1 = chain->add<Noise>("noise1");
-    auto& noise2 = chain->add<Noise>("noise2");
+    auto& image = chain->add<Image>("image");
+    auto& noise = chain->add<Noise>("noise");
+    auto& displace = chain->add<Displace>("displace");
     auto& ramp = chain->add<Ramp>("ramp");
-    auto& comp1 = chain->add<Composite>("comp1");
-    auto& comp2 = chain->add<Composite>("comp2");
+    auto& comp = chain->add<Composite>("comp");
     auto& output = chain->add<Output>("output");
 
-    // Configure noise layers - animated and flowing
-    noise1.scale(3.0f).speed(0.4f).octaves(5).lacunarity(2.2f).persistence(0.55f);
-    noise2.scale(6.0f).speed(0.7f).octaves(3).offset(50.0f, 25.0f);
+    // Load an image from assets
+    image.file("assets/images/nature.jpg");
 
-    // Configure HSV ramp - radial rainbow cycling
-    ramp.type(RampType::Angular)
-        .hueSpeed(0.15f)     // Slow rotation through hues
-        .hueRange(1.0f)      // Full spectrum
-        .saturation(0.85f)   // Rich colors
-        .brightness(1.0f)
-        .repeat(2.0f);       // Two color cycles
+    // Configure noise for displacement - use Simplex for smooth distortion
+    noise.type(NoiseType::Simplex)
+        .scale(3.0f)
+        .speed(0.3f)
+        .octaves(3)
+        .lacunarity(2.0f)
+        .persistence(0.5f);
 
-    // Build dependency graph:
-    // noise1 * noise2 -> comp1 (multiply creates organic texture)
-    // comp1 * ramp -> comp2 (colorize with HSV gradient)
-    // comp2 -> output
-    comp1.inputA(&noise1).inputB(&noise2).mode(BlendMode::Multiply);
-    comp2.inputA(&comp1).inputB(&ramp).mode(BlendMode::Multiply);
-    output.input(&comp2);
+    // Configure displacement: image distorted by noise
+    displace.source(&image)
+        .map(&noise)
+        .strength(0.08f);  // Moderate distortion
+
+    // Configure HSV ramp for color tinting
+    ramp.type(RampType::Radial)
+        .hueSpeed(0.1f)
+        .hueRange(0.3f)     // Subtle color range
+        .saturation(0.6f)
+        .brightness(1.0f);
+
+    // Multiply displaced image with color ramp for tinting effect
+    comp.inputA(&displace).inputB(&ramp).mode(BlendMode::Multiply);
+
+    output.input(&comp);
 
     // Set output operator
     chain->setOutput("output");
@@ -59,26 +67,25 @@ void update(Context& ctx) {
 
     float time = static_cast<float>(ctx.time());
 
-    // Animate noise parameters for flowing organic motion
-    auto& noise1 = chain->get<Noise>("noise1");
-    auto& noise2 = chain->get<Noise>("noise2");
+    // Animate noise for flowing distortion
+    auto& noise = chain->get<Noise>("noise");
+    auto& displace = chain->get<Displace>("displace");
     auto& ramp = chain->get<Ramp>("ramp");
 
-    // Noise 1: Scale pulses slowly, offset drifts
-    float scale1 = 3.0f + sin(time * 0.3f) * 0.5f;
-    noise1.scale(scale1).offset(time * 0.1f, time * 0.05f);
+    // Drift noise offset for organic motion
+    noise.offset(time * 0.2f, time * 0.15f);
 
-    // Noise 2: Counter-drift for more complex motion
-    noise2.offset(50.0f - time * 0.15f, 25.0f + time * 0.08f);
+    // Mouse interaction:
+    // X controls displacement strength (0.02 to 0.15)
+    float strength = 0.02f + (ctx.mouseNorm().x * 0.5f + 0.5f) * 0.13f;
+    displace.strength(strength);
 
-    // Ramp: Rotate the gradient angle for swirling effect
-    float angle = time * 0.2f;
-    ramp.angle(angle);
+    // Y controls color saturation
+    float saturation = 0.3f + (ctx.mouseNorm().y * 0.5f + 0.5f) * 0.7f;
+    ramp.saturation(saturation);
 
-    // Mouse interaction: X controls hue speed, Y controls saturation
-    float hueSpeed = 0.1f + ctx.mouseNorm().x * 0.3f;
-    float saturation = 0.5f + ctx.mouseNorm().y * 0.5f;
-    ramp.hueSpeed(hueSpeed).saturation(saturation);
+    // Slowly rotate hue offset
+    ramp.hueOffset(time * 0.05f);
 
     // Process entire chain
     chain->process(ctx);

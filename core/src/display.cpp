@@ -1,4 +1,4 @@
-// Vivid V3 - Display Implementation
+// Vivid - Display Implementation
 
 #include <vivid/display.h>
 #include <iostream>
