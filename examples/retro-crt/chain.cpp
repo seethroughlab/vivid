@@ -8,24 +8,20 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-static Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    delete chain;
-    chain = new Chain();
+    auto& chain = ctx.chain();
 
     // Generators
-    auto& shape = chain->add<Shape>("shape");
-    auto& gradient = chain->add<Gradient>("gradient");
-    auto& comp = chain->add<Composite>("comp");
+    auto& shape = chain.add<Shape>("shape");
+    auto& gradient = chain.add<Gradient>("gradient");
+    auto& comp = chain.add<Composite>("comp");
 
     // Color and retro effects
-    auto& hsv = chain->add<HSV>("hsv");
-    auto& downsample = chain->add<Downsample>("downsample");
-    auto& dither = chain->add<Dither>("dither");
-    auto& scanlines = chain->add<Scanlines>("scanlines");
-    auto& crt = chain->add<CRTEffect>("crt");
-    auto& output = chain->add<Output>("output");
+    auto& hsv = chain.add<HSV>("hsv");
+    auto& downsample = chain.add<Downsample>("downsample");
+    auto& dither = chain.add<Dither>("dither");
+    auto& scanlines = chain.add<Scanlines>("scanlines");
+    auto& crt = chain.add<CRTEffect>("crt");
 
     // Animated star shape
     shape.type(ShapeType::Star)
@@ -70,23 +66,20 @@ void setup(Context& ctx) {
         .bloom(0.15f)
         .chromatic(0.3f);
 
-    output.input(&crt);
-    chain->setOutput("output");
-    chain->init(ctx);
+    chain.output("crt");
 
-    if (chain->hasError()) {
-        ctx.setError(chain->error());
+    if (chain.hasError()) {
+        ctx.setError(chain.error());
     }
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
-
+    auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
 
-    auto& shape = chain->get<Shape>("shape");
-    auto& hsv = chain->get<HSV>("hsv");
-    auto& crt = chain->get<CRTEffect>("crt");
+    auto& shape = chain.get<Shape>("shape");
+    auto& hsv = chain.get<HSV>("hsv");
+    auto& crt = chain.get<CRTEffect>("crt");
 
     // Animate shape: pulsing size and rotation
     float pulse = 0.3f + 0.15f * std::sin(time * 2.0f);
@@ -104,8 +97,6 @@ void update(Context& ctx) {
 
     crt.curvature(curvature)
         .chromatic(chromatic);
-
-    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

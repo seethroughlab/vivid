@@ -8,24 +8,15 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-// Chain object (persistent across hot-reloads)
-static Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    // Clean up previous chain if hot-reloading
-    delete chain;
-    chain = nullptr;
+    auto& chain = ctx.chain();
 
-    // Create chain
-    chain = new Chain();
-
-    // Add operators with names
-    auto& image = chain->add<Image>("image");
-    auto& noise = chain->add<Noise>("noise");
-    auto& displace = chain->add<Displace>("displace");
-    auto& ramp = chain->add<Ramp>("ramp");
-    auto& comp = chain->add<Composite>("comp");
-    auto& output = chain->add<Output>("output");
+    // Add operators
+    auto& image = chain.add<Image>("image");
+    auto& noise = chain.add<Noise>("noise");
+    auto& displace = chain.add<Displace>("displace");
+    auto& ramp = chain.add<Ramp>("ramp");
+    auto& comp = chain.add<Composite>("comp");
 
     // Load an image from assets
     image.file("assets/images/nature.jpg");
@@ -41,41 +32,30 @@ void setup(Context& ctx) {
     // Configure displacement: image distorted by noise
     displace.source(&image)
         .map(&noise)
-        .strength(0.08f);  // Moderate distortion
+        .strength(0.08f);
 
     // Configure HSV ramp for color tinting
     ramp.type(RampType::Radial)
         .hueSpeed(0.1f)
-        .hueRange(0.3f)     // Subtle color range
+        .hueRange(0.3f)
         .saturation(0.6f)
         .brightness(1.0f);
 
     // Multiply displaced image with color ramp for tinting effect
     comp.inputA(&displace).inputB(&ramp).mode(BlendMode::Multiply);
 
-    output.input(&comp);
-
-    // Set output operator
-    chain->setOutput("output");
-
-    // Initialize chain (computes execution order)
-    chain->init(ctx);
-
-    if (chain->hasError()) {
-        ctx.setError(chain->error());
-    }
-    // Operators are auto-registered by Chain::init() for visualization
+    // Specify output
+    chain.output("comp");
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
-
+    auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
 
     // Animate noise for flowing distortion
-    auto& noise = chain->get<Noise>("noise");
-    auto& displace = chain->get<Displace>("displace");
-    auto& ramp = chain->get<Ramp>("ramp");
+    auto& noise = chain.get<Noise>("noise");
+    auto& displace = chain.get<Displace>("displace");
+    auto& ramp = chain.get<Ramp>("ramp");
 
     // Drift noise offset for organic motion
     noise.offset(time * 0.2f, time * 0.15f);
@@ -91,9 +71,6 @@ void update(Context& ctx) {
 
     // Slowly rotate hue offset
     ramp.hueOffset(time * 0.05f);
-
-    // Process entire chain
-    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

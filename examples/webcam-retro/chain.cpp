@@ -11,33 +11,28 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::video;
 
-static Chain* chain = nullptr;
 static bool ditherEnabled = true;
 static bool scanlinesEnabled = true;
 static bool crtEnabled = true;
 static int ditherPattern = 1;  // 0=Bayer2x2, 1=Bayer4x4, 2=Bayer8x8
 
 void setup(Context& ctx) {
-    delete chain;
-    chain = new Chain();
+    auto& chain = ctx.chain();
 
     // Webcam input
-    auto& webcam = chain->add<Webcam>("webcam");
+    auto& webcam = chain.add<Webcam>("webcam");
 
     // Downsample for that chunky pixel look
-    auto& downsample = chain->add<Downsample>("downsample");
+    auto& downsample = chain.add<Downsample>("downsample");
 
     // Dither for limited color palette feel
-    auto& dither = chain->add<Dither>("dither");
+    auto& dither = chain.add<Dither>("dither");
 
     // Scanlines for CRT monitor effect
-    auto& scanlines = chain->add<Scanlines>("scanlines");
+    auto& scanlines = chain.add<Scanlines>("scanlines");
 
     // CRT curvature and vignette
-    auto& crt = chain->add<CRTEffect>("crt");
-
-    // Final output
-    auto& output = chain->add<Output>("output");
+    auto& crt = chain.add<CRTEffect>("crt");
 
     // Configure webcam - 720p is plenty for retro look
     webcam.resolution(1280, 720)
@@ -64,12 +59,10 @@ void setup(Context& ctx) {
        .curvature(0.15f)
        .vignette(0.3f);
 
-    output.input(&crt);
-    chain->setOutput("output");
-    chain->init(ctx);
+    chain.output("crt");
 
-    if (chain->hasError()) {
-        ctx.setError(chain->error());
+    if (chain.hasError()) {
+        ctx.setError(chain.error());
     }
 
     std::cout << "\n[Webcam Retro] Controls:" << std::endl;
@@ -82,13 +75,12 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
+    auto& chain = ctx.chain();
 
-    auto& downsample = chain->get<Downsample>("downsample");
-    auto& dither = chain->get<Dither>("dither");
-    auto& scanlines = chain->get<Scanlines>("scanlines");
-    auto& crt = chain->get<CRTEffect>("crt");
-    auto& output = chain->get<Output>("output");
+    auto& downsample = chain.get<Downsample>("downsample");
+    auto& dither = chain.get<Dither>("dither");
+    auto& scanlines = chain.get<Scanlines>("scanlines");
+    auto& crt = chain.get<CRTEffect>("crt");
 
     // D key - toggle dither
     if (ctx.key(GLFW_KEY_D).pressed) {
@@ -152,9 +144,16 @@ void update(Context& ctx) {
         lastOp = &crt;
     }
 
-    output.input(lastOp);
-
-    chain->process(ctx);
+    // Update output based on what's enabled
+    if (crtEnabled) {
+        chain.output("crt");
+    } else if (scanlinesEnabled) {
+        chain.output("scanlines");
+    } else if (ditherEnabled) {
+        chain.output("dither");
+    } else {
+        chain.output("downsample");
+    }
 }
 
 VIVID_CHAIN(setup, update)

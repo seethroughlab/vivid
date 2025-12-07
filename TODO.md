@@ -57,4 +57,10 @@
     - Hot-reload now scans chain.cpp `#include` directives to discover needed addons
     - Removed hardcoded addon paths from hot_reload.cpp
     - Added addon.json to vivid-video 
-[ ] It seems to me that the Chain should be constructed by the core and passed in setup and update. This way 1) we don't have to have the awkward "delete chain;" in setup for hotloading, and 2) we can automatically call chain->init(ctx) after setup() is called so that the user doesn't have to. Please help me explore the pros and cons of this approach.
+[x] It seems to me that the Chain should be constructed by the core and passed in setup and update. This way 1) we don't have to have the awkward "delete chain;" in setup for hotloading, and 2) we can automatically call chain->init(ctx) after setup() is called so that the user doesn't have to. Please help me explore the pros and cons of this approach.
+    - Implemented: Context now owns the Chain via `ctx.chain()`
+    - Added `chain.output("name")` to specify display output (no more Output operator required)
+    - Core auto-calls `chain.init()` after setup() and `chain.process()` after update()
+    - Automatic state preservation across hot-reloads (Feedback, VideoPlayer, etc.)
+    - Migrated all examples to new pattern
+    - Updated all documentation (README, LLM-REFERENCE, RECIPES, ROADMAP)

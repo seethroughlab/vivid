@@ -8,24 +8,14 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-static Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    // Save state before destroying old chain (preserves feedback buffer)
-    if (chain) {
-        ctx.preserveStates(*chain);
-    }
-    delete chain;
-    chain = nullptr;
-
-    chain = new Chain();
+    auto& chain = ctx.chain();
 
     // Add operators
-    auto& noise = chain->add<Noise>("noise");
-    auto& feedback = chain->add<Feedback>("feedback");
-    auto& ramp = chain->add<Ramp>("ramp");
-    auto& comp = chain->add<Composite>("comp");
-    auto& output = chain->add<Output>("output");
+    auto& noise = chain.add<Noise>("noise");
+    auto& feedback = chain.add<Feedback>("feedback");
+    auto& ramp = chain.add<Ramp>("ramp");
+    auto& comp = chain.add<Composite>("comp");
 
     // Configure noise - small bright spots
     noise.scale(8.0f).speed(0.8f).octaves(2);
@@ -47,29 +37,23 @@ void setup(Context& ctx) {
     // Multiply feedback trails with color ramp
     comp.inputA(&feedback).inputB(&ramp).mode(BlendMode::Multiply);
 
-    output.input(&comp);
-    chain->setOutput("output");
-    chain->init(ctx);
+    chain.output("comp");
 
-    // Restore state from previous hot-reload (preserves feedback buffer)
-    ctx.restoreStates(*chain);
-
-    if (chain->hasError()) {
-        ctx.setError(chain->error());
+    if (chain.hasError()) {
+        ctx.setError(chain.error());
     }
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
-
+    auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
 
     // Animate noise offset for drifting particles
-    auto& noise = chain->get<Noise>("noise");
+    auto& noise = chain.get<Noise>("noise");
     noise.offset(time * 0.5f, time * 0.3f);
 
     // Mouse controls feedback parameters
-    auto& feedback = chain->get<Feedback>("feedback");
+    auto& feedback = chain.get<Feedback>("feedback");
 
     // X: rotation speed (-0.02 to 0.02)
     float rotation = (ctx.mouseNorm().x) * 0.02f;
@@ -80,10 +64,8 @@ void update(Context& ctx) {
     feedback.decay(decay);
 
     // Animate ramp hue offset
-    auto& ramp = chain->get<Ramp>("ramp");
+    auto& ramp = chain.get<Ramp>("ramp");
     ramp.hueOffset(time * 0.05f);
-
-    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

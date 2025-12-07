@@ -33,6 +33,14 @@ void Chain::setOutput(Operator* op) {
     }
 }
 
+Operator* Chain::getOutput() const {
+    if (outputName_.empty()) {
+        return nullptr;
+    }
+    auto it = operators_.find(outputName_);
+    return it != operators_.end() ? it->second.get() : nullptr;
+}
+
 void Chain::buildDependencyGraph() {
     // For each operator, find which other operators it depends on
     // by looking at its inputs
@@ -191,13 +199,14 @@ void Chain::process(Context& ctx) {
         op->process(ctx);
     }
 
-    // Register output texture if specified
+    // Set output texture if specified via chain.output()
     if (!outputName_.empty()) {
         Operator* output = getByName(outputName_);
-        if (output && output->outputKind() == OutputKind::Texture) {
-            // Get the output texture view - this requires a TextureOperator
-            // We'll need to use dynamic_cast or a virtual method
-            // For now, let the Output operator handle this
+        if (output) {
+            WGPUTextureView view = output->outputView();
+            if (view) {
+                ctx.setOutputTexture(view);
+            }
         }
     }
 }

@@ -34,7 +34,7 @@ cmake --build build
 ./build/bin/vivid examples/chain-demo
 ```
 
-Press `F` to toggle fullscreen, `Esc` to quit.
+Press `F` to toggle fullscreen, `Tab` to view chain visualizer, `Esc` to quit.
 
 ## Usage
 
@@ -47,27 +47,23 @@ Create a `chain.cpp` file:
 using namespace vivid;
 using namespace vivid::effects;
 
-Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    delete chain;
-    chain = new Chain(ctx, 1280, 720);
+    auto& chain = ctx.chain();
 
-    chain->add<Noise>("noise")
+    chain.add<Noise>("noise")
         .scale(4.0f)
         .speed(0.5f);
 
-    chain->add<HSV>("color")
+    chain.add<HSV>("color")
         .input("noise")
-        .hue(0.6f)
+        .hueShift(0.6f)
         .saturation(0.8f);
 
-    chain->add<Output>("out")
-        .input("color");
+    chain.output("color");
 }
 
 void update(Context& ctx) {
-    chain->process();
+    // Parameter tweaks go here (optional)
 }
 
 VIVID_CHAIN(setup, update)
@@ -80,6 +76,13 @@ Run it:
 ```
 
 Edit your code while it's running - changes apply automatically.
+
+## How It Works
+
+- **setup()** is called once on load and on each hot-reload
+- **update()** is called every frame
+- The core automatically calls `chain.init()` after setup and `chain.process()` after update
+- Operator state (like Feedback buffers, video playback position) is preserved across hot-reloads
 
 ## Available Operators
 
@@ -120,12 +123,19 @@ Edit your code while it's running - changes apply automatically.
 ### Compositing
 - `Composite` - Blend multiple inputs
 - `Switch` - Select between inputs
-- `Output` - Final output to screen
 
 ### Media
-- `Video` - Video playback (HAP, H.264, ProRes)
+- `VideoPlayer` - Video playback (HAP, H.264, ProRes)
 - `Webcam` - Camera capture
 - `Image` - Static image loading
+
+### Particles
+- `Particles` - 2D particle system with physics
+- `PointSprites` - GPU point rendering
+
+### 3D (vivid-render3d addon)
+- `Render3D` - 3D scene renderer
+- `MeshBuilder` - Procedural geometry with CSG
 
 ## UI & Visualization
 
@@ -142,21 +152,6 @@ Vivid includes a built-in chain visualizer powered by ImGui and ImNodes.
 - **Parameter Display** - View current parameter values on each node
 - **Connection Visualization** - See how operators are wired together
 - **Performance Overlay** - FPS, frame time, and resolution display
-
-### Automatic Operator Registration
-
-Operators are automatically registered for visualization when you call `chain->init(ctx)`:
-
-```cpp
-void setup(Context& ctx) {
-    chain->add<Noise>("noise").scale(4.0f);
-    chain->add<HSV>("color").input("noise");
-    chain->add<Output>("out").input("color");
-    chain->setOutput("out");
-
-    chain->init(ctx);  // Auto-registers all operators for visualization
-}
-```
 
 ## Project Structure
 
@@ -205,6 +200,7 @@ Vivid is designed with AI-assisted development in mind:
 - **Fluent API** - Method chaining makes code readable and easy to generate
 - **Comprehensive Documentation** - LLM-optimized reference docs and recipes
 - **Hot Reload** - Instant feedback loop when iterating with AI assistance
+- **Automatic State Management** - No boilerplate for chain lifecycle
 
 ### Documentation for LLMs
 

@@ -10,7 +10,10 @@
  * - Input state (mouse, keyboard)
  * - WebGPU device and queue
  * - Operator registry for visualization
+ * - Chain management (context owns the chain)
  */
+
+#include <vivid/chain.h>
 
 #include <webgpu/webgpu.h>
 #include <GLFW/glfw3.h>
@@ -23,7 +26,6 @@
 
 namespace vivid {
 struct OperatorState;
-class Chain;
 class Operator;
 
 /**
@@ -246,6 +248,35 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Chain Access
+    /// @{
+
+    /**
+     * @brief Get the chain (creates one if needed)
+     * @return Reference to the chain
+     *
+     * The context owns the chain. Use this in setup() to configure operators:
+     * @code
+     * void setup(Context& ctx) {
+     *     auto& chain = ctx.chain();
+     *     chain.add<Noise>("noise");
+     *     chain.output("noise");
+     * }
+     * @endcode
+     */
+    Chain& chain();
+
+    /// @brief Get the chain (const version)
+    const Chain& chain() const;
+
+    /// @brief Check if a chain exists
+    bool hasChain() const { return m_chain != nullptr; }
+
+    /// @brief Reset the chain (called by core before setup)
+    void resetChain();
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name State Preservation
     /// @{
 
@@ -304,6 +335,9 @@ private:
 
     // Preserved states
     std::map<std::string, std::unique_ptr<OperatorState>> m_preservedStates;
+
+    // Chain (owned by context)
+    std::unique_ptr<Chain> m_chain;
 
     // Default states
     static const KeyState s_defaultKeyState;

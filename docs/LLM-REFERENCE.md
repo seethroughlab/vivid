@@ -19,27 +19,30 @@ my-project/
 using namespace vivid;
 using namespace vivid::effects;
 
-Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    delete chain;
-    chain = new Chain(ctx, 1280, 720);
+    auto& chain = ctx.chain();
 
     // Add operators here
-    chain->add<Noise>("noise").scale(4.0f);
-    chain->add<Output>("out").input("noise");
+    chain.add<Noise>("noise").scale(4.0f);
 
-    // Register for visualizer (Tab key)
-    ctx.registerOperator("noise", &chain->get<Noise>("noise"));
-    ctx.registerOperator("out", &chain->get<Output>("out"));
+    // Specify what to display
+    chain.output("noise");
 }
 
 void update(Context& ctx) {
-    chain->process();
+    // Parameter tweaks go here (optional)
+    // chain.process() is called automatically
 }
 
 VIVID_CHAIN(setup, update)
 ```
+
+## How It Works
+
+- **setup()** is called once on load and on each hot-reload
+- **update()** is called every frame
+- The core automatically calls `chain.init()` after setup and `chain.process()` after update
+- Operator state (like Feedback buffers) is preserved across hot-reloads
 
 ## Keyboard Controls
 
@@ -59,7 +62,7 @@ VIVID_CHAIN(setup, update)
 | `Ramp` | Animated HSV gradient | `.hueSpeed(0.5)` `.saturation(1.0)` `.type(RampType::Linear)` |
 | `Shape` | SDF shapes | `.type(ShapeType::Circle)` `.size(0.5)` `.position(0.5, 0.5)` `.color(r,g,b)` |
 | `LFO` | Oscillator (value) | `.waveform(LFOWaveform::Sine)` `.frequency(1.0)` `.amplitude(1.0)` |
-| `Image` | Load image file | `.path("assets/image.jpg")` |
+| `Image` | Load image file | `.file("assets/image.jpg")` |
 
 ### Effects (require `.input()`)
 
@@ -94,7 +97,6 @@ VIVID_CHAIN(setup, update)
 |----------|-------------|----------------|
 | `Composite` | Blend two textures | `.inputA(op)` `.inputB(op)` `.mode(BlendMode::Over)` `.opacity(1.0)` |
 | `Switch` | Select input | `.input0(op)` `.input1(op)` `.select(0)` |
-| `Output` | Final output | `.input(op)` |
 
 ### Particles
 
@@ -116,19 +118,20 @@ VIVID_CHAIN(setup, update)
 |----------|-------------|----------------|
 | `Canvas` | Imperative 2D drawing | `.size(w, h)` `.loadFont(ctx, path, size)` |
 
-Canvas is unique: you call draw methods in `update()` before `process()`:
+Canvas is unique: you call draw methods in `update()`:
 
 ```cpp
-Canvas* canvas = new Canvas();
-canvas->size(1280, 720);
-canvas->loadFont(ctx, "assets/fonts/Pixeled.ttf", 24.0f);
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+    chain.add<Canvas>("canvas").size(1280, 720);
+    chain.output("canvas");
+}
 
 void update(Context& ctx) {
-    canvas->clear(0, 0, 0, 0);  // Transparent background
-    canvas->rectFilled(10, 10, 200, 50, {0.2f, 0.2f, 0.2f, 0.8f});
-    canvas->circleFilled(640, 360, 50, {1, 0, 0, 1});
-    canvas->text("Hello!", 20, 40, {1, 1, 1, 1});
-    canvas->process(ctx);
+    auto& canvas = ctx.chain().get<Canvas>("canvas");
+    canvas.clear(0, 0, 0, 0);  // Transparent background
+    canvas.rectFilled(10, 10, 200, 50, {0.2f, 0.2f, 0.2f, 0.8f});
+    canvas.circleFilled(640, 360, 50, {1, 0, 0, 1});
 }
 ```
 
@@ -203,27 +206,33 @@ scene.add(mesh3, transform, glm::vec4(1, 0, 0, 1));  // Red color
 
 **Render3D usage:**
 ```cpp
-Camera3D camera;
-camera.lookAt(glm::vec3(5, 3, 5), glm::vec3(0, 0, 0))
-      .fov(45.0f)
-      .nearPlane(0.1f)
-      .farPlane(100.0f);
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
 
-Render3D* renderer = new Render3D();
-renderer->scene(scene)
-        .camera(camera)
-        .shadingMode(ShadingMode::Flat)  // Unlit, Flat, or Gouraud
-        .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
-        .lightColor(glm::vec3(1, 1, 1))
-        .ambient(0.15f)
-        .clearColor(0.1f, 0.1f, 0.15f)
-        .resolution(1280, 720);
+    Camera3D camera;
+    camera.lookAt(glm::vec3(5, 3, 5), glm::vec3(0, 0, 0))
+          .fov(45.0f)
+          .nearPlane(0.1f)
+          .farPlane(100.0f);
 
-// In update():
-camera.orbit(5.0f, time * 0.3f, 0.4f);  // distance, azimuth, elevation
-renderer->camera(camera);
-renderer->process(ctx);
-ctx.setOutputTexture(renderer->outputView());
+    auto& renderer = chain.add<Render3D>("render3d");
+    renderer.scene(scene)
+            .camera(camera)
+            .shadingMode(ShadingMode::Flat)
+            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
+            .lightColor(glm::vec3(1, 1, 1))
+            .ambient(0.15f)
+            .clearColor(0.1f, 0.1f, 0.15f)
+            .resolution(1280, 720);
+
+    chain.output("render3d");
+}
+
+void update(Context& ctx) {
+    // Animate camera
+    camera.orbit(5.0f, ctx.time() * 0.3f, 0.4f);
+    ctx.chain().get<Render3D>("render3d").camera(camera);
+}
 ```
 
 **Shading modes:**
@@ -263,67 +272,100 @@ DitherPattern::Bayer2x2, DitherPattern::Bayer4x4, DitherPattern::Bayer8x8
 ### Chain operators together
 
 ```cpp
-chain->add<Noise>("noise").scale(4.0f);
-chain->add<HSV>("color").input("noise").hueShift(0.3f);
-chain->add<Blur>("blur").input("color").radius(3.0f);
-chain->add<Output>("out").input("blur");
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+    chain.add<Noise>("noise").scale(4.0f);
+    chain.add<HSV>("color").input("noise").hueShift(0.3f);
+    chain.add<Blur>("blur").input("color").radius(3.0f);
+    chain.output("blur");
+}
 ```
 
 ### Feedback loop (trails/echoes)
 
 ```cpp
-chain->add<Noise>("noise").scale(4.0f);
-chain->add<Feedback>("fb").input("noise").decay(0.95f).zoom(1.01f);
-chain->add<Output>("out").input("fb");
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+    chain.add<Noise>("noise").scale(4.0f);
+    chain.add<Feedback>("fb").input("noise").decay(0.95f).zoom(1.01f);
+    chain.output("fb");
+}
 ```
 
 ### Blend two sources
 
 ```cpp
-chain->add<Noise>("noise");
-chain->add<Image>("img").path("assets/photo.jpg");
-chain->add<Composite>("blend")
-    .inputA("img")
-    .inputB("noise")
-    .mode(BlendMode::Overlay)
-    .opacity(0.5f);
-chain->add<Output>("out").input("blend");
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+    chain.add<Noise>("noise");
+    chain.add<Image>("img").file("assets/photo.jpg");
+    chain.add<Composite>("blend")
+        .inputA("img")
+        .inputB("noise")
+        .mode(BlendMode::Overlay)
+        .opacity(0.5f);
+    chain.output("blend");
+}
 ```
 
 ### Displace with noise
 
 ```cpp
-chain->add<Image>("img").path("assets/photo.jpg");
-chain->add<Noise>("noise").scale(10.0f).speed(0.3f);
-chain->add<Displace>("warp")
-    .source(&chain->get<Image>("img"))
-    .map(&chain->get<Noise>("noise"))
-    .strength(0.05f);
-chain->add<Output>("out").input("warp");
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& img = chain.add<Image>("img").file("assets/photo.jpg");
+    auto& noise = chain.add<Noise>("noise").scale(10.0f).speed(0.3f);
+    chain.add<Displace>("warp")
+        .source(&img)
+        .map(&noise)
+        .strength(0.05f);
+    chain.output("warp");
+}
 ```
 
 ### Retro/VHS look
 
 ```cpp
-chain->add<Video>("vid").path("assets/video.mov");
-chain->add<ChromaticAberration>("chroma").input("vid").amount(0.005f);
-chain->add<Scanlines>("lines").input("chroma").spacing(3).intensity(0.2f);
-chain->add<Quantize>("quant").input("lines").levels(32);
-chain->add<Output>("out").input("quant");
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+    chain.add<VideoPlayer>("vid").file("assets/video.mov");
+    chain.add<ChromaticAberration>("chroma").input("vid").amount(0.005f);
+    chain.add<Scanlines>("lines").input("chroma").spacing(3).intensity(0.2f);
+    chain.add<Quantize>("quant").input("lines").levels(32);
+    chain.output("quant");
+}
 ```
 
 ### Particle system
 
 ```cpp
-chain->add<Particles>("particles")
-    .emitRate(100.0f)
-    .life(3.0f)
-    .gravity(0.05f)
-    .size(0.01f, 0.005f)  // start, end
-    .color(1.0f, 0.5f, 0.2f)
-    .velocity(0.0f, -0.1f)
-    .spread(30.0f);
-chain->add<Output>("out").input("particles");
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+    chain.add<Particles>("particles")
+        .emitRate(100.0f)
+        .life(3.0f)
+        .gravity(0.05f)
+        .size(0.01f, 0.005f)  // start, end
+        .color(1.0f, 0.5f, 0.2f)
+        .velocity(0.0f, -0.1f)
+        .spread(30.0f);
+    chain.output("particles");
+}
+```
+
+### Dynamic output switching
+
+```cpp
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Switch output based on key press
+    if (ctx.key(GLFW_KEY_1).pressed) {
+        chain.output("effect1");
+    } else if (ctx.key(GLFW_KEY_2).pressed) {
+        chain.output("effect2");
+    }
+}
 ```
 
 ## Context API
@@ -335,17 +377,19 @@ float dt = ctx.dt();          // Delta time (seconds)
 int frame = ctx.frame();      // Frame number
 int width = ctx.width();      // Output width
 int height = ctx.height();    // Output height
+glm::vec2 mouse = ctx.mouseNorm();  // Normalized mouse position (-1 to 1)
+auto key = ctx.key(GLFW_KEY_SPACE); // Key state (.pressed, .held, .released)
 ```
 
 ## Troubleshooting
 
 **"No output showing"**
-- Make sure you have an `Output` operator with `.input()` connected
+- Make sure you have `chain.output("name")` pointing to a valid operator
 - Check that all operators are connected in a chain
 
 **"Operator not found"**
 - Verify the operator name matches exactly (case-sensitive)
-- Make sure you're using `chain->get<Type>("name")`
+- Make sure you're using `chain.get<Type>("name")`
 
 **"Hot reload not working"**
 - Save the file

@@ -10,8 +10,7 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
-// Persistent state across hot-reloads
-static Chain* chain = nullptr;
+// Persistent state across hot-reloads (these don't need Chain management)
 static Camera3D camera;
 static Scene scene;
 static Mesh cubeMesh;
@@ -19,9 +18,7 @@ static Mesh sphereMesh;
 static Mesh csgMesh;
 
 void setup(Context& ctx) {
-    // Clean up previous chain if hot-reloading
-    delete chain;
-    chain = nullptr;
+    auto& chain = ctx.chain();
     scene.clear();
 
     // Create procedural geometry
@@ -65,10 +62,8 @@ void setup(Context& ctx) {
           .nearPlane(0.1f)
           .farPlane(100.0f);
 
-    // Create chain with Render3D -> Bloom -> Output
-    chain = new Chain();
-
-    auto& renderer = chain->add<Render3D>("render3d");
+    // Create chain: Render3D -> ChromaticAberration -> output
+    auto& renderer = chain.add<Render3D>("render3d");
     renderer.scene(scene)
             .camera(camera)
             .shadingMode(ShadingMode::Flat)
@@ -79,23 +74,20 @@ void setup(Context& ctx) {
             .resolution(1280, 720);
 
     // Add chromatic aberration effect
-    auto& chromatic = chain->add<ChromaticAberration>("chromatic");
+    auto& chromatic = chain.add<ChromaticAberration>("chromatic");
     chromatic.input(&renderer)
              .amount(0.008f)
              .radial(true);
 
-    chain->add<Output>("output").input(&chromatic);
-    chain->setOutput("output");
-    chain->init(ctx);
+    chain.output("chromatic");
 
-    if (chain->hasError()) {
-        ctx.setError(chain->error());
+    if (chain.hasError()) {
+        ctx.setError(chain.error());
     }
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
-
+    auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
 
     // Orbit camera around the scene
@@ -104,7 +96,7 @@ void update(Context& ctx) {
     float elevation = 0.4f + 0.1f * std::sin(time * 0.5f);
     camera.orbit(distance, azimuth, elevation);
 
-    auto& renderer = chain->get<Render3D>("render3d");
+    auto& renderer = chain.get<Render3D>("render3d");
     renderer.camera(camera);
 
     // Update object transforms - rotate each mesh
@@ -124,9 +116,6 @@ void update(Context& ctx) {
                               glm::rotate(glm::mat4(1.0f), time * 0.3f, glm::vec3(0, 1, 0)) *
                               glm::rotate(glm::mat4(1.0f), time * 0.2f, glm::vec3(1, 0, 0));
     }
-
-    // Process chain (Output handles ctx.setOutputTexture internally)
-    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

@@ -114,4 +114,23 @@ void Context::registerOperator(const std::string& name, Operator* op) {
     m_operators.push_back({name, op});
 }
 
+Chain& Context::chain() {
+    if (!m_chain) {
+        m_chain = std::make_unique<Chain>();
+    }
+    return *m_chain;
+}
+
+const Chain& Context::chain() const {
+    if (!m_chain) {
+        // This shouldn't happen in normal use, but handle it gracefully
+        const_cast<Context*>(this)->m_chain = std::make_unique<Chain>();
+    }
+    return *m_chain;
+}
+
+void Context::resetChain() {
+    m_chain = std::make_unique<Chain>();
+}
+
 } // namespace vivid

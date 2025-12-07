@@ -8,39 +8,28 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-// Chain (persistent across hot-reloads)
-static Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    // Clean up previous chain if hot-reloading
-    delete chain;
-    chain = nullptr;
+    auto& chain = ctx.chain();
 
-    // Create chain with Canvas -> HSV -> Output
-    chain = new Chain();
-
-    auto& canvas = chain->add<Canvas>("canvas");
+    auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(1280, 720);
 
     // Add HSV color cycling effect
-    auto& hsv = chain->add<HSV>("hsv");
+    auto& hsv = chain.add<HSV>("hsv");
     hsv.input(&canvas);
 
-    chain->add<Output>("output").input(&hsv);
-    chain->setOutput("output");
-    chain->init(ctx);
+    chain.output("hsv");
 
-    if (chain->hasError()) {
-        ctx.setError(chain->error());
+    if (chain.hasError()) {
+        ctx.setError(chain.error());
     }
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
-
+    auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
 
-    auto& canvas = chain->get<Canvas>("canvas");
+    auto& canvas = chain.get<Canvas>("canvas");
 
     // Clear canvas with dark blue background
     canvas.clear(0.1f, 0.1f, 0.2f, 1.0f);
@@ -89,11 +78,8 @@ void update(Context& ctx) {
     );
 
     // Animate HSV hue shift
-    auto& hsv = chain->get<HSV>("hsv");
+    auto& hsv = chain.get<HSV>("hsv");
     hsv.hueShift(time * 0.1f);  // Slowly cycle through colors
-
-    // Process chain (Output handles ctx.setOutputTexture internally)
-    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

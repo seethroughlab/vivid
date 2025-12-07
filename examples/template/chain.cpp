@@ -15,7 +15,7 @@
 //
 // Tips:
 //   - Operators connect via .input(&operator)
-//   - Every chain needs an Output operator
+//   - Use chain.output("name") to specify what displays
 //   - Check the terminal for compile errors if hot-reload fails
 //   - See docs/LLM-REFERENCE.md for all operators
 //   - See docs/RECIPES.md for effect examples
@@ -26,17 +26,8 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-// Global chain pointer - must be global for hot-reload to work
-static Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    // Clean up previous chain on hot-reload
-    // This is required to prevent memory leaks
-    delete chain;
-    chain = nullptr;
-
-    // Create a new chain
-    chain = new Chain();
+    auto& chain = ctx.chain();
 
     // =========================================
     // Add your operators below
@@ -45,7 +36,7 @@ void setup(Context& ctx) {
     // GENERATORS create images from nothing:
     //   Noise, SolidColor, Gradient, Ramp, Shape, LFO, Image
 
-    auto& noise = chain->add<Noise>("noise")
+    auto& noise = chain.add<Noise>("noise")
         .scale(4.0f)      // Size of noise pattern (higher = smaller details)
         .speed(0.5f)      // Animation speed
         .type(NoiseType::Simplex)
@@ -55,37 +46,23 @@ void setup(Context& ctx) {
     //   Blur, HSV, Brightness, Transform, Mirror, Displace, Edge,
     //   Pixelate, Tile, ChromaticAberration, Bloom, Feedback
 
-    auto& colorize = chain->add<HSV>("colorize")
+    auto& colorize = chain.add<HSV>("colorize")
         .input(&noise)        // Connect to the noise generator
         .hueShift(0.6f)       // Shift hue (0-1 wraps around color wheel)
         .saturation(0.8f)     // Color intensity (0 = grayscale)
         .value(1.0f);         // Brightness multiplier
 
-    // OUTPUT sends to screen - every chain needs exactly one
-    chain->add<Output>("out").input(&colorize);
-    chain->setOutput("out");
-    chain->init(ctx);
-
-    // Operators are automatically registered for the visualizer (Tab key)
-    // based on their names in the chain
-
-    if (chain->hasError()) {
-        ctx.setError(chain->error());
-    }
+    // Specify output - this is what gets displayed
+    chain.output("colorize");
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
-
-    // Process the chain every frame
-    chain->process(ctx);
-
     // =========================================
     // Dynamic updates go here
     // =========================================
 
     // You can animate parameters using ctx.time():
-    // chain->get<Noise>("noise").scale(4.0f + sin(ctx.time()) * 2.0f);
+    // ctx.chain().get<Noise>("noise").scale(4.0f + sin(ctx.time()) * 2.0f);
 
     // Available context values:
     //   ctx.time()   - Seconds since start (float)

@@ -8,26 +8,22 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-static Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    delete chain;
-    chain = new Chain();
+    auto& chain = ctx.chain();
 
     // Source: animated noise pattern
-    auto& noise = chain->add<Noise>("noise");
+    auto& noise = chain.add<Noise>("noise");
 
     // Transform for rotation
-    auto& transform = chain->add<Transform>("transform");
+    auto& transform = chain.add<Transform>("transform");
 
     // Kaleidoscope mirror effect
-    auto& mirror = chain->add<Mirror>("mirror");
+    auto& mirror = chain.add<Mirror>("mirror");
 
     // Color and post effects
-    auto& hsv = chain->add<HSV>("hsv");
-    auto& bloom = chain->add<Bloom>("bloom");
-    auto& chromatic = chain->add<ChromaticAberration>("chromatic");
-    auto& output = chain->add<Output>("output");
+    auto& hsv = chain.add<HSV>("hsv");
+    auto& bloom = chain.add<Bloom>("bloom");
+    auto& chromatic = chain.add<ChromaticAberration>("chromatic");
 
     // Configure noise: complex fractal pattern
     noise.type(NoiseType::Simplex)
@@ -63,25 +59,22 @@ void setup(Context& ctx) {
         .amount(0.3f)
         .radial(true);
 
-    output.input(&chromatic);
-    chain->setOutput("output");
-    chain->init(ctx);
+    chain.output("chromatic");
 
-    if (chain->hasError()) {
-        ctx.setError(chain->error());
+    if (chain.hasError()) {
+        ctx.setError(chain.error());
     }
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
-
+    auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
 
-    auto& noise = chain->get<Noise>("noise");
-    auto& transform = chain->get<Transform>("transform");
-    auto& mirror = chain->get<Mirror>("mirror");
-    auto& hsv = chain->get<HSV>("hsv");
-    auto& bloom = chain->get<Bloom>("bloom");
+    auto& noise = chain.get<Noise>("noise");
+    auto& transform = chain.get<Transform>("transform");
+    auto& mirror = chain.get<Mirror>("mirror");
+    auto& hsv = chain.get<HSV>("hsv");
+    auto& bloom = chain.get<Bloom>("bloom");
 
     // Animate noise offset for flowing pattern
     noise.offset(time * 0.3f, time * 0.2f);
@@ -107,8 +100,6 @@ void update(Context& ctx) {
             mirror.segments(i);
         }
     }
-
-    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

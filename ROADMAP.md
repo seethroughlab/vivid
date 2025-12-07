@@ -1304,6 +1304,71 @@ void setup(Context& ctx) {
 - [x] Hot-reload clears and rebuilds visualization
 - [x] Performance impact <1ms per frame
 
+### Phase 6c: Core-Managed Chain Lifecycle ✓
+
+**Goal:** Move Chain ownership from user code to core, eliminating boilerplate and enabling automatic state preservation.
+
+**Motivation:**
+- Users had to write awkward `delete chain; chain = new Chain();` in setup() for hot-reload
+- Users had to remember to call `chain->init(ctx)` and `chain->process(ctx)`
+- State preservation required manual `ctx.preserveStates()` / `ctx.restoreStates()` calls
+- Output operator was required boilerplate
+
+**Solution:**
+Context now owns the Chain. Core automatically handles lifecycle:
+
+```cpp
+// New pattern (simple!)
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+    chain.add<Noise>("noise").scale(4.0f);
+    chain.output("noise");  // Specify output - no Output operator needed
+}
+
+void update(Context& ctx) {
+    // Parameter tweaks only - process() is automatic
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+**API Additions:**
+
+```cpp
+// context.h
+Chain& chain();                    // Get/create the chain
+void resetChain();                 // Create fresh chain (called on hot-reload)
+bool hasChain() const;             // Check if chain exists
+
+// chain.h
+void output(const std::string& name);  // Specify display output
+Operator* getOutput() const;           // Get output operator
+```
+
+**Core Lifecycle (main.cpp):**
+1. On hot-reload: save operator states, reset chain
+2. Call `setup(ctx)` - user builds chain
+3. Call `chain.init(ctx)` - auto-init operators, restore states
+4. Each frame: call `update(ctx)`, then `chain.process(ctx)` - auto-process
+
+**Tasks:**
+- [x] Add Chain to Context (`chain()`, `resetChain()`, `hasChain()`)
+- [x] Add `chain.output()` method to Chain class
+- [x] Update `Chain::process()` to set output texture via `ctx.setOutputTexture()`
+- [x] Update main.cpp hot-reload loop (auto-init, auto-process, state preservation)
+- [x] Migrate all examples to new pattern
+- [x] Update documentation (README, LLM-REFERENCE, RECIPES)
+
+**Backward Compatibility:**
+- Output operator still works for complex use cases
+- Dynamic output switching works via `chain.output()` in update()
+
+**Validation:**
+- [x] All examples work with new pattern
+- [x] Hot-reload preserves Feedback buffer state
+- [x] Dynamic output switching works (video-demo, webcam-retro)
+- [x] Documentation updated
+
 ### Phase 7: Media Addon
 
 **Goal:** Video playback with platform-specific backends

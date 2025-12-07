@@ -120,15 +120,30 @@ public:
     std::string getName(Operator* op) const;
 
     /**
-     * @brief Set which operator provides the final output
+     * @brief Specify which operator provides the final output
      * @param name Name of the output operator
+     *
+     * This is the recommended way to specify output (instead of adding an Output operator).
+     *
+     * @par Example
+     * @code
+     * chain.add<Noise>("noise").scale(4.0f);
+     * chain.add<HSV>("color").input("noise");
+     * chain.output("color");  // Display the color operator
+     * @endcode
      */
-    void setOutput(const std::string& name) { outputName_ = name; }
+    void output(const std::string& name) { outputName_ = name; }
 
     /**
-     * @brief Set output operator by pointer
-     * @param op Pointer to output operator
+     * @brief Get the designated output operator
+     * @return Pointer to output operator, or nullptr if not set
      */
+    Operator* getOutput() const;
+
+    /// @brief Legacy method - prefer output() instead
+    void setOutput(const std::string& name) { outputName_ = name; }
+
+    /// @brief Legacy method - prefer output() instead
     void setOutput(Operator* op);
 
     /**

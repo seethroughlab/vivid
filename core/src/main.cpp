@@ -405,8 +405,12 @@ int main(int argc, char** argv) {
         viewDesc.aspect = WGPUTextureAspect_All;
         WGPUTextureView view = wgpuTextureCreateView(surfaceTexture.texture, &viewDesc);
 
-        // Check for hot-reload
+        // Check for hot-reload - save states before reloading
         if (hotReload.update()) {
+            // Save operator states before reload
+            if (ctx.hasChain()) {
+                ctx.preserveStates(ctx.chain());
+            }
             chainNeedsSetup = true;
         }
 
@@ -421,14 +425,29 @@ int main(int argc, char** argv) {
         if (hotReload.isLoaded()) {
             // Call setup if needed (after reload)
             if (chainNeedsSetup) {
-                // Clear operator registry before setup re-registers operators
+                // Clear operator registry and reset chain before setup
                 ctx.clearRegisteredOperators();
+                ctx.resetChain();
+
+                // Call user's setup function
                 hotReload.getSetupFn()(ctx);
+
+                // Auto-initialize the chain
+                ctx.chain().init(ctx);
+
+                // Restore preserved states
+                if (ctx.hasPreservedStates()) {
+                    ctx.restoreStates(ctx.chain());
+                }
+
                 chainNeedsSetup = false;
             }
 
-            // Call update every frame
+            // Call user's update function (parameter tweaks)
             hotReload.getUpdateFn()(ctx);
+
+            // Auto-process the chain
+            ctx.chain().process(ctx);
         }
 
         // Create command encoder

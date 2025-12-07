@@ -13,44 +13,33 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::video;
 
-static Chain* chain = nullptr;
 static int currentVideoIndex = 0;
 static bool hsvEnabled = true;
 
 static const std::vector<std::string> videos = {
-    "assets/videos/hap-1080p-audio.mov",  // HAP codec (direct DXT upload)
-    "assets/videos/h264-1080p.mp4",       // H.264 (AVFoundation decode)
-    "assets/videos/mpeg2-1080p.ts"        // MPEG2 (AVFoundation decode)
+    "assets/videos/hap-1080p-audio.mov",
+    "assets/videos/h264-1080p.mp4",
+    "assets/videos/mpeg2-1080p.ts"
 };
 
 void setup(Context& ctx) {
-    delete chain;
-    chain = new Chain();
+    auto& chain = ctx.chain();
 
     // Video player as source
-    auto& video = chain->add<VideoPlayer>("video");
-
-    // Optional post-processing
-    auto& hsv = chain->add<HSV>("hsv");
-    auto& output = chain->add<Output>("output");
+    auto& video = chain.add<VideoPlayer>("video");
+    auto& hsv = chain.add<HSV>("hsv");
 
     // Load first video with looping
     video.file(videos[currentVideoIndex])
          .loop(true);
 
-    // Subtle color adjustment (temporarily bypassed for testing)
+    // Subtle color adjustment
     hsv.input(&video)
        .saturation(1.1f)
        .value(1.0f);
 
-    output.input(&hsv);  // HSV path
-    // output.input(&video);   // Direct video output for testing
-    chain->setOutput("output");
-    chain->init(ctx);
-
-    if (chain->hasError()) {
-        ctx.setError(chain->error());
-    }
+    // Default to HSV output
+    chain.output("hsv");
 
     std::cout << "[VideoDemo] Controls: 1/2/3=switch video, SPACE=pause/play, R=restart, H=toggle HSV" << std::endl;
     std::cout << "[VideoDemo] Videos:" << std::endl;
@@ -60,10 +49,9 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
-
-    auto& video = chain->get<VideoPlayer>("video");
-    auto& hsv = chain->get<HSV>("hsv");
+    auto& chain = ctx.chain();
+    auto& video = chain.get<VideoPlayer>("video");
+    auto& hsv = chain.get<HSV>("hsv");
 
     // Number keys - switch videos
     for (int i = 0; i < (int)videos.size(); i++) {
@@ -94,12 +82,11 @@ void update(Context& ctx) {
     // H key - toggle HSV effect
     if (ctx.key(GLFW_KEY_H).pressed) {
         hsvEnabled = !hsvEnabled;
-        auto& output = chain->get<Output>("output");
         if (hsvEnabled) {
-            output.input(&hsv);
+            chain.output("hsv");
             std::cout << "[VideoDemo] HSV enabled" << std::endl;
         } else {
-            output.input(&video);
+            chain.output("video");
             std::cout << "[VideoDemo] HSV disabled (direct video)" << std::endl;
         }
     }
@@ -107,8 +94,6 @@ void update(Context& ctx) {
     // Mouse X controls hue shift
     float hue = ctx.mouseNorm().x * 0.2f;
     hsv.hueShift(hue);
-
-    chain->process(ctx);
 }
 
 VIVID_CHAIN(setup, update)
