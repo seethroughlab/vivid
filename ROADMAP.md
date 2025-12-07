@@ -6,11 +6,91 @@ See [docs/PHILOSOPHY.md](docs/PHILOSOPHY.md) for design goals and lessons learne
 
 ---
 
+## Previous Attempts: V1 and V2
+
+Vivid V3 is the third attempt at this framework. Understanding why V1 and V2 failed is essential context for the design decisions in V3.
+
+### Vivid V1 (2023-2024)
+
+**Architecture:**
+- ~47,000 lines of C++ code
+- WebGPU via wgpu-native (Mozilla's Rust implementation)
+- Custom build system with CMake + FetchContent
+- VS Code extension for live preview and editing
+- Plugin-based operator system with registration macros
+
+**What Worked:**
+- Hot-reload system for chain.cpp files
+- 29 operators implemented: Blur, Chromatic, Composite, Displace, EdgeDetect, Feedback, Kaleidoscope, Mirror, Noise, Pixelate, Posterize, Ripple, Rotate, Scale, Threshold, Tunnel, Twirl, Vignette, Warp, Wave, Zoom, and more
+- Fluent API pattern (`ctx.noise().blur().feedback()`) was intuitive
+- VS Code integration provided good developer experience
+- WGSL shader system was clean
+
+**Why It Failed:**
+1. **Scope creep.** Started adding 3D capabilities, skeletal animation, physics—none finished.
+2. **Skeletal animation was fundamentally broken.** Spent months on bone hierarchies and skinning that never worked correctly. The code is still there but produces garbage output.
+3. **Platform fragmentation.** macOS worked, Windows had driver issues, Linux was untested. Each platform needed special handling that was never completed.
+4. **Plugin system became a maintenance burden.** The registration macros, parameter binding, and state management added complexity without clear benefit.
+5. **WebGPU initialization was fragile.** The async adapter/device request pattern led to race conditions and hard-to-debug startup failures.
+
+**Key Files (for reference):**
+- `vivid_v1/src/operators/` - 29 operator implementations
+- `vivid_v1/src/core/context.cpp` - Hot-reload and frame timing
+- `vivid_v1/vscode-extension/` - VS Code integration (could be resurrected)
+
+### Vivid V2 (2024)
+
+**Architecture:**
+- ~9,500 lines of custom C++ code
+- Diligent Engine as graphics backend (abstraction over Vulkan/D3D12/Metal/OpenGL)
+- CMake with FetchContent for dependencies
+- PBR rendering pipeline
+- GLTF model loader
+
+**What Worked:**
+- Simpler operator count (18 operators, more focused)
+- GLTF loading worked well
+- Basic PBR materials rendered correctly
+- State preservation during hot-reload was more robust
+
+**Why It Failed:**
+1. **Shadow mapping never worked.** Spent weeks debugging shadow maps—everything was either in shadow or fully lit. The shadow cascade system was too complex for the simple use case.
+2. **Diligent Engine was over-engineered for our needs.** The abstraction layer added complexity without benefit since we only targeted Vulkan. Debugging required understanding both our code AND Diligent's internals.
+3. **Performance overhead.** Diligent's abstraction layer added overhead that was noticeable with feedback buffers.
+4. **Dependency hell.** Diligent brought in many transitive dependencies that complicated builds.
+
+**Key Files (for reference):**
+- `vivid_v2/src/operators/` - 18 operator implementations
+- `vivid_v2/src/rendering/pbr_pipeline.cpp` - PBR system (worked, could be referenced)
+- `vivid_v2/src/scene/gltf_loader.cpp` - GLTF loading (worked, could be referenced)
+
+### Lessons for V3
+
+1. **Stay minimal.** The core should be <1000 lines. Resist adding features until the basics are rock-solid.
+
+2. **No skeletal animation.** If 3D models are added, they're static meshes only. Skeletal animation is a rabbit hole.
+
+3. **No shadow maps in V3.** If shadows are ever added, use simple techniques like shadow volumes or baked shadows. Cascaded shadow maps are not worth the complexity.
+
+4. **WebGPU via wgpu-native is correct.** V1's approach was right—we just added too much on top. V3 returns to wgpu-native with a cleaner abstraction.
+
+5. **Operators are addons, not plugins.** No registration macros, no plugin discovery. Each addon is explicitly added to the chain. Simpler is better.
+
+6. **Test on Windows from day one.** Platform issues compound. CI should run on all platforms from Phase 1.
+
+7. **Fluent API is worth preserving.** The `ctx.operator().operator()` pattern from V1 was the right call. V3 keeps this.
+
+8. **State preservation is non-negotiable.** Both V1 and V2 got this right. Hot-reload without state preservation is useless for creative work.
+
+9. **Don't use complex external engines.** Diligent was too much. Own the graphics code or use something minimal like wgpu-native directly.
+
+---
+
 ## Guiding Principles
 
 1. **Minimal core.** The runtime is ~600 lines: window, timing, input, hot-reload, addon registry, and a simple texture display. Everything else is an addon.
 
-2. **Dawn is the graphics backend.** Core and all addons are written against the standard WebGPU C API (`webgpu.h`) using Google's Dawn implementation—battle-tested in Chrome, well-documented, actively developed.
+2. **WebGPU is the graphics backend.** Core and all addons are written against the standard WebGPU C API (`webgpu.h`) using wgpu-native (Mozilla's Rust-based implementation)—battle-tested in Firefox, cross-platform, actively developed. Can switch to Dawn if needed.
 
 3. **Get to the chain API fast.** The core value of Vivid is the `chain.cpp` programming model. All infrastructure work serves this goal.
 
@@ -809,21 +889,21 @@ The Chain uses Kahn's algorithm for topological sort, automatically determining 
 
 ## Implementation Phases
 
-### Phase 1: Core Setup
+### Phase 1: Core Setup ✓
 
 **Goal:** Clean slate with WebGPU foundation
 
-- [ ] Set up Dawn via CMake FetchContent
-- [ ] GLFW window creation
-- [ ] WebGPU init via webgpu.h
-- [ ] Surface creation
-- [ ] Main loop
-- [ ] Context with time/input
-- [ ] Port hot-reload (remove previous engine deps)
-- [ ] Texture blit pipeline
-- [ ] Bitmap font for errors
+- [x] Set up WebGPU via CMake FetchContent (wgpu-native)
+- [x] GLFW window creation
+- [x] WebGPU init via webgpu.h
+- [x] Surface creation
+- [x] Main loop
+- [x] Context with time/input
+- [x] Hot-reload system (clang++, dlopen)
+- [x] Texture blit pipeline
+- [x] Bitmap font for errors
 
-**Milestone:** Window opens, shows error message when no chain loaded
+**Milestone:** Window opens, shows error message when no chain loaded ✓
 
 **Validation:**
 - [ ] Builds on macOS, Windows, Linux (CI)
@@ -831,23 +911,23 @@ The Chain uses Kahn's algorithm for topological sort, automatically determining 
 - [ ] Error text displays correctly
 - [ ] Hot-reload detects file changes
 
-### Phase 2: First Addon (vivid-effects-2d)
+### Phase 2: First Addon (vivid-effects-2d) ✓
 
 **Goal:** Basic 2D operators working
 
-- [ ] TextureOperator base class
-- [ ] Noise operator
-- [ ] SolidColor operator
-- [ ] Composite operator
-- [ ] Output operator (registers with core)
+- [x] TextureOperator base class
+- [x] Noise operator
+- [x] SolidColor operator
+- [x] Composite operator
+- [x] Output operator (registers with core)
 
-**Milestone:** `Noise → Output` chain displays animated noise
+**Milestone:** `Noise → Output` chain displays animated noise ✓
 
 **Validation:**
 - [ ] Noise output matches reference image (visual diff)
-- [ ] Noise animates smoothly over 60 frames
+- [x] Noise animates smoothly over 60 frames
 - [ ] Composite blends two textures correctly
-- [ ] examples/hello-noise runs on all platforms
+- [x] examples/hello-noise runs on macOS (other platforms pending)
 
 ### Phase 3: Chain API
 

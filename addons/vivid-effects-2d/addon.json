@@ -1,0 +1,14 @@
+{
+  "name": "vivid-effects-2d",
+  "version": "0.1.0",
+  "description": "2D texture operators: generators, effects, and compositing",
+  "author": "Vivid",
+  "license": "MIT",
+  "vivid": ">=3.0.0",
+  "operators": [
+    "Noise",
+    "SolidColor",
+    "Composite",
+    "Output"
+  ]
+}

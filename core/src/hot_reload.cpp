@@ -15,6 +15,10 @@
 #else
 #include <dlfcn.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#include <limits.h>
+#endif
 #endif
 
 namespace vivid {
@@ -133,6 +137,30 @@ bool HotReload::update() {
     return true;
 }
 
+// Find the directory containing the vivid executable
+static fs::path getExecutableDir() {
+#ifdef __APPLE__
+    char pathBuf[PATH_MAX];
+    uint32_t size = sizeof(pathBuf);
+    if (_NSGetExecutablePath(pathBuf, &size) == 0) {
+        return fs::path(pathBuf).parent_path();
+    }
+#elif defined(_WIN32)
+    char pathBuf[MAX_PATH];
+    GetModuleFileNameA(NULL, pathBuf, MAX_PATH);
+    return fs::path(pathBuf).parent_path();
+#else
+    // Linux: read /proc/self/exe
+    char pathBuf[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
+    if (len != -1) {
+        pathBuf[len] = '\0';
+        return fs::path(pathBuf).parent_path();
+    }
+#endif
+    return fs::current_path();
+}
+
 bool HotReload::compile() {
     // Increment build number to avoid OS library caching
     m_buildNumber++;
@@ -150,9 +178,51 @@ bool HotReload::compile() {
 
     m_libraryPath = m_buildDir / libName;
 
-    // Determine include directories
-    // We need to find the vivid include directory
+    // Determine directories
     fs::path sourceDir = m_sourcePath.parent_path();
+    fs::path exeDir = getExecutableDir();
+
+    // Find vivid include directories (look relative to exe or in source tree)
+    fs::path vividInclude;
+    fs::path addonsInclude;
+    fs::path addonsLib;
+    std::vector<fs::path> depIncludes;
+
+    // Try source tree first (development mode)
+    // exe is at build/bin/vivid, so ../ twice gets to vivid root
+    fs::path rootDir = exeDir / ".." / "..";
+    fs::path devVividInclude = rootDir / "core" / "include";
+    fs::path devAddonsInclude = rootDir / "addons" / "vivid-effects-2d" / "include";
+
+    if (fs::exists(devVividInclude / "vivid")) {
+        vividInclude = fs::canonical(devVividInclude);
+        addonsInclude = fs::canonical(devAddonsInclude);
+        addonsLib = exeDir;
+
+        // Find dependency includes in build/_deps
+        fs::path depsDir = rootDir / "build" / "_deps";
+        if (fs::exists(depsDir)) {
+            for (const auto& entry : fs::directory_iterator(depsDir)) {
+                if (entry.is_directory()) {
+                    // Check for include/ subdirectory first
+                    fs::path incDir = entry.path() / "include";
+                    if (fs::exists(incDir)) {
+                        depIncludes.push_back(incDir);
+                    }
+                    // Also add root for deps like GLM that put headers at root
+                    // Check if glm/glm.hpp exists at root level
+                    if (fs::exists(entry.path() / "glm" / "glm.hpp")) {
+                        depIncludes.push_back(entry.path());
+                    }
+                }
+            }
+        }
+    } else {
+        // Fallback to installed location
+        vividInclude = exeDir / ".." / "include";
+        addonsInclude = exeDir / ".." / "include";
+        addonsLib = exeDir;
+    }
 
     // Build the compile command
     std::stringstream cmd;
@@ -161,16 +231,35 @@ bool HotReload::compile() {
     // MSVC or Clang on Windows
     cmd << "cl /nologo /EHsc /LD /O2 ";
     cmd << "/I\"" << sourceDir.string() << "\" ";
+    cmd << "/I\"" << vividInclude.string() << "\" ";
+    cmd << "/I\"" << addonsInclude.string() << "\" ";
+    for (const auto& inc : depIncludes) {
+        cmd << "/I\"" << inc.string() << "\" ";
+    }
     cmd << "/Fe\"" << m_libraryPath.string() << "\" ";
     cmd << "\"" << m_sourcePath.string() << "\" ";
+    cmd << "/link \"" << (addonsLib / "vivid-effects-2d.lib").string() << "\" ";
     cmd << "2>&1";
 #else
     // Clang/GCC on Unix
     cmd << "clang++ -std=c++17 -O2 -shared -fPIC ";
     cmd << "-I\"" << sourceDir.string() << "\" ";
+    cmd << "-I\"" << vividInclude.string() << "\" ";
+    cmd << "-I\"" << addonsInclude.string() << "\" ";
+    for (const auto& inc : depIncludes) {
+        cmd << "-I\"" << inc.string() << "\" ";
+    }
+
 #ifdef __APPLE__
-    cmd << "-undefined dynamic_lookup ";  // Allow undefined symbols (linked at load time)
+    cmd << "-L\"" << addonsLib.string() << "\" ";
+    cmd << "-lvivid-effects-2d ";
+    cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
+#else
+    cmd << "-L\"" << addonsLib.string() << "\" ";
+    cmd << "-lvivid-effects-2d ";
+    cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
 #endif
+
     cmd << "-o \"" << m_libraryPath.string() << "\" ";
     cmd << "\"" << m_sourcePath.string() << "\" ";
     cmd << "2>&1";

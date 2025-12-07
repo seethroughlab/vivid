@@ -361,6 +361,9 @@ int main(int argc, char** argv) {
 
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
 
+        // Update display with current screen size
+        display.setScreenSize(width, height);
+
         // If chain set an output texture, blit it to the screen
         if (ctx.outputTexture() && display.isValid()) {
             display.blit(pass, ctx.outputTexture());
@@ -368,7 +371,7 @@ int main(int argc, char** argv) {
 
         // Render error message if present
         if (ctx.hasError() && display.isValid()) {
-            display.renderText(pass, ctx.errorMessage(), 20.0f, 20.0f, 1.5f);
+            display.renderText(pass, ctx.errorMessage(), 20.0f, 20.0f, 2.0f);
         }
 
         wgpuRenderPassEncoderEnd(pass);

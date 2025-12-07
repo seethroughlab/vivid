@@ -24,6 +24,9 @@ public:
     void renderText(WGPURenderPassEncoder pass, const std::string& text,
                     float x, float y, float scale = 1.0f);
 
+    // Update screen size for text rendering
+    void setScreenSize(int width, int height);
+
     // Check if initialized successfully
     bool isValid() const { return m_valid; }
 
@@ -40,12 +43,24 @@ private:
     WGPUSampler m_sampler = nullptr;
     WGPUBindGroupLayout m_blitBindGroupLayout = nullptr;
 
-    // Text resources (placeholder - full implementation later)
+    // Text resources
     WGPURenderPipeline m_textPipeline = nullptr;
     WGPUTexture m_fontTexture = nullptr;
     WGPUTextureView m_fontTextureView = nullptr;
     WGPUBindGroupLayout m_textBindGroupLayout = nullptr;
+    WGPUBindGroup m_textBindGroup = nullptr;
+    WGPUBuffer m_textUniformBuffer = nullptr;
     WGPUBuffer m_textVertexBuffer = nullptr;
+    WGPUSampler m_fontSampler = nullptr;
+
+    static constexpr int FONT_CHAR_WIDTH = 8;
+    static constexpr int FONT_CHAR_HEIGHT = 8;
+    static constexpr int FONT_CHARS_PER_ROW = 16;
+    static constexpr int FONT_TEXTURE_SIZE = 128;  // 16x8 = 128 pixels
+    static constexpr int MAX_TEXT_CHARS = 1024;
+
+    int m_screenWidth = 1280;
+    int m_screenHeight = 720;
 
     bool m_valid = false;
 };

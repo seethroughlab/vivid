@@ -69,6 +69,11 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(glfw3webgpu)
 
 # -----------------------------------------------------------------------------
+# Addons
+# -----------------------------------------------------------------------------
+add_subdirectory(addons/vivid-effects-2d)
+
+# -----------------------------------------------------------------------------
 # Core library and runtime
 # -----------------------------------------------------------------------------
 add_subdirectory(core)
@@ -76,6 +81,5 @@ add_subdirectory(core)
 # -----------------------------------------------------------------------------
 # Examples
 # -----------------------------------------------------------------------------
-if(VIVID_BUILD_EXAMPLES)
-    # Examples will be added as we create them
-endif()
+# Note: Example chains are hot-reloaded, not statically compiled.
+# The examples/ directory contains chain.cpp files that are loaded at runtime.
