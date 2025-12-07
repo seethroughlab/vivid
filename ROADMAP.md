@@ -993,40 +993,40 @@ We encountered a blank/dark gray window despite all WebGPU operations appearing 
 **Goal:** Port essential operators from v1/v2
 
 **Generators (no input):**
-- [ ] Noise - Fractal Perlin noise with octaves, lacunarity, persistence
-- [ ] Gradient - Linear, radial, angular, diamond modes
-- [ ] Shape - SDF shapes (circle, rect, star, polygon, ring)
-- [ ] SolidColor - Constant color or value
+- [x] Noise - Fractal Perlin noise with octaves, lacunarity, persistence
+- [x] Gradient - Linear, radial, angular, diamond modes
+- [x] Shape - SDF shapes (circle, rect, star, polygon, ring)
+- [x] SolidColor - Constant color or value
 
 **Effects (texture input):**
-- [ ] Blur - Separable Gaussian with radius and passes
-- [ ] HSV - Hue shift, saturation, value adjustment
-- [ ] Brightness - Brightness and contrast
-- [ ] Transform - Scale, rotate, translate with pivot
-- [ ] Mirror - Axis mirroring and kaleidoscope
-- [ ] Displacement - Texture-based UV distortion
-- [ ] Edge - Sobel edge detection with threshold
-- [ ] ChromaticAberration - RGB channel separation
-- [ ] Pixelate - Mosaic/pixelation effect
-- [ ] Feedback - Double-buffered with decay, zoom, rotate
-- [ ] Bloom - Threshold, blur, and add-back glow effect
-- [ ] Tile - Texture tiling/repetition with offset and scale
+- [x] Blur - Separable Gaussian with radius and passes
+- [x] HSV - Hue shift, saturation, value adjustment
+- [x] Brightness - Brightness and contrast
+- [x] Transform - Scale, rotate, translate with pivot
+- [x] Mirror - Axis mirroring and kaleidoscope
+- [x] Displacement - Texture-based UV distortion
+- [x] Edge - Sobel edge detection with threshold
+- [x] ChromaticAberration - RGB channel separation
+- [x] Pixelate - Mosaic/pixelation effect
+- [x] Feedback - Double-buffered with decay, zoom, rotate
+- [x] Bloom - Threshold, blur, and add-back glow effect
+- [x] Tile - Texture tiling/repetition with offset and scale
 
 **Particle Systems:**
 - [ ] Particles2D - 2D GPU particle system with emitters, forces, and lifetime
 - [ ] PointSprites - Point-based rendering with size, color, and texture
 
 **Compositing:**
-- [ ] Composite - Two-input or multi-input (up to 8) blending
-- [ ] Switch - Select between inputs by index
+- [x] Composite - Two-input or multi-input (up to 8) blending
+- [x] Switch - Select between inputs by index
 
 **Modulation (generate numeric values):**
-- [ ] LFO - Sine, saw, square, triangle oscillator
-- [ ] Math - Add, subtract, multiply, divide, clamp, remap
-- [ ] Logic - Greater than, less than, in range, toggle
+- [x] LFO - Sine, saw, square, triangle oscillator
+- [x] Math - Add, subtract, multiply, divide, clamp, remap
+- [x] Logic - Greater than, less than, in range, toggle
 
 **Media (vivid-media addon):**
-- [ ] ImageFile - Load PNG/JPG with hot-reload
+- [x] ImageFile - Load PNG/JPG with hot-reload
 - [ ] VideoPlayer - Video playback (HAP codec support)
 - [ ] Webcam - Camera capture
 
@@ -1089,11 +1089,11 @@ void setup(Context& ctx) {
 
 Effects for achieving stylized/retro aesthetics:
 
-- [ ] Dither - Ordered dithering (Bayer 2x2, 4x4, 8x8)
-- [ ] Quantize - Reduce color palette
-- [ ] Scanlines - CRT-style horizontal lines
-- [ ] CRTEffect - Curvature, vignette, phosphor glow
-- [ ] Downsample - Low-res with nearest-neighbor upscale
+- [x] Dither - Ordered dithering (Bayer 2x2, 4x4, 8x8)
+- [x] Quantize - Reduce color palette
+- [x] Scanlines - CRT-style horizontal lines
+- [x] CRTEffect - Curvature, vignette, phosphor glow
+- [x] Downsample - Low-res with nearest-neighbor upscale
 
 ```cpp
 class Dither : public Operator {
