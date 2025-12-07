@@ -11,6 +11,13 @@ using namespace vivid::effects;
 static Chain* chain = nullptr;
 
 void setup(Context& ctx) {
+    // Save state before destroying old chain (preserves feedback buffer)
+    if (chain) {
+        ctx.preserveStates(*chain);
+    }
+    delete chain;
+    chain = nullptr;
+
     chain = new Chain();
 
     // Add operators
@@ -79,19 +86,4 @@ void update(Context& ctx) {
     chain->process(ctx);
 }
 
-extern "C" {
-    void vivid_setup(Context& ctx) {
-        // Save state before destroying old chain
-        if (chain) {
-            ctx.preserveStates(*chain);
-        }
-
-        delete chain;
-        chain = nullptr;
-        setup(ctx);
-    }
-
-    void vivid_update(Context& ctx) {
-        update(ctx);
-    }
-}
+VIVID_CHAIN(setup, update)

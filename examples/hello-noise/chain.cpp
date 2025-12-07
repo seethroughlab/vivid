@@ -12,6 +12,12 @@ static Noise* noise = nullptr;
 static Output* output = nullptr;
 
 void setup(Context& ctx) {
+    // Clean up previous operators if hot-reloading
+    delete noise;
+    delete output;
+    noise = nullptr;
+    output = nullptr;
+
     // Create operators
     noise = new Noise();
     output = new Output();
@@ -33,19 +39,4 @@ void update(Context& ctx) {
     output->process(ctx);
 }
 
-// Export entry points
-extern "C" {
-    void vivid_setup(Context& ctx) {
-        // Clean up previous operators if hot-reloading
-        delete noise;
-        delete output;
-        noise = nullptr;
-        output = nullptr;
-
-        setup(ctx);
-    }
-
-    void vivid_update(Context& ctx) {
-        update(ctx);
-    }
-}
+VIVID_CHAIN(setup, update)

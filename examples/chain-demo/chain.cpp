@@ -12,6 +12,10 @@ using namespace vivid::effects;
 static Chain* chain = nullptr;
 
 void setup(Context& ctx) {
+    // Clean up previous chain if hot-reloading
+    delete chain;
+    chain = nullptr;
+
     // Create chain
     chain = new Chain();
 
@@ -91,17 +95,4 @@ void update(Context& ctx) {
     chain->process(ctx);
 }
 
-// Export entry points
-extern "C" {
-    void vivid_setup(Context& ctx) {
-        // Clean up previous chain if hot-reloading
-        delete chain;
-        chain = nullptr;
-
-        setup(ctx);
-    }
-
-    void vivid_update(Context& ctx) {
-        update(ctx);
-    }
-}
+VIVID_CHAIN(setup, update)

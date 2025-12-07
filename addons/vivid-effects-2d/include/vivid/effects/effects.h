@@ -12,3 +12,16 @@
 #include <vivid/effects/image.h>
 #include <vivid/effects/displace.h>
 #include <vivid/effects/output.h>
+#include <vivid/effects/blur.h>
+#include <vivid/effects/transform.h>
+#include <vivid/effects/shape.h>
+#include <vivid/effects/lfo.h>
+#include <vivid/effects/hsv.h>
+#include <vivid/effects/brightness.h>
+#include <vivid/effects/mirror.h>
+#include <vivid/effects/edge.h>
+#include <vivid/effects/pixelate.h>
+#include <vivid/effects/tile.h>
+#include <vivid/effects/chromatic_aberration.h>
+#include <vivid/effects/switch_op.h>
+#include <vivid/effects/bloom.h>

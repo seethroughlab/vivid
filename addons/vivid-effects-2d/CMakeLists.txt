@@ -20,6 +20,19 @@ add_library(vivid-effects-2d SHARED
     src/output.cpp
     src/image.cpp
     src/displace.cpp
+    src/blur.cpp
+    src/transform.cpp
+    src/shape.cpp
+    src/lfo.cpp
+    src/hsv.cpp
+    src/brightness.cpp
+    src/mirror.cpp
+    src/edge.cpp
+    src/pixelate.cpp
+    src/tile.cpp
+    src/chromatic_aberration.cpp
+    src/switch_op.cpp
+    src/bloom.cpp
 )
 
 target_include_directories(vivid-effects-2d PUBLIC
