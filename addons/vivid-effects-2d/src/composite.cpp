@@ -136,6 +136,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     samplerDesc.magFilter = WGPUFilterMode_Linear;
     samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
     samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
+    samplerDesc.addressModeW = WGPUAddressMode_ClampToEdge;
+    samplerDesc.maxAnisotropy = 1;
     m_sampler = wgpuDeviceCreateSampler(ctx.device(), &samplerDesc);
 
     // Create bind group layout

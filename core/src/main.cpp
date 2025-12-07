@@ -367,6 +367,10 @@ int main(int argc, char** argv) {
         // If chain set an output texture, blit it to the screen
         if (ctx.outputTexture() && display.isValid()) {
             display.blit(pass, ctx.outputTexture());
+        } else if (ctx.frame() < 5) {
+            std::cout << "Frame " << ctx.frame() << ": outputTexture="
+                      << (ctx.outputTexture() ? "SET" : "NULL")
+                      << ", display.isValid=" << display.isValid() << std::endl;
         }
 
         // Render error message if present

@@ -4,11 +4,10 @@
 // Include this in your chain.cpp
 
 #include <vivid/context.h>
+#include <vivid/operator.h>
+#include <vivid/chain.h>
 
 namespace vivid {
-
-// Forward declarations
-class Chain;
 
 // Chain entry points - implemented by user's chain.cpp
 using SetupFn = void(*)(Context&);

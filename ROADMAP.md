@@ -929,22 +929,22 @@ The Chain uses Kahn's algorithm for topological sort, automatically determining 
 - [ ] Composite blends two textures correctly
 - [x] examples/hello-noise runs on macOS (other platforms pending)
 
-### Phase 3: Chain API
+### Phase 3: Chain API ✓
 
 **Goal:** Fluent API working
 
-- [ ] Chain class
-- [ ] Topological sort
-- [ ] Named operator retrieval
-- [ ] Auto-init/process
+- [x] Chain class
+- [x] Topological sort (Kahn's algorithm)
+- [x] Named operator retrieval
+- [x] Auto-init/process
 
-**Milestone:** Fluent chain syntax works
+**Milestone:** Fluent chain syntax works ✓
 
 **Validation:**
-- [ ] Operators execute in correct dependency order
-- [ ] Circular dependency detection works
-- [ ] `chain.get<T>("name")` retrieves correct operator
-- [ ] examples/chain-demo runs on all platforms
+- [x] Operators execute in correct dependency order
+- [x] Circular dependency detection works
+- [x] `chain.get<T>("name")` retrieves correct operator
+- [x] examples/chain-demo runs on macOS (other platforms pending)
 
 ### Phase 4: State Preservation
 

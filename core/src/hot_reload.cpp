@@ -251,6 +251,7 @@ bool HotReload::compile() {
     }
 
 #ifdef __APPLE__
+    cmd << "-undefined dynamic_lookup ";  // Allow symbols from vivid executable
     cmd << "-L\"" << addonsLib.string() << "\" ";
     cmd << "-lvivid-effects-2d ";
     cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";

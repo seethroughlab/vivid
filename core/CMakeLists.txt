@@ -6,6 +6,7 @@ set(VIVID_CORE_SOURCES
     src/context.cpp
     src/display.cpp
     src/hot_reload.cpp
+    src/chain.cpp
 )
 
 set(VIVID_CORE_HEADERS
@@ -13,6 +14,8 @@ set(VIVID_CORE_HEADERS
     include/vivid/context.h
     include/vivid/display.h
     include/vivid/hot_reload.h
+    include/vivid/operator.h
+    include/vivid/chain.h
 )
 
 # Main runtime executable

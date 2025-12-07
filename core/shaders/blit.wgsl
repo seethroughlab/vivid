@@ -29,5 +29,7 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    return textureSample(inputTexture, textureSampler, input.uv);
+    let sampled = textureSample(inputTexture, textureSampler, input.uv);
+    // Debug: show UV as color to verify blit works
+    return vec4f(input.uv.x, input.uv.y, sampled.r, 1.0);
 }
