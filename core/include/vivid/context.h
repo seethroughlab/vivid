@@ -9,12 +9,20 @@
 
 #include <string>
 #include <map>
+#include <vector>
 #include <memory>
 
 // Forward declaration
 namespace vivid {
 struct OperatorState;
 class Chain;
+class Operator;
+
+// Operator info for visualization
+struct OperatorInfo {
+    std::string name;
+    Operator* op = nullptr;
+};
 }
 
 namespace vivid {
@@ -115,6 +123,19 @@ public:
     void clearError() { m_errorMessage.clear(); }
 
     // -------------------------------------------------------------------------
+    // Operator Registry (for visualization)
+    // -------------------------------------------------------------------------
+
+    // Register an operator for chain visualization
+    void registerOperator(const std::string& name, Operator* op);
+
+    // Get all registered operators
+    const std::vector<OperatorInfo>& registeredOperators() const { return m_operators; }
+
+    // Clear all registered operators (called on hot-reload)
+    void clearRegisteredOperators() { m_operators.clear(); }
+
+    // -------------------------------------------------------------------------
     // State Preservation (for hot-reload)
     // -------------------------------------------------------------------------
 
@@ -159,6 +180,9 @@ private:
 
     // Error
     std::string m_errorMessage;
+
+    // Operator registry (for visualization)
+    std::vector<OperatorInfo> m_operators;
 
     // Preserved operator states (for hot-reload)
     std::map<std::string, std::unique_ptr<OperatorState>> m_preservedStates;

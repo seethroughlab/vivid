@@ -73,6 +73,7 @@ FetchContent_MakeAvailable(glfw3webgpu)
 # -----------------------------------------------------------------------------
 add_subdirectory(addons/vivid-effects-2d)
 add_subdirectory(addons/vivid-video)
+add_subdirectory(addons/vivid-imgui)
 
 # -----------------------------------------------------------------------------
 # Core library and runtime

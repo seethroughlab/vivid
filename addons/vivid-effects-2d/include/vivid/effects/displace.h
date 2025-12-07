@@ -25,6 +25,14 @@ public:
     void cleanup() override;
     std::string name() const override { return "Displace"; }
 
+    std::vector<ParamDecl> params() override {
+        return {
+            {"strength", ParamType::Float, 0.0f, 1.0f, {m_strength}},
+            {"strengthX", ParamType::Float, 0.0f, 2.0f, {m_strengthX}},
+            {"strengthY", ParamType::Float, 0.0f, 2.0f, {m_strengthY}}
+        };
+    }
+
 private:
     void createPipeline(Context& ctx);
 

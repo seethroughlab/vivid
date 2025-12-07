@@ -5,6 +5,8 @@
 #include <vivid/context.h>
 #include <vivid/display.h>
 #include <vivid/hot_reload.h>
+#include <vivid/imgui/imgui_integration.h>
+#include <vivid/imgui/chain_visualizer.h>
 #include <webgpu/webgpu.h>
 #include <glfw3webgpu.h>
 #include <GLFW/glfw3.h>
@@ -271,6 +273,12 @@ int main(int argc, char** argv) {
         std::cerr << "Warning: Display initialization failed (shaders may be missing)" << std::endl;
     }
 
+    // Initialize ImGui
+    vivid::imgui::init(device, queue, surfaceFormat);
+
+    // Create chain visualizer
+    vivid::imgui::ChainVisualizer chainVisualizer;
+
     // Create hot-reload system
     HotReload hotReload;
 
@@ -312,6 +320,16 @@ int main(int argc, char** argv) {
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        // Toggle chain visualizer on Tab key (edge detection)
+        {
+            static bool tabKeyWasPressed = false;
+            bool tabKeyPressed = glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS;
+            if (tabKeyPressed && !tabKeyWasPressed) {
+                vivid::imgui::toggleVisible();
+            }
+            tabKeyWasPressed = tabKeyPressed;
+        }
 
         // Toggle fullscreen on 'F' key (edge detection)
         {
@@ -395,6 +413,8 @@ int main(int argc, char** argv) {
         if (hotReload.isLoaded()) {
             // Call setup if needed (after reload)
             if (chainNeedsSetup) {
+                // Clear operator registry before setup re-registers operators
+                ctx.clearRegisteredOperators();
                 hotReload.getSetupFn()(ctx);
                 chainNeedsSetup = false;
             }
@@ -426,6 +446,29 @@ int main(int argc, char** argv) {
         // If chain set an output texture, blit it to the screen
         if (ctx.outputTexture() && display.isValid()) {
             display.blit(pass, ctx.outputTexture());
+        }
+
+        // Render chain visualizer if visible
+        if (vivid::imgui::isVisible()) {
+            // Get content scale for Retina displays
+            float xscale, yscale;
+            glfwGetWindowContentScale(window, &xscale, &yscale);
+
+            // Build frame input for ImGui
+            vivid::imgui::FrameInput frameInput;
+            frameInput.width = ctx.width();
+            frameInput.height = ctx.height();
+            frameInput.contentScale = xscale;  // Use X scale (same as Y on most displays)
+            frameInput.dt = static_cast<float>(ctx.dt());
+            frameInput.mousePos = ctx.mouse();
+            frameInput.mouseDown[0] = ctx.mouseButton(0).held;
+            frameInput.mouseDown[1] = ctx.mouseButton(1).held;
+            frameInput.mouseDown[2] = ctx.mouseButton(2).held;
+            frameInput.scroll = ctx.scroll();
+
+            vivid::imgui::beginFrame(frameInput);
+            chainVisualizer.render(frameInput, ctx);
+            vivid::imgui::render(pass);
         }
 
         // Render error message if present
@@ -473,6 +516,11 @@ int main(int argc, char** argv) {
 
     // Cleanup
     std::cout << "Shutting down..." << std::endl;
+
+    // Shutdown ImGui
+    chainVisualizer.shutdown();
+    vivid::imgui::shutdown();
+
     wgpuSurfaceUnconfigure(surface);
     wgpuQueueRelease(queue);
     wgpuDeviceRelease(device);

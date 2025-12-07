@@ -35,6 +35,17 @@ public:
     void cleanup() override;
     std::string name() const override { return "Noise"; }
 
+    // Parameter declarations for UI
+    std::vector<ParamDecl> params() override {
+        return {
+            {"scale", ParamType::Float, 0.1f, 20.0f, {m_scale}},
+            {"speed", ParamType::Float, 0.0f, 5.0f, {m_speed}},
+            {"octaves", ParamType::Int, 1.0f, 8.0f, {static_cast<float>(m_octaves)}},
+            {"lacunarity", ParamType::Float, 1.0f, 4.0f, {m_lacunarity}},
+            {"persistence", ParamType::Float, 0.0f, 1.0f, {m_persistence}}
+        };
+    }
+
 private:
     void createPipeline(Context& ctx);
 

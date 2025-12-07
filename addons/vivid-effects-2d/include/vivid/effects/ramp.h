@@ -39,6 +39,16 @@ public:
     void cleanup() override;
     std::string name() const override { return "Ramp"; }
 
+    std::vector<ParamDecl> params() override {
+        return {
+            {"hueOffset", ParamType::Float, 0.0f, 1.0f, {m_hueOffset}},
+            {"hueSpeed", ParamType::Float, 0.0f, 2.0f, {m_hueSpeed}},
+            {"hueRange", ParamType::Float, 0.0f, 1.0f, {m_hueRange}},
+            {"saturation", ParamType::Float, 0.0f, 1.0f, {m_saturation}},
+            {"brightness", ParamType::Float, 0.0f, 1.0f, {m_brightness}}
+        };
+    }
+
 private:
     void createPipeline(Context& ctx);
 

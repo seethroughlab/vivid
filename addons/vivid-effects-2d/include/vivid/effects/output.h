@@ -22,7 +22,7 @@ public:
     std::string name() const override { return "Output"; }
 
     // Override to return input's texture view
-    WGPUTextureView outputView() const {
+    WGPUTextureView outputView() const override {
         return inputView(0);
     }
 };

@@ -3,6 +3,7 @@
 // Vivid - Operator Base Class
 // Base class for all operators (effects, generators, etc.)
 
+#include <webgpu/webgpu.h>
 #include <string>
 #include <vector>
 #include <memory>
@@ -61,6 +62,9 @@ public:
     virtual std::string name() const = 0;
     virtual OutputKind outputKind() const { return OutputKind::Texture; }
     virtual std::vector<ParamDecl> params() { return {}; }
+
+    // Output texture view (for visualization thumbnails)
+    virtual WGPUTextureView outputView() const { return nullptr; }
 
     // State preservation (for hot reload)
     virtual std::unique_ptr<OperatorState> saveState() { return nullptr; }

@@ -160,6 +160,14 @@ void Chain::init(Context& ctx) {
         return;
     }
 
+    // Auto-register all operators for visualization
+    for (Operator* op : executionOrder_) {
+        std::string name = getName(op);
+        if (!name.empty()) {
+            ctx.registerOperator(name, op);
+        }
+    }
+
     for (Operator* op : executionOrder_) {
         op->init(ctx);
     }

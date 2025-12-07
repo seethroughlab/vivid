@@ -35,6 +35,28 @@ public:
     void cleanup() override;
     std::string name() const override { return "Composite"; }
 
+    std::vector<ParamDecl> params() override {
+        // Use String type with mode name embedded in the param name
+        std::string modeStr = std::string("mode: ") + modeName(m_mode);
+        return {
+            {modeStr, ParamType::String, 0.0f, 0.0f, {}},
+            {"opacity", ParamType::Float, 0.0f, 1.0f, {m_opacity}}
+        };
+    }
+
+    // Get blend mode name for display
+    static const char* modeName(BlendMode m) {
+        switch (m) {
+            case BlendMode::Over: return "Over";
+            case BlendMode::Add: return "Add";
+            case BlendMode::Multiply: return "Multiply";
+            case BlendMode::Screen: return "Screen";
+            case BlendMode::Overlay: return "Overlay";
+            case BlendMode::Difference: return "Difference";
+            default: return "Unknown";
+        }
+    }
+
 private:
     void createPipeline(Context& ctx);
     void updateBindGroup(Context& ctx);

@@ -94,6 +94,14 @@ void setup(Context& ctx) {
 
     // Output
     output->input(comp2);
+
+    // Register operators for visualization (press Tab to toggle)
+    ctx.registerOperator("fire", fire);
+    ctx.registerOperator("fountain", fountain);
+    ctx.registerOperator("ring", ring);
+    ctx.registerOperator("comp1", comp1);
+    ctx.registerOperator("comp2", comp2);
+    ctx.registerOperator("output", output);
 }
 
 void update(Context& ctx) {

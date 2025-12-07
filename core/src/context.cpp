@@ -110,4 +110,8 @@ void Context::restoreStates(Chain& chain) {
     }
 }
 
+void Context::registerOperator(const std::string& name, Operator* op) {
+    m_operators.push_back({name, op});
+}
+
 } // namespace vivid

@@ -64,6 +64,7 @@ void setup(Context& ctx) {
     if (chain->hasError()) {
         ctx.setError(chain->error());
     }
+    // Operators are auto-registered by Chain::init() for visualization
 }
 
 void update(Context& ctx) {

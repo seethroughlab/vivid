@@ -26,13 +26,14 @@ target_include_directories(vivid
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# Link against WebGPU, GLFW, GLM, and the GLFW-WebGPU integration
+# Link against WebGPU, GLFW, GLM, GLFW-WebGPU integration, and ImGui addon
 target_link_libraries(vivid
     PRIVATE
         glfw
         glm::glm
         webgpu
         glfw3webgpu
+        vivid-imgui
 )
 
 # Platform-specific settings

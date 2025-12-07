@@ -26,9 +26,7 @@ public:
 
     // Operator interface
     OutputKind outputKind() const override { return OutputKind::Texture; }
-
-    // Texture output
-    WGPUTextureView outputView() const { return m_outputView; }
+    WGPUTextureView outputView() const override { return m_outputView; }
     WGPUTexture outputTexture() const { return m_output; }
 
     // Resolution

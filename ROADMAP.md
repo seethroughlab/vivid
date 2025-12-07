@@ -1166,17 +1166,93 @@ chain.add<Output>("out").input("scanlines");
 
 **Goal:** Chain visualizer with ImNode
 
-- [ ] ImGui integration
-- [ ] ImNode integration
-- [ ] Operator preview thumbnails
-- [ ] Parameter display
+- [x] ImGui integration (vivid-imgui addon with WebGPU backend)
+- [x] ImNode integration (demo node editor)
+- [ ] Operator preview thumbnails (requires chain introspection)
+- [ ] Parameter display (requires operator params() implementation)
+
+**Implementation Notes:**
+- Uses ImGui master branch for wgpu-native compatibility
+- ImNodes for node graph visualization
+- Tab key toggles visualizer overlay
+- Performance overlay shows FPS, DT, resolution
+- Demo node editor shows example Noise→Blur/Feedback→Output graph
+
+**Files Created:**
+- `addons/vivid-imgui/CMakeLists.txt` - Fetches ImGui/ImNodes, builds addon
+- `addons/vivid-imgui/include/vivid/imgui/imgui_integration.h` - Public API
+- `addons/vivid-imgui/include/vivid/imgui/chain_visualizer.h` - Visualizer class
+- `addons/vivid-imgui/src/imgui_integration.cpp` - ImGui lifecycle
+- `addons/vivid-imgui/src/chain_visualizer.cpp` - ImNodes rendering
 
 **Validation:**
-- [ ] Chain visualizer toggles with keyboard
-- [ ] Nodes display correct connections
-- [ ] Thumbnails update in real-time
-- [ ] UI doesn't impact rendering performance (<1ms overhead)
+- [x] Chain visualizer toggles with keyboard (Tab key)
+- [ ] Nodes display correct connections (demo only, needs introspection)
+- [ ] Thumbnails update in real-time (deferred)
+- [x] UI doesn't impact rendering performance (<1ms overhead)
 - [ ] Update README.md with UI/editor features
+
+### Phase 6b: Operator Registry & Chain Introspection
+
+**Goal:** Enable real chain visualization by adding operator registration and introspection
+
+**Context API Additions:**
+```cpp
+// In context.h
+struct OperatorInfo {
+    std::string name;
+    Operator* op = nullptr;
+};
+
+// Context methods:
+void registerOperator(const std::string& name, Operator* op);
+const std::vector<OperatorInfo>& registeredOperators() const;
+void clearRegisteredOperators();  // Called on hot-reload
+```
+
+**Operator API Additions:**
+```cpp
+// In operator.h
+virtual WGPUTextureView outputView() const { return nullptr; }  // For thumbnails
+```
+
+**Tasks:**
+- [x] Add OperatorInfo struct to context.h
+- [x] Add operator registry vector to Context
+- [x] Implement registerOperator() / registeredOperators() / clearRegisteredOperators()
+- [x] Add outputView() to Operator base class
+- [x] Implement outputView() in TextureOperator
+- [x] Update ChainVisualizer to use real operator data
+- [x] Auto-layout nodes based on dependency depth
+- [x] Draw connections by querying getInput()
+- [ ] Render thumbnails from outputView() (placeholder boxes for now)
+- [x] Clear registry on hot-reload (before chain reload)
+
+**Usage Pattern (in chain.cpp):**
+```cpp
+void setup(Context& ctx) {
+    static auto noise = std::make_unique<Noise>();
+    static auto blur = std::make_unique<Blur>();
+    static auto output = std::make_unique<Output>();
+
+    blur->setInput(noise.get());
+    output->setInput(blur.get());
+
+    // Register for visualization
+    ctx.registerOperator("noise", noise.get());
+    ctx.registerOperator("blur", blur.get());
+    ctx.registerOperator("output", output.get());
+
+    ctx.setOutput(output.get());
+}
+```
+
+**Validation:**
+- [x] Registered operators appear as nodes
+- [x] Connections match setInput() relationships
+- [ ] Thumbnails show operator output textures (placeholder boxes for now)
+- [x] Hot-reload clears and rebuilds visualization
+- [x] Performance impact <1ms per frame
 
 ### Phase 7: Media Addon
 
@@ -1197,15 +1273,16 @@ Use the official HAP implementation from Vidvox: https://github.com/Vidvox/hap
 
 **Operators:**
 - [x] VideoPlayer - Playback with play/pause/seek/loop/speed
-- [ ] Webcam - Camera capture
+- [x] Webcam - Camera capture (AVFoundation on macOS, Media Foundation on Windows)
 - [ ] ImageSequence - Frame sequence playback
 
 **Validation:**
-- [ ] HAP video plays without frame drops at 60fps
-- [ ] Seek works correctly (no artifacts)
-- [ ] Webcam works on macOS (AVFoundation)
-- [ ] Webcam works on Windows (Media Foundation)
-- [ ] examples/video-demo runs on macOS and Windows
+- [x] HAP video plays without frame drops at 60fps
+- [x] Seek works correctly (no artifacts)
+- [x] Webcam works on macOS (AVFoundation)
+- [ ] Webcam works on Windows (Media Foundation) - implemented, needs testing
+- [x] examples/video-demo runs on macOS
+- [x] examples/webcam-retro demo created
 - [ ] Update README.md with media playback documentation
 
 ### Phase 8: 3D Addon (vivid-render3d)
