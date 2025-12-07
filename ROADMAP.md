@@ -1214,8 +1214,8 @@ chain.add<Output>("out").input("scanlines");
 
 - [x] ImGui integration (vivid-imgui addon with WebGPU backend)
 - [x] ImNode integration (demo node editor)
-- [ ] Operator preview thumbnails (requires chain introspection)
-- [ ] Parameter display (requires operator params() implementation)
+- [x] Operator preview thumbnails (requires chain introspection)
+- [x] Parameter display (requires operator params() implementation)
 
 **Implementation Notes:**
 - Uses ImGui master branch for wgpu-native compatibility
@@ -1233,10 +1233,10 @@ chain.add<Output>("out").input("scanlines");
 
 **Validation:**
 - [x] Chain visualizer toggles with keyboard (Tab key)
-- [ ] Nodes display correct connections (demo only, needs introspection)
-- [ ] Thumbnails update in real-time (deferred)
+- [x] Nodes display correct connections
+- [x] Thumbnails update in real-time
 - [x] UI doesn't impact rendering performance (<1ms overhead)
-- [ ] Update README.md with UI/editor features
+- [x] Update README.md with UI/editor features
 
 ### Phase 6b: Operator Registry & Chain Introspection
 
@@ -1271,7 +1271,7 @@ virtual WGPUTextureView outputView() const { return nullptr; }  // For thumbnail
 - [x] Update ChainVisualizer to use real operator data
 - [x] Auto-layout nodes based on dependency depth
 - [x] Draw connections by querying getInput()
-- [ ] Render thumbnails from outputView() (placeholder boxes for now)
+- [x] Render thumbnails from outputView()
 - [x] Clear registry on hot-reload (before chain reload)
 
 **Usage Pattern (in chain.cpp):**
@@ -1296,7 +1296,7 @@ void setup(Context& ctx) {
 **Validation:**
 - [x] Registered operators appear as nodes
 - [x] Connections match setInput() relationships
-- [ ] Thumbnails show operator output textures (placeholder boxes for now)
+- [x] Thumbnails show operator output textures
 - [x] Hot-reload clears and rebuilds visualization
 - [x] Performance impact <1ms per frame
 

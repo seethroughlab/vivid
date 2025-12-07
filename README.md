@@ -122,6 +122,44 @@ Edit your code while it's running - changes apply automatically.
 - `Switch` - Select between inputs
 - `Output` - Final output to screen
 
+### Media
+- `Video` - Video playback (HAP, H.264, ProRes)
+- `Webcam` - Camera capture
+- `Image` - Static image loading
+
+## UI & Visualization
+
+Vivid includes a built-in chain visualizer powered by ImGui and ImNodes.
+
+### Controls
+- `Tab` - Toggle the visualizer overlay
+- `F` - Toggle fullscreen
+- `Esc` - Quit
+
+### Chain Visualizer Features
+- **Node Graph** - See your operator chain as connected nodes
+- **Live Thumbnails** - Each node shows its real-time output texture
+- **Parameter Display** - View current parameter values on each node
+- **Connection Visualization** - See how operators are wired together
+- **Performance Overlay** - FPS, frame time, and resolution display
+
+### Registering Operators for Visualization
+
+To see your operators in the visualizer, register them in your setup function:
+
+```cpp
+void setup(Context& ctx) {
+    chain->add<Noise>("noise").scale(4.0f);
+    chain->add<HSV>("color").input("noise");
+    chain->add<Output>("out").input("color");
+
+    // Register for visualization
+    ctx.registerOperator("noise", &chain->get<Noise>("noise"));
+    ctx.registerOperator("color", &chain->get<HSV>("color"));
+    ctx.registerOperator("out", &chain->get<Output>("out"));
+}
+```
+
 ## Project Structure
 
 ```
