@@ -28,6 +28,7 @@ set(VIDEO_SOURCES
     src/audio_player.cpp
     src/hap.c
     src/video_player.cpp
+    src/webcam.cpp
 )
 
 # Platform-specific sources
@@ -35,11 +36,13 @@ if(APPLE)
     list(APPEND VIDEO_SOURCES
         src/hap_decoder.mm
         src/avf_decoder.mm
+        src/avf_webcam.mm
     )
 elseif(WIN32)
     list(APPEND VIDEO_SOURCES
         src/hap_decoder.cpp      # Windows version without Obj-C
         src/mf_decoder.cpp
+        src/mf_webcam.cpp
     )
 else()
     # Linux
@@ -85,8 +88,11 @@ if(APPLE)
     )
 
     # Enable Objective-C++
-    set_source_files_properties(src/hap_decoder.mm src/avf_decoder.mm PROPERTIES
-        COMPILE_FLAGS "-x objective-c++"
+    set_source_files_properties(
+        src/hap_decoder.mm
+        src/avf_decoder.mm
+        src/avf_webcam.mm
+        PROPERTIES COMPILE_FLAGS "-x objective-c++"
     )
 
     # Set install name for macOS so chains can find the library

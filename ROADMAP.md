@@ -1186,7 +1186,7 @@ Use the official HAP implementation from Vidvox: https://github.com/Vidvox/hap
 - Direct texture upload (no CPU decode)
 
 **Operators:**
-- [ ] VideoPlayer - Playback with play/pause/seek/loop/speed
+- [x] VideoPlayer - Playback with play/pause/seek/loop/speed
 - [ ] Webcam - Camera capture
 - [ ] ImageSequence - Frame sequence playback
 
