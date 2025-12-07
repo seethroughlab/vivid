@@ -1,7 +1,16 @@
 #pragma once
 
-// Vivid - Context
-// Runtime state passed to chain setup/update functions
+/**
+ * @file context.h
+ * @brief Runtime context passed to chain setup/update functions
+ *
+ * The Context provides access to:
+ * - Time information (elapsed time, delta time, frame count)
+ * - Window dimensions
+ * - Input state (mouse, keyboard)
+ * - WebGPU device and queue
+ * - Operator registry for visualization
+ */
 
 #include <webgpu/webgpu.h>
 #include <GLFW/glfw3.h>
@@ -12,141 +21,250 @@
 #include <vector>
 #include <memory>
 
-// Forward declaration
 namespace vivid {
 struct OperatorState;
 class Chain;
 class Operator;
 
-// Operator info for visualization
+/**
+ * @brief Operator info for visualization
+ */
 struct OperatorInfo {
-    std::string name;
-    Operator* op = nullptr;
+    std::string name;       ///< Display name
+    Operator* op = nullptr; ///< Pointer to operator
 };
-}
 
-namespace vivid {
-
-// Key state
+/**
+ * @brief Key state for a single key
+ */
 struct KeyState {
-    bool pressed = false;   // True during the frame the key was pressed
-    bool held = false;      // True while the key is held down
-    bool released = false;  // True during the frame the key was released
+    bool pressed = false;   ///< True during the frame the key was pressed
+    bool held = false;      ///< True while the key is held down
+    bool released = false;  ///< True during the frame the key was released
 };
 
-// Mouse button state
+/**
+ * @brief Mouse button state
+ */
 struct MouseButtonState {
-    bool pressed = false;   // True during the frame the button was pressed
-    bool held = false;      // True while the button is held down
-    bool released = false;  // True during the frame the button was released
+    bool pressed = false;   ///< True during the frame the button was pressed
+    bool held = false;      ///< True while the button is held down
+    bool released = false;  ///< True during the frame the button was released
 };
 
+/**
+ * @brief Runtime context providing access to time, input, and GPU resources
+ *
+ * Context is passed to setup() and update() functions in your chain.cpp.
+ * Use it to access timing information, input state, and GPU resources.
+ *
+ * @par Example
+ * @code
+ * void update(Context& ctx) {
+ *     float t = ctx.time();  // seconds since start
+ *     float dt = ctx.dt();   // delta time
+ *
+ *     if (ctx.key(GLFW_KEY_SPACE).pressed) {
+ *         // Space was just pressed this frame
+ *     }
+ *
+ *     chain->process();
+ * }
+ * @endcode
+ */
 class Context {
 public:
+    /**
+     * @brief Construct a context
+     * @param window GLFW window handle
+     * @param device WebGPU device
+     * @param queue WebGPU queue
+     */
     Context(GLFWwindow* window, WGPUDevice device, WGPUQueue queue);
     ~Context();
 
-    // Called each frame before update
+    /// @brief Called each frame before update
     void beginFrame();
 
-    // Called each frame after update
+    /// @brief Called each frame after update
     void endFrame();
 
     // -------------------------------------------------------------------------
-    // Time
-    // -------------------------------------------------------------------------
+    /// @name Time
+    /// @{
 
-    // Time since program start (seconds)
+    /**
+     * @brief Get time since program start
+     * @return Elapsed time in seconds
+     */
     double time() const { return m_time; }
 
-    // Time since last frame (seconds)
+    /**
+     * @brief Get time since last frame
+     * @return Delta time in seconds
+     */
     double dt() const { return m_dt; }
 
-    // Current frame number (0-indexed)
+    /**
+     * @brief Get current frame number
+     * @return Frame count (0-indexed)
+     */
     uint64_t frame() const { return m_frame; }
 
+    /// @}
     // -------------------------------------------------------------------------
-    // Window
-    // -------------------------------------------------------------------------
+    /// @name Window
+    /// @{
 
-    // Window dimensions in pixels
+    /**
+     * @brief Get window width
+     * @return Width in pixels
+     */
     int width() const { return m_width; }
+
+    /**
+     * @brief Get window height
+     * @return Height in pixels
+     */
     int height() const { return m_height; }
 
-    // Aspect ratio (width / height)
+    /**
+     * @brief Get aspect ratio
+     * @return Width divided by height
+     */
     float aspect() const { return m_height > 0 ? static_cast<float>(m_width) / m_height : 1.0f; }
 
+    /// @}
     // -------------------------------------------------------------------------
-    // Mouse
-    // -------------------------------------------------------------------------
+    /// @name Mouse
+    /// @{
 
-    // Mouse position in pixels (0,0 is top-left)
+    /**
+     * @brief Get mouse position in pixels
+     * @return Position with (0,0) at top-left
+     */
     glm::vec2 mouse() const { return m_mousePos; }
 
-    // Normalized mouse position (-1 to 1, with Y up)
+    /**
+     * @brief Get normalized mouse position
+     * @return Position in range (-1 to 1) with Y up
+     */
     glm::vec2 mouseNorm() const;
 
-    // Mouse button state (0=left, 1=right, 2=middle)
+    /**
+     * @brief Get mouse button state
+     * @param button Button index (0=left, 1=right, 2=middle)
+     * @return Button state struct
+     */
     const MouseButtonState& mouseButton(int button) const;
 
-    // Mouse scroll delta since last frame
+    /**
+     * @brief Get mouse scroll delta
+     * @return Scroll amount since last frame
+     */
     glm::vec2 scroll() const { return m_scroll; }
 
+    /// @}
     // -------------------------------------------------------------------------
-    // Keyboard
-    // -------------------------------------------------------------------------
+    /// @name Keyboard
+    /// @{
 
-    // Key state by GLFW key code (e.g., GLFW_KEY_SPACE)
+    /**
+     * @brief Get key state
+     * @param keyCode GLFW key code (e.g., GLFW_KEY_SPACE)
+     * @return Key state struct
+     */
     const KeyState& key(int keyCode) const;
 
+    /// @}
     // -------------------------------------------------------------------------
-    // WebGPU Access
-    // -------------------------------------------------------------------------
+    /// @name WebGPU Access
+    /// @{
 
+    /// @brief Get WebGPU device
     WGPUDevice device() const { return m_device; }
+
+    /// @brief Get WebGPU queue
     WGPUQueue queue() const { return m_queue; }
 
+    /// @}
     // -------------------------------------------------------------------------
-    // Output Texture (set by chain, read by display)
-    // -------------------------------------------------------------------------
+    /// @name Output Texture
+    /// @{
 
+    /**
+     * @brief Set the output texture (called by chain)
+     * @param texture Texture view to display
+     */
     void setOutputTexture(WGPUTextureView texture) { m_outputTexture = texture; }
+
+    /**
+     * @brief Get the output texture (read by display)
+     * @return Current output texture view
+     */
     WGPUTextureView outputTexture() const { return m_outputTexture; }
 
+    /// @}
     // -------------------------------------------------------------------------
-    // Error State
-    // -------------------------------------------------------------------------
+    /// @name Error State
+    /// @{
 
+    /// @brief Check if an error has occurred
     bool hasError() const { return !m_errorMessage.empty(); }
+
+    /// @brief Get the error message
     const std::string& errorMessage() const { return m_errorMessage; }
+
+    /// @brief Set an error message
     void setError(const std::string& message) { m_errorMessage = message; }
+
+    /// @brief Clear the error state
     void clearError() { m_errorMessage.clear(); }
 
+    /// @}
     // -------------------------------------------------------------------------
-    // Operator Registry (for visualization)
-    // -------------------------------------------------------------------------
+    /// @name Operator Registry
+    /// @{
 
-    // Register an operator for chain visualization
+    /**
+     * @brief Register an operator for chain visualization
+     * @param name Display name for the operator
+     * @param op Pointer to the operator
+     *
+     * Registered operators appear in the chain visualizer (Tab key).
+     */
     void registerOperator(const std::string& name, Operator* op);
 
-    // Get all registered operators
+    /**
+     * @brief Get all registered operators
+     * @return Vector of operator info structs
+     */
     const std::vector<OperatorInfo>& registeredOperators() const { return m_operators; }
 
-    // Clear all registered operators (called on hot-reload)
+    /// @brief Clear all registered operators (called on hot-reload)
     void clearRegisteredOperators() { m_operators.clear(); }
 
+    /// @}
     // -------------------------------------------------------------------------
-    // State Preservation (for hot-reload)
-    // -------------------------------------------------------------------------
+    /// @name State Preservation
+    /// @{
 
-    // Save states from a chain before hot-reload
+    /**
+     * @brief Save states from a chain before hot-reload
+     * @param chain Chain to save states from
+     */
     void preserveStates(Chain& chain);
 
-    // Restore states to a chain after hot-reload
+    /**
+     * @brief Restore states to a chain after hot-reload
+     * @param chain Chain to restore states to
+     */
     void restoreStates(Chain& chain);
 
-    // Check if there are preserved states waiting to be restored
+    /// @brief Check if there are preserved states waiting
     bool hasPreservedStates() const { return !m_preservedStates.empty(); }
+
+    /// @}
 
 private:
     GLFWwindow* m_window;
@@ -181,13 +299,13 @@ private:
     // Error
     std::string m_errorMessage;
 
-    // Operator registry (for visualization)
+    // Operator registry
     std::vector<OperatorInfo> m_operators;
 
-    // Preserved operator states (for hot-reload)
+    // Preserved states
     std::map<std::string, std::unique_ptr<OperatorState>> m_preservedStates;
 
-    // Default state for out-of-range queries
+    // Default states
     static const KeyState s_defaultKeyState;
     static const MouseButtonState s_defaultMouseState;
 };

@@ -101,6 +101,9 @@ Vivid V3 is the third attempt at this framework. Understanding why V1 and V2 fai
    - Consistent patterns across all operators (init/process/cleanup)
    - Fluent API makes generated code readable
    - This ROADMAP serves as comprehensive architectural documentation
+   - LLM-optimized docs: `docs/LLM-REFERENCE.md` (compact operator reference), `docs/RECIPES.md` (effect examples)
+   - Project template with `CLAUDE.md` for per-project AI context (`examples/template/`)
+   - Doxygen API documentation: run `doxygen Doxyfile` or `make docs` to generate `docs/api/html/`
 
 5. **Hot reload everything.** Edit C++ or WGSL, save, see changes. No restart, no lost state.
 

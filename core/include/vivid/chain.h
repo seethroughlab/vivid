@@ -1,7 +1,12 @@
 #pragma once
 
-// Vivid - Chain API
-// Manages operator graph with dependency resolution and state preservation
+/**
+ * @file chain.h
+ * @brief Chain API for managing operator graphs
+ *
+ * Chain manages a collection of operators with automatic dependency resolution
+ * and state preservation across hot-reloads.
+ */
 
 #include <vivid/operator.h>
 #include <memory>
@@ -15,6 +20,30 @@ namespace vivid {
 
 class Context;
 
+/**
+ * @brief Manages an operator graph with dependency resolution
+ *
+ * Chain is the primary way to build vivid projects. Add operators with add<T>(),
+ * connect them with input(), and call process() each frame.
+ *
+ * @par Example
+ * @code
+ * Chain* chain = nullptr;
+ *
+ * void setup(Context& ctx) {
+ *     delete chain;
+ *     chain = new Chain(ctx, 1280, 720);
+ *
+ *     chain->add<Noise>("noise").scale(4.0f);
+ *     chain->add<HSV>("color").input("noise").hueShift(0.3f);
+ *     chain->add<Output>("out").input("color");
+ * }
+ *
+ * void update(Context& ctx) {
+ *     chain->process();
+ * }
+ * @endcode
+ */
 class Chain {
 public:
     Chain() = default;
@@ -26,7 +55,20 @@ public:
     Chain(Chain&&) = default;
     Chain& operator=(Chain&&) = default;
 
-    // Add an operator with a name
+    /**
+     * @brief Add an operator to the chain
+     * @tparam T Operator type (e.g., Noise, Blur, Output)
+     * @tparam Args Constructor argument types
+     * @param name Unique name for this operator
+     * @param args Constructor arguments forwarded to T
+     * @return Reference to the new operator for method chaining
+     *
+     * @par Example
+     * @code
+     * chain->add<Noise>("noise").scale(4.0f).speed(0.5f);
+     * chain->add<Blur>("blur").input("noise").radius(5.0f);
+     * @endcode
+     */
     template<typename T, typename... Args>
     T& add(const std::string& name, Args&&... args) {
         auto op = std::make_unique<T>(std::forward<Args>(args)...);
@@ -38,7 +80,18 @@ public:
         return ref;
     }
 
-    // Get an operator by name with type
+    /**
+     * @brief Get an operator by name with type checking
+     * @tparam T Expected operator type
+     * @param name Operator name
+     * @return Reference to the operator
+     * @throw std::runtime_error if not found or type mismatch
+     *
+     * @par Example
+     * @code
+     * chain->get<Noise>("noise").scale(8.0f);  // Modify existing operator
+     * @endcode
+     */
     template<typename T>
     T& get(const std::string& name) {
         auto it = operators_.find(name);
@@ -52,42 +105,96 @@ public:
         return *typed;
     }
 
-    // Get operator by name (untyped)
+    /**
+     * @brief Get operator by name (untyped)
+     * @param name Operator name
+     * @return Pointer to operator, or nullptr if not found
+     */
     Operator* getByName(const std::string& name);
 
-    // Get name of operator
+    /**
+     * @brief Get name of an operator
+     * @param op Pointer to operator
+     * @return Operator name, or empty string if not found
+     */
     std::string getName(Operator* op) const;
 
-    // Set which operator provides the output
+    /**
+     * @brief Set which operator provides the final output
+     * @param name Name of the output operator
+     */
     void setOutput(const std::string& name) { outputName_ = name; }
+
+    /**
+     * @brief Set output operator by pointer
+     * @param op Pointer to output operator
+     */
     void setOutput(Operator* op);
 
-    // Initialize all operators (call once at setup)
+    /**
+     * @brief Initialize all operators
+     * @param ctx Runtime context
+     *
+     * Called automatically on first process(). Can be called explicitly
+     * if you need operators initialized before the first frame.
+     */
     void init(Context& ctx);
 
-    // Process all operators in dependency order
+    /**
+     * @brief Process all operators in dependency order
+     * @param ctx Runtime context
+     *
+     * Automatically initializes operators on first call, computes
+     * execution order, and processes each operator.
+     */
     void process(Context& ctx);
 
-    // State preservation for hot-reload
+    // -------------------------------------------------------------------------
+    /// @name State Preservation
+    /// @{
+
+    /**
+     * @brief Save states from all operators
+     * @return Map of operator names to state objects
+     */
     std::map<std::string, std::unique_ptr<OperatorState>> saveAllStates();
+
+    /**
+     * @brief Restore states to matching operators
+     * @param states Map of operator names to state objects
+     */
     void restoreAllStates(std::map<std::string, std::unique_ptr<OperatorState>>& states);
 
-    // Check for errors
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Error Handling
+    /// @{
+
+    /// @brief Check if an error has occurred
     bool hasError() const { return !error_.empty(); }
+
+    /// @brief Get the error message
     const std::string& error() const { return error_; }
+
+    /// @brief Clear the error state
     void clearError() { error_.clear(); }
 
-    // Get all operator names
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Introspection
+    /// @{
+
+    /**
+     * @brief Get all operator names in add order
+     * @return Vector of operator names
+     */
     const std::vector<std::string>& operatorNames() const { return orderedNames_; }
 
+    /// @}
+
 private:
-    // Compute execution order using topological sort (Kahn's algorithm)
     void computeExecutionOrder();
-
-    // Build dependency graph from operator inputs
     void buildDependencyGraph();
-
-    // Check for circular dependencies
     bool detectCycle();
 
     std::unordered_map<std::string, std::unique_ptr<Operator>> operators_;

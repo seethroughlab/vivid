@@ -179,14 +179,36 @@ Vivid is designed with AI-assisted development in mind:
 - **Self-Contained Operators** - Each operator is a single .h/.cpp pair with embedded shaders
 - **Consistent Patterns** - All operators follow the same structure (init/process/cleanup)
 - **Fluent API** - Method chaining makes code readable and easy to generate
-- **Comprehensive ROADMAP** - Detailed documentation helps LLMs understand the architecture
+- **Comprehensive Documentation** - LLM-optimized reference docs and recipes
 - **Hot Reload** - Instant feedback loop when iterating with AI assistance
 
-The codebase is structured so an LLM can:
-1. Understand the full architecture from ROADMAP.md
-2. Read any operator as a complete, self-contained example
-3. Generate new operators following established patterns
-4. Modify chain.cpp files without needing deep context
+### Documentation for LLMs
+
+| File | Purpose |
+|------|---------|
+| [docs/LLM-REFERENCE.md](docs/LLM-REFERENCE.md) | Compact operator reference (~200 lines) |
+| [docs/RECIPES.md](docs/RECIPES.md) | Complete chain.cpp examples for common effects |
+| [ROADMAP.md](ROADMAP.md) | Full architecture and development history |
+
+### Using AI Assistants with Your Project
+
+Create a `CLAUDE.md` file in your project folder to give AI assistants context about your specific project:
+
+```markdown
+# My Vivid Project
+
+## Goal
+[What effect you're trying to create]
+
+## Current Chain
+[Brief description of your operator chain]
+
+## Resources
+- docs/LLM-REFERENCE.md - Operator reference
+- docs/RECIPES.md - Effect examples
+```
+
+See `examples/template/` for a complete starter project with CLAUDE.md.
 
 ## License
 

@@ -1,43 +1,106 @@
 #pragma once
 
-// Vivid Effects 2D - Composite Operator
-// Blends two textures using various blend modes
+/**
+ * @file composite.h
+ * @brief Blend two textures together
+ *
+ * Composites two input textures using various blend modes.
+ */
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
 
+/**
+ * @brief Blend modes for compositing
+ */
 enum class BlendMode {
-    Over,       // Standard alpha blending
-    Add,        // Additive
-    Multiply,   // Multiply
-    Screen,     // Screen
-    Overlay,    // Overlay
-    Difference  // Difference
+    Over,       ///< Normal alpha compositing (A over B)
+    Add,        ///< Additive blending (A + B)
+    Multiply,   ///< Multiply (A * B) - darkens
+    Screen,     ///< Screen (1 - (1-A)(1-B)) - lightens
+    Overlay,    ///< Overlay - combines multiply and screen
+    Difference  ///< Absolute difference |A - B|
 };
 
+/**
+ * @brief Blend two textures together
+ *
+ * Composites two input textures using various blend modes with
+ * adjustable opacity.
+ *
+ * @par Parameters
+ * | Name | Type | Range | Default | Description |
+ * |------|------|-------|---------|-------------|
+ * | opacity | float | 0-1 | 1.0 | Blend opacity |
+ *
+ * @par Example
+ * @code
+ * chain->add<Image>("photo").path("assets/photo.jpg");
+ * chain->add<Noise>("noise").scale(4.0f);
+ * chain->add<Composite>("blend")
+ *     .inputA("photo")
+ *     .inputB("noise")
+ *     .mode(BlendMode::Overlay)
+ *     .opacity(0.5f);
+ * @endcode
+ *
+ * @par Inputs
+ * - inputA: Background texture
+ * - inputB: Foreground texture to blend
+ *
+ * @par Output
+ * Blended texture
+ */
 class Composite : public TextureOperator {
 public:
     Composite() = default;
     ~Composite() override;
 
-    // Fluent API
+    // -------------------------------------------------------------------------
+    /// @name Fluent API
+    /// @{
+
+    /**
+     * @brief Set blend mode
+     * @param m Blend mode (Over, Add, Multiply, Screen, Overlay, Difference)
+     * @return Reference for chaining
+     */
     Composite& mode(BlendMode m) { m_mode = m; return *this; }
+
+    /**
+     * @brief Set blend opacity
+     * @param o Opacity (0-1, default 1.0)
+     * @return Reference for chaining
+     */
     Composite& opacity(float o) { m_opacity = o; return *this; }
 
-    // Input connections (A = base, B = blend layer)
+    /**
+     * @brief Set background input (A)
+     * @param op Background operator
+     * @return Reference for chaining
+     */
     Composite& inputA(TextureOperator* op) { setInput(0, op); return *this; }
+
+    /**
+     * @brief Set foreground input (B)
+     * @param op Foreground operator
+     * @return Reference for chaining
+     */
     Composite& inputB(TextureOperator* op) { setInput(1, op); return *this; }
 
-    // Operator interface
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Operator Interface
+    /// @{
+
     void init(Context& ctx) override;
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Composite"; }
 
     std::vector<ParamDecl> params() override {
-        // Enum displayed as string with mode name embedded
         std::string modeStr = std::string("mode: ") + modeName(m_mode);
         return {
             {modeStr, ParamType::String, 0.0f, 0.0f, {}},
@@ -45,7 +108,13 @@ public:
         };
     }
 
-    // Get blend mode name for display
+    /// @}
+
+    /**
+     * @brief Get blend mode display name
+     * @param m Blend mode
+     * @return Human-readable name
+     */
     static const char* modeName(BlendMode m) {
         switch (m) {
             case BlendMode::Over: return "Over";
@@ -62,18 +131,15 @@ private:
     void createPipeline(Context& ctx);
     void updateBindGroup(Context& ctx);
 
-    // Parameters
     BlendMode m_mode = BlendMode::Over;
     Param<float> m_opacity{"opacity", 1.0f, 0.0f, 1.0f};
 
-    // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;
     WGPUBindGroup m_bindGroup = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUSampler m_sampler = nullptr;
 
-    // Track input textures to detect changes
     WGPUTextureView m_lastInputA = nullptr;
     WGPUTextureView m_lastInputB = nullptr;
 

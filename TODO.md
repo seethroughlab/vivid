@@ -28,4 +28,13 @@
     - Fixed HSV effect: Replaced buggy compact rgb2hsv/hsv2rgb functions with clearer standard implementations
 [x] Why are you setting VK_ICD_FILENAMES, VK_DRIVER_FILES, and DYLD_LIBRARY_PATH when you launch examples. We don't need those anymore, right?
 [x] When you run a vivid program, the imgui.ini file should be saved in the local folder, not in the root folder
-[ ] What changes can we make to make vivid even more LLM-friendly? Should we create better documentation they would make it easier for an LLM to quickly understand vivid? Should we enforce better user workflow, such as roadmaps and plans? Should we use other well known programing patterns like Fluent? Or something else completely?
+[x] What changes can we make to make vivid even more LLM-friendly? Should we create better documentation they would make it easier for an LLM to quickly understand vivid? Should we enforce better user workflow, such as roadmaps and plans? Should we use other well known programing patterns like Fluent? Or something else completely?
+    - Created docs/LLM-REFERENCE.md - compact operator reference for LLMs
+    - Created docs/RECIPES.md - complete chain.cpp examples for common effects
+    - Created examples/template/ - well-commented starter project with CLAUDE.md
+    - Updated README.md with LLM documentation section and CLAUDE.md guidance
+[x] Set up Doxygen for autodoc documentation
+    - Created Doxyfile with v3 paths
+    - Added Doxygen-style comments to core headers (operator.h, context.h, chain.h, param.h)
+    - Added Doxygen-style comments to key operator headers (noise.h, output.h, composite.h, texture_operator.h)
+    - Added `make docs` target to CMakeLists.txt (requires Doxygen to be installed)
