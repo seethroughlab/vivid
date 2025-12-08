@@ -392,6 +392,27 @@ int main(int argc, char** argv) {
             wgpuSurfaceConfigure(surface, &config);
         }
 
+        // Handle fullscreen change (from ctx.fullscreen() API)
+        if (ctx.fullscreenChanged()) {
+            if (ctx.fullscreen() && !isFullscreen) {
+                // Save windowed position and size
+                glfwGetWindowPos(window, &windowedX, &windowedY);
+                glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
+
+                // Get primary monitor
+                GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+                // Enter fullscreen
+                glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+                isFullscreen = true;
+            } else if (!ctx.fullscreen() && isFullscreen) {
+                // Exit fullscreen - restore windowed mode
+                glfwSetWindowMonitor(window, nullptr, windowedX, windowedY, windowedWidth, windowedHeight, 0);
+                isFullscreen = false;
+            }
+        }
+
         // Skip frame if minimized
         if (width == 0 || height == 0) {
             ctx.endFrame();

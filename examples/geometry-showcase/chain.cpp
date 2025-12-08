@@ -51,6 +51,9 @@ static glm::vec3 getShapePosition(int index) {
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
+    // Uncomment to start in fullscreen:
+    // ctx.fullscreen(true);
+
     // =========================================================================
     // SCENE COMPOSER - Entry point for all geometry
     // =========================================================================

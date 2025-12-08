@@ -12,6 +12,9 @@ using namespace vivid::render3d;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
+    // Uncomment to start in fullscreen:
+    // ctx.fullscreen(true);
+
     // Create a sphere primitive
     auto& sphere = chain.add<Sphere>("sphere")
         .radius(1.0f)

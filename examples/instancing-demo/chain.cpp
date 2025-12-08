@@ -29,6 +29,9 @@ static std::vector<AsteroidState> asteroids;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
+    // Start in fullscreen (comment out for windowed)
+    ctx.fullscreen(true);
+
     // Clear static state for hot-reload safety
     asteroids.clear();
 
