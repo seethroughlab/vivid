@@ -374,7 +374,8 @@ struct Uniforms {
     emissiveStrength: f32,
     textureFlags: u32,
     lightCount: u32,
-    _pad0: vec2f,
+    alphaCutoff: f32,
+    alphaMode: u32,
     lights: array<Light, 4>,
 }
 
@@ -514,9 +515,23 @@ fn calculateLightContribution(
     return (diffuse + specular) * radiance * NdotL;
 }
 
+// Alpha mode constants
+const ALPHA_OPAQUE: u32 = 0u;
+const ALPHA_MASK: u32 = 1u;
+const ALPHA_BLEND: u32 = 2u;
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let baseColorSample = textureSample(baseColorMap, materialSampler, in.uv);
+
+    // Compute final alpha
+    let finalAlpha = baseColorSample.a * uniforms.baseColorFactor.a * in.color.a;
+
+    // Alpha mask mode: discard fragments below cutoff
+    if (uniforms.alphaMode == ALPHA_MASK && finalAlpha < uniforms.alphaCutoff) {
+        discard;
+    }
+
     let normalSample = textureSample(normalMap, materialSampler, in.uv);
     let metallicSample = textureSample(metallicMap, materialSampler, in.uv).r;
     let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).r;
@@ -557,7 +572,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     color = color / (color + vec3f(1.0));
     color = pow(color, vec3f(1.0 / 2.2));
 
-    return vec4f(color, baseColorSample.a * uniforms.baseColorFactor.a * in.color.a);
+    // For opaque mode, use alpha 1.0; for mask/blend modes, use computed alpha
+    var outAlpha = finalAlpha;
+    if (uniforms.alphaMode == ALPHA_OPAQUE) {
+        outAlpha = 1.0;
+    }
+
+    return vec4f(color, outAlpha);
 }
 )";
 
@@ -598,7 +619,8 @@ struct Uniforms {
     emissiveStrength: f32,
     textureFlags: u32,
     lightCount: u32,
-    _pad0: vec2f,
+    alphaCutoff: f32,
+    alphaMode: u32,
     lights: array<Light, 4>,
 }
 
@@ -747,9 +769,23 @@ fn calculateLightContribution(
     return (diffuse + specular) * radiance * NdotL;
 }
 
+// Alpha mode constants
+const ALPHA_OPAQUE: u32 = 0u;
+const ALPHA_MASK: u32 = 1u;
+const ALPHA_BLEND: u32 = 2u;
+
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let baseColorSample = textureSample(baseColorMap, materialSampler, in.uv);
+
+    // Compute final alpha
+    let finalAlpha = baseColorSample.a * uniforms.baseColorFactor.a * in.color.a;
+
+    // Alpha mask mode: discard fragments below cutoff
+    if (uniforms.alphaMode == ALPHA_MASK && finalAlpha < uniforms.alphaCutoff) {
+        discard;
+    }
+
     let normalSample = textureSample(normalMap, materialSampler, in.uv);
     let metallicSample = textureSample(metallicMap, materialSampler, in.uv).r;
     let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).r;
@@ -807,7 +843,13 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     color = color / (color + vec3f(1.0));
     color = pow(color, vec3f(1.0 / 2.2));
 
-    return vec4f(color, baseColorSample.a * uniforms.baseColorFactor.a * in.color.a);
+    // For opaque mode, use alpha 1.0; for mask/blend modes, use computed alpha
+    var outAlpha = finalAlpha;
+    if (uniforms.alphaMode == ALPHA_OPAQUE) {
+        outAlpha = 1.0;
+    }
+
+    return vec4f(color, outAlpha);
 }
 )";
 
@@ -924,7 +966,8 @@ struct PBRTexturedUniforms {
     float emissiveStrength;     // f32: 4 bytes, offset 252
     uint32_t textureFlags;      // u32: 4 bytes, offset 256
     uint32_t lightCount;        // u32: 4 bytes, offset 260
-    float _pad0[2];             // 8 bytes, offset 264
+    float alphaCutoff;          // f32: 4 bytes, offset 264 (for alpha mask mode)
+    uint32_t alphaMode;         // u32: 4 bytes, offset 268 (0=opaque, 1=mask, 2=blend)
     GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 272
 };                               // Total: 528 bytes
 
@@ -1808,6 +1851,8 @@ void Render3D::process(Context& ctx) {
             uniforms.emissiveStrength = activeMaterial->getEmissiveStrength();
             uniforms.textureFlags = 0;
             uniforms.lightCount = lightCount;
+            uniforms.alphaCutoff = activeMaterial->getAlphaCutoff();
+            uniforms.alphaMode = static_cast<uint32_t>(activeMaterial->getAlphaMode());
             memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
 
             size_t offset = i * m_pbrUniformAlignment;

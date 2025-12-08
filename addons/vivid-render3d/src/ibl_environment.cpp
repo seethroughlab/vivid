@@ -454,6 +454,102 @@ bool IBLEnvironment::loadHDR(Context& ctx, const std::string& hdrPath) {
     return false;
 }
 
+bool IBLEnvironment::loadDefault(Context& ctx) {
+    if (!m_initialized && !init(ctx)) {
+        return false;
+    }
+
+    // Generate a simple procedural HDR environment (studio lighting)
+    // Gradient sky transitioning from warm horizon to cool zenith
+    // with a subtle ground plane
+
+    const int width = 512;
+    const int height = 256;
+    std::vector<float> hdrData(width * height * 3);
+
+    for (int y = 0; y < height; y++) {
+        // Normalized v coordinate: 0 = top (zenith), 1 = bottom (nadir)
+        float v = static_cast<float>(y) / static_cast<float>(height - 1);
+
+        // Sky gradient: cool blue at zenith, warm at horizon
+        glm::vec3 skyColor;
+        if (v < 0.5f) {
+            // Upper hemisphere (sky)
+            float t = v * 2.0f;  // 0 at zenith, 1 at horizon
+
+            // Zenith color (cool blue)
+            glm::vec3 zenith(0.3f, 0.5f, 0.9f);
+            // Horizon color (warm white/cream)
+            glm::vec3 horizon(1.0f, 0.95f, 0.85f);
+
+            // Smooth gradient with easing
+            float blend = std::pow(t, 0.7f);
+            skyColor = glm::mix(zenith, horizon, blend);
+
+            // Add slight brightness boost near horizon
+            float horizonGlow = std::exp(-std::pow((t - 1.0f) * 3.0f, 2.0f));
+            skyColor += glm::vec3(0.3f, 0.25f, 0.2f) * horizonGlow;
+        } else {
+            // Lower hemisphere (ground plane reflection)
+            float t = (v - 0.5f) * 2.0f;  // 0 at horizon, 1 at nadir
+
+            // Ground color (neutral gray with slight warmth)
+            glm::vec3 ground(0.15f, 0.15f, 0.14f);
+            // Horizon reflection (brighter)
+            glm::vec3 horizonReflect(0.4f, 0.38f, 0.35f);
+
+            float blend = std::pow(t, 0.5f);
+            skyColor = glm::mix(horizonReflect, ground, blend);
+        }
+
+        // Apply HDR scaling (values > 1 for bright areas)
+        skyColor *= 1.5f;
+
+        for (int x = 0; x < width; x++) {
+            int idx = (y * width + x) * 3;
+            hdrData[idx + 0] = skyColor.r;
+            hdrData[idx + 1] = skyColor.g;
+            hdrData[idx + 2] = skyColor.b;
+        }
+    }
+
+    std::cout << "IBLEnvironment: Generated default procedural environment\n";
+
+    // Convert equirectangular to cubemap
+    CubemapData envCubemap = equirectangularToCubemap(hdrData.data(), width, height, CUBEMAP_SIZE);
+
+    if (!envCubemap.valid()) {
+        std::cerr << "IBLEnvironment: Failed to convert default environment to cubemap\n";
+        return false;
+    }
+
+    // Clean up old maps if reloading
+    destroyCubemap(m_irradianceMap);
+    destroyCubemap(m_prefilteredMap);
+
+    // Compute irradiance map (diffuse IBL)
+    m_irradianceMap = computeIrradiance(envCubemap, IRRADIANCE_SIZE);
+
+    // Compute prefiltered radiance map (specular IBL)
+    m_prefilteredMap = computeRadiance(envCubemap, PREFILTER_SIZE, PREFILTER_MIP_LEVELS);
+
+    // Create BRDF LUT if not already created
+    if (!m_brdfLUT) {
+        createBRDFLUT(BRDF_LUT_SIZE);
+    }
+
+    // Clean up source cubemap
+    destroyCubemap(envCubemap);
+
+    if (isLoaded()) {
+        std::cout << "IBLEnvironment: Default environment loaded successfully\n";
+        return true;
+    }
+
+    std::cerr << "IBLEnvironment: Failed to generate default IBL maps\n";
+    return false;
+}
+
 WGPUTextureView IBLEnvironment::irradianceView() const {
     return m_irradianceMap.view;
 }

@@ -1,6 +1,6 @@
 # Vivid
 
-A creative coding framework for real-time graphics with hot-reloadable C++ chains.
+A creative coding framework for real-time graphics with hot-reloadable C++ chains. Designed from the ground up to be friendly with coding agents/LLMs.
 
 ## Features
 

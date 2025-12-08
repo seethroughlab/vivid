@@ -67,7 +67,7 @@
 [x] I'd like to introduce the idea of a Geomery Operator that will show up in the node visualization. So, for the boolean operation, the user will create multiple geometry generation operators, and then fed into the boolean operator, which is fed into the scene, and then into the renderer3d, and then the output: geometry operator -> boolean operator(s) -> scene -> renderer3d -> 2d effects (optional) -> output.  Note that a geometry operator should NOT be a valid output node - only a texture operator is a valid output operator. 
 [x] zsh: segmentation fault  ./build/bin/vivid examples/geometry-showcase
 [x] regarding geometry-showcase, we just altered it so that the geometry shows up in the chain visualizer. It seems to me that this should be automatic, not a choice the user makes. Can you explain why there are multiple ways to create geometry? What are the pros and cons of that?
-[ ] does imnodes support zooming and scrolling? We need some way to navigate the node graph.
+[x] does imnodes support zooming and scrolling? We need some way to navigate the node graph.
 [x] geometry operators used to show previews of the gometry rotating. but now it just shows the number of vertices. what happened?
 [x] I'd like ROADMAP.md to reflect the recent decisions we've made about 1) the new understanding of Geometry versus Mesh, and 2) the idea that cameras and lights are nodes that appear in the chain visualization. You don't need to explain that it was a CHANGE to the appraoch -- just explain the current approach.
 [x] Operators with different OutputKinds should be colored differently in the chain visualization.
@@ -83,4 +83,5 @@
 [ ] Windows: It seems like display settings were customized for the Mac Retina display, but on windows things look too big.
 [x] Is it possible to add smooth shading in geometry-showcase?
 [x] instancing-demo -- each asteroid should have variations in scale
-[ ] I'm not sure hot-relading is working. It seems to crash when chain.cpp is edited.
+[x] I'm not sure hot-relading is working. It seems to crash when chain.cpp is edited.
+[ ] In the Readme, what is a more graceful way to say "Designed from the ground up to be friendly with coding agents/LLMs."

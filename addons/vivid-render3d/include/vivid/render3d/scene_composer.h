@@ -345,8 +345,14 @@ public:
             if (entry.geometry) {
                 Mesh* mesh = entry.geometry->outputMesh();
                 if (mesh) {
+                    // Get material: prefer explicit entry.material, fallback to geometry's outputMaterial()
+                    TexturedMaterial* mat = entry.material;
+                    if (!mat) {
+                        mat = entry.geometry->outputMaterial();
+                    }
+
                     // Add to scene with material
-                    SceneObject obj(mesh, entry.transform, entry.color, entry.material);
+                    SceneObject obj(mesh, entry.transform, entry.color, mat);
                     m_scene.objects().push_back(obj);
                 }
             }

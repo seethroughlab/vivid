@@ -55,6 +55,12 @@ public:
     /// @return true if loading succeeded
     bool loadHDR(Context& ctx, const std::string& hdrPath);
 
+    /// Load a default procedural environment (studio lighting)
+    /// Generates a simple gradient sky with ground plane - no external files needed
+    /// @param ctx Vivid context
+    /// @return true if generation succeeded
+    bool loadDefault(Context& ctx);
+
     /// Release all GPU resources
     void cleanup();
 

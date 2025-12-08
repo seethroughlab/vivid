@@ -71,6 +71,32 @@ ImageDataHDR loadImageHDR(const std::string& path) {
     return result;
 }
 
+ImageData loadImageFromMemory(const uint8_t* data, size_t size) {
+    ImageData result;
+
+    if (!data || size == 0) {
+        std::cerr << "vivid-io: Invalid memory buffer for image loading" << std::endl;
+        return result;
+    }
+
+    int width, height, channels;
+    unsigned char* pixels = stbi_load_from_memory(data, static_cast<int>(size), &width, &height, &channels, 4);
+
+    if (!pixels) {
+        std::cerr << "vivid-io: Failed to decode image from memory - "
+                  << stbi_failure_reason() << std::endl;
+        return result;
+    }
+
+    result.width = width;
+    result.height = height;
+    result.channels = channels;
+    result.pixels.assign(pixels, pixels + (width * height * 4));
+
+    stbi_image_free(pixels);
+    return result;
+}
+
 ImageDataHDR loadImageHDRFromMemory(const uint8_t* data, size_t size) {
     ImageDataHDR result;
 

@@ -27,9 +27,15 @@
 #include <glm/glm.hpp>
 #include <webgpu/webgpu.h>
 #include <string>
+#include <vector>
+#include <cstdint>
 
 namespace vivid {
 class Context;
+}
+
+namespace vivid::io {
+struct ImageData;  // Forward declaration
 }
 
 namespace vivid::render3d {
@@ -70,6 +76,28 @@ public:
     /// Set emissive texture path
     TexturedMaterial& emissive(const std::string& path);
 
+    // -------------------------------------------------------------------------
+    /// @name Texture Maps from Memory (for embedded GLTF textures)
+    /// @{
+
+    /// Set base color texture from raw image data
+    TexturedMaterial& baseColorFromData(const io::ImageData& data);
+
+    /// Set normal map from raw image data
+    TexturedMaterial& normalFromData(const io::ImageData& data);
+
+    /// Set metallic texture from raw image data
+    TexturedMaterial& metallicFromData(const io::ImageData& data);
+
+    /// Set roughness texture from raw image data
+    TexturedMaterial& roughnessFromData(const io::ImageData& data);
+
+    /// Set ambient occlusion texture from raw image data
+    TexturedMaterial& aoFromData(const io::ImageData& data);
+
+    /// Set emissive texture from raw image data
+    TexturedMaterial& emissiveFromData(const io::ImageData& data);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Material Factors (multiplied with texture values)
@@ -97,6 +125,36 @@ public:
 
     /// Set emissive intensity multiplier
     TexturedMaterial& emissiveStrength(float strength);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Alpha and Culling
+    /// @{
+
+    /// Alpha blending mode
+    enum class AlphaMode {
+        Opaque,  ///< No transparency (default)
+        Mask,    ///< Binary transparency using cutoff threshold
+        Blend    ///< Full alpha blending
+    };
+
+    /// Set alpha blending mode
+    TexturedMaterial& alphaMode(AlphaMode mode);
+
+    /// Set alpha cutoff threshold (for Mask mode, default: 0.5)
+    TexturedMaterial& alphaCutoff(float cutoff);
+
+    /// Enable/disable double-sided rendering (default: false)
+    TexturedMaterial& doubleSided(bool enabled);
+
+    /// Get alpha mode
+    AlphaMode getAlphaMode() const { return m_alphaMode; }
+
+    /// Get alpha cutoff
+    float getAlphaCutoff() const { return m_alphaCutoff; }
+
+    /// Is double-sided?
+    bool isDoubleSided() const { return m_doubleSided; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -144,12 +202,18 @@ public:
 private:
     struct TextureSlot {
         std::string path;
+        // For from-memory loading (embedded textures)
+        std::vector<uint8_t> pendingPixels;
+        int pendingWidth = 0;
+        int pendingHeight = 0;
         WGPUTexture texture = nullptr;
         WGPUTextureView view = nullptr;
         bool needsLoad = false;
+        bool hasData = false;       // True if pendingPixels should be used instead of path
     };
 
     void loadTexture(Context& ctx, TextureSlot& slot, bool srgb);
+    void loadTextureFromData(Context& ctx, TextureSlot& slot, bool srgb);
     void releaseTexture(TextureSlot& slot);
     void createDefaultTextures(Context& ctx);
     void createSampler(Context& ctx);
@@ -189,6 +253,11 @@ private:
     float m_aoStrength = 1.0f;
     glm::vec3 m_emissiveFallback{0.0f, 0.0f, 0.0f};
     float m_emissiveStrength = 1.0f;
+
+    // Alpha and culling
+    AlphaMode m_alphaMode = AlphaMode::Opaque;
+    float m_alphaCutoff = 0.5f;
+    bool m_doubleSided = false;
 
     bool m_initialized = false;
 };

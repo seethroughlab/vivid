@@ -112,6 +112,15 @@ public:
      */
     virtual const MeshBuilder* outputBuilder() const { return m_builder.vertexCount() > 0 ? &m_builder : nullptr; }
 
+    /**
+     * @brief Get material for this mesh (for textured models like GLTF)
+     * @return Pointer to TexturedMaterial, or nullptr if none
+     *
+     * Override this in subclasses that load materials (e.g., GLTFLoader).
+     * SceneComposer will check this during process() to get materials dynamically.
+     */
+    virtual class TexturedMaterial* outputMaterial() { return nullptr; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Input Connections

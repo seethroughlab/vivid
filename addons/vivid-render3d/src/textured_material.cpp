@@ -1,8 +1,8 @@
 // TexturedMaterial - PBR material with texture map support
 
 #include <vivid/render3d/textured_material.h>
+#include <vivid/io/image_loader.h>  // Full definition for io::ImageData
 #include <vivid/effects/texture_operator.h>  // for toStringView
-#include <vivid/io/image_loader.h>
 #include <vivid/context.h>
 #include <iostream>
 
@@ -57,6 +57,64 @@ TexturedMaterial& TexturedMaterial::emissive(const std::string& path) {
 }
 
 // -------------------------------------------------------------------------
+// From-Data Setters (for embedded GLTF textures)
+// -------------------------------------------------------------------------
+
+TexturedMaterial& TexturedMaterial::baseColorFromData(const io::ImageData& data) {
+    m_baseColor.pendingPixels = data.pixels;
+    m_baseColor.pendingWidth = data.width;
+    m_baseColor.pendingHeight = data.height;
+    m_baseColor.hasData = true;
+    m_baseColor.needsLoad = true;
+    return *this;
+}
+
+TexturedMaterial& TexturedMaterial::normalFromData(const io::ImageData& data) {
+    m_normal.pendingPixels = data.pixels;
+    m_normal.pendingWidth = data.width;
+    m_normal.pendingHeight = data.height;
+    m_normal.hasData = true;
+    m_normal.needsLoad = true;
+    return *this;
+}
+
+TexturedMaterial& TexturedMaterial::metallicFromData(const io::ImageData& data) {
+    m_metallic.pendingPixels = data.pixels;
+    m_metallic.pendingWidth = data.width;
+    m_metallic.pendingHeight = data.height;
+    m_metallic.hasData = true;
+    m_metallic.needsLoad = true;
+    return *this;
+}
+
+TexturedMaterial& TexturedMaterial::roughnessFromData(const io::ImageData& data) {
+    m_roughness.pendingPixels = data.pixels;
+    m_roughness.pendingWidth = data.width;
+    m_roughness.pendingHeight = data.height;
+    m_roughness.hasData = true;
+    m_roughness.needsLoad = true;
+    return *this;
+}
+
+TexturedMaterial& TexturedMaterial::aoFromData(const io::ImageData& data) {
+    m_ao.pendingPixels = data.pixels;
+    m_ao.pendingWidth = data.width;
+    m_ao.pendingHeight = data.height;
+    m_ao.hasData = true;
+    m_ao.needsLoad = true;
+    return *this;
+}
+
+TexturedMaterial& TexturedMaterial::emissiveFromData(const io::ImageData& data) {
+    m_emissive.pendingPixels = data.pixels;
+    m_emissive.pendingWidth = data.width;
+    m_emissive.pendingHeight = data.height;
+    m_emissive.hasData = true;
+    m_emissive.needsLoad = true;
+    return *this;
+}
+
+// -------------------------------------------------------------------------
 // Fallback Value Setters
 // -------------------------------------------------------------------------
 
@@ -106,10 +164,35 @@ TexturedMaterial& TexturedMaterial::emissiveStrength(float strength) {
 }
 
 // -------------------------------------------------------------------------
+// Alpha and Culling
+// -------------------------------------------------------------------------
+
+TexturedMaterial& TexturedMaterial::alphaMode(AlphaMode mode) {
+    m_alphaMode = mode;
+    return *this;
+}
+
+TexturedMaterial& TexturedMaterial::alphaCutoff(float cutoff) {
+    m_alphaCutoff = cutoff;
+    return *this;
+}
+
+TexturedMaterial& TexturedMaterial::doubleSided(bool enabled) {
+    m_doubleSided = enabled;
+    return *this;
+}
+
+// -------------------------------------------------------------------------
 // Texture Loading
 // -------------------------------------------------------------------------
 
 void TexturedMaterial::loadTexture(Context& ctx, TextureSlot& slot, bool srgb) {
+    // Route to data-based loading if we have embedded data
+    if (slot.hasData) {
+        loadTextureFromData(ctx, slot, srgb);
+        return;
+    }
+
     if (slot.path.empty()) return;
 
     // Load image via vivid-io
@@ -174,6 +257,73 @@ void TexturedMaterial::loadTexture(Context& ctx, TextureSlot& slot, bool srgb) {
     slot.needsLoad = false;
 
     std::cout << "TexturedMaterial: Loaded " << slot.path << " ("
+              << width << "x" << height << ")" << std::endl;
+}
+
+void TexturedMaterial::loadTextureFromData(Context& ctx, TextureSlot& slot, bool srgb) {
+    if (slot.pendingPixels.empty() || slot.pendingWidth <= 0 || slot.pendingHeight <= 0) {
+        std::cerr << "TexturedMaterial: Invalid embedded texture data" << std::endl;
+        slot.needsLoad = false;
+        slot.hasData = false;
+        return;
+    }
+
+    int width = slot.pendingWidth;
+    int height = slot.pendingHeight;
+
+    // Create GPU texture
+    WGPUTextureDescriptor texDesc = {};
+    texDesc.label = toStringView("Material Texture (embedded)");
+    texDesc.size.width = static_cast<uint32_t>(width);
+    texDesc.size.height = static_cast<uint32_t>(height);
+    texDesc.size.depthOrArrayLayers = 1;
+    texDesc.mipLevelCount = 1;
+    texDesc.sampleCount = 1;
+    texDesc.dimension = WGPUTextureDimension_2D;
+    texDesc.format = srgb ? WGPUTextureFormat_RGBA8UnormSrgb : WGPUTextureFormat_RGBA8Unorm;
+    texDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+
+    slot.texture = wgpuDeviceCreateTexture(ctx.device(), &texDesc);
+
+    // Create texture view
+    WGPUTextureViewDescriptor viewDesc = {};
+    viewDesc.format = texDesc.format;
+    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.baseMipLevel = 0;
+    viewDesc.mipLevelCount = 1;
+    viewDesc.baseArrayLayer = 0;
+    viewDesc.arrayLayerCount = 1;
+    viewDesc.aspect = WGPUTextureAspect_All;
+    slot.view = wgpuTextureCreateView(slot.texture, &viewDesc);
+
+    // Upload pixel data
+    WGPUTexelCopyTextureInfo destination = {};
+    destination.texture = slot.texture;
+    destination.mipLevel = 0;
+    destination.origin = {0, 0, 0};
+    destination.aspect = WGPUTextureAspect_All;
+
+    WGPUTexelCopyBufferLayout dataLayout = {};
+    dataLayout.offset = 0;
+    dataLayout.bytesPerRow = static_cast<uint32_t>(width * 4);
+    dataLayout.rowsPerImage = static_cast<uint32_t>(height);
+
+    WGPUExtent3D writeSize = {
+        static_cast<uint32_t>(width),
+        static_cast<uint32_t>(height),
+        1
+    };
+
+    wgpuQueueWriteTexture(ctx.queue(), &destination, slot.pendingPixels.data(),
+                          slot.pendingPixels.size(), &dataLayout, &writeSize);
+
+    slot.needsLoad = false;
+    slot.hasData = false;
+    slot.pendingPixels.clear();  // Free the CPU-side data
+    slot.pendingWidth = 0;
+    slot.pendingHeight = 0;
+
+    std::cout << "TexturedMaterial: Loaded embedded texture ("
               << width << "x" << height << ")" << std::endl;
 }
 

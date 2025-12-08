@@ -4,6 +4,15 @@
 
 include(FetchContent)
 
+# Fetch cgltf for GLTF model loading (single-header library)
+FetchContent_Declare(
+    cgltf
+    GIT_REPOSITORY https://github.com/jkuhlmann/cgltf.git
+    GIT_TAG v1.14
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(cgltf)
+
 # Fetch Manifold for CSG boolean operations
 FetchContent_Declare(
     manifold
@@ -34,12 +43,14 @@ add_library(vivid-render3d SHARED
     src/textured_material.cpp
     src/ibl_environment.cpp
     src/instanced_render3d.cpp
+    src/gltf_loader.cpp
 )
 
 target_include_directories(vivid-render3d PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/core/include
     ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
+    ${cgltf_SOURCE_DIR}
 )
 
 target_link_libraries(vivid-render3d PUBLIC

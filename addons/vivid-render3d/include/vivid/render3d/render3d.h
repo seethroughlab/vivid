@@ -18,6 +18,7 @@
 #include <vivid/render3d/primitives.h>
 #include <vivid/render3d/boolean.h>
 #include <vivid/render3d/scene_composer.h>
+#include <vivid/render3d/gltf_loader.h>
 
 // Camera and light operators (node-based workflow)
 #include <vivid/render3d/camera_operator.h>

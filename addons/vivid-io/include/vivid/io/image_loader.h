@@ -31,6 +31,12 @@ struct ImageDataHDR {
 /// @return ImageData with RGBA pixels, or empty ImageData on failure
 ImageData loadImage(const std::string& path);
 
+/// Load an LDR image from a memory buffer (for embedded GLTF textures)
+/// @param data Pointer to encoded image file data in memory (PNG, JPG, etc.)
+/// @param size Size of the data in bytes
+/// @return ImageData with RGBA pixels, or empty on failure
+ImageData loadImageFromMemory(const uint8_t* data, size_t size);
+
 /// Load an HDR image (.hdr, .exr)
 /// @param path Path to the HDR image file
 /// @return ImageDataHDR with RGB float pixels, or empty ImageDataHDR on failure
