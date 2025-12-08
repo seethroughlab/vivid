@@ -159,8 +159,10 @@ Edit your code while it's running - changes apply automatically.
 - `ShadingMode::Gouraud` - Per-vertex shading (PS1-style)
 - `ShadingMode::Unlit` - No lighting, pure color/texture
 
-**Lighting:**
-- `DirectionalLight` - Sun-like light with direction, color, intensity
+**Lighting (supports up to 4 lights):**
+- `DirectionalLight` - Sun-like parallel rays with direction, color, intensity
+- `PointLight` - Omnidirectional light with position, color, intensity, range
+- `SpotLight` - Cone-shaped light with position, direction, angle, falloff
 - `CameraOperator` - Perspective camera with orbit controls
 
 **PBR Materials:**
@@ -308,6 +310,7 @@ vivid/
 | `particles` | 2D particle system with physics |
 | `geometry-showcase` | All 3D primitives and CSG operations |
 | `pbr-demo` | PBR rendering with metallic sphere |
+| `multi-lights` | Multiple light types (directional, point, spot) |
 | `textured-pbr-demo` | PBR materials with texture maps and IBL |
 | `retro-crt` | Full retro post-processing pipeline |
 | `canvas-demo` | Procedural 2D drawing |

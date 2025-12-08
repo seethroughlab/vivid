@@ -22,3 +22,6 @@
 // Camera and light operators (node-based workflow)
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/render3d/light_operators.h>
+
+// Instanced rendering
+#include <vivid/render3d/instanced_render3d.h>

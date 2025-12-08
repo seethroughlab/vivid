@@ -33,6 +33,7 @@ add_library(vivid-render3d SHARED
     src/material.cpp
     src/textured_material.cpp
     src/ibl_environment.cpp
+    src/instanced_render3d.cpp
 )
 
 target_include_directories(vivid-render3d PUBLIC

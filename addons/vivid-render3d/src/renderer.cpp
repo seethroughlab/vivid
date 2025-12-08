@@ -7,6 +7,7 @@
 #include <vivid/context.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
+#include <cmath>
 
 namespace vivid::render3d {
 
@@ -16,18 +17,37 @@ namespace {
 constexpr WGPUTextureFormat DEPTH_FORMAT = WGPUTextureFormat_Depth24Plus;
 // toStringView is inherited from vivid::effects (texture_operator.h)
 
-// Flat/Gouraud/Unlit shader source
+// Flat/Gouraud/Unlit shader source with multi-light support
 const char* FLAT_SHADER_SOURCE = R"(
+const MAX_LIGHTS: u32 = 4u;
+const LIGHT_DIRECTIONAL: u32 = 0u;
+const LIGHT_POINT: u32 = 1u;
+const LIGHT_SPOT: u32 = 2u;
+const EPSILON: f32 = 0.0001;
+
+struct Light {
+    position: vec3f,
+    range: f32,
+    direction: vec3f,
+    spotAngle: f32,
+    color: vec3f,
+    intensity: f32,
+    lightType: u32,
+    spotBlend: f32,
+    _pad: vec2f,
+}
+
 struct Uniforms {
     mvp: mat4x4f,
     model: mat4x4f,
-    lightDir: vec3f,
-    _pad1: f32,
-    lightColor: vec3f,
-    ambient: f32,
+    worldPos: vec3f,  // Not used in flat shading but kept for alignment
+    _pad0: f32,
     baseColor: vec4f,
+    ambient: f32,
     shadingMode: u32,
-    _pad2: vec3f,
+    lightCount: u32,
+    _pad1: f32,
+    lights: array<Light, 4>,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -35,32 +55,77 @@ struct Uniforms {
 struct VertexInput {
     @location(0) position: vec3f,
     @location(1) normal: vec3f,
-    @location(2) tangent: vec4f,  // xyz = tangent, w = handedness (unused in flat shading)
+    @location(2) tangent: vec4f,
     @location(3) uv: vec2f,
     @location(4) color: vec4f,
 };
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @location(0) worldNormal: vec3f,
-    @location(1) uv: vec2f,
-    @location(2) color: vec4f,
-    @location(3) lighting: f32,
+    @location(0) worldPos: vec3f,
+    @location(1) worldNormal: vec3f,
+    @location(2) uv: vec2f,
+    @location(3) color: vec4f,
+    @location(4) lighting: vec3f,  // For Gouraud (per-vertex) lighting
 };
+
+fn getAttenuation(distance: f32, range: f32) -> f32 {
+    if (range <= 0.0) { return 1.0; }
+    let d = max(distance, EPSILON);
+    let att = 1.0 / (d * d);
+    let falloff = saturate(1.0 - pow(d / range, 4.0));
+    return att * falloff * falloff;
+}
+
+fn getSpotFactor(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f32) -> f32 {
+    let cosAngle = dot(lightDir, spotDir);
+    return saturate((cosAngle - outerAngle) / max(innerAngle - outerAngle, EPSILON));
+}
+
+fn calculateSimpleLighting(worldPos: vec3f, N: vec3f) -> vec3f {
+    var Lo = vec3f(0.0);
+    let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
+    for (var i = 0u; i < lightCount; i++) {
+        let light = uniforms.lights[i];
+        var L: vec3f;
+        var attenuation: f32 = 1.0;
+
+        if (light.lightType == LIGHT_DIRECTIONAL) {
+            L = normalize(light.direction);
+        } else if (light.lightType == LIGHT_POINT) {
+            let lightVec = light.position - worldPos;
+            let dist = length(lightVec);
+            L = lightVec / max(dist, EPSILON);
+            attenuation = getAttenuation(dist, light.range);
+        } else {
+            let lightVec = light.position - worldPos;
+            let dist = length(lightVec);
+            L = lightVec / max(dist, EPSILON);
+            attenuation = getAttenuation(dist, light.range);
+            attenuation *= getSpotFactor(-L, normalize(light.direction), light.spotBlend, light.spotAngle);
+        }
+
+        let NdotL = max(dot(N, L), 0.0);
+        Lo += light.color * light.intensity * NdotL * attenuation;
+    }
+    return Lo;
+}
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
+    let worldPos4 = uniforms.model * vec4f(in.position, 1.0);
+    out.worldPos = worldPos4.xyz;
     out.position = uniforms.mvp * vec4f(in.position, 1.0);
     out.worldNormal = normalize((uniforms.model * vec4f(in.normal, 0.0)).xyz);
     out.uv = in.uv;
     out.color = in.color;
 
+    // Gouraud (per-vertex) lighting
     if (uniforms.shadingMode == 2u) {
-        let NdotL = max(dot(out.worldNormal, uniforms.lightDir), 0.0);
-        out.lighting = uniforms.ambient + NdotL;
+        out.lighting = calculateSimpleLighting(out.worldPos, out.worldNormal);
     } else {
-        out.lighting = 1.0;
+        out.lighting = vec3f(1.0);
     }
     return out;
 }
@@ -70,36 +135,55 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var finalColor = uniforms.baseColor * in.color;
 
     if (uniforms.shadingMode == 0u) {
+        // Unlit
         return finalColor;
     } else if (uniforms.shadingMode == 1u) {
-        let NdotL = max(dot(normalize(in.worldNormal), uniforms.lightDir), 0.0);
-        let lighting = uniforms.ambient + NdotL * uniforms.lightColor;
-        return vec4f(finalColor.rgb * lighting, finalColor.a);
+        // Flat (per-fragment) lighting
+        let N = normalize(in.worldNormal);
+        let lighting = calculateSimpleLighting(in.worldPos, N);
+        return vec4f(finalColor.rgb * (vec3f(uniforms.ambient) + lighting), finalColor.a);
     } else {
-        return vec4f(finalColor.rgb * in.lighting * uniforms.lightColor, finalColor.a);
+        // Gouraud (per-vertex) lighting - use pre-computed lighting
+        return vec4f(finalColor.rgb * (vec3f(uniforms.ambient) + in.lighting), finalColor.a);
     }
 }
 )";
 
-// PBR shader source
+// PBR shader source with multi-light support
 const char* PBR_SHADER_SOURCE = R"(
 const PI: f32 = 3.14159265359;
 const EPSILON: f32 = 0.0001;
+const MAX_LIGHTS: u32 = 4u;
+
+// Light types
+const LIGHT_DIRECTIONAL: u32 = 0u;
+const LIGHT_POINT: u32 = 1u;
+const LIGHT_SPOT: u32 = 2u;
+
+struct Light {
+    position: vec3f,       // World position (point/spot)
+    range: f32,            // Falloff range (point/spot)
+    direction: vec3f,      // Light direction (directional/spot)
+    spotAngle: f32,        // Cosine of outer cone angle (spot)
+    color: vec3f,          // Light color
+    intensity: f32,        // Light intensity
+    lightType: u32,        // 0=directional, 1=point, 2=spot
+    spotBlend: f32,        // Cosine of inner cone angle (spot)
+    _pad: vec2f,
+}
 
 struct Uniforms {
     mvp: mat4x4f,
     model: mat4x4f,
     normalMatrix: mat4x4f,
     cameraPos: vec3f,
-    _pad0: f32,
-    lightDir: vec3f,
-    _pad1: f32,
-    lightColor: vec3f,
     ambientIntensity: f32,
     baseColor: vec4f,
     metallic: f32,
     roughness: f32,
-    _pad2: vec2f,
+    lightCount: u32,
+    _pad0: f32,
+    lights: array<Light, 4>,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -152,23 +236,60 @@ fn F_Schlick(cosTheta: f32, F0: vec3f) -> vec3f {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    let N = normalize(in.worldNormal);
-    let V = normalize(uniforms.cameraPos - in.worldPos);
-    let L = normalize(uniforms.lightDir);
-    let H = normalize(V + L);
+// Point light attenuation (inverse square with range cutoff)
+fn getAttenuation(distance: f32, range: f32) -> f32 {
+    if (range <= 0.0) { return 1.0; }
+    let d = max(distance, EPSILON);
+    let att = 1.0 / (d * d);
+    let falloff = saturate(1.0 - pow(d / range, 4.0));
+    return att * falloff * falloff;
+}
 
+// Spot light cone factor
+fn getSpotFactor(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f32) -> f32 {
+    let cosAngle = dot(lightDir, spotDir);
+    return saturate((cosAngle - outerAngle) / max(innerAngle - outerAngle, EPSILON));
+}
+
+// Calculate contribution from a single light
+fn calculateLightContribution(
+    light: Light,
+    worldPos: vec3f,
+    N: vec3f,
+    V: vec3f,
+    albedo: vec3f,
+    metallic: f32,
+    roughness: f32,
+    F0: vec3f
+) -> vec3f {
+    var L: vec3f;
+    var radiance: vec3f;
+
+    if (light.lightType == LIGHT_DIRECTIONAL) {
+        L = normalize(light.direction);
+        radiance = light.color * light.intensity;
+    } else if (light.lightType == LIGHT_POINT) {
+        let lightVec = light.position - worldPos;
+        let dist = length(lightVec);
+        L = lightVec / max(dist, EPSILON);
+        let att = getAttenuation(dist, light.range);
+        radiance = light.color * light.intensity * att;
+    } else { // LIGHT_SPOT
+        let lightVec = light.position - worldPos;
+        let dist = length(lightVec);
+        L = lightVec / max(dist, EPSILON);
+        let att = getAttenuation(dist, light.range);
+        let spot = getSpotFactor(-L, normalize(light.direction), light.spotBlend, light.spotAngle);
+        radiance = light.color * light.intensity * att * spot;
+    }
+
+    let H = normalize(V + L);
     let NdotL = max(dot(N, L), 0.0);
     let NdotV = max(dot(N, V), EPSILON);
     let NdotH = max(dot(N, H), 0.0);
     let HdotV = max(dot(H, V), 0.0);
 
-    let albedo = uniforms.baseColor.rgb * in.color.rgb;
-    let metallic = uniforms.metallic;
-    let roughness = max(uniforms.roughness, 0.04);
-
-    let F0 = mix(vec3f(0.04), albedo, metallic);
+    if (NdotL <= 0.0) { return vec3f(0.0); }
 
     let D = D_GGX(NdotH, roughness);
     let G = G_Smith(NdotV, NdotL, roughness);
@@ -183,33 +304,67 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     kD *= 1.0 - metallic;
 
     let diffuse = kD * albedo / PI;
-    let Lo = (diffuse + specular) * uniforms.lightColor * NdotL;
+    return (diffuse + specular) * radiance * NdotL;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let N = normalize(in.worldNormal);
+    let V = normalize(uniforms.cameraPos - in.worldPos);
+
+    let albedo = uniforms.baseColor.rgb * in.color.rgb;
+    let metallic = uniforms.metallic;
+    let roughness = max(uniforms.roughness, 0.04);
+    let F0 = mix(vec3f(0.04), albedo, metallic);
+
+    // Accumulate lighting from all lights
+    var Lo = vec3f(0.0);
+    let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
+    for (var i = 0u; i < lightCount; i++) {
+        Lo += calculateLightContribution(
+            uniforms.lights[i], in.worldPos, N, V, albedo, metallic, roughness, F0
+        );
+    }
+
     let ambient = vec3f(0.03) * albedo * uniforms.ambientIntensity;
 
     var color = ambient + Lo;
-    color = color / (color + vec3f(1.0));
-    color = pow(color, vec3f(1.0 / 2.2));
+    color = color / (color + vec3f(1.0));  // Reinhard tone mapping
+    color = pow(color, vec3f(1.0 / 2.2));  // Gamma correction
 
     return vec4f(color, uniforms.baseColor.a * in.color.a);
 }
 )";
 
-// Textured PBR shader source - uses texture maps for material properties
+// Textured PBR shader source with multi-light support
 const char* PBR_TEXTURED_SHADER_SOURCE = R"(
 const PI: f32 = 3.14159265359;
 const EPSILON: f32 = 0.0001;
+const MAX_LIGHTS: u32 = 4u;
+
+// Light types
+const LIGHT_DIRECTIONAL: u32 = 0u;
+const LIGHT_POINT: u32 = 1u;
+const LIGHT_SPOT: u32 = 2u;
+
+struct Light {
+    position: vec3f,
+    range: f32,
+    direction: vec3f,
+    spotAngle: f32,
+    color: vec3f,
+    intensity: f32,
+    lightType: u32,
+    spotBlend: f32,
+    _pad: vec2f,
+}
 
 struct Uniforms {
     mvp: mat4x4f,
     model: mat4x4f,
     normalMatrix: mat4x4f,
     cameraPos: vec3f,
-    _pad0: f32,
-    lightDir: vec3f,
-    _pad1: f32,
-    lightColor: vec3f,
     ambientIntensity: f32,
-    // Material fallback values (used when no texture or multiplied with texture)
     baseColorFactor: vec4f,
     metallicFactor: f32,
     roughnessFactor: f32,
@@ -217,9 +372,10 @@ struct Uniforms {
     aoStrength: f32,
     emissiveFactor: vec3f,
     emissiveStrength: f32,
-    // Flags for which textures are present (packed as bits)
     textureFlags: u32,
-    // Struct is automatically padded to 16-byte alignment (304 bytes)
+    lightCount: u32,
+    _pad0: vec2f,
+    lights: array<Light, 4>,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -256,10 +412,9 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.worldPos = worldPos.xyz;
     out.clipPos = uniforms.mvp * vec4f(in.position, 1.0);
 
-    // Transform TBN to world space
     let N = normalize((uniforms.normalMatrix * vec4f(in.normal, 0.0)).xyz);
     let T = normalize((uniforms.model * vec4f(in.tangent.xyz, 0.0)).xyz);
-    let B = cross(N, T) * in.tangent.w;  // Handedness from w component
+    let B = cross(N, T) * in.tangent.w;
 
     out.worldNormal = N;
     out.worldTangent = T;
@@ -291,46 +446,57 @@ fn F_Schlick(cosTheta: f32, F0: vec3f) -> vec3f {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    // Sample textures
-    let baseColorSample = textureSample(baseColorMap, materialSampler, in.uv);
-    let normalSample = textureSample(normalMap, materialSampler, in.uv);
-    let metallicSample = textureSample(metallicMap, materialSampler, in.uv).r;
-    let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).r;
-    let aoSample = textureSample(aoMap, materialSampler, in.uv).r;
-    let emissiveSample = textureSample(emissiveMap, materialSampler, in.uv).rgb;
+fn getAttenuation(distance: f32, range: f32) -> f32 {
+    if (range <= 0.0) { return 1.0; }
+    let d = max(distance, EPSILON);
+    let att = 1.0 / (d * d);
+    let falloff = saturate(1.0 - pow(d / range, 4.0));
+    return att * falloff * falloff;
+}
 
-    // Apply fallback factors
-    let albedo = baseColorSample.rgb * uniforms.baseColorFactor.rgb * in.color.rgb;
-    let metallic = metallicSample * uniforms.metallicFactor;
-    let roughness = max(roughnessSample * uniforms.roughnessFactor, 0.04);
-    let ao = mix(1.0, aoSample, uniforms.aoStrength);
-    let emissive = emissiveSample * uniforms.emissiveFactor * uniforms.emissiveStrength;
+fn getSpotFactor(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f32) -> f32 {
+    let cosAngle = dot(lightDir, spotDir);
+    return saturate((cosAngle - outerAngle) / max(innerAngle - outerAngle, EPSILON));
+}
 
-    // Normal mapping - transform from tangent space to world space
-    var tangentNormal = normalSample.xyz * 2.0 - 1.0;
-    tangentNormal.x = tangentNormal.x * uniforms.normalScale;
-    tangentNormal.y = tangentNormal.y * uniforms.normalScale;
-    tangentNormal = normalize(tangentNormal);
+fn calculateLightContribution(
+    light: Light,
+    worldPos: vec3f,
+    N: vec3f,
+    V: vec3f,
+    albedo: vec3f,
+    metallic: f32,
+    roughness: f32,
+    F0: vec3f
+) -> vec3f {
+    var L: vec3f;
+    var radiance: vec3f;
 
-    let TBN = mat3x3f(
-        normalize(in.worldTangent),
-        normalize(in.worldBitangent),
-        normalize(in.worldNormal)
-    );
-    let N = normalize(TBN * tangentNormal);
+    if (light.lightType == LIGHT_DIRECTIONAL) {
+        L = normalize(light.direction);
+        radiance = light.color * light.intensity;
+    } else if (light.lightType == LIGHT_POINT) {
+        let lightVec = light.position - worldPos;
+        let dist = length(lightVec);
+        L = lightVec / max(dist, EPSILON);
+        let att = getAttenuation(dist, light.range);
+        radiance = light.color * light.intensity * att;
+    } else {
+        let lightVec = light.position - worldPos;
+        let dist = length(lightVec);
+        L = lightVec / max(dist, EPSILON);
+        let att = getAttenuation(dist, light.range);
+        let spot = getSpotFactor(-L, normalize(light.direction), light.spotBlend, light.spotAngle);
+        radiance = light.color * light.intensity * att * spot;
+    }
 
-    let V = normalize(uniforms.cameraPos - in.worldPos);
-    let L = normalize(uniforms.lightDir);
     let H = normalize(V + L);
-
     let NdotL = max(dot(N, L), 0.0);
     let NdotV = max(dot(N, V), EPSILON);
     let NdotH = max(dot(N, H), 0.0);
     let HdotV = max(dot(H, V), 0.0);
 
-    let F0 = mix(vec3f(0.04), albedo, metallic);
+    if (NdotL <= 0.0) { return vec3f(0.0); }
 
     let D = D_GGX(NdotH, roughness);
     let G = G_Smith(NdotV, NdotL, roughness);
@@ -345,33 +511,83 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     kD *= 1.0 - metallic;
 
     let diffuse = kD * albedo / PI;
-    let Lo = (diffuse + specular) * uniforms.lightColor * NdotL;
+    return (diffuse + specular) * radiance * NdotL;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let baseColorSample = textureSample(baseColorMap, materialSampler, in.uv);
+    let normalSample = textureSample(normalMap, materialSampler, in.uv);
+    let metallicSample = textureSample(metallicMap, materialSampler, in.uv).r;
+    let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).r;
+    let aoSample = textureSample(aoMap, materialSampler, in.uv).r;
+    let emissiveSample = textureSample(emissiveMap, materialSampler, in.uv).rgb;
+
+    let albedo = baseColorSample.rgb * uniforms.baseColorFactor.rgb * in.color.rgb;
+    let metallic = metallicSample * uniforms.metallicFactor;
+    let roughness = max(roughnessSample * uniforms.roughnessFactor, 0.04);
+    let ao = mix(1.0, aoSample, uniforms.aoStrength);
+    let emissive = emissiveSample * uniforms.emissiveFactor * uniforms.emissiveStrength;
+
+    var tangentNormal = normalSample.xyz * 2.0 - 1.0;
+    tangentNormal.x = tangentNormal.x * uniforms.normalScale;
+    tangentNormal.y = tangentNormal.y * uniforms.normalScale;
+    tangentNormal = normalize(tangentNormal);
+
+    let TBN = mat3x3f(
+        normalize(in.worldTangent),
+        normalize(in.worldBitangent),
+        normalize(in.worldNormal)
+    );
+    let N = normalize(TBN * tangentNormal);
+    let V = normalize(uniforms.cameraPos - in.worldPos);
+    let F0 = mix(vec3f(0.04), albedo, metallic);
+
+    var Lo = vec3f(0.0);
+    let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
+    for (var i = 0u; i < lightCount; i++) {
+        Lo += calculateLightContribution(
+            uniforms.lights[i], in.worldPos, N, V, albedo, metallic, roughness, F0
+        );
+    }
+
     let ambient = vec3f(0.03) * albedo * uniforms.ambientIntensity * ao;
 
     var color = ambient + Lo + emissive;
-    // Tone mapping (Reinhard)
     color = color / (color + vec3f(1.0));
-    // Gamma correction
     color = pow(color, vec3f(1.0 / 2.2));
 
     return vec4f(color, baseColorSample.a * uniforms.baseColorFactor.a * in.color.a);
 }
 )";
 
-// PBR with IBL shader - extends textured PBR with image-based lighting
+// PBR with IBL shader - extends textured PBR with multi-light support and image-based lighting
 const char* PBR_IBL_SHADER_SOURCE = R"(
 const PI: f32 = 3.14159265359;
 const EPSILON: f32 = 0.0001;
+const MAX_LIGHTS: u32 = 4u;
+
+const LIGHT_DIRECTIONAL: u32 = 0u;
+const LIGHT_POINT: u32 = 1u;
+const LIGHT_SPOT: u32 = 2u;
+
+struct Light {
+    position: vec3f,
+    range: f32,
+    direction: vec3f,
+    spotAngle: f32,
+    color: vec3f,
+    intensity: f32,
+    lightType: u32,
+    spotBlend: f32,
+    _pad: vec2f,
+}
 
 struct Uniforms {
     mvp: mat4x4f,
     model: mat4x4f,
     normalMatrix: mat4x4f,
     cameraPos: vec3f,
-    _pad0: f32,
-    lightDir: vec3f,
-    _pad1: f32,
-    lightColor: vec3f,
     ambientIntensity: f32,
     baseColorFactor: vec4f,
     metallicFactor: f32,
@@ -381,9 +597,11 @@ struct Uniforms {
     emissiveFactor: vec3f,
     emissiveStrength: f32,
     textureFlags: u32,
+    lightCount: u32,
+    _pad0: vec2f,
+    lights: array<Light, 4>,
 }
 
-// Material textures (group 0)
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var materialSampler: sampler;
 @group(0) @binding(2) var baseColorMap: texture_2d<f32>;
@@ -393,7 +611,6 @@ struct Uniforms {
 @group(0) @binding(6) var aoMap: texture_2d<f32>;
 @group(0) @binding(7) var emissiveMap: texture_2d<f32>;
 
-// IBL textures (group 1)
 @group(1) @binding(0) var iblSampler: sampler;
 @group(1) @binding(1) var brdfLUT: texture_2d<f32>;
 @group(1) @binding(2) var irradianceMap: texture_cube<f32>;
@@ -462,49 +679,58 @@ fn F_SchlickRoughness(cosTheta: f32, F0: vec3f, roughness: f32) -> vec3f {
     return F0 + (max(vec3f(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-@fragment
-fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    // Sample textures
-    let baseColorSample = textureSample(baseColorMap, materialSampler, in.uv);
-    let normalSample = textureSample(normalMap, materialSampler, in.uv);
-    let metallicSample = textureSample(metallicMap, materialSampler, in.uv).r;
-    let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).r;
-    let aoSample = textureSample(aoMap, materialSampler, in.uv).r;
-    let emissiveSample = textureSample(emissiveMap, materialSampler, in.uv).rgb;
+fn getAttenuation(distance: f32, range: f32) -> f32 {
+    if (range <= 0.0) { return 1.0; }
+    let d = max(distance, EPSILON);
+    let att = 1.0 / (d * d);
+    let falloff = saturate(1.0 - pow(d / range, 4.0));
+    return att * falloff * falloff;
+}
 
-    // Apply fallback factors
-    let albedo = baseColorSample.rgb * uniforms.baseColorFactor.rgb * in.color.rgb;
-    let metallic = metallicSample * uniforms.metallicFactor;
-    let roughness = max(roughnessSample * uniforms.roughnessFactor, 0.04);
-    let ao = mix(1.0, aoSample, uniforms.aoStrength);
-    let emissive = emissiveSample * uniforms.emissiveFactor * uniforms.emissiveStrength;
+fn getSpotFactor(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f32) -> f32 {
+    let cosAngle = dot(lightDir, spotDir);
+    return saturate((cosAngle - outerAngle) / max(innerAngle - outerAngle, EPSILON));
+}
 
-    // Normal mapping
-    var tangentNormal = normalSample.xyz * 2.0 - 1.0;
-    tangentNormal.x = tangentNormal.x * uniforms.normalScale;
-    tangentNormal.y = tangentNormal.y * uniforms.normalScale;
-    tangentNormal = normalize(tangentNormal);
+fn calculateLightContribution(
+    light: Light,
+    worldPos: vec3f,
+    N: vec3f,
+    V: vec3f,
+    albedo: vec3f,
+    metallic: f32,
+    roughness: f32,
+    F0: vec3f
+) -> vec3f {
+    var L: vec3f;
+    var radiance: vec3f;
 
-    let TBN = mat3x3f(
-        normalize(in.worldTangent),
-        normalize(in.worldBitangent),
-        normalize(in.worldNormal)
-    );
-    let N = normalize(TBN * tangentNormal);
+    if (light.lightType == LIGHT_DIRECTIONAL) {
+        L = normalize(light.direction);
+        radiance = light.color * light.intensity;
+    } else if (light.lightType == LIGHT_POINT) {
+        let lightVec = light.position - worldPos;
+        let dist = length(lightVec);
+        L = lightVec / max(dist, EPSILON);
+        let att = getAttenuation(dist, light.range);
+        radiance = light.color * light.intensity * att;
+    } else {
+        let lightVec = light.position - worldPos;
+        let dist = length(lightVec);
+        L = lightVec / max(dist, EPSILON);
+        let att = getAttenuation(dist, light.range);
+        let spot = getSpotFactor(-L, normalize(light.direction), light.spotBlend, light.spotAngle);
+        radiance = light.color * light.intensity * att * spot;
+    }
 
-    let V = normalize(uniforms.cameraPos - in.worldPos);
-    let L = normalize(uniforms.lightDir);
     let H = normalize(V + L);
-    let R = reflect(-V, N);
-
     let NdotL = max(dot(N, L), 0.0);
     let NdotV = max(dot(N, V), EPSILON);
     let NdotH = max(dot(N, H), 0.0);
     let HdotV = max(dot(H, V), 0.0);
 
-    let F0 = mix(vec3f(0.04), albedo, metallic);
+    if (NdotL <= 0.0) { return vec3f(0.0); }
 
-    // Direct lighting (Cook-Torrance)
     let D = D_GGX(NdotH, roughness);
     let G = G_Smith(NdotV, NdotL, roughness);
     let F = F_Schlick(HdotV, F0);
@@ -518,7 +744,48 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     kD *= 1.0 - metallic;
 
     let diffuse = kD * albedo / PI;
-    let Lo = (diffuse + specular) * uniforms.lightColor * NdotL;
+    return (diffuse + specular) * radiance * NdotL;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let baseColorSample = textureSample(baseColorMap, materialSampler, in.uv);
+    let normalSample = textureSample(normalMap, materialSampler, in.uv);
+    let metallicSample = textureSample(metallicMap, materialSampler, in.uv).r;
+    let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).r;
+    let aoSample = textureSample(aoMap, materialSampler, in.uv).r;
+    let emissiveSample = textureSample(emissiveMap, materialSampler, in.uv).rgb;
+
+    let albedo = baseColorSample.rgb * uniforms.baseColorFactor.rgb * in.color.rgb;
+    let metallic = metallicSample * uniforms.metallicFactor;
+    let roughness = max(roughnessSample * uniforms.roughnessFactor, 0.04);
+    let ao = mix(1.0, aoSample, uniforms.aoStrength);
+    let emissive = emissiveSample * uniforms.emissiveFactor * uniforms.emissiveStrength;
+
+    var tangentNormal = normalSample.xyz * 2.0 - 1.0;
+    tangentNormal.x = tangentNormal.x * uniforms.normalScale;
+    tangentNormal.y = tangentNormal.y * uniforms.normalScale;
+    tangentNormal = normalize(tangentNormal);
+
+    let TBN = mat3x3f(
+        normalize(in.worldTangent),
+        normalize(in.worldBitangent),
+        normalize(in.worldNormal)
+    );
+    let N = normalize(TBN * tangentNormal);
+    let V = normalize(uniforms.cameraPos - in.worldPos);
+    let R = reflect(-V, N);
+    let NdotV = max(dot(N, V), EPSILON);
+    let F0 = mix(vec3f(0.04), albedo, metallic);
+
+    // Accumulate direct lighting from all lights
+    var Lo = vec3f(0.0);
+    let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
+    for (var i = 0u; i < lightCount; i++) {
+        Lo += calculateLightContribution(
+            uniforms.lights[i], in.worldPos, N, V, albedo, metallic, roughness, F0
+        );
+    }
 
     // IBL ambient lighting
     let F_ibl = F_SchlickRoughness(NdotV, F0, roughness);
@@ -526,11 +793,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var kD_ibl = vec3f(1.0) - kS_ibl;
     kD_ibl *= 1.0 - metallic;
 
-    // Diffuse IBL from irradiance map
     let irradiance = textureSample(irradianceMap, iblSampler, N).rgb;
     let diffuseIBL = irradiance * albedo;
 
-    // Specular IBL from prefiltered environment map
     let MAX_REFLECTION_LOD = 4.0;
     let prefilteredColor = textureSampleLevel(prefilteredMap, iblSampler, R, roughness * MAX_REFLECTION_LOD).rgb;
     let brdf = textureSample(brdfLUT, iblSampler, vec2f(NdotV, roughness)).rg;
@@ -539,9 +804,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let ambient = (kD_ibl * diffuseIBL + specularIBL) * uniforms.ambientIntensity * ao;
 
     var color = ambient + Lo + emissive;
-    // Tone mapping (Reinhard)
     color = color / (color + vec3f(1.0));
-    // Gamma correction
     color = pow(color, vec3f(1.0 / 2.2));
 
     return vec4f(color, baseColorSample.a * uniforms.baseColorFactor.a * in.color.a);
@@ -589,65 +852,110 @@ struct SkyboxUniforms {
     float invViewProj[16];  // mat4x4f: 64 bytes
 };
 
-// Flat/Gouraud uniform buffer structure
+// Maximum lights supported per draw call
+constexpr uint32_t MAX_LIGHTS = 4;
+
+// Light types (must match WGSL constants)
+constexpr uint32_t LIGHT_TYPE_DIRECTIONAL = 0;
+constexpr uint32_t LIGHT_TYPE_POINT = 1;
+constexpr uint32_t LIGHT_TYPE_SPOT = 2;
+
+// GPU Light structure (48 bytes, 16-byte aligned)
+struct GPULight {
+    float position[3];    // 12 bytes, offset 0
+    float range;          // 4 bytes, offset 12
+    float direction[3];   // 12 bytes, offset 16
+    float spotAngle;      // 4 bytes, offset 28 (cosine of outer angle)
+    float color[3];       // 12 bytes, offset 32
+    float intensity;      // 4 bytes, offset 44
+    uint32_t type;        // 4 bytes, offset 48
+    float spotBlend;      // 4 bytes, offset 52 (cosine of inner angle)
+    float _pad[2];        // 8 bytes padding to 64 bytes
+};
+
+static_assert(sizeof(GPULight) == 64, "GPULight struct must be 64 bytes");
+
+// Flat/Gouraud uniform buffer structure (with multi-light support)
 struct Uniforms {
-    float mvp[16];         // mat4x4f: 64 bytes, offset 0
-    float model[16];       // mat4x4f: 64 bytes, offset 64
-    float lightDir[3];     // vec3f: 12 bytes, offset 128
-    float _pad1;           // f32: 4 bytes, offset 140
-    float lightColor[3];   // vec3f: 12 bytes, offset 144
-    float ambient;         // f32: 4 bytes, offset 156
-    float baseColor[4];    // vec4f: 16 bytes, offset 160
-    uint32_t shadingMode;  // u32: 4 bytes, offset 176
-    float _pad2[3];        // vec3f: 12 bytes padding, offset 180
-    // wgpu adds extra padding to 208 bytes
-    float _pad3[4];        // 16 bytes extra, offset 192
-};                         // Total: 208 bytes
+    float mvp[16];              // mat4x4f: 64 bytes, offset 0
+    float model[16];            // mat4x4f: 64 bytes, offset 64
+    float worldPos[3];          // vec3f: 12 bytes, offset 128 (for point/spot lights)
+    float _pad0;                // 4 bytes, offset 140
+    float baseColor[4];         // vec4f: 16 bytes, offset 144
+    float ambient;              // f32: 4 bytes, offset 160
+    uint32_t shadingMode;       // u32: 4 bytes, offset 164
+    uint32_t lightCount;        // u32: 4 bytes, offset 168
+    float _pad1;                // 4 bytes, offset 172
+    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 176
+};                               // Total: 432 bytes
 
-static_assert(sizeof(Uniforms) == 208, "Uniforms struct must be 208 bytes");
+static_assert(sizeof(Uniforms) == 432, "Uniforms struct must be 432 bytes");
 
-// PBR uniform buffer structure
+// PBR uniform buffer structure (with multi-light support)
 struct PBRUniforms {
-    float mvp[16];           // mat4x4f: 64 bytes, offset 0
-    float model[16];         // mat4x4f: 64 bytes, offset 64
-    float normalMatrix[16];  // mat4x4f: 64 bytes, offset 128
-    float cameraPos[3];      // vec3f: 12 bytes, offset 192
-    float _pad0;             // f32: 4 bytes, offset 204
-    float lightDir[3];       // vec3f: 12 bytes, offset 208
-    float _pad1;             // f32: 4 bytes, offset 220
-    float lightColor[3];     // vec3f: 12 bytes, offset 224
-    float ambientIntensity;  // f32: 4 bytes, offset 236
-    float baseColor[4];      // vec4f: 16 bytes, offset 240
-    float metallic;          // f32: 4 bytes, offset 256
-    float roughness;         // f32: 4 bytes, offset 260
-    float _pad2[2];          // vec2f: 8 bytes, offset 264
-};                           // Total: 272 bytes
+    float mvp[16];              // mat4x4f: 64 bytes, offset 0
+    float model[16];            // mat4x4f: 64 bytes, offset 64
+    float normalMatrix[16];     // mat4x4f: 64 bytes, offset 128
+    float cameraPos[3];         // vec3f: 12 bytes, offset 192
+    float ambientIntensity;     // f32: 4 bytes, offset 204
+    float baseColor[4];         // vec4f: 16 bytes, offset 208
+    float metallic;             // f32: 4 bytes, offset 224
+    float roughness;            // f32: 4 bytes, offset 228
+    uint32_t lightCount;        // u32: 4 bytes, offset 232
+    float _pad0;                // 4 bytes, offset 236
+    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 240
+};                               // Total: 496 bytes
 
-static_assert(sizeof(PBRUniforms) == 272, "PBRUniforms struct must be 272 bytes");
+static_assert(sizeof(PBRUniforms) == 496, "PBRUniforms struct must be 496 bytes");
 
-// Textured PBR uniform buffer structure (matches shader)
+// Textured PBR uniform buffer structure (with multi-light support)
 struct PBRTexturedUniforms {
-    float mvp[16];           // mat4x4f: 64 bytes, offset 0
-    float model[16];         // mat4x4f: 64 bytes, offset 64
-    float normalMatrix[16];  // mat4x4f: 64 bytes, offset 128
-    float cameraPos[3];      // vec3f: 12 bytes, offset 192
-    float _pad0;             // f32: 4 bytes, offset 204
-    float lightDir[3];       // vec3f: 12 bytes, offset 208
-    float _pad1;             // f32: 4 bytes, offset 220
-    float lightColor[3];     // vec3f: 12 bytes, offset 224
-    float ambientIntensity;  // f32: 4 bytes, offset 236
-    float baseColorFactor[4]; // vec4f: 16 bytes, offset 240
-    float metallicFactor;    // f32: 4 bytes, offset 256
-    float roughnessFactor;   // f32: 4 bytes, offset 260
-    float normalScale;       // f32: 4 bytes, offset 264
-    float aoStrength;        // f32: 4 bytes, offset 268
-    float emissiveFactor[3]; // vec3f: 12 bytes, offset 272
-    float emissiveStrength;  // f32: 4 bytes, offset 284
-    uint32_t textureFlags;   // u32: 4 bytes, offset 288
-    float _pad2[3];          // Padding to reach 304 bytes (16-byte aligned)
-};                           // Total: 304 bytes (WGSL pads to 304 automatically)
+    float mvp[16];              // mat4x4f: 64 bytes, offset 0
+    float model[16];            // mat4x4f: 64 bytes, offset 64
+    float normalMatrix[16];     // mat4x4f: 64 bytes, offset 128
+    float cameraPos[3];         // vec3f: 12 bytes, offset 192
+    float ambientIntensity;     // f32: 4 bytes, offset 204
+    float baseColorFactor[4];   // vec4f: 16 bytes, offset 208
+    float metallicFactor;       // f32: 4 bytes, offset 224
+    float roughnessFactor;      // f32: 4 bytes, offset 228
+    float normalScale;          // f32: 4 bytes, offset 232
+    float aoStrength;           // f32: 4 bytes, offset 236
+    float emissiveFactor[3];    // vec3f: 12 bytes, offset 240
+    float emissiveStrength;     // f32: 4 bytes, offset 252
+    uint32_t textureFlags;      // u32: 4 bytes, offset 256
+    uint32_t lightCount;        // u32: 4 bytes, offset 260
+    float _pad0[2];             // 8 bytes, offset 264
+    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 272
+};                               // Total: 528 bytes
 
-static_assert(sizeof(PBRTexturedUniforms) == 304, "PBRTexturedUniforms struct must be 304 bytes");
+static_assert(sizeof(PBRTexturedUniforms) == 528, "PBRTexturedUniforms struct must be 528 bytes");
+
+// Helper function to convert LightData to GPULight
+GPULight lightDataToGPU(const LightData& light) {
+    GPULight gpu = {};
+    gpu.position[0] = light.position.x;
+    gpu.position[1] = light.position.y;
+    gpu.position[2] = light.position.z;
+    gpu.range = light.range;
+    gpu.direction[0] = light.direction.x;
+    gpu.direction[1] = light.direction.y;
+    gpu.direction[2] = light.direction.z;
+    // Convert spot angles from degrees to cosines
+    float outerAngleRad = glm::radians(light.spotAngle);
+    float innerAngleRad = outerAngleRad * (1.0f - light.spotBlend);
+    gpu.spotAngle = std::cos(outerAngleRad);
+    gpu.spotBlend = std::cos(innerAngleRad);
+    gpu.color[0] = light.color.r;
+    gpu.color[1] = light.color.g;
+    gpu.color[2] = light.color.b;
+    gpu.intensity = light.intensity;
+    switch (light.type) {
+        case LightType::Directional: gpu.type = LIGHT_TYPE_DIRECTIONAL; break;
+        case LightType::Point:       gpu.type = LIGHT_TYPE_POINT; break;
+        case LightType::Spot:        gpu.type = LIGHT_TYPE_SPOT; break;
+    }
+    return gpu;
+}
 
 } // anonymous namespace
 
@@ -1387,13 +1695,25 @@ void Render3D::process(Context& ctx) {
         activeCamera = m_cameraOp->outputCamera();
     }
 
-    // Get lighting from operator if connected
-    glm::vec3 lightDir = m_lightDirection;
-    glm::vec3 lightCol = m_lightColor;
-    if (!m_lightOps.empty() && m_lightOps[0]) {
-        const LightData& light = m_lightOps[0]->outputLight();
-        lightDir = glm::normalize(light.direction);
-        lightCol = light.color * light.intensity;
+    // Collect lights from operators
+    GPULight gpuLights[MAX_LIGHTS] = {};
+    uint32_t lightCount = 0;
+
+    // First add lights from light operators
+    for (size_t i = 0; i < m_lightOps.size() && lightCount < MAX_LIGHTS; i++) {
+        if (m_lightOps[i]) {
+            gpuLights[lightCount++] = lightDataToGPU(m_lightOps[i]->outputLight());
+        }
+    }
+
+    // If no lights are connected, add a default directional light
+    if (lightCount == 0) {
+        LightData defaultLight;
+        defaultLight.type = LightType::Directional;
+        defaultLight.direction = m_lightDirection;
+        defaultLight.color = m_lightColor;
+        defaultLight.intensity = 1.0f;
+        gpuLights[lightCount++] = lightDataToGPU(defaultLight);
     }
 
     // Update camera aspect ratio
@@ -1473,12 +1793,6 @@ void Render3D::process(Context& ctx) {
             uniforms.cameraPos[0] = cameraPos.x;
             uniforms.cameraPos[1] = cameraPos.y;
             uniforms.cameraPos[2] = cameraPos.z;
-            uniforms.lightDir[0] = lightDir.x;
-            uniforms.lightDir[1] = lightDir.y;
-            uniforms.lightDir[2] = lightDir.z;
-            uniforms.lightColor[0] = lightCol.x;
-            uniforms.lightColor[1] = lightCol.y;
-            uniforms.lightColor[2] = lightCol.z;
             uniforms.ambientIntensity = m_ambient;
             uniforms.baseColorFactor[0] = baseColorFactor.r * objColor.r;
             uniforms.baseColorFactor[1] = baseColorFactor.g * objColor.g;
@@ -1492,7 +1806,9 @@ void Render3D::process(Context& ctx) {
             uniforms.emissiveFactor[1] = emissiveFactor.g;
             uniforms.emissiveFactor[2] = emissiveFactor.b;
             uniforms.emissiveStrength = activeMaterial->getEmissiveStrength();
-            uniforms.textureFlags = 0;  // Reserved for future use
+            uniforms.textureFlags = 0;
+            uniforms.lightCount = lightCount;
+            memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
 
             size_t offset = i * m_pbrUniformAlignment;
             wgpuQueueWriteBuffer(ctx.queue(), m_pbrUniformBuffer, offset, &uniforms, sizeof(uniforms));
@@ -1507,12 +1823,6 @@ void Render3D::process(Context& ctx) {
             uniforms.cameraPos[0] = cameraPos.x;
             uniforms.cameraPos[1] = cameraPos.y;
             uniforms.cameraPos[2] = cameraPos.z;
-            uniforms.lightDir[0] = lightDir.x;
-            uniforms.lightDir[1] = lightDir.y;
-            uniforms.lightDir[2] = lightDir.z;
-            uniforms.lightColor[0] = lightCol.x;
-            uniforms.lightColor[1] = lightCol.y;
-            uniforms.lightColor[2] = lightCol.z;
             uniforms.ambientIntensity = m_ambient;
             uniforms.baseColor[0] = objColor.r;
             uniforms.baseColor[1] = objColor.g;
@@ -1520,6 +1830,8 @@ void Render3D::process(Context& ctx) {
             uniforms.baseColor[3] = objColor.a;
             uniforms.metallic = m_metallic;
             uniforms.roughness = m_roughness;
+            uniforms.lightCount = lightCount;
+            memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
 
             size_t offset = i * m_pbrUniformAlignment;
             wgpuQueueWriteBuffer(ctx.queue(), m_pbrUniformBuffer, offset, &uniforms, sizeof(uniforms));
@@ -1528,18 +1840,14 @@ void Render3D::process(Context& ctx) {
             Uniforms uniforms = {};
             memcpy(uniforms.mvp, glm::value_ptr(mvp), sizeof(uniforms.mvp));
             memcpy(uniforms.model, glm::value_ptr(obj.transform), sizeof(uniforms.model));
-            uniforms.lightDir[0] = lightDir.x;
-            uniforms.lightDir[1] = lightDir.y;
-            uniforms.lightDir[2] = lightDir.z;
-            uniforms.lightColor[0] = lightCol.x;
-            uniforms.lightColor[1] = lightCol.y;
-            uniforms.lightColor[2] = lightCol.z;
             uniforms.ambient = m_ambient;
             uniforms.baseColor[0] = objColor.r;
             uniforms.baseColor[1] = objColor.g;
             uniforms.baseColor[2] = objColor.b;
             uniforms.baseColor[3] = objColor.a;
             uniforms.shadingMode = static_cast<uint32_t>(m_shadingMode);
+            uniforms.lightCount = lightCount;
+            memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
 
             size_t offset = i * m_uniformAlignment;
             wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, offset, &uniforms, sizeof(uniforms));

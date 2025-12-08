@@ -208,7 +208,11 @@ Operations: `BooleanOp::Union`, `BooleanOp::Subtract`, `BooleanOp::Intersect`
 | `SceneComposer` | Compose meshes | `.add<Box>(name, transform, color)` `.add(&mesh, transform, color)` |
 | `CameraOperator` | Camera | `.orbitCenter(x,y,z)` `.distance(10)` `.azimuth(0)` `.elevation(0.3)` `.fov(50)` |
 | `DirectionalLight` | Sun light | `.direction(x,y,z)` `.color(r,g,b)` `.intensity(1.5)` |
-| `Render3D` | Renderer | `.input(&scene)` `.cameraInput(&cam)` `.lightInput(&light)` `.shadingMode()` |
+| `PointLight` | Omni light | `.position(x,y,z)` `.color(r,g,b)` `.intensity(2.0)` `.range(10.0)` |
+| `SpotLight` | Spot light | `.position()` `.direction()` `.spotAngle(30)` `.spotBlend(0.3)` `.range(10)` |
+| `Render3D` | Renderer | `.input(&scene)` `.cameraInput(&cam)` `.lightInput(&light)` `.addLight(&light2)` |
+
+**Multi-light support:** Up to 4 lights via `.lightInput()` (primary) and `.addLight()` (additional).
 
 **Complete 3D example:**
 ```cpp
@@ -292,6 +296,30 @@ void setup(Context& ctx) {
     // Render3D automatically uses IBL when available
     render.iblEnvironment(&iblEnv);
 }
+```
+
+**Multi-light example:**
+```cpp
+// Directional (sun) + 2 point lights + 1 spot light
+auto& sun = chain.add<DirectionalLight>("sun")
+    .direction(1, 2, 1).intensity(0.5f);
+
+auto& redLight = chain.add<PointLight>("redLight")
+    .position(3, 1, 0).color(1.0f, 0.2f, 0.1f).intensity(3.0f).range(10.0f);
+
+auto& blueLight = chain.add<PointLight>("blueLight")
+    .position(-3, 1, 0).color(0.1f, 0.3f, 1.0f).intensity(3.0f).range(10.0f);
+
+auto& spot = chain.add<SpotLight>("spot")
+    .position(0, 4, 2).direction(0, -1, -0.3f)
+    .spotAngle(25.0f).spotBlend(0.3f).intensity(5.0f).range(12.0f);
+
+auto& render = chain.add<Render3D>("render")
+    .input(&scene)
+    .lightInput(&sun)       // Primary light
+    .addLight(&redLight)    // Additional lights
+    .addLight(&blueLight)
+    .addLight(&spot);
 ```
 
 ## Enum Types
