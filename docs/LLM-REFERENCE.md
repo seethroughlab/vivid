@@ -48,7 +48,9 @@ VIVID_CHAIN(setup, update)
 
 - `Tab` - Toggle chain visualizer
 - `F` - Toggle fullscreen
+- `V` - Toggle vsync (in examples that support it)
 - `Esc` - Quit
+- `Ctrl+Drag` - Pan the chain visualizer
 
 ## Operators Quick Reference
 
@@ -491,6 +493,15 @@ int width = ctx.width();      // Output width
 int height = ctx.height();    // Output height
 glm::vec2 mouse = ctx.mouseNorm();  // Normalized mouse position (-1 to 1)
 auto key = ctx.key(GLFW_KEY_SPACE); // Key state (.pressed, .held, .released)
+
+// Display settings (can be set in setup() or update())
+ctx.fullscreen(true);         // Start/switch to fullscreen
+ctx.fullscreen(false);        // Switch to windowed
+bool fs = ctx.fullscreen();   // Get current fullscreen state
+
+ctx.vsync(true);              // Enable vsync (default)
+ctx.vsync(false);             // Disable vsync
+bool vs = ctx.vsync();        // Get current vsync state
 ```
 
 ## Troubleshooting
