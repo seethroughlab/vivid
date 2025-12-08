@@ -917,18 +917,6 @@ void Render3D::process(Context& ctx) {
 
     // Check if using PBR mode
     bool usePBR = (m_shadingMode == ShadingMode::PBR);
-    bool useTexturedPBR = usePBR && m_material != nullptr;
-
-    // Set pipeline
-    if (m_wireframe) {
-        wgpuRenderPassEncoderSetPipeline(pass, m_wireframePipeline);
-    } else if (useTexturedPBR) {
-        wgpuRenderPassEncoderSetPipeline(pass, m_pbrTexturedPipeline);
-    } else if (usePBR) {
-        wgpuRenderPassEncoderSetPipeline(pass, m_pbrPipeline);
-    } else {
-        wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
-    }
 
     // Get camera position for PBR
     glm::vec3 cameraPos = activeCamera.getPosition();
@@ -941,15 +929,19 @@ void Render3D::process(Context& ctx) {
             continue;
         }
 
+        // Check for per-object or global material
+        TexturedMaterial* activeMaterial = obj.material ? obj.material : m_material;
+        bool objUseTexturedPBR = usePBR && activeMaterial != nullptr;
+
         // Compute MVP matrix for this object
         glm::mat4 mvp = viewProj * obj.transform;
         glm::vec4 objColor = obj.color * m_defaultColor;
 
-        if (useTexturedPBR) {
+        if (objUseTexturedPBR) {
             // Textured PBR uniforms - get material properties from TexturedMaterial
             glm::mat4 normalMatrix = glm::transpose(glm::inverse(obj.transform));
-            const glm::vec4& baseColorFactor = m_material->getBaseColorFactor();
-            const glm::vec3& emissiveFactor = m_material->getEmissiveFactor();
+            const glm::vec4& baseColorFactor = activeMaterial->getBaseColorFactor();
+            const glm::vec3& emissiveFactor = activeMaterial->getEmissiveFactor();
 
             PBRTexturedUniforms uniforms = {};
             memcpy(uniforms.mvp, glm::value_ptr(mvp), sizeof(uniforms.mvp));
@@ -969,14 +961,14 @@ void Render3D::process(Context& ctx) {
             uniforms.baseColorFactor[1] = baseColorFactor.g * objColor.g;
             uniforms.baseColorFactor[2] = baseColorFactor.b * objColor.b;
             uniforms.baseColorFactor[3] = baseColorFactor.a * objColor.a;
-            uniforms.metallicFactor = m_material->getMetallicFactor();
-            uniforms.roughnessFactor = m_material->getRoughnessFactor();
-            uniforms.normalScale = m_material->getNormalScale();
-            uniforms.aoStrength = m_material->getAoStrength();
+            uniforms.metallicFactor = activeMaterial->getMetallicFactor();
+            uniforms.roughnessFactor = activeMaterial->getRoughnessFactor();
+            uniforms.normalScale = activeMaterial->getNormalScale();
+            uniforms.aoStrength = activeMaterial->getAoStrength();
             uniforms.emissiveFactor[0] = emissiveFactor.r;
             uniforms.emissiveFactor[1] = emissiveFactor.g;
             uniforms.emissiveFactor[2] = emissiveFactor.b;
-            uniforms.emissiveStrength = m_material->getEmissiveStrength();
+            uniforms.emissiveStrength = activeMaterial->getEmissiveStrength();
             uniforms.textureFlags = 0;  // Reserved for future use
 
             size_t offset = i * m_pbrUniformAlignment;
@@ -1031,78 +1023,120 @@ void Render3D::process(Context& ctx) {
         }
     }
 
-    // Create bind group for dynamic offset usage
-    WGPUBindGroup bindGroup = nullptr;
-
-    if (useTexturedPBR) {
-        // Textured PBR bind group with 8 entries
+    // Helper to create a textured bind group for a material
+    auto createTexturedBindGroup = [&](TexturedMaterial* mat) -> WGPUBindGroup {
         WGPUBindGroupEntry bindEntries[8] = {};
 
-        // Binding 0: Uniform buffer
         bindEntries[0].binding = 0;
         bindEntries[0].buffer = m_pbrUniformBuffer;
         bindEntries[0].offset = 0;
         bindEntries[0].size = sizeof(PBRTexturedUniforms);
 
-        // Binding 1: Sampler
         bindEntries[1].binding = 1;
-        bindEntries[1].sampler = m_material->sampler();
+        bindEntries[1].sampler = mat->sampler();
 
-        // Binding 2-7: Texture views
         bindEntries[2].binding = 2;
-        bindEntries[2].textureView = m_material->baseColorView();
+        bindEntries[2].textureView = mat->baseColorView();
 
         bindEntries[3].binding = 3;
-        bindEntries[3].textureView = m_material->normalView();
+        bindEntries[3].textureView = mat->normalView();
 
         bindEntries[4].binding = 4;
-        bindEntries[4].textureView = m_material->metallicView();
+        bindEntries[4].textureView = mat->metallicView();
 
         bindEntries[5].binding = 5;
-        bindEntries[5].textureView = m_material->roughnessView();
+        bindEntries[5].textureView = mat->roughnessView();
 
         bindEntries[6].binding = 6;
-        bindEntries[6].textureView = m_material->aoView();
+        bindEntries[6].textureView = mat->aoView();
 
         bindEntries[7].binding = 7;
-        bindEntries[7].textureView = m_material->emissiveView();
+        bindEntries[7].textureView = mat->emissiveView();
 
         WGPUBindGroupDescriptor bindDesc = {};
         bindDesc.layout = m_pbrTexturedBindGroupLayout;
         bindDesc.entryCount = 8;
         bindDesc.entries = bindEntries;
-        bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
-    } else {
-        // Scalar uniform-only bind group
+        return wgpuDeviceCreateBindGroup(device, &bindDesc);
+    };
+
+    // Create scalar bind groups (shared across objects without textures)
+    WGPUBindGroup scalarPbrBindGroup = nullptr;
+    WGPUBindGroup flatBindGroup = nullptr;
+
+    if (usePBR) {
         WGPUBindGroupEntry bindEntry = {};
         bindEntry.binding = 0;
-        if (usePBR) {
-            bindEntry.buffer = m_pbrUniformBuffer;
-            bindEntry.size = sizeof(PBRUniforms);
-        } else {
-            bindEntry.buffer = m_uniformBuffer;
-            bindEntry.size = sizeof(Uniforms);
-        }
+        bindEntry.buffer = m_pbrUniformBuffer;
         bindEntry.offset = 0;
+        bindEntry.size = sizeof(PBRUniforms);
 
         WGPUBindGroupDescriptor bindDesc = {};
-        bindDesc.layout = usePBR ? m_pbrBindGroupLayout : m_bindGroupLayout;
+        bindDesc.layout = m_pbrBindGroupLayout;
         bindDesc.entryCount = 1;
         bindDesc.entries = &bindEntry;
-        bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+        scalarPbrBindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+    } else {
+        WGPUBindGroupEntry bindEntry = {};
+        bindEntry.binding = 0;
+        bindEntry.buffer = m_uniformBuffer;
+        bindEntry.offset = 0;
+        bindEntry.size = sizeof(Uniforms);
+
+        WGPUBindGroupDescriptor bindDesc = {};
+        bindDesc.layout = m_bindGroupLayout;
+        bindDesc.entryCount = 1;
+        bindDesc.entries = &bindEntry;
+        flatBindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
     }
 
-    // Second pass: render each object with its dynamic offset
-    // Note: textured PBR uses the same buffer as scalar PBR (alignment handles size difference)
-    size_t uniformAlignment = (usePBR || useTexturedPBR) ? m_pbrUniformAlignment : m_uniformAlignment;
+    // Track bind groups to release later
+    std::vector<WGPUBindGroup> texturedBindGroups;
+
+    // Second pass: render each object with appropriate pipeline and bind group
+    TexturedMaterial* lastMaterial = nullptr;
+    WGPUBindGroup currentTexturedBindGroup = nullptr;
+
     for (size_t i = 0; i < numObjects && i < MAX_OBJECTS; i++) {
         const auto& obj = sceneToRender->objects()[i];
         if (!obj.mesh || !obj.mesh->valid()) {
             continue;
         }
 
-        uint32_t dynamicOffset = static_cast<uint32_t>(i * uniformAlignment);
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 1, &dynamicOffset);
+        // Check for per-object or global material
+        TexturedMaterial* activeMaterial = obj.material ? obj.material : m_material;
+        bool objUseTexturedPBR = usePBR && activeMaterial != nullptr;
+
+        // Set pipeline for this object
+        if (m_wireframe) {
+            wgpuRenderPassEncoderSetPipeline(pass, m_wireframePipeline);
+        } else if (objUseTexturedPBR) {
+            wgpuRenderPassEncoderSetPipeline(pass, m_pbrTexturedPipeline);
+        } else if (usePBR) {
+            wgpuRenderPassEncoderSetPipeline(pass, m_pbrPipeline);
+        } else {
+            wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
+        }
+
+        // Set bind group
+        uint32_t dynamicOffset = static_cast<uint32_t>(i * m_pbrUniformAlignment);
+
+        if (objUseTexturedPBR) {
+            // Create bind group for this material if different from last
+            if (activeMaterial != lastMaterial) {
+                currentTexturedBindGroup = createTexturedBindGroup(activeMaterial);
+                texturedBindGroups.push_back(currentTexturedBindGroup);
+                lastMaterial = activeMaterial;
+            }
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, currentTexturedBindGroup, 1, &dynamicOffset);
+        } else if (usePBR) {
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, scalarPbrBindGroup, 1, &dynamicOffset);
+        } else {
+            uint32_t flatOffset = static_cast<uint32_t>(i * m_uniformAlignment);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, flatBindGroup, 1, &flatOffset);
+        }
+
+        // Draw
         wgpuRenderPassEncoderSetVertexBuffer(pass, 0, obj.mesh->vertexBuffer(), 0,
                                               obj.mesh->vertexCount() * sizeof(Vertex3D));
         wgpuRenderPassEncoderSetIndexBuffer(pass, obj.mesh->indexBuffer(),
@@ -1111,7 +1145,12 @@ void Render3D::process(Context& ctx) {
         wgpuRenderPassEncoderDrawIndexed(pass, obj.mesh->indexCount(), 1, 0, 0, 0);
     }
 
-    wgpuBindGroupRelease(bindGroup);
+    // Cleanup bind groups
+    for (auto bg : texturedBindGroups) {
+        wgpuBindGroupRelease(bg);
+    }
+    if (scalarPbrBindGroup) wgpuBindGroupRelease(scalarPbrBindGroup);
+    if (flatBindGroup) wgpuBindGroupRelease(flatBindGroup);
 
     // End render pass
     wgpuRenderPassEncoderEnd(pass);

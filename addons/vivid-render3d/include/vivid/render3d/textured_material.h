@@ -72,17 +72,17 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
-    /// @name Fallback Values (used when no texture is provided)
+    /// @name Material Factors (multiplied with texture values)
     /// @{
 
-    /// Set base color fallback (linear RGB)
+    /// Set base color multiplier (linear RGB, default: white)
     TexturedMaterial& baseColorFactor(float r, float g, float b, float a = 1.0f);
     TexturedMaterial& baseColorFactor(const glm::vec4& color);
 
-    /// Set metallic fallback (0 = dielectric, 1 = metal)
+    /// Set metallic multiplier (0 = force dielectric, 1 = use texture, default: 1.0)
     TexturedMaterial& metallicFactor(float m);
 
-    /// Set roughness fallback (0 = smooth, 1 = rough)
+    /// Set roughness multiplier (default: 1.0 to use texture values directly)
     TexturedMaterial& roughnessFactor(float r);
 
     /// Set normal map strength
@@ -181,10 +181,10 @@ private:
     // Shared sampler
     WGPUSampler m_sampler = nullptr;
 
-    // Fallback values
+    // Fallback values (factors multiply texture values, so default to 1.0 for full texture strength)
     glm::vec4 m_baseColorFallback{1.0f, 1.0f, 1.0f, 1.0f};
-    float m_metallicFallback = 0.0f;
-    float m_roughnessFallback = 0.5f;
+    float m_metallicFallback = 1.0f;
+    float m_roughnessFallback = 1.0f;
     float m_normalScale = 1.0f;
     float m_aoStrength = 1.0f;
     glm::vec3 m_emissiveFallback{0.0f, 0.0f, 0.0f};
