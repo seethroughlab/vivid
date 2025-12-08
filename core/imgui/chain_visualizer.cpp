@@ -4,10 +4,13 @@
 #include "chain_visualizer.h"
 #include <imgui.h>
 #include <imnodes.h>
+#include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <algorithm>
 
 namespace vivid::imgui {
+
+using namespace vivid::render3d;
 
 ChainVisualizer::~ChainVisualizer() {
     shutdown();
@@ -36,6 +39,14 @@ void ChainVisualizer::init() {
 
 void ChainVisualizer::shutdown() {
     if (!m_initialized) return;
+
+    // Clean up geometry preview renderers
+    for (auto& [op, preview] : m_geometryPreviews) {
+        if (preview.renderer) {
+            preview.renderer->cleanup();
+        }
+    }
+    m_geometryPreviews.clear();
 
     ImNodes::DestroyContext();
     m_initialized = false;
@@ -103,6 +114,65 @@ void ChainVisualizer::buildLayout(const std::vector<vivid::OperatorInfo>& operat
     m_layoutBuilt = true;
 }
 
+void ChainVisualizer::updateGeometryPreview(
+    GeometryPreview& preview,
+    render3d::Mesh* mesh,
+    vivid::Context& ctx,
+    float dt
+) {
+    // Initialize renderer if needed
+    if (!preview.renderer) {
+        preview.renderer = std::make_unique<render3d::Render3D>();
+        preview.renderer->resolution(100, 56)
+            .shadingMode(render3d::ShadingMode::Flat)
+            .clearColor(0.12f, 0.14f, 0.18f)
+            .ambient(0.3f)
+            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+        preview.renderer->init(ctx);
+    }
+
+    // Update rotation
+    preview.rotationAngle += dt * 0.8f;  // ~0.8 rad/sec rotation
+
+    // Rebuild scene if mesh changed
+    if (mesh != preview.lastMesh) {
+        preview.scene.clear();
+        if (mesh) {
+            preview.scene.add(*mesh, glm::mat4(1.0f), glm::vec4(0.7f, 0.85f, 1.0f, 1.0f));
+        }
+        preview.lastMesh = mesh;
+    }
+
+    // Update transform for rotation
+    if (mesh && !preview.scene.empty()) {
+        preview.scene.objects()[0].transform =
+            glm::rotate(glm::mat4(1.0f), preview.rotationAngle, glm::vec3(0, 1, 0));
+    }
+
+    // Auto-frame camera based on mesh bounds (only compute once per mesh)
+    if (mesh && !mesh->vertices.empty()) {
+        glm::vec3 center(0);
+        float maxDist = 0;
+        for (const auto& v : mesh->vertices) {
+            center += v.position;
+        }
+        center /= static_cast<float>(mesh->vertices.size());
+        for (const auto& v : mesh->vertices) {
+            maxDist = std::max(maxDist, glm::length(v.position - center));
+        }
+        float distance = maxDist * 2.5f;
+        if (distance < 0.1f) distance = 2.0f;  // Fallback for tiny meshes
+        preview.camera.lookAt(
+            glm::vec3(distance * 0.7f, distance * 0.5f, distance * 0.7f),
+            center
+        ).fov(45.0f).nearPlane(0.01f).farPlane(100.0f);
+    }
+
+    // Render
+    preview.renderer->scene(preview.scene).camera(preview.camera);
+    preview.renderer->process(ctx);
+}
+
 void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
     if (!m_initialized) {
         init();
@@ -123,10 +193,11 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
 
     // Controls info
     ImGui::SetNextWindowPos(ImVec2(10, 120), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(200, 80), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(200, 95), ImGuiCond_FirstUseEver);
     ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoResize);
     ImGui::Text("Tab: Toggle UI");
     ImGui::Text("F: Fullscreen");
+    ImGui::Text("Middle Mouse: Pan graph");
     ImGui::End();
 
     // Node editor
@@ -157,6 +228,24 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         if (!info.op) continue;
 
         int nodeId = static_cast<int>(i);
+
+        // Color nodes based on output type
+        vivid::OutputKind outputKind = info.op->outputKind();
+        bool pushedStyle = false;
+
+        if (outputKind == vivid::OutputKind::Geometry) {
+            // Blue-ish tint for geometry nodes
+            ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(40, 80, 120, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(50, 100, 150, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(60, 120, 180, 255));
+            pushedStyle = true;
+        } else if (outputKind == vivid::OutputKind::Value || outputKind == vivid::OutputKind::ValueArray) {
+            // Orange-ish tint for value nodes
+            ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(120, 80, 40, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(150, 100, 50, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(180, 120, 60, 255));
+            pushedStyle = true;
+        }
 
         ImNodes::BeginNode(nodeId);
 
@@ -234,20 +323,73 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             ImNodes::EndInputAttribute();
         }
 
-        // Thumbnail - render operator output texture
-        WGPUTextureView view = info.op->outputView();
-        if (view) {
-            // ImGui WebGPU backend accepts WGPUTextureView as ImTextureID
-            ImTextureID texId = reinterpret_cast<ImTextureID>(view);
-            ImGui::Image(texId, ImVec2(100, 56));  // 16:9 aspect ratio
+        // Thumbnail - render based on output type
+        vivid::OutputKind kind = info.op->outputKind();
+
+        if (kind == vivid::OutputKind::Texture) {
+            WGPUTextureView view = info.op->outputView();
+            if (view) {
+                // ImGui WebGPU backend accepts WGPUTextureView as ImTextureID
+                ImTextureID texId = reinterpret_cast<ImTextureID>(view);
+                ImGui::Image(texId, ImVec2(100, 56));  // 16:9 aspect ratio
+            } else {
+                // Texture operator but no view yet
+                ImGui::Dummy(ImVec2(100, 40));
+                ImVec2 min = ImGui::GetItemRectMin();
+                ImVec2 max = ImGui::GetItemRectMax();
+                ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(40, 40, 50, 255), 4.0f);
+                ImGui::GetWindowDrawList()->AddText(
+                    ImVec2(min.x + 20, min.y + 12), IM_COL32(100, 100, 120, 255), "no tex");
+            }
+        } else if (kind == vivid::OutputKind::Geometry) {
+            // Geometry operator - render live 3D rotating preview
+            auto& preview = m_geometryPreviews[info.op];
+
+            // Get mesh from geometry operator
+            render3d::Mesh* mesh = nullptr;
+            if (auto* geomOp = dynamic_cast<render3d::GeometryOperator*>(info.op)) {
+                mesh = geomOp->outputMesh();
+            }
+
+            // Update preview (handles init, rotation, rendering)
+            if (mesh && mesh->valid()) {
+                updateGeometryPreview(preview, mesh, ctx, input.dt);
+
+                // Display rendered texture
+                WGPUTextureView view = preview.renderer ? preview.renderer->outputView() : nullptr;
+                if (view) {
+                    ImTextureID texId = reinterpret_cast<ImTextureID>(view);
+                    ImGui::Image(texId, ImVec2(100, 56));
+                } else {
+                    // Fallback if no texture yet
+                    ImGui::Dummy(ImVec2(100, 56));
+                }
+            } else {
+                // No valid mesh - show placeholder
+                ImGui::Dummy(ImVec2(100, 56));
+                ImVec2 min = ImGui::GetItemRectMin();
+                ImVec2 max = ImGui::GetItemRectMax();
+                ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 50, 70, 255), 4.0f);
+                ImGui::GetWindowDrawList()->AddText(
+                    ImVec2(min.x + 20, min.y + 20), IM_COL32(100, 180, 255, 255), "no mesh");
+            }
+        } else if (kind == vivid::OutputKind::Value || kind == vivid::OutputKind::ValueArray) {
+            // Value operator - show numeric display
+            ImGui::Dummy(ImVec2(100, 40));
+            ImVec2 min = ImGui::GetItemRectMin();
+            ImVec2 max = ImGui::GetItemRectMax();
+            ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(50, 40, 30, 255), 4.0f);
+            ImGui::GetWindowDrawList()->AddText(
+                ImVec2(min.x + 25, min.y + 12), IM_COL32(200, 180, 100, 255),
+                kind == vivid::OutputKind::Value ? "Value" : "Values");
         } else {
-            // No texture - show placeholder
+            // Unknown type
             ImGui::Dummy(ImVec2(100, 40));
             ImVec2 min = ImGui::GetItemRectMin();
             ImVec2 max = ImGui::GetItemRectMax();
             ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(40, 40, 50, 255), 4.0f);
             ImGui::GetWindowDrawList()->AddText(
-                ImVec2(min.x + 20, min.y + 12), IM_COL32(100, 100, 120, 255), "no tex");
+                ImVec2(min.x + 20, min.y + 12), IM_COL32(100, 100, 120, 255), "???");
         }
 
         // Output pin
@@ -256,6 +398,13 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         ImNodes::EndOutputAttribute();
 
         ImNodes::EndNode();
+
+        // Pop color styles if we pushed them
+        if (pushedStyle) {
+            ImNodes::PopColorStyle();
+            ImNodes::PopColorStyle();
+            ImNodes::PopColorStyle();
+        }
     }
 
     // Render links

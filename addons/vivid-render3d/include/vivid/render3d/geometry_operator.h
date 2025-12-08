@@ -1,0 +1,157 @@
+#pragma once
+
+/**
+ * @file geometry_operator.h
+ * @brief Base class for geometry-producing operators
+ *
+ * GeometryOperators output Mesh data instead of textures. They can be
+ * chained together for CSG operations and combined in a SceneComposer
+ * before being rendered by Render3D.
+ *
+ * Important: GeometryOperators cannot be chain outputs - only TextureOperators
+ * can produce the final output of a chain.
+ */
+
+#include <vivid/operator.h>
+#include <vivid/render3d/mesh.h>
+#include <vivid/render3d/mesh_builder.h>
+
+namespace vivid::render3d {
+
+/**
+ * @brief Base class for operators that produce 3D geometry
+ *
+ * GeometryOperator provides a foundation for creating procedural geometry
+ * that can be combined through boolean operations and rendered to texture.
+ *
+ * @par Pipeline Example
+ * @code
+ * BoxGeometry -> Boolean(subtract) -> SceneComposer -> Render3D -> Output
+ * SphereGeometry -/
+ * @endcode
+ *
+ * @par Example Implementation
+ * @code
+ * class BoxGeometry : public GeometryOperator {
+ * public:
+ *     BoxGeometry& size(float w, float h, float d) {
+ *         m_width = w; m_height = h; m_depth = d;
+ *         return *this;
+ *     }
+ *
+ *     void process(Context& ctx) override {
+ *         auto builder = MeshBuilder::box(m_width, m_height, m_depth);
+ *         builder.computeFlatNormals();
+ *         m_mesh = builder.build();
+ *         m_mesh.upload(ctx);
+ *     }
+ *
+ *     std::string name() const override { return "BoxGeometry"; }
+ *
+ * private:
+ *     float m_width = 1.0f, m_height = 1.0f, m_depth = 1.0f;
+ * };
+ * @endcode
+ */
+class GeometryOperator : public Operator {
+public:
+    virtual ~GeometryOperator() = default;
+
+    // -------------------------------------------------------------------------
+    /// @name Output Type
+    /// @{
+
+    /**
+     * @brief Returns Geometry output kind
+     * @return OutputKind::Geometry
+     *
+     * This marks the operator as producing geometry, not textures.
+     * Chain validation uses this to prevent geometry operators from
+     * being set as chain outputs.
+     */
+    OutputKind outputKind() const override { return OutputKind::Geometry; }
+
+    /**
+     * @brief Returns nullptr (geometry operators don't produce texture views)
+     * @return nullptr
+     */
+    WGPUTextureView outputView() const override { return nullptr; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Geometry Output
+    /// @{
+
+    /**
+     * @brief Get the output mesh
+     * @return Pointer to the output mesh, or nullptr if not yet processed
+     *
+     * The returned mesh is owned by this operator and remains valid until
+     * the next process() call or until the operator is destroyed.
+     */
+    virtual Mesh* outputMesh() { return &m_mesh; }
+
+    /**
+     * @brief Get the output mesh (const version)
+     * @return Const pointer to the output mesh
+     */
+    virtual const Mesh* outputMesh() const { return &m_mesh; }
+
+    /**
+     * @brief Get the MeshBuilder (for CSG operations)
+     * @return Pointer to the builder with manifold data, or nullptr if not available
+     *
+     * CSG operations require the manifold representation. Derived classes
+     * should store their MeshBuilder and return it here for Boolean operators.
+     */
+    virtual MeshBuilder* outputBuilder() { return m_builder.vertexCount() > 0 ? &m_builder : nullptr; }
+
+    /**
+     * @brief Get the MeshBuilder (const version)
+     * @return Const pointer to the builder
+     */
+    virtual const MeshBuilder* outputBuilder() const { return m_builder.vertexCount() > 0 ? &m_builder : nullptr; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Input Connections
+    /// @{
+
+    /**
+     * @brief Set a geometry input (fluent interface)
+     * @param op GeometryOperator to use as input
+     * @return Reference to this operator for chaining
+     *
+     * @par Example
+     * @code
+     * auto& boolean = chain.add<Boolean>("csg")
+     *     .inputA(&box)
+     *     .inputB(&sphere);
+     * @endcode
+     */
+    GeometryOperator& geometryInput(GeometryOperator* op) {
+        setInput(0, op);
+        return *this;
+    }
+
+    /**
+     * @brief Get geometry input at specified index
+     * @param index Input slot index
+     * @return GeometryOperator pointer, or nullptr if not connected or wrong type
+     */
+    GeometryOperator* getGeometryInput(int index = 0) const {
+        Operator* op = getInput(index);
+        if (op && op->outputKind() == OutputKind::Geometry) {
+            return static_cast<GeometryOperator*>(op);
+        }
+        return nullptr;
+    }
+
+    /// @}
+
+protected:
+    Mesh m_mesh;           ///< Output mesh storage
+    MeshBuilder m_builder; ///< Builder with manifold data (for CSG operations)
+};
+
+} // namespace vivid::render3d

@@ -87,6 +87,8 @@ target_include_directories(vivid
         ${imgui_SOURCE_DIR}
         ${imgui_SOURCE_DIR}/backends
         ${imnodes_SOURCE_DIR}
+        ${CMAKE_SOURCE_DIR}/addons/vivid-render3d/include
+        ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
 )
 
 # Use wgpu-native backend (not Dawn)
@@ -94,13 +96,14 @@ target_compile_definitions(vivid PRIVATE
     IMGUI_IMPL_WEBGPU_BACKEND_WGPU
 )
 
-# Link against WebGPU, GLFW, GLM, GLFW-WebGPU integration
+# Link against WebGPU, GLFW, GLM, GLFW-WebGPU integration, and render3d for geometry previews
 target_link_libraries(vivid
     PRIVATE
         glfw
         glm::glm
         webgpu
         glfw3webgpu
+        vivid-render3d
 )
 
 # Platform-specific settings

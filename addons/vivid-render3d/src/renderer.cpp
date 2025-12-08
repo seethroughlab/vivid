@@ -1,4 +1,5 @@
 #include <vivid/render3d/renderer.h>
+#include <vivid/render3d/scene_composer.h>
 #include <vivid/context.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
@@ -105,6 +106,15 @@ Render3D::~Render3D() {
 
 Render3D& Render3D::scene(Scene& s) {
     m_scene = &s;
+    m_composer = nullptr;  // Clear composer when scene is set directly
+    return *this;
+}
+
+Render3D& Render3D::input(SceneComposer* composer) {
+    m_composer = composer;
+    if (composer) {
+        setInput(0, composer);  // Register for dependency tracking
+    }
     return *this;
 }
 
@@ -318,7 +328,13 @@ void Render3D::process(Context& ctx) {
         init(ctx);
     }
 
-    if (!m_scene || m_scene->empty()) {
+    // If using a composer, get the scene from it
+    Scene* sceneToRender = m_scene;
+    if (m_composer) {
+        sceneToRender = &m_composer->outputScene();
+    }
+
+    if (!sceneToRender || sceneToRender->empty()) {
         return;
     }
 
@@ -356,9 +372,9 @@ void Render3D::process(Context& ctx) {
     wgpuRenderPassEncoderSetPipeline(pass, m_wireframe ? m_wireframePipeline : m_pipeline);
 
     // First pass: write all uniform data to buffer at different offsets
-    size_t numObjects = m_scene->objects().size();
+    size_t numObjects = sceneToRender->objects().size();
     for (size_t i = 0; i < numObjects && i < MAX_OBJECTS; i++) {
-        const auto& obj = m_scene->objects()[i];
+        const auto& obj = sceneToRender->objects()[i];
         if (!obj.mesh || !obj.mesh->valid()) {
             continue;
         }
@@ -404,7 +420,7 @@ void Render3D::process(Context& ctx) {
 
     // Second pass: render each object with its dynamic offset
     for (size_t i = 0; i < numObjects && i < MAX_OBJECTS; i++) {
-        const auto& obj = m_scene->objects()[i];
+        const auto& obj = sceneToRender->objects()[i];
         if (!obj.mesh || !obj.mesh->valid()) {
             continue;
         }

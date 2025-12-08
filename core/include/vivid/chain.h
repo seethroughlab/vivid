@@ -124,6 +124,8 @@ public:
      * @param name Name of the output operator
      *
      * This is the recommended way to specify output (instead of adding an Output operator).
+     * Only operators that produce Texture output can be chain outputs. GeometryOperators
+     * must be processed through a Render3D before output.
      *
      * @par Example
      * @code
@@ -132,7 +134,15 @@ public:
      * chain.output("color");  // Display the color operator
      * @endcode
      */
-    void output(const std::string& name) { outputName_ = name; }
+    void output(const std::string& name) {
+        Operator* op = getByName(name);
+        if (op && op->outputKind() != OutputKind::Texture) {
+            error_ = "Output operator must produce a texture. '" + name + "' produces " +
+                     outputKindName(op->outputKind()) + ". Route through Render3D first.";
+            return;
+        }
+        outputName_ = name;
+    }
 
     /**
      * @brief Get the designated output operator

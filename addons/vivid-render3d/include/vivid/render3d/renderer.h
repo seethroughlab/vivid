@@ -11,6 +11,11 @@ class Context;
 }
 
 namespace vivid::render3d {
+// Forward declaration
+class SceneComposer;
+}
+
+namespace vivid::render3d {
 
 /// Shading mode for 3D rendering
 enum class ShadingMode {
@@ -29,8 +34,12 @@ public:
     /// @name Scene Setup
     /// @{
 
-    /// Set the scene to render
+    /// Set the scene to render (manual scene management)
     Render3D& scene(Scene& s);
+
+    /// Set scene from a SceneComposer (node-based workflow)
+    /// The composer's output scene will be rendered
+    Render3D& input(SceneComposer* composer);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -108,6 +117,7 @@ private:
 
     // Scene
     Scene* m_scene = nullptr;
+    SceneComposer* m_composer = nullptr;  // Alternative to m_scene for node-based workflow
     Camera3D m_camera;
 
     // Shading

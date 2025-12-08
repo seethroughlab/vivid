@@ -24,8 +24,23 @@ enum class OutputKind {
     Texture,    ///< GPU texture output (most common)
     Value,      ///< Single float value
     ValueArray, ///< Array of float values
-    Geometry    ///< 3D geometry (future)
+    Geometry    ///< 3D geometry
 };
+
+/**
+ * @brief Convert OutputKind to human-readable string
+ * @param kind The output kind
+ * @return String name of the output kind
+ */
+inline const char* outputKindName(OutputKind kind) {
+    switch (kind) {
+        case OutputKind::Texture:    return "Texture";
+        case OutputKind::Value:      return "Value";
+        case OutputKind::ValueArray: return "ValueArray";
+        case OutputKind::Geometry:   return "Geometry";
+        default:                     return "Unknown";
+    }
+}
 
 /**
  * @brief Parameter types for UI/serialization
