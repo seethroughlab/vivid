@@ -1404,11 +1404,51 @@ Use the official HAP implementation from Vidvox: https://github.com/Vidvox/hap
 
 **Goal:** 3D rendering with procedural geometry, CSG, and multiple shading modes
 
-#### Step 1: Geometry & Flat Rendering (Current)
+#### Terminology: Geometry vs Mesh
 
-**Goal:** Procedural mesh generation, CSG boolean operations, basic flat/unlit rendering.
+**Geometry** is an abstract output type (`OutputKind::Geometry`) for operators that produce 3D data. **Mesh** is the concrete data structure containing vertices, normals, UVs, and indices. The distinction matters because:
 
-**Status:** 🔄 In Progress
+- `MeshOperator` is the base class for operators that output a single `Mesh` (primitives, CSG results)
+- `SceneComposer` outputs a `Scene` (collection of meshes with transforms) but still has `OutputKind::Geometry`
+- The chain visualizer renders geometry previews for both, using different strategies
+
+#### Node-Based Architecture
+
+All 3D components are operators that appear in the chain visualizer:
+
+```cpp
+// Mesh operators (blue nodes with 3D preview)
+auto& box = chain.add<Box>("box").size(1.0f);
+auto& sphere = chain.add<Sphere>("sphere").radius(0.5f);
+auto& csg = chain.add<Boolean>("csg").inputA(&box).inputB(&sphere).operation(BooleanOp::Subtract);
+
+// Scene composition (blue node with full scene preview)
+auto& scene = SceneComposer::create(chain, "scene");
+scene.add<Box>("box1", transform1, color1);
+scene.add(&csg, transform2, color2);
+
+// Camera operator (green node with camera icon)
+auto& camera = chain.add<CameraOperator>("camera")
+    .orbitCenter(0, 0, 0)
+    .distance(10.0f)
+    .azimuthInput(&timeLfo);  // Animated orbit
+
+// Light operators (yellow nodes with light bulb icon)
+auto& sun = chain.add<DirectionalLight>("sun")
+    .direction(1, 2, 1)
+    .color(1.0f, 0.95f, 0.9f)
+    .intensity(1.5f);
+
+// Render3D connects everything (shows links in visualizer)
+auto& render = chain.add<Render3D>("render")
+    .input(&scene)         // Slot 0: scene
+    .cameraInput(&camera)  // Slot 1: camera
+    .lightInput(&sun);     // Slot 2: light
+```
+
+#### Step 1: Geometry & Flat Rendering (Complete)
+
+**Status:** ✅ Complete
 
 **Core Data Structures:**
 ```cpp
@@ -1436,16 +1476,23 @@ public:
 ```
 
 **Step 1 Tasks:**
-- [ ] Addon scaffolding (CMakeLists.txt, addon.json, directory structure)
-- [ ] Mesh class with GPU upload
-- [ ] MeshBuilder primitives (box, sphere, cylinder, cone, torus, plane)
-- [ ] MeshBuilder modifiers (transform, computeNormals, computeFlatNormals)
-- [ ] CSG operations via Manifold (add, subtract, intersect)
-- [ ] Camera3D (perspective, lookAt, orbit)
-- [ ] Scene class (multiple objects with transforms)
-- [ ] Render3D operator with flat.wgsl shader
-- [ ] Shading modes: Unlit, Flat, Gouraud
-- [ ] examples/render3d-demo
+- [x] Addon scaffolding (CMakeLists.txt, addon.json, directory structure)
+- [x] Mesh class with GPU upload
+- [x] MeshBuilder primitives (box, sphere, cylinder, cone, torus, plane)
+- [x] MeshBuilder modifiers (transform, computeNormals, computeFlatNormals)
+- [x] CSG operations via Manifold (add, subtract, intersect)
+- [x] Camera3D (perspective, lookAt, orbit)
+- [x] CameraOperator (camera as a chainable node with animatable inputs)
+- [x] LightOperators (DirectionalLight, PointLight, SpotLight as nodes)
+- [x] Scene class (multiple objects with transforms)
+- [x] SceneComposer operator (node-based scene building)
+- [x] Render3D operator with flat.wgsl shader
+- [x] Render3D.cameraInput() and lightInput() for node connections
+- [x] Shading modes: Unlit, Flat, Gouraud
+- [x] Chain visualizer: geometry previews, camera/light icons, connection links
+- [x] examples/render3d-demo
+- [x] examples/geometry-showcase
+- [x] examples/geometry-pipeline
 
 **Step 2: PBR & Materials (Future)**
 
@@ -1757,25 +1804,51 @@ ctx.drawCircles(circles, output, clearColor);
 
 **Goal:** Chain visualizer and VS Code extension
 
-**ImNodes Chain Visualizer (primary):**
-- [ ] In-window overlay showing operator graph
-- [ ] Node thumbnails showing operator output
-- [ ] Connection visualization between operators
-- [ ] Toggle with keyboard shortcut (e.g., Tab)
+#### ImNodes Chain Visualizer (Complete)
 
-**WebSocket Server (port 9876):**
+**Status:** ✅ Core functionality complete
+
+The chain visualizer is an ImNodes-based overlay that shows the operator graph with live previews.
+
+**Node Colors by OutputKind:**
+| OutputKind | Title Bar Color | Description |
+|------------|-----------------|-------------|
+| Texture | Default gray | 2D texture operators (Noise, Blur, etc.) |
+| Geometry | Blue | 3D mesh/scene operators (Box, Boolean, SceneComposer) |
+| Value | Orange | Numeric value operators (LFO, Math, Logic) |
+| Camera | Green | Camera operators (CameraOperator) |
+| Light | Yellow | Light operators (DirectionalLight, PointLight, SpotLight) |
+
+**Thumbnails by OutputKind:**
+- **Texture**: Live texture preview (100x56 pixels)
+- **Geometry**: Rotating 3D preview (single mesh or full scene)
+- **Value**: "Value" label in colored box
+- **Camera**: Camera icon (body + lens + viewfinder)
+- **Light**: Light bulb icon with rays
+
+**Features:**
+- [x] In-window overlay showing operator graph
+- [x] Node thumbnails showing operator output
+- [x] Connection visualization between operators
+- [x] Toggle with Tab key
+- [x] Automatic graph layout by depth
+- [x] Parameter display within nodes
+- [x] Performance overlay (FPS, DT, operator count)
+
+**WebSocket Server (Future):**
 - [ ] JSON protocol for compile status and errors
 - [ ] Compile error broadcast with line numbers
 - [ ] Frame metadata (fps, time, operator count)
 
-**VS Code Extension:**
+**VS Code Extension (Future):**
 - [ ] Error highlighting with compile errors
 - [ ] Basic status display (connected, fps, errors)
 
 **Validation:**
-- [ ] WebSocket connects reliably
-- [ ] Compile errors appear in VS Code within 1 second
-- [ ] Extension reconnects after runtime restart
+- [x] Chain visualizer displays all operators
+- [x] Geometry previews render correctly
+- [x] Camera/Light nodes show icons
+- [x] Connections drawn between linked operators
 
 ### Phase 10: Audio Addon
 
