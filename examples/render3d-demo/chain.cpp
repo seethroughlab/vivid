@@ -1,5 +1,6 @@
 // Render3D Demo - Vivid Example
 // Demonstrates 3D rendering with procedural geometry and CSG operations
+// Using the SceneComposer API for chain visualizer integration
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -10,51 +11,37 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
-// Persistent state across hot-reloads (these don't need Chain management)
+// Persistent camera state across hot-reloads
 static Camera3D camera;
-static Scene scene;
-static Mesh cubeMesh;
-static Mesh sphereMesh;
-static Mesh csgMesh;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
-    scene.clear();
 
-    // Create procedural geometry
+    // Create SceneComposer - manages geometry lifecycle and chain registration
+    auto& scene = SceneComposer::create(chain, "scene");
 
-    // Simple cube
+    // Add custom meshes via addMesh() - they appear in the chain visualizer
+
+    // Simple cube with flat shading
     auto cubeBuilder = MeshBuilder::box(1.0f, 1.0f, 1.0f);
-    cubeBuilder.computeFlatNormals();  // Faceted look
-    cubeMesh = cubeBuilder.build();
-    cubeMesh.upload(ctx);
+    cubeBuilder.computeFlatNormals();
+    scene.addMesh("cube", cubeBuilder,
+        glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 0.0f, 0.0f)),
+        glm::vec4(1.0f, 0.4f, 0.3f, 1.0f));
 
-    // Sphere
+    // Smooth sphere
     auto sphereBuilder = MeshBuilder::sphere(0.5f, 24);
-    sphereMesh = sphereBuilder.build();
-    sphereMesh.upload(ctx);
+    scene.addMesh("sphere", sphereBuilder,
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)),
+        glm::vec4(0.3f, 0.6f, 1.0f, 1.0f));
 
-    // CSG: Cube with spherical hole
-    auto csgCube = MeshBuilder::box(1.5f, 1.5f, 1.5f);
-    auto csgSphere = MeshBuilder::sphere(1.0f, 24);
-    csgCube.subtract(csgSphere);
-    csgCube.computeFlatNormals();
-    csgMesh = csgCube.build();
-    csgMesh.upload(ctx);
-
-    // Set up scene with multiple objects
-    scene.add(cubeMesh,
-              glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 0.0f, 0.0f)),
-              glm::vec4(1.0f, 0.4f, 0.3f, 1.0f));
-
-    scene.add(sphereMesh,
-              glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)),
-              glm::vec4(0.3f, 0.6f, 1.0f, 1.0f));
-
-    // Add CSG mesh
-    scene.add(csgMesh,
-              glm::translate(glm::mat4(1.0f), glm::vec3(2.5f, 0.0f, 0.0f)),
-              glm::vec4(0.4f, 1.0f, 0.5f, 1.0f));
+    // CSG: Cube with spherical hole (using MeshBuilder CSG)
+    auto csgBuilder = MeshBuilder::box(1.5f, 1.5f, 1.5f);
+    csgBuilder.subtract(MeshBuilder::sphere(1.0f, 24));
+    csgBuilder.computeFlatNormals();
+    scene.addMesh("csg", csgBuilder,
+        glm::translate(glm::mat4(1.0f), glm::vec3(2.5f, 0.0f, 0.0f)),
+        glm::vec4(0.4f, 1.0f, 0.5f, 1.0f));
 
     // Set up camera
     camera.lookAt(glm::vec3(5, 3, 5), glm::vec3(0, 0, 0))
@@ -62,9 +49,9 @@ void setup(Context& ctx) {
           .nearPlane(0.1f)
           .farPlane(100.0f);
 
-    // Create chain: Render3D -> ChromaticAberration -> output
+    // Create chain: SceneComposer -> Render3D -> ChromaticAberration -> output
     auto& renderer = chain.add<Render3D>("render3d");
-    renderer.scene(scene)
+    renderer.input(&scene)
             .camera(camera)
             .shadingMode(ShadingMode::Flat)
             .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
@@ -96,26 +83,24 @@ void update(Context& ctx) {
     float elevation = 0.4f + 0.1f * std::sin(time * 0.5f);
     camera.orbit(distance, azimuth, elevation);
 
-    auto& renderer = chain.get<Render3D>("render3d");
-    renderer.camera(camera);
+    chain.get<Render3D>("render3d").camera(camera);
 
-    // Update object transforms - rotate each mesh
-    auto& objects = scene.objects();
+    // Animate objects via SceneComposer entries
+    auto& scene = chain.get<SceneComposer>("scene");
+    auto& entries = scene.entries();
 
     // Rotate cube around Y axis
-    objects[0].transform = glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 0.0f, 0.0f)) *
+    entries[0].transform = glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 0.0f, 0.0f)) *
                           glm::rotate(glm::mat4(1.0f), time * 0.5f, glm::vec3(0, 1, 0));
 
     // Bob sphere up and down
     float y = 0.3f * std::sin(time * 2.0f);
-    objects[1].transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, y, 0.0f));
+    entries[1].transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, y, 0.0f));
 
-    // Rotate CSG shape (only if CSG mesh is in scene)
-    if (objects.size() > 2) {
-        objects[2].transform = glm::translate(glm::mat4(1.0f), glm::vec3(2.5f, 0.0f, 0.0f)) *
-                              glm::rotate(glm::mat4(1.0f), time * 0.3f, glm::vec3(0, 1, 0)) *
-                              glm::rotate(glm::mat4(1.0f), time * 0.2f, glm::vec3(1, 0, 0));
-    }
+    // Rotate CSG shape
+    entries[2].transform = glm::translate(glm::mat4(1.0f), glm::vec3(2.5f, 0.0f, 0.0f)) *
+                          glm::rotate(glm::mat4(1.0f), time * 0.3f, glm::vec3(0, 1, 0)) *
+                          glm::rotate(glm::mat4(1.0f), time * 0.2f, glm::vec3(1, 0, 0));
 }
 
 VIVID_CHAIN(setup, update)

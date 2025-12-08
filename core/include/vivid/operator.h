@@ -24,7 +24,9 @@ enum class OutputKind {
     Texture,    ///< GPU texture output (most common)
     Value,      ///< Single float value
     ValueArray, ///< Array of float values
-    Geometry    ///< 3D geometry
+    Geometry,   ///< 3D geometry (meshes, scenes)
+    Camera,     ///< Camera configuration
+    Light       ///< Light source
 };
 
 /**
@@ -38,6 +40,8 @@ inline const char* outputKindName(OutputKind kind) {
         case OutputKind::Value:      return "Value";
         case OutputKind::ValueArray: return "ValueArray";
         case OutputKind::Geometry:   return "Geometry";
+        case OutputKind::Camera:     return "Camera";
+        case OutputKind::Light:      return "Light";
         default:                     return "Unknown";
     }
 }
@@ -186,6 +190,12 @@ public:
      * @return WebGPU texture view for visualization/chaining
      */
     virtual WGPUTextureView outputView() const { return nullptr; }
+
+    /**
+     * @brief Get the output value (for Value/ValueArray operators)
+     * @return The current output value, or 0.0 if not a value operator
+     */
+    virtual float outputValue() const { return 0.0f; }
 
     /// @}
     // -------------------------------------------------------------------------

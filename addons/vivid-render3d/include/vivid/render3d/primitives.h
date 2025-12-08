@@ -2,46 +2,46 @@
 
 /**
  * @file primitives.h
- * @brief Primitive geometry operators
+ * @brief Primitive mesh operators
  *
- * Provides GeometryOperator implementations for common 3D primitives:
- * - BoxGeometry
- * - SphereGeometry
- * - CylinderGeometry
- * - ConeGeometry
- * - TorusGeometry
- * - PlaneGeometry
+ * Provides MeshOperator implementations for common 3D primitives:
+ * - Box
+ * - Sphere
+ * - Cylinder
+ * - Cone
+ * - Torus
+ * - Plane
  *
  * Each primitive uses MeshBuilder internally and outputs a Mesh that can
  * be fed into Boolean operators or SceneComposer.
  */
 
-#include <vivid/render3d/geometry_operator.h>
+#include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/mesh_builder.h>
 #include <vivid/context.h>
 
 namespace vivid::render3d {
 
 // =============================================================================
-// BoxGeometry
+// Box
 // =============================================================================
 
 /**
- * @brief Box/cube geometry generator
+ * @brief Box/cube mesh generator
  *
  * Creates a box with specified dimensions.
  *
  * @par Example
  * @code
- * auto& box = chain.add<BoxGeometry>("box")
+ * auto& box = chain.add<Box>("box")
  *     .size(1.0f, 2.0f, 1.0f)
  *     .flatShading(true);
  * @endcode
  */
-class BoxGeometry : public GeometryOperator {
+class Box : public MeshOperator {
 public:
     /// Set box dimensions
-    BoxGeometry& size(float width, float height, float depth) {
+    Box& size(float width, float height, float depth) {
         m_width = width;
         m_height = height;
         m_depth = depth;
@@ -49,13 +49,13 @@ public:
     }
 
     /// Set uniform size (cube)
-    BoxGeometry& size(float s) {
+    Box& size(float s) {
         m_width = m_height = m_depth = s;
         return *this;
     }
 
     /// Enable flat shading (faceted look)
-    BoxGeometry& flatShading(bool enabled) {
+    Box& flatShading(bool enabled) {
         m_flatShading = enabled;
         return *this;
     }
@@ -77,7 +77,7 @@ public:
         m_mesh.release();
     }
 
-    std::string name() const override { return "BoxGeometry"; }
+    std::string name() const override { return "Box"; }
 
 private:
     float m_width = 1.0f;
@@ -87,31 +87,31 @@ private:
 };
 
 // =============================================================================
-// SphereGeometry
+// Sphere
 // =============================================================================
 
 /**
- * @brief Sphere geometry generator
+ * @brief Sphere mesh generator
  *
  * Creates a UV sphere with specified radius and detail level.
  *
  * @par Example
  * @code
- * auto& sphere = chain.add<SphereGeometry>("sphere")
+ * auto& sphere = chain.add<Sphere>("sphere")
  *     .radius(0.5f)
  *     .segments(32);
  * @endcode
  */
-class SphereGeometry : public GeometryOperator {
+class Sphere : public MeshOperator {
 public:
     /// Set sphere radius
-    SphereGeometry& radius(float r) {
+    Sphere& radius(float r) {
         m_radius = r;
         return *this;
     }
 
     /// Set number of segments (detail level)
-    SphereGeometry& segments(int s) {
+    Sphere& segments(int s) {
         m_segments = s;
         return *this;
     }
@@ -128,7 +128,7 @@ public:
         m_mesh.release();
     }
 
-    std::string name() const override { return "SphereGeometry"; }
+    std::string name() const override { return "Sphere"; }
 
 private:
     float m_radius = 0.5f;
@@ -136,44 +136,44 @@ private:
 };
 
 // =============================================================================
-// CylinderGeometry
+// Cylinder
 // =============================================================================
 
 /**
- * @brief Cylinder geometry generator
+ * @brief Cylinder mesh generator
  *
  * Creates a cylinder with specified radius, height, and detail level.
  *
  * @par Example
  * @code
- * auto& cylinder = chain.add<CylinderGeometry>("cylinder")
+ * auto& cylinder = chain.add<Cylinder>("cylinder")
  *     .radius(0.5f)
  *     .height(2.0f)
  *     .segments(24);
  * @endcode
  */
-class CylinderGeometry : public GeometryOperator {
+class Cylinder : public MeshOperator {
 public:
     /// Set cylinder radius
-    CylinderGeometry& radius(float r) {
+    Cylinder& radius(float r) {
         m_radius = r;
         return *this;
     }
 
     /// Set cylinder height
-    CylinderGeometry& height(float h) {
+    Cylinder& height(float h) {
         m_height = h;
         return *this;
     }
 
     /// Set number of segments (detail level)
-    CylinderGeometry& segments(int s) {
+    Cylinder& segments(int s) {
         m_segments = s;
         return *this;
     }
 
     /// Enable flat shading
-    CylinderGeometry& flatShading(bool enabled) {
+    Cylinder& flatShading(bool enabled) {
         m_flatShading = enabled;
         return *this;
     }
@@ -193,7 +193,7 @@ public:
         m_mesh.release();
     }
 
-    std::string name() const override { return "CylinderGeometry"; }
+    std::string name() const override { return "Cylinder"; }
 
 private:
     float m_radius = 0.5f;
@@ -203,44 +203,44 @@ private:
 };
 
 // =============================================================================
-// ConeGeometry
+// Cone
 // =============================================================================
 
 /**
- * @brief Cone geometry generator
+ * @brief Cone mesh generator
  *
  * Creates a cone with specified base radius, height, and detail level.
  *
  * @par Example
  * @code
- * auto& cone = chain.add<ConeGeometry>("cone")
+ * auto& cone = chain.add<Cone>("cone")
  *     .radius(0.5f)
  *     .height(1.0f)
  *     .segments(24);
  * @endcode
  */
-class ConeGeometry : public GeometryOperator {
+class Cone : public MeshOperator {
 public:
     /// Set cone base radius
-    ConeGeometry& radius(float r) {
+    Cone& radius(float r) {
         m_radius = r;
         return *this;
     }
 
     /// Set cone height
-    ConeGeometry& height(float h) {
+    Cone& height(float h) {
         m_height = h;
         return *this;
     }
 
     /// Set number of segments (detail level)
-    ConeGeometry& segments(int s) {
+    Cone& segments(int s) {
         m_segments = s;
         return *this;
     }
 
     /// Enable flat shading
-    ConeGeometry& flatShading(bool enabled) {
+    Cone& flatShading(bool enabled) {
         m_flatShading = enabled;
         return *this;
     }
@@ -260,7 +260,7 @@ public:
         m_mesh.release();
     }
 
-    std::string name() const override { return "ConeGeometry"; }
+    std::string name() const override { return "Cone"; }
 
 private:
     float m_radius = 0.5f;
@@ -270,45 +270,45 @@ private:
 };
 
 // =============================================================================
-// TorusGeometry
+// Torus
 // =============================================================================
 
 /**
- * @brief Torus (donut) geometry generator
+ * @brief Torus (donut) mesh generator
  *
  * Creates a torus with specified outer/inner radii and detail levels.
  *
  * @par Example
  * @code
- * auto& torus = chain.add<TorusGeometry>("torus")
+ * auto& torus = chain.add<Torus>("torus")
  *     .outerRadius(0.5f)
  *     .innerRadius(0.2f)
  *     .segments(32)
  *     .rings(16);
  * @endcode
  */
-class TorusGeometry : public GeometryOperator {
+class Torus : public MeshOperator {
 public:
     /// Set outer radius (distance from center to tube center)
-    TorusGeometry& outerRadius(float r) {
+    Torus& outerRadius(float r) {
         m_outerRadius = r;
         return *this;
     }
 
     /// Set inner radius (tube radius)
-    TorusGeometry& innerRadius(float r) {
+    Torus& innerRadius(float r) {
         m_innerRadius = r;
         return *this;
     }
 
     /// Set number of segments around the ring
-    TorusGeometry& segments(int s) {
+    Torus& segments(int s) {
         m_segments = s;
         return *this;
     }
 
     /// Set number of rings around the tube
-    TorusGeometry& rings(int r) {
+    Torus& rings(int r) {
         m_rings = r;
         return *this;
     }
@@ -325,7 +325,7 @@ public:
         m_mesh.release();
     }
 
-    std::string name() const override { return "TorusGeometry"; }
+    std::string name() const override { return "Torus"; }
 
 private:
     float m_outerRadius = 0.5f;
@@ -335,39 +335,39 @@ private:
 };
 
 // =============================================================================
-// PlaneGeometry
+// Plane
 // =============================================================================
 
 /**
- * @brief Plane geometry generator
+ * @brief Plane mesh generator
  *
  * Creates a flat plane with optional subdivisions for displacement effects.
  *
  * @par Example
  * @code
- * auto& plane = chain.add<PlaneGeometry>("plane")
+ * auto& plane = chain.add<Plane>("plane")
  *     .size(10.0f, 10.0f)
  *     .subdivisions(16, 16);
  * @endcode
  */
-class PlaneGeometry : public GeometryOperator {
+class Plane : public MeshOperator {
 public:
     /// Set plane dimensions
-    PlaneGeometry& size(float width, float height) {
+    Plane& size(float width, float height) {
         m_width = width;
         m_height = height;
         return *this;
     }
 
     /// Set number of subdivisions
-    PlaneGeometry& subdivisions(int x, int y) {
+    Plane& subdivisions(int x, int y) {
         m_subdivisionsX = x;
         m_subdivisionsY = y;
         return *this;
     }
 
     /// Enable flat shading
-    PlaneGeometry& flatShading(bool enabled) {
+    Plane& flatShading(bool enabled) {
         m_flatShading = enabled;
         return *this;
     }
@@ -387,7 +387,7 @@ public:
         m_mesh.release();
     }
 
-    std::string name() const override { return "PlaneGeometry"; }
+    std::string name() const override { return "Plane"; }
 
 private:
     float m_width = 1.0f;

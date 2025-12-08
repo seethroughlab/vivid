@@ -27,7 +27,7 @@ void setup(Context& ctx) {
     // Standalone primitives (created via scene.add<T>())
     // -------------------------------------------------------------------------
 
-    scene.add<TorusGeometry>("torus",
+    scene.add<Torus>("torus",
         glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 0.0f, 0.0f)),
         glm::vec4(0.9f, 0.4f, 0.8f, 1.0f))  // Pink
         .outerRadius(0.5f)
@@ -35,7 +35,7 @@ void setup(Context& ctx) {
         .segments(32)
         .rings(16);
 
-    scene.add<CylinderGeometry>("cylinder",
+    scene.add<Cylinder>("cylinder",
         glm::translate(glm::mat4(1.0f), glm::vec3(2.5f, 0.0f, 0.0f)),
         glm::vec4(0.3f, 0.9f, 0.4f, 1.0f))  // Green
         .radius(0.3f)
@@ -43,7 +43,7 @@ void setup(Context& ctx) {
         .segments(24)
         .flatShading(true);
 
-    scene.add<ConeGeometry>("cone",
+    scene.add<Cone>("cone",
         glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 2.5f)),
         glm::vec4(0.9f, 0.7f, 0.2f, 1.0f))  // Orange
         .radius(0.4f)
@@ -56,11 +56,11 @@ void setup(Context& ctx) {
     // CSG inputs are created via chain.add<>() (not added to scene)
     // -------------------------------------------------------------------------
 
-    auto& box = chain.add<BoxGeometry>("box")
+    auto& box = chain.add<Box>("box")
         .size(1.2f, 1.2f, 1.2f)
         .flatShading(true);
 
-    auto& sphere = chain.add<SphereGeometry>("sphere")
+    auto& sphere = chain.add<Sphere>("sphere")
         .radius(0.85f)
         .segments(24);
 

@@ -7,6 +7,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 namespace vivid::imgui {
 
@@ -138,7 +139,11 @@ void ChainVisualizer::updateGeometryPreview(
     if (mesh != preview.lastMesh) {
         preview.scene.clear();
         if (mesh) {
+            // Internal use - suppress deprecation warning (this is internal preview code)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
             preview.scene.add(*mesh, glm::mat4(1.0f), glm::vec4(0.7f, 0.85f, 1.0f, 1.0f));
+#pragma clang diagnostic pop
         }
         preview.lastMesh = mesh;
     }
@@ -168,8 +173,79 @@ void ChainVisualizer::updateGeometryPreview(
         ).fov(45.0f).nearPlane(0.01f).farPlane(100.0f);
     }
 
-    // Render
+    // Render (internal use - suppress deprecation warning)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
     preview.renderer->scene(preview.scene).camera(preview.camera);
+#pragma clang diagnostic pop
+    preview.renderer->process(ctx);
+}
+
+void ChainVisualizer::updateScenePreview(
+    GeometryPreview& preview,
+    render3d::SceneComposer* composer,
+    vivid::Context& ctx,
+    float dt
+) {
+    // Initialize renderer if needed
+    if (!preview.renderer) {
+        preview.renderer = std::make_unique<render3d::Render3D>();
+        preview.renderer->resolution(100, 56)
+            .shadingMode(render3d::ShadingMode::Flat)
+            .clearColor(0.12f, 0.14f, 0.18f)
+            .ambient(0.3f)
+            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+        preview.renderer->init(ctx);
+    }
+
+    // Update rotation
+    preview.rotationAngle += dt * 0.8f;
+
+    // Get the composed scene
+    render3d::Scene& scene = composer->outputScene();
+
+    if (scene.empty()) {
+        return;
+    }
+
+    // Calculate scene bounds for auto-framing (across all objects)
+    glm::vec3 minBounds(FLT_MAX), maxBounds(-FLT_MAX);
+    int meshCount = 0;
+    for (const auto& obj : scene.objects()) {
+        if (obj.mesh && !obj.mesh->vertices.empty()) {
+            for (const auto& v : obj.mesh->vertices) {
+                // Transform vertex to world space
+                glm::vec3 worldPos = glm::vec3(obj.transform * glm::vec4(v.position, 1.0f));
+                minBounds = glm::min(minBounds, worldPos);
+                maxBounds = glm::max(maxBounds, worldPos);
+            }
+            meshCount++;
+        }
+    }
+
+    if (meshCount == 0) {
+        return;
+    }
+
+    // Compute center and camera distance
+    glm::vec3 center = (minBounds + maxBounds) * 0.5f;
+    float maxDist = glm::length(maxBounds - minBounds) * 0.5f;
+    float distance = maxDist * 2.5f;
+    if (distance < 0.1f) distance = 5.0f;
+
+    // Orbit camera around scene center
+    float camX = center.x + distance * 0.7f * cos(preview.rotationAngle);
+    float camZ = center.z + distance * 0.7f * sin(preview.rotationAngle);
+    preview.camera.lookAt(
+        glm::vec3(camX, center.y + distance * 0.4f, camZ),
+        center
+    ).fov(45.0f).nearPlane(0.01f).farPlane(100.0f);
+
+    // Render (internal use - suppress deprecation warning)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    preview.renderer->scene(scene).camera(preview.camera);
+#pragma clang diagnostic pop
     preview.renderer->process(ctx);
 }
 
@@ -244,6 +320,18 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(120, 80, 40, 255));
             ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(150, 100, 50, 255));
             ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(180, 120, 60, 255));
+            pushedStyle = true;
+        } else if (outputKind == vivid::OutputKind::Camera) {
+            // Green-ish tint for camera nodes
+            ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(40, 100, 80, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(50, 125, 100, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(60, 150, 120, 255));
+            pushedStyle = true;
+        } else if (outputKind == vivid::OutputKind::Light) {
+            // Yellow-ish tint for light nodes
+            ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(120, 100, 40, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(150, 125, 50, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(180, 150, 60, 255));
             pushedStyle = true;
         }
 
@@ -345,33 +433,58 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             // Geometry operator - render live 3D rotating preview
             auto& preview = m_geometryPreviews[info.op];
 
-            // Get mesh from geometry operator
-            render3d::Mesh* mesh = nullptr;
-            if (auto* geomOp = dynamic_cast<render3d::GeometryOperator*>(info.op)) {
-                mesh = geomOp->outputMesh();
-            }
+            // Check if this is a SceneComposer (outputs Scene, not single Mesh)
+            auto* composer = dynamic_cast<render3d::SceneComposer*>(info.op);
 
-            // Update preview (handles init, rotation, rendering)
-            if (mesh && mesh->valid()) {
-                updateGeometryPreview(preview, mesh, ctx, input.dt);
+            if (composer) {
+                // SceneComposer: render the full composed scene
+                if (!composer->outputScene().empty()) {
+                    updateScenePreview(preview, composer, ctx, input.dt);
 
-                // Display rendered texture
-                WGPUTextureView view = preview.renderer ? preview.renderer->outputView() : nullptr;
-                if (view) {
-                    ImTextureID texId = reinterpret_cast<ImTextureID>(view);
-                    ImGui::Image(texId, ImVec2(100, 56));
+                    // Display rendered texture
+                    WGPUTextureView view = preview.renderer ? preview.renderer->outputView() : nullptr;
+                    if (view) {
+                        ImTextureID texId = reinterpret_cast<ImTextureID>(view);
+                        ImGui::Image(texId, ImVec2(100, 56));
+                    } else {
+                        ImGui::Dummy(ImVec2(100, 56));
+                    }
                 } else {
-                    // Fallback if no texture yet
+                    // Empty scene placeholder
                     ImGui::Dummy(ImVec2(100, 56));
+                    ImVec2 min = ImGui::GetItemRectMin();
+                    ImVec2 max = ImGui::GetItemRectMax();
+                    ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 50, 70, 255), 4.0f);
+                    ImGui::GetWindowDrawList()->AddText(
+                        ImVec2(min.x + 15, min.y + 20), IM_COL32(100, 180, 255, 255), "empty scene");
                 }
             } else {
-                // No valid mesh - show placeholder
-                ImGui::Dummy(ImVec2(100, 56));
-                ImVec2 min = ImGui::GetItemRectMin();
-                ImVec2 max = ImGui::GetItemRectMax();
-                ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 50, 70, 255), 4.0f);
-                ImGui::GetWindowDrawList()->AddText(
-                    ImVec2(min.x + 20, min.y + 20), IM_COL32(100, 180, 255, 255), "no mesh");
+                // Regular MeshOperator - get mesh and render single object
+                render3d::Mesh* mesh = nullptr;
+                if (auto* meshOp = dynamic_cast<render3d::MeshOperator*>(info.op)) {
+                    mesh = meshOp->outputMesh();
+                }
+
+                if (mesh && mesh->valid()) {
+                    updateGeometryPreview(preview, mesh, ctx, input.dt);
+
+                    // Display rendered texture
+                    WGPUTextureView view = preview.renderer ? preview.renderer->outputView() : nullptr;
+                    if (view) {
+                        ImTextureID texId = reinterpret_cast<ImTextureID>(view);
+                        ImGui::Image(texId, ImVec2(100, 56));
+                    } else {
+                        ImGui::Dummy(ImVec2(100, 56));
+                    }
+                } else {
+                    // No valid mesh - show placeholder
+                    ImGui::Dummy(ImVec2(100, 56));
+                    ImVec2 min = ImGui::GetItemRectMin();
+                    ImVec2 max = ImGui::GetItemRectMax();
+                    ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 50, 70, 255), 4.0f);
+                    ImGui::GetWindowDrawList()->AddText(
+                        ImVec2(min.x + 20, min.y + 20), IM_COL32(100, 180, 255, 255), "no mesh");
+                }
             }
         } else if (kind == vivid::OutputKind::Value || kind == vivid::OutputKind::ValueArray) {
             // Value operator - show numeric display
@@ -382,6 +495,50 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             ImGui::GetWindowDrawList()->AddText(
                 ImVec2(min.x + 25, min.y + 12), IM_COL32(200, 180, 100, 255),
                 kind == vivid::OutputKind::Value ? "Value" : "Values");
+        } else if (kind == vivid::OutputKind::Camera) {
+            // Camera operator - draw camera icon
+            ImGui::Dummy(ImVec2(100, 50));
+            ImVec2 min = ImGui::GetItemRectMin();
+            ImVec2 max = ImGui::GetItemRectMax();
+            ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 60, 50, 255), 4.0f);
+
+            // Draw camera body (rectangle)
+            float cx = (min.x + max.x) * 0.5f;
+            float cy = (min.y + max.y) * 0.5f;
+            ImU32 iconColor = IM_COL32(100, 200, 160, 255);
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                ImVec2(cx - 20, cy - 10), ImVec2(cx + 10, cy + 10), iconColor, 3.0f);
+            // Draw lens (triangle)
+            ImGui::GetWindowDrawList()->AddTriangleFilled(
+                ImVec2(cx + 10, cy - 8), ImVec2(cx + 25, cy), ImVec2(cx + 10, cy + 8), iconColor);
+            // Draw viewfinder
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                ImVec2(cx - 15, cy - 18), ImVec2(cx, cy - 10), iconColor, 2.0f);
+        } else if (kind == vivid::OutputKind::Light) {
+            // Light operator - draw light bulb icon
+            ImGui::Dummy(ImVec2(100, 50));
+            ImVec2 min = ImGui::GetItemRectMin();
+            ImVec2 max = ImGui::GetItemRectMax();
+            ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(60, 50, 25, 255), 4.0f);
+
+            // Draw bulb (circle)
+            float cx = (min.x + max.x) * 0.5f;
+            float cy = (min.y + max.y) * 0.5f - 3;
+            ImU32 iconColor = IM_COL32(255, 220, 100, 255);
+            ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(cx, cy), 12, iconColor);
+            // Draw base
+            ImGui::GetWindowDrawList()->AddRectFilled(
+                ImVec2(cx - 6, cy + 10), ImVec2(cx + 6, cy + 18), IM_COL32(180, 180, 180, 255), 2.0f);
+            // Draw rays
+            ImU32 rayColor = IM_COL32(255, 240, 150, 180);
+            for (int i = 0; i < 8; i++) {
+                float angle = i * 3.14159f / 4;
+                float r1 = 15, r2 = 22;
+                ImGui::GetWindowDrawList()->AddLine(
+                    ImVec2(cx + r1 * cos(angle), cy + r1 * sin(angle)),
+                    ImVec2(cx + r2 * cos(angle), cy + r2 * sin(angle)),
+                    rayColor, 2.0f);
+            }
         } else {
             // Unknown type
             ImGui::Dummy(ImVec2(100, 40));

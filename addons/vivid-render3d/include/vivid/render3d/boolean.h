@@ -10,7 +10,7 @@
  * - Intersect: keeps only overlapping volume
  */
 
-#include <vivid/render3d/geometry_operator.h>
+#include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/mesh_builder.h>
 #include <vivid/context.h>
 
@@ -33,8 +33,8 @@ enum class BooleanOp {
  *
  * @par Example
  * @code
- * auto& box = chain.add<BoxGeometry>("box").size(1.0f);
- * auto& sphere = chain.add<SphereGeometry>("sphere").radius(0.7f);
+ * auto& box = chain.add<Box>("box").size(1.0f);
+ * auto& sphere = chain.add<Sphere>("sphere").radius(0.7f);
  *
  * auto& hollowCube = chain.add<Boolean>("csg")
  *     .inputA(&box)
@@ -42,16 +42,16 @@ enum class BooleanOp {
  *     .operation(BooleanOp::Subtract);
  * @endcode
  */
-class Boolean : public GeometryOperator {
+class Boolean : public MeshOperator {
 public:
-    /// Set the first input geometry (A)
-    Boolean& inputA(GeometryOperator* op) {
+    /// Set the first input (A)
+    Boolean& inputA(MeshOperator* op) {
         setInput(0, op);
         return *this;
     }
 
-    /// Set the second input geometry (B)
-    Boolean& inputB(GeometryOperator* op) {
+    /// Set the second input (B)
+    Boolean& inputB(MeshOperator* op) {
         setInput(1, op);
         return *this;
     }
@@ -71,8 +71,8 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
-        GeometryOperator* opA = getGeometryInput(0);
-        GeometryOperator* opB = getGeometryInput(1);
+        MeshOperator* opA = getMeshInput(0);
+        MeshOperator* opB = getMeshInput(1);
 
         if (!opA || !opB) {
             // No inputs - output empty mesh

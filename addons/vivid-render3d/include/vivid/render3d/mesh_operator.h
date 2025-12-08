@@ -1,14 +1,14 @@
 #pragma once
 
 /**
- * @file geometry_operator.h
- * @brief Base class for geometry-producing operators
+ * @file mesh_operator.h
+ * @brief Base class for mesh-producing operators
  *
- * GeometryOperators output Mesh data instead of textures. They can be
+ * MeshOperators output Mesh data instead of textures. They can be
  * chained together for CSG operations and combined in a SceneComposer
  * before being rendered by Render3D.
  *
- * Important: GeometryOperators cannot be chain outputs - only TextureOperators
+ * Important: MeshOperators cannot be chain outputs - only TextureOperators
  * can produce the final output of a chain.
  */
 
@@ -19,22 +19,22 @@
 namespace vivid::render3d {
 
 /**
- * @brief Base class for operators that produce 3D geometry
+ * @brief Base class for operators that produce 3D meshes
  *
- * GeometryOperator provides a foundation for creating procedural geometry
+ * MeshOperator provides a foundation for creating procedural geometry
  * that can be combined through boolean operations and rendered to texture.
  *
  * @par Pipeline Example
  * @code
- * BoxGeometry -> Boolean(subtract) -> SceneComposer -> Render3D -> Output
- * SphereGeometry -/
+ * Box -> Boolean(subtract) -> SceneComposer -> Render3D -> Output
+ * Sphere -/
  * @endcode
  *
  * @par Example Implementation
  * @code
- * class BoxGeometry : public GeometryOperator {
+ * class Box : public MeshOperator {
  * public:
- *     BoxGeometry& size(float w, float h, float d) {
+ *     Box& size(float w, float h, float d) {
  *         m_width = w; m_height = h; m_depth = d;
  *         return *this;
  *     }
@@ -46,16 +46,16 @@ namespace vivid::render3d {
  *         m_mesh.upload(ctx);
  *     }
  *
- *     std::string name() const override { return "BoxGeometry"; }
+ *     std::string name() const override { return "Box"; }
  *
  * private:
  *     float m_width = 1.0f, m_height = 1.0f, m_depth = 1.0f;
  * };
  * @endcode
  */
-class GeometryOperator : public Operator {
+class MeshOperator : public Operator {
 public:
-    virtual ~GeometryOperator() = default;
+    virtual ~MeshOperator() = default;
 
     // -------------------------------------------------------------------------
     /// @name Output Type
@@ -66,20 +66,20 @@ public:
      * @return OutputKind::Geometry
      *
      * This marks the operator as producing geometry, not textures.
-     * Chain validation uses this to prevent geometry operators from
+     * Chain validation uses this to prevent mesh operators from
      * being set as chain outputs.
      */
     OutputKind outputKind() const override { return OutputKind::Geometry; }
 
     /**
-     * @brief Returns nullptr (geometry operators don't produce texture views)
+     * @brief Returns nullptr (mesh operators don't produce texture views)
      * @return nullptr
      */
     WGPUTextureView outputView() const override { return nullptr; }
 
     /// @}
     // -------------------------------------------------------------------------
-    /// @name Geometry Output
+    /// @name Mesh Output
     /// @{
 
     /**
@@ -118,8 +118,8 @@ public:
     /// @{
 
     /**
-     * @brief Set a geometry input (fluent interface)
-     * @param op GeometryOperator to use as input
+     * @brief Set a mesh input (fluent interface)
+     * @param op MeshOperator to use as input
      * @return Reference to this operator for chaining
      *
      * @par Example
@@ -129,20 +129,20 @@ public:
      *     .inputB(&sphere);
      * @endcode
      */
-    GeometryOperator& geometryInput(GeometryOperator* op) {
+    MeshOperator& meshInput(MeshOperator* op) {
         setInput(0, op);
         return *this;
     }
 
     /**
-     * @brief Get geometry input at specified index
+     * @brief Get mesh input at specified index
      * @param index Input slot index
-     * @return GeometryOperator pointer, or nullptr if not connected or wrong type
+     * @return MeshOperator pointer, or nullptr if not connected or wrong type
      */
-    GeometryOperator* getGeometryInput(int index = 0) const {
+    MeshOperator* getMeshInput(int index = 0) const {
         Operator* op = getInput(index);
         if (op && op->outputKind() == OutputKind::Geometry) {
-            return static_cast<GeometryOperator*>(op);
+            return static_cast<MeshOperator*>(op);
         }
         return nullptr;
     }

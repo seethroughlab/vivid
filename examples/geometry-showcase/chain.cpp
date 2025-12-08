@@ -11,9 +11,6 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
-// Persistent state across hot-reloads
-static Camera3D camera;
-
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
@@ -31,19 +28,19 @@ void setup(Context& ctx) {
     // Top row: Basic primitives (created via scene.add<T>())
     // -------------------------------------------------------------------------
 
-    scene.add<BoxGeometry>("box",
+    scene.add<Box>("box",
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 2.5f, topRowY, 0.0f)),
         glm::vec4(0.9f, 0.3f, 0.3f, 1.0f))  // Red
         .size(1.0f)
         .flatShading(true);
 
-    scene.add<SphereGeometry>("sphere",
+    scene.add<Sphere>("sphere",
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 1.5f, topRowY, 0.0f)),
         glm::vec4(0.3f, 0.9f, 0.4f, 1.0f))  // Green
         .radius(0.6f)
         .segments(32);
 
-    scene.add<CylinderGeometry>("cylinder",
+    scene.add<Cylinder>("cylinder",
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 0.5f, topRowY, 0.0f)),
         glm::vec4(0.3f, 0.5f, 0.9f, 1.0f))  // Blue
         .radius(0.5f)
@@ -51,7 +48,7 @@ void setup(Context& ctx) {
         .segments(24)
         .flatShading(true);
 
-    scene.add<ConeGeometry>("cone",
+    scene.add<Cone>("cone",
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 0.5f, topRowY, 0.0f)),
         glm::vec4(0.9f, 0.7f, 0.2f, 1.0f))  // Orange
         .radius(0.6f)
@@ -59,7 +56,7 @@ void setup(Context& ctx) {
         .segments(24)
         .flatShading(true);
 
-    scene.add<TorusGeometry>("torus",
+    scene.add<Torus>("torus",
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 1.5f, topRowY, 0.0f)),
         glm::vec4(0.8f, 0.3f, 0.8f, 1.0f))  // Purple
         .outerRadius(0.5f)
@@ -67,7 +64,7 @@ void setup(Context& ctx) {
         .segments(32)
         .rings(16);
 
-    scene.add<PlaneGeometry>("plane",
+    scene.add<Plane>("plane",
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 2.5f, topRowY, 0.0f)) *
         glm::rotate(glm::mat4(1.0f), glm::radians(-30.0f), glm::vec3(1, 0, 0)),
         glm::vec4(0.2f, 0.8f, 0.8f, 1.0f))  // Cyan
@@ -82,8 +79,8 @@ void setup(Context& ctx) {
     // -------------------------------------------------------------------------
 
     // CSG Subtract: Hollow cube
-    auto& hollowBox = chain.add<BoxGeometry>("hollowBox").size(1.2f).flatShading(true);
-    auto& hollowSphere = chain.add<SphereGeometry>("hollowSphere").radius(0.8f).segments(24);
+    auto& hollowBox = chain.add<Box>("hollowBox").size(1.2f).flatShading(true);
+    auto& hollowSphere = chain.add<Sphere>("hollowSphere").radius(0.8f).segments(24);
     auto& csgSubtract = chain.add<Boolean>("csgSubtract")
         .inputA(&hollowBox)
         .inputB(&hollowSphere)
@@ -95,8 +92,8 @@ void setup(Context& ctx) {
         glm::vec4(0.4f, 0.8f, 1.0f, 1.0f));  // Light blue
 
     // CSG Pipe: Cylinder with hole
-    auto& outerCyl = chain.add<CylinderGeometry>("outerCyl").radius(0.5f).height(1.5f).segments(32);
-    auto& innerCyl = chain.add<CylinderGeometry>("innerCyl").radius(0.3f).height(1.8f).segments(32);
+    auto& outerCyl = chain.add<Cylinder>("outerCyl").radius(0.5f).height(1.5f).segments(32);
+    auto& innerCyl = chain.add<Cylinder>("innerCyl").radius(0.3f).height(1.8f).segments(32);
     auto& pipe = chain.add<Boolean>("pipe")
         .inputA(&outerCyl)
         .inputB(&innerCyl)
@@ -108,20 +105,36 @@ void setup(Context& ctx) {
         glm::vec4(0.9f, 0.5f, 0.7f, 1.0f));  // Pink
 
     // =========================================================================
+    // CAMERA - Orbit camera as a node
+    // =========================================================================
+
+    auto& camera = chain.add<CameraOperator>("camera")
+        .orbitCenter(0, 0, 0)
+        .distance(14.0f)
+        .azimuth(0.0f)
+        .elevation(0.25f)
+        .fov(50.0f)
+        .nearPlane(0.1f)
+        .farPlane(100.0f);
+
+    // =========================================================================
+    // LIGHT - Directional light as a node
+    // =========================================================================
+
+    auto& sun = chain.add<DirectionalLight>("sun")
+        .direction(1, 2, 1)
+        .color(1.0f, 1.0f, 1.0f)
+        .intensity(1.0f);
+
+    // =========================================================================
     // RENDER3D - Render scene to texture
     // =========================================================================
 
-    camera.lookAt(glm::vec3(0, 1, 12), glm::vec3(0, 0, 0))
-          .fov(50.0f)
-          .nearPlane(0.1f)
-          .farPlane(100.0f);
-
     auto& render = chain.add<Render3D>("render3d")
         .input(&scene)
-        .camera(camera)
+        .cameraInput(&camera)
+        .lightInput(&sun)
         .shadingMode(ShadingMode::Flat)
-        .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
-        .lightColor(glm::vec3(1, 1, 1))
         .ambient(0.2f)
         .clearColor(0.08f, 0.08f, 0.12f)
         .resolution(1280, 720);
@@ -137,14 +150,9 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
 
-    // Gentle camera orbit
-    float distance = 14.0f;
-    float azimuth = time * 0.15f;
-    float elevation = 0.25f;
-    camera.orbit(distance, azimuth, elevation);
-
-    auto& render = chain.get<Render3D>("render3d");
-    render.camera(camera);
+    // Animate camera orbit
+    auto& camera = chain.get<CameraOperator>("camera");
+    camera.azimuth(time * 0.15f);
 
     // Animate objects via SceneComposer entries
     auto& scene = chain.get<SceneComposer>("scene");

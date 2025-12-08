@@ -8,7 +8,8 @@
  * and colors into a Scene that can be rendered by Render3D.
  */
 
-#include <vivid/render3d/geometry_operator.h>
+#include <vivid/render3d/mesh_operator.h>
+#include <vivid/render3d/static_mesh.h>
 #include <vivid/render3d/scene.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>
@@ -19,10 +20,10 @@
 namespace vivid::render3d {
 
 /**
- * @brief Entry for a geometry in the composer
+ * @brief Entry for a mesh in the composer
  */
 struct ComposerEntry {
-    GeometryOperator* geometry = nullptr;
+    MeshOperator* geometry = nullptr;
     glm::mat4 transform = glm::mat4(1.0f);
     glm::vec4 color = glm::vec4(1.0f);
     int inputIndex = -1;  // Index in inputs_ array, or -1 if not connected
@@ -38,27 +39,27 @@ struct ComposerEntry {
  * Note: SceneComposer is a special case - it outputs a Scene rather than
  * a single Mesh. The outputMesh() method returns nullptr.
  *
- * @par Example (Recommended - SceneComposer manages geometry)
+ * @par Example (Recommended - SceneComposer manages meshes)
  * @code
  * auto& scene = SceneComposer::create(chain, "scene");
  *
- * // Add geometry - automatically registered in chain
- * scene.add<BoxGeometry>("box")
+ * // Add meshes - automatically registered in chain
+ * scene.add<Box>("box")
  *     .size(1.0f);
  *
- * scene.add<SphereGeometry>("sphere", glm::translate(glm::mat4(1.0f), glm::vec3(2, 0, 0)))
+ * scene.add<Sphere>("sphere", glm::translate(glm::mat4(1.0f), glm::vec3(2, 0, 0)))
  *     .radius(0.5f);
  *
  * // For CSG, create inputs via chain (not added to scene)
- * auto& csgBox = chain.add<BoxGeometry>("csgBox").size(1.2f);
- * auto& csgSphere = chain.add<SphereGeometry>("csgSphere").radius(0.8f);
+ * auto& csgBox = chain.add<Box>("csgBox").size(1.2f);
+ * auto& csgSphere = chain.add<Sphere>("csgSphere").radius(0.8f);
  * scene.add<Boolean>("hollow")
  *     .inputA(&csgBox).inputB(&csgSphere).operation(BooleanOp::Subtract);
  *
  * auto& render = chain.add<Render3D>("render").input(&scene);
  * @endcode
  */
-class SceneComposer : public GeometryOperator {
+class SceneComposer : public MeshOperator {
 public:
     /**
      * @brief Create a SceneComposer and register it with the chain
@@ -77,19 +78,19 @@ public:
     }
 
     /**
-     * @brief Create and add a geometry operator to the scene
-     * @tparam T GeometryOperator type (e.g., BoxGeometry, SphereGeometry)
-     * @param name Unique name for the geometry operator
+     * @brief Create and add a mesh operator to the scene
+     * @tparam T MeshOperator type (e.g., Box, Sphere)
+     * @param name Unique name for the mesh operator
      * @param transform Model transform matrix (default: identity)
      * @param color RGBA color (default: white)
-     * @return Reference to the new geometry operator for configuration
+     * @return Reference to the new mesh operator for configuration
      *
-     * This creates the geometry operator, registers it with the chain,
+     * This creates the mesh operator, registers it with the chain,
      * and adds it to this scene in one step.
      *
      * @par Example
      * @code
-     * scene.add<BoxGeometry>("box", transform, color)
+     * scene.add<Box>("box", transform, color)
      *     .size(1.0f)
      *     .flatShading(true);
      * @endcode
@@ -118,32 +119,32 @@ public:
     }
 
     /**
-     * @brief Add a geometry with identity transform and white color
-     * @param op GeometryOperator to add
+     * @brief Add a mesh with identity transform and white color
+     * @param op MeshOperator to add
      * @return Reference to this for chaining
      */
-    SceneComposer& add(GeometryOperator* op) {
+    SceneComposer& add(MeshOperator* op) {
         return add(op, glm::mat4(1.0f), glm::vec4(1.0f));
     }
 
     /**
-     * @brief Add a geometry with transform
-     * @param op GeometryOperator to add
+     * @brief Add a mesh with transform
+     * @param op MeshOperator to add
      * @param transform Model transform matrix
      * @return Reference to this for chaining
      */
-    SceneComposer& add(GeometryOperator* op, const glm::mat4& transform) {
+    SceneComposer& add(MeshOperator* op, const glm::mat4& transform) {
         return add(op, transform, glm::vec4(1.0f));
     }
 
     /**
-     * @brief Add a geometry with transform and color
-     * @param op GeometryOperator to add
+     * @brief Add a mesh with transform and color
+     * @param op MeshOperator to add
      * @param transform Model transform matrix
      * @param color RGBA color
      * @return Reference to this for chaining
      */
-    SceneComposer& add(GeometryOperator* op, const glm::mat4& transform, const glm::vec4& color) {
+    SceneComposer& add(MeshOperator* op, const glm::mat4& transform, const glm::vec4& color) {
         ComposerEntry entry;
         entry.geometry = op;
         entry.transform = transform;
@@ -155,6 +156,83 @@ public:
 
         m_entries.push_back(entry);
         return *this;
+    }
+
+    /**
+     * @brief Add a custom mesh to the scene (registered in chain)
+     * @param name Unique name for the mesh operator
+     * @param mesh Pre-built mesh (ownership transferred)
+     * @param transform Model transform matrix (default: identity)
+     * @param color RGBA color (default: white)
+     * @return Reference to the StaticMesh for further configuration
+     *
+     * This creates a StaticMesh, registers it with the chain, and adds
+     * it to this scene. The mesh will appear in the chain visualizer.
+     *
+     * @par Example
+     * @code
+     * auto builder = MeshBuilder::box(1.0f, 1.0f, 1.0f);
+     * builder.computeFlatNormals();
+     *
+     * scene.addMesh("customBox", builder,
+     *               glm::translate(glm::mat4(1.0f), glm::vec3(2, 0, 0)),
+     *               glm::vec4(1.0f, 0.5f, 0.3f, 1.0f));
+     * @endcode
+     */
+    StaticMesh& addMesh(const std::string& name,
+                        Mesh&& mesh,
+                        const glm::mat4& transform = glm::mat4(1.0f),
+                        const glm::vec4& color = glm::vec4(1.0f)) {
+        if (!m_chain) {
+            throw std::runtime_error("SceneComposer: must use SceneComposer::create() to enable addMesh()");
+        }
+
+        // Create and register the StaticMesh
+        StaticMesh& meshOp = m_chain->add<StaticMesh>(name);
+        meshOp.mesh(std::move(mesh));
+
+        // Add to our entries
+        ComposerEntry entry;
+        entry.geometry = &meshOp;
+        entry.transform = transform;
+        entry.color = color;
+        entry.inputIndex = static_cast<int>(inputs_.size());
+        setInput(entry.inputIndex, &meshOp);
+        m_entries.push_back(entry);
+
+        return meshOp;
+    }
+
+    /**
+     * @brief Add a mesh built from a MeshBuilder (convenience overload)
+     * @param name Unique name for the mesh operator
+     * @param builder MeshBuilder containing the geometry
+     * @param transform Model transform matrix (default: identity)
+     * @param color RGBA color (default: white)
+     * @return Reference to the StaticMesh for further configuration
+     */
+    StaticMesh& addMesh(const std::string& name,
+                        MeshBuilder& builder,
+                        const glm::mat4& transform = glm::mat4(1.0f),
+                        const glm::vec4& color = glm::vec4(1.0f)) {
+        if (!m_chain) {
+            throw std::runtime_error("SceneComposer: must use SceneComposer::create() to enable addMesh()");
+        }
+
+        // Create and register the StaticMesh
+        StaticMesh& meshOp = m_chain->add<StaticMesh>(name);
+        meshOp.mesh(builder);
+
+        // Add to our entries
+        ComposerEntry entry;
+        entry.geometry = &meshOp;
+        entry.transform = transform;
+        entry.color = color;
+        entry.inputIndex = static_cast<int>(inputs_.size());
+        setInput(entry.inputIndex, &meshOp);
+        m_entries.push_back(entry);
+
+        return meshOp;
     }
 
     /**
@@ -213,7 +291,12 @@ public:
             if (entry.geometry) {
                 Mesh* mesh = entry.geometry->outputMesh();
                 if (mesh) {
+                    // Internal use of Scene::add() - suppress deprecation warning
+                    // Users should use SceneComposer, but SceneComposer needs Scene internally
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
                     m_scene.add(*mesh, entry.transform, entry.color);
+#pragma clang diagnostic pop
                 }
             }
         }

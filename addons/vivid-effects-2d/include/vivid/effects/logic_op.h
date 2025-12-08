@@ -50,6 +50,7 @@ public:
     // Get result
     bool result() const { return m_result; }
     float value() const { return m_result ? 1.0f : 0.0f; }
+    float outputValue() const override { return m_result ? 1.0f : 0.0f; }
 
     // Operator interface
     void process(Context& ctx) override {

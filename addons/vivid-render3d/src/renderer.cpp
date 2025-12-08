@@ -1,5 +1,7 @@
 #include <vivid/render3d/renderer.h>
 #include <vivid/render3d/scene_composer.h>
+#include <vivid/render3d/camera_operator.h>
+#include <vivid/render3d/light_operators.h>
 #include <vivid/context.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
@@ -120,6 +122,35 @@ Render3D& Render3D::input(SceneComposer* composer) {
 
 Render3D& Render3D::camera(const Camera3D& cam) {
     m_camera = cam;
+    m_cameraOp = nullptr;  // Clear operator when camera is set directly
+    return *this;
+}
+
+Render3D& Render3D::cameraInput(CameraOperator* camOp) {
+    m_cameraOp = camOp;
+    if (camOp) {
+        setInput(1, camOp);  // Slot 1 for camera (slot 0 is scene)
+    }
+    return *this;
+}
+
+Render3D& Render3D::lightInput(LightOperator* lightOp) {
+    if (lightOp) {
+        if (m_lightOps.empty()) {
+            m_lightOps.push_back(lightOp);
+        } else {
+            m_lightOps[0] = lightOp;
+        }
+        setInput(2, lightOp);  // Slot 2 for primary light
+    }
+    return *this;
+}
+
+Render3D& Render3D::addLight(LightOperator* lightOp) {
+    if (lightOp && m_lightOps.size() < 4) {  // Max 4 lights
+        m_lightOps.push_back(lightOp);
+        setInput(1 + static_cast<int>(m_lightOps.size()), lightOp);  // Slots 2, 3, 4, 5
+    }
     return *this;
 }
 
@@ -340,9 +371,24 @@ void Render3D::process(Context& ctx) {
 
     WGPUDevice device = ctx.device();
 
+    // Get camera from operator if connected, otherwise use direct camera
+    Camera3D activeCamera = m_camera;
+    if (m_cameraOp) {
+        activeCamera = m_cameraOp->outputCamera();
+    }
+
+    // Get lighting from operator if connected
+    glm::vec3 lightDir = m_lightDirection;
+    glm::vec3 lightCol = m_lightColor;
+    if (!m_lightOps.empty() && m_lightOps[0]) {
+        const LightData& light = m_lightOps[0]->outputLight();
+        lightDir = glm::normalize(light.direction);
+        lightCol = light.color * light.intensity;
+    }
+
     // Update camera aspect ratio
-    m_camera.aspect(static_cast<float>(m_width) / m_height);
-    glm::mat4 viewProj = m_camera.viewProjectionMatrix();
+    activeCamera.aspect(static_cast<float>(m_width) / m_height);
+    glm::mat4 viewProj = activeCamera.viewProjectionMatrix();
 
     // Create command encoder
     WGPUCommandEncoderDescriptor encoderDesc = {};
@@ -387,12 +433,12 @@ void Render3D::process(Context& ctx) {
         Uniforms uniforms = {};
         memcpy(uniforms.mvp, glm::value_ptr(mvp), sizeof(uniforms.mvp));
         memcpy(uniforms.model, glm::value_ptr(obj.transform), sizeof(uniforms.model));
-        uniforms.lightDir[0] = m_lightDirection.x;
-        uniforms.lightDir[1] = m_lightDirection.y;
-        uniforms.lightDir[2] = m_lightDirection.z;
-        uniforms.lightColor[0] = m_lightColor.x;
-        uniforms.lightColor[1] = m_lightColor.y;
-        uniforms.lightColor[2] = m_lightColor.z;
+        uniforms.lightDir[0] = lightDir.x;
+        uniforms.lightDir[1] = lightDir.y;
+        uniforms.lightDir[2] = lightDir.z;
+        uniforms.lightColor[0] = lightCol.x;
+        uniforms.lightColor[1] = lightCol.y;
+        uniforms.lightColor[2] = lightCol.z;
         uniforms.ambient = m_ambient;
         uniforms.baseColor[0] = objColor.r;
         uniforms.baseColor[1] = objColor.g;

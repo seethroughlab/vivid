@@ -30,6 +30,7 @@ public:
 
     // Get current value (for CPU-side use)
     float value() const { return m_currentValue; }
+    float outputValue() const override { return m_currentValue; }
 
     // Operator interface
     void init(Context& ctx) override;

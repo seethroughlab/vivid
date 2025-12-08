@@ -34,15 +34,23 @@ public:
     /// @{
 
     /// Add a mesh with identity transform
+    /// @deprecated Use SceneComposer::addMesh() for chain visualizer integration
+    [[deprecated("Use SceneComposer::addMesh() for chain visualizer integration")]]
     Scene& add(Mesh& mesh);
 
     /// Add a mesh with a transform
+    /// @deprecated Use SceneComposer::addMesh() for chain visualizer integration
+    [[deprecated("Use SceneComposer::addMesh() for chain visualizer integration")]]
     Scene& add(Mesh& mesh, const glm::mat4& transform);
 
     /// Add a mesh with transform and color
+    /// @deprecated Use SceneComposer::addMesh() for chain visualizer integration
+    [[deprecated("Use SceneComposer::addMesh() for chain visualizer integration")]]
     Scene& add(Mesh& mesh, const glm::mat4& transform, const glm::vec4& color);
 
     /// Add a pre-configured SceneObject
+    /// @deprecated Use SceneComposer::addMesh() for chain visualizer integration
+    [[deprecated("Use SceneComposer::addMesh() for chain visualizer integration")]]
     Scene& add(const SceneObject& object);
 
     /// @}

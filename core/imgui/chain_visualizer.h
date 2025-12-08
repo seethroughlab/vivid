@@ -7,6 +7,7 @@
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/render3d/render3d.h>
+#include <vivid/render3d/scene_composer.h>
 #include <webgpu/webgpu.h>
 #include <string>
 #include <unordered_map>
@@ -46,6 +47,10 @@ private:
     // Update geometry preview (handles init, rotation, rendering)
     void updateGeometryPreview(GeometryPreview& preview, render3d::Mesh* mesh,
                                vivid::Context& ctx, float dt);
+
+    // Update scene preview for SceneComposer (renders full composed scene)
+    void updateScenePreview(GeometryPreview& preview, render3d::SceneComposer* composer,
+                            vivid::Context& ctx, float dt);
 
     // Attribute ID helpers
     int outputAttrId(int nodeId) { return nodeId * 100; }

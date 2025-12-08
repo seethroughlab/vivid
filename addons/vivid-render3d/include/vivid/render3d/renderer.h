@@ -11,8 +11,10 @@ class Context;
 }
 
 namespace vivid::render3d {
-// Forward declaration
+// Forward declarations
 class SceneComposer;
+class CameraOperator;
+class LightOperator;
 }
 
 namespace vivid::render3d {
@@ -35,6 +37,8 @@ public:
     /// @{
 
     /// Set the scene to render (manual scene management)
+    /// @deprecated Use Render3D::input(SceneComposer*) for chain visualizer integration
+    [[deprecated("Use Render3D::input(SceneComposer*) for chain visualizer integration")]]
     Render3D& scene(Scene& s);
 
     /// Set scene from a SceneComposer (node-based workflow)
@@ -46,8 +50,12 @@ public:
     /// @name Camera
     /// @{
 
-    /// Set the camera
+    /// Set the camera (direct configuration)
     Render3D& camera(const Camera3D& cam);
+
+    /// Set camera from a CameraOperator (node-based workflow)
+    /// The operator's output camera will be used each frame
+    Render3D& cameraInput(CameraOperator* camOp);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -66,14 +74,21 @@ public:
     /// @name Lighting
     /// @{
 
-    /// Set light direction (normalized)
+    /// Set light direction (normalized) - direct configuration
     Render3D& lightDirection(glm::vec3 dir);
 
-    /// Set light color
+    /// Set light color - direct configuration
     Render3D& lightColor(glm::vec3 color);
 
     /// Set ambient light level
     Render3D& ambient(float a);
+
+    /// Set primary light from a LightOperator (node-based workflow)
+    /// The operator's output light will be used each frame
+    Render3D& lightInput(LightOperator* lightOp);
+
+    /// Add an additional light (node-based workflow, max 4 lights)
+    Render3D& addLight(LightOperator* lightOp);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -119,6 +134,10 @@ private:
     Scene* m_scene = nullptr;
     SceneComposer* m_composer = nullptr;  // Alternative to m_scene for node-based workflow
     Camera3D m_camera;
+    CameraOperator* m_cameraOp = nullptr;  // Alternative to m_camera for node-based workflow
+
+    // Light operators (node-based workflow)
+    std::vector<LightOperator*> m_lightOps;
 
     // Shading
     ShadingMode m_shadingMode = ShadingMode::Flat;
