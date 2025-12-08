@@ -10,6 +10,9 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(stb)
 
+# Enable symbol export on Windows
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
 add_library(vivid-effects-2d SHARED
     src/texture_operator.cpp
     src/noise.cpp

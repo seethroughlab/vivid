@@ -576,6 +576,7 @@ void ParticleRenderer::renderCircles(Context& ctx,
     // Begin render pass
     WGPURenderPassColorAttachment colorAttachment = {};
     colorAttachment.view = output;
+    colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     colorAttachment.loadOp = WGPULoadOp_Clear;
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {clearColor.r, clearColor.g, clearColor.b, clearColor.a};
@@ -655,6 +656,7 @@ void ParticleRenderer::renderSprites(Context& ctx,
     // Begin render pass
     WGPURenderPassColorAttachment colorAttachment = {};
     colorAttachment.view = output;
+    colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     colorAttachment.loadOp = WGPULoadOp_Clear;
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {clearColor.r, clearColor.g, clearColor.b, clearColor.a};

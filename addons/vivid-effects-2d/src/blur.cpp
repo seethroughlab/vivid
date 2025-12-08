@@ -221,6 +221,7 @@ void Blur::process(Context& ctx) {
 
             WGPURenderPassColorAttachment colorAttachment = {};
             colorAttachment.view = m_tempView;
+            colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
             colorAttachment.loadOp = WGPULoadOp_Clear;
             colorAttachment.storeOp = WGPUStoreOp_Store;
             colorAttachment.clearValue = {0, 0, 0, 1};

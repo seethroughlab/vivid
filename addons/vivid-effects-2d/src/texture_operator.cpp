@@ -74,6 +74,7 @@ void TextureOperator::releaseOutput() {
 void TextureOperator::beginRenderPass(WGPURenderPassEncoder& pass, WGPUCommandEncoder& encoder) {
     WGPURenderPassColorAttachment colorAttachment = {};
     colorAttachment.view = m_outputView;
+    colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     colorAttachment.loadOp = WGPULoadOp_Clear;
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {0.0, 0.0, 0.0, 1.0};

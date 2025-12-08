@@ -20,6 +20,9 @@ set(MANIFOLD_DOWNLOADS OFF CACHE BOOL "Don't download dependencies" FORCE)
 
 FetchContent_MakeAvailable(manifold)
 
+# Enable symbol export on Windows
+set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+
 add_library(vivid-render3d SHARED
     src/mesh.cpp
     src/mesh_builder.cpp

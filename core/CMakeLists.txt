@@ -91,7 +91,7 @@ target_include_directories(vivid
         ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
 )
 
-# Use wgpu-native backend (not Dawn)
+# Use wgpu-native backend for ImGui
 target_compile_definitions(vivid PRIVATE
     IMGUI_IMPL_WEBGPU_BACKEND_WGPU
 )
@@ -126,7 +126,13 @@ if(APPLE)
         "-framework Metal"
     )
 elseif(WIN32)
-    # Windows settings if needed
+    # Export symbols for dynamically loaded chain DLLs
+    # ENABLE_EXPORTS generates an import library (vivid.lib) for the executable
+    # WINDOWS_EXPORT_ALL_SYMBOLS exports all symbols automatically
+    set_target_properties(vivid PROPERTIES
+        ENABLE_EXPORTS ON
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+    )
 elseif(UNIX)
     # Linux: Link against X11 if needed
     find_package(X11)

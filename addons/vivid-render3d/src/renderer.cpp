@@ -898,6 +898,7 @@ void Render3D::process(Context& ctx) {
     // Begin render pass
     WGPURenderPassColorAttachment colorAttachment = {};
     colorAttachment.view = m_outputView;
+    colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     colorAttachment.loadOp = WGPULoadOp_Clear;
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a};

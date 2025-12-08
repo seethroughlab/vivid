@@ -467,6 +467,7 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
 
     WGPURenderPassColorAttachment colorAttachment = {};
     colorAttachment.view = targetView;
+    colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     colorAttachment.loadOp = WGPULoadOp_Clear;
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a};

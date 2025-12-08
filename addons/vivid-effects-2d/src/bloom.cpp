@@ -435,6 +435,7 @@ void Bloom::process(Context& ctx) {
 
         WGPURenderPassColorAttachment colorAttachment = {};
         colorAttachment.view = m_brightView;
+        colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
         colorAttachment.loadOp = WGPULoadOp_Clear;
         colorAttachment.storeOp = WGPUStoreOp_Store;
         colorAttachment.clearValue = {0, 0, 0, 0};
@@ -491,6 +492,7 @@ void Bloom::process(Context& ctx) {
 
             WGPURenderPassColorAttachment colorAttachment = {};
             colorAttachment.view = m_blurView;
+            colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
             colorAttachment.loadOp = WGPULoadOp_Clear;
             colorAttachment.storeOp = WGPUStoreOp_Store;
             colorAttachment.clearValue = {0, 0, 0, 0};
@@ -545,6 +547,7 @@ void Bloom::process(Context& ctx) {
 
             WGPURenderPassColorAttachment colorAttachment = {};
             colorAttachment.view = m_brightView;
+            colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
             colorAttachment.loadOp = WGPULoadOp_Clear;
             colorAttachment.storeOp = WGPUStoreOp_Store;
             colorAttachment.clearValue = {0, 0, 0, 0};

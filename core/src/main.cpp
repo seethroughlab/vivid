@@ -457,6 +457,7 @@ int main(int argc, char** argv) {
         // Render pass - clear to black
         WGPURenderPassColorAttachment colorAttachment = {};
         colorAttachment.view = view;
+        colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
         colorAttachment.loadOp = WGPULoadOp_Clear;
         colorAttachment.storeOp = WGPUStoreOp_Store;
         colorAttachment.clearValue = {0.0, 0.0, 0.0, 1.0};

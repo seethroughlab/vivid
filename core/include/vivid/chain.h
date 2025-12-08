@@ -56,6 +56,17 @@ public:
     Chain& operator=(Chain&&) = default;
 
     /**
+     * @brief Add an operator to the chain (internal - do not call directly)
+     * @param name Unique name for this operator
+     * @param op Operator to add (takes ownership)
+     * @return Raw pointer to the added operator
+     *
+     * This is the non-template implementation that lives in vivid.exe.
+     * Use add<T>() instead which wraps this.
+     */
+    Operator* addOperator(const std::string& name, Operator* op);
+
+    /**
      * @brief Add an operator to the chain
      * @tparam T Operator type (e.g., Noise, Blur, Output)
      * @tparam Args Constructor argument types
@@ -71,13 +82,11 @@ public:
      */
     template<typename T, typename... Args>
     T& add(const std::string& name, Args&&... args) {
-        auto op = std::make_unique<T>(std::forward<Args>(args)...);
-        T& ref = *op;
-        operators_[name] = std::move(op);
-        orderedNames_.push_back(name);
-        operatorNames_[&ref] = name;
-        needsSort_ = true;
-        return ref;
+        // Create operator in caller's context (the DLL)
+        T* op = new T(std::forward<Args>(args)...);
+        // Transfer to exe's memory management via non-template function
+        addOperator(name, op);
+        return *op;
     }
 
     /**

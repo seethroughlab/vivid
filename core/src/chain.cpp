@@ -7,8 +7,19 @@
 #include <unordered_set>
 #include <algorithm>
 #include <iostream>
+#include <functional>
 
 namespace vivid {
+
+Operator* Chain::addOperator(const std::string& name, Operator* op) {
+    // Take ownership of the operator using unique_ptr
+    // This function lives in the exe, so the unique_ptr uses the exe's allocator
+    operators_[name] = std::unique_ptr<Operator>(op);
+    orderedNames_.push_back(name);
+    operatorNames_[op] = name;
+    needsSort_ = true;
+    return op;
+}
 
 Operator* Chain::getByName(const std::string& name) {
     auto it = operators_.find(name);

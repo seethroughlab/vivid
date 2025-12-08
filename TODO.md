@@ -77,6 +77,7 @@
     - Camera: Green
     - Light: Yellow
 [ ] image loading currently lives in vivid-effects-2d, but image loading will be needed in many different addons. Should we (1) make a "media loader" addon, or (2) add image loading to the core?
-[ ] TouhDesigner has a system where nodes don't get "baked" unless one of their output nodes requests it, and it is marked as "dirty" -- I think that's how it works. Anyway, we should have something simmilar. 
+[ ] TouchDesigner has a system where nodes don't get "baked" unless one of their output nodes requests it, and it is marked as "dirty" -- I think that's how it works. Anyway, we should have something simmilar. 
 [ ] Is the Fluent pattern really helping the average user? Or does it obscure more common c++ patterns and syntax?
-[ ] Please make a reminder for yourself that you don't need the Molten environment variables. That is from vivid_v2, but not relevant here. 
+[ ] Mac: Please make a reminder for yourself that you don't need the Molten environment variables. That is from vivid_v2, but not relevant here. 
+[ ] Windows: It seems like thigns were customized for the Mac Retina display, but on windows things look too big.

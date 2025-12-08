@@ -12,6 +12,7 @@
 #include <chrono>
 
 #ifdef _WIN32
+#define NOMINMAX
 #include <windows.h>
 #else
 #include <dlfcn.h>
@@ -23,6 +24,49 @@
 #endif
 
 namespace vivid {
+
+#ifdef _WIN32
+// Find Visual Studio installation and return path to vcvarsall.bat
+static std::string findVcVarsAll() {
+    // vswhere.exe is always at this location when VS is installed
+    const char* vswhere = "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe";
+
+    if (!fs::exists(vswhere)) {
+        return "";
+    }
+
+    // Run vswhere to get the VS installation path
+    std::string cmd = std::string("\"") + vswhere + "\" -latest -property installationPath 2>nul";
+    FILE* pipe = _popen(cmd.c_str(), "r");
+    if (!pipe) {
+        return "";
+    }
+
+    std::array<char, 512> buffer;
+    std::string installPath;
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+        installPath += buffer.data();
+    }
+    _pclose(pipe);
+
+    // Trim whitespace
+    while (!installPath.empty() && (installPath.back() == '\n' || installPath.back() == '\r' || installPath.back() == ' ')) {
+        installPath.pop_back();
+    }
+
+    if (installPath.empty()) {
+        return "";
+    }
+
+    // vcvarsall.bat is in VC\Auxiliary\Build
+    std::string vcvarsall = installPath + "\\VC\\Auxiliary\\Build\\vcvarsall.bat";
+    if (fs::exists(vcvarsall)) {
+        return vcvarsall;
+    }
+
+    return "";
+}
+#endif
 
 // Execute a command and capture output
 static std::pair<int, std::string> executeCommand(const std::string& cmd) {
@@ -168,8 +212,14 @@ bool HotReload::compile() {
     // Increment build number to avoid OS library caching
     m_buildNumber++;
 
-    // Build library name with build number
-    std::string libName = "chain_" + std::to_string(m_buildNumber);
+    // Build library name with process ID and build number
+    // Using PID ensures different vivid instances don't conflict
+#ifdef _WIN32
+    DWORD pid = GetCurrentProcessId();
+#else
+    pid_t pid = getpid();
+#endif
+    std::string libName = "chain_" + std::to_string(pid) + "_" + std::to_string(m_buildNumber);
 
 #ifdef _WIN32
     libName += ".dll";
@@ -191,15 +241,46 @@ bool HotReload::compile() {
     std::vector<fs::path> depIncludes;
 
     // Try source tree first (development mode)
-    // exe is at build/bin/vivid, so ../ twice gets to vivid root
-    fs::path rootDir = exeDir / ".." / "..";
-    fs::path devVividInclude = rootDir / "core" / "include";
+    // exe could be at:
+    //   build/bin/vivid (single-config: make/ninja)
+    //   build/bin/Debug/vivid.exe (multi-config: MSVC)
+    // Search upwards to find the vivid root (contains core/include/vivid)
+    fs::path rootDir;
+    fs::path devVividInclude;
+    bool isDevelopmentMode = false;
 
-    bool isDevelopmentMode = fs::exists(devVividInclude / "vivid");
+    for (int i = 2; i <= 4; ++i) {
+        fs::path candidate = exeDir;
+        for (int j = 0; j < i; ++j) {
+            candidate = candidate / "..";
+        }
+        fs::path candidateInclude = candidate / "core" / "include";
+        if (fs::exists(candidateInclude / "vivid")) {
+            rootDir = candidate;
+            devVividInclude = candidateInclude;
+            isDevelopmentMode = true;
+            break;
+        }
+    }
 
     if (isDevelopmentMode) {
         vividInclude = fs::canonical(devVividInclude);
-        addonsLib = exeDir;
+        // On multi-config generators (MSVC), libs are in build/lib/Debug or build/lib/Release
+        // On single-config generators, they're in build/lib
+        fs::path buildDir = rootDir / "build";
+        fs::path libDir = buildDir / "lib";
+#ifdef _WIN32
+        // Check for Debug/Release subdirectories (MSVC multi-config)
+        if (fs::exists(libDir / "Debug")) {
+            addonsLib = libDir / "Debug";
+        } else if (fs::exists(libDir / "Release")) {
+            addonsLib = libDir / "Release";
+        } else {
+            addonsLib = libDir;
+        }
+#else
+        addonsLib = libDir;
+#endif
 
         // Set up addon registry for dynamic discovery
         m_addonRegistry->setRootDir(fs::canonical(rootDir));
@@ -241,24 +322,50 @@ bool HotReload::compile() {
     std::stringstream cmd;
 
 #ifdef _WIN32
-    // MSVC or Clang on Windows
-    cmd << "cl /nologo /EHsc /LD /O2 /std:c++17 ";
-    cmd << "/I\"" << sourceDir.string() << "\" ";
-    cmd << "/I\"" << vividInclude.string() << "\" ";
-    for (const auto& inc : depIncludes) {
-        cmd << "/I\"" << inc.string() << "\" ";
+    // MSVC on Windows - need to set up the VS environment first
+    std::string vcvarsall = findVcVarsAll();
+    if (vcvarsall.empty()) {
+        m_error = "Could not find Visual Studio installation. Please install Visual Studio with C++ workload.";
+        std::cerr << m_error << std::endl;
+        return false;
     }
-    cmd << "/Fe\"" << m_libraryPath.string() << "\" ";
-    cmd << "\"" << m_sourcePath.string() << "\" ";
-    cmd << "/link ";
+
+    // Build cl command
+    // Use /MDd for Debug runtime to match vivid.exe's Debug build
+    // Using /MD (Release) with a Debug exe causes CRT mismatch crashes
+    std::stringstream clCmd;
+#ifdef _DEBUG
+    clCmd << "cl /nologo /EHsc /LD /Od /MDd /std:c++17 ";
+#else
+    clCmd << "cl /nologo /EHsc /LD /O2 /MD /std:c++17 ";
+#endif
+    clCmd << "/I\"" << sourceDir.string() << "\" ";
+    clCmd << "/I\"" << vividInclude.string() << "\" ";
+    for (const auto& inc : depIncludes) {
+        clCmd << "/I\"" << inc.string() << "\" ";
+    }
+    clCmd << "/Fe\"" << m_libraryPath.string() << "\" ";
+    clCmd << "\"" << m_sourcePath.string() << "\" ";
+    clCmd << "/link ";
+
+    // Link against vivid.lib import library (required for core symbols like Context, Chain)
+    // vivid.lib is generated in build/lib/Debug (same as addon libs)
+    fs::path vividLib = addonsLib / "vivid.lib";
+    if (fs::exists(vividLib)) {
+        clCmd << "\"" << vividLib.string() << "\" ";
+    }
+
     // Link discovered addons
     for (const auto& addon : m_addonRegistry->addons()) {
         fs::path libPath = addonsLib / (addon.libraryName + ".lib");
         if (fs::exists(libPath)) {
-            cmd << "\"" << libPath.string() << "\" ";
+            clCmd << "\"" << libPath.string() << "\" ";
         }
     }
-    cmd << "2>&1";
+
+    // Wrap in cmd /c with vcvarsall setup
+    // Use x64 architecture
+    cmd << "cmd /c \"\"" << vcvarsall << "\" x64 >nul 2>&1 && " << clCmd.str() << " 2>&1\"";
 #else
     // Clang/GCC on Unix
     cmd << "clang++ -std=c++17 -O2 -shared -fPIC ";
