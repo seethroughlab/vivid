@@ -267,6 +267,13 @@ int main(int argc, char** argv) {
     // Create context
     Context ctx(window, device, queue);
 
+    // Set up scroll callback
+    glfwSetWindowUserPointer(window, &ctx);
+    glfwSetScrollCallback(window, [](GLFWwindow* w, double xoffset, double yoffset) {
+        Context* c = static_cast<Context*>(glfwGetWindowUserPointer(w));
+        if (c) c->addScroll(static_cast<float>(xoffset), static_cast<float>(yoffset));
+    });
+
     // Create display
     Display display(device, queue, surfaceFormat);
     if (!display.isValid()) {

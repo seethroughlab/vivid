@@ -3,6 +3,7 @@
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/render3d/light_operators.h>
 #include <vivid/render3d/textured_material.h>
+#include <vivid/render3d/ibl_environment.h>
 #include <vivid/context.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
@@ -357,6 +358,196 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
+// PBR with IBL shader - extends textured PBR with image-based lighting
+const char* PBR_IBL_SHADER_SOURCE = R"(
+const PI: f32 = 3.14159265359;
+const EPSILON: f32 = 0.0001;
+
+struct Uniforms {
+    mvp: mat4x4f,
+    model: mat4x4f,
+    normalMatrix: mat4x4f,
+    cameraPos: vec3f,
+    _pad0: f32,
+    lightDir: vec3f,
+    _pad1: f32,
+    lightColor: vec3f,
+    ambientIntensity: f32,
+    baseColorFactor: vec4f,
+    metallicFactor: f32,
+    roughnessFactor: f32,
+    normalScale: f32,
+    aoStrength: f32,
+    emissiveFactor: vec3f,
+    emissiveStrength: f32,
+    textureFlags: u32,
+}
+
+// Material textures (group 0)
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var materialSampler: sampler;
+@group(0) @binding(2) var baseColorMap: texture_2d<f32>;
+@group(0) @binding(3) var normalMap: texture_2d<f32>;
+@group(0) @binding(4) var metallicMap: texture_2d<f32>;
+@group(0) @binding(5) var roughnessMap: texture_2d<f32>;
+@group(0) @binding(6) var aoMap: texture_2d<f32>;
+@group(0) @binding(7) var emissiveMap: texture_2d<f32>;
+
+// IBL textures (group 1)
+@group(1) @binding(0) var iblSampler: sampler;
+@group(1) @binding(1) var brdfLUT: texture_2d<f32>;
+@group(1) @binding(2) var irradianceMap: texture_cube<f32>;
+@group(1) @binding(3) var prefilteredMap: texture_cube<f32>;
+
+struct VertexInput {
+    @location(0) position: vec3f,
+    @location(1) normal: vec3f,
+    @location(2) tangent: vec4f,
+    @location(3) uv: vec2f,
+    @location(4) color: vec4f,
+}
+
+struct VertexOutput {
+    @builtin(position) clipPos: vec4f,
+    @location(0) worldPos: vec3f,
+    @location(1) worldNormal: vec3f,
+    @location(2) worldTangent: vec3f,
+    @location(3) worldBitangent: vec3f,
+    @location(4) uv: vec2f,
+    @location(5) color: vec4f,
+}
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    let worldPos = uniforms.model * vec4f(in.position, 1.0);
+    out.worldPos = worldPos.xyz;
+    out.clipPos = uniforms.mvp * vec4f(in.position, 1.0);
+
+    let N = normalize((uniforms.normalMatrix * vec4f(in.normal, 0.0)).xyz);
+    let T = normalize((uniforms.model * vec4f(in.tangent.xyz, 0.0)).xyz);
+    let B = cross(N, T) * in.tangent.w;
+
+    out.worldNormal = N;
+    out.worldTangent = T;
+    out.worldBitangent = B;
+    out.uv = in.uv;
+    out.color = in.color;
+    return out;
+}
+
+fn D_GGX(NdotH: f32, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let NdotH2 = NdotH * NdotH;
+    let denom = NdotH2 * (a2 - 1.0) + 1.0;
+    return a2 / (PI * denom * denom + EPSILON);
+}
+
+fn G_SchlickGGX(NdotV: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k + EPSILON);
+}
+
+fn G_Smith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
+    return G_SchlickGGX(NdotV, roughness) * G_SchlickGGX(NdotL, roughness);
+}
+
+fn F_Schlick(cosTheta: f32, F0: vec3f) -> vec3f {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+fn F_SchlickRoughness(cosTheta: f32, F0: vec3f, roughness: f32) -> vec3f {
+    return F0 + (max(vec3f(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    // Sample textures
+    let baseColorSample = textureSample(baseColorMap, materialSampler, in.uv);
+    let normalSample = textureSample(normalMap, materialSampler, in.uv);
+    let metallicSample = textureSample(metallicMap, materialSampler, in.uv).r;
+    let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).r;
+    let aoSample = textureSample(aoMap, materialSampler, in.uv).r;
+    let emissiveSample = textureSample(emissiveMap, materialSampler, in.uv).rgb;
+
+    // Apply fallback factors
+    let albedo = baseColorSample.rgb * uniforms.baseColorFactor.rgb * in.color.rgb;
+    let metallic = metallicSample * uniforms.metallicFactor;
+    let roughness = max(roughnessSample * uniforms.roughnessFactor, 0.04);
+    let ao = mix(1.0, aoSample, uniforms.aoStrength);
+    let emissive = emissiveSample * uniforms.emissiveFactor * uniforms.emissiveStrength;
+
+    // Normal mapping
+    var tangentNormal = normalSample.xyz * 2.0 - 1.0;
+    tangentNormal.x = tangentNormal.x * uniforms.normalScale;
+    tangentNormal.y = tangentNormal.y * uniforms.normalScale;
+    tangentNormal = normalize(tangentNormal);
+
+    let TBN = mat3x3f(
+        normalize(in.worldTangent),
+        normalize(in.worldBitangent),
+        normalize(in.worldNormal)
+    );
+    let N = normalize(TBN * tangentNormal);
+
+    let V = normalize(uniforms.cameraPos - in.worldPos);
+    let L = normalize(uniforms.lightDir);
+    let H = normalize(V + L);
+    let R = reflect(-V, N);
+
+    let NdotL = max(dot(N, L), 0.0);
+    let NdotV = max(dot(N, V), EPSILON);
+    let NdotH = max(dot(N, H), 0.0);
+    let HdotV = max(dot(H, V), 0.0);
+
+    let F0 = mix(vec3f(0.04), albedo, metallic);
+
+    // Direct lighting (Cook-Torrance)
+    let D = D_GGX(NdotH, roughness);
+    let G = G_Smith(NdotV, NdotL, roughness);
+    let F = F_Schlick(HdotV, F0);
+
+    let numerator = D * G * F;
+    let denominator = 4.0 * NdotV * NdotL + EPSILON;
+    let specular = numerator / denominator;
+
+    let kS = F;
+    var kD = vec3f(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    let diffuse = kD * albedo / PI;
+    let Lo = (diffuse + specular) * uniforms.lightColor * NdotL;
+
+    // IBL ambient lighting
+    let F_ibl = F_SchlickRoughness(NdotV, F0, roughness);
+    let kS_ibl = F_ibl;
+    var kD_ibl = vec3f(1.0) - kS_ibl;
+    kD_ibl *= 1.0 - metallic;
+
+    // Diffuse IBL from irradiance map
+    let irradiance = textureSample(irradianceMap, iblSampler, N).rgb;
+    let diffuseIBL = irradiance * albedo;
+
+    // Specular IBL from prefiltered environment map
+    let MAX_REFLECTION_LOD = 4.0;
+    let prefilteredColor = textureSampleLevel(prefilteredMap, iblSampler, R, roughness * MAX_REFLECTION_LOD).rgb;
+    let brdf = textureSample(brdfLUT, iblSampler, vec2f(NdotV, roughness)).rg;
+    let specularIBL = prefilteredColor * (F_ibl * brdf.x + brdf.y);
+
+    let ambient = (kD_ibl * diffuseIBL + specularIBL) * uniforms.ambientIntensity * ao;
+
+    var color = ambient + Lo + emissive;
+    // Tone mapping (Reinhard)
+    color = color / (color + vec3f(1.0));
+    // Gamma correction
+    color = pow(color, vec3f(1.0 / 2.2));
+
+    return vec4f(color, baseColorSample.a * uniforms.baseColorFactor.a * in.color.a);
+}
+)";
+
 // Flat/Gouraud uniform buffer structure
 struct Uniforms {
     float mvp[16];         // mat4x4f: 64 bytes, offset 0
@@ -520,6 +711,25 @@ Render3D& Render3D::material(TexturedMaterial* mat) {
     if (mat) {
         setInput(6, mat);  // Slot 6 for material (after lights)
     }
+    return *this;
+}
+
+Render3D& Render3D::ibl(bool enabled) {
+    m_iblEnabled = enabled;
+    return *this;
+}
+
+Render3D& Render3D::environment(IBLEnvironment* env) {
+    m_iblEnvironment = env;
+    if (env && env->isLoaded()) {
+        m_iblEnabled = true;
+    }
+    return *this;
+}
+
+Render3D& Render3D::environmentHDR(const std::string& hdrPath) {
+    m_pendingHDRPath = hdrPath;
+    m_iblEnabled = true;  // Will be enabled when loaded
     return *this;
 }
 
@@ -853,11 +1063,152 @@ void Render3D::createPipeline(Context& ctx) {
     // Cleanup textured PBR resources
     wgpuPipelineLayoutRelease(pbrTexPipelineLayout);
     wgpuShaderModuleRelease(pbrTexShaderModule);
+
+    // =========================================================================
+    // PBR with IBL Pipeline
+    // =========================================================================
+
+    // Create IBL shader module
+    WGPUShaderSourceWGSL iblWgslDesc = {};
+    iblWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    iblWgslDesc.code = toStringView(PBR_IBL_SHADER_SOURCE);
+
+    WGPUShaderModuleDescriptor iblModuleDesc = {};
+    iblModuleDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&iblWgslDesc);
+    WGPUShaderModule iblShaderModule = wgpuDeviceCreateShaderModule(device, &iblModuleDesc);
+
+    // Create IBL bind group layout (group 1)
+    // @binding(0) = sampler
+    // @binding(1) = brdfLUT (2D)
+    // @binding(2) = irradianceMap (cube)
+    // @binding(3) = prefilteredMap (cube)
+    WGPUBindGroupLayoutEntry iblLayoutEntries[4] = {};
+
+    // Sampler
+    iblLayoutEntries[0].binding = 0;
+    iblLayoutEntries[0].visibility = WGPUShaderStage_Fragment;
+    iblLayoutEntries[0].sampler.type = WGPUSamplerBindingType_Filtering;
+
+    // BRDF LUT
+    iblLayoutEntries[1].binding = 1;
+    iblLayoutEntries[1].visibility = WGPUShaderStage_Fragment;
+    iblLayoutEntries[1].texture.sampleType = WGPUTextureSampleType_Float;
+    iblLayoutEntries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+    iblLayoutEntries[1].texture.multisampled = false;
+
+    // Irradiance cubemap
+    iblLayoutEntries[2].binding = 2;
+    iblLayoutEntries[2].visibility = WGPUShaderStage_Fragment;
+    iblLayoutEntries[2].texture.sampleType = WGPUTextureSampleType_Float;
+    iblLayoutEntries[2].texture.viewDimension = WGPUTextureViewDimension_Cube;
+    iblLayoutEntries[2].texture.multisampled = false;
+
+    // Prefiltered cubemap
+    iblLayoutEntries[3].binding = 3;
+    iblLayoutEntries[3].visibility = WGPUShaderStage_Fragment;
+    iblLayoutEntries[3].texture.sampleType = WGPUTextureSampleType_Float;
+    iblLayoutEntries[3].texture.viewDimension = WGPUTextureViewDimension_Cube;
+    iblLayoutEntries[3].texture.multisampled = false;
+
+    WGPUBindGroupLayoutDescriptor iblLayoutDesc = {};
+    iblLayoutDesc.label = toStringView("Render3D IBL Bind Group Layout");
+    iblLayoutDesc.entryCount = 4;
+    iblLayoutDesc.entries = iblLayoutEntries;
+    m_iblBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &iblLayoutDesc);
+
+    // Create IBL sampler
+    WGPUSamplerDescriptor iblSamplerDesc = {};
+    iblSamplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
+    iblSamplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
+    iblSamplerDesc.addressModeW = WGPUAddressMode_ClampToEdge;
+    iblSamplerDesc.magFilter = WGPUFilterMode_Linear;
+    iblSamplerDesc.minFilter = WGPUFilterMode_Linear;
+    iblSamplerDesc.mipmapFilter = WGPUMipmapFilterMode_Linear;
+    iblSamplerDesc.maxAnisotropy = 1;
+    m_iblSampler = wgpuDeviceCreateSampler(device, &iblSamplerDesc);
+
+    // Create IBL pipeline layout (2 bind groups: material + IBL)
+    WGPUBindGroupLayout iblBindGroupLayouts[2] = { m_pbrTexturedBindGroupLayout, m_iblBindGroupLayout };
+    WGPUPipelineLayoutDescriptor iblPipelineLayoutDesc = {};
+    iblPipelineLayoutDesc.bindGroupLayoutCount = 2;
+    iblPipelineLayoutDesc.bindGroupLayouts = iblBindGroupLayouts;
+    WGPUPipelineLayout iblPipelineLayout = wgpuDeviceCreatePipelineLayout(device, &iblPipelineLayoutDesc);
+
+    // IBL fragment state
+    WGPUFragmentState iblFragmentState = {};
+    iblFragmentState.module = iblShaderModule;
+    iblFragmentState.entryPoint = toStringView("fs_main");
+    iblFragmentState.targetCount = 1;
+    iblFragmentState.targets = &colorTarget;
+
+    // IBL pipeline descriptor
+    WGPURenderPipelineDescriptor iblPipelineDesc = {};
+    iblPipelineDesc.label = toStringView("Render3D PBR IBL Pipeline");
+    iblPipelineDesc.layout = iblPipelineLayout;
+    iblPipelineDesc.vertex.module = iblShaderModule;
+    iblPipelineDesc.vertex.entryPoint = toStringView("vs_main");
+    iblPipelineDesc.vertex.bufferCount = 1;
+    iblPipelineDesc.vertex.buffers = &vertexLayout;
+    iblPipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    iblPipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
+    iblPipelineDesc.primitive.cullMode = WGPUCullMode_Back;
+    iblPipelineDesc.depthStencil = &depthStencil;
+    iblPipelineDesc.multisample.count = 1;
+    iblPipelineDesc.multisample.mask = ~0u;
+    iblPipelineDesc.fragment = &iblFragmentState;
+
+    m_pbrIBLPipeline = wgpuDeviceCreateRenderPipeline(device, &iblPipelineDesc);
+
+    // Cleanup IBL pipeline resources
+    wgpuPipelineLayoutRelease(iblPipelineLayout);
+    wgpuShaderModuleRelease(iblShaderModule);
 }
 
 void Render3D::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
+    }
+
+    WGPUDevice device = ctx.device();
+
+    // Handle pending HDR loading
+    if (!m_pendingHDRPath.empty() && !m_iblEnvironment) {
+        // Create environment and load HDR
+        // Note: User should manage IBLEnvironment lifetime, this is a convenience path
+        static IBLEnvironment defaultEnv;
+        if (!defaultEnv.isInitialized()) {
+            defaultEnv.init(ctx);
+        }
+        if (defaultEnv.loadHDR(ctx, m_pendingHDRPath)) {
+            m_iblEnvironment = &defaultEnv;
+        }
+        m_pendingHDRPath.clear();
+    }
+
+    // Check if IBL is ready to use
+    bool useIBL = m_iblEnabled && m_iblEnvironment && m_iblEnvironment->isLoaded();
+
+    // Create IBL bind group if needed and not already created
+    if (useIBL && !m_iblBindGroup) {
+        WGPUBindGroupEntry iblEntries[4] = {};
+
+        iblEntries[0].binding = 0;
+        iblEntries[0].sampler = m_iblSampler;
+
+        iblEntries[1].binding = 1;
+        iblEntries[1].textureView = m_iblEnvironment->brdfLUTView();
+
+        iblEntries[2].binding = 2;
+        iblEntries[2].textureView = m_iblEnvironment->irradianceView();
+
+        iblEntries[3].binding = 3;
+        iblEntries[3].textureView = m_iblEnvironment->prefilteredView();
+
+        WGPUBindGroupDescriptor iblBindDesc = {};
+        iblBindDesc.layout = m_iblBindGroupLayout;
+        iblBindDesc.entryCount = 4;
+        iblBindDesc.entries = iblEntries;
+        m_iblBindGroup = wgpuDeviceCreateBindGroup(device, &iblBindDesc);
     }
 
     // If using a composer, get the scene from it
@@ -869,8 +1220,6 @@ void Render3D::process(Context& ctx) {
     if (!sceneToRender || sceneToRender->empty()) {
         return;
     }
-
-    WGPUDevice device = ctx.device();
 
     // Get camera from operator if connected, otherwise use direct camera
     Camera3D activeCamera = m_camera;
@@ -1106,10 +1455,13 @@ void Render3D::process(Context& ctx) {
         // Check for per-object or global material
         TexturedMaterial* activeMaterial = obj.material ? obj.material : m_material;
         bool objUseTexturedPBR = usePBR && activeMaterial != nullptr;
+        bool objUseIBL = useIBL && objUseTexturedPBR;  // IBL only works with textured PBR
 
         // Set pipeline for this object
         if (m_wireframe) {
             wgpuRenderPassEncoderSetPipeline(pass, m_wireframePipeline);
+        } else if (objUseIBL) {
+            wgpuRenderPassEncoderSetPipeline(pass, m_pbrIBLPipeline);
         } else if (objUseTexturedPBR) {
             wgpuRenderPassEncoderSetPipeline(pass, m_pbrTexturedPipeline);
         } else if (usePBR) {
@@ -1129,6 +1481,11 @@ void Render3D::process(Context& ctx) {
                 lastMaterial = activeMaterial;
             }
             wgpuRenderPassEncoderSetBindGroup(pass, 0, currentTexturedBindGroup, 1, &dynamicOffset);
+
+            // Bind IBL textures if using IBL
+            if (objUseIBL && m_iblBindGroup) {
+                wgpuRenderPassEncoderSetBindGroup(pass, 1, m_iblBindGroup, 0, nullptr);
+            }
         } else if (usePBR) {
             wgpuRenderPassEncoderSetBindGroup(pass, 0, scalarPbrBindGroup, 1, &dynamicOffset);
         } else {
@@ -1192,6 +1549,23 @@ void Render3D::cleanup() {
     if (m_pbrTexturedBindGroupLayout) {
         wgpuBindGroupLayoutRelease(m_pbrTexturedBindGroupLayout);
         m_pbrTexturedBindGroupLayout = nullptr;
+    }
+    // IBL resources
+    if (m_pbrIBLPipeline) {
+        wgpuRenderPipelineRelease(m_pbrIBLPipeline);
+        m_pbrIBLPipeline = nullptr;
+    }
+    if (m_iblBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_iblBindGroupLayout);
+        m_iblBindGroupLayout = nullptr;
+    }
+    if (m_iblBindGroup) {
+        wgpuBindGroupRelease(m_iblBindGroup);
+        m_iblBindGroup = nullptr;
+    }
+    if (m_iblSampler) {
+        wgpuSamplerRelease(m_iblSampler);
+        m_iblSampler = nullptr;
     }
     if (m_uniformBuffer) {
         wgpuBufferRelease(m_uniformBuffer);

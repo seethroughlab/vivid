@@ -166,6 +166,13 @@ public:
      */
     glm::vec2 scroll() const { return m_scroll; }
 
+    /**
+     * @brief Add scroll delta (called by scroll callback)
+     * @param x Horizontal scroll
+     * @param y Vertical scroll
+     */
+    void addScroll(float x, float y) { m_scroll.x += x; m_scroll.y += y; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Keyboard

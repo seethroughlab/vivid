@@ -129,6 +129,7 @@ void TexturedMaterial::loadTexture(Context& ctx, TextureSlot& slot, bool srgb) {
 
     if (!fs::exists(path)) {
         std::cerr << "TexturedMaterial: File not found: " << slot.path << std::endl;
+        slot.needsLoad = false;  // Don't retry
         return;
     }
 
@@ -139,6 +140,7 @@ void TexturedMaterial::loadTexture(Context& ctx, TextureSlot& slot, bool srgb) {
     if (!data) {
         std::cerr << "TexturedMaterial: Failed to load: " << path
                   << " - " << stbi_failure_reason() << std::endl;
+        slot.needsLoad = false;  // Don't retry
         return;
     }
 
