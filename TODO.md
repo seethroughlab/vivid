@@ -82,3 +82,5 @@
 [x] Mac: Please make a reminder for yourself that you don't need the Molten environment variables. That is from vivid_v2, but not relevant here. 
 [ ] Windows: It seems like display settings were customized for the Mac Retina display, but on windows things look too big.
 [x] Is it possible to add smooth shading in geometry-showcase?
+[x] instancing-demo -- each asteroid should have variations in scale
+[ ] I'm not sure hot-relading is working. It seems to crash when chain.cpp is edited.

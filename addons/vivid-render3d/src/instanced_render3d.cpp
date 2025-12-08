@@ -536,7 +536,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     color = color / (color + vec3f(1.0));  // Reinhard
     color = pow(color, vec3f(1.0 / 2.2));  // Gamma
 
-    return vec4f(color, baseColorSample.a * in.color.a);
+    // Use instance alpha only - PBR materials are typically opaque
+    return vec4f(color, in.color.a);
 }
 )";
 

@@ -412,12 +412,22 @@ int main(int argc, char** argv) {
         viewDesc.aspect = WGPUTextureAspect_All;
         WGPUTextureView view = wgpuTextureCreateView(surfaceTexture.texture, &viewDesc);
 
-        // Check for hot-reload - save states before reloading
-        if (hotReload.update()) {
-            // Save operator states before reload
+        // Check for hot-reload using safe API:
+        // 1. Check if reload needed (without unloading)
+        // 2. Destroy chain operators while old code is still loaded
+        // 3. Then reload (which unloads old library)
+        if (hotReload.checkNeedsReload()) {
+            // Save operator states before destroying chain
             if (ctx.hasChain()) {
                 ctx.preserveStates(ctx.chain());
             }
+            // Destroy operators BEFORE unloading the library
+            // (their destructors are in the dylib code)
+            ctx.clearRegisteredOperators();
+            ctx.resetChain();
+
+            // Now safe to reload (unloads old library, loads new one)
+            hotReload.reload();
             chainNeedsSetup = true;
         }
 
@@ -432,11 +442,8 @@ int main(int argc, char** argv) {
         if (hotReload.isLoaded()) {
             // Call setup if needed (after reload)
             if (chainNeedsSetup) {
-                // Clear operator registry and reset chain before setup
-                ctx.clearRegisteredOperators();
-                ctx.resetChain();
-
-                // Call user's setup function
+                // Chain was already reset before reload (to safely destroy operators)
+                // Just call user's setup function
                 hotReload.getSetupFn()(ctx);
 
                 // Auto-initialize the chain

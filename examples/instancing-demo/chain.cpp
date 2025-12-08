@@ -10,10 +10,10 @@ using namespace vivid::effects;
 using namespace vivid::render3d;
 
 // Constants
-static constexpr int NUM_ASTEROIDS = 3000;
-static constexpr float TUNNEL_LENGTH = 200.0f;
-static constexpr float TUNNEL_RADIUS = 8.0f;
-static constexpr float CAMERA_SPEED = 8.0f;
+static constexpr int NUM_ASTEROIDS = 20000;
+static constexpr float TUNNEL_LENGTH = 800.0f;
+static constexpr float TUNNEL_RADIUS = 20.0f;
+static constexpr float CAMERA_SPEED = 3.0f;
 
 // Per-asteroid state
 struct AsteroidState {
@@ -29,20 +29,36 @@ static std::vector<AsteroidState> asteroids;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
+    // Clear static state for hot-reload safety
+    asteroids.clear();
+
     // === Procedural Star Background ===
-    // Use inverted Worley noise for point-like stars
+    // Worley noise = distance to nearest random point
     auto& starNoise = chain.add<Noise>("starNoise")
         .type(NoiseType::Worley)
-        .scale(15.0f)      // Many small cells
-        .octaves(1)        // No fractal - clean points
-        .speed(0.0f);      // Static stars
+        .scale(80.0f)        // More, smaller stars
+        .octaves(1)
+        .speed(0.0f);
 
-    // High contrast to create sparse bright points
-    auto& stars = chain.add<Brightness>("stars")
+    // Invert and threshold tightly to get tiny points
+    auto& starPoints = chain.add<Brightness>("starPoints")
         .input(&starNoise)
-        .brightness(-0.85f)   // Push most values to black
-        .contrast(8.0f)       // Extreme contrast for sharp stars
-        .gamma(0.3f);         // Boost the remaining bright points
+        .brightness(0.48f)    // Tighter = smaller points
+        .contrast(-20.0f)     // Sharp cutoff
+        .gamma(1.0f);
+
+    // Brightness variation layer
+    auto& starBrightness = chain.add<Noise>("starBrightness")
+        .type(NoiseType::Value)
+        .scale(40.0f)
+        .octaves(1)
+        .speed(0.0f);
+
+    // Multiply stars by brightness variation
+    auto& stars = chain.add<Composite>("stars")
+        .inputA(&starPoints)
+        .inputB(&starBrightness)
+        .mode(BlendMode::Multiply);
 
     // === Asteroid Geometry ===
     // Create asteroid mesh (higher poly for textures)
@@ -77,7 +93,7 @@ void setup(Context& ctx) {
         .intensity(0.5f);
 
     // Create instanced renderer with textured material
-    // Use transparent clear so stars show through
+    // Transparent clear so stars show through empty space
     auto& instanced = chain.add<InstancedRender3D>("asteroids")
         .mesh(&asteroid)
         .material(&rockMaterial)
@@ -85,12 +101,12 @@ void setup(Context& ctx) {
         .lightInput(&sun)
         .addLight(&fillLight)
         .ambient(0.15f)
-        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent for compositing
+        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent background
 
-    // Composite asteroids over star background
+    // Over blend: asteroids (with alpha) composited over stars
     auto& final = chain.add<Composite>("final")
         .inputA(&stars)      // Background: stars
-        .inputB(&instanced)  // Foreground: asteroids
+        .inputB(&instanced)  // Foreground: asteroids (alpha=1 where geometry)
         .mode(BlendMode::Over);
 
     // Reserve capacity for asteroids
@@ -130,14 +146,16 @@ void setup(Context& ctx) {
         a.rotationAxis = glm::normalize(glm::vec3(distAxis(rng), distAxis(rng), distAxis(rng)));
         a.rotationSpeed = 0.5f + dist01(rng) * 2.0f;
 
-        // Random scale - mix of sizes
+        // Random scale - more dramatic size variation
         float sizeRoll = dist01(rng);
-        if (sizeRoll < 0.7f) {
-            a.scale = 0.3f + dist01(rng) * 0.8f;  // Small rocks
-        } else if (sizeRoll < 0.95f) {
-            a.scale = 1.0f + dist01(rng) * 1.5f;  // Medium rocks
+        if (sizeRoll < 0.6f) {
+            a.scale = 0.15f + dist01(rng) * 0.5f;  // Tiny rocks (0.15 - 0.65)
+        } else if (sizeRoll < 0.85f) {
+            a.scale = 0.6f + dist01(rng) * 1.2f;   // Medium rocks (0.6 - 1.8)
+        } else if (sizeRoll < 0.97f) {
+            a.scale = 1.8f + dist01(rng) * 2.0f;   // Large rocks (1.8 - 3.8)
         } else {
-            a.scale = 2.5f + dist01(rng) * 2.0f;  // Large boulders
+            a.scale = 4.0f + dist01(rng) * 3.0f;   // Giant boulders (4.0 - 7.0)
         }
 
         // Slight color/brightness variation

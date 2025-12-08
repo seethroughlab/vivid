@@ -148,7 +148,22 @@ void HotReload::forceReload() {
     m_lastModTime = fs::file_time_type::min();
 }
 
-bool HotReload::update() {
+bool HotReload::checkNeedsReload() {
+    if (m_sourcePath.empty()) {
+        return false;
+    }
+
+    // Check if file exists
+    if (!fs::exists(m_sourcePath)) {
+        return false;
+    }
+
+    // Check modification time
+    auto modTime = getFileModTime();
+    return modTime != m_lastModTime;
+}
+
+bool HotReload::reload() {
     if (m_sourcePath.empty()) {
         return false;
     }
@@ -159,13 +174,8 @@ bool HotReload::update() {
         return false;
     }
 
-    // Check modification time
-    auto modTime = getFileModTime();
-    if (modTime == m_lastModTime) {
-        return false;  // No changes
-    }
-
-    m_lastModTime = modTime;
+    // Update modification time
+    m_lastModTime = getFileModTime();
 
     std::cout << "Detected change in " << m_sourcePath.filename() << ", reloading..." << std::endl;
 
@@ -174,7 +184,7 @@ bool HotReload::update() {
         return false;
     }
 
-    // Load
+    // Load (this unloads the old library first)
     if (!load()) {
         return false;
     }
@@ -182,6 +192,16 @@ bool HotReload::update() {
     m_error.clear();
     m_needsSetup = true;
     return true;
+}
+
+bool HotReload::update() {
+    // Legacy API - check and reload in one call
+    // WARNING: Old library is unloaded before returning, so caller must
+    // destroy chain operators BEFORE calling this!
+    if (!checkNeedsReload()) {
+        return false;
+    }
+    return reload();
 }
 
 // Find the directory containing the vivid executable

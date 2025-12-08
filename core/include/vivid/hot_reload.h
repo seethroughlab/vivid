@@ -33,7 +33,15 @@ public:
 
     // Check for changes and reload if needed
     // Returns true if chain was reloaded
+    // WARNING: This unloads the old library - destroy chain operators BEFORE calling!
     bool update();
+
+    // Split API for safe hot-reload:
+    // 1. Call checkNeedsReload() to see if file changed
+    // 2. If true, destroy your chain operators (while old code is still loaded)
+    // 3. Then call reload() to compile and load new code
+    bool checkNeedsReload();  // Returns true if source file changed
+    bool reload();            // Compile and load (unloads old library first)
 
     // Get the current chain functions (may be null if not loaded)
     SetupFn getSetupFn() const { return m_setupFn; }
