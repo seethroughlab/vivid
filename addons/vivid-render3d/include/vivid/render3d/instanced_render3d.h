@@ -17,10 +17,11 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/render3d/mesh.h>
+#include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/camera.h>
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/render3d/light_operators.h>
-#include <vivid/render3d/primitives.h>
+#include <vivid/render3d/textured_material.h>
 #include <glm/glm.hpp>
 #include <vector>
 
@@ -71,8 +72,8 @@ public:
 
     // === Mesh Input ===
 
-    /// Set the mesh to instance (from a GeometryOperator)
-    InstancedRender3D& mesh(GeometryOperator* geom);
+    /// Set the mesh to instance (from a MeshOperator)
+    InstancedRender3D& mesh(MeshOperator* geom);
 
     /// Set the mesh directly
     InstancedRender3D& mesh(Mesh* m);
@@ -117,10 +118,13 @@ public:
 
     // === Material Properties (defaults for all instances) ===
 
-    /// Base metallic value (can be overridden per-instance)
+    /// Set textured PBR material (albedo, normal, metallic, roughness, AO maps)
+    InstancedRender3D& material(TexturedMaterial* mat);
+
+    /// Base metallic value (can be overridden per-instance, ignored if material set)
     InstancedRender3D& metallic(float m) { m_metallic = m; return *this; }
 
-    /// Base roughness value (can be overridden per-instance)
+    /// Base roughness value (can be overridden per-instance, ignored if material set)
     InstancedRender3D& roughness(float r) { m_roughness = r; return *this; }
 
     /// Ambient light intensity
@@ -164,13 +168,17 @@ public:
 
 private:
     void createPipeline(Context& ctx);
+    void createTexturedPipeline(Context& ctx);
     void createDepthBuffer(Context& ctx);
     void ensureInstanceCapacity(size_t count);
     void uploadInstances();
 
     // Mesh source
-    GeometryOperator* m_geometryOp = nullptr;
+    MeshOperator* m_meshOp = nullptr;
     Mesh* m_mesh = nullptr;
+
+    // Textured material
+    TexturedMaterial* m_material = nullptr;
 
     // Instance data
     std::vector<Instance3D> m_instances;
@@ -194,13 +202,19 @@ private:
     bool m_depthTest = true;
     bool m_cullBack = true;
 
-    // GPU resources
+    // GPU resources - untextured pipeline
     WGPURenderPipeline m_pipeline = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBindGroup m_bindGroup = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUBuffer m_instanceBuffer = nullptr;
     size_t m_instanceCapacity = 0;
+
+    // GPU resources - textured pipeline
+    WGPURenderPipeline m_texturedPipeline = nullptr;
+    WGPUBindGroupLayout m_texturedBindGroupLayout = nullptr;
+    WGPUBindGroup m_texturedBindGroup = nullptr;
+    WGPUSampler m_sampler = nullptr;
 
     // Depth buffer
     WGPUTexture m_depthTexture = nullptr;
@@ -209,6 +223,7 @@ private:
     int m_depthHeight = 0;
 
     bool m_pipelineCreated = false;
+    bool m_texturedPipelineCreated = false;
 };
 
 } // namespace vivid::render3d

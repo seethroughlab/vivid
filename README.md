@@ -165,6 +165,11 @@ Edit your code while it's running - changes apply automatically.
 - `SpotLight` - Cone-shaped light with position, direction, angle, falloff
 - `CameraOperator` - Perspective camera with orbit controls
 
+**GPU Instancing:**
+- `InstancedRender3D` - Render thousands of identical meshes in a single draw call
+  - Per-instance transforms, colors, and material properties
+  - Use cases: asteroid fields, forests, crowds, particle debris
+
 **PBR Materials:**
 - `TexturedMaterial` - Full PBR material with texture maps:
   - `.baseColor()`, `.normal()`, `.metallic()`, `.roughness()`, `.ao()`, `.emissive()`
@@ -312,6 +317,7 @@ vivid/
 | `pbr-demo` | PBR rendering with metallic sphere |
 | `multi-lights` | Multiple light types (directional, point, spot) |
 | `textured-pbr-demo` | PBR materials with texture maps and IBL |
+| `instancing-demo` | GPU instanced rendering (2000 asteroids) |
 | `retro-crt` | Full retro post-processing pipeline |
 | `canvas-demo` | Procedural 2D drawing |
 

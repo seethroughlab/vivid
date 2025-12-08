@@ -211,6 +211,7 @@ Operations: `BooleanOp::Union`, `BooleanOp::Subtract`, `BooleanOp::Intersect`
 | `PointLight` | Omni light | `.position(x,y,z)` `.color(r,g,b)` `.intensity(2.0)` `.range(10.0)` |
 | `SpotLight` | Spot light | `.position()` `.direction()` `.spotAngle(30)` `.spotBlend(0.3)` `.range(10)` |
 | `Render3D` | Renderer | `.input(&scene)` `.cameraInput(&cam)` `.lightInput(&light)` `.addLight(&light2)` |
+| `InstancedRender3D` | Instanced rendering | `.mesh(&mesh)` `.cameraInput(&cam)` `.lightInput(&light)` `.setInstances(vec)` |
 
 **Multi-light support:** Up to 4 lights via `.lightInput()` (primary) and `.addLight()` (additional).
 
@@ -320,6 +321,37 @@ auto& render = chain.add<Render3D>("render")
     .addLight(&redLight)    // Additional lights
     .addLight(&blueLight)
     .addLight(&spot);
+```
+
+**GPU Instancing (thousands of identical meshes):**
+```cpp
+// Instance3D struct: { transform, color, metallic, roughness }
+auto& sphere = chain.add<Sphere>("sphere").radius(0.15f).segments(8);
+auto& camera = chain.add<CameraOperator>("camera").distance(20.0f);
+auto& sun = chain.add<DirectionalLight>("sun").direction(1, 1.5f, 0.5f);
+
+auto& instanced = chain.add<InstancedRender3D>("asteroids")
+    .mesh(&sphere)
+    .cameraInput(&camera)
+    .lightInput(&sun)
+    .metallic(0.3f)
+    .roughness(0.7f);
+
+instanced.reserve(1000);  // Pre-allocate capacity
+
+// In update():
+instanced.clearInstances();
+for (int i = 0; i < 1000; i++) {
+    Instance3D inst;
+    inst.transform = glm::translate(glm::mat4(1.0f), positions[i]);
+    inst.color = glm::vec4(colors[i], 1.0f);
+    inst.metallic = 0.2f;
+    inst.roughness = 0.8f;
+    instanced.addInstance(inst);
+}
+// Or use convenience methods:
+instanced.addInstance(glm::vec3(x, y, z), scale, color);  // Position + uniform scale
+instanced.addInstance(transformMatrix, color);            // Full matrix
 ```
 
 ## Enum Types
