@@ -24,5 +24,8 @@
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/render3d/light_operators.h>
 
+// IBL (Image-Based Lighting)
+#include <vivid/render3d/ibl_environment.h>
+
 // Instanced rendering
 #include <vivid/render3d/instanced_render3d.h>

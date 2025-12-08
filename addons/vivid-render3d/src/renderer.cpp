@@ -1457,6 +1457,53 @@ void Render3D::createPipeline(Context& ctx) {
 
     m_pbrTexturedPipeline = wgpuDeviceCreateRenderPipeline(device, &pbrTexPipelineDesc);
 
+    // Create blend state for alpha blending
+    WGPUBlendState blendState = {};
+    blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
+    blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blendState.color.operation = WGPUBlendOperation_Add;
+    blendState.alpha.srcFactor = WGPUBlendFactor_One;
+    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blendState.alpha.operation = WGPUBlendOperation_Add;
+
+    // Color target with blending enabled
+    WGPUColorTargetState blendColorTarget = {};
+    blendColorTarget.format = EFFECTS_FORMAT;
+    blendColorTarget.blend = &blendState;
+    blendColorTarget.writeMask = WGPUColorWriteMask_All;
+
+    // Fragment state for blend pipeline
+    WGPUFragmentState pbrTexBlendFragmentState = {};
+    pbrTexBlendFragmentState.module = pbrTexShaderModule;
+    pbrTexBlendFragmentState.entryPoint = toStringView("fs_main");
+    pbrTexBlendFragmentState.targetCount = 1;
+    pbrTexBlendFragmentState.targets = &blendColorTarget;
+
+    // Depth stencil for transparent objects (write disabled for proper ordering)
+    WGPUDepthStencilState blendDepthStencil = depthStencil;
+    blendDepthStencil.depthWriteEnabled = WGPUOptionalBool_False;  // Don't write depth for transparent objects
+
+    // Create textured PBR blend pipeline (back-face culled)
+    pbrTexPipelineDesc.label = toStringView("Render3D PBR Textured Blend Pipeline");
+    pbrTexPipelineDesc.fragment = &pbrTexBlendFragmentState;
+    pbrTexPipelineDesc.depthStencil = &blendDepthStencil;
+    pbrTexPipelineDesc.primitive.cullMode = WGPUCullMode_Back;
+    m_pbrTexturedBlendPipeline = wgpuDeviceCreateRenderPipeline(device, &pbrTexPipelineDesc);
+
+    // Create textured PBR double-sided pipeline (no culling, opaque)
+    pbrTexPipelineDesc.label = toStringView("Render3D PBR Textured Double-Sided Pipeline");
+    pbrTexPipelineDesc.fragment = &pbrTexFragmentState;
+    pbrTexPipelineDesc.depthStencil = &depthStencil;  // Restore depth write
+    pbrTexPipelineDesc.primitive.cullMode = WGPUCullMode_None;
+    m_pbrTexturedDoubleSidedPipeline = wgpuDeviceCreateRenderPipeline(device, &pbrTexPipelineDesc);
+
+    // Create textured PBR blend + double-sided pipeline
+    pbrTexPipelineDesc.label = toStringView("Render3D PBR Textured Blend Double-Sided Pipeline");
+    pbrTexPipelineDesc.fragment = &pbrTexBlendFragmentState;
+    pbrTexPipelineDesc.depthStencil = &blendDepthStencil;
+    pbrTexPipelineDesc.primitive.cullMode = WGPUCullMode_None;
+    m_pbrTexturedBlendDoubleSidedPipeline = wgpuDeviceCreateRenderPipeline(device, &pbrTexPipelineDesc);
+
     // Cleanup textured PBR resources
     wgpuPipelineLayoutRelease(pbrTexPipelineLayout);
     wgpuShaderModuleRelease(pbrTexShaderModule);
@@ -1555,6 +1602,34 @@ void Render3D::createPipeline(Context& ctx) {
     iblPipelineDesc.fragment = &iblFragmentState;
 
     m_pbrIBLPipeline = wgpuDeviceCreateRenderPipeline(device, &iblPipelineDesc);
+
+    // IBL fragment state with blending
+    WGPUFragmentState iblBlendFragmentState = {};
+    iblBlendFragmentState.module = iblShaderModule;
+    iblBlendFragmentState.entryPoint = toStringView("fs_main");
+    iblBlendFragmentState.targetCount = 1;
+    iblBlendFragmentState.targets = &blendColorTarget;
+
+    // Create IBL blend pipeline (back-face culled)
+    iblPipelineDesc.label = toStringView("Render3D PBR IBL Blend Pipeline");
+    iblPipelineDesc.fragment = &iblBlendFragmentState;
+    iblPipelineDesc.depthStencil = &blendDepthStencil;
+    iblPipelineDesc.primitive.cullMode = WGPUCullMode_Back;
+    m_pbrIBLBlendPipeline = wgpuDeviceCreateRenderPipeline(device, &iblPipelineDesc);
+
+    // Create IBL double-sided pipeline (no culling, opaque)
+    iblPipelineDesc.label = toStringView("Render3D PBR IBL Double-Sided Pipeline");
+    iblPipelineDesc.fragment = &iblFragmentState;
+    iblPipelineDesc.depthStencil = &depthStencil;
+    iblPipelineDesc.primitive.cullMode = WGPUCullMode_None;
+    m_pbrIBLDoubleSidedPipeline = wgpuDeviceCreateRenderPipeline(device, &iblPipelineDesc);
+
+    // Create IBL blend + double-sided pipeline
+    iblPipelineDesc.label = toStringView("Render3D PBR IBL Blend Double-Sided Pipeline");
+    iblPipelineDesc.fragment = &iblBlendFragmentState;
+    iblPipelineDesc.depthStencil = &blendDepthStencil;
+    iblPipelineDesc.primitive.cullMode = WGPUCullMode_None;
+    m_pbrIBLBlendDoubleSidedPipeline = wgpuDeviceCreateRenderPipeline(device, &iblPipelineDesc);
 
     // Cleanup IBL pipeline resources
     wgpuPipelineLayoutRelease(iblPipelineLayout);
@@ -1984,13 +2059,39 @@ void Render3D::process(Context& ctx) {
         bool objUseTexturedPBR = usePBR && activeMaterial != nullptr;
         bool objUseIBL = useIBL && objUseTexturedPBR;  // IBL only works with textured PBR
 
+        // Determine material properties for pipeline selection
+        bool useBlend = false;
+        bool doubleSided = false;
+        if (activeMaterial) {
+            useBlend = activeMaterial->getAlphaMode() == TexturedMaterial::AlphaMode::Blend;
+            doubleSided = activeMaterial->isDoubleSided();
+        }
+
         // Set pipeline for this object
         if (m_wireframe) {
             wgpuRenderPassEncoderSetPipeline(pass, m_wireframePipeline);
         } else if (objUseIBL) {
-            wgpuRenderPassEncoderSetPipeline(pass, m_pbrIBLPipeline);
+            // Select IBL pipeline variant
+            if (useBlend && doubleSided) {
+                wgpuRenderPassEncoderSetPipeline(pass, m_pbrIBLBlendDoubleSidedPipeline);
+            } else if (useBlend) {
+                wgpuRenderPassEncoderSetPipeline(pass, m_pbrIBLBlendPipeline);
+            } else if (doubleSided) {
+                wgpuRenderPassEncoderSetPipeline(pass, m_pbrIBLDoubleSidedPipeline);
+            } else {
+                wgpuRenderPassEncoderSetPipeline(pass, m_pbrIBLPipeline);
+            }
         } else if (objUseTexturedPBR) {
-            wgpuRenderPassEncoderSetPipeline(pass, m_pbrTexturedPipeline);
+            // Select textured PBR pipeline variant
+            if (useBlend && doubleSided) {
+                wgpuRenderPassEncoderSetPipeline(pass, m_pbrTexturedBlendDoubleSidedPipeline);
+            } else if (useBlend) {
+                wgpuRenderPassEncoderSetPipeline(pass, m_pbrTexturedBlendPipeline);
+            } else if (doubleSided) {
+                wgpuRenderPassEncoderSetPipeline(pass, m_pbrTexturedDoubleSidedPipeline);
+            } else {
+                wgpuRenderPassEncoderSetPipeline(pass, m_pbrTexturedPipeline);
+            }
         } else if (usePBR) {
             wgpuRenderPassEncoderSetPipeline(pass, m_pbrPipeline);
         } else {
@@ -2061,6 +2162,18 @@ void Render3D::cleanup() {
         wgpuRenderPipelineRelease(m_pbrTexturedPipeline);
         m_pbrTexturedPipeline = nullptr;
     }
+    if (m_pbrTexturedBlendPipeline) {
+        wgpuRenderPipelineRelease(m_pbrTexturedBlendPipeline);
+        m_pbrTexturedBlendPipeline = nullptr;
+    }
+    if (m_pbrTexturedDoubleSidedPipeline) {
+        wgpuRenderPipelineRelease(m_pbrTexturedDoubleSidedPipeline);
+        m_pbrTexturedDoubleSidedPipeline = nullptr;
+    }
+    if (m_pbrTexturedBlendDoubleSidedPipeline) {
+        wgpuRenderPipelineRelease(m_pbrTexturedBlendDoubleSidedPipeline);
+        m_pbrTexturedBlendDoubleSidedPipeline = nullptr;
+    }
     if (m_wireframePipeline) {
         wgpuRenderPipelineRelease(m_wireframePipeline);
         m_wireframePipeline = nullptr;
@@ -2081,6 +2194,18 @@ void Render3D::cleanup() {
     if (m_pbrIBLPipeline) {
         wgpuRenderPipelineRelease(m_pbrIBLPipeline);
         m_pbrIBLPipeline = nullptr;
+    }
+    if (m_pbrIBLBlendPipeline) {
+        wgpuRenderPipelineRelease(m_pbrIBLBlendPipeline);
+        m_pbrIBLBlendPipeline = nullptr;
+    }
+    if (m_pbrIBLDoubleSidedPipeline) {
+        wgpuRenderPipelineRelease(m_pbrIBLDoubleSidedPipeline);
+        m_pbrIBLDoubleSidedPipeline = nullptr;
+    }
+    if (m_pbrIBLBlendDoubleSidedPipeline) {
+        wgpuRenderPipelineRelease(m_pbrIBLBlendDoubleSidedPipeline);
+        m_pbrIBLBlendDoubleSidedPipeline = nullptr;
     }
     if (m_iblBindGroupLayout) {
         wgpuBindGroupLayoutRelease(m_iblBindGroupLayout);

@@ -77,6 +77,12 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
     m_mesh.vertices.clear();
     m_mesh.indices.clear();
 
+    // Reset material for new model
+    if (m_material) {
+        m_material->cleanup();
+        m_material.reset();
+    }
+
     // Parse GLTF file
     cgltf_options options = {};
     cgltf_data* data = nullptr;
@@ -97,7 +103,7 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
         return false;
     }
 
-    // Find the mesh to load
+    // Check for meshes
     if (data->meshes_count == 0) {
         m_error = "GLTF file contains no meshes";
         std::cerr << "[GLTFLoader] " << m_error << std::endl;
@@ -105,16 +111,23 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
         return false;
     }
 
-    size_t meshIdx = static_cast<size_t>(m_meshIndex);
-    if (meshIdx >= data->meshes_count) {
-        meshIdx = 0;  // Fall back to first mesh
+    // Determine which meshes to load
+    size_t startMesh = 0;
+    size_t endMesh = data->meshes_count;
+
+    // If specific mesh requested, only load that one
+    if (m_meshIndex >= 0 && static_cast<size_t>(m_meshIndex) < data->meshes_count) {
+        startMesh = static_cast<size_t>(m_meshIndex);
+        endMesh = startMesh + 1;
     }
 
-    cgltf_mesh* mesh = &data->meshes[meshIdx];
+    // Process all meshes (or just the selected one)
+    for (size_t meshIdx = startMesh; meshIdx < endMesh; ++meshIdx) {
+        cgltf_mesh* mesh = &data->meshes[meshIdx];
 
-    // Process all primitives in the mesh
-    for (size_t primIdx = 0; primIdx < mesh->primitives_count; ++primIdx) {
-        cgltf_primitive* primitive = &mesh->primitives[primIdx];
+        // Process all primitives in this mesh
+        for (size_t primIdx = 0; primIdx < mesh->primitives_count; ++primIdx) {
+            cgltf_primitive* primitive = &mesh->primitives[primIdx];
 
         if (primitive->type != cgltf_primitive_type_triangles) {
             continue;  // Only support triangle primitives
@@ -324,7 +337,8 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
             // Initialize material
             m_material->init(ctx);
         }
-    }
+        }  // end primitive loop
+    }  // end mesh loop
 
     cgltf_free(data);
 
@@ -332,6 +346,12 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
         m_error = "No vertices loaded from GLTF";
         std::cerr << "[GLTFLoader] " << m_error << std::endl;
         return false;
+    }
+
+    // Compute bounding box
+    m_bounds = Bounds3D{};
+    for (const auto& v : m_mesh.vertices) {
+        m_bounds.expand(v.position);
     }
 
     // Compute tangents if needed and not present in file

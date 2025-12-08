@@ -15,10 +15,27 @@
 #include <vivid/operator.h>
 #include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/textured_material.h>
+#include <glm/glm.hpp>
 #include <string>
 #include <memory>
+#include <limits>
 
 namespace vivid::render3d {
+
+/// Axis-aligned bounding box
+struct Bounds3D {
+    glm::vec3 min{std::numeric_limits<float>::max()};
+    glm::vec3 max{std::numeric_limits<float>::lowest()};
+
+    glm::vec3 center() const { return (min + max) * 0.5f; }
+    glm::vec3 size() const { return max - min; }
+    float radius() const { return glm::length(size()) * 0.5f; }
+
+    void expand(const glm::vec3& point) {
+        min = glm::min(min, point);
+        max = glm::max(max, point);
+    }
+};
 
 /**
  * @brief Loads 3D models from GLTF/GLB files
@@ -128,6 +145,12 @@ public:
      */
     const std::string& error() const { return m_error; }
 
+    /**
+     * @brief Get the bounding box of the loaded model
+     * @return Axis-aligned bounding box
+     */
+    const Bounds3D& bounds() const { return m_bounds; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface
@@ -163,7 +186,7 @@ private:
 
     std::string m_filePath;
     std::string m_baseDir;      // Directory containing the GLTF file
-    int m_meshIndex = 0;
+    int m_meshIndex = -1;  // -1 = load all meshes
     float m_scale = 1.0f;
     bool m_loadTextures = false;
     bool m_computeTangents = true;
@@ -171,6 +194,7 @@ private:
     bool m_needsLoad = false;
     std::string m_error;
 
+    Bounds3D m_bounds;
     std::unique_ptr<TexturedMaterial> m_material;
 };
 

@@ -205,7 +205,13 @@ private:
     WGPURenderPipeline m_pipeline = nullptr;           // Flat/Gouraud/Unlit
     WGPURenderPipeline m_pbrPipeline = nullptr;        // PBR with scalar values
     WGPURenderPipeline m_pbrTexturedPipeline = nullptr; // PBR with texture maps
+    WGPURenderPipeline m_pbrTexturedBlendPipeline = nullptr;     // PBR textured with alpha blending
+    WGPURenderPipeline m_pbrTexturedDoubleSidedPipeline = nullptr; // PBR textured, double-sided
+    WGPURenderPipeline m_pbrTexturedBlendDoubleSidedPipeline = nullptr; // Both
     WGPURenderPipeline m_pbrIBLPipeline = nullptr;       // PBR with IBL
+    WGPURenderPipeline m_pbrIBLBlendPipeline = nullptr;  // PBR IBL with alpha blending
+    WGPURenderPipeline m_pbrIBLDoubleSidedPipeline = nullptr; // PBR IBL, double-sided
+    WGPURenderPipeline m_pbrIBLBlendDoubleSidedPipeline = nullptr; // Both
     WGPURenderPipeline m_wireframePipeline = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBindGroupLayout m_pbrBindGroupLayout = nullptr;
