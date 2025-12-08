@@ -430,8 +430,9 @@ MeshBuilder MeshBuilder::torus(float outerRadius, float innerRadius, int segment
             uint32_t current = ring * (segments + 1) + seg;
             uint32_t next = current + segments + 1;
 
-            builder.addTriangle(current, next, current + 1);
-            builder.addTriangle(current + 1, next, next + 1);
+            // CCW winding for outward-facing normals
+            builder.addTriangle(current, current + 1, next);
+            builder.addTriangle(current + 1, next + 1, next);
         }
     }
 
