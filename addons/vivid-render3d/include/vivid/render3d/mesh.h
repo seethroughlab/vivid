@@ -11,26 +11,30 @@ class Context;
 
 namespace vivid::render3d {
 
-/// Vertex format for 3D meshes
+/// Vertex format for 3D meshes (PBR-ready)
 struct Vertex3D {
     glm::vec3 position;
     glm::vec3 normal;
+    glm::vec4 tangent;  // xyz = tangent direction, w = handedness (-1 or +1)
     glm::vec2 uv;
     glm::vec4 color;
 
-    Vertex3D() : position(0), normal(0, 1, 0), uv(0), color(1) {}
+    Vertex3D() : position(0), normal(0, 1, 0), tangent(1, 0, 0, 1), uv(0), color(1) {}
 
     Vertex3D(glm::vec3 pos)
-        : position(pos), normal(0, 1, 0), uv(0), color(1) {}
+        : position(pos), normal(0, 1, 0), tangent(1, 0, 0, 1), uv(0), color(1) {}
 
     Vertex3D(glm::vec3 pos, glm::vec3 norm)
-        : position(pos), normal(norm), uv(0), color(1) {}
+        : position(pos), normal(norm), tangent(1, 0, 0, 1), uv(0), color(1) {}
 
     Vertex3D(glm::vec3 pos, glm::vec3 norm, glm::vec2 texcoord)
-        : position(pos), normal(norm), uv(texcoord), color(1) {}
+        : position(pos), normal(norm), tangent(1, 0, 0, 1), uv(texcoord), color(1) {}
 
     Vertex3D(glm::vec3 pos, glm::vec3 norm, glm::vec2 texcoord, glm::vec4 col)
-        : position(pos), normal(norm), uv(texcoord), color(col) {}
+        : position(pos), normal(norm), tangent(1, 0, 0, 1), uv(texcoord), color(col) {}
+
+    Vertex3D(glm::vec3 pos, glm::vec3 norm, glm::vec4 tan, glm::vec2 texcoord, glm::vec4 col)
+        : position(pos), normal(norm), tangent(tan), uv(texcoord), color(col) {}
 };
 
 /// GPU mesh with vertices and indices

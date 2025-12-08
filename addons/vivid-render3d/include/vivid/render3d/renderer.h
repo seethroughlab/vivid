@@ -15,6 +15,7 @@ namespace vivid::render3d {
 class SceneComposer;
 class CameraOperator;
 class LightOperator;
+class TexturedMaterial;
 }
 
 namespace vivid::render3d {
@@ -23,7 +24,8 @@ namespace vivid::render3d {
 enum class ShadingMode {
     Unlit,    ///< No lighting, just color/texture
     Flat,     ///< Per-fragment lighting (faceted look)
-    Gouraud   ///< Per-vertex lighting (smooth, PS1-style)
+    Gouraud,  ///< Per-vertex lighting (smooth, PS1-style)
+    PBR       ///< Physically-based rendering with Cook-Torrance BRDF
 };
 
 /// 3D renderer operator - extends TextureOperator for consistent architecture
@@ -68,6 +70,16 @@ public:
     /// Set default object color
     Render3D& color(float r, float g, float b, float a = 1.0f);
     Render3D& color(const glm::vec4& c);
+
+    /// Set metallic factor for PBR (0 = dielectric, 1 = metal)
+    Render3D& metallic(float m);
+
+    /// Set roughness factor for PBR (0 = smooth/mirror, 1 = rough/diffuse)
+    Render3D& roughness(float r);
+
+    /// Set material with texture maps for PBR rendering
+    /// When set, textures override scalar metallic/roughness values
+    Render3D& material(TexturedMaterial* mat);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -146,6 +158,11 @@ private:
     glm::vec3 m_lightColor = glm::vec3(1, 1, 1);
     float m_ambient = 0.1f;
 
+    // PBR parameters
+    float m_metallic = 0.0f;
+    float m_roughness = 0.5f;
+    TexturedMaterial* m_material = nullptr;  // Optional textured material
+
     // Output - m_output, m_outputView, m_width, m_height inherited from TextureOperator
     glm::vec4 m_clearColor = glm::vec4(0.1f, 0.1f, 0.15f, 1.0f);
 
@@ -155,12 +172,18 @@ private:
     // GPU resources (depth buffer is 3D-specific, not in TextureOperator)
     WGPUTexture m_depthTexture = nullptr;
     WGPUTextureView m_depthView = nullptr;
-    WGPURenderPipeline m_pipeline = nullptr;
+    WGPURenderPipeline m_pipeline = nullptr;           // Flat/Gouraud/Unlit
+    WGPURenderPipeline m_pbrPipeline = nullptr;        // PBR with scalar values
+    WGPURenderPipeline m_pbrTexturedPipeline = nullptr; // PBR with texture maps
     WGPURenderPipeline m_wireframePipeline = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
+    WGPUBindGroupLayout m_pbrBindGroupLayout = nullptr;
+    WGPUBindGroupLayout m_pbrTexturedBindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
+    WGPUBuffer m_pbrUniformBuffer = nullptr;
     std::vector<WGPUBindGroup> m_bindGroups;  // One per object
     size_t m_uniformAlignment = 256;  // WebGPU minimum uniform buffer alignment
+    size_t m_pbrUniformAlignment = 256;
     static constexpr size_t MAX_OBJECTS = 256;
 
     bool m_initialized = false;

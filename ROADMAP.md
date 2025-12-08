@@ -1494,7 +1494,7 @@ public:
 - [x] examples/geometry-showcase
 - [x] examples/geometry-pipeline
 
-**Step 2: PBR & Materials (Future)**
+**Step 2: PBR & Materials**
 
 Deferred to Step 2: PBR materials, IBL, glTF loading, GPU instancing, toon shading.
 

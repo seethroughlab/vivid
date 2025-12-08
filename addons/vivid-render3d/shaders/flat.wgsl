@@ -18,8 +18,9 @@ struct Uniforms {
 struct VertexInput {
     @location(0) position: vec3f,
     @location(1) normal: vec3f,
-    @location(2) uv: vec2f,
-    @location(3) color: vec4f,
+    @location(2) tangent: vec4f,  // xyz = tangent, w = handedness (unused in flat shading)
+    @location(3) uv: vec2f,
+    @location(4) color: vec4f,
 };
 
 struct VertexOutput {

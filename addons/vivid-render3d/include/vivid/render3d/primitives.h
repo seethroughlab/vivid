@@ -60,6 +60,12 @@ public:
         return *this;
     }
 
+    /// Enable tangent computation (required for normal mapping)
+    Box& computeTangents() {
+        m_computeTangents = true;
+        return *this;
+    }
+
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
@@ -68,6 +74,9 @@ public:
             m_builder.computeFlatNormals();
         } else {
             m_builder.computeNormals();
+        }
+        if (m_computeTangents) {
+            m_builder.computeTangents();
         }
         m_mesh = m_builder.build();
         m_mesh.upload(ctx);
@@ -84,6 +93,7 @@ private:
     float m_height = 1.0f;
     float m_depth = 1.0f;
     bool m_flatShading = true;
+    bool m_computeTangents = false;
 };
 
 // =============================================================================
@@ -116,10 +126,19 @@ public:
         return *this;
     }
 
+    /// Enable tangent computation (required for normal mapping)
+    Sphere& computeTangents() {
+        m_computeTangents = true;
+        return *this;
+    }
+
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
         m_builder = MeshBuilder::sphere(m_radius, m_segments);
+        if (m_computeTangents) {
+            m_builder.computeTangents();
+        }
         m_mesh = m_builder.build();
         m_mesh.upload(ctx);
     }
@@ -133,6 +152,7 @@ public:
 private:
     float m_radius = 0.5f;
     int m_segments = 24;
+    bool m_computeTangents = false;
 };
 
 // =============================================================================
@@ -313,10 +333,19 @@ public:
         return *this;
     }
 
+    /// Enable tangent computation (required for normal mapping)
+    Torus& computeTangents() {
+        m_computeTangents = true;
+        return *this;
+    }
+
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
         m_builder = MeshBuilder::torus(m_outerRadius, m_innerRadius, m_segments, m_rings);
+        if (m_computeTangents) {
+            m_builder.computeTangents();
+        }
         m_mesh = m_builder.build();
         m_mesh.upload(ctx);
     }
@@ -332,6 +361,7 @@ private:
     float m_innerRadius = 0.2f;
     int m_segments = 32;
     int m_rings = 16;
+    bool m_computeTangents = false;
 };
 
 // =============================================================================
@@ -372,12 +402,21 @@ public:
         return *this;
     }
 
+    /// Enable tangent computation (required for normal mapping)
+    Plane& computeTangents() {
+        m_computeTangents = true;
+        return *this;
+    }
+
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
         m_builder = MeshBuilder::plane(m_width, m_height, m_subdivisionsX, m_subdivisionsY);
         if (m_flatShading) {
             m_builder.computeFlatNormals();
+        }
+        if (m_computeTangents) {
+            m_builder.computeTangents();
         }
         m_mesh = m_builder.build();
         m_mesh.upload(ctx);
@@ -395,6 +434,7 @@ private:
     int m_subdivisionsX = 1;
     int m_subdivisionsY = 1;
     bool m_flatShading = false;
+    bool m_computeTangents = false;
 };
 
 } // namespace vivid::render3d

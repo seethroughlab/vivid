@@ -2,6 +2,7 @@
 #include <vivid/render3d/scene_composer.h>
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/render3d/light_operators.h>
+#include <vivid/render3d/textured_material.h>
 #include <vivid/context.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <iostream>
@@ -14,8 +15,8 @@ namespace {
 constexpr WGPUTextureFormat DEPTH_FORMAT = WGPUTextureFormat_Depth24Plus;
 // toStringView is inherited from vivid::effects (texture_operator.h)
 
-// Shader source embedded in code
-const char* SHADER_SOURCE = R"(
+// Flat/Gouraud/Unlit shader source
+const char* FLAT_SHADER_SOURCE = R"(
 struct Uniforms {
     mvp: mat4x4f,
     model: mat4x4f,
@@ -33,8 +34,9 @@ struct Uniforms {
 struct VertexInput {
     @location(0) position: vec3f,
     @location(1) normal: vec3f,
-    @location(2) uv: vec2f,
-    @location(3) color: vec4f,
+    @location(2) tangent: vec4f,  // xyz = tangent, w = handedness (unused in flat shading)
+    @location(3) uv: vec2f,
+    @location(4) color: vec4f,
 };
 
 struct VertexOutput {
@@ -78,8 +80,284 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-// Uniform buffer structure - must match WGSL shader layout exactly
-// WGSL uses std140-like alignment rules
+// PBR shader source
+const char* PBR_SHADER_SOURCE = R"(
+const PI: f32 = 3.14159265359;
+const EPSILON: f32 = 0.0001;
+
+struct Uniforms {
+    mvp: mat4x4f,
+    model: mat4x4f,
+    normalMatrix: mat4x4f,
+    cameraPos: vec3f,
+    _pad0: f32,
+    lightDir: vec3f,
+    _pad1: f32,
+    lightColor: vec3f,
+    ambientIntensity: f32,
+    baseColor: vec4f,
+    metallic: f32,
+    roughness: f32,
+    _pad2: vec2f,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+struct VertexInput {
+    @location(0) position: vec3f,
+    @location(1) normal: vec3f,
+    @location(2) tangent: vec4f,
+    @location(3) uv: vec2f,
+    @location(4) color: vec4f,
+}
+
+struct VertexOutput {
+    @builtin(position) clipPos: vec4f,
+    @location(0) worldPos: vec3f,
+    @location(1) worldNormal: vec3f,
+    @location(2) color: vec4f,
+}
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    let worldPos = uniforms.model * vec4f(in.position, 1.0);
+    out.worldPos = worldPos.xyz;
+    out.clipPos = uniforms.mvp * vec4f(in.position, 1.0);
+    out.worldNormal = normalize((uniforms.normalMatrix * vec4f(in.normal, 0.0)).xyz);
+    out.color = in.color;
+    return out;
+}
+
+fn D_GGX(NdotH: f32, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let NdotH2 = NdotH * NdotH;
+    let denom = NdotH2 * (a2 - 1.0) + 1.0;
+    return a2 / (PI * denom * denom + EPSILON);
+}
+
+fn G_SchlickGGX(NdotV: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k + EPSILON);
+}
+
+fn G_Smith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
+    return G_SchlickGGX(NdotV, roughness) * G_SchlickGGX(NdotL, roughness);
+}
+
+fn F_Schlick(cosTheta: f32, F0: vec3f) -> vec3f {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let N = normalize(in.worldNormal);
+    let V = normalize(uniforms.cameraPos - in.worldPos);
+    let L = normalize(uniforms.lightDir);
+    let H = normalize(V + L);
+
+    let NdotL = max(dot(N, L), 0.0);
+    let NdotV = max(dot(N, V), EPSILON);
+    let NdotH = max(dot(N, H), 0.0);
+    let HdotV = max(dot(H, V), 0.0);
+
+    let albedo = uniforms.baseColor.rgb * in.color.rgb;
+    let metallic = uniforms.metallic;
+    let roughness = max(uniforms.roughness, 0.04);
+
+    let F0 = mix(vec3f(0.04), albedo, metallic);
+
+    let D = D_GGX(NdotH, roughness);
+    let G = G_Smith(NdotV, NdotL, roughness);
+    let F = F_Schlick(HdotV, F0);
+
+    let numerator = D * G * F;
+    let denominator = 4.0 * NdotV * NdotL + EPSILON;
+    let specular = numerator / denominator;
+
+    let kS = F;
+    var kD = vec3f(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    let diffuse = kD * albedo / PI;
+    let Lo = (diffuse + specular) * uniforms.lightColor * NdotL;
+    let ambient = vec3f(0.03) * albedo * uniforms.ambientIntensity;
+
+    var color = ambient + Lo;
+    color = color / (color + vec3f(1.0));
+    color = pow(color, vec3f(1.0 / 2.2));
+
+    return vec4f(color, uniforms.baseColor.a * in.color.a);
+}
+)";
+
+// Textured PBR shader source - uses texture maps for material properties
+const char* PBR_TEXTURED_SHADER_SOURCE = R"(
+const PI: f32 = 3.14159265359;
+const EPSILON: f32 = 0.0001;
+
+struct Uniforms {
+    mvp: mat4x4f,
+    model: mat4x4f,
+    normalMatrix: mat4x4f,
+    cameraPos: vec3f,
+    _pad0: f32,
+    lightDir: vec3f,
+    _pad1: f32,
+    lightColor: vec3f,
+    ambientIntensity: f32,
+    // Material fallback values (used when no texture or multiplied with texture)
+    baseColorFactor: vec4f,
+    metallicFactor: f32,
+    roughnessFactor: f32,
+    normalScale: f32,
+    aoStrength: f32,
+    emissiveFactor: vec3f,
+    emissiveStrength: f32,
+    // Flags for which textures are present (packed as bits)
+    textureFlags: u32,
+    // Struct is automatically padded to 16-byte alignment (304 bytes)
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var materialSampler: sampler;
+@group(0) @binding(2) var baseColorMap: texture_2d<f32>;
+@group(0) @binding(3) var normalMap: texture_2d<f32>;
+@group(0) @binding(4) var metallicMap: texture_2d<f32>;
+@group(0) @binding(5) var roughnessMap: texture_2d<f32>;
+@group(0) @binding(6) var aoMap: texture_2d<f32>;
+@group(0) @binding(7) var emissiveMap: texture_2d<f32>;
+
+struct VertexInput {
+    @location(0) position: vec3f,
+    @location(1) normal: vec3f,
+    @location(2) tangent: vec4f,
+    @location(3) uv: vec2f,
+    @location(4) color: vec4f,
+}
+
+struct VertexOutput {
+    @builtin(position) clipPos: vec4f,
+    @location(0) worldPos: vec3f,
+    @location(1) worldNormal: vec3f,
+    @location(2) worldTangent: vec3f,
+    @location(3) worldBitangent: vec3f,
+    @location(4) uv: vec2f,
+    @location(5) color: vec4f,
+}
+
+@vertex
+fn vs_main(in: VertexInput) -> VertexOutput {
+    var out: VertexOutput;
+    let worldPos = uniforms.model * vec4f(in.position, 1.0);
+    out.worldPos = worldPos.xyz;
+    out.clipPos = uniforms.mvp * vec4f(in.position, 1.0);
+
+    // Transform TBN to world space
+    let N = normalize((uniforms.normalMatrix * vec4f(in.normal, 0.0)).xyz);
+    let T = normalize((uniforms.model * vec4f(in.tangent.xyz, 0.0)).xyz);
+    let B = cross(N, T) * in.tangent.w;  // Handedness from w component
+
+    out.worldNormal = N;
+    out.worldTangent = T;
+    out.worldBitangent = B;
+    out.uv = in.uv;
+    out.color = in.color;
+    return out;
+}
+
+fn D_GGX(NdotH: f32, roughness: f32) -> f32 {
+    let a = roughness * roughness;
+    let a2 = a * a;
+    let NdotH2 = NdotH * NdotH;
+    let denom = NdotH2 * (a2 - 1.0) + 1.0;
+    return a2 / (PI * denom * denom + EPSILON);
+}
+
+fn G_SchlickGGX(NdotV: f32, roughness: f32) -> f32 {
+    let r = roughness + 1.0;
+    let k = (r * r) / 8.0;
+    return NdotV / (NdotV * (1.0 - k) + k + EPSILON);
+}
+
+fn G_Smith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
+    return G_SchlickGGX(NdotV, roughness) * G_SchlickGGX(NdotL, roughness);
+}
+
+fn F_Schlick(cosTheta: f32, F0: vec3f) -> vec3f {
+    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    // Sample textures
+    let baseColorSample = textureSample(baseColorMap, materialSampler, in.uv);
+    let normalSample = textureSample(normalMap, materialSampler, in.uv);
+    let metallicSample = textureSample(metallicMap, materialSampler, in.uv).r;
+    let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).r;
+    let aoSample = textureSample(aoMap, materialSampler, in.uv).r;
+    let emissiveSample = textureSample(emissiveMap, materialSampler, in.uv).rgb;
+
+    // Apply fallback factors
+    let albedo = baseColorSample.rgb * uniforms.baseColorFactor.rgb * in.color.rgb;
+    let metallic = metallicSample * uniforms.metallicFactor;
+    let roughness = max(roughnessSample * uniforms.roughnessFactor, 0.04);
+    let ao = mix(1.0, aoSample, uniforms.aoStrength);
+    let emissive = emissiveSample * uniforms.emissiveFactor * uniforms.emissiveStrength;
+
+    // Normal mapping - transform from tangent space to world space
+    var tangentNormal = normalSample.xyz * 2.0 - 1.0;
+    tangentNormal.x = tangentNormal.x * uniforms.normalScale;
+    tangentNormal.y = tangentNormal.y * uniforms.normalScale;
+    tangentNormal = normalize(tangentNormal);
+
+    let TBN = mat3x3f(
+        normalize(in.worldTangent),
+        normalize(in.worldBitangent),
+        normalize(in.worldNormal)
+    );
+    let N = normalize(TBN * tangentNormal);
+
+    let V = normalize(uniforms.cameraPos - in.worldPos);
+    let L = normalize(uniforms.lightDir);
+    let H = normalize(V + L);
+
+    let NdotL = max(dot(N, L), 0.0);
+    let NdotV = max(dot(N, V), EPSILON);
+    let NdotH = max(dot(N, H), 0.0);
+    let HdotV = max(dot(H, V), 0.0);
+
+    let F0 = mix(vec3f(0.04), albedo, metallic);
+
+    let D = D_GGX(NdotH, roughness);
+    let G = G_Smith(NdotV, NdotL, roughness);
+    let F = F_Schlick(HdotV, F0);
+
+    let numerator = D * G * F;
+    let denominator = 4.0 * NdotV * NdotL + EPSILON;
+    let specular = numerator / denominator;
+
+    let kS = F;
+    var kD = vec3f(1.0) - kS;
+    kD *= 1.0 - metallic;
+
+    let diffuse = kD * albedo / PI;
+    let Lo = (diffuse + specular) * uniforms.lightColor * NdotL;
+    let ambient = vec3f(0.03) * albedo * uniforms.ambientIntensity * ao;
+
+    var color = ambient + Lo + emissive;
+    // Tone mapping (Reinhard)
+    color = color / (color + vec3f(1.0));
+    // Gamma correction
+    color = pow(color, vec3f(1.0 / 2.2));
+
+    return vec4f(color, baseColorSample.a * uniforms.baseColorFactor.a * in.color.a);
+}
+)";
+
+// Flat/Gouraud uniform buffer structure
 struct Uniforms {
     float mvp[16];         // mat4x4f: 64 bytes, offset 0
     float model[16];       // mat4x4f: 64 bytes, offset 64
@@ -95,6 +373,49 @@ struct Uniforms {
 };                         // Total: 208 bytes
 
 static_assert(sizeof(Uniforms) == 208, "Uniforms struct must be 208 bytes");
+
+// PBR uniform buffer structure
+struct PBRUniforms {
+    float mvp[16];           // mat4x4f: 64 bytes, offset 0
+    float model[16];         // mat4x4f: 64 bytes, offset 64
+    float normalMatrix[16];  // mat4x4f: 64 bytes, offset 128
+    float cameraPos[3];      // vec3f: 12 bytes, offset 192
+    float _pad0;             // f32: 4 bytes, offset 204
+    float lightDir[3];       // vec3f: 12 bytes, offset 208
+    float _pad1;             // f32: 4 bytes, offset 220
+    float lightColor[3];     // vec3f: 12 bytes, offset 224
+    float ambientIntensity;  // f32: 4 bytes, offset 236
+    float baseColor[4];      // vec4f: 16 bytes, offset 240
+    float metallic;          // f32: 4 bytes, offset 256
+    float roughness;         // f32: 4 bytes, offset 260
+    float _pad2[2];          // vec2f: 8 bytes, offset 264
+};                           // Total: 272 bytes
+
+static_assert(sizeof(PBRUniforms) == 272, "PBRUniforms struct must be 272 bytes");
+
+// Textured PBR uniform buffer structure (matches shader)
+struct PBRTexturedUniforms {
+    float mvp[16];           // mat4x4f: 64 bytes, offset 0
+    float model[16];         // mat4x4f: 64 bytes, offset 64
+    float normalMatrix[16];  // mat4x4f: 64 bytes, offset 128
+    float cameraPos[3];      // vec3f: 12 bytes, offset 192
+    float _pad0;             // f32: 4 bytes, offset 204
+    float lightDir[3];       // vec3f: 12 bytes, offset 208
+    float _pad1;             // f32: 4 bytes, offset 220
+    float lightColor[3];     // vec3f: 12 bytes, offset 224
+    float ambientIntensity;  // f32: 4 bytes, offset 236
+    float baseColorFactor[4]; // vec4f: 16 bytes, offset 240
+    float metallicFactor;    // f32: 4 bytes, offset 256
+    float roughnessFactor;   // f32: 4 bytes, offset 260
+    float normalScale;       // f32: 4 bytes, offset 264
+    float aoStrength;        // f32: 4 bytes, offset 268
+    float emissiveFactor[3]; // vec3f: 12 bytes, offset 272
+    float emissiveStrength;  // f32: 4 bytes, offset 284
+    uint32_t textureFlags;   // u32: 4 bytes, offset 288
+    float _pad2[3];          // Padding to reach 304 bytes (16-byte aligned)
+};                           // Total: 304 bytes (WGSL pads to 304 automatically)
+
+static_assert(sizeof(PBRTexturedUniforms) == 304, "PBRTexturedUniforms struct must be 304 bytes");
 
 } // anonymous namespace
 
@@ -184,6 +505,24 @@ Render3D& Render3D::ambient(float a) {
     return *this;
 }
 
+Render3D& Render3D::metallic(float m) {
+    m_metallic = glm::clamp(m, 0.0f, 1.0f);
+    return *this;
+}
+
+Render3D& Render3D::roughness(float r) {
+    m_roughness = glm::clamp(r, 0.0f, 1.0f);
+    return *this;
+}
+
+Render3D& Render3D::material(TexturedMaterial* mat) {
+    m_material = mat;
+    if (mat) {
+        setInput(6, mat);  // Slot 6 for material (after lights)
+    }
+    return *this;
+}
+
 Render3D& Render3D::clearColor(float r, float g, float b, float a) {
     m_clearColor = glm::vec4(r, g, b, a);
     return *this;
@@ -233,10 +572,10 @@ void Render3D::createDepthBuffer(Context& ctx) {
 void Render3D::createPipeline(Context& ctx) {
     WGPUDevice device = ctx.device();
 
-    // Create shader module
+    // Create flat/Gouraud shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(SHADER_SOURCE);
+    wgslDesc.code = toStringView(FLAT_SHADER_SOURCE);
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;
@@ -279,33 +618,38 @@ void Render3D::createPipeline(Context& ctx) {
     pipelineLayoutDesc.bindGroupLayouts = &m_bindGroupLayout;
     WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
 
-    // Vertex attributes for Vertex3D
-    WGPUVertexAttribute vertexAttrs[4] = {};
+    // Vertex attributes for Vertex3D (with tangent for PBR)
+    WGPUVertexAttribute vertexAttrs[5] = {};
 
     // position: vec3f at offset 0
     vertexAttrs[0].format = WGPUVertexFormat_Float32x3;
-    vertexAttrs[0].offset = 0;
+    vertexAttrs[0].offset = offsetof(Vertex3D, position);
     vertexAttrs[0].shaderLocation = 0;
 
     // normal: vec3f at offset 12
     vertexAttrs[1].format = WGPUVertexFormat_Float32x3;
-    vertexAttrs[1].offset = 12;
+    vertexAttrs[1].offset = offsetof(Vertex3D, normal);
     vertexAttrs[1].shaderLocation = 1;
 
-    // uv: vec2f at offset 24
-    vertexAttrs[2].format = WGPUVertexFormat_Float32x2;
-    vertexAttrs[2].offset = 24;
+    // tangent: vec4f at offset 24 (xyz = tangent, w = handedness)
+    vertexAttrs[2].format = WGPUVertexFormat_Float32x4;
+    vertexAttrs[2].offset = offsetof(Vertex3D, tangent);
     vertexAttrs[2].shaderLocation = 2;
 
-    // color: vec4f at offset 32
-    vertexAttrs[3].format = WGPUVertexFormat_Float32x4;
-    vertexAttrs[3].offset = 32;
+    // uv: vec2f at offset 40
+    vertexAttrs[3].format = WGPUVertexFormat_Float32x2;
+    vertexAttrs[3].offset = offsetof(Vertex3D, uv);
     vertexAttrs[3].shaderLocation = 3;
+
+    // color: vec4f at offset 48
+    vertexAttrs[4].format = WGPUVertexFormat_Float32x4;
+    vertexAttrs[4].offset = offsetof(Vertex3D, color);
+    vertexAttrs[4].shaderLocation = 4;
 
     WGPUVertexBufferLayout vertexLayout = {};
     vertexLayout.arrayStride = sizeof(Vertex3D);
     vertexLayout.stepMode = WGPUVertexStepMode_Vertex;
-    vertexLayout.attributeCount = 4;
+    vertexLayout.attributeCount = 5;
     vertexLayout.attributes = vertexAttrs;
 
     // Color target
@@ -349,9 +693,166 @@ void Render3D::createPipeline(Context& ctx) {
     pipelineDesc.primitive.cullMode = WGPUCullMode_None;
     m_wireframePipeline = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
 
-    // Cleanup
+    // Cleanup flat pipeline resources
     wgpuPipelineLayoutRelease(pipelineLayout);
     wgpuShaderModuleRelease(shaderModule);
+
+    // =========================================================================
+    // Create PBR pipeline
+    // =========================================================================
+
+    // Create PBR shader module
+    WGPUShaderSourceWGSL pbrWgslDesc = {};
+    pbrWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    pbrWgslDesc.code = toStringView(PBR_SHADER_SOURCE);
+
+    WGPUShaderModuleDescriptor pbrShaderDesc = {};
+    pbrShaderDesc.nextInChain = &pbrWgslDesc.chain;
+    pbrShaderDesc.label = toStringView("Render3D PBR Shader");
+
+    WGPUShaderModule pbrShaderModule = wgpuDeviceCreateShaderModule(device, &pbrShaderDesc);
+
+    // Calculate PBR uniform alignment
+    m_pbrUniformAlignment = limits.minUniformBufferOffsetAlignment;
+    if (m_pbrUniformAlignment < sizeof(PBRUniforms)) {
+        m_pbrUniformAlignment = ((sizeof(PBRUniforms) + 255) / 256) * 256;
+    }
+
+    // Create PBR uniform buffer
+    WGPUBufferDescriptor pbrBufferDesc = {};
+    pbrBufferDesc.label = toStringView("Render3D PBR Uniforms");
+    pbrBufferDesc.size = m_pbrUniformAlignment * MAX_OBJECTS;
+    pbrBufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    m_pbrUniformBuffer = wgpuDeviceCreateBuffer(device, &pbrBufferDesc);
+
+    // Create PBR bind group layout
+    WGPUBindGroupLayoutEntry pbrLayoutEntry = {};
+    pbrLayoutEntry.binding = 0;
+    pbrLayoutEntry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    pbrLayoutEntry.buffer.type = WGPUBufferBindingType_Uniform;
+    pbrLayoutEntry.buffer.hasDynamicOffset = true;
+    pbrLayoutEntry.buffer.minBindingSize = sizeof(PBRUniforms);
+
+    WGPUBindGroupLayoutDescriptor pbrLayoutDesc = {};
+    pbrLayoutDesc.label = toStringView("Render3D PBR Bind Group Layout");
+    pbrLayoutDesc.entryCount = 1;
+    pbrLayoutDesc.entries = &pbrLayoutEntry;
+    m_pbrBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &pbrLayoutDesc);
+
+    // Create PBR pipeline layout
+    WGPUPipelineLayoutDescriptor pbrPipelineLayoutDesc = {};
+    pbrPipelineLayoutDesc.bindGroupLayoutCount = 1;
+    pbrPipelineLayoutDesc.bindGroupLayouts = &m_pbrBindGroupLayout;
+    WGPUPipelineLayout pbrPipelineLayout = wgpuDeviceCreatePipelineLayout(device, &pbrPipelineLayoutDesc);
+
+    // PBR fragment state
+    WGPUFragmentState pbrFragmentState = {};
+    pbrFragmentState.module = pbrShaderModule;
+    pbrFragmentState.entryPoint = toStringView("fs_main");
+    pbrFragmentState.targetCount = 1;
+    pbrFragmentState.targets = &colorTarget;
+
+    // PBR pipeline descriptor
+    WGPURenderPipelineDescriptor pbrPipelineDesc = {};
+    pbrPipelineDesc.label = toStringView("Render3D PBR Pipeline");
+    pbrPipelineDesc.layout = pbrPipelineLayout;
+    pbrPipelineDesc.vertex.module = pbrShaderModule;
+    pbrPipelineDesc.vertex.entryPoint = toStringView("vs_main");
+    pbrPipelineDesc.vertex.bufferCount = 1;
+    pbrPipelineDesc.vertex.buffers = &vertexLayout;
+    pbrPipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    pbrPipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
+    pbrPipelineDesc.primitive.cullMode = WGPUCullMode_Back;
+    pbrPipelineDesc.depthStencil = &depthStencil;
+    pbrPipelineDesc.multisample.count = 1;
+    pbrPipelineDesc.multisample.mask = ~0u;
+    pbrPipelineDesc.fragment = &pbrFragmentState;
+
+    m_pbrPipeline = wgpuDeviceCreateRenderPipeline(device, &pbrPipelineDesc);
+
+    // Cleanup PBR resources
+    wgpuPipelineLayoutRelease(pbrPipelineLayout);
+    wgpuShaderModuleRelease(pbrShaderModule);
+
+    // =========================================================================
+    // Create Textured PBR pipeline
+    // =========================================================================
+
+    // Create textured PBR shader module
+    WGPUShaderSourceWGSL pbrTexWgslDesc = {};
+    pbrTexWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    pbrTexWgslDesc.code = toStringView(PBR_TEXTURED_SHADER_SOURCE);
+
+    WGPUShaderModuleDescriptor pbrTexShaderDesc = {};
+    pbrTexShaderDesc.nextInChain = &pbrTexWgslDesc.chain;
+    pbrTexShaderDesc.label = toStringView("Render3D PBR Textured Shader");
+
+    WGPUShaderModule pbrTexShaderModule = wgpuDeviceCreateShaderModule(device, &pbrTexShaderDesc);
+
+    // Create textured PBR bind group layout with uniform + sampler + 6 textures
+    WGPUBindGroupLayoutEntry pbrTexLayoutEntries[8] = {};
+
+    // Binding 0: Uniform buffer
+    pbrTexLayoutEntries[0].binding = 0;
+    pbrTexLayoutEntries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    pbrTexLayoutEntries[0].buffer.type = WGPUBufferBindingType_Uniform;
+    pbrTexLayoutEntries[0].buffer.hasDynamicOffset = true;
+    pbrTexLayoutEntries[0].buffer.minBindingSize = sizeof(PBRTexturedUniforms);
+
+    // Binding 1: Sampler
+    pbrTexLayoutEntries[1].binding = 1;
+    pbrTexLayoutEntries[1].visibility = WGPUShaderStage_Fragment;
+    pbrTexLayoutEntries[1].sampler.type = WGPUSamplerBindingType_Filtering;
+
+    // Binding 2-7: Texture views (baseColor, normal, metallic, roughness, ao, emissive)
+    for (int i = 0; i < 6; i++) {
+        pbrTexLayoutEntries[2 + i].binding = 2 + i;
+        pbrTexLayoutEntries[2 + i].visibility = WGPUShaderStage_Fragment;
+        pbrTexLayoutEntries[2 + i].texture.sampleType = WGPUTextureSampleType_Float;
+        pbrTexLayoutEntries[2 + i].texture.viewDimension = WGPUTextureViewDimension_2D;
+        pbrTexLayoutEntries[2 + i].texture.multisampled = false;
+    }
+
+    WGPUBindGroupLayoutDescriptor pbrTexLayoutDesc = {};
+    pbrTexLayoutDesc.label = toStringView("Render3D PBR Textured Bind Group Layout");
+    pbrTexLayoutDesc.entryCount = 8;
+    pbrTexLayoutDesc.entries = pbrTexLayoutEntries;
+    m_pbrTexturedBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &pbrTexLayoutDesc);
+
+    // Create textured PBR pipeline layout
+    WGPUPipelineLayoutDescriptor pbrTexPipelineLayoutDesc = {};
+    pbrTexPipelineLayoutDesc.bindGroupLayoutCount = 1;
+    pbrTexPipelineLayoutDesc.bindGroupLayouts = &m_pbrTexturedBindGroupLayout;
+    WGPUPipelineLayout pbrTexPipelineLayout = wgpuDeviceCreatePipelineLayout(device, &pbrTexPipelineLayoutDesc);
+
+    // Textured PBR fragment state
+    WGPUFragmentState pbrTexFragmentState = {};
+    pbrTexFragmentState.module = pbrTexShaderModule;
+    pbrTexFragmentState.entryPoint = toStringView("fs_main");
+    pbrTexFragmentState.targetCount = 1;
+    pbrTexFragmentState.targets = &colorTarget;
+
+    // Textured PBR pipeline descriptor
+    WGPURenderPipelineDescriptor pbrTexPipelineDesc = {};
+    pbrTexPipelineDesc.label = toStringView("Render3D PBR Textured Pipeline");
+    pbrTexPipelineDesc.layout = pbrTexPipelineLayout;
+    pbrTexPipelineDesc.vertex.module = pbrTexShaderModule;
+    pbrTexPipelineDesc.vertex.entryPoint = toStringView("vs_main");
+    pbrTexPipelineDesc.vertex.bufferCount = 1;
+    pbrTexPipelineDesc.vertex.buffers = &vertexLayout;
+    pbrTexPipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    pbrTexPipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
+    pbrTexPipelineDesc.primitive.cullMode = WGPUCullMode_Back;
+    pbrTexPipelineDesc.depthStencil = &depthStencil;
+    pbrTexPipelineDesc.multisample.count = 1;
+    pbrTexPipelineDesc.multisample.mask = ~0u;
+    pbrTexPipelineDesc.fragment = &pbrTexFragmentState;
+
+    m_pbrTexturedPipeline = wgpuDeviceCreateRenderPipeline(device, &pbrTexPipelineDesc);
+
+    // Cleanup textured PBR resources
+    wgpuPipelineLayoutRelease(pbrTexPipelineLayout);
+    wgpuShaderModuleRelease(pbrTexShaderModule);
 }
 
 void Render3D::process(Context& ctx) {
@@ -414,8 +915,23 @@ void Render3D::process(Context& ctx) {
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
 
+    // Check if using PBR mode
+    bool usePBR = (m_shadingMode == ShadingMode::PBR);
+    bool useTexturedPBR = usePBR && m_material != nullptr;
+
     // Set pipeline
-    wgpuRenderPassEncoderSetPipeline(pass, m_wireframe ? m_wireframePipeline : m_pipeline);
+    if (m_wireframe) {
+        wgpuRenderPassEncoderSetPipeline(pass, m_wireframePipeline);
+    } else if (useTexturedPBR) {
+        wgpuRenderPassEncoderSetPipeline(pass, m_pbrTexturedPipeline);
+    } else if (usePBR) {
+        wgpuRenderPassEncoderSetPipeline(pass, m_pbrPipeline);
+    } else {
+        wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
+    }
+
+    // Get camera position for PBR
+    glm::vec3 cameraPos = activeCamera.getPosition();
 
     // First pass: write all uniform data to buffer at different offsets
     size_t numObjects = sceneToRender->objects().size();
@@ -429,49 +945,163 @@ void Render3D::process(Context& ctx) {
         glm::mat4 mvp = viewProj * obj.transform;
         glm::vec4 objColor = obj.color * m_defaultColor;
 
-        // Update uniforms
-        Uniforms uniforms = {};
-        memcpy(uniforms.mvp, glm::value_ptr(mvp), sizeof(uniforms.mvp));
-        memcpy(uniforms.model, glm::value_ptr(obj.transform), sizeof(uniforms.model));
-        uniforms.lightDir[0] = lightDir.x;
-        uniforms.lightDir[1] = lightDir.y;
-        uniforms.lightDir[2] = lightDir.z;
-        uniforms.lightColor[0] = lightCol.x;
-        uniforms.lightColor[1] = lightCol.y;
-        uniforms.lightColor[2] = lightCol.z;
-        uniforms.ambient = m_ambient;
-        uniforms.baseColor[0] = objColor.r;
-        uniforms.baseColor[1] = objColor.g;
-        uniforms.baseColor[2] = objColor.b;
-        uniforms.baseColor[3] = objColor.a;
-        uniforms.shadingMode = static_cast<uint32_t>(m_shadingMode);
+        if (useTexturedPBR) {
+            // Textured PBR uniforms - get material properties from TexturedMaterial
+            glm::mat4 normalMatrix = glm::transpose(glm::inverse(obj.transform));
+            const glm::vec4& baseColorFactor = m_material->getBaseColorFactor();
+            const glm::vec3& emissiveFactor = m_material->getEmissiveFactor();
 
-        // Write to buffer at offset for this object
-        size_t offset = i * m_uniformAlignment;
-        wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, offset, &uniforms, sizeof(uniforms));
+            PBRTexturedUniforms uniforms = {};
+            memcpy(uniforms.mvp, glm::value_ptr(mvp), sizeof(uniforms.mvp));
+            memcpy(uniforms.model, glm::value_ptr(obj.transform), sizeof(uniforms.model));
+            memcpy(uniforms.normalMatrix, glm::value_ptr(normalMatrix), sizeof(uniforms.normalMatrix));
+            uniforms.cameraPos[0] = cameraPos.x;
+            uniforms.cameraPos[1] = cameraPos.y;
+            uniforms.cameraPos[2] = cameraPos.z;
+            uniforms.lightDir[0] = lightDir.x;
+            uniforms.lightDir[1] = lightDir.y;
+            uniforms.lightDir[2] = lightDir.z;
+            uniforms.lightColor[0] = lightCol.x;
+            uniforms.lightColor[1] = lightCol.y;
+            uniforms.lightColor[2] = lightCol.z;
+            uniforms.ambientIntensity = m_ambient;
+            uniforms.baseColorFactor[0] = baseColorFactor.r * objColor.r;
+            uniforms.baseColorFactor[1] = baseColorFactor.g * objColor.g;
+            uniforms.baseColorFactor[2] = baseColorFactor.b * objColor.b;
+            uniforms.baseColorFactor[3] = baseColorFactor.a * objColor.a;
+            uniforms.metallicFactor = m_material->getMetallicFactor();
+            uniforms.roughnessFactor = m_material->getRoughnessFactor();
+            uniforms.normalScale = m_material->getNormalScale();
+            uniforms.aoStrength = m_material->getAoStrength();
+            uniforms.emissiveFactor[0] = emissiveFactor.r;
+            uniforms.emissiveFactor[1] = emissiveFactor.g;
+            uniforms.emissiveFactor[2] = emissiveFactor.b;
+            uniforms.emissiveStrength = m_material->getEmissiveStrength();
+            uniforms.textureFlags = 0;  // Reserved for future use
+
+            size_t offset = i * m_pbrUniformAlignment;
+            wgpuQueueWriteBuffer(ctx.queue(), m_pbrUniformBuffer, offset, &uniforms, sizeof(uniforms));
+        } else if (usePBR) {
+            // Scalar PBR uniforms
+            glm::mat4 normalMatrix = glm::transpose(glm::inverse(obj.transform));
+
+            PBRUniforms uniforms = {};
+            memcpy(uniforms.mvp, glm::value_ptr(mvp), sizeof(uniforms.mvp));
+            memcpy(uniforms.model, glm::value_ptr(obj.transform), sizeof(uniforms.model));
+            memcpy(uniforms.normalMatrix, glm::value_ptr(normalMatrix), sizeof(uniforms.normalMatrix));
+            uniforms.cameraPos[0] = cameraPos.x;
+            uniforms.cameraPos[1] = cameraPos.y;
+            uniforms.cameraPos[2] = cameraPos.z;
+            uniforms.lightDir[0] = lightDir.x;
+            uniforms.lightDir[1] = lightDir.y;
+            uniforms.lightDir[2] = lightDir.z;
+            uniforms.lightColor[0] = lightCol.x;
+            uniforms.lightColor[1] = lightCol.y;
+            uniforms.lightColor[2] = lightCol.z;
+            uniforms.ambientIntensity = m_ambient;
+            uniforms.baseColor[0] = objColor.r;
+            uniforms.baseColor[1] = objColor.g;
+            uniforms.baseColor[2] = objColor.b;
+            uniforms.baseColor[3] = objColor.a;
+            uniforms.metallic = m_metallic;
+            uniforms.roughness = m_roughness;
+
+            size_t offset = i * m_pbrUniformAlignment;
+            wgpuQueueWriteBuffer(ctx.queue(), m_pbrUniformBuffer, offset, &uniforms, sizeof(uniforms));
+        } else {
+            // Flat/Gouraud uniforms
+            Uniforms uniforms = {};
+            memcpy(uniforms.mvp, glm::value_ptr(mvp), sizeof(uniforms.mvp));
+            memcpy(uniforms.model, glm::value_ptr(obj.transform), sizeof(uniforms.model));
+            uniforms.lightDir[0] = lightDir.x;
+            uniforms.lightDir[1] = lightDir.y;
+            uniforms.lightDir[2] = lightDir.z;
+            uniforms.lightColor[0] = lightCol.x;
+            uniforms.lightColor[1] = lightCol.y;
+            uniforms.lightColor[2] = lightCol.z;
+            uniforms.ambient = m_ambient;
+            uniforms.baseColor[0] = objColor.r;
+            uniforms.baseColor[1] = objColor.g;
+            uniforms.baseColor[2] = objColor.b;
+            uniforms.baseColor[3] = objColor.a;
+            uniforms.shadingMode = static_cast<uint32_t>(m_shadingMode);
+
+            size_t offset = i * m_uniformAlignment;
+            wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, offset, &uniforms, sizeof(uniforms));
+        }
     }
 
-    // Create a single bind group for dynamic offset usage
-    WGPUBindGroupEntry bindEntry = {};
-    bindEntry.binding = 0;
-    bindEntry.buffer = m_uniformBuffer;
-    bindEntry.offset = 0;
-    bindEntry.size = sizeof(Uniforms);
+    // Create bind group for dynamic offset usage
+    WGPUBindGroup bindGroup = nullptr;
 
-    WGPUBindGroupDescriptor bindDesc = {};
-    bindDesc.layout = m_bindGroupLayout;
-    bindDesc.entryCount = 1;
-    bindDesc.entries = &bindEntry;
-    WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+    if (useTexturedPBR) {
+        // Textured PBR bind group with 8 entries
+        WGPUBindGroupEntry bindEntries[8] = {};
+
+        // Binding 0: Uniform buffer
+        bindEntries[0].binding = 0;
+        bindEntries[0].buffer = m_pbrUniformBuffer;
+        bindEntries[0].offset = 0;
+        bindEntries[0].size = sizeof(PBRTexturedUniforms);
+
+        // Binding 1: Sampler
+        bindEntries[1].binding = 1;
+        bindEntries[1].sampler = m_material->sampler();
+
+        // Binding 2-7: Texture views
+        bindEntries[2].binding = 2;
+        bindEntries[2].textureView = m_material->baseColorView();
+
+        bindEntries[3].binding = 3;
+        bindEntries[3].textureView = m_material->normalView();
+
+        bindEntries[4].binding = 4;
+        bindEntries[4].textureView = m_material->metallicView();
+
+        bindEntries[5].binding = 5;
+        bindEntries[5].textureView = m_material->roughnessView();
+
+        bindEntries[6].binding = 6;
+        bindEntries[6].textureView = m_material->aoView();
+
+        bindEntries[7].binding = 7;
+        bindEntries[7].textureView = m_material->emissiveView();
+
+        WGPUBindGroupDescriptor bindDesc = {};
+        bindDesc.layout = m_pbrTexturedBindGroupLayout;
+        bindDesc.entryCount = 8;
+        bindDesc.entries = bindEntries;
+        bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+    } else {
+        // Scalar uniform-only bind group
+        WGPUBindGroupEntry bindEntry = {};
+        bindEntry.binding = 0;
+        if (usePBR) {
+            bindEntry.buffer = m_pbrUniformBuffer;
+            bindEntry.size = sizeof(PBRUniforms);
+        } else {
+            bindEntry.buffer = m_uniformBuffer;
+            bindEntry.size = sizeof(Uniforms);
+        }
+        bindEntry.offset = 0;
+
+        WGPUBindGroupDescriptor bindDesc = {};
+        bindDesc.layout = usePBR ? m_pbrBindGroupLayout : m_bindGroupLayout;
+        bindDesc.entryCount = 1;
+        bindDesc.entries = &bindEntry;
+        bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+    }
 
     // Second pass: render each object with its dynamic offset
+    // Note: textured PBR uses the same buffer as scalar PBR (alignment handles size difference)
+    size_t uniformAlignment = (usePBR || useTexturedPBR) ? m_pbrUniformAlignment : m_uniformAlignment;
     for (size_t i = 0; i < numObjects && i < MAX_OBJECTS; i++) {
         const auto& obj = sceneToRender->objects()[i];
         if (!obj.mesh || !obj.mesh->valid()) {
             continue;
         }
 
-        uint32_t dynamicOffset = static_cast<uint32_t>(i * m_uniformAlignment);
+        uint32_t dynamicOffset = static_cast<uint32_t>(i * uniformAlignment);
         wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 1, &dynamicOffset);
         wgpuRenderPassEncoderSetVertexBuffer(pass, 0, obj.mesh->vertexBuffer(), 0,
                                               obj.mesh->vertexCount() * sizeof(Vertex3D));
@@ -500,6 +1130,14 @@ void Render3D::cleanup() {
         wgpuRenderPipelineRelease(m_pipeline);
         m_pipeline = nullptr;
     }
+    if (m_pbrPipeline) {
+        wgpuRenderPipelineRelease(m_pbrPipeline);
+        m_pbrPipeline = nullptr;
+    }
+    if (m_pbrTexturedPipeline) {
+        wgpuRenderPipelineRelease(m_pbrTexturedPipeline);
+        m_pbrTexturedPipeline = nullptr;
+    }
     if (m_wireframePipeline) {
         wgpuRenderPipelineRelease(m_wireframePipeline);
         m_wireframePipeline = nullptr;
@@ -508,9 +1146,21 @@ void Render3D::cleanup() {
         wgpuBindGroupLayoutRelease(m_bindGroupLayout);
         m_bindGroupLayout = nullptr;
     }
+    if (m_pbrBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_pbrBindGroupLayout);
+        m_pbrBindGroupLayout = nullptr;
+    }
+    if (m_pbrTexturedBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_pbrTexturedBindGroupLayout);
+        m_pbrTexturedBindGroupLayout = nullptr;
+    }
     if (m_uniformBuffer) {
         wgpuBufferRelease(m_uniformBuffer);
         m_uniformBuffer = nullptr;
+    }
+    if (m_pbrUniformBuffer) {
+        wgpuBufferRelease(m_pbrUniformBuffer);
+        m_pbrUniformBuffer = nullptr;
     }
     if (m_depthView) {
         wgpuTextureViewRelease(m_depthView);

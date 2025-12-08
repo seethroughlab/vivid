@@ -70,6 +70,9 @@ public:
     /// Compute flat normals (faceted look, duplicates vertices)
     MeshBuilder& computeFlatNormals();
 
+    /// Compute tangents for normal mapping (requires valid UVs)
+    MeshBuilder& computeTangents();
+
     /// Apply a transformation matrix
     MeshBuilder& transform(const glm::mat4& m);
 

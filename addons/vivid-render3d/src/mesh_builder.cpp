@@ -243,12 +243,97 @@ MeshBuilder& MeshBuilder::computeFlatNormals() {
     return *this;
 }
 
+MeshBuilder& MeshBuilder::computeTangents() {
+    // Based on Lengyel's method for computing tangent space
+    // See: "Mathematics for 3D Game Programming and Computer Graphics"
+
+    size_t vertexCount = m_vertices.size();
+    size_t triangleCount = m_indices.size() / 3;
+
+    // Temporary accumulators for tangent and bitangent
+    std::vector<glm::vec3> tan1(vertexCount, glm::vec3(0));
+    std::vector<glm::vec3> tan2(vertexCount, glm::vec3(0));
+
+    for (size_t i = 0; i < triangleCount; ++i) {
+        uint32_t i0 = m_indices[i * 3 + 0];
+        uint32_t i1 = m_indices[i * 3 + 1];
+        uint32_t i2 = m_indices[i * 3 + 2];
+
+        const glm::vec3& p0 = m_vertices[i0].position;
+        const glm::vec3& p1 = m_vertices[i1].position;
+        const glm::vec3& p2 = m_vertices[i2].position;
+
+        const glm::vec2& uv0 = m_vertices[i0].uv;
+        const glm::vec2& uv1 = m_vertices[i1].uv;
+        const glm::vec2& uv2 = m_vertices[i2].uv;
+
+        glm::vec3 edge1 = p1 - p0;
+        glm::vec3 edge2 = p2 - p0;
+
+        glm::vec2 deltaUV1 = uv1 - uv0;
+        glm::vec2 deltaUV2 = uv2 - uv0;
+
+        float det = deltaUV1.x * deltaUV2.y - deltaUV2.x * deltaUV1.y;
+
+        // Avoid division by zero for degenerate UVs
+        if (std::abs(det) < 1e-8f) {
+            continue;
+        }
+
+        float r = 1.0f / det;
+
+        glm::vec3 tangent = (edge1 * deltaUV2.y - edge2 * deltaUV1.y) * r;
+        glm::vec3 bitangent = (edge2 * deltaUV1.x - edge1 * deltaUV2.x) * r;
+
+        // Accumulate per-vertex
+        tan1[i0] += tangent;
+        tan1[i1] += tangent;
+        tan1[i2] += tangent;
+
+        tan2[i0] += bitangent;
+        tan2[i1] += bitangent;
+        tan2[i2] += bitangent;
+    }
+
+    // Orthonormalize and compute handedness for each vertex
+    for (size_t i = 0; i < vertexCount; ++i) {
+        const glm::vec3& n = m_vertices[i].normal;
+        const glm::vec3& t = tan1[i];
+
+        // Gram-Schmidt orthonormalize: T' = normalize(T - N * dot(N, T))
+        glm::vec3 tangent = t - n * glm::dot(n, t);
+        float len = glm::length(tangent);
+
+        if (len > 1e-6f) {
+            tangent /= len;
+        } else {
+            // Fallback: create arbitrary tangent perpendicular to normal
+            if (std::abs(n.x) < 0.9f) {
+                tangent = glm::normalize(glm::cross(n, glm::vec3(1, 0, 0)));
+            } else {
+                tangent = glm::normalize(glm::cross(n, glm::vec3(0, 1, 0)));
+            }
+        }
+
+        // Handedness: sign of dot(cross(N, T), B)
+        // If negative, bitangent should be flipped in shader
+        float handedness = (glm::dot(glm::cross(n, t), tan2[i]) < 0.0f) ? -1.0f : 1.0f;
+
+        m_vertices[i].tangent = glm::vec4(tangent, handedness);
+    }
+
+    return *this;
+}
+
 MeshBuilder& MeshBuilder::transform(const glm::mat4& m) {
     glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(m)));
 
     for (auto& v : m_vertices) {
         v.position = glm::vec3(m * glm::vec4(v.position, 1.0f));
         v.normal = glm::normalize(normalMatrix * v.normal);
+        // Transform tangent direction (preserve handedness in w)
+        glm::vec3 tan = glm::normalize(glm::mat3(m) * glm::vec3(v.tangent));
+        v.tangent = glm::vec4(tan, v.tangent.w);
     }
 
     return *this;

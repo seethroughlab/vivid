@@ -8,6 +8,8 @@
 #include <vivid/render3d/mesh_builder.h>
 #include <vivid/render3d/camera.h>
 #include <vivid/render3d/scene.h>
+#include <vivid/render3d/material.h>
+#include <vivid/render3d/textured_material.h>
 #include <vivid/render3d/renderer.h>
 
 // Mesh operators (node-based workflow)

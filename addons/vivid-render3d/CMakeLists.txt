@@ -26,6 +26,8 @@ add_library(vivid-render3d SHARED
     src/camera.cpp
     src/scene.cpp
     src/renderer.cpp
+    src/material.cpp
+    src/textured_material.cpp
 )
 
 target_include_directories(vivid-render3d PUBLIC
