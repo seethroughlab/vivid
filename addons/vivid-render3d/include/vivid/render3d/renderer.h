@@ -5,6 +5,7 @@
 #include <vivid/render3d/camera.h>
 #include <vivid/render3d/scene.h>
 #include <glm/glm.hpp>
+#include <string>
 
 namespace vivid {
 class Context;
@@ -16,6 +17,7 @@ class SceneComposer;
 class CameraOperator;
 class LightOperator;
 class TexturedMaterial;
+class IBLEnvironment;
 }
 
 namespace vivid::render3d {
@@ -104,6 +106,24 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Image-Based Lighting (IBL)
+    /// @{
+
+    /// Enable/disable IBL for ambient lighting
+    /// When enabled, environment maps provide realistic ambient light and reflections
+    Render3D& ibl(bool enabled);
+
+    /// Set IBL environment from pre-baked cubemaps
+    /// @param env Pointer to IBLEnvironment with loaded cubemaps
+    Render3D& environment(IBLEnvironment* env);
+
+    /// Load IBL environment from HDR file (generates cubemaps)
+    /// @param hdrPath Path to .hdr environment map file
+    /// @note This is slower than using pre-baked cubemaps but more convenient
+    Render3D& environmentHDR(const std::string& hdrPath);
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Output
     /// @{
 
@@ -163,6 +183,11 @@ private:
     float m_roughness = 0.5f;
     TexturedMaterial* m_material = nullptr;  // Optional textured material
 
+    // IBL parameters
+    bool m_iblEnabled = false;
+    IBLEnvironment* m_iblEnvironment = nullptr;
+    std::string m_pendingHDRPath;  // For deferred HDR loading
+
     // Output - m_output, m_outputView, m_width, m_height inherited from TextureOperator
     glm::vec4 m_clearColor = glm::vec4(0.1f, 0.1f, 0.15f, 1.0f);
 
@@ -175,10 +200,14 @@ private:
     WGPURenderPipeline m_pipeline = nullptr;           // Flat/Gouraud/Unlit
     WGPURenderPipeline m_pbrPipeline = nullptr;        // PBR with scalar values
     WGPURenderPipeline m_pbrTexturedPipeline = nullptr; // PBR with texture maps
+    WGPURenderPipeline m_pbrIBLPipeline = nullptr;       // PBR with IBL
     WGPURenderPipeline m_wireframePipeline = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBindGroupLayout m_pbrBindGroupLayout = nullptr;
     WGPUBindGroupLayout m_pbrTexturedBindGroupLayout = nullptr;
+    WGPUBindGroupLayout m_iblBindGroupLayout = nullptr;  // IBL textures (group 3)
+    WGPUBindGroup m_iblBindGroup = nullptr;              // IBL bind group
+    WGPUSampler m_iblSampler = nullptr;                  // Sampler for IBL cubemaps
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUBuffer m_pbrUniformBuffer = nullptr;
     std::vector<WGPUBindGroup> m_bindGroups;  // One per object

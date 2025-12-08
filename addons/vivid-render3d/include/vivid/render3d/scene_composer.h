@@ -11,6 +11,7 @@
 #include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/static_mesh.h>
 #include <vivid/render3d/scene.h>
+#include <vivid/render3d/textured_material.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>
 #include <glm/glm.hpp>
@@ -26,6 +27,7 @@ struct ComposerEntry {
     MeshOperator* geometry = nullptr;
     glm::mat4 transform = glm::mat4(1.0f);
     glm::vec4 color = glm::vec4(1.0f);
+    TexturedMaterial* material = nullptr;  // Optional per-object material
     int inputIndex = -1;  // Index in inputs_ array, or -1 if not connected
 };
 
@@ -156,6 +158,58 @@ public:
 
         m_entries.push_back(entry);
         return *this;
+    }
+
+    /**
+     * @brief Add a mesh with a textured material
+     * @param op MeshOperator to add
+     * @param material TexturedMaterial for this object
+     * @return Reference to an EntryBuilder for additional configuration
+     */
+    class EntryBuilder {
+    public:
+        EntryBuilder(SceneComposer& composer, size_t index)
+            : m_composer(composer), m_index(index) {}
+
+        /// Set transform matrix
+        EntryBuilder& transform(const glm::mat4& t) {
+            m_composer.m_entries[m_index].transform = t;
+            return *this;
+        }
+
+        /// Set color
+        EntryBuilder& color(const glm::vec4& c) {
+            m_composer.m_entries[m_index].color = c;
+            return *this;
+        }
+
+        /// Set color (convenience)
+        EntryBuilder& color(float r, float g, float b, float a = 1.0f) {
+            m_composer.m_entries[m_index].color = glm::vec4(r, g, b, a);
+            return *this;
+        }
+
+    private:
+        SceneComposer& m_composer;
+        size_t m_index;
+    };
+
+    EntryBuilder add(MeshOperator* op, TexturedMaterial* material) {
+        ComposerEntry entry;
+        entry.geometry = op;
+        entry.material = material;
+        entry.inputIndex = static_cast<int>(inputs_.size());
+
+        // Register geometry as input for dependency tracking
+        setInput(entry.inputIndex, op);
+
+        // Register material as input too
+        if (material) {
+            setInput(static_cast<int>(inputs_.size()), material);
+        }
+
+        m_entries.push_back(entry);
+        return EntryBuilder(*this, m_entries.size() - 1);
     }
 
     /**
@@ -291,12 +345,9 @@ public:
             if (entry.geometry) {
                 Mesh* mesh = entry.geometry->outputMesh();
                 if (mesh) {
-                    // Internal use of Scene::add() - suppress deprecation warning
-                    // Users should use SceneComposer, but SceneComposer needs Scene internally
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-                    m_scene.add(*mesh, entry.transform, entry.color);
-#pragma clang diagnostic pop
+                    // Add to scene with material
+                    SceneObject obj(mesh, entry.transform, entry.color, entry.material);
+                    m_scene.objects().push_back(obj);
                 }
             }
         }
