@@ -42,33 +42,35 @@ class Box : public MeshOperator {
 public:
     /// Set box dimensions
     Box& size(float width, float height, float depth) {
-        m_width = width;
-        m_height = height;
-        m_depth = depth;
+        if (m_width != width || m_height != height || m_depth != depth) {
+            m_width = width; m_height = height; m_depth = depth; m_dirty = true;
+        }
         return *this;
     }
 
     /// Set uniform size (cube)
     Box& size(float s) {
-        m_width = m_height = m_depth = s;
-        return *this;
+        return size(s, s, s);
     }
 
     /// Enable flat shading (faceted look)
     Box& flatShading(bool enabled) {
-        m_flatShading = enabled;
+        if (m_flatShading != enabled) { m_flatShading = enabled; m_dirty = true; }
         return *this;
     }
 
     /// Enable tangent computation (required for normal mapping)
     Box& computeTangents() {
-        m_computeTangents = true;
+        if (!m_computeTangents) { m_computeTangents = true; m_dirty = true; }
         return *this;
     }
 
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!m_dirty) return;
+        m_dirty = false;
+
         m_builder = MeshBuilder::box(m_width, m_height, m_depth);
         if (m_flatShading) {
             m_builder.computeFlatNormals();
@@ -94,6 +96,7 @@ private:
     float m_depth = 1.0f;
     bool m_flatShading = true;
     bool m_computeTangents = false;
+    bool m_dirty = true;
 };
 
 // =============================================================================
@@ -116,25 +119,28 @@ class Sphere : public MeshOperator {
 public:
     /// Set sphere radius
     Sphere& radius(float r) {
-        m_radius = r;
+        if (m_radius != r) { m_radius = r; m_dirty = true; }
         return *this;
     }
 
     /// Set number of segments (detail level)
     Sphere& segments(int s) {
-        m_segments = s;
+        if (m_segments != s) { m_segments = s; m_dirty = true; }
         return *this;
     }
 
     /// Enable tangent computation (required for normal mapping)
     Sphere& computeTangents() {
-        m_computeTangents = true;
+        if (!m_computeTangents) { m_computeTangents = true; m_dirty = true; }
         return *this;
     }
 
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!m_dirty) return;
+        m_dirty = false;
+
         m_builder = MeshBuilder::sphere(m_radius, m_segments);
         if (m_computeTangents) {
             m_builder.computeTangents();
@@ -153,6 +159,7 @@ private:
     float m_radius = 0.5f;
     int m_segments = 24;
     bool m_computeTangents = false;
+    bool m_dirty = true;
 };
 
 // =============================================================================
@@ -176,31 +183,34 @@ class Cylinder : public MeshOperator {
 public:
     /// Set cylinder radius
     Cylinder& radius(float r) {
-        m_radius = r;
+        if (m_radius != r) { m_radius = r; m_dirty = true; }
         return *this;
     }
 
     /// Set cylinder height
     Cylinder& height(float h) {
-        m_height = h;
+        if (m_height != h) { m_height = h; m_dirty = true; }
         return *this;
     }
 
     /// Set number of segments (detail level)
     Cylinder& segments(int s) {
-        m_segments = s;
+        if (m_segments != s) { m_segments = s; m_dirty = true; }
         return *this;
     }
 
     /// Enable flat shading
     Cylinder& flatShading(bool enabled) {
-        m_flatShading = enabled;
+        if (m_flatShading != enabled) { m_flatShading = enabled; m_dirty = true; }
         return *this;
     }
 
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!m_dirty) return;
+        m_dirty = false;
+
         m_builder = MeshBuilder::cylinder(m_radius, m_height, m_segments);
         if (m_flatShading) {
             m_builder.computeFlatNormals();
@@ -220,6 +230,7 @@ private:
     float m_height = 1.0f;
     int m_segments = 24;
     bool m_flatShading = false;
+    bool m_dirty = true;
 };
 
 // =============================================================================
@@ -243,31 +254,34 @@ class Cone : public MeshOperator {
 public:
     /// Set cone base radius
     Cone& radius(float r) {
-        m_radius = r;
+        if (m_radius != r) { m_radius = r; m_dirty = true; }
         return *this;
     }
 
     /// Set cone height
     Cone& height(float h) {
-        m_height = h;
+        if (m_height != h) { m_height = h; m_dirty = true; }
         return *this;
     }
 
     /// Set number of segments (detail level)
     Cone& segments(int s) {
-        m_segments = s;
+        if (m_segments != s) { m_segments = s; m_dirty = true; }
         return *this;
     }
 
     /// Enable flat shading
     Cone& flatShading(bool enabled) {
-        m_flatShading = enabled;
+        if (m_flatShading != enabled) { m_flatShading = enabled; m_dirty = true; }
         return *this;
     }
 
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!m_dirty) return;
+        m_dirty = false;
+
         m_builder = MeshBuilder::cone(m_radius, m_height, m_segments);
         if (m_flatShading) {
             m_builder.computeFlatNormals();
@@ -287,6 +301,7 @@ private:
     float m_height = 1.0f;
     int m_segments = 24;
     bool m_flatShading = true;
+    bool m_dirty = true;
 };
 
 // =============================================================================
@@ -311,37 +326,40 @@ class Torus : public MeshOperator {
 public:
     /// Set outer radius (distance from center to tube center)
     Torus& outerRadius(float r) {
-        m_outerRadius = r;
+        if (m_outerRadius != r) { m_outerRadius = r; m_dirty = true; }
         return *this;
     }
 
     /// Set inner radius (tube radius)
     Torus& innerRadius(float r) {
-        m_innerRadius = r;
+        if (m_innerRadius != r) { m_innerRadius = r; m_dirty = true; }
         return *this;
     }
 
     /// Set number of segments around the ring
     Torus& segments(int s) {
-        m_segments = s;
+        if (m_segments != s) { m_segments = s; m_dirty = true; }
         return *this;
     }
 
     /// Set number of rings around the tube
     Torus& rings(int r) {
-        m_rings = r;
+        if (m_rings != r) { m_rings = r; m_dirty = true; }
         return *this;
     }
 
     /// Enable tangent computation (required for normal mapping)
     Torus& computeTangents() {
-        m_computeTangents = true;
+        if (!m_computeTangents) { m_computeTangents = true; m_dirty = true; }
         return *this;
     }
 
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!m_dirty) return;
+        m_dirty = false;
+
         m_builder = MeshBuilder::torus(m_outerRadius, m_innerRadius, m_segments, m_rings);
         if (m_computeTangents) {
             m_builder.computeTangents();
@@ -362,6 +380,7 @@ private:
     int m_segments = 32;
     int m_rings = 16;
     bool m_computeTangents = false;
+    bool m_dirty = true;
 };
 
 // =============================================================================
@@ -384,33 +403,38 @@ class Plane : public MeshOperator {
 public:
     /// Set plane dimensions
     Plane& size(float width, float height) {
-        m_width = width;
-        m_height = height;
+        if (m_width != width || m_height != height) {
+            m_width = width; m_height = height; m_dirty = true;
+        }
         return *this;
     }
 
     /// Set number of subdivisions
     Plane& subdivisions(int x, int y) {
-        m_subdivisionsX = x;
-        m_subdivisionsY = y;
+        if (m_subdivisionsX != x || m_subdivisionsY != y) {
+            m_subdivisionsX = x; m_subdivisionsY = y; m_dirty = true;
+        }
         return *this;
     }
 
     /// Enable flat shading
     Plane& flatShading(bool enabled) {
-        m_flatShading = enabled;
+        if (m_flatShading != enabled) { m_flatShading = enabled; m_dirty = true; }
         return *this;
     }
 
     /// Enable tangent computation (required for normal mapping)
     Plane& computeTangents() {
-        m_computeTangents = true;
+        if (!m_computeTangents) { m_computeTangents = true; m_dirty = true; }
         return *this;
     }
 
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!m_dirty) return;
+        m_dirty = false;
+
         m_builder = MeshBuilder::plane(m_width, m_height, m_subdivisionsX, m_subdivisionsY);
         if (m_flatShading) {
             m_builder.computeFlatNormals();
@@ -434,6 +458,7 @@ private:
     int m_subdivisionsX = 1;
     int m_subdivisionsY = 1;
     bool m_flatShading = false;
+    bool m_dirty = true;
     bool m_computeTangents = false;
 };
 

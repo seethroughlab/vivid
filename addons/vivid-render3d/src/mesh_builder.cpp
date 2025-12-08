@@ -449,46 +449,51 @@ MeshBuilder MeshBuilder::box(glm::vec3 size) {
 }
 
 MeshBuilder MeshBuilder::sphere(float radius, int segments) {
-    // Create UV sphere with proper texture mapping
-    MeshBuilder builder;
-    int rings = segments / 2;  // Vertical divisions
+    // Use Manifold's built-in sphere for CSG-safe geometry
+    auto m = std::make_unique<manifold::Manifold>(
+        manifold::Manifold::Sphere(static_cast<double>(radius), segments));
 
-    // Generate vertices with spherical UVs
-    for (int ring = 0; ring <= rings; ++ring) {
-        float phi = glm::pi<float>() * ring / rings;  // 0 to PI (top to bottom)
-        float sinPhi = std::sin(phi);
-        float cosPhi = std::cos(phi);
+    MeshBuilder builder(std::move(m));
 
-        for (int seg = 0; seg <= segments; ++seg) {
-            float theta = 2.0f * glm::pi<float>() * seg / segments;  // 0 to 2PI
-            float sinTheta = std::sin(theta);
-            float cosTheta = std::cos(theta);
-
-            // Position on sphere surface
-            float x = radius * sinPhi * cosTheta;
-            float y = radius * cosPhi;
-            float z = radius * sinPhi * sinTheta;
-
-            glm::vec3 pos(x, y, z);
-            glm::vec3 normal = glm::normalize(pos);  // Normal points outward from center
-
-            // UV mapping: u = longitude (0-1), v = latitude (0-1)
-            float u = static_cast<float>(seg) / segments;
-            float v = static_cast<float>(ring) / rings;
-
-            builder.addVertex(pos, normal, glm::vec2(u, v));
-        }
+    // Compute spherical UV coordinates for texture mapping
+    for (auto& v : builder.m_vertices) {
+        glm::vec3 n = glm::normalize(v.position);
+        // Spherical UV mapping: u = longitude, v = latitude
+        float u = 0.5f + std::atan2(n.z, n.x) / (2.0f * glm::pi<float>());
+        float vCoord = 0.5f - std::asin(n.y) / glm::pi<float>();
+        v.uv = glm::vec2(u, vCoord);
     }
 
-    // Generate triangle indices
-    for (int ring = 0; ring < rings; ++ring) {
-        for (int seg = 0; seg < segments; ++seg) {
-            uint32_t current = ring * (segments + 1) + seg;
-            uint32_t next = current + segments + 1;
+    // Fix UV seam: duplicate vertices where triangles span the u=0/1 boundary
+    std::vector<Vertex3D>& verts = builder.m_vertices;
+    std::vector<uint32_t>& indices = builder.m_indices;
 
-            // Two triangles per quad, CCW winding for outward-facing normals
-            builder.addTriangle(current, current + 1, next);
-            builder.addTriangle(current + 1, next + 1, next);
+    for (size_t i = 0; i < indices.size(); i += 3) {
+        uint32_t i0 = indices[i];
+        uint32_t i1 = indices[i + 1];
+        uint32_t i2 = indices[i + 2];
+
+        float u0 = verts[i0].uv.x;
+        float u1 = verts[i1].uv.x;
+        float u2 = verts[i2].uv.x;
+
+        // Check if triangle spans the seam (large UV gap)
+        float maxU = std::max({u0, u1, u2});
+        float minU = std::min({u0, u1, u2});
+
+        if (maxU - minU > 0.5f) {
+            // This triangle crosses the seam - duplicate vertices with u < 0.5 and add 1
+            auto fixVertex = [&](uint32_t& idx) {
+                if (verts[idx].uv.x < 0.5f) {
+                    Vertex3D newVert = verts[idx];
+                    newVert.uv.x += 1.0f;
+                    idx = static_cast<uint32_t>(verts.size());
+                    verts.push_back(newVert);
+                }
+            };
+            fixVertex(indices[i]);
+            fixVertex(indices[i + 1]);
+            fixVertex(indices[i + 2]);
         }
     }
 

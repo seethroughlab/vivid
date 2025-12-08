@@ -122,6 +122,10 @@ public:
     /// @note This is slower than using pre-baked cubemaps but more convenient
     Render3D& environmentHDR(const std::string& hdrPath);
 
+    /// Show environment map as skybox background
+    /// Requires an IBL environment to be set
+    Render3D& showSkybox(bool enabled);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Output
@@ -185,6 +189,7 @@ private:
 
     // IBL parameters
     bool m_iblEnabled = false;
+    bool m_showSkybox = false;
     IBLEnvironment* m_iblEnvironment = nullptr;
     std::string m_pendingHDRPath;  // For deferred HDR loading
 
@@ -208,6 +213,10 @@ private:
     WGPUBindGroupLayout m_iblBindGroupLayout = nullptr;  // IBL textures (group 3)
     WGPUBindGroup m_iblBindGroup = nullptr;              // IBL bind group
     WGPUSampler m_iblSampler = nullptr;                  // Sampler for IBL cubemaps
+    WGPURenderPipeline m_skyboxPipeline = nullptr;       // Skybox rendering
+    WGPUBindGroupLayout m_skyboxBindGroupLayout = nullptr;
+    WGPUBindGroup m_skyboxBindGroup = nullptr;
+    WGPUBuffer m_skyboxUniformBuffer = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUBuffer m_pbrUniformBuffer = nullptr;
     std::vector<WGPUBindGroup> m_bindGroups;  // One per object

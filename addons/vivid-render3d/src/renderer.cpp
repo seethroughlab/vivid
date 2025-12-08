@@ -548,6 +548,47 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
+const char* SKYBOX_SHADER_SOURCE = R"(
+struct Uniforms {
+    invViewProj: mat4x4f,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+@group(0) @binding(1) var envSampler: sampler;
+@group(0) @binding(2) var envCubemap: texture_cube<f32>;
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) viewDir: vec3f,
+}
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    var out: VertexOutput;
+    let x = f32((vertexIndex << 1u) & 2u) * 2.0 - 1.0;
+    let y = f32(vertexIndex & 2u) * 2.0 - 1.0;
+    out.position = vec4f(x, y, 0.9999, 1.0);
+    let nearPoint = uniforms.invViewProj * vec4f(x, y, -1.0, 1.0);
+    let farPoint = uniforms.invViewProj * vec4f(x, y, 1.0, 1.0);
+    let nearWorld = nearPoint.xyz / nearPoint.w;
+    let farWorld = farPoint.xyz / farPoint.w;
+    out.viewDir = normalize(farWorld - nearWorld);
+    return out;
+}
+
+@fragment
+fn fs_main(in: VertexOutput) -> @location(0) vec4f {
+    let color = textureSample(envCubemap, envSampler, in.viewDir).rgb;
+    let mapped = color / (color + vec3f(1.0));
+    return vec4f(mapped, 1.0);
+}
+)";
+
+// Skybox uniform buffer structure
+struct SkyboxUniforms {
+    float invViewProj[16];  // mat4x4f: 64 bytes
+};
+
 // Flat/Gouraud uniform buffer structure
 struct Uniforms {
     float mvp[16];         // mat4x4f: 64 bytes, offset 0
@@ -730,6 +771,11 @@ Render3D& Render3D::environment(IBLEnvironment* env) {
 Render3D& Render3D::environmentHDR(const std::string& hdrPath) {
     m_pendingHDRPath = hdrPath;
     m_iblEnabled = true;  // Will be enabled when loaded
+    return *this;
+}
+
+Render3D& Render3D::showSkybox(bool enabled) {
+    m_showSkybox = enabled;
     return *this;
 }
 
@@ -1162,6 +1208,98 @@ void Render3D::createPipeline(Context& ctx) {
     // Cleanup IBL pipeline resources
     wgpuPipelineLayoutRelease(iblPipelineLayout);
     wgpuShaderModuleRelease(iblShaderModule);
+
+    // =========================================================================
+    // Skybox Pipeline
+    // =========================================================================
+
+    // Create skybox shader module
+    WGPUShaderSourceWGSL skyboxWgslDesc = {};
+    skyboxWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    skyboxWgslDesc.code = toStringView(SKYBOX_SHADER_SOURCE);
+
+    WGPUShaderModuleDescriptor skyboxShaderDesc = {};
+    skyboxShaderDesc.nextInChain = &skyboxWgslDesc.chain;
+    skyboxShaderDesc.label = toStringView("Skybox Shader");
+
+    WGPUShaderModule skyboxShaderModule = wgpuDeviceCreateShaderModule(device, &skyboxShaderDesc);
+
+    // Create skybox uniform buffer
+    WGPUBufferDescriptor skyboxBufDesc = {};
+    skyboxBufDesc.label = toStringView("Skybox Uniforms");
+    skyboxBufDesc.size = sizeof(SkyboxUniforms);
+    skyboxBufDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    m_skyboxUniformBuffer = wgpuDeviceCreateBuffer(device, &skyboxBufDesc);
+
+    // Create skybox bind group layout
+    WGPUBindGroupLayoutEntry skyboxLayoutEntries[3] = {};
+
+    // Uniform buffer
+    skyboxLayoutEntries[0].binding = 0;
+    skyboxLayoutEntries[0].visibility = WGPUShaderStage_Vertex;
+    skyboxLayoutEntries[0].buffer.type = WGPUBufferBindingType_Uniform;
+    skyboxLayoutEntries[0].buffer.minBindingSize = sizeof(SkyboxUniforms);
+
+    // Sampler
+    skyboxLayoutEntries[1].binding = 1;
+    skyboxLayoutEntries[1].visibility = WGPUShaderStage_Fragment;
+    skyboxLayoutEntries[1].sampler.type = WGPUSamplerBindingType_Filtering;
+
+    // Cubemap texture
+    skyboxLayoutEntries[2].binding = 2;
+    skyboxLayoutEntries[2].visibility = WGPUShaderStage_Fragment;
+    skyboxLayoutEntries[2].texture.sampleType = WGPUTextureSampleType_Float;
+    skyboxLayoutEntries[2].texture.viewDimension = WGPUTextureViewDimension_Cube;
+
+    WGPUBindGroupLayoutDescriptor skyboxLayoutDesc = {};
+    skyboxLayoutDesc.label = toStringView("Skybox Bind Group Layout");
+    skyboxLayoutDesc.entryCount = 3;
+    skyboxLayoutDesc.entries = skyboxLayoutEntries;
+    m_skyboxBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &skyboxLayoutDesc);
+
+    // Create skybox pipeline layout
+    WGPUPipelineLayoutDescriptor skyboxPipelineLayoutDesc = {};
+    skyboxPipelineLayoutDesc.bindGroupLayoutCount = 1;
+    skyboxPipelineLayoutDesc.bindGroupLayouts = &m_skyboxBindGroupLayout;
+    WGPUPipelineLayout skyboxPipelineLayout = wgpuDeviceCreatePipelineLayout(device, &skyboxPipelineLayoutDesc);
+
+    // Fragment state for skybox
+    WGPUColorTargetState skyboxColorTarget = {};
+    skyboxColorTarget.format = EFFECTS_FORMAT;
+    skyboxColorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState skyboxFragmentState = {};
+    skyboxFragmentState.module = skyboxShaderModule;
+    skyboxFragmentState.entryPoint = toStringView("fs_main");
+    skyboxFragmentState.targetCount = 1;
+    skyboxFragmentState.targets = &skyboxColorTarget;
+
+    // Depth stencil for skybox (write disabled, test enabled to render behind objects)
+    WGPUDepthStencilState skyboxDepthStencil = {};
+    skyboxDepthStencil.format = DEPTH_FORMAT;
+    skyboxDepthStencil.depthWriteEnabled = WGPUOptionalBool_False;  // Don't write to depth buffer
+    skyboxDepthStencil.depthCompare = WGPUCompareFunction_LessEqual;
+
+    // Create skybox pipeline
+    WGPURenderPipelineDescriptor skyboxPipelineDesc = {};
+    skyboxPipelineDesc.label = toStringView("Skybox Pipeline");
+    skyboxPipelineDesc.layout = skyboxPipelineLayout;
+    skyboxPipelineDesc.vertex.module = skyboxShaderModule;
+    skyboxPipelineDesc.vertex.entryPoint = toStringView("vs_main");
+    skyboxPipelineDesc.vertex.bufferCount = 0;  // No vertex buffer - fullscreen triangle
+    skyboxPipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    skyboxPipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
+    skyboxPipelineDesc.primitive.cullMode = WGPUCullMode_None;
+    skyboxPipelineDesc.depthStencil = &skyboxDepthStencil;
+    skyboxPipelineDesc.multisample.count = 1;
+    skyboxPipelineDesc.multisample.mask = ~0u;
+    skyboxPipelineDesc.fragment = &skyboxFragmentState;
+
+    m_skyboxPipeline = wgpuDeviceCreateRenderPipeline(device, &skyboxPipelineDesc);
+
+    // Cleanup skybox pipeline resources
+    wgpuPipelineLayoutRelease(skyboxPipelineLayout);
+    wgpuShaderModuleRelease(skyboxShaderModule);
 }
 
 void Render3D::process(Context& ctx) {
@@ -1209,6 +1347,28 @@ void Render3D::process(Context& ctx) {
         iblBindDesc.entryCount = 4;
         iblBindDesc.entries = iblEntries;
         m_iblBindGroup = wgpuDeviceCreateBindGroup(device, &iblBindDesc);
+    }
+
+    // Create skybox bind group if needed
+    bool renderSkybox = m_showSkybox && m_iblEnvironment && m_iblEnvironment->isLoaded();
+    if (renderSkybox && !m_skyboxBindGroup) {
+        WGPUBindGroupEntry skyboxEntries[3] = {};
+
+        skyboxEntries[0].binding = 0;
+        skyboxEntries[0].buffer = m_skyboxUniformBuffer;
+        skyboxEntries[0].size = sizeof(SkyboxUniforms);
+
+        skyboxEntries[1].binding = 1;
+        skyboxEntries[1].sampler = m_iblSampler;
+
+        skyboxEntries[2].binding = 2;
+        skyboxEntries[2].textureView = m_iblEnvironment->prefilteredView();
+
+        WGPUBindGroupDescriptor skyboxBindDesc = {};
+        skyboxBindDesc.layout = m_skyboxBindGroupLayout;
+        skyboxBindDesc.entryCount = 3;
+        skyboxBindDesc.entries = skyboxEntries;
+        m_skyboxBindGroup = wgpuDeviceCreateBindGroup(device, &skyboxBindDesc);
     }
 
     // If using a composer, get the scene from it
@@ -1264,6 +1424,19 @@ void Render3D::process(Context& ctx) {
     passDesc.depthStencilAttachment = &depthAttachment;
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
+
+    // Render skybox first (if enabled)
+    if (renderSkybox && m_skyboxBindGroup) {
+        // Update skybox uniforms with inverse view-projection matrix
+        glm::mat4 invViewProj = glm::inverse(viewProj);
+        SkyboxUniforms skyboxUniforms;
+        memcpy(skyboxUniforms.invViewProj, glm::value_ptr(invViewProj), sizeof(skyboxUniforms.invViewProj));
+        wgpuQueueWriteBuffer(ctx.queue(), m_skyboxUniformBuffer, 0, &skyboxUniforms, sizeof(skyboxUniforms));
+
+        wgpuRenderPassEncoderSetPipeline(pass, m_skyboxPipeline);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_skyboxBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);  // Fullscreen triangle
+    }
 
     // Check if using PBR mode
     bool usePBR = (m_shadingMode == ShadingMode::PBR);
@@ -1567,6 +1740,23 @@ void Render3D::cleanup() {
     if (m_iblSampler) {
         wgpuSamplerRelease(m_iblSampler);
         m_iblSampler = nullptr;
+    }
+    // Skybox resources
+    if (m_skyboxPipeline) {
+        wgpuRenderPipelineRelease(m_skyboxPipeline);
+        m_skyboxPipeline = nullptr;
+    }
+    if (m_skyboxBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_skyboxBindGroupLayout);
+        m_skyboxBindGroupLayout = nullptr;
+    }
+    if (m_skyboxBindGroup) {
+        wgpuBindGroupRelease(m_skyboxBindGroup);
+        m_skyboxBindGroup = nullptr;
+    }
+    if (m_skyboxUniformBuffer) {
+        wgpuBufferRelease(m_skyboxUniformBuffer);
+        m_skyboxUniformBuffer = nullptr;
     }
     if (m_uniformBuffer) {
         wgpuBufferRelease(m_uniformBuffer);

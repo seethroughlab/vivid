@@ -1,15 +1,28 @@
 // Geometry Showcase - Vivid Example
 // Demonstrates all procedural geometry primitives and CSG operations
 // Using the new SceneComposer::create() API for clean geometry management
+// Press S to toggle smooth/flat shading
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/render3d/render3d.h>
+#include <GLFW/glfw3.h>
 #include <cmath>
 
 using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
+
+static bool useFlatShading = true;
+
+// Store pointers to primitives for shading toggle
+static Box* boxPtr = nullptr;
+static Cylinder* cylinderPtr = nullptr;
+static Cone* conePtr = nullptr;
+static Plane* planePtr = nullptr;
+static Box* hollowBoxPtr = nullptr;
+static Boolean* csgSubtractPtr = nullptr;
+static Boolean* pipePtr = nullptr;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
@@ -28,11 +41,11 @@ void setup(Context& ctx) {
     // Top row: Basic primitives (created via scene.add<T>())
     // -------------------------------------------------------------------------
 
-    scene.add<Box>("box",
+    boxPtr = &scene.add<Box>("box",
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 2.5f, topRowY, 0.0f)),
         glm::vec4(0.9f, 0.3f, 0.3f, 1.0f))  // Red
         .size(1.0f)
-        .flatShading(true);
+        .flatShading(useFlatShading);
 
     scene.add<Sphere>("sphere",
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 1.5f, topRowY, 0.0f)),
@@ -40,21 +53,21 @@ void setup(Context& ctx) {
         .radius(0.6f)
         .segments(32);
 
-    scene.add<Cylinder>("cylinder",
+    cylinderPtr = &scene.add<Cylinder>("cylinder",
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 0.5f, topRowY, 0.0f)),
         glm::vec4(0.3f, 0.5f, 0.9f, 1.0f))  // Blue
         .radius(0.5f)
         .height(1.2f)
         .segments(24)
-        .flatShading(true);
+        .flatShading(useFlatShading);
 
-    scene.add<Cone>("cone",
+    conePtr = &scene.add<Cone>("cone",
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 0.5f, topRowY, 0.0f)),
         glm::vec4(0.9f, 0.7f, 0.2f, 1.0f))  // Orange
         .radius(0.6f)
         .height(1.2f)
         .segments(24)
-        .flatShading(true);
+        .flatShading(useFlatShading);
 
     scene.add<Torus>("torus",
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 1.5f, topRowY, 0.0f)),
@@ -64,13 +77,13 @@ void setup(Context& ctx) {
         .segments(32)
         .rings(16);
 
-    scene.add<Plane>("plane",
+    planePtr = &scene.add<Plane>("plane",
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 2.5f, topRowY, 0.0f)) *
         glm::rotate(glm::mat4(1.0f), glm::radians(-30.0f), glm::vec3(1, 0, 0)),
         glm::vec4(0.2f, 0.8f, 0.8f, 1.0f))  // Cyan
         .size(1.5f, 1.5f)
         .subdivisions(4, 4)
-        .flatShading(true);
+        .flatShading(useFlatShading);
 
     // -------------------------------------------------------------------------
     // Bottom row: CSG operations
@@ -79,28 +92,28 @@ void setup(Context& ctx) {
     // -------------------------------------------------------------------------
 
     // CSG Subtract: Hollow cube
-    auto& hollowBox = chain.add<Box>("hollowBox").size(1.2f).flatShading(true);
+    hollowBoxPtr = &chain.add<Box>("hollowBox").size(1.2f).flatShading(useFlatShading);
     auto& hollowSphere = chain.add<Sphere>("hollowSphere").radius(0.8f).segments(24);
-    auto& csgSubtract = chain.add<Boolean>("csgSubtract")
-        .inputA(&hollowBox)
+    csgSubtractPtr = &chain.add<Boolean>("csgSubtract")
+        .inputA(hollowBoxPtr)
         .inputB(&hollowSphere)
         .operation(BooleanOp::Subtract)
-        .flatShading(true);
+        .flatShading(useFlatShading);
 
-    scene.add(&csgSubtract,
+    scene.add(csgSubtractPtr,
         glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 0.5f, bottomRowY, 0.0f)),
         glm::vec4(0.4f, 0.8f, 1.0f, 1.0f));  // Light blue
 
     // CSG Pipe: Cylinder with hole
     auto& outerCyl = chain.add<Cylinder>("outerCyl").radius(0.5f).height(1.5f).segments(32);
     auto& innerCyl = chain.add<Cylinder>("innerCyl").radius(0.3f).height(1.8f).segments(32);
-    auto& pipe = chain.add<Boolean>("pipe")
+    pipePtr = &chain.add<Boolean>("pipe")
         .inputA(&outerCyl)
         .inputB(&innerCyl)
         .operation(BooleanOp::Subtract)
-        .flatShading(true);
+        .flatShading(useFlatShading);
 
-    scene.add(&pipe,
+    scene.add(pipePtr,
         glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 0.5f, bottomRowY, 0.0f)),
         glm::vec4(0.9f, 0.5f, 0.7f, 1.0f));  // Pink
 
@@ -149,6 +162,24 @@ void setup(Context& ctx) {
 void update(Context& ctx) {
     auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
+
+    // Toggle shading mode with S key
+    if (ctx.key(GLFW_KEY_S).pressed) {
+        useFlatShading = !useFlatShading;
+
+        // Update flatShading on all primitives (triggers mesh rebuild)
+        if (boxPtr) boxPtr->flatShading(useFlatShading);
+        if (cylinderPtr) cylinderPtr->flatShading(useFlatShading);
+        if (conePtr) conePtr->flatShading(useFlatShading);
+        if (planePtr) planePtr->flatShading(useFlatShading);
+        if (hollowBoxPtr) hollowBoxPtr->flatShading(useFlatShading);
+        if (csgSubtractPtr) csgSubtractPtr->flatShading(useFlatShading);
+        if (pipePtr) pipePtr->flatShading(useFlatShading);
+    }
+
+    // Update shading mode on Render3D
+    auto& render = chain.get<Render3D>("render3d");
+    render.shadingMode(useFlatShading ? ShadingMode::Flat : ShadingMode::Gouraud);
 
     // Animate camera orbit
     auto& camera = chain.get<CameraOperator>("camera");

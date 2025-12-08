@@ -1,21 +1,27 @@
 // Textured PBR Demo - Showcases all PBR materials in a grid
 // Each sphere uses a different material from assets/materials
 // Press SPACE to cycle through close-up views of each material
+// Press 1/2/3 to change rotation axis (X/Y/Z)
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/render3d/render3d.h>
+#include <vivid/render3d/ibl_environment.h>
 #include <GLFW/glfw3.h>
 
 using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
+// IBL environment (loaded once)
+static IBLEnvironment iblEnv;
+
 // State for close-up mode
 static bool closeupMode = false;
 static int currentSphereIndex = 0;
 static float rotationAngle = 0.0f;
 static const int NUM_SPHERES = 19;
+static glm::vec3 rotationAxis = glm::vec3(1.0f, 0.0f, 0.0f);  // Default: X axis
 
 // Grid layout parameters
 static const float spacing = 2.5f;
@@ -32,6 +38,10 @@ glm::vec3 getSpherePosition(int index) {
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
+
+    // Initialize IBL and load HDR environment
+    iblEnv.init(ctx);
+    iblEnv.loadHDR(ctx, "assets/hdris/bryanston_park_sunrise_4k.hdr");
 
     // Create scene composer
     auto& scene = SceneComposer::create(chain, "scene");
@@ -235,12 +245,16 @@ void setup(Context& ctx) {
         .color(1.0f, 0.98f, 0.95f)
         .intensity(2.0f);
 
-    // Render with PBR (materials are per-object)
+    // Render with PBR + IBL + skybox
     auto& render = chain.add<Render3D>("render")
         .input(&scene)
         .cameraInput(&camera)
         .lightInput(&light)
         .shadingMode(ShadingMode::PBR)
+        .environment(&iblEnv)
+        .ibl(true)
+        .showSkybox(true)
+        .ambient(1.0f)
         .clearColor(0.08f, 0.08f, 0.1f);
 
     chain.output("render");
@@ -268,13 +282,24 @@ void update(Context& ctx) {
         }
     }
 
-    // Update sphere transforms (rotation around X axis - perpendicular to camera view)
+    // Handle 1/2/3 keys - change rotation axis
+    if (ctx.key(GLFW_KEY_1).pressed) {
+        rotationAxis = glm::vec3(1.0f, 0.0f, 0.0f);  // X axis
+    }
+    if (ctx.key(GLFW_KEY_2).pressed) {
+        rotationAxis = glm::vec3(0.0f, 1.0f, 0.0f);  // Y axis
+    }
+    if (ctx.key(GLFW_KEY_3).pressed) {
+        rotationAxis = glm::vec3(0.0f, 0.0f, 1.0f);  // Z axis
+    }
+
+    // Update sphere transforms (rotation around selected axis)
     auto& scene = ctx.chain().get<SceneComposer>("scene");
     auto& entries = scene.entries();
     for (int i = 0; i < static_cast<int>(entries.size()); ++i) {
         glm::vec3 pos = getSpherePosition(i);
         glm::mat4 transform = glm::translate(glm::mat4(1.0f), pos);
-        transform = glm::rotate(transform, rotationAngle, glm::vec3(1.0f, 0.0f, 0.0f));
+        transform = glm::rotate(transform, rotationAngle, rotationAxis);
         entries[i].transform = transform;
     }
 
