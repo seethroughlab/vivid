@@ -210,6 +210,11 @@ void update(Context& ctx) {
         inst.roughness = 0.8f;
         instanced.addInstance(inst);
     }
+
+    // V key toggles vsync
+    if (ctx.key(GLFW_KEY_V).pressed) {
+        ctx.vsync(!ctx.vsync());
+    }
 }
 
 VIVID_CHAIN(setup, update)

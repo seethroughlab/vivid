@@ -276,6 +276,7 @@ Vivid includes a built-in chain visualizer powered by ImGui and ImNodes.
 ### Controls
 - `Tab` - Toggle the visualizer overlay
 - `F` - Toggle fullscreen
+- `V` - Toggle vsync (in examples that support it)
 - `Esc` - Quit
 
 ### Chain Visualizer Features

@@ -386,6 +386,12 @@ int main(int argc, char** argv) {
             }
         }
 
+        // Handle vsync change
+        if (ctx.vsyncChanged()) {
+            config.presentMode = ctx.vsync() ? WGPUPresentMode_Fifo : WGPUPresentMode_Immediate;
+            wgpuSurfaceConfigure(surface, &config);
+        }
+
         // Skip frame if minimized
         if (width == 0 || height == 0) {
             ctx.endFrame();

@@ -303,6 +303,30 @@ public:
     bool hasPreservedStates() const { return !m_preservedStates.empty(); }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Display Settings
+    /// @{
+
+    /**
+     * @brief Enable or disable vsync
+     * @param enabled True for vsync on (Fifo), false for off (Immediate)
+     *
+     * Changes take effect on the next frame.
+     */
+    void vsync(bool enabled) {
+        if (m_vsync != enabled) {
+            m_vsync = enabled;
+            m_vsyncChanged = true;
+        }
+    }
+
+    /// @brief Get current vsync setting
+    bool vsync() const { return m_vsync; }
+
+    /// @brief Check if vsync setting changed (consumed by runtime)
+    bool vsyncChanged() { bool c = m_vsyncChanged; m_vsyncChanged = false; return c; }
+
+    /// @}
 
 private:
     GLFWwindow* m_window;
@@ -345,6 +369,10 @@ private:
 
     // Chain (owned by context)
     std::unique_ptr<Chain> m_chain;
+
+    // Display settings
+    bool m_vsync = true;
+    bool m_vsyncChanged = false;
 
     // Default states
     static const KeyState s_defaultKeyState;

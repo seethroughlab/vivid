@@ -129,6 +129,11 @@ void update(Context& ctx) {
     // Slowly orbit camera
     auto& camera = ctx.chain().get<CameraOperator>("camera");
     camera.azimuth(t * 0.1f);
+
+    // V key toggles vsync
+    if (ctx.key(GLFW_KEY_V).pressed) {
+        ctx.vsync(!ctx.vsync());
+    }
 }
 
 VIVID_CHAIN(setup, update)

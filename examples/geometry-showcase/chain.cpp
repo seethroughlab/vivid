@@ -246,6 +246,11 @@ void update(Context& ctx) {
     entries[7].transform = glm::translate(glm::mat4(1.0f), getShapePosition(7)) *
                           glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1, 0, 0)) *
                           glm::rotate(glm::mat4(1.0f), time * 0.5f, glm::vec3(0, 0, 1));
+
+    // V key toggles vsync
+    if (ctx.key(GLFW_KEY_V).pressed) {
+        ctx.vsync(!ctx.vsync());
+    }
 }
 
 VIVID_CHAIN(setup, update)

@@ -71,6 +71,11 @@ void update(Context& ctx) {
 
     // Slowly rotate hue offset
     ramp.hueOffset(time * 0.05f);
+
+    // V key toggles vsync
+    if (ctx.key(GLFW_KEY_V).pressed) {
+        ctx.vsync(!ctx.vsync());
+    }
 }
 
 VIVID_CHAIN(setup, update)

@@ -48,7 +48,10 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    // Nothing to animate for now
+    // V key toggles vsync
+    if (ctx.key(GLFW_KEY_V).pressed) {
+        ctx.vsync(!ctx.vsync());
+    }
 }
 
 VIVID_CHAIN(setup, update)
