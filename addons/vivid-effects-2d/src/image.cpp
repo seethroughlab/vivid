@@ -1,14 +1,9 @@
 // Vivid Effects 2D - Image Operator Implementation
 
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
-
 #include <vivid/effects/image.h>
+#include <vivid/io/image_loader.h>
 #include <vivid/context.h>
 #include <iostream>
-#include <filesystem>
-
-namespace fs = std::filesystem;
 
 namespace vivid::effects {
 
@@ -27,33 +22,16 @@ void Image::init(Context& ctx) {
 }
 
 void Image::loadImage(Context& ctx) {
-    // Try to find the file
-    fs::path path = m_filePath;
+    // Load image via vivid-io
+    auto imageData = vivid::io::loadImage(m_filePath);
 
-    // If not absolute, try relative to current directory and common locations
-    if (!path.is_absolute()) {
-        if (!fs::exists(path)) {
-            // Try assets/images/
-            fs::path assetsPath = fs::path("assets/images") / m_filePath;
-            if (fs::exists(assetsPath)) {
-                path = assetsPath;
-            }
-        }
-    }
-
-    if (!fs::exists(path)) {
-        std::cerr << "Image: File not found: " << m_filePath << std::endl;
+    if (!imageData.valid()) {
+        std::cerr << "Image: Failed to load: " << m_filePath << std::endl;
         return;
     }
 
-    // Load image with stb_image
-    int width, height, channels;
-    unsigned char* data = stbi_load(path.string().c_str(), &width, &height, &channels, 4);  // Force RGBA
-
-    if (!data) {
-        std::cerr << "Image: Failed to load: " << path << " - " << stbi_failure_reason() << std::endl;
-        return;
-    }
+    int width = imageData.width;
+    int height = imageData.height;
 
     // Release old output if exists
     releaseOutput();
@@ -101,13 +79,11 @@ void Image::loadImage(Context& ctx) {
 
     WGPUExtent3D writeSize = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
 
-    wgpuQueueWriteTexture(ctx.queue(), &destination, data, width * height * 4, &dataLayout, &writeSize);
-
-    // Free CPU image data
-    stbi_image_free(data);
+    wgpuQueueWriteTexture(ctx.queue(), &destination, imageData.pixels.data(),
+                          imageData.pixels.size(), &dataLayout, &writeSize);
 
     m_needsReload = false;
-    std::cout << "Image: Loaded " << path << " (" << width << "x" << height << ")" << std::endl;
+    std::cout << "Image: Loaded " << m_filePath << " (" << width << "x" << height << ")" << std::endl;
 }
 
 void Image::process(Context& ctx) {

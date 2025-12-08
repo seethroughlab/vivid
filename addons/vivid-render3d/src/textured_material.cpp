@@ -2,12 +2,9 @@
 
 #include <vivid/render3d/textured_material.h>
 #include <vivid/effects/texture_operator.h>  // for toStringView
+#include <vivid/io/image_loader.h>
 #include <vivid/context.h>
-#include <stb_image.h>
 #include <iostream>
-#include <filesystem>
-
-namespace fs = std::filesystem;
 
 using vivid::effects::toStringView;
 
@@ -115,34 +112,17 @@ TexturedMaterial& TexturedMaterial::emissiveStrength(float strength) {
 void TexturedMaterial::loadTexture(Context& ctx, TextureSlot& slot, bool srgb) {
     if (slot.path.empty()) return;
 
-    // Find the file
-    fs::path path = slot.path;
-    if (!path.is_absolute()) {
-        if (!fs::exists(path)) {
-            // Try assets/materials/
-            fs::path assetsPath = fs::path("assets/materials") / slot.path;
-            if (fs::exists(assetsPath)) {
-                path = assetsPath;
-            }
-        }
-    }
+    // Load image via vivid-io
+    auto imageData = vivid::io::loadImage(slot.path);
 
-    if (!fs::exists(path)) {
-        std::cerr << "TexturedMaterial: File not found: " << slot.path << std::endl;
+    if (!imageData.valid()) {
+        std::cerr << "TexturedMaterial: Failed to load: " << slot.path << std::endl;
         slot.needsLoad = false;  // Don't retry
         return;
     }
 
-    // Load image with stb_image
-    int width, height, channels;
-    unsigned char* data = stbi_load(path.string().c_str(), &width, &height, &channels, 4);
-
-    if (!data) {
-        std::cerr << "TexturedMaterial: Failed to load: " << path
-                  << " - " << stbi_failure_reason() << std::endl;
-        slot.needsLoad = false;  // Don't retry
-        return;
-    }
+    int width = imageData.width;
+    int height = imageData.height;
 
     // Create GPU texture
     WGPUTextureDescriptor texDesc = {};
@@ -188,13 +168,12 @@ void TexturedMaterial::loadTexture(Context& ctx, TextureSlot& slot, bool srgb) {
         1
     };
 
-    wgpuQueueWriteTexture(ctx.queue(), &destination, data,
-                          width * height * 4, &dataLayout, &writeSize);
+    wgpuQueueWriteTexture(ctx.queue(), &destination, imageData.pixels.data(),
+                          imageData.pixels.size(), &dataLayout, &writeSize);
 
-    stbi_image_free(data);
     slot.needsLoad = false;
 
-    std::cout << "TexturedMaterial: Loaded " << path << " ("
+    std::cout << "TexturedMaterial: Loaded " << slot.path << " ("
               << width << "x" << height << ")" << std::endl;
 }
 

@@ -132,7 +132,9 @@ endif()
 # -----------------------------------------------------------------------------
 # Addons (optional libraries with external dependencies)
 # Note: ImGui is now integrated into core - it's not optional
+# vivid-io must come first (provides image loading for other addons)
 # -----------------------------------------------------------------------------
+add_subdirectory(addons/vivid-io)
 add_subdirectory(addons/vivid-effects-2d)
 add_subdirectory(addons/vivid-video)
 add_subdirectory(addons/vivid-render3d)

@@ -1084,6 +1084,12 @@ We encountered a blank/dark gray window despite all WebGPU operations appearing 
 - [x] Math - Add, subtract, multiply, divide, clamp, remap
 - [x] Logic - Greater than, less than, in range, toggle
 
+**I/O Utilities (vivid-io addon):**
+- [x] loadImage() - Load LDR images (PNG, JPG, BMP, TGA) with path resolution
+- [x] loadImageHDR() - Load HDR images for IBL environment maps
+- [x] resolvePath() - Search multiple directories for asset files
+- [x] Centralized stb_image implementation (shared by effects-2d and render3d)
+
 **Media (vivid-video addon):**
 - [x] ImageFile - Load PNG/JPG with hot-reload
 - [x] VideoPlayer - Video playback (HAP codec support)
@@ -3137,6 +3143,7 @@ vivid/
 │       └── text.wgsl
 │
 ├── addons/
+│   ├── vivid-io/             # Image/file loading utilities (shared by other addons)
 │   ├── vivid-effects-2d/
 │   ├── vivid-render3d/
 │   ├── vivid-imgui/

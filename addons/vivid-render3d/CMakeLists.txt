@@ -1,5 +1,6 @@
 # Vivid Render3D Addon
 # 3D rendering with procedural geometry and CSG operations
+# Depends on vivid-io for image/HDR loading
 
 include(FetchContent)
 
@@ -46,6 +47,7 @@ target_link_libraries(vivid-render3d PUBLIC
     glfw
     manifold
     vivid-effects-2d
+    vivid-io
 )
 
 # Platform-specific settings

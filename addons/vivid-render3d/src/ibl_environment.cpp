@@ -2,18 +2,14 @@
 // Ported from vivid_v1/runtime/src/cubemap.cpp
 
 #include <vivid/render3d/ibl_environment.h>
+#include <vivid/io/image_loader.h>
 #include <vivid/context.h>
 
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <iostream>
 #include <vector>
 #include <glm/gtc/packing.hpp>
-
-// stb_image for image loading (HDR, PNG, JPG, etc.)
-#define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
 
 namespace vivid::render3d {
 
@@ -410,35 +406,21 @@ bool IBLEnvironment::loadHDR(Context& ctx, const std::string& hdrPath) {
         return false;
     }
 
-    // Load HDR file
-    FILE* f = fopen(hdrPath.c_str(), "rb");
-    if (!f) {
-        std::cerr << "IBLEnvironment: Failed to open HDR file: " << hdrPath << "\n";
+    // Load HDR image via vivid-io
+    auto hdrImage = vivid::io::loadImageHDR(hdrPath);
+    if (!hdrImage.valid()) {
+        std::cerr << "IBLEnvironment: Failed to load HDR file: " << hdrPath << "\n";
         return false;
     }
 
-    fseek(f, 0, SEEK_END);
-    long fileSize = ftell(f);
-    fseek(f, 0, SEEK_SET);
-
-    std::vector<uint8_t> fileData(fileSize);
-    fread(fileData.data(), 1, fileSize, f);
-    fclose(f);
-
-    // Decode HDR image
-    int width, height, channels;
-    float* hdrData = stbi_loadf_from_memory(fileData.data(), static_cast<int>(fileSize),
-                                             &width, &height, &channels, 3);
-    if (!hdrData) {
-        std::cerr << "IBLEnvironment: Failed to decode HDR image: " << hdrPath << "\n";
-        return false;
-    }
+    int width = hdrImage.width;
+    int height = hdrImage.height;
+    const float* hdrData = hdrImage.pixels.data();
 
     std::cout << "IBLEnvironment: Loaded HDR " << width << "x" << height << "\n";
 
     // Convert equirectangular to cubemap
     CubemapData envCubemap = equirectangularToCubemap(hdrData, width, height, CUBEMAP_SIZE);
-    stbi_image_free(hdrData);
 
     if (!envCubemap.valid()) {
         std::cerr << "IBLEnvironment: Failed to convert to cubemap\n";
