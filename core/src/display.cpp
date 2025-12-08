@@ -246,17 +246,22 @@ Display::Display(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat surfaceFo
 }
 
 Display::~Display() {
-    if (m_blitPipeline) wgpuRenderPipelineRelease(m_blitPipeline);
-    if (m_sampler) wgpuSamplerRelease(m_sampler);
-    if (m_blitBindGroupLayout) wgpuBindGroupLayoutRelease(m_blitBindGroupLayout);
-    if (m_textPipeline) wgpuRenderPipelineRelease(m_textPipeline);
-    if (m_fontTexture) wgpuTextureRelease(m_fontTexture);
-    if (m_fontTextureView) wgpuTextureViewRelease(m_fontTextureView);
-    if (m_textBindGroupLayout) wgpuBindGroupLayoutRelease(m_textBindGroupLayout);
-    if (m_textBindGroup) wgpuBindGroupRelease(m_textBindGroup);
-    if (m_textUniformBuffer) wgpuBufferRelease(m_textUniformBuffer);
-    if (m_textVertexBuffer) wgpuBufferRelease(m_textVertexBuffer);
-    if (m_fontSampler) wgpuSamplerRelease(m_fontSampler);
+    shutdown();
+}
+
+void Display::shutdown() {
+    if (m_blitPipeline) { wgpuRenderPipelineRelease(m_blitPipeline); m_blitPipeline = nullptr; }
+    if (m_sampler) { wgpuSamplerRelease(m_sampler); m_sampler = nullptr; }
+    if (m_blitBindGroupLayout) { wgpuBindGroupLayoutRelease(m_blitBindGroupLayout); m_blitBindGroupLayout = nullptr; }
+    if (m_textPipeline) { wgpuRenderPipelineRelease(m_textPipeline); m_textPipeline = nullptr; }
+    if (m_fontTexture) { wgpuTextureRelease(m_fontTexture); m_fontTexture = nullptr; }
+    if (m_fontTextureView) { wgpuTextureViewRelease(m_fontTextureView); m_fontTextureView = nullptr; }
+    if (m_textBindGroupLayout) { wgpuBindGroupLayoutRelease(m_textBindGroupLayout); m_textBindGroupLayout = nullptr; }
+    if (m_textBindGroup) { wgpuBindGroupRelease(m_textBindGroup); m_textBindGroup = nullptr; }
+    if (m_textUniformBuffer) { wgpuBufferRelease(m_textUniformBuffer); m_textUniformBuffer = nullptr; }
+    if (m_textVertexBuffer) { wgpuBufferRelease(m_textVertexBuffer); m_textVertexBuffer = nullptr; }
+    if (m_fontSampler) { wgpuSamplerRelease(m_fontSampler); m_fontSampler = nullptr; }
+    m_valid = false;
 }
 
 // Get the executable directory (platform-specific)

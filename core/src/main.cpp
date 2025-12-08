@@ -544,9 +544,15 @@ int main(int argc, char** argv) {
     // Cleanup
     std::cout << "Shutting down..." << std::endl;
 
+    // Release chain operators before WebGPU cleanup (they hold textures/resources)
+    ctx.resetChain();
+
     // Shutdown ImGui
     chainVisualizer.shutdown();
     vivid::imgui::shutdown();
+
+    // Release display resources before WebGPU cleanup
+    display.shutdown();
 
     wgpuSurfaceUnconfigure(surface);
     wgpuQueueRelease(queue);

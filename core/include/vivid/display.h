@@ -30,6 +30,9 @@ public:
     // Check if initialized successfully
     bool isValid() const { return m_valid; }
 
+    // Release all WebGPU resources (must be called before device is released)
+    void shutdown();
+
 private:
     bool createBlitPipeline();
     bool createTextPipeline();
