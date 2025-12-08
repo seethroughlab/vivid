@@ -15,9 +15,6 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
-// IBL environment (loaded once)
-static IBLEnvironment iblEnv;
-
 // Camera orbit control
 static float cameraAzimuth = 0.0f;           // radians
 static float cameraElevation = 0.35f;        // radians (~20 degrees)
@@ -29,9 +26,9 @@ static double lastMouseY = 0.0;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Initialize IBL and load HDR environment
-    iblEnv.init(ctx);
-    iblEnv.loadHDR(ctx, "assets/hdris/bryanston_park_sunrise_4k.hdr");
+    // IBL environment (now a proper chain operator)
+    auto& ibl = chain.add<IBLEnvironment>("ibl")
+        .hdrFile("assets/hdris/bryanston_park_sunrise_4k.hdr");
 
     // Create scene composer
     auto& scene = SceneComposer::create(chain, "scene");
@@ -123,7 +120,7 @@ void setup(Context& ctx) {
         .cameraInput(&camera)
         .lightInput(&light)
         .shadingMode(ShadingMode::PBR)
-        .environment(&iblEnv)
+        .environmentInput(&ibl)
         .ibl(true)
         .ambient(1.0f)  // IBL provides ambient, set to 1.0 for full effect
         .clearColor(0.1f, 0.1f, 0.12f);

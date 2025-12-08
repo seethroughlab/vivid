@@ -13,9 +13,6 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
-// IBL environment (loaded once)
-static IBLEnvironment iblEnv;
-
 // State for close-up mode
 static bool closeupMode = false;
 static int currentSphereIndex = 0;
@@ -39,9 +36,9 @@ glm::vec3 getSpherePosition(int index) {
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Initialize IBL and load HDR environment
-    iblEnv.init(ctx);
-    iblEnv.loadHDR(ctx, "assets/hdris/bryanston_park_sunrise_4k.hdr");
+    // IBL environment (now a proper chain operator)
+    auto& ibl = chain.add<IBLEnvironment>("ibl")
+        .hdrFile("assets/hdris/bryanston_park_sunrise_4k.hdr");
 
     // Create scene composer
     auto& scene = SceneComposer::create(chain, "scene");
@@ -251,7 +248,7 @@ void setup(Context& ctx) {
         .cameraInput(&camera)
         .lightInput(&light)
         .shadingMode(ShadingMode::PBR)
-        .environment(&iblEnv)
+        .environmentInput(&ibl)
         .ibl(true)
         .showSkybox(true)
         .ambient(1.0f)

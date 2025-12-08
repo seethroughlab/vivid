@@ -15,9 +15,6 @@ namespace fs = std::filesystem;
 static std::vector<std::string> g_models;
 static int g_currentModel = 0;
 
-// IBL environment (loaded once)
-static IBLEnvironment g_ibl;
-
 // Find all .glb files in a directory
 std::vector<std::string> findModels(const std::string& directory) {
     std::vector<std::string> models;
@@ -68,10 +65,9 @@ void setup(Context& ctx) {
         .color(1.0f, 0.98f, 0.95f)
         .intensity(2.0f);
 
-    // Load IBL environment from HDR (once)
-    if (!g_ibl.isLoaded()) {
-        g_ibl.loadHDR(ctx, "assets/hdris/warm_reception_dinner_4k.hdr");
-    }
+    // IBL environment (now a proper chain operator)
+    auto& ibl = chain.add<IBLEnvironment>("ibl")
+        .hdrFile("assets/hdris/warm_reception_dinner_4k.hdr");
 
     // Render with PBR + IBL
     auto& render = chain.add<Render3D>("render")
@@ -80,7 +76,7 @@ void setup(Context& ctx) {
         .lightInput(&sun)
         .shadingMode(ShadingMode::PBR)
         .ibl(true)
-        .environment(&g_ibl)
+        .environmentInput(&ibl)
         .showSkybox(true)
         .metallic(0.0f)
         .roughness(0.5f)

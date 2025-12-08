@@ -1,11 +1,8 @@
 #pragma once
 
+#include <vivid/operator.h>
 #include <webgpu/webgpu.h>
 #include <string>
-
-namespace vivid {
-class Context;
-}
 
 namespace vivid::render3d {
 
@@ -19,7 +16,7 @@ struct CubemapData {
     bool valid() const { return texture != nullptr; }
 };
 
-/// Image-Based Lighting environment
+/// Image-Based Lighting environment operator
 ///
 /// Provides environment lighting through pre-computed cubemaps:
 /// - Irradiance map for diffuse lighting
@@ -28,41 +25,57 @@ struct CubemapData {
 ///
 /// Example usage:
 /// ```cpp
-/// IBLEnvironment ibl;
-/// ibl.init(ctx);
-/// ibl.loadHDR(ctx, "assets/hdris/studio.hdr");
+/// auto& ibl = chain.add<IBLEnvironment>("ibl")
+///     .hdrFile("assets/hdris/studio.hdr");
 ///
 /// chain.add<Render3D>("render")
-///     .ibl(true)
-///     .environment(&ibl);
+///     .environmentInput(&ibl)
+///     .ibl(true);
 /// ```
-class IBLEnvironment {
+class IBLEnvironment : public Operator {
 public:
     IBLEnvironment();
-    ~IBLEnvironment();
+    ~IBLEnvironment() override;
 
     // Non-copyable
     IBLEnvironment(const IBLEnvironment&) = delete;
     IBLEnvironment& operator=(const IBLEnvironment&) = delete;
 
-    /// Initialize the IBL processor (creates compute pipelines)
-    /// Must be called before loadHDR()
-    bool init(Context& ctx);
+    // -------------------------------------------------------------------------
+    /// @name Configuration (fluent API)
+    /// @{
+
+    /// Set HDR environment map file path
+    IBLEnvironment& hdrFile(const std::string& path);
+
+    /// Use default procedural sky environment (called if no hdrFile set)
+    IBLEnvironment& useDefault();
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Operator Interface
+    /// @{
+
+    void init(Context& ctx) override;
+    void process(Context& ctx) override;
+    void cleanup() override;
+    std::string name() const override { return "IBLEnvironment"; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Legacy API (for backward compatibility)
+    /// @{
 
     /// Load an HDR equirectangular image and generate IBL cubemaps
-    /// @param ctx Vivid context
-    /// @param hdrPath Path to .hdr file
-    /// @return true if loading succeeded
+    /// @deprecated Use hdrFile() fluent setter instead
     bool loadHDR(Context& ctx, const std::string& hdrPath);
 
-    /// Load a default procedural environment (studio lighting)
-    /// Generates a simple gradient sky with ground plane - no external files needed
-    /// @param ctx Vivid context
-    /// @return true if generation succeeded
+    /// Load a default procedural environment
+    /// @deprecated Use useDefault() fluent setter instead
     bool loadDefault(Context& ctx);
 
-    /// Release all GPU resources
-    void cleanup();
+    /// Initialize pipelines (called automatically by loadHDR/loadDefault)
+    bool initPipelines(Context& ctx);
 
     /// Check if environment is loaded and ready
     bool isLoaded() const { return m_irradianceMap.valid(); }
@@ -121,6 +134,11 @@ private:
     WGPUSampler m_cubemapSampler = nullptr;
 
     bool m_initialized = false;
+
+    // Fluent API state
+    std::string m_hdrPath;
+    bool m_needsLoad = true;
+    bool m_useDefaultEnv = true;  // Default to procedural sky
 };
 
 } // namespace vivid::render3d

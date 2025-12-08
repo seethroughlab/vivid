@@ -84,4 +84,4 @@
 [x] Is it possible to add smooth shading in geometry-showcase?
 [x] instancing-demo -- each asteroid should have variations in scale
 [x] I'm not sure hot-relading is working. It seems to crash when chain.cpp is edited.
-[ ] In the Readme, what is a more graceful way to say "Designed from the ground up to be friendly with coding agents/LLMs."
+[x] In the Readme, what is a more graceful way to say "Designed from the ground up to be friendly with coding agents/LLMs."

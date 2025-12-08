@@ -365,7 +365,11 @@ IBLEnvironment::~IBLEnvironment() {
     cleanup();
 }
 
-bool IBLEnvironment::init(Context& ctx) {
+void IBLEnvironment::init(Context& ctx) {
+    initPipelines(ctx);
+}
+
+bool IBLEnvironment::initPipelines(Context& ctx) {
     if (m_initialized) return true;
 
     m_device = ctx.device();
@@ -399,10 +403,38 @@ void IBLEnvironment::cleanup() {
     m_device = nullptr;
     m_queue = nullptr;
     m_initialized = false;
+    m_needsLoad = true;
+}
+
+// Fluent API setters
+IBLEnvironment& IBLEnvironment::hdrFile(const std::string& path) {
+    m_hdrPath = path;
+    m_useDefaultEnv = false;
+    m_needsLoad = true;
+    return *this;
+}
+
+IBLEnvironment& IBLEnvironment::useDefault() {
+    m_hdrPath.clear();
+    m_useDefaultEnv = true;
+    m_needsLoad = true;
+    return *this;
+}
+
+// Operator process - deferred loading
+void IBLEnvironment::process(Context& ctx) {
+    if (!m_needsLoad) return;
+    m_needsLoad = false;
+
+    if (!m_hdrPath.empty()) {
+        loadHDR(ctx, m_hdrPath);
+    } else if (m_useDefaultEnv) {
+        loadDefault(ctx);
+    }
 }
 
 bool IBLEnvironment::loadHDR(Context& ctx, const std::string& hdrPath) {
-    if (!m_initialized && !init(ctx)) {
+    if (!m_initialized && !initPipelines(ctx)) {
         return false;
     }
 
@@ -455,7 +487,7 @@ bool IBLEnvironment::loadHDR(Context& ctx, const std::string& hdrPath) {
 }
 
 bool IBLEnvironment::loadDefault(Context& ctx) {
-    if (!m_initialized && !init(ctx)) {
+    if (!m_initialized && !initPipelines(ctx)) {
         return false;
     }
 

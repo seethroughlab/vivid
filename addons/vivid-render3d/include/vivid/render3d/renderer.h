@@ -115,7 +115,12 @@ public:
 
     /// Set IBL environment from pre-baked cubemaps
     /// @param env Pointer to IBLEnvironment with loaded cubemaps
+    /// @deprecated Use environmentInput() for operator-based workflow
     Render3D& environment(IBLEnvironment* env);
+
+    /// Set IBL environment from an IBLEnvironment operator (node-based workflow)
+    /// The operator's environment will be used each frame once loaded
+    Render3D& environmentInput(IBLEnvironment* envOp);
 
     /// Load IBL environment from HDR file (generates cubemaps)
     /// @param hdrPath Path to .hdr environment map file
@@ -191,6 +196,7 @@ private:
     bool m_iblEnabled = false;
     bool m_showSkybox = false;
     IBLEnvironment* m_iblEnvironment = nullptr;
+    IBLEnvironment* m_iblEnvironmentOp = nullptr;  // Operator-based input
     std::string m_pendingHDRPath;  // For deferred HDR loading
 
     // Output - m_output, m_outputView, m_width, m_height inherited from TextureOperator

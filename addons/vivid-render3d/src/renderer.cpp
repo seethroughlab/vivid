@@ -1119,6 +1119,14 @@ Render3D& Render3D::environment(IBLEnvironment* env) {
     return *this;
 }
 
+Render3D& Render3D::environmentInput(IBLEnvironment* envOp) {
+    m_iblEnvironmentOp = envOp;
+    if (envOp) {
+        setInput(6, envOp);  // Slot 6 for environment (after scene, camera, lights)
+    }
+    return *this;
+}
+
 Render3D& Render3D::environmentHDR(const std::string& hdrPath) {
     m_pendingHDRPath = hdrPath;
     m_iblEnabled = true;  // Will be enabled when loaded
@@ -1747,6 +1755,11 @@ void Render3D::process(Context& ctx) {
             m_iblEnvironment = &defaultEnv;
         }
         m_pendingHDRPath.clear();
+    }
+
+    // Use environment operator if set and loaded
+    if (m_iblEnvironmentOp && m_iblEnvironmentOp->isLoaded()) {
+        m_iblEnvironment = m_iblEnvironmentOp;
     }
 
     // Check if IBL is ready to use
