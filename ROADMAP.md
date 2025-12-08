@@ -1794,6 +1794,7 @@ ctx.drawCircles(circles, output, clearColor);
 - [x] MeshBuilder produces valid geometry
 - [x] CSG union/subtract/intersect produce watertight meshes
 - [x] Flat shading shows faceted surfaces
+- [x] Smooth shading with proper normals (cylinder caps stay flat, sides smooth)
 - [x] Wireframe renders correctly
 - [ ] Toon shading produces clean bands
 - [ ] examples/3d-instancing runs on all platforms

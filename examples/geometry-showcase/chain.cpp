@@ -2,6 +2,7 @@
 // Demonstrates all procedural geometry primitives and CSG operations
 // Using the new SceneComposer::create() API for clean geometry management
 // Press S to toggle smooth/flat shading
+// Press SPACE to cycle through shapes (zoom in on each)
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -24,12 +25,31 @@ static Box* hollowBoxPtr = nullptr;
 static Boolean* csgSubtractPtr = nullptr;
 static Boolean* pipePtr = nullptr;
 
+// Camera focus: -1 = overview, 0-7 = individual shapes
+static int focusedShape = -1;
+static const int NUM_SHAPES = 8;
+
+// Shape positions (matches the entries order)
+static float spacing = 2.2f;
+static float topRowY = 1.5f;
+static float bottomRowY = -1.5f;
+
+static glm::vec3 getShapePosition(int index) {
+    switch (index) {
+        case 0: return glm::vec3(-spacing * 2.5f, topRowY, 0.0f);    // Box
+        case 1: return glm::vec3(-spacing * 1.5f, topRowY, 0.0f);    // Sphere
+        case 2: return glm::vec3(-spacing * 0.5f, topRowY, 0.0f);    // Cylinder
+        case 3: return glm::vec3(spacing * 0.5f, topRowY, 0.0f);     // Cone
+        case 4: return glm::vec3(spacing * 1.5f, topRowY, 0.0f);     // Torus
+        case 5: return glm::vec3(spacing * 2.5f, topRowY, 0.0f);     // Plane
+        case 6: return glm::vec3(-spacing * 0.5f, bottomRowY, 0.0f); // CSG Subtract
+        case 7: return glm::vec3(spacing * 0.5f, bottomRowY, 0.0f);  // CSG Pipe
+        default: return glm::vec3(0.0f);
+    }
+}
+
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
-
-    float spacing = 2.2f;
-    float topRowY = 1.5f;
-    float bottomRowY = -1.5f;
 
     // =========================================================================
     // SCENE COMPOSER - Entry point for all geometry
@@ -167,61 +187,63 @@ void update(Context& ctx) {
     if (ctx.key(GLFW_KEY_S).pressed) {
         useFlatShading = !useFlatShading;
 
-        // Update flatShading on all primitives (triggers mesh rebuild)
-        if (boxPtr) boxPtr->flatShading(useFlatShading);
+        // Update flatShading on primitives that support it
         if (cylinderPtr) cylinderPtr->flatShading(useFlatShading);
         if (conePtr) conePtr->flatShading(useFlatShading);
-        if (planePtr) planePtr->flatShading(useFlatShading);
-        if (hollowBoxPtr) hollowBoxPtr->flatShading(useFlatShading);
-        if (csgSubtractPtr) csgSubtractPtr->flatShading(useFlatShading);
-        if (pipePtr) pipePtr->flatShading(useFlatShading);
     }
 
-    // Update shading mode on Render3D
-    auto& render = chain.get<Render3D>("render3d");
-    render.shadingMode(useFlatShading ? ShadingMode::Flat : ShadingMode::Gouraud);
+    // Cycle through shapes with SPACE key
+    if (ctx.key(GLFW_KEY_SPACE).pressed) {
+        focusedShape++;
+        if (focusedShape >= NUM_SHAPES) {
+            focusedShape = -1;  // Back to overview
+        }
+    }
 
-    // Animate camera orbit
+    // Update camera based on focused shape
     auto& camera = chain.get<CameraOperator>("camera");
-    camera.azimuth(time * 0.15f);
+    if (focusedShape == -1) {
+        // Overview: show all shapes
+        camera.orbitCenter(0, 0, 0);
+        camera.distance(14.0f);
+        camera.elevation(0.25f);
+    } else {
+        // Focus on specific shape
+        glm::vec3 pos = getShapePosition(focusedShape);
+        camera.orbitCenter(pos.x, pos.y, pos.z);
+        camera.distance(3.5f);
+        camera.elevation(0.3f);
+    }
 
     // Animate objects via SceneComposer entries
     auto& scene = chain.get<SceneComposer>("scene");
     auto& entries = scene.entries();
 
-    float spacing = 2.2f;
-    float topRowY = 1.5f;
-    float bottomRowY = -1.5f;
-
-    // Top row: Basic primitives
-    entries[0].transform = glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 2.5f, topRowY, 0.0f)) *
+    // Top row: Basic primitives (with rotation animation)
+    entries[0].transform = glm::translate(glm::mat4(1.0f), getShapePosition(0)) *
                           glm::rotate(glm::mat4(1.0f), time * 0.5f, glm::vec3(0, 1, 0));
 
-    float sphereScale = 1.0f + 0.1f * std::sin(time * 2.0f);
-    entries[1].transform = glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 1.5f, topRowY, 0.0f)) *
-                          glm::scale(glm::mat4(1.0f), glm::vec3(sphereScale));
-
-    entries[2].transform = glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 0.5f, topRowY, 0.0f)) *
-                          glm::rotate(glm::mat4(1.0f), time * 0.7f, glm::vec3(0, 1, 0));
-
-    entries[3].transform = glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 0.5f, topRowY, 0.0f)) *
-                          glm::rotate(glm::mat4(1.0f), 0.3f * std::sin(time * 1.5f), glm::vec3(1, 0, 0)) *
+    entries[1].transform = glm::translate(glm::mat4(1.0f), getShapePosition(1)) *
                           glm::rotate(glm::mat4(1.0f), time * 0.4f, glm::vec3(0, 1, 0));
 
-    entries[4].transform = glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 1.5f, topRowY, 0.0f)) *
-                          glm::rotate(glm::mat4(1.0f), time * 0.6f, glm::vec3(0, 1, 0)) *
-                          glm::rotate(glm::mat4(1.0f), time * 0.3f, glm::vec3(1, 0, 0));
+    entries[2].transform = glm::translate(glm::mat4(1.0f), getShapePosition(2)) *
+                          glm::rotate(glm::mat4(1.0f), time * 0.7f, glm::vec3(0, 1, 0));
 
-    entries[5].transform = glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 2.5f, topRowY, 0.0f)) *
+    entries[3].transform = glm::translate(glm::mat4(1.0f), getShapePosition(3)) *
+                          glm::rotate(glm::mat4(1.0f), time * 0.4f, glm::vec3(0, 1, 0));
+
+    entries[4].transform = glm::translate(glm::mat4(1.0f), getShapePosition(4)) *
+                          glm::rotate(glm::mat4(1.0f), time * 0.6f, glm::vec3(0, 1, 0));
+
+    entries[5].transform = glm::translate(glm::mat4(1.0f), getShapePosition(5)) *
                           glm::rotate(glm::mat4(1.0f), time * 0.4f, glm::vec3(0, 1, 0)) *
                           glm::rotate(glm::mat4(1.0f), glm::radians(-30.0f), glm::vec3(1, 0, 0));
 
     // Bottom row: CSG operations
-    entries[6].transform = glm::translate(glm::mat4(1.0f), glm::vec3(-spacing * 0.5f, bottomRowY, 0.0f)) *
-                          glm::rotate(glm::mat4(1.0f), time * 0.3f, glm::vec3(0, 1, 0)) *
-                          glm::rotate(glm::mat4(1.0f), time * 0.2f, glm::vec3(1, 0, 0));
+    entries[6].transform = glm::translate(glm::mat4(1.0f), getShapePosition(6)) *
+                          glm::rotate(glm::mat4(1.0f), time * 0.3f, glm::vec3(0, 1, 0));
 
-    entries[7].transform = glm::translate(glm::mat4(1.0f), glm::vec3(spacing * 0.5f, bottomRowY, 0.0f)) *
+    entries[7].transform = glm::translate(glm::mat4(1.0f), getShapePosition(7)) *
                           glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(1, 0, 0)) *
                           glm::rotate(glm::mat4(1.0f), time * 0.5f, glm::vec3(0, 0, 1));
 }

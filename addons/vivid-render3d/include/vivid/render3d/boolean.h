@@ -108,11 +108,9 @@ public:
                 break;
         }
 
-        if (m_flatShading) {
-            m_builder.computeFlatNormals();
-        } else {
-            m_builder.computeNormals();
-        }
+        // CSG results always use flat normals - the geometry is too complex
+        // to automatically determine smooth vs sharp edges
+        m_builder.computeFlatNormals();
 
         m_mesh = m_builder.build();
         m_mesh.upload(ctx);

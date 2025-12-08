@@ -173,6 +173,9 @@ MeshBuilder& MeshBuilder::addQuad(uint32_t a, uint32_t b, uint32_t c, uint32_t d
 // -----------------------------------------------------------------------------
 
 MeshBuilder& MeshBuilder::computeNormals() {
+    // Simple smooth normals: average face normals at each vertex index
+    // This works correctly if cap/side vertices have separate indices
+
     // Reset all normals to zero
     for (auto& v : m_vertices) {
         v.normal = glm::vec3(0);
@@ -501,15 +504,75 @@ MeshBuilder MeshBuilder::sphere(float radius, int segments) {
 }
 
 MeshBuilder MeshBuilder::cylinder(float radius, float height, int segments) {
-    // Use Manifold's built-in cylinder for CSG-safe geometry
-    // Manifold::Cylinder takes (height, radiusLow, radiusHigh, circularSegments, center)
-    auto m = std::make_unique<manifold::Manifold>(
-        manifold::Manifold::Cylinder(static_cast<double>(height),
-                                      static_cast<double>(radius),
-                                      static_cast<double>(radius),
-                                      segments, true));
+    MeshBuilder builder;
+    float halfH = height * 0.5f;
 
-    MeshBuilder builder(std::move(m));
+    // Generate vertices for the SIDE (separate from caps for sharp edges)
+    // Two rings of vertices - top and bottom of the side surface
+    for (int i = 0; i <= segments; ++i) {
+        float angle = 2.0f * glm::pi<float>() * i / segments;
+        float x = radius * std::cos(angle);
+        float z = radius * std::sin(angle);
+        float u = static_cast<float>(i) / segments;
+
+        // Bottom ring (side)
+        builder.addVertex(glm::vec3(x, -halfH, z), glm::vec3(0), glm::vec2(u, 0));
+        // Top ring (side)
+        builder.addVertex(glm::vec3(x, halfH, z), glm::vec3(0), glm::vec2(u, 1));
+    }
+
+    // Side faces (CCW winding for outward-facing normals)
+    for (int i = 0; i < segments; ++i) {
+        uint32_t bl = i * 2;      // bottom-left
+        uint32_t tl = i * 2 + 1;  // top-left
+        uint32_t br = (i + 1) * 2;      // bottom-right
+        uint32_t tr = (i + 1) * 2 + 1;  // top-right
+
+        builder.addTriangle(bl, tl, tr);
+        builder.addTriangle(bl, tr, br);
+    }
+
+    // TOP CAP - separate vertices with upward normals
+    uint32_t topCenterIdx = static_cast<uint32_t>(builder.vertexCount());
+    builder.addVertex(glm::vec3(0, halfH, 0), glm::vec3(0, 1, 0), glm::vec2(0.5f, 0.5f));
+
+    uint32_t topRingStart = static_cast<uint32_t>(builder.vertexCount());
+    for (int i = 0; i < segments; ++i) {
+        float angle = 2.0f * glm::pi<float>() * i / segments;
+        float x = radius * std::cos(angle);
+        float z = radius * std::sin(angle);
+        builder.addVertex(glm::vec3(x, halfH, z), glm::vec3(0, 1, 0),
+                         glm::vec2(0.5f + 0.5f * std::cos(angle), 0.5f + 0.5f * std::sin(angle)));
+    }
+
+    for (int i = 0; i < segments; ++i) {
+        uint32_t curr = topRingStart + i;
+        uint32_t next = topRingStart + ((i + 1) % segments);
+        builder.addTriangle(topCenterIdx, next, curr);  // CCW when viewed from above
+    }
+
+    // BOTTOM CAP - separate vertices with downward normals
+    uint32_t botCenterIdx = static_cast<uint32_t>(builder.vertexCount());
+    builder.addVertex(glm::vec3(0, -halfH, 0), glm::vec3(0, -1, 0), glm::vec2(0.5f, 0.5f));
+
+    uint32_t botRingStart = static_cast<uint32_t>(builder.vertexCount());
+    for (int i = 0; i < segments; ++i) {
+        float angle = 2.0f * glm::pi<float>() * i / segments;
+        float x = radius * std::cos(angle);
+        float z = radius * std::sin(angle);
+        builder.addVertex(glm::vec3(x, -halfH, z), glm::vec3(0, -1, 0),
+                         glm::vec2(0.5f + 0.5f * std::cos(angle), 0.5f - 0.5f * std::sin(angle)));
+    }
+
+    for (int i = 0; i < segments; ++i) {
+        uint32_t curr = botRingStart + i;
+        uint32_t next = botRingStart + ((i + 1) % segments);
+        builder.addTriangle(botCenterIdx, curr, next);  // CCW when viewed from below
+    }
+
+    // Sync to manifold for CSG operations
+    builder.syncToManifold();
+
     return builder;
 }
 

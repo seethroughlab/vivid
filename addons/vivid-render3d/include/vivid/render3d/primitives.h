@@ -72,11 +72,8 @@ public:
         m_dirty = false;
 
         m_builder = MeshBuilder::box(m_width, m_height, m_depth);
-        if (m_flatShading) {
-            m_builder.computeFlatNormals();
-        } else {
-            m_builder.computeNormals();
-        }
+        // Box always uses flat normals - smooth shading doesn't make sense for a cube
+        m_builder.computeFlatNormals();
         if (m_computeTangents) {
             m_builder.computeTangents();
         }
@@ -214,6 +211,8 @@ public:
         m_builder = MeshBuilder::cylinder(m_radius, m_height, m_segments);
         if (m_flatShading) {
             m_builder.computeFlatNormals();
+        } else {
+            m_builder.computeNormals();
         }
         m_mesh = m_builder.build();
         m_mesh.upload(ctx);
@@ -285,6 +284,8 @@ public:
         m_builder = MeshBuilder::cone(m_radius, m_height, m_segments);
         if (m_flatShading) {
             m_builder.computeFlatNormals();
+        } else {
+            m_builder.computeNormals();
         }
         m_mesh = m_builder.build();
         m_mesh.upload(ctx);
@@ -436,9 +437,8 @@ public:
         m_dirty = false;
 
         m_builder = MeshBuilder::plane(m_width, m_height, m_subdivisionsX, m_subdivisionsY);
-        if (m_flatShading) {
-            m_builder.computeFlatNormals();
-        }
+        // Plane always uses flat normals - it's a flat surface
+        m_builder.computeFlatNormals();
         if (m_computeTangents) {
             m_builder.computeTangents();
         }
