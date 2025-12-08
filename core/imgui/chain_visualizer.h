@@ -52,6 +52,9 @@ private:
     void updateScenePreview(GeometryPreview& preview, render3d::SceneComposer* composer,
                             vivid::Context& ctx, float dt);
 
+    // Estimate node height based on content (params, inputs, thumbnail type)
+    float estimateNodeHeight(const vivid::OperatorInfo& info) const;
+
     // Attribute ID helpers
     int outputAttrId(int nodeId) { return nodeId * 100; }
     int inputAttrId(int nodeId, int inputIndex) { return nodeId * 100 + inputIndex + 1; }

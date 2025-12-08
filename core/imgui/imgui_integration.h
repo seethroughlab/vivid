@@ -17,6 +17,11 @@ struct FrameInput {
     glm::vec2 mousePos = {0, 0};
     bool mouseDown[3] = {false, false, false};
     glm::vec2 scroll = {0, 0};
+    // Modifier keys
+    bool keyCtrl = false;
+    bool keyShift = false;
+    bool keyAlt = false;
+    bool keySuper = false;      // Command on Mac
 };
 
 // Initialize ImGui with WebGPU context

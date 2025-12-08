@@ -513,6 +513,15 @@ int main(int argc, char** argv) {
             frameInput.mouseDown[1] = ctx.mouseButton(1).held;
             frameInput.mouseDown[2] = ctx.mouseButton(2).held;
             frameInput.scroll = ctx.scroll();
+            // Modifier keys from GLFW
+            frameInput.keyCtrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                                 glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+            frameInput.keyShift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                                  glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+            frameInput.keyAlt = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
+                                glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+            frameInput.keySuper = glfwGetKey(window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
+                                  glfwGetKey(window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
 
             vivid::imgui::beginFrame(frameInput);
             chainVisualizer.render(frameInput, ctx);

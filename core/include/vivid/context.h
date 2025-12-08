@@ -326,6 +326,25 @@ public:
     /// @brief Check if vsync setting changed (consumed by runtime)
     bool vsyncChanged() { bool c = m_vsyncChanged; m_vsyncChanged = false; return c; }
 
+    /**
+     * @brief Enable or disable fullscreen mode
+     * @param enabled True for fullscreen, false for windowed
+     *
+     * Changes take effect on the next frame.
+     */
+    void fullscreen(bool enabled) {
+        if (m_fullscreen != enabled) {
+            m_fullscreen = enabled;
+            m_fullscreenChanged = true;
+        }
+    }
+
+    /// @brief Get current fullscreen setting
+    bool fullscreen() const { return m_fullscreen; }
+
+    /// @brief Check if fullscreen setting changed (consumed by runtime)
+    bool fullscreenChanged() { bool c = m_fullscreenChanged; m_fullscreenChanged = false; return c; }
+
     /// @}
 
 private:
@@ -373,6 +392,8 @@ private:
     // Display settings
     bool m_vsync = true;
     bool m_vsyncChanged = false;
+    bool m_fullscreen = false;
+    bool m_fullscreenChanged = false;
 
     // Default states
     static const KeyState s_defaultKeyState;

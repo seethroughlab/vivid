@@ -111,6 +111,16 @@ void beginFrame(const FrameInput& input) {
     // Start new frame
     ImGui_ImplWGPU_NewFrame();
     ImGui::NewFrame();
+
+    // Update modifier keys AFTER NewFrame (ImNodes reads these during rendering)
+    io.AddKeyEvent(ImGuiMod_Ctrl, input.keyCtrl);
+    io.AddKeyEvent(ImGuiMod_Shift, input.keyShift);
+    io.AddKeyEvent(ImGuiMod_Alt, input.keyAlt);
+    io.AddKeyEvent(ImGuiMod_Super, input.keySuper);
+    io.KeyCtrl = input.keyCtrl;
+    io.KeyShift = input.keyShift;
+    io.KeyAlt = input.keyAlt;
+    io.KeySuper = input.keySuper;
 }
 
 void render(WGPURenderPassEncoder pass) {

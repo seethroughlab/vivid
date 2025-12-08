@@ -23,6 +23,11 @@ void ChainVisualizer::init() {
     ImNodes::CreateContext();
     ImNodes::StyleColorsDark();
 
+    // Enable trackpad-friendly panning: Control + Left Click to pan
+    // (Can't use Cmd on Mac - system intercepts Cmd+Click)
+    ImNodesIO& io = ImNodes::GetIO();
+    io.EmulateThreeButtonMouse.Modifier = &ImGui::GetIO().KeyCtrl;
+
     // Configure style
     ImNodesStyle& style = ImNodes::GetStyle();
     style.NodeCornerRounding = 4.0f;
@@ -54,6 +59,57 @@ void ChainVisualizer::shutdown() {
     m_layoutBuilt = false;
     m_opToNodeId.clear();
     m_nodePositioned.clear();
+}
+
+// Estimate node height based on content
+float ChainVisualizer::estimateNodeHeight(const vivid::OperatorInfo& info) const {
+    float height = 0.0f;
+
+    // Title bar
+    height += 24.0f;
+
+    // Type name (if different from registered name)
+    if (info.op && info.op->name() != info.name) {
+        height += 18.0f;
+    }
+
+    // Parameters (each line ~18px)
+    if (info.op) {
+        auto params = info.op->params();
+        height += params.size() * 18.0f;
+        if (!params.empty()) {
+            height += 8.0f;  // Separator spacing
+        }
+    }
+
+    // Input pins (~20px each)
+    if (info.op) {
+        int inputCount = 0;
+        for (size_t j = 0; j < info.op->inputCount(); ++j) {
+            if (info.op->getInput(static_cast<int>(j))) {
+                inputCount = static_cast<int>(j) + 1;
+            }
+        }
+        height += inputCount * 20.0f;
+    }
+
+    // Thumbnail/preview area
+    if (info.op) {
+        vivid::OutputKind kind = info.op->outputKind();
+        if (kind == vivid::OutputKind::Texture || kind == vivid::OutputKind::Geometry) {
+            height += 60.0f;  // 56px image + padding
+        } else {
+            height += 54.0f;  // Icons are slightly smaller
+        }
+    }
+
+    // Output pin
+    height += 20.0f;
+
+    // Node padding
+    height += 16.0f;
+
+    return height;
 }
 
 void ChainVisualizer::buildLayout(const std::vector<vivid::OperatorInfo>& operators) {
@@ -94,21 +150,24 @@ void ChainVisualizer::buildLayout(const std::vector<vivid::OperatorInfo>& operat
         columns[depths[i]].push_back(static_cast<int>(i));
     }
 
-    // Position nodes in columns
-    const float nodeWidth = 150.0f;
-    const float nodeHeight = 100.0f;
-    const float xSpacing = 200.0f;
-    const float ySpacing = 130.0f;
+    // Position nodes in columns using estimated heights
+    const float xSpacing = 280.0f;   // Horizontal space between columns
+    const float verticalPadding = 20.0f;  // Extra space between nodes
     const float startX = 50.0f;
     const float startY = 50.0f;
 
     for (int col = 0; col < static_cast<int>(columns.size()); ++col) {
         float y = startY;
-        for (int nodeId : columns[col]) {
+
+        for (size_t idx = 0; idx < columns[col].size(); ++idx) {
+            int nodeId = columns[col][idx];
             float x = startX + col * xSpacing;
             ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(x, y));
             m_nodePositioned[nodeId] = true;
-            y += ySpacing;
+
+            // Move y down by this node's estimated height + padding
+            float nodeHeight = estimateNodeHeight(operators[nodeId]);
+            y += nodeHeight + verticalPadding;
         }
     }
 
@@ -269,11 +328,11 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
 
     // Controls info
     ImGui::SetNextWindowPos(ImVec2(10, 120), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(200, 95), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Controls", nullptr, ImGuiWindowFlags_NoResize);
+    ImGui::SetNextWindowSize(ImVec2(200, 100), ImGuiCond_FirstUseEver);
+    ImGui::Begin("Controls");
     ImGui::Text("Tab: Toggle UI");
     ImGui::Text("F: Fullscreen");
-    ImGui::Text("Middle Mouse: Pan graph");
+    ImGui::Text("Ctrl+Drag: Pan graph");
     ImGui::End();
 
     // Node editor
