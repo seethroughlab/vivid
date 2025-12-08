@@ -1216,7 +1216,7 @@ chain.add<Output>("out").input("scanlines");
 - [ ] Dither produces correct Bayer patterns
 - [ ] CRTEffect curvature doesn't clip edges
 - [ ] examples/retro-demo runs on all platforms
-- [ ] Update README.md with new operators and usage examples
+- [x] Update README.md with new operators and usage examples
 
 ### Phase 6: ImGui Addon
 
@@ -1404,7 +1404,7 @@ Use the official HAP implementation from Vidvox: https://github.com/Vidvox/hap
 - [ ] Webcam works on Windows (Media Foundation) - implemented, needs testing
 - [x] examples/video-demo runs on macOS
 - [x] examples/webcam-retro demo created
-- [ ] Update README.md with media playback documentation
+- [x] Update README.md with media playback documentation
 
 ### Phase 8: 3D Addon (vivid-render3d)
 
@@ -1808,7 +1808,7 @@ ctx.drawCircles(circles, output, clearColor);
 - [ ] examples/procedural-mesh runs on all platforms
 - [ ] examples/csg-demo runs on all platforms
 - [ ] examples/wipeout-craft runs on all platforms
-- [ ] Update README.md with 3D rendering documentation
+- [x] Update README.md with 3D rendering documentation
 
 ### Phase 9: Editor Integration
 

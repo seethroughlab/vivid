@@ -124,18 +124,143 @@ Edit your code while it's running - changes apply automatically.
 - `Composite` - Blend multiple inputs
 - `Switch` - Select between inputs
 
-### Media
-- `VideoPlayer` - Video playback (HAP, H.264, ProRes)
-- `Webcam` - Camera capture
-- `Image` - Static image loading
+### Media (vivid-video addon)
+- `VideoPlayer` - Video playback with codec support:
+  - HAP (GPU-compressed, best performance)
+  - H.264, ProRes, MPEG-2
+  - Methods: `.play()`, `.pause()`, `.restart()`, `.seek()`, `.loop()`, `.speed()`
+- `Webcam` - Camera capture (macOS: AVFoundation, Windows: Media Foundation)
+- `Image` - Static image loading (PNG, JPG, BMP, TGA)
 
 ### Particles
 - `Particles` - 2D particle system with physics
 - `PointSprites` - GPU point rendering
 
-### 3D (vivid-render3d addon)
-- `Render3D` - 3D scene renderer
-- `MeshBuilder` - Procedural geometry with CSG
+### 3D Rendering (vivid-render3d addon)
+
+**Primitives:**
+- `Box` - `.size(w, h, d)`, `.flatShading()`
+- `Sphere` - `.radius()`, `.segments()`, `.computeTangents()`
+- `Cylinder` - `.radius()`, `.height()`, `.segments()`, `.flatShading()`
+- `Cone` - `.radius()`, `.height()`, `.segments()`
+- `Torus` - `.outerRadius()`, `.innerRadius()`, `.segments()`, `.rings()`
+- `Plane` - `.size(w, h)`, `.subdivisions()`
+
+**CSG Boolean Operations:**
+- `Boolean` - `.inputA()`, `.inputB()`, `.operation(BooleanOp::Union/Subtract/Intersect)`
+
+**Scene Composition:**
+- `SceneComposer` - Compose multiple meshes with transforms and colors
+- `Render3D` - Render scenes with multiple shading modes
+
+**Shading Modes:**
+- `ShadingMode::PBR` - Physically-based rendering (Cook-Torrance BRDF)
+- `ShadingMode::Flat` - Per-fragment flat shading
+- `ShadingMode::Gouraud` - Per-vertex shading (PS1-style)
+- `ShadingMode::Unlit` - No lighting, pure color/texture
+
+**Lighting:**
+- `DirectionalLight` - Sun-like light with direction, color, intensity
+- `CameraOperator` - Perspective camera with orbit controls
+
+**PBR Materials:**
+- `TexturedMaterial` - Full PBR material with texture maps:
+  - `.baseColor()`, `.normal()`, `.metallic()`, `.roughness()`, `.ao()`, `.emissive()`
+- `IBLEnvironment` - Image-based lighting from HDR environment maps
+
+## Example: Video with Effects
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/video/video.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::video;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& video = chain.add<VideoPlayer>("video")
+        .file("assets/videos/my-video.mov")
+        .loop(true);
+
+    auto& hsv = chain.add<HSV>("color")
+        .input(&video)
+        .saturation(1.2f);
+
+    chain.output("color");
+}
+
+void update(Context& ctx) {
+    auto& video = ctx.chain().get<VideoPlayer>("video");
+
+    // Space to pause/play
+    if (ctx.key(GLFW_KEY_SPACE).pressed) {
+        video.isPlaying() ? video.pause() : video.play();
+    }
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+## Example: 3D Scene with PBR
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/render3d/render3d.h>
+
+using namespace vivid;
+using namespace vivid::render3d;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Create geometry
+    auto& box = chain.add<Box>("box").size(1.0f);
+    auto& sphere = chain.add<Sphere>("sphere").radius(0.6f).segments(32);
+
+    // CSG: subtract sphere from box
+    auto& csg = chain.add<Boolean>("csg")
+        .inputA(&box)
+        .inputB(&sphere)
+        .operation(BooleanOp::Subtract);
+
+    // Scene composition
+    auto& scene = SceneComposer::create(chain, "scene");
+    scene.add(&csg, glm::mat4(1.0f), glm::vec4(0.9f, 0.3f, 0.3f, 1.0f));
+
+    // Camera and lighting
+    auto& camera = chain.add<CameraOperator>("camera")
+        .orbitCenter(0, 0, 0)
+        .distance(5.0f)
+        .fov(50.0f);
+
+    auto& sun = chain.add<DirectionalLight>("sun")
+        .direction(1, 2, 1)
+        .intensity(1.5f);
+
+    // Render
+    auto& render = chain.add<Render3D>("render")
+        .input(&scene)
+        .cameraInput(&camera)
+        .lightInput(&sun)
+        .shadingMode(ShadingMode::PBR)
+        .metallic(0.1f)
+        .roughness(0.5f);
+
+    chain.output("render");
+}
+
+void update(Context& ctx) {
+    // Animate camera orbit
+    auto& camera = ctx.chain().get<CameraOperator>("camera");
+    camera.azimuth(ctx.time() * 0.3f);
+}
+
+VIVID_CHAIN(setup, update)
+```
 
 ## UI & Visualization
 
@@ -163,11 +288,33 @@ vivid/
 │   ├── imgui/                # Chain visualizer (ImGui/ImNodes)
 │   └── shaders/              # Blit and text shaders
 ├── addons/                   # Optional feature packages
+│   ├── vivid-io/             # Image loading utilities (shared by other addons)
 │   ├── vivid-effects-2d/     # 2D texture operators (always linked)
 │   ├── vivid-video/          # Video playback (HAP, H.264, etc.)
-│   └── vivid-render3d/       # 3D rendering (CSG, Manifold)
+│   └── vivid-render3d/       # 3D rendering (PBR, CSG, IBL)
 ├── examples/                 # Demo projects
 └── assets/                   # Shared resources
+```
+
+## Examples
+
+| Example | Description |
+|---------|-------------|
+| `hello-noise` | Minimal starter - animated noise |
+| `chain-demo` | Multi-operator chain with image distortion |
+| `feedback` | Recursive feedback effects |
+| `video-demo` | Video playback with codec switching |
+| `webcam-retro` | Live webcam with CRT/dither effects |
+| `particles` | 2D particle system with physics |
+| `geometry-showcase` | All 3D primitives and CSG operations |
+| `pbr-demo` | PBR rendering with metallic sphere |
+| `textured-pbr-demo` | PBR materials with texture maps and IBL |
+| `retro-crt` | Full retro post-processing pipeline |
+| `canvas-demo` | Procedural 2D drawing |
+
+Run any example:
+```bash
+./build/bin/vivid examples/geometry-showcase
 ```
 
 ## Addon System

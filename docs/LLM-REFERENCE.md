@@ -147,6 +147,32 @@ void update(Context& ctx) {
 - `textCentered(str, x, y, color)` - Centered text
 - `measureText(str)` - Returns glm::vec2 size
 
+### Media (vivid-video)
+
+```cpp
+#include <vivid/video/video.h>
+using namespace vivid::video;
+```
+
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `VideoPlayer` | Video playback | `.file(path)` `.loop(true)` `.play()` `.pause()` `.seek(time)` `.speed(1.0)` |
+| `Webcam` | Camera capture | `.resolution(1280, 720)` `.frameRate(30)` |
+
+**VideoPlayer usage:**
+```cpp
+auto& video = chain.add<VideoPlayer>("video")
+    .file("assets/videos/clip.mov")
+    .loop(true);
+
+// In update() - control playback
+video.isPlaying() ? video.pause() : video.play();
+video.seek(5.0f);  // Jump to 5 seconds
+float t = video.currentTime();
+```
+
+**Supported codecs:** HAP (best performance), H.264, ProRes, MPEG-2
+
 ### 3D Rendering (vivid-render3d)
 
 ```cpp
@@ -154,92 +180,118 @@ void update(Context& ctx) {
 using namespace vivid::render3d;
 ```
 
-| Class | Description | Key Methods |
-|-------|-------------|-------------|
-| `MeshBuilder` | Procedural geometry | `.box()` `.sphere()` `.cylinder()` `.cone()` `.torus()` `.plane()` |
-| `Mesh` | GPU mesh data | `.upload(ctx)` `.release()` `.valid()` |
-| `Camera3D` | Perspective camera | `.lookAt()` `.orbit()` `.fov()` `.near()` `.far()` |
-| `Scene` | Multiple objects | `.add(mesh)` `.add(mesh, transform)` `.add(mesh, transform, color)` |
-| `Render3D` | 3D renderer | `.scene()` `.camera()` `.shadingMode()` `.lightDirection()` |
+All 3D components are operators that appear in the chain visualizer.
 
-**MeshBuilder primitives:**
-```cpp
-auto cube = MeshBuilder::box(1.0f, 1.0f, 1.0f);
-auto sphere = MeshBuilder::sphere(0.5f, 24);        // radius, segments
-auto cylinder = MeshBuilder::cylinder(0.5f, 2.0f, 16);  // radius, height, segments
-auto cone = MeshBuilder::cone(0.5f, 2.0f, 16);
-auto torus = MeshBuilder::torus(1.0f, 0.3f, 24, 12);  // outer, inner, segs, rings
-auto plane = MeshBuilder::plane(10.0f, 10.0f, 4, 4);   // w, h, subdivX, subdivY
-```
+**Primitive Operators:**
 
-**MeshBuilder modifiers:**
-```cpp
-builder.transform(glm::mat4)     // Apply matrix
-builder.translate(glm::vec3)     // Move vertices
-builder.scale(float or vec3)     // Scale vertices
-builder.rotate(angle, axis)      // Rotate (radians)
-builder.computeNormals()         // Smooth normals
-builder.computeFlatNormals()     // Faceted look
-builder.mirror(Axis::X)          // Mirror + merge
-builder.invert()                 // Flip normals
-```
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `Box` | Cube/box | `.size(w, h, d)` `.flatShading(true)` |
+| `Sphere` | UV sphere | `.radius(1.0)` `.segments(32)` `.computeTangents()` |
+| `Cylinder` | Cylinder | `.radius(0.5)` `.height(2.0)` `.segments(24)` |
+| `Cone` | Cone | `.radius(0.5)` `.height(2.0)` `.segments(24)` |
+| `Torus` | Donut | `.outerRadius(1.0)` `.innerRadius(0.3)` `.segments(32)` `.rings(16)` |
+| `Plane` | Flat plane | `.size(10, 10)` `.subdivisions(4, 4)` |
 
 **CSG Boolean Operations:**
-```cpp
-auto cube = MeshBuilder::box(1.5f, 1.5f, 1.5f);
-auto sphere = MeshBuilder::sphere(1.0f, 24);
-cube.subtract(sphere);           // Carve sphere from cube
-cube.add(otherMesh);             // Union
-cube.intersect(otherMesh);       // Intersection
-cube.computeFlatNormals();       // Recompute normals after CSG
-Mesh mesh = cube.build();
-mesh.upload(ctx);
-```
 
-**Scene setup:**
-```cpp
-Scene scene;
-scene.add(mesh1);  // Identity transform, white
-scene.add(mesh2, glm::translate(glm::mat4(1), glm::vec3(2, 0, 0)));
-scene.add(mesh3, transform, glm::vec4(1, 0, 0, 1));  // Red color
-```
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `Boolean` | CSG operations | `.inputA(&mesh1)` `.inputB(&mesh2)` `.operation(BooleanOp::Subtract)` |
 
-**Render3D usage:**
+Operations: `BooleanOp::Union`, `BooleanOp::Subtract`, `BooleanOp::Intersect`
+
+**Scene & Rendering:**
+
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `SceneComposer` | Compose meshes | `.add<Box>(name, transform, color)` `.add(&mesh, transform, color)` |
+| `CameraOperator` | Camera | `.orbitCenter(x,y,z)` `.distance(10)` `.azimuth(0)` `.elevation(0.3)` `.fov(50)` |
+| `DirectionalLight` | Sun light | `.direction(x,y,z)` `.color(r,g,b)` `.intensity(1.5)` |
+| `Render3D` | Renderer | `.input(&scene)` `.cameraInput(&cam)` `.lightInput(&light)` `.shadingMode()` |
+
+**Complete 3D example:**
 ```cpp
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    Camera3D camera;
-    camera.lookAt(glm::vec3(5, 3, 5), glm::vec3(0, 0, 0))
-          .fov(45.0f)
-          .nearPlane(0.1f)
-          .farPlane(100.0f);
+    // Create primitives
+    auto& box = chain.add<Box>("box").size(1.2f);
+    auto& sphere = chain.add<Sphere>("sphere").radius(0.8f).segments(24);
 
-    auto& renderer = chain.add<Render3D>("render3d");
-    renderer.scene(scene)
-            .camera(camera)
-            .shadingMode(ShadingMode::Flat)
-            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
-            .lightColor(glm::vec3(1, 1, 1))
-            .ambient(0.15f)
-            .clearColor(0.1f, 0.1f, 0.15f)
-            .resolution(1280, 720);
+    // CSG: hollow cube
+    auto& csg = chain.add<Boolean>("csg")
+        .inputA(&box)
+        .inputB(&sphere)
+        .operation(BooleanOp::Subtract);
 
-    chain.output("render3d");
+    // Scene composition
+    auto& scene = SceneComposer::create(chain, "scene");
+    scene.add(&csg, glm::mat4(1.0f), glm::vec4(0.4f, 0.8f, 1.0f, 1.0f));
+
+    // Camera
+    auto& camera = chain.add<CameraOperator>("camera")
+        .orbitCenter(0, 0, 0)
+        .distance(5.0f)
+        .fov(50.0f);
+
+    // Lighting
+    auto& sun = chain.add<DirectionalLight>("sun")
+        .direction(1, 2, 1)
+        .intensity(1.5f);
+
+    // Render
+    auto& render = chain.add<Render3D>("render")
+        .input(&scene)
+        .cameraInput(&camera)
+        .lightInput(&sun)
+        .shadingMode(ShadingMode::PBR)
+        .metallic(0.1f)
+        .roughness(0.5f)
+        .clearColor(0.08f, 0.08f, 0.12f);
+
+    chain.output("render");
 }
 
 void update(Context& ctx) {
     // Animate camera
-    camera.orbit(5.0f, ctx.time() * 0.3f, 0.4f);
-    ctx.chain().get<Render3D>("render3d").camera(camera);
+    auto& camera = ctx.chain().get<CameraOperator>("camera");
+    camera.azimuth(ctx.time() * 0.3f);
 }
 ```
 
 **Shading modes:**
 ```cpp
+ShadingMode::PBR      // Physically-based rendering (default)
+ShadingMode::Flat     // Per-fragment flat shading
+ShadingMode::Gouraud  // Per-vertex shading (PS1-style)
 ShadingMode::Unlit    // No lighting, color only
-ShadingMode::Flat     // Per-fragment lighting (faceted)
-ShadingMode::Gouraud  // Per-vertex lighting (PS1-style smooth)
+```
+
+**PBR Materials (textured):**
+```cpp
+auto& material = chain.add<TexturedMaterial>("mat")
+    .baseColor("textures/albedo.png")
+    .normal("textures/normal.png")
+    .metallic("textures/metallic.png")
+    .roughness("textures/roughness.png")
+    .ao("textures/ao.png");
+
+// Assign to scene entry
+scene.entries().back().material = &material;
+```
+
+**IBL Environment (HDR lighting):**
+```cpp
+static IBLEnvironment iblEnv;
+
+void setup(Context& ctx) {
+    iblEnv.init(ctx);
+    iblEnv.loadHDR(ctx, "assets/hdris/environment.hdr");
+
+    // Render3D automatically uses IBL when available
+    render.iblEnvironment(&iblEnv);
+}
 ```
 
 ## Enum Types
