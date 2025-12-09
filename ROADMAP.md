@@ -1810,7 +1810,7 @@ ctx.drawCircles(circles, output, clearColor);
 - [x] Flat shading shows faceted surfaces
 - [x] Smooth shading with proper normals (cylinder caps stay flat, sides smooth)
 - [x] Wireframe renders correctly
-- [ ] Toon shading produces clean bands
+- [x] Toon shading produces clean bands (toonLevels API)
 - [ ] examples/3d-instancing runs on all platforms
 - [ ] examples/pbr-spheres runs on all platforms
 - [ ] examples/procedural-mesh runs on all platforms

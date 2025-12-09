@@ -24,10 +24,12 @@ namespace vivid::render3d {
 
 /// Shading mode for 3D rendering
 enum class ShadingMode {
-    Unlit,    ///< No lighting, just color/texture
-    Flat,     ///< Per-fragment lighting (faceted look)
-    Gouraud,  ///< Per-vertex lighting (smooth, PS1-style)
-    PBR       ///< Physically-based rendering with Cook-Torrance BRDF
+    Unlit,     ///< No lighting, just color/texture
+    Flat,      ///< Per-fragment lighting (faceted look)
+    Gouraud,   ///< Per-vertex lighting (smooth, PS1-style)
+    VertexLit, ///< Simple per-vertex N·L diffuse with vertex colors
+    Toon,      ///< Cel-shading with quantized lighting bands
+    PBR        ///< Physically-based rendering with Cook-Torrance BRDF
 };
 
 /// 3D renderer operator - extends TextureOperator for consistent architecture
@@ -82,6 +84,10 @@ public:
     /// Set material with texture maps for PBR rendering
     /// When set, textures override scalar metallic/roughness values
     Render3D& material(TexturedMaterial* mat);
+
+    /// Set number of toon shading bands (2-8, default 4)
+    /// Only applies when shadingMode is Toon
+    Render3D& toonLevels(int levels);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -186,6 +192,7 @@ private:
     glm::vec3 m_lightDirection = glm::normalize(glm::vec3(1, 1, 1));
     glm::vec3 m_lightColor = glm::vec3(1, 1, 1);
     float m_ambient = 0.1f;
+    int m_toonLevels = 4;  // Toon shading bands (2-8)
 
     // PBR parameters
     float m_metallic = 0.0f;

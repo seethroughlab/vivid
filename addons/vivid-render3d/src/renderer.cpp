@@ -44,9 +44,9 @@ struct Uniforms {
     _pad0: f32,
     baseColor: vec4f,
     ambient: f32,
-    shadingMode: u32,
+    shadingMode: u32,  // 0=Unlit, 1=Flat, 2=Gouraud, 3=VertexLit, 4=Toon
     lightCount: u32,
-    _pad1: f32,
+    toonLevels: u32,   // Number of toon shading bands (2-8)
     lights: array<Light, 4>,
 };
 
@@ -121,8 +121,12 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.uv = in.uv;
     out.color = in.color;
 
-    // Gouraud (per-vertex) lighting
+    // Per-vertex lighting modes
     if (uniforms.shadingMode == 2u) {
+        // Gouraud: per-vertex lighting with ambient
+        out.lighting = calculateSimpleLighting(out.worldPos, out.worldNormal);
+    } else if (uniforms.shadingMode == 3u) {
+        // VertexLit: simple per-vertex N·L diffuse (no ambient in vertex shader)
         out.lighting = calculateSimpleLighting(out.worldPos, out.worldNormal);
     } else {
         out.lighting = vec3f(1.0);
@@ -142,8 +146,22 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         let N = normalize(in.worldNormal);
         let lighting = calculateSimpleLighting(in.worldPos, N);
         return vec4f(finalColor.rgb * (vec3f(uniforms.ambient) + lighting), finalColor.a);
+    } else if (uniforms.shadingMode == 2u) {
+        // Gouraud (per-vertex) lighting - use pre-computed lighting with ambient
+        return vec4f(finalColor.rgb * (vec3f(uniforms.ambient) + in.lighting), finalColor.a);
+    } else if (uniforms.shadingMode == 3u) {
+        // VertexLit: simple per-vertex diffuse without ambient term
+        return vec4f(finalColor.rgb * in.lighting, finalColor.a);
+    } else if (uniforms.shadingMode == 4u) {
+        // Toon: quantized cel-shading
+        let N = normalize(in.worldNormal);
+        let lighting = calculateSimpleLighting(in.worldPos, N);
+        let luminance = dot(lighting, vec3f(0.299, 0.587, 0.114));
+        let levels = f32(uniforms.toonLevels);
+        let quantized = floor(luminance * levels + 0.5) / levels;
+        return vec4f(finalColor.rgb * (uniforms.ambient + quantized), finalColor.a);
     } else {
-        // Gouraud (per-vertex) lighting - use pre-computed lighting
+        // Default fallback (shouldn't reach here for non-PBR modes)
         return vec4f(finalColor.rgb * (vec3f(uniforms.ambient) + in.lighting), finalColor.a);
     }
 }
@@ -927,7 +945,7 @@ struct Uniforms {
     float ambient;              // f32: 4 bytes, offset 160
     uint32_t shadingMode;       // u32: 4 bytes, offset 164
     uint32_t lightCount;        // u32: 4 bytes, offset 168
-    float _pad1;                // 4 bytes, offset 172
+    uint32_t toonLevels;        // u32: 4 bytes, offset 172
     GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 176
 };                               // Total: 432 bytes
 
@@ -1060,6 +1078,11 @@ Render3D& Render3D::addLight(LightOperator* lightOp) {
 
 Render3D& Render3D::shadingMode(ShadingMode mode) {
     m_shadingMode = mode;
+    return *this;
+}
+
+Render3D& Render3D::toonLevels(int levels) {
+    m_toonLevels = glm::clamp(levels, 2, 8);
     return *this;
 }
 
@@ -1980,6 +2003,7 @@ void Render3D::process(Context& ctx) {
             uniforms.baseColor[3] = objColor.a;
             uniforms.shadingMode = static_cast<uint32_t>(m_shadingMode);
             uniforms.lightCount = lightCount;
+            uniforms.toonLevels = static_cast<uint32_t>(m_toonLevels);
             memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
 
             size_t offset = i * m_uniformAlignment;

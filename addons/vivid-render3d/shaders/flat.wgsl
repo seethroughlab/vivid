@@ -1,5 +1,5 @@
-// Vivid Render3D - Flat/Gouraud Shader
-// Supports Unlit, Flat, and Gouraud shading modes
+// Vivid Render3D - Non-PBR Shader
+// Supports Unlit, Flat, Gouraud, VertexLit, and Toon shading modes
 
 struct Uniforms {
     mvp: mat4x4f,
@@ -9,8 +9,9 @@ struct Uniforms {
     lightColor: vec3f,
     ambient: f32,
     baseColor: vec4f,
-    shadingMode: u32,  // 0=Unlit, 1=Flat, 2=Gouraud
-    _pad2: vec3f,
+    shadingMode: u32,  // 0=Unlit, 1=Flat, 2=Gouraud, 3=VertexLit, 4=Toon
+    toonLevels: u32,   // Number of toon shading bands (2-8)
+    _pad2: vec2f,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -39,10 +40,15 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     out.uv = in.uv;
     out.color = in.color;
 
-    // Gouraud: compute lighting per-vertex
+    // Per-vertex lighting modes
     if (uniforms.shadingMode == 2u) {
+        // Gouraud: per-vertex lighting
         let NdotL = max(dot(out.worldNormal, uniforms.lightDir), 0.0);
         out.lighting = uniforms.ambient + NdotL;
+    } else if (uniforms.shadingMode == 3u) {
+        // VertexLit: simple N·L diffuse
+        let NdotL = max(dot(out.worldNormal, uniforms.lightDir), 0.0);
+        out.lighting = NdotL;
     } else {
         out.lighting = 1.0;
     }
@@ -61,8 +67,21 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         let NdotL = max(dot(normalize(in.worldNormal), uniforms.lightDir), 0.0);
         let lighting = uniforms.ambient + NdotL * uniforms.lightColor;
         return vec4f(finalColor.rgb * lighting, finalColor.a);
+    } else if (uniforms.shadingMode == 2u) {
+        // Gouraud: use pre-computed vertex lighting with ambient
+        return vec4f(finalColor.rgb * in.lighting * uniforms.lightColor, finalColor.a);
+    } else if (uniforms.shadingMode == 3u) {
+        // VertexLit: simple per-vertex diffuse
+        return vec4f(finalColor.rgb * in.lighting * uniforms.lightColor, finalColor.a);
+    } else if (uniforms.shadingMode == 4u) {
+        // Toon: quantized cel-shading
+        let NdotL = max(dot(normalize(in.worldNormal), uniforms.lightDir), 0.0);
+        let levels = f32(uniforms.toonLevels);
+        let quantized = floor(NdotL * levels + 0.5) / levels;
+        let lighting = uniforms.ambient + quantized * uniforms.lightColor;
+        return vec4f(finalColor.rgb * lighting, finalColor.a);
     } else {
-        // Gouraud: use pre-computed vertex lighting
+        // Default fallback
         return vec4f(finalColor.rgb * in.lighting * uniforms.lightColor, finalColor.a);
     }
 }
