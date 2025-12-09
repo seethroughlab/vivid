@@ -122,10 +122,28 @@ public:
     std::string name() const override { return "Noise"; }
 
     std::vector<ParamDecl> params() override {
-        return {
-            m_scale.decl(), m_speed.decl(), m_octaves.decl(),
-            m_lacunarity.decl(), m_persistence.decl(), m_offset.decl()
-        };
+        return { m_scale.decl(), m_speed.decl(), m_octaves.decl(),
+                 m_lacunarity.decl(), m_persistence.decl(), m_offset.decl() };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "scale") { out[0] = m_scale; return true; }
+        if (name == "speed") { out[0] = m_speed; return true; }
+        if (name == "octaves") { out[0] = m_octaves; return true; }
+        if (name == "lacunarity") { out[0] = m_lacunarity; return true; }
+        if (name == "persistence") { out[0] = m_persistence; return true; }
+        if (name == "offset") { out[0] = m_offset.x(); out[1] = m_offset.y(); return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "scale") { m_scale = value[0]; return true; }
+        if (name == "speed") { m_speed = value[0]; return true; }
+        if (name == "octaves") { m_octaves = static_cast<int>(value[0]); return true; }
+        if (name == "lacunarity") { m_lacunarity = value[0]; return true; }
+        if (name == "persistence") { m_persistence = value[0]; return true; }
+        if (name == "offset") { m_offset.set(value[0], value[1]); return true; }
+        return false;
     }
 
     /// @}

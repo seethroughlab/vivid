@@ -139,7 +139,7 @@ void Switch::process(Context& ctx) {
 
     // Clamp index to valid range
     int maxIndex = static_cast<int>(inputCount()) - 1;
-    int idx = std::clamp(m_index, 0, std::max(0, maxIndex));
+    int idx = std::clamp(m_index.get(), 0, std::max(0, maxIndex));
 
     WGPUTextureView inView = inputView(idx);
     if (!inView) return;

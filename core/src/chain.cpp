@@ -205,16 +205,19 @@ void Chain::process(Context& ctx) {
         return;
     }
 
-    // Process all operators in dependency order
+    // Process all operators in dependency order (skip bypassed ones)
     for (Operator* op : executionOrder_) {
-        op->process(ctx);
+        if (!op->isBypassed()) {
+            op->process(ctx);
+        }
     }
 
     // Set output texture if specified via chain.output()
+    // Use effectiveOutputView() to respect bypass chain
     if (!outputName_.empty()) {
         Operator* output = getByName(outputName_);
         if (output) {
-            WGPUTextureView view = output->outputView();
+            WGPUTextureView view = output->effectiveOutputView();
             if (view) {
                 ctx.setOutputTexture(view);
             }

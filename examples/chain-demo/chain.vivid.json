@@ -1,0 +1,8 @@
+{
+  "displace.strength": [0.763, 0, 0, 0],
+  "displace.strengthX": [0, 0, 0, 0],
+  "displace.strengthY": [0, 0, 0, 0],
+  "noise.lacunarity": [1.25, 0, 0, 0],
+  "noise.scale": [11.294, 0, 0, 0],
+  "noise.speed": [1.55, 0, 0, 0]
+}

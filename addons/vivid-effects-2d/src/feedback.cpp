@@ -278,8 +278,8 @@ void Feedback::process(Context& ctx) {
     uniforms.resolution[1] = static_cast<float>(m_height);
     uniforms.decay = m_decay;
     uniforms.mix_amount = m_firstFrame ? 1.0f : m_mix;  // First frame: 100% input
-    uniforms.offsetX = m_offsetX;
-    uniforms.offsetY = m_offsetY;
+    uniforms.offsetX = m_offset.x();
+    uniforms.offsetY = m_offset.y();
     uniforms.zoom = m_zoom;
     uniforms.rotate = m_rotate;
 

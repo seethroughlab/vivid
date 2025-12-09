@@ -46,14 +46,18 @@ set(IMNODES_SOURCES
     ${imnodes_SOURCE_DIR}/imnodes.cpp
 )
 
-# Vivid core sources
-set(VIVID_CORE_SOURCES
-    src/main.cpp
+# Vivid core library sources (shared by executable and addons)
+set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
-    src/display.cpp
-    src/hot_reload.cpp
     src/chain.cpp
     src/operator.cpp
+)
+
+# Vivid runtime sources (executable only)
+set(VIVID_CORE_SOURCES
+    src/main.cpp
+    src/display.cpp
+    src/hot_reload.cpp
     src/addon_registry.cpp
     imgui/imgui_integration.cpp
     imgui/chain_visualizer.cpp
@@ -69,6 +73,37 @@ set(VIVID_CORE_HEADERS
     include/vivid/addon_registry.h
     imgui/imgui_integration.h
     imgui/chain_visualizer.h
+)
+
+# Core library (shared between executable and addons)
+add_library(vivid-core SHARED
+    ${VIVID_CORE_LIB_SOURCES}
+)
+
+target_include_directories(vivid-core PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(vivid-core PUBLIC
+    webgpu
+    glm::glm
+    glfw
+)
+
+# Platform-specific settings for vivid-core
+if(APPLE)
+    set_target_properties(vivid-core PROPERTIES
+        INSTALL_RPATH "@executable_path"
+        BUILD_WITH_INSTALL_RPATH TRUE
+    )
+endif()
+
+# Copy vivid-core library next to vivid executable
+add_custom_command(TARGET vivid-core POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:vivid-core>
+        ${CMAKE_BINARY_DIR}/bin/
+    COMMENT "Copying vivid-core library"
 )
 
 # Main runtime executable
@@ -96,12 +131,10 @@ target_compile_definitions(vivid PRIVATE
     IMGUI_IMPL_WEBGPU_BACKEND_WGPU
 )
 
-# Link against WebGPU, GLFW, GLM, GLFW-WebGPU integration, and render3d for geometry previews
+# Link against core library, GLFW-WebGPU integration, and render3d for geometry previews
 target_link_libraries(vivid
     PRIVATE
-        glfw
-        glm::glm
-        webgpu
+        vivid-core
         glfw3webgpu
         vivid-render3d
 )

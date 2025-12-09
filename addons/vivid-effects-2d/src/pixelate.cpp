@@ -149,8 +149,8 @@ void Pixelate::process(Context& ctx) {
     if (!inView) return;
 
     PixelateUniforms uniforms = {};
-    uniforms.sizeX = m_sizeX;
-    uniforms.sizeY = m_sizeY;
+    uniforms.sizeX = m_size.x();
+    uniforms.sizeY = m_size.y();
     uniforms.texWidth = static_cast<float>(m_width);
     uniforms.texHeight = static_cast<float>(m_height);
 

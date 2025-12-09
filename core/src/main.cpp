@@ -313,6 +313,7 @@ int main(int argc, char** argv) {
         if (fs::exists(chainPath)) {
             std::cout << "Loading chain: " << chainPath << std::endl;
             hotReload.setSourceFile(chainPath);
+            ctx.setChainPath(chainPath.string());
         } else {
             ctx.setError("Chain file not found: " + chainPath.string());
         }
@@ -512,40 +513,42 @@ int main(int argc, char** argv) {
         // Update display with current screen size
         display.setScreenSize(width, height);
 
-        // If chain set an output texture, blit it to the screen
+        // Build frame input for ImGui (needed for chain visualizer even if UI hidden)
+        float xscale, yscale;
+        glfwGetWindowContentScale(window, &xscale, &yscale);
+
+        vivid::imgui::FrameInput frameInput;
+        frameInput.width = ctx.width();
+        frameInput.height = ctx.height();
+        frameInput.contentScale = xscale;
+        frameInput.dt = static_cast<float>(ctx.dt());
+        frameInput.mousePos = ctx.mouse();
+        frameInput.mouseDown[0] = ctx.mouseButton(0).held;
+        frameInput.mouseDown[1] = ctx.mouseButton(1).held;
+        frameInput.mouseDown[2] = ctx.mouseButton(2).held;
+        frameInput.scroll = ctx.scroll();
+        frameInput.keyCtrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                             glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+        frameInput.keyShift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                              glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+        frameInput.keyAlt = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
+                            glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+        frameInput.keySuper = glfwGetKey(window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
+                              glfwGetKey(window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
+
+        // Run chain visualizer BEFORE blit so solo mode can override output texture
+        if (vivid::imgui::isVisible()) {
+            vivid::imgui::beginFrame(frameInput);
+            chainVisualizer.render(frameInput, ctx);
+        }
+
+        // Blit output texture (may have been modified by solo mode)
         if (ctx.outputTexture() && display.isValid()) {
             display.blit(pass, ctx.outputTexture());
         }
 
-        // Render chain visualizer if visible
+        // Render ImGui on top of the blit
         if (vivid::imgui::isVisible()) {
-            // Get content scale for Retina displays
-            float xscale, yscale;
-            glfwGetWindowContentScale(window, &xscale, &yscale);
-
-            // Build frame input for ImGui
-            vivid::imgui::FrameInput frameInput;
-            frameInput.width = ctx.width();
-            frameInput.height = ctx.height();
-            frameInput.contentScale = xscale;  // Use X scale (same as Y on most displays)
-            frameInput.dt = static_cast<float>(ctx.dt());
-            frameInput.mousePos = ctx.mouse();
-            frameInput.mouseDown[0] = ctx.mouseButton(0).held;
-            frameInput.mouseDown[1] = ctx.mouseButton(1).held;
-            frameInput.mouseDown[2] = ctx.mouseButton(2).held;
-            frameInput.scroll = ctx.scroll();
-            // Modifier keys from GLFW
-            frameInput.keyCtrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-                                 glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
-            frameInput.keyShift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
-                                  glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-            frameInput.keyAlt = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
-                                glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
-            frameInput.keySuper = glfwGetKey(window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
-                                  glfwGetKey(window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
-
-            vivid::imgui::beginFrame(frameInput);
-            chainVisualizer.render(frameInput, ctx);
             vivid::imgui::render(pass);
         }
 

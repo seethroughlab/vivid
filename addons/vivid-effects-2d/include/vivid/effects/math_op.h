@@ -1,58 +1,200 @@
 #pragma once
 
-// Vivid Effects 2D - Math Operator
-// Mathematical operations on values
+/**
+ * @file math_op.h
+ * @brief Mathematical operations operator
+ *
+ * Performs mathematical operations on scalar values.
+ */
 
 #include <vivid/operator.h>
+#include <vivid/param.h>
 #include <algorithm>
 #include <cmath>
 
 namespace vivid::effects {
 
+/**
+ * @brief Math operation types
+ */
 enum class MathOperation {
-    Add,
-    Subtract,
-    Multiply,
-    Divide,
-    Clamp,
-    Remap,
-    Abs,
-    Sin,
-    Cos,
-    Pow,
-    Sqrt,
-    Floor,
-    Ceil,
-    Fract,
-    Min,
-    Max
+    Add,        ///< A + B
+    Subtract,   ///< A - B
+    Multiply,   ///< A * B
+    Divide,     ///< A / B (safe, returns 0 for B=0)
+    Clamp,      ///< Clamp A to [minVal, maxVal]
+    Remap,      ///< Remap A from [inMin,inMax] to [outMin,outMax]
+    Abs,        ///< |A|
+    Sin,        ///< sin(A)
+    Cos,        ///< cos(A)
+    Pow,        ///< A^B
+    Sqrt,       ///< sqrt(A) (safe, returns 0 for A<0)
+    Floor,      ///< floor(A)
+    Ceil,       ///< ceil(A)
+    Fract,      ///< A - floor(A)
+    Min,        ///< min(A, B)
+    Max         ///< max(A, B)
 };
 
+/**
+ * @brief Mathematical operations on values
+ *
+ * Performs arithmetic, trigonometric, and utility math operations
+ * on scalar values. Useful for transforming and combining values
+ * in effect chains.
+ *
+ * @par Parameters
+ * | Name | Type | Range | Default | Description |
+ * |------|------|-------|---------|-------------|
+ * | inputA | float | -1000 to 1000 | 0.0 | First input value |
+ * | inputB | float | -1000 to 1000 | 0.0 | Second input value |
+ * | minVal | float | -1000 to 1000 | 0.0 | Minimum for Clamp |
+ * | maxVal | float | -1000 to 1000 | 1.0 | Maximum for Clamp |
+ * | inMin | float | -1000 to 1000 | 0.0 | Input min for Remap |
+ * | inMax | float | -1000 to 1000 | 1.0 | Input max for Remap |
+ * | outMin | float | -1000 to 1000 | 0.0 | Output min for Remap |
+ * | outMax | float | -1000 to 1000 | 1.0 | Output max for Remap |
+ *
+ * @par Example
+ * @code
+ * // Remap LFO from [-1,1] to [0,1]
+ * chain.add<Math>("remap")
+ *     .operation(MathOperation::Remap)
+ *     .inputA(lfo.outputValue())
+ *     .inMin(-1.0f).inMax(1.0f)
+ *     .outMin(0.0f).outMax(1.0f);
+ * @endcode
+ *
+ * @par Inputs
+ * None (value-based)
+ *
+ * @par Output
+ * - Float result via value()
+ * - Also available via outputValue()
+ */
 class Math : public vivid::Operator {
 public:
     Math() = default;
     ~Math() override = default;
 
-    // Fluent API
+    // -------------------------------------------------------------------------
+    /// @name Fluent API
+    /// @{
+
+    /**
+     * @brief Set first input value
+     * @param v Input A value
+     * @return Reference for chaining
+     */
     Math& inputA(float v) { m_inputA = v; return *this; }
+
+    /**
+     * @brief Set second input value
+     * @param v Input B value
+     * @return Reference for chaining
+     */
     Math& inputB(float v) { m_inputB = v; return *this; }
+
+    /**
+     * @brief Set math operation
+     * @param op Operation type
+     * @return Reference for chaining
+     */
     Math& operation(MathOperation op) { m_operation = op; return *this; }
 
-    // For clamp
+    /**
+     * @brief Set minimum for Clamp operation
+     * @param v Minimum value
+     * @return Reference for chaining
+     */
     Math& minVal(float v) { m_minVal = v; return *this; }
+
+    /**
+     * @brief Set maximum for Clamp operation
+     * @param v Maximum value
+     * @return Reference for chaining
+     */
     Math& maxVal(float v) { m_maxVal = v; return *this; }
 
-    // For remap
+    /**
+     * @brief Set input minimum for Remap
+     * @param v Input range minimum
+     * @return Reference for chaining
+     */
     Math& inMin(float v) { m_inMin = v; return *this; }
+
+    /**
+     * @brief Set input maximum for Remap
+     * @param v Input range maximum
+     * @return Reference for chaining
+     */
     Math& inMax(float v) { m_inMax = v; return *this; }
+
+    /**
+     * @brief Set output minimum for Remap
+     * @param v Output range minimum
+     * @return Reference for chaining
+     */
     Math& outMin(float v) { m_outMin = v; return *this; }
+
+    /**
+     * @brief Set output maximum for Remap
+     * @param v Output range maximum
+     * @return Reference for chaining
+     */
     Math& outMax(float v) { m_outMax = v; return *this; }
 
-    // Get result
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Result Access
+    /// @{
+
+    /**
+     * @brief Get operation result
+     * @return Computed value
+     */
     float value() const { return m_result; }
+
+    /**
+     * @brief Get output value for parameter linking
+     * @return Computed value
+     */
     float outputValue() const override { return m_result; }
 
-    // Operator interface
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Operator Interface
+    /// @{
+
+    std::vector<ParamDecl> params() override {
+        return { m_inputA.decl(), m_inputB.decl(), m_minVal.decl(), m_maxVal.decl(),
+                 m_inMin.decl(), m_inMax.decl(), m_outMin.decl(), m_outMax.decl() };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "inputA") { out[0] = m_inputA; return true; }
+        if (name == "inputB") { out[0] = m_inputB; return true; }
+        if (name == "minVal") { out[0] = m_minVal; return true; }
+        if (name == "maxVal") { out[0] = m_maxVal; return true; }
+        if (name == "inMin") { out[0] = m_inMin; return true; }
+        if (name == "inMax") { out[0] = m_inMax; return true; }
+        if (name == "outMin") { out[0] = m_outMin; return true; }
+        if (name == "outMax") { out[0] = m_outMax; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "inputA") { m_inputA = value[0]; return true; }
+        if (name == "inputB") { m_inputB = value[0]; return true; }
+        if (name == "minVal") { m_minVal = value[0]; return true; }
+        if (name == "maxVal") { m_maxVal = value[0]; return true; }
+        if (name == "inMin") { m_inMin = value[0]; return true; }
+        if (name == "inMax") { m_inMax = value[0]; return true; }
+        if (name == "outMin") { m_outMin = value[0]; return true; }
+        if (name == "outMax") { m_outMax = value[0]; return true; }
+        return false;
+    }
+
     void process(Context& ctx) override {
         switch (m_operation) {
             case MathOperation::Add:
@@ -111,16 +253,18 @@ public:
     std::string name() const override { return "Math"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
+    /// @}
+
 private:
     MathOperation m_operation = MathOperation::Add;
-    float m_inputA = 0.0f;
-    float m_inputB = 0.0f;
-    float m_minVal = 0.0f;
-    float m_maxVal = 1.0f;
-    float m_inMin = 0.0f;
-    float m_inMax = 1.0f;
-    float m_outMin = 0.0f;
-    float m_outMax = 1.0f;
+    Param<float> m_inputA{"inputA", 0.0f, -1000.0f, 1000.0f};
+    Param<float> m_inputB{"inputB", 0.0f, -1000.0f, 1000.0f};
+    Param<float> m_minVal{"minVal", 0.0f, -1000.0f, 1000.0f};
+    Param<float> m_maxVal{"maxVal", 1.0f, -1000.0f, 1000.0f};
+    Param<float> m_inMin{"inMin", 0.0f, -1000.0f, 1000.0f};
+    Param<float> m_inMax{"inMax", 1.0f, -1000.0f, 1000.0f};
+    Param<float> m_outMin{"outMin", 0.0f, -1000.0f, 1000.0f};
+    Param<float> m_outMax{"outMax", 1.0f, -1000.0f, 1000.0f};
     float m_result = 0.0f;
 };
 

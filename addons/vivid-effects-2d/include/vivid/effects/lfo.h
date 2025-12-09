@@ -1,53 +1,172 @@
 #pragma once
 
-// Vivid Effects 2D - LFO Operator
-// Low-frequency oscillator for animation (generates grayscale texture)
+/**
+ * @file lfo.h
+ * @brief Low-frequency oscillator operator
+ *
+ * Generates animated oscillating values for parameter modulation.
+ */
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/param.h>
 
 namespace vivid::effects {
 
+/**
+ * @brief Waveform types for LFO
+ */
 enum class LFOWaveform {
-    Sine,
-    Triangle,
-    Saw,
-    Square,
-    Noise
+    Sine,       ///< Smooth sinusoidal wave
+    Triangle,   ///< Linear ramp up and down
+    Saw,        ///< Linear ramp with sharp reset
+    Square,     ///< Binary on/off oscillation
+    Noise       ///< Random values (sample-and-hold)
 };
 
+/**
+ * @brief Low-frequency oscillator
+ *
+ * Generates oscillating values over time for animating parameters.
+ * Outputs both a grayscale texture and a scalar value for modulation.
+ *
+ * @par Parameters
+ * | Name | Type | Range | Default | Description |
+ * |------|------|-------|---------|-------------|
+ * | frequency | float | 0.01-20 | 1.0 | Oscillation frequency in Hz |
+ * | amplitude | float | 0-2 | 1.0 | Output amplitude |
+ * | offset | float | -1 to 1 | 0.0 | DC offset |
+ * | phase | float | 0-1 | 0.0 | Phase offset (0-1 = 0-360°) |
+ * | pulseWidth | float | 0-1 | 0.5 | Duty cycle for square wave |
+ *
+ * @par Example
+ * @code
+ * chain.add<LFO>("lfo")
+ *     .waveform(LFOWaveform::Sine)
+ *     .frequency(0.5f)
+ *     .amplitude(0.5f)
+ *     .offset(0.5f);  // Outputs 0-1 range
+ * @endcode
+ *
+ * @par Inputs
+ * None (generator)
+ *
+ * @par Output
+ * - Grayscale texture (OutputKind::Value)
+ * - Use outputValue() to get scalar result
+ */
 class LFO : public TextureOperator {
 public:
     LFO() = default;
     ~LFO() override;
 
-    // Fluent API
-    LFO& waveform(LFOWaveform w) { m_waveform = w; return *this; }
-    LFO& frequency(float f) { m_frequency = f; return *this; }
-    LFO& amplitude(float a) { m_amplitude = a; return *this; }
-    LFO& offset(float o) { m_offset = o; return *this; }
-    LFO& phase(float p) { m_phase = p; return *this; }
-    LFO& pulseWidth(float pw) { m_pulseWidth = pw; return *this; }  // For square wave
+    // -------------------------------------------------------------------------
+    /// @name Fluent API
+    /// @{
 
-    // Get current value (for CPU-side use)
+    /**
+     * @brief Set waveform type
+     * @param w Waveform (Sine, Triangle, Saw, Square, Noise)
+     * @return Reference for chaining
+     */
+    LFO& waveform(LFOWaveform w) { m_waveform = w; return *this; }
+
+    /**
+     * @brief Set oscillation frequency
+     * @param f Frequency in Hz (0.01-20, default 1.0)
+     * @return Reference for chaining
+     */
+    LFO& frequency(float f) { m_frequency = f; return *this; }
+
+    /**
+     * @brief Set output amplitude
+     * @param a Amplitude (0-2, default 1.0)
+     * @return Reference for chaining
+     */
+    LFO& amplitude(float a) { m_amplitude = a; return *this; }
+
+    /**
+     * @brief Set DC offset
+     * @param o Offset (-1 to 1, default 0.0)
+     * @return Reference for chaining
+     */
+    LFO& offset(float o) { m_offset = o; return *this; }
+
+    /**
+     * @brief Set phase offset
+     * @param p Phase (0-1 = 0-360°, default 0.0)
+     * @return Reference for chaining
+     */
+    LFO& phase(float p) { m_phase = p; return *this; }
+
+    /**
+     * @brief Set pulse width (square wave)
+     * @param pw Pulse width (0-1, default 0.5)
+     * @return Reference for chaining
+     */
+    LFO& pulseWidth(float pw) { m_pulseWidth = pw; return *this; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Value Access
+    /// @{
+
+    /**
+     * @brief Get current oscillator value
+     * @return Current value (for CPU-side use)
+     */
     float value() const { return m_currentValue; }
+
+    /**
+     * @brief Get output value for parameter linking
+     * @return Current oscillator value
+     */
     float outputValue() const override { return m_currentValue; }
 
-    // Operator interface
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Operator Interface
+    /// @{
+
     void init(Context& ctx) override;
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "LFO"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
+    std::vector<ParamDecl> params() override {
+        return { m_frequency.decl(), m_amplitude.decl(), m_offset.decl(),
+                 m_phase.decl(), m_pulseWidth.decl() };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "frequency") { out[0] = m_frequency; return true; }
+        if (name == "amplitude") { out[0] = m_amplitude; return true; }
+        if (name == "offset") { out[0] = m_offset; return true; }
+        if (name == "phase") { out[0] = m_phase; return true; }
+        if (name == "pulseWidth") { out[0] = m_pulseWidth; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "frequency") { m_frequency = value[0]; return true; }
+        if (name == "amplitude") { m_amplitude = value[0]; return true; }
+        if (name == "offset") { m_offset = value[0]; return true; }
+        if (name == "phase") { m_phase = value[0]; return true; }
+        if (name == "pulseWidth") { m_pulseWidth = value[0]; return true; }
+        return false;
+    }
+
+    /// @}
+
 private:
     void createPipeline(Context& ctx);
 
     LFOWaveform m_waveform = LFOWaveform::Sine;
-    float m_frequency = 1.0f;   // Hz
-    float m_amplitude = 1.0f;
-    float m_offset = 0.0f;
-    float m_phase = 0.0f;
-    float m_pulseWidth = 0.5f;
+    Param<float> m_frequency{"frequency", 1.0f, 0.01f, 20.0f};
+    Param<float> m_amplitude{"amplitude", 1.0f, 0.0f, 2.0f};
+    Param<float> m_offset{"offset", 0.0f, -1.0f, 1.0f};
+    Param<float> m_phase{"phase", 0.0f, 0.0f, 1.0f};
+    Param<float> m_pulseWidth{"pulseWidth", 0.5f, 0.0f, 1.0f};
     float m_currentValue = 0.0f;
 
     // GPU resources

@@ -197,8 +197,8 @@ void Mirror::process(Context& ctx) {
     uniforms.mode = static_cast<int>(m_mode);
     uniforms.segments = m_segments;
     uniforms.angle = m_angle;
-    uniforms.centerX = m_centerX;
-    uniforms.centerY = m_centerY;
+    uniforms.centerX = m_center.x();
+    uniforms.centerY = m_center.y();
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

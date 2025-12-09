@@ -177,8 +177,30 @@ public:
     /**
      * @brief Get parameter declarations for UI/introspection
      * @return Vector of ParamDecl describing all parameters
+     *
+     * Override to expose parameters for external control (OSC, GUI).
      */
     virtual std::vector<ParamDecl> params() { return {}; }
+
+    /**
+     * @brief Get current parameter value
+     * @param name Parameter name
+     * @param out Array to receive value (up to 4 floats)
+     * @return True if parameter exists
+     *
+     * Override to allow reading parameter values.
+     */
+    virtual bool getParam(const std::string& name, float out[4]) { return false; }
+
+    /**
+     * @brief Set parameter value
+     * @param name Parameter name
+     * @param value Array of values (1-4 floats depending on type)
+     * @return True if parameter was set successfully
+     *
+     * Override to allow setting parameter values.
+     */
+    virtual bool setParam(const std::string& name, const float value[4]) { return false; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -190,6 +212,20 @@ public:
      * @return WebGPU texture view for visualization/chaining
      */
     virtual WGPUTextureView outputView() const { return nullptr; }
+
+    /**
+     * @brief Get effective output (follows bypass chain)
+     * @return Output view, or first input's output if bypassed
+     *
+     * Use this when you need to respect bypass state. If this operator
+     * is bypassed, returns the first input's effective output instead.
+     */
+    WGPUTextureView effectiveOutputView() const {
+        if (m_bypassed && !inputs_.empty() && inputs_[0]) {
+            return inputs_[0]->effectiveOutputView();
+        }
+        return outputView();
+    }
 
     /**
      * @brief Get the output value (for Value/ValueArray operators)
@@ -255,6 +291,26 @@ public:
     size_t inputCount() const { return inputs_.size(); }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Bypass
+    /// @{
+
+    /**
+     * @brief Set bypass state
+     * @param bypassed If true, operator passes through its first input unchanged
+     *
+     * When bypassed, process() is skipped and outputView() returns the first
+     * input's output instead. Useful for A/B testing effects.
+     */
+    void setBypassed(bool bypassed) { m_bypassed = bypassed; }
+
+    /**
+     * @brief Check if operator is bypassed
+     * @return True if bypassed
+     */
+    bool isBypassed() const { return m_bypassed; }
+
+    /// @}
 
     int sourceLine = 0; ///< Source line number (for editor integration)
 
@@ -264,6 +320,7 @@ public:
 protected:
     std::vector<Operator*> inputs_; ///< Connected input operators
     bool m_registered = false;      ///< Whether already registered for visualization
+    bool m_bypassed = false;        ///< Whether operator is bypassed (pass-through)
 };
 
 } // namespace vivid

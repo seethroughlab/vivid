@@ -174,13 +174,13 @@ void Transform::process(Context& ctx) {
 
     // Update uniforms
     TransformUniforms uniforms = {};
-    uniforms.scaleX = m_scaleX;
-    uniforms.scaleY = m_scaleY;
+    uniforms.scaleX = m_scale.x();
+    uniforms.scaleY = m_scale.y();
     uniforms.rotation = m_rotation;
-    uniforms.translateX = m_translateX;
-    uniforms.translateY = m_translateY;
-    uniforms.pivotX = m_pivotX;
-    uniforms.pivotY = m_pivotY;
+    uniforms.translateX = m_translate.x();
+    uniforms.translateY = m_translate.y();
+    uniforms.pivotX = m_pivot.x();
+    uniforms.pivotY = m_pivot.y();
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

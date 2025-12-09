@@ -1,37 +1,131 @@
 #pragma once
 
-// Vivid Effects 2D - Bloom Operator
-// Glow effect with threshold, blur, and blend
+/**
+ * @file bloom.h
+ * @brief Glow/bloom effect operator
+ *
+ * Adds a luminous glow effect to bright areas of the image using
+ * threshold extraction, blur, and additive blending.
+ */
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/param.h>
 
 namespace vivid::effects {
 
+/**
+ * @brief Glow effect with threshold, blur, and blend
+ *
+ * Extracts bright pixels above a threshold, blurs them, and blends
+ * the result back with the original image. Creates a dreamy glow
+ * effect around highlights.
+ *
+ * @par Parameters
+ * | Name | Type | Range | Default | Description |
+ * |------|------|-------|---------|-------------|
+ * | threshold | float | 0-1 | 0.8 | Brightness cutoff for bloom extraction |
+ * | intensity | float | 0-5 | 1.0 | Bloom strength multiplier |
+ * | radius | float | 1-50 | 10.0 | Blur radius in pixels |
+ * | passes | int | 1-8 | 2 | Blur iterations for smoother glow |
+ *
+ * @par Example
+ * @code
+ * chain.add<Bloom>("glow")
+ *     .input("source")
+ *     .threshold(0.7f)
+ *     .intensity(1.5f)
+ *     .radius(15.0f);
+ * @endcode
+ *
+ * @par Inputs
+ * - Input 0: Source texture
+ *
+ * @par Output
+ * Texture with bloom effect applied
+ */
 class Bloom : public TextureOperator {
 public:
     Bloom() = default;
     ~Bloom() override;
 
-    // Fluent API
-    Bloom& input(TextureOperator* op) { setInput(0, op); return *this; }
-    Bloom& threshold(float t) { m_threshold = t; return *this; }  // Brightness cutoff
-    Bloom& intensity(float i) { m_intensity = i; return *this; }  // Bloom strength
-    Bloom& radius(float r) { m_radius = r; return *this; }        // Blur radius
-    Bloom& passes(int p) { m_passes = p; return *this; }          // Blur iterations
+    // -------------------------------------------------------------------------
+    /// @name Fluent API
+    /// @{
 
-    // Operator interface
+    /**
+     * @brief Set input texture
+     * @param op Source operator
+     * @return Reference for chaining
+     */
+    Bloom& input(TextureOperator* op) { setInput(0, op); return *this; }
+
+    /**
+     * @brief Set brightness threshold
+     * @param t Threshold (0-1, default 0.8). Pixels above this contribute to bloom
+     * @return Reference for chaining
+     */
+    Bloom& threshold(float t) { m_threshold = t; return *this; }
+
+    /**
+     * @brief Set bloom intensity
+     * @param i Intensity multiplier (0-5, default 1.0)
+     * @return Reference for chaining
+     */
+    Bloom& intensity(float i) { m_intensity = i; return *this; }
+
+    /**
+     * @brief Set blur radius
+     * @param r Radius in pixels (1-50, default 10.0)
+     * @return Reference for chaining
+     */
+    Bloom& radius(float r) { m_radius = r; return *this; }
+
+    /**
+     * @brief Set number of blur passes
+     * @param p Pass count (1-8, default 2)
+     * @return Reference for chaining
+     */
+    Bloom& passes(int p) { m_passes = p; return *this; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Operator Interface
+    /// @{
+
     void init(Context& ctx) override;
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Bloom"; }
 
+    std::vector<ParamDecl> params() override {
+        return { m_threshold.decl(), m_intensity.decl(), m_radius.decl(), m_passes.decl() };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "threshold") { out[0] = m_threshold; return true; }
+        if (name == "intensity") { out[0] = m_intensity; return true; }
+        if (name == "radius") { out[0] = m_radius; return true; }
+        if (name == "passes") { out[0] = m_passes; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "threshold") { m_threshold = value[0]; return true; }
+        if (name == "intensity") { m_intensity = value[0]; return true; }
+        if (name == "radius") { m_radius = value[0]; return true; }
+        if (name == "passes") { m_passes = static_cast<int>(value[0]); return true; }
+        return false;
+    }
+
+    /// @}
+
 private:
     void createPipeline(Context& ctx);
 
-    float m_threshold = 0.8f;
-    float m_intensity = 1.0f;
-    float m_radius = 10.0f;
-    int m_passes = 2;
+    Param<float> m_threshold{"threshold", 0.8f, 0.0f, 1.0f};
+    Param<float> m_intensity{"intensity", 1.0f, 0.0f, 5.0f};
+    Param<float> m_radius{"radius", 10.0f, 1.0f, 50.0f};
+    Param<int> m_passes{"passes", 2, 1, 8};
 
     // GPU resources - need multiple passes
     WGPURenderPipeline m_thresholdPipeline = nullptr;

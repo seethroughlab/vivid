@@ -101,11 +101,15 @@ public:
     std::string name() const override { return "Composite"; }
 
     std::vector<ParamDecl> params() override {
-        std::string modeStr = std::string("mode: ") + modeName(m_mode);
-        return {
-            {modeStr, ParamType::String, 0.0f, 0.0f, {}},
-            m_opacity.decl()
-        };
+        return { m_opacity.decl() };
+    }
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "opacity") { out[0] = m_opacity; return true; }
+        return false;
+    }
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "opacity") { m_opacity = value[0]; return true; }
+        return false;
     }
 
     /// @}

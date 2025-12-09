@@ -1218,6 +1218,14 @@ chain.add<Output>("out").input("scanlines");
 - [ ] examples/retro-demo runs on all platforms
 - [x] Update README.md with new operators and usage examples
 
+**Documentation:**
+- [ ] All operators have Doxygen `@brief` class documentation
+- [ ] All operators have parameter tables in Doxygen comments
+- [ ] All operators have `@par Example` code snippets
+- [ ] All fluent API methods have `@param` and `@return` docs
+- [ ] Core classes (Operator, Chain, Context) fully documented
+- [ ] Run `doxygen Doxyfile` and verify generated docs
+
 ### Phase 6: ImGui Addon
 
 **Goal:** Chain visualizer with ImNode

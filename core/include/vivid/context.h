@@ -232,6 +232,17 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Chain Path
+    /// @{
+
+    /// @brief Set the chain source file path (for sidecar files)
+    void setChainPath(const std::string& path) { m_chainPath = path; }
+
+    /// @brief Get the chain source file path
+    const std::string& chainPath() const { return m_chainPath; }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Registry
     /// @{
 
@@ -379,6 +390,9 @@ private:
 
     // Error
     std::string m_errorMessage;
+
+    // Chain path (for sidecar files)
+    std::string m_chainPath;
 
     // Operator registry
     std::vector<OperatorInfo> m_operators;

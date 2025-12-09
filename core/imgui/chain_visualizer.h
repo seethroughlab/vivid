@@ -11,8 +11,10 @@
 #include <webgpu/webgpu.h>
 #include <string>
 #include <unordered_map>
+#include <map>
 #include <vector>
 #include <memory>
+#include <array>
 
 namespace vivid::imgui {
 
@@ -70,6 +72,32 @@ private:
 
     // Geometry preview renderers (one per geometry node)
     std::unordered_map<vivid::Operator*, GeometryPreview> m_geometryPreviews;
+
+    // Solo mode state
+    vivid::Operator* m_soloOperator = nullptr;
+    bool m_inSoloMode = false;
+    std::string m_soloOperatorName;  // Cached for display
+
+    // Full-viewport geometry renderer for solo mode
+    std::unique_ptr<render3d::Render3D> m_soloGeometryRenderer;
+    float m_soloRotationAngle = 0.0f;
+
+    // Solo mode helpers
+    void enterSoloMode(vivid::Operator* op, const std::string& name);
+    void exitSoloMode();
+    void renderSoloOverlay(const FrameInput& input, vivid::Context& ctx);
+
+    // Parameter sidecar file
+    // Key: "operator_name.param_name", Value: up to 4 floats
+    std::map<std::string, std::array<float, 4>> m_paramOverrides;
+    std::string m_sidecarPath;
+    bool m_sidecarDirty = false;
+
+    // Sidecar file helpers
+    void loadSidecar(const std::string& chainPath);
+    void saveSidecar();
+    void applyOverrides(const std::vector<vivid::OperatorInfo>& operators);
+    std::string makeParamKey(const std::string& opName, const std::string& paramName);
 };
 
 } // namespace vivid::imgui

@@ -6,6 +6,7 @@
 #include <imnodes.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
+#include <fstream>
 #include <algorithm>
 #include <cmath>
 
@@ -35,16 +36,32 @@ void ChainVisualizer::init() {
     style.LinkThickness = 3.0f;
     style.PinCircleRadius = 4.0f;
 
-    // Dim the grid - it's too bright/distracting
-    ImNodes::GetStyle().Colors[ImNodesCol_GridBackground] = IM_COL32(20, 20, 20, 255);
-    ImNodes::GetStyle().Colors[ImNodesCol_GridLine] = IM_COL32(40, 40, 40, 255);
-    ImNodes::GetStyle().Colors[ImNodesCol_GridLinePrimary] = IM_COL32(50, 50, 50, 255);
+    // Transparent background - nodes float over the chain output
+    ImNodes::GetStyle().Colors[ImNodesCol_GridBackground] = IM_COL32(0, 0, 0, 0);  // Fully transparent
+    ImNodes::GetStyle().Colors[ImNodesCol_GridLine] = IM_COL32(60, 60, 80, 40);     // Very subtle grid
+    ImNodes::GetStyle().Colors[ImNodesCol_GridLinePrimary] = IM_COL32(80, 80, 100, 60);
+
+    // Semi-transparent node backgrounds
+    ImNodes::GetStyle().Colors[ImNodesCol_NodeBackground] = IM_COL32(30, 30, 40, 200);
+    ImNodes::GetStyle().Colors[ImNodesCol_NodeBackgroundHovered] = IM_COL32(40, 40, 55, 220);
+    ImNodes::GetStyle().Colors[ImNodesCol_NodeBackgroundSelected] = IM_COL32(50, 50, 70, 240);
 
     m_initialized = true;
 }
 
 void ChainVisualizer::shutdown() {
     if (!m_initialized) return;
+
+    // Exit solo mode if active
+    if (m_inSoloMode) {
+        exitSoloMode();
+    }
+
+    // Clean up solo geometry renderer
+    if (m_soloGeometryRenderer) {
+        m_soloGeometryRenderer->cleanup();
+        m_soloGeometryRenderer.reset();
+    }
 
     // Clean up geometry preview renderers
     for (auto& [op, preview] : m_geometryPreviews) {
@@ -308,17 +325,191 @@ void ChainVisualizer::updateScenePreview(
     preview.renderer->process(ctx);
 }
 
+void ChainVisualizer::enterSoloMode(vivid::Operator* op, const std::string& name) {
+    m_soloOperator = op;
+    m_soloOperatorName = name;
+    m_inSoloMode = true;
+    m_soloRotationAngle = 0.0f;
+}
+
+void ChainVisualizer::exitSoloMode() {
+    m_soloOperator = nullptr;
+    m_soloOperatorName.clear();
+    m_inSoloMode = false;
+
+    // Clean up solo geometry renderer
+    if (m_soloGeometryRenderer) {
+        m_soloGeometryRenderer->cleanup();
+        m_soloGeometryRenderer.reset();
+    }
+}
+
+void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context& ctx) {
+    if (!m_soloOperator) {
+        exitSoloMode();
+        return;
+    }
+
+    vivid::OutputKind kind = m_soloOperator->outputKind();
+
+    if (kind == vivid::OutputKind::Texture) {
+        // For texture operators, just set the output texture
+        WGPUTextureView view = m_soloOperator->outputView();
+        if (view) {
+            ctx.setOutputTexture(view);
+        }
+    } else if (kind == vivid::OutputKind::Geometry) {
+        // For geometry operators, render at full viewport size
+        m_soloRotationAngle += input.dt * 0.8f;
+
+        // Initialize or resize renderer
+        if (!m_soloGeometryRenderer) {
+            m_soloGeometryRenderer = std::make_unique<render3d::Render3D>();
+            m_soloGeometryRenderer->shadingMode(render3d::ShadingMode::Flat)
+                .clearColor(0.08f, 0.1f, 0.14f)
+                .ambient(0.3f)
+                .lightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+            m_soloGeometryRenderer->init(ctx);
+        }
+
+        // Resize to match viewport
+        m_soloGeometryRenderer->resolution(input.width, input.height);
+
+        // Check if this is a SceneComposer
+        auto* composer = dynamic_cast<render3d::SceneComposer*>(m_soloOperator);
+
+        if (composer) {
+            // Render composed scene
+            render3d::Scene& scene = composer->outputScene();
+            if (!scene.empty()) {
+                // Calculate scene bounds
+                glm::vec3 minBounds(FLT_MAX), maxBounds(-FLT_MAX);
+                for (const auto& obj : scene.objects()) {
+                    if (obj.mesh && !obj.mesh->vertices.empty()) {
+                        for (const auto& v : obj.mesh->vertices) {
+                            glm::vec3 worldPos = glm::vec3(obj.transform * glm::vec4(v.position, 1.0f));
+                            minBounds = glm::min(minBounds, worldPos);
+                            maxBounds = glm::max(maxBounds, worldPos);
+                        }
+                    }
+                }
+
+                glm::vec3 center = (minBounds + maxBounds) * 0.5f;
+                float maxDist = glm::length(maxBounds - minBounds) * 0.5f;
+                float distance = maxDist * 2.5f;
+                if (distance < 0.1f) distance = 5.0f;
+
+                // Orbit camera
+                float camX = center.x + distance * 0.7f * cos(m_soloRotationAngle);
+                float camZ = center.z + distance * 0.7f * sin(m_soloRotationAngle);
+                render3d::Camera3D camera;
+                camera.lookAt(
+                    glm::vec3(camX, center.y + distance * 0.4f, camZ),
+                    center
+                ).fov(45.0f).nearPlane(0.01f).farPlane(1000.0f);
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                m_soloGeometryRenderer->scene(scene).camera(camera);
+#pragma clang diagnostic pop
+                m_soloGeometryRenderer->process(ctx);
+                ctx.setOutputTexture(m_soloGeometryRenderer->outputView());
+            }
+        } else if (auto* meshOp = dynamic_cast<render3d::MeshOperator*>(m_soloOperator)) {
+            // Render single mesh
+            render3d::Mesh* mesh = meshOp->outputMesh();
+            if (mesh && mesh->valid()) {
+                // Build scene with rotating mesh
+                render3d::Scene scene;
+                glm::mat4 transform = glm::rotate(glm::mat4(1.0f), m_soloRotationAngle, glm::vec3(0, 1, 0));
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                scene.add(*mesh, transform, glm::vec4(0.7f, 0.85f, 1.0f, 1.0f));
+#pragma clang diagnostic pop
+
+                // Auto-frame camera
+                glm::vec3 center(0);
+                float maxDist = 0;
+                for (const auto& v : mesh->vertices) {
+                    center += v.position;
+                }
+                center /= static_cast<float>(mesh->vertices.size());
+                for (const auto& v : mesh->vertices) {
+                    maxDist = std::max(maxDist, glm::length(v.position - center));
+                }
+                float distance = maxDist * 2.5f;
+                if (distance < 0.1f) distance = 2.0f;
+
+                render3d::Camera3D camera;
+                camera.lookAt(
+                    glm::vec3(distance * 0.7f, distance * 0.5f, distance * 0.7f),
+                    center
+                ).fov(45.0f).nearPlane(0.01f).farPlane(100.0f);
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+                m_soloGeometryRenderer->scene(scene).camera(camera);
+#pragma clang diagnostic pop
+                m_soloGeometryRenderer->process(ctx);
+                ctx.setOutputTexture(m_soloGeometryRenderer->outputView());
+            }
+        }
+    }
+
+    // Check for Escape key to exit solo mode
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        exitSoloMode();
+        return;
+    }
+
+    // Draw solo mode overlay (semi-transparent)
+    ImGui::SetNextWindowPos(ImVec2(10, 10));
+    ImGui::SetNextWindowBgAlpha(0.5f);  // Semi-transparent background
+    ImGui::Begin("Solo Mode", nullptr,
+        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
+        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
+    ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.4f, 1.0f), "SOLO: %s", m_soloOperatorName.c_str());
+    if (ImGui::Button("Exit Solo")) {
+        exitSoloMode();
+    }
+    ImGui::SameLine();
+    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "(or press ESC)");
+    ImGui::End();
+}
+
 void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
     if (!m_initialized) {
         init();
     }
 
+    // Handle Escape key to exit solo mode
+    if (m_inSoloMode && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        exitSoloMode();
+    }
+
+    // If in solo mode, render the solo view instead of normal UI
+    if (m_inSoloMode) {
+        renderSoloOverlay(input, ctx);
+        return;  // Don't show the node editor in solo mode
+    }
+
     const auto& operators = ctx.registeredOperators();
 
-    // Performance overlay
+    // Load sidecar file if chain path changed
+    const std::string& chainPath = ctx.chainPath();
+    if (!chainPath.empty() && m_sidecarPath.empty()) {
+        loadSidecar(chainPath);
+        if (!m_paramOverrides.empty()) {
+            applyOverrides(operators);
+        }
+    }
+
+    // Performance overlay (semi-transparent)
     float fps = input.dt > 0 ? 1.0f / input.dt : 0.0f;
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(200, 100), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.5f);
     ImGui::Begin("Performance", nullptr, ImGuiWindowFlags_NoResize);
     ImGui::Text("DT: %.3fms", input.dt * 1000.0f);
     ImGui::Text("FPS: %.1f", fps);
@@ -326,19 +517,26 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
     ImGui::Text("Operators: %zu", operators.size());
     ImGui::End();
 
-    // Controls info
+    // Controls info (semi-transparent)
     ImGui::SetNextWindowPos(ImVec2(10, 120), ImGuiCond_FirstUseEver);
     ImGui::SetNextWindowSize(ImVec2(200, 100), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.5f);
     ImGui::Begin("Controls");
     ImGui::Text("Tab: Toggle UI");
     ImGui::Text("F: Fullscreen");
     ImGui::Text("Ctrl+Drag: Pan graph");
+    ImGui::Text("S: Solo node");
+    ImGui::Text("B: Bypass node");
     ImGui::End();
 
-    // Node editor
-    ImGui::SetNextWindowPos(ImVec2(220, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(600, 500), ImGuiCond_FirstUseEver);
-    ImGui::Begin("Chain Visualizer");
+    // Node editor - transparent, fullscreen overlay
+    ImGui::SetNextWindowPos(ImVec2(0, 0));
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(input.width), static_cast<float>(input.height)));
+    ImGui::SetNextWindowBgAlpha(0.0f);  // Fully transparent background
+    ImGui::Begin("Chain Visualizer", nullptr,
+        ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoScrollbar |
+        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     if (operators.empty()) {
         ImGui::TextColored(ImVec4(1.0f, 0.7f, 0.3f, 1.0f),
@@ -396,9 +594,55 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
 
         ImNodes::BeginNode(nodeId);
 
-        // Title bar - show registered name
+        // Check if bypassed for visual styling
+        bool isBypassed = info.op->isBypassed();
+
+        // Title bar - show registered name with Solo and Bypass buttons
         ImNodes::BeginNodeTitleBar();
-        ImGui::TextUnformatted(info.name.c_str());
+
+        // Dim the name if bypassed
+        if (isBypassed) {
+            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "%s", info.name.c_str());
+        } else {
+            ImGui::TextUnformatted(info.name.c_str());
+        }
+
+        ImGui::SameLine();
+        ImGui::PushID(nodeId);
+
+        // Solo button
+        ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(80, 80, 100, 255));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(100, 100, 140, 255));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(120, 120, 180, 255));
+        if (ImGui::SmallButton("S")) {
+            enterSoloMode(info.op, info.name);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip("Solo - view full output (or double-click node)");
+        }
+        ImGui::PopStyleColor(3);
+
+        ImGui::SameLine();
+
+        // Bypass button - highlight when active
+        if (isBypassed) {
+            ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(180, 100, 40, 255));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(200, 120, 60, 255));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(220, 140, 80, 255));
+        } else {
+            ImGui::PushStyleColor(ImGuiCol_Button, IM_COL32(80, 80, 100, 255));
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, IM_COL32(100, 100, 140, 255));
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, IM_COL32(120, 120, 180, 255));
+        }
+        if (ImGui::SmallButton("B")) {
+            info.op->setBypassed(!isBypassed);
+        }
+        if (ImGui::IsItemHovered()) {
+            ImGui::SetTooltip(isBypassed ? "Bypass ON - click to enable" : "Bypass - skip this operator");
+        }
+        ImGui::PopStyleColor(3);
+
+        ImGui::PopID();
         ImNodes::EndNodeTitleBar();
 
         // Show operator type if different from registered name
@@ -407,49 +651,85 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "%s", typeName.c_str());
         }
 
-        // Show parameters if operator declares them
+        // Show parameters with editable sliders if operator supports it
         auto params = info.op->params();
         if (!params.empty()) {
-            // Draw a separator line within the node (ImGui::Separator extends too far)
+            // Draw a separator line within the node
             ImVec2 pos = ImGui::GetCursorScreenPos();
             ImGui::GetWindowDrawList()->AddLine(
                 ImVec2(pos.x, pos.y + 2),
-                ImVec2(pos.x + 100, pos.y + 2),  // Match thumbnail width
+                ImVec2(pos.x + 100, pos.y + 2),
                 IM_COL32(80, 80, 90, 255), 1.0f);
-            ImGui::Dummy(ImVec2(0, 6));  // Space for the line
+            ImGui::Dummy(ImVec2(0, 6));
+
+            ImGui::PushItemWidth(80);  // Compact sliders for nodes
 
             for (const auto& p : params) {
+                // Get current value (or use default)
+                float currentVal[4] = {p.defaultVal[0], p.defaultVal[1], p.defaultVal[2], p.defaultVal[3]};
+                info.op->getParam(p.name, currentVal);
+
+                // Create unique ID for this param
+                std::string paramId = info.name + "." + p.name;
+                ImGui::PushID(paramId.c_str());
+
+                bool changed = false;
                 switch (p.type) {
                     case vivid::ParamType::Float:
-                        ImGui::Text("%s: %.2f", p.name.c_str(), p.defaultVal[0]);
+                        changed = ImGui::SliderFloat(p.name.c_str(), &currentVal[0], p.minVal, p.maxVal);
                         break;
                     case vivid::ParamType::Int:
-                        ImGui::Text("%s: %d", p.name.c_str(), static_cast<int>(p.defaultVal[0]));
+                        {
+                            int intVal = static_cast<int>(currentVal[0]);
+                            if (ImGui::SliderInt(p.name.c_str(), &intVal,
+                                    static_cast<int>(p.minVal), static_cast<int>(p.maxVal))) {
+                                currentVal[0] = static_cast<float>(intVal);
+                                changed = true;
+                            }
+                        }
                         break;
                     case vivid::ParamType::Bool:
-                        ImGui::Text("%s: %s", p.name.c_str(), p.defaultVal[0] > 0.5f ? "true" : "false");
+                        {
+                            bool boolVal = currentVal[0] > 0.5f;
+                            if (ImGui::Checkbox(p.name.c_str(), &boolVal)) {
+                                currentVal[0] = boolVal ? 1.0f : 0.0f;
+                                changed = true;
+                            }
+                        }
                         break;
                     case vivid::ParamType::Vec2:
-                        ImGui::Text("%s: (%.2f, %.2f)", p.name.c_str(), p.defaultVal[0], p.defaultVal[1]);
+                        changed = ImGui::SliderFloat2(p.name.c_str(), currentVal, p.minVal, p.maxVal);
                         break;
                     case vivid::ParamType::Vec3:
+                        changed = ImGui::SliderFloat3(p.name.c_str(), currentVal, p.minVal, p.maxVal);
+                        break;
                     case vivid::ParamType::Color:
-                        ImGui::Text("%s: (%.2f, %.2f, %.2f)", p.name.c_str(),
-                            p.defaultVal[0], p.defaultVal[1], p.defaultVal[2]);
+                        changed = ImGui::ColorEdit3(p.name.c_str(), currentVal);
                         break;
                     case vivid::ParamType::Vec4:
-                        ImGui::Text("%s: (%.2f, %.2f, %.2f, %.2f)", p.name.c_str(),
-                            p.defaultVal[0], p.defaultVal[1], p.defaultVal[2], p.defaultVal[3]);
+                        changed = ImGui::SliderFloat4(p.name.c_str(), currentVal, p.minVal, p.maxVal);
                         break;
                     case vivid::ParamType::String:
-                        // String params encode value in the name (e.g., "mode: Multiply")
                         ImGui::Text("%s", p.name.c_str());
                         break;
                     default:
                         ImGui::Text("%s", p.name.c_str());
                         break;
                 }
+
+                if (changed) {
+                    // Apply change to operator
+                    if (info.op->setParam(p.name, currentVal)) {
+                        // Store in sidecar
+                        std::string key = makeParamKey(info.name, p.name);
+                        m_paramOverrides[key] = {currentVal[0], currentVal[1], currentVal[2], currentVal[3]};
+                        m_sidecarDirty = true;
+                    }
+                }
+
+                ImGui::PopID();
             }
+            ImGui::PopItemWidth();
         }
 
         // Input pins - show one for each connected input
@@ -644,7 +924,127 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
 
     ImNodes::EndNodeEditor();
 
+    // Handle double-click on nodes to enter solo mode
+    int hoveredNode = -1;
+    if (ImNodes::IsNodeHovered(&hoveredNode) && ImGui::IsMouseDoubleClicked(0)) {
+        // Find the operator for this node
+        for (const auto& info : operators) {
+            if (info.op && m_opToNodeId.count(info.op) && m_opToNodeId[info.op] == hoveredNode) {
+                enterSoloMode(info.op, info.name);
+                break;
+            }
+        }
+    }
+
     ImGui::End();
+
+    // Save sidecar file if dirty
+    if (m_sidecarDirty) {
+        saveSidecar();
+        m_sidecarDirty = false;
+    }
+}
+
+std::string ChainVisualizer::makeParamKey(const std::string& opName, const std::string& paramName) {
+    return opName + "." + paramName;
+}
+
+void ChainVisualizer::loadSidecar(const std::string& chainPath) {
+    // Derive sidecar path from chain path: chain.cpp -> chain.vivid.json
+    size_t lastDot = chainPath.rfind('.');
+    if (lastDot != std::string::npos) {
+        m_sidecarPath = chainPath.substr(0, lastDot) + ".vivid.json";
+    } else {
+        m_sidecarPath = chainPath + ".vivid.json";
+    }
+
+    // Try to read the file
+    std::ifstream file(m_sidecarPath);
+    if (!file.is_open()) {
+        return;  // No sidecar file exists yet
+    }
+
+    // Simple JSON parsing (just key:value pairs for floats)
+    std::string line;
+    std::string currentOp;
+    while (std::getline(file, line)) {
+        // Skip empty lines and braces
+        if (line.empty() || line.find('{') != std::string::npos ||
+            line.find('}') != std::string::npos) {
+            continue;
+        }
+
+        // Look for "key": [v0, v1, v2, v3]
+        size_t colonPos = line.find(':');
+        if (colonPos == std::string::npos) continue;
+
+        // Extract key (remove quotes and whitespace)
+        std::string key = line.substr(0, colonPos);
+        size_t keyStart = key.find('"');
+        size_t keyEnd = key.rfind('"');
+        if (keyStart == std::string::npos || keyEnd <= keyStart) continue;
+        key = key.substr(keyStart + 1, keyEnd - keyStart - 1);
+
+        // Extract values
+        std::string valueStr = line.substr(colonPos + 1);
+        std::array<float, 4> values = {0, 0, 0, 0};
+
+        // Find array brackets
+        size_t bracketStart = valueStr.find('[');
+        size_t bracketEnd = valueStr.find(']');
+        if (bracketStart != std::string::npos && bracketEnd != std::string::npos) {
+            std::string arrayStr = valueStr.substr(bracketStart + 1, bracketEnd - bracketStart - 1);
+            int idx = 0;
+            size_t pos = 0;
+            while (pos < arrayStr.length() && idx < 4) {
+                size_t commaPos = arrayStr.find(',', pos);
+                if (commaPos == std::string::npos) commaPos = arrayStr.length();
+                std::string numStr = arrayStr.substr(pos, commaPos - pos);
+                try {
+                    values[idx++] = std::stof(numStr);
+                } catch (...) {}
+                pos = commaPos + 1;
+            }
+        }
+
+        m_paramOverrides[key] = values;
+    }
+}
+
+void ChainVisualizer::saveSidecar() {
+    if (m_sidecarPath.empty() || m_paramOverrides.empty()) {
+        return;
+    }
+
+    std::ofstream file(m_sidecarPath);
+    if (!file.is_open()) {
+        return;
+    }
+
+    file << "{\n";
+    bool first = true;
+    for (const auto& [key, values] : m_paramOverrides) {
+        if (!first) file << ",\n";
+        first = false;
+        file << "  \"" << key << "\": [" << values[0] << ", " << values[1]
+             << ", " << values[2] << ", " << values[3] << "]";
+    }
+    file << "\n}\n";
+}
+
+void ChainVisualizer::applyOverrides(const std::vector<vivid::OperatorInfo>& operators) {
+    for (const auto& info : operators) {
+        if (!info.op) continue;
+
+        auto params = info.op->params();
+        for (const auto& param : params) {
+            std::string key = makeParamKey(info.name, param.name);
+            auto it = m_paramOverrides.find(key);
+            if (it != m_paramOverrides.end()) {
+                info.op->setParam(param.name, it->second.data());
+            }
+        }
+    }
 }
 
 } // namespace vivid::imgui

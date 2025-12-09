@@ -45,13 +45,10 @@ add_library(vivid-effects-2d SHARED
 
 target_include_directories(vivid-effects-2d PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/core/include
 )
 
 target_link_libraries(vivid-effects-2d PUBLIC
-    webgpu
-    glm
-    glfw
+    vivid-core
     vivid-io
 )
 
