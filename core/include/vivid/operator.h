@@ -214,6 +214,12 @@ public:
     virtual WGPUTextureView outputView() const { return nullptr; }
 
     /**
+     * @brief Get the raw output texture (for video export/capture)
+     * @return WebGPU texture, or nullptr if not a texture operator
+     */
+    virtual WGPUTexture outputTexture() const { return nullptr; }
+
+    /**
      * @brief Get effective output (follows bypass chain)
      * @return Output view, or first input's output if bypassed
      *

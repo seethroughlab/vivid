@@ -6,6 +6,7 @@
 #include "imgui_integration.h"
 #include <vivid/context.h>
 #include <vivid/operator.h>
+#include <vivid/video_exporter.h>
 #include <vivid/render3d/render3d.h>
 #include <vivid/render3d/scene_composer.h>
 #include <webgpu/webgpu.h>
@@ -102,6 +103,15 @@ private:
     void saveSidecar();
     void applyOverrides(const std::vector<vivid::OperatorInfo>& operators);
     std::string makeParamKey(const std::string& opName, const std::string& paramName);
+
+    // Video recording
+    VideoExporter m_exporter;
+    void startRecording(ExportCodec codec, vivid::Context& ctx);
+    void stopRecording();
+
+public:
+    // Access to exporter for main.cpp to call captureFrame
+    VideoExporter& exporter() { return m_exporter; }
 };
 
 } // namespace vivid::imgui

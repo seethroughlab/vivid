@@ -75,7 +75,7 @@ public:
     /// @{
 
     /// @brief Get the raw output texture
-    WGPUTexture outputTexture() const { return m_output; }
+    WGPUTexture outputTexture() const override { return m_output; }
 
     /// @brief Get output width in pixels
     int outputWidth() const { return m_width; }

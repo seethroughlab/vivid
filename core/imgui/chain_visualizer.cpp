@@ -542,6 +542,35 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             ImGui::EndMenu();
         }
 
+        ImGui::Separator();
+
+        // Recording controls
+        if (m_exporter.isRecording()) {
+            // Red recording indicator
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.2f, 0.2f, 1.0f));
+            ImGui::Text("● REC");
+            ImGui::PopStyleColor();
+            ImGui::SameLine();
+            ImGui::Text("%d frames (%.1fs)", m_exporter.frameCount(), m_exporter.duration());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Stop")) {
+                stopRecording();
+            }
+        } else {
+            if (ImGui::BeginMenu("Record")) {
+                if (ImGui::MenuItem("H.264 (recommended)")) {
+                    startRecording(ExportCodec::H264, ctx);
+                }
+                if (ImGui::MenuItem("H.265 (HEVC)")) {
+                    startRecording(ExportCodec::H265, ctx);
+                }
+                if (ImGui::MenuItem("Animation (ProRes 4444)")) {
+                    startRecording(ExportCodec::Animation, ctx);
+                }
+                ImGui::EndMenu();
+            }
+        }
+
         ImGui::EndMainMenuBar();
     }
 
@@ -1061,6 +1090,45 @@ void ChainVisualizer::applyOverrides(const std::vector<vivid::OperatorInfo>& ope
             }
         }
     }
+}
+
+// -------------------------------------------------------------------------
+// Video Recording
+// -------------------------------------------------------------------------
+
+void ChainVisualizer::startRecording(ExportCodec codec, vivid::Context& ctx) {
+    // Generate output path in the project directory (same as chain.cpp)
+    std::string projectDir = ".";
+    const std::string& chainPath = ctx.chainPath();
+    if (!chainPath.empty()) {
+        size_t lastSlash = chainPath.find_last_of("/\\");
+        if (lastSlash != std::string::npos) {
+            projectDir = chainPath.substr(0, lastSlash);
+        }
+    }
+    std::string outputPath = VideoExporter::generateOutputPath(projectDir, codec);
+
+    // Get output resolution from the actual output texture
+    int width = ctx.width();
+    int height = ctx.height();
+
+    WGPUTexture outputTex = ctx.chain().outputTexture();
+    if (outputTex) {
+        width = static_cast<int>(wgpuTextureGetWidth(outputTex));
+        height = static_cast<int>(wgpuTextureGetHeight(outputTex));
+    }
+
+    float fps = 60.0f;  // TODO: Get from context if available
+
+    if (m_exporter.start(outputPath, width, height, fps, codec)) {
+        printf("[ChainVisualizer] Recording started: %s\n", outputPath.c_str());
+    } else {
+        printf("[ChainVisualizer] Failed to start recording: %s\n", m_exporter.error().c_str());
+    }
+}
+
+void ChainVisualizer::stopRecording() {
+    m_exporter.stop();
 }
 
 } // namespace vivid::imgui

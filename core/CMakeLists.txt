@@ -4,28 +4,26 @@
 include(FetchContent)
 
 # Fetch ImGui from master (required for wgpu-native v24.x compatibility)
+# We manually specify source files, so use SOURCE_SUBDIR to skip its CMakeLists
 FetchContent_Declare(
     imgui
     GIT_REPOSITORY https://github.com/ocornut/imgui.git
     GIT_TAG master
     GIT_SHALLOW TRUE
+    SOURCE_SUBDIR nonexistent  # Prevents CMake from processing imgui's CMakeLists.txt
 )
-FetchContent_GetProperties(imgui)
-if(NOT imgui_POPULATED)
-    FetchContent_Populate(imgui)
-endif()
+FetchContent_MakeAvailable(imgui)
 
-# Fetch ImNodes for node graph editor (don't use its CMakeLists.txt)
+# Fetch ImNodes for node graph editor
+# We manually specify source files, so use SOURCE_SUBDIR to skip its CMakeLists
 FetchContent_Declare(
     imnodes
     GIT_REPOSITORY https://github.com/Nelarius/imnodes.git
     GIT_TAG master
     GIT_SHALLOW TRUE
+    SOURCE_SUBDIR nonexistent  # Prevents CMake from processing imnodes's CMakeLists.txt
 )
-FetchContent_GetProperties(imnodes)
-if(NOT imnodes_POPULATED)
-    FetchContent_Populate(imnodes)
-endif()
+FetchContent_MakeAvailable(imnodes)
 
 message(STATUS "[vivid-core] ImGui source: ${imgui_SOURCE_DIR}")
 message(STATUS "[vivid-core] ImNodes source: ${imnodes_SOURCE_DIR}")
@@ -63,6 +61,11 @@ set(VIVID_CORE_SOURCES
     imgui/chain_visualizer.cpp
 )
 
+# Platform-specific sources
+if(APPLE)
+    list(APPEND VIVID_CORE_SOURCES src/video_exporter.mm)
+endif()
+
 set(VIVID_CORE_HEADERS
     include/vivid/vivid.h
     include/vivid/context.h
@@ -71,6 +74,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/operator.h
     include/vivid/chain.h
     include/vivid/addon_registry.h
+    include/vivid/video_exporter.h
     imgui/imgui_integration.h
     imgui/chain_visualizer.h
 )
@@ -157,6 +161,9 @@ if(APPLE)
         "-framework CoreVideo"
         "-framework QuartzCore"
         "-framework Metal"
+        "-framework VideoToolbox"
+        "-framework AVFoundation"
+        "-framework CoreMedia"
     )
 elseif(WIN32)
     # Export symbols for dynamically loaded chain DLLs

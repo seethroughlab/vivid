@@ -159,6 +159,15 @@ public:
      */
     Operator* getOutput() const;
 
+    /**
+     * @brief Get the output texture from the designated output operator
+     * @return WebGPU texture, or nullptr if no output or not a texture operator
+     */
+    WGPUTexture outputTexture() const {
+        Operator* out = getOutput();
+        return out ? out->outputTexture() : nullptr;
+    }
+
     /// @brief Legacy method - prefer output() instead
     void setOutput(const std::string& name) { outputName_ = name; }
 

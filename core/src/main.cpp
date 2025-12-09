@@ -493,6 +493,16 @@ int main(int argc, char** argv) {
 
             // Auto-process the chain
             ctx.chain().process(ctx);
+
+            // Capture frame for video export if recording
+            if (chainVisualizer.exporter().isRecording() && ctx.outputTexture()) {
+                // Get the underlying texture from the texture view
+                // The output texture should be the chain's final output
+                WGPUTexture outputTex = ctx.chain().outputTexture();
+                if (outputTex) {
+                    chainVisualizer.exporter().captureFrame(device, queue, outputTex);
+                }
+            }
         }
 
         // Create command encoder
