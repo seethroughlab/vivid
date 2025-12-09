@@ -9,6 +9,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/param.h>
+#include <cmath>
 
 namespace vivid::effects {
 
@@ -179,36 +180,42 @@ public:
     }
 
     void process(Context& ctx) override {
+        float a = static_cast<float>(m_inputA);
+        float b = static_cast<float>(m_inputB);
+        float eps = static_cast<float>(m_epsilon);
+        float rMin = static_cast<float>(m_rangeMin);
+        float rMax = static_cast<float>(m_rangeMax);
+
         switch (m_operation) {
             case LogicOperation::GreaterThan:
-                m_result = m_inputA > m_inputB;
+                m_result = a > b;
                 break;
             case LogicOperation::LessThan:
-                m_result = m_inputA < m_inputB;
+                m_result = a < b;
                 break;
             case LogicOperation::Equal:
-                m_result = std::abs(m_inputA - m_inputB) < m_epsilon;
+                m_result = std::abs(a - b) < eps;
                 break;
             case LogicOperation::NotEqual:
-                m_result = std::abs(m_inputA - m_inputB) >= m_epsilon;
+                m_result = std::abs(a - b) >= eps;
                 break;
             case LogicOperation::GreaterOrEqual:
-                m_result = m_inputA >= m_inputB;
+                m_result = a >= b;
                 break;
             case LogicOperation::LessOrEqual:
-                m_result = m_inputA <= m_inputB;
+                m_result = a <= b;
                 break;
             case LogicOperation::InRange:
-                m_result = m_inputA >= m_rangeMin && m_inputA <= m_rangeMax;
+                m_result = a >= rMin && a <= rMax;
                 break;
             case LogicOperation::And:
-                m_result = (m_inputA > 0.5f) && (m_inputB > 0.5f);
+                m_result = (a > 0.5f) && (b > 0.5f);
                 break;
             case LogicOperation::Or:
-                m_result = (m_inputA > 0.5f) || (m_inputB > 0.5f);
+                m_result = (a > 0.5f) || (b > 0.5f);
                 break;
             case LogicOperation::Not:
-                m_result = !(m_inputA > 0.5f);
+                m_result = !(a > 0.5f);
                 break;
             case LogicOperation::Toggle:
                 m_result = m_toggleState;

@@ -477,7 +477,10 @@ int main(int argc, char** argv) {
                 // Auto-initialize the chain
                 ctx.chain().init(ctx);
 
-                // Restore preserved states
+                // Load and apply sidecar parameter overrides
+                chainVisualizer.loadAndApplySidecar(ctx);
+
+                // Restore preserved states (takes precedence over sidecar)
                 if (ctx.hasPreservedStates()) {
                     ctx.restoreStates(ctx.chain());
                 }

@@ -38,6 +38,10 @@ public:
     // Cleanup
     void shutdown();
 
+    // Load sidecar file and apply parameter overrides to operators
+    // Call after chain is initialized (operators are registered)
+    void loadAndApplySidecar(vivid::Context& ctx);
+
     // Render the chain visualizer
     // Call between imgui::beginFrame() and imgui::render()
     void render(const FrameInput& input, vivid::Context& ctx);

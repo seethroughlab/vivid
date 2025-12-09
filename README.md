@@ -24,8 +24,7 @@ A creative coding framework for real-time graphics with hot-reloadable C++ chain
 ```bash
 git clone https://github.com/seethroughlab/vivid.git
 cd vivid
-cmake -B build
-cmake --build build
+cmake -B build && cmake --build build
 ```
 
 ### Run an Example

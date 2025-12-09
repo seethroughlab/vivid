@@ -1677,9 +1677,9 @@ Mesh vehicleMesh = craft.build();
 
 **Integration:**
 - [x] Render3D operator with PBR, Flat, Gouraud, Unlit shading modes
-- [ ] InstancedRender3D - GPU instancing for thousands of objects
-- [ ] GLTFLoader (cgltf + stb_image)
-- [ ] Default HDRI environment
+- [x] InstancedRender3D - GPU instancing for thousands of objects
+- [x] GLTFLoader (cgltf + stb_image)
+- [x] Default HDRI environment (IBLEnvironment with procedural sky)
 - [ ] Particles3D - 3D GPU particle system with world-space physics
 - [ ] PointSprites3D - 3D point-based rendering with billboarding
 

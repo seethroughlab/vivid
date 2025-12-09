@@ -78,6 +78,21 @@ void ChainVisualizer::shutdown() {
     m_nodePositioned.clear();
 }
 
+void ChainVisualizer::loadAndApplySidecar(vivid::Context& ctx) {
+    const std::string& chainPath = ctx.chainPath();
+    if (chainPath.empty()) return;
+
+    // Load sidecar if not already loaded
+    if (m_sidecarPath.empty()) {
+        loadSidecar(chainPath);
+    }
+
+    // Apply overrides to registered operators
+    if (!m_paramOverrides.empty()) {
+        applyOverrides(ctx.registeredOperators());
+    }
+}
+
 // Estimate node height based on content
 float ChainVisualizer::estimateNodeHeight(const vivid::OperatorInfo& info) const {
     float height = 0.0f;
@@ -505,29 +520,30 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         }
     }
 
-    // Performance overlay (semi-transparent)
+    // Menu bar with performance stats and controls
     float fps = input.dt > 0 ? 1.0f / input.dt : 0.0f;
-    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(200, 100), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowBgAlpha(0.5f);
-    ImGui::Begin("Performance", nullptr, ImGuiWindowFlags_NoResize);
-    ImGui::Text("DT: %.3fms", input.dt * 1000.0f);
-    ImGui::Text("FPS: %.1f", fps);
-    ImGui::Text("Size: %dx%d", input.width, input.height);
-    ImGui::Text("Operators: %zu", operators.size());
-    ImGui::End();
+    if (ImGui::BeginMainMenuBar()) {
+        // Performance stats on the left
+        ImGui::Text("%.1f FPS", fps);
+        ImGui::Separator();
+        ImGui::Text("%.2fms", input.dt * 1000.0f);
+        ImGui::Separator();
+        ImGui::Text("%dx%d", input.width, input.height);
+        ImGui::Separator();
+        ImGui::Text("%zu ops", operators.size());
 
-    // Controls info (semi-transparent)
-    ImGui::SetNextWindowPos(ImVec2(10, 120), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowSize(ImVec2(200, 100), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowBgAlpha(0.5f);
-    ImGui::Begin("Controls");
-    ImGui::Text("Tab: Toggle UI");
-    ImGui::Text("F: Fullscreen");
-    ImGui::Text("Ctrl+Drag: Pan graph");
-    ImGui::Text("S: Solo node");
-    ImGui::Text("B: Bypass node");
-    ImGui::End();
+        // Controls menu
+        if (ImGui::BeginMenu("Controls")) {
+            ImGui::MenuItem("Tab: Toggle UI", nullptr, false, false);
+            ImGui::MenuItem("F: Fullscreen", nullptr, false, false);
+            ImGui::MenuItem("Ctrl+Drag: Pan graph", nullptr, false, false);
+            ImGui::MenuItem("S: Solo node", nullptr, false, false);
+            ImGui::MenuItem("B: Bypass node", nullptr, false, false);
+            ImGui::EndMenu();
+        }
+
+        ImGui::EndMainMenuBar();
+    }
 
     // Node editor - transparent, fullscreen overlay
     ImGui::SetNextWindowPos(ImVec2(0, 0));

@@ -210,42 +210,51 @@ public:
                 m_result = (m_inputB != 0.0f) ? m_inputA / m_inputB : 0.0f;
                 break;
             case MathOperation::Clamp:
-                m_result = std::clamp(m_inputA, m_minVal, m_maxVal);
+                m_result = std::clamp(static_cast<float>(m_inputA),
+                                      static_cast<float>(m_minVal),
+                                      static_cast<float>(m_maxVal));
                 break;
             case MathOperation::Remap: {
-                float t = (m_inputA - m_inMin) / (m_inMax - m_inMin);
-                m_result = m_outMin + t * (m_outMax - m_outMin);
+                float a = static_cast<float>(m_inputA);
+                float inMin = static_cast<float>(m_inMin);
+                float inMax = static_cast<float>(m_inMax);
+                float outMin = static_cast<float>(m_outMin);
+                float outMax = static_cast<float>(m_outMax);
+                float t = (a - inMin) / (inMax - inMin);
+                m_result = outMin + t * (outMax - outMin);
                 break;
             }
             case MathOperation::Abs:
-                m_result = std::abs(m_inputA);
+                m_result = std::abs(static_cast<float>(m_inputA));
                 break;
             case MathOperation::Sin:
-                m_result = std::sin(m_inputA);
+                m_result = std::sin(static_cast<float>(m_inputA));
                 break;
             case MathOperation::Cos:
-                m_result = std::cos(m_inputA);
+                m_result = std::cos(static_cast<float>(m_inputA));
                 break;
             case MathOperation::Pow:
-                m_result = std::pow(m_inputA, m_inputB);
+                m_result = std::pow(static_cast<float>(m_inputA), static_cast<float>(m_inputB));
                 break;
             case MathOperation::Sqrt:
-                m_result = std::sqrt(std::max(0.0f, m_inputA));
+                m_result = std::sqrt(std::max(0.0f, static_cast<float>(m_inputA)));
                 break;
             case MathOperation::Floor:
-                m_result = std::floor(m_inputA);
+                m_result = std::floor(static_cast<float>(m_inputA));
                 break;
             case MathOperation::Ceil:
-                m_result = std::ceil(m_inputA);
+                m_result = std::ceil(static_cast<float>(m_inputA));
                 break;
-            case MathOperation::Fract:
-                m_result = m_inputA - std::floor(m_inputA);
+            case MathOperation::Fract: {
+                float a = static_cast<float>(m_inputA);
+                m_result = a - std::floor(a);
                 break;
+            }
             case MathOperation::Min:
-                m_result = std::min(m_inputA, m_inputB);
+                m_result = std::min(static_cast<float>(m_inputA), static_cast<float>(m_inputB));
                 break;
             case MathOperation::Max:
-                m_result = std::max(m_inputA, m_inputB);
+                m_result = std::max(static_cast<float>(m_inputA), static_cast<float>(m_inputB));
                 break;
         }
     }

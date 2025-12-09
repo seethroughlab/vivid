@@ -1,0 +1,90 @@
+# Vivid
+
+WebGPU-based creative coding framework with hot-reload. Minimal core (~600 lines) + modular addons.
+
+## Build Commands
+
+```bash
+cmake -B build && cmake --build build    # Full build
+cmake --build build                       # Incremental build
+./build/bin/vivid examples/hello-noise    # Run example
+doxygen Doxyfile                          # Generate API docs
+```
+
+## Project Structure
+
+```
+core/           Runtime engine (context, chain, hot-reload, ImGui visualizer)
+addons/         Modular features:
+  vivid-io/           Image loading (stb)
+  vivid-effects-2d/   2D texture operators (25+ effects)
+  vivid-video/        Video playback (HAP, platform codecs)
+  vivid-render3d/     3D rendering (PBR, CSG, instancing)
+examples/       Demo projects (each has chain.cpp)
+docs/           LLM-REFERENCE.md, RECIPES.md, OPERATOR-API.md
+```
+
+## Key Patterns
+
+### Operator Pattern
+All operators inherit from `Operator` or `TextureOperator`:
+```cpp
+class MyEffect : public TextureOperator {
+    void init(Context& ctx) override;     // Called once
+    void process(Context& ctx) override;  // Called every frame
+    void cleanup() override;              // Called on destruction
+    std::string name() const override;    // Display name
+};
+```
+
+### Fluent API
+All setters return `*this` for method chaining:
+```cpp
+chain.add<Noise>("noise").scale(4.0f).speed(0.5f).octaves(4);
+```
+
+### Parameter System
+Use `Param<T>` wrapper and implement param methods:
+```cpp
+Param<float> m_scale{"scale", 1.0f, 0.0f, 10.0f};  // name, default, min, max
+
+std::vector<ParamDecl> params() override { return { m_scale.decl() }; }
+bool getParam(const std::string& name, float out[4]) override;
+bool setParam(const std::string& name, const float value[4]) override;
+```
+
+### Chain Entry Point
+User chains use the VIVID_CHAIN macro:
+```cpp
+void setup(Context& ctx) { /* add operators */ }
+void update(Context& ctx) { ctx.chain().process(); }
+VIVID_CHAIN(setup, update)
+```
+
+## Code Conventions
+
+- **C++17** required
+- **WebGPU** (wgpu-native) for all GPU operations
+- **WGSL** for shaders
+- **Platform code**: macOS (.mm files), Windows (special DLL handling), Linux (stubs)
+- **Param<T> casting**: Use explicit `static_cast<float>()` when passing to std:: functions
+  ```cpp
+  // Wrong: std::max(0.0f, m_inputA)  -- template deduction fails
+  // Right: std::max(0.0f, static_cast<float>(m_inputA))
+  ```
+
+## Common File Locations
+
+| Task | File |
+|------|------|
+| Add new 2D effect | `addons/vivid-effects-2d/include/vivid/effects/` |
+| Modify chain visualizer UI | `core/imgui/chain_visualizer.cpp` |
+| Hot-reload logic | `core/src/hot_reload.cpp` |
+| Main runtime loop | `core/src/main.cpp` |
+| Operator base class | `core/include/vivid/operator.h` |
+
+## Documentation
+
+- `docs/LLM-REFERENCE.md` - Compact operator reference (optimized for LLM context)
+- `docs/RECIPES.md` - Complete chain.cpp examples
+- `ROADMAP.md` - Architecture decisions and development history
