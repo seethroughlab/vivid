@@ -2075,26 +2075,43 @@ chain.get<Noise>("noise").scale(4.0f + bass * 10.0f);
 - [ ] Envelope - ADSR envelope generator
 - [ ] Synth - Combined oscillator + envelope + filter
 
-**Audio Effect Operators:**
+**Audio Effect Operators (vivid-audio addon):**
+
+*Time-based:*
+- [x] Delay - Simple delay with feedback
+- [x] Echo - Multi-tap delay with decay
+- [x] Reverb - Freeverb algorithm (8 comb + 4 allpass)
+
+*Dynamics:*
+- [x] Compressor - Dynamic range compression
+- [x] Limiter - Brick-wall limiting
+- [x] Gate - Noise gate with hold
+
+*Modulation:*
+- [x] Chorus - LFO-modulated delay for stereo width
+- [x] Flanger - Short modulated delay with feedback
+- [x] Phaser - All-pass filter modulation
+
+*Distortion:*
+- [x] Overdrive - Soft clipping (tanh waveshaping)
+- [x] Bitcrush - Sample rate/bit depth reduction
+
+*Utilities (TODO):*
 - [ ] AudioFilter - Biquad LP/HP/BP/Notch
 - [ ] AudioGain - Volume/amplification control
 - [ ] AudioMixer - Mix multiple audio sources
 
 ```cpp
-class AudioFilter : public AudioOperator {
-public:
-    AudioFilter& input(const std::string& source);
-    AudioFilter& lowpass(float cutoffHz);          // 20-20000 Hz
-    AudioFilter& highpass(float cutoffHz);
-    AudioFilter& bandpass(float centerHz, float bandwidth);
-    AudioFilter& resonance(float q);               // 0.1-10
-};
+// Example: Audio effects chain
+chain.add<VideoPlayer>("video").file("movie.mov").loop(true);
+chain.add<VideoAudio>("audio").source("video");
 
-class AudioMixer : public AudioOperator {
-public:
-    AudioMixer& input(const std::string& source, float volume = 1.0f);
-    AudioMixer& master(float volume);
-};
+chain.add<Delay>("delay").input("audio").delayTime(250).feedback(0.3f).mix(0.4f);
+chain.add<Reverb>("reverb").input("delay").roomSize(0.7f).mix(0.3f);
+chain.add<Compressor>("comp").input("reverb").threshold(-12).ratio(4);
+
+chain.add<AudioOutput>("out").input("comp").volume(0.8f);
+chain.audioOutput("out");
 ```
 
 **Sample Playback Operators:**

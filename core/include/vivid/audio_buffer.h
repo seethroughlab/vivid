@@ -19,8 +19,9 @@ constexpr uint32_t AUDIO_SAMPLE_RATE = 48000;
 /// Standard audio channel count (stereo)
 constexpr uint32_t AUDIO_CHANNELS = 2;
 
-/// Standard audio block size (~10.67ms at 48kHz)
-constexpr uint32_t AUDIO_BLOCK_SIZE = 512;
+/// Standard audio block size (~21.3ms at 48kHz, enough for 60fps with headroom)
+/// At 60fps: need 48000/60 = 800 samples/frame, 1024 gives buffer headroom
+constexpr uint32_t AUDIO_BLOCK_SIZE = 1024;
 
 /**
  * @brief Non-owning view of audio sample data

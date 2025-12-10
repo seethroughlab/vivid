@@ -230,6 +230,9 @@ public:
      *
      * Automatically initializes operators on first call, computes
      * execution order, and processes each operator.
+     *
+     * Audio operators are processed multiple times per frame based on
+     * elapsed time to maintain consistent audio sample rate.
      */
     void process(Context& ctx);
 
@@ -290,6 +293,10 @@ private:
     std::string error_;
     bool needsSort_ = true;
     bool initialized_ = false;
+
+    // Audio timing
+    double lastAudioTime_ = 0.0;
+    double audioSamplesOwed_ = 0.0;
 };
 
 } // namespace vivid

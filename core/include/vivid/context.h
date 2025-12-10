@@ -411,6 +411,29 @@ public:
     float recordingFps() const { return m_recordingFps; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Audio Timing
+    /// @{
+
+    /**
+     * @brief Set number of audio frames to generate this frame
+     * @param frames Number of audio frames needed based on elapsed time
+     *
+     * Called by Chain::process() to tell audio operators how many
+     * samples to generate this frame to maintain 48kHz output rate.
+     */
+    void setAudioFramesThisFrame(uint32_t frames) { m_audioFramesThisFrame = frames; }
+
+    /**
+     * @brief Get number of audio frames to generate this frame
+     * @return Number of frames based on elapsed time (typically 800 at 60fps)
+     *
+     * Audio operators should generate this many frames of audio to
+     * maintain consistent 48kHz output regardless of video frame rate.
+     */
+    uint32_t audioFramesThisFrame() const { return m_audioFramesThisFrame; }
+
+    /// @}
 
 private:
     GLFWwindow* m_window;
@@ -466,6 +489,9 @@ private:
     // Recording mode
     bool m_recording = false;
     float m_recordingFps = 60.0f;
+
+    // Audio timing
+    uint32_t m_audioFramesThisFrame = 1024;  // Default to block size
 
     // Default states
     static const KeyState s_defaultKeyState;

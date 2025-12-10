@@ -4,6 +4,7 @@
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/audio_operator.h>
+#include <vivid/audio_buffer.h>
 #include <queue>
 #include <unordered_set>
 #include <algorithm>
@@ -226,6 +227,8 @@ void Chain::init(Context& ctx) {
     }
 
     initialized_ = true;
+    lastAudioTime_ = 0.0;
+    audioSamplesOwed_ = 0.0;
 }
 
 void Chain::process(Context& ctx) {
@@ -237,6 +240,28 @@ void Chain::process(Context& ctx) {
         ctx.setError(error_);
         return;
     }
+
+    // Calculate audio frames needed this frame based on elapsed time
+    double currentTime = ctx.time();
+    double deltaTime = currentTime - lastAudioTime_;
+    lastAudioTime_ = currentTime;
+
+    // On first frame or after pause, generate one block worth
+    if (deltaTime <= 0.0 || deltaTime > 0.5) {
+        deltaTime = static_cast<double>(AUDIO_BLOCK_SIZE) / AUDIO_SAMPLE_RATE;
+    }
+
+    // Calculate frames needed based on elapsed time
+    double framesNeeded = deltaTime * AUDIO_SAMPLE_RATE + audioSamplesOwed_;
+    uint32_t audioFramesThisFrame = static_cast<uint32_t>(framesNeeded);
+    audioSamplesOwed_ = framesNeeded - audioFramesThisFrame;
+
+    // Clamp to reasonable bounds
+    audioFramesThisFrame = std::min(audioFramesThisFrame, AUDIO_SAMPLE_RATE / 10);  // Max 100ms
+    audioFramesThisFrame = std::max(audioFramesThisFrame, 1u);  // Min 1 frame
+
+    // Store in context for audio operators to use
+    ctx.setAudioFramesThisFrame(audioFramesThisFrame);
 
     // Process all operators in dependency order (skip bypassed ones)
     for (Operator* op : executionOrder_) {
