@@ -78,6 +78,11 @@ private:
     // Geometry preview renderers (one per geometry node)
     std::unordered_map<vivid::Operator*, GeometryPreview> m_geometryPreviews;
 
+    // Selection state for inspector panel
+    int m_selectedNodeId = -1;
+    vivid::Operator* m_selectedOp = nullptr;
+    std::string m_selectedOpName;
+
     // Solo mode state
     vivid::Operator* m_soloOperator = nullptr;
     bool m_inSoloMode = false;
@@ -91,6 +96,11 @@ private:
     void enterSoloMode(vivid::Operator* op, const std::string& name);
     void exitSoloMode();
     void renderSoloOverlay(const FrameInput& input, vivid::Context& ctx);
+
+    // Inspector panel
+    void renderInspectorPanel(vivid::Context& ctx);
+    void updateSelection(const std::vector<vivid::OperatorInfo>& operators);
+    void clearSelection();
 
     // Parameter sidecar file
     // Key: "operator_name.param_name", Value: up to 4 floats

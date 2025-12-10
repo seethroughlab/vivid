@@ -98,7 +98,7 @@ void ChainVisualizer::loadAndApplySidecar(vivid::Context& ctx) {
     }
 }
 
-// Estimate node height based on content
+// Estimate node height based on content (parameters are now in inspector panel)
 float ChainVisualizer::estimateNodeHeight(const vivid::OperatorInfo& info) const {
     float height = 0.0f;
 
@@ -108,15 +108,6 @@ float ChainVisualizer::estimateNodeHeight(const vivid::OperatorInfo& info) const
     // Type name (if different from registered name)
     if (info.op && info.op->name() != info.name) {
         height += 18.0f;
-    }
-
-    // Parameters (each line ~18px)
-    if (info.op) {
-        auto params = info.op->params();
-        height += params.size() * 18.0f;
-        if (!params.empty()) {
-            height += 8.0f;  // Separator spacing
-        }
     }
 
     // Input pins (~20px each)
@@ -579,9 +570,12 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         ImGui::EndMainMenuBar();
     }
 
-    // Node editor - transparent, fullscreen overlay
+    // Inspector panel width (only used when a node is selected)
+    float inspectorWidth = m_selectedOp ? 280.0f : 0.0f;
+
+    // Node editor - transparent, fullscreen overlay (minus inspector space if needed)
     ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(input.width), static_cast<float>(input.height)));
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(input.width) - inspectorWidth, static_cast<float>(input.height)));
     ImGui::SetNextWindowBgAlpha(0.0f);  // Fully transparent background
     ImGui::Begin("Chain Visualizer", nullptr,
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
@@ -713,92 +707,7 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "%s", typeName.c_str());
         }
 
-        // Show parameters with editable sliders if operator supports it
-        auto params = info.op->params();
-        if (!params.empty()) {
-            // Draw a separator line within the node
-            ImVec2 pos = ImGui::GetCursorScreenPos();
-            ImGui::GetWindowDrawList()->AddLine(
-                ImVec2(pos.x, pos.y + 2),
-                ImVec2(pos.x + 100, pos.y + 2),
-                IM_COL32(80, 80, 90, 255), 1.0f);
-            ImGui::Dummy(ImVec2(0, 6));
-
-            ImGui::PushItemWidth(80);  // Compact sliders for nodes
-
-            for (const auto& p : params) {
-                // Get current value (or use default)
-                float currentVal[4] = {p.defaultVal[0], p.defaultVal[1], p.defaultVal[2], p.defaultVal[3]};
-                info.op->getParam(p.name, currentVal);
-
-                // Create unique ID for this param
-                std::string paramId = info.name + "." + p.name;
-                ImGui::PushID(paramId.c_str());
-
-                bool changed = false;
-                // Ensure valid range (avoid zero-range sliders)
-                float minV = p.minVal;
-                float maxV = p.maxVal;
-                if (maxV <= minV) {
-                    maxV = minV + 1.0f;  // Fallback to avoid stuck sliders
-                }
-                switch (p.type) {
-                    case vivid::ParamType::Float:
-                        changed = ImGui::SliderFloat(p.name.c_str(), &currentVal[0], minV, maxV);
-                        break;
-                    case vivid::ParamType::Int:
-                        {
-                            int intVal = static_cast<int>(currentVal[0]);
-                            if (ImGui::SliderInt(p.name.c_str(), &intVal,
-                                    static_cast<int>(minV), static_cast<int>(maxV))) {
-                                currentVal[0] = static_cast<float>(intVal);
-                                changed = true;
-                            }
-                        }
-                        break;
-                    case vivid::ParamType::Bool:
-                        {
-                            bool boolVal = currentVal[0] > 0.5f;
-                            if (ImGui::Checkbox(p.name.c_str(), &boolVal)) {
-                                currentVal[0] = boolVal ? 1.0f : 0.0f;
-                                changed = true;
-                            }
-                        }
-                        break;
-                    case vivid::ParamType::Vec2:
-                        changed = ImGui::SliderFloat2(p.name.c_str(), currentVal, p.minVal, p.maxVal);
-                        break;
-                    case vivid::ParamType::Vec3:
-                        changed = ImGui::SliderFloat3(p.name.c_str(), currentVal, p.minVal, p.maxVal);
-                        break;
-                    case vivid::ParamType::Color:
-                        changed = ImGui::ColorEdit3(p.name.c_str(), currentVal);
-                        break;
-                    case vivid::ParamType::Vec4:
-                        changed = ImGui::SliderFloat4(p.name.c_str(), currentVal, p.minVal, p.maxVal);
-                        break;
-                    case vivid::ParamType::String:
-                        ImGui::Text("%s", p.name.c_str());
-                        break;
-                    default:
-                        ImGui::Text("%s", p.name.c_str());
-                        break;
-                }
-
-                if (changed) {
-                    // Apply change to operator
-                    if (info.op->setParam(p.name, currentVal)) {
-                        // Store in sidecar
-                        std::string key = makeParamKey(info.name, p.name);
-                        m_paramOverrides[key] = {currentVal[0], currentVal[1], currentVal[2], currentVal[3]};
-                        m_sidecarDirty = true;
-                    }
-                }
-
-                ImGui::PopID();
-            }
-            ImGui::PopItemWidth();
-        }
+        // Parameters are now shown in the Inspector panel (select node to see)
 
         // Input pins - show one for each connected input
         int inputCount = 0;
@@ -1186,6 +1095,19 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
 
     ImNodes::EndNodeEditor();
 
+    // Update selection state from ImNodes
+    updateSelection(operators);
+
+    // Handle blank space click to deselect
+    int hoveredNodeCheck = -1;
+    bool isNodeHovered = ImNodes::IsNodeHovered(&hoveredNodeCheck);
+    int hoveredLink = -1;
+    bool isLinkHovered = ImNodes::IsLinkHovered(&hoveredLink);
+    if (ImGui::IsMouseClicked(0) && ImGui::IsWindowHovered() && !isNodeHovered && !isLinkHovered) {
+        ImNodes::ClearNodeSelection();
+        clearSelection();
+    }
+
     // Handle double-click on nodes to enter solo mode
     int hoveredNode = -1;
     if (ImNodes::IsNodeHovered(&hoveredNode) && ImGui::IsMouseDoubleClicked(0)) {
@@ -1199,6 +1121,9 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
     }
 
     ImGui::End();
+
+    // Render inspector panel for selected node
+    renderInspectorPanel(ctx);
 
     // Save sidecar file if dirty
     if (m_sidecarDirty) {
@@ -1365,6 +1290,140 @@ void ChainVisualizer::startRecording(ExportCodec codec, vivid::Context& ctx) {
 void ChainVisualizer::stopRecording(vivid::Context& ctx) {
     m_exporter.stop();
     ctx.setRecordingMode(false);
+}
+
+void ChainVisualizer::updateSelection(const std::vector<vivid::OperatorInfo>& operators) {
+    int numSelected = ImNodes::NumSelectedNodes();
+    if (numSelected == 1) {
+        int selectedId;
+        ImNodes::GetSelectedNodes(&selectedId);
+
+        // Only update if selection changed
+        if (selectedId != m_selectedNodeId) {
+            m_selectedNodeId = selectedId;
+
+            // Find the operator for this node
+            m_selectedOp = nullptr;
+            m_selectedOpName.clear();
+            for (const auto& info : operators) {
+                if (info.op && m_opToNodeId.count(info.op) && m_opToNodeId[info.op] == selectedId) {
+                    m_selectedOp = info.op;
+                    m_selectedOpName = info.name;
+                    break;
+                }
+            }
+        }
+    } else if (numSelected == 0 || numSelected > 1) {
+        // Clear selection if none or multiple selected
+        if (m_selectedOp != nullptr) {
+            clearSelection();
+        }
+    }
+}
+
+void ChainVisualizer::clearSelection() {
+    m_selectedNodeId = -1;
+    m_selectedOp = nullptr;
+    m_selectedOpName.clear();
+}
+
+void ChainVisualizer::renderInspectorPanel(vivid::Context& ctx) {
+    if (!m_selectedOp) return;  // No selection = no inspector
+
+    float panelWidth = 280.0f;
+    float menuBarHeight = ImGui::GetFrameHeight() + 4.0f;  // Menu bar height
+    auto& io = ImGui::GetIO();
+
+    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - panelWidth, menuBarHeight));
+    ImGui::SetNextWindowSize(ImVec2(panelWidth, io.DisplaySize.y - menuBarHeight));
+
+    ImGui::Begin("Inspector", nullptr,
+        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
+        ImGuiWindowFlags_NoCollapse);
+
+    // Header with operator name and type
+    ImGui::PushFont(nullptr);  // Use default font, could use bold if available
+    ImGui::Text("%s", m_selectedOpName.c_str());
+    ImGui::PopFont();
+
+    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.6f, 1.0f), "Type: %s", m_selectedOp->name().c_str());
+    ImGui::Separator();
+
+    // Bypass toggle
+    bool bypassed = m_selectedOp->isBypassed();
+    if (ImGui::Checkbox("Bypassed", &bypassed)) {
+        m_selectedOp->setBypassed(bypassed);
+        m_sidecarDirty = true;
+    }
+
+    ImGui::Spacing();
+
+    // Parameters section
+    if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
+        auto params = m_selectedOp->params();
+
+        if (params.empty()) {
+            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "No parameters");
+        } else {
+            for (const auto& p : params) {
+                float value[4] = {0, 0, 0, 0};
+                if (!m_selectedOp->getParam(p.name, value)) continue;
+
+                bool changed = false;
+                std::string key = makeParamKey(m_selectedOpName, p.name);
+
+                switch (p.type) {
+                    case ParamType::Float: {
+                        changed = ImGui::SliderFloat(p.name.c_str(), &value[0], p.minVal, p.maxVal);
+                        break;
+                    }
+                    case ParamType::Int: {
+                        int iVal = static_cast<int>(value[0]);
+                        changed = ImGui::SliderInt(p.name.c_str(), &iVal,
+                            static_cast<int>(p.minVal), static_cast<int>(p.maxVal));
+                        value[0] = static_cast<float>(iVal);
+                        break;
+                    }
+                    case ParamType::Bool: {
+                        bool bVal = value[0] > 0.5f;
+                        changed = ImGui::Checkbox(p.name.c_str(), &bVal);
+                        value[0] = bVal ? 1.0f : 0.0f;
+                        break;
+                    }
+                    case ParamType::Vec2: {
+                        changed = ImGui::SliderFloat2(p.name.c_str(), value, p.minVal, p.maxVal);
+                        break;
+                    }
+                    case ParamType::Vec3: {
+                        changed = ImGui::SliderFloat3(p.name.c_str(), value, p.minVal, p.maxVal);
+                        break;
+                    }
+                    case ParamType::Color: {
+                        changed = ImGui::ColorEdit4(p.name.c_str(), value,
+                            ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
+                        break;
+                    }
+                    case ParamType::Vec4: {
+                        changed = ImGui::SliderFloat4(p.name.c_str(), value, p.minVal, p.maxVal);
+                        break;
+                    }
+                    case ParamType::String: {
+                        // String parameters are read-only for now
+                        ImGui::Text("%s: (string)", p.name.c_str());
+                        break;
+                    }
+                }
+
+                if (changed) {
+                    m_selectedOp->setParam(p.name, value);
+                    m_paramOverrides[key] = {value[0], value[1], value[2], value[3]};
+                    m_sidecarDirty = true;
+                }
+            }
+        }
+    }
+
+    ImGui::End();
 }
 
 } // namespace vivid::imgui
