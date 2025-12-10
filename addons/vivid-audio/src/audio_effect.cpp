@@ -31,6 +31,18 @@ void AudioEffect::init(Context& ctx) {
 }
 
 void AudioEffect::process(Context& ctx) {
+    // Check if input needs reconnecting (name may have changed at runtime)
+    if (!m_inputName.empty()) {
+        Operator* op = ctx.chain().getByName(m_inputName);
+        if (op && op->outputKind() == OutputKind::Audio) {
+            AudioOperator* audioOp = static_cast<AudioOperator*>(op);
+            if (audioOp != m_connectedInput) {
+                m_connectedInput = audioOp;
+                setInput(0, op);  // Update dependency tracking
+            }
+        }
+    }
+
     // Get input buffer
     const AudioBuffer* inputBuf = nullptr;
     if (m_connectedInput) {

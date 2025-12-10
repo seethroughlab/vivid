@@ -152,6 +152,17 @@ void AudioOutput::process(Context& ctx) {
         return;
     }
 
+    // Check if input needs reconnecting (name may have changed at runtime)
+    if (!m_inputName.empty()) {
+        Operator* op = ctx.chain().getByName(m_inputName);
+        if (op && op->outputKind() == OutputKind::Audio) {
+            Operator* currentInput = getInput(0);
+            if (op != currentInput) {
+                setInput(0, op);
+            }
+        }
+    }
+
     // Get input audio
     const AudioBuffer* inputBuf = inputBuffer(0);
     if (!inputBuf || !inputBuf->isValid()) {

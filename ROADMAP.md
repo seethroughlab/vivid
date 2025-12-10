@@ -2041,7 +2041,7 @@ void setup(Context& ctx) {
 | [KissFFT](https://github.com/mborgerding/kissfft) | FFT analysis | BSD |
 
 **Audio Source Operators** (extend AudioOperator):
-- [ ] AudioIn - Capture from microphone/line-in
+- [x] AudioIn - Capture from microphone/line-in with volume and mute controls
 - [x] AudioFile - Load and play audio files (WAV) with loop, volume, play/pause/stop/seek
 - [x] VideoAudio - Extract audio from VideoPlayer (in vivid-video addon)
 
@@ -2166,7 +2166,7 @@ void update(Context& ctx) {
 ```
 
 **Validation:**
-- [ ] AudioIn captures from default device
+- [x] AudioIn captures from default device with volume/mute controls
 - [ ] FFT produces correct frequency bins
 - [ ] BeatDetect triggers on transients
 - [ ] Oscillator produces clean audio at 48kHz
@@ -2177,7 +2177,7 @@ void update(Context& ctx) {
 - [x] AudioFile loads and plays WAV files with resampling
 - [x] Audio effects chain works with bypass toggle
 - [x] Audio effects have parameter UI in chain visualizer
-- [x] examples/audio-effects demo runs with all 11 effects
+- [x] examples/audio-effects demo runs with all 11 effects + mic input
 - [ ] examples/audio-reactive runs on all platforms
 - [ ] examples/sample-trigger runs on all platforms
 - [ ] Update README.md with audio features documentation

@@ -1,9 +1,13 @@
 #pragma once
 
 // Vivid Audio - Main Include
-// Include this header to use all audio effects
+// Include this header to use all audio operators and effects
 
+// Audio sources
+#include <vivid/audio/audio_in.h>
 #include <vivid/audio/audio_file.h>
+
+// Base effect class
 #include <vivid/audio/audio_effect.h>
 
 // Time-based effects

@@ -6,6 +6,7 @@
 # - Distortion: Overdrive, Bitcrush
 
 set(AUDIO_SOURCES
+    src/audio_in.cpp
     src/audio_file.cpp
     src/audio_effect.cpp
     src/delay.cpp

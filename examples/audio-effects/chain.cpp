@@ -2,12 +2,13 @@
 // Demonstrates the vivid-audio addon with various audio effects
 // Controls:
 //   1-4: Switch between audio files
+//   M: Toggle Microphone input
 //   D: Toggle Delay effect
 //   R: Toggle Reverb effect
 //   C: Toggle Compressor effect
 //   O: Toggle Overdrive effect
 //   B: Toggle Bitcrush effect
-//   SPACE: Pause/Play
+//   SPACE: Pause/Play (file mode only)
 //   TAB: Open parameter controls
 
 #include <vivid/vivid.h>
@@ -31,6 +32,7 @@ static const std::vector<std::string> audioFiles = {
 };
 
 static int currentFileIndex = 0;
+static bool useMic = false;
 
 void printStatus(Chain& chain) {
     auto& delay = chain.get<Delay>("delay");
@@ -39,7 +41,7 @@ void printStatus(Chain& chain) {
     auto& overdrive = chain.get<Overdrive>("overdrive");
     auto& bitcrush = chain.get<Bitcrush>("bitcrush");
 
-    std::cout << "\n[Audio Effects] Current file: " << audioFiles[currentFileIndex] << std::endl;
+    std::cout << "\n[Audio Effects] Source: " << (useMic ? "[M]icrophone" : audioFiles[currentFileIndex]) << std::endl;
     std::cout << "Effects: "
               << (!delay.isBypassed() ? "[D]elay " : "delay ")
               << (!reverb.isBypassed() ? "[R]everb " : "reverb ")
@@ -52,13 +54,16 @@ void printStatus(Chain& chain) {
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Audio source - load WAV file
-    auto& audio = chain.add<AudioFile>("audio");
-    audio.file(audioFiles[currentFileIndex]).loop(true).volume(0.8f);
+    // Audio sources - file and microphone
+    auto& audioFile = chain.add<AudioFile>("audioFile");
+    audioFile.file(audioFiles[currentFileIndex]).loop(true).volume(0.8f);
 
-    // Effects chain
+    auto& mic = chain.add<AudioIn>("mic");
+    mic.volume(1.0f).mute(true);  // Start muted
+
+    // Effects chain - delay takes input from file by default
     auto& delay = chain.add<Delay>("delay");
-    delay.input("audio").delayTime(300).feedback(0.4f).mix(0.5f);
+    delay.input("audioFile").delayTime(300).feedback(0.4f).mix(0.5f);
 
     auto& reverb = chain.add<Reverb>("reverb");
     reverb.input("delay").roomSize(0.7f).damping(0.3f).mix(0.4f);
@@ -102,12 +107,13 @@ void setup(Context& ctx) {
     std::cout << "========================================" << std::endl;
     std::cout << "Controls:" << std::endl;
     std::cout << "  1-4: Switch audio files" << std::endl;
+    std::cout << "  M: Toggle Microphone input" << std::endl;
     std::cout << "  D: Toggle Delay" << std::endl;
     std::cout << "  R: Toggle Reverb" << std::endl;
     std::cout << "  C: Toggle Compressor" << std::endl;
     std::cout << "  O: Toggle Overdrive" << std::endl;
     std::cout << "  B: Toggle Bitcrush" << std::endl;
-    std::cout << "  SPACE: Pause/Play" << std::endl;
+    std::cout << "  SPACE: Pause/Play (file mode)" << std::endl;
     std::cout << "  TAB: Open parameter controls" << std::endl;
     std::cout << "========================================\n" << std::endl;
 
@@ -116,7 +122,8 @@ void setup(Context& ctx) {
 
 void update(Context& ctx) {
     auto& chain = ctx.chain();
-    auto& audio = chain.get<AudioFile>("audio");
+    auto& audioFile = chain.get<AudioFile>("audioFile");
+    auto& mic = chain.get<AudioIn>("mic");
     auto& delay = chain.get<Delay>("delay");
     auto& reverb = chain.get<Reverb>("reverb");
     auto& comp = chain.get<Compressor>("comp");
@@ -124,12 +131,33 @@ void update(Context& ctx) {
     auto& bitcrush = chain.get<Bitcrush>("bitcrush");
     auto& noise = chain.get<Noise>("noise");
 
-    // Number keys - switch audio files
-    for (int i = 0; i < std::min((int)audioFiles.size(), 4); i++) {
-        if (ctx.key(GLFW_KEY_1 + i).pressed && i != currentFileIndex) {
-            currentFileIndex = i;
-            audio.file(audioFiles[currentFileIndex]);
-            printStatus(chain);
+    // M key - toggle microphone input
+    if (ctx.key(GLFW_KEY_M).pressed) {
+        useMic = !useMic;
+        if (useMic) {
+            // Switch to mic: mute file, unmute mic, reconnect delay to mic
+            audioFile.pause();
+            mic.mute(false);
+            delay.input("mic");
+            std::cout << "[Audio] Switched to MICROPHONE" << std::endl;
+        } else {
+            // Switch to file: mute mic, unmute file, reconnect delay to file
+            mic.mute(true);
+            delay.input("audioFile");
+            audioFile.play();
+            std::cout << "[Audio] Switched to FILE" << std::endl;
+        }
+        printStatus(chain);
+    }
+
+    // Number keys - switch audio files (only when not using mic)
+    if (!useMic) {
+        for (int i = 0; i < std::min((int)audioFiles.size(), 4); i++) {
+            if (ctx.key(GLFW_KEY_1 + i).pressed && i != currentFileIndex) {
+                currentFileIndex = i;
+                audioFile.file(audioFiles[currentFileIndex]);
+                printStatus(chain);
+            }
         }
     }
 
@@ -155,13 +183,13 @@ void update(Context& ctx) {
         printStatus(chain);
     }
 
-    // Space - pause/play
-    if (ctx.key(GLFW_KEY_SPACE).pressed) {
-        if (audio.isPlaying()) {
-            audio.pause();
+    // Space - pause/play (file mode only)
+    if (!useMic && ctx.key(GLFW_KEY_SPACE).pressed) {
+        if (audioFile.isPlaying()) {
+            audioFile.pause();
             std::cout << "[Audio] PAUSED" << std::endl;
         } else {
-            audio.play();
+            audioFile.play();
             std::cout << "[Audio] PLAYING" << std::endl;
         }
     }

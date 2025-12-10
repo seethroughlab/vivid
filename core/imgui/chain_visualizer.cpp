@@ -2,6 +2,7 @@
 // Shows registered operators as nodes with connections
 
 #include "chain_visualizer.h"
+#include <vivid/audio_operator.h>
 #include <imgui.h>
 #include <imnodes.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -936,30 +937,61 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                     rayColor, 2.0f);
             }
         } else if (kind == vivid::OutputKind::Audio) {
-            // Audio operator - draw speaker/waveform icon
+            // Audio operator - draw waveform visualization
             ImGui::Dummy(ImVec2(100, 50));
             ImVec2 min = ImGui::GetItemRectMin();
             ImVec2 max = ImGui::GetItemRectMax();
             ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(50, 30, 60, 255), 4.0f);
 
-            // Draw speaker icon
-            float cx = (min.x + max.x) * 0.5f;
+            // Get audio samples from the operator
+            AudioOperator* audioOp = static_cast<AudioOperator*>(info.op);
+            const AudioBuffer* buf = audioOp->outputBuffer();
+
             float cy = (min.y + max.y) * 0.5f;
-            ImU32 iconColor = IM_COL32(180, 140, 220, 255);
+            float height = (max.y - min.y) * 0.8f;
+            float width = max.x - min.x - 8.0f;  // Padding
+            float startX = min.x + 4.0f;
 
-            // Speaker body (trapezoid)
-            ImGui::GetWindowDrawList()->AddQuadFilled(
-                ImVec2(cx - 15, cy - 8), ImVec2(cx - 5, cy - 12),
-                ImVec2(cx - 5, cy + 12), ImVec2(cx - 15, cy + 8), iconColor);
+            ImU32 waveColor = IM_COL32(180, 140, 220, 255);
+            ImU32 waveColorDim = IM_COL32(120, 80, 160, 200);
 
-            // Sound waves
-            ImU32 waveColor = IM_COL32(180, 140, 220, 150);
-            ImGui::GetWindowDrawList()->AddBezierQuadratic(
-                ImVec2(cx + 2, cy - 8), ImVec2(cx + 12, cy), ImVec2(cx + 2, cy + 8),
-                waveColor, 2.0f);
-            ImGui::GetWindowDrawList()->AddBezierQuadratic(
-                ImVec2(cx + 8, cy - 12), ImVec2(cx + 22, cy), ImVec2(cx + 8, cy + 12),
-                waveColor, 2.0f);
+            if (buf && buf->isValid() && buf->sampleCount() > 0) {
+                // Draw actual waveform from audio buffer
+                constexpr int NUM_POINTS = 48;  // Number of points to sample
+                uint32_t step = std::max(1u, buf->frameCount / NUM_POINTS);
+
+                float prevX = startX;
+                float prevY = cy;
+
+                for (int i = 0; i < NUM_POINTS && i * step < buf->frameCount; i++) {
+                    uint32_t frameIdx = i * step;
+                    // Mix left and right channels for mono visualization
+                    float sample = (buf->samples[frameIdx * 2] + buf->samples[frameIdx * 2 + 1]) * 0.5f;
+                    // Clamp and scale
+                    sample = std::max(-1.0f, std::min(1.0f, sample));
+
+                    float x = startX + (width * i / (NUM_POINTS - 1));
+                    float y = cy - sample * height * 0.5f;
+
+                    if (i > 0) {
+                        ImGui::GetWindowDrawList()->AddLine(
+                            ImVec2(prevX, prevY), ImVec2(x, y), waveColor, 1.5f);
+                    }
+                    prevX = x;
+                    prevY = y;
+                }
+            } else {
+                // No audio data - draw flat line with small sine hint
+                for (int i = 0; i < 3; i++) {
+                    float x1 = startX + width * i / 3.0f;
+                    float x2 = startX + width * (i + 1) / 3.0f;
+                    float xMid = (x1 + x2) * 0.5f;
+                    float yOffset = (i == 1) ? height * 0.15f : -height * 0.1f;
+                    ImGui::GetWindowDrawList()->AddBezierQuadratic(
+                        ImVec2(x1, cy), ImVec2(xMid, cy + yOffset), ImVec2(x2, cy),
+                        waveColorDim, 1.5f);
+                }
+            }
         } else {
             // Unknown type
             ImGui::Dummy(ImVec2(100, 40));
