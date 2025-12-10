@@ -74,6 +74,7 @@ public:
      */
     AudioEffect& bypass(bool b) {
         m_bypass = b;
+        setBypassed(b);  // Also set base class for UI sync
         return *this;
     }
 
@@ -124,9 +125,9 @@ protected:
     std::string m_inputName;
     AudioOperator* m_connectedInput = nullptr;
 
-    // Mix and bypass
+    // Mix and bypass control
     float m_mix = 1.0f;     // Fully wet by default
-    bool m_bypass = false;
+    bool m_bypass = false;  // Bypass state (pass-through when true)
 };
 
 } // namespace vivid::audio

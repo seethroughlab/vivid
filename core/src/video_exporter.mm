@@ -503,29 +503,32 @@ bool VideoExporter::tryEncodePendingFrame() {
         return false;
     }
 
-    WGPUBuffer buffer = m_readbackBuffers[m_pendingBuffer];
-    WGPUBufferMapState mapState = wgpuBufferGetMapState(buffer);
-
-    if (mapState == WGPUBufferMapState_Mapped) {
-        // Buffer is ready - encode the frame
-        const void* data = wgpuBufferGetConstMappedRange(buffer, 0, m_pendingBytesPerRow * m_pendingHeight);
-        if (data) {
-            // We need to temporarily set the legacy buffer to the pending buffer for encodeFrame
-            WGPUBuffer savedBuffer = m_readbackBuffer;
-            m_readbackBuffer = buffer;
-
-            encodeFrame(m_pendingWidth, m_pendingHeight, m_pendingBytesPerRow, m_pendingBytesPerPixel);
-
-            m_readbackBuffer = savedBuffer;
-        }
-        wgpuBufferUnmap(buffer);
-
-        m_hasPendingFrame = false;
-        m_pendingBuffer = -1;
-        return true;
+    // Check our tracked state instead of wgpuBufferGetMapState (which is not implemented)
+    if (!m_bufferMapped[m_pendingBuffer]) {
+        return false;  // Buffer not ready yet
     }
 
-    return false;
+    WGPUBuffer buffer = m_readbackBuffers[m_pendingBuffer];
+
+    // Buffer is ready - encode the frame
+    const void* data = wgpuBufferGetConstMappedRange(buffer, 0, m_pendingBytesPerRow * m_pendingHeight);
+    if (data) {
+        // We need to temporarily set the legacy buffer to the pending buffer for encodeFrame
+        WGPUBuffer savedBuffer = m_readbackBuffer;
+        m_readbackBuffer = buffer;
+
+        encodeFrame(m_pendingWidth, m_pendingHeight, m_pendingBytesPerRow, m_pendingBytesPerPixel);
+
+        m_readbackBuffer = savedBuffer;
+
+        // Only unmap if we successfully got mapped data
+        wgpuBufferUnmap(buffer);
+    }
+    m_bufferMapped[m_pendingBuffer] = false;  // Mark as unmapped
+
+    m_hasPendingFrame = false;
+    m_pendingBuffer = -1;
+    return true;
 }
 
 void VideoExporter::captureFrame(WGPUDevice device, WGPUQueue queue, WGPUTexture texture) {
@@ -575,6 +578,7 @@ void VideoExporter::captureFrame(WGPUDevice device, WGPUQueue queue, WGPUTexture
             bufferDesc.mappedAtCreation = false;
 
             m_readbackBuffers[i] = wgpuDeviceCreateBuffer(device, &bufferDesc);
+            m_bufferMapped[i] = false;  // Reset mapped state
         }
         m_bufferSize = requiredSize;
         m_currentBuffer = 0;
@@ -608,18 +612,19 @@ void VideoExporter::captureFrame(WGPUDevice device, WGPUQueue queue, WGPUTexture
     submitCopyCommand(device, queue, texture, writeBuffer, texWidth, texHeight, bytesPerRow, bytesPerPixel);
 
     // Start async map for this buffer
-    struct MapContext {
-        bool completed = false;
-        WGPUMapAsyncStatus status = WGPUMapAsyncStatus_Unknown;
-    };
-
-    // Note: We don't wait for this map - we'll check it next frame
+    // Pass pointer to our mapped flag via userdata
     WGPUBufferMapCallbackInfo callbackInfo = {};
     callbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
     callbackInfo.callback = [](WGPUMapAsyncStatus status, WGPUStringView message,
                                void* userdata1, void* userdata2) {
-        // Callback is empty - we poll the buffer state instead
+        if (status == WGPUMapAsyncStatus_Success && userdata1) {
+            // Set the flag to indicate buffer is now mapped
+            bool* mappedFlag = static_cast<bool*>(userdata1);
+            *mappedFlag = true;
+        }
     };
+    callbackInfo.userdata1 = &m_bufferMapped[writeBuffer];
+    callbackInfo.userdata2 = nullptr;
 
     wgpuBufferMapAsync(m_readbackBuffers[writeBuffer], WGPUMapMode_Read, 0, requiredSize, callbackInfo);
 
@@ -642,7 +647,7 @@ void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesP
 
     const void* data = wgpuBufferGetConstMappedRange(m_readbackBuffer, 0, bytesPerRow * height);
     if (!data) {
-        wgpuBufferUnmap(m_readbackBuffer);
+        // Don't unmap here - caller handles unmapping
         return;
     }
 
@@ -650,7 +655,7 @@ void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesP
 
     // Check if input is ready
     if (![m_impl->videoInput isReadyForMoreMediaData]) {
-        wgpuBufferUnmap(m_readbackBuffer);
+        // Don't unmap here - caller handles unmapping
         return;
     }
 
@@ -673,7 +678,7 @@ void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesP
                                         (__bridge CFDictionaryRef)attrs,
                                         &pixelBuffer);
         if (cvStatus != kCVReturnSuccess) {
-            wgpuBufferUnmap(m_readbackBuffer);
+            // Don't unmap here - caller handles unmapping
             return;
         }
     }
@@ -786,7 +791,7 @@ void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesP
     }
 
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
-    wgpuBufferUnmap(m_readbackBuffer);
+    // Don't unmap here - caller handles unmapping
 
     // Append to video
     CMTime presentationTime = m_impl->currentTime;

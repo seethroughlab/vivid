@@ -62,3 +62,4 @@ Desktop.ini
 vivid_v1
 vivid_v2
 **/imgui.ini
+examples/*/vivid_*

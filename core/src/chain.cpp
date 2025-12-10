@@ -267,9 +267,11 @@ void Chain::process(Context& ctx) {
     // Store in context for audio operators to use
     ctx.setAudioFramesThisFrame(audioFramesThisFrame);
 
-    // Process all operators in dependency order (skip bypassed ones)
+    // Process all operators in dependency order
+    // Skip bypassed texture operators, but always process audio operators
+    // (audio effects handle bypass internally by copying input to output)
     for (Operator* op : executionOrder_) {
-        if (!op->isBypassed()) {
+        if (!op->isBypassed() || op->outputKind() == OutputKind::Audio) {
             op->process(ctx);
         }
     }

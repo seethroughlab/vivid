@@ -1,8 +1,20 @@
 {
+  "audio.volume": [1, 0, 0, 0],
+  "bg.angle": [4.909, 0, 0, 0],
+  "bg.scale": [3.939, 0, 0, 0],
+  "bitcrush.bits": [4.5, 0, 0, 0],
+  "bitcrush.mix": [0.422, 0, 0, 0],
+  "comp.mix": [0.14, 0, 0, 0],
+  "comp.release": [180.156, 0, 0, 0],
   "delay.delayTime": [1393.75, 0, 0, 0],
-  "delay.feedback": [0.975, 0, 0, 0],
-  "delay.mix": [1, 0, 0, 0],
-  "reverb.mix": [1, 0, 0, 0],
+  "delay.feedback": [0.279, 0, 0, 0],
+  "delay.mix": [0.531, 0, 0, 0],
+  "out.volume": [1.456, 0, 0, 0],
+  "overdrive.drive": [10, 0, 0, 0],
+  "overdrive.mix": [0.875, 0, 0, 0],
+  "overdrive.tone": [1, 0, 0, 0],
+  "reverb.damping": [0.406, 0, 0, 0],
+  "reverb.mix": [0.656, 0, 0, 0],
   "reverb.roomSize": [0.828, 0, 0, 0],
-  "reverb.width": [0.844, 0, 0, 0]
+  "reverb.width": [0.406, 0, 0, 0]
 }

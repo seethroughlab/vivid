@@ -8,7 +8,7 @@
 //   O: Toggle Overdrive effect
 //   B: Toggle Bitcrush effect
 //   SPACE: Pause/Play
-//   Mouse X: Control effect intensity
+//   TAB: Open parameter controls
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -32,21 +32,20 @@ static const std::vector<std::string> audioFiles = {
 
 static int currentFileIndex = 0;
 
-// Effect toggle states
-static bool delayEnabled = true;
-static bool reverbEnabled = true;
-static bool compEnabled = false;
-static bool overdriveEnabled = false;
-static bool bitcrushEnabled = false;
+void printStatus(Chain& chain) {
+    auto& delay = chain.get<Delay>("delay");
+    auto& reverb = chain.get<Reverb>("reverb");
+    auto& comp = chain.get<Compressor>("comp");
+    auto& overdrive = chain.get<Overdrive>("overdrive");
+    auto& bitcrush = chain.get<Bitcrush>("bitcrush");
 
-void printStatus() {
     std::cout << "\n[Audio Effects] Current file: " << audioFiles[currentFileIndex] << std::endl;
     std::cout << "Effects: "
-              << (delayEnabled ? "[D]elay " : "delay ")
-              << (reverbEnabled ? "[R]everb " : "reverb ")
-              << (compEnabled ? "[C]ompressor " : "compressor ")
-              << (overdriveEnabled ? "[O]verdrive " : "overdrive ")
-              << (bitcrushEnabled ? "[B]itcrush " : "bitcrush ")
+              << (!delay.isBypassed() ? "[D]elay " : "delay ")
+              << (!reverb.isBypassed() ? "[R]everb " : "reverb ")
+              << (!comp.isBypassed() ? "[C]ompressor " : "compressor ")
+              << (!overdrive.isBypassed() ? "[O]verdrive " : "overdrive ")
+              << (!bitcrush.isBypassed() ? "[B]itcrush " : "bitcrush ")
               << std::endl;
 }
 
@@ -91,12 +90,12 @@ void setup(Context& ctx) {
     chain.output("vis");
     chain.audioOutput("out");
 
-    // Set initial bypass states
-    delay.bypass(!delayEnabled);
-    reverb.bypass(!reverbEnabled);
-    comp.bypass(!compEnabled);
-    overdrive.bypass(!overdriveEnabled);
-    bitcrush.bypass(!bitcrushEnabled);
+    // Set initial bypass states (effects start enabled except comp/overdrive/bitcrush)
+    delay.bypass(false);
+    reverb.bypass(false);
+    comp.bypass(true);
+    overdrive.bypass(true);
+    bitcrush.bypass(true);
 
     std::cout << "\n========================================" << std::endl;
     std::cout << "Audio Effects Demo" << std::endl;
@@ -109,10 +108,10 @@ void setup(Context& ctx) {
     std::cout << "  O: Toggle Overdrive" << std::endl;
     std::cout << "  B: Toggle Bitcrush" << std::endl;
     std::cout << "  SPACE: Pause/Play" << std::endl;
-    std::cout << "  Mouse X: Effect intensity" << std::endl;
+    std::cout << "  TAB: Open parameter controls" << std::endl;
     std::cout << "========================================\n" << std::endl;
 
-    printStatus();
+    printStatus(chain);
 }
 
 void update(Context& ctx) {
@@ -130,35 +129,30 @@ void update(Context& ctx) {
         if (ctx.key(GLFW_KEY_1 + i).pressed && i != currentFileIndex) {
             currentFileIndex = i;
             audio.file(audioFiles[currentFileIndex]);
-            printStatus();
+            printStatus(chain);
         }
     }
 
-    // Effect toggles
+    // Effect toggles - use operator bypass directly
     if (ctx.key(GLFW_KEY_D).pressed) {
-        delayEnabled = !delayEnabled;
-        delay.bypass(!delayEnabled);
-        printStatus();
+        delay.bypass(!delay.isBypassed());
+        printStatus(chain);
     }
     if (ctx.key(GLFW_KEY_R).pressed) {
-        reverbEnabled = !reverbEnabled;
-        reverb.bypass(!reverbEnabled);
-        printStatus();
+        reverb.bypass(!reverb.isBypassed());
+        printStatus(chain);
     }
     if (ctx.key(GLFW_KEY_C).pressed) {
-        compEnabled = !compEnabled;
-        comp.bypass(!compEnabled);
-        printStatus();
+        comp.bypass(!comp.isBypassed());
+        printStatus(chain);
     }
     if (ctx.key(GLFW_KEY_O).pressed) {
-        overdriveEnabled = !overdriveEnabled;
-        overdrive.bypass(!overdriveEnabled);
-        printStatus();
+        overdrive.bypass(!overdrive.isBypassed());
+        printStatus(chain);
     }
     if (ctx.key(GLFW_KEY_B).pressed) {
-        bitcrushEnabled = !bitcrushEnabled;
-        bitcrush.bypass(!bitcrushEnabled);
-        printStatus();
+        bitcrush.bypass(!bitcrush.isBypassed());
+        printStatus(chain);
     }
 
     // Space - pause/play
@@ -172,30 +166,9 @@ void update(Context& ctx) {
         }
     }
 
-    // Mouse X controls effect intensity
-    float intensity = ctx.mouseNorm().x;
-
-    // Modulate effect parameters based on mouse position
-    if (delayEnabled) {
-        delay.feedback(0.2f + intensity * 0.5f);
-        delay.mix(0.2f + intensity * 0.5f);
-    }
-    if (reverbEnabled) {
-        reverb.roomSize(0.3f + intensity * 0.6f);
-        reverb.mix(0.2f + intensity * 0.4f);
-    }
-    if (overdriveEnabled) {
-        overdrive.drive(1.0f + intensity * 5.0f);
-    }
-    if (bitcrushEnabled) {
-        // Lower bits = more crushed
-        int bits = 16 - static_cast<int>(intensity * 12);
-        bitcrush.bits(bits);
-    }
-
-    // Animate visual noise based on audio playback
+    // Animate visual noise
     float time = ctx.time();
-    noise.speed(0.3f + intensity * 0.7f);
+    noise.speed(0.5f);
     noise.scale(30.0f + std::sin(time * 2.0f) * 20.0f);
 }
 

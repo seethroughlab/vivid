@@ -3,6 +3,7 @@
 #include <vivid/context.h>
 #include <algorithm>
 #include <iostream>
+#include <cmath>
 
 namespace vivid::audio {
 
@@ -53,6 +54,10 @@ void AudioEffect::process(Context& ctx) {
     if (m_output.frameCount != frames || m_output.channels != channels) {
         m_output.allocate(frames, channels, inputBuf->sampleRate);
     }
+
+    // Sync bypass state from base class (UI uses setBypassed directly)
+    // This ensures UI toggle and code toggle both work
+    m_bypass = Operator::isBypassed();
 
     // Bypass: copy input to output directly
     if (m_bypass) {

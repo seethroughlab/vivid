@@ -171,6 +171,7 @@ private:
     // Double-buffered async readback
     static constexpr int NUM_READBACK_BUFFERS = 2;
     WGPUBuffer m_readbackBuffers[NUM_READBACK_BUFFERS] = {nullptr, nullptr};
+    bool m_bufferMapped[NUM_READBACK_BUFFERS] = {false, false};  // Track mapped state
     size_t m_bufferSize = 0;
     int m_currentBuffer = 0;  // Buffer being written to
     int m_pendingBuffer = -1; // Buffer waiting to be encoded (-1 = none)
