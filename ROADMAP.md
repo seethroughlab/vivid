@@ -2042,7 +2042,7 @@ void setup(Context& ctx) {
 
 **Audio Source Operators** (extend AudioOperator):
 - [ ] AudioIn - Capture from microphone/line-in
-- [ ] AudioFile - Load and play audio files (WAV, MP3, OGG)
+- [x] AudioFile - Load and play audio files (WAV) with loop, volume, play/pause/stop/seek
 - [x] VideoAudio - Extract audio from VideoPlayer (in vivid-video addon)
 
 ```cpp
@@ -2174,6 +2174,10 @@ void update(Context& ctx) {
 - [ ] SamplePlayer triggers with <5ms latency
 - [ ] AudioFilter applies HPF/LPF in real-time
 - [x] VideoAudio extracts audio from VideoPlayer
+- [x] AudioFile loads and plays WAV files with resampling
+- [x] Audio effects chain works with bypass toggle
+- [x] Audio effects have parameter UI in chain visualizer
+- [x] examples/audio-effects demo runs with all 11 effects
 - [ ] examples/audio-reactive runs on all platforms
 - [ ] examples/sample-trigger runs on all platforms
 - [ ] Update README.md with audio features documentation
