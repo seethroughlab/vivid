@@ -141,6 +141,61 @@ private:
 };
 
 /**
+ * @brief 3D vector parameter wrapper
+ *
+ * @par Example
+ * @code
+ * Vec3Param m_offset{"offset", 0.0f, 0.0f, 0.0f, -10.0f, 10.0f};
+ *
+ * MyEffect& offset(float x, float y, float z) { m_offset.set(x, y, z); return *this; }
+ * @endcode
+ */
+class Vec3Param {
+public:
+    /**
+     * @brief Construct a Vec3 parameter
+     * @param name Display name
+     * @param x Default X value
+     * @param y Default Y value
+     * @param z Default Z value
+     * @param minVal Minimum for all components
+     * @param maxVal Maximum for all components
+     */
+    constexpr Vec3Param(const char* name, float x, float y, float z, float minVal = -1.0f, float maxVal = 1.0f)
+        : m_name(name), m_x(x), m_y(y), m_z(z), m_min(minVal), m_max(maxVal) {}
+
+    /// @brief Get X component
+    float x() const { return m_x; }
+
+    /// @brief Get Y component
+    float y() const { return m_y; }
+
+    /// @brief Get Z component
+    float z() const { return m_z; }
+
+    /**
+     * @brief Set all components
+     * @param x New X value
+     * @param y New Y value
+     * @param z New Z value
+     */
+    void set(float x, float y, float z) { m_x = x; m_y = y; m_z = z; }
+
+    /// @brief Get parameter name
+    const char* name() const { return m_name; }
+
+    /// @brief Generate ParamDecl
+    ParamDecl decl() const {
+        return {m_name, ParamType::Vec3, m_min, m_max, {m_x, m_y, m_z}};
+    }
+
+private:
+    const char* m_name;
+    float m_x, m_y, m_z;
+    float m_min, m_max;
+};
+
+/**
  * @brief RGBA color parameter wrapper
  *
  * @par Example

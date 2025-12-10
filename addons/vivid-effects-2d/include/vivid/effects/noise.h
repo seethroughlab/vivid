@@ -23,27 +23,36 @@ enum class NoiseType {
 };
 
 /**
- * @brief Fractal noise generator
+ * @brief Fractal noise generator (3D)
  *
  * Generates animated procedural noise textures. Supports multiple noise
- * algorithms and fractal layering (octaves) for detail.
+ * algorithms and fractal layering (octaves) for detail. The offset parameter
+ * provides 3D spatial offset (x, y, z).
  *
  * @par Parameters
  * | Name | Type | Range | Default | Description |
  * |------|------|-------|---------|-------------|
  * | scale | float | 0.1-20 | 4.0 | Noise scale (higher = finer detail) |
- * | speed | float | 0-5 | 0.5 | Animation speed |
+ * | speed | float | 0-5 | 0.5 | Animation speed (auto-increments z offset) |
+ * | offset | vec3 | -100-100 | (0,0,0) | 3D spatial offset (x, y, z) |
  * | octaves | int | 1-8 | 4 | Fractal layers |
  * | lacunarity | float | 1-4 | 2.0 | Frequency multiplier per octave |
  * | persistence | float | 0-1 | 0.5 | Amplitude multiplier per octave |
  *
  * @par Example
  * @code
+ * // Animated noise (z auto-increments with time * speed)
  * chain->add<Noise>("noise")
  *     .scale(4.0f)
  *     .speed(0.5f)
  *     .type(NoiseType::Simplex)
  *     .octaves(4);
+ *
+ * // Manual z control (e.g., for audio-reactive slicing)
+ * chain->add<Noise>("noise")
+ *     .scale(4.0f)
+ *     .speed(0.0f)  // Disable auto-animation
+ *     .offset(0, 0, audioLevel * 10.0f);  // Drive z with audio
  * @endcode
  *
  * @par Inputs
@@ -82,6 +91,7 @@ public:
      */
     Noise& speed(float s) { m_speed = s; return *this; }
 
+
     /**
      * @brief Set number of fractal octaves
      * @param o Octaves (1-8, default 4)
@@ -104,12 +114,13 @@ public:
     Noise& persistence(float p) { m_persistence = p; return *this; }
 
     /**
-     * @brief Set UV offset
+     * @brief Set 3D offset
      * @param x X offset
      * @param y Y offset
+     * @param z Z offset (3rd dimension, default 0)
      * @return Reference for chaining
      */
-    Noise& offset(float x, float y) { m_offset.set(x, y); return *this; }
+    Noise& offset(float x, float y, float z = 0.0f) { m_offset.set(x, y, z); return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -132,7 +143,7 @@ public:
         if (name == "octaves") { out[0] = m_octaves; return true; }
         if (name == "lacunarity") { out[0] = m_lacunarity; return true; }
         if (name == "persistence") { out[0] = m_persistence; return true; }
-        if (name == "offset") { out[0] = m_offset.x(); out[1] = m_offset.y(); return true; }
+        if (name == "offset") { out[0] = m_offset.x(); out[1] = m_offset.y(); out[2] = m_offset.z(); return true; }
         return false;
     }
 
@@ -142,7 +153,7 @@ public:
         if (name == "octaves") { m_octaves = static_cast<int>(value[0]); return true; }
         if (name == "lacunarity") { m_lacunarity = value[0]; return true; }
         if (name == "persistence") { m_persistence = value[0]; return true; }
-        if (name == "offset") { m_offset.set(value[0], value[1]); return true; }
+        if (name == "offset") { m_offset.set(value[0], value[1], value[2]); return true; }
         return false;
     }
 
@@ -158,7 +169,7 @@ private:
     Param<int> m_octaves{"octaves", 4, 1, 8};
     Param<float> m_lacunarity{"lacunarity", 2.0f, 1.0f, 4.0f};
     Param<float> m_persistence{"persistence", 0.5f, 0.0f, 1.0f};
-    Vec2Param m_offset{"offset", 0.0f, 0.0f};
+    Vec3Param m_offset{"offset", 0.0f, 0.0f, 0.0f, -100.0f, 100.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;
