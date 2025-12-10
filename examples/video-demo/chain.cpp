@@ -52,6 +52,10 @@ void setup(Context& ctx) {
     auto& video = chain.add<VideoPlayer>("video");
     auto& hsv = chain.add<HSV>("hsv");
 
+    // Audio routing for playback and recording
+    auto& videoAudio = chain.add<VideoAudio>("videoAudio");
+    auto& audioOut = chain.add<AudioOutput>("audioOut");
+
     // Load first video with looping
     video.file(videos[currentVideoIndex].path)
          .loop(true);
@@ -61,8 +65,13 @@ void setup(Context& ctx) {
        .saturation(1.1f)
        .value(1.0f);
 
-    // Set outputs
+    // Audio: extract from video and route to output
+    videoAudio.source("video");
+    audioOut.input("videoAudio").volume(1.0f);
+
+    // Set outputs (video and audio)
     chain.output("hsv");
+    chain.audioOutput("audioOut");
 
     std::cout << "\n[VideoDemo] Codec Test Suite" << std::endl;
     std::cout << "Controls: 1-" << videos.size() << "=switch video, SPACE=pause/play, R=restart, H=toggle HSV\n" << std::endl;

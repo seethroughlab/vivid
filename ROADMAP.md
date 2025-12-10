@@ -1875,6 +1875,13 @@ The chain visualizer is an ImNodes-based overlay that shows the operator graph w
 The audio system follows the same pattern as the video/texture system: core provides the
 foundational types and output infrastructure, while the vivid-audio addon provides processing operators.
 
+**Key principle:** All audio flows through the chain - nothing plays directly to speakers. VideoPlayer
+extracts audio samples (via AVAssetReader for standard codecs, or direct decoding for HAP), which are
+then routed through VideoAudio → AudioOutput. This unified architecture ensures:
+- Consistent audio routing for all video codecs
+- Audio processing/effects can be applied
+- Recording captures the exact audio output from the chain
+
 **Architecture:**
 ```
                             ┌─────────────────────────────────────────┐
@@ -1907,13 +1914,13 @@ foundational types and output infrastructure, while the vivid-audio addon provid
 **Core Changes:**
 
 1. **OutputKind Extension** (`core/include/vivid/operator.h`)
-   - [ ] Add `Audio` - audio buffer output
+   - [x] Add `Audio` - audio buffer output
    - [ ] Add `AudioValue` - audio analysis values (levels, FFT bands)
 
 2. **AudioBuffer** (`core/include/vivid/audio_buffer.h`)
-   - [ ] Interleaved float sample buffer struct
-   - [ ] Frame count, channels, sample rate
-   - [ ] Standard: 48kHz, stereo, 512-frame blocks (~10.67ms)
+   - [x] Interleaved float sample buffer struct
+   - [x] Frame count, channels, sample rate
+   - [x] Standard: 48kHz, stereo, 512-frame blocks (~10.67ms)
 
 ```cpp
 namespace vivid {
@@ -1936,9 +1943,9 @@ constexpr uint32_t AUDIO_BLOCK_SIZE = 512;  // ~10.67ms at 48kHz
 ```
 
 3. **AudioOperator Base Class** (`core/include/vivid/audio_operator.h`)
-   - [ ] Base class for all audio-producing operators
-   - [ ] Manages output buffer allocation
-   - [ ] Input buffer access from connected operators
+   - [x] Base class for all audio-producing operators
+   - [x] Manages output buffer allocation
+   - [x] Input buffer access from connected operators
 
 ```cpp
 class AudioOperator : public Operator {
@@ -1953,10 +1960,10 @@ protected:
 };
 ```
 
-4. **AudioOutput** (`core/include/vivid/audio_output.h`, `core/src/audio_output.mm`)
-   - [ ] Speaker output using miniaudio (reuse from vivid-video)
-   - [ ] Volume control parameter
-   - [ ] Ring buffer for audio thread decoupling
+4. **AudioOutput** (`core/include/vivid/audio_output.h`, `core/src/audio_output.cpp`)
+   - [x] Speaker output using miniaudio
+   - [x] Volume control parameter
+   - [x] Ring buffer for audio thread decoupling
 
 ```cpp
 class AudioOutput : public AudioOperator {
@@ -1974,14 +1981,14 @@ private:
 ```
 
 5. **Chain Audio Support** (`core/include/vivid/chain.h`)
-   - [ ] `chain.audioOutput("name")` - designate audio output operator
-   - [ ] `chain.audioOutputBuffer()` - get audio buffer for export
-   - [ ] `chain.getAudioOutput()` - get audio output operator
+   - [x] `chain.audioOutput("name")` - designate audio output operator
+   - [x] `chain.audioOutputBuffer()` - get audio buffer for export
+   - [x] `chain.getAudioOutput()` - get audio output operator
 
 6. **VideoExporter Audio Muxing** (`core/src/video_exporter.mm`)
-   - [ ] `pushAudioSamples(float*, frameCount)` - add audio to video
-   - [ ] AVAssetWriter audio input track
-   - [ ] AAC encoding (H.264/H.265) or PCM (ProRes)
+   - [x] `pushAudioSamples(float*, frameCount)` - add audio to video
+   - [x] AVAssetWriter audio input track
+   - [x] AAC encoding (H.264/H.265) or PCM (ProRes)
 
 ```cpp
 class VideoExporter {
@@ -2013,10 +2020,10 @@ void setup(Context& ctx) {
 ```
 
 **Validation:**
-- [ ] AudioOutput plays audio through speakers
-- [ ] VideoExporter produces video with synchronized audio track
-- [ ] chain.audioOutput() works like chain.output()
-- [ ] Audio muxing works with all three codecs (Animation, H264, H265)
+- [x] AudioOutput plays audio through speakers
+- [x] VideoExporter produces video with synchronized audio track
+- [x] chain.audioOutput() works like chain.output()
+- [x] Audio muxing works with all three codecs (Animation, H264, H265)
 
 ---
 
@@ -2036,7 +2043,7 @@ void setup(Context& ctx) {
 **Audio Source Operators** (extend AudioOperator):
 - [ ] AudioIn - Capture from microphone/line-in
 - [ ] AudioFile - Load and play audio files (WAV, MP3, OGG)
-- [ ] VideoAudio - Extract audio from VideoPlayer
+- [x] VideoAudio - Extract audio from VideoPlayer (in vivid-video addon)
 
 ```cpp
 class VideoAudio : public AudioOperator {
@@ -2149,7 +2156,7 @@ void update(Context& ctx) {
 - [ ] SampleBank loads WAV/MP3 files from folder
 - [ ] SamplePlayer triggers with <5ms latency
 - [ ] AudioFilter applies HPF/LPF in real-time
-- [ ] VideoAudio extracts audio from VideoPlayer
+- [x] VideoAudio extracts audio from VideoPlayer
 - [ ] examples/audio-reactive runs on all platforms
 - [ ] examples/sample-trigger runs on all platforms
 - [ ] Update README.md with audio features documentation

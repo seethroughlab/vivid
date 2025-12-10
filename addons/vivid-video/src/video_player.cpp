@@ -324,6 +324,9 @@ bool VideoPlayer::hasAudio() const {
 
 uint32_t VideoPlayer::readAudioSamples(float* buffer, uint32_t maxFrames) {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->readAudioSamples(buffer, maxFrames);
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->readAudioSamples(buffer, maxFrames);
+#endif
     if (m_standardDecoder) return m_standardDecoder->readAudioSamples(buffer, maxFrames);
     return 0;
 }
@@ -346,24 +349,43 @@ double VideoPlayer::audioAvailableEndPTS() const {
 }
 
 void VideoPlayer::setInternalAudioEnabled(bool enable) {
-    if (m_isHAP && m_hapDecoder) m_hapDecoder->setInternalAudioEnabled(enable);
-    if (m_standardDecoder) m_standardDecoder->setInternalAudioEnabled(enable);
+    m_internalAudioEnabled = enable;
+    if (m_isHAP && m_hapDecoder) {
+        m_hapDecoder->setInternalAudioEnabled(enable);
+    }
+#if defined(__APPLE__)
+    else if (m_usePlaybackDecoder && m_playbackDecoder) {
+        m_playbackDecoder->setInternalAudioEnabled(enable);
+    }
+#endif
+    else if (m_standardDecoder) {
+        m_standardDecoder->setInternalAudioEnabled(enable);
+    }
 }
 
 bool VideoPlayer::isInternalAudioEnabled() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->isInternalAudioEnabled();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->isInternalAudioEnabled();
+#endif
     if (m_standardDecoder) return m_standardDecoder->isInternalAudioEnabled();
     return true;
 }
 
 uint32_t VideoPlayer::audioSampleRate() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->audioSampleRate();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->audioSampleRate();
+#endif
     if (m_standardDecoder) return m_standardDecoder->audioSampleRate();
     return 48000;
 }
 
 uint32_t VideoPlayer::audioChannels() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->audioChannels();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->audioChannels();
+#endif
     if (m_standardDecoder) return m_standardDecoder->audioChannels();
     return 2;
 }

@@ -168,15 +168,33 @@ private:
     std::string m_outputPath;
     std::string m_error;
 
-    // Frame readback buffer
-    WGPUBuffer m_readbackBuffer = nullptr;
+    // Double-buffered async readback
+    static constexpr int NUM_READBACK_BUFFERS = 2;
+    WGPUBuffer m_readbackBuffers[NUM_READBACK_BUFFERS] = {nullptr, nullptr};
     size_t m_bufferSize = 0;
+    int m_currentBuffer = 0;  // Buffer being written to
+    int m_pendingBuffer = -1; // Buffer waiting to be encoded (-1 = none)
+    bool m_hasPendingFrame = false;
+    uint32_t m_pendingWidth = 0;
+    uint32_t m_pendingHeight = 0;
+    uint32_t m_pendingBytesPerRow = 0;
+    uint32_t m_pendingBytesPerPixel = 0;
+    WGPUDevice m_device = nullptr;  // Cached for async polling
+
+    // Legacy single buffer (for compatibility)
+    WGPUBuffer m_readbackBuffer = nullptr;
 
     // Audio settings
     bool m_audioEnabled = false;
     uint32_t m_audioSampleRate = 48000;
     uint32_t m_audioChannels = 2;
     uint64_t m_audioFrameCount = 0;  // Total audio frames written
+
+    // Async readback helpers
+    void submitCopyCommand(WGPUDevice device, WGPUQueue queue, WGPUTexture texture,
+                           int bufferIndex, uint32_t width, uint32_t height,
+                           uint32_t bytesPerRow, uint32_t bytesPerPixel);
+    bool tryEncodePendingFrame();
 };
 
 } // namespace vivid

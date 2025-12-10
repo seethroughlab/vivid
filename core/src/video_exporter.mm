@@ -53,6 +53,11 @@ VideoExporter::~VideoExporter() {
     if (m_recording) {
         stop();
     }
+    for (int i = 0; i < NUM_READBACK_BUFFERS; i++) {
+        if (m_readbackBuffers[i]) {
+            wgpuBufferRelease(m_readbackBuffers[i]);
+        }
+    }
     if (m_readbackBuffer) {
         wgpuBufferRelease(m_readbackBuffer);
     }
@@ -463,8 +468,70 @@ void VideoExporter::pushAudioSamples(const float* samples, uint32_t frameCount) 
     }
 }
 
+// Helper to submit copy command to a specific buffer
+void VideoExporter::submitCopyCommand(WGPUDevice device, WGPUQueue queue, WGPUTexture texture,
+                                       int bufferIndex, uint32_t width, uint32_t height,
+                                       uint32_t bytesPerRow, uint32_t bytesPerPixel) {
+    WGPUCommandEncoderDescriptor encoderDesc = {};
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &encoderDesc);
+
+    WGPUTexelCopyTextureInfo srcCopy = {};
+    srcCopy.texture = texture;
+    srcCopy.mipLevel = 0;
+    srcCopy.origin = {0, 0, 0};
+    srcCopy.aspect = WGPUTextureAspect_All;
+
+    WGPUTexelCopyBufferInfo dstCopy = {};
+    dstCopy.buffer = m_readbackBuffers[bufferIndex];
+    dstCopy.layout.offset = 0;
+    dstCopy.layout.bytesPerRow = bytesPerRow;
+    dstCopy.layout.rowsPerImage = height;
+
+    WGPUExtent3D copySize = {width, height, 1};
+    wgpuCommandEncoderCopyTextureToBuffer(encoder, &srcCopy, &dstCopy, &copySize);
+
+    WGPUCommandBufferDescriptor cmdDesc = {};
+    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdDesc);
+    wgpuQueueSubmit(queue, 1, &cmdBuffer);
+    wgpuCommandBufferRelease(cmdBuffer);
+    wgpuCommandEncoderRelease(encoder);
+}
+
+// Try to encode the pending frame if the buffer is mapped
+bool VideoExporter::tryEncodePendingFrame() {
+    if (!m_hasPendingFrame || m_pendingBuffer < 0) {
+        return false;
+    }
+
+    WGPUBuffer buffer = m_readbackBuffers[m_pendingBuffer];
+    WGPUBufferMapState mapState = wgpuBufferGetMapState(buffer);
+
+    if (mapState == WGPUBufferMapState_Mapped) {
+        // Buffer is ready - encode the frame
+        const void* data = wgpuBufferGetConstMappedRange(buffer, 0, m_pendingBytesPerRow * m_pendingHeight);
+        if (data) {
+            // We need to temporarily set the legacy buffer to the pending buffer for encodeFrame
+            WGPUBuffer savedBuffer = m_readbackBuffer;
+            m_readbackBuffer = buffer;
+
+            encodeFrame(m_pendingWidth, m_pendingHeight, m_pendingBytesPerRow, m_pendingBytesPerPixel);
+
+            m_readbackBuffer = savedBuffer;
+        }
+        wgpuBufferUnmap(buffer);
+
+        m_hasPendingFrame = false;
+        m_pendingBuffer = -1;
+        return true;
+    }
+
+    return false;
+}
+
 void VideoExporter::captureFrame(WGPUDevice device, WGPUQueue queue, WGPUTexture texture) {
     if (!m_recording || !texture) return;
+
+    m_device = device;  // Cache for async polling
 
     // Get texture dimensions and format
     uint32_t texWidth = wgpuTextureGetWidth(texture);
@@ -495,76 +562,77 @@ void VideoExporter::captureFrame(WGPUDevice device, WGPUQueue queue, WGPUTexture
     uint32_t bytesPerRow = ((texWidth * bytesPerPixel) + 255) & ~255;
     size_t requiredSize = bytesPerRow * texHeight;
 
-    // Create or resize readback buffer
-    if (!m_readbackBuffer || m_bufferSize < requiredSize) {
-        if (m_readbackBuffer) {
-            wgpuBufferRelease(m_readbackBuffer);
+    // Create or resize readback buffers if needed
+    if (m_bufferSize < requiredSize) {
+        for (int i = 0; i < NUM_READBACK_BUFFERS; i++) {
+            if (m_readbackBuffers[i]) {
+                wgpuBufferRelease(m_readbackBuffers[i]);
+            }
+
+            WGPUBufferDescriptor bufferDesc = {};
+            bufferDesc.size = requiredSize;
+            bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
+            bufferDesc.mappedAtCreation = false;
+
+            m_readbackBuffers[i] = wgpuDeviceCreateBuffer(device, &bufferDesc);
         }
-
-        WGPUBufferDescriptor bufferDesc = {};
-        bufferDesc.size = requiredSize;
-        bufferDesc.usage = WGPUBufferUsage_CopyDst | WGPUBufferUsage_MapRead;
-        bufferDesc.mappedAtCreation = false;
-
-        m_readbackBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
         m_bufferSize = requiredSize;
+        m_currentBuffer = 0;
+        m_pendingBuffer = -1;
+        m_hasPendingFrame = false;
     }
 
-    // Copy texture to buffer
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &encoderDesc);
+    // Poll device (non-blocking) to check if previous frame's map completed
+    wgpuDevicePoll(device, false, nullptr);
 
-    WGPUTexelCopyTextureInfo srcCopy = {};
-    srcCopy.texture = texture;
-    srcCopy.mipLevel = 0;
-    srcCopy.origin = {0, 0, 0};
-    srcCopy.aspect = WGPUTextureAspect_All;
+    // Try to encode any pending frame
+    if (m_hasPendingFrame) {
+        if (!tryEncodePendingFrame()) {
+            // Previous frame still not ready - we need to wait (this is the slow path)
+            // This happens when GPU is slower than expected
+            int pollCount = 0;
+            while (!tryEncodePendingFrame() && pollCount < 100) {
+                wgpuDevicePoll(device, true, nullptr);
+                pollCount++;
+            }
+            if (pollCount >= 100) {
+                printf("[VideoExporter] Warning: Timeout waiting for previous frame\n");
+                m_hasPendingFrame = false;
+                m_pendingBuffer = -1;
+            }
+        }
+    }
 
-    WGPUTexelCopyBufferInfo dstCopy = {};
-    dstCopy.buffer = m_readbackBuffer;
-    dstCopy.layout.offset = 0;
-    dstCopy.layout.bytesPerRow = bytesPerRow;
-    dstCopy.layout.rowsPerImage = texHeight;
+    // Now submit the copy for the current frame
+    int writeBuffer = m_currentBuffer;
+    submitCopyCommand(device, queue, texture, writeBuffer, texWidth, texHeight, bytesPerRow, bytesPerPixel);
 
-    WGPUExtent3D copySize = {texWidth, texHeight, 1};
-    wgpuCommandEncoderCopyTextureToBuffer(encoder, &srcCopy, &dstCopy, &copySize);
-
-    WGPUCommandBufferDescriptor cmdDesc = {};
-    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdDesc);
-    wgpuQueueSubmit(queue, 1, &cmdBuffer);
-    wgpuCommandBufferRelease(cmdBuffer);
-    wgpuCommandEncoderRelease(encoder);
-
-    // Map buffer and read pixels synchronously
+    // Start async map for this buffer
     struct MapContext {
         bool completed = false;
         WGPUMapAsyncStatus status = WGPUMapAsyncStatus_Unknown;
     };
 
-    MapContext mapCtx;
-
+    // Note: We don't wait for this map - we'll check it next frame
     WGPUBufferMapCallbackInfo callbackInfo = {};
     callbackInfo.mode = WGPUCallbackMode_AllowSpontaneous;
     callbackInfo.callback = [](WGPUMapAsyncStatus status, WGPUStringView message,
                                void* userdata1, void* userdata2) {
-        MapContext* ctx = static_cast<MapContext*>(userdata1);
-        ctx->status = status;
-        ctx->completed = true;
+        // Callback is empty - we poll the buffer state instead
     };
-    callbackInfo.userdata1 = &mapCtx;
 
-    wgpuBufferMapAsync(m_readbackBuffer, WGPUMapMode_Read, 0, requiredSize, callbackInfo);
+    wgpuBufferMapAsync(m_readbackBuffers[writeBuffer], WGPUMapMode_Read, 0, requiredSize, callbackInfo);
 
-    // Poll device until mapping completes
-    while (!mapCtx.completed) {
-        wgpuDevicePoll(device, true, nullptr);
-    }
+    // Mark this buffer as pending
+    m_pendingBuffer = writeBuffer;
+    m_hasPendingFrame = true;
+    m_pendingWidth = texWidth;
+    m_pendingHeight = texHeight;
+    m_pendingBytesPerRow = bytesPerRow;
+    m_pendingBytesPerPixel = bytesPerPixel;
 
-    if (mapCtx.status == WGPUMapAsyncStatus_Success) {
-        encodeFrame(texWidth, texHeight, bytesPerRow, bytesPerPixel);
-    } else {
-        printf("[VideoExporter] Buffer map failed: status=%d\n", (int)mapCtx.status);
-    }
+    // Swap to the other buffer for next frame
+    m_currentBuffer = (m_currentBuffer + 1) % NUM_READBACK_BUFFERS;
 }
 
 void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesPerRow, uint32_t bytesPerPixel) {
@@ -745,6 +813,21 @@ void VideoExporter::stop() {
     if (!m_recording) return;
 
     m_recording = false;
+
+    // Flush any pending frame from async readback
+    if (m_hasPendingFrame && m_device) {
+        printf("[VideoExporter] Flushing pending frame...\n");
+        int pollCount = 0;
+        while (!tryEncodePendingFrame() && pollCount < 200) {
+            wgpuDevicePoll(m_device, true, nullptr);
+            pollCount++;
+        }
+        if (pollCount >= 200) {
+            printf("[VideoExporter] Warning: Timeout flushing pending frame\n");
+        }
+        m_hasPendingFrame = false;
+        m_pendingBuffer = -1;
+    }
 
     // Check if already finalized (use mutex briefly)
     {

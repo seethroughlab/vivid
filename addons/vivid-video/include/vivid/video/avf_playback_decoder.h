@@ -123,7 +123,7 @@ public:
     bool hasAudio() const { return hasAudio_; }
 
     /**
-     * @brief Set audio volume (0.0 to 1.0)
+     * @brief Set audio volume (0.0 to 1.0) - controls internal playback volume
      */
     void setVolume(float volume);
 
@@ -131,6 +131,35 @@ public:
      * @brief Get current volume
      */
     float getVolume() const;
+
+    /**
+     * @brief Read audio samples for external routing
+     * @param buffer Output buffer for interleaved float samples
+     * @param maxFrames Maximum frames to read
+     * @return Number of frames actually read
+     */
+    uint32_t readAudioSamples(float* buffer, uint32_t maxFrames);
+
+    /**
+     * @brief Enable/disable internal audio playback via AVPlayer
+     * @param enable If false, audio only goes through readAudioSamples()
+     */
+    void setInternalAudioEnabled(bool enable);
+
+    /**
+     * @brief Check if internal audio playback is enabled
+     */
+    bool isInternalAudioEnabled() const;
+
+    /**
+     * @brief Get audio sample rate
+     */
+    uint32_t audioSampleRate() const { return audioSampleRate_; }
+
+    /**
+     * @brief Get audio channel count
+     */
+    uint32_t audioChannels() const { return audioChannels_; }
 
     /**
      * @brief Get the WebGPU texture containing the current frame
@@ -152,6 +181,11 @@ private:
     float duration_ = 0.0f;
     float frameRate_ = 30.0f;
     bool hasAudio_ = false;
+
+    // Audio info
+    uint32_t audioSampleRate_ = 48000;
+    uint32_t audioChannels_ = 2;
+    bool internalAudioEnabled_ = true;
 
     // GPU resources
     WGPUDevice device_ = nullptr;

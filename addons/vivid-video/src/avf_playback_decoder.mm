@@ -1,13 +1,14 @@
 /**
  * @file avf_playback_decoder.mm
- * @brief AVFoundation playback decoder using AVPlayer + AVPlayerLooper
+ * @brief AVFoundation playback decoder using AVPlayer + AVAssetReader
  *
- * Uses Apple's recommended approach for synchronized A/V playback:
- * - AVQueuePlayer for playback
- * - AVPlayerLooper for seamless looping
- * - AVPlayerItemVideoOutput for frame extraction
+ * Uses a hybrid approach for synchronized A/V playback:
+ * - AVQueuePlayer for video timing and playback control
+ * - AVPlayerItemVideoOutput for video frame extraction
+ * - AVAssetReader for audio sample extraction (separate from AVPlayer audio)
  *
- * Audio plays through system speakers via AVPlayer's default audio routing.
+ * Audio is extracted via AVAssetReader and routed through the vivid audio chain,
+ * rather than playing directly through AVPlayer's audio output.
  */
 
 #import <AVFoundation/AVFoundation.h>
@@ -17,6 +18,9 @@
 #include <vivid/video/avf_playback_decoder.h>
 #include <vivid/context.h>
 #include <iostream>
+#include <vector>
+#include <mutex>
+#include <deque>
 
 // Helper to create WGPUStringView from C string
 inline WGPUStringView toStringView(const char* str) {
@@ -43,6 +47,17 @@ struct AVFPlaybackDecoder::Impl {
     id statusObserver = nil;
     bool isReady = false;
 
+    // Audio extraction via AVAssetReader
+    AVAssetReader* audioReader = nil;
+    AVAssetReaderTrackOutput* audioOutput = nil;
+    std::deque<float> audioBuffer;  // Ring buffer for extracted audio
+    std::mutex audioMutex;
+    double audioReadPosition = 0.0;  // Current read position in seconds
+    uint32_t sampleRate = 48000;
+    uint32_t channels = 2;
+    bool audioReaderExhausted = false;
+    std::string filePath;  // Store for recreating reader on loop
+
     void cleanup() {
         // Remove notification observer for looping
         if (playerItem) {
@@ -66,11 +81,150 @@ struct AVFPlaybackDecoder::Impl {
             player = nil;
         }
 
+        // Clean up audio reader
+        if (audioReader) {
+            [audioReader cancelReading];
+            audioReader = nil;
+        }
+        audioOutput = nil;
+        {
+            std::lock_guard<std::mutex> lock(audioMutex);
+            audioBuffer.clear();
+        }
+
         playerItem = nil;
         videoOutput = nil;
         asset = nil;
         isReady = false;
         isPlaying = false;
+        audioReaderExhausted = false;
+        audioReadPosition = 0.0;
+    }
+
+    bool setupAudioReader(AVAsset* asset) {
+        if (audioReader) {
+            [audioReader cancelReading];
+            audioReader = nil;
+        }
+        audioOutput = nil;
+        audioReaderExhausted = false;
+
+        NSError* error = nil;
+        audioReader = [[AVAssetReader alloc] initWithAsset:asset error:&error];
+        if (error || !audioReader) {
+            std::cerr << "[AVFPlaybackDecoder] Failed to create audio reader: "
+                      << (error ? error.localizedDescription.UTF8String : "unknown") << std::endl;
+            return false;
+        }
+
+        NSArray* audioTracks = [asset tracksWithMediaType:AVMediaTypeAudio];
+        if (audioTracks.count == 0) {
+            audioReader = nil;
+            return false;
+        }
+
+        AVAssetTrack* audioTrack = audioTracks[0];
+
+        // Get actual audio format from track
+        NSArray* formatDescriptions = audioTrack.formatDescriptions;
+        if (formatDescriptions.count > 0) {
+            CMAudioFormatDescriptionRef formatDesc = (__bridge CMAudioFormatDescriptionRef)formatDescriptions[0];
+            const AudioStreamBasicDescription* asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc);
+            if (asbd) {
+                sampleRate = static_cast<uint32_t>(asbd->mSampleRate);
+                channels = asbd->mChannelsPerFrame;
+                if (channels > 2) channels = 2;  // Downmix to stereo max
+            }
+        }
+
+        // Output settings: PCM float, our target sample rate and channels
+        NSDictionary* outputSettings = @{
+            AVFormatIDKey: @(kAudioFormatLinearPCM),
+            AVLinearPCMBitDepthKey: @32,
+            AVLinearPCMIsFloatKey: @YES,
+            AVLinearPCMIsNonInterleaved: @NO,
+            AVLinearPCMIsBigEndianKey: @NO,
+            AVSampleRateKey: @(sampleRate),
+            AVNumberOfChannelsKey: @(channels)
+        };
+
+        audioOutput = [[AVAssetReaderTrackOutput alloc] initWithTrack:audioTrack
+                                                       outputSettings:outputSettings];
+        audioOutput.alwaysCopiesSampleData = NO;
+
+        if (![audioReader canAddOutput:audioOutput]) {
+            std::cerr << "[AVFPlaybackDecoder] Cannot add audio output to reader" << std::endl;
+            audioReader = nil;
+            audioOutput = nil;
+            return false;
+        }
+
+        [audioReader addOutput:audioOutput];
+
+        if (![audioReader startReading]) {
+            std::cerr << "[AVFPlaybackDecoder] Failed to start audio reader: "
+                      << audioReader.error.localizedDescription.UTF8String << std::endl;
+            audioReader = nil;
+            audioOutput = nil;
+            return false;
+        }
+
+        return true;
+    }
+
+    void readMoreAudio() {
+        if (!audioReader || !audioOutput || audioReaderExhausted) {
+            return;
+        }
+
+        // Read audio samples and add to buffer
+        while (audioReader.status == AVAssetReaderStatusReading) {
+            CMSampleBufferRef sampleBuffer = [audioOutput copyNextSampleBuffer];
+            if (!sampleBuffer) {
+                if (audioReader.status == AVAssetReaderStatusCompleted) {
+                    audioReaderExhausted = true;
+                }
+                break;
+            }
+
+            CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
+            if (blockBuffer) {
+                size_t length = 0;
+                char* dataPointer = nullptr;
+                CMBlockBufferGetDataPointer(blockBuffer, 0, nullptr, &length, &dataPointer);
+
+                if (dataPointer && length > 0) {
+                    std::lock_guard<std::mutex> lock(audioMutex);
+                    size_t sampleCount = length / sizeof(float);
+                    const float* samples = reinterpret_cast<const float*>(dataPointer);
+                    for (size_t i = 0; i < sampleCount; i++) {
+                        audioBuffer.push_back(samples[i]);
+                    }
+                }
+            }
+
+            CFRelease(sampleBuffer);
+
+            // Don't read too far ahead (limit buffer to ~1 second)
+            {
+                std::lock_guard<std::mutex> lock(audioMutex);
+                if (audioBuffer.size() > sampleRate * channels * 2) {
+                    break;
+                }
+            }
+        }
+    }
+
+    void resetAudioForLoop() {
+        // Recreate audio reader for looping
+        if (!filePath.empty() && asset) {
+            {
+                std::lock_guard<std::mutex> lock(audioMutex);
+                audioBuffer.clear();
+            }
+            audioReadPosition = 0.0;
+            setupAudioReader(asset);
+        }
     }
 };
 
@@ -113,9 +267,19 @@ bool AVFPlaybackDecoder::open(Context& ctx, const std::string& path, bool loop) 
         if (frameRate_ <= 0) frameRate_ = 30.0f;
         duration_ = CMTimeGetSeconds(impl_->asset.duration);
 
-        // Check for audio
+        // Check for audio and set up extraction
         NSArray* audioTracks = [impl_->asset tracksWithMediaType:AVMediaTypeAudio];
         hasAudio_ = (audioTracks.count > 0);
+        impl_->filePath = path;
+
+        if (hasAudio_) {
+            if (impl_->setupAudioReader(impl_->asset)) {
+                audioSampleRate_ = impl_->sampleRate;
+                audioChannels_ = impl_->channels;
+                std::cout << "[AVFPlaybackDecoder] Audio: " << audioSampleRate_ << "Hz, "
+                          << audioChannels_ << " channels" << std::endl;
+            }
+        }
 
         // Create player item with video output attached BEFORE creating looper
         // This way, when AVPlayerLooper copies the template, the copies should include the output
@@ -133,13 +297,17 @@ bool AVFPlaybackDecoder::open(Context& ctx, const std::string& path, bool loop) 
         // Create queue player
         impl_->player = [[AVQueuePlayer alloc] init];
         impl_->player.actionAtItemEnd = AVPlayerActionAtItemEndNone;
-        impl_->player.volume = impl_->volume;
+        // Mute AVPlayer audio - we're extracting it via AVAssetReader and routing through our audio chain
+        impl_->player.volume = 0.0f;
 
         impl_->isLooping = loop;
 
         // Insert item directly - we handle looping manually via notifications
         // AVPlayerLooper creates copies that don't inherit video output
         [impl_->player insertItem:impl_->playerItem afterItem:nil];
+
+        // Capture impl for block
+        auto* implPtr = impl_.get();
 
         // For looping: register for end notification to seek back to start
         if (loop) {
@@ -149,8 +317,10 @@ bool AVFPlaybackDecoder::open(Context& ctx, const std::string& path, bool loop) 
                 queue:[NSOperationQueue mainQueue]
                 usingBlock:^(NSNotification* note) {
                     // Seek back to start for seamless looping
-                    [impl_->player seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
-                    [impl_->player play];
+                    [implPtr->player seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+                    [implPtr->player play];
+                    // Reset audio reader for loop
+                    implPtr->resetAudioForLoop();
                 }];
         }
 
@@ -398,13 +568,57 @@ float AVFPlaybackDecoder::duration() const {
 
 void AVFPlaybackDecoder::setVolume(float volume) {
     impl_->volume = std::max(0.0f, std::min(1.0f, volume));
-    if (impl_->player) {
+    // Only set AVPlayer volume if internal audio is enabled
+    if (impl_->player && internalAudioEnabled_) {
         impl_->player.volume = impl_->volume;
     }
 }
 
 float AVFPlaybackDecoder::getVolume() const {
     return impl_->volume;
+}
+
+uint32_t AVFPlaybackDecoder::readAudioSamples(float* buffer, uint32_t maxFrames) {
+    if (!hasAudio_ || !buffer || maxFrames == 0) {
+        return 0;
+    }
+
+    // Read more audio from the asset reader if needed
+    impl_->readMoreAudio();
+
+    // Copy samples from our buffer
+    uint32_t samplesNeeded = maxFrames * audioChannels_;
+    uint32_t samplesCopied = 0;
+
+    {
+        std::lock_guard<std::mutex> lock(impl_->audioMutex);
+
+        while (samplesCopied < samplesNeeded && !impl_->audioBuffer.empty()) {
+            buffer[samplesCopied] = impl_->audioBuffer.front();
+            impl_->audioBuffer.pop_front();
+            samplesCopied++;
+        }
+    }
+
+    // Zero-fill any remaining samples
+    while (samplesCopied < samplesNeeded) {
+        buffer[samplesCopied++] = 0.0f;
+    }
+
+    return maxFrames;
+}
+
+void AVFPlaybackDecoder::setInternalAudioEnabled(bool enable) {
+    internalAudioEnabled_ = enable;
+    if (impl_->player) {
+        // When internal audio is disabled, mute AVPlayer
+        // When enabled, restore to user-set volume
+        impl_->player.volume = enable ? impl_->volume : 0.0f;
+    }
+}
+
+bool AVFPlaybackDecoder::isInternalAudioEnabled() const {
+    return internalAudioEnabled_;
 }
 
 } // namespace vivid::video

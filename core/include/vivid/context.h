@@ -98,14 +98,44 @@ public:
     /**
      * @brief Get time since program start
      * @return Elapsed time in seconds
+     *
+     * When recording, returns deterministic time based on frame count and fps.
      */
-    double time() const { return m_time; }
+    double time() const {
+        if (m_recording && m_recordingFps > 0) {
+            return static_cast<double>(m_frame) / m_recordingFps;
+        }
+        return m_time;
+    }
+
+    /**
+     * @brief Get real wall-clock time (even during recording)
+     * @return Actual elapsed time in seconds
+     */
+    double realTime() const { return m_time; }
 
     /**
      * @brief Get time since last frame
      * @return Delta time in seconds
+     *
+     * When recording, returns a fixed timestep (1/fps) for deterministic output.
+     * Use this for all time-based calculations in operators.
      */
-    double dt() const { return m_dt; }
+    double dt() const {
+        if (m_recording) {
+            return m_recordingFps > 0 ? 1.0 / m_recordingFps : m_dt;
+        }
+        return m_dt;
+    }
+
+    /**
+     * @brief Get real delta time (always wall-clock, even during recording)
+     * @return Actual time elapsed since last frame
+     *
+     * Use this sparingly - most operators should use dt() which is
+     * deterministic during recording.
+     */
+    double realDt() const { return m_dt; }
 
     /**
      * @brief Get current frame number

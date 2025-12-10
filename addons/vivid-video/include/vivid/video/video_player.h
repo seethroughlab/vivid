@@ -207,6 +207,7 @@ private:
 
     bool m_isHAP = false;
     bool m_usePlaybackDecoder = false;  // True when using AVFPlaybackDecoder
+    bool m_internalAudioEnabled = true; // Track internal audio state for playback decoder
 };
 
 } // namespace vivid::video
