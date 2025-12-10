@@ -1,14 +1,33 @@
 # Vivid Audio Addon
-# Audio effects for the vivid chain
+# Audio effects and analysis for the vivid chain
 # - Time-based: Delay, Echo, Reverb
 # - Dynamics: Compressor, Limiter, Gate
 # - Modulation: Chorus, Flanger, Phaser
 # - Distortion: Overdrive, Bitcrush
+# - Analysis: Levels, FFT, BandSplit, BeatDetect
+
+include(FetchContent)
+
+# KissFFT for frequency analysis
+set(KISSFFT_TEST OFF CACHE BOOL "" FORCE)
+set(KISSFFT_TOOLS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    kissfft
+    GIT_REPOSITORY https://github.com/mborgerding/kissfft.git
+    GIT_TAG        131.1.0
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(kissfft)
 
 set(AUDIO_SOURCES
     src/audio_in.cpp
     src/audio_file.cpp
     src/audio_effect.cpp
+    src/audio_analyzer.cpp
+    src/levels.cpp
+    src/fft.cpp
+    src/band_split.cpp
+    src/beat_detect.cpp
     src/delay.cpp
     src/echo.cpp
     src/reverb.cpp
@@ -27,10 +46,12 @@ add_library(vivid-audio SHARED ${AUDIO_SOURCES})
 target_include_directories(vivid-audio PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/core/include
+    ${kissfft_SOURCE_DIR}
 )
 
 target_link_libraries(vivid-audio PUBLIC
     vivid-core
+    kissfft
 )
 
 # Platform-specific configuration

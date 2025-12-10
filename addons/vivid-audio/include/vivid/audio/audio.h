@@ -28,3 +28,10 @@
 // Distortion effects
 #include <vivid/audio/overdrive.h>
 #include <vivid/audio/bitcrush.h>
+
+// Audio analysis
+#include <vivid/audio/audio_analyzer.h>
+#include <vivid/audio/levels.h>
+#include <vivid/audio/fft.h>
+#include <vivid/audio/band_split.h>
+#include <vivid/audio/beat_detect.h>

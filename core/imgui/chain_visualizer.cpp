@@ -3,6 +3,10 @@
 
 #include "chain_visualizer.h"
 #include <vivid/audio_operator.h>
+#include <vivid/audio/levels.h>
+#include <vivid/audio/fft.h>
+#include <vivid/audio/band_split.h>
+#include <vivid/audio/beat_detect.h>
 #include <imgui.h>
 #include <imnodes.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -642,6 +646,12 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(125, 75, 150, 255));
             ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(180, 150, 60, 255));
             pushedStyle = true;
+        } else if (outputKind == vivid::OutputKind::AudioValue) {
+            // Teal/cyan for audio analysis nodes
+            ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(60, 100, 120, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(75, 125, 150, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(180, 150, 60, 255));
+            pushedStyle = true;
         }
 
         ImNodes::BeginNode(nodeId);
@@ -991,6 +1001,144 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                         ImVec2(x1, cy), ImVec2(xMid, cy + yOffset), ImVec2(x2, cy),
                         waveColorDim, 1.5f);
                 }
+            }
+        } else if (kind == vivid::OutputKind::AudioValue) {
+            // Audio analysis - draw based on specific analyzer type
+            ImGui::Dummy(ImVec2(100, 50));
+            ImVec2 min = ImGui::GetItemRectMin();
+            ImVec2 max = ImGui::GetItemRectMax();
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+
+            // Dark purple background
+            dl->AddRectFilled(min, max, IM_COL32(40, 30, 50, 255), 4.0f);
+
+            float width = max.x - min.x - 8.0f;
+            float height = max.y - min.y - 8.0f;
+            float startX = min.x + 4.0f;
+            float startY = min.y + 4.0f;
+
+            if (auto* levels = dynamic_cast<vivid::audio::Levels*>(info.op)) {
+                // Levels: VU meter with two bars (RMS and Peak)
+                float rms = levels->rms();
+                float peak = levels->peak();
+
+                float barWidth = width * 0.35f;
+                float gap = width * 0.1f;
+                float leftX = startX + width * 0.1f;
+                float rightX = leftX + barWidth + gap;
+
+                // Draw RMS bar (left) with gradient
+                float rmsHeight = rms * height;
+                for (int i = 0; i < static_cast<int>(rmsHeight); i++) {
+                    float t = static_cast<float>(i) / height;
+                    ImU32 col;
+                    if (t < 0.5f) col = IM_COL32(80, 180, 80, 255);       // Green
+                    else if (t < 0.8f) col = IM_COL32(200, 180, 60, 255); // Yellow
+                    else col = IM_COL32(200, 80, 80, 255);                 // Red
+                    float y = max.y - 4.0f - i;
+                    dl->AddLine(ImVec2(leftX, y), ImVec2(leftX + barWidth, y), col);
+                }
+                dl->AddRect(ImVec2(leftX, startY), ImVec2(leftX + barWidth, max.y - 4.0f),
+                           IM_COL32(80, 80, 100, 150), 2.0f);
+
+                // Draw Peak bar (right)
+                float peakHeight = peak * height;
+                for (int i = 0; i < static_cast<int>(peakHeight); i++) {
+                    float t = static_cast<float>(i) / height;
+                    ImU32 col;
+                    if (t < 0.5f) col = IM_COL32(80, 180, 80, 255);
+                    else if (t < 0.8f) col = IM_COL32(200, 180, 60, 255);
+                    else col = IM_COL32(200, 80, 80, 255);
+                    float y = max.y - 4.0f - i;
+                    dl->AddLine(ImVec2(rightX, y), ImVec2(rightX + barWidth, y), col);
+                }
+                dl->AddRect(ImVec2(rightX, startY), ImVec2(rightX + barWidth, max.y - 4.0f),
+                           IM_COL32(80, 80, 100, 150), 2.0f);
+
+            } else if (auto* fft = dynamic_cast<vivid::audio::FFT*>(info.op)) {
+                // FFT: Spectrum analyzer bars
+                const float* spectrum = fft->spectrum();
+                int binCount = fft->binCount();
+                constexpr int NUM_BARS = 24;
+
+                float barW = width / NUM_BARS - 1.0f;
+
+                for (int i = 0; i < NUM_BARS; i++) {
+                    // Sample from spectrum (logarithmic distribution)
+                    int binIdx = static_cast<int>(std::pow(static_cast<float>(i + 1) / NUM_BARS, 2.0f) * binCount * 0.5f);
+                    binIdx = std::min(binIdx, binCount - 1);
+                    float mag = spectrum ? spectrum[binIdx] * 3.0f : 0.0f;  // Scale up
+                    mag = std::min(mag, 1.0f);
+
+                    float barH = mag * height;
+                    float x = startX + i * (barW + 1.0f);
+                    float y = max.y - 4.0f - barH;
+
+                    // Color gradient: blue -> purple -> pink
+                    float t = static_cast<float>(i) / NUM_BARS;
+                    uint8_t r = static_cast<uint8_t>(80 + t * 140);
+                    uint8_t g = static_cast<uint8_t>(80 - t * 40);
+                    uint8_t b = static_cast<uint8_t>(180 - t * 40);
+                    dl->AddRectFilled(ImVec2(x, y), ImVec2(x + barW, max.y - 4.0f),
+                                     IM_COL32(r, g, b, 220), 1.0f);
+                }
+
+            } else if (auto* bands = dynamic_cast<vivid::audio::BandSplit*>(info.op)) {
+                // BandSplit: 6 frequency band bars
+                float bandValues[6] = {
+                    bands->subBass(), bands->bass(), bands->lowMid(),
+                    bands->mid(), bands->highMid(), bands->high()
+                };
+                ImU32 bandColors[6] = {
+                    IM_COL32(120, 60, 160, 255),  // SubBass - deep purple
+                    IM_COL32(60, 100, 200, 255),  // Bass - blue
+                    IM_COL32(60, 180, 180, 255),  // LowMid - cyan
+                    IM_COL32(100, 200, 100, 255), // Mid - green
+                    IM_COL32(220, 200, 60, 255),  // HighMid - yellow
+                    IM_COL32(220, 100, 80, 255)   // High - red/orange
+                };
+
+                float barW = width / 6.0f - 2.0f;
+                for (int i = 0; i < 6; i++) {
+                    float barH = bandValues[i] * 2.0f * height;  // Scale up
+                    barH = std::min(barH, height);
+                    float x = startX + i * (barW + 2.0f) + 1.0f;
+                    float y = max.y - 4.0f - barH;
+                    dl->AddRectFilled(ImVec2(x, y), ImVec2(x + barW, max.y - 4.0f),
+                                     bandColors[i], 2.0f);
+                }
+
+            } else if (auto* beat = dynamic_cast<vivid::audio::BeatDetect*>(info.op)) {
+                // BeatDetect: Pulsing circle
+                float cx = (min.x + max.x) * 0.5f;
+                float cy = (min.y + max.y) * 0.5f;
+                float maxRadius = std::min(width, height) * 0.4f;
+
+                float energy = beat->energy();
+                float intensity = beat->intensity();
+                bool isBeat = beat->beat();
+
+                // Outer ring (intensity)
+                float outerR = maxRadius * (0.6f + intensity * 0.4f);
+                dl->AddCircle(ImVec2(cx, cy), outerR,
+                             IM_COL32(100, 150, 200, static_cast<int>(100 + intensity * 155)), 24, 2.0f);
+
+                // Inner circle (energy)
+                float innerR = maxRadius * 0.3f * (0.5f + energy * 1.5f);
+                innerR = std::min(innerR, outerR - 2.0f);
+
+                // Flash white on beat
+                ImU32 fillColor = isBeat ?
+                    IM_COL32(255, 255, 255, 255) :
+                    IM_COL32(80 + static_cast<int>(energy * 100),
+                             120 + static_cast<int>(energy * 80),
+                             180, 220);
+
+                dl->AddCircleFilled(ImVec2(cx, cy), innerR, fillColor, 24);
+
+            } else {
+                // Unknown AudioValue type
+                dl->AddText(ImVec2(min.x + 35, min.y + 18), IM_COL32(150, 100, 180, 255), "AV");
             }
         } else {
             // Unknown type

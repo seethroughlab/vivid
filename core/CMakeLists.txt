@@ -136,6 +136,7 @@ target_include_directories(vivid
         ${imnodes_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/addons/vivid-render3d/include
         ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
+        ${CMAKE_SOURCE_DIR}/addons/vivid-audio/include
 )
 
 # Use wgpu-native backend for ImGui
@@ -143,12 +144,13 @@ target_compile_definitions(vivid PRIVATE
     IMGUI_IMPL_WEBGPU_BACKEND_WGPU
 )
 
-# Link against core library, GLFW-WebGPU integration, and render3d for geometry previews
+# Link against core library, GLFW-WebGPU integration, render3d for geometry previews, and audio for analyzer type info
 target_link_libraries(vivid
     PRIVATE
         vivid-core
         glfw3webgpu
         vivid-render3d
+        vivid-audio
 )
 
 # Platform-specific settings

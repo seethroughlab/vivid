@@ -88,3 +88,4 @@
 [ ] Idea: what if it's NOT POSSIBLE to set parameters directly in the c++, but ONLY in the sidecar file? pros and cons?
 [ ] Idea: Maybe operators should declare all properties in a single structure in the constructor. Would that simplify the operator declaration?
 [ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
+[ ] in the chain visualizer, the operator controls shouldn't be INSIDE the node -- there should be a separate panel that shows up on the right side of the window when you select a node -- this is where you will be able to adjust parameters. It should be like the inspector panel in TouhDesigner. 
