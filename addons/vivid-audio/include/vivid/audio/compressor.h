@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/envelope.h>
+#include <vivid/param.h>
 
 namespace vivid::audio {
 
@@ -108,6 +109,31 @@ public:
 
     std::string name() const override { return "Compressor"; }
 
+    std::vector<ParamDecl> params() override {
+        return { m_thresholdParam.decl(), m_ratioParam.decl(), m_attackParam.decl(),
+                 m_releaseParam.decl(), m_makeupParam.decl(), m_mixParam.decl() };
+    }
+
+    bool getParam(const std::string& pname, float out[4]) override {
+        if (pname == "threshold") { out[0] = m_thresholdDb; return true; }
+        if (pname == "ratio") { out[0] = m_ratio; return true; }
+        if (pname == "attack") { out[0] = m_attackMs; return true; }
+        if (pname == "release") { out[0] = m_releaseMs; return true; }
+        if (pname == "makeupGain") { out[0] = m_makeupGainDb; return true; }
+        if (pname == "mix") { out[0] = m_mix; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& pname, const float value[4]) override {
+        if (pname == "threshold") { threshold(value[0]); return true; }
+        if (pname == "ratio") { ratio(value[0]); return true; }
+        if (pname == "attack") { attack(value[0]); return true; }
+        if (pname == "release") { release(value[0]); return true; }
+        if (pname == "makeupGain") { makeupGain(value[0]); return true; }
+        if (pname == "mix") { mix(value[0]); return true; }
+        return false;
+    }
+
     /// @}
 
 protected:
@@ -118,7 +144,7 @@ protected:
 private:
     float computeGain(float inputDb);
 
-    // Parameters
+    // Parameters (raw values used in processing)
     float m_thresholdDb = -12.0f;
     float m_ratio = 4.0f;
     float m_attackMs = 10.0f;
@@ -126,6 +152,14 @@ private:
     float m_makeupGainDb = 0.0f;
     float m_makeupGainLinear = 1.0f;
     float m_kneeDb = 0.0f;
+
+    // Parameter declarations for UI
+    Param<float> m_thresholdParam{"threshold", -12.0f, -60.0f, 0.0f};
+    Param<float> m_ratioParam{"ratio", 4.0f, 1.0f, 20.0f};
+    Param<float> m_attackParam{"attack", 10.0f, 0.1f, 100.0f};
+    Param<float> m_releaseParam{"release", 100.0f, 10.0f, 1000.0f};
+    Param<float> m_makeupParam{"makeupGain", 0.0f, -20.0f, 40.0f};
+    Param<float> m_mixParam{"mix", 1.0f, 0.0f, 1.0f};
 
     // State
     dsp::EnvelopeFollower m_envelope;

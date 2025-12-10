@@ -207,6 +207,14 @@ void Chain::computeExecutionOrder() {
 }
 
 void Chain::init(Context& ctx) {
+    // First pass: call init on all operators to resolve named inputs
+    // This must happen before computeExecutionOrder() so the topological
+    // sort can see the actual dependencies
+    for (const auto& [name, op] : operators_) {
+        op->init(ctx);
+    }
+
+    // Now compute execution order with resolved dependencies
     computeExecutionOrder();
 
     if (hasError()) {
@@ -220,10 +228,6 @@ void Chain::init(Context& ctx) {
         if (!name.empty()) {
             ctx.registerOperator(name, op);
         }
-    }
-
-    for (Operator* op : executionOrder_) {
-        op->init(ctx);
     }
 
     initialized_ = true;

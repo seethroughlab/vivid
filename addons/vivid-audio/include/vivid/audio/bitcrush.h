@@ -9,6 +9,7 @@
  */
 
 #include <vivid/audio/audio_effect.h>
+#include <vivid/param.h>
 
 namespace vivid::audio {
 
@@ -73,6 +74,24 @@ public:
 
     std::string name() const override { return "Bitcrush"; }
 
+    std::vector<ParamDecl> params() override {
+        return { m_bitsParam.decl(), m_sampleRateParam.decl(), m_mixParam.decl() };
+    }
+
+    bool getParam(const std::string& pname, float out[4]) override {
+        if (pname == "bits") { out[0] = static_cast<float>(m_bits); return true; }
+        if (pname == "sampleRate") { out[0] = m_targetSampleRate; return true; }
+        if (pname == "mix") { out[0] = m_mix; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& pname, const float value[4]) override {
+        if (pname == "bits") { bits(static_cast<int>(value[0])); return true; }
+        if (pname == "sampleRate") { sampleRate(value[0]); return true; }
+        if (pname == "mix") { mix(value[0]); return true; }
+        return false;
+    }
+
     /// @}
 
 protected:
@@ -83,10 +102,15 @@ protected:
 private:
     float quantize(float sample);
 
-    // Parameters
+    // Parameters (raw values used in processing)
     int m_bits = 8;
     float m_targetSampleRate = 8000.0f;
     float m_quantLevels = 256.0f;  // 2^8
+
+    // Parameter declarations for UI
+    Param<float> m_bitsParam{"bits", 8.0f, 1.0f, 16.0f};
+    Param<float> m_sampleRateParam{"sampleRate", 8000.0f, 100.0f, 48000.0f};
+    Param<float> m_mixParam{"mix", 1.0f, 0.0f, 1.0f};
 
     // State for sample rate reduction
     float m_holdL = 0.0f;

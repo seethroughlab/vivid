@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/filters.h>
+#include <vivid/param.h>
 
 namespace vivid::audio {
 
@@ -81,6 +82,26 @@ public:
 
     std::string name() const override { return "Overdrive"; }
 
+    std::vector<ParamDecl> params() override {
+        return { m_driveParam.decl(), m_toneParam.decl(), m_levelParam.decl(), m_mixParam.decl() };
+    }
+
+    bool getParam(const std::string& pname, float out[4]) override {
+        if (pname == "drive") { out[0] = m_drive; return true; }
+        if (pname == "tone") { out[0] = m_tone; return true; }
+        if (pname == "level") { out[0] = m_level; return true; }
+        if (pname == "mix") { out[0] = m_mix; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& pname, const float value[4]) override {
+        if (pname == "drive") { drive(value[0]); return true; }
+        if (pname == "tone") { tone(value[0]); return true; }
+        if (pname == "level") { level(value[0]); return true; }
+        if (pname == "mix") { mix(value[0]); return true; }
+        return false;
+    }
+
     /// @}
 
 protected:
@@ -92,10 +113,16 @@ private:
     void updateToneFilter();
     float saturate(float sample);
 
-    // Parameters
+    // Parameters (raw values used in processing)
     float m_drive = 3.0f;
     float m_tone = 0.5f;
     float m_level = 0.8f;
+
+    // Parameter declarations for UI
+    Param<float> m_driveParam{"drive", 3.0f, 1.0f, 10.0f};
+    Param<float> m_toneParam{"tone", 0.5f, 0.0f, 1.0f};
+    Param<float> m_levelParam{"level", 0.8f, 0.0f, 2.0f};
+    Param<float> m_mixParam{"mix", 1.0f, 0.0f, 1.0f};
 
     // DSP
     dsp::OnePoleFilter m_toneFilterL;

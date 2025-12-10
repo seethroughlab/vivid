@@ -59,10 +59,10 @@ void setup(Context& ctx) {
 
     // Effects chain
     auto& delay = chain.add<Delay>("delay");
-    delay.input("audio").delayTime(250).feedback(0.3f).mix(0.4f);
+    delay.input("audio").delayTime(300).feedback(0.4f).mix(0.5f);
 
     auto& reverb = chain.add<Reverb>("reverb");
-    reverb.input("delay").roomSize(0.6f).damping(0.4f).mix(0.3f);
+    reverb.input("delay").roomSize(0.7f).damping(0.3f).mix(0.4f);
 
     auto& comp = chain.add<Compressor>("comp");
     comp.input("reverb").threshold(-18).ratio(4).attack(10).release(100);

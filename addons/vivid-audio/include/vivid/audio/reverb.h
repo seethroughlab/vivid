@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/filters.h>
+#include <vivid/param.h>
 #include <array>
 
 namespace vivid::audio {
@@ -84,6 +85,26 @@ public:
 
     std::string name() const override { return "Reverb"; }
 
+    std::vector<ParamDecl> params() override {
+        return { m_roomSizeParam.decl(), m_dampingParam.decl(), m_widthParam.decl(), m_mixParam.decl() };
+    }
+
+    bool getParam(const std::string& pname, float out[4]) override {
+        if (pname == "roomSize") { out[0] = m_roomSize; return true; }
+        if (pname == "damping") { out[0] = m_damping; return true; }
+        if (pname == "width") { out[0] = m_width; return true; }
+        if (pname == "mix") { out[0] = m_mix; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& pname, const float value[4]) override {
+        if (pname == "roomSize") { roomSize(value[0]); return true; }
+        if (pname == "damping") { damping(value[0]); return true; }
+        if (pname == "width") { width(value[0]); return true; }
+        if (pname == "mix") { mix(value[0]); return true; }
+        return false;
+    }
+
     /// @}
 
 protected:
@@ -94,10 +115,16 @@ protected:
 private:
     void updateParameters();
 
-    // Parameters
+    // Parameters (raw values used in processing)
     float m_roomSize = 0.5f;
     float m_damping = 0.5f;
     float m_width = 1.0f;
+
+    // Parameter declarations for UI
+    Param<float> m_roomSizeParam{"roomSize", 0.5f, 0.0f, 1.0f};
+    Param<float> m_dampingParam{"damping", 0.5f, 0.0f, 1.0f};
+    Param<float> m_widthParam{"width", 1.0f, 0.0f, 1.0f};
+    Param<float> m_mixParam{"mix", 0.3f, 0.0f, 1.0f};
 
     // Freeverb constants (delay lengths in samples at 44.1kHz, scaled for 48kHz)
     static constexpr int NUM_COMBS = 8;

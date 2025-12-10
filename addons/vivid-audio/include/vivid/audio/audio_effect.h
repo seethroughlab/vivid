@@ -68,6 +68,9 @@ public:
      * @brief Enable/disable effect bypass
      * @param b True to bypass (pass-through), false for normal operation
      * @return Reference for chaining
+     *
+     * When bypassed, the effect copies input directly to output (pass-through).
+     * The effect still runs so the chain connections work correctly.
      */
     AudioEffect& bypass(bool b) {
         m_bypass = b;

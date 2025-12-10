@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/delay_line.h>
+#include <vivid/param.h>
 
 namespace vivid::audio {
 
@@ -92,6 +93,24 @@ public:
 
     std::string name() const override { return "Delay"; }
 
+    std::vector<ParamDecl> params() override {
+        return { m_delayTimeParam.decl(), m_feedbackParam.decl(), m_mixParam.decl() };
+    }
+
+    bool getParam(const std::string& pname, float out[4]) override {
+        if (pname == "delayTime") { out[0] = m_delayTimeMs; return true; }
+        if (pname == "feedback") { out[0] = m_feedback; return true; }
+        if (pname == "mix") { out[0] = m_mix; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& pname, const float value[4]) override {
+        if (pname == "delayTime") { delayTime(value[0]); return true; }
+        if (pname == "feedback") { feedback(value[0]); return true; }
+        if (pname == "mix") { mix(value[0]); return true; }
+        return false;
+    }
+
     /// @}
 
 protected:
@@ -102,9 +121,14 @@ protected:
 private:
     void updateDelaySamples();
 
-    // Parameters
-    float m_delayTimeMs = 250.0f;  // Default 250ms
-    float m_feedback = 0.3f;       // Default moderate feedback
+    // Parameters (raw values used in processing)
+    float m_delayTimeMs = 250.0f;
+    float m_feedback = 0.3f;
+
+    // Parameter declarations for UI
+    Param<float> m_delayTimeParam{"delayTime", 250.0f, 0.0f, 2000.0f};
+    Param<float> m_feedbackParam{"feedback", 0.3f, 0.0f, 0.99f};
+    Param<float> m_mixParam{"mix", 0.5f, 0.0f, 1.0f};
 
     // DSP
     dsp::StereoDelayLine m_delayLine;

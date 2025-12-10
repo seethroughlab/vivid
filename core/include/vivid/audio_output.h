@@ -9,6 +9,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/param.h>
 #include <memory>
 #include <string>
 
@@ -67,6 +68,20 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
 
+    std::vector<ParamDecl> params() override {
+        return { m_volumeParam.decl() };
+    }
+
+    bool getParam(const std::string& pname, float out[4]) override {
+        if (pname == "volume") { out[0] = m_volume; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& pname, const float value[4]) override {
+        if (pname == "volume") { setVolume(value[0]); return true; }
+        return false;
+    }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Playback Control
@@ -97,6 +112,9 @@ private:
     float m_volume = 1.0f;
     bool m_initialized = false;
     bool m_autoPlay = true;  // Auto-start playback on first audio
+
+    // Parameter declarations for UI
+    Param<float> m_volumeParam{"volume", 1.0f, 0.0f, 2.0f};
 };
 
 } // namespace vivid

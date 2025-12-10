@@ -9,6 +9,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/param.h>
 #include <string>
 #include <vector>
 
@@ -98,6 +99,20 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
 
+    std::vector<ParamDecl> params() override {
+        return { m_volumeParam.decl() };
+    }
+
+    bool getParam(const std::string& pname, float out[4]) override {
+        if (pname == "volume") { out[0] = m_volume; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& pname, const float value[4]) override {
+        if (pname == "volume") { volume(value[0]); return true; }
+        return false;
+    }
+
     /// @}
 
 private:
@@ -108,6 +123,9 @@ private:
     float m_volume = 1.0f;
     bool m_playing = false;
     bool m_needsLoad = false;
+
+    // Parameter declarations for UI
+    Param<float> m_volumeParam{"volume", 1.0f, 0.0f, 1.0f};
 
     // Audio data (resampled to 48kHz stereo)
     std::vector<float> m_samples;

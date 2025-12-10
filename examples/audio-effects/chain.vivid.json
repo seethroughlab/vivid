@@ -1,0 +1,8 @@
+{
+  "delay.delayTime": [1393.75, 0, 0, 0],
+  "delay.feedback": [0.975, 0, 0, 0],
+  "delay.mix": [1, 0, 0, 0],
+  "reverb.mix": [1, 0, 0, 0],
+  "reverb.roomSize": [0.828, 0, 0, 0],
+  "reverb.width": [0.844, 0, 0, 0]
+}

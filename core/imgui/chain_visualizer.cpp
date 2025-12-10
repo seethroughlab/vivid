@@ -635,6 +635,12 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(150, 125, 50, 255));
             ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(180, 150, 60, 255));
             pushedStyle = true;
+        } else if (outputKind == vivid::OutputKind::Audio) {
+            // Purple-ish tint for audio nodes
+            ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(100, 60, 120, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(125, 75, 150, 255));
+            ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(180, 150, 60, 255));
+            pushedStyle = true;
         }
 
         ImNodes::BeginNode(nodeId);
@@ -719,15 +725,21 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                 ImGui::PushID(paramId.c_str());
 
                 bool changed = false;
+                // Ensure valid range (avoid zero-range sliders)
+                float minV = p.minVal;
+                float maxV = p.maxVal;
+                if (maxV <= minV) {
+                    maxV = minV + 1.0f;  // Fallback to avoid stuck sliders
+                }
                 switch (p.type) {
                     case vivid::ParamType::Float:
-                        changed = ImGui::SliderFloat(p.name.c_str(), &currentVal[0], p.minVal, p.maxVal);
+                        changed = ImGui::SliderFloat(p.name.c_str(), &currentVal[0], minV, maxV);
                         break;
                     case vivid::ParamType::Int:
                         {
                             int intVal = static_cast<int>(currentVal[0]);
                             if (ImGui::SliderInt(p.name.c_str(), &intVal,
-                                    static_cast<int>(p.minVal), static_cast<int>(p.maxVal))) {
+                                    static_cast<int>(minV), static_cast<int>(maxV))) {
                                 currentVal[0] = static_cast<float>(intVal);
                                 changed = true;
                             }
@@ -923,6 +935,31 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                     ImVec2(cx + r2 * cos(angle), cy + r2 * sin(angle)),
                     rayColor, 2.0f);
             }
+        } else if (kind == vivid::OutputKind::Audio) {
+            // Audio operator - draw speaker/waveform icon
+            ImGui::Dummy(ImVec2(100, 50));
+            ImVec2 min = ImGui::GetItemRectMin();
+            ImVec2 max = ImGui::GetItemRectMax();
+            ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(50, 30, 60, 255), 4.0f);
+
+            // Draw speaker icon
+            float cx = (min.x + max.x) * 0.5f;
+            float cy = (min.y + max.y) * 0.5f;
+            ImU32 iconColor = IM_COL32(180, 140, 220, 255);
+
+            // Speaker body (trapezoid)
+            ImGui::GetWindowDrawList()->AddQuadFilled(
+                ImVec2(cx - 15, cy - 8), ImVec2(cx - 5, cy - 12),
+                ImVec2(cx - 5, cy + 12), ImVec2(cx - 15, cy + 8), iconColor);
+
+            // Sound waves
+            ImU32 waveColor = IM_COL32(180, 140, 220, 150);
+            ImGui::GetWindowDrawList()->AddBezierQuadratic(
+                ImVec2(cx + 2, cy - 8), ImVec2(cx + 12, cy), ImVec2(cx + 2, cy + 8),
+                waveColor, 2.0f);
+            ImGui::GetWindowDrawList()->AddBezierQuadratic(
+                ImVec2(cx + 8, cy - 12), ImVec2(cx + 22, cy), ImVec2(cx + 8, cy + 12),
+                waveColor, 2.0f);
         } else {
             // Unknown type
             ImGui::Dummy(ImVec2(100, 40));

@@ -15,6 +15,7 @@ void AudioEffect::init(Context& ctx) {
         Operator* op = ctx.chain().getByName(m_inputName);
         if (op && op->outputKind() == OutputKind::Audio) {
             m_connectedInput = static_cast<AudioOperator*>(op);
+            setInput(0, op);  // Also set base class input for dependency tracking
         } else if (op) {
             std::cerr << "[" << name() << "] Input '" << m_inputName
                       << "' is not an audio operator" << std::endl;
