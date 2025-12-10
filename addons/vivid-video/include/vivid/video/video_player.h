@@ -17,6 +17,7 @@ class HAPDecoder;
 // Platform-specific standard codec decoders
 #if defined(__APPLE__)
 class AVFDecoder;
+class AVFPlaybackDecoder;  // AVPlayer-based decoder with proper A/V sync
 #elif defined(_WIN32)
 class MFDecoder;
 #else
@@ -125,6 +126,54 @@ public:
 
     bool hasAudio() const;
 
+    /**
+     * @brief Read audio samples for external routing
+     * @param buffer Output buffer for interleaved float samples
+     * @param maxFrames Maximum frames to read
+     * @return Number of frames actually read
+     */
+    uint32_t readAudioSamples(float* buffer, uint32_t maxFrames);
+
+    /**
+     * @brief Read audio samples synchronized to video PTS
+     * @param buffer Output buffer for interleaved float samples
+     * @param videoPTS Target video presentation timestamp in seconds
+     * @param maxFrames Maximum frames to read
+     * @return Number of frames actually read
+     */
+    uint32_t readAudioSamplesForPTS(float* buffer, double videoPTS, uint32_t maxFrames);
+
+    /**
+     * @brief Get the PTS of the oldest audio sample available
+     */
+    double audioAvailableStartPTS() const;
+
+    /**
+     * @brief Get the PTS of the newest audio sample available
+     */
+    double audioAvailableEndPTS() const;
+
+    /**
+     * @brief Enable/disable internal audio playback
+     * @param enable If false, use readAudioSamples() for external routing
+     */
+    void setInternalAudioEnabled(bool enable);
+
+    /**
+     * @brief Check if internal audio is enabled
+     */
+    bool isInternalAudioEnabled() const;
+
+    /**
+     * @brief Get audio sample rate
+     */
+    uint32_t audioSampleRate() const;
+
+    /**
+     * @brief Get audio channel count
+     */
+    uint32_t audioChannels() const;
+
     // -------------------------------------------------------------------------
     // Operator Interface
     // -------------------------------------------------------------------------
@@ -148,7 +197,8 @@ private:
 
     // Platform-specific standard codec decoder
 #if defined(__APPLE__)
-    std::unique_ptr<AVFDecoder> m_standardDecoder;
+    std::unique_ptr<AVFDecoder> m_standardDecoder;       // For offline processing (export)
+    std::unique_ptr<AVFPlaybackDecoder> m_playbackDecoder; // For real-time playback with A/V sync
 #elif defined(_WIN32)
     std::unique_ptr<MFDecoder> m_standardDecoder;
 #else
@@ -156,6 +206,7 @@ private:
 #endif
 
     bool m_isHAP = false;
+    bool m_usePlaybackDecoder = false;  // True when using AVFPlaybackDecoder
 };
 
 } // namespace vivid::video

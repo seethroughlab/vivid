@@ -223,10 +223,13 @@ bool AVFDecoder::open(Context& ctx, const std::string& path, bool loop) {
         playbackTime_ = 0.0f;
         nextFrameTime_ = 0.0f;
 
-        // Pre-buffer and start audio
+        // Pre-buffer audio (but don't start playback if internal audio is disabled)
         if (audioPlayer_) {
             prebufferAudio();
-            audioPlayer_->play();
+            // Only auto-start audio if internal audio is enabled
+            if (internalAudioEnabled_) {
+                audioPlayer_->play();
+            }
         }
 
         std::cout << "[AVFDecoder] Opened " << path
@@ -301,8 +304,20 @@ void AVFDecoder::pause() {
 void AVFDecoder::play() {
     if (!isFinished_) {
         isPlaying_ = true;
-        if (audioPlayer_) {
+        // Only start audio if internal audio is enabled
+        if (audioPlayer_ && internalAudioEnabled_) {
             audioPlayer_->play();
+        }
+    }
+}
+
+void AVFDecoder::setInternalAudioEnabled(bool enable) {
+    internalAudioEnabled_ = enable;
+    if (audioPlayer_) {
+        if (enable) {
+            audioPlayer_->play();
+        } else {
+            audioPlayer_->pause();
         }
     }
 }
@@ -317,6 +332,42 @@ float AVFDecoder::getVolume() const {
     return audioPlayer_ ? audioPlayer_->getVolume() : 1.0f;
 }
 
+uint32_t AVFDecoder::readAudioSamples(float* buffer, uint32_t maxFrames) {
+    if (!hasAudio_ || !impl_->audioOutput || !buffer || maxFrames == 0) {
+        return 0;
+    }
+
+    @autoreleasepool {
+        uint32_t framesRead = 0;
+        const uint32_t channels = 2;
+
+        while (framesRead < maxFrames) {
+            CMSampleBufferRef sampleBuffer = [impl_->audioOutput copyNextSampleBuffer];
+            if (!sampleBuffer) break;
+
+            CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
+            if (blockBuffer) {
+                size_t dataLength = 0;
+                char* dataPtr = nullptr;
+                CMBlockBufferGetDataPointer(blockBuffer, 0, nullptr, &dataLength, &dataPtr);
+
+                size_t availableFrames = dataLength / (channels * sizeof(float));
+                size_t framesToCopy = std::min(availableFrames, (size_t)(maxFrames - framesRead));
+
+                memcpy(buffer + framesRead * channels,
+                       dataPtr,
+                       framesToCopy * channels * sizeof(float));
+
+                framesRead += framesToCopy;
+            }
+
+            CFRelease(sampleBuffer);
+        }
+
+        return framesRead;
+    }
+}
+
 void AVFDecoder::update(Context& ctx) {
     if (!isPlaying_ || isFinished_ || !impl_->reader) {
         return;
@@ -325,9 +376,9 @@ void AVFDecoder::update(Context& ctx) {
     // Advance playback time
     playbackTime_ += static_cast<float>(ctx.dt());
 
-    // Keep audio buffer fed
+    // Keep audio buffer fed (only if internal audio is enabled)
     @autoreleasepool {
-        if (audioPlayer_ && impl_->audioOutput) {
+        if (internalAudioEnabled_ && audioPlayer_ && impl_->audioOutput) {
             const uint32_t minBufferFrames = 48000 / 4;
             while (audioPlayer_->getBufferedFrames() < minBufferFrames) {
                 CMSampleBufferRef sampleBuffer = [impl_->audioOutput copyNextSampleBuffer];

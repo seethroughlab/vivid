@@ -19,6 +19,8 @@
 namespace vivid {
 
 class Context;
+class AudioOperator;
+struct AudioBuffer;
 
 /**
  * @brief Manages an operator graph with dependency resolution
@@ -174,6 +176,45 @@ public:
     /// @brief Legacy method - prefer output() instead
     void setOutput(Operator* op);
 
+    // -------------------------------------------------------------------------
+    /// @name Audio Output
+    /// @{
+
+    /**
+     * @brief Specify which operator provides the audio output
+     * @param name Name of the audio output operator
+     *
+     * Only operators that produce Audio output can be chain audio outputs.
+     * The designated audio operator's output will be:
+     * - Played through speakers (via AudioOutput)
+     * - Captured for video export (via VideoExporter)
+     *
+     * @par Example
+     * @code
+     * chain.add<VideoAudio>("videoAudio").source("video");
+     * chain.add<AudioOutput>("audioOut").input("videoAudio");
+     * chain.audioOutput("audioOut");  // Route audio to speakers + export
+     * @endcode
+     */
+    void audioOutput(const std::string& name);
+
+    /**
+     * @brief Get the designated audio output operator
+     * @return Pointer to audio output operator, or nullptr if not set
+     */
+    Operator* getAudioOutput() const;
+
+    /**
+     * @brief Get the audio buffer from the designated audio output
+     * @return Audio buffer, or nullptr if no audio output
+     *
+     * Used by VideoExporter to capture audio for muxing.
+     */
+    const AudioBuffer* audioOutputBuffer() const;
+
+    /// @}
+    // -------------------------------------------------------------------------
+
     /**
      * @brief Initialize all operators
      * @param ctx Runtime context
@@ -245,6 +286,7 @@ private:
     std::vector<std::string> orderedNames_;
     std::vector<Operator*> executionOrder_;
     std::string outputName_;
+    std::string audioOutputName_;
     std::string error_;
     bool needsSort_ = true;
     bool initialized_ = false;

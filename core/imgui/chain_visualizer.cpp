@@ -554,7 +554,7 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             ImGui::Text("%d frames (%.1fs)", m_exporter.frameCount(), m_exporter.duration());
             ImGui::SameLine();
             if (ImGui::SmallButton("Stop")) {
-                stopRecording();
+                stopRecording(ctx);
             }
         } else {
             if (ImGui::BeginMenu("Record")) {
@@ -1120,15 +1120,34 @@ void ChainVisualizer::startRecording(ExportCodec codec, vivid::Context& ctx) {
 
     float fps = 60.0f;  // TODO: Get from context if available
 
-    if (m_exporter.start(outputPath, width, height, fps, codec)) {
-        printf("[ChainVisualizer] Recording started: %s\n", outputPath.c_str());
+    // Check if chain has audio output
+    bool hasAudio = ctx.chain().getAudioOutput() != nullptr;
+
+    bool started = false;
+    if (hasAudio) {
+        // Start with audio muxing
+        started = m_exporter.startWithAudio(outputPath, width, height, fps, codec, 48000, 2);
+        if (started) {
+            // Set recording mode so audio operators generate correct amount per frame
+            ctx.setRecordingMode(true, fps);
+            printf("[ChainVisualizer] Recording started with audio: %s\n", outputPath.c_str());
+        }
     } else {
+        started = m_exporter.start(outputPath, width, height, fps, codec);
+        if (started) {
+            ctx.setRecordingMode(true, fps);
+            printf("[ChainVisualizer] Recording started: %s\n", outputPath.c_str());
+        }
+    }
+
+    if (!started) {
         printf("[ChainVisualizer] Failed to start recording: %s\n", m_exporter.error().c_str());
     }
 }
 
-void ChainVisualizer::stopRecording() {
+void ChainVisualizer::stopRecording(vivid::Context& ctx) {
     m_exporter.stop();
+    ctx.setRecordingMode(false);
 }
 
 } // namespace vivid::imgui

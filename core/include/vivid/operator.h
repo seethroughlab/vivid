@@ -26,7 +26,9 @@ enum class OutputKind {
     ValueArray, ///< Array of float values
     Geometry,   ///< 3D geometry (meshes, scenes)
     Camera,     ///< Camera configuration
-    Light       ///< Light source
+    Light,      ///< Light source
+    Audio,      ///< Audio buffer output (PCM samples)
+    AudioValue  ///< Audio analysis values (levels, FFT bands)
 };
 
 /**
@@ -42,6 +44,8 @@ inline const char* outputKindName(OutputKind kind) {
         case OutputKind::Geometry:   return "Geometry";
         case OutputKind::Camera:     return "Camera";
         case OutputKind::Light:      return "Light";
+        case OutputKind::Audio:      return "Audio";
+        case OutputKind::AudioValue: return "AudioValue";
         default:                     return "Unknown";
     }
 }

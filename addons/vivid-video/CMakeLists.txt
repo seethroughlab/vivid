@@ -28,6 +28,7 @@ set(VIDEO_SOURCES
     src/audio_player.cpp
     src/hap.c
     src/video_player.cpp
+    src/video_audio.cpp
     src/webcam.cpp
 )
 
@@ -36,6 +37,7 @@ if(APPLE)
     list(APPEND VIDEO_SOURCES
         src/hap_decoder.mm
         src/avf_decoder.mm
+        src/avf_playback_decoder.mm
         src/avf_webcam.mm
     )
 elseif(WIN32)
@@ -70,6 +72,7 @@ target_link_libraries(vivid-video PUBLIC
     webgpu
     glm
     glfw
+    vivid-core
     vivid-effects-2d
 )
 
@@ -91,6 +94,7 @@ if(APPLE)
     set_source_files_properties(
         src/hap_decoder.mm
         src/avf_decoder.mm
+        src/avf_playback_decoder.mm
         src/avf_webcam.mm
         PROPERTIES COMPILE_FLAGS "-x objective-c++"
     )

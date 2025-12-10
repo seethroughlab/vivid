@@ -5,6 +5,7 @@
 #include <vivid/context.h>
 #include <vivid/display.h>
 #include <vivid/hot_reload.h>
+#include <vivid/audio_buffer.h>
 #include "imgui/imgui_integration.h"
 #include "imgui/chain_visualizer.h"
 #include <webgpu/webgpu.h>
@@ -501,6 +502,22 @@ int main(int argc, char** argv) {
                 WGPUTexture outputTex = ctx.chain().outputTexture();
                 if (outputTex) {
                     chainVisualizer.exporter().captureFrame(device, queue, outputTex);
+
+                    // Capture audio if recording with audio
+                    if (chainVisualizer.exporter().hasAudio()) {
+                        const AudioBuffer* audioBuf = ctx.chain().audioOutputBuffer();
+                        if (audioBuf && audioBuf->isValid()) {
+                            chainVisualizer.exporter().pushAudioSamples(
+                                audioBuf->samples, audioBuf->frameCount);
+                        } else {
+                            // Debug: log why audio buffer is not valid
+                            static int audioMissCount = 0;
+                            if (++audioMissCount <= 5) {
+                                printf("[main] Audio buffer invalid: buf=%p, valid=%d\n",
+                                       (void*)audioBuf, audioBuf ? audioBuf->isValid() : -1);
+                            }
+                        }
+                    }
                 }
             }
         }

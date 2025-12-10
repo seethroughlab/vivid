@@ -36,6 +36,9 @@ struct HAPDecoder::Impl {
     AVAssetReaderAudioMixOutput* audioOutput = nil;
     CMTime frameDuration = kCMTimeZero;
 
+    // Separate audio reader for independent looping
+    AVAssetReader* audioReader = nil;
+
     // HAP texture format (DXT1/DXT5/etc)
     unsigned int hapTextureFormat = 0;
 
@@ -43,6 +46,10 @@ struct HAPDecoder::Impl {
         if (reader) {
             [reader cancelReading];
             reader = nil;
+        }
+        if (audioReader) {
+            [audioReader cancelReading];
+            audioReader = nil;
         }
         videoOutput = nil;
         audioOutput = nil;
@@ -198,6 +205,14 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
 
             if ([impl_->reader canAddOutput:impl_->audioOutput]) {
                 [impl_->reader addOutput:impl_->audioOutput];
+
+                // Initialize audio ring buffer for external reading
+                audioRingBuffer_.resize(AUDIO_RING_SIZE);
+                std::fill(audioRingBuffer_.begin(), audioRingBuffer_.end(), 0.0f);
+                audioWritePos_ = 0;
+                audioReadPos_ = 0;
+                audioStartPTS_ = 0.0;
+                audioEndPTS_ = 0.0;
 
                 audioPlayer_ = std::make_unique<AudioPlayer>();
                 if (audioPlayer_->init(48000, 2)) {
@@ -369,10 +384,13 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
         playbackTime_ = 0.0f;
         nextFrameTime_ = 0.0f;
 
-        // Pre-buffer and start audio
+        // Pre-buffer audio (but don't start playback until play() is called)
         if (audioPlayer_) {
             prebufferAudio();
-            audioPlayer_->play();
+            // Only auto-start audio if internal audio is enabled
+            if (internalAudioEnabled_) {
+                audioPlayer_->play();
+            }
         }
 
         std::cout << "[HAPDecoder] Opened " << path
@@ -383,15 +401,186 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
     }
 }
 
-void HAPDecoder::prebufferAudio() {
-    if (!audioPlayer_ || !impl_->audioOutput) return;
+void HAPDecoder::feedAudioBuffer() {
+    if (!impl_->audioOutput) {
+        return;
+    }
 
     @autoreleasepool {
-        const uint32_t targetFrames = 48000 / 2;
+        const uint32_t channels = 2;
 
-        while (audioPlayer_->getBufferedFrames() < targetFrames) {
+        // Two modes:
+        // 1. Internal audio enabled: push directly to AudioPlayer (no ring buffer)
+        // 2. Internal audio disabled: write to ring buffer for external reading
+
+        if (internalAudioEnabled_ && audioPlayer_) {
+            // Internal audio mode - feed AudioPlayer directly
+            const uint32_t minBufferFrames = 48000 / 4;
+            while (audioPlayer_->getBufferedFrames() < minBufferFrames) {
+                CMSampleBufferRef sampleBuffer = [impl_->audioOutput copyNextSampleBuffer];
+                if (!sampleBuffer) break;
+
+                CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
+                if (blockBuffer) {
+                    size_t dataLength = 0;
+                    char* dataPtr = nullptr;
+                    CMBlockBufferGetDataPointer(blockBuffer, 0, nullptr, &dataLength, &dataPtr);
+
+                    size_t frameCount = dataLength / (channels * sizeof(float));
+                    audioPlayer_->pushSamples(reinterpret_cast<float*>(dataPtr), frameCount);
+                }
+
+                CFRelease(sampleBuffer);
+            }
+        } else {
+            // External audio mode - write to ring buffer for VideoAudio to read
+
+            // Check if we need to loop audio first (outside the lock)
+            if (audioNeedsLoop_) {
+                if (isLooping_) {
+                    loopAudioReader();
+                }
+                audioNeedsLoop_ = false;
+            }
+
+            std::lock_guard<std::mutex> lock(audioMutex_);
+
+            // Calculate how many samples are in the buffer
+            uint32_t used = (audioWritePos_ >= audioReadPos_)
+                ? (audioWritePos_ - audioReadPos_)
+                : (AUDIO_RING_SIZE - audioReadPos_ + audioWritePos_);
+
+            // Keep the buffer at least half full
+            // This is the main throttle - don't decode more than needed
+            if (used > AUDIO_RING_SIZE / 2) return;
+
+            uint32_t available = AUDIO_RING_SIZE - used - 1;
+
+            // Read audio samples from AVAssetReader into ring buffer
+            while (available > 1024 * channels) {
+                CMSampleBufferRef sampleBuffer = [impl_->audioOutput copyNextSampleBuffer];
+                if (!sampleBuffer) {
+                    // Audio EOF - mark for looping on next call
+                    if (isLooping_) {
+                        audioNeedsLoop_ = true;
+                    }
+                    break;
+                }
+
+                // Extract PTS from this audio sample buffer
+                CMTime pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+                double samplePTS = CMTimeGetSeconds(pts);
+
+                CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
+                if (blockBuffer) {
+                    size_t dataLength = 0;
+                    char* dataPtr = nullptr;
+                    CMBlockBufferGetDataPointer(blockBuffer, 0, nullptr, &dataLength, &dataPtr);
+
+                    size_t sampleCount = dataLength / sizeof(float);
+                    size_t frameCount = sampleCount / channels;
+                    size_t toCopy = std::min(sampleCount, (size_t)available);
+                    size_t framesToCopy = toCopy / channels;
+                    float* audioData = reinterpret_cast<float*>(dataPtr);
+
+                    // Copy to ring buffer
+                    for (size_t i = 0; i < toCopy; ++i) {
+                        audioRingBuffer_[audioWritePos_] = audioData[i];
+                        audioWritePos_ = (audioWritePos_ + 1) % AUDIO_RING_SIZE;
+                    }
+
+                    // Update audio end PTS based on samples written
+                    audioEndPTS_ = samplePTS + (double)framesToCopy / AUDIO_SAMPLE_RATE_D;
+
+                    available -= toCopy;
+                }
+
+                CFRelease(sampleBuffer);
+            }
+        }
+    }
+}
+
+void HAPDecoder::loopAudioReader() {
+    if (!impl_->asset) return;
+
+    @autoreleasepool {
+        NSArray* audioTracks = [impl_->asset tracksWithMediaType:AVMediaTypeAudio];
+        if (audioTracks.count == 0) {
+            std::cerr << "[HAPDecoder] No audio tracks found for loop" << std::endl;
+            return;
+        }
+
+        // Clean up old audio reader if exists
+        if (impl_->audioReader) {
+            [impl_->audioReader cancelReading];
+            impl_->audioReader = nil;
+        }
+
+        // Create a separate audio reader for looping
+        NSError* error = nil;
+        impl_->audioReader = [[AVAssetReader alloc] initWithAsset:impl_->asset error:&error];
+        if (error || !impl_->audioReader) {
+            std::cerr << "[HAPDecoder] Failed to create audio reader for loop: "
+                      << (error ? [[error localizedDescription] UTF8String] : "unknown") << std::endl;
+            return;
+        }
+
+        NSDictionary* audioSettings = @{
+            AVFormatIDKey: @(kAudioFormatLinearPCM),
+            AVLinearPCMBitDepthKey: @32,
+            AVLinearPCMIsFloatKey: @YES,
+            AVLinearPCMIsNonInterleaved: @NO,
+            AVSampleRateKey: @48000,
+            AVNumberOfChannelsKey: @2
+        };
+
+        AVAssetReaderAudioMixOutput* newAudioOutput = [[AVAssetReaderAudioMixOutput alloc]
+            initWithAudioTracks:audioTracks
+            audioSettings:audioSettings];
+
+        if (![impl_->audioReader canAddOutput:newAudioOutput]) {
+            std::cerr << "[HAPDecoder] Failed to add audio output to reader for loop" << std::endl;
+            [impl_->audioReader cancelReading];
+            impl_->audioReader = nil;
+            return;
+        }
+
+        [impl_->audioReader addOutput:newAudioOutput];
+        [impl_->audioReader startReading];
+
+        // Replace the audio output
+        impl_->audioOutput = newAudioOutput;
+    }
+}
+
+void HAPDecoder::prebufferAudio() {
+    // Pre-fill audio buffer during init/seek
+    // This bypasses the normal timing throttle to ensure we have audio ready
+    if (!impl_->audioOutput || !hasAudio_ || internalAudioEnabled_) {
+        feedAudioBuffer();
+        return;
+    }
+
+    @autoreleasepool {
+        std::lock_guard<std::mutex> lock(audioMutex_);
+        const uint32_t channels = 2;
+
+        // Target: fill at least 200ms of audio from current position
+        double targetEndPTS = audioStartPTS_ + 0.2;
+
+        uint32_t used = (audioWritePos_ >= audioReadPos_)
+            ? (audioWritePos_ - audioReadPos_)
+            : (AUDIO_RING_SIZE - audioReadPos_ + audioWritePos_);
+        uint32_t available = AUDIO_RING_SIZE - used - 1;
+
+        // Keep filling until we have enough
+        while (available > 1024 * channels && audioEndPTS_ < targetEndPTS) {
             CMSampleBufferRef sampleBuffer = [impl_->audioOutput copyNextSampleBuffer];
             if (!sampleBuffer) break;
+
+            CMTime pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+            double samplePTS = CMTimeGetSeconds(pts);
 
             CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
             if (blockBuffer) {
@@ -399,8 +588,22 @@ void HAPDecoder::prebufferAudio() {
                 char* dataPtr = nullptr;
                 CMBlockBufferGetDataPointer(blockBuffer, 0, nullptr, &dataLength, &dataPtr);
 
-                size_t frameCount = dataLength / (2 * sizeof(float));
-                audioPlayer_->pushSamples(reinterpret_cast<float*>(dataPtr), frameCount);
+                size_t sampleCount = dataLength / sizeof(float);
+                size_t toCopy = std::min(sampleCount, (size_t)available);
+                size_t framesToCopy = toCopy / channels;
+                float* audioData = reinterpret_cast<float*>(dataPtr);
+
+                // Keep audioStartPTS_ as set by seek() - don't change it based on sample PTS
+                // This ensures audio timing aligns with video even if AVFoundation
+                // returns samples with slightly different PTS than requested
+
+                for (size_t i = 0; i < toCopy; ++i) {
+                    audioRingBuffer_[audioWritePos_] = audioData[i];
+                    audioWritePos_ = (audioWritePos_ + 1) % AUDIO_RING_SIZE;
+                }
+
+                audioEndPTS_ = samplePTS + (double)framesToCopy / AUDIO_SAMPLE_RATE_D;
+                available -= toCopy;
             }
 
             CFRelease(sampleBuffer);
@@ -447,9 +650,32 @@ void HAPDecoder::pause() {
 void HAPDecoder::play() {
     if (!isFinished_) {
         isPlaying_ = true;
-        if (audioPlayer_) {
+        // Only start audio if internal audio is enabled
+        if (audioPlayer_ && internalAudioEnabled_) {
             audioPlayer_->play();
         }
+    }
+}
+
+void HAPDecoder::setInternalAudioEnabled(bool enable) {
+    bool wasEnabled = internalAudioEnabled_;
+    internalAudioEnabled_ = enable;
+
+    if (audioPlayer_) {
+        if (enable) {
+            audioPlayer_->play();
+        } else {
+            audioPlayer_->pause();
+        }
+    }
+
+    // When switching from internal to external audio mode,
+    // we need to seek the audio reader back to the current video position
+    // and fill the ring buffer so VideoAudio can read from the right place
+    if (wasEnabled && !enable && hasAudio_) {
+        // Seek to current video position to resync audio
+        float currentPos = currentTime_;
+        seek(currentPos);
     }
 }
 
@@ -463,6 +689,113 @@ float HAPDecoder::getVolume() const {
     return audioPlayer_ ? audioPlayer_->getVolume() : 1.0f;
 }
 
+uint32_t HAPDecoder::readAudioSamples(float* buffer, uint32_t maxFrames) {
+    if (!hasAudio_ || !buffer || maxFrames == 0) {
+        return 0;
+    }
+
+    const uint32_t channels = AUDIO_CHANNELS;
+    const uint32_t maxSamples = maxFrames * channels;
+
+    std::lock_guard<std::mutex> lock(audioMutex_);
+
+    // Calculate available samples in ring buffer
+    uint32_t available = (audioWritePos_ >= audioReadPos_)
+        ? (audioWritePos_ - audioReadPos_)
+        : (AUDIO_RING_SIZE - audioReadPos_ + audioWritePos_);
+
+    uint32_t samplesToRead = std::min(maxSamples, available);
+    uint32_t framesRead = samplesToRead / channels;
+
+    // Read from ring buffer
+    for (uint32_t i = 0; i < samplesToRead; ++i) {
+        buffer[i] = audioRingBuffer_[audioReadPos_];
+        audioReadPos_ = (audioReadPos_ + 1) % AUDIO_RING_SIZE;
+    }
+
+    // Update start PTS to reflect consumed samples
+    audioStartPTS_ += (double)framesRead / AUDIO_SAMPLE_RATE_D;
+
+    return framesRead;
+}
+
+uint32_t HAPDecoder::readAudioSamplesForPTS(float* buffer, double videoPTS, uint32_t maxFrames) {
+    if (!hasAudio_ || !buffer || maxFrames == 0) {
+        return 0;
+    }
+
+    const uint32_t channels = AUDIO_CHANNELS;
+    const uint32_t maxSamples = maxFrames * channels;
+
+    std::lock_guard<std::mutex> lock(audioMutex_);
+
+    // Calculate available samples in ring buffer
+    uint32_t available = (audioWritePos_ >= audioReadPos_)
+        ? (audioWritePos_ - audioReadPos_)
+        : (AUDIO_RING_SIZE - audioReadPos_ + audioWritePos_);
+
+    if (available == 0) {
+        return 0;
+    }
+
+    // Sync strategy: position read cursor to match video PTS
+    // audioStartPTS_ represents the PTS of the sample at audioReadPos_
+    //
+    // Goal: read audio samples corresponding to [videoPTS, videoPTS + frameDuration]
+    // where frameDuration = maxFrames / AUDIO_SAMPLE_RATE
+
+    // First, if video is past our buffer, we have nothing to give
+    if (videoPTS > audioEndPTS_) {
+        return 0;
+    }
+
+    // If video is significantly behind our buffer start, we can't provide audio
+    // Return 0 and wait for video to catch up
+    // Tolerance accounts for audio chunk size (~21ms) and timing jitter
+    const double syncTolerance = 0.025;  // 25ms
+
+    if (videoPTS < audioStartPTS_ - syncTolerance) {
+        return 0;
+    }
+
+    // Position read cursor to match video PTS
+    // Skip samples if video is ahead of current read position
+    double skipTime = videoPTS - audioStartPTS_;
+    if (skipTime > syncTolerance) {
+        uint32_t skipFrames = static_cast<uint32_t>(skipTime * AUDIO_SAMPLE_RATE_D);
+        uint32_t samplesToSkip = std::min(skipFrames * channels, available);
+
+        audioReadPos_ = (audioReadPos_ + samplesToSkip) % AUDIO_RING_SIZE;
+        available -= samplesToSkip;
+        audioStartPTS_ = videoPTS;  // Set exactly to video PTS
+    }
+
+    // Read the requested amount
+    uint32_t samplesToRead = std::min(maxSamples, available);
+    uint32_t framesRead = samplesToRead / channels;
+
+    // Read from ring buffer
+    for (uint32_t i = 0; i < samplesToRead; ++i) {
+        buffer[i] = audioRingBuffer_[audioReadPos_];
+        audioReadPos_ = (audioReadPos_ + 1) % AUDIO_RING_SIZE;
+    }
+
+    // Update start PTS to reflect consumed samples
+    audioStartPTS_ += (double)framesRead / AUDIO_SAMPLE_RATE_D;
+
+    return framesRead;
+}
+
+double HAPDecoder::audioAvailableStartPTS() const {
+    std::lock_guard<std::mutex> lock(audioMutex_);
+    return audioStartPTS_;
+}
+
+double HAPDecoder::audioAvailableEndPTS() const {
+    std::lock_guard<std::mutex> lock(audioMutex_);
+    return audioEndPTS_;
+}
+
 void HAPDecoder::update(Context& ctx) {
     if (!isPlaying_ || isFinished_ || !impl_->reader) {
         return;
@@ -471,27 +804,9 @@ void HAPDecoder::update(Context& ctx) {
     // Advance playback time
     playbackTime_ += static_cast<float>(ctx.dt());
 
-    // Keep audio buffer fed
-    @autoreleasepool {
-        if (audioPlayer_ && impl_->audioOutput) {
-            const uint32_t minBufferFrames = 48000 / 4;
-            while (audioPlayer_->getBufferedFrames() < minBufferFrames) {
-                CMSampleBufferRef sampleBuffer = [impl_->audioOutput copyNextSampleBuffer];
-                if (!sampleBuffer) break;
-
-                CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
-                if (blockBuffer) {
-                    size_t dataLength = 0;
-                    char* dataPtr = nullptr;
-                    CMBlockBufferGetDataPointer(blockBuffer, 0, nullptr, &dataLength, &dataPtr);
-
-                    size_t frameCount = dataLength / (2 * sizeof(float));
-                    audioPlayer_->pushSamples(reinterpret_cast<float*>(dataPtr), frameCount);
-                }
-
-                CFRelease(sampleBuffer);
-            }
-        }
+    // Keep audio buffer fed (always read to stay in sync)
+    if (hasAudio_ && impl_->audioOutput) {
+        feedAudioBuffer();
     }
 
     // Check if it's time for the next frame
@@ -508,7 +823,6 @@ void HAPDecoder::update(Context& ctx) {
         for (int attempt = 0; attempt < maxAttempts; attempt++) {
             sampleBuffer = [impl_->videoOutput copyNextSampleBuffer];
             if (!sampleBuffer) {
-                std::cout << "[HAPDecoder] EOF at " << currentTime_ << "s" << std::endl;
                 if (isLooping_) {
                     seek(0.0f);
                 } else {
@@ -602,7 +916,13 @@ void HAPDecoder::seek(float seconds) {
     if (seconds > duration_) seconds = duration_;
 
     @autoreleasepool {
-        impl_->cleanup();
+        // Cancel current reader but keep the asset
+        if (impl_->reader) {
+            [impl_->reader cancelReading];
+            impl_->reader = nil;
+        }
+        impl_->videoOutput = nil;
+        impl_->audioOutput = nil;
 
         NSError* error = nil;
         impl_->reader = [[AVAssetReader alloc] initWithAsset:impl_->asset error:&error];
@@ -645,8 +965,21 @@ void HAPDecoder::seek(float seconds) {
 
         [impl_->reader startReading];
 
+        // Reset audio buffers and PTS tracking
+        {
+            std::lock_guard<std::mutex> lock(audioMutex_);
+            audioWritePos_ = 0;
+            audioReadPos_ = 0;
+            audioStartPTS_ = seconds;
+            audioEndPTS_ = seconds;
+        }
+
         if (audioPlayer_) {
             audioPlayer_->flush();
+        }
+
+        // Pre-fill audio buffer with ~200ms of audio to avoid underruns
+        if (hasAudio_) {
             prebufferAudio();
         }
 

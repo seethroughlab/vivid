@@ -86,3 +86,5 @@
 [x] I'm not sure hot-relading is working. It seems to crash when chain.cpp is edited.
 [x] In the Readme, what is a more graceful way to say "Designed from the ground up to be friendly with coding agents/LLMs."
 [ ] Idea: what if it's NOT POSSIBLE to set parameters directly in the c++, but ONLY in the sidecar file? pros and cons?
+[ ] Idea: Maybe operators should declare all properties in a single structure in the constructor. Would that simplify the operator declaration?
+[ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 

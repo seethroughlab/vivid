@@ -52,7 +52,7 @@ public:
     VideoExporter& operator=(const VideoExporter&) = delete;
 
     /**
-     * @brief Start recording to a file
+     * @brief Start recording to a file (video only)
      * @param path Output file path (.mov or .mp4)
      * @param width Frame width in pixels
      * @param height Frame height in pixels
@@ -64,6 +64,21 @@ public:
                float fps, ExportCodec codec);
 
     /**
+     * @brief Start recording to a file with audio
+     * @param path Output file path (.mov or .mp4)
+     * @param width Frame width in pixels
+     * @param height Frame height in pixels
+     * @param fps Frames per second
+     * @param codec Encoding codec to use
+     * @param audioSampleRate Audio sample rate in Hz (typically 48000)
+     * @param audioChannels Audio channel count (1=mono, 2=stereo)
+     * @return true if recording started successfully
+     */
+    bool startWithAudio(const std::string& path, int width, int height,
+                        float fps, ExportCodec codec,
+                        uint32_t audioSampleRate, uint32_t audioChannels);
+
+    /**
      * @brief Capture a frame from a WebGPU texture
      * @param device WebGPU device
      * @param queue WebGPU queue
@@ -73,6 +88,16 @@ public:
      * should be RGBA8 or BGRA8.
      */
     void captureFrame(WGPUDevice device, WGPUQueue queue, WGPUTexture texture);
+
+    /**
+     * @brief Push audio samples for the current frame
+     * @param samples Interleaved float samples [-1.0, 1.0]
+     * @param frameCount Number of audio frames (samples per channel)
+     *
+     * Call this after captureFrame() to add audio to the video.
+     * Audio is only recorded if startWithAudio() was used.
+     */
+    void pushAudioSamples(const float* samples, uint32_t frameCount);
 
     /**
      * @brief Stop recording and finalize the video file
@@ -87,6 +112,12 @@ public:
      * @return true if recording is active
      */
     bool isRecording() const { return m_recording; }
+
+    /**
+     * @brief Check if recording includes audio
+     * @return true if audio is being recorded
+     */
+    bool hasAudio() const { return m_audioEnabled; }
 
     /**
      * @brief Get number of frames captured
@@ -140,6 +171,12 @@ private:
     // Frame readback buffer
     WGPUBuffer m_readbackBuffer = nullptr;
     size_t m_bufferSize = 0;
+
+    // Audio settings
+    bool m_audioEnabled = false;
+    uint32_t m_audioSampleRate = 48000;
+    uint32_t m_audioChannels = 2;
+    uint64_t m_audioFrameCount = 0;  // Total audio frames written
 };
 
 } // namespace vivid

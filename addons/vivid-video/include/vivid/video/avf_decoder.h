@@ -76,6 +76,34 @@ public:
     void setVolume(float volume);
     float getVolume() const;
 
+    /**
+     * @brief Read audio samples into buffer (for external audio routing).
+     * @param buffer Output buffer for interleaved float samples
+     * @param maxFrames Maximum frames to read
+     * @return Number of frames actually read
+     */
+    uint32_t readAudioSamples(float* buffer, uint32_t maxFrames);
+
+    /**
+     * @brief Enable/disable internal audio playback.
+     */
+    void setInternalAudioEnabled(bool enable);
+
+    /**
+     * @brief Check if internal audio is enabled.
+     */
+    bool isInternalAudioEnabled() const { return internalAudioEnabled_; }
+
+    /**
+     * @brief Get audio sample rate.
+     */
+    uint32_t audioSampleRate() const { return 48000; }
+
+    /**
+     * @brief Get audio channel count.
+     */
+    uint32_t audioChannels() const { return 2; }
+
     WGPUTexture texture() const { return texture_; }
     WGPUTextureView textureView() const { return textureView_; }
 
@@ -94,6 +122,7 @@ private:
     bool isFinished_ = false;
     bool isLooping_ = false;
     bool hasAudio_ = false;
+    bool internalAudioEnabled_ = true;
     float currentTime_ = 0.0f;
     float playbackTime_ = 0.0f;
     float nextFrameTime_ = 0.0f;

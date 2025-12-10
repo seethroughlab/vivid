@@ -357,6 +357,30 @@ public:
     bool fullscreenChanged() { bool c = m_fullscreenChanged; m_fullscreenChanged = false; return c; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Recording Mode
+    /// @{
+
+    /**
+     * @brief Set recording mode with target fps
+     * @param recording True if recording video
+     * @param fps Target video fps (used to calculate audio frames per video frame)
+     *
+     * When recording, audio operators should generate exactly (sampleRate/fps) frames
+     * per video frame to maintain sync, rather than using wall-clock dt.
+     */
+    void setRecordingMode(bool recording, float fps = 60.0f) {
+        m_recording = recording;
+        m_recordingFps = fps;
+    }
+
+    /// @brief Check if in recording mode
+    bool isRecording() const { return m_recording; }
+
+    /// @brief Get recording fps (for audio sync calculation)
+    float recordingFps() const { return m_recordingFps; }
+
+    /// @}
 
 private:
     GLFWwindow* m_window;
@@ -408,6 +432,10 @@ private:
     bool m_vsyncChanged = false;
     bool m_fullscreen = false;
     bool m_fullscreenChanged = false;
+
+    // Recording mode
+    bool m_recording = false;
+    float m_recordingFps = 60.0f;
 
     // Default states
     static const KeyState s_defaultKeyState;

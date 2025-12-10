@@ -3,6 +3,7 @@
 #include <vivid/chain.h>
 #include <vivid/context.h>
 #include <vivid/operator.h>
+#include <vivid/audio_operator.h>
 #include <queue>
 #include <unordered_set>
 #include <algorithm>
@@ -50,6 +51,38 @@ Operator* Chain::getOutput() const {
     }
     auto it = operators_.find(outputName_);
     return it != operators_.end() ? it->second.get() : nullptr;
+}
+
+void Chain::audioOutput(const std::string& name) {
+    Operator* op = getByName(name);
+    if (!op) {
+        error_ = "Audio output operator '" + name + "' not found";
+        return;
+    }
+    if (op->outputKind() != OutputKind::Audio) {
+        error_ = "Audio output operator must produce audio. '" + name + "' produces " +
+                 outputKindName(op->outputKind()) + ".";
+        return;
+    }
+    audioOutputName_ = name;
+}
+
+Operator* Chain::getAudioOutput() const {
+    if (audioOutputName_.empty()) {
+        return nullptr;
+    }
+    auto it = operators_.find(audioOutputName_);
+    return it != operators_.end() ? it->second.get() : nullptr;
+}
+
+const AudioBuffer* Chain::audioOutputBuffer() const {
+    Operator* op = getAudioOutput();
+    if (!op || op->outputKind() != OutputKind::Audio) {
+        return nullptr;
+    }
+    // Cast to AudioOperator and get buffer
+    AudioOperator* audioOp = static_cast<AudioOperator*>(op);
+    return audioOp->outputBuffer();
 }
 
 void Chain::buildDependencyGraph() {

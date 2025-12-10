@@ -14,6 +14,7 @@
 // Platform-specific decoder includes
 #if defined(__APPLE__)
 #include <vivid/video/avf_decoder.h>
+#include <vivid/video/avf_playback_decoder.h>
 #define STANDARD_DECODER_NAME "AVFoundation"
 using StandardDecoder = vivid::video::AVFDecoder;
 #elif defined(_WIN32)
@@ -50,7 +51,14 @@ void VideoPlayer::loadVideo(Context& ctx) {
         m_standardDecoder->close();
         m_standardDecoder.reset();
     }
+#if defined(__APPLE__)
+    if (m_playbackDecoder) {
+        m_playbackDecoder->close();
+        m_playbackDecoder.reset();
+    }
+#endif
     m_isHAP = false;
+    m_usePlaybackDecoder = false;
 
     if (m_filePath.empty()) {
         return;
@@ -83,7 +91,32 @@ void VideoPlayer::loadVideo(Context& ctx) {
         m_hapDecoder.reset();
     }
 
-    // Use platform-specific decoder for standard codecs
+#if defined(__APPLE__)
+    // Use AVPlayer-based decoder for real-time playback with proper A/V sync
+    // This handles looping correctly via AVPlayerLooper
+    std::cout << "[VideoPlayer] Using AVPlayer decoder (OS-level A/V sync)" << std::endl;
+    m_playbackDecoder = std::make_unique<AVFPlaybackDecoder>();
+
+    if (m_playbackDecoder->open(ctx, m_filePath, m_loop)) {
+        m_usePlaybackDecoder = true;
+        m_output = m_playbackDecoder->texture();
+        m_outputView = m_playbackDecoder->textureView();
+        m_width = m_playbackDecoder->width();
+        m_height = m_playbackDecoder->height();
+        m_needsReload = false;
+
+        // Note: AVPlayer auto-plays, and handles audio internally
+        std::cout << "[VideoPlayer] Loaded: " << m_filePath
+                  << " (" << m_width << "x" << m_height
+                  << ", " << m_playbackDecoder->duration() << "s)" << std::endl;
+        return;
+    }
+
+    std::cerr << "[VideoPlayer] AVPlayer decoder failed, falling back to AVAssetReader" << std::endl;
+    m_playbackDecoder.reset();
+#endif
+
+    // Fallback: Use AVAssetReader-based decoder (for offline processing or if AVPlayer fails)
     std::cout << "[VideoPlayer] Using " << STANDARD_DECODER_NAME << " decoder" << std::endl;
     m_standardDecoder = std::make_unique<StandardDecoder>();
 
@@ -117,7 +150,14 @@ void VideoPlayer::process(Context& ctx) {
     if (m_isHAP && m_hapDecoder) {
         m_hapDecoder->update(ctx);
         m_outputView = m_hapDecoder->textureView();
-    } else if (m_standardDecoder) {
+    }
+#if defined(__APPLE__)
+    else if (m_usePlaybackDecoder && m_playbackDecoder) {
+        m_playbackDecoder->update(ctx);
+        m_outputView = m_playbackDecoder->textureView();
+    }
+#endif
+    else if (m_standardDecoder) {
         m_standardDecoder->update(ctx);
         m_outputView = m_standardDecoder->textureView();
     }
@@ -128,11 +168,18 @@ void VideoPlayer::cleanup() {
         m_hapDecoder->close();
         m_hapDecoder.reset();
     }
+#if defined(__APPLE__)
+    if (m_playbackDecoder) {
+        m_playbackDecoder->close();
+        m_playbackDecoder.reset();
+    }
+#endif
     if (m_standardDecoder) {
         m_standardDecoder->close();
         m_standardDecoder.reset();
     }
     m_isHAP = false;
+    m_usePlaybackDecoder = false;
     m_output = nullptr;
     m_outputView = nullptr;
 }
@@ -140,7 +187,13 @@ void VideoPlayer::cleanup() {
 VideoPlayer& VideoPlayer::volume(float v) {
     if (m_isHAP && m_hapDecoder) {
         m_hapDecoder->setVolume(v);
-    } else if (m_standardDecoder) {
+    }
+#if defined(__APPLE__)
+    else if (m_usePlaybackDecoder && m_playbackDecoder) {
+        m_playbackDecoder->setVolume(v);
+    }
+#endif
+    else if (m_standardDecoder) {
         m_standardDecoder->setVolume(v);
     }
     return *this;
@@ -149,7 +202,13 @@ VideoPlayer& VideoPlayer::volume(float v) {
 void VideoPlayer::play() {
     if (m_isHAP && m_hapDecoder) {
         m_hapDecoder->play();
-    } else if (m_standardDecoder) {
+    }
+#if defined(__APPLE__)
+    else if (m_usePlaybackDecoder && m_playbackDecoder) {
+        m_playbackDecoder->play();
+    }
+#endif
+    else if (m_standardDecoder) {
         m_standardDecoder->play();
     }
 }
@@ -157,7 +216,13 @@ void VideoPlayer::play() {
 void VideoPlayer::pause() {
     if (m_isHAP && m_hapDecoder) {
         m_hapDecoder->pause();
-    } else if (m_standardDecoder) {
+    }
+#if defined(__APPLE__)
+    else if (m_usePlaybackDecoder && m_playbackDecoder) {
+        m_playbackDecoder->pause();
+    }
+#endif
+    else if (m_standardDecoder) {
         m_standardDecoder->pause();
     }
 }
@@ -165,63 +230,142 @@ void VideoPlayer::pause() {
 void VideoPlayer::seek(float seconds) {
     if (m_isHAP && m_hapDecoder) {
         m_hapDecoder->seek(seconds);
-    } else if (m_standardDecoder) {
+    }
+#if defined(__APPLE__)
+    else if (m_usePlaybackDecoder && m_playbackDecoder) {
+        m_playbackDecoder->seek(seconds);
+    }
+#endif
+    else if (m_standardDecoder) {
         m_standardDecoder->seek(seconds);
     }
 }
 
 bool VideoPlayer::isPlaying() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->isPlaying();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->isPlaying();
+#endif
     if (m_standardDecoder) return m_standardDecoder->isPlaying();
     return false;
 }
 
 bool VideoPlayer::isFinished() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->isFinished();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->isFinished();
+#endif
     if (m_standardDecoder) return m_standardDecoder->isFinished();
     return true;
 }
 
 bool VideoPlayer::isOpen() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->isOpen();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->isOpen();
+#endif
     if (m_standardDecoder) return m_standardDecoder->isOpen();
     return false;
 }
 
 float VideoPlayer::currentTime() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->currentTime();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->currentTime();
+#endif
     if (m_standardDecoder) return m_standardDecoder->currentTime();
     return 0.0f;
 }
 
 float VideoPlayer::duration() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->duration();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->duration();
+#endif
     if (m_standardDecoder) return m_standardDecoder->duration();
     return 0.0f;
 }
 
 float VideoPlayer::frameRate() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->frameRate();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->frameRate();
+#endif
     if (m_standardDecoder) return m_standardDecoder->frameRate();
     return 0.0f;
 }
 
 int VideoPlayer::videoWidth() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->width();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->width();
+#endif
     if (m_standardDecoder) return m_standardDecoder->width();
     return 0;
 }
 
 int VideoPlayer::videoHeight() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->height();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->height();
+#endif
     if (m_standardDecoder) return m_standardDecoder->height();
     return 0;
 }
 
 bool VideoPlayer::hasAudio() const {
     if (m_isHAP && m_hapDecoder) return m_hapDecoder->hasAudio();
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) return m_playbackDecoder->hasAudio();
+#endif
     if (m_standardDecoder) return m_standardDecoder->hasAudio();
     return false;
+}
+
+uint32_t VideoPlayer::readAudioSamples(float* buffer, uint32_t maxFrames) {
+    if (m_isHAP && m_hapDecoder) return m_hapDecoder->readAudioSamples(buffer, maxFrames);
+    if (m_standardDecoder) return m_standardDecoder->readAudioSamples(buffer, maxFrames);
+    return 0;
+}
+
+uint32_t VideoPlayer::readAudioSamplesForPTS(float* buffer, double videoPTS, uint32_t maxFrames) {
+    if (m_isHAP && m_hapDecoder) return m_hapDecoder->readAudioSamplesForPTS(buffer, videoPTS, maxFrames);
+    // Standard decoder falls back to non-PTS read for now
+    if (m_standardDecoder) return m_standardDecoder->readAudioSamples(buffer, maxFrames);
+    return 0;
+}
+
+double VideoPlayer::audioAvailableStartPTS() const {
+    if (m_isHAP && m_hapDecoder) return m_hapDecoder->audioAvailableStartPTS();
+    return 0.0;
+}
+
+double VideoPlayer::audioAvailableEndPTS() const {
+    if (m_isHAP && m_hapDecoder) return m_hapDecoder->audioAvailableEndPTS();
+    return 0.0;
+}
+
+void VideoPlayer::setInternalAudioEnabled(bool enable) {
+    if (m_isHAP && m_hapDecoder) m_hapDecoder->setInternalAudioEnabled(enable);
+    if (m_standardDecoder) m_standardDecoder->setInternalAudioEnabled(enable);
+}
+
+bool VideoPlayer::isInternalAudioEnabled() const {
+    if (m_isHAP && m_hapDecoder) return m_hapDecoder->isInternalAudioEnabled();
+    if (m_standardDecoder) return m_standardDecoder->isInternalAudioEnabled();
+    return true;
+}
+
+uint32_t VideoPlayer::audioSampleRate() const {
+    if (m_isHAP && m_hapDecoder) return m_hapDecoder->audioSampleRate();
+    if (m_standardDecoder) return m_standardDecoder->audioSampleRate();
+    return 48000;
+}
+
+uint32_t VideoPlayer::audioChannels() const {
+    if (m_isHAP && m_hapDecoder) return m_hapDecoder->audioChannels();
+    if (m_standardDecoder) return m_standardDecoder->audioChannels();
+    return 2;
 }
 
 } // namespace vivid::video

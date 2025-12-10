@@ -1868,9 +1868,163 @@ The chain visualizer is an ImNodes-based overlay that shows the operator graph w
 - [x] Camera/Light nodes show icons
 - [x] Connections drawn between linked operators
 
+### Phase 9B: Core Audio Infrastructure
+
+**Goal:** Core audio output support for video export and speaker playback
+
+The audio system follows the same pattern as the video/texture system: core provides the
+foundational types and output infrastructure, while the vivid-audio addon provides processing operators.
+
+**Architecture:**
+```
+                            ┌─────────────────────────────────────────┐
+                            │               CORE                       │
+                            │                                          │
+                            │  AudioBuffer ◄── AudioOperator base      │
+                            │       │              │                   │
+                            │       ▼              ▼                   │
+                            │  AudioOutput ──► Speakers                │
+                            │       │                                  │
+                            │       ▼                                  │
+                            │  Chain.audioOutput() ──► VideoExporter   │
+                            │                              (audio mux) │
+                            └─────────────────────────────────────────┘
+                                              │
+                          ┌───────────────────┼───────────────────┐
+                          │                   │                   │
+                          ▼                   ▼                   ▼
+┌─────────────────────────────┐  ┌────────────────────┐  ┌──────────────────┐
+│      vivid-audio addon      │  │  vivid-video addon │  │ User Chain Code  │
+│                             │  │                    │  │                  │
+│ AudioIn    AudioFile        │  │ VideoPlayer ───────┼──│──► VideoAudio    │
+│ Oscillator Envelope         │  │  (has audio)       │  │                  │
+│ AudioFilter AudioMixer      │  │                    │  │                  │
+│ FFT BandSplit BeatDetect    │  └────────────────────┘  └──────────────────┘
+│ SampleBank SamplePlayer     │
+└─────────────────────────────┘
+```
+
+**Core Changes:**
+
+1. **OutputKind Extension** (`core/include/vivid/operator.h`)
+   - [ ] Add `Audio` - audio buffer output
+   - [ ] Add `AudioValue` - audio analysis values (levels, FFT bands)
+
+2. **AudioBuffer** (`core/include/vivid/audio_buffer.h`)
+   - [ ] Interleaved float sample buffer struct
+   - [ ] Frame count, channels, sample rate
+   - [ ] Standard: 48kHz, stereo, 512-frame blocks (~10.67ms)
+
+```cpp
+namespace vivid {
+
+struct AudioBuffer {
+    float* samples = nullptr;      // Interleaved float samples
+    uint32_t frameCount = 0;       // Frames (samples / channels)
+    uint32_t channels = 2;         // 1=mono, 2=stereo
+    uint32_t sampleRate = 48000;   // Hz
+
+    uint32_t sampleCount() const { return frameCount * channels; }
+    bool isValid() const { return samples && frameCount > 0; }
+};
+
+constexpr uint32_t AUDIO_SAMPLE_RATE = 48000;
+constexpr uint32_t AUDIO_CHANNELS = 2;
+constexpr uint32_t AUDIO_BLOCK_SIZE = 512;  // ~10.67ms at 48kHz
+
+} // namespace vivid
+```
+
+3. **AudioOperator Base Class** (`core/include/vivid/audio_operator.h`)
+   - [ ] Base class for all audio-producing operators
+   - [ ] Manages output buffer allocation
+   - [ ] Input buffer access from connected operators
+
+```cpp
+class AudioOperator : public Operator {
+public:
+    OutputKind outputKind() const override { return OutputKind::Audio; }
+    virtual const AudioBuffer* outputBuffer() const { return &m_output; }
+
+protected:
+    void allocateOutput(uint32_t frames = AUDIO_BLOCK_SIZE);
+    void clearOutput();
+    OwnedAudioBuffer m_output;
+};
+```
+
+4. **AudioOutput** (`core/include/vivid/audio_output.h`, `core/src/audio_output.mm`)
+   - [ ] Speaker output using miniaudio (reuse from vivid-video)
+   - [ ] Volume control parameter
+   - [ ] Ring buffer for audio thread decoupling
+
+```cpp
+class AudioOutput : public AudioOperator {
+public:
+    AudioOutput& input(const std::string& name);
+    AudioOutput& volume(float v);            // 0.0 to 2.0
+
+    void init(Context& ctx) override;        // Initialize miniaudio device
+    void process(Context& ctx) override;     // Push to ring buffer
+    void cleanup() override;
+
+private:
+    Param<float> m_volume{"volume", 1.0f, 0.0f, 2.0f};
+};
+```
+
+5. **Chain Audio Support** (`core/include/vivid/chain.h`)
+   - [ ] `chain.audioOutput("name")` - designate audio output operator
+   - [ ] `chain.audioOutputBuffer()` - get audio buffer for export
+   - [ ] `chain.getAudioOutput()` - get audio output operator
+
+6. **VideoExporter Audio Muxing** (`core/src/video_exporter.mm`)
+   - [ ] `pushAudioSamples(float*, frameCount)` - add audio to video
+   - [ ] AVAssetWriter audio input track
+   - [ ] AAC encoding (H.264/H.265) or PCM (ProRes)
+
+```cpp
+class VideoExporter {
+public:
+    // Extended start with audio
+    bool start(const std::string& path, int width, int height,
+               float fps, ExportCodec codec,
+               uint32_t audioSampleRate = 48000,
+               uint32_t audioChannels = 2);
+
+    void pushAudioSamples(const float* samples, uint32_t frameCount);
+    bool hasAudio() const;
+};
+```
+
+**Usage Example:**
+```cpp
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Video with audio
+    chain.add<video::VideoPlayer>("video").file("movie.mp4");
+    chain.add<audio::VideoAudio>("videoAudio").source("video");
+    chain.add<AudioOutput>("audioOut").input("videoAudio").volume(0.8f);
+
+    chain.output("video");          // Visual output
+    chain.audioOutput("audioOut");  // Audio output → speakers + export
+}
+```
+
+**Validation:**
+- [ ] AudioOutput plays audio through speakers
+- [ ] VideoExporter produces video with synchronized audio track
+- [ ] chain.audioOutput() works like chain.output()
+- [ ] Audio muxing works with all three codecs (Animation, H264, H265)
+
+---
+
 ### Phase 10: Audio Addon
 
-**Goal:** Audio analysis and synthesis
+**Goal:** Audio analysis, synthesis, and processing operators
+
+**Depends on:** Phase 9B (Core Audio Infrastructure)
 
 **Libraries:**
 | Library | Purpose | License |
@@ -1879,23 +2033,27 @@ The chain visualizer is an ImNodes-based overlay that shows the operator graph w
 | [Tonic](https://github.com/TonicAudio/Tonic) | Synthesis (oscillators, filters) | Unlicense |
 | [KissFFT](https://github.com/mborgerding/kissfft) | FFT analysis | BSD |
 
-**Audio Analysis Operators:**
+**Audio Source Operators** (extend AudioOperator):
 - [ ] AudioIn - Capture from microphone/line-in
+- [ ] AudioFile - Load and play audio files (WAV, MP3, OGG)
+- [ ] VideoAudio - Extract audio from VideoPlayer
+
+```cpp
+class VideoAudio : public AudioOperator {
+public:
+    VideoAudio& source(const std::string& videoOpName);  // Link to VideoPlayer
+    void process(Context& ctx) override;
+};
+```
+
+**Audio Analysis Operators** (output AudioValue):
 - [ ] FFT - Frequency spectrum analysis
 - [ ] BandSplit - Bass/mids/highs extraction
 - [ ] BeatDetect - Onset and tempo detection
-- [ ] AudioFile - Load and analyze audio files
+- [ ] Levels - RMS/peak metering
 
-**Audio Synthesis Operators:**
-- [ ] Oscillator - Sine, saw, square, triangle waveforms
-- [ ] Envelope - ADSR envelope generator
-- [ ] Filter - Lowpass, highpass, bandpass
-- [ ] Synth - Combined oscillator + envelope + filter
-- [ ] AudioOut - Send audio to speakers
-
-**Usage Example:**
+**Usage Example (Audio-reactive visuals):**
 ```cpp
-// Audio-reactive visuals
 chain.add<AudioIn>("mic");
 chain.add<FFT>("fft").input("mic");
 chain.add<BandSplit>("bands").input("fft");
@@ -1903,6 +2061,33 @@ chain.add<BandSplit>("bands").input("fft");
 // Use bass level to drive visual effect
 float bass = chain.get<BandSplit>("bands").bass();
 chain.get<Noise>("noise").scale(4.0f + bass * 10.0f);
+```
+
+**Audio Synthesis Operators:**
+- [ ] Oscillator - Sine, saw, square, triangle waveforms
+- [ ] Envelope - ADSR envelope generator
+- [ ] Synth - Combined oscillator + envelope + filter
+
+**Audio Effect Operators:**
+- [ ] AudioFilter - Biquad LP/HP/BP/Notch
+- [ ] AudioGain - Volume/amplification control
+- [ ] AudioMixer - Mix multiple audio sources
+
+```cpp
+class AudioFilter : public AudioOperator {
+public:
+    AudioFilter& input(const std::string& source);
+    AudioFilter& lowpass(float cutoffHz);          // 20-20000 Hz
+    AudioFilter& highpass(float cutoffHz);
+    AudioFilter& bandpass(float centerHz, float bandwidth);
+    AudioFilter& resonance(float q);               // 0.1-10
+};
+
+class AudioMixer : public AudioOperator {
+public:
+    AudioMixer& input(const std::string& source, float volume = 1.0f);
+    AudioMixer& master(float volume);
+};
 ```
 
 **Sample Playback Operators:**
@@ -1919,7 +2104,7 @@ public:
     std::string name(int index) const;             // Sample filename
 };
 
-class SamplePlayer : public Operator {
+class SamplePlayer : public AudioOperator {
 public:
     SamplePlayer& bank(const std::string& bankName);
 
@@ -1934,34 +2119,15 @@ public:
 };
 ```
 
-**Audio Effect Operators:**
-- [ ] AudioFilter - Real-time filter on audio stream
-- [ ] AudioMixer - Mix multiple audio sources
-
-```cpp
-class AudioFilter : public Operator {
-public:
-    AudioFilter& input(const std::string& source);
-    AudioFilter& lowpass(float cutoffHz);          // 20-20000 Hz
-    AudioFilter& highpass(float cutoffHz);
-    AudioFilter& bandpass(float centerHz, float bandwidth);
-    AudioFilter& resonance(float q);               // 0.1-10
-};
-
-class AudioMixer : public Operator {
-public:
-    AudioMixer& input(const std::string& source, float volume = 1.0f);
-    AudioMixer& master(float volume);
-};
-```
-
 **Usage Example (Installation with triggered samples):**
 ```cpp
 // Musical Bodies - zone-triggered audio
 chain.add<SampleBank>("sounds").folder("assets/audio/zones/");
 chain.add<SamplePlayer>("player").bank("sounds");
 chain.add<AudioFilter>("filter").input("player");
-chain.add<AudioOut>("out").input("filter");
+chain.add<AudioOutput>("audioOut").input("filter");
+
+chain.audioOutput("audioOut");
 
 void update(Context& ctx) {
     // When person enters zone 5
@@ -1979,10 +2145,11 @@ void update(Context& ctx) {
 - [ ] AudioIn captures from default device
 - [ ] FFT produces correct frequency bins
 - [ ] BeatDetect triggers on transients
-- [ ] Oscillator produces clean audio at 44.1kHz
+- [ ] Oscillator produces clean audio at 48kHz
 - [ ] SampleBank loads WAV/MP3 files from folder
 - [ ] SamplePlayer triggers with <5ms latency
 - [ ] AudioFilter applies HPF/LPF in real-time
+- [ ] VideoAudio extracts audio from VideoPlayer
 - [ ] examples/audio-reactive runs on all platforms
 - [ ] examples/sample-trigger runs on all platforms
 - [ ] Update README.md with audio features documentation

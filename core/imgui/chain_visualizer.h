@@ -107,7 +107,7 @@ private:
     // Video recording
     VideoExporter m_exporter;
     void startRecording(ExportCodec codec, vivid::Context& ctx);
-    void stopRecording();
+    void stopRecording(vivid::Context& ctx);
 
 public:
     // Access to exporter for main.cpp to call captureFrame

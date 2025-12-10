@@ -49,6 +49,8 @@ set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
     src/chain.cpp
     src/operator.cpp
+    src/audio_operator.cpp
+    src/audio_output.cpp
 )
 
 # Vivid runtime sources (executable only)
@@ -75,6 +77,9 @@ set(VIVID_CORE_HEADERS
     include/vivid/chain.h
     include/vivid/addon_registry.h
     include/vivid/video_exporter.h
+    include/vivid/audio_buffer.h
+    include/vivid/audio_operator.h
+    include/vivid/audio_output.h
     imgui/imgui_integration.h
     imgui/chain_visualizer.h
 )
@@ -84,8 +89,11 @@ add_library(vivid-core SHARED
     ${VIVID_CORE_LIB_SOURCES}
 )
 
-target_include_directories(vivid-core PUBLIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
+target_include_directories(vivid-core
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_link_libraries(vivid-core PUBLIC

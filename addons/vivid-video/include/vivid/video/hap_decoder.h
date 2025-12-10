@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 
 namespace vivid {
 class Context;
@@ -122,6 +123,62 @@ public:
     float getVolume() const;
 
     /**
+     * @brief Read audio samples into buffer (for external audio routing).
+     * @param buffer Output buffer for interleaved float samples
+     * @param maxFrames Maximum frames to read
+     * @return Number of frames actually read
+     *
+     * This reads audio samples that would otherwise go to internal playback.
+     * Use this when you want to route audio through the chain's audio system.
+     */
+    uint32_t readAudioSamples(float* buffer, uint32_t maxFrames);
+
+    /**
+     * @brief Read audio samples synchronized to a video PTS.
+     * @param buffer Output buffer for interleaved float samples
+     * @param videoPTS Target video presentation timestamp in seconds
+     * @param maxFrames Maximum frames to read
+     * @return Number of frames actually read
+     *
+     * This reads audio samples that correspond to the given video time.
+     * Used for PTS-based audio/video synchronization during recording.
+     */
+    uint32_t readAudioSamplesForPTS(float* buffer, double videoPTS, uint32_t maxFrames);
+
+    /**
+     * @brief Get the PTS of the oldest audio sample in the buffer.
+     */
+    double audioAvailableStartPTS() const;
+
+    /**
+     * @brief Get the PTS of the newest audio sample in the buffer.
+     */
+    double audioAvailableEndPTS() const;
+
+    /**
+     * @brief Enable/disable internal audio playback.
+     * @param enable If false, audio is not played through internal AudioPlayer
+     *
+     * Set to false when using readAudioSamples() for external audio routing.
+     */
+    void setInternalAudioEnabled(bool enable);
+
+    /**
+     * @brief Check if internal audio is enabled.
+     */
+    bool isInternalAudioEnabled() const { return internalAudioEnabled_; }
+
+    /**
+     * @brief Get audio sample rate.
+     */
+    uint32_t audioSampleRate() const { return 48000; }
+
+    /**
+     * @brief Get audio channel count.
+     */
+    uint32_t audioChannels() const { return 2; }
+
+    /**
      * @brief Get texture.
      */
     WGPUTexture texture() const { return texture_; }
@@ -146,6 +203,7 @@ private:
     bool isFinished_ = false;
     bool isLooping_ = false;
     bool hasAudio_ = false;
+    bool internalAudioEnabled_ = true;
     float currentTime_ = 0.0f;
     float playbackTime_ = 0.0f;
     float nextFrameTime_ = 0.0f;
@@ -161,11 +219,29 @@ private:
     WGPUTextureView textureView_ = nullptr;
     WGPUTextureFormat textureFormat_ = WGPUTextureFormat_Undefined;
 
-    // Audio player
+    // Audio player (for internal playback)
     std::unique_ptr<AudioPlayer> audioPlayer_;
+
+    // Audio ring buffer for external reading (VideoAudio)
+    std::vector<float> audioRingBuffer_;
+    uint32_t audioWritePos_ = 0;
+    uint32_t audioReadPos_ = 0;
+    mutable std::mutex audioMutex_;
+    static constexpr uint32_t AUDIO_RING_SIZE = 48000 * 2;  // 1 second stereo
+
+    // Audio PTS tracking for sync
+    double audioStartPTS_ = 0.0;   // PTS of first sample in ring buffer (at readPos)
+    double audioEndPTS_ = 0.0;     // PTS of last sample in ring buffer (at writePos)
+    static constexpr double AUDIO_SAMPLE_RATE_D = 48000.0;
+    static constexpr uint32_t AUDIO_CHANNELS = 2;
+
+    // Audio loop tracking
+    bool audioNeedsLoop_ = false;  // True when audio EOF reached and needs to loop
 
     void prebufferAudio();
     void createTexture();
+    void feedAudioBuffer();  // Read from AVAssetReader into ring buffer
+    void loopAudioReader();  // Reset audio reader to beginning for looping
 };
 
 } // namespace vivid::video

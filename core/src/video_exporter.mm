@@ -13,18 +13,36 @@
 #include <sstream>
 #include <vector>
 #include <mutex>
+#include <queue>
+#include <condition_variable>
+#include <unistd.h>
 
 namespace vivid {
+
+// Audio sample queue entry
+struct AudioQueueEntry {
+    std::vector<float> samples;
+    uint32_t frameCount;
+    CMTime presentationTime;
+};
 
 struct VideoExporter::Impl {
     AVAssetWriter* assetWriter = nil;
     AVAssetWriterInput* videoInput = nil;
     AVAssetWriterInputPixelBufferAdaptor* pixelBufferAdaptor = nil;
+    AVAssetWriterInput* audioInput = nil;
     CMTime frameDuration;
     CMTime currentTime;
+    CMTime audioTime;
     dispatch_queue_t encodingQueue = nil;
+    dispatch_queue_t audioQueue = nil;
     std::mutex mutex;
     bool finalized = false;
+
+    // Audio queue for async writing
+    std::queue<AudioQueueEntry> audioEntries;
+    std::mutex audioMutex;
+    std::atomic<bool> audioWriterRunning{false};
 };
 
 VideoExporter::VideoExporter() {
@@ -156,10 +174,293 @@ bool VideoExporter::start(const std::string& path, int width, int height,
     m_impl->encodingQueue = dispatch_queue_create("com.vivid.videoexporter", DISPATCH_QUEUE_SERIAL);
 
     m_recording = true;
+    m_audioEnabled = false;
     printf("[VideoExporter] Started recording: %s (%dx%d @ %.1f fps)\n",
            path.c_str(), width, height, fps);
 
     return true;
+}
+
+bool VideoExporter::startWithAudio(const std::string& path, int width, int height,
+                                    float fps, ExportCodec codec,
+                                    uint32_t audioSampleRate, uint32_t audioChannels) {
+    if (m_recording) {
+        m_error = "Already recording";
+        return false;
+    }
+
+    m_outputPath = path;
+    m_width = width;
+    m_height = height;
+    m_fps = fps;
+    m_frameCount = 0;
+    m_audioFrameCount = 0;
+    m_error.clear();
+    m_impl->finalized = false;
+    m_audioSampleRate = audioSampleRate;
+    m_audioChannels = audioChannels;
+
+    // Create asset writer
+    NSURL* outputURL = [NSURL fileURLWithPath:[NSString stringWithUTF8String:path.c_str()]];
+    [[NSFileManager defaultManager] removeItemAtURL:outputURL error:nil];
+
+    NSError* error = nil;
+    m_impl->assetWriter = [[AVAssetWriter alloc] initWithURL:outputURL
+                                                    fileType:AVFileTypeQuickTimeMovie
+                                                       error:&error];
+    if (error) {
+        m_error = std::string("Failed to create asset writer: ") + [[error localizedDescription] UTF8String];
+        return false;
+    }
+
+    // Video settings
+    NSDictionary* videoSettings = @{
+        AVVideoCodecKey: codecToAVVideoCodecKey(codec),
+        AVVideoWidthKey: @(width),
+        AVVideoHeightKey: @(height),
+        AVVideoCompressionPropertiesKey: @{
+            AVVideoAverageBitRateKey: @(width * height * 4),
+            AVVideoExpectedSourceFrameRateKey: @(fps),
+            AVVideoMaxKeyFrameIntervalKey: @(fps * 2),
+        }
+    };
+
+    if (codec == ExportCodec::Animation) {
+        videoSettings = @{
+            AVVideoCodecKey: codecToAVVideoCodecKey(codec),
+            AVVideoWidthKey: @(width),
+            AVVideoHeightKey: @(height)
+        };
+    }
+
+    m_impl->videoInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeVideo
+                                                        outputSettings:videoSettings];
+    m_impl->videoInput.expectsMediaDataInRealTime = YES;
+
+    NSDictionary* pixelBufferAttributes = @{
+        (NSString*)kCVPixelBufferPixelFormatTypeKey: @(kCVPixelFormatType_32BGRA),
+        (NSString*)kCVPixelBufferWidthKey: @(width),
+        (NSString*)kCVPixelBufferHeightKey: @(height),
+        (NSString*)kCVPixelBufferMetalCompatibilityKey: @YES
+    };
+
+    m_impl->pixelBufferAdaptor = [[AVAssetWriterInputPixelBufferAdaptor alloc]
+        initWithAssetWriterInput:m_impl->videoInput
+        sourcePixelBufferAttributes:pixelBufferAttributes];
+
+    if ([m_impl->assetWriter canAddInput:m_impl->videoInput]) {
+        [m_impl->assetWriter addInput:m_impl->videoInput];
+    } else {
+        m_error = "Cannot add video input to asset writer";
+        return false;
+    }
+
+    // Audio settings - use AAC with proper channel layout
+    AudioChannelLayout channelLayout = {};
+    channelLayout.mChannelLayoutTag = (audioChannels == 2) ?
+        kAudioChannelLayoutTag_Stereo : kAudioChannelLayoutTag_Mono;
+
+    NSDictionary* audioSettings = @{
+        AVFormatIDKey: @(kAudioFormatMPEG4AAC),
+        AVSampleRateKey: @(audioSampleRate),
+        AVNumberOfChannelsKey: @(audioChannels),
+        AVEncoderBitRateKey: @(128000),
+        AVChannelLayoutKey: [NSData dataWithBytes:&channelLayout length:sizeof(channelLayout)]
+    };
+
+    m_impl->audioInput = [[AVAssetWriterInput alloc] initWithMediaType:AVMediaTypeAudio
+                                                        outputSettings:audioSettings];
+    m_impl->audioInput.expectsMediaDataInRealTime = YES;
+
+    if ([m_impl->assetWriter canAddInput:m_impl->audioInput]) {
+        [m_impl->assetWriter addInput:m_impl->audioInput];
+    } else {
+        m_error = "Cannot add audio input to asset writer";
+        return false;
+    }
+
+    // Start writing
+    if (![m_impl->assetWriter startWriting]) {
+        m_error = std::string("Failed to start writing: ") +
+                  [[m_impl->assetWriter.error localizedDescription] UTF8String];
+        return false;
+    }
+
+    [m_impl->assetWriter startSessionAtSourceTime:kCMTimeZero];
+
+    m_impl->frameDuration = CMTimeMake(1, static_cast<int32_t>(fps));
+    m_impl->currentTime = kCMTimeZero;
+    m_impl->audioTime = kCMTimeZero;
+    m_impl->encodingQueue = dispatch_queue_create("com.vivid.videoexporter", DISPATCH_QUEUE_SERIAL);
+
+    // Clear any old audio entries
+    {
+        std::lock_guard<std::mutex> lock(m_impl->audioMutex);
+        while (!m_impl->audioEntries.empty()) {
+            m_impl->audioEntries.pop();
+        }
+    }
+
+    m_impl->audioWriterRunning = true;
+    m_recording = true;
+    m_audioEnabled = true;
+    printf("[VideoExporter] Started recording with audio: %s (%dx%d @ %.1f fps, %dHz %dch)\n",
+           path.c_str(), width, height, fps, audioSampleRate, audioChannels);
+
+    return true;
+}
+
+// Helper to write an audio queue entry
+// Note: Uses AVAssetWriterInput* directly to avoid referencing private Impl type
+static void writeAudioEntryImpl(AVAssetWriterInput* audioInput, AVAssetWriter* assetWriter,
+                                const AudioQueueEntry& entry,
+                                uint32_t audioChannels, uint32_t audioSampleRate) {
+    @autoreleasepool {
+        // Create audio format description
+        AudioStreamBasicDescription asbd = {};
+        asbd.mSampleRate = audioSampleRate;
+        asbd.mFormatID = kAudioFormatLinearPCM;
+        asbd.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagIsPacked;
+        asbd.mBytesPerPacket = audioChannels * sizeof(float);
+        asbd.mFramesPerPacket = 1;
+        asbd.mBytesPerFrame = audioChannels * sizeof(float);
+        asbd.mChannelsPerFrame = audioChannels;
+        asbd.mBitsPerChannel = 32;
+
+        CMAudioFormatDescriptionRef formatDesc = nil;
+        OSStatus status = CMAudioFormatDescriptionCreate(
+            kCFAllocatorDefault, &asbd, 0, nil, 0, nil, nil, &formatDesc);
+
+        if (status != noErr) {
+            return;
+        }
+
+        // Create block buffer with audio data
+        size_t dataSize = entry.frameCount * audioChannels * sizeof(float);
+        CMBlockBufferRef blockBuffer = nil;
+        status = CMBlockBufferCreateWithMemoryBlock(kCFAllocatorDefault, nil, dataSize,
+                                                    kCFAllocatorDefault, nil, 0, dataSize,
+                                                    kCMBlockBufferAssureMemoryNowFlag, &blockBuffer);
+        if (status != noErr) {
+            CFRelease(formatDesc);
+            return;
+        }
+
+        status = CMBlockBufferReplaceDataBytes(entry.samples.data(), blockBuffer, 0, dataSize);
+        if (status != noErr) {
+            CFRelease(blockBuffer);
+            CFRelease(formatDesc);
+            return;
+        }
+
+        // Create sample buffer with data already attached
+        CMSampleBufferRef sampleBuffer = nil;
+
+        status = CMAudioSampleBufferCreateReadyWithPacketDescriptions(
+            kCFAllocatorDefault,
+            blockBuffer,
+            formatDesc,
+            entry.frameCount,
+            entry.presentationTime,
+            nil,  // No packet descriptions needed for PCM
+            &sampleBuffer);
+
+        CFRelease(blockBuffer);
+        CFRelease(formatDesc);
+
+        if (status != noErr || !sampleBuffer) {
+            return;
+        }
+
+        // Append to audio track
+        BOOL success = [audioInput appendSampleBuffer:sampleBuffer];
+        CFRelease(sampleBuffer);
+
+        // Track success/failure counts
+        static int successCount = 0;
+        static int failCount = 0;
+        static float lastWrittenTime = 0;
+
+        if (success) {
+            successCount++;
+            lastWrittenTime = CMTimeGetSeconds(entry.presentationTime);
+        } else {
+            failCount++;
+            if (failCount <= 5) {
+                NSError* error = assetWriter.error;
+                printf("[VideoExporter] Audio append failed at %.2fs: %s\n",
+                       CMTimeGetSeconds(entry.presentationTime),
+                       error ? [[error localizedDescription] UTF8String] : "unknown");
+            }
+        }
+
+        // Log progress every 100 successful writes
+        if (successCount % 100 == 0) {
+            printf("[VideoExporter] Audio writes: %d success, %d fail, last=%.2fs\n",
+                   successCount, failCount, lastWrittenTime);
+        }
+    }
+}
+
+void VideoExporter::pushAudioSamples(const float* samples, uint32_t frameCount) {
+    if (!m_recording || !m_audioEnabled || !samples || frameCount == 0) return;
+
+    // Check writer status
+    if (m_impl->assetWriter.status != AVAssetWriterStatusWriting) {
+        return;
+    }
+
+    // Queue the audio data
+    {
+        std::lock_guard<std::mutex> lock(m_impl->audioMutex);
+        AudioQueueEntry entry;
+        entry.samples.assign(samples, samples + (frameCount * m_audioChannels));
+        entry.frameCount = frameCount;
+        entry.presentationTime = m_impl->audioTime;
+
+        // Limit queue size
+        if (m_impl->audioEntries.size() < 200) {
+            m_impl->audioEntries.push(std::move(entry));
+            // Advance audio time for next entry
+            m_impl->audioTime = CMTimeAdd(m_impl->audioTime, CMTimeMake(frameCount, m_audioSampleRate));
+        }
+    }
+
+    // Track audio sample count for debugging
+    bool firstPush = (m_audioFrameCount == 0);
+    m_audioFrameCount += frameCount;
+
+    if (firstPush) {
+        printf("[VideoExporter] First audio push: %u frames at time %.3f\n",
+               frameCount, CMTimeGetSeconds(m_impl->audioTime));
+    }
+
+    // Try to write queued audio while input is ready
+    int writtenThisCall = 0;
+    while ([m_impl->audioInput isReadyForMoreMediaData]) {
+        AudioQueueEntry entry;
+        {
+            std::lock_guard<std::mutex> lock(m_impl->audioMutex);
+            if (m_impl->audioEntries.empty()) {
+                break;
+            }
+            entry = std::move(m_impl->audioEntries.front());
+            m_impl->audioEntries.pop();
+        }
+
+        writeAudioEntryImpl(m_impl->audioInput, m_impl->assetWriter, entry, m_audioChannels, m_audioSampleRate);
+        writtenThisCall++;
+    }
+
+    // Log queue status periodically
+    static int pushCount = 0;
+    pushCount++;
+    if (pushCount % 60 == 0) {
+        std::lock_guard<std::mutex> lock(m_impl->audioMutex);
+        printf("[VideoExporter] Audio push #%d: queued=%zu, wrote=%d this call, total=%.2fs\n",
+               pushCount, m_impl->audioEntries.size(), writtenThisCall,
+               (float)m_audioFrameCount / m_audioSampleRate);
+    }
 }
 
 void VideoExporter::captureFrame(WGPUDevice device, WGPUQueue queue, WGPUTexture texture) {
@@ -426,6 +727,14 @@ void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesP
         NSLog(@"Failed to append pixel buffer at frame %d", m_frameCount);
     }
 
+    // Debug: log every 60th frame (once per second at 60fps)
+    if (m_frameCount % 60 == 0) {
+        float videoTime = CMTimeGetSeconds(m_impl->currentTime);
+        float audioTime = CMTimeGetSeconds(m_impl->audioTime);
+        printf("[VideoExporter] Frame %d: video=%.2fs, audio=%.2fs, diff=%.3fs\n",
+               m_frameCount, videoTime, audioTime, videoTime - audioTime);
+    }
+
     CVPixelBufferRelease(pixelBuffer);
 
     m_impl->currentTime = CMTimeAdd(m_impl->currentTime, m_impl->frameDuration);
@@ -437,40 +746,168 @@ void VideoExporter::stop() {
 
     m_recording = false;
 
-    std::lock_guard<std::mutex> lock(m_impl->mutex);
-
-    if (m_impl->finalized) return;
-    m_impl->finalized = true;
-
-    // Mark input as finished
-    [m_impl->videoInput markAsFinished];
-
-    // Finish writing
-    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    [m_impl->assetWriter finishWritingWithCompletionHandler:^{
-        dispatch_semaphore_signal(semaphore);
-    }];
-    dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
-
-    AVAssetWriterStatus status = m_impl->assetWriter.status;
-    if (status == AVAssetWriterStatusFailed) {
-        m_error = std::string("Failed to finish writing: ") +
-                  [[m_impl->assetWriter.error localizedDescription] UTF8String];
-        printf("[VideoExporter] Error: %s\n", m_error.c_str());
-    } else if (status == AVAssetWriterStatusCompleted) {
-        printf("[VideoExporter] Finished recording: %s (%d frames, %.1f seconds)\n",
-               m_outputPath.c_str(), m_frameCount, duration());
-    } else {
-        printf("[VideoExporter] Warning: Unexpected status %ld after finish\n", (long)status);
+    // Check if already finalized (use mutex briefly)
+    {
+        std::lock_guard<std::mutex> lock(m_impl->mutex);
+        if (m_impl->finalized) return;
+        m_impl->finalized = true;
     }
 
+    // Calculate timing info for diagnostics
+    float videoSeconds = (m_fps > 0) ? static_cast<float>(m_frameCount) / m_fps : 0;
+    float audioSeconds = (m_audioSampleRate > 0) ? static_cast<float>(m_audioFrameCount) / m_audioSampleRate : 0;
+
+    printf("[VideoExporter] Stopping recording...\n");
+    printf("[VideoExporter] Video: %d frames = %.2f sec, Audio: %llu frames = %.2f sec\n",
+           m_frameCount, videoSeconds, m_audioFrameCount, audioSeconds);
+
+    // Warning: if audio was enabled but no audio was written, this could cause issues
+    if (m_audioEnabled && m_audioFrameCount == 0) {
+        printf("[VideoExporter] WARNING: Audio enabled but no audio samples written!\n");
+    }
+
+    // Check asset writer status before marking finished
+    AVAssetWriterStatus statusBefore = m_impl->assetWriter.status;
+    printf("[VideoExporter] Writer status before finish: %ld\n", (long)statusBefore);
+
+    if (statusBefore == AVAssetWriterStatusFailed) {
+        NSError* error = m_impl->assetWriter.error;
+        m_error = std::string("Writer already failed: ") +
+                  (error ? [[error localizedDescription] UTF8String] : "unknown error");
+        printf("[VideoExporter] Error: %s\n", m_error.c_str());
+        goto cleanup;
+    }
+
+    // Stop audio writer
+    if (m_audioEnabled) {
+        m_impl->audioWriterRunning = false;
+
+        // Drain remaining audio queue before marking finished
+        int drainedCount = 0;
+        while (true) {
+            // Wait for audio input to be ready (with timeout)
+            int waitAttempts = 0;
+            while (![m_impl->audioInput isReadyForMoreMediaData] && waitAttempts < 100) {
+                usleep(10000);  // 10ms
+                waitAttempts++;
+            }
+
+            if (![m_impl->audioInput isReadyForMoreMediaData]) {
+                printf("[VideoExporter] Audio input not ready after drain wait, stopping\n");
+                break;
+            }
+
+            AudioQueueEntry entry;
+            {
+                std::lock_guard<std::mutex> lock(m_impl->audioMutex);
+                if (m_impl->audioEntries.empty()) {
+                    break;
+                }
+                entry = std::move(m_impl->audioEntries.front());
+                m_impl->audioEntries.pop();
+            }
+
+            writeAudioEntryImpl(m_impl->audioInput, m_impl->assetWriter, entry, m_audioChannels, m_audioSampleRate);
+            drainedCount++;
+        }
+
+        size_t remainingEntries = 0;
+        {
+            std::lock_guard<std::mutex> lock(m_impl->audioMutex);
+            remainingEntries = m_impl->audioEntries.size();
+        }
+        printf("[VideoExporter] Drained %d audio entries, %zu remaining\n", drainedCount, remainingEntries);
+    }
+
+    // Mark inputs as finished (outside mutex to avoid deadlock)
+    if (m_impl->videoInput) {
+        [m_impl->videoInput markAsFinished];
+    }
+
+    if (m_audioEnabled && m_impl->audioInput) {
+        [m_impl->audioInput markAsFinished];
+    }
+
+    {
+        // Finish writing with timeout
+        dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+        __block AVAssetWriterStatus completionStatus = AVAssetWriterStatusUnknown;
+
+        [m_impl->assetWriter finishWritingWithCompletionHandler:^{
+            completionStatus = m_impl->assetWriter.status;
+            dispatch_semaphore_signal(semaphore);
+        }];
+
+        // Poll every 500ms for up to 10 seconds
+        int attempts = 0;
+        const int maxAttempts = 20;
+        long result = -1;
+
+        while (attempts < maxAttempts) {
+            dispatch_time_t timeout = dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC);
+            result = dispatch_semaphore_wait(semaphore, timeout);
+
+            if (result == 0) {
+                // Successfully completed
+                break;
+            }
+
+            // Still waiting - check status
+            AVAssetWriterStatus statusNow = m_impl->assetWriter.status;
+            printf("[VideoExporter] Waiting... attempt %d/20, status=%ld\n", attempts + 1, (long)statusNow);
+
+            if (statusNow == AVAssetWriterStatusFailed) {
+                NSError* error = m_impl->assetWriter.error;
+                printf("[VideoExporter] Writer failed: %s\n",
+                       error ? [[error localizedDescription] UTF8String] : "unknown");
+                break;
+            }
+
+            attempts++;
+        }
+
+        if (result != 0) {
+            // Timeout or error
+            AVAssetWriterStatus statusNow = m_impl->assetWriter.status;
+            printf("[VideoExporter] Warning: Timed out waiting for finish (10s), status=%ld\n", (long)statusNow);
+            if (statusNow == AVAssetWriterStatusFailed) {
+                NSError* error = m_impl->assetWriter.error;
+                m_error = std::string("Writer failed: ") +
+                          (error ? [[error localizedDescription] UTF8String] : "unknown");
+            } else {
+                m_error = "Timed out waiting for video to finish writing";
+            }
+            printf("[VideoExporter] Error: %s\n", m_error.c_str());
+
+            // Force cancel the writer
+            [m_impl->assetWriter cancelWriting];
+        } else {
+            AVAssetWriterStatus status = completionStatus;
+            if (status == AVAssetWriterStatusFailed) {
+                m_error = std::string("Failed to finish writing: ") +
+                          [[m_impl->assetWriter.error localizedDescription] UTF8String];
+                printf("[VideoExporter] Error: %s\n", m_error.c_str());
+            } else if (status == AVAssetWriterStatusCompleted) {
+                printf("[VideoExporter] Finished recording: %s (%d frames, %.1f seconds)\n",
+                       m_outputPath.c_str(), m_frameCount, duration());
+            } else {
+                printf("[VideoExporter] Warning: Unexpected status %ld after finish\n", (long)status);
+            }
+        }
+    }
+
+cleanup:
     // Cleanup
+    m_impl->audioWriterRunning = false;
     m_impl->assetWriter = nil;
     m_impl->videoInput = nil;
+    m_impl->audioInput = nil;
     m_impl->pixelBufferAdaptor = nil;
     if (m_impl->encodingQueue) {
         m_impl->encodingQueue = nil;
     }
+    m_audioEnabled = false;
+    m_audioFrameCount = 0;
 }
 
 float VideoExporter::duration() const {
@@ -509,9 +946,18 @@ bool VideoExporter::start(const std::string& path, int width, int height,
     return false;
 }
 
+bool VideoExporter::startWithAudio(const std::string& path, int width, int height,
+                                    float fps, ExportCodec codec,
+                                    uint32_t audioSampleRate, uint32_t audioChannels) {
+    m_error = "Video export not implemented on this platform";
+    return false;
+}
+
 void VideoExporter::captureFrame(WGPUDevice device, WGPUQueue queue, WGPUTexture texture) {}
+void VideoExporter::pushAudioSamples(const float* samples, uint32_t frameCount) {}
 void VideoExporter::stop() {}
 float VideoExporter::duration() const { return 0; }
+void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesPerRow, uint32_t bytesPerPixel) {}
 
 std::string VideoExporter::generateOutputPath(const std::string& directory, ExportCodec codec) {
     return directory + "/output.mov";
