@@ -146,6 +146,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void Brightness::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
+    // Handle window resize / fullscreen
+    checkResize(ctx);
+
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
 

@@ -91,6 +91,15 @@ public:
      */
     TextureOperator& resolution(int w, int h) { m_width = w; m_height = h; return *this; }
 
+    /**
+     * @brief Check if context size changed and resize output texture if needed
+     * @param ctx The context to check dimensions from
+     * @return true if resize occurred, false otherwise
+     *
+     * Call this at the start of process() to handle window resize/fullscreen.
+     */
+    bool checkResize(Context& ctx);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Input Access
