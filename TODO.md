@@ -95,3 +95,4 @@
 [ ] PLAN: How can we prepare for the first release on github? What are best practices for a project like this? What github actions can we create that will help automate the process of making a release?
 [x] there should be section of examples called "showcase" that shows the *best* of what vivid can do. Let's make some impressive examples. We should have screenshots of these examples in the README 
 [x] Let's make a showcase with a couple of GLTF models and a depth of field effectI 
+[ ] can we proactively add the VIVID macros throughout the core and addons? I've been mostly developing on Mac, so it's probably missing in a lot of places.  

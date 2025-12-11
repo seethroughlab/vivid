@@ -208,11 +208,15 @@ def generate_prores(audio_path, output_dir, duration_sec):
 
 def generate_hap(audio_path, output_dir, duration_sec):
     """Generate HAP + PCM video (requires ffmpeg with HAP support)."""
-    output = os.path.join(output_dir, 'sync-test-hap.mov')
+    # Use .mp4 extension with isom brand for better parser compatibility
+    # minimp4 doesn't support QuickTime 'qt' brand, only ISO base media format
+    output = os.path.join(output_dir, 'sync-test-hap.mp4')
     codec_args = [
         '-c:v', 'hap',
-        '-format', 'hap',  # or 'hap_alpha', 'hap_q'
+        '-format', 'hap',
         '-c:a', 'pcm_s16le',
+        '-movflags', 'faststart',
+        '-brand', 'isom',  # Use ISO base media format instead of QuickTime
     ]
     success = encode_video(audio_path, output, codec_args, duration_sec)
     if not success:
@@ -220,9 +224,41 @@ def generate_hap(audio_path, output_dir, duration_sec):
     return success
 
 
+def generate_hapq(audio_path, output_dir, duration_sec):
+    """Generate HAP Q (higher quality) + PCM video."""
+    output = os.path.join(output_dir, 'sync-test-hapq.mp4')
+    codec_args = [
+        '-c:v', 'hap',
+        '-format', 'hap_q',
+        '-c:a', 'pcm_s16le',
+        '-movflags', 'faststart',
+        '-brand', 'isom',
+    ]
+    success = encode_video(audio_path, output, codec_args, duration_sec)
+    if not success:
+        print("  Note: HAP Q encoding requires ffmpeg compiled with HAP support")
+    return success
+
+
+def generate_hap_alpha(audio_path, output_dir, duration_sec):
+    """Generate HAP Alpha + PCM video."""
+    output = os.path.join(output_dir, 'sync-test-hap-alpha.mp4')
+    codec_args = [
+        '-c:v', 'hap',
+        '-format', 'hap_alpha',
+        '-c:a', 'pcm_s16le',
+        '-movflags', 'faststart',
+        '-brand', 'isom',
+    ]
+    success = encode_video(audio_path, output, codec_args, duration_sec)
+    if not success:
+        print("  Note: HAP Alpha encoding requires ffmpeg compiled with HAP support")
+    return success
+
+
 def main():
     parser = argparse.ArgumentParser(description='Generate A/V sync test videos')
-    parser.add_argument('--format', choices=['h264', 'prores', 'hap', 'all'],
+    parser.add_argument('--format', choices=['h264', 'prores', 'hap', 'hapq', 'hap_alpha', 'all'],
                         default='all', help='Output format(s)')
     parser.add_argument('--duration', type=float, default=DURATION,
                         help=f'Video duration in seconds (default: {DURATION})')
@@ -259,6 +295,12 @@ def main():
 
         if args.format in ['hap', 'all']:
             generate_hap(audio_path, output_dir, args.duration)
+
+        if args.format in ['hapq', 'all']:
+            generate_hapq(audio_path, output_dir, args.duration)
+
+        if args.format in ['hap_alpha', 'all']:
+            generate_hap_alpha(audio_path, output_dir, args.duration)
 
     print()
     print("Done! Test videos created in:", output_dir)

@@ -43,13 +43,16 @@ if(APPLE)
 elseif(WIN32)
     list(APPEND VIDEO_SOURCES
         src/hap_decoder.cpp      # Windows version without Obj-C
+        src/mov_parser.cpp       # QuickTime MOV container parser for HAP
         src/mf_decoder.cpp
+        src/dshow_decoder.cpp    # DirectShow fallback for ProRes, etc.
         src/mf_webcam.cpp
     )
 else()
     # Linux
     list(APPEND VIDEO_SOURCES
         src/hap_decoder.cpp      # Linux version without Obj-C
+        src/mov_parser.cpp       # QuickTime MOV container parser for HAP
         src/ffmpeg_decoder.cpp
     )
 endif()
@@ -106,7 +109,7 @@ if(APPLE)
     )
 
 elseif(WIN32)
-    # Windows Media Foundation libraries
+    # Windows Media Foundation and DirectShow libraries
     target_link_libraries(vivid-video PRIVATE
         mf
         mfplat
@@ -115,6 +118,8 @@ elseif(WIN32)
         ole32
         oleaut32
         propsys
+        strmiids    # DirectShow GUIDs
+        quartz      # DirectShow runtime
     )
 
     # Define export macro when building the DLL

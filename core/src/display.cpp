@@ -709,9 +709,15 @@ void Display::renderText(WGPURenderPassEncoder pass, const std::string& text,
                          float x, float y, float scale) {
     if (!m_textPipeline || text.empty()) return;
 
+    // Truncate text to avoid buffer overflow (MAX_TEXT_CHARS defined in header)
+    std::string displayText = text;
+    if (displayText.length() > MAX_TEXT_CHARS - 3) {
+        displayText = displayText.substr(0, MAX_TEXT_CHARS - 3) + "...";
+    }
+
     // Build vertex data
     std::vector<float> vertices;
-    vertices.reserve(text.length() * 6 * 8);
+    vertices.reserve(displayText.length() * 6 * 8);
 
     const float charWidth = FONT_CHAR_WIDTH * scale;
     const float charHeight = FONT_CHAR_HEIGHT * scale;
@@ -724,7 +730,7 @@ void Display::renderText(WGPURenderPassEncoder pass, const std::string& text,
     // Color: orange/yellow for visibility
     const float r = 1.0f, g = 0.8f, b = 0.2f, a = 1.0f;
 
-    for (char c : text) {
+    for (char c : displayText) {
         if (c == '\n') {
             cursorX = x;
             cursorY += charHeight + 2 * scale;

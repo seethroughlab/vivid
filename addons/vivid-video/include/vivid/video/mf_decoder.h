@@ -128,6 +128,9 @@ private:
 
     void createTexture();
     void resetReader();
+    void prebufferAudio();
+    void readAudioSamplesToBuffer();
+    void decodeVideoSample(void* sample);  // IMFSample*
 };
 
 } // namespace vivid::video
