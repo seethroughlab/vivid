@@ -7,7 +7,7 @@ WebGPU-based creative coding framework with hot-reload. Minimal core (~600 lines
 ```bash
 cmake -B build && cmake --build build    # Full build
 cmake --build build                       # Incremental build
-./build/bin/vivid examples/hello-noise    # Run example
+./build/bin/vivid examples/getting-started/02-hello-noise    # Run example
 doxygen Doxyfile                          # Generate API docs
 ```
 
@@ -20,7 +20,8 @@ addons/         Modular features:
   vivid-effects-2d/   2D texture operators (25+ effects)
   vivid-video/        Video playback (HAP, platform codecs)
   vivid-render3d/     3D rendering (PBR, CSG, instancing)
-examples/       Demo projects (each has chain.cpp)
+examples/       Curated user examples (getting-started/, 2d-effects/, audio/, 3d-rendering/)
+testing-fixtures/  Test examples for CI/regression testing
 docs/           LLM-REFERENCE.md, RECIPES.md, OPERATOR-API.md
 ```
 

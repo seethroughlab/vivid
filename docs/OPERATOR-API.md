@@ -167,7 +167,7 @@ Circle2D(float x, float y, float radius, float r, float g, float b, float alpha 
 
 **Performance:** All circles are rendered in a single GPU draw call using instancing, making it efficient for thousands of shapes.
 
-**See:** `examples/2d-instancing/` for a complete physics simulation example.
+**See:** `examples/2d-effects/particles/` for a complete particle system example.
 
 ## Shader Parameters
 

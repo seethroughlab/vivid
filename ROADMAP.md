@@ -102,7 +102,7 @@ Vivid V3 is the third attempt at this framework. Understanding why V1 and V2 fai
    - Fluent API makes generated code readable
    - This ROADMAP serves as comprehensive architectural documentation
    - LLM-optimized docs: `docs/LLM-REFERENCE.md` (compact operator reference), `docs/RECIPES.md` (effect examples)
-   - Project template with `CLAUDE.md` for per-project AI context (`examples/template/`)
+   - Project template with `CLAUDE.md` for per-project AI context (`examples/getting-started/01-template/`)
    - Doxygen API documentation: run `doxygen Doxyfile` or `make docs` to generate `docs/api/html/`
 
 5. **Hot reload everything.** Edit C++ or WGSL, save, see changes. No restart, no lost state.
@@ -123,7 +123,7 @@ Testing is continuous, not a final phase. Every operator and example must be tes
 - Automated screenshot capture during CI
 
 ### Example Project Testing
-- All examples in `examples/` must run without errors
+- All examples in `examples/` and `testing-fixtures/` must run without errors
 - Each example renders for N frames and captures output
 - CI runs examples on macOS, Windows, and Linux
 

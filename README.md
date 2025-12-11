@@ -30,7 +30,7 @@ cmake -B build && cmake --build build
 ### Run an Example
 
 ```bash
-./build/bin/vivid examples/chain-demo
+./build/bin/vivid examples/2d-effects/chain-basics
 ```
 
 Press `F` to toggle fullscreen, `Tab` to view chain visualizer, `Esc` to quit.
@@ -300,31 +300,32 @@ vivid/
 │   ├── vivid-effects-2d/     # 2D texture operators (always linked)
 │   ├── vivid-video/          # Video playback (HAP, H.264, etc.)
 │   └── vivid-render3d/       # 3D rendering (PBR, CSG, IBL)
-├── examples/                 # Demo projects
+├── examples/                 # Curated user examples (by category)
+├── testing-fixtures/         # Test examples for CI/regression
 └── assets/                   # Shared resources
 ```
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| `hello-noise` | Minimal starter - animated noise |
-| `chain-demo` | Multi-operator chain with image distortion |
-| `feedback` | Recursive feedback effects |
-| `video-demo` | Video playback with codec switching |
-| `webcam-retro` | Live webcam with CRT/dither effects |
-| `particles` | 2D particle system with physics |
-| `geometry-showcase` | All 3D primitives and CSG operations |
-| `pbr-demo` | PBR rendering with metallic sphere |
-| `multi-lights` | Multiple light types (directional, point, spot) |
-| `textured-pbr-demo` | PBR materials with texture maps and IBL |
-| `instancing-demo` | GPU instanced rendering (2000 asteroids) |
-| `retro-crt` | Full retro post-processing pipeline |
-| `canvas-demo` | Procedural 2D drawing |
+Examples are organized by category. See `examples/README.md` for the full learning path.
+
+| Category | Example | Description |
+|----------|---------|-------------|
+| Getting Started | `01-template` | Heavily commented starter |
+| Getting Started | `02-hello-noise` | Minimal noise generator |
+| 2D Effects | `chain-basics` | Multi-operator chain with image distortion |
+| 2D Effects | `feedback` | Recursive feedback effects |
+| 2D Effects | `particles` | 2D particle system with physics |
+| 2D Effects | `retro-crt` | Full retro post-processing pipeline |
+| Audio | `drum-machine` | Drum synthesis and sequencing |
+| Audio | `audio-reactive` | Audio analysis driving visuals |
+| 3D Rendering | `3d-basics` | Primitives, camera, CSG, lighting |
+| 3D Rendering | `gltf-loader` | GLTF/GLB model loading |
+| 3D Rendering | `instancing` | GPU instanced rendering |
 
 Run any example:
 ```bash
-./build/bin/vivid examples/geometry-showcase
+./build/bin/vivid examples/getting-started/01-template
 ```
 
 ## Addon System
@@ -385,7 +386,7 @@ Create a `CLAUDE.md` file in your project folder to give AI assistants context a
 - docs/RECIPES.md - Effect examples
 ```
 
-See `examples/template/` for a complete starter project with CLAUDE.md.
+See `examples/getting-started/01-template/` for a complete starter project with CLAUDE.md.
 
 ## License
 

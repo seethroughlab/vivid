@@ -286,7 +286,7 @@ VIVID_CHAIN(setup, update)
 
 - [OPERATOR-API.md](OPERATOR-API.md) - Creating custom operators
 - [SHADER-CONVENTIONS.md](SHADER-CONVENTIONS.md) - Writing shaders
-- `examples/chain-demo/` - Full working example
-- `examples/multi-composite/` - Multi-input compositing example
-- `examples/2d-instancing/` - GPU-instanced 2D physics simulation
-- `examples/3d-demo/` - 3D mesh rendering
+- `examples/2d-effects/chain-basics/` - Full working example
+- `examples/2d-effects/particles/` - 2D particle system
+- `examples/3d-rendering/3d-basics/` - 3D mesh rendering
+- `examples/3d-rendering/instancing/` - GPU instanced rendering
