@@ -152,6 +152,15 @@ add_subdirectory(core)
 # The examples/ directory contains chain.cpp files that are loaded at runtime.
 
 # -----------------------------------------------------------------------------
+# Tests (optional)
+# -----------------------------------------------------------------------------
+option(BUILD_TESTS "Build the test suite" OFF)
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+# -----------------------------------------------------------------------------
 # Documentation (optional)
 # -----------------------------------------------------------------------------
 find_package(Doxygen QUIET)
