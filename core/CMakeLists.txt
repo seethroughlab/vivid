@@ -158,6 +158,7 @@ target_include_directories(vivid
         ${CMAKE_SOURCE_DIR}/addons/vivid-render3d/include
         ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
         ${CMAKE_SOURCE_DIR}/addons/vivid-audio/include
+        ${stb_SOURCE_DIR}
 )
 
 # Use wgpu-native backend for ImGui

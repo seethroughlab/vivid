@@ -83,6 +83,7 @@ public:
     void init(Context& ctx) override;
     void process(Context& ctx) override;
     void cleanup() override;
+    void generateBlock(uint32_t frameCount) override;
 
     std::string name() const override { return "AudioIn"; }
 

@@ -27,22 +27,23 @@ void AudioFile::init(Context& ctx) {
 }
 
 void AudioFile::process(Context& ctx) {
+    // Handle file loading on main thread
     if (m_needsLoad && !m_filePath.empty()) {
         loadWAV(m_filePath);
         m_needsLoad = false;
         m_playing = true;
     }
+    // Audio generation is handled by generateBlock() on audio thread
+}
 
-    // Get the number of frames to generate this frame (based on elapsed time)
-    uint32_t framesToWrite = ctx.audioFramesThisFrame();
-
+void AudioFile::generateBlock(uint32_t frameCount) {
     // Resize output buffer if needed
-    if (m_output.frameCount != framesToWrite) {
-        m_output.allocate(framesToWrite, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+    if (m_output.frameCount != frameCount) {
+        m_output.resize(frameCount);
     }
 
     // Clear output buffer
-    clearOutput();
+    std::memset(m_output.samples, 0, frameCount * AUDIO_CHANNELS * sizeof(float));
 
     if (!m_playing || m_samples.empty()) {
         return;
@@ -50,7 +51,7 @@ void AudioFile::process(Context& ctx) {
 
     float* out = m_output.samples;
 
-    for (uint32_t i = 0; i < framesToWrite; ++i) {
+    for (uint32_t i = 0; i < frameCount; ++i) {
         if (m_playPosition >= m_totalFrames) {
             if (m_loop) {
                 m_playPosition = 0;
