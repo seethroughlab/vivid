@@ -89,3 +89,4 @@
 [ ] Idea: Maybe operators should declare all properties in a single structure in the constructor. Would that simplify the operator declaration?
 [ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
 [x] in the chain visualizer, the operator controls shouldn't be INSIDE the node -- there should be a separate panel that shows up on the right side of the window when you select a node -- this is where you will be able to adjust parameters. It should be like the inspector panel in TouhDesigner. This is a major change, so let's plan how we will do it. 
+[ ] Make an example that plays a nice little melody. There should be pads and a lead with a subtle beat. It should be in a minor key, and it should have a "verse, chorus, verse, bridge, chorus, outro" structure. 

@@ -1,0 +1,121 @@
+#include <vivid/audio/snare.h>
+#include <vivid/context.h>
+#include <cmath>
+
+namespace vivid::audio {
+
+void Snare::init(Context& ctx) {
+    m_sampleRate = AUDIO_SAMPLE_RATE;
+    allocateOutput();
+    reset();
+    m_initialized = true;
+}
+
+void Snare::process(Context& ctx) {
+    if (!m_initialized) return;
+
+    uint32_t frames = m_output.frameCount;
+
+    float toneAmt = static_cast<float>(m_tone);
+    float noiseAmt = static_cast<float>(m_noise);
+    float freq = static_cast<float>(m_pitch);
+    float toneDecayTime = static_cast<float>(m_toneDecay) * m_sampleRate;
+    float noiseDecayTime = static_cast<float>(m_noiseDecay) * m_sampleRate;
+    float snappyAmt = static_cast<float>(m_snappy);
+    float vol = static_cast<float>(m_volume);
+
+    float toneDecayRate = (toneDecayTime > 0) ? (1.0f / toneDecayTime) : 1.0f;
+    float noiseDecayRate = (noiseDecayTime > 0) ? (1.0f / noiseDecayTime) : 1.0f;
+    float phaseInc = freq / m_sampleRate;
+
+    for (uint32_t i = 0; i < frames; ++i) {
+        // Tone component (sine with slight 2nd harmonic)
+        float tone = std::sin(m_phase * TWO_PI);
+        tone += 0.3f * std::sin(m_phase * TWO_PI * 2.0f);  // 2nd harmonic
+        tone *= m_toneEnv * toneAmt;
+
+        // Noise component
+        float noise = generateNoise();
+
+        // Apply snappy highpass filter to noise
+        if (snappyAmt > 0.0f) {
+            float filtered = highpass(noise, 0);
+            noise = noise * (1.0f - snappyAmt) + filtered * snappyAmt;
+        }
+        noise *= m_noiseEnv * noiseAmt;
+
+        // Mix
+        float sample = (tone + noise) * vol;
+
+        // Output
+        m_output.samples[i * 2] = sample;
+        m_output.samples[i * 2 + 1] = sample;
+
+        // Advance phase
+        m_phase += phaseInc;
+        if (m_phase >= 1.0f) m_phase -= 1.0f;
+
+        // Decay envelopes (exponential)
+        m_toneEnv *= (1.0f - toneDecayRate);
+        m_noiseEnv *= (1.0f - noiseDecayRate * 0.5f);
+    }
+}
+
+void Snare::cleanup() {
+    releaseOutput();
+    m_initialized = false;
+}
+
+void Snare::trigger() {
+    m_toneEnv = 1.0f;
+    m_noiseEnv = 1.0f;
+}
+
+void Snare::reset() {
+    m_phase = 0.0f;
+    m_toneEnv = 0.0f;
+    m_noiseEnv = 0.0f;
+    m_hpState[0] = m_hpState[1] = 0.0f;
+}
+
+float Snare::generateNoise() {
+    m_seed ^= m_seed << 13;
+    m_seed ^= m_seed >> 17;
+    m_seed ^= m_seed << 5;
+    return (static_cast<float>(m_seed) / 2147483648.0f) - 1.0f;
+}
+
+float Snare::highpass(float in, int ch) {
+    // Simple one-pole highpass at ~2kHz
+    float cutoff = 2000.0f / m_sampleRate;
+    float rc = 1.0f / (TWO_PI * cutoff);
+    float alpha = rc / (rc + 1.0f / m_sampleRate);
+
+    float out = alpha * (m_hpState[ch] + in - m_hpState[ch]);
+    m_hpState[ch] = in;
+    return out;
+}
+
+bool Snare::getParam(const std::string& name, float out[4]) {
+    if (name == "tone") { out[0] = m_tone; return true; }
+    if (name == "noise") { out[0] = m_noise; return true; }
+    if (name == "pitch") { out[0] = m_pitch; return true; }
+    if (name == "toneDecay") { out[0] = m_toneDecay; return true; }
+    if (name == "noiseDecay") { out[0] = m_noiseDecay; return true; }
+    if (name == "snappy") { out[0] = m_snappy; return true; }
+    if (name == "volume") { out[0] = m_volume; return true; }
+    return false;
+}
+
+bool Snare::setParam(const std::string& name, const float value[4]) {
+    if (name == "tone") { m_tone = value[0]; return true; }
+    if (name == "noise") { m_noise = value[0]; return true; }
+    if (name == "pitch") { m_pitch = value[0]; return true; }
+    if (name == "toneDecay") { m_toneDecay = value[0]; return true; }
+    if (name == "noiseDecay") { m_noiseDecay = value[0]; return true; }
+    if (name == "snappy") { m_snappy = value[0]; return true; }
+    if (name == "volume") { m_volume = value[0]; return true; }
+    return false;
+}
+
+} // namespace vivid::audio

@@ -1,0 +1,124 @@
+#include <vivid/audio/kick.h>
+#include <vivid/context.h>
+#include <cmath>
+
+namespace vivid::audio {
+
+void Kick::init(Context& ctx) {
+    m_sampleRate = AUDIO_SAMPLE_RATE;
+    allocateOutput();
+    reset();
+    m_initialized = true;
+}
+
+void Kick::process(Context& ctx) {
+    if (!m_initialized) return;
+
+    uint32_t frames = m_output.frameCount;
+
+    float basePitch = static_cast<float>(m_pitch);
+    float pitchEnvAmt = static_cast<float>(m_pitchEnv);
+    float pitchDecayTime = static_cast<float>(m_pitchDecay) * m_sampleRate;
+    float ampDecayTime = static_cast<float>(m_decay) * m_sampleRate;
+    float clickAmt = static_cast<float>(m_click);
+    float driveAmt = static_cast<float>(m_drive);
+    float vol = static_cast<float>(m_volume);
+
+    float pitchDecayRate = (pitchDecayTime > 0) ? (1.0f / pitchDecayTime) : 1.0f;
+    float ampDecayRate = (ampDecayTime > 0) ? (1.0f / ampDecayTime) : 1.0f;
+    float clickDecayRate = m_sampleRate / 500.0f;  // ~2ms click
+
+    for (uint32_t i = 0; i < frames; ++i) {
+        // Compute current frequency (pitch envelope)
+        float freq = basePitch + pitchEnvAmt * m_pitchEnvValue;
+        float phaseInc = freq / m_sampleRate;
+
+        // Generate sine oscillator
+        float osc = std::sin(m_phase * TWO_PI);
+
+        // Generate click (short noise burst)
+        float click = 0.0f;
+        if (m_clickEnv > 0.0f && clickAmt > 0.0f) {
+            // Simple noise for click
+            uint32_t seed = static_cast<uint32_t>(m_phase * 1000000.0f) ^ 0x5DEECE66D;
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            click = ((seed / 2147483648.0f) - 1.0f) * m_clickEnv * clickAmt;
+        }
+
+        // Mix and apply envelope
+        float sample = (osc + click) * m_ampEnv;
+
+        // Apply soft saturation/drive
+        if (driveAmt > 0.0f) {
+            sample = softClip(sample * (1.0f + driveAmt * 3.0f));
+        }
+
+        sample *= vol;
+
+        // Output stereo
+        m_output.samples[i * 2] = sample;
+        m_output.samples[i * 2 + 1] = sample;
+
+        // Advance phase
+        m_phase += phaseInc;
+        if (m_phase >= 1.0f) m_phase -= 1.0f;
+
+        // Decay envelopes (exponential)
+        m_pitchEnvValue *= (1.0f - pitchDecayRate);
+        m_ampEnv *= (1.0f - ampDecayRate * 0.1f);  // Slower for smooth decay
+        m_ampEnv = std::max(0.0f, m_ampEnv - ampDecayRate * 0.001f);
+        m_clickEnv *= (1.0f - clickDecayRate);
+    }
+}
+
+void Kick::cleanup() {
+    releaseOutput();
+    m_initialized = false;
+}
+
+void Kick::trigger() {
+    m_ampEnv = 1.0f;
+    m_pitchEnvValue = 1.0f;
+    m_clickEnv = 1.0f;
+    // Don't reset phase for punch
+}
+
+void Kick::reset() {
+    m_phase = 0.0f;
+    m_ampEnv = 0.0f;
+    m_pitchEnvValue = 0.0f;
+    m_clickEnv = 0.0f;
+}
+
+float Kick::softClip(float x) const {
+    // Tanh soft clipping
+    if (x > 1.0f) return std::tanh(x);
+    if (x < -1.0f) return std::tanh(x);
+    return x;
+}
+
+bool Kick::getParam(const std::string& name, float out[4]) {
+    if (name == "pitch") { out[0] = m_pitch; return true; }
+    if (name == "pitchEnv") { out[0] = m_pitchEnv; return true; }
+    if (name == "pitchDecay") { out[0] = m_pitchDecay; return true; }
+    if (name == "decay") { out[0] = m_decay; return true; }
+    if (name == "click") { out[0] = m_click; return true; }
+    if (name == "drive") { out[0] = m_drive; return true; }
+    if (name == "volume") { out[0] = m_volume; return true; }
+    return false;
+}
+
+bool Kick::setParam(const std::string& name, const float value[4]) {
+    if (name == "pitch") { m_pitch = value[0]; return true; }
+    if (name == "pitchEnv") { m_pitchEnv = value[0]; return true; }
+    if (name == "pitchDecay") { m_pitchDecay = value[0]; return true; }
+    if (name == "decay") { m_decay = value[0]; return true; }
+    if (name == "click") { m_click = value[0]; return true; }
+    if (name == "drive") { m_drive = value[0]; return true; }
+    if (name == "volume") { m_volume = value[0]; return true; }
+    return false;
+}
+
+} // namespace vivid::audio

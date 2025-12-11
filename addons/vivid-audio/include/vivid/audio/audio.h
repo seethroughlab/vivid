@@ -35,3 +35,30 @@
 #include <vivid/audio/fft.h>
 #include <vivid/audio/band_split.h>
 #include <vivid/audio/beat_detect.h>
+
+// Synthesis
+#include <vivid/audio/oscillator.h>
+#include <vivid/audio/envelope.h>
+#include <vivid/audio/synth.h>
+#include <vivid/audio/noise_gen.h>
+#include <vivid/audio/crackle.h>
+#include <vivid/audio/pitch_env.h>
+
+// Envelope variants
+#include <vivid/audio/decay.h>
+#include <vivid/audio/ar.h>
+
+// Drum synthesis
+#include <vivid/audio/kick.h>
+#include <vivid/audio/snare.h>
+#include <vivid/audio/hihat.h>
+#include <vivid/audio/clap.h>
+
+// Sequencing
+#include <vivid/audio/clock.h>
+#include <vivid/audio/sequencer.h>
+#include <vivid/audio/euclidean.h>
+
+// Utilities
+#include <vivid/audio/audio_filter.h>
+#include <vivid/audio/audio_mixer.h>

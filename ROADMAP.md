@@ -817,6 +817,7 @@ class Noise : public TextureOperator {
 - `Param<int>` - scalar int with min/max range
 - `Param<bool>` - boolean toggle
 - `Vec2Param` - 2D vector (x, y) with range
+- `Vec3Param` - 3D vector (x, y, z) with range
 - `ColorParam` - RGBA color (r, g, b, a)
 
 **Key features:**
@@ -1042,7 +1043,7 @@ We encountered a blank/dark gray window despite all WebGPU operations appearing 
 **Goal:** Port essential operators from v1/v2
 
 **Generators (no input):**
-- [x] Noise - Fractal Perlin noise with octaves, lacunarity, persistence
+- [x] Noise - 3D fractal noise (Perlin, Simplex, Worley, Value) with offset(x,y,z)
 - [x] Gradient - Linear, radial, angular, diamond modes
 - [x] Shape - SDF shapes (circle, rect, star, polygon, ring)
 - [x] SolidColor - Constant color or value
@@ -1834,6 +1835,8 @@ The chain visualizer is an ImNodes-based overlay that shows the operator graph w
 | Texture | Default gray | 2D texture operators (Noise, Blur, etc.) |
 | Geometry | Blue | 3D mesh/scene operators (Box, Boolean, SceneComposer) |
 | Value | Orange | Numeric value operators (LFO, Math, Logic) |
+| AudioBuffer | Purple | Audio source/effect operators (AudioIn, Delay, Reverb) |
+| AudioValue | Teal/Cyan | Audio analysis operators (Levels, FFT, BandSplit, BeatDetect) |
 | Camera | Green | Camera operators (CameraOperator) |
 | Light | Yellow | Light operators (DirectionalLight, PointLight, SpotLight) |
 
@@ -1841,17 +1844,27 @@ The chain visualizer is an ImNodes-based overlay that shows the operator graph w
 - **Texture**: Live texture preview (100x56 pixels)
 - **Geometry**: Rotating 3D preview (single mesh or full scene)
 - **Value**: "Value" label in colored box
+- **AudioBuffer**: Waveform visualization (oscilloscope-style)
+- **AudioValue**: Type-specific visualizations:
+  - Levels: VU meter (green/yellow/red bars)
+  - FFT: Spectrum analyzer bars
+  - BandSplit: 6-band equalizer display
+  - BeatDetect: Pulsing circle with beat flash
 - **Camera**: Camera icon (body + lens + viewfinder)
 - **Light**: Light bulb icon with rays
 
 **Features:**
 - [x] In-window overlay showing operator graph
-- [x] Node thumbnails showing operator output
+- [x] Node thumbnails showing operator output (texture, geometry, audio waveforms)
 - [x] Connection visualization between operators
 - [x] Toggle with Tab key
 - [x] Automatic graph layout by depth
-- [x] Parameter display within nodes
 - [x] Performance overlay (FPS, DT, operator count)
+- [x] Inspector panel (TouchDesigner-style) - select node to edit parameters
+- [x] Solo mode (double-click node for fullscreen preview)
+- [x] Bypass toggle per operator
+- [x] Parameter persistence via sidecar JSON files
+- [x] Audio analyzer thumbnails (VU meter, spectrum, bands, beat pulse)
 
 **WebSocket Server (Future):**
 - [ ] JSON protocol for compile status and errors
@@ -2054,10 +2067,10 @@ public:
 ```
 
 **Audio Analysis Operators** (output AudioValue):
-- [ ] FFT - Frequency spectrum analysis
-- [ ] BandSplit - Bass/mids/highs extraction
-- [ ] BeatDetect - Onset and tempo detection
-- [ ] Levels - RMS/peak metering
+- [x] FFT - Frequency spectrum analysis (KissFFT)
+- [x] BandSplit - 6-band frequency extraction (sub-bass, bass, low-mid, mid, high-mid, high)
+- [x] BeatDetect - Onset detection with energy/intensity tracking
+- [x] Levels - RMS/peak metering with dB conversion
 
 **Usage Example (Audio-reactive visuals):**
 ```cpp
@@ -2071,9 +2084,27 @@ chain.get<Noise>("noise").scale(4.0f + bass * 10.0f);
 ```
 
 **Audio Synthesis Operators:**
-- [ ] Oscillator - Sine, saw, square, triangle waveforms
-- [ ] Envelope - ADSR envelope generator
-- [ ] Synth - Combined oscillator + envelope + filter
+- [x] Oscillator - Sine, saw, square, triangle, pulse waveforms with detune and stereo spread
+- [x] Envelope - ADSR envelope generator with trigger/release control
+- [x] Synth - Combined oscillator + envelope with noteOn/noteOff
+- [x] NoiseGen - White, pink, brown noise generator
+- [x] Crackle - Random impulse/click generator for vinyl texture
+- [x] PitchEnv - Pitch sweep envelope for kick drums and toms
+
+**Envelope Variants:**
+- [x] Decay - One-shot decay envelope (linear/exponential/logarithmic)
+- [x] AR - Attack-Release envelope (no sustain phase)
+
+**Drum Synthesis:**
+- [x] Kick - 808-style kick with pitch envelope, click, and drive
+- [x] Snare - Tone + noise with separate envelopes and snappy control
+- [x] HiHat - Metallic filtered noise with choke support
+- [x] Clap - Multiple noise bursts with timing spread
+
+**Sequencing:**
+- [x] Clock - BPM-based trigger generator with swing and divisions
+- [x] Sequencer - 16-step pattern sequencer with velocity
+- [x] Euclidean - Euclidean rhythm generator (Bjorklund's algorithm)
 
 **Audio Effect Operators (vivid-audio addon):**
 
@@ -2096,8 +2127,8 @@ chain.get<Noise>("noise").scale(4.0f + bass * 10.0f);
 - [x] Overdrive - Soft clipping (tanh waveshaping)
 - [x] Bitcrush - Sample rate/bit depth reduction
 
-*Utilities (TODO):*
-- [ ] AudioFilter - Biquad LP/HP/BP/Notch
+*Utilities:*
+- [x] AudioFilter - Biquad LP/HP/BP/Notch/Shelf/Peak
 - [ ] AudioGain - Volume/amplification control
 - [ ] AudioMixer - Mix multiple audio sources
 
@@ -2167,9 +2198,11 @@ void update(Context& ctx) {
 
 **Validation:**
 - [x] AudioIn captures from default device with volume/mute controls
-- [ ] FFT produces correct frequency bins
-- [ ] BeatDetect triggers on transients
-- [ ] Oscillator produces clean audio at 48kHz
+- [x] FFT produces correct frequency bins with configurable size (256-4096)
+- [x] BeatDetect triggers on transients with configurable sensitivity/decay
+- [x] Levels provides smoothed RMS/peak with dB conversion
+- [x] BandSplit extracts 6 frequency bands accurately
+- [x] Oscillator produces clean audio at 48kHz
 - [ ] SampleBank loads WAV/MP3 files from folder
 - [ ] SamplePlayer triggers with <5ms latency
 - [ ] AudioFilter applies HPF/LPF in real-time

@@ -20,14 +20,11 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(kissfft)
 
 set(AUDIO_SOURCES
+    # Sources
     src/audio_in.cpp
     src/audio_file.cpp
+    # Effects
     src/audio_effect.cpp
-    src/audio_analyzer.cpp
-    src/levels.cpp
-    src/fft.cpp
-    src/band_split.cpp
-    src/beat_detect.cpp
     src/delay.cpp
     src/echo.cpp
     src/reverb.cpp
@@ -39,6 +36,34 @@ set(AUDIO_SOURCES
     src/phaser.cpp
     src/overdrive.cpp
     src/bitcrush.cpp
+    src/audio_filter.cpp
+    # Analysis
+    src/audio_analyzer.cpp
+    src/levels.cpp
+    src/fft.cpp
+    src/band_split.cpp
+    src/beat_detect.cpp
+    # Synthesis
+    src/oscillator.cpp
+    src/envelope.cpp
+    src/synth.cpp
+    src/noise_gen.cpp
+    src/crackle.cpp
+    src/pitch_env.cpp
+    # Envelopes
+    src/decay.cpp
+    src/ar.cpp
+    # Drums
+    src/kick.cpp
+    src/snare.cpp
+    src/hihat.cpp
+    src/clap.cpp
+    # Sequencing
+    src/clock.cpp
+    src/sequencer.cpp
+    src/euclidean.cpp
+    # Mixing
+    src/audio_mixer.cpp
 )
 
 add_library(vivid-audio SHARED ${AUDIO_SOURCES})
