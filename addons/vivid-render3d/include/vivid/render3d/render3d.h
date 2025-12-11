@@ -29,3 +29,6 @@
 
 // Instanced rendering
 #include <vivid/render3d/instanced_render3d.h>
+
+// Post-processing
+#include <vivid/render3d/depth_of_field.h>

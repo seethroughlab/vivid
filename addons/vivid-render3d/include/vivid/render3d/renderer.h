@@ -154,6 +154,22 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Depth Output
+    /// @{
+
+    /// Enable linear depth output for post-processing (DOF, fog, etc.)
+    /// When enabled, creates a second render target with linear depth (0=near, 1=far)
+    Render3D& depthOutput(bool enabled);
+
+    /// Get the linear depth texture view (nullptr if depth output disabled)
+    /// Depth is normalized: 0.0 = near plane, 1.0 = far plane
+    WGPUTextureView depthOutputView() const { return m_depthOutputView; }
+
+    /// Check if depth output is enabled
+    bool hasDepthOutput() const { return m_depthOutputEnabled; }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Debug
     /// @{
 
@@ -211,6 +227,16 @@ private:
 
     // Debug
     bool m_wireframe = false;
+
+    // Depth output for post-processing
+    bool m_depthOutputEnabled = false;
+    WGPUTexture m_depthOutputTexture = nullptr;
+    WGPUTextureView m_depthOutputView = nullptr;
+    WGPURenderPipeline m_depthCopyPipeline = nullptr;
+    WGPUBindGroupLayout m_depthCopyBindGroupLayout = nullptr;
+    WGPUBindGroup m_depthCopyBindGroup = nullptr;
+    WGPUSampler m_depthCopySampler = nullptr;
+    WGPUBuffer m_depthCopyUniformBuffer = nullptr;
 
     // GPU resources (depth buffer is 3D-specific, not in TextureOperator)
     WGPUTexture m_depthTexture = nullptr;

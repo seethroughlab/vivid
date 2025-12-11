@@ -14,8 +14,56 @@ namespace vivid::render3d {
 using namespace vivid::effects;
 
 namespace {
-constexpr WGPUTextureFormat DEPTH_FORMAT = WGPUTextureFormat_Depth24Plus;
+// Use Depth32Float so we can sample it for post-processing
+constexpr WGPUTextureFormat DEPTH_FORMAT = WGPUTextureFormat_Depth32Float;
 // toStringView is inherited from vivid::effects (texture_operator.h)
+
+// Shader to copy depth buffer to a linear depth output texture
+const char* DEPTH_COPY_SHADER_SOURCE = R"(
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+};
+
+struct DepthUniforms {
+    near: f32,
+    far: f32,
+    _pad: vec2f,
+};
+
+@group(0) @binding(0) var depthTexture: texture_depth_2d;
+@group(0) @binding(1) var depthSampler: sampler;
+@group(0) @binding(2) var<uniform> uniforms: DepthUniforms;
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    var output: VertexOutput;
+    // Fullscreen triangle
+    let x = f32(i32(vertexIndex & 1u) * 4 - 1);
+    let y = f32(i32(vertexIndex >> 1u) * 4 - 1);
+    output.position = vec4f(x, y, 0.0, 1.0);
+    output.uv = vec2f((x + 1.0) * 0.5, (1.0 - y) * 0.5);
+    return output;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    let depth = textureSample(depthTexture, depthSampler, input.uv);
+
+    // Linearize depth from [0,1] non-linear to [0,1] linear
+    // depth = (far * near) / (far - z * (far - near)) -> solve for z
+    // z = near * far / (far - depth * (far - near))
+    let near = uniforms.near;
+    let far = uniforms.far;
+    let linearZ = near * far / (far - depth * (far - near));
+
+    // Normalize to [0,1] range
+    let normalizedDepth = saturate((linearZ - near) / (far - near));
+
+    return vec4f(normalizedDepth, 0.0, 0.0, 1.0);
+}
+)";
+
 
 // Flat/Gouraud/Unlit shader source with multi-light support
 const char* FLAT_SHADER_SOURCE = R"(
@@ -1171,6 +1219,11 @@ Render3D& Render3D::wireframe(bool enabled) {
     return *this;
 }
 
+Render3D& Render3D::depthOutput(bool enabled) {
+    m_depthOutputEnabled = enabled;
+    return *this;
+}
+
 void Render3D::init(Context& ctx) {
     if (m_initialized) return;
 
@@ -1186,6 +1239,7 @@ void Render3D::init(Context& ctx) {
 void Render3D::createDepthBuffer(Context& ctx) {
     WGPUDevice device = ctx.device();
 
+    // Hardware depth buffer for depth testing
     WGPUTextureDescriptor depthDesc = {};
     depthDesc.label = toStringView("Render3D Depth");
     depthDesc.size.width = m_width;
@@ -1195,7 +1249,9 @@ void Render3D::createDepthBuffer(Context& ctx) {
     depthDesc.sampleCount = 1;
     depthDesc.dimension = WGPUTextureDimension_2D;
     depthDesc.format = DEPTH_FORMAT;
-    depthDesc.usage = WGPUTextureUsage_RenderAttachment;
+    // Add TextureBinding usage when depth output is enabled so we can sample it
+    depthDesc.usage = WGPUTextureUsage_RenderAttachment |
+        (m_depthOutputEnabled ? WGPUTextureUsage_TextureBinding : 0);
 
     m_depthTexture = wgpuDeviceCreateTexture(device, &depthDesc);
 
@@ -1205,6 +1261,123 @@ void Render3D::createDepthBuffer(Context& ctx) {
     depthViewDesc.mipLevelCount = 1;
     depthViewDesc.arrayLayerCount = 1;
     m_depthView = wgpuTextureCreateView(m_depthTexture, &depthViewDesc);
+
+    // Linear depth output texture for post-processing (DOF, fog, etc.)
+    if (m_depthOutputEnabled) {
+        WGPUTextureDescriptor depthOutDesc = {};
+        depthOutDesc.label = toStringView("Render3D Depth Output");
+        depthOutDesc.size.width = m_width;
+        depthOutDesc.size.height = m_height;
+        depthOutDesc.size.depthOrArrayLayers = 1;
+        depthOutDesc.mipLevelCount = 1;
+        depthOutDesc.sampleCount = 1;
+        depthOutDesc.dimension = WGPUTextureDimension_2D;
+        depthOutDesc.format = WGPUTextureFormat_R16Float;  // Linear depth, sampleable
+        depthOutDesc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+
+        m_depthOutputTexture = wgpuDeviceCreateTexture(device, &depthOutDesc);
+
+        WGPUTextureViewDescriptor depthOutViewDesc = {};
+        depthOutViewDesc.format = WGPUTextureFormat_R16Float;
+        depthOutViewDesc.dimension = WGPUTextureViewDimension_2D;
+        depthOutViewDesc.mipLevelCount = 1;
+        depthOutViewDesc.arrayLayerCount = 1;
+        m_depthOutputView = wgpuTextureCreateView(m_depthOutputTexture, &depthOutViewDesc);
+
+        // Create depth copy pipeline
+        WGPUShaderSourceWGSL depthCopyWgsl = {};
+        depthCopyWgsl.chain.sType = WGPUSType_ShaderSourceWGSL;
+        depthCopyWgsl.code = toStringView(DEPTH_COPY_SHADER_SOURCE);
+
+        WGPUShaderModuleDescriptor depthCopyModuleDesc = {};
+        depthCopyModuleDesc.nextInChain = &depthCopyWgsl.chain;
+        WGPUShaderModule depthCopyModule = wgpuDeviceCreateShaderModule(device, &depthCopyModuleDesc);
+
+        // Sampler for depth texture
+        WGPUSamplerDescriptor samplerDesc = {};
+        samplerDesc.magFilter = WGPUFilterMode_Nearest;
+        samplerDesc.minFilter = WGPUFilterMode_Nearest;
+        samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
+        samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
+        samplerDesc.maxAnisotropy = 1;
+        m_depthCopySampler = wgpuDeviceCreateSampler(device, &samplerDesc);
+
+        // Uniform buffer for near/far planes
+        WGPUBufferDescriptor uniformBufferDesc = {};
+        uniformBufferDesc.size = 16;  // near (4) + far (4) + padding (8)
+        uniformBufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+        m_depthCopyUniformBuffer = wgpuDeviceCreateBuffer(device, &uniformBufferDesc);
+
+        // Bind group layout
+        WGPUBindGroupLayoutEntry layoutEntries[3] = {};
+        layoutEntries[0].binding = 0;
+        layoutEntries[0].visibility = WGPUShaderStage_Fragment;
+        layoutEntries[0].texture.sampleType = WGPUTextureSampleType_Depth;
+        layoutEntries[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+        layoutEntries[1].binding = 1;
+        layoutEntries[1].visibility = WGPUShaderStage_Fragment;
+        layoutEntries[1].sampler.type = WGPUSamplerBindingType_Filtering;
+
+        layoutEntries[2].binding = 2;
+        layoutEntries[2].visibility = WGPUShaderStage_Fragment;
+        layoutEntries[2].buffer.type = WGPUBufferBindingType_Uniform;
+
+        WGPUBindGroupLayoutDescriptor layoutDesc = {};
+        layoutDesc.entryCount = 3;
+        layoutDesc.entries = layoutEntries;
+        m_depthCopyBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &layoutDesc);
+
+        // Bind group
+        WGPUBindGroupEntry bindEntries[3] = {};
+        bindEntries[0].binding = 0;
+        bindEntries[0].textureView = m_depthView;
+
+        bindEntries[1].binding = 1;
+        bindEntries[1].sampler = m_depthCopySampler;
+
+        bindEntries[2].binding = 2;
+        bindEntries[2].buffer = m_depthCopyUniformBuffer;
+        bindEntries[2].size = 16;
+
+        WGPUBindGroupDescriptor bindDesc = {};
+        bindDesc.layout = m_depthCopyBindGroupLayout;
+        bindDesc.entryCount = 3;
+        bindDesc.entries = bindEntries;
+        m_depthCopyBindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+
+        // Pipeline layout
+        WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {};
+        pipelineLayoutDesc.bindGroupLayoutCount = 1;
+        pipelineLayoutDesc.bindGroupLayouts = &m_depthCopyBindGroupLayout;
+        WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
+
+        // Color target (R16Float)
+        WGPUColorTargetState colorTarget = {};
+        colorTarget.format = WGPUTextureFormat_R16Float;
+        colorTarget.writeMask = WGPUColorWriteMask_All;
+
+        WGPUFragmentState fragmentState = {};
+        fragmentState.module = depthCopyModule;
+        fragmentState.entryPoint = toStringView("fs_main");
+        fragmentState.targetCount = 1;
+        fragmentState.targets = &colorTarget;
+
+        WGPURenderPipelineDescriptor pipelineDesc = {};
+        pipelineDesc.layout = pipelineLayout;
+        pipelineDesc.vertex.module = depthCopyModule;
+        pipelineDesc.vertex.entryPoint = toStringView("vs_main");
+        pipelineDesc.fragment = &fragmentState;
+        pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+        pipelineDesc.primitive.cullMode = WGPUCullMode_None;
+        pipelineDesc.multisample.count = 1;
+        pipelineDesc.multisample.mask = ~0u;
+
+        m_depthCopyPipeline = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
+
+        wgpuPipelineLayoutRelease(pipelineLayout);
+        wgpuShaderModuleRelease(depthCopyModule);
+    }
 }
 
 void Render3D::createPipeline(Context& ctx) {
@@ -2178,6 +2351,37 @@ void Render3D::process(Context& ctx) {
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
+    // Depth copy pass - copy depth buffer to linear depth output texture
+    if (m_depthOutputEnabled && m_depthCopyPipeline && m_depthOutputView) {
+        // Update near/far uniforms from camera
+        struct DepthCopyUniforms {
+            float near;
+            float far;
+            float _pad[2];
+        } depthUniforms;
+        depthUniforms.near = m_camera.getNear();
+        depthUniforms.far = m_camera.getFar();
+        wgpuQueueWriteBuffer(ctx.queue(), m_depthCopyUniformBuffer, 0, &depthUniforms, sizeof(depthUniforms));
+
+        WGPURenderPassColorAttachment depthCopyColorAttachment = {};
+        depthCopyColorAttachment.view = m_depthOutputView;
+        depthCopyColorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        depthCopyColorAttachment.loadOp = WGPULoadOp_Clear;
+        depthCopyColorAttachment.storeOp = WGPUStoreOp_Store;
+        depthCopyColorAttachment.clearValue = {1.0, 0.0, 0.0, 1.0};  // Clear to far depth
+
+        WGPURenderPassDescriptor depthCopyPassDesc = {};
+        depthCopyPassDesc.colorAttachmentCount = 1;
+        depthCopyPassDesc.colorAttachments = &depthCopyColorAttachment;
+
+        WGPURenderPassEncoder depthCopyPass = wgpuCommandEncoderBeginRenderPass(encoder, &depthCopyPassDesc);
+        wgpuRenderPassEncoderSetPipeline(depthCopyPass, m_depthCopyPipeline);
+        wgpuRenderPassEncoderSetBindGroup(depthCopyPass, 0, m_depthCopyBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderDraw(depthCopyPass, 3, 1, 0, 0);  // Fullscreen triangle
+        wgpuRenderPassEncoderEnd(depthCopyPass);
+        wgpuRenderPassEncoderRelease(depthCopyPass);
+    }
+
     // Submit commands
     WGPUCommandBufferDescriptor cmdDesc = {};
     WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdDesc);
@@ -2280,6 +2484,35 @@ void Render3D::cleanup() {
     if (m_pbrUniformBuffer) {
         wgpuBufferRelease(m_pbrUniformBuffer);
         m_pbrUniformBuffer = nullptr;
+    }
+    if (m_depthCopyPipeline) {
+        wgpuRenderPipelineRelease(m_depthCopyPipeline);
+        m_depthCopyPipeline = nullptr;
+    }
+    if (m_depthCopyBindGroup) {
+        wgpuBindGroupRelease(m_depthCopyBindGroup);
+        m_depthCopyBindGroup = nullptr;
+    }
+    if (m_depthCopyBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_depthCopyBindGroupLayout);
+        m_depthCopyBindGroupLayout = nullptr;
+    }
+    if (m_depthCopySampler) {
+        wgpuSamplerRelease(m_depthCopySampler);
+        m_depthCopySampler = nullptr;
+    }
+    if (m_depthCopyUniformBuffer) {
+        wgpuBufferRelease(m_depthCopyUniformBuffer);
+        m_depthCopyUniformBuffer = nullptr;
+    }
+    if (m_depthOutputView) {
+        wgpuTextureViewRelease(m_depthOutputView);
+        m_depthOutputView = nullptr;
+    }
+    if (m_depthOutputTexture) {
+        wgpuTextureDestroy(m_depthOutputTexture);
+        wgpuTextureRelease(m_depthOutputTexture);
+        m_depthOutputTexture = nullptr;
     }
     if (m_depthView) {
         wgpuTextureViewRelease(m_depthView);

@@ -62,3 +62,8 @@
 // Utilities
 #include <vivid/audio/audio_filter.h>
 #include <vivid/audio/audio_mixer.h>
+#include <vivid/audio/audio_gain.h>
+
+// Sampling
+#include <vivid/audio/sample_bank.h>
+#include <vivid/audio/sample_player.h>

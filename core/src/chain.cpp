@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <iostream>
 #include <functional>
+#include <cstring>
 
 namespace vivid {
 

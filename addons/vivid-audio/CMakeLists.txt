@@ -64,6 +64,10 @@ set(AUDIO_SOURCES
     src/euclidean.cpp
     # Mixing
     src/audio_mixer.cpp
+    src/audio_gain.cpp
+    # Sampling
+    src/sample_bank.cpp
+    src/sample_player.cpp
 )
 
 add_library(vivid-audio SHARED ${AUDIO_SOURCES})

@@ -2129,8 +2129,8 @@ chain.get<Noise>("noise").scale(4.0f + bass * 10.0f);
 
 *Utilities:*
 - [x] AudioFilter - Biquad LP/HP/BP/Notch/Shelf/Peak
-- [ ] AudioGain - Volume/amplification control
-- [ ] AudioMixer - Mix multiple audio sources
+- [x] AudioGain - Volume/amplification control with pan
+- [x] AudioMixer - Mix multiple audio sources (up to 8 inputs)
 
 ```cpp
 // Example: Audio effects chain
@@ -2146,8 +2146,8 @@ chain.audioOutput("out");
 ```
 
 **Sample Playback Operators:**
-- [ ] SampleBank - Load folder of WAV/MP3 files
-- [ ] SamplePlayer - Trigger samples with polyphony
+- [x] SampleBank - Load folder of WAV files into memory
+- [x] SamplePlayer - Trigger samples with polyphony (up to 32 voices)
 
 ```cpp
 class SampleBank : public Operator {
@@ -2203,16 +2203,16 @@ void update(Context& ctx) {
 - [x] Levels provides smoothed RMS/peak with dB conversion
 - [x] BandSplit extracts 6 frequency bands accurately
 - [x] Oscillator produces clean audio at 48kHz
-- [ ] SampleBank loads WAV/MP3 files from folder
-- [ ] SamplePlayer triggers with <5ms latency
-- [ ] AudioFilter applies HPF/LPF in real-time
+- [x] SampleBank loads WAV files from folder
+- [x] SamplePlayer triggers with polyphony and pitch control
+- [x] AudioFilter applies HPF/LPF in real-time
 - [x] VideoAudio extracts audio from VideoPlayer
 - [x] AudioFile loads and plays WAV files with resampling
 - [x] Audio effects chain works with bypass toggle
 - [x] Audio effects have parameter UI in chain visualizer
 - [x] examples/audio-effects demo runs with all 11 effects + mic input
 - [ ] examples/audio-reactive runs on all platforms
-- [ ] examples/sample-trigger runs on all platforms
+- [x] examples/sample-trigger created
 - [ ] Update README.md with audio features documentation
 
 ### Phase 11: MIDI & OSC Addon

@@ -10,6 +10,10 @@
 #include <iostream>
 #include <fstream>
 #include <cstring>
+#include <functional>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 namespace vivid::render3d {
 
@@ -70,6 +74,36 @@ void GLTFLoader::cleanup() {
     m_loaded = false;
 }
 
+// Helper to get node's local transform matrix
+static glm::mat4 getNodeLocalTransform(const cgltf_node* node) {
+    glm::mat4 transform(1.0f);
+
+    if (node->has_matrix) {
+        // Use explicit matrix
+        transform = glm::make_mat4(node->matrix);
+    } else {
+        // Compose from TRS
+        glm::mat4 T(1.0f), R(1.0f), S(1.0f);
+
+        if (node->has_translation) {
+            T = glm::translate(glm::mat4(1.0f),
+                glm::vec3(node->translation[0], node->translation[1], node->translation[2]));
+        }
+        if (node->has_rotation) {
+            glm::quat q(node->rotation[3], node->rotation[0], node->rotation[1], node->rotation[2]);
+            R = glm::mat4_cast(q);
+        }
+        if (node->has_scale) {
+            S = glm::scale(glm::mat4(1.0f),
+                glm::vec3(node->scale[0], node->scale[1], node->scale[2]));
+        }
+
+        transform = T * R * S;
+    }
+
+    return transform;
+}
+
 bool GLTFLoader::loadGLTF(Context& ctx) {
     m_needsLoad = false;
     m_loaded = false;
@@ -111,26 +145,44 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
         return false;
     }
 
-    // Determine which meshes to load
-    size_t startMesh = 0;
-    size_t endMesh = data->meshes_count;
+    // Helper lambda to load a texture (embedded or external)
+    auto loadGLTFTexture = [this](cgltf_image* image) -> io::ImageData {
+        if (!image) return {};
 
-    // If specific mesh requested, only load that one
-    if (m_meshIndex >= 0 && static_cast<size_t>(m_meshIndex) < data->meshes_count) {
-        startMesh = static_cast<size_t>(m_meshIndex);
-        endMesh = startMesh + 1;
-    }
+        // Check for embedded texture (GLB format)
+        if (image->buffer_view) {
+            const uint8_t* bufData = static_cast<const uint8_t*>(
+                cgltf_buffer_view_data(image->buffer_view));
+            size_t bufSize = image->buffer_view->size;
 
-    // Process all meshes (or just the selected one)
-    for (size_t meshIdx = startMesh; meshIdx < endMesh; ++meshIdx) {
-        cgltf_mesh* mesh = &data->meshes[meshIdx];
+            if (bufData && bufSize > 0) {
+                return io::loadImageFromMemory(bufData, bufSize);
+            }
+        }
 
-        // Process all primitives in this mesh
-        for (size_t primIdx = 0; primIdx < mesh->primitives_count; ++primIdx) {
-            cgltf_primitive* primitive = &mesh->primitives[primIdx];
+        // External texture with URI
+        if (image->uri && image->uri[0] != '\0') {
+            // Skip data URIs for now (base64 encoded)
+            if (strncmp(image->uri, "data:", 5) == 0) {
+                std::cerr << "[GLTFLoader] Data URI textures not supported" << std::endl;
+                return {};
+            }
+
+            std::string texPath = m_baseDir + image->uri;
+            return io::loadImage(texPath);
+        }
+
+        return {};
+    };
+
+    // Helper lambda to process a mesh primitive with a given world transform
+    auto processPrimitive = [this, &ctx, &loadGLTFTexture](
+            cgltf_primitive* primitive,
+            const glm::mat4& worldTransform,
+            const glm::mat3& normalMatrix) {
 
         if (primitive->type != cgltf_primitive_type_triangles) {
-            continue;  // Only support triangle primitives
+            return;  // Only support triangle primitives
         }
 
         // Get accessor for each attribute
@@ -160,7 +212,7 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
         }
 
         if (!posAccessor) {
-            continue;  // Need at least positions
+            return;  // Need at least positions
         }
 
         // Base index for this primitive
@@ -171,16 +223,17 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
         for (size_t i = 0; i < vertexCount; ++i) {
             Vertex3D vertex;
 
-            // Position (required)
+            // Position (required) - transform by world matrix
             float pos[3];
             cgltf_accessor_read_float(posAccessor, i, pos, 3);
-            vertex.position = glm::vec3(pos[0], pos[1], pos[2]) * m_scale;
+            glm::vec4 worldPos = worldTransform * glm::vec4(pos[0], pos[1], pos[2], 1.0f);
+            vertex.position = glm::vec3(worldPos) * m_scale;
 
-            // Normal (optional)
+            // Normal (optional) - transform by normal matrix
             if (normAccessor) {
                 float norm[3];
                 cgltf_accessor_read_float(normAccessor, i, norm, 3);
-                vertex.normal = glm::vec3(norm[0], norm[1], norm[2]);
+                vertex.normal = glm::normalize(normalMatrix * glm::vec3(norm[0], norm[1], norm[2]));
             }
 
             // UV (optional)
@@ -190,11 +243,12 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
                 vertex.uv = glm::vec2(uv[0], uv[1]);
             }
 
-            // Tangent (optional)
+            // Tangent (optional) - transform by normal matrix (xyz only)
             if (tangentAccessor) {
                 float tan[4];
                 cgltf_accessor_read_float(tangentAccessor, i, tan, 4);
-                vertex.tangent = glm::vec4(tan[0], tan[1], tan[2], tan[3]);
+                glm::vec3 tangentXYZ = glm::normalize(normalMatrix * glm::vec3(tan[0], tan[1], tan[2]));
+                vertex.tangent = glm::vec4(tangentXYZ, tan[3]);  // Preserve handedness
             }
 
             // Default white color
@@ -222,36 +276,6 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
             cgltf_material* mat = primitive->material;
 
             m_material = std::make_unique<TexturedMaterial>();
-
-            // Helper lambda to load a texture (embedded or external)
-            auto loadGLTFTexture = [this, data](cgltf_image* image) -> io::ImageData {
-                if (!image) return {};
-
-                // Check for embedded texture (GLB format)
-                if (image->buffer_view) {
-                    const uint8_t* bufData = static_cast<const uint8_t*>(
-                        cgltf_buffer_view_data(image->buffer_view));
-                    size_t bufSize = image->buffer_view->size;
-
-                    if (bufData && bufSize > 0) {
-                        return io::loadImageFromMemory(bufData, bufSize);
-                    }
-                }
-
-                // External texture with URI
-                if (image->uri && image->uri[0] != '\0') {
-                    // Skip data URIs for now (base64 encoded)
-                    if (strncmp(image->uri, "data:", 5) == 0) {
-                        std::cerr << "[GLTFLoader] Data URI textures not supported" << std::endl;
-                        return {};
-                    }
-
-                    std::string texPath = m_baseDir + image->uri;
-                    return io::loadImage(texPath);
-                }
-
-                return {};
-            };
 
             // PBR Metallic-Roughness workflow
             if (mat->has_pbr_metallic_roughness) {
@@ -301,7 +325,7 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
                 if (texData.valid()) {
                     m_material->aoFromData(texData);
                 }
-                m_material->aoStrength(mat->occlusion_texture.scale);  // scale = strength for occlusion
+                m_material->aoStrength(mat->occlusion_texture.scale);
             }
 
             // Emissive map
@@ -311,7 +335,6 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
                     m_material->emissiveFromData(texData);
                 }
             }
-            // Set emissive factor
             m_material->emissiveFactor(
                 mat->emissive_factor[0],
                 mat->emissive_factor[1],
@@ -331,14 +354,78 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
                     break;
             }
 
-            // Double-sided rendering
             m_material->doubleSided(mat->double_sided);
-
-            // Initialize material
             m_material->init(ctx);
         }
-        }  // end primitive loop
-    }  // end mesh loop
+    };
+
+    // Recursive function to process nodes
+    std::function<void(const cgltf_node*, const glm::mat4&)> processNode;
+    processNode = [&](const cgltf_node* node, const glm::mat4& parentTransform) {
+        // Compute this node's world transform
+        glm::mat4 localTransform = getNodeLocalTransform(node);
+        glm::mat4 worldTransform = parentTransform * localTransform;
+
+        // Normal matrix for transforming normals (inverse transpose of upper-left 3x3)
+        glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(worldTransform)));
+
+        // If this node has a mesh, process it
+        if (node->mesh) {
+            cgltf_mesh* mesh = node->mesh;
+
+            // If specific mesh requested, check if this is it
+            if (m_meshIndex >= 0) {
+                size_t meshIdx = mesh - data->meshes;  // Get mesh index
+                if (static_cast<int>(meshIdx) != m_meshIndex) {
+                    // Not the requested mesh, skip but continue to children
+                    for (size_t i = 0; i < node->children_count; ++i) {
+                        processNode(node->children[i], worldTransform);
+                    }
+                    return;
+                }
+            }
+
+            // Process all primitives in this mesh
+            for (size_t primIdx = 0; primIdx < mesh->primitives_count; ++primIdx) {
+                processPrimitive(&mesh->primitives[primIdx], worldTransform, normalMatrix);
+            }
+        }
+
+        // Recursively process children
+        for (size_t i = 0; i < node->children_count; ++i) {
+            processNode(node->children[i], worldTransform);
+        }
+    };
+
+    // Get the default scene (or first scene)
+    cgltf_scene* scene = data->scene;  // Default scene
+    if (!scene && data->scenes_count > 0) {
+        scene = &data->scenes[0];
+    }
+
+    if (scene) {
+        // Traverse all root nodes in the scene
+        for (size_t i = 0; i < scene->nodes_count; ++i) {
+            processNode(scene->nodes[i], glm::mat4(1.0f));
+        }
+    } else {
+        // No scene defined - fall back to processing all nodes without hierarchy
+        for (size_t i = 0; i < data->nodes_count; ++i) {
+            // Only process root nodes (those without parents)
+            bool isRoot = true;
+            for (size_t j = 0; j < data->nodes_count && isRoot; ++j) {
+                for (size_t k = 0; k < data->nodes[j].children_count; ++k) {
+                    if (data->nodes[j].children[k] == &data->nodes[i]) {
+                        isRoot = false;
+                        break;
+                    }
+                }
+            }
+            if (isRoot) {
+                processNode(&data->nodes[i], glm::mat4(1.0f));
+            }
+        }
+    }
 
     cgltf_free(data);
 
