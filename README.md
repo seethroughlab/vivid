@@ -1,5 +1,9 @@
 # Vivid
 
+[![CI](https://github.com/seethroughlab/vivid/actions/workflows/ci.yml/badge.svg)](https://github.com/seethroughlab/vivid/actions/workflows/ci.yml)
+[![Docs](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml/badge.svg)](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml)
+[![License](https://img.shields.io/github/license/seethroughlab/vivid)](LICENSE)
+
 A creative coding framework for real-time graphics with hot-reloadable C++ chains. Clean, consistent API designed for both manual coding and AI-assisted development.
 
 ## Features
