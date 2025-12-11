@@ -194,19 +194,15 @@ void setup(Context& ctx) {
            .softness(0.1f);
 
     // Composite all layers
-    auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA(&bg).inputB(&kickVis).mode(BlendMode::Add);
+    auto& comp = chain.add<Composite>("comp");
+    comp.input(0, &bg)
+        .input(1, &kickVis)
+        .input(2, &snareVis)
+        .input(3, &hihatVis)
+        .input(4, &clapVis)
+        .mode(BlendMode::Add);
 
-    auto& comp2 = chain.add<Composite>("comp2");
-    comp2.inputA(&comp1).inputB(&snareVis).mode(BlendMode::Add);
-
-    auto& comp3 = chain.add<Composite>("comp3");
-    comp3.inputA(&comp2).inputB(&hihatVis).mode(BlendMode::Add);
-
-    auto& comp4 = chain.add<Composite>("comp4");
-    comp4.inputA(&comp3).inputB(&clapVis).mode(BlendMode::Add);
-
-    chain.output("comp4");
+    chain.output("comp");
 
     // =========================================================================
     // Console Output

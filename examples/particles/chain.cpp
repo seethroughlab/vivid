@@ -57,19 +57,14 @@ void setup(Context& ctx) {
         .fadeOut(true)
         .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
-    // Composite: fire + fountain
-    auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA(&fire);
-    comp1.inputB(&fountain);
-    comp1.mode(BlendMode::Add);
+    // Composite all particle layers
+    auto& comp = chain.add<Composite>("comp");
+    comp.input(0, &fire)
+        .input(1, &fountain)
+        .input(2, &ring)
+        .mode(BlendMode::Add);
 
-    // Composite: (fire + fountain) + ring
-    auto& comp2 = chain.add<Composite>("comp2");
-    comp2.inputA(&comp1);
-    comp2.inputB(&ring);
-    comp2.mode(BlendMode::Add);
-
-    chain.output("comp2");
+    chain.output("comp");
 }
 
 void update(Context& ctx) {
