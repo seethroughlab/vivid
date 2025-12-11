@@ -120,6 +120,12 @@ public:
     bool hasAudio() const { return m_audioEnabled; }
 
     /**
+     * @brief Get recording frame rate
+     * @return FPS used for recording
+     */
+    float fps() const { return m_fps; }
+
+    /**
      * @brief Get number of frames captured
      * @return Frame count since recording started
      */

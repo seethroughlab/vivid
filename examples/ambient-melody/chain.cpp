@@ -191,16 +191,15 @@ void setup(Context& ctx) {
     hihatVis.type(ShapeType::Circle).position(0.5f, 0.8f).size(0.03f)
             .color(0.7f, 0.9f, 1.0f, 0.4f).softness(0.4f);
 
-    auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA(&bg).inputB(&padVis).mode(BlendMode::Add);
-    auto& comp2 = chain.add<Composite>("comp2");
-    comp2.inputA(&comp1).inputB(&leadVis).mode(BlendMode::Add);
-    auto& comp3 = chain.add<Composite>("comp3");
-    comp3.inputA(&comp2).inputB(&kickVis).mode(BlendMode::Add);
-    auto& comp4 = chain.add<Composite>("comp4");
-    comp4.inputA(&comp3).inputB(&hihatVis).mode(BlendMode::Add);
+    auto& comp = chain.add<Composite>("comp");
+    comp.input(0, &bg)
+        .input(1, &padVis)
+        .input(2, &leadVis)
+        .input(3, &kickVis)
+        .input(4, &hihatVis)
+        .mode(BlendMode::Add);
 
-    chain.output("comp4");
+    chain.output("comp");
 
     std::cout << "\n========================================" << std::endl;
     std::cout << "Ambient Melody - A minor" << std::endl;

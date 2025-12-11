@@ -210,9 +210,19 @@ public:
      * @brief Get the audio buffer from the designated audio output
      * @return Audio buffer, or nullptr if no audio output
      *
-     * Used by VideoExporter to capture audio for muxing.
+     * WARNING: For live playback only. For recording, use generateAudioForExport().
      */
     const AudioBuffer* audioOutputBuffer() const;
+
+    /**
+     * @brief Generate audio synchronously for video export
+     * @param output Buffer to fill with audio samples (interleaved stereo)
+     * @param frameCount Number of frames to generate
+     *
+     * Call this from the main thread during recording. Generates audio
+     * deterministically in sync with video frames, avoiding race conditions.
+     */
+    void generateAudioForExport(float* output, uint32_t frameCount);
 
     /// @}
     // -------------------------------------------------------------------------

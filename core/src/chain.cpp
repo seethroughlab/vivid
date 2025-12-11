@@ -87,6 +87,14 @@ const AudioBuffer* Chain::audioOutputBuffer() const {
     return audioOp->outputBuffer();
 }
 
+void Chain::generateAudioForExport(float* output, uint32_t frameCount) {
+    if (!audioOutput_) {
+        std::memset(output, 0, frameCount * AUDIO_CHANNELS * sizeof(float));
+        return;
+    }
+    audioOutput_->generateForExport(output, frameCount);
+}
+
 void Chain::buildDependencyGraph() {
     // For each operator, find which other operators it depends on
     // by looking at its inputs

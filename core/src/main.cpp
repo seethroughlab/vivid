@@ -505,18 +505,21 @@ int main(int argc, char** argv) {
 
                     // Capture audio if recording with audio
                     if (chainVisualizer.exporter().hasAudio()) {
-                        const AudioBuffer* audioBuf = ctx.chain().audioOutputBuffer();
-                        if (audioBuf && audioBuf->isValid()) {
-                            chainVisualizer.exporter().pushAudioSamples(
-                                audioBuf->samples, audioBuf->frameCount);
-                        } else {
-                            // Debug: log why audio buffer is not valid
-                            static int audioMissCount = 0;
-                            if (++audioMissCount <= 5) {
-                                printf("[main] Audio buffer invalid: buf=%p, valid=%d\n",
-                                       (void*)audioBuf, audioBuf ? audioBuf->isValid() : -1);
-                            }
+                        // Generate audio synchronously for this video frame
+                        // Calculate audio frames per video frame: 48000Hz / fps
+                        float fps = chainVisualizer.exporter().fps();
+                        uint32_t audioFramesPerVideoFrame = static_cast<uint32_t>(AUDIO_SAMPLE_RATE / fps);
+
+                        // Use a static buffer for efficiency
+                        static std::vector<float> audioBuffer;
+                        if (audioBuffer.size() < audioFramesPerVideoFrame * AUDIO_CHANNELS) {
+                            audioBuffer.resize(audioFramesPerVideoFrame * AUDIO_CHANNELS);
                         }
+
+                        // Generate audio deterministically (no race condition)
+                        ctx.chain().generateAudioForExport(audioBuffer.data(), audioFramesPerVideoFrame);
+                        chainVisualizer.exporter().pushAudioSamples(
+                            audioBuffer.data(), audioFramesPerVideoFrame);
                     }
                 }
             }
