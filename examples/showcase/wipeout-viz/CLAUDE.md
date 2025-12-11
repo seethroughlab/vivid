@@ -1,0 +1,270 @@
+# Wipeout 2029 Showcase
+
+A flagship demonstration of Vivid's capabilities through a procedural anti-gravity racing craft generator, inspired by the iconic Wipeout 2097 PS1 aesthetic.
+
+## Vision
+
+Create a visually stunning, fully procedural anti-gravity racing craft that demonstrates Vivid's core strengths:
+
+- **Procedural Mesh Generation** - Complex multi-part geometry built with CSG boolean operations
+- **Procedural Textures** - Canvas-based livery generation with team colors, racing numbers, sponsor decals
+- **Retro Rendering Pipeline** - PS1-era visual style: vertex-lit shading, flat normals, dithering, scanlines
+- **Audio Reactivity** - Engine glow, hover oscillation, visual effects driven by audio analysis
+- **Real-time Interactivity** - Hot-reload, team switching, wireframe debug mode
+
+The aesthetic goal is NOT photorealism. It's a deliberate recreation of late-90s low-poly art with modern procedural techniques. The craft should feel **fast**, **graphic**, and **slightly imperfect** - evoking the PlayStation 1 era without directly imitating it.
+
+---
+
+## Reference Material
+
+### Design Language
+
+The Wipeout aesthetic is defined by:
+
+1. **Retro-Futuristic Minimalism** - Clean, aerodynamic forms built from simplified polygons
+2. **Bold Graphic Silhouettes** - Strong top-view shapes, wide side-pods, slim fuselages
+3. **Flat Color Blocking** - Large areas of solid team colors, high contrast
+4. **Racing Decals** - Team numbers, sponsor logos, hazard stripes, panel lines
+5. **Imperfect Rendering** - Vertex-lit shading, dithering, low resolution, texture wobble
+
+### Visual References
+
+Located in `vivid_v1/examples/wipeout-vehicle/reference/`:
+- Alexandre Etendard concept art (8 animated GIFs showing detailed craft designs)
+- Tumblr reference images of original Wipeout craft
+- Wireframe breakdowns showing geometry construction
+- Bloom/glow reference for engine effects
+
+### Team Color Palettes
+
+| Team | Primary | Secondary | Accent |
+|------|---------|-----------|--------|
+| FEISAR | #2B5CAF Blue | #FFFFFF White | #FFD700 Gold |
+| AG-SYS | #FFD700 Yellow | #0066CC Blue | #FFFFFF White |
+| AURICOM | #CC0000 Red | #FFFFFF White | #333333 Dark Gray |
+| QIREX | #6B0099 Purple | #00CCCC Cyan | #1A1A1A Black |
+| PIRANHA | #333333 Charcoal | #FF6600 Orange | #CCCCCC Silver |
+
+---
+
+## Implementation Status
+
+### Core Operators (ALREADY IMPLEMENTED)
+
+All the core rendering operators exist in `addons/vivid-effects-2d/`:
+
+| Operator | File | Features |
+|----------|------|----------|
+| `Dither` | `dither.h` | Bayer 2x2/4x4/8x8, configurable levels (2-256), strength blend |
+| `Downsample` | `downsample.h` | Resolution control, FilterMode::Nearest for retro pixelation |
+| `Scanlines` | `scanlines.h` | Spacing, thickness, intensity |
+| `CRTEffect` | `crt_effect.h` | Curvature, vignette, scanlines, bloom, chromatic aberration |
+| `Canvas` | `canvas.h` | Rects, circles, lines, triangles, TTF text rendering |
+
+Rendering features in `addons/vivid-render3d/`:
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| VertexLit shading | Done | Mode 3 in `renderer.cpp`, simple N·L diffuse |
+| Flat shading | Done | Mode 1, per-face normals |
+| Toon shading | Done | Mode 4, quantized steps |
+| PBR Materials | Done | Full metallic-roughness workflow |
+| Boolean/CSG | Done | `boolean.h`, union/subtract/intersect |
+| MeshBuilder | Done | `mesh_builder.h`, procedural geometry |
+
+**Working Example:** `examples/2d-effects/retro-crt/chain.cpp` demonstrates the full retro pipeline:
+```cpp
+downsample.input(&hsv).resolution(320, 240).filter(FilterMode::Nearest);
+dither.input(&downsample).pattern(DitherPattern::Bayer4x4).levels(16);
+scanlines.input(&dither).spacing(3).thickness(0.4f).intensity(0.25f);
+crt.input(&scanlines).curvature(0.15f).vignette(0.4f).bloom(0.15f);
+```
+
+### Reference Material
+
+The `vivid_v1/examples/wipeout-vehicle/` directory contains early experiments and reference assets:
+- Reference images: `reference/*.jpg`, `reference/*.gif` (Alexandre Etendard concept art)
+- Fonts: `fonts/` (racing-style TTF files)
+- Grime textures: `textures/grime/*.jpg`
+- Environment HDR: `environment.hdr`
+
+These assets can be reused, but the code should be written fresh using Vivid v2 patterns.
+
+### What Needs To Be Built
+
+1. **Procedural Craft Geometry**
+   - Multi-part mesh: fuselage, cockpit, side pods, engines, fins, wings
+   - Use MeshBuilder or CSG Boolean operations
+   - Flat normals for faceted PS1 look
+   - UV mapping for livery texture
+
+2. **Canvas-Based Livery System**
+   - Use Canvas operator to draw team liveries
+   - Color blocking, racing stripes, team numbers
+   - TTF font rendering for numbers/text
+   - 5 team palettes (FEISAR, AG-SYS, AURICOM, QIREX, PIRANHA)
+
+3. **Retro Post-Processing Chain**
+   - Downsample → Dither → CRTEffect
+   - VertexLit shading mode on 3D render
+
+4. **Interactivity**
+   - Orbit camera
+   - Team switching (1-5 keys)
+   - Audio reactivity (optional)
+
+---
+
+## Implementation Phases
+
+### Phase 1: Minimal Craft
+
+**Goal:** Get a basic craft rendering with retro effects
+
+- [ ] Create `chain.cpp` with basic v2 structure
+- [ ] Build simple craft geometry using MeshBuilder (fuselage + pods)
+- [ ] Apply solid color material
+- [ ] Add Downsample → Dither → CRTEffect chain
+- [ ] Verify retro pipeline works
+
+### Phase 2: Full Geometry
+
+**Goal:** Complete multi-part craft with proper detail
+
+- [ ] Fuselage with tapered profile and spine ridge
+- [ ] Cockpit canopy (angular, faceted)
+- [ ] Side pods with intake scoops
+- [ ] Engine nacelles (hexagonal, with internal rings)
+- [ ] Rear wing with endplates
+- [ ] Vertical stabilizer fins
+- [ ] Front canards
+- [ ] All parts use flat normals for PS1 look
+- [ ] UV mapping for livery texture
+
+### Phase 3: Livery System
+
+**Goal:** Procedural team liveries using Canvas
+
+- [ ] Canvas operator generates 512x512 livery texture
+- [ ] Team color palettes (5 teams)
+- [ ] Color blocking for body regions
+- [ ] Racing stripes (horizontal/diagonal)
+- [ ] Team numbers with TTF font
+- [ ] Panel line details
+- [ ] Apply livery texture to craft mesh
+- [ ] Team switching with 1-5 keys
+
+### Phase 4: Rendering & Shading
+
+**Goal:** Authentic PS1-era visual style
+
+- [ ] VertexLit shading mode on Render3D
+- [ ] Emissive engine glow
+- [ ] Downsample to 480x270 with nearest-neighbor
+- [ ] Dither with Bayer4x4 pattern
+- [ ] CRTEffect (scanlines, vignette, bloom, chromatic)
+- [ ] Toggle between PBR and VertexLit (V key)
+
+### Phase 5: Interactivity & Polish
+
+**Goal:** Complete showcase experience
+
+- [ ] Orbit camera with mouse drag
+- [ ] Hover animation (sine wave oscillation)
+- [ ] Audio reactivity (bass → hover, mids → engine glow)
+- [ ] Background gradient or grid floor
+- [ ] UI overlay (team name, mode indicator)
+
+---
+
+## Technical Requirements
+
+### Core Runtime Status
+
+All required operators are already implemented:
+
+| Feature | Status | Location |
+|---------|--------|----------|
+| Dither Operator | **Done** | `addons/vivid-effects-2d/src/dither.cpp` |
+| Downsample Operator | **Done** | `addons/vivid-effects-2d/src/downsample.cpp` |
+| CRTEffect Operator | **Done** | `addons/vivid-effects-2d/src/crt_effect.cpp` |
+| Scanlines Operator | **Done** | `addons/vivid-effects-2d/src/scanlines.cpp` |
+| Canvas (TTF text) | **Done** | `addons/vivid-effects-2d/src/canvas.cpp` |
+| VertexLit shading | **Done** | `addons/vivid-render3d/src/renderer.cpp` (mode 3) |
+| Boolean/CSG | **Done** | `addons/vivid-render3d/src/boolean.cpp` |
+| FilterMode::Nearest | **Done** | Used in Downsample |
+
+**Only missing (optional):** Affine texture wobble shader (PS1-style UV distortion)
+
+### Rendering Pipeline Order
+
+```
+┌──────────────┐
+│ 3D Scene     │  Render3D with Vertex-Lit material
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ Downsample   │  480x270, FilterMode::Nearest
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ Dither       │  Bayer4x4, 32 levels
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ CRTEffect    │  Scanlines, vignette, chromatic
+└──────┬───────┘
+       ↓
+┌──────────────┐
+│ Output       │  Final composite
+└──────────────┘
+```
+
+---
+
+## Success Criteria
+
+The Wipeout 2029 Showcase will be considered complete when:
+
+1. **Visual Quality** - Craft looks polished and professional, matching reference aesthetic
+2. **Performance** - Runs at 60fps on M1 Mac, mid-range Windows PC
+3. **Interactivity** - Smooth camera, instant team switching, responsive audio
+4. **Educational Value** - Code is readable, well-commented, demonstrates Vivid patterns
+5. **Extensibility** - Easy to create new teams, craft variants, livery styles
+
+---
+
+## File Structure
+
+```
+examples/wipeout-showcase/
+├── chain.cpp              # Main showcase entry point
+├── craft_geometry.h       # Procedural mesh generation
+├── craft_geometry.cpp
+├── livery_generator.h     # Livery texture system
+├── livery_generator.cpp
+├── retro_effects.h        # Post-processing setup
+├── audio_reactive.h       # Audio response utilities
+├── SPEC.md                # Detailed specification
+├── CLAUDE.md              # AI assistant context
+├── assets/
+│   ├── fonts/
+│   │   ├── racing.ttf     # Team numbers
+│   │   └── ui.ttf         # UI text
+│   ├── textures/
+│   │   ├── grime/         # Weathering overlays
+│   │   └── environment/   # HDR sky maps
+│   └── reference/         # Visual references
+└── README.md              # User-facing documentation
+```
+
+---
+
+## References
+
+- `vivid_v1/examples/wipeout-vehicle/` - Existing prototype implementation
+- `vivid_v1/examples/wipeout-vehicle/SPEC.md` - Detailed geometry/texture specification
+- `vivid_v1/examples/wipeout-vehicle/GOAL.txt` - Aesthetic description
+- `ROADMAP.md` - Core feature requirements, API examples
+- Alexandre Etendard's Wipeout concept art (reference images)
