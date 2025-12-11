@@ -57,3 +57,4 @@ jobs:
           path: |
             build/CMakeFiles/CMakeOutput.log
             build/CMakeFiles/CMakeError.log
+          if-no-files-found: ignore

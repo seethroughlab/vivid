@@ -64,6 +64,7 @@ elseif(APPLE)
         OUTPUT_VARIABLE HOST_ARCH
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
+    message(STATUS "Detected macOS architecture: ${HOST_ARCH}")
     if(HOST_ARCH STREQUAL "arm64")
         set(WGPU_ARCH "aarch64")
     else()
@@ -83,11 +84,42 @@ set(WGPU_DIR "${CMAKE_BINARY_DIR}/_deps/wgpu")
 
 message(STATUS "Downloading wgpu-native from: ${WGPU_URL}")
 
-file(DOWNLOAD ${WGPU_URL} "${WGPU_DIR}/wgpu.${WGPU_EXT}" STATUS WGPU_DOWNLOAD_STATUS)
+# Create directory first
+file(MAKE_DIRECTORY "${WGPU_DIR}")
+
+# Try CMake download first
+file(DOWNLOAD ${WGPU_URL} "${WGPU_DIR}/wgpu.${WGPU_EXT}"
+    STATUS WGPU_DOWNLOAD_STATUS
+    TIMEOUT 120
+    INACTIVITY_TIMEOUT 30
+    SHOW_PROGRESS
+)
 list(GET WGPU_DOWNLOAD_STATUS 0 WGPU_DOWNLOAD_OK)
+list(GET WGPU_DOWNLOAD_STATUS 1 WGPU_DOWNLOAD_MSG)
+
+# If CMake download failed, try curl as fallback (handles redirects better)
 if(NOT WGPU_DOWNLOAD_OK EQUAL 0)
-    message(FATAL_ERROR "Failed to download wgpu-native: ${WGPU_DOWNLOAD_STATUS}")
+    message(STATUS "CMake download failed (${WGPU_DOWNLOAD_MSG}), trying curl...")
+    find_program(CURL_EXECUTABLE curl)
+    if(CURL_EXECUTABLE)
+        execute_process(
+            COMMAND ${CURL_EXECUTABLE} -L -o "${WGPU_DIR}/wgpu.${WGPU_EXT}" "${WGPU_URL}"
+            RESULT_VARIABLE CURL_RESULT
+        )
+        if(NOT CURL_RESULT EQUAL 0)
+            message(FATAL_ERROR "Failed to download wgpu-native via curl: ${CURL_RESULT}\nURL: ${WGPU_URL}")
+        endif()
+    else()
+        message(FATAL_ERROR "Failed to download wgpu-native: ${WGPU_DOWNLOAD_MSG}\nURL: ${WGPU_URL}")
+    endif()
 endif()
+
+# Verify the downloaded file isn't empty
+file(SIZE "${WGPU_DIR}/wgpu.${WGPU_EXT}" WGPU_FILE_SIZE)
+if(WGPU_FILE_SIZE LESS 1000)
+    message(FATAL_ERROR "Downloaded wgpu-native file is too small (${WGPU_FILE_SIZE} bytes) - download may have failed")
+endif()
+message(STATUS "Downloaded wgpu-native (${WGPU_FILE_SIZE} bytes)")
 
 file(ARCHIVE_EXTRACT INPUT "${WGPU_DIR}/wgpu.${WGPU_EXT}" DESTINATION "${WGPU_DIR}")
 
