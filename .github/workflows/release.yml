@@ -1,0 +1,114 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-release:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            artifact_name: vivid-macos
+            archive_ext: tar.gz
+          - os: ubuntu-latest
+            artifact_name: vivid-linux-x64
+            archive_ext: tar.gz
+          - os: windows-latest
+            artifact_name: vivid-windows-x64
+            archive_ext: zip
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev \
+            libxext-dev \
+            libwayland-dev \
+            libxkbcommon-dev \
+            libgl1-mesa-dev
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          mkdir -p package/vivid-${{ steps.version.outputs.VERSION }}
+          cp -r build/bin/* package/vivid-${{ steps.version.outputs.VERSION }}/
+          cp -r examples package/vivid-${{ steps.version.outputs.VERSION }}/
+          cp README.md LICENSE CHANGELOG.md package/vivid-${{ steps.version.outputs.VERSION }}/
+          cd package
+          tar -czvf ${{ matrix.artifact_name }}-${{ steps.version.outputs.VERSION }}.${{ matrix.archive_ext }} vivid-${{ steps.version.outputs.VERSION }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path package/vivid-${{ steps.version.outputs.VERSION }}
+          Copy-Item -Recurse build/bin/Release/* package/vivid-${{ steps.version.outputs.VERSION }}/
+          Copy-Item -Recurse examples package/vivid-${{ steps.version.outputs.VERSION }}/
+          Copy-Item README.md,LICENSE,CHANGELOG.md package/vivid-${{ steps.version.outputs.VERSION }}/
+          Compress-Archive -Path package/vivid-${{ steps.version.outputs.VERSION }} -DestinationPath package/${{ matrix.artifact_name }}-${{ steps.version.outputs.VERSION }}.${{ matrix.archive_ext }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}-${{ steps.version.outputs.VERSION }}
+          path: package/*.${{ matrix.archive_ext }}
+
+  create-release:
+    name: Create Release
+    needs: build-release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Vivid v${{ steps.version.outputs.VERSION }}
+          draft: false
+          prerelease: ${{ contains(github.ref, '-') }}
+          generate_release_notes: true
+          files: |
+            artifacts/**/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
