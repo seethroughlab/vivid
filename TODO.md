@@ -99,10 +99,10 @@
 [x] WINDOWS BUG: Snapshot save fails - couldn't save PNG
     - Implemented saveSnapshot() in video_exporter_win.cpp using stb_image_write
     - Added stb_SOURCE_DIR to core CMakeLists.txt include paths
-[x] NOT A BUG: AudioAnalyzer inherits Operator not AudioOperator
-    - This is by design: AudioAnalyzer outputs AudioValue, not Audio
-    - AudioOperator is for operators that produce audio buffers
-    - AudioAnalyzer reads audio but outputs analysis values (RMS, spectrum, etc.)
+[x] WINDOWS BUG: Audio not playing in audio-reactive example
+    - AudioFile and AudioIn were using process() for audio generation
+    - The pull-based audio system calls generateBlock() from the audio thread
+    - Added generateBlock() override to AudioFile and AudioIn to generate audio properly
 [x] WINDOWS BUG: 3D rendering low res in fullscreen - texture not resizing
     - Added resize checks to Render3D, InstancedRender3D, and all 2D effects
     - Added checkResize() helper to TextureOperator base class  
