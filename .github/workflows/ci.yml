@@ -40,6 +40,31 @@ jobs:
             libxkbcommon-dev \
             libgl1-mesa-dev
 
+      - name: Download wgpu-native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WGPU_VERSION="v24.0.0.2"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            WGPU_FILE="wgpu-windows-x86_64-msvc-release.zip"
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            ARCH=$(uname -m)
+            if [[ "$ARCH" == "arm64" ]]; then
+              WGPU_FILE="wgpu-macos-aarch64-release.zip"
+            else
+              WGPU_FILE="wgpu-macos-x86_64-release.zip"
+            fi
+          else
+            WGPU_FILE="wgpu-linux-x86_64-release.zip"
+          fi
+          mkdir -p build/_deps/wgpu
+          curl -fL --retry 3 \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -o "build/_deps/wgpu/wgpu.zip" \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/${WGPU_FILE}"
+          ls -la build/_deps/wgpu/
+        shell: bash
+
       - name: Configure CMake
         run: cmake -B build -DBUILD_TESTS=ON ${{ matrix.cmake_args }}
 

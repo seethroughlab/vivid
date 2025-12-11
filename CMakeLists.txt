@@ -82,44 +82,55 @@ endif()
 set(WGPU_URL "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/wgpu-${WGPU_OS}-${WGPU_ARCH}${WGPU_TOOLCHAIN}-release.${WGPU_EXT}")
 set(WGPU_DIR "${CMAKE_BINARY_DIR}/_deps/wgpu")
 
-message(STATUS "Downloading wgpu-native from: ${WGPU_URL}")
-
 # Create directory first
 file(MAKE_DIRECTORY "${WGPU_DIR}")
 
-# Try CMake download first
-file(DOWNLOAD ${WGPU_URL} "${WGPU_DIR}/wgpu.${WGPU_EXT}"
-    STATUS WGPU_DOWNLOAD_STATUS
-    TIMEOUT 120
-    INACTIVITY_TIMEOUT 30
-    SHOW_PROGRESS
-)
-list(GET WGPU_DOWNLOAD_STATUS 0 WGPU_DOWNLOAD_OK)
-list(GET WGPU_DOWNLOAD_STATUS 1 WGPU_DOWNLOAD_MSG)
-
-# If CMake download failed, try curl as fallback (handles redirects better)
-if(NOT WGPU_DOWNLOAD_OK EQUAL 0)
-    message(STATUS "CMake download failed (${WGPU_DOWNLOAD_MSG}), trying curl...")
-    find_program(CURL_EXECUTABLE curl)
-    if(CURL_EXECUTABLE)
-        execute_process(
-            COMMAND ${CURL_EXECUTABLE} -L -o "${WGPU_DIR}/wgpu.${WGPU_EXT}" "${WGPU_URL}"
-            RESULT_VARIABLE CURL_RESULT
-        )
-        if(NOT CURL_RESULT EQUAL 0)
-            message(FATAL_ERROR "Failed to download wgpu-native via curl: ${CURL_RESULT}\nURL: ${WGPU_URL}")
-        endif()
-    else()
-        message(FATAL_ERROR "Failed to download wgpu-native: ${WGPU_DOWNLOAD_MSG}\nURL: ${WGPU_URL}")
+# Check if already downloaded (e.g., by CI pre-download step)
+if(EXISTS "${WGPU_DIR}/wgpu.${WGPU_EXT}")
+    file(SIZE "${WGPU_DIR}/wgpu.${WGPU_EXT}" WGPU_FILE_SIZE)
+    if(WGPU_FILE_SIZE GREATER 1000)
+        message(STATUS "Using pre-downloaded wgpu-native (${WGPU_FILE_SIZE} bytes)")
+        set(WGPU_SKIP_DOWNLOAD TRUE)
     endif()
 endif()
 
-# Verify the downloaded file isn't empty
-file(SIZE "${WGPU_DIR}/wgpu.${WGPU_EXT}" WGPU_FILE_SIZE)
-if(WGPU_FILE_SIZE LESS 1000)
-    message(FATAL_ERROR "Downloaded wgpu-native file is too small (${WGPU_FILE_SIZE} bytes) - download may have failed")
+if(NOT WGPU_SKIP_DOWNLOAD)
+    message(STATUS "Downloading wgpu-native from: ${WGPU_URL}")
+
+    # Try CMake download first
+    file(DOWNLOAD ${WGPU_URL} "${WGPU_DIR}/wgpu.${WGPU_EXT}"
+        STATUS WGPU_DOWNLOAD_STATUS
+        TIMEOUT 120
+        INACTIVITY_TIMEOUT 30
+        SHOW_PROGRESS
+    )
+    list(GET WGPU_DOWNLOAD_STATUS 0 WGPU_DOWNLOAD_OK)
+    list(GET WGPU_DOWNLOAD_STATUS 1 WGPU_DOWNLOAD_MSG)
+
+    # If CMake download failed, try curl as fallback (handles redirects better)
+    if(NOT WGPU_DOWNLOAD_OK EQUAL 0)
+        message(STATUS "CMake download failed (${WGPU_DOWNLOAD_MSG}), trying curl...")
+        find_program(CURL_EXECUTABLE curl)
+        if(CURL_EXECUTABLE)
+            execute_process(
+                COMMAND ${CURL_EXECUTABLE} -fL --retry 3 --retry-delay 5 -o "${WGPU_DIR}/wgpu.${WGPU_EXT}" "${WGPU_URL}"
+                RESULT_VARIABLE CURL_RESULT
+            )
+            if(NOT CURL_RESULT EQUAL 0)
+                message(FATAL_ERROR "Failed to download wgpu-native via curl (exit code ${CURL_RESULT})\nURL: ${WGPU_URL}")
+            endif()
+        else()
+            message(FATAL_ERROR "Failed to download wgpu-native: ${WGPU_DOWNLOAD_MSG}\nURL: ${WGPU_URL}")
+        endif()
+    endif()
+
+    # Verify the downloaded file isn't empty
+    file(SIZE "${WGPU_DIR}/wgpu.${WGPU_EXT}" WGPU_FILE_SIZE)
+    if(WGPU_FILE_SIZE LESS 1000)
+        message(FATAL_ERROR "Downloaded wgpu-native file is too small (${WGPU_FILE_SIZE} bytes) - download may have failed")
+    endif()
+    message(STATUS "Downloaded wgpu-native (${WGPU_FILE_SIZE} bytes)")
 endif()
-message(STATUS "Downloaded wgpu-native (${WGPU_FILE_SIZE} bytes)")
 
 file(ARCHIVE_EXTRACT INPUT "${WGPU_DIR}/wgpu.${WGPU_EXT}" DESTINATION "${WGPU_DIR}")
 
