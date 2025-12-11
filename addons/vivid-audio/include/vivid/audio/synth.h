@@ -151,6 +151,11 @@ public:
      */
     void reset();
 
+private:
+    void noteOnInternal();   // Called from audio thread
+    void noteOffInternal();  // Called from audio thread
+
+public:
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface
@@ -160,6 +165,10 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Synth"; }
+
+    // Pull-based audio generation (called from audio thread)
+    void generateBlock(uint32_t frameCount) override;
+    void handleEvent(const AudioEvent& event) override;
 
     std::vector<ParamDecl> params() override {
         return {

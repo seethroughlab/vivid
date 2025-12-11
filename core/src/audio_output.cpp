@@ -1,6 +1,10 @@
 /**
  * @file audio_output.cpp
  * @brief AudioOutput operator implementation using miniaudio
+ *
+ * This is the bridge between the AudioGraph and the audio hardware.
+ * In live mode, the miniaudio callback pulls samples directly from AudioGraph.
+ * In recording mode, Chain::process() generates audio synchronously.
  */
 
 // Prevent Windows.h from defining min/max macros
@@ -14,6 +18,7 @@
 #include "miniaudio.h"
 
 #include <vivid/audio_output.h>
+#include <vivid/audio_graph.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>
 #include <iostream>
@@ -29,56 +34,64 @@ struct AudioOutput::Impl {
     ma_device device;
     bool deviceInitialized = false;
 
-    // Ring buffer for decoupling main thread from audio thread
+    // Pull-based audio generation
+    AudioGraph* audioGraph = nullptr;
+
+    // Ring buffer for recording mode (video export) - NOT used for live playback
     std::vector<float> ringBuffer;
     std::atomic<uint32_t> writePos{0};
     std::atomic<uint32_t> readPos{0};
     uint32_t bufferSize = 0;
-    std::mutex bufferMutex;
 
     std::atomic<float> volume{1.0f};
     std::atomic<bool> playing{false};
-
-    // Time tracking for audio generation
-    double lastProcessTime = 0.0;
-    double audioSamplesOwed = 0.0;  // Fractional samples owed to audio thread
+    std::atomic<bool> recordingMode{false};  // True when exporting video
 
     static constexpr uint32_t BUFFER_FRAMES = 48000;  // ~1 second at 48kHz
 
     static void dataCallback(ma_device* pDevice, void* output, const void* input, ma_uint32 frameCount);
-    void fillBuffer(float* output, uint32_t frameCount, uint32_t channels);
 };
 
 void AudioOutput::Impl::dataCallback(ma_device* pDevice, void* output, const void* input, ma_uint32 frameCount) {
     (void)input;
     Impl* impl = static_cast<Impl*>(pDevice->pUserData);
-    impl->fillBuffer(static_cast<float*>(output), frameCount, pDevice->playback.channels);
-}
+    float* out = static_cast<float*>(output);
+    uint32_t channels = pDevice->playback.channels;
 
-void AudioOutput::Impl::fillBuffer(float* output, uint32_t frameCount, uint32_t channels) {
-    uint32_t samplesToRead = frameCount * channels;
-    // Note: volume is already applied in process(), don't apply again
+    if (impl->recordingMode.load(std::memory_order_relaxed)) {
+        // Recording mode: read from ring buffer (filled by main thread)
+        uint32_t samplesToRead = frameCount * channels;
+        uint32_t write = impl->writePos.load(std::memory_order_acquire);
+        uint32_t read = impl->readPos.load(std::memory_order_relaxed);
+        uint32_t available = (write >= read) ? (write - read) : (impl->bufferSize - read + write);
 
-    std::lock_guard<std::mutex> lock(bufferMutex);
+        uint32_t toRead = std::min(samplesToRead, available);
 
-    uint32_t write = writePos.load(std::memory_order_relaxed);
-    uint32_t read = readPos.load(std::memory_order_relaxed);
-    uint32_t available = (write >= read) ? (write - read) : (bufferSize - read + write);
+        for (uint32_t i = 0; i < toRead; i++) {
+            out[i] = impl->ringBuffer[read];
+            read = (read + 1) % impl->bufferSize;
+        }
 
-    uint32_t toRead = std::min(samplesToRead, available);
+        if (toRead < samplesToRead) {
+            std::memset(out + toRead, 0, (samplesToRead - toRead) * sizeof(float));
+        }
 
-    // Read samples from ring buffer
-    for (uint32_t i = 0; i < toRead; i++) {
-        output[i] = ringBuffer[read];
-        read = (read + 1) % bufferSize;
+        impl->readPos.store(read, std::memory_order_release);
+    } else {
+        // Live mode: pull directly from AudioGraph (the key change!)
+        if (impl->audioGraph) {
+            impl->audioGraph->processBlock(out, frameCount);
+
+            // Apply volume
+            float vol = impl->volume.load(std::memory_order_relaxed);
+            for (uint32_t i = 0; i < frameCount * channels; ++i) {
+                out[i] *= vol;
+            }
+        } else {
+            // No audio graph - silence
+            std::memset(out, 0, frameCount * channels * sizeof(float));
+        }
     }
-
-    // Fill remainder with silence if buffer underrun
-    if (toRead < samplesToRead) {
-        std::memset(output + toRead, 0, (samplesToRead - toRead) * sizeof(float));
-    }
-
-    readPos.store(read, std::memory_order_relaxed);
 }
 
 AudioOutput::AudioOutput() : m_impl(std::make_unique<Impl>()) {}
@@ -100,22 +113,36 @@ AudioOutput& AudioOutput::volume(float v) {
     return *this;
 }
 
+void AudioOutput::setAudioGraph(AudioGraph* graph) {
+    m_impl->audioGraph = graph;
+}
+
+void AudioOutput::setRecordingMode(bool recording) {
+    m_impl->recordingMode.store(recording, std::memory_order_release);
+
+    if (recording) {
+        // Reset ring buffer for recording
+        m_impl->writePos.store(0, std::memory_order_relaxed);
+        m_impl->readPos.store(0, std::memory_order_relaxed);
+        std::fill(m_impl->ringBuffer.begin(), m_impl->ringBuffer.end(), 0.0f);
+    }
+}
+
 void AudioOutput::init(Context& ctx) {
     if (m_initialized) {
         return;
     }
 
-    // Resolve input connection by name
+    // Resolve input operator by name
     if (!m_inputName.empty()) {
         Operator* op = ctx.chain().getByName(m_inputName);
-        if (op && op->outputKind() == OutputKind::Audio) {
-            setInput(0, op);
-        } else {
-            std::cerr << "[AudioOutput] Input '" << m_inputName << "' not found or not an audio operator\n";
+        m_input = dynamic_cast<AudioOperator*>(op);
+        if (m_input) {
+            setInput(0, m_input);  // Register dependency
         }
     }
 
-    // Initialize ring buffer (stereo)
+    // Initialize ring buffer for recording mode (stereo)
     m_impl->bufferSize = Impl::BUFFER_FRAMES * AUDIO_CHANNELS;
     m_impl->ringBuffer.resize(m_impl->bufferSize);
     std::fill(m_impl->ringBuffer.begin(), m_impl->ringBuffer.end(), 0.0f);
@@ -130,7 +157,7 @@ void AudioOutput::init(Context& ctx) {
     config.sampleRate = AUDIO_SAMPLE_RATE;
     config.dataCallback = &Impl::dataCallback;
     config.pUserData = m_impl.get();
-    config.periodSizeInFrames = AUDIO_BLOCK_SIZE;  // Low latency
+    config.periodSizeInFrames = 256;  // Low latency (~5ms at 48kHz)
 
     if (ma_device_init(nullptr, &config, &m_impl->device) != MA_SUCCESS) {
         std::cerr << "[AudioOutput] Failed to initialize audio device\n";
@@ -144,7 +171,37 @@ void AudioOutput::init(Context& ctx) {
     allocateOutput(AUDIO_BLOCK_SIZE, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
 
     std::cout << "[AudioOutput] Initialized: " << AUDIO_SAMPLE_RATE << "Hz, "
-              << AUDIO_CHANNELS << " channels" << std::endl;
+              << AUDIO_CHANNELS << " channels (pull-based)" << std::endl;
+}
+
+void AudioOutput::generateBlock(uint32_t frameCount) {
+    if (!m_initialized) return;
+
+    // Resize output buffer if needed
+    if (m_output.frameCount != frameCount) {
+        m_output.resize(frameCount);
+    }
+
+    // Copy from input operator's output buffer
+    if (m_input) {
+        const AudioBuffer* inBuf = m_input->outputBuffer();
+        if (inBuf && inBuf->isValid()) {
+            uint32_t sampleCount = std::min(frameCount * AUDIO_CHANNELS, inBuf->sampleCount());
+            std::memcpy(m_output.samples, inBuf->samples, sampleCount * sizeof(float));
+
+            // Zero any remaining samples
+            if (sampleCount < frameCount * AUDIO_CHANNELS) {
+                std::memset(m_output.samples + sampleCount, 0,
+                           (frameCount * AUDIO_CHANNELS - sampleCount) * sizeof(float));
+            }
+        } else {
+            // No valid input - silence
+            std::memset(m_output.samples, 0, frameCount * AUDIO_CHANNELS * sizeof(float));
+        }
+    } else {
+        // No input connected - silence
+        std::memset(m_output.samples, 0, frameCount * AUDIO_CHANNELS * sizeof(float));
+    }
 }
 
 void AudioOutput::process(Context& ctx) {
@@ -152,79 +209,48 @@ void AudioOutput::process(Context& ctx) {
         return;
     }
 
-    // Check if input needs reconnecting (name may have changed at runtime)
-    if (!m_inputName.empty()) {
-        Operator* op = ctx.chain().getByName(m_inputName);
-        if (op && op->outputKind() == OutputKind::Audio) {
-            Operator* currentInput = getInput(0);
-            if (op != currentInput) {
-                setInput(0, op);
-            }
+    // In live (non-recording) mode, audio is generated by the audio callback.
+    // process() is a no-op for live playback.
+
+    // Auto-start playback
+    if (m_autoPlay && !m_impl->playing) {
+        play();
+    }
+
+    // For recording mode, we would push to ring buffer here.
+    // But that's handled by the video exporter calling generateForExport().
+}
+
+void AudioOutput::generateForExport(float* output, uint32_t frameCount) {
+    // Called by video exporter to generate audio synchronously
+    if (m_impl->audioGraph) {
+        m_impl->audioGraph->processBlock(output, frameCount);
+
+        // Apply volume
+        for (uint32_t i = 0; i < frameCount * AUDIO_CHANNELS; ++i) {
+            output[i] *= m_volume;
         }
+    } else {
+        std::memset(output, 0, frameCount * AUDIO_CHANNELS * sizeof(float));
+    }
+}
+
+void AudioOutput::pushToRingBuffer(const float* samples, uint32_t sampleCount) {
+    // Used by recording mode to push samples to ring buffer for playback
+    uint32_t write = m_impl->writePos.load(std::memory_order_relaxed);
+    uint32_t read = m_impl->readPos.load(std::memory_order_acquire);
+
+    uint32_t used = (write >= read) ? (write - read) : (m_impl->bufferSize - read + write);
+    uint32_t available = m_impl->bufferSize - used - 1;
+
+    uint32_t toWrite = std::min(sampleCount, available);
+
+    for (uint32_t i = 0; i < toWrite; i++) {
+        m_impl->ringBuffer[write] = samples[i];
+        write = (write + 1) % m_impl->bufferSize;
     }
 
-    // Get input audio
-    const AudioBuffer* inputBuf = inputBuffer(0);
-    if (!inputBuf || !inputBuf->isValid()) {
-        // No input - output silence
-        uint32_t frames = ctx.audioFramesThisFrame();
-        if (m_output.frameCount != frames) {
-            allocateOutput(frames, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
-        }
-        clearOutput();
-        return;
-    }
-
-    // Resize output buffer to match input
-    if (m_output.frameCount != inputBuf->frameCount) {
-        allocateOutput(inputBuf->frameCount, inputBuf->channels, inputBuf->sampleRate);
-    }
-
-    // Copy input to output (for video export to capture)
-    copyInputToOutput(0);
-
-    // Apply volume to output buffer (for export)
-    for (uint32_t i = 0; i < m_output.sampleCount(); ++i) {
-        m_output.samples[i] *= m_volume;
-    }
-
-    // Push samples to ring buffer for playback
-    {
-        std::lock_guard<std::mutex> lock(m_impl->bufferMutex);
-
-        uint32_t samplesToWrite = m_output.sampleCount();
-        uint32_t write = m_impl->writePos.load(std::memory_order_relaxed);
-        uint32_t read = m_impl->readPos.load(std::memory_order_relaxed);
-
-        // Calculate available space in ring buffer
-        uint32_t used = (write >= read) ? (write - read) : (m_impl->bufferSize - read + write);
-        uint32_t available = m_impl->bufferSize - used - 1;
-
-        if (samplesToWrite > available) {
-            samplesToWrite = available;
-        }
-
-        // Write samples to ring buffer (using output buffer which has volume applied)
-        for (uint32_t i = 0; i < samplesToWrite; i++) {
-            m_impl->ringBuffer[write] = m_output.samples[i];
-            write = (write + 1) % m_impl->bufferSize;
-        }
-
-        m_impl->writePos.store(write, std::memory_order_relaxed);
-    }
-
-    // Auto-start playback when we have enough buffered audio to avoid underrun
-    // Wait for ~100ms of buffered audio before starting
-    if (m_autoPlay && !m_impl->playing && inputBuf->isValid()) {
-        uint32_t write = m_impl->writePos.load(std::memory_order_relaxed);
-        uint32_t read = m_impl->readPos.load(std::memory_order_relaxed);
-        uint32_t buffered = (write >= read) ? (write - read) : (m_impl->bufferSize - read + write);
-
-        // Start playback once we have at least 100ms buffered (4800 samples at 48kHz stereo)
-        if (buffered >= 4800 * AUDIO_CHANNELS) {
-            play();
-        }
-    }
+    m_impl->writePos.store(write, std::memory_order_release);
 }
 
 void AudioOutput::cleanup() {
@@ -234,6 +260,7 @@ void AudioOutput::cleanup() {
     }
     m_initialized = false;
     m_impl->playing = false;
+    m_impl->audioGraph = nullptr;
     releaseOutput();
 }
 

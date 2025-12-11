@@ -9,6 +9,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/audio_graph.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -20,6 +21,7 @@ namespace vivid {
 
 class Context;
 class AudioOperator;
+class AudioOutput;
 struct AudioBuffer;
 
 /**
@@ -51,11 +53,11 @@ public:
     Chain() = default;
     ~Chain() = default;
 
-    // Non-copyable but movable
+    // Non-copyable and non-movable (AudioGraph is non-movable)
     Chain(const Chain&) = delete;
     Chain& operator=(const Chain&) = delete;
-    Chain(Chain&&) = default;
-    Chain& operator=(Chain&&) = default;
+    Chain(Chain&&) = delete;
+    Chain& operator=(Chain&&) = delete;
 
     /**
      * @brief Add an operator to the chain (internal - do not call directly)
@@ -277,6 +279,12 @@ public:
      */
     const std::vector<std::string>& operatorNames() const { return orderedNames_; }
 
+    /**
+     * @brief Get the audio graph for pull-based audio processing
+     * @return Pointer to AudioGraph
+     */
+    AudioGraph* audioGraph() { return &audioGraph_; }
+
     /// @}
 
 private:
@@ -288,13 +296,18 @@ private:
     std::unordered_map<Operator*, std::string> operatorNames_;
     std::vector<std::string> orderedNames_;
     std::vector<Operator*> executionOrder_;
+    std::vector<Operator*> visualExecutionOrder_;  // Non-audio operators only
     std::string outputName_;
     std::string audioOutputName_;
     std::string error_;
     bool needsSort_ = true;
     bool initialized_ = false;
 
-    // Audio timing
+    // Pull-based audio graph (processed on audio thread)
+    AudioGraph audioGraph_;
+    AudioOutput* audioOutput_ = nullptr;
+
+    // Legacy audio timing (for recording mode)
     double lastAudioTime_ = 0.0;
     double audioSamplesOwed_ = 0.0;
 };

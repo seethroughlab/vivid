@@ -68,6 +68,9 @@ public:
     void reset();
     bool isActive() const { return m_ampEnv > 0.0001f; }
 
+private:
+    void triggerInternal();  // Called from audio thread
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface
@@ -77,6 +80,10 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Kick"; }
+
+    // Pull-based audio generation (called from audio thread)
+    void generateBlock(uint32_t frameCount) override;
+    void handleEvent(const AudioEvent& event) override;
 
     std::vector<ParamDecl> params() override {
         return { m_pitch.decl(), m_pitchEnv.decl(), m_pitchDecay.decl(),

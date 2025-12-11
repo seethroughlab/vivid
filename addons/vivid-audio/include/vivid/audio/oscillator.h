@@ -117,6 +117,9 @@ public:
     void cleanup() override;
     std::string name() const override { return "Oscillator"; }
 
+    // Pull-based audio generation (called from audio thread)
+    void generateBlock(uint32_t frameCount) override;
+
     std::vector<ParamDecl> params() override {
         return { m_frequency.decl(), m_volume.decl(), m_detune.decl(),
                  m_pulseWidth.decl(), m_stereoDetune.decl() };

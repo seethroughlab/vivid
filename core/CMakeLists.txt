@@ -51,6 +51,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/operator.cpp
     src/audio_operator.cpp
     src/audio_output.cpp
+    src/audio_graph.cpp
 )
 
 # Vivid runtime sources (executable only)

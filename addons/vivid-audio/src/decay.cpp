@@ -15,7 +15,12 @@ void Decay::process(Context& ctx) {
     if (!m_initialized) return;
 
     const AudioBuffer* in = inputBuffer();
-    uint32_t frames = m_output.frameCount;
+
+    // Get frame count from context (variable based on render framerate)
+    uint32_t frames = ctx.audioFramesThisFrame();
+    if (m_output.frameCount != frames) {
+        m_output.resize(frames);
+    }
 
     float decaySamples = static_cast<float>(m_time) * m_sampleRate;
     float progressInc = (decaySamples > 0) ? (1.0f / decaySamples) : 1.0f;

@@ -4,6 +4,7 @@
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/audio_operator.h>
+#include <vivid/audio_output.h>
 #include <vivid/audio_buffer.h>
 #include <queue>
 #include <unordered_set>
@@ -222,6 +223,46 @@ void Chain::init(Context& ctx) {
         return;
     }
 
+    // Separate audio and visual operators
+    // Audio operators go to AudioGraph (processed on audio thread)
+    // Visual operators stay in visualExecutionOrder_ (processed on main thread)
+    visualExecutionOrder_.clear();
+    audioGraph_.clear();
+
+    for (Operator* op : executionOrder_) {
+        std::string name = getName(op);
+
+        if (op->outputKind() == OutputKind::Audio) {
+            // Add to AudioGraph for pull-based processing
+            AudioOperator* audioOp = static_cast<AudioOperator*>(op);
+            audioGraph_.addOperator(name, audioOp);
+
+            // Check if this is the AudioOutput
+            if (name == audioOutputName_) {
+                audioOutput_ = dynamic_cast<AudioOutput*>(op);
+            }
+        } else {
+            // Visual operator - process on main thread
+            visualExecutionOrder_.push_back(op);
+        }
+    }
+
+    // Build audio graph execution order
+    audioGraph_.buildExecutionOrder();
+
+    // Set the audio graph output
+    if (!audioOutputName_.empty()) {
+        AudioOperator* audioOut = static_cast<AudioOperator*>(getByName(audioOutputName_));
+        if (audioOut) {
+            audioGraph_.setOutput(audioOut);
+        }
+    }
+
+    // Connect AudioOutput to the AudioGraph for pull-based generation
+    if (audioOutput_) {
+        audioOutput_->setAudioGraph(&audioGraph_);
+    }
+
     // Auto-register all operators for visualization
     for (Operator* op : executionOrder_) {
         std::string name = getName(op);
@@ -233,6 +274,9 @@ void Chain::init(Context& ctx) {
     initialized_ = true;
     lastAudioTime_ = 0.0;
     audioSamplesOwed_ = 0.0;
+
+    std::cout << "[Chain] Initialized: " << visualExecutionOrder_.size() << " visual operators, "
+              << audioGraph_.operatorCount() << " audio operators (pull-based)" << std::endl;
 }
 
 void Chain::process(Context& ctx) {
@@ -245,35 +289,18 @@ void Chain::process(Context& ctx) {
         return;
     }
 
-    // Calculate audio frames needed this frame based on elapsed time
-    double currentTime = ctx.time();
-    double deltaTime = currentTime - lastAudioTime_;
-    lastAudioTime_ = currentTime;
-
-    // On first frame or after pause, generate one block worth
-    if (deltaTime <= 0.0 || deltaTime > 0.5) {
-        deltaTime = static_cast<double>(AUDIO_BLOCK_SIZE) / AUDIO_SAMPLE_RATE;
-    }
-
-    // Calculate frames needed based on elapsed time
-    double framesNeeded = deltaTime * AUDIO_SAMPLE_RATE + audioSamplesOwed_;
-    uint32_t audioFramesThisFrame = static_cast<uint32_t>(framesNeeded);
-    audioSamplesOwed_ = framesNeeded - audioFramesThisFrame;
-
-    // Clamp to reasonable bounds
-    audioFramesThisFrame = std::min(audioFramesThisFrame, AUDIO_SAMPLE_RATE / 10);  // Max 100ms
-    audioFramesThisFrame = std::max(audioFramesThisFrame, 1u);  // Min 1 frame
-
-    // Store in context for audio operators to use
-    ctx.setAudioFramesThisFrame(audioFramesThisFrame);
-
-    // Process all operators in dependency order
-    // Skip bypassed texture operators, but always process audio operators
-    // (audio effects handle bypass internally by copying input to output)
-    for (Operator* op : executionOrder_) {
-        if (!op->isBypassed() || op->outputKind() == OutputKind::Audio) {
+    // Process ONLY visual operators on main thread
+    // Audio operators are processed by AudioGraph on the audio thread
+    for (Operator* op : visualExecutionOrder_) {
+        if (!op->isBypassed()) {
             op->process(ctx);
         }
+    }
+
+    // AudioOutput::process() handles auto-start of audio playback
+    // It no longer generates audio - that happens in the miniaudio callback
+    if (audioOutput_) {
+        audioOutput_->process(ctx);
     }
 
     // Set output texture if specified via chain.output()

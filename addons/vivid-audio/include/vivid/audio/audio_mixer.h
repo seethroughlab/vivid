@@ -77,6 +77,9 @@ public:
     void cleanup() override;
     std::string name() const override { return "AudioMixer"; }
 
+    // Pull-based audio generation (called from audio thread)
+    void generateBlock(uint32_t frameCount) override;
+
     std::vector<ParamDecl> params() override {
         return { m_volume.decl() };
     }

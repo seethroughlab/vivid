@@ -14,7 +14,11 @@ void PitchEnv::init(Context& ctx) {
 void PitchEnv::process(Context& ctx) {
     if (!m_initialized) return;
 
-    uint32_t frames = m_output.frameCount;
+    // Get frame count from context (variable based on render framerate)
+    uint32_t frames = ctx.audioFramesThisFrame();
+    if (m_output.frameCount != frames) {
+        m_output.resize(frames);
+    }
     float sweepSamples = static_cast<float>(m_time) * m_sampleRate;
     float progressInc = (sweepSamples > 0) ? (1.0f / sweepSamples) : 1.0f;
 

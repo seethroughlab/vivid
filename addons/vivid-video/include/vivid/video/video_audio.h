@@ -64,6 +64,9 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
 
+    // Pull-based audio generation (called from audio thread)
+    void generateBlock(uint32_t frameCount) override;
+
     /// @}
 
 private:

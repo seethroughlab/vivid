@@ -27,7 +27,12 @@ void AudioFilter::process(Context& ctx) {
     }
 
     const AudioBuffer* in = inputBuffer();
-    uint32_t frames = m_output.frameCount;
+
+    // Get frame count from context (variable based on render framerate)
+    uint32_t frames = ctx.audioFramesThisFrame();
+    if (m_output.frameCount != frames) {
+        m_output.resize(frames);
+    }
 
     if (in && in->isValid()) {
         for (uint32_t i = 0; i < frames; ++i) {

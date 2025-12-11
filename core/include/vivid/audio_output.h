@@ -15,6 +15,9 @@
 
 namespace vivid {
 
+// Forward declarations
+class AudioGraph;
+
 /**
  * @brief Audio output operator for speaker playback
  *
@@ -103,12 +106,56 @@ public:
     void setVolume(float v);
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Audio Graph Integration
+    /// @{
+
+    /**
+     * @brief Set the audio graph for pull-based generation
+     *
+     * In live mode, the miniaudio callback will pull samples directly
+     * from this AudioGraph, bypassing the ring buffer.
+     *
+     * @param graph Pointer to AudioGraph (does not take ownership)
+     */
+    void setAudioGraph(AudioGraph* graph);
+
+    /**
+     * @brief Enable/disable recording mode
+     *
+     * In recording mode, audio is read from ring buffer instead of
+     * being generated in the callback. The video exporter pushes
+     * samples to the ring buffer.
+     */
+    void setRecordingMode(bool recording);
+
+    /**
+     * @brief Generate audio for video export (called from main thread)
+     *
+     * This generates audio synchronously, independent of the callback.
+     * Used by video exporter to generate frame-aligned audio.
+     *
+     * @param output Output buffer (interleaved stereo)
+     * @param frameCount Number of frames to generate
+     */
+    void generateForExport(float* output, uint32_t frameCount);
+
+    /**
+     * @brief Push samples to ring buffer for recording mode playback
+     */
+    void pushToRingBuffer(const float* samples, uint32_t sampleCount);
+
+    /// @}
+
+    // Pull-based audio generation (called from audio thread)
+    void generateBlock(uint32_t frameCount) override;
 
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 
     std::string m_inputName;
+    AudioOperator* m_input = nullptr;  // Resolved input operator
     float m_volume = 1.0f;
     bool m_initialized = false;
     bool m_autoPlay = true;  // Auto-start playback on first audio

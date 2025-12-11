@@ -11,11 +11,13 @@
 
 #include <vivid/operator.h>
 #include <vivid/audio_buffer.h>
+#include <vivid/audio_event.h>
 
 namespace vivid {
 
-// Forward declaration
+// Forward declarations
 class AudioBuffer;
+class AudioGraph;
 
 /**
  * @brief Base class for audio-producing operators
@@ -56,6 +58,60 @@ public:
     /// @{
 
     OutputKind outputKind() const override { return OutputKind::Audio; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Audio Thread Interface (called from AudioGraph)
+    /// @{
+
+    /**
+     * @brief Generate a fixed number of audio frames (called from audio thread)
+     *
+     * This is the main audio generation method called by AudioGraph.
+     * Subclasses should override this to generate audio samples.
+     * The output buffer will be resized if needed.
+     *
+     * @param frameCount Number of frames to generate
+     */
+    virtual void generateBlock(uint32_t frameCount) {
+        // Default implementation: resize buffer if needed
+        if (m_output.frameCount != frameCount) {
+            m_output.resize(frameCount);
+        }
+    }
+
+    /**
+     * @brief Handle an event from the main thread (called from audio thread)
+     *
+     * Events are queued from the main thread and processed at the start
+     * of each audio block. Override this to handle noteOn/noteOff/trigger.
+     *
+     * @param event The event to handle
+     */
+    virtual void handleEvent(const AudioEvent& event) {
+        // Default: ignore events
+        (void)event;
+    }
+
+    /**
+     * @brief Set the parent audio graph (called during setup)
+     * @param graph Pointer to the owning AudioGraph
+     * @param operatorId ID of this operator in the graph
+     */
+    void setAudioGraph(AudioGraph* graph, uint32_t operatorId) {
+        m_audioGraph = graph;
+        m_operatorId = operatorId;
+    }
+
+    /**
+     * @brief Get the parent audio graph
+     */
+    AudioGraph* audioGraph() const { return m_audioGraph; }
+
+    /**
+     * @brief Get this operator's ID in the audio graph
+     */
+    uint32_t operatorId() const { return m_operatorId; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -144,6 +200,8 @@ protected:
     /// @}
 
     OwnedAudioBuffer m_output;  ///< Output audio buffer
+    AudioGraph* m_audioGraph = nullptr;  ///< Parent audio graph (for event queuing)
+    uint32_t m_operatorId = UINT32_MAX;  ///< ID in the audio graph
 };
 
 } // namespace vivid
