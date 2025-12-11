@@ -523,6 +523,14 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+
+            // Save snapshot if requested
+            if (chainVisualizer.snapshotRequested()) {
+                WGPUTexture outputTex = ctx.chain().outputTexture();
+                if (outputTex) {
+                    chainVisualizer.saveSnapshot(device, queue, outputTex, ctx);
+                }
+            }
         }
 
         // Create command encoder

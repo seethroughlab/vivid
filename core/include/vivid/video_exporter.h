@@ -158,6 +158,20 @@ public:
     static std::string generateOutputPath(const std::string& directory = ".",
                                           ExportCodec codec = ExportCodec::H264);
 
+    /**
+     * @brief Save a single frame snapshot as PNG
+     * @param device WebGPU device
+     * @param queue WebGPU queue
+     * @param texture Source texture to capture
+     * @param outputPath Output PNG file path
+     * @return true if snapshot saved successfully
+     *
+     * Static utility function for capturing a single frame to PNG.
+     * Handles texture readback, BGRA->RGBA conversion, and PNG encoding.
+     */
+    static bool saveSnapshot(WGPUDevice device, WGPUQueue queue,
+                             WGPUTexture texture, const std::string& outputPath);
+
     // Internal: encode a frame from the mapped buffer (called from async callback)
     void encodeFrame(uint32_t width, uint32_t height, uint32_t bytesPerRow, uint32_t bytesPerPixel);
 

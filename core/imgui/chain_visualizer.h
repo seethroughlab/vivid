@@ -119,9 +119,17 @@ private:
     void startRecording(ExportCodec codec, vivid::Context& ctx);
     void stopRecording(vivid::Context& ctx);
 
+    // Snapshot
+    bool m_snapshotRequested = false;
+    void requestSnapshot() { m_snapshotRequested = true; }
+
 public:
     // Access to exporter for main.cpp to call captureFrame
     VideoExporter& exporter() { return m_exporter; }
+
+    // Save a single frame snapshot (call from main loop after rendering)
+    void saveSnapshot(WGPUDevice device, WGPUQueue queue, WGPUTexture texture, vivid::Context& ctx);
+    bool snapshotRequested() const { return m_snapshotRequested; }
 };
 
 } // namespace vivid::imgui

@@ -92,5 +92,5 @@
 [x] Make an example that plays a nice little melody. There should be pads and a lead with a subtle beat. It should be in a minor key, and it should have a "verse, chorus, verse, bridge, chorus, outro" structure. 
 [x] Is it true that the texture composite operator currently only accepts 2 inputs? It should take an arbitrary number of input.
 [ ] Let's make a plan to overhaul the examples folder. A lot of the examples are more like functionality tests, when they should be curated to be the most helpful possible for the users. However, we should also start building out a test suite, whcih I think is mentioned in the ROADMAP.
-[ ] Set up github actions to create builds. Do we need an installer?
-[ ] there should be section of examples called "showcase" that shows the *best* of what vivid can do. We should have screenshots of these examples in the README 
+[ ] PLAN: Set up github actions to create builds. Do we need an installer?
+[ ] there should be section of examples called "showcase" that shows the *best* of what vivid can do. Let's make some impressive examples. We should have screenshots of these examples in the README 
