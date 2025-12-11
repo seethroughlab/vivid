@@ -117,9 +117,16 @@ elseif(WIN32)
         propsys
     )
 
-    # Enable exports for DLL
+    # Define export macro when building the DLL
+    # Note: WINDOWS_EXPORT_ALL_SYMBOLS fails with snappy due to invalid symbols in exports.def
+    # Using explicit __declspec(dllexport) via VIVID_VIDEO_API macro instead
+    target_compile_definitions(vivid-video PRIVATE vivid_video_EXPORTS)
+
+    # Set output directories for import library
     set_target_properties(vivid-video PROPERTIES
-        WINDOWS_EXPORT_ALL_SYMBOLS ON
+        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug
+        ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release
     )
 
 else()

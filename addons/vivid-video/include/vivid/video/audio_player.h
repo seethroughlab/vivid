@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vivid/video/export.h>
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -15,7 +16,7 @@ namespace vivid::video {
  * Uses a ring buffer to allow the video decoder to push samples while
  * the audio device pulls them asynchronously.
  */
-class AudioPlayer {
+class VIVID_VIDEO_API AudioPlayer {
 public:
     AudioPlayer();
     ~AudioPlayer();

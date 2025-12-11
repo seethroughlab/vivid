@@ -8,6 +8,7 @@
 //   - Linux: HAP (direct DXT) + FFmpeg (stub - not yet implemented)
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/video/export.h>
 #include <string>
 #include <memory>
 
@@ -41,7 +42,7 @@ namespace vivid::video {
  *   // In update:
  *   video.play();  // or video.pause(), video.seek(seconds)
  */
-class VideoPlayer : public effects::TextureOperator {
+class VIVID_VIDEO_API VideoPlayer : public effects::TextureOperator {
 public:
     VideoPlayer();
     ~VideoPlayer() override;

@@ -63,3 +63,5 @@ vivid_v1
 vivid_v2
 **/imgui.ini
 examples/*/vivid_*
+nul
+/*.obj

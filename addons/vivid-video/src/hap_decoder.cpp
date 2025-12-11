@@ -13,6 +13,7 @@
 #if !defined(__APPLE__)
 
 #include <vivid/video/hap_decoder.h>
+#include <vivid/video/audio_player.h>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
@@ -119,6 +120,28 @@ void HAPDecoder::createTexture() {
 
 void HAPDecoder::resetReader() {
     // Stub
+}
+
+uint32_t HAPDecoder::readAudioSamples(float* buffer, uint32_t maxFrames) {
+    // Stub - no HAP support on Windows/Linux
+    return 0;
+}
+
+uint32_t HAPDecoder::readAudioSamplesForPTS(float* buffer, double videoPTS, uint32_t maxFrames) {
+    // Stub - no HAP support on Windows/Linux
+    return 0;
+}
+
+double HAPDecoder::audioAvailableStartPTS() const {
+    return 0.0;
+}
+
+double HAPDecoder::audioAvailableEndPTS() const {
+    return 0.0;
+}
+
+void HAPDecoder::setInternalAudioEnabled(bool enable) {
+    internalAudioEnabled_ = enable;
 }
 
 } // namespace vivid::video

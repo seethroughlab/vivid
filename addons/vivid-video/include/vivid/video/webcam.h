@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/video/export.h>
 #include <string>
 #include <memory>
 
@@ -23,7 +24,7 @@ class MFWebcam;
  * webcam.resolution(1280, 720).frameRate(30);
  * @endcode
  */
-class Webcam : public vivid::effects::TextureOperator {
+class VIVID_VIDEO_API Webcam : public vivid::effects::TextureOperator {
 public:
     Webcam();
     ~Webcam();

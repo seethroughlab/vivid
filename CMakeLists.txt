@@ -28,6 +28,13 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
 
+# On Windows, build GLFW as a shared library (DLL) so that vivid-core.dll
+# and vivid.exe share the same GLFW instance. Without this, window handles
+# created by one copy of GLFW aren't recognized by the other copy.
+if(WIN32)
+    set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
+endif()
+
 FetchContent_Declare(
     glfw
     GIT_REPOSITORY https://github.com/glfw/glfw.git
@@ -35,6 +42,11 @@ FetchContent_Declare(
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(glfw)
+
+# Reset BUILD_SHARED_LIBS after GLFW
+if(WIN32)
+    set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+endif()
 
 # GLM - Math library
 FetchContent_Declare(

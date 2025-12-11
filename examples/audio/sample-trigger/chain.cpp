@@ -60,8 +60,7 @@ void setup(Context& ctx) {
 
     // Master gain control
     auto& gain = chain.add<AudioGain>("gain");
-    gain.input("reverb")
-        .gain(1.0f);
+    gain.gain(1.0f).input("reverb");
 
     // =========================================================================
     // Audio Output
@@ -93,7 +92,7 @@ void setup(Context& ctx) {
         float g = 0.5f + 0.5f * std::sin(hue * 6.28f + 2.09f);
         float b = 0.5f + 0.5f * std::sin(hue * 6.28f + 4.19f);
 
-        pad.type(ShapeType::Rect)
+        pad.type(ShapeType::Rectangle)
            .position(x, y)
            .size(0.12f, 0.18f)
            .color(r, g, b, 0.3f)

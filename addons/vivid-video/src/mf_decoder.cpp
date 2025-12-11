@@ -275,13 +275,10 @@ bool MFDecoder::open(Context& ctx, const std::string& path, bool loop) {
         hasAudio_ = true;
         audioType->Release();
 
-        // Initialize audio player
-        audioPlayer_ = std::make_unique<AudioPlayer>();
-        if (audioPlayer_->init(filePath_)) {
-            std::cout << "[MFDecoder] Audio initialized\n";
-        } else {
-            audioPlayer_.reset();
-        }
+        // TODO: Audio extraction from video not yet implemented for Windows
+        // The AudioPlayer expects decoded samples, but MF Source Reader
+        // doesn't easily provide interleaved audio samples
+        std::cout << "[MFDecoder] Audio detected but not yet implemented\n";
     } else {
         hasAudio_ = false;
     }
@@ -310,7 +307,7 @@ bool MFDecoder::open(Context& ctx, const std::string& path, bool loop) {
 
 void MFDecoder::close() {
     if (audioPlayer_) {
-        audioPlayer_->stop();
+        audioPlayer_->shutdown();
         audioPlayer_.reset();
     }
 
@@ -430,7 +427,7 @@ void MFDecoder::update(Context& ctx) {
         if (isLooping_) {
             resetReader();
             if (audioPlayer_) {
-                audioPlayer_->seek(0);
+                audioPlayer_->flush();
                 audioPlayer_->play();
             }
         } else {
@@ -549,7 +546,7 @@ void MFDecoder::seek(float seconds) {
     isFinished_ = false;
 
     if (audioPlayer_) {
-        audioPlayer_->seek(seconds);
+        audioPlayer_->flush();
     }
 }
 
@@ -583,6 +580,27 @@ float MFDecoder::getVolume() const {
         return audioPlayer_->getVolume();
     }
     return 1.0f;
+}
+
+uint32_t MFDecoder::readAudioSamples(float* buffer, uint32_t maxFrames) {
+    // TODO: Audio extraction not yet implemented for Windows MFDecoder
+    return 0;
+}
+
+void MFDecoder::setInternalAudioEnabled(bool enable) {
+    internalAudioEnabled_ = enable;
+}
+
+bool MFDecoder::isInternalAudioEnabled() const {
+    return internalAudioEnabled_;
+}
+
+uint32_t MFDecoder::audioSampleRate() const {
+    return audioSampleRate_;
+}
+
+uint32_t MFDecoder::audioChannels() const {
+    return audioChannels_;
 }
 
 } // namespace vivid::video

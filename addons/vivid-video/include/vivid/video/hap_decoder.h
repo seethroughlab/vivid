@@ -240,6 +240,7 @@ private:
 
     void prebufferAudio();
     void createTexture();
+    void resetReader();
     void feedAudioBuffer();  // Read from AVAssetReader into ring buffer
     void loopAudioReader();  // Reset audio reader to beginning for looping
 };
