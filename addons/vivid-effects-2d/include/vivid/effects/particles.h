@@ -109,6 +109,16 @@ public:
     // State accessors
     int particleCount() const { return static_cast<int>(m_particles.size()); }
 
+    /// Get particle positions (normalized 0-1 coordinates) for plexus/connection effects
+    std::vector<glm::vec2> getPositions() const {
+        std::vector<glm::vec2> positions;
+        positions.reserve(m_particles.size());
+        for (const auto& p : m_particles) {
+            positions.push_back(p.position);
+        }
+        return positions;
+    }
+
 private:
     struct Particle {
         glm::vec2 position;

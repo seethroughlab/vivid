@@ -37,6 +37,7 @@ add_library(vivid-effects-2d SHARED
     src/particle_renderer.cpp
     src/particles.cpp
     src/point_sprites.cpp
+    src/plexus.cpp
     # Canvas (Phase 5)
     src/font_atlas.cpp
     src/canvas_renderer.cpp

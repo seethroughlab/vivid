@@ -57,6 +57,17 @@ PBR rendering, models, and instancing.
 
 ---
 
+## Showcase
+
+Impressive demos showing the best of what Vivid can do. These are "wow factor" examples with audio-reactive visuals, generative art, and multi-layered effects.
+
+| Example | Description |
+|---------|-------------|
+| [flow-field](showcase/flow-field) | Generative particle art with noise-driven flow fields and ethereal trails |
+| [audio-visualizer](showcase/audio-visualizer) | FFT-driven particles with beat detection, bloom, and chromatic aberration |
+
+---
+
 ## More Resources
 
 - [LLM-REFERENCE.md](../docs/LLM-REFERENCE.md) - Compact operator reference
