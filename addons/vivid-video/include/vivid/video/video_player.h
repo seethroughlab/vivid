@@ -8,6 +8,7 @@
 //   - Linux: HAP (direct DXT) + FFmpeg (stub - not yet implemented)
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/video/export.h>
 #include <string>
 #include <memory>
 
@@ -20,6 +21,7 @@ class AVFDecoder;
 class AVFPlaybackDecoder;  // AVPlayer-based decoder with proper A/V sync
 #elif defined(_WIN32)
 class MFDecoder;
+class DShowDecoder;  // DirectShow fallback for codecs MF doesn't support
 #else
 class FFmpegDecoder;
 #endif
@@ -41,7 +43,7 @@ namespace vivid::video {
  *   // In update:
  *   video.play();  // or video.pause(), video.seek(seconds)
  */
-class VideoPlayer : public effects::TextureOperator {
+class VIVID_VIDEO_API VideoPlayer : public effects::TextureOperator {
 public:
     VideoPlayer();
     ~VideoPlayer() override;
@@ -185,6 +187,7 @@ public:
 
 private:
     void loadVideo(Context& ctx);
+    void createFallbackTexture(Context& ctx);
 
     std::string m_filePath;
     bool m_loop = false;
@@ -201,13 +204,19 @@ private:
     std::unique_ptr<AVFPlaybackDecoder> m_playbackDecoder; // For real-time playback with A/V sync
 #elif defined(_WIN32)
     std::unique_ptr<MFDecoder> m_standardDecoder;
+    std::unique_ptr<DShowDecoder> m_dshowDecoder;  // DirectShow fallback
 #else
     std::unique_ptr<FFmpegDecoder> m_standardDecoder;
 #endif
 
     bool m_isHAP = false;
     bool m_usePlaybackDecoder = false;  // True when using AVFPlaybackDecoder
+    bool m_useDShowDecoder = false;     // True when using DirectShow fallback (Windows)
     bool m_internalAudioEnabled = true; // Track internal audio state for playback decoder
+
+    // Fallback texture for when video fails to load
+    WGPUTexture m_fallbackTexture = nullptr;
+    WGPUTextureView m_fallbackTextureView = nullptr;
 };
 
 } // namespace vivid::video

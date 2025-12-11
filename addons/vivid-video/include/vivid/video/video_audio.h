@@ -9,6 +9,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/video/export.h>
 #include <string>
 
 namespace vivid::video {
@@ -38,7 +39,7 @@ class VideoPlayer;
  * chain.audioOutput("audioOut");   // Audio output
  * @endcode
  */
-class VideoAudio : public AudioOperator {
+class VIVID_VIDEO_API VideoAudio : public AudioOperator {
 public:
     VideoAudio();
     ~VideoAudio() override = default;

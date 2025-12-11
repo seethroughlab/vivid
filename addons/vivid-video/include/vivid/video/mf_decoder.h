@@ -81,6 +81,13 @@ public:
     void setVolume(float volume);
     float getVolume() const;
 
+    // Audio sample reading (for external audio routing)
+    uint32_t readAudioSamples(float* buffer, uint32_t maxFrames);
+    void setInternalAudioEnabled(bool enable);
+    bool isInternalAudioEnabled() const;
+    uint32_t audioSampleRate() const;
+    uint32_t audioChannels() const;
+
     WGPUTexture texture() const { return texture_; }
     WGPUTextureView textureView() const { return textureView_; }
 
@@ -99,6 +106,9 @@ private:
     bool isFinished_ = false;
     bool isLooping_ = false;
     bool hasAudio_ = false;
+    bool internalAudioEnabled_ = true;
+    uint32_t audioSampleRate_ = 48000;
+    uint32_t audioChannels_ = 2;
     float currentTime_ = 0.0f;
     float playbackTime_ = 0.0f;
     float nextFrameTime_ = 0.0f;
@@ -118,6 +128,9 @@ private:
 
     void createTexture();
     void resetReader();
+    void prebufferAudio();
+    void readAudioSamplesToBuffer();
+    void decodeVideoSample(void* sample);  // IMFSample*
 };
 
 } // namespace vivid::video

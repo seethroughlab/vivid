@@ -24,6 +24,16 @@ void TextureOperator::createOutput(Context& ctx) {
     createOutput(ctx, m_width, m_height);
 }
 
+bool TextureOperator::checkResize(Context& ctx) {
+    int ctxWidth = ctx.width();
+    int ctxHeight = ctx.height();
+    if (ctxWidth > 0 && ctxHeight > 0 && (ctxWidth != m_width || ctxHeight != m_height)) {
+        createOutput(ctx, ctxWidth, ctxHeight);
+        return true;
+    }
+    return false;
+}
+
 void TextureOperator::createOutput(Context& ctx, int width, int height) {
     // Release existing if dimensions changed
     if (m_output && (m_width != width || m_height != height)) {

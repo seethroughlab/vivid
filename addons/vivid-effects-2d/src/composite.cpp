@@ -356,6 +356,9 @@ void Composite::process(Context& ctx) {
         init(ctx);
     }
 
+    // Handle window resize / fullscreen
+    checkResize(ctx);
+
     updateBindGroup(ctx);
 
     if (!m_bindGroup) {

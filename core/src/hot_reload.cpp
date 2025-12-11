@@ -368,7 +368,14 @@ bool HotReload::compile() {
     clCmd << "\"" << m_sourcePath.string() << "\" ";
     clCmd << "/link ";
 
-    // Link against vivid.lib import library (required for core symbols like Context, Chain)
+    // Link against vivid-core.lib import library (required for core symbols like Context, Chain)
+    // vivid-core.lib is generated in build/lib/Debug (same as addon libs)
+    fs::path vividCoreLib = addonsLib / "vivid-core.lib";
+    if (fs::exists(vividCoreLib)) {
+        clCmd << "\"" << vividCoreLib.string() << "\" ";
+    }
+
+    // Link against vivid.lib import library (for symbols in vivid.exe if needed)
     // vivid.lib is generated in build/lib/Debug (same as addon libs)
     fs::path vividLib = addonsLib / "vivid.lib";
     if (fs::exists(vividLib)) {

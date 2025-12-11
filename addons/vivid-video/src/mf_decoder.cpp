@@ -268,19 +268,44 @@ bool MFDecoder::open(Context& ctx, const std::string& path, bool loop) {
         PropVariantClear(&var);
     }
 
-    // Check for audio stream
+    // Check for and configure audio stream
     IMFMediaType* audioType = nullptr;
     hr = impl_->sourceReader->GetNativeMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, 0, &audioType);
     if (SUCCEEDED(hr)) {
-        hasAudio_ = true;
         audioType->Release();
 
-        // Initialize audio player
-        audioPlayer_ = std::make_unique<AudioPlayer>();
-        if (audioPlayer_->init(filePath_)) {
-            std::cout << "[MFDecoder] Audio initialized\n";
-        } else {
-            audioPlayer_.reset();
+        // Configure audio output format - PCM float, 48kHz, stereo
+        IMFMediaType* audioOutType = nullptr;
+        hr = MFCreateMediaType(&audioOutType);
+        if (SUCCEEDED(hr)) {
+            audioOutType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
+            audioOutType->SetGUID(MF_MT_SUBTYPE, MFAudioFormat_Float);
+            audioOutType->SetUINT32(MF_MT_AUDIO_NUM_CHANNELS, 2);
+            audioOutType->SetUINT32(MF_MT_AUDIO_SAMPLES_PER_SECOND, 48000);
+            audioOutType->SetUINT32(MF_MT_AUDIO_BITS_PER_SAMPLE, 32);
+            audioOutType->SetUINT32(MF_MT_AUDIO_BLOCK_ALIGNMENT, 8);  // 2 channels * 4 bytes
+            audioOutType->SetUINT32(MF_MT_AUDIO_AVG_BYTES_PER_SECOND, 48000 * 8);
+
+            hr = impl_->sourceReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_AUDIO_STREAM, nullptr, audioOutType);
+            audioOutType->Release();
+
+            if (SUCCEEDED(hr)) {
+                // Initialize audio player
+                audioPlayer_ = std::make_unique<AudioPlayer>();
+                if (audioPlayer_->init(48000, 2)) {
+                    hasAudio_ = true;
+                    audioSampleRate_ = 48000;
+                    audioChannels_ = 2;
+                    std::cout << "[MFDecoder] Audio: 48000Hz, 2 ch\n";
+                } else {
+                    std::cerr << "[MFDecoder] Failed to initialize audio player\n";
+                    audioPlayer_.reset();
+                    hasAudio_ = false;
+                }
+            } else {
+                std::cerr << "[MFDecoder] Failed to set audio output format\n";
+                hasAudio_ = false;
+            }
         }
     } else {
         hasAudio_ = false;
@@ -299,6 +324,11 @@ bool MFDecoder::open(Context& ctx, const std::string& path, bool loop) {
     playbackTime_ = 0.0f;
     nextFrameTime_ = 0.0f;
 
+    // Pre-buffer audio
+    if (audioPlayer_ && hasAudio_) {
+        prebufferAudio();
+    }
+
     std::cout << "[MFDecoder] Opened " << path
               << " (" << width_ << "x" << height_
               << ", " << frameRate_ << "fps"
@@ -308,9 +338,58 @@ bool MFDecoder::open(Context& ctx, const std::string& path, bool loop) {
     return true;
 }
 
+void MFDecoder::prebufferAudio() {
+    if (!audioPlayer_ || !impl_->sourceReader || !hasAudio_) return;
+
+    const uint32_t targetFrames = 48000 / 2;  // ~0.5 seconds
+
+    while (audioPlayer_->getBufferedFrames() < targetFrames) {
+        DWORD streamIndex = 0;
+        DWORD flags = 0;
+        LONGLONG timestamp = 0;
+        IMFSample* sample = nullptr;
+
+        HRESULT hr = impl_->sourceReader->ReadSample(
+            MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+            0,
+            &streamIndex,
+            &flags,
+            &timestamp,
+            &sample
+        );
+
+        if (FAILED(hr) || !sample) {
+            if (sample) sample->Release();
+            break;
+        }
+
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+            sample->Release();
+            break;
+        }
+
+        // Get buffer from sample
+        IMFMediaBuffer* buffer = nullptr;
+        hr = sample->ConvertToContiguousBuffer(&buffer);
+        if (SUCCEEDED(hr) && buffer) {
+            BYTE* data = nullptr;
+            DWORD maxLength = 0, currentLength = 0;
+            hr = buffer->Lock(&data, &maxLength, &currentLength);
+            if (SUCCEEDED(hr)) {
+                // Data is float samples, interleaved stereo
+                uint32_t frameCount = currentLength / (2 * sizeof(float));
+                audioPlayer_->pushSamples(reinterpret_cast<float*>(data), frameCount);
+                buffer->Unlock();
+            }
+            buffer->Release();
+        }
+        sample->Release();
+    }
+}
+
 void MFDecoder::close() {
     if (audioPlayer_) {
-        audioPlayer_->stop();
+        audioPlayer_->shutdown();
         audioPlayer_.reset();
     }
 
@@ -388,71 +467,72 @@ void MFDecoder::resetReader() {
     playbackTime_ = 0.0f;
     nextFrameTime_ = 0.0f;
     isFinished_ = false;
+
+    // Re-prebuffer audio
+    if (audioPlayer_ && hasAudio_) {
+        prebufferAudio();
+    }
 }
 
-void MFDecoder::update(Context& ctx) {
-    if (!impl_->sourceReader || !isPlaying_) return;
+void MFDecoder::readAudioSamplesToBuffer() {
+    if (!audioPlayer_ || !impl_->sourceReader || !hasAudio_ || !internalAudioEnabled_) return;
 
-    // Calculate elapsed time
-    auto now = std::chrono::steady_clock::now();
-    float elapsed = std::chrono::duration<float>(now - impl_->lastUpdateTime).count();
-    impl_->lastUpdateTime = now;
+    // Keep audio buffer topped up - target ~0.25 seconds ahead
+    const uint32_t targetFrames = 48000 / 4;
 
-    playbackTime_ += elapsed;
+    while (audioPlayer_->getBufferedFrames() < targetFrames) {
+        DWORD streamIndex = 0;
+        DWORD flags = 0;
+        LONGLONG timestamp = 0;
+        IMFSample* sample = nullptr;
 
-    // Check if we need a new frame
-    if (playbackTime_ < nextFrameTime_) {
-        return;
-    }
+        HRESULT hr = impl_->sourceReader->ReadSample(
+            MF_SOURCE_READER_FIRST_AUDIO_STREAM,
+            0,
+            &streamIndex,
+            &flags,
+            &timestamp,
+            &sample
+        );
 
-    // Read next sample
-    DWORD streamIndex = 0;
-    DWORD flags = 0;
-    LONGLONG timestamp = 0;
-    IMFSample* sample = nullptr;
-
-    HRESULT hr = impl_->sourceReader->ReadSample(
-        MF_SOURCE_READER_FIRST_VIDEO_STREAM,
-        0,
-        &streamIndex,
-        &flags,
-        &timestamp,
-        &sample
-    );
-
-    if (FAILED(hr)) {
-        return;
-    }
-
-    if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
-        if (sample) sample->Release();
-
-        if (isLooping_) {
-            resetReader();
-            if (audioPlayer_) {
-                audioPlayer_->seek(0);
-                audioPlayer_->play();
-            }
-        } else {
-            isFinished_ = true;
-            isPlaying_ = false;
+        if (FAILED(hr) || !sample) {
+            if (sample) sample->Release();
+            break;
         }
-        return;
-    }
 
-    if (!sample) {
-        return;
-    }
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+            sample->Release();
+            break;
+        }
 
-    // Update current time
-    currentTime_ = static_cast<float>(timestamp) / 10000000.0f;
-    nextFrameTime_ = playbackTime_ + (1.0f / frameRate_);
+        // Get buffer from sample
+        IMFMediaBuffer* buffer = nullptr;
+        hr = sample->ConvertToContiguousBuffer(&buffer);
+        if (SUCCEEDED(hr) && buffer) {
+            BYTE* data = nullptr;
+            DWORD maxLength = 0, currentLength = 0;
+            hr = buffer->Lock(&data, &maxLength, &currentLength);
+            if (SUCCEEDED(hr)) {
+                // Data is float samples, interleaved stereo
+                uint32_t frameCount = currentLength / (2 * sizeof(float));
+                audioPlayer_->pushSamples(reinterpret_cast<float*>(data), frameCount);
+                buffer->Unlock();
+            }
+            buffer->Release();
+        }
+        sample->Release();
+    }
+}
+
+void MFDecoder::decodeVideoSample(void* samplePtr) {
+    if (!samplePtr) return;
+
+    IMFSample* sample = static_cast<IMFSample*>(samplePtr);
 
     // Get buffer from sample
     IMFMediaBuffer* buffer = nullptr;
-    hr = sample->ConvertToContiguousBuffer(&buffer);
+    HRESULT hr = sample->ConvertToContiguousBuffer(&buffer);
     if (FAILED(hr)) {
-        sample->Release();
         return;
     }
 
@@ -462,7 +542,6 @@ void MFDecoder::update(Context& ctx) {
     hr = buffer->Lock(&data, &maxLength, &currentLength);
     if (FAILED(hr)) {
         buffer->Release();
-        sample->Release();
         return;
     }
 
@@ -509,7 +588,6 @@ void MFDecoder::update(Context& ctx) {
 
     buffer->Unlock();
     buffer->Release();
-    sample->Release();
 
     // Upload to GPU
     WGPUTexelCopyTextureInfo destination = {};
@@ -525,8 +603,97 @@ void MFDecoder::update(Context& ctx) {
 
     WGPUExtent3D writeSize = { static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1 };
 
+    size_t textureDataSize = static_cast<size_t>(width_) * height_ * 4;
+
     wgpuQueueWriteTexture(queue_, &destination, pixelBuffer_.data(),
-                          pixelBuffer_.size(), &dataLayout, &writeSize);
+                          textureDataSize, &dataLayout, &writeSize);
+}
+
+void MFDecoder::update(Context& ctx) {
+    if (!impl_->sourceReader || !isPlaying_) return;
+
+    // Keep audio buffer topped up
+    readAudioSamplesToBuffer();
+
+    // Use audio playback position as master clock if audio is available
+    // Otherwise fall back to wall-clock timing
+    double targetTime;
+    if (audioPlayer_ && hasAudio_ && internalAudioEnabled_) {
+        targetTime = audioPlayer_->getPlaybackPosition();
+    } else {
+        auto now = std::chrono::steady_clock::now();
+        float elapsed = std::chrono::duration<float>(now - impl_->lastUpdateTime).count();
+        impl_->lastUpdateTime = now;
+        playbackTime_ += elapsed;
+        targetTime = playbackTime_;
+    }
+
+    // Check if we need a new frame based on target time
+    if (targetTime < nextFrameTime_) {
+        return;
+    }
+
+    // Read video frames until we catch up to target time
+    // This handles cases where video falls behind audio
+    int framesSkipped = 0;
+    while (true) {
+        DWORD streamIndex = 0;
+        DWORD flags = 0;
+        LONGLONG timestamp = 0;
+        IMFSample* sample = nullptr;
+
+        HRESULT hr = impl_->sourceReader->ReadSample(
+            MF_SOURCE_READER_FIRST_VIDEO_STREAM,
+            0,
+            &streamIndex,
+            &flags,
+            &timestamp,
+            &sample
+        );
+
+        if (FAILED(hr)) {
+            return;
+        }
+
+        if (flags & MF_SOURCE_READERF_ENDOFSTREAM) {
+            if (sample) sample->Release();
+
+            if (isLooping_) {
+                resetReader();
+                if (audioPlayer_) {
+                    audioPlayer_->flush();
+                    audioPlayer_->play();
+                }
+            } else {
+                isFinished_ = true;
+                isPlaying_ = false;
+            }
+            return;
+        }
+
+        if (!sample) {
+            return;
+        }
+
+        // Get frame timestamp
+        float frameTime = static_cast<float>(timestamp) / 10000000.0f;
+        float nextFrame = frameTime + (1.0f / frameRate_);
+
+        // If this frame's end time is past our target, or we've skipped too many, use it
+        if (nextFrame >= targetTime || framesSkipped >= 5) {
+            currentTime_ = frameTime;
+            nextFrameTime_ = nextFrame;
+
+            // Decode and upload this frame
+            decodeVideoSample(sample);
+            sample->Release();
+            return;
+        }
+
+        // Frame is too old, skip it and read next
+        sample->Release();
+        framesSkipped++;
+    }
 }
 
 void MFDecoder::seek(float seconds) {
@@ -549,7 +716,9 @@ void MFDecoder::seek(float seconds) {
     isFinished_ = false;
 
     if (audioPlayer_) {
-        audioPlayer_->seek(seconds);
+        audioPlayer_->flush();
+        // Re-prebuffer audio after seek
+        prebufferAudio();
     }
 }
 
@@ -583,6 +752,27 @@ float MFDecoder::getVolume() const {
         return audioPlayer_->getVolume();
     }
     return 1.0f;
+}
+
+uint32_t MFDecoder::readAudioSamples(float* buffer, uint32_t maxFrames) {
+    // TODO: Audio extraction not yet implemented for Windows MFDecoder
+    return 0;
+}
+
+void MFDecoder::setInternalAudioEnabled(bool enable) {
+    internalAudioEnabled_ = enable;
+}
+
+bool MFDecoder::isInternalAudioEnabled() const {
+    return internalAudioEnabled_;
+}
+
+uint32_t MFDecoder::audioSampleRate() const {
+    return audioSampleRate_;
+}
+
+uint32_t MFDecoder::audioChannels() const {
+    return audioChannels_;
 }
 
 } // namespace vivid::video

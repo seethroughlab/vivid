@@ -67,6 +67,8 @@ set(VIVID_CORE_SOURCES
 # Platform-specific sources
 if(APPLE)
     list(APPEND VIVID_CORE_SOURCES src/video_exporter.mm)
+elseif(WIN32)
+    list(APPEND VIVID_CORE_SOURCES src/video_exporter_win.cpp)
 endif()
 
 set(VIVID_CORE_HEADERS
@@ -109,6 +111,14 @@ if(APPLE)
         INSTALL_RPATH "@executable_path"
         BUILD_WITH_INSTALL_RPATH TRUE
     )
+elseif(WIN32)
+    # Export all symbols to generate import library (.lib)
+    set_target_properties(vivid-core PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug
+        ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release
+    )
 endif()
 
 # Copy vivid-core library next to vivid executable
@@ -118,6 +128,16 @@ add_custom_command(TARGET vivid-core POST_BUILD
         ${CMAKE_BINARY_DIR}/bin/
     COMMENT "Copying vivid-core library"
 )
+
+# On Windows, copy GLFW DLL to bin directory (when built as shared library)
+if(WIN32)
+    add_custom_command(TARGET vivid-core POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:glfw>
+            ${CMAKE_BINARY_DIR}/bin/
+        COMMENT "Copying GLFW DLL"
+    )
+endif()
 
 # Main runtime executable
 add_executable(vivid
@@ -138,6 +158,7 @@ target_include_directories(vivid
         ${CMAKE_SOURCE_DIR}/addons/vivid-render3d/include
         ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
         ${CMAKE_SOURCE_DIR}/addons/vivid-audio/include
+        ${stb_SOURCE_DIR}
 )
 
 # Use wgpu-native backend for ImGui

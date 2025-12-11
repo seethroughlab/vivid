@@ -1937,6 +1937,33 @@ void Render3D::process(Context& ctx) {
         init(ctx);
     }
 
+    // Check if window size changed (e.g., fullscreen toggle)
+    int ctxWidth = ctx.width();
+    int ctxHeight = ctx.height();
+    if (ctxWidth > 0 && ctxHeight > 0 && (ctxWidth != m_width || ctxHeight != m_height)) {
+        // Recreate output texture with new dimensions
+        createOutput(ctx, ctxWidth, ctxHeight);
+
+        // Recreate depth buffer with new dimensions
+        if (m_depthView) {
+            wgpuTextureViewRelease(m_depthView);
+            m_depthView = nullptr;
+        }
+        if (m_depthTexture) {
+            wgpuTextureRelease(m_depthTexture);
+            m_depthTexture = nullptr;
+        }
+        if (m_depthOutputView) {
+            wgpuTextureViewRelease(m_depthOutputView);
+            m_depthOutputView = nullptr;
+        }
+        if (m_depthOutputTexture) {
+            wgpuTextureRelease(m_depthOutputTexture);
+            m_depthOutputTexture = nullptr;
+        }
+        createDepthBuffer(ctx);
+    }
+
     WGPUDevice device = ctx.device();
 
     // Handle pending HDR loading

@@ -72,6 +72,9 @@ private:
     WGPUQueue queue_ = nullptr;
     WGPUTexture texture_ = nullptr;
     WGPUTextureView textureView_ = nullptr;
+
+    void createTexture();
+    bool configureSourceReader(int requestedWidth, int requestedHeight, float requestedFps);
 };
 
 } // namespace vivid::video

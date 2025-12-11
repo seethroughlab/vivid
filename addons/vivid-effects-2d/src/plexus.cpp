@@ -4,6 +4,7 @@
 #include <vivid/effects/plexus.h>
 #include <vivid/context.h>
 #include <cmath>
+#include <cstring>
 #include <iostream>
 
 namespace vivid::effects {

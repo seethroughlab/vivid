@@ -495,6 +495,9 @@ void Noise::process(Context& ctx) {
         init(ctx);
     }
 
+    // Handle window resize / fullscreen
+    checkResize(ctx);
+
     // Update uniforms
     NoiseUniforms uniforms = {};
     uniforms.time = static_cast<float>(ctx.time());

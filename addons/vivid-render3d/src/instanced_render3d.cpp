@@ -971,6 +971,14 @@ void InstancedRender3D::uploadInstances() {
 }
 
 void InstancedRender3D::process(Context& ctx) {
+    // Check if window size changed (e.g., fullscreen toggle)
+    int ctxWidth = ctx.width();
+    int ctxHeight = ctx.height();
+    if (ctxWidth > 0 && ctxHeight > 0 && (ctxWidth != m_width || ctxHeight != m_height)) {
+        // Recreate output texture with new dimensions
+        createOutput(ctx, ctxWidth, ctxHeight);
+    }
+
     bool useTextured = m_material != nullptr && m_material->baseColorView() != nullptr;
 
     // Ensure appropriate pipeline and depth buffer are created

@@ -175,25 +175,32 @@ void AudioIn::init(Context& ctx) {
 }
 
 void AudioIn::process(Context& ctx) {
+    // Capture device is running in background via miniaudio callback
+    // Audio generation is handled by generateBlock() on audio thread
+}
+
+void AudioIn::generateBlock(uint32_t frameCount) {
     if (!m_initialized) {
+        // Output silence
+        if (m_output.frameCount != frameCount) {
+            m_output.resize(frameCount);
+        }
+        std::memset(m_output.samples, 0, frameCount * AUDIO_CHANNELS * sizeof(float));
         return;
     }
 
-    // Get the number of frames to output this frame
-    uint32_t framesToRead = ctx.audioFramesThisFrame();
-
     // Resize output buffer if needed
-    if (m_output.frameCount != framesToRead) {
-        allocateOutput(framesToRead, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
+    if (m_output.frameCount != frameCount) {
+        m_output.resize(frameCount);
     }
 
     // If muted, output silence
     if (m_muted) {
-        clearOutput();
+        std::memset(m_output.samples, 0, frameCount * AUDIO_CHANNELS * sizeof(float));
         return;
     }
 
-    uint32_t samplesToRead = framesToRead * AUDIO_CHANNELS;
+    uint32_t samplesToRead = frameCount * AUDIO_CHANNELS;
     float* out = m_output.samples;
 
     {

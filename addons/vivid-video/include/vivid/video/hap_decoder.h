@@ -171,12 +171,12 @@ public:
     /**
      * @brief Get audio sample rate.
      */
-    uint32_t audioSampleRate() const { return 48000; }
+    uint32_t audioSampleRate() const { return audioSampleRate_; }
 
     /**
      * @brief Get audio channel count.
      */
-    uint32_t audioChannels() const { return 2; }
+    uint32_t audioChannels() const { return audioChannels_; }
 
     /**
      * @brief Get texture.
@@ -209,6 +209,10 @@ private:
     float nextFrameTime_ = 0.0f;
     std::string filePath_;
 
+    // Audio info
+    uint32_t audioSampleRate_ = 48000;
+    uint32_t audioChannels_ = 2;
+
     // DXT buffer for decoded frames
     std::vector<uint8_t> dxtBuffer_;
 
@@ -240,6 +244,7 @@ private:
 
     void prebufferAudio();
     void createTexture();
+    void resetReader();
     void feedAudioBuffer();  // Read from AVAssetReader into ring buffer
     void loopAudioReader();  // Reset audio reader to beginning for looping
 };
