@@ -138,17 +138,15 @@ float Clap::bandpass(float in, int ch) {
     float freq = 1500.0f + static_cast<float>(m_tone) * 1000.0f;  // 1.5kHz to 2.5kHz
     float Q = 1.5f;
     float omega = 6.28318530718f * freq / m_sampleRate;
-    float alpha = std::sin(omega) / (2.0f * Q);
+    float f = 2.0f * std::sin(omega * 0.5f);  // Proper SVF frequency coefficient
 
-    // State-variable filter (simplified)
-    float lp = m_bpState1[ch] + alpha * m_bpState2[ch];
-    float hp = in - lp - Q * m_bpState2[ch];
-    float bp = alpha * hp + m_bpState2[ch];
+    // State-variable filter (damping = 1/Q)
+    float damp = 1.0f / Q;
+    m_bpState2[ch] += f * m_bpState1[ch];  // lowpass
+    float hp = in - m_bpState2[ch] - damp * m_bpState1[ch];
+    m_bpState1[ch] += f * hp;  // bandpass
 
-    m_bpState1[ch] = lp;
-    m_bpState2[ch] = bp;
-
-    return bp * 3.0f;  // Boost bandpass output
+    return m_bpState1[ch] * 3.0f;  // Boost bandpass output
 }
 
 bool Clap::getParam(const std::string& name, float out[4]) {

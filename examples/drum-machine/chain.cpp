@@ -164,7 +164,7 @@ void setup(Context& ctx) {
     // Kick visualizer (bottom)
     auto& kickVis = chain.add<Shape>("kickVis");
     kickVis.type(ShapeType::Circle)
-           .position(0.0f, -0.4f)
+           .position(0.5f, 0.3f)
            .size(0.15f)
            .color(1.0f, 0.3f, 0.2f, 1.0f)
            .softness(0.1f);
@@ -172,7 +172,7 @@ void setup(Context& ctx) {
     // Snare visualizer (center-left)
     auto& snareVis = chain.add<Shape>("snareVis");
     snareVis.type(ShapeType::Circle)
-            .position(-0.3f, 0.0f)
+            .position(0.35f, 0.5f)
             .size(0.12f)
             .color(1.0f, 0.9f, 0.3f, 1.0f)
             .softness(0.1f);
@@ -180,7 +180,7 @@ void setup(Context& ctx) {
     // Hi-hat visualizer (center-right)
     auto& hihatVis = chain.add<Shape>("hihatVis");
     hihatVis.type(ShapeType::Circle)
-            .position(0.3f, 0.0f)
+            .position(0.65f, 0.5f)
             .size(0.08f)
             .color(0.3f, 0.9f, 1.0f, 1.0f)
             .softness(0.1f);
@@ -188,7 +188,7 @@ void setup(Context& ctx) {
     // Clap visualizer (top)
     auto& clapVis = chain.add<Shape>("clapVis");
     clapVis.type(ShapeType::Circle)
-           .position(0.0f, 0.4f)
+           .position(0.5f, 0.7f)
            .size(0.1f)
            .color(0.9f, 0.4f, 1.0f, 1.0f)
            .softness(0.1f);
