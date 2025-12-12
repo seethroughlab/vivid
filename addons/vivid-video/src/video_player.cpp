@@ -92,7 +92,11 @@ void VideoPlayer::loadVideo(Context& ctx) {
             m_outputView = m_hapDecoder->textureView();
             m_width = m_hapDecoder->width();
             m_height = m_hapDecoder->height();
+            m_resolutionLocked = true;  // Lock to video's native resolution
             m_needsReload = false;
+
+            // Apply stored volume
+            m_hapDecoder->setVolume(m_volume);
 
             if (m_autoPlay) {
                 m_hapDecoder->play();
@@ -120,7 +124,11 @@ void VideoPlayer::loadVideo(Context& ctx) {
         m_outputView = m_playbackDecoder->textureView();
         m_width = m_playbackDecoder->width();
         m_height = m_playbackDecoder->height();
+        m_resolutionLocked = true;  // Lock to video's native resolution
         m_needsReload = false;
+
+        // Apply stored volume
+        m_playbackDecoder->setVolume(m_volume);
 
         // Note: AVPlayer auto-plays, and handles audio internally
         std::cout << "[VideoPlayer] Loaded: " << m_filePath
@@ -153,7 +161,11 @@ void VideoPlayer::loadVideo(Context& ctx) {
                 m_outputView = m_dshowDecoder->textureView();
                 m_width = m_dshowDecoder->width();
                 m_height = m_dshowDecoder->height();
+                m_resolutionLocked = true;  // Lock to video's native resolution
                 m_needsReload = false;
+
+                // Apply stored volume
+                m_dshowDecoder->setVolume(m_volume);
 
                 if (m_autoPlay) {
                     m_dshowDecoder->play();
@@ -179,7 +191,11 @@ void VideoPlayer::loadVideo(Context& ctx) {
     m_outputView = m_standardDecoder->textureView();
     m_width = m_standardDecoder->width();
     m_height = m_standardDecoder->height();
+    m_resolutionLocked = true;  // Lock to video's native resolution
     m_needsReload = false;
+
+    // Apply stored volume
+    m_standardDecoder->setVolume(m_volume);
 
     if (m_autoPlay) {
         m_standardDecoder->play();
@@ -191,7 +207,7 @@ void VideoPlayer::loadVideo(Context& ctx) {
 }
 
 void VideoPlayer::process(Context& ctx) {
-    checkResize(ctx);
+    // Video uses loaded file dimensions - no auto-resize
 
     // VideoPlayer is streaming - always cooks
 
@@ -486,6 +502,7 @@ void VideoPlayer::createFallbackTexture(Context& ctx) {
 }
 
 VideoPlayer& VideoPlayer::volume(float v) {
+    m_volume = v;  // Store for later application if decoder not yet ready
     if (m_isHAP && m_hapDecoder) {
         m_hapDecoder->setVolume(v);
     }

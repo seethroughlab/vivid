@@ -39,7 +39,7 @@ void Particles::loadTexture(Context& ctx) {
 
 void Particles::process(Context& ctx) {
     if (!m_initialized) init(ctx);
-    checkResize(ctx);
+    // Generators use their declared resolution (default 1280x720)
 
     // Particles is a simulation - always cooks
 

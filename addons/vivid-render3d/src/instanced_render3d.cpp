@@ -996,8 +996,7 @@ void InstancedRender3D::uploadInstances() {
 }
 
 void InstancedRender3D::process(Context& ctx) {
-    // Check if window size changed (e.g., fullscreen toggle)
-    checkResize(ctx);
+    // Instanced renderer uses declared resolution() - no auto-resize
 
     if (!needsCook()) return;
 

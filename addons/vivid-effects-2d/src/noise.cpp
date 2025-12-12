@@ -495,8 +495,7 @@ void Noise::process(Context& ctx) {
         init(ctx);
     }
 
-    // Handle window resize / fullscreen
-    checkResize(ctx);
+    // Generators use their declared resolution (default 1280x720)
 
     // Noise is animated if speed > 0
     bool animated = (m_speed > 0.0f);

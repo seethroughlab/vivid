@@ -198,8 +198,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void HSV::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
-    // Handle window resize / fullscreen
-    checkResize(ctx);
+    // Match input resolution
+    matchInputResolution(0);
 
     WGPUTextureView inView = inputView(0);
     if (!inView) return;

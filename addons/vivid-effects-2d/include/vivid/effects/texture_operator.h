@@ -94,21 +94,32 @@ public:
     TextureOperator& resolution(int w, int h) { m_width = w; m_height = h; m_resolutionLocked = true; return *this; }
 
     /**
-     * @brief Lock resolution to prevent auto-resize to context size
-     * @param locked If true, checkResize() will not change resolution
+     * @brief Lock resolution to prevent auto-resize
+     * @param locked If true, resolution won't change
      * @return Reference for chaining
+     * @deprecated Resolution is now locked by default. Use resolution() to set size.
      */
     TextureOperator& lockResolution(bool locked = true) { m_resolutionLocked = locked; return *this; }
 
     /**
-     * @brief Check if context size changed and resize output texture if needed
-     * @param ctx The context to check dimensions from
-     * @return true if resize occurred, false otherwise
+     * @brief DEPRECATED: No longer auto-resizes to window size
+     * @param ctx The context (unused)
+     * @return Always returns false
      *
-     * Call this at the start of process() to handle window resize/fullscreen.
-     * Does nothing if resolution is locked via resolution() or lockResolution().
+     * @deprecated Operators should use their declared resolution. Processors
+     * should use matchInputResolution() to inherit size from input.
      */
     bool checkResize(Context& ctx);
+
+    /**
+     * @brief Match resolution to input operator's output size
+     * @param index Input slot index (default 0)
+     * @return true if resize occurred, false if no input or same size
+     *
+     * Processors should call this to inherit their input's resolution.
+     * Example: blur.process() calls matchInputResolution(0) to match input.
+     */
+    bool matchInputResolution(int index = 0);
 
     /// @}
     // -------------------------------------------------------------------------

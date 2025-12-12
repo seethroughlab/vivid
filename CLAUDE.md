@@ -11,6 +11,25 @@ cmake --build build                       # Incremental build
 doxygen Doxyfile                          # Generate API docs
 ```
 
+## CLI Options
+
+```bash
+./build/bin/vivid <project-path>                              # Run normally
+./build/bin/vivid <project-path> --snapshot output.png        # Capture frame and exit
+./build/bin/vivid <project-path> --snapshot=output.png        # Alternative syntax
+./build/bin/vivid <project-path> --snapshot output.png --snapshot-frame 10  # Wait 10 frames
+```
+
+### Snapshot Mode (for CI/Testing)
+The `--snapshot` flag runs the chain for a few frames, saves a PNG, and exits. Useful for:
+- **Automated testing**: Verify visual output hasn't regressed
+- **AI evaluation**: Claude can run chains and inspect the output
+- **CI pipelines**: Generate thumbnails or verify examples compile and run
+
+Options:
+- `--snapshot <path.png>` - Output path for the snapshot
+- `--snapshot-frame <N>` - Wait N frames before capture (default: 5, allows warm-up)
+
 ## Project Structure
 
 ```

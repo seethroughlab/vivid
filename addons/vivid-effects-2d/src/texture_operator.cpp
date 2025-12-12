@@ -24,17 +24,33 @@ void TextureOperator::createOutput(Context& ctx) {
     createOutput(ctx, m_width, m_height);
 }
 
-bool TextureOperator::checkResize(Context& ctx) {
-    // Don't auto-resize if resolution is locked (set via resolution() or lockResolution())
-    if (m_resolutionLocked) {
-        return false;
+bool TextureOperator::checkResize(Context& /*ctx*/) {
+    // DEPRECATED: No longer auto-resizes to window size.
+    // Operators use their declared resolution (default 1280x720).
+    // Processors should call matchInputResolution() to inherit input size.
+    return false;
+}
+
+bool TextureOperator::matchInputResolution(int index) {
+    Operator* input = getInput(index);
+    if (!input) return false;
+
+    // Get input dimensions
+    int inputWidth = 0, inputHeight = 0;
+    if (input->outputKind() == OutputKind::Texture) {
+        if (auto* texOp = dynamic_cast<TextureOperator*>(input)) {
+            inputWidth = texOp->outputWidth();
+            inputHeight = texOp->outputHeight();
+        }
     }
 
-    int ctxWidth = ctx.width();
-    int ctxHeight = ctx.height();
-    if (ctxWidth > 0 && ctxHeight > 0 && (ctxWidth != m_width || ctxHeight != m_height)) {
-        createOutput(ctx, ctxWidth, ctxHeight);
-        markDirty();  // Force re-render to the new texture
+    if (inputWidth <= 0 || inputHeight <= 0) return false;
+
+    // Resize if dimensions differ
+    if (inputWidth != m_width || inputHeight != m_height) {
+        m_width = inputWidth;
+        m_height = inputHeight;
+        markDirty();
         return true;
     }
     return false;

@@ -7,6 +7,7 @@
 #include <vivid/hot_reload.h>
 #include <vivid/editor_bridge.h>
 #include <vivid/audio_buffer.h>
+#include <vivid/video_exporter.h>
 #include "imgui/imgui_integration.h"
 #include "imgui/chain_visualizer.h"
 #include <webgpu/webgpu.h>
@@ -147,8 +148,26 @@ int main(int argc, char** argv) {
 
     // Parse arguments
     fs::path projectPath;
-    if (argc >= 2) {
-        projectPath = argv[1];
+    std::string snapshotPath;
+    int snapshotFrame = 5;  // Default: capture after 5 frames to allow warm-up
+    bool headless = false;
+
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+        if (arg == "--snapshot" && i + 1 < argc) {
+            snapshotPath = argv[++i];
+        } else if (arg.rfind("--snapshot=", 0) == 0) {
+            snapshotPath = arg.substr(11);
+        } else if (arg == "--snapshot-frame" && i + 1 < argc) {
+            snapshotFrame = std::atoi(argv[++i]);
+        } else if (arg.rfind("--snapshot-frame=", 0) == 0) {
+            snapshotFrame = std::atoi(arg.substr(17).c_str());
+        } else if (arg == "--headless") {
+            headless = true;
+        } else if (arg[0] != '-') {
+            // Non-flag argument is the project path
+            projectPath = arg;
+        }
     }
 
     // Initialize GLFW
@@ -476,6 +495,10 @@ int main(int argc, char** argv) {
     double lastFrameTime = glfwGetTime();
     const size_t kHistorySize = 60;  // Keep last 60 samples
 
+    // Snapshot mode tracking
+    int snapshotFrameCounter = 0;
+    bool snapshotSaved = false;
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -690,11 +713,31 @@ int main(int argc, char** argv) {
                 }
             }
 
-            // Save snapshot if requested
+            // Save snapshot if requested (interactive UI)
             if (chainVisualizer.snapshotRequested()) {
                 WGPUTexture outputTex = ctx.chain().outputTexture();
                 if (outputTex) {
                     chainVisualizer.saveSnapshot(device, queue, outputTex, ctx);
+                }
+            }
+
+            // Automated snapshot mode (CLI --snapshot flag)
+            if (!snapshotPath.empty() && !snapshotSaved) {
+                snapshotFrameCounter++;
+                if (snapshotFrameCounter >= snapshotFrame) {
+                    WGPUTexture outputTex = ctx.chain().outputTexture();
+                    if (outputTex) {
+                        std::cout << "Saving snapshot to: " << snapshotPath << std::endl;
+                        if (VideoExporter::saveSnapshot(device, queue, outputTex, snapshotPath)) {
+                            std::cout << "Snapshot saved successfully" << std::endl;
+                            snapshotSaved = true;
+                            // Exit after saving
+                            glfwSetWindowShouldClose(window, GLFW_TRUE);
+                        } else {
+                            std::cerr << "Failed to save snapshot" << std::endl;
+                            snapshotSaved = true;  // Don't retry
+                        }
+                    }
                 }
             }
         }

@@ -179,7 +179,9 @@ void Displace::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
-    checkResize(ctx);
+
+    // Match input resolution (from source input)
+    matchInputResolution(0);
 
     // Get input textures
     WGPUTextureView sourceView = inputView(0);

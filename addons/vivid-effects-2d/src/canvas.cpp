@@ -111,7 +111,7 @@ void Canvas::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
-    checkResize(ctx);
+    // Canvas uses declared size() - no auto-resize
 
     // Auto-begin frame if user didn't call clear()
     if (!m_frameBegun) {

@@ -6,7 +6,8 @@
 namespace vivid::effects {
 
 void Output::process(Context& ctx) {
-    checkResize(ctx);
+    // Match input resolution
+    matchInputResolution(0);
 
     // Get the input texture view
     WGPUTextureView view = inputView(0);

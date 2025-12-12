@@ -26,7 +26,7 @@ void PointSprites::init(Context& ctx) {
 
 void PointSprites::process(Context& ctx) {
     if (!m_initialized) init(ctx);
-    checkResize(ctx);
+    // Generators use their declared resolution (default 1280x720)
 
     // PointSprites is animated if animate or pulseSize is enabled
     bool animated = (m_animate || m_pulseSize);

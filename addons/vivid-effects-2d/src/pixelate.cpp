@@ -145,7 +145,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void Pixelate::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
-    checkResize(ctx);
+    // Match input resolution
+    matchInputResolution(0);
 
     WGPUTextureView inView = inputView(0);
     if (!inView) return;

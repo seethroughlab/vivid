@@ -1,6 +1,8 @@
-// Geometry Pipeline - Vivid Example
-// Demonstrates the node-based geometry workflow with CSG operations
-// Using the new SceneComposer::create() API
+// 3D Basics - Vivid Example
+// Demonstrates node-based geometry workflow with CSG operations
+//
+// Resolution: Render3D uses its declared resolution() for the render target
+// (defaults to 1280x720 if not specified). Output is scaled to window for display.
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -87,6 +89,7 @@ void setup(Context& ctx) {
 
     // =========================================================================
     // RENDER3D - Render scene to texture
+    // Set explicit resolution for the render target (1920x1080 for HD output)
     // =========================================================================
 
     auto& render = chain.add<Render3D>("render3d")
@@ -97,7 +100,7 @@ void setup(Context& ctx) {
         .lightColor(glm::vec3(1, 1, 1))
         .ambient(0.2f)
         .clearColor(0.08f, 0.08f, 0.12f)
-        .resolution(1280, 720);
+        .resolution(1920, 1080);  // Render at 1080p
 
     chain.output("render3d");
 

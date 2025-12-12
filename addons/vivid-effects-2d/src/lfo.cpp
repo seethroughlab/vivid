@@ -169,7 +169,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 void LFO::process(Context& ctx) {
     if (!m_initialized) init(ctx);
-    checkResize(ctx);
+    // Generators use their declared resolution (default 1280x720)
 
     // LFO is always animated - always cooks
 

@@ -136,11 +136,13 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 void Switch::process(Context& ctx) {
     if (!m_initialized) init(ctx);
-    checkResize(ctx);
 
     // Clamp index to valid range
     int maxIndex = static_cast<int>(inputCount()) - 1;
     int idx = std::clamp(m_index.get(), 0, std::max(0, maxIndex));
+
+    // Match resolution to selected input
+    matchInputResolution(idx);
 
     WGPUTextureView inView = inputView(idx);
     if (!inView) return;

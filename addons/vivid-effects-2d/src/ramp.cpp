@@ -252,7 +252,7 @@ void Ramp::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
-    checkResize(ctx);
+    // Generators use their declared resolution (default 1280x720)
 
     // Ramp is animated if hueSpeed > 0
     bool animated = (m_hueSpeed > 0.0f);

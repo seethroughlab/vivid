@@ -1,5 +1,10 @@
 // Chain Demo - Vivid Example
 // Demonstrates the Chain API with image distortion and HSV color cycling
+//
+// Resolution handling:
+// - Image: Uses loaded file's native resolution
+// - Noise, Ramp: Generators use their declared resolution (or default 1280x720)
+// - Displace, Composite: Processors inherit resolution from their input
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -18,10 +23,12 @@ void setup(Context& ctx) {
     auto& ramp = chain.add<Ramp>("ramp");
     auto& comp = chain.add<Composite>("comp");
 
-    // Load an image from assets
+    // Load an image - uses the file's native resolution
     image.file("assets/images/nature.jpg");
 
     // Configure noise for displacement - use Simplex for smooth distortion
+    // Note: Noise resolution should match the image for proper displacement
+    // If not specified, generators default to 1280x720
     noise.type(NoiseType::Simplex)
         .scale(3.0f)
         .speed(0.3f)
@@ -29,22 +36,22 @@ void setup(Context& ctx) {
         .lacunarity(2.0f)
         .persistence(0.5f);
 
-    // Configure displacement: image distorted by noise
+    // Displace: processor that inherits resolution from its source input (image)
     displace.source(&image)
         .map(&noise)
         .strength(0.08f);
 
-    // Configure HSV ramp for color tinting
+    // HSV ramp for color tinting - generator with its own resolution
     ramp.type(RampType::Radial)
         .hueSpeed(0.1f)
         .hueRange(0.3f)
         .saturation(0.6f)
         .brightness(1.0f);
 
-    // Multiply displaced image with color ramp for tinting effect
+    // Composite: inherits resolution from first input (displace → image resolution)
     comp.inputA(&displace).inputB(&ramp).mode(BlendMode::Multiply);
 
-    // Specify output
+    // Final output is scaled to window size for display
     chain.output("comp");
 }
 

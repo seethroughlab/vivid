@@ -356,8 +356,8 @@ void Composite::process(Context& ctx) {
         init(ctx);
     }
 
-    // Handle window resize / fullscreen
-    checkResize(ctx);
+    // Match input resolution (from first input)
+    matchInputResolution(0);
 
     updateBindGroup(ctx);
 

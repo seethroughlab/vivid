@@ -780,7 +780,7 @@ void Plexus::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
-    checkResize(ctx);
+    // Generators use their declared resolution (default 1280x720)
 
     // Plexus is a simulation - always cooks
 

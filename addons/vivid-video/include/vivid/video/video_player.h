@@ -232,6 +232,7 @@ private:
     bool m_usePlaybackDecoder = false;  // True when using AVFPlaybackDecoder
     bool m_useDShowDecoder = false;     // True when using DirectShow fallback (Windows)
     bool m_internalAudioEnabled = true; // Track internal audio state for playback decoder
+    float m_volume = 1.0f;              // Stored volume (applied when decoder is ready)
 
     // Fallback texture for when video fails to load
     WGPUTexture m_fallbackTexture = nullptr;

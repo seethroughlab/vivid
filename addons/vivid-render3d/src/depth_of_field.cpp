@@ -216,7 +216,8 @@ void DepthOfField::createPipeline(Context& ctx) {
 void DepthOfField::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
-    checkResize(ctx);
+    // Match input resolution
+    matchInputResolution(0);
 
     if (!m_render3d || !m_render3d->hasDepthOutput()) {
         // No depth output available, just pass through

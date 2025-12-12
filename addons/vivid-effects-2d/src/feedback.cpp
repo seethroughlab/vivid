@@ -264,7 +264,9 @@ void Feedback::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
-    checkResize(ctx);
+
+    // Match input resolution
+    matchInputResolution(0);
 
     // Feedback is stateful - always cooks
 

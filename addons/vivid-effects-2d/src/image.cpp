@@ -115,7 +115,7 @@ void Image::process(Context& ctx) {
     if (!m_initialized || m_needsReload) {
         init(ctx);
     }
-    checkResize(ctx);
+    // Image uses loaded file dimensions - no auto-resize
 
     if (!needsCook()) return;
 

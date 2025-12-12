@@ -134,7 +134,7 @@ void Webcam::openCamera(Context& ctx) {
 }
 
 void Webcam::process(Context& ctx) {
-    checkResize(ctx);
+    // Webcam uses camera resolution - no auto-resize
 
     // Webcam is streaming - always cooks
 

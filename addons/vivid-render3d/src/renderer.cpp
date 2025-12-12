@@ -2073,7 +2073,7 @@ void Render3D::process(Context& ctx) {
         init(ctx);
     }
 
-    checkResize(ctx);
+    // 3D renderer uses declared resolution() - no auto-resize
     createDepthBuffer(ctx);  // Recreate depth buffer if size changed
 
     if (!needsCook()) return;
