@@ -204,7 +204,8 @@ float ChainVisualizer::estimateNodeHeight(const vivid::OperatorInfo& info) const
 void ChainVisualizer::buildLayout(const std::vector<vivid::OperatorInfo>& operators) {
     m_opToNodeId.clear();
     m_nodePositioned.clear();
-    m_nodePositioned[SCREEN_NODE_ID] = false;  // Reset Screen node position on layout rebuild
+    m_nodePositioned[SCREEN_NODE_ID] = false;    // Reset Screen node position on layout rebuild
+    m_nodePositioned[SPEAKERS_NODE_ID] = false;  // Reset Speakers node position on layout rebuild
 
     // Assign node IDs to operators
     for (size_t i = 0; i < operators.size(); ++i) {
