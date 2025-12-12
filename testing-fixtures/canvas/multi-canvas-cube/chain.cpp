@@ -19,15 +19,17 @@ using namespace vivid::render3d;
 using namespace vivid::video;
 
 // Canvas drawing helpers
+static const float LETTER_SPACING = 0.0f;  // No extra spacing needed with proper fonts
+
 static void drawFront(Canvas& c, float time) {
     c.clear(0.8f, 0.2f, 0.2f, 1.0f);  // Red
-    c.textCentered("FRONT", 256, 256, glm::vec4(1, 1, 1, 1));
+    c.textCentered("FRONT", 256, 256, glm::vec4(1, 1, 1, 1), LETTER_SPACING);
     c.circleFilled(256 + 100 * std::sin(time), 350, 40, glm::vec4(1, 1, 1, 0.8f));
 }
 
 static void drawBack(Canvas& c, float time) {
     c.clear(0.2f, 0.2f, 0.8f, 1.0f);  // Blue
-    c.textCentered("BACK", 256, 256, glm::vec4(1, 1, 1, 1));
+    c.textCentered("BACK", 256, 256, glm::vec4(1, 1, 1, 1), LETTER_SPACING);
     float offset = 50 * std::sin(time * 0.8f);
     c.rectFilled(156 + offset, 320, 80, 80, glm::vec4(1, 1, 1, 0.7f));
     c.rectFilled(276 - offset, 320, 80, 80, glm::vec4(1, 1, 0, 0.7f));
@@ -35,7 +37,7 @@ static void drawBack(Canvas& c, float time) {
 
 static void drawLeft(Canvas& c, float time) {
     c.clear(0.2f, 0.7f, 0.2f, 1.0f);  // Green
-    c.textCentered("LEFT", 128, 128, glm::vec4(1, 1, 1, 1));
+    c.textCentered("LEFT", 128, 128, glm::vec4(1, 1, 1, 1), LETTER_SPACING);
     // Diagonal lines
     for (int i = 0; i < 5; i++) {
         float offset = 40 * i + 20 * std::sin(time + i);
@@ -45,7 +47,7 @@ static void drawLeft(Canvas& c, float time) {
 
 static void drawRight(Canvas& c, float time) {
     c.clear(0.8f, 0.8f, 0.2f, 1.0f);  // Yellow
-    c.textCentered("RIGHT", 128, 128, glm::vec4(0, 0, 0, 1));
+    c.textCentered("RIGHT", 128, 128, glm::vec4(0, 0, 0, 1), LETTER_SPACING);
     // Triangles
     float wobble = 20 * std::sin(time * 1.2f);
     c.triangleFilled(
@@ -58,11 +60,11 @@ static void drawRight(Canvas& c, float time) {
 
 static void drawBottom(Canvas& c, float time, int frame) {
     c.clear(0.9f, 0.9f, 0.9f, 1.0f);  // White
-    c.textCentered("BOTTOM", 512, 400, glm::vec4(0, 0, 0, 1));
+    c.textCentered("BOTTOM", 512, 400, glm::vec4(0, 0, 0, 1), LETTER_SPACING);
     // Frame counter
     char buf[64];
     snprintf(buf, sizeof(buf), "Frame: %d", frame);
-    c.textCentered(buf, 512, 550, glm::vec4(0.3f, 0.3f, 0.3f, 1));
+    c.textCentered(buf, 512, 550, glm::vec4(0.3f, 0.3f, 0.3f, 1), LETTER_SPACING);
     // Pulsing circle
     float radius = 80 + 30 * std::sin(time * 2);
     c.circleFilled(512, 700, radius, glm::vec4(0.2f, 0.5f, 0.8f, 0.7f));
@@ -71,7 +73,7 @@ static void drawBottom(Canvas& c, float time, int frame) {
 static void drawTopOverlay(Canvas& c, float time) {
     // Transparent canvas to overlay on video
     c.clear(0, 0, 0, 0);  // Fully transparent
-    c.textCentered("VIDEO", 256, 80, glm::vec4(1, 1, 1, 0.9f));
+    c.textCentered("VIDEO", 256, 80, glm::vec4(1, 1, 1, 0.9f), LETTER_SPACING);
     // Animated border
     float pulse = 0.5f + 0.3f * std::sin(time * 3);
     c.rect(20, 20, 472, 472, 4, glm::vec4(1, 1, 0, pulse));
@@ -82,19 +84,19 @@ void setup(Context& ctx) {
 
     // Load font for all canvases
     auto& frontCanvas = chain.add<Canvas>("front").size(512, 512);
-    frontCanvas.loadFont(ctx, "assets/fonts/Pixeled.ttf", 32);
+    frontCanvas.loadFont(ctx, "assets/fonts/space age.ttf", 32);
 
     auto& backCanvas = chain.add<Canvas>("back").size(512, 512);
-    backCanvas.loadFont(ctx, "assets/fonts/Pixeled.ttf", 32);
+    backCanvas.loadFont(ctx, "assets/fonts/space age.ttf", 32);
 
     auto& leftCanvas = chain.add<Canvas>("left").size(256, 256);
-    leftCanvas.loadFont(ctx, "assets/fonts/Pixeled.ttf", 20);
+    leftCanvas.loadFont(ctx, "assets/fonts/space age.ttf", 20);
 
     auto& rightCanvas = chain.add<Canvas>("right").size(256, 256);
-    rightCanvas.loadFont(ctx, "assets/fonts/Pixeled.ttf", 20);
+    rightCanvas.loadFont(ctx, "assets/fonts/space age.ttf", 20);
 
     auto& bottomCanvas = chain.add<Canvas>("bottom").size(1024, 1024);
-    bottomCanvas.loadFont(ctx, "assets/fonts/Pixeled.ttf", 48);
+    bottomCanvas.loadFont(ctx, "assets/fonts/space age.ttf", 48);
 
     // Top face: Video + Canvas overlay
     auto& video = chain.add<VideoPlayer>("video")
@@ -103,31 +105,44 @@ void setup(Context& ctx) {
         .volume(0.0f);  // Mute audio for test fixture
 
     auto& topOverlay = chain.add<Canvas>("topOverlay").size(512, 512);
-    topOverlay.loadFont(ctx, "assets/fonts/Pixeled.ttf", 32);
+    topOverlay.loadFont(ctx, "assets/fonts/space age.ttf", 32);
 
     auto& topComposite = chain.add<Composite>("top")
         .input(0, &video)
         .input(1, &topOverlay)
         .mode(BlendMode::Over);
 
-    // Create materials for each face (double-sided to avoid backface culling issues)
+    // Create materials for each face
+    // Using metallicFactor(0) makes surfaces diffuse (non-reflective)
     auto& matFront = chain.add<TexturedMaterial>("matFront")
         .baseColorInput(&frontCanvas)
+        .metallicFactor(0.0f)
+        .roughnessFactor(1.0f)
         .doubleSided(true);
     auto& matBack = chain.add<TexturedMaterial>("matBack")
         .baseColorInput(&backCanvas)
+        .metallicFactor(0.0f)
+        .roughnessFactor(1.0f)
         .doubleSided(true);
     auto& matLeft = chain.add<TexturedMaterial>("matLeft")
         .baseColorInput(&leftCanvas)
+        .metallicFactor(0.0f)
+        .roughnessFactor(1.0f)
         .doubleSided(true);
     auto& matRight = chain.add<TexturedMaterial>("matRight")
         .baseColorInput(&rightCanvas)
+        .metallicFactor(0.0f)
+        .roughnessFactor(1.0f)
         .doubleSided(true);
     auto& matTop = chain.add<TexturedMaterial>("matTop")
         .baseColorInput(&topComposite)
+        .metallicFactor(0.0f)
+        .roughnessFactor(1.0f)
         .doubleSided(true);
     auto& matBottom = chain.add<TexturedMaterial>("matBottom")
         .baseColorInput(&bottomCanvas)
+        .metallicFactor(0.0f)
+        .roughnessFactor(1.0f)
         .doubleSided(true);
 
     // Create scene with 6 planes as cube faces
@@ -138,20 +153,19 @@ void setup(Context& ctx) {
     // To preserve correct winding after rotation, we must be careful about rotation direction
     // Faces pointing toward negative axes need rotation that preserves front-face winding
 
-    // Front (Z+): rotate -90° around X to face +Z
+    // Front (Z+): rotate +90° around X to face +Z with correct UV orientation
     glm::mat4 frontT = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 0.5f));
-    frontT = glm::rotate(frontT, -glm::half_pi<float>(), glm::vec3(1, 0, 0));
+    frontT = glm::rotate(frontT, glm::half_pi<float>(), glm::vec3(1, 0, 0));  // +90° faces +Z with correct UVs
     scene.add<Plane>("planeFront", frontT)
         .size(1.0f, 1.0f);
-    scene.entries().back().material = &matFront;
+    scene.setMaterial(scene.entries().size() - 1, &matFront);
 
-    // Back (Z-): rotate -90° around X (face +Z), then 180° around Y (flip to -Z, preserves winding)
+    // Back (Z-): rotate -90° around X to face -Z with correct UV orientation
     glm::mat4 backT = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, -0.5f));
-    backT = glm::rotate(backT, glm::pi<float>(), glm::vec3(0, 1, 0));
-    backT = glm::rotate(backT, -glm::half_pi<float>(), glm::vec3(1, 0, 0));
+    backT = glm::rotate(backT, -glm::half_pi<float>(), glm::vec3(1, 0, 0));  // -90° faces -Z with correct UVs
     scene.add<Plane>("planeBack", backT)
         .size(1.0f, 1.0f);
-    scene.entries().back().material = &matBack;
+    scene.setMaterial(scene.entries().size() - 1, &matBack);
 
     // Left (X-): rotate -90° around Z (face +X), then 180° around Y (flip to -X)
     glm::mat4 leftT = glm::translate(glm::mat4(1.0f), glm::vec3(-0.5f, 0, 0));
@@ -159,27 +173,27 @@ void setup(Context& ctx) {
     leftT = glm::rotate(leftT, -glm::half_pi<float>(), glm::vec3(0, 0, 1));
     scene.add<Plane>("planeLeft", leftT)
         .size(1.0f, 1.0f);
-    scene.entries().back().material = &matLeft;
+    scene.setMaterial(scene.entries().size() - 1, &matLeft);
 
     // Right (X+): rotate -90° around Z to face +X
     glm::mat4 rightT = glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 0, 0));
     rightT = glm::rotate(rightT, -glm::half_pi<float>(), glm::vec3(0, 0, 1));
     scene.add<Plane>("planeRight", rightT)
         .size(1.0f, 1.0f);
-    scene.entries().back().material = &matRight;
+    scene.setMaterial(scene.entries().size() - 1, &matRight);
 
     // Top (Y+): plane already faces +Y, just translate
     glm::mat4 topT = glm::translate(glm::mat4(1.0f), glm::vec3(0, 0.5f, 0));
     scene.add<Plane>("planeTop", topT)
         .size(1.0f, 1.0f);
-    scene.entries().back().material = &matTop;
+    scene.setMaterial(scene.entries().size() - 1, &matTop);
 
     // Bottom (Y-): rotate 180° around Z to face -Y (preserves winding better than X rotation)
     glm::mat4 bottomT = glm::translate(glm::mat4(1.0f), glm::vec3(0, -0.5f, 0));
     bottomT = glm::rotate(bottomT, glm::pi<float>(), glm::vec3(0, 0, 1));
     scene.add<Plane>("planeBottom", bottomT)
         .size(1.0f, 1.0f);
-    scene.entries().back().material = &matBottom;
+    scene.setMaterial(scene.entries().size() - 1, &matBottom);
 
     // Camera
     auto& camera = chain.add<CameraOperator>("camera")
@@ -188,18 +202,18 @@ void setup(Context& ctx) {
         .azimuth(0.0f)
         .fov(50.0f);
 
-    // Light
+    // Light - high intensity for bright diffuse surfaces
     auto& light = chain.add<DirectionalLight>("light")
         .direction(1.0f, 1.0f, 1.0f)
-        .intensity(1.5f);
+        .intensity(3.0f);
 
-    // Render - use PBR mode to sample textures from materials
+    // Render with high ambient for even lighting on all faces
     auto& render = chain.add<Render3D>("render")
         .input(&scene)
         .cameraInput(&camera)
         .lightInput(&light)
         .shadingMode(ShadingMode::PBR)
-        .ambient(1.0f)  // High ambient so textures are visible without much shading
+        .ambient(1.0f)
         .clearColor(0.1f, 0.1f, 0.15f);
 
     chain.output("render");

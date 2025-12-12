@@ -341,6 +341,26 @@ public:
     }
 
     /**
+     * @brief Set material for an entry by index with dependency tracking
+     * @param index Entry index (order added)
+     * @param material TexturedMaterial to use (nullptr for default material)
+     * @return Reference to this for chaining
+     *
+     * Use this instead of directly setting entries()[i].material to ensure
+     * proper dependency tracking (scene updates when material's inputs change).
+     */
+    SceneComposer& setMaterial(size_t index, TexturedMaterial* material) {
+        if (index < m_entries.size()) {
+            m_entries[index].material = material;
+            if (material) {
+                setInput(static_cast<int>(inputs_.size()), material);
+            }
+            markDirty();
+        }
+        return *this;
+    }
+
+    /**
      * @brief Get the composed scene
      * @return Reference to the output scene
      *
@@ -364,6 +384,8 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!needsCook()) return;
+
         m_scene.clear();
 
         for (auto& entry : m_entries) {
@@ -385,6 +407,8 @@ public:
                 }
             }
         }
+
+        didCook();
     }
 
     void cleanup() override {

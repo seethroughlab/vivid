@@ -4,7 +4,7 @@
  * @file font_atlas.h
  * @brief Font atlas for efficient text rendering
  *
- * Generates a texture atlas from a TTF font file using stb_truetype.
+ * Generates a texture atlas from a TTF font file using FreeType.
  * Used by Canvas operator for text rendering.
  */
 
@@ -13,6 +13,10 @@
 #include <string>
 #include <vector>
 #include <unordered_map>
+
+// Forward declare FreeType types
+typedef struct FT_LibraryRec_* FT_Library;
+typedef struct FT_FaceRec_* FT_Face;
 
 namespace vivid {
 
@@ -31,8 +35,8 @@ struct GlyphInfo {
 /**
  * @brief Font atlas for efficient text rendering
  *
- * Generates a texture atlas from a TTF font file using stb_truetype.
- * Supports ASCII characters 32-126.
+ * Generates a texture atlas from a TTF font file using FreeType.
+ * Supports ASCII characters 32-126 with kerning support.
  *
  * @par Example
  * @code
@@ -76,6 +80,17 @@ public:
      */
     glm::vec2 measureText(const std::string& text) const;
 
+    /**
+     * @brief Get kerning adjustment between two characters
+     * @param left Previous character
+     * @param right Current character
+     * @return Kerning offset in pixels (typically negative for tighter pairs)
+     */
+    float getKerning(char left, char right) const;
+
+    /// @brief Check if font has kerning information
+    bool hasKerning() const { return m_hasKerning; }
+
     /// @brief Get the atlas texture view
     WGPUTextureView textureView() const { return m_textureView; }
 
@@ -102,11 +117,17 @@ private:
     WGPUTextureView m_textureView = nullptr;
 
     std::unordered_map<char, GlyphInfo> m_glyphs;
+    std::unordered_map<char, unsigned int> m_glyphIndices;  // For kerning lookups
     float m_fontSize = 0;
     float m_lineHeight = 0;
     float m_ascent = 0;
     float m_descent = 0;
     int m_atlasSize = 0;
+
+    // FreeType handles (kept for kerning queries)
+    FT_Library m_ftLibrary = nullptr;
+    FT_Face m_ftFace = nullptr;
+    bool m_hasKerning = false;
 };
 
 } // namespace vivid

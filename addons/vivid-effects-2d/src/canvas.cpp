@@ -24,6 +24,7 @@ void Canvas::clear(float r, float g, float b, float a) {
     m_clearColor = glm::vec4(r, g, b, a);
     m_frameBegun = true;
     m_renderer->begin(m_width, m_height, m_clearColor);
+    markDirty();  // Signal that canvas content has changed
 }
 
 void Canvas::rectFilled(float x, float y, float w, float h, const glm::vec4& color) {
@@ -68,12 +69,13 @@ void Canvas::triangleFilled(glm::vec2 a, glm::vec2 b, glm::vec2 c, const glm::ve
     m_renderer->triangleFilled(a, b, c, color);
 }
 
-void Canvas::text(const std::string& str, float x, float y, const glm::vec4& color) {
+void Canvas::text(const std::string& str, float x, float y, const glm::vec4& color,
+                  float letterSpacing) {
     if (!m_frameBegun) {
         clear(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
     }
     if (m_font && m_font->valid()) {
-        m_renderer->text(*m_font, str, x, y, color);
+        m_renderer->text(*m_font, str, x, y, color, letterSpacing);
     } else {
         static int warnCount = 0;
         if (warnCount++ < 5) {
@@ -82,11 +84,14 @@ void Canvas::text(const std::string& str, float x, float y, const glm::vec4& col
     }
 }
 
-void Canvas::textCentered(const std::string& str, float x, float y, const glm::vec4& color) {
+void Canvas::textCentered(const std::string& str, float x, float y, const glm::vec4& color,
+                          float letterSpacing) {
     if (!m_font || !m_font->valid()) return;
 
+    // Measure with letterSpacing accounted for
     glm::vec2 size = m_font->measureText(str);
-    text(str, x - size.x / 2, y + size.y / 2, color);
+    size.x += letterSpacing * (str.length() > 0 ? str.length() - 1 : 0);
+    text(str, x - size.x / 2, y + size.y / 2, color, letterSpacing);
 }
 
 glm::vec2 Canvas::measureText(const std::string& str) const {

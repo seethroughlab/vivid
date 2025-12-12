@@ -4,6 +4,21 @@
 # Enable symbol export on Windows
 set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 
+# FreeType for font rendering
+include(FetchContent)
+FetchContent_Declare(
+    freetype
+    GIT_REPOSITORY https://github.com/freetype/freetype.git
+    GIT_TAG VER-2-13-2
+    GIT_SHALLOW TRUE
+)
+set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(freetype)
+
 add_library(vivid-effects-2d SHARED
     src/texture_operator.cpp
     src/noise.cpp
@@ -51,6 +66,7 @@ target_include_directories(vivid-effects-2d PUBLIC
 target_link_libraries(vivid-effects-2d PUBLIC
     vivid-core
     vivid-io
+    freetype
 )
 
 # Platform-specific settings

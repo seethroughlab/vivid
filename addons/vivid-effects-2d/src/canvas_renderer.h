@@ -99,8 +99,10 @@ public:
      * @param x X position (left edge)
      * @param y Y position (baseline)
      * @param color Text color
+     * @param letterSpacing Extra spacing between letters (default 0)
      */
-    void text(FontAtlas& font, const std::string& str, float x, float y, const glm::vec4& color);
+    void text(FontAtlas& font, const std::string& str, float x, float y,
+              const glm::vec4& color, float letterSpacing = 0.0f);
 
     /// @}
     // -------------------------------------------------------------------------

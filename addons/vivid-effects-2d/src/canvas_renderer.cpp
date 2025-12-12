@@ -394,21 +394,29 @@ void CanvasRenderer::triangleFilled(glm::vec2 a, glm::vec2 b, glm::vec2 c, const
     m_solidIndices.push_back(baseIndex + 2);
 }
 
-void CanvasRenderer::text(FontAtlas& font, const std::string& str, float x, float y, const glm::vec4& color) {
+void CanvasRenderer::text(FontAtlas& font, const std::string& str, float x, float y,
+                          const glm::vec4& color, float letterSpacing) {
     m_currentFont = &font;
 
     float cursorX = x;
     float cursorY = y;
+    char prevChar = 0;
 
     for (char c : str) {
         if (c == '\n') {
             cursorX = x;
             cursorY += font.lineHeight();
+            prevChar = 0;
             continue;
         }
 
         const GlyphInfo* glyph = font.getGlyph(c);
         if (!glyph) continue;
+
+        // Apply kerning from previous character
+        if (prevChar != 0) {
+            cursorX += font.getKerning(prevChar, c);
+        }
 
         float x0 = cursorX + glyph->xoff;
         float y0 = cursorY + glyph->yoff;
@@ -422,7 +430,8 @@ void CanvasRenderer::text(FontAtlas& font, const std::string& str, float x, floa
             color
         );
 
-        cursorX += glyph->xadvance;
+        cursorX += glyph->xadvance + letterSpacing;
+        prevChar = c;
     }
 }
 

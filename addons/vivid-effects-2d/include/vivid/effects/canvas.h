@@ -198,10 +198,12 @@ public:
      * @param x Left edge X in pixels
      * @param y Baseline Y in pixels
      * @param color Text color (RGBA)
+     * @param letterSpacing Extra spacing between letters (default 0)
      *
      * Requires a font to be loaded via loadFont().
      */
-    void text(const std::string& str, float x, float y, const glm::vec4& color);
+    void text(const std::string& str, float x, float y, const glm::vec4& color,
+              float letterSpacing = 0.0f);
 
     /**
      * @brief Draw text centered at a position
@@ -209,8 +211,10 @@ public:
      * @param x Center X in pixels
      * @param y Center Y in pixels
      * @param color Text color (RGBA)
+     * @param letterSpacing Extra spacing between letters (default 0)
      */
-    void textCentered(const std::string& str, float x, float y, const glm::vec4& color);
+    void textCentered(const std::string& str, float x, float y, const glm::vec4& color,
+                      float letterSpacing = 0.0f);
 
     /**
      * @brief Measure text dimensions

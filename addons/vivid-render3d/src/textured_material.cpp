@@ -147,6 +147,17 @@ TexturedMaterial& TexturedMaterial::baseColorInput(Operator* op) {
     return *this;
 }
 
+TexturedMaterial& TexturedMaterial::emissiveInput(Operator* op) {
+    if (m_emissiveInputOp != op) {
+        m_emissiveInputOp = op;
+        if (op) {
+            setInput(1, op);  // Register for dependency tracking
+        }
+        markDirty();
+    }
+    return *this;
+}
+
 // -------------------------------------------------------------------------
 // Fallback Value Setters
 // -------------------------------------------------------------------------
@@ -562,7 +573,16 @@ void TexturedMaterial::process(Context& ctx) {
     m_metallicView = m_metallic.view ? m_metallic.view : m_defaultBlackView;
     m_roughnessView = m_roughness.view ? m_roughness.view : m_defaultWhiteView;
     m_aoView = m_ao.view ? m_ao.view : m_defaultWhiteView;
-    m_emissiveView = m_emissive.view ? m_emissive.view : m_defaultBlackView;
+
+    // Emissive: operator input > loaded texture > default
+    if (m_emissiveInputOp) {
+        m_emissiveView = m_emissiveInputOp->outputView();
+        if (!m_emissiveView) {
+            m_emissiveView = m_defaultBlackView;
+        }
+    } else {
+        m_emissiveView = m_emissive.view ? m_emissive.view : m_defaultBlackView;
+    }
 
     didCook();
 }

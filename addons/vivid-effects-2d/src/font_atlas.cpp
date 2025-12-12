@@ -3,10 +3,10 @@
 #include <fstream>
 #include <iostream>
 #include <cstring>
+#include <algorithm>
 
-// stb_truetype implementation
-#define STB_TRUETYPE_IMPLEMENTATION
-#include <stb_truetype.h>
+#include <ft2build.h>
+#include FT_FREETYPE_H
 
 namespace vivid {
 
@@ -23,7 +23,17 @@ void FontAtlas::cleanup() {
         wgpuTextureRelease(m_texture);
         m_texture = nullptr;
     }
+    if (m_ftFace) {
+        FT_Done_Face(m_ftFace);
+        m_ftFace = nullptr;
+    }
+    if (m_ftLibrary) {
+        FT_Done_FreeType(m_ftLibrary);
+        m_ftLibrary = nullptr;
+    }
     m_glyphs.clear();
+    m_glyphIndices.clear();
+    m_hasKerning = false;
 }
 
 bool FontAtlas::load(Context& ctx, const std::string& fontPath, float fontSize, int atlasSize) {
@@ -52,66 +62,107 @@ bool FontAtlas::loadFromMemory(Context& ctx, const uint8_t* data, size_t size,
     m_fontSize = fontSize;
     m_atlasSize = atlasSize;
 
-    // Initialize stb_truetype
-    stbtt_fontinfo fontInfo;
-    if (!stbtt_InitFont(&fontInfo, data, 0)) {
-        std::cerr << "[FontAtlas] Failed to initialize font\n";
+    // Initialize FreeType
+    FT_Error error = FT_Init_FreeType(&m_ftLibrary);
+    if (error) {
+        std::cerr << "[FontAtlas] Failed to initialize FreeType\n";
         return false;
     }
 
-    // Get font metrics
-    float scale = stbtt_ScaleForPixelHeight(&fontInfo, fontSize);
-    int ascent, descent, lineGap;
-    stbtt_GetFontVMetrics(&fontInfo, &ascent, &descent, &lineGap);
+    // Load font from memory
+    error = FT_New_Memory_Face(m_ftLibrary, data, static_cast<FT_Long>(size), 0, &m_ftFace);
+    if (error) {
+        std::cerr << "[FontAtlas] Failed to load font face\n";
+        FT_Done_FreeType(m_ftLibrary);
+        m_ftLibrary = nullptr;
+        return false;
+    }
 
-    m_ascent = ascent * scale;
-    m_descent = descent * scale;
-    m_lineHeight = (ascent - descent + lineGap) * scale;
+    // Set pixel size
+    error = FT_Set_Pixel_Sizes(m_ftFace, 0, static_cast<FT_UInt>(fontSize));
+    if (error) {
+        std::cerr << "[FontAtlas] Failed to set font size\n";
+        cleanup();
+        return false;
+    }
 
-    // Allocate atlas bitmap
+    // Check for kerning support
+    m_hasKerning = FT_HAS_KERNING(m_ftFace);
+
+    // Get font metrics (FreeType metrics are in 1/64th of a pixel)
+    m_ascent = static_cast<float>(m_ftFace->size->metrics.ascender) / 64.0f;
+    m_descent = static_cast<float>(m_ftFace->size->metrics.descender) / 64.0f;
+    m_lineHeight = static_cast<float>(m_ftFace->size->metrics.height) / 64.0f;
+
+    // Allocate atlas bitmap (single channel for now, converted to RGBA later)
     std::vector<uint8_t> atlasBitmap(atlasSize * atlasSize, 0);
 
-    // Pack characters into atlas
-    stbtt_pack_context packContext;
-    if (!stbtt_PackBegin(&packContext, atlasBitmap.data(), atlasSize, atlasSize, 0, 1, nullptr)) {
-        std::cerr << "[FontAtlas] Failed to begin packing\n";
-        return false;
-    }
-
-    // Use 2x oversampling for smoother fonts
-    stbtt_PackSetOversampling(&packContext, 2, 2);
+    // Simple shelf-based packing
+    int shelfY = 0;      // Current shelf Y position
+    int shelfHeight = 0; // Height of current shelf
+    int cursorX = 0;     // X position in current shelf
+    const int padding = 2;  // Padding between glyphs
 
     // Pack ASCII characters 32-126
     const int firstChar = 32;
-    const int numChars = 95;
-    std::vector<stbtt_packedchar> charData(numChars);
-
-    if (!stbtt_PackFontRange(&packContext, data, 0, fontSize, firstChar, numChars, charData.data())) {
-        std::cerr << "[FontAtlas] Failed to pack font range\n";
-        stbtt_PackEnd(&packContext);
-        return false;
-    }
-
-    stbtt_PackEnd(&packContext);
-
-    // Store glyph info
+    const int lastChar = 126;
     float invAtlasSize = 1.0f / atlasSize;
-    for (int i = 0; i < numChars; i++) {
-        char c = static_cast<char>(firstChar + i);
-        const stbtt_packedchar& pc = charData[i];
 
+    for (int c = firstChar; c <= lastChar; c++) {
+        // Load glyph
+        FT_UInt glyphIndex = FT_Get_Char_Index(m_ftFace, c);
+        error = FT_Load_Glyph(m_ftFace, glyphIndex, FT_LOAD_RENDER);
+        if (error) {
+            std::cerr << "[FontAtlas] Failed to load glyph for character " << c << "\n";
+            continue;
+        }
+
+        FT_GlyphSlot g = m_ftFace->glyph;
+        int glyphWidth = static_cast<int>(g->bitmap.width);
+        int glyphHeight = static_cast<int>(g->bitmap.rows);
+
+        // Check if we need to start a new shelf
+        if (cursorX + glyphWidth + padding > atlasSize) {
+            cursorX = 0;
+            shelfY += shelfHeight + padding;
+            shelfHeight = 0;
+        }
+
+        // Check if we've run out of vertical space
+        if (shelfY + glyphHeight > atlasSize) {
+            std::cerr << "[FontAtlas] Atlas too small for all glyphs\n";
+            break;
+        }
+
+        // Copy glyph bitmap to atlas
+        for (int row = 0; row < glyphHeight; row++) {
+            for (int col = 0; col < glyphWidth; col++) {
+                int atlasX = cursorX + col;
+                int atlasY = shelfY + row;
+                int atlasIdx = atlasY * atlasSize + atlasX;
+                int bitmapIdx = row * g->bitmap.pitch + col;
+                atlasBitmap[atlasIdx] = g->bitmap.buffer[bitmapIdx];
+            }
+        }
+
+        // Store glyph info
         GlyphInfo glyph;
-        glyph.u0 = pc.x0 * invAtlasSize;
-        glyph.v0 = pc.y0 * invAtlasSize;
-        glyph.u1 = pc.x1 * invAtlasSize;
-        glyph.v1 = pc.y1 * invAtlasSize;
-        glyph.xoff = pc.xoff;
-        glyph.yoff = pc.yoff;
-        glyph.xadvance = pc.xadvance;
-        glyph.width = static_cast<float>(pc.x1 - pc.x0);
-        glyph.height = static_cast<float>(pc.y1 - pc.y0);
+        glyph.u0 = static_cast<float>(cursorX) * invAtlasSize;
+        glyph.v0 = static_cast<float>(shelfY) * invAtlasSize;
+        glyph.u1 = static_cast<float>(cursorX + glyphWidth) * invAtlasSize;
+        glyph.v1 = static_cast<float>(shelfY + glyphHeight) * invAtlasSize;
+        glyph.xoff = static_cast<float>(g->bitmap_left);
+        glyph.yoff = -static_cast<float>(g->bitmap_top);  // FreeType uses Y-up, we use Y-down
+        glyph.xadvance = static_cast<float>(g->advance.x) / 64.0f;  // Convert from 1/64 pixels
+        glyph.width = static_cast<float>(glyphWidth);
+        glyph.height = static_cast<float>(glyphHeight);
 
-        m_glyphs[c] = glyph;
+        m_glyphs[static_cast<char>(c)] = glyph;
+        m_glyphIndices[static_cast<char>(c)] = glyphIndex;
+
+        // Advance cursor
+        cursorX += glyphWidth + padding;
+        shelfHeight = std::max(shelfHeight, glyphHeight);
     }
 
     // Convert single-channel to RGBA for GPU texture
@@ -167,7 +218,8 @@ bool FontAtlas::loadFromMemory(Context& ctx, const uint8_t* data, size_t size,
 
     m_textureView = wgpuTextureCreateView(m_texture, &viewDesc);
 
-    std::cout << "[FontAtlas] Loaded font (" << fontSize << "px, " << atlasSize << "x" << atlasSize << " atlas)\n";
+    std::cout << "[FontAtlas] Loaded font (" << fontSize << "px, " << atlasSize << "x" << atlasSize
+              << " atlas, kerning: " << (m_hasKerning ? "yes" : "no") << ")\n";
     return true;
 }
 
@@ -181,23 +233,52 @@ const GlyphInfo* FontAtlas::getGlyph(char c) const {
     return it != m_glyphs.end() ? &it->second : nullptr;
 }
 
+float FontAtlas::getKerning(char left, char right) const {
+    if (!m_hasKerning || !m_ftFace) {
+        return 0.0f;
+    }
+
+    auto leftIt = m_glyphIndices.find(left);
+    auto rightIt = m_glyphIndices.find(right);
+    if (leftIt == m_glyphIndices.end() || rightIt == m_glyphIndices.end()) {
+        return 0.0f;
+    }
+
+    FT_Vector kerning;
+    FT_Error error = FT_Get_Kerning(m_ftFace, leftIt->second, rightIt->second,
+                                      FT_KERNING_DEFAULT, &kerning);
+    if (error) {
+        return 0.0f;
+    }
+
+    // Convert from 1/64 pixels
+    return static_cast<float>(kerning.x) / 64.0f;
+}
+
 glm::vec2 FontAtlas::measureText(const std::string& text) const {
     float maxWidth = 0;
     float currentWidth = 0;
     int lineCount = 1;
+    char prevChar = 0;
 
     for (char c : text) {
         if (c == '\n') {
             maxWidth = std::max(maxWidth, currentWidth);
             currentWidth = 0;
             lineCount++;
+            prevChar = 0;
             continue;
         }
 
         const GlyphInfo* glyph = getGlyph(c);
         if (glyph) {
+            // Add kerning
+            if (prevChar != 0) {
+                currentWidth += getKerning(prevChar, c);
+            }
             currentWidth += glyph->xadvance;
         }
+        prevChar = c;
     }
 
     maxWidth = std::max(maxWidth, currentWidth);

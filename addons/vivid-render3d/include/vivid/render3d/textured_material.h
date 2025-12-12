@@ -117,6 +117,15 @@ public:
      */
     TexturedMaterial& baseColorInput(Operator* op);
 
+    /**
+     * @brief Set emissive texture from another operator's output
+     * @param op Operator that produces a texture (Canvas, VideoPlayer, effect, etc.)
+     * @return Reference for chaining
+     *
+     * Use this for "unlit" appearance where the texture displays at full brightness.
+     */
+    TexturedMaterial& emissiveInput(Operator* op);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Material Factors (multiplied with texture values)
@@ -280,6 +289,7 @@ private:
 
     // Operator-based texture inputs (for procedural textures)
     Operator* m_baseColorInputOp = nullptr;
+    Operator* m_emissiveInputOp = nullptr;
 
     bool m_initialized = false;
 };
