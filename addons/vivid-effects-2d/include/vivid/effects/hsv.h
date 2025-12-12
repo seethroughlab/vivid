@@ -60,21 +60,30 @@ public:
      * @param h Hue rotation (0-1 = full 360° rotation, default 0)
      * @return Reference for chaining
      */
-    HSV& hueShift(float h) { m_hueShift = h; return *this; }
+    HSV& hueShift(float h) {
+        if (m_hueShift != h) { m_hueShift = h; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set saturation multiplier
      * @param s Saturation (0 = grayscale, 1 = normal, >1 = oversaturated)
      * @return Reference for chaining
      */
-    HSV& saturation(float s) { m_saturation = s; return *this; }
+    HSV& saturation(float s) {
+        if (m_saturation != s) { m_saturation = s; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set value/brightness multiplier
      * @param v Value multiplier (0-3, default 1.0)
      * @return Reference for chaining
      */
-    HSV& value(float v) { m_value = v; return *this; }
+    HSV& value(float v) {
+        if (m_value != v) { m_value = v; markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -97,10 +106,10 @@ public:
         return false;
     }
 
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "hueShift") { m_hueShift = value[0]; return true; }
-        if (name == "saturation") { m_saturation = value[0]; return true; }
-        if (name == "value") { m_value = value[0]; return true; }
+    bool setParam(const std::string& name, const float val[4]) override {
+        if (name == "hueShift") { hueShift(val[0]); return true; }
+        if (name == "saturation") { saturation(val[0]); return true; }
+        if (name == "value") { value(val[0]); return true; }
         return false;
     }
 

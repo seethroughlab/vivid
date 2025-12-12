@@ -57,7 +57,10 @@ public:
      * @param s Block size in pixels (applies to both axes)
      * @return Reference for chaining
      */
-    Pixelate& size(float s) { m_size.set(s, s); return *this; }
+    Pixelate& size(float s) {
+        if (m_size.x() != s || m_size.y() != s) { m_size.set(s, s); markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set non-uniform pixel block size
@@ -65,7 +68,10 @@ public:
      * @param y Block height in pixels
      * @return Reference for chaining
      */
-    Pixelate& size(float x, float y) { m_size.set(x, y); return *this; }
+    Pixelate& size(float x, float y) {
+        if (m_size.x() != x || m_size.y() != y) { m_size.set(x, y); markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -87,7 +93,7 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "size") { m_size.set(value[0], value[1]); return true; }
+        if (name == "size") { size(value[0], value[1]); return true; }
         return false;
     }
 

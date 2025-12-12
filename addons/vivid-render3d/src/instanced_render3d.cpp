@@ -572,29 +572,37 @@ InstancedRender3D::~InstancedRender3D() {
 }
 
 InstancedRender3D& InstancedRender3D::mesh(MeshOperator* geom) {
-    m_meshOp = geom;
-    m_mesh = nullptr;
-    if (geom) {
-        setInput(0, geom);
+    if (m_meshOp != geom) {
+        m_meshOp = geom;
+        m_mesh = nullptr;
+        if (geom) {
+            setInput(0, geom);
+        }
+        markDirty();
     }
     return *this;
 }
 
 InstancedRender3D& InstancedRender3D::mesh(Mesh* m) {
-    m_mesh = m;
-    m_meshOp = nullptr;
+    if (m_mesh != m) {
+        m_mesh = m;
+        m_meshOp = nullptr;
+        markDirty();
+    }
     return *this;
 }
 
 InstancedRender3D& InstancedRender3D::setInstances(const std::vector<Instance3D>& instances) {
     m_instances = instances;
     m_instancesDirty = true;
+    markDirty();
     return *this;
 }
 
 InstancedRender3D& InstancedRender3D::addInstance(const Instance3D& instance) {
     m_instances.push_back(instance);
     m_instancesDirty = true;
+    markDirty();
     return *this;
 }
 
@@ -612,8 +620,11 @@ InstancedRender3D& InstancedRender3D::addInstance(const glm::vec3& position, flo
 }
 
 InstancedRender3D& InstancedRender3D::clearInstances() {
-    m_instances.clear();
-    m_instancesDirty = true;
+    if (!m_instances.empty()) {
+        m_instances.clear();
+        m_instancesDirty = true;
+        markDirty();
+    }
     return *this;
 }
 
@@ -623,9 +634,12 @@ InstancedRender3D& InstancedRender3D::reserve(size_t count) {
 }
 
 InstancedRender3D& InstancedRender3D::cameraInput(CameraOperator* cam) {
-    m_cameraOp = cam;
-    if (cam) {
-        setInput(1, cam);
+    if (m_cameraOp != cam) {
+        m_cameraOp = cam;
+        if (cam) {
+            setInput(1, cam);
+        }
+        markDirty();
     }
     return *this;
 }
@@ -633,17 +647,24 @@ InstancedRender3D& InstancedRender3D::cameraInput(CameraOperator* cam) {
 InstancedRender3D& InstancedRender3D::camera(const Camera3D& cam) {
     m_camera = cam;
     m_cameraOp = nullptr;
+    markDirty();
     return *this;
 }
 
 InstancedRender3D& InstancedRender3D::lightInput(LightOperator* light) {
     if (light) {
+        bool changed = false;
         if (m_lightOps.empty()) {
             m_lightOps.push_back(light);
-        } else {
+            changed = true;
+        } else if (m_lightOps[0] != light) {
             m_lightOps[0] = light;
+            changed = true;
         }
-        setInput(2, light);
+        if (changed) {
+            setInput(2, light);
+            markDirty();
+        }
     }
     return *this;
 }
@@ -652,14 +673,18 @@ InstancedRender3D& InstancedRender3D::addLight(LightOperator* light) {
     if (light && m_lightOps.size() < MAX_LIGHTS) {
         m_lightOps.push_back(light);
         setInput(2 + static_cast<int>(m_lightOps.size()), light);
+        markDirty();
     }
     return *this;
 }
 
 InstancedRender3D& InstancedRender3D::material(TexturedMaterial* mat) {
-    m_material = mat;
-    if (mat) {
-        setInput(7, mat);  // After lights (2-6)
+    if (m_material != mat) {
+        m_material = mat;
+        if (mat) {
+            setInput(7, mat);  // After lights (2-6)
+        }
+        markDirty();
     }
     return *this;
 }
@@ -972,12 +997,9 @@ void InstancedRender3D::uploadInstances() {
 
 void InstancedRender3D::process(Context& ctx) {
     // Check if window size changed (e.g., fullscreen toggle)
-    int ctxWidth = ctx.width();
-    int ctxHeight = ctx.height();
-    if (ctxWidth > 0 && ctxHeight > 0 && (ctxWidth != m_width || ctxHeight != m_height)) {
-        // Recreate output texture with new dimensions
-        createOutput(ctx, ctxWidth, ctxHeight);
-    }
+    checkResize(ctx);
+
+    if (!needsCook()) return;
 
     bool useTextured = m_material != nullptr && m_material->baseColorView() != nullptr;
 
@@ -1193,6 +1215,8 @@ void InstancedRender3D::process(Context& ctx) {
     wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
     wgpuCommandBufferRelease(cmdBuffer);
     wgpuCommandEncoderRelease(encoder);
+
+    didCook();
 }
 
 void InstancedRender3D::cleanup() {

@@ -96,10 +96,19 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Mesh Combination
+    /// @{
+
+    /// Append another mesh's geometry (simple concatenation, no CSG)
+    /// Use this for combining non-overlapping parts into a single mesh
+    MeshBuilder& append(const MeshBuilder& other);
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name CSG Boolean Operations
     /// @{
 
-    /// Union: combine with another mesh
+    /// Union: combine with another mesh (requires valid manifold geometry)
     MeshBuilder& add(const MeshBuilder& other);
 
     /// Difference: subtract another mesh
@@ -150,6 +159,18 @@ public:
     /// Create a plane (XZ plane, Y up)
     static MeshBuilder plane(float width, float height,
                              int subdivisionsX = 1, int subdivisionsY = 1);
+
+    /// Create a pyramid with n-sided base (default 4 = square pyramid)
+    /// Base is centered at origin, apex points up (+Y)
+    static MeshBuilder pyramid(float baseWidth, float height, int sides = 4);
+
+    /// Create a wedge (triangular prism / ramp)
+    /// Ramp goes from full height at -X to zero height at +X
+    static MeshBuilder wedge(float width, float height, float depth);
+
+    /// Create a frustum (truncated cone)
+    /// Like a cone but with flat top instead of apex
+    static MeshBuilder frustum(float bottomRadius, float topRadius, float height, int segments = 16);
 
     /// @}
 

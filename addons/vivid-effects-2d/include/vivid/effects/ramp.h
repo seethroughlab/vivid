@@ -69,14 +69,14 @@ public:
      * @param t Ramp type (Linear, Radial, Angular, Diamond)
      * @return Reference for chaining
      */
-    Ramp& type(RampType t) { m_type = t; return *this; }
+    Ramp& type(RampType t) { if (m_type != t) { m_type = t; markDirty(); } return *this; }
 
     /**
      * @brief Set gradient angle (linear mode)
      * @param a Angle in radians
      * @return Reference for chaining
      */
-    Ramp& angle(float a) { m_angle = a; return *this; }
+    Ramp& angle(float a) { if (m_angle != a) { m_angle = a; markDirty(); } return *this; }
 
     /**
      * @brief Set pattern offset
@@ -84,56 +84,62 @@ public:
      * @param y Y offset
      * @return Reference for chaining
      */
-    Ramp& offset(float x, float y) { m_offset.set(x, y); return *this; }
+    Ramp& offset(float x, float y) {
+        if (m_offset.x() != x || m_offset.y() != y) {
+            m_offset.set(x, y);
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Set pattern scale
      * @param s Scale factor (0.1-10)
      * @return Reference for chaining
      */
-    Ramp& scale(float s) { m_scale = s; return *this; }
+    Ramp& scale(float s) { if (m_scale != s) { m_scale = s; markDirty(); } return *this; }
 
     /**
      * @brief Set pattern repetition
      * @param r Repeat count (1-10)
      * @return Reference for chaining
      */
-    Ramp& repeat(float r) { m_repeat = r; return *this; }
+    Ramp& repeat(float r) { if (m_repeat != r) { m_repeat = r; markDirty(); } return *this; }
 
     /**
      * @brief Set starting hue offset
      * @param h Hue offset (0-1)
      * @return Reference for chaining
      */
-    Ramp& hueOffset(float h) { m_hueOffset = h; return *this; }
+    Ramp& hueOffset(float h) { if (m_hueOffset != h) { m_hueOffset = h; markDirty(); } return *this; }
 
     /**
      * @brief Set hue animation speed
      * @param s Speed (0-2, default 0.5)
      * @return Reference for chaining
      */
-    Ramp& hueSpeed(float s) { m_hueSpeed = s; return *this; }
+    Ramp& hueSpeed(float s) { if (m_hueSpeed != s) { m_hueSpeed = s; markDirty(); } return *this; }
 
     /**
      * @brief Set hue variation range
      * @param r Range (0-1, default 1.0 = full rainbow)
      * @return Reference for chaining
      */
-    Ramp& hueRange(float r) { m_hueRange = r; return *this; }
+    Ramp& hueRange(float r) { if (m_hueRange != r) { m_hueRange = r; markDirty(); } return *this; }
 
     /**
      * @brief Set color saturation
      * @param s Saturation (0-1, default 1.0)
      * @return Reference for chaining
      */
-    Ramp& saturation(float s) { m_saturation = s; return *this; }
+    Ramp& saturation(float s) { if (m_saturation != s) { m_saturation = s; markDirty(); } return *this; }
 
     /**
      * @brief Set color brightness
      * @param b Brightness (0-1, default 1.0)
      * @return Reference for chaining
      */
-    Ramp& brightness(float b) { m_brightness = b; return *this; }
+    Ramp& brightness(float b) { if (m_brightness != b) { m_brightness = b; markDirty(); } return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -165,15 +171,15 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "angle") { m_angle = value[0]; return true; }
-        if (name == "scale") { m_scale = value[0]; return true; }
-        if (name == "repeat") { m_repeat = value[0]; return true; }
-        if (name == "hueOffset") { m_hueOffset = value[0]; return true; }
-        if (name == "hueSpeed") { m_hueSpeed = value[0]; return true; }
-        if (name == "hueRange") { m_hueRange = value[0]; return true; }
-        if (name == "saturation") { m_saturation = value[0]; return true; }
-        if (name == "brightness") { m_brightness = value[0]; return true; }
-        if (name == "offset") { m_offset.set(value[0], value[1]); return true; }
+        if (name == "angle") { angle(value[0]); return true; }
+        if (name == "scale") { scale(value[0]); return true; }
+        if (name == "repeat") { repeat(value[0]); return true; }
+        if (name == "hueOffset") { hueOffset(value[0]); return true; }
+        if (name == "hueSpeed") { hueSpeed(value[0]); return true; }
+        if (name == "hueRange") { hueRange(value[0]); return true; }
+        if (name == "saturation") { saturation(value[0]); return true; }
+        if (name == "brightness") { brightness(value[0]); return true; }
+        if (name == "offset") { offset(value[0], value[1]); return true; }
         return false;
     }
 

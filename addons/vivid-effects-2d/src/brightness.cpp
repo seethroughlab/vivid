@@ -152,6 +152,9 @@ void Brightness::process(Context& ctx) {
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
 
+    // Skip if nothing changed
+    if (!needsCook()) return;
+
     BrightnessUniforms uniforms = {};
     uniforms.brightness = m_brightness;
     uniforms.contrast = m_contrast;
@@ -185,6 +188,8 @@ void Brightness::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void Brightness::cleanup() {

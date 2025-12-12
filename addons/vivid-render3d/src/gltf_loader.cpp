@@ -29,6 +29,8 @@ GLTFLoader& GLTFLoader::file(const std::string& path) {
         // Extract base directory for relative texture paths
         size_t lastSlash = path.find_last_of("/\\");
         m_baseDir = (lastSlash != std::string::npos) ? path.substr(0, lastSlash + 1) : "";
+
+        markDirty();
     }
     return *this;
 }
@@ -37,22 +39,8 @@ GLTFLoader& GLTFLoader::meshIndex(int index) {
     if (m_meshIndex != index) {
         m_meshIndex = index;
         m_needsLoad = true;
+        markDirty();
     }
-    return *this;
-}
-
-GLTFLoader& GLTFLoader::loadTextures(bool enabled) {
-    m_loadTextures = enabled;
-    return *this;
-}
-
-GLTFLoader& GLTFLoader::scale(float s) {
-    m_scale = s;
-    return *this;
-}
-
-GLTFLoader& GLTFLoader::computeTangents(bool enabled) {
-    m_computeTangents = enabled;
     return *this;
 }
 
@@ -63,9 +51,13 @@ void GLTFLoader::init(Context& ctx) {
 }
 
 void GLTFLoader::process(Context& ctx) {
+    if (!needsCook()) return;
+
     if (m_needsLoad && !m_filePath.empty()) {
         loadGLTF(ctx);
     }
+
+    didCook();
 }
 
 void GLTFLoader::cleanup() {

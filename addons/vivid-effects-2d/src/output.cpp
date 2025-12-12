@@ -6,6 +6,8 @@
 namespace vivid::effects {
 
 void Output::process(Context& ctx) {
+    checkResize(ctx);
+
     // Get the input texture view
     WGPUTextureView view = inputView(0);
 
@@ -13,6 +15,8 @@ void Output::process(Context& ctx) {
     if (view) {
         ctx.setOutputTexture(view);
     }
+
+    didCook();
 }
 
 } // namespace vivid::effects

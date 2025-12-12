@@ -62,28 +62,52 @@ public:
      * @param d Focus depth (0-1, default 0.5)
      * @return Reference for chaining
      */
-    DepthOfField& focusDistance(float d) { m_focusDistance = d; return *this; }
+    DepthOfField& focusDistance(float d) {
+        if (m_focusDistance != d) {
+            m_focusDistance = d;
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Set focus range (depth range that stays sharp)
      * @param r Focus range (0-1, default 0.1)
      * @return Reference for chaining
      */
-    DepthOfField& focusRange(float r) { m_focusRange = r; return *this; }
+    DepthOfField& focusRange(float r) {
+        if (m_focusRange != r) {
+            m_focusRange = r;
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Set maximum blur strength
      * @param s Blur strength (0-1, default 0.5)
      * @return Reference for chaining
      */
-    DepthOfField& blurStrength(float s) { m_blurStrength = s; return *this; }
+    DepthOfField& blurStrength(float s) {
+        if (m_blurStrength != s) {
+            m_blurStrength = s;
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Enable debug mode to visualize depth buffer
      * @param show true to show depth as grayscale, false for normal DOF
      * @return Reference for chaining
      */
-    DepthOfField& showDepth(bool show) { m_showDepth = show; return *this; }
+    DepthOfField& showDepth(bool show) {
+        if (m_showDepth != show) {
+            m_showDepth = show;
+            markDirty();
+        }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -107,9 +131,9 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "focusDistance") { m_focusDistance = value[0]; return true; }
-        if (name == "focusRange") { m_focusRange = value[0]; return true; }
-        if (name == "blurStrength") { m_blurStrength = value[0]; return true; }
+        if (name == "focusDistance") { focusDistance(value[0]); return true; }
+        if (name == "focusRange") { focusRange(value[0]); return true; }
+        if (name == "blurStrength") { blurStrength(value[0]); return true; }
         return false;
     }
 

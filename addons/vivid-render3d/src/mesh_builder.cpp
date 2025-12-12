@@ -1,6 +1,7 @@
 #include <vivid/render3d/mesh_builder.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <manifold/manifold.h>
+#include <manifold/cross_section.h>
 #include <cmath>
 #include <unordered_map>
 
@@ -206,6 +207,8 @@ MeshBuilder& MeshBuilder::computeNormals() {
         }
     }
 
+    // Note: Don't invalidate manifold here - normals are not part of manifold data
+
     return *this;
 }
 
@@ -339,6 +342,9 @@ MeshBuilder& MeshBuilder::transform(const glm::mat4& m) {
         v.tangent = glm::vec4(tan, v.tangent.w);
     }
 
+    // Invalidate cached manifold - it's now stale
+    m_manifold.reset();
+
     return *this;
 }
 
@@ -346,6 +352,8 @@ MeshBuilder& MeshBuilder::translate(glm::vec3 offset) {
     for (auto& v : m_vertices) {
         v.position += offset;
     }
+    // Invalidate cached manifold - it's now stale
+    m_manifold.reset();
     return *this;
 }
 
@@ -353,6 +361,8 @@ MeshBuilder& MeshBuilder::scale(glm::vec3 s) {
     for (auto& v : m_vertices) {
         v.position *= s;
     }
+    // Invalidate cached manifold - it's now stale
+    m_manifold.reset();
     return *this;
 }
 
@@ -401,6 +411,9 @@ MeshBuilder& MeshBuilder::mirror(Axis axis) {
         m_indices.push_back(m_indices[i + 1] + offset);
     }
 
+    // Invalidate cached manifold - it's now stale
+    m_manifold.reset();
+
     return *this;
 }
 
@@ -414,6 +427,9 @@ MeshBuilder& MeshBuilder::invert() {
     for (size_t i = 0; i + 2 < m_indices.size(); i += 3) {
         std::swap(m_indices[i + 1], m_indices[i + 2]);
     }
+
+    // Invalidate cached manifold - it's now stale
+    m_manifold.reset();
 
     return *this;
 }
@@ -664,6 +680,170 @@ MeshBuilder MeshBuilder::plane(float width, float height, int subdivisionsX, int
     return builder;
 }
 
+MeshBuilder MeshBuilder::pyramid(float baseWidth, float height, int sides) {
+    MeshBuilder builder;
+
+    float halfW = baseWidth * 0.5f;
+    float halfH = height * 0.5f;
+
+    // Apex at top
+    glm::vec3 apex(0, halfH, 0);
+
+    // Generate base vertices
+    std::vector<glm::vec3> baseVerts;
+    for (int i = 0; i < sides; ++i) {
+        float angle = 2.0f * glm::pi<float>() * i / sides;
+        // Offset by half a segment so square pyramid has flat sides facing axes
+        angle += glm::pi<float>() / sides;
+        float x = halfW * std::cos(angle);
+        float z = halfW * std::sin(angle);
+        baseVerts.push_back(glm::vec3(x, -halfH, z));
+    }
+
+    // SIDE FACES - each face connects two base vertices to apex
+    for (int i = 0; i < sides; ++i) {
+        int next = (i + 1) % sides;
+
+        // Swap order so winding is CCW when viewed from outside
+        glm::vec3 v0 = baseVerts[next];
+        glm::vec3 v1 = baseVerts[i];
+
+        // Face normal (CCW winding looking from outside)
+        glm::vec3 edge1 = v1 - v0;
+        glm::vec3 edge2 = apex - v0;
+        glm::vec3 normal = glm::normalize(glm::cross(edge1, edge2));
+
+        uint32_t baseIdx = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(v0, normal, glm::vec2(0, 1));
+        builder.addVertex(v1, normal, glm::vec2(1, 1));
+        builder.addVertex(apex, normal, glm::vec2(0.5f, 0));
+
+        builder.addTriangle(baseIdx, baseIdx + 1, baseIdx + 2);
+    }
+
+    // BOTTOM FACE - fan from center
+    glm::vec3 bottomNormal(0, -1, 0);
+    uint32_t centerIdx = static_cast<uint32_t>(builder.vertexCount());
+    builder.addVertex(glm::vec3(0, -halfH, 0), bottomNormal, glm::vec2(0.5f, 0.5f));
+
+    uint32_t bottomRingStart = static_cast<uint32_t>(builder.vertexCount());
+    for (int i = 0; i < sides; ++i) {
+        float u = 0.5f + 0.5f * (baseVerts[i].x / halfW);
+        float v = 0.5f + 0.5f * (baseVerts[i].z / halfW);
+        builder.addVertex(baseVerts[i], bottomNormal, glm::vec2(u, v));
+    }
+
+    for (int i = 0; i < sides; ++i) {
+        int next = (i + 1) % sides;
+        // CCW when viewed from below (looking up at bottom face)
+        builder.addTriangle(centerIdx, bottomRingStart + next, bottomRingStart + i);
+    }
+
+    builder.syncToManifold();
+    return builder;
+}
+
+MeshBuilder MeshBuilder::wedge(float width, float height, float depth) {
+    // Build wedge (triangular prism) manually with correct winding
+    // Ramp goes from full height at -X to zero height at +X
+    //
+    //    (-w/2, h/2)-----(+w/2, -h/2)   <- top edge (sloped)
+    //         |    \          |
+    //         |      \        |
+    //         |        \      |
+    //    (-w/2, -h/2)---(+w/2, -h/2)    <- bottom edge
+    //
+    // Depth extends along Z axis
+
+    MeshBuilder builder;
+
+    float halfW = width * 0.5f;
+    float halfH = height * 0.5f;
+    float halfD = depth * 0.5f;
+
+    // 6 vertices of the wedge
+    glm::vec3 v0(-halfW, -halfH, -halfD);  // back-bottom-left
+    glm::vec3 v1(+halfW, -halfH, -halfD);  // back-bottom-right
+    glm::vec3 v2(-halfW, +halfH, -halfD);  // back-top-left
+    glm::vec3 v3(-halfW, -halfH, +halfD);  // front-bottom-left
+    glm::vec3 v4(+halfW, -halfH, +halfD);  // front-bottom-right
+    glm::vec3 v5(-halfW, +halfH, +halfD);  // front-top-left
+
+    // BACK FACE (triangle) - looking from -Z
+    {
+        glm::vec3 normal(0, 0, -1);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(v0, normal, glm::vec2(0, 1));
+        builder.addVertex(v2, normal, glm::vec2(0, 0));
+        builder.addVertex(v1, normal, glm::vec2(1, 1));
+        builder.addTriangle(base, base + 1, base + 2);  // CCW from -Z
+    }
+
+    // FRONT FACE (triangle) - looking from +Z
+    {
+        glm::vec3 normal(0, 0, 1);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(v3, normal, glm::vec2(0, 1));
+        builder.addVertex(v4, normal, glm::vec2(1, 1));
+        builder.addVertex(v5, normal, glm::vec2(0, 0));
+        builder.addTriangle(base, base + 1, base + 2);  // CCW from +Z
+    }
+
+    // BOTTOM FACE (quad) - looking from -Y
+    {
+        glm::vec3 normal(0, -1, 0);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(v0, normal, glm::vec2(0, 0));
+        builder.addVertex(v1, normal, glm::vec2(1, 0));
+        builder.addVertex(v4, normal, glm::vec2(1, 1));
+        builder.addVertex(v3, normal, glm::vec2(0, 1));
+        builder.addTriangle(base, base + 1, base + 2);  // CCW from -Y
+        builder.addTriangle(base, base + 2, base + 3);
+    }
+
+    // LEFT FACE (quad) - looking from -X
+    {
+        glm::vec3 normal(-1, 0, 0);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(v0, normal, glm::vec2(0, 1));
+        builder.addVertex(v3, normal, glm::vec2(1, 1));
+        builder.addVertex(v5, normal, glm::vec2(1, 0));
+        builder.addVertex(v2, normal, glm::vec2(0, 0));
+        builder.addTriangle(base, base + 1, base + 2);  // CCW from -X
+        builder.addTriangle(base, base + 2, base + 3);
+    }
+
+    // SLOPE FACE (quad) - the ramp surface
+    {
+        // Normal points up and to the right
+        glm::vec3 edge1 = v4 - v2;  // along the slope
+        glm::vec3 edge2 = v5 - v2;  // along depth
+        glm::vec3 normal = glm::normalize(glm::cross(edge2, edge1));
+
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(v2, normal, glm::vec2(0, 0));
+        builder.addVertex(v5, normal, glm::vec2(0, 1));
+        builder.addVertex(v4, normal, glm::vec2(1, 1));
+        builder.addVertex(v1, normal, glm::vec2(1, 0));
+        builder.addTriangle(base, base + 1, base + 2);  // CCW from outside
+        builder.addTriangle(base, base + 2, base + 3);
+    }
+
+    return builder;
+}
+
+MeshBuilder MeshBuilder::frustum(float bottomRadius, float topRadius, float height, int segments) {
+    // Use Manifold's cylinder which supports different radii at top and bottom
+    auto m = std::make_unique<manifold::Manifold>(
+        manifold::Manifold::Cylinder(static_cast<double>(height),
+                                      static_cast<double>(bottomRadius),
+                                      static_cast<double>(topRadius),
+                                      segments, true));
+
+    MeshBuilder builder(std::move(m));
+    return builder;
+}
+
 // -----------------------------------------------------------------------------
 // CSG Operations via Manifold
 // -----------------------------------------------------------------------------
@@ -693,6 +873,9 @@ manifold::Manifold toManifold(const std::vector<Vertex3D>& vertices,
     for (uint32_t idx : indices) {
         mesh.triVerts.push_back(idx);
     }
+
+    // Merge duplicate vertices - required for valid manifold after transforms
+    mesh.Merge();
 
     return manifold::Manifold(mesh);
 }
@@ -733,6 +916,38 @@ void fromManifold(const manifold::Manifold& manifold,
 }
 
 } // anonymous namespace
+
+// -----------------------------------------------------------------------------
+// Mesh Combination (Simple)
+// -----------------------------------------------------------------------------
+
+MeshBuilder& MeshBuilder::append(const MeshBuilder& other) {
+    // Simple geometry concatenation - no CSG, just combine vertices and indices
+    if (other.m_vertices.empty()) {
+        return *this;
+    }
+
+    // Offset for indices
+    uint32_t vertexOffset = static_cast<uint32_t>(m_vertices.size());
+
+    // Append vertices
+    m_vertices.insert(m_vertices.end(), other.m_vertices.begin(), other.m_vertices.end());
+
+    // Append indices with offset
+    m_indices.reserve(m_indices.size() + other.m_indices.size());
+    for (uint32_t idx : other.m_indices) {
+        m_indices.push_back(idx + vertexOffset);
+    }
+
+    // Invalidate manifold - geometry changed
+    m_manifold.reset();
+
+    return *this;
+}
+
+// -----------------------------------------------------------------------------
+// CSG Boolean Operations
+// -----------------------------------------------------------------------------
 
 MeshBuilder& MeshBuilder::add(const MeshBuilder& other) {
     // Prefer using internal manifold representation if available

@@ -365,6 +365,9 @@ void Composite::process(Context& ctx) {
         return; // Missing inputs
     }
 
+    // Skip if nothing changed
+    if (!needsCook()) return;
+
     // Count active inputs
     int activeCount = 0;
     for (int i = 0; i < COMPOSITE_MAX_INPUTS; ++i) {
@@ -395,6 +398,8 @@ void Composite::process(Context& ctx) {
 
     // End render pass
     endRenderPass(pass, encoder, ctx);
+
+    didCook();
 }
 
 void Composite::cleanup() {

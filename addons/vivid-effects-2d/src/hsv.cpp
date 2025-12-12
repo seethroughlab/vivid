@@ -204,6 +204,9 @@ void HSV::process(Context& ctx) {
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
 
+    // Skip if nothing changed
+    if (!needsCook()) return;
+
     HSVUniforms uniforms = {};
     uniforms.hueShift = m_hueShift;
     uniforms.saturation = m_saturation;
@@ -237,6 +240,8 @@ void HSV::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void HSV::cleanup() {

@@ -46,25 +46,37 @@ class Boolean : public MeshOperator {
 public:
     /// Set the first input (A)
     Boolean& inputA(MeshOperator* op) {
-        setInput(0, op);
+        if (getInput(0) != op) {
+            setInput(0, op);
+            markDirty();
+        }
         return *this;
     }
 
     /// Set the second input (B)
     Boolean& inputB(MeshOperator* op) {
-        setInput(1, op);
+        if (getInput(1) != op) {
+            setInput(1, op);
+            markDirty();
+        }
         return *this;
     }
 
     /// Set the boolean operation type
     Boolean& operation(BooleanOp op) {
-        m_operation = op;
+        if (m_operation != op) {
+            m_operation = op;
+            markDirty();
+        }
         return *this;
     }
 
     /// Enable flat shading on result
     Boolean& flatShading(bool enabled) {
-        m_flatShading = enabled;
+        if (m_flatShading != enabled) {
+            m_flatShading = enabled;
+            markDirty();
+        }
         return *this;
     }
 
@@ -92,6 +104,9 @@ public:
             return;
         }
 
+        // Skip if nothing changed (uses base class cooking system)
+        if (!needsCook()) return;
+
         // Copy builder A as our working copy
         m_builder = *builderA;
 
@@ -114,6 +129,8 @@ public:
 
         m_mesh = m_builder.build();
         m_mesh.upload(ctx);
+
+        didCook();  // Mark output as updated
     }
 
     void cleanup() override {

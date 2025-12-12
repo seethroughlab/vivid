@@ -63,7 +63,10 @@ public:
      * @param s Scale factor applied to both axes
      * @return Reference for chaining
      */
-    Transform& scale(float s) { m_scale.set(s, s); return *this; }
+    Transform& scale(float s) {
+        if (m_scale.x() != s || m_scale.y() != s) { m_scale.set(s, s); markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set non-uniform scale
@@ -71,14 +74,20 @@ public:
      * @param y Y scale factor
      * @return Reference for chaining
      */
-    Transform& scale(float x, float y) { m_scale.set(x, y); return *this; }
+    Transform& scale(float x, float y) {
+        if (m_scale.x() != x || m_scale.y() != y) { m_scale.set(x, y); markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set rotation angle
      * @param radians Rotation in radians
      * @return Reference for chaining
      */
-    Transform& rotate(float radians) { m_rotation = radians; return *this; }
+    Transform& rotate(float radians) {
+        if (m_rotation != radians) { m_rotation = radians; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set translation offset
@@ -86,7 +95,10 @@ public:
      * @param y Y offset in UV space
      * @return Reference for chaining
      */
-    Transform& translate(float x, float y) { m_translate.set(x, y); return *this; }
+    Transform& translate(float x, float y) {
+        if (m_translate.x() != x || m_translate.y() != y) { m_translate.set(x, y); markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set transform pivot point
@@ -94,7 +106,10 @@ public:
      * @param y Y pivot (0 = bottom, 0.5 = center, 1 = top)
      * @return Reference for chaining
      */
-    Transform& pivot(float x, float y) { m_pivot.set(x, y); return *this; }
+    Transform& pivot(float x, float y) {
+        if (m_pivot.x() != x || m_pivot.y() != y) { m_pivot.set(x, y); markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -119,10 +134,10 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "scale") { m_scale.set(value[0], value[1]); return true; }
-        if (name == "rotation") { m_rotation = value[0]; return true; }
-        if (name == "translate") { m_translate.set(value[0], value[1]); return true; }
-        if (name == "pivot") { m_pivot.set(value[0], value[1]); return true; }
+        if (name == "scale") { scale(value[0], value[1]); return true; }
+        if (name == "rotation") { rotate(value[0]); return true; }
+        if (name == "translate") { translate(value[0], value[1]); return true; }
+        if (name == "pivot") { pivot(value[0], value[1]); return true; }
         return false;
     }
 

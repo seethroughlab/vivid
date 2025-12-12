@@ -191,6 +191,10 @@ void VideoPlayer::loadVideo(Context& ctx) {
 }
 
 void VideoPlayer::process(Context& ctx) {
+    checkResize(ctx);
+
+    // VideoPlayer is streaming - always cooks
+
     // Check if we need to reload
     if (m_needsReload) {
         loadVideo(ctx);
@@ -215,6 +219,8 @@ void VideoPlayer::process(Context& ctx) {
         m_standardDecoder->update(ctx);
         m_outputView = m_standardDecoder->textureView();
     }
+
+    didCook();
 }
 
 void VideoPlayer::cleanup() {

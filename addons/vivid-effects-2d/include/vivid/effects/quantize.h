@@ -57,7 +57,10 @@ public:
      * @param n Levels (2-256, default 8)
      * @return Reference for chaining
      */
-    Quantize& levels(int n) { m_levels = n; return *this; }
+    Quantize& levels(int n) {
+        if (m_levels != n) { m_levels = n; markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -79,7 +82,7 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "levels") { m_levels = static_cast<int>(value[0]); return true; }
+        if (name == "levels") { levels(static_cast<int>(value[0])); return true; }
         return false;
     }
 

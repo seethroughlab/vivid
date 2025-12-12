@@ -61,21 +61,30 @@ public:
      * @param b Brightness (-1 to 1, default 0)
      * @return Reference for chaining
      */
-    Brightness& brightness(float b) { m_brightness = b; return *this; }
+    Brightness& brightness(float b) {
+        if (m_brightness != b) { m_brightness = b; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set contrast multiplier
      * @param c Contrast (0 = flat gray, 1 = normal, >1 = high contrast)
      * @return Reference for chaining
      */
-    Brightness& contrast(float c) { m_contrast = c; return *this; }
+    Brightness& contrast(float c) {
+        if (m_contrast != c) { m_contrast = c; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set gamma correction
      * @param g Gamma exponent (0.1-3, default 1.0)
      * @return Reference for chaining
      */
-    Brightness& gamma(float g) { m_gamma = g; return *this; }
+    Brightness& gamma(float g) {
+        if (m_gamma != g) { m_gamma = g; markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -98,10 +107,10 @@ public:
         return false;
     }
 
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "brightness") { m_brightness = value[0]; return true; }
-        if (name == "contrast") { m_contrast = value[0]; return true; }
-        if (name == "gamma") { m_gamma = value[0]; return true; }
+    bool setParam(const std::string& name, const float val[4]) override {
+        if (name == "brightness") { brightness(val[0]); return true; }
+        if (name == "contrast") { contrast(val[0]); return true; }
+        if (name == "gamma") { gamma(val[0]); return true; }
         return false;
     }
 

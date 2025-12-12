@@ -780,6 +780,9 @@ void Plexus::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
+    checkResize(ctx);
+
+    // Plexus is a simulation - always cooks
 
     if (!m_nodesInitialized) {
         initNodes();
@@ -821,6 +824,8 @@ void Plexus::process(Context& ctx) {
 
     // Render nodes on top
     renderNodes(ctx);
+
+    didCook();
 }
 
 void Plexus::cleanup() {

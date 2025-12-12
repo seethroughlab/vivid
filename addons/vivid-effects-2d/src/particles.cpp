@@ -39,6 +39,9 @@ void Particles::loadTexture(Context& ctx) {
 
 void Particles::process(Context& ctx) {
     if (!m_initialized) init(ctx);
+    checkResize(ctx);
+
+    // Particles is a simulation - always cooks
 
     float dt = static_cast<float>(ctx.dt());
 
@@ -137,6 +140,8 @@ void Particles::process(Context& ctx) {
 
         m_renderer.renderCircles(ctx, circles, m_outputView, m_width, m_height, m_clearColor);
     }
+
+    didCook();
 }
 
 void Particles::emitParticle(const glm::vec2& emitterPos) {

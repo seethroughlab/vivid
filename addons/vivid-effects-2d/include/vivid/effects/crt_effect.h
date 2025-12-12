@@ -63,35 +63,50 @@ public:
      * @param c Curvature amount (0-0.5, default 0.1)
      * @return Reference for chaining
      */
-    CRTEffect& curvature(float c) { m_curvature = c; return *this; }
+    CRTEffect& curvature(float c) {
+        if (m_curvature != c) { m_curvature = c; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set vignette intensity
      * @param v Vignette amount (0-1, default 0.3)
      * @return Reference for chaining
      */
-    CRTEffect& vignette(float v) { m_vignette = v; return *this; }
+    CRTEffect& vignette(float v) {
+        if (m_vignette != v) { m_vignette = v; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set scanline intensity
      * @param s Scanline amount (0-1, default 0.2)
      * @return Reference for chaining
      */
-    CRTEffect& scanlines(float s) { m_scanlines = s; return *this; }
+    CRTEffect& scanlines(float s) {
+        if (m_scanlines != s) { m_scanlines = s; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set phosphor bloom intensity
      * @param b Bloom amount (0-1, default 0.1)
      * @return Reference for chaining
      */
-    CRTEffect& bloom(float b) { m_bloom = b; return *this; }
+    CRTEffect& bloom(float b) {
+        if (m_bloom != b) { m_bloom = b; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set chromatic aberration amount
      * @param c Chromatic separation (0-0.1, default 0.02)
      * @return Reference for chaining
      */
-    CRTEffect& chromatic(float c) { m_chromatic = c; return *this; }
+    CRTEffect& chromatic(float c) {
+        if (m_chromatic != c) { m_chromatic = c; markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -118,11 +133,11 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "curvature") { m_curvature = value[0]; return true; }
-        if (name == "vignette") { m_vignette = value[0]; return true; }
-        if (name == "scanlines") { m_scanlines = value[0]; return true; }
-        if (name == "bloom") { m_bloom = value[0]; return true; }
-        if (name == "chromatic") { m_chromatic = value[0]; return true; }
+        if (name == "curvature") { curvature(value[0]); return true; }
+        if (name == "vignette") { vignette(value[0]); return true; }
+        if (name == "scanlines") { scanlines(value[0]); return true; }
+        if (name == "bloom") { bloom(value[0]); return true; }
+        if (name == "chromatic") { chromatic(value[0]); return true; }
         return false;
     }
 

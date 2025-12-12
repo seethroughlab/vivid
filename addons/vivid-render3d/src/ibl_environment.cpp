@@ -408,29 +408,40 @@ void IBLEnvironment::cleanup() {
 
 // Fluent API setters
 IBLEnvironment& IBLEnvironment::hdrFile(const std::string& path) {
-    m_hdrPath = path;
-    m_useDefaultEnv = false;
-    m_needsLoad = true;
+    if (m_hdrPath != path || m_useDefaultEnv) {
+        m_hdrPath = path;
+        m_useDefaultEnv = false;
+        m_needsLoad = true;
+        markDirty();
+    }
     return *this;
 }
 
 IBLEnvironment& IBLEnvironment::useDefault() {
-    m_hdrPath.clear();
-    m_useDefaultEnv = true;
-    m_needsLoad = true;
+    if (!m_hdrPath.empty() || !m_useDefaultEnv) {
+        m_hdrPath.clear();
+        m_useDefaultEnv = true;
+        m_needsLoad = true;
+        markDirty();
+    }
     return *this;
 }
 
 // Operator process - deferred loading
 void IBLEnvironment::process(Context& ctx) {
-    if (!m_needsLoad) return;
-    m_needsLoad = false;
+    if (!needsCook()) return;
 
-    if (!m_hdrPath.empty()) {
-        loadHDR(ctx, m_hdrPath);
-    } else if (m_useDefaultEnv) {
-        loadDefault(ctx);
+    if (m_needsLoad) {
+        m_needsLoad = false;
+
+        if (!m_hdrPath.empty()) {
+            loadHDR(ctx, m_hdrPath);
+        } else if (m_useDefaultEnv) {
+            loadDefault(ctx);
+        }
     }
+
+    didCook();
 }
 
 bool IBLEnvironment::loadHDR(Context& ctx, const std::string& hdrPath) {

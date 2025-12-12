@@ -90,7 +90,12 @@ void Image::process(Context& ctx) {
     if (!m_initialized || m_needsReload) {
         init(ctx);
     }
-    // Image is static - no processing needed per frame
+    checkResize(ctx);
+
+    if (!needsCook()) return;
+
+    // Image is static - just mark as cooked
+    didCook();
 }
 
 void Image::cleanup() {

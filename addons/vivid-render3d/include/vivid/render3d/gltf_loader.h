@@ -101,21 +101,39 @@ public:
      * When enabled, creates a TexturedMaterial with base color,
      * normal, metallic-roughness, and other maps if present.
      */
-    GLTFLoader& loadTextures(bool enabled);
+    GLTFLoader& loadTextures(bool enabled) {
+        if (m_loadTextures != enabled) {
+            m_loadTextures = enabled;
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Scale the model uniformly
      * @param scale Scale factor (1.0 = original size)
      * @return Reference to this operator for chaining
      */
-    GLTFLoader& scale(float scale);
+    GLTFLoader& scale(float scale) {
+        if (m_scale != scale) {
+            m_scale = scale;
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Compute tangents for normal mapping
      * @param enabled True to compute tangents (default: true if textures enabled)
      * @return Reference to this operator for chaining
      */
-    GLTFLoader& computeTangents(bool enabled);
+    GLTFLoader& computeTangents(bool enabled) {
+        if (m_computeTangents != enabled) {
+            m_computeTangents = enabled;
+            markDirty();
+        }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------

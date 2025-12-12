@@ -78,14 +78,20 @@ public:
      * @param m Blend mode (Over, Add, Multiply, Screen, Overlay, Difference)
      * @return Reference for chaining
      */
-    Composite& mode(BlendMode m) { m_mode = m; return *this; }
+    Composite& mode(BlendMode m) {
+        if (m_mode != m) { m_mode = m; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set blend opacity
      * @param o Opacity (0-1, default 1.0)
      * @return Reference for chaining
      */
-    Composite& opacity(float o) { m_opacity = o; return *this; }
+    Composite& opacity(float o) {
+        if (m_opacity != o) { m_opacity = o; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set input at specific index
@@ -140,7 +146,7 @@ public:
         return false;
     }
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "opacity") { m_opacity = value[0]; return true; }
+        if (name == "opacity") { opacity(value[0]); return true; }
         return false;
     }
 

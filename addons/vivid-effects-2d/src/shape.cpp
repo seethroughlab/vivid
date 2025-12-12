@@ -255,6 +255,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 void Shape::process(Context& ctx) {
     if (!m_initialized) init(ctx);
+    checkResize(ctx);
+
+    if (!needsCook()) return;
 
     ShapeUniforms uniforms = {};
     uniforms.shapeType = static_cast<int>(m_type);
@@ -284,6 +287,7 @@ void Shape::process(Context& ctx) {
     wgpuRenderPassEncoderSetBindGroup(pass, 0, m_bindGroup, 0, nullptr);
     wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
     endRenderPass(pass, encoder, ctx);
+    didCook();
 }
 
 void Shape::cleanup() {

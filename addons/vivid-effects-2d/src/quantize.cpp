@@ -139,8 +139,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void Quantize::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
+    checkResize(ctx);
+
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     QuantizeUniforms uniforms = {};
     uniforms.levels = m_levels;
@@ -173,6 +177,8 @@ void Quantize::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void Quantize::cleanup() {

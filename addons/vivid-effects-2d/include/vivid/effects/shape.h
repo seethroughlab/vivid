@@ -72,14 +72,20 @@ public:
      * @param t Shape type
      * @return Reference for chaining
      */
-    Shape& type(ShapeType t) { m_type = t; return *this; }
+    Shape& type(ShapeType t) { if (m_type != t) { m_type = t; markDirty(); } return *this; }
 
     /**
      * @brief Set uniform shape size
      * @param s Size (applies to both dimensions)
      * @return Reference for chaining
      */
-    Shape& size(float s) { m_size.set(s, s); return *this; }
+    Shape& size(float s) {
+        if (m_size.x() != s || m_size.y() != s) {
+            m_size.set(s, s);
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Set non-uniform shape size
@@ -87,7 +93,13 @@ public:
      * @param y Height
      * @return Reference for chaining
      */
-    Shape& size(float x, float y) { m_size.set(x, y); return *this; }
+    Shape& size(float x, float y) {
+        if (m_size.x() != x || m_size.y() != y) {
+            m_size.set(x, y);
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Set shape position
@@ -95,42 +107,48 @@ public:
      * @param y Y position (0-1)
      * @return Reference for chaining
      */
-    Shape& position(float x, float y) { m_position.set(x, y); return *this; }
+    Shape& position(float x, float y) {
+        if (m_position.x() != x || m_position.y() != y) {
+            m_position.set(x, y);
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Set rotation angle
      * @param r Rotation in radians
      * @return Reference for chaining
      */
-    Shape& rotation(float r) { m_rotation = r; return *this; }
+    Shape& rotation(float r) { if (m_rotation != r) { m_rotation = r; markDirty(); } return *this; }
 
     /**
      * @brief Set polygon/star side count
      * @param n Number of sides (3-32)
      * @return Reference for chaining
      */
-    Shape& sides(int n) { m_sides = n; return *this; }
+    Shape& sides(int n) { if (m_sides != n) { m_sides = n; markDirty(); } return *this; }
 
     /**
      * @brief Set corner radius for rounded shapes
      * @param r Corner radius (0-0.5)
      * @return Reference for chaining
      */
-    Shape& cornerRadius(float r) { m_cornerRadius = r; return *this; }
+    Shape& cornerRadius(float r) { if (m_cornerRadius != r) { m_cornerRadius = r; markDirty(); } return *this; }
 
     /**
      * @brief Set ring/outline thickness
      * @param t Thickness (0-0.5)
      * @return Reference for chaining
      */
-    Shape& thickness(float t) { m_thickness = t; return *this; }
+    Shape& thickness(float t) { if (m_thickness != t) { m_thickness = t; markDirty(); } return *this; }
 
     /**
      * @brief Set edge softness
      * @param s Softness (0-0.2, default 0.01)
      * @return Reference for chaining
      */
-    Shape& softness(float s) { m_softness = s; return *this; }
+    Shape& softness(float s) { if (m_softness != s) { m_softness = s; markDirty(); } return *this; }
 
     /**
      * @brief Set shape color
@@ -141,7 +159,11 @@ public:
      * @return Reference for chaining
      */
     Shape& color(float r, float g, float b, float a = 1.0f) {
-        m_color.set(r, g, b, a); return *this;
+        if (m_color.r() != r || m_color.g() != g || m_color.b() != b || m_color.a() != a) {
+            m_color.set(r, g, b, a);
+            markDirty();
+        }
+        return *this;
     }
 
     /// @}
@@ -172,14 +194,14 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "size") { m_size.set(value[0], value[1]); return true; }
-        if (name == "position") { m_position.set(value[0], value[1]); return true; }
-        if (name == "rotation") { m_rotation = value[0]; return true; }
-        if (name == "sides") { m_sides = static_cast<int>(value[0]); return true; }
-        if (name == "cornerRadius") { m_cornerRadius = value[0]; return true; }
-        if (name == "thickness") { m_thickness = value[0]; return true; }
-        if (name == "softness") { m_softness = value[0]; return true; }
-        if (name == "color") { m_color.set(value[0], value[1], value[2], value[3]); return true; }
+        if (name == "size") { size(value[0], value[1]); return true; }
+        if (name == "position") { position(value[0], value[1]); return true; }
+        if (name == "rotation") { rotation(value[0]); return true; }
+        if (name == "sides") { sides(static_cast<int>(value[0])); return true; }
+        if (name == "cornerRadius") { cornerRadius(value[0]); return true; }
+        if (name == "thickness") { thickness(value[0]); return true; }
+        if (name == "softness") { softness(value[0]); return true; }
+        if (name == "color") { color(value[0], value[1], value[2], value[3]); return true; }
         return false;
     }
 

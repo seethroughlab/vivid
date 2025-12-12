@@ -179,6 +179,7 @@ void Displace::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
+    checkResize(ctx);
 
     // Get input textures
     WGPUTextureView sourceView = inputView(0);
@@ -187,6 +188,8 @@ void Displace::process(Context& ctx) {
     if (!sourceView || !mapView) {
         return;  // Need both inputs
     }
+
+    if (!needsCook()) return;
 
     // Update uniforms
     DisplaceUniforms uniforms = {};
@@ -240,6 +243,7 @@ void Displace::process(Context& ctx) {
 
     // End render pass
     endRenderPass(pass, encoder, ctx);
+    didCook();
 }
 
 void Displace::cleanup() {

@@ -54,27 +54,41 @@ public:
 
     /// Set camera position (disables orbit mode)
     CameraOperator& position(float x, float y, float z) {
-        m_position = glm::vec3(x, y, z);
-        m_orbitMode = false;
+        glm::vec3 newPos(x, y, z);
+        if (m_position != newPos || m_orbitMode) {
+            m_position = newPos;
+            m_orbitMode = false;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set camera position from vector
     CameraOperator& position(const glm::vec3& pos) {
-        m_position = pos;
-        m_orbitMode = false;
+        if (m_position != pos || m_orbitMode) {
+            m_position = pos;
+            m_orbitMode = false;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set look-at target
     CameraOperator& target(float x, float y, float z) {
-        m_target = glm::vec3(x, y, z);
+        glm::vec3 newTarget(x, y, z);
+        if (m_target != newTarget) {
+            m_target = newTarget;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set look-at target from vector
     CameraOperator& target(const glm::vec3& t) {
-        m_target = t;
+        if (m_target != t) {
+            m_target = t;
+            markDirty();
+        }
         return *this;
     }
 
@@ -85,36 +99,52 @@ public:
 
     /// Set orbit center point (enables orbit mode)
     CameraOperator& orbitCenter(float x, float y, float z) {
-        m_target = glm::vec3(x, y, z);
-        m_orbitMode = true;
+        glm::vec3 newTarget(x, y, z);
+        if (m_target != newTarget || !m_orbitMode) {
+            m_target = newTarget;
+            m_orbitMode = true;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set orbit center from vector
     CameraOperator& orbitCenter(const glm::vec3& center) {
-        m_target = center;
-        m_orbitMode = true;
+        if (m_target != center || !m_orbitMode) {
+            m_target = center;
+            m_orbitMode = true;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set orbit distance
     CameraOperator& distance(float d) {
-        m_distance = d;
-        m_orbitMode = true;
+        if (m_distance != d || !m_orbitMode) {
+            m_distance = d;
+            m_orbitMode = true;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set orbit azimuth angle in radians
     CameraOperator& azimuth(float radians) {
-        m_azimuth = radians;
-        m_orbitMode = true;
+        if (m_azimuth != radians || !m_orbitMode) {
+            m_azimuth = radians;
+            m_orbitMode = true;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set orbit elevation angle in radians
     CameraOperator& elevation(float radians) {
-        m_elevation = radians;
-        m_orbitMode = true;
+        if (m_elevation != radians || !m_orbitMode) {
+            m_elevation = radians;
+            m_orbitMode = true;
+            markDirty();
+        }
         return *this;
     }
 
@@ -125,19 +155,28 @@ public:
 
     /// Set vertical field of view in degrees
     CameraOperator& fov(float degrees) {
-        m_fov = degrees;
+        if (m_fov != degrees) {
+            m_fov = degrees;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set near clip plane
     CameraOperator& nearPlane(float n) {
-        m_near = n;
+        if (m_near != n) {
+            m_near = n;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set far clip plane
     CameraOperator& farPlane(float f) {
-        m_far = f;
+        if (m_far != f) {
+            m_far = f;
+            markDirty();
+        }
         return *this;
     }
 
@@ -192,6 +231,8 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!needsCook()) return;
+
         // Read animated inputs
         float fov = m_fov;
         float dist = m_distance;
@@ -219,6 +260,8 @@ public:
         }
 
         m_camera.fov(fov).nearPlane(m_near).farPlane(m_far);
+
+        didCook();
     }
 
     void cleanup() override {}

@@ -14,12 +14,64 @@
 #include <glm/glm.hpp>
 
 #include <iostream>
+#include <iomanip>
 #include <string>
 #include <filesystem>
+
+// Memory debugging (macOS)
+#ifdef __APPLE__
+#include <mach/mach.h>
+#endif
 
 using namespace vivid;
 
 namespace fs = std::filesystem;
+
+// -----------------------------------------------------------------------------
+// Memory Debugging
+// -----------------------------------------------------------------------------
+
+#ifdef __APPLE__
+size_t getMemoryUsageMB() {
+    mach_task_basic_info info;
+    mach_msg_type_number_t count = MACH_TASK_BASIC_INFO_COUNT;
+    if (task_info(mach_task_self(), MACH_TASK_BASIC_INFO, (task_info_t)&info, &count) == KERN_SUCCESS) {
+        return info.resident_size / (1024 * 1024);  // Convert to MB
+    }
+    return 0;
+}
+#else
+size_t getMemoryUsageMB() {
+    return 0;  // Not implemented for other platforms
+}
+#endif
+
+static double g_lastMemoryLogTime = 0.0;
+static size_t g_initialMemory = 0;
+
+static size_t g_lastMemory = 0;
+
+void logMemoryUsage(double time) {
+    size_t currentMB = getMemoryUsageMB();
+    if (currentMB == 0) return;  // Not supported on this platform
+
+    if (g_initialMemory == 0) {
+        g_initialMemory = currentMB;
+        g_lastMemory = currentMB;
+        std::cout << "=== Memory Tracking Started ===" << std::endl;
+    }
+
+    int64_t deltaMB = static_cast<int64_t>(currentMB) - static_cast<int64_t>(g_initialMemory);
+    int64_t deltaFromLast = static_cast<int64_t>(currentMB) - static_cast<int64_t>(g_lastMemory);
+
+    std::cout << "[" << std::fixed << std::setprecision(1) << time << "s] "
+              << "Memory: " << currentMB << " MB "
+              << "(total: " << (deltaMB >= 0 ? "+" : "") << deltaMB << " MB, "
+              << "last 10s: " << (deltaFromLast >= 0 ? "+" : "") << deltaFromLast << " MB)"
+              << std::endl;
+
+    g_lastMemory = currentMB;
+}
 
 // -----------------------------------------------------------------------------
 // WebGPU Initialization Helpers
@@ -337,6 +389,15 @@ int main(int argc, char** argv) {
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
+
+        // Memory logging every 10 seconds
+        {
+            double now = glfwGetTime();
+            if (now - g_lastMemoryLogTime >= 10.0) {
+                logMemoryUsage(now);
+                g_lastMemoryLogTime = now;
+            }
+        }
 
         // Toggle chain visualizer on Tab key (edge detection)
         {

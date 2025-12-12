@@ -16,9 +16,60 @@
 #include <cmath>
 #include <filesystem>
 
+// Platform-specific memory monitoring
+#if defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/task.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#include <psapi.h>
+#elif defined(__linux__)
+#include <fstream>
+#include <unistd.h>
+#endif
+
 namespace fs = std::filesystem;
 
 namespace vivid::imgui {
+
+// Get process memory usage in bytes
+static size_t getProcessMemoryUsage() {
+#if defined(__APPLE__)
+    task_vm_info_data_t vmInfo;
+    mach_msg_type_number_t count = TASK_VM_INFO_COUNT;
+    if (task_info(mach_task_self(), TASK_VM_INFO, (task_info_t)&vmInfo, &count) == KERN_SUCCESS) {
+        return vmInfo.phys_footprint;  // Actual physical memory used
+    }
+    return 0;
+#elif defined(_WIN32)
+    PROCESS_MEMORY_COUNTERS_EX pmc;
+    if (GetProcessMemoryInfo(GetCurrentProcess(), (PROCESS_MEMORY_COUNTERS*)&pmc, sizeof(pmc))) {
+        return pmc.WorkingSetSize;
+    }
+    return 0;
+#elif defined(__linux__)
+    std::ifstream statm("/proc/self/statm");
+    if (statm.is_open()) {
+        size_t size, resident;
+        statm >> size >> resident;
+        return resident * sysconf(_SC_PAGESIZE);
+    }
+    return 0;
+#else
+    return 0;
+#endif
+}
+
+// Format bytes as human-readable string (MB or GB)
+static std::string formatMemory(size_t bytes) {
+    char buf[32];
+    if (bytes >= 1024 * 1024 * 1024) {
+        snprintf(buf, sizeof(buf), "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0));
+    } else {
+        snprintf(buf, sizeof(buf), "%.1f MB", bytes / (1024.0 * 1024.0));
+    }
+    return buf;
+}
 
 using namespace vivid::render3d;
 
@@ -530,6 +581,21 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         ImGui::Text("%dx%d", input.width, input.height);
         ImGui::Separator();
         ImGui::Text("%zu ops", operators.size());
+
+        // Memory usage display
+        ImGui::Separator();
+        size_t memBytes = getProcessMemoryUsage();
+        std::string memStr = formatMemory(memBytes);
+        // Color based on memory usage: green < 500MB, yellow < 2GB, red >= 2GB
+        ImVec4 memColor;
+        if (memBytes < 500 * 1024 * 1024) {
+            memColor = ImVec4(0.4f, 0.9f, 0.4f, 1.0f);  // Green
+        } else if (memBytes < 2ULL * 1024 * 1024 * 1024) {
+            memColor = ImVec4(0.9f, 0.9f, 0.4f, 1.0f);  // Yellow
+        } else {
+            memColor = ImVec4(0.9f, 0.4f, 0.4f, 1.0f);  // Red
+        }
+        ImGui::TextColored(memColor, "MEM: %s", memStr.c_str());
 
         // Controls menu
         if (ImGui::BeginMenu("Controls")) {

@@ -68,42 +68,42 @@ public:
      * @param w Waveform (Sine, Triangle, Saw, Square, Noise)
      * @return Reference for chaining
      */
-    LFO& waveform(LFOWaveform w) { m_waveform = w; return *this; }
+    LFO& waveform(LFOWaveform w) { if (m_waveform != w) { m_waveform = w; markDirty(); } return *this; }
 
     /**
      * @brief Set oscillation frequency
      * @param f Frequency in Hz (0.01-20, default 1.0)
      * @return Reference for chaining
      */
-    LFO& frequency(float f) { m_frequency = f; return *this; }
+    LFO& frequency(float f) { if (m_frequency != f) { m_frequency = f; markDirty(); } return *this; }
 
     /**
      * @brief Set output amplitude
      * @param a Amplitude (0-2, default 1.0)
      * @return Reference for chaining
      */
-    LFO& amplitude(float a) { m_amplitude = a; return *this; }
+    LFO& amplitude(float a) { if (m_amplitude != a) { m_amplitude = a; markDirty(); } return *this; }
 
     /**
      * @brief Set DC offset
      * @param o Offset (-1 to 1, default 0.0)
      * @return Reference for chaining
      */
-    LFO& offset(float o) { m_offset = o; return *this; }
+    LFO& offset(float o) { if (m_offset != o) { m_offset = o; markDirty(); } return *this; }
 
     /**
      * @brief Set phase offset
      * @param p Phase (0-1 = 0-360°, default 0.0)
      * @return Reference for chaining
      */
-    LFO& phase(float p) { m_phase = p; return *this; }
+    LFO& phase(float p) { if (m_phase != p) { m_phase = p; markDirty(); } return *this; }
 
     /**
      * @brief Set pulse width (square wave)
      * @param pw Pulse width (0-1, default 0.5)
      * @return Reference for chaining
      */
-    LFO& pulseWidth(float pw) { m_pulseWidth = pw; return *this; }
+    LFO& pulseWidth(float pw) { if (m_pulseWidth != pw) { m_pulseWidth = pw; markDirty(); } return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -148,11 +148,11 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "frequency") { m_frequency = value[0]; return true; }
-        if (name == "amplitude") { m_amplitude = value[0]; return true; }
-        if (name == "offset") { m_offset = value[0]; return true; }
-        if (name == "phase") { m_phase = value[0]; return true; }
-        if (name == "pulseWidth") { m_pulseWidth = value[0]; return true; }
+        if (name == "frequency") { frequency(value[0]); return true; }
+        if (name == "amplitude") { amplitude(value[0]); return true; }
+        if (name == "offset") { offset(value[0]); return true; }
+        if (name == "phase") { phase(value[0]); return true; }
+        if (name == "pulseWidth") { pulseWidth(value[0]); return true; }
         return false;
     }
 

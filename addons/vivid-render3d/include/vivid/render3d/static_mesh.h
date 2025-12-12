@@ -40,6 +40,7 @@ public:
     StaticMesh& mesh(Mesh&& m) {
         m_mesh = std::move(m);
         m_needsUpload = true;
+        markDirty();
         return *this;
     }
 
@@ -52,16 +53,21 @@ public:
         m_builder = builder;
         m_mesh = m_builder.build();
         m_needsUpload = true;
+        markDirty();
         return *this;
     }
 
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!needsCook()) return;
+
         if (m_needsUpload && !m_mesh.vertices.empty()) {
             m_mesh.upload(ctx);
             m_needsUpload = false;
         }
+
+        didCook();
     }
 
     void cleanup() override {

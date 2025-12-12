@@ -189,8 +189,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void Dither::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
+    checkResize(ctx);
+
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     DitherUniforms uniforms = {};
     uniforms.pattern = static_cast<int>(m_pattern);
@@ -225,6 +229,8 @@ void Dither::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void Dither::cleanup() {

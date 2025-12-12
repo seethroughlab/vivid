@@ -97,31 +97,49 @@ public:
 
     /// Set light direction (will be normalized)
     DirectionalLight& direction(float x, float y, float z) {
-        m_light.direction = glm::normalize(glm::vec3(x, y, z));
+        glm::vec3 newDir = glm::normalize(glm::vec3(x, y, z));
+        if (m_light.direction != newDir) {
+            m_light.direction = newDir;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light direction from vector
     DirectionalLight& direction(const glm::vec3& dir) {
-        m_light.direction = glm::normalize(dir);
+        glm::vec3 newDir = glm::normalize(dir);
+        if (m_light.direction != newDir) {
+            m_light.direction = newDir;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light color (RGB, 0-1)
     DirectionalLight& color(float r, float g, float b) {
-        m_light.color = glm::vec3(r, g, b);
+        glm::vec3 newColor(r, g, b);
+        if (m_light.color != newColor) {
+            m_light.color = newColor;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light color from vector
     DirectionalLight& color(const glm::vec3& c) {
-        m_light.color = c;
+        if (m_light.color != c) {
+            m_light.color = c;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set intensity multiplier
     DirectionalLight& intensity(float i) {
-        m_light.intensity = i;
+        if (m_light.intensity != i) {
+            m_light.intensity = i;
+            markDirty();
+        }
         return *this;
     }
 
@@ -134,10 +152,14 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!needsCook()) return;
+
         // Read animated intensity if connected
         if (auto* input = getInput(0)) {
             m_light.intensity = input->outputValue();
         }
+
+        didCook();
     }
 
     void cleanup() override {}
@@ -182,37 +204,57 @@ public:
 
     /// Set light position
     PointLight& position(float x, float y, float z) {
-        m_light.position = glm::vec3(x, y, z);
+        glm::vec3 newPos(x, y, z);
+        if (m_light.position != newPos) {
+            m_light.position = newPos;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light position from vector
     PointLight& position(const glm::vec3& pos) {
-        m_light.position = pos;
+        if (m_light.position != pos) {
+            m_light.position = pos;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light color (RGB, 0-1)
     PointLight& color(float r, float g, float b) {
-        m_light.color = glm::vec3(r, g, b);
+        glm::vec3 newColor(r, g, b);
+        if (m_light.color != newColor) {
+            m_light.color = newColor;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light color from vector
     PointLight& color(const glm::vec3& c) {
-        m_light.color = c;
+        if (m_light.color != c) {
+            m_light.color = c;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set intensity multiplier
     PointLight& intensity(float i) {
-        m_light.intensity = i;
+        if (m_light.intensity != i) {
+            m_light.intensity = i;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set falloff range
     PointLight& range(float r) {
-        m_light.range = r;
+        if (m_light.range != r) {
+            m_light.range = r;
+            markDirty();
+        }
         return *this;
     }
 
@@ -225,9 +267,13 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!needsCook()) return;
+
         if (auto* input = getInput(0)) {
             m_light.intensity = input->outputValue();
         }
+
+        didCook();
     }
 
     void cleanup() override {}
@@ -274,61 +320,95 @@ public:
 
     /// Set light position
     SpotLight& position(float x, float y, float z) {
-        m_light.position = glm::vec3(x, y, z);
+        glm::vec3 newPos(x, y, z);
+        if (m_light.position != newPos) {
+            m_light.position = newPos;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light position from vector
     SpotLight& position(const glm::vec3& pos) {
-        m_light.position = pos;
+        if (m_light.position != pos) {
+            m_light.position = pos;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light direction (will be normalized)
     SpotLight& direction(float x, float y, float z) {
-        m_light.direction = glm::normalize(glm::vec3(x, y, z));
+        glm::vec3 newDir = glm::normalize(glm::vec3(x, y, z));
+        if (m_light.direction != newDir) {
+            m_light.direction = newDir;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light direction from vector
     SpotLight& direction(const glm::vec3& dir) {
-        m_light.direction = glm::normalize(dir);
+        glm::vec3 newDir = glm::normalize(dir);
+        if (m_light.direction != newDir) {
+            m_light.direction = newDir;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light color (RGB, 0-1)
     SpotLight& color(float r, float g, float b) {
-        m_light.color = glm::vec3(r, g, b);
+        glm::vec3 newColor(r, g, b);
+        if (m_light.color != newColor) {
+            m_light.color = newColor;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set light color from vector
     SpotLight& color(const glm::vec3& c) {
-        m_light.color = c;
+        if (m_light.color != c) {
+            m_light.color = c;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set intensity multiplier
     SpotLight& intensity(float i) {
-        m_light.intensity = i;
+        if (m_light.intensity != i) {
+            m_light.intensity = i;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set falloff range
     SpotLight& range(float r) {
-        m_light.range = r;
+        if (m_light.range != r) {
+            m_light.range = r;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set outer cone angle in degrees
     SpotLight& spotAngle(float degrees) {
-        m_light.spotAngle = degrees;
+        if (m_light.spotAngle != degrees) {
+            m_light.spotAngle = degrees;
+            markDirty();
+        }
         return *this;
     }
 
     /// Set inner/outer cone blend factor (0 = hard edge, 1 = soft)
     SpotLight& spotBlend(float blend) {
-        m_light.spotBlend = blend;
+        if (m_light.spotBlend != blend) {
+            m_light.spotBlend = blend;
+            markDirty();
+        }
         return *this;
     }
 
@@ -341,9 +421,13 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
+        if (!needsCook()) return;
+
         if (auto* input = getInput(0)) {
             m_light.intensity = input->outputValue();
         }
+
+        didCook();
     }
 
     void cleanup() override {}

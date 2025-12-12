@@ -191,6 +191,9 @@ void Blur::process(Context& ctx) {
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
 
+    // Skip if nothing changed
+    if (!needsCook()) return;
+
     float texelW = 1.0f / m_width;
     float texelH = 1.0f / m_height;
 
@@ -285,6 +288,8 @@ void Blur::process(Context& ctx) {
             wgpuBindGroupRelease(bindGroup);
         }
     }
+
+    didCook();
 }
 
 void Blur::cleanup() {

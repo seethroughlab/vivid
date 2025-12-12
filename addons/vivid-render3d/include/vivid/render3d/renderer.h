@@ -144,8 +144,11 @@ public:
 
     /// Set output resolution (overrides TextureOperator::resolution)
     Render3D& resolution(int width, int height) {
-        m_width = width;
-        m_height = height;
+        if (m_width != width || m_height != height) {
+            m_width = width;
+            m_height = height;
+            markDirty();
+        }
         return *this;
     }
 

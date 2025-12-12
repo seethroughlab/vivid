@@ -190,8 +190,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void Mirror::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
+    checkResize(ctx);
+
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     MirrorUniforms uniforms = {};
     uniforms.mode = static_cast<int>(m_mode);
@@ -228,6 +232,8 @@ void Mirror::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void Mirror::cleanup() {

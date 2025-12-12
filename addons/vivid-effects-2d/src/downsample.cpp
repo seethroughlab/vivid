@@ -142,9 +142,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 void Downsample::process(Context& ctx) {
     if (!m_initialized) init(ctx);
+    checkResize(ctx);
 
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     DownsampleUniforms uniforms = {};
     uniforms.targetW = static_cast<float>(m_targetW);
@@ -180,6 +183,7 @@ void Downsample::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+    didCook();
 }
 
 void Downsample::cleanup() {

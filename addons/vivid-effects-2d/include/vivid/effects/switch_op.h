@@ -62,21 +62,25 @@ public:
      * @param i Index (0-7)
      * @return Reference for chaining
      */
-    Switch& index(int i) { m_index = i; return *this; }
+    Switch& index(int i) { if (m_index != i) { m_index = i; markDirty(); } return *this; }
 
     /**
      * @brief Set selected input from float (for LFO control)
      * @param f Float value (truncated to int)
      * @return Reference for chaining
      */
-    Switch& index(float f) { m_index = static_cast<int>(f); return *this; }
+    Switch& index(float f) {
+        int i = static_cast<int>(f);
+        if (m_index != i) { m_index = i; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set crossfade blend amount
      * @param b Blend (0 = hard switch, >0 = crossfade)
      * @return Reference for chaining
      */
-    Switch& blend(float b) { m_blend = b; return *this; }
+    Switch& blend(float b) { if (m_blend != b) { m_blend = b; markDirty(); } return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -99,8 +103,8 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "index") { m_index = static_cast<int>(value[0]); return true; }
-        if (name == "blend") { m_blend = value[0]; return true; }
+        if (name == "index") { index(static_cast<int>(value[0])); return true; }
+        if (name == "blend") { blend(value[0]); return true; }
         return false;
     }
 

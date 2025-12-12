@@ -252,6 +252,11 @@ void Ramp::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
+    checkResize(ctx);
+
+    // Ramp is animated if hueSpeed > 0
+    bool animated = (m_hueSpeed > 0.0f);
+    if (!animated && !needsCook()) return;
 
     // Update uniforms
     RampUniforms uniforms = {};
@@ -287,6 +292,7 @@ void Ramp::process(Context& ctx) {
 
     // End render pass
     endRenderPass(pass, encoder, ctx);
+    didCook();
 }
 
 void Ramp::cleanup() {

@@ -16,12 +16,6 @@ Canvas::~Canvas() {
     cleanup();
 }
 
-Canvas& Canvas::size(int w, int h) {
-    m_width = w;
-    m_height = h;
-    return *this;
-}
-
 bool Canvas::loadFont(Context& ctx, const std::string& path, float fontSize) {
     return m_font->load(ctx, path, fontSize);
 }
@@ -112,6 +106,7 @@ void Canvas::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
+    checkResize(ctx);
 
     // Auto-begin frame if user didn't call clear()
     if (!m_frameBegun) {
@@ -123,6 +118,7 @@ void Canvas::process(Context& ctx) {
 
     // Reset for next frame
     m_frameBegun = false;
+    didCook();
 }
 
 void Canvas::cleanup() {

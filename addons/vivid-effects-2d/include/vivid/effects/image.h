@@ -14,7 +14,14 @@ public:
     ~Image() override;
 
     // Fluent API
-    Image& file(const std::string& path) { m_filePath = path; m_needsReload = true; return *this; }
+    Image& file(const std::string& path) {
+        if (m_filePath != path) {
+            m_filePath = path;
+            m_needsReload = true;
+            markDirty();
+        }
+        return *this;
+    }
 
     // Operator interface
     void init(Context& ctx) override;

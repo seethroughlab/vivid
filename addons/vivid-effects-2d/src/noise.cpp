@@ -498,6 +498,10 @@ void Noise::process(Context& ctx) {
     // Handle window resize / fullscreen
     checkResize(ctx);
 
+    // Noise is animated if speed > 0
+    bool animated = (m_speed > 0.0f);
+    if (!animated && !needsCook()) return;
+
     // Update uniforms
     NoiseUniforms uniforms = {};
     uniforms.time = static_cast<float>(ctx.time());
@@ -528,6 +532,8 @@ void Noise::process(Context& ctx) {
 
     // End render pass
     endRenderPass(pass, encoder, ctx);
+
+    didCook();
 }
 
 void Noise::cleanup() {

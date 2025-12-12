@@ -290,6 +290,31 @@ public:
     }
 
     /**
+     * @brief Set root transform applied to all entries
+     * @param transform Transform matrix applied before each entry's local transform
+     * @return Reference to this for chaining
+     *
+     * The root transform is multiplied with each entry's transform during process().
+     * This is useful for applying a single transform to the entire scene (e.g., hover animation).
+     *
+     * @par Example
+     * @code
+     * // Apply hover animation to entire craft
+     * glm::mat4 hover = glm::translate(glm::mat4(1.0f), glm::vec3(0, sin(time) * 0.1f, 0));
+     * scene.rootTransform(hover);
+     * @endcode
+     */
+    SceneComposer& rootTransform(const glm::mat4& transform) {
+        m_rootTransform = transform;
+        return *this;
+    }
+
+    /**
+     * @brief Get the current root transform
+     */
+    const glm::mat4& rootTransform() const { return m_rootTransform; }
+
+    /**
      * @brief Update transform for an entry by index
      * @param index Entry index (order added)
      * @param transform New transform matrix
@@ -351,8 +376,11 @@ public:
                         mat = entry.geometry->outputMaterial();
                     }
 
+                    // Apply root transform before entry's local transform
+                    glm::mat4 finalTransform = m_rootTransform * entry.transform;
+
                     // Add to scene with material
-                    SceneObject obj(mesh, entry.transform, entry.color, mat);
+                    SceneObject obj(mesh, finalTransform, entry.color, mat);
                     m_scene.objects().push_back(obj);
                 }
             }
@@ -370,6 +398,7 @@ private:
     Chain* m_chain = nullptr;  // For add<T>() method
     std::vector<ComposerEntry> m_entries;
     Scene m_scene;
+    glm::mat4 m_rootTransform = glm::mat4(1.0f);
 };
 
 } // namespace vivid::render3d

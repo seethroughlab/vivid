@@ -107,13 +107,28 @@ struct TextureState : public OperatorState {
  * 2. process() - Called every frame to produce output
  * 3. cleanup() - Called when the operator is destroyed
  *
+ * ## Demand-Based Cooking
+ *
+ * Operators use a generation-based system for efficient processing:
+ * - Each operator has a `generation()` counter that increments when output changes
+ * - `needsCook()` checks if inputs changed OR operator is dirty
+ * - Call `markDirty()` in setters when parameters change
+ * - Call `didCook()` at the end of process() to update generation
+ *
  * @par Example
  * @code
  * class MyEffect : public Operator {
  * public:
- *     void init(Context& ctx) override { ... }
- *     void process(Context& ctx) override { ... }
- *     std::string name() const override { return "MyEffect"; }
+ *     MyEffect& amount(float v) {
+ *         if (m_amount != v) { m_amount = v; markDirty(); }
+ *         return *this;
+ *     }
+ *
+ *     void process(Context& ctx) override {
+ *         if (!needsCook()) return;  // Skip if nothing changed
+ *         // ... do work ...
+ *         didCook();  // Mark output as updated
+ *     }
  * };
  * @endcode
  */
@@ -321,6 +336,67 @@ public:
     bool isBypassed() const { return m_bypassed; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Cooking / Dependency System
+    /// @{
+
+    /**
+     * @brief Check if operator needs to cook (process)
+     * @return True if any input changed or operator is self-dirty
+     *
+     * Call this at the start of process() to skip unnecessary work.
+     * Compares current input generations to cached values.
+     */
+    bool needsCook() const {
+        // Always cook if marked dirty
+        if (m_selfDirty) return true;
+
+        // Check if any input generation changed
+        for (size_t i = 0; i < inputs_.size(); ++i) {
+            if (!inputs_[i]) continue;
+
+            uint64_t inputGen = inputs_[i]->generation();
+            if (i >= m_cachedInputGens.size() || m_cachedInputGens[i] != inputGen) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @brief Mark operator as dirty (needs recook)
+     *
+     * Call this in setters when parameters change.
+     */
+    void markDirty() { m_selfDirty = true; }
+
+    /**
+     * @brief Called after process() completes
+     *
+     * Clears dirty flag and caches current input generations.
+     * Increments generation counter to notify downstream operators.
+     */
+    void didCook() {
+        m_selfDirty = false;
+        m_generation++;
+
+        // Cache current input generations
+        m_cachedInputGens.resize(inputs_.size());
+        for (size_t i = 0; i < inputs_.size(); ++i) {
+            m_cachedInputGens[i] = inputs_[i] ? inputs_[i]->generation() : 0;
+        }
+    }
+
+    /**
+     * @brief Get current output generation
+     * @return Generation counter (increments each time output changes)
+     *
+     * Downstream operators use this to detect when inputs changed.
+     */
+    uint64_t generation() const { return m_generation; }
+
+    /// @}
 
     int sourceLine = 0; ///< Source line number (for editor integration)
 
@@ -331,6 +407,11 @@ protected:
     std::vector<Operator*> inputs_; ///< Connected input operators
     bool m_registered = false;      ///< Whether already registered for visualization
     bool m_bypassed = false;        ///< Whether operator is bypassed (pass-through)
+
+    // Cooking system
+    uint64_t m_generation = 0;                ///< Output generation counter
+    mutable std::vector<uint64_t> m_cachedInputGens; ///< Cached input generations from last cook
+    mutable bool m_selfDirty = true;          ///< True if parameters changed (starts dirty)
 };
 
 } // namespace vivid

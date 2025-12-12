@@ -69,21 +69,30 @@ public:
      * @param p Dither pattern (Bayer2x2, Bayer4x4, Bayer8x8)
      * @return Reference for chaining
      */
-    Dither& pattern(DitherPattern p) { m_pattern = p; return *this; }
+    Dither& pattern(DitherPattern p) {
+        if (m_pattern != p) { m_pattern = p; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set color levels per channel
      * @param n Levels (2-256, default 8)
      * @return Reference for chaining
      */
-    Dither& levels(int n) { m_levels = n; return *this; }
+    Dither& levels(int n) {
+        if (m_levels != n) { m_levels = n; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set effect strength
      * @param s Strength (0-1, default 1.0). 0 = original, 1 = full dither
      * @return Reference for chaining
      */
-    Dither& strength(float s) { m_strength = s; return *this; }
+    Dither& strength(float s) {
+        if (m_strength != s) { m_strength = s; markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -106,8 +115,8 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "levels") { m_levels = static_cast<int>(value[0]); return true; }
-        if (name == "strength") { m_strength = value[0]; return true; }
+        if (name == "levels") { levels(static_cast<int>(value[0])); return true; }
+        if (name == "strength") { strength(value[0]); return true; }
         return false;
     }
 

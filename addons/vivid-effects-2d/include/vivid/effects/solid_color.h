@@ -53,7 +53,10 @@ public:
      * @return Reference for chaining
      */
     SolidColor& color(float r, float g, float b, float a = 1.0f) {
-        m_color.set(r, g, b, a);
+        if (m_color.r() != r || m_color.g() != g || m_color.b() != b || m_color.a() != a) {
+            m_color.set(r, g, b, a);
+            markDirty();
+        }
         return *this;
     }
 
@@ -77,7 +80,7 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "color") { m_color.set(value[0], value[1], value[2], value[3]); return true; }
+        if (name == "color") { color(value[0], value[1], value[2], value[3]); return true; }
         return false;
     }
 

@@ -264,6 +264,9 @@ void Feedback::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
+    checkResize(ctx);
+
+    // Feedback is stateful - always cooks
 
     // Get input texture view
     WGPUTextureView inView = TextureOperator::inputView(0);
@@ -341,6 +344,7 @@ void Feedback::process(Context& ctx) {
     wgpuBindGroupRelease(bindGroup);
 
     m_firstFrame = false;
+    didCook();
 }
 
 std::unique_ptr<OperatorState> Feedback::saveState() {

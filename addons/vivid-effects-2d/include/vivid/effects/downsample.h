@@ -68,14 +68,21 @@ public:
      * @param h Target height in pixels
      * @return Reference for chaining
      */
-    Downsample& resolution(int w, int h) { m_targetW = w; m_targetH = h; return *this; }
+    Downsample& resolution(int w, int h) {
+        if (m_targetW != w || m_targetH != h) {
+            m_targetW = w;
+            m_targetH = h;
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Set upscale filter mode
      * @param f Filter mode (Nearest = pixelated, Linear = smooth)
      * @return Reference for chaining
      */
-    Downsample& filter(FilterMode f) { m_filter = f; return *this; }
+    Downsample& filter(FilterMode f) { if (m_filter != f) { m_filter = f; markDirty(); } return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -98,8 +105,16 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "targetW") { m_targetW = static_cast<int>(value[0]); return true; }
-        if (name == "targetH") { m_targetH = static_cast<int>(value[0]); return true; }
+        if (name == "targetW") {
+            int w = static_cast<int>(value[0]);
+            if (m_targetW != w) { m_targetW = w; markDirty(); }
+            return true;
+        }
+        if (name == "targetH") {
+            int h = static_cast<int>(value[0]);
+            if (m_targetH != h) { m_targetH = h; markDirty(); }
+            return true;
+        }
         return false;
     }
 

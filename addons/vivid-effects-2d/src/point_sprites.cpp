@@ -26,6 +26,11 @@ void PointSprites::init(Context& ctx) {
 
 void PointSprites::process(Context& ctx) {
     if (!m_initialized) init(ctx);
+    checkResize(ctx);
+
+    // PointSprites is animated if animate or pulseSize is enabled
+    bool animated = (m_animate || m_pulseSize);
+    if (!animated && !needsCook()) return;
 
     if (m_needsRebuild) {
         generatePattern();
@@ -57,6 +62,8 @@ void PointSprites::process(Context& ctx) {
 
     // Render
     m_renderer.renderCircles(ctx, renderCircles, m_outputView, m_width, m_height, m_clearColor);
+
+    didCook();
 }
 
 void PointSprites::generatePattern() {

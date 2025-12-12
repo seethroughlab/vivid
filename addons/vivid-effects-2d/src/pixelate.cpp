@@ -145,8 +145,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void Pixelate::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
+    checkResize(ctx);
+
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     PixelateUniforms uniforms = {};
     uniforms.sizeX = m_size.x();
@@ -182,6 +186,8 @@ void Pixelate::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void Pixelate::cleanup() {

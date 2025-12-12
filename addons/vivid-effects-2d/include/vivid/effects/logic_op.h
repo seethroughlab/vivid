@@ -78,35 +78,35 @@ public:
      * @param v Input A value
      * @return Reference for chaining
      */
-    Logic& inputA(float v) { m_inputA = v; return *this; }
+    Logic& inputA(float v) { if (m_inputA != v) { m_inputA = v; markDirty(); } return *this; }
 
     /**
      * @brief Set second input value
      * @param v Input B value
      * @return Reference for chaining
      */
-    Logic& inputB(float v) { m_inputB = v; return *this; }
+    Logic& inputB(float v) { if (m_inputB != v) { m_inputB = v; markDirty(); } return *this; }
 
     /**
      * @brief Set logic operation
      * @param op Operation type
      * @return Reference for chaining
      */
-    Logic& operation(LogicOperation op) { m_operation = op; return *this; }
+    Logic& operation(LogicOperation op) { if (m_operation != op) { m_operation = op; markDirty(); } return *this; }
 
     /**
      * @brief Set minimum for InRange operation
      * @param v Minimum value
      * @return Reference for chaining
      */
-    Logic& rangeMin(float v) { m_rangeMin = v; return *this; }
+    Logic& rangeMin(float v) { if (m_rangeMin != v) { m_rangeMin = v; markDirty(); } return *this; }
 
     /**
      * @brief Set maximum for InRange operation
      * @param v Maximum value
      * @return Reference for chaining
      */
-    Logic& rangeMax(float v) { m_rangeMax = v; return *this; }
+    Logic& rangeMax(float v) { if (m_rangeMax != v) { m_rangeMax = v; markDirty(); } return *this; }
 
     /**
      * @brief Trigger toggle (for Toggle operation)
@@ -126,7 +126,7 @@ public:
      * @param e Epsilon value (default 0.0001)
      * @return Reference for chaining
      */
-    Logic& epsilon(float e) { m_epsilon = e; return *this; }
+    Logic& epsilon(float e) { if (m_epsilon != e) { m_epsilon = e; markDirty(); } return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -171,15 +171,17 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "inputA") { m_inputA = value[0]; return true; }
-        if (name == "inputB") { m_inputB = value[0]; return true; }
-        if (name == "rangeMin") { m_rangeMin = value[0]; return true; }
-        if (name == "rangeMax") { m_rangeMax = value[0]; return true; }
-        if (name == "epsilon") { m_epsilon = value[0]; return true; }
+        if (name == "inputA") { inputA(value[0]); return true; }
+        if (name == "inputB") { inputB(value[0]); return true; }
+        if (name == "rangeMin") { rangeMin(value[0]); return true; }
+        if (name == "rangeMax") { rangeMax(value[0]); return true; }
+        if (name == "epsilon") { epsilon(value[0]); return true; }
         return false;
     }
 
     void process(Context& ctx) override {
+        if (!needsCook()) return;
+
         float a = static_cast<float>(m_inputA);
         float b = static_cast<float>(m_inputB);
         float eps = static_cast<float>(m_epsilon);
@@ -221,6 +223,7 @@ public:
                 m_result = m_toggleState;
                 break;
         }
+        didCook();
     }
 
     std::string name() const override { return "Logic"; }

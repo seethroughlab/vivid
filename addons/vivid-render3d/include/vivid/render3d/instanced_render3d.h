@@ -122,17 +122,39 @@ public:
     InstancedRender3D& material(TexturedMaterial* mat);
 
     /// Base metallic value (can be overridden per-instance, ignored if material set)
-    InstancedRender3D& metallic(float m) { m_metallic = m; return *this; }
+    InstancedRender3D& metallic(float m) {
+        if (m_metallic != m) {
+            m_metallic = m;
+            markDirty();
+        }
+        return *this;
+    }
 
     /// Base roughness value (can be overridden per-instance, ignored if material set)
-    InstancedRender3D& roughness(float r) { m_roughness = r; return *this; }
+    InstancedRender3D& roughness(float r) {
+        if (m_roughness != r) {
+            m_roughness = r;
+            markDirty();
+        }
+        return *this;
+    }
 
     /// Ambient light intensity
-    InstancedRender3D& ambient(float a) { m_ambient = a; return *this; }
+    InstancedRender3D& ambient(float a) {
+        if (m_ambient != a) {
+            m_ambient = a;
+            markDirty();
+        }
+        return *this;
+    }
 
     /// Base color multiplier
     InstancedRender3D& baseColor(float r, float g, float b, float a = 1.0f) {
-        m_baseColor = glm::vec4(r, g, b, a);
+        glm::vec4 newColor(r, g, b, a);
+        if (m_baseColor != newColor) {
+            m_baseColor = newColor;
+            markDirty();
+        }
         return *this;
     }
 
@@ -140,15 +162,31 @@ public:
 
     /// Clear color for the render target
     InstancedRender3D& clearColor(float r, float g, float b, float a = 1.0f) {
-        m_clearColor = glm::vec4(r, g, b, a);
+        glm::vec4 newColor(r, g, b, a);
+        if (m_clearColor != newColor) {
+            m_clearColor = newColor;
+            markDirty();
+        }
         return *this;
     }
 
     /// Enable/disable depth testing
-    InstancedRender3D& depthTest(bool enable) { m_depthTest = enable; return *this; }
+    InstancedRender3D& depthTest(bool enable) {
+        if (m_depthTest != enable) {
+            m_depthTest = enable;
+            markDirty();
+        }
+        return *this;
+    }
 
     /// Enable/disable backface culling
-    InstancedRender3D& cullBack(bool enable) { m_cullBack = enable; return *this; }
+    InstancedRender3D& cullBack(bool enable) {
+        if (m_cullBack != enable) {
+            m_cullBack = enable;
+            markDirty();
+        }
+        return *this;
+    }
 
     // === Operator Interface ===
     void init(Context& ctx) override;

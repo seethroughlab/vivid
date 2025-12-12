@@ -77,7 +77,13 @@
     - Camera: Green
     - Light: Yellow
 [x] image loading currently lives in vivid-effects-2d, but image loading will be needed in many different addons. Should we (1) make a "media loader" addon, or (2) add image loading to the core?
-[ ] TouchDesigner has a system where nodes don't get "baked" unless one of their output nodes requests it, and it is marked as "dirty" -- I think that's how it works. Anyway, we should have something simmilar. 
+[x] TouchDesigner has a system where nodes don't get "baked" unless one of their output nodes requests it, and it is marked as "dirty" -- I think that's how it works. Anyway, we should have something simmilar.
+    - Implemented generation-based cooking system in Operator base class
+    - All ~50 visual operators now use needsCook()/didCook()/markDirty() pattern
+    - Pure operators skip processing when inputs unchanged
+    - Time-dependent operators (Noise, Gradient, PointSprites) only cook when animated
+    - Streaming operators (VideoPlayer, Webcam, Feedback, Particles) always cook
+    - Audio operators skipped (special threading requirements) 
 [x] Is the Fluent pattern really helping the average user? Or does it obscure more common c++ patterns and syntax?
 [x] Mac: Please make a reminder for yourself that you don't need the Molten environment variables. That is from vivid_v2, but not relevant here. 
 [ ] Windows: It seems like display settings were customized for the Mac Retina display, but on windows things look too big.
@@ -106,3 +112,6 @@
 [x] WINDOWS BUG: 3D rendering low res in fullscreen - texture not resizing
     - Added resize checks to Render3D, InstancedRender3D, and all 2D effects
     - Added checkResize() helper to TextureOperator base class  
+[ ] We need an example of mutliple videos playing at once, and being used as a texture. 
+[ ] Make an example with assets/textures/flat_earth_Largest_still.0330.jpg
+[ ] Take more snapshots of showcase projects, add them to README

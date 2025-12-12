@@ -159,8 +159,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void Tile::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
+    checkResize(ctx);
+
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     TileUniforms uniforms = {};
     uniforms.repeatX = m_repeat.x();
@@ -197,6 +201,8 @@ void Tile::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void Tile::cleanup() {

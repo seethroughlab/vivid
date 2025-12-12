@@ -75,21 +75,21 @@ public:
      * @param t Noise type (Perlin, Simplex, Worley, Value)
      * @return Reference for chaining
      */
-    Noise& type(NoiseType t) { m_type = t; return *this; }
+    Noise& type(NoiseType t) { if (m_type != t) { m_type = t; markDirty(); } return *this; }
 
     /**
      * @brief Set noise scale
      * @param s Scale factor (0.1-20, default 4.0)
      * @return Reference for chaining
      */
-    Noise& scale(float s) { m_scale = s; return *this; }
+    Noise& scale(float s) { if (m_scale != s) { m_scale = s; markDirty(); } return *this; }
 
     /**
      * @brief Set animation speed
      * @param s Speed (0-5, default 0.5)
      * @return Reference for chaining
      */
-    Noise& speed(float s) { m_speed = s; return *this; }
+    Noise& speed(float s) { if (m_speed != s) { m_speed = s; markDirty(); } return *this; }
 
 
     /**
@@ -97,21 +97,21 @@ public:
      * @param o Octaves (1-8, default 4)
      * @return Reference for chaining
      */
-    Noise& octaves(int o) { m_octaves = o; return *this; }
+    Noise& octaves(int o) { if (m_octaves != o) { m_octaves = o; markDirty(); } return *this; }
 
     /**
      * @brief Set lacunarity (frequency multiplier per octave)
      * @param l Lacunarity (1-4, default 2.0)
      * @return Reference for chaining
      */
-    Noise& lacunarity(float l) { m_lacunarity = l; return *this; }
+    Noise& lacunarity(float l) { if (m_lacunarity != l) { m_lacunarity = l; markDirty(); } return *this; }
 
     /**
      * @brief Set persistence (amplitude multiplier per octave)
      * @param p Persistence (0-1, default 0.5)
      * @return Reference for chaining
      */
-    Noise& persistence(float p) { m_persistence = p; return *this; }
+    Noise& persistence(float p) { if (m_persistence != p) { m_persistence = p; markDirty(); } return *this; }
 
     /**
      * @brief Set 3D offset
@@ -120,7 +120,13 @@ public:
      * @param z Z offset (3rd dimension, default 0)
      * @return Reference for chaining
      */
-    Noise& offset(float x, float y, float z = 0.0f) { m_offset.set(x, y, z); return *this; }
+    Noise& offset(float x, float y, float z = 0.0f) {
+        if (m_offset.x() != x || m_offset.y() != y || m_offset.z() != z) {
+            m_offset.set(x, y, z);
+            markDirty();
+        }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -148,12 +154,12 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "scale") { m_scale = value[0]; return true; }
-        if (name == "speed") { m_speed = value[0]; return true; }
-        if (name == "octaves") { m_octaves = static_cast<int>(value[0]); return true; }
-        if (name == "lacunarity") { m_lacunarity = value[0]; return true; }
-        if (name == "persistence") { m_persistence = value[0]; return true; }
-        if (name == "offset") { m_offset.set(value[0], value[1], value[2]); return true; }
+        if (name == "scale") { scale(value[0]); return true; }
+        if (name == "speed") { speed(value[0]); return true; }
+        if (name == "octaves") { octaves(static_cast<int>(value[0])); return true; }
+        if (name == "lacunarity") { lacunarity(value[0]); return true; }
+        if (name == "persistence") { persistence(value[0]); return true; }
+        if (name == "offset") { offset(value[0], value[1], value[2]); return true; }
         return false;
     }
 

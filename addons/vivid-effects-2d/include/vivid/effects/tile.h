@@ -61,7 +61,10 @@ public:
      * @param r Repeat count (applies to both axes)
      * @return Reference for chaining
      */
-    Tile& repeat(float r) { m_repeat.set(r, r); return *this; }
+    Tile& repeat(float r) {
+        if (m_repeat.x() != r || m_repeat.y() != r) { m_repeat.set(r, r); markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set non-uniform repeat count
@@ -69,7 +72,10 @@ public:
      * @param y Y repeat count
      * @return Reference for chaining
      */
-    Tile& repeat(float x, float y) { m_repeat.set(x, y); return *this; }
+    Tile& repeat(float x, float y) {
+        if (m_repeat.x() != x || m_repeat.y() != y) { m_repeat.set(x, y); markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set UV offset
@@ -77,14 +83,20 @@ public:
      * @param y Y offset (-1 to 1)
      * @return Reference for chaining
      */
-    Tile& offset(float x, float y) { m_offset.set(x, y); return *this; }
+    Tile& offset(float x, float y) {
+        if (m_offset.x() != x || m_offset.y() != y) { m_offset.set(x, y); markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Enable tile boundary mirroring
      * @param m True to mirror at boundaries
      * @return Reference for chaining
      */
-    Tile& mirror(bool m) { m_mirror = m; return *this; }
+    Tile& mirror(bool m) {
+        if (m_mirror != m) { m_mirror = m; markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -108,9 +120,9 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "repeat") { m_repeat.set(value[0], value[1]); return true; }
-        if (name == "offset") { m_offset.set(value[0], value[1]); return true; }
-        if (name == "mirror") { m_mirror = value[0] > 0.5f; return true; }
+        if (name == "repeat") { repeat(value[0], value[1]); return true; }
+        if (name == "offset") { offset(value[0], value[1]); return true; }
+        if (name == "mirror") { mirror(value[0] > 0.5f); return true; }
         return false;
     }
 

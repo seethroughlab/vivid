@@ -1077,15 +1077,21 @@ Render3D::~Render3D() {
 }
 
 Render3D& Render3D::scene(Scene& s) {
-    m_scene = &s;
-    m_composer = nullptr;  // Clear composer when scene is set directly
+    if (m_scene != &s) {
+        m_scene = &s;
+        m_composer = nullptr;  // Clear composer when scene is set directly
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::input(SceneComposer* composer) {
-    m_composer = composer;
-    if (composer) {
-        setInput(0, composer);  // Register for dependency tracking
+    if (m_composer != composer) {
+        m_composer = composer;
+        if (composer) {
+            setInput(0, composer);  // Register for dependency tracking
+        }
+        markDirty();
     }
     return *this;
 }
@@ -1093,25 +1099,35 @@ Render3D& Render3D::input(SceneComposer* composer) {
 Render3D& Render3D::camera(const Camera3D& cam) {
     m_camera = cam;
     m_cameraOp = nullptr;  // Clear operator when camera is set directly
+    markDirty();
     return *this;
 }
 
 Render3D& Render3D::cameraInput(CameraOperator* camOp) {
-    m_cameraOp = camOp;
-    if (camOp) {
-        setInput(1, camOp);  // Slot 1 for camera (slot 0 is scene)
+    if (m_cameraOp != camOp) {
+        m_cameraOp = camOp;
+        if (camOp) {
+            setInput(1, camOp);  // Slot 1 for camera (slot 0 is scene)
+        }
+        markDirty();
     }
     return *this;
 }
 
 Render3D& Render3D::lightInput(LightOperator* lightOp) {
     if (lightOp) {
+        bool changed = false;
         if (m_lightOps.empty()) {
             m_lightOps.push_back(lightOp);
-        } else {
+            changed = true;
+        } else if (m_lightOps[0] != lightOp) {
             m_lightOps[0] = lightOp;
+            changed = true;
         }
-        setInput(2, lightOp);  // Slot 2 for primary light
+        if (changed) {
+            setInput(2, lightOp);  // Slot 2 for primary light
+            markDirty();
+        }
     }
     return *this;
 }
@@ -1120,107 +1136,168 @@ Render3D& Render3D::addLight(LightOperator* lightOp) {
     if (lightOp && m_lightOps.size() < 4) {  // Max 4 lights
         m_lightOps.push_back(lightOp);
         setInput(1 + static_cast<int>(m_lightOps.size()), lightOp);  // Slots 2, 3, 4, 5
+        markDirty();
     }
     return *this;
 }
 
 Render3D& Render3D::shadingMode(ShadingMode mode) {
-    m_shadingMode = mode;
+    if (m_shadingMode != mode) {
+        m_shadingMode = mode;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::toonLevels(int levels) {
-    m_toonLevels = glm::clamp(levels, 2, 8);
+    int clamped = glm::clamp(levels, 2, 8);
+    if (m_toonLevels != clamped) {
+        m_toonLevels = clamped;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::color(float r, float g, float b, float a) {
-    m_defaultColor = glm::vec4(r, g, b, a);
+    glm::vec4 newColor(r, g, b, a);
+    if (m_defaultColor != newColor) {
+        m_defaultColor = newColor;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::color(const glm::vec4& c) {
-    m_defaultColor = c;
+    if (m_defaultColor != c) {
+        m_defaultColor = c;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::lightDirection(glm::vec3 dir) {
-    m_lightDirection = glm::normalize(dir);
+    glm::vec3 normalized = glm::normalize(dir);
+    if (m_lightDirection != normalized) {
+        m_lightDirection = normalized;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::lightColor(glm::vec3 color) {
-    m_lightColor = color;
+    if (m_lightColor != color) {
+        m_lightColor = color;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::ambient(float a) {
-    m_ambient = a;
+    if (m_ambient != a) {
+        m_ambient = a;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::metallic(float m) {
-    m_metallic = glm::clamp(m, 0.0f, 1.0f);
+    float clamped = glm::clamp(m, 0.0f, 1.0f);
+    if (m_metallic != clamped) {
+        m_metallic = clamped;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::roughness(float r) {
-    m_roughness = glm::clamp(r, 0.0f, 1.0f);
+    float clamped = glm::clamp(r, 0.0f, 1.0f);
+    if (m_roughness != clamped) {
+        m_roughness = clamped;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::material(TexturedMaterial* mat) {
-    m_material = mat;
-    if (mat) {
-        setInput(6, mat);  // Slot 6 for material (after lights)
+    if (m_material != mat) {
+        m_material = mat;
+        if (mat) {
+            setInput(6, mat);  // Slot 6 for material (after lights)
+        }
+        markDirty();
     }
     return *this;
 }
 
 Render3D& Render3D::ibl(bool enabled) {
-    m_iblEnabled = enabled;
+    if (m_iblEnabled != enabled) {
+        m_iblEnabled = enabled;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::environment(IBLEnvironment* env) {
-    m_iblEnvironment = env;
-    if (env && env->isLoaded()) {
-        m_iblEnabled = true;
+    if (m_iblEnvironment != env) {
+        m_iblEnvironment = env;
+        if (env && env->isLoaded()) {
+            m_iblEnabled = true;
+        }
+        markDirty();
     }
     return *this;
 }
 
 Render3D& Render3D::environmentInput(IBLEnvironment* envOp) {
-    m_iblEnvironmentOp = envOp;
-    if (envOp) {
-        setInput(6, envOp);  // Slot 6 for environment (after scene, camera, lights)
+    if (m_iblEnvironmentOp != envOp) {
+        m_iblEnvironmentOp = envOp;
+        if (envOp) {
+            setInput(6, envOp);  // Slot 6 for environment (after scene, camera, lights)
+        }
+        markDirty();
     }
     return *this;
 }
 
 Render3D& Render3D::environmentHDR(const std::string& hdrPath) {
-    m_pendingHDRPath = hdrPath;
-    m_iblEnabled = true;  // Will be enabled when loaded
+    if (m_pendingHDRPath != hdrPath) {
+        m_pendingHDRPath = hdrPath;
+        m_iblEnabled = true;  // Will be enabled when loaded
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::showSkybox(bool enabled) {
-    m_showSkybox = enabled;
+    if (m_showSkybox != enabled) {
+        m_showSkybox = enabled;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::clearColor(float r, float g, float b, float a) {
-    m_clearColor = glm::vec4(r, g, b, a);
+    glm::vec4 newColor(r, g, b, a);
+    if (m_clearColor != newColor) {
+        m_clearColor = newColor;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::wireframe(bool enabled) {
-    m_wireframe = enabled;
+    if (m_wireframe != enabled) {
+        m_wireframe = enabled;
+        markDirty();
+    }
     return *this;
 }
 
 Render3D& Render3D::depthOutput(bool enabled) {
-    m_depthOutputEnabled = enabled;
+    if (m_depthOutputEnabled != enabled) {
+        m_depthOutputEnabled = enabled;
+        markDirty();
+    }
     return *this;
 }
 
@@ -1937,32 +2014,9 @@ void Render3D::process(Context& ctx) {
         init(ctx);
     }
 
-    // Check if window size changed (e.g., fullscreen toggle)
-    int ctxWidth = ctx.width();
-    int ctxHeight = ctx.height();
-    if (ctxWidth > 0 && ctxHeight > 0 && (ctxWidth != m_width || ctxHeight != m_height)) {
-        // Recreate output texture with new dimensions
-        createOutput(ctx, ctxWidth, ctxHeight);
+    checkResize(ctx);
 
-        // Recreate depth buffer with new dimensions
-        if (m_depthView) {
-            wgpuTextureViewRelease(m_depthView);
-            m_depthView = nullptr;
-        }
-        if (m_depthTexture) {
-            wgpuTextureRelease(m_depthTexture);
-            m_depthTexture = nullptr;
-        }
-        if (m_depthOutputView) {
-            wgpuTextureViewRelease(m_depthOutputView);
-            m_depthOutputView = nullptr;
-        }
-        if (m_depthOutputTexture) {
-            wgpuTextureRelease(m_depthOutputTexture);
-            m_depthOutputTexture = nullptr;
-        }
-        createDepthBuffer(ctx);
-    }
+    if (!needsCook()) return;
 
     WGPUDevice device = ctx.device();
 
@@ -2415,6 +2469,8 @@ void Render3D::process(Context& ctx) {
     wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
     wgpuCommandBufferRelease(cmdBuffer);
     wgpuCommandEncoderRelease(encoder);
+
+    didCook();
 }
 
 void Render3D::cleanup() {

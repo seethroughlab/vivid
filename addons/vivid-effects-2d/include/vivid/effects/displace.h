@@ -69,21 +69,21 @@ public:
      * @param s Strength (0-1, default 0.1)
      * @return Reference for chaining
      */
-    Displace& strength(float s) { m_strength = s; return *this; }
+    Displace& strength(float s) { if (m_strength != s) { m_strength = s; markDirty(); } return *this; }
 
     /**
      * @brief Set X-axis displacement multiplier
      * @param s X strength (0-2, default 1.0)
      * @return Reference for chaining
      */
-    Displace& strengthX(float s) { m_strengthX = s; return *this; }
+    Displace& strengthX(float s) { if (m_strengthX != s) { m_strengthX = s; markDirty(); } return *this; }
 
     /**
      * @brief Set Y-axis displacement multiplier
      * @param s Y strength (0-2, default 1.0)
      * @return Reference for chaining
      */
-    Displace& strengthY(float s) { m_strengthY = s; return *this; }
+    Displace& strengthY(float s) { if (m_strengthY != s) { m_strengthY = s; markDirty(); } return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -107,9 +107,9 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "strength") { m_strength = value[0]; return true; }
-        if (name == "strengthX") { m_strengthX = value[0]; return true; }
-        if (name == "strengthY") { m_strengthY = value[0]; return true; }
+        if (name == "strength") { strength(value[0]); return true; }
+        if (name == "strengthX") { strengthX(value[0]); return true; }
+        if (name == "strengthY") { strengthY(value[0]); return true; }
         return false;
     }
 

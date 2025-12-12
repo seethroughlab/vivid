@@ -67,14 +67,14 @@ public:
      * @param m Gradient mode (Linear, Radial, Angular, Diamond)
      * @return Reference for chaining
      */
-    Gradient& mode(GradientMode m) { m_mode = m; return *this; }
+    Gradient& mode(GradientMode m) { if (m_mode != m) { m_mode = m; markDirty(); } return *this; }
 
     /**
      * @brief Set gradient angle (linear mode)
      * @param a Angle in radians (0-2π)
      * @return Reference for chaining
      */
-    Gradient& angle(float a) { m_angle = a; return *this; }
+    Gradient& angle(float a) { if (m_angle != a) { m_angle = a; markDirty(); } return *this; }
 
     /**
      * @brief Set gradient center point
@@ -82,21 +82,27 @@ public:
      * @param y Y position (0-1)
      * @return Reference for chaining
      */
-    Gradient& center(float x, float y) { m_center.set(x, y); return *this; }
+    Gradient& center(float x, float y) {
+        if (m_center.x() != x || m_center.y() != y) {
+            m_center.set(x, y);
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Set gradient scale
      * @param s Scale factor (0.1-10, default 1.0)
      * @return Reference for chaining
      */
-    Gradient& scale(float s) { m_scale = s; return *this; }
+    Gradient& scale(float s) { if (m_scale != s) { m_scale = s; markDirty(); } return *this; }
 
     /**
      * @brief Set gradient offset
      * @param o Offset (-1 to 1)
      * @return Reference for chaining
      */
-    Gradient& offset(float o) { m_offset = o; return *this; }
+    Gradient& offset(float o) { if (m_offset != o) { m_offset = o; markDirty(); } return *this; }
 
     /**
      * @brief Set start color
@@ -107,7 +113,10 @@ public:
      * @return Reference for chaining
      */
     Gradient& colorA(float r, float g, float b, float a = 1.0f) {
-        m_colorA.set(r, g, b, a);
+        if (m_colorA.r() != r || m_colorA.g() != g || m_colorA.b() != b || m_colorA.a() != a) {
+            m_colorA.set(r, g, b, a);
+            markDirty();
+        }
         return *this;
     }
 
@@ -120,7 +129,10 @@ public:
      * @return Reference for chaining
      */
     Gradient& colorB(float r, float g, float b, float a = 1.0f) {
-        m_colorB.set(r, g, b, a);
+        if (m_colorB.r() != r || m_colorB.g() != g || m_colorB.b() != b || m_colorB.a() != a) {
+            m_colorB.set(r, g, b, a);
+            markDirty();
+        }
         return *this;
     }
 
@@ -150,12 +162,12 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "angle") { m_angle = value[0]; return true; }
-        if (name == "scale") { m_scale = value[0]; return true; }
-        if (name == "offset") { m_offset = value[0]; return true; }
-        if (name == "center") { m_center.set(value[0], value[1]); return true; }
-        if (name == "colorA") { m_colorA.set(value[0], value[1], value[2], value[3]); return true; }
-        if (name == "colorB") { m_colorB.set(value[0], value[1], value[2], value[3]); return true; }
+        if (name == "angle") { angle(value[0]); return true; }
+        if (name == "scale") { scale(value[0]); return true; }
+        if (name == "offset") { offset(value[0]); return true; }
+        if (name == "center") { center(value[0], value[1]); return true; }
+        if (name == "colorA") { colorA(value[0], value[1], value[2], value[3]); return true; }
+        if (name == "colorB") { colorB(value[0], value[1], value[2], value[3]); return true; }
         return false;
     }
 

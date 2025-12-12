@@ -63,42 +63,48 @@ public:
      * @param d Decay (0-1, default 0.95). Higher = longer trails
      * @return Reference for chaining
      */
-    Feedback& decay(float d) { m_decay = d; return *this; }
+    Feedback& decay(float d) { if (m_decay != d) { m_decay = d; markDirty(); } return *this; }
 
     /**
      * @brief Set mix ratio
      * @param m Mix (0-1, default 0.5). 0 = input only, 1 = feedback only
      * @return Reference for chaining
      */
-    Feedback& mix(float m) { m_mix = m; return *this; }
+    Feedback& mix(float m) { if (m_mix != m) { m_mix = m; markDirty(); } return *this; }
 
     /**
      * @brief Set X offset per frame
      * @param x X offset in pixels
      * @return Reference for chaining
      */
-    Feedback& offsetX(float x) { m_offset.set(x, m_offset.y()); return *this; }
+    Feedback& offsetX(float x) {
+        if (m_offset.x() != x) { m_offset.set(x, m_offset.y()); markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set Y offset per frame
      * @param y Y offset in pixels
      * @return Reference for chaining
      */
-    Feedback& offsetY(float y) { m_offset.set(m_offset.x(), y); return *this; }
+    Feedback& offsetY(float y) {
+        if (m_offset.y() != y) { m_offset.set(m_offset.x(), y); markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set zoom factor per frame
      * @param z Zoom (0.5-2, default 1.0). >1 zooms in, <1 zooms out
      * @return Reference for chaining
      */
-    Feedback& zoom(float z) { m_zoom = z; return *this; }
+    Feedback& zoom(float z) { if (m_zoom != z) { m_zoom = z; markDirty(); } return *this; }
 
     /**
      * @brief Set rotation per frame
      * @param r Rotation in radians (-0.1 to 0.1)
      * @return Reference for chaining
      */
-    Feedback& rotate(float r) { m_rotate = r; return *this; }
+    Feedback& rotate(float r) { if (m_rotate != r) { m_rotate = r; markDirty(); } return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -124,11 +130,11 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "decay") { m_decay = value[0]; return true; }
-        if (name == "mix") { m_mix = value[0]; return true; }
-        if (name == "offset") { m_offset.set(value[0], value[1]); return true; }
-        if (name == "zoom") { m_zoom = value[0]; return true; }
-        if (name == "rotate") { m_rotate = value[0]; return true; }
+        if (name == "decay") { decay(value[0]); return true; }
+        if (name == "mix") { mix(value[0]); return true; }
+        if (name == "offset") { offsetX(value[0]); offsetY(value[1]); return true; }
+        if (name == "zoom") { zoom(value[0]); return true; }
+        if (name == "rotate") { rotate(value[0]); return true; }
         return false;
     }
 

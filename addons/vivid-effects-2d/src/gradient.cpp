@@ -166,6 +166,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 void Gradient::process(Context& ctx) {
     if (!m_initialized) init(ctx);
+    checkResize(ctx);
+
+    if (!needsCook()) return;
 
     GradientUniforms uniforms = {};
     uniforms.mode = static_cast<int>(m_mode);
@@ -195,6 +198,8 @@ void Gradient::process(Context& ctx) {
     wgpuRenderPassEncoderSetBindGroup(pass, 0, m_bindGroup, 0, nullptr);
     wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
     endRenderPass(pass, encoder, ctx);
+
+    didCook();
 }
 
 void Gradient::cleanup() {

@@ -177,8 +177,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void CRTEffect::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
+    checkResize(ctx);
+
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     CRTUniforms uniforms = {};
     uniforms.curvature = m_curvature;
@@ -216,6 +220,8 @@ void CRTEffect::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void CRTEffect::cleanup() {

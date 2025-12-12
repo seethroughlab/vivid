@@ -71,21 +71,30 @@ public:
      * @param m Mirror mode (Horizontal, Vertical, Quad, Kaleidoscope)
      * @return Reference for chaining
      */
-    Mirror& mode(MirrorMode m) { m_mode = m; return *this; }
+    Mirror& mode(MirrorMode m) {
+        if (m_mode != m) { m_mode = m; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set kaleidoscope segment count
      * @param s Segments (2-32, default 6)
      * @return Reference for chaining
      */
-    Mirror& segments(int s) { m_segments = s; return *this; }
+    Mirror& segments(int s) {
+        if (m_segments != s) { m_segments = s; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set rotation angle
      * @param a Angle in radians
      * @return Reference for chaining
      */
-    Mirror& angle(float a) { m_angle = a; return *this; }
+    Mirror& angle(float a) {
+        if (m_angle != a) { m_angle = a; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set mirror center point
@@ -93,7 +102,10 @@ public:
      * @param y Y position (0-1)
      * @return Reference for chaining
      */
-    Mirror& center(float x, float y) { m_center.set(x, y); return *this; }
+    Mirror& center(float x, float y) {
+        if (m_center.x() != x || m_center.y() != y) { m_center.set(x, y); markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -117,9 +129,9 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "segments") { m_segments = static_cast<int>(value[0]); return true; }
-        if (name == "angle") { m_angle = value[0]; return true; }
-        if (name == "center") { m_center.set(value[0], value[1]); return true; }
+        if (name == "segments") { segments(static_cast<int>(value[0])); return true; }
+        if (name == "angle") { angle(value[0]); return true; }
+        if (name == "center") { center(value[0], value[1]); return true; }
         return false;
     }
 

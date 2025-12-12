@@ -137,6 +137,9 @@ void SolidColor::process(Context& ctx) {
     if (!m_initialized) {
         init(ctx);
     }
+    checkResize(ctx);
+
+    if (!needsCook()) return;
 
     // Update uniforms
     SolidColorUniforms uniforms = {m_color.r(), m_color.g(), m_color.b(), m_color.a()};
@@ -157,6 +160,7 @@ void SolidColor::process(Context& ctx) {
 
     // End render pass
     endRenderPass(pass, encoder, ctx);
+    didCook();
 }
 
 void SolidColor::cleanup() {

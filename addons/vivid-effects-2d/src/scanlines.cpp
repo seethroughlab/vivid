@@ -160,8 +160,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void Scanlines::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
+    checkResize(ctx);
+
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     ScanlinesUniforms uniforms = {};
     uniforms.spacing = m_spacing;
@@ -198,6 +202,8 @@ void Scanlines::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void Scanlines::cleanup() {

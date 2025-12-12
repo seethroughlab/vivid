@@ -86,63 +86,63 @@ public:
      * @param v Input A value
      * @return Reference for chaining
      */
-    Math& inputA(float v) { m_inputA = v; return *this; }
+    Math& inputA(float v) { if (m_inputA != v) { m_inputA = v; markDirty(); } return *this; }
 
     /**
      * @brief Set second input value
      * @param v Input B value
      * @return Reference for chaining
      */
-    Math& inputB(float v) { m_inputB = v; return *this; }
+    Math& inputB(float v) { if (m_inputB != v) { m_inputB = v; markDirty(); } return *this; }
 
     /**
      * @brief Set math operation
      * @param op Operation type
      * @return Reference for chaining
      */
-    Math& operation(MathOperation op) { m_operation = op; return *this; }
+    Math& operation(MathOperation op) { if (m_operation != op) { m_operation = op; markDirty(); } return *this; }
 
     /**
      * @brief Set minimum for Clamp operation
      * @param v Minimum value
      * @return Reference for chaining
      */
-    Math& minVal(float v) { m_minVal = v; return *this; }
+    Math& minVal(float v) { if (m_minVal != v) { m_minVal = v; markDirty(); } return *this; }
 
     /**
      * @brief Set maximum for Clamp operation
      * @param v Maximum value
      * @return Reference for chaining
      */
-    Math& maxVal(float v) { m_maxVal = v; return *this; }
+    Math& maxVal(float v) { if (m_maxVal != v) { m_maxVal = v; markDirty(); } return *this; }
 
     /**
      * @brief Set input minimum for Remap
      * @param v Input range minimum
      * @return Reference for chaining
      */
-    Math& inMin(float v) { m_inMin = v; return *this; }
+    Math& inMin(float v) { if (m_inMin != v) { m_inMin = v; markDirty(); } return *this; }
 
     /**
      * @brief Set input maximum for Remap
      * @param v Input range maximum
      * @return Reference for chaining
      */
-    Math& inMax(float v) { m_inMax = v; return *this; }
+    Math& inMax(float v) { if (m_inMax != v) { m_inMax = v; markDirty(); } return *this; }
 
     /**
      * @brief Set output minimum for Remap
      * @param v Output range minimum
      * @return Reference for chaining
      */
-    Math& outMin(float v) { m_outMin = v; return *this; }
+    Math& outMin(float v) { if (m_outMin != v) { m_outMin = v; markDirty(); } return *this; }
 
     /**
      * @brief Set output maximum for Remap
      * @param v Output range maximum
      * @return Reference for chaining
      */
-    Math& outMax(float v) { m_outMax = v; return *this; }
+    Math& outMax(float v) { if (m_outMax != v) { m_outMax = v; markDirty(); } return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -184,18 +184,20 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "inputA") { m_inputA = value[0]; return true; }
-        if (name == "inputB") { m_inputB = value[0]; return true; }
-        if (name == "minVal") { m_minVal = value[0]; return true; }
-        if (name == "maxVal") { m_maxVal = value[0]; return true; }
-        if (name == "inMin") { m_inMin = value[0]; return true; }
-        if (name == "inMax") { m_inMax = value[0]; return true; }
-        if (name == "outMin") { m_outMin = value[0]; return true; }
-        if (name == "outMax") { m_outMax = value[0]; return true; }
+        if (name == "inputA") { inputA(value[0]); return true; }
+        if (name == "inputB") { inputB(value[0]); return true; }
+        if (name == "minVal") { minVal(value[0]); return true; }
+        if (name == "maxVal") { maxVal(value[0]); return true; }
+        if (name == "inMin") { inMin(value[0]); return true; }
+        if (name == "inMax") { inMax(value[0]); return true; }
+        if (name == "outMin") { outMin(value[0]); return true; }
+        if (name == "outMax") { outMax(value[0]); return true; }
         return false;
     }
 
     void process(Context& ctx) override {
+        if (!needsCook()) return;
+
         switch (m_operation) {
             case MathOperation::Add:
                 m_result = m_inputA + m_inputB;
@@ -257,6 +259,7 @@ public:
                 m_result = std::max(static_cast<float>(m_inputA), static_cast<float>(m_inputB));
                 break;
         }
+        didCook();
     }
 
     std::string name() const override { return "Math"; }

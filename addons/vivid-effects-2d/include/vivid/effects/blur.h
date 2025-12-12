@@ -59,14 +59,20 @@ public:
      * @param r Radius in pixels (0-50, default 5.0)
      * @return Reference for chaining
      */
-    Blur& radius(float r) { m_radius = r; return *this; }
+    Blur& radius(float r) {
+        if (m_radius != r) { m_radius = r; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set number of blur passes
      * @param p Pass count (1-10, default 1)
      * @return Reference for chaining
      */
-    Blur& passes(int p) { m_passes = p; return *this; }
+    Blur& passes(int p) {
+        if (m_passes != p) { m_passes = p; markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -89,8 +95,8 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "radius") { m_radius = value[0]; return true; }
-        if (name == "passes") { m_passes = static_cast<int>(value[0]); return true; }
+        if (name == "radius") { radius(value[0]); return true; }
+        if (name == "passes") { passes(static_cast<int>(value[0])); return true; }
         return false;
     }
 

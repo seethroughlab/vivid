@@ -169,6 +169,9 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 void LFO::process(Context& ctx) {
     if (!m_initialized) init(ctx);
+    checkResize(ctx);
+
+    // LFO is always animated - always cooks
 
     // Calculate current value for CPU access
     float t = static_cast<float>(ctx.time()) * m_frequency + m_phase;
@@ -212,6 +215,8 @@ void LFO::process(Context& ctx) {
     wgpuRenderPassEncoderSetBindGroup(pass, 0, m_bindGroup, 0, nullptr);
     wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
     endRenderPass(pass, encoder, ctx);
+
+    didCook();
 }
 
 void LFO::cleanup() {

@@ -172,8 +172,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void Edge::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
+    checkResize(ctx);
+
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     EdgeUniforms uniforms = {};
     uniforms.strength = m_strength;
@@ -210,6 +214,8 @@ void Edge::process(Context& ctx) {
     endRenderPass(pass, encoder, ctx);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void Edge::cleanup() {

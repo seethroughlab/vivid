@@ -215,11 +215,16 @@ void DepthOfField::createPipeline(Context& ctx) {
 
 void DepthOfField::process(Context& ctx) {
     if (!m_initialized) init(ctx);
+
+    checkResize(ctx);
+
     if (!m_render3d || !m_render3d->hasDepthOutput()) {
         // No depth output available, just pass through
         // Copy input to output
         return;
     }
+
+    if (!needsCook()) return;
 
     WGPUDevice device = ctx.device();
 
@@ -289,6 +294,8 @@ void DepthOfField::process(Context& ctx) {
     wgpuCommandEncoderRelease(encoder);
 
     wgpuBindGroupRelease(bindGroup);
+
+    didCook();
 }
 
 void DepthOfField::cleanup() {

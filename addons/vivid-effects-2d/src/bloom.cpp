@@ -398,9 +398,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
 void Bloom::process(Context& ctx) {
     if (!m_initialized) init(ctx);
+    checkResize(ctx);
 
     WGPUTextureView inView = inputView(0);
     if (!inView) return;
+
+    if (!needsCook()) return;
 
     float texelW = 1.0f / m_width;
     float texelH = 1.0f / m_height;
@@ -615,6 +618,7 @@ void Bloom::process(Context& ctx) {
         wgpuBindGroupLayoutRelease(combineLayout);
         wgpuBindGroupRelease(bindGroup);
     }
+    didCook();
 }
 
 void Bloom::cleanup() {

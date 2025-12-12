@@ -60,21 +60,30 @@ public:
      * @param s Strength multiplier (0-5, default 1.0)
      * @return Reference for chaining
      */
-    Edge& strength(float s) { m_strength = s; return *this; }
+    Edge& strength(float s) {
+        if (m_strength != s) { m_strength = s; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set edge threshold
      * @param t Threshold (0-1, default 0.0). Edges below this are hidden
      * @return Reference for chaining
      */
-    Edge& threshold(float t) { m_threshold = t; return *this; }
+    Edge& threshold(float t) {
+        if (m_threshold != t) { m_threshold = t; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Invert output colors
      * @param i True for white background, false for black
      * @return Reference for chaining
      */
-    Edge& invert(bool i) { m_invert = i; return *this; }
+    Edge& invert(bool i) {
+        if (m_invert != i) { m_invert = i; markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -98,9 +107,9 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "strength") { m_strength = value[0]; return true; }
-        if (name == "threshold") { m_threshold = value[0]; return true; }
-        if (name == "invert") { m_invert = value[0] > 0.5f; return true; }
+        if (name == "strength") { strength(value[0]); return true; }
+        if (name == "threshold") { threshold(value[0]); return true; }
+        if (name == "invert") { invert(value[0] > 0.5f); return true; }
         return false;
     }
 

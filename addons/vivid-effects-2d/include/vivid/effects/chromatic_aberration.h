@@ -60,21 +60,21 @@ public:
      * @param a Amount (0-0.1, default 0.01)
      * @return Reference for chaining
      */
-    ChromaticAberration& amount(float a) { m_amount = a; return *this; }
+    ChromaticAberration& amount(float a) { if (m_amount != a) { m_amount = a; markDirty(); } return *this; }
 
     /**
      * @brief Set separation angle (linear mode)
      * @param a Angle in radians
      * @return Reference for chaining
      */
-    ChromaticAberration& angle(float a) { m_angle = a; return *this; }
+    ChromaticAberration& angle(float a) { if (m_angle != a) { m_angle = a; markDirty(); } return *this; }
 
     /**
      * @brief Enable radial separation mode
      * @param r True for radial, false for linear
      * @return Reference for chaining
      */
-    ChromaticAberration& radial(bool r) { m_radial = r; return *this; }
+    ChromaticAberration& radial(bool r) { if (m_radial != r) { m_radial = r; markDirty(); } return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -98,9 +98,9 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "amount") { m_amount = value[0]; return true; }
-        if (name == "angle") { m_angle = value[0]; return true; }
-        if (name == "radial") { m_radial = value[0] > 0.5f; return true; }
+        if (name == "amount") { amount(value[0]); return true; }
+        if (name == "angle") { angle(value[0]); return true; }
+        if (name == "radial") { radial(value[0] > 0.5f); return true; }
         return false;
     }
 

@@ -72,7 +72,14 @@ public:
      * @param h Height in pixels
      * @return Reference for chaining
      */
-    Canvas& size(int w, int h);
+    Canvas& size(int w, int h) {
+        if (m_width != w || m_height != h) {
+            m_width = w;
+            m_height = h;
+            markDirty();
+        }
+        return *this;
+    }
 
     /**
      * @brief Load a TTF font for text rendering

@@ -61,28 +61,40 @@ public:
      * @param pixels Pixels between scanlines (1-20, default 2)
      * @return Reference for chaining
      */
-    Scanlines& spacing(int pixels) { m_spacing = pixels; return *this; }
+    Scanlines& spacing(int pixels) {
+        if (m_spacing != pixels) { m_spacing = pixels; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set scanline thickness
      * @param t Thickness ratio (0-1, default 0.5)
      * @return Reference for chaining
      */
-    Scanlines& thickness(float t) { m_thickness = t; return *this; }
+    Scanlines& thickness(float t) {
+        if (m_thickness != t) { m_thickness = t; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Set darkening intensity
      * @param i Intensity (0-1, default 0.3)
      * @return Reference for chaining
      */
-    Scanlines& intensity(float i) { m_intensity = i; return *this; }
+    Scanlines& intensity(float i) {
+        if (m_intensity != i) { m_intensity = i; markDirty(); }
+        return *this;
+    }
 
     /**
      * @brief Use vertical scanlines
      * @param v True for vertical, false for horizontal
      * @return Reference for chaining
      */
-    Scanlines& vertical(bool v) { m_vertical = v; return *this; }
+    Scanlines& vertical(bool v) {
+        if (m_vertical != v) { m_vertical = v; markDirty(); }
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -107,10 +119,10 @@ public:
     }
 
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "spacing") { m_spacing = static_cast<int>(value[0]); return true; }
-        if (name == "thickness") { m_thickness = value[0]; return true; }
-        if (name == "intensity") { m_intensity = value[0]; return true; }
-        if (name == "vertical") { m_vertical = value[0] > 0.5f; return true; }
+        if (name == "spacing") { spacing(static_cast<int>(value[0])); return true; }
+        if (name == "thickness") { thickness(value[0]); return true; }
+        if (name == "intensity") { intensity(value[0]); return true; }
+        if (name == "vertical") { vertical(value[0] > 0.5f); return true; }
         return false;
     }
 
