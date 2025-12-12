@@ -35,6 +35,10 @@ namespace fs = std::filesystem;
 
 namespace vivid::imgui {
 
+// Special node IDs for output nodes
+static constexpr int SCREEN_NODE_ID = 9999;
+static constexpr int SPEAKERS_NODE_ID = 9998;
+
 // Get process memory usage in bytes
 static size_t getProcessMemoryUsage() {
 #if defined(__APPLE__)
@@ -200,6 +204,7 @@ float ChainVisualizer::estimateNodeHeight(const vivid::OperatorInfo& info) const
 void ChainVisualizer::buildLayout(const std::vector<vivid::OperatorInfo>& operators) {
     m_opToNodeId.clear();
     m_nodePositioned.clear();
+    m_nodePositioned[SCREEN_NODE_ID] = false;  // Reset Screen node position on layout rebuild
 
     // Assign node IDs to operators
     for (size_t i = 0; i < operators.size(); ++i) {
@@ -1252,6 +1257,82 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         }
     }
 
+    // Render the Screen output node (special node showing final output destination)
+    vivid::Operator* outputOp = nullptr;
+    if (ctx.hasChain()) {
+        outputOp = ctx.chain().getOutput();
+    }
+
+    if (outputOp && m_opToNodeId.count(outputOp)) {
+        // Position Screen node to the right of the output operator
+        if (!m_nodePositioned[SCREEN_NODE_ID]) {
+            int outputNodeId = m_opToNodeId[outputOp];
+            ImVec2 outputPos = ImNodes::GetNodeGridSpacePos(outputNodeId);
+            ImNodes::SetNodeGridSpacePos(SCREEN_NODE_ID, ImVec2(outputPos.x + 280.0f, outputPos.y));
+            m_nodePositioned[SCREEN_NODE_ID] = true;
+        }
+
+        // Green color for Screen node
+        ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(40, 120, 60, 255));
+        ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(50, 150, 75, 255));
+        ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(60, 180, 90, 255));
+
+        ImNodes::BeginNode(SCREEN_NODE_ID);
+
+        ImNodes::BeginNodeTitleBar();
+        ImGui::TextUnformatted("Screen");
+        ImNodes::EndNodeTitleBar();
+
+        // Input pin for the texture
+        ImNodes::BeginInputAttribute(inputAttrId(SCREEN_NODE_ID, 0));
+        ImGui::Text("display");
+        ImNodes::EndInputAttribute();
+
+        ImNodes::EndNode();
+
+        ImNodes::PopColorStyle();
+        ImNodes::PopColorStyle();
+        ImNodes::PopColorStyle();
+    }
+
+    // Render the Speakers audio output node (if audio output is designated)
+    vivid::Operator* audioOutputOp = nullptr;
+    if (ctx.hasChain()) {
+        audioOutputOp = ctx.chain().getAudioOutput();
+    }
+
+    if (audioOutputOp && m_opToNodeId.count(audioOutputOp)) {
+        // Position Speakers node to the right of the audio output operator
+        if (!m_nodePositioned[SPEAKERS_NODE_ID]) {
+            int audioOutputNodeId = m_opToNodeId[audioOutputOp];
+            ImVec2 audioOutputPos = ImNodes::GetNodeGridSpacePos(audioOutputNodeId);
+            ImNodes::SetNodeGridSpacePos(SPEAKERS_NODE_ID, ImVec2(audioOutputPos.x + 280.0f, audioOutputPos.y));
+            m_nodePositioned[SPEAKERS_NODE_ID] = true;
+        }
+
+        // Purple color for Speakers node (matches audio operators)
+        ImNodes::PushColorStyle(ImNodesCol_TitleBar, IM_COL32(100, 60, 120, 255));
+        ImNodes::PushColorStyle(ImNodesCol_TitleBarHovered, IM_COL32(125, 75, 150, 255));
+        ImNodes::PushColorStyle(ImNodesCol_TitleBarSelected, IM_COL32(150, 90, 180, 255));
+
+        ImNodes::BeginNode(SPEAKERS_NODE_ID);
+
+        ImNodes::BeginNodeTitleBar();
+        ImGui::TextUnformatted("Speakers");
+        ImNodes::EndNodeTitleBar();
+
+        // Input pin for the audio
+        ImNodes::BeginInputAttribute(inputAttrId(SPEAKERS_NODE_ID, 0));
+        ImGui::Text("audio");
+        ImNodes::EndInputAttribute();
+
+        ImNodes::EndNode();
+
+        ImNodes::PopColorStyle();
+        ImNodes::PopColorStyle();
+        ImNodes::PopColorStyle();
+    }
+
     // Render links
     int linkId = 0;
     for (size_t i = 0; i < operators.size(); ++i) {
@@ -1269,6 +1350,22 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                     inputAttrId(destNodeId, static_cast<int>(j)));
             }
         }
+    }
+
+    // Link from output operator to Screen node
+    if (outputOp && m_opToNodeId.count(outputOp)) {
+        int outputNodeId = m_opToNodeId[outputOp];
+        ImNodes::Link(linkId++,
+            outputAttrId(outputNodeId),
+            inputAttrId(SCREEN_NODE_ID, 0));
+    }
+
+    // Link from audio output operator to Speakers node
+    if (audioOutputOp && m_opToNodeId.count(audioOutputOp)) {
+        int audioOutputNodeId = m_opToNodeId[audioOutputOp];
+        ImNodes::Link(linkId++,
+            outputAttrId(audioOutputNodeId),
+            inputAttrId(SPEAKERS_NODE_ID, 0));
     }
 
     ImNodes::EndNodeEditor();
