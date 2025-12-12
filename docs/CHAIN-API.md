@@ -272,6 +272,43 @@ void update(Context& ctx) {
 VIVID_CHAIN(setup, update)
 ```
 
+## Debugging
+
+### Debug Logging
+
+When troubleshooting chain issues (e.g., "why is this operator rendering to screen?"), enable debug logging:
+
+**Option 1: Environment variable**
+```bash
+VIVID_DEBUG_CHAIN=1 ./build/bin/vivid my-project
+```
+
+**Option 2: Programmatic**
+```cpp
+void setup(Context& ctx) {
+    ctx.chain().setDebug(true);
+    // ... rest of setup
+}
+```
+
+This outputs the processing order and shows which operator is the screen output:
+
+```
+[Chain Debug] === Processing Chain ===
+[Chain Debug] Designated output: composite
+[Chain Debug] noise (Noise) -> texture
+[Chain Debug] blur (Blur) -> texture
+[Chain Debug] color (HSV) -> texture
+[Chain Debug] composite (Composite) -> texture -> SCREEN OUTPUT
+[Chain Debug] === End Processing ===
+```
+
+### Common Issues
+
+1. **Wrong operator rendering to screen** - Check `chain.output("name")` is set correctly
+2. **Operator not processing** - Ensure it's connected via `.input()` and not bypassed
+3. **Circular dependency** - Chain will report an error; check your input connections
+
 ## Tips
 
 1. **Name operators meaningfully** - You'll reference them in `update()`

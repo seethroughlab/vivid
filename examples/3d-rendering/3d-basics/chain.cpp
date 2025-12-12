@@ -11,9 +11,6 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
-// Persistent state across hot-reloads
-static Camera3D camera;
-
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
@@ -76,17 +73,25 @@ void setup(Context& ctx) {
         glm::vec4(0.4f, 0.8f, 1.0f, 1.0f));  // Light blue
 
     // =========================================================================
+    // CAMERA - Required input for 3D rendering
+    // =========================================================================
+
+    auto& camera = chain.add<CameraOperator>("camera")
+        .orbitCenter(0.0f, 0.0f, 0.0f)
+        .distance(8.0f)
+        .elevation(0.3f)
+        .azimuth(0.0f)
+        .fov(50.0f)
+        .nearPlane(0.1f)
+        .farPlane(100.0f);
+
+    // =========================================================================
     // RENDER3D - Render scene to texture
     // =========================================================================
 
-    camera.lookAt(glm::vec3(0, 3, 8), glm::vec3(0, 0, 0))
-          .fov(50.0f)
-          .nearPlane(0.1f)
-          .farPlane(100.0f);
-
     auto& render = chain.add<Render3D>("render3d")
         .input(&scene)
-        .camera(camera)
+        .cameraInput(&camera)
         .shadingMode(ShadingMode::Flat)
         .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
         .lightColor(glm::vec3(1, 1, 1))
@@ -106,13 +111,8 @@ void update(Context& ctx) {
     float time = static_cast<float>(ctx.time());
 
     // Orbit camera around the scene
-    float distance = 8.0f;
-    float azimuth = time * 0.2f;
-    float elevation = 0.3f;
-    camera.orbit(distance, azimuth, elevation);
-
-    auto& render = chain.get<Render3D>("render3d");
-    render.camera(camera);
+    auto& camera = chain.get<CameraOperator>("camera");
+    camera.azimuth(time * 0.2f);
 
     // Animate objects in the scene via SceneComposer
     auto& scene = chain.get<SceneComposer>("scene");

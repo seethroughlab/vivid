@@ -16,6 +16,7 @@
 #include <vector>
 #include <map>
 #include <stdexcept>
+#include <iostream>
 
 namespace vivid {
 
@@ -140,6 +141,9 @@ public:
      * Only operators that produce Texture output can be chain outputs. GeometryOperators
      * must be processed through a Render3D before output.
      *
+     * Every vivid project should have exactly one texture output. Calling output()
+     * multiple times will log a warning (only the last call takes effect).
+     *
      * @par Example
      * @code
      * chain.add<Noise>("noise").scale(4.0f);
@@ -148,6 +152,13 @@ public:
      * @endcode
      */
     void output(const std::string& name) {
+        // Warn if output is being changed (indicates potential user error)
+        if (outputWasSet_ && !outputName_.empty() && outputName_ != name) {
+            std::cerr << "[Chain Warning] Output changed from '" << outputName_
+                      << "' to '" << name << "'. Only one output is allowed per project." << std::endl;
+        }
+        outputWasSet_ = true;
+
         Operator* op = getByName(name);
         if (op && op->outputKind() != OutputKind::Texture) {
             error_ = "Output operator must produce a texture. '" + name + "' produces " +
@@ -296,11 +307,42 @@ public:
     AudioGraph* audioGraph() { return &audioGraph_; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Debug Mode
+    /// @{
+
+    /**
+     * @brief Enable debug logging for the chain
+     * @param enabled Whether to enable debug logging
+     *
+     * When enabled, logs each operator's output target during process():
+     * - Operator name and type
+     * - Output texture dimensions
+     * - Whether it's the final screen output
+     *
+     * Can also be enabled via VIVID_DEBUG_CHAIN=1 environment variable.
+     */
+    void setDebug(bool enabled) { debug_ = enabled; }
+
+    /// @brief Check if debug mode is enabled
+    bool isDebug() const { return debug_; }
+
+    /**
+     * @brief Print the output path from a given operator to screen
+     * @param startName Name of operator to start from (empty = designated output)
+     *
+     * Useful for debugging render flow: which operator is actually
+     * rendering to screen?
+     */
+    void debugOutputPath(const std::string& startName = "");
+
+    /// @}
 
 private:
     void computeExecutionOrder();
     void buildDependencyGraph();
     bool detectCycle();
+    void checkDebugEnvVar();
 
     std::unordered_map<std::string, std::unique_ptr<Operator>> operators_;
     std::unordered_map<Operator*, std::string> operatorNames_;
@@ -312,6 +354,7 @@ private:
     std::string error_;
     bool needsSort_ = true;
     bool initialized_ = false;
+    bool outputWasSet_ = false;  // Track if output() was called (for multi-call warning)
 
     // Pull-based audio graph (processed on audio thread)
     AudioGraph audioGraph_;
@@ -320,6 +363,10 @@ private:
     // Legacy audio timing (for recording mode)
     double lastAudioTime_ = 0.0;
     double audioSamplesOwed_ = 0.0;
+
+    // Debug mode
+    bool debug_ = false;
+    bool debugEnvChecked_ = false;
 };
 
 } // namespace vivid

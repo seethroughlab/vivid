@@ -22,8 +22,8 @@ namespace vivid::imgui {
 /// Preview state for a geometry operator node
 struct GeometryPreview {
     std::unique_ptr<render3d::Render3D> renderer;
+    std::unique_ptr<render3d::CameraOperator> cameraOp;
     render3d::Scene scene;
-    render3d::Camera3D camera;
     render3d::Mesh* lastMesh = nullptr;  // Track changes
     float rotationAngle = 0.0f;          // For animation
 };
@@ -90,6 +90,7 @@ private:
 
     // Full-viewport geometry renderer for solo mode
     std::unique_ptr<render3d::Render3D> m_soloGeometryRenderer;
+    std::unique_ptr<render3d::CameraOperator> m_soloCameraOp;
     float m_soloRotationAngle = 0.0f;
 
     // Solo mode helpers

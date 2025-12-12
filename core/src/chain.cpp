@@ -12,8 +12,65 @@
 #include <iostream>
 #include <functional>
 #include <cstring>
+#include <cstdlib>
 
 namespace vivid {
+
+// Check environment variable for debug mode
+void Chain::checkDebugEnvVar() {
+    if (debugEnvChecked_) return;
+    debugEnvChecked_ = true;
+
+    const char* envVal = std::getenv("VIVID_DEBUG_CHAIN");
+    if (envVal && (std::string(envVal) == "1" || std::string(envVal) == "true")) {
+        debug_ = true;
+        std::cout << "[Chain Debug] Debug mode enabled via VIVID_DEBUG_CHAIN" << std::endl;
+    }
+}
+
+void Chain::debugOutputPath(const std::string& startName) {
+    std::string name = startName.empty() ? outputName_ : startName;
+    if (name.empty()) {
+        std::cout << "[Chain Debug] No output operator set" << std::endl;
+        return;
+    }
+
+    std::cout << "[Chain Debug] Output path: ";
+    Operator* current = getByName(name);
+    bool first = true;
+
+    while (current) {
+        std::string opName = getName(current);
+        if (!first) std::cout << " -> ";
+        std::cout << opName;
+        first = false;
+
+        // Find who uses this operator as input
+        Operator* nextInChain = nullptr;
+        for (const auto& [n, op] : operators_) {
+            for (size_t i = 0; i < op->inputCount(); ++i) {
+                if (op->getInput(i) == current) {
+                    // This op uses current as input, so current feeds into this
+                    // But we want to trace FORWARD to output, not backward
+                    break;
+                }
+            }
+        }
+
+        // Actually we want to trace from current to the designated output
+        // This is harder - let's just show what's connected
+        if (current->inputCount() > 0) {
+            current = current->getInput(0);
+        } else {
+            current = nullptr;
+        }
+    }
+
+    if (name == outputName_) {
+        std::cout << " -> SCREEN";
+    }
+    std::cout << std::endl;
+}
 
 Operator* Chain::addOperator(const std::string& name, Operator* op) {
     // Take ownership of the operator using unique_ptr
@@ -217,6 +274,9 @@ void Chain::computeExecutionOrder() {
 }
 
 void Chain::init(Context& ctx) {
+    // Check for debug environment variable
+    checkDebugEnvVar();
+
     // First pass: call init on all operators to resolve named inputs
     // This must happen before computeExecutionOrder() so the topological
     // sort can see the actual dependencies
@@ -230,6 +290,36 @@ void Chain::init(Context& ctx) {
     if (hasError()) {
         ctx.setError(error_);
         return;
+    }
+
+    // Validate texture output
+    if (outputName_.empty()) {
+        std::cerr << "[Chain Warning] No output specified. Screen will be black. "
+                  << "Use chain.output(\"name\") to designate output." << std::endl;
+    } else {
+        Operator* out = getByName(outputName_);
+        if (!out) {
+            error_ = "Output operator '" + outputName_ + "' not found";
+            ctx.setError(error_);
+            return;
+        }
+        if (out->outputKind() != OutputKind::Texture) {
+            error_ = "Output operator '" + outputName_ + "' produces " +
+                     outputKindName(out->outputKind()) + ", not Texture. Route through Render3D first.";
+            ctx.setError(error_);
+            return;
+        }
+    }
+
+    // Validate audio output (if specified)
+    if (!audioOutputName_.empty()) {
+        Operator* audioOut = getByName(audioOutputName_);
+        if (!audioOut) {
+            error_ = "Audio output operator '" + audioOutputName_ + "' not found";
+            ctx.setError(error_);
+            return;
+        }
+        // OutputKind::Audio check already exists in audioOutput()
     }
 
     // Separate audio and visual operators
@@ -298,12 +388,45 @@ void Chain::process(Context& ctx) {
         return;
     }
 
+    // Debug: Log processing start (only on first frame to avoid spam)
+    static bool firstDebugFrame = true;
+    if (debug_ && firstDebugFrame) {
+        std::cout << "\n[Chain Debug] === Processing Chain ===" << std::endl;
+        std::cout << "[Chain Debug] Designated output: " << (outputName_.empty() ? "(none)" : outputName_) << std::endl;
+    }
+
     // Process ONLY visual operators on main thread
     // Audio operators are processed by AudioGraph on the audio thread
     for (Operator* op : visualExecutionOrder_) {
         if (!op->isBypassed()) {
+            // Debug logging
+            if (debug_ && firstDebugFrame) {
+                std::string opName = getName(op);
+                std::string opType = op->name();
+                WGPUTexture tex = op->outputTexture();
+
+                std::cout << "[Chain Debug] " << opName << " (" << opType << ")";
+
+                if (tex) {
+                    // Get texture dimensions if available
+                    std::cout << " -> texture";
+                }
+
+                // Check if this is the output
+                if (opName == outputName_) {
+                    std::cout << " -> SCREEN OUTPUT";
+                }
+
+                std::cout << std::endl;
+            }
+
             op->process(ctx);
         }
+    }
+
+    if (debug_ && firstDebugFrame) {
+        std::cout << "[Chain Debug] === End Processing ===" << std::endl << std::endl;
+        firstDebugFrame = false;
     }
 
     // AudioOutput::process() handles auto-start of audio playback

@@ -1069,7 +1069,6 @@ GPULight lightDataToGPU(const LightData& light) {
 } // anonymous namespace
 
 Render3D::Render3D() {
-    m_camera.lookAt(glm::vec3(3, 2, 3), glm::vec3(0, 0, 0));
 }
 
 Render3D::~Render3D() {
@@ -1093,13 +1092,6 @@ Render3D& Render3D::input(SceneComposer* composer) {
         }
         markDirty();
     }
-    return *this;
-}
-
-Render3D& Render3D::camera(const Camera3D& cam) {
-    m_camera = cam;
-    m_cameraOp = nullptr;  // Clear operator when camera is set directly
-    markDirty();
     return *this;
 }
 
@@ -2165,11 +2157,11 @@ void Render3D::process(Context& ctx) {
         return;
     }
 
-    // Get camera from operator if connected, otherwise use direct camera
-    Camera3D activeCamera = m_camera;
-    if (m_cameraOp) {
-        activeCamera = m_cameraOp->outputCamera();
+    // Camera is required for 3D rendering
+    if (!m_cameraOp) {
+        return;
     }
+    Camera3D activeCamera = m_cameraOp->outputCamera();
 
     // Collect lights from operators
     GPULight gpuLights[MAX_LIGHTS] = {};
@@ -2480,8 +2472,8 @@ void Render3D::process(Context& ctx) {
             float far;
             float _pad[2];
         } depthUniforms;
-        depthUniforms.near = m_camera.getNear();
-        depthUniforms.far = m_camera.getFar();
+        depthUniforms.near = activeCamera.getNear();
+        depthUniforms.far = activeCamera.getFar();
         wgpuQueueWriteBuffer(ctx.queue(), m_depthCopyUniformBuffer, 0, &depthUniforms, sizeof(depthUniforms));
 
         WGPURenderPassColorAttachment depthCopyColorAttachment = {};

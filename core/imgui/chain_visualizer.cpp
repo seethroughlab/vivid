@@ -265,14 +265,18 @@ void ChainVisualizer::updateGeometryPreview(
     vivid::Context& ctx,
     float dt
 ) {
-    // Initialize renderer if needed
+    // Initialize renderer and camera if needed
     if (!preview.renderer) {
+        preview.cameraOp = std::make_unique<render3d::CameraOperator>();
+        preview.cameraOp->init(ctx);
+
         preview.renderer = std::make_unique<render3d::Render3D>();
         preview.renderer->resolution(100, 56)
             .shadingMode(render3d::ShadingMode::Flat)
             .clearColor(0.12f, 0.14f, 0.18f)
             .ambient(0.3f)
-            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
+            .cameraInput(preview.cameraOp.get());
         preview.renderer->init(ctx);
     }
 
@@ -325,13 +329,14 @@ void ChainVisualizer::updateGeometryPreview(
         }
         float distance = maxDist * 2.5f;
         if (distance < 0.1f) distance = 2.0f;  // Fallback for tiny meshes
-        preview.camera.lookAt(
-            glm::vec3(distance * 0.7f, distance * 0.5f, distance * 0.7f),
-            center
-        ).fov(45.0f).nearPlane(0.01f).farPlane(100.0f);
+        preview.cameraOp->position(distance * 0.7f, distance * 0.5f, distance * 0.7f)
+            .target(center.x, center.y, center.z)
+            .fov(45.0f)
+            .nearPlane(0.01f)
+            .farPlane(100.0f);
     }
 
-    // Render (internal use - suppress deprecation warning)
+    // Render (internal use - suppress deprecation warning for scene())
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -342,7 +347,7 @@ void ChainVisualizer::updateGeometryPreview(
 #pragma warning(push)
 #pragma warning(disable: 4996)
 #endif
-    preview.renderer->scene(preview.scene).camera(preview.camera);
+    preview.renderer->scene(preview.scene);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
@@ -350,6 +355,7 @@ void ChainVisualizer::updateGeometryPreview(
 #elif defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+    preview.cameraOp->process(ctx);
     preview.renderer->process(ctx);
 }
 
@@ -359,14 +365,18 @@ void ChainVisualizer::updateScenePreview(
     vivid::Context& ctx,
     float dt
 ) {
-    // Initialize renderer if needed
+    // Initialize renderer and camera if needed
     if (!preview.renderer) {
+        preview.cameraOp = std::make_unique<render3d::CameraOperator>();
+        preview.cameraOp->init(ctx);
+
         preview.renderer = std::make_unique<render3d::Render3D>();
         preview.renderer->resolution(100, 56)
             .shadingMode(render3d::ShadingMode::Flat)
             .clearColor(0.12f, 0.14f, 0.18f)
             .ambient(0.3f)
-            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
+            .cameraInput(preview.cameraOp.get());
         preview.renderer->init(ctx);
     }
 
@@ -408,12 +418,13 @@ void ChainVisualizer::updateScenePreview(
     // Orbit camera around scene center
     float camX = center.x + distance * 0.7f * cos(preview.rotationAngle);
     float camZ = center.z + distance * 0.7f * sin(preview.rotationAngle);
-    preview.camera.lookAt(
-        glm::vec3(camX, center.y + distance * 0.4f, camZ),
-        center
-    ).fov(45.0f).nearPlane(0.01f).farPlane(100.0f);
+    preview.cameraOp->position(camX, center.y + distance * 0.4f, camZ)
+        .target(center.x, center.y, center.z)
+        .fov(45.0f)
+        .nearPlane(0.01f)
+        .farPlane(100.0f);
 
-    // Render (internal use - suppress deprecation warning)
+    // Render (internal use - suppress deprecation warning for scene())
 #if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
@@ -424,7 +435,7 @@ void ChainVisualizer::updateScenePreview(
 #pragma warning(push)
 #pragma warning(disable: 4996)
 #endif
-    preview.renderer->scene(scene).camera(preview.camera);
+    preview.renderer->scene(scene);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
@@ -432,6 +443,7 @@ void ChainVisualizer::updateScenePreview(
 #elif defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+    preview.cameraOp->process(ctx);
     preview.renderer->process(ctx);
 }
 
@@ -472,13 +484,17 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
         // For geometry operators, render at full viewport size
         m_soloRotationAngle += input.dt * 0.8f;
 
-        // Initialize or resize renderer
+        // Initialize or resize renderer and camera
         if (!m_soloGeometryRenderer) {
+            m_soloCameraOp = std::make_unique<render3d::CameraOperator>();
+            m_soloCameraOp->init(ctx);
+
             m_soloGeometryRenderer = std::make_unique<render3d::Render3D>();
             m_soloGeometryRenderer->shadingMode(render3d::ShadingMode::Flat)
                 .clearColor(0.08f, 0.1f, 0.14f)
                 .ambient(0.3f)
-                .lightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+                .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
+                .cameraInput(m_soloCameraOp.get());
             m_soloGeometryRenderer->init(ctx);
         }
 
@@ -512,11 +528,11 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
                 // Orbit camera
                 float camX = center.x + distance * 0.7f * cos(m_soloRotationAngle);
                 float camZ = center.z + distance * 0.7f * sin(m_soloRotationAngle);
-                render3d::Camera3D camera;
-                camera.lookAt(
-                    glm::vec3(camX, center.y + distance * 0.4f, camZ),
-                    center
-                ).fov(45.0f).nearPlane(0.01f).farPlane(1000.0f);
+                m_soloCameraOp->position(camX, center.y + distance * 0.4f, camZ)
+                    .target(center.x, center.y, center.z)
+                    .fov(45.0f)
+                    .nearPlane(0.01f)
+                    .farPlane(1000.0f);
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -528,7 +544,7 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
 #pragma warning(push)
 #pragma warning(disable: 4996)
 #endif
-                m_soloGeometryRenderer->scene(scene).camera(camera);
+                m_soloGeometryRenderer->scene(scene);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
@@ -536,6 +552,7 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
 #elif defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+                m_soloCameraOp->process(ctx);
                 m_soloGeometryRenderer->process(ctx);
                 ctx.setOutputTexture(m_soloGeometryRenderer->outputView());
             }
@@ -578,11 +595,11 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
                 float distance = maxDist * 2.5f;
                 if (distance < 0.1f) distance = 2.0f;
 
-                render3d::Camera3D camera;
-                camera.lookAt(
-                    glm::vec3(distance * 0.7f, distance * 0.5f, distance * 0.7f),
-                    center
-                ).fov(45.0f).nearPlane(0.01f).farPlane(100.0f);
+                m_soloCameraOp->position(distance * 0.7f, distance * 0.5f, distance * 0.7f)
+                    .target(center.x, center.y, center.z)
+                    .fov(45.0f)
+                    .nearPlane(0.01f)
+                    .farPlane(100.0f);
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -594,7 +611,7 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
 #pragma warning(push)
 #pragma warning(disable: 4996)
 #endif
-                m_soloGeometryRenderer->scene(scene).camera(camera);
+                m_soloGeometryRenderer->scene(scene);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
@@ -602,6 +619,7 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
 #elif defined(_MSC_VER)
 #pragma warning(pop)
 #endif
+                m_soloCameraOp->process(ctx);
                 m_soloGeometryRenderer->process(ctx);
                 ctx.setOutputTexture(m_soloGeometryRenderer->outputView());
             }

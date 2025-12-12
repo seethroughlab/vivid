@@ -125,9 +125,15 @@
     - Likely an ImGui/WebGPU texture binding or format issue specific to chained operators
 [x] wipeout-viz: please refactor the example into classes. There should be a class for each major part of the craft.
 [x] we need a color class that enables conversions between color formats (RGB, HSV, hex), color blending/lerping, and will make the example code more readable. Let's add some static variables with color names as well. DO any of the libraries we're already using have a color class? It seems too simple to involve a 3rd party library, but maybe I'm wrong?
-[ ] What's happening with the docs action? https://github.com/seethroughlab/vivid/settings/pages 
+[ ] What's happening with the docs action? https://github.com/seethroughlab/vivid/settings/pages It's not published anywhere accessable. 
 [x] does our canvas api match the HTML canvas api?
     - No, current API is immediate-mode with per-call colors
     - HTML Canvas is stateful with path-based drawing
     - Added detailed alignment plan as Phase 5b in ROADMAP.md
-[ ] It took you a LONG time to figure out why the canvas was rendering to the screen, though that seems like a simple issue. You had to look through dozens of source files. What would have helped you diagnose that issue faster? 
+[x] It took you a LONG time to figure out why the canvas was rendering to the screen, though that seems like a simple issue. You had to look through dozens of source files. What would have helped you diagnose that issue faster?
+    - Added `VIVID_DEBUG_CHAIN=1` environment variable for debug logging
+    - Added `chain.setDebug(true)` programmatic option
+    - Debug output shows each operator, its type, and which one is SCREEN OUTPUT
+    - Documented in docs/CHAIN-API.md under "Debugging" section 
+[ ] Do we have an ortho camera? 
+[ ] There are a lot of nodes whose parameters aren't exposed like they should be. Camera is one of them. 

@@ -56,10 +56,7 @@ public:
     /// @name Camera
     /// @{
 
-    /// Set the camera (direct configuration)
-    Render3D& camera(const Camera3D& cam);
-
-    /// Set camera from a CameraOperator (node-based workflow)
+    /// Set camera from a CameraOperator (required for rendering)
     /// The operator's output camera will be used each frame
     Render3D& cameraInput(CameraOperator* camOp);
 
@@ -199,8 +196,7 @@ private:
     // Scene
     Scene* m_scene = nullptr;
     SceneComposer* m_composer = nullptr;  // Alternative to m_scene for node-based workflow
-    Camera3D m_camera;
-    CameraOperator* m_cameraOp = nullptr;  // Alternative to m_camera for node-based workflow
+    CameraOperator* m_cameraOp = nullptr;  // Required for rendering
 
     // Light operators (node-based workflow)
     std::vector<LightOperator*> m_lightOps;
