@@ -104,8 +104,8 @@ void drawUI(Canvas& canvas, const TeamPalette& team, bool debugMode) {
 // =============================================================================
 
 void drawLivery(Canvas& canvas, const TeamPalette& team, bool fontLoaded) {
-    const float w = 512.0f;
-    const float h = 512.0f;
+    const float w = 1024.0f;
+    const float h = 1024.0f;
 
     // =========================================================================
     // Base Layer - Primary team color
@@ -330,13 +330,16 @@ void drawLivery(Canvas& canvas, const TeamPalette& team, bool fontLoaded) {
     // Team Number - Bold racing number in circle
     // =========================================================================
 
-    if (fontLoaded) {
-        // Number background circle with border
-        canvas.circleFilled(w * 0.5f, h * 0.80f, 52.0f, team.secondary, 32);
-        canvas.circle(w * 0.5f, h * 0.80f, 52.0f, 5.0f, team.accent, 32);
-        canvas.circle(w * 0.5f, h * 0.80f, 44.0f, 2.0f, team.primary, 32);
+    // Always draw the circle background (don't require font)
+    canvas.circleFilled(w * 0.5f, h * 0.80f, 52.0f, team.secondary, 32);
+    canvas.circle(w * 0.5f, h * 0.80f, 52.0f, 5.0f, team.accent, 32);
+    canvas.circle(w * 0.5f, h * 0.80f, 44.0f, 2.0f, team.primary, 32);
 
-        // Team number text
+    // DEBUG: Draw a bright red rectangle where text should be
+    canvas.rectFilled(w * 0.5f - 30, h * 0.80f - 20, 60, 40, {1.0f, 0.0f, 0.0f, 1.0f});
+
+    if (fontLoaded) {
+        // Team number text (on top of red debug rect)
         canvas.textCentered(team.number, w * 0.5f, h * 0.80f + 10.0f, team.primary);
     }
 
@@ -363,7 +366,7 @@ void setup(Context& ctx) {
     // Livery Texture - Canvas-based procedural texture
     // =========================================================================
 
-    auto& livery = chain.add<Canvas>("livery").size(512, 512);
+    auto& livery = chain.add<Canvas>("livery").size(1024, 1024);
 
     // Load font for livery text (team numbers)
     if (livery.loadFont(ctx, "assets/fonts/Pixeled.ttf", 48.0f)) {
@@ -373,25 +376,25 @@ void setup(Context& ctx) {
     }
 
     // =========================================================================
-    // Grime Texture Overlay - DISABLED for evaluation
+    // Grime Texture Overlay - Adds weathering and wear to livery
     // =========================================================================
 
-    // auto& grimeTexture = chain.add<Image>("grime")
-    //     .file("examples/showcase/wipeout-viz/assets/textures/grime/DarkGrunge_Textures01.jpg");
+    auto& grimeTexture = chain.add<Image>("grime")
+        .file("examples/showcase/wipeout-viz/assets/textures/grime/DarkGrunge_Textures01.jpg");
 
-    // // Composite grime over livery using Multiply blend at low opacity
-    // auto& liveryWithGrime = chain.add<Composite>("liveryGrime")
-    //     .input(0, &livery)
-    //     .input(1, &grimeTexture)
-    //     .mode(BlendMode::Multiply)
-    //     .opacity(0.25f);  // Subtle grime effect
+    // Composite grime over livery using Overlay blend for realistic weathering
+    auto& liveryWithGrime = chain.add<Composite>("liveryGrime")
+        .input(0, &livery)
+        .input(1, &grimeTexture)
+        .mode(BlendMode::Overlay)
+        .opacity(0.7f);  // More visible weathering
 
     // =========================================================================
-    // Craft Material - TexturedMaterial with Canvas livery directly
+    // Craft Material - TexturedMaterial with weathered livery
     // =========================================================================
 
     auto& material = chain.add<TexturedMaterial>("material")
-        .baseColorInput(&livery)
+        .baseColorInput(&liveryWithGrime)
         .roughnessFactor(0.7f)
         .metallicFactor(0.1f);
 
@@ -506,7 +509,8 @@ void setup(Context& ctx) {
         .input(1, &ui)
         .mode(BlendMode::Over);
 
-    chain.output("composite");
+    // chain.output("composite");  // Full render with UI
+    chain.output("livery");  // DEBUG: Show livery canvas directly
 
     // Print initial state
     std::cout << "Team: " << g_teams[g_currentTeam].name << std::endl;

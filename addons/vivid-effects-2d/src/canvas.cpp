@@ -74,6 +74,11 @@ void Canvas::text(const std::string& str, float x, float y, const glm::vec4& col
     }
     if (m_font && m_font->valid()) {
         m_renderer->text(*m_font, str, x, y, color);
+    } else {
+        static int warnCount = 0;
+        if (warnCount++ < 5) {
+            std::cerr << "[Canvas::text] Warning: font not valid for text '" << str << "'\n";
+        }
     }
 }
 

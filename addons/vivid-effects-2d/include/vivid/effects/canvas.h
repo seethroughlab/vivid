@@ -75,10 +75,11 @@ public:
      * Note: This also locks the resolution to prevent auto-resize to window size.
      */
     Canvas& size(int w, int h) {
+        // Always lock resolution when size() is explicitly called
+        m_resolutionLocked = true;
         if (m_width != w || m_height != h) {
             m_width = w;
             m_height = h;
-            m_resolutionLocked = true;  // Lock to prevent checkResize() override
             markDirty();
         }
         return *this;

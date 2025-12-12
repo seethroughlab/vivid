@@ -491,6 +491,21 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
             wgpuBindGroupRelease(m_fontBindGroup);
         }
         m_fontBindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
+
+        // Debug: Print text rendering info for livery canvas (1024x1024)
+        static int debugCount = 0;
+        if (debugCount < 2 && m_width == 1024) {
+            std::cout << "[CanvasRenderer] Livery text: canvas=" << m_width << "x" << m_height
+                      << " verts=" << m_textVertices.size() << std::endl;
+            // Print all 4 vertices of first glyph
+            for (int i = 0; i < std::min(4, (int)m_textVertices.size()); i++) {
+                auto& v = m_textVertices[i];
+                std::cout << "  v" << i << ": pos=(" << v.position.x << "," << v.position.y << ")"
+                          << " uv=(" << v.uv.x << "," << v.uv.y << ")"
+                          << " color.a=" << v.color.a << std::endl;
+            }
+            debugCount++;
+        }
     }
 
     // Begin render pass

@@ -149,3 +149,11 @@
 [ ] MEDIUM: Add parameter exposure to InstancedRender3D (has params() but missing getParam/setParam)
 [ ] MEDIUM: Add parameter exposure to Boolean (operation type)
 [ ] MEDIUM: Add parameter exposure to IBLEnvironment, GLTFLoader
+[ ] While diagnosing a few bugs recently, the solution has been to "lock resolution", which seems to be related to the idea that things automatically get resized when the window size changes. But this isn't how thing should work (with the notabl exception of MAYBE the screen texture). Users should declare the resolution of canvases once. Also, when movies and images are loaded, they should use the size of the media as the default resolution, but then the user can decide the drawing dimensions in their chain. If this isn't how it currently works, let's make a plan to make this change.
+[ ] BUG: Canvas text rendering appears directly on screen instead of on canvas texture
+    - Root cause: `Canvas::size()` only set `m_resolutionLocked = true` when dimensions changed
+    - When calling `size(1280, 720)` on a freshly created Canvas (which defaults to 1280x720), the lock was never set
+    - This allowed `checkResize()` to resize the canvas to window dimensions (2560x1440) on subsequent frames
+    - Text vertices were generated at canvas coordinates but rendered with window-size uniforms, causing misalignment
+    - Fix: Always set `m_resolutionLocked = true` in `Canvas::size()` regardless of whether dimensions changed 
+[ ] Please add a comand line snapshot feature that you (claude) can use in the future to evaluate your work. Also add this feature to the documentation so that it's obvious that this feature is available in the future.
