@@ -36,7 +36,7 @@ Vivid V3 is the third attempt at this framework. Understanding why V1 and V2 fai
 **Key Files (for reference):**
 - `vivid_v1/src/operators/` - 29 operator implementations
 - `vivid_v1/src/core/context.cpp` - Hot-reload and frame timing
-- `vivid_v1/vscode-extension/` - VS Code integration (could be resurrected)
+- VS Code extension merged to `/extension/` (streamlined, removed shared memory preview code)
 
 ### Vivid V2 (2024)
 
@@ -2248,14 +2248,80 @@ The chain visualizer is an ImNodes-based overlay that shows the operator graph w
 - [x] Parameter persistence via sidecar JSON files
 - [x] Audio analyzer thumbnails (VU meter, spectrum, bands, beat pulse)
 
-**WebSocket Server (Future):**
-- [ ] JSON protocol for compile status and errors
-- [ ] Compile error broadcast with line numbers
-- [ ] Frame metadata (fps, time, operator count)
+#### EditorBridge (WebSocket Server)
 
-**VS Code Extension (Future):**
-- [ ] Error highlighting with compile errors
-- [ ] Basic status display (connected, fps, errors)
+The EditorBridge provides a WebSocket server for communication between the Vivid runtime and external editors (VS Code, etc.). Since the chain visualizer (imnodes) handles all preview rendering in-app, the EditorBridge focuses on development workflow integration rather than image streaming.
+
+**Phase 1: Essential (EditorBridge Core)** ✓
+- [x] WebSocket server on configurable port (default 9876)
+- [x] `compile_status` message: success/failure with error text
+- [x] Error parsing: file:line:col format for diagnostics
+- [x] `reload` command: force hot-reload from extension
+- [x] Connection status tracking
+
+**Phase 2: Operator Awareness** ✓
+- [x] `operator_list` message: send registered operators with names, types, line numbers
+- [x] `param_values` message: live sync of Param<T> values (1Hz)
+- [x] `param_change` command: bidirectional parameter editing from extension
+- [x] Tree view data for operator hierarchy (via inputNames array)
+
+**Phase 3: Advanced (Future)**
+- [ ] `pause` command: pause/resume runtime
+- [ ] `perf_stats` message: frame time, operator timing breakdown
+- [ ] Breakpoint-style "pause on operator"
+- [ ] Screenshot capture command
+
+**Message Protocol (JSON):**
+```json
+// Runtime → Extension
+{"type": "compile_status", "success": true, "message": ""}
+{"type": "compile_status", "success": false, "message": "chain.cpp:42:5: error: ..."}
+{"type": "operator_list", "operators": [
+  {"name": "noise", "displayName": "Noise", "outputType": "Texture", "sourceLine": 15, "inputs": []},
+  {"name": "hsv", "displayName": "HSV", "outputType": "Texture", "sourceLine": 16, "inputs": ["noise"]}
+]}
+{"type": "param_values", "params": [
+  {"operator": "noise", "name": "scale", "type": "Float", "value": [4.0,0,0,0], "min": 0, "max": 10}
+]}
+
+// Extension → Runtime
+{"type": "reload"}
+{"type": "param_change", "operator": "noise", "param": "scale", "value": [8.0,0,0,0]}
+{"type": "pause", "paused": true}  // Phase 3
+```
+
+**Implementation:** `core/src/editor_bridge.cpp`, `core/include/vivid/editor_bridge.h`
+
+**Dependencies:** IXWebSocket v11.4.5 (via FetchContent)
+
+#### VS Code Extension
+
+Located in `/extension/` - a streamlined TypeScript extension for VS Code integration.
+
+**Features (Phase 1):**
+- [x] WGSL language support (syntax highlighting, bracket matching)
+- [x] Status bar indicator (connected/disconnected/compile error)
+- [x] Compile error diagnostics (Problems panel with jump-to-line)
+- [x] Commands: Start Runtime, Stop Runtime, Force Reload, Toggle Decorations
+- [x] Auto-connect when workspace contains chain.cpp
+- [ ] WebSocket client connecting to EditorBridge
+
+**Features (Phase 2):**
+- [ ] Inline decorations showing live values (`~ 3.14`, `[img]`, `[geo]`)
+- [ ] Sparkline hover for value arrays
+- [ ] Operator tree view in sidebar
+- [ ] Parameter editing via hover or sidebar
+
+**Features (Phase 3 - Future):**
+- [ ] Code snippets for common patterns
+- [ ] Go-to-definition for operator references
+- [ ] Performance stats display
+
+**Comparable Extensions (Research):**
+- [Flutter](https://docs.flutter.dev/tools/vs-code): Hot reload button, error diagnostics, status bar
+- [Godot Tools](https://marketplace.visualstudio.com/items?itemName=geequlim.godot-tools): Scene tree, parameter inspector, live editing
+- [SHADERed](https://marketplace.visualstudio.com/items?itemName=dfranx.shadered): Shader preview, hot reload on save
+- [Unity](https://www.infoq.com/news/2024/04/unity-vscode-generally-available/): IntelliSense, debugging, real-time feedback
 
 **Validation:**
 - [x] Chain visualizer displays all operators

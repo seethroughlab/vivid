@@ -187,6 +187,67 @@ public:
     std::string name() const override { return "Render3D"; }
     // outputKind() and outputView() inherited from TextureOperator
 
+    std::vector<ParamDecl> params() override {
+        return {
+            {"metallic", ParamType::Float, 0.0f, 1.0f, {m_metallic, 0, 0, 0}},
+            {"roughness", ParamType::Float, 0.0f, 1.0f, {m_roughness, 0, 0, 0}},
+            {"ambient", ParamType::Float, 0.0f, 1.0f, {m_ambient, 0, 0, 0}},
+            {"lightDir", ParamType::Vec3, -1.0f, 1.0f,
+             {m_lightDirection.x, m_lightDirection.y, m_lightDirection.z, 0}},
+            {"lightColor", ParamType::Vec3, 0.0f, 2.0f,
+             {m_lightColor.x, m_lightColor.y, m_lightColor.z, 0}},
+            {"clearColor", ParamType::Vec4, 0.0f, 1.0f,
+             {m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a}},
+            {"toonLevels", ParamType::Float, 2.0f, 8.0f, {static_cast<float>(m_toonLevels), 0, 0, 0}},
+            {"wireframe", ParamType::Float, 0.0f, 1.0f, {m_wireframe ? 1.0f : 0.0f, 0, 0, 0}}
+        };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "metallic") { out[0] = m_metallic; return true; }
+        if (name == "roughness") { out[0] = m_roughness; return true; }
+        if (name == "ambient") { out[0] = m_ambient; return true; }
+        if (name == "lightDir") {
+            out[0] = m_lightDirection.x; out[1] = m_lightDirection.y; out[2] = m_lightDirection.z;
+            return true;
+        }
+        if (name == "lightColor") {
+            out[0] = m_lightColor.x; out[1] = m_lightColor.y; out[2] = m_lightColor.z;
+            return true;
+        }
+        if (name == "clearColor") {
+            out[0] = m_clearColor.r; out[1] = m_clearColor.g; out[2] = m_clearColor.b; out[3] = m_clearColor.a;
+            return true;
+        }
+        if (name == "toonLevels") { out[0] = static_cast<float>(m_toonLevels); return true; }
+        if (name == "wireframe") { out[0] = m_wireframe ? 1.0f : 0.0f; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "metallic") { m_metallic = value[0]; markDirty(); return true; }
+        if (name == "roughness") { m_roughness = value[0]; markDirty(); return true; }
+        if (name == "ambient") { m_ambient = value[0]; markDirty(); return true; }
+        if (name == "lightDir") {
+            m_lightDirection = glm::normalize(glm::vec3(value[0], value[1], value[2]));
+            markDirty();
+            return true;
+        }
+        if (name == "lightColor") {
+            m_lightColor = glm::vec3(value[0], value[1], value[2]);
+            markDirty();
+            return true;
+        }
+        if (name == "clearColor") {
+            m_clearColor = glm::vec4(value[0], value[1], value[2], value[3]);
+            markDirty();
+            return true;
+        }
+        if (name == "toonLevels") { m_toonLevels = static_cast<int>(value[0]); markDirty(); return true; }
+        if (name == "wireframe") { m_wireframe = value[0] > 0.5f; markDirty(); return true; }
+        return false;
+    }
+
     /// @}
 
 private:

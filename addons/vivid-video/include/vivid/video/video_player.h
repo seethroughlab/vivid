@@ -185,6 +185,25 @@ public:
     void cleanup() override;
     std::string name() const override { return "VideoPlayer"; }
 
+    std::vector<ParamDecl> params() override {
+        return {
+            {"loop", ParamType::Float, 0.0f, 1.0f, {m_loop ? 1.0f : 0.0f, 0, 0, 0}},
+            {"speed", ParamType::Float, 0.1f, 4.0f, {m_speed, 0, 0, 0}}
+        };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "loop") { out[0] = m_loop ? 1.0f : 0.0f; return true; }
+        if (name == "speed") { out[0] = m_speed; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "loop") { m_loop = value[0] > 0.5f; return true; }
+        if (name == "speed") { m_speed = value[0]; return true; }
+        return false;
+    }
+
 private:
     void loadVideo(Context& ctx);
     void createFallbackTexture(Context& ctx);

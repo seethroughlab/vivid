@@ -60,6 +60,7 @@ set(VIVID_CORE_SOURCES
     src/display.cpp
     src/hot_reload.cpp
     src/addon_registry.cpp
+    src/editor_bridge.cpp
     imgui/imgui_integration.cpp
     imgui/chain_visualizer.cpp
 )
@@ -85,6 +86,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/audio_buffer.h
     include/vivid/audio_operator.h
     include/vivid/audio_output.h
+    include/vivid/editor_bridge.h
     imgui/imgui_integration.h
     imgui/chain_visualizer.h
 )
@@ -168,13 +170,14 @@ target_compile_definitions(vivid PRIVATE
     IMGUI_IMPL_WEBGPU_BACKEND_WGPU
 )
 
-# Link against core library, GLFW-WebGPU integration, render3d for geometry previews, and audio for analyzer type info
+# Link against core library, GLFW-WebGPU integration, render3d for geometry previews, audio for analyzer type info, and ixwebsocket for EditorBridge
 target_link_libraries(vivid
     PRIVATE
         vivid-core
         glfw3webgpu
         vivid-render3d
         vivid-audio
+        ixwebsocket
 )
 
 # Platform-specific settings

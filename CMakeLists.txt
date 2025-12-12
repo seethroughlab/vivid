@@ -184,6 +184,19 @@ if(WIN32)
     target_compile_definitions(glfw3webgpu PRIVATE _GLFW_WIN32)
 endif()
 
+# IXWebSocket - WebSocket server for EditorBridge
+set(USE_TLS OFF CACHE BOOL "" FORCE)
+set(USE_OPEN_SSL OFF CACHE BOOL "" FORCE)
+set(USE_MBED_TLS OFF CACHE BOOL "" FORCE)
+set(USE_ZLIB OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    ixwebsocket
+    GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
+    GIT_TAG        v11.4.5
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(ixwebsocket)
+
 # -----------------------------------------------------------------------------
 # Addons (optional libraries with external dependencies)
 # Note: ImGui is now integrated into core - it's not optional

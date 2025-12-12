@@ -276,7 +276,9 @@ public:
                 {"distance", ParamType::Float, 0.1f, 100.0f, {m_distance, 0, 0, 0}},
                 {"azimuth", ParamType::Float, -6.28f, 6.28f, {m_azimuth, 0, 0, 0}},
                 {"elevation", ParamType::Float, -1.57f, 1.57f, {m_elevation, 0, 0, 0}},
-                {"fov", ParamType::Float, 1.0f, 179.0f, {m_fov, 0, 0, 0}}
+                {"fov", ParamType::Float, 1.0f, 179.0f, {m_fov, 0, 0, 0}},
+                {"near", ParamType::Float, 0.001f, 10.0f, {m_near, 0, 0, 0}},
+                {"far", ParamType::Float, 1.0f, 10000.0f, {m_far, 0, 0, 0}}
             };
         } else {
             return {
@@ -284,9 +286,54 @@ public:
                  {m_position.x, m_position.y, m_position.z, 0}},
                 {"target", ParamType::Vec3, -100.0f, 100.0f,
                  {m_target.x, m_target.y, m_target.z, 0}},
-                {"fov", ParamType::Float, 1.0f, 179.0f, {m_fov, 0, 0, 0}}
+                {"fov", ParamType::Float, 1.0f, 179.0f, {m_fov, 0, 0, 0}},
+                {"near", ParamType::Float, 0.001f, 10.0f, {m_near, 0, 0, 0}},
+                {"far", ParamType::Float, 1.0f, 10000.0f, {m_far, 0, 0, 0}}
             };
         }
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "center" || name == "target") {
+            out[0] = m_target.x; out[1] = m_target.y; out[2] = m_target.z; out[3] = 0;
+            return true;
+        }
+        if (name == "position") {
+            out[0] = m_position.x; out[1] = m_position.y; out[2] = m_position.z; out[3] = 0;
+            return true;
+        }
+        if (name == "distance") { out[0] = m_distance; return true; }
+        if (name == "azimuth") { out[0] = m_azimuth; return true; }
+        if (name == "elevation") { out[0] = m_elevation; return true; }
+        if (name == "fov") { out[0] = m_fov; return true; }
+        if (name == "near") { out[0] = m_near; return true; }
+        if (name == "far") { out[0] = m_far; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "center") {
+            m_target = glm::vec3(value[0], value[1], value[2]);
+            markDirty();
+            return true;
+        }
+        if (name == "target") {
+            m_target = glm::vec3(value[0], value[1], value[2]);
+            markDirty();
+            return true;
+        }
+        if (name == "position") {
+            m_position = glm::vec3(value[0], value[1], value[2]);
+            markDirty();
+            return true;
+        }
+        if (name == "distance") { m_distance = value[0]; markDirty(); return true; }
+        if (name == "azimuth") { m_azimuth = value[0]; markDirty(); return true; }
+        if (name == "elevation") { m_elevation = value[0]; markDirty(); return true; }
+        if (name == "fov") { m_fov = value[0]; markDirty(); return true; }
+        if (name == "near") { m_near = value[0]; markDirty(); return true; }
+        if (name == "far") { m_far = value[0]; markDirty(); return true; }
+        return false;
     }
 
     /// @}

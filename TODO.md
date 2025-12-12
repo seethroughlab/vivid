@@ -136,4 +136,16 @@
     - Debug output shows each operator, its type, and which one is SCREEN OUTPUT
     - Documented in docs/CHAIN-API.md under "Debugging" section 
 [ ] Do we have an ortho camera? 
-[ ] There are a lot of nodes whose parameters aren't exposed like they should be. Camera is one of them. 
+[x] There are a lot of operators whose parameters aren't exposed like they should be. Camera is one of them. Please do an exploration of which operators don't expose their parameters
+    - vivid-effects-2d: 100% coverage (27/27 operators)
+    - vivid-audio: 100% coverage (26/26 operators)
+    - vivid-render3d: ~5% coverage - only DepthOfField complete
+    - vivid-video: 0% coverage
+[ ] HIGH PRIORITY: Add parameter exposure to CameraOperator (has params() but missing getParam/setParam)
+[ ] HIGH PRIORITY: Add parameter exposure to Render3D (shadingMode, metallic, roughness, ambient, etc.)
+[ ] HIGH PRIORITY: Add parameter exposure to VideoPlayer (loop, volume, speed)
+[ ] HIGH PRIORITY: Add parameter exposure to geometry primitives (Box, Sphere, Cylinder, Cone, Torus)
+[ ] MEDIUM: Add parameter exposure to light operators (DirectionalLight, PointLight, SpotLight)
+[ ] MEDIUM: Add parameter exposure to InstancedRender3D (has params() but missing getParam/setParam)
+[ ] MEDIUM: Add parameter exposure to Boolean (operation type)
+[ ] MEDIUM: Add parameter exposure to IBLEnvironment, GLTFLoader

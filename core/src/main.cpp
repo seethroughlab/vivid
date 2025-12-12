@@ -5,6 +5,7 @@
 #include <vivid/context.h>
 #include <vivid/display.h>
 #include <vivid/hot_reload.h>
+#include <vivid/editor_bridge.h>
 #include <vivid/audio_buffer.h>
 #include "imgui/imgui_integration.h"
 #include "imgui/chain_visualizer.h"
@@ -344,6 +345,87 @@ int main(int argc, char** argv) {
     // Create hot-reload system
     HotReload hotReload;
 
+    // Create editor bridge (WebSocket server for VS Code extension)
+    EditorBridge editorBridge;
+    editorBridge.start();
+    editorBridge.onReloadCommand([&hotReload](const std::string&) {
+        std::cout << "[EditorBridge] Force reload triggered by editor\n";
+        hotReload.forceReload();
+    });
+    editorBridge.onParamChange([&ctx](const std::string& opName, const std::string& paramName, const float value[4]) {
+        if (!ctx.hasChain()) return;
+        Operator* op = ctx.chain().getByName(opName);
+        if (op) {
+            op->setParam(paramName, value);
+        }
+    });
+
+    // Helper to gather operator info from chain
+    auto gatherOperatorInfo = [&ctx]() -> std::vector<EditorOperatorInfo> {
+        std::vector<EditorOperatorInfo> result;
+        if (!ctx.hasChain()) return result;
+
+        Chain& chain = ctx.chain();
+        for (const auto& name : chain.operatorNames()) {
+            Operator* op = chain.getByName(name);
+            if (!op) continue;
+
+            EditorOperatorInfo info;
+            info.chainName = name;
+            info.displayName = op->name();
+            info.outputType = outputKindName(op->outputKind());
+            info.sourceLine = op->sourceLine;
+
+            // Gather input names
+            for (size_t i = 0; i < op->inputCount(); ++i) {
+                Operator* input = op->getInput(static_cast<int>(i));
+                if (input) {
+                    info.inputNames.push_back(chain.getName(input));
+                }
+            }
+            result.push_back(info);
+        }
+        return result;
+    };
+
+    // Helper to gather param values from chain
+    auto gatherParamValues = [&ctx]() -> std::vector<EditorParamInfo> {
+        std::vector<EditorParamInfo> result;
+        if (!ctx.hasChain()) return result;
+
+        Chain& chain = ctx.chain();
+        for (const auto& name : chain.operatorNames()) {
+            Operator* op = chain.getByName(name);
+            if (!op) continue;
+
+            for (const auto& decl : op->params()) {
+                EditorParamInfo info;
+                info.operatorName = name;
+                info.paramName = decl.name;
+                info.minVal = decl.minVal;
+                info.maxVal = decl.maxVal;
+
+                // Map ParamType to string
+                switch (decl.type) {
+                    case ParamType::Float:  info.paramType = "Float"; break;
+                    case ParamType::Int:    info.paramType = "Int"; break;
+                    case ParamType::Bool:   info.paramType = "Bool"; break;
+                    case ParamType::Vec2:   info.paramType = "Vec2"; break;
+                    case ParamType::Vec3:   info.paramType = "Vec3"; break;
+                    case ParamType::Vec4:   info.paramType = "Vec4"; break;
+                    case ParamType::Color:  info.paramType = "Color"; break;
+                    case ParamType::String: info.paramType = "String"; break;
+                    default:                info.paramType = "Unknown"; break;
+                }
+
+                // Get current value
+                op->getParam(decl.name, info.value);
+                result.push_back(info);
+            }
+        }
+        return result;
+    };
+
     // Extract project name for title bar
     std::string projectName;
     fs::path projectDir;
@@ -508,6 +590,7 @@ int main(int argc, char** argv) {
         // 1. Check if reload needed (without unloading)
         // 2. Destroy chain operators while old code is still loaded
         // 3. Then reload (which unloads old library)
+        bool justReloaded = false;
         if (hotReload.checkNeedsReload()) {
             // Save operator states before destroying chain
             if (ctx.hasChain()) {
@@ -521,6 +604,7 @@ int main(int argc, char** argv) {
             // Now safe to reload (unloads old library, loads new one)
             hotReload.reload();
             chainNeedsSetup = true;
+            justReloaded = true;
         }
 
         // Update error state from hot-reload
@@ -528,6 +612,15 @@ int main(int argc, char** argv) {
             ctx.setError(hotReload.getError());
         } else if (hotReload.isLoaded()) {
             ctx.clearError();
+        }
+
+        // Notify connected editors of compile status
+        if (justReloaded && editorBridge.clientCount() > 0) {
+            if (hotReload.hasError()) {
+                editorBridge.sendCompileStatus(false, hotReload.getError());
+            } else {
+                editorBridge.sendCompileStatus(true, "");
+            }
         }
 
         // Call chain functions if loaded
@@ -550,6 +643,11 @@ int main(int argc, char** argv) {
                 }
 
                 chainNeedsSetup = false;
+
+                // Send operator list to connected editors (Phase 2)
+                if (editorBridge.clientCount() > 0) {
+                    editorBridge.sendOperatorList(gatherOperatorInfo());
+                }
             }
 
             // Call user's update function (parameter tweaks)
@@ -700,11 +798,19 @@ int main(int argc, char** argv) {
             glfwSetWindowTitle(window, title.c_str());
             frameCount = 0;
             lastFpsTime = currentTime;
+
+            // Send param values to editors once per second (Phase 2)
+            if (editorBridge.clientCount() > 0 && hotReload.isLoaded()) {
+                editorBridge.sendParamValues(gatherParamValues());
+            }
         }
     }
 
     // Cleanup
     std::cout << "Shutting down..." << std::endl;
+
+    // Stop editor bridge
+    editorBridge.stop();
 
     // Release chain operators before WebGPU cleanup (they hold textures/resources)
     ctx.resetChain();
