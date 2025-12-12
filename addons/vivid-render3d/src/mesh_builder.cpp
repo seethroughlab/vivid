@@ -342,8 +342,19 @@ MeshBuilder& MeshBuilder::transform(const glm::mat4& m) {
         v.tangent = glm::vec4(tan, v.tangent.w);
     }
 
-    // Invalidate cached manifold - it's now stale
-    m_manifold.reset();
+    // Apply transform to manifold if we have one (keeps it valid for CSG)
+    if (m_manifold && !m_manifold->IsEmpty()) {
+        // Convert glm::mat4 to manifold::mat3x4 (mat3 rotation + vec3 translation)
+        // GLM is column-major: m[col][row]
+        manifold::mat3 rot;
+        rot[0] = manifold::vec3(m[0][0], m[0][1], m[0][2]);  // Column 0
+        rot[1] = manifold::vec3(m[1][0], m[1][1], m[1][2]);  // Column 1
+        rot[2] = manifold::vec3(m[2][0], m[2][1], m[2][2]);  // Column 2
+        manifold::vec3 trans(m[3][0], m[3][1], m[3][2]);
+
+        manifold::mat3x4 mat(rot, trans);
+        *m_manifold = m_manifold->Transform(mat);
+    }
 
     return *this;
 }
@@ -352,8 +363,13 @@ MeshBuilder& MeshBuilder::translate(glm::vec3 offset) {
     for (auto& v : m_vertices) {
         v.position += offset;
     }
-    // Invalidate cached manifold - it's now stale
-    m_manifold.reset();
+
+    // Apply transform to manifold if we have one (keeps it valid for CSG)
+    if (m_manifold && !m_manifold->IsEmpty()) {
+        *m_manifold = m_manifold->Translate(
+            manifold::vec3(offset.x, offset.y, offset.z));
+    }
+
     return *this;
 }
 
@@ -361,8 +377,13 @@ MeshBuilder& MeshBuilder::scale(glm::vec3 s) {
     for (auto& v : m_vertices) {
         v.position *= s;
     }
-    // Invalidate cached manifold - it's now stale
-    m_manifold.reset();
+
+    // Apply scale to manifold if we have one (keeps it valid for CSG)
+    if (m_manifold && !m_manifold->IsEmpty()) {
+        *m_manifold = m_manifold->Scale(
+            manifold::vec3(s.x, s.y, s.z));
+    }
+
     return *this;
 }
 
@@ -372,7 +393,31 @@ MeshBuilder& MeshBuilder::scale(float s) {
 
 MeshBuilder& MeshBuilder::rotate(float angle, glm::vec3 axis) {
     glm::mat4 m = glm::rotate(glm::mat4(1.0f), angle, axis);
-    return transform(m);
+    glm::mat3 normalMatrix = glm::transpose(glm::inverse(glm::mat3(m)));
+
+    for (auto& v : m_vertices) {
+        v.position = glm::vec3(m * glm::vec4(v.position, 1.0f));
+        v.normal = glm::normalize(normalMatrix * v.normal);
+        // Transform tangent direction (preserve handedness in w)
+        glm::vec3 tan = glm::normalize(glm::mat3(m) * glm::vec3(v.tangent));
+        v.tangent = glm::vec4(tan, v.tangent.w);
+    }
+
+    // Apply rotation to manifold if we have one (keeps it valid for CSG)
+    if (m_manifold && !m_manifold->IsEmpty()) {
+        // Convert glm::mat4 to manifold::mat3x4 (mat3 rotation + vec3 translation)
+        // GLM is column-major: m[col][row]
+        manifold::mat3 rot;
+        rot[0] = manifold::vec3(m[0][0], m[0][1], m[0][2]);  // Column 0
+        rot[1] = manifold::vec3(m[1][0], m[1][1], m[1][2]);  // Column 1
+        rot[2] = manifold::vec3(m[2][0], m[2][1], m[2][2]);  // Column 2
+        manifold::vec3 trans(m[3][0], m[3][1], m[3][2]);
+
+        manifold::mat3x4 mat(rot, trans);
+        *m_manifold = m_manifold->Transform(mat);
+    }
+
+    return *this;
 }
 
 MeshBuilder& MeshBuilder::mirror(Axis axis) {

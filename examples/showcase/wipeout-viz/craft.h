@@ -54,6 +54,29 @@ public:
         // Main body box
         auto body = MeshBuilder::box(length, height, width);
 
+        // CSG: Carve panel line recesses on top surface
+        float panelDepth = 0.008f;
+        float panelWidth = 0.012f;
+
+        // Longitudinal panel line (center)
+        auto centerLine = MeshBuilder::box(length * 0.7f, panelDepth, panelWidth)
+            .translate({0.0f, height * 0.5f + panelDepth * 0.4f, 0});
+        body.subtract(centerLine);
+
+        // Cross panel lines
+        for (float xPos : {0.2f, -0.1f, -0.4f}) {
+            auto crossLine = MeshBuilder::box(panelWidth, panelDepth, width * 0.6f)
+                .translate({xPos, height * 0.5f + panelDepth * 0.4f, 0});
+            body.subtract(crossLine);
+        }
+
+        // Side panel recesses (left and right)
+        for (float zSign : {1.0f, -1.0f}) {
+            auto sidePanel = MeshBuilder::box(length * 0.4f, height * 0.3f, panelDepth)
+                .translate({0.1f, 0, zSign * (width * 0.5f + panelDepth * 0.4f)});
+            body.subtract(sidePanel);
+        }
+
         // Angular nose - pyramid pointing forward
         auto nose = MeshBuilder::pyramid(noseWidth, noseLength, noseSides)
             .rotate(glm::radians(-90.0f), {0, 0, 1})
@@ -70,6 +93,14 @@ public:
         auto spine = MeshBuilder::box(length * 0.6f, 0.025f, 0.06f)
             .translate({-0.05f, height * 0.5f + 0.0125f, 0});
         body.append(spine);
+
+        // Side skirts (aerodynamic fairings)
+        for (float zSign : {1.0f, -1.0f}) {
+            auto skirt = MeshBuilder::wedge(0.5f, 0.04f, 0.03f)
+                .rotate(glm::radians(zSign > 0 ? -90.0f : 90.0f), {1, 0, 0})
+                .translate({0.2f, -height * 0.3f, zSign * (width * 0.5f + 0.01f)});
+            body.append(skirt);
+        }
 
         return body;
     }
@@ -103,6 +134,18 @@ public:
             .rotate(glm::radians(180.0f), {0, 1, 0})
             .translate({m_offset.x + baseLength * 0.5f + windscreenLength * 0.1f, m_offset.y, m_offset.z});
         cockpit.append(windscreen);
+
+        // Cockpit frame rails (left and right)
+        for (float zSign : {1.0f, -1.0f}) {
+            auto rail = MeshBuilder::box(baseLength * 0.8f, 0.02f, 0.02f)
+                .translate({m_offset.x, m_offset.y + baseHeight * 0.5f + 0.01f, zSign * baseWidth * 0.45f});
+            cockpit.append(rail);
+        }
+
+        // Rear headrest/rollbar
+        auto headrest = MeshBuilder::box(0.06f, 0.06f, baseWidth * 0.6f)
+            .translate({m_offset.x - baseLength * 0.35f, m_offset.y + baseHeight * 0.5f + 0.03f, 0});
+        cockpit.append(headrest);
 
         return cockpit;
     }
@@ -155,6 +198,21 @@ public:
         auto intake = MeshBuilder::wedge(0.12f, 0.04f, 0.08f)
             .translate({m_offset.x + bodyLength * 0.25f, m_offset.y + bodyTopRadius + 0.02f, m_offset.z});
         pod.append(intake);
+
+        // Cooling vents on outer side (3 slits)
+        float ventZOffset = isRight ? 0.04f : -0.04f;  // Outer side
+        for (int i = 0; i < 3; i++) {
+            float xPos = m_offset.x - 0.1f + i * 0.12f;
+            auto vent = MeshBuilder::box(0.08f, 0.015f, 0.025f)
+                .rotate(glm::radians(15.0f), {1, 0, 0})  // Slight angle
+                .translate({xPos, m_offset.y, m_offset.z + ventZOffset});
+            pod.append(vent);
+        }
+
+        // Rear heat shield plate
+        auto heatShield = MeshBuilder::box(0.04f, 0.06f, 0.12f)
+            .translate({m_offset.x - bodyLength * 0.4f, m_offset.y + 0.04f, m_offset.z});
+        pod.append(heatShield);
 
         return pod;
     }
@@ -210,8 +268,21 @@ public:
     }
 
     MeshBuilder build() const override {
+        // Main wing element
         auto wing = MeshBuilder::box(wingLength, wingHeight, wingWidth)
             .translate(m_offset);
+
+        // Secondary wing element (Gurney flap)
+        auto gurney = MeshBuilder::box(wingLength * 0.6f, 0.025f, wingWidth * 0.85f)
+            .translate({m_offset.x - wingLength * 0.3f, m_offset.y + wingHeight * 0.5f + 0.012f, 0});
+        wing.append(gurney);
+
+        // Wing supports (pylons connecting to body)
+        for (float zSign : {1.0f, -1.0f}) {
+            auto pylon = MeshBuilder::box(0.12f, 0.08f, 0.02f)
+                .translate({m_offset.x + 0.05f, m_offset.y - 0.05f, zSign * 0.12f});
+            wing.append(pylon);
+        }
 
         // Wing endplates - wedge-shaped for swept look
         auto leftEndplate = MeshBuilder::wedge(endplateLength, endplateHeight, endplateWidth)
@@ -275,11 +346,19 @@ public:
     MeshBuilder build() const override {
         float sweep = isRight ? sweepAngle : -sweepAngle;
 
+        // Main canard wing
         auto canard = MeshBuilder::pyramid(baseRadius, height, 3)  // Triangle base
             .scale(stretch)
             .rotate(glm::radians(-90.0f), {1, 0, 0})  // Lay flat
             .rotate(glm::radians(sweep), {0, 1, 0})   // Sweep back
             .translate(m_offset);
+
+        // Canard tip winglet (small vertical element)
+        float tipZOffset = isRight ? -0.12f : 0.12f;
+        auto winglet = MeshBuilder::wedge(0.05f, 0.03f, 0.01f)
+            .rotate(glm::radians(isRight ? 90.0f : -90.0f), {1, 0, 0})
+            .translate({m_offset.x - 0.05f, m_offset.y + 0.02f, m_offset.z + tipZOffset});
+        canard.append(winglet);
 
         return canard;
     }
@@ -291,67 +370,84 @@ public:
 
 class AirIntake : public CraftPart {
 public:
-    float length = 0.14f;
-    float height = 0.06f;
-    float width = 0.07f;
+    float length = 0.12f;
+    float height = 0.05f;
+    float width = 0.06f;
 
     bool isRight = false;
 
     AirIntake(bool right = false) : isRight(right) {
-        float zOffset = right ? -0.12f : 0.12f;
-        m_offset = {-0.1f, 0.09f, zOffset};
+        float zOffset = right ? -0.1f : 0.1f;
+        m_offset = {-0.15f, 0.08f, zOffset};
     }
 
     MeshBuilder build() const override {
         auto intake = MeshBuilder::wedge(length, height, width)
             .translate(m_offset);
 
-        // Add intake grille recess
-        auto recess = MeshBuilder::box(length * 0.6f, height * 0.4f, 0.01f)
-            .translate({m_offset.x + length * 0.2f, m_offset.y + height * 0.2f, m_offset.z});
-        intake.subtract(recess);
-
         return intake;
     }
 };
 
 // =============================================================================
-// HoverPad - Underside anti-gravity generator
+// HoverPad - Anti-gravity emitter on underside
 // =============================================================================
 
 class HoverPad : public CraftPart {
 public:
-    float outerRadius = 0.08f;
-    float innerRadius = 0.04f;
-    float height = 0.04f;
-    int segments = 8;
+    float outerRadius = 0.06f;
+    float innerRadius = 0.03f;
+    float depth = 0.02f;
+    int segments = 6;  // Hexagonal for that tech look
 
     bool isRight = false;
-    bool isFront = false;
+    bool isFront = true;
 
-    HoverPad(bool right = false, bool front = false) : isRight(right), isFront(front) {
-        float xOffset = front ? 0.4f : -0.35f;
-        float zOffset = right ? -0.15f : 0.15f;
-        m_offset = {xOffset, -0.09f, zOffset};
+    HoverPad(bool right = false, bool front = true) : isRight(right), isFront(front) {
+        float zOffset = right ? -0.18f : 0.18f;
+        float xOffset = front ? 0.35f : -0.45f;
+        m_offset = {xOffset, -0.08f, zOffset};
     }
 
     MeshBuilder build() const override {
-        // Outer housing - octagonal frustum
-        auto pad = MeshBuilder::frustum(outerRadius, outerRadius * 0.9f, height, segments)
-            .rotate(glm::radians(180.0f), {1, 0, 0})  // Point downward
+        // Outer ring - recessed housing
+        auto pad = MeshBuilder::cylinder(outerRadius, depth, segments)
             .translate(m_offset);
 
-        // Inner glow ring recess
-        auto innerRecess = MeshBuilder::cylinder(innerRadius, height * 0.5f, segments)
-            .translate({m_offset.x, m_offset.y - height * 0.25f, m_offset.z});
-        pad.subtract(innerRecess);
-
-        // Outer detail ring
-        auto outerRing = MeshBuilder::torus(outerRadius * 0.85f, 0.008f, segments, 6)
-            .translate({m_offset.x, m_offset.y - height * 0.3f, m_offset.z});
-        pad.add(outerRing);
+        // Inner emitter disk (slightly raised)
+        auto emitter = MeshBuilder::cylinder(innerRadius, depth * 0.5f, segments)
+            .translate({m_offset.x, m_offset.y + depth * 0.3f, m_offset.z});
+        pad.append(emitter);
 
         return pad;
+    }
+};
+
+// =============================================================================
+// NoseAntenna - Sensor array on the nose
+// =============================================================================
+
+class NoseAntenna : public CraftPart {
+public:
+    float length = 0.15f;
+    float baseRadius = 0.015f;
+
+    NoseAntenna() {
+        m_offset = {1.35f, 0.02f, 0};  // At the tip of the nose
+    }
+
+    MeshBuilder build() const override {
+        // Main antenna spike
+        auto antenna = MeshBuilder::cone(baseRadius, length, 4)
+            .rotate(glm::radians(-90.0f), {0, 0, 1})
+            .translate(m_offset);
+
+        // Small sensor bulb at base
+        auto sensor = MeshBuilder::sphere(baseRadius * 1.5f, 6)
+            .translate({m_offset.x - length * 0.5f, m_offset.y, m_offset.z});
+        antenna.append(sensor);
+
+        return antenna;
     }
 };
 
@@ -361,28 +457,28 @@ public:
 
 class EngineGlow : public CraftPart {
 public:
-    float innerRadius = 0.045f;
-    float outerRadius = 0.075f;
-    float length = 0.15f;
+    float innerRadius = 0.05f;
+    float outerRadius = 0.08f;
+    float length = 0.12f;
     int segments = 8;
 
     bool isRight = false;
 
     EngineGlow(bool right = false) : isRight(right) {
-        float zOffset = right ? -0.42f : 0.42f;
-        m_offset = {-0.78f, -0.02f, zOffset};
+        float zOffset = right ? -0.4f : 0.4f;
+        m_offset = {-0.75f, -0.03f, zOffset};
     }
 
     MeshBuilder build() const override {
         // Inner bright core - small frustum
-        auto glow = MeshBuilder::frustum(innerRadius, innerRadius * 0.4f, length, segments)
+        auto glow = MeshBuilder::frustum(innerRadius, innerRadius * 0.5f, length, segments)
             .rotate(glm::radians(90.0f), {0, 0, 1})
             .translate(m_offset);
 
         // Outer glow ring - larger frustum around the core
-        auto outer = MeshBuilder::frustum(outerRadius, outerRadius * 0.25f, length * 0.7f, segments)
+        auto outer = MeshBuilder::frustum(outerRadius, outerRadius * 0.3f, length * 0.8f, segments)
             .rotate(glm::radians(90.0f), {0, 0, 1})
-            .translate({m_offset.x + length * 0.15f, m_offset.y, m_offset.z});
+            .translate({m_offset.x + length * 0.1f, m_offset.y, m_offset.z});
         glow.append(outer);
 
         return glow;
@@ -409,11 +505,14 @@ public:
     AirIntake leftIntake{false};
     AirIntake rightIntake{true};
 
-    // Underside hover pads
-    HoverPad frontLeftPad{false, true};
-    HoverPad frontRightPad{true, true};
-    HoverPad rearLeftPad{false, false};
-    HoverPad rearRightPad{true, false};
+    // Hover pads (4 corners)
+    HoverPad hoverFrontLeft{false, true};
+    HoverPad hoverFrontRight{true, true};
+    HoverPad hoverRearLeft{false, false};
+    HoverPad hoverRearRight{true, false};
+
+    // Nose antenna
+    NoseAntenna antenna;
 
     // Engine glow parts (separate for emissive material)
     EngineGlow leftGlow{false};
@@ -435,11 +534,14 @@ public:
         mesh.append(leftIntake.build());
         mesh.append(rightIntake.build());
 
-        // Underside anti-gravity hover pads
-        mesh.append(frontLeftPad.build());
-        mesh.append(frontRightPad.build());
-        mesh.append(rearLeftPad.build());
-        mesh.append(rearRightPad.build());
+        // Hover pads
+        mesh.append(hoverFrontLeft.build());
+        mesh.append(hoverFrontRight.build());
+        mesh.append(hoverRearLeft.build());
+        mesh.append(hoverRearRight.build());
+
+        // Antenna
+        mesh.append(antenna.build());
 
         // Apply flat normals for faceted PS1 look
         mesh.computeFlatNormals();
