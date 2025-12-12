@@ -21,6 +21,8 @@ FetchContent_Declare(
 set(SNAPPY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(SNAPPY_INSTALL OFF CACHE BOOL "" FORCE)
+# Enable PIC for snappy so it can be linked into shared libraries on Linux
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 FetchContent_MakeAvailable(snappy)
 
 # Common sources (all platforms)

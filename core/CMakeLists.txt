@@ -69,6 +69,8 @@ if(APPLE)
     list(APPEND VIVID_CORE_SOURCES src/video_exporter.mm)
 elseif(WIN32)
     list(APPEND VIVID_CORE_SOURCES src/video_exporter_win.cpp)
+elseif(UNIX)
+    list(APPEND VIVID_CORE_SOURCES src/video_exporter_linux.cpp)
 endif()
 
 set(VIVID_CORE_HEADERS

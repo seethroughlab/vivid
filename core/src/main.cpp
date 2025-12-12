@@ -9,6 +9,7 @@
 #include "imgui/imgui_integration.h"
 #include "imgui/chain_visualizer.h"
 #include <webgpu/webgpu.h>
+#include <webgpu/wgpu.h>  // wgpu-native extensions (wgpuDevicePoll)
 #include <glfw3webgpu.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
@@ -674,6 +675,10 @@ int main(int argc, char** argv) {
 
         // Present BEFORE releasing the texture view
         wgpuSurfacePresent(surface);
+
+        // Poll device to process pending GPU work and prevent command buffer accumulation
+        // This is critical when multiple operators submit command buffers per frame
+        wgpuDevicePoll(device, false, nullptr);
 
         // Release texture view after present (surface owns the texture)
         wgpuTextureViewRelease(view);

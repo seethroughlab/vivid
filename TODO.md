@@ -115,3 +115,7 @@
 [ ] We need an example of mutliple videos playing at once, and being used as a texture. 
 [ ] Make an example with assets/textures/flat_earth_Largest_still.0330.jpg
 [ ] Take more snapshots of showcase projects, add them to README
+
+[x] Wipeout-viz system crash after 30 seconds
+    - Root cause: Multiple GPU command buffer submissions per frame without explicit GPU synchronization
+    - Fix: Added `wgpuDevicePoll(device, false, nullptr)` after `wgpuSurfacePresent()` in `core/src/main.cpp:680`
