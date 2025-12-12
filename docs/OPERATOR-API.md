@@ -283,7 +283,7 @@ void setup(Chain& chain) {
     chain.add<MyEffect>("effect")
         .input("noise")    // Connect to noise operator
         .amount(0.5f);
-    chain.setOutput("effect");
+    chain.output("effect");
 }
 ```
 

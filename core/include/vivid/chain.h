@@ -183,12 +183,6 @@ public:
         return out ? out->outputTexture() : nullptr;
     }
 
-    /// @brief Legacy method - prefer output() instead
-    void setOutput(const std::string& name) { outputName_ = name; }
-
-    /// @brief Legacy method - prefer output() instead
-    void setOutput(Operator* op);
-
     // -------------------------------------------------------------------------
     /// @name Audio Output
     /// @{

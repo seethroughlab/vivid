@@ -98,13 +98,6 @@ std::string Chain::getName(Operator* op) const {
     return it->second;
 }
 
-void Chain::setOutput(Operator* op) {
-    std::string name = getName(op);
-    if (!name.empty()) {
-        outputName_ = name;
-    }
-}
-
 Operator* Chain::getOutput() const {
     if (outputName_.empty()) {
         return nullptr;

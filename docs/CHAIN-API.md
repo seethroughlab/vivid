@@ -25,9 +25,8 @@ void setup(Context& ctx) {
     auto& mirror = chain->add<Mirror>("mirror").input(&fb).kaleidoscope(6);
     auto& color = chain->add<HSV>("color").input(&mirror).colorize(true).saturation(0.8f);
 
-    // Output operator - every chain needs one
-    chain->add<Output>("output").input(&color);
-    chain->setOutput("output");
+    // Designate the output operator
+    chain->output("color");
     chain->init(ctx);  // Auto-registers all operators for visualization
 }
 
@@ -175,13 +174,37 @@ void update(Context& ctx) {
 }
 ```
 
+## Output Requirements
+
+Every vivid project must have exactly one texture output:
+
+- Call `chain.output("name")` to designate which operator renders to screen
+- The designated operator must produce `OutputKind::Texture`
+- Calling `output()` multiple times will warn (only last call takes effect)
+- If no output is specified, you'll see a warning and the screen stays black
+
+Audio output is optional:
+
+- Call `chain.audioOutput("name")` if your project produces audio
+- The designated operator must produce `OutputKind::Audio`
+
+### Common Errors
+
+| Scenario | What Happens |
+|----------|--------------|
+| No output specified | Warning: "Screen will be black" |
+| Output operator doesn't exist | Error: initialization fails |
+| Output is not texture type | Error: "produces X, not Texture" |
+| output() called multiple times | Warning: "Only one output allowed" |
+
 ## Setting Output
 
-Every chain requires an Output operator. The Output operator handles `ctx.setOutputTexture()` internally:
+Use `chain.output("name")` to designate the output operator:
 
 ```cpp
-chain->add<Output>("output").input("color");
-chain->setOutput("output");
+chain.add<Noise>("noise").scale(4.0f);
+chain.add<HSV>("color").input("noise");
+chain.output("color");  // Display the color operator
 ```
 
 ## Dependency Resolution
@@ -239,8 +262,7 @@ void setup(Context& ctx) {
         .saturation(0.8f);
 
     // Output to screen
-    chain->add<Output>("output").input(&color);
-    chain->setOutput("output");
+    chain->output("color");
     chain->init(ctx);
 }
 
