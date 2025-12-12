@@ -39,7 +39,9 @@ static uint16_t readU16(FILE* f) {
 }
 
 static void readFourCC(FILE* f, char* out) {
-    fread(out, 1, 4, f);
+    if (fread(out, 1, 4, f) != 4) {
+        out[0] = '\0';
+    }
     out[4] = '\0';
 }
 
@@ -242,8 +244,8 @@ static bool parseMDIA(FILE* f, int64_t endPos, MOVTrack& track) {
 
         if (strcmp(atomType, "mdhd") == 0) {
             // Media header - get timescale
-            uint8_t version;
-            fread(&version, 1, 1, f);
+            uint8_t version = 0;
+            (void)fread(&version, 1, 1, f);
             skip(f, 3);  // flags
 
             if (version == 1) {
@@ -297,8 +299,8 @@ static bool parseTRAK(FILE* f, int64_t endPos, MOVTrack& track) {
 
         if (strcmp(atomType, "tkhd") == 0) {
             // Track header - get dimensions
-            uint8_t version;
-            fread(&version, 1, 1, f);
+            uint8_t version = 0;
+            (void)fread(&version, 1, 1, f);
             skip(f, 3);  // flags
 
             if (version == 1) {
@@ -354,8 +356,8 @@ static bool parseMOOV(FILE* f, int64_t endPos, MOVFile& mov) {
 
         if (strcmp(atomType, "mvhd") == 0) {
             // Movie header
-            uint8_t version;
-            fread(&version, 1, 1, f);
+            uint8_t version = 0;
+            (void)fread(&version, 1, 1, f);
             skip(f, 3);  // flags
 
             if (version == 1) {

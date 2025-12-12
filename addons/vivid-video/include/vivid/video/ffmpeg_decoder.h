@@ -48,6 +48,8 @@ public:
     int height() const { return height_; }
     float frameRate() const { return frameRate_; }
     bool hasAudio() const { return hasAudio_; }
+    uint32_t audioSampleRate() const { return audioSampleRate_; }
+    uint32_t audioChannels() const { return audioChannels_; }
 
     void setVolume(float volume);
     float getVolume() const;
@@ -64,6 +66,8 @@ private:
     bool isFinished_ = false;
     bool hasAudio_ = false;
     float currentTime_ = 0.0f;
+    uint32_t audioSampleRate_ = 48000;
+    uint32_t audioChannels_ = 2;
 
     WGPUTexture texture_ = nullptr;
     WGPUTextureView textureView_ = nullptr;

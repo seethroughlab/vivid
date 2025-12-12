@@ -9,7 +9,7 @@ This document provides an overview of video playback on Windows in Vivid, the ch
 ```
 VideoPlayer (video_player.cpp)
     │
-    ├── HAPDecoder (hap_decoder.cpp)     [minimp4 + Vidvox HAP library]
+    ├── HAPDecoder (hap_decoder.cpp)     [Custom MOV parser + Vidvox HAP library]
     │
     ├── MFDecoder (mf_decoder.cpp)       [PRIMARY - Media Foundation]
     │
@@ -17,7 +17,7 @@ VideoPlayer (video_player.cpp)
 ```
 
 **Selection Logic:**
-1. Check if file is HAP format → HAP decoder (minimp4 demuxer + hap.c decoder)
+1. Check if file is HAP format → HAP decoder (custom MOV parser + hap.c decoder)
 2. Try Media Foundation decoder
 3. If MF fails AND file is ProRes → Try DirectShow decoder
 4. If all fail → Show SMPTE test pattern fallback texture
@@ -39,10 +39,13 @@ VideoPlayer (video_player.cpp)
 
 The HAP decoder uses a lightweight approach without FFmpeg:
 
-1. **Container Parsing** - minimp4 (single-header library) parses MOV/MP4 structure
+1. **Container Parsing** - Custom MOV parser (`mov_parser.cpp`) handles QuickTime MOV structure
 2. **Frame Extraction** - Reads raw HAP frame data by offset/size from the file
 3. **Decompression** - Vidvox HAP library (`hap.c`) decompresses Snappy → DXT
 4. **GPU Upload** - DXT/BC textures uploaded directly to WebGPU (no pixel conversion!)
+5. **Audio Extraction** - PCM audio tracks decoded and synced via AudioPlayer
+
+**Note:** We use a custom MOV parser instead of minimp4 because minimp4 only supports ISO MP4, not QuickTime MOV containers which are standard for HAP files.
 
 ### Supported HAP Variants
 
@@ -62,9 +65,17 @@ HAP is extremely efficient because:
 
 Typical decode time: **<1ms** per 1080p frame (vs 5-10ms for H.264)
 
+### Audio Support
+
+HAP files with PCM audio tracks are now fully supported:
+- Audio is extracted via the custom MOV parser
+- Supports 16-bit, 24-bit, and 32-bit PCM (both big and little endian)
+- Audio syncs to video using audio as the master clock
+- Pre-buffers ~0.5s before playback starts
+
 ### Limitations
 
-- **No audio** - Audio tracks in HAP files are ignored (would need additional demuxing)
+- **PCM only** - Compressed audio (AAC, MP3) in HAP files not supported
 - **File size** - HAP files are larger than H.264/HEVC (trade-off for decode speed)
 
 ---
@@ -235,20 +246,70 @@ interface ISampleGrabber : public IUnknown {
 };
 ```
 
-### 5. HAP Audio Not Supported
-
-HAP video playback now works on Windows via minimp4 + Vidvox HAP library, but audio tracks in HAP files are not yet decoded. HAP files with audio will play video silently.
-
-### 6. DShowDecoder Has No Audio
+### 5. DShowDecoder Has No Audio
 
 The DirectShow decoder captures video only. Audio playback is not implemented.
 
-### 7. Code Duplication
+### 6. Code Duplication
 
 Both `MFDecoder` and `DShowDecoder` have:
 - Identical texture creation code
 - Similar pixel conversion loops
 - Duplicate playback state management
+
+---
+
+## Robustness Recommendations
+
+The Windows video system has multiple decoder paths and platform dependencies. Here are recommendations to make it more reliable:
+
+### 1. Defensive Initialization
+
+**COM/MF Initialization**: Both MFDecoder and DShowDecoder rely on COM. Consider:
+- Using `CoInitializeEx` with `COINIT_MULTITHREADED` consistently
+- Adding `MFStartup`/`MFShutdown` reference counting if multiple decoders are active
+- Wrapping initialization in RAII patterns
+
+### 2. Graceful Degradation
+
+**Fallback Chain**: The current HAP → MF → DShow → Test Pattern chain works well. To make it more robust:
+- Log which decoder succeeded (helps users understand codec requirements)
+- Cache decoder capability checks to avoid repeated failures
+- Consider probing file format before attempting decode (avoid expensive MF initialization for HAP files)
+
+### 3. Resource Management
+
+**Texture/Buffer Lifecycle**:
+- Ensure textures are released before creating new ones on video size change
+- Add null checks before all WebGPU operations
+- Use explicit cleanup order: views before textures, buffers before device resources
+
+**Audio Buffer Safety**:
+- The ring buffer uses atomic operations but could benefit from explicit memory barriers
+- Pre-allocate worst-case audio buffer size to avoid runtime allocation
+- Add underrun detection and recovery (insert silence rather than stale data)
+
+### 4. Error Reporting
+
+**Diagnostic Logging**:
+- Log HRESULT values with `FormatMessage` for Windows API failures
+- Include codec FourCC in error messages
+- Track frame decode times to detect performance degradation
+
+### 5. Thread Safety
+
+**Audio/Video Sync**:
+- AudioPlayer's ring buffer is accessed from both audio and main threads
+- Consider using `std::atomic` for `samplesPlayed_` counter
+- Ensure seek operations properly synchronize audio flush and video reset
+
+### 6. File Validation
+
+**Before Opening**:
+- Check file exists and is readable
+- Validate file size is non-zero
+- For HAP: verify MOV container magic bytes before parsing
+- For MF: check `IMFSourceReader` attributes before assuming success
 
 ---
 
@@ -319,7 +380,7 @@ Both `MFDecoder` and `DShowDecoder` have:
 |---------|------|
 | HAP Decoder | `addons/vivid-video/src/hap_decoder.cpp` |
 | HAP Library | `addons/vivid-video/src/hap.c`, `hap.h` |
-| minimp4 | `addons/vivid-video/src/minimp4.h` |
+| MOV Parser | `addons/vivid-video/src/mov_parser.cpp` |
 | MF Decoder | `addons/vivid-video/src/mf_decoder.cpp` |
 | DShow Decoder | `addons/vivid-video/src/dshow_decoder.cpp` |
 | Video Player | `addons/vivid-video/src/video_player.cpp` |
@@ -373,7 +434,7 @@ quartz      # Runtime
 
 ### Bundled Libraries
 
-- **minimp4** - MOV/MP4 container parser (single header, public domain)
+- **mov_parser** - Custom QuickTime MOV parser (supports HAP containers)
 - **hap.c** - Vidvox HAP codec (BSD license, uses Snappy)
 - **snappy** - Fast compression (fetched via CMake)
 - **miniaudio** - Audio output (header-only)
