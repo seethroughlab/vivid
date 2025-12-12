@@ -32,6 +32,75 @@ VertexLit (solid colors, no textures) is kept as a **Debug Mode** for developmen
 
 ---
 
+## Craft Geometry Redesign (Phase 6) - IN PROGRESS
+
+**Goal:** Complete rewrite of craft geometry to match Wipeout reference images - a long, narrow arrow/needle design.
+
+### Problem Analysis
+
+The original craft had the wrong silhouette:
+- **Original**: Boxy torpedo with cylindrical pods on struts
+- **Reference**: Long, sleek needle shape (length >> width)
+
+### Reference Analysis (FEISAR craft)
+
+From tumblr_mmqi0bAZPm1sqjqcno1_1280.jpg:
+
+1. **Arrow/needle planform** - LONG and NARROW (length ~3x width)
+2. **Very long nose** - Tapers to a sharp point, almost half the craft length
+3. **Swept-back wings** - Narrow wings that follow the body contour
+4. **Integrated nacelles** - At rear, part of the wing structure
+5. **Low profile** - Flat and sleek
+6. **Recessed cockpit** - Low canopy in central spine
+7. **Angular facets** - PS1-style flat polygonal surfaces
+
+### Current Geometry Proportions
+
+- Length: 2.4 units (very long)
+- Width: 0.9 units (relatively narrow, ~2.7:1 ratio)
+- Height: 0.12 units (low profile)
+
+### New Class Structure
+
+```cpp
+class Craft {
+    DeltaBody body;           // Main wide triangular body with integrated nacelles
+    NoseNeedle nose;          // Long front needle (~0.7 units)
+    LowCockpit cockpit;       // Recessed canopy in central spine
+    VerticalFin fin;          // Small rear stabilizer
+    HoverPad x4;              // Corner hover emitters
+    EngineExhaust x2;         // Glow geometry for emissive material
+};
+```
+
+### Visual Target (Top View)
+
+```
+            /\
+           /  \
+          /    \
+         / [C]  \        [C] = cockpit
+        /   ||   \
+       /    ||    \
+      /=====||=====\     ===== = integrated nacelles
+     /______||______\
+    <-------||-------->
+         needle
+```
+
+### Success Criteria
+
+1. ⬜ Top-view silhouette matches reference arrow/needle shape
+2. ✅ Craft is LONGER than it is wide (~2.7:1 ratio)
+3. ✅ Engine nacelles integrated at rear
+4. ✅ Low profile (height 0.12)
+5. ✅ Long tapered nose
+6. ✅ Angular, faceted surfaces for PS1 aesthetic
+7. ⬜ Wings better integrated with body
+8. ⬜ Overall shape refinement
+
+---
+
 ## Reference Material
 
 ### Design Language
