@@ -2309,7 +2309,7 @@ Located in `/extension/` - a streamlined TypeScript extension for VS Code integr
 **Features (Phase 2):**
 - [ ] Inline decorations showing live values (`~ 3.14`, `[img]`, `[geo]`)
 - [ ] Sparkline hover for value arrays
-- [ ] Operator tree view in sidebar
+- [x] Operator tree view in sidebar (with live param values, click to go-to-line)
 - [ ] Parameter editing via hover or sidebar
 
 **Features (Phase 3 - Future):**

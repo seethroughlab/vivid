@@ -141,10 +141,10 @@
     - vivid-audio: 100% coverage (26/26 operators)
     - vivid-render3d: ~5% coverage - only DepthOfField complete
     - vivid-video: 0% coverage
-[ ] HIGH PRIORITY: Add parameter exposure to CameraOperator (has params() but missing getParam/setParam)
-[ ] HIGH PRIORITY: Add parameter exposure to Render3D (shadingMode, metallic, roughness, ambient, etc.)
-[ ] HIGH PRIORITY: Add parameter exposure to VideoPlayer (loop, volume, speed)
-[ ] HIGH PRIORITY: Add parameter exposure to geometry primitives (Box, Sphere, Cylinder, Cone, Torus)
+[x] HIGH PRIORITY: Add parameter exposure to CameraOperator (has params() but missing getParam/setParam)
+[x] HIGH PRIORITY: Add parameter exposure to Render3D (shadingMode, metallic, roughness, ambient, etc.)
+[x] HIGH PRIORITY: Add parameter exposure to VideoPlayer (loop, volume, speed)
+[x] HIGH PRIORITY: Add parameter exposure to geometry primitives (Box, Sphere, Cylinder, Cone, Torus, Plane)
 [ ] MEDIUM: Add parameter exposure to light operators (DirectionalLight, PointLight, SpotLight)
 [ ] MEDIUM: Add parameter exposure to InstancedRender3D (has params() but missing getParam/setParam)
 [ ] MEDIUM: Add parameter exposure to Boolean (operation type)

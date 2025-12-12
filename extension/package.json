@@ -15,10 +15,29 @@
   "categories": ["Visualization", "Other"],
   "activationEvents": [
     "workspaceContains:**/chain.cpp",
-    "onLanguage:cpp"
+    "onLanguage:cpp",
+    "onView:vividOperators"
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "vivid",
+          "title": "Vivid",
+          "icon": "$(symbol-misc)"
+        }
+      ]
+    },
+    "views": {
+      "vivid": [
+        {
+          "id": "vividOperators",
+          "name": "Operators",
+          "contextualTitle": "Vivid Operators"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "vivid.startRuntime",
@@ -35,8 +54,26 @@
       {
         "command": "vivid.toggleInlineDecorations",
         "title": "Vivid: Toggle Inline Decorations"
+      },
+      {
+        "command": "vivid.goToOperator",
+        "title": "Vivid: Go to Operator"
+      },
+      {
+        "command": "vivid.refreshOperators",
+        "title": "Refresh",
+        "icon": "$(refresh)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "vivid.refreshOperators",
+          "when": "view == vividOperators",
+          "group": "navigation"
+        }
+      ]
+    },
     "configuration": {
       "title": "Vivid",
       "properties": {

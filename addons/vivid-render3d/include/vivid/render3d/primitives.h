@@ -88,6 +88,28 @@ public:
 
     std::string name() const override { return "Box"; }
 
+    std::vector<ParamDecl> params() override {
+        return {
+            {"width", ParamType::Float, 0.01f, 100.0f, {m_width, 0, 0, 0}},
+            {"height", ParamType::Float, 0.01f, 100.0f, {m_height, 0, 0, 0}},
+            {"depth", ParamType::Float, 0.01f, 100.0f, {m_depth, 0, 0, 0}}
+        };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "width") { out[0] = m_width; return true; }
+        if (name == "height") { out[0] = m_height; return true; }
+        if (name == "depth") { out[0] = m_depth; return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "width") { m_width = value[0]; markDirty(); return true; }
+        if (name == "height") { m_height = value[0]; markDirty(); return true; }
+        if (name == "depth") { m_depth = value[0]; markDirty(); return true; }
+        return false;
+    }
+
 private:
     float m_width = 1.0f;
     float m_height = 1.0f;
@@ -152,6 +174,25 @@ public:
     }
 
     std::string name() const override { return "Sphere"; }
+
+    std::vector<ParamDecl> params() override {
+        return {
+            {"radius", ParamType::Float, 0.01f, 100.0f, {m_radius, 0, 0, 0}},
+            {"segments", ParamType::Float, 4.0f, 128.0f, {static_cast<float>(m_segments), 0, 0, 0}}
+        };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "radius") { out[0] = m_radius; return true; }
+        if (name == "segments") { out[0] = static_cast<float>(m_segments); return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "radius") { m_radius = value[0]; markDirty(); return true; }
+        if (name == "segments") { m_segments = static_cast<int>(value[0]); markDirty(); return true; }
+        return false;
+    }
 
 private:
     float m_radius = 0.5f;
@@ -225,6 +266,28 @@ public:
 
     std::string name() const override { return "Cylinder"; }
 
+    std::vector<ParamDecl> params() override {
+        return {
+            {"radius", ParamType::Float, 0.01f, 100.0f, {m_radius, 0, 0, 0}},
+            {"height", ParamType::Float, 0.01f, 100.0f, {m_height, 0, 0, 0}},
+            {"segments", ParamType::Float, 3.0f, 128.0f, {static_cast<float>(m_segments), 0, 0, 0}}
+        };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "radius") { out[0] = m_radius; return true; }
+        if (name == "height") { out[0] = m_height; return true; }
+        if (name == "segments") { out[0] = static_cast<float>(m_segments); return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "radius") { m_radius = value[0]; markDirty(); return true; }
+        if (name == "height") { m_height = value[0]; markDirty(); return true; }
+        if (name == "segments") { m_segments = static_cast<int>(value[0]); markDirty(); return true; }
+        return false;
+    }
+
 private:
     float m_radius = 0.5f;
     float m_height = 1.0f;
@@ -297,6 +360,28 @@ public:
     }
 
     std::string name() const override { return "Cone"; }
+
+    std::vector<ParamDecl> params() override {
+        return {
+            {"radius", ParamType::Float, 0.01f, 100.0f, {m_radius, 0, 0, 0}},
+            {"height", ParamType::Float, 0.01f, 100.0f, {m_height, 0, 0, 0}},
+            {"segments", ParamType::Float, 3.0f, 128.0f, {static_cast<float>(m_segments), 0, 0, 0}}
+        };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "radius") { out[0] = m_radius; return true; }
+        if (name == "height") { out[0] = m_height; return true; }
+        if (name == "segments") { out[0] = static_cast<float>(m_segments); return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "radius") { m_radius = value[0]; markDirty(); return true; }
+        if (name == "height") { m_height = value[0]; markDirty(); return true; }
+        if (name == "segments") { m_segments = static_cast<int>(value[0]); markDirty(); return true; }
+        return false;
+    }
 
 private:
     float m_radius = 0.5f;
@@ -376,6 +461,31 @@ public:
 
     std::string name() const override { return "Torus"; }
 
+    std::vector<ParamDecl> params() override {
+        return {
+            {"outerRadius", ParamType::Float, 0.01f, 100.0f, {m_outerRadius, 0, 0, 0}},
+            {"innerRadius", ParamType::Float, 0.01f, 50.0f, {m_innerRadius, 0, 0, 0}},
+            {"segments", ParamType::Float, 3.0f, 128.0f, {static_cast<float>(m_segments), 0, 0, 0}},
+            {"rings", ParamType::Float, 3.0f, 128.0f, {static_cast<float>(m_rings), 0, 0, 0}}
+        };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "outerRadius") { out[0] = m_outerRadius; return true; }
+        if (name == "innerRadius") { out[0] = m_innerRadius; return true; }
+        if (name == "segments") { out[0] = static_cast<float>(m_segments); return true; }
+        if (name == "rings") { out[0] = static_cast<float>(m_rings); return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "outerRadius") { m_outerRadius = value[0]; markDirty(); return true; }
+        if (name == "innerRadius") { m_innerRadius = value[0]; markDirty(); return true; }
+        if (name == "segments") { m_segments = static_cast<int>(value[0]); markDirty(); return true; }
+        if (name == "rings") { m_rings = static_cast<int>(value[0]); markDirty(); return true; }
+        return false;
+    }
+
 private:
     float m_outerRadius = 0.5f;
     float m_innerRadius = 0.2f;
@@ -452,6 +562,31 @@ public:
     }
 
     std::string name() const override { return "Plane"; }
+
+    std::vector<ParamDecl> params() override {
+        return {
+            {"width", ParamType::Float, 0.01f, 1000.0f, {m_width, 0, 0, 0}},
+            {"height", ParamType::Float, 0.01f, 1000.0f, {m_height, 0, 0, 0}},
+            {"subdivisionsX", ParamType::Float, 1.0f, 256.0f, {static_cast<float>(m_subdivisionsX), 0, 0, 0}},
+            {"subdivisionsY", ParamType::Float, 1.0f, 256.0f, {static_cast<float>(m_subdivisionsY), 0, 0, 0}}
+        };
+    }
+
+    bool getParam(const std::string& name, float out[4]) override {
+        if (name == "width") { out[0] = m_width; return true; }
+        if (name == "height") { out[0] = m_height; return true; }
+        if (name == "subdivisionsX") { out[0] = static_cast<float>(m_subdivisionsX); return true; }
+        if (name == "subdivisionsY") { out[0] = static_cast<float>(m_subdivisionsY); return true; }
+        return false;
+    }
+
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (name == "width") { m_width = value[0]; markDirty(); return true; }
+        if (name == "height") { m_height = value[0]; markDirty(); return true; }
+        if (name == "subdivisionsX") { m_subdivisionsX = static_cast<int>(value[0]); markDirty(); return true; }
+        if (name == "subdivisionsY") { m_subdivisionsY = static_cast<int>(value[0]); markDirty(); return true; }
+        return false;
+    }
 
 private:
     float m_width = 1.0f;
