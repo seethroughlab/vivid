@@ -25,10 +25,16 @@ void TextureOperator::createOutput(Context& ctx) {
 }
 
 bool TextureOperator::checkResize(Context& ctx) {
+    // Don't auto-resize if resolution is locked (set via resolution() or lockResolution())
+    if (m_resolutionLocked) {
+        return false;
+    }
+
     int ctxWidth = ctx.width();
     int ctxHeight = ctx.height();
     if (ctxWidth > 0 && ctxHeight > 0 && (ctxWidth != m_width || ctxHeight != m_height)) {
         createOutput(ctx, ctxWidth, ctxHeight);
+        markDirty();  // Force re-render to the new texture
         return true;
     }
     return false;

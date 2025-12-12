@@ -115,7 +115,19 @@
 [ ] We need an example of mutliple videos playing at once, and being used as a texture. 
 [ ] Make an example with assets/textures/flat_earth_Largest_still.0330.jpg
 [ ] Take more snapshots of showcase projects, add them to README
-
 [x] Wipeout-viz system crash after 30 seconds
     - Root cause: Multiple GPU command buffer submissions per frame without explicit GPU synchronization
     - Fix: Added `wgpuDevicePoll(device, false, nullptr)` after `wgpuSurfacePresent()` in `core/src/main.cpp:680`
+[ ] Chain visualizer: Render3D thumbnail shows black in wipeout-viz but works in 3d-basics
+    - Issue persists even with explicit .resolution(1280, 720)
+    - Operators after Render3D (Downsample, Dither, CRTEffect) also show black
+    - Final output displays correctly, so textures ARE being rendered properly
+    - Likely an ImGui/WebGPU texture binding or format issue specific to chained operators
+[x] wipeout-viz: please refactor the example into classes. There should be a class for each major part of the craft.
+[x] we need a color class that enables conversions between color formats (RGB, HSV, hex), color blending/lerping, and will make the example code more readable. Let's add some static variables with color names as well. DO any of the libraries we're already using have a color class? It seems too simple to involve a 3rd party library, but maybe I'm wrong?
+[ ] What's happening with the docs action? https://github.com/seethroughlab/vivid/settings/pages 
+[x] does our canvas api match the HTML canvas api?
+    - No, current API is immediate-mode with per-call colors
+    - HTML Canvas is stateful with path-based drawing
+    - Added detailed alignment plan as Phase 5b in ROADMAP.md
+[ ] It took you a LONG time to figure out why the canvas was rendering to the screen, though that seems like a simple issue. You had to look through dozens of source files. What would have helped you diagnose that issue faster? 

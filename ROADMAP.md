@@ -1227,6 +1227,388 @@ chain.add<Output>("out").input("scanlines");
 - [ ] Core classes (Operator, Chain, Context) fully documented
 - [ ] Run `doxygen Doxyfile` and verify generated docs
 
+### Phase 5b: Canvas API Alignment (HTML Canvas 2D)
+
+**Goal:** Align the Vivid Canvas API with the standard HTML Canvas 2D API for familiarity and feature parity.
+
+**Motivation:**
+- HTML Canvas 2D is the most widely-known 2D drawing API
+- Developers can transfer existing Canvas knowledge to Vivid
+- LLMs have extensive training data on HTML Canvas patterns
+- Path-based drawing enables complex shapes that primitives can't express
+- Transform stack enables hierarchical/nested drawing
+
+**Current State:**
+The existing Canvas API uses immediate-mode primitives with per-call colors:
+```cpp
+canvas.rectFilled(x, y, w, h, color);  // Vivid (current)
+ctx.fillStyle = color; ctx.fillRect(x, y, w, h);  // HTML Canvas
+```
+
+**Target State:**
+A stateful, path-based API matching HTML Canvas 2D semantics:
+```cpp
+canvas.fillStyle({0.2, 0.4, 0.8, 1.0});
+canvas.beginPath();
+canvas.moveTo(100, 100);
+canvas.lineTo(200, 100);
+canvas.arcTo(250, 100, 250, 150, 50);
+canvas.closePath();
+canvas.fill();
+```
+
+---
+
+#### Phase 5b.1: State Management
+
+Add stateful properties that persist across draw calls:
+
+```cpp
+class Canvas : public TextureOperator {
+public:
+    // Style state (like HTML Canvas)
+    Canvas& fillStyle(const glm::vec4& color);
+    Canvas& fillStyle(Gradient& gradient);
+    Canvas& strokeStyle(const glm::vec4& color);
+    Canvas& strokeStyle(Gradient& gradient);
+    Canvas& lineWidth(float width);
+    Canvas& lineCap(LineCap cap);      // Butt, Round, Square
+    Canvas& lineJoin(LineJoin join);   // Miter, Round, Bevel
+    Canvas& miterLimit(float limit);
+    Canvas& globalAlpha(float alpha);
+    Canvas& globalCompositeOperation(CompositeOp op);
+
+    // State stack
+    void save();     // Push current state to stack
+    void restore();  // Pop state from stack
+
+private:
+    struct State {
+        glm::vec4 fillColor = {0, 0, 0, 1};
+        glm::vec4 strokeColor = {0, 0, 0, 1};
+        float lineWidth = 1.0f;
+        LineCap lineCap = LineCap::Butt;
+        LineJoin lineJoin = LineJoin::Miter;
+        float miterLimit = 10.0f;
+        float globalAlpha = 1.0f;
+        CompositeOp compositeOp = CompositeOp::SourceOver;
+        glm::mat3 transform = glm::mat3(1.0f);
+        // Font state, clip path, etc.
+    };
+    State m_state;
+    std::vector<State> m_stateStack;
+};
+```
+
+**Enums:**
+```cpp
+enum class LineCap { Butt, Round, Square };
+enum class LineJoin { Miter, Round, Bevel };
+enum class CompositeOp {
+    SourceOver, SourceIn, SourceOut, SourceAtop,
+    DestinationOver, DestinationIn, DestinationOut, DestinationAtop,
+    Lighter, Copy, Xor, Multiply, Screen, Overlay, Darken, Lighten
+};
+```
+
+---
+
+#### Phase 5b.2: Transform Stack
+
+Add 2D transformation methods:
+
+```cpp
+// Transformations (modify current transform matrix)
+void translate(float x, float y);
+void rotate(float radians);
+void scale(float x, float y);
+void transform(float a, float b, float c, float d, float e, float f);
+void setTransform(float a, float b, float c, float d, float e, float f);
+void resetTransform();
+
+// Get current transform
+glm::mat3 getTransform() const;
+```
+
+**Implementation Notes:**
+- Store transform as 3x3 matrix in State
+- Apply transform to all vertex positions before rendering
+- `save()`/`restore()` preserves transform state
+- Transform order matters: `translate` then `rotate` ≠ `rotate` then `translate`
+
+---
+
+#### Phase 5b.3: Path API
+
+Add path-based drawing (the core of HTML Canvas):
+
+```cpp
+// Path construction
+void beginPath();                     // Start new path
+void closePath();                     // Close current subpath
+void moveTo(float x, float y);        // Move pen without drawing
+void lineTo(float x, float y);        // Line to point
+void arc(float x, float y, float radius, float startAngle, float endAngle, bool ccw = false);
+void arcTo(float x1, float y1, float x2, float y2, float radius);
+void quadraticCurveTo(float cpx, float cpy, float x, float y);
+void bezierCurveTo(float cp1x, float cp1y, float cp2x, float cp2y, float x, float y);
+void rect(float x, float y, float w, float h);  // Add rect subpath
+void ellipse(float x, float y, float rx, float ry, float rotation, float start, float end, bool ccw = false);
+
+// Path rendering
+void fill();                          // Fill current path with fillStyle
+void stroke();                        // Stroke current path with strokeStyle
+void fill(FillRule rule);             // Fill with winding rule (NonZero, EvenOdd)
+
+// Path utilities
+bool isPointInPath(float x, float y);
+bool isPointInStroke(float x, float y);
+```
+
+**Implementation Notes:**
+- Store path as vector of commands (MoveTo, LineTo, Arc, etc.)
+- `fill()` tessellates path to triangles using ear-clipping or libtess2
+- `stroke()` generates stroke geometry with proper line caps/joins
+- Bezier curves approximated with line segments (adaptive subdivision)
+- Arc approximated with line segments (based on radius and angle)
+
+**Path Command Structure:**
+```cpp
+struct PathCommand {
+    enum Type { MoveTo, LineTo, Arc, QuadraticCurve, BezierCurve, ClosePath };
+    Type type;
+    std::vector<float> params;  // Command-specific parameters
+};
+std::vector<PathCommand> m_currentPath;
+```
+
+---
+
+#### Phase 5b.4: Convenience Methods (Immediate Shapes)
+
+Keep convenience methods that combine beginPath + shape + fill/stroke:
+
+```cpp
+// Immediate rectangle methods (HTML Canvas style)
+void fillRect(float x, float y, float w, float h);    // Fill with fillStyle
+void strokeRect(float x, float y, float w, float h);  // Stroke with strokeStyle
+void clearRect(float x, float y, float w, float h);   // Clear to transparent
+
+// Additional convenience (not in HTML Canvas but useful)
+void fillCircle(float x, float y, float radius);
+void strokeCircle(float x, float y, float radius);
+void fillRoundRect(float x, float y, float w, float h, float radius);
+void strokeRoundRect(float x, float y, float w, float h, float radius);
+```
+
+**Deprecation:**
+The old API methods become aliases or deprecated:
+```cpp
+// Old Vivid API → New HTML Canvas style
+rectFilled(x, y, w, h, color)  →  fillStyle(color); fillRect(x, y, w, h);
+rect(x, y, w, h, lw, color)    →  strokeStyle(color); lineWidth(lw); strokeRect(x, y, w, h);
+circleFilled(x, y, r, color)   →  fillStyle(color); fillCircle(x, y, r);
+line(x1, y1, x2, y2, w, color) →  strokeStyle(color); lineWidth(w); beginPath(); moveTo(x1,y1); lineTo(x2,y2); stroke();
+```
+
+---
+
+#### Phase 5b.5: Gradients and Patterns
+
+Add gradient and pattern support:
+
+```cpp
+// Gradient creation
+Gradient createLinearGradient(float x0, float y0, float x1, float y1);
+Gradient createRadialGradient(float x0, float y0, float r0, float x1, float y1, float r1);
+Gradient createConicGradient(float startAngle, float x, float y);
+
+// Pattern creation
+Pattern createPattern(WGPUTextureView image, PatternRepeat repeat);
+
+// Gradient class
+class Gradient {
+public:
+    void addColorStop(float offset, const glm::vec4& color);
+    // offset: 0.0 to 1.0
+};
+
+enum class PatternRepeat { Repeat, RepeatX, RepeatY, NoRepeat };
+```
+
+**Implementation Notes:**
+- Gradients rendered via shader uniform with color stops
+- Maximum 8 color stops (GPU uniform limit)
+- Patterns use texture sampling with appropriate wrap mode
+
+---
+
+#### Phase 5b.6: Enhanced Text API
+
+Align text rendering with HTML Canvas:
+
+```cpp
+// Font state
+Canvas& font(const std::string& fontSpec);  // "24px Arial", "bold 16px sans-serif"
+Canvas& textAlign(TextAlign align);          // Left, Right, Center, Start, End
+Canvas& textBaseline(TextBaseline baseline); // Top, Hanging, Middle, Alphabetic, Ideographic, Bottom
+
+// Text rendering
+void fillText(const std::string& text, float x, float y);
+void fillText(const std::string& text, float x, float y, float maxWidth);
+void strokeText(const std::string& text, float x, float y);
+void strokeText(const std::string& text, float x, float y, float maxWidth);
+
+// Text measurement
+TextMetrics measureText(const std::string& text);
+
+struct TextMetrics {
+    float width;
+    float actualBoundingBoxLeft;
+    float actualBoundingBoxRight;
+    float actualBoundingBoxAscent;
+    float actualBoundingBoxDescent;
+    float fontBoundingBoxAscent;
+    float fontBoundingBoxDescent;
+    // ... other metrics as needed
+};
+
+enum class TextAlign { Left, Right, Center, Start, End };
+enum class TextBaseline { Top, Hanging, Middle, Alphabetic, Ideographic, Bottom };
+```
+
+**Implementation Notes:**
+- Parse CSS-style font strings ("bold 24px Arial")
+- Support font families with fallbacks
+- textAlign affects x position interpretation
+- textBaseline affects y position interpretation
+
+---
+
+#### Phase 5b.7: Image Drawing
+
+Add image/texture drawing:
+
+```cpp
+// Draw image (texture) to canvas
+void drawImage(WGPUTextureView image, float dx, float dy);
+void drawImage(WGPUTextureView image, float dx, float dy, float dw, float dh);
+void drawImage(WGPUTextureView image,
+               float sx, float sy, float sw, float sh,  // Source rect
+               float dx, float dy, float dw, float dh); // Dest rect
+
+// Draw another operator's output
+void drawImage(Operator& source, float dx, float dy);
+void drawImage(Operator& source, float dx, float dy, float dw, float dh);
+```
+
+**Implementation Notes:**
+- Uses separate textured quad batch (like current text rendering)
+- Respects current transform matrix
+- Respects globalAlpha and globalCompositeOperation
+
+---
+
+#### Phase 5b.8: Clipping
+
+Add clipping path support:
+
+```cpp
+void clip();                    // Use current path as clip region
+void clip(FillRule rule);       // Clip with fill rule
+void resetClip();               // Remove clipping (Vivid extension)
+
+enum class FillRule { NonZero, EvenOdd };
+```
+
+**Implementation Notes:**
+- Clip implemented via stencil buffer
+- Nested clips via stencil increment/decrement
+- `save()`/`restore()` preserves clip state (complex - may need stencil stack)
+
+---
+
+#### Phase 5b.9: Pixel Manipulation (Optional/Deferred)
+
+HTML Canvas has pixel-level access. This is lower priority:
+
+```cpp
+// ImageData manipulation (optional, performance-sensitive)
+ImageData getImageData(float x, float y, float w, float h);
+void putImageData(const ImageData& data, float x, float y);
+ImageData createImageData(int w, int h);
+
+struct ImageData {
+    std::vector<uint8_t> data;  // RGBA bytes
+    int width, height;
+};
+```
+
+**Note:** Pixel manipulation requires GPU readback which is slow. Consider deferring or limiting to specific use cases.
+
+---
+
+#### Implementation Order
+
+1. **Phase 5b.1** - State management (foundation for everything else)
+2. **Phase 5b.2** - Transform stack (enables hierarchical drawing)
+3. **Phase 5b.4** - Convenience methods (quick win, maintains compatibility)
+4. **Phase 5b.3** - Path API (most complex, enables complex shapes)
+5. **Phase 5b.5** - Gradients (visual richness)
+6. **Phase 5b.6** - Enhanced text (align existing text with new state model)
+7. **Phase 5b.7** - Image drawing (compositing operators)
+8. **Phase 5b.8** - Clipping (advanced feature)
+9. **Phase 5b.9** - Pixel manipulation (optional, deferred)
+
+---
+
+#### Dependencies
+
+- **libtess2** or similar for path tessellation (fill)
+- May need to upgrade CanvasRenderer to handle multiple texture bind groups per frame
+- Stencil buffer support for clipping (requires render pipeline changes)
+
+---
+
+#### Backward Compatibility
+
+The old per-call color API will remain as convenience methods:
+```cpp
+// These still work (internally set fillStyle then call fillRect)
+void rectFilled(float x, float y, float w, float h, const glm::vec4& color);
+void circleFilled(float x, float y, float radius, const glm::vec4& color, int segments = 32);
+void line(float x1, float y1, float x2, float y2, float width, const glm::vec4& color);
+void triangleFilled(glm::vec2 a, glm::vec2 b, glm::vec2 c, const glm::vec4& color);
+```
+
+---
+
+#### Validation
+
+- [ ] State save/restore preserves all properties correctly
+- [ ] Transform stack produces correct results (translate, rotate, scale order)
+- [ ] Path fill with complex shapes (concave, self-intersecting)
+- [ ] Path stroke with all line cap and join styles
+- [ ] Bezier and quadratic curves render smoothly
+- [ ] Arc and arcTo produce correct geometry
+- [ ] Gradients render correctly with multiple color stops
+- [ ] Text alignment and baseline work as expected
+- [ ] drawImage respects transforms and alpha
+- [ ] Clipping works with nested save/restore
+- [ ] All examples from MDN Canvas tutorials render correctly
+- [ ] Performance: 1000+ shapes at 60fps
+
+---
+
+#### Documentation
+
+- [ ] Migration guide from old Vivid Canvas API to new HTML Canvas style
+- [ ] Complete API reference matching MDN Canvas documentation structure
+- [ ] Examples ported from MDN Canvas tutorials
+- [ ] Differences from HTML Canvas documented (if any)
+
+---
+
 ### Phase 6: ImGui Addon
 
 **Goal:** Chain visualizer with ImNode

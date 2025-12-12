@@ -86,13 +86,13 @@ void setup(Context& ctx) {
     // Lighting - from behind/above for dramatic effect
     auto& sun = chain.add<DirectionalLight>("sun")
         .direction(0.2f, 0.5f, 1.0f)  // Light from behind
-        .color(1.0f, 0.95f, 0.9f)
+        .color(Color::fromHex("#FFF2E6"))  // Warm white
         .intensity(1.5f);
 
     // Add a subtle fill light from the front
     auto& fillLight = chain.add<DirectionalLight>("fill")
         .direction(0.0f, 0.3f, -1.0f)
-        .color(0.4f, 0.5f, 0.7f)
+        .color(Color::SteelBlue)
         .intensity(0.5f);
 
     // Create instanced renderer with textured material
@@ -104,7 +104,7 @@ void setup(Context& ctx) {
         .lightInput(&sun)
         .addLight(&fillLight)
         .ambient(0.15f)
-        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent background
+        .clearColor(Color::Transparent);
 
     // Over blend: asteroids (with alpha) composited over stars
     auto& final = chain.add<Composite>("final")

@@ -267,40 +267,55 @@ void CanvasRenderer::createWhiteTexture(Context& ctx) {
 }
 
 void CanvasRenderer::begin(int width, int height, const glm::vec4& clearColor) {
-    m_vertices.clear();
-    m_indices.clear();
+    m_solidVertices.clear();
+    m_solidIndices.clear();
+    m_textVertices.clear();
+    m_textIndices.clear();
     m_width = width;
     m_height = height;
     m_clearColor = clearColor;
     m_currentFont = nullptr;
 }
 
-void CanvasRenderer::addQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3,
-                              glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2, glm::vec2 uv3,
-                              const glm::vec4& color) {
-    uint32_t baseIndex = static_cast<uint32_t>(m_vertices.size());
+void CanvasRenderer::addSolidQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3, const glm::vec4& color) {
+    uint32_t baseIndex = static_cast<uint32_t>(m_solidVertices.size());
+    glm::vec2 uv(0.5f, 0.5f);  // Center of white texture
 
-    m_vertices.push_back({p0, uv0, color});
-    m_vertices.push_back({p1, uv1, color});
-    m_vertices.push_back({p2, uv2, color});
-    m_vertices.push_back({p3, uv3, color});
+    m_solidVertices.push_back({p0, uv, color});
+    m_solidVertices.push_back({p1, uv, color});
+    m_solidVertices.push_back({p2, uv, color});
+    m_solidVertices.push_back({p3, uv, color});
 
     // Two triangles: 0-1-2, 0-2-3
-    m_indices.push_back(baseIndex + 0);
-    m_indices.push_back(baseIndex + 1);
-    m_indices.push_back(baseIndex + 2);
-    m_indices.push_back(baseIndex + 0);
-    m_indices.push_back(baseIndex + 2);
-    m_indices.push_back(baseIndex + 3);
+    m_solidIndices.push_back(baseIndex + 0);
+    m_solidIndices.push_back(baseIndex + 1);
+    m_solidIndices.push_back(baseIndex + 2);
+    m_solidIndices.push_back(baseIndex + 0);
+    m_solidIndices.push_back(baseIndex + 2);
+    m_solidIndices.push_back(baseIndex + 3);
+}
+
+void CanvasRenderer::addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3,
+                                  glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2, glm::vec2 uv3,
+                                  const glm::vec4& color) {
+    uint32_t baseIndex = static_cast<uint32_t>(m_textVertices.size());
+
+    m_textVertices.push_back({p0, uv0, color});
+    m_textVertices.push_back({p1, uv1, color});
+    m_textVertices.push_back({p2, uv2, color});
+    m_textVertices.push_back({p3, uv3, color});
+
+    // Two triangles: 0-1-2, 0-2-3
+    m_textIndices.push_back(baseIndex + 0);
+    m_textIndices.push_back(baseIndex + 1);
+    m_textIndices.push_back(baseIndex + 2);
+    m_textIndices.push_back(baseIndex + 0);
+    m_textIndices.push_back(baseIndex + 2);
+    m_textIndices.push_back(baseIndex + 3);
 }
 
 void CanvasRenderer::rectFilled(float x, float y, float w, float h, const glm::vec4& color) {
-    glm::vec2 uv(0.5f, 0.5f);  // Center of white texture
-    addQuad(
-        {x, y}, {x + w, y}, {x + w, y + h}, {x, y + h},
-        uv, uv, uv, uv,
-        color
-    );
+    addSolidQuad({x, y}, {x + w, y}, {x + w, y + h}, {x, y + h}, color);
 }
 
 void CanvasRenderer::rect(float x, float y, float w, float h, float lineWidth, const glm::vec4& color) {
@@ -313,29 +328,28 @@ void CanvasRenderer::rect(float x, float y, float w, float h, float lineWidth, c
 
 void CanvasRenderer::circleFilled(float cx, float cy, float radius, const glm::vec4& color, int segments) {
     glm::vec2 uv(0.5f, 0.5f);
-    uint32_t centerIndex = static_cast<uint32_t>(m_vertices.size());
+    uint32_t centerIndex = static_cast<uint32_t>(m_solidVertices.size());
 
     // Center vertex
-    m_vertices.push_back({{cx, cy}, uv, color});
+    m_solidVertices.push_back({{cx, cy}, uv, color});
 
     // Edge vertices
     for (int i = 0; i <= segments; i++) {
         float angle = (float)i / segments * 2.0f * 3.14159265f;
         float px = cx + std::cos(angle) * radius;
         float py = cy + std::sin(angle) * radius;
-        m_vertices.push_back({{px, py}, uv, color});
+        m_solidVertices.push_back({{px, py}, uv, color});
     }
 
     // Triangles (fan)
     for (int i = 0; i < segments; i++) {
-        m_indices.push_back(centerIndex);
-        m_indices.push_back(centerIndex + 1 + i);
-        m_indices.push_back(centerIndex + 2 + i);
+        m_solidIndices.push_back(centerIndex);
+        m_solidIndices.push_back(centerIndex + 1 + i);
+        m_solidIndices.push_back(centerIndex + 2 + i);
     }
 }
 
 void CanvasRenderer::circle(float cx, float cy, float radius, float lineWidth, const glm::vec4& color, int segments) {
-    glm::vec2 uv(0.5f, 0.5f);
     float innerRadius = radius - lineWidth;
 
     for (int i = 0; i < segments; i++) {
@@ -350,7 +364,7 @@ void CanvasRenderer::circle(float cx, float cy, float radius, float lineWidth, c
         glm::vec2 inner0 = {cx + cos0 * innerRadius, cy + sin0 * innerRadius};
         glm::vec2 inner1 = {cx + cos1 * innerRadius, cy + sin1 * innerRadius};
 
-        addQuad(outer0, outer1, inner1, inner0, uv, uv, uv, uv, color);
+        addSolidQuad(outer0, outer1, inner1, inner0, color);
     }
 }
 
@@ -364,21 +378,20 @@ void CanvasRenderer::line(float x1, float y1, float x2, float y2, float width, c
     glm::vec2 p2 = glm::vec2(x2, y2) + perp * halfWidth;
     glm::vec2 p3 = glm::vec2(x2, y2) - perp * halfWidth;
 
-    glm::vec2 uv(0.5f, 0.5f);
-    addQuad(p0, p1, p2, p3, uv, uv, uv, uv, color);
+    addSolidQuad(p0, p1, p2, p3, color);
 }
 
 void CanvasRenderer::triangleFilled(glm::vec2 a, glm::vec2 b, glm::vec2 c, const glm::vec4& color) {
     glm::vec2 uv(0.5f, 0.5f);
-    uint32_t baseIndex = static_cast<uint32_t>(m_vertices.size());
+    uint32_t baseIndex = static_cast<uint32_t>(m_solidVertices.size());
 
-    m_vertices.push_back({a, uv, color});
-    m_vertices.push_back({b, uv, color});
-    m_vertices.push_back({c, uv, color});
+    m_solidVertices.push_back({a, uv, color});
+    m_solidVertices.push_back({b, uv, color});
+    m_solidVertices.push_back({c, uv, color});
 
-    m_indices.push_back(baseIndex + 0);
-    m_indices.push_back(baseIndex + 1);
-    m_indices.push_back(baseIndex + 2);
+    m_solidIndices.push_back(baseIndex + 0);
+    m_solidIndices.push_back(baseIndex + 1);
+    m_solidIndices.push_back(baseIndex + 2);
 }
 
 void CanvasRenderer::text(FontAtlas& font, const std::string& str, float x, float y, const glm::vec4& color) {
@@ -402,7 +415,7 @@ void CanvasRenderer::text(FontAtlas& font, const std::string& str, float x, floa
         float x1 = x0 + glyph->width;
         float y1 = y0 + glyph->height;
 
-        addQuad(
+        addTextQuad(
             {x0, y0}, {x1, y0}, {x1, y1}, {x0, y1},
             {glyph->u0, glyph->v0}, {glyph->u1, glyph->v0},
             {glyph->u1, glyph->v1}, {glyph->u0, glyph->v1},
@@ -413,8 +426,43 @@ void CanvasRenderer::text(FontAtlas& font, const std::string& str, float x, floa
     }
 }
 
+void CanvasRenderer::renderBatch(WGPURenderPassEncoder pass, Context& ctx,
+                                   const std::vector<CanvasVertex>& vertices,
+                                   const std::vector<uint32_t>& indices,
+                                   WGPUBindGroup bindGroup) {
+    if (vertices.empty()) return;
+
+    WGPUDevice device = ctx.device();
+    WGPUQueue queue = ctx.queue();
+
+    // Create vertex buffer
+    WGPUBufferDescriptor vbDesc = {};
+    vbDesc.size = vertices.size() * sizeof(CanvasVertex);
+    vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+    WGPUBuffer vertexBuffer = wgpuDeviceCreateBuffer(device, &vbDesc);
+    wgpuQueueWriteBuffer(queue, vertexBuffer, 0, vertices.data(), vbDesc.size);
+
+    // Create index buffer
+    WGPUBufferDescriptor ibDesc = {};
+    ibDesc.size = indices.size() * sizeof(uint32_t);
+    ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+    WGPUBuffer indexBuffer = wgpuDeviceCreateBuffer(device, &ibDesc);
+    wgpuQueueWriteBuffer(queue, indexBuffer, 0, indices.data(), ibDesc.size);
+
+    // Render the batch
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vertexBuffer, 0, vbDesc.size);
+    wgpuRenderPassEncoderSetIndexBuffer(pass, indexBuffer, WGPUIndexFormat_Uint32, 0, ibDesc.size);
+    wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
+
+    // Release buffers
+    wgpuBufferRelease(vertexBuffer);
+    wgpuBufferRelease(indexBuffer);
+}
+
 void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTextureView targetView) {
-    if (m_vertices.empty()) return;
+    // Check if either batch has content
+    if (m_solidVertices.empty() && m_textVertices.empty()) return;
 
     WGPUDevice device = ctx.device();
     WGPUQueue queue = ctx.queue();
@@ -423,23 +471,8 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
     float uniforms[4] = {(float)m_width, (float)m_height, 0.0f, 0.0f};
     wgpuQueueWriteBuffer(queue, m_uniformBuffer, 0, uniforms, sizeof(uniforms));
 
-    // Create vertex buffer
-    WGPUBufferDescriptor vbDesc = {};
-    vbDesc.size = m_vertices.size() * sizeof(CanvasVertex);
-    vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-    WGPUBuffer vertexBuffer = wgpuDeviceCreateBuffer(device, &vbDesc);
-    wgpuQueueWriteBuffer(queue, vertexBuffer, 0, m_vertices.data(), vbDesc.size);
-
-    // Create index buffer
-    WGPUBufferDescriptor ibDesc = {};
-    ibDesc.size = m_indices.size() * sizeof(uint32_t);
-    ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-    WGPUBuffer indexBuffer = wgpuDeviceCreateBuffer(device, &ibDesc);
-    wgpuQueueWriteBuffer(queue, indexBuffer, 0, m_indices.data(), ibDesc.size);
-
     // Create font bind group if text was used
-    WGPUBindGroup bindGroup = m_whiteBindGroup;
-    if (m_currentFont && m_currentFont->textureView()) {
+    if (m_currentFont && m_currentFont->textureView() && !m_textVertices.empty()) {
         WGPUBindGroupEntry bgEntries[3] = {};
         bgEntries[0].binding = 0;
         bgEntries[0].buffer = m_uniformBuffer;
@@ -458,7 +491,6 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
             wgpuBindGroupRelease(m_fontBindGroup);
         }
         m_fontBindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
-        bindGroup = m_fontBindGroup;
     }
 
     // Begin render pass
@@ -477,12 +509,15 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
     passDesc.colorAttachments = &colorAttachment;
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
-
     wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vertexBuffer, 0, vbDesc.size);
-    wgpuRenderPassEncoderSetIndexBuffer(pass, indexBuffer, WGPUIndexFormat_Uint32, 0, ibDesc.size);
-    wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_indices.size()), 1, 0, 0, 0);
+
+    // Render solid primitives first (with white texture)
+    renderBatch(pass, ctx, m_solidVertices, m_solidIndices, m_whiteBindGroup);
+
+    // Render text primitives second (with font texture)
+    if (m_fontBindGroup && !m_textVertices.empty()) {
+        renderBatch(pass, ctx, m_textVertices, m_textIndices, m_fontBindGroup);
+    }
 
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
@@ -493,8 +528,6 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
 
     wgpuCommandBufferRelease(cmdBuffer);
     wgpuCommandEncoderRelease(encoder);
-    wgpuBufferRelease(vertexBuffer);
-    wgpuBufferRelease(indexBuffer);
 }
 
 } // namespace vivid

@@ -133,6 +133,21 @@ TexturedMaterial& TexturedMaterial::emissiveFromData(const io::ImageData& data) 
 }
 
 // -------------------------------------------------------------------------
+// Operator-based Texture Inputs
+// -------------------------------------------------------------------------
+
+TexturedMaterial& TexturedMaterial::baseColorInput(Operator* op) {
+    if (m_baseColorInputOp != op) {
+        m_baseColorInputOp = op;
+        if (op) {
+            setInput(0, op);  // Register for dependency tracking
+        }
+        markDirty();
+    }
+    return *this;
+}
+
+// -------------------------------------------------------------------------
 // Fallback Value Setters
 // -------------------------------------------------------------------------
 
@@ -529,15 +544,25 @@ void TexturedMaterial::process(Context& ctx) {
             releaseTexture(m_emissive);
             loadTexture(ctx, m_emissive, true);
         }
-
-        // Update cached views
-        m_baseColorView = m_baseColor.view ? m_baseColor.view : m_defaultWhiteView;
-        m_normalView = m_normal.view ? m_normal.view : m_defaultNormalView;
-        m_metallicView = m_metallic.view ? m_metallic.view : m_defaultBlackView;
-        m_roughnessView = m_roughness.view ? m_roughness.view : m_defaultWhiteView;
-        m_aoView = m_ao.view ? m_ao.view : m_defaultWhiteView;
-        m_emissiveView = m_emissive.view ? m_emissive.view : m_defaultBlackView;
     }
+
+    // Update cached views
+    // Priority: operator input > loaded texture > default
+    if (m_baseColorInputOp) {
+        // Use texture from input operator (e.g., Canvas)
+        m_baseColorView = m_baseColorInputOp->outputView();
+        if (!m_baseColorView) {
+            m_baseColorView = m_defaultWhiteView;  // Fallback if operator has no output yet
+        }
+    } else {
+        m_baseColorView = m_baseColor.view ? m_baseColor.view : m_defaultWhiteView;
+    }
+
+    m_normalView = m_normal.view ? m_normal.view : m_defaultNormalView;
+    m_metallicView = m_metallic.view ? m_metallic.view : m_defaultBlackView;
+    m_roughnessView = m_roughness.view ? m_roughness.view : m_defaultWhiteView;
+    m_aoView = m_ao.view ? m_ao.view : m_defaultWhiteView;
+    m_emissiveView = m_emissive.view ? m_emissive.view : m_defaultBlackView;
 
     didCook();
 }

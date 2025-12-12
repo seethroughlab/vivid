@@ -88,8 +88,17 @@ public:
      * @param w Width in pixels
      * @param h Height in pixels
      * @return Reference for chaining
+     *
+     * Note: Setting resolution also locks it, preventing auto-resize to context size.
      */
-    TextureOperator& resolution(int w, int h) { m_width = w; m_height = h; return *this; }
+    TextureOperator& resolution(int w, int h) { m_width = w; m_height = h; m_resolutionLocked = true; return *this; }
+
+    /**
+     * @brief Lock resolution to prevent auto-resize to context size
+     * @param locked If true, checkResize() will not change resolution
+     * @return Reference for chaining
+     */
+    TextureOperator& lockResolution(bool locked = true) { m_resolutionLocked = locked; return *this; }
 
     /**
      * @brief Check if context size changed and resize output texture if needed
@@ -97,6 +106,7 @@ public:
      * @return true if resize occurred, false otherwise
      *
      * Call this at the start of process() to handle window resize/fullscreen.
+     * Does nothing if resolution is locked via resolution() or lockResolution().
      */
     bool checkResize(Context& ctx);
 
@@ -163,6 +173,7 @@ protected:
 
     int m_width = 1280;  ///< Output width
     int m_height = 720;  ///< Output height
+    bool m_resolutionLocked = false;  ///< If true, checkResize() won't auto-resize
 };
 
 } // namespace vivid::effects

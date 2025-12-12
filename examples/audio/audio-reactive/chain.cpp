@@ -76,7 +76,7 @@ void setup(Context& ctx) {
 
     // Background gradient - color shifts with bass
     auto& gradient = chain.add<Gradient>("bg");
-    gradient.colorA(0.05f, 0.02f, 0.1f).colorB(0.02f, 0.05f, 0.08f);
+    gradient.colorA(Color::fromHex("#0D0519")).colorB(Color::fromHex("#050D14"));
 
     // Noise layer - reacts to mids
     auto& noise = chain.add<Noise>("noise");
@@ -85,7 +85,7 @@ void setup(Context& ctx) {
     // Shape - pulses with beat
     auto& shape = chain.add<Shape>("shape");
     shape.type(ShapeType::Circle).size(0.3f).softness(0.05f);
-    shape.color(1.0f, 0.8f, 0.3f, 1.0f);
+    shape.color(Color::Gold);
 
     // Composite layers
     auto& comp1 = chain.add<Composite>("comp1");
@@ -220,26 +220,11 @@ void update(Context& ctx) {
     shape.size(baseSize + beatPulse);
     shape.softness(0.02f + beatIntensity * 0.1f);
 
-    // Shape color shifts with HSV
-    float hue = std::fmod(ctx.time() * 0.1f + bass, 1.0f);
+    // Shape color shifts with HSV - using Color::fromHSV() for clean conversion
+    float hue = std::fmod(static_cast<float>(ctx.time()) * 0.1f + bass, 1.0f);
     float sat = 0.7f + high * 0.3f;
     float val = 0.8f + beatIntensity * 0.2f;
-
-    // Simple HSV to RGB
-    float c = val * sat;
-    float x = c * (1.0f - std::abs(std::fmod(hue * 6.0f, 2.0f) - 1.0f));
-    float m = val - c;
-    float cr, cg, cb;
-    int hi = static_cast<int>(hue * 6.0f) % 6;
-    switch (hi) {
-        case 0: cr = c; cg = x; cb = 0; break;
-        case 1: cr = x; cg = c; cb = 0; break;
-        case 2: cr = 0; cg = c; cb = x; break;
-        case 3: cr = 0; cg = x; cb = c; break;
-        case 4: cr = x; cg = 0; cb = c; break;
-        default: cr = c; cg = 0; cb = x; break;
-    }
-    shape.color(cr + m, cg + m, cb + m, 1.0f);
+    shape.color(Color::fromHSV(hue, sat, val));
 
     // Bloom radius increases with energy
     bloom.radius(4.0f + energy * 20.0f);

@@ -28,12 +28,12 @@ void setup(Context& ctx) {
         .sides(5)
         .size(0.4f, 0.4f)
         .softness(0.01f)
-        .color(1.0f, 1.0f, 1.0f, 1.0f);
+        .color(Color::White);
 
     // Radial gradient background
     gradient.mode(GradientMode::Radial)
-        .colorA(0.1f, 0.0f, 0.2f, 1.0f)   // Dark purple center
-        .colorB(0.0f, 0.0f, 0.05f, 1.0f); // Nearly black edge
+        .colorA(Color::fromHex("#1A0033"))  // Dark purple center
+        .colorB(Color::fromHex("#00000D")); // Nearly black edge
 
     // Composite shape over gradient
     comp.inputA(&gradient).inputB(&shape).mode(BlendMode::Add);

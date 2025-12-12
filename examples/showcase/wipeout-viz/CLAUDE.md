@@ -8,11 +8,27 @@ Create a visually stunning, fully procedural anti-gravity racing craft that demo
 
 - **Procedural Mesh Generation** - Complex multi-part geometry built with CSG boolean operations
 - **Procedural Textures** - Canvas-based livery generation with team colors, racing numbers, sponsor decals
-- **Retro Rendering Pipeline** - PS1-era visual style: vertex-lit shading, flat normals, dithering, scanlines
+- **Retro Rendering Pipeline** - PS1-era visual style: textured PBR, flat normals, dithering, scanlines, CRT effects
 - **Audio Reactivity** - Engine glow, hover oscillation, visual effects driven by audio analysis
 - **Real-time Interactivity** - Hot-reload, team switching, wireframe debug mode
 
 The aesthetic goal is NOT photorealism. It's a deliberate recreation of late-90s low-poly art with modern procedural techniques. The craft should feel **fast**, **graphic**, and **slightly imperfect** - evoking the PlayStation 1 era without directly imitating it.
+
+**IMPORTANT: PS1 Aesthetic Clarification**
+
+The retro PS1 look does NOT come from absence of textures. Original Wipeout crafts had rich, detailed textures including:
+- Team liveries with sponsor decals
+- Panel lines and surface detail
+- Grime, weathering, and wear marks
+- Bold racing numbers and graphics
+
+The authentic PS1 aesthetic comes from:
+1. **Rich textures** - Full team liveries with sponsors, panel lines, weathering
+2. **Post-processing pipeline** - Downsample (low resolution), dithering, CRT effects
+3. **Low-poly geometry** - Flat normals for faceted look
+4. **Affine texture mapping** (optional) - UV wobble/warping
+
+VertexLit (solid colors, no textures) is kept as a **Debug Mode** for development, NOT as the PS1 style.
 
 ---
 
@@ -26,7 +42,7 @@ The Wipeout aesthetic is defined by:
 2. **Bold Graphic Silhouettes** - Strong top-view shapes, wide side-pods, slim fuselages
 3. **Flat Color Blocking** - Large areas of solid team colors, high contrast
 4. **Racing Decals** - Team numbers, sponsor logos, hazard stripes, panel lines
-5. **Imperfect Rendering** - Vertex-lit shading, dithering, low resolution, texture wobble
+5. **Imperfect Rendering** - Low resolution, dithering, texture wobble, CRT effects (NOT absence of textures)
 
 ### Visual References
 
@@ -159,12 +175,12 @@ These assets can be reused, but the code should be written fresh using Vivid v2 
 
 **Goal:** Authentic PS1-era visual style
 
-- [ ] VertexLit shading mode on Render3D
-- [ ] Emissive engine glow
-- [ ] Downsample to 480x270 with nearest-neighbor
-- [ ] Dither with Bayer4x4 pattern
-- [ ] CRTEffect (scanlines, vignette, bloom, chromatic)
-- [ ] Toggle between PBR and VertexLit (V key)
+- [x] PBR textured shading as default (rich textures = PS1 style)
+- [x] Emissive engine glow
+- [x] Downsample to 480x270 with nearest-neighbor
+- [x] Dither with Bayer4x4 pattern
+- [x] CRTEffect (scanlines, vignette, bloom, chromatic)
+- [x] Debug mode toggle (V key) - shows untextured wireframe-style view
 
 ### Phase 5: Interactivity & Polish
 

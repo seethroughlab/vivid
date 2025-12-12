@@ -62,7 +62,7 @@ void setup(Context& ctx) {
     // Lighting
     auto& sun = chain.add<DirectionalLight>("sun")
         .direction(1, 2, 1)
-        .color(1.0f, 0.98f, 0.95f)
+        .color(Color::fromHex("#FFFAF2"))  // Warm white
         .intensity(2.0f);
 
     // IBL environment (now a proper chain operator)
@@ -80,7 +80,7 @@ void setup(Context& ctx) {
         .showSkybox(true)
         .metallic(0.0f)
         .roughness(0.5f)
-        .clearColor(0.1f, 0.1f, 0.15f);
+        .clearColor(Color::fromHex("#1A1A26"));
 
     chain.output("render");
 

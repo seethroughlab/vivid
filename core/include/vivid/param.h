@@ -14,6 +14,9 @@
 
 namespace vivid {
 
+// Forward declaration for Color integration
+class Color;
+
 /**
  * @brief Type traits mapping C++ types to ParamType enum
  * @tparam T C++ type
@@ -244,6 +247,17 @@ public:
      * @param a Alpha (default 1)
      */
     void set(float r, float g, float b, float a = 1.0f) { m_r = r; m_g = g; m_b = b; m_a = a; }
+
+    /**
+     * @brief Set from Color
+     * @param c Color to copy from
+     */
+    void set(const Color& c);  // Defined in color.h after Color is complete
+
+    /**
+     * @brief Implicit conversion to Color
+     */
+    operator Color() const;  // Defined in color.h after Color is complete
 
     /// @brief Get parameter name
     const char* name() const { return m_name; }

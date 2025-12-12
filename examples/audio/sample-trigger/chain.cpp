@@ -76,7 +76,7 @@ void setup(Context& ctx) {
 
     // Dark background
     auto& bg = chain.add<SolidColor>("bg");
-    bg.color(0.08f, 0.06f, 0.1f);
+    bg.color(Color::fromHex("#140F1A"));
 
     // Create 8 pad visualizers in a 4x2 grid
     for (int i = 0; i < 8; ++i) {
@@ -86,16 +86,14 @@ void setup(Context& ctx) {
         float x = 0.2f + (i % 4) * 0.2f;  // 4 columns
         float y = 0.4f + (i / 4) * 0.3f;  // 2 rows
 
-        // Color palette - different color per pad
+        // Color palette - different color per pad using HSV
         float hue = static_cast<float>(i) / 8.0f;
-        float r = 0.5f + 0.5f * std::sin(hue * 6.28f);
-        float g = 0.5f + 0.5f * std::sin(hue * 6.28f + 2.09f);
-        float b = 0.5f + 0.5f * std::sin(hue * 6.28f + 4.19f);
+        Color padColor = Color::fromHSV(hue, 0.8f, 1.0f);
 
         pad.type(ShapeType::Rectangle)
            .position(x, y)
            .size(0.12f, 0.18f)
-           .color(r, g, b, 0.3f)
+           .color(padColor.withAlpha(0.3f))
            .cornerRadius(0.02f);
     }
 
@@ -242,14 +240,11 @@ void update(Context& ctx) {
         float hitSize = baseSize + hitDecay[i] * 0.04f;
         pad.size(hitSize, hitSize * 1.5f);
 
-        // Update color - brighten on hit
+        // Update color - brighten on hit using HSV
         float hue = static_cast<float>(i) / 8.0f;
-        float r = 0.5f + 0.5f * std::sin(hue * 6.28f);
-        float g = 0.5f + 0.5f * std::sin(hue * 6.28f + 2.09f);
-        float b = 0.5f + 0.5f * std::sin(hue * 6.28f + 4.19f);
-
+        Color padColor = Color::fromHSV(hue, 0.8f, 1.0f);
         float brightness = 0.3f + hitDecay[i] * 0.7f;
-        pad.color(r, g, b, brightness);
+        pad.color(padColor.withAlpha(brightness));
     }
 }
 

@@ -98,6 +98,25 @@ public:
     /// Set emissive texture from raw image data
     TexturedMaterial& emissiveFromData(const io::ImageData& data);
 
+    // -------------------------------------------------------------------------
+    /// @name Texture Maps from Operators (for procedural textures)
+    /// @{
+
+    /**
+     * @brief Set base color from a texture operator (e.g., Canvas)
+     * @param op TextureOperator providing the base color texture
+     * @return Reference for chaining
+     *
+     * @par Example
+     * @code
+     * auto& livery = chain.add<Canvas>("livery").size(512, 512);
+     * // ... draw on canvas ...
+     * auto& material = chain.add<TexturedMaterial>("mat")
+     *     .baseColorInput(&livery);
+     * @endcode
+     */
+    TexturedMaterial& baseColorInput(Operator* op);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Material Factors (multiplied with texture values)
@@ -258,6 +277,9 @@ private:
     AlphaMode m_alphaMode = AlphaMode::Opaque;
     float m_alphaCutoff = 0.5f;
     bool m_doubleSided = false;
+
+    // Operator-based texture inputs (for procedural textures)
+    Operator* m_baseColorInputOp = nullptr;
 
     bool m_initialized = false;
 };

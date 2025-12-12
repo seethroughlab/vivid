@@ -129,12 +129,12 @@ void setup(Context& ctx) {
 
     auto& keyLight = chain.add<DirectionalLight>("keyLight")
         .direction(1.0f, 2.0f, 0.5f)
-        .color(1.0f, 0.95f, 0.9f)
+        .color(Color::fromHex("#FFF2E6"))  // Warm white
         .intensity(1.8f);
 
     auto& fillLight = chain.add<DirectionalLight>("fillLight")
         .direction(-1.0f, 0.5f, -0.5f)
-        .color(0.6f, 0.7f, 1.0f)
+        .color(Color::CornflowerBlue)
         .intensity(0.5f);
 
     // =========================================================================
@@ -149,7 +149,7 @@ void setup(Context& ctx) {
         .shadingMode(ShadingMode::PBR)
         .metallic(0.15f)
         .roughness(0.5f)
-        .clearColor(0.03f, 0.03f, 0.06f)
+        .clearColor(Color::fromHex("#08080F"))
         .depthOutput(true);  // Enable depth output for DOF
 
     // =========================================================================

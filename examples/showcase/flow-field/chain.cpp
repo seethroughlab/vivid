@@ -23,22 +23,22 @@ static float attractorPhase = 0.0f;
 // Color presets for different moods
 struct ColorPreset {
     const char* name;
-    glm::vec4 color1;
-    glm::vec4 color2;
-    glm::vec4 color3;
-    glm::vec4 plexusNode;
-    glm::vec4 plexusLine;
+    Color color1;
+    Color color2;
+    Color color3;
+    Color plexusNode;
+    Color plexusLine;
 };
 
 static const ColorPreset presets[] = {
-    {"Cyber",  {0.0f, 0.8f, 1.0f, 1.0f}, {0.0f, 0.5f, 0.8f, 1.0f}, {0.2f, 0.3f, 0.5f, 1.0f},
-               {0.0f, 0.9f, 1.0f, 0.9f}, {0.0f, 0.6f, 0.9f, 0.35f}},
-    {"Matrix", {0.0f, 1.0f, 0.3f, 1.0f}, {0.0f, 0.7f, 0.2f, 1.0f}, {0.0f, 0.4f, 0.1f, 1.0f},
-               {0.0f, 1.0f, 0.4f, 0.9f}, {0.0f, 0.8f, 0.2f, 0.35f}},
-    {"Ember",  {1.0f, 0.4f, 0.1f, 1.0f}, {0.8f, 0.2f, 0.05f, 1.0f}, {0.4f, 0.1f, 0.05f, 1.0f},
-               {1.0f, 0.5f, 0.2f, 0.9f}, {1.0f, 0.3f, 0.1f, 0.35f}},
-    {"Void",   {0.6f, 0.6f, 0.7f, 1.0f}, {0.3f, 0.3f, 0.4f, 1.0f}, {0.15f, 0.15f, 0.2f, 1.0f},
-               {0.7f, 0.7f, 0.8f, 0.9f}, {0.5f, 0.5f, 0.6f, 0.3f}},
+    {"Cyber",  Color::fromHex("#00CCFF"), Color::fromHex("#0080CC"), Color::fromHex("#334D80"),
+               Color::fromHex("#00E6FF").withAlpha(0.9f), Color::fromHex("#0099E6").withAlpha(0.35f)},
+    {"Matrix", Color::Lime, Color::fromHex("#00B333"), Color::fromHex("#00661A"),
+               Color::fromHex("#00FF66").withAlpha(0.9f), Color::fromHex("#00CC33").withAlpha(0.35f)},
+    {"Ember",  Color::OrangeRed, Color::fromHex("#CC330D"), Color::fromHex("#661A0D"),
+               Color::Coral.withAlpha(0.9f), Color::fromHex("#FF4D1A").withAlpha(0.35f)},
+    {"Void",   Color::LightSlateGray, Color::fromHex("#4D4D66"), Color::fromHex("#262633"),
+               Color::fromHex("#B3B3CC").withAlpha(0.9f), Color::fromHex("#808099").withAlpha(0.3f)},
 };
 static const int numPresets = 4;
 
@@ -77,9 +77,9 @@ void setup(Context& ctx) {
         .lifeVariation(0.5f)
         .size(0.002f, 0.0005f)
         .color(presets[0].color1)
-        .colorEnd(glm::vec4(presets[0].color1.r, presets[0].color1.g, presets[0].color1.b, 0.0f))
+        .colorEnd(presets[0].color1.withAlpha(0.0f))
         .fadeOut(true)
-        .clearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        .clearColor(Color::Black);
 
     // Layer 2: Swirling particles around attractors
     auto& flow2 = chain.add<Particles>("flow2");
@@ -96,9 +96,9 @@ void setup(Context& ctx) {
         .lifeVariation(0.4f)
         .size(0.0015f, 0.0003f)
         .color(presets[0].color2)
-        .colorEnd(glm::vec4(presets[0].color2.r, presets[0].color2.g, presets[0].color2.b, 0.0f))
+        .colorEnd(presets[0].color2.withAlpha(0.0f))
         .fadeOut(true)
-        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        .clearColor(Color::Transparent);
 
     // Layer 3: Fast accent particles
     auto& flow3 = chain.add<Particles>("flow3");
@@ -114,9 +114,9 @@ void setup(Context& ctx) {
         .lifeVariation(0.5f)
         .size(0.001f, 0.0002f)
         .color(presets[0].color3)
-        .colorEnd(glm::vec4(presets[0].color3.r, presets[0].color3.g, presets[0].color3.b, 0.0f))
+        .colorEnd(presets[0].color3.withAlpha(0.0f))
         .fadeOut(true)
-        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        .clearColor(Color::Transparent);
 
     // =========================================================================
     // GPU Plexus Network - Nodes connected by proximity lines
@@ -133,7 +133,7 @@ void setup(Context& ctx) {
           .drag(0.6f)
           .centerAttraction(0.08f)
           .spread(0.65f)
-          .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+          .clearColor(Color::Transparent);
 
     // =========================================================================
     // Compositing - Layer everything together
@@ -195,9 +195,9 @@ void update(Context& ctx) {
             std::cout << "\r[Preset: " << presets[colorPreset].name << "]          " << std::flush;
 
             const auto& p = presets[colorPreset];
-            flow1.color(p.color1).colorEnd(glm::vec4(p.color1.r, p.color1.g, p.color1.b, 0.0f));
-            flow2.color(p.color2).colorEnd(glm::vec4(p.color2.r, p.color2.g, p.color2.b, 0.0f));
-            flow3.color(p.color3).colorEnd(glm::vec4(p.color3.r, p.color3.g, p.color3.b, 0.0f));
+            flow1.color(p.color1).colorEnd(p.color1.withAlpha(0.0f));
+            flow2.color(p.color2).colorEnd(p.color2.withAlpha(0.0f));
+            flow3.color(p.color3).colorEnd(p.color3.withAlpha(0.0f));
             plexus.nodeColor(p.plexusNode).lineColor(p.plexusLine);
         }
     }

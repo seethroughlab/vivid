@@ -122,14 +122,25 @@ private:
     void createPipeline(Context& ctx);
     void createWhiteTexture(Context& ctx);
 
-    // Add a quad (two triangles)
-    void addQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3,
-                 glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2, glm::vec2 uv3,
-                 const glm::vec4& color);
+    // Add a quad to solid batch (for shapes)
+    void addSolidQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3, const glm::vec4& color);
 
-    // Batched geometry
-    std::vector<CanvasVertex> m_vertices;
-    std::vector<uint32_t> m_indices;
+    // Add a quad to text batch (for font glyphs)
+    void addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3,
+                     glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2, glm::vec2 uv3,
+                     const glm::vec4& color);
+
+    // Render a batch
+    void renderBatch(WGPURenderPassEncoder pass, Context& ctx,
+                     const std::vector<CanvasVertex>& vertices,
+                     const std::vector<uint32_t>& indices,
+                     WGPUBindGroup bindGroup);
+
+    // Batched geometry - separate batches for solid and text primitives
+    std::vector<CanvasVertex> m_solidVertices;
+    std::vector<uint32_t> m_solidIndices;
+    std::vector<CanvasVertex> m_textVertices;
+    std::vector<uint32_t> m_textIndices;
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

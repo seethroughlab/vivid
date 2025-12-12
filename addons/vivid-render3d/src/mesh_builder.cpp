@@ -459,11 +459,89 @@ MeshBuilder MeshBuilder::box(float w, float h, float d) {
 }
 
 MeshBuilder MeshBuilder::box(glm::vec3 size) {
-    // Use Manifold's built-in cube for CSG-safe geometry
-    auto m = std::make_unique<manifold::Manifold>(
-        manifold::Manifold::Cube(manifold::vec3(size.x, size.y, size.z), true));
+    // Build box manually with proper UV coordinates for each face
+    // Each face has its own 4 vertices for correct normals and UVs
+    MeshBuilder builder;
 
-    MeshBuilder builder(std::move(m));
+    float hx = size.x * 0.5f;
+    float hy = size.y * 0.5f;
+    float hz = size.z * 0.5f;
+
+    // FRONT face (+Z) - looking from +Z
+    {
+        glm::vec3 normal(0, 0, 1);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(glm::vec3(-hx, -hy, hz), normal, glm::vec2(0, 1));
+        builder.addVertex(glm::vec3( hx, -hy, hz), normal, glm::vec2(1, 1));
+        builder.addVertex(glm::vec3( hx,  hy, hz), normal, glm::vec2(1, 0));
+        builder.addVertex(glm::vec3(-hx,  hy, hz), normal, glm::vec2(0, 0));
+        builder.addTriangle(base, base + 1, base + 2);
+        builder.addTriangle(base, base + 2, base + 3);
+    }
+
+    // BACK face (-Z) - looking from -Z
+    {
+        glm::vec3 normal(0, 0, -1);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(glm::vec3( hx, -hy, -hz), normal, glm::vec2(0, 1));
+        builder.addVertex(glm::vec3(-hx, -hy, -hz), normal, glm::vec2(1, 1));
+        builder.addVertex(glm::vec3(-hx,  hy, -hz), normal, glm::vec2(1, 0));
+        builder.addVertex(glm::vec3( hx,  hy, -hz), normal, glm::vec2(0, 0));
+        builder.addTriangle(base, base + 1, base + 2);
+        builder.addTriangle(base, base + 2, base + 3);
+    }
+
+    // RIGHT face (+X) - looking from +X
+    {
+        glm::vec3 normal(1, 0, 0);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(glm::vec3(hx, -hy,  hz), normal, glm::vec2(0, 1));
+        builder.addVertex(glm::vec3(hx, -hy, -hz), normal, glm::vec2(1, 1));
+        builder.addVertex(glm::vec3(hx,  hy, -hz), normal, glm::vec2(1, 0));
+        builder.addVertex(glm::vec3(hx,  hy,  hz), normal, glm::vec2(0, 0));
+        builder.addTriangle(base, base + 1, base + 2);
+        builder.addTriangle(base, base + 2, base + 3);
+    }
+
+    // LEFT face (-X) - looking from -X
+    {
+        glm::vec3 normal(-1, 0, 0);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(glm::vec3(-hx, -hy, -hz), normal, glm::vec2(0, 1));
+        builder.addVertex(glm::vec3(-hx, -hy,  hz), normal, glm::vec2(1, 1));
+        builder.addVertex(glm::vec3(-hx,  hy,  hz), normal, glm::vec2(1, 0));
+        builder.addVertex(glm::vec3(-hx,  hy, -hz), normal, glm::vec2(0, 0));
+        builder.addTriangle(base, base + 1, base + 2);
+        builder.addTriangle(base, base + 2, base + 3);
+    }
+
+    // TOP face (+Y) - looking from +Y
+    {
+        glm::vec3 normal(0, 1, 0);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(glm::vec3(-hx, hy,  hz), normal, glm::vec2(0, 1));
+        builder.addVertex(glm::vec3( hx, hy,  hz), normal, glm::vec2(1, 1));
+        builder.addVertex(glm::vec3( hx, hy, -hz), normal, glm::vec2(1, 0));
+        builder.addVertex(glm::vec3(-hx, hy, -hz), normal, glm::vec2(0, 0));
+        builder.addTriangle(base, base + 1, base + 2);
+        builder.addTriangle(base, base + 2, base + 3);
+    }
+
+    // BOTTOM face (-Y) - looking from -Y
+    {
+        glm::vec3 normal(0, -1, 0);
+        uint32_t base = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(glm::vec3(-hx, -hy, -hz), normal, glm::vec2(0, 1));
+        builder.addVertex(glm::vec3( hx, -hy, -hz), normal, glm::vec2(1, 1));
+        builder.addVertex(glm::vec3( hx, -hy,  hz), normal, glm::vec2(1, 0));
+        builder.addVertex(glm::vec3(-hx, -hy,  hz), normal, glm::vec2(0, 0));
+        builder.addTriangle(base, base + 1, base + 2);
+        builder.addTriangle(base, base + 2, base + 3);
+    }
+
+    // Sync to manifold for CSG operations
+    builder.syncToManifold();
+
     return builder;
 }
 
@@ -833,14 +911,89 @@ MeshBuilder MeshBuilder::wedge(float width, float height, float depth) {
 }
 
 MeshBuilder MeshBuilder::frustum(float bottomRadius, float topRadius, float height, int segments) {
-    // Use Manifold's cylinder which supports different radii at top and bottom
-    auto m = std::make_unique<manifold::Manifold>(
-        manifold::Manifold::Cylinder(static_cast<double>(height),
-                                      static_cast<double>(bottomRadius),
-                                      static_cast<double>(topRadius),
-                                      segments, true));
+    // Build frustum manually with proper UV coordinates
+    // Similar to cylinder() but with different top and bottom radii
+    MeshBuilder builder;
+    float halfH = height * 0.5f;
 
-    MeshBuilder builder(std::move(m));
+    // Generate vertices for the SIDE (separate from caps for sharp edges)
+    // Two rings of vertices - top and bottom of the side surface
+    for (int i = 0; i <= segments; ++i) {
+        float angle = 2.0f * glm::pi<float>() * i / segments;
+        float cosA = std::cos(angle);
+        float sinA = std::sin(angle);
+        float u = static_cast<float>(i) / segments;
+
+        // Bottom ring (side) - uses bottomRadius
+        float bx = bottomRadius * cosA;
+        float bz = bottomRadius * sinA;
+        builder.addVertex(glm::vec3(bx, -halfH, bz), glm::vec3(0), glm::vec2(u, 0));
+
+        // Top ring (side) - uses topRadius
+        float tx = topRadius * cosA;
+        float tz = topRadius * sinA;
+        builder.addVertex(glm::vec3(tx, halfH, tz), glm::vec3(0), glm::vec2(u, 1));
+    }
+
+    // Side faces (CCW winding for outward-facing normals)
+    for (int i = 0; i < segments; ++i) {
+        uint32_t bl = i * 2;      // bottom-left
+        uint32_t tl = i * 2 + 1;  // top-left
+        uint32_t br = (i + 1) * 2;      // bottom-right
+        uint32_t tr = (i + 1) * 2 + 1;  // top-right
+
+        builder.addTriangle(bl, tl, tr);
+        builder.addTriangle(bl, tr, br);
+    }
+
+    // TOP CAP - separate vertices with upward normals (if topRadius > 0)
+    if (topRadius > 0.001f) {
+        uint32_t topCenterIdx = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(glm::vec3(0, halfH, 0), glm::vec3(0, 1, 0), glm::vec2(0.5f, 0.5f));
+
+        uint32_t topRingStart = static_cast<uint32_t>(builder.vertexCount());
+        for (int i = 0; i < segments; ++i) {
+            float angle = 2.0f * glm::pi<float>() * i / segments;
+            float x = topRadius * std::cos(angle);
+            float z = topRadius * std::sin(angle);
+            builder.addVertex(glm::vec3(x, halfH, z), glm::vec3(0, 1, 0),
+                             glm::vec2(0.5f + 0.5f * std::cos(angle), 0.5f + 0.5f * std::sin(angle)));
+        }
+
+        for (int i = 0; i < segments; ++i) {
+            uint32_t curr = topRingStart + i;
+            uint32_t next = topRingStart + ((i + 1) % segments);
+            builder.addTriangle(topCenterIdx, next, curr);  // CCW when viewed from above
+        }
+    }
+
+    // BOTTOM CAP - separate vertices with downward normals (if bottomRadius > 0)
+    if (bottomRadius > 0.001f) {
+        uint32_t botCenterIdx = static_cast<uint32_t>(builder.vertexCount());
+        builder.addVertex(glm::vec3(0, -halfH, 0), glm::vec3(0, -1, 0), glm::vec2(0.5f, 0.5f));
+
+        uint32_t botRingStart = static_cast<uint32_t>(builder.vertexCount());
+        for (int i = 0; i < segments; ++i) {
+            float angle = 2.0f * glm::pi<float>() * i / segments;
+            float x = bottomRadius * std::cos(angle);
+            float z = bottomRadius * std::sin(angle);
+            builder.addVertex(glm::vec3(x, -halfH, z), glm::vec3(0, -1, 0),
+                             glm::vec2(0.5f + 0.5f * std::cos(angle), 0.5f - 0.5f * std::sin(angle)));
+        }
+
+        for (int i = 0; i < segments; ++i) {
+            uint32_t curr = botRingStart + i;
+            uint32_t next = botRingStart + ((i + 1) % segments);
+            builder.addTriangle(botCenterIdx, curr, next);  // CCW when viewed from below
+        }
+    }
+
+    // Compute smooth normals for the side surface
+    builder.computeNormals();
+
+    // Sync to manifold for CSG operations
+    builder.syncToManifold();
+
     return builder;
 }
 

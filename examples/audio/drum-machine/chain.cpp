@@ -159,38 +159,38 @@ void setup(Context& ctx) {
 
     // Background
     auto& bg = chain.add<SolidColor>("bg");
-    bg.color(0.05f, 0.05f, 0.08f);
+    bg.color(Color::fromHex("#0D0D14"));
 
-    // Kick visualizer (bottom)
+    // Kick visualizer (bottom) - red/orange
     auto& kickVis = chain.add<Shape>("kickVis");
     kickVis.type(ShapeType::Circle)
            .position(0.5f, 0.3f)
            .size(0.15f)
-           .color(1.0f, 0.3f, 0.2f, 1.0f)
+           .color(Color::Tomato)
            .softness(0.1f);
 
-    // Snare visualizer (center-left)
+    // Snare visualizer (center-left) - yellow/gold
     auto& snareVis = chain.add<Shape>("snareVis");
     snareVis.type(ShapeType::Circle)
             .position(0.35f, 0.5f)
             .size(0.12f)
-            .color(1.0f, 0.9f, 0.3f, 1.0f)
+            .color(Color::Gold)
             .softness(0.1f);
 
-    // Hi-hat visualizer (center-right)
+    // Hi-hat visualizer (center-right) - cyan
     auto& hihatVis = chain.add<Shape>("hihatVis");
     hihatVis.type(ShapeType::Circle)
             .position(0.65f, 0.5f)
             .size(0.08f)
-            .color(0.3f, 0.9f, 1.0f, 1.0f)
+            .color(Color::Cyan)
             .softness(0.1f);
 
-    // Clap visualizer (top)
+    // Clap visualizer (top) - magenta/violet
     auto& clapVis = chain.add<Shape>("clapVis");
     clapVis.type(ShapeType::Circle)
            .position(0.5f, 0.7f)
            .size(0.1f)
-           .color(0.9f, 0.4f, 1.0f, 1.0f)
+           .color(Color::Orchid)
            .softness(0.1f);
 
     // Composite all layers
@@ -412,11 +412,11 @@ void update(Context& ctx) {
     hihatVis.size(0.04f + hihatDecay * 0.08f);
     clapVis.size(0.05f + clapDecay * 0.1f);
 
-    // Pulse colors on hit
-    kickVis.color(1.0f, 0.3f + kickDecay * 0.7f, 0.2f + kickDecay * 0.3f, 0.3f + kickDecay * 0.7f);
-    snareVis.color(1.0f, 0.9f, 0.3f + snareDecay * 0.3f, 0.3f + snareDecay * 0.7f);
-    hihatVis.color(0.3f + hihatDecay * 0.2f, 0.9f, 1.0f, 0.3f + hihatDecay * 0.7f);
-    clapVis.color(0.9f, 0.4f + clapDecay * 0.3f, 1.0f, 0.3f + clapDecay * 0.7f);
+    // Pulse colors on hit - using Color constants with dynamic alpha
+    kickVis.color(Color::Tomato.withAlpha(0.3f + kickDecay * 0.7f));
+    snareVis.color(Color::Gold.withAlpha(0.3f + snareDecay * 0.7f));
+    hihatVis.color(Color::Cyan.withAlpha(0.3f + hihatDecay * 0.7f));
+    clapVis.color(Color::Orchid.withAlpha(0.3f + clapDecay * 0.7f));
 }
 
 VIVID_CHAIN(setup, update)

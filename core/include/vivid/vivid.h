@@ -6,6 +6,8 @@
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/chain.h>
+#include <vivid/param.h>
+#include <vivid/color.h>
 
 namespace vivid {
 

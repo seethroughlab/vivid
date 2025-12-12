@@ -51,7 +51,7 @@ void setup(Context& ctx) {
     g_models = findModels("assets/models");
     if (g_models.empty()) {
         std::cerr << "[gallery] No models found in assets/models/" << std::endl;
-        chain.add<SolidColor>("fallback").color(0.2f, 0.1f, 0.15f);
+        chain.add<SolidColor>("fallback").color(Color::fromHex("#331A26"));
         chain.output("fallback");
         return;
     }
@@ -82,7 +82,7 @@ void setup(Context& ctx) {
     // Key light (warm, from upper right)
     auto& keyLight = chain.add<DirectionalLight>("keyLight")
         .direction(1.0f, 2.0f, 1.5f)
-        .color(1.0f, 0.95f, 0.9f)
+        .color(Color::fromHex("#FFF2E6"))  // Warm white
         .intensity(2.5f);
 
     // IBL environment for reflections
@@ -98,7 +98,7 @@ void setup(Context& ctx) {
         .ibl(true)
         .environmentInput(&ibl)
         .showSkybox(true)
-        .clearColor(0.08f, 0.06f, 0.1f);
+        .clearColor(Color::fromHex("#140F1A"));
 
     // =========================================================================
     // Post-Processing Effects

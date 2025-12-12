@@ -98,7 +98,7 @@ void setup(Context& ctx) {
 
     // Background - dark with subtle color shift
     auto& bg = chain.add<SolidColor>("bg");
-    bg.color(0.02f, 0.02f, 0.04f);
+    bg.color(Color::fromHex("#05050A"));
 
     // Bass particles - large, slow, react to sub-bass
     auto& bassParticles = chain.add<Particles>("bassParticles");
@@ -112,10 +112,10 @@ void setup(Context& ctx) {
         .drag(0.8f)
         .life(3.0f)
         .size(0.025f, 0.005f)
-        .color(0.8f, 0.2f, 0.4f, 1.0f)
-        .colorEnd(0.4f, 0.1f, 0.6f, 0.0f)
+        .color(Color::fromHex("#CC3366"))
+        .colorEnd(Color::fromHex("#661A99").withAlpha(0.0f))
         .fadeOut(true)
-        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        .clearColor(Color::Transparent);
 
     // Mid particles - medium, react to mids
     auto& midParticles = chain.add<Particles>("midParticles");
@@ -130,10 +130,10 @@ void setup(Context& ctx) {
         .drag(0.5f)
         .life(2.5f)
         .size(0.012f, 0.003f)
-        .color(0.2f, 0.6f, 1.0f, 1.0f)
-        .colorEnd(0.1f, 0.3f, 0.8f, 0.0f)
+        .color(Color::DodgerBlue)
+        .colorEnd(Color::MediumBlue.withAlpha(0.0f))
         .fadeOut(true)
-        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        .clearColor(Color::Transparent);
 
     // High particles - small, fast, sparkle effect
     auto& highParticles = chain.add<Particles>("highParticles");
@@ -150,7 +150,7 @@ void setup(Context& ctx) {
         .size(0.006f, 0.001f)
         .colorMode(ColorMode::Rainbow)
         .fadeOut(true)
-        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        .clearColor(Color::Transparent);
 
     // Composite particles
     auto& particleComp = chain.add<Composite>("particleComp");
@@ -165,7 +165,7 @@ void setup(Context& ctx) {
     beatShape.type(ShapeType::Circle)
              .position(0.5f, 0.5f)
              .size(0.15f)
-             .color(1.0f, 1.0f, 1.0f, 0.8f)
+             .color(Color::White.withAlpha(0.8f))
              .softness(0.3f);
 
     auto& shapeComp = chain.add<Composite>("shapeComp");
