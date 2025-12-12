@@ -57,90 +57,124 @@ public:
     float spineHeight = 0.04f;
 
     MeshBuilder build() const override {
-        // Build long, narrow arrowhead shape
-        // The craft is like a sleek needle - MUCH longer than wide
+        // Build long, narrow arrowhead shape like FEISAR reference
+        // The craft is sleek needle - front tapers to point, rear has swept wings
 
-        // === MAIN BODY ===
-        // Long tapered fuselage
-        auto body = MeshBuilder::box(length * 0.5f, height, spineWidth * 1.4f)
-            .translate({-length * 0.1f, 0, 0});
-
-        // Forward fuselage taper - long wedge pointing forward
-        auto forwardTaper = MeshBuilder::wedge(length * 0.45f, height, spineWidth * 1.3f)
+        // === FORWARD NOSE SECTION ===
+        // Long tapered nose - almost half the craft length
+        auto body = MeshBuilder::wedge(length * 0.5f, height, spineWidth * 1.2f)
             .rotate(glm::radians(180.0f), {0, 1, 0})  // Point forward
-            .translate({length * 0.12f, 0, 0});
-        body.append(forwardTaper);
+            .translate({length * 0.25f, 0, 0});
+
+        // === MID BODY ===
+        // Widest section where wings attach
+        auto midBody = MeshBuilder::box(length * 0.25f, height, width * 0.35f)
+            .translate({-length * 0.05f, 0, 0});
+        body.append(midBody);
+
+        // Transition from nose to mid-body (fill the gap)
+        auto noseToMid = MeshBuilder::box(length * 0.15f, height, spineWidth * 1.1f)
+            .translate({length * 0.02f, 0, 0});
+        body.append(noseToMid);
 
         // === SWEPT WINGS ===
-        // Narrow wings that sweep back along the body
-        float wingChord = length * 0.35f;  // Wing length (front to back)
-        float wingSpan = width * 0.38f;    // Half-wingspan (narrow)
+        // Wings that sweep back from mid-body to nacelles
+        // Using wedges laid flat to create swept triangular wings
+        float wingLength = length * 0.4f;   // How far back the wing extends
+        float wingSpan = width * 0.32f;     // How far out each wing goes
 
         for (float zSign : {1.0f, -1.0f}) {
-            // Main wing - triangular, swept back
-            auto wing = MeshBuilder::wedge(wingChord, wingSpan, height * 0.9f)
-                .rotate(glm::radians(-90.0f * zSign), {1, 0, 0})  // Lay flat
-                .rotate(glm::radians(180.0f), {0, 1, 0})  // Point taper backward
-                .translate({-length * 0.22f, 0, zSign * wingSpan * 0.5f});
+            // Main swept wing - triangular planform
+            // Wedge rotated to lay flat, then positioned
+            auto wing = MeshBuilder::wedge(wingLength, wingSpan, height * 0.85f)
+                .rotate(glm::radians(-90.0f * zSign), {1, 0, 0})  // Lay flat horizontally
+                .rotate(glm::radians(165.0f), {0, 1, 0})  // Sweep angle
+                .translate({-length * 0.12f, 0, zSign * (width * 0.17f + wingSpan * 0.3f)});
             body.append(wing);
 
-            // Wing root filler
-            auto wingRoot = MeshBuilder::box(wingChord * 0.7f, height * 0.95f, wingSpan * 0.4f)
-                .translate({-length * 0.18f, 0, zSign * wingSpan * 0.22f});
-            body.append(wingRoot);
+            // Wing-body blend - smooth transition
+            auto wingBlend = MeshBuilder::box(wingLength * 0.5f, height * 0.9f, wingSpan * 0.5f)
+                .translate({-length * 0.15f, 0, zSign * width * 0.22f});
+            body.append(wingBlend);
+
+            // Inner wing surface
+            auto innerWing = MeshBuilder::box(wingLength * 0.6f, height * 0.85f, wingSpan * 0.35f)
+                .translate({-length * 0.20f, 0, zSign * width * 0.28f});
+            body.append(innerWing);
         }
 
-        // === REAR SECTION ===
-        // Tapered rear
-        auto rearTaper = MeshBuilder::wedge(length * 0.18f, height * 0.9f, spineWidth * 1.2f)
+        // === REAR BODY ===
+        // Tapers toward the back between the nacelles
+        auto rearBody = MeshBuilder::box(length * 0.15f, height * 0.9f, spineWidth * 1.0f)
+            .translate({-length * 0.32f, 0, 0});
+        body.append(rearBody);
+
+        auto rearTaper = MeshBuilder::wedge(length * 0.12f, height * 0.85f, spineWidth * 0.9f)
             .translate({-length * 0.42f, 0, 0});
         body.append(rearTaper);
 
         // === CENTRAL SPINE RIDGE ===
-        auto spine = MeshBuilder::box(length * 0.45f, spineHeight, spineWidth * 0.7f)
-            .translate({-length * 0.05f, height * 0.5f + spineHeight * 0.5f, 0});
+        auto spine = MeshBuilder::box(length * 0.5f, spineHeight, spineWidth * 0.65f)
+            .translate({0.0f, height * 0.5f + spineHeight * 0.5f, 0});
         body.append(spine);
 
-        // === ENGINE NACELLES ===
-        // On the rear wing area
-        for (float zSign : {1.0f, -1.0f}) {
-            float zPos = zSign * (width * 0.32f);
+        // Spine forward extension
+        auto spineFwd = MeshBuilder::wedge(length * 0.15f, spineHeight * 0.8f, spineWidth * 0.5f)
+            .rotate(glm::radians(180.0f), {0, 1, 0})
+            .translate({length * 0.32f, height * 0.5f + spineHeight * 0.4f, 0});
+        body.append(spineFwd);
 
-            // Nacelle main body
-            auto nacelle = MeshBuilder::box(nacelleLength, height * 1.3f, nacelleWidth)
-                .translate({-length * 0.30f, height * 0.6f, zPos});
+        // === ENGINE NACELLES ===
+        // Integrated into the rear wing area
+        for (float zSign : {1.0f, -1.0f}) {
+            float zPos = zSign * (width * 0.35f);
+
+            // Nacelle main body - elongated
+            auto nacelle = MeshBuilder::box(nacelleLength * 1.2f, height * 1.4f, nacelleWidth)
+                .translate({-length * 0.32f, height * 0.65f, zPos});
             body.append(nacelle);
 
             // Nacelle front taper
-            auto nacelleFront = MeshBuilder::wedge(0.15f, height * 1.1f, nacelleWidth * 0.85f)
+            auto nacelleFront = MeshBuilder::wedge(0.18f, height * 1.2f, nacelleWidth * 0.9f)
                 .rotate(glm::radians(180.0f), {0, 1, 0})
-                .translate({-length * 0.30f + nacelleLength * 0.5f + 0.06f, height * 0.55f, zPos});
+                .translate({-length * 0.32f + nacelleLength * 0.6f + 0.08f, height * 0.6f, zPos});
             body.append(nacelleFront);
 
             // Nacelle rear exhaust housing
-            auto exhaustHousing = MeshBuilder::box(0.06f, height * 1.5f, nacelleWidth * 1.0f)
-                .translate({-length * 0.30f - nacelleLength * 0.5f - 0.01f, height * 0.65f, zPos});
+            auto exhaustHousing = MeshBuilder::box(0.07f, height * 1.6f, nacelleWidth * 1.05f)
+                .translate({-length * 0.32f - nacelleLength * 0.6f - 0.02f, height * 0.7f, zPos});
             body.append(exhaustHousing);
+
+            // Air intake on top
+            auto intake = MeshBuilder::wedge(0.1f, 0.03f, nacelleWidth * 0.5f)
+                .translate({-length * 0.22f, height * 1.35f, zPos});
+            body.append(intake);
         }
 
-        // === VERTICAL STABILIZERS ===
-        // Small fins at wing tips
+        // === WING TIP ELEMENTS ===
+        // Small vertical stabilizers at wing trailing edge
         for (float zSign : {1.0f, -1.0f}) {
-            float zPos = zSign * (width * 0.42f);
-            auto fin = MeshBuilder::box(0.10f, height * 1.6f, 0.012f)
-                .translate({-length * 0.35f, height * 0.8f, zPos});
-            body.append(fin);
+            float zPos = zSign * (width * 0.46f);
+            auto tipFin = MeshBuilder::box(0.08f, height * 1.4f, 0.01f)
+                .translate({-length * 0.35f, height * 0.7f, zPos});
+            body.append(tipFin);
         }
 
         // === PANEL LINES ===
         float panelDepth = 0.004f;
-        float panelWidth = 0.005f;
+        float panelLineWidth = 0.005f;
 
-        for (float zOffset : {0.07f, -0.07f}) {
-            auto line = MeshBuilder::box(length * 0.3f, panelDepth, panelWidth)
-                .translate({0.0f, height * 0.5f + spineHeight + panelDepth * 0.3f, zOffset});
+        // Longitudinal lines along spine
+        for (float zOffset : {0.06f, -0.06f}) {
+            auto line = MeshBuilder::box(length * 0.35f, panelDepth, panelLineWidth)
+                .translate({0.05f, height * 0.5f + spineHeight + panelDepth * 0.3f, zOffset});
             body.subtract(line);
         }
+
+        // Cross panel line
+        auto crossLine = MeshBuilder::box(panelLineWidth, panelDepth, spineWidth * 0.5f)
+            .translate({-length * 0.08f, height * 0.5f + spineHeight + panelDepth * 0.3f, 0});
+        body.subtract(crossLine);
 
         return body;
     }
@@ -246,9 +280,9 @@ public:
     bool isRight = false;
 
     EngineExhaust(bool right = false) : isRight(right) {
-        // Match nacelle positions: width * 0.32 = 0.9 * 0.32 = 0.29
-        float zOffset = right ? -0.29f : 0.29f;
-        m_offset = {-0.95f, 0.08f, zOffset};  // Behind nacelles at rear
+        // Match nacelle positions: width * 0.35 = 0.9 * 0.35 = 0.315
+        float zOffset = right ? -0.315f : 0.315f;
+        m_offset = {-1.05f, 0.10f, zOffset};  // Behind nacelles at rear
     }
 
     MeshBuilder build() const override {
