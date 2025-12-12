@@ -546,6 +546,9 @@ public:
         // Apply flat normals for faceted PS1 look
         mesh.computeFlatNormals();
 
+        // Project UVs from top-down for livery mapping
+        mesh.projectUVsNormalized(Axis::Y);
+
         return mesh;
     }
 

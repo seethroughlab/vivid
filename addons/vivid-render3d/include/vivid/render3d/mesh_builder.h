@@ -94,6 +94,16 @@ public:
     /// Invert normals and winding order
     MeshBuilder& invert();
 
+    /// Project UVs from an axis (box/planar projection)
+    /// @param axis The axis to project from (Y = top-down, Z = front, X = side)
+    /// @param scale UV scale factor (default 1.0)
+    /// @param offset UV offset (default 0,0)
+    MeshBuilder& projectUVs(Axis axis, float scale = 1.0f, glm::vec2 offset = glm::vec2(0));
+
+    /// Project UVs from bounding box (normalized 0-1 across mesh extents)
+    /// @param axis The axis to project from
+    MeshBuilder& projectUVsNormalized(Axis axis);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Mesh Combination

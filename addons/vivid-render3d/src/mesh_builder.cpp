@@ -479,6 +479,63 @@ MeshBuilder& MeshBuilder::invert() {
     return *this;
 }
 
+MeshBuilder& MeshBuilder::projectUVs(Axis axis, float scale, glm::vec2 offset) {
+    for (auto& v : m_vertices) {
+        glm::vec2 uv;
+        switch (axis) {
+            case Axis::X:  // Side view projection (YZ -> UV)
+                uv = glm::vec2(v.position.z, v.position.y);
+                break;
+            case Axis::Y:  // Top-down projection (XZ -> UV)
+                uv = glm::vec2(v.position.x, v.position.z);
+                break;
+            case Axis::Z:  // Front view projection (XY -> UV)
+                uv = glm::vec2(v.position.x, v.position.y);
+                break;
+        }
+        v.uv = uv * scale + offset;
+    }
+    return *this;
+}
+
+MeshBuilder& MeshBuilder::projectUVsNormalized(Axis axis) {
+    if (m_vertices.empty()) return *this;
+
+    // Calculate bounding box
+    glm::vec3 minBounds(std::numeric_limits<float>::max());
+    glm::vec3 maxBounds(std::numeric_limits<float>::lowest());
+
+    for (const auto& v : m_vertices) {
+        minBounds = glm::min(minBounds, v.position);
+        maxBounds = glm::max(maxBounds, v.position);
+    }
+
+    glm::vec3 size = maxBounds - minBounds;
+
+    // Avoid division by zero
+    if (size.x < 0.0001f) size.x = 1.0f;
+    if (size.y < 0.0001f) size.y = 1.0f;
+    if (size.z < 0.0001f) size.z = 1.0f;
+
+    // Project each vertex
+    for (auto& v : m_vertices) {
+        glm::vec3 normalized = (v.position - minBounds) / size;
+        switch (axis) {
+            case Axis::X:  // Side view (YZ -> UV)
+                v.uv = glm::vec2(normalized.z, 1.0f - normalized.y);
+                break;
+            case Axis::Y:  // Top-down (XZ -> UV)
+                v.uv = glm::vec2(normalized.x, normalized.z);
+                break;
+            case Axis::Z:  // Front view (XY -> UV)
+                v.uv = glm::vec2(normalized.x, 1.0f - normalized.y);
+                break;
+        }
+    }
+
+    return *this;
+}
+
 // -----------------------------------------------------------------------------
 // Build
 // -----------------------------------------------------------------------------
