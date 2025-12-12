@@ -151,6 +151,20 @@ int main(int argc, char** argv) {
     std::string snapshotPath;
     int snapshotFrame = 5;  // Default: capture after 5 frames to allow warm-up
     bool headless = false;
+    int windowWidth = 1280;
+    int windowHeight = 720;
+    int renderWidth = 0;   // 0 = use window size
+    int renderHeight = 0;
+    bool startFullscreen = false;
+
+    // Helper to parse WxH format
+    auto parseSize = [](const std::string& s, int& w, int& h) {
+        size_t x = s.find('x');
+        if (x != std::string::npos) {
+            w = std::atoi(s.substr(0, x).c_str());
+            h = std::atoi(s.substr(x + 1).c_str());
+        }
+    };
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -164,6 +178,16 @@ int main(int argc, char** argv) {
             snapshotFrame = std::atoi(arg.substr(17).c_str());
         } else if (arg == "--headless") {
             headless = true;
+        } else if (arg == "--window" && i + 1 < argc) {
+            parseSize(argv[++i], windowWidth, windowHeight);
+        } else if (arg.rfind("--window=", 0) == 0) {
+            parseSize(arg.substr(9), windowWidth, windowHeight);
+        } else if (arg == "--render" && i + 1 < argc) {
+            parseSize(argv[++i], renderWidth, renderHeight);
+        } else if (arg.rfind("--render=", 0) == 0) {
+            parseSize(arg.substr(9), renderWidth, renderHeight);
+        } else if (arg == "--fullscreen") {
+            startFullscreen = true;
         } else if (arg[0] != '-') {
             // Non-flag argument is the project path
             projectPath = arg;
@@ -180,7 +204,7 @@ int main(int argc, char** argv) {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
     // Create window
-    GLFWwindow* window = glfwCreateWindow(1280, 720, "Vivid", nullptr, nullptr);
+    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "Vivid", nullptr, nullptr);
     if (!window) {
         std::cerr << "Failed to create window" << std::endl;
         glfwTerminate();
@@ -341,6 +365,18 @@ int main(int argc, char** argv) {
 
     // Create context
     Context ctx(window, device, queue);
+
+    // Set render resolution from command-line (or default to window size)
+    if (renderWidth > 0 && renderHeight > 0) {
+        ctx.setRenderResolution(renderWidth, renderHeight);
+    } else {
+        ctx.setRenderResolution(windowWidth, windowHeight);
+    }
+
+    // Start in fullscreen if requested
+    if (startFullscreen) {
+        ctx.fullscreen(true);
+    }
 
     // Set up scroll callback
     glfwSetWindowUserPointer(window, &ctx);
@@ -661,6 +697,20 @@ int main(int argc, char** argv) {
 
                 // Auto-initialize the chain
                 ctx.chain().init(ctx);
+
+                // Honor chain's window size request (if not overridden by command-line)
+                if (ctx.chain().hasWindowSize()) {
+                    int w = ctx.chain().windowWidth();
+                    int h = ctx.chain().windowHeight();
+                    if (w > 0 && h > 0 && !isFullscreen) {
+                        glfwSetWindowSize(window, w, h);
+                    }
+                }
+
+                // Update render resolution from chain if set
+                if (ctx.chain().hasResolution()) {
+                    ctx.setRenderResolution(ctx.chain().defaultWidth(), ctx.chain().defaultHeight());
+                }
 
                 // Load and apply sidecar parameter overrides
                 chainVisualizer.loadAndApplySidecar(ctx);

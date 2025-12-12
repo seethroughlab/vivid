@@ -302,6 +302,78 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Resolution Configuration
+    /// @{
+
+    /**
+     * @brief Set window size (requested from runtime)
+     * @param w Width in pixels
+     * @param h Height in pixels
+     * @return Reference for chaining
+     *
+     * Requests the runtime to resize the window. The request is honored
+     * after chain initialization.
+     *
+     * @par Example
+     * @code
+     * void setup(Context& ctx) {
+     *     auto& chain = ctx.chain();
+     *     chain.windowSize(1920, 1080);
+     * }
+     * @endcode
+     */
+    Chain& windowSize(int w, int h) {
+        m_windowWidth = w;
+        m_windowHeight = h;
+        m_windowSizeSet = true;
+        return *this;
+    }
+
+    /// @brief Get requested window width
+    int windowWidth() const { return m_windowWidth; }
+
+    /// @brief Get requested window height
+    int windowHeight() const { return m_windowHeight; }
+
+    /// @brief Check if window size was requested
+    bool hasWindowSize() const { return m_windowSizeSet; }
+
+    /**
+     * @brief Set default render resolution for generators
+     * @param w Width in pixels
+     * @param h Height in pixels
+     * @return Reference for chaining
+     *
+     * Sets the default resolution that generators (Noise, Gradient, etc.) will use.
+     * Individual operators can override with their own resolution() call.
+     *
+     * @par Example
+     * @code
+     * void setup(Context& ctx) {
+     *     auto& chain = ctx.chain();
+     *     chain.resolution(3840, 2160);  // 4K render
+     *     chain.add<Noise>("noise");     // Renders at 3840x2160
+     * }
+     * @endcode
+     */
+    Chain& resolution(int w, int h) {
+        m_defaultWidth = w;
+        m_defaultHeight = h;
+        m_resolutionSet = true;
+        return *this;
+    }
+
+    /// @brief Get default render width
+    int defaultWidth() const { return m_defaultWidth; }
+
+    /// @brief Get default render height
+    int defaultHeight() const { return m_defaultHeight; }
+
+    /// @brief Check if default resolution was set
+    bool hasResolution() const { return m_resolutionSet; }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Debug Mode
     /// @{
 
@@ -361,6 +433,15 @@ private:
     // Debug mode
     bool debug_ = false;
     bool debugEnvChecked_ = false;
+
+    // Resolution configuration
+    int m_windowWidth = 0;
+    int m_windowHeight = 0;
+    bool m_windowSizeSet = false;
+
+    int m_defaultWidth = 1280;
+    int m_defaultHeight = 720;
+    bool m_resolutionSet = false;
 };
 
 } // namespace vivid

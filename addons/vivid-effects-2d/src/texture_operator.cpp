@@ -2,6 +2,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/context.h>
+#include <vivid/chain.h>
 
 namespace vivid::effects {
 
@@ -21,6 +22,17 @@ WGPUTextureView TextureOperator::inputView(int index) const {
 }
 
 void TextureOperator::createOutput(Context& ctx) {
+    // If resolution wasn't explicitly set, inherit from chain or context
+    if (!m_resolutionLocked) {
+        if (ctx.hasChain() && ctx.chain().hasResolution()) {
+            m_width = ctx.chain().defaultWidth();
+            m_height = ctx.chain().defaultHeight();
+        } else if (ctx.hasRenderResolution()) {
+            m_width = ctx.renderWidth();
+            m_height = ctx.renderHeight();
+        }
+        // Otherwise keep the default 1280x720
+    }
     createOutput(ctx, m_width, m_height);
 }
 

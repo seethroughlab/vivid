@@ -412,6 +412,53 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Render Resolution
+    /// @{
+
+    /**
+     * @brief Get render width (texture resolution)
+     * @return Render width in pixels
+     *
+     * This is the resolution operators render at, which can differ from window size.
+     * Defaults to 1280 or the value set via setRenderResolution().
+     */
+    int renderWidth() const { return m_renderWidth; }
+
+    /**
+     * @brief Get render height (texture resolution)
+     * @return Render height in pixels
+     */
+    int renderHeight() const { return m_renderHeight; }
+
+    /**
+     * @brief Get render aspect ratio
+     * @return Render width divided by height
+     */
+    float renderAspect() const {
+        return m_renderHeight > 0 ? static_cast<float>(m_renderWidth) / m_renderHeight : 1.0f;
+    }
+
+    /**
+     * @brief Set render resolution (texture size)
+     * @param w Width in pixels
+     * @param h Height in pixels
+     *
+     * Called by runtime based on --render command-line arg or chain.resolution().
+     */
+    void setRenderResolution(int w, int h) {
+        m_renderWidth = w;
+        m_renderHeight = h;
+        m_renderResolutionSet = true;
+    }
+
+    /**
+     * @brief Check if render resolution was explicitly set
+     * @return True if setRenderResolution() was called
+     */
+    bool hasRenderResolution() const { return m_renderResolutionSet; }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Audio Timing
     /// @{
 
@@ -449,6 +496,11 @@ private:
     // Window
     int m_width = 0;
     int m_height = 0;
+
+    // Render resolution (can differ from window size)
+    int m_renderWidth = 1280;
+    int m_renderHeight = 720;
+    bool m_renderResolutionSet = false;
 
     // Mouse
     glm::vec2 m_mousePos = {0, 0};

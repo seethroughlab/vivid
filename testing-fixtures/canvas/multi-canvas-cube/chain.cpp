@@ -82,6 +82,9 @@ static void drawTopOverlay(Canvas& c, float time) {
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
+    // Set window size from chain (can be overridden by --window command-line arg)
+    chain.windowSize(1280, 720);
+
     // Load font for all canvases
     auto& frontCanvas = chain.add<Canvas>("front").size(512, 512);
     frontCanvas.loadFont(ctx, "assets/fonts/space age.ttf", 32);
