@@ -2298,24 +2298,29 @@ The EditorBridge provides a WebSocket server for communication between the Vivid
 
 Located in `/extension/` - a streamlined TypeScript extension for VS Code integration.
 
-**Features (Phase 1):**
+**Features (Phase 1):** ✓
 - [x] WGSL language support (syntax highlighting, bracket matching)
 - [x] Status bar indicator (connected/disconnected/compile error)
 - [x] Compile error diagnostics (Problems panel with jump-to-line)
 - [x] Commands: Start Runtime, Stop Runtime, Force Reload, Toggle Decorations
 - [x] Auto-connect when workspace contains chain.cpp
-- [ ] WebSocket client connecting to EditorBridge
+- [x] WebSocket client connecting to EditorBridge
 
-**Features (Phase 2):**
-- [ ] Inline decorations showing live values (`~ 3.14`, `[img]`, `[geo]`)
-- [ ] Sparkline hover for value arrays
+**Features (Phase 2):** ✓
+- [x] Inline decorations showing output type tags (`[tex]`, `[geo]`, `[cam]`, etc.)
+- [x] Hover shows operator info with all parameter values
+- [x] Sparkline hover for value arrays (legacy node_update support)
 - [x] Operator tree view in sidebar (with live param values, click to go-to-line)
-- [ ] Parameter editing via hover or sidebar
+- [x] Parameter editing via tree view (click param to edit, validates input, syncs to runtime)
 
-**Features (Phase 3 - Future):**
+**Features (Phase 3):** ✓
 - [ ] Code snippets for common patterns
 - [ ] Go-to-definition for operator references
-- [ ] Performance stats display
+- [x] Performance stats panel:
+  - [x] FPS graph (sparkline showing frame rate over time)
+  - [x] Memory usage display (GPU texture memory estimate)
+  - [x] Frame time history graph
+  - [ ] Per-operator timing breakdown (runtime support in place, UI pending)
 
 **Comparable Extensions (Research):**
 - [Flutter](https://docs.flutter.dev/tools/vs-code): Hot reload button, error diagnostics, status bar

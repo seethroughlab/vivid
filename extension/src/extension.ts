@@ -2,12 +2,14 @@ import * as vscode from 'vscode';
 import { RuntimeClient, NodeUpdate } from './runtimeClient';
 import { DecorationManager } from './decorations';
 import { StatusBar } from './statusBar';
-import { OperatorTreeProvider } from './operatorTreeView';
+import { OperatorTreeProvider, ParamData } from './operatorTreeView';
+import { PerformancePanelProvider } from './performancePanel';
 
 let runtimeClient: RuntimeClient | undefined;
 let decorationManager: DecorationManager | undefined;
 let statusBar: StatusBar | undefined;
 let operatorTreeProvider: OperatorTreeProvider | undefined;
+let performancePanelProvider: PerformancePanelProvider | undefined;
 let outputChannel: vscode.OutputChannel;
 let diagnosticCollection: vscode.DiagnosticCollection;
 
@@ -28,6 +30,15 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.registerTreeDataProvider('vividOperators', operatorTreeProvider)
     );
 
+    // Register performance panel
+    performancePanelProvider = new PerformancePanelProvider(context.extensionUri);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            PerformancePanelProvider.viewType,
+            performancePanelProvider
+        )
+    );
+
     // Register commands
     context.subscriptions.push(
         vscode.commands.registerCommand('vivid.startRuntime', () => startRuntime(context)),
@@ -35,6 +46,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('vivid.reload', reload),
         vscode.commands.registerCommand('vivid.toggleInlineDecorations', toggleInlineDecorations),
         vscode.commands.registerCommand('vivid.goToOperator', goToOperator),
+        vscode.commands.registerCommand('vivid.editParam', editParam),
         vscode.commands.registerCommand('vivid.refreshOperators', () => {
             // Request fresh operator list from runtime
             if (runtimeClient) {
@@ -113,10 +125,16 @@ function connectToRuntime() {
     runtimeClient.onOperatorList((operators) => {
         outputChannel.appendLine(`Received ${operators.length} operators`);
         operatorTreeProvider?.updateOperators(operators);
+        decorationManager?.updateOperators(operators);
     });
 
     runtimeClient.onParamValues((params) => {
         operatorTreeProvider?.updateParams(params);
+        decorationManager?.updateParams(params);
+    });
+
+    runtimeClient.onPerformanceStats((stats) => {
+        performancePanelProvider?.updateStats(stats);
     });
 
     runtimeClient.onError((error) => {
@@ -281,6 +299,117 @@ async function goToOperator(line: number) {
     const range = new vscode.Range(lineIndex, 0, lineIndex, 0);
     editor.selection = new vscode.Selection(range.start, range.start);
     editor.revealRange(range, vscode.TextEditorRevealType.InCenter);
+}
+
+async function editParam(param: ParamData) {
+    if (!runtimeClient) {
+        vscode.window.showWarningMessage('Not connected to Vivid runtime');
+        return;
+    }
+
+    // Format current value for display
+    const currentValue = formatParamValue(param);
+
+    // Show input box with current value
+    const input = await vscode.window.showInputBox({
+        prompt: `Edit ${param.operator}.${param.name} (${param.type})`,
+        value: currentValue,
+        placeHolder: `Range: [${param.min}, ${param.max}]`,
+        validateInput: (value) => validateParamInput(value, param)
+    });
+
+    if (input === undefined) {
+        return; // Cancelled
+    }
+
+    // Parse the input and send to runtime
+    const newValue = parseParamInput(input, param);
+    if (newValue) {
+        runtimeClient.sendParamChange(param.operator, param.name, newValue);
+        outputChannel.appendLine(`Set ${param.operator}.${param.name} = ${input}`);
+    }
+}
+
+function formatParamValue(param: ParamData): string {
+    const v = param.value;
+    switch (param.type) {
+        case 'Float':
+        case 'Int':
+            return v[0].toString();
+        case 'Bool':
+            return v[0] ? 'true' : 'false';
+        case 'Vec2':
+            return `${v[0]}, ${v[1]}`;
+        case 'Vec3':
+            return `${v[0]}, ${v[1]}, ${v[2]}`;
+        case 'Vec4':
+        case 'Color':
+            return `${v[0]}, ${v[1]}, ${v[2]}, ${v[3]}`;
+        default:
+            return v[0].toString();
+    }
+}
+
+function validateParamInput(value: string, param: ParamData): string | undefined {
+    const parts = value.split(',').map(s => s.trim());
+
+    // Check component count
+    const expectedCount = getComponentCount(param.type);
+    if (parts.length !== expectedCount) {
+        return `Expected ${expectedCount} value(s) for ${param.type}`;
+    }
+
+    // Check if all parts are valid numbers (or bool)
+    for (const part of parts) {
+        if (param.type === 'Bool') {
+            if (part !== 'true' && part !== 'false' && part !== '0' && part !== '1') {
+                return 'Bool must be true/false or 0/1';
+            }
+        } else {
+            const num = parseFloat(part);
+            if (isNaN(num)) {
+                return `Invalid number: ${part}`;
+            }
+        }
+    }
+
+    return undefined; // Valid
+}
+
+function getComponentCount(type: string): number {
+    switch (type) {
+        case 'Float':
+        case 'Int':
+        case 'Bool':
+            return 1;
+        case 'Vec2':
+            return 2;
+        case 'Vec3':
+            return 3;
+        case 'Vec4':
+        case 'Color':
+            return 4;
+        default:
+            return 1;
+    }
+}
+
+function parseParamInput(input: string, param: ParamData): number[] | null {
+    const parts = input.split(',').map(s => s.trim());
+    const result: number[] = [0, 0, 0, 0];
+
+    for (let i = 0; i < parts.length && i < 4; i++) {
+        if (param.type === 'Bool') {
+            result[i] = (parts[i] === 'true' || parts[i] === '1') ? 1 : 0;
+        } else {
+            result[i] = parseFloat(parts[i]);
+            if (isNaN(result[i])) {
+                return null;
+            }
+        }
+    }
+
+    return result;
 }
 
 export function deactivate() {

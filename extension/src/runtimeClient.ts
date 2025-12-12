@@ -12,6 +12,21 @@ export interface NodeUpdate {
     height?: number;
 }
 
+export interface OperatorTiming {
+    name: string;
+    timeMs: number;
+}
+
+export interface PerformanceStats {
+    fps: number;
+    frameTimeMs: number;
+    fpsHistory: number[];
+    frameTimeHistory: number[];
+    textureMemoryBytes: number;
+    operatorCount: number;
+    operatorTimings: OperatorTiming[];
+}
+
 export interface RuntimeMessage {
     type: string;
     nodes?: NodeUpdate[];
@@ -19,6 +34,14 @@ export interface RuntimeMessage {
     message?: string;
     operators?: OperatorData[];
     params?: ParamData[];
+    // Performance stats fields (sent inline, not nested)
+    fps?: number;
+    frameTimeMs?: number;
+    fpsHistory?: number[];
+    frameTimeHistory?: number[];
+    textureMemoryBytes?: number;
+    operatorCount?: number;
+    operatorTimings?: OperatorTiming[];
 }
 
 type Callback<T> = (data: T) => void;
@@ -36,6 +59,7 @@ export class RuntimeClient {
     private compileStatusCallbacks: Callback<[boolean, string]>[] = [];
     private operatorListCallbacks: Callback<OperatorData[]>[] = [];
     private paramValuesCallbacks: Callback<ParamData[]>[] = [];
+    private performanceStatsCallbacks: Callback<PerformanceStats>[] = [];
     private errorCallbacks: Callback<string>[] = [];
 
     constructor(port: number) {
@@ -128,6 +152,21 @@ export class RuntimeClient {
                     }
                     break;
 
+                case 'performance_stats':
+                    {
+                        const stats: PerformanceStats = {
+                            fps: msg.fps ?? 0,
+                            frameTimeMs: msg.frameTimeMs ?? 0,
+                            fpsHistory: msg.fpsHistory ?? [],
+                            frameTimeHistory: msg.frameTimeHistory ?? [],
+                            textureMemoryBytes: msg.textureMemoryBytes ?? 0,
+                            operatorCount: msg.operatorCount ?? 0,
+                            operatorTimings: msg.operatorTimings ?? []
+                        };
+                        this.performanceStatsCallbacks.forEach(cb => cb(stats));
+                    }
+                    break;
+
                 case 'error':
                     this.errorCallbacks.forEach(cb => cb(msg.message ?? 'Unknown error'));
                     break;
@@ -146,6 +185,7 @@ export class RuntimeClient {
     }
     onOperatorList(callback: Callback<OperatorData[]>) { this.operatorListCallbacks.push(callback); }
     onParamValues(callback: Callback<ParamData[]>) { this.paramValuesCallbacks.push(callback); }
+    onPerformanceStats(callback: Callback<PerformanceStats>) { this.performanceStatsCallbacks.push(callback); }
     onError(callback: Callback<string>) { this.errorCallbacks.push(callback); }
 
     // Commands to runtime

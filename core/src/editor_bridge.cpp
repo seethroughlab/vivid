@@ -2,6 +2,7 @@
 #include <vivid/operator.h>
 #include <ixwebsocket/IXWebSocketServer.h>
 #include <iostream>
+#include <iomanip>
 #include <mutex>
 #include <sstream>
 
@@ -247,6 +248,57 @@ void EditorBridge::sendParamValues(const std::vector<EditorParamInfo>& params) {
         json << "}";
     }
 
+    json << "]}";
+
+    std::string msg = json.str();
+
+    // Broadcast to all clients
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+void EditorBridge::sendPerformanceStats(const EditorPerformanceStats& stats) {
+    if (!m_running || !m_impl) return;
+
+    // Build JSON message
+    std::ostringstream json;
+    json << std::fixed;
+    json << std::setprecision(2);
+    json << "{\"type\":\"performance_stats\",";
+
+    // Frame timing
+    json << "\"fps\":" << stats.fps << ",";
+    json << "\"frameTimeMs\":" << stats.frameTimeMs << ",";
+
+    // FPS history
+    json << "\"fpsHistory\":[";
+    for (size_t i = 0; i < stats.fpsHistory.size(); ++i) {
+        if (i > 0) json << ",";
+        json << stats.fpsHistory[i];
+    }
+    json << "],";
+
+    // Frame time history
+    json << "\"frameTimeHistory\":[";
+    for (size_t i = 0; i < stats.frameTimeHistory.size(); ++i) {
+        if (i > 0) json << ",";
+        json << stats.frameTimeHistory[i];
+    }
+    json << "],";
+
+    // Memory and operator count
+    json << "\"textureMemoryBytes\":" << stats.textureMemoryBytes << ",";
+    json << "\"operatorCount\":" << stats.operatorCount << ",";
+
+    // Per-operator timing
+    json << "\"operatorTimings\":[";
+    for (size_t i = 0; i < stats.operatorTimings.size(); ++i) {
+        const auto& t = stats.operatorTimings[i];
+        if (i > 0) json << ",";
+        json << "{\"name\":\"" << jsonEscape(t.name) << "\",\"timeMs\":" << t.timeMs << "}";
+    }
     json << "]}";
 
     std::string msg = json.str();

@@ -76,10 +76,17 @@ class ParamTreeItem extends vscode.TreeItem {
         // Format value display based on type
         const valueStr = this.formatValue(param);
         this.description = valueStr;
-        this.tooltip = `${param.type}: ${valueStr}\nRange: [${param.min}, ${param.max}]`;
+        this.tooltip = `${param.type}: ${valueStr}\nRange: [${param.min}, ${param.max}]\nClick to edit`;
 
         this.iconPath = new vscode.ThemeIcon('symbol-property');
         this.contextValue = 'param';
+
+        // Click to edit
+        this.command = {
+            command: 'vivid.editParam',
+            title: 'Edit Parameter',
+            arguments: [param]
+        };
     }
 
     private formatValue(param: ParamData): string {

@@ -35,6 +35,12 @@
           "id": "vividOperators",
           "name": "Operators",
           "contextualTitle": "Vivid Operators"
+        },
+        {
+          "id": "vividPerformance",
+          "name": "Performance",
+          "type": "webview",
+          "contextualTitle": "Vivid Performance"
         }
       ]
     },
@@ -63,6 +69,11 @@
         "command": "vivid.refreshOperators",
         "title": "Refresh",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "vivid.editParam",
+        "title": "Vivid: Edit Parameter",
+        "icon": "$(edit)"
       }
     ],
     "menus": {
@@ -71,6 +82,13 @@
           "command": "vivid.refreshOperators",
           "when": "view == vividOperators",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "vivid.editParam",
+          "when": "view == vividOperators && viewItem == param",
+          "group": "inline"
         }
       ]
     },

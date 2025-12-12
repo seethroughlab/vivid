@@ -471,6 +471,11 @@ int main(int argc, char** argv) {
     double lastFpsTime = glfwGetTime();
     int frameCount = 0;
 
+    // Performance tracking for EditorBridge
+    EditorPerformanceStats perfStats;
+    double lastFrameTime = glfwGetTime();
+    const size_t kHistorySize = 60;  // Keep last 60 samples
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -788,6 +793,18 @@ int main(int argc, char** argv) {
         // FPS counter and title update
         frameCount++;
         double currentTime = glfwGetTime();
+
+        // Track frame time for performance stats
+        double frameTimeMs = (currentTime - lastFrameTime) * 1000.0;
+        lastFrameTime = currentTime;
+
+        // Update frame time history (rolling buffer)
+        perfStats.frameTimeHistory.push_back(static_cast<float>(frameTimeMs));
+        if (perfStats.frameTimeHistory.size() > kHistorySize) {
+            perfStats.frameTimeHistory.erase(perfStats.frameTimeHistory.begin());
+        }
+        perfStats.frameTimeMs = static_cast<float>(frameTimeMs);
+
         if (currentTime - lastFpsTime >= 1.0) {
             std::string title;
             if (!projectName.empty()) {
@@ -796,12 +813,39 @@ int main(int argc, char** argv) {
                 title = "Vivid (" + std::to_string(frameCount) + " fps)";
             }
             glfwSetWindowTitle(window, title.c_str());
+
+            // Update FPS in performance stats
+            perfStats.fps = static_cast<float>(frameCount);
+            perfStats.fpsHistory.push_back(perfStats.fps);
+            if (perfStats.fpsHistory.size() > kHistorySize) {
+                perfStats.fpsHistory.erase(perfStats.fpsHistory.begin());
+            }
+
             frameCount = 0;
             lastFpsTime = currentTime;
 
-            // Send param values to editors once per second (Phase 2)
+            // Send param values and performance stats to editors once per second
             if (editorBridge.clientCount() > 0 && hotReload.isLoaded()) {
                 editorBridge.sendParamValues(gatherParamValues());
+
+                // Gather operator count and estimate texture memory
+                perfStats.operatorCount = ctx.hasChain() ? ctx.chain().operatorNames().size() : 0;
+
+                // Estimate texture memory: count operators and assume average texture size
+                // More accurate would require querying each texture operator
+                size_t textureOpCount = 0;
+                if (ctx.hasChain()) {
+                    for (const auto& name : ctx.chain().operatorNames()) {
+                        Operator* op = ctx.chain().getByName(name);
+                        if (op && op->outputKind() == OutputKind::Texture) {
+                            textureOpCount++;
+                        }
+                    }
+                }
+                // Estimate: each texture is width*height*4 bytes (RGBA8)
+                perfStats.textureMemoryBytes = textureOpCount * ctx.width() * ctx.height() * 4;
+
+                editorBridge.sendPerformanceStats(perfStats);
             }
         }
     }

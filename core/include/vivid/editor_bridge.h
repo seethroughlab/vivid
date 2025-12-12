@@ -28,6 +28,28 @@ struct EditorParamInfo {
     float maxVal = 1.0f;        ///< Max range
 };
 
+/// Per-operator timing info
+struct EditorOperatorTiming {
+    std::string name;           ///< Operator chain name
+    float timeMs = 0.0f;        ///< Processing time in milliseconds
+};
+
+/// Performance metrics for editor communication (Phase 3)
+struct EditorPerformanceStats {
+    // Frame timing
+    float fps = 0.0f;                           ///< Current frames per second
+    float frameTimeMs = 0.0f;                   ///< Last frame time in milliseconds
+    std::vector<float> fpsHistory;              ///< Recent FPS values (last 60 samples)
+    std::vector<float> frameTimeHistory;        ///< Recent frame times (last 60 samples)
+
+    // Memory usage (estimates)
+    size_t textureMemoryBytes = 0;              ///< Estimated GPU texture memory
+    size_t operatorCount = 0;                   ///< Number of operators in chain
+
+    // Per-operator timing
+    std::vector<EditorOperatorTiming> operatorTimings;
+};
+
 /// EditorBridge provides a WebSocket server for communication with external editors (VS Code, etc.)
 /// Handles compile status notifications and commands like reload.
 class EditorBridge {
@@ -63,6 +85,10 @@ public:
     /// Send parameter values to all connected clients (Phase 2)
     /// @param params Vector of parameter info with current values
     void sendParamValues(const std::vector<EditorParamInfo>& params);
+
+    /// Send performance stats to all connected clients (Phase 3)
+    /// @param stats Performance metrics including FPS, memory, timing
+    void sendPerformanceStats(const EditorPerformanceStats& stats);
 
     // -------------------------------------------------------------------------
     // Incoming commands (editor -> runtime)
