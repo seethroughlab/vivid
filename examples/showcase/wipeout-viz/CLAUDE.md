@@ -186,11 +186,11 @@ These assets can be reused, but the code should be written fresh using Vivid v2 
 
 **Goal:** Complete showcase experience
 
-- [ ] Orbit camera with mouse drag
-- [ ] Hover animation (sine wave oscillation)
-- [ ] Audio reactivity (bass → hover, mids → engine glow)
-- [ ] Background gradient or grid floor
-- [ ] UI overlay (team name, mode indicator)
+- [x] Orbit camera with mouse drag
+- [x] Hover animation (sine wave oscillation)
+- [x] Audio reactivity (bass → hover, mids → engine glow)
+- [x] Background gradient or grid floor (Tron-style grid)
+- [x] UI overlay (team name, mode indicator)
 
 ---
 

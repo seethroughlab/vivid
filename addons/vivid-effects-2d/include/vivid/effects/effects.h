@@ -31,6 +31,8 @@
 #include <vivid/effects/scanlines.h>
 #include <vivid/effects/crt_effect.h>
 #include <vivid/effects/downsample.h>
+#include <vivid/effects/barrel_distortion.h>
+#include <vivid/effects/vignette.h>
 #include <vivid/effects/math_op.h>
 #include <vivid/effects/logic_op.h>
 

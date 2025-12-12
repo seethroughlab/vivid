@@ -13,6 +13,8 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/render3d/render3d.h>
+#include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
 #include "craft.h"
 #include <cmath>
 #include <iostream>
@@ -20,6 +22,7 @@
 using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
+using namespace vivid::audio;
 
 // =============================================================================
 // Team Color Palettes
@@ -57,6 +60,60 @@ static glm::vec2 g_lastMouse = {0, 0};
 
 // Craft instance - can be customized before building
 static Craft g_craft;
+
+// =============================================================================
+// Grid Floor Drawing Helper
+// =============================================================================
+
+void drawGridFloor(Canvas& canvas, const TeamPalette& team, float time) {
+    const float w = 512.0f;
+    const float h = 512.0f;
+
+    // Dark base with slight gradient feel
+    canvas.clear(0.015f, 0.015f, 0.025f, 1.0f);
+
+    // Grid colors - subtle neon glow matching team accent
+    Color gridColor = team.accent.withAlpha(0.25f);
+    Color gridBright = team.accent.withAlpha(0.5f);
+
+    // Draw grid lines
+    float gridSize = 32.0f;  // Spacing between lines
+    float lineWidth = 1.5f;
+
+    // Vertical lines
+    for (float x = 0; x <= w; x += gridSize) {
+        float alpha = (fmod(x, gridSize * 4) < 0.1f) ? 0.5f : 0.25f;  // Every 4th line brighter
+        canvas.rectFilled(x - lineWidth * 0.5f, 0, lineWidth, h, team.accent.withAlpha(alpha));
+    }
+
+    // Horizontal lines
+    for (float y = 0; y <= h; y += gridSize) {
+        float alpha = (fmod(y, gridSize * 4) < 0.1f) ? 0.5f : 0.25f;
+        canvas.rectFilled(0, y - lineWidth * 0.5f, w, lineWidth, team.accent.withAlpha(alpha));
+    }
+
+    // Center highlight cross (runway markers)
+    float centerX = w * 0.5f;
+    float centerY = h * 0.5f;
+    canvas.rectFilled(centerX - 2.0f, 0, 4.0f, h, gridBright);
+    canvas.rectFilled(0, centerY - 2.0f, w, 4.0f, gridBright);
+
+    // Corner accent marks
+    float markSize = 24.0f;
+    Color cornerColor = team.secondary.withAlpha(0.6f);
+    // Top-left
+    canvas.rectFilled(0, 0, markSize, 3.0f, cornerColor);
+    canvas.rectFilled(0, 0, 3.0f, markSize, cornerColor);
+    // Top-right
+    canvas.rectFilled(w - markSize, 0, markSize, 3.0f, cornerColor);
+    canvas.rectFilled(w - 3.0f, 0, 3.0f, markSize, cornerColor);
+    // Bottom-left
+    canvas.rectFilled(0, h - 3.0f, markSize, 3.0f, cornerColor);
+    canvas.rectFilled(0, h - markSize, 3.0f, markSize, cornerColor);
+    // Bottom-right
+    canvas.rectFilled(w - markSize, h - 3.0f, markSize, 3.0f, cornerColor);
+    canvas.rectFilled(w - 3.0f, h - markSize, 3.0f, markSize, cornerColor);
+}
 
 // =============================================================================
 // UI Drawing Helper
@@ -335,12 +392,9 @@ void drawLivery(Canvas& canvas, const TeamPalette& team, bool fontLoaded) {
     canvas.circle(w * 0.5f, h * 0.80f, 52.0f, 5.0f, team.accent, 32);
     canvas.circle(w * 0.5f, h * 0.80f, 44.0f, 2.0f, team.primary, 32);
 
-    // DEBUG: Draw a bright red rectangle where text should be
-    canvas.rectFilled(w * 0.5f - 30, h * 0.80f - 20, 60, 40, {1.0f, 0.0f, 0.0f, 1.0f});
-
     if (fontLoaded) {
-        // Team number text (on top of red debug rect)
-        canvas.textCentered(team.number, w * 0.5f, h * 0.80f + 10.0f, team.primary);
+        // Team number text - uses team primary color on white circle
+        canvas.textCentered(team.number, w * 0.5f, h * 0.80f, team.primary);
     }
 
     // =========================================================================
@@ -369,7 +423,8 @@ void setup(Context& ctx) {
     auto& livery = chain.add<Canvas>("livery").size(1024, 1024);
 
     // Load font for livery text (team numbers)
-    if (livery.loadFont(ctx, "assets/fonts/Pixeled.ttf", 48.0f)) {
+    // Using space age.ttf which has digit glyphs
+    if (livery.loadFont(ctx, "assets/fonts/space age.ttf", 64.0f)) {
         g_fontLoaded = true;
     } else {
         std::cout << "Warning: Could not load livery font" << std::endl;
@@ -419,10 +474,14 @@ void setup(Context& ctx) {
     // Engine Glow - Emissive Material
     // =========================================================================
 
+    // Create a solid orange canvas for emissive texture (workaround for default black)
+    auto& glowTex = chain.add<Canvas>("glowTex").size(64, 64);
+
     auto& glowMaterial = chain.add<TexturedMaterial>("glowMaterial")
-        .baseColorFactor(1.0f, 0.6f, 0.2f, 1.0f)   // Orange base
-        .emissiveFactor(1.0f, 0.5f, 0.1f)          // Orange glow
-        .emissiveStrength(3.0f)                     // Bright emission
+        .baseColorFactor(1.0f, 0.7f, 0.2f, 1.0f)   // Bright orange-yellow base
+        .emissiveInput(&glowTex)                    // Use canvas as emissive texture
+        .emissiveFactor(1.0f, 0.7f, 0.2f)          // Bright orange-yellow
+        .emissiveStrength(50.0f)                    // Very high emission for bloom
         .metallicFactor(0.0f)
         .roughnessFactor(1.0f);
 
@@ -431,6 +490,63 @@ void setup(Context& ctx) {
     auto& glowStatic = chain.add<StaticMesh>("glowMesh");
     glowStatic.mesh(glowMesh);
     scene.add(&glowStatic, &glowMaterial);
+
+    // =========================================================================
+    // Grid Floor - Tron-style ground plane
+    // =========================================================================
+
+    auto& gridCanvas = chain.add<Canvas>("gridCanvas").size(512, 512);
+
+    auto& gridMaterial = chain.add<TexturedMaterial>("gridMaterial")
+        .baseColorInput(&gridCanvas)
+        .emissiveInput(&gridCanvas)      // Self-lit grid lines
+        .emissiveStrength(1.5f)
+        .metallicFactor(0.0f)
+        .roughnessFactor(1.0f)
+        .doubleSided(true);
+
+    // Large floor plane below the craft
+    glm::mat4 floorT = glm::translate(glm::mat4(1.0f), glm::vec3(0, -1.0f, 0));
+    floorT = glm::scale(floorT, glm::vec3(20.0f, 1.0f, 20.0f));  // Large floor
+    auto& floor = scene.add<Plane>("floor", floorT);
+    floor.size(1.0f, 1.0f);
+    scene.setMaterial(scene.entries().size() - 1, &gridMaterial);
+
+    // =========================================================================
+    // Audio - Synthetic engine sound + analysis for reactivity
+    // =========================================================================
+
+    // Low frequency drone for bass reactivity
+    auto& bassDrone = chain.add<Oscillator>("bassDrone")
+        .frequency(55.0f)      // Low A
+        .waveform(Waveform::Sine)
+        .volume(0.3f);
+
+    // Mid frequency buzz for mids reactivity
+    auto& midBuzz = chain.add<Oscillator>("midBuzz")
+        .frequency(220.0f)     // A below middle C
+        .waveform(Waveform::Saw)
+        .volume(0.2f);
+
+    // Mix the oscillators
+    auto& audioMix = chain.add<AudioMixer>("audioMix")
+        .input(0, "bassDrone")
+        .input(1, "midBuzz")
+        .gain(0, 1.0f)
+        .gain(1, 0.6f);
+
+    // Frequency band analysis for audio-reactive visuals
+    auto& bands = chain.add<BandSplit>("bands")
+        .input("audioMix")
+        .smoothing(0.85f)
+        .fftSize(1024);
+
+    // Audio output for speakers (vivid::AudioOutput is in core)
+    auto& audioOut = chain.add<vivid::AudioOutput>("audioOut")
+        .input("audioMix")
+        .volume(0.3f);  // Keep it quiet
+
+    chain.audioOutput("audioOut");
 
     // =========================================================================
     // Camera and Lighting
@@ -467,30 +583,58 @@ void setup(Context& ctx) {
         .resolution(1280, 720);
 
     // =========================================================================
-    // Retro Post-Processing Pipeline (DISABLED for evaluation)
+    // Retro Post-Processing Pipeline
     // =========================================================================
 
-    // // Downsample to low resolution (PS1-style)
-    // auto& downsample = chain.add<Downsample>("downsample")
-    //     .input(&render)
-    //     .resolution(480, 270)
-    //     .filter(FilterMode::Nearest);
+    // Bloom for engine glow (before downsample to preserve detail)
+    // Note: Render output is clamped to [0,1], so we need low threshold
+    auto& bloom = chain.add<Bloom>("bloom")
+        .input(&render)
+        .threshold(0.3f)      // Low threshold to catch orange glow (luminance ~0.73)
+        .intensity(4.0f)      // Strong bloom to compensate for clamped HDR
+        .radius(40.0f)        // Wide glow for halo effect
+        .passes(4);           // More passes for smoother blur
 
-    // // Dither for color banding
-    // auto& dither = chain.add<Dither>("dither")
-    //     .input(&downsample)
-    //     .pattern(DitherPattern::Bayer4x4)
-    //     .levels(32)
-    //     .strength(0.7f);
+    // Downsample to low resolution (PS1-style)
+    auto& downsample = chain.add<Downsample>("downsample")
+        .input(&bloom)        // Now takes bloom output
+        .resolution(480, 270)
+        .filter(FilterMode::Nearest);
 
-    // // CRT effect (scanlines, vignette, slight curvature)
-    // auto& crt = chain.add<CRTEffect>("crt")
-    //     .input(&dither)
-    //     .curvature(0.08f)
-    //     .scanlines(0.15f)
-    //     .vignette(0.3f)
-    //     .bloom(0.1f)
-    //     .chromatic(0.015f);
+    // Dither for color banding
+    auto& dither = chain.add<Dither>("dither")
+        .input(&downsample)
+        .pattern(DitherPattern::Bayer4x4)
+        .levels(32)
+        .strength(0.7f);
+
+    // =========================================================================
+    // Composable CRT Effects (replaces monolithic CRTEffect)
+    // =========================================================================
+
+    // Scanlines - alternating dark lines
+    auto& scanlines = chain.add<Scanlines>("scanlines")
+        .input(&dither)
+        .spacing(3)
+        .thickness(0.4f)
+        .intensity(0.15f);
+
+    // Barrel distortion - curved CRT screen
+    auto& barrel = chain.add<BarrelDistortion>("barrel")
+        .input(&scanlines)
+        .curvature(0.08f);
+
+    // Chromatic aberration - color fringing
+    auto& chroma = chain.add<ChromaticAberration>("chroma")
+        .input(&barrel)
+        .amount(0.015f)
+        .radial(false);  // Linear horizontal separation like original CRT
+
+    // Vignette - edge darkening
+    auto& vignette = chain.add<Vignette>("vignette")
+        .input(&chroma)
+        .intensity(0.3f)
+        .softness(0.5f);
 
     // =========================================================================
     // UI Overlay - Team name and shading mode
@@ -503,14 +647,13 @@ void setup(Context& ctx) {
         std::cout << "Warning: Could not load UI font" << std::endl;
     }
 
-    // Composite UI over render output (bypassing post-processing)
+    // Composite UI over post-processed render
     auto& composite = chain.add<Composite>("composite")
-        .input(0, &render)
+        .input(0, &vignette)
         .input(1, &ui)
         .mode(BlendMode::Over);
 
-    // chain.output("composite");  // Full render with UI
-    chain.output("livery");  // DEBUG: Show livery canvas directly
+    chain.output("composite");  // Full render with UI
 
     // Print initial state
     std::cout << "Team: " << g_teams[g_currentTeam].name << std::endl;
@@ -531,6 +674,13 @@ void update(Context& ctx) {
 
     auto& livery = chain.get<Canvas>("livery");
     drawLivery(livery, g_teams[g_currentTeam], g_fontLoaded);
+
+    auto& gridCanvas = chain.get<Canvas>("gridCanvas");
+    drawGridFloor(gridCanvas, g_teams[g_currentTeam], time);
+
+    // Draw glow texture - solid white for emissive (color comes from emissiveFactor)
+    auto& glowTex = chain.get<Canvas>("glowTex");
+    glowTex.clear(1.0f, 1.0f, 1.0f, 1.0f);  // Solid white - emissiveFactor controls color
 
     auto& ui = chain.get<Canvas>("ui");
     drawUI(ui, g_teams[g_currentTeam], g_debugMode);
@@ -595,11 +745,34 @@ void update(Context& ctx) {
     camera.position(camX, camY, camZ);
 
     // =========================================================================
+    // Audio-Reactive Visuals
+    // =========================================================================
+
+    // Get frequency band analysis
+    auto& bands = chain.get<BandSplit>("bands");
+    float bassLevel = bands.bass();      // 60-250 Hz
+    float midLevel = bands.mid();        // 500-2000 Hz
+
+    // Engine glow reacts to mids
+    auto& glowMaterial = chain.get<TexturedMaterial>("glowMaterial");
+    float glowIntensity = 5.0f + midLevel * 15.0f;  // 5.0 base + up to 20.0 with audio
+    glowMaterial.emissiveStrength(glowIntensity);
+
+    // Modulate oscillator frequencies for variation
+    auto& bassDrone = chain.get<Oscillator>("bassDrone");
+    auto& midBuzz = chain.get<Oscillator>("midBuzz");
+    float freqMod = sin(time * 0.3f);
+    bassDrone.frequency(50.0f + freqMod * 10.0f);      // Wobble 40-60 Hz
+    midBuzz.frequency(200.0f + freqMod * 40.0f);       // Wobble 160-240 Hz
+
+    // =========================================================================
     // Hover Animation - apply to entire scene
     // =========================================================================
 
-    float hover = sin(time * 1.5f) * 0.04f;
-    float roll = sin(time * 0.7f) * 0.02f;
+    // Bass modulates hover amplitude
+    float hoverAmp = 0.03f + bassLevel * 0.08f;  // Base + audio-reactive boost
+    float hover = sin(time * 1.5f) * hoverAmp;
+    float roll = sin(time * 0.7f) * (0.02f + bassLevel * 0.03f);
 
     glm::mat4 hoverMat = glm::translate(glm::mat4(1.0f), glm::vec3(0, hover, 0));
     hoverMat = glm::rotate(hoverMat, roll, glm::vec3(1, 0, 0));

@@ -48,6 +48,8 @@ add_library(vivid-effects-2d SHARED
     src/scanlines.cpp
     src/crt_effect.cpp
     src/downsample.cpp
+    src/barrel_distortion.cpp
+    src/vignette.cpp
     # Particle systems (Phase 5)
     src/particle_renderer.cpp
     src/particles.cpp

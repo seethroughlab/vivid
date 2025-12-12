@@ -457,28 +457,28 @@ public:
 
 class EngineGlow : public CraftPart {
 public:
-    float innerRadius = 0.05f;
-    float outerRadius = 0.08f;
-    float length = 0.12f;
-    int segments = 8;
+    float innerRadius = 0.12f;   // Increased from 0.05f
+    float outerRadius = 0.18f;   // Increased from 0.08f
+    float length = 0.25f;        // Increased from 0.12f
+    int segments = 12;
 
     bool isRight = false;
 
     EngineGlow(bool right = false) : isRight(right) {
         float zOffset = right ? -0.4f : 0.4f;
-        m_offset = {-0.75f, -0.03f, zOffset};
+        m_offset = {-0.85f, -0.03f, zOffset};  // Pushed further back
     }
 
     MeshBuilder build() const override {
-        // Inner bright core - small frustum
-        auto glow = MeshBuilder::frustum(innerRadius, innerRadius * 0.5f, length, segments)
-            .rotate(glm::radians(90.0f), {0, 0, 1})
+        // Inner bright core - cone shape pointing backward
+        auto glow = MeshBuilder::frustum(innerRadius, innerRadius * 0.3f, length, segments)
+            .rotate(glm::radians(-90.0f), {0, 0, 1})  // Point backward (-X)
             .translate(m_offset);
 
-        // Outer glow ring - larger frustum around the core
-        auto outer = MeshBuilder::frustum(outerRadius, outerRadius * 0.3f, length * 0.8f, segments)
-            .rotate(glm::radians(90.0f), {0, 0, 1})
-            .translate({m_offset.x + length * 0.1f, m_offset.y, m_offset.z});
+        // Outer glow cone - larger, more transparent feeling
+        auto outer = MeshBuilder::frustum(outerRadius, outerRadius * 0.2f, length * 1.2f, segments)
+            .rotate(glm::radians(-90.0f), {0, 0, 1})
+            .translate({m_offset.x - 0.05f, m_offset.y, m_offset.z});
         glow.append(outer);
 
         return glow;
