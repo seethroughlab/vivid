@@ -1314,6 +1314,36 @@ void Render3D::init(Context& ctx) {
 }
 
 void Render3D::createDepthBuffer(Context& ctx) {
+    // Skip if depth buffer already matches current size
+    if (m_depthTexture && m_depthWidth == m_width && m_depthHeight == m_height) {
+        return;
+    }
+
+    // Release existing depth resources
+    if (m_depthView) {
+        wgpuTextureViewRelease(m_depthView);
+        m_depthView = nullptr;
+    }
+    if (m_depthTexture) {
+        wgpuTextureDestroy(m_depthTexture);
+        wgpuTextureRelease(m_depthTexture);
+        m_depthTexture = nullptr;
+    }
+    // Release depth output resources too (if enabled)
+    if (m_depthOutputView) {
+        wgpuTextureViewRelease(m_depthOutputView);
+        m_depthOutputView = nullptr;
+    }
+    if (m_depthOutputTexture) {
+        wgpuTextureDestroy(m_depthOutputTexture);
+        wgpuTextureRelease(m_depthOutputTexture);
+        m_depthOutputTexture = nullptr;
+    }
+    if (m_depthCopyBindGroup) {
+        wgpuBindGroupRelease(m_depthCopyBindGroup);
+        m_depthCopyBindGroup = nullptr;
+    }
+
     WGPUDevice device = ctx.device();
 
     // Hardware depth buffer for depth testing
@@ -1338,6 +1368,8 @@ void Render3D::createDepthBuffer(Context& ctx) {
     depthViewDesc.mipLevelCount = 1;
     depthViewDesc.arrayLayerCount = 1;
     m_depthView = wgpuTextureCreateView(m_depthTexture, &depthViewDesc);
+    m_depthWidth = m_width;
+    m_depthHeight = m_height;
 
     // Linear depth output texture for post-processing (DOF, fog, etc.)
     if (m_depthOutputEnabled) {
@@ -1661,6 +1693,41 @@ void Render3D::createPipeline(Context& ctx) {
     // Cleanup PBR resources
     wgpuPipelineLayoutRelease(pbrPipelineLayout);
     wgpuShaderModuleRelease(pbrShaderModule);
+
+    // =========================================================================
+    // Create cached bind groups for flat and scalar PBR shading
+    // These use dynamic offsets so they can be reused across all objects
+    // =========================================================================
+
+    // Flat/Gouraud bind group
+    {
+        WGPUBindGroupEntry bindEntry = {};
+        bindEntry.binding = 0;
+        bindEntry.buffer = m_uniformBuffer;
+        bindEntry.offset = 0;
+        bindEntry.size = sizeof(Uniforms);
+
+        WGPUBindGroupDescriptor bindDesc = {};
+        bindDesc.layout = m_bindGroupLayout;
+        bindDesc.entryCount = 1;
+        bindDesc.entries = &bindEntry;
+        m_flatBindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+    }
+
+    // Scalar PBR bind group
+    {
+        WGPUBindGroupEntry bindEntry = {};
+        bindEntry.binding = 0;
+        bindEntry.buffer = m_pbrUniformBuffer;
+        bindEntry.offset = 0;
+        bindEntry.size = sizeof(PBRUniforms);
+
+        WGPUBindGroupDescriptor bindDesc = {};
+        bindDesc.layout = m_pbrBindGroupLayout;
+        bindDesc.entryCount = 1;
+        bindDesc.entries = &bindEntry;
+        m_scalarPbrBindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+    }
 
     // =========================================================================
     // Create Textured PBR pipeline
@@ -2015,6 +2082,7 @@ void Render3D::process(Context& ctx) {
     }
 
     checkResize(ctx);
+    createDepthBuffer(ctx);  // Recreate depth buffer if size changed
 
     if (!needsCook()) return;
 
@@ -2302,35 +2370,9 @@ void Render3D::process(Context& ctx) {
         return wgpuDeviceCreateBindGroup(device, &bindDesc);
     };
 
-    // Create scalar bind groups (shared across objects without textures)
-    WGPUBindGroup scalarPbrBindGroup = nullptr;
-    WGPUBindGroup flatBindGroup = nullptr;
-
-    if (usePBR) {
-        WGPUBindGroupEntry bindEntry = {};
-        bindEntry.binding = 0;
-        bindEntry.buffer = m_pbrUniformBuffer;
-        bindEntry.offset = 0;
-        bindEntry.size = sizeof(PBRUniforms);
-
-        WGPUBindGroupDescriptor bindDesc = {};
-        bindDesc.layout = m_pbrBindGroupLayout;
-        bindDesc.entryCount = 1;
-        bindDesc.entries = &bindEntry;
-        scalarPbrBindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
-    } else {
-        WGPUBindGroupEntry bindEntry = {};
-        bindEntry.binding = 0;
-        bindEntry.buffer = m_uniformBuffer;
-        bindEntry.offset = 0;
-        bindEntry.size = sizeof(Uniforms);
-
-        WGPUBindGroupDescriptor bindDesc = {};
-        bindDesc.layout = m_bindGroupLayout;
-        bindDesc.entryCount = 1;
-        bindDesc.entries = &bindEntry;
-        flatBindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
-    }
+    // Use cached bind groups (created in createPipeline)
+    WGPUBindGroup scalarPbrBindGroup = m_scalarPbrBindGroup;
+    WGPUBindGroup flatBindGroup = m_flatBindGroup;
 
     // Track bind groups to release later
     std::vector<WGPUBindGroup> texturedBindGroups;
@@ -2421,12 +2463,10 @@ void Render3D::process(Context& ctx) {
         wgpuRenderPassEncoderDrawIndexed(pass, obj.mesh->indexCount(), 1, 0, 0, 0);
     }
 
-    // Cleanup bind groups
+    // Cleanup per-frame textured bind groups (cached bind groups are released in cleanup())
     for (auto bg : texturedBindGroups) {
         wgpuBindGroupRelease(bg);
     }
-    if (scalarPbrBindGroup) wgpuBindGroupRelease(scalarPbrBindGroup);
-    if (flatBindGroup) wgpuBindGroupRelease(flatBindGroup);
 
     // End render pass
     wgpuRenderPassEncoderEnd(pass);
@@ -2501,6 +2541,14 @@ void Render3D::cleanup() {
     if (m_wireframePipeline) {
         wgpuRenderPipelineRelease(m_wireframePipeline);
         m_wireframePipeline = nullptr;
+    }
+    if (m_flatBindGroup) {
+        wgpuBindGroupRelease(m_flatBindGroup);
+        m_flatBindGroup = nullptr;
+    }
+    if (m_scalarPbrBindGroup) {
+        wgpuBindGroupRelease(m_scalarPbrBindGroup);
+        m_scalarPbrBindGroup = nullptr;
     }
     if (m_bindGroupLayout) {
         wgpuBindGroupLayoutRelease(m_bindGroupLayout);
@@ -2606,6 +2654,8 @@ void Render3D::cleanup() {
         wgpuTextureRelease(m_depthTexture);
         m_depthTexture = nullptr;
     }
+    m_depthWidth = 0;
+    m_depthHeight = 0;
 
     // Use inherited releaseOutput() from TextureOperator
     releaseOutput();

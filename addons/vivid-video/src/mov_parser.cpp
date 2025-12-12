@@ -245,7 +245,7 @@ static bool parseMDIA(FILE* f, int64_t endPos, MOVTrack& track) {
         if (strcmp(atomType, "mdhd") == 0) {
             // Media header - get timescale
             uint8_t version = 0;
-            (void)fread(&version, 1, 1, f);
+            if (fread(&version, 1, 1, f) != 1) version = 0;
             skip(f, 3);  // flags
 
             if (version == 1) {
@@ -300,7 +300,7 @@ static bool parseTRAK(FILE* f, int64_t endPos, MOVTrack& track) {
         if (strcmp(atomType, "tkhd") == 0) {
             // Track header - get dimensions
             uint8_t version = 0;
-            (void)fread(&version, 1, 1, f);
+            if (fread(&version, 1, 1, f) != 1) version = 0;
             skip(f, 3);  // flags
 
             if (version == 1) {
@@ -357,7 +357,7 @@ static bool parseMOOV(FILE* f, int64_t endPos, MOVFile& mov) {
         if (strcmp(atomType, "mvhd") == 0) {
             // Movie header
             uint8_t version = 0;
-            (void)fread(&version, 1, 1, f);
+            if (fread(&version, 1, 1, f) != 1) version = 0;
             skip(f, 3);  // flags
 
             if (version == 1) {

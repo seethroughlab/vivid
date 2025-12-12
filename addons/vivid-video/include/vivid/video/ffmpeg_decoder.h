@@ -54,6 +54,11 @@ public:
     void setVolume(float volume);
     float getVolume() const;
 
+    // Audio sample reading (for external audio processing)
+    uint32_t readAudioSamples(float* buffer, uint32_t maxFrames) { return 0; }
+    void setInternalAudioEnabled(bool enable) { internalAudioEnabled_ = enable; }
+    bool isInternalAudioEnabled() const { return internalAudioEnabled_; }
+
     WGPUTexture texture() const { return texture_; }
     WGPUTextureView textureView() const { return textureView_; }
 
@@ -65,6 +70,7 @@ private:
     bool isPlaying_ = false;
     bool isFinished_ = false;
     bool hasAudio_ = false;
+    bool internalAudioEnabled_ = true;
     float currentTime_ = 0.0f;
     uint32_t audioSampleRate_ = 48000;
     uint32_t audioChannels_ = 2;

@@ -21,6 +21,9 @@
 #include <mach/mach.h>
 #include <mach/task.h>
 #elif defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #include <psapi.h>
 #elif defined(__linux__)
@@ -281,10 +284,24 @@ void ChainVisualizer::updateGeometryPreview(
         preview.scene.clear();
         if (mesh) {
             // Internal use - suppress deprecation warning (this is internal preview code)
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#endif
             preview.scene.add(*mesh, glm::mat4(1.0f), glm::vec4(0.7f, 0.85f, 1.0f, 1.0f));
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
         }
         preview.lastMesh = mesh;
     }
@@ -315,10 +332,24 @@ void ChainVisualizer::updateGeometryPreview(
     }
 
     // Render (internal use - suppress deprecation warning)
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#endif
     preview.renderer->scene(preview.scene).camera(preview.camera);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
     preview.renderer->process(ctx);
 }
 
@@ -383,10 +414,24 @@ void ChainVisualizer::updateScenePreview(
     ).fov(45.0f).nearPlane(0.01f).farPlane(100.0f);
 
     // Render (internal use - suppress deprecation warning)
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#endif
     preview.renderer->scene(scene).camera(preview.camera);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
     preview.renderer->process(ctx);
 }
 
@@ -473,10 +518,24 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
                     center
                 ).fov(45.0f).nearPlane(0.01f).farPlane(1000.0f);
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#endif
                 m_soloGeometryRenderer->scene(scene).camera(camera);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
                 m_soloGeometryRenderer->process(ctx);
                 ctx.setOutputTexture(m_soloGeometryRenderer->outputView());
             }
@@ -487,10 +546,24 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
                 // Build scene with rotating mesh
                 render3d::Scene scene;
                 glm::mat4 transform = glm::rotate(glm::mat4(1.0f), m_soloRotationAngle, glm::vec3(0, 1, 0));
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#endif
                 scene.add(*mesh, transform, glm::vec4(0.7f, 0.85f, 1.0f, 1.0f));
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
                 // Auto-frame camera
                 glm::vec3 center(0);
@@ -511,10 +584,24 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
                     center
                 ).fov(45.0f).nearPlane(0.01f).farPlane(100.0f);
 
+#if defined(__clang__)
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable: 4996)
+#endif
                 m_soloGeometryRenderer->scene(scene).camera(camera);
+#if defined(__clang__)
 #pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
                 m_soloGeometryRenderer->process(ctx);
                 ctx.setOutputTexture(m_soloGeometryRenderer->outputView());
             }

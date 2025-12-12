@@ -244,6 +244,8 @@ private:
     // GPU resources (depth buffer is 3D-specific, not in TextureOperator)
     WGPUTexture m_depthTexture = nullptr;
     WGPUTextureView m_depthView = nullptr;
+    int m_depthWidth = 0;   // Track depth buffer size for resize detection
+    int m_depthHeight = 0;
     WGPURenderPipeline m_pipeline = nullptr;           // Flat/Gouraud/Unlit
     WGPURenderPipeline m_pbrPipeline = nullptr;        // PBR with scalar values
     WGPURenderPipeline m_pbrTexturedPipeline = nullptr; // PBR with texture maps
@@ -267,6 +269,8 @@ private:
     WGPUBuffer m_skyboxUniformBuffer = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUBuffer m_pbrUniformBuffer = nullptr;
+    WGPUBindGroup m_flatBindGroup = nullptr;      // Cached bind group for flat/gouraud shading
+    WGPUBindGroup m_scalarPbrBindGroup = nullptr; // Cached bind group for scalar PBR
     std::vector<WGPUBindGroup> m_bindGroups;  // One per object
     size_t m_uniformAlignment = 256;  // WebGPU minimum uniform buffer alignment
     size_t m_pbrUniformAlignment = 256;

@@ -3348,6 +3348,33 @@ def update_index(addons):
 - [ ] Version conflicts are detected and reported
 - [ ] `vivid addon publish` creates valid registry entry
 
+### Phase 17: Runtime Distribution
+
+**Goal:** Make vivid easy to install for end users without building from source
+
+**Strategy:** Start simple with GitHub Releases, expand based on user demand
+
+**Tier 1: GitHub Releases (MVP)**
+- [ ] Pre-built binaries for macOS (arm64, x64), Windows (x64), Linux (x64)
+- [ ] GitHub Actions workflow to build and publish on tagged releases
+- [ ] Installation via `gh release download` or direct download
+
+**Tier 2: Platform Package Managers (Future)**
+- [ ] **macOS**: Homebrew tap (`brew install seethroughlab/vivid/vivid`)
+- [ ] **Windows**: winget manifest
+- [ ] **Linux**: AppImage included in GitHub Releases (cross-distro)
+
+**Design Notes:**
+- Homebrew tap is low-maintenance (separate repo with Formula pointing to GitHub Releases)
+- winget is Microsoft's official package manager, simpler than Chocolatey
+- Avoid apt/PPA for Linux - high maintenance, AppImage covers most use cases
+- Consider Snap only if there's significant demand
+
+**Validation:**
+- [ ] Tagged release triggers CI build for all platforms
+- [ ] Binaries work out-of-the-box without additional dependencies
+- [ ] `vivid --version` reports correct version from release tag
+
 ---
 
 ## Directory Structure
