@@ -71,11 +71,26 @@ Camera3D& Camera3D::aspect(float a) {
     return *this;
 }
 
+Camera3D& Camera3D::projectionMode(ProjectionMode mode) {
+    m_projectionMode = mode;
+    return *this;
+}
+
+Camera3D& Camera3D::orthoSize(float size) {
+    m_orthoSize = size;
+    return *this;
+}
+
 glm::mat4 Camera3D::viewMatrix() const {
     return glm::lookAt(m_position, m_target, m_up);
 }
 
 glm::mat4 Camera3D::projectionMatrix() const {
+    if (m_projectionMode == ProjectionMode::Orthographic) {
+        float halfH = m_orthoSize * 0.5f;
+        float halfW = halfH * m_aspect;
+        return glm::ortho(-halfW, halfW, -halfH, halfH, m_near, m_far);
+    }
     return glm::perspective(glm::radians(m_fov), m_aspect, m_near, m_far);
 }
 

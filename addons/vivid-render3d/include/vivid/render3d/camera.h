@@ -5,7 +5,13 @@
 
 namespace vivid::render3d {
 
-/// 3D perspective camera
+/// Camera projection mode
+enum class ProjectionMode {
+    Perspective,    ///< Standard perspective projection (FOV-based)
+    Orthographic    ///< Orthographic projection (no perspective distortion)
+};
+
+/// 3D camera with perspective or orthographic projection
 class Camera3D {
 public:
     Camera3D() = default;
@@ -49,6 +55,13 @@ public:
     /// Set aspect ratio (width / height)
     Camera3D& aspect(float a);
 
+    /// Set projection mode (Perspective or Orthographic)
+    Camera3D& projectionMode(ProjectionMode mode);
+
+    /// Set orthographic size (vertical extent in world units)
+    /// Only used when projectionMode is Orthographic
+    Camera3D& orthoSize(float size);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Computed Matrices
@@ -75,6 +88,8 @@ public:
     float getNear() const { return m_near; }
     float getFar() const { return m_far; }
     float getAspect() const { return m_aspect; }
+    ProjectionMode getProjectionMode() const { return m_projectionMode; }
+    float getOrthoSize() const { return m_orthoSize; }
 
     /// Get forward direction (normalized)
     glm::vec3 forward() const;
@@ -92,6 +107,8 @@ private:
     float m_near = 0.1f;
     float m_far = 100.0f;
     float m_aspect = 16.0f / 9.0f;
+    ProjectionMode m_projectionMode = ProjectionMode::Perspective;
+    float m_orthoSize = 10.0f;  ///< Vertical extent for orthographic projection
 };
 
 } // namespace vivid::render3d

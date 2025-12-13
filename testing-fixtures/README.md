@@ -20,6 +20,7 @@ Hardware-dependent tests (may need to skip in CI).
 Audio processing and sequencing tests.
 - `audio-effects` - Effect chain (delay, reverb, compressor, etc.)
 - `ambient-melody` - Complex sequencer with song structure
+- `synth-test` - Oscillators, envelopes, filters, mixers with visual feedback
 
 ### shaders/
 Shader and lighting validation.
@@ -40,6 +41,20 @@ Material system tests.
 ### particles/
 Particle and point rendering tests.
 - `pointsprites` - Point sprite pattern rendering
+
+### 2d-effects/
+2D texture effect and generator tests.
+- `effects-gallery` - Mirror, Edge, Dither, Pixelate, Quantize, ChromaticAberration, Scanlines, Vignette
+- `blend-modes` - All Composite blend modes (Over, Add, Multiply, Screen, Overlay, Difference)
+- `generators` - Shape types, Gradient types, Noise types, Ramp, SolidColor
+
+### value-operators/
+Value and modulation operator tests.
+- `math-logic-test` - LFO, Math operations, Logic operations controlling visual parameters
+
+### canvas/
+Canvas 2D drawing API tests.
+- `multi-canvas-cube` - Multiple canvases composited with 3D
 
 ---
 

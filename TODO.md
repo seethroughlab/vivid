@@ -38,7 +38,6 @@
     - Added Doxygen-style comments to core headers (operator.h, context.h, chain.h, param.h)
     - Added Doxygen-style comments to key operator headers (noise.h, output.h, composite.h, texture_operator.h)
     - Added `make docs` target to CMakeLists.txt (requires Doxygen to be installed)
-[ ] Is there currently a "make install" command that will put vivid into my PATH?
 [x] The README still mentions ctx.registerOperator, which is now automatic.
     - Updated README to show auto-registration via chain->init(ctx)
 [x] The Mesh generators should include normals and UVs
@@ -86,22 +85,20 @@
     - Audio operators skipped (special threading requirements) 
 [x] Is the Fluent pattern really helping the average user? Or does it obscure more common c++ patterns and syntax?
 [x] Mac: Please make a reminder for yourself that you don't need the Molten environment variables. That is from vivid_v2, but not relevant here. 
-[ ] Windows: It seems like display settings were customized for the Mac Retina display, but on windows things look too big.
+[x] Windows: It seems like display settings were customized for the Mac Retina display, but on windows things look too big.
 [x] Is it possible to add smooth shading in geometry-showcase?
 [x] instancing-demo -- each asteroid should have variations in scale
 [x] I'm not sure hot-relading is working. It seems to crash when chain.cpp is edited.
 [x] In the Readme, what is a more graceful way to say "Designed from the ground up to be friendly with coding agents/LLMs."
-[ ] Idea: what if it's NOT POSSIBLE to set parameters directly in the c++, but ONLY in the sidecar file? pros and cons?
-[ ] Idea: Maybe operators should declare all properties in a single structure in the constructor. Would that simplify the operator declaration?
-[ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
+[x] Idea: what if it's NOT POSSIBLE to set parameters directly in the c++, but ONLY in the sidecar file? pros and cons?
 [x] in the chain visualizer, the operator controls shouldn't be INSIDE the node -- there should be a separate panel that shows up on the right side of the window when you select a node -- this is where you will be able to adjust parameters. It should be like the inspector panel in TouhDesigner. This is a major change, so let's plan how we will do it. 
 [x] Make an example that plays a nice little melody. There should be pads and a lead with a subtle beat. It should be in a minor key, and it should have a "verse, chorus, verse, bridge, chorus, outro" structure. 
 [x] Is it true that the texture composite operator currently only accepts 2 inputs? It should take an arbitrary number of input.
 [x] Let's make a plan to overhaul the examples folder. A lot of the examples are more like functionality tests, when they should be curated to be the most helpful possible for the users. However, we should also start building out a test suite, whcih I think is mentioned in the ROADMAP.
-[ ] PLAN: How can we prepare for the first release on github? What are best practices for a project like this? What github actions can we create that will help automate the process of making a release?
+[x] PLAN: How can we prepare for the first release on github? What are best practices for a project like this? What github actions can we create that will help automate the process of making a release?
 [x] there should be section of examples called "showcase" that shows the *best* of what vivid can do. Let's make some impressive examples. We should have screenshots of these examples in the README 
 [x] Let's make a showcase with a couple of GLTF models and a depth of field effectI 
-[ ] can we proactively add the VIVID macros throughout the core and addons? I've been mostly developing on Mac, so it's probably missing in a lot of places.
+[x] can we proactively add the VIVID macros throughout the core and addons? I've been mostly developing on Mac, so it's probably missing in a lot of places.
 [x] WINDOWS BUG: Snapshot save fails - couldn't save PNG
     - Implemented saveSnapshot() in video_exporter_win.cpp using stb_image_write
     - Added stb_SOURCE_DIR to core CMakeLists.txt include paths
@@ -112,9 +109,6 @@
 [x] WINDOWS BUG: 3D rendering low res in fullscreen - texture not resizing
     - Added resize checks to Render3D, InstancedRender3D, and all 2D effects
     - Added checkResize() helper to TextureOperator base class  
-[ ] We need an example of mutliple videos playing at once, and being used as a texture. 
-[ ] Make an example with assets/textures/flat_earth_Largest_still.0330.jpg
-[ ] Take more snapshots of showcase projects, add them to README
 [x] Wipeout-viz system crash after 30 seconds
     - Root cause: Multiple GPU command buffer submissions per frame without explicit GPU synchronization
     - Fix: Added `wgpuDevicePoll(device, false, nullptr)` after `wgpuSurfacePresent()` in `core/src/main.cpp:680`
@@ -125,7 +119,6 @@
     - Likely an ImGui/WebGPU texture binding or format issue specific to chained operators
 [x] wipeout-viz: please refactor the example into classes. There should be a class for each major part of the craft.
 [x] we need a color class that enables conversions between color formats (RGB, HSV, hex), color blending/lerping, and will make the example code more readable. Let's add some static variables with color names as well. DO any of the libraries we're already using have a color class? It seems too simple to involve a 3rd party library, but maybe I'm wrong?
-[ ] What's happening with the docs action? https://github.com/seethroughlab/vivid/settings/pages It's not published anywhere accessable. 
 [x] does our canvas api match the HTML canvas api?
     - No, current API is immediate-mode with per-call colors
     - HTML Canvas is stateful with path-based drawing
@@ -135,7 +128,6 @@
     - Added `chain.setDebug(true)` programmatic option
     - Debug output shows each operator, its type, and which one is SCREEN OUTPUT
     - Documented in docs/CHAIN-API.md under "Debugging" section 
-[ ] Do we have an ortho camera? 
 [x] There are a lot of operators whose parameters aren't exposed like they should be. Camera is one of them. Please do an exploration of which operators don't expose their parameters
     - vivid-effects-2d: 100% coverage (27/27 operators)
     - vivid-audio: 100% coverage (26/26 operators)
@@ -149,14 +141,26 @@
 [ ] MEDIUM: Add parameter exposure to InstancedRender3D (has params() but missing getParam/setParam)
 [ ] MEDIUM: Add parameter exposure to Boolean (operation type)
 [ ] MEDIUM: Add parameter exposure to IBLEnvironment, GLTFLoader
-[ ] While diagnosing a few bugs recently, the solution has been to "lock resolution", which seems to be related to the idea that things automatically get resized when the window size changes. But this isn't how thing should work (with the notabl exception of MAYBE the screen texture). Users should declare the resolution of canvases once. Also, when movies and images are loaded, they should use the size of the media as the default resolution, but then the user can decide the drawing dimensions in their chain. If this isn't how it currently works, let's make a plan to make this change.
-[ ] BUG: Canvas text rendering appears directly on screen instead of on canvas texture
+[x] While diagnosing a few bugs recently, the solution has been to "lock resolution", which seems to be related to the idea that things automatically get resized when the window size changes. But this isn't how thing should work (with the notabl exception of MAYBE the screen texture). Users should declare the resolution of canvases once. Also, when movies and images are loaded, they should use the size of the media as the default resolution, but then the user can decide the drawing dimensions in their chain. If this isn't how it currently works, let's make a plan to make this change.
+[x] BUG: Canvas text rendering appears directly on screen instead of on canvas texture
     - Root cause: `Canvas::size()` only set `m_resolutionLocked = true` when dimensions changed
     - When calling `size(1280, 720)` on a freshly created Canvas (which defaults to 1280x720), the lock was never set
     - This allowed `checkResize()` to resize the canvas to window dimensions (2560x1440) on subsequent frames
     - Text vertices were generated at canvas coordinates but rendered with window-size uniforms, causing misalignment
     - Fix: Always set `m_resolutionLocked = true` in `Canvas::size()` regardless of whether dimensions changed 
 [x] Please add a comand line snapshot feature that you (claude) can use in the future to evaluate your work. Also add this feature to the documentation so that it's obvious that this feature is available in the future.
-[ ] add a formant generator to the audio synthesis addon
-[ ] I have a new vision for the VSCode extension. Let's do some planning. When a user clicks/highlights a node in VSCode, it automatically shows a preview of the node in the running project. Meanwhile, in VSCode, all of the parameters are showed in VSCode -- sliders, color choosers, file choosers. (for movies, sounds, texures, models), and the input and output nodes. Help me figure out how to flesh out this idea and integrate it into the extension. When a parameter is adjusted in the VSCode extension, it should be reflected immeiately in the code. 
+[x] Do we have an ortho camera?
+    - Added ProjectionMode enum (Perspective, Orthographic) to Camera3D
+    - Added projectionMode() and orthoSize() to Camera3D and CameraOperator
+    - Usage: `camera.orthographic().orthoSize(10.0f)` for ortho, `camera.perspective().fov(60.0f)` for perspective
+[x] add a formant generator to the audio synthesis addon
+[x] I have a new vision for the VSCode extension. Let's do some planning. When a user clicks/highlights a node in VSCode, it automatically shows a preview of the node in the running project. Meanwhile, in VSCode, all of the parameters are showed in VSCode -- sliders, color choosers, file choosers. (for movies, sounds, texures, models), and the input and output nodes. Help me figure out how to flesh out this idea and integrate it into the extension. When a parameter is adjusted in the VSCode extension, it should be reflected immeiately in the code. 
+[ ] Is there currently a "make install" command that will put vivid into my PATH?
+[ ] Idea: Maybe operators should declare all properties in a single structure in the constructor. Would that simplify the operator declaration?
+[ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
+[ ] We need an example of mutliple videos playing at once, and being used as a texture. 
+[ ] Make an example with assets/textures/flat_earth_Largest_still.0330.jpg
+[ ] Take more snapshots of showcase projects, add them to README
+[ ] What's happening with the docs action? https://github.com/seethroughlab/vivid/settings/pages It's not published anywhere accessable. 
 [ ] VSTHost using [JUCE](https://juce.com/) 
+[ ] PLAN: addons should be self-contained (to prepare for community addon registry), so this probably means moving examples, tests, and any needed assets to the respective addon folders as well. 

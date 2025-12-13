@@ -208,7 +208,7 @@ Operations: `BooleanOp::Union`, `BooleanOp::Subtract`, `BooleanOp::Intersect`
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
 | `SceneComposer` | Compose meshes | `.add<Box>(name, transform, color)` `.add(&mesh, transform, color)` |
-| `CameraOperator` | Camera | `.orbitCenter(x,y,z)` `.distance(10)` `.azimuth(0)` `.elevation(0.3)` `.fov(50)` |
+| `CameraOperator` | Camera | `.orbitCenter(x,y,z)` `.distance(10)` `.azimuth(0)` `.elevation(0.3)` `.fov(50)` `.orthographic()` `.orthoSize(10)` |
 | `DirectionalLight` | Sun light | `.direction(x,y,z)` `.color(r,g,b)` `.intensity(1.5)` |
 | `PointLight` | Omni light | `.position(x,y,z)` `.color(r,g,b)` `.intensity(2.0)` `.range(10.0)` |
 | `SpotLight` | Spot light | `.position()` `.direction()` `.spotAngle(30)` `.spotBlend(0.3)` `.range(10)` |
