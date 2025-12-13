@@ -415,6 +415,32 @@ int main(int argc, char** argv) {
         }
     });
 
+    editorBridge.onSoloNode([&ctx, &chainVisualizer, &editorBridge](const std::string& opName) {
+        if (!ctx.hasChain()) return;
+        Operator* op = ctx.chain().getByName(opName);
+        if (op) {
+            chainVisualizer.enterSoloMode(op, opName);
+            editorBridge.sendSoloState(true, opName);
+        }
+    });
+
+    editorBridge.onSelectNode([&chainVisualizer](const std::string& opName) {
+        chainVisualizer.selectNodeFromEditor(opName);
+    });
+
+    editorBridge.onSoloExit([&chainVisualizer, &editorBridge]() {
+        chainVisualizer.exitSoloMode();
+        editorBridge.sendSoloState(false, "");
+    });
+
+    editorBridge.onFocusedNode([&chainVisualizer](const std::string& opName) {
+        if (opName.empty()) {
+            chainVisualizer.clearFocusedNode();
+        } else {
+            chainVisualizer.setFocusedNode(opName);
+        }
+    });
+
     // Helper to gather operator info from chain
     auto gatherOperatorInfo = [&ctx]() -> std::vector<EditorOperatorInfo> {
         std::vector<EditorOperatorInfo> result;
@@ -712,10 +738,7 @@ int main(int argc, char** argv) {
                     ctx.setRenderResolution(ctx.chain().defaultWidth(), ctx.chain().defaultHeight());
                 }
 
-                // Load and apply sidecar parameter overrides
-                chainVisualizer.loadAndApplySidecar(ctx);
-
-                // Restore preserved states (takes precedence over sidecar)
+                // Restore preserved states across hot-reloads
                 if (ctx.hasPreservedStates()) {
                     ctx.restoreStates(ctx.chain());
                 }

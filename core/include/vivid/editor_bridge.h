@@ -22,10 +22,15 @@ struct EditorOperatorInfo {
 struct EditorParamInfo {
     std::string operatorName;   ///< Owning operator's chain name
     std::string paramName;      ///< Parameter name
-    std::string paramType;      ///< Type (Float, Vec3, Color, etc.)
-    float value[4] = {0};       ///< Current value
+    std::string paramType;      ///< Type (Float, Vec3, Color, FilePath, etc.)
+    float value[4] = {0};       ///< Current value (for numeric types)
     float minVal = 0.0f;        ///< Min range
     float maxVal = 1.0f;        ///< Max range
+
+    // For String/FilePath parameters
+    std::string stringValue;    ///< Current string value
+    std::string fileFilter;     ///< File filter pattern
+    std::string fileCategory;   ///< File category hint
 };
 
 /// Per-operator timing info
@@ -90,6 +95,11 @@ public:
     /// @param stats Performance metrics including FPS, memory, timing
     void sendPerformanceStats(const EditorPerformanceStats& stats);
 
+    /// Send solo mode state to all connected clients
+    /// @param active True if solo mode is active
+    /// @param operatorName Name of the soloed operator (empty if not active)
+    void sendSoloState(bool active, const std::string& operatorName);
+
     // -------------------------------------------------------------------------
     // Incoming commands (editor -> runtime)
     // -------------------------------------------------------------------------
@@ -102,11 +112,35 @@ public:
                                                     const std::string& paramName,
                                                     const float value[4])>;
 
+    /// Callback type for solo node command
+    using SoloNodeCallback = std::function<void(const std::string& operatorName)>;
+
+    /// Callback type for solo exit command
+    using SoloExitCallback = std::function<void()>;
+
+    /// Callback type for select node command (editor -> vivid graph selection)
+    using SelectNodeCallback = std::function<void(const std::string& operatorName)>;
+
+    /// Callback type for focused node command (cursor in operator code - 3x larger preview)
+    using FocusedNodeCallback = std::function<void(const std::string& operatorName)>;
+
     /// Set callback for reload command
     void onReloadCommand(CommandCallback callback) { m_reloadCallback = callback; }
 
     /// Set callback for param change command (Phase 2)
     void onParamChange(ParamChangeCallback callback) { m_paramChangeCallback = callback; }
+
+    /// Set callback for solo node command
+    void onSoloNode(SoloNodeCallback callback) { m_soloNodeCallback = callback; }
+
+    /// Set callback for solo exit command
+    void onSoloExit(SoloExitCallback callback) { m_soloExitCallback = callback; }
+
+    /// Set callback for select node command (highlight in graph)
+    void onSelectNode(SelectNodeCallback callback) { m_selectNodeCallback = callback; }
+
+    /// Set callback for focused node command (cursor in operator code - 3x larger preview)
+    void onFocusedNode(FocusedNodeCallback callback) { m_focusedNodeCallback = callback; }
 
 private:
     class Impl;
@@ -115,6 +149,10 @@ private:
     int m_port = 9876;
     CommandCallback m_reloadCallback;
     ParamChangeCallback m_paramChangeCallback;
+    SoloNodeCallback m_soloNodeCallback;
+    SoloExitCallback m_soloExitCallback;
+    SelectNodeCallback m_selectNodeCallback;
+    FocusedNodeCallback m_focusedNodeCallback;
 };
 
 } // namespace vivid

@@ -39,6 +39,11 @@ namespace vivid::imgui {
 static constexpr int SCREEN_NODE_ID = 9999;
 static constexpr int SPEAKERS_NODE_ID = 9998;
 
+// Thumbnail sizes (16:9 aspect ratio)
+static constexpr float THUMB_WIDTH = 100.0f;
+static constexpr float THUMB_HEIGHT = 56.0f;
+static constexpr float FOCUSED_SCALE = 3.0f;  // 3x larger when focused
+
 // Get process memory usage in bytes
 static size_t getProcessMemoryUsage() {
 #if defined(__APPLE__)
@@ -144,19 +149,10 @@ void ChainVisualizer::shutdown() {
     m_nodePositioned.clear();
 }
 
-void ChainVisualizer::loadAndApplySidecar(vivid::Context& ctx) {
-    const std::string& chainPath = ctx.chainPath();
-    if (chainPath.empty()) return;
-
-    // Load sidecar if not already loaded
-    if (m_sidecarPath.empty()) {
-        loadSidecar(chainPath);
-    }
-
-    // Apply overrides to registered operators
-    if (!m_paramOverrides.empty()) {
-        applyOverrides(ctx.registeredOperators());
-    }
+void ChainVisualizer::selectNodeFromEditor(const std::string& operatorName) {
+    // Store the selection to be applied in next render() call
+    // (ImNodes calls must happen within the node editor context)
+    m_pendingEditorSelection = operatorName;
 }
 
 // Estimate node height based on content (parameters are now in inspector panel)
@@ -672,15 +668,6 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
 
     const auto& operators = ctx.registeredOperators();
 
-    // Load sidecar file if chain path changed
-    const std::string& chainPath = ctx.chainPath();
-    if (!chainPath.empty() && m_sidecarPath.empty()) {
-        loadSidecar(chainPath);
-        if (!m_paramOverrides.empty()) {
-            applyOverrides(operators);
-        }
-    }
-
     // Menu bar with performance stats and controls
     float fps = input.dt > 0 ? 1.0f / input.dt : 0.0f;
     if (ImGui::BeginMainMenuBar()) {
@@ -754,12 +741,9 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         ImGui::EndMainMenuBar();
     }
 
-    // Inspector panel width (only used when a node is selected)
-    float inspectorWidth = m_selectedOp ? 280.0f : 0.0f;
-
-    // Node editor - transparent, fullscreen overlay (minus inspector space if needed)
+    // Node editor - transparent, fullscreen overlay
     ImGui::SetNextWindowPos(ImVec2(0, 0));
-    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(input.width) - inspectorWidth, static_cast<float>(input.height)));
+    ImGui::SetNextWindowSize(ImVec2(static_cast<float>(input.width), static_cast<float>(input.height)));
     ImGui::SetNextWindowBgAlpha(0.0f);  // Fully transparent background
     ImGui::Begin("Chain Visualizer", nullptr,
         ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
@@ -914,15 +898,21 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
         // Thumbnail - render based on output type
         vivid::OutputKind kind = info.op->outputKind();
 
+        // Calculate thumbnail size (3x larger when focused from editor)
+        bool nodeFocused = isFocused(info.name);
+        float thumbScale = nodeFocused ? FOCUSED_SCALE : 1.0f;
+        float thumbW = THUMB_WIDTH * thumbScale;
+        float thumbH = THUMB_HEIGHT * thumbScale;
+
         if (kind == vivid::OutputKind::Texture) {
             WGPUTextureView view = info.op->outputView();
             if (view) {
                 // ImGui WebGPU backend accepts WGPUTextureView as ImTextureID
                 ImTextureID texId = reinterpret_cast<ImTextureID>(view);
-                ImGui::Image(texId, ImVec2(100, 56));  // 16:9 aspect ratio
+                ImGui::Image(texId, ImVec2(thumbW, thumbH));  // 16:9 aspect ratio (3x when focused)
             } else {
                 // Texture operator but no view yet
-                ImGui::Dummy(ImVec2(100, 40));
+                ImGui::Dummy(ImVec2(thumbW, thumbH * 0.7f));
                 ImVec2 min = ImGui::GetItemRectMin();
                 ImVec2 max = ImGui::GetItemRectMax();
                 ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(40, 40, 50, 255), 4.0f);
@@ -945,13 +935,13 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                     WGPUTextureView view = preview.renderer ? preview.renderer->outputView() : nullptr;
                     if (view) {
                         ImTextureID texId = reinterpret_cast<ImTextureID>(view);
-                        ImGui::Image(texId, ImVec2(100, 56));
+                        ImGui::Image(texId, ImVec2(thumbW, thumbH));
                     } else {
-                        ImGui::Dummy(ImVec2(100, 56));
+                        ImGui::Dummy(ImVec2(thumbW, thumbH));
                     }
                 } else {
                     // Empty scene placeholder
-                    ImGui::Dummy(ImVec2(100, 56));
+                    ImGui::Dummy(ImVec2(thumbW, thumbH));
                     ImVec2 min = ImGui::GetItemRectMin();
                     ImVec2 max = ImGui::GetItemRectMax();
                     ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 50, 70, 255), 4.0f);
@@ -972,13 +962,13 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                     WGPUTextureView view = preview.renderer ? preview.renderer->outputView() : nullptr;
                     if (view) {
                         ImTextureID texId = reinterpret_cast<ImTextureID>(view);
-                        ImGui::Image(texId, ImVec2(100, 56));
+                        ImGui::Image(texId, ImVec2(thumbW, thumbH));
                     } else {
-                        ImGui::Dummy(ImVec2(100, 56));
+                        ImGui::Dummy(ImVec2(thumbW, thumbH));
                     }
                 } else {
                     // No valid mesh - show placeholder
-                    ImGui::Dummy(ImVec2(100, 56));
+                    ImGui::Dummy(ImVec2(thumbW, thumbH));
                     ImVec2 min = ImGui::GetItemRectMin();
                     ImVec2 max = ImGui::GetItemRectMax();
                     ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 50, 70, 255), 4.0f);
@@ -988,7 +978,7 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             }
         } else if (kind == vivid::OutputKind::Value || kind == vivid::OutputKind::ValueArray) {
             // Value operator - show numeric display
-            ImGui::Dummy(ImVec2(100, 40));
+            ImGui::Dummy(ImVec2(thumbW, thumbH * 0.7f));
             ImVec2 min = ImGui::GetItemRectMin();
             ImVec2 max = ImGui::GetItemRectMax();
             ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(50, 40, 30, 255), 4.0f);
@@ -997,43 +987,45 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                 kind == vivid::OutputKind::Value ? "Value" : "Values");
         } else if (kind == vivid::OutputKind::Camera) {
             // Camera operator - draw camera icon
-            ImGui::Dummy(ImVec2(100, 50));
+            ImGui::Dummy(ImVec2(thumbW, thumbH * 0.9f));
             ImVec2 min = ImGui::GetItemRectMin();
             ImVec2 max = ImGui::GetItemRectMax();
             ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 60, 50, 255), 4.0f);
 
-            // Draw camera body (rectangle)
+            // Draw camera body (rectangle) - scale icon with thumbnail
             float cx = (min.x + max.x) * 0.5f;
             float cy = (min.y + max.y) * 0.5f;
+            float iconScale = thumbScale;
             ImU32 iconColor = IM_COL32(100, 200, 160, 255);
             ImGui::GetWindowDrawList()->AddRectFilled(
-                ImVec2(cx - 20, cy - 10), ImVec2(cx + 10, cy + 10), iconColor, 3.0f);
+                ImVec2(cx - 20*iconScale, cy - 10*iconScale), ImVec2(cx + 10*iconScale, cy + 10*iconScale), iconColor, 3.0f);
             // Draw lens (triangle)
             ImGui::GetWindowDrawList()->AddTriangleFilled(
-                ImVec2(cx + 10, cy - 8), ImVec2(cx + 25, cy), ImVec2(cx + 10, cy + 8), iconColor);
+                ImVec2(cx + 10*iconScale, cy - 8*iconScale), ImVec2(cx + 25*iconScale, cy), ImVec2(cx + 10*iconScale, cy + 8*iconScale), iconColor);
             // Draw viewfinder
             ImGui::GetWindowDrawList()->AddRectFilled(
-                ImVec2(cx - 15, cy - 18), ImVec2(cx, cy - 10), iconColor, 2.0f);
+                ImVec2(cx - 15*iconScale, cy - 18*iconScale), ImVec2(cx, cy - 10*iconScale), iconColor, 2.0f);
         } else if (kind == vivid::OutputKind::Light) {
             // Light operator - draw light bulb icon
-            ImGui::Dummy(ImVec2(100, 50));
+            ImGui::Dummy(ImVec2(thumbW, thumbH * 0.9f));
             ImVec2 min = ImGui::GetItemRectMin();
             ImVec2 max = ImGui::GetItemRectMax();
             ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(60, 50, 25, 255), 4.0f);
 
-            // Draw bulb (circle)
+            // Draw bulb (circle) - scale icon with thumbnail
             float cx = (min.x + max.x) * 0.5f;
-            float cy = (min.y + max.y) * 0.5f - 3;
+            float cy = (min.y + max.y) * 0.5f - 3 * thumbScale;
+            float iconScale = thumbScale;
             ImU32 iconColor = IM_COL32(255, 220, 100, 255);
-            ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(cx, cy), 12, iconColor);
+            ImGui::GetWindowDrawList()->AddCircleFilled(ImVec2(cx, cy), 12 * iconScale, iconColor);
             // Draw base
             ImGui::GetWindowDrawList()->AddRectFilled(
-                ImVec2(cx - 6, cy + 10), ImVec2(cx + 6, cy + 18), IM_COL32(180, 180, 180, 255), 2.0f);
+                ImVec2(cx - 6*iconScale, cy + 10*iconScale), ImVec2(cx + 6*iconScale, cy + 18*iconScale), IM_COL32(180, 180, 180, 255), 2.0f);
             // Draw rays
             ImU32 rayColor = IM_COL32(255, 240, 150, 180);
             for (int i = 0; i < 8; i++) {
                 float angle = i * 3.14159f / 4;
-                float r1 = 15, r2 = 22;
+                float r1 = 15 * iconScale, r2 = 22 * iconScale;
                 ImGui::GetWindowDrawList()->AddLine(
                     ImVec2(cx + r1 * cos(angle), cy + r1 * sin(angle)),
                     ImVec2(cx + r2 * cos(angle), cy + r2 * sin(angle)),
@@ -1041,7 +1033,7 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             }
         } else if (kind == vivid::OutputKind::Audio) {
             // Audio operator - draw waveform visualization
-            ImGui::Dummy(ImVec2(100, 50));
+            ImGui::Dummy(ImVec2(thumbW, thumbH * 0.9f));
             ImVec2 min = ImGui::GetItemRectMin();
             ImVec2 max = ImGui::GetItemRectMax();
             ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(50, 30, 60, 255), 4.0f);
@@ -1097,7 +1089,7 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             }
         } else if (kind == vivid::OutputKind::AudioValue) {
             // Audio analysis - draw based on specific analyzer type
-            ImGui::Dummy(ImVec2(100, 50));
+            ImGui::Dummy(ImVec2(thumbW, thumbH * 0.9f));
             ImVec2 min = ImGui::GetItemRectMin();
             ImVec2 max = ImGui::GetItemRectMax();
             ImDrawList* dl = ImGui::GetWindowDrawList();
@@ -1369,6 +1361,22 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             inputAttrId(SPEAKERS_NODE_ID, 0));
     }
 
+    // Handle pending editor selection (from VSCode)
+    if (!m_pendingEditorSelection.empty()) {
+        // Find the operator by name and select its node
+        for (const auto& info : operators) {
+            if (info.name == m_pendingEditorSelection && info.op && m_opToNodeId.count(info.op)) {
+                int nodeId = m_opToNodeId[info.op];
+                ImNodes::ClearNodeSelection();
+                ImNodes::SelectNode(nodeId);
+                // Center view on the selected node
+                ImNodes::EditorContextMoveToNode(nodeId);
+                break;
+            }
+        }
+        m_pendingEditorSelection.clear();
+    }
+
     ImNodes::EndNodeEditor();
 
     // Update selection state from ImNodes
@@ -1397,117 +1405,6 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
     }
 
     ImGui::End();
-
-    // Render inspector panel for selected node
-    renderInspectorPanel(ctx);
-
-    // Save sidecar file if dirty
-    if (m_sidecarDirty) {
-        saveSidecar();
-        m_sidecarDirty = false;
-    }
-}
-
-std::string ChainVisualizer::makeParamKey(const std::string& opName, const std::string& paramName) {
-    return opName + "." + paramName;
-}
-
-void ChainVisualizer::loadSidecar(const std::string& chainPath) {
-    // Derive sidecar path from chain path: chain.cpp -> chain.vivid.json
-    size_t lastDot = chainPath.rfind('.');
-    if (lastDot != std::string::npos) {
-        m_sidecarPath = chainPath.substr(0, lastDot) + ".vivid.json";
-    } else {
-        m_sidecarPath = chainPath + ".vivid.json";
-    }
-
-    // Try to read the file
-    std::ifstream file(m_sidecarPath);
-    if (!file.is_open()) {
-        return;  // No sidecar file exists yet
-    }
-
-    // Simple JSON parsing (just key:value pairs for floats)
-    std::string line;
-    std::string currentOp;
-    while (std::getline(file, line)) {
-        // Skip empty lines and braces
-        if (line.empty() || line.find('{') != std::string::npos ||
-            line.find('}') != std::string::npos) {
-            continue;
-        }
-
-        // Look for "key": [v0, v1, v2, v3]
-        size_t colonPos = line.find(':');
-        if (colonPos == std::string::npos) continue;
-
-        // Extract key (remove quotes and whitespace)
-        std::string key = line.substr(0, colonPos);
-        size_t keyStart = key.find('"');
-        size_t keyEnd = key.rfind('"');
-        if (keyStart == std::string::npos || keyEnd <= keyStart) continue;
-        key = key.substr(keyStart + 1, keyEnd - keyStart - 1);
-
-        // Extract values
-        std::string valueStr = line.substr(colonPos + 1);
-        std::array<float, 4> values = {0, 0, 0, 0};
-
-        // Find array brackets
-        size_t bracketStart = valueStr.find('[');
-        size_t bracketEnd = valueStr.find(']');
-        if (bracketStart != std::string::npos && bracketEnd != std::string::npos) {
-            std::string arrayStr = valueStr.substr(bracketStart + 1, bracketEnd - bracketStart - 1);
-            int idx = 0;
-            size_t pos = 0;
-            while (pos < arrayStr.length() && idx < 4) {
-                size_t commaPos = arrayStr.find(',', pos);
-                if (commaPos == std::string::npos) commaPos = arrayStr.length();
-                std::string numStr = arrayStr.substr(pos, commaPos - pos);
-                try {
-                    values[idx++] = std::stof(numStr);
-                } catch (...) {}
-                pos = commaPos + 1;
-            }
-        }
-
-        m_paramOverrides[key] = values;
-    }
-}
-
-void ChainVisualizer::saveSidecar() {
-    if (m_sidecarPath.empty() || m_paramOverrides.empty()) {
-        return;
-    }
-
-    std::ofstream file(m_sidecarPath);
-    if (!file.is_open()) {
-        return;
-    }
-
-    file << "{\n";
-    bool first = true;
-    for (const auto& [key, values] : m_paramOverrides) {
-        if (!first) file << ",\n";
-        first = false;
-        file << "  \"" << key << "\": [" << values[0] << ", " << values[1]
-             << ", " << values[2] << ", " << values[3] << "]";
-    }
-    file << "\n}\n";
-}
-
-void ChainVisualizer::applyOverrides(const std::vector<vivid::OperatorInfo>& operators) {
-    for (const auto& info : operators) {
-        if (!info.op) continue;
-
-        auto params = info.op->params();
-        for (const auto& param : params) {
-            std::string key = makeParamKey(info.name, param.name);
-            auto it = m_paramOverrides.find(key);
-            if (it != m_paramOverrides.end()) {
-                info.op->setParam(param.name, it->second.data());
-            }
-        }
-    }
 }
 
 // -------------------------------------------------------------------------
@@ -1637,103 +1534,18 @@ void ChainVisualizer::clearSelection() {
     m_selectedOpName.clear();
 }
 
-void ChainVisualizer::renderInspectorPanel(vivid::Context& ctx) {
-    if (!m_selectedOp) return;  // No selection = no inspector
+void ChainVisualizer::setFocusedNode(const std::string& operatorName) {
+    m_focusedOperatorName = operatorName;
+    m_focusedModeActive = !operatorName.empty();
+}
 
-    float panelWidth = 280.0f;
-    float menuBarHeight = ImGui::GetFrameHeight() + 4.0f;  // Menu bar height
-    auto& io = ImGui::GetIO();
+void ChainVisualizer::clearFocusedNode() {
+    m_focusedOperatorName.clear();
+    m_focusedModeActive = false;
+}
 
-    ImGui::SetNextWindowPos(ImVec2(io.DisplaySize.x - panelWidth, menuBarHeight));
-    ImGui::SetNextWindowSize(ImVec2(panelWidth, io.DisplaySize.y - menuBarHeight));
-
-    ImGui::Begin("Inspector", nullptr,
-        ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize |
-        ImGuiWindowFlags_NoCollapse);
-
-    // Header with operator name and type
-    ImGui::PushFont(nullptr);  // Use default font, could use bold if available
-    ImGui::Text("%s", m_selectedOpName.c_str());
-    ImGui::PopFont();
-
-    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.6f, 1.0f), "Type: %s", m_selectedOp->name().c_str());
-    ImGui::Separator();
-
-    // Bypass toggle
-    bool bypassed = m_selectedOp->isBypassed();
-    if (ImGui::Checkbox("Bypassed", &bypassed)) {
-        m_selectedOp->setBypassed(bypassed);
-        m_sidecarDirty = true;
-    }
-
-    ImGui::Spacing();
-
-    // Parameters section
-    if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen)) {
-        auto params = m_selectedOp->params();
-
-        if (params.empty()) {
-            ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.5f, 1.0f), "No parameters");
-        } else {
-            for (const auto& p : params) {
-                float value[4] = {0, 0, 0, 0};
-                if (!m_selectedOp->getParam(p.name, value)) continue;
-
-                bool changed = false;
-                std::string key = makeParamKey(m_selectedOpName, p.name);
-
-                switch (p.type) {
-                    case ParamType::Float: {
-                        changed = ImGui::SliderFloat(p.name.c_str(), &value[0], p.minVal, p.maxVal);
-                        break;
-                    }
-                    case ParamType::Int: {
-                        int iVal = static_cast<int>(value[0]);
-                        changed = ImGui::SliderInt(p.name.c_str(), &iVal,
-                            static_cast<int>(p.minVal), static_cast<int>(p.maxVal));
-                        value[0] = static_cast<float>(iVal);
-                        break;
-                    }
-                    case ParamType::Bool: {
-                        bool bVal = value[0] > 0.5f;
-                        changed = ImGui::Checkbox(p.name.c_str(), &bVal);
-                        value[0] = bVal ? 1.0f : 0.0f;
-                        break;
-                    }
-                    case ParamType::Vec2: {
-                        changed = ImGui::SliderFloat2(p.name.c_str(), value, p.minVal, p.maxVal);
-                        break;
-                    }
-                    case ParamType::Vec3: {
-                        changed = ImGui::SliderFloat3(p.name.c_str(), value, p.minVal, p.maxVal);
-                        break;
-                    }
-                    case ParamType::Color: {
-                        changed = ImGui::ColorEdit4(p.name.c_str(), value,
-                            ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
-                        break;
-                    }
-                    case ParamType::Vec4: {
-                        changed = ImGui::SliderFloat4(p.name.c_str(), value, p.minVal, p.maxVal);
-                        break;
-                    }
-                    case ParamType::String: {
-                        // String parameters are read-only for now
-                        ImGui::Text("%s: (string)", p.name.c_str());
-                        break;
-                    }
-                }
-
-                if (changed) {
-                    m_selectedOp->setParam(p.name, value);
-                    m_paramOverrides[key] = {value[0], value[1], value[2], value[3]};
-                    m_sidecarDirty = true;
-                }
-            }
-        }
-    }
-
-    ImGui::End();
+bool ChainVisualizer::isFocused(const std::string& operatorName) const {
+    return m_focusedModeActive && m_focusedOperatorName == operatorName;
 }
 
 } // namespace vivid::imgui

@@ -1,17 +1,25 @@
 import * as vscode from 'vscode';
-import { RuntimeClient, NodeUpdate } from './runtimeClient';
+import { RuntimeClient, NodeUpdate, SoloState } from './runtimeClient';
 import { DecorationManager } from './decorations';
 import { StatusBar } from './statusBar';
-import { OperatorTreeProvider, ParamData } from './operatorTreeView';
+import { OperatorTreeProvider, ParamData, OperatorData } from './operatorTreeView';
 import { PerformancePanelProvider } from './performancePanel';
+import { NodeInspectorPanel } from './nodeInspectorPanel';
+import { ChainCodeSync } from './chainCodeSync';
 
 let runtimeClient: RuntimeClient | undefined;
 let decorationManager: DecorationManager | undefined;
 let statusBar: StatusBar | undefined;
 let operatorTreeProvider: OperatorTreeProvider | undefined;
 let performancePanelProvider: PerformancePanelProvider | undefined;
+let nodeInspectorPanel: NodeInspectorPanel | undefined;
+let chainCodeSync: ChainCodeSync | undefined;
 let outputChannel: vscode.OutputChannel;
 let diagnosticCollection: vscode.DiagnosticCollection;
+
+// Track current operators and params for inspector
+let currentOperators: OperatorData[] = [];
+let currentParams: ParamData[] = [];
 
 export function activate(context: vscode.ExtensionContext) {
     outputChannel = vscode.window.createOutputChannel('Vivid');
@@ -39,6 +47,66 @@ export function activate(context: vscode.ExtensionContext) {
         )
     );
 
+    // Register node inspector panel
+    nodeInspectorPanel = new NodeInspectorPanel(context.extensionUri);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            NodeInspectorPanel.viewType,
+            nodeInspectorPanel
+        )
+    );
+
+    // Initialize chain code sync
+    chainCodeSync = new ChainCodeSync();
+
+    // Wire up inspector callbacks
+    nodeInspectorPanel.onParamChange((operator, param, value) => {
+        if (runtimeClient) {
+            runtimeClient.sendParamChange(operator, param, value);
+
+            // Also sync to source code (debounced)
+            const paramInfo = currentParams.find(p => p.operator === operator && p.name === param);
+            if (paramInfo && chainCodeSync) {
+                chainCodeSync.scheduleParamUpdate(operator, param, value, paramInfo.type);
+            }
+
+            outputChannel.appendLine(`Inspector: ${operator}.${param} = [${value.join(', ')}]`);
+        }
+    });
+
+    nodeInspectorPanel.onSoloRequest((operator) => {
+        soloOperator(operator);
+    });
+
+    nodeInspectorPanel.onExitSoloRequest(() => {
+        exitSolo();
+    });
+
+    nodeInspectorPanel.onBrowseFile(async (operator, param, filter, category) => {
+        // Convert filter format (*.png;*.jpg) to VS Code filter format
+        const filters: { [key: string]: string[] } = {};
+        const categoryName = category || 'Files';
+
+        // Parse filter string
+        const extensions = filter.split(';').map(f => f.replace('*.', '').trim());
+        filters[categoryName] = extensions;
+
+        const result = await vscode.window.showOpenDialog({
+            canSelectFiles: true,
+            canSelectFolders: false,
+            canSelectMany: false,
+            filters: filters,
+            title: `Select ${param}`
+        });
+
+        if (result && result.length > 0) {
+            const filePath = result[0].fsPath;
+            // TODO: Send string param change to runtime
+            // For now, just log it - runtime needs to support string params
+            outputChannel.appendLine(`File selected: ${operator}.${param} = ${filePath}`);
+        }
+    });
+
     // Register commands
     context.subscriptions.push(
         vscode.commands.registerCommand('vivid.startRuntime', () => startRuntime(context)),
@@ -52,7 +120,10 @@ export function activate(context: vscode.ExtensionContext) {
             if (runtimeClient) {
                 runtimeClient.sendReload();
             }
-        })
+        }),
+        vscode.commands.registerCommand('vivid.soloOperator', soloOperator),
+        vscode.commands.registerCommand('vivid.exitSolo', exitSolo),
+        vscode.commands.registerCommand('vivid.inspectOperator', inspectOperator)
     );
 
     // Watch for editor changes
@@ -60,6 +131,48 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.onDidChangeActiveTextEditor(editor => {
             if (editor && decorationManager) {
                 decorationManager.updateDecorations(editor);
+            }
+        })
+    );
+
+    // Cursor tracking: auto-select operator at cursor position
+    // Also sends "focused_node" for 3x larger preview in runtime
+    let lastSelectedOperator: string | undefined;
+    let lastFocusedOperator: string | undefined;
+    context.subscriptions.push(
+        vscode.window.onDidChangeTextEditorSelection(event => {
+            const editor = event.textEditor;
+            if (!editor || !isVividFile(editor.document)) {
+                // Cursor left a Vivid file - clear focus
+                if (lastFocusedOperator !== undefined) {
+                    lastFocusedOperator = undefined;
+                    if (runtimeClient) {
+                        runtimeClient.sendFocusedNode('');
+                    }
+                }
+                return;
+            }
+
+            const cursorLine = editor.selection.active.line + 1; // 1-indexed
+            const operator = findOperatorAtLine(cursorLine);
+
+            if (operator && operator.name !== lastSelectedOperator) {
+                lastSelectedOperator = operator.name;
+                // Update VSCode inspector panel
+                inspectOperator(operator.name);
+                // Send selection to vivid runtime (highlights node)
+                if (runtimeClient) {
+                    runtimeClient.sendSelectNode(operator.name);
+                }
+            }
+
+            // Send focused node for 3x larger preview
+            const focusedName = operator?.name ?? '';
+            if (focusedName !== lastFocusedOperator) {
+                lastFocusedOperator = focusedName || undefined;
+                if (runtimeClient) {
+                    runtimeClient.sendFocusedNode(focusedName);
+                }
             }
         })
     );
@@ -96,6 +209,9 @@ function connectToRuntime() {
         outputChannel.appendLine('Disconnected from Vivid runtime');
         statusBar?.setConnected(false);
         operatorTreeProvider?.clear();
+        chainCodeSync?.clear();
+        currentOperators = [];
+        currentParams = [];
         vscode.window.setStatusBarMessage('$(warning) Vivid: Disconnected from runtime', 5000);
     });
 
@@ -124,17 +240,31 @@ function connectToRuntime() {
 
     runtimeClient.onOperatorList((operators) => {
         outputChannel.appendLine(`Received ${operators.length} operators`);
+        currentOperators = operators;
         operatorTreeProvider?.updateOperators(operators);
         decorationManager?.updateOperators(operators);
+
+        // Parse chain file for code sync
+        chainCodeSync?.parseChainFile();
     });
 
     runtimeClient.onParamValues((params) => {
+        currentParams = params;
         operatorTreeProvider?.updateParams(params);
         decorationManager?.updateParams(params);
+        nodeInspectorPanel?.updateParams(params);
     });
 
     runtimeClient.onPerformanceStats((stats) => {
         performancePanelProvider?.updateStats(stats);
+    });
+
+    runtimeClient.onSoloState((state: SoloState) => {
+        operatorTreeProvider?.updateSoloState(state.active, state.operator);
+        nodeInspectorPanel?.updateSoloState(state.active ? state.operator : undefined);
+        if (state.active) {
+            vscode.window.setStatusBarMessage(`$(eye) Solo: ${state.operator}`, 3000);
+        }
     });
 
     runtimeClient.onError((error) => {
@@ -153,6 +283,24 @@ function isVividFile(document: vscode.TextDocument): boolean {
     return document.fileName.endsWith('chain.cpp') ||
            document.fileName.endsWith('.wgsl') ||
            document.getText().includes('vivid/vivid.h');
+}
+
+function findOperatorAtLine(line: number): OperatorData | undefined {
+    // Find operator whose sourceLine matches the cursor line
+    // Allow some tolerance for multi-line declarations
+    for (const op of currentOperators) {
+        if (op.sourceLine === line) {
+            return op;
+        }
+    }
+    // If exact match not found, check if we're within a few lines after an operator
+    // (for fluent API chains like .scale(4.0f).speed(0.5f))
+    for (const op of currentOperators) {
+        if (op.sourceLine > 0 && line >= op.sourceLine && line <= op.sourceLine + 3) {
+            return op;
+        }
+    }
+    return undefined;
 }
 
 function showCompileErrors(message: string) {
@@ -410,6 +558,38 @@ function parseParamInput(input: string, param: ParamData): number[] | null {
     }
 
     return result;
+}
+
+function soloOperator(operatorName: string) {
+    if (!runtimeClient) {
+        vscode.window.showWarningMessage('Not connected to Vivid runtime');
+        return;
+    }
+
+    // Also select the operator in the inspector
+    inspectOperator(operatorName);
+
+    runtimeClient.sendSoloNode(operatorName);
+    outputChannel.appendLine(`Solo mode: ${operatorName}`);
+}
+
+function inspectOperator(operatorName: string) {
+    const operator = currentOperators.find(op => op.name === operatorName);
+    if (operator) {
+        const params = currentParams.filter(p => p.operator === operatorName);
+        nodeInspectorPanel?.setSelectedOperator(operator, params);
+        outputChannel.appendLine(`Inspecting: ${operatorName}`);
+    }
+}
+
+function exitSolo() {
+    if (!runtimeClient) {
+        vscode.window.showWarningMessage('Not connected to Vivid runtime');
+        return;
+    }
+
+    runtimeClient.sendSoloExit();
+    outputChannel.appendLine('Exited solo mode');
 }
 
 export function deactivate() {

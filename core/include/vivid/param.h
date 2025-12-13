@@ -272,4 +272,72 @@ private:
     float m_r, m_g, m_b, m_a;
 };
 
+/**
+ * @brief File path parameter wrapper for textures, videos, models, etc.
+ *
+ * @par Example
+ * @code
+ * FilePathParam m_texture{"texture", "", "*.png;*.jpg;*.exr", "image"};
+ *
+ * MyEffect& texture(const std::string& path) {
+ *     m_texture = path;
+ *     return *this;
+ * }
+ * @endcode
+ */
+class FilePathParam {
+public:
+    /**
+     * @brief Construct a file path parameter
+     * @param name Display name
+     * @param defaultPath Default file path (empty string for none)
+     * @param filter File filter pattern (e.g., "*.png;*.jpg;*.exr")
+     * @param category Category hint for UI ("image", "video", "audio", "model")
+     */
+    FilePathParam(const char* name, const char* defaultPath = "",
+                  const char* filter = "*.*", const char* category = "")
+        : m_name(name), m_path(defaultPath), m_filter(filter), m_category(category) {}
+
+    /// @brief Get the current path
+    const std::string& get() const { return m_path; }
+
+    /// @brief Implicit conversion to string reference
+    operator const std::string&() const { return m_path; }
+
+    /// @brief Assignment from string
+    FilePathParam& operator=(const std::string& path) { m_path = path; return *this; }
+
+    /// @brief Assignment from C-string
+    FilePathParam& operator=(const char* path) { m_path = path; return *this; }
+
+    /// @brief Get parameter name
+    const char* name() const { return m_name; }
+
+    /// @brief Get file filter pattern
+    const char* filter() const { return m_filter; }
+
+    /// @brief Get category hint
+    const char* category() const { return m_category; }
+
+    /// @brief Check if path is empty
+    bool empty() const { return m_path.empty(); }
+
+    /// @brief Generate ParamDecl
+    ParamDecl decl() const {
+        ParamDecl d;
+        d.name = m_name;
+        d.type = ParamType::FilePath;
+        d.stringDefault = m_path;
+        d.fileFilter = m_filter;
+        d.fileCategory = m_category;
+        return d;
+    }
+
+private:
+    const char* m_name;
+    std::string m_path;
+    const char* m_filter;
+    const char* m_category;
+};
+
 } // namespace vivid

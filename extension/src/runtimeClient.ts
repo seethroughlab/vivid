@@ -27,6 +27,11 @@ export interface PerformanceStats {
     operatorTimings: OperatorTiming[];
 }
 
+export interface SoloState {
+    active: boolean;
+    operator?: string;
+}
+
 export interface RuntimeMessage {
     type: string;
     nodes?: NodeUpdate[];
@@ -42,6 +47,9 @@ export interface RuntimeMessage {
     textureMemoryBytes?: number;
     operatorCount?: number;
     operatorTimings?: OperatorTiming[];
+    // Solo state fields
+    active?: boolean;
+    operator?: string;
 }
 
 type Callback<T> = (data: T) => void;
@@ -60,6 +68,7 @@ export class RuntimeClient {
     private operatorListCallbacks: Callback<OperatorData[]>[] = [];
     private paramValuesCallbacks: Callback<ParamData[]>[] = [];
     private performanceStatsCallbacks: Callback<PerformanceStats>[] = [];
+    private soloStateCallbacks: Callback<SoloState>[] = [];
     private errorCallbacks: Callback<string>[] = [];
 
     constructor(port: number) {
@@ -167,6 +176,16 @@ export class RuntimeClient {
                     }
                     break;
 
+                case 'solo_state':
+                    {
+                        const state: SoloState = {
+                            active: msg.active ?? false,
+                            operator: msg.operator
+                        };
+                        this.soloStateCallbacks.forEach(cb => cb(state));
+                    }
+                    break;
+
                 case 'error':
                     this.errorCallbacks.forEach(cb => cb(msg.message ?? 'Unknown error'));
                     break;
@@ -186,6 +205,7 @@ export class RuntimeClient {
     onOperatorList(callback: Callback<OperatorData[]>) { this.operatorListCallbacks.push(callback); }
     onParamValues(callback: Callback<ParamData[]>) { this.paramValuesCallbacks.push(callback); }
     onPerformanceStats(callback: Callback<PerformanceStats>) { this.performanceStatsCallbacks.push(callback); }
+    onSoloState(callback: Callback<SoloState>) { this.soloStateCallbacks.push(callback); }
     onError(callback: Callback<string>) { this.errorCallbacks.push(callback); }
 
     // Commands to runtime
@@ -199,6 +219,23 @@ export class RuntimeClient {
 
     sendPause(paused: boolean) {
         this.send({ type: 'pause', paused });
+    }
+
+    sendSoloNode(operator: string) {
+        this.send({ type: 'solo_node', operator });
+    }
+
+    sendSoloExit() {
+        this.send({ type: 'solo_exit' });
+    }
+
+    sendSelectNode(operator: string) {
+        this.send({ type: 'select_node', operator });
+    }
+
+    sendFocusedNode(operator: string) {
+        // Send empty string to clear focus
+        this.send({ type: 'focused_node', operator });
     }
 
     private send(msg: object) {

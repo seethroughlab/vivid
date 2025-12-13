@@ -15,31 +15,35 @@ export interface ParamData {
     value: number[];
     min: number;
     max: number;
+    // For String/FilePath parameters
+    stringValue?: string;
+    fileFilter?: string;
+    fileCategory?: string;
 }
 
 class OperatorTreeItem extends vscode.TreeItem {
     constructor(
         public readonly operator: OperatorData,
-        public readonly collapsibleState: vscode.TreeItemCollapsibleState
+        public readonly collapsibleState: vscode.TreeItemCollapsibleState,
+        public readonly isSoloed: boolean = false
     ) {
         super(operator.name, collapsibleState);
 
-        this.description = operator.displayName;
-        this.tooltip = `${operator.displayName} (${operator.outputType})\nLine: ${operator.sourceLine}`;
+        // Show solo indicator in description
+        this.description = isSoloed ? `${operator.displayName} 👁` : operator.displayName;
+        this.tooltip = `${operator.displayName} (${operator.outputType})\nLine: ${operator.sourceLine}${isSoloed ? '\n[SOLO MODE]' : '\nClick to solo'}`;
 
         // Icon based on output type
         this.iconPath = this.getIcon(operator.outputType);
 
-        // Click to go to line
-        if (operator.sourceLine > 0) {
-            this.command = {
-                command: 'vivid.goToOperator',
-                title: 'Go to Operator',
-                arguments: [operator.sourceLine]
-            };
-        }
+        // Click triggers solo mode
+        this.command = {
+            command: 'vivid.soloOperator',
+            title: 'Solo Operator',
+            arguments: [operator.name]
+        };
 
-        this.contextValue = 'operator';
+        this.contextValue = isSoloed ? 'operator-soloed' : 'operator';
     }
 
     private getIcon(outputType: string): vscode.ThemeIcon {
@@ -118,6 +122,7 @@ export class OperatorTreeProvider implements vscode.TreeDataProvider<TreeItem> {
 
     private operators: OperatorData[] = [];
     private params: Map<string, ParamData[]> = new Map();
+    private soloedOperator: string | undefined;
 
     updateOperators(operators: OperatorData[]) {
         this.operators = operators;
@@ -135,9 +140,15 @@ export class OperatorTreeProvider implements vscode.TreeDataProvider<TreeItem> {
         this._onDidChangeTreeData.fire();
     }
 
+    updateSoloState(active: boolean, operator?: string) {
+        this.soloedOperator = active ? operator : undefined;
+        this._onDidChangeTreeData.fire();
+    }
+
     clear() {
         this.operators = [];
         this.params.clear();
+        this.soloedOperator = undefined;
         this._onDidChangeTreeData.fire();
     }
 
@@ -151,9 +162,11 @@ export class OperatorTreeProvider implements vscode.TreeDataProvider<TreeItem> {
             return Promise.resolve(
                 this.operators.map(op => {
                     const hasParams = this.params.has(op.name) && this.params.get(op.name)!.length > 0;
+                    const isSoloed = this.soloedOperator === op.name;
                     return new OperatorTreeItem(
                         op,
-                        hasParams ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None
+                        hasParams ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+                        isSoloed
                     );
                 })
             );

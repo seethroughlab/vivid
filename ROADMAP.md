@@ -2265,11 +2265,19 @@ The EditorBridge provides a WebSocket server for communication between the Vivid
 - [x] `param_change` command: bidirectional parameter editing from extension
 - [x] Tree view data for operator hierarchy (via inputNames array)
 
-**Phase 3: Advanced (Future)**
+**Phase 3: Solo Mode & Node Selection** ✓
+- [x] `solo_node` command: show fullscreen preview of operator from extension
+- [x] `solo_exit` command: exit solo mode from extension
+- [x] `select_node` command: highlight node in chain visualizer from extension
+- [x] `solo_state` message: broadcast solo mode status to connected clients
+- [x] `FilePath` parameter type with file filter and category metadata
+
+**Phase 4: Advanced (Future)**
 - [ ] `pause` command: pause/resume runtime
 - [ ] `perf_stats` message: frame time, operator timing breakdown
 - [ ] Breakpoint-style "pause on operator"
 - [ ] Screenshot capture command
+- [ ] `focused_node` mode: 3x larger preview when cursor is in node code
 
 **Message Protocol (JSON):**
 ```json
@@ -2281,13 +2289,19 @@ The EditorBridge provides a WebSocket server for communication between the Vivid
   {"name": "hsv", "displayName": "HSV", "outputType": "Texture", "sourceLine": 16, "inputs": ["noise"]}
 ]}
 {"type": "param_values", "params": [
-  {"operator": "noise", "name": "scale", "type": "Float", "value": [4.0,0,0,0], "min": 0, "max": 10}
+  {"operator": "noise", "name": "scale", "type": "Float", "value": [4.0,0,0,0], "min": 0, "max": 10},
+  {"operator": "video", "name": "file", "type": "FilePath", "value": [0,0,0,0], "stringValue": "assets/video.mp4", "fileFilter": "*.mp4;*.mov", "fileCategory": "video"}
 ]}
+{"type": "solo_state", "active": true, "operator": "noise"}
+{"type": "solo_state", "active": false}
 
 // Extension → Runtime
 {"type": "reload"}
 {"type": "param_change", "operator": "noise", "param": "scale", "value": [8.0,0,0,0]}
-{"type": "pause", "paused": true}  // Phase 3
+{"type": "solo_node", "operator": "noise"}
+{"type": "solo_exit"}
+{"type": "select_node", "operator": "blur"}
+{"type": "pause", "paused": true}  // Phase 4
 ```
 
 **Implementation:** `core/src/editor_bridge.cpp`, `core/include/vivid/editor_bridge.h`
@@ -2321,6 +2335,48 @@ Located in `/extension/` - a streamlined TypeScript extension for VS Code integr
   - [x] Memory usage display (GPU texture memory estimate)
   - [x] Frame time history graph
   - [ ] Per-operator timing breakdown (runtime support in place, UI pending)
+
+**Features (Phase 4): Node Inspector & Code Sync** ✓
+
+The Node Inspector provides a TouchDesigner-style parameter editing experience directly in VS Code, with bidirectional sync between the UI and source code.
+
+**Node Inspector Panel** (`extension/src/nodeInspectorPanel.ts`):
+- [x] Webview panel showing selected operator's parameters
+- [x] Parameter widgets by type:
+  - Float/Int: slider + number input
+  - Bool: checkbox
+  - Vec2/Vec3/Vec4: multi-input fields
+  - Color: color picker
+  - FilePath: path display + Browse button
+  - String: text display
+- [x] Solo mode toggle button (shows fullscreen preview in runtime)
+- [x] Input connections list (click to navigate to input operator)
+- [x] Live parameter value updates from runtime
+
+**Chain Code Sync** (`extension/src/chainCodeSync.ts`):
+- [x] Parses chain.cpp to locate parameter calls (`.scale(4.0f)`, `.speed(0.5f)`)
+- [x] Maps operator name + param name → source file location
+- [x] Debounced source code updates (500ms) when parameters change
+- [x] Handles all parameter patterns: single value, Vec2, Vec3, Vec4
+- [x] Preserves C++ formatting (adds `f` suffix to floats)
+
+**Solo Mode Integration**:
+- [x] `vivid.soloOperator` command: solo operator from tree view context menu
+- [x] `vivid.exitSolo` command: exit solo mode
+- [x] Runtime broadcasts `solo_state` to all connected clients
+- [x] Inspector panel shows solo status and provides toggle button
+
+**New Parameter Types**:
+- [x] `ParamType::FilePath` for texture, video, model, audio files
+- [x] `FilePathParam` wrapper class with filter/category metadata
+- [x] File browser integration in Node Inspector
+
+**Features (Phase 5): Focused Node Mode (Planned)**
+- [ ] Track cursor position in chain.cpp
+- [ ] Detect when cursor is within an operator declaration
+- [ ] Send `focused_node` message to runtime
+- [ ] Runtime shows 3x larger preview for focused node
+- [ ] Quick parameter access without explicit node selection
 
 **Comparable Extensions (Research):**
 - [Flutter](https://docs.flutter.dev/tools/vs-code): Hot reload button, error diagnostics, status bar

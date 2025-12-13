@@ -159,6 +159,16 @@ private:
     WGPUBindGroup m_fontBindGroup = nullptr;
     FontAtlas* m_currentFont = nullptr;
 
+    // Persistent vertex/index buffers (reused each frame to avoid allocation churn)
+    WGPUBuffer m_solidVertexBuffer = nullptr;
+    WGPUBuffer m_solidIndexBuffer = nullptr;
+    WGPUBuffer m_textVertexBuffer = nullptr;
+    WGPUBuffer m_textIndexBuffer = nullptr;
+    size_t m_solidVertexCapacity = 0;
+    size_t m_solidIndexCapacity = 0;
+    size_t m_textVertexCapacity = 0;
+    size_t m_textIndexCapacity = 0;
+
     // Frame state
     int m_width = 0;
     int m_height = 0;
@@ -168,6 +178,8 @@ private:
 
     static constexpr int MAX_VERTICES = 65536;
     static constexpr int MAX_INDICES = MAX_VERTICES * 3;
+    static constexpr size_t INITIAL_VERTEX_CAPACITY = 1024;
+    static constexpr size_t INITIAL_INDEX_CAPACITY = 4096;
 };
 
 } // namespace vivid

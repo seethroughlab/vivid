@@ -39,9 +39,9 @@ public:
     // Cleanup
     void shutdown();
 
-    // Load sidecar file and apply parameter overrides to operators
-    // Call after chain is initialized (operators are registered)
-    void loadAndApplySidecar(vivid::Context& ctx);
+    // Select a node from external source (e.g., VSCode extension)
+    // Will highlight the node in the graph
+    void selectNodeFromEditor(const std::string& operatorName);
 
     // Render the chain visualizer
     // Call between imgui::beginFrame() and imgui::render()
@@ -93,27 +93,19 @@ private:
     std::unique_ptr<render3d::CameraOperator> m_soloCameraOp;
     float m_soloRotationAngle = 0.0f;
 
-    // Solo mode helpers
-    void enterSoloMode(vivid::Operator* op, const std::string& name);
-    void exitSoloMode();
+    // Solo mode helpers (internal)
     void renderSoloOverlay(const FrameInput& input, vivid::Context& ctx);
 
-    // Inspector panel
-    void renderInspectorPanel(vivid::Context& ctx);
+    // Selection helpers (for editor sync)
     void updateSelection(const std::vector<vivid::OperatorInfo>& operators);
     void clearSelection();
 
-    // Parameter sidecar file
-    // Key: "operator_name.param_name", Value: up to 4 floats
-    std::map<std::string, std::array<float, 4>> m_paramOverrides;
-    std::string m_sidecarPath;
-    bool m_sidecarDirty = false;
+    // Pending editor selection (set by selectNodeFromEditor, applied in render)
+    std::string m_pendingEditorSelection;
 
-    // Sidecar file helpers
-    void loadSidecar(const std::string& chainPath);
-    void saveSidecar();
-    void applyOverrides(const std::vector<vivid::OperatorInfo>& operators);
-    std::string makeParamKey(const std::string& opName, const std::string& paramName);
+    // Focused node mode (cursor is in operator code in editor)
+    std::string m_focusedOperatorName;
+    bool m_focusedModeActive = false;
 
     // Video recording
     VideoExporter m_exporter;
@@ -131,6 +123,18 @@ public:
     // Save a single frame snapshot (call from main loop after rendering)
     void saveSnapshot(WGPUDevice device, WGPUQueue queue, WGPUTexture texture, vivid::Context& ctx);
     bool snapshotRequested() const { return m_snapshotRequested; }
+
+    // Solo mode control (for EditorBridge integration)
+    void enterSoloMode(vivid::Operator* op, const std::string& name);
+    void exitSoloMode();
+    bool inSoloMode() const { return m_inSoloMode; }
+    const std::string& soloOperatorName() const { return m_soloOperatorName; }
+
+    // Focused node mode (for EditorBridge integration)
+    // When cursor is in an operator's code in the editor, that node gets a 3x larger preview
+    void setFocusedNode(const std::string& operatorName);
+    void clearFocusedNode();
+    bool isFocused(const std::string& operatorName) const;
 };
 
 } // namespace vivid::imgui

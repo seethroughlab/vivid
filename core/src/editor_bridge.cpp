@@ -144,6 +144,38 @@ void EditorBridge::start(int port) {
                         }
                     }
                 }
+                else if (type == "solo_node") {
+                    std::string opName = parseJsonString(msg->str, "operator");
+                    std::cout << "[EditorBridge] Solo node: " << opName << "\n";
+                    if (m_soloNodeCallback) {
+                        m_soloNodeCallback(opName);
+                    }
+                }
+                else if (type == "solo_exit") {
+                    std::cout << "[EditorBridge] Solo exit\n";
+                    if (m_soloExitCallback) {
+                        m_soloExitCallback();
+                    }
+                }
+                else if (type == "select_node") {
+                    std::string opName = parseJsonString(msg->str, "operator");
+                    std::cout << "[EditorBridge] Select node: " << opName << "\n";
+                    if (m_selectNodeCallback) {
+                        m_selectNodeCallback(opName);
+                    }
+                }
+                else if (type == "focused_node") {
+                    std::string opName = parseJsonString(msg->str, "operator");
+                    // Empty operator name means clear focus
+                    if (opName.empty()) {
+                        std::cout << "[EditorBridge] Clear focused node\n";
+                    } else {
+                        std::cout << "[EditorBridge] Focused node: " << opName << "\n";
+                    }
+                    if (m_focusedNodeCallback) {
+                        m_focusedNodeCallback(opName);
+                    }
+                }
             }
             else if (msg->type == ix::WebSocketMessageType::Error) {
                 std::cerr << "[EditorBridge] Error: " << msg->errorInfo.reason << "\n";
@@ -245,6 +277,16 @@ void EditorBridge::sendParamValues(const std::vector<EditorParamInfo>& params) {
         json << "\"value\":[" << p.value[0] << "," << p.value[1] << "," << p.value[2] << "," << p.value[3] << "],";
         json << "\"min\":" << p.minVal << ",";
         json << "\"max\":" << p.maxVal;
+        // Include string fields for String/FilePath types
+        if (!p.stringValue.empty() || p.paramType == "FilePath" || p.paramType == "String") {
+            json << ",\"stringValue\":\"" << jsonEscape(p.stringValue) << "\"";
+        }
+        if (!p.fileFilter.empty()) {
+            json << ",\"fileFilter\":\"" << jsonEscape(p.fileFilter) << "\"";
+        }
+        if (!p.fileCategory.empty()) {
+            json << ",\"fileCategory\":\"" << jsonEscape(p.fileCategory) << "\"";
+        }
         json << "}";
     }
 
@@ -300,6 +342,26 @@ void EditorBridge::sendPerformanceStats(const EditorPerformanceStats& stats) {
         json << "{\"name\":\"" << jsonEscape(t.name) << "\",\"timeMs\":" << t.timeMs << "}";
     }
     json << "]}";
+
+    std::string msg = json.str();
+
+    // Broadcast to all clients
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+void EditorBridge::sendSoloState(bool active, const std::string& operatorName) {
+    if (!m_running || !m_impl) return;
+
+    // Build JSON message
+    std::ostringstream json;
+    json << "{\"type\":\"solo_state\",\"active\":" << (active ? "true" : "false");
+    if (active && !operatorName.empty()) {
+        json << ",\"operator\":\"" << jsonEscape(operatorName) << "\"";
+    }
+    json << "}";
 
     std::string msg = json.str();
 

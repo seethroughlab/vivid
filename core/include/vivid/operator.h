@@ -54,14 +54,15 @@ inline const char* outputKindName(OutputKind kind) {
  * @brief Parameter types for UI/serialization
  */
 enum class ParamType {
-    Float,  ///< Single float value
-    Int,    ///< Integer value
-    Bool,   ///< Boolean toggle
-    Vec2,   ///< 2D vector (x, y)
-    Vec3,   ///< 3D vector (x, y, z)
-    Vec4,   ///< 4D vector (x, y, z, w)
-    Color,  ///< RGBA color (0-1 range)
-    String  ///< Text string
+    Float,    ///< Single float value
+    Int,      ///< Integer value
+    Bool,     ///< Boolean toggle
+    Vec2,     ///< 2D vector (x, y)
+    Vec3,     ///< 3D vector (x, y, z)
+    Vec4,     ///< 4D vector (x, y, z, w)
+    Color,    ///< RGBA color (0-1 range)
+    String,   ///< Text string
+    FilePath  ///< File path (texture, video, model, etc.)
 };
 
 /**
@@ -75,6 +76,11 @@ struct ParamDecl {
     float minVal = 0.0f;        ///< Minimum value
     float maxVal = 1.0f;        ///< Maximum value
     float defaultVal[4] = {0, 0, 0, 0}; ///< Default value(s)
+
+    // For String/FilePath parameters
+    std::string stringDefault;  ///< Default string value
+    std::string fileFilter;     ///< File filter (e.g., "*.png;*.jpg;*.exr")
+    std::string fileCategory;   ///< Category hint ("image", "video", "audio", "model")
 };
 
 /**

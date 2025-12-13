@@ -158,3 +158,5 @@
     - Fix: Always set `m_resolutionLocked = true` in `Canvas::size()` regardless of whether dimensions changed 
 [x] Please add a comand line snapshot feature that you (claude) can use in the future to evaluate your work. Also add this feature to the documentation so that it's obvious that this feature is available in the future.
 [ ] add a formant generator to the audio synthesis addon
+[ ] I have a new vision for the VSCode extension. Let's do some planning. When a user clicks/highlights a node in VSCode, it automatically shows a preview of the node in the running project. Meanwhile, in VSCode, all of the parameters are showed in VSCode -- sliders, color choosers, file choosers. (for movies, sounds, texures, models), and the input and output nodes. Help me figure out how to flesh out this idea and integrate it into the extension. When a parameter is adjusted in the VSCode extension, it should be reflected immeiately in the code. 
+[ ] VSTHost using [JUCE](https://juce.com/) 

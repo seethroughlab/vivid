@@ -37,6 +37,12 @@
           "contextualTitle": "Vivid Operators"
         },
         {
+          "id": "vividInspector",
+          "name": "Inspector",
+          "type": "webview",
+          "contextualTitle": "Node Inspector"
+        },
+        {
           "id": "vividPerformance",
           "name": "Performance",
           "type": "webview",
@@ -74,12 +80,27 @@
         "command": "vivid.editParam",
         "title": "Vivid: Edit Parameter",
         "icon": "$(edit)"
+      },
+      {
+        "command": "vivid.soloOperator",
+        "title": "Vivid: Solo Operator",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "vivid.exitSolo",
+        "title": "Vivid: Exit Solo Mode",
+        "icon": "$(eye-closed)"
       }
     ],
     "menus": {
       "view/title": [
         {
           "command": "vivid.refreshOperators",
+          "when": "view == vividOperators",
+          "group": "navigation"
+        },
+        {
+          "command": "vivid.exitSolo",
           "when": "view == vividOperators",
           "group": "navigation"
         }
@@ -89,6 +110,16 @@
           "command": "vivid.editParam",
           "when": "view == vividOperators && viewItem == param",
           "group": "inline"
+        },
+        {
+          "command": "vivid.soloOperator",
+          "when": "view == vividOperators && viewItem == operator",
+          "group": "1_solo"
+        },
+        {
+          "command": "vivid.exitSolo",
+          "when": "view == vividOperators && viewItem == operator-soloed",
+          "group": "1_solo"
         }
       ]
     },

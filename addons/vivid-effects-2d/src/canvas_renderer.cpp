@@ -88,6 +88,27 @@ void CanvasRenderer::cleanup() {
         wgpuRenderPipelineRelease(m_pipeline);
         m_pipeline = nullptr;
     }
+    // Clean up persistent vertex/index buffers
+    if (m_solidVertexBuffer) {
+        wgpuBufferRelease(m_solidVertexBuffer);
+        m_solidVertexBuffer = nullptr;
+    }
+    if (m_solidIndexBuffer) {
+        wgpuBufferRelease(m_solidIndexBuffer);
+        m_solidIndexBuffer = nullptr;
+    }
+    if (m_textVertexBuffer) {
+        wgpuBufferRelease(m_textVertexBuffer);
+        m_textVertexBuffer = nullptr;
+    }
+    if (m_textIndexBuffer) {
+        wgpuBufferRelease(m_textIndexBuffer);
+        m_textIndexBuffer = nullptr;
+    }
+    m_solidVertexCapacity = 0;
+    m_solidIndexCapacity = 0;
+    m_textVertexCapacity = 0;
+    m_textIndexCapacity = 0;
     m_initialized = false;
 }
 
@@ -439,34 +460,13 @@ void CanvasRenderer::renderBatch(WGPURenderPassEncoder pass, Context& ctx,
                                    const std::vector<CanvasVertex>& vertices,
                                    const std::vector<uint32_t>& indices,
                                    WGPUBindGroup bindGroup) {
+    // This version is for the persistent buffers managed by render()
+    // The actual buffer management is done in render() - this just draws
+    (void)ctx;  // Unused in this version
     if (vertices.empty()) return;
 
-    WGPUDevice device = ctx.device();
-    WGPUQueue queue = ctx.queue();
-
-    // Create vertex buffer
-    WGPUBufferDescriptor vbDesc = {};
-    vbDesc.size = vertices.size() * sizeof(CanvasVertex);
-    vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-    WGPUBuffer vertexBuffer = wgpuDeviceCreateBuffer(device, &vbDesc);
-    wgpuQueueWriteBuffer(queue, vertexBuffer, 0, vertices.data(), vbDesc.size);
-
-    // Create index buffer
-    WGPUBufferDescriptor ibDesc = {};
-    ibDesc.size = indices.size() * sizeof(uint32_t);
-    ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-    WGPUBuffer indexBuffer = wgpuDeviceCreateBuffer(device, &ibDesc);
-    wgpuQueueWriteBuffer(queue, indexBuffer, 0, indices.data(), ibDesc.size);
-
-    // Render the batch
     wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vertexBuffer, 0, vbDesc.size);
-    wgpuRenderPassEncoderSetIndexBuffer(pass, indexBuffer, WGPUIndexFormat_Uint32, 0, ibDesc.size);
     wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
-
-    // Release buffers
-    wgpuBufferRelease(vertexBuffer);
-    wgpuBufferRelease(indexBuffer);
 }
 
 void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTextureView targetView) {
@@ -500,7 +500,64 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
             wgpuBindGroupRelease(m_fontBindGroup);
         }
         m_fontBindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
+    }
 
+    // Ensure solid vertex buffer is large enough (grow-only, reused across frames)
+    if (!m_solidVertices.empty()) {
+        size_t neededVertexSize = m_solidVertices.size() * sizeof(CanvasVertex);
+        size_t neededIndexSize = m_solidIndices.size() * sizeof(uint32_t);
+
+        if (neededVertexSize > m_solidVertexCapacity) {
+            if (m_solidVertexBuffer) wgpuBufferRelease(m_solidVertexBuffer);
+            size_t newCapacity = std::max(neededVertexSize, INITIAL_VERTEX_CAPACITY * sizeof(CanvasVertex));
+            newCapacity = std::max(newCapacity, m_solidVertexCapacity * 2);  // Double when growing
+            WGPUBufferDescriptor vbDesc = {};
+            vbDesc.size = newCapacity;
+            vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+            m_solidVertexBuffer = wgpuDeviceCreateBuffer(device, &vbDesc);
+            m_solidVertexCapacity = newCapacity;
+        }
+        if (neededIndexSize > m_solidIndexCapacity) {
+            if (m_solidIndexBuffer) wgpuBufferRelease(m_solidIndexBuffer);
+            size_t newCapacity = std::max(neededIndexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
+            newCapacity = std::max(newCapacity, m_solidIndexCapacity * 2);
+            WGPUBufferDescriptor ibDesc = {};
+            ibDesc.size = newCapacity;
+            ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+            m_solidIndexBuffer = wgpuDeviceCreateBuffer(device, &ibDesc);
+            m_solidIndexCapacity = newCapacity;
+        }
+        wgpuQueueWriteBuffer(queue, m_solidVertexBuffer, 0, m_solidVertices.data(), neededVertexSize);
+        wgpuQueueWriteBuffer(queue, m_solidIndexBuffer, 0, m_solidIndices.data(), neededIndexSize);
+    }
+
+    // Ensure text vertex buffer is large enough
+    if (!m_textVertices.empty()) {
+        size_t neededVertexSize = m_textVertices.size() * sizeof(CanvasVertex);
+        size_t neededIndexSize = m_textIndices.size() * sizeof(uint32_t);
+
+        if (neededVertexSize > m_textVertexCapacity) {
+            if (m_textVertexBuffer) wgpuBufferRelease(m_textVertexBuffer);
+            size_t newCapacity = std::max(neededVertexSize, INITIAL_VERTEX_CAPACITY * sizeof(CanvasVertex));
+            newCapacity = std::max(newCapacity, m_textVertexCapacity * 2);
+            WGPUBufferDescriptor vbDesc = {};
+            vbDesc.size = newCapacity;
+            vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+            m_textVertexBuffer = wgpuDeviceCreateBuffer(device, &vbDesc);
+            m_textVertexCapacity = newCapacity;
+        }
+        if (neededIndexSize > m_textIndexCapacity) {
+            if (m_textIndexBuffer) wgpuBufferRelease(m_textIndexBuffer);
+            size_t newCapacity = std::max(neededIndexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
+            newCapacity = std::max(newCapacity, m_textIndexCapacity * 2);
+            WGPUBufferDescriptor ibDesc = {};
+            ibDesc.size = newCapacity;
+            ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+            m_textIndexBuffer = wgpuDeviceCreateBuffer(device, &ibDesc);
+            m_textIndexCapacity = newCapacity;
+        }
+        wgpuQueueWriteBuffer(queue, m_textVertexBuffer, 0, m_textVertices.data(), neededVertexSize);
+        wgpuQueueWriteBuffer(queue, m_textIndexBuffer, 0, m_textIndices.data(), neededIndexSize);
     }
 
     // Begin render pass
@@ -522,11 +579,19 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
     wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
 
     // Render solid primitives first (with white texture)
-    renderBatch(pass, ctx, m_solidVertices, m_solidIndices, m_whiteBindGroup);
+    if (!m_solidVertices.empty()) {
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_solidVertexBuffer, 0, m_solidVertices.size() * sizeof(CanvasVertex));
+        wgpuRenderPassEncoderSetIndexBuffer(pass, m_solidIndexBuffer, WGPUIndexFormat_Uint32, 0, m_solidIndices.size() * sizeof(uint32_t));
+        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_solidIndices.size()), 1, 0, 0, 0);
+    }
 
     // Render text primitives second (with font texture)
     if (m_fontBindGroup && !m_textVertices.empty()) {
-        renderBatch(pass, ctx, m_textVertices, m_textIndices, m_fontBindGroup);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer, 0, m_textVertices.size() * sizeof(CanvasVertex));
+        wgpuRenderPassEncoderSetIndexBuffer(pass, m_textIndexBuffer, WGPUIndexFormat_Uint32, 0, m_textIndices.size() * sizeof(uint32_t));
+        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_textIndices.size()), 1, 0, 0, 0);
     }
 
     wgpuRenderPassEncoderEnd(pass);
