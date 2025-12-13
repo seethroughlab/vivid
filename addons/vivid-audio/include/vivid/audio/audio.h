@@ -43,6 +43,7 @@
 #include <vivid/audio/noise_gen.h>
 #include <vivid/audio/crackle.h>
 #include <vivid/audio/pitch_env.h>
+#include <vivid/audio/formant.h>
 
 // Envelope variants
 #include <vivid/audio/decay.h>
@@ -67,3 +68,6 @@
 // Sampling
 #include <vivid/audio/sample_bank.h>
 #include <vivid/audio/sample_player.h>
+
+// Musical constants
+#include <vivid/audio/notes.h>

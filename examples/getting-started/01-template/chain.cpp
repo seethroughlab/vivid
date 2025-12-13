@@ -61,6 +61,11 @@ void update(Context& ctx) {
     // Dynamic updates go here
     // =========================================
 
+    // Toggle fullscreen with F key
+    if (ctx.key(GLFW_KEY_F).pressed) {
+        ctx.fullscreen(!ctx.fullscreen());
+    }
+
     // You can animate parameters using ctx.time():
     // ctx.chain().get<Noise>("noise").scale(4.0f + sin(ctx.time()) * 2.0f);
 

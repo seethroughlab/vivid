@@ -175,6 +175,107 @@ float t = video.currentTime();
 
 **Supported codecs:** HAP (best performance), H.264, ProRes, MPEG-2
 
+### Audio (vivid-audio)
+
+```cpp
+#include <vivid/audio/audio.h>
+using namespace vivid::audio;
+```
+
+**Audio Sources:**
+
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `AudioIn` | Microphone/line input | `.device(index)` |
+| `AudioFile` | Audio file playback | `.file(path)` `.loop(true)` |
+
+**Synthesis:**
+
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `Oscillator` | Waveform generator | `.waveform(Waveform::Saw)` `.frequency(440)` `.amplitude(0.5)` |
+| `NoiseGen` | Noise generator | `.type(NoiseType::White)` `.amplitude(0.5)` |
+| `Crackle` | Vinyl crackle | `.density(0.3)` `.amplitude(0.5)` |
+| `Formant` | Vowel formant filter | `.vowel(Vowel::A)` `.morph(0.5)` `.resonance(8.0)` `.mix(1.0)` |
+
+**Formant vowel presets:**
+- `Vowel::A` - "ah" as in "father" (800, 1200, 2500 Hz)
+- `Vowel::E` - "eh" as in "bed" (400, 2000, 2600 Hz)
+- `Vowel::I` - "ee" as in "feet" (300, 2300, 3000 Hz)
+- `Vowel::O` - "oh" as in "boat" (500, 800, 2500 Hz)
+- `Vowel::U` - "oo" as in "boot" (350, 600, 2400 Hz)
+- `Vowel::Custom` - User-defined via `.f1()` `.f2()` `.f3()`
+
+**Drum Synthesis:**
+
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `Kick` | Kick drum | `.pitch(60)` `.decay(0.3)` `.drive(0.5)` |
+| `Snare` | Snare drum | `.tone(200)` `.noise(0.5)` `.decay(0.2)` |
+| `HiHat` | Hi-hat | `.tone(8000)` `.decay(0.1)` `.open(0.3)` |
+| `Clap` | Hand clap | `.tone(1000)` `.spread(0.1)` `.decay(0.15)` |
+
+**Effects:**
+
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `Delay` | Delay effect | `.time(0.25)` `.feedback(0.5)` `.mix(0.3)` |
+| `Reverb` | Reverb | `.roomSize(0.8)` `.damping(0.5)` `.mix(0.3)` |
+| `Chorus` | Chorus | `.rate(1.5)` `.depth(0.5)` `.mix(0.5)` |
+| `Flanger` | Flanger | `.rate(0.5)` `.depth(0.7)` `.feedback(0.6)` |
+| `Phaser` | Phaser | `.rate(0.3)` `.depth(0.8)` `.stages(4)` |
+| `Overdrive` | Distortion | `.drive(0.7)` `.tone(0.5)` |
+| `Bitcrush` | Bit reduction | `.bits(8)` `.sampleRate(0.5)` |
+| `AudioFilter` | Biquad filter | `.type(FilterType::Lowpass)` `.cutoff(1000)` `.resonance(2.0)` |
+| `Compressor` | Dynamics | `.threshold(-20)` `.ratio(4.0)` `.attack(0.01)` `.release(0.1)` |
+
+**Analysis:**
+
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `FFT` | Spectrum analyzer | `.size(1024)` |
+| `BeatDetect` | Beat detection | `.sensitivity(0.8)` `.threshold(0.5)` |
+| `Levels` | VU meter | `.smoothing(0.9)` |
+
+**Sequencing:**
+
+| Operator | Description | Key Parameters |
+|----------|-------------|----------------|
+| `Clock` | Tempo clock | `.bpm(120)` `.division(4)` |
+| `Sequencer` | Step sequencer | `.steps(16)` `.pattern({1,0,1,0,...})` |
+| `Euclidean` | Euclidean rhythms | `.steps(16)` `.hits(5)` `.rotation(0)` |
+
+**Audio synthesis example:**
+```cpp
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Sawtooth oscillator into formant filter
+    auto& osc = chain.add<Oscillator>("osc")
+        .waveform(Waveform::Saw)
+        .frequency(110.0f);
+
+    auto& formant = chain.add<Formant>("formant")
+        .input(&osc)
+        .vowel(Vowel::A)
+        .resonance(8.0f);
+
+    auto& reverb = chain.add<Reverb>("reverb")
+        .input(&formant)
+        .roomSize(0.7f)
+        .mix(0.3f);
+
+    chain.audioOutput("reverb");
+}
+
+void update(Context& ctx) {
+    // Morph between vowels over time
+    auto& formant = ctx.chain().get<Formant>("formant");
+    float morph = (std::sin(ctx.time() * 0.5f) + 1.0f) * 0.5f;
+    formant.morph(morph);
+}
+```
+
 ### 3D Rendering (vivid-render3d)
 
 ```cpp

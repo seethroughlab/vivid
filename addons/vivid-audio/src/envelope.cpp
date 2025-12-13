@@ -13,28 +13,32 @@ void Envelope::init(Context& ctx) {
 }
 
 void Envelope::process(Context& ctx) {
+    // Main thread: no-op for pull-based audio
+    // All processing happens in generateBlock()
+}
+
+void Envelope::generateBlock(uint32_t frameCount) {
     if (!m_initialized) return;
+
+    // Resize output buffer if needed
+    if (m_output.frameCount != frameCount) {
+        m_output.resize(frameCount);
+    }
 
     const AudioBuffer* in = inputBuffer();
 
-    // Get frame count from context (variable based on render framerate)
-    uint32_t frames = ctx.audioFramesThisFrame();
-    if (m_output.frameCount != frames) {
-        m_output.resize(frames);
-    }
-
     // Process each sample
-    for (uint32_t i = 0; i < frames; ++i) {
+    for (uint32_t i = 0; i < frameCount; ++i) {
         // Compute envelope value for this sample
         float env = computeEnvelopeValue();
 
-        // Apply envelope to input (or output silence if no input)
+        // Apply envelope to input (or output envelope value if no input)
         if (in && in->isValid()) {
             m_output.samples[i * 2] = in->samples[i * 2] * env;
             m_output.samples[i * 2 + 1] = in->samples[i * 2 + 1] * env;
         } else {
             // No input - just output the envelope value itself
-            // (useful for modulation or debugging)
+            // (useful for modulation)
             m_output.samples[i * 2] = env;
             m_output.samples[i * 2 + 1] = env;
         }

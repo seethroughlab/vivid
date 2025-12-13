@@ -1,6 +1,9 @@
 // Hello Noise - Vivid Example
 // Demonstrates the basic Noise → Output chain
 // Shows how to set explicit resolution on generators
+//
+// Controls:
+//   F - Toggle fullscreen
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -15,8 +18,8 @@ void setup(Context& ctx) {
     // Generators like Noise, Gradient, SolidColor use their declared resolution
     // (default is 1280x720 if not specified)
     auto& noise = chain.add<Noise>("noise");
-    noise.resolution(1920, 1080)  // Set to 1080p
-        .scale(4.0f)
+    noise.resolution(1920, 1080);  // Set to 1080p
+    noise.scale(4.0f)
         .speed(0.5f)
         .octaves(4)
         .lacunarity(2.0f)
@@ -27,7 +30,10 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    // No parameter tweaks needed - noise animates via time
+    // Toggle fullscreen with F key
+    if (ctx.key(GLFW_KEY_F).pressed) {
+        ctx.fullscreen(!ctx.fullscreen());
+    }
 }
 
 VIVID_CHAIN(setup, update)

@@ -158,7 +158,7 @@
 [ ] Is there currently a "make install" command that will put vivid into my PATH?
 [ ] Idea: Maybe operators should declare all properties in a single structure in the constructor. Would that simplify the operator declaration?
 [ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
-[ ] We need an example of mutliple videos playing at once, and being used as a texture. 
+[ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
 [ ] Make an example with assets/textures/flat_earth_Largest_still.0330.jpg
 [ ] Take more snapshots of showcase projects, add them to README
 [ ] What's happening with the docs action? https://github.com/seethroughlab/vivid/settings/pages It's not published anywhere accessable. 

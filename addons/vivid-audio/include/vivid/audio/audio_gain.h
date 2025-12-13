@@ -60,6 +60,24 @@ public:
      */
     AudioGain& mute(bool m) { m_mute = m; return *this; }
 
+    /**
+     * @brief Connect gain modulation input by name
+     * @param name Name of the modulation source (e.g., envelope)
+     *
+     * The modulation source's output value will multiply the gain.
+     * Typically used with Envelope operators for amplitude modulation.
+     */
+    AudioGain& gainInput(const std::string& name) {
+        m_gainInputName = name;
+        return *this;
+    }
+
+    // Override input to return AudioGain& for chaining
+    AudioGain& input(const std::string& name) {
+        AudioEffect::input(name);
+        return *this;
+    }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface
@@ -86,12 +104,17 @@ public:
     /// @}
 
 protected:
+    void initEffect(Context& ctx) override;
     void processEffect(const float* input, float* output, uint32_t frames) override;
 
 private:
     Param<float> m_gain{"gain", 1.0f, 0.0f, 4.0f};
     Param<float> m_pan{"pan", 0.0f, -1.0f, 1.0f};
     bool m_mute = false;
+
+    // Gain modulation input (e.g., envelope)
+    std::string m_gainInputName;
+    Operator* m_gainInputOp = nullptr;
 };
 
 } // namespace vivid::audio

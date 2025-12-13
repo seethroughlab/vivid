@@ -1,8 +1,27 @@
 #include <vivid/audio/audio_gain.h>
+#include <vivid/audio/envelope.h>
+#include <vivid/chain.h>
+#include <vivid/context.h>
 #include <cmath>
 #include <algorithm>
+#include <iostream>
 
 namespace vivid::audio {
+
+void AudioGain::initEffect(Context& ctx) {
+    // Resolve gain modulation input by name
+    if (!m_gainInputName.empty()) {
+        Operator* op = ctx.chain().getByName(m_gainInputName);
+        if (op) {
+            m_gainInputOp = op;
+            // Add as dependency so it gets processed before us
+            setInput(1, op);
+        } else {
+            std::cerr << "[AudioGain] Gain input '" << m_gainInputName
+                      << "' not found" << std::endl;
+        }
+    }
+}
 
 void AudioGain::processEffect(const float* input, float* output, uint32_t frames) {
     if (m_mute) {
@@ -13,7 +32,17 @@ void AudioGain::processEffect(const float* input, float* output, uint32_t frames
         return;
     }
 
-    const float gain = static_cast<float>(m_gain);
+    float gain = static_cast<float>(m_gain);
+
+    // Apply gain modulation from envelope or other source
+    if (m_gainInputOp) {
+        // Check if it's an Envelope operator
+        auto* envelope = dynamic_cast<Envelope*>(m_gainInputOp);
+        if (envelope) {
+            gain *= envelope->currentValue();
+        }
+    }
+
     const float pan = static_cast<float>(m_pan);
 
     // Calculate L/R gains using constant power panning

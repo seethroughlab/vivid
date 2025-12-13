@@ -129,6 +129,7 @@ public:
 
     void init(Context& ctx) override;
     void process(Context& ctx) override;
+    void generateBlock(uint32_t frameCount) override;
     void cleanup() override;
     std::string name() const override { return "Envelope"; }
 

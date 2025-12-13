@@ -583,32 +583,6 @@ int main(int argc, char** argv) {
             tabKeyWasPressed = tabKeyPressed;
         }
 
-        // Toggle fullscreen on 'F' key (edge detection)
-        {
-            static bool fKeyWasPressed = false;
-            bool fKeyPressed = glfwGetKey(window, GLFW_KEY_F) == GLFW_PRESS;
-            if (fKeyPressed && !fKeyWasPressed) {
-                if (!isFullscreen) {
-                    // Save windowed position and size
-                    glfwGetWindowPos(window, &windowedX, &windowedY);
-                    glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
-
-                    // Get primary monitor
-                    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
-                    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-
-                    // Enter fullscreen
-                    glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-                    isFullscreen = true;
-                } else {
-                    // Exit fullscreen - restore windowed mode
-                    glfwSetWindowMonitor(window, nullptr, windowedX, windowedY, windowedWidth, windowedHeight, 0);
-                    isFullscreen = false;
-                }
-            }
-            fKeyWasPressed = fKeyPressed;
-        }
-
         // Begin frame (updates time, input, etc.)
         ctx.beginFrame();
 

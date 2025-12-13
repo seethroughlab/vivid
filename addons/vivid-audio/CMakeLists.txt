@@ -50,6 +50,7 @@ set(AUDIO_SOURCES
     src/noise_gen.cpp
     src/crackle.cpp
     src/pitch_env.cpp
+    src/formant.cpp
     # Envelopes
     src/decay.cpp
     src/ar.cpp
