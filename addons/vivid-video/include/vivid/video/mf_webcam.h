@@ -58,6 +58,10 @@ public:
     WGPUTexture texture() const { return texture_; }
     WGPUTextureView textureView() const { return textureView_; }
 
+    // CPU pixel data access (for ML inference without GPU readback)
+    const uint8_t* cpuPixelData() const;
+    size_t cpuPixelDataSize() const;
+
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

@@ -137,7 +137,7 @@ void AVFWebcam::createTexture() {
 
     WGPUTextureDescriptor desc = {};
     desc.label = toStringView("WebcamFrame");
-    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc;
     desc.dimension = WGPUTextureDimension_2D;
     desc.size = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1};
     desc.format = WGPUTextureFormat_RGBA8Unorm;
@@ -411,19 +411,28 @@ bool AVFWebcam::update(Context& ctx) {
     // Lock and copy pixels
     CVPixelBufferLockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
 
-    size_t width = CVPixelBufferGetWidth(pixelBuffer);
-    size_t height = CVPixelBufferGetHeight(pixelBuffer);
+    size_t frameWidth = CVPixelBufferGetWidth(pixelBuffer);
+    size_t frameHeight = CVPixelBufferGetHeight(pixelBuffer);
     size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
     void* baseAddress = CVPixelBufferGetBaseAddress(pixelBuffer);
 
-    if (baseAddress) {
-        // Convert BGRA -> RGBA
+    // Handle resolution changes (can happen with Continuity Camera, etc.)
+    if (frameWidth != static_cast<size_t>(width_) || frameHeight != static_cast<size_t>(height_)) {
+        width_ = static_cast<int>(frameWidth);
+        height_ = static_cast<int>(frameHeight);
+        pixelBuffer_.resize(width_ * height_ * 4);
+        createTexture();
+        std::cout << "[AVFWebcam] Resolution changed to " << width_ << "x" << height_ << std::endl;
+    }
+
+    if (baseAddress && texture_) {
+        // Convert BGRA -> RGBA using current dimensions
         uint8_t* src = static_cast<uint8_t*>(baseAddress);
         uint8_t* dst = pixelBuffer_.data();
-        size_t expectedStride = width * 4;
+        size_t dstStride = static_cast<size_t>(width_) * 4;
 
-        for (size_t y = 0; y < height; y++) {
-            for (size_t x = 0; x < width; x++) {
+        for (int y = 0; y < height_; y++) {
+            for (int x = 0; x < width_; x++) {
                 size_t srcIdx = x * 4;
                 size_t dstIdx = x * 4;
                 dst[dstIdx + 0] = src[srcIdx + 2];  // R <- B
@@ -432,7 +441,7 @@ bool AVFWebcam::update(Context& ctx) {
                 dst[dstIdx + 3] = src[srcIdx + 3];  // A <- A
             }
             src += bytesPerRow;
-            dst += expectedStride;
+            dst += dstStride;
         }
 
         // Upload to GPU
@@ -444,10 +453,10 @@ bool AVFWebcam::update(Context& ctx) {
 
         WGPUTexelCopyBufferLayout dataLayout = {};
         dataLayout.offset = 0;
-        dataLayout.bytesPerRow = static_cast<uint32_t>(width * 4);
-        dataLayout.rowsPerImage = static_cast<uint32_t>(height);
+        dataLayout.bytesPerRow = static_cast<uint32_t>(width_ * 4);
+        dataLayout.rowsPerImage = static_cast<uint32_t>(height_);
 
-        WGPUExtent3D writeSize = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+        WGPUExtent3D writeSize = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1};
 
         wgpuQueueWriteTexture(queue_, &destination, pixelBuffer_.data(), pixelBuffer_.size(),
                               &dataLayout, &writeSize);

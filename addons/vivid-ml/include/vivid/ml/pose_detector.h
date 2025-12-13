@@ -108,7 +108,7 @@ public:
 
 protected:
     void onModelLoaded() override;
-    void prepareInputTensor(Tensor& tensor, WGPUTextureView inputView) override;
+    void prepareInputTensor(Context& ctx, Tensor& tensor) override;
     void processOutputTensor(const Tensor& tensor) override;
 
 private:

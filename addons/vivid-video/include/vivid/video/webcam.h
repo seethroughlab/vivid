@@ -64,6 +64,20 @@ public:
     float captureFrameRate() const { return m_captureFrameRate; }
     bool isCapturing() const;
 
+    /**
+     * @brief Get raw CPU pixel data (RGBA8, before GPU upload)
+     * @return Pointer to pixel buffer, or nullptr if not available
+     *
+     * Useful for ML inference without GPU readback.
+     * Buffer is width*height*4 bytes in RGBA format.
+     */
+    const uint8_t* cpuPixelData() const;
+
+    /**
+     * @brief Get size of CPU pixel buffer
+     */
+    size_t cpuPixelDataSize() const;
+
     // Operator interface
     void init(Context& ctx) override;
     void process(Context& ctx) override;

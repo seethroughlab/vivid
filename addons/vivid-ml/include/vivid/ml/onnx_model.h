@@ -31,15 +31,25 @@ namespace Ort {
 
 namespace vivid::ml {
 
+/// ONNX tensor element types (subset we support)
+enum class TensorType {
+    Float32 = 0,
+    UInt8 = 1,
+    Int32 = 2
+};
+
 /// Tensor data wrapper for model I/O
 struct Tensor {
-    std::vector<float> data;
-    std::vector<int64_t> shape;  // e.g., {1, 3, 224, 224} for NCHW
+    std::vector<float> data;       // For float32 tensors
+    std::vector<uint8_t> dataU8;   // For uint8 tensors
+    std::vector<int32_t> dataI32;  // For int32 tensors
+    std::vector<int64_t> shape;    // e.g., {1, 3, 224, 224} for NCHW
+    TensorType type = TensorType::Float32;
 
     /// Get total number of elements
     size_t size() const;
 
-    /// Get value at index
+    /// Get value at index (float tensors only)
     float& operator[](size_t i) { return data[i]; }
     const float& operator[](size_t i) const { return data[i]; }
 
@@ -80,19 +90,23 @@ public:
 protected:
     // Subclass hooks
     virtual void onModelLoaded() {}
-    virtual void prepareInputTensor(Tensor& tensor, WGPUTextureView inputView) {}
+    virtual void prepareInputTensor(Context& ctx, Tensor& tensor) {}
     virtual void processOutputTensor(const Tensor& tensor) {}
 
     // Helper to run inference
     void runInference();
 
-    // Input texture to tensor conversion
-    void textureToTensor(WGPUTextureView view, Tensor& tensor,
-                        int targetWidth, int targetHeight);
+    // Input texture to tensor conversion (GPU readback + preprocessing)
+    bool textureToTensor(Context& ctx, Tensor& tensor,
+                         int targetWidth, int targetHeight);
 
     std::string m_modelPath;
     Operator* m_inputOp = nullptr;
     bool m_loaded = false;
+
+    // GPU readback resources
+    WGPUBuffer m_readbackBuffer = nullptr;
+    size_t m_readbackBufferSize = 0;
 
     // ONNX Runtime objects (pimpl to avoid header pollution)
     struct OrtObjects;
@@ -107,9 +121,6 @@ protected:
     // Tensor storage
     std::vector<Tensor> m_inputTensors;
     std::vector<Tensor> m_outputTensors;
-
-    // GPU readback buffer
-    std::vector<uint8_t> m_readbackBuffer;
 };
 
 } // namespace vivid::ml

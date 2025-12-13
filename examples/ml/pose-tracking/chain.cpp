@@ -24,12 +24,12 @@ void setup(Context& ctx) {
         .resolution(640, 480)
         .frameRate(30);
 
-    // Pose detector using MoveNet
-    // Note: You need to provide your own ONNX model file
+    // Pose detector using MoveNet multipose
+    // Converted from TensorFlow Hub movenet-tensorflow2-multipose-lightning-v1
     auto& pose = chain.add<PoseDetector>("pose")
         .input(&webcam)
-        .model("assets/models/movenet/model.onnx")
-        .confidenceThreshold(0.3f);
+        .model("assets/models/movenet/multipose-lightning.onnx")
+        .confidenceThreshold(0.01f);  // Low threshold for this model
 
     // Simple color correction for visualization
     auto& colorCorrect = chain.add<HSV>("hsv")

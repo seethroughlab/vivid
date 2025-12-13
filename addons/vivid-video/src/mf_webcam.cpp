@@ -113,6 +113,14 @@ MFWebcam::~MFWebcam() {
     close();
 }
 
+const uint8_t* MFWebcam::cpuPixelData() const {
+    return impl_->frameBuffer.data();
+}
+
+size_t MFWebcam::cpuPixelDataSize() const {
+    return impl_->frameBuffer.size();
+}
+
 std::vector<CameraDevice> MFWebcam::enumerateDevices() {
     std::vector<CameraDevice> devices;
 
@@ -195,7 +203,7 @@ void MFWebcam::createTexture() {
 
     WGPUTextureDescriptor desc = {};
     desc.label = toStringView("WebcamFrame");
-    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc;
     desc.dimension = WGPUTextureDimension_2D;
     desc.size = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1};
     desc.format = WGPUTextureFormat_RGBA8Unorm;

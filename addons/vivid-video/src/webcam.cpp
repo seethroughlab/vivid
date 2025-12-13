@@ -74,6 +74,22 @@ bool Webcam::isCapturing() const {
 #endif
 }
 
+const uint8_t* Webcam::cpuPixelData() const {
+#if defined(__APPLE__) || defined(_WIN32)
+    return m_webcam ? m_webcam->cpuPixelData() : nullptr;
+#else
+    return nullptr;
+#endif
+}
+
+size_t Webcam::cpuPixelDataSize() const {
+#if defined(__APPLE__) || defined(_WIN32)
+    return m_webcam ? m_webcam->cpuPixelDataSize() : 0;
+#else
+    return 0;
+#endif
+}
+
 void Webcam::init(Context& ctx) {
     openCamera(ctx);
 }

@@ -55,11 +55,13 @@ add_library(vivid-ml SHARED ${ML_SOURCES})
 target_include_directories(vivid-ml PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/addons/vivid-video/include
     ${ONNXRUNTIME_INCLUDE_DIR}
 )
 
 target_link_libraries(vivid-ml PUBLIC
     vivid-core
+    vivid-video
     ${ONNXRUNTIME_LIB}
 )
 
