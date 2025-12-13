@@ -8,6 +8,8 @@
 set(NETWORK_SOURCES
     src/udp_in.cpp
     src/udp_out.cpp
+    src/osc_in.cpp
+    src/osc_out.cpp
     src/web_server.cpp
 )
 

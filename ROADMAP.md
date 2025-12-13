@@ -2668,7 +2668,7 @@ void update(Context& ctx) {
 - [x] examples/sample-trigger created
 - [ ] Update README.md with audio features documentation
 
-### Phase 11: MIDI & OSC Addon
+### Phase 11: MIDI & OSC Addon (OSC complete ✓)
 
 **Goal:** Hardware controller and network protocol support
 
@@ -2676,16 +2676,37 @@ void update(Context& ctx) {
 | Library | Purpose | License |
 |---------|---------|---------|
 | [RtMidi](https://github.com/thestk/rtmidi) | MIDI I/O | MIT |
-| [oscpack](https://code.google.com/archive/p/oscpack/) | OSC protocol | Public Domain |
+| Custom OSC parser | OSC protocol | Built-in (vivid-network) |
 
-**MIDI Operators:**
+**OSC Operators (implemented in vivid-network):**
+```cpp
+class OscIn : public Operator {
+public:
+    OscIn& port(int port);                     // UDP port (default: 8000)
+
+    bool hasMessage(const std::string& address) const;
+    float getFloat(const std::string& address, float defaultVal = 0.0f) const;
+    const std::vector<OscMessage>& messages() const;
+};
+
+class OscOut : public Operator {
+public:
+    OscOut& host(const std::string& hostname);
+    OscOut& port(int port);
+
+    void send(const std::string& address, float value);
+    void send(const std::string& address, float v1, float v2);
+    void send(const std::string& address, int32_t value);
+    void send(const std::string& address, const std::string& str);
+};
+```
+
+**MIDI Operators (not yet implemented):**
 ```cpp
 class MidiIn : public Operator {
 public:
     MidiIn& port(const std::string& name);  // Device name
     MidiIn& channel(int ch);                 // 1-16, or 0 for all
-
-    // Outputs: "noteOn", "noteOff", "velocity", "cc:1", "pitchBend"
 };
 
 class MidiOut : public Operator {
@@ -2696,34 +2717,19 @@ public:
 };
 ```
 
-**OSC Operators:**
-```cpp
-class OscIn : public Operator {
-public:
-    OscIn& port(int port);                     // UDP port
-    OscIn& address(const std::string& pattern); // e.g., "/audio/*"
-};
-
-class OscOut : public Operator {
-public:
-    OscOut& host(const std::string& hostname);
-    OscOut& port(int port);
-    void send(const std::string& address, float value);
-};
-```
-
 **Tasks:**
 - [ ] MidiIn - Receive MIDI notes, CC, pitch bend
 - [ ] MidiOut - Send MIDI messages
 - [ ] MidiLearn - Map CC to parameters automatically
-- [ ] OscIn - Receive OSC messages (UDP)
-- [ ] OscOut - Send OSC messages
+- [x] OscIn - Receive OSC messages (UDP)
+- [x] OscOut - Send OSC messages
 - [ ] Device enumeration for MIDI ports
 
 **Validation:**
 - [ ] MidiIn receives from hardware controller
 - [ ] CC values update operator parameters
-- [ ] OscIn receives from TouchOSC/similar
+- [x] OscIn receives from TouchOSC/similar
+- [x] examples/network/osc-control runs correctly
 - [ ] examples/midi-control runs correctly
 
 ### Phase 11b: Network Addon (vivid-network) ✓
