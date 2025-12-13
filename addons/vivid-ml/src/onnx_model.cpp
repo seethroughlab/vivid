@@ -473,11 +473,11 @@ bool ONNXModel::textureToTensor(Context& ctx, Tensor& tensor,
                         tensor.dataI32[c * targetWidth * targetHeight + pixelIdx] = static_cast<int32_t>(result[c] * 255.0f);
                 }
             } else {
-                // Output float values (0-1)
+                // Output float values (0-1 range - standard for many ONNX models)
                 if (isNHWC) {
                     size_t baseIdx = (y * targetWidth + x) * channels;
                     for (int c = 0; c < channels && c < 4; c++)
-                        tensor.data[baseIdx + c] = result[c];
+                        tensor.data[baseIdx + c] = result[c];  // Already 0-1
                 } else {
                     size_t pixelIdx = y * targetWidth + x;
                     for (int c = 0; c < channels && c < 4; c++)

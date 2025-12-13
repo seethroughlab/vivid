@@ -98,7 +98,10 @@ void PoseDetector::prepareInputTensor(Context& ctx, Tensor& tensor) {
     }
 
     // Use texture-to-tensor conversion (handles both CPU and GPU paths)
-    if (!textureToTensor(ctx, tensor, m_inputWidth, m_inputHeight)) {
+    bool success = textureToTensor(ctx, tensor, m_inputWidth, m_inputHeight);
+
+
+    if (!success) {
         // If conversion fails, fill with gray placeholder
         if (tensor.type == TensorType::UInt8) {
             std::fill(tensor.dataU8.begin(), tensor.dataU8.end(), uint8_t(128));
