@@ -208,6 +208,7 @@ add_subdirectory(addons/vivid-video)
 add_subdirectory(addons/vivid-render3d)
 add_subdirectory(addons/vivid-audio)
 add_subdirectory(addons/vivid-network)
+add_subdirectory(addons/vivid-ml)
 
 # -----------------------------------------------------------------------------
 # Core library and runtime

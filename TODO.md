@@ -157,3 +157,4 @@
     - Text vertices were generated at canvas coordinates but rendered with window-size uniforms, causing misalignment
     - Fix: Always set `m_resolutionLocked = true` in `Canvas::size()` regardless of whether dimensions changed 
 [x] Please add a comand line snapshot feature that you (claude) can use in the future to evaluate your work. Also add this feature to the documentation so that it's obvious that this feature is available in the future.
+[ ] add a formant generator to the audio synthesis addon

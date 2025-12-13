@@ -2851,7 +2851,7 @@ public:
 ```
 
 **Specialized Operators:**
-- [ ] PoseDetector - MoveNet skeleton tracking
+- [x] PoseDetector - MoveNet skeleton tracking
 - [ ] SegmentMask - Background/person segmentation
 - [ ] StyleTransfer - Neural style transfer
 - [ ] DepthEstimate - Monocular depth estimation
@@ -2931,10 +2931,10 @@ enum Keypoint {
 ```
 
 **Tasks:**
-- [ ] ONNX Runtime integration
+- [x] ONNX Runtime integration (auto-downloads per platform via CMake)
 - [ ] GPU acceleration per platform (CoreML/DirectML/CUDA)
-- [ ] Texture→tensor conversion (NHWC format, 192x192 or 256x256)
-- [ ] Tensor→keypoint parsing (17 points × 3 values: x, y, confidence)
+- [ ] Texture→tensor conversion (NHWC format, 192x192 or 256x256) - placeholder only
+- [x] Tensor→keypoint parsing (17 points × 3 values: x, y, confidence)
 - [ ] Skeleton overlay rendering
 - [ ] Model hot-reload
 - [ ] Bundle MoveNet Lightning ONNX model
