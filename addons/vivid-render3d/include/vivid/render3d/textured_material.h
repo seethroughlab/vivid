@@ -126,6 +126,25 @@ public:
      */
     TexturedMaterial& emissiveInput(Operator* op);
 
+    /**
+     * @brief Set normal map from another operator's output
+     * @param op Operator that produces a texture (Canvas, etc.)
+     * @return Reference for chaining
+     *
+     * Normal map should be in tangent space with OpenGL convention (Y up).
+     * RGB where R=X, G=Y, B=Z, with neutral being (0.5, 0.5, 1.0).
+     */
+    TexturedMaterial& normalInput(Operator* op);
+
+    /**
+     * @brief Set roughness map from another operator's output
+     * @param op Operator that produces a texture (Canvas, etc.)
+     * @return Reference for chaining
+     *
+     * Roughness is read from the red channel. White = rough, black = smooth.
+     */
+    TexturedMaterial& roughnessInput(Operator* op);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Material Factors (multiplied with texture values)
@@ -290,6 +309,8 @@ private:
     // Operator-based texture inputs (for procedural textures)
     Operator* m_baseColorInputOp = nullptr;
     Operator* m_emissiveInputOp = nullptr;
+    Operator* m_normalInputOp = nullptr;
+    Operator* m_roughnessInputOp = nullptr;
 
     bool m_initialized = false;
 };

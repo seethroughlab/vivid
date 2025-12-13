@@ -38,143 +38,138 @@ protected:
 };
 
 // =============================================================================
-// DeltaBody - Main wide triangular body with integrated nacelles
+// UnifiedBody - Based on alexandre-etendard reference images
+// Built from CUSTOM VERTICES for a true unified arrowhead shape
+// Long nose (~40%), widening body, W-shaped trailing edge, corner nacelles
 // =============================================================================
 
 class DeltaBody : public CraftPart {
 public:
-    // Overall dimensions - LONG and NARROW like an arrow/needle
-    float length = 2.4f;        // Very long (nose to tail)
-    float width = 0.9f;         // Relatively narrow
-    float height = 0.12f;       // Low profile
+    // Overall dimensions - VERY elongated like reference
+    float length = 3.2f;        // Total nose to tail (longer!)
+    float maxWidth = 1.0f;      // Width at rear (narrower for needle look)
+    float height = 0.065f;      // Very flat, blade-like
 
-    // Nacelle dimensions
-    float nacelleWidth = 0.18f;
-    float nacelleLength = 0.45f;
-
-    // Central spine
-    float spineWidth = 0.22f;
-    float spineHeight = 0.04f;
+    // Surface detail dimensions
+    float nacelleHeight = 0.12f;
+    float spineHeight = 0.030f;
 
     MeshBuilder build() const override {
-        // Build long, narrow arrowhead shape like FEISAR reference
-        // The craft is sleek needle - front tapers to point, rear has swept wings
+        // =================================================================
+        // UNIFIED ARROWHEAD - Delta wing using wedges laid flat
+        // Long needle nose tapering to wide rear with anhedral
+        // =================================================================
 
-        // === FORWARD NOSE SECTION ===
-        // Long tapered nose - almost half the craft length
-        auto body = MeshBuilder::wedge(length * 0.5f, height, spineWidth * 1.2f)
+        // Key dimensions
+        float noseLen = length * 0.45f;      // Long nose (~45% of craft)
+        float bodyLen = length * 0.55f;      // Main body section
+        float rearWidth = maxWidth * 0.50f;  // Half-width at rear
+        float anhedralAngle = 10.0f;         // Degrees - wings fold down
+
+        MeshBuilder body;
+
+        // --- NOSE: Long tapered wedge pointing forward ---
+        auto nose = MeshBuilder::wedge(noseLen, height, maxWidth * 0.18f)
             .rotate(glm::radians(180.0f), {0, 1, 0})  // Point forward
-            .translate({length * 0.25f, 0, 0});
+            .translate({noseLen * 0.5f, 0, 0});
+        body.append(nose);
 
-        // === MID BODY ===
-        // Widest section where wings attach
-        auto midBody = MeshBuilder::box(length * 0.25f, height, width * 0.35f)
-            .translate({-length * 0.05f, 0, 0});
-        body.append(midBody);
+        // --- DELTA WINGS: Two wedges laid flat, creating arrowhead planform ---
+        // Each wing wedge: length along X, width (laid flat) becomes Z span
+        // Wedge tapers from wide at rear to narrow at front
 
-        // Transition from nose to mid-body (fill the gap)
-        auto noseToMid = MeshBuilder::box(length * 0.15f, height, spineWidth * 1.1f)
-            .translate({length * 0.02f, 0, 0});
-        body.append(noseToMid);
+        float wingLength = bodyLen * 1.0f;   // Full body length
+        float wingSpan = rearWidth * 0.95f;  // How far wing extends from center
 
-        // === SWEPT WINGS ===
-        // Wings that sweep back from mid-body to nacelles
-        // Using wedges laid flat to create swept triangular wings
-        float wingLength = length * 0.4f;   // How far back the wing extends
-        float wingSpan = width * 0.32f;     // How far out each wing goes
+        // Left wing - wedge laid flat, tilted down for anhedral
+        auto leftWing = MeshBuilder::wedge(wingLength, wingSpan, height)
+            .rotate(glm::radians(-90.0f), {1, 0, 0})   // Lay flat (Z becomes width)
+            .rotate(glm::radians(anhedralAngle), {1, 0, 0})  // Anhedral tilt
+            .translate({-bodyLen * 0.35f,
+                       -wingSpan * 0.4f * sin(glm::radians(anhedralAngle)),
+                       wingSpan * 0.5f * cos(glm::radians(anhedralAngle))});
+        body.append(leftWing);
 
-        for (float zSign : {1.0f, -1.0f}) {
-            // Main swept wing - triangular planform
-            // Wedge rotated to lay flat, then positioned
-            auto wing = MeshBuilder::wedge(wingLength, wingSpan, height * 0.85f)
-                .rotate(glm::radians(-90.0f * zSign), {1, 0, 0})  // Lay flat horizontally
-                .rotate(glm::radians(165.0f), {0, 1, 0})  // Sweep angle
-                .translate({-length * 0.12f, 0, zSign * (width * 0.17f + wingSpan * 0.3f)});
-            body.append(wing);
+        // Right wing - mirror of left
+        auto rightWing = MeshBuilder::wedge(wingLength, wingSpan, height)
+            .rotate(glm::radians(90.0f), {1, 0, 0})    // Lay flat (opposite direction)
+            .rotate(glm::radians(-anhedralAngle), {1, 0, 0})  // Anhedral tilt
+            .translate({-bodyLen * 0.35f,
+                       -wingSpan * 0.4f * sin(glm::radians(anhedralAngle)),
+                       -wingSpan * 0.5f * cos(glm::radians(anhedralAngle))});
+        body.append(rightWing);
 
-            // Wing-body blend - smooth transition
-            auto wingBlend = MeshBuilder::box(wingLength * 0.5f, height * 0.9f, wingSpan * 0.5f)
-                .translate({-length * 0.15f, 0, zSign * width * 0.22f});
-            body.append(wingBlend);
-
-            // Inner wing surface
-            auto innerWing = MeshBuilder::box(wingLength * 0.6f, height * 0.85f, wingSpan * 0.35f)
-                .translate({-length * 0.20f, 0, zSign * width * 0.28f});
-            body.append(innerWing);
-        }
-
-        // === REAR BODY ===
-        // Tapers toward the back between the nacelles
-        auto rearBody = MeshBuilder::box(length * 0.15f, height * 0.9f, spineWidth * 1.0f)
-            .translate({-length * 0.32f, 0, 0});
-        body.append(rearBody);
-
-        auto rearTaper = MeshBuilder::wedge(length * 0.12f, height * 0.85f, spineWidth * 0.9f)
-            .translate({-length * 0.42f, 0, 0});
-        body.append(rearTaper);
-
-        // === CENTRAL SPINE RIDGE ===
-        auto spine = MeshBuilder::box(length * 0.5f, spineHeight, spineWidth * 0.65f)
-            .translate({0.0f, height * 0.5f + spineHeight * 0.5f, 0});
+        // --- CENTRAL SPINE: Thin ridge connecting nose to rear ---
+        auto spine = MeshBuilder::box(bodyLen * 0.85f, height * 1.2f, maxWidth * 0.12f)
+            .translate({-bodyLen * 0.30f, 0, 0});
         body.append(spine);
 
-        // Spine forward extension
-        auto spineFwd = MeshBuilder::wedge(length * 0.15f, spineHeight * 0.8f, spineWidth * 0.5f)
-            .rotate(glm::radians(180.0f), {0, 1, 0})
-            .translate({length * 0.32f, height * 0.5f + spineHeight * 0.4f, 0});
-        body.append(spineFwd);
+        // --- REAR NACELLES: Engine housings at wing tips ---
+        float nacelleDropY = -wingSpan * sin(glm::radians(anhedralAngle)) * 0.8f;
 
-        // === ENGINE NACELLES ===
-        // Integrated into the rear wing area
         for (float zSign : {1.0f, -1.0f}) {
-            float zPos = zSign * (width * 0.35f);
+            float zPos = zSign * rearWidth * 0.80f;
+            float yPos = nacelleDropY * zSign;
 
-            // Nacelle main body - elongated
-            auto nacelle = MeshBuilder::box(nacelleLength * 1.2f, height * 1.4f, nacelleWidth)
-                .translate({-length * 0.32f, height * 0.65f, zPos});
+            // Nacelle body
+            auto nacelle = MeshBuilder::box(bodyLen * 0.30f, nacelleHeight, maxWidth * 0.12f)
+                .rotate(glm::radians(anhedralAngle * zSign), {1, 0, 0})
+                .translate({-bodyLen * 0.50f, yPos + nacelleHeight * 0.4f, zPos});
             body.append(nacelle);
 
             // Nacelle front taper
-            auto nacelleFront = MeshBuilder::wedge(0.18f, height * 1.2f, nacelleWidth * 0.9f)
+            auto nacelleFront = MeshBuilder::wedge(bodyLen * 0.12f, nacelleHeight * 0.85f, maxWidth * 0.11f)
                 .rotate(glm::radians(180.0f), {0, 1, 0})
-                .translate({-length * 0.32f + nacelleLength * 0.6f + 0.08f, height * 0.6f, zPos});
+                .rotate(glm::radians(anhedralAngle * zSign), {1, 0, 0})
+                .translate({-bodyLen * 0.28f, yPos + nacelleHeight * 0.38f, zPos});
             body.append(nacelleFront);
-
-            // Nacelle rear exhaust housing
-            auto exhaustHousing = MeshBuilder::box(0.07f, height * 1.6f, nacelleWidth * 1.05f)
-                .translate({-length * 0.32f - nacelleLength * 0.6f - 0.02f, height * 0.7f, zPos});
-            body.append(exhaustHousing);
-
-            // Air intake on top
-            auto intake = MeshBuilder::wedge(0.1f, 0.03f, nacelleWidth * 0.5f)
-                .translate({-length * 0.22f, height * 1.35f, zPos});
-            body.append(intake);
         }
 
-        // === WING TIP ELEMENTS ===
-        // Small vertical stabilizers at wing trailing edge
+        // =================================================================
+        // SURFACE DETAILS
+        // =================================================================
+
+        float yTop = height * 0.5f;
+
+        // --- Spine Ridge on top ---
+        auto spineRidge = MeshBuilder::box(length * 0.30f, spineHeight, 0.08f)
+            .translate({0.0f, yTop + spineHeight * 0.5f, 0});
+        body.append(spineRidge);
+
+        auto spineTaper = MeshBuilder::wedge(noseLen * 0.30f, spineHeight * 0.8f, 0.07f)
+            .rotate(glm::radians(180.0f), {0, 1, 0})
+            .translate({noseLen * 0.20f, yTop + spineHeight * 0.4f, 0});
+        body.append(spineTaper);
+
+        // --- Tubes and Pipes ---
+        float tubeR = 0.010f;
+        int tubeSeg = 6;
+
         for (float zSign : {1.0f, -1.0f}) {
-            float zPos = zSign * (width * 0.46f);
-            auto tipFin = MeshBuilder::box(0.08f, height * 1.4f, 0.01f)
-                .translate({-length * 0.35f, height * 0.7f, zPos});
-            body.append(tipFin);
+            float nacelleZ = zSign * rearWidth * 0.80f;
+            float nacelleY = nacelleDropY * zSign;
+
+            // Fuel line along spine
+            auto fuelLine = MeshBuilder::cylinder(tubeR, length * 0.18f, tubeSeg)
+                .rotate(glm::radians(90.0f), {0, 0, 1})
+                .translate({-bodyLen * 0.05f, yTop + 0.015f, zSign * 0.06f});
+            body.append(fuelLine);
+
+            // Pipe on nacelle
+            auto nacellePipe = MeshBuilder::cylinder(tubeR * 0.7f, bodyLen * 0.10f, tubeSeg)
+                .rotate(glm::radians(90.0f), {0, 0, 1})
+                .translate({-bodyLen * 0.42f, nacelleY + nacelleHeight * 0.9f, nacelleZ});
+            body.append(nacellePipe);
         }
 
-        // === PANEL LINES ===
-        float panelDepth = 0.004f;
-        float panelLineWidth = 0.005f;
-
-        // Longitudinal lines along spine
-        for (float zOffset : {0.06f, -0.06f}) {
-            auto line = MeshBuilder::box(length * 0.35f, panelDepth, panelLineWidth)
-                .translate({0.05f, height * 0.5f + spineHeight + panelDepth * 0.3f, zOffset});
-            body.subtract(line);
+        // --- Vertical Fins at Nacelle Rear ---
+        for (float zSign : {1.0f, -1.0f}) {
+            float nacelleZ = zSign * rearWidth * 0.80f;
+            float nacelleY = nacelleDropY * zSign;
+            auto fin = MeshBuilder::box(bodyLen * 0.05f, nacelleHeight * 0.6f, 0.006f)
+                .translate({-bodyLen * 0.56f, nacelleY + nacelleHeight * 0.7f, nacelleZ});
+            body.append(fin);
         }
-
-        // Cross panel line
-        auto crossLine = MeshBuilder::box(panelLineWidth, panelDepth, spineWidth * 0.5f)
-            .translate({-length * 0.08f, height * 0.5f + spineHeight + panelDepth * 0.3f, 0});
-        body.subtract(crossLine);
 
         return body;
     }
@@ -186,31 +181,26 @@ public:
 
 class NoseNeedle : public CraftPart {
 public:
-    float length = 0.7f;        // Long needle
-    float baseWidth = 0.12f;    // Width at base
-    float baseHeight = 0.08f;   // Height at base
-    int sides = 4;              // Angular (square cross-section)
+    // Nose extension - extends the unified body's point further
+    float length = 0.25f;
+    float baseWidth = 0.04f;
+    float baseHeight = 0.025f;
+    int sides = 4;
 
     NoseNeedle() {
-        m_offset = {1.35f, 0.0f, 0};  // At front of long body
+        // Body nose tip is at noseLen * 0.5 = 3.2 * 0.45 * 0.5 = 0.72
+        m_offset = {0.72f, 0.0f, 0};
     }
 
     MeshBuilder build() const override {
-        // Main needle - pyramid pointing forward
+        // Extended nose needle
         auto needle = MeshBuilder::pyramid(baseWidth, length, sides)
-            .rotate(glm::radians(-90.0f), {0, 0, 1})  // Point forward (+X)
-            .scale({1.0f, baseHeight / baseWidth, 1.0f})  // Flatten vertically
+            .rotate(glm::radians(-90.0f), {0, 0, 1})
+            .scale({1.0f, baseHeight / baseWidth, 1.0f})
             .translate(m_offset);
 
-        // Transition piece at base
-        auto transition = MeshBuilder::frustum(baseWidth * 0.7f, baseWidth * 0.5f, 0.08f, sides)
-            .rotate(glm::radians(-90.0f), {0, 0, 1})
-            .scale({1.0f, baseHeight / baseWidth * 1.2f, 1.0f})
-            .translate({m_offset.x - 0.02f, m_offset.y, m_offset.z});
-        needle.append(transition);
-
-        // Sensor array at very tip (small sphere)
-        auto sensor = MeshBuilder::sphere(0.012f, 4)
+        // Small sensor at tip
+        auto sensor = MeshBuilder::sphere(0.006f, 4)
             .translate({m_offset.x + length * 0.48f, m_offset.y, m_offset.z});
         needle.append(sensor);
 
@@ -224,15 +214,16 @@ public:
 
 class LowCockpit : public CraftPart {
 public:
-    float length = 0.28f;
-    float width = 0.16f;
-    float height = 0.05f;       // Very low profile
+    float length = 0.22f;
+    float width = 0.12f;
+    float height = 0.038f;      // Very low profile
 
-    float windscreenLength = 0.12f;
-    float windscreenAngle = 25.0f;  // Slope angle
+    float windscreenLength = 0.09f;
+    float windscreenAngle = 25.0f;
 
     LowCockpit() {
-        m_offset = {0.35f, 0.10f, 0};  // On top of spine, toward front of long body
+        // Cockpit on central fuselage, yTop = height/2 = 0.0325
+        m_offset = {0.0f, 0.05f, 0};
     }
 
     MeshBuilder build() const override {
@@ -270,19 +261,21 @@ public:
 
 class EngineExhaust : public CraftPart {
 public:
-    float innerWidth = 0.10f;
-    float innerHeight = 0.07f;
-    float outerWidth = 0.14f;
-    float outerHeight = 0.10f;
-    float length = 0.20f;
+    float innerWidth = 0.08f;
+    float innerHeight = 0.06f;
+    float outerWidth = 0.12f;
+    float outerHeight = 0.09f;
+    float length = 0.18f;
     int segments = 6;
 
     bool isRight = false;
 
     EngineExhaust(bool right = false) : isRight(right) {
-        // Match nacelle positions: width * 0.35 = 0.9 * 0.35 = 0.315
-        float zOffset = right ? -0.315f : 0.315f;
-        m_offset = {-1.05f, 0.10f, zOffset};  // Behind nacelles at rear
+        // Match nacelle positions from new geometry
+        // bodyLen = 1.76, rearWidth = 0.55, anhedralAngle = 12°
+        float zOffset = right ? -0.47f : 0.47f;
+        float anhedralDrop = 0.55f * sin(glm::radians(12.0f)) * 0.85f;  // ~0.10
+        m_offset = {-0.95f, 0.02f - anhedralDrop, zOffset};
     }
 
     MeshBuilder build() const override {
@@ -309,13 +302,14 @@ public:
 
 class VerticalFin : public CraftPart {
 public:
-    float baseLength = 0.14f;
-    float height = 0.16f;
-    float thickness = 0.012f;
+    float baseLength = 0.12f;
+    float height = 0.14f;
+    float thickness = 0.010f;
     float sweepAngle = 40.0f;
 
     VerticalFin() {
-        m_offset = {-0.90f, 0.12f, 0};  // At rear of long body
+        // Rear center of fuselage
+        m_offset = {-0.75f, 0.05f, 0};
     }
 
     MeshBuilder build() const override {
@@ -335,18 +329,20 @@ public:
 
 class HoverPad : public CraftPart {
 public:
-    float radius = 0.035f;
-    float depth = 0.012f;
+    float radius = 0.028f;
+    float depth = 0.010f;
     int segments = 6;
 
     bool isRight = false;
     bool isFront = true;
 
     HoverPad(bool right = false, bool front = true) : isRight(right), isFront(front) {
-        // Position on underside - narrower spread for arrow shape
-        float zOffset = right ? -0.28f : 0.28f;
-        float xOffset = front ? 0.50f : -0.70f;
-        m_offset = {xOffset, -0.06f, zOffset};
+        // Position on underside of unified body
+        float zOffset = right ? (front ? -0.08f : -0.35f) : (front ? 0.08f : 0.35f);
+        float xOffset = front ? 0.25f : -0.80f;
+        // Rear pads follow anhedral
+        float anhedralDrop = front ? 0.0f : 0.55f * sin(glm::radians(12.0f)) * 0.7f;
+        m_offset = {xOffset, -0.033f - anhedralDrop, zOffset};
     }
 
     MeshBuilder build() const override {

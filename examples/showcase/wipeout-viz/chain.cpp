@@ -53,9 +53,9 @@ static int g_currentTeam = 0;
 static bool g_debugMode = false;
 
 // Camera orbit state
-static float g_cameraYaw = 0.0f;
-static float g_cameraPitch = 0.3f;
-static float g_cameraDistance = 5.0f;
+static float g_cameraYaw = 0.5f;         // 3/4 front view
+static float g_cameraPitch = 0.4f;       // Slight tilt
+static float g_cameraDistance = 5.0f;    // Good viewing distance
 static glm::vec2 g_lastMouse = {0, 0};
 
 // Craft instance - can be customized before building
@@ -154,6 +154,101 @@ void drawUI(Canvas& canvas, const TeamPalette& team, bool debugMode) {
     // Render mode text
     const char* modeText = debugMode ? "DEBUG MODE" : "TEXTURED";
     canvas.text(modeText, modeX + 15, modeY + 28, {1.0f, 1.0f, 1.0f, 1.0f});
+}
+
+// =============================================================================
+// Normal Map Drawing Helper
+// =============================================================================
+
+void drawNormalMap(Canvas& canvas) {
+    const float w = 1024.0f;
+    const float h = 1024.0f;
+
+    // Neutral normal (flat surface pointing up in tangent space)
+    // RGB = (0.5, 0.5, 1.0) means normal pointing straight out
+    glm::vec4 neutral(0.5f, 0.5f, 1.0f, 1.0f);
+    canvas.clear(neutral.r, neutral.g, neutral.b, neutral.a);
+
+    // Panel lines - slight inward normal to create recessed look
+    // Darken R (X) slightly on left edge, lighten on right edge of lines
+    glm::vec4 lineLeft(0.45f, 0.5f, 0.95f, 1.0f);   // Normal tilted left
+    glm::vec4 lineRight(0.55f, 0.5f, 0.95f, 1.0f);  // Normal tilted right
+    glm::vec4 lineUp(0.5f, 0.45f, 0.95f, 1.0f);     // Normal tilted up
+    glm::vec4 lineDown(0.5f, 0.55f, 0.95f, 1.0f);   // Normal tilted down
+
+    // Horizontal panel lines with beveled edges
+    for (float y : {0.25f, 0.45f, 0.65f, 0.85f}) {
+        canvas.rectFilled(0, h * y - 2, w, 2, lineUp);
+        canvas.rectFilled(0, h * y, w, 2, lineDown);
+    }
+
+    // Vertical panel lines
+    for (float x : {0.2f, 0.4f, 0.6f, 0.8f}) {
+        canvas.rectFilled(w * x - 2, 0, 2, h, lineLeft);
+        canvas.rectFilled(w * x, 0, 2, h, lineRight);
+    }
+
+    // Racing stripe edges - raised feel
+    glm::vec4 stripeTop(0.5f, 0.4f, 0.98f, 1.0f);    // Top edge of raised stripe
+    glm::vec4 stripeBot(0.5f, 0.6f, 0.98f, 1.0f);    // Bottom edge
+    canvas.rectFilled(0, h * 0.33f, w, 3, stripeTop);
+    canvas.rectFilled(0, h * 0.47f - 3, w, 3, stripeBot);
+
+    // Surface texture variation - subtle noise-like bumps
+    // Add some random-ish bumps for surface detail
+    for (int i = 0; i < 50; i++) {
+        float bx = (float)((i * 73) % 100) / 100.0f * w;
+        float by = (float)((i * 137) % 100) / 100.0f * h;
+        float angle = (float)((i * 47) % 360);
+        float nx = 0.5f + 0.08f * cos(glm::radians(angle));
+        float ny = 0.5f + 0.08f * sin(glm::radians(angle));
+        canvas.circleFilled(bx, by, 8 + (i % 5) * 2, {nx, ny, 0.97f, 1.0f});
+    }
+}
+
+// =============================================================================
+// Roughness Map Drawing Helper
+// =============================================================================
+
+void drawRoughnessMap(Canvas& canvas, const TeamPalette& team) {
+    const float w = 1024.0f;
+    const float h = 1024.0f;
+
+    // Base roughness - moderately rough painted surface
+    // Roughness in R channel: 0 = smooth/shiny, 1 = rough/matte
+    float baseRoughness = 0.65f;
+    canvas.clear(baseRoughness, baseRoughness, baseRoughness, 1.0f);
+
+    // Racing stripe area - slightly smoother (fresher paint)
+    float stripeRoughness = 0.55f;
+    canvas.rectFilled(0, h * 0.33f, w, h * 0.14f, {stripeRoughness, stripeRoughness, stripeRoughness, 1.0f});
+
+    // Panel line grooves - rougher (dirt collects in crevices)
+    float grooveRoughness = 0.85f;
+    for (float y : {0.25f, 0.45f, 0.65f, 0.85f}) {
+        canvas.rectFilled(0, h * y - 1, w, 3, {grooveRoughness, grooveRoughness, grooveRoughness, 1.0f});
+    }
+    for (float x : {0.2f, 0.4f, 0.6f, 0.8f}) {
+        canvas.rectFilled(w * x - 1, 0, 3, h, {grooveRoughness, grooveRoughness, grooveRoughness, 1.0f});
+    }
+
+    // Weathering patches - random rough areas (wear and tear)
+    float wornRoughness = 0.80f;
+    for (int i = 0; i < 30; i++) {
+        float wx = (float)((i * 89) % 100) / 100.0f * w;
+        float wy = (float)((i * 151) % 100) / 100.0f * h;
+        float size = 20 + (i % 4) * 15;
+        canvas.circleFilled(wx, wy, size, {wornRoughness, wornRoughness, wornRoughness, 0.6f});
+    }
+
+    // Exhaust stains - very rough sooty areas at rear
+    float sootRoughness = 0.95f;
+    canvas.rectFilled(w * 0.4f, h * 0.85f, w * 0.2f, h * 0.15f, {sootRoughness, sootRoughness, sootRoughness, 0.7f});
+
+    // Logo/decal areas - smoother (applied vinyl/paint)
+    float decalRoughness = 0.45f;
+    canvas.rectFilled(w * 0.1f, h * 0.1f, 80, 80, {decalRoughness, decalRoughness, decalRoughness, 1.0f});
+    canvas.rectFilled(w * 0.8f, h * 0.1f, 80, 80, {decalRoughness, decalRoughness, decalRoughness, 1.0f});
 }
 
 // =============================================================================
@@ -445,13 +540,28 @@ void setup(Context& ctx) {
         .opacity(0.7f);  // More visible weathering
 
     // =========================================================================
-    // Craft Material - TexturedMaterial with weathered livery
+    // Normal Map - Procedural surface detail
+    // =========================================================================
+
+    auto& normalMap = chain.add<Canvas>("normalMap").size(1024, 1024);
+
+    // =========================================================================
+    // Roughness Map - Procedural surface variation
+    // =========================================================================
+
+    auto& roughnessMap = chain.add<Canvas>("roughnessMap").size(1024, 1024);
+
+    // =========================================================================
+    // Craft Material - Full PBR with weathered livery
     // =========================================================================
 
     auto& material = chain.add<TexturedMaterial>("material")
         .baseColorInput(&liveryWithGrime)
-        .roughnessFactor(0.7f)
-        .metallicFactor(0.1f);
+        .normalInput(&normalMap)
+        .roughnessInput(&roughnessMap)
+        .normalScale(1.0f)
+        .roughnessFactor(1.0f)  // Use texture values directly
+        .metallicFactor(0.15f);
 
     // =========================================================================
     // Craft Geometry - Modular Class-based Design
@@ -459,16 +569,27 @@ void setup(Context& ctx) {
 
     auto& scene = SceneComposer::create(chain, "scene");
 
-    // Customize craft parts if desired (optional)
-    // g_craft.fuselage.length = 1.6f;
-    // g_craft.leftPod.bodyLength = 1.2f;
-    // g_craft.rightPod.bodyLength = 1.2f;
+    // Toggle to study reference models instead of procedural craft
+    static bool g_useReferenceModel = false;  // Set to true to load GLTF reference
+    static const char* g_referenceModelPath = "examples/showcase/wipeout-viz/assets/models/wipeout_-_goteki/scene.gltf";
 
-    // Build the aerodynamic craft mesh and add with textured material
-    auto craftMesh = g_craft.build();
-    auto& craftStatic = chain.add<StaticMesh>("craftMesh");
-    craftStatic.mesh(craftMesh);
-    scene.add(&craftStatic, &material);
+    if (g_useReferenceModel) {
+        // Load reference model for study
+        auto& refModel = chain.add<GLTFLoader>("refModel")
+            .file(g_referenceModelPath)
+            .loadTextures(true)
+            .scale(15.0f);  // These models are tiny, scale up
+        // Rotate to align (Z forward -> X forward)
+        glm::mat4 modelT = glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), {0, 1, 0});
+        scene.add(&refModel, modelT);
+        std::cout << "Loaded reference model: " << g_referenceModelPath << std::endl;
+    } else {
+        // Build the aerodynamic craft mesh and add with textured material
+        auto craftMesh = g_craft.build();
+        auto& craftStatic = chain.add<StaticMesh>("craftMesh");
+        craftStatic.mesh(craftMesh);
+        scene.add(&craftStatic, &material);
+    }
 
     // =========================================================================
     // Engine Glow - Emissive Material
@@ -674,6 +795,13 @@ void update(Context& ctx) {
 
     auto& livery = chain.get<Canvas>("livery");
     drawLivery(livery, g_teams[g_currentTeam], g_fontLoaded);
+
+    // Draw PBR maps
+    auto& normalMap = chain.get<Canvas>("normalMap");
+    drawNormalMap(normalMap);
+
+    auto& roughnessMap = chain.get<Canvas>("roughnessMap");
+    drawRoughnessMap(roughnessMap, g_teams[g_currentTeam]);
 
     auto& gridCanvas = chain.get<Canvas>("gridCanvas");
     drawGridFloor(gridCanvas, g_teams[g_currentTeam], time);

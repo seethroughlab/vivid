@@ -2726,19 +2726,23 @@ public:
 - [ ] OscIn receives from TouchOSC/similar
 - [ ] examples/midi-control runs correctly
 
-### Phase 11b: Network Addon (vivid-network)
+### Phase 11b: Network Addon (vivid-network) ✓
 
-**Goal:** Raw UDP/TCP networking for custom protocols and hardware integration
+**Goal:** Raw UDP/TCP networking + HTTP/WebSocket server for remote control
 
-**Library:** Platform sockets (no external dependency) or [asio](https://think-async.com/Asio/) (header-only)
+**Library:** Platform sockets for UDP, IXWebSocket (already in project) for HTTP/WebSocket
+
+**Merged:** Phase 13 (Web Server) combined into this addon.
 
 **Use Cases:**
 - Quanergy Q-Dome / Qortex (LIDAR zone tracking)
 - Custom hardware protocols
 - Inter-application communication
 - Artnet/sACN DMX (lighting control)
+- Remote parameter control via web browser
+- Mobile control interface
 
-**Network Operators:**
+**Implemented Operators:**
 
 ```cpp
 class UdpIn : public Operator {
@@ -2753,83 +2757,69 @@ public:
     // Convenience for common formats
     std::string asString() const;
     std::vector<float> asFloats() const;           // Interpret as float array
+    std::string senderAddress() const;             // Sender IP
+    int senderPort() const;                        // Sender port
 };
 
 class UdpOut : public Operator {
 public:
     UdpOut& host(const std::string& hostname);
     UdpOut& port(int port);
+    UdpOut& broadcast(bool enabled);               // Enable broadcast mode
 
     void send(const void* data, size_t size);
     void send(const std::string& message);
     void send(const std::vector<float>& values);
 };
 
-class TcpClient : public Operator {
+class WebServer : public Operator {
 public:
-    TcpClient& host(const std::string& hostname);
-    TcpClient& port(int port);
-    TcpClient& reconnect(bool enabled);            // Auto-reconnect on disconnect
+    WebServer& port(int port);                     // Default: 8080
+    WebServer& host(const std::string& host);      // Default: 0.0.0.0
+    WebServer& staticDir(const std::string& path); // Serve static files
 
-    bool connected() const;
-    void send(const void* data, size_t size);
-    bool hasData() const;
-    const std::vector<uint8_t>& data() const;
+    void broadcast(const std::string& message);    // Send to all WebSocket clients
+    void broadcastJson(const std::string& type, const std::string& data);
+
+    // Automatically exposes:
+    // GET  /api/operators     - List all operators
+    // GET  /api/operator/:id  - Get operator params
+    // POST /api/operator/:id  - Set operator params
+    // WS   /ws                - Real-time updates
 };
 ```
 
-**Artnet/DMX Support:**
+**Usage Examples:**
+
 ```cpp
-class ArtnetIn : public Operator {
-public:
-    ArtnetIn& universe(int universe);              // 0-32767
-
-    uint8_t channel(int ch) const;                 // Get DMX channel (1-512)
-    float channelNorm(int ch) const;               // Normalized 0-1
-};
-
-class ArtnetOut : public Operator {
-public:
-    ArtnetOut& host(const std::string& hostname);
-    ArtnetOut& universe(int universe);
-
-    void channel(int ch, uint8_t value);
-    void channels(int start, const std::vector<uint8_t>& values);
-};
-```
-
-**Usage Example (Quanergy Q-Dome Integration):**
-```cpp
-// Musical Bodies - receive zone occupancy from Qortex
+// UDP receive (e.g., Qortex zone tracking)
 chain.add<UdpIn>("qortex").port(5000);
-
-void update(Context& ctx) {
-    auto& udp = chain.get<UdpIn>("qortex");
-
-    if (udp.hasData()) {
-        // Parse Qortex zone data (60 zones, each with occupancy count)
-        auto data = udp.data();
-        for (int zone = 0; zone < 60; zone++) {
-            int occupancy = data[zone];  // People count in zone
-            if (occupancy > 0 && !zoneWasOccupied[zone]) {
-                // Person entered zone - trigger sample
-                chain.get<SamplePlayer>("player").trigger(zone % sampleCount);
-                zoneGlow[zone] = 1.0f;
-            }
-            zoneWasOccupied[zone] = occupancy > 0;
-        }
-    }
+if (udp.hasData()) {
+    auto data = udp.data();
+    // Process zone occupancy...
 }
+
+// UDP send (e.g., DMX lighting)
+chain.add<UdpOut>("dmx").host("192.168.1.100").port(6454);
+udp.send(dmxData);
+
+// Web server with REST API
+chain.add<WebServer>("web").port(8080).staticDir("web/");
+// Access at http://localhost:8080
 ```
+
+**Future Additions (not yet implemented):**
+- TcpClient - TCP stream connections
+- ArtnetIn/ArtnetOut - DMX universe support
 
 **Validation:**
-- [ ] UdpIn receives packets on specified port
-- [ ] UdpOut sends to remote host
-- [ ] TcpClient connects and reconnects
-- [ ] ArtnetIn receives DMX universes
-- [ ] <1ms latency from packet receive to data available
-- [ ] examples/udp-receiver runs correctly
-- [ ] examples/artnet-control runs correctly
+- [x] UdpIn receives packets on specified port
+- [x] UdpOut sends to remote host
+- [x] WebServer serves static files
+- [x] REST API for parameter control works
+- [x] WebSocket broadcasts to clients
+- [x] examples/network/udp-receiver runs correctly
+- [x] examples/network/web-control runs and serves UI
 
 ### Phase 12: Machine Learning Addon (ONNX)
 
@@ -2950,52 +2940,11 @@ enum Keypoint {
 - [ ] Skeleton overlay draws correctly
 - [ ] examples/movenet-tracking runs on macOS and Windows
 
-### Phase 13: Web Server Addon
+### Phase 13: Web Server Addon ✓ (Merged into Phase 11b)
 
-**Goal:** Remote control and web-based UI
+**Status:** Merged into vivid-network addon (Phase 11b).
 
-**Library:** [cpp-httplib](https://github.com/yhirose/cpp-httplib) (header-only HTTP/HTTPS)
-
-**Features:**
-- [ ] Serve static files (HTML/CSS/JS)
-- [ ] REST API for parameter control
-- [ ] WebSocket for real-time updates
-- [ ] Thumbnail streaming (JPEG)
-
-**WebServer Operator:**
-```cpp
-class WebServer : public Operator {
-public:
-    WebServer& port(int port);              // Default: 8080
-    WebServer& staticDir(const std::string& path);
-
-    // Automatically exposes:
-    // GET  /api/operators     - List all operators
-    // GET  /api/operator/:id  - Get operator params
-    // POST /api/operator/:id  - Set operator params
-    // WS   /ws                - Real-time updates
-};
-```
-
-**Usage:**
-```cpp
-void setup(Chain& chain, Context& ctx) {
-    chain.add<WebServer>("web").port(8080).staticDir("web/");
-    // Access at http://localhost:8080
-}
-```
-
-**Web Interface:**
-- Parameter sliders for all operators
-- Live preview thumbnails
-- Chain graph visualization
-- Mobile-friendly for TouchOSC alternative
-
-**Validation:**
-- [ ] Static files served correctly
-- [ ] Parameter changes via REST work
-- [ ] WebSocket broadcasts frame updates
-- [ ] examples/web-control runs and serves UI
+See Phase 11b for WebServer operator documentation.
 
 ### Phase 14: Advanced Window & Input
 

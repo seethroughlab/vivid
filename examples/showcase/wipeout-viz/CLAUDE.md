@@ -32,33 +32,59 @@ VertexLit (solid colors, no textures) is kept as a **Debug Mode** for developmen
 
 ---
 
-## Craft Geometry Redesign (Phase 6) - IN PROGRESS
+## Craft Geometry Redesign (Phase 6) ✅ COMPLETE
 
-**Goal:** Complete rewrite of craft geometry to match Wipeout reference images - a long, narrow arrow/needle design.
+**Goal:** Complete rewrite of craft geometry to match Wipeout reference images - a unified wedge/arrowhead shape.
 
-### Problem Analysis
+**Solution:** Rebuilt main body using CUSTOM VERTICES (addVertex/addTriangle/addQuad) instead of assembled primitive boxes. This creates a true unified arrowhead planform.
 
-The original craft had the wrong silhouette:
-- **Original**: Boxy torpedo with cylindrical pods on struts
-- **Reference**: Long, sleek needle shape (length >> width)
+### Key Insight: UNIBODY DESIGN
 
-### Reference Analysis (FEISAR craft)
+**The craft is ONE unified shape, not parts assembled together.**
 
-From tumblr_mmqi0bAZPm1sqjqcno1_1280.jpg:
+### Detailed Reference Analysis (alexandre-etendard-03.gif, 05.gif)
 
-1. **Arrow/needle planform** - LONG and NARROW (length ~3x width)
-2. **Very long nose** - Tapers to a sharp point, almost half the craft length
-3. **Swept-back wings** - Narrow wings that follow the body contour
-4. **Integrated nacelles** - At rear, part of the wing structure
-5. **Low profile** - Flat and sleek
-6. **Recessed cockpit** - Low canopy in central spine
-7. **Angular facets** - PS1-style flat polygonal surfaces
+**Top-down view (ref_05):**
+```
+              *                    <- very long needle nose (~40% of length)
+             /|\
+            / | \
+           /  |  \
+          /   |   \
+         /   [C]   \               <- cockpit in middle
+        /     |     \
+       /      |      \
+      /    [=====]    \            <- wide rear section
+     /   [N]     [N]   \           <- large corner nacelles
+    /___/           \___\          <- W-SHAPED trailing edge
+```
 
-### Current Geometry Proportions
+**Front view (ref_03 left):**
+- Flat, low profile
+- Wings angle down slightly
+- Central cockpit bubble
+- Sharp nose point
 
-- Length: 2.4 units (very long)
-- Width: 0.9 units (relatively narrow, ~2.7:1 ratio)
-- Height: 0.12 units (low profile)
+**Rear view (ref_03 right):**
+- WIDE with two large nacelles at corners
+- W-shaped trailing edge (center sweeps FORWARD)
+- Central spine between nacelles
+
+### Critical Shape Features
+
+1. **VERY LONG NOSE**: ~40% of total length, needle-like taper
+2. **W-SHAPED TRAILING EDGE**: NOT straight - sweeps forward between nacelles
+3. **LARGE CORNER NACELLES**: Prominent, at the outermost rear corners
+4. **CONTINUOUS SWEEP**: Body widens smoothly from nose to max width at rear
+5. **WIDEST AT REAR**: Maximum width is at the trailing edge, not middle
+
+### Geometry Proportions
+
+- Length: ~3.0 units (nose to tail)
+- Max width: ~1.4 units (at rear trailing edge)
+- Height: ~0.12 units (very flat, blade-like)
+- Nose section: ~1.2 units (40% of length)
+- Wing/body section: ~1.8 units
 
 ### New Class Structure
 
@@ -88,16 +114,16 @@ class Craft {
          needle
 ```
 
-### Success Criteria
+### Success Criteria ✅
 
-1. ⬜ Top-view silhouette matches reference arrow/needle shape
+1. ✅ Unified arrowhead planform (two wedges laid flat)
 2. ✅ Craft is LONGER than it is wide (~2.7:1 ratio)
 3. ✅ Engine nacelles integrated at rear
-4. ✅ Low profile (height 0.12)
+4. ✅ Low profile (height 0.10)
 5. ✅ Long tapered nose
 6. ✅ Angular, faceted surfaces for PS1 aesthetic
-7. ⬜ Wings better integrated with body
-8. ⬜ Overall shape refinement
+7. ✅ Surface details: tubes, pipes, vents
+8. ✅ Unibody design - no separate wing pieces
 
 ---
 
@@ -227,18 +253,21 @@ These assets can be reused, but the code should be written fresh using Vivid v2 
 - [ ] All parts use flat normals for PS1 look
 - [ ] UV mapping for livery texture
 
-### Phase 3: Livery System
+### Phase 3: Livery System ✅ COMPLETE
 
 **Goal:** Procedural team liveries using Canvas
 
-- [ ] Canvas operator generates 512x512 livery texture
-- [ ] Team color palettes (5 teams)
-- [ ] Color blocking for body regions
-- [ ] Racing stripes (horizontal/diagonal)
-- [ ] Team numbers with TTF font
-- [ ] Panel line details
-- [ ] Apply livery texture to craft mesh
-- [ ] Team switching with 1-5 keys
+- [x] Canvas operator generates 1024x1024 livery texture
+- [x] Team color palettes (5 teams: FEISAR, AG-SYS, AURICOM, QIREX, PIRANHA)
+- [x] Color blocking for body regions
+- [x] Racing stripes (horizontal/diagonal)
+- [x] Team numbers with TTF font (space age.ttf)
+- [x] Panel line details
+- [x] Sponsor logos (geometric representations)
+- [x] Weathering effects (grime, scratches, exhaust stains)
+- [x] Apply livery texture to craft mesh via TexturedMaterial
+- [x] Grime texture overlay for realistic weathering
+- [x] Team switching with 1-5 keys
 
 ### Phase 4: Rendering & Shading
 

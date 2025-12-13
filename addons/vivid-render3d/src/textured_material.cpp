@@ -158,6 +158,28 @@ TexturedMaterial& TexturedMaterial::emissiveInput(Operator* op) {
     return *this;
 }
 
+TexturedMaterial& TexturedMaterial::normalInput(Operator* op) {
+    if (m_normalInputOp != op) {
+        m_normalInputOp = op;
+        if (op) {
+            setInput(2, op);  // Register for dependency tracking
+        }
+        markDirty();
+    }
+    return *this;
+}
+
+TexturedMaterial& TexturedMaterial::roughnessInput(Operator* op) {
+    if (m_roughnessInputOp != op) {
+        m_roughnessInputOp = op;
+        if (op) {
+            setInput(3, op);  // Register for dependency tracking
+        }
+        markDirty();
+    }
+    return *this;
+}
+
 // -------------------------------------------------------------------------
 // Fallback Value Setters
 // -------------------------------------------------------------------------
@@ -569,9 +591,28 @@ void TexturedMaterial::process(Context& ctx) {
         m_baseColorView = m_baseColor.view ? m_baseColor.view : m_defaultWhiteView;
     }
 
-    m_normalView = m_normal.view ? m_normal.view : m_defaultNormalView;
+    // Normal: operator input > loaded texture > default
+    if (m_normalInputOp) {
+        m_normalView = m_normalInputOp->outputView();
+        if (!m_normalView) {
+            m_normalView = m_defaultNormalView;
+        }
+    } else {
+        m_normalView = m_normal.view ? m_normal.view : m_defaultNormalView;
+    }
+
     m_metallicView = m_metallic.view ? m_metallic.view : m_defaultBlackView;
-    m_roughnessView = m_roughness.view ? m_roughness.view : m_defaultWhiteView;
+
+    // Roughness: operator input > loaded texture > default
+    if (m_roughnessInputOp) {
+        m_roughnessView = m_roughnessInputOp->outputView();
+        if (!m_roughnessView) {
+            m_roughnessView = m_defaultWhiteView;
+        }
+    } else {
+        m_roughnessView = m_roughness.view ? m_roughness.view : m_defaultWhiteView;
+    }
+
     m_aoView = m_ao.view ? m_ao.view : m_defaultWhiteView;
 
     // Emissive: operator input > loaded texture > default
