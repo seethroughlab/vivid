@@ -1,0 +1,10 @@
+{
+  "box.depth": [9.031, 0, 0, 0],
+  "box.width": [4.212, 0, 0, 0],
+  "camera.center": [0, 0, 0, 0],
+  "camera.distance": [6.796, 0, 0, 0],
+  "camera.fov": [86.458, 0, 0, 0],
+  "camera.near": [1.305, 0, 0, 0],
+  "sphere.radius": [2.055, 0, 0, 0],
+  "sphere.segments": [69.566, 0, 0, 0]
+}

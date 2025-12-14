@@ -12,9 +12,7 @@ Press `Tab` to open the chain visualizer and adjust parameters in real-time.
 
 ---
 
-## Learning Path
-
-### 1. Getting Started
+## Getting Started
 
 Start here if you're new to Vivid.
 
@@ -23,48 +21,39 @@ Start here if you're new to Vivid.
 | [01-template](getting-started/01-template) | Heavily commented starter with hot-reload tips |
 | [02-hello-noise](getting-started/02-hello-noise) | Minimal working example - noise generator |
 
-### 2. 2D Effects
+---
 
-Learn texture operators and visual effects.
+## Addon Examples
 
-| Example | Description |
-|---------|-------------|
-| [chain-basics](2d-effects/chain-basics) | Core concepts: inputs, compositing, animation |
-| [feedback](2d-effects/feedback) | State preservation across frames |
-| [kaleidoscope](2d-effects/kaleidoscope) | Chaining multiple effects together |
-| [retro-crt](2d-effects/retro-crt) | Retro pipeline: dither, scanlines, CRT |
-| [particles](2d-effects/particles) | 2D particle system with emitters |
-| [canvas-drawing](2d-effects/canvas-drawing) | Imperative 2D drawing API |
+Each addon contains its own examples in its `examples/` directory:
 
-### 3. Audio
+| Addon | Examples | Description |
+|-------|----------|-------------|
+| [vivid-effects-2d](../addons/vivid-effects-2d/examples/) | 6 examples | 2D effects, particles, canvas drawing |
+| [vivid-render3d](../addons/vivid-render3d/examples/) | 3 examples | 3D rendering, GLTF, instancing |
+| [vivid-audio](../addons/vivid-audio/examples/) | 4 examples | Synthesis, sequencing, audio-reactive |
+| [vivid-network](../addons/vivid-network/examples/) | 3 examples | OSC, UDP, web control |
+| [vivid-ml](../addons/vivid-ml/examples/) | 1 example | ML inference, pose tracking |
 
-Synthesis, sequencing, and audio-reactive visuals.
-
-| Example | Description |
-|---------|-------------|
-| [drum-machine](audio/drum-machine) | Drum synthesis, patterns, Euclidean rhythms |
-| [audio-reactive](audio/audio-reactive) | Audio analysis driving visual effects |
-
-### 4. 3D Rendering
-
-PBR rendering, models, and instancing.
-
-| Example | Description |
-|---------|-------------|
-| [3d-basics](3d-rendering/3d-basics) | Scene, camera, primitives, CSG, lighting |
-| [gltf-loader](3d-rendering/gltf-loader) | Loading GLTF/GLB models with IBL |
-| [instancing](3d-rendering/instancing) | GPU instancing for thousands of objects |
+Run addon examples the same way:
+```bash
+./build/bin/vivid addons/vivid-effects-2d/examples/kaleidoscope
+./build/bin/vivid addons/vivid-audio/examples/drum-machine
+```
 
 ---
 
 ## Showcase
 
-Impressive demos showing the best of what Vivid can do. These are "wow factor" examples with audio-reactive visuals, generative art, and multi-layered effects.
+Impressive multi-addon demos showing the best of what Vivid can do. These are "wow factor" examples with audio-reactive visuals, generative art, and multi-layered effects.
 
-| Example | Description |
-|---------|-------------|
-| [flow-field](showcase/flow-field) | Generative particle art with noise-driven flow fields and ethereal trails |
-| [audio-visualizer](showcase/audio-visualizer) | FFT-driven particles with beat detection, bloom, and chromatic aberration |
+| Example | Description | Addons Used |
+|---------|-------------|-------------|
+| [flow-field](showcase/flow-field) | Generative particle art with noise-driven flow fields | effects-2d |
+| [audio-visualizer](showcase/audio-visualizer) | FFT-driven particles with beat detection, bloom | audio, effects-2d |
+| [depth-of-field](showcase/depth-of-field) | 3D scene with depth-based blur | render3d, effects-2d |
+| [gltf-gallery](showcase/gltf-gallery) | Interactive GLTF model viewer with PBR+IBL | render3d |
+| [wipeout-viz](showcase/wipeout-viz) | Racing game style visualization | audio, render3d, effects-2d |
 
 ---
 
@@ -72,4 +61,4 @@ Impressive demos showing the best of what Vivid can do. These are "wow factor" e
 
 - [LLM-REFERENCE.md](../docs/LLM-REFERENCE.md) - Compact operator reference
 - [RECIPES.md](../docs/RECIPES.md) - Common patterns and techniques
-- [testing-fixtures/](../testing-fixtures/) - Additional examples used for testing
+- [testing-fixtures/](../testing-fixtures/) - Core testing examples

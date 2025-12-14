@@ -1,0 +1,10 @@
+{
+  "bloom.passes": [3, 0, 0, 0],
+  "bloom.radius": [31.513, 0, 0, 0],
+  "comp2.opacity": [0.765, 0, 0, 0],
+  "final.opacity": [0.021, 0, 0, 0],
+  "noise.lacunarity": [4, 0, 0, 0],
+  "noise.offset": [1, -0.288, -38.095, 0],
+  "noise.persistence": [1, 0, 0, 0],
+  "noise.z": [68.675, 0, 0, 0]
+}

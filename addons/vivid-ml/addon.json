@@ -1,0 +1,13 @@
+{
+  "name": "vivid-ml",
+  "version": "0.1.0",
+  "description": "Machine learning inference for creative applications via ONNX Runtime",
+  "author": "Vivid",
+  "license": "MIT",
+  "vivid": ">=3.0.0",
+  "dependencies": ["vivid-video"],
+  "operators": [
+    "ONNXModel",
+    "PoseDetector"
+  ]
+}
