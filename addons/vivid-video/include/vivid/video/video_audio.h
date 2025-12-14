@@ -51,9 +51,8 @@ public:
     /**
      * @brief Set source VideoPlayer by name
      * @param videoOpName Name of the VideoPlayer operator
-     * @return Reference for chaining
      */
-    VideoAudio& source(const std::string& videoOpName);
+    void setSource(const std::string& videoOpName);
 
     /// @}
     // -------------------------------------------------------------------------

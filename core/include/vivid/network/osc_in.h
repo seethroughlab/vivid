@@ -60,8 +60,8 @@ public:
     ~OscIn() override;
 
     // Configuration
-    OscIn& port(int port);
-    OscIn& bufferSize(int bytes);
+    void port(int port);
+    void bufferSize(int bytes);
 
     // Query state
     bool isListening() const { return m_listening.load(); }

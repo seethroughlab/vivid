@@ -93,7 +93,7 @@ public:
      * @brief Set waveform type
      * @param w Waveform (Sine, Triangle, Square, Saw, Pulse)
      */
-    Synth& waveform(Waveform w) { m_waveform = w; return *this; }
+    void setWaveform(Waveform w) { m_waveform = w; }
 
     /// @}
     // -------------------------------------------------------------------------

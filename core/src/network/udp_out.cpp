@@ -34,7 +34,7 @@ UdpOut::~UdpOut() {
     cleanup();
 }
 
-UdpOut& UdpOut::host(const std::string& hostname) {
+void UdpOut::host(const std::string& hostname) {
     if (m_host != hostname) {
         m_host = hostname;
         if (m_socket != -1) {
@@ -42,10 +42,9 @@ UdpOut& UdpOut::host(const std::string& hostname) {
             createSocket();
         }
     }
-    return *this;
 }
 
-UdpOut& UdpOut::port(int port) {
+void UdpOut::port(int port) {
     if (m_port != port) {
         m_port = port;
         if (m_socket != -1) {
@@ -53,16 +52,14 @@ UdpOut& UdpOut::port(int port) {
             createSocket();
         }
     }
-    return *this;
 }
 
-UdpOut& UdpOut::broadcast(bool enabled) {
+void UdpOut::broadcast(bool enabled) {
     m_broadcast = enabled;
     if (m_socket != -1) {
         int opt = enabled ? 1 : 0;
         setsockopt(m_socket, SOL_SOCKET, SO_BROADCAST, (const char*)&opt, sizeof(opt));
     }
-    return *this;
 }
 
 void UdpOut::send(const void* data, size_t size) {

@@ -114,9 +114,8 @@ AudioIn::~AudioIn() {
     cleanup();
 }
 
-AudioIn& AudioIn::mute(bool m) {
+void AudioIn::setMute(bool m) {
     m_muted = m;
-    return *this;
 }
 
 bool AudioIn::isCapturing() const {

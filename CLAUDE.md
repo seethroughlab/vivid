@@ -60,10 +60,13 @@ class MyEffect : public TextureOperator {
 };
 ```
 
-### Fluent API
-All setters return `*this` for method chaining:
+### Setter Pattern
+Use void setters for configuration:
 ```cpp
-chain.add<Noise>("noise").scale(4.0f).speed(0.5f).octaves(4);
+auto& noise = chain.add<Noise>("noise");
+noise.scale = 4.0f;
+noise.speed = 0.5f;
+noise.octaves = 4;
 ```
 
 ### Parameter System

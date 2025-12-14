@@ -25,9 +25,9 @@ public:
     ~UdpOut() override;
 
     // Configuration
-    UdpOut& host(const std::string& hostname);
-    UdpOut& port(int port);
-    UdpOut& broadcast(bool enabled);  // Enable broadcast mode
+    void host(const std::string& hostname);
+    void port(int port);
+    void broadcast(bool enabled);  // Enable broadcast mode
 
     // Send methods
     void send(const void* data, size_t size);

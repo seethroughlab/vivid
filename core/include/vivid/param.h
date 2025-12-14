@@ -38,7 +38,7 @@ template<> struct ParamTypeFor<bool>  { static constexpr ParamType value = Param
  * class MyEffect : public TextureOperator {
  *     Param<float> m_intensity{"intensity", 1.0f, 0.0f, 2.0f};
  *
- *     MyEffect& intensity(float v) { m_intensity = v; return *this; }
+ *     void setIntensity(float v) { m_intensity = v; }
  *
  *     std::vector<ParamDecl> params() override {
  *         return { m_intensity.decl() };
@@ -65,7 +65,7 @@ public:
     /// @brief Get value explicitly
     T get() const { return m_value; }
 
-    /// @brief Assignment for fluent setters
+    /// @brief Assignment operator
     Param& operator=(T v) { m_value = v; return *this; }
 
     /// @brief Get parameter name
@@ -100,7 +100,7 @@ private:
  * @code
  * Vec2Param m_offset{"offset", 0.0f, 0.0f, -1.0f, 1.0f};
  *
- * MyEffect& offset(float x, float y) { m_offset.set(x, y); return *this; }
+ * void setOffset(float x, float y) { m_offset.set(x, y); }
  * @endcode
  */
 class Vec2Param {
@@ -150,7 +150,7 @@ private:
  * @code
  * Vec3Param m_offset{"offset", 0.0f, 0.0f, 0.0f, -10.0f, 10.0f};
  *
- * MyEffect& offset(float x, float y, float z) { m_offset.set(x, y, z); return *this; }
+ * void setOffset(float x, float y, float z) { m_offset.set(x, y, z); }
  * @endcode
  */
 class Vec3Param {
@@ -205,9 +205,8 @@ private:
  * @code
  * ColorParam m_color{"color", 1.0f, 1.0f, 1.0f, 1.0f};
  *
- * MyEffect& color(float r, float g, float b, float a = 1.0f) {
+ * void setColor(float r, float g, float b, float a = 1.0f) {
  *     m_color.set(r, g, b, a);
- *     return *this;
  * }
  * @endcode
  */
@@ -279,9 +278,8 @@ private:
  * @code
  * FilePathParam m_texture{"texture", "", "*.png;*.jpg;*.exr", "image"};
  *
- * MyEffect& texture(const std::string& path) {
+ * void setTexture(const std::string& path) {
  *     m_texture = path;
- *     return *this;
  * }
  * @endcode
  */

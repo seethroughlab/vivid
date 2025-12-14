@@ -100,17 +100,8 @@ AudioOutput::~AudioOutput() {
     cleanup();
 }
 
-AudioOutput& AudioOutput::input(const std::string& name) {
+void AudioOutput::setInput(const std::string& name) {
     m_inputName = name;
-    return *this;
-}
-
-AudioOutput& AudioOutput::volume(float v) {
-    m_volume = std::clamp(v, 0.0f, 2.0f);
-    if (m_impl) {
-        m_impl->volume = m_volume;
-    }
-    return *this;
 }
 
 void AudioOutput::setAudioGraph(AudioGraph* graph) {
@@ -138,7 +129,7 @@ void AudioOutput::init(Context& ctx) {
         Operator* op = ctx.chain().getByName(m_inputName);
         m_input = dynamic_cast<AudioOperator*>(op);
         if (m_input) {
-            setInput(0, m_input);  // Register dependency
+            Operator::setInput(0, m_input);  // Register dependency
         }
     }
 

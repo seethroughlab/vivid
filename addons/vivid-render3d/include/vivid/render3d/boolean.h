@@ -52,30 +52,27 @@ public:
     }
 
     /// Set the first input (A)
-    Boolean& inputA(MeshOperator* op) {
+    void setInputA(MeshOperator* op) {
         if (getInput(0) != op) {
             setInput(0, op);
             markDirty();
         }
-        return *this;
     }
 
     /// Set the second input (B)
-    Boolean& inputB(MeshOperator* op) {
+    void setInputB(MeshOperator* op) {
         if (getInput(1) != op) {
             setInput(1, op);
             markDirty();
         }
-        return *this;
     }
 
     /// Set the boolean operation type
-    Boolean& operation(BooleanOp op) {
+    void setOperation(BooleanOp op) {
         if (m_operation != op) {
             m_operation = op;
             markDirty();
         }
-        return *this;
     }
 
     void init(Context& ctx) override {}

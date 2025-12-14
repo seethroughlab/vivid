@@ -125,9 +125,8 @@ struct TextureState : public OperatorState {
  * @code
  * class MyEffect : public Operator {
  * public:
- *     MyEffect& amount(float v) {
+ *     void setAmount(float v) {
  *         if (m_amount != v) { m_amount = v; markDirty(); }
- *         return *this;
  *     }
  *
  *     void process(Context& ctx) override {

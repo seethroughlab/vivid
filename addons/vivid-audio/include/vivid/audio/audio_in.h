@@ -52,9 +52,8 @@ public:
     /**
      * @brief Mute/unmute input
      * @param m True to mute, false to unmute
-     * @return Reference for chaining
      */
-    AudioIn& mute(bool m);
+    void setMute(bool m);
 
     /// @}
     // -------------------------------------------------------------------------

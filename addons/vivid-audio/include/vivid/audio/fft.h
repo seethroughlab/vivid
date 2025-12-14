@@ -52,9 +52,8 @@ public:
     /**
      * @brief Connect to audio source
      */
-    FFT& input(const std::string& name) {
+    void input(const std::string& name) {
         AudioAnalyzer::input(name);
-        return *this;
     }
 
     /**
@@ -64,7 +63,7 @@ public:
      * Larger sizes give better frequency resolution but slower time response.
      * Default is 1024 (21ms at 48kHz).
      */
-    FFT& size(int n);
+    void setSize(int n);
 
     /// @}
     // -------------------------------------------------------------------------

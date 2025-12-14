@@ -50,20 +50,20 @@ public:
     ~SampleBank() override = default;
 
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Configuration
     /// @{
 
     /**
      * @brief Load all WAV files from a folder
      * @param path Path to folder containing WAV files
      */
-    SampleBank& folder(const std::string& path);
+    void setFolder(const std::string& path);
 
     /**
      * @brief Load a single WAV file
      * @param path Path to WAV file
      */
-    SampleBank& file(const std::string& path);
+    void addFile(const std::string& path);
 
     /// @}
     // -------------------------------------------------------------------------

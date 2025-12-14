@@ -41,28 +41,25 @@ namespace vivid::render3d {
 class Box : public MeshOperator {
 public:
     /// Set box dimensions
-    Box& size(float width, float height, float depth) {
+    void size(float width, float height, float depth) {
         if (m_width != width || m_height != height || m_depth != depth) {
             m_width = width; m_height = height; m_depth = depth; markDirty();
         }
-        return *this;
     }
 
     /// Set uniform size (cube)
-    Box& size(float s) {
-        return size(s, s, s);
+    void size(float s) {
+        size(s, s, s);
     }
 
     /// Enable flat shading (faceted look)
-    Box& flatShading(bool enabled) {
+    void flatShading(bool enabled) {
         if (m_flatShading != enabled) { m_flatShading = enabled; markDirty(); }
-        return *this;
     }
 
     /// Enable tangent computation (required for normal mapping)
-    Box& computeTangents() {
+    void computeTangents() {
         if (!m_computeTangents) { m_computeTangents = true; markDirty(); }
-        return *this;
     }
 
     void init(Context& ctx) override {}
@@ -137,21 +134,18 @@ private:
 class Sphere : public MeshOperator {
 public:
     /// Set sphere radius
-    Sphere& radius(float r) {
+    void radius(float r) {
         if (m_radius != r) { m_radius = r; markDirty(); }
-        return *this;
     }
 
     /// Set number of segments (detail level)
-    Sphere& segments(int s) {
+    void segments(int s) {
         if (m_segments != s) { m_segments = s; markDirty(); }
-        return *this;
     }
 
     /// Enable tangent computation (required for normal mapping)
-    Sphere& computeTangents() {
+    void computeTangents() {
         if (!m_computeTangents) { m_computeTangents = true; markDirty(); }
-        return *this;
     }
 
     void init(Context& ctx) override {}
@@ -220,27 +214,23 @@ private:
 class Cylinder : public MeshOperator {
 public:
     /// Set cylinder radius
-    Cylinder& radius(float r) {
+    void radius(float r) {
         if (m_radius != r) { m_radius = r; markDirty(); }
-        return *this;
     }
 
     /// Set cylinder height
-    Cylinder& height(float h) {
+    void height(float h) {
         if (m_height != h) { m_height = h; markDirty(); }
-        return *this;
     }
 
     /// Set number of segments (detail level)
-    Cylinder& segments(int s) {
+    void segments(int s) {
         if (m_segments != s) { m_segments = s; markDirty(); }
-        return *this;
     }
 
     /// Enable flat shading
-    Cylinder& flatShading(bool enabled) {
+    void flatShading(bool enabled) {
         if (m_flatShading != enabled) { m_flatShading = enabled; markDirty(); }
-        return *this;
     }
 
     void init(Context& ctx) override {}
@@ -315,27 +305,23 @@ private:
 class Cone : public MeshOperator {
 public:
     /// Set cone base radius
-    Cone& radius(float r) {
+    void radius(float r) {
         if (m_radius != r) { m_radius = r; markDirty(); }
-        return *this;
     }
 
     /// Set cone height
-    Cone& height(float h) {
+    void height(float h) {
         if (m_height != h) { m_height = h; markDirty(); }
-        return *this;
     }
 
     /// Set number of segments (detail level)
-    Cone& segments(int s) {
+    void segments(int s) {
         if (m_segments != s) { m_segments = s; markDirty(); }
-        return *this;
     }
 
     /// Enable flat shading
-    Cone& flatShading(bool enabled) {
+    void flatShading(bool enabled) {
         if (m_flatShading != enabled) { m_flatShading = enabled; markDirty(); }
-        return *this;
     }
 
     void init(Context& ctx) override {}
@@ -411,33 +397,28 @@ private:
 class Torus : public MeshOperator {
 public:
     /// Set outer radius (distance from center to tube center)
-    Torus& outerRadius(float r) {
+    void outerRadius(float r) {
         if (m_outerRadius != r) { m_outerRadius = r; markDirty(); }
-        return *this;
     }
 
     /// Set inner radius (tube radius)
-    Torus& innerRadius(float r) {
+    void innerRadius(float r) {
         if (m_innerRadius != r) { m_innerRadius = r; markDirty(); }
-        return *this;
     }
 
     /// Set number of segments around the ring
-    Torus& segments(int s) {
+    void segments(int s) {
         if (m_segments != s) { m_segments = s; markDirty(); }
-        return *this;
     }
 
     /// Set number of rings around the tube
-    Torus& rings(int r) {
+    void rings(int r) {
         if (m_rings != r) { m_rings = r; markDirty(); }
-        return *this;
     }
 
     /// Enable tangent computation (required for normal mapping)
-    Torus& computeTangents() {
+    void computeTangents() {
         if (!m_computeTangents) { m_computeTangents = true; markDirty(); }
-        return *this;
     }
 
     void init(Context& ctx) override {}
@@ -513,31 +494,27 @@ private:
 class Plane : public MeshOperator {
 public:
     /// Set plane dimensions
-    Plane& size(float width, float height) {
+    void size(float width, float height) {
         if (m_width != width || m_height != height) {
             m_width = width; m_height = height; markDirty();
         }
-        return *this;
     }
 
     /// Set number of subdivisions
-    Plane& subdivisions(int x, int y) {
+    void subdivisions(int x, int y) {
         if (m_subdivisionsX != x || m_subdivisionsY != y) {
             m_subdivisionsX = x; m_subdivisionsY = y; markDirty();
         }
-        return *this;
     }
 
     /// Enable flat shading
-    Plane& flatShading(bool enabled) {
+    void flatShading(bool enabled) {
         if (m_flatShading != enabled) { m_flatShading = enabled; markDirty(); }
-        return *this;
     }
 
     /// Enable tangent computation (required for normal mapping)
-    Plane& computeTangents() {
+    void computeTangents() {
         if (!m_computeTangents) { m_computeTangents = true; markDirty(); }
-        return *this;
     }
 
     void init(Context& ctx) override {}

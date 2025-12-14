@@ -33,9 +33,9 @@ public:
     ~OscOut() override;
 
     // Configuration
-    OscOut& host(const std::string& hostname);
-    OscOut& port(int port);
-    OscOut& broadcast(bool enabled);
+    void host(const std::string& hostname);
+    void port(int port);
+    void broadcast(bool enabled);
 
     // Send methods - single value
     void send(const std::string& address);                          // No args

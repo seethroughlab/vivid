@@ -273,12 +273,12 @@ void ChainVisualizer::updateGeometryPreview(
         preview.cameraOp->init(ctx);
 
         preview.renderer = std::make_unique<render3d::Render3D>();
-        preview.renderer->resolution(100, 56)
-            .shadingMode(render3d::ShadingMode::Flat)
-            .clearColor(0.12f, 0.14f, 0.18f)
-            .ambient(0.3f)
-            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
-            .cameraInput(preview.cameraOp.get());
+        preview.renderer->setResolution(100, 56);
+        preview.renderer->setShadingMode(render3d::ShadingMode::Flat);
+        preview.renderer->setClearColor(0.12f, 0.14f, 0.18f);
+        preview.renderer->setAmbient(0.3f);
+        preview.renderer->setLightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+        preview.renderer->setCameraInput(preview.cameraOp.get());
         preview.renderer->init(ctx);
     }
 
@@ -331,11 +331,11 @@ void ChainVisualizer::updateGeometryPreview(
         }
         float distance = maxDist * 2.5f;
         if (distance < 0.1f) distance = 2.0f;  // Fallback for tiny meshes
-        preview.cameraOp->position(distance * 0.7f, distance * 0.5f, distance * 0.7f)
-            .target(center.x, center.y, center.z)
-            .fov(45.0f)
-            .nearPlane(0.01f)
-            .farPlane(100.0f);
+        preview.cameraOp->position(distance * 0.7f, distance * 0.5f, distance * 0.7f);
+        preview.cameraOp->target(center.x, center.y, center.z);
+        preview.cameraOp->fov(45.0f);
+        preview.cameraOp->nearPlane(0.01f);
+        preview.cameraOp->farPlane(100.0f);
     }
 
     // Render (internal use - suppress deprecation warning for scene())
@@ -349,7 +349,7 @@ void ChainVisualizer::updateGeometryPreview(
 #pragma warning(push)
 #pragma warning(disable: 4996)
 #endif
-    preview.renderer->scene(preview.scene);
+    preview.renderer->setScene(preview.scene);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
@@ -373,12 +373,12 @@ void ChainVisualizer::updateScenePreview(
         preview.cameraOp->init(ctx);
 
         preview.renderer = std::make_unique<render3d::Render3D>();
-        preview.renderer->resolution(100, 56)
-            .shadingMode(render3d::ShadingMode::Flat)
-            .clearColor(0.12f, 0.14f, 0.18f)
-            .ambient(0.3f)
-            .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
-            .cameraInput(preview.cameraOp.get());
+        preview.renderer->setResolution(100, 56);
+        preview.renderer->setShadingMode(render3d::ShadingMode::Flat);
+        preview.renderer->setClearColor(0.12f, 0.14f, 0.18f);
+        preview.renderer->setAmbient(0.3f);
+        preview.renderer->setLightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+        preview.renderer->setCameraInput(preview.cameraOp.get());
         preview.renderer->init(ctx);
     }
 
@@ -420,11 +420,11 @@ void ChainVisualizer::updateScenePreview(
     // Orbit camera around scene center
     float camX = center.x + distance * 0.7f * cos(preview.rotationAngle);
     float camZ = center.z + distance * 0.7f * sin(preview.rotationAngle);
-    preview.cameraOp->position(camX, center.y + distance * 0.4f, camZ)
-        .target(center.x, center.y, center.z)
-        .fov(45.0f)
-        .nearPlane(0.01f)
-        .farPlane(100.0f);
+    preview.cameraOp->position(camX, center.y + distance * 0.4f, camZ);
+    preview.cameraOp->target(center.x, center.y, center.z);
+    preview.cameraOp->fov(45.0f);
+    preview.cameraOp->nearPlane(0.01f);
+    preview.cameraOp->farPlane(100.0f);
 
     // Render (internal use - suppress deprecation warning for scene())
 #if defined(__clang__)
@@ -437,7 +437,7 @@ void ChainVisualizer::updateScenePreview(
 #pragma warning(push)
 #pragma warning(disable: 4996)
 #endif
-    preview.renderer->scene(scene);
+    preview.renderer->setScene(scene);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
@@ -492,16 +492,16 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
             m_soloCameraOp->init(ctx);
 
             m_soloGeometryRenderer = std::make_unique<render3d::Render3D>();
-            m_soloGeometryRenderer->shadingMode(render3d::ShadingMode::Flat)
-                .clearColor(0.08f, 0.1f, 0.14f)
-                .ambient(0.3f)
-                .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
-                .cameraInput(m_soloCameraOp.get());
+            m_soloGeometryRenderer->setShadingMode(render3d::ShadingMode::Flat);
+            m_soloGeometryRenderer->setClearColor(0.08f, 0.1f, 0.14f);
+            m_soloGeometryRenderer->setAmbient(0.3f);
+            m_soloGeometryRenderer->setLightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+            m_soloGeometryRenderer->setCameraInput(m_soloCameraOp.get());
             m_soloGeometryRenderer->init(ctx);
         }
 
         // Resize to match viewport
-        m_soloGeometryRenderer->resolution(input.width, input.height);
+        m_soloGeometryRenderer->setResolution(input.width, input.height);
 
         // Check if this is a SceneComposer
         auto* composer = dynamic_cast<render3d::SceneComposer*>(m_soloOperator);
@@ -530,11 +530,11 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
                 // Orbit camera
                 float camX = center.x + distance * 0.7f * cos(m_soloRotationAngle);
                 float camZ = center.z + distance * 0.7f * sin(m_soloRotationAngle);
-                m_soloCameraOp->position(camX, center.y + distance * 0.4f, camZ)
-                    .target(center.x, center.y, center.z)
-                    .fov(45.0f)
-                    .nearPlane(0.01f)
-                    .farPlane(1000.0f);
+                m_soloCameraOp->position(camX, center.y + distance * 0.4f, camZ);
+                m_soloCameraOp->target(center.x, center.y, center.z);
+                m_soloCameraOp->fov(45.0f);
+                m_soloCameraOp->nearPlane(0.01f);
+                m_soloCameraOp->farPlane(1000.0f);
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -546,7 +546,7 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
 #pragma warning(push)
 #pragma warning(disable: 4996)
 #endif
-                m_soloGeometryRenderer->scene(scene);
+                m_soloGeometryRenderer->setScene(scene);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)
@@ -597,11 +597,11 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
                 float distance = maxDist * 2.5f;
                 if (distance < 0.1f) distance = 2.0f;
 
-                m_soloCameraOp->position(distance * 0.7f, distance * 0.5f, distance * 0.7f)
-                    .target(center.x, center.y, center.z)
-                    .fov(45.0f)
-                    .nearPlane(0.01f)
-                    .farPlane(100.0f);
+                m_soloCameraOp->position(distance * 0.7f, distance * 0.5f, distance * 0.7f);
+                m_soloCameraOp->target(center.x, center.y, center.z);
+                m_soloCameraOp->fov(45.0f);
+                m_soloCameraOp->nearPlane(0.01f);
+                m_soloCameraOp->farPlane(100.0f);
 
 #if defined(__clang__)
 #pragma clang diagnostic push
@@ -613,7 +613,7 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
 #pragma warning(push)
 #pragma warning(disable: 4996)
 #endif
-                m_soloGeometryRenderer->scene(scene);
+                m_soloGeometryRenderer->setScene(scene);
 #if defined(__clang__)
 #pragma clang diagnostic pop
 #elif defined(__GNUC__)

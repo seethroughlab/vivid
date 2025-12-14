@@ -47,66 +47,57 @@ public:
     ~DepthOfField() override;
 
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Configuration
     /// @{
 
     /**
      * @brief Set input from Render3D (uses both color and depth output)
      * @param render Render3D operator with depthOutput(true)
-     * @return Reference for chaining
      */
-    DepthOfField& input(Render3D* render);
+    void input(Render3D* render);
 
     /**
      * @brief Set normalized focus distance (0 = near plane, 1 = far plane)
      * @param d Focus depth (0-1, default 0.5)
-     * @return Reference for chaining
      */
-    DepthOfField& focusDistance(float d) {
+    void focusDistance(float d) {
         if (m_focusDistance != d) {
             m_focusDistance = d;
             markDirty();
         }
-        return *this;
     }
 
     /**
      * @brief Set focus range (depth range that stays sharp)
      * @param r Focus range (0-1, default 0.1)
-     * @return Reference for chaining
      */
-    DepthOfField& focusRange(float r) {
+    void focusRange(float r) {
         if (m_focusRange != r) {
             m_focusRange = r;
             markDirty();
         }
-        return *this;
     }
 
     /**
      * @brief Set maximum blur strength
      * @param s Blur strength (0-1, default 0.5)
-     * @return Reference for chaining
      */
-    DepthOfField& blurStrength(float s) {
+    void blurStrength(float s) {
         if (m_blurStrength != s) {
             m_blurStrength = s;
             markDirty();
         }
-        return *this;
     }
 
     /**
      * @brief Enable debug mode to visualize depth buffer
      * @param show true to show depth as grayscale, false for normal DOF
-     * @return Reference for chaining
      */
-    DepthOfField& showDepth(bool show) {
+    void showDepth(bool show) {
         if (m_showDepth != show) {
             m_showDepth = show;
             markDirty();
         }
-        return *this;
     }
 
     /// @}

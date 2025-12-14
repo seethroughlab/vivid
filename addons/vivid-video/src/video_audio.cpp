@@ -13,9 +13,8 @@ namespace vivid::video {
 
 VideoAudio::VideoAudio() = default;
 
-VideoAudio& VideoAudio::source(const std::string& videoOpName) {
+void VideoAudio::setSource(const std::string& videoOpName) {
     m_sourceName = videoOpName;
-    return *this;
 }
 
 void VideoAudio::init(Context& ctx) {

@@ -107,15 +107,10 @@ public:
      * @brief Set vowel preset
      * @param v Vowel preset (A, E, I, O, U, or Custom)
      */
-    Formant& vowel(Vowel v) {
+    void setVowel(Vowel v) {
         m_vowel = v;
         m_needsUpdate = true;
-        return *this;
     }
-
-    // Override base class methods to return Formant&
-    Formant& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Formant& bypass(bool b) { AudioEffect::bypass(b); return *this; }
 
     /**
      * @brief Set formant amplitudes (relative levels)
@@ -123,9 +118,8 @@ public:
      * @param a2 Second formant amplitude
      * @param a3 Third formant amplitude
      */
-    Formant& amplitudes(float a1, float a2, float a3) {
+    void setAmplitudes(float a1, float a2, float a3) {
         m_a1 = a1; m_a2 = a2; m_a3 = a3;
-        return *this;
     }
 
     /// @}

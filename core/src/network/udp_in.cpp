@@ -44,7 +44,7 @@ UdpIn::~UdpIn() {
     cleanup();
 }
 
-UdpIn& UdpIn::port(int port) {
+void UdpIn::port(int port) {
     if (m_port != port) {
         m_port = port;
         if (m_listening.load()) {
@@ -52,14 +52,12 @@ UdpIn& UdpIn::port(int port) {
             startListening();
         }
     }
-    return *this;
 }
 
-UdpIn& UdpIn::bufferSize(int bytes) {
+void UdpIn::bufferSize(int bytes) {
     m_bufferSize = bytes;
     m_writeBuffer.reserve(bytes);
     m_readBuffer.reserve(bytes);
-    return *this;
 }
 
 std::string UdpIn::asString() const {

@@ -77,7 +77,7 @@ public:
     ~Oscillator() override = default;
 
     /// @brief Set waveform type
-    Oscillator& waveform(Waveform w) { m_waveform = w; return *this; }
+    void waveform(Waveform w) { m_waveform = w; }
 
     /// @brief Reset oscillator phase
     void reset() { m_phaseL = 0.0f; m_phaseR = 0.0f; }

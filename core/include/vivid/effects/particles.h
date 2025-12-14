@@ -33,72 +33,68 @@ public:
     Particles();
     ~Particles() override;
 
-    // Fluent API - Emitter shape and position
-    Particles& emitter(EmitterShape s) { m_emitterShape = s; return *this; }
-    Particles& position(float x, float y) { m_emitterPos = {x, y}; return *this; }
-    Particles& position(const glm::vec2& p) { m_emitterPos = p; return *this; }
-    Particles& emitterSize(float s) { m_emitterSize = s; return *this; }
-    Particles& emitterAngle(float a) { m_emitterAngle = a; return *this; }
+    // Emitter shape and position
+    void emitter(EmitterShape s) { m_emitterShape = s; }
+    void position(float x, float y) { m_emitterPos = {x, y}; }
+    void position(const glm::vec2& p) { m_emitterPos = p; }
+    void emitterSize(float s) { m_emitterSize = s; }
+    void emitterAngle(float a) { m_emitterAngle = a; }
 
-    // Fluent API - Emission settings
-    Particles& emitRate(float r) { m_emitRate = r; return *this; }
-    Particles& maxParticles(int m) { m_maxParticles = m; return *this; }
-    Particles& burst(int count) { m_burstCount = count; m_needsBurst = true; return *this; }
+    // Emission settings
+    void emitRate(float r) { m_emitRate = r; }
+    void maxParticles(int m) { m_maxParticles = m; }
+    void burst(int count) { m_burstCount = count; m_needsBurst = true; }
 
-    // Fluent API - Initial velocity
-    Particles& velocity(float x, float y) { m_baseVelocity = {x, y}; return *this; }
-    Particles& velocity(const glm::vec2& v) { m_baseVelocity = v; return *this; }
-    Particles& radialVelocity(float v) { m_radialVelocity = v; return *this; }
-    Particles& spread(float degrees) { m_spread = glm::radians(degrees); return *this; }
-    Particles& velocityVariation(float v) { m_velocityVariation = v; return *this; }
+    // Initial velocity
+    void velocity(float x, float y) { m_baseVelocity = {x, y}; }
+    void velocity(const glm::vec2& v) { m_baseVelocity = v; }
+    void radialVelocity(float v) { m_radialVelocity = v; }
+    void spread(float degrees) { m_spread = glm::radians(degrees); }
+    void velocityVariation(float v) { m_velocityVariation = v; }
 
-    // Fluent API - Physics
-    Particles& gravity(float g) { m_gravity = g; return *this; }
-    Particles& drag(float d) { m_drag = d; return *this; }
-    Particles& turbulence(float t) { m_turbulence = t; return *this; }
-    Particles& attractor(float x, float y, float strength) {
+    // Physics
+    void gravity(float g) { m_gravity = g; }
+    void drag(float d) { m_drag = d; }
+    void turbulence(float t) { m_turbulence = t; }
+    void attractor(float x, float y, float strength) {
         m_attractorPos = {x, y};
         m_attractorStrength = strength;
-        return *this;
     }
 
-    // Fluent API - Lifetime
-    Particles& life(float l) { m_baseLife = l; return *this; }
-    Particles& lifeVariation(float v) { m_lifeVariation = v; return *this; }
+    // Lifetime
+    void life(float l) { m_baseLife = l; }
+    void lifeVariation(float v) { m_lifeVariation = v; }
 
-    // Fluent API - Size
-    Particles& size(float s) { m_sizeStart = s; m_sizeEnd = s; return *this; }
-    Particles& size(float start, float end) { m_sizeStart = start; m_sizeEnd = end; return *this; }
-    Particles& sizeVariation(float v) { m_sizeVariation = v; return *this; }
+    // Size
+    void size(float s) { m_sizeStart = s; m_sizeEnd = s; }
+    void size(float start, float end) { m_sizeStart = start; m_sizeEnd = end; }
+    void sizeVariation(float v) { m_sizeVariation = v; }
 
-    // Fluent API - Color
-    Particles& color(float r, float g, float b, float a = 1.0f) {
+    // Color
+    void color(float r, float g, float b, float a = 1.0f) {
         m_colorStart = {r, g, b, a};
-        return *this;
     }
-    Particles& color(const glm::vec4& c) { m_colorStart = c; return *this; }
-    Particles& colorEnd(float r, float g, float b, float a = 1.0f) {
+    void color(const glm::vec4& c) { m_colorStart = c; }
+    void colorEnd(float r, float g, float b, float a = 1.0f) {
         m_colorEnd = {r, g, b, a};
         m_colorMode = ColorMode::Gradient;
-        return *this;
     }
-    Particles& colorEnd(const glm::vec4& c) { m_colorEnd = c; m_colorMode = ColorMode::Gradient; return *this; }
-    Particles& colorMode(ColorMode m) { m_colorMode = m; return *this; }
-    Particles& fadeIn(float t) { m_fadeInTime = t; return *this; }
-    Particles& fadeOut(bool enable) { m_fadeOut = enable; return *this; }
+    void colorEnd(const glm::vec4& c) { m_colorEnd = c; m_colorMode = ColorMode::Gradient; }
+    void colorMode(ColorMode m) { m_colorMode = m; }
+    void fadeIn(float t) { m_fadeInTime = t; }
+    void fadeOut(bool enable) { m_fadeOut = enable; }
 
-    // Fluent API - Texture (enables sprite mode)
-    Particles& texture(const std::string& path) { m_texturePath = path; m_useSprites = true; return *this; }
-    Particles& spin(float speed) { m_spinSpeed = speed; return *this; }
+    // Texture (enables sprite mode)
+    void texture(const std::string& path) { m_texturePath = path; m_useSprites = true; }
+    void spin(float speed) { m_spinSpeed = speed; }
 
-    // Fluent API - Background
-    Particles& clearColor(float r, float g, float b, float a = 1.0f) {
+    // Background
+    void clearColor(float r, float g, float b, float a = 1.0f) {
         m_clearColor = {r, g, b, a};
-        return *this;
     }
 
-    // Fluent API - Random seed
-    Particles& seed(int s) { m_seed = s; m_rng.seed(s); return *this; }
+    // Random seed
+    void seed(int s) { m_seed = s; m_rng.seed(s); }
 
     // Operator interface
     void init(Context& ctx) override;

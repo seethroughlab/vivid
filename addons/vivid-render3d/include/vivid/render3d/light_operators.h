@@ -100,48 +100,43 @@ public:
     }
 
     /// Set light direction (will be normalized)
-    DirectionalLight& direction(float x, float y, float z) {
+    void direction(float x, float y, float z) {
         glm::vec3 newDir = glm::normalize(glm::vec3(x, y, z));
         if (m_light.direction != newDir) {
             m_light.direction = newDir;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light direction from vector
-    DirectionalLight& direction(const glm::vec3& dir) {
+    void direction(const glm::vec3& dir) {
         glm::vec3 newDir = glm::normalize(dir);
         if (m_light.direction != newDir) {
             m_light.direction = newDir;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light color (RGB, 0-1)
-    DirectionalLight& color(float r, float g, float b) {
+    void color(float r, float g, float b) {
         glm::vec3 newColor(r, g, b);
         if (m_light.color != newColor) {
             m_light.color = newColor;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light color from vector
-    DirectionalLight& color(const glm::vec3& c) {
+    void color(const glm::vec3& c) {
         if (m_light.color != c) {
             m_light.color = c;
             markDirty();
         }
-        return *this;
     }
 
     /// Connect intensity to another operator's output value
-    DirectionalLight& intensityInput(Operator* op) {
+    void intensityInput(Operator* op) {
         setInput(0, op);
-        return *this;
     }
 
     void init(Context& ctx) override {}
@@ -192,47 +187,42 @@ public:
     }
 
     /// Set light position
-    PointLight& position(float x, float y, float z) {
+    void position(float x, float y, float z) {
         glm::vec3 newPos(x, y, z);
         if (m_light.position != newPos) {
             m_light.position = newPos;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light position from vector
-    PointLight& position(const glm::vec3& pos) {
+    void position(const glm::vec3& pos) {
         if (m_light.position != pos) {
             m_light.position = pos;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light color (RGB, 0-1)
-    PointLight& color(float r, float g, float b) {
+    void color(float r, float g, float b) {
         glm::vec3 newColor(r, g, b);
         if (m_light.color != newColor) {
             m_light.color = newColor;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light color from vector
-    PointLight& color(const glm::vec3& c) {
+    void color(const glm::vec3& c) {
         if (m_light.color != c) {
             m_light.color = c;
             markDirty();
         }
-        return *this;
     }
 
     /// Connect intensity to another operator's output value
-    PointLight& intensityInput(Operator* op) {
+    void intensityInput(Operator* op) {
         setInput(0, op);
-        return *this;
     }
 
     void init(Context& ctx) override {}
@@ -289,67 +279,60 @@ public:
     }
 
     /// Set light position
-    SpotLight& position(float x, float y, float z) {
+    void position(float x, float y, float z) {
         glm::vec3 newPos(x, y, z);
         if (m_light.position != newPos) {
             m_light.position = newPos;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light position from vector
-    SpotLight& position(const glm::vec3& pos) {
+    void position(const glm::vec3& pos) {
         if (m_light.position != pos) {
             m_light.position = pos;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light direction (will be normalized)
-    SpotLight& direction(float x, float y, float z) {
+    void direction(float x, float y, float z) {
         glm::vec3 newDir = glm::normalize(glm::vec3(x, y, z));
         if (m_light.direction != newDir) {
             m_light.direction = newDir;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light direction from vector
-    SpotLight& direction(const glm::vec3& dir) {
+    void direction(const glm::vec3& dir) {
         glm::vec3 newDir = glm::normalize(dir);
         if (m_light.direction != newDir) {
             m_light.direction = newDir;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light color (RGB, 0-1)
-    SpotLight& color(float r, float g, float b) {
+    void color(float r, float g, float b) {
         glm::vec3 newColor(r, g, b);
         if (m_light.color != newColor) {
             m_light.color = newColor;
             markDirty();
         }
-        return *this;
     }
 
     /// Set light color from vector
-    SpotLight& color(const glm::vec3& c) {
+    void color(const glm::vec3& c) {
         if (m_light.color != c) {
             m_light.color = c;
             markDirty();
         }
-        return *this;
     }
 
     /// Connect intensity to another operator's output value
-    SpotLight& intensityInput(Operator* op) {
+    void intensityInput(Operator* op) {
         setInput(0, op);
-        return *this;
     }
 
     void init(Context& ctx) override {}

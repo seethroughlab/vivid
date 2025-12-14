@@ -574,87 +574,79 @@ InstancedRender3D::~InstancedRender3D() {
     cleanup();
 }
 
-InstancedRender3D& InstancedRender3D::mesh(MeshOperator* geom) {
+void InstancedRender3D::setMesh(MeshOperator* geom) {
     if (m_meshOp != geom) {
         m_meshOp = geom;
         m_mesh = nullptr;
         if (geom) {
-            setInput(0, geom);
+            Operator::setInput(0, geom);
         }
         markDirty();
     }
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::mesh(Mesh* m) {
+void InstancedRender3D::setMesh(Mesh* m) {
     if (m_mesh != m) {
         m_mesh = m;
         m_meshOp = nullptr;
         markDirty();
     }
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::setInstances(const std::vector<Instance3D>& instances) {
+void InstancedRender3D::setInstances(const std::vector<Instance3D>& instances) {
     m_instances = instances;
     m_instancesDirty = true;
     markDirty();
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::addInstance(const Instance3D& instance) {
+void InstancedRender3D::addInstance(const Instance3D& instance) {
     m_instances.push_back(instance);
     m_instancesDirty = true;
     markDirty();
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::addInstance(const glm::mat4& transform, const glm::vec4& color) {
+void InstancedRender3D::addInstance(const glm::mat4& transform, const glm::vec4& color) {
     Instance3D inst;
     inst.transform = transform;
     inst.color = color;
-    return addInstance(inst);
+    addInstance(inst);
 }
 
-InstancedRender3D& InstancedRender3D::addInstance(const glm::vec3& position, float scale, const glm::vec4& color) {
+void InstancedRender3D::addInstance(const glm::vec3& position, float scale, const glm::vec4& color) {
     glm::mat4 transform = glm::translate(glm::mat4(1.0f), position);
     transform = glm::scale(transform, glm::vec3(scale));
-    return addInstance(transform, color);
+    addInstance(transform, color);
 }
 
-InstancedRender3D& InstancedRender3D::clearInstances() {
+void InstancedRender3D::clearInstances() {
     if (!m_instances.empty()) {
         m_instances.clear();
         m_instancesDirty = true;
         markDirty();
     }
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::reserve(size_t count) {
+void InstancedRender3D::reserve(size_t count) {
     m_instances.reserve(count);
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::cameraInput(CameraOperator* cam) {
+void InstancedRender3D::setCameraInput(CameraOperator* cam) {
     if (m_cameraOp != cam) {
         m_cameraOp = cam;
         if (cam) {
-            setInput(1, cam);
+            Operator::setInput(1, cam);
         }
         markDirty();
     }
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::camera(const Camera3D& cam) {
+void InstancedRender3D::setCamera(const Camera3D& cam) {
     m_camera = cam;
     m_cameraOp = nullptr;
     markDirty();
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::lightInput(LightOperator* light) {
+void InstancedRender3D::setLightInput(LightOperator* light) {
     if (light) {
         bool changed = false;
         if (m_lightOps.empty()) {
@@ -665,31 +657,28 @@ InstancedRender3D& InstancedRender3D::lightInput(LightOperator* light) {
             changed = true;
         }
         if (changed) {
-            setInput(2, light);
+            Operator::setInput(2, light);
             markDirty();
         }
     }
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::addLight(LightOperator* light) {
+void InstancedRender3D::addLight(LightOperator* light) {
     if (light && m_lightOps.size() < MAX_LIGHTS) {
         m_lightOps.push_back(light);
-        setInput(2 + static_cast<int>(m_lightOps.size()), light);
+        Operator::setInput(2 + static_cast<int>(m_lightOps.size()), light);
         markDirty();
     }
-    return *this;
 }
 
-InstancedRender3D& InstancedRender3D::material(TexturedMaterial* mat) {
+void InstancedRender3D::setMaterial(TexturedMaterial* mat) {
     if (m_material != mat) {
         m_material = mat;
         if (mat) {
-            setInput(7, mat);  // After lights (2-6)
+            Operator::setInput(7, mat);  // After lights (2-6)
         }
         markDirty();
     }
-    return *this;
 }
 
 void InstancedRender3D::init(Context& ctx) {

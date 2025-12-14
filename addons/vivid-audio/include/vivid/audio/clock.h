@@ -80,7 +80,7 @@ public:
     /// @name Configuration
     /// @{
 
-    Clock& division(ClockDiv div) { m_division = div; return *this; }
+    void division(ClockDiv div) { m_division = div; }
 
     /// @}
     // -------------------------------------------------------------------------

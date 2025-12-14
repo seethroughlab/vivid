@@ -41,15 +41,15 @@ public:
     ~WebServer() override;
 
     // Configuration
-    WebServer& port(int port);
-    WebServer& host(const std::string& host);
-    WebServer& staticDir(const std::string& path);
+    void port(int port);
+    void host(const std::string& host);
+    void staticDir(const std::string& path);
 
     // Custom route handlers
     using RouteHandler = std::function<std::string(const std::string& method,
                                                    const std::string& path,
                                                    const std::string& body)>;
-    WebServer& route(const std::string& path, RouteHandler handler);
+    void route(const std::string& path, RouteHandler handler);
 
     // WebSocket broadcast
     void broadcast(const std::string& message);

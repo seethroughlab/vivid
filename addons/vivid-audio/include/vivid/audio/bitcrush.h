@@ -55,15 +55,6 @@ public:
     ~Bitcrush() override = default;
 
     // -------------------------------------------------------------------------
-    /// @name Configuration
-    /// @{
-
-    // Override base class methods to return Bitcrush&
-    Bitcrush& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Bitcrush& bypass(bool b) { AudioEffect::bypass(b); return *this; }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 

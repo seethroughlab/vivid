@@ -60,7 +60,7 @@ public:
     ~Edge() override;
 
     /// @brief Set input texture
-    Edge& input(TextureOperator* op) { setInput(0, op); return *this; }
+    void input(TextureOperator* op) { setInput(0, op); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

@@ -7,14 +7,12 @@
 
 namespace vivid::audio {
 
-SamplePlayer& SamplePlayer::bank(const std::string& bankName) {
+void SamplePlayer::setBank(const std::string& bankName) {
     m_bankName = bankName;
-    return *this;
 }
 
-SamplePlayer& SamplePlayer::voices(int v) {
+void SamplePlayer::setVoices(int v) {
     m_maxVoices = std::clamp(v, 1, MAX_VOICES);
-    return *this;
 }
 
 void SamplePlayer::init(Context& ctx) {

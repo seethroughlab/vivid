@@ -62,16 +62,15 @@ public:
     /**
      * @brief Connect to audio source
      */
-    BandSplit& input(const std::string& name) {
+    void input(const std::string& name) {
         AudioAnalyzer::input(name);
-        return *this;
     }
 
     /**
      * @brief Set FFT size for analysis
      * @param n FFT size (256, 512, 1024, 2048)
      */
-    BandSplit& fftSize(int n);
+    void setFftSize(int n);
 
     /// @}
     // -------------------------------------------------------------------------

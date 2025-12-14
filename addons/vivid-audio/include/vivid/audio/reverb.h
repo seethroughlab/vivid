@@ -61,15 +61,6 @@ public:
     ~Reverb() override = default;
 
     // -------------------------------------------------------------------------
-    /// @name Configuration
-    /// @{
-
-    // Override base class methods to return Reverb&
-    Reverb& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Reverb& bypass(bool b) { AudioEffect::bypass(b); return *this; }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 

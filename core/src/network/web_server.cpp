@@ -16,28 +16,24 @@ WebServer::~WebServer() {
     cleanup();
 }
 
-WebServer& WebServer::port(int port) {
+void WebServer::port(int port) {
     m_port = port;
-    return *this;
 }
 
-WebServer& WebServer::host(const std::string& host) {
+void WebServer::host(const std::string& host) {
     m_host = host;
-    return *this;
 }
 
-WebServer& WebServer::staticDir(const std::string& path) {
+void WebServer::staticDir(const std::string& path) {
     m_staticDir = path;
     // Ensure trailing slash
     if (!m_staticDir.empty() && m_staticDir.back() != '/') {
         m_staticDir += '/';
     }
-    return *this;
 }
 
-WebServer& WebServer::route(const std::string& path, RouteHandler handler) {
+void WebServer::route(const std::string& path, RouteHandler handler) {
     m_routes[path] = handler;
-    return *this;
 }
 
 void WebServer::broadcast(const std::string& message) {

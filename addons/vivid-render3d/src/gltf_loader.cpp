@@ -22,7 +22,7 @@ GLTFLoader::GLTFLoader() {
 }
 GLTFLoader::~GLTFLoader() = default;
 
-GLTFLoader& GLTFLoader::file(const std::string& path) {
+void GLTFLoader::file(const std::string& path) {
     if (m_filePath != path) {
         m_filePath = path;
         m_needsLoad = true;
@@ -34,16 +34,14 @@ GLTFLoader& GLTFLoader::file(const std::string& path) {
 
         markDirty();
     }
-    return *this;
 }
 
-GLTFLoader& GLTFLoader::meshIndex(int index) {
+void GLTFLoader::meshIndex(int index) {
     if (m_meshIndex != index) {
         m_meshIndex = index;
         m_needsLoad = true;
         markDirty();
     }
-    return *this;
 }
 
 void GLTFLoader::init(Context& ctx) {

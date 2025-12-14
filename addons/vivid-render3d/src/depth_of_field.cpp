@@ -107,10 +107,9 @@ DepthOfField::~DepthOfField() {
     cleanup();
 }
 
-DepthOfField& DepthOfField::input(Render3D* render) {
+void DepthOfField::input(Render3D* render) {
     m_render3d = render;
     setInput(0, render);
-    return *this;
 }
 
 void DepthOfField::init(Context& ctx) {

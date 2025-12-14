@@ -41,17 +41,16 @@ public:
     /// @{
 
     /// Set number of nodes
-    Plexus& nodeCount(int count) { m_nodeCount = count; return *this; }
+    void setNodeCount(int count) { m_nodeCount = count; }
 
     /// Set node size (normalized, 0-1)
-    Plexus& nodeSize(float size) { m_nodeSize = size; return *this; }
+    void setNodeSize(float size) { m_nodeSize = size; }
 
     /// Set node color
-    Plexus& nodeColor(float r, float g, float b, float a = 1.0f) {
+    void setNodeColor(float r, float g, float b, float a = 1.0f) {
         m_nodeColor = {r, g, b, a};
-        return *this;
     }
-    Plexus& nodeColor(const glm::vec4& c) { m_nodeColor = c; return *this; }
+    void setNodeColor(const glm::vec4& c) { m_nodeColor = c; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -59,17 +58,16 @@ public:
     /// @{
 
     /// Maximum distance for connections (normalized, 0-1)
-    Plexus& connectionDistance(float dist) { m_connectionDist = dist; return *this; }
+    void setConnectionDistance(float dist) { m_connectionDist = dist; }
 
     /// Line width in pixels
-    Plexus& lineWidth(float width) { m_lineWidth = width; return *this; }
+    void setLineWidth(float width) { m_lineWidth = width; }
 
     /// Line color (alpha used for max opacity, fades with distance)
-    Plexus& lineColor(float r, float g, float b, float a = 0.5f) {
+    void setLineColor(float r, float g, float b, float a = 0.5f) {
         m_lineColor = {r, g, b, a};
-        return *this;
     }
-    Plexus& lineColor(const glm::vec4& c) { m_lineColor = c; return *this; }
+    void setLineColor(const glm::vec4& c) { m_lineColor = c; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -77,19 +75,19 @@ public:
     /// @{
 
     /// Noise-based movement
-    Plexus& turbulence(float t) { m_turbulence = t; return *this; }
+    void setTurbulence(float t) { m_turbulence = t; }
 
     /// Velocity damping
-    Plexus& drag(float d) { m_drag = d; return *this; }
+    void setDrag(float d) { m_drag = d; }
 
     /// Center attraction strength
-    Plexus& centerAttraction(float s) { m_centerAttraction = s; return *this; }
+    void setCenterAttraction(float s) { m_centerAttraction = s; }
 
     /// Spawn area (0-1, centered)
-    Plexus& spread(float s) { m_spread = s; return *this; }
+    void setSpread(float s) { m_spread = s; }
 
     /// Depth spread for 3D mode (0 = flat, higher = more depth)
-    Plexus& depth(float d) { m_depth = d; return *this; }
+    void setDepth(float d) { m_depth = d; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -97,13 +95,13 @@ public:
     /// @{
 
     /// Enable 3D mode with camera orbit
-    Plexus& enable3D(bool enable) { m_3dEnabled = enable; return *this; }
+    void setEnable3D(bool enable) { m_3dEnabled = enable; }
 
     /// Camera distance from center
-    Plexus& cameraDistance(float d) { m_cameraDistance = d; return *this; }
+    void setCameraDistance(float d) { m_cameraDistance = d; }
 
     /// Auto-rotate camera (radians per second)
-    Plexus& autoRotate(float speed) { m_autoRotateSpeed = speed; return *this; }
+    void setAutoRotate(float speed) { m_autoRotateSpeed = speed; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -111,13 +109,12 @@ public:
     /// @{
 
     /// Background color (use alpha=0 for transparent overlay)
-    Plexus& clearColor(float r, float g, float b, float a = 1.0f) {
+    void setClearColor(float r, float g, float b, float a = 1.0f) {
         m_clearColor = {r, g, b, a};
-        return *this;
     }
 
     /// Random seed for reproducible patterns
-    Plexus& seed(int s) { m_seed = s; m_rng.seed(s); return *this; }
+    void setSeed(int s) { m_seed = s; m_rng.seed(s); }
 
     /// @}
     // -------------------------------------------------------------------------

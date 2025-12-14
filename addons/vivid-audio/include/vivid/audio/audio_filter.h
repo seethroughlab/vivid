@@ -78,12 +78,12 @@ public:
      * @brief Set filter type
      * @param t FilterType
      */
-    AudioFilter& type(FilterType t) { m_type = t; m_needsUpdate = true; return *this; }
+    void setType(FilterType t) { m_type = t; m_needsUpdate = true; }
 
     // Convenience methods
-    AudioFilter& lowpass(float hz) { cutoff = hz; return type(FilterType::Lowpass); }
-    AudioFilter& highpass(float hz) { cutoff = hz; return type(FilterType::Highpass); }
-    AudioFilter& bandpass(float hz) { cutoff = hz; return type(FilterType::Bandpass); }
+    void setLowpass(float hz) { cutoff = hz; setType(FilterType::Lowpass); }
+    void setHighpass(float hz) { cutoff = hz; setType(FilterType::Highpass); }
+    void setBandpass(float hz) { cutoff = hz; setType(FilterType::Bandpass); }
 
     /// @}
     // -------------------------------------------------------------------------

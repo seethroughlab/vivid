@@ -60,7 +60,7 @@ public:
     ~NoiseGen() override = default;
 
     /// @brief Set noise color
-    NoiseGen& color(NoiseColor c) { m_color = c; return *this; }
+    void setColor(NoiseColor c) { m_color = c; }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

@@ -47,35 +47,29 @@ public:
     /**
      * @brief Connect to audio source by name
      * @param name Name of the source audio operator
-     * @return Reference for chaining
      */
-    AudioEffect& input(const std::string& name) {
+    void input(const std::string& name) {
         m_inputName = name;
-        return *this;
     }
 
     /**
      * @brief Set dry/wet mix
      * @param amount Mix amount (0=fully dry, 1=fully wet)
-     * @return Reference for chaining
      */
-    AudioEffect& mix(float amount) {
+    void mix(float amount) {
         m_mix = std::max(0.0f, std::min(1.0f, amount));
-        return *this;
     }
 
     /**
      * @brief Enable/disable effect bypass
      * @param b True to bypass (pass-through), false for normal operation
-     * @return Reference for chaining
      *
      * When bypassed, the effect copies input directly to output (pass-through).
      * The effect still runs so the chain connections work correctly.
      */
-    AudioEffect& bypass(bool b) {
+    void bypass(bool b) {
         m_bypass = b;
         setBypassed(b);  // Also set base class for UI sync
-        return *this;
     }
 
     /// @}

@@ -62,7 +62,7 @@ public:
      * @brief Mute/unmute output
      * @param m true to mute
      */
-    AudioGain& mute(bool m) { m_mute = m; return *this; }
+    void setMute(bool m) { m_mute = m; }
 
     /**
      * @brief Connect gain modulation input by name
@@ -71,15 +71,8 @@ public:
      * The modulation source's output value will multiply the gain.
      * Typically used with Envelope operators for amplitude modulation.
      */
-    AudioGain& gainInput(const std::string& name) {
+    void setGainInput(const std::string& name) {
         m_gainInputName = name;
-        return *this;
-    }
-
-    // Override input to return AudioGain& for chaining
-    AudioGain& input(const std::string& name) {
-        AudioEffect::input(name);
-        return *this;
     }
 
     /// @}

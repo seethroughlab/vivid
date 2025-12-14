@@ -123,20 +123,18 @@ public:
     /**
      * @brief Add a mesh with identity transform and white color
      * @param op MeshOperator to add
-     * @return Reference to this for chaining
      */
-    SceneComposer& add(MeshOperator* op) {
-        return add(op, glm::mat4(1.0f), glm::vec4(1.0f));
+    void add(MeshOperator* op) {
+        add(op, glm::mat4(1.0f), glm::vec4(1.0f));
     }
 
     /**
      * @brief Add a mesh with transform
      * @param op MeshOperator to add
      * @param transform Model transform matrix
-     * @return Reference to this for chaining
      */
-    SceneComposer& add(MeshOperator* op, const glm::mat4& transform) {
-        return add(op, transform, glm::vec4(1.0f));
+    void add(MeshOperator* op, const glm::mat4& transform) {
+        add(op, transform, glm::vec4(1.0f));
     }
 
     /**
@@ -144,9 +142,8 @@ public:
      * @param op MeshOperator to add
      * @param transform Model transform matrix
      * @param color RGBA color
-     * @return Reference to this for chaining
      */
-    SceneComposer& add(MeshOperator* op, const glm::mat4& transform, const glm::vec4& color) {
+    void add(MeshOperator* op, const glm::mat4& transform, const glm::vec4& color) {
         ComposerEntry entry;
         entry.geometry = op;
         entry.transform = transform;
@@ -157,7 +154,6 @@ public:
         setInput(entry.inputIndex, op);
 
         m_entries.push_back(entry);
-        return *this;
     }
 
     /**
@@ -172,21 +168,18 @@ public:
             : m_composer(composer), m_index(index) {}
 
         /// Set transform matrix
-        EntryBuilder& transform(const glm::mat4& t) {
+        void setTransform(const glm::mat4& t) {
             m_composer.m_entries[m_index].transform = t;
-            return *this;
         }
 
         /// Set color
-        EntryBuilder& color(const glm::vec4& c) {
+        void setColor(const glm::vec4& c) {
             m_composer.m_entries[m_index].color = c;
-            return *this;
         }
 
         /// Set color (convenience)
-        EntryBuilder& color(float r, float g, float b, float a = 1.0f) {
+        void setColor(float r, float g, float b, float a = 1.0f) {
             m_composer.m_entries[m_index].color = glm::vec4(r, g, b, a);
-            return *this;
         }
 
     private:
@@ -243,7 +236,7 @@ public:
 
         // Create and register the StaticMesh
         StaticMesh& meshOp = m_chain->add<StaticMesh>(name);
-        meshOp.mesh(std::move(mesh));
+        meshOp.setMesh(std::move(mesh));
 
         // Add to our entries
         ComposerEntry entry;
@@ -275,7 +268,7 @@ public:
 
         // Create and register the StaticMesh
         StaticMesh& meshOp = m_chain->add<StaticMesh>(name);
-        meshOp.mesh(builder);
+        meshOp.setMesh(builder);
 
         // Add to our entries
         ComposerEntry entry;
@@ -292,7 +285,6 @@ public:
     /**
      * @brief Set root transform applied to all entries
      * @param transform Transform matrix applied before each entry's local transform
-     * @return Reference to this for chaining
      *
      * The root transform is multiplied with each entry's transform during process().
      * This is useful for applying a single transform to the entire scene (e.g., hover animation).
@@ -301,12 +293,11 @@ public:
      * @code
      * // Apply hover animation to entire craft
      * glm::mat4 hover = glm::translate(glm::mat4(1.0f), glm::vec3(0, sin(time) * 0.1f, 0));
-     * scene.rootTransform(hover);
+     * scene.setRootTransform(hover);
      * @endcode
      */
-    SceneComposer& rootTransform(const glm::mat4& transform) {
+    void setRootTransform(const glm::mat4& transform) {
         m_rootTransform = transform;
-        return *this;
     }
 
     /**
@@ -318,38 +309,33 @@ public:
      * @brief Update transform for an entry by index
      * @param index Entry index (order added)
      * @param transform New transform matrix
-     * @return Reference to this for chaining
      */
-    SceneComposer& setTransform(size_t index, const glm::mat4& transform) {
+    void setEntryTransform(size_t index, const glm::mat4& transform) {
         if (index < m_entries.size()) {
             m_entries[index].transform = transform;
         }
-        return *this;
     }
 
     /**
      * @brief Update color for an entry by index
      * @param index Entry index (order added)
      * @param color New RGBA color
-     * @return Reference to this for chaining
      */
-    SceneComposer& setColor(size_t index, const glm::vec4& color) {
+    void setEntryColor(size_t index, const glm::vec4& color) {
         if (index < m_entries.size()) {
             m_entries[index].color = color;
         }
-        return *this;
     }
 
     /**
      * @brief Set material for an entry by index with dependency tracking
      * @param index Entry index (order added)
      * @param material TexturedMaterial to use (nullptr for default material)
-     * @return Reference to this for chaining
      *
      * Use this instead of directly setting entries()[i].material to ensure
      * proper dependency tracking (scene updates when material's inputs change).
      */
-    SceneComposer& setMaterial(size_t index, TexturedMaterial* material) {
+    void setEntryMaterial(size_t index, TexturedMaterial* material) {
         if (index < m_entries.size()) {
             m_entries[index].material = material;
             if (material) {
@@ -357,7 +343,6 @@ public:
             }
             markDirty();
         }
-        return *this;
     }
 
     /**

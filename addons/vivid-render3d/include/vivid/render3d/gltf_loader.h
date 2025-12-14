@@ -85,44 +85,38 @@ public:
     /**
      * @brief Set the GLTF/GLB file to load
      * @param path Path to the file (relative to project or absolute)
-     * @return Reference to this operator for chaining
      */
-    GLTFLoader& file(const std::string& path);
+    void file(const std::string& path);
 
     /**
      * @brief Select which mesh to load (for multi-mesh files)
      * @param index Mesh index (0 = first mesh, default)
-     * @return Reference to this operator for chaining
      */
-    GLTFLoader& meshIndex(int index);
+    void meshIndex(int index);
 
     /**
      * @brief Enable/disable texture loading
      * @param enabled True to load textures from GLTF material
-     * @return Reference to this operator for chaining
      *
      * When enabled, creates a TexturedMaterial with base color,
      * normal, metallic-roughness, and other maps if present.
      */
-    GLTFLoader& loadTextures(bool enabled) {
+    void loadTextures(bool enabled) {
         if (m_loadTextures != enabled) {
             m_loadTextures = enabled;
             markDirty();
         }
-        return *this;
     }
 
     /**
      * @brief Compute tangents for normal mapping
      * @param enabled True to compute tangents (default: true if textures enabled)
-     * @return Reference to this operator for chaining
      */
-    GLTFLoader& computeTangents(bool enabled) {
+    void computeTangents(bool enabled) {
         if (m_computeTangents != enabled) {
             m_computeTangents = enabled;
             markDirty();
         }
-        return *this;
     }
 
     /// @}

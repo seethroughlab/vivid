@@ -42,14 +42,14 @@ public:
     IBLEnvironment& operator=(const IBLEnvironment&) = delete;
 
     // -------------------------------------------------------------------------
-    /// @name Configuration (fluent API)
+    /// @name Configuration
     /// @{
 
     /// Set HDR environment map file path
-    IBLEnvironment& hdrFile(const std::string& path);
+    void setHdrFile(const std::string& path);
 
     /// Use default procedural sky environment (called if no hdrFile set)
-    IBLEnvironment& useDefault();
+    void setUseDefault();
 
     /// @}
     // -------------------------------------------------------------------------

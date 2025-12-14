@@ -59,44 +59,44 @@ public:
     /// @{
 
     /// Set base color (albedo) texture path
-    TexturedMaterial& baseColor(const std::string& path);
+    void baseColor(const std::string& path);
 
     /// Set normal map texture path (tangent-space, OpenGL convention)
-    TexturedMaterial& normal(const std::string& path);
+    void normal(const std::string& path);
 
     /// Set metallic texture path (grayscale, white = metal)
-    TexturedMaterial& metallic(const std::string& path);
+    void metallic(const std::string& path);
 
     /// Set roughness texture path (grayscale, white = rough)
-    TexturedMaterial& roughness(const std::string& path);
+    void roughness(const std::string& path);
 
     /// Set ambient occlusion texture path (grayscale)
-    TexturedMaterial& ao(const std::string& path);
+    void ao(const std::string& path);
 
     /// Set emissive texture path
-    TexturedMaterial& emissive(const std::string& path);
+    void emissive(const std::string& path);
 
     // -------------------------------------------------------------------------
     /// @name Texture Maps from Memory (for embedded GLTF textures)
     /// @{
 
     /// Set base color texture from raw image data
-    TexturedMaterial& baseColorFromData(const io::ImageData& data);
+    void baseColorFromData(const io::ImageData& data);
 
     /// Set normal map from raw image data
-    TexturedMaterial& normalFromData(const io::ImageData& data);
+    void normalFromData(const io::ImageData& data);
 
     /// Set metallic texture from raw image data
-    TexturedMaterial& metallicFromData(const io::ImageData& data);
+    void metallicFromData(const io::ImageData& data);
 
     /// Set roughness texture from raw image data
-    TexturedMaterial& roughnessFromData(const io::ImageData& data);
+    void roughnessFromData(const io::ImageData& data);
 
     /// Set ambient occlusion texture from raw image data
-    TexturedMaterial& aoFromData(const io::ImageData& data);
+    void aoFromData(const io::ImageData& data);
 
     /// Set emissive texture from raw image data
-    TexturedMaterial& emissiveFromData(const io::ImageData& data);
+    void emissiveFromData(const io::ImageData& data);
 
     // -------------------------------------------------------------------------
     /// @name Texture Maps from Operators (for procedural textures)
@@ -105,45 +105,42 @@ public:
     /**
      * @brief Set base color from a texture operator (e.g., Canvas)
      * @param op TextureOperator providing the base color texture
-     * @return Reference for chaining
      *
      * @par Example
      * @code
-     * auto& livery = chain.add<Canvas>("livery").size(512, 512);
+     * auto& livery = chain.add<Canvas>("livery");
+     * livery.size(512, 512);
      * // ... draw on canvas ...
-     * auto& material = chain.add<TexturedMaterial>("mat")
-     *     .baseColorInput(&livery);
+     * auto& material = chain.add<TexturedMaterial>("mat");
+     * material.baseColorInput(&livery);
      * @endcode
      */
-    TexturedMaterial& baseColorInput(Operator* op);
+    void baseColorInput(Operator* op);
 
     /**
      * @brief Set emissive texture from another operator's output
      * @param op Operator that produces a texture (Canvas, VideoPlayer, effect, etc.)
-     * @return Reference for chaining
      *
      * Use this for "unlit" appearance where the texture displays at full brightness.
      */
-    TexturedMaterial& emissiveInput(Operator* op);
+    void emissiveInput(Operator* op);
 
     /**
      * @brief Set normal map from another operator's output
      * @param op Operator that produces a texture (Canvas, etc.)
-     * @return Reference for chaining
      *
      * Normal map should be in tangent space with OpenGL convention (Y up).
      * RGB where R=X, G=Y, B=Z, with neutral being (0.5, 0.5, 1.0).
      */
-    TexturedMaterial& normalInput(Operator* op);
+    void normalInput(Operator* op);
 
     /**
      * @brief Set roughness map from another operator's output
      * @param op Operator that produces a texture (Canvas, etc.)
-     * @return Reference for chaining
      *
      * Roughness is read from the red channel. White = rough, black = smooth.
      */
-    TexturedMaterial& roughnessInput(Operator* op);
+    void roughnessInput(Operator* op);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -151,27 +148,27 @@ public:
     /// @{
 
     /// Set base color multiplier (linear RGB, default: white)
-    TexturedMaterial& baseColorFactor(float r, float g, float b, float a = 1.0f);
-    TexturedMaterial& baseColorFactor(const glm::vec4& color);
+    void baseColorFactor(float r, float g, float b, float a = 1.0f);
+    void baseColorFactor(const glm::vec4& color);
 
     /// Set metallic multiplier (0 = force dielectric, 1 = use texture, default: 1.0)
-    TexturedMaterial& metallicFactor(float m);
+    void metallicFactor(float m);
 
     /// Set roughness multiplier (default: 1.0 to use texture values directly)
-    TexturedMaterial& roughnessFactor(float r);
+    void roughnessFactor(float r);
 
     /// Set normal map strength
-    TexturedMaterial& normalScale(float scale);
+    void normalScale(float scale);
 
     /// Set AO strength (0 = no effect, 1 = full)
-    TexturedMaterial& aoStrength(float strength);
+    void aoStrength(float strength);
 
     /// Set emissive fallback (linear RGB)
-    TexturedMaterial& emissiveFactor(float r, float g, float b);
-    TexturedMaterial& emissiveFactor(const glm::vec3& color);
+    void emissiveFactor(float r, float g, float b);
+    void emissiveFactor(const glm::vec3& color);
 
     /// Set emissive intensity multiplier
-    TexturedMaterial& emissiveStrength(float strength);
+    void emissiveStrength(float strength);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -186,13 +183,13 @@ public:
     };
 
     /// Set alpha blending mode
-    TexturedMaterial& alphaMode(AlphaMode mode);
+    void alphaMode(AlphaMode mode);
 
     /// Set alpha cutoff threshold (for Mask mode, default: 0.5)
-    TexturedMaterial& alphaCutoff(float cutoff);
+    void alphaCutoff(float cutoff);
 
     /// Enable/disable double-sided rendering (default: false)
-    TexturedMaterial& doubleSided(bool enabled);
+    void doubleSided(bool enabled);
 
     /// Get alpha mode
     AlphaMode getAlphaMode() const { return m_alphaMode; }

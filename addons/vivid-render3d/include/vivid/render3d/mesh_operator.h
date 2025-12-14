@@ -34,9 +34,8 @@ namespace vivid::render3d {
  * @code
  * class Box : public MeshOperator {
  * public:
- *     Box& size(float w, float h, float d) {
+ *     void setSize(float w, float h, float d) {
  *         m_width = w; m_height = h; m_depth = d;
- *         return *this;
  *     }
  *
  *     void process(Context& ctx) override {
@@ -127,20 +126,18 @@ public:
     /// @{
 
     /**
-     * @brief Set a mesh input (fluent interface)
+     * @brief Set a mesh input
      * @param op MeshOperator to use as input
-     * @return Reference to this operator for chaining
      *
      * @par Example
      * @code
-     * auto& boolean = chain.add<Boolean>("csg")
-     *     .inputA(&box)
-     *     .inputB(&sphere);
+     * auto& boolean = chain.add<Boolean>("csg");
+     * boolean.inputA(&box);
+     * boolean.inputB(&sphere);
      * @endcode
      */
-    MeshOperator& meshInput(MeshOperator* op) {
+    void meshInput(MeshOperator* op) {
         setInput(0, op);
-        return *this;
     }
 
     /**

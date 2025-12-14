@@ -406,25 +406,23 @@ void IBLEnvironment::cleanup() {
     m_needsLoad = true;
 }
 
-// Fluent API setters
-IBLEnvironment& IBLEnvironment::hdrFile(const std::string& path) {
+// Configuration setters
+void IBLEnvironment::setHdrFile(const std::string& path) {
     if (m_hdrPath != path || m_useDefaultEnv) {
         m_hdrPath = path;
         m_useDefaultEnv = false;
         m_needsLoad = true;
         markDirty();
     }
-    return *this;
 }
 
-IBLEnvironment& IBLEnvironment::useDefault() {
+void IBLEnvironment::setUseDefault() {
     if (!m_hdrPath.empty() || !m_useDefaultEnv) {
         m_hdrPath.clear();
         m_useDefaultEnv = true;
         m_needsLoad = true;
         markDirty();
     }
-    return *this;
 }
 
 // Operator process - deferred loading

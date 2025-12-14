@@ -64,7 +64,7 @@ public:
     ~Decay() override = default;
 
     /// @brief Set decay curve type
-    Decay& curve(DecayCurve c) { m_curve = c; return *this; }
+    void setCurve(DecayCurve c) { m_curve = c; }
 
     // -------------------------------------------------------------------------
     /// @name Playback Control

@@ -60,15 +60,6 @@ public:
     ~Flanger() override = default;
 
     // -------------------------------------------------------------------------
-    /// @name Configuration
-    /// @{
-
-    // Override base class methods to return Flanger&
-    Flanger& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Flanger& bypass(bool b) { AudioEffect::bypass(b); return *this; }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 

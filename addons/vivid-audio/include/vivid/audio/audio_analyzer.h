@@ -50,11 +50,9 @@ public:
     /**
      * @brief Connect to audio source by name
      * @param name Name of the source audio operator
-     * @return Reference for chaining
      */
-    AudioAnalyzer& input(const std::string& name) {
+    void input(const std::string& name) {
         m_inputName = name;
-        return *this;
     }
 
     /// @}

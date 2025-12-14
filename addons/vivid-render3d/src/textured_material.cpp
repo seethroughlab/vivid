@@ -20,123 +20,111 @@ TexturedMaterial::~TexturedMaterial() {
 // Texture Path Setters
 // -------------------------------------------------------------------------
 
-TexturedMaterial& TexturedMaterial::baseColor(const std::string& path) {
+void TexturedMaterial::baseColor(const std::string& path) {
     if (m_baseColor.path != path) {
         m_baseColor.path = path;
         m_baseColor.needsLoad = true;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::normal(const std::string& path) {
+void TexturedMaterial::normal(const std::string& path) {
     if (m_normal.path != path) {
         m_normal.path = path;
         m_normal.needsLoad = true;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::metallic(const std::string& path) {
+void TexturedMaterial::metallic(const std::string& path) {
     if (m_metallic.path != path) {
         m_metallic.path = path;
         m_metallic.needsLoad = true;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::roughness(const std::string& path) {
+void TexturedMaterial::roughness(const std::string& path) {
     if (m_roughness.path != path) {
         m_roughness.path = path;
         m_roughness.needsLoad = true;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::ao(const std::string& path) {
+void TexturedMaterial::ao(const std::string& path) {
     if (m_ao.path != path) {
         m_ao.path = path;
         m_ao.needsLoad = true;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::emissive(const std::string& path) {
+void TexturedMaterial::emissive(const std::string& path) {
     if (m_emissive.path != path) {
         m_emissive.path = path;
         m_emissive.needsLoad = true;
         markDirty();
     }
-    return *this;
 }
 
 // -------------------------------------------------------------------------
 // From-Data Setters (for embedded GLTF textures)
 // -------------------------------------------------------------------------
 
-TexturedMaterial& TexturedMaterial::baseColorFromData(const io::ImageData& data) {
+void TexturedMaterial::baseColorFromData(const io::ImageData& data) {
     m_baseColor.pendingPixels = data.pixels;
     m_baseColor.pendingWidth = data.width;
     m_baseColor.pendingHeight = data.height;
     m_baseColor.hasData = true;
     m_baseColor.needsLoad = true;
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::normalFromData(const io::ImageData& data) {
+void TexturedMaterial::normalFromData(const io::ImageData& data) {
     m_normal.pendingPixels = data.pixels;
     m_normal.pendingWidth = data.width;
     m_normal.pendingHeight = data.height;
     m_normal.hasData = true;
     m_normal.needsLoad = true;
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::metallicFromData(const io::ImageData& data) {
+void TexturedMaterial::metallicFromData(const io::ImageData& data) {
     m_metallic.pendingPixels = data.pixels;
     m_metallic.pendingWidth = data.width;
     m_metallic.pendingHeight = data.height;
     m_metallic.hasData = true;
     m_metallic.needsLoad = true;
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::roughnessFromData(const io::ImageData& data) {
+void TexturedMaterial::roughnessFromData(const io::ImageData& data) {
     m_roughness.pendingPixels = data.pixels;
     m_roughness.pendingWidth = data.width;
     m_roughness.pendingHeight = data.height;
     m_roughness.hasData = true;
     m_roughness.needsLoad = true;
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::aoFromData(const io::ImageData& data) {
+void TexturedMaterial::aoFromData(const io::ImageData& data) {
     m_ao.pendingPixels = data.pixels;
     m_ao.pendingWidth = data.width;
     m_ao.pendingHeight = data.height;
     m_ao.hasData = true;
     m_ao.needsLoad = true;
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::emissiveFromData(const io::ImageData& data) {
+void TexturedMaterial::emissiveFromData(const io::ImageData& data) {
     m_emissive.pendingPixels = data.pixels;
     m_emissive.pendingWidth = data.width;
     m_emissive.pendingHeight = data.height;
     m_emissive.hasData = true;
     m_emissive.needsLoad = true;
-    return *this;
 }
 
 // -------------------------------------------------------------------------
 // Operator-based Texture Inputs
 // -------------------------------------------------------------------------
 
-TexturedMaterial& TexturedMaterial::baseColorInput(Operator* op) {
+void TexturedMaterial::baseColorInput(Operator* op) {
     if (m_baseColorInputOp != op) {
         m_baseColorInputOp = op;
         if (op) {
@@ -144,10 +132,9 @@ TexturedMaterial& TexturedMaterial::baseColorInput(Operator* op) {
         }
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::emissiveInput(Operator* op) {
+void TexturedMaterial::emissiveInput(Operator* op) {
     if (m_emissiveInputOp != op) {
         m_emissiveInputOp = op;
         if (op) {
@@ -155,10 +142,9 @@ TexturedMaterial& TexturedMaterial::emissiveInput(Operator* op) {
         }
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::normalInput(Operator* op) {
+void TexturedMaterial::normalInput(Operator* op) {
     if (m_normalInputOp != op) {
         m_normalInputOp = op;
         if (op) {
@@ -166,10 +152,9 @@ TexturedMaterial& TexturedMaterial::normalInput(Operator* op) {
         }
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::roughnessInput(Operator* op) {
+void TexturedMaterial::roughnessInput(Operator* op) {
     if (m_roughnessInputOp != op) {
         m_roughnessInputOp = op;
         if (op) {
@@ -177,113 +162,100 @@ TexturedMaterial& TexturedMaterial::roughnessInput(Operator* op) {
         }
         markDirty();
     }
-    return *this;
 }
 
 // -------------------------------------------------------------------------
 // Fallback Value Setters
 // -------------------------------------------------------------------------
 
-TexturedMaterial& TexturedMaterial::baseColorFactor(float r, float g, float b, float a) {
+void TexturedMaterial::baseColorFactor(float r, float g, float b, float a) {
     glm::vec4 newFactor(r, g, b, a);
     if (m_baseColorFallback != newFactor) {
         m_baseColorFallback = newFactor;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::baseColorFactor(const glm::vec4& color) {
+void TexturedMaterial::baseColorFactor(const glm::vec4& color) {
     if (m_baseColorFallback != color) {
         m_baseColorFallback = color;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::metallicFactor(float m) {
+void TexturedMaterial::metallicFactor(float m) {
     if (m_metallicFallback != m) {
         m_metallicFallback = m;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::roughnessFactor(float r) {
+void TexturedMaterial::roughnessFactor(float r) {
     if (m_roughnessFallback != r) {
         m_roughnessFallback = r;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::normalScale(float scale) {
+void TexturedMaterial::normalScale(float scale) {
     if (m_normalScale != scale) {
         m_normalScale = scale;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::aoStrength(float strength) {
+void TexturedMaterial::aoStrength(float strength) {
     if (m_aoStrength != strength) {
         m_aoStrength = strength;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::emissiveFactor(float r, float g, float b) {
+void TexturedMaterial::emissiveFactor(float r, float g, float b) {
     glm::vec3 newFactor(r, g, b);
     if (m_emissiveFallback != newFactor) {
         m_emissiveFallback = newFactor;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::emissiveFactor(const glm::vec3& color) {
+void TexturedMaterial::emissiveFactor(const glm::vec3& color) {
     if (m_emissiveFallback != color) {
         m_emissiveFallback = color;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::emissiveStrength(float strength) {
+void TexturedMaterial::emissiveStrength(float strength) {
     if (m_emissiveStrength != strength) {
         m_emissiveStrength = strength;
         markDirty();
     }
-    return *this;
 }
 
 // -------------------------------------------------------------------------
 // Alpha and Culling
 // -------------------------------------------------------------------------
 
-TexturedMaterial& TexturedMaterial::alphaMode(AlphaMode mode) {
+void TexturedMaterial::alphaMode(AlphaMode mode) {
     if (m_alphaMode != mode) {
         m_alphaMode = mode;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::alphaCutoff(float cutoff) {
+void TexturedMaterial::alphaCutoff(float cutoff) {
     if (m_alphaCutoff != cutoff) {
         m_alphaCutoff = cutoff;
         markDirty();
     }
-    return *this;
 }
 
-TexturedMaterial& TexturedMaterial::doubleSided(bool enabled) {
+void TexturedMaterial::doubleSided(bool enabled) {
     if (m_doubleSided != enabled) {
         m_doubleSided = enabled;
         markDirty();
     }
-    return *this;
 }
 
 // -------------------------------------------------------------------------

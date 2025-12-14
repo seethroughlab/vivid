@@ -12,10 +12,9 @@ AudioFile::AudioFile() {
 }
 AudioFile::~AudioFile() = default;
 
-AudioFile& AudioFile::file(const std::string& path) {
+void AudioFile::setFile(const std::string& path) {
     m_filePath = path;
     m_needsLoad = true;
-    return *this;
 }
 
 void AudioFile::init(Context& ctx) {

@@ -35,26 +35,22 @@ public:
     /**
      * @brief Set the mesh (takes ownership via move)
      * @param m Mesh to wrap
-     * @return Reference to this operator for chaining
      */
-    StaticMesh& mesh(Mesh&& m) {
+    void setMesh(Mesh&& m) {
         m_mesh = std::move(m);
         m_needsUpload = true;
         markDirty();
-        return *this;
     }
 
     /**
      * @brief Set the mesh from a MeshBuilder (builds and takes ownership)
      * @param builder MeshBuilder containing the geometry
-     * @return Reference to this operator for chaining
      */
-    StaticMesh& mesh(MeshBuilder& builder) {
+    void setMesh(MeshBuilder& builder) {
         m_builder = builder;
         m_mesh = m_builder.build();
         m_needsUpload = true;
         markDirty();
-        return *this;
     }
 
     void init(Context& ctx) override {}

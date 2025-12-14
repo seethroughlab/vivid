@@ -4,18 +4,16 @@
 
 namespace vivid::audio {
 
-AudioMixer& AudioMixer::input(int index, const std::string& name) {
+void AudioMixer::setInput(int index, const std::string& name) {
     if (index >= 0 && index < MAX_INPUTS) {
         m_inputNames[index] = name;
     }
-    return *this;
 }
 
-AudioMixer& AudioMixer::gain(int index, float g) {
+void AudioMixer::setGain(int index, float g) {
     if (index >= 0 && index < MAX_INPUTS) {
         m_gains[index] = g;
     }
-    return *this;
 }
 
 void AudioMixer::init(Context& ctx) {
@@ -29,7 +27,7 @@ void AudioMixer::init(Context& ctx) {
             m_inputs[i] = dynamic_cast<AudioOperator*>(op);
             if (m_inputs[i]) {
                 // Register as input for topological sort
-                setInput(i, m_inputs[i]);
+                Operator::setInput(i, m_inputs[i]);
             }
             // Set default gain if not explicitly set
             if (m_gains[i] == 0.0f) {

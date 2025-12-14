@@ -78,31 +78,31 @@ public:
     // === Mesh Input ===
 
     /// Set the mesh to instance (from a MeshOperator)
-    InstancedRender3D& mesh(MeshOperator* geom);
+    void setMesh(MeshOperator* geom);
 
     /// Set the mesh directly
-    InstancedRender3D& mesh(Mesh* m);
+    void setMesh(Mesh* m);
 
     // === Instance Data ===
 
     /// Set all instances (replaces existing)
-    InstancedRender3D& setInstances(const std::vector<Instance3D>& instances);
+    void setInstances(const std::vector<Instance3D>& instances);
 
     /// Add a single instance
-    InstancedRender3D& addInstance(const Instance3D& instance);
+    void addInstance(const Instance3D& instance);
 
     /// Add instance with transform and color
-    InstancedRender3D& addInstance(const glm::mat4& transform, const glm::vec4& color = glm::vec4(1.0f));
+    void addInstance(const glm::mat4& transform, const glm::vec4& color = glm::vec4(1.0f));
 
     /// Add instance at position with uniform scale
-    InstancedRender3D& addInstance(const glm::vec3& position, float scale = 1.0f,
-                                    const glm::vec4& color = glm::vec4(1.0f));
+    void addInstance(const glm::vec3& position, float scale = 1.0f,
+                     const glm::vec4& color = glm::vec4(1.0f));
 
     /// Clear all instances
-    InstancedRender3D& clearInstances();
+    void clearInstances();
 
     /// Reserve capacity for instances (optimization)
-    InstancedRender3D& reserve(size_t count);
+    void reserve(size_t count);
 
     /// Get current instance count
     size_t instanceCount() const { return m_instances.size(); }
@@ -110,60 +110,56 @@ public:
     // === Camera & Lighting ===
 
     /// Set camera operator input
-    InstancedRender3D& cameraInput(CameraOperator* cam);
+    void setCameraInput(CameraOperator* cam);
 
     /// Set camera directly
-    InstancedRender3D& camera(const Camera3D& cam);
+    void setCamera(const Camera3D& cam);
 
     /// Set primary light input
-    InstancedRender3D& lightInput(LightOperator* light);
+    void setLightInput(LightOperator* light);
 
     /// Add additional light (up to 4 total)
-    InstancedRender3D& addLight(LightOperator* light);
+    void addLight(LightOperator* light);
 
     // === Material Properties (defaults for all instances) ===
 
     /// Set textured PBR material (albedo, normal, metallic, roughness, AO maps)
-    InstancedRender3D& material(TexturedMaterial* mat);
+    void setMaterial(TexturedMaterial* mat);
 
     /// Base color multiplier
-    InstancedRender3D& baseColor(float r, float g, float b, float a = 1.0f) {
+    void setBaseColor(float r, float g, float b, float a = 1.0f) {
         glm::vec4 newColor(r, g, b, a);
         if (m_baseColor != newColor) {
             m_baseColor = newColor;
             markDirty();
         }
-        return *this;
     }
 
     // === Rendering Options ===
 
     /// Clear color for the render target
-    InstancedRender3D& clearColor(float r, float g, float b, float a = 1.0f) {
+    void setClearColor(float r, float g, float b, float a = 1.0f) {
         glm::vec4 newColor(r, g, b, a);
         if (m_clearColor != newColor) {
             m_clearColor = newColor;
             markDirty();
         }
-        return *this;
     }
 
     /// Enable/disable depth testing
-    InstancedRender3D& depthTest(bool enable) {
+    void setDepthTest(bool enable) {
         if (m_depthTest != enable) {
             m_depthTest = enable;
             markDirty();
         }
-        return *this;
     }
 
     /// Enable/disable backface culling
-    InstancedRender3D& cullBack(bool enable) {
+    void setCullBack(bool enable) {
         if (m_cullBack != enable) {
             m_cullBack = enable;
             markDirty();
         }
-        return *this;
     }
 
     // === Operator Interface ===

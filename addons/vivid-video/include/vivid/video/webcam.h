@@ -36,22 +36,22 @@ public:
     /**
      * @brief Set camera by device index (0 = first camera).
      */
-    Webcam& device(int index);
+    void setDevice(int index);
 
     /**
      * @brief Set camera by device ID.
      */
-    Webcam& device(const std::string& deviceId);
+    void setDevice(const std::string& deviceId);
 
     /**
      * @brief Set capture resolution.
      */
-    Webcam& resolution(int width, int height);
+    void setResolution(int width, int height);
 
     /**
      * @brief Set capture frame rate.
      */
-    Webcam& frameRate(float fps);
+    void setFrameRate(float fps);
 
     /**
      * @brief List available cameras to console.

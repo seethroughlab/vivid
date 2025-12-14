@@ -20,31 +20,27 @@ Webcam::~Webcam() {
     cleanup();
 }
 
-Webcam& Webcam::device(int index) {
+void Webcam::setDevice(int index) {
     m_deviceIndex = index;
     m_useDeviceId = false;
     m_needsReopen = true;
-    return *this;
 }
 
-Webcam& Webcam::device(const std::string& deviceId) {
+void Webcam::setDevice(const std::string& deviceId) {
     m_deviceId = deviceId;
     m_useDeviceId = true;
     m_needsReopen = true;
-    return *this;
 }
 
-Webcam& Webcam::resolution(int width, int height) {
+void Webcam::setResolution(int width, int height) {
     m_requestedWidth = width;
     m_requestedHeight = height;
     m_needsReopen = true;
-    return *this;
 }
 
-Webcam& Webcam::frameRate(float fps) {
+void Webcam::setFrameRate(float fps) {
     m_requestedFps = fps;
     m_needsReopen = true;
-    return *this;
 }
 
 void Webcam::listDevices() {

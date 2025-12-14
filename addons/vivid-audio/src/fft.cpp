@@ -21,7 +21,7 @@ FFT::~FFT() {
     cleanupAnalyzer();
 }
 
-FFT& FFT::size(int n) {
+void FFT::setSize(int n) {
     // Clamp to valid power of 2
     if (n <= 256) n = 256;
     else if (n <= 512) n = 512;
@@ -33,7 +33,6 @@ FFT& FFT::size(int n) {
         m_fftSize = n;
         allocateBuffers();
     }
-    return *this;
 }
 
 void FFT::allocateBuffers() {

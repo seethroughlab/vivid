@@ -53,43 +53,39 @@ public:
     /// @{
 
     /// Set camera position (disables orbit mode)
-    CameraOperator& position(float x, float y, float z) {
+    void position(float x, float y, float z) {
         glm::vec3 newPos(x, y, z);
         if (m_position != newPos || m_orbitMode) {
             m_position = newPos;
             m_orbitMode = false;
             markDirty();
         }
-        return *this;
     }
 
     /// Set camera position from vector
-    CameraOperator& position(const glm::vec3& pos) {
+    void position(const glm::vec3& pos) {
         if (m_position != pos || m_orbitMode) {
             m_position = pos;
             m_orbitMode = false;
             markDirty();
         }
-        return *this;
     }
 
     /// Set look-at target
-    CameraOperator& target(float x, float y, float z) {
+    void target(float x, float y, float z) {
         glm::vec3 newTarget(x, y, z);
         if (m_target != newTarget) {
             m_target = newTarget;
             markDirty();
         }
-        return *this;
     }
 
     /// Set look-at target from vector
-    CameraOperator& target(const glm::vec3& t) {
+    void target(const glm::vec3& t) {
         if (m_target != t) {
             m_target = t;
             markDirty();
         }
-        return *this;
     }
 
     /// @}
@@ -98,54 +94,49 @@ public:
     /// @{
 
     /// Set orbit center point (enables orbit mode)
-    CameraOperator& orbitCenter(float x, float y, float z) {
+    void orbitCenter(float x, float y, float z) {
         glm::vec3 newTarget(x, y, z);
         if (m_target != newTarget || !m_orbitMode) {
             m_target = newTarget;
             m_orbitMode = true;
             markDirty();
         }
-        return *this;
     }
 
     /// Set orbit center from vector
-    CameraOperator& orbitCenter(const glm::vec3& center) {
+    void orbitCenter(const glm::vec3& center) {
         if (m_target != center || !m_orbitMode) {
             m_target = center;
             m_orbitMode = true;
             markDirty();
         }
-        return *this;
     }
 
     /// Set orbit distance
-    CameraOperator& distance(float d) {
+    void distance(float d) {
         if (m_distance != d || !m_orbitMode) {
             m_distance = d;
             m_orbitMode = true;
             markDirty();
         }
-        return *this;
     }
 
     /// Set orbit azimuth angle in radians
-    CameraOperator& azimuth(float radians) {
+    void azimuth(float radians) {
         if (m_azimuth != radians || !m_orbitMode) {
             m_azimuth = radians;
             m_orbitMode = true;
             markDirty();
         }
-        return *this;
     }
 
     /// Set orbit elevation angle in radians
-    CameraOperator& elevation(float radians) {
+    void elevation(float radians) {
         if (m_elevation != radians || !m_orbitMode) {
             m_elevation = radians;
             m_orbitMode = true;
             markDirty();
         }
-        return *this;
     }
 
     /// @}
@@ -154,58 +145,53 @@ public:
     /// @{
 
     /// Set projection mode (Perspective or Orthographic)
-    CameraOperator& projectionMode(ProjectionMode mode) {
+    void projectionMode(ProjectionMode mode) {
         if (m_projectionMode != mode) {
             m_projectionMode = mode;
             markDirty();
         }
-        return *this;
     }
 
     /// Set to perspective projection (default)
-    CameraOperator& perspective() {
-        return projectionMode(ProjectionMode::Perspective);
+    void perspective() {
+        projectionMode(ProjectionMode::Perspective);
     }
 
     /// Set to orthographic projection
-    CameraOperator& orthographic() {
-        return projectionMode(ProjectionMode::Orthographic);
+    void orthographic() {
+        projectionMode(ProjectionMode::Orthographic);
     }
 
     /// Set vertical field of view in degrees (perspective mode)
-    CameraOperator& fov(float degrees) {
+    void fov(float degrees) {
         if (m_fov != degrees) {
             m_fov = degrees;
             markDirty();
         }
-        return *this;
     }
 
     /// Set orthographic size (vertical extent in world units)
-    CameraOperator& orthoSize(float size) {
+    void orthoSize(float size) {
         if (m_orthoSize != size) {
             m_orthoSize = size;
             markDirty();
         }
-        return *this;
     }
 
     /// Set near clip plane
-    CameraOperator& nearPlane(float n) {
+    void nearPlane(float n) {
         if (m_near != n) {
             m_near = n;
             markDirty();
         }
-        return *this;
     }
 
     /// Set far clip plane
-    CameraOperator& farPlane(float f) {
+    void farPlane(float f) {
         if (m_far != f) {
             m_far = f;
             markDirty();
         }
-        return *this;
     }
 
     /// @}
@@ -214,36 +200,31 @@ public:
     /// @{
 
     /// Connect FOV to an operator output (degrees)
-    CameraOperator& fovInput(Operator* op) {
+    void fovInput(Operator* op) {
         setInput(0, op);
-        return *this;
     }
 
     /// Connect distance to an operator output (orbit mode)
-    CameraOperator& distanceInput(Operator* op) {
+    void distanceInput(Operator* op) {
         setInput(1, op);
         m_orbitMode = true;
-        return *this;
     }
 
     /// Connect azimuth to an operator output (radians, orbit mode)
-    CameraOperator& azimuthInput(Operator* op) {
+    void azimuthInput(Operator* op) {
         setInput(2, op);
         m_orbitMode = true;
-        return *this;
     }
 
     /// Connect elevation to an operator output (radians, orbit mode)
-    CameraOperator& elevationInput(Operator* op) {
+    void elevationInput(Operator* op) {
         setInput(3, op);
         m_orbitMode = true;
-        return *this;
     }
 
     /// Connect ortho size to an operator output (orthographic mode)
-    CameraOperator& orthoSizeInput(Operator* op) {
+    void orthoSizeInput(Operator* op) {
         setInput(4, op);
-        return *this;
     }
 
     /// @}
@@ -297,11 +278,11 @@ public:
             m_camera.lookAt(m_position, m_target);
         }
 
-        m_camera.fov(fov)
-            .nearPlane(m_near)
-            .farPlane(m_far)
-            .projectionMode(m_projectionMode)
-            .orthoSize(orthoSz);
+        m_camera.fov(fov);
+        m_camera.nearPlane(m_near);
+        m_camera.farPlane(m_far);
+        m_camera.projectionMode(m_projectionMode);
+        m_camera.orthoSize(orthoSz);
 
         didCook();
     }

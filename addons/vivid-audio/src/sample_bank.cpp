@@ -11,16 +11,14 @@ namespace fs = std::filesystem;
 
 namespace vivid::audio {
 
-SampleBank& SampleBank::folder(const std::string& path) {
+void SampleBank::setFolder(const std::string& path) {
     m_folderPath = path;
     m_needsLoad = true;
-    return *this;
 }
 
-SampleBank& SampleBank::file(const std::string& path) {
+void SampleBank::addFile(const std::string& path) {
     m_filePaths.push_back(path);
     m_needsLoad = true;
-    return *this;
 }
 
 void SampleBank::init(Context& ctx) {

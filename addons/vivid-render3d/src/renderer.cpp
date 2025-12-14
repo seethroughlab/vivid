@@ -1075,38 +1075,35 @@ Render3D::~Render3D() {
     cleanup();
 }
 
-Render3D& Render3D::scene(Scene& s) {
+void Render3D::setScene(Scene& s) {
     if (m_scene != &s) {
         m_scene = &s;
         m_composer = nullptr;  // Clear composer when scene is set directly
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::input(SceneComposer* composer) {
+void Render3D::setInput(SceneComposer* composer) {
     if (m_composer != composer) {
         m_composer = composer;
         if (composer) {
-            setInput(0, composer);  // Register for dependency tracking
+            Operator::setInput(0, composer);  // Register for dependency tracking
         }
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::cameraInput(CameraOperator* camOp) {
+void Render3D::setCameraInput(CameraOperator* camOp) {
     if (m_cameraOp != camOp) {
         m_cameraOp = camOp;
         if (camOp) {
-            setInput(1, camOp);  // Slot 1 for camera (slot 0 is scene)
+            Operator::setInput(1, camOp);  // Slot 1 for camera (slot 0 is scene)
         }
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::lightInput(LightOperator* lightOp) {
+void Render3D::setLightInput(LightOperator* lightOp) {
     if (lightOp) {
         bool changed = false;
         if (m_lightOps.empty()) {
@@ -1117,119 +1114,106 @@ Render3D& Render3D::lightInput(LightOperator* lightOp) {
             changed = true;
         }
         if (changed) {
-            setInput(2, lightOp);  // Slot 2 for primary light
+            Operator::setInput(2, lightOp);  // Slot 2 for primary light
             markDirty();
         }
     }
-    return *this;
 }
 
-Render3D& Render3D::addLight(LightOperator* lightOp) {
+void Render3D::addLight(LightOperator* lightOp) {
     if (lightOp && m_lightOps.size() < 4) {  // Max 4 lights
         m_lightOps.push_back(lightOp);
-        setInput(1 + static_cast<int>(m_lightOps.size()), lightOp);  // Slots 2, 3, 4, 5
+        Operator::setInput(1 + static_cast<int>(m_lightOps.size()), lightOp);  // Slots 2, 3, 4, 5
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::shadingMode(ShadingMode mode) {
+void Render3D::setShadingMode(ShadingMode mode) {
     if (m_shadingMode != mode) {
         m_shadingMode = mode;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::toonLevels(int levels) {
+void Render3D::setToonLevels(int levels) {
     int clamped = glm::clamp(levels, 2, 8);
     if (m_toonLevels != clamped) {
         m_toonLevels = clamped;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::color(float r, float g, float b, float a) {
+void Render3D::setColor(float r, float g, float b, float a) {
     glm::vec4 newColor(r, g, b, a);
     if (m_defaultColor != newColor) {
         m_defaultColor = newColor;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::color(const glm::vec4& c) {
+void Render3D::setColor(const glm::vec4& c) {
     if (m_defaultColor != c) {
         m_defaultColor = c;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::lightDirection(glm::vec3 dir) {
+void Render3D::setLightDirection(glm::vec3 dir) {
     glm::vec3 normalized = glm::normalize(dir);
     if (m_lightDirection != normalized) {
         m_lightDirection = normalized;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::lightColor(glm::vec3 color) {
+void Render3D::setLightColor(glm::vec3 color) {
     if (m_lightColor != color) {
         m_lightColor = color;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::ambient(float a) {
+void Render3D::setAmbient(float a) {
     if (m_ambient != a) {
         m_ambient = a;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::metallic(float m) {
+void Render3D::setMetallic(float m) {
     float clamped = glm::clamp(m, 0.0f, 1.0f);
     if (m_metallic != clamped) {
         m_metallic = clamped;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::roughness(float r) {
+void Render3D::setRoughness(float r) {
     float clamped = glm::clamp(r, 0.0f, 1.0f);
     if (m_roughness != clamped) {
         m_roughness = clamped;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::material(TexturedMaterial* mat) {
+void Render3D::setMaterial(TexturedMaterial* mat) {
     if (m_material != mat) {
         m_material = mat;
         if (mat) {
-            setInput(6, mat);  // Slot 6 for material (after lights)
+            Operator::setInput(6, mat);  // Slot 6 for material (after lights)
         }
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::ibl(bool enabled) {
+void Render3D::setIbl(bool enabled) {
     if (m_iblEnabled != enabled) {
         m_iblEnabled = enabled;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::environment(IBLEnvironment* env) {
+void Render3D::setEnvironment(IBLEnvironment* env) {
     if (m_iblEnvironment != env) {
         m_iblEnvironment = env;
         if (env && env->isLoaded()) {
@@ -1237,60 +1221,53 @@ Render3D& Render3D::environment(IBLEnvironment* env) {
         }
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::environmentInput(IBLEnvironment* envOp) {
+void Render3D::setEnvironmentInput(IBLEnvironment* envOp) {
     if (m_iblEnvironmentOp != envOp) {
         m_iblEnvironmentOp = envOp;
         if (envOp) {
-            setInput(6, envOp);  // Slot 6 for environment (after scene, camera, lights)
+            Operator::setInput(6, envOp);  // Slot 6 for environment (after scene, camera, lights)
         }
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::environmentHDR(const std::string& hdrPath) {
+void Render3D::setEnvironmentHDR(const std::string& hdrPath) {
     if (m_pendingHDRPath != hdrPath) {
         m_pendingHDRPath = hdrPath;
         m_iblEnabled = true;  // Will be enabled when loaded
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::showSkybox(bool enabled) {
+void Render3D::setShowSkybox(bool enabled) {
     if (m_showSkybox != enabled) {
         m_showSkybox = enabled;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::clearColor(float r, float g, float b, float a) {
+void Render3D::setClearColor(float r, float g, float b, float a) {
     glm::vec4 newColor(r, g, b, a);
     if (m_clearColor != newColor) {
         m_clearColor = newColor;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::wireframe(bool enabled) {
+void Render3D::setWireframe(bool enabled) {
     if (m_wireframe != enabled) {
         m_wireframe = enabled;
         markDirty();
     }
-    return *this;
 }
 
-Render3D& Render3D::depthOutput(bool enabled) {
+void Render3D::setDepthOutput(bool enabled) {
     if (m_depthOutputEnabled != enabled) {
         m_depthOutputEnabled = enabled;
         markDirty();
     }
-    return *this;
 }
 
 void Render3D::init(Context& ctx) {

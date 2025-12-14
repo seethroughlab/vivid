@@ -309,7 +309,6 @@ public:
      * @brief Set window size (requested from runtime)
      * @param w Width in pixels
      * @param h Height in pixels
-     * @return Reference for chaining
      *
      * Requests the runtime to resize the window. The request is honored
      * after chain initialization.
@@ -318,15 +317,14 @@ public:
      * @code
      * void setup(Context& ctx) {
      *     auto& chain = ctx.chain();
-     *     chain.windowSize(1920, 1080);
+     *     chain.setWindowSize(1920, 1080);
      * }
      * @endcode
      */
-    Chain& windowSize(int w, int h) {
+    void setWindowSize(int w, int h) {
         m_windowWidth = w;
         m_windowHeight = h;
         m_windowSizeSet = true;
-        return *this;
     }
 
     /// @brief Get requested window width
@@ -342,25 +340,23 @@ public:
      * @brief Set default render resolution for generators
      * @param w Width in pixels
      * @param h Height in pixels
-     * @return Reference for chaining
      *
      * Sets the default resolution that generators (Noise, Gradient, etc.) will use.
-     * Individual operators can override with their own resolution() call.
+     * Individual operators can override with their own setResolution() call.
      *
      * @par Example
      * @code
      * void setup(Context& ctx) {
      *     auto& chain = ctx.chain();
-     *     chain.resolution(3840, 2160);  // 4K render
-     *     chain.add<Noise>("noise");     // Renders at 3840x2160
+     *     chain.setResolution(3840, 2160);  // 4K render
+     *     chain.add<Noise>("noise");        // Renders at 3840x2160
      * }
      * @endcode
      */
-    Chain& resolution(int w, int h) {
+    void setResolution(int w, int h) {
         m_defaultWidth = w;
         m_defaultHeight = h;
         m_resolutionSet = true;
-        return *this;
     }
 
     /// @brief Get default render width

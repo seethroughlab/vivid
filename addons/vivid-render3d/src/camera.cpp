@@ -3,33 +3,29 @@
 
 namespace vivid::render3d {
 
-Camera3D& Camera3D::position(glm::vec3 pos) {
+void Camera3D::position(glm::vec3 pos) {
     m_position = pos;
-    return *this;
 }
 
-Camera3D& Camera3D::target(glm::vec3 t) {
+void Camera3D::target(glm::vec3 t) {
     m_target = t;
-    return *this;
 }
 
-Camera3D& Camera3D::up(glm::vec3 u) {
+void Camera3D::up(glm::vec3 u) {
     m_up = u;
-    return *this;
 }
 
-Camera3D& Camera3D::lookAt(glm::vec3 pos, glm::vec3 target, glm::vec3 up) {
+void Camera3D::lookAt(glm::vec3 pos, glm::vec3 target, glm::vec3 up) {
     m_position = pos;
     m_target = target;
     m_up = up;
-    return *this;
 }
 
-Camera3D& Camera3D::orbit(float distance, float azimuth, float elevation) {
-    return orbit(glm::vec3(0), distance, azimuth, elevation);
+void Camera3D::orbit(float distance, float azimuth, float elevation) {
+    orbit(glm::vec3(0), distance, azimuth, elevation);
 }
 
-Camera3D& Camera3D::orbit(glm::vec3 center, float distance, float azimuth, float elevation) {
+void Camera3D::orbit(glm::vec3 center, float distance, float azimuth, float elevation) {
     // Clamp elevation to avoid gimbal lock
     elevation = glm::clamp(elevation, -glm::half_pi<float>() * 0.99f,
                                        glm::half_pi<float>() * 0.99f);
@@ -47,38 +43,30 @@ Camera3D& Camera3D::orbit(glm::vec3 center, float distance, float azimuth, float
 
     m_target = center;
     m_up = glm::vec3(0, 1, 0);
-
-    return *this;
 }
 
-Camera3D& Camera3D::fov(float degrees) {
+void Camera3D::fov(float degrees) {
     m_fov = degrees;
-    return *this;
 }
 
-Camera3D& Camera3D::nearPlane(float n) {
+void Camera3D::nearPlane(float n) {
     m_near = n;
-    return *this;
 }
 
-Camera3D& Camera3D::farPlane(float f) {
+void Camera3D::farPlane(float f) {
     m_far = f;
-    return *this;
 }
 
-Camera3D& Camera3D::aspect(float a) {
+void Camera3D::aspect(float a) {
     m_aspect = a;
-    return *this;
 }
 
-Camera3D& Camera3D::projectionMode(ProjectionMode mode) {
+void Camera3D::projectionMode(ProjectionMode mode) {
     m_projectionMode = mode;
-    return *this;
 }
 
-Camera3D& Camera3D::orthoSize(float size) {
+void Camera3D::orthoSize(float size) {
     m_orthoSize = size;
-    return *this;
 }
 
 glm::mat4 Camera3D::viewMatrix() const {

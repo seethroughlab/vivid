@@ -258,8 +258,8 @@ public:
         registerParam(intensity);
     }
 
-    // Input connection (fluent for chaining)
-    MyEffect& input(TextureOperator* op) { setInput(0, op); return *this; }
+    // Input connection
+    void input(TextureOperator* op) { setInput(0, op); }
 
     void process(Context& ctx) override {
         // Access params directly
@@ -282,7 +282,7 @@ void setup(Context& ctx) {
     noise.octaves = 4;
 
     auto& effect = chain.add<MyEffect>("effect");
-    effect.input(&noise);    // Connection via fluent method
+    effect.input(&noise);    // Connection via setter
     effect.amount = 0.5f;    // Parameter via assignment
     effect.intensity = 0.8f;
 
@@ -325,24 +325,23 @@ public:
     }
 
     // Multiple input methods for connections
-    Blend& inputA(TextureOperator* op) { setInput(0, op); return *this; }
-    Blend& inputB(TextureOperator* op) { setInput(1, op); return *this; }
+    void setInputA(TextureOperator* op) { setInput(0, op); }
+    void setInputB(TextureOperator* op) { setInput(1, op); }
 };
 ```
 
 ### Enum Parameters (Non-Param)
 
-For enum-based modes, keep fluent setters:
+For enum-based modes, use void setters:
 
 ```cpp
 class Noise : public TextureOperator {
 public:
     Param<float> scale{"scale", 4.0f, 0.1f, 20.0f};
 
-    // Enum mode uses fluent setter (not a Param)
-    Noise& type(NoiseType t) {
+    // Enum mode uses void setter (not a Param)
+    void setType(NoiseType t) {
         if (m_type != t) { m_type = t; markDirty(); }
-        return *this;
     }
 
 private:
@@ -412,9 +411,9 @@ class Pulse : public Operator {
     Texture output_;
 
 public:
-    // Fluent API
-    Pulse& frequency(float f) { frequency_ = f; return *this; }
-    Pulse& brightness(float b) { brightness_ = b; return *this; }
+    // Setters
+    void setFrequency(float f) { frequency_ = f; }
+    void setBrightness(float b) { brightness_ = b; }
 
     void init(Context& ctx) override {
         output_ = ctx.createTexture();

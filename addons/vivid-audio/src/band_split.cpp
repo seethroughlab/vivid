@@ -21,7 +21,7 @@ BandSplit::~BandSplit() {
     cleanupAnalyzer();
 }
 
-BandSplit& BandSplit::fftSize(int n) {
+void BandSplit::setFftSize(int n) {
     if (n <= 256) n = 256;
     else if (n <= 512) n = 512;
     else if (n <= 1024) n = 1024;
@@ -31,7 +31,6 @@ BandSplit& BandSplit::fftSize(int n) {
         m_fftSize = n;
         allocateBuffers();
     }
-    return *this;
 }
 
 void BandSplit::allocateBuffers() {

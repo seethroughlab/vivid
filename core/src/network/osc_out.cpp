@@ -62,7 +62,7 @@ OscOut::~OscOut() {
     cleanup();
 }
 
-OscOut& OscOut::host(const std::string& hostname) {
+void OscOut::host(const std::string& hostname) {
     if (m_host != hostname) {
         m_host = hostname;
         if (m_socket != -1) {
@@ -70,10 +70,9 @@ OscOut& OscOut::host(const std::string& hostname) {
             createSocket();
         }
     }
-    return *this;
 }
 
-OscOut& OscOut::port(int port) {
+void OscOut::port(int port) {
     if (m_port != port) {
         m_port = port;
         if (m_socket != -1) {
@@ -81,16 +80,14 @@ OscOut& OscOut::port(int port) {
             createSocket();
         }
     }
-    return *this;
 }
 
-OscOut& OscOut::broadcast(bool enabled) {
+void OscOut::broadcast(bool enabled) {
     m_broadcast = enabled;
     if (m_socket != -1) {
         int opt = enabled ? 1 : 0;
         setsockopt(m_socket, SOL_SOCKET, SO_BROADCAST, (const char*)&opt, sizeof(opt));
     }
-    return *this;
 }
 
 void OscOut::send(const std::string& address) {

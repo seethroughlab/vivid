@@ -36,18 +36,11 @@ public:
     Output() = default;
     ~Output() override = default;
 
-    // -------------------------------------------------------------------------
-    /// @name Fluent API
-    /// @{
-
     /**
      * @brief Connect input texture
      * @param op Source operator to display
-     * @return Reference for chaining
      */
-    Output& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /// @}
+    void input(TextureOperator* op) { setInput(0, op); }
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{

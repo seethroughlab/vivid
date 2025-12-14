@@ -59,7 +59,7 @@ public:
     ~Switch() override;
 
     /// @brief Set input at index
-    Switch& input(int idx, TextureOperator* op) { setInput(idx, op); return *this; }
+    void input(int idx, TextureOperator* op) { setInput(idx, op); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

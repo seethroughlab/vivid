@@ -31,8 +31,8 @@ public:
     ~UdpIn() override;
 
     // Configuration
-    UdpIn& port(int port);
-    UdpIn& bufferSize(int bytes);
+    void port(int port);
+    void bufferSize(int bytes);
 
     // Query state
     bool hasData() const { return m_hasNewData; }

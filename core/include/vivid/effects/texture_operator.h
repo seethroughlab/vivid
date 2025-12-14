@@ -113,44 +113,39 @@ public:
     }
 
     /**
-     * @brief Generic fluent setter for any registered parameter
+     * @brief Generic setter for any registered parameter
      * @param name Parameter name
      * @param value Value to set
-     * @return Reference for chaining
      *
      * @par Example
      * @code
-     * chain.add<Noise>("noise")
-     *     .set("scale", 4.0f)
-     *     .set("speed", 0.5f);
+     * auto& noise = chain.add<Noise>("noise");
+     * noise.set("scale", 4.0f);
+     * noise.set("speed", 0.5f);
      * @endcode
      */
     template<typename T>
-    TextureOperator& set(const std::string& name, T value) {
+    void set(const std::string& name, T value) {
         float v[4] = {static_cast<float>(value), 0, 0, 0};
         setParam(name, v);
-        return *this;
     }
 
     /// @brief Generic setter for Vec2 parameters
-    TextureOperator& set(const std::string& name, float x, float y) {
+    void set(const std::string& name, float x, float y) {
         float v[4] = {x, y, 0, 0};
         setParam(name, v);
-        return *this;
     }
 
     /// @brief Generic setter for Vec3 parameters
-    TextureOperator& set(const std::string& name, float x, float y, float z) {
+    void set(const std::string& name, float x, float y, float z) {
         float v[4] = {x, y, z, 0};
         setParam(name, v);
-        return *this;
     }
 
     /// @brief Generic setter for Color parameters
-    TextureOperator& set(const std::string& name, float r, float g, float b, float a) {
+    void set(const std::string& name, float r, float g, float b, float a) {
         float v[4] = {r, g, b, a};
         setParam(name, v);
-        return *this;
     }
 
     /// @}
@@ -171,19 +166,17 @@ public:
      * @brief Set output resolution
      * @param w Width in pixels
      * @param h Height in pixels
-     * @return Reference for chaining
      *
      * Note: Setting resolution also locks it, preventing auto-resize to context size.
      */
-    TextureOperator& resolution(int w, int h) { m_width = w; m_height = h; m_resolutionLocked = true; return *this; }
+    void setResolution(int w, int h) { m_width = w; m_height = h; m_resolutionLocked = true; }
 
     /**
      * @brief Lock resolution to prevent auto-resize
      * @param locked If true, resolution won't change
-     * @return Reference for chaining
-     * @deprecated Resolution is now locked by default. Use resolution() to set size.
+     * @deprecated Resolution is now locked by default. Use setResolution() to set size.
      */
-    TextureOperator& lockResolution(bool locked = true) { m_resolutionLocked = locked; return *this; }
+    void setResolutionLocked(bool locked = true) { m_resolutionLocked = locked; }
 
     /**
      * @brief DEPRECATED: No longer auto-resizes to window size

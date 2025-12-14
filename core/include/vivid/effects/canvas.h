@@ -70,11 +70,10 @@ public:
      * @brief Set canvas resolution
      * @param w Width in pixels
      * @param h Height in pixels
-     * @return Reference for chaining
      *
      * Note: This also locks the resolution to prevent auto-resize to window size.
      */
-    Canvas& size(int w, int h) {
+    void size(int w, int h) {
         // Always lock resolution when size() is explicitly called
         m_resolutionLocked = true;
         if (m_width != w || m_height != h) {
@@ -82,7 +81,6 @@ public:
             m_height = h;
             markDirty();
         }
-        return *this;
     }
 
     /**

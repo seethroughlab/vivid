@@ -48,7 +48,7 @@ public:
     ~AudioMixer() = default;
 
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Configuration
     /// @{
 
     /**
@@ -56,14 +56,14 @@ public:
      * @param index Input slot (0-7)
      * @param name Operator name
      */
-    AudioMixer& input(int index, const std::string& name);
+    void setInput(int index, const std::string& name);
 
     /**
      * @brief Set gain for input
      * @param index Input slot (0-7)
      * @param g Gain (0-2, default 1.0)
      */
-    AudioMixer& gain(int index, float g);
+    void setGain(int index, float g);
 
 
     /// @}

@@ -501,7 +501,7 @@ void VideoPlayer::createFallbackTexture(Context& ctx) {
     m_height = texHeight;
 }
 
-VideoPlayer& VideoPlayer::volume(float v) {
+void VideoPlayer::setVolume(float v) {
     m_volume = v;  // Store for later application if decoder not yet ready
     if (m_isHAP && m_hapDecoder) {
         m_hapDecoder->setVolume(v);
@@ -518,7 +518,6 @@ VideoPlayer& VideoPlayer::volume(float v) {
     else if (m_standardDecoder) {
         m_standardDecoder->setVolume(v);
     }
-    return *this;
 }
 
 void VideoPlayer::play() {

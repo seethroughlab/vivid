@@ -66,15 +66,6 @@ public:
     ~Gate() override = default;
 
     // -------------------------------------------------------------------------
-    /// @name Configuration
-    /// @{
-
-    // Override base class methods to return Gate&
-    Gate& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Gate& bypass(bool b) { AudioEffect::bypass(b); return *this; }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name State Queries
     /// @{
 

@@ -60,9 +60,8 @@ public:
     /**
      * @brief Connect to audio source
      */
-    BeatDetect& input(const std::string& name) {
+    void input(const std::string& name) {
         AudioAnalyzer::input(name);
-        return *this;
     }
 
     /// @}

@@ -21,22 +21,22 @@ public:
     /// @{
 
     /// Set camera position
-    Camera3D& position(glm::vec3 pos);
+    void position(glm::vec3 pos);
 
     /// Set look-at target
-    Camera3D& target(glm::vec3 t);
+    void target(glm::vec3 t);
 
     /// Set up vector
-    Camera3D& up(glm::vec3 u);
+    void up(glm::vec3 u);
 
     /// Set position, target, and up in one call
-    Camera3D& lookAt(glm::vec3 pos, glm::vec3 target, glm::vec3 up = glm::vec3(0, 1, 0));
+    void lookAt(glm::vec3 pos, glm::vec3 target, glm::vec3 up = glm::vec3(0, 1, 0));
 
     /// Orbit around origin at distance with azimuth and elevation angles (radians)
-    Camera3D& orbit(float distance, float azimuth, float elevation);
+    void orbit(float distance, float azimuth, float elevation);
 
     /// Orbit around a specific center point
-    Camera3D& orbit(glm::vec3 center, float distance, float azimuth, float elevation);
+    void orbit(glm::vec3 center, float distance, float azimuth, float elevation);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -44,23 +44,23 @@ public:
     /// @{
 
     /// Set vertical field of view in degrees
-    Camera3D& fov(float degrees);
+    void fov(float degrees);
 
     /// Set near clip plane
-    Camera3D& nearPlane(float n);
+    void nearPlane(float n);
 
     /// Set far clip plane
-    Camera3D& farPlane(float f);
+    void farPlane(float f);
 
     /// Set aspect ratio (width / height)
-    Camera3D& aspect(float a);
+    void aspect(float a);
 
     /// Set projection mode (Perspective or Orthographic)
-    Camera3D& projectionMode(ProjectionMode mode);
+    void projectionMode(ProjectionMode mode);
 
     /// Set orthographic size (vertical extent in world units)
     /// Only used when projectionMode is Orthographic
-    Camera3D& orthoSize(float size);
+    void orthoSize(float size);
 
     /// @}
     // -------------------------------------------------------------------------

@@ -43,13 +43,13 @@ public:
     /// @{
 
     /// Set the scene to render (manual scene management)
-    /// @deprecated Use Render3D::input(SceneComposer*) for chain visualizer integration
-    [[deprecated("Use Render3D::input(SceneComposer*) for chain visualizer integration")]]
-    Render3D& scene(Scene& s);
+    /// @deprecated Use Render3D::setInput(SceneComposer*) for chain visualizer integration
+    [[deprecated("Use Render3D::setInput(SceneComposer*) for chain visualizer integration")]]
+    void setScene(Scene& s);
 
     /// Set scene from a SceneComposer (node-based workflow)
     /// The composer's output scene will be rendered
-    Render3D& input(SceneComposer* composer);
+    void setInput(SceneComposer* composer);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -58,7 +58,7 @@ public:
 
     /// Set camera from a CameraOperator (required for rendering)
     /// The operator's output camera will be used each frame
-    Render3D& cameraInput(CameraOperator* camOp);
+    void setCameraInput(CameraOperator* camOp);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -66,25 +66,25 @@ public:
     /// @{
 
     /// Set shading mode
-    Render3D& shadingMode(ShadingMode mode);
+    void setShadingMode(ShadingMode mode);
 
     /// Set default object color
-    Render3D& color(float r, float g, float b, float a = 1.0f);
-    Render3D& color(const glm::vec4& c);
+    void setColor(float r, float g, float b, float a = 1.0f);
+    void setColor(const glm::vec4& c);
 
     /// Set metallic factor for PBR (0 = dielectric, 1 = metal)
-    Render3D& metallic(float m);
+    void setMetallic(float m);
 
     /// Set roughness factor for PBR (0 = smooth/mirror, 1 = rough/diffuse)
-    Render3D& roughness(float r);
+    void setRoughness(float r);
 
     /// Set material with texture maps for PBR rendering
     /// When set, textures override scalar metallic/roughness values
-    Render3D& material(TexturedMaterial* mat);
+    void setMaterial(TexturedMaterial* mat);
 
     /// Set number of toon shading bands (2-8, default 4)
     /// Only applies when shadingMode is Toon
-    Render3D& toonLevels(int levels);
+    void setToonLevels(int levels);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -92,20 +92,20 @@ public:
     /// @{
 
     /// Set light direction (normalized) - direct configuration
-    Render3D& lightDirection(glm::vec3 dir);
+    void setLightDirection(glm::vec3 dir);
 
     /// Set light color - direct configuration
-    Render3D& lightColor(glm::vec3 color);
+    void setLightColor(glm::vec3 color);
 
     /// Set ambient light level
-    Render3D& ambient(float a);
+    void setAmbient(float a);
 
     /// Set primary light from a LightOperator (node-based workflow)
     /// The operator's output light will be used each frame
-    Render3D& lightInput(LightOperator* lightOp);
+    void setLightInput(LightOperator* lightOp);
 
     /// Add an additional light (node-based workflow, max 4 lights)
-    Render3D& addLight(LightOperator* lightOp);
+    void addLight(LightOperator* lightOp);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -114,43 +114,42 @@ public:
 
     /// Enable/disable IBL for ambient lighting
     /// When enabled, environment maps provide realistic ambient light and reflections
-    Render3D& ibl(bool enabled);
+    void setIbl(bool enabled);
 
     /// Set IBL environment from pre-baked cubemaps
     /// @param env Pointer to IBLEnvironment with loaded cubemaps
-    /// @deprecated Use environmentInput() for operator-based workflow
-    Render3D& environment(IBLEnvironment* env);
+    /// @deprecated Use setEnvironmentInput() for operator-based workflow
+    void setEnvironment(IBLEnvironment* env);
 
     /// Set IBL environment from an IBLEnvironment operator (node-based workflow)
     /// The operator's environment will be used each frame once loaded
-    Render3D& environmentInput(IBLEnvironment* envOp);
+    void setEnvironmentInput(IBLEnvironment* envOp);
 
     /// Load IBL environment from HDR file (generates cubemaps)
     /// @param hdrPath Path to .hdr environment map file
     /// @note This is slower than using pre-baked cubemaps but more convenient
-    Render3D& environmentHDR(const std::string& hdrPath);
+    void setEnvironmentHDR(const std::string& hdrPath);
 
     /// Show environment map as skybox background
     /// Requires an IBL environment to be set
-    Render3D& showSkybox(bool enabled);
+    void setShowSkybox(bool enabled);
 
     /// @}
     // -------------------------------------------------------------------------
     /// @name Output
     /// @{
 
-    /// Set output resolution (overrides TextureOperator::resolution)
-    Render3D& resolution(int width, int height) {
+    /// Set output resolution (overrides TextureOperator::setResolution)
+    void setResolution(int width, int height) {
         if (m_width != width || m_height != height) {
             m_width = width;
             m_height = height;
             markDirty();
         }
-        return *this;
     }
 
     /// Set clear/background color
-    Render3D& clearColor(float r, float g, float b, float a = 1.0f);
+    void setClearColor(float r, float g, float b, float a = 1.0f);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -159,7 +158,7 @@ public:
 
     /// Enable linear depth output for post-processing (DOF, fog, etc.)
     /// When enabled, creates a second render target with linear depth (0=near, 1=far)
-    Render3D& depthOutput(bool enabled);
+    void setDepthOutput(bool enabled);
 
     /// Get the linear depth texture view (nullptr if depth output disabled)
     /// Depth is normalized: 0.0 = near plane, 1.0 = far plane
@@ -174,7 +173,7 @@ public:
     /// @{
 
     /// Enable wireframe rendering
-    Render3D& wireframe(bool enabled);
+    void setWireframe(bool enabled);
 
     /// @}
     // -------------------------------------------------------------------------

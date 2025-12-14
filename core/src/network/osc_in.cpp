@@ -65,7 +65,7 @@ OscIn::~OscIn() {
     cleanup();
 }
 
-OscIn& OscIn::port(int port) {
+void OscIn::port(int port) {
     if (m_port != port) {
         m_port = port;
         if (m_listening.load()) {
@@ -73,12 +73,10 @@ OscIn& OscIn::port(int port) {
             startListening();
         }
     }
-    return *this;
 }
 
-OscIn& OscIn::bufferSize(int bytes) {
+void OscIn::bufferSize(int bytes) {
     m_bufferSize = bytes;
-    return *this;
 }
 
 bool OscIn::hasMessage(const std::string& address) const {

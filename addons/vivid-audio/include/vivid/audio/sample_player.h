@@ -70,13 +70,13 @@ public:
      * @brief Connect to a SampleBank by name
      * @param bankName Name of the SampleBank operator
      */
-    SamplePlayer& bank(const std::string& bankName);
+    void setBank(const std::string& bankName);
 
     /**
      * @brief Set maximum polyphony (simultaneous voices)
      * @param v Number of voices (1-32)
      */
-    SamplePlayer& voices(int v);
+    void setVoices(int v);
 
 
     /// @}

@@ -52,18 +52,15 @@ public:
     /**
      * @brief Set audio file path
      * @param path Path to WAV file
-     * @return Reference for chaining
      */
-    AudioFile& file(const std::string& path);
+    void setFile(const std::string& path);
 
     /**
      * @brief Enable/disable looping
      * @param enable True for looping playback
-     * @return Reference for chaining
      */
-    AudioFile& loop(bool enable) {
+    void loop(bool enable) {
         m_loop = enable;
-        return *this;
     }
 
 

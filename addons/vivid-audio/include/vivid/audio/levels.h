@@ -46,19 +46,6 @@ public:
     }
 
     // -------------------------------------------------------------------------
-    /// @name Configuration
-    /// @{
-
-    /**
-     * @brief Connect to audio source
-     */
-    Levels& input(const std::string& name) {
-        AudioAnalyzer::input(name);
-        return *this;
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Analysis Results
     /// @{
 

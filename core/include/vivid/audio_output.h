@@ -44,22 +44,14 @@ public:
     AudioOutput& operator=(const AudioOutput&) = delete;
 
     // -------------------------------------------------------------------------
-    /// @name Configuration (fluent interface)
+    /// @name Configuration
     /// @{
 
     /**
      * @brief Set input by operator name
      * @param name Name of audio operator to connect
-     * @return Reference for chaining
      */
-    AudioOutput& input(const std::string& name);
-
-    /**
-     * @brief Set volume level
-     * @param v Volume (0.0 = silent, 1.0 = full, 2.0 = +6dB boost)
-     * @return Reference for chaining
-     */
-    AudioOutput& volume(float v);
+    void setInput(const std::string& name);
 
     /// @}
     // -------------------------------------------------------------------------

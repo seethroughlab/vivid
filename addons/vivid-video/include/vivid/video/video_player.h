@@ -53,38 +53,35 @@ public:
     VideoPlayer& operator=(const VideoPlayer&) = delete;
 
     // -------------------------------------------------------------------------
-    // Fluent Configuration API
+    // Configuration API
     // -------------------------------------------------------------------------
 
     /**
      * @brief Set video file path (HAP-encoded MOV recommended)
      */
-    VideoPlayer& file(const std::string& path) {
+    void setFile(const std::string& path) {
         m_filePath = path;
         m_needsReload = true;
-        return *this;
     }
 
     /**
      * @brief Enable/disable looping
      */
-    VideoPlayer& loop(bool enable) {
+    void setLoop(bool enable) {
         m_loop = enable;
-        return *this;
     }
 
     /**
      * @brief Set audio volume (0.0 - 1.0)
      */
-    VideoPlayer& volume(float v);
+    void setVolume(float v);
 
     /**
      * @brief Set playback speed (1.0 = normal, 0.5 = half speed, etc.)
      * Note: Audio is muted when speed != 1.0
      */
-    VideoPlayer& speed(float s) {
+    void setSpeed(float s) {
         m_speed = s;
-        return *this;
     }
 
     // -------------------------------------------------------------------------
