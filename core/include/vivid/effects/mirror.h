@@ -71,12 +71,11 @@ public:
     ~Mirror() override;
 
     /// @brief Set input texture
-    Mirror& input(TextureOperator* op) { setInput(0, op); return *this; }
+    void input(TextureOperator* op) { setInput(0, op); }
 
     /// @brief Set mirror mode (enum, not a Param)
-    Mirror& mode(MirrorMode m) {
+    void mode(MirrorMode m) {
         if (m_mode != m) { m_mode = m; markDirty(); }
-        return *this;
     }
 
     // -------------------------------------------------------------------------

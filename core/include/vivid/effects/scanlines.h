@@ -63,7 +63,7 @@ public:
     ~Scanlines() override;
 
     /// @brief Set input texture
-    Scanlines& input(TextureOperator* op) { setInput(0, op); return *this; }
+    void input(TextureOperator* op) { setInput(0, op); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

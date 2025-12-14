@@ -81,27 +81,25 @@ public:
     ~Composite() override;
 
     /// @brief Set blend mode (Over, Add, Multiply, Screen, Overlay, Difference)
-    Composite& mode(BlendMode m) {
+    void mode(BlendMode m) {
         if (m_mode != m) { m_mode = m; markDirty(); }
-        return *this;
     }
 
     /// @brief Set input at specific index (0 = base, 1-7 = layers)
-    Composite& input(int index, TextureOperator* op) {
+    void input(int index, TextureOperator* op) {
         if (index >= 0 && index < COMPOSITE_MAX_INPUTS) {
             setInput(index, op);
             if (index >= m_inputCount) {
                 m_inputCount = index + 1;
             }
         }
-        return *this;
     }
 
     /// @brief Set background input (legacy API, same as input(0, op))
-    Composite& inputA(TextureOperator* op) { return input(0, op); }
+    void inputA(TextureOperator* op) { input(0, op); }
 
     /// @brief Set foreground input (legacy API, same as input(1, op))
-    Composite& inputB(TextureOperator* op) { return input(1, op); }
+    void inputB(TextureOperator* op) { input(1, op); }
 
     /// @brief Get number of active inputs
     int inputCount() const { return m_inputCount; }

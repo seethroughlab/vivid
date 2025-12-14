@@ -90,15 +90,14 @@ public:
     ~Logic() override = default;
 
     /// @brief Set logic operation
-    Logic& operation(LogicOperation op) { if (m_operation != op) { m_operation = op; markDirty(); } return *this; }
+    void operation(LogicOperation op) { if (m_operation != op) { m_operation = op; markDirty(); } }
 
     /// @brief Trigger toggle (for Toggle operation)
-    Logic& trigger(bool t) {
+    void trigger(bool t) {
         if (t && !m_lastTrigger) {
             m_toggleState = !m_toggleState;
         }
         m_lastTrigger = t;
-        return *this;
     }
 
     // -------------------------------------------------------------------------

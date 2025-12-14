@@ -24,29 +24,28 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
 
     // Load an image - uses the file's native resolution
-    image.file("assets/images/nature.jpg");
+    image.file = "assets/images/nature.jpg";
 
     // Configure noise for displacement - use Simplex for smooth distortion
     // Note: Noise resolution should match the image for proper displacement
     // If not specified, generators default to 1280x720
-    noise.type(NoiseType::Simplex)
-        .scale(3.0f)
-        .speed(0.3f)
-        .octaves(3)
-        .lacunarity(2.0f)
-        .persistence(0.5f);
+    noise.type(NoiseType::Simplex);
+    noise.scale = 3.0f;
+    noise.speed = 0.3f;
+    noise.octaves = 3;
+    noise.lacunarity = 2.0f;
+    noise.persistence = 0.5f;
 
     // Displace: processor that inherits resolution from its source input (image)
-    displace.source(&image)
-        .map(&noise)
-        .strength(0.08f);
+    displace.source(&image).map(&noise);
+    displace.strength = 0.08f;
 
     // HSV ramp for color tinting - generator with its own resolution
-    ramp.type(RampType::Radial)
-        .hueSpeed(0.1f)
-        .hueRange(0.3f)
-        .saturation(0.6f)
-        .brightness(1.0f);
+    ramp.type(RampType::Radial);
+    ramp.hueSpeed = 0.1f;
+    ramp.hueRange = 0.3f;
+    ramp.saturation = 0.6f;
+    ramp.brightness = 1.0f;
 
     // Composite: inherits resolution from first input (displace → image resolution)
     comp.inputA(&displace).inputB(&ramp).mode(BlendMode::Multiply);
@@ -65,19 +64,19 @@ void update(Context& ctx) {
     auto& ramp = chain.get<Ramp>("ramp");
 
     // Drift noise offset for organic motion
-    noise.offset(time * 0.2f, time * 0.15f);
+    noise.offset.set(time * 0.2f, time * 0.15f, 0.0f);
 
     // Mouse interaction:
     // X controls displacement strength (0.02 to 0.15)
     float strength = 0.02f + (ctx.mouseNorm().x * 0.5f + 0.5f) * 0.13f;
-    displace.strength(strength);
+    displace.strength = strength;
 
     // Y controls color saturation
     float saturation = 0.3f + (ctx.mouseNorm().y * 0.5f + 0.5f) * 0.7f;
-    ramp.saturation(saturation);
+    ramp.saturation = saturation;
 
     // Slowly rotate hue offset
-    ramp.hueOffset(time * 0.05f);
+    ramp.hueOffset = std::fmod(time * 0.05f, 1.0f);
 
     // V key toggles vsync
     if (ctx.key(GLFW_KEY_V).pressed) {

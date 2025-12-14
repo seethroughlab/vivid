@@ -62,10 +62,10 @@ public:
     ~Displace() override;
 
     /// @brief Set source texture to distort
-    Displace& source(TextureOperator* op) { setInput(0, op); return *this; }
+    void source(TextureOperator* op) { setInput(0, op); }
 
     /// @brief Set displacement map texture (R=X, G=Y)
-    Displace& map(TextureOperator* op) { setInput(1, op); return *this; }
+    void map(TextureOperator* op) { setInput(1, op); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

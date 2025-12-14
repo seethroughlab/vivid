@@ -60,7 +60,7 @@ public:
     ~HSV() override;
 
     /// @brief Set input texture
-    HSV& input(TextureOperator* op) { setInput(0, op); return *this; }
+    void input(TextureOperator* op) { setInput(0, op); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

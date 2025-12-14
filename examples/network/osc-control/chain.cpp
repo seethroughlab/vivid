@@ -34,15 +34,18 @@ void setup(Context& ctx) {
 
     // Visual chain
     auto& noise = chain.add<Noise>("noise");
-    noise.set("scale", g_noiseScale).set("speed", 0.5f).set("octaves", 4);
+    noise.scale = g_noiseScale;
+    noise.speed = 0.5f;
+    noise.octaves = 4;
 
     auto& hsv = chain.add<HSV>("hsv");
     hsv.input(&noise);
-    hsv.hueShift(g_hueShift).saturation(g_saturation);
+    hsv.hueShift = g_hueShift;
+    hsv.saturation = g_saturation;
 
     auto& blur = chain.add<Blur>("blur");
     blur.input(&hsv);
-    blur.set("radius", g_blurRadius);
+    blur.radius = g_blurRadius;
 
     chain.output("blur");
 
@@ -93,15 +96,15 @@ void update(Context& ctx) {
 
     // Apply parameters to operators
     auto& noise = chain.get<Noise>("noise");
-    noise.set("scale", g_noiseScale);
-    noise.set("offset", 0.0f, 0.0f, static_cast<float>(ctx.time()) * 0.3f);
+    noise.scale = g_noiseScale;
+    noise.offset.set(0.0f, 0.0f, static_cast<float>(ctx.time()) * 0.3f);
 
     auto& hsv = chain.get<HSV>("hsv");
-    hsv.hueShift(g_hueShift);
-    hsv.saturation(g_saturation);
+    hsv.hueShift = g_hueShift;
+    hsv.saturation = g_saturation;
 
     auto& blur = chain.get<Blur>("blur");
-    blur.set("radius", g_blurRadius);
+    blur.radius = g_blurRadius;
 
     // Send periodic updates back to controller (for bidirectional sync)
     static float lastSendTime = 0.0f;

@@ -73,7 +73,7 @@ public:
     ~Noise() override;
 
     /// @brief Set noise algorithm
-    Noise& type(NoiseType t) { if (m_type != t) { m_type = t; markDirty(); } return *this; }
+    void type(NoiseType t) { if (m_type != t) { m_type = t; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

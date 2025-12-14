@@ -65,10 +65,10 @@ public:
     ~Downsample() override;
 
     /// @brief Set input texture
-    Downsample& input(TextureOperator* op) { setInput(0, op); return *this; }
+    void input(TextureOperator* op) { setInput(0, op); }
 
     /// @brief Set upscale filter mode (Nearest = pixelated, Linear = smooth)
-    Downsample& filter(FilterMode f) { if (m_filter != f) { m_filter = f; markDirty(); } return *this; }
+    void filter(FilterMode f) { if (m_filter != f) { m_filter = f; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

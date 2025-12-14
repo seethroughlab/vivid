@@ -79,7 +79,7 @@ public:
     ~LFO() override;
 
     /// @brief Set waveform type (Sine, Triangle, Saw, Square, Noise)
-    LFO& waveform(LFOWaveform w) { if (m_waveform != w) { m_waveform = w; markDirty(); } return *this; }
+    void waveform(LFOWaveform w) { if (m_waveform != w) { m_waveform = w; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Value Access

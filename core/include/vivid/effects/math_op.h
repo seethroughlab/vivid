@@ -106,7 +106,7 @@ public:
     ~Math() override = default;
 
     /// @brief Set math operation
-    Math& operation(MathOperation op) { if (m_operation != op) { m_operation = op; markDirty(); } return *this; }
+    void operation(MathOperation op) { if (m_operation != op) { m_operation = op; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Result Access

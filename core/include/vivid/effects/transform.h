@@ -65,7 +65,7 @@ public:
     ~Transform() override;
 
     /// @brief Set input texture
-    Transform& input(TextureOperator* op) { setInput(0, op); return *this; }
+    void input(TextureOperator* op) { setInput(0, op); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

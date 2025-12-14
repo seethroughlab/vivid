@@ -20,21 +20,21 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Some operators with controllable parameters
-    auto& noise = chain.add<Noise>("noise")
-        .scale(4.0f)
-        .speed(0.5f)
-        .octaves(4);
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+    noise.speed = 0.5f;
+    noise.octaves = 4;
 
-    auto& hsv = chain.add<HSV>("hsv")
-        .input(&noise)
-        .hueShift(0.0f)
-        .saturation(1.0f)
-        .value(1.0f);
+    auto& hsv = chain.add<HSV>("hsv");
+    hsv.input(&noise);
+    hsv.hueShift = 0.0f;
+    hsv.saturation = 1.0f;
+    hsv.value = 1.0f;
 
-    auto& blur = chain.add<Blur>("blur")
-        .input(&hsv)
-        .radius(0.0f)
-        .passes(2);
+    auto& blur = chain.add<Blur>("blur");
+    blur.input(&hsv);
+    blur.radius = 0.0f;
+    blur.passes = 2;
 
     // Web server
     chain.add<WebServer>("web")
@@ -52,7 +52,7 @@ void update(Context& ctx) {
 
     // Animate noise
     auto& noise = chain.get<Noise>("noise");
-    noise.offset(0, 0, static_cast<float>(ctx.time()) * 0.3f);
+    noise.offset.set(0.0f, 0.0f, static_cast<float>(ctx.time()) * 0.3f);
 }
 
 VIVID_CHAIN(setup, update)

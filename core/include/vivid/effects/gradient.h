@@ -80,7 +80,7 @@ public:
     ~Gradient() override;
 
     /// @brief Set gradient mode (Linear, Radial, Angular, Diamond)
-    Gradient& mode(GradientMode m) { if (m_mode != m) { m_mode = m; markDirty(); } return *this; }
+    void mode(GradientMode m) { if (m_mode != m) { m_mode = m; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

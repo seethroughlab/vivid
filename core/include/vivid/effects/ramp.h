@@ -88,7 +88,7 @@ public:
     ~Ramp() override;
 
     /// @brief Set ramp type (Linear, Radial, Angular, Diamond)
-    Ramp& type(RampType t) { if (m_type != t) { m_type = t; markDirty(); } return *this; }
+    void type(RampType t) { if (m_type != t) { m_type = t; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

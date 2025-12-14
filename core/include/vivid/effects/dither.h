@@ -67,12 +67,11 @@ public:
     ~Dither() override;
 
     /// @brief Set input texture
-    Dither& input(TextureOperator* op) { setInput(0, op); return *this; }
+    void input(TextureOperator* op) { setInput(0, op); }
 
     /// @brief Set dither pattern (enum, not a Param)
-    Dither& pattern(DitherPattern p) {
+    void pattern(DitherPattern p) {
         if (m_pattern != p) { m_pattern = p; markDirty(); }
-        return *this;
     }
 
     // -------------------------------------------------------------------------

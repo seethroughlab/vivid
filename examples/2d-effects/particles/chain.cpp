@@ -22,10 +22,10 @@ void setup(Context& ctx) {
         .life(1.5f)
         .lifeVariation(0.3f)
         .size(0.025f, 0.005f)
-        .color(Color::Gold)
-        .colorEnd(Color::OrangeRed.withAlpha(0.0f))
+        .color(1.0f, 0.84f, 0.0f, 1.0f)  // Gold
+        .colorEnd(1.0f, 0.27f, 0.0f, 0.0f)  // OrangeRed, faded
         .fadeOut(true)
-        .clearColor(Color::fromHex("#050510"));
+        .clearColor(0.02f, 0.02f, 0.06f, 1.0f);  // Dark blue
 
     // Fountain particles - arcing water effect
     auto& fountain = chain.add<Particles>("fountain");
@@ -37,10 +37,10 @@ void setup(Context& ctx) {
         .gravity(0.12f)
         .life(2.0f)
         .size(0.012f, 0.008f)
-        .color(Color::DodgerBlue)
-        .colorEnd(Color::MediumBlue.withAlpha(0.0f))
+        .color(0.12f, 0.56f, 1.0f, 1.0f)  // DodgerBlue
+        .colorEnd(0.0f, 0.0f, 0.8f, 0.0f)  // MediumBlue, faded
         .fadeOut(true)
-        .clearColor(Color::Transparent);
+        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent
 
     // Ring particles - expanding ring
     auto& ring = chain.add<Particles>("ring");

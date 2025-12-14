@@ -53,7 +53,7 @@ public:
     ~Pixelate() override;
 
     /// @brief Set input texture
-    Pixelate& input(TextureOperator* op) { setInput(0, op); return *this; }
+    void input(TextureOperator* op) { setInput(0, op); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

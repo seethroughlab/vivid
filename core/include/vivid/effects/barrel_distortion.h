@@ -47,7 +47,7 @@ public:
     ~BarrelDistortion() override;
 
     /// @brief Set input texture
-    BarrelDistortion& input(TextureOperator* op) { setInput(0, op); return *this; }
+    void input(TextureOperator* op) { setInput(0, op); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

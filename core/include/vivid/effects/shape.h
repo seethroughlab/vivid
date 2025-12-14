@@ -89,7 +89,7 @@ public:
     ~Shape() override;
 
     /// @brief Set shape type (Circle, Rectangle, RoundedRect, etc.)
-    Shape& type(ShapeType t) { if (m_type != t) { m_type = t; markDirty(); } return *this; }
+    void type(ShapeType t) { if (m_type != t) { m_type = t; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface
