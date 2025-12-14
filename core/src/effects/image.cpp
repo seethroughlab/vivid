@@ -105,9 +105,6 @@ void Image::loadImage(Context& ctx) {
     wgpuQueueWriteTexture(ctx.queue(), &destination, floatPixels.data(),
                           floatPixels.size() * sizeof(uint16_t), &dataLayout, &writeSize);
 
-    // Lock resolution to prevent checkResize() from overwriting the loaded image
-    m_resolutionLocked = true;
-
     m_loadedPath = filePath;
     std::cout << "Image: Loaded " << filePath << " (" << width << "x" << height << ")" << std::endl;
 }

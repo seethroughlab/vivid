@@ -92,7 +92,6 @@ void VideoPlayer::loadVideo(Context& ctx) {
             m_outputView = m_hapDecoder->textureView();
             m_width = m_hapDecoder->width();
             m_height = m_hapDecoder->height();
-            m_resolutionLocked = true;  // Lock to video's native resolution
             m_needsReload = false;
 
             // Apply stored volume
@@ -124,7 +123,6 @@ void VideoPlayer::loadVideo(Context& ctx) {
         m_outputView = m_playbackDecoder->textureView();
         m_width = m_playbackDecoder->width();
         m_height = m_playbackDecoder->height();
-        m_resolutionLocked = true;  // Lock to video's native resolution
         m_needsReload = false;
 
         // Apply stored volume
@@ -191,7 +189,6 @@ void VideoPlayer::loadVideo(Context& ctx) {
     m_outputView = m_standardDecoder->textureView();
     m_width = m_standardDecoder->width();
     m_height = m_standardDecoder->height();
-    m_resolutionLocked = true;  // Lock to video's native resolution
     m_needsReload = false;
 
     // Apply stored volume

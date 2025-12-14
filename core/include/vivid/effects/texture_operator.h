@@ -166,17 +166,8 @@ public:
      * @brief Set output resolution
      * @param w Width in pixels
      * @param h Height in pixels
-     *
-     * Note: Setting resolution also locks it, preventing auto-resize to context size.
      */
-    void setResolution(int w, int h) { m_width = w; m_height = h; m_resolutionLocked = true; }
-
-    /**
-     * @brief Lock resolution to prevent auto-resize
-     * @param locked If true, resolution won't change
-     * @deprecated Resolution is now locked by default. Use setResolution() to set size.
-     */
-    void setResolutionLocked(bool locked = true) { m_resolutionLocked = locked; }
+    void setResolution(int w, int h) { m_width = w; m_height = h; }
 
     /**
      * @brief DEPRECATED: No longer auto-resizes to window size
@@ -261,7 +252,6 @@ protected:
 
     int m_width = 1280;  ///< Output width
     int m_height = 720;  ///< Output height
-    bool m_resolutionLocked = false;  ///< If true, checkResize() won't auto-resize
 };
 
 } // namespace vivid::effects
