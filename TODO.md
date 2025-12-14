@@ -167,3 +167,4 @@
 [ ] Take more snapshots of showcase projects, add them to README
 [ ] What's happening with the docs github action?  It's not published anywhere accessable. I'm sure I haven't set up something properly at https://github.com/seethroughlab/vivid/settings/pages, but I'm not sure what. 
 [ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
+[ ] git tag v0.1.0 && git push --tags
