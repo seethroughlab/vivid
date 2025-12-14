@@ -1,6 +1,6 @@
 # Vivid Render3D Addon
 # 3D rendering with procedural geometry and CSG operations
-# Depends on vivid-io for image/HDR loading
+# Image/HDR loading and 2D effects are now provided by vivid-core
 
 include(FetchContent)
 
@@ -50,7 +50,6 @@ add_library(vivid-render3d SHARED
 target_include_directories(vivid-render3d PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/core/include
-    ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
     ${cgltf_SOURCE_DIR}
 )
 
@@ -59,8 +58,7 @@ target_link_libraries(vivid-render3d PUBLIC
     glm
     glfw
     manifold
-    vivid-effects-2d
-    vivid-io
+    vivid-core
 )
 
 # Platform-specific settings

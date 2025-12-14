@@ -33,32 +33,18 @@ Options:
 ## Project Structure
 
 ```
-core/           Runtime engine (context, chain, hot-reload, ImGui visualizer)
-addons/         Self-contained modular features (each has README, examples/, tests/):
-  vivid-io/           Image loading (stb)
-  vivid-effects-2d/   2D texture operators (25+ effects)
+core/           Runtime engine + integrated features:
+                - context, chain, hot-reload, ImGui visualizer
+                - io/ (image loading via stb)
+                - effects/ (25+ 2D texture operators)
+                - network/ (OSC, UDP, WebSocket)
+addons/         Optional modular features:
   vivid-video/        Video playback (HAP, platform codecs)
   vivid-render3d/     3D rendering (PBR, CSG, instancing)
   vivid-audio/        Audio synthesis, sequencing, analysis
-  vivid-network/      OSC, UDP, WebSocket communication
-  vivid-ml/           ML inference via ONNX Runtime
-examples/       getting-started/ (onboarding) + showcase/ (multi-addon demos)
-testing-fixtures/  Core tests (build-verification/, hardware/, value-operators/)
+examples/       Curated user examples (getting-started/, 2d-effects/, audio/, 3d-rendering/)
+testing-fixtures/  Test examples for CI/regression testing
 docs/           LLM-REFERENCE.md, RECIPES.md, OPERATOR-API.md
-assets/         Shared assets (materials/, videos/, audio/, hdris/, meshes/, fonts/)
-```
-
-### Addon Structure
-Each addon is self-contained with:
-```
-addons/vivid-XXX/
-├── include/          # Public headers
-├── src/              # Implementation
-├── addon.json        # Metadata (name, version, operators)
-├── README.md         # Documentation
-├── examples/         # Addon-specific examples
-├── tests/            # Unit tests + fixtures/
-└── assets/           # Addon-specific assets (if any)
 ```
 
 ## Key Patterns
@@ -114,7 +100,8 @@ VIVID_CHAIN(setup, update)
 
 | Task | File |
 |------|------|
-| Add new 2D effect | `addons/vivid-effects-2d/include/vivid/effects/` |
+| Add new 2D effect | `core/include/vivid/effects/` |
+| Add network operator | `core/include/vivid/network/` |
 | Modify chain visualizer UI | `core/imgui/chain_visualizer.cpp` |
 | Hot-reload logic | `core/src/hot_reload.cpp` |
 | Main runtime loop | `core/src/main.cpp` |

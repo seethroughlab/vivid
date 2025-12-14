@@ -200,15 +200,14 @@ FetchContent_MakeAvailable(ixwebsocket)
 # -----------------------------------------------------------------------------
 # Addons (optional libraries with external dependencies)
 # Note: ImGui is now integrated into core - it's not optional
-# vivid-io must come first (provides image loading for other addons)
+# vivid-io is now part of core (provides image loading)
+# vivid-effects-2d is now part of core (provides 2D texture effects)
+# vivid-network is now part of core (provides networking operators)
 # -----------------------------------------------------------------------------
-add_subdirectory(addons/vivid-io)
-add_subdirectory(addons/vivid-effects-2d)
 add_subdirectory(addons/vivid-video)
 add_subdirectory(addons/vivid-render3d)
 add_subdirectory(addons/vivid-audio)
-add_subdirectory(addons/vivid-network)
-add_subdirectory(addons/vivid-ml)
+# vivid-ml moved to separate repo: https://github.com/jeff/vivid-ml
 
 # -----------------------------------------------------------------------------
 # Core library and runtime

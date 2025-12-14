@@ -3,6 +3,29 @@
 
 include(FetchContent)
 
+# Fetch stb for image loading (vivid-io)
+FetchContent_Declare(
+    stb
+    GIT_REPOSITORY https://github.com/nothings/stb.git
+    GIT_TAG master
+    GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(stb)
+
+# FreeType for font rendering (vivid-effects-2d)
+FetchContent_Declare(
+    freetype
+    GIT_REPOSITORY https://github.com/freetype/freetype.git
+    GIT_TAG VER-2-13-2
+    GIT_SHALLOW TRUE
+)
+set(FT_DISABLE_ZLIB ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BZIP2 ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_PNG ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_HARFBUZZ ON CACHE BOOL "" FORCE)
+set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(freetype)
+
 # Fetch ImGui from master (required for wgpu-native v24.x compatibility)
 # We manually specify source files, so use SOURCE_SUBDIR to skip its CMakeLists
 FetchContent_Declare(
@@ -52,6 +75,52 @@ set(VIVID_CORE_LIB_SOURCES
     src/audio_operator.cpp
     src/audio_output.cpp
     src/audio_graph.cpp
+    # vivid-io (image loading)
+    src/io/image_loader.cpp
+    # vivid-effects-2d (2D texture effects)
+    src/effects/texture_operator.cpp
+    src/effects/noise.cpp
+    src/effects/solid_color.cpp
+    src/effects/composite.cpp
+    src/effects/ramp.cpp
+    src/effects/feedback.cpp
+    src/effects/output.cpp
+    src/effects/image.cpp
+    src/effects/displace.cpp
+    src/effects/blur.cpp
+    src/effects/transform.cpp
+    src/effects/shape.cpp
+    src/effects/lfo.cpp
+    src/effects/hsv.cpp
+    src/effects/brightness.cpp
+    src/effects/mirror.cpp
+    src/effects/edge.cpp
+    src/effects/pixelate.cpp
+    src/effects/tile.cpp
+    src/effects/chromatic_aberration.cpp
+    src/effects/switch_op.cpp
+    src/effects/bloom.cpp
+    src/effects/gradient.cpp
+    src/effects/dither.cpp
+    src/effects/quantize.cpp
+    src/effects/scanlines.cpp
+    src/effects/crt_effect.cpp
+    src/effects/downsample.cpp
+    src/effects/barrel_distortion.cpp
+    src/effects/vignette.cpp
+    src/effects/particle_renderer.cpp
+    src/effects/particles.cpp
+    src/effects/point_sprites.cpp
+    src/effects/plexus.cpp
+    src/effects/font_atlas.cpp
+    src/effects/canvas_renderer.cpp
+    src/effects/canvas.cpp
+    # vivid-network (networking operators)
+    src/network/osc_in.cpp
+    src/network/osc_out.cpp
+    src/network/udp_in.cpp
+    src/network/udp_out.cpp
+    src/network/web_server.cpp
 )
 
 # Vivid runtime sources (executable only)
@@ -101,12 +170,16 @@ target_include_directories(vivid-core
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${stb_SOURCE_DIR}
+        ${freetype_SOURCE_DIR}/include
 )
 
 target_link_libraries(vivid-core PUBLIC
     webgpu
     glm::glm
     glfw
+    freetype
+    ixwebsocket
 )
 
 # Platform-specific settings for vivid-core
@@ -160,7 +233,6 @@ target_include_directories(vivid
         ${imgui_SOURCE_DIR}/backends
         ${imnodes_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/addons/vivid-render3d/include
-        ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
         ${CMAKE_SOURCE_DIR}/addons/vivid-audio/include
         ${stb_SOURCE_DIR}
 )
@@ -170,14 +242,13 @@ target_compile_definitions(vivid PRIVATE
     IMGUI_IMPL_WEBGPU_BACKEND_WGPU
 )
 
-# Link against core library, GLFW-WebGPU integration, render3d for geometry previews, audio for analyzer type info, and ixwebsocket for EditorBridge
+# Link against core library, GLFW-WebGPU integration, render3d for geometry previews, audio for analyzer type info
 target_link_libraries(vivid
     PRIVATE
         vivid-core
         glfw3webgpu
         vivid-render3d
         vivid-audio
-        ixwebsocket
 )
 
 # Platform-specific settings
