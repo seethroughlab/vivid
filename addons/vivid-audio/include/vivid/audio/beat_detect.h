@@ -11,6 +11,7 @@
  */
 
 #include <vivid/audio/audio_analyzer.h>
+#include <vivid/param.h>
 #include <vector>
 
 namespace vivid::audio {
@@ -36,6 +37,23 @@ namespace vivid::audio {
 class BeatDetect : public AudioAnalyzer {
 public:
     // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> sensitivity{"sensitivity", 1.5f, 0.5f, 3.0f};   ///< Detection sensitivity
+    Param<float> decay{"decay", 0.95f, 0.8f, 0.999f};           ///< Energy decay rate
+    Param<float> holdTime{"holdTime", 100.0f, 0.0f, 500.0f};    ///< Debounce time in ms
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    BeatDetect() {
+        registerParam(sensitivity);
+        registerParam(decay);
+        registerParam(holdTime);
+    }
+
+    // -------------------------------------------------------------------------
     /// @name Configuration
     /// @{
 
@@ -44,36 +62,6 @@ public:
      */
     BeatDetect& input(const std::string& name) {
         AudioAnalyzer::input(name);
-        return *this;
-    }
-
-    /**
-     * @brief Set detection sensitivity
-     * @param s Sensitivity multiplier (1.0=normal, 2.0=more sensitive)
-     *
-     * Higher values trigger on smaller transients.
-     * Lower values only trigger on strong beats.
-     */
-    BeatDetect& sensitivity(float s) {
-        m_sensitivity = std::max(0.5f, std::min(3.0f, s));
-        return *this;
-    }
-
-    /**
-     * @brief Set energy decay rate
-     * @param d Decay per frame (0.9=fast decay, 0.99=slow decay)
-     */
-    BeatDetect& decay(float d) {
-        m_decay = std::max(0.8f, std::min(0.999f, d));
-        return *this;
-    }
-
-    /**
-     * @brief Set minimum time between beats (debounce)
-     * @param ms Minimum milliseconds between beat triggers
-     */
-    BeatDetect& holdTime(float ms) {
-        m_holdTimeMs = std::max(0.0f, std::min(500.0f, ms));
         return *this;
     }
 
@@ -128,10 +116,6 @@ protected:
     void analyze(const float* input, uint32_t frames, uint32_t channels) override;
 
 private:
-    float m_sensitivity = 1.5f;
-    float m_decay = 0.95f;
-    float m_holdTimeMs = 100.0f;
-
     // Detection state
     bool m_beat = false;
     float m_energy = 0.0f;

@@ -565,6 +565,9 @@ static_assert(sizeof(TexturedInstancedUniforms) == 384, "TexturedInstancedUnifor
 
 InstancedRender3D::InstancedRender3D() {
     m_camera.lookAt(glm::vec3(5, 3, 5), glm::vec3(0, 0, 0));
+    registerParam(metallic);
+    registerParam(roughness);
+    registerParam(ambient);
 }
 
 InstancedRender3D::~InstancedRender3D() {
@@ -1095,7 +1098,7 @@ void InstancedRender3D::process(Context& ctx) {
         uniforms.cameraPos[0] = cameraPos.x;
         uniforms.cameraPos[1] = cameraPos.y;
         uniforms.cameraPos[2] = cameraPos.z;
-        uniforms.ambientIntensity = m_ambient;
+        uniforms.ambientIntensity = static_cast<float>(ambient);
 
         const glm::vec4& matBaseColor = m_material->getBaseColorFactor();
         uniforms.baseColorFactor[0] = matBaseColor.r * m_baseColor.r;
@@ -1153,13 +1156,13 @@ void InstancedRender3D::process(Context& ctx) {
         uniforms.cameraPos[0] = cameraPos.x;
         uniforms.cameraPos[1] = cameraPos.y;
         uniforms.cameraPos[2] = cameraPos.z;
-        uniforms.ambientIntensity = m_ambient;
+        uniforms.ambientIntensity = static_cast<float>(ambient);
         uniforms.baseColor[0] = m_baseColor.r;
         uniforms.baseColor[1] = m_baseColor.g;
         uniforms.baseColor[2] = m_baseColor.b;
         uniforms.baseColor[3] = m_baseColor.a;
-        uniforms.metallic = m_metallic;
-        uniforms.roughness = m_roughness;
+        uniforms.metallic = static_cast<float>(metallic);
+        uniforms.roughness = static_cast<float>(roughness);
         uniforms.lightCount = lightCount;
         memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
 

@@ -36,6 +36,8 @@ namespace vivid::audio {
  */
 class AudioIn : public AudioOperator {
 public:
+    Param<float> volume{"volume", 1.0f, 0.0f, 2.0f};  ///< Input volume/gain
+
     AudioIn();
     ~AudioIn();
 
@@ -46,13 +48,6 @@ public:
     // -------------------------------------------------------------------------
     /// @name Configuration
     /// @{
-
-    /**
-     * @brief Set input volume/gain
-     * @param v Volume level (0.0 to 2.0, default 1.0)
-     * @return Reference for chaining
-     */
-    AudioIn& volume(float v);
 
     /**
      * @brief Mute/unmute input
@@ -70,7 +65,7 @@ public:
     bool isCapturing() const;
 
     /// @brief Get current volume
-    float getVolume() const { return m_volume; }
+    float getVolume() const { return static_cast<float>(volume); }
 
     /// @brief Check if muted
     bool isMuted() const { return m_muted; }
@@ -88,35 +83,13 @@ public:
     std::string name() const override { return "AudioIn"; }
 
     /// @}
-    // -------------------------------------------------------------------------
-    /// @name Parameters
-    /// @{
-
-    std::vector<ParamDecl> params() override {
-        return { m_volumeParam.decl() };
-    }
-
-    bool getParam(const std::string& pname, float out[4]) override {
-        if (pname == "volume") { out[0] = m_volume; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& pname, const float value[4]) override {
-        if (pname == "volume") { volume(value[0]); return true; }
-        return false;
-    }
-
-    /// @}
 
 private:
     struct Impl;
     std::unique_ptr<Impl> m_impl;
 
-    float m_volume = 1.0f;
     bool m_muted = false;
     bool m_initialized = false;
-
-    Param<float> m_volumeParam{"volume", 1.0f, 0.0f, 2.0f};
 };
 
 } // namespace vivid::audio

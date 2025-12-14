@@ -86,7 +86,7 @@ void setup(Context& ctx) {
     gradient.colorA(0.1f, 0.1f, 0.2f).colorB(0.05f, 0.1f, 0.15f);
 
     auto& noise = chain.add<Noise>("noise");
-    noise.scale(50.0f).speed(0.5f);
+    noise.set("scale", 50.0f).set("speed", 0.5f);
 
     auto& composite = chain.add<Composite>("vis");
     composite.inputA(&gradient).inputB(&noise).mode(BlendMode::Add).opacity(0.3f);
@@ -196,8 +196,8 @@ void update(Context& ctx) {
 
     // Animate visual noise
     float time = ctx.time();
-    noise.speed(0.5f);
-    noise.scale(30.0f + std::sin(time * 2.0f) * 20.0f);
+    noise.set("speed", 0.5f);
+    noise.set("scale", 30.0f + std::sin(time * 2.0f) * 20.0f);
 }
 
 VIVID_CHAIN(setup, update)

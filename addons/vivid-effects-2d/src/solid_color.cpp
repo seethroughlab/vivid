@@ -142,7 +142,7 @@ void SolidColor::process(Context& ctx) {
     if (!needsCook()) return;
 
     // Update uniforms
-    SolidColorUniforms uniforms = {m_color.r(), m_color.g(), m_color.b(), m_color.a()};
+    SolidColorUniforms uniforms = {color.r(), color.g(), color.b(), color.a()};
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 
     // Create command encoder

@@ -37,11 +37,11 @@ enum class MirrorMode {
  *
  * @par Example
  * @code
- * chain.add<Mirror>("kaleido")
- *     .input("source")
- *     .mode(MirrorMode::Kaleidoscope)
- *     .segments(8)
- *     .angle(time * 0.1f);
+ * auto& kaleido = chain.add<Mirror>("kaleido");
+ * kaleido.input(&source);
+ * kaleido.mode(MirrorMode::Kaleidoscope);
+ * kaleido.segments = 8;
+ * kaleido.angle = time * 0.1f;
  * @endcode
  *
  * @par Inputs
@@ -52,62 +52,33 @@ enum class MirrorMode {
  */
 class Mirror : public TextureOperator {
 public:
-    Mirror() = default;
-    ~Mirror() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set input texture
-     * @param op Source operator
-     * @return Reference for chaining
-     */
+    Param<int> segments{"segments", 6, 2, 32};       ///< Kaleidoscope segments
+    Param<float> angle{"angle", 0.0f, -6.28f, 6.28f}; ///< Rotation angle
+    Vec2Param center{"center", 0.5f, 0.5f, 0.0f, 1.0f}; ///< Center point
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Mirror() {
+        registerParam(segments);
+        registerParam(angle);
+        registerParam(center);
+    }
+    ~Mirror() override;
+
+    /// @brief Set input texture
     Mirror& input(TextureOperator* op) { setInput(0, op); return *this; }
 
-    /**
-     * @brief Set mirror mode
-     * @param m Mirror mode (Horizontal, Vertical, Quad, Kaleidoscope)
-     * @return Reference for chaining
-     */
+    /// @brief Set mirror mode (enum, not a Param)
     Mirror& mode(MirrorMode m) {
         if (m_mode != m) { m_mode = m; markDirty(); }
         return *this;
     }
 
-    /**
-     * @brief Set kaleidoscope segment count
-     * @param s Segments (2-32, default 6)
-     * @return Reference for chaining
-     */
-    Mirror& segments(int s) {
-        if (m_segments != s) { m_segments = s; markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set rotation angle
-     * @param a Angle in radians
-     * @return Reference for chaining
-     */
-    Mirror& angle(float a) {
-        if (m_angle != a) { m_angle = a; markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set mirror center point
-     * @param x X position (0-1)
-     * @param y Y position (0-1)
-     * @return Reference for chaining
-     */
-    Mirror& center(float x, float y) {
-        if (m_center.x() != x || m_center.y() != y) { m_center.set(x, y); markDirty(); }
-        return *this;
-    }
-
-    /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -117,33 +88,12 @@ public:
     void cleanup() override;
     std::string name() const override { return "Mirror"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_segments.decl(), m_angle.decl(), m_center.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "segments") { out[0] = m_segments; return true; }
-        if (name == "angle") { out[0] = m_angle; return true; }
-        if (name == "center") { out[0] = m_center.x(); out[1] = m_center.y(); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "segments") { segments(static_cast<int>(value[0])); return true; }
-        if (name == "angle") { angle(value[0]); return true; }
-        if (name == "center") { center(value[0], value[1]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
 
     MirrorMode m_mode = MirrorMode::Horizontal;
-    Param<int> m_segments{"segments", 6, 2, 32};
-    Param<float> m_angle{"angle", 0.0f, -6.28f, 6.28f};
-    Vec2Param m_center{"center", 0.5f, 0.5f, 0.0f, 1.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

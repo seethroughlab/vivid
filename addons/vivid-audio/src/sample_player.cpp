@@ -67,7 +67,7 @@ void SamplePlayer::generateBlock(uint32_t frameCount) {
         m_output.samples[i] = 0.0f;
     }
 
-    const float masterVol = static_cast<float>(m_volume);
+    const float masterVol = static_cast<float>(volume);
 
     // Mix all active voices
     for (int v = 0; v < m_maxVoices; ++v) {

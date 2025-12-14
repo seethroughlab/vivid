@@ -56,7 +56,7 @@ void AudioMixer::generateBlock(uint32_t frameCount) {
     if (m_output.frameCount != frameCount) {
         m_output.resize(frameCount);
     }
-    float vol = static_cast<float>(m_volume);
+    float vol = static_cast<float>(volume);
 
     // Clear output buffer
     for (uint32_t i = 0; i < frameCount * 2; ++i) {

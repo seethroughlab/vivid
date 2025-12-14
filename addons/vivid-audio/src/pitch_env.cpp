@@ -19,11 +19,11 @@ void PitchEnv::process(Context& ctx) {
     if (m_output.frameCount != frames) {
         m_output.resize(frames);
     }
-    float sweepSamples = static_cast<float>(m_time) * m_sampleRate;
+    float sweepSamples = static_cast<float>(time) * m_sampleRate;
     float progressInc = (sweepSamples > 0) ? (1.0f / sweepSamples) : 1.0f;
 
-    float startF = static_cast<float>(m_startFreq);
-    float endF = static_cast<float>(m_endFreq);
+    float startF = static_cast<float>(startFreq);
+    float endF = static_cast<float>(endFreq);
 
     for (uint32_t i = 0; i < frames; ++i) {
         // Exponential interpolation between frequencies
@@ -54,12 +54,12 @@ void PitchEnv::cleanup() {
 
 void PitchEnv::trigger() {
     m_progress = 0.0f;
-    m_currentFreq = static_cast<float>(m_startFreq);
+    m_currentFreq = static_cast<float>(startFreq);
 }
 
 void PitchEnv::reset() {
     m_progress = 1.0f;
-    m_currentFreq = static_cast<float>(m_endFreq);
+    m_currentFreq = static_cast<float>(endFreq);
 }
 
 } // namespace vivid::audio

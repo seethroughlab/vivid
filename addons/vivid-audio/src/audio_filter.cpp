@@ -21,6 +21,17 @@ void AudioFilter::init(Context& ctx) {
 void AudioFilter::process(Context& ctx) {
     if (!m_initialized) return;
 
+    // Check if params changed
+    float cutoffVal = static_cast<float>(cutoff);
+    float resonanceVal = static_cast<float>(resonance);
+    float gainVal = static_cast<float>(gain);
+    if (cutoffVal != m_cachedCutoff || resonanceVal != m_cachedResonance || gainVal != m_cachedGain) {
+        m_cachedCutoff = cutoffVal;
+        m_cachedResonance = resonanceVal;
+        m_cachedGain = gainVal;
+        m_needsUpdate = true;
+    }
+
     if (m_needsUpdate) {
         updateCoefficients();
         m_needsUpdate = false;
@@ -53,9 +64,9 @@ void AudioFilter::cleanup() {
 }
 
 void AudioFilter::updateCoefficients() {
-    float freq = static_cast<float>(m_cutoff);
-    float Q = static_cast<float>(m_resonance);
-    float gainDB = static_cast<float>(m_gain);
+    float freq = static_cast<float>(cutoff);
+    float Q = static_cast<float>(resonance);
+    float gainDB = static_cast<float>(gain);
 
     // Clamp frequency to valid range
     freq = std::max(20.0f, std::min(freq, m_sampleRate * 0.49f));

@@ -15,6 +15,7 @@
 #include <vivid/operator.h>
 #include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/textured_material.h>
+#include <vivid/param_registry.h>
 #include <glm/glm.hpp>
 #include <string>
 #include <memory>
@@ -70,8 +71,10 @@ struct Bounds3D {
  * }
  * @endcode
  */
-class GLTFLoader : public MeshOperator {
+class GLTFLoader : public MeshOperator, public ParamRegistry {
 public:
+    Param<float> scale{"scale", 1.0f, 0.001f, 100.0f};  ///< Model scale factor
+
     GLTFLoader();
     ~GLTFLoader() override;
 
@@ -104,19 +107,6 @@ public:
     GLTFLoader& loadTextures(bool enabled) {
         if (m_loadTextures != enabled) {
             m_loadTextures = enabled;
-            markDirty();
-        }
-        return *this;
-    }
-
-    /**
-     * @brief Scale the model uniformly
-     * @param scale Scale factor (1.0 = original size)
-     * @return Reference to this operator for chaining
-     */
-    GLTFLoader& scale(float scale) {
-        if (m_scale != scale) {
-            m_scale = scale;
             markDirty();
         }
         return *this;
@@ -179,23 +169,6 @@ public:
     void cleanup() override;
     std::string name() const override { return "GLTFLoader"; }
 
-    std::vector<vivid::ParamDecl> params() override {
-        std::vector<vivid::ParamDecl> p;
-        if (!m_filePath.empty()) {
-            // Show just filename, not full path
-            size_t lastSlash = m_filePath.find_last_of("/\\");
-            std::string filename = (lastSlash != std::string::npos)
-                ? m_filePath.substr(lastSlash + 1)
-                : m_filePath;
-            p.push_back({"file: " + filename, vivid::ParamType::String, 0, 0, {}});
-        }
-        if (m_loaded) {
-            p.push_back({"verts", vivid::ParamType::Int, 0, 0, {static_cast<float>(m_mesh.vertexCount())}});
-            p.push_back({"tris", vivid::ParamType::Int, 0, 0, {static_cast<float>(m_mesh.indexCount() / 3)}});
-        }
-        return p;
-    }
-
     /// @}
 
 private:
@@ -205,7 +178,6 @@ private:
     std::string m_filePath;
     std::string m_baseDir;      // Directory containing the GLTF file
     int m_meshIndex = -1;  // -1 = load all meshes
-    float m_scale = 1.0f;
     bool m_loadTextures = false;
     bool m_computeTangents = true;
     bool m_loaded = false;

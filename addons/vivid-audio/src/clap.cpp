@@ -24,10 +24,10 @@ void Clap::generateBlock(uint32_t frameCount) {
         m_output.resize(frameCount);
     }
 
-    float decayTime = static_cast<float>(m_decay) * m_sampleRate;
-    float toneAmt = static_cast<float>(m_tone);
-    float spreadAmt = static_cast<float>(m_spread);
-    float vol = static_cast<float>(m_volume);
+    float decayTime = static_cast<float>(decay) * m_sampleRate;
+    float toneAmt = static_cast<float>(tone);
+    float spreadAmt = static_cast<float>(spread);
+    float vol = static_cast<float>(volume);
 
     float decayRate = (decayTime > 0) ? (1.0f / decayTime) : 1.0f;
 
@@ -93,7 +93,7 @@ void Clap::triggerInternal() {
     m_env = 1.0f;
     m_samplesSinceTrigger = 0;
 
-    float spreadAmt = static_cast<float>(m_spread);
+    float spreadAmt = static_cast<float>(spread);
 
     // Set up burst delays (spread determines timing between bursts)
     // Base spacing: ~10-30ms between bursts
@@ -135,7 +135,7 @@ float Clap::generateNoise() {
 
 float Clap::bandpass(float in, int ch) {
     // Bandpass around 1.5kHz with moderate Q
-    float freq = 1500.0f + static_cast<float>(m_tone) * 1000.0f;  // 1.5kHz to 2.5kHz
+    float freq = 1500.0f + static_cast<float>(tone) * 1000.0f;  // 1.5kHz to 2.5kHz
     float Q = 1.5f;
     float omega = 6.28318530718f * freq / m_sampleRate;
     float f = 2.0f * std::sin(omega * 0.5f);  // Proper SVF frequency coefficient
@@ -147,22 +147,6 @@ float Clap::bandpass(float in, int ch) {
     m_bpState1[ch] += f * hp;  // bandpass
 
     return m_bpState1[ch] * 3.0f;  // Boost bandpass output
-}
-
-bool Clap::getParam(const std::string& name, float out[4]) {
-    if (name == "decay") { out[0] = m_decay; return true; }
-    if (name == "tone") { out[0] = m_tone; return true; }
-    if (name == "spread") { out[0] = m_spread; return true; }
-    if (name == "volume") { out[0] = m_volume; return true; }
-    return false;
-}
-
-bool Clap::setParam(const std::string& name, const float value[4]) {
-    if (name == "decay") { m_decay = value[0]; return true; }
-    if (name == "tone") { m_tone = value[0]; return true; }
-    if (name == "spread") { m_spread = value[0]; return true; }
-    if (name == "volume") { m_volume = value[0]; return true; }
-    return false;
 }
 
 } // namespace vivid::audio

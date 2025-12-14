@@ -13,9 +13,9 @@ Image::~Image() {
 }
 
 void Image::init(Context& ctx) {
-    if (m_initialized && !m_needsReload) return;
+    if (m_initialized && file.get() == m_loadedPath) return;
 
-    if (!m_filePath.empty()) {
+    if (!file.empty()) {
         loadImage(ctx);
     }
 
@@ -24,10 +24,11 @@ void Image::init(Context& ctx) {
 
 void Image::loadImage(Context& ctx) {
     // Load image via vivid-io
-    auto imageData = vivid::io::loadImage(m_filePath);
+    const std::string& filePath = file.get();
+    auto imageData = vivid::io::loadImage(filePath);
 
     if (!imageData.valid()) {
-        std::cerr << "Image: Failed to load: " << m_filePath << std::endl;
+        std::cerr << "Image: Failed to load: " << filePath << std::endl;
         return;
     }
 
@@ -107,12 +108,13 @@ void Image::loadImage(Context& ctx) {
     // Lock resolution to prevent checkResize() from overwriting the loaded image
     m_resolutionLocked = true;
 
-    m_needsReload = false;
-    std::cout << "Image: Loaded " << m_filePath << " (" << width << "x" << height << ")" << std::endl;
+    m_loadedPath = filePath;
+    std::cout << "Image: Loaded " << filePath << " (" << width << "x" << height << ")" << std::endl;
 }
 
 void Image::process(Context& ctx) {
-    if (!m_initialized || m_needsReload) {
+    // Check if file changed or not initialized
+    if (!m_initialized || file.get() != m_loadedPath) {
         init(ctx);
     }
     // Image uses loaded file dimensions - no auto-resize

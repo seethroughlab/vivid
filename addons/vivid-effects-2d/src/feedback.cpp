@@ -281,12 +281,12 @@ void Feedback::process(Context& ctx) {
     FeedbackUniforms uniforms = {};
     uniforms.resolution[0] = static_cast<float>(m_width);
     uniforms.resolution[1] = static_cast<float>(m_height);
-    uniforms.decay = m_decay;
-    uniforms.mix_amount = m_firstFrame ? 1.0f : m_mix;  // First frame: 100% input
-    uniforms.offsetX = m_offset.x();
-    uniforms.offsetY = m_offset.y();
-    uniforms.zoom = m_zoom;
-    uniforms.rotate = m_rotate;
+    uniforms.decay = decay;
+    uniforms.mix_amount = m_firstFrame ? 1.0f : static_cast<float>(mix);  // First frame: 100% input
+    uniforms.offsetX = offset.x();
+    uniforms.offsetY = offset.y();
+    uniforms.zoom = zoom;
+    uniforms.rotate = rotate;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

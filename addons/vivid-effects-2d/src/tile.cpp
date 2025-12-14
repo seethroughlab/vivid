@@ -168,11 +168,11 @@ void Tile::process(Context& ctx) {
     if (!needsCook()) return;
 
     TileUniforms uniforms = {};
-    uniforms.repeatX = m_repeat.x();
-    uniforms.repeatY = m_repeat.y();
-    uniforms.offsetX = m_offset.x();
-    uniforms.offsetY = m_offset.y();
-    uniforms.mirror = m_mirror ? 1 : 0;
+    uniforms.repeatX = repeat.x();
+    uniforms.repeatY = repeat.y();
+    uniforms.offsetX = offset.x();
+    uniforms.offsetY = offset.y();
+    uniforms.mirror = mirror ? 1 : 0;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

@@ -13,6 +13,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/audio_operator.h>
+#include <vivid/param_registry.h>
 #include <string>
 
 namespace vivid::audio {
@@ -38,7 +39,7 @@ namespace vivid::audio {
  * float bass = chain.get<FFT>("fft").band(20, 250);
  * @endcode
  */
-class AudioAnalyzer : public Operator {
+class AudioAnalyzer : public Operator, public ParamRegistry {
 public:
     virtual ~AudioAnalyzer() = default;
 

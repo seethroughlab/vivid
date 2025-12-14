@@ -139,7 +139,7 @@ void Switch::process(Context& ctx) {
 
     // Clamp index to valid range
     int maxIndex = static_cast<int>(inputCount()) - 1;
-    int idx = std::clamp(m_index.get(), 0, std::max(0, maxIndex));
+    int idx = std::clamp(static_cast<int>(index), 0, std::max(0, maxIndex));
 
     // Match resolution to selected input
     matchInputResolution(idx);
@@ -151,7 +151,7 @@ void Switch::process(Context& ctx) {
 
     SwitchUniforms uniforms = {};
     uniforms.index = idx;
-    uniforms.blend = m_blend;
+    uniforms.blend = blend;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

@@ -49,48 +49,30 @@ enum class DecayCurve {
  */
 class Decay : public AudioOperator {
 public:
-    Decay() = default;
-    ~Decay() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set decay time
-     * @param seconds Decay time (0.001-10 seconds)
-     */
-    Decay& time(float seconds) { m_time = seconds; return *this; }
-
-    /**
-     * @brief Set decay curve type
-     * @param c DecayCurve (Linear, Exponential, Logarithmic)
-     */
-    Decay& curve(DecayCurve c) { m_curve = c; return *this; }
+    Param<float> time{"time", 0.1f, 0.001f, 10.0f};  ///< Decay time in seconds
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Decay() {
+        registerParam(time);
+    }
+    ~Decay() override = default;
+
+    /// @brief Set decay curve type
+    Decay& curve(DecayCurve c) { m_curve = c; return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Playback Control
     /// @{
 
-    /**
-     * @brief Trigger the envelope (jump to 1.0, start decay)
-     */
     void trigger();
-
-    /**
-     * @brief Reset to idle state
-     */
     void reset();
-
-    /**
-     * @brief Check if envelope is active
-     */
     bool isActive() const { return m_value > 0.0001f; }
-
-    /**
-     * @brief Get current envelope value
-     */
     float currentValue() const { return m_value; }
 
     /// @}
@@ -103,27 +85,12 @@ public:
     void cleanup() override;
     std::string name() const override { return "Decay"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_time.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "time") { out[0] = m_time; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "time") { m_time = value[0]; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     float computeValue(float progress) const;
 
-    // Parameters
-    Param<float> m_time{"time", 0.1f, 0.001f, 10.0f};
+    // Curve type (enum, not a Param)
     DecayCurve m_curve = DecayCurve::Exponential;
 
     // State

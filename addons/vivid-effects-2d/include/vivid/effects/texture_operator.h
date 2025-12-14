@@ -10,6 +10,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/param_registry.h>
 #include <webgpu/webgpu.h>
 
 namespace vivid::effects {
@@ -58,7 +59,7 @@ inline WGPUStringView toStringView(const char* str) {
  * };
  * @endcode
  */
-class TextureOperator : public Operator {
+class TextureOperator : public Operator, public ParamRegistry {
 public:
     virtual ~TextureOperator();
 
@@ -68,6 +69,89 @@ public:
 
     OutputKind outputKind() const override { return OutputKind::Texture; }
     WGPUTextureView outputView() const override { return m_outputView; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Parameter Introspection (auto-generated from ParamRegistry)
+    /// @{
+
+    /**
+     * @brief Get parameter declarations (uses ParamRegistry)
+     * @return Vector of ParamDecl for all registered parameters
+     *
+     * Override only if you need to add non-registered parameters.
+     */
+    std::vector<ParamDecl> params() override { return registeredParams(); }
+
+    /**
+     * @brief Get parameter value (uses ParamRegistry)
+     * @param name Parameter name
+     * @param out Array to receive value
+     * @return True if parameter found
+     *
+     * Override only if you need custom parameter access.
+     */
+    bool getParam(const std::string& name, float out[4]) override {
+        return getRegisteredParam(name, out);
+    }
+
+    /**
+     * @brief Set parameter value (uses ParamRegistry)
+     * @param name Parameter name
+     * @param value Array of values
+     * @return True if parameter was set
+     *
+     * Automatically calls markDirty() if value changed.
+     * Override only if you need custom parameter handling.
+     */
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (setRegisteredParam(name, value)) {
+            markDirty();
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * @brief Generic fluent setter for any registered parameter
+     * @param name Parameter name
+     * @param value Value to set
+     * @return Reference for chaining
+     *
+     * @par Example
+     * @code
+     * chain.add<Noise>("noise")
+     *     .set("scale", 4.0f)
+     *     .set("speed", 0.5f);
+     * @endcode
+     */
+    template<typename T>
+    TextureOperator& set(const std::string& name, T value) {
+        float v[4] = {static_cast<float>(value), 0, 0, 0};
+        setParam(name, v);
+        return *this;
+    }
+
+    /// @brief Generic setter for Vec2 parameters
+    TextureOperator& set(const std::string& name, float x, float y) {
+        float v[4] = {x, y, 0, 0};
+        setParam(name, v);
+        return *this;
+    }
+
+    /// @brief Generic setter for Vec3 parameters
+    TextureOperator& set(const std::string& name, float x, float y, float z) {
+        float v[4] = {x, y, z, 0};
+        setParam(name, v);
+        return *this;
+    }
+
+    /// @brief Generic setter for Color parameters
+    TextureOperator& set(const std::string& name, float r, float g, float b, float a) {
+        float v[4] = {r, g, b, a};
+        setParam(name, v);
+        return *this;
+    }
 
     /// @}
     // -------------------------------------------------------------------------

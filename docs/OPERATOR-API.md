@@ -239,38 +239,33 @@ std::vector<ParamDecl> params() override {
 | `colorParam(name, default)` | `glm::vec3` | `colorParam("tint", vec3(1, 0.5, 0))` |
 | `stringParam(name, default)` | `std::string` | `stringParam("label", "hello")` |
 
-## Fluent API Pattern (Chain API Compatible)
+## Parameter Pattern (Chain API Compatible)
 
-For operators to work with the Chain API, they should follow the fluent interface pattern.
-Each setter returns `*this` to enable method chaining.
+For operators to work with the Chain API, use public `Param<T>` members with direct assignment.
 
-### Required Methods for Chain API
+### Public Param Members
 
 ```cpp
-class MyEffect : public vivid::Operator {
-    std::string inputNode_;  // Store input reference
-    float amount_ = 1.0f;
-    Texture output_;
-
+class MyEffect : public TextureOperator {
 public:
-    // REQUIRED: input() method for chaining operators
-    MyEffect& input(const std::string& node) {
-        inputNode_ = node;
-        return *this;
+    // Public parameters - accessible via direct assignment
+    Param<float> amount{"amount", 1.0f, 0.0f, 2.0f};  // name, default, min, max
+    Param<float> intensity{"intensity", 0.5f, 0.0f, 1.0f};
+
+    MyEffect() {
+        // Register params for introspection (UI, serialization)
+        registerParam(amount);
+        registerParam(intensity);
     }
 
-    // Parameter setters return *this for fluent chaining
-    MyEffect& amount(float a) { amount_ = a; return *this; }
+    // Input connection (fluent for chaining)
+    MyEffect& input(TextureOperator* op) { setInput(0, op); return *this; }
 
     void process(Context& ctx) override {
-        // Use inputNode_ to get source texture
-        Texture* src = ctx.getInputTexture(inputNode_, "out");
-        if (!src) return;  // Handle gracefully
-
-        Context::ShaderParams params;
-        params.param0 = amount_;
-        ctx.runShader("shaders/my_effect.wgsl", src, output_, params);
-        ctx.setOutput("out", output_);
+        // Access params directly
+        float amt = amount;  // implicit conversion
+        float inten = intensity;
+        // ... use values in shader
     }
 };
 ```
@@ -278,11 +273,19 @@ public:
 ### Usage in Chain API
 
 ```cpp
-void setup(Chain& chain) {
-    chain.add<Noise>("noise").scale(4.0f);
-    chain.add<MyEffect>("effect")
-        .input("noise")    // Connect to noise operator
-        .amount(0.5f);
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;      // Direct assignment
+    noise.speed = 0.5f;
+    noise.octaves = 4;
+
+    auto& effect = chain.add<MyEffect>("effect");
+    effect.input(&noise);    // Connection via fluent method
+    effect.amount = 0.5f;    // Parameter via assignment
+    effect.intensity = 0.8f;
+
     chain.output("effect");
 }
 ```
@@ -292,16 +295,18 @@ void setup(Chain& chain) {
 Generators don't need an `input()` method:
 
 ```cpp
-class MyGenerator : public vivid::Operator {
-    float scale_ = 4.0f;
-
+class MyGenerator : public TextureOperator {
 public:
-    MyGenerator& scale(float s) { scale_ = s; return *this; }
+    Param<float> scale{"scale", 4.0f, 0.1f, 20.0f};
+
+    MyGenerator() {
+        registerParam(scale);
+    }
 
     void process(Context& ctx) override {
         // Generators create output from nothing
-        ctx.runShader("shaders/generator.wgsl", nullptr, output_, params);
-        ctx.setOutput("out", output_);
+        float s = scale;
+        // ... use in shader
     }
 };
 ```
@@ -311,14 +316,37 @@ public:
 For operators that take multiple inputs (like Composite):
 
 ```cpp
-class Blend : public vivid::Operator {
-    std::string input1_;
-    std::string input2_;
-
+class Blend : public TextureOperator {
 public:
-    Blend& input(const std::string& node) { input1_ = node; return *this; }
-    Blend& input2(const std::string& node) { input2_ = node; return *this; }
-    // Or use: background(), foreground(), etc.
+    Param<float> opacity{"opacity", 1.0f, 0.0f, 1.0f};
+
+    Blend() {
+        registerParam(opacity);
+    }
+
+    // Multiple input methods for connections
+    Blend& inputA(TextureOperator* op) { setInput(0, op); return *this; }
+    Blend& inputB(TextureOperator* op) { setInput(1, op); return *this; }
+};
+```
+
+### Enum Parameters (Non-Param)
+
+For enum-based modes, keep fluent setters:
+
+```cpp
+class Noise : public TextureOperator {
+public:
+    Param<float> scale{"scale", 4.0f, 0.1f, 20.0f};
+
+    // Enum mode uses fluent setter (not a Param)
+    Noise& type(NoiseType t) {
+        if (m_type != t) { m_type = t; markDirty(); }
+        return *this;
+    }
+
+private:
+    NoiseType m_type = NoiseType::Perlin;
 };
 ```
 

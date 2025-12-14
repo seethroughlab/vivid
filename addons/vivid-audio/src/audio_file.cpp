@@ -7,7 +7,9 @@
 
 namespace vivid::audio {
 
-AudioFile::AudioFile() = default;
+AudioFile::AudioFile() {
+    registerParam(volume);
+}
 AudioFile::~AudioFile() = default;
 
 AudioFile& AudioFile::file(const std::string& path) {
@@ -63,8 +65,9 @@ void AudioFile::generateBlock(uint32_t frameCount) {
 
         // Read stereo samples
         uint64_t sampleIndex = m_playPosition * 2;
-        float left = m_samples[sampleIndex] * m_volume;
-        float right = m_samples[sampleIndex + 1] * m_volume;
+        float vol = static_cast<float>(volume);
+        float left = m_samples[sampleIndex] * vol;
+        float right = m_samples[sampleIndex + 1] * vol;
 
         out[i * 2] = left;
         out[i * 2 + 1] = right;

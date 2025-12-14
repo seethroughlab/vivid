@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/delay_line.h>
+#include <vivid/param.h>
 
 namespace vivid::audio {
 
@@ -37,41 +38,33 @@ namespace vivid::audio {
  */
 class Echo : public AudioEffect {
 public:
-    Echo() = default;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> delayTime{"delayTime", 300.0f, 0.0f, 2000.0f};  ///< Delay time in ms
+    Param<float> decay{"decay", 0.5f, 0.0f, 0.95f};              ///< Decay per tap
+    Param<int> taps{"taps", 4, 1, 8};                            ///< Number of echo taps
+    Param<float> mix{"mix", 0.5f, 0.0f, 1.0f};                   ///< Dry/wet mix
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Echo() {
+        registerParam(delayTime);
+        registerParam(decay);
+        registerParam(taps);
+        registerParam(mix);
+    }
     ~Echo() override = default;
 
     // -------------------------------------------------------------------------
     /// @name Configuration
     /// @{
 
-    Echo& delayTime(float ms) {
-        m_delayTimeMs = std::max(0.0f, std::min(2000.0f, ms));
-        return *this;
-    }
-
-    Echo& decay(float d) {
-        m_decay = std::max(0.0f, std::min(0.95f, d));
-        return *this;
-    }
-
-    Echo& taps(int n) {
-        m_taps = std::max(1, std::min(8, n));
-        return *this;
-    }
-
     // Override base class methods to return Echo&
     Echo& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Echo& mix(float amount) { AudioEffect::mix(amount); return *this; }
     Echo& bypass(bool b) { AudioEffect::bypass(b); return *this; }
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name State Queries
-    /// @{
-
-    float getDelayTime() const { return m_delayTimeMs; }
-    float getDecay() const { return m_decay; }
-    int getTaps() const { return m_taps; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -86,12 +79,6 @@ protected:
     void initEffect(Context& ctx) override;
     void processEffect(const float* input, float* output, uint32_t frames) override;
     void cleanupEffect() override;
-
-private:
-    // Parameters
-    float m_delayTimeMs = 300.0f;
-    float m_decay = 0.5f;
-    int m_taps = 4;
 
     // DSP
     dsp::StereoDelayLine m_delayLine;

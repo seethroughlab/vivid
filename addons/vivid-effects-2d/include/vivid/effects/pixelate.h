@@ -38,42 +38,23 @@ namespace vivid::effects {
  */
 class Pixelate : public TextureOperator {
 public:
-    Pixelate() = default;
-    ~Pixelate() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set input texture
-     * @param op Source operator
-     * @return Reference for chaining
-     */
-    Pixelate& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /**
-     * @brief Set uniform pixel block size
-     * @param s Block size in pixels (applies to both axes)
-     * @return Reference for chaining
-     */
-    Pixelate& size(float s) {
-        if (m_size.x() != s || m_size.y() != s) { m_size.set(s, s); markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set non-uniform pixel block size
-     * @param x Block width in pixels
-     * @param y Block height in pixels
-     * @return Reference for chaining
-     */
-    Pixelate& size(float x, float y) {
-        if (m_size.x() != x || m_size.y() != y) { m_size.set(x, y); markDirty(); }
-        return *this;
-    }
+    Vec2Param size{"size", 10.0f, 10.0f, 1.0f, 100.0f}; ///< Pixel block size
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Pixelate() {
+        registerParam(size);
+    }
+    ~Pixelate() override;
+
+    /// @brief Set input texture
+    Pixelate& input(TextureOperator* op) { setInput(0, op); return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -83,26 +64,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "Pixelate"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_size.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "size") { out[0] = m_size.x(); out[1] = m_size.y(); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "size") { size(value[0], value[1]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
-
-    Vec2Param m_size{"size", 10.0f, 10.0f, 1.0f, 100.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

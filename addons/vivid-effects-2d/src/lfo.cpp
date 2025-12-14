@@ -174,7 +174,7 @@ void LFO::process(Context& ctx) {
     // LFO is always animated - always cooks
 
     // Calculate current value for CPU access
-    float t = static_cast<float>(ctx.time()) * m_frequency + m_phase;
+    float t = static_cast<float>(ctx.time()) * frequency + phase;
     switch (m_waveform) {
         case LFOWaveform::Sine:
             m_currentValue = std::sin(t * 6.28318530718f) * 0.5f + 0.5f;
@@ -186,22 +186,22 @@ void LFO::process(Context& ctx) {
             m_currentValue = std::fmod(t, 1.0f);
             break;
         case LFOWaveform::Square:
-            m_currentValue = std::fmod(t, 1.0f) < m_pulseWidth ? 1.0f : 0.0f;
+            m_currentValue = std::fmod(t, 1.0f) < static_cast<float>(pulseWidth) ? 1.0f : 0.0f;
             break;
         case LFOWaveform::Noise:
             // Simple hash for CPU
             m_currentValue = std::fmod(std::floor(t) * 12.9898f, 1.0f);
             break;
     }
-    m_currentValue = m_currentValue * m_amplitude + m_offset;
+    m_currentValue = m_currentValue * amplitude + offset;
 
     LFOUniforms uniforms = {};
     uniforms.time = static_cast<float>(ctx.time());
-    uniforms.frequency = m_frequency;
-    uniforms.amplitude = m_amplitude;
-    uniforms.offset = m_offset;
-    uniforms.phase = m_phase;
-    uniforms.pulseWidth = m_pulseWidth;
+    uniforms.frequency = frequency;
+    uniforms.amplitude = amplitude;
+    uniforms.offset = offset;
+    uniforms.phase = phase;
+    uniforms.pulseWidth = pulseWidth;
     uniforms.waveform = static_cast<int>(m_waveform);
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));

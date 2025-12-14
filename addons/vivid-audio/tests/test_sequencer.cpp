@@ -28,13 +28,12 @@ TEST_CASE("Sequencer operator parameter defaults", "[audio][sequencer]") {
     }
 }
 
-TEST_CASE("Sequencer operator fluent API", "[audio][sequencer]") {
+TEST_CASE("Sequencer operator public param API", "[audio][sequencer]") {
     Sequencer seq;
     float out[4] = {0};
 
-    SECTION("steps setter works and chains") {
-        Sequencer& ref = seq.steps(8);
-        REQUIRE(&ref == &seq);
+    SECTION("steps assignment works") {
+        seq.steps = 8;
         REQUIRE(seq.getParam("steps", out));
         REQUIRE(static_cast<int>(out[0]) == 8);
     }
@@ -94,7 +93,7 @@ TEST_CASE("Sequencer playback", "[audio][sequencer]") {
     }
 
     SECTION("advance wraps at step count") {
-        seq.steps(4);
+        seq.steps = 4;
         REQUIRE(seq.currentStep() == 0);
         seq.advance();  // 1
         seq.advance();  // 2

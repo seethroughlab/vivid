@@ -156,9 +156,9 @@ void Brightness::process(Context& ctx) {
     if (!needsCook()) return;
 
     BrightnessUniforms uniforms = {};
-    uniforms.brightness = m_brightness;
-    uniforms.contrast = m_contrast;
-    uniforms.gamma = m_gamma;
+    uniforms.brightness = brightness;
+    uniforms.contrast = contrast;
+    uniforms.gamma = gamma;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

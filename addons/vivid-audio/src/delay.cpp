@@ -15,11 +15,16 @@ void Delay::initEffect(Context& ctx) {
 
 void Delay::updateDelaySamples() {
     m_delaySamples = static_cast<uint32_t>(
-        (m_delayTimeMs * static_cast<float>(m_sampleRate)) / 1000.0f
+        (static_cast<float>(delayTime) * static_cast<float>(m_sampleRate)) / 1000.0f
     );
 }
 
 void Delay::processEffect(const float* input, float* output, uint32_t frames) {
+    // Update delay samples in case param changed
+    updateDelaySamples();
+
+    float fb = static_cast<float>(feedback);
+
     for (uint32_t i = 0; i < frames; ++i) {
         float inL = input[i * 2];
         float inR = input[i * 2 + 1];
@@ -39,8 +44,8 @@ void Delay::processEffect(const float* input, float* output, uint32_t frames) {
 
         // Write input + feedback to delay line (using DC-blocked feedback)
         m_delayLine.write(
-            inL + dcBlockedL * m_feedback,
-            inR + dcBlockedR * m_feedback
+            inL + dcBlockedL * fb,
+            inR + dcBlockedR * fb
         );
 
         // Output is the delayed signal

@@ -199,8 +199,8 @@ void Dither::process(Context& ctx) {
 
     DitherUniforms uniforms = {};
     uniforms.pattern = static_cast<int>(m_pattern);
-    uniforms.levels = m_levels;
-    uniforms.strength = m_strength;
+    uniforms.levels = levels;
+    uniforms.strength = strength;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

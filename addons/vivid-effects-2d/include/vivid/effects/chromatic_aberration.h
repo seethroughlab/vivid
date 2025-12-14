@@ -41,42 +41,27 @@ namespace vivid::effects {
  */
 class ChromaticAberration : public TextureOperator {
 public:
-    ChromaticAberration() = default;
-    ~ChromaticAberration() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set input texture
-     * @param op Source operator
-     * @return Reference for chaining
-     */
-    ChromaticAberration& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /**
-     * @brief Set separation amount
-     * @param a Amount (0-0.1, default 0.01)
-     * @return Reference for chaining
-     */
-    ChromaticAberration& amount(float a) { if (m_amount != a) { m_amount = a; markDirty(); } return *this; }
-
-    /**
-     * @brief Set separation angle (linear mode)
-     * @param a Angle in radians
-     * @return Reference for chaining
-     */
-    ChromaticAberration& angle(float a) { if (m_angle != a) { m_angle = a; markDirty(); } return *this; }
-
-    /**
-     * @brief Enable radial separation mode
-     * @param r True for radial, false for linear
-     * @return Reference for chaining
-     */
-    ChromaticAberration& radial(bool r) { if (m_radial != r) { m_radial = r; markDirty(); } return *this; }
+    Param<float> amount{"amount", 0.01f, 0.0f, 0.1f};  ///< Separation amount
+    Param<float> angle{"angle", 0.0f, -6.28f, 6.28f};  ///< Direction angle (linear mode)
+    Param<bool> radial{"radial", true};                 ///< Radial vs linear mode
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    ChromaticAberration() {
+        registerParam(amount);
+        registerParam(angle);
+        registerParam(radial);
+    }
+    ~ChromaticAberration() override;
+
+    /// @brief Set input texture
+    ChromaticAberration& input(TextureOperator* op) { setInput(0, op); return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -86,32 +71,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "ChromaticAberration"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_amount.decl(), m_angle.decl(), m_radial.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "amount") { out[0] = m_amount; return true; }
-        if (name == "angle") { out[0] = m_angle; return true; }
-        if (name == "radial") { out[0] = m_radial ? 1.0f : 0.0f; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "amount") { amount(value[0]); return true; }
-        if (name == "angle") { angle(value[0]); return true; }
-        if (name == "radial") { radial(value[0] > 0.5f); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
-
-    Param<float> m_amount{"amount", 0.01f, 0.0f, 0.1f};
-    Param<float> m_angle{"angle", 0.0f, -6.28f, 6.28f};
-    Param<bool> m_radial{"radial", true};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

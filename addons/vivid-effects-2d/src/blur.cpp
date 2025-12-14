@@ -197,11 +197,11 @@ void Blur::process(Context& ctx) {
     float texelW = 1.0f / m_width;
     float texelH = 1.0f / m_height;
 
-    for (int pass = 0; pass < m_passes; ++pass) {
+    for (int pass = 0; pass < passes; ++pass) {
         // Horizontal pass: input -> temp
         {
             BlurUniforms uniforms = {};
-            uniforms.radius = m_radius;
+            uniforms.radius = radius;
             uniforms.direction = 0.0f;  // Horizontal
             uniforms.texelW = texelW;
             uniforms.texelH = texelH;
@@ -254,7 +254,7 @@ void Blur::process(Context& ctx) {
         // Vertical pass: temp -> output
         {
             BlurUniforms uniforms = {};
-            uniforms.radius = m_radius;
+            uniforms.radius = radius;
             uniforms.direction = 1.0f;  // Vertical
             uniforms.texelW = texelW;
             uniforms.texelH = texelH;

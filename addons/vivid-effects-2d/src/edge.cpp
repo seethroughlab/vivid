@@ -181,11 +181,11 @@ void Edge::process(Context& ctx) {
     if (!needsCook()) return;
 
     EdgeUniforms uniforms = {};
-    uniforms.strength = m_strength;
-    uniforms.threshold = m_threshold;
+    uniforms.strength = strength;
+    uniforms.threshold = threshold;
     uniforms.texelW = 1.0f / m_width;
     uniforms.texelH = 1.0f / m_height;
-    uniforms.invert = m_invert ? 1 : 0;
+    uniforms.invert = invert ? 1 : 0;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

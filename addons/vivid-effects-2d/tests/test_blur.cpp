@@ -26,26 +26,25 @@ TEST_CASE("Blur operator parameter defaults", "[operators][blur]") {
     }
 }
 
-TEST_CASE("Blur operator fluent API", "[operators][blur]") {
+TEST_CASE("Blur operator direct assignment API", "[operators][blur]") {
     Blur blur;
     float out[4] = {0};
 
-    SECTION("radius setter works and chains") {
-        Blur& ref = blur.radius(20.0f);
-        REQUIRE(&ref == &blur);
+    SECTION("direct assignment works for radius") {
+        blur.radius = 20.0f;
         REQUIRE(blur.getParam("radius", out));
         REQUIRE_THAT(out[0], WithinAbs(20.0f, 0.001f));
     }
 
-    SECTION("passes setter works and chains") {
-        Blur& ref = blur.passes(3);
-        REQUIRE(&ref == &blur);
+    SECTION("direct assignment works for passes") {
+        blur.passes = 3;
         REQUIRE(blur.getParam("passes", out));
         REQUIRE(static_cast<int>(out[0]) == 3);
     }
 
-    SECTION("method chaining works") {
-        blur.radius(15.0f).passes(5);
+    SECTION("multiple assignments work") {
+        blur.radius = 15.0f;
+        blur.passes = 5;
 
         REQUIRE(blur.getParam("radius", out));
         REQUIRE_THAT(out[0], WithinAbs(15.0f, 0.001f));

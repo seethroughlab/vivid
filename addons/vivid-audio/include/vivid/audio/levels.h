@@ -11,6 +11,7 @@
  */
 
 #include <vivid/audio/audio_analyzer.h>
+#include <vivid/param.h>
 
 namespace vivid::audio {
 
@@ -32,6 +33,19 @@ namespace vivid::audio {
 class Levels : public AudioAnalyzer {
 public:
     // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> smoothing{"smoothing", 0.9f, 0.0f, 0.999f};  ///< Smoothing factor
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Levels() {
+        registerParam(smoothing);
+    }
+
+    // -------------------------------------------------------------------------
     /// @name Configuration
     /// @{
 
@@ -40,18 +54,6 @@ public:
      */
     Levels& input(const std::string& name) {
         AudioAnalyzer::input(name);
-        return *this;
-    }
-
-    /**
-     * @brief Set smoothing factor
-     * @param s Smoothing (0=no smoothing, 0.99=very smooth)
-     *
-     * Higher values give more stable readings but slower response.
-     * Default is 0.9 for a good balance.
-     */
-    Levels& smoothing(float s) {
-        m_smoothing = std::max(0.0f, std::min(0.999f, s));
         return *this;
     }
 
@@ -111,8 +113,6 @@ protected:
     void analyze(const float* input, uint32_t frames, uint32_t channels) override;
 
 private:
-    float m_smoothing = 0.9f;
-
     // Smoothed values
     float m_rms = 0.0f;
     float m_peak = 0.0f;

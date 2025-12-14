@@ -85,12 +85,12 @@ float Envelope::computeEnvelopeValue() {
 
         case EnvelopeStage::Decay: {
             // Exponential decay from 1 to sustain level
-            float sustainLevel = static_cast<float>(m_sustain);
+            float sustainLevel = static_cast<float>(sustain);
             return 1.0f + (sustainLevel - 1.0f) * m_stageProgress;
         }
 
         case EnvelopeStage::Sustain:
-            return static_cast<float>(m_sustain);
+            return static_cast<float>(sustain);
 
         case EnvelopeStage::Release:
             // Linear ramp from release start value to 0
@@ -111,13 +111,13 @@ void Envelope::advanceEnvelope(uint32_t samples) {
     float stageDuration = 0.0f;
     switch (m_stage) {
         case EnvelopeStage::Attack:
-            stageDuration = static_cast<float>(m_attack) * m_sampleRate;
+            stageDuration = static_cast<float>(attack) * m_sampleRate;
             break;
         case EnvelopeStage::Decay:
-            stageDuration = static_cast<float>(m_decay) * m_sampleRate;
+            stageDuration = static_cast<float>(decay) * m_sampleRate;
             break;
         case EnvelopeStage::Release:
-            stageDuration = static_cast<float>(m_release) * m_sampleRate;
+            stageDuration = static_cast<float>(release) * m_sampleRate;
             break;
         default:
             break;
@@ -143,7 +143,7 @@ void Envelope::advanceEnvelope(uint32_t samples) {
             case EnvelopeStage::Decay:
                 m_stage = EnvelopeStage::Sustain;
                 m_stageProgress = 0.0f;
-                m_currentValue = static_cast<float>(m_sustain);
+                m_currentValue = static_cast<float>(sustain);
                 break;
 
             case EnvelopeStage::Release:

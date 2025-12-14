@@ -11,6 +11,7 @@
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/filters.h>
 #include <vivid/audio/dsp/lfo.h>
+#include <vivid/param.h>
 #include <array>
 
 namespace vivid::audio {
@@ -23,69 +24,54 @@ namespace vivid::audio {
  * cascaded all-pass filters whose cutoff is modulated by an LFO.
  *
  * @par Parameters
- * - `rate(Hz)` - LFO rate (0.05-5 Hz)
- * - `depth(f)` - Modulation depth (0-1)
- * - `stages(n)` - Number of all-pass stages (2-12, must be even)
- * - `feedback(f)` - Feedback amount (-1 to 1)
- * - `mix(m)` - Dry/wet mix (0-1)
+ * - `rate` - LFO rate (0.05-5 Hz)
+ * - `depth` - Modulation depth (0-1)
+ * - `stages` - Number of all-pass stages (2-12)
+ * - `feedback` - Feedback amount (-0.95 to 0.95)
+ * - `mix` - Dry/wet mix (0-1)
  *
  * @par Example
  * @code
- * chain.add<Phaser>("phaser")
- *     .input("audio")
- *     .rate(0.3f)       // Moderate sweep rate
- *     .depth(0.8f)      // Deep modulation
- *     .stages(6)        // 6 stages (3 notches)
- *     .feedback(0.5f)   // Some feedback
- *     .mix(0.5f);
+ * chain.add<Phaser>("phaser").input("audio");
+ * auto* phaser = chain.get<Phaser>("phaser");
+ * phaser->rate = 0.3f;       // Moderate sweep rate
+ * phaser->depth = 0.8f;      // Deep modulation
+ * phaser->stages = 6;        // 6 stages (3 notches)
+ * phaser->feedback = 0.5f;   // Some feedback
+ * phaser->mix = 0.5f;
  * @endcode
  */
 class Phaser : public AudioEffect {
 public:
-    Phaser() = default;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> rate{"rate", 0.3f, 0.05f, 5.0f};         ///< LFO rate in Hz
+    Param<float> depth{"depth", 0.8f, 0.0f, 1.0f};        ///< Modulation depth
+    Param<int> stages{"stages", 6, 2, 12};                ///< Number of all-pass stages
+    Param<float> feedback{"feedback", 0.5f, -0.95f, 0.95f}; ///< Feedback amount
+    Param<float> mix{"mix", 0.5f, 0.0f, 1.0f};            ///< Dry/wet mix
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Phaser() {
+        registerParam(rate);
+        registerParam(depth);
+        registerParam(stages);
+        registerParam(feedback);
+        registerParam(mix);
+    }
     ~Phaser() override = default;
 
     // -------------------------------------------------------------------------
     /// @name Configuration
     /// @{
 
-    Phaser& rate(float hz) {
-        m_rateHz = std::max(0.05f, std::min(5.0f, hz));
-        m_lfoL.setFrequency(m_rateHz);
-        m_lfoR.setFrequency(m_rateHz);
-        return *this;
-    }
-
-    Phaser& depth(float d) {
-        m_depth = std::max(0.0f, std::min(1.0f, d));
-        return *this;
-    }
-
-    Phaser& stages(int n) {
-        // Round to nearest even number
-        m_stages = std::max(2, std::min(12, (n / 2) * 2));
-        return *this;
-    }
-
-    Phaser& feedback(float f) {
-        m_feedback = std::max(-0.95f, std::min(0.95f, f));
-        return *this;
-    }
-
     // Override base class methods to return Phaser&
     Phaser& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Phaser& mix(float amount) { AudioEffect::mix(amount); return *this; }
     Phaser& bypass(bool b) { AudioEffect::bypass(b); return *this; }
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name State Queries
-    /// @{
-
-    float getRate() const { return m_rateHz; }
-    float getDepth() const { return m_depth; }
-    int getStages() const { return m_stages; }
-    float getFeedback() const { return m_feedback; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -100,13 +86,6 @@ protected:
     void initEffect(Context& ctx) override;
     void processEffect(const float* input, float* output, uint32_t frames) override;
     void cleanupEffect() override;
-
-private:
-    // Parameters
-    float m_rateHz = 0.3f;
-    float m_depth = 0.8f;
-    int m_stages = 6;
-    float m_feedback = 0.5f;
 
     // DSP - max 12 stages
     static constexpr int MAX_STAGES = 12;

@@ -172,20 +172,20 @@ void Gradient::process(Context& ctx) {
 
     GradientUniforms uniforms = {};
     uniforms.mode = static_cast<int>(m_mode);
-    uniforms.angle = m_angle;
-    uniforms.centerX = m_center.x();
-    uniforms.centerY = m_center.y();
-    uniforms.scale = m_scale;
-    uniforms.offset = m_offset;
+    uniforms.angle = angle;
+    uniforms.centerX = center.x();
+    uniforms.centerY = center.y();
+    uniforms.scale = scale;
+    uniforms.offset = offset;
     uniforms.aspect = static_cast<float>(m_width) / m_height;
-    uniforms.colorA[0] = m_colorA.r();
-    uniforms.colorA[1] = m_colorA.g();
-    uniforms.colorA[2] = m_colorA.b();
-    uniforms.colorA[3] = m_colorA.a();
-    uniforms.colorB[0] = m_colorB.r();
-    uniforms.colorB[1] = m_colorB.g();
-    uniforms.colorB[2] = m_colorB.b();
-    uniforms.colorB[3] = m_colorB.a();
+    uniforms.colorA[0] = colorA.r();
+    uniforms.colorA[1] = colorA.g();
+    uniforms.colorA[2] = colorA.b();
+    uniforms.colorA[3] = colorA.a();
+    uniforms.colorB[0] = colorB.r();
+    uniforms.colorB[1] = colorB.g();
+    uniforms.colorB[2] = colorB.b();
+    uniforms.colorB[3] = colorB.a();
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

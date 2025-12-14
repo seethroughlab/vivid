@@ -48,33 +48,34 @@ TEST_CASE("Noise operator parameter defaults", "[operators][noise]") {
     }
 }
 
-TEST_CASE("Noise operator fluent API", "[operators][noise]") {
+TEST_CASE("Noise operator direct assignment API", "[operators][noise]") {
     Noise noise;
     float out[4] = {0};
 
-    SECTION("scale setter works and chains") {
-        Noise& ref = noise.scale(8.0f);
-        REQUIRE(&ref == &noise);  // Returns self for chaining
+    SECTION("direct assignment works for scale") {
+        noise.scale = 8.0f;
         REQUIRE(noise.getParam("scale", out));
         REQUIRE_THAT(out[0], WithinAbs(8.0f, 0.001f));
     }
 
-    SECTION("speed setter works and chains") {
-        Noise& ref = noise.speed(2.0f);
-        REQUIRE(&ref == &noise);
+    SECTION("direct assignment works for speed") {
+        noise.speed = 2.0f;
         REQUIRE(noise.getParam("speed", out));
         REQUIRE_THAT(out[0], WithinAbs(2.0f, 0.001f));
     }
 
-    SECTION("octaves setter works and chains") {
-        Noise& ref = noise.octaves(6);
-        REQUIRE(&ref == &noise);
+    SECTION("direct assignment works for octaves") {
+        noise.octaves = 6;
         REQUIRE(noise.getParam("octaves", out));
         REQUIRE(static_cast<int>(out[0]) == 6);
     }
 
-    SECTION("method chaining works") {
-        noise.scale(10.0f).speed(1.0f).octaves(2).lacunarity(3.0f).persistence(0.25f);
+    SECTION("multiple assignments work") {
+        noise.scale = 10.0f;
+        noise.speed = 1.0f;
+        noise.octaves = 2;
+        noise.lacunarity = 3.0f;
+        noise.persistence = 0.25f;
 
         REQUIRE(noise.getParam("scale", out));
         REQUIRE_THAT(out[0], WithinAbs(10.0f, 0.001f));

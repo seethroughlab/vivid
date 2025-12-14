@@ -148,7 +148,7 @@ void Quantize::process(Context& ctx) {
     if (!needsCook()) return;
 
     QuantizeUniforms uniforms = {};
-    uniforms.levels = m_levels;
+    uniforms.levels = levels;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

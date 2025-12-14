@@ -47,28 +47,28 @@ void Formant::BiquadBP::reset() {
     y2[0] = y2[1] = 0.0f;
 }
 
-void Formant::getFormantFreqs(Vowel v, float& f1, float& f2, float& f3) const {
+void Formant::getFormantFreqs(Vowel v, float& outF1, float& outF2, float& outF3) const {
     if (v == Vowel::Custom) {
-        f1 = m_f1;
-        f2 = m_f2;
-        f3 = m_f3;
+        outF1 = static_cast<float>(f1);
+        outF2 = static_cast<float>(f2);
+        outF3 = static_cast<float>(f3);
         return;
     }
 
     int idx = static_cast<int>(v);
     if (idx >= 0 && idx < 5) {
-        f1 = FORMANT_FREQS[idx][0];
-        f2 = FORMANT_FREQS[idx][1];
-        f3 = FORMANT_FREQS[idx][2];
+        outF1 = FORMANT_FREQS[idx][0];
+        outF2 = FORMANT_FREQS[idx][1];
+        outF3 = FORMANT_FREQS[idx][2];
     }
 }
 
 void Formant::updateFilters() {
-    float f1, f2, f3;
-    getFormantFreqs(m_vowel, f1, f2, f3);
+    float formantF1, formantF2, formantF3;
+    getFormantFreqs(m_vowel, formantF1, formantF2, formantF3);
 
     // If morphing, interpolate to next vowel
-    float morphAmt = static_cast<float>(m_morph);
+    float morphAmt = static_cast<float>(morph);
     if (morphAmt > 0.0f && m_vowel != Vowel::Custom) {
         // Get next vowel in cycle (A->E->I->O->U->A)
         int currentIdx = static_cast<int>(m_vowel);
@@ -79,15 +79,15 @@ void Formant::updateFilters() {
         float nf3 = FORMANT_FREQS[nextIdx][2];
 
         // Linear interpolation
-        f1 = f1 + morphAmt * (nf1 - f1);
-        f2 = f2 + morphAmt * (nf2 - f2);
-        f3 = f3 + morphAmt * (nf3 - f3);
+        formantF1 = formantF1 + morphAmt * (nf1 - formantF1);
+        formantF2 = formantF2 + morphAmt * (nf2 - formantF2);
+        formantF3 = formantF3 + morphAmt * (nf3 - formantF3);
     }
 
-    float q = static_cast<float>(m_resonance);
-    m_filter1.setParams(f1, q, m_sampleRate);
-    m_filter2.setParams(f2, q, m_sampleRate);
-    m_filter3.setParams(f3, q, m_sampleRate);
+    float q = static_cast<float>(resonance);
+    m_filter1.setParams(formantF1, q, m_sampleRate);
+    m_filter2.setParams(formantF2, q, m_sampleRate);
+    m_filter3.setParams(formantF3, q, m_sampleRate);
 }
 
 void Formant::initEffect(Context& ctx) {
@@ -104,6 +104,22 @@ void Formant::initEffect(Context& ctx) {
 
 void Formant::processEffect(const float* input, float* output, uint32_t frames) {
     if (!m_initialized) return;
+
+    // Check if params changed
+    float morphVal = static_cast<float>(morph);
+    float resVal = static_cast<float>(resonance);
+    float f1Val = static_cast<float>(f1);
+    float f2Val = static_cast<float>(f2);
+    float f3Val = static_cast<float>(f3);
+    if (morphVal != m_cachedMorph || resVal != m_cachedResonance ||
+        f1Val != m_cachedF1 || f2Val != m_cachedF2 || f3Val != m_cachedF3) {
+        m_cachedMorph = morphVal;
+        m_cachedResonance = resVal;
+        m_cachedF1 = f1Val;
+        m_cachedF2 = f2Val;
+        m_cachedF3 = f3Val;
+        m_needsUpdate = true;
+    }
 
     if (m_needsUpdate) {
         updateFilters();

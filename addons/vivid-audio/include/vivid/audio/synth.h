@@ -35,90 +35,65 @@ namespace vivid::audio {
  *
  * @par Example
  * @code
- * chain.add<Synth>("synth")
- *     .frequency(440.0f)
- *     .waveform(Waveform::Saw)
- *     .attack(0.01f)
- *     .decay(0.2f)
- *     .sustain(0.5f)
- *     .release(0.5f);
+ * chain.add<Synth>("synth").waveform(Waveform::Saw);
+ * auto* synth = chain.get<Synth>("synth");
+ * synth->frequency = 440.0f;
+ * synth->attack = 0.01f;
+ * synth->decay = 0.2f;
+ * synth->sustain = 0.5f;
+ * synth->release = 0.5f;
  *
  * chain.add<AudioOutput>("out").input("synth");
  * chain.audioOutput("out");
  *
  * // Play a note
- * chain.get<Synth>("synth")->noteOn();
+ * synth->noteOn();
  * // ... later
- * chain.get<Synth>("synth")->noteOff();
+ * synth->noteOff();
  * @endcode
  */
 class Synth : public AudioOperator {
 public:
-    Synth() = default;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    // Oscillator parameters
+    Param<float> frequency{"frequency", 440.0f, 20.0f, 20000.0f};  ///< Frequency in Hz
+    Param<float> volume{"volume", 0.5f, 0.0f, 1.0f};               ///< Output amplitude
+    Param<float> detune{"detune", 0.0f, -100.0f, 100.0f};          ///< Detune in cents
+    Param<float> pulseWidth{"pulseWidth", 0.5f, 0.01f, 0.99f};     ///< Pulse width
+
+    // Envelope parameters
+    Param<float> attack{"attack", 0.01f, 0.001f, 5.0f};    ///< Attack time in seconds
+    Param<float> decay{"decay", 0.1f, 0.001f, 5.0f};       ///< Decay time in seconds
+    Param<float> sustain{"sustain", 0.7f, 0.0f, 1.0f};     ///< Sustain level
+    Param<float> release{"release", 0.3f, 0.001f, 10.0f};  ///< Release time in seconds
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Synth() {
+        registerParam(frequency);
+        registerParam(volume);
+        registerParam(detune);
+        registerParam(pulseWidth);
+        registerParam(attack);
+        registerParam(decay);
+        registerParam(sustain);
+        registerParam(release);
+    }
     ~Synth() override = default;
 
     // -------------------------------------------------------------------------
-    /// @name Fluent API - Oscillator
+    /// @name Configuration
     /// @{
-
-    /**
-     * @brief Set oscillator frequency
-     * @param hz Frequency in Hz (20-20000)
-     */
-    Synth& frequency(float hz) { m_frequency = hz; return *this; }
 
     /**
      * @brief Set waveform type
      * @param w Waveform (Sine, Triangle, Square, Saw, Pulse)
      */
     Synth& waveform(Waveform w) { m_waveform = w; return *this; }
-
-    /**
-     * @brief Set output volume
-     * @param v Volume (0-1)
-     */
-    Synth& volume(float v) { m_volume = v; return *this; }
-
-    /**
-     * @brief Set detune in cents
-     * @param cents Detune amount (-100 to +100 cents)
-     */
-    Synth& detune(float cents) { m_detune = cents; return *this; }
-
-    /**
-     * @brief Set pulse width (for Pulse waveform)
-     * @param pw Pulse width (0.01-0.99)
-     */
-    Synth& pulseWidth(float pw) { m_pulseWidth = pw; return *this; }
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name Fluent API - Envelope
-    /// @{
-
-    /**
-     * @brief Set attack time
-     * @param seconds Attack time (0.001-5 seconds)
-     */
-    Synth& attack(float seconds) { m_attack = seconds; return *this; }
-
-    /**
-     * @brief Set decay time
-     * @param seconds Decay time (0.001-5 seconds)
-     */
-    Synth& decay(float seconds) { m_decay = seconds; return *this; }
-
-    /**
-     * @brief Set sustain level
-     * @param level Sustain level (0-1)
-     */
-    Synth& sustain(float level) { m_sustain = level; return *this; }
-
-    /**
-     * @brief Set release time
-     * @param seconds Release time (0.001-10 seconds)
-     */
-    Synth& release(float seconds) { m_release = seconds; return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -170,37 +145,6 @@ public:
     void generateBlock(uint32_t frameCount) override;
     void handleEvent(const AudioEvent& event) override;
 
-    std::vector<ParamDecl> params() override {
-        return {
-            m_frequency.decl(), m_volume.decl(), m_detune.decl(), m_pulseWidth.decl(),
-            m_attack.decl(), m_decay.decl(), m_sustain.decl(), m_release.decl()
-        };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "frequency") { out[0] = m_frequency; return true; }
-        if (name == "volume") { out[0] = m_volume; return true; }
-        if (name == "detune") { out[0] = m_detune; return true; }
-        if (name == "pulseWidth") { out[0] = m_pulseWidth; return true; }
-        if (name == "attack") { out[0] = m_attack; return true; }
-        if (name == "decay") { out[0] = m_decay; return true; }
-        if (name == "sustain") { out[0] = m_sustain; return true; }
-        if (name == "release") { out[0] = m_release; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "frequency") { m_frequency = value[0]; return true; }
-        if (name == "volume") { m_volume = value[0]; return true; }
-        if (name == "detune") { m_detune = value[0]; return true; }
-        if (name == "pulseWidth") { m_pulseWidth = value[0]; return true; }
-        if (name == "attack") { m_attack = value[0]; return true; }
-        if (name == "decay") { m_decay = value[0]; return true; }
-        if (name == "sustain") { m_sustain = value[0]; return true; }
-        if (name == "release") { m_release = value[0]; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
@@ -209,18 +153,8 @@ private:
     float computeEnvelope();
     void advanceEnvelope(uint32_t samples);
 
-    // Oscillator parameters
+    // Waveform type (enum, not a Param)
     Waveform m_waveform = Waveform::Sine;
-    Param<float> m_frequency{"frequency", 440.0f, 20.0f, 20000.0f};
-    Param<float> m_volume{"volume", 0.5f, 0.0f, 1.0f};
-    Param<float> m_detune{"detune", 0.0f, -100.0f, 100.0f};
-    Param<float> m_pulseWidth{"pulseWidth", 0.5f, 0.01f, 0.99f};
-
-    // Envelope parameters
-    Param<float> m_attack{"attack", 0.01f, 0.001f, 5.0f};
-    Param<float> m_decay{"decay", 0.1f, 0.001f, 5.0f};
-    Param<float> m_sustain{"sustain", 0.7f, 0.0f, 1.0f};
-    Param<float> m_release{"release", 0.3f, 0.001f, 10.0f};
 
     // Oscillator state
     float m_phase = 0.0f;

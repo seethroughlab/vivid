@@ -36,11 +36,11 @@ void setup(Context& ctx) {
     // GENERATORS create images from nothing:
     //   Noise, SolidColor, Gradient, Ramp, Shape, LFO, Image
 
-    auto& noise = chain.add<Noise>("noise")
-        .scale(4.0f)      // Size of noise pattern (higher = smaller details)
-        .speed(0.5f)      // Animation speed
-        .type(NoiseType::Simplex)
-        .octaves(4);      // Layers of detail (more = richer, slower)
+    auto& noise = chain.add<Noise>("noise");
+    noise.type(NoiseType::Simplex);
+    noise.scale = 4.0f;      // Size of noise pattern (higher = smaller details)
+    noise.speed = 0.5f;      // Animation speed
+    noise.octaves = 4;       // Layers of detail (more = richer, slower)
 
     // EFFECTS transform their input:
     //   Blur, HSV, Brightness, Transform, Mirror, Displace, Edge,
@@ -67,7 +67,7 @@ void update(Context& ctx) {
     }
 
     // You can animate parameters using ctx.time():
-    // ctx.chain().get<Noise>("noise").scale(4.0f + sin(ctx.time()) * 2.0f);
+    // ctx.chain().get<Noise>("noise").set("scale", 4.0f + sin(ctx.time()) * 2.0f);
 
     // Available context values:
     //   ctx.time()   - Seconds since start (float)

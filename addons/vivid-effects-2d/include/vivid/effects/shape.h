@@ -60,113 +60,37 @@ enum class ShapeType {
  */
 class Shape : public TextureOperator {
 public:
-    Shape() = default;
-    ~Shape() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set shape type
-     * @param t Shape type
-     * @return Reference for chaining
-     */
-    Shape& type(ShapeType t) { if (m_type != t) { m_type = t; markDirty(); } return *this; }
-
-    /**
-     * @brief Set uniform shape size
-     * @param s Size (applies to both dimensions)
-     * @return Reference for chaining
-     */
-    Shape& size(float s) {
-        if (m_size.x() != s || m_size.y() != s) {
-            m_size.set(s, s);
-            markDirty();
-        }
-        return *this;
-    }
-
-    /**
-     * @brief Set non-uniform shape size
-     * @param x Width
-     * @param y Height
-     * @return Reference for chaining
-     */
-    Shape& size(float x, float y) {
-        if (m_size.x() != x || m_size.y() != y) {
-            m_size.set(x, y);
-            markDirty();
-        }
-        return *this;
-    }
-
-    /**
-     * @brief Set shape position
-     * @param x X position (0-1)
-     * @param y Y position (0-1)
-     * @return Reference for chaining
-     */
-    Shape& position(float x, float y) {
-        if (m_position.x() != x || m_position.y() != y) {
-            m_position.set(x, y);
-            markDirty();
-        }
-        return *this;
-    }
-
-    /**
-     * @brief Set rotation angle
-     * @param r Rotation in radians
-     * @return Reference for chaining
-     */
-    Shape& rotation(float r) { if (m_rotation != r) { m_rotation = r; markDirty(); } return *this; }
-
-    /**
-     * @brief Set polygon/star side count
-     * @param n Number of sides (3-32)
-     * @return Reference for chaining
-     */
-    Shape& sides(int n) { if (m_sides != n) { m_sides = n; markDirty(); } return *this; }
-
-    /**
-     * @brief Set corner radius for rounded shapes
-     * @param r Corner radius (0-0.5)
-     * @return Reference for chaining
-     */
-    Shape& cornerRadius(float r) { if (m_cornerRadius != r) { m_cornerRadius = r; markDirty(); } return *this; }
-
-    /**
-     * @brief Set ring/outline thickness
-     * @param t Thickness (0-0.5)
-     * @return Reference for chaining
-     */
-    Shape& thickness(float t) { if (m_thickness != t) { m_thickness = t; markDirty(); } return *this; }
-
-    /**
-     * @brief Set edge softness
-     * @param s Softness (0-0.2, default 0.01)
-     * @return Reference for chaining
-     */
-    Shape& softness(float s) { if (m_softness != s) { m_softness = s; markDirty(); } return *this; }
-
-    /**
-     * @brief Set shape color
-     * @param r Red (0-1)
-     * @param g Green (0-1)
-     * @param b Blue (0-1)
-     * @param a Alpha (0-1, default 1.0)
-     * @return Reference for chaining
-     */
-    Shape& color(float r, float g, float b, float a = 1.0f) {
-        if (m_color.r() != r || m_color.g() != g || m_color.b() != b || m_color.a() != a) {
-            m_color.set(r, g, b, a);
-            markDirty();
-        }
-        return *this;
-    }
+    Vec2Param size{"size", 0.5f, 0.5f, 0.0f, 2.0f};              ///< Shape size
+    Vec2Param position{"position", 0.5f, 0.5f, 0.0f, 1.0f};      ///< Center position
+    Param<float> rotation{"rotation", 0.0f, -6.28f, 6.28f};      ///< Rotation angle
+    Param<int> sides{"sides", 5, 3, 32};                          ///< Polygon/star point count
+    Param<float> cornerRadius{"cornerRadius", 0.0f, 0.0f, 0.5f}; ///< Corner rounding
+    Param<float> thickness{"thickness", 0.1f, 0.0f, 0.5f};       ///< Ring/outline thickness
+    Param<float> softness{"softness", 0.01f, 0.0f, 0.2f};        ///< Edge softness
+    ColorParam color{"color", 1.0f, 1.0f, 1.0f, 1.0f};           ///< Shape color
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Shape() {
+        registerParam(size);
+        registerParam(position);
+        registerParam(rotation);
+        registerParam(sides);
+        registerParam(cornerRadius);
+        registerParam(thickness);
+        registerParam(softness);
+        registerParam(color);
+    }
+    ~Shape() override;
+
+    /// @brief Set shape type (Circle, Rectangle, RoundedRect, etc.)
+    Shape& type(ShapeType t) { if (m_type != t) { m_type = t; markDirty(); } return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -176,49 +100,12 @@ public:
     void cleanup() override;
     std::string name() const override { return "Shape"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_size.decl(), m_position.decl(), m_rotation.decl(), m_sides.decl(),
-                 m_cornerRadius.decl(), m_thickness.decl(), m_softness.decl(), m_color.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "size") { out[0] = m_size.x(); out[1] = m_size.y(); return true; }
-        if (name == "position") { out[0] = m_position.x(); out[1] = m_position.y(); return true; }
-        if (name == "rotation") { out[0] = m_rotation; return true; }
-        if (name == "sides") { out[0] = m_sides; return true; }
-        if (name == "cornerRadius") { out[0] = m_cornerRadius; return true; }
-        if (name == "thickness") { out[0] = m_thickness; return true; }
-        if (name == "softness") { out[0] = m_softness; return true; }
-        if (name == "color") { out[0] = m_color.r(); out[1] = m_color.g(); out[2] = m_color.b(); out[3] = m_color.a(); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "size") { size(value[0], value[1]); return true; }
-        if (name == "position") { position(value[0], value[1]); return true; }
-        if (name == "rotation") { rotation(value[0]); return true; }
-        if (name == "sides") { sides(static_cast<int>(value[0])); return true; }
-        if (name == "cornerRadius") { cornerRadius(value[0]); return true; }
-        if (name == "thickness") { thickness(value[0]); return true; }
-        if (name == "softness") { softness(value[0]); return true; }
-        if (name == "color") { color(value[0], value[1], value[2], value[3]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
 
     ShapeType m_type = ShapeType::Circle;
-    Vec2Param m_size{"size", 0.5f, 0.5f, 0.0f, 2.0f};
-    Vec2Param m_position{"position", 0.5f, 0.5f, 0.0f, 1.0f};
-    Param<float> m_rotation{"rotation", 0.0f, -6.28f, 6.28f};
-    Param<int> m_sides{"sides", 5, 3, 32};
-    Param<float> m_cornerRadius{"cornerRadius", 0.0f, 0.0f, 0.5f};
-    Param<float> m_thickness{"thickness", 0.1f, 0.0f, 0.5f};
-    Param<float> m_softness{"softness", 0.01f, 0.0f, 0.2f};
-    ColorParam m_color{"color", 1.0f, 1.0f, 1.0f, 1.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

@@ -80,7 +80,7 @@ void setup(Context& ctx) {
 
     // Noise layer - reacts to mids
     auto& noise = chain.add<Noise>("noise");
-    noise.scale(20.0f).speed(0.5f).octaves(4);
+    noise.set("scale", 20.0f).set("speed", 0.5f).set("octaves", 4);
 
     // Shape - pulses with beat
     auto& shape = chain.add<Shape>("shape");
@@ -96,7 +96,8 @@ void setup(Context& ctx) {
 
     // Final bloom for glow effect
     auto& bloom = chain.add<Blur>("bloom");
-    bloom.input(&comp2).radius(8.0f);
+    bloom.input(&comp2);
+    bloom.set("radius", 8.0f);
 
     auto& final = chain.add<Composite>("final");
     final.inputA(&comp2).inputB(&bloom).mode(BlendMode::Add).opacity(0.4f);
@@ -210,8 +211,8 @@ void update(Context& ctx) {
     // Noise reacts to mids and highs
     float noiseScale = 15.0f + mid * 30.0f + high * 20.0f;
     float noiseSpeed = 0.3f + energy * 2.0f;
-    noise.scale(noiseScale);
-    noise.speed(noiseSpeed);
+    noise.set("scale", noiseScale);
+    noise.set("speed", noiseSpeed);
     comp1.opacity(0.2f + rms * 0.5f);
 
     // Shape pulses with beat
@@ -227,7 +228,7 @@ void update(Context& ctx) {
     shape.color(Color::fromHSV(hue, sat, val));
 
     // Bloom radius increases with energy
-    bloom.radius(4.0f + energy * 20.0f);
+    bloom.set("radius", 4.0f + energy * 20.0f);
 }
 
 VIVID_CHAIN(setup, update)

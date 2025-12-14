@@ -22,8 +22,10 @@ using namespace vivid::effects;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Add operators here
-    chain.add<Noise>("noise").scale(4.0f);
+    // Add operators and configure via direct assignment
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+    noise.speed = 0.5f;
 
     // Specify what to display
     chain.output("noise");
@@ -58,47 +60,47 @@ VIVID_CHAIN(setup, update)
 
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
-| `Noise` | Fractal noise | `.scale(4.0)` `.speed(0.5)` `.type(NoiseType::Perlin)` `.octaves(4)` |
-| `SolidColor` | Solid color fill | `.color(r, g, b)` |
-| `Gradient` | Color gradients | `.mode(GradientMode::Linear)` `.colorA(r,g,b)` `.colorB(r,g,b)` `.angle(0)` |
-| `Ramp` | Animated HSV gradient | `.hueSpeed(0.5)` `.saturation(1.0)` `.type(RampType::Linear)` |
-| `Shape` | SDF shapes | `.type(ShapeType::Circle)` `.size(0.5)` `.position(0.5, 0.5)` `.color(r,g,b)` |
-| `LFO` | Oscillator (value) | `.waveform(LFOWaveform::Sine)` `.frequency(1.0)` `.amplitude(1.0)` |
-| `Image` | Load image file | `.file("assets/image.jpg")` |
+| `Noise` | Fractal noise | `scale` `speed` `octaves` `.type(NoiseType::Perlin)` |
+| `SolidColor` | Solid color fill | `color.set(r, g, b)` |
+| `Gradient` | Color gradients | `.mode(GradientMode::Linear)` `colorA.set(r,g,b)` `colorB.set(r,g,b)` `angle` |
+| `Ramp` | Animated HSV gradient | `hueSpeed` `saturation` `.type(RampType::Linear)` |
+| `Shape` | SDF shapes | `.type(ShapeType::Circle)` `size.set(w,h)` `position.set(x,y)` `color.set(r,g,b,a)` |
+| `LFO` | Oscillator (value) | `.waveform(LFOWaveform::Sine)` `frequency` `amplitude` |
+| `Image` | Load image file | `file = "assets/image.jpg"` |
 
-### Effects (require `.input()`)
+### Effects (require `.input(&op)`)
 
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
-| `Blur` | Gaussian blur | `.radius(5.0)` `.passes(1)` |
-| `HSV` | Color adjustment | `.hueShift(0.0)` `.saturation(1.0)` `.value(1.0)` |
-| `Brightness` | Brightness/contrast | `.brightness(1.0)` `.contrast(1.0)` `.gamma(1.0)` |
-| `Transform` | Scale/rotate/translate | `.scale(1.0)` `.rotate(radians)` `.translate(x, y)` |
-| `Mirror` | Axis mirroring | `.horizontal(true)` `.vertical(false)` `.kaleidoscope(4)` |
-| `Displace` | Texture distortion | `.source(op)` `.map(op)` `.strength(0.1)` |
-| `Edge` | Edge detection | `.strength(1.0)` |
-| `Pixelate` | Mosaic effect | `.size(10)` |
-| `Tile` | Texture tiling | `.tilesX(4)` `.tilesY(4)` |
-| `ChromaticAberration` | RGB separation | `.amount(0.01)` `.angle(0)` |
-| `Bloom` | Glow effect | `.threshold(0.8)` `.intensity(1.0)` `.radius(5.0)` |
-| `Feedback` | Frame feedback | `.decay(0.95)` `.mix(0.5)` `.zoom(1.0)` `.rotate(0.01)` |
+| `Blur` | Gaussian blur | `radius` `passes` |
+| `HSV` | Color adjustment | `hueShift` `saturation` `value` |
+| `Brightness` | Brightness/contrast | `brightness` `contrast` `gamma` |
+| `Transform` | Scale/rotate/translate | `scale.set(x,y)` `rotation` `translate.set(x,y)` |
+| `Mirror` | Axis mirroring | `.mode(MirrorMode::Kaleidoscope)` `segments` |
+| `Displace` | Texture distortion | `.source(&op)` `.map(&op)` `strength` |
+| `Edge` | Edge detection | `strength` |
+| `Pixelate` | Mosaic effect | `size.set(w,h)` |
+| `Tile` | Texture tiling | `tilesX` `tilesY` |
+| `ChromaticAberration` | RGB separation | `amount` `.radial(true)` |
+| `Bloom` | Glow effect | `threshold` `intensity` `radius` |
+| `Feedback` | Frame feedback | `decay` `mix` `zoom` `rotation` |
 
 ### Retro Effects
 
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
-| `Dither` | Ordered dithering | `.pattern(DitherPattern::Bayer4x4)` `.levels(8)` |
-| `Quantize` | Color reduction | `.levels(8)` |
-| `Scanlines` | CRT lines | `.spacing(2)` `.intensity(0.3)` `.thickness(0.5)` |
-| `CRTEffect` | Full CRT sim | `.curvature(0.1)` `.vignette(0.3)` `.scanlines(0.2)` |
-| `Downsample` | Low-res look | `.factor(4)` |
+| `Dither` | Ordered dithering | `.pattern(DitherPattern::Bayer4x4)` `levels` |
+| `Quantize` | Color reduction | `levels` |
+| `Scanlines` | CRT lines | `spacing` `intensity` `thickness` |
+| `CRTEffect` | Full CRT sim | `curvature` `vignette` `scanlines` |
+| `Downsample` | Low-res look | `targetW` `targetH` |
 
 ### Compositing
 
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
-| `Composite` | Blend two textures | `.inputA(op)` `.inputB(op)` `.mode(BlendMode::Over)` `.opacity(1.0)` |
-| `Switch` | Select input | `.input0(op)` `.input1(op)` `.select(0)` |
+| `Composite` | Blend two textures | `.inputA(&op)` `.inputB(&op)` `.mode(BlendMode::Over)` `opacity` |
+| `Switch` | Select input | `.input(0, &op)` `.input(1, &op)` `index` `blend` |
 
 ### Particles
 
@@ -111,8 +113,8 @@ VIVID_CHAIN(setup, update)
 
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
-| `Math` | Math operations | `.operation(MathOp::Add)` `.value(0.5)` |
-| `Logic` | Comparisons | `.operation(LogicOp::GreaterThan)` `.threshold(0.5)` |
+| `Math` | Math operations | `.operation(MathOperation::Add)` `inputA` `inputB` |
+| `Logic` | Comparisons | `.operation(LogicOperation::GreaterThan)` `inputA` `inputB` |
 
 ### Canvas (2D Drawing)
 
@@ -489,9 +491,18 @@ DitherPattern::Bayer2x2, DitherPattern::Bayer4x4, DitherPattern::Bayer8x8
 ```cpp
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
-    chain.add<Noise>("noise").scale(4.0f);
-    chain.add<HSV>("color").input("noise").hueShift(0.3f);
-    chain.add<Blur>("blur").input("color").radius(3.0f);
+
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+
+    auto& color = chain.add<HSV>("color");
+    color.input(&noise);
+    color.hueShift = 0.3f;
+
+    auto& blur = chain.add<Blur>("blur");
+    blur.input(&color);
+    blur.radius = 3.0f;
+
     chain.output("blur");
 }
 ```
@@ -501,8 +512,15 @@ void setup(Context& ctx) {
 ```cpp
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
-    chain.add<Noise>("noise").scale(4.0f);
-    chain.add<Feedback>("fb").input("noise").decay(0.95f).zoom(1.01f);
+
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+
+    auto& fb = chain.add<Feedback>("fb");
+    fb.input(&noise);
+    fb.decay = 0.95f;
+    fb.zoom = 1.01f;
+
     chain.output("fb");
 }
 ```
@@ -512,13 +530,18 @@ void setup(Context& ctx) {
 ```cpp
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
-    chain.add<Noise>("noise");
-    chain.add<Image>("img").file("assets/photo.jpg");
-    chain.add<Composite>("blend")
-        .inputA("img")
-        .inputB("noise")
-        .mode(BlendMode::Overlay)
-        .opacity(0.5f);
+
+    auto& noise = chain.add<Noise>("noise");
+
+    auto& img = chain.add<Image>("img");
+    img.file = "assets/photo.jpg";
+
+    auto& blend = chain.add<Composite>("blend");
+    blend.inputA(&img);
+    blend.inputB(&noise);
+    blend.mode(BlendMode::Overlay);
+    blend.opacity = 0.5f;
+
     chain.output("blend");
 }
 ```
@@ -528,12 +551,19 @@ void setup(Context& ctx) {
 ```cpp
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
-    auto& img = chain.add<Image>("img").file("assets/photo.jpg");
-    auto& noise = chain.add<Noise>("noise").scale(10.0f).speed(0.3f);
-    chain.add<Displace>("warp")
-        .source(&img)
-        .map(&noise)
-        .strength(0.05f);
+
+    auto& img = chain.add<Image>("img");
+    img.file = "assets/photo.jpg";
+
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 10.0f;
+    noise.speed = 0.3f;
+
+    auto& warp = chain.add<Displace>("warp");
+    warp.source(&img);
+    warp.map(&noise);
+    warp.strength = 0.05f;
+
     chain.output("warp");
 }
 ```
@@ -543,10 +573,23 @@ void setup(Context& ctx) {
 ```cpp
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
-    chain.add<VideoPlayer>("vid").file("assets/video.mov");
-    chain.add<ChromaticAberration>("chroma").input("vid").amount(0.005f);
-    chain.add<Scanlines>("lines").input("chroma").spacing(3).intensity(0.2f);
-    chain.add<Quantize>("quant").input("lines").levels(32);
+
+    auto& vid = chain.add<VideoPlayer>("vid");
+    vid.file("assets/video.mov");
+
+    auto& chroma = chain.add<ChromaticAberration>("chroma");
+    chroma.input(&vid);
+    chroma.amount = 0.005f;
+
+    auto& lines = chain.add<Scanlines>("lines");
+    lines.input(&chroma);
+    lines.spacing = 3;
+    lines.intensity = 0.2f;
+
+    auto& quant = chain.add<Quantize>("quant");
+    quant.input(&lines);
+    quant.levels = 32;
+
     chain.output("quant");
 }
 ```

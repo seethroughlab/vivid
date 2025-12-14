@@ -13,9 +13,10 @@ void Chorus::initEffect(Context& ctx) {
     m_delayR.init(maxDelaySamples);
 
     // Initialize LFOs with different phase offsets for each voice
+    float rateHz = static_cast<float>(rate);
     for (int i = 0; i < 4; ++i) {
-        m_lfoL[i].init(m_sampleRate, m_rateHz, dsp::LFOWaveform::Sine);
-        m_lfoR[i].init(m_sampleRate, m_rateHz, dsp::LFOWaveform::Sine);
+        m_lfoL[i].init(m_sampleRate, rateHz, dsp::LFOWaveform::Sine);
+        m_lfoR[i].init(m_sampleRate, rateHz, dsp::LFOWaveform::Sine);
 
         // Offset phases for stereo spread
         // Left and right have slight phase difference per voice
@@ -25,8 +26,16 @@ void Chorus::initEffect(Context& ctx) {
 }
 
 void Chorus::processEffect(const float* input, float* output, uint32_t frames) {
+    // Update LFO rates in case param changed
+    float rateHz = static_cast<float>(rate);
+    for (int i = 0; i < 4; ++i) {
+        m_lfoL[i].setFrequency(rateHz);
+        m_lfoR[i].setFrequency(rateHz);
+    }
+
     float baseDelaySamples = (BASE_DELAY_MS * static_cast<float>(m_sampleRate)) / 1000.0f;
-    float depthSamples = (m_depthMs * static_cast<float>(m_sampleRate)) / 1000.0f;
+    float depthSamples = (static_cast<float>(depth) * static_cast<float>(m_sampleRate)) / 1000.0f;
+    int numVoices = static_cast<int>(voices);
 
     for (uint32_t i = 0; i < frames; ++i) {
         float inL = input[i * 2];
@@ -40,7 +49,7 @@ void Chorus::processEffect(const float* input, float* output, uint32_t frames) {
         float outL = 0.0f;
         float outR = 0.0f;
 
-        for (int v = 0; v < m_voices; ++v) {
+        for (int v = 0; v < numVoices; ++v) {
             // Get LFO values (range -1 to 1)
             float lfoL = m_lfoL[v].process();
             float lfoR = m_lfoR[v].process();
@@ -55,7 +64,7 @@ void Chorus::processEffect(const float* input, float* output, uint32_t frames) {
         }
 
         // Normalize by number of voices
-        float voiceScale = 1.0f / static_cast<float>(m_voices);
+        float voiceScale = 1.0f / static_cast<float>(numVoices);
         output[i * 2] = outL * voiceScale;
         output[i * 2 + 1] = outR * voiceScale;
     }

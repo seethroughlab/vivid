@@ -11,6 +11,7 @@
  */
 
 #include <vivid/audio/audio_analyzer.h>
+#include <vivid/param.h>
 #include <vector>
 #include <memory>
 
@@ -32,6 +33,15 @@ namespace vivid::audio {
  */
 class FFT : public AudioAnalyzer {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> smoothing{"smoothing", 0.8f, 0.0f, 0.999f};  ///< Spectrum smoothing factor
+
+    /// @}
+    // -------------------------------------------------------------------------
+
     FFT();
     ~FFT() override;
 
@@ -55,15 +65,6 @@ public:
      * Default is 1024 (21ms at 48kHz).
      */
     FFT& size(int n);
-
-    /**
-     * @brief Set spectrum smoothing
-     * @param s Smoothing factor (0=no smoothing, 0.99=very smooth)
-     */
-    FFT& smoothing(float s) {
-        m_smoothing = std::max(0.0f, std::min(0.999f, s));
-        return *this;
-    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -132,7 +133,6 @@ private:
     void allocateBuffers();
 
     int m_fftSize = 1024;
-    float m_smoothing = 0.8f;
     uint32_t m_sampleRate = 48000;
 
     // FFT state (pimpl to hide KissFFT types)

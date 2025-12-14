@@ -195,9 +195,9 @@ void Displace::process(Context& ctx) {
 
     // Update uniforms
     DisplaceUniforms uniforms = {};
-    uniforms.strength = m_strength;
-    uniforms.strengthX = m_strengthX;
-    uniforms.strengthY = m_strengthY;
+    uniforms.strength = strength;
+    uniforms.strengthX = strengthX;
+    uniforms.strengthY = strengthY;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

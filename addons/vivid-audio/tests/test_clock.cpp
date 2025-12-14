@@ -25,29 +25,26 @@ TEST_CASE("Clock operator parameter defaults", "[audio][clock]") {
         REQUIRE_THAT(out[0], WithinAbs(0.0f, 0.001f));
     }
 
-    SECTION("getBpm returns correct value") {
-        REQUIRE_THAT(clock.getBpm(), WithinAbs(120.0f, 0.001f));
+    SECTION("public bpm param returns correct value") {
+        REQUIRE_THAT(static_cast<float>(clock.bpm), WithinAbs(120.0f, 0.001f));
     }
 
-    SECTION("getSwing returns correct value") {
-        REQUIRE_THAT(clock.getSwing(), WithinAbs(0.0f, 0.001f));
+    SECTION("public swing param returns correct value") {
+        REQUIRE_THAT(static_cast<float>(clock.swing), WithinAbs(0.0f, 0.001f));
     }
 }
 
-TEST_CASE("Clock operator fluent API", "[audio][clock]") {
+TEST_CASE("Clock operator public param API", "[audio][clock]") {
     Clock clock;
-    float out[4] = {0};
 
-    SECTION("bpm setter works and chains") {
-        Clock& ref = clock.bpm(140.0f);
-        REQUIRE(&ref == &clock);
-        REQUIRE_THAT(clock.getBpm(), WithinAbs(140.0f, 0.001f));
+    SECTION("bpm assignment works") {
+        clock.bpm = 140.0f;
+        REQUIRE_THAT(static_cast<float>(clock.bpm), WithinAbs(140.0f, 0.001f));
     }
 
-    SECTION("swing setter works and chains") {
-        Clock& ref = clock.swing(0.5f);
-        REQUIRE(&ref == &clock);
-        REQUIRE_THAT(clock.getSwing(), WithinAbs(0.5f, 0.001f));
+    SECTION("swing assignment works") {
+        clock.swing = 0.5f;
+        REQUIRE_THAT(static_cast<float>(clock.swing), WithinAbs(0.5f, 0.001f));
     }
 
     SECTION("division setter chains") {
@@ -55,11 +52,13 @@ TEST_CASE("Clock operator fluent API", "[audio][clock]") {
         REQUIRE(&ref == &clock);
     }
 
-    SECTION("method chaining works") {
-        clock.bpm(90.0f).swing(0.25f).division(ClockDiv::Eighth);
+    SECTION("param assignments work together") {
+        clock.bpm = 90.0f;
+        clock.swing = 0.25f;
+        clock.division(ClockDiv::Eighth);
 
-        REQUIRE_THAT(clock.getBpm(), WithinAbs(90.0f, 0.001f));
-        REQUIRE_THAT(clock.getSwing(), WithinAbs(0.25f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(clock.bpm), WithinAbs(90.0f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(clock.swing), WithinAbs(0.25f, 0.001f));
     }
 }
 

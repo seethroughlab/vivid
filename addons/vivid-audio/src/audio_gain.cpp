@@ -32,25 +32,25 @@ void AudioGain::processEffect(const float* input, float* output, uint32_t frames
         return;
     }
 
-    float gain = static_cast<float>(m_gain);
+    float gainValue = static_cast<float>(gain);
 
     // Apply gain modulation from envelope or other source
     if (m_gainInputOp) {
         // Check if it's an Envelope operator
         auto* envelope = dynamic_cast<Envelope*>(m_gainInputOp);
         if (envelope) {
-            gain *= envelope->currentValue();
+            gainValue *= envelope->currentValue();
         }
     }
 
-    const float pan = static_cast<float>(m_pan);
+    const float panValue = static_cast<float>(pan);
 
     // Calculate L/R gains using constant power panning
     // pan: -1 = full left, 0 = center, 1 = full right
-    const float panNorm = (pan + 1.0f) * 0.5f;  // 0-1 range
+    const float panNorm = (panValue + 1.0f) * 0.5f;  // 0-1 range
     const float angle = panNorm * 1.5707963f;    // 0 to PI/2
-    const float gainL = gain * std::cos(angle);
-    const float gainR = gain * std::sin(angle);
+    const float gainL = gainValue * std::cos(angle);
+    const float gainR = gainValue * std::sin(angle);
 
     for (uint32_t i = 0; i < frames; ++i) {
         const float inL = input[i * 2];

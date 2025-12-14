@@ -173,7 +173,8 @@ void setup(Context& ctx) {
         .opacity(0.3f);
 
     // Add logo/watermark
-    chain.add<Image>("logo").file("assets/logo.png");
+    auto& logo = chain.add<Image>("logo");
+    logo.file = "assets/logo.png";
 
     chain.add<Composite>("final")
         .inputA("blend")
@@ -272,7 +273,8 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Source
-    auto& src = chain.add<Image>("src").file("assets/photo.jpg");
+    auto& src = chain.add<Image>("src");
+    src.file = "assets/photo.jpg";
 
     // Horizontal displacement noise
     chain.add<Noise>("glitchNoise")

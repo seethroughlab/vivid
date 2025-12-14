@@ -413,9 +413,9 @@ void Bloom::process(Context& ctx) {
     // Pass 1: Threshold - extract bright pixels
     {
         BloomUniforms uniforms = {};
-        uniforms.threshold = m_threshold;
-        uniforms.intensity = m_intensity;
-        uniforms.radius = m_radius;
+        uniforms.threshold = threshold;
+        uniforms.intensity = intensity;
+        uniforms.radius = radius;
         uniforms.texelW = texelW;
         uniforms.texelH = texelH;
         wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
@@ -465,13 +465,13 @@ void Bloom::process(Context& ctx) {
     }
 
     // Pass 2 & 3: Blur passes (ping-pong between bright and blur textures)
-    for (int i = 0; i < m_passes; ++i) {
+    for (int i = 0; i < passes; ++i) {
         // Horizontal blur: bright -> blur
         {
             BloomUniforms uniforms = {};
-            uniforms.threshold = m_threshold;
-            uniforms.intensity = m_intensity;
-            uniforms.radius = m_radius;
+            uniforms.threshold = threshold;
+            uniforms.intensity = intensity;
+            uniforms.radius = radius;
             uniforms.direction = 0.0f;  // Horizontal
             uniforms.texelW = texelW;
             uniforms.texelH = texelH;
@@ -524,9 +524,9 @@ void Bloom::process(Context& ctx) {
         // Vertical blur: blur -> bright
         {
             BloomUniforms uniforms = {};
-            uniforms.threshold = m_threshold;
-            uniforms.intensity = m_intensity;
-            uniforms.radius = m_radius;
+            uniforms.threshold = threshold;
+            uniforms.intensity = intensity;
+            uniforms.radius = radius;
             uniforms.direction = 1.0f;  // Vertical
             uniforms.texelW = texelW;
             uniforms.texelH = texelH;
@@ -580,9 +580,9 @@ void Bloom::process(Context& ctx) {
     // Pass 4: Combine - add bloom to original
     {
         BloomUniforms uniforms = {};
-        uniforms.threshold = m_threshold;
-        uniforms.intensity = m_intensity;
-        uniforms.radius = m_radius;
+        uniforms.threshold = threshold;
+        uniforms.intensity = intensity;
+        uniforms.radius = radius;
         uniforms.texelW = texelW;
         uniforms.texelH = texelH;
         wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));

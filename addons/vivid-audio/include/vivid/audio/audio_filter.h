@@ -52,11 +52,26 @@ enum class FilterType {
  */
 class AudioFilter : public AudioOperator {
 public:
-    AudioFilter() = default;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> cutoff{"cutoff", 1000.0f, 20.0f, 20000.0f};     ///< Cutoff frequency in Hz
+    Param<float> resonance{"resonance", 0.707f, 0.1f, 20.0f};    ///< Filter Q/resonance
+    Param<float> gain{"gain", 0.0f, -24.0f, 24.0f};              ///< Gain in dB (shelf/peak only)
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    AudioFilter() {
+        registerParam(cutoff);
+        registerParam(resonance);
+        registerParam(gain);
+    }
     ~AudioFilter() override = default;
 
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Configuration
     /// @{
 
     /**
@@ -65,28 +80,10 @@ public:
      */
     AudioFilter& type(FilterType t) { m_type = t; m_needsUpdate = true; return *this; }
 
-    /**
-     * @brief Set cutoff frequency
-     * @param hz Cutoff in Hz (20-20000)
-     */
-    AudioFilter& cutoff(float hz) { m_cutoff = hz; m_needsUpdate = true; return *this; }
-
-    /**
-     * @brief Set resonance/Q
-     * @param q Q value (0.1-20)
-     */
-    AudioFilter& resonance(float q) { m_resonance = q; m_needsUpdate = true; return *this; }
-
-    /**
-     * @brief Set gain (for shelf/peak filters)
-     * @param dB Gain in decibels (-24 to +24)
-     */
-    AudioFilter& gain(float dB) { m_gain = dB; m_needsUpdate = true; return *this; }
-
     // Convenience methods
-    AudioFilter& lowpass(float hz) { return type(FilterType::Lowpass).cutoff(hz); }
-    AudioFilter& highpass(float hz) { return type(FilterType::Highpass).cutoff(hz); }
-    AudioFilter& bandpass(float hz) { return type(FilterType::Bandpass).cutoff(hz); }
+    AudioFilter& lowpass(float hz) { cutoff = hz; return type(FilterType::Lowpass); }
+    AudioFilter& highpass(float hz) { cutoff = hz; return type(FilterType::Highpass); }
+    AudioFilter& bandpass(float hz) { cutoff = hz; return type(FilterType::Bandpass); }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -98,35 +95,14 @@ public:
     void cleanup() override;
     std::string name() const override { return "AudioFilter"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_cutoff.decl(), m_resonance.decl(), m_gain.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "cutoff") { out[0] = m_cutoff; return true; }
-        if (name == "resonance") { out[0] = m_resonance; return true; }
-        if (name == "gain") { out[0] = m_gain; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "cutoff") { m_cutoff = value[0]; m_needsUpdate = true; return true; }
-        if (name == "resonance") { m_resonance = value[0]; m_needsUpdate = true; return true; }
-        if (name == "gain") { m_gain = value[0]; m_needsUpdate = true; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void updateCoefficients();
     float processSample(float in, int channel);
 
-    // Parameters
+    // Filter type (enum, not a Param)
     FilterType m_type = FilterType::Lowpass;
-    Param<float> m_cutoff{"cutoff", 1000.0f, 20.0f, 20000.0f};
-    Param<float> m_resonance{"resonance", 0.707f, 0.1f, 20.0f};
-    Param<float> m_gain{"gain", 0.0f, -24.0f, 24.0f};
 
     // Biquad coefficients
     float m_a0 = 1, m_a1 = 0, m_a2 = 0;
@@ -135,6 +111,11 @@ private:
     // Filter state (per channel)
     float m_x1[2] = {0, 0}, m_x2[2] = {0, 0};  // Input history
     float m_y1[2] = {0, 0}, m_y2[2] = {0, 0};  // Output history
+
+    // Cached values for detecting changes
+    float m_cachedCutoff = 1000.0f;
+    float m_cachedResonance = 0.707f;
+    float m_cachedGain = 0.0f;
 
     uint32_t m_sampleRate = 48000;
     bool m_needsUpdate = true;

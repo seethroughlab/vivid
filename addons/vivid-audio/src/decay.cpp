@@ -22,7 +22,7 @@ void Decay::process(Context& ctx) {
         m_output.resize(frames);
     }
 
-    float decaySamples = static_cast<float>(m_time) * m_sampleRate;
+    float decaySamples = static_cast<float>(time) * m_sampleRate;
     float progressInc = (decaySamples > 0) ? (1.0f / decaySamples) : 1.0f;
 
     for (uint32_t i = 0; i < frames; ++i) {

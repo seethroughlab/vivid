@@ -17,7 +17,9 @@
 
 namespace vivid::render3d {
 
-GLTFLoader::GLTFLoader() = default;
+GLTFLoader::GLTFLoader() {
+    registerParam(scale);
+}
 GLTFLoader::~GLTFLoader() = default;
 
 GLTFLoader& GLTFLoader::file(const std::string& path) {
@@ -219,7 +221,7 @@ bool GLTFLoader::loadGLTF(Context& ctx) {
             float pos[3];
             cgltf_accessor_read_float(posAccessor, i, pos, 3);
             glm::vec4 worldPos = worldTransform * glm::vec4(pos[0], pos[1], pos[2], 1.0f);
-            vertex.position = glm::vec3(worldPos) * m_scale;
+            vertex.position = glm::vec3(worldPos) * static_cast<float>(scale);
 
             // Normal (optional) - transform by normal matrix
             if (normAccessor) {

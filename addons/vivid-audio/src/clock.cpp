@@ -17,7 +17,7 @@ void Clock::process(Context& ctx) {
     }
 
     // Calculate samples per beat based on BPM and division
-    float beatsPerSecond = static_cast<float>(m_bpm) / 60.0f;
+    float beatsPerSecond = static_cast<float>(bpm) / 60.0f;
     float divMultiplier = getDivisionMultiplier();
     float triggersPerSecond = beatsPerSecond * divMultiplier;
 
@@ -31,7 +31,7 @@ void Clock::process(Context& ctx) {
     m_triggered = false;
 
     // Get swing amount
-    float swingAmt = static_cast<float>(m_swing);
+    float swingAmt = static_cast<float>(swing);
 
     // Detect phase wrap (trigger point)
     if (m_phase >= 1.0) {

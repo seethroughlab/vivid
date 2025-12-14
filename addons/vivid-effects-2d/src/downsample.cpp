@@ -152,8 +152,8 @@ void Downsample::process(Context& ctx) {
     if (!needsCook()) return;
 
     DownsampleUniforms uniforms = {};
-    uniforms.targetW = static_cast<float>(m_targetW);
-    uniforms.targetH = static_cast<float>(m_targetH);
+    uniforms.targetW = static_cast<float>(static_cast<int>(targetW));
+    uniforms.targetH = static_cast<float>(static_cast<int>(targetH));
     uniforms.sourceW = static_cast<float>(m_width);
     uniforms.sourceH = static_cast<float>(m_height);
 

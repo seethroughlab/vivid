@@ -43,32 +43,24 @@ namespace vivid::audio {
  */
 class PitchEnv : public AudioOperator {
 public:
-    PitchEnv() = default;
-    ~PitchEnv() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set starting frequency
-     * @param hz Start frequency in Hz
-     */
-    PitchEnv& startFreq(float hz) { m_startFreq = hz; return *this; }
-
-    /**
-     * @brief Set ending frequency
-     * @param hz End frequency in Hz
-     */
-    PitchEnv& endFreq(float hz) { m_endFreq = hz; return *this; }
-
-    /**
-     * @brief Set sweep time
-     * @param seconds Sweep duration
-     */
-    PitchEnv& time(float seconds) { m_time = seconds; return *this; }
+    Param<float> startFreq{"startFreq", 150.0f, 20.0f, 2000.0f};  ///< Starting frequency in Hz
+    Param<float> endFreq{"endFreq", 50.0f, 20.0f, 2000.0f};       ///< Ending frequency in Hz
+    Param<float> time{"time", 0.1f, 0.001f, 2.0f};                ///< Sweep time in seconds
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    PitchEnv() {
+        registerParam(startFreq);
+        registerParam(endFreq);
+        registerParam(time);
+    }
+    ~PitchEnv() override = default;
+
     // -------------------------------------------------------------------------
     /// @name Playback Control
     /// @{
@@ -103,32 +95,9 @@ public:
     void cleanup() override;
     std::string name() const override { return "PitchEnv"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_startFreq.decl(), m_endFreq.decl(), m_time.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "startFreq") { out[0] = m_startFreq; return true; }
-        if (name == "endFreq") { out[0] = m_endFreq; return true; }
-        if (name == "time") { out[0] = m_time; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "startFreq") { m_startFreq = value[0]; return true; }
-        if (name == "endFreq") { m_endFreq = value[0]; return true; }
-        if (name == "time") { m_time = value[0]; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
-    // Parameters
-    Param<float> m_startFreq{"startFreq", 150.0f, 20.0f, 2000.0f};
-    Param<float> m_endFreq{"endFreq", 50.0f, 20.0f, 2000.0f};
-    Param<float> m_time{"time", 0.1f, 0.001f, 2.0f};
-
     // State
     float m_currentFreq = 50.0f;
     float m_progress = 1.0f;

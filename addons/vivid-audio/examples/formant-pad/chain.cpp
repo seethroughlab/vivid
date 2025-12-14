@@ -155,7 +155,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& bg = chain.add<Noise>("bg");
-    bg.scale(3.0f).speed(0.05f);
+    bg.set("scale", 3.0f).set("speed", 0.05f);
 
     auto& bgColor = chain.add<HSV>("bg_color");
     bgColor.input(&bg).saturation(0.6f).value(0.15f);

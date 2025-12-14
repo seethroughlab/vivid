@@ -178,7 +178,7 @@ Adjusts hue, saturation, and value of an input texture
 
 ---
 
-### ImageFile
+### Image
 
 Loads an image from disk and outputs it as a texture. Supports hot-reload.
 
@@ -186,7 +186,7 @@ Loads an image from disk and outputs it as a texture. Supports hot-reload.
 
 | Parameter | Type | Default | Range |
 |-----------|------|---------|-------|
-| path | string | - | - |
+| file | FilePathParam | "" | - |
 
 **Output:** Texture
 
@@ -194,9 +194,9 @@ Loads an image from disk and outputs it as a texture. Supports hot-reload.
 - `width` (float): Image width in pixels
 - `height` (float): Image height in pixels
 
-**Supported Formats:** PNG, JPG, JPEG, BMP, TGA, GIF, PSD, HDR, PIC
+**Supported Formats:** PNG, JPG, JPEG, BMP, TGA, EXR
 
-**Fluent Methods:** `.path()`, `.file()`
+**Usage:** `img.file = "path/to/image.png"`
 
 ---
 

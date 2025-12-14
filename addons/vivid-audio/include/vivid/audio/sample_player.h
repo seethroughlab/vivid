@@ -55,8 +55,12 @@ class SamplePlayer : public AudioOperator {
 public:
     static constexpr int MAX_VOICES = 32;
 
-    SamplePlayer() = default;
-    ~SamplePlayer() override = default;
+    Param<float> volume{"volume", 1.0f, 0.0f, 2.0f};  ///< Master volume
+
+    SamplePlayer() {
+        registerParam(volume);
+    }
+    ~SamplePlayer() = default;
 
     // -------------------------------------------------------------------------
     /// @name Configuration
@@ -74,11 +78,6 @@ public:
      */
     SamplePlayer& voices(int v);
 
-    /**
-     * @brief Set master volume
-     * @param v Volume (0-2)
-     */
-    SamplePlayer& volume(float v) { m_volume = v; return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -173,20 +172,6 @@ public:
 
     void generateBlock(uint32_t frameCount) override;
 
-    std::vector<ParamDecl> params() override {
-        return { m_volume.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "volume") { out[0] = m_volume; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "volume") { m_volume = value[0]; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
@@ -209,7 +194,6 @@ private:
     int m_maxVoices = 16;
 
     std::array<Voice, MAX_VOICES> m_voices;
-    Param<float> m_volume{"volume", 1.0f, 0.0f, 2.0f};
 
     bool m_initialized = false;
 };

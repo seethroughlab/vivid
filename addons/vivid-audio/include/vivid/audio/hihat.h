@@ -41,19 +41,26 @@ namespace vivid::audio {
  */
 class HiHat : public AudioOperator {
 public:
-    HiHat() = default;
-    ~HiHat() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    HiHat& decay(float s) { m_decay = s; return *this; }
-    HiHat& tone(float amt) { m_tone = amt; return *this; }
-    HiHat& ring(float amt) { m_ring = amt; return *this; }
-    HiHat& volume(float v) { m_volume = v; return *this; }
+    Param<float> decay{"decay", 0.1f, 0.01f, 2.0f};    ///< Decay time (short=closed, long=open)
+    Param<float> tone{"tone", 0.5f, 0.0f, 1.0f};       ///< Brightness
+    Param<float> ring{"ring", 0.3f, 0.0f, 1.0f};       ///< Metallic ring amount
+    Param<float> volume{"volume", 0.7f, 0.0f, 1.0f};   ///< Output volume
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    HiHat() {
+        registerParam(decay);
+        registerParam(tone);
+        registerParam(ring);
+        registerParam(volume);
+    }
+    ~HiHat() override = default;
+
     // -------------------------------------------------------------------------
     /// @name Playback Control
     /// @{
@@ -62,9 +69,6 @@ public:
     void choke();  // Instantly stop (for closed hi-hat interrupting open)
     void reset();
     bool isActive() const { return m_env > 0.0001f; }
-
-private:
-    void triggerInternal();  // Called from audio thread
 
     /// @}
     // -------------------------------------------------------------------------
@@ -80,25 +84,13 @@ private:
     void generateBlock(uint32_t frameCount) override;
     void handleEvent(const AudioEvent& event) override;
 
-    std::vector<ParamDecl> params() override {
-        return { m_decay.decl(), m_tone.decl(), m_ring.decl(), m_volume.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override;
-    bool setParam(const std::string& name, const float value[4]) override;
-
     /// @}
 
 private:
+    void triggerInternal();  // Called from audio thread
     float generateNoise();
     float bandpass(float in, int ch);
     float highpass(float in, int ch);
-
-    // Parameters
-    Param<float> m_decay{"decay", 0.1f, 0.01f, 2.0f};
-    Param<float> m_tone{"tone", 0.5f, 0.0f, 1.0f};
-    Param<float> m_ring{"ring", 0.3f, 0.0f, 1.0f};
-    Param<float> m_volume{"volume", 0.7f, 0.0f, 1.0f};
 
     // State
     float m_env = 0.0f;

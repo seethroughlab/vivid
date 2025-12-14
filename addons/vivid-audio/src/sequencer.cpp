@@ -55,7 +55,7 @@ void Sequencer::setPattern(uint16_t pattern) {
 }
 
 void Sequencer::advance() {
-    int numSteps = static_cast<int>(m_steps);
+    int numSteps = static_cast<int>(steps);
     if (numSteps < 1) numSteps = 1;
     if (numSteps > MAX_STEPS) numSteps = MAX_STEPS;
 

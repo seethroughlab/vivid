@@ -37,30 +37,20 @@ namespace vivid::effects {
  */
 class SolidColor : public TextureOperator {
 public:
-    SolidColor() = default;
-    ~SolidColor() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set fill color
-     * @param r Red (0-1)
-     * @param g Green (0-1)
-     * @param b Blue (0-1)
-     * @param a Alpha (0-1, default 1.0)
-     * @return Reference for chaining
-     */
-    SolidColor& color(float r, float g, float b, float a = 1.0f) {
-        if (m_color.r() != r || m_color.g() != g || m_color.b() != b || m_color.a() != a) {
-            m_color.set(r, g, b, a);
-            markDirty();
-        }
-        return *this;
-    }
+    ColorParam color{"color", 0.0f, 0.0f, 0.0f, 1.0f}; ///< Fill color (RGBA)
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    SolidColor() {
+        registerParam(color);
+    }
+    ~SolidColor() override;
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -70,27 +60,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "SolidColor"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_color.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "color") { out[0] = m_color.r(); out[1] = m_color.g(); out[2] = m_color.b(); out[3] = m_color.a(); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "color") { color(value[0], value[1], value[2], value[3]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
-
-    // Parameters
-    ColorParam m_color{"color", 0.0f, 0.0f, 0.0f, 1.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

@@ -32,22 +32,23 @@ namespace vivid::effects {
  */
 class BarrelDistortion : public TextureOperator {
 public:
-    BarrelDistortion() = default;
-    ~BarrelDistortion() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    BarrelDistortion& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /**
-     * @brief Set curvature amount
-     * @param c Curvature (0-1, default 0.1). Higher = more curved edges
-     */
-    BarrelDistortion& curvature(float c) { if (m_curvature != c) { m_curvature = c; markDirty(); } return *this; }
+    Param<float> curvature{"curvature", 0.1f, 0.0f, 1.0f}; ///< Distortion amount
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    BarrelDistortion() {
+        registerParam(curvature);
+    }
+    ~BarrelDistortion() override;
+
+    /// @brief Set input texture
+    BarrelDistortion& input(TextureOperator* op) { setInput(0, op); return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -57,24 +58,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "BarrelDistortion"; }
 
-    std::vector<ParamDecl> params() override { return { m_curvature.decl() }; }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "curvature") { out[0] = m_curvature; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "curvature") { curvature(value[0]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
-
-    Param<float> m_curvature{"curvature", 0.1f, 0.0f, 1.0f};
 
     WGPURenderPipeline m_pipeline = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;

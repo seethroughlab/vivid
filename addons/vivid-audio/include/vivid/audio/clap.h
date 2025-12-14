@@ -40,19 +40,26 @@ namespace vivid::audio {
  */
 class Clap : public AudioOperator {
 public:
-    Clap() = default;
-    ~Clap() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    Clap& decay(float s) { m_decay = s; return *this; }
-    Clap& tone(float amt) { m_tone = amt; return *this; }
-    Clap& spread(float amt) { m_spread = amt; return *this; }
-    Clap& volume(float v) { m_volume = v; return *this; }
+    Param<float> decay{"decay", 0.3f, 0.05f, 1.0f};     ///< Overall decay time
+    Param<float> tone{"tone", 0.5f, 0.0f, 1.0f};        ///< Brightness
+    Param<float> spread{"spread", 0.5f, 0.0f, 1.0f};    ///< Timing spread
+    Param<float> volume{"volume", 0.8f, 0.0f, 1.0f};    ///< Output volume
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Clap() {
+        registerParam(decay);
+        registerParam(tone);
+        registerParam(spread);
+        registerParam(volume);
+    }
+    ~Clap() override = default;
+
     // -------------------------------------------------------------------------
     /// @name Playback Control
     /// @{
@@ -60,9 +67,6 @@ public:
     void trigger();
     void reset();
     bool isActive() const { return m_env > 0.0001f; }
-
-private:
-    void triggerInternal();  // Called from audio thread
 
     /// @}
     // -------------------------------------------------------------------------
@@ -78,24 +82,12 @@ private:
     void generateBlock(uint32_t frameCount) override;
     void handleEvent(const AudioEvent& event) override;
 
-    std::vector<ParamDecl> params() override {
-        return { m_decay.decl(), m_tone.decl(), m_spread.decl(), m_volume.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override;
-    bool setParam(const std::string& name, const float value[4]) override;
-
     /// @}
 
 private:
+    void triggerInternal();  // Called from audio thread
     float generateNoise();
     float bandpass(float in, int ch);
-
-    // Parameters
-    Param<float> m_decay{"decay", 0.3f, 0.05f, 1.0f};
-    Param<float> m_tone{"tone", 0.5f, 0.0f, 1.0f};
-    Param<float> m_spread{"spread", 0.5f, 0.0f, 1.0f};
-    Param<float> m_volume{"volume", 0.8f, 0.0f, 1.0f};
 
     // State
     float m_env = 0.0f;

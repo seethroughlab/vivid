@@ -27,10 +27,10 @@ namespace vivid::effects {
  *
  * @par Example
  * @code
- * chain.add<HSV>("hsv")
- *     .input("source")
- *     .hueShift(0.5f)      // Shift hue 180°
- *     .saturation(1.2f);   // Boost saturation
+ * auto& hsv = chain.add<HSV>("hsv");
+ * hsv.input(&source);
+ * hsv.hueShift = 0.5f;      // Shift hue 180°
+ * hsv.saturation = 1.2f;    // Boost saturation
  * @endcode
  *
  * @par Inputs
@@ -41,51 +41,27 @@ namespace vivid::effects {
  */
 class HSV : public TextureOperator {
 public:
-    HSV() = default;
-    ~HSV() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set input texture
-     * @param op Source operator
-     * @return Reference for chaining
-     */
-    HSV& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /**
-     * @brief Set hue shift
-     * @param h Hue rotation (0-1 = full 360° rotation, default 0)
-     * @return Reference for chaining
-     */
-    HSV& hueShift(float h) {
-        if (m_hueShift != h) { m_hueShift = h; markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set saturation multiplier
-     * @param s Saturation (0 = grayscale, 1 = normal, >1 = oversaturated)
-     * @return Reference for chaining
-     */
-    HSV& saturation(float s) {
-        if (m_saturation != s) { m_saturation = s; markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set value/brightness multiplier
-     * @param v Value multiplier (0-3, default 1.0)
-     * @return Reference for chaining
-     */
-    HSV& value(float v) {
-        if (m_value != v) { m_value = v; markDirty(); }
-        return *this;
-    }
+    Param<float> hueShift{"hueShift", 0.0f, 0.0f, 1.0f};     ///< Hue rotation (0-1 wraps)
+    Param<float> saturation{"saturation", 1.0f, 0.0f, 3.0f}; ///< Saturation multiplier
+    Param<float> value{"value", 1.0f, 0.0f, 3.0f};           ///< Value/brightness multiplier
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    HSV() {
+        registerParam(hueShift);
+        registerParam(saturation);
+        registerParam(value);
+    }
+    ~HSV() override;
+
+    /// @brief Set input texture
+    HSV& input(TextureOperator* op) { setInput(0, op); return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -95,32 +71,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "HSV"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_hueShift.decl(), m_saturation.decl(), m_value.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "hueShift") { out[0] = m_hueShift; return true; }
-        if (name == "saturation") { out[0] = m_saturation; return true; }
-        if (name == "value") { out[0] = m_value; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float val[4]) override {
-        if (name == "hueShift") { hueShift(val[0]); return true; }
-        if (name == "saturation") { saturation(val[0]); return true; }
-        if (name == "value") { value(val[0]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
-
-    Param<float> m_hueShift{"hueShift", 0.0f, 0.0f, 1.0f};
-    Param<float> m_saturation{"saturation", 1.0f, 0.0f, 3.0f};
-    Param<float> m_value{"value", 1.0f, 0.0f, 3.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

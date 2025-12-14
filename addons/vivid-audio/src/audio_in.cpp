@@ -106,18 +106,12 @@ void AudioIn::Impl::captureBuffer(const float* input, uint32_t frameCount, uint3
     writePos.store(write, std::memory_order_relaxed);
 }
 
-AudioIn::AudioIn() : m_impl(std::make_unique<Impl>()) {}
+AudioIn::AudioIn() : m_impl(std::make_unique<Impl>()) {
+    registerParam(volume);
+}
 
 AudioIn::~AudioIn() {
     cleanup();
-}
-
-AudioIn& AudioIn::volume(float v) {
-    m_volume = std::clamp(v, 0.0f, 2.0f);
-    if (m_impl) {
-        m_impl->volume = m_volume;
-    }
-    return *this;
 }
 
 AudioIn& AudioIn::mute(bool m) {
@@ -140,7 +134,7 @@ void AudioIn::init(Context& ctx) {
     std::fill(m_impl->ringBuffer.begin(), m_impl->ringBuffer.end(), 0.0f);
     m_impl->writePos = 0;
     m_impl->readPos = 0;
-    m_impl->volume = m_volume;
+    m_impl->volume = static_cast<float>(volume);
 
     // Configure miniaudio device for capture
     ma_device_config config = ma_device_config_init(ma_device_type_capture);
@@ -175,6 +169,10 @@ void AudioIn::init(Context& ctx) {
 }
 
 void AudioIn::process(Context& ctx) {
+    // Sync volume param to impl for audio thread
+    if (m_impl) {
+        m_impl->volume = static_cast<float>(volume);
+    }
     // Capture device is running in background via miniaudio callback
     // Audio generation is handled by generateBlock() on audio thread
 }

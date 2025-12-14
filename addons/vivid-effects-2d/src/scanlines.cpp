@@ -169,10 +169,10 @@ void Scanlines::process(Context& ctx) {
     if (!needsCook()) return;
 
     ScanlinesUniforms uniforms = {};
-    uniforms.spacing = m_spacing;
-    uniforms.vertical = m_vertical ? 1 : 0;
-    uniforms.thickness = m_thickness;
-    uniforms.intensity = m_intensity;
+    uniforms.spacing = spacing;
+    uniforms.vertical = vertical ? 1 : 0;
+    uniforms.thickness = thickness;
+    uniforms.intensity = intensity;
     uniforms.height = static_cast<float>(m_height);
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));

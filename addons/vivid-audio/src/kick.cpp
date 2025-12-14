@@ -26,13 +26,13 @@ void Kick::generateBlock(uint32_t frameCount) {
         m_output.resize(frameCount);
     }
 
-    float basePitch = static_cast<float>(m_pitch);
-    float pitchEnvAmt = static_cast<float>(m_pitchEnv);
-    float pitchDecayTime = static_cast<float>(m_pitchDecay) * m_sampleRate;
-    float ampDecayTime = static_cast<float>(m_decay) * m_sampleRate;
-    float clickAmt = static_cast<float>(m_click);
-    float driveAmt = static_cast<float>(m_drive);
-    float vol = static_cast<float>(m_volume);
+    float basePitch = static_cast<float>(pitch);
+    float pitchEnvAmt = static_cast<float>(pitchEnv);
+    float pitchDecayTime = static_cast<float>(pitchDecay) * m_sampleRate;
+    float ampDecayTime = static_cast<float>(decay) * m_sampleRate;
+    float clickAmt = static_cast<float>(click);
+    float driveAmt = static_cast<float>(drive);
+    float vol = static_cast<float>(volume);
 
     float pitchDecayRate = (pitchDecayTime > 0) ? (1.0f / pitchDecayTime) : 1.0f;
     float ampDecayRate = (ampDecayTime > 0) ? (1.0f / ampDecayTime) : 1.0f;
@@ -131,28 +131,6 @@ float Kick::softClip(float x) const {
     if (x > 1.0f) return std::tanh(x);
     if (x < -1.0f) return std::tanh(x);
     return x;
-}
-
-bool Kick::getParam(const std::string& name, float out[4]) {
-    if (name == "pitch") { out[0] = m_pitch; return true; }
-    if (name == "pitchEnv") { out[0] = m_pitchEnv; return true; }
-    if (name == "pitchDecay") { out[0] = m_pitchDecay; return true; }
-    if (name == "decay") { out[0] = m_decay; return true; }
-    if (name == "click") { out[0] = m_click; return true; }
-    if (name == "drive") { out[0] = m_drive; return true; }
-    if (name == "volume") { out[0] = m_volume; return true; }
-    return false;
-}
-
-bool Kick::setParam(const std::string& name, const float value[4]) {
-    if (name == "pitch") { m_pitch = value[0]; return true; }
-    if (name == "pitchEnv") { m_pitchEnv = value[0]; return true; }
-    if (name == "pitchDecay") { m_pitchDecay = value[0]; return true; }
-    if (name == "decay") { m_decay = value[0]; return true; }
-    if (name == "click") { m_click = value[0]; return true; }
-    if (name == "drive") { m_drive = value[0]; return true; }
-    if (name == "volume") { m_volume = value[0]; return true; }
-    return false;
 }
 
 } // namespace vivid::audio

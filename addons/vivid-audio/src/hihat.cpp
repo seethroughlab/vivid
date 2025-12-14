@@ -26,10 +26,10 @@ void HiHat::generateBlock(uint32_t frameCount) {
         m_output.resize(frameCount);
     }
 
-    float decayTime = static_cast<float>(m_decay) * m_sampleRate;
-    float toneAmt = static_cast<float>(m_tone);
-    float ringAmt = static_cast<float>(m_ring);
-    float vol = static_cast<float>(m_volume);
+    float decayTime = static_cast<float>(decay) * m_sampleRate;
+    float toneAmt = static_cast<float>(tone);
+    float ringAmt = static_cast<float>(ring);
+    float vol = static_cast<float>(volume);
 
     float decayRate = (decayTime > 0) ? (1.0f / decayTime) : 1.0f;
 
@@ -150,22 +150,6 @@ float HiHat::highpass(float in, int ch) {
     float delta = in - m_hpState[ch];
     m_hpState[ch] = in;
     return out * 0.5f + delta * 0.5f;
-}
-
-bool HiHat::getParam(const std::string& name, float out[4]) {
-    if (name == "decay") { out[0] = m_decay; return true; }
-    if (name == "tone") { out[0] = m_tone; return true; }
-    if (name == "ring") { out[0] = m_ring; return true; }
-    if (name == "volume") { out[0] = m_volume; return true; }
-    return false;
-}
-
-bool HiHat::setParam(const std::string& name, const float value[4]) {
-    if (name == "decay") { m_decay = value[0]; return true; }
-    if (name == "tone") { m_tone = value[0]; return true; }
-    if (name == "ring") { m_ring = value[0]; return true; }
-    if (name == "volume") { m_volume = value[0]; return true; }
-    return false;
 }
 
 } // namespace vivid::audio

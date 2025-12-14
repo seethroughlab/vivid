@@ -22,83 +22,91 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Base texture: animated noise with color
-    chain.add<Noise>("noise")
-        .scale(3.0f)
-        .speed(0.3f)
-        .octaves(4);
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 3.0f;
+    noise.speed = 0.3f;
+    noise.octaves = 4;
 
-    chain.add<HSV>("colorize")
-        .input("noise")
-        .hue(0.15f)
-        .saturation(0.7f);
+    auto& colorize = chain.add<HSV>("colorize");
+    colorize.input(&noise);
+    colorize.hueShift(0.15f).saturation(0.7f);
 
     // Row 1: Mirror effects (kaleidoscope)
-    chain.add<Mirror>("mirror")
-        .input("colorize")
-        .mode(Mirror::Mode::Kaleidoscope)
-        .segments(6);
+    auto& mirror = chain.add<Mirror>("mirror");
+    mirror.input(&colorize);
+    mirror.mode(MirrorMode::Kaleidoscope).segments(6);
 
     // Row 2: Edge detection
-    chain.add<Edge>("edge")
-        .input("colorize")
-        .strength(1.0f);
+    auto& edge = chain.add<Edge>("edge");
+    edge.input(&colorize);
+    edge.strength(1.0f);
 
     // Row 3: Dithering
-    chain.add<Dither>("dither")
-        .input("colorize")
-        .pattern(Dither::Pattern::Bayer4x4)
-        .levels(4);
+    auto& dither = chain.add<Dither>("dither");
+    dither.input(&colorize);
+    dither.pattern(DitherPattern::Bayer4x4).levels(4);
 
     // Row 4: Pixelation
-    chain.add<Pixelate>("pixelate")
-        .input("colorize")
-        .blockSize(8);
+    auto& pixelate = chain.add<Pixelate>("pixelate");
+    pixelate.input(&colorize);
+    pixelate.size(8.0f);
 
     // Row 5: Color quantization
-    chain.add<Quantize>("quantize")
-        .input("colorize")
-        .levels(4);
+    auto& quantize = chain.add<Quantize>("quantize");
+    quantize.input(&colorize);
+    quantize.levels(4);
 
     // Row 6: Chromatic aberration
-    chain.add<ChromaticAberration>("chroma")
-        .input("colorize")
-        .amount(0.01f)
-        .mode(ChromaticAberration::Mode::Radial);
+    auto& chroma = chain.add<ChromaticAberration>("chroma");
+    chroma.input(&colorize);
+    chroma.amount(0.01f).radial(true);
 
     // Row 7: Scanlines
-    chain.add<Scanlines>("scanlines")
-        .input("colorize")
-        .intensity(0.3f)
-        .count(240);
+    auto& scanlines = chain.add<Scanlines>("scanlines");
+    scanlines.input(&colorize);
+    scanlines.intensity(0.3f).spacing(2);
 
     // Row 8: Vignette
-    chain.add<Vignette>("vignette")
-        .input("colorize")
-        .radius(0.7f)
-        .softness(0.4f);
+    auto& vignette = chain.add<Vignette>("vignette");
+    vignette.input(&colorize);
+    vignette.intensity(0.7f).softness(0.4f);
 
     // Create a grid layout showing all effects
-    // Scale each effect to fit in a 2x4 grid
-    chain.add<Transform>("t_mirror").input("mirror").scale(0.5f).translate(-0.5f, 0.75f);
-    chain.add<Transform>("t_edge").input("edge").scale(0.5f).translate(0.5f, 0.75f);
-    chain.add<Transform>("t_dither").input("dither").scale(0.5f).translate(-0.5f, 0.25f);
-    chain.add<Transform>("t_pixelate").input("pixelate").scale(0.5f).translate(0.5f, 0.25f);
-    chain.add<Transform>("t_quantize").input("quantize").scale(0.5f).translate(-0.5f, -0.25f);
-    chain.add<Transform>("t_chroma").input("chroma").scale(0.5f).translate(0.5f, -0.25f);
-    chain.add<Transform>("t_scanlines").input("scanlines").scale(0.5f).translate(-0.5f, -0.75f);
-    chain.add<Transform>("t_vignette").input("vignette").scale(0.5f).translate(0.5f, -0.75f);
+    auto& t_mirror = chain.add<Transform>("t_mirror");
+    t_mirror.input(&mirror).scale(0.5f).translate(-0.5f, 0.75f);
+
+    auto& t_edge = chain.add<Transform>("t_edge");
+    t_edge.input(&edge).scale(0.5f).translate(0.5f, 0.75f);
+
+    auto& t_dither = chain.add<Transform>("t_dither");
+    t_dither.input(&dither).scale(0.5f).translate(-0.5f, 0.25f);
+
+    auto& t_pixelate = chain.add<Transform>("t_pixelate");
+    t_pixelate.input(&pixelate).scale(0.5f).translate(0.5f, 0.25f);
+
+    auto& t_quantize = chain.add<Transform>("t_quantize");
+    t_quantize.input(&quantize).scale(0.5f).translate(-0.5f, -0.25f);
+
+    auto& t_chroma = chain.add<Transform>("t_chroma");
+    t_chroma.input(&chroma).scale(0.5f).translate(0.5f, -0.25f);
+
+    auto& t_scanlines = chain.add<Transform>("t_scanlines");
+    t_scanlines.input(&scanlines).scale(0.5f).translate(-0.5f, -0.75f);
+
+    auto& t_vignette = chain.add<Transform>("t_vignette");
+    t_vignette.input(&vignette).scale(0.5f).translate(0.5f, -0.75f);
 
     // Composite all transformed effects
-    chain.add<Composite>("final")
-        .input(0, "t_mirror")
-        .input(1, "t_edge")
-        .input(2, "t_dither")
-        .input(3, "t_pixelate")
-        .input(4, "t_quantize")
-        .input(5, "t_chroma")
-        .input(6, "t_scanlines")
-        .input(7, "t_vignette")
-        .mode(Composite::Mode::Add);
+    auto& final = chain.add<Composite>("final");
+    final.input(0, &t_mirror)
+         .input(1, &t_edge)
+         .input(2, &t_dither)
+         .input(3, &t_pixelate)
+         .input(4, &t_quantize)
+         .input(5, &t_chroma)
+         .input(6, &t_scanlines)
+         .input(7, &t_vignette)
+         .mode(BlendMode::Add);
 
     chain.output("final");
 }

@@ -75,11 +75,32 @@ enum class Vowel {
  */
 class Formant : public AudioEffect {
 public:
-    Formant() = default;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> morph{"morph", 0.0f, 0.0f, 1.0f};            ///< Morph to next vowel
+    Param<float> resonance{"resonance", 5.0f, 1.0f, 20.0f};   ///< Filter Q/resonance
+    Param<float> f1{"f1", 800.0f, 100.0f, 5000.0f};           ///< First formant freq (custom)
+    Param<float> f2{"f2", 1200.0f, 100.0f, 5000.0f};          ///< Second formant freq (custom)
+    Param<float> f3{"f3", 2500.0f, 100.0f, 5000.0f};          ///< Third formant freq (custom)
+    Param<float> mix{"mix", 1.0f, 0.0f, 1.0f};                ///< Dry/wet mix
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Formant() {
+        registerParam(morph);
+        registerParam(resonance);
+        registerParam(f1);
+        registerParam(f2);
+        registerParam(f3);
+        registerParam(mix);
+    }
     ~Formant() override = default;
 
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Configuration
     /// @{
 
     /**
@@ -92,40 +113,9 @@ public:
         return *this;
     }
 
-    /**
-     * @brief Set morph amount to next vowel
-     * @param m Morph amount (0-1, 0=current vowel, 1=next vowel)
-     */
-    Formant& morph(float m) { m_morph = m; m_needsUpdate = true; return *this; }
-
-    /**
-     * @brief Set filter resonance/Q
-     * @param q Q value (1-20, higher = more resonant)
-     */
-    Formant& resonance(float q) { m_resonance = q; m_needsUpdate = true; return *this; }
-
     // Override base class methods to return Formant&
     Formant& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Formant& mix(float amount) { AudioEffect::mix(amount); return *this; }
     Formant& bypass(bool b) { AudioEffect::bypass(b); return *this; }
-
-    /**
-     * @brief Set first formant frequency (custom mode)
-     * @param hz Frequency in Hz
-     */
-    Formant& f1(float hz) { m_f1 = hz; m_needsUpdate = true; return *this; }
-
-    /**
-     * @brief Set second formant frequency (custom mode)
-     * @param hz Frequency in Hz
-     */
-    Formant& f2(float hz) { m_f2 = hz; m_needsUpdate = true; return *this; }
-
-    /**
-     * @brief Set third formant frequency (custom mode)
-     * @param hz Frequency in Hz
-     */
-    Formant& f3(float hz) { m_f3 = hz; m_needsUpdate = true; return *this; }
 
     /**
      * @brief Set formant amplitudes (relative levels)
@@ -144,37 +134,6 @@ public:
     /// @{
 
     std::string name() const override { return "Formant"; }
-
-    std::vector<ParamDecl> params() override {
-        return {
-            {"vowel", ParamType::Int, 0.0f, 5.0f, {static_cast<float>(m_vowel), 0, 0, 0}},
-            m_morph.decl(), m_resonance.decl(),
-            {"mix", ParamType::Float, 0.0f, 1.0f, {getMix(), 0, 0, 0}},
-            m_f1.decl(), m_f2.decl(), m_f3.decl()
-        };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "vowel") { out[0] = static_cast<float>(m_vowel); return true; }
-        if (name == "morph") { out[0] = m_morph; return true; }
-        if (name == "resonance") { out[0] = m_resonance; return true; }
-        if (name == "mix") { out[0] = getMix(); return true; }
-        if (name == "f1") { out[0] = m_f1; return true; }
-        if (name == "f2") { out[0] = m_f2; return true; }
-        if (name == "f3") { out[0] = m_f3; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "vowel") { m_vowel = static_cast<Vowel>(static_cast<int>(value[0])); m_needsUpdate = true; return true; }
-        if (name == "morph") { m_morph = value[0]; m_needsUpdate = true; return true; }
-        if (name == "resonance") { m_resonance = value[0]; m_needsUpdate = true; return true; }
-        if (name == "mix") { mix(value[0]); return true; }
-        if (name == "f1") { m_f1 = value[0]; m_needsUpdate = true; return true; }
-        if (name == "f2") { m_f2 = value[0]; m_needsUpdate = true; return true; }
-        if (name == "f3") { m_f3 = value[0]; m_needsUpdate = true; return true; }
-        return false;
-    }
 
     /// @}
 
@@ -198,17 +157,17 @@ private:
     };
 
     void updateFilters();
-    void getFormantFreqs(Vowel v, float& f1, float& f2, float& f3) const;
+    void getFormantFreqs(Vowel v, float& outF1, float& outF2, float& outF3) const;
 
-    // Parameters
+    // Vowel preset (enum, not a Param)
     Vowel m_vowel = Vowel::A;
-    Param<float> m_morph{"morph", 0.0f, 0.0f, 1.0f};
-    Param<float> m_resonance{"resonance", 5.0f, 1.0f, 20.0f};
 
-    // Custom formant frequencies
-    Param<float> m_f1{"f1", 800.0f, 100.0f, 5000.0f};
-    Param<float> m_f2{"f2", 1200.0f, 100.0f, 5000.0f};
-    Param<float> m_f3{"f3", 2500.0f, 100.0f, 5000.0f};
+    // Cached values for detecting changes
+    float m_cachedMorph = 0.0f;
+    float m_cachedResonance = 5.0f;
+    float m_cachedF1 = 800.0f;
+    float m_cachedF2 = 1200.0f;
+    float m_cachedF3 = 2500.0f;
 
     // Formant amplitudes
     float m_a1 = 1.0f, m_a2 = 0.7f, m_a3 = 0.5f;

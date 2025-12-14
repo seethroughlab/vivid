@@ -44,22 +44,32 @@ namespace vivid::audio {
  */
 class Kick : public AudioOperator {
 public:
-    Kick() = default;
-    ~Kick() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    Kick& pitch(float hz) { m_pitch = hz; return *this; }
-    Kick& pitchEnv(float hz) { m_pitchEnv = hz; return *this; }
-    Kick& pitchDecay(float s) { m_pitchDecay = s; return *this; }
-    Kick& decay(float s) { m_decay = s; return *this; }
-    Kick& click(float amt) { m_click = amt; return *this; }
-    Kick& drive(float amt) { m_drive = amt; return *this; }
-    Kick& volume(float v) { m_volume = v; return *this; }
+    Param<float> pitch{"pitch", 50.0f, 20.0f, 200.0f};           ///< Base pitch in Hz
+    Param<float> pitchEnv{"pitchEnv", 100.0f, 0.0f, 500.0f};     ///< Pitch envelope amount
+    Param<float> pitchDecay{"pitchDecay", 0.1f, 0.01f, 0.5f};    ///< Pitch envelope decay
+    Param<float> decay{"decay", 0.5f, 0.05f, 2.0f};              ///< Amplitude decay time
+    Param<float> click{"click", 0.3f, 0.0f, 1.0f};               ///< Click/transient amount
+    Param<float> drive{"drive", 0.0f, 0.0f, 1.0f};               ///< Soft saturation
+    Param<float> volume{"volume", 0.8f, 0.0f, 1.0f};             ///< Output volume
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Kick() {
+        registerParam(pitch);
+        registerParam(pitchEnv);
+        registerParam(pitchDecay);
+        registerParam(decay);
+        registerParam(click);
+        registerParam(drive);
+        registerParam(volume);
+    }
+    ~Kick() override = default;
+
     // -------------------------------------------------------------------------
     /// @name Playback Control
     /// @{
@@ -67,9 +77,6 @@ public:
     void trigger();
     void reset();
     bool isActive() const { return m_ampEnv > 0.0001f; }
-
-private:
-    void triggerInternal();  // Called from audio thread
 
     /// @}
     // -------------------------------------------------------------------------
@@ -85,27 +92,11 @@ private:
     void generateBlock(uint32_t frameCount) override;
     void handleEvent(const AudioEvent& event) override;
 
-    std::vector<ParamDecl> params() override {
-        return { m_pitch.decl(), m_pitchEnv.decl(), m_pitchDecay.decl(),
-                 m_decay.decl(), m_click.decl(), m_drive.decl(), m_volume.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override;
-    bool setParam(const std::string& name, const float value[4]) override;
-
     /// @}
 
 private:
+    void triggerInternal();  // Called from audio thread
     float softClip(float x) const;
-
-    // Parameters
-    Param<float> m_pitch{"pitch", 50.0f, 20.0f, 200.0f};
-    Param<float> m_pitchEnv{"pitchEnv", 100.0f, 0.0f, 500.0f};
-    Param<float> m_pitchDecay{"pitchDecay", 0.1f, 0.01f, 0.5f};
-    Param<float> m_decay{"decay", 0.5f, 0.05f, 2.0f};
-    Param<float> m_click{"click", 0.3f, 0.0f, 1.0f};
-    Param<float> m_drive{"drive", 0.0f, 0.0f, 1.0f};
-    Param<float> m_volume{"volume", 0.8f, 0.0f, 1.0f};
 
     // State
     float m_phase = 0.0f;

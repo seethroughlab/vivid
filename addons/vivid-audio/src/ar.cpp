@@ -31,7 +31,7 @@ void AR::process(Context& ctx) {
                 break;
 
             case ARStage::Attack:
-                stageDuration = static_cast<float>(m_attack) * m_sampleRate;
+                stageDuration = static_cast<float>(attack) * m_sampleRate;
                 if (stageDuration > 0) {
                     m_progress += 1.0f / stageDuration;
                 }
@@ -44,7 +44,7 @@ void AR::process(Context& ctx) {
                 break;
 
             case ARStage::Release:
-                stageDuration = static_cast<float>(m_release) * m_sampleRate;
+                stageDuration = static_cast<float>(release) * m_sampleRate;
                 if (stageDuration > 0) {
                     m_progress += 1.0f / stageDuration;
                 }

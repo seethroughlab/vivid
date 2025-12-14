@@ -18,8 +18,17 @@ void Euclidean::cleanup() {
 }
 
 void Euclidean::advance() {
-    int numSteps = static_cast<int>(m_steps);
-    int rot = static_cast<int>(m_rotation);
+    // Check if params changed and regenerate if needed
+    int stepsVal = static_cast<int>(steps);
+    int hitsVal = static_cast<int>(hits);
+    if (stepsVal != m_cachedSteps || hitsVal != m_cachedHits) {
+        m_cachedSteps = stepsVal;
+        m_cachedHits = hitsVal;
+        regenerate();
+    }
+
+    int numSteps = stepsVal;
+    int rot = static_cast<int>(rotation);
 
     if (numSteps < 2) numSteps = 2;
     if (numSteps > MAX_STEPS) numSteps = MAX_STEPS;
@@ -40,8 +49,8 @@ void Euclidean::reset() {
 }
 
 uint16_t Euclidean::pattern() const {
+    int numSteps = static_cast<int>(steps);
     uint16_t result = 0;
-    int numSteps = static_cast<int>(m_steps);
     for (int i = 0; i < numSteps && i < 16; ++i) {
         if (m_pattern[i]) {
             result |= (1 << i);
@@ -52,8 +61,8 @@ uint16_t Euclidean::pattern() const {
 
 void Euclidean::regenerate() {
     // Bjorklund's algorithm for Euclidean rhythms
-    int n = static_cast<int>(m_steps);
-    int k = static_cast<int>(m_hits);
+    int n = static_cast<int>(steps);
+    int k = static_cast<int>(hits);
 
     // Clamp values
     n = std::max(2, std::min(n, MAX_STEPS));

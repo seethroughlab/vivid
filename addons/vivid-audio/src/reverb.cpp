@@ -34,17 +34,23 @@ void Reverb::initEffect(Context& ctx) {
 
 void Reverb::updateParameters() {
     // Convert room size to feedback (0.7 - 0.98)
-    float feedback = 0.7f + m_roomSize * 0.28f;
+    float feedback = 0.7f + static_cast<float>(roomSize) * 0.28f;
+    float damp = static_cast<float>(damping);
 
     for (int i = 0; i < NUM_COMBS; ++i) {
         m_combsL[i].setFeedback(feedback);
         m_combsR[i].setFeedback(feedback);
-        m_combsL[i].setDamping(m_damping);
-        m_combsR[i].setDamping(m_damping);
+        m_combsL[i].setDamping(damp);
+        m_combsR[i].setDamping(damp);
     }
 }
 
 void Reverb::processEffect(const float* input, float* output, uint32_t frames) {
+    // Update parameters in case they changed
+    updateParameters();
+
+    float w = static_cast<float>(width);
+
     for (uint32_t i = 0; i < frames; ++i) {
         float inL = input[i * 2];
         float inR = input[i * 2 + 1];
@@ -73,7 +79,7 @@ void Reverb::processEffect(const float* input, float* output, uint32_t frames) {
 
         // Apply stereo width
         float mid = (outL + outR) * 0.5f;
-        float side = (outL - outR) * 0.5f * m_width;
+        float side = (outL - outR) * 0.5f * w;
 
         output[i * 2] = mid + side;
         output[i * 2 + 1] = mid - side;

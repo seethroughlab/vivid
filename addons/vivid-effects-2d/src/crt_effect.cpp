@@ -186,11 +186,11 @@ void CRTEffect::process(Context& ctx) {
     if (!needsCook()) return;
 
     CRTUniforms uniforms = {};
-    uniforms.curvature = m_curvature;
-    uniforms.vignette = m_vignette;
-    uniforms.scanlines = m_scanlines;
-    uniforms.bloom = m_bloom;
-    uniforms.chromatic = m_chromatic;
+    uniforms.curvature = curvature;
+    uniforms.vignette = vignette;
+    uniforms.scanlines = scanlines;
+    uniforms.bloom = bloom;
+    uniforms.chromatic = chromatic;
     uniforms.aspect = static_cast<float>(m_width) / m_height;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));

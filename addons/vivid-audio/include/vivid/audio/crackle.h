@@ -34,26 +34,22 @@ namespace vivid::audio {
  */
 class Crackle : public AudioOperator {
 public:
-    Crackle() = default;
-    ~Crackle() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set impulse density
-     * @param d Density (0-1, probability per sample)
-     */
-    Crackle& density(float d) { m_density = d; return *this; }
-
-    /**
-     * @brief Set impulse volume
-     * @param v Volume (0-1)
-     */
-    Crackle& volume(float v) { m_volume = v; return *this; }
+    Param<float> density{"density", 0.1f, 0.0f, 1.0f};  ///< Impulse density (probability per sample)
+    Param<float> volume{"volume", 0.5f, 0.0f, 1.0f};    ///< Impulse amplitude
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Crackle() {
+        registerParam(density);
+        registerParam(volume);
+    }
+    ~Crackle() override = default;
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -63,30 +59,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "Crackle"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_density.decl(), m_volume.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "density") { out[0] = m_density; return true; }
-        if (name == "volume") { out[0] = m_volume; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "density") { m_density = value[0]; return true; }
-        if (name == "volume") { m_volume = value[0]; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     float randomFloat();
-
-    // Parameters
-    Param<float> m_density{"density", 0.1f, 0.0f, 1.0f};
-    Param<float> m_volume{"volume", 0.5f, 0.0f, 1.0f};
 
     // State
     uint32_t m_seed = 54321;

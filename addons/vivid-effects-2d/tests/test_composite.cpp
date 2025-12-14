@@ -24,13 +24,12 @@ TEST_CASE("Composite operator parameter defaults", "[operators][composite]") {
     }
 }
 
-TEST_CASE("Composite operator fluent API", "[operators][composite]") {
+TEST_CASE("Composite operator parameter access", "[operators][composite]") {
     Composite comp;
     float out[4] = {0};
 
-    SECTION("opacity setter works and chains") {
-        Composite& ref = comp.opacity(0.5f);
-        REQUIRE(&ref == &comp);
+    SECTION("opacity assignment works") {
+        comp.opacity = 0.5f;
         REQUIRE(comp.getParam("opacity", out));
         REQUIRE_THAT(out[0], WithinAbs(0.5f, 0.001f));
     }
@@ -40,8 +39,9 @@ TEST_CASE("Composite operator fluent API", "[operators][composite]") {
         REQUIRE(&ref == &comp);
     }
 
-    SECTION("method chaining works") {
-        comp.mode(BlendMode::Multiply).opacity(0.75f);
+    SECTION("combined usage works") {
+        comp.mode(BlendMode::Multiply);
+        comp.opacity = 0.75f;
 
         REQUIRE(comp.getParam("opacity", out));
         REQUIRE_THAT(out[0], WithinAbs(0.75f, 0.001f));

@@ -498,20 +498,20 @@ void Noise::process(Context& ctx) {
     // Generators use their declared resolution (default 1280x720)
 
     // Noise is animated if speed > 0
-    bool animated = (m_speed > 0.0f);
+    bool animated = (speed > 0.0f);
     if (!animated && !needsCook()) return;
 
     // Update uniforms
     NoiseUniforms uniforms = {};
     uniforms.time = static_cast<float>(ctx.time());
-    uniforms.scale = m_scale;
-    uniforms.speed = m_speed;
-    uniforms.z = m_offset.z();
-    uniforms.lacunarity = m_lacunarity;
-    uniforms.persistence = m_persistence;
-    uniforms.offsetX = m_offset.x();
-    uniforms.offsetY = m_offset.y();
-    uniforms.octaves = m_octaves;
+    uniforms.scale = scale;
+    uniforms.speed = speed;
+    uniforms.z = offset.z();
+    uniforms.lacunarity = lacunarity;
+    uniforms.persistence = persistence;
+    uniforms.offsetX = offset.x();
+    uniforms.offsetY = offset.y();
+    uniforms.octaves = octaves;
     uniforms.noiseType = static_cast<int>(m_type);
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));

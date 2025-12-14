@@ -15,7 +15,7 @@ void NoiseGen::init(Context& ctx) {
 void NoiseGen::process(Context& ctx) {
     if (!m_initialized) return;
 
-    float vol = static_cast<float>(m_volume);
+    float vol = static_cast<float>(volume);
 
     // Get frame count from context (variable based on render framerate)
     uint32_t frames = ctx.audioFramesThisFrame();

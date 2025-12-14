@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/envelope.h>
+#include <vivid/param.h>
 
 namespace vivid::audio {
 
@@ -40,43 +41,36 @@ namespace vivid::audio {
  */
 class Gate : public AudioEffect {
 public:
-    Gate() = default;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> threshold{"threshold", -40.0f, -80.0f, 0.0f};    ///< Threshold in dB
+    Param<float> attack{"attack", 1.0f, 0.1f, 100.0f};            ///< Attack time in ms
+    Param<float> hold{"hold", 50.0f, 0.0f, 500.0f};               ///< Hold time in ms
+    Param<float> release{"release", 100.0f, 10.0f, 1000.0f};      ///< Release time in ms
+    Param<float> range{"range", -80.0f, -80.0f, 0.0f};            ///< Attenuation range in dB
+    Param<float> mix{"mix", 1.0f, 0.0f, 1.0f};                    ///< Dry/wet mix
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Gate() {
+        registerParam(threshold);
+        registerParam(attack);
+        registerParam(hold);
+        registerParam(release);
+        registerParam(range);
+        registerParam(mix);
+    }
     ~Gate() override = default;
 
     // -------------------------------------------------------------------------
     /// @name Configuration
     /// @{
 
-    Gate& threshold(float dB) {
-        m_thresholdDb = std::max(-80.0f, std::min(0.0f, dB));
-        m_thresholdLinear = dsp::EnvelopeFollower::dbToLinear(m_thresholdDb);
-        return *this;
-    }
-
-    Gate& attack(float ms) {
-        m_attackMs = std::max(0.1f, std::min(100.0f, ms));
-        return *this;
-    }
-
-    Gate& hold(float ms) {
-        m_holdMs = std::max(0.0f, std::min(500.0f, ms));
-        return *this;
-    }
-
-    Gate& release(float ms) {
-        m_releaseMs = std::max(10.0f, std::min(1000.0f, ms));
-        return *this;
-    }
-
-    Gate& range(float dB) {
-        m_rangeDb = std::max(-80.0f, std::min(0.0f, dB));
-        m_rangeLinear = dsp::EnvelopeFollower::dbToLinear(m_rangeDb);
-        return *this;
-    }
-
     // Override base class methods to return Gate&
     Gate& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Gate& mix(float amount) { AudioEffect::mix(amount); return *this; }
     Gate& bypass(bool b) { AudioEffect::bypass(b); return *this; }
 
     /// @}
@@ -84,11 +78,6 @@ public:
     /// @name State Queries
     /// @{
 
-    float getThreshold() const { return m_thresholdDb; }
-    float getAttack() const { return m_attackMs; }
-    float getHold() const { return m_holdMs; }
-    float getRelease() const { return m_releaseMs; }
-    float getRange() const { return m_rangeDb; }
     bool isOpen() const { return m_gateOpen; }
 
     /// @}
@@ -106,15 +95,6 @@ protected:
     void cleanupEffect() override;
 
 private:
-    // Parameters
-    float m_thresholdDb = -40.0f;
-    float m_thresholdLinear = 0.01f;
-    float m_attackMs = 1.0f;
-    float m_holdMs = 50.0f;
-    float m_releaseMs = 100.0f;
-    float m_rangeDb = -80.0f;
-    float m_rangeLinear = 0.0001f;
-
     // State
     dsp::EnvelopeFollower m_envelope;
     float m_gateGain = 0.0f;  // Current gate gain (0 to 1)

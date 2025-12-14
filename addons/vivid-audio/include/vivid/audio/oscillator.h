@@ -54,60 +54,34 @@ enum class Waveform {
  */
 class Oscillator : public AudioOperator {
 public:
-    Oscillator() = default;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> frequency{"frequency", 440.0f, 20.0f, 20000.0f};     ///< Frequency in Hz
+    Param<float> volume{"volume", 0.5f, 0.0f, 1.0f};                  ///< Output volume
+    Param<float> detune{"detune", 0.0f, -100.0f, 100.0f};             ///< Detune in cents
+    Param<float> pulseWidth{"pulseWidth", 0.5f, 0.01f, 0.99f};        ///< Pulse width (Pulse waveform only)
+    Param<float> stereoDetune{"stereoDetune", 0.0f, 0.0f, 50.0f};     ///< Stereo detune in cents
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Oscillator() {
+        registerParam(frequency);
+        registerParam(volume);
+        registerParam(detune);
+        registerParam(pulseWidth);
+        registerParam(stereoDetune);
+    }
     ~Oscillator() override = default;
 
-    // -------------------------------------------------------------------------
-    /// @name Fluent API
-    /// @{
-
-    /**
-     * @brief Set oscillator frequency
-     * @param hz Frequency in Hz (20-20000)
-     */
-    Oscillator& frequency(float hz) { m_frequency = hz; return *this; }
-
-    /**
-     * @brief Set waveform type
-     * @param w Waveform (Sine, Triangle, Square, Saw, Pulse)
-     */
+    /// @brief Set waveform type
     Oscillator& waveform(Waveform w) { m_waveform = w; return *this; }
 
-    /**
-     * @brief Set output volume
-     * @param v Volume (0-1)
-     */
-    Oscillator& volume(float v) { m_volume = v; return *this; }
-
-    /**
-     * @brief Set detune in cents
-     * @param cents Detune amount (-100 to +100 cents)
-     */
-    Oscillator& detune(float cents) { m_detune = cents; return *this; }
-
-    /**
-     * @brief Set pulse width (for Pulse waveform)
-     * @param pw Pulse width (0.01-0.99, 0.5 = square wave)
-     */
-    Oscillator& pulseWidth(float pw) { m_pulseWidth = pw; return *this; }
-
-    /**
-     * @brief Set stereo detune for wider sound
-     * @param cents Detune between L/R channels
-     */
-    Oscillator& stereoDetune(float cents) { m_stereoDetune = cents; return *this; }
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name Playback Control
-    /// @{
-
-    /**
-     * @brief Reset oscillator phase
-     */
+    /// @brief Reset oscillator phase
     void reset() { m_phaseL = 0.0f; m_phaseR = 0.0f; }
 
-    /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -120,42 +94,14 @@ public:
     // Pull-based audio generation (called from audio thread)
     void generateBlock(uint32_t frameCount) override;
 
-    std::vector<ParamDecl> params() override {
-        return { m_frequency.decl(), m_volume.decl(), m_detune.decl(),
-                 m_pulseWidth.decl(), m_stereoDetune.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "frequency") { out[0] = m_frequency; return true; }
-        if (name == "volume") { out[0] = m_volume; return true; }
-        if (name == "detune") { out[0] = m_detune; return true; }
-        if (name == "pulseWidth") { out[0] = m_pulseWidth; return true; }
-        if (name == "stereoDetune") { out[0] = m_stereoDetune; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "frequency") { m_frequency = value[0]; return true; }
-        if (name == "volume") { m_volume = value[0]; return true; }
-        if (name == "detune") { m_detune = value[0]; return true; }
-        if (name == "pulseWidth") { m_pulseWidth = value[0]; return true; }
-        if (name == "stereoDetune") { m_stereoDetune = value[0]; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     float generateSample(float phase) const;
     float centsToRatio(float cents) const;
 
-    // Parameters
+    // Waveform (enum, not a Param)
     Waveform m_waveform = Waveform::Sine;
-    Param<float> m_frequency{"frequency", 440.0f, 20.0f, 20000.0f};
-    Param<float> m_volume{"volume", 0.5f, 0.0f, 1.0f};
-    Param<float> m_detune{"detune", 0.0f, -100.0f, 100.0f};
-    Param<float> m_pulseWidth{"pulseWidth", 0.5f, 0.01f, 0.99f};
-    Param<float> m_stereoDetune{"stereoDetune", 0.0f, 0.0f, 50.0f};
 
     // State
     float m_phaseL = 0.0f;

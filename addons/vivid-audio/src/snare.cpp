@@ -24,13 +24,13 @@ void Snare::generateBlock(uint32_t frameCount) {
         m_output.resize(frameCount);
     }
 
-    float toneAmt = static_cast<float>(m_tone);
-    float noiseAmt = static_cast<float>(m_noise);
-    float freq = static_cast<float>(m_pitch);
-    float toneDecayTime = static_cast<float>(m_toneDecay) * m_sampleRate;
-    float noiseDecayTime = static_cast<float>(m_noiseDecay) * m_sampleRate;
-    float snappyAmt = static_cast<float>(m_snappy);
-    float vol = static_cast<float>(m_volume);
+    float toneAmt = static_cast<float>(tone);
+    float noiseAmt = static_cast<float>(noise);
+    float freq = static_cast<float>(pitch);
+    float toneDecayTime = static_cast<float>(toneDecay) * m_sampleRate;
+    float noiseDecayTime = static_cast<float>(noiseDecay) * m_sampleRate;
+    float snappyAmt = static_cast<float>(snappy);
+    float vol = static_cast<float>(volume);
 
     float toneDecayRate = (toneDecayTime > 0) ? (1.0f / toneDecayTime) : 1.0f;
     float noiseDecayRate = (noiseDecayTime > 0) ? (1.0f / noiseDecayTime) : 1.0f;
@@ -123,28 +123,6 @@ float Snare::highpass(float in, int ch) {
     float out = alpha * (m_hpState[ch] + in - m_hpState[ch]);
     m_hpState[ch] = in;
     return out;
-}
-
-bool Snare::getParam(const std::string& name, float out[4]) {
-    if (name == "tone") { out[0] = m_tone; return true; }
-    if (name == "noise") { out[0] = m_noise; return true; }
-    if (name == "pitch") { out[0] = m_pitch; return true; }
-    if (name == "toneDecay") { out[0] = m_toneDecay; return true; }
-    if (name == "noiseDecay") { out[0] = m_noiseDecay; return true; }
-    if (name == "snappy") { out[0] = m_snappy; return true; }
-    if (name == "volume") { out[0] = m_volume; return true; }
-    return false;
-}
-
-bool Snare::setParam(const std::string& name, const float value[4]) {
-    if (name == "tone") { m_tone = value[0]; return true; }
-    if (name == "noise") { m_noise = value[0]; return true; }
-    if (name == "pitch") { m_pitch = value[0]; return true; }
-    if (name == "toneDecay") { m_toneDecay = value[0]; return true; }
-    if (name == "noiseDecay") { m_noiseDecay = value[0]; return true; }
-    if (name == "snappy") { m_snappy = value[0]; return true; }
-    if (name == "volume") { m_volume = value[0]; return true; }
-    return false;
 }
 
 } // namespace vivid::audio

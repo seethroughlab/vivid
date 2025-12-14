@@ -161,9 +161,9 @@ void Vignette::process(Context& ctx) {
     if (!needsCook()) return;
 
     VignetteUniforms uniforms = {};
-    uniforms.intensity = m_intensity;
-    uniforms.softness = m_softness;
-    uniforms.roundness = m_roundness;
+    uniforms.intensity = intensity;
+    uniforms.softness = softness;
+    uniforms.roundness = roundness;
     uniforms.aspect = static_cast<float>(m_width) / static_cast<float>(m_height);
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));

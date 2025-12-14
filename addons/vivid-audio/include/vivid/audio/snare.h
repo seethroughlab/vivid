@@ -44,22 +44,32 @@ namespace vivid::audio {
  */
 class Snare : public AudioOperator {
 public:
-    Snare() = default;
-    ~Snare() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    Snare& tone(float amt) { m_tone = amt; return *this; }
-    Snare& noise(float amt) { m_noise = amt; return *this; }
-    Snare& pitch(float hz) { m_pitch = hz; return *this; }
-    Snare& toneDecay(float s) { m_toneDecay = s; return *this; }
-    Snare& noiseDecay(float s) { m_noiseDecay = s; return *this; }
-    Snare& snappy(float amt) { m_snappy = amt; return *this; }
-    Snare& volume(float v) { m_volume = v; return *this; }
+    Param<float> tone{"tone", 0.5f, 0.0f, 1.0f};             ///< Tone/body amount
+    Param<float> noise{"noise", 0.7f, 0.0f, 1.0f};           ///< Noise/snare amount
+    Param<float> pitch{"pitch", 200.0f, 100.0f, 400.0f};     ///< Tone pitch in Hz
+    Param<float> toneDecay{"toneDecay", 0.1f, 0.01f, 0.5f};  ///< Tone envelope decay
+    Param<float> noiseDecay{"noiseDecay", 0.2f, 0.05f, 0.5f}; ///< Noise envelope decay
+    Param<float> snappy{"snappy", 0.5f, 0.0f, 1.0f};         ///< High-freq emphasis
+    Param<float> volume{"volume", 0.8f, 0.0f, 1.0f};         ///< Output volume
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Snare() {
+        registerParam(tone);
+        registerParam(noise);
+        registerParam(pitch);
+        registerParam(toneDecay);
+        registerParam(noiseDecay);
+        registerParam(snappy);
+        registerParam(volume);
+    }
+    ~Snare() override = default;
+
     // -------------------------------------------------------------------------
     /// @name Playback Control
     /// @{
@@ -67,9 +77,6 @@ public:
     void trigger();
     void reset();
     bool isActive() const { return m_toneEnv > 0.0001f || m_noiseEnv > 0.0001f; }
-
-private:
-    void triggerInternal();  // Called from audio thread
 
     /// @}
     // -------------------------------------------------------------------------
@@ -85,28 +92,12 @@ private:
     void generateBlock(uint32_t frameCount) override;
     void handleEvent(const AudioEvent& event) override;
 
-    std::vector<ParamDecl> params() override {
-        return { m_tone.decl(), m_noise.decl(), m_pitch.decl(),
-                 m_toneDecay.decl(), m_noiseDecay.decl(), m_snappy.decl(), m_volume.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override;
-    bool setParam(const std::string& name, const float value[4]) override;
-
     /// @}
 
 private:
+    void triggerInternal();  // Called from audio thread
     float generateNoise();
     float highpass(float in, int ch);
-
-    // Parameters
-    Param<float> m_tone{"tone", 0.5f, 0.0f, 1.0f};
-    Param<float> m_noise{"noise", 0.7f, 0.0f, 1.0f};
-    Param<float> m_pitch{"pitch", 200.0f, 100.0f, 400.0f};
-    Param<float> m_toneDecay{"toneDecay", 0.1f, 0.01f, 0.5f};
-    Param<float> m_noiseDecay{"noiseDecay", 0.2f, 0.05f, 0.5f};
-    Param<float> m_snappy{"snappy", 0.5f, 0.0f, 1.0f};
-    Param<float> m_volume{"volume", 0.8f, 0.0f, 1.0f};
 
     // State
     float m_phase = 0.0f;

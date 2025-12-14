@@ -13,7 +13,9 @@ struct BandSplit::Impl {
     std::vector<float> window;
 };
 
-BandSplit::BandSplit() : m_impl(std::make_unique<Impl>()) {}
+BandSplit::BandSplit() : m_impl(std::make_unique<Impl>()) {
+    registerParam(smoothing);
+}
 
 BandSplit::~BandSplit() {
     cleanupAnalyzer();
@@ -116,7 +118,7 @@ void BandSplit::analyze(const float* input, uint32_t frames, uint32_t channels) 
     }
 
     // Compute bands with smoothing
-    float smooth = m_smoothing;
+    float smooth = static_cast<float>(smoothing);
     float attack = 1.0f - smooth;
 
     float newSubBass = computeBand(m_subBassBins[0], m_subBassBins[1]);

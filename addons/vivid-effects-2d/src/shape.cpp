@@ -261,19 +261,19 @@ void Shape::process(Context& ctx) {
 
     ShapeUniforms uniforms = {};
     uniforms.shapeType = static_cast<int>(m_type);
-    uniforms.sizeX = m_size.x();
-    uniforms.sizeY = m_size.y();
-    uniforms.posX = m_position.x();
-    uniforms.posY = m_position.y();
-    uniforms.rotation = m_rotation;
-    uniforms.sides = m_sides;
-    uniforms.cornerRadius = m_cornerRadius;
-    uniforms.thickness = m_thickness;
-    uniforms.softness = m_softness;
-    uniforms.colorR = m_color.r();
-    uniforms.colorG = m_color.g();
-    uniforms.colorB = m_color.b();
-    uniforms.colorA = m_color.a();
+    uniforms.sizeX = size.x();
+    uniforms.sizeY = size.y();
+    uniforms.posX = position.x();
+    uniforms.posY = position.y();
+    uniforms.rotation = rotation;
+    uniforms.sides = sides;
+    uniforms.cornerRadius = cornerRadius;
+    uniforms.thickness = thickness;
+    uniforms.softness = softness;
+    uniforms.colorR = color.r();
+    uniforms.colorG = color.g();
+    uniforms.colorB = color.b();
+    uniforms.colorA = color.a();
     uniforms.aspect = static_cast<float>(m_width) / m_height;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));

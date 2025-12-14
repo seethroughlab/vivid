@@ -8,16 +8,23 @@ namespace vivid::audio {
 void Gate::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;
     m_envelope.init(m_sampleRate, 0.1f, 10.0f, dsp::EnvelopeMode::Peak);
-    m_gateGain = m_rangeLinear;
+    float rangeLinear = dsp::EnvelopeFollower::dbToLinear(static_cast<float>(range));
+    m_gateGain = rangeLinear;
     m_holdCounter = 0.0f;
     m_gateOpen = false;
 }
 
 void Gate::processEffect(const float* input, float* output, uint32_t frames) {
+    float attackMs = static_cast<float>(attack);
+    float releaseMs = static_cast<float>(release);
+    float holdMs = static_cast<float>(hold);
+    float thresholdLinear = dsp::EnvelopeFollower::dbToLinear(static_cast<float>(threshold));
+    float rangeLinear = dsp::EnvelopeFollower::dbToLinear(static_cast<float>(range));
+
     // Coefficients for attack/release smoothing
-    float attackCoef = std::exp(-1.0f / (m_attackMs * 0.001f * static_cast<float>(m_sampleRate)));
-    float releaseCoef = std::exp(-1.0f / (m_releaseMs * 0.001f * static_cast<float>(m_sampleRate)));
-    float holdSamples = m_holdMs * 0.001f * static_cast<float>(m_sampleRate);
+    float attackCoef = std::exp(-1.0f / (attackMs * 0.001f * static_cast<float>(m_sampleRate)));
+    float releaseCoef = std::exp(-1.0f / (releaseMs * 0.001f * static_cast<float>(m_sampleRate)));
+    float holdSamples = holdMs * 0.001f * static_cast<float>(m_sampleRate);
 
     for (uint32_t i = 0; i < frames; ++i) {
         float inL = input[i * 2];
@@ -29,7 +36,7 @@ void Gate::processEffect(const float* input, float* output, uint32_t frames) {
 
         // Gate logic with hysteresis
         float targetGain;
-        if (envelope > m_thresholdLinear) {
+        if (envelope > thresholdLinear) {
             // Above threshold: open gate
             m_gateOpen = true;
             m_holdCounter = holdSamples;
@@ -41,7 +48,7 @@ void Gate::processEffect(const float* input, float* output, uint32_t frames) {
         } else {
             // Below threshold and hold expired: close gate
             m_gateOpen = false;
-            targetGain = m_rangeLinear;
+            targetGain = rangeLinear;
         }
 
         // Smooth gain changes
@@ -60,7 +67,8 @@ void Gate::processEffect(const float* input, float* output, uint32_t frames) {
 
 void Gate::cleanupEffect() {
     m_envelope.reset();
-    m_gateGain = m_rangeLinear;
+    float rangeLinear = dsp::EnvelopeFollower::dbToLinear(static_cast<float>(range));
+    m_gateGain = rangeLinear;
     m_holdCounter = 0.0f;
     m_gateOpen = false;
 }

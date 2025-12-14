@@ -46,7 +46,8 @@ void BeatDetect::analyze(const float* input, uint32_t frames, uint32_t channels)
 
     // Adaptive threshold: avg + sensitivity * stdDev
     // With minimum threshold to avoid false triggers on silence
-    float threshold = m_avgEnergy + m_sensitivity * stdDev;
+    float sens = static_cast<float>(sensitivity);
+    float threshold = m_avgEnergy + sens * stdDev;
     threshold = std::max(threshold, 0.01f);
 
     // Update hold timer (approximate frame time from audio)
@@ -58,7 +59,7 @@ void BeatDetect::analyze(const float* input, uint32_t frames, uint32_t channels)
     m_beat = false;
     if (m_rawEnergy > threshold && m_holdTimer <= 0.0f) {
         m_beat = true;
-        m_holdTimer = m_holdTimeMs;
+        m_holdTimer = static_cast<float>(holdTime);
         m_timeSinceBeat = 0.0f;
 
         // Intensity based on how much we exceeded threshold
@@ -66,7 +67,8 @@ void BeatDetect::analyze(const float* input, uint32_t frames, uint32_t channels)
     }
 
     // Decay intensity
-    m_intensity *= m_decay;
+    float decayVal = static_cast<float>(decay);
+    m_intensity *= decayVal;
 
     // Smooth energy with decay (for visual effects)
     if (m_rawEnergy > m_energy) {
@@ -74,7 +76,7 @@ void BeatDetect::analyze(const float* input, uint32_t frames, uint32_t channels)
         m_energy = m_rawEnergy;
     } else {
         // Smooth decay
-        m_energy = m_energy * m_decay + m_rawEnergy * (1.0f - m_decay);
+        m_energy = m_energy * decayVal + m_rawEnergy * (1.0f - decayVal);
     }
 }
 

@@ -12,8 +12,8 @@ void Crackle::init(Context& ctx) {
 void Crackle::process(Context& ctx) {
     if (!m_initialized) return;
 
-    float density = static_cast<float>(m_density);
-    float vol = static_cast<float>(m_volume);
+    float densityVal = static_cast<float>(density);
+    float vol = static_cast<float>(volume);
 
     // Get frame count from context (variable based on render framerate)
     uint32_t frames = ctx.audioFramesThisFrame();
@@ -25,7 +25,7 @@ void Crackle::process(Context& ctx) {
         float sample = 0.0f;
 
         // Random chance of impulse
-        if (randomFloat() < density) {
+        if (randomFloat() < densityVal) {
             // Random impulse amplitude and polarity
             sample = (randomFloat() * 2.0f - 1.0f) * vol;
         }

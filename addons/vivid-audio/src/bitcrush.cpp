@@ -14,14 +14,15 @@ void Bitcrush::initEffect(Context& ctx) {
 float Bitcrush::quantize(float sample) {
     // Quantize to n-bit levels
     // Map from [-1, 1] to [0, levels], quantize, map back
-    float scaled = (sample + 1.0f) * 0.5f * m_quantLevels;
+    float quantLevels = static_cast<float>(1 << static_cast<int>(bits));
+    float scaled = (sample + 1.0f) * 0.5f * quantLevels;
     float quantized = std::floor(scaled);
-    return (quantized / m_quantLevels) * 2.0f - 1.0f;
+    return (quantized / quantLevels) * 2.0f - 1.0f;
 }
 
 void Bitcrush::processEffect(const float* input, float* output, uint32_t frames) {
     // Calculate how many input samples per output sample
-    float sampleRatio = static_cast<float>(m_sampleRate) / m_targetSampleRate;
+    float sampleRatio = static_cast<float>(m_sampleRate) / static_cast<float>(targetSampleRate);
 
     for (uint32_t i = 0; i < frames; ++i) {
         m_sampleCounter += 1.0f;

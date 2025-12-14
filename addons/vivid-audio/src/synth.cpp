@@ -28,14 +28,14 @@ void Synth::generateBlock(uint32_t frameCount) {
     }
 
     // Calculate effective frequency with detune
-    float baseFreq = static_cast<float>(m_frequency);
-    float detuneRatio = centsToRatio(static_cast<float>(m_detune));
+    float baseFreq = static_cast<float>(frequency);
+    float detuneRatio = centsToRatio(static_cast<float>(detune));
     float freq = baseFreq * detuneRatio;
 
     // Phase increment per sample
     float phaseInc = freq / static_cast<float>(m_sampleRate);
 
-    float vol = static_cast<float>(m_volume);
+    float vol = static_cast<float>(volume);
 
     for (uint32_t i = 0; i < frameCount; ++i) {
         // Compute envelope
@@ -61,7 +61,7 @@ void Synth::handleEvent(const AudioEvent& event) {
     switch (event.type) {
         case AudioEventType::NoteOn:
             if (event.value1 > 0.0f) {
-                m_frequency = event.value1;  // frequency in Hz
+                frequency = event.value1;  // frequency in Hz
             }
             noteOnInternal();
             break;
@@ -86,14 +86,14 @@ void Synth::cleanup() {
 
 void Synth::noteOn() {
     if (m_audioGraph && m_operatorId != UINT32_MAX) {
-        m_audioGraph->queueNoteOn(m_operatorId, static_cast<float>(m_frequency));
+        m_audioGraph->queueNoteOn(m_operatorId, static_cast<float>(frequency));
     } else {
         noteOnInternal();
     }
 }
 
 void Synth::noteOn(float hz) {
-    m_frequency = hz;  // Set frequency first (will be read in handleEvent)
+    frequency = hz;  // Set frequency first (will be read in handleEvent)
     if (m_audioGraph && m_operatorId != UINT32_MAX) {
         m_audioGraph->queueNoteOn(m_operatorId, hz);
     } else {
@@ -149,7 +149,7 @@ float Synth::generateSample(float phase) const {
             return 2.0f * phase - 1.0f;
 
         case Waveform::Pulse:
-            return (phase < static_cast<float>(m_pulseWidth)) ? 1.0f : -1.0f;
+            return (phase < static_cast<float>(pulseWidth)) ? 1.0f : -1.0f;
 
         default:
             return 0.0f;
@@ -169,12 +169,12 @@ float Synth::computeEnvelope() {
             return m_envValue + (1.0f - m_envValue) * m_envProgress;
 
         case EnvelopeStage::Decay: {
-            float sustainLevel = static_cast<float>(m_sustain);
+            float sustainLevel = static_cast<float>(sustain);
             return 1.0f + (sustainLevel - 1.0f) * m_envProgress;
         }
 
         case EnvelopeStage::Sustain:
-            return static_cast<float>(m_sustain);
+            return static_cast<float>(sustain);
 
         case EnvelopeStage::Release:
             return m_releaseStartValue * (1.0f - m_envProgress);
@@ -194,13 +194,13 @@ void Synth::advanceEnvelope(uint32_t samples) {
     float stageDuration = 0.0f;
     switch (m_envStage) {
         case EnvelopeStage::Attack:
-            stageDuration = static_cast<float>(m_attack) * m_sampleRate;
+            stageDuration = static_cast<float>(attack) * m_sampleRate;
             break;
         case EnvelopeStage::Decay:
-            stageDuration = static_cast<float>(m_decay) * m_sampleRate;
+            stageDuration = static_cast<float>(decay) * m_sampleRate;
             break;
         case EnvelopeStage::Release:
-            stageDuration = static_cast<float>(m_release) * m_sampleRate;
+            stageDuration = static_cast<float>(release) * m_sampleRate;
             break;
         default:
             break;
@@ -226,7 +226,7 @@ void Synth::advanceEnvelope(uint32_t samples) {
             case EnvelopeStage::Decay:
                 m_envStage = EnvelopeStage::Sustain;
                 m_envProgress = 0.0f;
-                m_envValue = static_cast<float>(m_sustain);
+                m_envValue = static_cast<float>(sustain);
                 break;
 
             case EnvelopeStage::Release:

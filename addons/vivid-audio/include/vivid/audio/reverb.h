@@ -23,60 +23,50 @@ namespace vivid::audio {
  * - 4 series all-pass filters (for diffusion)
  *
  * @par Parameters
- * - `roomSize(s)` - Room size (0-1, larger = longer tail)
- * - `damping(d)` - High frequency damping (0-1)
- * - `width(w)` - Stereo width (0-1)
- * - `mix(m)` - Dry/wet mix (0-1)
+ * - `roomSize` - Room size (0-1, larger = longer tail)
+ * - `damping` - High frequency damping (0-1)
+ * - `width` - Stereo width (0-1)
+ * - `mix` - Dry/wet mix (0-1)
  *
  * @par Example
  * @code
- * chain.add<Reverb>("reverb")
- *     .input("audio")
- *     .roomSize(0.7f)    // Large room
- *     .damping(0.5f)     // Moderate damping
- *     .width(1.0f)       // Full stereo
- *     .mix(0.3f);        // 30% wet
+ * chain.add<Reverb>("reverb").input("audio");
+ * auto* reverb = chain.get<Reverb>("reverb");
+ * reverb->roomSize = 0.7f;    // Large room
+ * reverb->damping = 0.5f;     // Moderate damping
+ * reverb->width = 1.0f;       // Full stereo
+ * reverb->mix = 0.3f;         // 30% wet
  * @endcode
  */
 class Reverb : public AudioEffect {
 public:
-    Reverb() = default;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> roomSize{"roomSize", 0.5f, 0.0f, 1.0f};  ///< Room size (larger = longer tail)
+    Param<float> damping{"damping", 0.5f, 0.0f, 1.0f};    ///< High frequency damping
+    Param<float> width{"width", 1.0f, 0.0f, 1.0f};        ///< Stereo width
+    Param<float> mix{"mix", 0.3f, 0.0f, 1.0f};            ///< Dry/wet mix
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Reverb() {
+        registerParam(roomSize);
+        registerParam(damping);
+        registerParam(width);
+        registerParam(mix);
+    }
     ~Reverb() override = default;
 
     // -------------------------------------------------------------------------
     /// @name Configuration
     /// @{
 
-    Reverb& roomSize(float s) {
-        m_roomSize = std::max(0.0f, std::min(1.0f, s));
-        updateParameters();
-        return *this;
-    }
-
-    Reverb& damping(float d) {
-        m_damping = std::max(0.0f, std::min(1.0f, d));
-        updateParameters();
-        return *this;
-    }
-
-    Reverb& width(float w) {
-        m_width = std::max(0.0f, std::min(1.0f, w));
-        return *this;
-    }
-
     // Override base class methods to return Reverb&
     Reverb& input(const std::string& name) { AudioEffect::input(name); return *this; }
-    Reverb& mix(float amount) { AudioEffect::mix(amount); return *this; }
     Reverb& bypass(bool b) { AudioEffect::bypass(b); return *this; }
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name State Queries
-    /// @{
-
-    float getRoomSize() const { return m_roomSize; }
-    float getDamping() const { return m_damping; }
-    float getWidth() const { return m_width; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -84,26 +74,6 @@ public:
     /// @{
 
     std::string name() const override { return "Reverb"; }
-
-    std::vector<ParamDecl> params() override {
-        return { m_roomSizeParam.decl(), m_dampingParam.decl(), m_widthParam.decl(), m_mixParam.decl() };
-    }
-
-    bool getParam(const std::string& pname, float out[4]) override {
-        if (pname == "roomSize") { out[0] = m_roomSize; return true; }
-        if (pname == "damping") { out[0] = m_damping; return true; }
-        if (pname == "width") { out[0] = m_width; return true; }
-        if (pname == "mix") { out[0] = m_mix; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& pname, const float value[4]) override {
-        if (pname == "roomSize") { roomSize(value[0]); return true; }
-        if (pname == "damping") { damping(value[0]); return true; }
-        if (pname == "width") { width(value[0]); return true; }
-        if (pname == "mix") { mix(value[0]); return true; }
-        return false;
-    }
 
     /// @}
 
@@ -114,17 +84,6 @@ protected:
 
 private:
     void updateParameters();
-
-    // Parameters (raw values used in processing)
-    float m_roomSize = 0.5f;
-    float m_damping = 0.5f;
-    float m_width = 1.0f;
-
-    // Parameter declarations for UI
-    Param<float> m_roomSizeParam{"roomSize", 0.5f, 0.0f, 1.0f};
-    Param<float> m_dampingParam{"damping", 0.5f, 0.0f, 1.0f};
-    Param<float> m_widthParam{"width", 1.0f, 0.0f, 1.0f};
-    Param<float> m_mixParam{"mix", 0.3f, 0.0f, 1.0f};
 
     // Freeverb constants (delay lengths in samples at 44.1kHz, scaled for 48kHz)
     static constexpr int NUM_COMBS = 8;

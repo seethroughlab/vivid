@@ -51,8 +51,10 @@ TEST_CASE("Chain basic operations", "[integration][chain]") {
 TEST_CASE("Chain operator configuration", "[integration][chain]") {
     Chain chain;
 
-    SECTION("fluent API works through chain.add") {
-        Noise& noise = chain.add<Noise>("noise").scale(10.0f).speed(2.0f);
+    SECTION("direct assignment works through chain.add") {
+        Noise& noise = chain.add<Noise>("noise");
+        noise.scale = 10.0f;
+        noise.speed = 2.0f;
 
         float out[4] = {0};
         REQUIRE(noise.getParam("scale", out));

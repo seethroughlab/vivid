@@ -42,7 +42,7 @@ void Levels::analyze(const float* input, uint32_t frames, uint32_t channels) {
     float peakTotal = std::max(peakLeft, peakRight);
 
     // Apply smoothing
-    float smooth = m_smoothing;
+    float smooth = static_cast<float>(smoothing);
     float attack = 1.0f - smooth;
 
     m_rmsLeft = m_rmsLeft * smooth + rmsLeft * attack;

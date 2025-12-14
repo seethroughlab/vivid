@@ -55,88 +55,33 @@ enum class GradientMode {
  */
 class Gradient : public TextureOperator {
 public:
-    Gradient() = default;
-    ~Gradient() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set gradient mode
-     * @param m Gradient mode (Linear, Radial, Angular, Diamond)
-     * @return Reference for chaining
-     */
-    Gradient& mode(GradientMode m) { if (m_mode != m) { m_mode = m; markDirty(); } return *this; }
-
-    /**
-     * @brief Set gradient angle (linear mode)
-     * @param a Angle in radians (0-2π)
-     * @return Reference for chaining
-     */
-    Gradient& angle(float a) { if (m_angle != a) { m_angle = a; markDirty(); } return *this; }
-
-    /**
-     * @brief Set gradient center point
-     * @param x X position (0-1)
-     * @param y Y position (0-1)
-     * @return Reference for chaining
-     */
-    Gradient& center(float x, float y) {
-        if (m_center.x() != x || m_center.y() != y) {
-            m_center.set(x, y);
-            markDirty();
-        }
-        return *this;
-    }
-
-    /**
-     * @brief Set gradient scale
-     * @param s Scale factor (0.1-10, default 1.0)
-     * @return Reference for chaining
-     */
-    Gradient& scale(float s) { if (m_scale != s) { m_scale = s; markDirty(); } return *this; }
-
-    /**
-     * @brief Set gradient offset
-     * @param o Offset (-1 to 1)
-     * @return Reference for chaining
-     */
-    Gradient& offset(float o) { if (m_offset != o) { m_offset = o; markDirty(); } return *this; }
-
-    /**
-     * @brief Set start color
-     * @param r Red (0-1)
-     * @param g Green (0-1)
-     * @param b Blue (0-1)
-     * @param a Alpha (0-1, default 1.0)
-     * @return Reference for chaining
-     */
-    Gradient& colorA(float r, float g, float b, float a = 1.0f) {
-        if (m_colorA.r() != r || m_colorA.g() != g || m_colorA.b() != b || m_colorA.a() != a) {
-            m_colorA.set(r, g, b, a);
-            markDirty();
-        }
-        return *this;
-    }
-
-    /**
-     * @brief Set end color
-     * @param r Red (0-1)
-     * @param g Green (0-1)
-     * @param b Blue (0-1)
-     * @param a Alpha (0-1, default 1.0)
-     * @return Reference for chaining
-     */
-    Gradient& colorB(float r, float g, float b, float a = 1.0f) {
-        if (m_colorB.r() != r || m_colorB.g() != g || m_colorB.b() != b || m_colorB.a() != a) {
-            m_colorB.set(r, g, b, a);
-            markDirty();
-        }
-        return *this;
-    }
+    Param<float> angle{"angle", 0.0f, 0.0f, 6.283f};       ///< Gradient angle (linear mode)
+    Param<float> scale{"scale", 1.0f, 0.1f, 10.0f};        ///< Gradient scale
+    Param<float> offset{"offset", 0.0f, -1.0f, 1.0f};      ///< Gradient offset
+    Vec2Param center{"center", 0.5f, 0.5f, 0.0f, 1.0f};    ///< Center point for radial/angular
+    ColorParam colorA{"colorA", 0.0f, 0.0f, 0.0f, 1.0f};   ///< Start color
+    ColorParam colorB{"colorB", 1.0f, 1.0f, 1.0f, 1.0f};   ///< End color
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Gradient() {
+        registerParam(angle);
+        registerParam(scale);
+        registerParam(offset);
+        registerParam(center);
+        registerParam(colorA);
+        registerParam(colorB);
+    }
+    ~Gradient() override;
+
+    /// @brief Set gradient mode (Linear, Radial, Angular, Diamond)
+    Gradient& mode(GradientMode m) { if (m_mode != m) { m_mode = m; markDirty(); } return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -146,43 +91,12 @@ public:
     void cleanup() override;
     std::string name() const override { return "Gradient"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_angle.decl(), m_scale.decl(), m_offset.decl(),
-                 m_center.decl(), m_colorA.decl(), m_colorB.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "angle") { out[0] = m_angle; return true; }
-        if (name == "scale") { out[0] = m_scale; return true; }
-        if (name == "offset") { out[0] = m_offset; return true; }
-        if (name == "center") { out[0] = m_center.x(); out[1] = m_center.y(); return true; }
-        if (name == "colorA") { out[0] = m_colorA.r(); out[1] = m_colorA.g(); out[2] = m_colorA.b(); out[3] = m_colorA.a(); return true; }
-        if (name == "colorB") { out[0] = m_colorB.r(); out[1] = m_colorB.g(); out[2] = m_colorB.b(); out[3] = m_colorB.a(); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "angle") { angle(value[0]); return true; }
-        if (name == "scale") { scale(value[0]); return true; }
-        if (name == "offset") { offset(value[0]); return true; }
-        if (name == "center") { center(value[0], value[1]); return true; }
-        if (name == "colorA") { colorA(value[0], value[1], value[2], value[3]); return true; }
-        if (name == "colorB") { colorB(value[0], value[1], value[2], value[3]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
 
     GradientMode m_mode = GradientMode::Linear;
-    Param<float> m_angle{"angle", 0.0f, 0.0f, 6.283f};
-    Param<float> m_scale{"scale", 1.0f, 0.1f, 10.0f};
-    Param<float> m_offset{"offset", 0.0f, -1.0f, 1.0f};
-    Vec2Param m_center{"center", 0.5f, 0.5f, 0.0f, 1.0f};
-    ColorParam m_colorA{"colorA", 0.0f, 0.0f, 0.0f, 1.0f};
-    ColorParam m_colorB{"colorB", 1.0f, 1.0f, 1.0f, 1.0f};
 
     WGPURenderPipeline m_pipeline = nullptr;
     WGPUBindGroup m_bindGroup = nullptr;

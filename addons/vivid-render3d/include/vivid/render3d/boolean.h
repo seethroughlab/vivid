@@ -12,6 +12,7 @@
 
 #include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/mesh_builder.h>
+#include <vivid/param_registry.h>
 #include <vivid/context.h>
 
 namespace vivid::render3d {
@@ -42,8 +43,14 @@ enum class BooleanOp {
  *     .operation(BooleanOp::Subtract);
  * @endcode
  */
-class Boolean : public MeshOperator {
+class Boolean : public MeshOperator, public ParamRegistry {
 public:
+    Param<bool> flatShading{"flatShading", true, false, true};  ///< Use flat shading on result
+
+    Boolean() {
+        registerParam(flatShading);
+    }
+
     /// Set the first input (A)
     Boolean& inputA(MeshOperator* op) {
         if (getInput(0) != op) {
@@ -66,15 +73,6 @@ public:
     Boolean& operation(BooleanOp op) {
         if (m_operation != op) {
             m_operation = op;
-            markDirty();
-        }
-        return *this;
-    }
-
-    /// Enable flat shading on result
-    Boolean& flatShading(bool enabled) {
-        if (m_flatShading != enabled) {
-            m_flatShading = enabled;
             markDirty();
         }
         return *this;
@@ -125,7 +123,9 @@ public:
 
         // CSG results always use flat normals - the geometry is too complex
         // to automatically determine smooth vs sharp edges
-        m_builder.computeFlatNormals();
+        if (static_cast<bool>(flatShading)) {
+            m_builder.computeFlatNormals();
+        }
 
         m_mesh = m_builder.build();
         m_mesh.upload(ctx);
@@ -141,7 +141,6 @@ public:
 
 private:
     BooleanOp m_operation = BooleanOp::Union;
-    bool m_flatShading = true;
 };
 
 } // namespace vivid::render3d

@@ -40,8 +40,12 @@ class AudioMixer : public AudioOperator {
 public:
     static constexpr int MAX_INPUTS = 8;
 
-    AudioMixer() = default;
-    ~AudioMixer() override = default;
+    Param<float> volume{"volume", 1.0f, 0.0f, 2.0f};  ///< Master output volume
+
+    AudioMixer() {
+        registerParam(volume);
+    }
+    ~AudioMixer() = default;
 
     // -------------------------------------------------------------------------
     /// @name Fluent API
@@ -61,11 +65,6 @@ public:
      */
     AudioMixer& gain(int index, float g);
 
-    /**
-     * @brief Set master output volume
-     * @param v Volume (0-2)
-     */
-    AudioMixer& volume(float v) { m_volume = v; return *this; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -80,20 +79,6 @@ public:
     // Pull-based audio generation (called from audio thread)
     void generateBlock(uint32_t frameCount) override;
 
-    std::vector<ParamDecl> params() override {
-        return { m_volume.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "volume") { out[0] = m_volume; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "volume") { m_volume = value[0]; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
@@ -101,8 +86,6 @@ private:
     std::array<std::string, MAX_INPUTS> m_inputNames{};
     std::array<float, MAX_INPUTS> m_gains{};
     std::array<AudioOperator*, MAX_INPUTS> m_inputs{};
-
-    Param<float> m_volume{"volume", 1.0f, 0.0f, 2.0f};
 
     bool m_initialized = false;
 };

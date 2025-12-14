@@ -27,11 +27,11 @@ namespace vivid::effects {
  *
  * @par Example
  * @code
- * chain.add<Brightness>("levels")
- *     .input("source")
- *     .brightness(0.1f)
- *     .contrast(1.2f)
- *     .gamma(0.9f);
+ * auto& levels = chain.add<Brightness>("levels");
+ * levels.input(&source);
+ * levels.brightness = 0.1f;
+ * levels.contrast = 1.2f;
+ * levels.gamma = 0.9f;
  * @endcode
  *
  * @par Inputs
@@ -42,51 +42,27 @@ namespace vivid::effects {
  */
 class Brightness : public TextureOperator {
 public:
-    Brightness() = default;
-    ~Brightness() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set input texture
-     * @param op Source operator
-     * @return Reference for chaining
-     */
-    Brightness& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /**
-     * @brief Set brightness offset
-     * @param b Brightness (-1 to 1, default 0)
-     * @return Reference for chaining
-     */
-    Brightness& brightness(float b) {
-        if (m_brightness != b) { m_brightness = b; markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set contrast multiplier
-     * @param c Contrast (0 = flat gray, 1 = normal, >1 = high contrast)
-     * @return Reference for chaining
-     */
-    Brightness& contrast(float c) {
-        if (m_contrast != c) { m_contrast = c; markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set gamma correction
-     * @param g Gamma exponent (0.1-3, default 1.0)
-     * @return Reference for chaining
-     */
-    Brightness& gamma(float g) {
-        if (m_gamma != g) { m_gamma = g; markDirty(); }
-        return *this;
-    }
+    Param<float> brightness{"brightness", 0.0f, -1.0f, 1.0f}; ///< Brightness offset
+    Param<float> contrast{"contrast", 1.0f, 0.0f, 3.0f};      ///< Contrast multiplier
+    Param<float> gamma{"gamma", 1.0f, 0.1f, 3.0f};            ///< Gamma correction
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Brightness() {
+        registerParam(brightness);
+        registerParam(contrast);
+        registerParam(gamma);
+    }
+    ~Brightness() override;
+
+    /// @brief Set input texture
+    Brightness& input(TextureOperator* op) { setInput(0, op); return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -96,32 +72,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "Brightness"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_brightness.decl(), m_contrast.decl(), m_gamma.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "brightness") { out[0] = m_brightness; return true; }
-        if (name == "contrast") { out[0] = m_contrast; return true; }
-        if (name == "gamma") { out[0] = m_gamma; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float val[4]) override {
-        if (name == "brightness") { brightness(val[0]); return true; }
-        if (name == "contrast") { contrast(val[0]); return true; }
-        if (name == "gamma") { gamma(val[0]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
-
-    Param<float> m_brightness{"brightness", 0.0f, -1.0f, 1.0f};
-    Param<float> m_contrast{"contrast", 1.0f, 0.0f, 3.0f};
-    Param<float> m_gamma{"gamma", 1.0f, 0.1f, 3.0f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

@@ -40,6 +40,8 @@ namespace vivid::audio {
  */
 class AudioFile : public AudioOperator {
 public:
+    Param<float> volume{"volume", 1.0f, 0.0f, 1.0f};  ///< Playback volume
+
     AudioFile();
     ~AudioFile() override;
 
@@ -64,15 +66,6 @@ public:
         return *this;
     }
 
-    /**
-     * @brief Set playback volume
-     * @param v Volume (0.0 to 1.0)
-     * @return Reference for chaining
-     */
-    AudioFile& volume(float v) {
-        m_volume = std::max(0.0f, std::min(1.0f, v));
-        return *this;
-    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -100,20 +93,6 @@ public:
     void cleanup() override;
     void generateBlock(uint32_t frameCount) override;
 
-    std::vector<ParamDecl> params() override {
-        return { m_volumeParam.decl() };
-    }
-
-    bool getParam(const std::string& pname, float out[4]) override {
-        if (pname == "volume") { out[0] = m_volume; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& pname, const float value[4]) override {
-        if (pname == "volume") { volume(value[0]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
@@ -121,12 +100,8 @@ private:
 
     std::string m_filePath;
     bool m_loop = false;
-    float m_volume = 1.0f;
     bool m_playing = false;
     bool m_needsLoad = false;
-
-    // Parameter declarations for UI
-    Param<float> m_volumeParam{"volume", 1.0f, 0.0f, 1.0f};
 
     // Audio data (resampled to 48kHz stereo)
     std::vector<float> m_samples;

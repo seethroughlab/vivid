@@ -25,9 +25,9 @@ namespace vivid::effects {
  *
  * @par Example
  * @code
- * chain.add<Quantize>("posterize")
- *     .input("source")
- *     .levels(4);  // 4 levels = 64 total colors (4^3)
+ * auto& posterize = chain.add<Quantize>("posterize");
+ * posterize.input(&source);
+ * posterize.levels = 4;  // 4 levels = 64 total colors (4^3)
  * @endcode
  *
  * @par Inputs
@@ -38,31 +38,23 @@ namespace vivid::effects {
  */
 class Quantize : public TextureOperator {
 public:
-    Quantize() = default;
-    ~Quantize() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set input texture
-     * @param op Source operator
-     * @return Reference for chaining
-     */
-    Quantize& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /**
-     * @brief Set color levels per channel
-     * @param n Levels (2-256, default 8)
-     * @return Reference for chaining
-     */
-    Quantize& levels(int n) {
-        if (m_levels != n) { m_levels = n; markDirty(); }
-        return *this;
-    }
+    Param<int> levels{"levels", 8, 2, 256}; ///< Color levels per channel
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Quantize() {
+        registerParam(levels);
+    }
+    ~Quantize() override;
+
+    /// @brief Set input texture
+    Quantize& input(TextureOperator* op) { setInput(0, op); return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -72,26 +64,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "Quantize"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_levels.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "levels") { out[0] = m_levels; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "levels") { levels(static_cast<int>(value[0])); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
-
-    Param<int> m_levels{"levels", 8, 2, 256};
 
     WGPURenderPipeline m_pipeline = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;

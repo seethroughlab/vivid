@@ -49,53 +49,30 @@ enum class ARStage {
  */
 class AR : public AudioOperator {
 public:
-    AR() = default;
-    ~AR() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set attack time
-     * @param seconds Attack time (0.001-5 seconds)
-     */
-    AR& attack(float seconds) { m_attack = seconds; return *this; }
-
-    /**
-     * @brief Set release time
-     * @param seconds Release time (0.001-10 seconds)
-     */
-    AR& release(float seconds) { m_release = seconds; return *this; }
+    Param<float> attack{"attack", 0.01f, 0.001f, 5.0f};    ///< Attack time in seconds
+    Param<float> release{"release", 0.3f, 0.001f, 10.0f};  ///< Release time in seconds
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    AR() {
+        registerParam(attack);
+        registerParam(release);
+    }
+    ~AR() override = default;
+
     // -------------------------------------------------------------------------
     /// @name Playback Control
     /// @{
 
-    /**
-     * @brief Trigger the envelope
-     */
     void trigger();
-
-    /**
-     * @brief Reset to idle
-     */
     void reset();
-
-    /**
-     * @brief Check if active
-     */
     bool isActive() const { return m_stage != ARStage::Idle; }
-
-    /**
-     * @brief Get current stage
-     */
     ARStage stage() const { return m_stage; }
-
-    /**
-     * @brief Get current value
-     */
     float currentValue() const { return m_value; }
 
     /// @}
@@ -108,28 +85,9 @@ public:
     void cleanup() override;
     std::string name() const override { return "AR"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_attack.decl(), m_release.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "attack") { out[0] = m_attack; return true; }
-        if (name == "release") { out[0] = m_release; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "attack") { m_attack = value[0]; return true; }
-        if (name == "release") { m_release = value[0]; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
-    // Parameters
-    Param<float> m_attack{"attack", 0.01f, 0.001f, 5.0f};
-    Param<float> m_release{"release", 0.3f, 0.001f, 10.0f};
 
     // State
     ARStage m_stage = ARStage::Idle;

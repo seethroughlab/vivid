@@ -22,6 +22,7 @@
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/render3d/light_operators.h>
 #include <vivid/render3d/textured_material.h>
+#include <vivid/param.h>
 #include <glm/glm.hpp>
 #include <vector>
 
@@ -67,6 +68,10 @@ struct Instance3D {
  */
 class InstancedRender3D : public vivid::effects::TextureOperator {
 public:
+    Param<float> metallic{"metallic", 0.0f, 0.0f, 1.0f};    ///< Base metallic value
+    Param<float> roughness{"roughness", 0.5f, 0.0f, 1.0f};  ///< Base roughness value
+    Param<float> ambient{"ambient", 0.3f, 0.0f, 2.0f};      ///< Ambient light intensity
+
     InstancedRender3D();
     ~InstancedRender3D() override;
 
@@ -121,33 +126,6 @@ public:
     /// Set textured PBR material (albedo, normal, metallic, roughness, AO maps)
     InstancedRender3D& material(TexturedMaterial* mat);
 
-    /// Base metallic value (can be overridden per-instance, ignored if material set)
-    InstancedRender3D& metallic(float m) {
-        if (m_metallic != m) {
-            m_metallic = m;
-            markDirty();
-        }
-        return *this;
-    }
-
-    /// Base roughness value (can be overridden per-instance, ignored if material set)
-    InstancedRender3D& roughness(float r) {
-        if (m_roughness != r) {
-            m_roughness = r;
-            markDirty();
-        }
-        return *this;
-    }
-
-    /// Ambient light intensity
-    InstancedRender3D& ambient(float a) {
-        if (m_ambient != a) {
-            m_ambient = a;
-            markDirty();
-        }
-        return *this;
-    }
-
     /// Base color multiplier
     InstancedRender3D& baseColor(float r, float g, float b, float a = 1.0f) {
         glm::vec4 newColor(r, g, b, a);
@@ -194,16 +172,6 @@ public:
     void cleanup() override;
     std::string name() const override { return "InstancedRender3D"; }
 
-    std::vector<ParamDecl> params() override {
-        return {
-            {"instanceCount", ParamType::Int, 0.0f, 100000.0f,
-             {static_cast<float>(m_instances.size()), 0, 0, 0}},
-            {"metallic", ParamType::Float, 0.0f, 1.0f, {m_metallic, 0, 0, 0}},
-            {"roughness", ParamType::Float, 0.0f, 1.0f, {m_roughness, 0, 0, 0}},
-            {"ambient", ParamType::Float, 0.0f, 2.0f, {m_ambient, 0, 0, 0}}
-        };
-    }
-
 private:
     void createPipeline(Context& ctx);
     void createTexturedPipeline(Context& ctx);
@@ -230,9 +198,6 @@ private:
     std::vector<LightOperator*> m_lightOps;
 
     // Material defaults
-    float m_metallic = 0.0f;
-    float m_roughness = 0.5f;
-    float m_ambient = 0.3f;
     glm::vec4 m_baseColor{1.0f, 1.0f, 1.0f, 1.0f};
 
     // Rendering options

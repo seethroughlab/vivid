@@ -11,6 +11,7 @@
  */
 
 #include <vivid/audio/audio_analyzer.h>
+#include <vivid/param.h>
 #include <vector>
 #include <memory>
 
@@ -42,6 +43,15 @@ namespace vivid::audio {
  */
 class BandSplit : public AudioAnalyzer {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> smoothing{"smoothing", 0.9f, 0.0f, 0.999f};  ///< Smoothing factor
+
+    /// @}
+    // -------------------------------------------------------------------------
+
     BandSplit();
     ~BandSplit() override;
 
@@ -54,15 +64,6 @@ public:
      */
     BandSplit& input(const std::string& name) {
         AudioAnalyzer::input(name);
-        return *this;
-    }
-
-    /**
-     * @brief Set smoothing factor
-     * @param s Smoothing (0=no smoothing, 0.99=very smooth)
-     */
-    BandSplit& smoothing(float s) {
-        m_smoothing = std::max(0.0f, std::min(0.999f, s));
         return *this;
     }
 
@@ -129,7 +130,6 @@ private:
     int frequencyToBin(float hz) const;
 
     int m_fftSize = 1024;
-    float m_smoothing = 0.9f;
     uint32_t m_sampleRate = 48000;
 
     // FFT state

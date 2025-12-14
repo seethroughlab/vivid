@@ -208,9 +208,9 @@ void HSV::process(Context& ctx) {
     if (!needsCook()) return;
 
     HSVUniforms uniforms = {};
-    uniforms.hueShift = m_hueShift;
-    uniforms.saturation = m_saturation;
-    uniforms.value = m_value;
+    uniforms.hueShift = hueShift;
+    uniforms.saturation = saturation;
+    uniforms.value = value;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

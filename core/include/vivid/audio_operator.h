@@ -10,6 +10,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/param_registry.h>
 #include <vivid/audio_buffer.h>
 #include <vivid/audio_event.h>
 
@@ -49,7 +50,7 @@ class AudioGraph;
  * };
  * @endcode
  */
-class AudioOperator : public Operator {
+class AudioOperator : public Operator, public ParamRegistry {
 public:
     virtual ~AudioOperator() = default;
 
@@ -58,6 +59,23 @@ public:
     /// @{
 
     OutputKind outputKind() const override { return OutputKind::Audio; }
+
+    /// @brief Get parameter declarations (uses ParamRegistry)
+    std::vector<ParamDecl> params() override { return registeredParams(); }
+
+    /// @brief Get parameter value (uses ParamRegistry)
+    bool getParam(const std::string& name, float out[4]) override {
+        return getRegisteredParam(name, out);
+    }
+
+    /// @brief Set parameter value (uses ParamRegistry, calls markDirty on change)
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (setRegisteredParam(name, value)) {
+            markDirty();
+            return true;
+        }
+        return false;
+    }
 
     /// @}
     // -------------------------------------------------------------------------

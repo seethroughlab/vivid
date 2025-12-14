@@ -27,10 +27,10 @@ namespace vivid::effects {
  *
  * @par Example
  * @code
- * chain.add<Edge>("edges")
- *     .input("source")
- *     .strength(2.0f)
- *     .threshold(0.1f);
+ * auto& edges = chain.add<Edge>("edges");
+ * edges.input(&source);
+ * edges.strength = 2.0f;
+ * edges.threshold = 0.1f;
  * @endcode
  *
  * @par Inputs
@@ -41,51 +41,27 @@ namespace vivid::effects {
  */
 class Edge : public TextureOperator {
 public:
-    Edge() = default;
-    ~Edge() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set input texture
-     * @param op Source operator
-     * @return Reference for chaining
-     */
-    Edge& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /**
-     * @brief Set edge intensity
-     * @param s Strength multiplier (0-5, default 1.0)
-     * @return Reference for chaining
-     */
-    Edge& strength(float s) {
-        if (m_strength != s) { m_strength = s; markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set edge threshold
-     * @param t Threshold (0-1, default 0.0). Edges below this are hidden
-     * @return Reference for chaining
-     */
-    Edge& threshold(float t) {
-        if (m_threshold != t) { m_threshold = t; markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Invert output colors
-     * @param i True for white background, false for black
-     * @return Reference for chaining
-     */
-    Edge& invert(bool i) {
-        if (m_invert != i) { m_invert = i; markDirty(); }
-        return *this;
-    }
+    Param<float> strength{"strength", 1.0f, 0.0f, 5.0f};   ///< Edge intensity
+    Param<float> threshold{"threshold", 0.0f, 0.0f, 1.0f}; ///< Minimum edge value
+    Param<bool> invert{"invert", false};                    ///< Invert output
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Edge() {
+        registerParam(strength);
+        registerParam(threshold);
+        registerParam(invert);
+    }
+    ~Edge() override;
+
+    /// @brief Set input texture
+    Edge& input(TextureOperator* op) { setInput(0, op); return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -95,32 +71,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "Edge"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_strength.decl(), m_threshold.decl(), m_invert.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "strength") { out[0] = m_strength; return true; }
-        if (name == "threshold") { out[0] = m_threshold; return true; }
-        if (name == "invert") { out[0] = m_invert ? 1.0f : 0.0f; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "strength") { strength(value[0]); return true; }
-        if (name == "threshold") { threshold(value[0]); return true; }
-        if (name == "invert") { invert(value[0] > 0.5f); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
-
-    Param<float> m_strength{"strength", 1.0f, 0.0f, 5.0f};
-    Param<float> m_threshold{"threshold", 0.0f, 0.0f, 1.0f};
-    Param<bool> m_invert{"invert", false};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

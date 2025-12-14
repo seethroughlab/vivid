@@ -87,15 +87,12 @@ void setup(Context& ctx) {
         .input("master");
 
     // Visual representation
-    chain.add<Noise>("bg_noise")
-        .scale(4.0f)
-        .speed(0.1f);
+    auto& bg_noise = chain.add<Noise>("bg_noise");
+    bg_noise.set("scale", 4.0f).set("speed", 0.1f);
 
-    chain.add<HSV>("bg_color")
-        .input("bg_noise")
-        .hue(0.6f)
-        .saturation(0.3f)
-        .value(0.2f);
+    auto& bg_color = chain.add<HSV>("bg_color");
+    bg_color.input(&bg_noise);
+    bg_color.hue(0.6f).saturation(0.3f).value(0.2f);
 
     // Pulsing circle based on audio levels
     chain.add<Shape>("pulse")

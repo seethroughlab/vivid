@@ -154,7 +154,7 @@ void BarrelDistortion::process(Context& ctx) {
     if (!needsCook()) return;
 
     BarrelDistortionUniforms uniforms = {};
-    uniforms.curvature = m_curvature;
+    uniforms.curvature = curvature;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

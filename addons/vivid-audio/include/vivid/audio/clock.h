@@ -9,6 +9,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/param.h>
+#include <vivid/param_registry.h>
 #include <string>
 #include <vector>
 #include <functional>
@@ -46,7 +47,9 @@ enum class ClockDiv {
  *
  * @par Example
  * @code
- * chain.add<Clock>("clock").bpm(120.0f).division(ClockDiv::Sixteenth);
+ * chain.add<Clock>("clock");
+ * chain.get<Clock>("clock")->bpm = 120.0f;
+ * chain.get<Clock>("clock")->division(ClockDiv::Sixteenth);
  *
  * void update(Context& ctx) {
  *     if (chain.get<Clock>("clock")->triggered()) {
@@ -55,24 +58,29 @@ enum class ClockDiv {
  * }
  * @endcode
  */
-class Clock : public Operator {
+class Clock : public Operator, public ParamRegistry {
 public:
-    Clock() = default;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> bpm{"bpm", 120.0f, 20.0f, 300.0f};   ///< Tempo in beats per minute
+    Param<float> swing{"swing", 0.0f, 0.0f, 1.0f};    ///< Swing amount (delays even beats)
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Clock() {
+        registerParam(bpm);
+        registerParam(swing);
+    }
     ~Clock() override = default;
 
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Configuration
     /// @{
 
-    Clock& bpm(float tempo) { m_bpm = tempo; return *this; }
     Clock& division(ClockDiv div) { m_division = div; return *this; }
-    Clock& swing(float amt) { m_swing = amt; return *this; }
-
-    /// @brief Get current BPM
-    float getBpm() const { return m_bpm; }
-
-    /// @brief Get current swing amount
-    float getSwing() const { return m_swing; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -147,20 +155,12 @@ public:
     std::string name() const override { return "Clock"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_bpm.decl(), m_swing.decl() };
-    }
-
+    std::vector<ParamDecl> params() override { return registeredParams(); }
     bool getParam(const std::string& name, float out[4]) override {
-        if (name == "bpm") { out[0] = m_bpm; return true; }
-        if (name == "swing") { out[0] = m_swing; return true; }
-        return false;
+        return getRegisteredParam(name, out);
     }
-
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "bpm") { m_bpm = value[0]; return true; }
-        if (name == "swing") { m_swing = value[0]; return true; }
-        return false;
+        return setRegisteredParam(name, value);
     }
 
     /// @}
@@ -168,9 +168,6 @@ public:
 private:
     float getDivisionMultiplier() const;
 
-    // Parameters
-    Param<float> m_bpm{"bpm", 120.0f, 20.0f, 300.0f};
-    Param<float> m_swing{"swing", 0.0f, 0.0f, 1.0f};
     ClockDiv m_division = ClockDiv::Quarter;
 
     // State

@@ -13,6 +13,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/param_registry.h>
 #include <vivid/context.h>
 #include <glm/glm.hpp>
 
@@ -50,7 +51,7 @@ struct LightData {
  * Provides common interface for all light types. Derived classes
  * configure the LightData and can be connected to Render3D.
  */
-class LightOperator : public Operator {
+class LightOperator : public Operator, public ParamRegistry {
 public:
     /**
      * @brief Get the light data
@@ -91,8 +92,11 @@ protected:
  */
 class DirectionalLight : public LightOperator {
 public:
+    Param<float> intensity{"intensity", 1.0f, 0.0f, 10.0f};  ///< Light intensity multiplier
+
     DirectionalLight() {
         m_light.type = LightType::Directional;
+        registerParam(intensity);
     }
 
     /// Set light direction (will be normalized)
@@ -134,15 +138,6 @@ public:
         return *this;
     }
 
-    /// Set intensity multiplier
-    DirectionalLight& intensity(float i) {
-        if (m_light.intensity != i) {
-            m_light.intensity = i;
-            markDirty();
-        }
-        return *this;
-    }
-
     /// Connect intensity to another operator's output value
     DirectionalLight& intensityInput(Operator* op) {
         setInput(0, op);
@@ -152,29 +147,18 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
+        // Sync param to LightData
+        m_light.intensity = static_cast<float>(intensity);
 
-        // Read animated intensity if connected
+        // Read animated intensity if connected (overrides param)
         if (auto* input = getInput(0)) {
             m_light.intensity = input->outputValue();
         }
-
-        didCook();
     }
 
     void cleanup() override {}
 
     std::string name() const override { return "DirectionalLight"; }
-
-    std::vector<ParamDecl> params() override {
-        return {
-            {"direction", ParamType::Vec3, -1.0f, 1.0f,
-             {m_light.direction.x, m_light.direction.y, m_light.direction.z, 0}},
-            {"color", ParamType::Color, 0.0f, 1.0f,
-             {m_light.color.r, m_light.color.g, m_light.color.b, 1.0f}},
-            {"intensity", ParamType::Float, 0.0f, 10.0f, {m_light.intensity, 0, 0, 0}}
-        };
-    }
 };
 
 // =============================================================================
@@ -198,8 +182,13 @@ public:
  */
 class PointLight : public LightOperator {
 public:
+    Param<float> intensity{"intensity", 1.0f, 0.0f, 10.0f};  ///< Light intensity multiplier
+    Param<float> range{"range", 10.0f, 0.1f, 100.0f};        ///< Falloff distance
+
     PointLight() {
         m_light.type = LightType::Point;
+        registerParam(intensity);
+        registerParam(range);
     }
 
     /// Set light position
@@ -240,24 +229,6 @@ public:
         return *this;
     }
 
-    /// Set intensity multiplier
-    PointLight& intensity(float i) {
-        if (m_light.intensity != i) {
-            m_light.intensity = i;
-            markDirty();
-        }
-        return *this;
-    }
-
-    /// Set falloff range
-    PointLight& range(float r) {
-        if (m_light.range != r) {
-            m_light.range = r;
-            markDirty();
-        }
-        return *this;
-    }
-
     /// Connect intensity to another operator's output value
     PointLight& intensityInput(Operator* op) {
         setInput(0, op);
@@ -267,29 +238,19 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
+        // Sync params to LightData
+        m_light.intensity = static_cast<float>(intensity);
+        m_light.range = static_cast<float>(range);
 
+        // Read animated intensity if connected (overrides param)
         if (auto* input = getInput(0)) {
             m_light.intensity = input->outputValue();
         }
-
-        didCook();
     }
 
     void cleanup() override {}
 
     std::string name() const override { return "PointLight"; }
-
-    std::vector<ParamDecl> params() override {
-        return {
-            {"position", ParamType::Vec3, -100.0f, 100.0f,
-             {m_light.position.x, m_light.position.y, m_light.position.z, 0}},
-            {"color", ParamType::Color, 0.0f, 1.0f,
-             {m_light.color.r, m_light.color.g, m_light.color.b, 1.0f}},
-            {"intensity", ParamType::Float, 0.0f, 10.0f, {m_light.intensity, 0, 0, 0}},
-            {"range", ParamType::Float, 0.1f, 100.0f, {m_light.range, 0, 0, 0}}
-        };
-    }
 };
 
 // =============================================================================
@@ -313,9 +274,18 @@ public:
  */
 class SpotLight : public LightOperator {
 public:
+    Param<float> intensity{"intensity", 1.0f, 0.0f, 10.0f};    ///< Light intensity multiplier
+    Param<float> range{"range", 10.0f, 0.1f, 100.0f};          ///< Falloff distance
+    Param<float> spotAngle{"spotAngle", 45.0f, 1.0f, 180.0f};  ///< Outer cone angle in degrees
+    Param<float> spotBlend{"spotBlend", 0.1f, 0.0f, 1.0f};     ///< Inner/outer cone blend
+
     SpotLight() {
         m_light.type = LightType::Spot;
         m_light.direction = glm::vec3(0, -1, 0);  // Default pointing down
+        registerParam(intensity);
+        registerParam(range);
+        registerParam(spotAngle);
+        registerParam(spotBlend);
     }
 
     /// Set light position
@@ -376,42 +346,6 @@ public:
         return *this;
     }
 
-    /// Set intensity multiplier
-    SpotLight& intensity(float i) {
-        if (m_light.intensity != i) {
-            m_light.intensity = i;
-            markDirty();
-        }
-        return *this;
-    }
-
-    /// Set falloff range
-    SpotLight& range(float r) {
-        if (m_light.range != r) {
-            m_light.range = r;
-            markDirty();
-        }
-        return *this;
-    }
-
-    /// Set outer cone angle in degrees
-    SpotLight& spotAngle(float degrees) {
-        if (m_light.spotAngle != degrees) {
-            m_light.spotAngle = degrees;
-            markDirty();
-        }
-        return *this;
-    }
-
-    /// Set inner/outer cone blend factor (0 = hard edge, 1 = soft)
-    SpotLight& spotBlend(float blend) {
-        if (m_light.spotBlend != blend) {
-            m_light.spotBlend = blend;
-            markDirty();
-        }
-        return *this;
-    }
-
     /// Connect intensity to another operator's output value
     SpotLight& intensityInput(Operator* op) {
         setInput(0, op);
@@ -421,32 +355,21 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
+        // Sync params to LightData
+        m_light.intensity = static_cast<float>(intensity);
+        m_light.range = static_cast<float>(range);
+        m_light.spotAngle = static_cast<float>(spotAngle);
+        m_light.spotBlend = static_cast<float>(spotBlend);
 
+        // Read animated intensity if connected (overrides param)
         if (auto* input = getInput(0)) {
             m_light.intensity = input->outputValue();
         }
-
-        didCook();
     }
 
     void cleanup() override {}
 
     std::string name() const override { return "SpotLight"; }
-
-    std::vector<ParamDecl> params() override {
-        return {
-            {"position", ParamType::Vec3, -100.0f, 100.0f,
-             {m_light.position.x, m_light.position.y, m_light.position.z, 0}},
-            {"direction", ParamType::Vec3, -1.0f, 1.0f,
-             {m_light.direction.x, m_light.direction.y, m_light.direction.z, 0}},
-            {"color", ParamType::Color, 0.0f, 1.0f,
-             {m_light.color.r, m_light.color.g, m_light.color.b, 1.0f}},
-            {"intensity", ParamType::Float, 0.0f, 10.0f, {m_light.intensity, 0, 0, 0}},
-            {"range", ParamType::Float, 0.1f, 100.0f, {m_light.range, 0, 0, 0}},
-            {"spotAngle", ParamType::Float, 1.0f, 180.0f, {m_light.spotAngle, 0, 0, 0}}
-        };
-    }
 };
 
 } // namespace vivid::render3d

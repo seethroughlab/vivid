@@ -9,6 +9,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/param.h>
+#include <vivid/param_registry.h>
 #include <string>
 #include <vector>
 #include <array>
@@ -53,22 +54,28 @@ namespace vivid::audio {
  * }
  * @endcode
  */
-class Euclidean : public Operator {
+class Euclidean : public Operator, public ParamRegistry {
 public:
     static constexpr int MAX_STEPS = 16;
 
-    Euclidean() = default;
-    ~Euclidean() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    Euclidean& steps(int n) { m_steps = n; regenerate(); return *this; }
-    Euclidean& hits(int k) { m_hits = k; regenerate(); return *this; }
-    Euclidean& rotation(int r) { m_rotation = r; return *this; }
+    Param<int> steps{"steps", 16, 2, 16};          ///< Total number of steps
+    Param<int> hits{"hits", 4, 1, 16};             ///< Number of active steps
+    Param<int> rotation{"rotation", 0, 0, 15};     ///< Pattern rotation offset
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Euclidean() {
+        registerParam(steps);
+        registerParam(hits);
+        registerParam(rotation);
+    }
+    ~Euclidean() override = default;
+
     // -------------------------------------------------------------------------
     /// @name Playback
     /// @{
@@ -109,33 +116,14 @@ public:
     std::string name() const override { return "Euclidean"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_steps.decl(), m_hits.decl(), m_rotation.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "steps") { out[0] = m_steps; return true; }
-        if (name == "hits") { out[0] = m_hits; return true; }
-        if (name == "rotation") { out[0] = m_rotation; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "steps") { m_steps = static_cast<int>(value[0]); regenerate(); return true; }
-        if (name == "hits") { m_hits = static_cast<int>(value[0]); regenerate(); return true; }
-        if (name == "rotation") { m_rotation = static_cast<int>(value[0]); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void regenerate();  // Regenerate pattern from parameters
 
-    // Parameters
-    Param<int> m_steps{"steps", 16, 2, 16};
-    Param<int> m_hits{"hits", 4, 1, 16};
-    Param<int> m_rotation{"rotation", 0, 0, 15};
+    // Cached values for detecting changes
+    int m_cachedSteps = 16;
+    int m_cachedHits = 4;
 
     // Generated pattern
     std::array<bool, MAX_STEPS> m_pattern = {};

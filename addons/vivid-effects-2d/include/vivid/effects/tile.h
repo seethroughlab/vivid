@@ -42,63 +42,27 @@ namespace vivid::effects {
  */
 class Tile : public TextureOperator {
 public:
-    Tile() = default;
-    ~Tile() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set input texture
-     * @param op Source operator
-     * @return Reference for chaining
-     */
-    Tile& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /**
-     * @brief Set uniform repeat count
-     * @param r Repeat count (applies to both axes)
-     * @return Reference for chaining
-     */
-    Tile& repeat(float r) {
-        if (m_repeat.x() != r || m_repeat.y() != r) { m_repeat.set(r, r); markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set non-uniform repeat count
-     * @param x X repeat count
-     * @param y Y repeat count
-     * @return Reference for chaining
-     */
-    Tile& repeat(float x, float y) {
-        if (m_repeat.x() != x || m_repeat.y() != y) { m_repeat.set(x, y); markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set UV offset
-     * @param x X offset (-1 to 1)
-     * @param y Y offset (-1 to 1)
-     * @return Reference for chaining
-     */
-    Tile& offset(float x, float y) {
-        if (m_offset.x() != x || m_offset.y() != y) { m_offset.set(x, y); markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Enable tile boundary mirroring
-     * @param m True to mirror at boundaries
-     * @return Reference for chaining
-     */
-    Tile& mirror(bool m) {
-        if (m_mirror != m) { m_mirror = m; markDirty(); }
-        return *this;
-    }
+    Vec2Param repeat{"repeat", 2.0f, 2.0f, 0.1f, 20.0f};  ///< Tile repetition count
+    Vec2Param offset{"offset", 0.0f, 0.0f, -1.0f, 1.0f};  ///< UV offset
+    Param<bool> mirror{"mirror", false};                   ///< Mirror at boundaries
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Tile() {
+        registerParam(repeat);
+        registerParam(offset);
+        registerParam(mirror);
+    }
+    ~Tile() override;
+
+    /// @brief Set input texture
+    Tile& input(TextureOperator* op) { setInput(0, op); return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -108,32 +72,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "Tile"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_repeat.decl(), m_offset.decl(), m_mirror.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "repeat") { out[0] = m_repeat.x(); out[1] = m_repeat.y(); return true; }
-        if (name == "offset") { out[0] = m_offset.x(); out[1] = m_offset.y(); return true; }
-        if (name == "mirror") { out[0] = m_mirror ? 1.0f : 0.0f; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "repeat") { repeat(value[0], value[1]); return true; }
-        if (name == "offset") { offset(value[0], value[1]); return true; }
-        if (name == "mirror") { mirror(value[0] > 0.5f); return true; }
-        return false;
-    }
-
     /// @}
 
 private:
     void createPipeline(Context& ctx);
-
-    Vec2Param m_repeat{"repeat", 2.0f, 2.0f, 0.1f, 20.0f};
-    Vec2Param m_offset{"offset", 0.0f, 0.0f, -1.0f, 1.0f};
-    Param<bool> m_mirror{"mirror", false};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

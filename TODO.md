@@ -155,12 +155,15 @@
     - Usage: `camera.orthographic().orthoSize(10.0f)` for ortho, `camera.perspective().fov(60.0f)` for perspective
 [x] add a formant generator to the audio synthesis addon
 [x] I have a new vision for the VSCode extension. Let's do some planning. When a user clicks/highlights a node in VSCode, it automatically shows a preview of the node in the running project. Meanwhile, in VSCode, all of the parameters are showed in VSCode -- sliders, color choosers, file choosers. (for movies, sounds, texures, models), and the input and output nodes. Help me figure out how to flesh out this idea and integrate it into the extension. When a parameter is adjusted in the VSCode extension, it should be reflected immeiately in the code. 
-[ ] Is there currently a "make install" command that will put vivid into my PATH?
-[ ] PLAN: Maybe operators should declare all properties in a single structure in the constructor. Would that simplify the operator declaration?
+[x] PLAN: Maybe operators should declare all properties in a single structure in the constructor. Would that simplify the operator declaration?
+[x] PLAN: addons should be self-contained (to prepare for community addon registry), so this probably means moving examples, tests, and any needed assets to the respective addon folders as well. Each addon should have its own README.md 
+[x] PLAN: how much would it increase the runtime size to incorporate vivid-io, vivid-network, and vivid-effects-2d, vivid-video and vivid-render3d into the core?
+[x] VSTHost using [JUCE](https://juce.com/) 
+[x] PLAN: Is the vivid runtime currently distributed with the addon? Should it be?
+[x] Have all of the operators now been updated? I'm specifically thinking about light operators (DirectionalLight, PointLight, SpotLight), InstancedRender3D, Boolean (operation type), and IBLEnvironment, GLTFLoader, which don't even have exposed parameters yet. 
 [ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
-[ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
+[ ] Is there currently a "make install" command that will put vivid into my PATH?
 [ ] Make an example with assets/textures/flat_earth_Largest_still.0330.jpg
 [ ] Take more snapshots of showcase projects, add them to README
-[ ] What's happening with the docs action? https://github.com/seethroughlab/vivid/settings/pages It's not published anywhere accessable. 
-[ ] VSTHost using [JUCE](https://juce.com/) 
-[x] PLAN: addons should be self-contained (to prepare for community addon registry), so this probably means moving examples, tests, and any needed assets to the respective addon folders as well. Each addon should have its own README.md 
+[ ] What's happening with the docs github action?  It's not published anywhere accessable. I'm sure I haven't set up something properly at https://github.com/seethroughlab/vivid/settings/pages, but I'm not sure what. 
+[ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways

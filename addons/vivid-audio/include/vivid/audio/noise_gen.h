@@ -45,26 +45,23 @@ enum class NoiseColor {
  */
 class NoiseGen : public AudioOperator {
 public:
-    NoiseGen() = default;
-    ~NoiseGen() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set noise color
-     * @param c NoiseColor (White, Pink, Brown)
-     */
-    NoiseGen& color(NoiseColor c) { m_color = c; return *this; }
-
-    /**
-     * @brief Set output volume
-     * @param v Volume (0-1)
-     */
-    NoiseGen& volume(float v) { m_volume = v; return *this; }
+    Param<float> volume{"volume", 0.5f, 0.0f, 1.0f};  ///< Output amplitude
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    NoiseGen() {
+        registerParam(volume);
+    }
+    ~NoiseGen() override = default;
+
+    /// @brief Set noise color
+    NoiseGen& color(NoiseColor c) { m_color = c; return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -74,20 +71,6 @@ public:
     void cleanup() override;
     std::string name() const override { return "NoiseGen"; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_volume.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "volume") { out[0] = m_volume; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "volume") { m_volume = value[0]; return true; }
-        return false;
-    }
-
     /// @}
 
 private:
@@ -95,9 +78,8 @@ private:
     float generatePink();
     float generateBrown();
 
-    // Parameters
+    // Noise color (enum, not a Param)
     NoiseColor m_color = NoiseColor::White;
-    Param<float> m_volume{"volume", 0.5f, 0.0f, 1.0f};
 
     // State
     uint32_t m_seed = 12345;  // PRNG state

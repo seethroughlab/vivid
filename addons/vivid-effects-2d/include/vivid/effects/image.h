@@ -4,24 +4,26 @@
 // Loads texture from an image file (PNG, JPG, etc.)
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/param.h>
 #include <string>
 
 namespace vivid::effects {
 
 class Image : public TextureOperator {
 public:
-    Image() = default;
-    ~Image() override;
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
 
-    // Fluent API
-    Image& file(const std::string& path) {
-        if (m_filePath != path) {
-            m_filePath = path;
-            m_needsReload = true;
-            markDirty();
-        }
-        return *this;
+    FilePathParam file{"file", "", "*.png;*.jpg;*.jpeg;*.bmp;*.tga;*.exr", "image"};
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Image() {
+        registerParam(file);
     }
+    ~Image() override;
 
     // Operator interface
     void init(Context& ctx) override;
@@ -32,8 +34,7 @@ public:
 private:
     void loadImage(Context& ctx);
 
-    std::string m_filePath;
-    bool m_needsReload = false;
+    std::string m_loadedPath;  // Track which path is currently loaded
     bool m_initialized = false;
 };
 

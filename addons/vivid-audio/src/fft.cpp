@@ -13,7 +13,9 @@ struct FFT::Impl {
     std::vector<float> window;  // Hann window
 };
 
-FFT::FFT() : m_impl(std::make_unique<Impl>()) {}
+FFT::FFT() : m_impl(std::make_unique<Impl>()) {
+    registerParam(smoothing);
+}
 
 FFT::~FFT() {
     cleanupAnalyzer();
@@ -102,8 +104,9 @@ void FFT::analyze(const float* input, uint32_t frames, uint32_t channels) {
         float mag = std::sqrt(re * re + im * im) * scale;
 
         // Apply smoothing
-        m_smoothedSpectrum[i] = m_smoothedSpectrum[i] * m_smoothing +
-                                 mag * (1.0f - m_smoothing);
+        float smooth = static_cast<float>(smoothing);
+        m_smoothedSpectrum[i] = m_smoothedSpectrum[i] * smooth +
+                                 mag * (1.0f - smooth);
         m_spectrum[i] = m_smoothedSpectrum[i];
     }
 }

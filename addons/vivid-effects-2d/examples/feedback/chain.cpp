@@ -18,7 +18,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
 
     // Configure noise - small bright spots
-    noise.scale(8.0f).speed(0.8f).octaves(2);
+    noise.set("scale", 8.0f).set("speed", 0.8f).set("octaves", 2);
 
     // Configure feedback - trails with slight zoom and rotation
     feedback.input(&noise)
@@ -50,7 +50,7 @@ void update(Context& ctx) {
 
     // Animate noise offset for drifting particles
     auto& noise = chain.get<Noise>("noise");
-    noise.offset(time * 0.5f, time * 0.3f);
+    noise.set("offset", time * 0.5f, time * 0.3f, 0.0f);
 
     // Mouse controls feedback parameters
     auto& feedback = chain.get<Feedback>("feedback");

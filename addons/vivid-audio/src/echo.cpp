@@ -13,8 +13,12 @@ void Echo::initEffect(Context& ctx) {
 }
 
 void Echo::processEffect(const float* input, float* output, uint32_t frames) {
+    float delayMs = static_cast<float>(delayTime);
+    float decayVal = static_cast<float>(decay);
+    int numTaps = static_cast<int>(taps);
+
     uint32_t baseSamples = static_cast<uint32_t>(
-        (m_delayTimeMs * static_cast<float>(m_sampleRate)) / 1000.0f
+        (delayMs * static_cast<float>(m_sampleRate)) / 1000.0f
     );
 
     for (uint32_t i = 0; i < frames; ++i) {
@@ -29,8 +33,8 @@ void Echo::processEffect(const float* input, float* output, uint32_t frames) {
         float outR = 0.0f;
         float level = 1.0f;
 
-        for (int tap = 1; tap <= m_taps; ++tap) {
-            level *= m_decay;
+        for (int tap = 1; tap <= numTaps; ++tap) {
+            level *= decayVal;
             uint32_t delaySamples = baseSamples * static_cast<uint32_t>(tap);
 
             float tapL, tapR;

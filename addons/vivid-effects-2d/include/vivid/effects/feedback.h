@@ -44,69 +44,31 @@ namespace vivid::effects {
  */
 class Feedback : public TextureOperator {
 public:
-    Feedback() = default;
-    ~Feedback() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set input texture
-     * @param op Source operator
-     * @return Reference for chaining
-     */
-    Feedback& input(TextureOperator* op) { setInput(0, op); return *this; }
-
-    /**
-     * @brief Set decay rate
-     * @param d Decay (0-1, default 0.95). Higher = longer trails
-     * @return Reference for chaining
-     */
-    Feedback& decay(float d) { if (m_decay != d) { m_decay = d; markDirty(); } return *this; }
-
-    /**
-     * @brief Set mix ratio
-     * @param m Mix (0-1, default 0.5). 0 = input only, 1 = feedback only
-     * @return Reference for chaining
-     */
-    Feedback& mix(float m) { if (m_mix != m) { m_mix = m; markDirty(); } return *this; }
-
-    /**
-     * @brief Set X offset per frame
-     * @param x X offset in pixels
-     * @return Reference for chaining
-     */
-    Feedback& offsetX(float x) {
-        if (m_offset.x() != x) { m_offset.set(x, m_offset.y()); markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set Y offset per frame
-     * @param y Y offset in pixels
-     * @return Reference for chaining
-     */
-    Feedback& offsetY(float y) {
-        if (m_offset.y() != y) { m_offset.set(m_offset.x(), y); markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set zoom factor per frame
-     * @param z Zoom (0.5-2, default 1.0). >1 zooms in, <1 zooms out
-     * @return Reference for chaining
-     */
-    Feedback& zoom(float z) { if (m_zoom != z) { m_zoom = z; markDirty(); } return *this; }
-
-    /**
-     * @brief Set rotation per frame
-     * @param r Rotation in radians (-0.1 to 0.1)
-     * @return Reference for chaining
-     */
-    Feedback& rotate(float r) { if (m_rotate != r) { m_rotate = r; markDirty(); } return *this; }
+    Param<float> decay{"decay", 0.95f, 0.0f, 1.0f};          ///< How much of previous frame remains
+    Param<float> mix{"mix", 0.5f, 0.0f, 1.0f};               ///< Blend between input and feedback
+    Vec2Param offset{"offset", 0.0f, 0.0f, -100.0f, 100.0f}; ///< Pixel offset per frame
+    Param<float> zoom{"zoom", 1.0f, 0.5f, 2.0f};             ///< Scale factor per frame
+    Param<float> rotate{"rotate", 0.0f, -0.1f, 0.1f};        ///< Rotation per frame (radians)
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Feedback() {
+        registerParam(decay);
+        registerParam(mix);
+        registerParam(offset);
+        registerParam(zoom);
+        registerParam(rotate);
+    }
+    ~Feedback() override;
+
+    /// @brief Set input texture
+    Feedback& input(TextureOperator* op) { setInput(0, op); return *this; }
+
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -115,28 +77,6 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Feedback"; }
-
-    std::vector<ParamDecl> params() override {
-        return { m_decay.decl(), m_mix.decl(), m_offset.decl(), m_zoom.decl(), m_rotate.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "decay") { out[0] = m_decay; return true; }
-        if (name == "mix") { out[0] = m_mix; return true; }
-        if (name == "offset") { out[0] = m_offset.x(); out[1] = m_offset.y(); return true; }
-        if (name == "zoom") { out[0] = m_zoom; return true; }
-        if (name == "rotate") { out[0] = m_rotate; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "decay") { decay(value[0]); return true; }
-        if (name == "mix") { mix(value[0]); return true; }
-        if (name == "offset") { offsetX(value[0]); offsetY(value[1]); return true; }
-        if (name == "zoom") { zoom(value[0]); return true; }
-        if (name == "rotate") { rotate(value[0]); return true; }
-        return false;
-    }
 
     /// @}
 
@@ -147,13 +87,6 @@ public:
 private:
     void createPipeline(Context& ctx);
     void createBufferTexture(Context& ctx);
-
-    // Parameters
-    Param<float> m_decay{"decay", 0.95f, 0.0f, 1.0f};
-    Param<float> m_mix{"mix", 0.5f, 0.0f, 1.0f};
-    Vec2Param m_offset{"offset", 0.0f, 0.0f, -100.0f, 100.0f};
-    Param<float> m_zoom{"zoom", 1.0f, 0.5f, 2.0f};
-    Param<float> m_rotate{"rotate", 0.0f, -0.1f, 0.1f};
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

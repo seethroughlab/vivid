@@ -66,39 +66,27 @@ enum class BlendMode {
  */
 class Composite : public TextureOperator {
 public:
-    Composite() = default;
-    ~Composite() override;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set blend mode
-     * @param m Blend mode (Over, Add, Multiply, Screen, Overlay, Difference)
-     * @return Reference for chaining
-     */
+    Param<float> opacity{"opacity", 1.0f, 0.0f, 1.0f}; ///< Blend opacity for all layers
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    Composite() {
+        registerParam(opacity);
+    }
+    ~Composite() override;
+
+    /// @brief Set blend mode (Over, Add, Multiply, Screen, Overlay, Difference)
     Composite& mode(BlendMode m) {
         if (m_mode != m) { m_mode = m; markDirty(); }
         return *this;
     }
 
-    /**
-     * @brief Set blend opacity
-     * @param o Opacity (0-1, default 1.0)
-     * @return Reference for chaining
-     */
-    Composite& opacity(float o) {
-        if (m_opacity != o) { m_opacity = o; markDirty(); }
-        return *this;
-    }
-
-    /**
-     * @brief Set input at specific index
-     * @param index Input index (0 = base, 1-7 = layers)
-     * @param op Texture operator
-     * @return Reference for chaining
-     */
+    /// @brief Set input at specific index (0 = base, 1-7 = layers)
     Composite& input(int index, TextureOperator* op) {
         if (index >= 0 && index < COMPOSITE_MAX_INPUTS) {
             setInput(index, op);
@@ -109,26 +97,15 @@ public:
         return *this;
     }
 
-    /**
-     * @brief Set background input (legacy API, same as input(0, op))
-     * @param op Background operator
-     * @return Reference for chaining
-     */
+    /// @brief Set background input (legacy API, same as input(0, op))
     Composite& inputA(TextureOperator* op) { return input(0, op); }
 
-    /**
-     * @brief Set foreground input (legacy API, same as input(1, op))
-     * @param op Foreground operator
-     * @return Reference for chaining
-     */
+    /// @brief Set foreground input (legacy API, same as input(1, op))
     Composite& inputB(TextureOperator* op) { return input(1, op); }
 
-    /**
-     * @brief Get number of active inputs
-     */
+    /// @brief Get number of active inputs
     int inputCount() const { return m_inputCount; }
 
-    /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
@@ -137,18 +114,6 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Composite"; }
-
-    std::vector<ParamDecl> params() override {
-        return { m_opacity.decl() };
-    }
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "opacity") { out[0] = m_opacity; return true; }
-        return false;
-    }
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "opacity") { opacity(value[0]); return true; }
-        return false;
-    }
 
     /// @}
 

@@ -255,7 +255,7 @@ void Ramp::process(Context& ctx) {
     // Generators use their declared resolution (default 1280x720)
 
     // Ramp is animated if hueSpeed > 0
-    bool animated = (m_hueSpeed > 0.0f);
+    bool animated = (hueSpeed > 0.0f);
     if (!animated && !needsCook()) return;
 
     // Update uniforms
@@ -264,16 +264,16 @@ void Ramp::process(Context& ctx) {
     uniforms.resolution[1] = static_cast<float>(ctx.height());
     uniforms.time = static_cast<float>(ctx.time());
     uniforms.rampType = static_cast<int>(m_type);
-    uniforms.angle = m_angle;
-    uniforms.offsetX = m_offset.x();
-    uniforms.offsetY = m_offset.y();
-    uniforms.scale = m_scale;
-    uniforms.repeat = m_repeat;
-    uniforms.hueOffset = m_hueOffset;
-    uniforms.hueSpeed = m_hueSpeed;
-    uniforms.hueRange = m_hueRange;
-    uniforms.saturation = m_saturation;
-    uniforms.brightness = m_brightness;
+    uniforms.angle = angle;
+    uniforms.offsetX = offset.x();
+    uniforms.offsetY = offset.y();
+    uniforms.scale = scale;
+    uniforms.repeat = repeat;
+    uniforms.hueOffset = hueOffset;
+    uniforms.hueSpeed = hueSpeed;
+    uniforms.hueRange = hueRange;
+    uniforms.saturation = saturation;
+    uniforms.brightness = brightness;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

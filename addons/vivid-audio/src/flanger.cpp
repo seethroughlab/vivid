@@ -12,14 +12,23 @@ void Flanger::initEffect(Context& ctx) {
     m_delayL.init(maxDelaySamples);
     m_delayR.init(maxDelaySamples);
 
-    m_lfoL.init(m_sampleRate, m_rateHz, dsp::LFOWaveform::Sine);
-    m_lfoR.init(m_sampleRate, m_rateHz, dsp::LFOWaveform::Sine);
+    float rateHz = static_cast<float>(rate);
+    m_lfoL.init(m_sampleRate, rateHz, dsp::LFOWaveform::Sine);
+    m_lfoR.init(m_sampleRate, rateHz, dsp::LFOWaveform::Sine);
 
     m_feedbackL = 0.0f;
     m_feedbackR = 0.0f;
 }
 
 void Flanger::processEffect(const float* input, float* output, uint32_t frames) {
+    // Update LFO rates in case param changed
+    float rateHz = static_cast<float>(rate);
+    m_lfoL.setFrequency(rateHz);
+    m_lfoR.setFrequency(rateHz);
+
+    float depthVal = static_cast<float>(depth);
+    float feedbackVal = static_cast<float>(feedback);
+
     float minDelaySamples = (MIN_DELAY_MS * static_cast<float>(m_sampleRate)) / 1000.0f;
     float maxDelaySamples = (MAX_DELAY_MS * static_cast<float>(m_sampleRate)) / 1000.0f;
     float delayRange = maxDelaySamples - minDelaySamples;
@@ -29,16 +38,16 @@ void Flanger::processEffect(const float* input, float* output, uint32_t frames) 
         float inR = input[i * 2 + 1];
 
         // Write input + feedback to delay lines
-        m_delayL.write(inL + m_feedbackL * m_feedback);
-        m_delayR.write(inR + m_feedbackR * m_feedback);
+        m_delayL.write(inL + m_feedbackL * feedbackVal);
+        m_delayR.write(inR + m_feedbackR * feedbackVal);
 
         // Get LFO values (range 0 to 1)
         float lfoL = (m_lfoL.process() + 1.0f) * 0.5f;
         float lfoR = (m_lfoR.process() + 1.0f) * 0.5f;
 
         // Calculate modulated delay time
-        float delayL = minDelaySamples + lfoL * delayRange * m_depth;
-        float delayR = minDelaySamples + lfoR * delayRange * m_depth;
+        float delayL = minDelaySamples + lfoL * delayRange * depthVal;
+        float delayR = minDelaySamples + lfoR * delayRange * depthVal;
 
         // Read from delay lines
         float delayedL = m_delayL.readInterpolated(delayL);

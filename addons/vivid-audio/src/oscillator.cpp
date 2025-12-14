@@ -27,14 +27,14 @@ void Oscillator::generateBlock(uint32_t frameCount) {
     }
 
     // Calculate effective frequency with detune
-    float baseFreq = static_cast<float>(m_frequency);
-    float detuneRatio = centsToRatio(static_cast<float>(m_detune));
+    float baseFreq = static_cast<float>(frequency);
+    float detuneRatio = centsToRatio(static_cast<float>(detune));
     float freqL = baseFreq * detuneRatio;
     float freqR = baseFreq * detuneRatio;
 
     // Apply stereo detune (left goes down, right goes up)
-    if (m_stereoDetune > 0.0f) {
-        float stereoRatio = centsToRatio(static_cast<float>(m_stereoDetune));
+    if (stereoDetune > 0.0f) {
+        float stereoRatio = centsToRatio(static_cast<float>(stereoDetune));
         freqL /= stereoRatio;
         freqR *= stereoRatio;
     }
@@ -43,7 +43,7 @@ void Oscillator::generateBlock(uint32_t frameCount) {
     float phaseIncL = freqL / static_cast<float>(m_sampleRate);
     float phaseIncR = freqR / static_cast<float>(m_sampleRate);
 
-    float vol = static_cast<float>(m_volume);
+    float vol = static_cast<float>(volume);
 
     for (uint32_t i = 0; i < frameCount; ++i) {
         // Generate samples
@@ -90,7 +90,7 @@ float Oscillator::generateSample(float phase) const {
 
         case Waveform::Pulse:
             // Variable pulse width
-            return (phase < static_cast<float>(m_pulseWidth)) ? 1.0f : -1.0f;
+            return (phase < static_cast<float>(pulseWidth)) ? 1.0f : -1.0f;
 
         default:
             return 0.0f;

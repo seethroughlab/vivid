@@ -9,6 +9,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/param.h>
+#include <vivid/param_registry.h>
 #include <string>
 #include <vector>
 #include <array>
@@ -30,11 +31,14 @@ namespace vivid::audio {
  *
  * @par Example
  * @code
- * chain.add<Clock>("clock").bpm(120.0f).division(ClockDiv::Sixteenth);
- * chain.add<Sequencer>("seq").steps(16);
+ * chain.add<Clock>("clock");
+ * chain.get<Clock>("clock")->bpm = 120.0f;
+ * chain.get<Clock>("clock")->division(ClockDiv::Sixteenth);
+ * chain.add<Sequencer>("seq");
  *
  * // Set pattern: kick on 1, 5, 9, 13
  * auto* seq = chain.get<Sequencer>("seq");
+ * seq->steps = 16;
  * seq->setStep(0, true);
  * seq->setStep(4, true);
  * seq->setStep(8, true);
@@ -50,20 +54,23 @@ namespace vivid::audio {
  * }
  * @endcode
  */
-class Sequencer : public Operator {
+class Sequencer : public Operator, public ParamRegistry {
 public:
     static constexpr int MAX_STEPS = 16;
 
-    Sequencer() = default;
-    ~Sequencer() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    Sequencer& steps(int n) { m_steps = n; return *this; }
+    Param<int> steps{"steps", 16, 1, 16};   ///< Number of active steps
 
     /// @}
+    // -------------------------------------------------------------------------
+
+    Sequencer() {
+        registerParam(steps);
+    }
+    ~Sequencer() override = default;
     // -------------------------------------------------------------------------
     /// @name Pattern Editing
     /// @{
@@ -142,25 +149,17 @@ public:
     std::string name() const override { return "Sequencer"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
-    std::vector<ParamDecl> params() override {
-        return { m_steps.decl() };
-    }
-
+    std::vector<ParamDecl> params() override { return registeredParams(); }
     bool getParam(const std::string& name, float out[4]) override {
-        if (name == "steps") { out[0] = m_steps; return true; }
-        return false;
+        return getRegisteredParam(name, out);
     }
-
     bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "steps") { m_steps = static_cast<int>(value[0]); return true; }
-        return false;
+        return setRegisteredParam(name, value);
     }
 
     /// @}
 
 private:
-    // Parameters
-    Param<int> m_steps{"steps", 16, 1, 16};
 
     // Pattern data
     std::array<bool, MAX_STEPS> m_pattern = {};

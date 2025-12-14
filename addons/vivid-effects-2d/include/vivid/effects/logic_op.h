@@ -9,6 +9,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/param.h>
+#include <vivid/param_registry.h>
 #include <cmath>
 
 namespace vivid::effects {
@@ -47,10 +48,10 @@ enum class LogicOperation {
  *
  * @par Example
  * @code
- * chain.add<Logic>("compare")
- *     .operation(LogicOperation::GreaterThan)
- *     .inputA(lfo.outputValue())
- *     .inputB(0.5f);
+ * auto& compare = chain.add<Logic>("compare");
+ * compare.operation(LogicOperation::GreaterThan);
+ * compare.inputA = lfo.outputValue();
+ * compare.inputB = 0.5f;
  *
  * if (compare.result()) {
  *     // LFO value is above 0.5
@@ -64,55 +65,34 @@ enum class LogicOperation {
  * - Boolean result via result()
  * - Float value (0 or 1) via outputValue()
  */
-class Logic : public vivid::Operator {
+class Logic : public vivid::Operator, public vivid::ParamRegistry {
 public:
-    Logic() = default;
-    ~Logic() override = default;
-
     // -------------------------------------------------------------------------
-    /// @name Fluent API
+    /// @name Parameters (public for direct access)
     /// @{
 
-    /**
-     * @brief Set first input value
-     * @param v Input A value
-     * @return Reference for chaining
-     */
-    Logic& inputA(float v) { if (m_inputA != v) { m_inputA = v; markDirty(); } return *this; }
+    Param<float> inputA{"inputA", 0.0f, -1000.0f, 1000.0f};     ///< First input value
+    Param<float> inputB{"inputB", 0.0f, -1000.0f, 1000.0f};     ///< Second input value
+    Param<float> rangeMin{"rangeMin", 0.0f, -1000.0f, 1000.0f}; ///< Minimum for InRange
+    Param<float> rangeMax{"rangeMax", 1.0f, -1000.0f, 1000.0f}; ///< Maximum for InRange
+    Param<float> epsilon{"epsilon", 0.0001f, 0.0f, 1.0f};       ///< Tolerance for equality
 
-    /**
-     * @brief Set second input value
-     * @param v Input B value
-     * @return Reference for chaining
-     */
-    Logic& inputB(float v) { if (m_inputB != v) { m_inputB = v; markDirty(); } return *this; }
+    /// @}
+    // -------------------------------------------------------------------------
 
-    /**
-     * @brief Set logic operation
-     * @param op Operation type
-     * @return Reference for chaining
-     */
+    Logic() {
+        registerParam(inputA);
+        registerParam(inputB);
+        registerParam(rangeMin);
+        registerParam(rangeMax);
+        registerParam(epsilon);
+    }
+    ~Logic() override = default;
+
+    /// @brief Set logic operation
     Logic& operation(LogicOperation op) { if (m_operation != op) { m_operation = op; markDirty(); } return *this; }
 
-    /**
-     * @brief Set minimum for InRange operation
-     * @param v Minimum value
-     * @return Reference for chaining
-     */
-    Logic& rangeMin(float v) { if (m_rangeMin != v) { m_rangeMin = v; markDirty(); } return *this; }
-
-    /**
-     * @brief Set maximum for InRange operation
-     * @param v Maximum value
-     * @return Reference for chaining
-     */
-    Logic& rangeMax(float v) { if (m_rangeMax != v) { m_rangeMax = v; markDirty(); } return *this; }
-
-    /**
-     * @brief Trigger toggle (for Toggle operation)
-     * @param t Trigger on rising edge
-     * @return Reference for chaining
-     */
+    /// @brief Trigger toggle (for Toggle operation)
     Logic& trigger(bool t) {
         if (t && !m_lastTrigger) {
             m_toggleState = !m_toggleState;
@@ -121,34 +101,17 @@ public:
         return *this;
     }
 
-    /**
-     * @brief Set epsilon for float comparison
-     * @param e Epsilon value (default 0.0001)
-     * @return Reference for chaining
-     */
-    Logic& epsilon(float e) { if (m_epsilon != e) { m_epsilon = e; markDirty(); } return *this; }
-
-    /// @}
     // -------------------------------------------------------------------------
     /// @name Result Access
     /// @{
 
-    /**
-     * @brief Get boolean result
-     * @return Operation result as bool
-     */
+    /// @brief Get boolean result
     bool result() const { return m_result; }
 
-    /**
-     * @brief Get result as float
-     * @return 1.0 if true, 0.0 if false
-     */
+    /// @brief Get result as float (1.0 if true, 0.0 if false)
     float value() const { return m_result ? 1.0f : 0.0f; }
 
-    /**
-     * @brief Get output value for parameter linking
-     * @return 1.0 if true, 0.0 if false
-     */
+    /// @brief Get output value for parameter linking
     float outputValue() const override { return m_result ? 1.0f : 0.0f; }
 
     /// @}
@@ -156,37 +119,14 @@ public:
     /// @name Operator Interface
     /// @{
 
-    std::vector<ParamDecl> params() override {
-        return { m_inputA.decl(), m_inputB.decl(), m_rangeMin.decl(),
-                 m_rangeMax.decl(), m_epsilon.decl() };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "inputA") { out[0] = m_inputA; return true; }
-        if (name == "inputB") { out[0] = m_inputB; return true; }
-        if (name == "rangeMin") { out[0] = m_rangeMin; return true; }
-        if (name == "rangeMax") { out[0] = m_rangeMax; return true; }
-        if (name == "epsilon") { out[0] = m_epsilon; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "inputA") { inputA(value[0]); return true; }
-        if (name == "inputB") { inputB(value[0]); return true; }
-        if (name == "rangeMin") { rangeMin(value[0]); return true; }
-        if (name == "rangeMax") { rangeMax(value[0]); return true; }
-        if (name == "epsilon") { epsilon(value[0]); return true; }
-        return false;
-    }
-
     void process(Context& ctx) override {
         if (!needsCook()) return;
 
-        float a = static_cast<float>(m_inputA);
-        float b = static_cast<float>(m_inputB);
-        float eps = static_cast<float>(m_epsilon);
-        float rMin = static_cast<float>(m_rangeMin);
-        float rMax = static_cast<float>(m_rangeMax);
+        float a = static_cast<float>(inputA);
+        float b = static_cast<float>(inputB);
+        float eps = static_cast<float>(epsilon);
+        float rMin = static_cast<float>(rangeMin);
+        float rMax = static_cast<float>(rangeMax);
 
         switch (m_operation) {
             case LogicOperation::GreaterThan:
@@ -229,15 +169,17 @@ public:
     std::string name() const override { return "Logic"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
+    std::vector<ParamDecl> params() override { return registeredParams(); }
+    bool getParam(const std::string& name, float out[4]) override { return getRegisteredParam(name, out); }
+    bool setParam(const std::string& name, const float value[4]) override {
+        if (setRegisteredParam(name, value)) { markDirty(); return true; }
+        return false;
+    }
+
     /// @}
 
 private:
     LogicOperation m_operation = LogicOperation::GreaterThan;
-    Param<float> m_inputA{"inputA", 0.0f, -1000.0f, 1000.0f};
-    Param<float> m_inputB{"inputB", 0.0f, -1000.0f, 1000.0f};
-    Param<float> m_rangeMin{"rangeMin", 0.0f, -1000.0f, 1000.0f};
-    Param<float> m_rangeMax{"rangeMax", 1.0f, -1000.0f, 1000.0f};
-    Param<float> m_epsilon{"epsilon", 0.0001f, 0.0f, 1.0f};
     bool m_result = false;
     bool m_toggleState = false;
     bool m_lastTrigger = false;

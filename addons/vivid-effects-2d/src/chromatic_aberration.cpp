@@ -166,9 +166,9 @@ void ChromaticAberration::process(Context& ctx) {
     if (!needsCook()) return;
 
     ChromaticAberrationUniforms uniforms = {};
-    uniforms.amount = m_amount;
-    uniforms.angle = m_angle;
-    uniforms.radial = m_radial ? 1 : 0;
+    uniforms.amount = amount;
+    uniforms.angle = angle;
+    uniforms.radial = radial ? 1 : 0;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 
