@@ -1257,7 +1257,7 @@ chain.add<Output>("out").input("scanlines");
 | 5b.6 | Enhanced Text API | ✅ Complete |
 | 5b.7 | Image Drawing | ✅ Complete |
 | 5b.8 | Clipping | ✅ Complete |
-| 5b.9 | Pixel Manipulation | ⏳ Deferred |
+| 5b.9 | Pixel Manipulation | ✅ Complete |
 
 **Example (working code):**
 ```cpp
@@ -1544,23 +1544,36 @@ enum class FillRule { NonZero, EvenOdd };
 
 ---
 
-#### Phase 5b.9: Pixel Manipulation (Optional/Deferred)
+#### Phase 5b.9: Pixel Manipulation ✅
 
-HTML Canvas has pixel-level access. This is lower priority:
+**Status: Complete**
+
+Image pixel access for effects like [Paper.js Division Raster](http://paperjs.org/examples/division-raster/) which samples image pixels to drive shape colors.
 
 ```cpp
-// ImageData manipulation (optional, performance-sensitive)
-ImageData getImageData(float x, float y, float w, float h);
-void putImageData(const ImageData& data, float x, float y);
-ImageData createImageData(int w, int h);
+// Image operator with CPU pixel data
+auto& image = chain.add<Image>("raster");
+image.file = "assets/images/nature.jpg";
+image.keepCpuData = true;  // Enable CPU-side pixel data (disabled by default)
 
-struct ImageData {
-    std::vector<uint8_t> data;  // RGBA bytes
-    int width, height;
-};
+// Pixel sampling
+glm::vec4 color = image.getPixel(x, y);                      // Single pixel
+glm::vec4 avg = image.getAverageColor(x, y, width, height);  // Region average
+
+// Check availability
+if (image.hasCpuData()) {
+    int w = image.imageWidth();
+    int h = image.imageHeight();
+}
 ```
 
-**Note:** Pixel manipulation requires GPU readback which is slow. Consider deferring or limiting to specific use cases.
+**Implementation:**
+- `keepCpuData` parameter (Param<bool>, default false) - retains RGBA pixel data on CPU
+- `getPixel(x, y)` - returns color at coordinate (0,0 top-left), black if out of bounds
+- `getAverageColor(x, y, w, h)` - returns average color of rectangular region
+- `hasCpuData()`, `imageWidth()`, `imageHeight()` - query methods
+
+**Example:** `examples/2d-effects/division-raster/` - progressive subdivision with color sampling
 
 ---
 
@@ -1574,7 +1587,7 @@ struct ImageData {
 6. ✅ **Phase 5b.6** - Enhanced text (align existing text with new state model)
 7. ✅ **Phase 5b.7** - Image drawing (compositing operators)
 8. ✅ **Phase 5b.8** - Clipping (advanced feature)
-9. ⏳ **Phase 5b.9** - Pixel manipulation (optional, deferred)
+9. ✅ **Phase 5b.9** - Pixel manipulation (Image::getPixel, getAverageColor)
 
 ---
 
@@ -1621,7 +1634,7 @@ void triangleFilled(glm::vec2 a, glm::vec2 b, glm::vec2 c, const glm::vec4& colo
 - [x] Working example: `examples/2d-effects/canvas-drawing/chain.cpp`
 - [ ] Migration guide from old Vivid Canvas API to new HTML Canvas style
 - [x] Complete API reference matching MDN Canvas documentation structure (`docs/CANVAS-API.md`)
-- [ ] Examples ported from MDN Canvas tutorials
+- [x] Examples ported from Paper.js (`future-splash`, `candy-crash`)
 - [x] Differences from HTML Canvas documented (in CANVAS-API.md)
 
 ---

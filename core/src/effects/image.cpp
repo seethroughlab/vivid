@@ -106,6 +106,17 @@ void Image::loadImage(Context& ctx) {
     m_width = width;
     m_height = height;
 
+    // Store CPU pixel data if requested (for pixel sampling)
+    if (keepCpuData.get()) {
+        m_cpuPixels = imageData.pixels;  // Copy RGBA data
+        m_cpuWidth = width;
+        m_cpuHeight = height;
+    } else {
+        m_cpuPixels.clear();
+        m_cpuWidth = 0;
+        m_cpuHeight = 0;
+    }
+
     // Create output texture for rendering
     createOutput(ctx);
 
@@ -244,8 +255,68 @@ void Image::cleanup() {
         m_loadedTextureView = nullptr;
     }
 
+    // Clear CPU pixel data
+    m_cpuPixels.clear();
+    m_cpuWidth = 0;
+    m_cpuHeight = 0;
+
     releaseOutput();
     m_initialized = false;
+}
+
+glm::vec4 Image::getPixel(int x, int y) const {
+    if (m_cpuPixels.empty() || x < 0 || y < 0 || x >= m_cpuWidth || y >= m_cpuHeight) {
+        return glm::vec4(0.0f);  // Return black for invalid coordinates
+    }
+
+    size_t idx = (y * m_cpuWidth + x) * 4;
+    return glm::vec4(
+        m_cpuPixels[idx] / 255.0f,
+        m_cpuPixels[idx + 1] / 255.0f,
+        m_cpuPixels[idx + 2] / 255.0f,
+        m_cpuPixels[idx + 3] / 255.0f
+    );
+}
+
+glm::vec4 Image::getAverageColor(int x, int y, int w, int h) const {
+    if (m_cpuPixels.empty() || w <= 0 || h <= 0) {
+        return glm::vec4(0.0f);
+    }
+
+    // Clamp region to image bounds
+    int x1 = std::max(0, x);
+    int y1 = std::max(0, y);
+    int x2 = std::min(m_cpuWidth, x + w);
+    int y2 = std::min(m_cpuHeight, y + h);
+
+    if (x1 >= x2 || y1 >= y2) {
+        return glm::vec4(0.0f);
+    }
+
+    double sumR = 0, sumG = 0, sumB = 0, sumA = 0;
+    int count = 0;
+
+    for (int py = y1; py < y2; ++py) {
+        for (int px = x1; px < x2; ++px) {
+            size_t idx = (py * m_cpuWidth + px) * 4;
+            sumR += m_cpuPixels[idx];
+            sumG += m_cpuPixels[idx + 1];
+            sumB += m_cpuPixels[idx + 2];
+            sumA += m_cpuPixels[idx + 3];
+            ++count;
+        }
+    }
+
+    if (count == 0) {
+        return glm::vec4(0.0f);
+    }
+
+    return glm::vec4(
+        static_cast<float>(sumR / count / 255.0),
+        static_cast<float>(sumG / count / 255.0),
+        static_cast<float>(sumB / count / 255.0),
+        static_cast<float>(sumA / count / 255.0)
+    );
 }
 
 } // namespace vivid::effects
