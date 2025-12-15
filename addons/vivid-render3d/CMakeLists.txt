@@ -45,6 +45,7 @@ add_library(vivid-render3d SHARED
     src/instanced_render3d.cpp
     src/gltf_loader.cpp
     src/depth_of_field.cpp
+    src/particles3d.cpp
 )
 
 target_include_directories(vivid-render3d PUBLIC

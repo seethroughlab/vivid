@@ -32,3 +32,6 @@
 
 // Post-processing
 #include <vivid/render3d/depth_of_field.h>
+
+// Particle systems
+#include <vivid/render3d/particles3d.h>

@@ -1973,8 +1973,8 @@ let diffuse = irradiance * albedo * (1.0 - metallic);
 
 **Lighting:**
 - [x] Directional light (sun) with operator
-- [ ] Point lights (up to 4) - class defined, shader implementation pending
-- [ ] Spot lights - class defined, shader implementation pending
+- [x] Point lights (up to 4) - complete with distance attenuation
+- [x] Spot lights - complete with cone angle and soft edge blending
 - [x] Environment map sampling (IBL) - compute shaders for irradiance/radiance, IBLEnvironment class
 - [x] Ambient occlusion (sampled from AO texture map)
 
@@ -2094,8 +2094,15 @@ Mesh vehicleMesh = craft.build();
 - [x] InstancedRender3D - GPU instancing for thousands of objects
 - [x] GLTFLoader (cgltf + stb_image)
 - [x] Default HDRI environment (IBLEnvironment with procedural sky)
-- [ ] Particles3D - 3D GPU particle system with world-space physics
-- [ ] PointSprites3D - 3D point-based rendering with billboarding
+- [x] Particles3D - 3D GPU particle system with world-space physics and billboarding
+  - Emitter shapes: Point, Sphere, Box, Cone, Disc
+  - Physics: gravity, drag, turbulence, point attractors
+  - Billboard rendering with camera-facing quads
+  - Color modes: Solid, Gradient, Rainbow, Random
+  - Depth sorting for correct transparency
+  - Additive blending option for fire/spark effects
+  - Spritesheet animation with configurable FPS and looping
+  - Example: `examples/3d-rendering/smoke-simulation/` with 30-frame smoke texture
 
 **Non-PBR Shading Modes:**
 
