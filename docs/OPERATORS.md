@@ -19,8 +19,6 @@ Applies separable Gaussian blur to an input texture
 
 **Output:** Texture
 
-**Fluent Methods:** `.radius()`, `.passes()`
-
 ---
 
 ### Brightness
@@ -36,8 +34,6 @@ Adjusts brightness and contrast of an input texture
 
 **Output:** Texture
 
-**Fluent Methods:** `.amount()`, `.amount()`, `.contrast()`
-
 ---
 
 ### Composite
@@ -50,8 +46,6 @@ Blends textures using alpha compositing (Porter-Duff "over" operation).
 |-----------|------|---------|-------|
 | mode | int | 0 | 0 - 4 |
 | opacity | float | 1.0 | 0.0 - 1.0 |
-
-**Fluent Methods:** `.a()`, `.b()`, `.mode()`, `.opacity()`
 
 **Multi-Input Mode (up to 8 inputs):**
 
@@ -81,8 +75,6 @@ Generates a solid color texture or outputs a fixed numeric value
 
 **Output:** Texture
 
-**Fluent Methods:** `.color()`, `.color()`, `.color()`, `.value()`
-
 ---
 
 ### Displacement
@@ -98,8 +90,6 @@ Distorts a texture using a displacement map
 | direction | vec2 | - | - |
 
 **Output:** Texture
-
-**Fluent Methods:** `.map()`, `.amount()`, `.channel()`, `.direction()`
 
 ---
 
@@ -117,8 +107,6 @@ Sobel edge detection with multiple output modes
 
 **Output:** Texture
 
-**Fluent Methods:** `.threshold()`, `.thickness()`, `.mode()`
-
 ---
 
 ### Feedback
@@ -135,8 +123,6 @@ Creates trails/echo effects using double-buffered ping-pong
 | translate | vec2 | - | - |
 
 **Output:** Texture
-
-**Fluent Methods:** `.decay()`, `.zoom()`, `.rotate()`, `.translate()`
 
 ---
 
@@ -156,8 +142,6 @@ Generates color gradients (linear, radial, angular, diamond)
 
 **Output:** Texture
 
-**Fluent Methods:** `.mode()`, `.angle()`, `.offset()`, `.scale()`, `.center()`, `.color1()`, `.color2()`
-
 ---
 
 ### HSVAdjust
@@ -173,8 +157,6 @@ Adjusts hue, saturation, and value of an input texture
 | value | float | 1.0 | 0.0 - 3.0 |
 
 **Output:** Texture
-
-**Fluent Methods:** `.hueShift()`, `.saturation()`, `.value()`
 
 ---
 
@@ -216,8 +198,6 @@ Generates animated fractal noise texture
 
 **Output:** Texture
 
-**Fluent Methods:** `.scale()`, `.speed()`, `.octaves()`, `.lacunarity()`, `.persistence()`
-
 ---
 
 ### Passthrough
@@ -241,8 +221,6 @@ References another operator's output by name
 
 **Output:** Texture
 
-**Fluent Methods:** `.source()`, `.output()`
-
 ---
 
 ### Shape
@@ -265,8 +243,6 @@ Generates basic shapes using Signed Distance Fields (SDF)
 
 **Output:** Texture
 
-**Fluent Methods:** `.type()`, `.center()`, `.size()`, `.radius()`, `.innerRadius()`, `.rotation()`, `.strokeWidth()`, `.color()`, `.softness()`, `.points()`
-
 ---
 
 ### Switch
@@ -281,8 +257,6 @@ Selects between multiple texture inputs based on an index
 | blend | bool | - | - |
 
 **Output:** Texture
-
-**Fluent Methods:** `.index()`, `.indexFrom()`, `.blend()`
 
 ---
 
@@ -300,8 +274,6 @@ Applies translate, scale, and rotate to an input texture
 | pivot | vec2 | - | - |
 
 **Output:** Texture
-
-**Fluent Methods:** `.translate()`, `.scale()`, `.scale()`, `.rotate()`, `.pivot()`
 
 ---
 
@@ -323,8 +295,6 @@ Outputs a single oscillating value that can drive other parameters
 
 **Output:** Value
 
-**Fluent Methods:** `.freq()`, `.min()`, `.max()`, `.phase()`, `.waveform()`
-
 ---
 
 ### Logic
@@ -343,8 +313,6 @@ Performs comparisons and logical operations on numeric values
 | constB | float | 0.0 | -1000.0 - 1000.0 |
 
 **Output:** Value
-
-**Fluent Methods:** `.a()`, `.b()`, `.a()`, `.b()`, `.op()`, `.greaterThan()`, `.lessThan()`, `.equal()`, `.threshold()`, `.inRange()`, `.toggle()`, `.trigger()`, `.gate()`
 
 ---
 
@@ -365,8 +333,6 @@ Performs arithmetic operations on numeric values from other operators
 | outMax | float | 1.0 | -1000.0 - 1000.0 |
 
 **Output:** Value
-
-**Fluent Methods:** `.a()`, `.b()`, `.a()`, `.b()`, `.op()`, `.add()`, `.subtract()`, `.multiply()`, `.divide()`, `.min()`, `.max()`, `.clamp()`, `.remap()`, `.inMin()`, `.inMax()`, `.outMin()`, `.outMax()`
 
 ---
 

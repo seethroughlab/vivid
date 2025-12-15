@@ -162,15 +162,10 @@
 [x] PLAN: Is the vivid runtime currently distributed with the addon? Should it be?
 [x] Have all of the operators now been updated? I'm specifically thinking about light operators (DirectionalLight, PointLight, SpotLight), InstancedRender3D, Boolean (operation type), and IBLEnvironment, GLTFLoader, which don't even have exposed parameters yet. 
 [x] What's happening with the docs github action?  It's not published anywhere accessable. I'm sure I haven't set up something properly at https://github.com/seethroughlab/vivid/settings/pages, but I'm not sure what. 
-[x] Why does canvas.h still have m_resolutionLocked? Why would we need to lock and unlock the resolution? We made a change a while ago that textures shouldn't be linked to the size of the window, and I thought would eliminate the need to "lock" the size of things. 1
+[x] Why does canvas.h still have m_resolutionLocked? Why would we need to lock and unlock the resolution? We made a change a while ago that textures shouldn't be linked to the size of the window, and I thought would eliminate the need to "lock" the size of things. 
+[x] Make a globe example with assets/textures/flat_earth_Largest_still.0330.jpg
 [ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
 [ ] Is there currently a "make install" command that will put vivid into my PATH?
-[ ] Make a globe example with assets/textures/flat_earth_Largest_still.0330.jpg
 [ ] Take more snapshots of showcase projects, add them to README
 [ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
 [ ] git tag v0.1.0 && git push --tags
-[ ]  Creating library D:/a/vivid/vivid/build/lib/Release/vivid-core.lib and object D:/a/vivid/vivid/build/lib/Release/vivid-core.exp
-osc_in.obj : error LNK2019: unresolved external symbol "void __cdecl vivid::network::initWsa(void)" (?initWsa@network@vivid@@YAXXZ) referenced in function "public: __cdecl vivid::network::OscIn::OscIn(void)" (??0OscIn@network@vivid@@QEAA@XZ) [D:\a\vivid\vivid\build\core\vivid-core.vcxproj]
-osc_out.obj : error LNK2001: unresolved external symbol "void __cdecl vivid::network::initWsa(void)" (?initWsa@network@vivid@@YAXXZ) [D:\a\vivid\vivid\build\core\vivid-core.vcxproj]
-udp_out.obj : error LNK2001: unresolved external symbol "void __cdecl vivid::network::initWsa(void)" (?initWsa@network@vivid@@YAXXZ) [D:\a\vivid\vivid\build\core\vivid-core.vcxproj]
-D:\a\vivid\vivid\build\bin\Release\vivid-core.dll : fatal error LNK1120: 1 unresolved externals [D:\a\vivid\vivid\build\core\vivid-core.vcxproj]

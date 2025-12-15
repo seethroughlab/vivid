@@ -186,6 +186,45 @@ void update(Context& ctx) {
 VIVID_CHAIN(setup, update)
 )";
 
+// CLAUDE.md template for AI assistance
+static const char* CLAUDE_MD_TEMPLATE = R"(# %PROJECT_NAME%
+
+## What I Want to Create
+
+[Describe your visual effect, installation, or creative coding project here. Be specific about:
+- What it should look like
+- How it should move/animate
+- What inputs it responds to (audio, MIDI, mouse, etc.)
+- The mood or aesthetic you're going for]
+
+## Current State
+
+- Working on: [current task]
+- Issues: [any problems]
+
+## Addons Enabled
+
+%ADDONS_LIST%
+
+## Style Preferences
+
+- [Add any preferences for how you want code written]
+
+## Resources
+
+- Run with: `vivid .` (from this directory)
+- Operator reference: https://github.com/jeff/vivid/blob/main/docs/LLM-REFERENCE.md
+- Effect recipes: https://github.com/jeff/vivid/blob/main/docs/RECIPES.md
+
+## Notes for AI Assistants
+
+When helping with this project:
+1. Read chain.cpp first to understand the current effect chain
+2. Suggest changes by showing the modified code
+3. Explain what each operator does when adding new ones
+4. Keep chains simple - fewer operators is usually better
+)";
+
 void printUsage() {
     std::cout << "Vivid - Creative coding framework with hot-reload\n\n";
     std::cout << "Usage:\n";
@@ -209,7 +248,20 @@ std::string replaceAll(std::string str, const std::string& from, const std::stri
     return str;
 }
 
-int createProject(const std::string& name, const std::string& templateName, bool minimal, bool skipPrompts) {
+// Available addons with descriptions
+struct AddonInfo {
+    std::string name;
+    std::string description;
+};
+
+static const std::vector<AddonInfo> AVAILABLE_ADDONS = {
+    {"vivid-audio", "Audio input, FFT analysis, beat detection, oscillators"},
+    {"vivid-video", "Video playback (HAP codec, platform decoders)"},
+    {"vivid-render3d", "3D rendering with PBR materials, GLTF loading, CSG"}
+};
+
+int createProject(const std::string& name, const std::string& templateName,
+                  bool minimal, bool skipPrompts, const std::vector<std::string>& addons) {
     fs::path projectPath = fs::current_path() / name;
 
     // Check if directory already exists
@@ -218,9 +270,36 @@ int createProject(const std::string& name, const std::string& templateName, bool
         return 1;
     }
 
+    // Validate addon names
+    for (const auto& addon : addons) {
+        bool valid = false;
+        for (const auto& available : AVAILABLE_ADDONS) {
+            if (addon == available.name) {
+                valid = true;
+                break;
+            }
+        }
+        if (!valid) {
+            std::cerr << "Error: Unknown addon '" << addon << "'\n";
+            std::cerr << "Available addons:\n";
+            for (const auto& a : AVAILABLE_ADDONS) {
+                std::cerr << "  " << a.name << " - " << a.description << "\n";
+            }
+            return 1;
+        }
+    }
+
     // Confirm creation (unless --yes flag)
     if (!skipPrompts && !minimal) {
-        std::cout << "Creating project '" << name << "' with template '" << templateName << "'...\n";
+        std::cout << "Creating project '" << name << "' with template '" << templateName << "'";
+        if (!addons.empty()) {
+            std::cout << " and addons: ";
+            for (size_t i = 0; i < addons.size(); i++) {
+                if (i > 0) std::cout << ", ";
+                std::cout << addons[i];
+            }
+        }
+        std::cout << "...\n";
         std::cout << "Continue? [Y/n] ";
         std::string response;
         std::getline(std::cin, response);
@@ -271,9 +350,35 @@ int createProject(const std::string& name, const std::string& templateName, bool
         gitignore << "imgui.ini\n";
         gitignore.close();
 
+        // Build addons list for CLAUDE.md
+        std::string addonsList;
+        addonsList += "- **Core** (always included): 2D effects, noise, blur, composite, feedback\n";
+        if (addons.empty()) {
+            addonsList += "\nNo additional addons selected. Add with `vivid new --addons vivid-audio,vivid-video`\n";
+        } else {
+            for (const auto& addon : addons) {
+                for (const auto& info : AVAILABLE_ADDONS) {
+                    if (addon == info.name) {
+                        addonsList += "- **" + info.name + "**: " + info.description + "\n";
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Write CLAUDE.md
+        std::string claudeMd = replaceAll(CLAUDE_MD_TEMPLATE, "%PROJECT_NAME%", name);
+        claudeMd = replaceAll(claudeMd, "%ADDONS_LIST%", addonsList);
+        std::ofstream claudeFile(projectPath / "CLAUDE.md");
+        if (claudeFile) {
+            claudeFile << claudeMd;
+            claudeFile.close();
+        }
+
         std::cout << "\n";
         std::cout << "  Created " << name << "/\n";
         std::cout << "  Created " << name << "/chain.cpp\n";
+        std::cout << "  Created " << name << "/CLAUDE.md\n";
         std::cout << "  Created " << name << "/assets/\n";
         std::cout << "  Created " << name << "/shaders/\n";
         std::cout << "  Created " << name << "/.gitignore\n";
@@ -283,7 +388,8 @@ int createProject(const std::string& name, const std::string& templateName, bool
         std::cout << "  cd " << name << "\n";
         std::cout << "  vivid .\n";
         std::cout << "\n";
-        std::cout << "Edit chain.cpp to start creating!\n";
+        std::cout << "Edit CLAUDE.md to describe what you want to create!\n";
+        std::cout << "Edit chain.cpp to start coding!\n";
 
     } catch (const fs::filesystem_error& e) {
         std::cerr << "Error creating project: " << e.what() << "\n";
@@ -511,6 +617,7 @@ int handleCommand(int argc, char** argv) {
     // 'new' subcommand
     std::string newProjectName;
     std::string newTemplate = "blank";
+    std::vector<std::string> newAddons;
     bool newMinimal = false;
     bool newYes = false;
 
@@ -518,6 +625,9 @@ int handleCommand(int argc, char** argv) {
     newCmd->add_option("name", newProjectName, "Project name")->required();
     newCmd->add_option("-t,--template", newTemplate, "Template: blank, noise-demo, feedback")
           ->default_val("blank");
+    newCmd->add_option("-a,--addons", newAddons,
+                       "Addons to include (comma-separated): vivid-audio, vivid-video, vivid-render3d")
+          ->delimiter(',');
     newCmd->add_flag("--minimal", newMinimal, "Use minimal template");
     newCmd->add_flag("-y,--yes", newYes, "Skip confirmation prompts");
 
@@ -558,7 +668,7 @@ int handleCommand(int argc, char** argv) {
         if (newMinimal) {
             newTemplate = "minimal";
         }
-        return createProject(newProjectName, newTemplate, newMinimal, newYes);
+        return createProject(newProjectName, newTemplate, newMinimal, newYes, newAddons);
     }
 
     if (bundleCmd->parsed()) {

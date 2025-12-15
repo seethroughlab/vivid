@@ -1,6 +1,6 @@
 # Vivid Chain API
 
-The Chain API is Vivid's declarative system for composing operators into visual effects pipelines. It provides a clean, fluent interface for building operator graphs with automatic dependency resolution.
+The Chain API is Vivid's declarative system for composing operators into visual effects pipelines. It provides a clean interface for building operator graphs with automatic dependency resolution.
 
 ## Quick Start
 
@@ -11,34 +11,36 @@ The Chain API is Vivid's declarative system for composing operators into visual 
 using namespace vivid;
 using namespace vivid::effects;
 
-// Chain must be global/static for hot-reload
-static Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    // Clean up on hot-reload
-    delete chain;
-    chain = new Chain();
+    auto& chain = ctx.chain();
 
-    // Add operators with fluent configuration
-    auto& noise = chain->add<Noise>("noise").scale(4.0f).speed(0.3f);
-    auto& fb = chain->add<Feedback>("fb").input(&noise).decay(0.9f);
-    auto& mirror = chain->add<Mirror>("mirror").input(&fb).kaleidoscope(6);
-    auto& color = chain->add<HSV>("color").input(&mirror).colorize(true).saturation(0.8f);
+    // Add operators and configure parameters
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+    noise.speed = 0.3f;
+
+    auto& fb = chain.add<Feedback>("fb");
+    fb.input(&noise);
+    fb.decay = 0.9f;
+
+    auto& mirror = chain.add<Mirror>("mirror");
+    mirror.input(&fb);
+    mirror.segments = 6;
+
+    auto& color = chain.add<HSV>("color");
+    color.input(&mirror);
+    color.saturation = 0.8f;
 
     // Designate the output operator
-    chain->output("color");
-    chain->init(ctx);  // Auto-registers all operators for visualization
+    chain.output("color");
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
+    auto& chain = ctx.chain();
 
     // Dynamic parameter updates each frame
-    chain->get<Feedback>("fb").rotate(ctx.mouseNormX() * 0.1f);
-    chain->get<HSV>("color").hueShift(ctx.time() * 0.1f);
-
-    // Process chain - handles execution order and output automatically
-    chain->process(ctx);
+    chain.get<Feedback>("fb").rotate = ctx.mouseNorm().x * 0.1f;
+    chain.get<HSV>("color").hueShift = static_cast<float>(ctx.time()) * 0.1f;
 }
 
 // Export entry points
@@ -78,14 +80,11 @@ The `VIVID_CHAIN(setup, update)` macro exports these for the runtime.
 ## Adding Operators
 
 ```cpp
-// Basic: add operator with name
-chain->add<Noise>("myNoise");
-
-// Fluent: configure inline
-chain->add<Noise>("noise")
-    .scale(4.0f)
-    .speed(0.3f)
-    .octaves(4);
+// Add operator with name, then configure
+auto& noise = chain.add<Noise>("myNoise");
+noise.scale = 4.0f;
+noise.speed = 0.3f;
+noise.octaves = 4;
 ```
 
 ### Built-in Operators

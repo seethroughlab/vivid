@@ -23,8 +23,9 @@
 namespace vivid::network {
 
 #ifdef _WIN32
-static bool g_wsaInitialized = false;
-static void initWsa() {
+// Shared WSA initialization for all network code
+bool g_wsaInitialized = false;
+void initWsa() {
     if (!g_wsaInitialized) {
         WSADATA wsaData;
         WSAStartup(MAKEWORD(2, 2), &wsaData);

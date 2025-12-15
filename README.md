@@ -359,7 +359,6 @@ Vivid is designed with AI-assisted development in mind:
 - **Minimal Core** - ~600 lines of runtime code that fits in context windows
 - **Self-Contained Operators** - Each operator is a single .h/.cpp pair with embedded shaders
 - **Consistent Patterns** - All operators follow the same structure (init/process/cleanup)
-- **Fluent API** - Method chaining makes code readable and easy to generate
 - **Comprehensive Documentation** - LLM-optimized reference docs and recipes
 - **Hot Reload** - Instant feedback loop when iterating with AI assistance
 - **Automatic State Management** - No boilerplate for chain lifecycle
