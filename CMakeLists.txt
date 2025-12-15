@@ -57,6 +57,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(glm)
 
+# CLI11 - Command-line argument parser (header-only)
+FetchContent_Declare(
+    cli11
+    GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
+    GIT_TAG        v2.4.2
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(cli11)
+
 # -----------------------------------------------------------------------------
 # WebGPU via wgpu-native (prebuilt binaries)
 # Using prebuilt binaries for reliable cross-platform support

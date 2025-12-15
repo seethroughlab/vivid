@@ -8,6 +8,7 @@
 #include <vivid/editor_bridge.h>
 #include <vivid/audio_buffer.h>
 #include <vivid/video_exporter.h>
+#include <vivid/cli.h>
 #include "imgui/imgui_integration.h"
 #include "imgui/chain_visualizer.h"
 #include <webgpu/webgpu.h>
@@ -144,6 +145,13 @@ void onDeviceError(WGPUDevice const* device, WGPUErrorType type,
 // -----------------------------------------------------------------------------
 
 int main(int argc, char** argv) {
+    // Handle CLI commands first (vivid new, --help, --version)
+    // These don't require GPU initialization
+    int cliResult = vivid::cli::handleCommand(argc, argv);
+    if (cliResult >= 0) {
+        return cliResult;  // CLI command was handled
+    }
+
     std::cout << "Vivid - Starting..." << std::endl;
 
     // Parse arguments
@@ -156,6 +164,13 @@ int main(int argc, char** argv) {
     int renderWidth = 0;   // 0 = use window size
     int renderHeight = 0;
     bool startFullscreen = false;
+
+    // Video recording options
+    std::string recordPath;
+    float recordFps = 60.0f;
+    float recordDuration = 0.0f;  // 0 = unlimited
+    bool recordAudio = false;
+    ExportCodec recordCodec = ExportCodec::H264;
 
     // Helper to parse WxH format
     auto parseSize = [](const std::string& s, int& w, int& h) {
@@ -188,10 +203,43 @@ int main(int argc, char** argv) {
             parseSize(arg.substr(9), renderWidth, renderHeight);
         } else if (arg == "--fullscreen") {
             startFullscreen = true;
+        } else if (arg == "--record" && i + 1 < argc) {
+            recordPath = argv[++i];
+        } else if (arg.rfind("--record=", 0) == 0) {
+            recordPath = arg.substr(9);
+        } else if (arg == "--record-fps" && i + 1 < argc) {
+            recordFps = std::stof(argv[++i]);
+        } else if (arg.rfind("--record-fps=", 0) == 0) {
+            recordFps = std::stof(arg.substr(13));
+        } else if (arg == "--record-duration" && i + 1 < argc) {
+            recordDuration = std::stof(argv[++i]);
+        } else if (arg.rfind("--record-duration=", 0) == 0) {
+            recordDuration = std::stof(arg.substr(18));
+        } else if (arg == "--record-audio") {
+            recordAudio = true;
+        } else if (arg == "--record-codec" && i + 1 < argc) {
+            std::string codec = argv[++i];
+            if (codec == "h265" || codec == "hevc") recordCodec = ExportCodec::H265;
+            else if (codec == "prores" || codec == "animation") recordCodec = ExportCodec::Animation;
+            else recordCodec = ExportCodec::H264;
+        } else if (arg.rfind("--record-codec=", 0) == 0) {
+            std::string codec = arg.substr(15);
+            if (codec == "h265" || codec == "hevc") recordCodec = ExportCodec::H265;
+            else if (codec == "prores" || codec == "animation") recordCodec = ExportCodec::Animation;
+            else recordCodec = ExportCodec::H264;
         } else if (arg[0] != '-') {
             // Non-flag argument is the project path
             projectPath = arg;
         }
+    }
+
+    // Headless mode validation
+    if (headless) {
+        if (snapshotPath.empty() && recordPath.empty()) {
+            std::cerr << "Warning: --headless without --snapshot or --record will run indefinitely.\n";
+            std::cerr << "         Use Ctrl+C to stop or add --snapshot/--record to capture output.\n";
+        }
+        std::cout << "Running in headless mode" << std::endl;
     }
 
     // Initialize GLFW
@@ -202,6 +250,11 @@ int main(int argc, char** argv) {
 
     // No OpenGL context - we're using WebGPU
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+    // Headless mode: create invisible window
+    if (headless) {
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+    }
 
     // Create window
     GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "Vivid", nullptr, nullptr);
@@ -342,8 +395,11 @@ int main(int argc, char** argv) {
         std::cout << "Using surface format: " << surfaceFormat << std::endl;
     }
 
-    WGPUPresentMode presentMode = WGPUPresentMode_Fifo;  // Default
-    if (capabilities.presentModeCount > 0) {
+    WGPUPresentMode presentMode = WGPUPresentMode_Fifo;  // Default (vsync)
+    if (headless) {
+        // Headless: disable vsync for maximum speed
+        presentMode = WGPUPresentMode_Immediate;
+    } else if (capabilities.presentModeCount > 0) {
         presentMode = capabilities.presentModes[0];
         std::cout << "Using present mode: " << presentMode << std::endl;
     }
@@ -561,6 +617,10 @@ int main(int argc, char** argv) {
     int snapshotFrameCounter = 0;
     bool snapshotSaved = false;
 
+    // CLI video recording
+    VideoExporter cliRecorder;
+    bool cliRecordingStarted = false;
+
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
 
@@ -723,6 +783,31 @@ int main(int argc, char** argv) {
                 if (editorBridge.clientCount() > 0) {
                     editorBridge.sendOperatorList(gatherOperatorInfo());
                 }
+
+                // Start CLI recording (once, after first chain load)
+                if (!recordPath.empty() && !cliRecordingStarted) {
+                    int recW = renderWidth > 0 ? renderWidth : windowWidth;
+                    int recH = renderHeight > 0 ? renderHeight : windowHeight;
+                    bool started = false;
+                    if (recordAudio) {
+                        started = cliRecorder.startWithAudio(recordPath, recW, recH,
+                                                             recordFps, recordCodec,
+                                                             AUDIO_SAMPLE_RATE, AUDIO_CHANNELS);
+                    } else {
+                        started = cliRecorder.start(recordPath, recW, recH, recordFps, recordCodec);
+                    }
+                    if (started) {
+                        std::cout << "Recording to: " << recordPath
+                                  << " (" << recW << "x" << recH << " @ " << recordFps << "fps";
+                        if (recordDuration > 0) {
+                            std::cout << ", " << recordDuration << "s";
+                        }
+                        std::cout << ")" << std::endl;
+                    } else {
+                        std::cerr << "Failed to start recording: " << cliRecorder.error() << std::endl;
+                    }
+                    cliRecordingStarted = true;
+                }
             }
 
             // Call user's update function (parameter tweaks)
@@ -756,6 +841,33 @@ int main(int argc, char** argv) {
                         ctx.chain().generateAudioForExport(audioBuffer.data(), audioFramesPerVideoFrame);
                         chainVisualizer.exporter().pushAudioSamples(
                             audioBuffer.data(), audioFramesPerVideoFrame);
+                    }
+                }
+            }
+
+            // CLI video recording capture
+            if (cliRecorder.isRecording() && ctx.outputTexture()) {
+                WGPUTexture outputTex = ctx.chain().outputTexture();
+                if (outputTex) {
+                    cliRecorder.captureFrame(device, queue, outputTex);
+
+                    // Capture audio if enabled
+                    if (cliRecorder.hasAudio()) {
+                        uint32_t audioFramesPerVideoFrame = static_cast<uint32_t>(AUDIO_SAMPLE_RATE / recordFps);
+                        static std::vector<float> cliAudioBuffer;
+                        if (cliAudioBuffer.size() < audioFramesPerVideoFrame * AUDIO_CHANNELS) {
+                            cliAudioBuffer.resize(audioFramesPerVideoFrame * AUDIO_CHANNELS);
+                        }
+                        ctx.chain().generateAudioForExport(cliAudioBuffer.data(), audioFramesPerVideoFrame);
+                        cliRecorder.pushAudioSamples(cliAudioBuffer.data(), audioFramesPerVideoFrame);
+                    }
+
+                    // Check duration limit
+                    if (recordDuration > 0 && cliRecorder.duration() >= recordDuration) {
+                        std::cout << "Recording complete: " << cliRecorder.frameCount() << " frames, "
+                                  << cliRecorder.duration() << "s" << std::endl;
+                        cliRecorder.stop();
+                        glfwSetWindowShouldClose(window, GLFW_TRUE);
                     }
                 }
             }
@@ -942,6 +1054,13 @@ int main(int argc, char** argv) {
 
     // Cleanup
     std::cout << "Shutting down..." << std::endl;
+
+    // Stop CLI recording if active
+    if (cliRecorder.isRecording()) {
+        std::cout << "Stopping recording: " << cliRecorder.frameCount() << " frames, "
+                  << cliRecorder.duration() << "s" << std::endl;
+        cliRecorder.stop();
+    }
 
     // Stop editor bridge
     editorBridge.stop();

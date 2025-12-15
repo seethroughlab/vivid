@@ -18,7 +18,7 @@ void setup(Context& ctx) {
     // Generators like Noise, Gradient, SolidColor use their declared resolution
     // (default is 1280x720 if not specified)
     auto& noise = chain.add<Noise>("noise");
-    noise.resolution(1920, 1080);  // Set to 1080p
+    noise.setResolution(1920, 1080);  // Set to 1080p
     noise.scale = 4.0f;
     noise.speed = 0.5f;
     noise.octaves = 4;

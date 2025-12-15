@@ -676,10 +676,10 @@ namespace vivid::effects {
 
 class Noise : public Operator {
 public:
-    // Fluent API
-    Noise& scale(float s) { scale_ = s; return *this; }
-    Noise& speed(float s) { speed_ = s; return *this; }
-    Noise& octaves(int o) { octaves_ = o; return *this; }
+    // Public parameters (direct access)
+    Param<float> scale{"scale", 4.0f, 0.1f, 20.0f};
+    Param<float> speed{"speed", 0.5f, 0.0f, 5.0f};
+    Param<int> octaves{"octaves", 4, 1, 8};
 
     // Operator interface
     void init(Context& ctx) override;
@@ -692,10 +692,6 @@ public:
     WGPUTextureView outputView() const { return outputView_; }
 
 private:
-    float scale_ = 4.0f;
-    float speed_ = 0.5f;
-    int octaves_ = 4;
-
     WGPUTexture output_ = nullptr;
     WGPUTextureView outputView_ = nullptr;
     WGPURenderPipeline pipeline_ = nullptr;
@@ -787,29 +783,30 @@ To avoid redundant parameter declarations (member variable + ParamDecl in `param
 class Noise : public TextureOperator {
     float m_scale = 4.0f;  // 1. Member
 
-    Noise& scale(float s) { m_scale = s; return *this; }  // 2. Setter
-
     std::vector<ParamDecl> params() override {
         return {
-            {"scale", ParamType::Float, 0.1f, 20.0f, {m_scale}}  // 3. ParamDecl
+            {"scale", ParamType::Float, 0.1f, 20.0f, {m_scale}}  // 2. ParamDecl
         };
     }
 };
 ```
 
-**After (unified):**
+**After (unified with public Param):**
 ```cpp
 #include <vivid/param.h>
 
 class Noise : public TextureOperator {
-    Param<float> m_scale{"scale", 4.0f, 0.1f, 20.0f};  // Value + metadata together
-
-    Noise& scale(float s) { m_scale = s; return *this; }  // Fluent setter
+public:
+    Param<float> scale{"scale", 4.0f, 0.1f, 20.0f};  // Public for direct access
 
     std::vector<ParamDecl> params() override {
-        return { m_scale.decl() };  // Trivial - just call .decl()
+        return { scale.decl() };  // Trivial - just call .decl()
     }
 };
+
+// Usage:
+chain.add<Noise>("noise");
+chain.get<Noise>("noise").scale = 8.0f;  // Direct assignment
 ```
 
 **Available param types:**
@@ -883,19 +880,25 @@ private:
 } // namespace vivid
 ```
 
-### Fluent Input Patterns
+### Input Patterns
 
-Operators declare their inputs via fluent `.input()` method:
+Operators declare their inputs via `.input()` method:
 
 ```cpp
 // Single input (most effects)
-chain.add<Blur>("blur").input("noise").radius(5.0f);
+auto& blur = chain.add<Blur>("blur");
+blur.input("noise");
+blur.radius = 5.0f;
 
 // Two named inputs (compositing)
-chain.add<Composite>("comp").a("background").b("foreground").mode(BlendMode::Over);
+auto& comp = chain.add<Composite>("comp");
+comp.inputA("background");
+comp.inputB("foreground");
+comp.mode(BlendMode::Over);
 
 // Multi-input (up to 8 layers)
-chain.add<Composite>("layers").inputs({"layer1", "layer2", "layer3", "layer4"});
+auto& layers = chain.add<Composite>("layers");
+layers.inputs({"layer1", "layer2", "layer3", "layer4"});
 ```
 
 ### Constant vs Node Input
@@ -903,35 +906,38 @@ chain.add<Composite>("layers").inputs({"layer1", "layer2", "layer3", "layer4"});
 Math operators accept either a node reference OR a constant value:
 
 ```cpp
-chain.add<Math>("scaled")
-    .a("lfo")           // Input from another operator
-    .b(0.5f)            // Constant value
-    .multiply();
+auto& scaled = chain.add<Math>("scaled");
+scaled.a("lfo");           // Input from another operator
+scaled.b(0.5f);            // Constant value
+scaled.multiply();
 ```
 
 ### Usage Example
 
 ```cpp
 #include <vivid/vivid.h>
-#include <vivid/effects/operators.h>
+#include <vivid/effects/effects.h>
 
 using namespace vivid;
 using namespace vivid::effects;
 
-static Chain chain;
-
 void setup(Context& ctx) {
-    chain.add<Noise>("noise").scale(4.0f).speed(0.5f);
-    chain.add<Blur>("blur").input("noise").radius(5.0f);
-    chain.add<Output>("out").input("blur");
+    auto& chain = ctx.chain();
 
-    chain.setOutput("out");
-    chain.init(ctx);
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+    noise.speed = 0.5f;
+
+    auto& blur = chain.add<Blur>("blur");
+    blur.input(&noise);
+    blur.radius = 5.0f;
+
+    chain.output("blur");
 }
 
 void update(Context& ctx) {
-    chain.get<Noise>("noise").speed(ctx.time() * 0.1f);
-    chain.process(ctx);
+    auto& chain = ctx.chain();
+    chain.get<Noise>("noise").speed = ctx.time() * 0.1f;
 }
 
 VIVID_CHAIN(setup, update)
@@ -1718,7 +1724,8 @@ Context now owns the Chain. Core automatically handles lifecycle:
 // New pattern (simple!)
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
-    chain.add<Noise>("noise").scale(4.0f);
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
     chain.output("noise");  // Specify output - no Output operator needed
 }
 
@@ -2532,9 +2539,15 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Video with audio
-    chain.add<video::VideoPlayer>("video").file("movie.mp4");
-    chain.add<audio::VideoAudio>("videoAudio").source("video");
-    chain.add<AudioOutput>("audioOut").input("videoAudio").volume(0.8f);
+    auto& video = chain.add<video::VideoPlayer>("video");
+    video.file = "movie.mp4";
+
+    auto& videoAudio = chain.add<audio::VideoAudio>("videoAudio");
+    videoAudio.source("video");
+
+    auto& audioOut = chain.add<AudioOutput>("audioOut");
+    audioOut.setInput("videoAudio");
+    audioOut.setVolume(0.8f);
 
     chain.output("video");          // Visual output
     chain.audioOutput("audioOut");  // Audio output → speakers + export
@@ -2584,12 +2597,16 @@ public:
 **Usage Example (Audio-reactive visuals):**
 ```cpp
 chain.add<AudioIn>("mic");
-chain.add<FFT>("fft").input("mic");
-chain.add<BandSplit>("bands").input("fft");
+
+auto& fft = chain.add<FFT>("fft");
+fft.input("mic");
+
+auto& bands = chain.add<BandSplit>("bands");
+bands.input("fft");
 
 // Use bass level to drive visual effect
 float bass = chain.get<BandSplit>("bands").bass();
-chain.get<Noise>("noise").scale(4.0f + bass * 10.0f);
+chain.get<Noise>("noise").scale = 4.0f + bass * 10.0f;
 ```
 
 **Audio Synthesis Operators:**
@@ -2809,8 +2826,8 @@ public:
 ```cpp
 class UdpIn : public Operator {
 public:
-    UdpIn& port(int port);                         // Listen port
-    UdpIn& bufferSize(int bytes);                  // Max packet size (default: 65535)
+    Param<int> port{"port", 5000, 1, 65535};       // Listen port
+    Param<int> bufferSize{"bufferSize", 65535};    // Max packet size
 
     bool hasData() const;                          // New data available this frame
     const std::vector<uint8_t>& data() const;      // Raw packet bytes
@@ -2825,9 +2842,9 @@ public:
 
 class UdpOut : public Operator {
 public:
-    UdpOut& host(const std::string& hostname);
-    UdpOut& port(int port);
-    UdpOut& broadcast(bool enabled);               // Enable broadcast mode
+    void setHost(const std::string& hostname);
+    void setPort(int port);
+    void setBroadcast(bool enabled);               // Enable broadcast mode
 
     void send(const void* data, size_t size);
     void send(const std::string& message);
@@ -2836,9 +2853,9 @@ public:
 
 class WebServer : public Operator {
 public:
-    WebServer& port(int port);                     // Default: 8080
-    WebServer& host(const std::string& host);      // Default: 0.0.0.0
-    WebServer& staticDir(const std::string& path); // Serve static files
+    Param<int> port{"port", 8080, 1, 65535};       // Default: 8080
+    void setHost(const std::string& host);         // Default: 0.0.0.0
+    void setStaticDir(const std::string& path);    // Serve static files
 
     void broadcast(const std::string& message);    // Send to all WebSocket clients
     void broadcastJson(const std::string& type, const std::string& data);
@@ -2855,18 +2872,23 @@ public:
 
 ```cpp
 // UDP receive (e.g., Qortex zone tracking)
-chain.add<UdpIn>("qortex").port(5000);
+auto& qortex = chain.add<UdpIn>("qortex");
+qortex.port = 5000;
 if (udp.hasData()) {
     auto data = udp.data();
     // Process zone occupancy...
 }
 
 // UDP send (e.g., DMX lighting)
-chain.add<UdpOut>("dmx").host("192.168.1.100").port(6454);
-udp.send(dmxData);
+auto& dmx = chain.add<UdpOut>("dmx");
+dmx.setHost("192.168.1.100");
+dmx.setPort(6454);
+dmx.send(dmxData);
 
 // Web server with REST API
-chain.add<WebServer>("web").port(8080).staticDir("web/");
+auto& web = chain.add<WebServer>("web");
+web.port = 8080;
+web.setStaticDir("web/");
 // Access at http://localhost:8080
 ```
 

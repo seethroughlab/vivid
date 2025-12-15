@@ -165,7 +165,12 @@
 [x] Why does canvas.h still have m_resolutionLocked? Why would we need to lock and unlock the resolution? We made a change a while ago that textures shouldn't be linked to the size of the window, and I thought would eliminate the need to "lock" the size of things. 1
 [ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
 [ ] Is there currently a "make install" command that will put vivid into my PATH?
-[ ] Make an example with assets/textures/flat_earth_Largest_still.0330.jpg
+[ ] Make a globe example with assets/textures/flat_earth_Largest_still.0330.jpg
 [ ] Take more snapshots of showcase projects, add them to README
 [ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
 [ ] git tag v0.1.0 && git push --tags
+[ ]  Creating library D:/a/vivid/vivid/build/lib/Release/vivid-core.lib and object D:/a/vivid/vivid/build/lib/Release/vivid-core.exp
+osc_in.obj : error LNK2019: unresolved external symbol "void __cdecl vivid::network::initWsa(void)" (?initWsa@network@vivid@@YAXXZ) referenced in function "public: __cdecl vivid::network::OscIn::OscIn(void)" (??0OscIn@network@vivid@@QEAA@XZ) [D:\a\vivid\vivid\build\core\vivid-core.vcxproj]
+osc_out.obj : error LNK2001: unresolved external symbol "void __cdecl vivid::network::initWsa(void)" (?initWsa@network@vivid@@YAXXZ) [D:\a\vivid\vivid\build\core\vivid-core.vcxproj]
+udp_out.obj : error LNK2001: unresolved external symbol "void __cdecl vivid::network::initWsa(void)" (?initWsa@network@vivid@@YAXXZ) [D:\a\vivid\vivid\build\core\vivid-core.vcxproj]
+D:\a\vivid\vivid\build\bin\Release\vivid-core.dll : fatal error LNK1120: 1 unresolved externals [D:\a\vivid\vivid\build\core\vivid-core.vcxproj]

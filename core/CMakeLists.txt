@@ -128,6 +128,7 @@ set(VIVID_CORE_LIB_SOURCES
 # Vivid runtime sources (executable only)
 set(VIVID_CORE_SOURCES
     src/main.cpp
+    src/cli.cpp
     src/display.cpp
     src/hot_reload.cpp
     src/addon_registry.cpp
@@ -158,6 +159,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/audio_operator.h
     include/vivid/audio_output.h
     include/vivid/editor_bridge.h
+    include/vivid/cli.h
     imgui/imgui_integration.h
     imgui/chain_visualizer.h
 )
@@ -251,6 +253,7 @@ target_link_libraries(vivid
         glfw3webgpu
         vivid-render3d
         vivid-audio
+        CLI11::CLI11
 )
 
 # Platform-specific settings
