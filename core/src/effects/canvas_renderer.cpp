@@ -88,6 +88,22 @@ void CanvasRenderer::cleanup() {
         wgpuRenderPipelineRelease(m_pipeline);
         m_pipeline = nullptr;
     }
+    // Clean up clip pipeline
+    if (m_clipPipeline) {
+        wgpuRenderPipelineRelease(m_clipPipeline);
+        m_clipPipeline = nullptr;
+    }
+    // Clean up stencil buffer
+    if (m_stencilView) {
+        wgpuTextureViewRelease(m_stencilView);
+        m_stencilView = nullptr;
+    }
+    if (m_stencilTexture) {
+        wgpuTextureRelease(m_stencilTexture);
+        m_stencilTexture = nullptr;
+    }
+    m_stencilWidth = 0;
+    m_stencilHeight = 0;
     // Clean up persistent vertex/index buffers
     if (m_solidVertexBuffer) {
         wgpuBufferRelease(m_solidVertexBuffer);
@@ -203,7 +219,22 @@ void CanvasRenderer::createPipeline(Context& ctx) {
     fragmentState.targetCount = 1;
     fragmentState.targets = &colorTarget;
 
-    // Render pipeline
+    // Depth/stencil state for main pipeline (test against stencil)
+    // WebGPU comparison is: reference COMPARE stencil_value
+    // LessEqual means: pass when reference <= stencil_value
+    // When clipDepth = 0 (no clip), reference=0, always passes (0 <= anything)
+    // When clipDepth = 1, only pixels where stencil was written (= 1) pass (1 <= 1)
+    WGPUDepthStencilState depthStencilState = {};
+    depthStencilState.format = WGPUTextureFormat_Stencil8;
+    depthStencilState.stencilFront.compare = WGPUCompareFunction_LessEqual;
+    depthStencilState.stencilFront.failOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilFront.depthFailOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilFront.passOp = WGPUStencilOperation_Keep;
+    depthStencilState.stencilBack = depthStencilState.stencilFront;
+    depthStencilState.stencilReadMask = 0xFF;
+    depthStencilState.stencilWriteMask = 0x00;  // Don't write stencil during normal draw
+
+    // Render pipeline (main drawing with stencil test)
     WGPURenderPipelineDescriptor pipelineDesc = {};
     pipelineDesc.layout = pipelineLayout;
     pipelineDesc.vertex.module = shaderModule;
@@ -214,10 +245,36 @@ void CanvasRenderer::createPipeline(Context& ctx) {
     pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
     pipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
     pipelineDesc.primitive.cullMode = WGPUCullMode_None;
+    pipelineDesc.depthStencil = &depthStencilState;
     pipelineDesc.multisample.count = 1;
     pipelineDesc.multisample.mask = ~0u;
 
     m_pipeline = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
+
+    // Create clip pipeline (writes to stencil, no color output)
+    WGPUDepthStencilState clipDepthStencilState = {};
+    clipDepthStencilState.format = WGPUTextureFormat_Stencil8;
+    clipDepthStencilState.stencilFront.compare = WGPUCompareFunction_Always;
+    clipDepthStencilState.stencilFront.failOp = WGPUStencilOperation_Keep;
+    clipDepthStencilState.stencilFront.depthFailOp = WGPUStencilOperation_Keep;
+    clipDepthStencilState.stencilFront.passOp = WGPUStencilOperation_Replace;  // Write stencil ref
+    clipDepthStencilState.stencilBack = clipDepthStencilState.stencilFront;
+    clipDepthStencilState.stencilReadMask = 0xFF;
+    clipDepthStencilState.stencilWriteMask = 0xFF;
+
+    // DEBUG: Enable color writes for clip pipeline to verify geometry
+    // TODO: Set back to 0 for production
+    WGPUColorTargetState clipColorTarget = colorTarget;
+    clipColorTarget.writeMask = WGPUColorWriteMask_All;  // Temporarily enable to debug
+
+    WGPUFragmentState clipFragmentState = fragmentState;
+    clipFragmentState.targets = &clipColorTarget;
+
+    WGPURenderPipelineDescriptor clipPipelineDesc = pipelineDesc;
+    clipPipelineDesc.depthStencil = &clipDepthStencilState;
+    clipPipelineDesc.fragment = &clipFragmentState;
+
+    m_clipPipeline = wgpuDeviceCreateRenderPipeline(device, &clipPipelineDesc);
 
     wgpuPipelineLayoutRelease(pipelineLayout);
     wgpuShaderModuleRelease(shaderModule);
@@ -287,15 +344,74 @@ void CanvasRenderer::createWhiteTexture(Context& ctx) {
     m_whiteBindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
 }
 
+void CanvasRenderer::createStencilTexture(Context& ctx, int width, int height) {
+    // Skip if already the right size
+    if (m_stencilTexture && m_stencilWidth == width && m_stencilHeight == height) {
+        return;
+    }
+
+    // Release old stencil resources
+    if (m_stencilView) {
+        wgpuTextureViewRelease(m_stencilView);
+        m_stencilView = nullptr;
+    }
+    if (m_stencilTexture) {
+        wgpuTextureRelease(m_stencilTexture);
+        m_stencilTexture = nullptr;
+    }
+
+    WGPUDevice device = ctx.device();
+
+    // Create stencil texture
+    WGPUTextureDescriptor texDesc = {};
+    texDesc.usage = WGPUTextureUsage_RenderAttachment;
+    texDesc.dimension = WGPUTextureDimension_2D;
+    texDesc.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+    texDesc.format = WGPUTextureFormat_Stencil8;
+    texDesc.mipLevelCount = 1;
+    texDesc.sampleCount = 1;
+
+    m_stencilTexture = wgpuDeviceCreateTexture(device, &texDesc);
+
+    WGPUTextureViewDescriptor viewDesc = {};
+    viewDesc.format = WGPUTextureFormat_Stencil8;
+    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.mipLevelCount = 1;
+    viewDesc.arrayLayerCount = 1;
+    viewDesc.aspect = WGPUTextureAspect_StencilOnly;
+    m_stencilView = wgpuTextureCreateView(m_stencilTexture, &viewDesc);
+
+    m_stencilWidth = width;
+    m_stencilHeight = height;
+}
+
 void CanvasRenderer::begin(int width, int height, const glm::vec4& clearColor) {
     m_solidVertices.clear();
     m_solidIndices.clear();
+    m_solidCommands.clear();
     m_textVertices.clear();
     m_textIndices.clear();
+    m_imageCommands.clear();
+    m_clipCommands.clear();
+    m_clipDepth = 0;
     m_width = width;
     m_height = height;
     m_clearColor = clearColor;
     m_currentFont = nullptr;
+}
+
+void CanvasRenderer::flushSolidBatch() {
+    if (m_solidVertices.empty()) return;
+
+    SolidDrawCmd cmd;
+    cmd.vertices = std::move(m_solidVertices);
+    cmd.indices = std::move(m_solidIndices);
+    cmd.clipDepth = m_clipDepth;
+
+    m_solidCommands.push_back(std::move(cmd));
+
+    m_solidVertices.clear();
+    m_solidIndices.clear();
 }
 
 void CanvasRenderer::addSolidQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3, const glm::vec4& color) {
@@ -333,6 +449,38 @@ void CanvasRenderer::addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::
     m_textIndices.push_back(baseIndex + 0);
     m_textIndices.push_back(baseIndex + 2);
     m_textIndices.push_back(baseIndex + 3);
+}
+
+void CanvasRenderer::addImage(WGPUTextureView textureView,
+                              int srcWidth, int srcHeight,
+                              float sx, float sy, float sw, float sh,
+                              float dx, float dy, float dw, float dh,
+                              float alpha) {
+    if (!textureView) return;
+
+    // Calculate UVs based on source rect
+    float u0 = sx / srcWidth;
+    float v0 = sy / srcHeight;
+    float u1 = (sx + sw) / srcWidth;
+    float v1 = (sy + sh) / srcHeight;
+
+    // Create quad vertices with UV coords
+    glm::vec4 color(1.0f, 1.0f, 1.0f, alpha);
+
+    ImageDrawCmd cmd;
+    cmd.textureView = textureView;
+    cmd.clipDepth = m_clipDepth;  // Track clip state at submission time
+
+    // Four corners
+    cmd.vertices.push_back({{dx, dy}, {u0, v0}, color});
+    cmd.vertices.push_back({{dx + dw, dy}, {u1, v0}, color});
+    cmd.vertices.push_back({{dx + dw, dy + dh}, {u1, v1}, color});
+    cmd.vertices.push_back({{dx, dy + dh}, {u0, v1}, color});
+
+    // Two triangles
+    cmd.indices = {0, 1, 2, 0, 2, 3};
+
+    m_imageCommands.push_back(std::move(cmd));
 }
 
 void CanvasRenderer::rectFilled(float x, float y, float w, float h, const glm::vec4& color) {
@@ -415,6 +563,36 @@ void CanvasRenderer::triangleFilled(glm::vec2 a, glm::vec2 b, glm::vec2 c, const
     m_solidIndices.push_back(baseIndex + 2);
 }
 
+void CanvasRenderer::addClip(const std::vector<glm::vec2>& vertices, const std::vector<uint32_t>& indices) {
+    std::cerr << "[addClip] verts=" << vertices.size() << " indices=" << indices.size() << " clipDepth=" << m_clipDepth << std::endl;
+    if (vertices.empty() || indices.empty()) return;
+
+    // Flush any pending solid geometry before changing clip state
+    flushSolidBatch();
+
+    ClipCmd cmd;
+    cmd.clipDepth = m_clipDepth;
+
+    // Convert vec2 vertices to CanvasVertex format
+    glm::vec2 uv(0.5f, 0.5f);
+    glm::vec4 color(1.0f);  // Color doesn't matter for stencil writes (no color output)
+
+    for (const auto& v : vertices) {
+        cmd.vertices.push_back({v, uv, color});
+    }
+    cmd.indices = indices;
+
+    m_clipCommands.push_back(std::move(cmd));
+}
+
+void CanvasRenderer::setClipDepth(int depth) {
+    if (depth != m_clipDepth) {
+        // Flush any pending solid geometry before changing clip state
+        flushSolidBatch();
+        m_clipDepth = depth;
+    }
+}
+
 void CanvasRenderer::text(FontAtlas& font, const std::string& str, float x, float y,
                           const glm::vec4& color, float letterSpacing) {
     m_currentFont = &font;
@@ -470,11 +648,19 @@ void CanvasRenderer::renderBatch(WGPURenderPassEncoder pass, Context& ctx,
 }
 
 void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTextureView targetView) {
-    // Check if either batch has content
-    if (m_solidVertices.empty() && m_textVertices.empty()) return;
+    // Flush any pending solid vertices to a command
+    flushSolidBatch();
+
+    // Check if any batch has content
+    if (m_solidCommands.empty() && m_textVertices.empty() && m_imageCommands.empty()) return;
 
     WGPUDevice device = ctx.device();
     WGPUQueue queue = ctx.queue();
+
+    // Always create stencil texture (pipeline requires it)
+    // TODO: Could optimize by having two pipelines - one with stencil, one without
+    createStencilTexture(ctx, m_width, m_height);
+    bool useStencil = !m_clipCommands.empty();
 
     // Update uniforms
     float uniforms[4] = {(float)m_width, (float)m_height, 0.0f, 0.0f};
@@ -500,35 +686,6 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
             wgpuBindGroupRelease(m_fontBindGroup);
         }
         m_fontBindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
-    }
-
-    // Ensure solid vertex buffer is large enough (grow-only, reused across frames)
-    if (!m_solidVertices.empty()) {
-        size_t neededVertexSize = m_solidVertices.size() * sizeof(CanvasVertex);
-        size_t neededIndexSize = m_solidIndices.size() * sizeof(uint32_t);
-
-        if (neededVertexSize > m_solidVertexCapacity) {
-            if (m_solidVertexBuffer) wgpuBufferRelease(m_solidVertexBuffer);
-            size_t newCapacity = std::max(neededVertexSize, INITIAL_VERTEX_CAPACITY * sizeof(CanvasVertex));
-            newCapacity = std::max(newCapacity, m_solidVertexCapacity * 2);  // Double when growing
-            WGPUBufferDescriptor vbDesc = {};
-            vbDesc.size = newCapacity;
-            vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-            m_solidVertexBuffer = wgpuDeviceCreateBuffer(device, &vbDesc);
-            m_solidVertexCapacity = newCapacity;
-        }
-        if (neededIndexSize > m_solidIndexCapacity) {
-            if (m_solidIndexBuffer) wgpuBufferRelease(m_solidIndexBuffer);
-            size_t newCapacity = std::max(neededIndexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
-            newCapacity = std::max(newCapacity, m_solidIndexCapacity * 2);
-            WGPUBufferDescriptor ibDesc = {};
-            ibDesc.size = newCapacity;
-            ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-            m_solidIndexBuffer = wgpuDeviceCreateBuffer(device, &ibDesc);
-            m_solidIndexCapacity = newCapacity;
-        }
-        wgpuQueueWriteBuffer(queue, m_solidVertexBuffer, 0, m_solidVertices.data(), neededVertexSize);
-        wgpuQueueWriteBuffer(queue, m_solidIndexBuffer, 0, m_solidIndices.data(), neededIndexSize);
     }
 
     // Ensure text vertex buffer is large enough
@@ -571,27 +728,157 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a};
 
+    // Always setup stencil attachment (pipeline requires it)
+    WGPURenderPassDepthStencilAttachment stencilAttachment = {};
+    stencilAttachment.view = m_stencilView;
+    stencilAttachment.stencilLoadOp = WGPULoadOp_Clear;
+    stencilAttachment.stencilStoreOp = WGPUStoreOp_Store;
+    stencilAttachment.stencilClearValue = 0;
+    stencilAttachment.stencilReadOnly = false;
+
     WGPURenderPassDescriptor passDesc = {};
     passDesc.colorAttachmentCount = 1;
     passDesc.colorAttachments = &colorAttachment;
+    passDesc.depthStencilAttachment = &stencilAttachment;
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
-    wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
 
-    // Render solid primitives first (with white texture)
-    if (!m_solidVertices.empty()) {
+    // Process clip commands first (write to stencil)
+    std::cerr << "[render] clipCommands=" << m_clipCommands.size() << " solidCommands=" << m_solidCommands.size() << std::endl;
+    if (!m_clipCommands.empty()) {
+        wgpuRenderPassEncoderSetPipeline(pass, m_clipPipeline);
         wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
-        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_solidVertexBuffer, 0, m_solidVertices.size() * sizeof(CanvasVertex));
-        wgpuRenderPassEncoderSetIndexBuffer(pass, m_solidIndexBuffer, WGPUIndexFormat_Uint32, 0, m_solidIndices.size() * sizeof(uint32_t));
-        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_solidIndices.size()), 1, 0, 0, 0);
+
+        for (const auto& clipCmd : m_clipCommands) {
+            std::cerr << "[render] drawing clip: verts=" << clipCmd.vertices.size() << " indices=" << clipCmd.indices.size() << " depth=" << clipCmd.clipDepth << std::endl;
+            if (!clipCmd.vertices.empty()) {
+                std::cerr << "  clip vert 0: " << clipCmd.vertices[0].position.x << ", " << clipCmd.vertices[0].position.y << std::endl;
+                if (clipCmd.vertices.size() > 1)
+                    std::cerr << "  clip vert 1: " << clipCmd.vertices[1].position.x << ", " << clipCmd.vertices[1].position.y << std::endl;
+            }
+            if (clipCmd.vertices.empty()) continue;
+
+            // Create temporary buffers for this clip command
+            WGPUBufferDescriptor vbDesc = {};
+            vbDesc.size = clipCmd.vertices.size() * sizeof(CanvasVertex);
+            vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+            WGPUBuffer vb = wgpuDeviceCreateBuffer(device, &vbDesc);
+            wgpuQueueWriteBuffer(queue, vb, 0, clipCmd.vertices.data(), vbDesc.size);
+
+            WGPUBufferDescriptor ibDesc = {};
+            ibDesc.size = clipCmd.indices.size() * sizeof(uint32_t);
+            ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+            WGPUBuffer ib = wgpuDeviceCreateBuffer(device, &ibDesc);
+            wgpuQueueWriteBuffer(queue, ib, 0, clipCmd.indices.data(), ibDesc.size);
+
+            // Set stencil reference value for this clip level
+            wgpuRenderPassEncoderSetStencilReference(pass, static_cast<uint32_t>(clipCmd.clipDepth));
+
+            wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, vbDesc.size);
+            wgpuRenderPassEncoderSetIndexBuffer(pass, ib, WGPUIndexFormat_Uint32, 0, ibDesc.size);
+            wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(clipCmd.indices.size()), 1, 0, 0, 0);
+
+            wgpuBufferRelease(vb);
+            wgpuBufferRelease(ib);
+        }
     }
 
-    // Render text primitives second (with font texture)
+    // Switch to main pipeline for drawing
+    wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
+
+    // Render solid commands (each with its own clip depth)
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
+    for (const auto& cmd : m_solidCommands) {
+        if (cmd.vertices.empty()) continue;
+
+        // Set stencil reference for this command
+        std::cerr << "[render] solid cmd: verts=" << cmd.vertices.size() << " clipDepth=" << cmd.clipDepth << " useStencil=" << useStencil << std::endl;
+        if (useStencil) {
+            wgpuRenderPassEncoderSetStencilReference(pass, static_cast<uint32_t>(cmd.clipDepth));
+        }
+
+        // Create temporary buffers
+        WGPUBufferDescriptor vbDesc = {};
+        vbDesc.size = cmd.vertices.size() * sizeof(CanvasVertex);
+        vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+        WGPUBuffer vb = wgpuDeviceCreateBuffer(device, &vbDesc);
+        wgpuQueueWriteBuffer(queue, vb, 0, cmd.vertices.data(), vbDesc.size);
+
+        WGPUBufferDescriptor ibDesc = {};
+        ibDesc.size = cmd.indices.size() * sizeof(uint32_t);
+        ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+        WGPUBuffer ib = wgpuDeviceCreateBuffer(device, &ibDesc);
+        wgpuQueueWriteBuffer(queue, ib, 0, cmd.indices.data(), ibDesc.size);
+
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, vbDesc.size);
+        wgpuRenderPassEncoderSetIndexBuffer(pass, ib, WGPUIndexFormat_Uint32, 0, ibDesc.size);
+        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(cmd.indices.size()), 1, 0, 0, 0);
+
+        wgpuBufferRelease(vb);
+        wgpuBufferRelease(ib);
+    }
+
+    // Render text primitives (with font texture)
+    // TODO: Add clip depth tracking for text as well
     if (m_fontBindGroup && !m_textVertices.empty()) {
+        if (useStencil) {
+            wgpuRenderPassEncoderSetStencilReference(pass, 0);  // Text uses no clipping for now
+        }
         wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroup, 0, nullptr);
         wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer, 0, m_textVertices.size() * sizeof(CanvasVertex));
         wgpuRenderPassEncoderSetIndexBuffer(pass, m_textIndexBuffer, WGPUIndexFormat_Uint32, 0, m_textIndices.size() * sizeof(uint32_t));
         wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_textIndices.size()), 1, 0, 0, 0);
+    }
+
+    // Render images (each with its own texture bind group and clip depth)
+    for (const auto& cmd : m_imageCommands) {
+        if (cmd.vertices.empty() || !cmd.textureView) continue;
+
+        // Set stencil reference for this image's clip depth
+        if (useStencil) {
+            wgpuRenderPassEncoderSetStencilReference(pass, static_cast<uint32_t>(cmd.clipDepth));
+        }
+
+        // Create temporary vertex buffer
+        WGPUBufferDescriptor vbDesc = {};
+        vbDesc.size = cmd.vertices.size() * sizeof(CanvasVertex);
+        vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+        WGPUBuffer vb = wgpuDeviceCreateBuffer(device, &vbDesc);
+        wgpuQueueWriteBuffer(queue, vb, 0, cmd.vertices.data(), vbDesc.size);
+
+        // Create temporary index buffer
+        WGPUBufferDescriptor ibDesc = {};
+        ibDesc.size = cmd.indices.size() * sizeof(uint32_t);
+        ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+        WGPUBuffer ib = wgpuDeviceCreateBuffer(device, &ibDesc);
+        wgpuQueueWriteBuffer(queue, ib, 0, cmd.indices.data(), ibDesc.size);
+
+        // Create bind group for this texture
+        WGPUBindGroupEntry bgEntries[3] = {};
+        bgEntries[0].binding = 0;
+        bgEntries[0].buffer = m_uniformBuffer;
+        bgEntries[0].size = 16;
+        bgEntries[1].binding = 1;
+        bgEntries[1].sampler = m_sampler;
+        bgEntries[2].binding = 2;
+        bgEntries[2].textureView = cmd.textureView;
+
+        WGPUBindGroupDescriptor bgDesc = {};
+        bgDesc.layout = m_bindGroupLayout;
+        bgDesc.entryCount = 3;
+        bgDesc.entries = bgEntries;
+        WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
+
+        // Draw
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, vbDesc.size);
+        wgpuRenderPassEncoderSetIndexBuffer(pass, ib, WGPUIndexFormat_Uint32, 0, ibDesc.size);
+        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(cmd.indices.size()), 1, 0, 0, 0);
+
+        // Release temporary resources
+        wgpuBindGroupRelease(bindGroup);
+        wgpuBufferRelease(vb);
+        wgpuBufferRelease(ib);
     }
 
     wgpuRenderPassEncoderEnd(pass);

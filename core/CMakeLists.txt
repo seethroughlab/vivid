@@ -28,6 +28,18 @@ set(FT_DISABLE_BROTLI ON CACHE BOOL "" FORCE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 FetchContent_MakeAvailable(freetype)
 
+# Earcut for polygon tessellation (Canvas path fill)
+# Header-only library, skip its CMakeLists.txt which includes demo dependencies
+FetchContent_Declare(
+    earcut
+    GIT_REPOSITORY https://github.com/mapbox/earcut.hpp.git
+    GIT_TAG v2.2.4
+    GIT_SHALLOW TRUE
+    SOURCE_SUBDIR nonexistent  # Skip CMakeLists.txt, we only need the header
+)
+FetchContent_MakeAvailable(earcut)
+message(STATUS "[vivid-core] Earcut source: ${earcut_SOURCE_DIR}")
+
 # Fetch ImGui from master (required for wgpu-native v24.x compatibility)
 # We manually specify source files, so use SOURCE_SUBDIR to skip its CMakeLists
 FetchContent_Declare(
@@ -180,6 +192,7 @@ target_include_directories(vivid-core
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${stb_SOURCE_DIR}
         ${freetype_SOURCE_DIR}/include
+        ${earcut_SOURCE_DIR}/include
 )
 
 target_link_libraries(vivid-core PUBLIC

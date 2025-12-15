@@ -120,12 +120,66 @@ public:
      */
     void cleanup();
 
+    // -------------------------------------------------------------------------
+    /// @name Low-level Batch API (for Canvas path rendering)
+    /// @{
+
+    /**
+     * @brief Add a solid-colored quad to the batch
+     * @param p0 First vertex (top-left typically)
+     * @param p1 Second vertex (top-right)
+     * @param p2 Third vertex (bottom-right)
+     * @param p3 Fourth vertex (bottom-left)
+     * @param color Fill color (RGBA)
+     */
+    void addSolidQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3, const glm::vec4& color);
+
+    /**
+     * @brief Add a textured image to draw
+     * @param textureView Source texture view
+     * @param srcWidth Source texture width
+     * @param srcHeight Source texture height
+     * @param sx Source X (in pixels)
+     * @param sy Source Y (in pixels)
+     * @param sw Source width (in pixels)
+     * @param sh Source height (in pixels)
+     * @param dx Destination X (in canvas pixels)
+     * @param dy Destination Y (in canvas pixels)
+     * @param dw Destination width (in canvas pixels)
+     * @param dh Destination height (in canvas pixels)
+     * @param alpha Global alpha
+     */
+    void addImage(WGPUTextureView textureView,
+                  int srcWidth, int srcHeight,
+                  float sx, float sy, float sw, float sh,
+                  float dx, float dy, float dw, float dh,
+                  float alpha);
+
+    /**
+     * @brief Add a clip region (triangles to write to stencil)
+     * @param vertices Clip path vertices
+     * @param indices Clip path indices
+     */
+    void addClip(const std::vector<glm::vec2>& vertices, const std::vector<uint32_t>& indices);
+
+    /**
+     * @brief Set the current clip depth (for stencil reference)
+     * @param depth Clip depth (0 = no clipping)
+     *
+     * Flushes any pending geometry before changing clip state.
+     */
+    void setClipDepth(int depth);
+
+    /**
+     * @brief Get current clip depth
+     */
+    int clipDepth() const { return m_clipDepth; }
+
+    /// @}
+
 private:
     void createPipeline(Context& ctx);
     void createWhiteTexture(Context& ctx);
-
-    // Add a quad to solid batch (for shapes)
-    void addSolidQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3, const glm::vec4& color);
 
     // Add a quad to text batch (for font glyphs)
     void addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3,
@@ -138,17 +192,53 @@ private:
                      const std::vector<uint32_t>& indices,
                      WGPUBindGroup bindGroup);
 
+    // Image draw command for deferred rendering
+    struct ImageDrawCmd {
+        WGPUTextureView textureView;
+        std::vector<CanvasVertex> vertices;
+        std::vector<uint32_t> indices;
+        int clipDepth;  // Stencil reference for this draw
+    };
+
+    // Solid draw command (tracks clip state at submission time)
+    struct SolidDrawCmd {
+        std::vector<CanvasVertex> vertices;
+        std::vector<uint32_t> indices;
+        int clipDepth;  // Stencil reference for this draw
+    };
+
+    // Clip command for stencil rendering
+    struct ClipCmd {
+        std::vector<CanvasVertex> vertices;
+        std::vector<uint32_t> indices;
+        int clipDepth;  // Stencil value to write
+    };
+
+    void createStencilTexture(Context& ctx, int width, int height);
+    void flushSolidBatch();  ///< Flush current solid vertices to a command
+
     // Batched geometry - separate batches for solid and text primitives
-    std::vector<CanvasVertex> m_solidVertices;
+    std::vector<CanvasVertex> m_solidVertices;  ///< Current batch being built
     std::vector<uint32_t> m_solidIndices;
+    std::vector<SolidDrawCmd> m_solidCommands;  ///< Completed solid draw commands
     std::vector<CanvasVertex> m_textVertices;
     std::vector<uint32_t> m_textIndices;
+    std::vector<ImageDrawCmd> m_imageCommands;
+    std::vector<ClipCmd> m_clipCommands;
+    int m_clipDepth = 0;  ///< Current stencil reference value
 
     // GPU resources
-    WGPURenderPipeline m_pipeline = nullptr;
+    WGPURenderPipeline m_pipeline = nullptr;           ///< Main drawing pipeline (with stencil test)
+    WGPURenderPipeline m_clipPipeline = nullptr;       ///< Stencil-write pipeline (for clip paths)
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUSampler m_sampler = nullptr;
+
+    // Stencil buffer for clipping
+    WGPUTexture m_stencilTexture = nullptr;
+    WGPUTextureView m_stencilView = nullptr;
+    int m_stencilWidth = 0;
+    int m_stencilHeight = 0;
 
     // White 1x1 texture for solid-colored primitives
     WGPUTexture m_whiteTexture = nullptr;

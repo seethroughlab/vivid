@@ -164,10 +164,9 @@
 [x] What's happening with the docs github action?  It's not published anywhere accessable. I'm sure I haven't set up something properly at https://github.com/seethroughlab/vivid/settings/pages, but I'm not sure what. 
 [x] Why does canvas.h still have m_resolutionLocked? Why would we need to lock and unlock the resolution? We made a change a while ago that textures shouldn't be linked to the size of the window, and I thought would eliminate the need to "lock" the size of things. 
 [x] Make a globe example with assets/textures/flat_earth_Largest_still.0330.jpg
+[x] It seems that there is a lot of repeated code in a lot of the core effects. Would you recommend any optimizations? Perhaps more inheritence?
+[x] Phase 5b.1: State Management
 [ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
-[ ] Is there currently a "make install" command that will put vivid into my PATH?
 [ ] Take more snapshots of showcase projects, add them to README
 [ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
 [ ] git tag v0.1.0 && git push --tags
-[x] It seems that there is a lot of repeated code in a lot of the core effects. Would you recommend any optimizations? Perhaps more inheritence?
-[ ] Phase 5b.1: State Management
