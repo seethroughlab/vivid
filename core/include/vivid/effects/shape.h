@@ -7,7 +7,7 @@
  * Generates geometric shapes using signed distance fields.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
@@ -23,6 +23,28 @@ enum class ShapeType {
     Star,         ///< Multi-pointed star
     Ring,         ///< Hollow circle (donut)
     Polygon       ///< Regular polygon with N sides
+};
+
+/**
+ * @brief Uniform buffer for Shape effect
+ */
+struct ShapeUniforms {
+    int shapeType;
+    float sizeX;
+    float sizeY;
+    float posX;
+    float posY;
+    float rotation;
+    int sides;
+    float cornerRadius;
+    float thickness;
+    float softness;
+    float colorR;
+    float colorG;
+    float colorB;
+    float colorA;
+    float aspect;
+    float _pad;
 };
 
 /**
@@ -58,7 +80,7 @@ enum class ShapeType {
  * @par Output
  * Shape texture with alpha
  */
-class Shape : public TextureOperator {
+class Shape : public SimpleGeneratorEffect<Shape, ShapeUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -86,34 +108,42 @@ public:
         registerParam(softness);
         registerParam(color);
     }
-    ~Shape() override;
 
     /// @brief Set shape type (Circle, Rectangle, RoundedRect, etc.)
     void type(ShapeType t) { if (m_type != t) { m_type = t; markDirty(); } }
+
+    /// @brief Get uniform values for GPU
+    ShapeUniforms getUniforms() const {
+        ShapeUniforms uniforms = {};
+        uniforms.shapeType = static_cast<int>(m_type);
+        uniforms.sizeX = size.x();
+        uniforms.sizeY = size.y();
+        uniforms.posX = position.x();
+        uniforms.posY = position.y();
+        uniforms.rotation = rotation;
+        uniforms.sides = sides;
+        uniforms.cornerRadius = cornerRadius;
+        uniforms.thickness = thickness;
+        uniforms.softness = softness;
+        uniforms.colorR = color.r();
+        uniforms.colorG = color.g();
+        uniforms.colorB = color.b();
+        uniforms.colorA = color.a();
+        uniforms.aspect = static_cast<float>(m_width) / m_height;
+        return uniforms;
+    }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "Shape"; }
+    const char* fragmentShader() const override;
 
     /// @}
 
 private:
-    void createPipeline(Context& ctx);
-
     ShapeType m_type = ShapeType::Circle;
-
-    // GPU resources
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBindGroup m_bindGroup = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

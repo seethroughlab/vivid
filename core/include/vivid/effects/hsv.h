@@ -7,10 +7,18 @@
  * Adjust hue, saturation, and value (brightness) in HSV color space.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/// @brief Uniform buffer for HSV effect
+struct HSVUniforms {
+    float hueShift;
+    float saturation;
+    float value;
+    float _pad;
+};
 
 /**
  * @brief HSV color adjustment
@@ -39,7 +47,7 @@ namespace vivid::effects {
  * @par Output
  * Color-adjusted texture
  */
-class HSV : public TextureOperator {
+class HSV : public SimpleTextureEffect<HSV, HSVUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -57,32 +65,19 @@ public:
         registerParam(saturation);
         registerParam(value);
     }
-    ~HSV() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    HSVUniforms getUniforms() const {
+        return {hueShift, saturation, value, 0.0f};
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "HSV"; }
 
-    /// @}
-
-private:
-    void createPipeline(Context& ctx);
-
-    // GPU resources
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 };
 
 } // namespace vivid::effects

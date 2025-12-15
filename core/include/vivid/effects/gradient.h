@@ -7,10 +7,26 @@
  * Generates gradient patterns with configurable colors and shapes.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/**
+ * @brief Uniform buffer layout for Gradient effect
+ */
+struct GradientUniforms {
+    int mode;
+    float angle;
+    float centerX;
+    float centerY;
+    float scale;
+    float offset;
+    float aspect;
+    float _pad;
+    float colorA[4];
+    float colorB[4];
+};
 
 /**
  * @brief Gradient shape modes
@@ -53,7 +69,7 @@ enum class GradientMode {
  * @par Output
  * Gradient texture
  */
-class Gradient : public TextureOperator {
+class Gradient : public SimpleGeneratorEffect<Gradient, GradientUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -77,7 +93,6 @@ public:
         registerParam(colorA);
         registerParam(colorB);
     }
-    ~Gradient() override;
 
     /// @brief Set gradient mode (Linear, Radial, Angular, Diamond)
     void mode(GradientMode m) { if (m_mode != m) { m_mode = m; markDirty(); } }
@@ -86,24 +101,46 @@ public:
     /// @name Operator Interface
     /// @{
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "Gradient"; }
 
     /// @}
 
+    // -------------------------------------------------------------------------
+    /// @name CRTP Interface (required by SimpleGeneratorEffect)
+    /// @{
+
+    /**
+     * @brief Returns uniform buffer values from current parameter state
+     */
+    GradientUniforms getUniforms() const {
+        GradientUniforms uniforms = {};
+        uniforms.mode = static_cast<int>(m_mode);
+        uniforms.angle = angle;
+        uniforms.centerX = center.x();
+        uniforms.centerY = center.y();
+        uniforms.scale = scale;
+        uniforms.offset = offset;
+        uniforms.aspect = static_cast<float>(m_width) / m_height;
+        uniforms.colorA[0] = colorA.r();
+        uniforms.colorA[1] = colorA.g();
+        uniforms.colorA[2] = colorA.b();
+        uniforms.colorA[3] = colorA.a();
+        uniforms.colorB[0] = colorB.r();
+        uniforms.colorB[1] = colorB.g();
+        uniforms.colorB[2] = colorB.b();
+        uniforms.colorB[3] = colorB.a();
+        return uniforms;
+    }
+
+    /**
+     * @brief Returns WGSL fragment shader source
+     */
+    const char* fragmentShader() const override;
+
+    /// @}
+
 private:
-    void createPipeline(Context& ctx);
-
     GradientMode m_mode = GradientMode::Linear;
-
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroup m_bindGroup = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

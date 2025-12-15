@@ -1,6 +1,9 @@
 // Vivid Effects 2D - Composite Operator Implementation
 
 #include <vivid/effects/composite.h>
+#include <vivid/effects/gpu_common.h>
+#include <vivid/effects/pipeline_builder.h>
+#include <string>
 #include <vivid/context.h>
 
 namespace vivid::effects {
@@ -64,7 +67,7 @@ void Composite::createDummyTexture(Context& ctx) {
 
 void Composite::createPipeline(Context& ctx) {
     // Shader with 8 texture inputs
-    const char* shaderSource = R"(
+    const char* fragmentShader = R"(
 struct Uniforms {
     mode: i32,
     opacity: f32,
@@ -82,25 +85,6 @@ struct Uniforms {
 @group(0) @binding(7) var tex5: texture_2d<f32>;
 @group(0) @binding(8) var tex6: texture_2d<f32>;
 @group(0) @binding(9) var tex7: texture_2d<f32>;
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
 
 fn blendOver(base: vec4f, blend: vec4f, opacity: f32) -> vec4f {
     let a = blend.a * opacity;
@@ -189,16 +173,26 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-    // Create shader module
-    WGPUShaderSourceWGSL wgslDesc = {};
-    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(shaderSource);
+    // Combine shared vertex shader with effect-specific fragment shader
+    std::string shaderSource = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + fragmentShader;
 
-    WGPUShaderModuleDescriptor shaderDesc = {};
-    shaderDesc.nextInChain = &wgslDesc.chain;
-    shaderDesc.label = toStringView("Composite Shader");
+    // Use PipelineBuilder
+    gpu::PipelineBuilder builder(ctx.device());
+    builder.shader(shaderSource)
+           .colorTarget(EFFECTS_FORMAT)
+           .uniform(0, sizeof(CompositeUniforms))
+           .sampler(1)
+           .texture(2)    // tex0
+           .texture(3)    // tex1
+           .texture(4)    // tex2
+           .texture(5)    // tex3
+           .texture(6)    // tex4
+           .texture(7)    // tex5
+           .texture(8)    // tex6
+           .texture(9);   // tex7
 
-    WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(ctx.device(), &shaderDesc);
+    m_pipeline = builder.build();
+    m_bindGroupLayout = builder.bindGroupLayout();
 
     // Create uniform buffer
     WGPUBufferDescriptor bufferDesc = {};
@@ -207,79 +201,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_uniformBuffer = wgpuDeviceCreateBuffer(ctx.device(), &bufferDesc);
 
-    // Create sampler
-    WGPUSamplerDescriptor samplerDesc = {};
-    samplerDesc.minFilter = WGPUFilterMode_Linear;
-    samplerDesc.magFilter = WGPUFilterMode_Linear;
-    samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
-    samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
-    samplerDesc.addressModeW = WGPUAddressMode_ClampToEdge;
-    samplerDesc.maxAnisotropy = 1;
-    m_sampler = wgpuDeviceCreateSampler(ctx.device(), &samplerDesc);
-
-    // Create bind group layout with 8 texture slots
-    // 0: uniforms, 1: sampler, 2-9: textures
-    WGPUBindGroupLayoutEntry layoutEntries[10] = {};
-
-    // Uniform buffer
-    layoutEntries[0].binding = 0;
-    layoutEntries[0].visibility = WGPUShaderStage_Fragment;
-    layoutEntries[0].buffer.type = WGPUBufferBindingType_Uniform;
-    layoutEntries[0].buffer.minBindingSize = sizeof(CompositeUniforms);
-
-    // Sampler
-    layoutEntries[1].binding = 1;
-    layoutEntries[1].visibility = WGPUShaderStage_Fragment;
-    layoutEntries[1].sampler.type = WGPUSamplerBindingType_Filtering;
-
-    // 8 textures
-    for (int i = 0; i < COMPOSITE_MAX_INPUTS; ++i) {
-        layoutEntries[2 + i].binding = 2 + i;
-        layoutEntries[2 + i].visibility = WGPUShaderStage_Fragment;
-        layoutEntries[2 + i].texture.sampleType = WGPUTextureSampleType_Float;
-        layoutEntries[2 + i].texture.viewDimension = WGPUTextureViewDimension_2D;
-    }
-
-    WGPUBindGroupLayoutDescriptor layoutDesc = {};
-    layoutDesc.label = toStringView("Composite Bind Group Layout");
-    layoutDesc.entryCount = 10;
-    layoutDesc.entries = layoutEntries;
-    m_bindGroupLayout = wgpuDeviceCreateBindGroupLayout(ctx.device(), &layoutDesc);
-
-    // Create pipeline layout
-    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {};
-    pipelineLayoutDesc.bindGroupLayoutCount = 1;
-    pipelineLayoutDesc.bindGroupLayouts = &m_bindGroupLayout;
-    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(ctx.device(), &pipelineLayoutDesc);
-
-    // Create render pipeline
-    WGPUColorTargetState colorTarget = {};
-    colorTarget.format = EFFECTS_FORMAT;
-    colorTarget.writeMask = WGPUColorWriteMask_All;
-
-    WGPUFragmentState fragmentState = {};
-    fragmentState.module = shaderModule;
-    fragmentState.entryPoint = toStringView("fs_main");
-    fragmentState.targetCount = 1;
-    fragmentState.targets = &colorTarget;
-
-    WGPURenderPipelineDescriptor pipelineDesc = {};
-    pipelineDesc.label = toStringView("Composite Pipeline");
-    pipelineDesc.layout = pipelineLayout;
-    pipelineDesc.vertex.module = shaderModule;
-    pipelineDesc.vertex.entryPoint = toStringView("vs_main");
-    pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-    pipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
-    pipelineDesc.primitive.cullMode = WGPUCullMode_None;
-    pipelineDesc.multisample.count = 1;
-    pipelineDesc.multisample.mask = ~0u;
-    pipelineDesc.fragment = &fragmentState;
-
-    m_pipeline = wgpuDeviceCreateRenderPipeline(ctx.device(), &pipelineDesc);
-
-    // Cleanup
-    wgpuPipelineLayoutRelease(pipelineLayout);
-    wgpuShaderModuleRelease(shaderModule);
+    // Use shared cached sampler (do NOT release - managed by gpu_common)
+    m_sampler = gpu::getLinearClampSampler(ctx.device());
 }
 
 void Composite::updateBindGroup(Context& ctx) {
@@ -403,34 +326,13 @@ void Composite::process(Context& ctx) {
 }
 
 void Composite::cleanup() {
-    if (m_pipeline) {
-        wgpuRenderPipelineRelease(m_pipeline);
-        m_pipeline = nullptr;
-    }
-    if (m_bindGroup) {
-        wgpuBindGroupRelease(m_bindGroup);
-        m_bindGroup = nullptr;
-    }
-    if (m_bindGroupLayout) {
-        wgpuBindGroupLayoutRelease(m_bindGroupLayout);
-        m_bindGroupLayout = nullptr;
-    }
-    if (m_uniformBuffer) {
-        wgpuBufferRelease(m_uniformBuffer);
-        m_uniformBuffer = nullptr;
-    }
-    if (m_sampler) {
-        wgpuSamplerRelease(m_sampler);
-        m_sampler = nullptr;
-    }
-    if (m_dummyView) {
-        wgpuTextureViewRelease(m_dummyView);
-        m_dummyView = nullptr;
-    }
-    if (m_dummyTexture) {
-        wgpuTextureRelease(m_dummyTexture);
-        m_dummyTexture = nullptr;
-    }
+    gpu::release(m_pipeline);
+    gpu::release(m_bindGroup);
+    gpu::release(m_bindGroupLayout);
+    gpu::release(m_uniformBuffer);
+    m_sampler = nullptr;
+    gpu::release(m_dummyView);
+    gpu::release(m_dummyTexture);
     releaseOutput();
     m_initialized = false;
     m_lastInputViews = {};

@@ -1,7 +1,10 @@
 // Vivid Effects 2D - Brightness Operator Implementation
 
 #include <vivid/effects/brightness.h>
+#include <vivid/effects/gpu_common.h>
+#include <vivid/effects/pipeline_builder.h>
 #include <vivid/context.h>
+#include <string>
 
 namespace vivid::effects {
 
@@ -24,7 +27,8 @@ void Brightness::init(Context& ctx) {
 }
 
 void Brightness::createPipeline(Context& ctx) {
-    const char* shaderSource = R"(
+    // Fragment shader only - uses shared vertex shader from gpu_common.h
+    const char* fragmentShader = R"(
 struct Uniforms {
     brightness: f32,
     contrast: f32,
@@ -35,25 +39,6 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var inputTex: texture_2d<f32>;
 @group(0) @binding(2) var texSampler: sampler;
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
@@ -72,75 +57,28 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-    WGPUShaderSourceWGSL wgslDesc = {};
-    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(shaderSource);
+    // Combine shared vertex shader with fragment shader
+    std::string shaderSource = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + fragmentShader;
 
-    WGPUShaderModuleDescriptor shaderDesc = {};
-    shaderDesc.nextInChain = &wgslDesc.chain;
-    WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(ctx.device(), &shaderDesc);
+    // Use PipelineBuilder for cleaner pipeline creation
+    gpu::PipelineBuilder builder(ctx.device());
+    builder.shader(shaderSource)
+           .colorTarget(EFFECTS_FORMAT)
+           .uniform(0, sizeof(BrightnessUniforms))
+           .texture(1)
+           .sampler(2);
 
+    m_pipeline = builder.build();
+    m_bindGroupLayout = builder.bindGroupLayout();
+
+    // Create uniform buffer
     WGPUBufferDescriptor bufferDesc = {};
     bufferDesc.size = sizeof(BrightnessUniforms);
     bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_uniformBuffer = wgpuDeviceCreateBuffer(ctx.device(), &bufferDesc);
 
-    WGPUSamplerDescriptor samplerDesc = {};
-    samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
-    samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
-    samplerDesc.magFilter = WGPUFilterMode_Linear;
-    samplerDesc.minFilter = WGPUFilterMode_Linear;
-    samplerDesc.maxAnisotropy = 1;
-    m_sampler = wgpuDeviceCreateSampler(ctx.device(), &samplerDesc);
-
-    WGPUBindGroupLayoutEntry entries[3] = {};
-    entries[0].binding = 0;
-    entries[0].visibility = WGPUShaderStage_Fragment;
-    entries[0].buffer.type = WGPUBufferBindingType_Uniform;
-    entries[0].buffer.minBindingSize = sizeof(BrightnessUniforms);
-
-    entries[1].binding = 1;
-    entries[1].visibility = WGPUShaderStage_Fragment;
-    entries[1].texture.sampleType = WGPUTextureSampleType_Float;
-    entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
-
-    entries[2].binding = 2;
-    entries[2].visibility = WGPUShaderStage_Fragment;
-    entries[2].sampler.type = WGPUSamplerBindingType_Filtering;
-
-    WGPUBindGroupLayoutDescriptor layoutDesc = {};
-    layoutDesc.entryCount = 3;
-    layoutDesc.entries = entries;
-    m_bindGroupLayout = wgpuDeviceCreateBindGroupLayout(ctx.device(), &layoutDesc);
-
-    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {};
-    pipelineLayoutDesc.bindGroupLayoutCount = 1;
-    pipelineLayoutDesc.bindGroupLayouts = &m_bindGroupLayout;
-    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(ctx.device(), &pipelineLayoutDesc);
-
-    WGPUColorTargetState colorTarget = {};
-    colorTarget.format = EFFECTS_FORMAT;
-    colorTarget.writeMask = WGPUColorWriteMask_All;
-
-    WGPUFragmentState fragmentState = {};
-    fragmentState.module = shaderModule;
-    fragmentState.entryPoint = toStringView("fs_main");
-    fragmentState.targetCount = 1;
-    fragmentState.targets = &colorTarget;
-
-    WGPURenderPipelineDescriptor pipelineDesc = {};
-    pipelineDesc.layout = pipelineLayout;
-    pipelineDesc.vertex.module = shaderModule;
-    pipelineDesc.vertex.entryPoint = toStringView("vs_main");
-    pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-    pipelineDesc.multisample.count = 1;
-    pipelineDesc.multisample.mask = ~0u;
-    pipelineDesc.fragment = &fragmentState;
-
-    m_pipeline = wgpuDeviceCreateRenderPipeline(ctx.device(), &pipelineDesc);
-
-    wgpuPipelineLayoutRelease(pipelineLayout);
-    wgpuShaderModuleRelease(shaderModule);
+    // Use shared cached sampler (do NOT release - managed by gpu_common)
+    m_sampler = gpu::getLinearClampSampler(ctx.device());
 }
 
 void Brightness::process(Context& ctx) {
@@ -193,10 +131,11 @@ void Brightness::process(Context& ctx) {
 }
 
 void Brightness::cleanup() {
-    if (m_pipeline) { wgpuRenderPipelineRelease(m_pipeline); m_pipeline = nullptr; }
-    if (m_bindGroupLayout) { wgpuBindGroupLayoutRelease(m_bindGroupLayout); m_bindGroupLayout = nullptr; }
-    if (m_uniformBuffer) { wgpuBufferRelease(m_uniformBuffer); m_uniformBuffer = nullptr; }
-    if (m_sampler) { wgpuSamplerRelease(m_sampler); m_sampler = nullptr; }
+    gpu::release(m_pipeline);
+    gpu::release(m_bindGroupLayout);
+    gpu::release(m_uniformBuffer);
+    // Note: m_sampler is managed by gpu_common cache, do not release
+    m_sampler = nullptr;
     releaseOutput();
     m_initialized = false;
 }

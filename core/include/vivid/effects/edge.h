@@ -7,10 +7,20 @@
  * Detects edges using the Sobel operator.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/// @brief Uniform buffer for Edge effect
+struct EdgeUniforms {
+    float strength;
+    float threshold;
+    float texelW;
+    float texelH;
+    int invert;
+    float _pad[3];
+};
 
 /**
  * @brief Sobel edge detection
@@ -39,7 +49,7 @@ namespace vivid::effects {
  * @par Output
  * Grayscale edge map
  */
-class Edge : public TextureOperator {
+class Edge : public SimpleTextureEffect<Edge, EdgeUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -57,32 +67,26 @@ public:
         registerParam(threshold);
         registerParam(invert);
     }
-    ~Edge() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    EdgeUniforms getUniforms() const {
+        return {
+            strength,
+            threshold,
+            1.0f / m_width,
+            1.0f / m_height,
+            invert ? 1 : 0,
+            {0, 0, 0}
+        };
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "Edge"; }
 
-    /// @}
-
-private:
-    void createPipeline(Context& ctx);
-
-    // GPU resources
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 };
 
 } // namespace vivid::effects

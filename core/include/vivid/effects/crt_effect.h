@@ -7,10 +7,21 @@
  * Combines multiple effects to simulate a vintage CRT display.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/// @brief Uniform buffer for CRT effect
+struct CRTEffectUniforms {
+    float curvature;
+    float vignette;
+    float scanlines;
+    float bloom;
+    float chromatic;
+    float aspect;
+    float _pad[2];
+};
 
 /**
  * @brief Retro CRT monitor simulation
@@ -42,7 +53,7 @@ namespace vivid::effects {
  * @par Output
  * CRT-styled texture
  */
-class CRTEffect : public TextureOperator {
+class CRTEffect : public SimpleTextureEffect<CRTEffect, CRTEffectUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -64,31 +75,19 @@ public:
         registerParam(bloom);
         registerParam(chromatic);
     }
-    ~CRTEffect() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    CRTEffectUniforms getUniforms() const {
+        return {curvature, vignette, scanlines, bloom, chromatic, static_cast<float>(m_width) / m_height, {0, 0}};
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "CRTEffect"; }
 
-    /// @}
-
-private:
-    void createPipeline(Context& ctx);
-
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 };
 
 } // namespace vivid::effects

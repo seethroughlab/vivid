@@ -2,8 +2,10 @@
 // Separable Gaussian blur with configurable radius
 
 #include <vivid/effects/blur.h>
+#include <vivid/effects/gpu_common.h>
 #include <vivid/context.h>
 #include <cmath>
+#include <string>
 
 namespace vivid::effects {
 
@@ -26,7 +28,8 @@ void Blur::init(Context& ctx) {
 }
 
 void Blur::createPipeline(Context& ctx) {
-    const char* shaderSource = R"(
+    // Fragment shader only - uses shared vertex shader from gpu_common.h
+    const char* fragmentShader = R"(
 struct Uniforms {
     radius: f32,
     direction: f32,
@@ -37,25 +40,6 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var inputTex: texture_2d<f32>;
 @group(0) @binding(2) var texSampler: sampler;
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
 
 fn gaussian(x: f32, sigma: f32) -> f32 {
     return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -89,9 +73,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
+    // Combine shared vertex shader with effect-specific fragment shader
+    std::string shaderSource = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + fragmentShader;
+
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(shaderSource);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;
@@ -102,13 +89,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_uniformBuffer = wgpuDeviceCreateBuffer(ctx.device(), &bufferDesc);
 
-    WGPUSamplerDescriptor samplerDesc = {};
-    samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
-    samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
-    samplerDesc.magFilter = WGPUFilterMode_Linear;
-    samplerDesc.minFilter = WGPUFilterMode_Linear;
-    samplerDesc.maxAnisotropy = 1;
-    m_sampler = wgpuDeviceCreateSampler(ctx.device(), &samplerDesc);
+    // Use shared cached sampler (do NOT release - managed by gpu_common)
+    m_sampler = gpu::getLinearClampSampler(ctx.device());
 
     // Create temp texture for ping-pong
     WGPUTextureDescriptor texDesc = {};
@@ -293,14 +275,15 @@ void Blur::process(Context& ctx) {
 }
 
 void Blur::cleanup() {
-    if (m_pipelineH) { wgpuRenderPipelineRelease(m_pipelineH); m_pipelineH = nullptr; }
+    gpu::release(m_pipelineH);
     if (m_pipelineV && m_pipelineV != m_pipelineH) { wgpuRenderPipelineRelease(m_pipelineV); }
     m_pipelineV = nullptr;
-    if (m_bindGroupLayout) { wgpuBindGroupLayoutRelease(m_bindGroupLayout); m_bindGroupLayout = nullptr; }
-    if (m_uniformBuffer) { wgpuBufferRelease(m_uniformBuffer); m_uniformBuffer = nullptr; }
-    if (m_sampler) { wgpuSamplerRelease(m_sampler); m_sampler = nullptr; }
-    if (m_tempView) { wgpuTextureViewRelease(m_tempView); m_tempView = nullptr; }
-    if (m_tempTexture) { wgpuTextureRelease(m_tempTexture); m_tempTexture = nullptr; }
+    gpu::release(m_bindGroupLayout);
+    gpu::release(m_uniformBuffer);
+    // Note: m_sampler is managed by gpu_common cache, do not release
+    m_sampler = nullptr;
+    gpu::release(m_tempView);
+    gpu::release(m_tempTexture);
     releaseOutput();
     m_initialized = false;
 }

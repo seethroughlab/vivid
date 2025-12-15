@@ -7,10 +7,16 @@
  * Reduces color palette by quantizing to discrete levels.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/// @brief Uniform buffer for Quantize effect
+struct QuantizeUniforms {
+    int levels;
+    float _pad[3];
+};
 
 /**
  * @brief Color quantization effect
@@ -36,7 +42,7 @@ namespace vivid::effects {
  * @par Output
  * Quantized texture with reduced color palette
  */
-class Quantize : public TextureOperator {
+class Quantize : public SimpleTextureEffect<Quantize, QuantizeUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -50,31 +56,19 @@ public:
     Quantize() {
         registerParam(levels);
     }
-    ~Quantize() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    QuantizeUniforms getUniforms() const {
+        return {levels, {0, 0, 0}};
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "Quantize"; }
 
-    /// @}
-
-private:
-    void createPipeline(Context& ctx);
-
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 };
 
 } // namespace vivid::effects

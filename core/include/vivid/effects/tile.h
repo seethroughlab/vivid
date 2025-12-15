@@ -7,10 +7,20 @@
  * Tiles and repeats textures with offset and mirroring options.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/// @brief Uniform buffer for Tile effect
+struct TileUniforms {
+    float repeatX;
+    float repeatY;
+    float offsetX;
+    float offsetY;
+    int mirror;
+    float _pad[3];
+};
 
 /**
  * @brief Texture tiling/repetition effect
@@ -40,7 +50,7 @@ namespace vivid::effects {
  * @par Output
  * Tiled texture
  */
-class Tile : public TextureOperator {
+class Tile : public SimpleTextureEffect<Tile, TileUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -58,32 +68,31 @@ public:
         registerParam(offset);
         registerParam(mirror);
     }
-    ~Tile() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    TileUniforms getUniforms() const {
+        return {
+            repeat.x(),
+            repeat.y(),
+            offset.x(),
+            offset.y(),
+            mirror ? 1 : 0,
+            {0, 0, 0}
+        };
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
+    /// @brief Use linear repeat sampler instead of clamp
+    WGPUSampler getSampler(WGPUDevice device) override {
+        return gpu::getLinearRepeatSampler(device);
+    }
+
     std::string name() const override { return "Tile"; }
 
-    /// @}
-
-private:
-    void createPipeline(Context& ctx);
-
-    // GPU resources
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 };
 
 } // namespace vivid::effects

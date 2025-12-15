@@ -7,10 +7,14 @@
  * Generates a uniform solid color texture.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+struct SolidColorUniforms {
+    float r, g, b, a;
+};
 
 /**
  * @brief Solid color generator
@@ -35,7 +39,7 @@ namespace vivid::effects {
  * @par Output
  * Solid color texture
  */
-class SolidColor : public TextureOperator {
+class SolidColor : public SimpleGeneratorEffect<SolidColor, SolidColorUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -49,29 +53,20 @@ public:
     SolidColor() {
         registerParam(color);
     }
-    ~SolidColor() override;
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "SolidColor"; }
 
+    SolidColorUniforms getUniforms() const {
+        return {color.r(), color.g(), color.b(), color.a()};
+    }
+
+    const char* fragmentShader() const override;
+
     /// @}
-
-private:
-    void createPipeline(Context& ctx);
-
-    // GPU resources
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroup m_bindGroup = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

@@ -2,43 +2,11 @@
 // SDF-based shape generator
 
 #include <vivid/effects/shape.h>
-#include <vivid/context.h>
-#include <cmath>
 
 namespace vivid::effects {
 
-struct ShapeUniforms {
-    int shapeType;
-    float sizeX;
-    float sizeY;
-    float posX;
-    float posY;
-    float rotation;
-    int sides;
-    float cornerRadius;
-    float thickness;
-    float softness;
-    float colorR;
-    float colorG;
-    float colorB;
-    float colorA;
-    float aspect;
-    float _pad;
-};
-
-Shape::~Shape() {
-    cleanup();
-}
-
-void Shape::init(Context& ctx) {
-    if (m_initialized) return;
-    createOutput(ctx);
-    createPipeline(ctx);
-    m_initialized = true;
-}
-
-void Shape::createPipeline(Context& ctx) {
-    const char* shaderSource = R"(
+const char* Shape::fragmentShader() const {
+    return R"(
 struct Uniforms {
     shapeType: i32,
     sizeX: f32,
@@ -60,27 +28,8 @@ struct Uniforms {
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-};
-
 const PI: f32 = 3.14159265359;
 const TAU: f32 = 6.28318530718;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
 
 fn rotate2d(p: vec2f, a: f32) -> vec2f {
     let c = cos(a);
@@ -177,126 +126,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     return color;
 }
 )";
-
-    WGPUShaderSourceWGSL wgslDesc = {};
-    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(shaderSource);
-
-    WGPUShaderModuleDescriptor shaderDesc = {};
-    shaderDesc.nextInChain = &wgslDesc.chain;
-    WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(ctx.device(), &shaderDesc);
-
-    WGPUBufferDescriptor bufferDesc = {};
-    bufferDesc.size = sizeof(ShapeUniforms);
-    bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
-    m_uniformBuffer = wgpuDeviceCreateBuffer(ctx.device(), &bufferDesc);
-
-    WGPUBindGroupLayoutEntry entries[1] = {};
-    entries[0].binding = 0;
-    entries[0].visibility = WGPUShaderStage_Fragment;
-    entries[0].buffer.type = WGPUBufferBindingType_Uniform;
-    entries[0].buffer.minBindingSize = sizeof(ShapeUniforms);
-
-    WGPUBindGroupLayoutDescriptor layoutDesc = {};
-    layoutDesc.entryCount = 1;
-    layoutDesc.entries = entries;
-    m_bindGroupLayout = wgpuDeviceCreateBindGroupLayout(ctx.device(), &layoutDesc);
-
-    WGPUBindGroupEntry bindEntries[1] = {};
-    bindEntries[0].binding = 0;
-    bindEntries[0].buffer = m_uniformBuffer;
-    bindEntries[0].size = sizeof(ShapeUniforms);
-
-    WGPUBindGroupDescriptor bindDesc = {};
-    bindDesc.layout = m_bindGroupLayout;
-    bindDesc.entryCount = 1;
-    bindDesc.entries = bindEntries;
-    m_bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
-
-    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {};
-    pipelineLayoutDesc.bindGroupLayoutCount = 1;
-    pipelineLayoutDesc.bindGroupLayouts = &m_bindGroupLayout;
-    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(ctx.device(), &pipelineLayoutDesc);
-
-    // Enable alpha blending
-    WGPUBlendState blendState = {};
-    blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
-    blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.color.operation = WGPUBlendOperation_Add;
-    blendState.alpha.srcFactor = WGPUBlendFactor_One;
-    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
-    blendState.alpha.operation = WGPUBlendOperation_Add;
-
-    WGPUColorTargetState colorTarget = {};
-    colorTarget.format = EFFECTS_FORMAT;
-    colorTarget.blend = &blendState;
-    colorTarget.writeMask = WGPUColorWriteMask_All;
-
-    WGPUFragmentState fragmentState = {};
-    fragmentState.module = shaderModule;
-    fragmentState.entryPoint = toStringView("fs_main");
-    fragmentState.targetCount = 1;
-    fragmentState.targets = &colorTarget;
-
-    WGPURenderPipelineDescriptor pipelineDesc = {};
-    pipelineDesc.layout = pipelineLayout;
-    pipelineDesc.vertex.module = shaderModule;
-    pipelineDesc.vertex.entryPoint = toStringView("vs_main");
-    pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-    pipelineDesc.multisample.count = 1;
-    pipelineDesc.multisample.mask = ~0u;
-    pipelineDesc.fragment = &fragmentState;
-
-    m_pipeline = wgpuDeviceCreateRenderPipeline(ctx.device(), &pipelineDesc);
-
-    wgpuPipelineLayoutRelease(pipelineLayout);
-    wgpuShaderModuleRelease(shaderModule);
-}
-
-void Shape::process(Context& ctx) {
-    if (!m_initialized) init(ctx);
-    // Generators use their declared resolution (default 1280x720)
-
-    if (!needsCook()) return;
-
-    ShapeUniforms uniforms = {};
-    uniforms.shapeType = static_cast<int>(m_type);
-    uniforms.sizeX = size.x();
-    uniforms.sizeY = size.y();
-    uniforms.posX = position.x();
-    uniforms.posY = position.y();
-    uniforms.rotation = rotation;
-    uniforms.sides = sides;
-    uniforms.cornerRadius = cornerRadius;
-    uniforms.thickness = thickness;
-    uniforms.softness = softness;
-    uniforms.colorR = color.r();
-    uniforms.colorG = color.g();
-    uniforms.colorB = color.b();
-    uniforms.colorA = color.a();
-    uniforms.aspect = static_cast<float>(m_width) / m_height;
-
-    wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
-
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
-
-    WGPURenderPassEncoder pass;
-    beginRenderPass(pass, encoder);
-    wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, m_bindGroup, 0, nullptr);
-    wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
-    endRenderPass(pass, encoder, ctx);
-    didCook();
-}
-
-void Shape::cleanup() {
-    if (m_pipeline) { wgpuRenderPipelineRelease(m_pipeline); m_pipeline = nullptr; }
-    if (m_bindGroup) { wgpuBindGroupRelease(m_bindGroup); m_bindGroup = nullptr; }
-    if (m_bindGroupLayout) { wgpuBindGroupLayoutRelease(m_bindGroupLayout); m_bindGroupLayout = nullptr; }
-    if (m_uniformBuffer) { wgpuBufferRelease(m_uniformBuffer); m_uniformBuffer = nullptr; }
-    releaseOutput();
-    m_initialized = false;
 }
 
 } // namespace vivid::effects

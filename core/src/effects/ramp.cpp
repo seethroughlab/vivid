@@ -1,6 +1,9 @@
 // Vivid Effects 2D - Ramp Operator Implementation
 
 #include <vivid/effects/ramp.h>
+#include <vivid/effects/gpu_common.h>
+#include <vivid/effects/pipeline_builder.h>
+#include <string>
 #include <vivid/context.h>
 #include <cstring>
 #include <fstream>
@@ -95,10 +98,11 @@ void Ramp::init(Context& ctx) {
 
 void Ramp::createPipeline(Context& ctx) {
     // Load shader
-    std::string shaderSource = loadShaderSource("ramp.wgsl");
-    if (shaderSource.empty()) {
+    std::string externalShaderSource = loadShaderSource("ramp.wgsl");
+    std::string shaderSource;
+    if (externalShaderSource.empty()) {
         // Fallback: embedded minimal shader
-        shaderSource = R"(
+        const char* fragmentShader = R"(
 struct Uniforms {
     resolution: vec2f,
     time: f32,
@@ -116,27 +120,7 @@ struct Uniforms {
     _pad: vec2f,
 }
 
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
-
 @group(0) @binding(0) var<uniform> u: Uniforms;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f( 3.0, -1.0),
-        vec2f(-1.0,  3.0)
-    );
-    var out: VertexOutput;
-    let pos = positions[vertexIndex];
-    out.position = vec4f(pos, 0.0, 1.0);
-    out.uv = pos * 0.5 + 0.5;
-    out.uv.y = 1.0 - out.uv.y;
-    return out;
-}
 
 fn hsv2rgb(hsv: vec3f) -> vec3f {
     let h = hsv.x;
@@ -165,18 +149,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     return vec4f(rgb, 1.0);
 }
 )";
+        // Combine shared vertex shader with effect-specific fragment shader
+        shaderSource = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + fragmentShader;
+    } else {
+        shaderSource = externalShaderSource;
     }
-
-    // Create shader module
-    WGPUShaderSourceWGSL wgslDesc = {};
-    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(shaderSource.c_str());
-
-    WGPUShaderModuleDescriptor shaderDesc = {};
-    shaderDesc.nextInChain = &wgslDesc.chain;
-    shaderDesc.label = toStringView("Ramp Shader");
-
-    WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(ctx.device(), &shaderDesc);
 
     // Create uniform buffer
     WGPUBufferDescriptor bufferDesc = {};
@@ -185,18 +162,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_uniformBuffer = wgpuDeviceCreateBuffer(ctx.device(), &bufferDesc);
 
-    // Create bind group layout
-    WGPUBindGroupLayoutEntry layoutEntry = {};
-    layoutEntry.binding = 0;
-    layoutEntry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-    layoutEntry.buffer.type = WGPUBufferBindingType_Uniform;
-    layoutEntry.buffer.minBindingSize = sizeof(RampUniforms);
+    // Use PipelineBuilder to create pipeline and bind group layout
+    gpu::PipelineBuilder builder(ctx.device());
+    builder.shader(shaderSource)
+           .colorTarget(EFFECTS_FORMAT)
+           .uniform(0, sizeof(RampUniforms));
 
-    WGPUBindGroupLayoutDescriptor layoutDesc = {};
-    layoutDesc.label = toStringView("Ramp Bind Group Layout");
-    layoutDesc.entryCount = 1;
-    layoutDesc.entries = &layoutEntry;
-    m_bindGroupLayout = wgpuDeviceCreateBindGroupLayout(ctx.device(), &layoutDesc);
+    m_pipeline = builder.build();
+    m_bindGroupLayout = builder.bindGroupLayout();
 
     // Create bind group
     WGPUBindGroupEntry bindEntry = {};
@@ -211,41 +184,6 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     bindDesc.entryCount = 1;
     bindDesc.entries = &bindEntry;
     m_bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
-
-    // Create pipeline layout
-    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {};
-    pipelineLayoutDesc.bindGroupLayoutCount = 1;
-    pipelineLayoutDesc.bindGroupLayouts = &m_bindGroupLayout;
-    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(ctx.device(), &pipelineLayoutDesc);
-
-    // Create render pipeline
-    WGPUColorTargetState colorTarget = {};
-    colorTarget.format = EFFECTS_FORMAT;
-    colorTarget.writeMask = WGPUColorWriteMask_All;
-
-    WGPUFragmentState fragmentState = {};
-    fragmentState.module = shaderModule;
-    fragmentState.entryPoint = toStringView("fs_main");
-    fragmentState.targetCount = 1;
-    fragmentState.targets = &colorTarget;
-
-    WGPURenderPipelineDescriptor pipelineDesc = {};
-    pipelineDesc.label = toStringView("Ramp Pipeline");
-    pipelineDesc.layout = pipelineLayout;
-    pipelineDesc.vertex.module = shaderModule;
-    pipelineDesc.vertex.entryPoint = toStringView("vs_main");
-    pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-    pipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
-    pipelineDesc.primitive.cullMode = WGPUCullMode_None;
-    pipelineDesc.multisample.count = 1;
-    pipelineDesc.multisample.mask = ~0u;
-    pipelineDesc.fragment = &fragmentState;
-
-    m_pipeline = wgpuDeviceCreateRenderPipeline(ctx.device(), &pipelineDesc);
-
-    // Cleanup
-    wgpuPipelineLayoutRelease(pipelineLayout);
-    wgpuShaderModuleRelease(shaderModule);
 }
 
 void Ramp::process(Context& ctx) {
@@ -296,22 +234,10 @@ void Ramp::process(Context& ctx) {
 }
 
 void Ramp::cleanup() {
-    if (m_pipeline) {
-        wgpuRenderPipelineRelease(m_pipeline);
-        m_pipeline = nullptr;
-    }
-    if (m_bindGroup) {
-        wgpuBindGroupRelease(m_bindGroup);
-        m_bindGroup = nullptr;
-    }
-    if (m_bindGroupLayout) {
-        wgpuBindGroupLayoutRelease(m_bindGroupLayout);
-        m_bindGroupLayout = nullptr;
-    }
-    if (m_uniformBuffer) {
-        wgpuBufferRelease(m_uniformBuffer);
-        m_uniformBuffer = nullptr;
-    }
+    gpu::release(m_pipeline);
+    gpu::release(m_bindGroup);
+    gpu::release(m_bindGroupLayout);
+    gpu::release(m_uniformBuffer);
     releaseOutput();
     m_initialized = false;
 }

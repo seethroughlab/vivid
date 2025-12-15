@@ -7,7 +7,7 @@
  * Applies Bayer pattern dithering for retro-style color reduction.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
@@ -19,6 +19,14 @@ enum class DitherPattern {
     Bayer2x2,   ///< 2x2 Bayer matrix - coarse dithering
     Bayer4x4,   ///< 4x4 Bayer matrix - medium dithering
     Bayer8x8    ///< 8x8 Bayer matrix - fine dithering
+};
+
+/// @brief Uniform buffer for Dither effect
+struct DitherUniforms {
+    int pattern;
+    int levels;
+    float strength;
+    float _pad;
 };
 
 /**
@@ -48,7 +56,7 @@ enum class DitherPattern {
  * @par Output
  * Dithered texture
  */
-class Dither : public TextureOperator {
+class Dither : public SimpleTextureEffect<Dither, DitherUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -64,7 +72,6 @@ public:
         registerParam(levels);
         registerParam(strength);
     }
-    ~Dither() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
@@ -74,28 +81,28 @@ public:
         if (m_pattern != p) { m_pattern = p; markDirty(); }
     }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    DitherUniforms getUniforms() const {
+        return {
+            static_cast<int>(m_pattern),
+            levels,
+            strength,
+            0.0f
+        };
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
+    /// @brief Use nearest-neighbor sampler to avoid blending artifacts
+    WGPUSampler getSampler(WGPUDevice device) override {
+        return gpu::getNearestClampSampler(device);
+    }
+
     std::string name() const override { return "Dither"; }
 
-    /// @}
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 
 private:
-    void createPipeline(Context& ctx);
-
     DitherPattern m_pattern = DitherPattern::Bayer4x4;
-
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

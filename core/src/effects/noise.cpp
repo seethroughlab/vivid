@@ -1,11 +1,14 @@
 // Vivid Effects 2D - Noise Operator Implementation
 
 #include <vivid/effects/noise.h>
+#include <vivid/effects/gpu_common.h>
+#include <vivid/effects/pipeline_builder.h>
 #include <vivid/context.h>
 #include <cstring>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
+#include <string>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -94,7 +97,8 @@ void Noise::createPipeline(Context& ctx) {
     std::string shaderSource = loadShaderSource("noise.wgsl");
     if (shaderSource.empty()) {
         // Fallback: embedded shader with all noise types (3D)
-        shaderSource = R"(
+        // Uses shared vertex shader from gpu_common.h
+        const char* fragmentShader = R"(
 struct Uniforms {
     time: f32,
     scale: f32,
@@ -111,25 +115,6 @@ struct Uniforms {
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
 
 // ============================================================================
 // Hash functions for 3D noise
@@ -407,18 +392,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     return vec4f(n, n, n, 1.0);
 }
 )";
+        shaderSource = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + fragmentShader;
     }
-
-    // Create shader module
-    WGPUShaderSourceWGSL wgslDesc = {};
-    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(shaderSource.c_str());
-
-    WGPUShaderModuleDescriptor shaderDesc = {};
-    shaderDesc.nextInChain = &wgslDesc.chain;
-    shaderDesc.label = toStringView("Noise Shader");
-
-    WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(ctx.device(), &shaderDesc);
 
     // Create uniform buffer
     WGPUBufferDescriptor bufferDesc = {};
@@ -427,18 +402,14 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_uniformBuffer = wgpuDeviceCreateBuffer(ctx.device(), &bufferDesc);
 
-    // Create bind group layout
-    WGPUBindGroupLayoutEntry layoutEntry = {};
-    layoutEntry.binding = 0;
-    layoutEntry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
-    layoutEntry.buffer.type = WGPUBufferBindingType_Uniform;
-    layoutEntry.buffer.minBindingSize = sizeof(NoiseUniforms);
+    // Build pipeline using PipelineBuilder
+    gpu::PipelineBuilder builder(ctx.device());
+    builder.shader(shaderSource)
+           .colorTarget(EFFECTS_FORMAT)
+           .uniform(0, sizeof(NoiseUniforms));
 
-    WGPUBindGroupLayoutDescriptor layoutDesc = {};
-    layoutDesc.label = toStringView("Noise Bind Group Layout");
-    layoutDesc.entryCount = 1;
-    layoutDesc.entries = &layoutEntry;
-    m_bindGroupLayout = wgpuDeviceCreateBindGroupLayout(ctx.device(), &layoutDesc);
+    m_pipeline = builder.build();
+    m_bindGroupLayout = builder.bindGroupLayout();
 
     // Create bind group
     WGPUBindGroupEntry bindEntry = {};
@@ -453,41 +424,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     bindDesc.entryCount = 1;
     bindDesc.entries = &bindEntry;
     m_bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
-
-    // Create pipeline layout
-    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {};
-    pipelineLayoutDesc.bindGroupLayoutCount = 1;
-    pipelineLayoutDesc.bindGroupLayouts = &m_bindGroupLayout;
-    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(ctx.device(), &pipelineLayoutDesc);
-
-    // Create render pipeline
-    WGPUColorTargetState colorTarget = {};
-    colorTarget.format = EFFECTS_FORMAT;
-    colorTarget.writeMask = WGPUColorWriteMask_All;
-
-    WGPUFragmentState fragmentState = {};
-    fragmentState.module = shaderModule;
-    fragmentState.entryPoint = toStringView("fs_main");
-    fragmentState.targetCount = 1;
-    fragmentState.targets = &colorTarget;
-
-    WGPURenderPipelineDescriptor pipelineDesc = {};
-    pipelineDesc.label = toStringView("Noise Pipeline");
-    pipelineDesc.layout = pipelineLayout;
-    pipelineDesc.vertex.module = shaderModule;
-    pipelineDesc.vertex.entryPoint = toStringView("vs_main");
-    pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
-    pipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
-    pipelineDesc.primitive.cullMode = WGPUCullMode_None;
-    pipelineDesc.multisample.count = 1;
-    pipelineDesc.multisample.mask = ~0u;
-    pipelineDesc.fragment = &fragmentState;
-
-    m_pipeline = wgpuDeviceCreateRenderPipeline(ctx.device(), &pipelineDesc);
-
-    // Cleanup
-    wgpuPipelineLayoutRelease(pipelineLayout);
-    wgpuShaderModuleRelease(shaderModule);
 }
 
 void Noise::process(Context& ctx) {
@@ -536,22 +472,10 @@ void Noise::process(Context& ctx) {
 }
 
 void Noise::cleanup() {
-    if (m_pipeline) {
-        wgpuRenderPipelineRelease(m_pipeline);
-        m_pipeline = nullptr;
-    }
-    if (m_bindGroup) {
-        wgpuBindGroupRelease(m_bindGroup);
-        m_bindGroup = nullptr;
-    }
-    if (m_bindGroupLayout) {
-        wgpuBindGroupLayoutRelease(m_bindGroupLayout);
-        m_bindGroupLayout = nullptr;
-    }
-    if (m_uniformBuffer) {
-        wgpuBufferRelease(m_uniformBuffer);
-        m_uniformBuffer = nullptr;
-    }
+    gpu::release(m_pipeline);
+    gpu::release(m_bindGroup);
+    gpu::release(m_bindGroupLayout);
+    gpu::release(m_uniformBuffer);
     releaseOutput();
     m_initialized = false;
 }

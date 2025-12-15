@@ -80,6 +80,8 @@ set(VIVID_CORE_LIB_SOURCES
     # vivid-io (image loading)
     src/io/image_loader.cpp
     # vivid-effects-2d (2D texture effects)
+    src/effects/gpu_common.cpp
+    src/effects/pipeline_builder.cpp
     src/effects/texture_operator.cpp
     src/effects/noise.cpp
     src/effects/solid_color.cpp

@@ -7,10 +7,18 @@
  * Creates a pixelated mosaic effect by sampling at lower resolution.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/// @brief Uniform buffer for Pixelate effect
+struct PixelateUniforms {
+    float sizeX;
+    float sizeY;
+    float texWidth;
+    float texHeight;
+};
 
 /**
  * @brief Mosaic/pixelation effect
@@ -36,7 +44,7 @@ namespace vivid::effects {
  * @par Output
  * Pixelated texture
  */
-class Pixelate : public TextureOperator {
+class Pixelate : public SimpleTextureEffect<Pixelate, PixelateUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -50,32 +58,19 @@ public:
     Pixelate() {
         registerParam(size);
     }
-    ~Pixelate() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    PixelateUniforms getUniforms() const {
+        return {size.x(), size.y(), static_cast<float>(m_width), static_cast<float>(m_height)};
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "Pixelate"; }
 
-    /// @}
-
-private:
-    void createPipeline(Context& ctx);
-
-    // GPU resources
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 };
 
 } // namespace vivid::effects

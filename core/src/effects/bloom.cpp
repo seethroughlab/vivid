@@ -2,6 +2,8 @@
 // Glow effect: threshold -> blur -> combine
 
 #include <vivid/effects/bloom.h>
+#include <vivid/effects/gpu_common.h>
+#include <string>
 #include <vivid/context.h>
 #include <cmath>
 
@@ -30,7 +32,7 @@ void Bloom::init(Context& ctx) {
 
 void Bloom::createPipeline(Context& ctx) {
     // Threshold shader - extracts bright pixels
-    const char* thresholdShader = R"(
+    const char* fragmentShader = R"(
 struct Uniforms {
     threshold: f32,
     intensity: f32,
@@ -45,25 +47,6 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var inputTex: texture_2d<f32>;
 @group(0) @binding(2) var texSampler: sampler;
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
@@ -76,9 +59,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     return vec4f(0.0, 0.0, 0.0, 0.0);
 }
 )";
+    // Combine shared vertex shader with effect-specific fragment shader
+    std::string thresholdShader = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + fragmentShader;
 
     // Blur shader (same for H and V, just change direction uniform)
-    const char* blurShader = R"(
+    const char* blurFragmentShader = R"(
 struct Uniforms {
     threshold: f32,
     intensity: f32,
@@ -93,25 +78,6 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var inputTex: texture_2d<f32>;
 @group(0) @binding(2) var texSampler: sampler;
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
 
 fn gaussian(x: f32, sigma: f32) -> f32 {
     return exp(-(x * x) / (2.0 * sigma * sigma));
@@ -143,9 +109,11 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     return color / totalWeight;
 }
 )";
+    // Combine shared vertex shader with effect-specific fragment shader
+    std::string blurShader = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + blurFragmentShader;
 
     // Combine shader - adds bloom to original
-    const char* combineShader = R"(
+    const char* combineFragmentShader = R"(
 struct Uniforms {
     threshold: f32,
     intensity: f32,
@@ -162,25 +130,6 @@ struct Uniforms {
 @group(0) @binding(2) var texSampler: sampler;
 @group(0) @binding(3) var bloomTex: texture_2d<f32>;
 
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-};
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
-
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     let original = textureSample(inputTex, texSampler, input.uv);
@@ -188,6 +137,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     return vec4f(original.rgb + bloom.rgb * uniforms.intensity, original.a);
 }
 )";
+    // Combine shared vertex shader with effect-specific fragment shader
+    std::string combineShader = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + combineFragmentShader;
 
     // Create uniform buffer
     WGPUBufferDescriptor bufferDesc = {};
@@ -195,14 +146,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_uniformBuffer = wgpuDeviceCreateBuffer(ctx.device(), &bufferDesc);
 
-    // Create sampler
-    WGPUSamplerDescriptor samplerDesc = {};
-    samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
-    samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
-    samplerDesc.magFilter = WGPUFilterMode_Linear;
-    samplerDesc.minFilter = WGPUFilterMode_Linear;
-    samplerDesc.maxAnisotropy = 1;
-    m_sampler = wgpuDeviceCreateSampler(ctx.device(), &samplerDesc);
+    // Use shared cached sampler (do NOT release - managed by gpu_common)
+    m_sampler = gpu::getLinearClampSampler(ctx.device());
 
     // Create intermediate textures
     WGPUTextureDescriptor texDesc = {};
@@ -251,7 +196,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     {
         WGPUShaderSourceWGSL wgslDesc = {};
         wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-        wgslDesc.code = toStringView(thresholdShader);
+        wgslDesc.code = toStringView(thresholdShader.c_str());
 
         WGPUShaderModuleDescriptor shaderDesc = {};
         shaderDesc.nextInChain = &wgslDesc.chain;
@@ -291,7 +236,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     {
         WGPUShaderSourceWGSL wgslDesc = {};
         wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-        wgslDesc.code = toStringView(blurShader);
+        wgslDesc.code = toStringView(blurShader.c_str());
 
         WGPUShaderModuleDescriptor shaderDesc = {};
         shaderDesc.nextInChain = &wgslDesc.chain;
@@ -358,7 +303,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
         WGPUShaderSourceWGSL wgslDesc = {};
         wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-        wgslDesc.code = toStringView(combineShader);
+        wgslDesc.code = toStringView(combineShader.c_str());
 
         WGPUShaderModuleDescriptor shaderDesc = {};
         shaderDesc.nextInChain = &wgslDesc.chain;
@@ -624,18 +569,18 @@ void Bloom::process(Context& ctx) {
 }
 
 void Bloom::cleanup() {
-    if (m_thresholdPipeline) { wgpuRenderPipelineRelease(m_thresholdPipeline); m_thresholdPipeline = nullptr; }
-    if (m_blurHPipeline) { wgpuRenderPipelineRelease(m_blurHPipeline); m_blurHPipeline = nullptr; }
+    gpu::release(m_thresholdPipeline);
+    gpu::release(m_blurHPipeline);
     if (m_blurVPipeline && m_blurVPipeline != m_blurHPipeline) { wgpuRenderPipelineRelease(m_blurVPipeline); }
     m_blurVPipeline = nullptr;
-    if (m_combinePipeline) { wgpuRenderPipelineRelease(m_combinePipeline); m_combinePipeline = nullptr; }
-    if (m_bindGroupLayout) { wgpuBindGroupLayoutRelease(m_bindGroupLayout); m_bindGroupLayout = nullptr; }
-    if (m_uniformBuffer) { wgpuBufferRelease(m_uniformBuffer); m_uniformBuffer = nullptr; }
-    if (m_sampler) { wgpuSamplerRelease(m_sampler); m_sampler = nullptr; }
-    if (m_brightView) { wgpuTextureViewRelease(m_brightView); m_brightView = nullptr; }
-    if (m_brightTexture) { wgpuTextureRelease(m_brightTexture); m_brightTexture = nullptr; }
-    if (m_blurView) { wgpuTextureViewRelease(m_blurView); m_blurView = nullptr; }
-    if (m_blurTexture) { wgpuTextureRelease(m_blurTexture); m_blurTexture = nullptr; }
+    gpu::release(m_combinePipeline);
+    gpu::release(m_bindGroupLayout);
+    gpu::release(m_uniformBuffer);
+    m_sampler = nullptr;
+    gpu::release(m_brightView);
+    gpu::release(m_brightTexture);
+    gpu::release(m_blurView);
+    gpu::release(m_blurTexture);
     releaseOutput();
     m_initialized = false;
 }

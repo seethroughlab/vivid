@@ -8,10 +8,18 @@
  * natural light falloff of camera lenses.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/// @brief Uniform buffer for Vignette effect
+struct VignetteUniforms {
+    float intensity;
+    float softness;
+    float roundness;
+    float aspect;
+};
 
 /**
  * @brief Edge darkening vignette effect
@@ -34,7 +42,7 @@ namespace vivid::effects {
  *     .softness(0.6f);
  * @endcode
  */
-class Vignette : public TextureOperator {
+class Vignette : public SimpleTextureEffect<Vignette, VignetteUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -52,30 +60,24 @@ public:
         registerParam(softness);
         registerParam(roundness);
     }
-    ~Vignette() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    VignetteUniforms getUniforms() const {
+        return {
+            intensity,
+            softness,
+            roundness,
+            static_cast<float>(m_width) / static_cast<float>(m_height)
+        };
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "Vignette"; }
 
-    /// @}
-
-private:
-    void createPipeline(Context& ctx);
-
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-    bool m_initialized = false;
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 };
 
 } // namespace vivid::effects

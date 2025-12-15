@@ -1,40 +1,27 @@
 // Vivid Effects 2D - FrameCache Operator Implementation
 
 #include <vivid/effects/frame_cache.h>
+#include <vivid/effects/gpu_common.h>
+#include <string>
 #include <vivid/context.h>
 #include <cstring>
 
 namespace vivid::effects {
 
 // Simple blit shader for format conversion
-static const char* s_blitShader = R"(
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-};
-
+static const char* s_fragmentShader = R"(
 @group(0) @binding(0) var inputTexture: texture_2d<f32>;
 @group(0) @binding(1) var texSampler: sampler;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     return textureSample(inputTexture, texSampler, input.uv);
 }
 )";
+
+static std::string getBlitShader() {
+    return std::string(gpu::FULLSCREEN_VERTEX_SHADER) + s_fragmentShader;
+}
 
 FrameCache::~FrameCache() {
     cleanup();
@@ -102,10 +89,12 @@ void FrameCache::createCacheTexture(Context& ctx) {
 }
 
 void FrameCache::createBlitPipeline(Context& ctx) {
+    std::string shaderSource = getBlitShader();
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(s_blitShader);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;
@@ -113,15 +102,8 @@ void FrameCache::createBlitPipeline(Context& ctx) {
 
     WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(ctx.device(), &shaderDesc);
 
-    // Create sampler
-    WGPUSamplerDescriptor samplerDesc = {};
-    samplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
-    samplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
-    samplerDesc.magFilter = WGPUFilterMode_Linear;
-    samplerDesc.minFilter = WGPUFilterMode_Linear;
-    samplerDesc.mipmapFilter = WGPUMipmapFilterMode_Linear;
-    samplerDesc.maxAnisotropy = 1;
-    m_sampler = wgpuDeviceCreateSampler(ctx.device(), &samplerDesc);
+    // Use shared cached sampler (do NOT release - managed by gpu_common)
+    m_sampler = gpu::getLinearClampSampler(ctx.device());
 
     // Create bind group layout
     WGPUBindGroupLayoutEntry layoutEntries[2] = {};
@@ -184,18 +166,12 @@ void FrameCache::recreateCacheIfNeeded(Context& ctx) {
     if (requestedFrames != m_allocatedFrames) {
         // Release old cache
         for (auto& view : m_layerViews) {
-            if (view) wgpuTextureViewRelease(view);
+            gpu::release(view);
         }
         m_layerViews.clear();
 
-        if (m_cacheView) {
-            wgpuTextureViewRelease(m_cacheView);
-            m_cacheView = nullptr;
-        }
-        if (m_cacheTexture) {
-            wgpuTextureRelease(m_cacheTexture);
-            m_cacheTexture = nullptr;
-        }
+        gpu::release(m_cacheView);
+        gpu::release(m_cacheTexture);
 
         // Create new cache
         createCacheTexture(ctx);
@@ -289,30 +265,15 @@ void FrameCache::process(Context& ctx) {
 
 void FrameCache::cleanup() {
     for (auto& view : m_layerViews) {
-        if (view) wgpuTextureViewRelease(view);
+        gpu::release(view);
     }
     m_layerViews.clear();
 
-    if (m_cacheView) {
-        wgpuTextureViewRelease(m_cacheView);
-        m_cacheView = nullptr;
-    }
-    if (m_cacheTexture) {
-        wgpuTextureRelease(m_cacheTexture);
-        m_cacheTexture = nullptr;
-    }
-    if (m_blitPipeline) {
-        wgpuRenderPipelineRelease(m_blitPipeline);
-        m_blitPipeline = nullptr;
-    }
-    if (m_bindGroupLayout) {
-        wgpuBindGroupLayoutRelease(m_bindGroupLayout);
-        m_bindGroupLayout = nullptr;
-    }
-    if (m_sampler) {
-        wgpuSamplerRelease(m_sampler);
-        m_sampler = nullptr;
-    }
+    gpu::release(m_cacheView);
+    gpu::release(m_cacheTexture);
+    gpu::release(m_blitPipeline);
+    gpu::release(m_bindGroupLayout);
+    m_sampler = nullptr;
 
     releaseOutput();
     m_initialized = false;

@@ -7,10 +7,18 @@
  * Renders at a lower resolution and upscales for retro or performance effects.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/// @brief Uniform buffer for Downsample effect
+struct DownsampleUniforms {
+    float targetW;
+    float targetH;
+    float sourceW;
+    float sourceH;
+};
 
 /**
  * @brief Upscale filter modes
@@ -46,7 +54,7 @@ enum class FilterMode {
  * @par Output
  * Downsampled and upscaled texture
  */
-class Downsample : public TextureOperator {
+class Downsample : public SimpleTextureEffect<Downsample, DownsampleUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -62,7 +70,6 @@ public:
         registerParam(targetW);
         registerParam(targetH);
     }
-    ~Downsample() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
@@ -70,28 +77,23 @@ public:
     /// @brief Set upscale filter mode (Nearest = pixelated, Linear = smooth)
     void filter(FilterMode f) { if (m_filter != f) { m_filter = f; markDirty(); } }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    DownsampleUniforms getUniforms() const {
+        return {
+            static_cast<float>(static_cast<int>(targetW)),
+            static_cast<float>(static_cast<int>(targetH)),
+            static_cast<float>(m_width),
+            static_cast<float>(m_height)
+        };
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "Downsample"; }
 
-    /// @}
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 
 private:
-    void createPipeline(Context& ctx);
-
     FilterMode m_filter = FilterMode::Nearest;
-
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

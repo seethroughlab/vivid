@@ -7,10 +7,20 @@
  * Adds horizontal or vertical scanlines for retro CRT aesthetics.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
+
+/// @brief Uniform buffer for Scanlines effect
+struct ScanlinesUniforms {
+    int spacing;
+    int vertical;
+    float thickness;
+    float intensity;
+    float height;
+    float _pad[3];
+};
 
 /**
  * @brief CRT-style scanlines effect
@@ -40,7 +50,7 @@ namespace vivid::effects {
  * @par Output
  * Texture with scanline overlay
  */
-class Scanlines : public TextureOperator {
+class Scanlines : public SimpleTextureEffect<Scanlines, ScanlinesUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -60,31 +70,19 @@ public:
         registerParam(intensity);
         registerParam(vertical);
     }
-    ~Scanlines() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    ScanlinesUniforms getUniforms() const {
+        return {spacing, vertical ? 1 : 0, thickness, intensity, static_cast<float>(m_height), {0, 0, 0}};
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "Scanlines"; }
 
-    /// @}
-
-private:
-    void createPipeline(Context& ctx);
-
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 };
 
 } // namespace vivid::effects

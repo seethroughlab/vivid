@@ -7,7 +7,7 @@
  * Applies axis mirroring and radial kaleidoscope effects.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
@@ -20,6 +20,16 @@ enum class MirrorMode {
     Vertical,       ///< Top-bottom mirror
     Quad,           ///< Both axes (4 quadrants)
     Kaleidoscope    ///< Radial symmetry with segments
+};
+
+/// @brief Uniform buffer for Mirror effect
+struct MirrorUniforms {
+    int mode;
+    int segments;
+    float angle;
+    float centerX;
+    float centerY;
+    float _pad[3];
 };
 
 /**
@@ -50,7 +60,7 @@ enum class MirrorMode {
  * @par Output
  * Mirrored texture
  */
-class Mirror : public TextureOperator {
+class Mirror : public SimpleTextureEffect<Mirror, MirrorUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -68,7 +78,6 @@ public:
         registerParam(angle);
         registerParam(center);
     }
-    ~Mirror() override;
 
     /// @brief Set input texture
     void input(TextureOperator* op) { setInput(0, op); }
@@ -78,29 +87,25 @@ public:
         if (m_mode != m) { m_mode = m; markDirty(); }
     }
 
-    // -------------------------------------------------------------------------
-    /// @name Operator Interface
-    /// @{
+    /// @brief Get uniform values for GPU
+    MirrorUniforms getUniforms() const {
+        return {
+            static_cast<int>(m_mode),
+            segments,
+            angle,
+            center.x(),
+            center.y(),
+            {0, 0, 0}
+        };
+    }
 
-    void init(Context& ctx) override;
-    void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "Mirror"; }
 
-    /// @}
+    /// @brief Fragment shader source (used by CRTP base)
+    const char* fragmentShader() const override;
 
 private:
-    void createPipeline(Context& ctx);
-
     MirrorMode m_mode = MirrorMode::Horizontal;
-
-    // GPU resources
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-    WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

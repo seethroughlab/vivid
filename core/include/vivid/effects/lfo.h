@@ -7,7 +7,7 @@
  * Generates animated oscillating values for parameter modulation.
  */
 
-#include <vivid/effects/texture_operator.h>
+#include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
 
 namespace vivid::effects {
@@ -21,6 +21,20 @@ enum class LFOWaveform {
     Saw,        ///< Linear ramp with sharp reset
     Square,     ///< Binary on/off oscillation
     Noise       ///< Random values (sample-and-hold)
+};
+
+/**
+ * @brief Uniform buffer structure for LFO shader
+ */
+struct LFOUniforms {
+    float time;
+    float frequency;
+    float amplitude;
+    float offset;
+    float phase;
+    float pulseWidth;
+    int waveform;
+    float _pad;
 };
 
 /**
@@ -54,7 +68,7 @@ enum class LFOWaveform {
  * - Grayscale texture (OutputKind::Value)
  * - Use outputValue() to get scalar result
  */
-class LFO : public TextureOperator {
+class LFO : public SimpleGeneratorEffect<LFO, LFOUniforms> {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -96,27 +110,36 @@ public:
     /// @name Operator Interface
     /// @{
 
-    void init(Context& ctx) override;
     void process(Context& ctx) override;
-    void cleanup() override;
     std::string name() const override { return "LFO"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name CRTP Interface
+    /// @{
+
+    /// @brief Get uniform values for GPU rendering
+    LFOUniforms getUniforms() const {
+        LFOUniforms uniforms = {};
+        // Note: time is set in process() as it requires Context
+        uniforms.frequency = frequency;
+        uniforms.amplitude = amplitude;
+        uniforms.offset = offset;
+        uniforms.phase = phase;
+        uniforms.pulseWidth = pulseWidth;
+        uniforms.waveform = static_cast<int>(m_waveform);
+        return uniforms;
+    }
+
+    /// @brief Return the WGSL fragment shader source
+    const char* fragmentShader() const override;
+
+    /// @}
 
 private:
-    void createPipeline(Context& ctx);
-
     LFOWaveform m_waveform = LFOWaveform::Sine;
     float m_currentValue = 0.0f;
-
-    // GPU resources
-    WGPURenderPipeline m_pipeline = nullptr;
-    WGPUBindGroupLayout m_bindGroupLayout = nullptr;
-    WGPUBindGroup m_bindGroup = nullptr;
-    WGPUBuffer m_uniformBuffer = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects
