@@ -5,22 +5,67 @@
 #include <CLI/CLI.hpp>
 #include <iostream>
 #include <fstream>
+#include <sstream>
 #include <filesystem>
 #include <vector>
 #include <cctype>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>  // For _NSGetExecutablePath
+#elif defined(_WIN32)
+#include <windows.h>
+#elif defined(__linux__)
+#include <unistd.h>
+#include <linux/limits.h>
 #endif
 
 namespace fs = std::filesystem;
 
 namespace vivid::cli {
 
-// Template content for blank project
-static const char* BLANK_CHAIN_CPP = R"(// %PROJECT_NAME% - Vivid Project
-// Edit this file and save to see live changes!
+// Get executable directory for finding templates
+static fs::path getExecutableDir() {
+#ifdef __APPLE__
+    char pathBuf[4096];
+    uint32_t size = sizeof(pathBuf);
+    if (_NSGetExecutablePath(pathBuf, &size) == 0) {
+        return fs::canonical(pathBuf).parent_path();
+    }
+#elif defined(_WIN32)
+    char pathBuf[MAX_PATH];
+    GetModuleFileNameA(nullptr, pathBuf, MAX_PATH);
+    return fs::path(pathBuf).parent_path();
+#elif defined(__linux__)
+    char pathBuf[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
+    if (len != -1) {
+        pathBuf[len] = '\0';
+        return fs::path(pathBuf).parent_path();
+    }
+#endif
+    return fs::current_path();
+}
 
+// Read template from file, returns empty string if not found
+static std::string readTemplateFile(const std::string& templateName) {
+    fs::path exeDir = getExecutableDir();
+    fs::path templatePath = exeDir / "templates" / templateName / "chain.cpp";
+
+    if (fs::exists(templatePath)) {
+        std::ifstream file(templatePath);
+        if (file) {
+            std::stringstream buffer;
+            buffer << file.rdbuf();
+            return buffer.str();
+        }
+    }
+    return "";
+}
+
+// Fallback embedded templates (used when external files not found)
+// These are minimal versions to keep cli.cpp lean
+
+static const char* FALLBACK_BLANK_TEMPLATE = R"(// %PROJECT_NAME% - Vivid Project
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 
@@ -29,158 +74,29 @@ using namespace vivid::effects;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
-
-    // Add your operators here
     auto& noise = chain.add<Noise>("noise");
     noise.scale = 4.0f;
-    noise.speed = 0.5f;
-
     chain.output("noise");
 }
 
 void update(Context& ctx) {
-    // Animate parameters here
-    auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
-
-    // Example: animate noise offset
-    chain.get<Noise>("noise").offset.set(time * 0.2f, time * 0.1f, 0.0f);
+    ctx.chain().get<Noise>("noise").offset.set(time * 0.2f, time * 0.1f, 0.0f);
 }
 
 VIVID_CHAIN(setup, update)
 )";
 
-// Minimal template - just the structure
-static const char* MINIMAL_CHAIN_CPP = R"(#include <vivid/vivid.h>
+static const char* FALLBACK_MINIMAL_TEMPLATE = R"(#include <vivid/vivid.h>
 
 using namespace vivid;
 
 void setup(Context& ctx) {
-    auto& chain = ctx.chain();
     // Add operators here
 }
 
 void update(Context& ctx) {
     // Update parameters here
-}
-
-VIVID_CHAIN(setup, update)
-)";
-
-// Noise demo template
-static const char* NOISE_DEMO_CHAIN_CPP = R"(// Noise Demo - Vivid Project
-// Animated noise with blur effect
-
-#include <vivid/vivid.h>
-#include <vivid/effects/effects.h>
-#include <cmath>
-
-using namespace vivid;
-using namespace vivid::effects;
-
-void setup(Context& ctx) {
-    auto& chain = ctx.chain();
-
-    // Simplex noise generator
-    auto& noise = chain.add<Noise>("noise");
-    noise.type(NoiseType::Simplex);
-    noise.scale = 4.0f;
-    noise.speed = 0.3f;
-    noise.octaves = 4;
-
-    // Gaussian blur
-    auto& blur = chain.add<Blur>("blur");
-    blur.input(&noise);
-    blur.radius = 5.0f;
-
-    // Color tint via HSV ramp
-    auto& ramp = chain.add<Ramp>("ramp");
-    ramp.type(RampType::Radial);
-    ramp.hueSpeed = 0.1f;
-
-    // Combine
-    auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&blur);
-    comp.inputB(&ramp);
-    comp.mode(BlendMode::Multiply);
-
-    chain.output("comp");
-}
-
-void update(Context& ctx) {
-    auto& chain = ctx.chain();
-    float time = static_cast<float>(ctx.time());
-
-    // Animate noise
-    chain.get<Noise>("noise").offset.set(time * 0.2f, time * 0.15f, 0.0f);
-
-    // Pulse blur with time
-    float pulse = 3.0f + 2.0f * std::sin(time);
-    chain.get<Blur>("blur").radius = pulse;
-
-    // Cycle hue
-    chain.get<Ramp>("ramp").hueOffset = std::fmod(time * 0.05f, 1.0f);
-}
-
-VIVID_CHAIN(setup, update)
-)";
-
-// Feedback loop template
-static const char* FEEDBACK_CHAIN_CPP = R"(// Feedback Loop - Vivid Project
-// Classic video feedback effect with trails
-
-#include <vivid/vivid.h>
-#include <vivid/effects/effects.h>
-#include <cmath>
-
-using namespace vivid;
-using namespace vivid::effects;
-
-void setup(Context& ctx) {
-    auto& chain = ctx.chain();
-
-    // Noise source
-    auto& noise = chain.add<Noise>("noise");
-    noise.scale = 8.0f;
-    noise.speed = 0.8f;
-    noise.octaves = 2;
-
-    // Feedback with trails
-    auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input(&noise);
-    feedback.decay = 0.92f;
-    feedback.mix = 0.3f;
-    feedback.zoom = 1.002f;
-    feedback.rotate = 0.005f;
-
-    // Color ramp
-    auto& ramp = chain.add<Ramp>("ramp");
-    ramp.type(RampType::Radial);
-    ramp.hueSpeed = 0.1f;
-    ramp.saturation = 0.9f;
-
-    // Multiply for color
-    auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&feedback);
-    comp.inputB(&ramp);
-    comp.mode(BlendMode::Multiply);
-
-    chain.output("comp");
-}
-
-void update(Context& ctx) {
-    auto& chain = ctx.chain();
-    float time = static_cast<float>(ctx.time());
-
-    // Animate noise
-    chain.get<Noise>("noise").offset.set(time * 0.5f, time * 0.3f, 0.0f);
-
-    // Mouse controls feedback rotation
-    float rotation = ctx.mouseNorm().x * 0.02f;
-    chain.get<Feedback>("feedback").rotate = rotation;
-
-    // Animate ramp hue
-    chain.get<Ramp>("ramp").hueOffset = std::fmod(time * 0.05f, 1.0f);
 }
 
 VIVID_CHAIN(setup, update)
@@ -309,14 +225,17 @@ int createProject(const std::string& name, const std::string& templateName,
         }
     }
 
-    // Select template content
-    const char* templateContent = BLANK_CHAIN_CPP;
-    if (templateName == "minimal") {
-        templateContent = MINIMAL_CHAIN_CPP;
-    } else if (templateName == "noise-demo") {
-        templateContent = NOISE_DEMO_CHAIN_CPP;
-    } else if (templateName == "feedback") {
-        templateContent = FEEDBACK_CHAIN_CPP;
+    // Try to load template from external file first
+    std::string templateContent = readTemplateFile(templateName);
+
+    // Fall back to embedded templates if external file not found
+    if (templateContent.empty()) {
+        if (templateName == "minimal") {
+            templateContent = FALLBACK_MINIMAL_TEMPLATE;
+        } else {
+            // Use blank as fallback for any unknown template
+            templateContent = FALLBACK_BLANK_TEMPLATE;
+        }
     }
 
     // Create directory structure
@@ -476,6 +395,12 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
             fs::copy(shadersDir, macosPath / "shaders", fs::copy_options::recursive);
         }
 
+        // Copy templates (for `vivid new` command in bundled app)
+        fs::path templatesDir = exeDir / "templates";
+        if (fs::exists(templatesDir)) {
+            fs::copy(templatesDir, macosPath / "templates", fs::copy_options::recursive);
+        }
+
         // Copy dylibs
         for (const auto& lib : {"libvivid-core.dylib", "libvivid-audio.dylib",
                                 "libvivid-render3d.dylib", "libvivid-video.dylib"}) {
@@ -623,7 +548,7 @@ int handleCommand(int argc, char** argv) {
 
     auto* newCmd = app.add_subcommand("new", "Create a new project");
     newCmd->add_option("name", newProjectName, "Project name")->required();
-    newCmd->add_option("-t,--template", newTemplate, "Template: blank, noise-demo, feedback")
+    newCmd->add_option("-t,--template", newTemplate, "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit")
           ->default_val("blank");
     newCmd->add_option("-a,--addons", newAddons,
                        "Addons to include (comma-separated): vivid-audio, vivid-video, vivid-render3d")

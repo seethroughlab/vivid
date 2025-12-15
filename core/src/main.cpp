@@ -172,6 +172,9 @@ int main(int argc, char** argv) {
     bool recordAudio = false;
     ExportCodec recordCodec = ExportCodec::H264;
 
+    // Frame limit option
+    int maxFrames = 0;  // 0 = unlimited
+
     // Helper to parse WxH format
     auto parseSize = [](const std::string& s, int& w, int& h) {
         size_t x = s.find('x');
@@ -227,6 +230,10 @@ int main(int argc, char** argv) {
             if (codec == "h265" || codec == "hevc") recordCodec = ExportCodec::H265;
             else if (codec == "prores" || codec == "animation") recordCodec = ExportCodec::Animation;
             else recordCodec = ExportCodec::H264;
+        } else if (arg == "--frames" && i + 1 < argc) {
+            maxFrames = std::atoi(argv[++i]);
+        } else if (arg.rfind("--frames=", 0) == 0) {
+            maxFrames = std::atoi(arg.substr(9).c_str());
         } else if (arg[0] != '-') {
             // Non-flag argument is the project path
             projectPath = arg;
@@ -235,9 +242,9 @@ int main(int argc, char** argv) {
 
     // Headless mode validation
     if (headless) {
-        if (snapshotPath.empty() && recordPath.empty()) {
-            std::cerr << "Warning: --headless without --snapshot or --record will run indefinitely.\n";
-            std::cerr << "         Use Ctrl+C to stop or add --snapshot/--record to capture output.\n";
+        if (snapshotPath.empty() && recordPath.empty() && maxFrames == 0) {
+            std::cerr << "Warning: --headless without --snapshot, --record, or --frames will run indefinitely.\n";
+            std::cerr << "         Use Ctrl+C to stop or add one of these options to capture output.\n";
         }
         std::cout << "Running in headless mode" << std::endl;
     }
@@ -880,9 +887,11 @@ int main(int argc, char** argv) {
                 }
             }
 
+            // Track total frames for --snapshot and --frames options
+            snapshotFrameCounter++;
+
             // Automated snapshot mode (CLI --snapshot flag)
             if (!snapshotPath.empty() && !snapshotSaved) {
-                snapshotFrameCounter++;
                 if (snapshotFrameCounter >= snapshotFrame) {
                     WGPUTexture outputTex = ctx.chain().outputTexture();
                     if (outputTex) {
@@ -890,14 +899,22 @@ int main(int argc, char** argv) {
                         if (VideoExporter::saveSnapshot(device, queue, outputTex, snapshotPath)) {
                             std::cout << "Snapshot saved successfully" << std::endl;
                             snapshotSaved = true;
-                            // Exit after saving
-                            glfwSetWindowShouldClose(window, GLFW_TRUE);
+                            // Exit after saving (unless --frames is also set)
+                            if (maxFrames == 0) {
+                                glfwSetWindowShouldClose(window, GLFW_TRUE);
+                            }
                         } else {
                             std::cerr << "Failed to save snapshot" << std::endl;
                             snapshotSaved = true;  // Don't retry
                         }
                     }
                 }
+            }
+
+            // Frame limit mode (CLI --frames flag)
+            if (maxFrames > 0 && snapshotFrameCounter >= maxFrames) {
+                std::cout << "Rendered " << maxFrames << " frames, exiting." << std::endl;
+                glfwSetWindowShouldClose(window, GLFW_TRUE);
             }
         }
 

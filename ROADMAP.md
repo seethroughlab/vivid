@@ -3494,17 +3494,17 @@ int recordedFrames() const;
 ```
 
 **Validation:**
-- [ ] H.264 recording works at 60fps without frame drops
-- [ ] ProRes produces edit-ready files
-- [ ] HAP produces playable files in VJ software
-- [ ] PNG sequence matches pixel-perfect with live output
-- [ ] Headless mode renders correct output
-- [ ] Standalone app runs without vivid installed
-- [ ] `vivid new` interactive flow works correctly
-- [ ] `vivid new --template` creates valid project
-- [ ] `vivid new --addons` installs specified addons
-- [ ] Custom templates can be saved and reused
-- [ ] examples/record-demo produces valid video file
+- [x] H.264 recording works at 60fps without frame drops
+- [x] ProRes produces edit-ready files (ProRes 4444)
+- [ ] HAP produces playable files in VJ software (not yet implemented)
+- [ ] PNG sequence matches pixel-perfect with live output (not yet implemented)
+- [x] Headless mode renders correct output
+- [x] Standalone app runs without vivid installed (macOS bundle)
+- [x] `vivid new` interactive flow works correctly
+- [x] `vivid new --template` creates valid project (blank, noise-demo, feedback, audio-visualizer, 3d-orbit)
+- [x] `vivid new --addons` installs specified addons
+- [ ] Custom templates can be saved and reused (not yet implemented)
+- [x] `--frames N` option for rendering N frames then exit
 
 ### Phase 16: Addon Registry & Package Management
 

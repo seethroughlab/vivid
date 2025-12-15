@@ -328,6 +328,14 @@ add_custom_command(TARGET vivid POST_BUILD
     COMMENT "Copying shaders..."
 )
 
+# Copy templates to build directory
+add_custom_command(TARGET vivid POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/templates
+        $<TARGET_FILE_DIR:vivid>/templates
+    COMMENT "Copying templates..."
+)
+
 # Install target
 install(TARGETS vivid RUNTIME DESTINATION bin)
 install(DIRECTORY shaders/ DESTINATION share/vivid/shaders)
