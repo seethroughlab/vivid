@@ -112,7 +112,7 @@
 [x] Wipeout-viz system crash after 30 seconds
     - Root cause: Multiple GPU command buffer submissions per frame without explicit GPU synchronization
     - Fix: Added `wgpuDevicePoll(device, false, nullptr)` after `wgpuSurfacePresent()` in `core/src/main.cpp:680`
-[ ] Chain visualizer: Render3D thumbnail shows black in wipeout-viz but works in 3d-basics
+[x] Chain visualizer: Render3D thumbnail shows black in wipeout-viz but works in 3d-basics
     - Issue persists even with explicit .resolution(1280, 720)
     - Operators after Render3D (Downsample, Dither, CRTEffect) also show black
     - Final output displays correctly, so textures ARE being rendered properly
@@ -137,10 +137,10 @@
 [x] HIGH PRIORITY: Add parameter exposure to Render3D (shadingMode, metallic, roughness, ambient, etc.)
 [x] HIGH PRIORITY: Add parameter exposure to VideoPlayer (loop, volume, speed)
 [x] HIGH PRIORITY: Add parameter exposure to geometry primitives (Box, Sphere, Cylinder, Cone, Torus, Plane)
-[ ] MEDIUM: Add parameter exposure to light operators (DirectionalLight, PointLight, SpotLight)
-[ ] MEDIUM: Add parameter exposure to InstancedRender3D (has params() but missing getParam/setParam)
-[ ] MEDIUM: Add parameter exposure to Boolean (operation type)
-[ ] MEDIUM: Add parameter exposure to IBLEnvironment, GLTFLoader
+[x] MEDIUM: Add parameter exposure to light operators (DirectionalLight, PointLight, SpotLight)
+[x] MEDIUM: Add parameter exposure to InstancedRender3D (has params() but missing getParam/setParam)
+[x] MEDIUM: Add parameter exposure to Boolean (operation type)
+[x] MEDIUM: Add parameter exposure to IBLEnvironment, GLTFLoader
 [x] While diagnosing a few bugs recently, the solution has been to "lock resolution", which seems to be related to the idea that things automatically get resized when the window size changes. But this isn't how thing should work (with the notabl exception of MAYBE the screen texture). Users should declare the resolution of canvases once. Also, when movies and images are loaded, they should use the size of the media as the default resolution, but then the user can decide the drawing dimensions in their chain. If this isn't how it currently works, let's make a plan to make this change.
 [x] BUG: Canvas text rendering appears directly on screen instead of on canvas texture
     - Root cause: `Canvas::size()` only set `m_resolutionLocked = true` when dimensions changed
@@ -162,7 +162,7 @@
 [x] PLAN: Is the vivid runtime currently distributed with the addon? Should it be?
 [x] Have all of the operators now been updated? I'm specifically thinking about light operators (DirectionalLight, PointLight, SpotLight), InstancedRender3D, Boolean (operation type), and IBLEnvironment, GLTFLoader, which don't even have exposed parameters yet. 
 [x] What's happening with the docs github action?  It's not published anywhere accessable. I'm sure I haven't set up something properly at https://github.com/seethroughlab/vivid/settings/pages, but I'm not sure what. 
-[x] Why does canvas.h still have m_resolutionLocked? Why would we need to lock and unlock the resolution? We made a change a while ago that textures shouldn't be linked to the size of the window, and I thought would eliminate the need to "lock" the size of things. 
+[x] Why does canvas.h still have m_resolutionLocked? Why would we need to lock and unlock the resolution? We made a change a while ago that textures shouldn't be linked to the size of the window, and I thought would eliminate the need to "lock" the size of things. 1
 [ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
 [ ] Is there currently a "make install" command that will put vivid into my PATH?
 [ ] Make an example with assets/textures/flat_earth_Largest_still.0330.jpg

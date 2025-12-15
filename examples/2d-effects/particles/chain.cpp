@@ -13,56 +13,56 @@ void setup(Context& ctx) {
 
     // Fire particles - rising flame effect
     auto& fire = chain.add<Particles>("fire");
-    fire.emitter(EmitterShape::Point)
-        .position(0.5f, 0.85f)
-        .emitRate(100.0f)
-        .velocity(0.0f, -0.15f)
-        .spread(25.0f)
-        .gravity(-0.05f)
-        .life(1.5f)
-        .lifeVariation(0.3f)
-        .size(0.025f, 0.005f)
-        .color(1.0f, 0.84f, 0.0f, 1.0f)  // Gold
-        .colorEnd(1.0f, 0.27f, 0.0f, 0.0f)  // OrangeRed, faded
-        .fadeOut(true)
-        .clearColor(0.02f, 0.02f, 0.06f, 1.0f);  // Dark blue
+    fire.emitter(EmitterShape::Point);
+    fire.position(0.5f, 0.85f);
+    fire.emitRate(100.0f);
+    fire.velocity(0.0f, -0.15f);
+    fire.spread(25.0f);
+    fire.gravity(-0.05f);
+    fire.life(1.5f);
+    fire.lifeVariation(0.3f);
+    fire.size(0.025f, 0.005f);
+    fire.color(1.0f, 0.84f, 0.0f, 1.0f);  // Gold
+    fire.colorEnd(1.0f, 0.27f, 0.0f, 0.0f);  // OrangeRed, faded
+    fire.fadeOut(true);
+    fire.clearColor(0.02f, 0.02f, 0.06f, 1.0f);  // Dark blue
 
     // Fountain particles - arcing water effect
     auto& fountain = chain.add<Particles>("fountain");
-    fountain.emitter(EmitterShape::Point)
-        .position(0.5f, 0.7f)
-        .emitRate(80.0f)
-        .velocity(0.0f, -0.25f)
-        .spread(15.0f)
-        .gravity(0.12f)
-        .life(2.0f)
-        .size(0.012f, 0.008f)
-        .color(0.12f, 0.56f, 1.0f, 1.0f)  // DodgerBlue
-        .colorEnd(0.0f, 0.0f, 0.8f, 0.0f)  // MediumBlue, faded
-        .fadeOut(true)
-        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent
+    fountain.emitter(EmitterShape::Point);
+    fountain.position(0.5f, 0.7f);
+    fountain.emitRate(80.0f);
+    fountain.velocity(0.0f, -0.25f);
+    fountain.spread(15.0f);
+    fountain.gravity(0.12f);
+    fountain.life(2.0f);
+    fountain.size(0.012f, 0.008f);
+    fountain.color(0.12f, 0.56f, 1.0f, 1.0f);  // DodgerBlue
+    fountain.colorEnd(0.0f, 0.0f, 0.8f, 0.0f);  // MediumBlue, faded
+    fountain.fadeOut(true);
+    fountain.clearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent
 
     // Ring particles - expanding ring
     auto& ring = chain.add<Particles>("ring");
-    ring.emitter(EmitterShape::Ring)
-        .position(0.5f, 0.5f)
-        .emitterSize(0.1f)
-        .emitRate(60.0f)
-        .radialVelocity(0.15f)
-        .gravity(0.0f)
-        .drag(1.5f)
-        .life(1.2f)
-        .size(0.018f, 0.0f)
-        .colorMode(ColorMode::Rainbow)
-        .fadeOut(true)
-        .clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    ring.emitter(EmitterShape::Ring);
+    ring.position(0.5f, 0.5f);
+    ring.emitterSize(0.1f);
+    ring.emitRate(60.0f);
+    ring.radialVelocity(0.15f);
+    ring.gravity(0.0f);
+    ring.drag(1.5f);
+    ring.life(1.2f);
+    ring.size(0.018f, 0.0f);
+    ring.colorMode(ColorMode::Rainbow);
+    ring.fadeOut(true);
+    ring.clearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Composite all particle layers
     auto& comp = chain.add<Composite>("comp");
-    comp.input(0, &fire)
-        .input(1, &fountain)
-        .input(2, &ring)
-        .mode(BlendMode::Add);
+    comp.input(0, &fire);
+    comp.input(1, &fountain);
+    comp.input(2, &ring);
+    comp.mode(BlendMode::Add);
 
     chain.output("comp");
 }

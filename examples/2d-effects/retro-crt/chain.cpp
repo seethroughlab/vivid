@@ -36,7 +36,9 @@ void setup(Context& ctx) {
     gradient.colorB.set(0.0f, 0.0f, 0.05f, 1.0f);  // Nearly black edge
 
     // Composite shape over gradient
-    comp.inputA(&gradient).inputB(&shape).mode(BlendMode::Add);
+    comp.inputA(&gradient);
+    comp.inputB(&shape);
+    comp.mode(BlendMode::Add);
 
     // HSV for hue cycling
     hsv.input(&comp);

@@ -8,7 +8,9 @@ OUTPUT_DIRECTORY       = docs/api
 
 # Input configuration
 INPUT                  = core/include/vivid \
-                         addons/vivid-effects-2d/include/vivid/effects \
+                         addons/vivid-audio/include/vivid/audio \
+                         addons/vivid-render3d/include/vivid/render3d \
+                         addons/vivid-video/include/vivid/video \
                          docs/LLM-REFERENCE.md \
                          docs/RECIPES.md \
                          README.md
@@ -39,7 +41,6 @@ REFERENCES_RELATION    = YES
 
 # Graph generation (requires Graphviz)
 HAVE_DOT               = NO
-CLASS_DIAGRAMS         = YES
 COLLABORATION_GRAPH    = NO
 GROUP_GRAPHS           = YES
 INCLUDE_GRAPH          = NO

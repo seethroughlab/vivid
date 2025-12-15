@@ -29,12 +29,10 @@ add_executable(test_integration
 target_link_libraries(test_integration PRIVATE
     Catch2::Catch2WithMain
     vivid-core
-    vivid-effects-2d
 )
 
 target_include_directories(test_integration PRIVATE
     ${CMAKE_SOURCE_DIR}/core/include
-    ${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/include
 )
 
 catch_discover_tests(test_integration)
@@ -42,8 +40,7 @@ catch_discover_tests(test_integration)
 # -----------------------------------------------------------------------------
 # Addon Tests (included from addon directories)
 # -----------------------------------------------------------------------------
-# Unit tests have been moved to their respective addon directories:
-#   - vivid-effects-2d/tests/ (test_noise, test_blur, test_composite)
+# Unit tests are in their respective addon directories:
 #   - vivid-audio/tests/ (test_clock, test_sequencer)
 #
 # To build addon tests, include their CMakeLists.txt:
@@ -51,7 +48,6 @@ catch_discover_tests(test_integration)
 option(BUILD_ADDON_TESTS "Build addon test suites" ON)
 
 if(BUILD_ADDON_TESTS)
-    include(${CMAKE_SOURCE_DIR}/addons/vivid-effects-2d/tests/CMakeLists.txt)
     include(${CMAKE_SOURCE_DIR}/addons/vivid-audio/tests/CMakeLists.txt)
 endif()
 

@@ -41,7 +41,8 @@ void setup(Context& ctx) {
 
     // Internal synth - generates beats for visualization
     auto& clock = chain.add<Clock>("clock");
-    clock.bpm(128.0f).division(ClockDiv::Sixteenth);
+    clock.bpm = 128.0f;
+    clock.division(ClockDiv::Sixteenth);
 
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setPattern(0x1111);  // Four on floor
@@ -53,27 +54,42 @@ void setup(Context& ctx) {
     hihatSeq.setPattern(0x5555);  // 8th notes
 
     auto& kick = chain.add<Kick>("kick");
-    kick.pitch(45.0f).pitchEnv(150.0f).decay(0.35f).drive(0.3f).volume(0.9f);
+    kick.pitch = 45.0f;
+    kick.pitchEnv = 150.0f;
+    kick.decay = 0.35f;
+    kick.drive = 0.3f;
+    kick.volume = 0.9f;
 
     auto& snare = chain.add<Snare>("snare");
-    snare.tone(0.5f).noise(0.6f).toneDecay(0.1f).noiseDecay(0.2f).volume(0.6f);
+    snare.tone = 0.5f;
+    snare.noise = 0.6f;
+    snare.toneDecay = 0.1f;
+    snare.noiseDecay = 0.2f;
+    snare.volume = 0.6f;
 
     auto& hihat = chain.add<HiHat>("hihat");
-    hihat.decay(0.04f).tone(0.8f).volume(0.3f);
+    hihat.decay = 0.04f;
+    hihat.tone = 0.8f;
+    hihat.volume = 0.3f;
 
     auto& mixer = chain.add<AudioMixer>("mixer");
-    mixer.input(0, "kick").gain(0, 1.0f)
-         .input(1, "snare").gain(1, 0.7f)
-         .input(2, "hihat").gain(2, 0.4f)
-         .volume(0.8f);
+    mixer.setInput(0, "kick");
+    mixer.setGain(0, 1.0f);
+    mixer.setInput(1, "snare");
+    mixer.setGain(1, 0.7f);
+    mixer.setInput(2, "hihat");
+    mixer.setGain(2, 0.4f);
+    mixer.volume = 0.8f;
 
     // Microphone input
     auto& mic = chain.add<AudioIn>("mic");
-    mic.volume(1.5f).mute(true);
+    mic.volume = 1.5f;
+    mic.setMute(true);
 
     // Audio output
     auto& audioOut = chain.add<AudioOutput>("audioOut");
-    audioOut.input("mixer").volume(0.7f);
+    audioOut.setInput("mixer");
+    audioOut.setVolume(0.7f);
     chain.audioOutput("audioOut");
 
     // =========================================================================
@@ -81,16 +97,23 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& fft = chain.add<FFT>("fft");
-    fft.input("mixer").size(512).smoothing(0.75f);
+    fft.input("mixer");
+    fft.setSize(512);
+    fft.smoothing = 0.75f;
 
     auto& bands = chain.add<BandSplit>("bands");
-    bands.input("mixer").smoothing(0.85f);
+    bands.input("mixer");
+    bands.smoothing = 0.85f;
 
     auto& beat = chain.add<BeatDetect>("beat");
-    beat.input("mixer").sensitivity(sensitivity).decay(0.9f).holdTime(80.0f);
+    beat.input("mixer");
+    beat.sensitivity = sensitivity;
+    beat.decay = 0.9f;
+    beat.holdTime = 80.0f;
 
     auto& levels = chain.add<Levels>("levels");
-    levels.input("mixer").smoothing(0.8f);
+    levels.input("mixer");
+    levels.smoothing = 0.8f;
 
     // =========================================================================
     // Visual Layers
@@ -98,97 +121,101 @@ void setup(Context& ctx) {
 
     // Background - dark with subtle color shift
     auto& bg = chain.add<SolidColor>("bg");
-    bg.color(Color::fromHex("#05050A"));
+    bg.color.set(Color::fromHex("#05050A"));
 
     // Bass particles - large, slow, react to sub-bass
     auto& bassParticles = chain.add<Particles>("bassParticles");
-    bassParticles.emitter(EmitterShape::Ring)
-        .position(0.5f, 0.5f)
-        .emitterSize(0.3f)
-        .emitRate(30.0f)
-        .maxParticles(3000)
-        .radialVelocity(0.08f)
-        .turbulence(0.1f)
-        .drag(0.8f)
-        .life(3.0f)
-        .size(0.025f, 0.005f)
-        .color(Color::fromHex("#CC3366"))
-        .colorEnd(Color::fromHex("#661A99").withAlpha(0.0f))
-        .fadeOut(true)
-        .clearColor(Color::Transparent);
+    bassParticles.emitter(EmitterShape::Ring);
+    bassParticles.position(0.5f, 0.5f);
+    bassParticles.emitterSize(0.3f);
+    bassParticles.emitRate(30.0f);
+    bassParticles.maxParticles(3000);
+    bassParticles.radialVelocity(0.08f);
+    bassParticles.turbulence(0.1f);
+    bassParticles.drag(0.8f);
+    bassParticles.life(3.0f);
+    bassParticles.size(0.025f, 0.005f);
+    bassParticles.color(Color::fromHex("#CC3366"));
+    bassParticles.colorEnd(Color::fromHex("#661A99").withAlpha(0.0f));
+    bassParticles.fadeOut(true);
+    bassParticles.clearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Mid particles - medium, react to mids
     auto& midParticles = chain.add<Particles>("midParticles");
-    midParticles.emitter(EmitterShape::Disc)
-        .position(0.5f, 0.5f)
-        .emitterSize(0.2f)
-        .emitRate(60.0f)
-        .maxParticles(4000)
-        .velocity(0.0f, -0.05f)
-        .spread(180.0f)
-        .turbulence(0.15f)
-        .drag(0.5f)
-        .life(2.5f)
-        .size(0.012f, 0.003f)
-        .color(Color::DodgerBlue)
-        .colorEnd(Color::MediumBlue.withAlpha(0.0f))
-        .fadeOut(true)
-        .clearColor(Color::Transparent);
+    midParticles.emitter(EmitterShape::Disc);
+    midParticles.position(0.5f, 0.5f);
+    midParticles.emitterSize(0.2f);
+    midParticles.emitRate(60.0f);
+    midParticles.maxParticles(4000);
+    midParticles.velocity(0.0f, -0.05f);
+    midParticles.spread(180.0f);
+    midParticles.turbulence(0.15f);
+    midParticles.drag(0.5f);
+    midParticles.life(2.5f);
+    midParticles.size(0.012f, 0.003f);
+    midParticles.color(Color::DodgerBlue);
+    midParticles.colorEnd(Color::MediumBlue.withAlpha(0.0f));
+    midParticles.fadeOut(true);
+    midParticles.clearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     // High particles - small, fast, sparkle effect
     auto& highParticles = chain.add<Particles>("highParticles");
-    highParticles.emitter(EmitterShape::Disc)
-        .position(0.5f, 0.5f)
-        .emitterSize(0.4f)
-        .emitRate(100.0f)
-        .maxParticles(5000)
-        .velocity(0.0f, 0.0f)
-        .radialVelocity(0.15f)
-        .turbulence(0.2f)
-        .drag(0.3f)
-        .life(1.5f)
-        .size(0.006f, 0.001f)
-        .colorMode(ColorMode::Rainbow)
-        .fadeOut(true)
-        .clearColor(Color::Transparent);
+    highParticles.emitter(EmitterShape::Disc);
+    highParticles.position(0.5f, 0.5f);
+    highParticles.emitterSize(0.4f);
+    highParticles.emitRate(100.0f);
+    highParticles.maxParticles(5000);
+    highParticles.velocity(0.0f, 0.0f);
+    highParticles.radialVelocity(0.15f);
+    highParticles.turbulence(0.2f);
+    highParticles.drag(0.3f);
+    highParticles.life(1.5f);
+    highParticles.size(0.006f, 0.001f);
+    highParticles.colorMode(ColorMode::Rainbow);
+    highParticles.fadeOut(true);
+    highParticles.clearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Composite particles
     auto& particleComp = chain.add<Composite>("particleComp");
-    particleComp.input(0, &bg)
-                .input(1, &bassParticles)
-                .input(2, &midParticles)
-                .input(3, &highParticles)
-                .mode(BlendMode::Add);
+    particleComp.input(0, &bg);
+    particleComp.input(1, &bassParticles);
+    particleComp.input(2, &midParticles);
+    particleComp.input(3, &highParticles);
+    particleComp.mode(BlendMode::Add);
 
     // Central shape - pulses with beat
     auto& beatShape = chain.add<Shape>("beatShape");
-    beatShape.type(ShapeType::Circle)
-             .position(0.5f, 0.5f)
-             .size(0.15f)
-             .color(Color::White.withAlpha(0.8f))
-             .softness(0.3f);
+    beatShape.type(ShapeType::Circle);
+    beatShape.position.set(0.5f, 0.5f);
+    beatShape.size.set(0.15f, 0.15f);
+    beatShape.color.set(Color::White.withAlpha(0.8f));
+    beatShape.softness = 0.3f;
 
     auto& shapeComp = chain.add<Composite>("shapeComp");
-    shapeComp.inputA(&particleComp).inputB(&beatShape).mode(BlendMode::Add);
+    shapeComp.inputA(&particleComp);
+    shapeComp.inputB(&beatShape);
+    shapeComp.mode(BlendMode::Add);
 
     // Feedback for trails
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input(&shapeComp)
-        .decay(0.92f)
-        .mix(0.5f)
-        .zoom(1.002f)
-        .rotate(0.0f);
+    feedback.input(&shapeComp);
+    feedback.decay = 0.92f;
+    feedback.mix = 0.5f;
+    feedback.zoom = 1.002f;
+    feedback.rotate = 0.0f;
 
     // Bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&feedback)
-        .threshold(0.15f)
-        .intensity(0.7f)
-        .radius(0.02f);
+    bloom.input(&feedback);
+    bloom.threshold = 0.15f;
+    bloom.intensity = 0.7f;
+    bloom.radius = 0.02f;
 
     // Chromatic aberration - triggered on beat
     auto& chroma = chain.add<ChromaticAberration>("chroma");
-    chroma.input(&bloom).amount(0.0f).radial(true);
+    chroma.input(&bloom);
+    chroma.amount = 0.0f;
+    chroma.radial = true;
 
     chain.output("chroma");
 
@@ -246,21 +273,21 @@ void update(Context& ctx) {
     if (ctx.key(GLFW_KEY_M).pressed) {
         useMic = !useMic;
         if (useMic) {
-            mic.mute(false);
+            mic.setMute(false);
             clock.stop();
             chain.get<FFT>("fft").input("mic");
             chain.get<BandSplit>("bands").input("mic");
             chain.get<BeatDetect>("beat").input("mic");
             chain.get<Levels>("levels").input("mic");
-            chain.get<AudioOutput>("audioOut").input("mic");
+            chain.get<AudioOutput>("audioOut").setInput("mic");
         } else {
-            mic.mute(true);
+            mic.setMute(true);
             clock.start();
             chain.get<FFT>("fft").input("mixer");
             chain.get<BandSplit>("bands").input("mixer");
             chain.get<BeatDetect>("beat").input("mixer");
             chain.get<Levels>("levels").input("mixer");
-            chain.get<AudioOutput>("audioOut").input("mixer");
+            chain.get<AudioOutput>("audioOut").setInput("mixer");
         }
         printStatus();
     }
@@ -291,12 +318,12 @@ void update(Context& ctx) {
     // Sensitivity (UP/DOWN)
     if (ctx.key(GLFW_KEY_UP).pressed) {
         sensitivity = std::min(3.0f, sensitivity + 0.1f);
-        beat.sensitivity(sensitivity);
+        beat.sensitivity = sensitivity;
         printStatus();
     }
     if (ctx.key(GLFW_KEY_DOWN).pressed) {
         sensitivity = std::max(0.5f, sensitivity - 0.1f);
-        beat.sensitivity(sensitivity);
+        beat.sensitivity = sensitivity;
         printStatus();
     }
 
@@ -364,8 +391,8 @@ void update(Context& ctx) {
 
     // Beat shape - size and color
     float shapeSize = 0.08f + energy * 0.15f + beatFlash * 0.2f;
-    beatShape.size(shapeSize);
-    beatShape.softness(0.2f + beatFlash * 0.3f);
+    beatShape.size.set(shapeSize, shapeSize);
+    beatShape.softness = 0.2f + beatFlash * 0.3f;
 
     // Color based on preset
     float hue = std::fmod(time * 0.05f + bass * 0.3f, 1.0f);
@@ -389,20 +416,20 @@ void update(Context& ctx) {
         default:
             r = g = b = 1.0f;
     }
-    beatShape.color(r, g, b, 0.6f + beatFlash * 0.4f);
+    beatShape.color.set(r, g, b, 0.6f + beatFlash * 0.4f);
 
     // Feedback rotation - subtle sway
     float rotation = 0.002f * std::sin(time * 0.5f) + bassAccum * 0.005f;
-    feedback.rotate(rotation);
-    feedback.decay(0.9f + energy * 0.08f);
+    feedback.rotate = rotation;
+    feedback.decay = 0.9f + energy * 0.08f;
 
     // Bloom intensity with energy
-    bloom.intensity(0.5f + energy * 0.5f);
-    bloom.radius(0.015f + bass * 0.02f);
+    bloom.intensity = 0.5f + energy * 0.5f;
+    bloom.radius = 0.015f + bass * 0.02f;
 
     // Chromatic aberration on beat
     float chromaAmount = beatFlash * 0.015f;
-    chroma.amount(chromaAmount);
+    chroma.amount = chromaAmount;
 }
 
 VIVID_CHAIN(setup, update)
