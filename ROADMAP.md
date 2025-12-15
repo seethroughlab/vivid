@@ -1237,6 +1237,8 @@ chain.add<Output>("out").input("scanlines");
 
 **Goal:** Align the Vivid Canvas API with the standard HTML Canvas 2D API for familiarity and feature parity.
 
+**Status: ✅ COMPLETE** (Phases 5b.1-5b.8 implemented)
+
 **Motivation:**
 - HTML Canvas 2D is the most widely-known 2D drawing API
 - Developers can transfer existing Canvas knowledge to Vivid
@@ -1244,15 +1246,20 @@ chain.add<Output>("out").input("scanlines");
 - Path-based drawing enables complex shapes that primitives can't express
 - Transform stack enables hierarchical/nested drawing
 
-**Current State:**
-The existing Canvas API uses immediate-mode primitives with per-call colors:
-```cpp
-canvas.rectFilled(x, y, w, h, color);  // Vivid (current)
-ctx.fillStyle = color; ctx.fillRect(x, y, w, h);  // HTML Canvas
-```
+**Implementation Summary:**
+| Phase | Feature | Status |
+|-------|---------|--------|
+| 5b.1 | State Management | ✅ Complete |
+| 5b.2 | Transform Stack | ✅ Complete |
+| 5b.3 | Path API | ✅ Complete |
+| 5b.4 | Convenience Methods | ✅ Complete |
+| 5b.5 | Gradients | ✅ Complete |
+| 5b.6 | Enhanced Text API | ✅ Complete |
+| 5b.7 | Image Drawing | ✅ Complete |
+| 5b.8 | Clipping | ✅ Complete |
+| 5b.9 | Pixel Manipulation | ⏳ Deferred |
 
-**Target State:**
-A stateful, path-based API matching HTML Canvas 2D semantics:
+**Example (working code):**
 ```cpp
 canvas.fillStyle({0.2, 0.4, 0.8, 1.0});
 canvas.beginPath();
@@ -1265,7 +1272,7 @@ canvas.fill();
 
 ---
 
-#### Phase 5b.1: State Management
+#### Phase 5b.1: State Management ✅
 
 Add stateful properties that persist across draw calls:
 
@@ -1319,7 +1326,7 @@ enum class CompositeOp {
 
 ---
 
-#### Phase 5b.2: Transform Stack
+#### Phase 5b.2: Transform Stack ✅
 
 Add 2D transformation methods:
 
@@ -1344,7 +1351,7 @@ glm::mat3 getTransform() const;
 
 ---
 
-#### Phase 5b.3: Path API
+#### Phase 5b.3: Path API ✅
 
 Add path-based drawing (the core of HTML Canvas):
 
@@ -1390,7 +1397,7 @@ std::vector<PathCommand> m_currentPath;
 
 ---
 
-#### Phase 5b.4: Convenience Methods (Immediate Shapes)
+#### Phase 5b.4: Convenience Methods (Immediate Shapes) ✅
 
 Keep convenience methods that combine beginPath + shape + fill/stroke:
 
@@ -1419,7 +1426,7 @@ line(x1, y1, x2, y2, w, color) →  strokeStyle(color); lineWidth(w); beginPath(
 
 ---
 
-#### Phase 5b.5: Gradients and Patterns
+#### Phase 5b.5: Gradients and Patterns ✅
 
 Add gradient and pattern support:
 
@@ -1449,7 +1456,7 @@ enum class PatternRepeat { Repeat, RepeatX, RepeatY, NoRepeat };
 
 ---
 
-#### Phase 5b.6: Enhanced Text API
+#### Phase 5b.6: Enhanced Text API ✅
 
 Align text rendering with HTML Canvas:
 
@@ -1491,7 +1498,7 @@ enum class TextBaseline { Top, Hanging, Middle, Alphabetic, Ideographic, Bottom 
 
 ---
 
-#### Phase 5b.7: Image Drawing
+#### Phase 5b.7: Image Drawing ✅
 
 Add image/texture drawing:
 
@@ -1515,7 +1522,7 @@ void drawImage(Operator& source, float dx, float dy, float dw, float dh);
 
 ---
 
-#### Phase 5b.8: Clipping
+#### Phase 5b.8: Clipping ✅
 
 Add clipping path support:
 
@@ -1523,14 +1530,17 @@ Add clipping path support:
 void clip();                    // Use current path as clip region
 void clip(FillRule rule);       // Clip with fill rule
 void resetClip();               // Remove clipping (Vivid extension)
+bool isClipped() const;         // Check if clipping is active
 
 enum class FillRule { NonZero, EvenOdd };
 ```
 
 **Implementation Notes:**
-- Clip implemented via stencil buffer
-- Nested clips via stencil increment/decrement
-- `save()`/`restore()` preserves clip state (complex - may need stencil stack)
+- Clip implemented via stencil buffer with LessEqual comparison
+- Nested clips supported via clipDepth tracking (stencil reference value)
+- `save()`/`restore()` preserves clip state via clipDepth in CanvasState
+- Two-pipeline architecture: main pipeline with stencil test, clip pipeline with stencil write
+- Command-based rendering preserves draw order with clip state changes
 
 ---
 
@@ -1556,23 +1566,23 @@ struct ImageData {
 
 #### Implementation Order
 
-1. **Phase 5b.1** - State management (foundation for everything else)
-2. **Phase 5b.2** - Transform stack (enables hierarchical drawing)
-3. **Phase 5b.4** - Convenience methods (quick win, maintains compatibility)
-4. **Phase 5b.3** - Path API (most complex, enables complex shapes)
-5. **Phase 5b.5** - Gradients (visual richness)
-6. **Phase 5b.6** - Enhanced text (align existing text with new state model)
-7. **Phase 5b.7** - Image drawing (compositing operators)
-8. **Phase 5b.8** - Clipping (advanced feature)
-9. **Phase 5b.9** - Pixel manipulation (optional, deferred)
+1. ✅ **Phase 5b.1** - State management (foundation for everything else)
+2. ✅ **Phase 5b.2** - Transform stack (enables hierarchical drawing)
+3. ✅ **Phase 5b.4** - Convenience methods (quick win, maintains compatibility)
+4. ✅ **Phase 5b.3** - Path API (most complex, enables complex shapes)
+5. ✅ **Phase 5b.5** - Gradients (visual richness)
+6. ✅ **Phase 5b.6** - Enhanced text (align existing text with new state model)
+7. ✅ **Phase 5b.7** - Image drawing (compositing operators)
+8. ✅ **Phase 5b.8** - Clipping (advanced feature)
+9. ⏳ **Phase 5b.9** - Pixel manipulation (optional, deferred)
 
 ---
 
 #### Dependencies
 
-- **libtess2** or similar for path tessellation (fill)
-- May need to upgrade CanvasRenderer to handle multiple texture bind groups per frame
-- Stencil buffer support for clipping (requires render pipeline changes)
+- ✅ **earcut.hpp** - Used for path tessellation (fill) - header-only, fetched via CMake
+- ✅ CanvasRenderer upgraded to handle multiple texture bind groups per frame (for images)
+- ✅ Stencil buffer support added for clipping (two-pipeline architecture)
 
 ---
 
@@ -1608,10 +1618,11 @@ void triangleFilled(glm::vec2 a, glm::vec2 b, glm::vec2 c, const glm::vec4& colo
 
 #### Documentation
 
+- [x] Working example: `examples/2d-effects/canvas-drawing/chain.cpp`
 - [ ] Migration guide from old Vivid Canvas API to new HTML Canvas style
-- [ ] Complete API reference matching MDN Canvas documentation structure
+- [x] Complete API reference matching MDN Canvas documentation structure (`docs/CANVAS-API.md`)
 - [ ] Examples ported from MDN Canvas tutorials
-- [ ] Differences from HTML Canvas documented (if any)
+- [x] Differences from HTML Canvas documented (in CANVAS-API.md)
 
 ---
 

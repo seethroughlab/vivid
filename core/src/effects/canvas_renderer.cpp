@@ -262,10 +262,9 @@ void CanvasRenderer::createPipeline(Context& ctx) {
     clipDepthStencilState.stencilReadMask = 0xFF;
     clipDepthStencilState.stencilWriteMask = 0xFF;
 
-    // DEBUG: Enable color writes for clip pipeline to verify geometry
-    // TODO: Set back to 0 for production
+    // Clip pipeline doesn't write color, only stencil
     WGPUColorTargetState clipColorTarget = colorTarget;
-    clipColorTarget.writeMask = WGPUColorWriteMask_All;  // Temporarily enable to debug
+    clipColorTarget.writeMask = WGPUColorWriteMask_None;
 
     WGPUFragmentState clipFragmentState = fragmentState;
     clipFragmentState.targets = &clipColorTarget;
@@ -564,7 +563,6 @@ void CanvasRenderer::triangleFilled(glm::vec2 a, glm::vec2 b, glm::vec2 c, const
 }
 
 void CanvasRenderer::addClip(const std::vector<glm::vec2>& vertices, const std::vector<uint32_t>& indices) {
-    std::cerr << "[addClip] verts=" << vertices.size() << " indices=" << indices.size() << " clipDepth=" << m_clipDepth << std::endl;
     if (vertices.empty() || indices.empty()) return;
 
     // Flush any pending solid geometry before changing clip state
@@ -744,18 +742,11 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
 
     // Process clip commands first (write to stencil)
-    std::cerr << "[render] clipCommands=" << m_clipCommands.size() << " solidCommands=" << m_solidCommands.size() << std::endl;
     if (!m_clipCommands.empty()) {
         wgpuRenderPassEncoderSetPipeline(pass, m_clipPipeline);
         wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
 
         for (const auto& clipCmd : m_clipCommands) {
-            std::cerr << "[render] drawing clip: verts=" << clipCmd.vertices.size() << " indices=" << clipCmd.indices.size() << " depth=" << clipCmd.clipDepth << std::endl;
-            if (!clipCmd.vertices.empty()) {
-                std::cerr << "  clip vert 0: " << clipCmd.vertices[0].position.x << ", " << clipCmd.vertices[0].position.y << std::endl;
-                if (clipCmd.vertices.size() > 1)
-                    std::cerr << "  clip vert 1: " << clipCmd.vertices[1].position.x << ", " << clipCmd.vertices[1].position.y << std::endl;
-            }
             if (clipCmd.vertices.empty()) continue;
 
             // Create temporary buffers for this clip command
@@ -792,7 +783,6 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
         if (cmd.vertices.empty()) continue;
 
         // Set stencil reference for this command
-        std::cerr << "[render] solid cmd: verts=" << cmd.vertices.size() << " clipDepth=" << cmd.clipDepth << " useStencil=" << useStencil << std::endl;
         if (useStencil) {
             wgpuRenderPassEncoderSetStencilReference(pass, static_cast<uint32_t>(cmd.clipDepth));
         }

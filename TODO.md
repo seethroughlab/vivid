@@ -170,3 +170,4 @@
 [ ] Take more snapshots of showcase projects, add them to README
 [ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
 [ ] git tag v0.1.0 && git push --tags
+[ ] Find out what the maximum number of tokens Claude can read and maek the VS Code Extension warn users if their CLAUDE.md file gets longer than that. 

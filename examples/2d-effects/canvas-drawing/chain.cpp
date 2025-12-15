@@ -77,27 +77,35 @@ void update(Context& ctx) {
         canvas.stroke();
     }
 
-    // Clipping demo (bottom left) - BRIGHT RED rectangle clipped to small area
+    // Clipping demo (bottom left) - rectangle clipped to circular region
     canvas.save();
-    // Create a small clip region (100x100 at position 100,550)
+    // Create circular clip region
     canvas.beginPath();
-    canvas.moveTo(100.0f, 550.0f);
-    canvas.lineTo(200.0f, 550.0f);
-    canvas.lineTo(200.0f, 650.0f);
-    canvas.lineTo(100.0f, 650.0f);
+    canvas.arc(150.0f, 600.0f, 60.0f, 0.0f, 6.28318f);  // Full circle
     canvas.closePath();
     canvas.clip();
 
-    // Draw a LARGE bright red rectangle (should only appear in 100x100 clip region)
-    canvas.fillStyle(1.0f, 0.0f, 0.0f, 1.0f);  // Bright red
-    canvas.fillRect(0.0f, 400.0f, 400.0f, 400.0f);  // Large 400x400 rect
+    // Draw gradient rectangle (will be clipped to circle)
+    auto clipGrad = canvas.createLinearGradient(50.0f, 550.0f, 250.0f, 650.0f);
+    clipGrad.addColorStop(0.0f, 1.0f, 0.0f, 0.5f, 1.0f);  // Pink
+    clipGrad.addColorStop(0.5f, 0.5f, 0.0f, 1.0f, 1.0f);  // Purple
+    clipGrad.addColorStop(1.0f, 0.0f, 0.5f, 1.0f, 1.0f);  // Cyan
+    canvas.fillStyle(clipGrad);
+    canvas.fillRect(50.0f, 500.0f, 200.0f, 200.0f);
 
-    canvas.restore();  // This restores the clip state too
+    // Draw white stripes (also clipped)
+    canvas.fillStyle(1.0f, 1.0f, 1.0f, 0.3f);
+    for (int i = 0; i < 8; i++) {
+        float stripeX = 60.0f + i * 25.0f;
+        canvas.fillRect(stripeX, 500.0f, 10.0f, 200.0f);
+    }
 
-    // Draw white border to show where clip region was
-    canvas.strokeStyle(1.0f, 1.0f, 1.0f, 1.0f);
+    canvas.restore();  // Restores clip state
+
+    // Draw border to show the clip boundary
+    canvas.strokeStyle(1.0f, 1.0f, 1.0f, 0.8f);
     canvas.lineWidth(2.0f);
-    canvas.strokeRect(100.0f, 550.0f, 100.0f, 100.0f);
+    canvas.strokeCircle(150.0f, 600.0f, 60.0f);
 
     // Spinning star using transform (save/restore demo)
     canvas.save();

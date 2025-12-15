@@ -663,10 +663,6 @@ void Canvas::clip() {
 
     // pathToPolygon() already returns transformed points
     auto polygon = pathToPolygon();
-    std::cerr << "[Canvas::clip] polygon size: " << polygon.size() << std::endl;
-    if (polygon.size() >= 3) {
-        std::cerr << "[Canvas::clip] first point: " << polygon[0].x << ", " << polygon[0].y << std::endl;
-    }
     if (polygon.size() < 3) return;
 
     // Tessellate using earcut
@@ -680,12 +676,10 @@ void Canvas::clip() {
     }
 
     std::vector<uint32_t> indices = mapbox::earcut<uint32_t>(inputPolygon);
-    std::cerr << "[Canvas::clip] indices count: " << indices.size() << std::endl;
     if (indices.empty()) return;
 
     // Increment clip depth
     m_state.clipDepth++;
-    std::cerr << "[Canvas::clip] new clipDepth: " << m_state.clipDepth << std::endl;
     m_renderer->setClipDepth(m_state.clipDepth);
 
     // Add clip geometry to renderer (polygon is already transformed)
