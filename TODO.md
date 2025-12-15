@@ -169,3 +169,4 @@
 [ ] Take more snapshots of showcase projects, add them to README
 [ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
 [ ] git tag v0.1.0 && git push --tags
+[ ] It seems that there is a lot of repeated code in a lot of the core effects. Would you recommend any optimizations? Perhaps more inheritence?

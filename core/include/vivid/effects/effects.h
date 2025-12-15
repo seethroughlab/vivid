@@ -36,6 +36,10 @@
 #include <vivid/effects/math_op.h>
 #include <vivid/effects/logic_op.h>
 
+// Temporal effects
+#include <vivid/effects/frame_cache.h>
+#include <vivid/effects/time_machine.h>
+
 // Particle systems (Phase 5)
 #include <vivid/effects/types.h>
 #include <vivid/effects/particle_renderer.h>
