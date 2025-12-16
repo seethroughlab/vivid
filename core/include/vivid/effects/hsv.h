@@ -80,4 +80,10 @@ public:
     const char* fragmentShader() const override;
 };
 
+// Extern template declaration - suppresses instantiation in user code on Windows
+// The actual instantiation is in hsv.cpp (vivid-core.dll)
+#ifdef _WIN32
+extern template class SimpleTextureEffect<HSV, HSVUniforms>;
+#endif
+
 } // namespace vivid::effects

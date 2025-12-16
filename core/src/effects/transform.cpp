@@ -48,4 +48,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 )";
 }
 
+// Explicit template instantiation for Windows hot-reload
+template class SimpleTextureEffect<Transform, TransformUniforms>;
+
 } // namespace vivid::effects

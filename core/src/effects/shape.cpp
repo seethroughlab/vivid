@@ -128,4 +128,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 )";
 }
 
+// Explicit template instantiation for Windows hot-reload
+template class SimpleGeneratorEffect<Shape, ShapeUniforms>;
+
 } // namespace vivid::effects

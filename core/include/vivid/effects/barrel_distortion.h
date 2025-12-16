@@ -65,4 +65,8 @@ public:
     const char* fragmentShader() const override;
 };
 
+#ifdef _WIN32
+extern template class SimpleTextureEffect<BarrelDistortion, BarrelDistortionUniforms>;
+#endif
+
 } // namespace vivid::effects

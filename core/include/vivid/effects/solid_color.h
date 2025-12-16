@@ -69,4 +69,8 @@ public:
     /// @}
 };
 
+#ifdef _WIN32
+extern template class SimpleGeneratorEffect<SolidColor, SolidColorUniforms>;
+#endif
+
 } // namespace vivid::effects

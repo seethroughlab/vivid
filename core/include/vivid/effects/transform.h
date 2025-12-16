@@ -98,4 +98,8 @@ public:
     const char* fragmentShader() const override;
 };
 
+#ifdef _WIN32
+extern template class SimpleTextureEffect<Transform, TransformUniforms>;
+#endif
+
 } // namespace vivid::effects

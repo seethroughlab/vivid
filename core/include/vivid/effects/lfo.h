@@ -142,4 +142,8 @@ private:
     float m_currentValue = 0.0f;
 };
 
+#ifdef _WIN32
+extern template class SimpleGeneratorEffect<LFO, LFOUniforms>;
+#endif
+
 } // namespace vivid::effects

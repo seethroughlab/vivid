@@ -87,4 +87,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 )";
 }
 
+// Explicit template instantiation - forces compilation in vivid-core.dll
+// so WebGPU symbols are resolved here, not in hot-reloaded user code
+template class SimpleTextureEffect<HSV, HSVUniforms>;
+
 } // namespace vivid::effects

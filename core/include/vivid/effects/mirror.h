@@ -108,4 +108,8 @@ private:
     MirrorMode m_mode = MirrorMode::Horizontal;
 };
 
+#ifdef _WIN32
+extern template class SimpleTextureEffect<Mirror, MirrorUniforms>;
+#endif
+
 } // namespace vivid::effects

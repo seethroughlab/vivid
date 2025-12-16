@@ -73,4 +73,8 @@ public:
     const char* fragmentShader() const override;
 };
 
+#ifdef _WIN32
+extern template class SimpleTextureEffect<Pixelate, PixelateUniforms>;
+#endif
+
 } // namespace vivid::effects

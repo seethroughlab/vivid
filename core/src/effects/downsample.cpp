@@ -29,4 +29,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 )";
 }
 
+// Explicit template instantiation for Windows hot-reload
+template class SimpleTextureEffect<Downsample, DownsampleUniforms>;
+
 } // namespace vivid::effects

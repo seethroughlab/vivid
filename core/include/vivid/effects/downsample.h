@@ -96,4 +96,8 @@ private:
     FilterMode m_filter = FilterMode::Nearest;
 };
 
+#ifdef _WIN32
+extern template class SimpleTextureEffect<Downsample, DownsampleUniforms>;
+#endif
+
 } // namespace vivid::effects

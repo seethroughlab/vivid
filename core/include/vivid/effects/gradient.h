@@ -143,4 +143,8 @@ private:
     GradientMode m_mode = GradientMode::Linear;
 };
 
+#ifdef _WIN32
+extern template class SimpleGeneratorEffect<Gradient, GradientUniforms>;
+#endif
+
 } // namespace vivid::effects

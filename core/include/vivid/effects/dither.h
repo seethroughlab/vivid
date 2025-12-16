@@ -105,4 +105,8 @@ private:
     DitherPattern m_pattern = DitherPattern::Bayer4x4;
 };
 
+#ifdef _WIN32
+extern template class SimpleTextureEffect<Dither, DitherUniforms>;
+#endif
+
 } // namespace vivid::effects

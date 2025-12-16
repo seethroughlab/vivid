@@ -76,4 +76,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 )";
 }
 
+// Explicit template instantiation for Windows hot-reload
+template class SimpleTextureEffect<Mirror, MirrorUniforms>;
+
 } // namespace vivid::effects

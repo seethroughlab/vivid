@@ -110,4 +110,7 @@ void LFO::process(Context& ctx) {
     didCook();
 }
 
+// Explicit template instantiation for Windows hot-reload
+template class SimpleGeneratorEffect<LFO, LFOUniforms>;
+
 } // namespace vivid::effects

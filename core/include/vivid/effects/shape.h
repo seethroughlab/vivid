@@ -146,4 +146,8 @@ private:
     ShapeType m_type = ShapeType::Circle;
 };
 
+#ifdef _WIN32
+extern template class SimpleGeneratorEffect<Shape, ShapeUniforms>;
+#endif
+
 } // namespace vivid::effects
