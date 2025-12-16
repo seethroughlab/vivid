@@ -159,7 +159,6 @@ void VideoPlayer::loadVideo(Context& ctx) {
                 m_outputView = m_dshowDecoder->textureView();
                 m_width = m_dshowDecoder->width();
                 m_height = m_dshowDecoder->height();
-                m_resolutionLocked = true;  // Lock to video's native resolution
                 m_needsReload = false;
 
                 // Apply stored volume
