@@ -77,6 +77,10 @@ jobs:
           cp -r core/include/vivid package/vivid-${{ matrix.target }}/include/
           cp -r build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
 
+          # Copy dependency headers (needed by addons building against SDK)
+          cp -r build/_deps/glm-src/glm package/vivid-${{ matrix.target }}/include/
+          cp -r build/_deps/glfw-src/include/GLFW package/vivid-${{ matrix.target }}/include/
+
           # Copy shaders
           cp -r build/bin/shaders package/vivid-${{ matrix.target }}/ 2>/dev/null || true
 
@@ -102,6 +106,13 @@ jobs:
           # Copy headers
           Copy-Item -Recurse core/include/vivid package/vivid-${{ matrix.target }}/include/
           Copy-Item -Recurse build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
+
+          # Copy dependency headers (needed by addons building against SDK)
+          Copy-Item -Recurse build/_deps/glm-src/glm package/vivid-${{ matrix.target }}/include/
+          Copy-Item -Recurse build/_deps/glfw-src/include/GLFW package/vivid-${{ matrix.target }}/include/
+
+          # Copy import libraries (needed for addons on Windows)
+          Copy-Item build/lib/Release/vivid-core.lib package/vivid-${{ matrix.target }}/lib/ -ErrorAction SilentlyContinue
 
           # Copy shaders
           if (Test-Path build/bin/Release/shaders) {
