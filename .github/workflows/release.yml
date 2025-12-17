@@ -63,6 +63,7 @@ jobs:
           mkdir -p package/vivid-${{ matrix.target }}/bin
           mkdir -p package/vivid-${{ matrix.target }}/lib
           mkdir -p package/vivid-${{ matrix.target }}/include
+          mkdir -p package/vivid-${{ matrix.target }}/docs
 
           # Copy binaries
           cp build/bin/vivid package/vivid-${{ matrix.target }}/bin/
@@ -84,6 +85,13 @@ jobs:
           # Copy shaders
           cp -r build/bin/shaders package/vivid-${{ matrix.target }}/ 2>/dev/null || true
 
+          # Copy documentation for MCP server
+          cp docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
+          cp docs/OPERATOR-API.md package/vivid-${{ matrix.target }}/docs/
+          cp addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md 2>/dev/null || true
+          cp addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md 2>/dev/null || true
+          cp addons/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md 2>/dev/null || true
+
           # Create archive (no version in filename - extension expects this)
           cd package
           tar -czvf vivid-${{ matrix.target }}.${{ matrix.archive_ext }} vivid-${{ matrix.target }}
@@ -95,6 +103,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path package/vivid-${{ matrix.target }}/bin
           New-Item -ItemType Directory -Force -Path package/vivid-${{ matrix.target }}/lib
           New-Item -ItemType Directory -Force -Path package/vivid-${{ matrix.target }}/include
+          New-Item -ItemType Directory -Force -Path package/vivid-${{ matrix.target }}/docs
 
           # Copy binaries
           Copy-Item build/bin/Release/vivid.exe package/vivid-${{ matrix.target }}/bin/
@@ -118,6 +127,13 @@ jobs:
           if (Test-Path build/bin/Release/shaders) {
             Copy-Item -Recurse build/bin/Release/shaders package/vivid-${{ matrix.target }}/
           }
+
+          # Copy documentation for MCP server
+          Copy-Item docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
+          Copy-Item docs/OPERATOR-API.md package/vivid-${{ matrix.target }}/docs/
+          Copy-Item addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md -ErrorAction SilentlyContinue
+          Copy-Item addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md -ErrorAction SilentlyContinue
+          Copy-Item addons/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md -ErrorAction SilentlyContinue
 
           # Create archive
           Compress-Archive -Path package/vivid-${{ matrix.target }} -DestinationPath package/vivid-${{ matrix.target }}.${{ matrix.archive_ext }}
