@@ -124,6 +124,9 @@ public:
     /// Callback type for focused node command (cursor in operator code - 3x larger preview)
     using FocusedNodeCallback = std::function<void(const std::string& operatorName)>;
 
+    /// Callback type for request operators command (client requests current operator list)
+    using RequestOperatorsCallback = std::function<void()>;
+
     /// Set callback for reload command
     void onReloadCommand(CommandCallback callback) { m_reloadCallback = callback; }
 
@@ -142,6 +145,9 @@ public:
     /// Set callback for focused node command (cursor in operator code - 3x larger preview)
     void onFocusedNode(FocusedNodeCallback callback) { m_focusedNodeCallback = callback; }
 
+    /// Set callback for request operators command (client requests current operator list)
+    void onRequestOperators(RequestOperatorsCallback callback) { m_requestOperatorsCallback = callback; }
+
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
@@ -153,6 +159,7 @@ private:
     SoloExitCallback m_soloExitCallback;
     SelectNodeCallback m_selectNodeCallback;
     FocusedNodeCallback m_focusedNodeCallback;
+    RequestOperatorsCallback m_requestOperatorsCallback;
 };
 
 } // namespace vivid

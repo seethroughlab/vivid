@@ -176,6 +176,12 @@ void EditorBridge::start(int port) {
                         m_focusedNodeCallback(opName);
                     }
                 }
+                else if (type == "request_operators") {
+                    std::cout << "[EditorBridge] Operators requested\n";
+                    if (m_requestOperatorsCallback) {
+                        m_requestOperatorsCallback();
+                    }
+                }
             }
             else if (msg->type == ix::WebSocketMessageType::Error) {
                 std::cerr << "[EditorBridge] Error: " << msg->errorInfo.reason << "\n";
@@ -226,6 +232,7 @@ void EditorBridge::sendCompileStatus(bool success, const std::string& message) {
 }
 
 void EditorBridge::sendOperatorList(const std::vector<EditorOperatorInfo>& operators) {
+    std::cout << "[EditorBridge] sendOperatorList called with " << operators.size() << " operators\n";
     if (!m_running || !m_impl) return;
 
     // Build JSON message

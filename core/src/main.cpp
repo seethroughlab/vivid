@@ -22,6 +22,8 @@
 #include <string>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <regex>
 
 // Memory debugging (macOS)
 #ifdef __APPLE__
@@ -504,12 +506,46 @@ int main(int argc, char** argv) {
         }
     });
 
+    // Helper to parse chain.cpp and update operator source lines
+    auto updateSourceLines = [&ctx](const std::string& chainFilePath) {
+        if (!ctx.hasChain() || chainFilePath.empty()) return;
+
+        fs::path chainFile(chainFilePath);
+        if (!fs::exists(chainFile)) return;
+
+        std::ifstream file(chainFile);
+        if (!file) return;
+
+        // Regex to match: chain.add<Type>("name") or auto& name = chain.add<Type>("name")
+        std::regex addPattern("chain\\.add<\\w+>\\s*\\(\\s*\"(\\w+)\"");
+
+        std::string lineStr;
+        int lineNum = 0;
+        Chain& chain = ctx.chain();
+
+        while (std::getline(file, lineStr)) {
+            lineNum++;
+            std::smatch match;
+            if (std::regex_search(lineStr, match, addPattern)) {
+                std::string opName = match[1].str();
+                Operator* op = chain.getByName(opName);
+                if (op) {
+                    op->sourceLine = lineNum;
+                }
+            }
+        }
+    };
+
     // Helper to gather operator info from chain
     auto gatherOperatorInfo = [&ctx]() -> std::vector<EditorOperatorInfo> {
         std::vector<EditorOperatorInfo> result;
-        if (!ctx.hasChain()) return result;
+        if (!ctx.hasChain()) {
+            std::cout << "[EditorBridge] gatherOperatorInfo: no chain\n";
+            return result;
+        }
 
         Chain& chain = ctx.chain();
+        std::cout << "[EditorBridge] gatherOperatorInfo: " << chain.operatorNames().size() << " operators\n";
         for (const auto& name : chain.operatorNames()) {
             Operator* op = chain.getByName(name);
             if (!op) continue;
@@ -529,6 +565,7 @@ int main(int argc, char** argv) {
             }
             result.push_back(info);
         }
+        std::cout << "[EditorBridge] gatherOperatorInfo: returning " << result.size() << " operators\n";
         return result;
     };
 
@@ -569,6 +606,12 @@ int main(int argc, char** argv) {
         }
         return result;
     };
+
+    // Handle request_operators from editor (sends current operator list on demand)
+    editorBridge.onRequestOperators([&editorBridge, &gatherOperatorInfo, &gatherParamValues]() {
+        editorBridge.sendOperatorList(gatherOperatorInfo());
+        editorBridge.sendParamValues(gatherParamValues());
+    });
 
     // Extract project name for title bar
     std::string projectName;
@@ -785,6 +828,9 @@ int main(int argc, char** argv) {
                 }
 
                 chainNeedsSetup = false;
+
+                // Update operator source line numbers from chain.cpp
+                updateSourceLines(ctx.chainPath());
 
                 // Send operator list to connected editors (Phase 2)
                 if (editorBridge.clientCount() > 0) {
