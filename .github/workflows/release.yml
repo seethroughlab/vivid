@@ -75,6 +75,7 @@ jobs:
 
           # Copy headers
           cp -r core/include/vivid package/vivid-${{ matrix.target }}/include/
+          cp -r build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
 
           # Copy shaders
           cp -r build/bin/shaders package/vivid-${{ matrix.target }}/ 2>/dev/null || true
@@ -100,6 +101,7 @@ jobs:
 
           # Copy headers
           Copy-Item -Recurse core/include/vivid package/vivid-${{ matrix.target }}/include/
+          Copy-Item -Recurse build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
 
           # Copy shaders
           if (Test-Path build/bin/Release/shaders) {
