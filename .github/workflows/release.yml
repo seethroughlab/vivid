@@ -17,7 +17,7 @@ jobs:
           - os: macos-14          # Apple Silicon
             target: darwin-arm64
             archive_ext: tar.gz
-          - os: macos-13          # Intel
+          - os: macos-14          # Intel (cross-compile)
             target: darwin-x64
             archive_ext: tar.gz
           - os: ubuntu-latest
@@ -45,7 +45,12 @@ jobs:
             libxkbcommon-dev \
             libgl1-mesa-dev
 
+      - name: Configure CMake (darwin-x64 cross-compile)
+        if: matrix.target == 'darwin-x64'
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWGPU_FORCE_ARCH=x86_64
+
       - name: Configure CMake
+        if: matrix.target != 'darwin-x64'
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
 
       - name: Build

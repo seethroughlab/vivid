@@ -80,23 +80,29 @@ if(WIN32)
     set(WGPU_EXT "zip")
 elseif(APPLE)
     set(WGPU_OS "macos")
-    execute_process(
-        COMMAND uname -m
-        OUTPUT_VARIABLE HOST_ARCH
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-    message(STATUS "Detected macOS architecture: ${HOST_ARCH}")
-    if(HOST_ARCH STREQUAL "arm64")
-        set(WGPU_ARCH "aarch64")
+    # Allow override for cross-compilation (e.g., building x86_64 on ARM64)
+    if(DEFINED WGPU_FORCE_ARCH)
+        set(WGPU_ARCH "${WGPU_FORCE_ARCH}")
+        message(STATUS "Using forced wgpu architecture: ${WGPU_ARCH}")
     else()
-        set(WGPU_ARCH "x86_64")
+        execute_process(
+            COMMAND uname -m
+            OUTPUT_VARIABLE HOST_ARCH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        message(STATUS "Detected macOS architecture: ${HOST_ARCH}")
+        if(HOST_ARCH STREQUAL "arm64")
+            set(WGPU_ARCH "aarch64")
+        else()
+            set(WGPU_ARCH "x86_64")
+        endif()
     endif()
     set(WGPU_TOOLCHAIN "")
     set(WGPU_EXT "zip")
 else()
     set(WGPU_OS "linux")
     set(WGPU_ARCH "x86_64")
-    set(WGPU_TOOLCHAIN "-gnu")
+    set(WGPU_TOOLCHAIN "")
     set(WGPU_EXT "zip")
 endif()
 
