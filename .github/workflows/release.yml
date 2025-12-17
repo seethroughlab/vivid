@@ -88,6 +88,7 @@ jobs:
           # Copy documentation for MCP server
           cp docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
           cp docs/OPERATOR-API.md package/vivid-${{ matrix.target }}/docs/
+          cp docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
           cp addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md 2>/dev/null || true
           cp addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md 2>/dev/null || true
           cp addons/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md 2>/dev/null || true
@@ -131,6 +132,7 @@ jobs:
           # Copy documentation for MCP server
           Copy-Item docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item docs/OPERATOR-API.md package/vivid-${{ matrix.target }}/docs/
+          Copy-Item docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md -ErrorAction SilentlyContinue
           Copy-Item addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md -ErrorAction SilentlyContinue
           Copy-Item addons/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md -ErrorAction SilentlyContinue

@@ -1,6 +1,6 @@
 # Vivid Operator API
 
-> **Note:** Code examples show the target API. Implementation in progress with Diligent Engine.
+> **Note:** Vivid uses WebGPU (wgpu-native) for all GPU operations and WGSL for shaders.
 
 This guide explains how to create custom operators for Vivid.
 

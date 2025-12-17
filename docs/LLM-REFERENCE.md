@@ -83,7 +83,12 @@ VIVID_CHAIN(setup, update)
 | `Tile` | Texture tiling | `tilesX` `tilesY` |
 | `ChromaticAberration` | RGB separation | `amount` `.radial(true)` |
 | `Bloom` | Glow effect | `threshold` `intensity` `radius` |
+| `Vignette` | Edge darkening | `intensity` `softness` `roundness` |
+| `BarrelDistortion` | CRT screen curvature | `curvature` |
 | `Feedback` | Frame feedback | `decay` `mix` `zoom` `rotation` |
+| `FrameCache` | Buffer N frames | `frameCount` |
+| `TimeMachine` | Temporal displacement | `.cache(&fc)` `.displacementMap(&tex)` `depth` |
+| `Plexus` | Particle network | `.setNodeCount(200)` `.setConnectionDistance(0.1)` `.setTurbulence(0.1)` |
 
 ### Retro Effects
 
@@ -199,6 +204,20 @@ using namespace vivid::audio;
 | `NoiseGen` | Noise generator | `.type(NoiseType::White)` `.amplitude(0.5)` |
 | `Crackle` | Vinyl crackle | `.density(0.3)` `.amplitude(0.5)` |
 | `Formant` | Vowel formant filter | `.vowel(Vowel::A)` `.morph(0.5)` `.resonance(8.0)` `.mix(1.0)` |
+| `Synth` | Oscillator + ADSR | `.setWaveform(Waveform::Saw)` `frequency` `attack` `decay` `sustain` `release` |
+
+**Synth usage:**
+```cpp
+auto& synth = chain.add<Synth>("synth");
+synth.setWaveform(Waveform::Saw);
+synth.frequency = 440.0f;
+synth.attack = 0.01f;
+synth.release = 0.5f;
+
+// Control playback
+synth.noteOn();   // Start attack
+synth.noteOff();  // Start release
+```
 
 **Formant vowel presets:**
 - `Vowel::A` - "ah" as in "father" (800, 1200, 2500 Hz)
@@ -222,6 +241,7 @@ using namespace vivid::audio;
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
 | `Delay` | Delay effect | `.time(0.25)` `.feedback(0.5)` `.mix(0.3)` |
+| `Echo` | Multi-tap echo | `delayTime` (ms) `decay` `taps` `mix` |
 | `Reverb` | Reverb | `.roomSize(0.8)` `.damping(0.5)` `.mix(0.3)` |
 | `Chorus` | Chorus | `.rate(1.5)` `.depth(0.5)` `.mix(0.5)` |
 | `Flanger` | Flanger | `.rate(0.5)` `.depth(0.7)` `.feedback(0.6)` |
@@ -230,6 +250,8 @@ using namespace vivid::audio;
 | `Bitcrush` | Bit reduction | `.bits(8)` `.sampleRate(0.5)` |
 | `AudioFilter` | Biquad filter | `.type(FilterType::Lowpass)` `.cutoff(1000)` `.resonance(2.0)` |
 | `Compressor` | Dynamics | `.threshold(-20)` `.ratio(4.0)` `.attack(0.01)` `.release(0.1)` |
+| `Limiter` | Brick-wall limiter | `ceiling` (dB) `release` (ms) `mix` |
+| `Gate` | Noise gate | `threshold` `attack` `release` `mix` |
 
 **Analysis:**
 
@@ -623,6 +645,54 @@ void update(Context& ctx) {
     } else if (ctx.key(GLFW_KEY_2).pressed) {
         chain.output("effect2");
     }
+}
+```
+
+### Slit-scan / temporal displacement
+
+```cpp
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& video = chain.add<VideoPlayer>("video");
+    video.file("assets/video.mov");
+
+    // Cache 64 frames for temporal effects
+    auto& cache = chain.add<FrameCache>("cache");
+    cache.input(&video);
+    cache.frameCount = 64;
+
+    // Gradient controls which frame is shown where
+    auto& gradient = chain.add<Gradient>("map");
+    gradient.mode(GradientMode::Linear);
+    gradient.angle(90.0f);
+
+    // TimeMachine samples different frames based on gradient
+    auto& timeMachine = chain.add<TimeMachine>("slit");
+    timeMachine.cache(&cache);
+    timeMachine.displacementMap(&gradient);
+    timeMachine.depth = 1.0f;
+
+    chain.output("slit");
+}
+```
+
+### Plexus network effect
+
+```cpp
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& plexus = chain.add<Plexus>("net");
+    plexus.setNodeCount(300);
+    plexus.setConnectionDistance(0.12f);
+    plexus.setNodeSize(0.005f);
+    plexus.setNodeColor(0.0f, 0.8f, 1.0f, 1.0f);
+    plexus.setLineColor(0.0f, 0.6f, 0.9f, 0.4f);
+    plexus.setTurbulence(0.15f);
+    plexus.setClearColor(0.02f, 0.02f, 0.05f, 1.0f);
+
+    chain.output("net");
 }
 ```
 
