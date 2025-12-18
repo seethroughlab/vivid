@@ -55,6 +55,24 @@ struct EditorPerformanceStats {
     std::vector<EditorOperatorTiming> operatorTimings;
 };
 
+/// Monitor info for editor communication
+struct EditorMonitorInfo {
+    int index = 0;                              ///< Monitor index (0-based)
+    std::string name;                           ///< Monitor name from GLFW
+    int width = 0;                              ///< Resolution width
+    int height = 0;                             ///< Resolution height
+};
+
+/// Window state for editor communication (Phase 14)
+struct EditorWindowState {
+    bool fullscreen = false;                    ///< Fullscreen mode active
+    bool borderless = false;                    ///< Borderless (undecorated) window
+    bool alwaysOnTop = false;                   ///< Window stays above others
+    bool cursorVisible = true;                  ///< Mouse cursor visible
+    int currentMonitor = 0;                     ///< Index of monitor containing window
+    std::vector<EditorMonitorInfo> monitors;    ///< Available monitors
+};
+
 /// EditorBridge provides a WebSocket server for communication with external editors (VS Code, etc.)
 /// Handles compile status notifications and commands like reload.
 class EditorBridge {
@@ -100,6 +118,10 @@ public:
     /// @param operatorName Name of the soloed operator (empty if not active)
     void sendSoloState(bool active, const std::string& operatorName);
 
+    /// Send window state to all connected clients (Phase 14)
+    /// @param state Current window state including fullscreen, borderless, monitors
+    void sendWindowState(const EditorWindowState& state);
+
     // -------------------------------------------------------------------------
     // Incoming commands (editor -> runtime)
     // -------------------------------------------------------------------------
@@ -127,6 +149,11 @@ public:
     /// Callback type for request operators command (client requests current operator list)
     using RequestOperatorsCallback = std::function<void()>;
 
+    /// Callback type for window control commands (Phase 14)
+    /// @param setting Which setting to change ("fullscreen", "borderless", "alwaysOnTop", "cursorVisible", "monitor")
+    /// @param value New value (bool for toggles, int for monitor index)
+    using WindowControlCallback = std::function<void(const std::string& setting, int value)>;
+
     /// Set callback for reload command
     void onReloadCommand(CommandCallback callback) { m_reloadCallback = callback; }
 
@@ -148,6 +175,9 @@ public:
     /// Set callback for request operators command (client requests current operator list)
     void onRequestOperators(RequestOperatorsCallback callback) { m_requestOperatorsCallback = callback; }
 
+    /// Set callback for window control commands (Phase 14)
+    void onWindowControl(WindowControlCallback callback) { m_windowControlCallback = callback; }
+
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
@@ -160,6 +190,7 @@ private:
     SelectNodeCallback m_selectNodeCallback;
     FocusedNodeCallback m_focusedNodeCallback;
     RequestOperatorsCallback m_requestOperatorsCallback;
+    WindowControlCallback m_windowControlCallback;
 };
 
 } // namespace vivid

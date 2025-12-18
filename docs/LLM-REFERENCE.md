@@ -716,6 +716,51 @@ bool fs = ctx.fullscreen();   // Get current fullscreen state
 ctx.vsync(true);              // Enable vsync (default)
 ctx.vsync(false);             // Disable vsync
 bool vs = ctx.vsync();        // Get current vsync state
+
+// Window controls
+ctx.borderless(true);         // Remove window decorations (title bar, borders)
+ctx.borderless(false);        // Show window decorations
+bool bl = ctx.borderless();   // Get current borderless state
+
+ctx.alwaysOnTop(true);        // Keep window above other windows
+ctx.alwaysOnTop(false);       // Normal window stacking
+bool top = ctx.alwaysOnTop(); // Get current always-on-top state
+
+ctx.cursorVisible(true);      // Show mouse cursor (default)
+ctx.cursorVisible(false);     // Hide mouse cursor
+bool cv = ctx.cursorVisible();// Get current cursor visibility
+
+// Multi-monitor
+int count = ctx.monitorCount();   // Get number of connected monitors
+int idx = ctx.currentMonitor();   // Get index of monitor containing window (0-based)
+ctx.moveToMonitor(1);             // Move window to monitor at index 1
+
+// Window position and size
+int x = ctx.windowX();            // Get window X position (screen coordinates)
+int y = ctx.windowY();            // Get window Y position
+ctx.setWindowPos(100, 200);       // Move window to position (100, 200)
+ctx.setWindowSize(1280, 720);     // Resize window to 1280x720
+
+// Resize detection
+if (ctx.wasResized()) {
+    // Window was resized this frame (user or programmatic)
+    // Useful for updating layouts or resolution-dependent resources
+}
+
+// Mouse delta (movement since last frame)
+glm::vec2 delta = ctx.mouseDelta();        // In pixels
+glm::vec2 deltaN = ctx.mouseDeltaNorm();   // Normalized (-2 to 2 range)
+
+// Key modifiers (convenient helpers)
+if (ctx.shiftHeld()) { /* Shift is down */ }
+if (ctx.ctrlHeld())  { /* Ctrl is down */ }
+if (ctx.altHeld())   { /* Alt is down */ }
+if (ctx.superHeld()) { /* Cmd/Win is down */ }
+
+// Example: Shift+click detection
+if (ctx.mouseButton(0).pressed && ctx.shiftHeld()) {
+    // Shift+left click
+}
 ```
 
 ## Troubleshooting

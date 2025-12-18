@@ -22,6 +22,7 @@
 #include <iomanip>
 #include <string>
 #include <cstring>
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <regex>
@@ -511,6 +512,21 @@ int main(int argc, char** argv) {
         }
     });
 
+    // Handle window control commands from editor (Phase 14)
+    editorBridge.onWindowControl([&ctx](const std::string& setting, int value) {
+        if (setting == "fullscreen") {
+            ctx.fullscreen(value != 0);
+        } else if (setting == "borderless") {
+            ctx.borderless(value != 0);
+        } else if (setting == "alwaysOnTop") {
+            ctx.alwaysOnTop(value != 0);
+        } else if (setting == "cursorVisible") {
+            ctx.cursorVisible(value != 0);
+        } else if (setting == "monitor") {
+            ctx.moveToMonitor(value);
+        }
+    });
+
     // Helper to parse chain.cpp and update operator source lines
     auto updateSourceLines = [&ctx](const std::string& chainFilePath) {
         if (!ctx.hasChain() || chainFilePath.empty()) return;
@@ -612,10 +628,38 @@ int main(int argc, char** argv) {
         return result;
     };
 
+    // Helper to gather window state (Phase 14)
+    auto gatherWindowState = [&ctx, window]() -> EditorWindowState {
+        EditorWindowState state;
+        state.fullscreen = ctx.fullscreen();
+        state.borderless = ctx.borderless();
+        state.alwaysOnTop = ctx.alwaysOnTop();
+        state.cursorVisible = ctx.cursorVisible();
+        state.currentMonitor = ctx.currentMonitor();
+
+        // Gather monitor info
+        int monitorCount = 0;
+        GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+        for (int i = 0; i < monitorCount; ++i) {
+            EditorMonitorInfo mInfo;
+            mInfo.index = i;
+            const char* name = glfwGetMonitorName(monitors[i]);
+            mInfo.name = name ? name : ("Monitor " + std::to_string(i + 1));
+            const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+            if (mode) {
+                mInfo.width = mode->width;
+                mInfo.height = mode->height;
+            }
+            state.monitors.push_back(mInfo);
+        }
+        return state;
+    };
+
     // Handle request_operators from editor (sends current operator list on demand)
-    editorBridge.onRequestOperators([&editorBridge, &gatherOperatorInfo, &gatherParamValues]() {
+    editorBridge.onRequestOperators([&editorBridge, &gatherOperatorInfo, &gatherParamValues, &gatherWindowState]() {
         editorBridge.sendOperatorList(gatherOperatorInfo());
         editorBridge.sendParamValues(gatherParamValues());
+        editorBridge.sendWindowState(gatherWindowState());
     });
 
     // Extract project name for title bar
@@ -725,8 +769,12 @@ int main(int argc, char** argv) {
                 glfwGetWindowPos(window, &windowedX, &windowedY);
                 glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
 
-                // Get primary monitor
-                GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+                // Get target monitor (use current or selected)
+                int monitorCount = 0;
+                GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+                int targetIdx = std::min(ctx.targetMonitor(), monitorCount - 1);
+                targetIdx = std::max(0, targetIdx);
+                GLFWmonitor* monitor = monitors[targetIdx];
                 const GLFWvidmode* mode = glfwGetVideoMode(monitor);
 
                 // Enter fullscreen
@@ -737,6 +785,61 @@ int main(int argc, char** argv) {
                 glfwSetWindowMonitor(window, nullptr, windowedX, windowedY, windowedWidth, windowedHeight, 0);
                 isFullscreen = false;
             }
+        }
+
+        // Handle borderless (decorated) window change
+        if (ctx.borderlessChanged()) {
+            glfwSetWindowAttrib(window, GLFW_DECORATED, ctx.borderless() ? GLFW_FALSE : GLFW_TRUE);
+        }
+
+        // Handle always-on-top (floating) change
+        if (ctx.alwaysOnTopChanged()) {
+            glfwSetWindowAttrib(window, GLFW_FLOATING, ctx.alwaysOnTop() ? GLFW_TRUE : GLFW_FALSE);
+        }
+
+        // Handle cursor visibility change
+        if (ctx.cursorVisibleChanged()) {
+            glfwSetInputMode(window, GLFW_CURSOR,
+                ctx.cursorVisible() ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
+        }
+
+        // Handle monitor change (move window to different display)
+        if (ctx.monitorChanged()) {
+            int monitorCount = 0;
+            GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+            int targetIdx = std::min(ctx.targetMonitor(), monitorCount - 1);
+            targetIdx = std::max(0, targetIdx);
+
+            if (targetIdx < monitorCount) {
+                GLFWmonitor* monitor = monitors[targetIdx];
+                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+                if (isFullscreen) {
+                    // In fullscreen: switch to fullscreen on target monitor
+                    glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+                } else {
+                    // In windowed: center window on target monitor
+                    int mx, my;
+                    glfwGetMonitorPos(monitor, &mx, &my);
+
+                    int ww, wh;
+                    glfwGetWindowSize(window, &ww, &wh);
+
+                    int newX = mx + (mode->width - ww) / 2;
+                    int newY = my + (mode->height - wh) / 2;
+                    glfwSetWindowPos(window, newX, newY);
+                }
+            }
+        }
+
+        // Handle window position change
+        if (ctx.windowPosChanged()) {
+            glfwSetWindowPos(window, ctx.targetWindowX(), ctx.targetWindowY());
+        }
+
+        // Handle window size change
+        if (ctx.windowSizeChanged()) {
+            glfwSetWindowSize(window, ctx.targetWindowWidth(), ctx.targetWindowHeight());
         }
 
         // Skip frame if minimized
@@ -1094,9 +1197,10 @@ int main(int argc, char** argv) {
             frameCount = 0;
             lastFpsTime = currentTime;
 
-            // Send param values and performance stats to editors once per second
+            // Send param values, window state, and performance stats to editors once per second
             if (editorBridge.clientCount() > 0 && hotReload.isLoaded()) {
                 editorBridge.sendParamValues(gatherParamValues());
+                editorBridge.sendWindowState(gatherWindowState());
 
                 // Gather operator count and estimate texture memory
                 perfStats.operatorCount = ctx.hasChain() ? ctx.chain().operatorNames().size() : 0;

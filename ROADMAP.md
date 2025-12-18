@@ -3066,32 +3066,39 @@ See Phase 11b for WebServer operator documentation.
 **Goal:** Professional output control for installations and performances
 
 **Window Management:**
-- [ ] Fullscreen toggle (F11 or programmatic)
-- [ ] Borderless window mode (frameless)
-- [ ] Multi-monitor support (select display by index)
+- [x] Fullscreen toggle (F11 or programmatic)
+- [x] Borderless window mode (frameless)
+- [x] Multi-monitor support (select display by index)
 - [ ] Span displays (single window across multiple monitors)
 - [ ] Multi-window support (secondary output windows)
-- [ ] Window positioning and sizing API
-- [ ] Always-on-top mode
-- [ ] Cursor visibility control
+- [x] Window positioning and sizing API
+- [x] Always-on-top mode
+- [x] Cursor visibility control
 
 **Input Handling:**
-- [ ] Mouse: position, buttons, drag, scroll, delta
-- [ ] Keyboard: key states, text input
+- [x] Mouse: position, buttons, drag, scroll, delta, movement delta
+- [x] Keyboard: key states, modifier helpers (shift/ctrl/alt/super)
+- [ ] Text input (character callback)
 - [ ] Gamepad: axes, buttons, triggers (via GLFW)
 - [ ] Touch input (where supported)
 
 **Context API:**
 ```cpp
 void update(Context& ctx) {
-    // Window control
-    if (ctx.wasKeyPressed(Key::F)) {
-        ctx.toggleFullscreen();
+    // Window control (implemented)
+    if (ctx.key(GLFW_KEY_F).pressed) {
+        ctx.fullscreen(!ctx.fullscreen());
     }
-    if (ctx.wasKeyPressed(Key::B)) {
-        ctx.setBorderless(!ctx.isBorderless());
+    if (ctx.key(GLFW_KEY_B).pressed) {
+        ctx.borderless(!ctx.borderless());
     }
-    if (ctx.wasKeyPressed(Key::M)) {
+    if (ctx.key(GLFW_KEY_T).pressed) {
+        ctx.alwaysOnTop(!ctx.alwaysOnTop());
+    }
+    if (ctx.key(GLFW_KEY_C).pressed) {
+        ctx.cursorVisible(!ctx.cursorVisible());
+    }
+    if (ctx.key(GLFW_KEY_M).pressed) {
         ctx.moveToMonitor(1);  // Move to second display
     }
 

@@ -12,6 +12,7 @@ Complete chain.cpp examples for common visual effects.
 6. [Dream Sequence](#dream-sequence)
 7. [Fire/Plasma](#fireplasma)
 8. [Kaleidoscope](#kaleidoscope)
+9. [Layer Compositing with Canvas](#layer-compositing-with-canvas)
 
 ---
 
@@ -496,6 +497,82 @@ void update(Context& ctx) {
 
 VIVID_CHAIN(setup, update)
 ```
+
+---
+
+## Layer Compositing with Canvas
+
+Use Canvas as an FBO (Frame Buffer Object) to composite multiple operators into a single texture, then apply effects to the combined result.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/video/video.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::video;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Create source operators
+    auto& video = chain.add<VideoPlayer>("video");
+    video.file = "assets/videos/background.mov";
+    video.loop(true);
+
+    auto& noise = chain.add<Noise>("overlay");
+    noise.setResolution(400, 400);
+    noise.scale = 3.0f;
+
+    // Canvas acts as FBO - renders to its own texture
+    auto& canvas = chain.add<Canvas>("layer");
+    canvas.size(1920, 1080);
+
+    // Apply effects to the composited result
+    auto& blur = chain.add<Blur>("blur");
+    blur.input(&canvas);
+    blur.radius = 5.0f;
+
+    chain.output("blur");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& canvas = chain.get<Canvas>("layer");
+    auto& video = chain.get<VideoPlayer>("video");
+    auto& noise = chain.get<Noise>("overlay");
+
+    // Clear with solid background
+    canvas.clear(0, 0, 0, 1);
+
+    // Draw video as background (full canvas)
+    canvas.drawImage(video, 0, 0, 1920, 1080);
+
+    // Draw noise overlay with transform
+    canvas.save();
+    canvas.translate(760, 340);  // Position overlay
+    canvas.drawImage(noise, 0, 0, 400, 400);
+    canvas.restore();
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+### Key Concepts
+
+- **Independent resolution**: `canvas.size(w, h)` sets canvas resolution independent of sources
+- **Frame clearing**: `canvas.clear(r, g, b, a)` starts each frame (use `a=0` for transparent overlays)
+- **Draw operators**: `canvas.drawImage(op, x, y, w, h)` draws an operator's output at a position
+- **Canvas as input**: Other operators can use `input(&canvas)` to process the composited result
+- **Transform isolation**: Use `save()/restore()` to isolate position/rotation/scale changes
+
+### Common Use Cases
+
+1. **Picture-in-picture**: Draw video at smaller size over background
+2. **UI overlay**: Draw Canvas with transparent background over main content
+3. **Multi-layer effects**: Composite several sources before applying expensive effects
+4. **Resolution independence**: Render at different resolution than sources
 
 ---
 

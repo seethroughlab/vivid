@@ -187,5 +187,10 @@
     - RuntimeManager downloads to {vividPath}/build/
     - MCP configured with VIVID_SOURCE_DIR for Claude access
     - Migration prompt for existing ~/.vivid users
+[x] Please plan a showcase app: We need an example of multiple videos playing at once - a VJ application that blends them in different ways, uses flashes of 2d and 3d geometry, and lage, bold typography. 
+[x] Let's address Phase 14: Advanced Window & Input from the roadmap
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
-[ ] We need an example of multiple videos playing at once - a VJ application that blends them in different ways
+[ ] Please add a WEBSOCKET_API.md document that explains how you can control a vivid app with the same websockcet API that the vscode extension uses.
+[ ] WEB_EXPORT.md
+[ ] VST_HOST.md
+[ ] Shadows?

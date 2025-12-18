@@ -166,6 +166,74 @@ public:
      */
     float aspect() const { return m_height > 0 ? static_cast<float>(m_width) / m_height : 1.0f; }
 
+    /**
+     * @brief Get window X position
+     * @return X position in screen coordinates
+     */
+    int windowX() const { return m_windowX; }
+
+    /**
+     * @brief Get window Y position
+     * @return Y position in screen coordinates
+     */
+    int windowY() const { return m_windowY; }
+
+    /**
+     * @brief Move window to a specific position
+     * @param x X position in screen coordinates
+     * @param y Y position in screen coordinates
+     *
+     * Changes take effect on the next frame.
+     */
+    void setWindowPos(int x, int y) {
+        m_targetWindowX = x;
+        m_targetWindowY = y;
+        m_windowPosChanged = true;
+    }
+
+    /// @brief Get target window X position for pending move
+    int targetWindowX() const { return m_targetWindowX; }
+
+    /// @brief Get target window Y position for pending move
+    int targetWindowY() const { return m_targetWindowY; }
+
+    /// @brief Check if window position changed (consumed by runtime)
+    bool windowPosChanged() { bool c = m_windowPosChanged; m_windowPosChanged = false; return c; }
+
+    /**
+     * @brief Resize the window
+     * @param w Width in pixels
+     * @param h Height in pixels
+     *
+     * Changes take effect on the next frame.
+     */
+    void setWindowSize(int w, int h) {
+        m_targetWindowWidth = w;
+        m_targetWindowHeight = h;
+        m_windowSizeChanged = true;
+    }
+
+    /// @brief Get target window width for pending resize
+    int targetWindowWidth() const { return m_targetWindowWidth; }
+
+    /// @brief Get target window height for pending resize
+    int targetWindowHeight() const { return m_targetWindowHeight; }
+
+    /// @brief Check if window size change was requested (consumed by runtime)
+    bool windowSizeChanged() { bool c = m_windowSizeChanged; m_windowSizeChanged = false; return c; }
+
+    /**
+     * @brief Check if window was resized this frame
+     * @return True if window dimensions changed since last frame
+     *
+     * This detects both user-initiated resizes and programmatic resizes.
+     * Use this to update layouts or recreate resolution-dependent resources.
+     */
+    bool wasResized() const { return m_wasResized; }
+
+    /// @brief Set resize flag (called by runtime)
+    void setWasResized(bool resized) { m_wasResized = resized; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Mouse
@@ -203,6 +271,29 @@ public:
      */
     void addScroll(float x, float y) { m_scroll.x += x; m_scroll.y += y; }
 
+    /**
+     * @brief Get mouse movement delta
+     * @return Change in mouse position since last frame (pixels)
+     *
+     * Useful for FPS-style camera controls or drag operations.
+     */
+    glm::vec2 mouseDelta() const { return m_mousePos - m_lastMousePos; }
+
+    /**
+     * @brief Get normalized mouse movement delta
+     * @return Change in normalized position since last frame
+     *
+     * Returns delta in range roughly (-2 to 2) based on window dimensions.
+     */
+    glm::vec2 mouseDeltaNorm() const {
+        if (m_width <= 0 || m_height <= 0) return {0, 0};
+        glm::vec2 delta = m_mousePos - m_lastMousePos;
+        return {
+            (delta.x / m_width) * 2.0f,
+            -(delta.y / m_height) * 2.0f  // Flip Y
+        };
+    }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Keyboard
@@ -214,6 +305,38 @@ public:
      * @return Key state struct
      */
     const KeyState& key(int keyCode) const;
+
+    /**
+     * @brief Check if Shift key is held
+     * @return True if either left or right Shift is held
+     */
+    bool shiftHeld() const {
+        return m_keys[GLFW_KEY_LEFT_SHIFT].held || m_keys[GLFW_KEY_RIGHT_SHIFT].held;
+    }
+
+    /**
+     * @brief Check if Ctrl key is held
+     * @return True if either left or right Ctrl is held
+     */
+    bool ctrlHeld() const {
+        return m_keys[GLFW_KEY_LEFT_CONTROL].held || m_keys[GLFW_KEY_RIGHT_CONTROL].held;
+    }
+
+    /**
+     * @brief Check if Alt key is held
+     * @return True if either left or right Alt is held
+     */
+    bool altHeld() const {
+        return m_keys[GLFW_KEY_LEFT_ALT].held || m_keys[GLFW_KEY_RIGHT_ALT].held;
+    }
+
+    /**
+     * @brief Check if Super key is held (Cmd on Mac, Win key on Windows)
+     * @return True if either left or right Super is held
+     */
+    bool superHeld() const {
+        return m_keys[GLFW_KEY_LEFT_SUPER].held || m_keys[GLFW_KEY_RIGHT_SUPER].held;
+    }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -386,6 +509,97 @@ public:
     /// @brief Check if fullscreen setting changed (consumed by runtime)
     bool fullscreenChanged() { bool c = m_fullscreenChanged; m_fullscreenChanged = false; return c; }
 
+    /**
+     * @brief Enable or disable borderless (undecorated) window mode
+     * @param enabled True for borderless, false for decorated
+     *
+     * In borderless mode, the window has no title bar or borders.
+     * Changes take effect on the next frame.
+     */
+    void borderless(bool enabled) {
+        if (m_borderless != enabled) {
+            m_borderless = enabled;
+            m_borderlessChanged = true;
+        }
+    }
+
+    /// @brief Get current borderless setting
+    bool borderless() const { return m_borderless; }
+
+    /// @brief Check if borderless setting changed (consumed by runtime)
+    bool borderlessChanged() { bool c = m_borderlessChanged; m_borderlessChanged = false; return c; }
+
+    /**
+     * @brief Enable or disable always-on-top (floating) mode
+     * @param enabled True for always-on-top, false for normal
+     *
+     * Changes take effect on the next frame.
+     */
+    void alwaysOnTop(bool enabled) {
+        if (m_alwaysOnTop != enabled) {
+            m_alwaysOnTop = enabled;
+            m_alwaysOnTopChanged = true;
+        }
+    }
+
+    /// @brief Get current always-on-top setting
+    bool alwaysOnTop() const { return m_alwaysOnTop; }
+
+    /// @brief Check if always-on-top setting changed (consumed by runtime)
+    bool alwaysOnTopChanged() { bool c = m_alwaysOnTopChanged; m_alwaysOnTopChanged = false; return c; }
+
+    /**
+     * @brief Show or hide the mouse cursor
+     * @param visible True to show cursor, false to hide
+     *
+     * Changes take effect on the next frame.
+     */
+    void cursorVisible(bool visible) {
+        if (m_cursorVisible != visible) {
+            m_cursorVisible = visible;
+            m_cursorVisibleChanged = true;
+        }
+    }
+
+    /// @brief Get current cursor visibility setting
+    bool cursorVisible() const { return m_cursorVisible; }
+
+    /// @brief Check if cursor visibility changed (consumed by runtime)
+    bool cursorVisibleChanged() { bool c = m_cursorVisibleChanged; m_cursorVisibleChanged = false; return c; }
+
+    /**
+     * @brief Get the number of connected monitors
+     * @return Number of monitors
+     */
+    int monitorCount() const;
+
+    /**
+     * @brief Get the current monitor index
+     * @return Index of monitor the window is on (0 = primary)
+     */
+    int currentMonitor() const;
+
+    /**
+     * @brief Move window to a specific monitor
+     * @param index Monitor index (0 = primary)
+     *
+     * If in fullscreen mode, switches to fullscreen on the target monitor.
+     * If in windowed mode, centers the window on the target monitor.
+     * Changes take effect on the next frame.
+     */
+    void moveToMonitor(int index) {
+        if (m_targetMonitor != index) {
+            m_targetMonitor = index;
+            m_monitorChanged = true;
+        }
+    }
+
+    /// @brief Get target monitor for pending move
+    int targetMonitor() const { return m_targetMonitor; }
+
+    /// @brief Check if monitor selection changed (consumed by runtime)
+    bool monitorChanged() { bool c = m_monitorChanged; m_monitorChanged = false; return c; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Recording Mode
@@ -496,6 +710,15 @@ private:
     // Window
     int m_width = 0;
     int m_height = 0;
+    int m_windowX = 0;
+    int m_windowY = 0;
+    int m_targetWindowX = 0;
+    int m_targetWindowY = 0;
+    bool m_windowPosChanged = false;
+    int m_targetWindowWidth = 0;
+    int m_targetWindowHeight = 0;
+    bool m_windowSizeChanged = false;
+    bool m_wasResized = false;
 
     // Render resolution (can differ from window size)
     int m_renderWidth = 1280;
@@ -537,6 +760,14 @@ private:
     bool m_vsyncChanged = false;
     bool m_fullscreen = false;
     bool m_fullscreenChanged = false;
+    bool m_borderless = false;
+    bool m_borderlessChanged = false;
+    bool m_alwaysOnTop = false;
+    bool m_alwaysOnTopChanged = false;
+    bool m_cursorVisible = true;
+    bool m_cursorVisibleChanged = false;
+    int m_targetMonitor = 0;
+    bool m_monitorChanged = false;
 
     // Recording mode
     bool m_recording = false;

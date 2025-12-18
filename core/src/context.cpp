@@ -20,6 +20,9 @@ Context::Context(GLFWwindow* window, WGPUDevice device, WGPUQueue queue)
     // Get initial window size
     glfwGetFramebufferSize(window, &m_width, &m_height);
 
+    // Get initial window position
+    glfwGetWindowPos(window, &m_windowX, &m_windowY);
+
     // Get initial mouse position
     double mx, my;
     glfwGetCursorPos(window, &mx, &my);
@@ -41,8 +44,14 @@ void Context::beginFrame() {
     m_lastTime = now;
     m_time = now;
 
-    // Update window size
+    // Update window size and detect resizes
+    int prevWidth = m_width;
+    int prevHeight = m_height;
     glfwGetFramebufferSize(m_window, &m_width, &m_height);
+    m_wasResized = (m_width != prevWidth || m_height != prevHeight);
+
+    // Update window position
+    glfwGetWindowPos(m_window, &m_windowX, &m_windowY);
 
     // Update mouse position
     double mx, my;
@@ -131,6 +140,48 @@ const Chain& Context::chain() const {
 
 void Context::resetChain() {
     m_chain = std::make_unique<Chain>();
+}
+
+int Context::monitorCount() const {
+    int count = 0;
+    glfwGetMonitors(&count);
+    return count;
+}
+
+int Context::currentMonitor() const {
+    if (!m_window) return 0;
+
+    // Get window position
+    int wx, wy;
+    glfwGetWindowPos(m_window, &wx, &wy);
+
+    // Get window size
+    int ww, wh;
+    glfwGetWindowSize(m_window, &ww, &wh);
+
+    // Window center
+    int wcx = wx + ww / 2;
+    int wcy = wy + wh / 2;
+
+    // Find which monitor contains the window center
+    int count = 0;
+    GLFWmonitor** monitors = glfwGetMonitors(&count);
+
+    for (int i = 0; i < count; ++i) {
+        int mx, my;
+        glfwGetMonitorPos(monitors[i], &mx, &my);
+
+        const GLFWvidmode* mode = glfwGetVideoMode(monitors[i]);
+        if (!mode) continue;
+
+        // Check if window center is within this monitor
+        if (wcx >= mx && wcx < mx + mode->width &&
+            wcy >= my && wcy < my + mode->height) {
+            return i;
+        }
+    }
+
+    return 0;  // Default to primary
 }
 
 } // namespace vivid

@@ -113,6 +113,23 @@ void EditorBridge::start(int port) {
                             m_requestOperatorsCallback();
                         }
                     }
+                    else if (type == "window_control") {
+                        std::string setting = j.value("setting", "");
+                        int value = j.value("value", 0);
+                        std::cout << "[EditorBridge] Window control: " << setting << " = " << value << "\n";
+                        if (m_windowControlCallback) {
+                            m_windowControlCallback(setting, value);
+                        }
+                    }
+                    else if (type == "request_window_state") {
+                        std::cout << "[EditorBridge] Window state requested\n";
+                        // The main loop will handle this by calling sendWindowState
+                        if (m_requestOperatorsCallback) {
+                            // Piggyback on operator request to trigger window state send
+                            // (main.cpp handles both in the same callback area)
+                            m_requestOperatorsCallback();
+                        }
+                    }
                 } catch (const json::exception& e) {
                     std::cerr << "[EditorBridge] JSON parse error: " << e.what() << "\n";
                 }
@@ -265,6 +282,36 @@ void EditorBridge::sendSoloState(bool active, const std::string& operatorName) {
     j["active"] = active;
     if (active && !operatorName.empty()) {
         j["operator"] = operatorName;
+    }
+
+    std::string msg = j.dump();
+
+    // Broadcast to all clients
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+void EditorBridge::sendWindowState(const EditorWindowState& state) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "window_state";
+    j["fullscreen"] = state.fullscreen;
+    j["borderless"] = state.borderless;
+    j["alwaysOnTop"] = state.alwaysOnTop;
+    j["cursorVisible"] = state.cursorVisible;
+    j["currentMonitor"] = state.currentMonitor;
+
+    j["monitors"] = json::array();
+    for (const auto& m : state.monitors) {
+        json mJson;
+        mJson["index"] = m.index;
+        mJson["name"] = m.name;
+        mJson["width"] = m.width;
+        mJson["height"] = m.height;
+        j["monitors"].push_back(mJson);
     }
 
     std::string msg = j.dump();
