@@ -16,12 +16,8 @@ inline WGPUStringView toStringView(const char* str) {
     return sv;
 }
 
-// Platform-specific surface creation
-#if defined(__APPLE__)
-extern "C" WGPUSurface glfwCreateWindowWGPUSurface(WGPUInstance instance, GLFWwindow* window);
-#else
-#include <webgpu/webgpu_glfw.h>
-#endif
+// GLFW-WebGPU surface creation (all platforms)
+#include <glfw3webgpu.h>
 
 namespace vivid {
 
