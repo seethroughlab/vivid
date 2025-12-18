@@ -179,6 +179,13 @@
 [x] Create a new document with ideas for getting started with vivid that play to vivid's strengths. Add 10 right away, but I'll want to add lots more. 
 [x] Find out what the maximum number of tokens Claude can read and maek the VS Code Extension warn users if their CLAUDE.md file gets longer than that. 
 [x] Please take snapshots of showcase projects and save them to an "imags" folder, then add them to README in a Showcase section. The purpose is to show users what vivid is capable of.
-[ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
-[ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
-[ ] I think we need a somewhat fundamental change in the workflow for a typical user. The user should be encouraged to install the addon (~/Developer/vivid-vscode) first, and it will prompt the user to either point to an existing download of vivid or automatically download from github. Then there will be a "projects" folder inside of the vivid folder. I Hope this will improve Claude Code's ability to help with coding because it will have access to all of the source code. Does this make sense?
+[x] I think we need a somewhat fundamental change in the workflow for a typical user. The user should be encouraged to install the addon (~/Developer/vivid-vscode) first, and it will prompt the user to either point to an existing download of vivid or automatically download from github. Then there will be a "projects" folder inside of the vivid folder. I Hope this will improve Claude Code's ability to help with coding because it will have access to all of the source code. Does this make sense? I'm not sure how to approach this and all of the different systems that it will affect.
+    - Implemented extension-first workflow in vivid-vscode:
+    - Added vivid.vividPath setting for source directory
+    - Onboarding flow: "Point to Existing Checkout" or "Clone from GitHub"
+    - Projects default to {vividPath}/projects/my-projects/
+    - RuntimeManager downloads to {vividPath}/build/
+    - MCP configured with VIVID_SOURCE_DIR for Claude access
+    - Migration prompt for existing ~/.vivid users
+[ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
+[ ] We need an example of multiple videos playing at once - a VJ application that blends them in different ways

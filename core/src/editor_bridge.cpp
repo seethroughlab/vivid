@@ -1,3 +1,10 @@
+// Windows: prevent min/max macros from conflicting with std::min/max
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include <vivid/editor_bridge.h>
 #include <vivid/operator.h>
 #include <ixwebsocket/IXWebSocketServer.h>

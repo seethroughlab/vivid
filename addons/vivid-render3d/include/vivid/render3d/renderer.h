@@ -169,6 +169,25 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Displacement
+    /// @{
+
+    /// Set displacement map from a texture operator (e.g., Noise)
+    /// The red channel is used as displacement amount
+    /// @param dispOp TextureOperator providing displacement map (nullptr to disable)
+    void setDisplacementInput(effects::TextureOperator* dispOp);
+
+    /// Set displacement amplitude (multiplier for displacement map values)
+    /// @param amplitude Displacement strength (default 0.1)
+    void setDisplacementAmplitude(float amplitude);
+
+    /// Set displacement midpoint (value that produces zero displacement)
+    /// Values below this displace inward, above displace outward
+    /// @param midpoint Middle value (default 0.5 for 0-1 textures)
+    void setDisplacementMidpoint(float midpoint);
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Debug
     /// @{
 
@@ -287,6 +306,11 @@ private:
     // Debug
     bool m_wireframe = false;
 
+    // Displacement
+    effects::TextureOperator* m_displacementOp = nullptr;
+    float m_displacementAmplitude = 0.1f;
+    float m_displacementMidpoint = 0.5f;
+
     // Depth output for post-processing
     bool m_depthOutputEnabled = false;
     WGPUTexture m_depthOutputTexture = nullptr;
@@ -325,6 +349,13 @@ private:
     WGPUBuffer m_skyboxUniformBuffer = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUBuffer m_pbrUniformBuffer = nullptr;
+
+    // Displacement GPU resources
+    WGPURenderPipeline m_pbrDisplacementPipeline = nullptr;
+    WGPUBindGroupLayout m_displacementBindGroupLayout = nullptr;  // Displacement texture (group 4)
+    WGPUBindGroup m_displacementBindGroup = nullptr;
+    WGPUSampler m_displacementSampler = nullptr;
+    WGPUBuffer m_displacementUniformBuffer = nullptr;
     WGPUBindGroup m_flatBindGroup = nullptr;      // Cached bind group for flat/gouraud shading
     WGPUBindGroup m_scalarPbrBindGroup = nullptr; // Cached bind group for scalar PBR
     std::vector<WGPUBindGroup> m_bindGroups;  // One per object

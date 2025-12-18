@@ -136,7 +136,8 @@ jobs:
           run: |
             cd /workspace
             cmake -B build -DBUILD_TESTS=ON
-            cmake --build build --config Release --parallel $(nproc)
+            # Use limited parallelism to avoid QEMU memory/stability issues
+            cmake --build build --config Release --parallel 2
 
       - name: Upload build artifacts
         if: failure()

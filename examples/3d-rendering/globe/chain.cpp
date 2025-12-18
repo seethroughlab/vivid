@@ -1,8 +1,10 @@
 // Globe - Vivid 3D Example
-// A rotating Earth with PBR lighting
+// A rotating Earth with PBR lighting and procedural noise displacement
 //
 // Controls:
 //   SPACE: Toggle auto-rotation
+//   D: Toggle displacement
+//   UP/DOWN: Adjust displacement amplitude
 //   TAB: Open parameter controls
 
 #include <vivid/vivid.h>
@@ -16,6 +18,8 @@ using namespace vivid::render3d;
 
 static bool g_autoRotate = true;
 static float g_rotation = 0.0f;  // Start facing camera
+static bool g_displacementEnabled = true;
+static float g_displacementAmplitude = 0.25f;  // More prominent terrain displacement
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
@@ -27,13 +31,25 @@ void setup(Context& ctx) {
     // Create a high-detail sphere for the globe
     auto& sphere = chain.add<Sphere>("earth");
     sphere.radius(1.0f);
-    sphere.segments(64);  // High detail for smooth appearance
+    sphere.segments(128);  // Very high detail for displacement
     sphere.computeTangents();
+
+    // =========================================================================
+    // Displacement Noise
+    // =========================================================================
+
+    // Procedural noise for terrain displacement
+    auto& noise = chain.add<Noise>("terrain");
+    noise.scale = 3.0f;           // Larger features for terrain
+    noise.speed = 0.3f;           // Visible animation
+    noise.octaves = 4;            // Multi-octave for natural look
+    noise.type(NoiseType::Simplex);
+    noise.setResolution(512, 512);
 
     // Load Earth texture
     auto& material = chain.add<TexturedMaterial>("earthMat");
     material.baseColor("assets/textures/flat_earth_Largest_still.0330.jpg");
-    material.roughnessFactor(0.5f);   // Balanced matte/reflective
+    material.roughnessFactor(0.75f);  // More matte, less shiny
     material.metallicFactor(0.0f);    // Non-metallic
 
     // Compose the scene
@@ -84,6 +100,11 @@ void setup(Context& ctx) {
     render.setShadingMode(ShadingMode::PBR);
     render.setColor(0.02f, 0.02f, 0.04f, 1.0f);  // Dark space background
 
+    // Procedural noise displacement for terrain effect
+    render.setDisplacementInput(&noise);
+    render.setDisplacementAmplitude(g_displacementAmplitude);
+    render.setDisplacementMidpoint(0.5f);  // Center value produces no displacement
+
     // =========================================================================
     // Post-Processing
     // =========================================================================
@@ -109,8 +130,11 @@ void setup(Context& ctx) {
     std::cout << "\n========================================" << std::endl;
     std::cout << "Globe - Vivid 3D Example" << std::endl;
     std::cout << "========================================" << std::endl;
+    std::cout << "Procedural noise displacement for terrain" << std::endl;
     std::cout << "Controls:" << std::endl;
     std::cout << "  SPACE: Toggle auto-rotation" << std::endl;
+    std::cout << "  D: Toggle displacement" << std::endl;
+    std::cout << "  UP/DOWN: Adjust amplitude" << std::endl;
     std::cout << "  TAB: Parameters" << std::endl;
     std::cout << "========================================\n" << std::endl;
 }
@@ -119,6 +143,8 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     auto& camera = chain.get<CameraOperator>("camera");
     auto& scene = chain.get<SceneComposer>("scene");
+    auto& render = chain.get<Render3D>("render");
+    auto& noise = chain.get<Noise>("terrain");
 
     float dt = static_cast<float>(ctx.dt());
 
@@ -126,6 +152,27 @@ void update(Context& ctx) {
     if (ctx.key(GLFW_KEY_SPACE).pressed) {
         g_autoRotate = !g_autoRotate;
         std::cout << "[globe] Auto-rotate: " << (g_autoRotate ? "ON" : "OFF") << std::endl;
+    }
+
+    // Toggle displacement
+    if (ctx.key(GLFW_KEY_D).pressed) {
+        g_displacementEnabled = !g_displacementEnabled;
+        if (g_displacementEnabled) {
+            render.setDisplacementInput(&noise);
+        } else {
+            render.setDisplacementInput(nullptr);
+        }
+        std::cout << "[globe] Displacement: " << (g_displacementEnabled ? "ON" : "OFF") << std::endl;
+    }
+
+    // Adjust displacement amplitude
+    if (ctx.key(GLFW_KEY_UP).held) {
+        g_displacementAmplitude = std::min(g_displacementAmplitude + dt * 0.1f, 0.3f);
+        render.setDisplacementAmplitude(g_displacementAmplitude);
+    }
+    if (ctx.key(GLFW_KEY_DOWN).held) {
+        g_displacementAmplitude = std::max(g_displacementAmplitude - dt * 0.1f, 0.0f);
+        render.setDisplacementAmplitude(g_displacementAmplitude);
     }
 
     // Update rotation
