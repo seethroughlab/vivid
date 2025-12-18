@@ -19,6 +19,25 @@ include(CTest)
 include(Catch)
 
 # -----------------------------------------------------------------------------
+# Unit Tests (core 2D effects)
+# -----------------------------------------------------------------------------
+
+add_executable(test_effects_2d
+    unit/test_effects_2d.cpp
+)
+
+target_link_libraries(test_effects_2d PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_effects_2d PRIVATE
+    ${CMAKE_SOURCE_DIR}/core/include
+)
+
+catch_discover_tests(test_effects_2d)
+
+# -----------------------------------------------------------------------------
 # Integration Tests (core)
 # -----------------------------------------------------------------------------
 
@@ -41,7 +60,9 @@ catch_discover_tests(test_integration)
 # Addon Tests (included from addon directories)
 # -----------------------------------------------------------------------------
 # Unit tests are in their respective addon directories:
-#   - vivid-audio/tests/ (test_clock, test_sequencer)
+#   - vivid-audio/tests/ (synthesis, effects, analysis)
+#   - vivid-network/tests/ (OSC, UDP)
+#   - vivid-serial/tests/ (SerialIn, SerialOut, DMXOut)
 #
 # To build addon tests, include their CMakeLists.txt:
 
@@ -49,6 +70,12 @@ option(BUILD_ADDON_TESTS "Build addon test suites" ON)
 
 if(BUILD_ADDON_TESTS)
     include(${CMAKE_SOURCE_DIR}/addons/vivid-audio/tests/CMakeLists.txt)
+
+    # Native-only addon tests (network and serial require sockets/serial ports)
+    if(NOT EMSCRIPTEN)
+        include(${CMAKE_SOURCE_DIR}/addons/vivid-network/tests/CMakeLists.txt)
+        include(${CMAKE_SOURCE_DIR}/addons/vivid-serial/tests/CMakeLists.txt)
+    endif()
 endif()
 
 # -----------------------------------------------------------------------------

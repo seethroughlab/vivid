@@ -135,12 +135,6 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/canvas_renderer.cpp
     src/effects/canvas.cpp
     src/effects/operator_registrations.cpp
-    # vivid-network (networking operators)
-    src/network/osc_in.cpp
-    src/network/osc_out.cpp
-    src/network/udp_in.cpp
-    src/network/udp_out.cpp
-    src/network/web_server.cpp
 )
 
 # Vivid runtime sources (executable only)
@@ -203,9 +197,13 @@ target_link_libraries(vivid-core PUBLIC
     glm::glm
     glfw
     freetype
-    ixwebsocket
     nlohmann_json::nlohmann_json
 )
+
+# IXWebSocket for EditorBridge (native only)
+if(NOT EMSCRIPTEN)
+    target_link_libraries(vivid-core PUBLIC ixwebsocket)
+endif()
 
 # Platform-specific settings for vivid-core
 if(APPLE)

@@ -171,7 +171,12 @@
 [ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
 [x] git tag v0.1.0 && git push --tags
 [ ] Find out what the maximum number of tokens Claude can read and maek the VS Code Extension warn users if their CLAUDE.md file gets longer than that. 
-[ ] Make a new addon: ~/Developer/vivid-serial to communicate with serial devices. Make sure it registeres itself as an addon, and registeres all of its parameters
+[ ] PLAN: We need to add support for serial communication (focus on DMX over serial for Enttec devices). But should it be in core? Or in a separate addon (~/Developer/vivid-serial)? WHat are the pros and cons of each approach. If it's an addon, make sure it registers itself as an addon, and registers all of its parameters
 [x] there are a bunch of places in the runtime where you are manually constructing json structures with long strings. Let's please change these occurances to using the json library that is already part of the core. 
-[ ] Bundler/Release build should suport: Web, iOS, Mac, Windows, Raspberry Pi
-[ ] Can we add a raspberry pi build to the github action?
+[x] Bundler/Release build should suport: Web, iOS, Mac, Windows, Raspberry Pi
+[x] Can we add a raspberry pi build to the github action?
+[ ] Please add an action to ~/Developer/vivid-addon: Vivid: Create Node Template -- allows users to make their own custom operator. But how? Perhaps it makes a new file for the node with template code? The update the ~/Developer/vivid-vscode/README.md to document all of the actions.
+[x] We've been adding a lot of new features that haven't been tested. Let's make an extensive plan on hwo to test all of the functionality. 
+[x] What else (if anything) can be turned into an addon that would make it easier, in its absence, to create the web exporter (see WEB_EXPORT.md) 
+[x] can you please move ~/Developer/vivid-serial to ~/Developer/vivid/addons
+[ ] what's the difference between ./tests and ./testing-fixtures?

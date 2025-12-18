@@ -209,26 +209,36 @@ if(WIN32)
     target_compile_definitions(glfw3webgpu PRIVATE _GLFW_WIN32)
 endif()
 
-# IXWebSocket - WebSocket server for EditorBridge
-set(USE_TLS OFF CACHE BOOL "" FORCE)
-set(USE_OPEN_SSL OFF CACHE BOOL "" FORCE)
-set(USE_MBED_TLS OFF CACHE BOOL "" FORCE)
-set(USE_ZLIB OFF CACHE BOOL "" FORCE)
-FetchContent_Declare(
-    ixwebsocket
-    GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
-    GIT_TAG        v11.4.5
-    GIT_SHALLOW    TRUE
-)
-FetchContent_MakeAvailable(ixwebsocket)
+# IXWebSocket - WebSocket server for EditorBridge and vivid-network
+# Skipped for web builds (no raw sockets in browser)
+if(NOT EMSCRIPTEN)
+    set(USE_TLS OFF CACHE BOOL "" FORCE)
+    set(USE_OPEN_SSL OFF CACHE BOOL "" FORCE)
+    set(USE_MBED_TLS OFF CACHE BOOL "" FORCE)
+    set(USE_ZLIB OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(
+        ixwebsocket
+        GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
+        GIT_TAG        v11.4.5
+        GIT_SHALLOW    TRUE
+    )
+    FetchContent_MakeAvailable(ixwebsocket)
+endif()
 
 # -----------------------------------------------------------------------------
 # Addons (optional libraries with external dependencies)
 # Note: ImGui is now integrated into core - it's not optional
 # vivid-io is now part of core (provides image loading)
 # vivid-effects-2d is now part of core (provides 2D texture effects)
-# vivid-network is now part of core (provides networking operators)
 # -----------------------------------------------------------------------------
+
+# Native-only addons (skipped for web builds)
+if(NOT EMSCRIPTEN)
+    add_subdirectory(addons/vivid-network)
+    add_subdirectory(addons/vivid-serial)
+endif()
+
+# Cross-platform addons
 add_subdirectory(addons/vivid-video)
 add_subdirectory(addons/vivid-render3d)
 add_subdirectory(addons/vivid-audio)

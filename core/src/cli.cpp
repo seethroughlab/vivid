@@ -337,14 +337,70 @@ std::string toCamelCase(const std::string& input) {
     return result;
 }
 
-int bundleProject(const std::string& projectPath, const std::string& outputPath, const std::string& appName) {
+// Get current platform identifier
+std::string getCurrentPlatform() {
 #ifdef __APPLE__
-    fs::path srcProject = fs::absolute(projectPath);
+    return "mac";
+#elif defined(_WIN32)
+    return "windows";
+#else
+    return "linux";
+#endif
+}
 
-    // Validate project exists and has chain.cpp
+// List of valid platforms for current OS
+std::vector<std::string> getValidPlatforms() {
+#ifdef __APPLE__
+    return {"mac", "ios", "web"};  // Android requires NDK, add later
+#elif defined(_WIN32)
+    return {"windows", "web"};  // Android requires NDK, add later
+#else
+    return {"linux", "web"};
+#endif
+}
+
+// Forward declarations for platform-specific bundlers
+int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
+                 const std::string& appName, const fs::path& outputPath);
+int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
+                     const std::string& appName, const fs::path& outputPath);
+int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
+                   const std::string& appName, const fs::path& outputPath);
+int bundleForWeb(const fs::path& srcProject, const fs::path& chainPath,
+                 const std::string& appName, const fs::path& outputPath);
+int bundleForIOS(const fs::path& srcProject, const fs::path& chainPath,
+                 const std::string& appName, const fs::path& outputPath);
+
+int bundleProject(const std::string& projectPath, const std::string& outputPath,
+                  const std::string& appName, const std::string& platform) {
+    // Validate platform
+    std::string targetPlatform = platform.empty() ? getCurrentPlatform() : platform;
+    auto validPlatforms = getValidPlatforms();
+
+    bool isValid = false;
+    for (const auto& p : validPlatforms) {
+        if (p == targetPlatform) {
+            isValid = true;
+            break;
+        }
+    }
+
+    if (!isValid) {
+        std::cerr << "Error: Cannot build for '" << targetPlatform << "' on this platform.\n";
+        std::cerr << "Valid targets: ";
+        for (size_t i = 0; i < validPlatforms.size(); i++) {
+            if (i > 0) std::cerr << ", ";
+            std::cerr << validPlatforms[i];
+        }
+        std::cerr << "\n";
+        return 1;
+    }
+
+    // Validate project
+    fs::path srcProject = fs::absolute(projectPath);
     fs::path chainPath = srcProject / "chain.cpp";
+
     if (!fs::exists(chainPath)) {
-        // Maybe it's the chain.cpp itself
         if (fs::is_regular_file(srcProject) && srcProject.filename() == "chain.cpp") {
             chainPath = srcProject;
             srcProject = srcProject.parent_path();
@@ -354,11 +410,110 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
         }
     }
 
-    // Determine app name and output path
     std::string finalAppName = appName.empty() ? toCamelCase(srcProject.filename().string()) : appName;
-    fs::path appPath = outputPath.empty()
-        ? (fs::current_path() / (finalAppName + ".app"))
-        : fs::path(outputPath);
+    fs::path finalOutput = outputPath.empty() ? fs::current_path() : fs::path(outputPath);
+
+    // Dispatch to platform-specific bundler
+    if (targetPlatform == "mac") {
+        return bundleForMac(srcProject, chainPath, finalAppName, finalOutput);
+    } else if (targetPlatform == "windows") {
+        return bundleForWindows(srcProject, chainPath, finalAppName, finalOutput);
+    } else if (targetPlatform == "linux") {
+        return bundleForLinux(srcProject, chainPath, finalAppName, finalOutput);
+    } else if (targetPlatform == "web") {
+        return bundleForWeb(srcProject, chainPath, finalAppName, finalOutput);
+    } else if (targetPlatform == "ios") {
+        return bundleForIOS(srcProject, chainPath, finalAppName, finalOutput);
+    }
+
+    std::cerr << "Error: Platform '" << targetPlatform << "' not yet implemented.\n";
+    return 1;
+}
+
+// Copy common resources (headers, shaders, etc.) to bundle
+void copyCommonResources(const fs::path& exeDir, const fs::path& destDir, const fs::path& includeDir) {
+    // Copy shaders
+    fs::path shadersDir = exeDir / "shaders";
+    if (fs::exists(shadersDir)) {
+        fs::copy(shadersDir, destDir / "shaders", fs::copy_options::recursive);
+    }
+
+    // Copy templates
+    fs::path templatesDir = exeDir / "templates";
+    if (fs::exists(templatesDir)) {
+        fs::copy(templatesDir, destDir / "templates", fs::copy_options::recursive);
+    }
+
+    // Copy headers for hot-reload
+    fs::path srcInclude = exeDir.parent_path().parent_path() / "core" / "include";
+    if (!fs::exists(srcInclude)) {
+        srcInclude = exeDir.parent_path().parent_path() / "include";
+    }
+
+    if (fs::exists(srcInclude)) {
+        fs::copy(srcInclude, includeDir, fs::copy_options::recursive);
+    }
+
+    // Copy addon headers
+    for (const auto& addon : {"vivid-audio", "vivid-render3d", "vivid-video"}) {
+        fs::path addonInclude = exeDir.parent_path().parent_path() / "addons" / addon / "include";
+        if (fs::exists(addonInclude)) {
+            fs::copy(addonInclude, includeDir,
+                     fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+        }
+    }
+
+    // Copy GLM headers
+    fs::path glmInclude = exeDir.parent_path().parent_path() / "build" / "_deps" / "glm-src";
+    if (fs::exists(glmInclude / "glm")) {
+        fs::copy(glmInclude / "glm", includeDir / "glm", fs::copy_options::recursive);
+    }
+
+    // Copy webgpu headers
+    fs::path wgpuInclude = exeDir.parent_path().parent_path() / "build" / "_deps" / "wgpu" / "include";
+    if (fs::exists(wgpuInclude / "webgpu")) {
+        fs::copy(wgpuInclude / "webgpu", includeDir / "webgpu", fs::copy_options::recursive);
+    }
+    if (fs::exists(wgpuInclude / "wgpu.h")) {
+        fs::copy_file(wgpuInclude / "wgpu.h", includeDir / "wgpu.h",
+                      fs::copy_options::overwrite_existing);
+    }
+
+    // Copy GLFW headers
+    fs::path glfwInclude = exeDir.parent_path().parent_path() / "build" / "_deps" / "glfw-src" / "include";
+    if (fs::exists(glfwInclude / "GLFW")) {
+        fs::copy(glfwInclude / "GLFW", includeDir / "GLFW", fs::copy_options::recursive);
+    }
+
+    // Copy glfw3webgpu header
+    fs::path glfw3wgpuDir = exeDir.parent_path().parent_path() / "deps" / "glfw3webgpu";
+    if (fs::exists(glfw3wgpuDir / "glfw3webgpu.h")) {
+        fs::copy_file(glfw3wgpuDir / "glfw3webgpu.h", includeDir / "glfw3webgpu.h",
+                      fs::copy_options::overwrite_existing);
+    }
+}
+
+// Copy project files to bundle
+void copyProjectFiles(const fs::path& srcProject, const fs::path& chainPath, const fs::path& destDir) {
+    fs::create_directories(destDir);
+    fs::copy_file(chainPath, destDir / "chain.cpp", fs::copy_options::overwrite_existing);
+
+    fs::path assetsDir = srcProject / "assets";
+    if (fs::exists(assetsDir) && fs::is_directory(assetsDir)) {
+        fs::copy(assetsDir, destDir / "assets", fs::copy_options::recursive);
+    }
+
+    fs::path projectShaders = srcProject / "shaders";
+    if (fs::exists(projectShaders) && fs::is_directory(projectShaders)) {
+        fs::copy(projectShaders, destDir / "shaders", fs::copy_options::recursive);
+    }
+}
+
+// macOS .app bundle
+int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
+                 const std::string& appName, const fs::path& outputDir) {
+#ifdef __APPLE__
+    fs::path appPath = outputDir / (appName + ".app");
 
     if (fs::exists(appPath)) {
         std::cerr << "Error: Output path already exists: " << appPath << "\n";
@@ -367,7 +522,7 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
 
     std::cout << "Bundling " << srcProject.filename().string() << " -> " << appPath.filename().string() << "\n";
 
-    // Get vivid executable path (we're running from it)
+    // Get vivid executable path
     char pathBuf[4096];
     uint32_t size = sizeof(pathBuf);
     if (_NSGetExecutablePath(pathBuf, &size) != 0) {
@@ -383,25 +538,15 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
         fs::path macosPath = contentsPath / "MacOS";
         fs::path resourcesPath = contentsPath / "Resources";
         fs::path frameworksPath = contentsPath / "Frameworks";
+        fs::path bundleInclude = contentsPath / "include";
 
         fs::create_directories(macosPath);
         fs::create_directories(resourcesPath);
         fs::create_directories(frameworksPath);
+        fs::create_directories(bundleInclude);
 
         // Copy vivid executable
         fs::copy_file(exePath, macosPath / "vivid");
-
-        // Copy shaders
-        fs::path shadersDir = exeDir / "shaders";
-        if (fs::exists(shadersDir)) {
-            fs::copy(shadersDir, macosPath / "shaders", fs::copy_options::recursive);
-        }
-
-        // Copy templates (for `vivid new` command in bundled app)
-        fs::path templatesDir = exeDir / "templates";
-        if (fs::exists(templatesDir)) {
-            fs::copy(templatesDir, macosPath / "templates", fs::copy_options::recursive);
-        }
 
         // Copy dylibs
         for (const auto& lib : {"libvivid-core.dylib", "libvivid-audio.dylib",
@@ -412,71 +557,15 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
             }
         }
 
-        // Copy headers for chain compilation (hot-reload expects at ../include relative to exe)
-        fs::path includeDir = exeDir.parent_path().parent_path() / "core" / "include";
-        if (!fs::exists(includeDir)) {
-            includeDir = exeDir.parent_path().parent_path() / "include";
-        }
+        // Copy common resources
+        copyCommonResources(exeDir, macosPath, bundleInclude);
 
-        fs::path bundleInclude = contentsPath / "include";
-        if (fs::exists(includeDir)) {
-            fs::copy(includeDir, bundleInclude, fs::copy_options::recursive);
-        }
-
-        // Copy addon headers
-        for (const auto& addon : {"vivid-audio", "vivid-render3d", "vivid-video"}) {
-            fs::path addonInclude = exeDir.parent_path().parent_path() / "addons" / addon / "include";
-            if (fs::exists(addonInclude)) {
-                fs::copy(addonInclude, bundleInclude,
-                         fs::copy_options::recursive | fs::copy_options::overwrite_existing);
-            }
-        }
-
-        // Copy GLM headers
-        fs::path glmInclude = exeDir.parent_path().parent_path() / "build" / "_deps" / "glm-src";
-        if (fs::exists(glmInclude / "glm")) {
-            fs::copy(glmInclude / "glm", bundleInclude / "glm", fs::copy_options::recursive);
-        }
-
-        // Copy webgpu headers
-        fs::path wgpuInclude = exeDir.parent_path().parent_path() / "build" / "_deps" / "wgpu" / "include";
-        if (fs::exists(wgpuInclude / "webgpu")) {
-            fs::copy(wgpuInclude / "webgpu", bundleInclude / "webgpu", fs::copy_options::recursive);
-        }
-        if (fs::exists(wgpuInclude / "wgpu.h")) {
-            fs::copy_file(wgpuInclude / "wgpu.h", bundleInclude / "wgpu.h");
-        }
-
-        // Copy GLFW headers
-        fs::path glfwInclude = exeDir.parent_path().parent_path() / "build" / "_deps" / "glfw-src" / "include";
-        if (fs::exists(glfwInclude / "GLFW")) {
-            fs::copy(glfwInclude / "GLFW", bundleInclude / "GLFW", fs::copy_options::recursive);
-        }
-
-        // Copy glfw3webgpu header
-        fs::path glfw3wgpuDir = exeDir.parent_path().parent_path() / "deps" / "glfw3webgpu";
-        if (fs::exists(glfw3wgpuDir / "glfw3webgpu.h")) {
-            fs::copy_file(glfw3wgpuDir / "glfw3webgpu.h", bundleInclude / "glfw3webgpu.h");
-        }
-
-        // Copy project files to Resources
+        // Copy project files
         fs::path projectDest = resourcesPath / "project";
-        fs::create_directories(projectDest);
-
-        fs::copy_file(chainPath, projectDest / "chain.cpp");
-
-        fs::path assetsDir = srcProject / "assets";
-        if (fs::exists(assetsDir) && fs::is_directory(assetsDir)) {
-            fs::copy(assetsDir, projectDest / "assets", fs::copy_options::recursive);
-        }
-
-        fs::path projectShaders = srcProject / "shaders";
-        if (fs::exists(projectShaders) && fs::is_directory(projectShaders)) {
-            fs::copy(projectShaders, projectDest / "shaders", fs::copy_options::recursive);
-        }
+        copyProjectFiles(srcProject, chainPath, projectDest);
 
         // Create launcher script
-        fs::path launcherPath = macosPath / finalAppName;
+        fs::path launcherPath = macosPath / appName;
         std::ofstream launcher(launcherPath);
         launcher << "#!/bin/bash\n";
         launcher << "cd \"$(dirname \"$0\")\"\n";
@@ -494,13 +583,13 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
         plist << "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
               << "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n";
         plist << "<plist version=\"1.0\">\n<dict>\n";
-        plist << "    <key>CFBundleName</key><string>" << finalAppName << "</string>\n";
-        plist << "    <key>CFBundleDisplayName</key><string>" << finalAppName << "</string>\n";
+        plist << "    <key>CFBundleName</key><string>" << appName << "</string>\n";
+        plist << "    <key>CFBundleDisplayName</key><string>" << appName << "</string>\n";
         plist << "    <key>CFBundleIdentifier</key><string>com.vivid."
               << srcProject.filename().string() << "</string>\n";
         plist << "    <key>CFBundleVersion</key><string>" << VERSION << "</string>\n";
         plist << "    <key>CFBundleShortVersionString</key><string>" << VERSION << "</string>\n";
-        plist << "    <key>CFBundleExecutable</key><string>" << finalAppName << "</string>\n";
+        plist << "    <key>CFBundleExecutable</key><string>" << appName << "</string>\n";
         plist << "    <key>CFBundlePackageType</key><string>APPL</string>\n";
         plist << "    <key>NSHighResolutionCapable</key><true/>\n";
         plist << "    <key>NSSupportsAutomaticGraphicsSwitching</key><true/>\n";
@@ -513,7 +602,7 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
 
         std::cout << "\nBundle created: " << appPath << "\n\n";
         std::cout << "Contents:\n";
-        std::cout << "  " << appPath.filename().string() << "/Contents/MacOS/" << finalAppName << " (launcher)\n";
+        std::cout << "  " << appPath.filename().string() << "/Contents/MacOS/" << appName << " (launcher)\n";
         std::cout << "  " << appPath.filename().string() << "/Contents/MacOS/vivid (runtime)\n";
         std::cout << "  " << appPath.filename().string() << "/Contents/Resources/project/ (your code)\n";
         std::cout << "\nRun with:\n  open " << appPath.filename().string() << "\n";
@@ -525,11 +614,191 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
 
     return 0;
 #else
-    (void)projectPath; (void)outputPath; (void)appName;
-    std::cerr << "Error: Bundle command is only supported on macOS currently.\n";
-    std::cerr << "For Windows and Linux, distribution is manual.\n";
+    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
+    std::cerr << "Error: Mac bundling only available on macOS.\n";
     return 1;
 #endif
+}
+
+// Windows bundling - creates a folder with exe + dlls
+int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
+                     const std::string& appName, const fs::path& outputDir) {
+#ifdef _WIN32
+    fs::path bundlePath = outputDir / appName;
+
+    if (fs::exists(bundlePath)) {
+        std::cerr << "Error: Output path already exists: " << bundlePath << "\n";
+        return 1;
+    }
+
+    std::cout << "Bundling " << srcProject.filename().string() << " -> " << bundlePath.filename().string() << "\n";
+
+    fs::path exeDir = getExecutableDir();
+    fs::path exePath = exeDir / "vivid.exe";
+
+    try {
+        fs::path binPath = bundlePath / "bin";
+        fs::path includePath = bundlePath / "include";
+        fs::path projectPath = bundlePath / "project";
+
+        fs::create_directories(binPath);
+        fs::create_directories(includePath);
+
+        // Copy executable
+        fs::copy_file(exePath, binPath / "vivid.exe");
+
+        // Copy DLLs
+        for (const auto& dll : {"vivid-core.dll", "vivid-audio.dll",
+                                "vivid-render3d.dll", "vivid-video.dll", "glfw3.dll"}) {
+            fs::path dllPath = exeDir / dll;
+            if (fs::exists(dllPath)) {
+                fs::copy_file(dllPath, binPath / dll);
+            }
+        }
+
+        // Copy common resources
+        copyCommonResources(exeDir, binPath, includePath);
+
+        // Copy project files
+        copyProjectFiles(srcProject, chainPath, projectPath);
+
+        // Create launcher batch file
+        fs::path launcherPath = bundlePath / (appName + ".bat");
+        std::ofstream launcher(launcherPath);
+        launcher << "@echo off\r\n";
+        launcher << "cd /d \"%~dp0bin\"\r\n";
+        launcher << "start vivid.exe \"..\\project\" %*\r\n";
+        launcher.close();
+
+        std::cout << "\nBundle created: " << bundlePath << "\n\n";
+        std::cout << "Contents:\n";
+        std::cout << "  " << appName << "/" << appName << ".bat (launcher)\n";
+        std::cout << "  " << appName << "/bin/vivid.exe (runtime)\n";
+        std::cout << "  " << appName << "/project/ (your code)\n";
+        std::cout << "\nRun with:\n  " << appName << ".bat\n";
+
+    } catch (const fs::filesystem_error& e) {
+        std::cerr << "Error creating bundle: " << e.what() << "\n";
+        return 1;
+    }
+
+    return 0;
+#else
+    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
+    std::cerr << "Error: Windows bundling only available on Windows.\n";
+    return 1;
+#endif
+}
+
+// Linux bundling - creates a folder structure (works for Raspberry Pi too)
+int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
+                   const std::string& appName, const fs::path& outputDir) {
+#if defined(__linux__)
+    fs::path bundlePath = outputDir / appName;
+
+    if (fs::exists(bundlePath)) {
+        std::cerr << "Error: Output path already exists: " << bundlePath << "\n";
+        return 1;
+    }
+
+    std::cout << "Bundling " << srcProject.filename().string() << " -> " << bundlePath.filename().string() << "\n";
+
+    fs::path exeDir = getExecutableDir();
+    fs::path exePath = exeDir / "vivid";
+
+    try {
+        fs::path binPath = bundlePath / "bin";
+        fs::path libPath = bundlePath / "lib";
+        fs::path includePath = bundlePath / "include";
+        fs::path projectPath = bundlePath / "project";
+
+        fs::create_directories(binPath);
+        fs::create_directories(libPath);
+        fs::create_directories(includePath);
+
+        // Copy executable
+        fs::copy_file(exePath, binPath / "vivid");
+        fs::permissions(binPath / "vivid", fs::perms::owner_exec | fs::perms::group_exec |
+                                            fs::perms::others_exec, fs::perm_options::add);
+
+        // Copy shared libraries
+        for (const auto& lib : {"libvivid-core.so", "libvivid-audio.so",
+                                "libvivid-render3d.so", "libvivid-video.so"}) {
+            fs::path srcLib = exeDir / lib;
+            if (fs::exists(srcLib)) {
+                fs::copy_file(srcLib, libPath / lib);
+            }
+        }
+
+        // Copy common resources
+        copyCommonResources(exeDir, binPath, includePath);
+
+        // Copy project files
+        copyProjectFiles(srcProject, chainPath, projectPath);
+
+        // Create launcher script
+        fs::path launcherPath = bundlePath / appName;
+        std::ofstream launcher(launcherPath);
+        launcher << "#!/bin/bash\n";
+        launcher << "SCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n";
+        launcher << "export LD_LIBRARY_PATH=\"$SCRIPT_DIR/lib:$LD_LIBRARY_PATH\"\n";
+        launcher << "exec \"$SCRIPT_DIR/bin/vivid\" \"$SCRIPT_DIR/project\" \"$@\"\n";
+        launcher.close();
+
+        fs::permissions(launcherPath, fs::perms::owner_exec | fs::perms::group_exec |
+                                       fs::perms::others_exec | fs::perms::owner_read |
+                                       fs::perms::group_read | fs::perms::others_read |
+                                       fs::perms::owner_write, fs::perm_options::add);
+
+        // Create .desktop file for desktop integration
+        fs::path desktopPath = bundlePath / (appName + ".desktop");
+        std::ofstream desktop(desktopPath);
+        desktop << "[Desktop Entry]\n";
+        desktop << "Type=Application\n";
+        desktop << "Name=" << appName << "\n";
+        desktop << "Exec=" << bundlePath.string() << "/" << appName << "\n";
+        desktop << "Terminal=false\n";
+        desktop << "Categories=Graphics;AudioVideo;\n";
+        desktop.close();
+
+        std::cout << "\nBundle created: " << bundlePath << "\n\n";
+        std::cout << "Contents:\n";
+        std::cout << "  " << appName << "/" << appName << " (launcher)\n";
+        std::cout << "  " << appName << "/bin/vivid (runtime)\n";
+        std::cout << "  " << appName << "/lib/ (shared libraries)\n";
+        std::cout << "  " << appName << "/project/ (your code)\n";
+        std::cout << "\nRun with:\n  ./" << appName << "/" << appName << "\n";
+
+    } catch (const fs::filesystem_error& e) {
+        std::cerr << "Error creating bundle: " << e.what() << "\n";
+        return 1;
+    }
+
+    return 0;
+#else
+    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
+    std::cerr << "Error: Linux bundling only available on Linux.\n";
+    return 1;
+#endif
+}
+
+// Web export (Emscripten) - placeholder for now
+int bundleForWeb(const fs::path& srcProject, const fs::path& chainPath,
+                 const std::string& appName, const fs::path& outputDir) {
+    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
+    std::cerr << "Error: Web export is not yet implemented.\n";
+    std::cerr << "This requires an Emscripten build of the vivid runtime.\n";
+    std::cerr << "See: https://emscripten.org/\n";
+    return 1;
+}
+
+// iOS bundling - placeholder for now
+int bundleForIOS(const fs::path& srcProject, const fs::path& chainPath,
+                 const std::string& appName, const fs::path& outputDir) {
+    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
+    std::cerr << "Error: iOS export is not yet implemented.\n";
+    std::cerr << "This requires Xcode and iOS provisioning profiles.\n";
+    return 1;
 }
 
 // Returns: 0 = handled (exit with this code), -1 = not a CLI command (continue to main)
@@ -562,11 +831,14 @@ int handleCommand(int argc, char** argv) {
     std::string bundleProjectPath;
     std::string bundleOutput;
     std::string bundleName;
+    std::string bundlePlatform;
 
-    auto* bundleCmd = app.add_subcommand("bundle", "Bundle project as standalone app (macOS)");
+    auto* bundleCmd = app.add_subcommand("bundle", "Bundle project as standalone app");
     bundleCmd->add_option("project", bundleProjectPath, "Project path")->required();
-    bundleCmd->add_option("-o,--output", bundleOutput, "Output path (.app)");
+    bundleCmd->add_option("-o,--output", bundleOutput, "Output directory");
     bundleCmd->add_option("-n,--name", bundleName, "App display name");
+    bundleCmd->add_option("-p,--platform", bundlePlatform,
+                          "Target platform: mac, windows, linux, ios, web (default: current platform)");
 
     // 'operators' subcommand
     bool operatorsJson = false;
@@ -631,7 +903,7 @@ int handleCommand(int argc, char** argv) {
     }
 
     if (bundleCmd->parsed()) {
-        return bundleProject(bundleProjectPath, bundleOutput, bundleName);
+        return bundleProject(bundleProjectPath, bundleOutput, bundleName, bundlePlatform);
     }
 
     if (operatorsCmd->parsed()) {

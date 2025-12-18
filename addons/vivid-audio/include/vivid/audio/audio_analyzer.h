@@ -67,6 +67,16 @@ public:
     void cleanup() override;
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Parameter Interface
+    /// Delegates to ParamRegistry for unified param access
+    /// @{
+
+    std::vector<ParamDecl> params() override { return registeredParams(); }
+    bool getParam(const std::string& name, float out[4]) override { return getRegisteredParam(name, out); }
+    bool setParam(const std::string& name, const float value[4]) override { return setRegisteredParam(name, value); }
+
+    /// @}
 
 protected:
     /**

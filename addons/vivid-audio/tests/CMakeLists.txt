@@ -4,6 +4,9 @@
 add_executable(test_audio_addon
     ${CMAKE_CURRENT_LIST_DIR}/test_clock.cpp
     ${CMAKE_CURRENT_LIST_DIR}/test_sequencer.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/test_synthesis.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/test_effects.cpp
+    ${CMAKE_CURRENT_LIST_DIR}/test_analysis.cpp
 )
 
 target_link_libraries(test_audio_addon PRIVATE
