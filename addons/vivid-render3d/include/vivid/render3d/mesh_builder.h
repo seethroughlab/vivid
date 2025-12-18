@@ -104,6 +104,14 @@ public:
     /// @param axis The axis to project from
     MeshBuilder& projectUVsNormalized(Axis axis);
 
+    /// Apply procedural noise displacement along vertex normals
+    /// @param amplitude Maximum displacement distance
+    /// @param frequency Noise frequency/scale (higher = more detail)
+    /// @param octaves Number of noise layers (more = finer detail)
+    /// @param time Time offset for animation
+    MeshBuilder& noiseDisplace(float amplitude, float frequency = 1.0f,
+                               int octaves = 4, float time = 0.0f);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Mesh Combination

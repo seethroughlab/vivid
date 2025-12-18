@@ -148,12 +148,38 @@ public:
         if (!m_computeTangents) { m_computeTangents = true; markDirty(); }
     }
 
+    /**
+     * @brief Enable procedural noise displacement
+     * @param amplitude Maximum displacement distance (default 0)
+     * @param frequency Noise frequency/scale (default 1)
+     * @param octaves Number of noise octaves (default 4)
+     */
+    void noiseDisplacement(float amplitude, float frequency = 1.0f, int octaves = 4) {
+        if (m_noiseAmplitude != amplitude || m_noiseFrequency != frequency || m_noiseOctaves != octaves) {
+            m_noiseAmplitude = amplitude;
+            m_noiseFrequency = frequency;
+            m_noiseOctaves = octaves;
+            markDirty();
+        }
+    }
+
+    /// Set noise time offset for animation
+    void noiseTime(float t) {
+        if (m_noiseTime != t) { m_noiseTime = t; markDirty(); }
+    }
+
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
         if (!needsCook()) return;
 
         m_builder = MeshBuilder::sphere(m_radius, m_segments);
+
+        // Apply noise displacement if enabled
+        if (m_noiseAmplitude > 0.0f) {
+            m_builder.noiseDisplace(m_noiseAmplitude, m_noiseFrequency, m_noiseOctaves, m_noiseTime);
+        }
+
         if (m_computeTangents) {
             m_builder.computeTangents();
         }
@@ -192,6 +218,12 @@ private:
     float m_radius = 0.5f;
     int m_segments = 24;
     bool m_computeTangents = false;
+
+    // Noise displacement
+    float m_noiseAmplitude = 0.0f;
+    float m_noiseFrequency = 1.0f;
+    int m_noiseOctaves = 4;
+    float m_noiseTime = 0.0f;
 };
 
 // =============================================================================

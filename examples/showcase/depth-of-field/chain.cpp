@@ -5,7 +5,7 @@
 // Controls:
 //   LEFT/RIGHT: Adjust focus distance
 //   UP/DOWN: Adjust blur strength
-//   SPACE: Toggle auto-focus animation
+//   D: Toggle depth debug view
 //   TAB: Open parameter controls
 
 #include <vivid/vivid.h>
@@ -21,7 +21,6 @@ using namespace vivid::render3d;
 // DOF parameters
 static float g_focusDistance = 0.5f;  // 0=near, 1=far
 static float g_blurStrength = 0.6f;
-static bool g_autoFocus = false;
 static bool g_showDepth = false;
 
 void setup(Context& ctx) {
@@ -31,18 +30,18 @@ void setup(Context& ctx) {
     // Geometry
     // =========================================================================
 
-    auto& sphere = chain.add<Sphere>("sphere")
-        .radius(0.6f)
-        .segments(24);
+    auto& sphere = chain.add<Sphere>("sphere");
+    sphere.radius(0.6f);
+    sphere.segments(24);
 
-    auto& box = chain.add<Box>("box")
-        .size(0.9f, 0.9f, 0.9f);
+    auto& box = chain.add<Box>("box");
+    box.size(0.9f, 0.9f, 0.9f);
 
-    auto& torus = chain.add<Torus>("torus")
-        .outerRadius(0.5f)
-        .innerRadius(0.2f)
-        .segments(24)
-        .rings(16);
+    auto& torus = chain.add<Torus>("torus");
+    torus.outerRadius(0.5f);
+    torus.innerRadius(0.2f);
+    torus.segments(24);
+    torus.rings(16);
 
     // =========================================================================
     // Scene with objects at varying depths - spread across large depth range
@@ -106,9 +105,9 @@ void setup(Context& ctx) {
         glm::vec4(0.3f, 0.6f, 1.0f, 1.0f));
 
     // Ground plane - extended for depth
-    auto& plane = chain.add<Plane>("plane")
-        .size(30.0f, 80.0f)
-        .subdivisions(1, 1);
+    auto& plane = chain.add<Plane>("plane");
+    plane.size(30.0f, 80.0f);
+    plane.subdivisions(1, 1);
 
     scene.add(&plane,
         glm::rotate(
@@ -120,65 +119,65 @@ void setup(Context& ctx) {
     // Camera and Lighting
     // =========================================================================
 
-    auto& camera = chain.add<CameraOperator>("camera")
-        .position(0, 2.0f, -10.0f)
-        .target(0, 0, 20.0f)
-        .fov(45.0f)
-        .nearPlane(1.0f)
-        .farPlane(70.0f);  // Match scene depth range
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.position(0, 2.0f, -10.0f);
+    camera.target(0, 0, 20.0f);
+    camera.fov(45.0f);
+    camera.nearPlane(1.0f);
+    camera.farPlane(70.0f);  // Match scene depth range
 
-    auto& keyLight = chain.add<DirectionalLight>("keyLight")
-        .direction(1.0f, 2.0f, 0.5f)
-        .color(Color::fromHex("#FFF2E6"))  // Warm white
-        .intensity(1.8f);
+    auto& keyLight = chain.add<DirectionalLight>("keyLight");
+    keyLight.direction(1.0f, 2.0f, 0.5f);
+    keyLight.color(1.0f, 0.95f, 0.9f);  // Warm white
+    keyLight.intensity = 1.8f;
 
-    auto& fillLight = chain.add<DirectionalLight>("fillLight")
-        .direction(-1.0f, 0.5f, -0.5f)
-        .color(Color::CornflowerBlue)
-        .intensity(0.5f);
+    auto& fillLight = chain.add<DirectionalLight>("fillLight");
+    fillLight.direction(-1.0f, 0.5f, -0.5f);
+    fillLight.color(0.4f, 0.5f, 0.9f);  // Cool blue
+    fillLight.intensity = 0.5f;
 
     // =========================================================================
     // 3D Render with depth output enabled
     // =========================================================================
 
-    auto& render = chain.add<Render3D>("render")
-        .input(&scene)
-        .cameraInput(&camera)
-        .lightInput(&keyLight)
-        .lightInput(&fillLight)
-        .shadingMode(ShadingMode::PBR)
-        .metallic(0.15f)
-        .roughness(0.5f)
-        .clearColor(Color::fromHex("#08080F"))
-        .depthOutput(true);  // Enable depth output for DOF
+    auto& render = chain.add<Render3D>("render");
+    render.setInput(&scene);
+    render.setCameraInput(&camera);
+    render.setLightInput(&keyLight);
+    render.addLight(&fillLight);
+    render.setShadingMode(ShadingMode::PBR);
+    render.setMetallic(0.15f);
+    render.setRoughness(0.5f);
+    render.setColor(0.03f, 0.03f, 0.06f, 1.0f);  // Dark background
+    render.setDepthOutput(true);  // Enable depth output for DOF
 
     // =========================================================================
     // Depth of Field post-processing
     // =========================================================================
 
-    auto& dof = chain.add<DepthOfField>("dof")
-        .input(&render)
-        .focusDistance(g_focusDistance)
-        .focusRange(0.05f)
-        .blurStrength(g_blurStrength);
+    auto& dof = chain.add<DepthOfField>("dof");
+    dof.input(&render);
+    dof.focusDistance(g_focusDistance);
+    dof.focusRange(0.05f);
+    dof.blurStrength(g_blurStrength);
 
     // =========================================================================
     // Final post-processing
     // =========================================================================
 
-    auto& bloom = chain.add<Bloom>("bloom")
-        .input(&dof)
-        .threshold(0.8f)
-        .intensity(0.3f)
-        .radius(6.0f);
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input(&dof);
+    bloom.threshold = 0.8f;
+    bloom.intensity = 0.3f;
+    bloom.radius = 6.0f;
 
-    auto& vignette = chain.add<CRTEffect>("vignette")
-        .input(&bloom)
-        .curvature(0.0f)
-        .vignette(0.4f)
-        .scanlines(0.0f)
-        .bloom(0.0f)
-        .chromatic(0.0f);
+    auto& vignette = chain.add<CRTEffect>("vignette");
+    vignette.input(&bloom);
+    vignette.curvature = 0.0f;
+    vignette.vignette = 0.4f;
+    vignette.scanlines = 0.0f;
+    vignette.bloom = 0.0f;
+    vignette.chromatic = 0.0f;
 
     chain.output("vignette");
 

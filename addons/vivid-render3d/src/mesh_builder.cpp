@@ -536,6 +536,71 @@ MeshBuilder& MeshBuilder::projectUVsNormalized(Axis axis) {
     return *this;
 }
 
+// Simple 3D noise function (gradient noise)
+static float hash(float n) {
+    return glm::fract(std::sin(n) * 43758.5453123f);
+}
+
+static float noise3D(glm::vec3 p) {
+    glm::vec3 i = glm::floor(p);
+    glm::vec3 f = glm::fract(p);
+
+    // Smooth interpolation
+    f = f * f * (3.0f - 2.0f * f);
+
+    float n = i.x + i.y * 57.0f + i.z * 113.0f;
+
+    // 8 corners of cube
+    float a = hash(n);
+    float b = hash(n + 1.0f);
+    float c = hash(n + 57.0f);
+    float d = hash(n + 58.0f);
+    float e = hash(n + 113.0f);
+    float g = hash(n + 114.0f);
+    float h = hash(n + 170.0f);
+    float k = hash(n + 171.0f);
+
+    // Trilinear interpolation
+    return glm::mix(
+        glm::mix(glm::mix(a, b, f.x), glm::mix(c, d, f.x), f.y),
+        glm::mix(glm::mix(e, g, f.x), glm::mix(h, k, f.x), f.y),
+        f.z
+    );
+}
+
+static float fbm(glm::vec3 p, int octaves) {
+    float value = 0.0f;
+    float amplitude = 0.5f;
+    float frequency = 1.0f;
+
+    for (int i = 0; i < octaves; ++i) {
+        value += amplitude * noise3D(p * frequency);
+        amplitude *= 0.5f;
+        frequency *= 2.0f;
+    }
+
+    return value;
+}
+
+MeshBuilder& MeshBuilder::noiseDisplace(float amplitude, float frequency, int octaves, float time) {
+    for (auto& v : m_vertices) {
+        // Sample noise at vertex position (with time offset for animation)
+        glm::vec3 samplePos = v.position * frequency + glm::vec3(time * 0.5f, time * 0.3f, time * 0.7f);
+        float noiseVal = fbm(samplePos, octaves) * 2.0f - 1.0f;  // Map to -1 to 1
+
+        // Displace along normal
+        v.position += v.normal * noiseVal * amplitude;
+    }
+
+    // Recompute normals after displacement
+    computeNormals();
+
+    // Invalidate manifold - displacement breaks CSG compatibility
+    m_manifold.reset();
+
+    return *this;
+}
+
 // -----------------------------------------------------------------------------
 // Build
 // -----------------------------------------------------------------------------

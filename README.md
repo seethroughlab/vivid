@@ -15,6 +15,27 @@ A creative coding framework for real-time graphics with hot-reloadable C++ chain
 - **State Preservation** - Feedback loops and animations survive hot reloads
 - **LLM-Friendly** - Designed for AI-assisted development (see below)
 
+## Showcase
+
+<p align="center">
+  <img src="images/feedback.png" width="400" alt="Feedback Spirals" />
+  <img src="images/kaleidoscope.png" width="400" alt="Kaleidoscope" />
+</p>
+<p align="center">
+  <img src="images/globe.png" width="400" alt="3D Globe" />
+  <img src="images/depth-of-field.png" width="400" alt="Depth of Field" />
+</p>
+<p align="center">
+  <img src="images/particles.png" width="400" alt="Particles" />
+  <img src="images/retro-crt.png" width="400" alt="Retro CRT" />
+</p>
+<p align="center">
+  <img src="images/candy-crash.png" width="400" alt="Candy Crash" />
+  <img src="images/flow-field.png" width="400" alt="Flow Field" />
+</p>
+
+*From top-left: Feedback spirals, Kaleidoscope mirror effect, 3D PBR globe, Depth of field, GPU particles, Retro CRT simulation, Candy-style animation, Flow field visualization*
+
 ## Quick Start
 
 ### Requirements

@@ -15,7 +15,7 @@ using namespace vivid::effects;
 using namespace vivid::render3d;
 
 static bool g_autoRotate = true;
-static float g_rotation = 0.0f;
+static float g_rotation = 0.0f;  // Start facing camera
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
@@ -33,7 +33,7 @@ void setup(Context& ctx) {
     // Load Earth texture
     auto& material = chain.add<TexturedMaterial>("earthMat");
     material.baseColor("assets/textures/flat_earth_Largest_still.0330.jpg");
-    material.roughnessFactor(0.8f);   // Mostly matte surface
+    material.roughnessFactor(0.5f);   // Balanced matte/reflective
     material.metallicFactor(0.0f);    // Non-metallic
 
     // Compose the scene
@@ -54,15 +54,21 @@ void setup(Context& ctx) {
 
     // Key light (simulating sun)
     auto& sunLight = chain.add<DirectionalLight>("sun");
-    sunLight.direction(1.0f, 0.5f, 1.0f);
+    sunLight.direction(0.5f, 0.3f, 1.0f);  // More frontal lighting
     sunLight.color(1.0f, 0.97f, 0.91f);  // Warm sunlight
-    sunLight.intensity = 2.0f;
+    sunLight.intensity = 4.0f;
 
     // Fill light (ambient bounce)
     auto& fillLight = chain.add<DirectionalLight>("fill");
     fillLight.direction(-1.0f, -0.3f, -0.5f);
     fillLight.color(0.27f, 0.4f, 0.67f);  // Cool blue
-    fillLight.intensity = 0.3f;
+    fillLight.intensity = 1.0f;
+
+    // Rim light (edge separation from dark background)
+    auto& rimLight = chain.add<DirectionalLight>("rim");
+    rimLight.direction(-0.5f, 0.0f, -1.0f);  // From behind
+    rimLight.color(0.6f, 0.7f, 1.0f);        // Cool blue-white
+    rimLight.intensity = 1.5f;
 
     // =========================================================================
     // 3D Rendering
@@ -73,6 +79,7 @@ void setup(Context& ctx) {
     render.setCameraInput(&camera);
     render.setLightInput(&sunLight);
     render.addLight(&fillLight);
+    render.addLight(&rimLight);
     render.setMaterial(&material);
     render.setShadingMode(ShadingMode::PBR);
     render.setColor(0.02f, 0.02f, 0.04f, 1.0f);  // Dark space background
