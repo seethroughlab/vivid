@@ -260,9 +260,10 @@ target_include_directories(vivid
         ${stb_SOURCE_DIR}
 )
 
-# Use wgpu-native backend for ImGui
+# Use wgpu-native backend for ImGui, pass version from CMake (or CI override)
 target_compile_definitions(vivid PRIVATE
     IMGUI_IMPL_WEBGPU_BACKEND_WGPU
+    VIVID_VERSION="${VIVID_VERSION}"
 )
 
 # Link against core library, GLFW-WebGPU integration, render3d for geometry previews, audio for analyzer type info

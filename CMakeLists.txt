@@ -1,5 +1,13 @@
 cmake_minimum_required(VERSION 3.20)
-project(vivid VERSION 0.1.0 LANGUAGES CXX C)
+project(vivid VERSION 0.1.1 LANGUAGES CXX C)
+
+# Allow version override from CI (extracts from git tag)
+if(DEFINED VIVID_VERSION_OVERRIDE)
+    set(VIVID_VERSION "${VIVID_VERSION_OVERRIDE}")
+    message(STATUS "Using version from CI: ${VIVID_VERSION}")
+else()
+    set(VIVID_VERSION "${CMAKE_PROJECT_VERSION}")
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

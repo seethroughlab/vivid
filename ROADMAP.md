@@ -3872,25 +3872,24 @@ def update_index(addons):
 **Strategy:** Start simple with GitHub Releases, expand based on user demand
 
 **Tier 1: GitHub Releases (MVP)**
-- [ ] Pre-built binaries for macOS (arm64, x64), Windows (x64), Linux (x64)
-- [ ] GitHub Actions workflow to build and publish on tagged releases
-- [ ] Installation via `gh release download` or direct download
+- [x] Pre-built binaries for macOS (arm64, x64), Windows (x64), Linux (x64)
+- [x] GitHub Actions workflow to build and publish on tagged releases
+- [x] Installation via `gh release download` or direct download
 
-**Tier 2: Platform Package Managers (Future)**
-- [ ] **macOS**: Homebrew tap (`brew install seethroughlab/vivid/vivid`)
-- [ ] **Windows**: winget manifest
-- [ ] **Linux**: AppImage included in GitHub Releases (cross-distro)
+**Tier 2: Platform Package Managers (Deprioritized)**
+- [ ] **macOS**: Homebrew tap - not needed, VS Code extension downloads binaries
+- [ ] **Windows**: winget manifest - not needed, VS Code extension downloads binaries
+- [ ] **Linux**: AppImage - not needed, VS Code extension downloads binaries
 
 **Design Notes:**
-- Homebrew tap is low-maintenance (separate repo with Formula pointing to GitHub Releases)
-- winget is Microsoft's official package manager, simpler than Chocolatey
-- Avoid apt/PPA for Linux - high maintenance, AppImage covers most use cases
-- Consider Snap only if there's significant demand
+- Extension-first workflow means users install vivid-vscode, which auto-downloads binaries
+- Package managers are nice-to-have for CLI-only users but not required
+- Current tar.gz/zip releases work well with extension's RuntimeManager
 
 **Validation:**
-- [ ] Tagged release triggers CI build for all platforms
-- [ ] Binaries work out-of-the-box without additional dependencies
-- [ ] `vivid --version` reports correct version from release tag
+- [x] Tagged release triggers CI build for all platforms
+- [x] Binaries work out-of-the-box without additional dependencies
+- [x] `vivid --version` reports correct version from CMake project version
 
 ---
 

@@ -7,8 +7,11 @@
 
 namespace vivid::cli {
 
-// Version info
-constexpr const char* VERSION = "3.0.0";
+// Version info - injected from CMake via VIVID_VERSION define
+#ifndef VIVID_VERSION
+#define VIVID_VERSION "0.1.0"  // Fallback if not defined by CMake
+#endif
+constexpr const char* VERSION = VIVID_VERSION;
 
 // Handle CLI commands before GPU initialization
 // Returns: 0+ = handled (exit with this code), -1 = not a CLI command (continue to main)

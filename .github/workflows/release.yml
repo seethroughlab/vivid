@@ -31,6 +31,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Get version from tag
+        id: version
+        shell: bash
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+          else
+            VERSION="0.0.0-dev"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
         run: |
@@ -47,11 +59,11 @@ jobs:
 
       - name: Configure CMake (darwin-x64 cross-compile)
         if: matrix.target == 'darwin-x64'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWGPU_FORCE_ARCH=x86_64
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWGPU_FORCE_ARCH=x86_64 -DVIVID_VERSION_OVERRIDE=${{ steps.version.outputs.VERSION }}
 
       - name: Configure CMake
         if: matrix.target != 'darwin-x64'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIVID_VERSION_OVERRIDE=${{ steps.version.outputs.VERSION }}
 
       - name: Build
         run: cmake --build build --config Release --parallel
