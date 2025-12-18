@@ -74,14 +74,16 @@ using namespace vivid::effects;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    chain.add<Noise>("noise")
-        .scale(4.0f)
-        .speed(0.5f);
+    // Add operators and configure properties
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+    noise.speed = 0.5f;
+    noise.octaves = 4;
 
-    chain.add<HSV>("color")
-        .input("noise")
-        .hueShift(0.6f)
-        .saturation(0.8f);
+    auto& hsv = chain.add<HSV>("color");
+    hsv.input(&noise);           // Connect via pointer
+    hsv.hueShift = 0.6f;
+    hsv.saturation = 0.8f;
 
     chain.output("color");
 }
@@ -213,13 +215,13 @@ using namespace vivid::video;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    auto& video = chain.add<VideoPlayer>("video")
-        .file("assets/videos/my-video.mov")
-        .loop(true);
+    auto& video = chain.add<VideoPlayer>("video");
+    video.file = "assets/videos/my-video.mov";
+    video.loop(true);
 
-    auto& hsv = chain.add<HSV>("color")
-        .input(&video)
-        .saturation(1.2f);
+    auto& hsv = chain.add<HSV>("color");
+    hsv.input(&video);
+    hsv.saturation = 1.2f;
 
     chain.output("color");
 }
@@ -249,37 +251,41 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Create geometry
-    auto& box = chain.add<Box>("box").size(1.0f);
-    auto& sphere = chain.add<Sphere>("sphere").radius(0.6f).segments(32);
+    auto& box = chain.add<Box>("box");
+    box.size(1.0f, 1.0f, 1.0f);
+
+    auto& sphere = chain.add<Sphere>("sphere");
+    sphere.radius(0.6f);
+    sphere.segments(32);
 
     // CSG: subtract sphere from box
-    auto& csg = chain.add<Boolean>("csg")
-        .inputA(&box)
-        .inputB(&sphere)
-        .operation(BooleanOp::Subtract);
+    auto& csg = chain.add<Boolean>("csg");
+    csg.inputA(&box);
+    csg.inputB(&sphere);
+    csg.operation(BooleanOp::Subtract);
 
     // Scene composition
     auto& scene = SceneComposer::create(chain, "scene");
     scene.add(&csg, glm::mat4(1.0f), glm::vec4(0.9f, 0.3f, 0.3f, 1.0f));
 
     // Camera and lighting
-    auto& camera = chain.add<CameraOperator>("camera")
-        .orbitCenter(0, 0, 0)
-        .distance(5.0f)
-        .fov(50.0f);
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.orbitCenter(0, 0, 0);
+    camera.distance(5.0f);
+    camera.fov(50.0f);
 
-    auto& sun = chain.add<DirectionalLight>("sun")
-        .direction(1, 2, 1)
-        .intensity(1.5f);
+    auto& sun = chain.add<DirectionalLight>("sun");
+    sun.direction(1, 2, 1);
+    sun.intensity = 1.5f;
 
     // Render
-    auto& render = chain.add<Render3D>("render")
-        .input(&scene)
-        .cameraInput(&camera)
-        .lightInput(&sun)
-        .shadingMode(ShadingMode::PBR)
-        .metallic(0.1f)
-        .roughness(0.5f);
+    auto& render = chain.add<Render3D>("render");
+    render.setInput(&scene);
+    render.setCameraInput(&camera);
+    render.setLightInput(&sun);
+    render.setShadingMode(ShadingMode::PBR);
+    render.metallic = 0.1f;
+    render.roughness = 0.5f;
 
     chain.output("render");
 }
@@ -287,7 +293,7 @@ void setup(Context& ctx) {
 void update(Context& ctx) {
     // Animate camera orbit
     auto& camera = ctx.chain().get<CameraOperator>("camera");
-    camera.azimuth(ctx.time() * 0.3f);
+    camera.azimuth(static_cast<float>(ctx.time()) * 0.3f);
 }
 
 VIVID_CHAIN(setup, update)
