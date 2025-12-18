@@ -86,6 +86,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
     src/chain.cpp
     src/operator.cpp
+    src/operator_registry.cpp
     src/audio_operator.cpp
     src/audio_output.cpp
     src/audio_graph.cpp
@@ -133,6 +134,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/font_atlas.cpp
     src/effects/canvas_renderer.cpp
     src/effects/canvas.cpp
+    src/effects/operator_registrations.cpp
     # vivid-network (networking operators)
     src/network/osc_in.cpp
     src/network/osc_out.cpp
@@ -148,6 +150,7 @@ set(VIVID_CORE_SOURCES
     src/display.cpp
     src/hot_reload.cpp
     src/addon_registry.cpp
+    src/addon_manager.cpp
     src/editor_bridge.cpp
     imgui/imgui_integration.cpp
     imgui/chain_visualizer.cpp

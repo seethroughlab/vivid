@@ -1,7 +1,9 @@
 // Vivid CLI Commands
-// Handles: vivid new, vivid --help, vivid --version, vivid bundle
+// Handles: vivid new, vivid --help, vivid --version, vivid bundle, vivid operators, vivid addons
 
 #include <vivid/cli.h>
+#include <vivid/operator_registry.h>
+#include <vivid/addon_manager.h>
 #include <CLI/CLI.hpp>
 #include <iostream>
 #include <fstream>
@@ -566,6 +568,37 @@ int handleCommand(int argc, char** argv) {
     bundleCmd->add_option("-o,--output", bundleOutput, "Output path (.app)");
     bundleCmd->add_option("-n,--name", bundleName, "App display name");
 
+    // 'operators' subcommand
+    bool operatorsJson = false;
+    auto* operatorsCmd = app.add_subcommand("operators", "List available operators");
+    operatorsCmd->add_flag("--json", operatorsJson, "Output as JSON");
+
+    // 'addons' subcommand group
+    auto* addonsCmd = app.add_subcommand("addons", "Manage installed addons");
+    addonsCmd->require_subcommand(0, 1);  // 0 or 1 subcommand
+
+    // addons list (default when no subcommand)
+    bool addonsJson = false;
+    auto* addonsListCmd = addonsCmd->add_subcommand("list", "List installed addons");
+    addonsListCmd->add_flag("--json", addonsJson, "Output as JSON");
+
+    // addons install
+    std::string addonsInstallUrl;
+    std::string addonsInstallRef;
+    auto* addonsInstallCmd = addonsCmd->add_subcommand("install", "Install addon from git URL");
+    addonsInstallCmd->add_option("url", addonsInstallUrl, "Git repository URL")->required();
+    addonsInstallCmd->add_option("-r,--ref", addonsInstallRef, "Git ref (tag, branch, or commit)");
+
+    // addons remove
+    std::string addonsRemoveName;
+    auto* addonsRemoveCmd = addonsCmd->add_subcommand("remove", "Remove an installed addon");
+    addonsRemoveCmd->add_option("name", addonsRemoveName, "Addon name")->required();
+
+    // addons update
+    std::string addonsUpdateName;
+    auto* addonsUpdateCmd = addonsCmd->add_subcommand("update", "Update addon(s)");
+    addonsUpdateCmd->add_option("name", addonsUpdateName, "Addon name (empty = update all)");
+
     // Check if first argument is a known subcommand or flag
     if (argc < 2) {
         printUsage();
@@ -576,7 +609,8 @@ int handleCommand(int argc, char** argv) {
 
     // If first arg doesn't look like a subcommand or flag, it's a project path
     // Let main runtime handle it
-    if (firstArg != "new" && firstArg != "bundle" &&
+    if (firstArg != "new" && firstArg != "bundle" && firstArg != "operators" &&
+        firstArg != "addons" &&
         firstArg != "-h" && firstArg != "--help" &&
         firstArg != "-v" && firstArg != "--version") {
         return -1;  // Continue to main runtime
@@ -598,6 +632,93 @@ int handleCommand(int argc, char** argv) {
 
     if (bundleCmd->parsed()) {
         return bundleProject(bundleProjectPath, bundleOutput, bundleName);
+    }
+
+    if (operatorsCmd->parsed()) {
+        if (operatorsJson) {
+            OperatorRegistry::instance().outputJson();
+        } else {
+            // Human-readable output
+            const auto& ops = OperatorRegistry::instance().operators();
+            std::cout << "Available operators (" << ops.size() << "):\n\n";
+
+            std::string currentCategory;
+            for (const auto& op : ops) {
+                if (op.category != currentCategory) {
+                    if (!currentCategory.empty()) std::cout << "\n";
+                    currentCategory = op.category;
+                    std::cout << "## " << currentCategory << "\n";
+                }
+                std::cout << "  " << op.name;
+                if (!op.addon.empty()) {
+                    std::cout << " [" << op.addon << "]";
+                }
+                std::cout << " - " << op.description << "\n";
+            }
+
+            if (ops.empty()) {
+                std::cout << "No operators registered. This may be a build issue.\n";
+            }
+        }
+        return 0;
+    }
+
+    if (addonsCmd->parsed()) {
+        auto& addonMgr = AddonManager::instance();
+
+        if (addonsInstallCmd->parsed()) {
+            return addonMgr.install(addonsInstallUrl, addonsInstallRef) ? 0 : 1;
+        }
+
+        if (addonsRemoveCmd->parsed()) {
+            return addonMgr.remove(addonsRemoveName) ? 0 : 1;
+        }
+
+        if (addonsUpdateCmd->parsed()) {
+            return addonMgr.update(addonsUpdateName) ? 0 : 1;
+        }
+
+        // Default: list (or explicit 'addons list')
+        if (addonsJson || addonsListCmd->parsed()) {
+            if (addonsJson) {
+                addonMgr.outputJson();
+            } else {
+                auto addons = addonMgr.listInstalled();
+                if (addons.empty()) {
+                    std::cout << "No addons installed.\n\n";
+                    std::cout << "Install an addon with:\n";
+                    std::cout << "  vivid addons install <git-url>\n\n";
+                    std::cout << "Example:\n";
+                    std::cout << "  vivid addons install https://github.com/seethroughlab/vivid-ml\n";
+                } else {
+                    std::cout << "Installed addons (" << addons.size() << "):\n\n";
+                    for (const auto& addon : addons) {
+                        std::cout << "  " << addon.name << " v" << addon.version;
+                        if (!addon.gitRef.empty()) {
+                            std::cout << " (" << addon.gitRef << ")";
+                        }
+                        std::cout << "\n";
+                        std::cout << "    Source: " << addon.builtFrom << "\n";
+                        std::cout << "    Path: " << addon.installPath.string() << "\n";
+                    }
+                }
+            }
+            return 0;
+        }
+
+        // No subcommand - show list
+        auto addons = addonMgr.listInstalled();
+        if (addons.empty()) {
+            std::cout << "No addons installed.\n\n";
+            std::cout << "Install an addon with:\n";
+            std::cout << "  vivid addons install <git-url>\n";
+        } else {
+            std::cout << "Installed addons (" << addons.size() << "):\n\n";
+            for (const auto& addon : addons) {
+                std::cout << "  " << addon.name << " v" << addon.version << "\n";
+            }
+        }
+        return 0;
     }
 
     // If we got here with --help or --version, CLI11 already handled it

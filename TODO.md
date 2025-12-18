@@ -169,5 +169,7 @@
 [ ] We *should* be using AVLooperPlayer on Mac for looping vieo, but we can't seem to get it to work. 
 [ ] Take more snapshots of showcase projects, add them to README
 [ ] We need an example of mutliple videos playing at once - a VJ application that blends them in different ways
-[ ] git tag v0.1.0 && git push --tags
+[x] git tag v0.1.0 && git push --tags
 [ ] Find out what the maximum number of tokens Claude can read and maek the VS Code Extension warn users if their CLAUDE.md file gets longer than that. 
+[ ] Make a new addon: ~/Developer/vivid-serial to communicate with serial devices. Make sure it registeres itself as an addon, and registeres all of its parameters
+[ ] there are a bunch of places in the runtime where you are manually constructing json structures with long strings. Let's please change these occurances to using the json library that is already part of the core. 

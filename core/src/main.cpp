@@ -9,6 +9,7 @@
 #include <vivid/audio_buffer.h>
 #include <vivid/video_exporter.h>
 #include <vivid/cli.h>
+#include <vivid/addon_manager.h>
 #include "imgui/imgui_integration.h"
 #include "imgui/chain_visualizer.h"
 #include <webgpu/webgpu.h>
@@ -147,7 +148,7 @@ void onDeviceError(WGPUDevice const* device, WGPUErrorType type,
 // -----------------------------------------------------------------------------
 
 int main(int argc, char** argv) {
-    // Handle CLI commands first (vivid new, --help, --version)
+    // Handle CLI commands first (vivid new, --help, --version, addons)
     // These don't require GPU initialization
     int cliResult = vivid::cli::handleCommand(argc, argv);
     if (cliResult >= 0) {
@@ -155,6 +156,10 @@ int main(int argc, char** argv) {
     }
 
     std::cout << "Vivid - Starting..." << std::endl;
+
+    // Load user-installed addons from ~/.vivid/addons/
+    // This must happen before chain loading so operators are registered
+    AddonManager::instance().loadUserAddons();
 
     // Parse arguments
     fs::path projectPath;

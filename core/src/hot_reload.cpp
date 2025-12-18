@@ -2,6 +2,7 @@
 
 #include <vivid/hot_reload.h>
 #include <vivid/addon_registry.h>
+#include <vivid/addon_manager.h>
 #include <vivid/context.h>
 
 #include <iostream>
@@ -338,6 +339,11 @@ bool HotReload::compile() {
         addonsLib = exeDir;
     }
 
+    // Add user addon paths from ~/.vivid/addons/
+    auto& addonMgr = AddonManager::instance();
+    std::vector<fs::path> userAddonIncludes = addonMgr.getIncludePaths();
+    std::vector<fs::path> userAddonLibs = addonMgr.getLibraryPaths();
+
     // Build the compile command
     std::stringstream cmd;
 
@@ -362,6 +368,10 @@ bool HotReload::compile() {
     clCmd << "/I\"" << sourceDir.string() << "\" ";
     clCmd << "/I\"" << vividInclude.string() << "\" ";
     for (const auto& inc : depIncludes) {
+        clCmd << "/I\"" << inc.string() << "\" ";
+    }
+    // User addon includes
+    for (const auto& inc : userAddonIncludes) {
         clCmd << "/I\"" << inc.string() << "\" ";
     }
     clCmd << "/Fe\"" << m_libraryPath.string() << "\" ";
@@ -390,6 +400,20 @@ bool HotReload::compile() {
         }
     }
 
+    // Link user addons from ~/.vivid/addons/
+    for (const auto& libDir : userAddonLibs) {
+        clCmd << "/LIBPATH:\"" << libDir.string() << "\" ";
+        // Find .lib files in this directory
+        for (const auto& entry : fs::directory_iterator(libDir)) {
+            if (entry.path().extension() == ".lib") {
+                std::string filename = entry.path().filename().string();
+                // Skip import libraries for dependencies
+                if (filename.find("onnxruntime") != std::string::npos) continue;
+                clCmd << "\"" << entry.path().string() << "\" ";
+            }
+        }
+    }
+
     // Wrap in cmd /c with vcvarsall setup
     // Use x64 architecture
     cmd << "cmd /c \"\"" << vcvarsall << "\" x64 >nul 2>&1 && " << clCmd.str() << " 2>&1\"";
@@ -399,6 +423,10 @@ bool HotReload::compile() {
     cmd << "-I\"" << sourceDir.string() << "\" ";
     cmd << "-I\"" << vividInclude.string() << "\" ";
     for (const auto& inc : depIncludes) {
+        cmd << "-I\"" << inc.string() << "\" ";
+    }
+    // User addon includes
+    for (const auto& inc : userAddonIncludes) {
         cmd << "-I\"" << inc.string() << "\" ";
     }
 
@@ -412,6 +440,28 @@ bool HotReload::compile() {
             cmd << "-l" << addon.libraryName << " ";
         }
     }
+    // User addon library paths
+    for (const auto& libDir : userAddonLibs) {
+        cmd << "-L\"" << libDir.string() << "\" ";
+        // Find dylib files and link them
+        for (const auto& entry : fs::directory_iterator(libDir)) {
+            if (entry.path().extension() == ".dylib") {
+                std::string filename = entry.path().filename().string();
+                // Skip dependencies like ONNX Runtime
+                if (filename.find("onnxruntime") != std::string::npos) continue;
+                // Extract library name: libfoo.dylib -> foo
+                if (filename.rfind("lib", 0) == 0) {
+                    std::string libName = filename.substr(3);
+                    size_t dotPos = libName.rfind('.');
+                    if (dotPos != std::string::npos) {
+                        libName = libName.substr(0, dotPos);
+                    }
+                    cmd << "-l" << libName << " ";
+                }
+            }
+        }
+        cmd << "-Wl,-rpath,\"" << libDir.string() << "\" ";
+    }
     cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
 #else
     cmd << "-L\"" << addonsLib.string() << "\" ";
@@ -421,6 +471,28 @@ bool HotReload::compile() {
         if (fs::exists(libPath)) {
             cmd << "-l" << addon.libraryName << " ";
         }
+    }
+    // User addon library paths
+    for (const auto& libDir : userAddonLibs) {
+        cmd << "-L\"" << libDir.string() << "\" ";
+        // Find .so files and link them
+        for (const auto& entry : fs::directory_iterator(libDir)) {
+            std::string filename = entry.path().filename().string();
+            if (filename.find(".so") != std::string::npos) {
+                // Skip dependencies like ONNX Runtime
+                if (filename.find("onnxruntime") != std::string::npos) continue;
+                // Extract library name: libfoo.so -> foo
+                if (filename.rfind("lib", 0) == 0) {
+                    std::string libName = filename.substr(3);
+                    size_t dotPos = libName.find('.');
+                    if (dotPos != std::string::npos) {
+                        libName = libName.substr(0, dotPos);
+                    }
+                    cmd << "-l" << libName << " ";
+                }
+            }
+        }
+        cmd << "-Wl,-rpath,\"" << libDir.string() << "\" ";
     }
     cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
 #endif
