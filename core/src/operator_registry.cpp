@@ -2,9 +2,12 @@
 // Provides JSON output of all registered operators
 
 #include <vivid/operator_registry.h>
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <algorithm>
 #include <set>
+
+using json = nlohmann::json;
 
 namespace vivid {
 
@@ -44,22 +47,6 @@ const OperatorMeta* OperatorRegistry::find(const std::string& name) const {
     return nullptr;
 }
 
-// Helper to escape JSON strings
-static std::string escapeJson(const std::string& s) {
-    std::string result;
-    for (char c : s) {
-        switch (c) {
-            case '"':  result += "\\\""; break;
-            case '\\': result += "\\\\"; break;
-            case '\n': result += "\\n"; break;
-            case '\r': result += "\\r"; break;
-            case '\t': result += "\\t"; break;
-            default:   result += c;
-        }
-    }
-    return result;
-}
-
 // Helper to convert ParamType to string
 static const char* paramTypeName(ParamType type) {
     switch (type) {
@@ -77,103 +64,77 @@ static const char* paramTypeName(ParamType type) {
 }
 
 void OperatorRegistry::outputJson() const {
-    std::cout << "{\n";
-    std::cout << "  \"version\": \"1.0.0\",\n";
-    std::cout << "  \"operators\": [\n";
+    json root;
+    root["version"] = "1.0.0";
+    root["operators"] = json::array();
 
-    bool first = true;
     for (const auto& meta : m_operators) {
-        if (!first) std::cout << ",\n";
-        first = false;
-
-        std::cout << "    {\n";
-        std::cout << "      \"name\": \"" << escapeJson(meta.name) << "\",\n";
-        std::cout << "      \"category\": \"" << escapeJson(meta.category) << "\",\n";
-        std::cout << "      \"description\": \"" << escapeJson(meta.description) << "\",\n";
-
-        if (!meta.addon.empty()) {
-            std::cout << "      \"addon\": \"" << escapeJson(meta.addon) << "\",\n";
-        } else {
-            std::cout << "      \"addon\": null,\n";
-        }
-
-        std::cout << "      \"requiresInput\": " << (meta.requiresInput ? "true" : "false") << ",\n";
-        std::cout << "      \"outputType\": \"" << outputKindName(meta.outputKind) << "\",\n";
+        json op;
+        op["name"] = meta.name;
+        op["category"] = meta.category;
+        op["description"] = meta.description;
+        op["addon"] = meta.addon.empty() ? json(nullptr) : json(meta.addon);
+        op["requiresInput"] = meta.requiresInput;
+        op["outputType"] = outputKindName(meta.outputKind);
 
         // Get params by instantiating a temp operator
-        std::cout << "      \"params\": [";
+        op["params"] = json::array();
 
         if (meta.factory) {
             try {
                 auto tempOp = meta.factory();
                 auto params = tempOp->params();
 
-                bool firstParam = true;
                 for (const auto& p : params) {
-                    if (!firstParam) std::cout << ",";
-                    firstParam = false;
+                    json param;
+                    param["name"] = p.name;
+                    param["type"] = paramTypeName(p.type);
 
-                    std::cout << "\n        {\n";
-                    std::cout << "          \"name\": \"" << escapeJson(p.name) << "\",\n";
-                    std::cout << "          \"type\": \"" << paramTypeName(p.type) << "\",\n";
-
-                    // Output default value(s)
+                    // Output default value(s) based on type
                     if (p.type == ParamType::String || p.type == ParamType::FilePath) {
-                        std::cout << "          \"default\": \"" << escapeJson(p.stringDefault) << "\",\n";
+                        param["default"] = p.stringDefault;
                         if (!p.fileFilter.empty()) {
-                            std::cout << "          \"fileFilter\": \"" << escapeJson(p.fileFilter) << "\",\n";
+                            param["fileFilter"] = p.fileFilter;
                         }
                         if (!p.fileCategory.empty()) {
-                            std::cout << "          \"fileCategory\": \"" << escapeJson(p.fileCategory) << "\",\n";
+                            param["fileCategory"] = p.fileCategory;
                         }
                     } else if (p.type == ParamType::Vec2) {
-                        std::cout << "          \"default\": [" << p.defaultVal[0] << ", " << p.defaultVal[1] << "],\n";
+                        param["default"] = {p.defaultVal[0], p.defaultVal[1]};
                     } else if (p.type == ParamType::Vec3) {
-                        std::cout << "          \"default\": [" << p.defaultVal[0] << ", " << p.defaultVal[1] << ", " << p.defaultVal[2] << "],\n";
+                        param["default"] = {p.defaultVal[0], p.defaultVal[1], p.defaultVal[2]};
                     } else if (p.type == ParamType::Vec4 || p.type == ParamType::Color) {
-                        std::cout << "          \"default\": [" << p.defaultVal[0] << ", " << p.defaultVal[1] << ", " << p.defaultVal[2] << ", " << p.defaultVal[3] << "],\n";
+                        param["default"] = {p.defaultVal[0], p.defaultVal[1], p.defaultVal[2], p.defaultVal[3]};
                     } else if (p.type == ParamType::Bool) {
-                        std::cout << "          \"default\": " << (p.defaultVal[0] != 0.0f ? "true" : "false") << ",\n";
+                        param["default"] = (p.defaultVal[0] != 0.0f);
                     } else if (p.type == ParamType::Int) {
-                        std::cout << "          \"default\": " << static_cast<int>(p.defaultVal[0]) << ",\n";
+                        param["default"] = static_cast<int>(p.defaultVal[0]);
                     } else {
-                        std::cout << "          \"default\": " << p.defaultVal[0] << ",\n";
+                        param["default"] = p.defaultVal[0];
                     }
 
                     // Output min/max for numeric types
                     if (p.type != ParamType::String && p.type != ParamType::FilePath) {
                         if (p.type == ParamType::Int) {
-                            std::cout << "          \"min\": " << static_cast<int>(p.minVal) << ",\n";
-                            std::cout << "          \"max\": " << static_cast<int>(p.maxVal) << "\n";
+                            param["min"] = static_cast<int>(p.minVal);
+                            param["max"] = static_cast<int>(p.maxVal);
                         } else {
-                            std::cout << "          \"min\": " << p.minVal << ",\n";
-                            std::cout << "          \"max\": " << p.maxVal << "\n";
+                            param["min"] = p.minVal;
+                            param["max"] = p.maxVal;
                         }
-                    } else {
-                        // Remove trailing comma for string/filepath types
-                        // Seek back and remove the trailing newline and comma
                     }
 
-                    std::cout << "        }";
-                }
-
-                if (!params.empty()) {
-                    std::cout << "\n      ";
+                    op["params"].push_back(param);
                 }
             } catch (...) {
                 // Factory failed, no params
             }
         }
 
-        std::cout << "]\n";
-        std::cout << "    }";
+        root["operators"].push_back(op);
     }
 
-    if (!m_operators.empty()) {
-        std::cout << "\n";
-    }
-    std::cout << "  ]\n";
-    std::cout << "}\n";
+    std::cout << root.dump(2) << std::endl;
 }
 
 } // namespace vivid

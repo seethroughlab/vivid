@@ -204,6 +204,7 @@ target_link_libraries(vivid-core PUBLIC
     glfw
     freetype
     ixwebsocket
+    nlohmann_json::nlohmann_json
 )
 
 # Platform-specific settings for vivid-core

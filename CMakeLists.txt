@@ -66,6 +66,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(cli11)
 
+# nlohmann/json - JSON library (header-only)
+FetchContent_Declare(
+    nlohmann_json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG        v3.11.3
+    GIT_SHALLOW    TRUE
+)
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+FetchContent_MakeAvailable(nlohmann_json)
+
 # -----------------------------------------------------------------------------
 # WebGPU via wgpu-native (prebuilt binaries)
 # Using prebuilt binaries for reliable cross-platform support

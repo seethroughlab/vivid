@@ -1,12 +1,14 @@
 // Vivid Addon Registry Implementation
 
 #include <vivid/addon_registry.h>
+#include <nlohmann/json.hpp>
 
 #include <fstream>
-#include <sstream>
 #include <regex>
 #include <iostream>
 #include <set>
+
+using json = nlohmann::json;
 
 namespace vivid {
 
@@ -112,52 +114,31 @@ std::optional<AddonInfo> AddonRegistry::loadAddonJson(const fs::path& addonPath)
         return info;
     }
 
-    // Simple JSON parsing (we don't want to add a JSON library dependency)
-    // Just extract the fields we care about
     std::ifstream file(jsonPath);
     if (!file.is_open()) {
         return info;
     }
 
-    std::string content((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
+    try {
+        json j = json::parse(file);
 
-    // Extract "name": "value"
-    auto extractString = [&content](const std::string& key) -> std::string {
-        std::regex regex("\"" + key + "\"\\s*:\\s*\"([^\"]+)\"");
-        std::smatch match;
-        if (std::regex_search(content, match, regex)) {
-            return match[1].str();
+        std::string name = j.value("name", "");
+        if (!name.empty()) {
+            info.name = name;
+            info.libraryName = name;  // Library name matches addon name
         }
-        return "";
-    };
 
-    // Extract "operators": ["a", "b", ...]
-    auto extractArray = [&content](const std::string& key) -> std::vector<std::string> {
-        std::vector<std::string> result;
-        std::regex arrayRegex("\"" + key + "\"\\s*:\\s*\\[([^\\]]+)\\]");
-        std::smatch arrayMatch;
-        if (std::regex_search(content, arrayMatch, arrayRegex)) {
-            std::string arrayContent = arrayMatch[1].str();
-            std::regex itemRegex("\"([^\"]+)\"");
-            auto begin = std::sregex_iterator(arrayContent.begin(), arrayContent.end(), itemRegex);
-            auto end = std::sregex_iterator();
-            for (auto it = begin; it != end; ++it) {
-                result.push_back((*it)[1].str());
+        info.version = j.value("version", "");
+        info.description = j.value("description", "");
+
+        if (j.contains("operators") && j["operators"].is_array()) {
+            for (const auto& op : j["operators"]) {
+                info.operators.push_back(op.get<std::string>());
             }
         }
-        return result;
-    };
-
-    std::string name = extractString("name");
-    if (!name.empty()) {
-        info.name = name;
-        info.libraryName = name;  // Library name matches addon name
+    } catch (const json::exception&) {
+        // Invalid JSON - return with defaults
     }
-
-    info.version = extractString("version");
-    info.description = extractString("description");
-    info.operators = extractArray("operators");
 
     return info;
 }

@@ -1,6 +1,7 @@
 // Vivid - Addon Manager Implementation
 
 #include <vivid/addon_manager.h>
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -16,71 +17,9 @@
 #include <unistd.h>
 #endif
 
-// Simple JSON parsing (we don't want to add a dependency for this)
-// For a production system, consider using nlohmann/json or similar
+using json = nlohmann::json;
 
 namespace vivid {
-
-// -----------------------------------------------------------------------------
-// JSON Helpers (minimal implementation)
-// -----------------------------------------------------------------------------
-
-static std::string jsonEscape(const std::string& s) {
-    std::string result;
-    for (char c : s) {
-        switch (c) {
-            case '"': result += "\\\""; break;
-            case '\\': result += "\\\\"; break;
-            case '\n': result += "\\n"; break;
-            case '\r': result += "\\r"; break;
-            case '\t': result += "\\t"; break;
-            default: result += c; break;
-        }
-    }
-    return result;
-}
-
-static std::string extractJsonString(const std::string& json, const std::string& key) {
-    std::string pattern = "\"" + key + "\"\\s*:\\s*\"([^\"]*)\"";
-    std::regex re(pattern);
-    std::smatch match;
-    if (std::regex_search(json, match, re)) {
-        return match[1].str();
-    }
-    return "";
-}
-
-static std::vector<std::string> extractJsonStringArray(const std::string& json, const std::string& key) {
-    std::vector<std::string> result;
-    std::string pattern = "\"" + key + "\"\\s*:\\s*\\[([^\\]]*)\\]";
-    std::regex re(pattern);
-    std::smatch match;
-    if (std::regex_search(json, match, re)) {
-        std::string arrayContent = match[1].str();
-        std::regex itemRe("\"([^\"]*)\"");
-        auto begin = std::sregex_iterator(arrayContent.begin(), arrayContent.end(), itemRe);
-        auto end = std::sregex_iterator();
-        for (auto it = begin; it != end; ++it) {
-            result.push_back((*it)[1].str());
-        }
-    }
-    return result;
-}
-
-// Extract nested object value: "prebuilt": { "darwin-arm64": "url" }
-static std::string extractNestedJsonString(const std::string& json,
-                                           const std::string& objKey,
-                                           const std::string& key) {
-    // Find the object
-    std::string objPattern = "\"" + objKey + "\"\\s*:\\s*\\{([^}]*)\\}";
-    std::regex objRe(objPattern);
-    std::smatch objMatch;
-    if (std::regex_search(json, objMatch, objRe)) {
-        std::string objContent = objMatch[1].str();
-        return extractJsonString("{" + objContent + "}", key);
-    }
-    return "";
-}
 
 // -----------------------------------------------------------------------------
 // Command Execution
@@ -170,30 +109,45 @@ std::optional<AddonJson> AddonManager::parseAddonJson(const fs::path& path) cons
         return std::nullopt;
     }
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string json = buffer.str();
+    try {
+        json j = json::parse(file);
 
-    AddonJson addon;
-    addon.name = extractJsonString(json, "name");
-    addon.version = extractJsonString(json, "version");
-    addon.description = extractJsonString(json, "description");
-    addon.repository = extractJsonString(json, "repository");
-    addon.license = extractJsonString(json, "license");
-    addon.dependencies = extractJsonStringArray(json, "dependencies");
-    addon.operators = extractJsonStringArray(json, "operators");
+        AddonJson addon;
+        addon.name = j.value("name", "");
+        addon.version = j.value("version", "");
+        addon.description = j.value("description", "");
+        addon.repository = j.value("repository", "");
+        addon.license = j.value("license", "");
 
-    // Parse prebuilt URLs
-    addon.prebuilt.darwinArm64 = extractNestedJsonString(json, "prebuilt", "darwin-arm64");
-    addon.prebuilt.darwinX64 = extractNestedJsonString(json, "prebuilt", "darwin-x64");
-    addon.prebuilt.linuxX64 = extractNestedJsonString(json, "prebuilt", "linux-x64");
-    addon.prebuilt.win32X64 = extractNestedJsonString(json, "prebuilt", "win32-x64");
+        if (j.contains("dependencies") && j["dependencies"].is_array()) {
+            for (const auto& dep : j["dependencies"]) {
+                addon.dependencies.push_back(dep.get<std::string>());
+            }
+        }
 
-    if (addon.name.empty()) {
+        if (j.contains("operators") && j["operators"].is_array()) {
+            for (const auto& op : j["operators"]) {
+                addon.operators.push_back(op.get<std::string>());
+            }
+        }
+
+        // Parse prebuilt URLs
+        if (j.contains("prebuilt") && j["prebuilt"].is_object()) {
+            const auto& prebuilt = j["prebuilt"];
+            addon.prebuilt.darwinArm64 = prebuilt.value("darwin-arm64", "");
+            addon.prebuilt.darwinX64 = prebuilt.value("darwin-x64", "");
+            addon.prebuilt.linuxX64 = prebuilt.value("linux-x64", "");
+            addon.prebuilt.win32X64 = prebuilt.value("win32-x64", "");
+        }
+
+        if (addon.name.empty()) {
+            return std::nullopt;
+        }
+
+        return addon;
+    } catch (const json::exception&) {
         return std::nullopt;
     }
-
-    return addon;
 }
 
 void AddonManager::loadManifest() {
@@ -209,40 +163,46 @@ void AddonManager::loadManifest() {
         return;
     }
 
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    std::string json = buffer.str();
+    try {
+        json j = json::parse(file);
 
-    // Parse addons object - find each addon entry
-    // Format: "addons": { "name": { ... }, ... }
-    std::regex addonRe("\"([^\"]+)\"\\s*:\\s*\\{([^}]+)\\}");
-    auto begin = std::sregex_iterator(json.begin(), json.end(), addonRe);
-    auto end = std::sregex_iterator();
+        if (j.contains("addons") && j["addons"].is_object()) {
+            for (const auto& [name, addonData] : j["addons"].items()) {
+                InstalledAddon addon;
+                addon.name = name;
+                addon.version = addonData.value("version", "");
+                addon.gitUrl = addonData.value("gitUrl", "");
+                addon.gitRef = addonData.value("gitRef", "");
+                addon.installedAt = addonData.value("installedAt", "");
+                addon.builtFrom = addonData.value("builtFrom", "");
+                addon.installPath = m_addonsDir / name;
 
-    for (auto it = begin; it != end; ++it) {
-        std::string name = (*it)[1].str();
-        std::string content = (*it)[2].str();
-
-        // Skip the "addons" key itself
-        if (name == "addons" || name == "version") continue;
-
-        InstalledAddon addon;
-        addon.name = name;
-        addon.version = extractJsonString("{" + content + "}", "version");
-        addon.gitUrl = extractJsonString("{" + content + "}", "gitUrl");
-        addon.gitRef = extractJsonString("{" + content + "}", "gitRef");
-        addon.installedAt = extractJsonString("{" + content + "}", "installedAt");
-        addon.builtFrom = extractJsonString("{" + content + "}", "builtFrom");
-        addon.installPath = m_addonsDir / name;
-
-        if (!addon.name.empty()) {
-            m_installedAddons.push_back(addon);
+                if (!addon.name.empty()) {
+                    m_installedAddons.push_back(addon);
+                }
+            }
         }
+    } catch (const json::exception&) {
+        // Invalid JSON, start fresh
     }
 }
 
 void AddonManager::saveManifest() const {
     fs::path manifestPath = m_addonsDir / "manifest.json";
+
+    json j;
+    j["version"] = 1;
+    j["addons"] = json::object();
+
+    for (const auto& addon : m_installedAddons) {
+        j["addons"][addon.name] = {
+            {"version", addon.version},
+            {"gitUrl", addon.gitUrl},
+            {"gitRef", addon.gitRef},
+            {"installedAt", addon.installedAt},
+            {"builtFrom", addon.builtFrom}
+        };
+    }
 
     std::ofstream file(manifestPath);
     if (!file) {
@@ -250,27 +210,7 @@ void AddonManager::saveManifest() const {
         return;
     }
 
-    file << "{\n";
-    file << "  \"version\": 1,\n";
-    file << "  \"addons\": {\n";
-
-    for (size_t i = 0; i < m_installedAddons.size(); ++i) {
-        const auto& addon = m_installedAddons[i];
-        file << "    \"" << jsonEscape(addon.name) << "\": {\n";
-        file << "      \"version\": \"" << jsonEscape(addon.version) << "\",\n";
-        file << "      \"gitUrl\": \"" << jsonEscape(addon.gitUrl) << "\",\n";
-        file << "      \"gitRef\": \"" << jsonEscape(addon.gitRef) << "\",\n";
-        file << "      \"installedAt\": \"" << jsonEscape(addon.installedAt) << "\",\n";
-        file << "      \"builtFrom\": \"" << jsonEscape(addon.builtFrom) << "\"\n";
-        file << "    }";
-        if (i < m_installedAddons.size() - 1) {
-            file << ",";
-        }
-        file << "\n";
-    }
-
-    file << "  }\n";
-    file << "}\n";
+    file << j.dump(2) << std::endl;
 }
 
 void AddonManager::addToManifest(const InstalledAddon& addon) {
@@ -292,11 +232,7 @@ bool AddonManager::downloadFile(const std::string& url, const fs::path& dest) {
     std::cout << "Downloading: " << url << std::endl;
 
     std::stringstream cmd;
-#ifdef _WIN32
     cmd << "curl -fsSL -o \"" << dest.string() << "\" \"" << url << "\" 2>&1";
-#else
-    cmd << "curl -fsSL -o \"" << dest.string() << "\" \"" << url << "\" 2>&1";
-#endif
 
     auto [exitCode, output] = executeCommand(cmd.str());
     if (exitCode != 0) {
@@ -718,27 +654,21 @@ std::vector<InstalledAddon> AddonManager::listInstalled() const {
 }
 
 void AddonManager::outputJson() const {
-    std::cout << "{\n";
-    std::cout << "  \"addons\": [\n";
+    json j;
+    j["addons"] = json::array();
 
-    for (size_t i = 0; i < m_installedAddons.size(); ++i) {
-        const auto& addon = m_installedAddons[i];
-        std::cout << "    {\n";
-        std::cout << "      \"name\": \"" << jsonEscape(addon.name) << "\",\n";
-        std::cout << "      \"version\": \"" << jsonEscape(addon.version) << "\",\n";
-        std::cout << "      \"gitUrl\": \"" << jsonEscape(addon.gitUrl) << "\",\n";
-        std::cout << "      \"gitRef\": \"" << jsonEscape(addon.gitRef) << "\",\n";
-        std::cout << "      \"installedAt\": \"" << jsonEscape(addon.installedAt) << "\",\n";
-        std::cout << "      \"builtFrom\": \"" << jsonEscape(addon.builtFrom) << "\"\n";
-        std::cout << "    }";
-        if (i < m_installedAddons.size() - 1) {
-            std::cout << ",";
-        }
-        std::cout << "\n";
+    for (const auto& addon : m_installedAddons) {
+        j["addons"].push_back({
+            {"name", addon.name},
+            {"version", addon.version},
+            {"gitUrl", addon.gitUrl},
+            {"gitRef", addon.gitRef},
+            {"installedAt", addon.installedAt},
+            {"builtFrom", addon.builtFrom}
+        });
     }
 
-    std::cout << "  ]\n";
-    std::cout << "}\n";
+    std::cout << j.dump(2) << std::endl;
 }
 
 void AddonManager::loadUserAddons() {
