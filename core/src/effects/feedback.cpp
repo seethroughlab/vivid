@@ -150,12 +150,15 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     return result;
 }
 )";
-    } else {
-        fragmentShader = externalShader.c_str();
     }
 
-    // Combine shared vertex shader with effect-specific fragment shader
-    std::string shaderSource = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + fragmentShader;
+    // Build shader source - external shaders are complete, fallback needs vertex prepended
+    std::string shaderSource;
+    if (externalShader.empty()) {
+        shaderSource = std::string(gpu::FULLSCREEN_VERTEX_SHADER) + fragmentShader;
+    } else {
+        shaderSource = externalShader;  // External shader includes vertex shader
+    }
 
     // Create uniform buffer
     WGPUBufferDescriptor bufferDesc = {};
