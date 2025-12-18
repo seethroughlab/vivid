@@ -85,6 +85,7 @@ set(IMNODES_SOURCES
 set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
     src/chain.cpp
+    src/window_manager.cpp
     src/operator.cpp
     src/operator_registry.cpp
     src/audio_operator.cpp
@@ -196,6 +197,7 @@ target_link_libraries(vivid-core PUBLIC
     webgpu
     glm::glm
     glfw
+    glfw3webgpu
     freetype
     nlohmann_json::nlohmann_json
 )

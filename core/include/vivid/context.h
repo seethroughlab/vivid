@@ -27,6 +27,7 @@
 namespace vivid {
 struct OperatorState;
 class Operator;
+class WindowManager;
 
 /**
  * @brief Operator info for visualization
@@ -695,6 +696,140 @@ public:
     uint32_t audioFramesThisFrame() const { return m_audioFramesThisFrame; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Multi-Window Support
+    /// @{
+
+    /**
+     * @brief Set the WindowManager (called by runtime)
+     * @param wm WindowManager pointer
+     */
+    void setWindowManager(WindowManager* wm) { m_windowManager = wm; }
+
+    /**
+     * @brief Get the WindowManager
+     * @return WindowManager pointer, or nullptr if not set
+     */
+    WindowManager* windowManager() const { return m_windowManager; }
+
+    /**
+     * @brief Create a secondary output window
+     * @param monitorIndex Monitor to create on (-1 = primary monitor)
+     * @return Window handle for future operations, or -1 on failure
+     *
+     * Secondary windows display the chain output or a specific operator's output.
+     * Use setOutputWindowSource() to route different operators to different windows.
+     *
+     * @par Example
+     * @code
+     * int projector = ctx.createOutputWindow(1);  // Second monitor
+     * ctx.setOutputWindowFullscreen(projector, true);
+     * @endcode
+     */
+    int createOutputWindow(int monitorIndex = -1);
+
+    /**
+     * @brief Destroy a secondary output window
+     * @param handle Window handle from createOutputWindow()
+     */
+    void destroyOutputWindow(int handle);
+
+    /**
+     * @brief Set output window position
+     * @param handle Window handle
+     * @param x X position in screen coordinates
+     * @param y Y position in screen coordinates
+     */
+    void setOutputWindowPos(int handle, int x, int y);
+
+    /**
+     * @brief Set output window size
+     * @param handle Window handle
+     * @param w Width in pixels
+     * @param h Height in pixels
+     */
+    void setOutputWindowSize(int handle, int w, int h);
+
+    /**
+     * @brief Set output window fullscreen mode
+     * @param handle Window handle
+     * @param fullscreen True for fullscreen, false for windowed
+     * @param monitorIndex Target monitor (-1 = current)
+     */
+    void setOutputWindowFullscreen(int handle, bool fullscreen, int monitorIndex = -1);
+
+    /**
+     * @brief Set which operator this window displays
+     * @param handle Window handle
+     * @param operatorName Operator name, or empty string for chain output
+     *
+     * @par Example
+     * @code
+     * ctx.setOutputWindowSource(projector, "blur");  // Show blur operator
+     * ctx.setOutputWindowSource(ledWall, "");        // Show chain output
+     * @endcode
+     */
+    void setOutputWindowSource(int handle, const std::string& operatorName);
+
+    /**
+     * @brief Get number of output windows (including primary)
+     * @return Window count
+     */
+    int outputWindowCount() const;
+
+    // === Span Mode ===
+
+    /**
+     * @brief Enable span mode across multiple monitors
+     * @param columns Number of horizontal monitors
+     * @param rows Number of vertical monitors
+     *
+     * In span mode, the chain renders at the combined resolution and
+     * each monitor shows a portion of the output.
+     *
+     * @par Example - 2x1 horizontal span
+     * @code
+     * ctx.enableSpanMode(2, 1);  // Two monitors side-by-side
+     * @endcode
+     */
+    void enableSpanMode(int columns, int rows);
+
+    /**
+     * @brief Disable span mode
+     */
+    void disableSpanMode();
+
+    /**
+     * @brief Check if span mode is active
+     * @return True if span mode is enabled
+     */
+    bool isSpanMode() const;
+
+    /**
+     * @brief Get total span resolution
+     * @return Combined resolution across all monitors
+     */
+    glm::ivec2 spanResolution() const;
+
+    /**
+     * @brief Set bezel gap compensation
+     * @param hPixels Horizontal gap between monitors in pixels
+     * @param vPixels Vertical gap between monitors in pixels
+     *
+     * Bezel compensation accounts for the physical gap between monitor
+     * bezels, ensuring continuous imagery across the span.
+     */
+    void setSpanBezelGap(int hPixels, int vPixels);
+
+    /**
+     * @brief Auto-configure span based on detected monitors
+     *
+     * Detects connected monitors and creates/positions borderless
+     * fullscreen windows across them automatically.
+     */
+    void autoConfigureSpan();
+
+    /// @}
 
 private:
     GLFWwindow* m_window;
@@ -775,6 +910,9 @@ private:
 
     // Audio timing
     uint32_t m_audioFramesThisFrame = 1024;  // Default to block size
+
+    // Multi-window support
+    WindowManager* m_windowManager = nullptr;
 
     // Default states
     static const KeyState s_defaultKeyState;

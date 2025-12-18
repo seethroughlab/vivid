@@ -10,6 +10,7 @@
 #include <vivid/video_exporter.h>
 #include <vivid/cli.h>
 #include <vivid/addon_manager.h>
+#include <vivid/window_manager.h>
 #include "imgui/imgui_integration.h"
 #include "imgui/chain_visualizer.h"
 #include <webgpu/webgpu.h>
@@ -434,8 +435,13 @@ int main(int argc, char** argv) {
     std::cout << "WebGPU initialized successfully!" << std::endl;
     std::cout << "Window size: " << width << "x" << height << std::endl;
 
+    // Create WindowManager and adopt primary window
+    WindowManager windowManager(instance, adapter, device, queue);
+    windowManager.adoptPrimaryWindow(window, surface, width, height);
+
     // Create context
     Context ctx(window, device, queue);
+    ctx.setWindowManager(&windowManager);
 
     // Set render resolution from command-line (or default to window size)
     if (renderWidth > 0 && renderHeight > 0) {
@@ -1151,6 +1157,12 @@ int main(int argc, char** argv) {
 
         // Present BEFORE releasing the texture view
         wgpuSurfacePresent(surface);
+
+        // Present to secondary windows (span/multi-output)
+        // Note: Primary window (0) was already presented above
+        if (windowManager.windowCount() > 1) {
+            windowManager.presentAll(&ctx.chain(), ctx.outputTexture());
+        }
 
         // Poll device to process pending GPU work and prevent command buffer accumulation
         // This is critical when multiple operators submit command buffers per frame

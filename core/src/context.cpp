@@ -2,6 +2,7 @@
 
 #include <vivid/context.h>
 #include <vivid/chain.h>
+#include <vivid/window_manager.h>
 #include <cstring>
 
 namespace vivid {
@@ -182,6 +183,84 @@ int Context::currentMonitor() const {
     }
 
     return 0;  // Default to primary
+}
+
+// =============================================================================
+// Multi-Window Support
+// =============================================================================
+
+int Context::createOutputWindow(int monitorIndex) {
+    if (!m_windowManager) return -1;
+    return m_windowManager->createOutputWindow(monitorIndex, true);
+}
+
+void Context::destroyOutputWindow(int handle) {
+    if (m_windowManager) {
+        m_windowManager->destroyOutputWindow(handle);
+    }
+}
+
+void Context::setOutputWindowPos(int handle, int x, int y) {
+    if (m_windowManager) {
+        m_windowManager->setWindowPos(handle, x, y);
+    }
+}
+
+void Context::setOutputWindowSize(int handle, int w, int h) {
+    if (m_windowManager) {
+        m_windowManager->setWindowSize(handle, w, h);
+    }
+}
+
+void Context::setOutputWindowFullscreen(int handle, bool fullscreen, int monitorIndex) {
+    if (m_windowManager) {
+        m_windowManager->setWindowFullscreen(handle, fullscreen, monitorIndex);
+    }
+}
+
+void Context::setOutputWindowSource(int handle, const std::string& operatorName) {
+    if (m_windowManager) {
+        m_windowManager->setWindowSource(handle, operatorName);
+    }
+}
+
+int Context::outputWindowCount() const {
+    if (!m_windowManager) return 1;  // Primary window only
+    return m_windowManager->windowCount();
+}
+
+void Context::enableSpanMode(int columns, int rows) {
+    if (m_windowManager) {
+        m_windowManager->enableSpanMode(columns, rows);
+    }
+}
+
+void Context::disableSpanMode() {
+    if (m_windowManager) {
+        m_windowManager->disableSpanMode();
+    }
+}
+
+bool Context::isSpanMode() const {
+    if (!m_windowManager) return false;
+    return m_windowManager->isSpanMode();
+}
+
+glm::ivec2 Context::spanResolution() const {
+    if (!m_windowManager) return {0, 0};
+    return m_windowManager->spanResolution();
+}
+
+void Context::setSpanBezelGap(int hPixels, int vPixels) {
+    if (m_windowManager) {
+        m_windowManager->setBezelGap(hPixels, vPixels);
+    }
+}
+
+void Context::autoConfigureSpan() {
+    if (m_windowManager) {
+        m_windowManager->autoConfigureSpan();
+    }
 }
 
 } // namespace vivid
