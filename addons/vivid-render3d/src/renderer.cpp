@@ -106,7 +106,9 @@ struct ShadowUniforms {
     shadowBias: f32,
     shadowMapSize: f32,
     shadowEnabled: u32,
-    _pad: f32,
+    pointShadowEnabled: u32,
+    pointLightPos: vec3f,
+    pointLightRange: f32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -115,6 +117,7 @@ struct ShadowUniforms {
 @group(1) @binding(0) var<uniform> shadow: ShadowUniforms;
 @group(1) @binding(1) var shadowMap: texture_depth_2d;
 @group(1) @binding(2) var shadowSampler: sampler_comparison;
+@group(1) @binding(3) var pointShadowMap: texture_depth_cube;
 
 struct VertexInput {
     @location(0) position: vec3f,
@@ -184,6 +187,40 @@ fn sampleShadow(worldPos: vec3f) -> f32 {
     return shadowResult;
 }
 
+// Sample point light shadow from cube map
+fn samplePointShadow(worldPos: vec3f) -> f32 {
+    if (shadow.pointShadowEnabled == 0u) {
+        return 1.0;
+    }
+
+    // Vector from light to fragment
+    let lightToFrag = worldPos - shadow.pointLightPos;
+    let fragDist = length(lightToFrag);
+
+    // Normalize to get cube map sample direction
+    let sampleDir = lightToFrag / fragDist;
+
+    // The shadow map stores projected depth from perspective projection
+    // We need to compute the same projected depth for comparison
+    // For perspectiveRH_ZO: z_ndc = (far * (z - near)) / (z * (far - near))
+    // where z is the linear depth (fragDist), near=0.1, far=pointLightRange
+    let nearPlane = 0.1;
+    let farPlane = shadow.pointLightRange;
+    let z = max(fragDist, nearPlane);
+    let projectedDepth = (farPlane * (z - nearPlane)) / (z * (farPlane - nearPlane));
+
+    // Apply bias (in projected space)
+    let biasedDepth = projectedDepth - shadow.shadowBias;
+
+    // Sample cube map with comparison
+    let shadowResult = textureSampleCompare(
+        pointShadowMap, shadowSampler,
+        sampleDir, biasedDepth
+    );
+
+    return shadowResult;
+}
+
 // Debug function to get shadow info as vec3 (for visualization)
 fn getShadowDebugInfo(worldPos: vec3f) -> vec3f {
     if (shadow.shadowEnabled == 0u) {
@@ -239,7 +276,7 @@ fn calculateSimpleLighting(worldPos: vec3f, N: vec3f) -> vec3f {
     var Lo = vec3f(0.0);
     let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
 
-    // Get shadow factor once for the first directional light
+    // Get shadow factor once for the first shadow-casting light (directional or spot)
     let shadowFactor = sampleShadow(worldPos);
 
     for (var i = 0u; i < lightCount; i++) {
@@ -261,12 +298,21 @@ fn calculateSimpleLighting(worldPos: vec3f, N: vec3f) -> vec3f {
             let dist = length(lightVec);
             L = lightVec / max(dist, EPSILON);
             attenuation = getAttenuation(dist, light.range);
+            // Apply point light shadow from cube map
+            if (i == 0u) {
+                lightShadow = samplePointShadow(worldPos);
+            }
         } else {
+            // LIGHT_SPOT
             let lightVec = light.position - worldPos;
             let dist = length(lightVec);
             L = lightVec / max(dist, EPSILON);
             attenuation = getAttenuation(dist, light.range);
             attenuation *= getSpotFactor(-L, normalize(light.direction), light.spotBlend, light.spotAngle);
+            // Apply shadow to spot light (uses same 2D shadow map as directional)
+            if (i == 0u) {
+                lightShadow = shadowFactor;
+            }
         }
 
         let NdotL = max(dot(N, L), 0.0);
@@ -1718,7 +1764,7 @@ glm::mat4 Render3D::computeDirectionalLightMatrix(const LightData& light, const 
 
     // Use a fixed frustum size for now - simpler and more predictable
     // Can be improved later with scene bounds calculation
-    float frustumSize = 25.0f;  // Covers ±25 units for larger scenes
+    float frustumSize = 10.0f;  // Covers ±10 units - good balance of coverage and resolution
     glm::vec3 sceneCenter = glm::vec3(0, 0, 0);
 
     // Position light at a fixed distance from scene center
@@ -1979,6 +2025,224 @@ void Render3D::destroyShadowResources() {
         wgpuTextureDestroy(m_dummyShadowTexture);
         wgpuTextureRelease(m_dummyShadowTexture);
         m_dummyShadowTexture = nullptr;
+    }
+    // Clean up point light shadow resources
+    if (m_pointShadowCubeView) {
+        wgpuTextureViewRelease(m_pointShadowCubeView);
+        m_pointShadowCubeView = nullptr;
+    }
+    for (int i = 0; i < 6; i++) {
+        if (m_pointShadowFaceViews[i]) {
+            wgpuTextureViewRelease(m_pointShadowFaceViews[i]);
+            m_pointShadowFaceViews[i] = nullptr;
+        }
+    }
+    if (m_pointShadowMapTexture) {
+        wgpuTextureDestroy(m_pointShadowMapTexture);
+        wgpuTextureRelease(m_pointShadowMapTexture);
+        m_pointShadowMapTexture = nullptr;
+    }
+    if (m_pointShadowSampleBindGroup) {
+        wgpuBindGroupRelease(m_pointShadowSampleBindGroup);
+        m_pointShadowSampleBindGroup = nullptr;
+    }
+    if (m_dummyPointShadowView) {
+        wgpuTextureViewRelease(m_dummyPointShadowView);
+        m_dummyPointShadowView = nullptr;
+    }
+    if (m_dummyPointShadowTexture) {
+        wgpuTextureDestroy(m_dummyPointShadowTexture);
+        wgpuTextureRelease(m_dummyPointShadowTexture);
+        m_dummyPointShadowTexture = nullptr;
+    }
+}
+
+void Render3D::createPointShadowResources(Context& ctx) {
+    if (m_pointShadowMapTexture) return;  // Already created
+
+    WGPUDevice device = ctx.device();
+
+    // Create cube map depth texture for point light shadows
+    // Cube maps in WebGPU are 2D array textures with 6 layers
+    WGPUTextureDescriptor cubeTexDesc = {};
+    cubeTexDesc.label = toStringView("Point Shadow Cube Map");
+    cubeTexDesc.size.width = m_shadowMapResolution;
+    cubeTexDesc.size.height = m_shadowMapResolution;
+    cubeTexDesc.size.depthOrArrayLayers = 6;  // 6 faces
+    cubeTexDesc.mipLevelCount = 1;
+    cubeTexDesc.sampleCount = 1;
+    cubeTexDesc.dimension = WGPUTextureDimension_2D;
+    cubeTexDesc.format = WGPUTextureFormat_Depth32Float;
+    cubeTexDesc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+
+    m_pointShadowMapTexture = wgpuDeviceCreateTexture(device, &cubeTexDesc);
+
+    // Create views for each face (for rendering)
+    for (int i = 0; i < 6; i++) {
+        WGPUTextureViewDescriptor faceViewDesc = {};
+        faceViewDesc.format = WGPUTextureFormat_Depth32Float;
+        faceViewDesc.dimension = WGPUTextureViewDimension_2D;
+        faceViewDesc.baseMipLevel = 0;
+        faceViewDesc.mipLevelCount = 1;
+        faceViewDesc.baseArrayLayer = i;
+        faceViewDesc.arrayLayerCount = 1;
+        m_pointShadowFaceViews[i] = wgpuTextureCreateView(m_pointShadowMapTexture, &faceViewDesc);
+    }
+
+    // Create cube view for sampling in main pass
+    WGPUTextureViewDescriptor cubeViewDesc = {};
+    cubeViewDesc.format = WGPUTextureFormat_Depth32Float;
+    cubeViewDesc.dimension = WGPUTextureViewDimension_Cube;
+    cubeViewDesc.baseMipLevel = 0;
+    cubeViewDesc.mipLevelCount = 1;
+    cubeViewDesc.baseArrayLayer = 0;
+    cubeViewDesc.arrayLayerCount = 6;
+    m_pointShadowCubeView = wgpuTextureCreateView(m_pointShadowMapTexture, &cubeViewDesc);
+}
+
+glm::mat4 Render3D::computePointLightFaceMatrix(const glm::vec3& lightPos, int face, float nearPlane, float farPlane) {
+    // Cube face directions and up vectors
+    // +X, -X, +Y, -Y, +Z, -Z
+    static const glm::vec3 directions[6] = {
+        { 1.0f,  0.0f,  0.0f},  // +X
+        {-1.0f,  0.0f,  0.0f},  // -X
+        { 0.0f,  1.0f,  0.0f},  // +Y
+        { 0.0f, -1.0f,  0.0f},  // -Y
+        { 0.0f,  0.0f,  1.0f},  // +Z
+        { 0.0f,  0.0f, -1.0f}   // -Z
+    };
+    static const glm::vec3 ups[6] = {
+        { 0.0f, -1.0f,  0.0f},  // +X
+        { 0.0f, -1.0f,  0.0f},  // -X
+        { 0.0f,  0.0f,  1.0f},  // +Y
+        { 0.0f,  0.0f, -1.0f},  // -Y
+        { 0.0f, -1.0f,  0.0f},  // +Z
+        { 0.0f, -1.0f,  0.0f}   // -Z
+    };
+
+    glm::mat4 view = glm::lookAt(lightPos, lightPos + directions[face], ups[face]);
+    // 90 degree FOV for cube map face, WebGPU expects [0,1] depth
+    glm::mat4 proj = glm::perspectiveRH_ZO(glm::radians(90.0f), 1.0f, nearPlane, farPlane);
+    return proj * view;
+}
+
+bool Render3D::hasPointLightShadow() const {
+    for (const auto* lightOp : m_lightOps) {
+        if (lightOp) {
+            const LightData& light = lightOp->outputLight();
+            if (light.castShadow && light.type == LightType::Point) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
+    // Get scene to render
+    Scene* sceneToRender = m_scene;
+    if (m_composer) {
+        sceneToRender = &m_composer->outputScene();
+    }
+    if (!sceneToRender || sceneToRender->empty()) return;
+
+    // Find the first shadow-casting point light
+    const LightData* pointLight = nullptr;
+    for (const auto* lightOp : m_lightOps) {
+        if (lightOp) {
+            const LightData& light = lightOp->outputLight();
+            if (light.castShadow && light.type == LightType::Point) {
+                pointLight = &light;
+                break;
+            }
+        }
+    }
+    if (!pointLight) return;
+
+    WGPUDevice device = ctx.device();
+    const auto& objects = sceneToRender->objects();
+    constexpr size_t SHADOW_UNIFORM_ALIGNMENT = 256;
+
+    // Cache point light position and range for shader
+    m_pointLightPos = pointLight->position;
+    m_pointLightRange = pointLight->range;
+
+    float nearPlane = 0.1f;
+    float farPlane = pointLight->range;
+
+    struct ShadowUniforms {
+        float lightViewProj[16];
+        float model[16];
+    };
+
+    // Render each of the 6 cube faces
+    for (int face = 0; face < 6; face++) {
+        glm::mat4 faceMatrix = computePointLightFaceMatrix(pointLight->position, face, nearPlane, farPlane);
+
+        // Write all object uniforms for this face
+        for (size_t i = 0; i < objects.size(); i++) {
+            const auto& obj = objects[i];
+            if (!obj.mesh) continue;
+
+            ShadowUniforms uniforms;
+            memcpy(uniforms.lightViewProj, glm::value_ptr(faceMatrix), 64);
+            memcpy(uniforms.model, glm::value_ptr(obj.transform), 64);
+
+            size_t offset = i * SHADOW_UNIFORM_ALIGNMENT;
+            wgpuQueueWriteBuffer(ctx.queue(), m_shadowPassUniformBuffer, offset, &uniforms, sizeof(uniforms));
+        }
+
+        // Create bind group for this pass
+        WGPUBindGroupEntry entry = {};
+        entry.binding = 0;
+        entry.buffer = m_shadowPassUniformBuffer;
+        entry.size = sizeof(ShadowUniforms);
+
+        WGPUBindGroupDescriptor bindDesc = {};
+        bindDesc.layout = m_shadowBindGroupLayout;
+        bindDesc.entryCount = 1;
+        bindDesc.entries = &entry;
+
+        WGPUBindGroup shadowBindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+
+        // Begin render pass for this cube face
+        WGPURenderPassDepthStencilAttachment depthAttachment = {};
+        depthAttachment.view = m_pointShadowFaceViews[face];
+        depthAttachment.depthLoadOp = WGPULoadOp_Clear;
+        depthAttachment.depthStoreOp = WGPUStoreOp_Store;
+        depthAttachment.depthClearValue = 1.0f;
+
+        WGPURenderPassDescriptor passDesc = {};
+        passDesc.colorAttachmentCount = 0;
+        passDesc.colorAttachments = nullptr;
+        passDesc.depthStencilAttachment = &depthAttachment;
+
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
+        wgpuRenderPassEncoderSetPipeline(pass, m_shadowPassPipeline);
+
+        // Render each object
+        for (size_t i = 0; i < objects.size(); i++) {
+            const auto& obj = objects[i];
+            if (!obj.mesh) continue;
+
+            uint32_t dynamicOffset = static_cast<uint32_t>(i * SHADOW_UNIFORM_ALIGNMENT);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, shadowBindGroup, 1, &dynamicOffset);
+
+            wgpuRenderPassEncoderSetVertexBuffer(pass, 0, obj.mesh->vertexBuffer(), 0,
+                                                  obj.mesh->vertexCount() * sizeof(Vertex3D));
+            if (obj.mesh->indexBuffer()) {
+                wgpuRenderPassEncoderSetIndexBuffer(pass, obj.mesh->indexBuffer(),
+                                                     WGPUIndexFormat_Uint32, 0,
+                                                     obj.mesh->indexCount() * sizeof(uint32_t));
+                wgpuRenderPassEncoderDrawIndexed(pass, obj.mesh->indexCount(), 1, 0, 0, 0);
+            } else {
+                wgpuRenderPassEncoderDraw(pass, obj.mesh->vertexCount(), 1, 0, 0);
+            }
+        }
+
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+        wgpuBindGroupRelease(shadowBindGroup);
     }
 }
 
@@ -2322,28 +2586,35 @@ void Render3D::createPipeline(Context& ctx) {
     m_bindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &layoutDesc);
 
     // Create shadow sample bind group layout (group 1) for sampling shadows in main pass
-    WGPUBindGroupLayoutEntry shadowSampleEntries[3] = {};
+    WGPUBindGroupLayoutEntry shadowSampleEntries[4] = {};
 
     // Uniform buffer with shadow data (lightViewProj, bias, etc.)
+    // ShadowUniforms: mat4 (64) + bias (4) + mapSize (4) + enabled (4) + pointEnabled (4) + pointPos (12) + pointRange (4) = 96 bytes
     shadowSampleEntries[0].binding = 0;
     shadowSampleEntries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     shadowSampleEntries[0].buffer.type = WGPUBufferBindingType_Uniform;
-    shadowSampleEntries[0].buffer.minBindingSize = 80;  // mat4 + 4 floats
+    shadowSampleEntries[0].buffer.minBindingSize = 96;
 
-    // Shadow map depth texture
+    // Shadow map depth texture (2D for directional/spot)
     shadowSampleEntries[1].binding = 1;
     shadowSampleEntries[1].visibility = WGPUShaderStage_Fragment;
     shadowSampleEntries[1].texture.sampleType = WGPUTextureSampleType_Depth;
     shadowSampleEntries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
 
-    // Comparison sampler
+    // Comparison sampler (shared for 2D and cube maps)
     shadowSampleEntries[2].binding = 2;
     shadowSampleEntries[2].visibility = WGPUShaderStage_Fragment;
     shadowSampleEntries[2].sampler.type = WGPUSamplerBindingType_Comparison;
 
+    // Point shadow cube map depth texture
+    shadowSampleEntries[3].binding = 3;
+    shadowSampleEntries[3].visibility = WGPUShaderStage_Fragment;
+    shadowSampleEntries[3].texture.sampleType = WGPUTextureSampleType_Depth;
+    shadowSampleEntries[3].texture.viewDimension = WGPUTextureViewDimension_Cube;
+
     WGPUBindGroupLayoutDescriptor shadowSampleLayoutDesc = {};
     shadowSampleLayoutDesc.label = toStringView("Shadow Sample Bind Group Layout");
-    shadowSampleLayoutDesc.entryCount = 3;
+    shadowSampleLayoutDesc.entryCount = 4;
     shadowSampleLayoutDesc.entries = shadowSampleEntries;
     m_shadowSampleBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &shadowSampleLayoutDesc);
 
@@ -2356,13 +2627,14 @@ void Render3D::createPipeline(Context& ctx) {
 
     // Create shadow sample uniform buffer (for shadow data in main pass)
     // This needs to exist even when shadows are disabled (shader expects it)
+    // ShadowUniforms: mat4 (64) + bias (4) + mapSize (4) + enabled (4) + pointEnabled (4) + pointPos (12) + pointRange (4) = 96 bytes
     WGPUBufferDescriptor shadowSampleBufDesc = {};
     shadowSampleBufDesc.label = toStringView("Shadow Sample Uniforms");
-    shadowSampleBufDesc.size = 80;  // mat4 (64) + bias (4) + mapSize (4) + enabled (4) + pad (4)
+    shadowSampleBufDesc.size = 96;
     shadowSampleBufDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_shadowSampleUniformBuffer = wgpuDeviceCreateBuffer(device, &shadowSampleBufDesc);
 
-    // Create a dummy 1x1 depth texture for when shadows are disabled
+    // Create a dummy 1x1 depth texture for when 2D shadows are disabled
     WGPUTextureDescriptor dummyDepthDesc = {};
     dummyDepthDesc.label = toStringView("Dummy Shadow Map");
     dummyDepthDesc.size = {1, 1, 1};
@@ -2379,6 +2651,25 @@ void Render3D::createPipeline(Context& ctx) {
     dummyViewDesc.mipLevelCount = 1;
     dummyViewDesc.arrayLayerCount = 1;
     m_dummyShadowView = wgpuTextureCreateView(m_dummyShadowTexture, &dummyViewDesc);
+
+    // Create a dummy 1x1x6 cube depth texture for when point shadows are disabled
+    WGPUTextureDescriptor dummyPointDepthDesc = {};
+    dummyPointDepthDesc.label = toStringView("Dummy Point Shadow Cube Map");
+    dummyPointDepthDesc.size = {1, 1, 6};  // 6 faces for cube
+    dummyPointDepthDesc.mipLevelCount = 1;
+    dummyPointDepthDesc.sampleCount = 1;
+    dummyPointDepthDesc.dimension = WGPUTextureDimension_2D;
+    dummyPointDepthDesc.format = WGPUTextureFormat_Depth32Float;
+    dummyPointDepthDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
+    m_dummyPointShadowTexture = wgpuDeviceCreateTexture(device, &dummyPointDepthDesc);
+
+    WGPUTextureViewDescriptor dummyPointViewDesc = {};
+    dummyPointViewDesc.format = WGPUTextureFormat_Depth32Float;
+    dummyPointViewDesc.dimension = WGPUTextureViewDimension_Cube;
+    dummyPointViewDesc.mipLevelCount = 1;
+    dummyPointViewDesc.baseArrayLayer = 0;
+    dummyPointViewDesc.arrayLayerCount = 6;
+    m_dummyPointShadowView = wgpuTextureCreateView(m_dummyPointShadowTexture, &dummyPointViewDesc);
 
     // Create comparison sampler for shadow mapping (reused for both dummy and real)
     WGPUSamplerDescriptor shadowSamplerDesc = {};
@@ -2399,11 +2690,15 @@ void Render3D::createPipeline(Context& ctx) {
         float shadowBias;
         float shadowMapSize;
         uint32_t shadowEnabled;
-        float _pad;
+        uint32_t pointShadowEnabled;
+        float pointLightPos[3];
+        float pointLightRange;
     } defaultShadowUniforms = {};
     defaultShadowUniforms.shadowEnabled = 0;  // Disabled
+    defaultShadowUniforms.pointShadowEnabled = 0;  // Disabled
     defaultShadowUniforms.shadowBias = 0.001f;
     defaultShadowUniforms.shadowMapSize = 1.0f;
+    defaultShadowUniforms.pointLightRange = 50.0f;
     // Identity matrix for lightViewProj
     defaultShadowUniforms.lightViewProj[0] = 1.0f;
     defaultShadowUniforms.lightViewProj[5] = 1.0f;
@@ -2411,10 +2706,10 @@ void Render3D::createPipeline(Context& ctx) {
     defaultShadowUniforms.lightViewProj[15] = 1.0f;
     wgpuQueueWriteBuffer(ctx.queue(), m_shadowSampleUniformBuffer, 0, &defaultShadowUniforms, sizeof(defaultShadowUniforms));
 
-    WGPUBindGroupEntry shadowSampleBindEntries[3] = {};
+    WGPUBindGroupEntry shadowSampleBindEntries[4] = {};
     shadowSampleBindEntries[0].binding = 0;
     shadowSampleBindEntries[0].buffer = m_shadowSampleUniformBuffer;
-    shadowSampleBindEntries[0].size = 80;
+    shadowSampleBindEntries[0].size = 96;
 
     shadowSampleBindEntries[1].binding = 1;
     shadowSampleBindEntries[1].textureView = m_dummyShadowView;
@@ -2422,13 +2717,16 @@ void Render3D::createPipeline(Context& ctx) {
     shadowSampleBindEntries[2].binding = 2;
     shadowSampleBindEntries[2].sampler = m_shadowSampler;
 
+    shadowSampleBindEntries[3].binding = 3;
+    shadowSampleBindEntries[3].textureView = m_dummyPointShadowView;
+
     WGPUBindGroupDescriptor shadowSampleBindDesc = {};
     shadowSampleBindDesc.layout = m_shadowSampleBindGroupLayout;
-    shadowSampleBindDesc.entryCount = 3;
+    shadowSampleBindDesc.entryCount = 4;
     shadowSampleBindDesc.entries = shadowSampleBindEntries;
     m_shadowSampleBindGroup = wgpuDeviceCreateBindGroup(device, &shadowSampleBindDesc);
-    // Note: m_dummyShadowTexture and m_dummyShadowView are kept alive for bind group use
-    // They'll be released in cleanup()
+    // Note: m_dummyShadowTexture, m_dummyShadowView, m_dummyPointShadowTexture, m_dummyPointShadowView
+    // are kept alive for bind group use. They'll be released in cleanup()
 
     // Vertex attributes for Vertex3D (with tangent for PBR)
     WGPUVertexAttribute vertexAttrs[5] = {};
@@ -3264,60 +3562,88 @@ void Render3D::process(Context& ctx) {
 
     // Shadow pass (before main render pass)
     bool shadowPassRendered = false;
-    if (m_shadowsEnabled && hasShadowCastingLight()) {
-        if (!m_shadowMapTexture) {
+    bool pointShadowPassRendered = false;
+    bool hasDirectionalOrSpotShadow = hasShadowCastingLight();
+    bool hasPointShadow = hasPointLightShadow();
+
+    if (m_shadowsEnabled && (hasDirectionalOrSpotShadow || hasPointShadow)) {
+        // Create resources for directional/spot shadows
+        if (hasDirectionalOrSpotShadow && !m_shadowMapTexture) {
             createShadowResources(ctx);
         }
-        if (m_shadowPassPipeline) {
+        // Create resources for point shadows
+        if (hasPointShadow && !m_pointShadowMapTexture) {
+            createPointShadowResources(ctx);
+        }
+
+        // Render directional/spot shadow pass
+        if (hasDirectionalOrSpotShadow && m_shadowPassPipeline) {
             renderShadowPass(ctx, encoder);
             shadowPassRendered = true;
-
-            // Update shadow sample uniforms with light-space matrix
-            struct ShadowSampleUniforms {
-                float lightViewProj[16];
-                float shadowBias;
-                float shadowMapSize;
-                uint32_t shadowEnabled;
-                float _pad;
-            } shadowUniforms;
-            memcpy(shadowUniforms.lightViewProj, glm::value_ptr(m_lightViewProj), 64);
-            shadowUniforms.shadowBias = 0.002f;  // Default bias
-            shadowUniforms.shadowMapSize = static_cast<float>(m_shadowMapResolution);
-            shadowUniforms.shadowEnabled = 1;
-
-            // Find shadow-casting light to get its bias
-            for (const auto* lightOp : m_lightOps) {
-                if (lightOp && lightOp->outputLight().castShadow) {
-                    shadowUniforms.shadowBias = lightOp->outputLight().shadowBias;
-                    break;
-                }
-            }
-
-            wgpuQueueWriteBuffer(ctx.queue(), m_shadowSampleUniformBuffer, 0, &shadowUniforms, sizeof(shadowUniforms));
-
-            // Recreate shadow sample bind group with real shadow map
-            // (the default one created in createPipeline uses a dummy texture)
-            if (m_shadowSampleBindGroup) {
-                wgpuBindGroupRelease(m_shadowSampleBindGroup);
-            }
-
-            WGPUBindGroupEntry shadowSampleBindEntries[3] = {};
-            shadowSampleBindEntries[0].binding = 0;
-            shadowSampleBindEntries[0].buffer = m_shadowSampleUniformBuffer;
-            shadowSampleBindEntries[0].size = 80;
-
-            shadowSampleBindEntries[1].binding = 1;
-            shadowSampleBindEntries[1].textureView = m_shadowMapView;  // Real shadow map
-
-            shadowSampleBindEntries[2].binding = 2;
-            shadowSampleBindEntries[2].sampler = m_shadowSampler;
-
-            WGPUBindGroupDescriptor shadowSampleBindDesc = {};
-            shadowSampleBindDesc.layout = m_shadowSampleBindGroupLayout;
-            shadowSampleBindDesc.entryCount = 3;
-            shadowSampleBindDesc.entries = shadowSampleBindEntries;
-            m_shadowSampleBindGroup = wgpuDeviceCreateBindGroup(device, &shadowSampleBindDesc);
         }
+
+        // Render point shadow pass (6 cube faces)
+        if (hasPointShadow && m_shadowPassPipeline && m_pointShadowMapTexture) {
+            renderPointShadowPass(ctx, encoder);
+            pointShadowPassRendered = true;
+        }
+
+        // Update shadow sample uniforms with light-space matrix and point light data
+        struct ShadowSampleUniforms {
+            float lightViewProj[16];
+            float shadowBias;
+            float shadowMapSize;
+            uint32_t shadowEnabled;
+            uint32_t pointShadowEnabled;
+            float pointLightPos[3];
+            float pointLightRange;
+        } shadowUniforms = {};
+
+        memcpy(shadowUniforms.lightViewProj, glm::value_ptr(m_lightViewProj), 64);
+        shadowUniforms.shadowBias = 0.002f;  // Default bias
+        shadowUniforms.shadowMapSize = static_cast<float>(m_shadowMapResolution);
+        shadowUniforms.shadowEnabled = shadowPassRendered ? 1 : 0;
+        shadowUniforms.pointShadowEnabled = pointShadowPassRendered ? 1 : 0;
+        shadowUniforms.pointLightPos[0] = m_pointLightPos.x;
+        shadowUniforms.pointLightPos[1] = m_pointLightPos.y;
+        shadowUniforms.pointLightPos[2] = m_pointLightPos.z;
+        shadowUniforms.pointLightRange = m_pointLightRange;
+
+        // Find shadow-casting light to get its bias
+        for (const auto* lightOp : m_lightOps) {
+            if (lightOp && lightOp->outputLight().castShadow) {
+                shadowUniforms.shadowBias = lightOp->outputLight().shadowBias;
+                break;
+            }
+        }
+
+        wgpuQueueWriteBuffer(ctx.queue(), m_shadowSampleUniformBuffer, 0, &shadowUniforms, sizeof(shadowUniforms));
+
+        // Recreate shadow sample bind group with real shadow maps
+        // (the default one created in createPipeline uses dummy textures)
+        if (m_shadowSampleBindGroup) {
+            wgpuBindGroupRelease(m_shadowSampleBindGroup);
+        }
+
+        WGPUBindGroupEntry shadowSampleBindEntries[4] = {};
+        shadowSampleBindEntries[0].binding = 0;
+        shadowSampleBindEntries[0].buffer = m_shadowSampleUniformBuffer;
+        shadowSampleBindEntries[0].size = 96;
+
+        shadowSampleBindEntries[1].binding = 1;
+        shadowSampleBindEntries[1].textureView = shadowPassRendered ? m_shadowMapView : m_dummyShadowView;
+
+        shadowSampleBindEntries[2].binding = 2;
+        shadowSampleBindEntries[2].sampler = m_shadowSampler;
+
+        shadowSampleBindEntries[3].binding = 3;
+        shadowSampleBindEntries[3].textureView = pointShadowPassRendered ? m_pointShadowCubeView : m_dummyPointShadowView;
+
+        WGPUBindGroupDescriptor shadowSampleBindDesc = {};
+        shadowSampleBindDesc.layout = m_shadowSampleBindGroupLayout;
+        shadowSampleBindDesc.entryCount = 4;
+        shadowSampleBindDesc.entries = shadowSampleBindEntries;
+        m_shadowSampleBindGroup = wgpuDeviceCreateBindGroup(device, &shadowSampleBindDesc);
     } else if (m_shadowSampleBindGroup) {
         // Shadows disabled - update uniforms to disable shadow sampling
         struct ShadowSampleUniforms {
@@ -3325,9 +3651,12 @@ void Render3D::process(Context& ctx) {
             float shadowBias;
             float shadowMapSize;
             uint32_t shadowEnabled;
-            float _pad;
+            uint32_t pointShadowEnabled;
+            float pointLightPos[3];
+            float pointLightRange;
         } shadowUniforms = {};
         shadowUniforms.shadowEnabled = 0;  // Disabled
+        shadowUniforms.pointShadowEnabled = 0;  // Disabled
         wgpuQueueWriteBuffer(ctx.queue(), m_shadowSampleUniformBuffer, 0, &shadowUniforms, sizeof(shadowUniforms));
     }
 

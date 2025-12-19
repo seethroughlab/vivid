@@ -291,11 +291,15 @@ private:
 
     // Shadow mapping helpers
     void createShadowResources(Context& ctx);
+    void createPointShadowResources(Context& ctx);
     void destroyShadowResources();
     void renderShadowPass(Context& ctx, WGPUCommandEncoder encoder);
+    void renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder);
     glm::mat4 computeDirectionalLightMatrix(const LightData& light, const Scene& scene);
     glm::mat4 computeSpotLightMatrix(const LightData& light);
+    glm::mat4 computePointLightFaceMatrix(const glm::vec3& lightPos, int face, float nearPlane, float farPlane);
     bool hasShadowCastingLight() const;
+    bool hasPointLightShadow() const;
 
     // Scene
     Scene* m_scene = nullptr;
@@ -331,7 +335,7 @@ private:
     // Debug
     bool m_wireframe = false;
 
-    // Shadow mapping
+    // Shadow mapping (directional/spot)
     bool m_shadowsEnabled = false;
     int m_shadowMapResolution = 1024;
     WGPUTexture m_shadowMapTexture = nullptr;
@@ -344,9 +348,20 @@ private:
     WGPUBindGroupLayout m_shadowSampleBindGroupLayout = nullptr;  // For sampling shadows in main pass (group 2)
     WGPUBindGroup m_shadowSampleBindGroup = nullptr;  // Binds shadow map + sampler for main pass
     glm::mat4 m_lightViewProj = glm::mat4(1.0f);  // Cached light-space matrix
+
+    // Point light shadow mapping (cube map)
+    WGPUTexture m_pointShadowMapTexture = nullptr;  // Cube map depth texture
+    WGPUTextureView m_pointShadowFaceViews[6] = {};  // Views for rendering each face
+    WGPUTextureView m_pointShadowCubeView = nullptr;  // Cube view for sampling
+    WGPUBindGroup m_pointShadowSampleBindGroup = nullptr;  // Binds cube shadow map for main pass
+    glm::vec3 m_pointLightPos = glm::vec3(0.0f);  // Cached point light position
+    float m_pointLightRange = 50.0f;  // Cached point light range
+
     // Dummy shadow resources (for when shadows are disabled)
     WGPUTexture m_dummyShadowTexture = nullptr;
     WGPUTextureView m_dummyShadowView = nullptr;
+    WGPUTexture m_dummyPointShadowTexture = nullptr;  // Dummy cube map
+    WGPUTextureView m_dummyPointShadowView = nullptr;
 
     // Displacement
     effects::TextureOperator* m_displacementOp = nullptr;

@@ -4,6 +4,7 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/render3d/render3d.h>
+#include <cmath>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -77,6 +78,20 @@ void setup(Context& ctx) {
     std::cout << "========================================\n" << std::endl;
 }
 
-void update(Context& ctx) {}
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& spot = chain.get<SpotLight>("spotlight");
+
+    // Swing the spotlight side to side
+    float time = static_cast<float>(ctx.time());
+    float swingX = std::sin(time * 1.2f) * 2.5f;
+
+    // Position swings side to side, stays at same height/depth
+    spot.position(swingX, 5.0f, 3.0f);
+
+    // Direction adjusted to always point toward center of scene
+    float dirX = -swingX * 0.15f;  // Slight horizontal correction
+    spot.direction(dirX, -1.0f, -0.5f);
+}
 
 VIVID_CHAIN(setup, update)
