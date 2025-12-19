@@ -18,6 +18,7 @@ class CameraOperator;
 class LightOperator;
 class TexturedMaterial;
 class IBLEnvironment;
+struct LightData;
 }
 
 namespace vivid::render3d {
@@ -188,6 +189,22 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Shadows
+    /// @{
+
+    /// Enable/disable shadow mapping
+    /// @param enabled Whether to render shadows
+    void setShadows(bool enabled);
+
+    /// Set shadow map resolution (power of 2: 512, 1024, 2048)
+    /// Higher resolution = sharper shadows but more memory/performance cost
+    void setShadowMapResolution(int size);
+
+    /// Check if shadows are enabled
+    bool hasShadows() const { return m_shadowsEnabled; }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Debug
     /// @{
 
@@ -272,6 +289,14 @@ private:
     void createPipeline(Context& ctx);
     void createDepthBuffer(Context& ctx);
 
+    // Shadow mapping helpers
+    void createShadowResources(Context& ctx);
+    void destroyShadowResources();
+    void renderShadowPass(Context& ctx, WGPUCommandEncoder encoder);
+    glm::mat4 computeDirectionalLightMatrix(const LightData& light, const Scene& scene);
+    glm::mat4 computeSpotLightMatrix(const LightData& light);
+    bool hasShadowCastingLight() const;
+
     // Scene
     Scene* m_scene = nullptr;
     SceneComposer* m_composer = nullptr;  // Alternative to m_scene for node-based workflow
@@ -305,6 +330,23 @@ private:
 
     // Debug
     bool m_wireframe = false;
+
+    // Shadow mapping
+    bool m_shadowsEnabled = false;
+    int m_shadowMapResolution = 1024;
+    WGPUTexture m_shadowMapTexture = nullptr;
+    WGPUTextureView m_shadowMapView = nullptr;
+    WGPURenderPipeline m_shadowPassPipeline = nullptr;
+    WGPUSampler m_shadowSampler = nullptr;  // Comparison sampler for PCF
+    WGPUBuffer m_shadowPassUniformBuffer = nullptr;  // For shadow pass (lightViewProj + model)
+    WGPUBuffer m_shadowSampleUniformBuffer = nullptr;  // For shadow sampling in main pass
+    WGPUBindGroupLayout m_shadowBindGroupLayout = nullptr;  // For shadow pass uniforms
+    WGPUBindGroupLayout m_shadowSampleBindGroupLayout = nullptr;  // For sampling shadows in main pass (group 2)
+    WGPUBindGroup m_shadowSampleBindGroup = nullptr;  // Binds shadow map + sampler for main pass
+    glm::mat4 m_lightViewProj = glm::mat4(1.0f);  // Cached light-space matrix
+    // Dummy shadow resources (for when shadows are disabled)
+    WGPUTexture m_dummyShadowTexture = nullptr;
+    WGPUTextureView m_dummyShadowView = nullptr;
 
     // Displacement
     effects::TextureOperator* m_displacementOp = nullptr;

@@ -43,6 +43,10 @@ struct LightData {
     float range = 10.0f;                         ///< Falloff distance (Point/Spot)
     float spotAngle = 45.0f;                     ///< Outer cone angle in degrees (Spot)
     float spotBlend = 0.1f;                      ///< Inner/outer cone blend (Spot)
+
+    // Shadow parameters
+    bool castShadow = false;                     ///< Whether this light casts shadows
+    float shadowBias = 0.001f;                   ///< Depth bias to prevent shadow acne
 };
 
 /**
@@ -134,6 +138,23 @@ public:
         }
     }
 
+    /// Enable/disable shadow casting for this light
+    void castShadow(bool enabled) {
+        if (m_light.castShadow != enabled) {
+            m_light.castShadow = enabled;
+            markDirty();
+        }
+    }
+
+    /// Set shadow depth bias (0.0001 - 0.01, default 0.001)
+    /// Higher values reduce shadow acne but can cause peter panning
+    void shadowBias(float bias) {
+        if (m_light.shadowBias != bias) {
+            m_light.shadowBias = bias;
+            markDirty();
+        }
+    }
+
     /// Connect intensity to another operator's output value
     void intensityInput(Operator* op) {
         setInput(0, op);
@@ -148,6 +169,11 @@ public:
         // Read animated intensity if connected (overrides param)
         if (auto* input = getInput(0)) {
             m_light.intensity = input->outputValue();
+        }
+
+        // Notify downstream operators (like Render3D) when dirty
+        if (needsCook()) {
+            didCook();
         }
     }
 
@@ -225,6 +251,24 @@ public:
         setInput(0, op);
     }
 
+    /// Enable/disable shadow casting for this light
+    /// Note: Point light shadows use cube maps (6 shadow passes)
+    void castShadow(bool enabled) {
+        if (m_light.castShadow != enabled) {
+            m_light.castShadow = enabled;
+            markDirty();
+        }
+    }
+
+    /// Set shadow depth bias (0.0001 - 0.01, default 0.001)
+    /// Higher values reduce shadow acne but can cause peter panning
+    void shadowBias(float bias) {
+        if (m_light.shadowBias != bias) {
+            m_light.shadowBias = bias;
+            markDirty();
+        }
+    }
+
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
@@ -235,6 +279,11 @@ public:
         // Read animated intensity if connected (overrides param)
         if (auto* input = getInput(0)) {
             m_light.intensity = input->outputValue();
+        }
+
+        // Notify downstream operators when dirty
+        if (needsCook()) {
+            didCook();
         }
     }
 
@@ -335,6 +384,23 @@ public:
         setInput(0, op);
     }
 
+    /// Enable/disable shadow casting for this light
+    void castShadow(bool enabled) {
+        if (m_light.castShadow != enabled) {
+            m_light.castShadow = enabled;
+            markDirty();
+        }
+    }
+
+    /// Set shadow depth bias (0.0001 - 0.01, default 0.001)
+    /// Higher values reduce shadow acne but can cause peter panning
+    void shadowBias(float bias) {
+        if (m_light.shadowBias != bias) {
+            m_light.shadowBias = bias;
+            markDirty();
+        }
+    }
+
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
@@ -347,6 +413,11 @@ public:
         // Read animated intensity if connected (overrides param)
         if (auto* input = getInput(0)) {
             m_light.intensity = input->outputValue();
+        }
+
+        // Notify downstream operators when dirty
+        if (needsCook()) {
+            didCook();
         }
     }
 
