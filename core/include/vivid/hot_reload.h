@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <vector>
 
 namespace fs = std::filesystem;
 
@@ -14,6 +15,21 @@ namespace vivid {
 
 class Context;
 class AddonRegistry;
+
+/**
+ * @brief Structured representation of a compile error
+ */
+struct CompileError {
+    std::string file;       ///< Source file path
+    int line = 0;           ///< Line number (1-based)
+    int column = 0;         ///< Column number (1-based)
+    std::string severity;   ///< "error", "warning", "note"
+    std::string message;    ///< Error message text
+    std::string context;    ///< Optional source context
+
+    /// Convert to JSON string
+    std::string toJson() const;
+};
 
 // Chain function types
 using SetupFn = void(*)(Context&);
@@ -54,6 +70,12 @@ public:
     const std::string& getError() const { return m_error; }
     bool hasError() const { return !m_error.empty(); }
 
+    // Get structured compile errors (parsed from compiler output)
+    const std::vector<CompileError>& getCompileErrors() const { return m_compileErrors; }
+
+    // Get errors as JSON string
+    std::string getErrorsJson() const;
+
     // Force a reload
     void forceReload();
 
@@ -75,9 +97,13 @@ private:
     int m_buildNumber = 0;          // Incremented each build to avoid caching
 
     std::string m_error;
+    std::vector<CompileError> m_compileErrors;  // Parsed errors
     bool m_needsSetup = false;      // True after reload, before setup is called
 
     std::unique_ptr<AddonRegistry> m_addonRegistry;
+
+    // Parse compiler output into structured errors
+    void parseCompilerOutput(const std::string& output);
 };
 
 } // namespace vivid

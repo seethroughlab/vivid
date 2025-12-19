@@ -5,12 +5,15 @@
 #include <vivid/operator_registry.h>
 #include <vivid/addon_manager.h>
 #include <CLI/CLI.hpp>
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
 #include <vector>
 #include <cctype>
+
+using json = nlohmann::json;
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>  // For _NSGetExecutablePath
@@ -828,7 +831,9 @@ int handleCommand(int argc, char** argv) {
 
     // 'operators' subcommand
     bool operatorsJson = false;
+    std::string operatorName;
     auto* operatorsCmd = app.add_subcommand("operators", "List available operators");
+    operatorsCmd->add_option("name", operatorName, "Show details for specific operator");
     operatorsCmd->add_flag("--json", operatorsJson, "Output as JSON");
 
     // 'addons' subcommand group
@@ -893,11 +898,88 @@ int handleCommand(int argc, char** argv) {
     }
 
     if (operatorsCmd->parsed()) {
+        auto& registry = OperatorRegistry::instance();
+
+        // If operator name specified, show details for that operator
+        if (!operatorName.empty()) {
+            const auto* meta = registry.find(operatorName);
+            if (!meta) {
+                std::cerr << "Error: Operator '" << operatorName << "' not found.\n";
+                std::cerr << "Use 'vivid operators' to list all available operators.\n";
+                return 1;
+            }
+
+            if (operatorsJson) {
+                // JSON output for single operator
+                json op;
+                op["name"] = meta->name;
+                op["category"] = meta->category;
+                op["description"] = meta->description;
+                op["addon"] = meta->addon.empty() ? json(nullptr) : json(meta->addon);
+                op["requiresInput"] = meta->requiresInput;
+                op["outputType"] = outputKindName(meta->outputKind);
+                op["params"] = json::array();
+
+                if (meta->factory) {
+                    try {
+                        auto tempOp = meta->factory();
+                        auto params = tempOp->params();
+                        for (const auto& p : params) {
+                            json param;
+                            param["name"] = p.name;
+                            param["min"] = p.minVal;
+                            param["max"] = p.maxVal;
+                            param["default"] = p.defaultVal[0];
+                            op["params"].push_back(param);
+                        }
+                    } catch (...) {}
+                }
+                std::cout << op.dump(2) << std::endl;
+            } else {
+                // Human-readable single operator details
+                std::cout << "# " << meta->name << "\n\n";
+                std::cout << meta->description << "\n\n";
+                std::cout << "Category: " << meta->category << "\n";
+                if (!meta->addon.empty()) {
+                    std::cout << "Addon: " << meta->addon << "\n";
+                }
+                std::cout << "Output: " << outputKindName(meta->outputKind) << "\n";
+                std::cout << "Requires input: " << (meta->requiresInput ? "Yes" : "No") << "\n";
+
+                // Show parameters
+                if (meta->factory) {
+                    try {
+                        auto tempOp = meta->factory();
+                        auto params = tempOp->params();
+                        if (!params.empty()) {
+                            std::cout << "\nParameters:\n";
+                            for (const auto& p : params) {
+                                std::cout << "  " << p.name;
+                                std::cout << " (" << p.minVal << " - " << p.maxVal << ")";
+                                std::cout << " default: " << p.defaultVal[0] << "\n";
+                            }
+                        }
+                    } catch (...) {
+                        std::cout << "\n(Could not inspect parameters)\n";
+                    }
+                }
+
+                // Usage example
+                std::cout << "\nUsage:\n";
+                std::cout << "  auto& op = chain.add<" << meta->name << ">(\"name\");\n";
+                if (meta->requiresInput) {
+                    std::cout << "  op.input(&other);\n";
+                }
+            }
+            return 0;
+        }
+
+        // List all operators
         if (operatorsJson) {
-            OperatorRegistry::instance().outputJson();
+            registry.outputJson();
         } else {
             // Human-readable output
-            const auto& ops = OperatorRegistry::instance().operators();
+            const auto& ops = registry.operators();
             std::cout << "Available operators (" << ops.size() << "):\n\n";
 
             std::string currentCategory;
@@ -917,6 +999,8 @@ int handleCommand(int argc, char** argv) {
             if (ops.empty()) {
                 std::cout << "No operators registered. This may be a build issue.\n";
             }
+
+            std::cout << "\nFor details: vivid operators <name>\n";
         }
         return 0;
     }

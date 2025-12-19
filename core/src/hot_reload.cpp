@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <array>
 #include <chrono>
+#include <regex>
 
 #ifdef _WIN32
 #define NOMINMAX
@@ -508,9 +509,13 @@ bool HotReload::compile() {
 
     if (exitCode != 0) {
         m_error = "Compilation failed:\n" + output;
+        parseCompilerOutput(output);
         std::cerr << m_error << std::endl;
         return false;
     }
+
+    // Clear any previous errors on success
+    m_compileErrors.clear();
 
     if (!output.empty()) {
         // Print warnings
@@ -573,6 +578,83 @@ void HotReload::unload() {
 
     m_setupFn = nullptr;
     m_updateFn = nullptr;
+}
+
+// Parse compiler output to extract structured errors
+// Supports clang/gcc format: file:line:col: severity: message
+// and MSVC format: file(line): severity code: message
+void HotReload::parseCompilerOutput(const std::string& output) {
+    m_compileErrors.clear();
+
+    // Clang/GCC format: /path/file.cpp:42:10: error: message
+    std::regex clangRegex(R"(([^:\s]+):(\d+):(\d+):\s*(error|warning|note):\s*(.+))");
+
+    // MSVC format: C:\path\file.cpp(42): error C1234: message
+    std::regex msvcRegex(R"(([^\(]+)\((\d+)\):\s*(error|warning)\s*\w*:\s*(.+))");
+
+    std::istringstream stream(output);
+    std::string line;
+
+    while (std::getline(stream, line)) {
+        std::smatch match;
+
+        if (std::regex_search(line, match, clangRegex)) {
+            CompileError err;
+            err.file = match[1].str();
+            err.line = std::stoi(match[2].str());
+            err.column = std::stoi(match[3].str());
+            err.severity = match[4].str();
+            err.message = match[5].str();
+            m_compileErrors.push_back(err);
+        } else if (std::regex_search(line, match, msvcRegex)) {
+            CompileError err;
+            err.file = match[1].str();
+            err.line = std::stoi(match[2].str());
+            err.column = 0;  // MSVC doesn't always provide column
+            err.severity = match[3].str();
+            err.message = match[4].str();
+            m_compileErrors.push_back(err);
+        }
+    }
+}
+
+// Convert a single error to JSON
+std::string CompileError::toJson() const {
+    std::ostringstream ss;
+    ss << "{";
+    ss << "\"file\":\"" << file << "\",";
+    ss << "\"line\":" << line << ",";
+    ss << "\"column\":" << column << ",";
+    ss << "\"severity\":\"" << severity << "\",";
+
+    // Escape quotes and backslashes in message
+    std::string escapedMsg = message;
+    size_t pos = 0;
+    while ((pos = escapedMsg.find('\\', pos)) != std::string::npos) {
+        escapedMsg.replace(pos, 1, "\\\\");
+        pos += 2;
+    }
+    pos = 0;
+    while ((pos = escapedMsg.find('"', pos)) != std::string::npos) {
+        escapedMsg.replace(pos, 1, "\\\"");
+        pos += 2;
+    }
+
+    ss << "\"message\":\"" << escapedMsg << "\"";
+    ss << "}";
+    return ss.str();
+}
+
+// Get all errors as JSON array
+std::string HotReload::getErrorsJson() const {
+    std::ostringstream ss;
+    ss << "{\"errors\":[";
+    for (size_t i = 0; i < m_compileErrors.size(); ++i) {
+        if (i > 0) ss << ",";
+        ss << m_compileErrors[i].toJson();
+    }
+    ss << "]}";
+    return ss.str();
 }
 
 } // namespace vivid
