@@ -131,16 +131,26 @@ typedef struct clap_process {
 
 ```cpp
 void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Audio source
+    auto& audioIn = chain.add<AudioIn>("audioIn");
+    audioIn.volume = 1.0f;
+
     // Load plugin by path
-    chain.add<CLAPEffect>("reverb")
-        .load("/Library/Audio/Plug-Ins/CLAP/ValhallaRoom.clap")
-        .preset("Large Hall");
+    auto& reverb = chain.add<CLAPEffect>("reverb");
+    reverb.load("/Library/Audio/Plug-Ins/CLAP/ValhallaRoom.clap");
+    reverb.input("audioIn");
+    reverb.loadPreset("Large Hall");
 
     // Or by scanned name
-    chain.add<CLAPEffect>("delay")
-        .plugin("EchoBoy")  // Finds from scanned plugins
-        .setParam("Time", 0.5f)
-        .setParam("Feedback", 0.3f);
+    auto& delay = chain.add<CLAPEffect>("delay");
+    delay.loadByName("EchoBoy");  // Finds from scanned plugins
+    delay.input("reverb");
+    delay.setPluginParam("Time", 0.5f);
+    delay.setPluginParam("Feedback", 0.3f);
+
+    chain.audioOutput("delay");
 }
 ```
 
@@ -148,14 +158,40 @@ void setup(Context& ctx) {
 
 ```cpp
 void setup(Context& ctx) {
-    chain.add<Sequencer>("seq")
-        .bpm(120)
-        .pattern("kick", "x...x...x...x...");
+    auto& chain = ctx.chain();
 
-    chain.add<CLAPInstrument>("synth")
-        .plugin("Surge XT")
-        .preset("Init")
-        .input("seq");  // Receives notes from sequencer
+    // Sequencer for triggering notes
+    auto& clock = chain.add<Clock>("clock");
+    clock.bpm = 120.0f;
+
+    auto& seq = chain.add<Sequencer>("seq");
+    seq.setPattern(0x1111);
+
+    // CLAP instrument
+    auto& synth = chain.add<CLAPInstrument>("synth");
+    synth.load("/Library/Audio/Plug-Ins/CLAP/Surge XT.clap");
+    synth.loadPreset("Init");
+
+    // Effects chain
+    auto& reverb = chain.add<CLAPEffect>("reverb");
+    reverb.loadByName("ValhallaRoom");
+    reverb.input("synth");
+
+    chain.audioOutput("reverb");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& clock = chain.get<Clock>("clock");
+    auto& seq = chain.get<Sequencer>("seq");
+    auto& synth = chain.get<CLAPInstrument>("synth");
+
+    if (clock.triggered()) {
+        seq.advance();
+        if (seq.triggered()) {
+            synth.noteOn(0, 60, 0.8f);  // channel, note, velocity
+        }
+    }
 }
 ```
 
@@ -163,16 +199,119 @@ void setup(Context& ctx) {
 
 ```cpp
 void setup(Context& ctx) {
-    auto& synth = chain.add<CLAPInstrument>("synth")
-        .plugin("Diva");
+    auto& chain = ctx.chain();
 
-    // Per-voice modulation - each note can have different filter cutoff
-    chain.add<LFO>("lfo")
-        .rate(2.0f)
-        .shape("sine");
+    auto& synth = chain.add<CLAPInstrument>("synth");
+    synth.loadByName("Diva");
 
-    // Modulate without overwriting automation
-    synth.modulateParam("Filter Cutoff", "lfo", 0.3f);
+    auto& lfo = chain.add<LFO>("lfo");
+    lfo.rate = 2.0f;
+    lfo.shape = LFOShape::Sine;
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& synth = chain.get<CLAPInstrument>("synth");
+    auto& lfo = chain.get<LFO>("lfo");
+
+    // Per-voice modulation - non-destructive offset on top of automation
+    // CLAP supports this natively, unlike VST3
+    synth.modulateParam("Filter Cutoff", lfo.value() * 0.3f);
+}
+```
+
+### MIDI Integration (vivid-midi)
+
+CLAP instruments can be driven by hardware MIDI controllers or MIDI file playback via the `vivid-midi` addon.
+
+```cpp
+#include <vivid/midi/midi.h>
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Hardware MIDI input
+    auto& midiIn = chain.add<MidiIn>("midi");
+    midiIn.openPortByName("Arturia");  // Partial name match
+    midiIn.channel = 0;  // 0 = omni (all channels)
+
+    // CLAP instrument
+    auto& surge = chain.add<CLAPInstrument>("surge");
+    surge.loadByName("Surge XT");
+
+    // Audio output
+    auto& out = chain.add<AudioOutput>("out");
+    out.input("surge");
+    chain.audioOutput("out");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& midiIn = chain.get<MidiIn>("midi");
+    auto& surge = chain.get<CLAPInstrument>("surge");
+
+    // Route MIDI events to CLAP instrument
+    for (const auto& e : midiIn.events()) {
+        switch (e.type) {
+            case MidiEventType::NoteOn:
+                if (e.velocity > 0) {
+                    surge.noteOn(e.channel, e.note, velocityToFloat(e.velocity));
+                } else {
+                    surge.noteOff(e.channel, e.note);
+                }
+                break;
+            case MidiEventType::NoteOff:
+                surge.noteOff(e.channel, e.note);
+                break;
+            case MidiEventType::PitchBend:
+                // Route pitch bend to CLAP note expression
+                // (per-voice tuning modulation)
+                break;
+            case MidiEventType::ControlChange:
+                // Map CC to plugin parameter
+                if (e.cc == CC::ModWheel) {
+                    surge.modulateParam("Filter Cutoff", ccToFloat(e.value));
+                }
+                break;
+            default:
+                break;
+        }
+    }
+}
+```
+
+MIDI file playback with tempo sync:
+
+```cpp
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& clock = chain.add<Clock>("clock");
+    clock.bpm = 120.0f;
+
+    auto& player = chain.add<MidiFilePlayer>("player");
+    player.load("song.mid");
+    player.syncToClock(&clock);
+    player.loop = true;
+    player.play();
+
+    auto& surge = chain.add<CLAPInstrument>("surge");
+    surge.loadByName("Surge XT");
+
+    chain.audioOutput("surge");
+}
+
+void update(Context& ctx) {
+    auto& player = chain.get<MidiFilePlayer>("player");
+    auto& surge = chain.get<CLAPInstrument>("surge");
+
+    for (const auto& e : player.events()) {
+        if (e.type == MidiEventType::NoteOn && e.velocity > 0) {
+            surge.noteOn(e.channel, e.note, velocityToFloat(e.velocity));
+        } else if (e.type == MidiEventType::NoteOff) {
+            surge.noteOff(e.channel, e.note);
+        }
+    }
 }
 ```
 
@@ -191,6 +330,118 @@ for (const auto& plugin : scanner.plugins()) {
     for (const auto& f : plugin.features) std::cout << f << " ";
     std::cout << "\n";
 }
+```
+
+### State Management
+
+CLAP plugins expose their state through `CLAP_EXT_STATE`, which allows saving and restoring the complete plugin configuration (parameters, internal state, loaded samples, etc.) as an opaque binary blob.
+
+#### State vs Presets
+
+| Concept | Extension | Description |
+|---------|-----------|-------------|
+| **State** | `CLAP_EXT_STATE` | Complete plugin snapshot (all parameters + internal data) |
+| **Factory Presets** | `CLAP_EXT_PRESET_LOAD` | Built-in presets shipped with the plugin |
+| **User Presets** | State saved to file | Your own saved configurations |
+
+#### Saving and Loading Plugin State
+
+```cpp
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& reverb = chain.add<CLAPEffect>("reverb");
+    reverb.loadByName("ValhallaRoom");
+
+    // Load previously saved state (if exists)
+    auto savedState = loadStateFromProject("reverb");
+    if (!savedState.empty()) {
+        reverb.loadState(savedState);
+    }
+}
+
+void saveProject() {
+    auto& reverb = chain.get<CLAPEffect>("reverb");
+
+    // Get plugin state as binary blob
+    std::vector<uint8_t> state = reverb.plugin()->saveState();
+
+    // Save to your project file
+    saveStateToProject("reverb", state);
+}
+```
+
+#### Integration with Vivid Project Save/Load
+
+When vivid saves a project, CLAP plugin states should be serialized alongside the chain configuration:
+
+```cpp
+// Project structure (conceptual)
+struct ProjectData {
+    std::string chainSource;                              // chain.cpp content
+    std::map<std::string, std::vector<uint8_t>> pluginStates;  // operator name -> state
+};
+
+// On project save
+void Chain::savePluginStates(ProjectData& project) {
+    for (auto& [name, op] : m_operators) {
+        if (auto* clap = dynamic_cast<CLAPEffect*>(op.get())) {
+            if (clap->isLoaded()) {
+                project.pluginStates[name] = clap->plugin()->saveState();
+            }
+        }
+        if (auto* clap = dynamic_cast<CLAPInstrument*>(op.get())) {
+            if (clap->isLoaded()) {
+                project.pluginStates[name] = clap->plugin()->saveState();
+            }
+        }
+    }
+}
+
+// On project load
+void Chain::restorePluginStates(const ProjectData& project) {
+    for (auto& [name, state] : project.pluginStates) {
+        if (auto* clap = dynamic_cast<CLAPEffect*>(getOperator(name))) {
+            clap->loadState(state);
+        }
+        if (auto* clap = dynamic_cast<CLAPInstrument*>(getOperator(name))) {
+            clap->loadState(state);
+        }
+    }
+}
+```
+
+#### Factory Presets
+
+Some plugins provide factory presets that can be loaded by name or URI:
+
+```cpp
+auto& synth = chain.add<CLAPInstrument>("synth");
+synth.loadByName("Surge XT");
+
+// List available factory presets (if plugin supports preset-discovery)
+for (const auto& preset : synth.plugin()->presetNames()) {
+    std::cout << preset << "\n";
+}
+
+// Load a factory preset
+synth.loadPreset("Init Saw");
+```
+
+#### State Context (Optional)
+
+`CLAP_EXT_STATE_CONTEXT` allows plugins to save different states for different purposes:
+
+- **For Preset**: Minimal state for sharing (no project-specific paths)
+- **For Duplicate**: Full state for cloning within a project
+- **For Project**: Full state including absolute file paths
+
+```cpp
+// Save state optimized for preset sharing
+std::vector<uint8_t> presetState = plugin->saveStateForPreset();
+
+// Save full state for project
+std::vector<uint8_t> projectState = plugin->saveState();
 ```
 
 ## Dependencies
@@ -447,38 +698,68 @@ private:
 ```cpp
 class CLAPEffect : public AudioOperator {
 public:
-    // Fluent API
-    CLAPEffect& load(const std::string& path);
-    CLAPEffect& plugin(const std::string& name);  // By scanned name
-    CLAPEffect& pluginId(const std::string& id);  // By CLAP ID
-    CLAPEffect& preset(const std::string& name);
-    CLAPEffect& setPluginParam(const std::string& name, float value);
-    CLAPEffect& modulatePluginParam(const std::string& name, float amount);
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
 
-    // AudioOperator interface
+    Param<bool> bypass{"bypass", false};  ///< Bypass plugin processing
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    CLAPEffect();
+    ~CLAPEffect() override;
+
+    // -------------------------------------------------------------------------
+    /// @name Plugin Loading
+    /// @{
+
+    void load(const std::string& path);           // Load by file path
+    void loadByName(const std::string& name);     // Load by scanned name
+    void loadById(const std::string& id);         // Load by CLAP ID
+    void loadPreset(const std::string& name);     // Load factory preset
+    void loadState(const std::vector<uint8_t>& data);  // Load saved state
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Plugin Parameters
+    /// @{
+
+    void setPluginParam(const std::string& name, float value);
+    float getPluginParam(const std::string& name) const;
+    void modulateParam(const std::string& name, float amount);  // Non-destructive
+    std::vector<CLAPParamInfo> pluginParams() const;
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Operator Interface
+    /// @{
+
     void init(Context& ctx) override;
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "CLAPEffect"; }
 
-    // Audio thread
     void generateBlock(uint32_t frameCount) override;
 
-    // Parameter bridging
     std::vector<ParamDecl> params() override;
     bool getParam(const std::string& name, float out[4]) override;
     bool setParam(const std::string& name, const float value[4]) override;
 
-    // Plugin access
-    CLAPPlugin* plugin();
-    std::vector<CLAPParamInfo> pluginParams() const;
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Plugin Access
+    /// @{
+
+    CLAPPlugin* plugin() { return m_plugin.get(); }
+    const CLAPPlugin* plugin() const { return m_plugin.get(); }
+    bool isLoaded() const { return m_plugin != nullptr; }
+
+    /// @}
 
 private:
     std::unique_ptr<CLAPPlugin> m_plugin;
     std::string m_pluginPath;
-    std::string m_pluginId;
-    std::string m_presetName;
-    bool m_bypass = false;
 
     // Process buffers
     std::vector<float*> m_inputPtrs;
@@ -493,21 +774,59 @@ private:
 ```cpp
 class CLAPInstrument : public AudioOperator {
 public:
-    // Fluent API
-    CLAPInstrument& load(const std::string& path);
-    CLAPInstrument& plugin(const std::string& name);
-    CLAPInstrument& pluginId(const std::string& id);
-    CLAPInstrument& preset(const std::string& name);
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
 
-    // AudioOperator interface
+    Param<float> volume{"volume", 1.0f, 0.0f, 2.0f};  ///< Output volume
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    CLAPInstrument();
+    ~CLAPInstrument() override;
+
+    // -------------------------------------------------------------------------
+    /// @name Plugin Loading
+    /// @{
+
+    void load(const std::string& path);
+    void loadByName(const std::string& name);
+    void loadById(const std::string& id);
+    void loadPreset(const std::string& name);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Note Control
+    /// @{
+
+    void noteOn(int channel, int note, float velocity);
+    void noteOff(int channel, int note, float velocity = 0.0f);
+    void allNotesOff();
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Plugin Parameters
+    /// @{
+
+    void setPluginParam(const std::string& name, float value);
+    float getPluginParam(const std::string& name) const;
+    void modulateParam(const std::string& name, float amount);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Operator Interface
+    /// @{
+
     void init(Context& ctx) override;
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "CLAPInstrument"; }
 
-    // Audio thread
     void generateBlock(uint32_t frameCount) override;
     void handleEvent(const AudioEvent& event) override;
+
+    /// @}
 
 private:
     std::unique_ptr<CLAPPlugin> m_plugin;

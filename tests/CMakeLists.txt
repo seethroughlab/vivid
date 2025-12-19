@@ -71,11 +71,8 @@ option(BUILD_ADDON_TESTS "Build addon test suites" ON)
 if(BUILD_ADDON_TESTS)
     include(${CMAKE_SOURCE_DIR}/addons/vivid-audio/tests/CMakeLists.txt)
 
-    # Native-only addon tests (network and serial require sockets/serial ports)
-    if(NOT EMSCRIPTEN)
-        include(${CMAKE_SOURCE_DIR}/addons/vivid-network/tests/CMakeLists.txt)
-        include(${CMAKE_SOURCE_DIR}/addons/vivid-serial/tests/CMakeLists.txt)
-    endif()
+    include(${CMAKE_SOURCE_DIR}/addons/vivid-network/tests/CMakeLists.txt)
+    include(${CMAKE_SOURCE_DIR}/addons/vivid-serial/tests/CMakeLists.txt)
 endif()
 
 # -----------------------------------------------------------------------------

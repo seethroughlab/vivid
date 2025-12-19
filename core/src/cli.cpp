@@ -351,11 +351,11 @@ std::string getCurrentPlatform() {
 // List of valid platforms for current OS
 std::vector<std::string> getValidPlatforms() {
 #ifdef __APPLE__
-    return {"mac", "ios", "web"};  // Android requires NDK, add later
+    return {"mac", "ios"};  // Android requires NDK, add later
 #elif defined(_WIN32)
-    return {"windows", "web"};  // Android requires NDK, add later
+    return {"windows"};  // Android requires NDK, add later
 #else
-    return {"linux", "web"};
+    return {"linux"};
 #endif
 }
 
@@ -366,8 +366,6 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
                      const std::string& appName, const fs::path& outputPath);
 int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
                    const std::string& appName, const fs::path& outputPath);
-int bundleForWeb(const fs::path& srcProject, const fs::path& chainPath,
-                 const std::string& appName, const fs::path& outputPath);
 int bundleForIOS(const fs::path& srcProject, const fs::path& chainPath,
                  const std::string& appName, const fs::path& outputPath);
 
@@ -420,8 +418,6 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
         return bundleForWindows(srcProject, chainPath, finalAppName, finalOutput);
     } else if (targetPlatform == "linux") {
         return bundleForLinux(srcProject, chainPath, finalAppName, finalOutput);
-    } else if (targetPlatform == "web") {
-        return bundleForWeb(srcProject, chainPath, finalAppName, finalOutput);
     } else if (targetPlatform == "ios") {
         return bundleForIOS(srcProject, chainPath, finalAppName, finalOutput);
     }
@@ -782,16 +778,6 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
 #endif
 }
 
-// Web export (Emscripten) - placeholder for now
-int bundleForWeb(const fs::path& srcProject, const fs::path& chainPath,
-                 const std::string& appName, const fs::path& outputDir) {
-    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
-    std::cerr << "Error: Web export is not yet implemented.\n";
-    std::cerr << "This requires an Emscripten build of the vivid runtime.\n";
-    std::cerr << "See: https://emscripten.org/\n";
-    return 1;
-}
-
 // iOS bundling - placeholder for now
 int bundleForIOS(const fs::path& srcProject, const fs::path& chainPath,
                  const std::string& appName, const fs::path& outputDir) {
@@ -838,7 +824,7 @@ int handleCommand(int argc, char** argv) {
     bundleCmd->add_option("-o,--output", bundleOutput, "Output directory");
     bundleCmd->add_option("-n,--name", bundleName, "App display name");
     bundleCmd->add_option("-p,--platform", bundlePlatform,
-                          "Target platform: mac, windows, linux, ios, web (default: current platform)");
+                          "Target platform: mac, windows, linux, ios (default: current platform)");
 
     // 'operators' subcommand
     bool operatorsJson = false;

@@ -202,10 +202,8 @@ target_link_libraries(vivid-core PUBLIC
     nlohmann_json::nlohmann_json
 )
 
-# IXWebSocket for EditorBridge (native only)
-if(NOT EMSCRIPTEN)
-    target_link_libraries(vivid-core PUBLIC ixwebsocket)
-endif()
+# IXWebSocket for EditorBridge
+target_link_libraries(vivid-core PUBLIC ixwebsocket)
 
 # Platform-specific settings for vivid-core
 if(APPLE)

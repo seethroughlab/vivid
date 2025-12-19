@@ -227,20 +227,17 @@ if(WIN32)
 endif()
 
 # IXWebSocket - WebSocket server for EditorBridge and vivid-network
-# Skipped for web builds (no raw sockets in browser)
-if(NOT EMSCRIPTEN)
-    set(USE_TLS OFF CACHE BOOL "" FORCE)
-    set(USE_OPEN_SSL OFF CACHE BOOL "" FORCE)
-    set(USE_MBED_TLS OFF CACHE BOOL "" FORCE)
-    set(USE_ZLIB OFF CACHE BOOL "" FORCE)
-    FetchContent_Declare(
-        ixwebsocket
-        GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
-        GIT_TAG        v11.4.5
-        GIT_SHALLOW    TRUE
-    )
-    FetchContent_MakeAvailable(ixwebsocket)
-endif()
+set(USE_TLS OFF CACHE BOOL "" FORCE)
+set(USE_OPEN_SSL OFF CACHE BOOL "" FORCE)
+set(USE_MBED_TLS OFF CACHE BOOL "" FORCE)
+set(USE_ZLIB OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(
+    ixwebsocket
+    GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
+    GIT_TAG        v11.4.5
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(ixwebsocket)
 
 # -----------------------------------------------------------------------------
 # Addons (optional libraries with external dependencies)
@@ -249,16 +246,16 @@ endif()
 # vivid-effects-2d is now part of core (provides 2D texture effects)
 # -----------------------------------------------------------------------------
 
-# Native-only addons (skipped for web builds)
-if(NOT EMSCRIPTEN)
-    add_subdirectory(addons/vivid-network)
-    add_subdirectory(addons/vivid-serial)
-endif()
+add_subdirectory(addons/vivid-network)
+add_subdirectory(addons/vivid-serial)
 
 # Cross-platform addons
 add_subdirectory(addons/vivid-video)
 add_subdirectory(addons/vivid-render3d)
 add_subdirectory(addons/vivid-audio)
+
+# MIDI addon (depends on vivid-audio)
+add_subdirectory(addons/vivid-midi)
 # vivid-ml moved to separate repo: https://github.com/jeff/vivid-ml
 
 # -----------------------------------------------------------------------------
