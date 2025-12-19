@@ -27,6 +27,7 @@
 #include <filesystem>
 #include <fstream>
 #include <regex>
+#include <functional>
 
 // Memory debugging (macOS)
 #ifdef __APPLE__
@@ -143,6 +144,602 @@ void onDeviceError(WGPUDevice const* device, WGPUErrorType type,
     std::cerr << "WebGPU Error: "
               << (message.data ? std::string(message.data, message.length == WGPU_STRLEN ? strlen(message.data) : message.length) : "unknown")
               << std::endl;
+}
+
+// -----------------------------------------------------------------------------
+// Main Loop Context
+// -----------------------------------------------------------------------------
+// Encapsulates all state needed for the main loop iteration.
+// This enables future Emscripten web export via emscripten_set_main_loop_arg().
+
+struct MainLoopContext {
+    // WebGPU infrastructure
+    WGPUInstance instance = nullptr;
+    WGPUAdapter adapter = nullptr;
+    WGPUSurface surface = nullptr;
+    WGPUDevice device = nullptr;
+    WGPUQueue queue = nullptr;
+    WGPUTextureFormat surfaceFormat = WGPUTextureFormat_BGRA8Unorm;
+    WGPUSurfaceConfiguration config = {};
+
+    // Window state
+    GLFWwindow* window = nullptr;
+    int width = 0;
+    int height = 0;
+    bool isFullscreen = false;
+    int windowedX = 0;
+    int windowedY = 0;
+    int windowedWidth = 1280;
+    int windowedHeight = 720;
+    WindowManager* windowManager = nullptr;
+
+    // Timing & performance
+    double lastFpsTime = 0.0;
+    int frameCount = 0;
+    double lastFrameTime = 0.0;
+    EditorPerformanceStats perfStats;
+    static constexpr size_t kHistorySize = 60;
+
+    // Loop control
+    int snapshotFrameCounter = 0;
+    bool snapshotSaved = false;
+    VideoExporter cliRecorder;
+    bool cliRecordingStarted = false;
+    bool chainNeedsSetup = true;
+    bool tabKeyWasPressed = false;
+
+    // Core runtime objects (non-owning pointers)
+    Context* ctx = nullptr;
+    Display* display = nullptr;
+    HotReload* hotReload = nullptr;
+    vivid::imgui::ChainVisualizer* chainVisualizer = nullptr;
+    EditorBridge* editorBridge = nullptr;
+
+    // CLI args needed in loop
+    std::string snapshotPath;
+    int snapshotFrame = 5;
+    bool headless = false;
+    int renderWidth = 0;
+    int renderHeight = 0;
+    std::string recordPath;
+    float recordFps = 60.0f;
+    float recordDuration = 0.0f;
+    bool recordAudio = false;
+    ExportCodec recordCodec = ExportCodec::H264;
+    int maxFrames = 0;
+    int windowWidth = 1280;
+    int windowHeight = 720;
+
+    // Project info
+    std::string projectName;
+
+    // Callbacks (lambdas converted to std::function)
+    std::function<void(const std::string&)> updateSourceLines;
+    std::function<std::vector<EditorOperatorInfo>()> gatherOperatorInfo;
+    std::function<std::vector<EditorParamInfo>()> gatherParamValues;
+    std::function<EditorWindowState()> gatherWindowState;
+};
+
+// -----------------------------------------------------------------------------
+// Main Loop Iteration
+// -----------------------------------------------------------------------------
+// Returns true to continue running, false to exit.
+
+bool mainLoopIteration(MainLoopContext& mlc) {
+    glfwPollEvents();
+
+    // Memory logging every 10 seconds
+    {
+        double now = glfwGetTime();
+        if (now - g_lastMemoryLogTime >= 10.0) {
+            logMemoryUsage(now);
+            g_lastMemoryLogTime = now;
+        }
+    }
+
+    // Toggle chain visualizer on Tab key (edge detection)
+    {
+        bool tabKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_TAB) == GLFW_PRESS;
+        if (tabKeyPressed && !mlc.tabKeyWasPressed) {
+            vivid::imgui::toggleVisible();
+        }
+        mlc.tabKeyWasPressed = tabKeyPressed;
+    }
+
+    // Begin frame (updates time, input, etc.)
+    mlc.ctx->beginFrame();
+
+    // Handle window resize
+    if (mlc.ctx->width() != mlc.width || mlc.ctx->height() != mlc.height) {
+        mlc.width = mlc.ctx->width();
+        mlc.height = mlc.ctx->height();
+        if (mlc.width > 0 && mlc.height > 0) {
+            mlc.config.width = static_cast<uint32_t>(mlc.width);
+            mlc.config.height = static_cast<uint32_t>(mlc.height);
+            wgpuSurfaceConfigure(mlc.surface, &mlc.config);
+        }
+    }
+
+    // Handle vsync change
+    if (mlc.ctx->vsyncChanged()) {
+        mlc.config.presentMode = mlc.ctx->vsync() ? WGPUPresentMode_Fifo : WGPUPresentMode_Immediate;
+        wgpuSurfaceConfigure(mlc.surface, &mlc.config);
+    }
+
+    // Handle fullscreen change (from ctx.fullscreen() API)
+    if (mlc.ctx->fullscreenChanged()) {
+        if (mlc.ctx->fullscreen() && !mlc.isFullscreen) {
+            // Save windowed position and size
+            glfwGetWindowPos(mlc.window, &mlc.windowedX, &mlc.windowedY);
+            glfwGetWindowSize(mlc.window, &mlc.windowedWidth, &mlc.windowedHeight);
+
+            // Get target monitor (use current or selected)
+            int monitorCount = 0;
+            GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+            int targetIdx = std::min(mlc.ctx->targetMonitor(), monitorCount - 1);
+            targetIdx = std::max(0, targetIdx);
+            GLFWmonitor* monitor = monitors[targetIdx];
+            const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+            // Enter fullscreen
+            glfwSetWindowMonitor(mlc.window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+            mlc.isFullscreen = true;
+        } else if (!mlc.ctx->fullscreen() && mlc.isFullscreen) {
+            // Exit fullscreen - restore windowed mode
+            glfwSetWindowMonitor(mlc.window, nullptr, mlc.windowedX, mlc.windowedY, mlc.windowedWidth, mlc.windowedHeight, 0);
+            mlc.isFullscreen = false;
+        }
+    }
+
+    // Handle borderless (decorated) window change
+    if (mlc.ctx->borderlessChanged()) {
+        glfwSetWindowAttrib(mlc.window, GLFW_DECORATED, mlc.ctx->borderless() ? GLFW_FALSE : GLFW_TRUE);
+    }
+
+    // Handle always-on-top (floating) change
+    if (mlc.ctx->alwaysOnTopChanged()) {
+        glfwSetWindowAttrib(mlc.window, GLFW_FLOATING, mlc.ctx->alwaysOnTop() ? GLFW_TRUE : GLFW_FALSE);
+    }
+
+    // Handle cursor visibility change
+    if (mlc.ctx->cursorVisibleChanged()) {
+        glfwSetInputMode(mlc.window, GLFW_CURSOR,
+            mlc.ctx->cursorVisible() ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
+    }
+
+    // Handle monitor change (move window to different display)
+    if (mlc.ctx->monitorChanged()) {
+        int monitorCount = 0;
+        GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
+        int targetIdx = std::min(mlc.ctx->targetMonitor(), monitorCount - 1);
+        targetIdx = std::max(0, targetIdx);
+
+        if (targetIdx < monitorCount) {
+            GLFWmonitor* monitor = monitors[targetIdx];
+            const GLFWvidmode* mode = glfwGetVideoMode(monitor);
+
+            if (mlc.isFullscreen) {
+                // In fullscreen: switch to fullscreen on target monitor
+                glfwSetWindowMonitor(mlc.window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
+            } else {
+                // In windowed: center window on target monitor
+                int mx, my;
+                glfwGetMonitorPos(monitor, &mx, &my);
+
+                int ww, wh;
+                glfwGetWindowSize(mlc.window, &ww, &wh);
+
+                int newX = mx + (mode->width - ww) / 2;
+                int newY = my + (mode->height - wh) / 2;
+                glfwSetWindowPos(mlc.window, newX, newY);
+            }
+        }
+    }
+
+    // Handle window position change
+    if (mlc.ctx->windowPosChanged()) {
+        glfwSetWindowPos(mlc.window, mlc.ctx->targetWindowX(), mlc.ctx->targetWindowY());
+    }
+
+    // Handle window size change
+    if (mlc.ctx->windowSizeChanged()) {
+        glfwSetWindowSize(mlc.window, mlc.ctx->targetWindowWidth(), mlc.ctx->targetWindowHeight());
+    }
+
+    // Skip frame if minimized
+    if (mlc.width == 0 || mlc.height == 0) {
+        mlc.ctx->endFrame();
+        return true;  // continue
+    }
+
+    // Get current texture
+    WGPUSurfaceTexture surfaceTexture;
+    wgpuSurfaceGetCurrentTexture(mlc.surface, &surfaceTexture);
+    if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
+        surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
+        mlc.ctx->endFrame();
+        return true;  // continue
+    }
+
+    // Create view with explicit format matching the surface texture
+    WGPUTextureViewDescriptor viewDesc = {};
+    viewDesc.format = mlc.surfaceFormat;
+    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.baseMipLevel = 0;
+    viewDesc.mipLevelCount = 1;
+    viewDesc.baseArrayLayer = 0;
+    viewDesc.arrayLayerCount = 1;
+    viewDesc.aspect = WGPUTextureAspect_All;
+    WGPUTextureView view = wgpuTextureCreateView(surfaceTexture.texture, &viewDesc);
+
+    // Check for hot-reload using safe API:
+    // 1. Check if reload needed (without unloading)
+    // 2. Destroy chain operators while old code is still loaded
+    // 3. Then reload (which unloads old library)
+    bool justReloaded = false;
+    if (mlc.hotReload->checkNeedsReload()) {
+        // Save operator states before destroying chain
+        if (mlc.ctx->hasChain()) {
+            mlc.ctx->preserveStates(mlc.ctx->chain());
+        }
+        // Destroy operators BEFORE unloading the library
+        // (their destructors are in the dylib code)
+        mlc.ctx->clearRegisteredOperators();
+        mlc.ctx->resetChain();
+
+        // Now safe to reload (unloads old library, loads new one)
+        mlc.hotReload->reload();
+        mlc.chainNeedsSetup = true;
+        justReloaded = true;
+    }
+
+    // Update error state from hot-reload
+    if (mlc.hotReload->hasError()) {
+        mlc.ctx->setError(mlc.hotReload->getError());
+    } else if (mlc.hotReload->isLoaded()) {
+        mlc.ctx->clearError();
+    }
+
+    // Notify connected editors of compile status
+    if (justReloaded && mlc.editorBridge->clientCount() > 0) {
+        if (mlc.hotReload->hasError()) {
+            mlc.editorBridge->sendCompileStatus(false, mlc.hotReload->getError());
+        } else {
+            mlc.editorBridge->sendCompileStatus(true, "");
+        }
+    }
+
+    // Call chain functions if loaded
+    if (mlc.hotReload->isLoaded()) {
+        // Call setup if needed (after reload)
+        if (mlc.chainNeedsSetup) {
+            // Chain was already reset before reload (to safely destroy operators)
+            // Just call user's setup function
+            mlc.hotReload->getSetupFn()(*mlc.ctx);
+
+            // Auto-initialize the chain
+            mlc.ctx->chain().init(*mlc.ctx);
+
+            // Honor chain's window size request (if not overridden by command-line)
+            if (mlc.ctx->chain().hasWindowSize()) {
+                int w = mlc.ctx->chain().windowWidth();
+                int h = mlc.ctx->chain().windowHeight();
+                if (w > 0 && h > 0 && !mlc.isFullscreen) {
+                    glfwSetWindowSize(mlc.window, w, h);
+                }
+            }
+
+            // Update render resolution from chain if set
+            if (mlc.ctx->chain().hasResolution()) {
+                mlc.ctx->setRenderResolution(mlc.ctx->chain().defaultWidth(), mlc.ctx->chain().defaultHeight());
+            }
+
+            // Restore preserved states across hot-reloads
+            if (mlc.ctx->hasPreservedStates()) {
+                mlc.ctx->restoreStates(mlc.ctx->chain());
+            }
+
+            mlc.chainNeedsSetup = false;
+
+            // Update operator source line numbers from chain.cpp
+            if (mlc.updateSourceLines) {
+                mlc.updateSourceLines(mlc.ctx->chainPath());
+            }
+
+            // Send operator list to connected editors (Phase 2)
+            if (mlc.editorBridge->clientCount() > 0 && mlc.gatherOperatorInfo) {
+                mlc.editorBridge->sendOperatorList(mlc.gatherOperatorInfo());
+            }
+
+            // Start CLI recording (once, after first chain load)
+            if (!mlc.recordPath.empty() && !mlc.cliRecordingStarted) {
+                int recW = mlc.renderWidth > 0 ? mlc.renderWidth : mlc.windowWidth;
+                int recH = mlc.renderHeight > 0 ? mlc.renderHeight : mlc.windowHeight;
+                bool started = false;
+                if (mlc.recordAudio) {
+                    started = mlc.cliRecorder.startWithAudio(mlc.recordPath, recW, recH,
+                                                         mlc.recordFps, mlc.recordCodec,
+                                                         AUDIO_SAMPLE_RATE, AUDIO_CHANNELS);
+                } else {
+                    started = mlc.cliRecorder.start(mlc.recordPath, recW, recH, mlc.recordFps, mlc.recordCodec);
+                }
+                if (started) {
+                    std::cout << "Recording to: " << mlc.recordPath
+                              << " (" << recW << "x" << recH << " @ " << mlc.recordFps << "fps";
+                    if (mlc.recordDuration > 0) {
+                        std::cout << ", " << mlc.recordDuration << "s";
+                    }
+                    std::cout << ")" << std::endl;
+                } else {
+                    std::cerr << "Failed to start recording: " << mlc.cliRecorder.error() << std::endl;
+                }
+                mlc.cliRecordingStarted = true;
+            }
+        }
+
+        // Call user's update function (parameter tweaks)
+        mlc.hotReload->getUpdateFn()(*mlc.ctx);
+
+        // Auto-process the chain
+        mlc.ctx->chain().process(*mlc.ctx);
+
+        // Capture frame for video export if recording
+        if (mlc.chainVisualizer->exporter().isRecording() && mlc.ctx->outputTexture()) {
+            // Get the underlying texture from the texture view
+            // The output texture should be the chain's final output
+            WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
+            if (outputTex) {
+                mlc.chainVisualizer->exporter().captureFrame(mlc.device, mlc.queue, outputTex);
+
+                // Capture audio if recording with audio
+                if (mlc.chainVisualizer->exporter().hasAudio()) {
+                    // Generate audio synchronously for this video frame
+                    // Calculate audio frames per video frame: 48000Hz / fps
+                    float fps = mlc.chainVisualizer->exporter().fps();
+                    uint32_t audioFramesPerVideoFrame = static_cast<uint32_t>(AUDIO_SAMPLE_RATE / fps);
+
+                    // Use a static buffer for efficiency
+                    static std::vector<float> audioBuffer;
+                    if (audioBuffer.size() < audioFramesPerVideoFrame * AUDIO_CHANNELS) {
+                        audioBuffer.resize(audioFramesPerVideoFrame * AUDIO_CHANNELS);
+                    }
+
+                    // Generate audio deterministically (no race condition)
+                    mlc.ctx->chain().generateAudioForExport(audioBuffer.data(), audioFramesPerVideoFrame);
+                    mlc.chainVisualizer->exporter().pushAudioSamples(
+                        audioBuffer.data(), audioFramesPerVideoFrame);
+                }
+            }
+        }
+
+        // CLI video recording capture
+        if (mlc.cliRecorder.isRecording() && mlc.ctx->outputTexture()) {
+            WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
+            if (outputTex) {
+                mlc.cliRecorder.captureFrame(mlc.device, mlc.queue, outputTex);
+
+                // Capture audio if enabled
+                if (mlc.cliRecorder.hasAudio()) {
+                    uint32_t audioFramesPerVideoFrame = static_cast<uint32_t>(AUDIO_SAMPLE_RATE / mlc.recordFps);
+                    static std::vector<float> cliAudioBuffer;
+                    if (cliAudioBuffer.size() < audioFramesPerVideoFrame * AUDIO_CHANNELS) {
+                        cliAudioBuffer.resize(audioFramesPerVideoFrame * AUDIO_CHANNELS);
+                    }
+                    mlc.ctx->chain().generateAudioForExport(cliAudioBuffer.data(), audioFramesPerVideoFrame);
+                    mlc.cliRecorder.pushAudioSamples(cliAudioBuffer.data(), audioFramesPerVideoFrame);
+                }
+
+                // Check duration limit
+                if (mlc.recordDuration > 0 && mlc.cliRecorder.duration() >= mlc.recordDuration) {
+                    std::cout << "Recording complete: " << mlc.cliRecorder.frameCount() << " frames, "
+                              << mlc.cliRecorder.duration() << "s" << std::endl;
+                    mlc.cliRecorder.stop();
+                    glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+                }
+            }
+        }
+
+        // Save snapshot if requested (interactive UI)
+        if (mlc.chainVisualizer->snapshotRequested()) {
+            WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
+            if (outputTex) {
+                mlc.chainVisualizer->saveSnapshot(mlc.device, mlc.queue, outputTex, *mlc.ctx);
+            }
+        }
+
+        // Track total frames for --snapshot and --frames options
+        mlc.snapshotFrameCounter++;
+
+        // Automated snapshot mode (CLI --snapshot flag)
+        if (!mlc.snapshotPath.empty() && !mlc.snapshotSaved) {
+            if (mlc.snapshotFrameCounter >= mlc.snapshotFrame) {
+                WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
+                if (outputTex) {
+                    std::cout << "Saving snapshot to: " << mlc.snapshotPath << std::endl;
+                    if (VideoExporter::saveSnapshot(mlc.device, mlc.queue, outputTex, mlc.snapshotPath)) {
+                        std::cout << "Snapshot saved successfully" << std::endl;
+                        mlc.snapshotSaved = true;
+                        // Exit after saving (unless --frames is also set)
+                        if (mlc.maxFrames == 0) {
+                            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+                        }
+                    } else {
+                        std::cerr << "Failed to save snapshot" << std::endl;
+                        mlc.snapshotSaved = true;  // Don't retry
+                    }
+                }
+            }
+        }
+
+        // Frame limit mode (CLI --frames flag)
+        if (mlc.maxFrames > 0 && mlc.snapshotFrameCounter >= mlc.maxFrames) {
+            std::cout << "Rendered " << mlc.maxFrames << " frames, exiting." << std::endl;
+            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+        }
+    }
+
+    // Create command encoder
+    WGPUCommandEncoderDescriptor encoderDesc = {};
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(mlc.device, &encoderDesc);
+
+    // Render pass - clear to black
+    WGPURenderPassColorAttachment colorAttachment = {};
+    colorAttachment.view = view;
+    colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+    colorAttachment.loadOp = WGPULoadOp_Clear;
+    colorAttachment.storeOp = WGPUStoreOp_Store;
+    colorAttachment.clearValue = {0.0, 0.0, 0.0, 1.0};
+
+    WGPURenderPassDescriptor renderPassDesc = {};
+    renderPassDesc.colorAttachmentCount = 1;
+    renderPassDesc.colorAttachments = &colorAttachment;
+
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
+
+    // Update display with current screen size
+    mlc.display->setScreenSize(mlc.width, mlc.height);
+
+    // Build frame input for ImGui (needed for chain visualizer even if UI hidden)
+    float xscale, yscale;
+    glfwGetWindowContentScale(mlc.window, &xscale, &yscale);
+
+    vivid::imgui::FrameInput frameInput;
+    frameInput.width = mlc.ctx->width();
+    frameInput.height = mlc.ctx->height();
+    frameInput.contentScale = xscale;
+    frameInput.dt = static_cast<float>(mlc.ctx->dt());
+    frameInput.mousePos = mlc.ctx->mouse();
+    frameInput.mouseDown[0] = mlc.ctx->mouseButton(0).held;
+    frameInput.mouseDown[1] = mlc.ctx->mouseButton(1).held;
+    frameInput.mouseDown[2] = mlc.ctx->mouseButton(2).held;
+    frameInput.scroll = mlc.ctx->scroll();
+    frameInput.keyCtrl = glfwGetKey(mlc.window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                         glfwGetKey(mlc.window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+    frameInput.keyShift = glfwGetKey(mlc.window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                          glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+    frameInput.keyAlt = glfwGetKey(mlc.window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
+                        glfwGetKey(mlc.window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+    frameInput.keySuper = glfwGetKey(mlc.window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
+                          glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
+
+    // Run chain visualizer BEFORE blit so solo mode can override output texture
+    if (vivid::imgui::isVisible()) {
+        vivid::imgui::beginFrame(frameInput);
+        mlc.chainVisualizer->render(frameInput, *mlc.ctx);
+    }
+
+    // Blit output texture (may have been modified by solo mode)
+    if (mlc.ctx->outputTexture() && mlc.display->isValid()) {
+        mlc.display->blit(pass, mlc.ctx->outputTexture());
+    }
+
+    // Render ImGui on top of the blit
+    if (vivid::imgui::isVisible()) {
+        vivid::imgui::render(pass);
+    }
+
+    // Render error message if present
+    if (mlc.ctx->hasError() && mlc.display->isValid()) {
+        mlc.display->renderText(pass, mlc.ctx->errorMessage(), 20.0f, 20.0f, 2.0f);
+    }
+
+    wgpuRenderPassEncoderEnd(pass);
+    wgpuRenderPassEncoderRelease(pass);
+
+    // Submit
+    WGPUCommandBufferDescriptor cmdBufferDesc = {};
+    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
+    wgpuQueueSubmit(mlc.queue, 1, &cmdBuffer);
+
+    // Release command resources
+    wgpuCommandBufferRelease(cmdBuffer);
+    wgpuCommandEncoderRelease(encoder);
+
+    // Present BEFORE releasing the texture view
+    wgpuSurfacePresent(mlc.surface);
+
+    // Present to secondary windows (span/multi-output)
+    // Note: Primary window (0) was already presented above
+    if (mlc.windowManager->windowCount() > 1) {
+        mlc.windowManager->presentAll(&mlc.ctx->chain(), mlc.ctx->outputTexture());
+    }
+
+    // Poll device to process pending GPU work and prevent command buffer accumulation
+    // This is critical when multiple operators submit command buffers per frame
+    wgpuDevicePoll(mlc.device, false, nullptr);
+
+    // Release texture view after present (surface owns the texture)
+    wgpuTextureViewRelease(view);
+    // Note: Don't release surfaceTexture.texture - it's owned by the surface
+
+    // End frame
+    mlc.ctx->endFrame();
+
+    // FPS counter and title update
+    mlc.frameCount++;
+    double currentTime = glfwGetTime();
+
+    // Track frame time for performance stats
+    double frameTimeMs = (currentTime - mlc.lastFrameTime) * 1000.0;
+    mlc.lastFrameTime = currentTime;
+
+    // Update frame time history (rolling buffer)
+    mlc.perfStats.frameTimeHistory.push_back(static_cast<float>(frameTimeMs));
+    if (mlc.perfStats.frameTimeHistory.size() > mlc.kHistorySize) {
+        mlc.perfStats.frameTimeHistory.erase(mlc.perfStats.frameTimeHistory.begin());
+    }
+    mlc.perfStats.frameTimeMs = static_cast<float>(frameTimeMs);
+
+    if (currentTime - mlc.lastFpsTime >= 1.0) {
+        std::string title;
+        if (!mlc.projectName.empty()) {
+            title = mlc.projectName + " - Vivid (" + std::to_string(mlc.frameCount) + " fps)";
+        } else {
+            title = "Vivid (" + std::to_string(mlc.frameCount) + " fps)";
+        }
+        glfwSetWindowTitle(mlc.window, title.c_str());
+
+        // Update FPS in performance stats
+        mlc.perfStats.fps = static_cast<float>(mlc.frameCount);
+        mlc.perfStats.fpsHistory.push_back(mlc.perfStats.fps);
+        if (mlc.perfStats.fpsHistory.size() > mlc.kHistorySize) {
+            mlc.perfStats.fpsHistory.erase(mlc.perfStats.fpsHistory.begin());
+        }
+
+        mlc.frameCount = 0;
+        mlc.lastFpsTime = currentTime;
+
+        // Send param values, window state, and performance stats to editors once per second
+        if (mlc.editorBridge->clientCount() > 0 && mlc.hotReload->isLoaded()) {
+            if (mlc.gatherParamValues) {
+                mlc.editorBridge->sendParamValues(mlc.gatherParamValues());
+            }
+            if (mlc.gatherWindowState) {
+                mlc.editorBridge->sendWindowState(mlc.gatherWindowState());
+            }
+
+            // Gather operator count and estimate texture memory
+            mlc.perfStats.operatorCount = mlc.ctx->hasChain() ? mlc.ctx->chain().operatorNames().size() : 0;
+
+            // Estimate texture memory: count operators and assume average texture size
+            // More accurate would require querying each texture operator
+            size_t textureOpCount = 0;
+            if (mlc.ctx->hasChain()) {
+                for (const auto& name : mlc.ctx->chain().operatorNames()) {
+                    Operator* op = mlc.ctx->chain().getByName(name);
+                    if (op && op->outputKind() == OutputKind::Texture) {
+                        textureOpCount++;
+                    }
+                }
+            }
+            // Estimate: each texture is width*height*4 bytes (RGBA8)
+            mlc.perfStats.textureMemoryBytes = textureOpCount * mlc.ctx->width() * mlc.ctx->height() * 4;
+
+            mlc.editorBridge->sendPerformanceStats(mlc.perfStats);
+        }
+    }
+
+    return true;  // continue running
 }
 
 // -----------------------------------------------------------------------------
@@ -700,539 +1297,67 @@ int main(int argc, char** argv) {
         ctx.setError("No chain specified. Usage: vivid <path/to/chain.cpp>");
     }
 
-    // Track if setup has been called
-    bool chainNeedsSetup = true;
+    // Initialize MainLoopContext
+    MainLoopContext mlc;
 
-    // Fullscreen state tracking
-    bool isFullscreen = false;
-    int windowedX = 0, windowedY = 0, windowedWidth = 1280, windowedHeight = 720;
-    glfwGetWindowPos(window, &windowedX, &windowedY);
-    glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
+    // WebGPU infrastructure
+    mlc.instance = instance;
+    mlc.adapter = adapter;
+    mlc.surface = surface;
+    mlc.device = device;
+    mlc.queue = queue;
+    mlc.surfaceFormat = surfaceFormat;
+    mlc.config = config;
+
+    // Window state
+    mlc.window = window;
+    mlc.width = width;
+    mlc.height = height;
+    mlc.isFullscreen = false;
+    glfwGetWindowPos(window, &mlc.windowedX, &mlc.windowedY);
+    glfwGetWindowSize(window, &mlc.windowedWidth, &mlc.windowedHeight);
+    mlc.windowManager = &windowManager;
+
+    // Timing
+    mlc.lastFpsTime = glfwGetTime();
+    mlc.frameCount = 0;
+    mlc.lastFrameTime = glfwGetTime();
+
+    // Core runtime objects
+    mlc.ctx = &ctx;
+    mlc.display = &display;
+    mlc.hotReload = &hotReload;
+    mlc.chainVisualizer = &chainVisualizer;
+    mlc.editorBridge = &editorBridge;
+
+    // CLI args
+    mlc.snapshotPath = snapshotPath;
+    mlc.snapshotFrame = snapshotFrame;
+    mlc.headless = headless;
+    mlc.renderWidth = renderWidth;
+    mlc.renderHeight = renderHeight;
+    mlc.recordPath = recordPath;
+    mlc.recordFps = recordFps;
+    mlc.recordDuration = recordDuration;
+    mlc.recordAudio = recordAudio;
+    mlc.recordCodec = recordCodec;
+    mlc.maxFrames = maxFrames;
+    mlc.windowWidth = windowWidth;
+    mlc.windowHeight = windowHeight;
+
+    // Project info
+    mlc.projectName = projectName;
+
+    // Assign helper lambdas to MainLoopContext
+    mlc.updateSourceLines = updateSourceLines;
+    mlc.gatherOperatorInfo = gatherOperatorInfo;
+    mlc.gatherParamValues = gatherParamValues;
+    mlc.gatherWindowState = gatherWindowState;
 
     // Main loop
-    double lastFpsTime = glfwGetTime();
-    int frameCount = 0;
-
-    // Performance tracking for EditorBridge
-    EditorPerformanceStats perfStats;
-    double lastFrameTime = glfwGetTime();
-    const size_t kHistorySize = 60;  // Keep last 60 samples
-
-    // Snapshot mode tracking
-    int snapshotFrameCounter = 0;
-    bool snapshotSaved = false;
-
-    // CLI video recording
-    VideoExporter cliRecorder;
-    bool cliRecordingStarted = false;
-
-    while (!glfwWindowShouldClose(window)) {
-        glfwPollEvents();
-
-        // Memory logging every 10 seconds
-        {
-            double now = glfwGetTime();
-            if (now - g_lastMemoryLogTime >= 10.0) {
-                logMemoryUsage(now);
-                g_lastMemoryLogTime = now;
-            }
-        }
-
-        // Toggle chain visualizer on Tab key (edge detection)
-        {
-            static bool tabKeyWasPressed = false;
-            bool tabKeyPressed = glfwGetKey(window, GLFW_KEY_TAB) == GLFW_PRESS;
-            if (tabKeyPressed && !tabKeyWasPressed) {
-                vivid::imgui::toggleVisible();
-            }
-            tabKeyWasPressed = tabKeyPressed;
-        }
-
-        // Begin frame (updates time, input, etc.)
-        ctx.beginFrame();
-
-        // Handle window resize
-        if (ctx.width() != width || ctx.height() != height) {
-            width = ctx.width();
-            height = ctx.height();
-            if (width > 0 && height > 0) {
-                config.width = static_cast<uint32_t>(width);
-                config.height = static_cast<uint32_t>(height);
-                wgpuSurfaceConfigure(surface, &config);
-            }
-        }
-
-        // Handle vsync change
-        if (ctx.vsyncChanged()) {
-            config.presentMode = ctx.vsync() ? WGPUPresentMode_Fifo : WGPUPresentMode_Immediate;
-            wgpuSurfaceConfigure(surface, &config);
-        }
-
-        // Handle fullscreen change (from ctx.fullscreen() API)
-        if (ctx.fullscreenChanged()) {
-            if (ctx.fullscreen() && !isFullscreen) {
-                // Save windowed position and size
-                glfwGetWindowPos(window, &windowedX, &windowedY);
-                glfwGetWindowSize(window, &windowedWidth, &windowedHeight);
-
-                // Get target monitor (use current or selected)
-                int monitorCount = 0;
-                GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
-                int targetIdx = std::min(ctx.targetMonitor(), monitorCount - 1);
-                targetIdx = std::max(0, targetIdx);
-                GLFWmonitor* monitor = monitors[targetIdx];
-                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-
-                // Enter fullscreen
-                glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-                isFullscreen = true;
-            } else if (!ctx.fullscreen() && isFullscreen) {
-                // Exit fullscreen - restore windowed mode
-                glfwSetWindowMonitor(window, nullptr, windowedX, windowedY, windowedWidth, windowedHeight, 0);
-                isFullscreen = false;
-            }
-        }
-
-        // Handle borderless (decorated) window change
-        if (ctx.borderlessChanged()) {
-            glfwSetWindowAttrib(window, GLFW_DECORATED, ctx.borderless() ? GLFW_FALSE : GLFW_TRUE);
-        }
-
-        // Handle always-on-top (floating) change
-        if (ctx.alwaysOnTopChanged()) {
-            glfwSetWindowAttrib(window, GLFW_FLOATING, ctx.alwaysOnTop() ? GLFW_TRUE : GLFW_FALSE);
-        }
-
-        // Handle cursor visibility change
-        if (ctx.cursorVisibleChanged()) {
-            glfwSetInputMode(window, GLFW_CURSOR,
-                ctx.cursorVisible() ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
-        }
-
-        // Handle monitor change (move window to different display)
-        if (ctx.monitorChanged()) {
-            int monitorCount = 0;
-            GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
-            int targetIdx = std::min(ctx.targetMonitor(), monitorCount - 1);
-            targetIdx = std::max(0, targetIdx);
-
-            if (targetIdx < monitorCount) {
-                GLFWmonitor* monitor = monitors[targetIdx];
-                const GLFWvidmode* mode = glfwGetVideoMode(monitor);
-
-                if (isFullscreen) {
-                    // In fullscreen: switch to fullscreen on target monitor
-                    glfwSetWindowMonitor(window, monitor, 0, 0, mode->width, mode->height, mode->refreshRate);
-                } else {
-                    // In windowed: center window on target monitor
-                    int mx, my;
-                    glfwGetMonitorPos(monitor, &mx, &my);
-
-                    int ww, wh;
-                    glfwGetWindowSize(window, &ww, &wh);
-
-                    int newX = mx + (mode->width - ww) / 2;
-                    int newY = my + (mode->height - wh) / 2;
-                    glfwSetWindowPos(window, newX, newY);
-                }
-            }
-        }
-
-        // Handle window position change
-        if (ctx.windowPosChanged()) {
-            glfwSetWindowPos(window, ctx.targetWindowX(), ctx.targetWindowY());
-        }
-
-        // Handle window size change
-        if (ctx.windowSizeChanged()) {
-            glfwSetWindowSize(window, ctx.targetWindowWidth(), ctx.targetWindowHeight());
-        }
-
-        // Skip frame if minimized
-        if (width == 0 || height == 0) {
-            ctx.endFrame();
-            continue;
-        }
-
-        // Get current texture
-        WGPUSurfaceTexture surfaceTexture;
-        wgpuSurfaceGetCurrentTexture(surface, &surfaceTexture);
-        if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
-            surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
-            ctx.endFrame();
-            continue;
-        }
-
-        // Create view with explicit format matching the surface texture
-        WGPUTextureViewDescriptor viewDesc = {};
-        viewDesc.format = surfaceFormat;
-        viewDesc.dimension = WGPUTextureViewDimension_2D;
-        viewDesc.baseMipLevel = 0;
-        viewDesc.mipLevelCount = 1;
-        viewDesc.baseArrayLayer = 0;
-        viewDesc.arrayLayerCount = 1;
-        viewDesc.aspect = WGPUTextureAspect_All;
-        WGPUTextureView view = wgpuTextureCreateView(surfaceTexture.texture, &viewDesc);
-
-        // Check for hot-reload using safe API:
-        // 1. Check if reload needed (without unloading)
-        // 2. Destroy chain operators while old code is still loaded
-        // 3. Then reload (which unloads old library)
-        bool justReloaded = false;
-        if (hotReload.checkNeedsReload()) {
-            // Save operator states before destroying chain
-            if (ctx.hasChain()) {
-                ctx.preserveStates(ctx.chain());
-            }
-            // Destroy operators BEFORE unloading the library
-            // (their destructors are in the dylib code)
-            ctx.clearRegisteredOperators();
-            ctx.resetChain();
-
-            // Now safe to reload (unloads old library, loads new one)
-            hotReload.reload();
-            chainNeedsSetup = true;
-            justReloaded = true;
-        }
-
-        // Update error state from hot-reload
-        if (hotReload.hasError()) {
-            ctx.setError(hotReload.getError());
-        } else if (hotReload.isLoaded()) {
-            ctx.clearError();
-        }
-
-        // Notify connected editors of compile status
-        if (justReloaded && editorBridge.clientCount() > 0) {
-            if (hotReload.hasError()) {
-                editorBridge.sendCompileStatus(false, hotReload.getError());
-            } else {
-                editorBridge.sendCompileStatus(true, "");
-            }
-        }
-
-        // Call chain functions if loaded
-        if (hotReload.isLoaded()) {
-            // Call setup if needed (after reload)
-            if (chainNeedsSetup) {
-                // Chain was already reset before reload (to safely destroy operators)
-                // Just call user's setup function
-                hotReload.getSetupFn()(ctx);
-
-                // Auto-initialize the chain
-                ctx.chain().init(ctx);
-
-                // Honor chain's window size request (if not overridden by command-line)
-                if (ctx.chain().hasWindowSize()) {
-                    int w = ctx.chain().windowWidth();
-                    int h = ctx.chain().windowHeight();
-                    if (w > 0 && h > 0 && !isFullscreen) {
-                        glfwSetWindowSize(window, w, h);
-                    }
-                }
-
-                // Update render resolution from chain if set
-                if (ctx.chain().hasResolution()) {
-                    ctx.setRenderResolution(ctx.chain().defaultWidth(), ctx.chain().defaultHeight());
-                }
-
-                // Restore preserved states across hot-reloads
-                if (ctx.hasPreservedStates()) {
-                    ctx.restoreStates(ctx.chain());
-                }
-
-                chainNeedsSetup = false;
-
-                // Update operator source line numbers from chain.cpp
-                updateSourceLines(ctx.chainPath());
-
-                // Send operator list to connected editors (Phase 2)
-                if (editorBridge.clientCount() > 0) {
-                    editorBridge.sendOperatorList(gatherOperatorInfo());
-                }
-
-                // Start CLI recording (once, after first chain load)
-                if (!recordPath.empty() && !cliRecordingStarted) {
-                    int recW = renderWidth > 0 ? renderWidth : windowWidth;
-                    int recH = renderHeight > 0 ? renderHeight : windowHeight;
-                    bool started = false;
-                    if (recordAudio) {
-                        started = cliRecorder.startWithAudio(recordPath, recW, recH,
-                                                             recordFps, recordCodec,
-                                                             AUDIO_SAMPLE_RATE, AUDIO_CHANNELS);
-                    } else {
-                        started = cliRecorder.start(recordPath, recW, recH, recordFps, recordCodec);
-                    }
-                    if (started) {
-                        std::cout << "Recording to: " << recordPath
-                                  << " (" << recW << "x" << recH << " @ " << recordFps << "fps";
-                        if (recordDuration > 0) {
-                            std::cout << ", " << recordDuration << "s";
-                        }
-                        std::cout << ")" << std::endl;
-                    } else {
-                        std::cerr << "Failed to start recording: " << cliRecorder.error() << std::endl;
-                    }
-                    cliRecordingStarted = true;
-                }
-            }
-
-            // Call user's update function (parameter tweaks)
-            hotReload.getUpdateFn()(ctx);
-
-            // Auto-process the chain
-            ctx.chain().process(ctx);
-
-            // Capture frame for video export if recording
-            if (chainVisualizer.exporter().isRecording() && ctx.outputTexture()) {
-                // Get the underlying texture from the texture view
-                // The output texture should be the chain's final output
-                WGPUTexture outputTex = ctx.chain().outputTexture();
-                if (outputTex) {
-                    chainVisualizer.exporter().captureFrame(device, queue, outputTex);
-
-                    // Capture audio if recording with audio
-                    if (chainVisualizer.exporter().hasAudio()) {
-                        // Generate audio synchronously for this video frame
-                        // Calculate audio frames per video frame: 48000Hz / fps
-                        float fps = chainVisualizer.exporter().fps();
-                        uint32_t audioFramesPerVideoFrame = static_cast<uint32_t>(AUDIO_SAMPLE_RATE / fps);
-
-                        // Use a static buffer for efficiency
-                        static std::vector<float> audioBuffer;
-                        if (audioBuffer.size() < audioFramesPerVideoFrame * AUDIO_CHANNELS) {
-                            audioBuffer.resize(audioFramesPerVideoFrame * AUDIO_CHANNELS);
-                        }
-
-                        // Generate audio deterministically (no race condition)
-                        ctx.chain().generateAudioForExport(audioBuffer.data(), audioFramesPerVideoFrame);
-                        chainVisualizer.exporter().pushAudioSamples(
-                            audioBuffer.data(), audioFramesPerVideoFrame);
-                    }
-                }
-            }
-
-            // CLI video recording capture
-            if (cliRecorder.isRecording() && ctx.outputTexture()) {
-                WGPUTexture outputTex = ctx.chain().outputTexture();
-                if (outputTex) {
-                    cliRecorder.captureFrame(device, queue, outputTex);
-
-                    // Capture audio if enabled
-                    if (cliRecorder.hasAudio()) {
-                        uint32_t audioFramesPerVideoFrame = static_cast<uint32_t>(AUDIO_SAMPLE_RATE / recordFps);
-                        static std::vector<float> cliAudioBuffer;
-                        if (cliAudioBuffer.size() < audioFramesPerVideoFrame * AUDIO_CHANNELS) {
-                            cliAudioBuffer.resize(audioFramesPerVideoFrame * AUDIO_CHANNELS);
-                        }
-                        ctx.chain().generateAudioForExport(cliAudioBuffer.data(), audioFramesPerVideoFrame);
-                        cliRecorder.pushAudioSamples(cliAudioBuffer.data(), audioFramesPerVideoFrame);
-                    }
-
-                    // Check duration limit
-                    if (recordDuration > 0 && cliRecorder.duration() >= recordDuration) {
-                        std::cout << "Recording complete: " << cliRecorder.frameCount() << " frames, "
-                                  << cliRecorder.duration() << "s" << std::endl;
-                        cliRecorder.stop();
-                        glfwSetWindowShouldClose(window, GLFW_TRUE);
-                    }
-                }
-            }
-
-            // Save snapshot if requested (interactive UI)
-            if (chainVisualizer.snapshotRequested()) {
-                WGPUTexture outputTex = ctx.chain().outputTexture();
-                if (outputTex) {
-                    chainVisualizer.saveSnapshot(device, queue, outputTex, ctx);
-                }
-            }
-
-            // Track total frames for --snapshot and --frames options
-            snapshotFrameCounter++;
-
-            // Automated snapshot mode (CLI --snapshot flag)
-            if (!snapshotPath.empty() && !snapshotSaved) {
-                if (snapshotFrameCounter >= snapshotFrame) {
-                    WGPUTexture outputTex = ctx.chain().outputTexture();
-                    if (outputTex) {
-                        std::cout << "Saving snapshot to: " << snapshotPath << std::endl;
-                        if (VideoExporter::saveSnapshot(device, queue, outputTex, snapshotPath)) {
-                            std::cout << "Snapshot saved successfully" << std::endl;
-                            snapshotSaved = true;
-                            // Exit after saving (unless --frames is also set)
-                            if (maxFrames == 0) {
-                                glfwSetWindowShouldClose(window, GLFW_TRUE);
-                            }
-                        } else {
-                            std::cerr << "Failed to save snapshot" << std::endl;
-                            snapshotSaved = true;  // Don't retry
-                        }
-                    }
-                }
-            }
-
-            // Frame limit mode (CLI --frames flag)
-            if (maxFrames > 0 && snapshotFrameCounter >= maxFrames) {
-                std::cout << "Rendered " << maxFrames << " frames, exiting." << std::endl;
-                glfwSetWindowShouldClose(window, GLFW_TRUE);
-            }
-        }
-
-        // Create command encoder
-        WGPUCommandEncoderDescriptor encoderDesc = {};
-        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &encoderDesc);
-
-        // Render pass - clear to black
-        WGPURenderPassColorAttachment colorAttachment = {};
-        colorAttachment.view = view;
-        colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-        colorAttachment.loadOp = WGPULoadOp_Clear;
-        colorAttachment.storeOp = WGPUStoreOp_Store;
-        colorAttachment.clearValue = {0.0, 0.0, 0.0, 1.0};
-
-        WGPURenderPassDescriptor renderPassDesc = {};
-        renderPassDesc.colorAttachmentCount = 1;
-        renderPassDesc.colorAttachments = &colorAttachment;
-
-        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
-
-        // Update display with current screen size
-        display.setScreenSize(width, height);
-
-        // Build frame input for ImGui (needed for chain visualizer even if UI hidden)
-        float xscale, yscale;
-        glfwGetWindowContentScale(window, &xscale, &yscale);
-
-        vivid::imgui::FrameInput frameInput;
-        frameInput.width = ctx.width();
-        frameInput.height = ctx.height();
-        frameInput.contentScale = xscale;
-        frameInput.dt = static_cast<float>(ctx.dt());
-        frameInput.mousePos = ctx.mouse();
-        frameInput.mouseDown[0] = ctx.mouseButton(0).held;
-        frameInput.mouseDown[1] = ctx.mouseButton(1).held;
-        frameInput.mouseDown[2] = ctx.mouseButton(2).held;
-        frameInput.scroll = ctx.scroll();
-        frameInput.keyCtrl = glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
-                             glfwGetKey(window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
-        frameInput.keyShift = glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
-                              glfwGetKey(window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
-        frameInput.keyAlt = glfwGetKey(window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
-                            glfwGetKey(window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
-        frameInput.keySuper = glfwGetKey(window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
-                              glfwGetKey(window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
-
-        // Run chain visualizer BEFORE blit so solo mode can override output texture
-        if (vivid::imgui::isVisible()) {
-            vivid::imgui::beginFrame(frameInput);
-            chainVisualizer.render(frameInput, ctx);
-        }
-
-        // Blit output texture (may have been modified by solo mode)
-        if (ctx.outputTexture() && display.isValid()) {
-            display.blit(pass, ctx.outputTexture());
-        }
-
-        // Render ImGui on top of the blit
-        if (vivid::imgui::isVisible()) {
-            vivid::imgui::render(pass);
-        }
-
-        // Render error message if present
-        if (ctx.hasError() && display.isValid()) {
-            display.renderText(pass, ctx.errorMessage(), 20.0f, 20.0f, 2.0f);
-        }
-
-        wgpuRenderPassEncoderEnd(pass);
-        wgpuRenderPassEncoderRelease(pass);
-
-        // Submit
-        WGPUCommandBufferDescriptor cmdBufferDesc = {};
-        WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
-        wgpuQueueSubmit(queue, 1, &cmdBuffer);
-
-        // Release command resources
-        wgpuCommandBufferRelease(cmdBuffer);
-        wgpuCommandEncoderRelease(encoder);
-
-        // Present BEFORE releasing the texture view
-        wgpuSurfacePresent(surface);
-
-        // Present to secondary windows (span/multi-output)
-        // Note: Primary window (0) was already presented above
-        if (windowManager.windowCount() > 1) {
-            windowManager.presentAll(&ctx.chain(), ctx.outputTexture());
-        }
-
-        // Poll device to process pending GPU work and prevent command buffer accumulation
-        // This is critical when multiple operators submit command buffers per frame
-        wgpuDevicePoll(device, false, nullptr);
-
-        // Release texture view after present (surface owns the texture)
-        wgpuTextureViewRelease(view);
-        // Note: Don't release surfaceTexture.texture - it's owned by the surface
-
-        // End frame
-        ctx.endFrame();
-
-        // FPS counter and title update
-        frameCount++;
-        double currentTime = glfwGetTime();
-
-        // Track frame time for performance stats
-        double frameTimeMs = (currentTime - lastFrameTime) * 1000.0;
-        lastFrameTime = currentTime;
-
-        // Update frame time history (rolling buffer)
-        perfStats.frameTimeHistory.push_back(static_cast<float>(frameTimeMs));
-        if (perfStats.frameTimeHistory.size() > kHistorySize) {
-            perfStats.frameTimeHistory.erase(perfStats.frameTimeHistory.begin());
-        }
-        perfStats.frameTimeMs = static_cast<float>(frameTimeMs);
-
-        if (currentTime - lastFpsTime >= 1.0) {
-            std::string title;
-            if (!projectName.empty()) {
-                title = projectName + " - Vivid (" + std::to_string(frameCount) + " fps)";
-            } else {
-                title = "Vivid (" + std::to_string(frameCount) + " fps)";
-            }
-            glfwSetWindowTitle(window, title.c_str());
-
-            // Update FPS in performance stats
-            perfStats.fps = static_cast<float>(frameCount);
-            perfStats.fpsHistory.push_back(perfStats.fps);
-            if (perfStats.fpsHistory.size() > kHistorySize) {
-                perfStats.fpsHistory.erase(perfStats.fpsHistory.begin());
-            }
-
-            frameCount = 0;
-            lastFpsTime = currentTime;
-
-            // Send param values, window state, and performance stats to editors once per second
-            if (editorBridge.clientCount() > 0 && hotReload.isLoaded()) {
-                editorBridge.sendParamValues(gatherParamValues());
-                editorBridge.sendWindowState(gatherWindowState());
-
-                // Gather operator count and estimate texture memory
-                perfStats.operatorCount = ctx.hasChain() ? ctx.chain().operatorNames().size() : 0;
-
-                // Estimate texture memory: count operators and assume average texture size
-                // More accurate would require querying each texture operator
-                size_t textureOpCount = 0;
-                if (ctx.hasChain()) {
-                    for (const auto& name : ctx.chain().operatorNames()) {
-                        Operator* op = ctx.chain().getByName(name);
-                        if (op && op->outputKind() == OutputKind::Texture) {
-                            textureOpCount++;
-                        }
-                    }
-                }
-                // Estimate: each texture is width*height*4 bytes (RGBA8)
-                perfStats.textureMemoryBytes = textureOpCount * ctx.width() * ctx.height() * 4;
-
-                editorBridge.sendPerformanceStats(perfStats);
-            }
+    while (!glfwWindowShouldClose(mlc.window)) {
+        if (!mainLoopIteration(mlc)) {
+            break;
         }
     }
 
@@ -1240,10 +1365,10 @@ int main(int argc, char** argv) {
     std::cout << "Shutting down..." << std::endl;
 
     // Stop CLI recording if active
-    if (cliRecorder.isRecording()) {
-        std::cout << "Stopping recording: " << cliRecorder.frameCount() << " frames, "
-                  << cliRecorder.duration() << "s" << std::endl;
-        cliRecorder.stop();
+    if (mlc.cliRecorder.isRecording()) {
+        std::cout << "Stopping recording: " << mlc.cliRecorder.frameCount() << " frames, "
+                  << mlc.cliRecorder.duration() << "s" << std::endl;
+        mlc.cliRecorder.stop();
     }
 
     // Stop editor bridge
