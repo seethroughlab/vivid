@@ -2458,7 +2458,7 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
         // Use offset: (face * maxObjects + objectIndex) * UNIFORM_ALIGNMENT
         for (size_t i = 0; i < objects.size(); i++) {
             const auto& obj = objects[i];
-            if (!obj.mesh) continue;
+            if (!obj.mesh || !obj.castShadow) continue;
 
             PointShadowUniforms uniforms;
             memcpy(uniforms.lightViewProj, glm::value_ptr(faceMatrix), 64);
@@ -2536,7 +2536,7 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
         // Render each object
         for (size_t i = 0; i < objects.size(); i++) {
             const auto& obj = objects[i];
-            if (!obj.mesh) continue;
+            if (!obj.mesh || !obj.castShadow) continue;
 
             // Match the offset calculation used when writing uniforms
             uint32_t dynamicOffset = static_cast<uint32_t>((face * objects.size() + i) * UNIFORM_ALIGNMENT);
@@ -2615,7 +2615,7 @@ void Render3D::renderShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
 
     for (size_t i = 0; i < objects.size(); i++) {
         const auto& obj = objects[i];
-        if (!obj.mesh) continue;
+        if (!obj.mesh || !obj.castShadow) continue;
 
         ShadowUniforms uniforms;
         memcpy(uniforms.lightViewProj, glm::value_ptr(m_lightViewProj), 64);
@@ -2645,7 +2645,7 @@ void Render3D::renderShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
     // Render each object in the scene using dynamic offsets
     for (size_t i = 0; i < objects.size(); i++) {
         const auto& obj = objects[i];
-        if (!obj.mesh) continue;
+        if (!obj.mesh || !obj.castShadow) continue;
 
         // Set bind group with dynamic offset for this object
         uint32_t dynamicOffset = static_cast<uint32_t>(i * SHADOW_UNIFORM_ALIGNMENT);

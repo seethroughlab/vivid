@@ -27,7 +27,10 @@ The wgpu-native library has issues with rendering to certain array layers. The w
 
 ### 3. UV Coordinate Fixes
 - V coordinate flip: `texV = 0.5 - (v / ma) * 0.5` because WebGPU textures have Y=0 at top
-- Face 0/1 U coordinate swap to match lookAt matrices
+- Face 0/1 U coordinate signs: Follow standard OpenGL cube map convention
+  - Face 0 (+X): `u = -lightToFrag.z` (sc = -rz in OpenGL spec)
+  - Face 1 (-X): `u = +lightToFrag.z` (sc = +rz in OpenGL spec)
+  - Without this fix, shadows appear sheared/split at X-face boundaries
 
 Key files modified:
 - `renderer.cpp`: Uniform offset calculation, 6 separate textures, UV fixes

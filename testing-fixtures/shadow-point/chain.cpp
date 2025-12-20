@@ -58,9 +58,11 @@ void setup(Context& ctx) {
     scene.add(&cylinder, cylTransform, glm::vec4(0.3f, 0.3f, 0.8f, 1.0f));
 
     // Light marker - bright yellow, will be updated each frame
+    // Marked as non-shadow-casting since it's at the light position
     glm::mat4 lightMarkerTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f));
     g_lightMarkerIndex = static_cast<int>(scene.entries().size());  // Save index before adding
     scene.add(&lightMarker, lightMarkerTransform, glm::vec4(1.0f, 1.0f, 0.2f, 1.0f));
+    scene.entries().back().castShadow = false;
 
     // Point Light (casts shadows in all directions)
     auto& light = chain.add<PointLight>("pointlight");

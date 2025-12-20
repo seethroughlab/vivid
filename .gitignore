@@ -67,3 +67,4 @@ nul
 /*.obj
 *-job-logs.txt
 **/snapshot_*.png
+three.js

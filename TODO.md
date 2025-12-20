@@ -220,4 +220,15 @@
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
 [ ] POINT_SHADOW_INVESTIGATION.md
-[ ] All lights and camera should have a "draw debug" boolean that will draw a WIREFRAME structure that is appropriate to the subject. A Camera should show the frustum, a directional light should show the direction, spot light should show the light cone, etc.
+[ ] All lights and camera should have a "draw debug" boolean that will draw a WIREFRAME (NOT solid) structure that is appropriate to the subject. A Camera should show the frustum, a directional light should show the direction, spot light should show the light cone, etc.
+[ ] Please check out the three.js, which implements shadows well - albeit in WebGL instead of wgpu. Is there anything we can learn from that shadow implementation?
+[ ]  testing-fixtures/shadow-point
+=== Memory Tracking Started ===
+[10.0s] Memory: 109 MB (total: +0 MB, last 10s: +0 MB)
+[20.0s] Memory: 112 MB (total: +3 MB, last 10s: +3 MB)
+[30.0s] Memory: 116 MB (total: +7 MB, last 10s: +4 MB)
+[40.0s] Memory: 119 MB (total: +10 MB, last 10s: +3 MB)
+[50.0s] Memory: 122 MB (total: +13 MB, last 10s: +3 MB)
+[60.0s] Memory: 125 MB (total: +16 MB, last 10s: +3 MB)
+[70.0s] Memory: 129 MB (total: +20 MB, last 10s: +4 MB)
+[80.0s] Memory: 132 MB (total: +23 MB, last 10s: +3 MB)
