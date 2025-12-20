@@ -197,13 +197,7 @@
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
 [ ] Finish Shadows - Is everything in SHADOWS.md complete? I believe there are just a couple of lingering issues Point lights -- they're way off
-[ ] "All operators inherit from `Operator` or `TextureOperator`" -- what other base operators would you recommend that might make it easier to make new operators? In addition to Texture Operators, TouchDesigner has:
-    COMPs - Components - Object Components (3D objects), Panel Components (2D UI gadgets), and other component types. Components contain other operators.
-    TOPs - Texture Operators - all 2D image operations.
-    CHOPs - Channel Operators - motion, audio, animation, control signals.
-    POPs - Point Operators - 3D points, primitives, polygons, point clouds, particles and GPU-based data operations.
-    DATs - Data Operators - ASCII text as plain text, scripts, XML, or organized in tables of cells.
-    MATs - Material Operators - materials and shaders.
-    SOPs - Surface Operators - legacy 3D points, polygons and other 3D primitives, with some capabilities not possible in POPs yet.
-Are any of these relevant/useful for vivid? I'm particularly interested in facilitating audio creation, but anything that would simplify operator creation would be great. 
+[x] "All operators inherit from `Operator` or `TextureOperator`" -- what other base operators would you recommend?
+    - See **OPERATOR_REFACTOR.md** for full analysis
+    - Recommended: SignalOperator (control-rate signals), GeometryOperator (3D primitives), ComputeOperator (future) 
 [ ] There's still a slow memory leak in most projects. 
