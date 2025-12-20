@@ -115,6 +115,66 @@ public:
 };
 ```
 
+### Output Types
+
+| Type | Description | Preview |
+|------|-------------|---------|
+| `Texture` | 2D image | Thumbnail in preview panel |
+| `Value` | Single float | Numeric display with sparkline |
+| `ValueArray` | Float array | Waveform display |
+| `Geometry` | 3D mesh | Wireframe preview |
+
+## Context API
+
+The `Context` object provides access to the runtime.
+
+### Time and Frame Info
+
+```cpp
+float t = ctx.time();    // Seconds since start
+float dt = ctx.dt();     // Delta time (seconds since last frame)
+int f = ctx.frame();     // Frame number
+```
+
+### Resolution
+
+```cpp
+int w = ctx.width();     // Output width in pixels
+int h = ctx.height();    // Output height in pixels
+```
+
+### Debug Values
+
+```cpp
+ctx.debug("myValue", someFloat);  // Show in debug panel (D key)
+```
+
+## 2D Instanced Rendering
+
+For efficient rendering of many 2D shapes (particles, data visualizations), use GPU instancing:
+
+```cpp
+void update(Chain& chain, Context& ctx) {
+    std::vector<Circle2D> circles;
+
+    for (int i = 0; i < 1000; i++) {
+        circles.emplace_back(
+            glm::vec2(x, y),           // position (0-1 normalized)
+            0.02f,                      // radius (normalized)
+            glm::vec4(1, 0, 0, 1)      // color (RGBA)
+        );
+    }
+
+    // Render all circles in ONE draw call
+    Texture output = ctx.createTexture();
+    ctx.drawCircles(circles, output, glm::vec4(0, 0, 0, 1));  // clearColor
+}
+```
+
+**Performance:** All shapes are rendered in a single GPU draw call using instancing.
+
+**See:** `examples/2d-effects/particles/` for a complete particle system example.
+
 ## Parameters
 
 ### Basic Parameter Types
