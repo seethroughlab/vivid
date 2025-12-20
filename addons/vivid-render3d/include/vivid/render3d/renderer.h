@@ -4,8 +4,10 @@
 #include <vivid/render3d/mesh.h>
 #include <vivid/render3d/camera.h>
 #include <vivid/render3d/scene.h>
+#include <vivid/render3d/shadow_manager.h>
 #include <glm/glm.hpp>
 #include <string>
+#include <memory>
 
 namespace vivid {
 class Context;
@@ -201,7 +203,7 @@ public:
     void setShadowMapResolution(int size);
 
     /// Check if shadows are enabled
-    bool hasShadows() const { return m_shadowsEnabled; }
+    bool hasShadows() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -294,18 +296,8 @@ private:
     void initVertexLayout();  // Initialize m_vertexAttrs and m_vertexLayout
     WGPUDepthStencilState getStandardDepthStencil();
 
-    // Shadow mapping helpers
-    void createShadowResources(Context& ctx);
-    void createPointShadowResources(Context& ctx);
-    void destroyShadowResources();
-    void renderShadowPass(Context& ctx, WGPUCommandEncoder encoder);
-    void renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder);
-    glm::mat4 computeDirectionalLightMatrix(const LightData& light, const Scene& scene);
-    glm::mat4 computeSpotLightMatrix(const LightData& light);
-
     // Debug visualization helpers
     void renderDebugVisualization(Context& ctx, WGPURenderPassEncoder pass);
-    glm::mat4 computePointLightFaceMatrix(const glm::vec3& lightPos, int face, float nearPlane, float farPlane);
     bool hasShadowCastingLight() const;
     bool hasPointLightShadow() const;
 
@@ -343,43 +335,8 @@ private:
     // Debug
     bool m_wireframe = false;
 
-    // Shadow mapping (directional/spot)
-    bool m_shadowsEnabled = false;
-    int m_shadowMapResolution = 1024;
-    WGPUTexture m_shadowMapTexture = nullptr;
-    WGPUTextureView m_shadowMapView = nullptr;
-    WGPURenderPipeline m_shadowPassPipeline = nullptr;
-    WGPUSampler m_shadowSampler = nullptr;  // Comparison sampler for PCF
-    WGPUBuffer m_shadowPassUniformBuffer = nullptr;  // For shadow pass (lightViewProj + model)
-    WGPUBuffer m_shadowSampleUniformBuffer = nullptr;  // For shadow sampling in main pass
-    WGPUBindGroupLayout m_shadowBindGroupLayout = nullptr;  // For shadow pass uniforms
-    WGPUBindGroupLayout m_shadowSampleBindGroupLayout = nullptr;  // For sampling shadows in main pass (group 2)
-    WGPUBindGroup m_shadowSampleBindGroup = nullptr;  // Binds shadow map + sampler for main pass
-    WGPUBindGroup m_shadowPassBindGroup = nullptr;  // Cached bind group for directional/spot shadow pass
-    glm::mat4 m_lightViewProj = glm::mat4(1.0f);  // Cached light-space matrix
-
-    // Point light shadow mapping (6 separate 2D textures to work around wgpu array layer bug)
-    // See: https://github.com/gfx-rs/wgpu/issues/1690
-    WGPUTexture m_pointShadowFaceTextures[6] = {};  // 6 separate R32Float textures
-    WGPUTextureView m_pointShadowFaceViews[6] = {};  // Views for rendering each face
-    WGPUTexture m_pointShadowDepthTexture = nullptr;  // Shared depth buffer for face rendering
-    WGPUTextureView m_pointShadowDepthView = nullptr;
-    WGPURenderPipeline m_pointShadowPipeline = nullptr;  // Pipeline for point shadow pass
-    WGPUBuffer m_pointShadowUniformBuffer = nullptr;  // Uniforms for point shadow pass
-    WGPUBindGroup m_pointShadowSampleBindGroup = nullptr;  // Binds cube shadow map for main pass
-    WGPUSampler m_pointShadowSampler = nullptr;  // Regular sampler (not comparison)
-    WGPUBindGroupLayout m_pointShadowBindGroupLayout = nullptr;  // Cached layout for point shadow pass
-    WGPUBindGroup m_pointShadowPassBindGroup = nullptr;  // Cached bind group for point shadow pass
-    bool m_shadowBindGroupDirty = true;  // True when shadow sample bind group needs rebuild
-    glm::vec3 m_pointLightPos = glm::vec3(0.0f);  // Cached point light position
-    float m_pointLightRange = 50.0f;  // Cached point light range
-
-    // Dummy shadow resources (for when shadows are disabled)
-    WGPUTexture m_dummyShadowTexture = nullptr;
-    WGPUTextureView m_dummyShadowView = nullptr;
-    // 6 dummy textures for point shadows (to match the 6 separate texture approach)
-    WGPUTexture m_dummyPointShadowTextures[6] = {};
-    WGPUTextureView m_dummyPointShadowViews[6] = {};
+    // Shadow mapping (delegated to ShadowManager)
+    std::unique_ptr<ShadowManager> m_shadowManager;
 
     // Displacement
     effects::TextureOperator* m_displacementOp = nullptr;

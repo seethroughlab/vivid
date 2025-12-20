@@ -39,6 +39,7 @@ add_library(vivid-render3d SHARED
     src/camera.cpp
     src/scene.cpp
     src/renderer.cpp
+    src/shadow_manager.cpp
     src/material.cpp
     src/textured_material.cpp
     src/ibl_environment.cpp

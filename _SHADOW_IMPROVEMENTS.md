@@ -6,6 +6,22 @@ Research into three.js's shadow implementation compared with Vivid's current app
 
 ---
 
+## Current Architecture
+
+Shadow code has been extracted from `renderer.cpp` to a dedicated `ShadowManager` class:
+
+| File | Purpose |
+|------|---------|
+| `shadow_manager.h` | ShadowManager class definition, all shadow member variables |
+| `shadow_manager.cpp` | Shadow resource creation, render passes, bind group management |
+| `renderer.cpp` | Calls ShadowManager; contains shadow sampling shaders in FLAT_SHADER_SOURCE |
+
+**Key classes:**
+- `ShadowManager` - Owns all shadow GPU resources, handles shadow pass rendering
+- `Render3D` - Uses `std::unique_ptr<ShadowManager> m_shadowManager`
+
+---
+
 ## Current State: Vivid vs Three.js
 
 | Feature | Three.js | Vivid |
@@ -103,7 +119,8 @@ Three.js caches depth materials to avoid shader recompilation:
 Add Vogel disk PCF to shadow sampling for soft shadow edges.
 
 **Files to Modify:**
-- `addons/vivid-render3d/src/renderer.cpp` (embedded shader, lines 163-295)
+- `addons/vivid-render3d/src/renderer.cpp` (FLAT_SHADER_SOURCE - contains `sampleShadow()` and `samplePointShadow()`)
+- `addons/vivid-render3d/src/shadow_manager.cpp` (shadow pass shaders: SHADOW_SHADER_SOURCE, POINT_SHADOW_SHADER_SOURCE)
 
 **Steps:**
 1. Add helper functions to shader:
@@ -159,11 +176,13 @@ fn sampleShadowPCF(coord: vec3<f32>, texelSize: f32) -> f32 {
 Replace 6 separate point shadow textures with single 3x2 atlas.
 
 **Files to Modify:**
-- `addons/vivid-render3d/src/renderer.cpp`
+- `addons/vivid-render3d/src/shadow_manager.cpp`
   - `createPointShadowResources()` - single texture creation
   - `renderPointShadowPass()` - viewport-based rendering
-  - `samplePointShadow()` shader - cube2uv remapping
-- `addons/vivid-render3d/include/vivid/render3d/renderer.h`
+  - `POINT_SHADOW_SHADER_SOURCE` - may need adjustments
+- `addons/vivid-render3d/src/renderer.cpp`
+  - `samplePointShadow()` in FLAT_SHADER_SOURCE - cube2uv remapping
+- `addons/vivid-render3d/include/vivid/render3d/shadow_manager.h`
   - Remove 6 texture members, add single atlas
 
 **Steps:**
@@ -228,7 +247,9 @@ Add flags to skip shadow map rendering for static lights.
 
 **Files to Modify:**
 - `addons/vivid-render3d/include/vivid/render3d/light_operators.h`
-- `addons/vivid-render3d/src/renderer.cpp`
+- `addons/vivid-render3d/include/vivid/render3d/shadow_manager.h`
+- `addons/vivid-render3d/src/shadow_manager.cpp`
+- `addons/vivid-render3d/src/renderer.cpp` (process() - calls to ShadowManager)
 
 **Steps:**
 
