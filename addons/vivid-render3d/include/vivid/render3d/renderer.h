@@ -289,6 +289,11 @@ private:
     void createPipeline(Context& ctx);
     void createDepthBuffer(Context& ctx);
 
+    // Pipeline creation helpers
+    WGPUShaderModule createShaderModule(WGPUDevice device, const std::string& source, const char* label);
+    void initVertexLayout();  // Initialize m_vertexAttrs and m_vertexLayout
+    WGPUDepthStencilState getStandardDepthStencil();
+
     // Shadow mapping helpers
     void createShadowResources(Context& ctx);
     void createPointShadowResources(Context& ctx);
@@ -396,6 +401,11 @@ private:
     WGPUTextureView m_depthView = nullptr;
     int m_depthWidth = 0;   // Track depth buffer size for resize detection
     int m_depthHeight = 0;
+
+    // Shared vertex layout (initialized once in createPipeline)
+    WGPUVertexAttribute m_vertexAttrs[5] = {};
+    WGPUVertexBufferLayout m_vertexLayout = {};
+
     WGPURenderPipeline m_pipeline = nullptr;           // Flat/Gouraud/Unlit
     WGPURenderPipeline m_pbrPipeline = nullptr;        // PBR with scalar values
     WGPURenderPipeline m_pbrTexturedPipeline = nullptr; // PBR with texture maps

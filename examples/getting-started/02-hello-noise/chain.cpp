@@ -38,7 +38,7 @@ void update(Context& ctx) {
     // Debug value monitoring - visible in the debug panel (D key)
     ctx.debug("time", ctx.time());
     ctx.debug("frame", ctx.frame());
-    ctx.debug("fps", 1.0f / ctx.dt());
+    ctx.debug("fps", 1.0 / ctx.dt());
 }
 
 VIVID_CHAIN(setup, update)

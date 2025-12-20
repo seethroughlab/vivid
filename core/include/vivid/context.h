@@ -465,6 +465,15 @@ public:
     /// @brief Record an int value
     void debug(const std::string& name, int value) { debug(name, static_cast<float>(value)); }
 
+    /// @brief Record a double value
+    void debug(const std::string& name, double value) { debug(name, static_cast<float>(value)); }
+
+    /// @brief Record an unsigned int value
+    void debug(const std::string& name, uint32_t value) { debug(name, static_cast<float>(value)); }
+
+    /// @brief Record a uint64_t value
+    void debug(const std::string& name, uint64_t value) { debug(name, static_cast<float>(value)); }
+
     /**
      * @brief Get all debug values for rendering
      * @return Map of name to DebugValue

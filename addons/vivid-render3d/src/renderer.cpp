@@ -2872,20 +2872,75 @@ void Render3D::createDepthBuffer(Context& ctx) {
     }
 }
 
-void Render3D::createPipeline(Context& ctx) {
-    WGPUDevice device = ctx.device();
+// -------------------------------------------------------------------------
+// Pipeline Creation Helpers
+// -------------------------------------------------------------------------
 
-    // Create flat/Gouraud shader module
-    std::string flatShaderSrc = loadShaderOrFallback("flat.wgsl", FLAT_SHADER_SOURCE);
+WGPUShaderModule Render3D::createShaderModule(WGPUDevice device, const std::string& source, const char* label) {
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(flatShaderSrc.c_str());
+    wgslDesc.code = toStringView(source.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;
-    shaderDesc.label = toStringView("Render3D Shader");
+    shaderDesc.label = toStringView(label);
 
-    WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+    return wgpuDeviceCreateShaderModule(device, &shaderDesc);
+}
+
+void Render3D::initVertexLayout() {
+    // position: vec3f at offset 0
+    m_vertexAttrs[0].format = WGPUVertexFormat_Float32x3;
+    m_vertexAttrs[0].offset = offsetof(Vertex3D, position);
+    m_vertexAttrs[0].shaderLocation = 0;
+
+    // normal: vec3f at offset 12
+    m_vertexAttrs[1].format = WGPUVertexFormat_Float32x3;
+    m_vertexAttrs[1].offset = offsetof(Vertex3D, normal);
+    m_vertexAttrs[1].shaderLocation = 1;
+
+    // tangent: vec4f at offset 24 (xyz = tangent, w = handedness)
+    m_vertexAttrs[2].format = WGPUVertexFormat_Float32x4;
+    m_vertexAttrs[2].offset = offsetof(Vertex3D, tangent);
+    m_vertexAttrs[2].shaderLocation = 2;
+
+    // uv: vec2f at offset 40
+    m_vertexAttrs[3].format = WGPUVertexFormat_Float32x2;
+    m_vertexAttrs[3].offset = offsetof(Vertex3D, uv);
+    m_vertexAttrs[3].shaderLocation = 3;
+
+    // color: vec4f at offset 48
+    m_vertexAttrs[4].format = WGPUVertexFormat_Float32x4;
+    m_vertexAttrs[4].offset = offsetof(Vertex3D, color);
+    m_vertexAttrs[4].shaderLocation = 4;
+
+    m_vertexLayout.arrayStride = sizeof(Vertex3D);
+    m_vertexLayout.stepMode = WGPUVertexStepMode_Vertex;
+    m_vertexLayout.attributeCount = 5;
+    m_vertexLayout.attributes = m_vertexAttrs;
+}
+
+WGPUDepthStencilState Render3D::getStandardDepthStencil() {
+    WGPUDepthStencilState depthStencil = {};
+    depthStencil.format = DEPTH_FORMAT;
+    depthStencil.depthWriteEnabled = WGPUOptionalBool_True;
+    depthStencil.depthCompare = WGPUCompareFunction_Less;
+    return depthStencil;
+}
+
+// -------------------------------------------------------------------------
+// Main Pipeline Creation
+// -------------------------------------------------------------------------
+
+void Render3D::createPipeline(Context& ctx) {
+    WGPUDevice device = ctx.device();
+
+    // Initialize shared vertex layout (used by all pipelines)
+    initVertexLayout();
+
+    // Create flat/Gouraud shader module
+    std::string flatShaderSrc = loadShaderOrFallback("flat.wgsl", FLAT_SHADER_SOURCE);
+    WGPUShaderModule shaderModule = createShaderModule(device, flatShaderSrc, "Render3D Shader");
 
     // Query device limits for uniform buffer alignment
     WGPULimits limits = {};
@@ -3087,41 +3142,7 @@ void Render3D::createPipeline(Context& ctx) {
     m_shadowSampleBindGroup = wgpuDeviceCreateBindGroup(device, &shadowSampleBindDesc);
     // Note: dummy textures are kept alive for bind group use. They'll be released in cleanup()
 
-    // Vertex attributes for Vertex3D (with tangent for PBR)
-    WGPUVertexAttribute vertexAttrs[5] = {};
-
-    // position: vec3f at offset 0
-    vertexAttrs[0].format = WGPUVertexFormat_Float32x3;
-    vertexAttrs[0].offset = offsetof(Vertex3D, position);
-    vertexAttrs[0].shaderLocation = 0;
-
-    // normal: vec3f at offset 12
-    vertexAttrs[1].format = WGPUVertexFormat_Float32x3;
-    vertexAttrs[1].offset = offsetof(Vertex3D, normal);
-    vertexAttrs[1].shaderLocation = 1;
-
-    // tangent: vec4f at offset 24 (xyz = tangent, w = handedness)
-    vertexAttrs[2].format = WGPUVertexFormat_Float32x4;
-    vertexAttrs[2].offset = offsetof(Vertex3D, tangent);
-    vertexAttrs[2].shaderLocation = 2;
-
-    // uv: vec2f at offset 40
-    vertexAttrs[3].format = WGPUVertexFormat_Float32x2;
-    vertexAttrs[3].offset = offsetof(Vertex3D, uv);
-    vertexAttrs[3].shaderLocation = 3;
-
-    // color: vec4f at offset 48
-    vertexAttrs[4].format = WGPUVertexFormat_Float32x4;
-    vertexAttrs[4].offset = offsetof(Vertex3D, color);
-    vertexAttrs[4].shaderLocation = 4;
-
-    WGPUVertexBufferLayout vertexLayout = {};
-    vertexLayout.arrayStride = sizeof(Vertex3D);
-    vertexLayout.stepMode = WGPUVertexStepMode_Vertex;
-    vertexLayout.attributeCount = 5;
-    vertexLayout.attributes = vertexAttrs;
-
-    // Color target
+    // Color target (shared by all pipelines in this function)
     WGPUColorTargetState colorTarget = {};
     colorTarget.format = EFFECTS_FORMAT;
     colorTarget.writeMask = WGPUColorWriteMask_All;
@@ -3132,11 +3153,8 @@ void Render3D::createPipeline(Context& ctx) {
     fragmentState.targetCount = 1;
     fragmentState.targets = &colorTarget;
 
-    // Depth stencil state
-    WGPUDepthStencilState depthStencil = {};
-    depthStencil.format = DEPTH_FORMAT;
-    depthStencil.depthWriteEnabled = WGPUOptionalBool_True;
-    depthStencil.depthCompare = WGPUCompareFunction_Less;
+    // Standard depth stencil (shared by most pipelines)
+    WGPUDepthStencilState depthStencil = getStandardDepthStencil();
 
     // Main pipeline (filled triangles)
     WGPURenderPipelineDescriptor pipelineDesc = {};
@@ -3145,7 +3163,7 @@ void Render3D::createPipeline(Context& ctx) {
     pipelineDesc.vertex.module = shaderModule;
     pipelineDesc.vertex.entryPoint = toStringView("vs_main");
     pipelineDesc.vertex.bufferCount = 1;
-    pipelineDesc.vertex.buffers = &vertexLayout;
+    pipelineDesc.vertex.buffers = &m_vertexLayout;
     pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
     pipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
     pipelineDesc.primitive.cullMode = WGPUCullMode_Back;
@@ -3172,15 +3190,7 @@ void Render3D::createPipeline(Context& ctx) {
 
     // Create PBR shader module
     std::string pbrShaderSrc = loadShaderOrFallback("pbr.wgsl", PBR_SHADER_SOURCE);
-    WGPUShaderSourceWGSL pbrWgslDesc = {};
-    pbrWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    pbrWgslDesc.code = toStringView(pbrShaderSrc.c_str());
-
-    WGPUShaderModuleDescriptor pbrShaderDesc = {};
-    pbrShaderDesc.nextInChain = &pbrWgslDesc.chain;
-    pbrShaderDesc.label = toStringView("Render3D PBR Shader");
-
-    WGPUShaderModule pbrShaderModule = wgpuDeviceCreateShaderModule(device, &pbrShaderDesc);
+    WGPUShaderModule pbrShaderModule = createShaderModule(device, pbrShaderSrc, "Render3D PBR Shader");
 
     // Calculate PBR uniform alignment
     m_pbrUniformAlignment = limits.minUniformBufferOffsetAlignment;
@@ -3229,7 +3239,7 @@ void Render3D::createPipeline(Context& ctx) {
     pbrPipelineDesc.vertex.module = pbrShaderModule;
     pbrPipelineDesc.vertex.entryPoint = toStringView("vs_main");
     pbrPipelineDesc.vertex.bufferCount = 1;
-    pbrPipelineDesc.vertex.buffers = &vertexLayout;
+    pbrPipelineDesc.vertex.buffers = &m_vertexLayout;
     pbrPipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
     pbrPipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
     pbrPipelineDesc.primitive.cullMode = WGPUCullMode_Back;
@@ -3285,15 +3295,7 @@ void Render3D::createPipeline(Context& ctx) {
 
     // Create textured PBR shader module
     std::string pbrTexShaderSrc = loadShaderOrFallback("pbr_textured.wgsl", PBR_TEXTURED_SHADER_SOURCE);
-    WGPUShaderSourceWGSL pbrTexWgslDesc = {};
-    pbrTexWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    pbrTexWgslDesc.code = toStringView(pbrTexShaderSrc.c_str());
-
-    WGPUShaderModuleDescriptor pbrTexShaderDesc = {};
-    pbrTexShaderDesc.nextInChain = &pbrTexWgslDesc.chain;
-    pbrTexShaderDesc.label = toStringView("Render3D PBR Textured Shader");
-
-    WGPUShaderModule pbrTexShaderModule = wgpuDeviceCreateShaderModule(device, &pbrTexShaderDesc);
+    WGPUShaderModule pbrTexShaderModule = createShaderModule(device, pbrTexShaderSrc, "Render3D PBR Textured Shader");
 
     // Create textured PBR bind group layout with uniform + sampler + 6 textures
     WGPUBindGroupLayoutEntry pbrTexLayoutEntries[8] = {};
@@ -3345,7 +3347,7 @@ void Render3D::createPipeline(Context& ctx) {
     pbrTexPipelineDesc.vertex.module = pbrTexShaderModule;
     pbrTexPipelineDesc.vertex.entryPoint = toStringView("vs_main");
     pbrTexPipelineDesc.vertex.bufferCount = 1;
-    pbrTexPipelineDesc.vertex.buffers = &vertexLayout;
+    pbrTexPipelineDesc.vertex.buffers = &m_vertexLayout;
     pbrTexPipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
     pbrTexPipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
     pbrTexPipelineDesc.primitive.cullMode = WGPUCullMode_Back;
@@ -3413,13 +3415,7 @@ void Render3D::createPipeline(Context& ctx) {
 
     // Create IBL shader module
     std::string iblShaderSrc = loadShaderOrFallback("pbr_ibl.wgsl", PBR_IBL_SHADER_SOURCE);
-    WGPUShaderSourceWGSL iblWgslDesc = {};
-    iblWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    iblWgslDesc.code = toStringView(iblShaderSrc.c_str());
-
-    WGPUShaderModuleDescriptor iblModuleDesc = {};
-    iblModuleDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&iblWgslDesc);
-    WGPUShaderModule iblShaderModule = wgpuDeviceCreateShaderModule(device, &iblModuleDesc);
+    WGPUShaderModule iblShaderModule = createShaderModule(device, iblShaderSrc, "Render3D PBR IBL Shader");
 
     // Create IBL bind group layout (group 1)
     // @binding(0) = sampler
@@ -3492,7 +3488,7 @@ void Render3D::createPipeline(Context& ctx) {
     iblPipelineDesc.vertex.module = iblShaderModule;
     iblPipelineDesc.vertex.entryPoint = toStringView("vs_main");
     iblPipelineDesc.vertex.bufferCount = 1;
-    iblPipelineDesc.vertex.buffers = &vertexLayout;
+    iblPipelineDesc.vertex.buffers = &m_vertexLayout;
     iblPipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
     iblPipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
     iblPipelineDesc.primitive.cullMode = WGPUCullMode_Back;
@@ -3541,15 +3537,7 @@ void Render3D::createPipeline(Context& ctx) {
 
     // Create skybox shader module
     std::string skyboxShaderSrc = loadShaderOrFallback("skybox.wgsl", SKYBOX_SHADER_SOURCE);
-    WGPUShaderSourceWGSL skyboxWgslDesc = {};
-    skyboxWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    skyboxWgslDesc.code = toStringView(skyboxShaderSrc.c_str());
-
-    WGPUShaderModuleDescriptor skyboxShaderDesc = {};
-    skyboxShaderDesc.nextInChain = &skyboxWgslDesc.chain;
-    skyboxShaderDesc.label = toStringView("Skybox Shader");
-
-    WGPUShaderModule skyboxShaderModule = wgpuDeviceCreateShaderModule(device, &skyboxShaderDesc);
+    WGPUShaderModule skyboxShaderModule = createShaderModule(device, skyboxShaderSrc, "Skybox Shader");
 
     // Create skybox uniform buffer
     WGPUBufferDescriptor skyboxBufDesc = {};
@@ -3634,15 +3622,7 @@ void Render3D::createPipeline(Context& ctx) {
 
     // Create displacement shader module
     std::string dispShaderSrc = loadShaderOrFallback("pbr_displacement.wgsl", PBR_DISPLACEMENT_SHADER_SOURCE);
-    WGPUShaderSourceWGSL dispWgslDesc = {};
-    dispWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    dispWgslDesc.code = toStringView(dispShaderSrc.c_str());
-
-    WGPUShaderModuleDescriptor dispShaderDesc = {};
-    dispShaderDesc.nextInChain = &dispWgslDesc.chain;
-    dispShaderDesc.label = toStringView("Render3D PBR Displacement Shader");
-
-    WGPUShaderModule dispShaderModule = wgpuDeviceCreateShaderModule(device, &dispShaderDesc);
+    WGPUShaderModule dispShaderModule = createShaderModule(device, dispShaderSrc, "Render3D PBR Displacement Shader");
 
     // Create displacement bind group layout (group 1)
     // @binding(0) = DisplacementUniforms
