@@ -1809,7 +1809,9 @@ glm::mat4 Render3D::computeSpotLightMatrix(const LightData& light) {
     float fov = glm::radians(light.spotAngle * 2.0f);  // Full angle
     fov = glm::clamp(fov, glm::radians(10.0f), glm::radians(170.0f));  // Safety clamp
 
-    float nearPlane = 0.1f;
+    // Use a reasonable near plane for better depth precision
+    // Too small near plane wastes precision on empty space near the light
+    float nearPlane = 0.5f;
     float farPlane = light.range > 0.0f ? light.range : 50.0f;
 
     // perspectiveRH_ZO maps depth to [0,1] for WebGPU

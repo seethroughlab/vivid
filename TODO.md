@@ -196,7 +196,7 @@
 [x] Please examine rpi-job-logs.txt and ubuntu-job-logs.txt and fix the CI erorrs
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
-[ ] Finish Shadows - Is everything in SHADOWS.md complete? I believe there are just a couple of lingerine issues with one of the llght types.
+[ ] Finish Shadows - Is everything in SHADOWS.md complete? I believe there are just a couple of lingering issues Point lights -- they're way off
 [ ] "All operators inherit from `Operator` or `TextureOperator`" -- what other base operators would you recommend that might make it easier to make new operators? In addition to Texture Operators, TouchDesigner has:
     COMPs - Components - Object Components (3D objects), Panel Components (2D UI gadgets), and other component types. Components contain other operators.
     TOPs - Texture Operators - all 2D image operations.
