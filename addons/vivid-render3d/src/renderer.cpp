@@ -2051,6 +2051,9 @@ fn fs_main() {}
 
     wgpuShaderModuleRelease(shadowModule);
     wgpuPipelineLayoutRelease(shadowPipeLayout);
+
+    // Mark shadow bind group as dirty so it gets rebuilt with the new textures
+    m_shadowBindGroupDirty = true;
 }
 
 void Render3D::destroyShadowResources() {
@@ -2106,6 +2109,10 @@ void Render3D::destroyShadowResources() {
         wgpuRenderPipelineRelease(m_pointShadowPipeline);
         m_pointShadowPipeline = nullptr;
     }
+    if (m_pointShadowBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_pointShadowBindGroupLayout);
+        m_pointShadowBindGroupLayout = nullptr;
+    }
     if (m_pointShadowSampler) {
         wgpuSamplerRelease(m_pointShadowSampler);
         m_pointShadowSampler = nullptr;
@@ -2151,6 +2158,9 @@ void Render3D::destroyShadowResources() {
             m_dummyPointShadowTextures[i] = nullptr;
         }
     }
+
+    // Mark shadow bind group as dirty so it gets rebuilt
+    m_shadowBindGroupDirty = true;
 }
 
 void Render3D::createPointShadowResources(Context& ctx) {
@@ -2289,12 +2299,12 @@ fn fs_main(in: VertexOutput) -> @location(0) f32 {
     WGPUBindGroupLayoutDescriptor layoutDesc = {};
     layoutDesc.entryCount = 1;
     layoutDesc.entries = &layoutEntry;
-    WGPUBindGroupLayout pointShadowBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &layoutDesc);
+    m_pointShadowBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &layoutDesc);
 
     // Create pipeline layout
     WGPUPipelineLayoutDescriptor pipeLayoutDesc = {};
     pipeLayoutDesc.bindGroupLayoutCount = 1;
-    pipeLayoutDesc.bindGroupLayouts = &pointShadowBindGroupLayout;
+    pipeLayoutDesc.bindGroupLayouts = &m_pointShadowBindGroupLayout;
     WGPUPipelineLayout pipeLayout = wgpuDeviceCreatePipelineLayout(device, &pipeLayoutDesc);
 
     // Vertex attributes (same as main rendering)
@@ -2364,7 +2374,10 @@ fn fs_main(in: VertexOutput) -> @location(0) f32 {
 
     wgpuShaderModuleRelease(shaderModule);
     wgpuPipelineLayoutRelease(pipeLayout);
-    wgpuBindGroupLayoutRelease(pointShadowBindGroupLayout);
+    // Note: m_pointShadowBindGroupLayout is cached and released in destroyShadowResources()
+
+    // Mark shadow bind group as dirty so it gets rebuilt with the new textures
+    m_shadowBindGroupDirty = true;
 }
 
 glm::mat4 Render3D::computePointLightFaceMatrix(const glm::vec3& lightPos, int face, float nearPlane, float farPlane) {
@@ -2446,8 +2459,8 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
         float lightPosAndFarPlane[4];  // 16 bytes, offset 128 (xyz=pos, w=farPlane)
     };  // Total: 144 bytes
 
-    // Get bind group layout from pipeline
-    WGPUBindGroupLayout bindGroupLayout = wgpuRenderPipelineGetBindGroupLayout(m_pointShadowPipeline, 0);
+    // Use cached bind group layout (created in createPointShadowResources)
+    // This avoids acquiring/releasing a reference every frame
 
     // Render each of the 6 cube faces
     // NOTE: Each face needs separate uniform slots to avoid overwriting before GPU executes
@@ -2481,7 +2494,7 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
         entry.size = sizeof(PointShadowUniforms);
 
         WGPUBindGroupDescriptor bindDesc = {};
-        bindDesc.layout = bindGroupLayout;
+        bindDesc.layout = m_pointShadowBindGroupLayout;
         bindDesc.entryCount = 1;
         bindDesc.entries = &entry;
 
@@ -2558,8 +2571,240 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
         wgpuRenderPassEncoderRelease(pass);
         wgpuBindGroupRelease(bindGroup);
     }
+    // Note: m_pointShadowBindGroupLayout is cached and released in destroyShadowResources()
+}
 
-    wgpuBindGroupLayoutRelease(bindGroupLayout);
+// Helper to create a line vertex for debug wireframes
+static Vertex3D makeDebugVertex(const glm::vec3& pos, const glm::vec4& color) {
+    Vertex3D v;
+    v.position = pos;
+    v.normal = glm::vec3(0, 1, 0);
+    v.tangent = glm::vec4(1, 0, 0, 1);
+    v.uv = glm::vec2(0, 0);
+    v.color = color;
+    return v;
+}
+
+// Add a line segment to the debug vertices
+static void addLine(std::vector<Vertex3D>& verts, const glm::vec3& a, const glm::vec3& b, const glm::vec4& color) {
+    verts.push_back(makeDebugVertex(a, color));
+    verts.push_back(makeDebugVertex(b, color));
+}
+
+// Generate camera frustum wireframe
+static void generateCameraFrustum(std::vector<Vertex3D>& verts, const Camera3D& camera, const glm::vec4& color) {
+    // Get inverse view-projection to transform NDC corners to world space
+    glm::mat4 invVP = glm::inverse(camera.projectionMatrix() * camera.viewMatrix());
+
+    // NDC corners (near plane at z=-1, far plane at z=1 in NDC)
+    glm::vec4 ndcCorners[8] = {
+        {-1, -1, -1, 1}, { 1, -1, -1, 1}, { 1,  1, -1, 1}, {-1,  1, -1, 1},  // near
+        {-1, -1,  1, 1}, { 1, -1,  1, 1}, { 1,  1,  1, 1}, {-1,  1,  1, 1}   // far
+    };
+
+    // Transform to world space
+    glm::vec3 corners[8];
+    for (int i = 0; i < 8; i++) {
+        glm::vec4 world = invVP * ndcCorners[i];
+        corners[i] = glm::vec3(world) / world.w;
+    }
+
+    // Near plane edges
+    addLine(verts, corners[0], corners[1], color);
+    addLine(verts, corners[1], corners[2], color);
+    addLine(verts, corners[2], corners[3], color);
+    addLine(verts, corners[3], corners[0], color);
+
+    // Far plane edges
+    addLine(verts, corners[4], corners[5], color);
+    addLine(verts, corners[5], corners[6], color);
+    addLine(verts, corners[6], corners[7], color);
+    addLine(verts, corners[7], corners[4], color);
+
+    // Connecting edges (near to far)
+    addLine(verts, corners[0], corners[4], color);
+    addLine(verts, corners[1], corners[5], color);
+    addLine(verts, corners[2], corners[6], color);
+    addLine(verts, corners[3], corners[7], color);
+}
+
+// Generate directional light arrow
+static void generateDirectionalLightDebug(std::vector<Vertex3D>& verts, const LightData& light, const glm::vec4& color) {
+    glm::vec3 dir = glm::normalize(light.direction);
+    float len = 2.0f;  // Arrow length
+
+    // Arrow shaft from origin in light direction
+    glm::vec3 start = glm::vec3(0, 0, 0);
+    glm::vec3 end = start + dir * len;
+    addLine(verts, start, end, color);
+
+    // Create arrowhead basis vectors
+    glm::vec3 up = glm::abs(dir.y) < 0.9f ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+    glm::vec3 right = glm::normalize(glm::cross(dir, up));
+    glm::vec3 forward = glm::normalize(glm::cross(right, dir));
+
+    // Arrowhead
+    float headSize = 0.3f;
+    glm::vec3 headBase = end - dir * headSize * 2.0f;
+    addLine(verts, end, headBase + right * headSize, color);
+    addLine(verts, end, headBase - right * headSize, color);
+    addLine(verts, end, headBase + forward * headSize, color);
+    addLine(verts, end, headBase - forward * headSize, color);
+}
+
+// Generate point light sphere wireframe (3 circles)
+static void generatePointLightDebug(std::vector<Vertex3D>& verts, const LightData& light, const glm::vec4& color) {
+    const int segments = 24;
+    float r = light.range;
+    glm::vec3 pos = light.position;
+
+    for (int i = 0; i < segments; i++) {
+        float a1 = (float)i / segments * 2.0f * 3.14159f;
+        float a2 = (float)(i + 1) / segments * 2.0f * 3.14159f;
+
+        // XY circle
+        addLine(verts, pos + glm::vec3(cosf(a1) * r, sinf(a1) * r, 0),
+                       pos + glm::vec3(cosf(a2) * r, sinf(a2) * r, 0), color);
+        // XZ circle
+        addLine(verts, pos + glm::vec3(cosf(a1) * r, 0, sinf(a1) * r),
+                       pos + glm::vec3(cosf(a2) * r, 0, sinf(a2) * r), color);
+        // YZ circle
+        addLine(verts, pos + glm::vec3(0, cosf(a1) * r, sinf(a1) * r),
+                       pos + glm::vec3(0, cosf(a2) * r, sinf(a2) * r), color);
+    }
+}
+
+// Generate spot light cone wireframe
+static void generateSpotLightDebug(std::vector<Vertex3D>& verts, const LightData& light, const glm::vec4& color) {
+    glm::vec3 pos = light.position;
+    glm::vec3 dir = glm::normalize(light.direction);
+    float range = light.range;
+    float angleRad = glm::radians(light.spotAngle);
+    float baseRadius = tanf(angleRad) * range;
+
+    // Create cone basis vectors
+    glm::vec3 up = glm::abs(dir.y) < 0.9f ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
+    glm::vec3 right = glm::normalize(glm::cross(dir, up));
+    glm::vec3 forward = glm::normalize(glm::cross(right, dir));
+
+    glm::vec3 apex = pos;
+    glm::vec3 baseCenter = pos + dir * range;
+
+    // Cone edges from apex to base circle
+    const int edges = 8;
+    for (int i = 0; i < edges; i++) {
+        float angle = (float)i / edges * 2.0f * 3.14159f;
+        glm::vec3 basePoint = baseCenter + (right * cosf(angle) + forward * sinf(angle)) * baseRadius;
+        addLine(verts, apex, basePoint, color);
+    }
+
+    // Base circle
+    const int segments = 24;
+    for (int i = 0; i < segments; i++) {
+        float a1 = (float)i / segments * 2.0f * 3.14159f;
+        float a2 = (float)(i + 1) / segments * 2.0f * 3.14159f;
+        glm::vec3 p1 = baseCenter + (right * cosf(a1) + forward * sinf(a1)) * baseRadius;
+        glm::vec3 p2 = baseCenter + (right * cosf(a2) + forward * sinf(a2)) * baseRadius;
+        addLine(verts, p1, p2, color);
+    }
+}
+
+void Render3D::renderDebugVisualization(Context& ctx, WGPURenderPassEncoder pass) {
+    if (!m_wireframePipeline) return;
+
+    // Collect debug vertices
+    std::vector<Vertex3D> debugVerts;
+
+    // Debug colors
+    const glm::vec4 cameraColor(0.0f, 1.0f, 1.0f, 1.0f);      // Cyan
+    const glm::vec4 directionalColor(1.0f, 1.0f, 0.0f, 1.0f); // Yellow
+    const glm::vec4 pointColor(1.0f, 0.5f, 0.0f, 1.0f);       // Orange
+    const glm::vec4 spotColor(0.0f, 1.0f, 0.0f, 1.0f);        // Green
+
+    // Camera frustum
+    if (m_cameraOp && m_cameraOp->drawDebug()) {
+        generateCameraFrustum(debugVerts, m_cameraOp->outputCamera(), cameraColor);
+    }
+
+    // Light debug visualizations
+    for (const auto* lightOp : m_lightOps) {
+        if (!lightOp) continue;
+        const LightData& light = lightOp->outputLight();
+        if (!light.drawDebug) continue;
+
+        switch (light.type) {
+            case LightType::Directional:
+                generateDirectionalLightDebug(debugVerts, light, directionalColor);
+                break;
+            case LightType::Point:
+                generatePointLightDebug(debugVerts, light, pointColor);
+                break;
+            case LightType::Spot:
+                generateSpotLightDebug(debugVerts, light, spotColor);
+                break;
+        }
+    }
+
+    if (debugVerts.empty()) return;
+
+    // Create temporary vertex buffer
+    WGPUBufferDescriptor bufDesc = {};
+    bufDesc.size = debugVerts.size() * sizeof(Vertex3D);
+    bufDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+    WGPUBuffer debugBuffer = wgpuDeviceCreateBuffer(ctx.device(), &bufDesc);
+    wgpuQueueWriteBuffer(ctx.queue(), debugBuffer, 0, debugVerts.data(), bufDesc.size);
+
+    // Create identity transform uniform for debug geometry
+    // Must use the full Uniforms struct (432 bytes) to match bind group layout
+    Uniforms uniforms = {};
+
+    // Get view-projection from camera
+    Camera3D activeCamera;
+    if (m_cameraOp) {
+        activeCamera = m_cameraOp->outputCamera();
+    }
+    glm::mat4 viewProj = activeCamera.projectionMatrix() * activeCamera.viewMatrix();
+    glm::mat4 identity = glm::mat4(1.0f);
+
+    memcpy(uniforms.mvp, glm::value_ptr(viewProj), 64);
+    memcpy(uniforms.model, glm::value_ptr(identity), 64);
+    uniforms.baseColor[0] = 1.0f; uniforms.baseColor[1] = 1.0f; uniforms.baseColor[2] = 1.0f; uniforms.baseColor[3] = 1.0f;
+    uniforms.ambient = 1.0f;  // Full brightness for debug lines
+    uniforms.shadingMode = 0; // Unlit
+    uniforms.lightCount = 0;  // No lights for debug geometry
+    uniforms.toonLevels = 0;
+
+    // Create uniform buffer
+    WGPUBufferDescriptor uniformBufDesc = {};
+    uniformBufDesc.size = sizeof(uniforms);
+    uniformBufDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    WGPUBuffer uniformBuffer = wgpuDeviceCreateBuffer(ctx.device(), &uniformBufDesc);
+    wgpuQueueWriteBuffer(ctx.queue(), uniformBuffer, 0, &uniforms, sizeof(uniforms));
+
+    // Create bind group
+    WGPUBindGroupEntry entry = {};
+    entry.binding = 0;
+    entry.buffer = uniformBuffer;
+    entry.size = sizeof(uniforms);
+
+    WGPUBindGroupDescriptor bgDesc = {};
+    bgDesc.layout = m_bindGroupLayout;
+    bgDesc.entryCount = 1;
+    bgDesc.entries = &entry;
+    WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bgDesc);
+
+    // Render debug wireframes
+    // Bind group layout has hasDynamicOffset=true, so we must provide an offset
+    uint32_t dynamicOffset = 0;
+    wgpuRenderPassEncoderSetPipeline(pass, m_wireframePipeline);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 1, &dynamicOffset);
+    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, debugBuffer, 0, bufDesc.size);
+    wgpuRenderPassEncoderDraw(pass, static_cast<uint32_t>(debugVerts.size()), 1, 0, 0);
+
+    // Cleanup
+    wgpuBindGroupRelease(bindGroup);
+    wgpuBufferRelease(uniformBuffer);
+    wgpuBufferRelease(debugBuffer);
 }
 
 void Render3D::renderShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
@@ -3964,39 +4209,43 @@ void Render3D::process(Context& ctx) {
 
         wgpuQueueWriteBuffer(ctx.queue(), m_shadowSampleUniformBuffer, 0, &shadowUniforms, sizeof(shadowUniforms));
 
-        // Recreate shadow sample bind group with real shadow maps
-        // (the default one created in createPipeline uses dummy textures)
-        if (m_shadowSampleBindGroup) {
-            wgpuBindGroupRelease(m_shadowSampleBindGroup);
+        // Only recreate shadow sample bind group when textures have changed
+        // (dirty flag is set by createShadowResources/createPointShadowResources/destroyShadowResources)
+        if (m_shadowBindGroupDirty) {
+            if (m_shadowSampleBindGroup) {
+                wgpuBindGroupRelease(m_shadowSampleBindGroup);
+            }
+
+            WGPUBindGroupEntry shadowSampleBindEntries[10] = {};
+            shadowSampleBindEntries[0].binding = 0;
+            shadowSampleBindEntries[0].buffer = m_shadowSampleUniformBuffer;
+            shadowSampleBindEntries[0].size = 96;
+
+            shadowSampleBindEntries[1].binding = 1;
+            shadowSampleBindEntries[1].textureView = shadowPassRendered ? m_shadowMapView : m_dummyShadowView;
+
+            shadowSampleBindEntries[2].binding = 2;
+            shadowSampleBindEntries[2].sampler = m_shadowSampler;
+
+            // 6 point shadow face textures (bindings 3-8)
+            for (int i = 0; i < 6; i++) {
+                shadowSampleBindEntries[3 + i].binding = 3 + i;
+                shadowSampleBindEntries[3 + i].textureView = pointShadowPassRendered
+                    ? m_pointShadowFaceViews[i]
+                    : m_dummyPointShadowViews[i];
+            }
+
+            shadowSampleBindEntries[9].binding = 9;
+            shadowSampleBindEntries[9].sampler = m_pointShadowSampler;
+
+            WGPUBindGroupDescriptor shadowSampleBindDesc = {};
+            shadowSampleBindDesc.layout = m_shadowSampleBindGroupLayout;
+            shadowSampleBindDesc.entryCount = 10;
+            shadowSampleBindDesc.entries = shadowSampleBindEntries;
+            m_shadowSampleBindGroup = wgpuDeviceCreateBindGroup(device, &shadowSampleBindDesc);
+
+            m_shadowBindGroupDirty = false;
         }
-
-        WGPUBindGroupEntry shadowSampleBindEntries[10] = {};
-        shadowSampleBindEntries[0].binding = 0;
-        shadowSampleBindEntries[0].buffer = m_shadowSampleUniformBuffer;
-        shadowSampleBindEntries[0].size = 96;
-
-        shadowSampleBindEntries[1].binding = 1;
-        shadowSampleBindEntries[1].textureView = shadowPassRendered ? m_shadowMapView : m_dummyShadowView;
-
-        shadowSampleBindEntries[2].binding = 2;
-        shadowSampleBindEntries[2].sampler = m_shadowSampler;
-
-        // 6 point shadow face textures (bindings 3-8)
-        for (int i = 0; i < 6; i++) {
-            shadowSampleBindEntries[3 + i].binding = 3 + i;
-            shadowSampleBindEntries[3 + i].textureView = pointShadowPassRendered
-                ? m_pointShadowFaceViews[i]
-                : m_dummyPointShadowViews[i];
-        }
-
-        shadowSampleBindEntries[9].binding = 9;
-        shadowSampleBindEntries[9].sampler = m_pointShadowSampler;
-
-        WGPUBindGroupDescriptor shadowSampleBindDesc = {};
-        shadowSampleBindDesc.layout = m_shadowSampleBindGroupLayout;
-        shadowSampleBindDesc.entryCount = 10;
-        shadowSampleBindDesc.entries = shadowSampleBindEntries;
-        m_shadowSampleBindGroup = wgpuDeviceCreateBindGroup(device, &shadowSampleBindDesc);
     } else if (m_shadowSampleBindGroup) {
         // Shadows disabled - update uniforms to disable shadow sampling
         struct ShadowSampleUniforms {
@@ -4291,6 +4540,9 @@ void Render3D::process(Context& ctx) {
     for (auto bg : texturedBindGroups) {
         wgpuBindGroupRelease(bg);
     }
+
+    // Render debug visualization wireframes for lights and camera
+    renderDebugVisualization(ctx, pass);
 
     // End render pass
     wgpuRenderPassEncoderEnd(pass);

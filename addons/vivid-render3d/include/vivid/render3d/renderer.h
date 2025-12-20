@@ -297,6 +297,9 @@ private:
     void renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder);
     glm::mat4 computeDirectionalLightMatrix(const LightData& light, const Scene& scene);
     glm::mat4 computeSpotLightMatrix(const LightData& light);
+
+    // Debug visualization helpers
+    void renderDebugVisualization(Context& ctx, WGPURenderPassEncoder pass);
     glm::mat4 computePointLightFaceMatrix(const glm::vec3& lightPos, int face, float nearPlane, float farPlane);
     bool hasShadowCastingLight() const;
     bool hasPointLightShadow() const;
@@ -347,6 +350,7 @@ private:
     WGPUBindGroupLayout m_shadowBindGroupLayout = nullptr;  // For shadow pass uniforms
     WGPUBindGroupLayout m_shadowSampleBindGroupLayout = nullptr;  // For sampling shadows in main pass (group 2)
     WGPUBindGroup m_shadowSampleBindGroup = nullptr;  // Binds shadow map + sampler for main pass
+    WGPUBindGroup m_shadowPassBindGroup = nullptr;  // Cached bind group for directional/spot shadow pass
     glm::mat4 m_lightViewProj = glm::mat4(1.0f);  // Cached light-space matrix
 
     // Point light shadow mapping (6 separate 2D textures to work around wgpu array layer bug)
@@ -359,6 +363,9 @@ private:
     WGPUBuffer m_pointShadowUniformBuffer = nullptr;  // Uniforms for point shadow pass
     WGPUBindGroup m_pointShadowSampleBindGroup = nullptr;  // Binds cube shadow map for main pass
     WGPUSampler m_pointShadowSampler = nullptr;  // Regular sampler (not comparison)
+    WGPUBindGroupLayout m_pointShadowBindGroupLayout = nullptr;  // Cached layout for point shadow pass
+    WGPUBindGroup m_pointShadowPassBindGroup = nullptr;  // Cached bind group for point shadow pass
+    bool m_shadowBindGroupDirty = true;  // True when shadow sample bind group needs rebuild
     glm::vec3 m_pointLightPos = glm::vec3(0.0f);  // Cached point light position
     float m_pointLightRange = 50.0f;  // Cached point light range
 

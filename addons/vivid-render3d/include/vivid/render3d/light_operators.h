@@ -47,6 +47,9 @@ struct LightData {
     // Shadow parameters
     bool castShadow = false;                     ///< Whether this light casts shadows
     float shadowBias = 0.001f;                   ///< Depth bias to prevent shadow acne
+
+    // Debug visualization
+    bool drawDebug = false;                      ///< Draw wireframe visualization of light
 };
 
 /**
@@ -153,6 +156,11 @@ public:
             m_light.shadowBias = bias;
             markDirty();
         }
+    }
+
+    /// Enable/disable debug wireframe visualization
+    void drawDebug(bool enabled) {
+        m_light.drawDebug = enabled;
     }
 
     /// Connect intensity to another operator's output value
@@ -267,6 +275,11 @@ public:
             m_light.shadowBias = bias;
             markDirty();
         }
+    }
+
+    /// Enable/disable debug wireframe visualization
+    void drawDebug(bool enabled) {
+        m_light.drawDebug = enabled;
     }
 
     void init(Context& ctx) override {}
@@ -399,6 +412,11 @@ public:
             m_light.shadowBias = bias;
             markDirty();
         }
+    }
+
+    /// Enable/disable debug wireframe visualization
+    void drawDebug(bool enabled) {
+        m_light.drawDebug = enabled;
     }
 
     void init(Context& ctx) override {}

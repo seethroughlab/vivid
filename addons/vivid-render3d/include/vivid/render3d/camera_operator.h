@@ -238,6 +238,12 @@ public:
     /// Get output kind (Camera)
     OutputKind outputKind() const override { return OutputKind::Camera; }
 
+    /// Enable/disable debug wireframe visualization (shows frustum)
+    void drawDebug(bool enabled) { m_drawDebug = enabled; }
+
+    /// Check if debug visualization is enabled
+    bool drawDebug() const { return m_drawDebug; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Lifecycle
@@ -398,6 +404,9 @@ private:
     float m_orthoSize = 10.0f;
     float m_near = 0.1f;
     float m_far = 100.0f;
+
+    // Debug visualization
+    bool m_drawDebug = false;
 };
 
 } // namespace vivid::render3d
