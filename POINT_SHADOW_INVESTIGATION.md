@@ -228,6 +228,55 @@ The code is reverted to a "working but incorrect" state:
 - The scene appears darker than expected because face 3 returns clear value (1.0), causing everything below the light to be in shadow
 - To **disable point shadows entirely** until fixed, set `light.castShadow(false)` or check for point lights in `hasPointLightShadow()` and return false
 
+## External Evidence (wgpu GitHub Issues)
+
+Research found several related issues in the wgpu repository that support our findings:
+
+### 1. Multi-Layer Texture Rendering Bug ([#1690](https://github.com/gfx-rs/wgpu/issues/1690))
+**Directly relevant to our problem:**
+- When rendering a cube map using a single 6-layer texture, **only layer 0 rendered correctly**
+- Other layers showed corrupted/garbage output
+- Platform: Vulkan on AMD RX 590
+- **Documented workaround: Use 6 separate single-layer textures instead of one 6-layer texture**
+- Status: Eventually marked resolved (reporter couldn't reproduce later), but the pattern matches our symptoms
+
+### 2. WebGL2 Point Light Shadow Issues ([#2138](https://github.com/gfx-rs/wgpu/issues/2138))
+- Point light shadow maps had issues in Firefox/WebGL2
+- First point light worked, others didn't
+- Related to cube array texture support limitations
+
+### 3. Cube Map Shadow Map Fix ([PR #2143](https://github.com/gfx-rs/wgpu/pull/2143))
+- Confirms there was a real bug with cube map shadow maps in wgpu
+- Fix was due to a misread of the GL ES specification
+- Shows this class of bug has existed before
+
+### 4. Depth Texture Sampling Limitations ([#4524](https://github.com/gfx-rs/wgpu/issues/4524))
+- `textureSampleCompare` only returns 0.0 or 1.0, not gradient values
+- Validates our approach of using R32Float with manual comparison instead of Depth32Float with textureSampleCompare
+
+### 5. Layer Selection in Vertex Shaders ([#1475](https://github.com/gfx-rs/wgpu/issues/1475))
+- Discusses challenges with rendering to multiple cube map layers
+- Mentions `VK_EXT_shader_viewport_index_layer` as potential solution for single-pass cube map rendering
+
+## Recommended Fix Based on External Evidence
+
+**Primary recommendation:** Implement 6 separate 2D textures instead of a 6-layer array texture.
+
+This was the documented workaround in [#1690](https://github.com/gfx-rs/wgpu/issues/1690) and completely bypasses the array layer mechanism that appears to be problematic.
+
+Implementation approach:
+```cpp
+// Instead of:
+WGPUTexture m_pointShadowMapTexture;  // 6-layer array
+WGPUTextureView m_pointShadowFaceViews[6];  // Views into layers
+
+// Use:
+WGPUTexture m_pointShadowFaceTextures[6];  // 6 separate textures
+WGPUTextureView m_pointShadowFaceViews[6];  // Views of each texture
+```
+
+For sampling, manually determine which texture to sample based on the dominant axis of the sample direction vector, rather than relying on cube map hardware sampling.
+
 ## Related Issues
 
 - The same cube map implementation pattern might have issues with +Y face (face 2) in other scenarios - worth testing if needed for ceiling lights

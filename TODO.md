@@ -274,7 +274,14 @@
     **Decision: Keep at root.** testing-fixtures/ is framework test infrastructure, not user content.
     projects/ is the user's workspace. Keeping them separate prevents accidental modification
     and maintains CI script clarity.
-[ ] Do you have any external proof that Cube map depth comparison sampling has issues in wgpu-native?
+[x] Do you have any external proof that Cube map depth comparison sampling has issues in wgpu-native?
+    **Yes - relevant GitHub issues:**
+    - [#1690](https://github.com/gfx-rs/wgpu/issues/1690): Multi-layer texture rendering produced garbage
+      on layers other than 0 (Vulkan/AMD). Workaround: use 6 separate textures.
+    - [#2138](https://github.com/gfx-rs/wgpu/issues/2138): WebGL2 point light shadow issues
+    - [PR #2143](https://github.com/gfx-rs/wgpu/pull/2143): Cube map shadow map fix (misread GL spec)
+    - [#4524](https://github.com/gfx-rs/wgpu/issues/4524): textureSampleCompare returns only 0/1
+    **Next step:** Try 6 separate 2D textures instead of 6-layer array (documented workaround)
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
 [ ] Finish Shadows - Is everything in SHADOWS.md complete? I believe there are just a couple of lingering issues Point lights -- they're way off: POINT_SHADOW_INVESTIGATION.md
