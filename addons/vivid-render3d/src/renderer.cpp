@@ -2052,6 +2052,18 @@ fn fs_main() {}
     wgpuShaderModuleRelease(shadowModule);
     wgpuPipelineLayoutRelease(shadowPipeLayout);
 
+    // Create cached bind group for shadow pass (reused every frame)
+    WGPUBindGroupEntry shadowPassEntry = {};
+    shadowPassEntry.binding = 0;
+    shadowPassEntry.buffer = m_shadowPassUniformBuffer;
+    shadowPassEntry.size = 128;  // 2x mat4 (ShadowUniforms)
+
+    WGPUBindGroupDescriptor shadowPassBindDesc = {};
+    shadowPassBindDesc.layout = m_shadowBindGroupLayout;
+    shadowPassBindDesc.entryCount = 1;
+    shadowPassBindDesc.entries = &shadowPassEntry;
+    m_shadowPassBindGroup = wgpuDeviceCreateBindGroup(device, &shadowPassBindDesc);
+
     // Mark shadow bind group as dirty so it gets rebuilt with the new textures
     m_shadowBindGroupDirty = true;
 }
@@ -2060,6 +2072,10 @@ void Render3D::destroyShadowResources() {
     if (m_shadowPassPipeline) {
         wgpuRenderPipelineRelease(m_shadowPassPipeline);
         m_shadowPassPipeline = nullptr;
+    }
+    if (m_shadowPassBindGroup) {
+        wgpuBindGroupRelease(m_shadowPassBindGroup);
+        m_shadowPassBindGroup = nullptr;
     }
     if (m_shadowBindGroupLayout) {
         wgpuBindGroupLayoutRelease(m_shadowBindGroupLayout);
@@ -2112,6 +2128,10 @@ void Render3D::destroyShadowResources() {
     if (m_pointShadowBindGroupLayout) {
         wgpuBindGroupLayoutRelease(m_pointShadowBindGroupLayout);
         m_pointShadowBindGroupLayout = nullptr;
+    }
+    if (m_pointShadowPassBindGroup) {
+        wgpuBindGroupRelease(m_pointShadowPassBindGroup);
+        m_pointShadowPassBindGroup = nullptr;
     }
     if (m_pointShadowSampler) {
         wgpuSamplerRelease(m_pointShadowSampler);
@@ -2376,6 +2396,18 @@ fn fs_main(in: VertexOutput) -> @location(0) f32 {
     wgpuPipelineLayoutRelease(pipeLayout);
     // Note: m_pointShadowBindGroupLayout is cached and released in destroyShadowResources()
 
+    // Create cached bind group for point shadow pass (reused every frame)
+    WGPUBindGroupEntry pointShadowEntry = {};
+    pointShadowEntry.binding = 0;
+    pointShadowEntry.buffer = m_pointShadowUniformBuffer;
+    pointShadowEntry.size = 144;  // PointShadowUniforms: 2x mat4 + vec4 = 144 bytes
+
+    WGPUBindGroupDescriptor pointShadowBindDesc = {};
+    pointShadowBindDesc.layout = m_pointShadowBindGroupLayout;
+    pointShadowBindDesc.entryCount = 1;
+    pointShadowBindDesc.entries = &pointShadowEntry;
+    m_pointShadowPassBindGroup = wgpuDeviceCreateBindGroup(device, &pointShadowBindDesc);
+
     // Mark shadow bind group as dirty so it gets rebuilt with the new textures
     m_shadowBindGroupDirty = true;
 }
@@ -2487,27 +2519,11 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
             wgpuQueueWriteBuffer(ctx.queue(), m_pointShadowUniformBuffer, offset, &uniforms, sizeof(uniforms));
         }
 
-        // Create bind group for this pass
-        WGPUBindGroupEntry entry = {};
-        entry.binding = 0;
-        entry.buffer = m_pointShadowUniformBuffer;
-        entry.size = sizeof(PointShadowUniforms);
-
-        WGPUBindGroupDescriptor bindDesc = {};
-        bindDesc.layout = m_pointShadowBindGroupLayout;
-        bindDesc.entryCount = 1;
-        bindDesc.entries = &entry;
-
-        WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
-        if (!bindGroup) {
-            std::cerr << "[PointShadow] ERROR: Failed to create bind group for face " << face << std::endl;
-            continue;
-        }
+        // Use cached bind group (created in createPointShadowResources)
 
         // Verify texture view exists
         if (!m_pointShadowFaceViews[face]) {
             std::cerr << "[PointShadow] ERROR: Face " << face << " texture view is null!" << std::endl;
-            wgpuBindGroupRelease(bindGroup);
             continue;
         }
 
@@ -2534,7 +2550,6 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
         if (!pass) {
             std::cerr << "[PointShadow] ERROR: Failed to begin render pass for face " << face << std::endl;
-            wgpuBindGroupRelease(bindGroup);
             continue;
         }
         wgpuRenderPassEncoderSetPipeline(pass, m_pointShadowPipeline);
@@ -2553,7 +2568,7 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
 
             // Match the offset calculation used when writing uniforms
             uint32_t dynamicOffset = static_cast<uint32_t>((face * objects.size() + i) * UNIFORM_ALIGNMENT);
-            wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 1, &dynamicOffset);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, m_pointShadowPassBindGroup, 1, &dynamicOffset);
 
             wgpuRenderPassEncoderSetVertexBuffer(pass, 0, obj.mesh->vertexBuffer(), 0,
                                                   obj.mesh->vertexCount() * sizeof(Vertex3D));
@@ -2569,9 +2584,8 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
 
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
-        wgpuBindGroupRelease(bindGroup);
     }
-    // Note: m_pointShadowBindGroupLayout is cached and released in destroyShadowResources()
+    // Note: m_pointShadowPassBindGroup is cached and released in destroyShadowResources()
 }
 
 // Helper to create a line vertex for debug wireframes
@@ -2870,18 +2884,7 @@ void Render3D::renderShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
         wgpuQueueWriteBuffer(ctx.queue(), m_shadowPassUniformBuffer, offset, &uniforms, sizeof(uniforms));
     }
 
-    // Create a single bind group for the shadow pass (with dynamic offset support)
-    WGPUBindGroupEntry entry = {};
-    entry.binding = 0;
-    entry.buffer = m_shadowPassUniformBuffer;
-    entry.size = sizeof(ShadowUniforms);
-
-    WGPUBindGroupDescriptor bindDesc = {};
-    bindDesc.layout = m_shadowBindGroupLayout;
-    bindDesc.entryCount = 1;
-    bindDesc.entries = &entry;
-
-    WGPUBindGroup shadowBindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+    // Use cached bind group for shadow pass (created in createShadowResources)
 
     // Begin shadow render pass
     WGPURenderPassEncoder shadowPass = wgpuCommandEncoderBeginRenderPass(encoder, &shadowPassDesc);
@@ -2894,7 +2897,7 @@ void Render3D::renderShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
 
         // Set bind group with dynamic offset for this object
         uint32_t dynamicOffset = static_cast<uint32_t>(i * SHADOW_UNIFORM_ALIGNMENT);
-        wgpuRenderPassEncoderSetBindGroup(shadowPass, 0, shadowBindGroup, 1, &dynamicOffset);
+        wgpuRenderPassEncoderSetBindGroup(shadowPass, 0, m_shadowPassBindGroup, 1, &dynamicOffset);
 
         // Set vertex/index buffers and draw
         wgpuRenderPassEncoderSetVertexBuffer(shadowPass, 0, obj.mesh->vertexBuffer(), 0,
@@ -2908,8 +2911,6 @@ void Render3D::renderShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
             wgpuRenderPassEncoderDraw(shadowPass, obj.mesh->vertexCount(), 1, 0, 0);
         }
     }
-
-    wgpuBindGroupRelease(shadowBindGroup);
 
     wgpuRenderPassEncoderEnd(shadowPass);
     wgpuRenderPassEncoderRelease(shadowPass);
