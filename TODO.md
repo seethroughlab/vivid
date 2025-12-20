@@ -220,7 +220,8 @@
 [x] All lights and camera should have a "draw debug" boolean that will draw a WIREFRAME (NOT solid) structure that is appropriate to the subject. A Camera should show the frustum, a directional light should show the direction, spot light should show the light cone, etc.
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
-[ ] Is it safe to delete POINT_SHADOW_INVESTIGATION.md?
+[x] Is it safe to delete POINT_SHADOW_INVESTIGATION.md?
+    - Yes, status is RESOLVED. Fixes implemented in renderer.cpp.
 [ ] Please check out the three.js, which implements shadows well - albeit in WebGL instead of wgpu. Is there anything we can learn from that shadow implementation?
 [ ]  testing-fixtures/shadow-point
 === Memory Tracking Started ===
@@ -232,4 +233,15 @@
 [60.0s] Memory: 125 MB (total: +16 MB, last 10s: +3 MB)
 [70.0s] Memory: 129 MB (total: +20 MB, last 10s: +4 MB)
 [80.0s] Memory: 132 MB (total: +23 MB, last 10s: +3 MB)
-[ ] addons/vivid-render3d/src/renderer.cpp is getting REALLY long. How can we refactor it?
+[x] addons/vivid-render3d/src/renderer.cpp is getting REALLY long. How can we refactor it?
+    - Extracted GPU structs to gpu_structs.h (~125 lines)
+    - Extracted debug geometry to debug_geometry.h (~130 lines)
+    - Created external .wgsl shader files with AssetLoader loading
+    - Reduced from 4782 to 4541 lines
+[ ] DEFERRED: Extract shadow system from renderer.cpp to shadow_manager.h/cpp (~600 lines)
+    - Tightly integrated with main render pass (bind groups, textures)
+    - Point shadows use 6 separate textures (wgpu workaround)
+    - Requires careful interface design
+[ ] DEFERRED: Split renderer.cpp createPipeline() into helper methods
+    - Pipelines share resources (bind group layouts, uniform buffers)
+    - Internal reorganization for readability

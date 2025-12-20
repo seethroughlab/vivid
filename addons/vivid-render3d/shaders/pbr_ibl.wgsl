@@ -1,4 +1,4 @@
-// PBR with displacement shader - extends textured PBR with vertex displacement
+// PBR with IBL shader - extends textured PBR with multi-light support and image-based lighting
 
 const PI: f32 = 3.14159265359;
 const EPSILON: f32 = 0.0001;
@@ -44,14 +44,6 @@ struct Uniforms {
     lights: array<Light, 4>,
 }
 
-struct DisplacementUniforms {
-    amplitude: f32,
-    midpoint: f32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-// Group 0: Material (same as textured PBR)
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var materialSampler: sampler;
 @group(0) @binding(2) var baseColorMap: texture_2d<f32>;
@@ -61,10 +53,10 @@ struct DisplacementUniforms {
 @group(0) @binding(6) var aoMap: texture_2d<f32>;
 @group(0) @binding(7) var emissiveMap: texture_2d<f32>;
 
-// Group 1: Displacement
-@group(1) @binding(0) var<uniform> displacement: DisplacementUniforms;
-@group(1) @binding(1) var displacementSampler: sampler;
-@group(1) @binding(2) var displacementMap: texture_2d<f32>;
+@group(1) @binding(0) var iblSampler: sampler;
+@group(1) @binding(1) var brdfLUT: texture_2d<f32>;
+@group(1) @binding(2) var irradianceMap: texture_cube<f32>;
+@group(1) @binding(3) var prefilteredMap: texture_cube<f32>;
 
 struct VertexInput {
     @location(0) position: vec3f,
@@ -87,20 +79,9 @@ struct VertexOutput {
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
-
-    // Sample displacement map at vertex UV using LOD 0
-    let dispSample = textureSampleLevel(displacementMap, displacementSampler, in.uv, 0.0).r;
-
-    // Calculate displacement: (sample - midpoint) * amplitude
-    let dispAmount = (dispSample - displacement.midpoint) * displacement.amplitude;
-
-    // Displace position along normal
-    let displacedPos = in.position + in.normal * dispAmount;
-
-    // Use displaced position for rendering
-    let worldPos = uniforms.model * vec4f(displacedPos, 1.0);
+    let worldPos = uniforms.model * vec4f(in.position, 1.0);
     out.worldPos = worldPos.xyz;
-    out.clipPos = uniforms.mvp * vec4f(displacedPos, 1.0);
+    out.clipPos = uniforms.mvp * vec4f(in.position, 1.0);
 
     let N = normalize((uniforms.normalMatrix * vec4f(in.normal, 0.0)).xyz);
     let T = normalize((uniforms.model * vec4f(in.tangent.xyz, 0.0)).xyz);
@@ -134,6 +115,10 @@ fn G_Smith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
 
 fn F_Schlick(cosTheta: f32, F0: vec3f) -> vec3f {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+fn F_SchlickRoughness(cosTheta: f32, F0: vec3f, roughness: f32) -> vec3f {
+    return F0 + (max(vec3f(1.0 - roughness), F0) - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 fn getAttenuation(distance: f32, range: f32) -> f32 {
@@ -206,34 +191,32 @@ fn calculateLightContribution(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    // Sample textures
     let baseColorSample = textureSample(baseColorMap, materialSampler, in.uv);
-    let baseColor = baseColorSample.rgb * uniforms.baseColorFactor.rgb * in.color.rgb;
-    var finalAlpha = baseColorSample.a * uniforms.baseColorFactor.a * in.color.a;
 
-    // Alpha test for mask mode
+    // Compute final alpha
+    let finalAlpha = baseColorSample.a * uniforms.baseColorFactor.a * in.color.a;
+
+    // Alpha mask mode: discard fragments below cutoff
     if (uniforms.alphaMode == ALPHA_MASK && finalAlpha < uniforms.alphaCutoff) {
         discard;
     }
 
-    let metallicSample = textureSample(metallicMap, materialSampler, in.uv).b;
-    let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).g;
+    let normalSample = textureSample(normalMap, materialSampler, in.uv);
+    let metallicSample = textureSample(metallicMap, materialSampler, in.uv).r;
+    let roughnessSample = textureSample(roughnessMap, materialSampler, in.uv).r;
+    let aoSample = textureSample(aoMap, materialSampler, in.uv).r;
+    let emissiveSample = textureSample(emissiveMap, materialSampler, in.uv).rgb;
+
+    let albedo = baseColorSample.rgb * uniforms.baseColorFactor.rgb * in.color.rgb;
     let metallic = metallicSample * uniforms.metallicFactor;
     let roughness = max(roughnessSample * uniforms.roughnessFactor, 0.04);
-
-    let aoSample = textureSample(aoMap, materialSampler, in.uv).r;
     let ao = mix(1.0, aoSample, uniforms.aoStrength);
-
-    let emissiveSample = textureSample(emissiveMap, materialSampler, in.uv).rgb;
     let emissive = emissiveSample * uniforms.emissiveFactor * uniforms.emissiveStrength;
 
-    // Normal mapping
-    var tangentNormal = textureSample(normalMap, materialSampler, in.uv).xyz * 2.0 - 1.0;
-    tangentNormal = vec3f(tangentNormal.x * uniforms.normalScale, tangentNormal.y * uniforms.normalScale, tangentNormal.z);
+    var tangentNormal = normalSample.xyz * 2.0 - 1.0;
+    tangentNormal.x = tangentNormal.x * uniforms.normalScale;
+    tangentNormal.y = tangentNormal.y * uniforms.normalScale;
     tangentNormal = normalize(tangentNormal);
-
-    // Use baseColor directly (no sRGB conversion to match original PBR shader)
-    let albedo = baseColor;
 
     let TBN = mat3x3f(
         normalize(in.worldTangent),
@@ -242,8 +225,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     );
     let N = normalize(TBN * tangentNormal);
     let V = normalize(uniforms.cameraPos - in.worldPos);
+    let R = reflect(-V, N);
+    let NdotV = max(dot(N, V), EPSILON);
     let F0 = mix(vec3f(0.04), albedo, metallic);
 
+    // Accumulate direct lighting from all lights
     var Lo = vec3f(0.0);
     let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
     for (var i = 0u; i < lightCount; i++) {
@@ -252,12 +238,27 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         );
     }
 
-    let ambient = vec3f(0.03) * albedo * uniforms.ambientIntensity * ao;
+    // IBL ambient lighting
+    let F_ibl = F_SchlickRoughness(NdotV, F0, roughness);
+    let kS_ibl = F_ibl;
+    var kD_ibl = vec3f(1.0) - kS_ibl;
+    kD_ibl *= 1.0 - metallic;
+
+    let irradiance = textureSample(irradianceMap, iblSampler, N).rgb;
+    let diffuseIBL = irradiance * albedo;
+
+    let MAX_REFLECTION_LOD = 4.0;
+    let prefilteredColor = textureSampleLevel(prefilteredMap, iblSampler, R, roughness * MAX_REFLECTION_LOD).rgb;
+    let brdf = textureSample(brdfLUT, iblSampler, vec2f(NdotV, roughness)).rg;
+    let specularIBL = prefilteredColor * (F_ibl * brdf.x + brdf.y);
+
+    let ambient = (kD_ibl * diffuseIBL + specularIBL) * uniforms.ambientIntensity * ao;
 
     var color = ambient + Lo + emissive;
     color = color / (color + vec3f(1.0));
     color = pow(color, vec3f(1.0 / 2.2));
 
+    // For opaque mode, use alpha 1.0; for mask/blend modes, use computed alpha
     var outAlpha = finalAlpha;
     if (uniforms.alphaMode == ALPHA_OPAQUE) {
         outAlpha = 1.0;

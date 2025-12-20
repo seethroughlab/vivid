@@ -1,56 +1,203 @@
-// Vivid Render3D - Non-PBR Shader
-// Supports Unlit, Flat, Gouraud, VertexLit, and Toon shading modes
+// Flat/Gouraud/Unlit shader with multi-light support and shadow mapping
+
+const MAX_LIGHTS: u32 = 4u;
+const LIGHT_DIRECTIONAL: u32 = 0u;
+const LIGHT_POINT: u32 = 1u;
+const LIGHT_SPOT: u32 = 2u;
+const EPSILON: f32 = 0.0001;
+
+struct Light {
+    position: vec3f,
+    range: f32,
+    direction: vec3f,
+    spotAngle: f32,
+    color: vec3f,
+    intensity: f32,
+    lightType: u32,
+    spotBlend: f32,
+    _pad: vec2f,
+}
 
 struct Uniforms {
     mvp: mat4x4f,
     model: mat4x4f,
-    lightDir: vec3f,
-    _pad1: f32,
-    lightColor: vec3f,
-    ambient: f32,
+    worldPos: vec3f,
+    _pad0: f32,
     baseColor: vec4f,
-    shadingMode: u32,  // 0=Unlit, 1=Flat, 2=Gouraud, 3=VertexLit, 4=Toon
-    toonLevels: u32,   // Number of toon shading bands (2-8)
-    _pad2: vec2f,
+    ambient: f32,
+    shadingMode: u32,
+    lightCount: u32,
+    toonLevels: u32,
+    lights: array<Light, 4>,
 };
 
+struct ShadowUniforms {
+    lightViewProj: mat4x4f,
+    shadowBias: f32,
+    shadowMapSize: f32,
+    shadowEnabled: u32,
+    pointShadowEnabled: u32,
+    pointLightPosAndRange: vec4f,
+}
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+@group(1) @binding(0) var<uniform> shadow: ShadowUniforms;
+@group(1) @binding(1) var shadowMap: texture_depth_2d;
+@group(1) @binding(2) var shadowSampler: sampler_comparison;
+@group(1) @binding(3) var pointShadowFace0: texture_2d<f32>;
+@group(1) @binding(4) var pointShadowFace1: texture_2d<f32>;
+@group(1) @binding(5) var pointShadowFace2: texture_2d<f32>;
+@group(1) @binding(6) var pointShadowFace3: texture_2d<f32>;
+@group(1) @binding(7) var pointShadowFace4: texture_2d<f32>;
+@group(1) @binding(8) var pointShadowFace5: texture_2d<f32>;
+@group(1) @binding(9) var pointShadowSampler: sampler;
 
 struct VertexInput {
     @location(0) position: vec3f,
     @location(1) normal: vec3f,
-    @location(2) tangent: vec4f,  // xyz = tangent, w = handedness (unused in flat shading)
+    @location(2) tangent: vec4f,
     @location(3) uv: vec2f,
     @location(4) color: vec4f,
 };
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
-    @location(0) worldNormal: vec3f,
-    @location(1) uv: vec2f,
-    @location(2) color: vec4f,
-    @location(3) lighting: f32,
+    @location(0) worldPos: vec3f,
+    @location(1) worldNormal: vec3f,
+    @location(2) uv: vec2f,
+    @location(3) color: vec4f,
+    @location(4) lighting: vec3f,
 };
+
+fn getAttenuation(distance: f32, range: f32) -> f32 {
+    if (range <= 0.0) { return 1.0; }
+    let d = max(distance, EPSILON);
+    let att = 1.0 / (d * d);
+    let falloff = saturate(1.0 - pow(d / range, 4.0));
+    return att * falloff * falloff;
+}
+
+fn getSpotFactor(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f32) -> f32 {
+    let cosAngle = dot(lightDir, spotDir);
+    return saturate((cosAngle - outerAngle) / max(innerAngle - outerAngle, EPSILON));
+}
+
+fn sampleShadow(worldPos: vec3f) -> f32 {
+    if (shadow.shadowEnabled == 0u) { return 1.0; }
+    let lightSpacePos = shadow.lightViewProj * vec4f(worldPos, 1.0);
+    var projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    let texCoordX = projCoords.x * 0.5 + 0.5;
+    let texCoordY = 1.0 - (projCoords.y * 0.5 + 0.5);
+    let texCoordZ = projCoords.z;
+    if (texCoordX < 0.0 || texCoordX > 1.0 || texCoordY < 0.0 || texCoordY > 1.0 || texCoordZ < 0.0 || texCoordZ > 1.0) { return 1.0; }
+    let currentDepth = texCoordZ - shadow.shadowBias;
+    return textureSampleCompare(shadowMap, shadowSampler, vec2f(texCoordX, texCoordY), currentDepth);
+}
+
+fn samplePointShadow(worldPos: vec3f) -> f32 {
+    if (shadow.pointShadowEnabled == 0u) { return 1.0; }
+    let lightToFrag = worldPos - shadow.pointLightPosAndRange.xyz;
+    let fragDist = length(lightToFrag);
+    let absDir = abs(lightToFrag);
+    var faceIndex: i32; var u: f32; var v: f32; var ma: f32;
+    if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
+        ma = absDir.x;
+        if (lightToFrag.x > 0.0) { faceIndex = 0; u = -lightToFrag.z; v = -lightToFrag.y; }
+        else { faceIndex = 1; u = lightToFrag.z; v = -lightToFrag.y; }
+    } else if (absDir.y >= absDir.x && absDir.y >= absDir.z) {
+        ma = absDir.y;
+        if (lightToFrag.y > 0.0) { faceIndex = 2; u = lightToFrag.x; v = lightToFrag.z; }
+        else { faceIndex = 3; u = lightToFrag.x; v = -lightToFrag.z; }
+    } else {
+        ma = absDir.z;
+        if (lightToFrag.z > 0.0) { faceIndex = 4; u = lightToFrag.x; v = -lightToFrag.y; }
+        else { faceIndex = 5; u = -lightToFrag.x; v = -lightToFrag.y; }
+    }
+    let texU = (u / ma) * 0.5 + 0.5;
+    let texV = 0.5 - (v / ma) * 0.5;
+    let texCoord = vec2f(texU, texV);
+    var sampledDepth: f32;
+    switch (faceIndex) {
+        case 0: { sampledDepth = textureSample(pointShadowFace0, pointShadowSampler, texCoord).r; }
+        case 1: { sampledDepth = textureSample(pointShadowFace1, pointShadowSampler, texCoord).r; }
+        case 2: { sampledDepth = textureSample(pointShadowFace2, pointShadowSampler, texCoord).r; }
+        case 3: { sampledDepth = textureSample(pointShadowFace3, pointShadowSampler, texCoord).r; }
+        case 4: { sampledDepth = textureSample(pointShadowFace4, pointShadowSampler, texCoord).r; }
+        case 5: { sampledDepth = textureSample(pointShadowFace5, pointShadowSampler, texCoord).r; }
+        default: { sampledDepth = 1.0; }
+    }
+    let normalizedFragDist = fragDist / shadow.pointLightPosAndRange.w;
+    if (normalizedFragDist - shadow.shadowBias > sampledDepth) { return 0.0; }
+    return 1.0;
+}
+
+fn calculateSimpleLightingNoShadow(worldPos: vec3f, N: vec3f) -> vec3f {
+    var Lo = vec3f(0.0);
+    let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
+    for (var i = 0u; i < lightCount; i++) {
+        let light = uniforms.lights[i];
+        var L: vec3f; var attenuation: f32 = 1.0;
+        if (light.lightType == LIGHT_DIRECTIONAL) { L = -normalize(light.direction); }
+        else if (light.lightType == LIGHT_POINT) {
+            let lightVec = light.position - worldPos;
+            let dist = length(lightVec);
+            L = lightVec / max(dist, EPSILON);
+            attenuation = getAttenuation(dist, light.range);
+        } else {
+            let lightVec = light.position - worldPos;
+            let dist = length(lightVec);
+            L = lightVec / max(dist, EPSILON);
+            attenuation = getAttenuation(dist, light.range);
+            attenuation *= getSpotFactor(-L, normalize(light.direction), light.spotBlend, light.spotAngle);
+        }
+        Lo += light.color * light.intensity * max(dot(N, L), 0.0) * attenuation;
+    }
+    return Lo;
+}
+
+fn calculateSimpleLighting(worldPos: vec3f, N: vec3f) -> vec3f {
+    var Lo = vec3f(0.0);
+    let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
+    let shadowFactor = sampleShadow(worldPos);
+    for (var i = 0u; i < lightCount; i++) {
+        let light = uniforms.lights[i];
+        var L: vec3f; var attenuation: f32 = 1.0; var lightShadow: f32 = 1.0;
+        if (light.lightType == LIGHT_DIRECTIONAL) {
+            L = -normalize(light.direction);
+            if (i == 0u) { lightShadow = shadowFactor; }
+        } else if (light.lightType == LIGHT_POINT) {
+            let lightVec = light.position - worldPos;
+            let dist = length(lightVec);
+            L = lightVec / max(dist, EPSILON);
+            attenuation = getAttenuation(dist, light.range);
+            if (i == 0u) { lightShadow = samplePointShadow(worldPos); }
+        } else {
+            let lightVec = light.position - worldPos;
+            let dist = length(lightVec);
+            L = lightVec / max(dist, EPSILON);
+            attenuation = getAttenuation(dist, light.range);
+            attenuation *= getSpotFactor(-L, normalize(light.direction), light.spotBlend, light.spotAngle);
+            if (i == 0u) { lightShadow = shadowFactor; }
+        }
+        Lo += light.color * light.intensity * max(dot(N, L), 0.0) * attenuation * lightShadow;
+    }
+    return Lo;
+}
 
 @vertex
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
+    let worldPos4 = uniforms.model * vec4f(in.position, 1.0);
+    out.worldPos = worldPos4.xyz;
     out.position = uniforms.mvp * vec4f(in.position, 1.0);
     out.worldNormal = normalize((uniforms.model * vec4f(in.normal, 0.0)).xyz);
     out.uv = in.uv;
     out.color = in.color;
-
-    // Per-vertex lighting modes
-    if (uniforms.shadingMode == 2u) {
-        // Gouraud: per-vertex lighting
-        let NdotL = max(dot(out.worldNormal, uniforms.lightDir), 0.0);
-        out.lighting = uniforms.ambient + NdotL;
-    } else if (uniforms.shadingMode == 3u) {
-        // VertexLit: simple N·L diffuse
-        let NdotL = max(dot(out.worldNormal, uniforms.lightDir), 0.0);
-        out.lighting = NdotL;
+    if (uniforms.shadingMode == 2u || uniforms.shadingMode == 3u) {
+        out.lighting = calculateSimpleLightingNoShadow(out.worldPos, out.worldNormal);
     } else {
-        out.lighting = 1.0;
+        out.lighting = vec3f(1.0);
     }
     return out;
 }
@@ -58,30 +205,22 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var finalColor = uniforms.baseColor * in.color;
-
-    if (uniforms.shadingMode == 0u) {
-        // Unlit: just return the color
-        return finalColor;
-    } else if (uniforms.shadingMode == 1u) {
-        // Flat: per-fragment lighting
-        let NdotL = max(dot(normalize(in.worldNormal), uniforms.lightDir), 0.0);
-        let lighting = uniforms.ambient + NdotL * uniforms.lightColor;
-        return vec4f(finalColor.rgb * lighting, finalColor.a);
+    if (uniforms.shadingMode == 0u) { return finalColor; }
+    else if (uniforms.shadingMode == 1u) {
+        let N = normalize(in.worldNormal);
+        let lighting = calculateSimpleLighting(in.worldPos, N);
+        return vec4f(finalColor.rgb * (vec3f(uniforms.ambient) + lighting), finalColor.a);
     } else if (uniforms.shadingMode == 2u) {
-        // Gouraud: use pre-computed vertex lighting with ambient
-        return vec4f(finalColor.rgb * in.lighting * uniforms.lightColor, finalColor.a);
+        return vec4f(finalColor.rgb * (vec3f(uniforms.ambient) + in.lighting), finalColor.a);
     } else if (uniforms.shadingMode == 3u) {
-        // VertexLit: simple per-vertex diffuse
-        return vec4f(finalColor.rgb * in.lighting * uniforms.lightColor, finalColor.a);
+        return vec4f(finalColor.rgb * in.lighting, finalColor.a);
     } else if (uniforms.shadingMode == 4u) {
-        // Toon: quantized cel-shading
-        let NdotL = max(dot(normalize(in.worldNormal), uniforms.lightDir), 0.0);
+        let N = normalize(in.worldNormal);
+        let lighting = calculateSimpleLighting(in.worldPos, N);
+        let luminance = dot(lighting, vec3f(0.299, 0.587, 0.114));
         let levels = f32(uniforms.toonLevels);
-        let quantized = floor(NdotL * levels + 0.5) / levels;
-        let lighting = uniforms.ambient + quantized * uniforms.lightColor;
-        return vec4f(finalColor.rgb * lighting, finalColor.a);
-    } else {
-        // Default fallback
-        return vec4f(finalColor.rgb * in.lighting * uniforms.lightColor, finalColor.a);
+        let quantized = floor(luminance * levels + 0.5) / levels;
+        return vec4f(finalColor.rgb * (uniforms.ambient + quantized), finalColor.a);
     }
+    return vec4f(finalColor.rgb * (vec3f(uniforms.ambient) + in.lighting), finalColor.a);
 }

@@ -4,6 +4,9 @@
 #include <vivid/render3d/light_operators.h>
 #include <vivid/render3d/textured_material.h>
 #include <vivid/render3d/ibl_environment.h>
+#include <vivid/render3d/gpu_structs.h>
+#include <vivid/render3d/debug_geometry.h>
+#include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -1460,115 +1463,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-// Skybox uniform buffer structure
-struct SkyboxUniforms {
-    float invViewProj[16];  // mat4x4f: 64 bytes
-};
-
-// Maximum lights supported per draw call
-constexpr uint32_t MAX_LIGHTS = 4;
-
-// Light types (must match WGSL constants)
-constexpr uint32_t LIGHT_TYPE_DIRECTIONAL = 0;
-constexpr uint32_t LIGHT_TYPE_POINT = 1;
-constexpr uint32_t LIGHT_TYPE_SPOT = 2;
-
-// GPU Light structure (48 bytes, 16-byte aligned)
-struct GPULight {
-    float position[3];    // 12 bytes, offset 0
-    float range;          // 4 bytes, offset 12
-    float direction[3];   // 12 bytes, offset 16
-    float spotAngle;      // 4 bytes, offset 28 (cosine of outer angle)
-    float color[3];       // 12 bytes, offset 32
-    float intensity;      // 4 bytes, offset 44
-    uint32_t type;        // 4 bytes, offset 48
-    float spotBlend;      // 4 bytes, offset 52 (cosine of inner angle)
-    float _pad[2];        // 8 bytes padding to 64 bytes
-};
-
-static_assert(sizeof(GPULight) == 64, "GPULight struct must be 64 bytes");
-
-// Flat/Gouraud uniform buffer structure (with multi-light support)
-struct Uniforms {
-    float mvp[16];              // mat4x4f: 64 bytes, offset 0
-    float model[16];            // mat4x4f: 64 bytes, offset 64
-    float worldPos[3];          // vec3f: 12 bytes, offset 128 (for point/spot lights)
-    float _pad0;                // 4 bytes, offset 140
-    float baseColor[4];         // vec4f: 16 bytes, offset 144
-    float ambient;              // f32: 4 bytes, offset 160
-    uint32_t shadingMode;       // u32: 4 bytes, offset 164
-    uint32_t lightCount;        // u32: 4 bytes, offset 168
-    uint32_t toonLevels;        // u32: 4 bytes, offset 172
-    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 176
-};                               // Total: 432 bytes
-
-static_assert(sizeof(Uniforms) == 432, "Uniforms struct must be 432 bytes");
-
-// PBR uniform buffer structure (with multi-light support)
-struct PBRUniforms {
-    float mvp[16];              // mat4x4f: 64 bytes, offset 0
-    float model[16];            // mat4x4f: 64 bytes, offset 64
-    float normalMatrix[16];     // mat4x4f: 64 bytes, offset 128
-    float cameraPos[3];         // vec3f: 12 bytes, offset 192
-    float ambientIntensity;     // f32: 4 bytes, offset 204
-    float baseColor[4];         // vec4f: 16 bytes, offset 208
-    float metallic;             // f32: 4 bytes, offset 224
-    float roughness;            // f32: 4 bytes, offset 228
-    uint32_t lightCount;        // u32: 4 bytes, offset 232
-    float _pad0;                // 4 bytes, offset 236
-    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 240
-};                               // Total: 496 bytes
-
-static_assert(sizeof(PBRUniforms) == 496, "PBRUniforms struct must be 496 bytes");
-
-// Textured PBR uniform buffer structure (with multi-light support)
-struct PBRTexturedUniforms {
-    float mvp[16];              // mat4x4f: 64 bytes, offset 0
-    float model[16];            // mat4x4f: 64 bytes, offset 64
-    float normalMatrix[16];     // mat4x4f: 64 bytes, offset 128
-    float cameraPos[3];         // vec3f: 12 bytes, offset 192
-    float ambientIntensity;     // f32: 4 bytes, offset 204
-    float baseColorFactor[4];   // vec4f: 16 bytes, offset 208
-    float metallicFactor;       // f32: 4 bytes, offset 224
-    float roughnessFactor;      // f32: 4 bytes, offset 228
-    float normalScale;          // f32: 4 bytes, offset 232
-    float aoStrength;           // f32: 4 bytes, offset 236
-    float emissiveFactor[3];    // vec3f: 12 bytes, offset 240
-    float emissiveStrength;     // f32: 4 bytes, offset 252
-    uint32_t textureFlags;      // u32: 4 bytes, offset 256
-    uint32_t lightCount;        // u32: 4 bytes, offset 260
-    float alphaCutoff;          // f32: 4 bytes, offset 264 (for alpha mask mode)
-    uint32_t alphaMode;         // u32: 4 bytes, offset 268 (0=opaque, 1=mask, 2=blend)
-    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 272
-};                               // Total: 528 bytes
-
-static_assert(sizeof(PBRTexturedUniforms) == 528, "PBRTexturedUniforms struct must be 528 bytes");
-
-// Helper function to convert LightData to GPULight
-GPULight lightDataToGPU(const LightData& light) {
-    GPULight gpu = {};
-    gpu.position[0] = light.position.x;
-    gpu.position[1] = light.position.y;
-    gpu.position[2] = light.position.z;
-    gpu.range = light.range;
-    gpu.direction[0] = light.direction.x;
-    gpu.direction[1] = light.direction.y;
-    gpu.direction[2] = light.direction.z;
-    // Convert spot angles from degrees to cosines
-    float outerAngleRad = glm::radians(light.spotAngle);
-    float innerAngleRad = outerAngleRad * (1.0f - light.spotBlend);
-    gpu.spotAngle = std::cos(outerAngleRad);
-    gpu.spotBlend = std::cos(innerAngleRad);
-    gpu.color[0] = light.color.r;
-    gpu.color[1] = light.color.g;
-    gpu.color[2] = light.color.b;
-    gpu.intensity = light.intensity;
-    switch (light.type) {
-        case LightType::Directional: gpu.type = LIGHT_TYPE_DIRECTIONAL; break;
-        case LightType::Point:       gpu.type = LIGHT_TYPE_POINT; break;
-        case LightType::Spot:        gpu.type = LIGHT_TYPE_SPOT; break;
+// Helper to load shader from file with fallback to embedded string
+// Returns the shader source to use (either from file or embedded fallback)
+std::string loadShaderOrFallback(const std::string& filename, const char* fallback) {
+    std::string loaded = AssetLoader::instance().loadShader(filename);
+    if (!loaded.empty()) {
+        return loaded;
     }
-    return gpu;
+    return std::string(fallback);
 }
 
 } // anonymous namespace
@@ -2588,141 +2490,6 @@ void Render3D::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encoder) {
     // Note: m_pointShadowPassBindGroup is cached and released in destroyShadowResources()
 }
 
-// Helper to create a line vertex for debug wireframes
-static Vertex3D makeDebugVertex(const glm::vec3& pos, const glm::vec4& color) {
-    Vertex3D v;
-    v.position = pos;
-    v.normal = glm::vec3(0, 1, 0);
-    v.tangent = glm::vec4(1, 0, 0, 1);
-    v.uv = glm::vec2(0, 0);
-    v.color = color;
-    return v;
-}
-
-// Add a line segment to the debug vertices
-static void addLine(std::vector<Vertex3D>& verts, const glm::vec3& a, const glm::vec3& b, const glm::vec4& color) {
-    verts.push_back(makeDebugVertex(a, color));
-    verts.push_back(makeDebugVertex(b, color));
-}
-
-// Generate camera frustum wireframe
-static void generateCameraFrustum(std::vector<Vertex3D>& verts, const Camera3D& camera, const glm::vec4& color) {
-    // Get inverse view-projection to transform NDC corners to world space
-    glm::mat4 invVP = glm::inverse(camera.projectionMatrix() * camera.viewMatrix());
-
-    // NDC corners (near plane at z=-1, far plane at z=1 in NDC)
-    glm::vec4 ndcCorners[8] = {
-        {-1, -1, -1, 1}, { 1, -1, -1, 1}, { 1,  1, -1, 1}, {-1,  1, -1, 1},  // near
-        {-1, -1,  1, 1}, { 1, -1,  1, 1}, { 1,  1,  1, 1}, {-1,  1,  1, 1}   // far
-    };
-
-    // Transform to world space
-    glm::vec3 corners[8];
-    for (int i = 0; i < 8; i++) {
-        glm::vec4 world = invVP * ndcCorners[i];
-        corners[i] = glm::vec3(world) / world.w;
-    }
-
-    // Near plane edges
-    addLine(verts, corners[0], corners[1], color);
-    addLine(verts, corners[1], corners[2], color);
-    addLine(verts, corners[2], corners[3], color);
-    addLine(verts, corners[3], corners[0], color);
-
-    // Far plane edges
-    addLine(verts, corners[4], corners[5], color);
-    addLine(verts, corners[5], corners[6], color);
-    addLine(verts, corners[6], corners[7], color);
-    addLine(verts, corners[7], corners[4], color);
-
-    // Connecting edges (near to far)
-    addLine(verts, corners[0], corners[4], color);
-    addLine(verts, corners[1], corners[5], color);
-    addLine(verts, corners[2], corners[6], color);
-    addLine(verts, corners[3], corners[7], color);
-}
-
-// Generate directional light arrow
-static void generateDirectionalLightDebug(std::vector<Vertex3D>& verts, const LightData& light, const glm::vec4& color) {
-    glm::vec3 dir = glm::normalize(light.direction);
-    float len = 2.0f;  // Arrow length
-
-    // Arrow shaft from origin in light direction
-    glm::vec3 start = glm::vec3(0, 0, 0);
-    glm::vec3 end = start + dir * len;
-    addLine(verts, start, end, color);
-
-    // Create arrowhead basis vectors
-    glm::vec3 up = glm::abs(dir.y) < 0.9f ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
-    glm::vec3 right = glm::normalize(glm::cross(dir, up));
-    glm::vec3 forward = glm::normalize(glm::cross(right, dir));
-
-    // Arrowhead
-    float headSize = 0.3f;
-    glm::vec3 headBase = end - dir * headSize * 2.0f;
-    addLine(verts, end, headBase + right * headSize, color);
-    addLine(verts, end, headBase - right * headSize, color);
-    addLine(verts, end, headBase + forward * headSize, color);
-    addLine(verts, end, headBase - forward * headSize, color);
-}
-
-// Generate point light sphere wireframe (3 circles)
-static void generatePointLightDebug(std::vector<Vertex3D>& verts, const LightData& light, const glm::vec4& color) {
-    const int segments = 24;
-    float r = light.range;
-    glm::vec3 pos = light.position;
-
-    for (int i = 0; i < segments; i++) {
-        float a1 = (float)i / segments * 2.0f * 3.14159f;
-        float a2 = (float)(i + 1) / segments * 2.0f * 3.14159f;
-
-        // XY circle
-        addLine(verts, pos + glm::vec3(cosf(a1) * r, sinf(a1) * r, 0),
-                       pos + glm::vec3(cosf(a2) * r, sinf(a2) * r, 0), color);
-        // XZ circle
-        addLine(verts, pos + glm::vec3(cosf(a1) * r, 0, sinf(a1) * r),
-                       pos + glm::vec3(cosf(a2) * r, 0, sinf(a2) * r), color);
-        // YZ circle
-        addLine(verts, pos + glm::vec3(0, cosf(a1) * r, sinf(a1) * r),
-                       pos + glm::vec3(0, cosf(a2) * r, sinf(a2) * r), color);
-    }
-}
-
-// Generate spot light cone wireframe
-static void generateSpotLightDebug(std::vector<Vertex3D>& verts, const LightData& light, const glm::vec4& color) {
-    glm::vec3 pos = light.position;
-    glm::vec3 dir = glm::normalize(light.direction);
-    float range = light.range;
-    float angleRad = glm::radians(light.spotAngle);
-    float baseRadius = tanf(angleRad) * range;
-
-    // Create cone basis vectors
-    glm::vec3 up = glm::abs(dir.y) < 0.9f ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
-    glm::vec3 right = glm::normalize(glm::cross(dir, up));
-    glm::vec3 forward = glm::normalize(glm::cross(right, dir));
-
-    glm::vec3 apex = pos;
-    glm::vec3 baseCenter = pos + dir * range;
-
-    // Cone edges from apex to base circle
-    const int edges = 8;
-    for (int i = 0; i < edges; i++) {
-        float angle = (float)i / edges * 2.0f * 3.14159f;
-        glm::vec3 basePoint = baseCenter + (right * cosf(angle) + forward * sinf(angle)) * baseRadius;
-        addLine(verts, apex, basePoint, color);
-    }
-
-    // Base circle
-    const int segments = 24;
-    for (int i = 0; i < segments; i++) {
-        float a1 = (float)i / segments * 2.0f * 3.14159f;
-        float a2 = (float)(i + 1) / segments * 2.0f * 3.14159f;
-        glm::vec3 p1 = baseCenter + (right * cosf(a1) + forward * sinf(a1)) * baseRadius;
-        glm::vec3 p2 = baseCenter + (right * cosf(a2) + forward * sinf(a2)) * baseRadius;
-        addLine(verts, p1, p2, color);
-    }
-}
-
 void Render3D::renderDebugVisualization(Context& ctx, WGPURenderPassEncoder pass) {
     if (!m_wireframePipeline) return;
 
@@ -3009,9 +2776,10 @@ void Render3D::createDepthBuffer(Context& ctx) {
         m_depthOutputView = wgpuTextureCreateView(m_depthOutputTexture, &depthOutViewDesc);
 
         // Create depth copy pipeline
+        std::string depthCopySrc = loadShaderOrFallback("depth_copy.wgsl", DEPTH_COPY_SHADER_SOURCE);
         WGPUShaderSourceWGSL depthCopyWgsl = {};
         depthCopyWgsl.chain.sType = WGPUSType_ShaderSourceWGSL;
-        depthCopyWgsl.code = toStringView(DEPTH_COPY_SHADER_SOURCE);
+        depthCopyWgsl.code = toStringView(depthCopySrc.c_str());
 
         WGPUShaderModuleDescriptor depthCopyModuleDesc = {};
         depthCopyModuleDesc.nextInChain = &depthCopyWgsl.chain;
@@ -3108,9 +2876,10 @@ void Render3D::createPipeline(Context& ctx) {
     WGPUDevice device = ctx.device();
 
     // Create flat/Gouraud shader module
+    std::string flatShaderSrc = loadShaderOrFallback("flat.wgsl", FLAT_SHADER_SOURCE);
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(FLAT_SHADER_SOURCE);
+    wgslDesc.code = toStringView(flatShaderSrc.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;
@@ -3402,9 +3171,10 @@ void Render3D::createPipeline(Context& ctx) {
     // =========================================================================
 
     // Create PBR shader module
+    std::string pbrShaderSrc = loadShaderOrFallback("pbr.wgsl", PBR_SHADER_SOURCE);
     WGPUShaderSourceWGSL pbrWgslDesc = {};
     pbrWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    pbrWgslDesc.code = toStringView(PBR_SHADER_SOURCE);
+    pbrWgslDesc.code = toStringView(pbrShaderSrc.c_str());
 
     WGPUShaderModuleDescriptor pbrShaderDesc = {};
     pbrShaderDesc.nextInChain = &pbrWgslDesc.chain;
@@ -3514,9 +3284,10 @@ void Render3D::createPipeline(Context& ctx) {
     // =========================================================================
 
     // Create textured PBR shader module
+    std::string pbrTexShaderSrc = loadShaderOrFallback("pbr_textured.wgsl", PBR_TEXTURED_SHADER_SOURCE);
     WGPUShaderSourceWGSL pbrTexWgslDesc = {};
     pbrTexWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    pbrTexWgslDesc.code = toStringView(PBR_TEXTURED_SHADER_SOURCE);
+    pbrTexWgslDesc.code = toStringView(pbrTexShaderSrc.c_str());
 
     WGPUShaderModuleDescriptor pbrTexShaderDesc = {};
     pbrTexShaderDesc.nextInChain = &pbrTexWgslDesc.chain;
@@ -3641,9 +3412,10 @@ void Render3D::createPipeline(Context& ctx) {
     // =========================================================================
 
     // Create IBL shader module
+    std::string iblShaderSrc = loadShaderOrFallback("pbr_ibl.wgsl", PBR_IBL_SHADER_SOURCE);
     WGPUShaderSourceWGSL iblWgslDesc = {};
     iblWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    iblWgslDesc.code = toStringView(PBR_IBL_SHADER_SOURCE);
+    iblWgslDesc.code = toStringView(iblShaderSrc.c_str());
 
     WGPUShaderModuleDescriptor iblModuleDesc = {};
     iblModuleDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&iblWgslDesc);
@@ -3768,9 +3540,10 @@ void Render3D::createPipeline(Context& ctx) {
     // =========================================================================
 
     // Create skybox shader module
+    std::string skyboxShaderSrc = loadShaderOrFallback("skybox.wgsl", SKYBOX_SHADER_SOURCE);
     WGPUShaderSourceWGSL skyboxWgslDesc = {};
     skyboxWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    skyboxWgslDesc.code = toStringView(SKYBOX_SHADER_SOURCE);
+    skyboxWgslDesc.code = toStringView(skyboxShaderSrc.c_str());
 
     WGPUShaderModuleDescriptor skyboxShaderDesc = {};
     skyboxShaderDesc.nextInChain = &skyboxWgslDesc.chain;
@@ -3860,9 +3633,10 @@ void Render3D::createPipeline(Context& ctx) {
     // =========================================================================
 
     // Create displacement shader module
+    std::string dispShaderSrc = loadShaderOrFallback("pbr_displacement.wgsl", PBR_DISPLACEMENT_SHADER_SOURCE);
     WGPUShaderSourceWGSL dispWgslDesc = {};
     dispWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    dispWgslDesc.code = toStringView(PBR_DISPLACEMENT_SHADER_SOURCE);
+    dispWgslDesc.code = toStringView(dispShaderSrc.c_str());
 
     WGPUShaderModuleDescriptor dispShaderDesc = {};
     dispShaderDesc.nextInChain = &dispWgslDesc.chain;
