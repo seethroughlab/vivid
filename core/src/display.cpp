@@ -1,20 +1,10 @@
 // Vivid - Display Implementation
 
 #include <vivid/display.h>
+#include <vivid/asset_loader.h>
 #include <iostream>
-#include <fstream>
-#include <sstream>
-#include <filesystem>
 #include <vector>
 #include <cstring>
-
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#elif defined(_WIN32)
-#include <windows.h>
-#endif
-
-namespace fs = std::filesystem;
 
 namespace vivid {
 
@@ -24,17 +14,6 @@ static inline WGPUStringView toStringView(const char* str) {
     sv.data = str;
     sv.length = WGPU_STRLEN;
     return sv;
-}
-
-// Load shader from file
-static std::string loadShaderFile(const std::string& path) {
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        return "";
-    }
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
 }
 
 // Embedded 8x8 bitmap font (ASCII 32-127, 96 characters)
@@ -264,49 +243,16 @@ void Display::shutdown() {
     m_valid = false;
 }
 
-// Get the executable directory (platform-specific)
-static fs::path getExecutableDir() {
-#ifdef __APPLE__
-    char path[1024];
-    uint32_t size = sizeof(path);
-    if (_NSGetExecutablePath(path, &size) == 0) {
-        return fs::path(path).parent_path();
-    }
-#elif defined(_WIN32)
-    char path[MAX_PATH];
-    GetModuleFileNameA(NULL, path, MAX_PATH);
-    return fs::path(path).parent_path();
-#else
-    // Linux: /proc/self/exe
-    return fs::read_symlink("/proc/self/exe").parent_path();
-#endif
-    return fs::current_path();
-}
-
-static std::string findShader(const std::string& name) {
-    fs::path exeDir = getExecutableDir();
-    std::cout << "Looking for shader: " << name << " from exeDir: " << exeDir << std::endl;
-    std::vector<fs::path> searchPaths = {
-        exeDir / "shaders" / name,
-        fs::path("shaders") / name,
-        fs::path("../shaders") / name,
-        fs::path("../../core/shaders") / name,
-    };
-
-    for (const auto& path : searchPaths) {
-        std::string code = loadShaderFile(path.string());
-        if (!code.empty()) {
-            std::cout << "Found shader at: " << path << std::endl;
-            // Show first 100 chars to verify content
-            std::cout << "Shader preview: " << code.substr(0, 100) << "..." << std::endl;
-            return code;
-        }
-    }
-    return "";
-}
-
 bool Display::createBlitPipeline() {
-    std::string shaderCode = findShader("blit.wgsl");
+    auto& assets = AssetLoader::instance();
+    auto exeDir = assets.executableDir();
+    std::cout << "Looking for shader: blit.wgsl from exeDir: " << exeDir << std::endl;
+
+    std::string shaderCode = assets.loadShader("blit.wgsl");
+    if (!shaderCode.empty()) {
+        std::cout << "Found shader at: " << assets.resolve("shaders/blit.wgsl") << std::endl;
+        std::cout << "Shader preview: " << shaderCode.substr(0, 100) << "..." << std::endl;
+    }
     if (shaderCode.empty()) {
         std::cerr << "Failed to load blit shader" << std::endl;
         return false;
@@ -425,7 +371,15 @@ bool Display::createBlitPipeline() {
 
 bool Display::createTextPipeline() {
     // Load text shader
-    std::string shaderCode = findShader("text.wgsl");
+    auto& assets = AssetLoader::instance();
+    auto exeDir = assets.executableDir();
+    std::cout << "Looking for shader: text.wgsl from exeDir: " << exeDir << std::endl;
+
+    std::string shaderCode = assets.loadShader("text.wgsl");
+    if (!shaderCode.empty()) {
+        std::cout << "Found shader at: " << assets.resolve("shaders/text.wgsl") << std::endl;
+        std::cout << "Shader preview: " << shaderCode.substr(0, 100) << "..." << std::endl;
+    }
     if (shaderCode.empty()) {
         std::cerr << "Failed to load text shader" << std::endl;
         return false;

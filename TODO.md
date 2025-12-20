@@ -192,7 +192,7 @@
 [x] Please add a WEBSOCKET_API.md document that explains how you can control a vivid app with the same websockcet API that the vscode extension uses.
 [x] I noticed the line if(NOT EMSCRIPTEN) in the main CMakeLists.txt, but we removed the web exporter, so there shouldn't be any refrence to EMSCRIPTEN anymore. Can you check the whole project for any remaining references? 
 [x] Based on the changes we just made and the overall conventions used in this project, please make a document about coding style. What is a good name for this document that is commonly used?
-[ ] Does phase 5 have some overlap with the ASSET_LOADING.md document?
+[x] Does phase 5 have some overlap with the ASSET_LOADING.md document?
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
 [ ] Finish Shadows - Is everything in SHADOWS.md complete? I believe there are just a couple of lingerine issues with one of the llght types.

@@ -3,19 +3,10 @@
 #include <vivid/effects/ramp.h>
 #include <vivid/effects/gpu_common.h>
 #include <vivid/effects/pipeline_builder.h>
-#include <string>
+#include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <cstring>
-#include <fstream>
-#include <sstream>
-#include <filesystem>
-
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#include <limits.h>
-#endif
-
-namespace fs = std::filesystem;
+#include <string>
 
 namespace vivid::effects {
 
@@ -38,51 +29,6 @@ struct RampUniforms {
     float _pad[2];        // 8 bytes (64 total)
 };
 
-// Find shader file relative to executable or source
-static std::string findShaderPath(const std::string& name) {
-    // Try relative to current working directory first (for development)
-    fs::path devPath = fs::path("addons/vivid-effects-2d/shaders") / name;
-    if (fs::exists(devPath)) {
-        return devPath.string();
-    }
-
-    // Try relative to executable
-#ifdef __APPLE__
-    char pathBuf[PATH_MAX];
-    uint32_t size = sizeof(pathBuf);
-    if (_NSGetExecutablePath(pathBuf, &size) == 0) {
-        fs::path exePath = fs::path(pathBuf).parent_path();
-        fs::path shaderPath = exePath / "shaders" / name;
-        if (fs::exists(shaderPath)) {
-            return shaderPath.string();
-        }
-        // Also try ../../addons path for app bundle
-        shaderPath = exePath / ".." / ".." / "addons" / "vivid-effects-2d" / "shaders" / name;
-        if (fs::exists(shaderPath)) {
-            return shaderPath.string();
-        }
-    }
-#endif
-
-    return "";
-}
-
-static std::string loadShaderSource(const std::string& name) {
-    std::string path = findShaderPath(name);
-    if (path.empty()) {
-        return "";
-    }
-
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        return "";
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
-}
-
 Ramp::~Ramp() {
     cleanup();
 }
@@ -96,7 +42,7 @@ void Ramp::init(Context& ctx) {
 
 void Ramp::createPipeline(Context& ctx) {
     // Load shader
-    std::string externalShaderSource = loadShaderSource("ramp.wgsl");
+    std::string externalShaderSource = AssetLoader::instance().loadShader("ramp.wgsl");
     std::string shaderSource;
     if (externalShaderSource.empty()) {
         // Fallback: embedded minimal shader

@@ -61,21 +61,23 @@ private:
 
 ## Implementation Phases
 
-**Phase 1: Create AssetLoader**
-- [ ] Create `core/include/vivid/asset_loader.h`
-- [ ] Create `core/src/asset_loader.cpp`
-- [ ] Native implementation: thin wrapper around filesystem operations
-- [ ] Add to core CMakeLists.txt
+**Phase 1: Create AssetLoader** ✅ Complete
+- [x] Create `core/include/vivid/asset_loader.h`
+- [x] Create `core/src/asset_loader.cpp`
+- [x] Native implementation: thin wrapper around filesystem operations
+- [x] Add to core CMakeLists.txt
 
-**Phase 2: Migrate Core Shaders**
-- [ ] Update `display.cpp` to use AssetLoader
-- [ ] Update all `core/src/effects/*.cpp` to use AssetLoader
-- [ ] Remove duplicated path resolution logic
+**Phase 2: Migrate Core Shaders** ✅ Complete
+- [x] Update `display.cpp` to use AssetLoader
+- [x] Update `core/src/effects/noise.cpp` to use AssetLoader
+- [x] Update `core/src/effects/feedback.cpp` to use AssetLoader
+- [x] Update `core/src/effects/ramp.cpp` to use AssetLoader
+- [x] Remove duplicated path resolution logic
 
-**Phase 3: Migrate Addon Shaders**
-- [ ] Update `vivid-render3d` shader loading
-- [ ] Update `vivid-video` shader loading
-- [ ] Update any other addon asset loading
+**Phase 3: Migrate Addon Shaders** ✅ Complete (no migration needed)
+- [x] Verified `vivid-render3d` - no file-based shader loading
+- [x] Verified `vivid-video` - no file-based shader loading
+- [x] Addons use embedded shaders or PipelineBuilder
 
 **Phase 4: Emscripten Support (when ready)**
 - [ ] Add `#ifdef __EMSCRIPTEN__` implementation

@@ -85,6 +85,7 @@ set(IMNODES_SOURCES
 set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
     src/chain.cpp
+    src/asset_loader.cpp
     src/window_manager.cpp
     src/operator.cpp
     src/operator_registry.cpp

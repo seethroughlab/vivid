@@ -3,19 +3,10 @@
 #include <vivid/effects/feedback.h>
 #include <vivid/effects/gpu_common.h>
 #include <vivid/effects/pipeline_builder.h>
-#include <string>
+#include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <cstring>
-#include <fstream>
-#include <sstream>
-#include <filesystem>
-
-#ifdef __APPLE__
-#include <mach-o/dyld.h>
-#include <limits.h>
-#endif
-
-namespace fs = std::filesystem;
+#include <string>
 
 namespace vivid::effects {
 
@@ -29,48 +20,6 @@ struct FeedbackUniforms {
     float zoom;
     float rotate;
 };
-
-// Find shader file relative to executable or source
-static std::string findShaderPath(const std::string& name) {
-    fs::path devPath = fs::path("addons/vivid-effects-2d/shaders") / name;
-    if (fs::exists(devPath)) {
-        return devPath.string();
-    }
-
-#ifdef __APPLE__
-    char pathBuf[PATH_MAX];
-    uint32_t size = sizeof(pathBuf);
-    if (_NSGetExecutablePath(pathBuf, &size) == 0) {
-        fs::path exePath = fs::path(pathBuf).parent_path();
-        fs::path shaderPath = exePath / "shaders" / name;
-        if (fs::exists(shaderPath)) {
-            return shaderPath.string();
-        }
-        shaderPath = exePath / ".." / ".." / "addons" / "vivid-effects-2d" / "shaders" / name;
-        if (fs::exists(shaderPath)) {
-            return shaderPath.string();
-        }
-    }
-#endif
-
-    return "";
-}
-
-static std::string loadShaderSource(const std::string& name) {
-    std::string path = findShaderPath(name);
-    if (path.empty()) {
-        return "";
-    }
-
-    std::ifstream file(path);
-    if (!file.is_open()) {
-        return "";
-    }
-
-    std::stringstream buffer;
-    buffer << file.rdbuf();
-    return buffer.str();
-}
 
 Feedback::~Feedback() {
     cleanup();
@@ -109,7 +58,7 @@ void Feedback::createBufferTexture(Context& ctx) {
 }
 
 void Feedback::createPipeline(Context& ctx) {
-    std::string externalShader = loadShaderSource("feedback.wgsl");
+    std::string externalShader = AssetLoader::instance().loadShader("feedback.wgsl");
     const char* fragmentShader;
     if (externalShader.empty()) {
         // Fallback embedded shader
