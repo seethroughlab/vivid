@@ -351,6 +351,9 @@ void Bloom::process(Context& ctx) {
 
     if (!needsCook()) return;
 
+    // Update cached bind groups if input changed
+    updateBindGroups(ctx, inView);
+
     float texelW = 1.0f / m_width;
     float texelH = 1.0f / m_height;
 
@@ -363,21 +366,6 @@ void Bloom::process(Context& ctx) {
         uniforms.texelW = texelW;
         uniforms.texelH = texelH;
         wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
-
-        WGPUBindGroupEntry bindEntries[3] = {};
-        bindEntries[0].binding = 0;
-        bindEntries[0].buffer = m_uniformBuffer;
-        bindEntries[0].size = sizeof(BloomUniforms);
-        bindEntries[1].binding = 1;
-        bindEntries[1].textureView = inView;
-        bindEntries[2].binding = 2;
-        bindEntries[2].sampler = m_sampler;
-
-        WGPUBindGroupDescriptor bindDesc = {};
-        bindDesc.layout = m_bindGroupLayout;
-        bindDesc.entryCount = 3;
-        bindDesc.entries = bindEntries;
-        WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
 
         WGPUCommandEncoderDescriptor encoderDesc = {};
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
@@ -395,7 +383,7 @@ void Bloom::process(Context& ctx) {
 
         WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
         wgpuRenderPassEncoderSetPipeline(pass, m_thresholdPipeline);
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_thresholdBindGroup, 0, nullptr);
         wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
@@ -405,7 +393,6 @@ void Bloom::process(Context& ctx) {
         wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
         wgpuCommandBufferRelease(cmdBuffer);
         wgpuCommandEncoderRelease(encoder);
-        wgpuBindGroupRelease(bindGroup);
     }
 
     // Pass 2 & 3: Blur passes (ping-pong between bright and blur textures)
@@ -420,21 +407,6 @@ void Bloom::process(Context& ctx) {
             uniforms.texelW = texelW;
             uniforms.texelH = texelH;
             wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
-
-            WGPUBindGroupEntry bindEntries[3] = {};
-            bindEntries[0].binding = 0;
-            bindEntries[0].buffer = m_uniformBuffer;
-            bindEntries[0].size = sizeof(BloomUniforms);
-            bindEntries[1].binding = 1;
-            bindEntries[1].textureView = m_brightView;
-            bindEntries[2].binding = 2;
-            bindEntries[2].sampler = m_sampler;
-
-            WGPUBindGroupDescriptor bindDesc = {};
-            bindDesc.layout = m_bindGroupLayout;
-            bindDesc.entryCount = 3;
-            bindDesc.entries = bindEntries;
-            WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
 
             WGPUCommandEncoderDescriptor encoderDesc = {};
             WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
@@ -452,7 +424,7 @@ void Bloom::process(Context& ctx) {
 
             WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
             wgpuRenderPassEncoderSetPipeline(pass, m_blurHPipeline);
-            wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, m_blurHBindGroup, 0, nullptr);
             wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(pass);
             wgpuRenderPassEncoderRelease(pass);
@@ -462,7 +434,6 @@ void Bloom::process(Context& ctx) {
             wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
             wgpuCommandBufferRelease(cmdBuffer);
             wgpuCommandEncoderRelease(encoder);
-            wgpuBindGroupRelease(bindGroup);
         }
 
         // Vertical blur: blur -> bright
@@ -475,21 +446,6 @@ void Bloom::process(Context& ctx) {
             uniforms.texelW = texelW;
             uniforms.texelH = texelH;
             wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
-
-            WGPUBindGroupEntry bindEntries[3] = {};
-            bindEntries[0].binding = 0;
-            bindEntries[0].buffer = m_uniformBuffer;
-            bindEntries[0].size = sizeof(BloomUniforms);
-            bindEntries[1].binding = 1;
-            bindEntries[1].textureView = m_blurView;
-            bindEntries[2].binding = 2;
-            bindEntries[2].sampler = m_sampler;
-
-            WGPUBindGroupDescriptor bindDesc = {};
-            bindDesc.layout = m_bindGroupLayout;
-            bindDesc.entryCount = 3;
-            bindDesc.entries = bindEntries;
-            WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
 
             WGPUCommandEncoderDescriptor encoderDesc = {};
             WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
@@ -507,7 +463,7 @@ void Bloom::process(Context& ctx) {
 
             WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
             wgpuRenderPassEncoderSetPipeline(pass, m_blurVPipeline);
-            wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, m_blurVBindGroup, 0, nullptr);
             wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(pass);
             wgpuRenderPassEncoderRelease(pass);
@@ -517,7 +473,6 @@ void Bloom::process(Context& ctx) {
             wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
             wgpuCommandBufferRelease(cmdBuffer);
             wgpuCommandEncoderRelease(encoder);
-            wgpuBindGroupRelease(bindGroup);
         }
     }
 
@@ -531,43 +486,28 @@ void Bloom::process(Context& ctx) {
         uniforms.texelH = texelH;
         wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 
-        // Need to get combine layout from pipeline
-        WGPUBindGroupLayout combineLayout = wgpuRenderPipelineGetBindGroupLayout(m_combinePipeline, 0);
-
-        WGPUBindGroupEntry bindEntries[4] = {};
-        bindEntries[0].binding = 0;
-        bindEntries[0].buffer = m_uniformBuffer;
-        bindEntries[0].size = sizeof(BloomUniforms);
-        bindEntries[1].binding = 1;
-        bindEntries[1].textureView = inView;  // Original
-        bindEntries[2].binding = 2;
-        bindEntries[2].sampler = m_sampler;
-        bindEntries[3].binding = 3;
-        bindEntries[3].textureView = m_brightView;  // Blurred bloom
-
-        WGPUBindGroupDescriptor bindDesc = {};
-        bindDesc.layout = combineLayout;
-        bindDesc.entryCount = 4;
-        bindDesc.entries = bindEntries;
-        WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
-
         WGPUCommandEncoderDescriptor encoderDesc = {};
         WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
 
         WGPURenderPassEncoder pass;
         beginRenderPass(pass, encoder);
         wgpuRenderPassEncoderSetPipeline(pass, m_combinePipeline);
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_combineBindGroup, 0, nullptr);
         wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
         endRenderPass(pass, encoder, ctx);
-
-        wgpuBindGroupLayoutRelease(combineLayout);
-        wgpuBindGroupRelease(bindGroup);
     }
     didCook();
 }
 
 void Bloom::cleanup() {
+    // Release cached bind groups
+    gpu::release(m_thresholdBindGroup);
+    gpu::release(m_blurHBindGroup);
+    gpu::release(m_blurVBindGroup);
+    gpu::release(m_combineBindGroup);
+    gpu::release(m_combineLayout);
+    m_lastInputView = nullptr;
+
     gpu::release(m_thresholdPipeline);
     gpu::release(m_blurHPipeline);
     if (m_blurVPipeline && m_blurVPipeline != m_blurHPipeline) { wgpuRenderPipelineRelease(m_blurVPipeline); }
@@ -582,6 +522,99 @@ void Bloom::cleanup() {
     gpu::release(m_blurTexture);
     releaseOutput();
     m_initialized = false;
+}
+
+void Bloom::updateBindGroups(Context& ctx, WGPUTextureView inView) {
+    // Check if we need to update (input changed or first time)
+    bool needsUpdate = (m_thresholdBindGroup == nullptr) || (inView != m_lastInputView);
+    if (!needsUpdate) return;
+
+    // Release old bind groups
+    gpu::release(m_thresholdBindGroup);
+    gpu::release(m_blurHBindGroup);
+    gpu::release(m_blurVBindGroup);
+    gpu::release(m_combineBindGroup);
+
+    // Create threshold bind group (uses input texture)
+    {
+        WGPUBindGroupEntry entries[3] = {};
+        entries[0].binding = 0;
+        entries[0].buffer = m_uniformBuffer;
+        entries[0].size = sizeof(BloomUniforms);
+        entries[1].binding = 1;
+        entries[1].textureView = inView;
+        entries[2].binding = 2;
+        entries[2].sampler = m_sampler;
+
+        WGPUBindGroupDescriptor desc = {};
+        desc.layout = m_bindGroupLayout;
+        desc.entryCount = 3;
+        desc.entries = entries;
+        m_thresholdBindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &desc);
+    }
+
+    // Create blur H bind group (uses internal bright texture)
+    {
+        WGPUBindGroupEntry entries[3] = {};
+        entries[0].binding = 0;
+        entries[0].buffer = m_uniformBuffer;
+        entries[0].size = sizeof(BloomUniforms);
+        entries[1].binding = 1;
+        entries[1].textureView = m_brightView;
+        entries[2].binding = 2;
+        entries[2].sampler = m_sampler;
+
+        WGPUBindGroupDescriptor desc = {};
+        desc.layout = m_bindGroupLayout;
+        desc.entryCount = 3;
+        desc.entries = entries;
+        m_blurHBindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &desc);
+    }
+
+    // Create blur V bind group (uses internal blur texture)
+    {
+        WGPUBindGroupEntry entries[3] = {};
+        entries[0].binding = 0;
+        entries[0].buffer = m_uniformBuffer;
+        entries[0].size = sizeof(BloomUniforms);
+        entries[1].binding = 1;
+        entries[1].textureView = m_blurView;
+        entries[2].binding = 2;
+        entries[2].sampler = m_sampler;
+
+        WGPUBindGroupDescriptor desc = {};
+        desc.layout = m_bindGroupLayout;
+        desc.entryCount = 3;
+        desc.entries = entries;
+        m_blurVBindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &desc);
+    }
+
+    // Create combine bind group (uses input + bright textures)
+    {
+        // Cache the combine layout if needed
+        if (!m_combineLayout) {
+            m_combineLayout = wgpuRenderPipelineGetBindGroupLayout(m_combinePipeline, 0);
+        }
+
+        WGPUBindGroupEntry entries[4] = {};
+        entries[0].binding = 0;
+        entries[0].buffer = m_uniformBuffer;
+        entries[0].size = sizeof(BloomUniforms);
+        entries[1].binding = 1;
+        entries[1].textureView = inView;
+        entries[2].binding = 2;
+        entries[2].sampler = m_sampler;
+        entries[3].binding = 3;
+        entries[3].textureView = m_brightView;
+
+        WGPUBindGroupDescriptor desc = {};
+        desc.layout = m_combineLayout;
+        desc.entryCount = 4;
+        desc.entries = entries;
+        m_combineBindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &desc);
+    }
+
+    m_lastInputView = inView;
 }
 
 } // namespace vivid::effects

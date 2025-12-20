@@ -45,6 +45,8 @@ private:
     WGPURenderPipeline m_blitPipeline = nullptr;
     WGPUSampler m_sampler = nullptr;
     WGPUBindGroupLayout m_blitBindGroupLayout = nullptr;
+    WGPUBindGroup m_blitBindGroup = nullptr;        // Cached blit bind group
+    WGPUTextureView m_lastBlitTexture = nullptr;    // Track texture changes
 
     // Text resources
     WGPURenderPipeline m_textPipeline = nullptr;

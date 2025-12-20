@@ -229,6 +229,8 @@ Display::~Display() {
 }
 
 void Display::shutdown() {
+    if (m_blitBindGroup) { wgpuBindGroupRelease(m_blitBindGroup); m_blitBindGroup = nullptr; }
+    m_lastBlitTexture = nullptr;
     if (m_blitPipeline) { wgpuRenderPipelineRelease(m_blitPipeline); m_blitPipeline = nullptr; }
     if (m_sampler) { wgpuSamplerRelease(m_sampler); m_sampler = nullptr; }
     if (m_blitBindGroupLayout) { wgpuBindGroupLayoutRelease(m_blitBindGroupLayout); m_blitBindGroupLayout = nullptr; }
@@ -630,22 +632,31 @@ void Display::blit(WGPURenderPassEncoder pass, WGPUTextureView texture) {
         return;
     }
 
-    WGPUBindGroupEntry entries[2] = {};
-    entries[0].binding = 0;
-    entries[0].sampler = m_sampler;
-    entries[1].binding = 1;
-    entries[1].textureView = texture;
+    // Update cached bind group if texture changed
+    if (texture != m_lastBlitTexture || !m_blitBindGroup) {
+        if (m_blitBindGroup) {
+            wgpuBindGroupRelease(m_blitBindGroup);
+        }
 
-    WGPUBindGroupDescriptor bindGroupDesc = {};
-    bindGroupDesc.label = toStringView("Blit Bind Group");
-    bindGroupDesc.layout = m_blitBindGroupLayout;
-    bindGroupDesc.entryCount = 2;
-    bindGroupDesc.entries = entries;
+        WGPUBindGroupEntry entries[2] = {};
+        entries[0].binding = 0;
+        entries[0].sampler = m_sampler;
+        entries[1].binding = 1;
+        entries[1].textureView = texture;
 
-    WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(m_device, &bindGroupDesc);
-    if (!bindGroup) {
-        std::cerr << "Blit: failed to create bind group" << std::endl;
-        return;
+        WGPUBindGroupDescriptor bindGroupDesc = {};
+        bindGroupDesc.label = toStringView("Blit Bind Group");
+        bindGroupDesc.layout = m_blitBindGroupLayout;
+        bindGroupDesc.entryCount = 2;
+        bindGroupDesc.entries = entries;
+
+        m_blitBindGroup = wgpuDeviceCreateBindGroup(m_device, &bindGroupDesc);
+        m_lastBlitTexture = texture;
+
+        if (!m_blitBindGroup) {
+            std::cerr << "Blit: failed to create bind group" << std::endl;
+            return;
+        }
     }
 
     // Set viewport to cover the entire screen
@@ -653,10 +664,8 @@ void Display::blit(WGPURenderPassEncoder pass, WGPUTextureView texture) {
     wgpuRenderPassEncoderSetScissorRect(pass, 0, 0, m_screenWidth, m_screenHeight);
 
     wgpuRenderPassEncoderSetPipeline(pass, m_blitPipeline);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, m_blitBindGroup, 0, nullptr);
     wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
-
-    wgpuBindGroupRelease(bindGroup);
 }
 
 void Display::renderText(WGPURenderPassEncoder pass, const std::string& text,

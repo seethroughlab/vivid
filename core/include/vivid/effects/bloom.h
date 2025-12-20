@@ -81,6 +81,7 @@ public:
 
 private:
     void createPipeline(Context& ctx);
+    void updateBindGroups(Context& ctx, WGPUTextureView inView);
 
     // GPU resources - need multiple passes
     WGPURenderPipeline m_thresholdPipeline = nullptr;
@@ -88,6 +89,7 @@ private:
     WGPURenderPipeline m_blurVPipeline = nullptr;
     WGPURenderPipeline m_combinePipeline = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
+    WGPUBindGroupLayout m_combineLayout = nullptr;  // Cached combine layout
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUSampler m_sampler = nullptr;
 
@@ -96,6 +98,13 @@ private:
     WGPUTextureView m_brightView = nullptr;
     WGPUTexture m_blurTexture = nullptr;
     WGPUTextureView m_blurView = nullptr;
+
+    // Cached bind groups (avoid per-frame recreation)
+    WGPUBindGroup m_thresholdBindGroup = nullptr;
+    WGPUBindGroup m_blurHBindGroup = nullptr;
+    WGPUBindGroup m_blurVBindGroup = nullptr;
+    WGPUBindGroup m_combineBindGroup = nullptr;
+    WGPUTextureView m_lastInputView = nullptr;  // Track input changes
 };
 
 } // namespace vivid::effects

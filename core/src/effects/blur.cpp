@@ -175,6 +175,9 @@ void Blur::process(Context& ctx) {
     // Skip if nothing changed
     if (!needsCook()) return;
 
+    // Update cached bind groups if input changed
+    updateBindGroups(ctx, inView);
+
     float texelW = 1.0f / m_width;
     float texelH = 1.0f / m_height;
 
@@ -187,21 +190,6 @@ void Blur::process(Context& ctx) {
             uniforms.texelW = texelW;
             uniforms.texelH = texelH;
             wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
-
-            WGPUBindGroupEntry bindEntries[3] = {};
-            bindEntries[0].binding = 0;
-            bindEntries[0].buffer = m_uniformBuffer;
-            bindEntries[0].size = sizeof(BlurUniforms);
-            bindEntries[1].binding = 1;
-            bindEntries[1].textureView = (pass == 0) ? inView : m_outputView;
-            bindEntries[2].binding = 2;
-            bindEntries[2].sampler = m_sampler;
-
-            WGPUBindGroupDescriptor bindDesc = {};
-            bindDesc.layout = m_bindGroupLayout;
-            bindDesc.entryCount = 3;
-            bindDesc.entries = bindEntries;
-            WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
 
             WGPUCommandEncoderDescriptor encoderDesc = {};
             WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
@@ -219,6 +207,8 @@ void Blur::process(Context& ctx) {
 
             WGPURenderPassEncoder renderPass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
             wgpuRenderPassEncoderSetPipeline(renderPass, m_pipelineH);
+            // Use first-pass bind group for first iteration, subsequent for others
+            WGPUBindGroup bindGroup = (pass == 0) ? m_bindGroupHFirst : m_bindGroupHSubseq;
             wgpuRenderPassEncoderSetBindGroup(renderPass, 0, bindGroup, 0, nullptr);
             wgpuRenderPassEncoderDraw(renderPass, 3, 1, 0, 0);
             wgpuRenderPassEncoderEnd(renderPass);
@@ -229,7 +219,6 @@ void Blur::process(Context& ctx) {
             wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
             wgpuCommandBufferRelease(cmdBuffer);
             wgpuCommandEncoderRelease(encoder);
-            wgpuBindGroupRelease(bindGroup);
         }
 
         // Vertical pass: temp -> output
@@ -241,32 +230,15 @@ void Blur::process(Context& ctx) {
             uniforms.texelH = texelH;
             wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 
-            WGPUBindGroupEntry bindEntries[3] = {};
-            bindEntries[0].binding = 0;
-            bindEntries[0].buffer = m_uniformBuffer;
-            bindEntries[0].size = sizeof(BlurUniforms);
-            bindEntries[1].binding = 1;
-            bindEntries[1].textureView = m_tempView;
-            bindEntries[2].binding = 2;
-            bindEntries[2].sampler = m_sampler;
-
-            WGPUBindGroupDescriptor bindDesc = {};
-            bindDesc.layout = m_bindGroupLayout;
-            bindDesc.entryCount = 3;
-            bindDesc.entries = bindEntries;
-            WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
-
             WGPUCommandEncoderDescriptor encoderDesc = {};
             WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
 
             WGPURenderPassEncoder renderPass;
             beginRenderPass(renderPass, encoder);
             wgpuRenderPassEncoderSetPipeline(renderPass, m_pipelineV);
-            wgpuRenderPassEncoderSetBindGroup(renderPass, 0, bindGroup, 0, nullptr);
+            wgpuRenderPassEncoderSetBindGroup(renderPass, 0, m_bindGroupV, 0, nullptr);
             wgpuRenderPassEncoderDraw(renderPass, 3, 1, 0, 0);
             endRenderPass(renderPass, encoder, ctx);
-
-            wgpuBindGroupRelease(bindGroup);
         }
     }
 
@@ -274,6 +246,12 @@ void Blur::process(Context& ctx) {
 }
 
 void Blur::cleanup() {
+    // Release cached bind groups
+    gpu::release(m_bindGroupHFirst);
+    gpu::release(m_bindGroupHSubseq);
+    gpu::release(m_bindGroupV);
+    m_lastInputView = nullptr;
+
     gpu::release(m_pipelineH);
     if (m_pipelineV && m_pipelineV != m_pipelineH) { wgpuRenderPipelineRelease(m_pipelineV); }
     m_pipelineV = nullptr;
@@ -285,6 +263,73 @@ void Blur::cleanup() {
     gpu::release(m_tempTexture);
     releaseOutput();
     m_initialized = false;
+}
+
+void Blur::updateBindGroups(Context& ctx, WGPUTextureView inView) {
+    // Check if we need to update (input changed or first time)
+    bool needsUpdate = (m_bindGroupV == nullptr) || (inView != m_lastInputView);
+    if (!needsUpdate) return;
+
+    // Release old bind groups
+    gpu::release(m_bindGroupHFirst);
+    gpu::release(m_bindGroupHSubseq);
+    gpu::release(m_bindGroupV);
+
+    // Create H pass bind group for first iteration (uses external input)
+    {
+        WGPUBindGroupEntry entries[3] = {};
+        entries[0].binding = 0;
+        entries[0].buffer = m_uniformBuffer;
+        entries[0].size = sizeof(BlurUniforms);
+        entries[1].binding = 1;
+        entries[1].textureView = inView;
+        entries[2].binding = 2;
+        entries[2].sampler = m_sampler;
+
+        WGPUBindGroupDescriptor desc = {};
+        desc.layout = m_bindGroupLayout;
+        desc.entryCount = 3;
+        desc.entries = entries;
+        m_bindGroupHFirst = wgpuDeviceCreateBindGroup(ctx.device(), &desc);
+    }
+
+    // Create H pass bind group for subsequent iterations (uses output texture)
+    {
+        WGPUBindGroupEntry entries[3] = {};
+        entries[0].binding = 0;
+        entries[0].buffer = m_uniformBuffer;
+        entries[0].size = sizeof(BlurUniforms);
+        entries[1].binding = 1;
+        entries[1].textureView = m_outputView;
+        entries[2].binding = 2;
+        entries[2].sampler = m_sampler;
+
+        WGPUBindGroupDescriptor desc = {};
+        desc.layout = m_bindGroupLayout;
+        desc.entryCount = 3;
+        desc.entries = entries;
+        m_bindGroupHSubseq = wgpuDeviceCreateBindGroup(ctx.device(), &desc);
+    }
+
+    // Create V pass bind group (uses internal temp texture)
+    {
+        WGPUBindGroupEntry entries[3] = {};
+        entries[0].binding = 0;
+        entries[0].buffer = m_uniformBuffer;
+        entries[0].size = sizeof(BlurUniforms);
+        entries[1].binding = 1;
+        entries[1].textureView = m_tempView;
+        entries[2].binding = 2;
+        entries[2].sampler = m_sampler;
+
+        WGPUBindGroupDescriptor desc = {};
+        desc.layout = m_bindGroupLayout;
+        desc.entryCount = 3;
+        desc.entries = entries;
+        m_bindGroupV = wgpuDeviceCreateBindGroup(ctx.device(), &desc);
+    }
+
+    m_lastInputView = inView;
 }
 
 } // namespace vivid::effects

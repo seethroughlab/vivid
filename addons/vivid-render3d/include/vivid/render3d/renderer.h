@@ -349,11 +349,16 @@ private:
     WGPUBindGroup m_shadowSampleBindGroup = nullptr;  // Binds shadow map + sampler for main pass
     glm::mat4 m_lightViewProj = glm::mat4(1.0f);  // Cached light-space matrix
 
-    // Point light shadow mapping (cube map)
-    WGPUTexture m_pointShadowMapTexture = nullptr;  // Cube map depth texture
+    // Point light shadow mapping (cube map with R32Float for linear depth)
+    WGPUTexture m_pointShadowMapTexture = nullptr;  // Cube map R32Float texture (linear depth)
     WGPUTextureView m_pointShadowFaceViews[6] = {};  // Views for rendering each face
     WGPUTextureView m_pointShadowCubeView = nullptr;  // Cube view for sampling
+    WGPUTexture m_pointShadowDepthTexture = nullptr;  // Shared depth buffer for face rendering
+    WGPUTextureView m_pointShadowDepthView = nullptr;
+    WGPURenderPipeline m_pointShadowPipeline = nullptr;  // Pipeline for point shadow pass
+    WGPUBuffer m_pointShadowUniformBuffer = nullptr;  // Uniforms for point shadow pass
     WGPUBindGroup m_pointShadowSampleBindGroup = nullptr;  // Binds cube shadow map for main pass
+    WGPUSampler m_pointShadowSampler = nullptr;  // Regular sampler (not comparison)
     glm::vec3 m_pointLightPos = glm::vec3(0.0f);  // Cached point light position
     float m_pointLightRange = 50.0f;  // Cached point light range
 

@@ -4,6 +4,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <deque>
 
 namespace vivid {
 
@@ -44,8 +45,8 @@ struct EditorPerformanceStats {
     // Frame timing
     float fps = 0.0f;                           ///< Current frames per second
     float frameTimeMs = 0.0f;                   ///< Last frame time in milliseconds
-    std::vector<float> fpsHistory;              ///< Recent FPS values (last 60 samples)
-    std::vector<float> frameTimeHistory;        ///< Recent frame times (last 60 samples)
+    std::deque<float> fpsHistory;               ///< Recent FPS values (last 60 samples)
+    std::deque<float> frameTimeHistory;         ///< Recent frame times (last 60 samples)
 
     // Memory usage (estimates)
     size_t textureMemoryBytes = 0;              ///< Estimated GPU texture memory

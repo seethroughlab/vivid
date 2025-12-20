@@ -72,6 +72,7 @@ public:
 
 private:
     void createPipeline(Context& ctx);
+    void updateBindGroups(Context& ctx, WGPUTextureView inView);
 
     // GPU resources
     WGPURenderPipeline m_pipelineH = nullptr;  // Horizontal pass
@@ -84,6 +85,11 @@ private:
     WGPUTexture m_tempTexture = nullptr;
     WGPUTextureView m_tempView = nullptr;
 
+    // Cached bind groups (avoid per-frame recreation)
+    WGPUBindGroup m_bindGroupHFirst = nullptr;     // H pass with external input
+    WGPUBindGroup m_bindGroupHSubseq = nullptr;    // H pass with output (multi-pass)
+    WGPUBindGroup m_bindGroupV = nullptr;          // V pass with temp texture
+    WGPUTextureView m_lastInputView = nullptr;     // Track input changes
 };
 
 } // namespace vivid::effects

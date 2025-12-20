@@ -683,10 +683,10 @@ bool mainLoopIteration(MainLoopContext& mlc) {
     double frameTimeMs = (currentTime - mlc.lastFrameTime) * 1000.0;
     mlc.lastFrameTime = currentTime;
 
-    // Update frame time history (rolling buffer)
+    // Update frame time history (rolling buffer using deque for O(1) pop_front)
     mlc.perfStats.frameTimeHistory.push_back(static_cast<float>(frameTimeMs));
     if (mlc.perfStats.frameTimeHistory.size() > mlc.kHistorySize) {
-        mlc.perfStats.frameTimeHistory.erase(mlc.perfStats.frameTimeHistory.begin());
+        mlc.perfStats.frameTimeHistory.pop_front();
     }
     mlc.perfStats.frameTimeMs = static_cast<float>(frameTimeMs);
 
@@ -699,11 +699,11 @@ bool mainLoopIteration(MainLoopContext& mlc) {
         }
         glfwSetWindowTitle(mlc.window, title.c_str());
 
-        // Update FPS in performance stats
+        // Update FPS in performance stats (using deque for O(1) pop_front)
         mlc.perfStats.fps = static_cast<float>(mlc.frameCount);
         mlc.perfStats.fpsHistory.push_back(mlc.perfStats.fps);
         if (mlc.perfStats.fpsHistory.size() > mlc.kHistorySize) {
-            mlc.perfStats.fpsHistory.erase(mlc.perfStats.fpsHistory.begin());
+            mlc.perfStats.fpsHistory.pop_front();
         }
 
         mlc.frameCount = 0;
