@@ -83,21 +83,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         rotated.x * sinA + rotated.y * cosA
     ) + center;
 
+    // Apply aspect ratio correction for radial/diamond modes
+    let aspect = u.resolution.x / u.resolution.y;
+    let aspectCorrectedUV = vec2f((uv.x - 0.5) * aspect + 0.5, uv.y);
+
     // Calculate ramp value based on type
     var t: f32;
     if (u.rampType == 0) {
         // Linear (horizontal)
         t = uv.x;
     } else if (u.rampType == 1) {
-        // Radial
-        t = length(uv - center) * 2.0;
+        // Radial (aspect corrected for circular shape)
+        t = length(aspectCorrectedUV - center) * 2.0;
     } else if (u.rampType == 2) {
-        // Angular
-        let d = uv - center;
+        // Angular (aspect corrected)
+        let d = aspectCorrectedUV - center;
         t = (atan2(d.y, d.x) + 3.14159265) / (2.0 * 3.14159265);
     } else {
-        // Diamond
-        let d = abs(uv - center);
+        // Diamond (aspect corrected for square shape)
+        let d = abs(aspectCorrectedUV - center);
         t = (d.x + d.y) * 2.0;
     }
 

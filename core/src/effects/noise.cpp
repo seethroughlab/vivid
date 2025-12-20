@@ -12,6 +12,7 @@ namespace vivid::effects {
 
 // Uniform buffer structure (must match shader, 16-byte aligned)
 struct NoiseUniforms {
+    float resolution[2]; // width, height for aspect ratio correction
     float time;
     float scale;
     float speed;
@@ -22,7 +23,7 @@ struct NoiseUniforms {
     float offsetY;
     int octaves;
     int noiseType;      // 0=Perlin, 1=Simplex, 2=Worley, 3=Value
-    float _pad[2];      // Padding to 48 bytes (multiple of 16)
+    float _pad[2];      // Padding to 64 bytes (multiple of 16)
 };
 
 Noise::~Noise() {
@@ -44,6 +45,7 @@ void Noise::createPipeline(Context& ctx) {
         // Uses shared vertex shader from gpu_common.h
         const char* fragmentShader = R"(
 struct Uniforms {
+    resolution: vec2f,  // width, height for aspect ratio correction
     time: f32,
     scale: f32,
     speed: f32,
@@ -326,8 +328,12 @@ fn fbm3D(p: vec3f, octaves: i32, lacunarity: f32, persistence: f32, noiseType: i
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    // Apply aspect ratio correction so noise isn't stretched
+    let aspect = uniforms.resolution.x / uniforms.resolution.y;
+    let correctedUV = vec2f(input.uv.x * aspect, input.uv.y);
+
     // XY from UV, Z from parameter + time animation
-    let xy = input.uv * uniforms.scale + vec2f(uniforms.offsetX, uniforms.offsetY);
+    let xy = correctedUV * uniforms.scale + vec2f(uniforms.offsetX, uniforms.offsetY);
     let z = uniforms.z + uniforms.time * uniforms.speed;
 
     let p = vec3f(xy, z);
@@ -383,6 +389,8 @@ void Noise::process(Context& ctx) {
 
     // Update uniforms
     NoiseUniforms uniforms = {};
+    uniforms.resolution[0] = static_cast<float>(m_width);
+    uniforms.resolution[1] = static_cast<float>(m_height);
     uniforms.time = static_cast<float>(ctx.time());
     uniforms.scale = scale;
     uniforms.speed = speed;
