@@ -20,13 +20,11 @@ Composite::~Composite() {
 }
 
 void Composite::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
 
     createOutput(ctx);
     createDummyTexture(ctx);
     createPipeline(ctx);
-
-    m_initialized = true;
 }
 
 void Composite::createDummyTexture(Context& ctx) {

@@ -177,7 +177,6 @@ private:
     std::vector<LineInstance> m_lines;
     std::vector<NodeInstance> m_nodeInstances;
     std::mt19937 m_rng;
-    bool m_initialized = false;
     bool m_nodesInitialized = false;
 
     // GPU resources - Lines

@@ -97,7 +97,6 @@ private:
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
 
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

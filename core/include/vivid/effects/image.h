@@ -64,7 +64,6 @@ private:
     void createPipeline(Context& ctx);
 
     std::string m_loadedPath;  // Track which path is currently loaded
-    bool m_initialized = false;
 
     WGPURenderPipeline m_pipeline = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;

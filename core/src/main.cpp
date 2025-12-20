@@ -261,13 +261,13 @@ bool mainLoopIteration(MainLoopContext& mlc) {
     }
 
     // Handle vsync change
-    if (mlc.ctx->vsyncChanged()) {
+    if (mlc.ctx->consumeVsyncChange()) {
         mlc.config.presentMode = mlc.ctx->vsync() ? WGPUPresentMode_Fifo : WGPUPresentMode_Immediate;
         wgpuSurfaceConfigure(mlc.surface, &mlc.config);
     }
 
     // Handle fullscreen change (from ctx.fullscreen() API)
-    if (mlc.ctx->fullscreenChanged()) {
+    if (mlc.ctx->consumeFullscreenChange()) {
         if (mlc.ctx->fullscreen() && !mlc.isFullscreen) {
             // Save windowed position and size
             glfwGetWindowPos(mlc.window, &mlc.windowedX, &mlc.windowedY);
@@ -292,23 +292,23 @@ bool mainLoopIteration(MainLoopContext& mlc) {
     }
 
     // Handle borderless (decorated) window change
-    if (mlc.ctx->borderlessChanged()) {
+    if (mlc.ctx->consumeBorderlessChange()) {
         glfwSetWindowAttrib(mlc.window, GLFW_DECORATED, mlc.ctx->borderless() ? GLFW_FALSE : GLFW_TRUE);
     }
 
     // Handle always-on-top (floating) change
-    if (mlc.ctx->alwaysOnTopChanged()) {
+    if (mlc.ctx->consumeAlwaysOnTopChange()) {
         glfwSetWindowAttrib(mlc.window, GLFW_FLOATING, mlc.ctx->alwaysOnTop() ? GLFW_TRUE : GLFW_FALSE);
     }
 
     // Handle cursor visibility change
-    if (mlc.ctx->cursorVisibleChanged()) {
+    if (mlc.ctx->consumeCursorVisibleChange()) {
         glfwSetInputMode(mlc.window, GLFW_CURSOR,
             mlc.ctx->cursorVisible() ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
     }
 
     // Handle monitor change (move window to different display)
-    if (mlc.ctx->monitorChanged()) {
+    if (mlc.ctx->consumeMonitorChange()) {
         int monitorCount = 0;
         GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
         int targetIdx = std::min(mlc.ctx->targetMonitor(), monitorCount - 1);
@@ -337,12 +337,12 @@ bool mainLoopIteration(MainLoopContext& mlc) {
     }
 
     // Handle window position change
-    if (mlc.ctx->windowPosChanged()) {
+    if (mlc.ctx->consumeWindowPosChange()) {
         glfwSetWindowPos(mlc.window, mlc.ctx->targetWindowX(), mlc.ctx->targetWindowY());
     }
 
     // Handle window size change
-    if (mlc.ctx->windowSizeChanged()) {
+    if (mlc.ctx->consumeWindowSizeChange()) {
         glfwSetWindowSize(mlc.window, mlc.ctx->targetWindowWidth(), mlc.ctx->targetWindowHeight());
     }
 

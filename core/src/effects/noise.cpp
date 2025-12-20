@@ -84,12 +84,10 @@ Noise::~Noise() {
 }
 
 void Noise::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
 
     createOutput(ctx);
     createPipeline(ctx);
-
-    m_initialized = true;
 }
 
 void Noise::createPipeline(Context& ctx) {

@@ -67,3 +67,4 @@ nul
 /*.obj
 examples/**/snapshot_*.png
 examples/**/chain.vivid.json
+*-job-logs.txt

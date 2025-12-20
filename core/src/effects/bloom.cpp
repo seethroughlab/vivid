@@ -24,10 +24,9 @@ Bloom::~Bloom() {
 }
 
 void Bloom::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
     createOutput(ctx);
     createPipeline(ctx);
-    m_initialized = true;
 }
 
 void Bloom::createPipeline(Context& ctx) {
@@ -342,7 +341,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 
 void Bloom::process(Context& ctx) {
-    if (!m_initialized) init(ctx);
+    if (!isInitialized()) init(ctx);
 
     // Match input resolution
     matchInputResolution(0);

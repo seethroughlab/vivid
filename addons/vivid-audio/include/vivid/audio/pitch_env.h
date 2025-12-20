@@ -102,8 +102,6 @@ private:
     float m_currentFreq = 50.0f;
     float m_progress = 1.0f;
     uint32_t m_sampleRate = 48000;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

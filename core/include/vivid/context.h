@@ -198,8 +198,8 @@ public:
     /// @brief Get target window Y position for pending move
     int targetWindowY() const { return m_targetWindowY; }
 
-    /// @brief Check if window position changed (consumed by runtime)
-    bool windowPosChanged() { bool c = m_windowPosChanged; m_windowPosChanged = false; return c; }
+    /// @brief Consume window position change flag (returns true once, then false)
+    bool consumeWindowPosChange() { bool c = m_windowPosChanged; m_windowPosChanged = false; return c; }
 
     /**
      * @brief Resize the window
@@ -220,8 +220,8 @@ public:
     /// @brief Get target window height for pending resize
     int targetWindowHeight() const { return m_targetWindowHeight; }
 
-    /// @brief Check if window size change was requested (consumed by runtime)
-    bool windowSizeChanged() { bool c = m_windowSizeChanged; m_windowSizeChanged = false; return c; }
+    /// @brief Consume window size change flag (returns true once, then false)
+    bool consumeWindowSizeChange() { bool c = m_windowSizeChanged; m_windowSizeChanged = false; return c; }
 
     /**
      * @brief Check if window was resized this frame
@@ -488,8 +488,8 @@ public:
     /// @brief Get current vsync setting
     bool vsync() const { return m_vsync; }
 
-    /// @brief Check if vsync setting changed (consumed by runtime)
-    bool vsyncChanged() { bool c = m_vsyncChanged; m_vsyncChanged = false; return c; }
+    /// @brief Consume vsync change flag (returns true once, then false)
+    bool consumeVsyncChange() { bool c = m_vsyncChanged; m_vsyncChanged = false; return c; }
 
     /**
      * @brief Enable or disable fullscreen mode
@@ -507,8 +507,8 @@ public:
     /// @brief Get current fullscreen setting
     bool fullscreen() const { return m_fullscreen; }
 
-    /// @brief Check if fullscreen setting changed (consumed by runtime)
-    bool fullscreenChanged() { bool c = m_fullscreenChanged; m_fullscreenChanged = false; return c; }
+    /// @brief Consume fullscreen change flag (returns true once, then false)
+    bool consumeFullscreenChange() { bool c = m_fullscreenChanged; m_fullscreenChanged = false; return c; }
 
     /**
      * @brief Enable or disable borderless (undecorated) window mode
@@ -527,8 +527,8 @@ public:
     /// @brief Get current borderless setting
     bool borderless() const { return m_borderless; }
 
-    /// @brief Check if borderless setting changed (consumed by runtime)
-    bool borderlessChanged() { bool c = m_borderlessChanged; m_borderlessChanged = false; return c; }
+    /// @brief Consume borderless change flag (returns true once, then false)
+    bool consumeBorderlessChange() { bool c = m_borderlessChanged; m_borderlessChanged = false; return c; }
 
     /**
      * @brief Enable or disable always-on-top (floating) mode
@@ -546,8 +546,8 @@ public:
     /// @brief Get current always-on-top setting
     bool alwaysOnTop() const { return m_alwaysOnTop; }
 
-    /// @brief Check if always-on-top setting changed (consumed by runtime)
-    bool alwaysOnTopChanged() { bool c = m_alwaysOnTopChanged; m_alwaysOnTopChanged = false; return c; }
+    /// @brief Consume always-on-top change flag (returns true once, then false)
+    bool consumeAlwaysOnTopChange() { bool c = m_alwaysOnTopChanged; m_alwaysOnTopChanged = false; return c; }
 
     /**
      * @brief Show or hide the mouse cursor
@@ -565,8 +565,8 @@ public:
     /// @brief Get current cursor visibility setting
     bool cursorVisible() const { return m_cursorVisible; }
 
-    /// @brief Check if cursor visibility changed (consumed by runtime)
-    bool cursorVisibleChanged() { bool c = m_cursorVisibleChanged; m_cursorVisibleChanged = false; return c; }
+    /// @brief Consume cursor visibility change flag (returns true once, then false)
+    bool consumeCursorVisibleChange() { bool c = m_cursorVisibleChanged; m_cursorVisibleChanged = false; return c; }
 
     /**
      * @brief Get the number of connected monitors
@@ -598,8 +598,8 @@ public:
     /// @brief Get target monitor for pending move
     int targetMonitor() const { return m_targetMonitor; }
 
-    /// @brief Check if monitor selection changed (consumed by runtime)
-    bool monitorChanged() { bool c = m_monitorChanged; m_monitorChanged = false; return c; }
+    /// @brief Consume monitor change flag (returns true once, then false)
+    bool consumeMonitorChange() { bool c = m_monitorChanged; m_monitorChanged = false; return c; }
 
     /// @}
     // -------------------------------------------------------------------------

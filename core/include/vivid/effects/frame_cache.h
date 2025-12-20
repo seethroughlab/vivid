@@ -102,8 +102,6 @@ private:
     int m_writeIndex = 0;           // Current write position (ring buffer)
     int m_allocatedFrames = 0;      // Actual allocated frame count
     int m_framesWritten = 0;        // Total frames written (for warm-up)
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

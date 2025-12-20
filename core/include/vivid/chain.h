@@ -108,8 +108,8 @@ public:
      */
     template<typename T>
     T& get(const std::string& name) {
-        auto it = operators_.find(name);
-        if (it == operators_.end()) {
+        auto it = m_operators.find(name);
+        if (it == m_operators.end()) {
             throw std::runtime_error("Operator not found: " + name);
         }
         T* typed = dynamic_cast<T*>(it->second.get());
@@ -153,19 +153,19 @@ public:
      */
     void output(const std::string& name) {
         // Warn if output is being changed (indicates potential user error)
-        if (outputWasSet_ && !outputName_.empty() && outputName_ != name) {
-            std::cerr << "[Chain Warning] Output changed from '" << outputName_
+        if (m_outputWasSet && !m_outputName.empty() && m_outputName != name) {
+            std::cerr << "[Chain Warning] Output changed from '" << m_outputName
                       << "' to '" << name << "'. Only one output is allowed per project." << std::endl;
         }
-        outputWasSet_ = true;
+        m_outputWasSet = true;
 
         Operator* op = getByName(name);
         if (op && op->outputKind() != OutputKind::Texture) {
-            error_ = "Output operator must produce a texture. '" + name + "' produces " +
+            m_error = "Output operator must produce a texture. '" + name + "' produces " +
                      outputKindName(op->outputKind()) + ". Route through Render3D first.";
             return;
         }
-        outputName_ = name;
+        m_outputName = name;
     }
 
     /**
@@ -275,13 +275,13 @@ public:
     /// @{
 
     /// @brief Check if an error has occurred
-    bool hasError() const { return !error_.empty(); }
+    bool hasError() const { return !m_error.empty(); }
 
     /// @brief Get the error message
-    const std::string& error() const { return error_; }
+    const std::string& error() const { return m_error; }
 
     /// @brief Clear the error state
-    void clearError() { error_.clear(); }
+    void clearError() { m_error.clear(); }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -292,13 +292,13 @@ public:
      * @brief Get all operator names in add order
      * @return Vector of operator names
      */
-    const std::vector<std::string>& operatorNames() const { return orderedNames_; }
+    const std::vector<std::string>& operatorNames() const { return m_orderedNames; }
 
     /**
      * @brief Get the audio graph for pull-based audio processing
      * @return Pointer to AudioGraph
      */
-    AudioGraph* audioGraph() { return &audioGraph_; }
+    AudioGraph* audioGraph() { return &m_audioGraph; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -384,10 +384,10 @@ public:
      *
      * Can also be enabled via VIVID_DEBUG_CHAIN=1 environment variable.
      */
-    void setDebug(bool enabled) { debug_ = enabled; }
+    void setDebug(bool enabled) { m_debug = enabled; }
 
     /// @brief Check if debug mode is enabled
-    bool isDebug() const { return debug_; }
+    bool isDebug() const { return m_debug; }
 
     /**
      * @brief Print the output path from a given operator to screen
@@ -406,29 +406,29 @@ private:
     bool detectCycle();
     void checkDebugEnvVar();
 
-    std::unordered_map<std::string, std::unique_ptr<Operator>> operators_;
-    std::unordered_map<Operator*, std::string> operatorNames_;
-    std::vector<std::string> orderedNames_;
-    std::vector<Operator*> executionOrder_;
-    std::vector<Operator*> visualExecutionOrder_;  // Non-audio operators only
-    std::string outputName_;
-    std::string audioOutputName_;
-    std::string error_;
-    bool needsSort_ = true;
-    bool initialized_ = false;
-    bool outputWasSet_ = false;  // Track if output() was called (for multi-call warning)
+    std::unordered_map<std::string, std::unique_ptr<Operator>> m_operators;
+    std::unordered_map<Operator*, std::string> m_operatorNames;
+    std::vector<std::string> m_orderedNames;
+    std::vector<Operator*> m_executionOrder;
+    std::vector<Operator*> m_visualExecutionOrder;  // Non-audio operators only
+    std::string m_outputName;
+    std::string m_audioOutputName;
+    std::string m_error;
+    bool m_needsSort = true;
+    bool m_initialized = false;
+    bool m_outputWasSet = false;  // Track if output() was called (for multi-call warning)
 
     // Pull-based audio graph (processed on audio thread)
-    AudioGraph audioGraph_;
-    AudioOutput* audioOutput_ = nullptr;
+    AudioGraph m_audioGraph;
+    AudioOutput* m_audioOutput = nullptr;
 
     // Legacy audio timing (for recording mode)
-    double lastAudioTime_ = 0.0;
-    double audioSamplesOwed_ = 0.0;
+    double m_lastAudioTime = 0.0;
+    double m_audioSamplesOwed = 0.0;
 
     // Debug mode
-    bool debug_ = false;
-    bool debugEnvChecked_ = false;
+    bool m_debug = false;
+    bool m_debugEnvChecked = false;
 
     // Resolution configuration
     int m_windowWidth = 0;

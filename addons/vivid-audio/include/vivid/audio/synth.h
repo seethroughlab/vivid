@@ -166,7 +166,6 @@ private:
     float m_envProgress = 0.0f;
     float m_releaseStartValue = 0.0f;
 
-    bool m_initialized = false;
 
     static constexpr float PI = 3.14159265358979323846f;
     static constexpr float TWO_PI = 2.0f * PI;

@@ -97,8 +97,6 @@ private:
     float m_value = 0.0f;
     float m_progress = 1.0f;  // 0 = just triggered, 1 = finished
     uint32_t m_sampleRate = 48000;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

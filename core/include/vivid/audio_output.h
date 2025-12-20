@@ -149,7 +149,6 @@ private:
     std::string m_inputName;
     AudioOperator* m_input = nullptr;  // Resolved input operator
     float m_volume = 1.0f;
-    bool m_initialized = false;
     bool m_autoPlay = true;  // Auto-start playback on first audio
 
     // Parameter declarations for UI

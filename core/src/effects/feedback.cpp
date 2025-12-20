@@ -77,13 +77,12 @@ Feedback::~Feedback() {
 }
 
 void Feedback::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
 
     createOutput(ctx);
     createBufferTexture(ctx);
     createPipeline(ctx);
 
-    m_initialized = true;
     m_firstFrame = true;
 }
 

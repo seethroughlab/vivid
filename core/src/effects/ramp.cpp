@@ -88,12 +88,10 @@ Ramp::~Ramp() {
 }
 
 void Ramp::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
 
     createOutput(ctx);
     createPipeline(ctx);
-
-    m_initialized = true;
 }
 
 void Ramp::createPipeline(Context& ctx) {

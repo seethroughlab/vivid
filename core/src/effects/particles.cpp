@@ -18,7 +18,7 @@ Particles::~Particles() {
 }
 
 void Particles::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
 
     createOutput(ctx);
     m_renderer.init(ctx.device(), ctx.queue());
@@ -27,8 +27,6 @@ void Particles::init(Context& ctx) {
     if (!m_texturePath.empty()) {
         loadTexture(ctx);
     }
-
-    m_initialized = true;
 }
 
 void Particles::loadTexture(Context& ctx) {
@@ -38,7 +36,7 @@ void Particles::loadTexture(Context& ctx) {
 }
 
 void Particles::process(Context& ctx) {
-    if (!m_initialized) init(ctx);
+    if (!isInitialized()) init(ctx);
     // Generators use their declared resolution (default 1280x720)
 
     // Particles is a simulation - always cooks

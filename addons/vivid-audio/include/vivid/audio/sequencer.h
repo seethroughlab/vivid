@@ -169,8 +169,6 @@ private:
     int m_currentStep = 0;
     bool m_triggered = false;
     float m_currentVelocity = 0.0f;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

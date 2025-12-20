@@ -21,10 +21,9 @@ Blur::~Blur() {
 }
 
 void Blur::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
     createOutput(ctx);
     createPipeline(ctx);
-    m_initialized = true;
 }
 
 void Blur::createPipeline(Context& ctx) {
@@ -165,7 +164,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 
 void Blur::process(Context& ctx) {
-    if (!m_initialized) init(ctx);
+    if (!isInitialized()) init(ctx);
 
     // Match input resolution
     matchInputResolution(0);

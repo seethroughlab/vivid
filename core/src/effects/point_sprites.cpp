@@ -15,17 +15,16 @@ PointSprites::~PointSprites() {
 }
 
 void PointSprites::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
 
     createOutput(ctx);
     m_renderer.init(ctx.device(), ctx.queue());
 
     generatePattern();
-    m_initialized = true;
 }
 
 void PointSprites::process(Context& ctx) {
-    if (!m_initialized) init(ctx);
+    if (!isInitialized()) init(ctx);
     // Generators use their declared resolution (default 1280x720)
 
     // PointSprites is animated if animate or pulseSize is enabled

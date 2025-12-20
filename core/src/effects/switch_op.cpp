@@ -21,10 +21,9 @@ Switch::~Switch() {
 }
 
 void Switch::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
     createOutput(ctx);
     createPipeline(ctx);
-    m_initialized = true;
 }
 
 void Switch::createPipeline(Context& ctx) {
@@ -70,7 +69,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 
 void Switch::process(Context& ctx) {
-    if (!m_initialized) init(ctx);
+    if (!isInitialized()) init(ctx);
 
     // Clamp index to valid range
     int maxIndex = static_cast<int>(inputCount()) - 1;

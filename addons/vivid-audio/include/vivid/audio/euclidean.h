@@ -131,8 +131,6 @@ private:
     // State
     int m_currentStep = 0;
     bool m_triggered = false;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

@@ -259,12 +259,11 @@ Plexus::~Plexus() {
 }
 
 void Plexus::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
 
     createOutput(ctx);
     WGPUDevice device = ctx.device();
     createPipelines(device);
-    m_initialized = true;
 }
 
 void Plexus::initNodes() {

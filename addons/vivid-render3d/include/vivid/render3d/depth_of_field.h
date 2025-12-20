@@ -145,8 +145,6 @@ private:
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUSampler m_sampler = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::render3d

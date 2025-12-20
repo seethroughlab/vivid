@@ -133,7 +133,6 @@ private:
 
     // Rendering
     ParticleRenderer m_renderer;
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

@@ -181,6 +181,12 @@ public:
      */
     virtual void cleanup() {}
 
+    /**
+     * @brief Check if operator has been initialized
+     * @return True if init() has completed successfully
+     */
+    bool isInitialized() const { return m_initialized; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Metadata
@@ -251,8 +257,8 @@ public:
      * is bypassed, returns the first input's effective output instead.
      */
     WGPUTextureView effectiveOutputView() const {
-        if (m_bypassed && !inputs_.empty() && inputs_[0]) {
-            return inputs_[0]->effectiveOutputView();
+        if (m_bypassed && !m_inputs.empty() && m_inputs[0]) {
+            return m_inputs[0]->effectiveOutputView();
         }
         return outputView();
     }
@@ -291,7 +297,7 @@ public:
      * @brief Add an input connection
      * @param op Operator to connect as input
      */
-    void setInput(Operator* op) { inputs_.push_back(op); }
+    void setInput(Operator* op) { m_inputs.push_back(op); }
 
     /**
      * @brief Set input at specific index
@@ -299,10 +305,10 @@ public:
      * @param op Operator to connect
      */
     void setInput(int index, Operator* op) {
-        if (index >= static_cast<int>(inputs_.size())) {
-            inputs_.resize(index + 1, nullptr);
+        if (index >= static_cast<int>(m_inputs.size())) {
+            m_inputs.resize(index + 1, nullptr);
         }
-        inputs_[index] = op;
+        m_inputs[index] = op;
     }
 
     /**
@@ -311,14 +317,14 @@ public:
      * @return Connected operator, or nullptr if none
      */
     Operator* getInput(int index = 0) const {
-        return (index < static_cast<int>(inputs_.size())) ? inputs_[index] : nullptr;
+        return (index < static_cast<int>(m_inputs.size())) ? m_inputs[index] : nullptr;
     }
 
     /**
      * @brief Get number of connected inputs
      * @return Input count
      */
-    size_t inputCount() const { return inputs_.size(); }
+    size_t inputCount() const { return m_inputs.size(); }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -357,10 +363,10 @@ public:
         if (m_selfDirty) return true;
 
         // Check if any input generation changed
-        for (size_t i = 0; i < inputs_.size(); ++i) {
-            if (!inputs_[i]) continue;
+        for (size_t i = 0; i < m_inputs.size(); ++i) {
+            if (!m_inputs[i]) continue;
 
-            uint64_t inputGen = inputs_[i]->generation();
+            uint64_t inputGen = m_inputs[i]->generation();
             if (i >= m_cachedInputGens.size() || m_cachedInputGens[i] != inputGen) {
                 return true;
             }
@@ -387,9 +393,9 @@ public:
         m_generation++;
 
         // Cache current input generations
-        m_cachedInputGens.resize(inputs_.size());
-        for (size_t i = 0; i < inputs_.size(); ++i) {
-            m_cachedInputGens[i] = inputs_[i] ? inputs_[i]->generation() : 0;
+        m_cachedInputGens.resize(m_inputs.size());
+        for (size_t i = 0; i < m_inputs.size(); ++i) {
+            m_cachedInputGens[i] = m_inputs[i] ? m_inputs[i]->generation() : 0;
         }
     }
 
@@ -409,9 +415,36 @@ public:
     std::string autoRegisterName;
 
 protected:
-    std::vector<Operator*> inputs_; ///< Connected input operators
-    bool m_registered = false;      ///< Whether already registered for visualization
-    bool m_bypassed = false;        ///< Whether operator is bypassed (pass-through)
+    /**
+     * @brief Guard for double-initialization
+     * @return True if init should proceed, false if already initialized
+     *
+     * Call at the start of init() to prevent double-initialization:
+     * @code
+     * void init(Context& ctx) override {
+     *     if (!beginInit()) return;
+     *     // ... setup code ...
+     * }
+     * @endcode
+     */
+    bool beginInit() {
+        if (m_initialized) return false;
+        m_initialized = true;
+        return true;
+    }
+
+    /**
+     * @brief Reset initialization state (for hot-reload)
+     *
+     * Call this when an operator needs to be re-initialized,
+     * typically during hot-reload when resources need to be recreated.
+     */
+    void resetInit() { m_initialized = false; }
+
+    std::vector<Operator*> m_inputs; ///< Connected input operators
+    bool m_registered = false;       ///< Whether already registered for visualization
+    bool m_bypassed = false;         ///< Whether operator is bypassed (pass-through)
+    bool m_initialized = false;      ///< Whether init() has completed
 
     // Cooking system
     uint64_t m_generation = 0;                ///< Output generation counter

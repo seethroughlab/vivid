@@ -133,8 +133,6 @@ private:
     float m_stageProgress = 0.0f;  // 0-1 progress through current stage
     float m_releaseStartValue = 0.0f;  // Value when release started
     uint32_t m_sampleRate = 48000;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

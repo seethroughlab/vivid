@@ -308,8 +308,6 @@ private:
     Operator* m_emissiveInputOp = nullptr;
     Operator* m_normalInputOp = nullptr;
     Operator* m_roughnessInputOp = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::render3d

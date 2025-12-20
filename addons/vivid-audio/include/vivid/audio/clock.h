@@ -180,7 +180,6 @@ private:
     std::function<void()> m_callback;
 
     uint32_t m_sampleRate = 48000;
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

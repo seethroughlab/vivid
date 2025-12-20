@@ -341,7 +341,6 @@ private:
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUBuffer m_instanceBuffer = nullptr;
     WGPUSampler m_sampler = nullptr;
-    bool m_initialized = false;
 };
 
 } // namespace vivid::render3d

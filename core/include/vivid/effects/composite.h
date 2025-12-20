@@ -154,8 +154,6 @@ private:
     // Cache last input views to detect changes
     std::array<WGPUTextureView, COMPOSITE_MAX_INPUTS> m_lastInputViews = {};
     int m_lastInputCount = 0;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

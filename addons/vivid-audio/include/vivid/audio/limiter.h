@@ -78,7 +78,6 @@ private:
     dsp::EnvelopeFollower m_envelope;
     float m_currentGainReductionDb = 0.0f;
     float m_cachedRelease = 100.0f;
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

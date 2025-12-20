@@ -998,18 +998,19 @@ TextMetrics Canvas::measureTextMetrics(const std::string& str) const {
 // -------------------------------------------------------------------------
 
 void Canvas::init(Context& ctx) {
+    if (!beginInit()) return;
+
     createOutput(ctx, m_width, m_height);
 
     if (!m_renderer->init(ctx)) {
         std::cerr << "[Canvas] Failed to initialize renderer\n";
+        resetInit();  // Allow retry
         return;
     }
-
-    m_initialized = true;
 }
 
 void Canvas::process(Context& ctx) {
-    if (!m_initialized) {
+    if (!isInitialized()) {
         init(ctx);
     }
 
@@ -1034,7 +1035,7 @@ void Canvas::cleanup() {
         m_font->cleanup();
     }
     releaseOutput();
-    m_initialized = false;
+    resetInit();
 }
 
 } // namespace vivid::effects

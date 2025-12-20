@@ -419,8 +419,6 @@ private:
     size_t m_uniformAlignment = 256;  // WebGPU minimum uniform buffer alignment
     size_t m_pbrUniformAlignment = 256;
     static constexpr size_t MAX_OBJECTS = 256;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::render3d

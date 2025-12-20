@@ -194,8 +194,6 @@ private:
     int m_maxVoices = 16;
 
     std::array<Voice, MAX_VOICES> m_voices;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

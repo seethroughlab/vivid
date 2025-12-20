@@ -88,7 +88,7 @@ void LFO::process(Context& ctx) {
     m_currentValue = m_currentValue * amplitude + offset;
 
     // Call base class process for GPU rendering, but we need to handle time specially
-    if (!m_initialized) init(ctx);
+    if (!isInitialized()) init(ctx);
 
     // Get uniforms and set time (which getUniforms() cannot do)
     LFOUniforms uniforms = getUniforms();

@@ -84,7 +84,6 @@ private:
     WGPUTexture m_tempTexture = nullptr;
     WGPUTextureView m_tempView = nullptr;
 
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

@@ -86,8 +86,6 @@ private:
     std::array<std::string, MAX_INPUTS> m_inputNames{};
     std::array<float, MAX_INPUTS> m_gains{};
     std::array<AudioOperator*, MAX_INPUTS> m_inputs{};
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

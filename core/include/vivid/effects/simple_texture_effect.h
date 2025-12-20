@@ -96,7 +96,6 @@ protected:
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUSampler m_sampler = nullptr;
-    bool m_initialized = false;
 };
 
 // Out-of-class template definitions (non-inline)
@@ -108,15 +107,14 @@ SimpleTextureEffect<Derived, Uniforms>::~SimpleTextureEffect() {
 
 template<typename Derived, typename Uniforms>
 void SimpleTextureEffect<Derived, Uniforms>::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!this->beginInit()) return;
     createOutput(ctx);
     createPipeline(ctx);
-    m_initialized = true;
 }
 
 template<typename Derived, typename Uniforms>
 void SimpleTextureEffect<Derived, Uniforms>::process(Context& ctx) {
-    if (!m_initialized) init(ctx);
+    if (!this->isInitialized()) init(ctx);
 
     // Match input resolution
     matchInputResolution(0);
@@ -168,8 +166,8 @@ void SimpleTextureEffect<Derived, Uniforms>::cleanup() {
     gpu::release(m_uniformBuffer);
     // Note: m_sampler is managed by gpu_common cache, do not release
     m_sampler = nullptr;
-    releaseOutput();
-    m_initialized = false;
+    this->releaseOutput();
+    this->resetInit();
 }
 
 template<typename Derived, typename Uniforms>
@@ -233,7 +231,6 @@ protected:
     WGPUBindGroup m_bindGroup = nullptr;
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
-    bool m_initialized = false;
 };
 
 // Out-of-class template definitions for SimpleGeneratorEffect (non-inline)
@@ -245,15 +242,14 @@ SimpleGeneratorEffect<Derived, Uniforms>::~SimpleGeneratorEffect() {
 
 template<typename Derived, typename Uniforms>
 void SimpleGeneratorEffect<Derived, Uniforms>::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!this->beginInit()) return;
     createOutput(ctx);
     createPipeline(ctx);
-    m_initialized = true;
 }
 
 template<typename Derived, typename Uniforms>
 void SimpleGeneratorEffect<Derived, Uniforms>::process(Context& ctx) {
-    if (!m_initialized) init(ctx);
+    if (!this->isInitialized()) init(ctx);
 
     // Generators typically don't need to cook check, they always produce output
 
@@ -281,8 +277,8 @@ void SimpleGeneratorEffect<Derived, Uniforms>::cleanup() {
     gpu::release(m_bindGroup);
     gpu::release(m_bindGroupLayout);
     gpu::release(m_uniformBuffer);
-    releaseOutput();
-    m_initialized = false;
+    this->releaseOutput();
+    this->resetInit();
 }
 
 template<typename Derived, typename Uniforms>

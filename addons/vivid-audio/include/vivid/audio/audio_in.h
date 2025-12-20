@@ -88,7 +88,6 @@ private:
     std::unique_ptr<Impl> m_impl;
 
     bool m_muted = false;
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

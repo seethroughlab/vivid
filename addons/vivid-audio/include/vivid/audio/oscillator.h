@@ -108,8 +108,6 @@ private:
     float m_phaseR = 0.0f;
     uint32_t m_sampleRate = 48000;
 
-    bool m_initialized = false;
-
     static constexpr float PI = 3.14159265358979323846f;
     static constexpr float TWO_PI = 2.0f * PI;
 };

@@ -28,7 +28,7 @@ struct ComposerEntry {
     glm::mat4 transform = glm::mat4(1.0f);
     glm::vec4 color = glm::vec4(1.0f);
     TexturedMaterial* material = nullptr;  // Optional per-object material
-    int inputIndex = -1;  // Index in inputs_ array, or -1 if not connected
+    int inputIndex = -1;  // Index in m_inputs array, or -1 if not connected
 };
 
 /**
@@ -113,7 +113,7 @@ public:
         entry.geometry = &geom;
         entry.transform = transform;
         entry.color = color;
-        entry.inputIndex = static_cast<int>(inputs_.size());
+        entry.inputIndex = static_cast<int>(m_inputs.size());
         setInput(entry.inputIndex, &geom);
         m_entries.push_back(entry);
 
@@ -148,7 +148,7 @@ public:
         entry.geometry = op;
         entry.transform = transform;
         entry.color = color;
-        entry.inputIndex = static_cast<int>(inputs_.size());
+        entry.inputIndex = static_cast<int>(m_inputs.size());
 
         // Register as input for dependency tracking
         setInput(entry.inputIndex, op);
@@ -191,14 +191,14 @@ public:
         ComposerEntry entry;
         entry.geometry = op;
         entry.material = material;
-        entry.inputIndex = static_cast<int>(inputs_.size());
+        entry.inputIndex = static_cast<int>(m_inputs.size());
 
         // Register geometry as input for dependency tracking
         setInput(entry.inputIndex, op);
 
         // Register material as input too
         if (material) {
-            setInput(static_cast<int>(inputs_.size()), material);
+            setInput(static_cast<int>(m_inputs.size()), material);
         }
 
         m_entries.push_back(entry);
@@ -243,7 +243,7 @@ public:
         entry.geometry = &meshOp;
         entry.transform = transform;
         entry.color = color;
-        entry.inputIndex = static_cast<int>(inputs_.size());
+        entry.inputIndex = static_cast<int>(m_inputs.size());
         setInput(entry.inputIndex, &meshOp);
         m_entries.push_back(entry);
 
@@ -275,7 +275,7 @@ public:
         entry.geometry = &meshOp;
         entry.transform = transform;
         entry.color = color;
-        entry.inputIndex = static_cast<int>(inputs_.size());
+        entry.inputIndex = static_cast<int>(m_inputs.size());
         setInput(entry.inputIndex, &meshOp);
         m_entries.push_back(entry);
 
@@ -339,7 +339,7 @@ public:
         if (index < m_entries.size()) {
             m_entries[index].material = material;
             if (material) {
-                setInput(static_cast<int>(inputs_.size()), material);
+                setInput(static_cast<int>(m_inputs.size()), material);
             }
             markDirty();
         }

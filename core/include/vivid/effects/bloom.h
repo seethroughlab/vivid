@@ -96,8 +96,6 @@ private:
     WGPUTextureView m_brightView = nullptr;
     WGPUTexture m_blurTexture = nullptr;
     WGPUTextureView m_blurView = nullptr;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::effects

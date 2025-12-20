@@ -99,7 +99,6 @@ private:
     WGPUTexture m_buffer = nullptr;
     WGPUTextureView m_bufferView = nullptr;
 
-    bool m_initialized = false;
     bool m_firstFrame = true;
 };
 

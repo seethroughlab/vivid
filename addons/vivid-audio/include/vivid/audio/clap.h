@@ -104,7 +104,6 @@ private:
     float m_bpState2[2] = {0, 0};
 
     uint32_t m_sampleRate = 48000;
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

@@ -28,13 +28,11 @@ FrameCache::~FrameCache() {
 }
 
 void FrameCache::init(Context& ctx) {
-    if (m_initialized) return;
+    if (!beginInit()) return;
 
     createOutput(ctx);
     createCacheTexture(ctx);
     createBlitPipeline(ctx);
-
-    m_initialized = true;
 }
 
 void FrameCache::createCacheTexture(Context& ctx) {

@@ -784,7 +784,6 @@ private:
     glm::vec2 m_pathStart = {0, 0};
 
     glm::vec4 m_clearColor = {0, 0, 0, 1};
-    bool m_initialized = false;
     bool m_frameBegun = false;
 };
 

@@ -171,7 +171,6 @@ private:
 
     uint32_t m_sampleRate = 48000;
     bool m_needsUpdate = true;
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

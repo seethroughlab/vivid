@@ -23,7 +23,15 @@ Image::~Image() {
 }
 
 void Image::init(Context& ctx) {
-    if (m_initialized && file.get() == m_loadedPath) return;
+    // Skip if already initialized with same file
+    if (isInitialized() && file.get() == m_loadedPath) return;
+
+    // Allow re-initialization when file changes
+    if (isInitialized() && file.get() != m_loadedPath) {
+        resetInit();
+    }
+
+    if (!beginInit()) return;
 
     if (!file.empty()) {
         loadImage(ctx);
@@ -32,8 +40,6 @@ void Image::init(Context& ctx) {
     if (!m_pipeline) {
         createPipeline(ctx);
     }
-
-    m_initialized = true;
 }
 
 void Image::createPipeline(Context& ctx) {
@@ -189,7 +195,7 @@ void Image::loadImage(Context& ctx) {
 
 void Image::process(Context& ctx) {
     // Check if file changed or not initialized
-    if (!m_initialized || file.get() != m_loadedPath) {
+    if (!isInitialized() || file.get() != m_loadedPath) {
         init(ctx);
     }
     // Image uses loaded file dimensions - no auto-resize
@@ -261,7 +267,7 @@ void Image::cleanup() {
     m_cpuHeight = 0;
 
     releaseOutput();
-    m_initialized = false;
+    resetInit();
 }
 
 glm::vec4 Image::getPixel(int x, int y) const {

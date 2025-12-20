@@ -89,8 +89,6 @@ private:
 
     // Brown noise state
     float m_lastBrown = 0.0f;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

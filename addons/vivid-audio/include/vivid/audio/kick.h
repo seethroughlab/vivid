@@ -105,8 +105,6 @@ private:
     float m_clickEnv = 0.0f;
     uint32_t m_sampleRate = 48000;
 
-    bool m_initialized = false;
-
     static constexpr float TWO_PI = 6.28318530718f;
 };
 

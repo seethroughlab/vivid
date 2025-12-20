@@ -193,4 +193,16 @@
 [x] I noticed the line if(NOT EMSCRIPTEN) in the main CMakeLists.txt, but we removed the web exporter, so there shouldn't be any refrence to EMSCRIPTEN anymore. Can you check the whole project for any remaining references? 
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
-[ ] Shadows?
+[ ] Finish Shadows - Is everything in SHADOWS.md complete? I believe there are just a couple of lingerine issues with one of the llght types.
+[ ] Based on the changes we just made and the overall conventions used in this project, please make a document about coding style. What is a good name for this document that is commonly used?
+[ ] "All operators inherit from `Operator` or `TextureOperator`" -- what other base operators would you recommend that might make it easier to make new operators? In addition to Texture Operators, TouchDesigner has:
+    COMPs - Components - Object Components (3D objects), Panel Components (2D UI gadgets), and other component types. Components contain other operators.
+    TOPs - Texture Operators - all 2D image operations.
+    CHOPs - Channel Operators - motion, audio, animation, control signals.
+    POPs - Point Operators - 3D points, primitives, polygons, point clouds, particles and GPU-based data operations.
+    DATs - Data Operators - ASCII text as plain text, scripts, XML, or organized in tables of cells.
+    MATs - Material Operators - materials and shaders.
+    SOPs - Surface Operators - legacy 3D points, polygons and other 3D primitives, with some capabilities not possible in POPs yet.
+Are any of these relevant/useful for vivid? I'm particularly interested in facilitating audio creation, but anything that would simplify operator creation would be great. 
+[ ] rpi-job-logs.txt and ubuntu-job-logs.txt
+[ ] Does phase 5 have some overlap with the ASSET_LOADING.md document?

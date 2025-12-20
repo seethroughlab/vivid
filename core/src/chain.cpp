@@ -18,18 +18,18 @@ namespace vivid {
 
 // Check environment variable for debug mode
 void Chain::checkDebugEnvVar() {
-    if (debugEnvChecked_) return;
-    debugEnvChecked_ = true;
+    if (m_debugEnvChecked) return;
+    m_debugEnvChecked = true;
 
     const char* envVal = std::getenv("VIVID_DEBUG_CHAIN");
     if (envVal && (std::string(envVal) == "1" || std::string(envVal) == "true")) {
-        debug_ = true;
+        m_debug = true;
         std::cout << "[Chain Debug] Debug mode enabled via VIVID_DEBUG_CHAIN" << std::endl;
     }
 }
 
 void Chain::debugOutputPath(const std::string& startName) {
-    std::string name = startName.empty() ? outputName_ : startName;
+    std::string name = startName.empty() ? m_outputName : startName;
     if (name.empty()) {
         std::cout << "[Chain Debug] No output operator set" << std::endl;
         return;
@@ -47,7 +47,7 @@ void Chain::debugOutputPath(const std::string& startName) {
 
         // Find who uses this operator as input
         Operator* nextInChain = nullptr;
-        for (const auto& [n, op] : operators_) {
+        for (const auto& [n, op] : m_operators) {
             for (size_t i = 0; i < op->inputCount(); ++i) {
                 if (op->getInput(i) == current) {
                     // This op uses current as input, so current feeds into this
@@ -66,7 +66,7 @@ void Chain::debugOutputPath(const std::string& startName) {
         }
     }
 
-    if (name == outputName_) {
+    if (name == m_outputName) {
         std::cout << " -> SCREEN";
     }
     std::cout << std::endl;
@@ -75,57 +75,57 @@ void Chain::debugOutputPath(const std::string& startName) {
 Operator* Chain::addOperator(const std::string& name, Operator* op) {
     // Take ownership of the operator using unique_ptr
     // This function lives in the exe, so the unique_ptr uses the exe's allocator
-    operators_[name] = std::unique_ptr<Operator>(op);
-    orderedNames_.push_back(name);
-    operatorNames_[op] = name;
-    needsSort_ = true;
+    m_operators[name] = std::unique_ptr<Operator>(op);
+    m_orderedNames.push_back(name);
+    m_operatorNames[op] = name;
+    m_needsSort = true;
     return op;
 }
 
 Operator* Chain::getByName(const std::string& name) {
-    auto it = operators_.find(name);
-    if (it == operators_.end()) {
+    auto it = m_operators.find(name);
+    if (it == m_operators.end()) {
         return nullptr;
     }
     return it->second.get();
 }
 
 std::string Chain::getName(Operator* op) const {
-    auto it = operatorNames_.find(op);
-    if (it == operatorNames_.end()) {
+    auto it = m_operatorNames.find(op);
+    if (it == m_operatorNames.end()) {
         return "";
     }
     return it->second;
 }
 
 Operator* Chain::getOutput() const {
-    if (outputName_.empty()) {
+    if (m_outputName.empty()) {
         return nullptr;
     }
-    auto it = operators_.find(outputName_);
-    return it != operators_.end() ? it->second.get() : nullptr;
+    auto it = m_operators.find(m_outputName);
+    return it != m_operators.end() ? it->second.get() : nullptr;
 }
 
 void Chain::audioOutput(const std::string& name) {
     Operator* op = getByName(name);
     if (!op) {
-        error_ = "Audio output operator '" + name + "' not found";
+        m_error = "Audio output operator '" + name + "' not found";
         return;
     }
     if (op->outputKind() != OutputKind::Audio) {
-        error_ = "Audio output operator must produce audio. '" + name + "' produces " +
+        m_error = "Audio output operator must produce audio. '" + name + "' produces " +
                  outputKindName(op->outputKind()) + ".";
         return;
     }
-    audioOutputName_ = name;
+    m_audioOutputName = name;
 }
 
 Operator* Chain::getAudioOutput() const {
-    if (audioOutputName_.empty()) {
+    if (m_audioOutputName.empty()) {
         return nullptr;
     }
-    auto it = operators_.find(audioOutputName_);
-    return it != operators_.end() ? it->second.get() : nullptr;
+    auto it = m_operators.find(m_audioOutputName);
+    return it != m_operators.end() ? it->second.get() : nullptr;
 }
 
 const AudioBuffer* Chain::audioOutputBuffer() const {
@@ -139,17 +139,17 @@ const AudioBuffer* Chain::audioOutputBuffer() const {
 }
 
 void Chain::generateAudioForExport(float* output, uint32_t frameCount) {
-    if (!audioOutput_) {
+    if (!m_audioOutput) {
         std::memset(output, 0, frameCount * AUDIO_CHANNELS * sizeof(float));
         return;
     }
-    audioOutput_->generateForExport(output, frameCount);
+    m_audioOutput->generateForExport(output, frameCount);
 }
 
 void Chain::buildDependencyGraph() {
     // For each operator, find which other operators it depends on
     // by looking at its inputs
-    for (const auto& [name, op] : operators_) {
+    for (const auto& [name, op] : m_operators) {
         for (size_t i = 0; i < op->inputCount(); ++i) {
             Operator* input = op->getInput(i);
             if (input) {
@@ -165,7 +165,7 @@ bool Chain::detectCycle() {
     enum class Color { White, Gray, Black };
     std::unordered_map<Operator*, Color> colors;
 
-    for (const auto& [name, op] : operators_) {
+    for (const auto& [name, op] : m_operators) {
         colors[op.get()] = Color::White;
     }
 
@@ -189,7 +189,7 @@ bool Chain::detectCycle() {
         return false;
     };
 
-    for (const auto& [name, op] : operators_) {
+    for (const auto& [name, op] : m_operators) {
         if (colors[op.get()] == Color::White) {
             if (hasCycle(op.get())) {
                 return true;
@@ -201,16 +201,16 @@ bool Chain::detectCycle() {
 }
 
 void Chain::computeExecutionOrder() {
-    if (!needsSort_) {
+    if (!m_needsSort) {
         return;
     }
 
-    executionOrder_.clear();
-    error_.clear();
+    m_executionOrder.clear();
+    m_error.clear();
 
     // Check for cycles first
     if (detectCycle()) {
-        error_ = "Circular dependency detected in operator chain";
+        m_error = "Circular dependency detected in operator chain";
         return;
     }
 
@@ -219,15 +219,15 @@ void Chain::computeExecutionOrder() {
     std::unordered_map<Operator*, int> inDegree;
     std::unordered_map<Operator*, std::vector<Operator*>> dependents;
 
-    for (const auto& [name, op] : operators_) {
+    for (const auto& [name, op] : m_operators) {
         inDegree[op.get()] = 0;
     }
 
     // Build reverse dependency graph and count in-degrees
-    for (const auto& [name, op] : operators_) {
+    for (const auto& [name, op] : m_operators) {
         for (size_t i = 0; i < op->inputCount(); ++i) {
             Operator* input = op->getInput(i);
-            if (input && operators_.count(getName(input))) {
+            if (input && m_operators.count(getName(input))) {
                 inDegree[op.get()]++;
                 dependents[input].push_back(op.get());
             }
@@ -246,7 +246,7 @@ void Chain::computeExecutionOrder() {
     while (!ready.empty()) {
         Operator* current = ready.front();
         ready.pop();
-        executionOrder_.push_back(current);
+        m_executionOrder.push_back(current);
 
         // Reduce in-degree for all dependents
         for (Operator* dependent : dependents[current]) {
@@ -258,12 +258,12 @@ void Chain::computeExecutionOrder() {
     }
 
     // Check if all operators were processed
-    if (executionOrder_.size() != operators_.size()) {
-        error_ = "Could not resolve operator dependencies (possible cycle)";
+    if (m_executionOrder.size() != m_operators.size()) {
+        m_error = "Could not resolve operator dependencies (possible cycle)";
         return;
     }
 
-    needsSort_ = false;
+    m_needsSort = false;
 }
 
 void Chain::init(Context& ctx) {
@@ -273,7 +273,7 @@ void Chain::init(Context& ctx) {
     // First pass: call init on all operators to resolve named inputs
     // This must happen before computeExecutionOrder() so the topological
     // sort can see the actual dependencies
-    for (const auto& [name, op] : operators_) {
+    for (const auto& [name, op] : m_operators) {
         op->init(ctx);
     }
 
@@ -281,35 +281,35 @@ void Chain::init(Context& ctx) {
     computeExecutionOrder();
 
     if (hasError()) {
-        ctx.setError(error_);
+        ctx.setError(m_error);
         return;
     }
 
     // Validate texture output
-    if (outputName_.empty()) {
+    if (m_outputName.empty()) {
         std::cerr << "[Chain Warning] No output specified. Screen will be black. "
                   << "Use chain.output(\"name\") to designate output." << std::endl;
     } else {
-        Operator* out = getByName(outputName_);
+        Operator* out = getByName(m_outputName);
         if (!out) {
-            error_ = "Output operator '" + outputName_ + "' not found";
-            ctx.setError(error_);
+            m_error = "Output operator '" + m_outputName + "' not found";
+            ctx.setError(m_error);
             return;
         }
         if (out->outputKind() != OutputKind::Texture) {
-            error_ = "Output operator '" + outputName_ + "' produces " +
+            m_error = "Output operator '" + m_outputName + "' produces " +
                      outputKindName(out->outputKind()) + ", not Texture. Route through Render3D first.";
-            ctx.setError(error_);
+            ctx.setError(m_error);
             return;
         }
     }
 
     // Validate audio output (if specified)
-    if (!audioOutputName_.empty()) {
-        Operator* audioOut = getByName(audioOutputName_);
+    if (!m_audioOutputName.empty()) {
+        Operator* audioOut = getByName(m_audioOutputName);
         if (!audioOut) {
-            error_ = "Audio output operator '" + audioOutputName_ + "' not found";
-            ctx.setError(error_);
+            m_error = "Audio output operator '" + m_audioOutputName + "' not found";
+            ctx.setError(m_error);
             return;
         }
         // OutputKind::Audio check already exists in audioOutput()
@@ -317,83 +317,83 @@ void Chain::init(Context& ctx) {
 
     // Separate audio and visual operators
     // Audio operators go to AudioGraph (processed on audio thread)
-    // Visual operators stay in visualExecutionOrder_ (processed on main thread)
-    visualExecutionOrder_.clear();
-    audioGraph_.clear();
+    // Visual operators stay in m_visualExecutionOrder (processed on main thread)
+    m_visualExecutionOrder.clear();
+    m_audioGraph.clear();
 
-    for (Operator* op : executionOrder_) {
+    for (Operator* op : m_executionOrder) {
         std::string name = getName(op);
 
         if (op->outputKind() == OutputKind::Audio) {
             // Add to AudioGraph for pull-based processing
             AudioOperator* audioOp = static_cast<AudioOperator*>(op);
-            audioGraph_.addOperator(name, audioOp);
+            m_audioGraph.addOperator(name, audioOp);
 
             // Check if this is the AudioOutput
-            if (name == audioOutputName_) {
-                audioOutput_ = dynamic_cast<AudioOutput*>(op);
+            if (name == m_audioOutputName) {
+                m_audioOutput = dynamic_cast<AudioOutput*>(op);
             }
         } else {
             // Visual operator - process on main thread
-            visualExecutionOrder_.push_back(op);
+            m_visualExecutionOrder.push_back(op);
         }
     }
 
     // Build audio graph execution order
-    audioGraph_.buildExecutionOrder();
+    m_audioGraph.buildExecutionOrder();
 
     // Set the audio graph output
-    if (!audioOutputName_.empty()) {
-        AudioOperator* audioOut = static_cast<AudioOperator*>(getByName(audioOutputName_));
+    if (!m_audioOutputName.empty()) {
+        AudioOperator* audioOut = static_cast<AudioOperator*>(getByName(m_audioOutputName));
         if (audioOut) {
-            audioGraph_.setOutput(audioOut);
+            m_audioGraph.setOutput(audioOut);
         }
     }
 
     // Connect AudioOutput to the AudioGraph for pull-based generation
-    if (audioOutput_) {
-        audioOutput_->setAudioGraph(&audioGraph_);
+    if (m_audioOutput) {
+        m_audioOutput->setAudioGraph(&m_audioGraph);
     }
 
     // Auto-register all operators for visualization
-    for (Operator* op : executionOrder_) {
+    for (Operator* op : m_executionOrder) {
         std::string name = getName(op);
         if (!name.empty()) {
             ctx.registerOperator(name, op);
         }
     }
 
-    initialized_ = true;
-    lastAudioTime_ = 0.0;
-    audioSamplesOwed_ = 0.0;
+    m_initialized = true;
+    m_lastAudioTime = 0.0;
+    m_audioSamplesOwed = 0.0;
 
-    std::cout << "[Chain] Initialized: " << visualExecutionOrder_.size() << " visual operators, "
-              << audioGraph_.operatorCount() << " audio operators (pull-based)" << std::endl;
+    std::cout << "[Chain] Initialized: " << m_visualExecutionOrder.size() << " visual operators, "
+              << m_audioGraph.operatorCount() << " audio operators (pull-based)" << std::endl;
 }
 
 void Chain::process(Context& ctx) {
-    if (!initialized_) {
+    if (!m_initialized) {
         init(ctx);
     }
 
     if (hasError()) {
-        ctx.setError(error_);
+        ctx.setError(m_error);
         return;
     }
 
     // Debug: Log processing start (only on first frame to avoid spam)
     static bool firstDebugFrame = true;
-    if (debug_ && firstDebugFrame) {
+    if (m_debug && firstDebugFrame) {
         std::cout << "\n[Chain Debug] === Processing Chain ===" << std::endl;
-        std::cout << "[Chain Debug] Designated output: " << (outputName_.empty() ? "(none)" : outputName_) << std::endl;
+        std::cout << "[Chain Debug] Designated output: " << (m_outputName.empty() ? "(none)" : m_outputName) << std::endl;
     }
 
     // Process ONLY visual operators on main thread
     // Audio operators are processed by AudioGraph on the audio thread
-    for (Operator* op : visualExecutionOrder_) {
+    for (Operator* op : m_visualExecutionOrder) {
         if (!op->isBypassed()) {
             // Debug logging
-            if (debug_ && firstDebugFrame) {
+            if (m_debug && firstDebugFrame) {
                 std::string opName = getName(op);
                 std::string opType = op->name();
                 WGPUTexture tex = op->outputTexture();
@@ -406,7 +406,7 @@ void Chain::process(Context& ctx) {
                 }
 
                 // Check if this is the output
-                if (opName == outputName_) {
+                if (opName == m_outputName) {
                     std::cout << " -> SCREEN OUTPUT";
                 }
 
@@ -417,21 +417,21 @@ void Chain::process(Context& ctx) {
         }
     }
 
-    if (debug_ && firstDebugFrame) {
+    if (m_debug && firstDebugFrame) {
         std::cout << "[Chain Debug] === End Processing ===" << std::endl << std::endl;
         firstDebugFrame = false;
     }
 
     // AudioOutput::process() handles auto-start of audio playback
     // It no longer generates audio - that happens in the miniaudio callback
-    if (audioOutput_) {
-        audioOutput_->process(ctx);
+    if (m_audioOutput) {
+        m_audioOutput->process(ctx);
     }
 
     // Set output texture if specified via chain.output()
     // Use effectiveOutputView() to respect bypass chain
-    if (!outputName_.empty()) {
-        Operator* output = getByName(outputName_);
+    if (!m_outputName.empty()) {
+        Operator* output = getByName(m_outputName);
         if (output) {
             WGPUTextureView view = output->effectiveOutputView();
             if (view) {
@@ -444,7 +444,7 @@ void Chain::process(Context& ctx) {
 std::map<std::string, std::unique_ptr<OperatorState>> Chain::saveAllStates() {
     std::map<std::string, std::unique_ptr<OperatorState>> states;
 
-    for (const auto& [name, op] : operators_) {
+    for (const auto& [name, op] : m_operators) {
         auto state = op->saveState();
         if (state) {
             states[name] = std::move(state);
@@ -456,8 +456,8 @@ std::map<std::string, std::unique_ptr<OperatorState>> Chain::saveAllStates() {
 
 void Chain::restoreAllStates(std::map<std::string, std::unique_ptr<OperatorState>>& states) {
     for (auto& [name, state] : states) {
-        auto it = operators_.find(name);
-        if (it != operators_.end() && state) {
+        auto it = m_operators.find(name);
+        if (it != m_operators.end() && state) {
             it->second->loadState(std::move(state));
         }
     }

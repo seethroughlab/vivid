@@ -66,8 +66,6 @@ private:
 
     // State
     uint32_t m_seed = 54321;
-
-    bool m_initialized = false;
 };
 
 } // namespace vivid::audio

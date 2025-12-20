@@ -133,8 +133,6 @@ private:
     // Sampler for cubemap processing
     WGPUSampler m_cubemapSampler = nullptr;
 
-    bool m_initialized = false;
-
     // Fluent API state
     std::string m_hdrPath;
     bool m_needsLoad = true;
