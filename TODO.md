@@ -220,3 +220,4 @@
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
 [ ] POINT_SHADOW_INVESTIGATION.md
+[ ] All lights and camera should have a "draw debug" boolean that will draw a WIREFRAME structure that is appropriate to the subject. A Camera should show the frustum, a directional light should show the direction, spot light should show the light cone, etc.

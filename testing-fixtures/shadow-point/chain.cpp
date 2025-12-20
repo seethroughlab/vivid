@@ -10,6 +10,9 @@ using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
+// Store light marker index for updating
+static int g_lightMarkerIndex = -1;
+
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
@@ -30,6 +33,11 @@ void setup(Context& ctx) {
     cylinder.height(1.2f);
     cylinder.segments(24);
 
+    // Light marker - small bright sphere to show light position
+    auto& lightMarker = chain.add<Sphere>("lightMarker");
+    lightMarker.radius(0.15f);
+    lightMarker.segments(12);
+
     // Scene Composition
     auto& scene = SceneComposer::create(chain, "scene");
 
@@ -48,6 +56,11 @@ void setup(Context& ctx) {
     // Cylinder (back)
     glm::mat4 cylTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.6f, -2.0f));
     scene.add(&cylinder, cylTransform, glm::vec4(0.3f, 0.3f, 0.8f, 1.0f));
+
+    // Light marker - bright yellow, will be updated each frame
+    glm::mat4 lightMarkerTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f));
+    g_lightMarkerIndex = static_cast<int>(scene.entries().size());  // Save index before adding
+    scene.add(&lightMarker, lightMarkerTransform, glm::vec4(1.0f, 1.0f, 0.2f, 1.0f));
 
     // Point Light (casts shadows in all directions)
     auto& light = chain.add<PointLight>("pointlight");
@@ -82,14 +95,15 @@ void setup(Context& ctx) {
     std::cout << "\n========================================" << std::endl;
     std::cout << "Shadow Test - Point Light (Cube Map)" << std::endl;
     std::cout << "========================================" << std::endl;
-    std::cout << "Omnidirectional shadows from point light" << std::endl;
-    std::cout << "Resolution: 1024x1024 per face (6 faces)" << std::endl;
+    std::cout << "Yellow sphere = light position" << std::endl;
+    std::cout << "Shadows should point AWAY from yellow sphere" << std::endl;
     std::cout << "========================================\n" << std::endl;
 }
 
 void update(Context& ctx) {
     auto& chain = ctx.chain();
     auto& light = chain.get<PointLight>("pointlight");
+    auto& scene = chain.get<SceneComposer>("scene");
 
     // Animate point light position in a circle
     float time = static_cast<float>(ctx.time());
@@ -98,6 +112,12 @@ void update(Context& ctx) {
     float x = std::cos(time * 0.5f) * radius;
     float z = std::sin(time * 0.5f) * radius;
     light.position(x, height, z);
+
+    // Update light marker position to match
+    if (g_lightMarkerIndex >= 0 && g_lightMarkerIndex < static_cast<int>(scene.entries().size())) {
+        scene.entries()[g_lightMarkerIndex].transform =
+            glm::translate(glm::mat4(1.0f), glm::vec3(x, height, z));
+    }
 }
 
 VIVID_CHAIN(setup, update)

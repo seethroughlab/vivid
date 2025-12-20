@@ -1,7 +1,41 @@
 # Point Light Shadow Investigation
 
-## Status: UNRESOLVED
-Last updated: 2025-01-19
+## Status: RESOLVED
+Last updated: 2025-12-20
+
+## Resolution
+
+**Fixed by three changes:**
+
+### 1. Uniform Buffer Timing Issue (CRITICAL FIX)
+When rendering all 6 cube map faces, uniform buffer writes were overwriting each other before the GPU executed any render passes. The fix uses separate uniform buffer offsets for each face:
+
+**Before (broken):**
+```cpp
+size_t offset = objectIndex * UNIFORM_ALIGNMENT;
+```
+
+**After (fixed):**
+```cpp
+size_t offset = (face * numObjects + objectIndex) * UNIFORM_ALIGNMENT;
+```
+
+This ensures each face's uniforms are preserved when the GPU executes the batched render passes.
+
+### 2. Six Separate 2D Textures Instead of Array Texture
+The wgpu-native library has issues with rendering to certain array layers. The workaround is to create 6 individual 2D textures and manually select which one to sample based on the dominant axis of the sample direction.
+
+### 3. UV Coordinate Fixes
+- V coordinate flip: `texV = 0.5 - (v / ma) * 0.5` because WebGPU textures have Y=0 at top
+- Face 0/1 U coordinate swap to match lookAt matrices
+
+Key files modified:
+- `renderer.cpp`: Uniform offset calculation, 6 separate textures, UV fixes
+- `renderer.h`: Changed from single 6-layer texture to 6 individual textures
+
+---
+
+## Original Problem
 
 ## Summary
 

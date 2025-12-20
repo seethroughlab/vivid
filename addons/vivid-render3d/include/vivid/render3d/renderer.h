@@ -349,10 +349,10 @@ private:
     WGPUBindGroup m_shadowSampleBindGroup = nullptr;  // Binds shadow map + sampler for main pass
     glm::mat4 m_lightViewProj = glm::mat4(1.0f);  // Cached light-space matrix
 
-    // Point light shadow mapping (cube map with R32Float for linear depth)
-    WGPUTexture m_pointShadowMapTexture = nullptr;  // Cube map R32Float texture (linear depth)
+    // Point light shadow mapping (6 separate 2D textures to work around wgpu array layer bug)
+    // See: https://github.com/gfx-rs/wgpu/issues/1690
+    WGPUTexture m_pointShadowFaceTextures[6] = {};  // 6 separate R32Float textures
     WGPUTextureView m_pointShadowFaceViews[6] = {};  // Views for rendering each face
-    WGPUTextureView m_pointShadowCubeView = nullptr;  // Cube view for sampling
     WGPUTexture m_pointShadowDepthTexture = nullptr;  // Shared depth buffer for face rendering
     WGPUTextureView m_pointShadowDepthView = nullptr;
     WGPURenderPipeline m_pointShadowPipeline = nullptr;  // Pipeline for point shadow pass
@@ -365,8 +365,9 @@ private:
     // Dummy shadow resources (for when shadows are disabled)
     WGPUTexture m_dummyShadowTexture = nullptr;
     WGPUTextureView m_dummyShadowView = nullptr;
-    WGPUTexture m_dummyPointShadowTexture = nullptr;  // Dummy cube map
-    WGPUTextureView m_dummyPointShadowView = nullptr;
+    // 6 dummy textures for point shadows (to match the 6 separate texture approach)
+    WGPUTexture m_dummyPointShadowTextures[6] = {};
+    WGPUTextureView m_dummyPointShadowViews[6] = {};
 
     // Displacement
     effects::TextureOperator* m_displacementOp = nullptr;
