@@ -22,6 +22,7 @@
 #include <string>
 #include <map>
 #include <vector>
+#include <deque>
 #include <memory>
 
 namespace vivid {
@@ -53,6 +54,17 @@ struct MouseButtonState {
     bool pressed = false;   ///< True during the frame the button was pressed
     bool held = false;      ///< True while the button is held down
     bool released = false;  ///< True during the frame the button was released
+};
+
+/**
+ * @brief Debug value with rolling history for visualization
+ */
+struct DebugValue {
+    std::deque<float> history;  ///< Rolling buffer of values
+    float current = 0.0f;       ///< Most recent value
+    bool updatedThisFrame = false;  ///< Was this value updated this frame?
+    int framesWithoutUpdate = 0;    ///< Frames since last update (for auto-cleanup)
+    static constexpr size_t MAX_HISTORY = 120;  ///< ~2 seconds at 60fps
 };
 
 /**
@@ -417,6 +429,55 @@ public:
 
     /// @brief Clear all registered operators (called on hot-reload)
     void clearRegisteredOperators() { m_operators.clear(); }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Debug Values
+    /// @{
+
+    /**
+     * @brief Record a debug value for visualization
+     * @param name Display name for the value
+     * @param value Float value to record
+     *
+     * Values are displayed in a debug panel with rolling history graphs.
+     * Call each frame for values you want to visualize.
+     *
+     * @par Example
+     * @code
+     * void update(Context& ctx) {
+     *     ctx.debug("lfo", sinf(ctx.time() * 2.0f));
+     *     ctx.debug("envelope", levels.rms());
+     * }
+     * @endcode
+     */
+    void debug(const std::string& name, float value);
+
+    /// @brief Record a bool value (converted to 0.0 or 1.0)
+    void debug(const std::string& name, bool value) { debug(name, value ? 1.0f : 0.0f); }
+
+    /// @brief Record a vec2 value (stores magnitude)
+    void debug(const std::string& name, const glm::vec2& value) { debug(name, glm::length(value)); }
+
+    /// @brief Record a vec3 value (stores magnitude)
+    void debug(const std::string& name, const glm::vec3& value) { debug(name, glm::length(value)); }
+
+    /// @brief Record an int value
+    void debug(const std::string& name, int value) { debug(name, static_cast<float>(value)); }
+
+    /**
+     * @brief Get all debug values for rendering
+     * @return Map of name to DebugValue
+     */
+    const std::map<std::string, DebugValue>& debugValues() const { return m_debugValues; }
+
+    /**
+     * @brief Prepare debug values for next frame
+     *
+     * Called at start of frame. Marks all values as not updated and
+     * removes values that haven't been updated for several frames.
+     */
+    void beginDebugFrame();
 
     /// @}
     // -------------------------------------------------------------------------
@@ -920,6 +981,9 @@ private:
 
     // Operator registry
     std::vector<OperatorInfo> m_operators;
+
+    // Debug values
+    std::map<std::string, DebugValue> m_debugValues;
 
     // Preserved states
     std::map<std::string, std::unique_ptr<OperatorState>> m_preservedStates;

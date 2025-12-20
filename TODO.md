@@ -214,7 +214,7 @@
 [x] Are all of the 3rd party packages we are using compatible with the MIT license?
 [x] are ASSET_LOADING.md and MEMORY_LEAK.md complete? Can we delete them?
 [x] Is the 02-hello-noise noise stretched horizontally? Is it aware of aspect ratio? If not, I think ALL generators will need to be updated. 
+[x] OPERATOR_REFACTOR.md
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
-[ ] OPERATOR_REFACTOR.md
-[ ] Finish Shadows - POINT_SHADOW_INVESTIGATION.md
+[ ] Can we delete SHADOWS.md with the understanding that we still have to deal with POINT_SHADOW_INVESTIGATION.md?

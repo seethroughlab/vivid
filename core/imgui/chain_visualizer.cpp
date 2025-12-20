@@ -1405,6 +1405,66 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
     }
 
     ImGui::End();
+
+    // Render debug values panel if there are any
+    renderDebugPanel(ctx);
+}
+
+// -------------------------------------------------------------------------
+// Debug Values Panel
+// -------------------------------------------------------------------------
+
+void ChainVisualizer::renderDebugPanel(vivid::Context& ctx) {
+    const auto& debugValues = ctx.debugValues();
+    if (debugValues.empty()) return;
+
+    // Position in bottom-left corner
+    ImGui::SetNextWindowPos(ImVec2(10, ImGui::GetIO().DisplaySize.y - 200), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(300, 180), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowBgAlpha(0.8f);
+
+    if (ImGui::Begin("Debug Values", nullptr, ImGuiWindowFlags_NoFocusOnAppearing)) {
+        for (const auto& [name, dv] : debugValues) {
+            // Skip values that weren't updated this frame (grayed out)
+            if (!dv.updatedThisFrame) {
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.5f, 0.5f, 0.5f, 1.0f));
+            }
+
+            // Name column (fixed width)
+            ImGui::Text("%-12s", name.c_str());
+            ImGui::SameLine();
+
+            // Sparkline graph
+            if (!dv.history.empty()) {
+                // Convert deque to vector for PlotLines
+                std::vector<float> historyVec(dv.history.begin(), dv.history.end());
+
+                // Find min/max for scaling
+                float minVal = *std::min_element(historyVec.begin(), historyVec.end());
+                float maxVal = *std::max_element(historyVec.begin(), historyVec.end());
+
+                // Ensure some range even for constant values
+                if (maxVal - minVal < 0.001f) {
+                    minVal -= 0.5f;
+                    maxVal += 0.5f;
+                }
+
+                // Draw sparkline
+                ImGui::PlotLines("", historyVec.data(), static_cast<int>(historyVec.size()),
+                               0, nullptr, minVal, maxVal, ImVec2(120, 20));
+            }
+
+            ImGui::SameLine();
+
+            // Current value
+            ImGui::Text("%7.3f", dv.current);
+
+            if (!dv.updatedThisFrame) {
+                ImGui::PopStyleColor();
+            }
+        }
+    }
+    ImGui::End();
 }
 
 // -------------------------------------------------------------------------

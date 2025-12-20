@@ -96,6 +96,9 @@ private:
     // Solo mode helpers (internal)
     void renderSoloOverlay(const FrameInput& input, vivid::Context& ctx);
 
+    // Debug value panel (shows ctx.debug() values with sparkline graphs)
+    void renderDebugPanel(vivid::Context& ctx);
+
     // Selection helpers (for editor sync)
     void updateSelection(const std::vector<vivid::OperatorInfo>& operators);
     void clearSelection();

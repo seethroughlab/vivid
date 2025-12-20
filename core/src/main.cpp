@@ -251,6 +251,7 @@ bool mainLoopIteration(MainLoopContext& mlc) {
 
     // Begin frame (updates time, input, etc.)
     mlc.ctx->beginFrame();
+    mlc.ctx->beginDebugFrame();
 
     // Handle window resize
     if (mlc.ctx->width() != mlc.width || mlc.ctx->height() != mlc.height) {

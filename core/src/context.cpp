@@ -294,4 +294,36 @@ void Context::endGpuFrame() {
     m_gpuEncoderActive = false;
 }
 
+// =============================================================================
+// Debug Values
+// =============================================================================
+
+void Context::debug(const std::string& name, float value) {
+    auto& dv = m_debugValues[name];
+    dv.current = value;
+    dv.updatedThisFrame = true;
+    dv.framesWithoutUpdate = 0;
+
+    // Add to history
+    dv.history.push_back(value);
+    if (dv.history.size() > DebugValue::MAX_HISTORY) {
+        dv.history.pop_front();
+    }
+}
+
+void Context::beginDebugFrame() {
+    // Mark all values as not updated and increment stale counter
+    for (auto it = m_debugValues.begin(); it != m_debugValues.end(); ) {
+        it->second.updatedThisFrame = false;
+        it->second.framesWithoutUpdate++;
+
+        // Remove values that haven't been updated for 60 frames (1 second)
+        if (it->second.framesWithoutUpdate > 60) {
+            it = m_debugValues.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 } // namespace vivid
