@@ -1,7 +1,30 @@
 # Memory Leak Investigation
 
-## Status: PARTIALLY MITIGATED
-Leak rate: ~1.5-2 MB per 10 seconds (consistent regardless of operator count)
+## Status: FIXED ✅
+**Before:** ~1.5-2 MB per 10 seconds (~96 bytes × 2 per frame)
+**After:** Stable memory, only 48 bytes leaked (trivial startup allocations)
+
+## The Fix (December 2024)
+
+**Root cause:** Surface texture not released after presenting.
+
+For wgpu-native, you MUST call `wgpuTextureRelease(surfaceTexture.texture)` AFTER `wgpuSurfacePresent()`. This is different from Dawn which releases before present.
+
+```cpp
+// Get surface texture
+WGPUSurfaceTexture surfaceTexture;
+wgpuSurfaceGetCurrentTexture(surface, &surfaceTexture);
+WGPUTextureView view = wgpuTextureCreateView(surfaceTexture.texture, &viewDesc);
+
+// ... render ...
+
+// Present and release (wgpu-native specific order)
+wgpuSurfacePresent(surface);
+wgpuTextureViewRelease(view);
+wgpuTextureRelease(surfaceTexture.texture);  // <-- THE FIX
+```
+
+Also upgraded wgpu-native from v24.0.0.2 to v27.0.2.0 for additional fixes.
 
 ## Root Cause (December 2024)
 
@@ -80,6 +103,13 @@ Added bind group caching to avoid per-frame GPU resource creation:
 Tried `wgpuDevicePoll(device, true, nullptr)` every 30 frames.
 
 **Result:** Not a proper fix (workaround). Reverted.
+
+### 4. @autoreleasepool Wrapper - IMPLEMENTED (No Effect)
+**Location:** `core/src/platform_macos.mm`, `core/src/main.cpp`
+
+Added `@autoreleasepool` wrapper around each frame in the main loop to ensure Metal/ObjC objects are released promptly.
+
+**Result:** No effect on the leak. The leak is inside wgpu-native's Rust code, not in ObjC autoreleased objects. However, this is still good practice for macOS Metal applications.
 
 ## What We've Ruled Out
 
@@ -165,12 +195,22 @@ examples/3d-rendering/globe (After all fixes):
 | `core/src/effects/bloom.cpp` | Use shared encoder for all 4 passes |
 | `core/src/effects/blur.cpp` | Use shared encoder for both passes |
 
+### @autoreleasepool Wrapper (December 2024)
+
+| File | Changes |
+|------|---------|
+| `core/src/platform_macos.h` | Header for platform helpers |
+| `core/src/platform_macos.mm` | Implements `withAutoreleasePool()` for macOS |
+| `core/src/platform_stub.cpp` | No-op stub for Windows/Linux |
+| `core/src/main.cpp` | Wrap frame loop with `withAutoreleasePool()` |
+| `core/CMakeLists.txt` | Added platform files to build |
+
 ### Earlier Changes
 
 | File | Status |
 |------|--------|
 | `core/include/vivid/editor_bridge.h` | Changed vector to deque |
-| `core/src/main.cpp` | Changed erase to pop_front |
+| `core/src/main.cpp` | Changed erase to pop_front, added autoreleasepool |
 | `core/include/vivid/effects/bloom.h` | Added bind group cache members |
 | `core/src/effects/bloom.cpp` | Implemented bind group caching |
 | `core/include/vivid/effects/blur.h` | Added bind group cache members |

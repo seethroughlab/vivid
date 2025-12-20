@@ -286,3 +286,4 @@
 [ ] CLAP_HOST.md
 [ ] Finish Shadows - Is everything in SHADOWS.md complete? I believe there are just a couple of lingering issues Point lights -- they're way off: POINT_SHADOW_INVESTIGATION.md
 [ ] Is the 02-hello-noise noise stretched horizontally? Is it aware of aspect ratio? If not, I think ALL generators will need to be updated. 
+[ ] We just updated the wgpu-native package to try to fix the memory leak. What other packages might we want to update to a newer version? Please do an audit. 

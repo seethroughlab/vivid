@@ -671,9 +671,11 @@ bool mainLoopIteration(MainLoopContext& mlc) {
     // This is critical when multiple operators submit command buffers per frame
     wgpuDevicePoll(mlc.device, false, nullptr);
 
-    // Release texture view after present (surface owns the texture)
+    // Release texture view after present
     wgpuTextureViewRelease(view);
-    // Note: Don't release surfaceTexture.texture - it's owned by the surface
+    // For wgpu-native, release the surface texture AFTER presenting
+    // (different from Dawn which releases before present)
+    wgpuTextureRelease(surfaceTexture.texture);
 
     // End frame
     mlc.ctx->endFrame();

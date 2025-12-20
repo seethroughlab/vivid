@@ -94,7 +94,7 @@ FetchContent_MakeAvailable(nlohmann_json)
 # Using prebuilt binaries for reliable cross-platform support
 # -----------------------------------------------------------------------------
 
-set(WGPU_VERSION "v24.0.0.2")
+set(WGPU_VERSION "v27.0.2.0")
 
 if(WIN32)
     set(WGPU_OS "windows")
