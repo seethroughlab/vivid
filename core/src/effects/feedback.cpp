@@ -182,9 +182,8 @@ void Feedback::process(Context& ctx) {
     bindDesc.entries = entries;
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
 
-    // Create command encoder
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
     // Render to output
     WGPURenderPassEncoder pass;
@@ -196,7 +195,7 @@ void Feedback::process(Context& ctx) {
 
     endRenderPass(pass, encoder, ctx);
 
-    // Copy output to buffer for next frame
+    // Copy output to buffer for next frame (using same shared encoder)
     WGPUTexelCopyTextureInfo srcInfo = {};
     srcInfo.texture = m_output;
 
@@ -205,15 +204,9 @@ void Feedback::process(Context& ctx) {
 
     WGPUExtent3D copySize = {static_cast<uint32_t>(m_width), static_cast<uint32_t>(m_height), 1};
 
-    WGPUCommandEncoder copyEncoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
-    wgpuCommandEncoderCopyTextureToTexture(copyEncoder, &srcInfo, &dstInfo, &copySize);
+    // Use shared encoder for copy operation - no separate submit needed
+    wgpuCommandEncoderCopyTextureToTexture(encoder, &srcInfo, &dstInfo, &copySize);
 
-    WGPUCommandBufferDescriptor cmdBufferDesc = {};
-    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(copyEncoder, &cmdBufferDesc);
-    wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
-
-    wgpuCommandBufferRelease(cmdBuffer);
-    wgpuCommandEncoderRelease(copyEncoder);
     wgpuBindGroupRelease(bindGroup);
 
     m_firstFrame = false;

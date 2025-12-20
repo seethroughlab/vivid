@@ -569,9 +569,8 @@ void ParticleRenderer::renderCircles(Context& ctx,
     uniforms.aspectRatio = uniforms.resolutionX / uniforms.resolutionY;
     wgpuQueueWriteBuffer(m_queue, m_circleUniformBuffer, 0, &uniforms, sizeof(uniforms));
 
-    // Create command encoder
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(m_device, &encoderDesc);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
     // Begin render pass
     WGPURenderPassColorAttachment colorAttachment = {};
@@ -600,12 +599,7 @@ void ParticleRenderer::renderCircles(Context& ctx,
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
-    // Submit
-    WGPUCommandBufferDescriptor cmdBufferDesc = {};
-    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
-    wgpuQueueSubmit(m_queue, 1, &cmdBuffer);
-    wgpuCommandBufferRelease(cmdBuffer);
-    wgpuCommandEncoderRelease(encoder);
+    // Don't submit - using shared encoder from Context
 }
 
 void ParticleRenderer::renderSprites(Context& ctx,
@@ -649,9 +643,8 @@ void ParticleRenderer::renderSprites(Context& ctx,
     bindDesc.entries = bindEntries;
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(m_device, &bindDesc);
 
-    // Create command encoder
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(m_device, &encoderDesc);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
     // Begin render pass
     WGPURenderPassColorAttachment colorAttachment = {};
@@ -679,12 +672,7 @@ void ParticleRenderer::renderSprites(Context& ctx,
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
-    // Submit
-    WGPUCommandBufferDescriptor cmdBufferDesc = {};
-    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
-    wgpuQueueSubmit(m_queue, 1, &cmdBuffer);
-    wgpuCommandBufferRelease(cmdBuffer);
-    wgpuCommandEncoderRelease(encoder);
+    // Don't submit - using shared encoder from Context
 
     wgpuBindGroupRelease(bindGroup);
 }

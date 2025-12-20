@@ -34,6 +34,9 @@
 #include <mach/mach.h>
 #endif
 
+// Platform-specific helpers (autoreleasepool for macOS)
+#include "platform_macos.h"
+
 using namespace vivid;
 
 namespace fs = std::filesystem;
@@ -1355,10 +1358,15 @@ int main(int argc, char** argv) {
     mlc.gatherWindowState = gatherWindowState;
 
     // Main loop
+    // Each frame is wrapped in an autoreleasepool to prevent Metal/WebGPU memory leaks on macOS
     while (!glfwWindowShouldClose(mlc.window)) {
-        if (!mainLoopIteration(mlc)) {
-            break;
-        }
+        bool shouldContinue = true;
+        platform::withAutoreleasePool([&]() {
+            if (!mainLoopIteration(mlc)) {
+                shouldContinue = false;
+            }
+        });
+        if (!shouldContinue) break;
     }
 
     // Cleanup

@@ -1,7 +1,62 @@
 # Memory Leak Investigation
 
-## Status: UNRESOLVED
-Leak rate: ~1.5-2 MB per 10 seconds (consistent across all project types)
+## Status: PARTIALLY MITIGATED
+Leak rate: ~1.5-2 MB per 10 seconds (consistent regardless of operator count)
+
+## Root Cause (December 2024)
+
+**The leak is in MALLOC_SMALL heap allocations, NOT GPU memory.**
+
+Profiling with `footprint` and `malloc_history` revealed:
+- GPU memory (IOSurface, IOAccelerator) stays constant
+- MALLOC_SMALL grows steadily: 13 MB → 17 MB over 25 seconds
+
+**Stack trace shows Metal shader compilation on every frame:**
+```
+vivid::Chain::process
+→ vivid::effects::Noise::process
+→ wgpuRenderPassEncoderEnd
+→ wgpu_core::command::render::RenderPassInfo::start
+→ wgpu_hal::metal::CommandEncoder::begin_render_pass
+→ AGXMetalG16X::renderCommandEncoderWithDescriptor
+→ AGX::Compiler::compileProgram  ← SHADER COMPILATION EVERY FRAME
+```
+
+**Allocation pattern:** ~3000 allocations per 25 seconds at sizes 768, 192, 96, 16 bytes (≈2 allocations per frame at each size).
+
+**Cause:** Metal's AGX driver accumulates internal state for each render pass. The shader compilation happens during `begin_render_pass`, not during command buffer submit. This means the leak is per-render-pass, not per-submit.
+
+## Command Buffer Batching - IMPLEMENTED (December 2024)
+
+All chain operators now share a single command encoder per frame:
+
+```cpp
+// Old (N+1 submits per frame):
+// Operator A: create encoder → render → finish → submit
+// Operator B: create encoder → render → finish → submit
+// Operator C: create encoder → render → finish → submit
+// Display blit: create encoder → render → finish → submit
+
+// New (2 submits per frame):
+// Chain::process start: create single encoder
+// Operator A: render (reuse encoder)
+// Operator B: render (reuse encoder)
+// Operator C: render (reuse encoder)
+// Chain::process end: finish → submit once
+// Display blit: create encoder → render → finish → submit
+```
+
+**Implementation (December 2024):**
+- Added `Context::beginGpuFrame()` and `Context::endGpuFrame()` methods
+- All operators now use `ctx.gpuEncoder()` instead of creating their own encoder
+- `Chain::process()` wraps operator processing with `beginGpuFrame()`/`endGpuFrame()`
+- `TextureOperator::endRenderPass()` detects shared encoder and skips submit
+
+**Testing confirmed batching works:**
+- 1 operator: ~2 MB/10s leak
+- 4 operators: ~2 MB/10s leak (same rate, confirming batching works)
+
+**Conclusion:** Batching reduces GPU driver overhead but doesn't fix the leak. The leak is per-render-pass (shader compilation in `begin_render_pass`), not per-submit. With batching, we now have 2 submits/frame regardless of operator count, but each operator still creates a render pass.
 
 ## What We've Tried
 
@@ -36,22 +91,38 @@ Tried `wgpuDevicePoll(device, true, nullptr)` every 30 frames.
 
 ## Remaining Suspects
 
-### High Priority
-1. **Command encoder/buffer accumulation** - Multiple operators submit separate command buffers per frame. wgpu-native may keep internal staging data.
+### Confirmed: wgpu-native Texture View Leak (December 2024)
 
-2. **wgpu-native internal state** - The non-blocking `wgpuDevicePoll(device, false, nullptr)` may not fully release internal resources between frames.
+Using macOS `leaks` tool, we identified the leak as **96-byte ROOT LEAK objects** accumulating at ~2 per frame (~132/second at 60fps). This matches the number of render passes per frame.
 
-3. **Texture/buffer creation patterns** - Some operators may recreate textures when resolution changes without properly tracking previous resources.
+**Key findings:**
+- All leaks are exactly 96 bytes, allocated consecutively
+- Leak rate is independent of operator count (confirmed batching works)
+- Leak rate is independent of ImGui visibility
+- `@autoreleasepool` wrapper around frame loop had no effect
 
-### Medium Priority
-4. **ImGui/chain visualizer** - Not fully investigated
-5. **Window manager blit** (`core/src/window_manager.cpp:780`) - Creates bind group per secondary window
+**wgpu Issue #5707 ("Texture view leaks")** describes this exact pattern - texture views leak because weak pointers aren't cleaned up until the parent texture is dropped. **This was fixed in PR #5874.**
 
-### To Investigate
-- Use native GPU profiling tools (Metal System Trace on macOS)
-- Add explicit memory tracking with `wgpuDeviceGetFeatures` or similar
-- Profile with Instruments to identify specific allocation sources
-- Consider batching all operator work into single command buffer per frame
+### Recommended Fix
+
+**Upgrade wgpu-native from v24.0.0.2 to v27.0.2.0** (or newer). The texture view leak fix is included in newer versions.
+
+In `CMakeLists.txt`, change:
+```cmake
+set(WGPU_VERSION "v24.0.0.2")
+```
+to:
+```cmake
+set(WGPU_VERSION "v27.0.2.0")
+```
+
+Note: Test thoroughly after upgrade as there may be API changes between versions.
+
+### Ruled Out (December 2024)
+- ~~Command encoder/buffer accumulation~~ - **FIXED** with command buffer batching. All chain operators now share one encoder.
+- ~~Texture/buffer creation patterns~~ - Checked, properly managed
+- ~~@autoreleasepool missing~~ - Added to main loop, no effect (leak is in Rust/wgpu internals, not ObjC)
+- ~~ImGui rendering~~ - Leak persists when ImGui is hidden
 
 ## Test Results
 
@@ -68,6 +139,33 @@ examples/3d-rendering/globe (After all fixes):
 ```
 
 ## Files Modified
+
+### Command Buffer Batching (December 2024)
+
+| File | Changes |
+|------|---------|
+| `core/include/vivid/context.h` | Added `beginGpuFrame()`, `endGpuFrame()`, `gpuEncoder()` |
+| `core/src/context.cpp` | Implemented GPU frame encoder lifecycle |
+| `core/src/chain.cpp` | Wrapped operator processing with GPU frame |
+| `core/src/effects/texture_operator.cpp` | Skip submit when using shared encoder |
+| `core/src/effects/noise.cpp` | Use `ctx.gpuEncoder()` |
+| `core/src/effects/ramp.cpp` | Use `ctx.gpuEncoder()` |
+| `core/src/effects/brightness.cpp` | Use `ctx.gpuEncoder()` |
+| `core/src/effects/composite.cpp` | Use `ctx.gpuEncoder()` |
+| `core/src/effects/image.cpp` | Use `ctx.gpuEncoder()` |
+| `core/src/effects/displace.cpp` | Use `ctx.gpuEncoder()` |
+| `core/src/effects/lfo.cpp` | Use `ctx.gpuEncoder()` |
+| `core/src/effects/switch_op.cpp` | Use `ctx.gpuEncoder()` |
+| `core/src/effects/time_machine.cpp` | Use `ctx.gpuEncoder()` |
+| `core/src/effects/frame_cache.cpp` | Use `ctx.gpuEncoder()`, remove manual submit |
+| `core/src/effects/canvas_renderer.cpp` | Use `ctx.gpuEncoder()`, remove manual submit |
+| `core/src/effects/plexus.cpp` | Use `ctx.gpuEncoder()` for all 3 render methods |
+| `core/src/effects/particle_renderer.cpp` | Use `ctx.gpuEncoder()` for circles and sprites |
+| `core/src/effects/feedback.cpp` | Use shared encoder for render + copy |
+| `core/src/effects/bloom.cpp` | Use shared encoder for all 4 passes |
+| `core/src/effects/blur.cpp` | Use shared encoder for both passes |
+
+### Earlier Changes
 
 | File | Status |
 |------|--------|

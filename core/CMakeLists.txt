@@ -154,11 +154,11 @@ set(VIVID_CORE_SOURCES
 
 # Platform-specific sources
 if(APPLE)
-    list(APPEND VIVID_CORE_SOURCES src/video_exporter.mm)
+    list(APPEND VIVID_CORE_SOURCES src/video_exporter.mm src/platform_macos.mm)
 elseif(WIN32)
-    list(APPEND VIVID_CORE_SOURCES src/video_exporter_win.cpp)
+    list(APPEND VIVID_CORE_SOURCES src/video_exporter_win.cpp src/platform_stub.cpp)
 elseif(UNIX)
-    list(APPEND VIVID_CORE_SOURCES src/video_exporter_linux.cpp)
+    list(APPEND VIVID_CORE_SOURCES src/video_exporter_linux.cpp src/platform_stub.cpp)
 endif()
 
 set(VIVID_CORE_HEADERS

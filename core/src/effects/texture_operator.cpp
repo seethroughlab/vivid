@@ -117,6 +117,14 @@ void TextureOperator::endRenderPass(WGPURenderPassEncoder pass, WGPUCommandEncod
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
+    // If using the shared GPU encoder (command buffer batching), don't submit here.
+    // The encoder will be submitted by Context::endGpuFrame() after all operators.
+    if (ctx.hasActiveGpuEncoder() && encoder == ctx.gpuEncoder()) {
+        // Shared encoder - don't finish or submit, just end the pass
+        return;
+    }
+
+    // Legacy path for operators not yet using shared encoder
     WGPUCommandBufferDescriptor cmdBufferDesc = {};
     WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
     wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);

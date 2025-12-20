@@ -715,9 +715,8 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
         wgpuQueueWriteBuffer(queue, m_textIndexBuffer, 0, m_textIndices.data(), neededIndexSize);
     }
 
-    // Begin render pass
-    WGPUCommandEncoderDescriptor encDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &encDesc);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
     WGPURenderPassColorAttachment colorAttachment = {};
     colorAttachment.view = targetView;
@@ -874,12 +873,8 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
-    WGPUCommandBufferDescriptor cmdDesc = {};
-    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdDesc);
-    wgpuQueueSubmit(queue, 1, &cmdBuffer);
-
-    wgpuCommandBufferRelease(cmdBuffer);
-    wgpuCommandEncoderRelease(encoder);
+    // Don't submit - using shared encoder from Context
+    // The encoder will be submitted by Chain::process() via ctx.endGpuFrame()
 }
 
 } // namespace vivid

@@ -388,6 +388,10 @@ void Chain::process(Context& ctx) {
         std::cout << "[Chain Debug] Designated output: " << (m_outputName.empty() ? "(none)" : m_outputName) << std::endl;
     }
 
+    // Begin GPU frame - create shared command encoder for all operators
+    // This batches all GPU work into a single command buffer to reduce driver overhead
+    ctx.beginGpuFrame();
+
     // Process ONLY visual operators on main thread
     // Audio operators are processed by AudioGraph on the audio thread
     for (Operator* op : m_visualExecutionOrder) {
@@ -416,6 +420,9 @@ void Chain::process(Context& ctx) {
             op->process(ctx);
         }
     }
+
+    // End GPU frame - submit the batched command buffer
+    ctx.endGpuFrame();
 
     if (m_debug && firstDebugFrame) {
         std::cout << "[Chain Debug] === End Processing ===" << std::endl << std::endl;

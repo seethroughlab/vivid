@@ -194,9 +194,8 @@ void FrameCache::blitToTarget(Context& ctx, WGPUTextureView srcView, WGPUTexture
 
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
 
-    // Create command encoder
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
     // Create render pass
     WGPURenderPassColorAttachment colorAttachment = {};
@@ -219,13 +218,9 @@ void FrameCache::blitToTarget(Context& ctx, WGPUTextureView srcView, WGPUTexture
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
-    // Submit
-    WGPUCommandBufferDescriptor cmdBufferDesc = {};
-    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdBufferDesc);
-    wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
+    // Don't submit - using shared encoder from Context
+    // The encoder will be submitted by Chain::process() via ctx.endGpuFrame()
 
-    wgpuCommandBufferRelease(cmdBuffer);
-    wgpuCommandEncoderRelease(encoder);
     wgpuBindGroupRelease(bindGroup);
 }
 

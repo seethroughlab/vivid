@@ -686,7 +686,8 @@ void Plexus::renderLines(Context& ctx) {
     passDesc.colorAttachmentCount = 1;
     passDesc.colorAttachments = &colorAtt;
 
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
 
     wgpuRenderPassEncoderSetPipeline(pass, m_linePipeline);
@@ -698,10 +699,7 @@ void Plexus::renderLines(Context& ctx) {
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
-    WGPUCommandBuffer cmdBuf = wgpuCommandEncoderFinish(encoder, nullptr);
-    wgpuQueueSubmit(queue, 1, &cmdBuf);
-    wgpuCommandBufferRelease(cmdBuf);
-    wgpuCommandEncoderRelease(encoder);
+    // Don't submit - using shared encoder from Context
 }
 
 void Plexus::renderNodes(Context& ctx) {
@@ -756,7 +754,8 @@ void Plexus::renderNodes(Context& ctx) {
     passDesc.colorAttachmentCount = 1;
     passDesc.colorAttachments = &colorAtt;
 
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
 
     wgpuRenderPassEncoderSetPipeline(pass, m_nodePipeline);
@@ -769,10 +768,7 @@ void Plexus::renderNodes(Context& ctx) {
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
-    WGPUCommandBuffer cmdBuf = wgpuCommandEncoderFinish(encoder, nullptr);
-    wgpuQueueSubmit(queue, 1, &cmdBuf);
-    wgpuCommandBufferRelease(cmdBuf);
-    wgpuCommandEncoderRelease(encoder);
+    // Don't submit - using shared encoder from Context
 }
 
 void Plexus::process(Context& ctx) {
@@ -808,15 +804,13 @@ void Plexus::process(Context& ctx) {
     passDesc.colorAttachmentCount = 1;
     passDesc.colorAttachments = &colorAtt;
 
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), nullptr);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
 
-    WGPUCommandBuffer cmdBuf = wgpuCommandEncoderFinish(encoder, nullptr);
-    wgpuQueueSubmit(ctx.queue(), 1, &cmdBuf);
-    wgpuCommandBufferRelease(cmdBuf);
-    wgpuCommandEncoderRelease(encoder);
+    // Don't submit - using shared encoder from Context
 
     // Render lines first (behind nodes)
     renderLines(ctx);

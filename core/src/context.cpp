@@ -263,4 +263,35 @@ void Context::autoConfigureSpan() {
     }
 }
 
+// =============================================================================
+// GPU Frame Encoder (Command Buffer Batching)
+// =============================================================================
+
+void Context::beginGpuFrame() {
+    if (m_gpuEncoderActive) {
+        // Already have an active encoder - this shouldn't happen
+        return;
+    }
+
+    WGPUCommandEncoderDescriptor desc = {};
+    m_gpuEncoder = wgpuDeviceCreateCommandEncoder(m_device, &desc);
+    m_gpuEncoderActive = true;
+}
+
+void Context::endGpuFrame() {
+    if (!m_gpuEncoderActive || !m_gpuEncoder) {
+        return;
+    }
+
+    // Finish and submit the command buffer
+    WGPUCommandBufferDescriptor cmdDesc = {};
+    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(m_gpuEncoder, &cmdDesc);
+    wgpuQueueSubmit(m_queue, 1, &cmdBuffer);
+    wgpuCommandBufferRelease(cmdBuffer);
+    wgpuCommandEncoderRelease(m_gpuEncoder);
+
+    m_gpuEncoder = nullptr;
+    m_gpuEncoderActive = false;
+}
+
 } // namespace vivid

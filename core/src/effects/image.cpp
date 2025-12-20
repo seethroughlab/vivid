@@ -224,9 +224,8 @@ void Image::process(Context& ctx) {
     bindDesc.entries = bindEntries;
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
 
-    // Create command encoder
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
     // Begin render pass
     WGPURenderPassEncoder pass;

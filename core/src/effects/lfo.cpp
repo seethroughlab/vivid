@@ -96,9 +96,8 @@ void LFO::process(Context& ctx) {
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 
-    // Execute render pass (same as base class)
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
     WGPURenderPassEncoder pass;
     beginRenderPass(pass, encoder);

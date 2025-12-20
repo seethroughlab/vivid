@@ -697,6 +697,43 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name GPU Frame Encoder (Command Buffer Batching)
+    /// @{
+
+    /**
+     * @brief Begin GPU frame - creates shared command encoder
+     *
+     * Called by Chain::process() at the start. All operators should use
+     * gpuEncoder() to get the shared encoder instead of creating their own.
+     * This reduces GPU driver overhead by batching all work into one submit.
+     */
+    void beginGpuFrame();
+
+    /**
+     * @brief End GPU frame - submits the batched command buffer
+     *
+     * Called by Chain::process() at the end. Finishes and submits the
+     * command buffer, then releases the encoder.
+     */
+    void endGpuFrame();
+
+    /**
+     * @brief Get the current GPU command encoder
+     * @return The shared command encoder for this frame
+     *
+     * Operators should use this instead of creating their own encoder.
+     * Returns nullptr if called outside of a GPU frame (between beginGpuFrame/endGpuFrame).
+     */
+    WGPUCommandEncoder gpuEncoder() const { return m_gpuEncoder; }
+
+    /**
+     * @brief Check if a GPU frame is active
+     * @return True if between beginGpuFrame() and endGpuFrame()
+     */
+    bool hasActiveGpuEncoder() const { return m_gpuEncoderActive; }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Multi-Window Support
     /// @{
 
@@ -913,6 +950,10 @@ private:
 
     // Multi-window support
     WindowManager* m_windowManager = nullptr;
+
+    // GPU frame encoder (command buffer batching)
+    WGPUCommandEncoder m_gpuEncoder = nullptr;
+    bool m_gpuEncoderActive = false;
 
     // Default states
     static const KeyState s_defaultKeyState;

@@ -191,8 +191,8 @@ void Blur::process(Context& ctx) {
             uniforms.texelH = texelH;
             wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 
-            WGPUCommandEncoderDescriptor encoderDesc = {};
-            WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
+            // Use shared command encoder for batched submission
+            WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
             WGPURenderPassColorAttachment colorAttachment = {};
             colorAttachment.view = m_tempView;
@@ -214,11 +214,7 @@ void Blur::process(Context& ctx) {
             wgpuRenderPassEncoderEnd(renderPass);
             wgpuRenderPassEncoderRelease(renderPass);
 
-            WGPUCommandBufferDescriptor cmdDesc = {};
-            WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdDesc);
-            wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
-            wgpuCommandBufferRelease(cmdBuffer);
-            wgpuCommandEncoderRelease(encoder);
+            // Don't submit - using shared encoder from Context
         }
 
         // Vertical pass: temp -> output
@@ -230,8 +226,8 @@ void Blur::process(Context& ctx) {
             uniforms.texelH = texelH;
             wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 
-            WGPUCommandEncoderDescriptor encoderDesc = {};
-            WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
+            // Use shared command encoder for batched submission
+            WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
             WGPURenderPassEncoder renderPass;
             beginRenderPass(renderPass, encoder);
