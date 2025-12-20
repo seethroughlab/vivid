@@ -17,7 +17,7 @@ FetchContent_MakeAvailable(cgltf)
 FetchContent_Declare(
     manifold
     GIT_REPOSITORY https://github.com/elalish/manifold.git
-    GIT_TAG v3.0.0
+    GIT_TAG v3.3.2
     GIT_SHALLOW TRUE
 )
 

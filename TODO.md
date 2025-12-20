@@ -198,78 +198,6 @@
     - See **OPERATOR_REFACTOR.md** for full analysis
     - Recommended: SignalOperator (control-rate signals), GeometryOperator (3D primitives), ComputeOperator (future) 
 [x] There's still a slow memory leak in all projects. 
-    projects/examples/3d-rendering/smoke-simulation
-        === Memory Tracking Started ===
-        [10.0s] Memory: 123 MB (total: +0 MB, last 10s: +0 MB)
-        [20.0s] Memory: 125 MB (total: +2 MB, last 10s: +2 MB)
-        [30.0s] Memory: 127 MB (total: +4 MB, last 10s: +2 MB)
-        [40.0s] Memory: 129 MB (total: +6 MB, last 10s: +2 MB)
-        [50.0s] Memory: 130 MB (total: +7 MB, last 10s: +1 MB)
-        [60.0s] Memory: 132 MB (total: +9 MB, last 10s: +2 MB)
-        [70.0s] Memory: 134 MB (total: +11 MB, last 10s: +2 MB)
-        [80.0s] Memory: 135 MB (total: +12 MB, last 10s: +1 MB)
-        [90.0s] Memory: 137 MB (total: +14 MB, last 10s: +2 MB)
-        [100.0s] Memory: 138 MB (total: +15 MB, last 10s: +1 MB)
-    projects/examples/3d-rendering/lighting-test 
-        === Memory Tracking Started ===
-        [10.0s] Memory: 101 MB (total: +0 MB, last 10s: +0 MB)
-        [20.0s] Memory: 102 MB (total: +1 MB, last 10s: +1 MB)
-        [30.0s] Memory: 104 MB (total: +3 MB, last 10s: +2 MB)
-        [40.0s] Memory: 106 MB (total: +5 MB, last 10s: +2 MB)
-        [50.0s] Memory: 107 MB (total: +6 MB, last 10s: +1 MB)
-        [60.0s] Memory: 109 MB (total: +8 MB, last 10s: +2 MB)
-        [70.0s] Memory: 111 MB (total: +10 MB, last 10s: +2 MB)
-        [80.0s] Memory: 112 MB (total: +11 MB, last 10s: +1 MB)
-        [90.0s] Memory: 114 MB (total: +13 MB, last 10s: +2 MB)
-        [100.0s] Memory: 115 MB (total: +14 MB, last 10s: +1 MB) 
-    projects/examples/2d-effects/canvas-drawing/
-        === Memory Tracking Started ===
-        [10.0s] Memory: 101 MB (total: +0 MB, last 10s: +0 MB)
-        [20.0s] Memory: 103 MB (total: +2 MB, last 10s: +2 MB)
-        [30.0s] Memory: 104 MB (total: +3 MB, last 10s: +1 MB)
-        [40.0s] Memory: 106 MB (total: +5 MB, last 10s: +2 MB)
-        [50.0s] Memory: 108 MB (total: +7 MB, last 10s: +2 MB)
-        [60.0s] Memory: 110 MB (total: +9 MB, last 10s: +2 MB)
-        [70.0s] Memory: 111 MB (total: +10 MB, last 10s: +1 MB)
-        [80.0s] Memory: 113 MB (total: +12 MB, last 10s: +2 MB)
-        [90.0s] Memory: 114 MB (total: +13 MB, last 10s: +1 MB)
-        [100.0s] Memory: 116 MB (total: +15 MB, last 10s: +2 MB)      
-    projects/examples/2d-effects/future-splash 
-        === Memory Tracking Started ===
-        [10.0s] Memory: 98 MB (total: +0 MB, last 10s: +0 MB)
-        [20.0s] Memory: 100 MB (total: +2 MB, last 10s: +2 MB)
-        [30.0s] Memory: 102 MB (total: +4 MB, last 10s: +2 MB)
-        [40.0s] Memory: 103 MB (total: +5 MB, last 10s: +1 MB)
-        [50.0s] Memory: 105 MB (total: +7 MB, last 10s: +2 MB)
-        [60.0s] Memory: 106 MB (total: +8 MB, last 10s: +1 MB)
-        [70.0s] Memory: 108 MB (total: +10 MB, last 10s: +2 MB)
-        [80.0s] Memory: 110 MB (total: +12 MB, last 10s: +2 MB)
-        [90.0s] Memory: 111 MB (total: +13 MB, last 10s: +1 MB)
-        [100.0s] Memory: 113 MB (total: +15 MB, last 10s: +2 MB)
-    projects/examples/2d-effects/particles/
-        === Memory Tracking Started ===
-        [10.0s] Memory: 103 MB (total: +0 MB, last 10s: +0 MB)
-        [20.0s] Memory: 105 MB (total: +2 MB, last 10s: +2 MB)
-        [30.0s] Memory: 107 MB (total: +4 MB, last 10s: +2 MB)
-        [40.0s] Memory: 109 MB (total: +6 MB, last 10s: +2 MB)
-        [50.0s] Memory: 110 MB (total: +7 MB, last 10s: +1 MB)
-        [60.0s] Memory: 113 MB (total: +10 MB, last 10s: +3 MB)
-        [70.0s] Memory: 115 MB (total: +12 MB, last 10s: +2 MB)
-        [80.0s] Memory: 116 MB (total: +13 MB, last 10s: +1 MB)
-        [90.0s] Memory: 118 MB (total: +15 MB, last 10s: +2 MB)
-        [100.0s] Memory: 119 MB (total: +16 MB, last 10s: +1 MB)  
-    projects/examples/2d-effects/candy-crash/
-        === Memory Tracking Started ===
-        [10.0s] Memory: 106 MB (total: +0 MB, last 10s: +0 MB)
-        [20.0s] Memory: 107 MB (total: +1 MB, last 10s: +1 MB)
-        [30.0s] Memory: 108 MB (total: +2 MB, last 10s: +1 MB)
-        [40.0s] Memory: 110 MB (total: +4 MB, last 10s: +2 MB)
-        [50.0s] Memory: 112 MB (total: +6 MB, last 10s: +2 MB)
-        [60.0s] Memory: 113 MB (total: +7 MB, last 10s: +1 MB)
-        [70.0s] Memory: 115 MB (total: +9 MB, last 10s: +2 MB)
-        [80.0s] Memory: 117 MB (total: +11 MB, last 10s: +2 MB)
-        [90.1s] Memory: 118 MB (total: +12 MB, last 10s: +1 MB)
-        [100.1s] Memory: 120 MB (total: +14 MB, last 10s: +2 MB)
 [x] should testing fixtures be moved to the projects folder?
     **Decision: Keep at root.** testing-fixtures/ is framework test infrastructure, not user content.
     projects/ is the user's workspace. Keeping them separate prevents accidental modification
@@ -282,8 +210,11 @@
     - [PR #2143](https://github.com/gfx-rs/wgpu/pull/2143): Cube map shadow map fix (misread GL spec)
     - [#4524](https://github.com/gfx-rs/wgpu/issues/4524): textureSampleCompare returns only 0/1
     **Next step:** Try 6 separate 2D textures instead of 6-layer array (documented workaround)
+[x] We just updated the wgpu-native package to try to fix the memory leak. What other packages might we want to update to a newer version? Please do an audit. 
+[x] Are all of the 3rd party packages we are using compatible with the MIT license?
+[x] are ASSET_LOADING.md and MEMORY_LEAK.md complete? Can we delete them?
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
-[ ] Finish Shadows - Is everything in SHADOWS.md complete? I believe there are just a couple of lingering issues Point lights -- they're way off: POINT_SHADOW_INVESTIGATION.md
+[ ] OPERATOR_REFACTOR.md
+[ ] Finish Shadows - POINT_SHADOW_INVESTIGATION.md
 [ ] Is the 02-hello-noise noise stretched horizontally? Is it aware of aspect ratio? If not, I think ALL generators will need to be updated. 
-[ ] We just updated the wgpu-native package to try to fix the memory leak. What other packages might we want to update to a newer version? Please do an audit. 

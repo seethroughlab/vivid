@@ -65,7 +65,7 @@ endif()
 FetchContent_Declare(
     glm
     GIT_REPOSITORY https://github.com/g-truc/glm.git
-    GIT_TAG        1.0.1
+    GIT_TAG        1.0.2
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(glm)
@@ -74,7 +74,7 @@ FetchContent_MakeAvailable(glm)
 FetchContent_Declare(
     cli11
     GIT_REPOSITORY https://github.com/CLIUtils/CLI11.git
-    GIT_TAG        v2.4.2
+    GIT_TAG        v2.6.1
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(cli11)
@@ -83,7 +83,7 @@ FetchContent_MakeAvailable(cli11)
 FetchContent_Declare(
     nlohmann_json
     GIT_REPOSITORY https://github.com/nlohmann/json.git
-    GIT_TAG        v3.11.3
+    GIT_TAG        v3.12.0
     GIT_SHALLOW    TRUE
 )
 set(JSON_BuildTests OFF CACHE INTERNAL "")
@@ -239,7 +239,7 @@ set(USE_ZLIB OFF CACHE BOOL "" FORCE)
 FetchContent_Declare(
     ixwebsocket
     GIT_REPOSITORY https://github.com/machinezone/IXWebSocket.git
-    GIT_TAG        v11.4.5
+    GIT_TAG        v11.4.6
     GIT_SHALLOW    TRUE
 )
 FetchContent_MakeAvailable(ixwebsocket)
