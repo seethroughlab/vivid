@@ -10,7 +10,9 @@ Operator (base)
 ├── AudioOperator       - Audio synthesis and generation (48kHz)
 │   └── AudioEffect     - Audio effects with dry/wet mixing
 ├── AudioAnalyzer       - Audio analysis (levels, FFT, beat detection)
-└── (direct subclasses) - Value operators, 3D geometry, cameras, lights
+├── MeshOperator        - 3D mesh output (CSG-capable)
+│   └── GeometryOperator - Procedural primitives (Box, Sphere, etc.)
+└── (direct subclasses) - Value operators, cameras, lights
 ```
 
 ## Philosophy: C++ vs Node-Based
@@ -62,28 +64,51 @@ void update(Context& ctx) {
 
 ---
 
-## GeometryOperator (Future)
+## GeometryOperator (Implemented)
 
 **Purpose**: Base class for 3D geometry generators to reduce boilerplate.
 
-Currently `Sphere`, `Cube`, `Plane`, etc. all implement similar patterns. A base class would consolidate mesh storage, dirty tracking, and bounding box computation.
+Extends MeshOperator with ParamRegistry integration and common defaults:
+- Default `init()` (empty) and `cleanup()` (releases mesh)
+- Automatic `params()`/`getParam()`/`setParam()` via ParamRegistry
+- Common shading options: `flatShading()`, `computeTangents()`
+- `finalizeMesh()` helper for the build/upload cycle
 
 ```cpp
-class GeometryOperator : public Operator, public ParamRegistry {
+class Box : public GeometryOperator {
 public:
-    const MeshData& mesh() const;
-    bool meshChanged();
-    const BoundingBox& boundingBox() const;
-    OutputKind outputKind() const override { return OutputKind::Geometry; }
+    Box() {
+        registerParam(m_width);
+        registerParam(m_height);
+        registerParam(m_depth);
+    }
 
-protected:
-    virtual void generateMesh() = 0;
-    void setMesh(MeshData mesh);
-    void computeBoundingBox();
+    void size(float w, float h, float d) {
+        if (m_width != w || m_height != h || m_depth != d) {
+            m_width = w; m_height = h; m_depth = d; markDirty();
+        }
+    }
+
+    void process(Context& ctx) override {
+        if (!needsCook()) return;
+        m_builder = MeshBuilder::box(m_width, m_height, m_depth);
+        finalizeMesh(ctx, true);  // Always flat for boxes
+    }
+
+    std::string name() const override { return "Box"; }
+
+private:
+    Param<float> m_width{"width", 1.0f, 0.01f, 100.0f};
+    Param<float> m_height{"height", 1.0f, 0.01f, 100.0f};
+    Param<float> m_depth{"depth", 1.0f, 0.01f, 100.0f};
 };
 ```
 
-**Status**: Not yet implemented. Consider when geometry primitive count grows.
+**Boilerplate reduction**: ~40% fewer lines per primitive (from ~70 to ~30 lines).
+
+**Files:**
+- `addons/vivid-render3d/include/vivid/render3d/geometry_operator.h` - Base class
+- `addons/vivid-render3d/include/vivid/render3d/primitives.h` - Box, Sphere, Cylinder, Cone, Torus, Plane
 
 ---
 

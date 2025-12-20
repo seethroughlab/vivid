@@ -4,7 +4,7 @@
  * @file primitives.h
  * @brief Primitive mesh operators
  *
- * Provides MeshOperator implementations for common 3D primitives:
+ * Provides GeometryOperator implementations for common 3D primitives:
  * - Box
  * - Sphere
  * - Cylinder
@@ -16,8 +16,9 @@
  * be fed into Boolean operators or SceneComposer.
  */
 
-#include <vivid/render3d/mesh_operator.h>
+#include <vivid/render3d/geometry_operator.h>
 #include <vivid/render3d/mesh_builder.h>
+#include <vivid/param.h>
 #include <vivid/context.h>
 
 namespace vivid::render3d {
@@ -29,90 +30,51 @@ namespace vivid::render3d {
 /**
  * @brief Box/cube mesh generator
  *
- * Creates a box with specified dimensions.
+ * Creates a box with specified dimensions. Always uses flat shading
+ * since smooth shading doesn't make sense for a cube.
  *
  * @par Example
  * @code
- * auto& box = chain.add<Box>("box")
- *     .size(1.0f, 2.0f, 1.0f)
- *     .flatShading(true);
+ * auto& box = chain.add<Box>("box");
+ * box.size(1.0f, 2.0f, 1.0f);
  * @endcode
  */
-class Box : public MeshOperator {
+class Box : public GeometryOperator {
 public:
+    Box() {
+        registerParam(m_width);
+        registerParam(m_height);
+        registerParam(m_depth);
+    }
+
     /// Set box dimensions
     void size(float width, float height, float depth) {
-        if (m_width != width || m_height != height || m_depth != depth) {
-            m_width = width; m_height = height; m_depth = depth; markDirty();
+        if (static_cast<float>(m_width) != width ||
+            static_cast<float>(m_height) != height ||
+            static_cast<float>(m_depth) != depth) {
+            m_width = width;
+            m_height = height;
+            m_depth = depth;
+            markDirty();
         }
     }
 
     /// Set uniform size (cube)
-    void size(float s) {
-        size(s, s, s);
-    }
-
-    /// Enable flat shading (faceted look)
-    void flatShading(bool enabled) {
-        if (m_flatShading != enabled) { m_flatShading = enabled; markDirty(); }
-    }
-
-    /// Enable tangent computation (required for normal mapping)
-    void computeTangents() {
-        if (!m_computeTangents) { m_computeTangents = true; markDirty(); }
-    }
-
-    void init(Context& ctx) override {}
+    void size(float s) { size(s, s, s); }
 
     void process(Context& ctx) override {
         if (!needsCook()) return;
 
         m_builder = MeshBuilder::box(m_width, m_height, m_depth);
-        // Box always uses flat normals - smooth shading doesn't make sense for a cube
-        m_builder.computeFlatNormals();
-        if (m_computeTangents) {
-            m_builder.computeTangents();
-        }
-        m_mesh = m_builder.build();
-        m_mesh.upload(ctx);
-
-        didCook();
-    }
-
-    void cleanup() override {
-        m_mesh.release();
+        finalizeMesh(ctx, true);  // Always flat for boxes
     }
 
     std::string name() const override { return "Box"; }
 
-    std::vector<ParamDecl> params() override {
-        return {
-            {"width", ParamType::Float, 0.01f, 100.0f, {m_width, 0, 0, 0}},
-            {"height", ParamType::Float, 0.01f, 100.0f, {m_height, 0, 0, 0}},
-            {"depth", ParamType::Float, 0.01f, 100.0f, {m_depth, 0, 0, 0}}
-        };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "width") { out[0] = m_width; return true; }
-        if (name == "height") { out[0] = m_height; return true; }
-        if (name == "depth") { out[0] = m_depth; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "width") { m_width = value[0]; markDirty(); return true; }
-        if (name == "height") { m_height = value[0]; markDirty(); return true; }
-        if (name == "depth") { m_depth = value[0]; markDirty(); return true; }
-        return false;
-    }
-
 private:
-    float m_width = 1.0f;
-    float m_height = 1.0f;
-    float m_depth = 1.0f;
-    bool m_flatShading = true;
-    bool m_computeTangents = false;
+    Param<float> m_width{"width", 1.0f, 0.01f, 100.0f};
+    Param<float> m_height{"height", 1.0f, 0.01f, 100.0f};
+    Param<float> m_depth{"depth", 1.0f, 0.01f, 100.0f};
 };
 
 // =============================================================================
@@ -126,26 +88,32 @@ private:
  *
  * @par Example
  * @code
- * auto& sphere = chain.add<Sphere>("sphere")
- *     .radius(0.5f)
- *     .segments(32);
+ * auto& sphere = chain.add<Sphere>("sphere");
+ * sphere.radius(0.5f);
+ * sphere.segments(32);
  * @endcode
  */
-class Sphere : public MeshOperator {
+class Sphere : public GeometryOperator {
 public:
+    Sphere() {
+        registerParam(m_radius);
+        registerParam(m_segments);
+    }
+
     /// Set sphere radius
     void radius(float r) {
-        if (m_radius != r) { m_radius = r; markDirty(); }
+        if (static_cast<float>(m_radius) != r) {
+            m_radius = r;
+            markDirty();
+        }
     }
 
     /// Set number of segments (detail level)
     void segments(int s) {
-        if (m_segments != s) { m_segments = s; markDirty(); }
-    }
-
-    /// Enable tangent computation (required for normal mapping)
-    void computeTangents() {
-        if (!m_computeTangents) { m_computeTangents = true; markDirty(); }
+        if (static_cast<int>(m_segments) != s) {
+            m_segments = s;
+            markDirty();
+        }
     }
 
     /**
@@ -165,10 +133,11 @@ public:
 
     /// Set noise time offset for animation
     void noiseTime(float t) {
-        if (m_noiseTime != t) { m_noiseTime = t; markDirty(); }
+        if (m_noiseTime != t) {
+            m_noiseTime = t;
+            markDirty();
+        }
     }
-
-    void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
         if (!needsCook()) return;
@@ -180,46 +149,16 @@ public:
             m_builder.noiseDisplace(m_noiseAmplitude, m_noiseFrequency, m_noiseOctaves, m_noiseTime);
         }
 
-        if (m_computeTangents) {
-            m_builder.computeTangents();
-        }
-        m_mesh = m_builder.build();
-        m_mesh.upload(ctx);
-
-        didCook();
-    }
-
-    void cleanup() override {
-        m_mesh.release();
+        finalizeMesh(ctx);  // Uses m_flatShading from base
     }
 
     std::string name() const override { return "Sphere"; }
 
-    std::vector<ParamDecl> params() override {
-        return {
-            {"radius", ParamType::Float, 0.01f, 100.0f, {m_radius, 0, 0, 0}},
-            {"segments", ParamType::Float, 4.0f, 128.0f, {static_cast<float>(m_segments), 0, 0, 0}}
-        };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "radius") { out[0] = m_radius; return true; }
-        if (name == "segments") { out[0] = static_cast<float>(m_segments); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "radius") { m_radius = value[0]; markDirty(); return true; }
-        if (name == "segments") { m_segments = static_cast<int>(value[0]); markDirty(); return true; }
-        return false;
-    }
-
 private:
-    float m_radius = 0.5f;
-    int m_segments = 24;
-    bool m_computeTangents = false;
+    Param<float> m_radius{"radius", 0.5f, 0.01f, 100.0f};
+    Param<int> m_segments{"segments", 24, 4, 128};
 
-    // Noise displacement
+    // Noise displacement (not exposed as params - set via methods)
     float m_noiseAmplitude = 0.0f;
     float m_noiseFrequency = 1.0f;
     int m_noiseOctaves = 4;
@@ -237,84 +176,57 @@ private:
  *
  * @par Example
  * @code
- * auto& cylinder = chain.add<Cylinder>("cylinder")
- *     .radius(0.5f)
- *     .height(2.0f)
- *     .segments(24);
+ * auto& cylinder = chain.add<Cylinder>("cylinder");
+ * cylinder.radius(0.5f);
+ * cylinder.height(2.0f);
+ * cylinder.segments(24);
  * @endcode
  */
-class Cylinder : public MeshOperator {
+class Cylinder : public GeometryOperator {
 public:
+    Cylinder() {
+        registerParam(m_radius);
+        registerParam(m_height);
+        registerParam(m_segments);
+    }
+
     /// Set cylinder radius
     void radius(float r) {
-        if (m_radius != r) { m_radius = r; markDirty(); }
+        if (static_cast<float>(m_radius) != r) {
+            m_radius = r;
+            markDirty();
+        }
     }
 
     /// Set cylinder height
     void height(float h) {
-        if (m_height != h) { m_height = h; markDirty(); }
+        if (static_cast<float>(m_height) != h) {
+            m_height = h;
+            markDirty();
+        }
     }
 
     /// Set number of segments (detail level)
     void segments(int s) {
-        if (m_segments != s) { m_segments = s; markDirty(); }
+        if (static_cast<int>(m_segments) != s) {
+            m_segments = s;
+            markDirty();
+        }
     }
-
-    /// Enable flat shading
-    void flatShading(bool enabled) {
-        if (m_flatShading != enabled) { m_flatShading = enabled; markDirty(); }
-    }
-
-    void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
         if (!needsCook()) return;
 
         m_builder = MeshBuilder::cylinder(m_radius, m_height, m_segments);
-        if (m_flatShading) {
-            m_builder.computeFlatNormals();
-        } else {
-            m_builder.computeNormals();
-        }
-        m_mesh = m_builder.build();
-        m_mesh.upload(ctx);
-
-        didCook();
-    }
-
-    void cleanup() override {
-        m_mesh.release();
+        finalizeMesh(ctx);  // Uses m_flatShading from base
     }
 
     std::string name() const override { return "Cylinder"; }
 
-    std::vector<ParamDecl> params() override {
-        return {
-            {"radius", ParamType::Float, 0.01f, 100.0f, {m_radius, 0, 0, 0}},
-            {"height", ParamType::Float, 0.01f, 100.0f, {m_height, 0, 0, 0}},
-            {"segments", ParamType::Float, 3.0f, 128.0f, {static_cast<float>(m_segments), 0, 0, 0}}
-        };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "radius") { out[0] = m_radius; return true; }
-        if (name == "height") { out[0] = m_height; return true; }
-        if (name == "segments") { out[0] = static_cast<float>(m_segments); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "radius") { m_radius = value[0]; markDirty(); return true; }
-        if (name == "height") { m_height = value[0]; markDirty(); return true; }
-        if (name == "segments") { m_segments = static_cast<int>(value[0]); markDirty(); return true; }
-        return false;
-    }
-
 private:
-    float m_radius = 0.5f;
-    float m_height = 1.0f;
-    int m_segments = 24;
-    bool m_flatShading = false;
+    Param<float> m_radius{"radius", 0.5f, 0.01f, 100.0f};
+    Param<float> m_height{"height", 1.0f, 0.01f, 100.0f};
+    Param<int> m_segments{"segments", 24, 3, 128};
 };
 
 // =============================================================================
@@ -328,84 +240,58 @@ private:
  *
  * @par Example
  * @code
- * auto& cone = chain.add<Cone>("cone")
- *     .radius(0.5f)
- *     .height(1.0f)
- *     .segments(24);
+ * auto& cone = chain.add<Cone>("cone");
+ * cone.radius(0.5f);
+ * cone.height(1.0f);
+ * cone.segments(24);
  * @endcode
  */
-class Cone : public MeshOperator {
+class Cone : public GeometryOperator {
 public:
+    Cone() {
+        m_flatShading = true;  // Cones look better with flat shading by default
+        registerParam(m_radius);
+        registerParam(m_height);
+        registerParam(m_segments);
+    }
+
     /// Set cone base radius
     void radius(float r) {
-        if (m_radius != r) { m_radius = r; markDirty(); }
+        if (static_cast<float>(m_radius) != r) {
+            m_radius = r;
+            markDirty();
+        }
     }
 
     /// Set cone height
     void height(float h) {
-        if (m_height != h) { m_height = h; markDirty(); }
+        if (static_cast<float>(m_height) != h) {
+            m_height = h;
+            markDirty();
+        }
     }
 
     /// Set number of segments (detail level)
     void segments(int s) {
-        if (m_segments != s) { m_segments = s; markDirty(); }
+        if (static_cast<int>(m_segments) != s) {
+            m_segments = s;
+            markDirty();
+        }
     }
-
-    /// Enable flat shading
-    void flatShading(bool enabled) {
-        if (m_flatShading != enabled) { m_flatShading = enabled; markDirty(); }
-    }
-
-    void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
         if (!needsCook()) return;
 
         m_builder = MeshBuilder::cone(m_radius, m_height, m_segments);
-        if (m_flatShading) {
-            m_builder.computeFlatNormals();
-        } else {
-            m_builder.computeNormals();
-        }
-        m_mesh = m_builder.build();
-        m_mesh.upload(ctx);
-
-        didCook();
-    }
-
-    void cleanup() override {
-        m_mesh.release();
+        finalizeMesh(ctx);
     }
 
     std::string name() const override { return "Cone"; }
 
-    std::vector<ParamDecl> params() override {
-        return {
-            {"radius", ParamType::Float, 0.01f, 100.0f, {m_radius, 0, 0, 0}},
-            {"height", ParamType::Float, 0.01f, 100.0f, {m_height, 0, 0, 0}},
-            {"segments", ParamType::Float, 3.0f, 128.0f, {static_cast<float>(m_segments), 0, 0, 0}}
-        };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "radius") { out[0] = m_radius; return true; }
-        if (name == "height") { out[0] = m_height; return true; }
-        if (name == "segments") { out[0] = static_cast<float>(m_segments); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "radius") { m_radius = value[0]; markDirty(); return true; }
-        if (name == "height") { m_height = value[0]; markDirty(); return true; }
-        if (name == "segments") { m_segments = static_cast<int>(value[0]); markDirty(); return true; }
-        return false;
-    }
-
 private:
-    float m_radius = 0.5f;
-    float m_height = 1.0f;
-    int m_segments = 24;
-    bool m_flatShading = true;
+    Param<float> m_radius{"radius", 0.5f, 0.01f, 100.0f};
+    Param<float> m_height{"height", 1.0f, 0.01f, 100.0f};
+    Param<int> m_segments{"segments", 24, 3, 128};
 };
 
 // =============================================================================
@@ -419,92 +305,68 @@ private:
  *
  * @par Example
  * @code
- * auto& torus = chain.add<Torus>("torus")
- *     .outerRadius(0.5f)
- *     .innerRadius(0.2f)
- *     .segments(32)
- *     .rings(16);
+ * auto& torus = chain.add<Torus>("torus");
+ * torus.outerRadius(0.5f);
+ * torus.innerRadius(0.2f);
+ * torus.segments(32);
+ * torus.rings(16);
  * @endcode
  */
-class Torus : public MeshOperator {
+class Torus : public GeometryOperator {
 public:
+    Torus() {
+        registerParam(m_outerRadius);
+        registerParam(m_innerRadius);
+        registerParam(m_segments);
+        registerParam(m_rings);
+    }
+
     /// Set outer radius (distance from center to tube center)
     void outerRadius(float r) {
-        if (m_outerRadius != r) { m_outerRadius = r; markDirty(); }
+        if (static_cast<float>(m_outerRadius) != r) {
+            m_outerRadius = r;
+            markDirty();
+        }
     }
 
     /// Set inner radius (tube radius)
     void innerRadius(float r) {
-        if (m_innerRadius != r) { m_innerRadius = r; markDirty(); }
+        if (static_cast<float>(m_innerRadius) != r) {
+            m_innerRadius = r;
+            markDirty();
+        }
     }
 
     /// Set number of segments around the ring
     void segments(int s) {
-        if (m_segments != s) { m_segments = s; markDirty(); }
+        if (static_cast<int>(m_segments) != s) {
+            m_segments = s;
+            markDirty();
+        }
     }
 
     /// Set number of rings around the tube
     void rings(int r) {
-        if (m_rings != r) { m_rings = r; markDirty(); }
+        if (static_cast<int>(m_rings) != r) {
+            m_rings = r;
+            markDirty();
+        }
     }
-
-    /// Enable tangent computation (required for normal mapping)
-    void computeTangents() {
-        if (!m_computeTangents) { m_computeTangents = true; markDirty(); }
-    }
-
-    void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
         if (!needsCook()) return;
 
         m_builder = MeshBuilder::torus(m_outerRadius, m_innerRadius, m_segments, m_rings);
-        if (m_computeTangents) {
-            m_builder.computeTangents();
-        }
-        m_mesh = m_builder.build();
-        m_mesh.upload(ctx);
-
-        didCook();
-    }
-
-    void cleanup() override {
-        m_mesh.release();
+        finalizeMesh(ctx);
     }
 
     std::string name() const override { return "Torus"; }
 
-    std::vector<ParamDecl> params() override {
-        return {
-            {"outerRadius", ParamType::Float, 0.01f, 100.0f, {m_outerRadius, 0, 0, 0}},
-            {"innerRadius", ParamType::Float, 0.01f, 50.0f, {m_innerRadius, 0, 0, 0}},
-            {"segments", ParamType::Float, 3.0f, 128.0f, {static_cast<float>(m_segments), 0, 0, 0}},
-            {"rings", ParamType::Float, 3.0f, 128.0f, {static_cast<float>(m_rings), 0, 0, 0}}
-        };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "outerRadius") { out[0] = m_outerRadius; return true; }
-        if (name == "innerRadius") { out[0] = m_innerRadius; return true; }
-        if (name == "segments") { out[0] = static_cast<float>(m_segments); return true; }
-        if (name == "rings") { out[0] = static_cast<float>(m_rings); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "outerRadius") { m_outerRadius = value[0]; markDirty(); return true; }
-        if (name == "innerRadius") { m_innerRadius = value[0]; markDirty(); return true; }
-        if (name == "segments") { m_segments = static_cast<int>(value[0]); markDirty(); return true; }
-        if (name == "rings") { m_rings = static_cast<int>(value[0]); markDirty(); return true; }
-        return false;
-    }
-
 private:
-    float m_outerRadius = 0.5f;
-    float m_innerRadius = 0.2f;
-    int m_segments = 32;
-    int m_rings = 16;
-    bool m_computeTangents = false;
+    Param<float> m_outerRadius{"outerRadius", 0.5f, 0.01f, 100.0f};
+    Param<float> m_innerRadius{"innerRadius", 0.2f, 0.01f, 50.0f};
+    Param<int> m_segments{"segments", 32, 3, 128};
+    Param<int> m_rings{"rings", 16, 3, 128};
 };
 
 // =============================================================================
@@ -518,92 +380,54 @@ private:
  *
  * @par Example
  * @code
- * auto& plane = chain.add<Plane>("plane")
- *     .size(10.0f, 10.0f)
- *     .subdivisions(16, 16);
+ * auto& plane = chain.add<Plane>("plane");
+ * plane.size(10.0f, 10.0f);
+ * plane.subdivisions(16, 16);
  * @endcode
  */
-class Plane : public MeshOperator {
+class Plane : public GeometryOperator {
 public:
+    Plane() {
+        registerParam(m_width);
+        registerParam(m_height);
+        registerParam(m_subdivisionsX);
+        registerParam(m_subdivisionsY);
+    }
+
     /// Set plane dimensions
     void size(float width, float height) {
-        if (m_width != width || m_height != height) {
-            m_width = width; m_height = height; markDirty();
+        if (static_cast<float>(m_width) != width ||
+            static_cast<float>(m_height) != height) {
+            m_width = width;
+            m_height = height;
+            markDirty();
         }
     }
 
     /// Set number of subdivisions
     void subdivisions(int x, int y) {
-        if (m_subdivisionsX != x || m_subdivisionsY != y) {
-            m_subdivisionsX = x; m_subdivisionsY = y; markDirty();
+        if (static_cast<int>(m_subdivisionsX) != x ||
+            static_cast<int>(m_subdivisionsY) != y) {
+            m_subdivisionsX = x;
+            m_subdivisionsY = y;
+            markDirty();
         }
     }
-
-    /// Enable flat shading
-    void flatShading(bool enabled) {
-        if (m_flatShading != enabled) { m_flatShading = enabled; markDirty(); }
-    }
-
-    /// Enable tangent computation (required for normal mapping)
-    void computeTangents() {
-        if (!m_computeTangents) { m_computeTangents = true; markDirty(); }
-    }
-
-    void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
         if (!needsCook()) return;
 
         m_builder = MeshBuilder::plane(m_width, m_height, m_subdivisionsX, m_subdivisionsY);
-        // Plane always uses flat normals - it's a flat surface
-        m_builder.computeFlatNormals();
-        if (m_computeTangents) {
-            m_builder.computeTangents();
-        }
-        m_mesh = m_builder.build();
-        m_mesh.upload(ctx);
-
-        didCook();
-    }
-
-    void cleanup() override {
-        m_mesh.release();
+        finalizeMesh(ctx, true);  // Planes are always flat
     }
 
     std::string name() const override { return "Plane"; }
 
-    std::vector<ParamDecl> params() override {
-        return {
-            {"width", ParamType::Float, 0.01f, 1000.0f, {m_width, 0, 0, 0}},
-            {"height", ParamType::Float, 0.01f, 1000.0f, {m_height, 0, 0, 0}},
-            {"subdivisionsX", ParamType::Float, 1.0f, 256.0f, {static_cast<float>(m_subdivisionsX), 0, 0, 0}},
-            {"subdivisionsY", ParamType::Float, 1.0f, 256.0f, {static_cast<float>(m_subdivisionsY), 0, 0, 0}}
-        };
-    }
-
-    bool getParam(const std::string& name, float out[4]) override {
-        if (name == "width") { out[0] = m_width; return true; }
-        if (name == "height") { out[0] = m_height; return true; }
-        if (name == "subdivisionsX") { out[0] = static_cast<float>(m_subdivisionsX); return true; }
-        if (name == "subdivisionsY") { out[0] = static_cast<float>(m_subdivisionsY); return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& name, const float value[4]) override {
-        if (name == "width") { m_width = value[0]; markDirty(); return true; }
-        if (name == "height") { m_height = value[0]; markDirty(); return true; }
-        if (name == "subdivisionsX") { m_subdivisionsX = static_cast<int>(value[0]); markDirty(); return true; }
-        if (name == "subdivisionsY") { m_subdivisionsY = static_cast<int>(value[0]); markDirty(); return true; }
-        return false;
-    }
-
 private:
-    float m_width = 1.0f;
-    float m_height = 1.0f;
-    int m_subdivisionsX = 1;
-    int m_subdivisionsY = 1;
-    bool m_flatShading = false;
-    bool m_computeTangents = false;
+    Param<float> m_width{"width", 1.0f, 0.01f, 1000.0f};
+    Param<float> m_height{"height", 1.0f, 0.01f, 1000.0f};
+    Param<int> m_subdivisionsX{"subdivisionsX", 1, 1, 256};
+    Param<int> m_subdivisionsY{"subdivisionsY", 1, 1, 256};
 };
 
 } // namespace vivid::render3d
