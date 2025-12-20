@@ -182,6 +182,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "VideoPlayer"; }
 
+    // Override to return borrowed texture from active decoder
+    WGPUTextureView outputView() const override { return m_activeView; }
+    WGPUTexture outputTexture() const override { return m_activeTexture; }
+
     std::vector<ParamDecl> params() override {
         return {
             {"loop", ParamType::Float, 0.0f, 1.0f, {m_loop ? 1.0f : 0.0f, 0, 0, 0}},
@@ -234,6 +238,10 @@ private:
     // Fallback texture for when video fails to load
     WGPUTexture m_fallbackTexture = nullptr;
     WGPUTextureView m_fallbackTextureView = nullptr;
+
+    // Active texture (borrowed from decoder or fallback)
+    WGPUTexture m_activeTexture = nullptr;
+    WGPUTextureView m_activeView = nullptr;
 };
 
 } // namespace vivid::video

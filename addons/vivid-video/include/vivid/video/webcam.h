@@ -84,6 +84,10 @@ public:
     void cleanup() override;
     std::string name() const override { return "Webcam"; }
 
+    // Override to return borrowed texture from capture backend
+    WGPUTextureView outputView() const override { return m_activeView; }
+    WGPUTexture outputTexture() const override { return m_activeTexture; }
+
 private:
     void openCamera(Context& ctx);
 
@@ -106,6 +110,10 @@ private:
 #elif defined(_WIN32)
     std::unique_ptr<MFWebcam> m_webcam;
 #endif
+
+    // Borrowed texture from capture backend
+    WGPUTexture m_activeTexture = nullptr;
+    WGPUTextureView m_activeView = nullptr;
 };
 
 } // namespace vivid::video

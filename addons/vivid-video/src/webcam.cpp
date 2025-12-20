@@ -134,8 +134,8 @@ void Webcam::openCamera(Context& ctx) {
         // Set output dimensions
         m_width = m_captureWidth;
         m_height = m_captureHeight;
-        m_output = m_webcam->texture();
-        m_outputView = m_webcam->textureView();
+        m_activeTexture = m_webcam->texture();
+        m_activeView = m_webcam->textureView();
     } else {
         std::cerr << "[Webcam] Failed to open camera" << std::endl;
         m_webcam.reset();
@@ -166,7 +166,7 @@ void Webcam::process(Context& ctx) {
     m_webcam->update(ctx);
 
     // Update output texture view (may have changed)
-    m_outputView = m_webcam->textureView();
+    m_activeView = m_webcam->textureView();
 #endif
 
     didCook();
@@ -179,8 +179,8 @@ void Webcam::cleanup() {
         m_webcam.reset();
     }
 #endif
-    m_output = nullptr;
-    m_outputView = nullptr;
+    m_activeTexture = nullptr;
+    m_activeView = nullptr;
 }
 
 } // namespace vivid::video

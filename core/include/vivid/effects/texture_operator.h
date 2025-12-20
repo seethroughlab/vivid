@@ -11,6 +11,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/param_registry.h>
+#include <vivid/effects/gpu_handle.h>
 #include <webgpu/webgpu.h>
 
 namespace vivid::effects {
@@ -247,8 +248,8 @@ protected:
 
     /// @}
 
-    WGPUTexture m_output = nullptr;      ///< Output texture
-    WGPUTextureView m_outputView = nullptr; ///< Output texture view
+    vivid::TextureHandle m_output;           ///< Output texture (RAII)
+    vivid::TextureViewHandle m_outputView;   ///< Output texture view (RAII)
 
     int m_width = 1280;  ///< Output width
     int m_height = 720;  ///< Output height

@@ -72,8 +72,8 @@ void VideoPlayer::loadVideo(Context& ctx) {
     // This prevents crashes if the new video fails to load
     createFallbackTexture(ctx);
     // Point to fallback - will be overwritten if video loads successfully
-    m_output = m_fallbackTexture;
-    m_outputView = m_fallbackTextureView;
+    m_activeTexture = m_fallbackTexture;
+    m_activeView = m_fallbackTextureView;
     m_width = 64;
     m_height = 64;
 
@@ -88,8 +88,8 @@ void VideoPlayer::loadVideo(Context& ctx) {
 
         if (m_hapDecoder->open(ctx, m_filePath, m_loop)) {
             m_isHAP = true;
-            m_output = m_hapDecoder->texture();
-            m_outputView = m_hapDecoder->textureView();
+            m_activeTexture = m_hapDecoder->texture();
+            m_activeView = m_hapDecoder->textureView();
             m_width = m_hapDecoder->width();
             m_height = m_hapDecoder->height();
             m_needsReload = false;
@@ -119,8 +119,8 @@ void VideoPlayer::loadVideo(Context& ctx) {
 
     if (m_playbackDecoder->open(ctx, m_filePath, m_loop)) {
         m_usePlaybackDecoder = true;
-        m_output = m_playbackDecoder->texture();
-        m_outputView = m_playbackDecoder->textureView();
+        m_activeTexture = m_playbackDecoder->texture();
+        m_activeView = m_playbackDecoder->textureView();
         m_width = m_playbackDecoder->width();
         m_height = m_playbackDecoder->height();
         m_needsReload = false;
@@ -155,8 +155,8 @@ void VideoPlayer::loadVideo(Context& ctx) {
 
             if (m_dshowDecoder->open(ctx, m_filePath, m_loop)) {
                 m_useDShowDecoder = true;
-                m_output = m_dshowDecoder->texture();
-                m_outputView = m_dshowDecoder->textureView();
+                m_activeTexture = m_dshowDecoder->texture();
+                m_activeView = m_dshowDecoder->textureView();
                 m_width = m_dshowDecoder->width();
                 m_height = m_dshowDecoder->height();
                 m_needsReload = false;
@@ -184,8 +184,8 @@ void VideoPlayer::loadVideo(Context& ctx) {
         return;
     }
 
-    m_output = m_standardDecoder->texture();
-    m_outputView = m_standardDecoder->textureView();
+    m_activeTexture = m_standardDecoder->texture();
+    m_activeView = m_standardDecoder->textureView();
     m_width = m_standardDecoder->width();
     m_height = m_standardDecoder->height();
     m_needsReload = false;
@@ -214,22 +214,22 @@ void VideoPlayer::process(Context& ctx) {
 
     if (m_isHAP && m_hapDecoder) {
         m_hapDecoder->update(ctx);
-        m_outputView = m_hapDecoder->textureView();
+        m_activeView = m_hapDecoder->textureView();
     }
 #if defined(__APPLE__)
     else if (m_usePlaybackDecoder && m_playbackDecoder) {
         m_playbackDecoder->update(ctx);
-        m_outputView = m_playbackDecoder->textureView();
+        m_activeView = m_playbackDecoder->textureView();
     }
 #elif defined(_WIN32)
     else if (m_useDShowDecoder && m_dshowDecoder) {
         m_dshowDecoder->update(ctx);
-        m_outputView = m_dshowDecoder->textureView();
+        m_activeView = m_dshowDecoder->textureView();
     }
 #endif
     else if (m_standardDecoder) {
         m_standardDecoder->update(ctx);
-        m_outputView = m_standardDecoder->textureView();
+        m_activeView = m_standardDecoder->textureView();
     }
 
     didCook();
@@ -266,8 +266,8 @@ void VideoPlayer::cleanup() {
     m_isHAP = false;
     m_usePlaybackDecoder = false;
     m_useDShowDecoder = false;
-    m_output = nullptr;
-    m_outputView = nullptr;
+    m_activeTexture = nullptr;
+    m_activeView = nullptr;
 }
 
 void VideoPlayer::createFallbackTexture(Context& ctx) {
@@ -491,8 +491,8 @@ void VideoPlayer::createFallbackTexture(Context& ctx) {
     wgpuQueueWriteTexture(ctx.queue(), &destination, pixels.data(),
                           pixels.size(), &dataLayout, &writeSize);
 
-    m_output = m_fallbackTexture;
-    m_outputView = m_fallbackTextureView;
+    m_activeTexture = m_fallbackTexture;
+    m_activeView = m_fallbackTextureView;
     m_width = texWidth;
     m_height = texHeight;
 }

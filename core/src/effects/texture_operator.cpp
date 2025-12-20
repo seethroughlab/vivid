@@ -7,7 +7,7 @@
 namespace vivid::effects {
 
 TextureOperator::~TextureOperator() {
-    releaseOutput();
+    // Handles auto-release via RAII
 }
 
 WGPUTextureView TextureOperator::inputView(int index) const {
@@ -79,7 +79,7 @@ void TextureOperator::createOutput(Context& ctx, int width, int height) {
     desc.format = EFFECTS_FORMAT;
     desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
 
-    m_output = wgpuDeviceCreateTexture(ctx.device(), &desc);
+    m_output.reset(wgpuDeviceCreateTexture(ctx.device(), &desc));
 
     WGPUTextureViewDescriptor viewDesc = {};
     viewDesc.format = EFFECTS_FORMAT;
@@ -90,18 +90,12 @@ void TextureOperator::createOutput(Context& ctx, int width, int height) {
     viewDesc.arrayLayerCount = 1;
     viewDesc.aspect = WGPUTextureAspect_All;
 
-    m_outputView = wgpuTextureCreateView(m_output, &viewDesc);
+    m_outputView.reset(wgpuTextureCreateView(m_output, &viewDesc));
 }
 
 void TextureOperator::releaseOutput() {
-    if (m_outputView) {
-        wgpuTextureViewRelease(m_outputView);
-        m_outputView = nullptr;
-    }
-    if (m_output) {
-        wgpuTextureRelease(m_output);
-        m_output = nullptr;
-    }
+    m_outputView.reset();
+    m_output.reset();
 }
 
 void TextureOperator::beginRenderPass(WGPURenderPassEncoder& pass, WGPUCommandEncoder& encoder) {
