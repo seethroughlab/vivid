@@ -19,7 +19,6 @@ struct Rect {
 
 // Global state
 std::vector<Rect> rects;
-Image* raster = nullptr;
 int frameCount = 0;
 int maxDivisions = 500;  // Limit total subdivisions
 
@@ -55,7 +54,6 @@ void setup(Context& ctx) {
     auto& image = chain.add<Image>("raster");
     image.file = "assets/images/nature.jpg";
     image.keepCpuData = true;  // Enable pixel sampling
-    raster = &image;
 
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(1280, 720);
@@ -76,11 +74,12 @@ void setup(Context& ctx) {
 void update(Context& ctx) {
     auto& chain = ctx.chain();
     auto& canvas = chain.get<Canvas>("canvas");
+    auto& raster = chain.get<Image>("raster");
 
     // Clear canvas
     canvas.clear(0.0f, 0.0f, 0.0f, 1.0f);
 
-    if (!raster || !raster->hasCpuData()) {
+    if (!raster.hasCpuData()) {
         // Image not loaded yet or CPU data not available
         canvas.fillStyle({1, 0, 0, 1});
         canvas.fillRect(0, 0, 200, 50);
@@ -88,8 +87,8 @@ void update(Context& ctx) {
     }
 
     // Get image dimensions for coordinate mapping
-    int imgW = raster->imageWidth();
-    int imgH = raster->imageHeight();
+    int imgW = raster.imageWidth();
+    int imgH = raster.imageHeight();
 
     if (imgW == 0 || imgH == 0) return;
 
@@ -125,7 +124,7 @@ void update(Context& ctx) {
         int imgRectH = static_cast<int>(r.h / 720.0f * imgH);
 
         // Get average color for this region
-        glm::vec4 color = raster->getAverageColor(imgX, imgY, imgRectW, imgRectH);
+        glm::vec4 color = raster.getAverageColor(imgX, imgY, imgRectW, imgRectH);
 
         // Draw filled rectangle
         canvas.fillStyle(color);
