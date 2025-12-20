@@ -193,6 +193,7 @@
 [x] I noticed the line if(NOT EMSCRIPTEN) in the main CMakeLists.txt, but we removed the web exporter, so there shouldn't be any refrence to EMSCRIPTEN anymore. Can you check the whole project for any remaining references? 
 [x] Based on the changes we just made and the overall conventions used in this project, please make a document about coding style. What is a good name for this document that is commonly used?
 [x] Does phase 5 have some overlap with the ASSET_LOADING.md document?
+[x] Please examine rpi-job-logs.txt and ubuntu-job-logs.txt and fix the CI erorrs
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] CLAP_HOST.md
 [ ] Finish Shadows - Is everything in SHADOWS.md complete? I believe there are just a couple of lingerine issues with one of the llght types.
@@ -205,6 +206,4 @@
     MATs - Material Operators - materials and shaders.
     SOPs - Surface Operators - legacy 3D points, polygons and other 3D primitives, with some capabilities not possible in POPs yet.
 Are any of these relevant/useful for vivid? I'm particularly interested in facilitating audio creation, but anything that would simplify operator creation would be great. 
-[ ] rpi-job-logs.txt and ubuntu-job-logs.txt
-
 [ ] There's still a slow memory leak in most projects. 

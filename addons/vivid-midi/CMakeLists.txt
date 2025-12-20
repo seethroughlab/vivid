@@ -5,6 +5,11 @@
 
 include(FetchContent)
 
+# On Linux, static libraries linked into shared libraries need -fPIC
+if(UNIX AND NOT APPLE)
+    set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+
 # RtMidi - Cross-platform MIDI I/O
 FetchContent_Declare(
     rtmidi
