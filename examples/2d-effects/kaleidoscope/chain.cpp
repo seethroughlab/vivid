@@ -101,6 +101,13 @@ void update(Context& ctx) {
             mirror.segments = i;
         }
     }
+
+    // Debug value monitoring - visible in the debug panel (D key)
+    ctx.debug("rotation", transform.rotation);
+    ctx.debug("scale", s);
+    ctx.debug("hue", hue);
+    ctx.debug("bloom", bloomIntensity);
+    ctx.debug("segments", mirror.segments);
 }
 
 VIVID_CHAIN(setup, update)

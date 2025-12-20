@@ -1449,8 +1449,9 @@ void ChainVisualizer::renderDebugPanel(vivid::Context& ctx) {
                     maxVal += 0.5f;
                 }
 
-                // Draw sparkline
-                ImGui::PlotLines("", historyVec.data(), static_cast<int>(historyVec.size()),
+                // Draw sparkline (use ##name for unique ID)
+                std::string plotId = "##" + name;
+                ImGui::PlotLines(plotId.c_str(), historyVec.data(), static_cast<int>(historyVec.size()),
                                0, nullptr, minVal, maxVal, ImVec2(120, 20));
             }
 

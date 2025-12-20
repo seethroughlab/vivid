@@ -163,6 +163,7 @@ struct MainLoopContext {
     WGPUDevice device = nullptr;
     WGPUQueue queue = nullptr;
     WGPUTextureFormat surfaceFormat = WGPUTextureFormat_BGRA8Unorm;
+    WGPUSurfaceConfigurationExtras configExtras = {};  // Must persist for reconfiguration
     WGPUSurfaceConfiguration config = {};
 
     // Window state
@@ -1025,7 +1026,14 @@ int main(int argc, char** argv) {
 
     wgpuSurfaceCapabilitiesFreeMembers(capabilities);
 
+    // Limit in-flight frames to prevent memory accumulation (Apple Metal best practice)
+    // Setting desiredMaximumFrameLatency to 2 limits CPU to at most 2 frames ahead of GPU
+    WGPUSurfaceConfigurationExtras configExtras = {};
+    configExtras.chain.sType = static_cast<WGPUSType>(WGPUSType_SurfaceConfigurationExtras);
+    configExtras.desiredMaximumFrameLatency = 2;
+
     WGPUSurfaceConfiguration config = {};
+    config.nextInChain = &configExtras.chain;
     config.device = device;
     config.format = surfaceFormat;
     config.width = static_cast<uint32_t>(width);
@@ -1313,7 +1321,10 @@ int main(int argc, char** argv) {
     mlc.device = device;
     mlc.queue = queue;
     mlc.surfaceFormat = surfaceFormat;
+    mlc.configExtras = configExtras;
     mlc.config = config;
+    // Re-link the chain since we copied to new memory location
+    mlc.config.nextInChain = &mlc.configExtras.chain;
 
     // Window state
     mlc.window = window;

@@ -34,6 +34,11 @@ void update(Context& ctx) {
     if (ctx.key(GLFW_KEY_F).pressed) {
         ctx.fullscreen(!ctx.fullscreen());
     }
+
+    // Debug value monitoring - visible in the debug panel (D key)
+    ctx.debug("time", ctx.time());
+    ctx.debug("frame", ctx.frame());
+    ctx.debug("fps", 1.0f / ctx.dt());
 }
 
 VIVID_CHAIN(setup, update)

@@ -114,4 +114,4 @@ VIVID_CHAIN(setup, update)
 
 - `docs/LLM-REFERENCE.md` - Compact operator reference (optimized for LLM context)
 - `docs/RECIPES.md` - Complete chain.cpp examples
-- `ROADMAP.md` - Architecture decisions and development history
+- `docs/ROADMAP.md` - Architecture decisions and development history

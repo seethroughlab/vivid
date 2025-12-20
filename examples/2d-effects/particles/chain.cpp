@@ -85,6 +85,13 @@ void update(Context& ctx) {
     float ringX = 0.5f + 0.12f * std::cos(time * 0.8f);
     float ringY = 0.5f + 0.12f * std::sin(time * 0.8f);
     chain.get<Particles>("ring").position(ringX, ringY);
+
+    // Debug value monitoring - visible in the debug panel (D key)
+    ctx.debug("fire.x", fireX);
+    ctx.debug("fire.y", fireY);
+    ctx.debug("fountain.rate", rate);
+    ctx.debug("ring.x", ringX);
+    ctx.debug("ring.y", ringY);
 }
 
 VIVID_CHAIN(setup, update)

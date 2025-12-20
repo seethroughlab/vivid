@@ -65,7 +65,14 @@ void update(Context& ctx) {
 
     // Animate ramp hue offset
     auto& ramp = chain.get<Ramp>("ramp");
-    ramp.hueOffset = std::fmod(time * 0.05f, 1.0f);
+    float hueOffset = std::fmod(time * 0.05f, 1.0f);
+    ramp.hueOffset = hueOffset;
+
+    // Debug value monitoring - visible in the debug panel (D key)
+    // These values show as live graphs, useful for tuning parameters
+    ctx.debug("rotation", rotation);
+    ctx.debug("decay", decay);
+    ctx.debug("hue", hueOffset);
 }
 
 VIVID_CHAIN(setup, update)
