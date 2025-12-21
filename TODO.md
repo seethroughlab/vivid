@@ -228,14 +228,13 @@
     - Extracted debug geometry to debug_geometry.h (~130 lines)
     - Created external .wgsl shader files with AssetLoader loading
     - Reduced from 4782 to 4541 lines
-[ ] DEFERRED: Extract shadow system from renderer.cpp to shadow_manager.h/cpp (~600 lines)
+[X] DEFERRED: Extract shadow system from renderer.cpp to shadow_manager.h/cpp (~600 lines)
     - Tightly integrated with main render pass (bind groups, textures)
     - Point shadows use 6 separate textures (wgpu workaround)
     - Requires careful interface design
 [x] DEFERRED: Split renderer.cpp createPipeline() into helper methods
     - Pipelines share resources (bind group layouts, uniform buffers)
     - Internal reorganization for readability
+[x] TouchDesigner has 1 renderer and many materials (Phong, PBR, constant, etc). But we have many different renderers. Why is that? How can we simplify our system to make it easier for users?
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle
-[ ] TouchDesigner has 1 renderer and many materials (Phong, PBR, constant, etc). But we have many different renderers. Why is that? How can we simplify our system to make it easier for users?
-

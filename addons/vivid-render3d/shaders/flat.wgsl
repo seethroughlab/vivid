@@ -45,13 +45,10 @@ struct ShadowUniforms {
 @group(1) @binding(0) var<uniform> shadow: ShadowUniforms;
 @group(1) @binding(1) var shadowMap: texture_depth_2d;
 @group(1) @binding(2) var shadowSampler: sampler_comparison;
-@group(1) @binding(3) var pointShadowFace0: texture_2d<f32>;
-@group(1) @binding(4) var pointShadowFace1: texture_2d<f32>;
-@group(1) @binding(5) var pointShadowFace2: texture_2d<f32>;
-@group(1) @binding(6) var pointShadowFace3: texture_2d<f32>;
-@group(1) @binding(7) var pointShadowFace4: texture_2d<f32>;
-@group(1) @binding(8) var pointShadowFace5: texture_2d<f32>;
-@group(1) @binding(9) var pointShadowSampler: sampler;
+// Point shadow uses 3x2 atlas texture
+// Layout: +X(0,0), -X(1,0), +Y(2,0), -Y(0,1), +Z(1,1), -Z(2,1)
+@group(1) @binding(3) var pointShadowAtlas: texture_2d<f32>;
+@group(1) @binding(4) var pointShadowSampler: sampler;
 
 struct VertexInput {
     @location(0) position: vec3f,
@@ -114,19 +111,18 @@ fn samplePointShadow(worldPos: vec3f) -> f32 {
         if (lightToFrag.z > 0.0) { faceIndex = 4; u = lightToFrag.x; v = -lightToFrag.y; }
         else { faceIndex = 5; u = -lightToFrag.x; v = -lightToFrag.y; }
     }
+    // Convert to [0,1] UV within the face
     let texU = (u / ma) * 0.5 + 0.5;
     let texV = 0.5 - (v / ma) * 0.5;
-    let texCoord = vec2f(texU, texV);
-    var sampledDepth: f32;
-    switch (faceIndex) {
-        case 0: { sampledDepth = textureSample(pointShadowFace0, pointShadowSampler, texCoord).r; }
-        case 1: { sampledDepth = textureSample(pointShadowFace1, pointShadowSampler, texCoord).r; }
-        case 2: { sampledDepth = textureSample(pointShadowFace2, pointShadowSampler, texCoord).r; }
-        case 3: { sampledDepth = textureSample(pointShadowFace3, pointShadowSampler, texCoord).r; }
-        case 4: { sampledDepth = textureSample(pointShadowFace4, pointShadowSampler, texCoord).r; }
-        case 5: { sampledDepth = textureSample(pointShadowFace5, pointShadowSampler, texCoord).r; }
-        default: { sampledDepth = 1.0; }
-    }
+    let faceUV = vec2f(texU, texV);
+
+    // Calculate atlas UV based on face index
+    // Layout: +X(0,0), -X(1,0), +Y(2,0), -Y(0,1), +Z(1,1), -Z(2,1)
+    let col = f32(faceIndex % 3);
+    let row = f32(faceIndex / 3);
+    let atlasUV = (faceUV + vec2f(col, row)) / vec2f(3.0, 2.0);
+
+    let sampledDepth = textureSample(pointShadowAtlas, pointShadowSampler, atlasUV).r;
     let normalizedFragDist = fragDist / shadow.pointLightPosAndRange.w;
     if (normalizedFragDist - shadow.shadowBias > sampledDepth) { return 0.0; }
     return 1.0;

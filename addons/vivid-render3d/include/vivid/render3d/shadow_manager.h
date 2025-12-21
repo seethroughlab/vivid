@@ -129,8 +129,8 @@ public:
     /// Get shadow sampler
     WGPUSampler getShadowSampler() const { return m_shadowSampler; }
 
-    /// Get point shadow face texture views (6 views)
-    WGPUTextureView const* getPointShadowFaceViews() const { return m_pointShadowFaceViews; }
+    /// Get point shadow atlas texture view
+    WGPUTextureView getPointShadowAtlasView() const { return m_pointShadowAtlasView; }
 
     /// Get point shadow sampler
     WGPUSampler getPointShadowSampler() const { return m_pointShadowSampler; }
@@ -165,8 +165,8 @@ public:
     /// Get dummy shadow texture view (1x1 white texture)
     WGPUTextureView getDummyShadowView() const { return m_dummyShadowView; }
 
-    /// Get dummy point shadow texture views
-    WGPUTextureView const* getDummyPointShadowViews() const { return m_dummyPointShadowViews; }
+    /// Get dummy point shadow atlas view
+    WGPUTextureView getDummyPointShadowAtlasView() const { return m_dummyPointShadowAtlasView; }
 
     /// @}
 
@@ -194,10 +194,11 @@ private:
     WGPUBuffer m_shadowSampleUniformBuffer = nullptr;  // For main pass shadow sampling
     glm::mat4 m_lightViewProj = glm::mat4(1.0f);
 
-    // Point light shadow resources (6 separate 2D textures)
-    // Workaround for wgpu array layer bug: https://github.com/gfx-rs/wgpu/issues/1690
-    WGPUTexture m_pointShadowFaceTextures[6] = {};
-    WGPUTextureView m_pointShadowFaceViews[6] = {};
+    // Point light shadow resources (single 3x2 atlas texture)
+    // Layout: 3 columns x 2 rows, each cell is shadowMapResolution x shadowMapResolution
+    // Face order: +X(0,0), -X(1,0), +Y(2,0), -Y(0,1), +Z(1,1), -Z(2,1)
+    WGPUTexture m_pointShadowAtlas = nullptr;
+    WGPUTextureView m_pointShadowAtlasView = nullptr;
     WGPUTexture m_pointShadowDepthTexture = nullptr;
     WGPUTextureView m_pointShadowDepthView = nullptr;
     WGPURenderPipeline m_pointShadowPipeline = nullptr;
@@ -213,8 +214,8 @@ private:
     // Dummy resources (for when shadows are disabled)
     WGPUTexture m_dummyShadowTexture = nullptr;
     WGPUTextureView m_dummyShadowView = nullptr;
-    WGPUTexture m_dummyPointShadowTextures[6] = {};
-    WGPUTextureView m_dummyPointShadowViews[6] = {};
+    WGPUTexture m_dummyPointShadowAtlas = nullptr;
+    WGPUTextureView m_dummyPointShadowAtlasView = nullptr;
 };
 
 } // namespace vivid::render3d

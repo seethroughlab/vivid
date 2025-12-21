@@ -141,24 +141,24 @@ void ShadowManager::initializeBaseResources(Context& ctx) {
     dummyViewDesc.arrayLayerCount = 1;
     m_dummyShadowView = wgpuTextureCreateView(m_dummyShadowTexture, &dummyViewDesc);
 
-    // Create 6 dummy 1x1 R32Float textures for when point shadows are disabled
-    for (int i = 0; i < 6; i++) {
-        WGPUTextureDescriptor dummyPointDepthDesc = {};
-        dummyPointDepthDesc.label = toStringView("Dummy Point Shadow Face");
-        dummyPointDepthDesc.size = {1, 1, 1};
-        dummyPointDepthDesc.mipLevelCount = 1;
-        dummyPointDepthDesc.sampleCount = 1;
-        dummyPointDepthDesc.dimension = WGPUTextureDimension_2D;
-        dummyPointDepthDesc.format = WGPUTextureFormat_R32Float;
-        dummyPointDepthDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
-        m_dummyPointShadowTextures[i] = wgpuDeviceCreateTexture(device, &dummyPointDepthDesc);
+    // Create dummy 3x2 atlas R32Float texture for when point shadows are disabled
+    {
+        WGPUTextureDescriptor dummyPointAtlasDesc = {};
+        dummyPointAtlasDesc.label = toStringView("Dummy Point Shadow Atlas");
+        dummyPointAtlasDesc.size = {3, 2, 1};  // Minimal 3x2 atlas
+        dummyPointAtlasDesc.mipLevelCount = 1;
+        dummyPointAtlasDesc.sampleCount = 1;
+        dummyPointAtlasDesc.dimension = WGPUTextureDimension_2D;
+        dummyPointAtlasDesc.format = WGPUTextureFormat_R32Float;
+        dummyPointAtlasDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_RenderAttachment;
+        m_dummyPointShadowAtlas = wgpuDeviceCreateTexture(device, &dummyPointAtlasDesc);
 
         WGPUTextureViewDescriptor dummyPointViewDesc = {};
         dummyPointViewDesc.format = WGPUTextureFormat_R32Float;
         dummyPointViewDesc.dimension = WGPUTextureViewDimension_2D;
         dummyPointViewDesc.mipLevelCount = 1;
         dummyPointViewDesc.arrayLayerCount = 1;
-        m_dummyPointShadowViews[i] = wgpuTextureCreateView(m_dummyPointShadowTextures[i], &dummyPointViewDesc);
+        m_dummyPointShadowAtlasView = wgpuTextureCreateView(m_dummyPointShadowAtlas, &dummyPointViewDesc);
     }
 
     // Create comparison sampler for shadow mapping (for 2D directional/spot shadows)
@@ -184,8 +184,8 @@ void ShadowManager::initializeBaseResources(Context& ctx) {
     pointShadowSamplerDesc.maxAnisotropy = 1;
     m_pointShadowSampler = wgpuDeviceCreateSampler(device, &pointShadowSamplerDesc);
 
-    // Create shadow sample bind group layout (10 bindings)
-    WGPUBindGroupLayoutEntry shadowSampleLayoutEntries[10] = {};
+    // Create shadow sample bind group layout (5 bindings)
+    WGPUBindGroupLayoutEntry shadowSampleLayoutEntries[5] = {};
 
     // Binding 0: Shadow sample uniforms
     shadowSampleLayoutEntries[0].binding = 0;
@@ -193,7 +193,7 @@ void ShadowManager::initializeBaseResources(Context& ctx) {
     shadowSampleLayoutEntries[0].buffer.type = WGPUBufferBindingType_Uniform;
     shadowSampleLayoutEntries[0].buffer.minBindingSize = 96;
 
-    // Binding 1: Shadow map texture (depth comparison)
+    // Binding 1: Shadow map texture (depth comparison for directional/spot)
     shadowSampleLayoutEntries[1].binding = 1;
     shadowSampleLayoutEntries[1].visibility = WGPUShaderStage_Fragment;
     shadowSampleLayoutEntries[1].texture.sampleType = WGPUTextureSampleType_Depth;
@@ -204,21 +204,19 @@ void ShadowManager::initializeBaseResources(Context& ctx) {
     shadowSampleLayoutEntries[2].visibility = WGPUShaderStage_Fragment;
     shadowSampleLayoutEntries[2].sampler.type = WGPUSamplerBindingType_Comparison;
 
-    // Bindings 3-8: Point shadow face textures (6 separate 2D textures)
-    for (int i = 0; i < 6; i++) {
-        shadowSampleLayoutEntries[3 + i].binding = 3 + i;
-        shadowSampleLayoutEntries[3 + i].visibility = WGPUShaderStage_Fragment;
-        shadowSampleLayoutEntries[3 + i].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
-        shadowSampleLayoutEntries[3 + i].texture.viewDimension = WGPUTextureViewDimension_2D;
-    }
+    // Binding 3: Point shadow atlas texture (single 3x2 atlas)
+    shadowSampleLayoutEntries[3].binding = 3;
+    shadowSampleLayoutEntries[3].visibility = WGPUShaderStage_Fragment;
+    shadowSampleLayoutEntries[3].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+    shadowSampleLayoutEntries[3].texture.viewDimension = WGPUTextureViewDimension_2D;
 
-    // Binding 9: Point shadow sampler (regular sampler, manual comparison)
-    shadowSampleLayoutEntries[9].binding = 9;
-    shadowSampleLayoutEntries[9].visibility = WGPUShaderStage_Fragment;
-    shadowSampleLayoutEntries[9].sampler.type = WGPUSamplerBindingType_NonFiltering;
+    // Binding 4: Point shadow sampler (regular sampler, manual comparison)
+    shadowSampleLayoutEntries[4].binding = 4;
+    shadowSampleLayoutEntries[4].visibility = WGPUShaderStage_Fragment;
+    shadowSampleLayoutEntries[4].sampler.type = WGPUSamplerBindingType_NonFiltering;
 
     WGPUBindGroupLayoutDescriptor shadowSampleLayoutDesc = {};
-    shadowSampleLayoutDesc.entryCount = 10;
+    shadowSampleLayoutDesc.entryCount = 5;
     shadowSampleLayoutDesc.entries = shadowSampleLayoutEntries;
     m_shadowSampleBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &shadowSampleLayoutDesc);
 
@@ -244,7 +242,7 @@ void ShadowManager::initializeBaseResources(Context& ctx) {
     wgpuQueueWriteBuffer(ctx.queue(), m_shadowSampleUniformBuffer, 0, &defaultShadowUniforms, sizeof(defaultShadowUniforms));
 
     // Create default (disabled) shadow sample bind group
-    WGPUBindGroupEntry shadowSampleBindEntries[10] = {};
+    WGPUBindGroupEntry shadowSampleBindEntries[5] = {};
     shadowSampleBindEntries[0].binding = 0;
     shadowSampleBindEntries[0].buffer = m_shadowSampleUniformBuffer;
     shadowSampleBindEntries[0].size = 96;
@@ -255,17 +253,15 @@ void ShadowManager::initializeBaseResources(Context& ctx) {
     shadowSampleBindEntries[2].binding = 2;
     shadowSampleBindEntries[2].sampler = m_shadowSampler;
 
-    for (int i = 0; i < 6; i++) {
-        shadowSampleBindEntries[3 + i].binding = 3 + i;
-        shadowSampleBindEntries[3 + i].textureView = m_dummyPointShadowViews[i];
-    }
+    shadowSampleBindEntries[3].binding = 3;
+    shadowSampleBindEntries[3].textureView = m_dummyPointShadowAtlasView;
 
-    shadowSampleBindEntries[9].binding = 9;
-    shadowSampleBindEntries[9].sampler = m_pointShadowSampler;
+    shadowSampleBindEntries[4].binding = 4;
+    shadowSampleBindEntries[4].sampler = m_pointShadowSampler;
 
     WGPUBindGroupDescriptor shadowSampleBindDesc = {};
     shadowSampleBindDesc.layout = m_shadowSampleBindGroupLayout;
-    shadowSampleBindDesc.entryCount = 10;
+    shadowSampleBindDesc.entryCount = 5;
     shadowSampleBindDesc.entries = shadowSampleBindEntries;
     m_shadowSampleBindGroup = wgpuDeviceCreateBindGroup(device, &shadowSampleBindDesc);
 
@@ -414,47 +410,40 @@ void ShadowManager::createShadowResources(Context& ctx) {
 }
 
 void ShadowManager::createPointShadowResources(Context& ctx) {
-    if (m_pointShadowFaceTextures[0]) return;  // Already created
+    if (m_pointShadowAtlas) return;  // Already created
 
     WGPUDevice device = ctx.device();
 
-    // WORKAROUND: Use 6 separate 2D textures instead of a 6-layer array texture
-    // See: https://github.com/gfx-rs/wgpu/issues/1690
-    static const char* faceNames[6] = {
-        "Point Shadow +X", "Point Shadow -X",
-        "Point Shadow +Y", "Point Shadow -Y",
-        "Point Shadow +Z", "Point Shadow -Z"
-    };
+    // Create single 3x2 atlas texture for all 6 cube faces
+    // Layout: 3 columns x 2 rows, each cell is m_shadowMapResolution x m_shadowMapResolution
+    // Face order: +X(0,0), -X(1,0), +Y(2,0), -Y(0,1), +Z(1,1), -Z(2,1)
+    WGPUTextureDescriptor atlasDesc = {};
+    atlasDesc.label = toStringView("Point Shadow Atlas");
+    atlasDesc.size.width = m_shadowMapResolution * 3;
+    atlasDesc.size.height = m_shadowMapResolution * 2;
+    atlasDesc.size.depthOrArrayLayers = 1;
+    atlasDesc.mipLevelCount = 1;
+    atlasDesc.sampleCount = 1;
+    atlasDesc.dimension = WGPUTextureDimension_2D;
+    atlasDesc.format = WGPUTextureFormat_R32Float;  // Linear depth storage
+    atlasDesc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
 
-    for (int i = 0; i < 6; i++) {
-        WGPUTextureDescriptor texDesc = {};
-        texDesc.label = toStringView(faceNames[i]);
-        texDesc.size.width = m_shadowMapResolution;
-        texDesc.size.height = m_shadowMapResolution;
-        texDesc.size.depthOrArrayLayers = 1;
-        texDesc.mipLevelCount = 1;
-        texDesc.sampleCount = 1;
-        texDesc.dimension = WGPUTextureDimension_2D;
-        texDesc.format = WGPUTextureFormat_R32Float;  // Linear depth storage
-        texDesc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+    m_pointShadowAtlas = wgpuDeviceCreateTexture(device, &atlasDesc);
 
-        m_pointShadowFaceTextures[i] = wgpuDeviceCreateTexture(device, &texDesc);
+    WGPUTextureViewDescriptor viewDesc = {};
+    viewDesc.format = WGPUTextureFormat_R32Float;
+    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.baseMipLevel = 0;
+    viewDesc.mipLevelCount = 1;
+    viewDesc.baseArrayLayer = 0;
+    viewDesc.arrayLayerCount = 1;
+    m_pointShadowAtlasView = wgpuTextureCreateView(m_pointShadowAtlas, &viewDesc);
 
-        WGPUTextureViewDescriptor viewDesc = {};
-        viewDesc.format = WGPUTextureFormat_R32Float;
-        viewDesc.dimension = WGPUTextureViewDimension_2D;
-        viewDesc.baseMipLevel = 0;
-        viewDesc.mipLevelCount = 1;
-        viewDesc.baseArrayLayer = 0;
-        viewDesc.arrayLayerCount = 1;
-        m_pointShadowFaceViews[i] = wgpuTextureCreateView(m_pointShadowFaceTextures[i], &viewDesc);
-    }
-
-    // Create shared depth buffer for point shadow rendering
+    // Create shared depth buffer for point shadow rendering (must match atlas size)
     WGPUTextureDescriptor depthTexDesc = {};
     depthTexDesc.label = toStringView("Point Shadow Depth Buffer");
-    depthTexDesc.size.width = m_shadowMapResolution;
-    depthTexDesc.size.height = m_shadowMapResolution;
+    depthTexDesc.size.width = m_shadowMapResolution * 3;   // Match atlas width
+    depthTexDesc.size.height = m_shadowMapResolution * 2;  // Match atlas height
     depthTexDesc.size.depthOrArrayLayers = 1;
     depthTexDesc.mipLevelCount = 1;
     depthTexDesc.sampleCount = 1;
@@ -662,17 +651,15 @@ void ShadowManager::destroyShadowResources() {
         m_pointShadowSampler = nullptr;
     }
 
-    // 6 separate point shadow textures
-    for (int i = 0; i < 6; i++) {
-        if (m_pointShadowFaceViews[i]) {
-            wgpuTextureViewRelease(m_pointShadowFaceViews[i]);
-            m_pointShadowFaceViews[i] = nullptr;
-        }
-        if (m_pointShadowFaceTextures[i]) {
-            wgpuTextureDestroy(m_pointShadowFaceTextures[i]);
-            wgpuTextureRelease(m_pointShadowFaceTextures[i]);
-            m_pointShadowFaceTextures[i] = nullptr;
-        }
+    // Point shadow atlas texture
+    if (m_pointShadowAtlasView) {
+        wgpuTextureViewRelease(m_pointShadowAtlasView);
+        m_pointShadowAtlasView = nullptr;
+    }
+    if (m_pointShadowAtlas) {
+        wgpuTextureDestroy(m_pointShadowAtlas);
+        wgpuTextureRelease(m_pointShadowAtlas);
+        m_pointShadowAtlas = nullptr;
     }
 
     if (m_pointShadowDepthView) {
@@ -693,17 +680,15 @@ void ShadowManager::destroyShadowResources() {
         m_pointShadowUniformBuffer = nullptr;
     }
 
-    // Dummy point shadow textures
-    for (int i = 0; i < 6; i++) {
-        if (m_dummyPointShadowViews[i]) {
-            wgpuTextureViewRelease(m_dummyPointShadowViews[i]);
-            m_dummyPointShadowViews[i] = nullptr;
-        }
-        if (m_dummyPointShadowTextures[i]) {
-            wgpuTextureDestroy(m_dummyPointShadowTextures[i]);
-            wgpuTextureRelease(m_dummyPointShadowTextures[i]);
-            m_dummyPointShadowTextures[i] = nullptr;
-        }
+    // Dummy point shadow atlas
+    if (m_dummyPointShadowAtlasView) {
+        wgpuTextureViewRelease(m_dummyPointShadowAtlasView);
+        m_dummyPointShadowAtlasView = nullptr;
+    }
+    if (m_dummyPointShadowAtlas) {
+        wgpuTextureDestroy(m_dummyPointShadowAtlas);
+        wgpuTextureRelease(m_dummyPointShadowAtlas);
+        m_dummyPointShadowAtlas = nullptr;
     }
 
     // Shadow sample uniform buffer (for main pass)
@@ -834,16 +819,24 @@ bool ShadowManager::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encod
             wgpuQueueWriteBuffer(ctx.queue(), m_pointShadowUniformBuffer, offset, &uniforms, sizeof(uniforms));
         }
 
-        if (!m_pointShadowFaceViews[face]) {
-            std::cerr << "[ShadowManager] ERROR: Face " << face << " texture view is null!" << std::endl;
+        if (!m_pointShadowAtlasView) {
+            std::cerr << "[ShadowManager] ERROR: Point shadow atlas view is null!" << std::endl;
             continue;
         }
 
-        // Color attachment (R32Float for linear depth)
+        // Calculate viewport offset for this face in the 3x2 atlas
+        // Layout: +X(0,0), -X(1,0), +Y(2,0), -Y(0,1), +Z(1,1), -Z(2,1)
+        int col = face % 3;
+        int row = face / 3;
+        float viewportX = static_cast<float>(col * m_shadowMapResolution);
+        float viewportY = static_cast<float>(row * m_shadowMapResolution);
+
+        // Color attachment (R32Float for linear depth) - render to atlas
         WGPURenderPassColorAttachment colorAttachment = {};
-        colorAttachment.view = m_pointShadowFaceViews[face];
+        colorAttachment.view = m_pointShadowAtlasView;
         colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
-        colorAttachment.loadOp = WGPULoadOp_Clear;
+        // Only clear on first face, otherwise load existing
+        colorAttachment.loadOp = (face == 0) ? WGPULoadOp_Clear : WGPULoadOp_Load;
         colorAttachment.storeOp = WGPUStoreOp_Store;
         colorAttachment.clearValue = {1.0f, 0.0f, 0.0f, 1.0f};
 
@@ -866,11 +859,13 @@ bool ShadowManager::renderPointShadowPass(Context& ctx, WGPUCommandEncoder encod
         }
         wgpuRenderPassEncoderSetPipeline(pass, m_pointShadowPipeline);
 
-        wgpuRenderPassEncoderSetViewport(pass, 0, 0,
+        // Set viewport to this face's region in the atlas
+        wgpuRenderPassEncoderSetViewport(pass, viewportX, viewportY,
                                          static_cast<float>(m_shadowMapResolution),
                                          static_cast<float>(m_shadowMapResolution),
                                          0.0f, 1.0f);
-        wgpuRenderPassEncoderSetScissorRect(pass, 0, 0, m_shadowMapResolution, m_shadowMapResolution);
+        wgpuRenderPassEncoderSetScissorRect(pass, col * m_shadowMapResolution, row * m_shadowMapResolution,
+                                            m_shadowMapResolution, m_shadowMapResolution);
 
         // Render each object
         for (size_t i = 0; i < objects.size(); i++) {
@@ -911,7 +906,7 @@ void ShadowManager::updateShadowBindGroup(WGPUDevice device, bool hasDirShadow, 
     }
 
     // Create bind group entries
-    WGPUBindGroupEntry entries[10] = {};
+    WGPUBindGroupEntry entries[5] = {};
 
     // Binding 0: Shadow sample uniform buffer
     entries[0].binding = 0;
@@ -926,20 +921,18 @@ void ShadowManager::updateShadowBindGroup(WGPUDevice device, bool hasDirShadow, 
     entries[2].binding = 2;
     entries[2].sampler = m_shadowSampler;
 
-    // Bindings 3-8: Point shadow face textures
-    for (int i = 0; i < 6; i++) {
-        entries[3 + i].binding = 3 + i;
-        entries[3 + i].textureView = hasPointShadow ? m_pointShadowFaceViews[i] : m_dummyPointShadowViews[i];
-    }
+    // Binding 3: Point shadow atlas texture
+    entries[3].binding = 3;
+    entries[3].textureView = hasPointShadow ? m_pointShadowAtlasView : m_dummyPointShadowAtlasView;
 
-    // Binding 9: Point shadow sampler
-    entries[9].binding = 9;
-    entries[9].sampler = m_pointShadowSampler;
+    // Binding 4: Point shadow sampler
+    entries[4].binding = 4;
+    entries[4].sampler = m_pointShadowSampler;
 
     // Create bind group
     WGPUBindGroupDescriptor desc = {};
     desc.layout = m_shadowSampleBindGroupLayout;
-    desc.entryCount = 10;
+    desc.entryCount = 5;
     desc.entries = entries;
     m_shadowSampleBindGroup = wgpuDeviceCreateBindGroup(device, &desc);
 
