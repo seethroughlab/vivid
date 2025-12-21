@@ -122,6 +122,7 @@ public:
     void init(Context& ctx) override;
     void process(Context& ctx) override;
     void cleanup() override;
+    bool drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) override;
 
     /// @}
 

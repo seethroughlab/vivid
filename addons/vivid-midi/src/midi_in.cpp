@@ -1,6 +1,7 @@
 #include <vivid/midi/midi_in.h>
 #include <vivid/context.h>
 #include <RtMidi.h>
+#include <imgui.h>
 #include <iostream>
 #include <algorithm>
 
@@ -301,6 +302,56 @@ void MidiIn::processMessage(const std::vector<unsigned char>& message) {
             }
             break;
     }
+}
+
+bool MidiIn::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    float w = maxX - minX;
+    float h = maxY - minY;
+    float cx = minX + w * 0.5f;
+    float cy = minY + h * 0.5f;
+    float r = std::min(w, h) * 0.35f;
+
+    // Background circle
+    bool open = isOpen();
+    ImU32 bgColor = open ? IM_COL32(60, 30, 60, 255) : IM_COL32(60, 30, 30, 255);
+    dl->AddCircleFilled(ImVec2(cx, cy), r, bgColor);
+    dl->AddCircle(ImVec2(cx, cy), r, IM_COL32(100, 100, 100, 255), 32, 2.0f);
+
+    // MIDI IN indicator
+    ImU32 textColor = m_hasNoteOn ? IM_COL32(255, 100, 255, 255) : IM_COL32(180, 180, 180, 255);
+
+    const char* label = "IN";
+    ImVec2 textSize = ImGui::CalcTextSize(label);
+    dl->AddText(ImVec2(cx - textSize.x * 0.5f, cy - textSize.y * 0.5f - r * 0.15f), textColor, label);
+
+    // MIDI connector icon (5-pin DIN shape)
+    float iconY = cy + r * 0.15f;
+    float iconR = r * 0.25f;
+    dl->AddCircle(ImVec2(cx, iconY), iconR, open ? IM_COL32(200, 100, 200, 255) : IM_COL32(150, 150, 150, 255), 16, 2.0f);
+
+    // 5 small dots for pins
+    for (int i = 0; i < 5; ++i) {
+        float angle = (float)(i - 2) * 0.5f;  // Spread around center
+        float px = cx + std::sin(angle) * iconR * 0.6f;
+        float py = iconY + std::cos(angle) * iconR * 0.4f;
+        dl->AddCircleFilled(ImVec2(px, py), 1.5f, open ? IM_COL32(200, 100, 200, 255) : IM_COL32(150, 150, 150, 255));
+    }
+
+    // Activity indicator dot
+    if (m_hasNoteOn) {
+        float dotR = r * 0.15f;
+        dl->AddCircleFilled(ImVec2(cx + r * 0.6f, cy - r * 0.6f), dotR, IM_COL32(255, 100, 255, 255));
+    }
+
+    // Show last note if available
+    if (m_hasNoteOn) {
+        char noteStr[16];
+        snprintf(noteStr, sizeof(noteStr), "%d", m_lastNote);
+        ImVec2 noteSize = ImGui::CalcTextSize(noteStr);
+        dl->AddText(ImVec2(cx - noteSize.x * 0.5f, maxY - noteSize.y - 2), IM_COL32(255, 100, 255, 200), noteStr);
+    }
+
+    return true;
 }
 
 } // namespace vivid::midi

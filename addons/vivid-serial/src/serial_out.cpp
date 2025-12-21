@@ -1,5 +1,6 @@
 #include <vivid/serial/serial_out.h>
 #include <vivid/operator_registry.h>
+#include <imgui.h>
 #include <sstream>
 #include <iomanip>
 #include <iostream>
@@ -105,6 +106,34 @@ void SerialOut::sendCSV(const std::vector<float>& values) {
         ss << values[i];
     }
     sendLine(ss.str());
+}
+
+bool SerialOut::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    float w = maxX - minX;
+    float h = maxY - minY;
+    float cx = minX + w * 0.5f;
+    float cy = minY + h * 0.5f;
+    float r = std::min(w, h) * 0.35f;
+
+    // Background circle
+    bool connected = isConnected();
+    ImU32 bgColor = connected ? IM_COL32(30, 30, 80, 255) : IM_COL32(60, 30, 30, 255);
+    dl->AddCircleFilled(ImVec2(cx, cy), r, bgColor);
+    dl->AddCircle(ImVec2(cx, cy), r, IM_COL32(100, 100, 100, 255), 32, 2.0f);
+
+    // TX indicator
+    ImU32 textColor = connected ? IM_COL32(100, 150, 255, 255) : IM_COL32(180, 180, 180, 255);
+
+    const char* label = "TX";
+    ImVec2 textSize = ImGui::CalcTextSize(label);
+    dl->AddText(ImVec2(cx - textSize.x * 0.5f, cy - textSize.y * 0.5f - r * 0.15f), textColor, label);
+
+    // Serial icon (USB plug)
+    float iconY = cy + r * 0.15f;
+    dl->AddRectFilled(ImVec2(cx - r * 0.2f, iconY), ImVec2(cx + r * 0.2f, iconY + r * 0.3f),
+                      connected ? IM_COL32(100, 150, 255, 255) : IM_COL32(150, 150, 150, 255));
+
+    return true;
 }
 
 } // namespace serial

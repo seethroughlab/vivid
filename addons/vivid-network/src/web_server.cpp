@@ -3,6 +3,7 @@
 #include <vivid/chain.h>
 #include <ixwebsocket/IXHttpServer.h>
 #include <ixwebsocket/IXWebSocket.h>
+#include <imgui.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -340,6 +341,49 @@ std::string WebServer::handleApiOperator(const std::string& id,
     }
 
     return "{\"error\":\"Method not supported\"}";
+}
+
+bool WebServer::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    float w = maxX - minX;
+    float h = maxY - minY;
+    float cx = minX + w * 0.5f;
+    float cy = minY + h * 0.5f;
+    float r = std::min(w, h) * 0.35f;
+
+    // Background circle
+    ImU32 bgColor = m_running ? IM_COL32(30, 60, 80, 255) : IM_COL32(60, 30, 30, 255);
+    dl->AddCircleFilled(ImVec2(cx, cy), r, bgColor);
+    dl->AddCircle(ImVec2(cx, cy), r, IM_COL32(100, 100, 100, 255), 32, 2.0f);
+
+    // Web/globe icon using simple lines
+    ImU32 iconColor = m_running ? IM_COL32(100, 200, 255, 255) : IM_COL32(180, 180, 180, 255);
+    float iconR = r * 0.5f;
+
+    // Horizontal lines
+    dl->AddCircle(ImVec2(cx, cy), iconR, iconColor, 24, 1.5f);
+    dl->AddLine(ImVec2(cx - iconR, cy), ImVec2(cx + iconR, cy), iconColor, 1.5f);
+    dl->AddLine(ImVec2(cx - iconR * 0.85f, cy - iconR * 0.5f), ImVec2(cx + iconR * 0.85f, cy - iconR * 0.5f), iconColor, 1.0f);
+    dl->AddLine(ImVec2(cx - iconR * 0.85f, cy + iconR * 0.5f), ImVec2(cx + iconR * 0.85f, cy + iconR * 0.5f), iconColor, 1.0f);
+
+    // Vertical ellipse (simplified)
+    dl->AddLine(ImVec2(cx, cy - iconR), ImVec2(cx, cy + iconR), iconColor, 1.5f);
+
+    // Port number below
+    char portStr[16];
+    snprintf(portStr, sizeof(portStr), ":%d", m_port);
+    ImVec2 portSize = ImGui::CalcTextSize(portStr);
+    dl->AddText(ImVec2(cx - portSize.x * 0.5f, cy + r * 0.6f), IM_COL32(150, 150, 150, 255), portStr);
+
+    // Connection count at bottom
+    size_t clients = connectionCount();
+    if (clients > 0) {
+        char countStr[32];
+        snprintf(countStr, sizeof(countStr), "%zu WS", clients);
+        ImVec2 countSize = ImGui::CalcTextSize(countStr);
+        dl->AddText(ImVec2(cx - countSize.x * 0.5f, maxY - countSize.y - 2), IM_COL32(100, 200, 255, 200), countStr);
+    }
+
+    return true;
 }
 
 } // namespace vivid::network

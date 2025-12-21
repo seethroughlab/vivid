@@ -1,5 +1,6 @@
 #include <vivid/serial/dmx_out.h>
 #include <vivid/operator_registry.h>
+#include <imgui.h>
 #include <iostream>
 #include <cstring>
 
@@ -136,6 +137,52 @@ void DMXOut::sendEnttecFrame() {
 
     // Send the packet
     m_serial->write(packet.data(), packet.size());
+}
+
+bool DMXOut::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    float w = maxX - minX;
+    float h = maxY - minY;
+    float cx = minX + w * 0.5f;
+
+    // Background
+    bool connected = isConnected();
+    ImU32 bgColor = connected ? IM_COL32(40, 30, 60, 255) : IM_COL32(60, 30, 30, 255);
+    dl->AddRectFilled(ImVec2(minX, minY), ImVec2(maxX, maxY), bgColor);
+
+    // DMX label
+    const char* label = "DMX";
+    ImVec2 textSize = ImGui::CalcTextSize(label);
+    ImU32 textColor = connected ? IM_COL32(200, 100, 255, 255) : IM_COL32(150, 150, 150, 255);
+    dl->AddText(ImVec2(cx - textSize.x * 0.5f, minY + 4), textColor, label);
+
+    // Draw mini channel bars (first 16 channels as a preview)
+    float barAreaTop = minY + 20;
+    float barAreaBottom = maxY - 4;
+    float barHeight = barAreaBottom - barAreaTop;
+    float barWidth = w / 18.0f;
+    float startX = minX + barWidth;
+
+    for (int i = 0; i < 16 && i < 512; ++i) {
+        int ch = static_cast<int>(startChannel) - 1 + i;
+        if (ch < 0 || ch >= 512) continue;
+
+        float val = m_dmxBuffer[ch] / 255.0f;
+        float barX = startX + i * barWidth;
+        float filledHeight = barHeight * val;
+
+        // Bar background
+        dl->AddRectFilled(ImVec2(barX, barAreaTop), ImVec2(barX + barWidth * 0.8f, barAreaBottom),
+                          IM_COL32(30, 30, 30, 255));
+
+        // Bar fill
+        if (val > 0) {
+            ImU32 barColor = IM_COL32(100 + static_cast<int>(155 * val), 50, 200, 255);
+            dl->AddRectFilled(ImVec2(barX, barAreaBottom - filledHeight),
+                              ImVec2(barX + barWidth * 0.8f, barAreaBottom), barColor);
+        }
+    }
+
+    return true;
 }
 
 } // namespace serial

@@ -2,7 +2,9 @@
 #include <vivid/context.h>
 #include <vivid/audio/clock.h>
 #include <MidiFile.h>
+#include <imgui.h>
 #include <iostream>
+#include <cmath>
 
 namespace vivid::midi {
 
@@ -278,6 +280,67 @@ void MidiFilePlayer::cleanup() {
 void MidiFilePlayer::clearFrameState() {
     m_frameEvents.clear();
     m_hasNoteOn = false;
+}
+
+bool MidiFilePlayer::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    float w = maxX - minX;
+    float h = maxY - minY;
+    float cx = minX + w * 0.5f;
+
+    // Background
+    bool loaded = isLoaded();
+    bool playing = isPlaying();
+    ImU32 bgColor = loaded ? (playing ? IM_COL32(40, 50, 40, 255) : IM_COL32(40, 40, 50, 255)) : IM_COL32(60, 30, 30, 255);
+    dl->AddRectFilled(ImVec2(minX, minY), ImVec2(maxX, maxY), bgColor);
+
+    // File label
+    const char* label = "MIDI";
+    ImVec2 textSize = ImGui::CalcTextSize(label);
+    ImU32 textColor = loaded ? IM_COL32(150, 200, 150, 255) : IM_COL32(150, 150, 150, 255);
+    dl->AddText(ImVec2(cx - textSize.x * 0.5f, minY + 4), textColor, label);
+
+    // Progress bar
+    if (loaded && m_impl->m_duration > 0) {
+        float barY = minY + 20;
+        float barHeight = 6;
+        float progress = static_cast<float>(position() / m_impl->m_duration);
+
+        // Bar background
+        dl->AddRectFilled(ImVec2(minX + 4, barY), ImVec2(maxX - 4, barY + barHeight), IM_COL32(30, 30, 30, 255));
+
+        // Progress fill
+        float fillWidth = (w - 8) * progress;
+        ImU32 fillColor = playing ? IM_COL32(100, 200, 100, 255) : IM_COL32(100, 150, 200, 255);
+        dl->AddRectFilled(ImVec2(minX + 4, barY), ImVec2(minX + 4 + fillWidth, barY + barHeight), fillColor);
+    }
+
+    // Play/pause indicator
+    float iconY = minY + h * 0.5f + 5;
+    float iconSize = std::min(w, h) * 0.15f;
+    ImU32 iconColor = loaded ? IM_COL32(200, 200, 200, 255) : IM_COL32(100, 100, 100, 255);
+
+    if (playing) {
+        // Pause icon (two vertical bars)
+        dl->AddRectFilled(ImVec2(cx - iconSize * 0.6f, iconY - iconSize * 0.5f),
+                          ImVec2(cx - iconSize * 0.2f, iconY + iconSize * 0.5f), iconColor);
+        dl->AddRectFilled(ImVec2(cx + iconSize * 0.2f, iconY - iconSize * 0.5f),
+                          ImVec2(cx + iconSize * 0.6f, iconY + iconSize * 0.5f), iconColor);
+    } else {
+        // Play icon (triangle)
+        dl->AddTriangleFilled(
+            ImVec2(cx - iconSize * 0.4f, iconY - iconSize * 0.5f),
+            ImVec2(cx - iconSize * 0.4f, iconY + iconSize * 0.5f),
+            ImVec2(cx + iconSize * 0.6f, iconY),
+            iconColor);
+    }
+
+    // Note activity indicator
+    if (m_hasNoteOn) {
+        float dotR = std::min(w, h) * 0.05f;
+        dl->AddCircleFilled(ImVec2(maxX - dotR - 4, minY + dotR + 4), dotR, IM_COL32(100, 255, 100, 255));
+    }
+
+    return true;
 }
 
 } // namespace vivid::midi

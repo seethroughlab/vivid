@@ -109,6 +109,7 @@ public:
     void cleanup() override;
     std::string name() const override { return "MidiOut"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
+    bool drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) override;
 
     /// @}
 

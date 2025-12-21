@@ -1,4 +1,5 @@
 #include <vivid/network/osc_out.h>
+#include <imgui.h>
 #include <iostream>
 #include <cstring>
 
@@ -231,6 +232,42 @@ void OscOut::destroySocket() {
         closesocket(m_socket);
         m_socket = -1;
     }
+}
+
+bool OscOut::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    float w = maxX - minX;
+    float h = maxY - minY;
+    float cx = minX + w * 0.5f;
+    float cy = minY + h * 0.5f;
+    float r = std::min(w, h) * 0.35f;
+
+    // Background circle
+    ImU32 bgColor = isReady() ? IM_COL32(30, 30, 80, 255) : IM_COL32(60, 30, 30, 255);
+    dl->AddCircleFilled(ImVec2(cx, cy), r, bgColor);
+    dl->AddCircle(ImVec2(cx, cy), r, IM_COL32(100, 100, 100, 255), 32, 2.0f);
+
+    // TX indicator
+    ImU32 textColor = isReady() ? IM_COL32(100, 150, 255, 255) : IM_COL32(180, 180, 180, 255);
+
+    const char* label = "TX";
+    ImVec2 textSize = ImGui::CalcTextSize(label);
+    dl->AddText(ImVec2(cx - textSize.x * 0.5f, cy - textSize.y * 0.5f - r * 0.15f), textColor, label);
+
+    // Port number below
+    char portStr[16];
+    snprintf(portStr, sizeof(portStr), ":%d", m_port);
+    ImVec2 portSize = ImGui::CalcTextSize(portStr);
+    dl->AddText(ImVec2(cx - portSize.x * 0.5f, cy + r * 0.15f), IM_COL32(150, 150, 150, 255), portStr);
+
+    // Messages sent counter at bottom
+    if (m_messagesSent > 0) {
+        char countStr[32];
+        snprintf(countStr, sizeof(countStr), "%zu", m_messagesSent);
+        ImVec2 countSize = ImGui::CalcTextSize(countStr);
+        dl->AddText(ImVec2(cx - countSize.x * 0.5f, maxY - countSize.y - 2), IM_COL32(100, 150, 255, 200), countStr);
+    }
+
+    return true;
 }
 
 } // namespace vivid::network

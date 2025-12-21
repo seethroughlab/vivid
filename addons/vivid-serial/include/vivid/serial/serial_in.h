@@ -26,6 +26,7 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "SerialIn"; }
+    bool drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) override;
 
     // Parameter interface
     std::vector<ParamDecl> params() override;

@@ -1,8 +1,10 @@
 #include <vivid/midi/midi_out.h>
 #include <vivid/context.h>
 #include <RtMidi.h>
+#include <imgui.h>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
 
 namespace vivid::midi {
 
@@ -214,6 +216,42 @@ void MidiOut::sendRaw(const std::vector<unsigned char>& message) {
     } catch (RtMidiError& error) {
         std::cerr << "MidiOut::sendRaw: " << error.getMessage() << std::endl;
     }
+}
+
+bool MidiOut::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    float w = maxX - minX;
+    float h = maxY - minY;
+    float cx = minX + w * 0.5f;
+    float cy = minY + h * 0.5f;
+    float r = std::min(w, h) * 0.35f;
+
+    // Background circle
+    bool open = isOpen();
+    ImU32 bgColor = open ? IM_COL32(30, 60, 60, 255) : IM_COL32(60, 30, 30, 255);
+    dl->AddCircleFilled(ImVec2(cx, cy), r, bgColor);
+    dl->AddCircle(ImVec2(cx, cy), r, IM_COL32(100, 100, 100, 255), 32, 2.0f);
+
+    // MIDI OUT indicator
+    ImU32 textColor = open ? IM_COL32(100, 200, 200, 255) : IM_COL32(180, 180, 180, 255);
+
+    const char* label = "OUT";
+    ImVec2 textSize = ImGui::CalcTextSize(label);
+    dl->AddText(ImVec2(cx - textSize.x * 0.5f, cy - textSize.y * 0.5f - r * 0.15f), textColor, label);
+
+    // MIDI connector icon (5-pin DIN shape)
+    float iconY = cy + r * 0.15f;
+    float iconR = r * 0.25f;
+    dl->AddCircle(ImVec2(cx, iconY), iconR, open ? IM_COL32(100, 200, 200, 255) : IM_COL32(150, 150, 150, 255), 16, 2.0f);
+
+    // 5 small dots for pins
+    for (int i = 0; i < 5; ++i) {
+        float angle = (float)(i - 2) * 0.5f;
+        float px = cx + std::sin(angle) * iconR * 0.6f;
+        float py = iconY + std::cos(angle) * iconR * 0.4f;
+        dl->AddCircleFilled(ImVec2(px, py), 1.5f, open ? IM_COL32(100, 200, 200, 255) : IM_COL32(150, 150, 150, 255));
+    }
+
+    return true;
 }
 
 } // namespace vivid::midi
