@@ -1,0 +1,22 @@
+{
+  "synth": "FMSynth",
+  "name": "Tubular Bell",
+  "category": "Bells",
+  "algorithm": "Pairs",
+  "params": {
+    "ratio1": 1.0,
+    "ratio2": 3.5,
+    "ratio3": 1.0,
+    "ratio4": 7.0,
+    "level1": 0.9,
+    "level2": 0.7,
+    "level3": 0.6,
+    "level4": 0.4,
+    "feedback": 0.0,
+    "volume": 0.5
+  },
+  "envelope1": { "attack": 0.001, "decay": 2.0, "sustain": 0.0, "release": 1.0 },
+  "envelope2": { "attack": 0.001, "decay": 0.5, "sustain": 0.0, "release": 0.3 },
+  "envelope3": { "attack": 0.001, "decay": 3.0, "sustain": 0.0, "release": 1.5 },
+  "envelope4": { "attack": 0.001, "decay": 0.3, "sustain": 0.0, "release": 0.2 }
+}

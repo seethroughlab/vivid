@@ -75,6 +75,9 @@ set(AUDIO_SOURCES
     # Sampling
     src/sample_bank.cpp
     src/sample_player.cpp
+    src/sampler.cpp
+    # Presets
+    src/preset.cpp
 )
 
 add_library(vivid-audio SHARED ${AUDIO_SOURCES})

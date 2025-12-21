@@ -1,0 +1,22 @@
+{
+  "synth": "FMSynth",
+  "name": "Evolving Pad",
+  "category": "Pads",
+  "algorithm": "Branch2",
+  "params": {
+    "ratio1": 1.0,
+    "ratio2": 2.0,
+    "ratio3": 3.0,
+    "ratio4": 0.5,
+    "level1": 0.4,
+    "level2": 0.8,
+    "level3": 0.7,
+    "level4": 0.9,
+    "feedback": 0.2,
+    "volume": 0.5
+  },
+  "envelope1": { "attack": 0.5, "decay": 1.0, "sustain": 0.6, "release": 1.5 },
+  "envelope2": { "attack": 0.3, "decay": 0.8, "sustain": 0.5, "release": 1.0 },
+  "envelope3": { "attack": 0.4, "decay": 0.9, "sustain": 0.55, "release": 1.2 },
+  "envelope4": { "attack": 0.6, "decay": 1.2, "sustain": 0.7, "release": 2.0 }
+}

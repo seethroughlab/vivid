@@ -4,9 +4,12 @@
  */
 
 #include <vivid/audio/fm_synth.h>
+#include <nlohmann/json.hpp>
 #include <imgui.h>
 #include <cstring>
 #include <algorithm>
+#include <fstream>
+#include <iostream>
 
 namespace vivid::audio {
 
@@ -614,6 +617,158 @@ bool FMSynth::drawVisualization(ImDrawList* dl, float minX, float minY, float ma
     }
 
     return true;
+}
+
+// Algorithm name conversion
+static const char* algorithmToString(FMAlgorithm algo) {
+    switch (algo) {
+        case FMAlgorithm::Stack4:   return "Stack4";
+        case FMAlgorithm::Stack3_1: return "Stack3_1";
+        case FMAlgorithm::Parallel: return "Parallel";
+        case FMAlgorithm::Pairs:    return "Pairs";
+        case FMAlgorithm::Branch2:  return "Branch2";
+        case FMAlgorithm::Branch3:  return "Branch3";
+        case FMAlgorithm::Y:        return "Y";
+        case FMAlgorithm::Diamond:  return "Diamond";
+        default:                    return "Stack4";
+    }
+}
+
+static FMAlgorithm stringToAlgorithm(const std::string& s) {
+    if (s == "Stack4")   return FMAlgorithm::Stack4;
+    if (s == "Stack3_1") return FMAlgorithm::Stack3_1;
+    if (s == "Parallel") return FMAlgorithm::Parallel;
+    if (s == "Pairs")    return FMAlgorithm::Pairs;
+    if (s == "Branch2")  return FMAlgorithm::Branch2;
+    if (s == "Branch3")  return FMAlgorithm::Branch3;
+    if (s == "Y")        return FMAlgorithm::Y;
+    if (s == "Diamond")  return FMAlgorithm::Diamond;
+    return FMAlgorithm::Stack4;
+}
+
+bool FMSynth::savePreset(const std::string& path,
+                         const std::string& name,
+                         const std::string& author,
+                         const std::string& category) {
+    try {
+        nlohmann::json j;
+
+        // Metadata
+        j["synth"] = synthType();
+        j["name"] = name.empty() ? std::filesystem::path(path).stem().string() : name;
+        if (!author.empty()) j["author"] = author;
+        if (!category.empty()) j["category"] = category;
+
+        // Parameters
+        j["params"]["ratio1"] = static_cast<float>(ratio1);
+        j["params"]["ratio2"] = static_cast<float>(ratio2);
+        j["params"]["ratio3"] = static_cast<float>(ratio3);
+        j["params"]["ratio4"] = static_cast<float>(ratio4);
+        j["params"]["level1"] = static_cast<float>(level1);
+        j["params"]["level2"] = static_cast<float>(level2);
+        j["params"]["level3"] = static_cast<float>(level3);
+        j["params"]["level4"] = static_cast<float>(level4);
+        j["params"]["feedback"] = static_cast<float>(feedback);
+        j["params"]["volume"] = static_cast<float>(volume);
+
+        // Extra state
+        serializeExtra(j);
+
+        // Create parent directories if needed
+        std::filesystem::path p(path);
+        if (p.has_parent_path()) {
+            std::filesystem::create_directories(p.parent_path());
+        }
+
+        // Write file
+        std::ofstream file(path);
+        if (!file) {
+            std::cerr << "[FMSynth] Failed to open " << path << " for writing\n";
+            return false;
+        }
+        file << j.dump(2);
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[FMSynth] Error saving preset: " << e.what() << "\n";
+        return false;
+    }
+}
+
+bool FMSynth::loadPresetFile(const std::string& path) {
+    try {
+        std::ifstream file(path);
+        if (!file) {
+            std::cerr << "[FMSynth] Failed to open " << path << "\n";
+            return false;
+        }
+
+        nlohmann::json j;
+        file >> j;
+
+        // Verify synth type
+        if (j.value("synth", "") != synthType()) {
+            std::cerr << "[FMSynth] Preset is for different synth type\n";
+            return false;
+        }
+
+        // Load parameters
+        if (j.contains("params")) {
+            auto& p = j["params"];
+            if (p.contains("ratio1")) ratio1 = p["ratio1"].get<float>();
+            if (p.contains("ratio2")) ratio2 = p["ratio2"].get<float>();
+            if (p.contains("ratio3")) ratio3 = p["ratio3"].get<float>();
+            if (p.contains("ratio4")) ratio4 = p["ratio4"].get<float>();
+            if (p.contains("level1")) level1 = p["level1"].get<float>();
+            if (p.contains("level2")) level2 = p["level2"].get<float>();
+            if (p.contains("level3")) level3 = p["level3"].get<float>();
+            if (p.contains("level4")) level4 = p["level4"].get<float>();
+            if (p.contains("feedback")) feedback = p["feedback"].get<float>();
+            if (p.contains("volume")) volume = p["volume"].get<float>();
+        }
+
+        // Load extra state
+        deserializeExtra(j);
+
+        return true;
+
+    } catch (const std::exception& e) {
+        std::cerr << "[FMSynth] Error loading preset: " << e.what() << "\n";
+        return false;
+    }
+}
+
+void FMSynth::serializeExtra(nlohmann::json& j) const {
+    j["algorithm"] = algorithmToString(m_algorithm);
+
+    // Save operator envelopes
+    for (int i = 0; i < NUM_OPS; ++i) {
+        std::string key = "envelope" + std::to_string(i + 1);
+        j[key] = {
+            {"attack", m_opSettings[i].attack},
+            {"decay", m_opSettings[i].decay},
+            {"sustain", m_opSettings[i].sustain},
+            {"release", m_opSettings[i].release}
+        };
+    }
+}
+
+void FMSynth::deserializeExtra(const nlohmann::json& j) {
+    if (j.contains("algorithm")) {
+        m_algorithm = stringToAlgorithm(j["algorithm"].get<std::string>());
+    }
+
+    // Load operator envelopes
+    for (int i = 0; i < NUM_OPS; ++i) {
+        std::string key = "envelope" + std::to_string(i + 1);
+        if (j.contains(key)) {
+            auto& env = j[key];
+            m_opSettings[i].attack = env.value("attack", 0.01f);
+            m_opSettings[i].decay = env.value("decay", 0.1f);
+            m_opSettings[i].sustain = env.value("sustain", 0.7f);
+            m_opSettings[i].release = env.value("release", 0.3f);
+        }
+    }
 }
 
 } // namespace vivid::audio

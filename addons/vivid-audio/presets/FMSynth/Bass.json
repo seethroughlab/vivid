@@ -1,0 +1,22 @@
+{
+  "synth": "FMSynth",
+  "name": "FM Bass",
+  "category": "Bass",
+  "algorithm": "Stack4",
+  "params": {
+    "ratio1": 1.0,
+    "ratio2": 1.0,
+    "ratio3": 1.0,
+    "ratio4": 1.0,
+    "level1": 0.8,
+    "level2": 0.6,
+    "level3": 0.4,
+    "level4": 1.0,
+    "feedback": 0.4,
+    "volume": 0.5
+  },
+  "envelope1": { "attack": 0.001, "decay": 0.1, "sustain": 0.3, "release": 0.1 },
+  "envelope2": { "attack": 0.001, "decay": 0.15, "sustain": 0.2, "release": 0.1 },
+  "envelope3": { "attack": 0.001, "decay": 0.2, "sustain": 0.5, "release": 0.15 },
+  "envelope4": { "attack": 0.001, "decay": 0.05, "sustain": 0.8, "release": 0.1 }
+}

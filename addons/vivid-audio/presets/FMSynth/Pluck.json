@@ -1,0 +1,22 @@
+{
+  "synth": "FMSynth",
+  "name": "Plucked String",
+  "category": "Plucks",
+  "algorithm": "Stack4",
+  "params": {
+    "ratio1": 1.0,
+    "ratio2": 3.0,
+    "ratio3": 1.0,
+    "ratio4": 1.0,
+    "level1": 1.0,
+    "level2": 0.9,
+    "level3": 0.5,
+    "level4": 1.0,
+    "feedback": 0.2,
+    "volume": 0.5
+  },
+  "envelope1": { "attack": 0.001, "decay": 0.05, "sustain": 0.0, "release": 0.05 },
+  "envelope2": { "attack": 0.001, "decay": 0.02, "sustain": 0.0, "release": 0.02 },
+  "envelope3": { "attack": 0.001, "decay": 0.1, "sustain": 0.0, "release": 0.08 },
+  "envelope4": { "attack": 0.001, "decay": 0.15, "sustain": 0.0, "release": 0.1 }
+}

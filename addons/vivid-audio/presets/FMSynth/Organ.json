@@ -1,0 +1,22 @@
+{
+  "synth": "FMSynth",
+  "name": "Percussive Organ",
+  "category": "Keys",
+  "algorithm": "Parallel",
+  "params": {
+    "ratio1": 0.5,
+    "ratio2": 1.0,
+    "ratio3": 2.0,
+    "ratio4": 4.0,
+    "level1": 0.8,
+    "level2": 1.0,
+    "level3": 0.6,
+    "level4": 0.3,
+    "feedback": 0.1,
+    "volume": 0.5
+  },
+  "envelope1": { "attack": 0.01, "decay": 0.01, "sustain": 1.0, "release": 0.1 },
+  "envelope2": { "attack": 0.01, "decay": 0.01, "sustain": 1.0, "release": 0.1 },
+  "envelope3": { "attack": 0.01, "decay": 0.01, "sustain": 1.0, "release": 0.1 },
+  "envelope4": { "attack": 0.01, "decay": 0.01, "sustain": 1.0, "release": 0.1 }
+}

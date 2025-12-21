@@ -10,7 +10,9 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/audio/preset.h>
 #include <vivid/param.h>
+#include <nlohmann/json_fwd.hpp>
 #include <string>
 #include <array>
 #include <cmath>
@@ -85,7 +87,7 @@ enum class FMPreset {
  * fm.noteOn(440.0f);  // Play A4
  * @endcode
  */
-class FMSynth : public AudioOperator {
+class FMSynth : public AudioOperator, public PresetCapable {
 public:
     static constexpr int MAX_VOICES = 8;
     static constexpr int NUM_OPS = 4;
@@ -146,6 +148,17 @@ public:
      * @param r Release time in seconds
      */
     void setEnvelope(int op, float a, float d, float s, float r);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Preset Support
+    /// @{
+
+    bool savePreset(const std::string& path,
+                   const std::string& name = "",
+                   const std::string& author = "",
+                   const std::string& category = "") override;
+    bool loadPresetFile(const std::string& path) override;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -213,6 +226,12 @@ public:
                            float maxX, float maxY) override;
 
     /// @}
+
+protected:
+    // PresetCapable implementation
+    std::string synthType() const override { return "FMSynth"; }
+    void serializeExtra(nlohmann::json& j) const override;
+    void deserializeExtra(const nlohmann::json& j) override;
 
 private:
     // Operator state
