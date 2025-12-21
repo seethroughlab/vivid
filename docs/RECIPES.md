@@ -81,6 +81,70 @@ VIVID_CHAIN(setup, update)
 
 ---
 
+## Beat-Synced Flash
+
+Triggered flash overlay for beat-reactive visuals. Flash decays over time and supports additive, screen, or replace blend modes.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Base visual
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+    noise.octaves = 3;
+
+    // Flash overlay - white strobe
+    auto& flash = chain.add<Flash>("flash");
+    flash.input(&noise);
+    flash.decay = 0.85f;  // Fast decay (0.5-0.995)
+    flash.color.set(1.0f, 1.0f, 1.0f);  // White
+    flash.mode = 0;  // 0=Additive, 1=Screen, 2=Replace
+
+    chain.output("flash");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& flash = chain.get<Flash>("flash");
+
+    // Trigger on spacebar
+    if (ctx.key(GLFW_KEY_SPACE).pressed) {
+        flash.trigger();  // Full intensity
+    }
+
+    // Or trigger with custom intensity
+    if (ctx.key(GLFW_KEY_1).pressed) {
+        flash.trigger(0.5f);  // Half intensity
+    }
+
+    // Read current intensity for other effects
+    float intensity = flash.intensity();
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+**Parameters:**
+- `decay` (0.5-0.995): How fast flash fades. Lower = faster fade.
+- `color.set(r, g, b)`: Flash color (0-1 range)
+- `mode`: 0=Additive (adds light), 1=Screen (soft blend), 2=Replace (solid overlay)
+
+**Methods:**
+- `trigger()`: Start flash at full intensity
+- `trigger(float intensity)`: Start at custom intensity (0-1)
+- `intensity()`: Get current flash intensity (for other effects)
+
+---
+
 ## Feedback Tunnel
 
 Infinite tunnel effect using frame feedback with zoom and rotation.

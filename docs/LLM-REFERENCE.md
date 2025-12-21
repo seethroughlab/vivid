@@ -99,6 +99,8 @@ VIVID_CHAIN(setup, update)
 | `Scanlines` | CRT lines | `spacing` `intensity` `thickness` |
 | `CRTEffect` | Full CRT sim | `curvature` `vignette` `scanlines` |
 | `Downsample` | Low-res look | `targetW` `targetH` |
+| `FilmGrain` | Film grain overlay | `intensity` `size` `speed` `colored` |
+| `Flash` | Beat-synced flash | `.trigger()` `decay` `color.set(r,g,b)` `mode` |
 
 ### Compositing
 
