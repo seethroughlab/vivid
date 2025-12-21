@@ -375,46 +375,62 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
+        if (needsCook()) {
+            m_scene.clear();
 
-        m_scene.clear();
+            for (auto& entry : m_entries) {
+                if (entry.geometry) {
+                    Mesh* mesh = entry.geometry->outputMesh();
+                    if (mesh) {
+                        // Get material: prefer explicit entry.material, fallback to geometry's outputMaterial()
+                        TexturedMaterial* mat = entry.material;
+                        if (!mat) {
+                            mat = entry.geometry->outputMaterial();
+                        }
 
-        for (auto& entry : m_entries) {
-            if (entry.geometry) {
-                Mesh* mesh = entry.geometry->outputMesh();
-                if (mesh) {
-                    // Get material: prefer explicit entry.material, fallback to geometry's outputMaterial()
-                    TexturedMaterial* mat = entry.material;
-                    if (!mat) {
-                        mat = entry.geometry->outputMaterial();
+                        // Apply root transform before entry's local transform
+                        glm::mat4 finalTransform = m_rootTransform * entry.transform;
+
+                        // Add to scene with material
+                        SceneObject obj(mesh, finalTransform, entry.color, mat);
+                        obj.castShadow = entry.castShadow;
+                        m_scene.objects().push_back(obj);
                     }
-
-                    // Apply root transform before entry's local transform
-                    glm::mat4 finalTransform = m_rootTransform * entry.transform;
-
-                    // Add to scene with material
-                    SceneObject obj(mesh, finalTransform, entry.color, mat);
-                    obj.castShadow = entry.castShadow;
-                    m_scene.objects().push_back(obj);
                 }
             }
+
+            didCook();
         }
 
-        didCook();
+        updateScenePreview(ctx);  // Always update for rotation animation
     }
 
     void cleanup() override {
+        cleanupScenePreview();
         m_scene.clear();
         m_entries.clear();
     }
 
     std::string name() const override { return "SceneComposer"; }
 
+    /// Draw the scene preview in the chain visualizer
+    bool drawVisualization(ImDrawList* drawList,
+                           float minX, float minY,
+                           float maxX, float maxY) override;
+
 private:
     Chain* m_chain = nullptr;  // For add<T>() method
     std::vector<ComposerEntry> m_entries;
     Scene m_scene;
     glm::mat4 m_rootTransform = glm::mat4(1.0f);
+
+    // Scene preview infrastructure
+    void updateScenePreview(Context& ctx);
+    void cleanupScenePreview();
+
+    std::unique_ptr<Render3D> m_previewRenderer;
+    std::unique_ptr<CameraOperator> m_previewCamera;
+    float m_previewRotation = 0.0f;
 };
 
 } // namespace vivid::render3d

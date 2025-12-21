@@ -2,8 +2,10 @@
 
 #include <vivid/context.h>
 #include <vivid/chain.h>
+#include <vivid/asset_loader.h>
 #include <vivid/window_manager.h>
 #include <cstring>
+#include <filesystem>
 
 namespace vivid {
 
@@ -141,6 +143,18 @@ const Chain& Context::chain() const {
 
 void Context::resetChain() {
     m_chain = std::make_unique<Chain>();
+}
+
+void Context::addAssetPath(const std::string& name, const std::string& path) {
+    namespace fs = std::filesystem;
+    fs::path resolvedPath = path;
+
+    // Resolve relative paths from project directory
+    if (!resolvedPath.is_absolute()) {
+        resolvedPath = AssetLoader::instance().projectDir() / path;
+    }
+
+    AssetLoader::instance().registerAssetPath(name, resolvedPath);
 }
 
 int Context::monitorCount() const {

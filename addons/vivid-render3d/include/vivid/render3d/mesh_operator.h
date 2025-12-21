@@ -15,6 +15,13 @@
 #include <vivid/operator.h>
 #include <vivid/render3d/mesh.h>
 #include <vivid/render3d/mesh_builder.h>
+#include <vivid/render3d/renderer.h>
+#include <vivid/render3d/camera_operator.h>
+#include <vivid/render3d/scene.h>
+#include <memory>
+
+// Forward declarations for preview rendering
+struct ImDrawList;
 
 namespace vivid::render3d {
 
@@ -154,10 +161,41 @@ public:
     }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Visualization
+    /// @{
+
+    /**
+     * @brief Draw a 3D preview of the mesh
+     *
+     * Renders a rotating preview of the mesh to a small texture during process(),
+     * then displays it in the chain visualizer via drawVisualization().
+     */
+    bool drawVisualization(ImDrawList* drawList,
+                           float minX, float minY,
+                           float maxX, float maxY) override;
+
+    /// @}
 
 protected:
     Mesh m_mesh;           ///< Output mesh storage
     MeshBuilder m_builder; ///< Builder with manifold data (for CSG operations)
+
+    // -------------------------------------------------------------------------
+    // Preview rendering infrastructure (lazy-initialized)
+    // -------------------------------------------------------------------------
+
+    /// Update the preview texture (call at end of process())
+    void updatePreview(Context& ctx);
+
+    /// Clean up preview resources (call from cleanup())
+    void cleanupPreview();
+
+    std::unique_ptr<Render3D> m_previewRenderer;
+    std::unique_ptr<CameraOperator> m_previewCamera;
+    std::unique_ptr<Scene> m_previewScene;
+    float m_previewRotation = 0.0f;
+    Mesh* m_lastPreviewMesh = nullptr;  // Track mesh changes
 };
 
 } // namespace vivid::render3d

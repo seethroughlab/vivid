@@ -56,17 +56,19 @@ public:
     void init(Context& ctx) override {}
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
-
-        if (m_needsUpload && !m_mesh.vertices.empty()) {
-            m_mesh.upload(ctx);
-            m_needsUpload = false;
+        if (needsCook()) {
+            if (m_needsUpload && !m_mesh.vertices.empty()) {
+                m_mesh.upload(ctx);
+                m_needsUpload = false;
+            }
+            didCook();
         }
 
-        didCook();
+        updatePreview(ctx);  // Always update for rotation animation
     }
 
     void cleanup() override {
+        cleanupPreview();
         m_mesh.release();
     }
 

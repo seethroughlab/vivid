@@ -51,16 +51,18 @@ void GLTFLoader::init(Context& ctx) {
 }
 
 void GLTFLoader::process(Context& ctx) {
-    if (!needsCook()) return;
-
-    if (m_needsLoad && !m_filePath.empty()) {
-        loadGLTF(ctx);
+    if (needsCook()) {
+        if (m_needsLoad && !m_filePath.empty()) {
+            loadGLTF(ctx);
+        }
+        didCook();
     }
 
-    didCook();
+    updatePreview(ctx);  // Always update for rotation animation
 }
 
 void GLTFLoader::cleanup() {
+    cleanupPreview();
     m_mesh.release();
     m_material.reset();
     m_loaded = false;

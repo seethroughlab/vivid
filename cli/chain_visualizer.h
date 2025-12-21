@@ -2,13 +2,14 @@
 
 // Vivid Chain Visualizer
 // ImNodes-based node editor for visualizing operator chains
+//
+// Addon-agnostic: operators provide their own visualization via drawVisualization().
+// No direct dependencies on render3d, audio, or other addons.
 
 #include "imgui/imgui_integration.h"
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/video_exporter.h>
-#include <vivid/render3d/render3d.h>
-#include <vivid/render3d/scene_composer.h>
 #include <webgpu/webgpu.h>
 #include <string>
 #include <unordered_map>
@@ -18,15 +19,6 @@
 #include <array>
 
 namespace vivid::imgui {
-
-/// Preview state for a geometry operator node
-struct GeometryPreview {
-    std::unique_ptr<render3d::Render3D> renderer;
-    std::unique_ptr<render3d::CameraOperator> cameraOp;
-    render3d::Scene scene;
-    render3d::Mesh* lastMesh = nullptr;  // Track changes
-    float rotationAngle = 0.0f;          // For animation
-};
 
 class ChainVisualizer {
 public:
@@ -51,14 +43,6 @@ private:
     // Build graph layout from registered operators
     void buildLayout(const std::vector<vivid::OperatorInfo>& operators);
 
-    // Update geometry preview (handles init, rotation, rendering)
-    void updateGeometryPreview(GeometryPreview& preview, render3d::Mesh* mesh,
-                               vivid::Context& ctx, float dt);
-
-    // Update scene preview for SceneComposer (renders full composed scene)
-    void updateScenePreview(GeometryPreview& preview, render3d::SceneComposer* composer,
-                            vivid::Context& ctx, float dt);
-
     // Estimate node height based on content (params, inputs, thumbnail type)
     float estimateNodeHeight(const vivid::OperatorInfo& info) const;
 
@@ -75,9 +59,6 @@ private:
     // Node positions (indexed by node ID)
     std::unordered_map<int, bool> m_nodePositioned;
 
-    // Geometry preview renderers (one per geometry node)
-    std::unordered_map<vivid::Operator*, GeometryPreview> m_geometryPreviews;
-
     // Selection state for inspector panel
     int m_selectedNodeId = -1;
     vivid::Operator* m_selectedOp = nullptr;
@@ -87,11 +68,6 @@ private:
     vivid::Operator* m_soloOperator = nullptr;
     bool m_inSoloMode = false;
     std::string m_soloOperatorName;  // Cached for display
-
-    // Full-viewport geometry renderer for solo mode
-    std::unique_ptr<render3d::Render3D> m_soloGeometryRenderer;
-    std::unique_ptr<render3d::CameraOperator> m_soloCameraOp;
-    float m_soloRotationAngle = 0.0f;
 
     // Solo mode helpers (internal)
     void renderSoloOverlay(const FrameInput& input, vivid::Context& ctx);

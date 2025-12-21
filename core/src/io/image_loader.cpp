@@ -4,6 +4,7 @@
 #include "stb_image.h"
 
 #include <vivid/io/image_loader.h>
+#include <vivid/asset_loader.h>
 #include <iostream>
 #include <filesystem>
 
@@ -14,8 +15,17 @@ namespace vivid::io {
 ImageData loadImage(const std::string& path) {
     ImageData result;
 
-    // Resolve the path
-    std::string resolvedPath = resolvePath(path, {"assets/images", "assets/materials", "assets/textures"});
+    // Use AssetLoader for consistent path resolution across bundled/dev builds
+    fs::path resolved = AssetLoader::instance().resolve(path);
+    std::string resolvedPath;
+
+    if (!resolved.empty()) {
+        resolvedPath = resolved.string();
+    } else {
+        // Fallback to legacy resolution
+        resolvedPath = resolvePath(path, {"assets/images", "assets/materials", "assets/textures"});
+    }
+
     if (resolvedPath.empty()) {
         std::cerr << "vivid-io: Image not found: " << path << std::endl;
         return result;
@@ -44,8 +54,17 @@ ImageData loadImage(const std::string& path) {
 ImageDataHDR loadImageHDR(const std::string& path) {
     ImageDataHDR result;
 
-    // Resolve the path
-    std::string resolvedPath = resolvePath(path, {"assets/hdri", "assets/environments", "assets"});
+    // Use AssetLoader for consistent path resolution across bundled/dev builds
+    fs::path resolved = AssetLoader::instance().resolve(path);
+    std::string resolvedPath;
+
+    if (!resolved.empty()) {
+        resolvedPath = resolved.string();
+    } else {
+        // Fallback to legacy resolution
+        resolvedPath = resolvePath(path, {"assets/hdri", "assets/environments", "assets"});
+    }
+
     if (resolvedPath.empty()) {
         std::cerr << "vivid-io: HDR image not found: " << path << std::endl;
         return result;

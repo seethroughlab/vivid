@@ -108,7 +108,6 @@ public:
      * @param path Path to project directory
      *
      * This adds the project directory and its assets/ subfolder to the search paths.
-     * Also searches parent directories for assets/ folders.
      */
     void setProjectDir(const std::filesystem::path& path);
 
@@ -116,6 +115,30 @@ public:
      * @brief Get the project directory
      */
     std::filesystem::path projectDir() const { return m_projectDir; }
+
+    /**
+     * @brief Register a named asset path prefix
+     * @param name Prefix name (e.g., "shared", "fonts")
+     * @param path Directory path (absolute or relative to project)
+     *
+     * Allows using "prefix:filename" syntax in asset paths.
+     * Example: registerAssetPath("fonts", "/usr/share/fonts") enables
+     * loading "fonts:OpenSans.ttf" which resolves to "/usr/share/fonts/OpenSans.ttf"
+     */
+    void registerAssetPath(const std::string& name, const std::filesystem::path& path);
+
+    /**
+     * @brief Get all registered asset paths (for bundling)
+     * @return Map of prefix name to resolved directory path
+     */
+    std::unordered_map<std::string, std::filesystem::path> getRegisteredPaths() const {
+        return m_registeredPaths;
+    }
+
+    /**
+     * @brief Clear all registered asset paths
+     */
+    void clearRegisteredPaths() { m_registeredPaths.clear(); }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -132,6 +155,20 @@ public:
      * @brief Clear all cached assets (for hot-reload)
      */
     void clearCache();
+
+    /**
+     * @brief Get list of all assets that have been loaded
+     * @return Vector of asset paths (as originally requested)
+     *
+     * Useful for bundling - returns only assets that were actually used.
+     */
+    std::vector<std::string> getLoadedAssets() const;
+
+    /**
+     * @brief Get resolved paths of all loaded assets
+     * @return Vector of absolute filesystem paths
+     */
+    std::vector<std::filesystem::path> getLoadedAssetPaths() const;
 
     /// @}
 
@@ -153,6 +190,12 @@ private:
     bool m_cacheEnabled = true;
     std::unordered_map<std::string, std::string> m_textCache;
     std::unordered_map<std::string, std::vector<uint8_t>> m_binaryCache;
+
+    // Track loaded assets: requested path -> resolved absolute path
+    std::unordered_map<std::string, std::filesystem::path> m_loadedAssets;
+
+    // Registered asset path prefixes: prefix name -> directory path
+    std::unordered_map<std::string, std::filesystem::path> m_registeredPaths;
 };
 
 } // namespace vivid

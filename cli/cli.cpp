@@ -4,6 +4,7 @@
 #include <vivid/cli.h>
 #include <vivid/operator_registry.h>
 #include <vivid/addon_manager.h>
+#include <vivid/addon_registry.h>
 #include <CLI/CLI.hpp>
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -11,6 +12,8 @@
 #include <sstream>
 #include <filesystem>
 #include <vector>
+#include <set>
+#include <regex>
 #include <cctype>
 
 using json = nlohmann::json;
@@ -492,20 +495,132 @@ void copyCommonResources(const fs::path& exeDir, const fs::path& destDir, const 
     }
 }
 
+// Scan chain.cpp for asset paths (e.g., "assets/images/foo.jpg")
+std::set<std::string> scanChainForAssets(const fs::path& chainPath) {
+    std::set<std::string> assets;
+
+    std::ifstream file(chainPath);
+    if (!file.is_open()) return assets;
+
+    std::string line;
+    // Match patterns like: "assets/..." or 'assets/...'
+    std::regex assetPattern(R"([\"']((assets/[^\"']+))[\"'])");
+
+    while (std::getline(file, line)) {
+        std::sregex_iterator it(line.begin(), line.end(), assetPattern);
+        std::sregex_iterator end;
+        for (; it != end; ++it) {
+            assets.insert((*it)[1].str());
+        }
+    }
+
+    return assets;
+}
+
+// Scan chain.cpp for addAssetPath() calls
+// Returns map of prefix name -> path string
+std::map<std::string, std::string> scanChainForRegisteredPaths(const fs::path& chainPath) {
+    std::map<std::string, std::string> paths;
+
+    std::ifstream file(chainPath);
+    if (!file.is_open()) return paths;
+
+    std::string content((std::istreambuf_iterator<char>(file)),
+                        std::istreambuf_iterator<char>());
+
+    // Match: ctx.addAssetPath("prefix", "path") or addAssetPath("prefix", "path")
+    // Also match: chain.addAssetPath(...) or similar
+    std::regex pathPattern(R"(\.addAssetPath\s*\(\s*[\"']([^\"']+)[\"']\s*,\s*[\"']([^\"']+)[\"']\s*\))");
+
+    std::sregex_iterator it(content.begin(), content.end(), pathPattern);
+    std::sregex_iterator end;
+    for (; it != end; ++it) {
+        std::string prefix = (*it)[1].str();
+        std::string path = (*it)[2].str();
+        paths[prefix] = path;
+    }
+
+    return paths;
+}
+
 // Copy project files to bundle
-void copyProjectFiles(const fs::path& srcProject, const fs::path& chainPath, const fs::path& destDir) {
+void copyProjectFiles(const fs::path& srcProject, const fs::path& chainPath,
+                      const fs::path& destDir, const fs::path& rootDir) {
     fs::create_directories(destDir);
     fs::copy_file(chainPath, destDir / "chain.cpp", fs::copy_options::overwrite_existing);
 
+    // Copy project-local assets
     fs::path assetsDir = srcProject / "assets";
     if (fs::exists(assetsDir) && fs::is_directory(assetsDir)) {
         fs::copy(assetsDir, destDir / "assets", fs::copy_options::recursive);
+        std::cout << "Bundled: project assets folder\n";
     }
 
+    // Scan for registered asset paths (addAssetPath calls)
+    auto registeredPaths = scanChainForRegisteredPaths(chainPath);
+    for (const auto& [prefix, pathStr] : registeredPaths) {
+        fs::path srcPath = pathStr;
+
+        // Absolute paths or paths starting with ".." reference external locations
+        // These are intentionally left as-is - the bundled app will use them at runtime
+        if (srcPath.is_absolute() || (pathStr.size() >= 2 && pathStr.substr(0, 2) == "..")) {
+            std::cout << "Note: Registered path '" << prefix << "' references external location: " << pathStr << "\n";
+            std::cout << "      This path will be resolved at runtime from the original location.\n";
+            continue;
+        }
+
+        // Relative paths within the project are copied to the bundle
+        srcPath = srcProject / pathStr;
+        if (fs::exists(srcPath) && fs::is_directory(srcPath)) {
+            // Copy to the same relative location in the bundle
+            fs::path destPath = destDir / pathStr;
+            fs::create_directories(destPath.parent_path());
+            fs::copy(srcPath, destPath, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
+            std::cout << "Bundled registered path: " << prefix << " -> " << pathStr << "\n";
+        } else if (!fs::exists(srcPath)) {
+            std::cout << "Warning: Registered path not found: " << prefix << " -> " << pathStr << "\n";
+        }
+    }
+
+    // Copy project shaders if any
     fs::path projectShaders = srcProject / "shaders";
     if (fs::exists(projectShaders) && fs::is_directory(projectShaders)) {
         fs::copy(projectShaders, destDir / "shaders", fs::copy_options::recursive);
     }
+}
+
+// Determine which addon libraries are required by analyzing the chain
+std::vector<std::string> getRequiredLibraries(const fs::path& chainPath, const fs::path& exeDir) {
+    std::vector<std::string> libs;
+
+    // Core is always required
+    libs.push_back("vivid-core");
+
+    // Find the vivid source root (parent of build directory)
+    // exeDir is typically build/bin, so root is build/bin/../../
+    fs::path rootDir = exeDir.parent_path().parent_path();
+
+    // Scan chain for addon dependencies
+    AddonRegistry registry;
+    registry.setRootDir(rootDir);
+    auto addons = registry.discoverFromChain(chainPath);
+
+    for (const auto& addon : addons) {
+        libs.push_back(addon.name);
+    }
+
+    return libs;
+}
+
+// Get platform-specific library filename
+std::string getLibraryFilename(const std::string& libName) {
+#ifdef __APPLE__
+    return "lib" + libName + ".dylib";
+#elif defined(_WIN32)
+    return libName + ".dll";
+#else
+    return "lib" + libName + ".so";
+#endif
 }
 
 // macOS .app bundle
@@ -547,21 +662,32 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
         // Copy vivid executable
         fs::copy_file(exePath, macosPath / "vivid");
 
-        // Copy dylibs
-        for (const auto& lib : {"libvivid-core.dylib", "libvivid-audio.dylib",
-                                "libvivid-render3d.dylib", "libvivid-video.dylib"}) {
-            fs::path libPath = exeDir / lib;
+        // Copy only required dylibs (based on chain analysis)
+        auto requiredLibs = getRequiredLibraries(chainPath, exeDir);
+        std::cout << "Required libraries: ";
+        for (size_t i = 0; i < requiredLibs.size(); i++) {
+            if (i > 0) std::cout << ", ";
+            std::cout << requiredLibs[i];
+        }
+        std::cout << "\n";
+
+        for (const auto& libName : requiredLibs) {
+            std::string libFile = getLibraryFilename(libName);
+            fs::path libPath = exeDir / libFile;
             if (fs::exists(libPath)) {
-                fs::copy_file(libPath, macosPath / lib);
+                fs::copy_file(libPath, macosPath / libFile);
+            } else {
+                std::cerr << "Warning: Library not found: " << libFile << "\n";
             }
         }
 
         // Copy common resources
         copyCommonResources(exeDir, macosPath, bundleInclude);
 
-        // Copy project files
+        // Copy project files (including shared assets from root)
         fs::path projectDest = resourcesPath / "project";
-        copyProjectFiles(srcProject, chainPath, projectDest);
+        fs::path rootDir = exeDir.parent_path().parent_path();
+        copyProjectFiles(srcProject, chainPath, projectDest, rootDir);
 
         // Create launcher script
         fs::path launcherPath = macosPath / appName;
@@ -646,20 +772,37 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
         // Copy executable
         fs::copy_file(exePath, binPath / "vivid.exe");
 
-        // Copy DLLs
-        for (const auto& dll : {"vivid-core.dll", "vivid-audio.dll",
-                                "vivid-render3d.dll", "vivid-video.dll", "glfw3.dll"}) {
-            fs::path dllPath = exeDir / dll;
+        // Copy only required DLLs (based on chain analysis)
+        auto requiredLibs = getRequiredLibraries(chainPath, exeDir);
+        std::cout << "Required libraries: ";
+        for (size_t i = 0; i < requiredLibs.size(); i++) {
+            if (i > 0) std::cout << ", ";
+            std::cout << requiredLibs[i];
+        }
+        std::cout << "\n";
+
+        for (const auto& libName : requiredLibs) {
+            std::string dllFile = getLibraryFilename(libName);
+            fs::path dllPath = exeDir / dllFile;
             if (fs::exists(dllPath)) {
-                fs::copy_file(dllPath, binPath / dll);
+                fs::copy_file(dllPath, binPath / dllFile);
+            } else {
+                std::cerr << "Warning: Library not found: " << dllFile << "\n";
             }
+        }
+
+        // Copy glfw3.dll (always required for windowing)
+        fs::path glfwPath = exeDir / "glfw3.dll";
+        if (fs::exists(glfwPath)) {
+            fs::copy_file(glfwPath, binPath / "glfw3.dll");
         }
 
         // Copy common resources
         copyCommonResources(exeDir, binPath, includePath);
 
-        // Copy project files
-        copyProjectFiles(srcProject, chainPath, projectPath);
+        // Copy project files (including shared assets from root)
+        fs::path rootDir = exeDir.parent_path().parent_path();
+        copyProjectFiles(srcProject, chainPath, projectPath, rootDir);
 
         // Create launcher batch file
         fs::path launcherPath = bundlePath / (appName + ".bat");
@@ -720,20 +863,31 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
         fs::permissions(binPath / "vivid", fs::perms::owner_exec | fs::perms::group_exec |
                                             fs::perms::others_exec, fs::perm_options::add);
 
-        // Copy shared libraries
-        for (const auto& lib : {"libvivid-core.so", "libvivid-audio.so",
-                                "libvivid-render3d.so", "libvivid-video.so"}) {
-            fs::path srcLib = exeDir / lib;
+        // Copy only required shared libraries (based on chain analysis)
+        auto requiredLibs = getRequiredLibraries(chainPath, exeDir);
+        std::cout << "Required libraries: ";
+        for (size_t i = 0; i < requiredLibs.size(); i++) {
+            if (i > 0) std::cout << ", ";
+            std::cout << requiredLibs[i];
+        }
+        std::cout << "\n";
+
+        for (const auto& libName : requiredLibs) {
+            std::string soFile = getLibraryFilename(libName);
+            fs::path srcLib = exeDir / soFile;
             if (fs::exists(srcLib)) {
-                fs::copy_file(srcLib, libPath / lib);
+                fs::copy_file(srcLib, libPath / soFile);
+            } else {
+                std::cerr << "Warning: Library not found: " << soFile << "\n";
             }
         }
 
         // Copy common resources
         copyCommonResources(exeDir, binPath, includePath);
 
-        // Copy project files
-        copyProjectFiles(srcProject, chainPath, projectPath);
+        // Copy project files (including shared assets from root)
+        fs::path rootDir = exeDir.parent_path().parent_path();
+        copyProjectFiles(srcProject, chainPath, projectPath, rootDir);
 
         // Create launcher script
         fs::path launcherPath = bundlePath / appName;

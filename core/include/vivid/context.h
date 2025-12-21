@@ -407,6 +407,27 @@ public:
     /// @brief Get the chain source file path
     const std::string& chainPath() const { return m_chainPath; }
 
+    /**
+     * @brief Register a named asset path prefix
+     * @param name Prefix name (e.g., "shared", "fonts")
+     * @param path Directory path (relative to project or absolute)
+     *
+     * Allows using "prefix:filename" syntax in asset paths.
+     * Relative paths are resolved from the project directory.
+     *
+     * @par Example
+     * @code
+     * void setup(Context& ctx) {
+     *     ctx.addAssetPath("shared", "../common-assets");
+     *     ctx.addAssetPath("fonts", "/usr/share/fonts");
+     *
+     *     image.file = "shared:logo.jpg";   // → ../common-assets/logo.jpg
+     *     font.file = "fonts:Arial.ttf";    // → /usr/share/fonts/Arial.ttf
+     * }
+     * @endcode
+     */
+    void addAssetPath(const std::string& name, const std::string& path);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Registry

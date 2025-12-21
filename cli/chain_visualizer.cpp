@@ -98,8 +98,6 @@ static std::string formatMemory(size_t bytes) {
     return buf;
 }
 
-using namespace vivid::render3d;
-
 ChainVisualizer::~ChainVisualizer() {
     shutdown();
 }
@@ -142,20 +140,6 @@ void ChainVisualizer::shutdown() {
     if (m_inSoloMode) {
         exitSoloMode();
     }
-
-    // Clean up solo geometry renderer
-    if (m_soloGeometryRenderer) {
-        m_soloGeometryRenderer->cleanup();
-        m_soloGeometryRenderer.reset();
-    }
-
-    // Clean up geometry preview renderers
-    for (auto& [op, preview] : m_geometryPreviews) {
-        if (preview.renderer) {
-            preview.renderer->cleanup();
-        }
-    }
-    m_geometryPreviews.clear();
 
     ImNodes::DestroyContext();
     m_initialized = false;
@@ -276,211 +260,16 @@ void ChainVisualizer::buildLayout(const std::vector<vivid::OperatorInfo>& operat
     m_layoutBuilt = true;
 }
 
-void ChainVisualizer::updateGeometryPreview(
-    GeometryPreview& preview,
-    render3d::Mesh* mesh,
-    vivid::Context& ctx,
-    float dt
-) {
-    // Initialize renderer and camera if needed
-    if (!preview.renderer) {
-        preview.cameraOp = std::make_unique<render3d::CameraOperator>();
-        preview.cameraOp->init(ctx);
-
-        preview.renderer = std::make_unique<render3d::Render3D>();
-        preview.renderer->setResolution(100, 56);
-        preview.renderer->setShadingMode(render3d::ShadingMode::Flat);
-        preview.renderer->setClearColor(0.12f, 0.14f, 0.18f);
-        preview.renderer->setAmbient(0.3f);
-        preview.renderer->setLightDirection(glm::normalize(glm::vec3(1, 2, 1)));
-        preview.renderer->setCameraInput(preview.cameraOp.get());
-        preview.renderer->init(ctx);
-    }
-
-    // Update rotation
-    preview.rotationAngle += dt * 0.8f;  // ~0.8 rad/sec rotation
-
-    // Rebuild scene if mesh changed
-    if (mesh != preview.lastMesh) {
-        preview.scene.clear();
-        if (mesh) {
-            // Internal use - suppress deprecation warning (this is internal preview code)
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable: 4996)
-#endif
-            preview.scene.add(*mesh, glm::mat4(1.0f), glm::vec4(0.7f, 0.85f, 1.0f, 1.0f));
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-        }
-        preview.lastMesh = mesh;
-    }
-
-    // Update transform for rotation
-    if (mesh && !preview.scene.empty()) {
-        preview.scene.objects()[0].transform =
-            glm::rotate(glm::mat4(1.0f), preview.rotationAngle, glm::vec3(0, 1, 0));
-    }
-
-    // Auto-frame camera based on mesh bounds (only compute once per mesh)
-    if (mesh && !mesh->vertices.empty()) {
-        glm::vec3 center(0);
-        float maxDist = 0;
-        for (const auto& v : mesh->vertices) {
-            center += v.position;
-        }
-        center /= static_cast<float>(mesh->vertices.size());
-        for (const auto& v : mesh->vertices) {
-            maxDist = std::max(maxDist, glm::length(v.position - center));
-        }
-        float distance = maxDist * 2.5f;
-        if (distance < 0.1f) distance = 2.0f;  // Fallback for tiny meshes
-        preview.cameraOp->position(distance * 0.7f, distance * 0.5f, distance * 0.7f);
-        preview.cameraOp->target(center.x, center.y, center.z);
-        preview.cameraOp->fov(45.0f);
-        preview.cameraOp->nearPlane(0.01f);
-        preview.cameraOp->farPlane(100.0f);
-    }
-
-    // Render (internal use - suppress deprecation warning for scene())
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable: 4996)
-#endif
-    preview.renderer->setScene(preview.scene);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-    preview.cameraOp->process(ctx);
-    preview.renderer->process(ctx);
-}
-
-void ChainVisualizer::updateScenePreview(
-    GeometryPreview& preview,
-    render3d::SceneComposer* composer,
-    vivid::Context& ctx,
-    float dt
-) {
-    // Initialize renderer and camera if needed
-    if (!preview.renderer) {
-        preview.cameraOp = std::make_unique<render3d::CameraOperator>();
-        preview.cameraOp->init(ctx);
-
-        preview.renderer = std::make_unique<render3d::Render3D>();
-        preview.renderer->setResolution(100, 56);
-        preview.renderer->setShadingMode(render3d::ShadingMode::Flat);
-        preview.renderer->setClearColor(0.12f, 0.14f, 0.18f);
-        preview.renderer->setAmbient(0.3f);
-        preview.renderer->setLightDirection(glm::normalize(glm::vec3(1, 2, 1)));
-        preview.renderer->setCameraInput(preview.cameraOp.get());
-        preview.renderer->init(ctx);
-    }
-
-    // Update rotation
-    preview.rotationAngle += dt * 0.8f;
-
-    // Get the composed scene
-    render3d::Scene& scene = composer->outputScene();
-
-    if (scene.empty()) {
-        return;
-    }
-
-    // Calculate scene bounds for auto-framing (across all objects)
-    glm::vec3 minBounds(FLT_MAX), maxBounds(-FLT_MAX);
-    int meshCount = 0;
-    for (const auto& obj : scene.objects()) {
-        if (obj.mesh && !obj.mesh->vertices.empty()) {
-            for (const auto& v : obj.mesh->vertices) {
-                // Transform vertex to world space
-                glm::vec3 worldPos = glm::vec3(obj.transform * glm::vec4(v.position, 1.0f));
-                minBounds = glm::min(minBounds, worldPos);
-                maxBounds = glm::max(maxBounds, worldPos);
-            }
-            meshCount++;
-        }
-    }
-
-    if (meshCount == 0) {
-        return;
-    }
-
-    // Compute center and camera distance
-    glm::vec3 center = (minBounds + maxBounds) * 0.5f;
-    float maxDist = glm::length(maxBounds - minBounds) * 0.5f;
-    float distance = maxDist * 2.5f;
-    if (distance < 0.1f) distance = 5.0f;
-
-    // Orbit camera around scene center
-    float camX = center.x + distance * 0.7f * cos(preview.rotationAngle);
-    float camZ = center.z + distance * 0.7f * sin(preview.rotationAngle);
-    preview.cameraOp->position(camX, center.y + distance * 0.4f, camZ);
-    preview.cameraOp->target(center.x, center.y, center.z);
-    preview.cameraOp->fov(45.0f);
-    preview.cameraOp->nearPlane(0.01f);
-    preview.cameraOp->farPlane(100.0f);
-
-    // Render (internal use - suppress deprecation warning for scene())
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable: 4996)
-#endif
-    preview.renderer->setScene(scene);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-    preview.cameraOp->process(ctx);
-    preview.renderer->process(ctx);
-}
-
 void ChainVisualizer::enterSoloMode(vivid::Operator* op, const std::string& name) {
     m_soloOperator = op;
     m_soloOperatorName = name;
     m_inSoloMode = true;
-    m_soloRotationAngle = 0.0f;
 }
 
 void ChainVisualizer::exitSoloMode() {
     m_soloOperator = nullptr;
     m_soloOperatorName.clear();
     m_inSoloMode = false;
-
-    // Clean up solo geometry renderer
-    if (m_soloGeometryRenderer) {
-        m_soloGeometryRenderer->cleanup();
-        m_soloGeometryRenderer.reset();
-    }
 }
 
 void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context& ctx) {
@@ -492,156 +281,14 @@ void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context&
     vivid::OutputKind kind = m_soloOperator->outputKind();
 
     if (kind == vivid::OutputKind::Texture) {
-        // For texture operators, just set the output texture
+        // For texture operators, display their output texture
         WGPUTextureView view = m_soloOperator->outputView();
         if (view) {
             ctx.setOutputTexture(view);
         }
-    } else if (kind == vivid::OutputKind::Geometry) {
-        // For geometry operators, render at full viewport size
-        m_soloRotationAngle += input.dt * 0.8f;
-
-        // Initialize or resize renderer and camera
-        if (!m_soloGeometryRenderer) {
-            m_soloCameraOp = std::make_unique<render3d::CameraOperator>();
-            m_soloCameraOp->init(ctx);
-
-            m_soloGeometryRenderer = std::make_unique<render3d::Render3D>();
-            m_soloGeometryRenderer->setShadingMode(render3d::ShadingMode::Flat);
-            m_soloGeometryRenderer->setClearColor(0.08f, 0.1f, 0.14f);
-            m_soloGeometryRenderer->setAmbient(0.3f);
-            m_soloGeometryRenderer->setLightDirection(glm::normalize(glm::vec3(1, 2, 1)));
-            m_soloGeometryRenderer->setCameraInput(m_soloCameraOp.get());
-            m_soloGeometryRenderer->init(ctx);
-        }
-
-        // Resize to match viewport
-        m_soloGeometryRenderer->setResolution(input.width, input.height);
-
-        // Check if this is a SceneComposer
-        auto* composer = dynamic_cast<render3d::SceneComposer*>(m_soloOperator);
-
-        if (composer) {
-            // Render composed scene
-            render3d::Scene& scene = composer->outputScene();
-            if (!scene.empty()) {
-                // Calculate scene bounds
-                glm::vec3 minBounds(FLT_MAX), maxBounds(-FLT_MAX);
-                for (const auto& obj : scene.objects()) {
-                    if (obj.mesh && !obj.mesh->vertices.empty()) {
-                        for (const auto& v : obj.mesh->vertices) {
-                            glm::vec3 worldPos = glm::vec3(obj.transform * glm::vec4(v.position, 1.0f));
-                            minBounds = glm::min(minBounds, worldPos);
-                            maxBounds = glm::max(maxBounds, worldPos);
-                        }
-                    }
-                }
-
-                glm::vec3 center = (minBounds + maxBounds) * 0.5f;
-                float maxDist = glm::length(maxBounds - minBounds) * 0.5f;
-                float distance = maxDist * 2.5f;
-                if (distance < 0.1f) distance = 5.0f;
-
-                // Orbit camera
-                float camX = center.x + distance * 0.7f * cos(m_soloRotationAngle);
-                float camZ = center.z + distance * 0.7f * sin(m_soloRotationAngle);
-                m_soloCameraOp->position(camX, center.y + distance * 0.4f, camZ);
-                m_soloCameraOp->target(center.x, center.y, center.z);
-                m_soloCameraOp->fov(45.0f);
-                m_soloCameraOp->nearPlane(0.01f);
-                m_soloCameraOp->farPlane(1000.0f);
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable: 4996)
-#endif
-                m_soloGeometryRenderer->setScene(scene);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-                m_soloCameraOp->process(ctx);
-                m_soloGeometryRenderer->process(ctx);
-                ctx.setOutputTexture(m_soloGeometryRenderer->outputView());
-            }
-        } else if (auto* meshOp = dynamic_cast<render3d::MeshOperator*>(m_soloOperator)) {
-            // Render single mesh
-            render3d::Mesh* mesh = meshOp->outputMesh();
-            if (mesh && mesh->valid()) {
-                // Build scene with rotating mesh
-                render3d::Scene scene;
-                glm::mat4 transform = glm::rotate(glm::mat4(1.0f), m_soloRotationAngle, glm::vec3(0, 1, 0));
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable: 4996)
-#endif
-                scene.add(*mesh, transform, glm::vec4(0.7f, 0.85f, 1.0f, 1.0f));
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-
-                // Auto-frame camera
-                glm::vec3 center(0);
-                float maxDist = 0;
-                for (const auto& v : mesh->vertices) {
-                    center += v.position;
-                }
-                center /= static_cast<float>(mesh->vertices.size());
-                for (const auto& v : mesh->vertices) {
-                    maxDist = std::max(maxDist, glm::length(v.position - center));
-                }
-                float distance = maxDist * 2.5f;
-                if (distance < 0.1f) distance = 2.0f;
-
-                m_soloCameraOp->position(distance * 0.7f, distance * 0.5f, distance * 0.7f);
-                m_soloCameraOp->target(center.x, center.y, center.z);
-                m_soloCameraOp->fov(45.0f);
-                m_soloCameraOp->nearPlane(0.01f);
-                m_soloCameraOp->farPlane(100.0f);
-
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-#elif defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable: 4996)
-#endif
-                m_soloGeometryRenderer->setScene(scene);
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#elif defined(__GNUC__)
-#pragma GCC diagnostic pop
-#elif defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-                m_soloCameraOp->process(ctx);
-                m_soloGeometryRenderer->process(ctx);
-                ctx.setOutputTexture(m_soloGeometryRenderer->outputView());
-            }
-        }
     }
+    // For geometry/audio/other operators, just show the overlay
+    // (Geometry operators render their own preview which the user can see in the node)
 
     // Check for Escape key to exit solo mode
     if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
@@ -974,61 +621,17 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                     ImVec2(min.x + 20, min.y + 12), IM_COL32(100, 100, 120, 255), "no tex");
             }
         } else if (kind == vivid::OutputKind::Geometry) {
-            // Geometry operator - render live 3D rotating preview
-            auto& preview = m_geometryPreviews[info.op];
+            // Geometry operator - let operator draw its own preview
+            ImGui::Dummy(ImVec2(thumbW, thumbH));
+            ImVec2 min = ImGui::GetItemRectMin();
+            ImVec2 max = ImGui::GetItemRectMax();
 
-            // Check if this is a SceneComposer (outputs Scene, not single Mesh)
-            auto* composer = dynamic_cast<render3d::SceneComposer*>(info.op);
-
-            if (composer) {
-                // SceneComposer: render the full composed scene
-                if (!composer->outputScene().empty()) {
-                    updateScenePreview(preview, composer, ctx, input.dt);
-
-                    // Display rendered texture
-                    WGPUTextureView view = preview.renderer ? preview.renderer->outputView() : nullptr;
-                    if (view) {
-                        ImTextureID texId = reinterpret_cast<ImTextureID>(view);
-                        ImGui::Image(texId, ImVec2(thumbW, thumbH));
-                    } else {
-                        ImGui::Dummy(ImVec2(thumbW, thumbH));
-                    }
-                } else {
-                    // Empty scene placeholder
-                    ImGui::Dummy(ImVec2(thumbW, thumbH));
-                    ImVec2 min = ImGui::GetItemRectMin();
-                    ImVec2 max = ImGui::GetItemRectMax();
-                    ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 50, 70, 255), 4.0f);
-                    ImGui::GetWindowDrawList()->AddText(
-                        ImVec2(min.x + 15, min.y + 20), IM_COL32(100, 180, 255, 255), "empty scene");
-                }
-            } else {
-                // Regular MeshOperator - get mesh and render single object
-                render3d::Mesh* mesh = nullptr;
-                if (auto* meshOp = dynamic_cast<render3d::MeshOperator*>(info.op)) {
-                    mesh = meshOp->outputMesh();
-                }
-
-                if (mesh && mesh->valid()) {
-                    updateGeometryPreview(preview, mesh, ctx, input.dt);
-
-                    // Display rendered texture
-                    WGPUTextureView view = preview.renderer ? preview.renderer->outputView() : nullptr;
-                    if (view) {
-                        ImTextureID texId = reinterpret_cast<ImTextureID>(view);
-                        ImGui::Image(texId, ImVec2(thumbW, thumbH));
-                    } else {
-                        ImGui::Dummy(ImVec2(thumbW, thumbH));
-                    }
-                } else {
-                    // No valid mesh - show placeholder
-                    ImGui::Dummy(ImVec2(thumbW, thumbH));
-                    ImVec2 min = ImGui::GetItemRectMin();
-                    ImVec2 max = ImGui::GetItemRectMax();
-                    ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(30, 50, 70, 255), 4.0f);
-                    ImGui::GetWindowDrawList()->AddText(
-                        ImVec2(min.x + 20, min.y + 20), IM_COL32(100, 180, 255, 255), "no mesh");
-                }
+            // Let operator draw its visualization (handles its own preview texture)
+            ImDrawList* dl = ImGui::GetWindowDrawList();
+            if (!info.op->drawVisualization(dl, min.x, min.y, max.x, max.y)) {
+                // Fallback if operator doesn't provide visualization
+                dl->AddRectFilled(min, max, IM_COL32(30, 50, 70, 255), 4.0f);
+                dl->AddText(ImVec2(min.x + 15, min.y + 20), IM_COL32(100, 180, 255, 255), "geometry");
             }
         } else if (kind == vivid::OutputKind::Value || kind == vivid::OutputKind::ValueArray) {
             // Value operator - show numeric display
@@ -2061,16 +1664,8 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                         ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No texture");
                     }
                 } else if (kind == vivid::OutputKind::Geometry) {
-                    if (auto* meshOp = dynamic_cast<render3d::MeshOperator*>(info.op)) {
-                        render3d::Mesh* mesh = meshOp->outputMesh();
-                        if (mesh) {
-                            ImGui::Text("Vertices: %u", mesh->vertexCount());
-                            ImGui::Text("Triangles: %u", mesh->indexCount() / 3);
-                        }
-                    } else if (auto* composer = dynamic_cast<render3d::SceneComposer*>(info.op)) {
-                        render3d::Scene& scene = composer->outputScene();
-                        ImGui::Text("Objects: %zu", scene.objects().size());
-                    }
+                    // Geometry stats - operators can provide their own via getVisualizationData
+                    ImGui::Text("Type: Geometry");
                 } else if (kind == vivid::OutputKind::Audio) {
                     AudioOperator* audioOp = static_cast<AudioOperator*>(info.op);
                     const AudioBuffer* buf = audioOp->outputBuffer();

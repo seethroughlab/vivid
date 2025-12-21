@@ -36,8 +36,10 @@ set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
 add_library(vivid-render3d SHARED
     src/mesh.cpp
     src/mesh_builder.cpp
+    src/mesh_operator.cpp
     src/camera.cpp
     src/scene.cpp
+    src/scene_composer.cpp
     src/renderer.cpp
     src/shadow_manager.cpp
     src/material.cpp

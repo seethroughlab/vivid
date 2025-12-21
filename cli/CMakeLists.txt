@@ -25,7 +25,6 @@ target_include_directories(vivid
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/core
         ${CMAKE_SOURCE_DIR}/core/include
-        ${CMAKE_SOURCE_DIR}/addons/vivid-render3d/include
         ${CMAKE_SOURCE_DIR}/addons/vivid-audio/include
 )
 
@@ -34,17 +33,24 @@ target_compile_definitions(vivid PRIVATE
     VIVID_VERSION="${VIVID_VERSION}"
 )
 
-# Link against core library (includes ImGui), render3d, audio
+# Link against core library (includes ImGui), audio
 # Note: glfw3webgpu is explicitly linked here because main.cpp uses glfwCreateWindowWGPUSurface
 target_link_libraries(vivid
     PRIVATE
         vivid-core
         glfw3webgpu
-        vivid-render3d
         vivid-audio
         CLI11::CLI11
         ixwebsocket
 )
+
+# Optional: render3d addon - link if available so chains can use it
+# Note: The chain visualizer is now addon-agnostic (no compile-time dependency)
+# Operators provide their own visualization via drawVisualization()
+if(TARGET vivid-render3d)
+    target_link_libraries(vivid PRIVATE vivid-render3d)
+    message(STATUS "[vivid-cli] vivid-render3d linked")
+endif()
 
 # Platform-specific settings
 if(APPLE)

@@ -76,11 +76,12 @@ public:
     void init(Context& ctx) override {}
 
     /**
-     * @brief Default cleanup releases the mesh
+     * @brief Default cleanup releases the mesh and preview resources
      *
      * Override if you have additional resources to release.
      */
     void cleanup() override {
+        cleanupPreview();
         m_mesh.release();
     }
 

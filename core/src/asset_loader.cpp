@@ -94,25 +94,56 @@ void AssetLoader::setProjectDir(const fs::path& path) {
 
     // 2. Project directory itself
     m_searchPaths.insert(m_searchPaths.begin(), path);
+}
 
-    // 3. Search parent directories for assets/ folders (up to 3 levels)
-    // This allows shared asset folders for multiple projects
-    fs::path parent = path.parent_path();
-    for (int i = 0; i < 3 && !parent.empty() && parent != parent.parent_path(); ++i) {
-        fs::path parentAssets = parent / "assets";
-        if (fs::exists(parentAssets) && fs::is_directory(parentAssets)) {
-            addSearchPath(parentAssets);
-        }
-        parent = parent.parent_path();
-    }
+void AssetLoader::registerAssetPath(const std::string& name, const fs::path& path) {
+    m_registeredPaths[name] = path;
 }
 
 void AssetLoader::clearCache() {
     m_textCache.clear();
     m_binaryCache.clear();
+    m_loadedAssets.clear();
+}
+
+std::vector<std::string> AssetLoader::getLoadedAssets() const {
+    std::vector<std::string> assets;
+    assets.reserve(m_loadedAssets.size());
+    for (const auto& [path, _] : m_loadedAssets) {
+        assets.push_back(path);
+    }
+    return assets;
+}
+
+std::vector<fs::path> AssetLoader::getLoadedAssetPaths() const {
+    std::vector<fs::path> paths;
+    paths.reserve(m_loadedAssets.size());
+    for (const auto& [_, resolvedPath] : m_loadedAssets) {
+        paths.push_back(resolvedPath);
+    }
+    return paths;
 }
 
 fs::path AssetLoader::findAsset(const std::string& path) {
+    // Check for named prefix (e.g., "shared:logo.jpg")
+    // Only treat as prefix if colon is not at position 1 (Windows drive letter like "C:")
+    auto colonPos = path.find(':');
+    if (colonPos != std::string::npos && colonPos > 1) {
+        std::string prefix = path.substr(0, colonPos);
+        std::string relativePath = path.substr(colonPos + 1);
+
+        auto it = m_registeredPaths.find(prefix);
+        if (it != m_registeredPaths.end()) {
+            fs::path fullPath = it->second / relativePath;
+            if (fs::exists(fullPath)) {
+                return fullPath;
+            }
+            // Prefix was registered but file not found - don't fall through
+            return {};
+        }
+        // Prefix not registered - fall through to normal resolution
+    }
+
     // If absolute path, use directly
     fs::path assetPath(path);
     if (assetPath.is_absolute()) {
@@ -163,6 +194,9 @@ std::string AssetLoader::loadText(const std::string& path) {
     std::stringstream buffer;
     buffer << file.rdbuf();
     std::string content = buffer.str();
+
+    // Track loaded asset
+    m_loadedAssets[path] = fullPath;
 
     // Cache if enabled
     if (m_cacheEnabled) {
@@ -219,6 +253,9 @@ std::vector<uint8_t> AssetLoader::loadBinary(const std::string& path) {
     if (!file.read(reinterpret_cast<char*>(data.data()), size)) {
         return {};
     }
+
+    // Track loaded asset
+    m_loadedAssets[path] = fullPath;
 
     // Cache if enabled
     if (m_cacheEnabled) {

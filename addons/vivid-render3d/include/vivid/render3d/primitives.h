@@ -63,10 +63,11 @@ public:
     void size(float s) { size(s, s, s); }
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
-
-        m_builder = MeshBuilder::box(m_width, m_height, m_depth);
-        finalizeMesh(ctx, true);  // Always flat for boxes
+        if (needsCook()) {
+            m_builder = MeshBuilder::box(m_width, m_height, m_depth);
+            finalizeMesh(ctx, true);  // Always flat for boxes
+        }
+        updatePreview(ctx);  // Always update for rotation animation
     }
 
     std::string name() const override { return "Box"; }
@@ -140,16 +141,17 @@ public:
     }
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
+        if (needsCook()) {
+            m_builder = MeshBuilder::sphere(m_radius, m_segments);
 
-        m_builder = MeshBuilder::sphere(m_radius, m_segments);
+            // Apply noise displacement if enabled
+            if (m_noiseAmplitude > 0.0f) {
+                m_builder.noiseDisplace(m_noiseAmplitude, m_noiseFrequency, m_noiseOctaves, m_noiseTime);
+            }
 
-        // Apply noise displacement if enabled
-        if (m_noiseAmplitude > 0.0f) {
-            m_builder.noiseDisplace(m_noiseAmplitude, m_noiseFrequency, m_noiseOctaves, m_noiseTime);
+            finalizeMesh(ctx);  // Uses m_flatShading from base
         }
-
-        finalizeMesh(ctx);  // Uses m_flatShading from base
+        updatePreview(ctx);  // Always update for rotation animation
     }
 
     std::string name() const override { return "Sphere"; }
@@ -215,10 +217,11 @@ public:
     }
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
-
-        m_builder = MeshBuilder::cylinder(m_radius, m_height, m_segments);
-        finalizeMesh(ctx);  // Uses m_flatShading from base
+        if (needsCook()) {
+            m_builder = MeshBuilder::cylinder(m_radius, m_height, m_segments);
+            finalizeMesh(ctx);  // Uses m_flatShading from base
+        }
+        updatePreview(ctx);  // Always update for rotation animation
     }
 
     std::string name() const override { return "Cylinder"; }
@@ -280,10 +283,11 @@ public:
     }
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
-
-        m_builder = MeshBuilder::cone(m_radius, m_height, m_segments);
-        finalizeMesh(ctx);
+        if (needsCook()) {
+            m_builder = MeshBuilder::cone(m_radius, m_height, m_segments);
+            finalizeMesh(ctx);
+        }
+        updatePreview(ctx);  // Always update for rotation animation
     }
 
     std::string name() const override { return "Cone"; }
@@ -354,10 +358,11 @@ public:
     }
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
-
-        m_builder = MeshBuilder::torus(m_outerRadius, m_innerRadius, m_segments, m_rings);
-        finalizeMesh(ctx);
+        if (needsCook()) {
+            m_builder = MeshBuilder::torus(m_outerRadius, m_innerRadius, m_segments, m_rings);
+            finalizeMesh(ctx);
+        }
+        updatePreview(ctx);  // Always update for rotation animation
     }
 
     std::string name() const override { return "Torus"; }
@@ -415,10 +420,11 @@ public:
     }
 
     void process(Context& ctx) override {
-        if (!needsCook()) return;
-
-        m_builder = MeshBuilder::plane(m_width, m_height, m_subdivisionsX, m_subdivisionsY);
-        finalizeMesh(ctx, true);  // Planes are always flat
+        if (needsCook()) {
+            m_builder = MeshBuilder::plane(m_width, m_height, m_subdivisionsX, m_subdivisionsY);
+            finalizeMesh(ctx, true);  // Planes are always flat
+        }
+        updatePreview(ctx);  // Always update for rotation animation
     }
 
     std::string name() const override { return "Plane"; }

@@ -100,37 +100,40 @@ public:
         }
 
         // Skip if nothing changed (uses base class cooking system)
-        if (!needsCook()) return;
+        if (needsCook()) {
+            // Copy builder A as our working copy
+            m_builder = *builderA;
 
-        // Copy builder A as our working copy
-        m_builder = *builderA;
+            // Perform CSG operation
+            switch (m_operation) {
+                case BooleanOp::Union:
+                    m_builder.add(*builderB);
+                    break;
+                case BooleanOp::Subtract:
+                    m_builder.subtract(*builderB);
+                    break;
+                case BooleanOp::Intersect:
+                    m_builder.intersect(*builderB);
+                    break;
+            }
 
-        // Perform CSG operation
-        switch (m_operation) {
-            case BooleanOp::Union:
-                m_builder.add(*builderB);
-                break;
-            case BooleanOp::Subtract:
-                m_builder.subtract(*builderB);
-                break;
-            case BooleanOp::Intersect:
-                m_builder.intersect(*builderB);
-                break;
+            // CSG results always use flat normals - the geometry is too complex
+            // to automatically determine smooth vs sharp edges
+            if (static_cast<bool>(flatShading)) {
+                m_builder.computeFlatNormals();
+            }
+
+            m_mesh = m_builder.build();
+            m_mesh.upload(ctx);
+
+            didCook();  // Mark output as updated
         }
 
-        // CSG results always use flat normals - the geometry is too complex
-        // to automatically determine smooth vs sharp edges
-        if (static_cast<bool>(flatShading)) {
-            m_builder.computeFlatNormals();
-        }
-
-        m_mesh = m_builder.build();
-        m_mesh.upload(ctx);
-
-        didCook();  // Mark output as updated
+        updatePreview(ctx);  // Always update for rotation animation
     }
 
     void cleanup() override {
+        cleanupPreview();
         m_mesh.release();
     }
 
