@@ -1,17 +1,15 @@
 # Vivid CLI - Main executable
-# Contains: entry point, argument parsing, chain visualizer, editor bridge
+# Contains: entry point, argument parsing, editor bridge
 
 set(VIVID_CLI_SOURCES
     main.cpp
     cli.cpp
     editor_bridge.cpp
-    chain_visualizer.cpp
 )
 
 set(VIVID_CLI_HEADERS
     include/vivid/cli.h
     include/vivid/editor_bridge.h
-    chain_visualizer.h
 )
 
 add_executable(vivid

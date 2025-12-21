@@ -99,6 +99,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/addon_manager.cpp
     # ImGui integration (in core so addons can use ImGui for visualization)
     imgui/imgui_integration.cpp
+    imgui/chain_visualizer.cpp
     # vivid-io (image loading)
     src/io/image_loader.cpp
     # vivid-effects-2d (2D texture effects)
@@ -170,6 +171,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/audio_operator.h
     include/vivid/audio_output.h
     imgui/imgui_integration.h
+    imgui/chain_visualizer.h
 )
 
 # Core library (shared between executable and addons)

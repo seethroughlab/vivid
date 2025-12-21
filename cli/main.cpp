@@ -13,7 +13,7 @@
 #include <vivid/window_manager.h>
 #include <vivid/asset_loader.h>
 #include "imgui/imgui_integration.h"
-#include "chain_visualizer.h"
+#include "imgui/chain_visualizer.h"
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>  // wgpu-native extensions (wgpuDevicePoll)
 #include <glfw3webgpu.h>

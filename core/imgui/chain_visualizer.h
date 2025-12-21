@@ -6,7 +6,7 @@
 // Addon-agnostic: operators provide their own visualization via drawVisualization().
 // No direct dependencies on render3d, audio, or other addons.
 
-#include "imgui/imgui_integration.h"
+#include "imgui_integration.h"
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/video_exporter.h>
