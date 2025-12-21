@@ -29,6 +29,9 @@
 #include <vivid/audio/overdrive.h>
 #include <vivid/audio/bitcrush.h>
 
+// Lo-fi/Vintage effects
+#include <vivid/audio/tape_effect.h>
+
 // Audio analysis
 #include <vivid/audio/audio_analyzer.h>
 #include <vivid/audio/levels.h>
@@ -40,6 +43,7 @@
 #include <vivid/audio/oscillator.h>
 #include <vivid/audio/envelope.h>
 #include <vivid/audio/synth.h>
+#include <vivid/audio/poly_synth.h>
 #include <vivid/audio/noise_gen.h>
 #include <vivid/audio/crackle.h>
 #include <vivid/audio/pitch_env.h>

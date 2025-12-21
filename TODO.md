@@ -240,4 +240,7 @@
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle. Please add examples of these toggles to a few of the examples. 
 [ ] How can we make an example the demonstrates frustum culling in a way that is easy to see?
-[ ] I'd like to see an example of shadows with more complicate models - either boolean geometry or loaded GLTF models.
+[ ] I'd like to see an example of shadows (point, directional, and spot) with more complicate models - either boolean geometry or loaded GLTF models.
+[ ] Lets do some stress tests to make sure thre audio dsp thread is rock solid  - no interrupted playback or clicks/pops, no buffer underruns
+[ ] testing-fixtures/tape-effect-test/ should use the enums in notes.h
+[ ] I'd like to add the new Audio-Visual-Parity concept (explained in the Core Principle in _AUDIO_PARITY.md) to all of the relevant documents - the PHILOSOPHY docment, the README, and any other documents it should appear in. Its very important. 

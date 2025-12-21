@@ -1,7 +1,0 @@
-{
-  "dof.blurStrength": [0.16, 0, 0, 0],
-  "dof.focusDistance": [0.485, 0, 0, 0],
-  "dof.focusRange": [0.426, 0, 0, 0],
-  "farBlur.passes": [8, 0, 0, 0],
-  "farBlur.radius": [48.494, 0, 0, 0]
-}

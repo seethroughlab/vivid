@@ -23,6 +23,7 @@
 #include <vivid/effects/chromatic_aberration.h>
 #include <vivid/effects/bloom.h>
 #include <vivid/effects/vignette.h>
+#include <vivid/effects/film_grain.h>
 #include <vivid/effects/barrel_distortion.h>
 #include <vivid/effects/feedback.h>
 #include <vivid/effects/frame_cache.h>
@@ -77,6 +78,7 @@ REGISTER_OPERATOR(Quantize, "Retro", "Color quantization", true);
 REGISTER_OPERATOR(Scanlines, "Retro", "CRT scanline effect", true);
 REGISTER_OPERATOR(CRTEffect, "Retro", "Full CRT simulation", true);
 REGISTER_OPERATOR(Downsample, "Retro", "Low resolution effect", true);
+REGISTER_OPERATOR(FilmGrain, "Retro", "Film grain overlay", true);
 
 // Compositing
 REGISTER_OPERATOR(Composite, "Compositing", "Blend two textures", true);

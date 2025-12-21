@@ -127,6 +127,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/downsample.cpp
     src/effects/barrel_distortion.cpp
     src/effects/vignette.cpp
+    src/effects/film_grain.cpp
     src/effects/frame_cache.cpp
     src/effects/time_machine.cpp
     src/effects/particle_renderer.cpp

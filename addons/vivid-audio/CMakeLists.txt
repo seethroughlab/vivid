@@ -36,6 +36,7 @@ set(AUDIO_SOURCES
     src/phaser.cpp
     src/overdrive.cpp
     src/bitcrush.cpp
+    src/tape_effect.cpp
     src/audio_filter.cpp
     # Analysis
     src/audio_analyzer.cpp
@@ -47,6 +48,7 @@ set(AUDIO_SOURCES
     src/oscillator.cpp
     src/envelope.cpp
     src/synth.cpp
+    src/poly_synth.cpp
     src/noise_gen.cpp
     src/crackle.cpp
     src/pitch_env.cpp
