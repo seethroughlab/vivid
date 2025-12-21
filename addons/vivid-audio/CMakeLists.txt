@@ -50,6 +50,8 @@ set(AUDIO_SOURCES
     src/synth.cpp
     src/poly_synth.cpp
     src/wavetable_synth.cpp
+    src/fm_synth.cpp
+    src/granular.cpp
     src/noise_gen.cpp
     src/crackle.cpp
     src/pitch_env.cpp
@@ -66,6 +68,7 @@ set(AUDIO_SOURCES
     src/clock.cpp
     src/sequencer.cpp
     src/euclidean.cpp
+    src/song.cpp
     # Mixing
     src/audio_mixer.cpp
     src/audio_gain.cpp

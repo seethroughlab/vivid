@@ -548,9 +548,10 @@ This case study tests whether Vivid can deliver audio-visual co-creation at a pr
 | **5** | Granular synthesis | 2 weeks | Atmospheric depth |
 | **6** | WavetableSynth | 2 weeks | Evolving timbres |
 
-### Example: Prelinger Nostalgia (What's Possible Today)
+### Example: Prelinger Nostalgia (Complete Implementation)
 
-This example shows what can be achieved with current Vivid capabilities, plus notes on what would improve with new features.
+This example showcases the full audio-visual parity of Vivid, using all the advanced
+synthesis and effects operators to create an authentic Boards of Canada experience.
 
 ```cpp
 // examples/audiovisual/prelinger-nostalgia/chain.cpp
@@ -558,11 +559,15 @@ This example shows what can be achieved with current Vivid capabilities, plus no
 // "Boards of Canada meets Prelinger Archive"
 // Evolving ambient track with retro reactive visuals
 //
-// NOTE: This example works today but would benefit from:
-// - TapeEffect (wow/flutter) for authentic BoC sound
-// - PolySynth for chord pads
-// - FilmGrain for authentic film look
-// - Granular for textural atmosphere
+// Features used:
+// - Song structure for section-based composition
+// - PolySynth for warm chord pads
+// - WavetableSynth for evolving lead
+// - FMSynth for bell textures
+// - Granular for atmospheric clouds
+// - LadderFilter for warm Moog-style filtering
+// - TapeEffect for authentic wow/flutter
+// - FilmGrain for vintage visuals
 
 #include <vivid/vivid.h>
 #include <vivid/audio/audio.h>
@@ -576,281 +581,320 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // =========================================================================
-    // AUDIO: Boards of Canada style ambient
+    // SONG STRUCTURE
     // =========================================================================
 
-    // Clock - slow, hypnotic tempo
     auto& clock = chain.add<Clock>("clock");
-    clock.bpm = 85.0f;  // BoC typically 80-100 BPM
-    clock.swing = 0.1f; // Slight human feel
+    clock.bpm = 85.0f;
+    clock.swing = 0.1f;
 
-    // --- DRUMS: Dusty, understated ---
+    auto& song = chain.add<Song>("song");
+    song.syncTo("clock");
+    song.addSection("intro", 0, 8);
+    song.addSection("verse1", 8, 24);
+    song.addSection("chorus", 24, 32);
+    song.addSection("verse2", 32, 48);
+    song.addSection("chorus2", 48, 56);
+    song.addSection("outro", 56, 64);
+
+    // =========================================================================
+    // DRUMS: Dusty, understated
+    // =========================================================================
 
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.steps = 16;
-    kickSeq.pattern = 0b1000100010001000;  // Four on floor, sparse
-    kickSeq.clockInput(&clock);
+    kickSeq.pattern = 0b1000100010001000;
+    kickSeq.clockInput("clock");
 
     auto& kick = chain.add<Kick>("kick");
     kick.pitch = 55.0f;
     kick.decay = 0.4f;
-    kick.drive = 0.3f;  // Slight warmth
-    kick.triggerInput(&kickSeq);
+    kick.drive = 0.3f;
+    kick.triggerInput("kickSeq");
 
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
     snareSeq.steps = 16;
-    snareSeq.pattern = 0b0000100000001000;  // Off-beat snare
-    snareSeq.clockInput(&clock);
+    snareSeq.pattern = 0b0000100000001000;
+    snareSeq.clockInput("clock");
 
     auto& snare = chain.add<Snare>("snare");
-    snare.tone = 0.3f;  // Less snappy, more body
+    snare.tone = 0.3f;
     snare.decay = 0.25f;
-    snare.triggerInput(&snareSeq);
+    snare.triggerInput("snareSeq");
 
     auto& hatSeq = chain.add<Euclidean>("hatSeq");
     hatSeq.steps = 16;
-    hatSeq.fills = 5;  // Sparse, irregular
-    hatSeq.clockInput(&clock);
+    hatSeq.fills = 5;
+    hatSeq.clockInput("clock");
 
     auto& hihat = chain.add<HiHat>("hihat");
     hihat.decay = 0.05f;
     hihat.tone = 0.6f;
-    hihat.triggerInput(&hatSeq);
+    hihat.triggerInput("hatSeq");
 
-    // --- BASS: Warm, filtered ---
+    auto& drumMix = chain.add<AudioMixer>("drumMix");
+    drumMix.setInput(0, "kick");
+    drumMix.setGain(0, 0.8f);
+    drumMix.setInput(1, "snare");
+    drumMix.setGain(1, 0.5f);
+    drumMix.setInput(2, "hihat");
+    drumMix.setGain(2, 0.3f);
+
+    // =========================================================================
+    // BASS: Warm Moog-style with LadderFilter
+    // =========================================================================
 
     auto& bassSeq = chain.add<Sequencer>("bassSeq");
     bassSeq.steps = 16;
     bassSeq.pattern = 0b1000001010000010;
-    bassSeq.clockInput(&clock);
+    bassSeq.clockInput("clock");
 
     auto& bassOsc = chain.add<Oscillator>("bassOsc");
     bassOsc.waveform = Waveform::Saw;
-    bassOsc.frequency = 55.0f;  // A1
+    bassOsc.frequency = 55.0f;
 
     auto& bassEnv = chain.add<Envelope>("bassEnv");
     bassEnv.attack = 0.01f;
     bassEnv.decay = 0.3f;
     bassEnv.sustain = 0.6f;
     bassEnv.release = 0.2f;
-    bassEnv.triggerInput(&bassSeq);
+    bassEnv.triggerInput("bassSeq");
 
-    auto& bassFilter = chain.add<AudioFilter>("bassFilter");
-    bassFilter.type = FilterType::Lowpass;
-    bassFilter.cutoff = 400.0f;
-    bassFilter.resonance = 2.0f;
-    bassFilter.input(&bassOsc);
+    // LadderFilter for authentic Moog warmth
+    auto& bassLadder = chain.add<LadderFilter>("bassLadder");
+    bassLadder.input("bassOsc");
+    bassLadder.cutoff = 400.0f;
+    bassLadder.resonance = 0.3f;
+    bassLadder.drive = 1.5f;
 
     auto& bassVCA = chain.add<AudioGain>("bassVCA");
-    bassVCA.input(&bassFilter);
+    bassVCA.input("bassLadder");
 
-    // --- LEAD: Detuned, nostalgic ---
-    // (Manual detuning to simulate PolySynth - would be cleaner with PolySynth)
+    // =========================================================================
+    // PAD: PolySynth for rich chord pads
+    // =========================================================================
 
-    auto& leadOsc1 = chain.add<Oscillator>("leadOsc1");
-    leadOsc1.waveform = Waveform::Square;
-    leadOsc1.frequency = 440.0f;
-    leadOsc1.detune = -8.0f;  // Slightly flat
-    leadOsc1.volume = 0.3f;
+    auto& pad = chain.add<PolySynth>("pad");
+    pad.waveform = Waveform::Saw;
+    pad.maxVoices = 6;
+    pad.detune = 15.0f;
+    pad.attack = 0.8f;
+    pad.decay = 0.5f;
+    pad.sustain = 0.7f;
+    pad.release = 2.0f;
+    pad.volume = 0.4f;
 
-    auto& leadOsc2 = chain.add<Oscillator>("leadOsc2");
-    leadOsc2.waveform = Waveform::Square;
-    leadOsc2.frequency = 440.0f;
-    leadOsc2.detune = 8.0f;   // Slightly sharp
-    leadOsc2.volume = 0.3f;
+    // Pad through LadderFilter for warmth
+    auto& padFilter = chain.add<LadderFilter>("padFilter");
+    padFilter.input("pad");
+    padFilter.cutoff = 1200.0f;
+    padFilter.resonance = 0.2f;
 
-    auto& leadMix = chain.add<AudioMixer>("leadMix");
-    leadMix.addInput(&leadOsc1);
-    leadMix.addInput(&leadOsc2);
+    // =========================================================================
+    // LEAD: WavetableSynth for evolving timbre
+    // =========================================================================
 
-    auto& leadFilter = chain.add<AudioFilter>("leadFilter");
-    leadFilter.type = FilterType::Lowpass;
+    auto& lead = chain.add<WavetableSynth>("lead");
+    lead.loadBuiltin(BuiltinTable::Analog);
+    lead.maxVoices = 2;
+    lead.detune = 8.0f;
+    lead.attack = 0.1f;
+    lead.decay = 0.2f;
+    lead.sustain = 0.6f;
+    lead.release = 0.5f;
+    lead.volume = 0.35f;
+
+    auto& leadFilter = chain.add<LadderFilter>("leadFilter");
+    leadFilter.input("lead");
     leadFilter.cutoff = 2000.0f;
-    leadFilter.resonance = 3.0f;
-    leadFilter.input(&leadMix);
+    leadFilter.resonance = 0.4f;
 
-    // --- ATMOSPHERICS: Crackle + reverb ---
+    // =========================================================================
+    // BELLS: FMSynth for ethereal bell textures
+    // =========================================================================
+
+    auto& bells = chain.add<FMSynth>("bells");
+    bells.loadPreset(FMPreset::Bell);
+    bells.volume = 0.25f;
+
+    // =========================================================================
+    // ATMOSPHERE: Granular clouds + Crackle
+    // =========================================================================
+
+    auto& clouds = chain.add<Granular>("clouds");
+    clouds.loadSample("assets/audio/texture.wav");
+    clouds.grainSize = 80.0f;
+    clouds.density = 12.0f;
+    clouds.position = 0.5f;
+    clouds.positionSpray = 0.2f;
+    clouds.pitch = 0.5f;
+    clouds.pitchSpray = 0.3f;
+    clouds.panSpray = 0.8f;
+    clouds.volume = 0.3f;
+    clouds.setFreeze(true);
 
     auto& crackle = chain.add<Crackle>("crackle");
-    crackle.density = 0.02f;  // Sparse vinyl crackle
-    crackle.volume = 0.15f;
+    crackle.density = 0.02f;
+    crackle.volume = 0.12f;
 
-    // --- FX CHAIN ---
+    // =========================================================================
+    // FX CHAIN with TapeEffect
+    // =========================================================================
 
-    auto& drumMix = chain.add<AudioMixer>("drumMix");
-    drumMix.addInput(&kick, 0.8f);
-    drumMix.addInput(&snare, 0.5f);
-    drumMix.addInput(&hihat, 0.3f);
+    auto& synthMix = chain.add<AudioMixer>("synthMix");
+    synthMix.setInput(0, "bassVCA");
+    synthMix.setGain(0, 0.7f);
+    synthMix.setInput(1, "padFilter");
+    synthMix.setGain(1, 0.5f);
+    synthMix.setInput(2, "leadFilter");
+    synthMix.setGain(2, 0.4f);
+    synthMix.setInput(3, "bells");
+    synthMix.setGain(3, 0.3f);
+    synthMix.setInput(4, "clouds");
+    synthMix.setGain(4, 0.4f);
 
     auto& mainMix = chain.add<AudioMixer>("mainMix");
-    mainMix.addInput(&drumMix, 0.7f);
-    mainMix.addInput(&bassVCA, 0.6f);
-    mainMix.addInput(&leadFilter, 0.4f);
-    mainMix.addInput(&crackle, 1.0f);
+    mainMix.setInput(0, "drumMix");
+    mainMix.setGain(0, 0.7f);
+    mainMix.setInput(1, "synthMix");
+    mainMix.setGain(1, 0.8f);
+    mainMix.setInput(2, "crackle");
+    mainMix.setGain(2, 1.0f);
 
-    // Lo-fi processing
+    // TapeEffect for authentic BoC warmth
+    auto& tape = chain.add<TapeEffect>("tape");
+    tape.input("mainMix");
+    tape.wow = 0.3f;
+    tape.flutter = 0.2f;
+    tape.saturation = 0.5f;
+    tape.hiss = 0.08f;
+    tape.age = 0.3f;
+
+    // Subtle bitcrush for lo-fi character
     auto& bitcrush = chain.add<Bitcrush>("bitcrush");
-    bitcrush.bits = 12;           // Subtle digital degradation
-    bitcrush.sampleRate = 22050;  // Half sample rate
-    bitcrush.mix = 0.3f;          // Blend with clean
-    bitcrush.input(&mainMix);
+    bitcrush.input("tape");
+    bitcrush.bits = 12;
+    bitcrush.sampleRate = 22050;
+    bitcrush.mix = 0.2f;
 
-    // Warm saturation
-    auto& overdrive = chain.add<Overdrive>("overdrive");
-    overdrive.drive = 1.5f;
-    overdrive.tone = 0.4f;  // Dark
-    overdrive.mix = 0.4f;
-    overdrive.input(&bitcrush);
-
-    // Delay - eighth note, lots of feedback
+    // Delay - eighth note
     auto& delay = chain.add<Delay>("delay");
-    delay.time = 60000.0f / 85.0f / 2.0f;  // Eighth note at 85 BPM
-    delay.feedback = 0.5f;
+    delay.input("bitcrush");
+    delay.delayTime = 60000.0f / 85.0f / 2.0f;
+    delay.feedback = 0.45f;
     delay.mix = 0.3f;
-    delay.input(&overdrive);
 
     // Lush reverb
     auto& reverb = chain.add<Reverb>("reverb");
+    reverb.input("delay");
     reverb.roomSize = 0.85f;
     reverb.damping = 0.6f;
-    reverb.wet = 0.4f;
-    reverb.input(&delay);
+    reverb.mix = 0.4f;
 
     // Master compression
     auto& compressor = chain.add<Compressor>("compressor");
+    compressor.input("reverb");
     compressor.threshold = -12.0f;
     compressor.ratio = 3.0f;
     compressor.attack = 0.01f;
     compressor.release = 0.1f;
-    compressor.input(&reverb);
 
     chain.audioOutput("compressor");
 
-    // --- ANALYSIS for visuals ---
-
+    // Analysis for visuals
     auto& bands = chain.add<BandSplit>("bands");
-    bands.input(&mainMix);
+    bands.input("mainMix");
 
     auto& beat = chain.add<BeatDetect>("beat");
-    beat.input(&kick);
+    beat.input("kick");
 
     // =========================================================================
     // VISUALS: Prelinger Archive nostalgia
     // =========================================================================
 
-    // Video from Prelinger Archive (user provides their own footage)
-    // Example: educational film, industrial footage, home movies
     auto& video = chain.add<VideoPlayer>("video");
     video.path = "assets/prelinger_footage.mp4";
     video.loop = true;
-    video.playbackSpeed = 0.8f;  // Slightly slowed for dreaminess
+    video.playbackSpeed = 0.8f;
 
-    // Desaturate and warm color grade
     auto& hsv = chain.add<HSV>("hsv");
-    hsv.input(&video);
-    hsv.saturation = 0.6f;  // Faded
-    hsv.hueShift = 0.05f;   // Warm shift toward sepia
+    hsv.input("video");
+    hsv.saturation = 0.6f;
+    hsv.hueShift = 0.05f;
     hsv.value = 0.95f;
 
-    // Brightness/contrast for aged look
     auto& brightness = chain.add<Brightness>("brightness");
-    brightness.input(&hsv);
+    brightness.input("hsv");
     brightness.brightness = -0.05f;
     brightness.contrast = 0.85f;
-    brightness.gamma = 1.1f;  // Lifted blacks
+    brightness.gamma = 1.1f;
 
-    // Subtle color quantization for vintage film stock
     auto& quantize = chain.add<Quantize>("quantize");
-    quantize.input(&brightness);
-    quantize.levels = 32;  // Subtle banding
+    quantize.input("brightness");
+    quantize.levels = 32;
 
-    // Audio-reactive bloom (bass drives glow)
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&quantize);
+    bloom.input("quantize");
     bloom.threshold = 0.6f;
     bloom.radius = 20.0f;
 
-    // Audio-reactive feedback (beat drives trails)
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input(&bloom);
+    feedback.input("bloom");
     feedback.decay = 0.92f;
     feedback.zoom = 1.005f;
 
-    // Scanlines for CRT feel
     auto& scanlines = chain.add<Scanlines>("scanlines");
-    scanlines.input(&feedback);
+    scanlines.input("feedback");
     scanlines.spacing = 3;
     scanlines.thickness = 0.4f;
     scanlines.intensity = 0.3f;
 
-    // CRT curve and vignette
     auto& crt = chain.add<CRTEffect>("crt");
-    crt.input(&scanlines);
+    crt.input("scanlines");
     crt.curvature = 0.08f;
     crt.vignette = 0.4f;
     crt.chromatic = 0.015f;
 
-    // Noise overlay for film grain (workaround until FilmGrain operator)
-    auto& grain = chain.add<Noise>("grain");
-    grain.type = NoiseType::Value;  // Blocky, like film grain
-    grain.scale = 200.0f;
-    grain.speed = 30.0f;
-    grain.octaves = 1;
+    // FilmGrain for authentic vintage look
+    auto& filmGrain = chain.add<FilmGrain>("filmGrain");
+    filmGrain.input("crt");
+    filmGrain.intensity = 0.25f;
+    filmGrain.size = 1.5f;
+    filmGrain.speed = 24.0f;
+    filmGrain.scratches = 0.1f;
+    filmGrain.flicker = 0.05f;
 
-    auto& grainBrightness = chain.add<Brightness>("grainBrightness");
-    grainBrightness.input(&grain);
-    grainBrightness.brightness = 0.5f;  // Center around gray
-    grainBrightness.contrast = 0.3f;    // Low contrast
+    // Beat-synced flash
+    auto& flash = chain.add<Flash>("flash");
+    flash.input("filmGrain");
+    flash.decay = 0.92f;
+    flash.color = glm::vec3(1.0f, 0.95f, 0.9f);
 
-    // Composite grain over video
-    auto& composite = chain.add<Composite>("composite");
-    composite.base(&crt);
-    composite.overlay(&grainBrightness);
-    composite.mode = BlendMode::Overlay;
-    composite.opacity = 0.15f;  // Subtle grain
+    chain.output("flash");
 
-    chain.output("composite");
+    // Connect kick to flash trigger
+    kickSeq.onTrigger([&]() {
+        flash.trigger();
+    });
 
     // =========================================================================
-    // MODULATION (LFO for evolving textures)
+    // MODULATION
     // =========================================================================
 
     auto& filterLFO = chain.add<LFO>("filterLFO");
-    filterLFO.rate = 0.05f;  // Very slow - 20 second cycle
+    filterLFO.rate = 0.05f;
     filterLFO.shape = LFOShape::Sine;
 
-    auto& pitchLFO = chain.add<LFO>("pitchLFO");
-    pitchLFO.rate = 0.1f;
-    pitchLFO.shape = LFOShape::Triangle;
+    auto& positionLFO = chain.add<LFO>("positionLFO");
+    positionLFO.rate = 0.02f;
+    positionLFO.shape = LFOShape::Triangle;
 }
 
 void update(Context& ctx) {
     auto& chain = ctx.chain();
     float time = ctx.time();
 
-    // --- AUDIO MODULATION ---
-
-    // Slow filter sweep on lead
-    float filterMod = chain.get<LFO>("filterLFO").outputValue();
-    chain.get<AudioFilter>("leadFilter").cutoff = 800.0f + filterMod * 1500.0f;
-
-    // Subtle pitch drift on lead (simulates tape wow)
-    // NOTE: Would be cleaner with TapeEffect operator
-    float pitchMod = chain.get<LFO>("pitchLFO").outputValue();
-    float baseFreq = 440.0f;
-    chain.get<Oscillator>("leadOsc1").frequency = baseFreq * (1.0f + pitchMod * 0.01f);
-    chain.get<Oscillator>("leadOsc2").frequency = baseFreq * (1.0f - pitchMod * 0.01f);
-
-    // Slow filter on bass
-    float bassFilterMod = sin(time * 0.3f);
-    chain.get<AudioFilter>("bassFilter").cutoff = 300.0f + bassFilterMod * 200.0f;
-
-    // Envelope follower for bass VCA
-    auto& bassEnv = chain.get<Envelope>("bassEnv");
-    chain.get<AudioGain>("bassVCA").gain = bassEnv.outputValue();
-
-    // --- VISUAL MODULATION (audio-reactive) ---
-
+    auto& song = chain.get<Song>("song");
     auto& bands = chain.get<BandSplit>("bands");
     auto& beat = chain.get<BeatDetect>("beat");
 
@@ -858,25 +902,89 @@ void update(Context& ctx) {
     float mid = bands.mid();
     float high = bands.high();
     float energy = beat.energy();
+    float sectionProgress = song.sectionProgress();
 
-    // Bass drives bloom intensity
+    // =========================================================================
+    // SECTION-BASED AUDIO CHANGES
+    // =========================================================================
+
+    auto& pad = chain.get<PolySynth>("pad");
+    auto& lead = chain.get<WavetableSynth>("lead");
+    auto& bells = chain.get<FMSynth>("bells");
+    auto& clouds = chain.get<Granular>("clouds");
+
+    if (song.section() == "intro") {
+        // Sparse intro - just pads and clouds
+        if (song.sectionJustStarted()) {
+            pad.noteOn(freq::C3);
+            pad.noteOn(freq::E3);
+            pad.noteOn(freq::G3);
+        }
+        clouds.volume = 0.4f;
+        chain.get<AudioMixer>("drumMix").volume = 0.0f;
+
+    } else if (song.section() == "verse1" || song.section() == "verse2") {
+        // Drums come in, lead melody
+        chain.get<AudioMixer>("drumMix").volume = 0.7f;
+        clouds.volume = 0.25f;
+
+        // Evolve wavetable position
+        lead.position = 0.3f + sectionProgress * 0.4f;
+
+    } else if (song.section() == "chorus" || song.section() == "chorus2") {
+        // Full energy - bells, more feedback
+        chain.get<Feedback>("feedback").decay = 0.94f;
+        chain.get<Bloom>("bloom").intensity = 1.5f + bass * 2.0f;
+
+        // Trigger bells on downbeats
+        if (song.barJustStarted()) {
+            bells.noteOn(freq::C5);
+            bells.noteOn(freq::G5);
+        }
+
+    } else if (song.section() == "outro") {
+        // Fade out drums, increase granular
+        chain.get<AudioMixer>("drumMix").volume = 0.7f * (1.0f - sectionProgress);
+        clouds.volume = 0.3f + sectionProgress * 0.3f;
+        clouds.pitchSpray = 0.3f + sectionProgress * 0.5f;
+    }
+
+    // =========================================================================
+    // CONTINUOUS MODULATION
+    // =========================================================================
+
+    float filterMod = chain.get<LFO>("filterLFO").outputValue();
+    float posMod = chain.get<LFO>("positionLFO").outputValue();
+
+    // Filter sweeps
+    chain.get<LadderFilter>("bassLadder").cutoff = 300.0f + filterMod * 300.0f;
+    chain.get<LadderFilter>("padFilter").cutoff = 800.0f + filterMod * 800.0f;
+    chain.get<LadderFilter>("leadFilter").cutoff = 1200.0f + filterMod * 1500.0f;
+
+    // Granular position drift
+    clouds.position = 0.3f + posMod * 0.4f;
+
+    // Wavetable position modulation
+    lead.position = 0.2f + filterMod * 0.6f;
+
+    // Envelope follower for bass
+    chain.get<AudioGain>("bassVCA").gain = chain.get<Envelope>("bassEnv").outputValue();
+
+    // =========================================================================
+    // AUDIO-REACTIVE VISUALS
+    // =========================================================================
+
     chain.get<Bloom>("bloom").intensity = 0.5f + bass * 2.0f;
-
-    // Beat energy drives feedback
     chain.get<Feedback>("feedback").decay = 0.88f + energy * 0.08f;
     chain.get<Feedback>("feedback").zoom = 1.002f + energy * 0.005f;
-
-    // Mids drive chromatic aberration
     chain.get<CRTEffect>("crt").chromatic = 0.01f + mid * 0.02f;
+    chain.get<FilmGrain>("filmGrain").intensity = 0.2f + high * 0.15f;
 
-    // High frequencies drive grain intensity
-    chain.get<Composite>("composite").opacity = 0.1f + high * 0.1f;
-
-    // Slow video speed modulation
+    // Video speed modulation
     float speedMod = sin(time * 0.1f);
     chain.get<VideoPlayer>("video").playbackSpeed = 0.7f + speedMod * 0.2f;
 
-    // Subtle hue shift over time
+    // Hue shift over time
     chain.get<HSV>("hsv").hueShift = 0.05f + sin(time * 0.05f) * 0.03f;
 
     chain.process();
@@ -887,22 +995,26 @@ VIVID_CHAIN(setup, update)
 
 ### What This Example Demonstrates
 
-**Working Today:**
-- Layered drum pattern with Euclidean rhythms
-- Detuned oscillators (manual, two oscillators)
-- Filter modulation via LFO
-- Lo-fi chain (Bitcrush → Overdrive → Delay → Reverb)
-- Vinyl crackle atmosphere
-- Audio-reactive visuals (BandSplit → Bloom, Feedback)
-- CRT aesthetic (scanlines, barrel distortion, chromatic aberration)
-- Noise as stand-in for film grain
+**Advanced Synthesis:**
+- `Song` - Section-based composition (intro, verse, chorus, outro)
+- `PolySynth` - Rich 6-voice chord pads with detuning
+- `WavetableSynth` - Evolving lead timbre with position modulation
+- `FMSynth` - Ethereal bell textures using Bell preset
+- `Granular` - Frozen atmospheric clouds with pitch/position spray
+- `LadderFilter` - Warm Moog-style 24dB/oct filtering on bass, pad, lead
+- `TapeEffect` - Authentic wow/flutter and tape saturation
 
-**Would Be Better With:**
-- `TapeEffect` - Real wow/flutter instead of LFO pitch modulation
-- `PolySynth` - Proper chord pads instead of layered oscillators
-- `FilmGrain` - Authentic film grain instead of noise composite
-- `Granular` - Textural atmosphere layers
-- Parameter binding - `filter.cutoff.bind(lfo)` instead of update() code
+**Audio-Visual Integration:**
+- Section-aware visual intensity changes
+- Beat-synced `Flash` triggered by kick drum
+- `FilmGrain` for authentic vintage film look
+- Audio-reactive bloom, feedback, chromatic aberration
+
+**Lo-Fi Character:**
+- TapeEffect adds wow, flutter, saturation, and hiss
+- Bitcrush for subtle digital degradation
+- Crackle for vinyl atmosphere
+- FilmGrain + Scanlines + CRT for visual warmth
 
 ---
 
@@ -933,18 +1045,18 @@ The goal is to make audio creation as expressive and immediate as visual creatio
 | Trigger callbacks | 3-5 days | Sequencer → visual events | ✅ Complete |
 | Flash operator | 1 day | Beat-synced visuals | ✅ Complete |
 
-#### Phase 3: Synthesis Depth (4 weeks)
+#### Phase 3: Synthesis Depth (4 weeks) ✅ COMPLETE
 | Feature | Effort | Impact | Status |
 |---------|--------|--------|--------|
 | WavetableSynth | 2 weeks | Evolving, complex timbres | ✅ Complete |
-| Granular | 2 weeks | Atmospheric textures | Pending |
+| Granular | 2 weeks | Atmospheric textures | ✅ Complete |
 
-#### Phase 4: Advanced (4 weeks)
-| Feature | Effort | Impact |
-|---------|--------|--------|
-| FMSynth | 2 weeks | Classic digital sounds |
-| Advanced filters (Ladder, Comb) | 1 week | More sonic variety |
-| Song structure | 1 week | Section-based composition |
+#### Phase 4: Advanced (4 weeks) ✅ COMPLETE
+| Feature | Effort | Impact | Status |
+|---------|--------|--------|--------|
+| FMSynth | 2 weeks | Classic digital sounds | ✅ Complete |
+| Advanced filters (Ladder, Comb) | 1 week | More sonic variety | ✅ Complete |
+| Song structure | 1 week | Section-based composition | ✅ Complete |
 
 ### Quick Wins (This Week)
 1. Create `prelinger-nostalgia` example from case study

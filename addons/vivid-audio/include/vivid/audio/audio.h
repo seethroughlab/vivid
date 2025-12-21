@@ -45,6 +45,8 @@
 #include <vivid/audio/synth.h>
 #include <vivid/audio/poly_synth.h>
 #include <vivid/audio/wavetable_synth.h>
+#include <vivid/audio/fm_synth.h>
+#include <vivid/audio/granular.h>
 #include <vivid/audio/noise_gen.h>
 #include <vivid/audio/crackle.h>
 #include <vivid/audio/pitch_env.h>
@@ -64,9 +66,14 @@
 #include <vivid/audio/clock.h>
 #include <vivid/audio/sequencer.h>
 #include <vivid/audio/euclidean.h>
+#include <vivid/audio/song.h>
+
+// Filters
+#include <vivid/audio/audio_filter.h>
+#include <vivid/audio/ladder_filter.h>
+#include <vivid/audio/comb_filter.h>
 
 // Utilities
-#include <vivid/audio/audio_filter.h>
 #include <vivid/audio/audio_mixer.h>
 #include <vivid/audio/audio_gain.h>
 

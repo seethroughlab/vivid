@@ -1,6 +1,15 @@
 // Prelinger Nostalgia - Boards of Canada inspired audio-visual piece
 // Combines polyphonic synthesis, tape warmth, and vintage film aesthetics
 //
+// Features all advanced audio operators:
+// - Song: Section-based composition
+// - PolySynth: Warm chord pads
+// - WavetableSynth: Evolving lead
+// - FMSynth: Bell textures
+// - Granular: Atmospheric clouds
+// - LadderFilter: Moog-style warmth
+// - TapeEffect: Authentic wow/flutter
+//
 // Controls:
 //   1-4: Switch chord/mood
 //   SPACE: Pause/Resume
@@ -53,7 +62,7 @@ static const int numMoods = sizeof(moods) / sizeof(moods[0]);
 // State
 static int currentMood = 0;
 static float moodTime = 0.0f;
-static const float moodDuration = 8.0f;
+static const float moodDuration = 16.0f;  // Longer for Song sections
 static bool isPaused = false;
 static bool grainEnabled = true;
 static bool crtEnabled = true;
@@ -64,7 +73,7 @@ void triggerMood(Chain& chain, int moodIdx) {
     // Release all current notes
     synth.allNotesOff();
 
-    // Play new voicing with slight arpeggiation
+    // Play new voicing
     const ChordVoicing& mood = moods[moodIdx];
     for (int i = 0; i < mood.count; ++i) {
         synth.noteOn(mood.notes[i]);
@@ -77,61 +86,166 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // =========================================================================
-    // Audio: Polyphonic pad synth through tape
+    // TIMING & SONG STRUCTURE
+    // =========================================================================
+
+    auto& clock = chain.add<Clock>("clock");
+    clock.bpm = 72.0f;  // Slower, more hypnotic
+    clock.swing = 0.08f;
+
+    auto& song = chain.add<Song>("song");
+    song.syncTo("clock");
+    song.addSection("intro", 0, 8);
+    song.addSection("verse1", 8, 24);
+    song.addSection("chorus", 24, 32);
+    song.addSection("verse2", 32, 48);
+    song.addSection("chorus2", 48, 56);
+    song.addSection("outro", 56, 72);
+
+    // =========================================================================
+    // SYNTHESIS: Layered pad + lead + bells + atmosphere
     // =========================================================================
 
     // Main pad synth - thick, evolving sound
     auto& synth = chain.add<PolySynth>("synth");
     synth.waveform(Waveform::Saw);
-    synth.maxVoices = 12;  // Allow for rich voicings
-    synth.volume = 0.5f;
-    synth.attack = 2.0f;    // Very slow attack - pad-like
+    synth.maxVoices = 12;
+    synth.volume = 0.45f;
+    synth.attack = 2.0f;
     synth.decay = 1.0f;
     synth.sustain = 0.7f;
-    synth.release = 3.0f;   // Long release for ethereal sustain
-    synth.unisonDetune = 12.0f;  // Wide stereo spread
-    synth.detune = 3.0f;    // Slight pitch drift
+    synth.release = 3.0f;
+    synth.unisonDetune = 12.0f;
+    synth.detune = 3.0f;
 
-    // Tape effect for warmth and character
+    // Ladder filter for warm Moog-style filtering
+    auto& padFilter = chain.add<LadderFilter>("padFilter");
+    padFilter.input("synth");
+    padFilter.cutoff = 1800.0f;
+    padFilter.resonance = 0.25f;
+    padFilter.drive = 1.3f;
+
+    // Wavetable lead - evolving timbre
+    auto& lead = chain.add<WavetableSynth>("lead");
+    lead.loadBuiltin(BuiltinTable::Analog);
+    lead.maxVoices = 2;
+    lead.detune = 6.0f;
+    lead.attack = 0.15f;
+    lead.decay = 0.3f;
+    lead.sustain = 0.5f;
+    lead.release = 0.8f;
+    lead.volume = 0.3f;
+
+    auto& leadFilter = chain.add<LadderFilter>("leadFilter");
+    leadFilter.input("lead");
+    leadFilter.cutoff = 2500.0f;
+    leadFilter.resonance = 0.35f;
+
+    // FM bells for ethereal textures
+    auto& bells = chain.add<FMSynth>("bells");
+    bells.loadPreset(FMPreset::Bell);
+    bells.volume = 0.2f;
+
+    // Granular clouds for atmosphere
+    auto& clouds = chain.add<Granular>("clouds");
+    // Note: loadSample would be called if we had a texture.wav
+    // For now, clouds will be silent but the operator is in place
+    clouds.grainSize = 100.0f;
+    clouds.density = 8.0f;
+    clouds.position = 0.5f;
+    clouds.positionSpray = 0.25f;
+    clouds.pitch = 0.5f;
+    clouds.pitchSpray = 0.4f;
+    clouds.panSpray = 0.9f;
+    clouds.volume = 0.0f;  // Start silent (no sample loaded)
+    clouds.setFreeze(true);
+
+    // =========================================================================
+    // FX CHAIN: Tape warmth → Delay → Reverb
+    // =========================================================================
+
+    // Mix synths
+    auto& synthMix = chain.add<AudioMixer>("synthMix");
+    synthMix.setInput(0, "padFilter");
+    synthMix.setGain(0, 0.7f);
+    synthMix.setInput(1, "leadFilter");
+    synthMix.setGain(1, 0.4f);
+    synthMix.setInput(2, "bells");
+    synthMix.setGain(2, 0.35f);
+    synthMix.setInput(3, "clouds");
+    synthMix.setGain(3, 0.5f);
+
+    // Tape effect for authentic BoC character
     auto& tape = chain.add<TapeEffect>("tape");
-    tape.input("synth");
-    tape.wow = 0.2f;        // Gentle pitch drift
-    tape.flutter = 0.15f;   // Subtle modulation
-    tape.saturation = 0.35f; // Warm compression
-    tape.hiss = 0.06f;      // Period-appropriate noise floor
-    tape.age = 0.3f;        // Some high-frequency loss
+    tape.input("synthMix");
+    tape.wow = 0.25f;
+    tape.flutter = 0.18f;
+    tape.saturation = 0.4f;
+    tape.hiss = 0.05f;
+    tape.age = 0.35f;
+
+    // Delay - dotted eighth for rhythmic interest
+    auto& delay = chain.add<Delay>("delay");
+    delay.input("tape");
+    delay.delayTime = 60000.0f / 72.0f * 0.75f;  // Dotted eighth at 72 BPM
+    delay.feedback = 0.4f;
+    delay.mix = 0.25f;
+
+    // Lush reverb
+    auto& reverb = chain.add<Reverb>("reverb");
+    reverb.input("delay");
+    reverb.roomSize = 0.88f;
+    reverb.damping = 0.55f;
+    reverb.mix = 0.45f;
+
+    // Limiter for safety
+    auto& limiter = chain.add<Limiter>("limiter");
+    limiter.input("reverb");
+    limiter.ceiling = -1.0f;
+    limiter.release = 100.0f;
 
     // Audio output
     auto& audioOut = chain.add<AudioOutput>("audioOut");
-    audioOut.setInput("tape");
-    audioOut.setVolume(0.6f);
+    audioOut.setInput("limiter");
+    audioOut.setVolume(0.7f);
     chain.audioOutput("audioOut");
 
     // =========================================================================
-    // Visuals: Vintage film aesthetic
+    // VISUALS: Vintage film aesthetic
     // =========================================================================
 
-    // Base layer - Prelinger Archive footage
-    // Path is relative to project directory (where chain.cpp is)
     auto& video = chain.add<VideoPlayer>("video");
     video.setFile("AboutBan1935.mp4");
     video.setLoop(true);
-    video.setSpeed(0.85f);  // Slightly slowed for dreaminess
+    video.setSpeed(0.85f);
 
     // Sepia-ish color grading
     auto& color = chain.add<HSV>("color");
     color.input("video");
-    color.hueShift = 0.08f;  // Warm sepia tone
-    color.saturation = 0.4f;  // Desaturated
+    color.hueShift = 0.08f;
+    color.saturation = 0.4f;
     color.value = 0.9f;
+
+    // Audio-reactive bloom
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input("color");
+    bloom.threshold = 0.65f;
+    bloom.radius = 15.0f;
+    bloom.intensity = 0.8f;
+
+    // Audio-reactive feedback
+    auto& feedback = chain.add<Feedback>("feedback");
+    feedback.input("bloom");
+    feedback.decay = 0.9f;
+    feedback.zoom = 1.003f;
 
     // Film grain overlay
     auto& grain = chain.add<FilmGrain>("grain");
-    grain.input("color");
-    grain.intensity = 0.2f;
+    grain.input("feedback");
+    grain.intensity = 0.22f;
     grain.size = 1.2f;
-    grain.speed = 24.0f;  // Film frame rate
-    grain.colored = 0.15f;  // Slight color variation
+    grain.speed = 24.0f;
+    grain.colored = 0.15f;
 
     // Vignette for period look
     auto& vignette = chain.add<Vignette>("vignette");
@@ -140,16 +254,22 @@ void setup(Context& ctx) {
     vignette.softness = 0.8f;
     vignette.roundness = 0.8f;
 
-    // Optional CRT effect
+    // CRT effect
     auto& crt = chain.add<CRTEffect>("crt");
     crt.input("vignette");
-    crt.scanlines = 0.15f;
-    crt.curvature = 0.03f;
-    crt.vignette = 0.2f;
-    crt.bloom = 0.02f;
-    crt.chromatic = 0.01f;
+    crt.scanlines = 0.12f;
+    crt.curvature = 0.025f;
+    crt.vignette = 0.15f;
+    crt.bloom = 0.015f;
+    crt.chromatic = 0.008f;
 
-    chain.output("crt");
+    // Beat-synced flash
+    auto& flash = chain.add<Flash>("flash");
+    flash.input("crt");
+    flash.decay = 0.88f;
+    flash.color.set(1.0f, 0.97f, 0.92f);
+
+    chain.output("flash");
 
     // =========================================================================
     // Initialize
@@ -161,11 +281,22 @@ void setup(Context& ctx) {
     std::cout << "============================================\n";
     std::cout << "A Boards of Canada inspired audio-visual piece\n";
     std::cout << "\n";
+    std::cout << "Audio features:\n";
+    std::cout << "  - PolySynth: Warm chord pads\n";
+    std::cout << "  - WavetableSynth: Evolving lead\n";
+    std::cout << "  - FMSynth: Bell textures\n";
+    std::cout << "  - LadderFilter: Moog warmth\n";
+    std::cout << "  - TapeEffect: Wow/flutter\n";
+    std::cout << "  - Song: Section structure\n";
+    std::cout << "\n";
     std::cout << "Controls:\n";
     std::cout << "  1-4: Switch mood\n";
     std::cout << "  SPACE: Pause/Resume\n";
     std::cout << "  G: Toggle grain\n";
     std::cout << "  C: Toggle CRT\n";
+    std::cout << "  B: Trigger bells\n";
+    std::cout << "  L: Trigger lead note\n";
+    std::cout << "  F: Trigger flash\n";
     std::cout << "  TAB: Parameters\n";
     std::cout << "============================================\n\n";
 
@@ -177,6 +308,8 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float dt = ctx.dt();
     float time = ctx.time();
+
+    auto& song = chain.get<Song>("song");
 
     // =========================================================================
     // Input handling
@@ -193,6 +326,8 @@ void update(Context& ctx) {
         isPaused = !isPaused;
         if (isPaused) {
             chain.get<PolySynth>("synth").allNotesOff();
+            chain.get<WavetableSynth>("lead").allNotesOff();
+            chain.get<FMSynth>("bells").allNotesOff();
             std::cout << "[PAUSED]\n";
         } else {
             triggerMood(chain, currentMood);
@@ -203,34 +338,103 @@ void update(Context& ctx) {
     // Effect toggles
     if (ctx.key(GLFW_KEY_G).pressed) {
         grainEnabled = !grainEnabled;
-        chain.get<FilmGrain>("grain").intensity = grainEnabled ? 0.2f : 0.0f;
+        chain.get<FilmGrain>("grain").intensity = grainEnabled ? 0.22f : 0.0f;
         std::cout << "Grain: " << (grainEnabled ? "ON" : "OFF") << "\n";
     }
     if (ctx.key(GLFW_KEY_C).pressed) {
         crtEnabled = !crtEnabled;
-        chain.get<CRTEffect>("crt").scanlines = crtEnabled ? 0.15f : 0.0f;
-        chain.get<CRTEffect>("crt").curvature = crtEnabled ? 0.03f : 0.0f;
+        chain.get<CRTEffect>("crt").scanlines = crtEnabled ? 0.12f : 0.0f;
+        chain.get<CRTEffect>("crt").curvature = crtEnabled ? 0.025f : 0.0f;
         std::cout << "CRT: " << (crtEnabled ? "ON" : "OFF") << "\n";
     }
 
+    // Manual triggers for demo
+    if (ctx.key(GLFW_KEY_B).pressed) {
+        auto& bells = chain.get<FMSynth>("bells");
+        bells.noteOn(C5);
+        bells.noteOn(G5);
+        std::cout << "Bells triggered\n";
+    }
+    if (ctx.key(GLFW_KEY_L).pressed) {
+        auto& lead = chain.get<WavetableSynth>("lead");
+        lead.noteOn(E4);
+        std::cout << "Lead triggered\n";
+    }
+    if (ctx.key(GLFW_KEY_F).pressed) {
+        chain.get<Flash>("flash").trigger();
+        std::cout << "Flash triggered\n";
+    }
+
     // =========================================================================
-    // Audio evolution
+    // Section-based behavior
     // =========================================================================
 
     if (!isPaused) {
         moodTime += dt;
 
-        // Auto-advance moods
-        if (moodTime >= moodDuration) {
-            moodTime = 0.0f;
-            currentMood = (currentMood + 1) % numMoods;
-            triggerMood(chain, currentMood);
+        // Auto-advance moods based on song sections
+        if (song.sectionJustStarted()) {
+            std::cout << "Section: " << song.section() << std::endl;
+
+            // Trigger different moods for different sections
+            if (song.section() == "intro") {
+                currentMood = 0;
+                triggerMood(chain, currentMood);
+            } else if (song.section() == "verse1") {
+                currentMood = 1;
+                triggerMood(chain, currentMood);
+            } else if (song.section() == "chorus" || song.section() == "chorus2") {
+                currentMood = 2;
+                triggerMood(chain, currentMood);
+                // Trigger bells on chorus
+                auto& bells = chain.get<FMSynth>("bells");
+                bells.noteOn(C5);
+                bells.noteOn(E5);
+            } else if (song.section() == "verse2") {
+                currentMood = 3;
+                triggerMood(chain, currentMood);
+            } else if (song.section() == "outro") {
+                currentMood = 0;
+                triggerMood(chain, currentMood);
+            }
         }
 
-        // Subtle parameter drift for organic feel
+        // Section progress affects parameters
+        float sectionProgress = song.sectionProgress();
+
+        // Chorus sections are more intense
+        if (song.section() == "chorus" || song.section() == "chorus2") {
+            chain.get<LadderFilter>("padFilter").cutoff = 2200.0f + sectionProgress * 800.0f;
+            chain.get<Feedback>("feedback").decay = 0.92f + sectionProgress * 0.04f;
+            chain.get<Bloom>("bloom").intensity = 1.2f + sectionProgress * 0.8f;
+        } else {
+            chain.get<LadderFilter>("padFilter").cutoff = 1400.0f + sectionProgress * 600.0f;
+            chain.get<Feedback>("feedback").decay = 0.88f + sectionProgress * 0.04f;
+            chain.get<Bloom>("bloom").intensity = 0.6f + sectionProgress * 0.4f;
+        }
+
+        // Outro fades out
+        if (song.section() == "outro") {
+            chain.get<AudioOutput>("audioOut").setVolume(0.7f * (1.0f - sectionProgress * 0.5f));
+            chain.get<Granular>("clouds").pitchSpray = 0.4f + sectionProgress * 0.4f;
+        }
+
+        // =========================================================================
+        // Continuous modulation
+        // =========================================================================
+
+        // Tape parameter drift for organic feel
         auto& tape = chain.get<TapeEffect>("tape");
-        tape.wow = 0.15f + 0.1f * std::sin(time * 0.2f);
-        tape.saturation = 0.3f + 0.1f * std::sin(time * 0.15f + 1.0f);
+        tape.wow = 0.2f + 0.1f * std::sin(time * 0.2f);
+        tape.saturation = 0.35f + 0.1f * std::sin(time * 0.15f + 1.0f);
+
+        // Filter LFO
+        float filterLFO = std::sin(time * 0.08f);
+        chain.get<LadderFilter>("leadFilter").cutoff = 2000.0f + filterLFO * 1000.0f;
+
+        // Wavetable position modulation
+        float posLFO = (std::sin(time * 0.05f) + 1.0f) * 0.5f;
+        chain.get<WavetableSynth>("lead").position = posLFO;
     }
 
     // =========================================================================
@@ -242,18 +446,21 @@ void update(Context& ctx) {
     video.play();
 
     // Mood affects color temperature
-    float moodProgress = moodTime / moodDuration;
-    float targetHue = 0.06f + currentMood * 0.02f;  // Subtle hue shifts per mood
+    float targetHue = 0.06f + currentMood * 0.02f;
     chain.get<HSV>("color").hueShift = targetHue + 0.02f * std::sin(time * 0.3f);
 
     // Flickering brightness for vintage feel
     float flicker = 0.95f + 0.05f * std::sin(time * 17.3f) * std::sin(time * 23.7f);
     chain.get<HSV>("color").value = 0.85f * flicker;
 
-    // Grain intensity varies slightly
+    // Grain intensity varies
     if (grainEnabled) {
-        chain.get<FilmGrain>("grain").intensity = 0.18f + 0.04f * std::sin(time * 0.7f);
+        chain.get<FilmGrain>("grain").intensity = 0.2f + 0.04f * std::sin(time * 0.7f);
     }
+
+    // Feedback zoom pulses slightly
+    float zoomPulse = 1.002f + 0.002f * std::sin(time * 0.4f);
+    chain.get<Feedback>("feedback").zoom = zoomPulse;
 
     chain.process(ctx);
 }
