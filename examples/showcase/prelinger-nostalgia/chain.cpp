@@ -257,57 +257,61 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     auto& midi = chain.get<MidiIn>("midi");
 
-    // =====================================================================
-    // FADERS: Mix Levels
-    // =====================================================================
+    // Only apply MIDI control values when controller is connected
+    // Otherwise, keep the initial values set in setup()
+    if (midi.isOpen()) {
+        // =================================================================
+        // FADERS: Mix Levels
+        // =================================================================
 
-    chain.get<AudioMixer>("synthMix").setGain(0, midi.cc(cc::Fader::PAD));
-    chain.get<AudioMixer>("synthMix").setGain(1, midi.cc(cc::Fader::LEAD));
-    chain.get<AudioMixer>("synthMix").setGain(2, midi.cc(cc::Fader::BELLS));
-    chain.get<AudioMixer>("synthMix").setGain(3, midi.cc(cc::Fader::CLOUDS));
-    chain.get<Delay>("delay").mix = midi.cc(cc::Fader::DELAY);
-    chain.get<Reverb>("reverb").mix = midi.cc(cc::Fader::REVERB);
-    chain.get<TapeEffect>("tape").saturation = midi.cc(cc::Fader::TAPE);
-    chain.get<AudioOutput>("audioOut").setVolume(midi.cc(cc::Fader::MASTER));
+        chain.get<AudioMixer>("synthMix").setGain(0, midi.cc(cc::Fader::PAD));
+        chain.get<AudioMixer>("synthMix").setGain(1, midi.cc(cc::Fader::LEAD));
+        chain.get<AudioMixer>("synthMix").setGain(2, midi.cc(cc::Fader::BELLS));
+        chain.get<AudioMixer>("synthMix").setGain(3, midi.cc(cc::Fader::CLOUDS));
+        chain.get<Delay>("delay").mix = midi.cc(cc::Fader::DELAY);
+        chain.get<Reverb>("reverb").mix = midi.cc(cc::Fader::REVERB);
+        chain.get<TapeEffect>("tape").saturation = midi.cc(cc::Fader::TAPE);
+        chain.get<AudioOutput>("audioOut").setVolume(midi.cc(cc::Fader::MASTER));
 
-    // =====================================================================
-    // KNOBS ROW 1: Filters & Time Effects
-    // =====================================================================
+        // =================================================================
+        // KNOBS ROW 1: Filters & Time Effects
+        // =================================================================
 
-    chain.get<LadderFilter>("padFilter").cutoff = cc::scalePadCutoff(midi.cc(cc::Knob1::PAD_CUTOFF));
-    chain.get<LadderFilter>("padFilter").resonance = midi.cc(cc::Knob1::PAD_RESO);
-    chain.get<LadderFilter>("leadFilter").cutoff = cc::scaleLeadCutoff(midi.cc(cc::Knob1::LEAD_CUTOFF));
-    chain.get<LadderFilter>("leadFilter").resonance = midi.cc(cc::Knob1::LEAD_RESO);
-    chain.get<Delay>("delay").delayTime = cc::scaleDelayTime(midi.cc(cc::Knob1::DELAY_TIME));
-    chain.get<Delay>("delay").feedback = cc::scaleFeedback(midi.cc(cc::Knob1::DELAY_FB));
-    chain.get<Reverb>("reverb").roomSize = midi.cc(cc::Knob1::REVERB_SIZE);
-    chain.get<Reverb>("reverb").damping = midi.cc(cc::Knob1::REVERB_DAMP);
+        chain.get<LadderFilter>("padFilter").cutoff = cc::scalePadCutoff(midi.cc(cc::Knob1::PAD_CUTOFF));
+        chain.get<LadderFilter>("padFilter").resonance = midi.cc(cc::Knob1::PAD_RESO);
+        chain.get<LadderFilter>("leadFilter").cutoff = cc::scaleLeadCutoff(midi.cc(cc::Knob1::LEAD_CUTOFF));
+        chain.get<LadderFilter>("leadFilter").resonance = midi.cc(cc::Knob1::LEAD_RESO);
+        chain.get<Delay>("delay").delayTime = cc::scaleDelayTime(midi.cc(cc::Knob1::DELAY_TIME));
+        chain.get<Delay>("delay").feedback = cc::scaleFeedback(midi.cc(cc::Knob1::DELAY_FB));
+        chain.get<Reverb>("reverb").roomSize = midi.cc(cc::Knob1::REVERB_SIZE);
+        chain.get<Reverb>("reverb").damping = midi.cc(cc::Knob1::REVERB_DAMP);
 
-    // =====================================================================
-    // KNOBS ROW 2: Texture Effects
-    // =====================================================================
+        // =================================================================
+        // KNOBS ROW 2: Texture Effects
+        // =================================================================
 
-    chain.get<TapeEffect>("tape").wow = midi.cc(cc::Knob2::TAPE_WOW);
-    chain.get<TapeEffect>("tape").flutter = midi.cc(cc::Knob2::TAPE_FLUTTER);
-    chain.get<TapeEffect>("tape").hiss = cc::scaleHiss(midi.cc(cc::Knob2::TAPE_HISS));
-    chain.get<TapeEffect>("tape").age = midi.cc(cc::Knob2::TAPE_AGE);
-    chain.get<Granular>("clouds").position = midi.cc(cc::Knob2::GRAIN_POS);
-    chain.get<Granular>("clouds").density = cc::scaleDensity(midi.cc(cc::Knob2::GRAIN_DENSITY));
-    chain.get<Granular>("clouds").pitch = cc::scalePitch(midi.cc(cc::Knob2::GRAIN_PITCH));
-    chain.get<Granular>("clouds").positionSpray = midi.cc(cc::Knob2::GRAIN_SPRAY);
+        chain.get<TapeEffect>("tape").wow = midi.cc(cc::Knob2::TAPE_WOW);
+        chain.get<TapeEffect>("tape").flutter = midi.cc(cc::Knob2::TAPE_FLUTTER);
+        chain.get<TapeEffect>("tape").hiss = cc::scaleHiss(midi.cc(cc::Knob2::TAPE_HISS));
+        chain.get<TapeEffect>("tape").age = midi.cc(cc::Knob2::TAPE_AGE);
+        chain.get<Granular>("clouds").position = midi.cc(cc::Knob2::GRAIN_POS);
+        chain.get<Granular>("clouds").density = cc::scaleDensity(midi.cc(cc::Knob2::GRAIN_DENSITY));
+        chain.get<Granular>("clouds").pitch = cc::scalePitch(midi.cc(cc::Knob2::GRAIN_PITCH));
+        chain.get<Granular>("clouds").positionSpray = midi.cc(cc::Knob2::GRAIN_SPRAY);
 
-    // =====================================================================
-    // KNOBS ROW 3: Visual Effects
-    // =====================================================================
+        // =================================================================
+        // KNOBS ROW 3: Visual Effects
+        // =================================================================
 
-    chain.get<Bloom>("bloom").intensity = cc::scaleBloom(midi.cc(cc::Knob3::BLOOM_INT));
-    chain.get<Bloom>("bloom").threshold = midi.cc(cc::Knob3::BLOOM_THRESH);
-    chain.get<Feedback>("feedback").decay = cc::scaleFbDecay(midi.cc(cc::Knob3::FB_DECAY));
-    chain.get<Feedback>("feedback").zoom = cc::scaleFbZoom(midi.cc(cc::Knob3::FB_ZOOM));
-    chain.get<FilmGrain>("grain").intensity = cc::scaleFilmGrain(midi.cc(cc::Knob3::GRAIN_INT));
-    chain.get<HSV>("color").saturation = midi.cc(cc::Knob3::HSV_SAT);
-    chain.get<HSV>("color").hueShift = cc::scaleHue(midi.cc(cc::Knob3::HSV_HUE));
-    chain.get<VideoPlayer>("video").setSpeed(cc::scaleVideoSpeed(midi.cc(cc::Knob3::VIDEO_SPEED)));
+        chain.get<Bloom>("bloom").intensity = cc::scaleBloom(midi.cc(cc::Knob3::BLOOM_INT));
+        chain.get<Bloom>("bloom").threshold = midi.cc(cc::Knob3::BLOOM_THRESH);
+        chain.get<Feedback>("feedback").decay = cc::scaleFbDecay(midi.cc(cc::Knob3::FB_DECAY));
+        chain.get<Feedback>("feedback").zoom = cc::scaleFbZoom(midi.cc(cc::Knob3::FB_ZOOM));
+        chain.get<FilmGrain>("grain").intensity = cc::scaleFilmGrain(midi.cc(cc::Knob3::GRAIN_INT));
+        chain.get<HSV>("color").saturation = midi.cc(cc::Knob3::HSV_SAT);
+        chain.get<HSV>("color").hueShift = cc::scaleHue(midi.cc(cc::Knob3::HSV_HUE));
+        chain.get<VideoPlayer>("video").setSpeed(cc::scaleVideoSpeed(midi.cc(cc::Knob3::VIDEO_SPEED)));
+    }
 
     // =====================================================================
     // BUTTON EVENTS
