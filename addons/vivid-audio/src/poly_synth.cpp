@@ -113,6 +113,17 @@ int PolySynth::activeVoiceCount() const {
     return count;
 }
 
+float PolySynth::maxEnvelopeValue() const {
+    float maxEnv = 0.0f;
+    int max = static_cast<int>(maxVoices);
+    for (int i = 0; i < max && i < static_cast<int>(m_voices.size()); ++i) {
+        if (m_voices[i].isActive() && m_voices[i].envValue > maxEnv) {
+            maxEnv = m_voices[i].envValue;
+        }
+    }
+    return maxEnv;
+}
+
 int PolySynth::findFreeVoice() const {
     int max = static_cast<int>(maxVoices);
     for (int i = 0; i < max && i < static_cast<int>(m_voices.size()); ++i) {

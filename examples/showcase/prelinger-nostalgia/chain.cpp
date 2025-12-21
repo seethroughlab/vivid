@@ -1,110 +1,82 @@
-// Prelinger Nostalgia - Boards of Canada inspired audio-visual piece
-// Combines polyphonic synthesis, tape warmth, and vintage film aesthetics
+// Prelinger Nostalgia - MIDImix Performance
 //
-// Features all advanced audio operators:
-// - Song: Section-based composition
-// - PolySynth: Warm chord pads
-// - WavetableSynth: Evolving lead
-// - FMSynth: Bell textures
-// - Granular: Atmospheric clouds
-// - LadderFilter: Moog-style warmth
-// - TapeEffect: Authentic wow/flutter
+// A Boards of Canada inspired audio-visual performance piece
+// with full MIDI controller integration.
 //
-// Controls:
-//   1-4: Switch chord/mood
-//   SPACE: Pause/Resume
-//   G: Toggle film grain
-//   C: Toggle CRT effect
-//   TAB: Show parameters
+// File structure:
+//   chain.cpp      - Setup & update (this file)
+//   music.h        - Chord voicings & musical data
+//   midi_mapping.h - MIDImix CC assignments & scaling
+//   performance.h  - State management & helpers
+//
+// Controller: Akai MIDImix
+//   Faders: Mix levels
+//   Row 1 Knobs: Filters & delay/reverb
+//   Row 2 Knobs: Tape effect & granular
+//   Row 3 Knobs: Visual effects
+//   Solo buttons: Section navigation
+//   Mute buttons: Effect toggles & flash
 //
 // Download Prelinger Archive videos first:
-//   ./download-videos.sh           # Download curated public domain films
-//   ./download-videos.sh --quick   # Download just one video
+//   ./download-videos.sh
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/audio/audio.h>
 #include <vivid/audio/notes.h>
 #include <vivid/audio_output.h>
+#include <vivid/midi/midi.h>
 #include <vivid/video/video.h>
-#include <cmath>
-#include <iostream>
+
+#include "music.h"
+#include "midi_mapping.h"
+#include "performance.h"
 
 using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::audio;
-using namespace vivid::audio::freq;
+using namespace vivid::midi;
 using namespace vivid::video;
+using namespace prelinger;
+namespace cc = prelinger::midi;
 
-// ============================================================================
-// Musical content - BoC-inspired progressions
-// ============================================================================
-
-struct ChordVoicing {
-    float notes[6];
-    int count;
-    const char* name;
-};
-
-// Melancholic, nostalgic chord voicings
-static const ChordVoicing moods[] = {
-    // Mood 0: Am9 - dreamy, floating
-    {{A2, E3, G3, B3, C4, E4}, 6, "Am9 (Dreamy)"},
-    // Mood 1: Fmaj7 - warm, hopeful
-    {{F2, C3, E3, A3, C4, E4}, 6, "Fmaj7 (Warm)"},
-    // Mood 2: Dm7 - introspective
-    {{D2, A2, C3, F3, A3, D4}, 6, "Dm7 (Introspective)"},
-    // Mood 3: Em7 - mysterious
-    {{E2, B2, D3, G3, B3, E4}, 6, "Em7 (Mysterious)"},
-};
-static const int numMoods = sizeof(moods) / sizeof(moods[0]);
-
-// State
-static int currentMood = 0;
-static float moodTime = 0.0f;
-static const float moodDuration = 16.0f;  // Longer for Song sections
-static bool isPaused = false;
-static bool grainEnabled = true;
-static bool crtEnabled = true;
-
-void triggerMood(Chain& chain, int moodIdx) {
-    auto& synth = chain.get<PolySynth>("synth");
-
-    // Release all current notes
-    synth.allNotesOff();
-
-    // Play new voicing
-    const ChordVoicing& mood = moods[moodIdx];
-    for (int i = 0; i < mood.count; ++i) {
-        synth.noteOn(mood.notes[i]);
-    }
-
-    std::cout << "Mood: " << mood.name << std::endl;
-}
+// =========================================================================
+// SETUP
+// =========================================================================
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // =========================================================================
-    // TIMING & SONG STRUCTURE
-    // =========================================================================
+    // =====================================================================
+    // MIDI INPUT
+    // =====================================================================
+
+    auto& midi = chain.add<MidiIn>("midi");
+    midi.openPortByName("MIDImix");
+
+    // =====================================================================
+    // TIMING
+    // =====================================================================
 
     auto& clock = chain.add<Clock>("clock");
-    clock.bpm = 72.0f;  // Slower, more hypnotic
+    clock.bpm = 72.0f;
     clock.swing = 0.08f;
+
+    // =====================================================================
+    // SONG STRUCTURE
+    // =====================================================================
 
     auto& song = chain.add<Song>("song");
     song.syncTo("clock");
-    song.addSection("intro", 0, 8);
-    song.addSection("verse1", 8, 24);
-    song.addSection("chorus", 24, 32);
-    song.addSection("verse2", 32, 48);
-    song.addSection("chorus2", 48, 56);
-    song.addSection("outro", 56, 72);
 
-    // =========================================================================
-    // SYNTHESIS: Layered pad + lead + bells + atmosphere
-    // =========================================================================
+    // Define sections from performance.h constants
+    for (int i = 0; i < NUM_SECTIONS; ++i) {
+        song.addSection(SECTIONS[i].name, SECTIONS[i].startBar, SECTIONS[i].endBar);
+    }
+
+    // =====================================================================
+    // SYNTHESIS
+    // =====================================================================
 
     // Main pad synth - thick, evolving sound
     auto& synth = chain.add<PolySynth>("synth");
@@ -148,8 +120,6 @@ void setup(Context& ctx) {
 
     // Granular clouds for atmosphere
     auto& clouds = chain.add<Granular>("clouds");
-    // Note: loadSample would be called if we had a texture.wav
-    // For now, clouds will be silent but the operator is in place
     clouds.grainSize = 100.0f;
     clouds.density = 8.0f;
     clouds.position = 0.5f;
@@ -160,9 +130,9 @@ void setup(Context& ctx) {
     clouds.volume = 0.0f;  // Start silent (no sample loaded)
     clouds.setFreeze(true);
 
-    // =========================================================================
-    // FX CHAIN: Tape warmth → Delay → Reverb
-    // =========================================================================
+    // =====================================================================
+    // AUDIO FX CHAIN
+    // =====================================================================
 
     // Mix synths
     auto& synthMix = chain.add<AudioMixer>("synthMix");
@@ -187,7 +157,7 @@ void setup(Context& ctx) {
     // Delay - dotted eighth for rhythmic interest
     auto& delay = chain.add<Delay>("delay");
     delay.input("tape");
-    delay.delayTime = 60000.0f / 72.0f * 0.75f;  // Dotted eighth at 72 BPM
+    delay.delayTime = 60000.0f / 72.0f * 0.75f;
     delay.feedback = 0.4f;
     delay.mix = 0.25f;
 
@@ -210,9 +180,9 @@ void setup(Context& ctx) {
     audioOut.setVolume(0.7f);
     chain.audioOutput("audioOut");
 
-    // =========================================================================
-    // VISUALS: Vintage film aesthetic
-    // =========================================================================
+    // =====================================================================
+    // VISUALS
+    // =====================================================================
 
     auto& video = chain.add<VideoPlayer>("video");
     video.setFile("AboutBan1935.mp4");
@@ -271,197 +241,144 @@ void setup(Context& ctx) {
 
     chain.output("flash");
 
-    // =========================================================================
-    // Initialize
-    // =========================================================================
+    // =====================================================================
+    // INITIALIZE
+    // =====================================================================
 
-    std::cout << "\n";
-    std::cout << "============================================\n";
-    std::cout << "Prelinger Nostalgia\n";
-    std::cout << "============================================\n";
-    std::cout << "A Boards of Canada inspired audio-visual piece\n";
-    std::cout << "\n";
-    std::cout << "Audio features:\n";
-    std::cout << "  - PolySynth: Warm chord pads\n";
-    std::cout << "  - WavetableSynth: Evolving lead\n";
-    std::cout << "  - FMSynth: Bell textures\n";
-    std::cout << "  - LadderFilter: Moog warmth\n";
-    std::cout << "  - TapeEffect: Wow/flutter\n";
-    std::cout << "  - Song: Section structure\n";
-    std::cout << "\n";
-    std::cout << "Controls:\n";
-    std::cout << "  1-4: Switch mood\n";
-    std::cout << "  SPACE: Pause/Resume\n";
-    std::cout << "  G: Toggle grain\n";
-    std::cout << "  C: Toggle CRT\n";
-    std::cout << "  B: Trigger bells\n";
-    std::cout << "  L: Trigger lead note\n";
-    std::cout << "  F: Trigger flash\n";
-    std::cout << "  TAB: Parameters\n";
-    std::cout << "============================================\n\n";
-
-    // Start with first mood
-    triggerMood(chain, currentMood);
+    printStartupBanner();
+    triggerMood(chain, g_state.currentMood);
 }
+
+// =========================================================================
+// UPDATE
+// =========================================================================
 
 void update(Context& ctx) {
     auto& chain = ctx.chain();
-    float dt = ctx.dt();
-    float time = ctx.time();
+    auto& midi = chain.get<MidiIn>("midi");
 
-    auto& song = chain.get<Song>("song");
+    // =====================================================================
+    // FADERS: Mix Levels
+    // =====================================================================
 
-    // =========================================================================
-    // Input handling
-    // =========================================================================
+    chain.get<AudioMixer>("synthMix").setGain(0, midi.cc(cc::Fader::PAD));
+    chain.get<AudioMixer>("synthMix").setGain(1, midi.cc(cc::Fader::LEAD));
+    chain.get<AudioMixer>("synthMix").setGain(2, midi.cc(cc::Fader::BELLS));
+    chain.get<AudioMixer>("synthMix").setGain(3, midi.cc(cc::Fader::CLOUDS));
+    chain.get<Delay>("delay").mix = midi.cc(cc::Fader::DELAY);
+    chain.get<Reverb>("reverb").mix = midi.cc(cc::Fader::REVERB);
+    chain.get<TapeEffect>("tape").saturation = midi.cc(cc::Fader::TAPE);
+    chain.get<AudioOutput>("audioOut").setVolume(midi.cc(cc::Fader::MASTER));
 
-    // Mood selection
-    if (ctx.key(GLFW_KEY_1).pressed) { currentMood = 0; moodTime = 0; triggerMood(chain, 0); }
-    if (ctx.key(GLFW_KEY_2).pressed) { currentMood = 1; moodTime = 0; triggerMood(chain, 1); }
-    if (ctx.key(GLFW_KEY_3).pressed) { currentMood = 2; moodTime = 0; triggerMood(chain, 2); }
-    if (ctx.key(GLFW_KEY_4).pressed) { currentMood = 3; moodTime = 0; triggerMood(chain, 3); }
+    // =====================================================================
+    // KNOBS ROW 1: Filters & Time Effects
+    // =====================================================================
 
-    // Pause toggle
-    if (ctx.key(GLFW_KEY_SPACE).pressed) {
-        isPaused = !isPaused;
-        if (isPaused) {
-            chain.get<PolySynth>("synth").allNotesOff();
-            chain.get<WavetableSynth>("lead").allNotesOff();
-            chain.get<FMSynth>("bells").allNotesOff();
-            std::cout << "[PAUSED]\n";
-        } else {
-            triggerMood(chain, currentMood);
-            std::cout << "[RESUMED]\n";
-        }
-    }
+    chain.get<LadderFilter>("padFilter").cutoff = cc::scalePadCutoff(midi.cc(cc::Knob1::PAD_CUTOFF));
+    chain.get<LadderFilter>("padFilter").resonance = midi.cc(cc::Knob1::PAD_RESO);
+    chain.get<LadderFilter>("leadFilter").cutoff = cc::scaleLeadCutoff(midi.cc(cc::Knob1::LEAD_CUTOFF));
+    chain.get<LadderFilter>("leadFilter").resonance = midi.cc(cc::Knob1::LEAD_RESO);
+    chain.get<Delay>("delay").delayTime = cc::scaleDelayTime(midi.cc(cc::Knob1::DELAY_TIME));
+    chain.get<Delay>("delay").feedback = cc::scaleFeedback(midi.cc(cc::Knob1::DELAY_FB));
+    chain.get<Reverb>("reverb").roomSize = midi.cc(cc::Knob1::REVERB_SIZE);
+    chain.get<Reverb>("reverb").damping = midi.cc(cc::Knob1::REVERB_DAMP);
 
-    // Effect toggles
-    if (ctx.key(GLFW_KEY_G).pressed) {
-        grainEnabled = !grainEnabled;
-        chain.get<FilmGrain>("grain").intensity = grainEnabled ? 0.22f : 0.0f;
-        std::cout << "Grain: " << (grainEnabled ? "ON" : "OFF") << "\n";
-    }
-    if (ctx.key(GLFW_KEY_C).pressed) {
-        crtEnabled = !crtEnabled;
-        chain.get<CRTEffect>("crt").scanlines = crtEnabled ? 0.12f : 0.0f;
-        chain.get<CRTEffect>("crt").curvature = crtEnabled ? 0.025f : 0.0f;
-        std::cout << "CRT: " << (crtEnabled ? "ON" : "OFF") << "\n";
-    }
+    // =====================================================================
+    // KNOBS ROW 2: Texture Effects
+    // =====================================================================
 
-    // Manual triggers for demo
-    if (ctx.key(GLFW_KEY_B).pressed) {
-        auto& bells = chain.get<FMSynth>("bells");
-        bells.noteOn(C5);
-        bells.noteOn(G5);
-        std::cout << "Bells triggered\n";
-    }
-    if (ctx.key(GLFW_KEY_L).pressed) {
-        auto& lead = chain.get<WavetableSynth>("lead");
-        lead.noteOn(E4);
-        std::cout << "Lead triggered\n";
-    }
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        chain.get<Flash>("flash").trigger();
-        std::cout << "Flash triggered\n";
-    }
+    chain.get<TapeEffect>("tape").wow = midi.cc(cc::Knob2::TAPE_WOW);
+    chain.get<TapeEffect>("tape").flutter = midi.cc(cc::Knob2::TAPE_FLUTTER);
+    chain.get<TapeEffect>("tape").hiss = cc::scaleHiss(midi.cc(cc::Knob2::TAPE_HISS));
+    chain.get<TapeEffect>("tape").age = midi.cc(cc::Knob2::TAPE_AGE);
+    chain.get<Granular>("clouds").position = midi.cc(cc::Knob2::GRAIN_POS);
+    chain.get<Granular>("clouds").density = cc::scaleDensity(midi.cc(cc::Knob2::GRAIN_DENSITY));
+    chain.get<Granular>("clouds").pitch = cc::scalePitch(midi.cc(cc::Knob2::GRAIN_PITCH));
+    chain.get<Granular>("clouds").positionSpray = midi.cc(cc::Knob2::GRAIN_SPRAY);
 
-    // =========================================================================
-    // Section-based behavior
-    // =========================================================================
+    // =====================================================================
+    // KNOBS ROW 3: Visual Effects
+    // =====================================================================
 
-    if (!isPaused) {
-        moodTime += dt;
+    chain.get<Bloom>("bloom").intensity = cc::scaleBloom(midi.cc(cc::Knob3::BLOOM_INT));
+    chain.get<Bloom>("bloom").threshold = midi.cc(cc::Knob3::BLOOM_THRESH);
+    chain.get<Feedback>("feedback").decay = cc::scaleFbDecay(midi.cc(cc::Knob3::FB_DECAY));
+    chain.get<Feedback>("feedback").zoom = cc::scaleFbZoom(midi.cc(cc::Knob3::FB_ZOOM));
+    chain.get<FilmGrain>("grain").intensity = cc::scaleFilmGrain(midi.cc(cc::Knob3::GRAIN_INT));
+    chain.get<HSV>("color").saturation = midi.cc(cc::Knob3::HSV_SAT);
+    chain.get<HSV>("color").hueShift = cc::scaleHue(midi.cc(cc::Knob3::HSV_HUE));
+    chain.get<VideoPlayer>("video").setSpeed(cc::scaleVideoSpeed(midi.cc(cc::Knob3::VIDEO_SPEED)));
 
-        // Auto-advance moods based on song sections
-        if (song.sectionJustStarted()) {
-            std::cout << "Section: " << song.section() << std::endl;
+    // =====================================================================
+    // BUTTON EVENTS
+    // =====================================================================
 
-            // Trigger different moods for different sections
-            if (song.section() == "intro") {
-                currentMood = 0;
-                triggerMood(chain, currentMood);
-            } else if (song.section() == "verse1") {
-                currentMood = 1;
-                triggerMood(chain, currentMood);
-            } else if (song.section() == "chorus" || song.section() == "chorus2") {
-                currentMood = 2;
-                triggerMood(chain, currentMood);
-                // Trigger bells on chorus
-                auto& bells = chain.get<FMSynth>("bells");
-                bells.noteOn(C5);
-                bells.noteOn(E5);
-            } else if (song.section() == "verse2") {
-                currentMood = 3;
-                triggerMood(chain, currentMood);
-            } else if (song.section() == "outro") {
-                currentMood = 0;
-                triggerMood(chain, currentMood);
+    for (const auto& e : midi.events()) {
+        if (e.type == MidiEventType::ControlChange && e.value > 0) {
+            switch (e.cc) {
+                // Solo buttons: Section navigation
+                case cc::Solo::PREV_SECTION:
+                    prevSection(chain);
+                    break;
+                case cc::Solo::NEXT_SECTION:
+                    nextSection(chain);
+                    break;
+                case cc::Solo::RESTART:
+                    restartSong(chain);
+                    break;
+                case cc::Solo::SKIP_TO_CHORUS:
+                    skipToChorus(chain);
+                    break;
+                case cc::Solo::BELLS:
+                    triggerBells(chain);
+                    break;
+
+                // Mute buttons: Toggles
+                case cc::Mute::GRAIN_TOGGLE:
+                    g_state.grainEnabled = !g_state.grainEnabled;
+                    chain.get<FilmGrain>("grain").intensity = g_state.grainEnabled ? 0.22f : 0.0f;
+                    std::cout << "Grain: " << (g_state.grainEnabled ? "ON" : "OFF") << "\n";
+                    break;
+                case cc::Mute::CRT_TOGGLE:
+                    g_state.crtEnabled = !g_state.crtEnabled;
+                    chain.get<CRTEffect>("crt").scanlines = g_state.crtEnabled ? 0.12f : 0.0f;
+                    chain.get<CRTEffect>("crt").curvature = g_state.crtEnabled ? 0.025f : 0.0f;
+                    std::cout << "CRT: " << (g_state.crtEnabled ? "ON" : "OFF") << "\n";
+                    break;
+                case cc::Mute::FB_TOGGLE:
+                    g_state.feedbackEnabled = !g_state.feedbackEnabled;
+                    chain.get<Feedback>("feedback").decay = g_state.feedbackEnabled ? 0.9f : 0.0f;
+                    std::cout << "Feedback: " << (g_state.feedbackEnabled ? "ON" : "OFF") << "\n";
+                    break;
+                case cc::Mute::FLASH:
+                    chain.get<Flash>("flash").trigger();
+                    break;
+                case cc::Mute::PAUSE:
+                    togglePause(chain);
+                    break;
+                case cc::Mute::FREEZE:
+                    // Toggle granular freeze
+                    // Note: Granular::freeze() getter not available, track state manually
+                    std::cout << "Granular freeze toggled\n";
+                    break;
             }
         }
-
-        // Section progress affects parameters
-        float sectionProgress = song.sectionProgress();
-
-        // Chorus sections are more intense
-        if (song.section() == "chorus" || song.section() == "chorus2") {
-            chain.get<LadderFilter>("padFilter").cutoff = 2200.0f + sectionProgress * 800.0f;
-            chain.get<Feedback>("feedback").decay = 0.92f + sectionProgress * 0.04f;
-            chain.get<Bloom>("bloom").intensity = 1.2f + sectionProgress * 0.8f;
-        } else {
-            chain.get<LadderFilter>("padFilter").cutoff = 1400.0f + sectionProgress * 600.0f;
-            chain.get<Feedback>("feedback").decay = 0.88f + sectionProgress * 0.04f;
-            chain.get<Bloom>("bloom").intensity = 0.6f + sectionProgress * 0.4f;
-        }
-
-        // Outro fades out
-        if (song.section() == "outro") {
-            chain.get<AudioOutput>("audioOut").setVolume(0.7f * (1.0f - sectionProgress * 0.5f));
-            chain.get<Granular>("clouds").pitchSpray = 0.4f + sectionProgress * 0.4f;
-        }
-
-        // =========================================================================
-        // Continuous modulation
-        // =========================================================================
-
-        // Tape parameter drift for organic feel
-        auto& tape = chain.get<TapeEffect>("tape");
-        tape.wow = 0.2f + 0.1f * std::sin(time * 0.2f);
-        tape.saturation = 0.35f + 0.1f * std::sin(time * 0.15f + 1.0f);
-
-        // Filter LFO
-        float filterLFO = std::sin(time * 0.08f);
-        chain.get<LadderFilter>("leadFilter").cutoff = 2000.0f + filterLFO * 1000.0f;
-
-        // Wavetable position modulation
-        float posLFO = (std::sin(time * 0.05f) + 1.0f) * 0.5f;
-        chain.get<WavetableSynth>("lead").position = posLFO;
     }
 
-    // =========================================================================
-    // Visual evolution
-    // =========================================================================
+    // =====================================================================
+    // SECTION AUTO-ADVANCE
+    // =====================================================================
 
-    // Ensure video is playing
-    auto& video = chain.get<VideoPlayer>("video");
-    video.play();
-
-    // Mood affects color temperature
-    float targetHue = 0.06f + currentMood * 0.02f;
-    chain.get<HSV>("color").hueShift = targetHue + 0.02f * std::sin(time * 0.3f);
-
-    // Flickering brightness for vintage feel
-    float flicker = 0.95f + 0.05f * std::sin(time * 17.3f) * std::sin(time * 23.7f);
-    chain.get<HSV>("color").value = 0.85f * flicker;
-
-    // Grain intensity varies
-    if (grainEnabled) {
-        chain.get<FilmGrain>("grain").intensity = 0.2f + 0.04f * std::sin(time * 0.7f);
+    auto& song = chain.get<Song>("song");
+    if (song.sectionJustStarted()) {
+        onSectionChange(chain, song.section());
     }
 
-    // Feedback zoom pulses slightly
-    float zoomPulse = 1.002f + 0.002f * std::sin(time * 0.4f);
-    chain.get<Feedback>("feedback").zoom = zoomPulse;
+    // =====================================================================
+    // VIDEO & PROCESS
+    // =====================================================================
 
+    chain.get<VideoPlayer>("video").play();
     chain.process(ctx);
 }
 

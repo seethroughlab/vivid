@@ -158,6 +158,10 @@ public:
      */
     bool isPlaying() const { return activeVoiceCount() > 0; }
 
+    // Visualization access
+    Waveform getWaveform() const { return m_waveform; }
+    float maxEnvelopeValue() const;  // Returns max envelope across all voices
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface

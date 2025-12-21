@@ -78,6 +78,10 @@ public:
     void reset();
     bool isActive() const { return m_toneEnv > 0.0001f || m_noiseEnv > 0.0001f; }
 
+    // Envelope access for visualization
+    float toneEnvelope() const { return m_toneEnv; }
+    float noiseEnvelope() const { return m_noiseEnv; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface

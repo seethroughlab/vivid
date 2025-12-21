@@ -8,6 +8,14 @@
 #include <vivid/audio/fft.h>
 #include <vivid/audio/band_split.h>
 #include <vivid/audio/beat_detect.h>
+// Drum synths for visualization
+#include <vivid/audio/kick.h>
+#include <vivid/audio/snare.h>
+#include <vivid/audio/hihat.h>
+#include <vivid/audio/clap.h>
+// Melodic synths for visualization
+#include <vivid/audio/synth.h>
+#include <vivid/audio/poly_synth.h>
 #include <imgui.h>
 #include <imnodes.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -1072,59 +1080,178 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
                     rayColor, 2.0f);
             }
         } else if (kind == vivid::OutputKind::Audio) {
-            // Audio operator - draw waveform visualization
+            // Audio operator - draw specialized visualization based on type
             ImGui::Dummy(ImVec2(thumbW, thumbH * 0.9f));
             ImVec2 min = ImGui::GetItemRectMin();
             ImVec2 max = ImGui::GetItemRectMax();
-            ImGui::GetWindowDrawList()->AddRectFilled(min, max, IM_COL32(50, 30, 60, 255), 4.0f);
+            ImDrawList* dl = ImGui::GetWindowDrawList();
 
-            // Get audio samples from the operator
             AudioOperator* audioOp = static_cast<AudioOperator*>(info.op);
-            const AudioBuffer* buf = audioOp->outputBuffer();
 
+            float cx = (min.x + max.x) * 0.5f;
             float cy = (min.y + max.y) * 0.5f;
-            float height = (max.y - min.y) * 0.8f;
-            float width = max.x - min.x - 8.0f;  // Padding
-            float startX = min.x + 4.0f;
+            float height = max.y - min.y;
+            float width = max.x - min.x;
 
-            ImU32 waveColor = IM_COL32(180, 140, 220, 255);
-            ImU32 waveColorDim = IM_COL32(120, 80, 160, 200);
+            // Check for specific drum synth types
+            if (auto* kick = dynamic_cast<audio::Kick*>(audioOp)) {
+                // Kick drum - pitch sweep + amplitude envelope
+                dl->AddRectFilled(min, max, IM_COL32(60, 25, 15, 255), 4.0f);
 
-            if (buf && buf->isValid() && buf->sampleCount() > 0) {
-                // Draw actual waveform from audio buffer
-                constexpr int NUM_POINTS = 48;  // Number of points to sample
-                uint32_t step = std::max(1u, buf->frameCount / NUM_POINTS);
+                float ampEnv = kick->ampEnvelope();
+                float pitchEnv = kick->pitchEnvelope();
 
-                float prevX = startX;
-                float prevY = cy;
+                // Draw pitch trajectory (curved line from top-left to bottom)
+                float startY = min.y + height * 0.2f;
+                float endY = max.y - height * 0.15f;
+                float curveX = min.x + width * 0.3f;
 
-                for (int i = 0; i < NUM_POINTS && i * step < buf->frameCount; i++) {
-                    uint32_t frameIdx = i * step;
-                    // Mix left and right channels for mono visualization
-                    float sample = (buf->samples[frameIdx * 2] + buf->samples[frameIdx * 2 + 1]) * 0.5f;
-                    // Clamp and scale
-                    sample = std::max(-1.0f, std::min(1.0f, sample));
-
-                    float x = startX + (width * i / (NUM_POINTS - 1));
-                    float y = cy - sample * height * 0.5f;
-
-                    if (i > 0) {
-                        ImGui::GetWindowDrawList()->AddLine(
-                            ImVec2(prevX, prevY), ImVec2(x, y), waveColor, 1.5f);
-                    }
-                    prevX = x;
-                    prevY = y;
+                // Pitch curve (shows high-to-low sweep)
+                ImU32 pitchColor = IM_COL32(255, 140, 50, 180);
+                for (int i = 0; i < 20; i++) {
+                    float t1 = i / 20.0f;
+                    float t2 = (i + 1) / 20.0f;
+                    // Exponential decay curve
+                    float y1 = startY + (endY - startY) * (1.0f - std::exp(-t1 * 4.0f));
+                    float y2 = startY + (endY - startY) * (1.0f - std::exp(-t2 * 4.0f));
+                    float x1 = min.x + width * 0.15f + t1 * width * 0.7f;
+                    float x2 = min.x + width * 0.15f + t2 * width * 0.7f;
+                    dl->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), pitchColor, 2.0f);
                 }
+
+                // Amplitude envelope bar (vertical on right side)
+                float barW = width * 0.15f;
+                float barH = height * 0.7f * ampEnv;
+                ImU32 ampColor = IM_COL32(255, 100 + (int)(155 * ampEnv), 50, 255);
+                dl->AddRectFilled(
+                    ImVec2(max.x - barW - 4, max.y - 4 - barH),
+                    ImVec2(max.x - 4, max.y - 4),
+                    ampColor, 2.0f);
+
+            } else if (auto* snare = dynamic_cast<audio::Snare*>(audioOp)) {
+                // Snare - dual envelope (tone bottom, noise top)
+                dl->AddRectFilled(min, max, IM_COL32(45, 40, 50, 255), 4.0f);
+
+                float toneEnv = snare->toneEnvelope();
+                float noiseEnv = snare->noiseEnvelope();
+                float halfH = height * 0.45f;
+
+                // Tone envelope (bottom half, warm color)
+                float toneBarH = halfH * toneEnv;
+                ImU32 toneColor = IM_COL32(200, 140, 80, 255);
+                dl->AddRectFilled(
+                    ImVec2(min.x + 4, cy + 2),
+                    ImVec2(max.x - 4, cy + 2 + toneBarH),
+                    toneColor, 2.0f);
+
+                // Noise envelope (top half, white/gray)
+                float noiseBarH = halfH * noiseEnv;
+                ImU32 noiseColor = IM_COL32(220, 220, 230, 255);
+                dl->AddRectFilled(
+                    ImVec2(min.x + 4, cy - 2 - noiseBarH),
+                    ImVec2(max.x - 4, cy - 2),
+                    noiseColor, 2.0f);
+
+                // Divider line
+                dl->AddLine(ImVec2(min.x + 4, cy), ImVec2(max.x - 4, cy),
+                    IM_COL32(100, 100, 110, 150), 1.0f);
+
+            } else if (auto* hihat = dynamic_cast<audio::HiHat*>(audioOp)) {
+                // Hi-hat - shimmer/sparkle visualization
+                dl->AddRectFilled(min, max, IM_COL32(30, 45, 50, 255), 4.0f);
+
+                float env = hihat->envelope();
+
+                // Draw metallic shimmer lines radiating from center
+                int numRays = 8;
+                float maxRadius = std::min(width, height) * 0.4f;
+                float radius = maxRadius * env;
+
+                for (int i = 0; i < numRays; i++) {
+                    float angle = (i / (float)numRays) * 3.14159f * 2.0f;
+                    float r1 = radius * 0.3f;
+                    float r2 = radius;
+                    ImU32 rayColor = IM_COL32(
+                        150 + (int)(105 * env),
+                        200 + (int)(55 * env),
+                        220, (int)(200 * env));
+                    dl->AddLine(
+                        ImVec2(cx + r1 * std::cos(angle), cy + r1 * std::sin(angle)),
+                        ImVec2(cx + r2 * std::cos(angle), cy + r2 * std::sin(angle)),
+                        rayColor, 1.5f + env);
+                }
+
+                // Center dot
+                dl->AddCircleFilled(ImVec2(cx, cy), 3.0f + env * 4.0f,
+                    IM_COL32(200, 240, 255, (int)(255 * env)));
+
+            } else if (auto* clap = dynamic_cast<audio::Clap*>(audioOp)) {
+                // Clap - multiple burst visualization
+                dl->AddRectFilled(min, max, IM_COL32(50, 30, 45, 255), 4.0f);
+
+                // Draw 4 burst bars
+                float barW = (width - 20) / 4.0f;
+                float maxBarH = height * 0.75f;
+
+                for (int i = 0; i < 4; i++) {
+                    float burstEnv = clap->burstEnvelope(i);
+                    float barH = maxBarH * burstEnv;
+                    float barX = min.x + 6 + i * (barW + 2);
+
+                    // Pink/magenta gradient based on intensity
+                    ImU32 burstColor = IM_COL32(
+                        200 + (int)(55 * burstEnv),
+                        80 + (int)(100 * burstEnv),
+                        180, 255);
+
+                    dl->AddRectFilled(
+                        ImVec2(barX, max.y - 4 - barH),
+                        ImVec2(barX + barW - 2, max.y - 4),
+                        burstColor, 2.0f);
+                }
+
             } else {
-                // No audio data - draw flat line with small sine hint
-                for (int i = 0; i < 3; i++) {
-                    float x1 = startX + width * i / 3.0f;
-                    float x2 = startX + width * (i + 1) / 3.0f;
-                    float xMid = (x1 + x2) * 0.5f;
-                    float yOffset = (i == 1) ? height * 0.15f : -height * 0.1f;
-                    ImGui::GetWindowDrawList()->AddBezierQuadratic(
-                        ImVec2(x1, cy), ImVec2(xMid, cy + yOffset), ImVec2(x2, cy),
-                        waveColorDim, 1.5f);
+                // Generic audio - draw waveform
+                dl->AddRectFilled(min, max, IM_COL32(50, 30, 60, 255), 4.0f);
+
+                const AudioBuffer* buf = audioOp->outputBuffer();
+                float startX = min.x + 4.0f;
+                float waveWidth = width - 8.0f;
+
+                ImU32 waveColor = IM_COL32(180, 140, 220, 255);
+                ImU32 waveColorDim = IM_COL32(120, 80, 160, 200);
+
+                if (buf && buf->isValid() && buf->sampleCount() > 0) {
+                    constexpr int NUM_POINTS = 48;
+                    uint32_t step = std::max(1u, buf->frameCount / NUM_POINTS);
+
+                    float prevX = startX;
+                    float prevY = cy;
+
+                    for (int i = 0; i < NUM_POINTS && i * step < buf->frameCount; i++) {
+                        uint32_t frameIdx = i * step;
+                        float sample = (buf->samples[frameIdx * 2] + buf->samples[frameIdx * 2 + 1]) * 0.5f;
+                        sample = std::max(-1.0f, std::min(1.0f, sample));
+
+                        float x = startX + (waveWidth * i / (NUM_POINTS - 1));
+                        float y = cy - sample * height * 0.4f;
+
+                        if (i > 0) {
+                            dl->AddLine(ImVec2(prevX, prevY), ImVec2(x, y), waveColor, 1.5f);
+                        }
+                        prevX = x;
+                        prevY = y;
+                    }
+                } else {
+                    for (int i = 0; i < 3; i++) {
+                        float x1 = startX + waveWidth * i / 3.0f;
+                        float x2 = startX + waveWidth * (i + 1) / 3.0f;
+                        float xMid = (x1 + x2) * 0.5f;
+                        float yOffset = (i == 1) ? height * 0.15f : -height * 0.1f;
+                        dl->AddBezierQuadratic(
+                            ImVec2(x1, cy), ImVec2(xMid, cy + yOffset), ImVec2(x2, cy),
+                            waveColorDim, 1.5f);
+                    }
                 }
             }
         } else if (kind == vivid::OutputKind::AudioValue) {

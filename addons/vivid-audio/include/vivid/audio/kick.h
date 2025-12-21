@@ -78,6 +78,10 @@ public:
     void reset();
     bool isActive() const { return m_ampEnv > 0.0001f; }
 
+    // Envelope access for visualization
+    float ampEnvelope() const { return m_ampEnv; }
+    float pitchEnvelope() const { return m_pitchEnvValue; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface

@@ -70,6 +70,9 @@ public:
     void reset();
     bool isActive() const { return m_env > 0.0001f; }
 
+    // Envelope access for visualization
+    float envelope() const { return m_env; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface

@@ -126,6 +126,11 @@ public:
      */
     void reset();
 
+    // Visualization access
+    Waveform waveform() const { return m_waveform; }
+    float envelopeValue() const { return m_envValue; }
+    EnvelopeStage envelopeStage() const { return m_envStage; }
+
 private:
     void noteOnInternal();   // Called from audio thread
     void noteOffInternal();  // Called from audio thread

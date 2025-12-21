@@ -242,7 +242,11 @@
 [x] testing-fixtures/tape-effect-test/ should use the enums in notes.h
 [x] Now that we've standardized on string name lookup for operator inputs and outputs, ../vivid-vscode should do some kind of type checking for operator inputs
 [x] I have a Novation Launchpad Mini [MK3], an Akai Professional MIDImix, a Novation Launchkey 37 [MK3], a Arturia BeatStep, and a AKAI Professional LPD8. I'd like to use one (or more of them) to turn prelinger-nostalgia into a performance piece. What is the best controller and how can we alter prelinger-nostalgia to make it a performance?
+[x] We need engaging visuals (chain viaulizer previews) for the different types of synths and audio filters.
+[x] is it safe to delete _AUDIO_PARITY.md?
+[ ] Synths need a system for presets
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle. Please add examples of these toggles to a few of the examples. 
 [ ] How can we make an example the demonstrates frustum culling in a way that is easy to see?
 [ ] I'd like to see an example of shadows (point, directional, and spot) with more complicate models - either boolean geometry or loaded GLTF models.
+

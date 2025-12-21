@@ -68,6 +68,10 @@ public:
     void reset();
     bool isActive() const { return m_env > 0.0001f; }
 
+    // Envelope access for visualization
+    float envelope() const { return m_env; }
+    float burstEnvelope(int i) const { return (i >= 0 && i < NUM_BURSTS) ? m_burstEnv[i] : 0.0f; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface
