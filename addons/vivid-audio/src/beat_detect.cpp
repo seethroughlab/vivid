@@ -1,5 +1,6 @@
 #include <vivid/audio/beat_detect.h>
 #include <vivid/context.h>
+#include <imgui.h>
 #include <cmath>
 #include <algorithm>
 #include <numeric>
@@ -78,6 +79,43 @@ void BeatDetect::analyze(const float* input, uint32_t frames, uint32_t channels)
         // Smooth decay
         m_energy = m_energy * decayVal + m_rawEnergy * (1.0f - decayVal);
     }
+}
+
+bool BeatDetect::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    ImVec2 min(minX, minY);
+    ImVec2 max(maxX, maxY);
+    float width = maxX - minX;
+    float height = maxY - minY;
+    float cx = (minX + maxX) * 0.5f;
+    float cy = (minY + maxY) * 0.5f;
+    float maxRadius = std::min(width, height) * 0.4f;
+
+    // Dark purple background
+    dl->AddRectFilled(min, max, IM_COL32(40, 30, 50, 255), 4.0f);
+
+    float energy_ = m_energy;
+    float intensity_ = m_intensity;
+    bool isBeat = m_beat;
+
+    // Outer ring (intensity)
+    float outerR = maxRadius * (0.6f + intensity_ * 0.4f);
+    dl->AddCircle(ImVec2(cx, cy), outerR,
+                 IM_COL32(100, 150, 200, static_cast<int>(100 + intensity_ * 155)), 24, 2.0f);
+
+    // Inner circle (energy)
+    float innerR = maxRadius * 0.3f * (0.5f + energy_ * 1.5f);
+    innerR = std::min(innerR, outerR - 2.0f);
+
+    // Flash white on beat
+    ImU32 fillColor = isBeat ?
+        IM_COL32(255, 255, 255, 255) :
+        IM_COL32(80 + static_cast<int>(energy_ * 100),
+                 120 + static_cast<int>(energy_ * 80),
+                 180, 220);
+
+    dl->AddCircleFilled(ImVec2(cx, cy), innerR, fillColor, 24);
+
+    return true;
 }
 
 } // namespace vivid::audio

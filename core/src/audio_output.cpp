@@ -32,7 +32,9 @@ namespace vivid {
 
 struct AudioOutput::Impl {
     ma_device device;
+    ma_context context;
     bool deviceInitialized = false;
+    bool contextInitialized = false;
 
     // Pull-based audio generation
     AudioGraph* audioGraph = nullptr;
@@ -104,6 +106,66 @@ void AudioOutput::setInput(const std::string& name) {
     m_inputName = name;
 }
 
+std::vector<AudioDeviceInfo> AudioOutput::enumerateDevices() {
+    std::vector<AudioDeviceInfo> devices;
+
+    ma_context context;
+    if (ma_context_init(nullptr, 0, nullptr, &context) != MA_SUCCESS) {
+        std::cerr << "[AudioOutput] Failed to initialize context for device enumeration\n";
+        return devices;
+    }
+
+    ma_device_info* pPlaybackDevices;
+    ma_uint32 playbackDeviceCount;
+    ma_device_info* pCaptureDevices;
+    ma_uint32 captureDeviceCount;
+
+    if (ma_context_get_devices(&context, &pPlaybackDevices, &playbackDeviceCount,
+                                &pCaptureDevices, &captureDeviceCount) != MA_SUCCESS) {
+        ma_context_uninit(&context);
+        return devices;
+    }
+
+    for (ma_uint32 i = 0; i < playbackDeviceCount; ++i) {
+        AudioDeviceInfo info;
+        info.name = pPlaybackDevices[i].name;
+        info.index = i;
+        info.isDefault = pPlaybackDevices[i].isDefault != 0;
+        info.maxChannels = pPlaybackDevices[i].nativeDataFormats[0].channels;
+        info.minSampleRate = pPlaybackDevices[i].nativeDataFormats[0].sampleRate;
+        info.maxSampleRate = pPlaybackDevices[i].nativeDataFormats[0].sampleRate;
+
+        // Build ID from name (miniaudio uses different ID types per backend)
+        info.id = std::to_string(i) + ":" + info.name;
+
+        devices.push_back(info);
+    }
+
+    ma_context_uninit(&context);
+    return devices;
+}
+
+void AudioOutput::setDevice(const std::string& name) {
+    m_deviceName = name;
+    m_deviceIndex = -1;  // Use name-based selection
+}
+
+void AudioOutput::setDeviceIndex(uint32_t index) {
+    m_deviceIndex = static_cast<int32_t>(index);
+    m_deviceName.clear();  // Use index-based selection
+}
+
+void AudioOutput::setBufferSize(uint32_t frames) {
+    m_bufferSize = std::clamp(frames, 64u, 2048u);
+}
+
+std::string AudioOutput::deviceName() const {
+    if (m_impl && m_impl->deviceInitialized) {
+        return m_impl->device.playback.name;
+    }
+    return m_deviceName.empty() ? "(default)" : m_deviceName;
+}
+
 void AudioOutput::setAudioGraph(AudioGraph* graph) {
     m_impl->audioGraph = graph;
 }
@@ -146,10 +208,60 @@ void AudioOutput::init(Context& ctx) {
     config.sampleRate = AUDIO_SAMPLE_RATE;
     config.dataCallback = &Impl::dataCallback;
     config.pUserData = m_impl.get();
-    config.periodSizeInFrames = 256;  // Low latency (~5ms at 48kHz)
+    config.periodSizeInFrames = m_bufferSize;
 
-    if (ma_device_init(nullptr, &config, &m_impl->device) != MA_SUCCESS) {
+    // Device selection - need persistent context when selecting specific device
+    ma_device_id* selectedDeviceId = nullptr;
+    ma_device_id selectedDeviceIdCopy;  // Store copy since device list may be freed
+
+    if (!m_deviceName.empty() || m_deviceIndex >= 0) {
+        if (ma_context_init(nullptr, 0, nullptr, &m_impl->context) == MA_SUCCESS) {
+            m_impl->contextInitialized = true;
+
+            ma_device_info* pPlaybackDevices;
+            ma_uint32 playbackDeviceCount;
+            ma_device_info* pCaptureDevices;
+            ma_uint32 captureDeviceCount;
+
+            if (ma_context_get_devices(&m_impl->context, &pPlaybackDevices, &playbackDeviceCount,
+                                        &pCaptureDevices, &captureDeviceCount) == MA_SUCCESS) {
+                // Find device by index
+                if (m_deviceIndex >= 0 && m_deviceIndex < static_cast<int32_t>(playbackDeviceCount)) {
+                    selectedDeviceIdCopy = pPlaybackDevices[m_deviceIndex].id;
+                    selectedDeviceId = &selectedDeviceIdCopy;
+                    std::cout << "[AudioOutput] Selected device by index: "
+                              << pPlaybackDevices[m_deviceIndex].name << std::endl;
+                }
+                // Find device by name (partial match)
+                else if (!m_deviceName.empty()) {
+                    for (ma_uint32 i = 0; i < playbackDeviceCount; ++i) {
+                        std::string deviceName = pPlaybackDevices[i].name;
+                        if (deviceName.find(m_deviceName) != std::string::npos) {
+                            selectedDeviceIdCopy = pPlaybackDevices[i].id;
+                            selectedDeviceId = &selectedDeviceIdCopy;
+                            std::cout << "[AudioOutput] Selected device by name: "
+                                      << deviceName << std::endl;
+                            break;
+                        }
+                    }
+                    if (!selectedDeviceId) {
+                        std::cerr << "[AudioOutput] Device '" << m_deviceName
+                                  << "' not found, using default\n";
+                    }
+                }
+            }
+        }
+    }
+
+    config.playback.pDeviceID = selectedDeviceId;
+
+    ma_context* pContext = m_impl->contextInitialized ? &m_impl->context : nullptr;
+    if (ma_device_init(pContext, &config, &m_impl->device) != MA_SUCCESS) {
         std::cerr << "[AudioOutput] Failed to initialize audio device\n";
+        if (m_impl->contextInitialized) {
+            ma_context_uninit(&m_impl->context);
+            m_impl->contextInitialized = false;
+        }
         return;
     }
 
@@ -158,8 +270,11 @@ void AudioOutput::init(Context& ctx) {
     // Allocate output buffer for export integration
     allocateOutput(AUDIO_BLOCK_SIZE, AUDIO_CHANNELS, AUDIO_SAMPLE_RATE);
 
-    std::cout << "[AudioOutput] Initialized: " << AUDIO_SAMPLE_RATE << "Hz, "
-              << AUDIO_CHANNELS << " channels (pull-based)" << std::endl;
+    float latencyMs = (static_cast<float>(m_bufferSize) / AUDIO_SAMPLE_RATE) * 1000.0f;
+    std::cout << "[AudioOutput] Initialized: " << m_impl->device.playback.name
+              << " @ " << AUDIO_SAMPLE_RATE << "Hz, "
+              << AUDIO_CHANNELS << " ch, " << m_bufferSize << " frames (~"
+              << latencyMs << "ms)" << std::endl;
 }
 
 void AudioOutput::generateBlock(uint32_t frameCount) {
@@ -243,6 +358,10 @@ void AudioOutput::cleanup() {
     if (m_impl->deviceInitialized) {
         ma_device_uninit(&m_impl->device);
         m_impl->deviceInitialized = false;
+    }
+    if (m_impl->contextInitialized) {
+        ma_context_uninit(&m_impl->context);
+        m_impl->contextInitialized = false;
     }
     resetInit();
     m_impl->playing = false;

@@ -96,6 +96,11 @@ public:
     void generateBlock(uint32_t frameCount) override;
     void handleEvent(const AudioEvent& event) override;
 
+    // Custom visualization for chain visualizer
+    bool drawVisualization(ImDrawList* drawList,
+                           float minX, float minY,
+                           float maxX, float maxY) override;
+
     /// @}
 
 protected:

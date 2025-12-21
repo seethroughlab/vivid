@@ -1,5 +1,6 @@
 #include <vivid/audio/gate.h>
 #include <vivid/context.h>
+#include <imgui.h>
 #include <cmath>
 #include <algorithm>
 
@@ -71,6 +72,54 @@ void Gate::cleanupEffect() {
     m_gateGain = rangeLinear;
     m_holdCounter = 0.0f;
     m_gateOpen = false;
+}
+
+bool Gate::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    ImVec2 min(minX, minY);
+    ImVec2 max(maxX, maxY);
+    float width = maxX - minX;
+    float height = maxY - minY;
+    float cx = (minX + maxX) * 0.5f;
+    float cy = (minY + maxY) * 0.5f;
+
+    // Dark green background
+    dl->AddRectFilled(min, max, IM_COL32(30, 40, 35, 255), 4.0f);
+
+    // Draw gate visualization (door/barrier metaphor)
+    float gateW = width * 0.6f;
+    float gateH = height * 0.5f;
+    float gateX = cx - gateW * 0.5f;
+    float gateY = cy - gateH * 0.5f;
+
+    // Gate frame
+    ImU32 frameColor = IM_COL32(100, 120, 100, 200);
+    dl->AddRect(ImVec2(gateX, gateY), ImVec2(gateX + gateW, gateY + gateH),
+        frameColor, 2.0f, 0, 1.5f);
+
+    // Gate "bars" that open/close based on gate gain
+    float openAmount = m_gateGain;  // 0 = closed, 1 = open
+    int numBars = 5;
+    float barSpacing = gateW / (numBars + 1);
+
+    for (int i = 0; i < numBars; i++) {
+        float bX = gateX + barSpacing * (i + 1);
+        float barTop = gateY + 4 + (gateH - 8) * (1.0f - openAmount) * 0.5f;
+        float barBot = gateY + gateH - 4 - (gateH - 8) * (1.0f - openAmount) * 0.5f;
+
+        ImU32 barColor = m_gateOpen
+            ? IM_COL32(100, 200, 120, 255)   // Green when open
+            : IM_COL32(150, 100, 100, 200);  // Red-ish when closed
+
+        dl->AddLine(ImVec2(bX, barTop), ImVec2(bX, barBot), barColor, 2.0f);
+    }
+
+    // Status text
+    const char* status = m_gateOpen ? "OPEN" : "GATE";
+    ImVec2 textSize = ImGui::CalcTextSize(status);
+    ImU32 textColor = m_gateOpen ? IM_COL32(100, 255, 120, 255) : IM_COL32(180, 100, 100, 200);
+    dl->AddText(ImVec2(cx - textSize.x * 0.5f, max.y - 16), textColor, status);
+
+    return true;
 }
 
 } // namespace vivid::audio

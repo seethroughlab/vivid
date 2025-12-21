@@ -1,6 +1,7 @@
 #include <vivid/audio/snare.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
+#include <imgui.h>
 #include <cmath>
 
 namespace vivid::audio {
@@ -112,6 +113,42 @@ float Snare::highpass(float in, int ch) {
     float out = alpha * (m_hpState[ch] + in - m_hpState[ch]);
     m_hpState[ch] = in;
     return out;
+}
+
+bool Snare::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    ImVec2 min(minX, minY);
+    ImVec2 max(maxX, maxY);
+    float height = maxY - minY;
+    float cy = (minY + maxY) * 0.5f;
+
+    // Dark background
+    dl->AddRectFilled(min, max, IM_COL32(45, 40, 50, 255), 4.0f);
+
+    float toneEnv = m_toneEnv;
+    float noiseEnv = m_noiseEnv;
+    float halfH = height * 0.45f;
+
+    // Tone envelope (bottom half, warm color)
+    float toneBarH = halfH * toneEnv;
+    ImU32 toneColor = IM_COL32(200, 140, 80, 255);
+    dl->AddRectFilled(
+        ImVec2(minX + 4, cy + 2),
+        ImVec2(maxX - 4, cy + 2 + toneBarH),
+        toneColor, 2.0f);
+
+    // Noise envelope (top half, white/gray)
+    float noiseBarH = halfH * noiseEnv;
+    ImU32 noiseColor = IM_COL32(220, 220, 230, 255);
+    dl->AddRectFilled(
+        ImVec2(minX + 4, cy - 2 - noiseBarH),
+        ImVec2(maxX - 4, cy - 2),
+        noiseColor, 2.0f);
+
+    // Divider line
+    dl->AddLine(ImVec2(minX + 4, cy), ImVec2(maxX - 4, cy),
+        IM_COL32(100, 100, 110, 150), 1.0f);
+
+    return true;
 }
 
 } // namespace vivid::audio

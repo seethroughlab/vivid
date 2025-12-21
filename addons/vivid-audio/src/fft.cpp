@@ -1,6 +1,7 @@
 #include <vivid/audio/fft.h>
 #include <vivid/audio_buffer.h>
 #include <kiss_fft.h>
+#include <imgui.h>
 #include <cmath>
 #include <algorithm>
 
@@ -150,6 +151,45 @@ float FFT::band(float lowHz, float highHz) const {
     }
 
     return count > 0 ? sum / count : 0.0f;
+}
+
+bool FFT::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    ImVec2 min(minX, minY);
+    ImVec2 max(maxX, maxY);
+    float width = maxX - minX - 8.0f;
+    float height = maxY - minY - 8.0f;
+    float startX = minX + 4.0f;
+
+    // Dark purple background
+    dl->AddRectFilled(min, max, IM_COL32(40, 30, 50, 255), 4.0f);
+
+    const float* spec = m_spectrum.data();
+    int bins = binCount();
+    constexpr int NUM_BARS = 24;
+
+    float barW = width / NUM_BARS - 1.0f;
+
+    for (int i = 0; i < NUM_BARS; i++) {
+        // Sample from spectrum (logarithmic distribution)
+        int binIdx = static_cast<int>(std::pow(static_cast<float>(i + 1) / NUM_BARS, 2.0f) * bins * 0.5f);
+        binIdx = std::min(binIdx, bins - 1);
+        float mag = spec ? spec[binIdx] * 3.0f : 0.0f;  // Scale up
+        mag = std::min(mag, 1.0f);
+
+        float barH = mag * height;
+        float x = startX + i * (barW + 1.0f);
+        float y = max.y - 4.0f - barH;
+
+        // Color gradient: blue -> purple -> pink
+        float t = static_cast<float>(i) / NUM_BARS;
+        uint8_t r = static_cast<uint8_t>(80 + t * 140);
+        uint8_t g = static_cast<uint8_t>(80 - t * 40);
+        uint8_t b = static_cast<uint8_t>(180 - t * 40);
+        dl->AddRectFilled(ImVec2(x, y), ImVec2(x + barW, max.y - 4.0f),
+                         IM_COL32(r, g, b, 220), 1.0f);
+    }
+
+    return true;
 }
 
 } // namespace vivid::audio

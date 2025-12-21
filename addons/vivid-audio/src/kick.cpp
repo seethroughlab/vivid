@@ -1,6 +1,7 @@
 #include <vivid/audio/kick.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
+#include <imgui.h>
 #include <cmath>
 
 namespace vivid::audio {
@@ -118,6 +119,45 @@ float Kick::softClip(float x) const {
     if (x > 1.0f) return std::tanh(x);
     if (x < -1.0f) return std::tanh(x);
     return x;
+}
+
+bool Kick::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    ImVec2 min(minX, minY);
+    ImVec2 max(maxX, maxY);
+    float width = maxX - minX;
+    float height = maxY - minY;
+    float cx = (minX + maxX) * 0.5f;
+
+    // Dark background
+    dl->AddRectFilled(min, max, IM_COL32(30, 25, 35, 255), 4.0f);
+
+    // Get envelope values
+    float ampEnv = m_ampEnv;
+    float pitchEnv = m_pitchEnvValue;
+
+    // Amplitude envelope bar (bottom up, warm orange)
+    float barWidth = width * 0.6f;
+    float barMaxH = height * 0.75f;
+    float barH = barMaxH * ampEnv;
+    ImU32 barColor = IM_COL32(255, 140, 50, 255);
+    float barLeft = cx - barWidth * 0.5f;
+    float barRight = cx + barWidth * 0.5f;
+    dl->AddRectFilled(
+        ImVec2(barLeft, maxY - 4 - barH),
+        ImVec2(barRight, maxY - 4),
+        barColor, 3.0f);
+
+    // Pitch indicator (small dot or line that moves down as pitch decays)
+    if (pitchEnv > 0.01f) {
+        float pitchY = minY + 8 + (height - 16) * (1.0f - pitchEnv);
+        ImU32 pitchColor = IM_COL32(100, 200, 255, 200);
+        dl->AddLine(
+            ImVec2(barLeft - 4, pitchY),
+            ImVec2(barRight + 4, pitchY),
+            pitchColor, 2.0f);
+    }
+
+    return true;
 }
 
 } // namespace vivid::audio

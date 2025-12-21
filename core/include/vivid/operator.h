@@ -8,10 +8,14 @@
  * processes data and produces an output (typically a texture).
  */
 
+#include <vivid/operator_viz.h>
 #include <webgpu/webgpu.h>
 #include <string>
 #include <vector>
 #include <memory>
+
+// Forward declaration for ImGui drawing
+struct ImDrawList;
 
 namespace vivid {
 
@@ -435,6 +439,46 @@ public:
      * Downstream operators use this to detect when inputs changed.
      */
     uint64_t generation() const { return m_generation; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Visualization
+    /// @{
+
+    /**
+     * @brief Draw custom visualization in the chain visualizer
+     * @param drawList ImGui draw list for rendering
+     * @param minX Left edge of drawing area
+     * @param minY Top edge of drawing area
+     * @param maxX Right edge of drawing area
+     * @param maxY Bottom edge of drawing area
+     * @return true if custom visualization was drawn, false to use default
+     *
+     * Override to draw custom visualizations for your operator.
+     * The chain visualizer calls this instead of rendering the default
+     * waveform/texture preview when it returns true.
+     *
+     * @code
+     * bool drawVisualization(ImDrawList* dl, float minX, float minY,
+     *                        float maxX, float maxY) override {
+     *     // Draw envelope shape
+     *     dl->AddRectFilled({minX, minY}, {maxX, maxY}, 0xFF000000);
+     *     return true;
+     * }
+     * @endcode
+     */
+    virtual bool drawVisualization(ImDrawList* drawList,
+                                   float minX, float minY,
+                                   float maxX, float maxY) { return false; }
+
+    /**
+     * @brief Get visualization data for chain visualizer
+     * @return OperatorVizData struct with visualization hints
+     *
+     * Alternative to drawVisualization() - return data and let
+     * the visualizer render it. Useful for simple visualizations.
+     */
+    virtual OperatorVizData getVisualizationData() const { return {}; }
 
     /// @}
 

@@ -66,6 +66,10 @@ public:
 
     std::string name() const override { return "Limiter"; }
 
+    // Custom visualization
+    bool drawVisualization(ImDrawList* drawList, float minX, float minY,
+                           float maxX, float maxY) override;
+
     /// @}
 
 protected:

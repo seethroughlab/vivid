@@ -246,7 +246,6 @@
 [x] is it safe to delete _AUDIO_PARITY.md?
 [x] Synths need a system for presets
 [x] the chain visualization for an operator should live closer to the functional code, not in a monolithic chain_visualizer file. Think about when there are community contributed operators. 
-
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle. Please add examples of these toggles to a few of the examples. 
 [ ] How can we make an example the demonstrates frustum culling in a way that is easy to see?

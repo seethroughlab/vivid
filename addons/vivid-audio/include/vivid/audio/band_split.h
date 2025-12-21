@@ -116,6 +116,10 @@ public:
 
     std::string name() const override { return "BandSplit"; }
 
+    // Custom visualization
+    bool drawVisualization(ImDrawList* drawList, float minX, float minY,
+                           float maxX, float maxY) override;
+
     /// @}
 
 protected:

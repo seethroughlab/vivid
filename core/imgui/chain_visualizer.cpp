@@ -2,26 +2,25 @@
 // Shows registered operators as nodes with connections
 
 #include "chain_visualizer.h"
+#include <vivid/operator_viz.h>
 #include <vivid/audio_operator.h>
 #include <vivid/audio_graph.h>
 #include <vivid/audio/levels.h>
 #include <vivid/audio/fft.h>
 #include <vivid/audio/band_split.h>
 #include <vivid/audio/beat_detect.h>
-// Drum synths for visualization
+// Audio operator headers for fallback visualization
+// TODO: Migrate these to use Operator::drawVisualization() overrides
 #include <vivid/audio/kick.h>
 #include <vivid/audio/snare.h>
 #include <vivid/audio/hihat.h>
 #include <vivid/audio/clap.h>
-// Melodic synths for visualization
 #include <vivid/audio/synth.h>
 #include <vivid/audio/poly_synth.h>
 #include <vivid/audio/fm_synth.h>
-// Dynamics processors for visualization
 #include <vivid/audio/compressor.h>
 #include <vivid/audio/limiter.h>
 #include <vivid/audio/gate.h>
-// Filter for visualization
 #include <vivid/audio/audio_filter.h>
 #include <imgui.h>
 #include <imnodes.h>
@@ -1100,42 +1099,12 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             float height = max.y - min.y;
             float width = max.x - min.x;
 
-            // Check for specific drum synth types
-            if (auto* kick = dynamic_cast<audio::Kick*>(audioOp)) {
-                // Kick drum - pitch sweep + amplitude envelope
-                dl->AddRectFilled(min, max, IM_COL32(60, 25, 15, 255), 4.0f);
-
-                float ampEnv = kick->ampEnvelope();
-                float pitchEnv = kick->pitchEnvelope();
-
-                // Draw pitch trajectory (curved line from top-left to bottom)
-                float startY = min.y + height * 0.2f;
-                float endY = max.y - height * 0.15f;
-                float curveX = min.x + width * 0.3f;
-
-                // Pitch curve (shows high-to-low sweep)
-                ImU32 pitchColor = IM_COL32(255, 140, 50, 180);
-                for (int i = 0; i < 20; i++) {
-                    float t1 = i / 20.0f;
-                    float t2 = (i + 1) / 20.0f;
-                    // Exponential decay curve
-                    float y1 = startY + (endY - startY) * (1.0f - std::exp(-t1 * 4.0f));
-                    float y2 = startY + (endY - startY) * (1.0f - std::exp(-t2 * 4.0f));
-                    float x1 = min.x + width * 0.15f + t1 * width * 0.7f;
-                    float x2 = min.x + width * 0.15f + t2 * width * 0.7f;
-                    dl->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), pitchColor, 2.0f);
-                }
-
-                // Amplitude envelope bar (vertical on right side)
-                float barW = width * 0.15f;
-                float barH = height * 0.7f * ampEnv;
-                ImU32 ampColor = IM_COL32(255, 100 + (int)(155 * ampEnv), 50, 255);
-                dl->AddRectFilled(
-                    ImVec2(max.x - barW - 4, max.y - 4 - barH),
-                    ImVec2(max.x - 4, max.y - 4),
-                    ampColor, 2.0f);
-
-            } else if (auto* snare = dynamic_cast<audio::Snare*>(audioOp)) {
+            // Check if operator has custom visualization
+            if (info.op->drawVisualization(dl, min.x, min.y, max.x, max.y)) {
+                // Custom visualizer handled it
+            }
+            // Fallback: inline visualizations for operators that haven't migrated yet
+            else if (auto* snare = dynamic_cast<audio::Snare*>(audioOp)) {
                 // Snare - dual envelope (tone bottom, noise top)
                 dl->AddRectFilled(min, max, IM_COL32(45, 40, 50, 255), 4.0f);
 

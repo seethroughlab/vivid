@@ -4,6 +4,7 @@
  */
 
 #include <vivid/audio/fm_synth.h>
+#include <imgui.h>
 #include <cstring>
 #include <algorithm>
 
@@ -491,6 +492,128 @@ int FMSynth::findVoiceByFrequency(float hz) const {
         }
     }
     return -1;
+}
+
+bool FMSynth::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    ImVec2 min(minX, minY);
+    ImVec2 max(maxX, maxY);
+    float width = maxX - minX;
+    float height = maxY - minY;
+    float cx = (minX + maxX) * 0.5f;
+    float cy = (minY + maxY) * 0.5f;
+
+    // Dark purple background
+    dl->AddRectFilled(min, max, IM_COL32(35, 25, 45, 255), 4.0f);
+
+    // Get operator envelope values for brightness
+    float opEnv[4];
+    for (int i = 0; i < 4; i++) {
+        opEnv[i] = operatorEnvelope(i);
+    }
+
+    // Operator positions (2x2 grid layout)
+    float opSize = std::min(width, height) * 0.22f;
+    float spacing = opSize * 0.3f;
+    float gridW = opSize * 2 + spacing;
+    float gridH = opSize * 2 + spacing;
+    float gridX = cx - gridW * 0.5f;
+    float gridY = cy - gridH * 0.5f;
+
+    ImVec2 opPos[4] = {
+        ImVec2(gridX + opSize * 0.5f, gridY + opSize * 0.5f),                    // Op1 top-left
+        ImVec2(gridX + opSize * 1.5f + spacing, gridY + opSize * 0.5f),         // Op2 top-right
+        ImVec2(gridX + opSize * 0.5f, gridY + opSize * 1.5f + spacing),         // Op3 bottom-left
+        ImVec2(gridX + opSize * 1.5f + spacing, gridY + opSize * 1.5f + spacing) // Op4 bottom-right
+    };
+
+    // Define algorithm connections: {from, to} pairs
+    struct Connection { int from; int to; };
+    std::vector<Connection> connections;
+    std::vector<int> carriers;
+
+    switch (m_algorithm) {
+        case FMAlgorithm::Stack4:
+            connections = {{0, 1}, {1, 2}, {2, 3}};
+            carriers = {3};
+            break;
+        case FMAlgorithm::Stack3_1:
+            connections = {{0, 1}, {1, 2}};
+            carriers = {2, 3};
+            break;
+        case FMAlgorithm::Parallel:
+            carriers = {0, 1, 2, 3};
+            break;
+        case FMAlgorithm::Pairs:
+            connections = {{0, 1}, {2, 3}};
+            carriers = {1, 3};
+            break;
+        case FMAlgorithm::Branch2:
+            connections = {{0, 1}, {0, 2}};
+            carriers = {1, 2, 3};
+            break;
+        case FMAlgorithm::Branch3:
+            connections = {{0, 1}, {0, 2}, {0, 3}};
+            carriers = {1, 2, 3};
+            break;
+        case FMAlgorithm::Y:
+            connections = {{0, 1}, {0, 2}, {1, 3}, {2, 3}};
+            carriers = {3};
+            break;
+        case FMAlgorithm::Diamond:
+            connections = {{0, 1}, {0, 2}, {1, 3}, {2, 3}};
+            carriers = {3};
+            break;
+    }
+
+    // Draw connections (lines between operators)
+    ImU32 lineColor = IM_COL32(100, 80, 140, 180);
+    for (const auto& conn : connections) {
+        dl->AddLine(opPos[conn.from], opPos[conn.to], lineColor, 1.5f);
+        // Draw arrow head
+        ImVec2 dir = ImVec2(opPos[conn.to].x - opPos[conn.from].x,
+                            opPos[conn.to].y - opPos[conn.from].y);
+        float len = std::sqrt(dir.x * dir.x + dir.y * dir.y);
+        if (len > 0) {
+            dir.x /= len; dir.y /= len;
+            ImVec2 arrowTip = ImVec2(opPos[conn.to].x - dir.x * opSize * 0.5f,
+                                      opPos[conn.to].y - dir.y * opSize * 0.5f);
+            ImVec2 perp = ImVec2(-dir.y * 4, dir.x * 4);
+            dl->AddTriangleFilled(
+                arrowTip,
+                ImVec2(arrowTip.x - dir.x * 6 + perp.x, arrowTip.y - dir.y * 6 + perp.y),
+                ImVec2(arrowTip.x - dir.x * 6 - perp.x, arrowTip.y - dir.y * 6 - perp.y),
+                lineColor);
+        }
+    }
+
+    // Draw operators as circles
+    for (int i = 0; i < 4; i++) {
+        bool isCarrier = std::find(carriers.begin(), carriers.end(), i) != carriers.end();
+        float env = opEnv[i];
+
+        // Carrier = brighter, filled; Modulator = dimmer, outline
+        ImU32 opColor;
+        if (isCarrier) {
+            opColor = IM_COL32(180 + (int)(75 * env), 100 + (int)(100 * env), 255, 255);
+            dl->AddCircleFilled(opPos[i], opSize * 0.4f, opColor);
+        } else {
+            opColor = IM_COL32(100 + (int)(80 * env), 80 + (int)(60 * env), 180, 200);
+            dl->AddCircle(opPos[i], opSize * 0.4f, opColor, 0, 2.0f);
+            // Fill slightly when active
+            if (env > 0.01f) {
+                dl->AddCircleFilled(opPos[i], opSize * 0.35f * env,
+                    IM_COL32(100, 80, 180, (int)(150 * env)));
+            }
+        }
+
+        // Operator number label
+        char label[2] = {(char)('1' + i), 0};
+        ImVec2 textSize = ImGui::CalcTextSize(label);
+        dl->AddText(ImVec2(opPos[i].x - textSize.x * 0.5f, opPos[i].y - textSize.y * 0.5f),
+                   IM_COL32(255, 255, 255, 200), label);
+    }
+
+    return true;
 }
 
 } // namespace vivid::audio

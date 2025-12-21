@@ -1,5 +1,6 @@
 #include <vivid/audio/audio_filter.h>
 #include <vivid/context.h>
+#include <imgui.h>
 #include <cmath>
 
 namespace vivid::audio {
@@ -163,6 +164,113 @@ float AudioFilter::processSample(float in, int ch) {
     m_x1[ch] = m_b1 * in - m_a1 * out + m_x2[ch];
     m_x2[ch] = m_b2 * in - m_a2 * out;
     return out;
+}
+
+bool AudioFilter::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    ImVec2 min(minX, minY);
+    ImVec2 max(maxX, maxY);
+    float width = maxX - minX;
+    float height = maxY - minY;
+    float cx = (minX + maxX) * 0.5f;
+
+    // Dark blue background
+    dl->AddRectFilled(min, max, IM_COL32(30, 35, 50, 255), 4.0f);
+
+    float cutoffHz = static_cast<float>(cutoff);
+    float q = static_cast<float>(resonance);
+
+    // Draw frequency response curve
+    float curveMargin = 6.0f;
+    float curveW = width - curveMargin * 2;
+    float curveH = height - curveMargin * 2 - 14;  // Room for label
+    float curveX = min.x + curveMargin;
+    float curveY = min.y + curveMargin;
+
+    // Draw horizontal center line (0 dB)
+    float zeroY = curveY + curveH * 0.5f;
+    dl->AddLine(ImVec2(curveX, zeroY), ImVec2(curveX + curveW, zeroY),
+        IM_COL32(60, 70, 90, 150), 1.0f);
+
+    // Calculate cutoff position on log scale (20Hz to 20kHz)
+    float cutoffNorm = std::log10(cutoffHz / 20.0f) / std::log10(1000.0f);
+    cutoffNorm = std::max(0.0f, std::min(1.0f, cutoffNorm));
+    float cutoffX = curveX + curveW * cutoffNorm;
+
+    // Draw cutoff line
+    dl->AddLine(ImVec2(cutoffX, curveY), ImVec2(cutoffX, curveY + curveH),
+        IM_COL32(255, 180, 100, 100), 1.0f);
+
+    // Draw filter curve based on type
+    ImU32 curveColor = IM_COL32(100, 180, 255, 255);
+    constexpr int NUM_POINTS = 32;
+
+    auto computeFilterResponse = [&](float freqNorm) -> float {
+        float freq = 20.0f * std::pow(1000.0f, freqNorm);
+        float ratio = freq / cutoffHz;
+
+        switch (m_type) {
+            case FilterType::Lowpass: {
+                float response = 1.0f / std::sqrt(1.0f + std::pow(ratio, 4.0f));
+                if (ratio > 0.5f && ratio < 2.0f) {
+                    response *= 1.0f + (q - 0.707f) * 0.3f * (1.0f - std::abs(ratio - 1.0f));
+                }
+                return response;
+            }
+            case FilterType::Highpass: {
+                float invRatio = 1.0f / ratio;
+                float response = 1.0f / std::sqrt(1.0f + std::pow(invRatio, 4.0f));
+                if (ratio > 0.5f && ratio < 2.0f) {
+                    response *= 1.0f + (q - 0.707f) * 0.3f * (1.0f - std::abs(ratio - 1.0f));
+                }
+                return response;
+            }
+            case FilterType::Bandpass: {
+                float bw = 1.0f / q;
+                float response = 1.0f / (1.0f + std::pow((ratio - 1.0f/ratio) / bw, 2.0f));
+                return response;
+            }
+            case FilterType::Notch: {
+                float bw = 1.0f / q;
+                float response = 1.0f - 1.0f / (1.0f + std::pow((ratio - 1.0f/ratio) / bw, 2.0f));
+                return response;
+            }
+            default:
+                return 1.0f;
+        }
+    };
+
+    // Draw the curve
+    for (int i = 0; i < NUM_POINTS - 1; i++) {
+        float t1 = i / (float)(NUM_POINTS - 1);
+        float t2 = (i + 1) / (float)(NUM_POINTS - 1);
+
+        float r1 = computeFilterResponse(t1);
+        float r2 = computeFilterResponse(t2);
+
+        float y1 = curveY + curveH * (1.0f - r1 * 0.9f);
+        float y2 = curveY + curveH * (1.0f - r2 * 0.9f);
+        float x1 = curveX + curveW * t1;
+        float x2 = curveX + curveW * t2;
+
+        dl->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), curveColor, 2.0f);
+    }
+
+    // Filter type label
+    const char* typeLabel = "";
+    switch (m_type) {
+        case FilterType::Lowpass: typeLabel = "LP"; break;
+        case FilterType::Highpass: typeLabel = "HP"; break;
+        case FilterType::Bandpass: typeLabel = "BP"; break;
+        case FilterType::Notch: typeLabel = "NOTCH"; break;
+        case FilterType::Lowshelf: typeLabel = "LSHF"; break;
+        case FilterType::Highshelf: typeLabel = "HSHF"; break;
+        case FilterType::Peak: typeLabel = "PEAK"; break;
+    }
+    ImVec2 labelSize = ImGui::CalcTextSize(typeLabel);
+    dl->AddText(ImVec2(cx - labelSize.x * 0.5f, max.y - 14),
+        IM_COL32(180, 200, 255, 255), typeLabel);
+
+    return true;
 }
 
 } // namespace vivid::audio

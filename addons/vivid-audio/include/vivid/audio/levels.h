@@ -94,6 +94,10 @@ public:
 
     std::string name() const override { return "Levels"; }
 
+    // Custom visualization
+    bool drawVisualization(ImDrawList* drawList, float minX, float minY,
+                           float maxX, float maxY) override;
+
     /// @}
 
 protected:

@@ -12,8 +12,22 @@
 #include <vivid/param.h>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace vivid {
+
+/**
+ * @brief Information about an audio output device
+ */
+struct AudioDeviceInfo {
+    std::string name;           ///< Human-readable device name
+    std::string id;             ///< Unique device identifier
+    uint32_t index;             ///< Device index (for selection)
+    bool isDefault;             ///< True if this is the system default device
+    uint32_t maxChannels;       ///< Maximum supported channels
+    uint32_t minSampleRate;     ///< Minimum supported sample rate
+    uint32_t maxSampleRate;     ///< Maximum supported sample rate
+};
 
 // Forward declarations
 class AudioGraph;
@@ -44,7 +58,63 @@ public:
     AudioOutput& operator=(const AudioOutput&) = delete;
 
     // -------------------------------------------------------------------------
-    /// @name Configuration
+    /// @name Device Configuration
+    /// @{
+
+    /**
+     * @brief Enumerate available audio output devices
+     * @return Vector of device info structures
+     *
+     * Call this before creating AudioOutput to discover available devices.
+     * @code
+     * auto devices = AudioOutput::enumerateDevices();
+     * for (const auto& d : devices) {
+     *     std::cout << d.index << ": " << d.name;
+     *     if (d.isDefault) std::cout << " (default)";
+     *     std::cout << "\n";
+     * }
+     * @endcode
+     */
+    static std::vector<AudioDeviceInfo> enumerateDevices();
+
+    /**
+     * @brief Set audio device by name
+     * @param name Device name (partial match supported)
+     *
+     * Must be called before init(). If device not found, falls back to default.
+     * @code
+     * audioOut.setDevice("Focusrite");  // Matches "Focusrite USB Audio"
+     * @endcode
+     */
+    void setDevice(const std::string& name);
+
+    /**
+     * @brief Set audio device by index
+     * @param index Device index from enumerateDevices()
+     *
+     * Must be called before init(). Index 0 is typically the default device.
+     */
+    void setDeviceIndex(uint32_t index);
+
+    /**
+     * @brief Set buffer size for latency control
+     * @param frames Buffer size in frames (64-2048, default 256)
+     *
+     * Smaller = lower latency but higher CPU. Must be called before init().
+     * - 64 frames = ~1.3ms at 48kHz (very low latency)
+     * - 256 frames = ~5.3ms (default, good balance)
+     * - 1024 frames = ~21ms (high latency, low CPU)
+     */
+    void setBufferSize(uint32_t frames);
+
+    /**
+     * @brief Get current device name
+     */
+    std::string deviceName() const;
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Input Configuration
     /// @{
 
     /**
@@ -150,6 +220,11 @@ private:
     AudioOperator* m_input = nullptr;  // Resolved input operator
     float m_volume = 1.0f;
     bool m_autoPlay = true;  // Auto-start playback on first audio
+
+    // Device configuration (set before init)
+    std::string m_deviceName;           // Device name (empty = default)
+    int32_t m_deviceIndex = -1;         // Device index (-1 = use name or default)
+    uint32_t m_bufferSize = 256;        // Buffer size in frames
 
     // Parameter declarations for UI
     Param<float> m_volumeParam{"volume", 1.0f, 0.0f, 2.0f};

@@ -175,6 +175,10 @@ public:
     // Pull-based audio generation (called from audio thread)
     void generateBlock(uint32_t frameCount) override;
 
+    // Custom visualization
+    bool drawVisualization(ImDrawList* drawList, float minX, float minY,
+                           float maxX, float maxY) override;
+
     /// @}
 
 private:

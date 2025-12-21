@@ -92,6 +92,8 @@ set(VIVID_CORE_LIB_SOURCES
     src/audio_operator.cpp
     src/audio_output.cpp
     src/audio_graph.cpp
+    # ImGui integration (in core so addons can use ImGui for visualization)
+    imgui/imgui_integration.cpp
     # vivid-io (image loading)
     src/io/image_loader.cpp
     # vivid-effects-2d (2D texture effects)
@@ -150,7 +152,7 @@ set(VIVID_CORE_SOURCES
     src/addon_registry.cpp
     src/addon_manager.cpp
     src/editor_bridge.cpp
-    imgui/imgui_integration.cpp
+    # Chain visualizer (uses render3d addon, so can't be in vivid-core)
     imgui/chain_visualizer.cpp
 )
 
@@ -182,18 +184,30 @@ set(VIVID_CORE_HEADERS
 )
 
 # Core library (shared between executable and addons)
+# Includes ImGui so addons can implement visualization
 add_library(vivid-core SHARED
     ${VIVID_CORE_LIB_SOURCES}
+    ${IMGUI_SOURCES}
+    ${IMNODES_SOURCES}
 )
 
 target_include_directories(vivid-core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
+        ${imnodes_SOURCE_DIR}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}
         ${stb_SOURCE_DIR}
         ${freetype_SOURCE_DIR}/include
         ${earcut_SOURCE_DIR}/include
+)
+
+# ImGui backend configuration
+target_compile_definitions(vivid-core PUBLIC
+    IMGUI_IMPL_WEBGPU_BACKEND_WGPU
 )
 
 target_link_libraries(vivid-core PUBLIC
@@ -213,6 +227,18 @@ if(APPLE)
     set_target_properties(vivid-core PROPERTIES
         INSTALL_RPATH "@executable_path"
         BUILD_WITH_INSTALL_RPATH TRUE
+    )
+    # imgui_impl_wgpu.cpp needs Objective-C++ on macOS for Cocoa/CAMetalLayer
+    set_source_files_properties(
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_wgpu.cpp
+        PROPERTIES
+            COMPILE_OPTIONS "-x;objective-c++"
+            LANGUAGE CXX
+    )
+    # Link against required frameworks for ImGui
+    target_link_libraries(vivid-core PUBLIC
+        "-framework Cocoa"
+        "-framework QuartzCore"
     )
 elseif(WIN32)
     # Export all symbols to generate import library (.lib)
@@ -246,30 +272,23 @@ endif()
 add_executable(vivid
     ${VIVID_CORE_SOURCES}
     ${VIVID_CORE_HEADERS}
-    ${IMGUI_SOURCES}
-    ${IMNODES_SOURCES}
 )
 
 target_include_directories(vivid
-    PUBLIC
-        ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${imgui_SOURCE_DIR}
-        ${imgui_SOURCE_DIR}/backends
-        ${imnodes_SOURCE_DIR}
         ${CMAKE_SOURCE_DIR}/addons/vivid-render3d/include
         ${CMAKE_SOURCE_DIR}/addons/vivid-audio/include
         ${stb_SOURCE_DIR}
 )
 
-# Use wgpu-native backend for ImGui, pass version from CMake (or CI override)
+# Pass version from CMake (or CI override)
 target_compile_definitions(vivid PRIVATE
-    IMGUI_IMPL_WEBGPU_BACKEND_WGPU
     VIVID_VERSION="${VIVID_VERSION}"
 )
 
-# Link against core library, GLFW-WebGPU integration, render3d for geometry previews, audio for analyzer type info
+# Link against core library (includes ImGui), render3d, audio
+# Note: glfw3webgpu is explicitly linked here because main.cpp uses glfwCreateWindowWGPUSurface
 target_link_libraries(vivid
     PRIVATE
         vivid-core
@@ -281,21 +300,10 @@ target_link_libraries(vivid
 
 # Platform-specific settings
 if(APPLE)
-    # imgui_impl_wgpu.cpp needs Objective-C++ on macOS for Cocoa/CAMetalLayer
-    # Use LANGUAGE property instead of compile flags for proper ObjC++ handling
-    set_source_files_properties(
-        ${imgui_SOURCE_DIR}/backends/imgui_impl_wgpu.cpp
-        PROPERTIES
-            COMPILE_OPTIONS "-x;objective-c++"
-            LANGUAGE CXX
-    )
-
-    # macOS: Link against required frameworks
+    # macOS: Link against required frameworks for video export, etc.
     target_link_libraries(vivid PRIVATE
-        "-framework Cocoa"
         "-framework IOKit"
         "-framework CoreVideo"
-        "-framework QuartzCore"
         "-framework Metal"
         "-framework VideoToolbox"
         "-framework AVFoundation"

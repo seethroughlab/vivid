@@ -7,7 +7,7 @@ Add a polyphonic sampler instrument that loads a single sample and plays it chro
 ## Overview
 
 **What it does:**
-- Load a single audio sample (WAV/MP3/OGG)
+- Load a single audio sample (WAV only for now)
 - Play it polyphonically with pitch shifting (noteOn/noteOff)
 - ADSR envelope per voice
 - Root note setting (what pitch the sample is at 1.0x speed)
@@ -175,7 +175,7 @@ void update(Context& ctx) {
    - Public API methods
 
 2. **Implement core** (`sampler.cpp`)
-   - `loadSample()`: Load WAV/MP3/OGG via existing audio loading
+   - `loadSample()`: Use AssetLoader::resolve() for path, then loadWAV()
    - `noteOn()`/`noteOff()`: Voice allocation + pitch calculation
    - `generateBlock()`: Per-voice sample playback with interpolation + envelope
 
