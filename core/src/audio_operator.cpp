@@ -4,6 +4,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/audio_graph.h>
 #include <cstring>
 
 namespace vivid {
@@ -64,6 +65,24 @@ bool AudioOperator::copyInputToOutput(int index) {
     // Copy samples
     std::memcpy(m_output.samples, in->samples, in->byteSize());
     return true;
+}
+
+void AudioOperator::trigger() {
+    // If we have an audio graph, queue the event for thread-safe delivery
+    if (m_audioGraph && m_operatorId != UINT32_MAX) {
+        m_audioGraph->queueTrigger(m_operatorId);
+    } else {
+        // Direct call (not in graph yet, or legacy mode)
+        onTrigger();
+    }
+}
+
+void AudioOperator::handleEvent(const AudioEvent& event) {
+    // Default implementation handles Trigger events
+    if (event.type == AudioEventType::Trigger) {
+        onTrigger();
+    }
+    // Subclasses can override to handle other event types
 }
 
 } // namespace vivid

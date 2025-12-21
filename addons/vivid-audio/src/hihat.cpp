@@ -76,10 +76,11 @@ void HiHat::generateBlock(uint32_t frameCount) {
 }
 
 void HiHat::handleEvent(const AudioEvent& event) {
+    // Let base class handle Trigger -> onTrigger()
+    AudioOperator::handleEvent(event);
+
+    // Handle additional event types
     switch (event.type) {
-        case AudioEventType::Trigger:
-            triggerInternal();
-            break;
         case AudioEventType::NoteOff:
             choke();
             break;
@@ -96,15 +97,7 @@ void HiHat::cleanup() {
     m_initialized = false;
 }
 
-void HiHat::trigger() {
-    if (m_audioGraph && m_operatorId != UINT32_MAX) {
-        m_audioGraph->queueTrigger(m_operatorId);
-    } else {
-        triggerInternal();
-    }
-}
-
-void HiHat::triggerInternal() {
+void HiHat::onTrigger() {
     m_env = 1.0f;
 }
 

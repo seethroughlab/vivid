@@ -64,15 +64,12 @@ void Clap::generateBlock(uint32_t frameCount) {
 }
 
 void Clap::handleEvent(const AudioEvent& event) {
-    switch (event.type) {
-        case AudioEventType::Trigger:
-            triggerInternal();
-            break;
-        case AudioEventType::Reset:
-            reset();
-            break;
-        default:
-            break;
+    // Let base class handle Trigger -> onTrigger()
+    AudioOperator::handleEvent(event);
+
+    // Handle additional event types
+    if (event.type == AudioEventType::Reset) {
+        reset();
     }
 }
 
@@ -81,15 +78,7 @@ void Clap::cleanup() {
     m_initialized = false;
 }
 
-void Clap::trigger() {
-    if (m_audioGraph && m_operatorId != UINT32_MAX) {
-        m_audioGraph->queueTrigger(m_operatorId);
-    } else {
-        triggerInternal();
-    }
-}
-
-void Clap::triggerInternal() {
+void Clap::onTrigger() {
     m_env = 1.0f;
     m_samplesSinceTrigger = 0;
 

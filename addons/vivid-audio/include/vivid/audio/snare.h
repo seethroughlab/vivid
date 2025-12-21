@@ -74,7 +74,7 @@ public:
     /// @name Playback Control
     /// @{
 
-    void trigger();
+    // trigger() inherited from AudioOperator - queues to audio thread
     void reset();
     bool isActive() const { return m_toneEnv > 0.0001f || m_noiseEnv > 0.0001f; }
 
@@ -94,8 +94,10 @@ public:
 
     /// @}
 
+protected:
+    void onTrigger() override;  // Called from audio thread
+
 private:
-    void triggerInternal();  // Called from audio thread
     float generateNoise();
     float highpass(float in, int ch);
 

@@ -7,10 +7,20 @@
  * These wrappers combine parameter values with metadata (name, range, default)
  * to reduce redundancy. Parameters automatically generate ParamDecl for
  * introspection and UI.
+ *
+ * Parameters support optional bindings for reactive updates:
+ * @code
+ * // Bind to normalized source (0-1) with output range
+ * noise.scale.bind([&]() { return bands.bass(); }, 5.0f, 20.0f);
+ *
+ * // Bind direct (no range mapping)
+ * noise.scale.bindDirect([&]() { return mouseX * 20.0f; });
+ * @endcode
  */
 
 #include <vivid/operator.h>
 #include <string>
+#include <functional>
 
 namespace vivid {
 
@@ -56,17 +66,76 @@ public:
      * @param minVal Minimum allowed value
      * @param maxVal Maximum allowed value
      */
-    constexpr Param(const char* name, T defaultVal, T minVal = T{}, T maxVal = T{1})
+    Param(const char* name, T defaultVal, T minVal = T{}, T maxVal = T{1})
         : m_name(name), m_value(defaultVal), m_min(minVal), m_max(maxVal) {}
 
-    /// @brief Implicit conversion to value type
-    operator T() const { return m_value; }
+    /// @brief Implicit conversion to value type (evaluates binding if set)
+    operator T() const { return get(); }
 
-    /// @brief Get value explicitly
-    T get() const { return m_value; }
+    /// @brief Get value explicitly (evaluates binding if set)
+    T get() const {
+        if (m_binding) {
+            return m_binding();
+        }
+        return m_value;
+    }
 
-    /// @brief Assignment operator
-    Param& operator=(T v) { m_value = v; return *this; }
+    /// @brief Assignment operator (clears any binding)
+    Param& operator=(T v) {
+        m_value = v;
+        m_binding = nullptr;
+        return *this;
+    }
+
+    // -------------------------------------------------------------------------
+    /// @name Binding
+    /// @{
+
+    /**
+     * @brief Bind to a normalized source (0-1) with output range
+     * @param source Function returning 0-1 normalized value
+     * @param outMin Output minimum (when source returns 0)
+     * @param outMax Output maximum (when source returns 1)
+     *
+     * Example:
+     * @code
+     * noise.scale.bind([&]() { return bands.bass(); }, 5.0f, 20.0f);
+     * @endcode
+     */
+    void bind(std::function<float()> source, T outMin, T outMax) {
+        m_binding = [source = std::move(source), outMin, outMax]() {
+            float t = source();
+            return static_cast<T>(outMin + t * (outMax - outMin));
+        };
+    }
+
+    /**
+     * @brief Bind directly to a source (no range mapping)
+     * @param source Function returning the exact value
+     *
+     * Example:
+     * @code
+     * noise.scale.bindDirect([&]() { return mouseX * 20.0f; });
+     * @endcode
+     */
+    void bindDirect(std::function<T()> source) {
+        m_binding = std::move(source);
+    }
+
+    /**
+     * @brief Clear any binding
+     */
+    void unbind() {
+        m_binding = nullptr;
+    }
+
+    /**
+     * @brief Check if parameter has a binding
+     */
+    bool isBound() const { return m_binding != nullptr; }
+
+    /// @}
+    // -------------------------------------------------------------------------
 
     /// @brief Get parameter name
     const char* name() const { return m_name; }
@@ -91,48 +160,101 @@ private:
     const char* m_name;
     T m_value;
     T m_min, m_max;
+    std::function<T()> m_binding;
 };
 
 /**
- * @brief 2D vector parameter wrapper
+ * @brief 2D vector parameter wrapper with binding support
  *
  * @par Example
  * @code
- * Vec2Param m_offset{"offset", 0.0f, 0.0f, -1.0f, 1.0f};
+ * Vec2Param m_size{"size", 0.5f, 0.5f, 0.0f, 1.0f};
  *
- * void setOffset(float x, float y) { m_offset.set(x, y); }
+ * // Uniform binding - both components scale together
+ * m_size.bind([&]() { return bands.bass(); }, 0.1f, 0.5f);
+ *
+ * // Per-component binding
+ * m_size.bindX([&]() { return bands.bass(); }, 0.1f, 0.5f);
+ * m_size.bindY([&]() { return bands.mid(); }, 0.1f, 0.5f);
  * @endcode
  */
 class Vec2Param {
 public:
-    /**
-     * @brief Construct a Vec2 parameter
-     * @param name Display name
-     * @param x Default X value
-     * @param y Default Y value
-     * @param minVal Minimum for both components
-     * @param maxVal Maximum for both components
-     */
-    constexpr Vec2Param(const char* name, float x, float y, float minVal = -1.0f, float maxVal = 1.0f)
+    Vec2Param(const char* name, float x, float y, float minVal = -1.0f, float maxVal = 1.0f)
         : m_name(name), m_x(x), m_y(y), m_min(minVal), m_max(maxVal) {}
 
-    /// @brief Get X component
-    float x() const { return m_x; }
+    /// @brief Get X component (evaluates binding if set)
+    float x() const {
+        if (m_bindingX) return m_bindingX();
+        if (m_bindingUniform) {
+            float t = m_bindingUniform();
+            return m_uniformMin + t * (m_uniformMax - m_uniformMin);
+        }
+        return m_x;
+    }
 
-    /// @brief Get Y component
-    float y() const { return m_y; }
+    /// @brief Get Y component (evaluates binding if set)
+    float y() const {
+        if (m_bindingY) return m_bindingY();
+        if (m_bindingUniform) {
+            float t = m_bindingUniform();
+            return m_uniformMin + t * (m_uniformMax - m_uniformMin);
+        }
+        return m_y;
+    }
 
-    /**
-     * @brief Set both components
-     * @param x New X value
-     * @param y New Y value
-     */
-    void set(float x, float y) { m_x = x; m_y = y; }
+    /// @brief Set both components (clears bindings)
+    void set(float x, float y) {
+        m_x = x; m_y = y;
+        m_bindingX = nullptr;
+        m_bindingY = nullptr;
+        m_bindingUniform = nullptr;
+    }
 
-    /// @brief Get parameter name
+    // -------------------------------------------------------------------------
+    /// @name Binding
+    /// @{
+
+    /// @brief Bind both components uniformly to a 0-1 source
+    void bind(std::function<float()> source, float outMin, float outMax) {
+        m_bindingUniform = std::move(source);
+        m_uniformMin = outMin;
+        m_uniformMax = outMax;
+        m_bindingX = nullptr;
+        m_bindingY = nullptr;
+    }
+
+    /// @brief Bind X component to a 0-1 source with range
+    void bindX(std::function<float()> source, float outMin, float outMax) {
+        m_bindingX = [source = std::move(source), outMin, outMax]() {
+            return outMin + source() * (outMax - outMin);
+        };
+    }
+
+    /// @brief Bind Y component to a 0-1 source with range
+    void bindY(std::function<float()> source, float outMin, float outMax) {
+        m_bindingY = [source = std::move(source), outMin, outMax]() {
+            return outMin + source() * (outMax - outMin);
+        };
+    }
+
+    /// @brief Clear all bindings
+    void unbind() {
+        m_bindingX = nullptr;
+        m_bindingY = nullptr;
+        m_bindingUniform = nullptr;
+    }
+
+    /// @brief Check if any binding is set
+    bool isBound() const {
+        return m_bindingX || m_bindingY || m_bindingUniform;
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
+
     const char* name() const { return m_name; }
 
-    /// @brief Generate ParamDecl
     ParamDecl decl() const {
         return {m_name, ParamType::Vec2, m_min, m_max, {m_x, m_y}};
     }
@@ -141,53 +263,96 @@ private:
     const char* m_name;
     float m_x, m_y;
     float m_min, m_max;
+    std::function<float()> m_bindingX;
+    std::function<float()> m_bindingY;
+    std::function<float()> m_bindingUniform;
+    float m_uniformMin = 0.0f, m_uniformMax = 1.0f;
 };
 
 /**
- * @brief 3D vector parameter wrapper
+ * @brief 3D vector parameter wrapper with binding support
  *
  * @par Example
  * @code
- * Vec3Param m_offset{"offset", 0.0f, 0.0f, 0.0f, -10.0f, 10.0f};
+ * Vec3Param m_position{"position", 0.0f, 0.0f, 0.0f, -10.0f, 10.0f};
  *
- * void setOffset(float x, float y, float z) { m_offset.set(x, y, z); }
+ * // Bind individual components
+ * m_position.bindX([&]() { return lfo.value(); }, -5.0f, 5.0f);
  * @endcode
  */
 class Vec3Param {
 public:
-    /**
-     * @brief Construct a Vec3 parameter
-     * @param name Display name
-     * @param x Default X value
-     * @param y Default Y value
-     * @param z Default Z value
-     * @param minVal Minimum for all components
-     * @param maxVal Maximum for all components
-     */
-    constexpr Vec3Param(const char* name, float x, float y, float z, float minVal = -1.0f, float maxVal = 1.0f)
+    Vec3Param(const char* name, float x, float y, float z, float minVal = -1.0f, float maxVal = 1.0f)
         : m_name(name), m_x(x), m_y(y), m_z(z), m_min(minVal), m_max(maxVal) {}
 
-    /// @brief Get X component
-    float x() const { return m_x; }
+    /// @brief Get X component (evaluates binding if set)
+    float x() const {
+        if (m_bindingX) return m_bindingX();
+        return m_x;
+    }
 
-    /// @brief Get Y component
-    float y() const { return m_y; }
+    /// @brief Get Y component (evaluates binding if set)
+    float y() const {
+        if (m_bindingY) return m_bindingY();
+        return m_y;
+    }
 
-    /// @brief Get Z component
-    float z() const { return m_z; }
+    /// @brief Get Z component (evaluates binding if set)
+    float z() const {
+        if (m_bindingZ) return m_bindingZ();
+        return m_z;
+    }
 
-    /**
-     * @brief Set all components
-     * @param x New X value
-     * @param y New Y value
-     * @param z New Z value
-     */
-    void set(float x, float y, float z) { m_x = x; m_y = y; m_z = z; }
+    /// @brief Set all components (clears bindings)
+    void set(float x, float y, float z) {
+        m_x = x; m_y = y; m_z = z;
+        m_bindingX = nullptr;
+        m_bindingY = nullptr;
+        m_bindingZ = nullptr;
+    }
 
-    /// @brief Get parameter name
+    // -------------------------------------------------------------------------
+    /// @name Binding
+    /// @{
+
+    /// @brief Bind X component to a 0-1 source with range
+    void bindX(std::function<float()> source, float outMin, float outMax) {
+        m_bindingX = [source = std::move(source), outMin, outMax]() {
+            return outMin + source() * (outMax - outMin);
+        };
+    }
+
+    /// @brief Bind Y component to a 0-1 source with range
+    void bindY(std::function<float()> source, float outMin, float outMax) {
+        m_bindingY = [source = std::move(source), outMin, outMax]() {
+            return outMin + source() * (outMax - outMin);
+        };
+    }
+
+    /// @brief Bind Z component to a 0-1 source with range
+    void bindZ(std::function<float()> source, float outMin, float outMax) {
+        m_bindingZ = [source = std::move(source), outMin, outMax]() {
+            return outMin + source() * (outMax - outMin);
+        };
+    }
+
+    /// @brief Clear all bindings
+    void unbind() {
+        m_bindingX = nullptr;
+        m_bindingY = nullptr;
+        m_bindingZ = nullptr;
+    }
+
+    /// @brief Check if any binding is set
+    bool isBound() const {
+        return m_bindingX || m_bindingY || m_bindingZ;
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
+
     const char* name() const { return m_name; }
 
-    /// @brief Generate ParamDecl
     ParamDecl decl() const {
         return {m_name, ParamType::Vec3, m_min, m_max, {m_x, m_y, m_z}};
     }
@@ -196,72 +361,122 @@ private:
     const char* m_name;
     float m_x, m_y, m_z;
     float m_min, m_max;
+    std::function<float()> m_bindingX;
+    std::function<float()> m_bindingY;
+    std::function<float()> m_bindingZ;
 };
 
 /**
- * @brief RGBA color parameter wrapper
+ * @brief RGBA color parameter wrapper with binding support
  *
  * @par Example
  * @code
  * ColorParam m_color{"color", 1.0f, 1.0f, 1.0f, 1.0f};
  *
- * void setColor(float r, float g, float b, float a = 1.0f) {
- *     m_color.set(r, g, b, a);
- * }
+ * // Bind red channel to audio
+ * m_color.bindR([&]() { return bands.bass(); }, 0.0f, 1.0f);
+ *
+ * // Bind alpha to fade
+ * m_color.bindA([&]() { return levels.rms(); }, 0.5f, 1.0f);
  * @endcode
  */
 class ColorParam {
 public:
-    /**
-     * @brief Construct a color parameter
-     * @param name Display name
-     * @param r Red (0-1)
-     * @param g Green (0-1)
-     * @param b Blue (0-1)
-     * @param a Alpha (0-1, default 1)
-     */
-    constexpr ColorParam(const char* name, float r, float g, float b, float a = 1.0f)
+    ColorParam(const char* name, float r, float g, float b, float a = 1.0f)
         : m_name(name), m_r(r), m_g(g), m_b(b), m_a(a) {}
 
-    /// @brief Get red component
-    float r() const { return m_r; }
+    /// @brief Get red component (evaluates binding if set)
+    float r() const {
+        if (m_bindingR) return m_bindingR();
+        return m_r;
+    }
 
-    /// @brief Get green component
-    float g() const { return m_g; }
+    /// @brief Get green component (evaluates binding if set)
+    float g() const {
+        if (m_bindingG) return m_bindingG();
+        return m_g;
+    }
 
-    /// @brief Get blue component
-    float b() const { return m_b; }
+    /// @brief Get blue component (evaluates binding if set)
+    float b() const {
+        if (m_bindingB) return m_bindingB();
+        return m_b;
+    }
 
-    /// @brief Get alpha component
-    float a() const { return m_a; }
+    /// @brief Get alpha component (evaluates binding if set)
+    float a() const {
+        if (m_bindingA) return m_bindingA();
+        return m_a;
+    }
 
-    /// @brief Get pointer to RGBA array (for GPU upload)
-    const float* data() const { return &m_r; }
+    /// @brief Get RGBA as array (evaluates bindings) - NOTE: returns temp, don't store pointer
+    void getData(float out[4]) const {
+        out[0] = r(); out[1] = g(); out[2] = b(); out[3] = a();
+    }
 
-    /**
-     * @brief Set all components
-     * @param r Red
-     * @param g Green
-     * @param b Blue
-     * @param a Alpha (default 1)
-     */
-    void set(float r, float g, float b, float a = 1.0f) { m_r = r; m_g = g; m_b = b; m_a = a; }
+    /// @brief Set all components (clears bindings)
+    void set(float r, float g, float b, float a = 1.0f) {
+        m_r = r; m_g = g; m_b = b; m_a = a;
+        m_bindingR = nullptr;
+        m_bindingG = nullptr;
+        m_bindingB = nullptr;
+        m_bindingA = nullptr;
+    }
 
-    /**
-     * @brief Set from Color
-     * @param c Color to copy from
-     */
-    void set(const Color& c);  // Defined in color.h after Color is complete
+    void set(const Color& c);  // Defined in color.h
 
-    /**
-     * @brief Implicit conversion to Color
-     */
-    operator Color() const;  // Defined in color.h after Color is complete
+    operator Color() const;  // Defined in color.h
 
-    /// @brief Get parameter name
+    // -------------------------------------------------------------------------
+    /// @name Binding
+    /// @{
+
+    /// @brief Bind red component to a 0-1 source with range
+    void bindR(std::function<float()> source, float outMin, float outMax) {
+        m_bindingR = [source = std::move(source), outMin, outMax]() {
+            return outMin + source() * (outMax - outMin);
+        };
+    }
+
+    /// @brief Bind green component to a 0-1 source with range
+    void bindG(std::function<float()> source, float outMin, float outMax) {
+        m_bindingG = [source = std::move(source), outMin, outMax]() {
+            return outMin + source() * (outMax - outMin);
+        };
+    }
+
+    /// @brief Bind blue component to a 0-1 source with range
+    void bindB(std::function<float()> source, float outMin, float outMax) {
+        m_bindingB = [source = std::move(source), outMin, outMax]() {
+            return outMin + source() * (outMax - outMin);
+        };
+    }
+
+    /// @brief Bind alpha component to a 0-1 source with range
+    void bindA(std::function<float()> source, float outMin, float outMax) {
+        m_bindingA = [source = std::move(source), outMin, outMax]() {
+            return outMin + source() * (outMax - outMin);
+        };
+    }
+
+    /// @brief Clear all bindings
+    void unbind() {
+        m_bindingR = nullptr;
+        m_bindingG = nullptr;
+        m_bindingB = nullptr;
+        m_bindingA = nullptr;
+    }
+
+    /// @brief Check if any binding is set
+    bool isBound() const {
+        return m_bindingR || m_bindingG || m_bindingB || m_bindingA;
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
+
     const char* name() const { return m_name; }
 
-    /// @brief Generate ParamDecl
     ParamDecl decl() const {
         return {m_name, ParamType::Color, 0.0f, 1.0f, {m_r, m_g, m_b, m_a}};
     }
@@ -269,6 +484,10 @@ public:
 private:
     const char* m_name;
     float m_r, m_g, m_b, m_a;
+    std::function<float()> m_bindingR;
+    std::function<float()> m_bindingG;
+    std::function<float()> m_bindingB;
+    std::function<float()> m_bindingA;
 };
 
 /**

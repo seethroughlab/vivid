@@ -65,6 +65,11 @@ void Sequencer::advance() {
     // Check if current step is active
     m_triggered = m_pattern[m_currentStep];
     m_currentVelocity = m_triggered ? m_velocities[m_currentStep] : 0.0f;
+
+    // Fire callback if triggered
+    if (m_triggered && m_onTrigger) {
+        m_onTrigger(m_currentVelocity);
+    }
 }
 
 void Sequencer::reset() {

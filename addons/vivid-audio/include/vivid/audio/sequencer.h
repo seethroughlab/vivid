@@ -140,6 +140,36 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Callbacks
+    /// @{
+
+    /**
+     * @brief Set callback for trigger events
+     * @param callback Function called when step triggers, receives velocity
+     *
+     * Example:
+     * @code
+     * seq.onTrigger([&](float velocity) {
+     *     kick.trigger(velocity);       // Audio
+     *     flash.trigger(velocity);      // Visual
+     *     particles.burst(50 * velocity);
+     * });
+     * @endcode
+     */
+    void onTrigger(std::function<void(float velocity)> callback) {
+        m_onTrigger = std::move(callback);
+    }
+
+    /**
+     * @brief Set simple callback (no velocity)
+     * @param callback Function called when step triggers
+     */
+    void onTrigger(std::function<void()> callback) {
+        m_onTrigger = [cb = std::move(callback)](float) { cb(); };
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
@@ -169,6 +199,9 @@ private:
     int m_currentStep = 0;
     bool m_triggered = false;
     float m_currentVelocity = 0.0f;
+
+    // Callback
+    std::function<void(float velocity)> m_onTrigger;
 };
 
 } // namespace vivid::audio

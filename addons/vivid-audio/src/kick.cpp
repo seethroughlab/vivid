@@ -85,15 +85,12 @@ void Kick::generateBlock(uint32_t frameCount) {
 }
 
 void Kick::handleEvent(const AudioEvent& event) {
-    switch (event.type) {
-        case AudioEventType::Trigger:
-            triggerInternal();  // Direct call on audio thread
-            break;
-        case AudioEventType::Reset:
-            reset();
-            break;
-        default:
-            break;
+    // Let base class handle Trigger -> onTrigger()
+    AudioOperator::handleEvent(event);
+
+    // Handle additional event types
+    if (event.type == AudioEventType::Reset) {
+        reset();
     }
 }
 
@@ -102,17 +99,7 @@ void Kick::cleanup() {
     m_initialized = false;
 }
 
-void Kick::trigger() {
-    // If we have an audio graph, queue the event for thread-safe delivery
-    if (m_audioGraph && m_operatorId != UINT32_MAX) {
-        m_audioGraph->queueTrigger(m_operatorId);
-    } else {
-        // Direct call (legacy mode or not in graph yet)
-        triggerInternal();
-    }
-}
-
-void Kick::triggerInternal() {
+void Kick::onTrigger() {
     m_ampEnv = 1.0f;
     m_pitchEnvValue = 1.0f;
     m_clickEnv = 1.0f;

@@ -145,6 +145,129 @@ VIVID_CHAIN(setup, update)
 
 ---
 
+## Trigger Callbacks (Audio-Visual Sync)
+
+Use `onTrigger()` callbacks to automatically sync audio and visual events. No manual polling in update() needed.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Clock and sequencer
+    auto& clock = chain.add<Clock>("clock");
+    clock.bpm = 120.0f;
+
+    auto& kickSeq = chain.add<Sequencer>("kickSeq");
+    kickSeq.setPattern(0b0001000100010001);  // Kick on 1,5,9,13
+
+    auto& kick = chain.add<Kick>("kick");
+
+    // Visual
+    auto& noise = chain.add<Noise>("noise");
+    auto& flash = chain.add<Flash>("flash");
+    flash.input(&noise);
+
+    auto& particles = chain.add<Particles>("particles");
+    particles.emitRate(0.0f);  // Only burst on trigger
+
+    // === The key: onTrigger callback ===
+    kickSeq.onTrigger([&](float velocity) {
+        kick.trigger();                  // Audio
+        flash.trigger(velocity);         // Visual flash
+        particles.burst(30);             // Visual particles
+    });
+
+    chain.output("flash");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Just advance clock - callbacks handle the rest!
+    if (chain.get<Clock>("clock").triggered()) {
+        chain.get<Sequencer>("kickSeq").advance();
+    }
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+**Callback signatures:**
+- `Sequencer::onTrigger(std::function<void(float velocity)>)` - with velocity
+- `Sequencer::onTrigger(std::function<void()>)` - simple, no velocity
+- `Euclidean::onTrigger(std::function<void()>)` - no velocity
+
+---
+
+## Parameter Binding (Reactive Parameters)
+
+Use `bind()` to create reactive connections between parameters and data sources. No manual update() code needed - bindings evaluate automatically when parameters are read.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Audio with analysis
+    auto& synth = chain.add<PolySynth>("synth");
+    auto& bands = chain.add<BandSplit>("bands");
+    bands.input("synth");
+
+    // Visual
+    auto& noise = chain.add<Noise>("noise");
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input(&noise);
+
+    // === Parameter bindings ===
+
+    // Bind with range mapping: source (0-1) → output (min-max)
+    noise.scale.bind([&]() { return bands.bass(); }, 2.0f, 15.0f);
+    bloom.intensity.bind([&]() { return bands.high(); }, 0.5f, 3.0f);
+
+    // Bind direct (no range mapping)
+    noise.speed.bindDirect([&]() {
+        return 0.5f + ctx.mouseNorm().x;
+    });
+
+    chain.output("bloom");
+}
+
+void update(Context& ctx) {
+    // No parameter updates needed!
+    // Bindings evaluate automatically when parameters are read
+    ctx.chain().process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+**Binding methods on Param<T>:**
+- `bind(source, outMin, outMax)` - Map normalized source (0-1) to output range
+- `bindDirect(source)` - Use source value directly (no mapping)
+- `unbind()` - Clear binding
+- `isBound()` - Check if bound
+
+**Note:** Assignment (`param = value`) clears any existing binding.
+
+---
+
 ## Feedback Tunnel
 
 Infinite tunnel effect using frame feedback with zoom and rotation.

@@ -65,7 +65,7 @@ public:
     /// @name Playback Control
     /// @{
 
-    void trigger();
+    // trigger() inherited from AudioOperator - queues to audio thread
     void choke();  // Instantly stop (for closed hi-hat interrupting open)
     void reset();
     bool isActive() const { return m_env > 0.0001f; }
@@ -86,8 +86,10 @@ public:
 
     /// @}
 
+protected:
+    void onTrigger() override;  // Called from audio thread
+
 private:
-    void triggerInternal();  // Called from audio thread
     float generateNoise();
     float bandpass(float in, int ch);
     float highpass(float in, int ch);

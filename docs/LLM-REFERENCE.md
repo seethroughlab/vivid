@@ -268,8 +268,8 @@ synth.noteOff();  // Start release
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
 | `Clock` | Tempo clock | `.bpm(120)` `.division(4)` |
-| `Sequencer` | Step sequencer | `.steps(16)` `.pattern({1,0,1,0,...})` |
-| `Euclidean` | Euclidean rhythms | `.steps(16)` `.hits(5)` `.rotation(0)` |
+| `Sequencer` | Step sequencer | `.setPattern(0x8888)` `.onTrigger([](float v){})` |
+| `Euclidean` | Euclidean rhythms | `steps` `hits` `.onTrigger([](){})` |
 
 **Audio synthesis example:**
 ```cpp
@@ -632,6 +632,23 @@ void setup(Context& ctx) {
         .velocity(0.0f, -0.1f)
         .spread(30.0f);
     chain.output("particles");
+}
+```
+
+### Parameter binding (reactive params)
+
+```cpp
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& bands = chain.add<BandSplit>("bands");
+    auto& noise = chain.add<Noise>("noise");
+
+    // Bind with range: source (0-1) → output (min-max)
+    noise.scale.bind([&]() { return bands.bass(); }, 2.0f, 15.0f);
+
+    // Bind direct (no mapping)
+    noise.speed.bindDirect([&]() { return ctx.mouseNorm().x; });
 }
 ```
 

@@ -1,4 +1,5 @@
 #include <vivid/audio/envelope.h>
+#include <vivid/audio_graph.h>
 #include <vivid/context.h>
 #include <algorithm>
 #include <cmath>
@@ -53,7 +54,19 @@ void Envelope::cleanup() {
     m_initialized = false;
 }
 
-void Envelope::trigger() {
+void Envelope::handleEvent(const AudioEvent& event) {
+    // Let base class handle Trigger -> onTrigger()
+    AudioOperator::handleEvent(event);
+
+    // Handle additional event types
+    if (event.type == AudioEventType::NoteOff) {
+        releaseNote();
+    } else if (event.type == AudioEventType::Reset) {
+        reset();
+    }
+}
+
+void Envelope::onTrigger() {
     m_stage = EnvelopeStage::Attack;
     m_stageProgress = 0.0f;
     // Note: don't reset m_currentValue - allows retriggering from current level

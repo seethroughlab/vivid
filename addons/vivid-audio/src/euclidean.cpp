@@ -41,6 +41,11 @@ void Euclidean::advance() {
 
     // Check if current step is a hit
     m_triggered = m_pattern[patternIndex];
+
+    // Fire callback if triggered
+    if (m_triggered && m_onTrigger) {
+        m_onTrigger();
+    }
 }
 
 void Euclidean::reset() {

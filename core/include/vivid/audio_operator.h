@@ -19,6 +19,7 @@ namespace vivid {
 // Forward declarations
 class AudioBuffer;
 class AudioGraph;
+struct AudioEvent;
 
 /**
  * @brief Base class for audio-producing operators
@@ -79,6 +80,23 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Trigger Interface (thread-safe)
+    /// @{
+
+    /**
+     * @brief Trigger this operator (thread-safe)
+     *
+     * When called from the main thread, this queues a trigger event to be
+     * processed on the audio thread at the next block boundary. This ensures
+     * consistent timing for audio operators.
+     *
+     * If not connected to an audio graph (e.g., during setup), calls onTrigger()
+     * directly as a fallback.
+     */
+    void trigger();
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Audio Thread Interface (called from AudioGraph)
     /// @{
 
@@ -102,14 +120,12 @@ public:
      * @brief Handle an event from the main thread (called from audio thread)
      *
      * Events are queued from the main thread and processed at the start
-     * of each audio block. Override this to handle noteOn/noteOff/trigger.
+     * of each audio block. The default implementation handles Trigger events
+     * by calling onTrigger(). Override to handle noteOn/noteOff/custom events.
      *
      * @param event The event to handle
      */
-    virtual void handleEvent(const AudioEvent& event) {
-        // Default: ignore events
-        (void)event;
-    }
+    virtual void handleEvent(const AudioEvent& event);
 
     /**
      * @brief Set the parent audio graph (called during setup)
@@ -184,6 +200,27 @@ public:
     /// @}
 
 protected:
+    // -------------------------------------------------------------------------
+    /// @name Trigger Handling (audio thread)
+    /// @{
+
+    /**
+     * @brief Called when this operator is triggered (on audio thread)
+     *
+     * Override this to implement trigger behavior. This is called from the
+     * audio thread when a trigger event is received.
+     *
+     * @par Example
+     * @code
+     * void onTrigger() override {
+     *     m_envelope = 1.0f;  // Reset envelope
+     *     m_phase = 0.0f;     // Reset phase
+     * }
+     * @endcode
+     */
+    virtual void onTrigger() {}
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Buffer Management
     /// @{

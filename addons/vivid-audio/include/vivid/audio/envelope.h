@@ -80,10 +80,7 @@ public:
     /// @name Playback Control
     /// @{
 
-    /**
-     * @brief Trigger the envelope (start attack phase)
-     */
-    void trigger();
+    // trigger() inherited from AudioOperator - queues to audio thread
 
     /**
      * @brief Release the envelope (start release phase)
@@ -118,10 +115,14 @@ public:
     void init(Context& ctx) override;
     void process(Context& ctx) override;
     void generateBlock(uint32_t frameCount) override;
+    void handleEvent(const AudioEvent& event) override;
     void cleanup() override;
     std::string name() const override { return "Envelope"; }
 
     /// @}
+
+protected:
+    void onTrigger() override;  // Called from audio thread
 
 private:
     float computeEnvelopeValue();

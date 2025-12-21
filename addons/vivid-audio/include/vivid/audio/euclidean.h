@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 #include <array>
+#include <functional>
 
 namespace vivid::audio {
 
@@ -107,6 +108,27 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Callbacks
+    /// @{
+
+    /**
+     * @brief Set callback for trigger events
+     * @param callback Function called on each hit
+     *
+     * Example:
+     * @code
+     * eucl.onTrigger([&]() {
+     *     hihat.trigger();
+     *     flash.trigger(0.5f);
+     * });
+     * @endcode
+     */
+    void onTrigger(std::function<void()> callback) {
+        m_onTrigger = std::move(callback);
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
@@ -131,6 +153,9 @@ private:
     // State
     int m_currentStep = 0;
     bool m_triggered = false;
+
+    // Callback
+    std::function<void()> m_onTrigger;
 };
 
 } // namespace vivid::audio
