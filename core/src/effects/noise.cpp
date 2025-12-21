@@ -160,7 +160,7 @@ fn perlin3D(P: vec3f) -> f32 {
     let n_z = mix(vec4f(n000, n100, n010, n110), vec4f(n001, n101, n011, n111), fade_xyz.z);
     let n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
     let n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x);
-    return n_xyz * 0.5 + 0.5;
+    return n_xyz;  // Keep in [-1, 1] range - FBM will normalize
 }
 
 // ============================================================================
@@ -230,7 +230,7 @@ fn simplex3D(v: vec3f) -> f32 {
     // Mix final noise value
     var m = max(vec4f(0.5) - vec4f(dot(x0, x0), dot(x1, x1), dot(x2, x2), dot(x3, x3)), vec4f(0.0));
     m = m * m;
-    return (dot(m * m, vec4f(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3))) * 105.0) * 0.5 + 0.5;
+    return dot(m * m, vec4f(dot(p0, x0), dot(p1, x1), dot(p2, x2), dot(p3, x3))) * 105.0;  // Keep in [-1, 1] range
 }
 
 // ============================================================================
@@ -255,7 +255,7 @@ fn worley3D(P: vec3f) -> f32 {
         }
     }
 
-    return minDist;
+    return minDist * 2.0 - 1.0;  // Map [0, 1] to [-1, 1] for FBM consistency
 }
 
 // ============================================================================
@@ -279,12 +279,12 @@ fn valueNoise3D(P: vec3f) -> f32 {
     // Smooth interpolation
     let u = f * f * (3.0 - 2.0 * f);
 
-    // Trilinear interpolation
+    // Trilinear interpolation - map [0, 1] to [-1, 1] for FBM consistency
     return mix(
         mix(mix(a, b, u.x), mix(c, d, u.x), u.y),
         mix(mix(e, ff, u.x), mix(g, h, u.x), u.y),
         u.z
-    );
+    ) * 2.0 - 1.0;
 }
 
 // ============================================================================
@@ -319,7 +319,12 @@ fn fbm3D(p: vec3f, octaves: i32, lacunarity: f32, persistence: f32, noiseType: i
         frequency *= lacunarity;
     }
 
-    return value / maxValue;
+    // Normalize and apply contrast correction
+    // FBM naturally compresses toward the mean due to averaging
+    // Scale factor expands output to use full dynamic range
+    let normalized = value / maxValue;
+    let corrected = clamp(normalized * 2.0, -1.0, 1.0);
+    return corrected * 0.5 + 0.5;
 }
 
 // ============================================================================
