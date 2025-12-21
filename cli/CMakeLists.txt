@@ -3,6 +3,7 @@
 
 set(VIVID_CLI_SOURCES
     main.cpp
+    app.cpp
     cli.cpp
     editor_bridge.cpp
 )
