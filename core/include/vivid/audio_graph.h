@@ -184,6 +184,63 @@ public:
     AudioOperator* output() const { return m_output; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Monitoring
+    /// @{
+
+    /**
+     * @brief Get number of dropped events since last reset
+     *
+     * Events are dropped when the queue is full (typically during
+     * rapid MIDI input or high-frequency parameter automation).
+     */
+    uint64_t droppedEventCount() const {
+        return m_eventQueue.droppedCount();
+    }
+
+    /**
+     * @brief Reset dropped event counter
+     */
+    void resetDroppedEventCount() {
+        m_eventQueue.resetDroppedCount();
+    }
+
+    /**
+     * @brief Get event queue fill level (0.0 - 1.0)
+     *
+     * Useful for monitoring queue pressure. High values indicate
+     * risk of event drops.
+     */
+    float eventQueueFillLevel() const {
+        return static_cast<float>(m_eventQueue.size()) /
+               static_cast<float>(m_eventQueue.capacity());
+    }
+
+    /**
+     * @brief Get current DSP load (0.0 - 1.0+)
+     *
+     * Ratio of processing time to buffer duration.
+     * Values > 1.0 indicate overload (processing slower than real-time).
+     */
+    float dspLoad() const {
+        return m_dspLoad.load(std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Get peak DSP load since last reset
+     */
+    float peakDspLoad() const {
+        return m_peakDspLoad.load(std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Reset peak DSP load counter
+     */
+    void resetPeakDspLoad() {
+        m_peakDspLoad.store(0.0f, std::memory_order_relaxed);
+    }
+
+    /// @}
 
 private:
     struct OperatorEntry {
@@ -200,6 +257,10 @@ private:
 
     // Temporary buffer for mixing (avoids allocation in audio thread)
     std::vector<float> m_mixBuffer;
+
+    // DSP load monitoring
+    std::atomic<float> m_dspLoad{0.0f};
+    std::atomic<float> m_peakDspLoad{0.0f};
 };
 
 } // namespace vivid

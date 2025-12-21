@@ -54,7 +54,7 @@ struct AudioEvent {
 template<typename T, size_t Capacity = 256>
 class SPSCQueue {
 public:
-    SPSCQueue() : m_head(0), m_tail(0) {}
+    SPSCQueue() : m_head(0), m_tail(0), m_droppedCount(0) {}
 
     /**
      * @brief Push an item to the queue (main thread only)
@@ -65,6 +65,7 @@ public:
         size_t next = (head + 1) % Capacity;
 
         if (next == m_tail.load(std::memory_order_acquire)) {
+            m_droppedCount.fetch_add(1, std::memory_order_relaxed);
             return false;  // Queue full
         }
 
@@ -97,10 +98,39 @@ public:
                m_head.load(std::memory_order_acquire);
     }
 
+    /**
+     * @brief Get number of dropped events since last reset
+     */
+    uint64_t droppedCount() const {
+        return m_droppedCount.load(std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Reset dropped event counter
+     */
+    void resetDroppedCount() {
+        m_droppedCount.store(0, std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Get current queue size (approximate, for monitoring)
+     */
+    size_t size() const {
+        size_t head = m_head.load(std::memory_order_relaxed);
+        size_t tail = m_tail.load(std::memory_order_relaxed);
+        return (head >= tail) ? (head - tail) : (Capacity - tail + head);
+    }
+
+    /**
+     * @brief Get maximum capacity
+     */
+    static constexpr size_t capacity() { return Capacity; }
+
 private:
     std::array<T, Capacity> m_buffer;
-    std::atomic<size_t> m_head;  ///< Write position (main thread)
-    std::atomic<size_t> m_tail;  ///< Read position (audio thread)
+    std::atomic<size_t> m_head;           ///< Write position (main thread)
+    std::atomic<size_t> m_tail;           ///< Read position (audio thread)
+    std::atomic<uint64_t> m_droppedCount; ///< Events dropped due to full queue
 };
 
 } // namespace vivid

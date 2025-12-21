@@ -7,6 +7,7 @@
 #include <vivid/audio_operator.h>
 #include <cstring>
 #include <algorithm>
+#include <chrono>
 
 namespace vivid {
 
@@ -61,6 +62,9 @@ void AudioGraph::clear() {
 }
 
 void AudioGraph::processBlock(float* output, uint32_t frameCount) {
+    using Clock = std::chrono::high_resolution_clock;
+    auto start = Clock::now();
+
     // 1. Process queued events from main thread
     processEvents();
 
@@ -89,6 +93,23 @@ void AudioGraph::processBlock(float* output, uint32_t frameCount) {
     } else {
         // No output operator - silence
         std::memset(output, 0, frameCount * AUDIO_CHANNELS * sizeof(float));
+    }
+
+    // 4. Measure DSP load
+    auto end = Clock::now();
+    double processingTime = std::chrono::duration<double>(end - start).count();
+    double bufferDuration = static_cast<double>(frameCount) / AUDIO_SAMPLE_RATE;
+    float load = static_cast<float>(processingTime / bufferDuration);
+
+    // Smoothed load (exponential moving average)
+    float currentLoad = m_dspLoad.load(std::memory_order_relaxed);
+    float smoothedLoad = currentLoad * 0.9f + load * 0.1f;
+    m_dspLoad.store(smoothedLoad, std::memory_order_relaxed);
+
+    // Track peak
+    float peak = m_peakDspLoad.load(std::memory_order_relaxed);
+    if (load > peak) {
+        m_peakDspLoad.store(load, std::memory_order_relaxed);
     }
 }
 

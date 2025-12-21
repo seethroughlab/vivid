@@ -3,6 +3,7 @@
 
 #include "chain_visualizer.h"
 #include <vivid/audio_operator.h>
+#include <vivid/audio_graph.h>
 #include <vivid/audio/levels.h>
 #include <vivid/audio/fft.h>
 #include <vivid/audio/band_split.h>
@@ -694,6 +695,45 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
             memColor = ImVec4(0.9f, 0.4f, 0.4f, 1.0f);  // Red
         }
         ImGui::TextColored(memColor, "MEM: %s", memStr.c_str());
+
+        // Audio stats display (if audio is active)
+        AudioGraph* audioGraph = ctx.chain().audioGraph();
+        if (audioGraph && !audioGraph->empty()) {
+            ImGui::Separator();
+
+            // DSP Load with color coding
+            float dspLoad = audioGraph->dspLoad();
+            float peakLoad = audioGraph->peakDspLoad();
+            ImVec4 dspColor;
+            if (dspLoad < 0.5f) {
+                dspColor = ImVec4(0.4f, 0.9f, 0.4f, 1.0f);  // Green
+            } else if (dspLoad < 0.8f) {
+                dspColor = ImVec4(0.9f, 0.9f, 0.4f, 1.0f);  // Yellow
+            } else {
+                dspColor = ImVec4(0.9f, 0.4f, 0.4f, 1.0f);  // Red
+            }
+            ImGui::TextColored(dspColor, "DSP: %.0f%%", dspLoad * 100.0f);
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("DSP Load: %.1f%% (Peak: %.1f%%)\nClick to reset peak",
+                                  dspLoad * 100.0f, peakLoad * 100.0f);
+            }
+            if (ImGui::IsItemClicked()) {
+                audioGraph->resetPeakDspLoad();
+            }
+
+            // Show dropped events if any
+            uint64_t dropped = audioGraph->droppedEventCount();
+            if (dropped > 0) {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.9f, 0.4f, 0.4f, 1.0f), "⚠ %llu dropped", dropped);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Audio events dropped (queue overflow)\nClick to reset counter");
+                }
+                if (ImGui::IsItemClicked()) {
+                    audioGraph->resetDroppedEventCount();
+                }
+            }
+        }
 
         // Controls menu
         if (ImGui::BeginMenu("Controls")) {
