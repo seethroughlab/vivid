@@ -1382,6 +1382,83 @@ void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
     // Update selection state from ImNodes
     updateSelection(operators);
 
+    // Show tooltip with resource stats when hovering over a node
+    int hoveredNodeId = -1;
+    if (ImNodes::IsNodeHovered(&hoveredNodeId) && hoveredNodeId >= 0 &&
+        hoveredNodeId != SCREEN_NODE_ID && hoveredNodeId != SPEAKERS_NODE_ID) {
+        // Find the operator for this node
+        for (const auto& info : operators) {
+            if (info.op && m_opToNodeId.count(info.op) && m_opToNodeId[info.op] == hoveredNodeId) {
+                ImGui::BeginTooltip();
+
+                // Operator type and name
+                ImGui::TextColored(ImVec4(0.7f, 0.9f, 1.0f, 1.0f), "%s", info.op->name().c_str());
+                if (info.name != info.op->name()) {
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(0.5f, 0.5f, 0.6f, 1.0f), "(%s)", info.name.c_str());
+                }
+
+                ImGui::Separator();
+
+                // Output type
+                vivid::OutputKind kind = info.op->outputKind();
+                const char* kindStr = "Unknown";
+                switch (kind) {
+                    case vivid::OutputKind::Texture: kindStr = "Texture"; break;
+                    case vivid::OutputKind::Geometry: kindStr = "Geometry"; break;
+                    case vivid::OutputKind::Audio: kindStr = "Audio"; break;
+                    case vivid::OutputKind::AudioValue: kindStr = "Audio Value"; break;
+                    case vivid::OutputKind::Value: kindStr = "Value"; break;
+                    case vivid::OutputKind::ValueArray: kindStr = "Value Array"; break;
+                    case vivid::OutputKind::Camera: kindStr = "Camera"; break;
+                    case vivid::OutputKind::Light: kindStr = "Light"; break;
+                }
+                ImGui::Text("Output: %s", kindStr);
+
+                // Resource info based on type
+                if (kind == vivid::OutputKind::Texture) {
+                    WGPUTexture tex = info.op->outputTexture();
+                    if (tex) {
+                        uint32_t w = wgpuTextureGetWidth(tex);
+                        uint32_t h = wgpuTextureGetHeight(tex);
+                        // RGBA16Float = 8 bytes per pixel
+                        size_t memBytes = w * h * 8;
+                        ImGui::Text("Size: %ux%u", w, h);
+                        ImGui::Text("Memory: ~%.1f MB", memBytes / (1024.0f * 1024.0f));
+                    } else {
+                        ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.6f, 1.0f), "No texture");
+                    }
+                } else if (kind == vivid::OutputKind::Geometry) {
+                    if (auto* meshOp = dynamic_cast<render3d::MeshOperator*>(info.op)) {
+                        render3d::Mesh* mesh = meshOp->outputMesh();
+                        if (mesh) {
+                            ImGui::Text("Vertices: %u", mesh->vertexCount());
+                            ImGui::Text("Triangles: %u", mesh->indexCount() / 3);
+                        }
+                    } else if (auto* composer = dynamic_cast<render3d::SceneComposer*>(info.op)) {
+                        render3d::Scene& scene = composer->outputScene();
+                        ImGui::Text("Objects: %zu", scene.objects().size());
+                    }
+                } else if (kind == vivid::OutputKind::Audio) {
+                    AudioOperator* audioOp = static_cast<AudioOperator*>(info.op);
+                    const AudioBuffer* buf = audioOp->outputBuffer();
+                    if (buf && buf->isValid()) {
+                        ImGui::Text("Channels: %u", buf->channels);
+                        ImGui::Text("Frames: %u", buf->frameCount);
+                    }
+                }
+
+                // Bypass status
+                if (info.op->isBypassed()) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.6f, 0.3f, 1.0f), "BYPASSED");
+                }
+
+                ImGui::EndTooltip();
+                break;
+            }
+        }
+    }
+
     // Handle blank space click to deselect
     int hoveredNodeCheck = -1;
     bool isNodeHovered = ImNodes::IsNodeHovered(&hoveredNodeCheck);

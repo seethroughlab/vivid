@@ -3,6 +3,98 @@
 
 namespace vivid::render3d {
 
+// ============================================================================
+// Frustum Implementation
+// ============================================================================
+
+void Frustum::extractFromMatrix(const glm::mat4& vp) {
+    // Extract frustum planes from view-projection matrix
+    // Using Gribb/Hartmann method (Fast Extraction of Viewing Frustum Planes)
+    // Each row of the matrix gives us plane coefficients
+
+    // Left plane:   row3 + row0
+    m_planes[0] = glm::vec4(
+        vp[0][3] + vp[0][0],
+        vp[1][3] + vp[1][0],
+        vp[2][3] + vp[2][0],
+        vp[3][3] + vp[3][0]
+    );
+
+    // Right plane:  row3 - row0
+    m_planes[1] = glm::vec4(
+        vp[0][3] - vp[0][0],
+        vp[1][3] - vp[1][0],
+        vp[2][3] - vp[2][0],
+        vp[3][3] - vp[3][0]
+    );
+
+    // Bottom plane: row3 + row1
+    m_planes[2] = glm::vec4(
+        vp[0][3] + vp[0][1],
+        vp[1][3] + vp[1][1],
+        vp[2][3] + vp[2][1],
+        vp[3][3] + vp[3][1]
+    );
+
+    // Top plane:    row3 - row1
+    m_planes[3] = glm::vec4(
+        vp[0][3] - vp[0][1],
+        vp[1][3] - vp[1][1],
+        vp[2][3] - vp[2][1],
+        vp[3][3] - vp[3][1]
+    );
+
+    // Near plane:   row3 + row2
+    m_planes[4] = glm::vec4(
+        vp[0][3] + vp[0][2],
+        vp[1][3] + vp[1][2],
+        vp[2][3] + vp[2][2],
+        vp[3][3] + vp[3][2]
+    );
+
+    // Far plane:    row3 - row2
+    m_planes[5] = glm::vec4(
+        vp[0][3] - vp[0][2],
+        vp[1][3] - vp[1][2],
+        vp[2][3] - vp[2][2],
+        vp[3][3] - vp[3][2]
+    );
+
+    // Normalize all planes
+    for (int i = 0; i < 6; i++) {
+        float len = glm::length(glm::vec3(m_planes[i]));
+        if (len > 0.0001f) {
+            m_planes[i] /= len;
+        }
+    }
+}
+
+bool Frustum::intersectsSphere(const glm::vec3& center, float radius) const {
+    // Check sphere against all 6 frustum planes
+    // If sphere is completely outside any plane, it's outside the frustum
+    for (int i = 0; i < 6; i++) {
+        float distance = glm::dot(glm::vec3(m_planes[i]), center) + m_planes[i].w;
+        if (distance < -radius) {
+            return false;  // Sphere is completely outside this plane
+        }
+    }
+    return true;  // Sphere intersects or is inside frustum
+}
+
+bool Frustum::containsPoint(const glm::vec3& point) const {
+    for (int i = 0; i < 6; i++) {
+        float distance = glm::dot(glm::vec3(m_planes[i]), point) + m_planes[i].w;
+        if (distance < 0.0f) {
+            return false;  // Point is outside this plane
+        }
+    }
+    return true;
+}
+
+// ============================================================================
+// Camera3D Implementation
+// ============================================================================
+
 void Camera3D::position(glm::vec3 pos) {
     m_position = pos;
 }

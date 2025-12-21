@@ -60,6 +60,30 @@ struct GPUInstance {
 
 static_assert(sizeof(GPUInstance) == 96, "GPUInstance must be 96 bytes");
 
+// Compute bounding sphere radius from mesh vertices
+float computeMeshBoundingRadius(const Mesh* mesh) {
+    if (!mesh || mesh->vertices.empty()) return 1.0f;
+
+    float maxDistSq = 0.0f;
+    for (const auto& v : mesh->vertices) {
+        float distSq = glm::dot(v.position, v.position);
+        if (distSq > maxDistSq) {
+            maxDistSq = distSq;
+        }
+    }
+    return std::sqrt(maxDistSq);
+}
+
+// Get instance world position and scale from transform matrix
+void getInstanceBounds(const glm::mat4& transform, glm::vec3& outCenter, float& outScale) {
+    // Position is the translation component
+    outCenter = glm::vec3(transform[3]);
+
+    // Scale is approximated from the length of the first column (X axis)
+    // This assumes uniform or near-uniform scaling
+    outScale = glm::length(glm::vec3(transform[0]));
+}
+
 // Convert Instance3D to GPU format
 GPUInstance toGPUInstance(const Instance3D& inst) {
     GPUInstance gpu = {};
@@ -1014,6 +1038,15 @@ void InstancedRender3D::process(Context& ctx) {
 
     WGPUDevice device = ctx.device();
 
+    // Get camera (needed for frustum culling)
+    Camera3D activeCamera = m_camera;
+    if (m_cameraOp) {
+        activeCamera = m_cameraOp->outputCamera();
+    }
+    activeCamera.aspect(static_cast<float>(m_width) / m_height);
+    glm::mat4 viewProj = activeCamera.viewProjectionMatrix();
+    glm::vec3 cameraPos = activeCamera.getPosition();
+
     // Ensure instance buffer capacity
     if (m_instances.size() > m_instanceCapacity || !m_instanceBuffer) {
         if (m_instanceBuffer) {
@@ -1029,25 +1062,52 @@ void InstancedRender3D::process(Context& ctx) {
         m_instancesDirty = true;
     }
 
-    // Upload instance data if dirty
-    if (m_instancesDirty && !m_instances.empty()) {
-        std::vector<GPUInstance> gpuInstances(m_instances.size());
+    // Compute mesh bounding radius if needed
+    if (m_meshBoundingRadius <= 0.0f) {
+        m_meshBoundingRadius = computeMeshBoundingRadius(meshToRender);
+    }
+
+    // Build frustum for culling
+    Frustum frustum;
+    frustum.extractFromMatrix(viewProj);
+
+    // Upload instance data - with optional frustum culling
+    std::vector<GPUInstance> gpuInstances;
+    gpuInstances.reserve(m_instances.size());
+
+    if (m_frustumCulling) {
+        // Filter visible instances
+        for (size_t i = 0; i < m_instances.size(); i++) {
+            const auto& inst = m_instances[i];
+            glm::vec3 center;
+            float scale;
+            getInstanceBounds(inst.transform, center, scale);
+
+            // Use per-instance radius if specified, otherwise use mesh radius * scale
+            float radius = inst.boundingRadius > 0.0f
+                         ? inst.boundingRadius
+                         : m_meshBoundingRadius * scale;
+
+            if (frustum.intersectsSphere(center, radius)) {
+                gpuInstances.push_back(toGPUInstance(inst));
+            }
+        }
+        m_visibleCount = gpuInstances.size();
+    } else {
+        // No culling - upload all instances
+        gpuInstances.resize(m_instances.size());
         for (size_t i = 0; i < m_instances.size(); i++) {
             gpuInstances[i] = toGPUInstance(m_instances[i]);
         }
-        wgpuQueueWriteBuffer(ctx.queue(), m_instanceBuffer, 0,
-                             gpuInstances.data(), gpuInstances.size() * sizeof(GPUInstance));
-        m_instancesDirty = false;
+        m_visibleCount = m_instances.size();
     }
 
-    // Get camera
-    Camera3D activeCamera = m_camera;
-    if (m_cameraOp) {
-        activeCamera = m_cameraOp->outputCamera();
+    // Upload visible instances to GPU
+    if (!gpuInstances.empty()) {
+        wgpuQueueWriteBuffer(ctx.queue(), m_instanceBuffer, 0,
+                             gpuInstances.data(), gpuInstances.size() * sizeof(GPUInstance));
     }
-    activeCamera.aspect(static_cast<float>(m_width) / m_height);
-    glm::mat4 viewProj = activeCamera.viewProjectionMatrix();
-    glm::vec3 cameraPos = activeCamera.getPosition();
+    m_instancesDirty = false;
 
     // Collect lights
     GPULight gpuLights[MAX_LIGHTS] = {};
@@ -1184,18 +1244,20 @@ void InstancedRender3D::process(Context& ctx) {
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
 
-    // Draw instanced
+    // Draw instanced (only visible instances after frustum culling)
     wgpuRenderPassEncoderSetPipeline(pass, useTextured ? m_texturedPipeline : m_pipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, activeBindGroup, 0, nullptr);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, meshToRender->vertexBuffer(), 0, WGPU_WHOLE_SIZE);
     wgpuRenderPassEncoderSetVertexBuffer(pass, 1, m_instanceBuffer, 0,
-                                          m_instances.size() * sizeof(GPUInstance));
+                                          m_visibleCount * sizeof(GPUInstance));
     wgpuRenderPassEncoderSetIndexBuffer(pass, meshToRender->indexBuffer(),
                                          WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
 
-    // Single draw call for all instances!
-    wgpuRenderPassEncoderDrawIndexed(pass, meshToRender->indexCount(),
-                                      static_cast<uint32_t>(m_instances.size()), 0, 0, 0);
+    // Single draw call for all visible instances
+    if (m_visibleCount > 0) {
+        wgpuRenderPassEncoderDrawIndexed(pass, meshToRender->indexCount(),
+                                          static_cast<uint32_t>(m_visibleCount), 0, 0, 0);
+    }
 
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);

@@ -5,6 +5,28 @@
 
 namespace vivid::render3d {
 
+/// Frustum for view frustum culling
+class Frustum {
+public:
+    /// Extract frustum planes from view-projection matrix
+    void extractFromMatrix(const glm::mat4& viewProj);
+
+    /// Test if a sphere intersects the frustum
+    /// @param center Sphere center in world space
+    /// @param radius Sphere radius
+    /// @return true if sphere is inside or intersects frustum
+    bool intersectsSphere(const glm::vec3& center, float radius) const;
+
+    /// Test if a point is inside the frustum
+    bool containsPoint(const glm::vec3& point) const;
+
+private:
+    // Frustum planes: left, right, bottom, top, near, far
+    // Each plane is (A, B, C, D) where Ax + By + Cz + D = 0
+    // Normal points inward (positive side is inside frustum)
+    glm::vec4 m_planes[6];
+};
+
 /// Camera projection mode
 enum class ProjectionMode {
     Perspective,    ///< Standard perspective projection (FOV-based)

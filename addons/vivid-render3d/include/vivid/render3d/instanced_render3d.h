@@ -36,7 +36,8 @@ struct Instance3D {
     glm::vec4 color = glm::vec4(1.0f);      ///< Instance color (multiplied with material)
     float metallic = 0.0f;                   ///< Per-instance metallic override
     float roughness = 0.5f;                  ///< Per-instance roughness override
-    float _pad[2];                           ///< Padding for alignment
+    float boundingRadius = 0.0f;             ///< Bounding sphere radius (0 = auto from mesh)
+    float _pad;                              ///< Padding for alignment
 };
 
 /**
@@ -162,6 +163,18 @@ public:
         }
     }
 
+    /// Enable/disable frustum culling (default: enabled)
+    /// When enabled, instances outside the camera frustum are skipped
+    void setFrustumCulling(bool enable) {
+        m_frustumCulling = enable;
+    }
+
+    /// Get frustum culling stats from last frame
+    /// @return Pair of (visible instances, total instances)
+    std::pair<size_t, size_t> getCullingStats() const {
+        return {m_visibleCount, m_instances.size()};
+    }
+
     // === Operator Interface ===
     void init(Context& ctx) override;
     void process(Context& ctx) override;
@@ -200,6 +213,11 @@ private:
     glm::vec4 m_clearColor{0.1f, 0.1f, 0.15f, 1.0f};
     bool m_depthTest = true;
     bool m_cullBack = true;
+    bool m_frustumCulling = true;
+
+    // Frustum culling stats
+    size_t m_visibleCount = 0;
+    float m_meshBoundingRadius = 0.0f;  // Cached from mesh
 
     // GPU resources - untextured pipeline
     WGPURenderPipeline m_pipeline = nullptr;

@@ -26,6 +26,20 @@ class AudioOutput;
 struct AudioBuffer;
 
 /**
+ * @brief Resource statistics for chain memory monitoring
+ */
+struct ResourceStats {
+    uint32_t operatorCount = 0;       ///< Total number of operators
+    uint32_t textureOperatorCount = 0; ///< Number of texture-producing operators
+    uint32_t audioOperatorCount = 0;   ///< Number of audio operators
+    uint32_t textureCount = 0;         ///< Number of output textures
+    size_t estimatedTextureBytes = 0;  ///< Estimated GPU texture memory
+
+    /// Format as human-readable string
+    std::string toString() const;
+};
+
+/**
  * @brief Manages an operator graph with dependency resolution
  *
  * Chain is the primary way to build vivid projects. Add operators with add<T>(),
@@ -397,6 +411,26 @@ public:
      * rendering to screen?
      */
     void debugOutputPath(const std::string& startName = "");
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Resource Monitoring
+    /// @{
+
+    /**
+     * @brief Get resource statistics for the chain
+     * @return ResourceStats with counts and memory estimates
+     *
+     * Useful for debugging memory usage and finding leaks in long-running sessions.
+     *
+     * @par Example
+     * @code
+     * auto stats = chain.getResourceStats();
+     * std::cout << stats.toString() << std::endl;
+     * // Output: "12 operators (8 texture, 2 audio), ~64 MB texture memory"
+     * @endcode
+     */
+    ResourceStats getResourceStats() const;
 
     /// @}
 

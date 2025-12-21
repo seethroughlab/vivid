@@ -470,4 +470,74 @@ void Chain::restoreAllStates(std::map<std::string, std::unique_ptr<OperatorState
     }
 }
 
+ResourceStats Chain::getResourceStats() const {
+    ResourceStats stats;
+    stats.operatorCount = static_cast<uint32_t>(m_operators.size());
+
+    for (const auto& [name, op] : m_operators) {
+        OutputKind kind = op->outputKind();
+
+        if (kind == OutputKind::Texture) {
+            stats.textureOperatorCount++;
+
+            // Check if operator has an output texture
+            WGPUTexture tex = op->outputTexture();
+            if (tex) {
+                stats.textureCount++;
+
+                // Estimate texture memory:
+                // Get dimensions from the operator (most TextureOperators have m_width/m_height)
+                // Default to 1280x720 if unknown, RGBA16Float format = 8 bytes/pixel
+                int width = 1280;
+                int height = 720;
+
+                // Try to get actual dimensions via reflection or known method
+                // For now, use default estimate
+                // RGBA16Float = 8 bytes per pixel
+                size_t bytesPerPixel = 8;
+                stats.estimatedTextureBytes += width * height * bytesPerPixel;
+            }
+        } else if (kind == OutputKind::Audio) {
+            stats.audioOperatorCount++;
+        }
+    }
+
+    return stats;
+}
+
+std::string ResourceStats::toString() const {
+    std::string result;
+
+    // Format: "12 operators (8 texture, 2 audio), ~64 MB texture memory"
+    result += std::to_string(operatorCount) + " operators";
+
+    if (textureOperatorCount > 0 || audioOperatorCount > 0) {
+        result += " (";
+        bool first = true;
+        if (textureOperatorCount > 0) {
+            result += std::to_string(textureOperatorCount) + " texture";
+            first = false;
+        }
+        if (audioOperatorCount > 0) {
+            if (!first) result += ", ";
+            result += std::to_string(audioOperatorCount) + " audio";
+        }
+        result += ")";
+    }
+
+    if (estimatedTextureBytes > 0) {
+        result += ", ~";
+        if (estimatedTextureBytes >= 1024 * 1024) {
+            result += std::to_string(estimatedTextureBytes / (1024 * 1024)) + " MB";
+        } else if (estimatedTextureBytes >= 1024) {
+            result += std::to_string(estimatedTextureBytes / 1024) + " KB";
+        } else {
+            result += std::to_string(estimatedTextureBytes) + " B";
+        }
+        result += " texture memory";
+    }
+
+    return result;
+}
+
 } // namespace vivid
