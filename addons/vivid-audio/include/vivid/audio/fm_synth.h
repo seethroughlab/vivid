@@ -190,6 +190,12 @@ public:
      */
     int activeVoiceCount() const;
 
+    // Visualization access
+    /**
+     * @brief Get maximum envelope value across all voices for an operator
+     */
+    float operatorEnvelope(int op) const;
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface

@@ -85,6 +85,9 @@ public:
     void setHighpass(float hz) { cutoff = hz; setType(FilterType::Highpass); }
     void setBandpass(float hz) { cutoff = hz; setType(FilterType::Bandpass); }
 
+    // Visualization access
+    FilterType filterType() const { return m_type; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Operator Interface

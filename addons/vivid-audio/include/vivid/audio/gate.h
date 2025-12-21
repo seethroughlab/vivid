@@ -70,6 +70,7 @@ public:
     /// @{
 
     bool isOpen() const { return m_gateOpen; }
+    float gateGain() const { return m_gateGain; }  ///< Current gate gain (0-1)
 
     /// @}
     // -------------------------------------------------------------------------

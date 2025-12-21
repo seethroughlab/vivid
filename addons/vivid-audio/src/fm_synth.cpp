@@ -227,6 +227,17 @@ int FMSynth::activeVoiceCount() const {
     return count;
 }
 
+float FMSynth::operatorEnvelope(int op) const {
+    if (op < 0 || op >= NUM_OPS) return 0.0f;
+    float maxEnv = 0.0f;
+    for (const auto& voice : m_voices) {
+        if (voice.active && voice.envValue[op] > maxEnv) {
+            maxEnv = voice.envValue[op];
+        }
+    }
+    return maxEnv;
+}
+
 void FMSynth::generateBlock(uint32_t frameCount) {
     if (m_output.frameCount != frameCount) {
         m_output.resize(frameCount);
