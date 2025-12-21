@@ -236,5 +236,8 @@
     - Pipelines share resources (bind group layouts, uniform buffers)
     - Internal reorganization for readability
 [x] TouchDesigner has 1 renderer and many materials (Phong, PBR, constant, etc). But we have many different renderers. Why is that? How can we simplify our system to make it easier for users?
+[x] I have a new goal for vivid. Historically, there has been a division between creative coding platforms for visuals (TouchDesigner, openFrameworks, cinder, Unity, Resolume, VVVV) and music-making software like Ableton, FruityLoops. There are some platforms in the middle, like MaxMSP, but they are not LLM friendly because they are not text-based. I'd like Vivid to encourage creating music IN PARALLEL with visuals. What features can we add that would encourage this kind of creation? For instance, we've done a lot of work on pretty complex visual techniques, but there are no synths that are even close to the complexity of Ableton's Meld, Wavetable, Operator, Simpler, or something like Serum, Artura Pigments. If I said I wanted to "Make me a evolving Boards of Canada style track (lead, bass, ambient beat, atmospherics), with a retro, nostalgic, reactive visual, featuring footage from the prelinger archive", and and i want audio as high-quality as the visuals - what other features would we need. For the moment, let's leave CLAP plugins out of this. 
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
-[ ] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle
+[ ] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle. Please add examples of these toggles to a few of the examples. 
+[ ] How can we make an example the demonstrates frustum culling in a way that is easy to see?
+[ ] I'd like to see an example of shadows with more complicate models - either boolean geometry or loaded GLTF models.
