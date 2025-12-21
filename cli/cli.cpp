@@ -689,6 +689,21 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
         fs::path rootDir = exeDir.parent_path().parent_path();
         copyProjectFiles(srcProject, chainPath, projectDest, rootDir);
 
+        // Copy app icon (project icon overrides default)
+        fs::path projectIcon = srcProject / "icon.icns";
+        fs::path defaultIcon = rootDir / "assets" / "icons" / "vivid.icns";
+        fs::path destIcon = resourcesPath / "AppIcon.icns";
+
+        if (fs::exists(projectIcon)) {
+            fs::copy_file(projectIcon, destIcon);
+            std::cout << "Using project icon: " << projectIcon.filename().string() << "\n";
+        } else if (fs::exists(defaultIcon)) {
+            fs::copy_file(defaultIcon, destIcon);
+            std::cout << "Using default Vivid icon\n";
+        } else {
+            std::cout << "Warning: No icon found (looked for " << projectIcon << " and " << defaultIcon << ")\n";
+        }
+
         // Create launcher script
         fs::path launcherPath = macosPath / appName;
         std::ofstream launcher(launcherPath);
@@ -716,6 +731,7 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
         plist << "    <key>CFBundleShortVersionString</key><string>" << VERSION << "</string>\n";
         plist << "    <key>CFBundleExecutable</key><string>" << appName << "</string>\n";
         plist << "    <key>CFBundlePackageType</key><string>APPL</string>\n";
+        plist << "    <key>CFBundleIconFile</key><string>AppIcon</string>\n";
         plist << "    <key>NSHighResolutionCapable</key><true/>\n";
         plist << "    <key>NSSupportsAutomaticGraphicsSwitching</key><true/>\n";
         plist << "</dict>\n</plist>\n";
@@ -803,6 +819,20 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
         // Copy project files (including shared assets from root)
         fs::path rootDir = exeDir.parent_path().parent_path();
         copyProjectFiles(srcProject, chainPath, projectPath, rootDir);
+
+        // Copy app icon (project icon overrides default)
+        // Note: .ico can be used for creating shortcuts with custom icons
+        fs::path projectIcon = srcProject / "icon.ico";
+        fs::path defaultIcon = rootDir / "assets" / "icons" / "vivid.ico";
+        fs::path destIcon = bundlePath / (appName + ".ico");
+
+        if (fs::exists(projectIcon)) {
+            fs::copy_file(projectIcon, destIcon);
+            std::cout << "Using project icon: " << projectIcon.filename().string() << "\n";
+        } else if (fs::exists(defaultIcon)) {
+            fs::copy_file(defaultIcon, destIcon);
+            std::cout << "Using default Vivid icon\n";
+        }
 
         // Create launcher batch file
         fs::path launcherPath = bundlePath / (appName + ".bat");

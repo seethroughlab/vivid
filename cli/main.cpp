@@ -863,6 +863,17 @@ int main(int argc, char** argv) {
         std::cout << "Running in headless mode" << std::endl;
     }
 
+    // Extract project name early (for window title)
+    std::string initialWindowTitle = "Vivid";
+    if (!projectPath.empty()) {
+        fs::path pp(projectPath);
+        if (fs::is_directory(pp)) {
+            initialWindowTitle = pp.filename().string();
+        } else if (fs::is_regular_file(pp)) {
+            initialWindowTitle = pp.parent_path().filename().string();
+        }
+    }
+
     // Initialize GLFW
     if (!glfwInit()) {
         std::cerr << "Failed to initialize GLFW" << std::endl;
@@ -877,8 +888,8 @@ int main(int argc, char** argv) {
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     }
 
-    // Create window
-    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, "Vivid", nullptr, nullptr);
+    // Create window (use project name if available)
+    GLFWwindow* window = glfwCreateWindow(windowWidth, windowHeight, initialWindowTitle.c_str(), nullptr, nullptr);
     if (!window) {
         std::cerr << "Failed to create window" << std::endl;
         glfwTerminate();

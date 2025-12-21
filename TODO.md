@@ -251,7 +251,7 @@
 [ ] How can we make an example the demonstrates frustum culling in a way that is easy to see?
 [ ] I'd like to see an example of shadows (point, directional, and spot) with more complicate models - either boolean geometry or loaded GLTF models.
 [ ] Does the chain visualization (including previews) render if it's not visible? It shouldn't.
-[ ] Exported apps should have a custom icon, and the name should be the same as the project. 
+[x] Exported apps should have a custom icon, and the name should be the same as the project. 
 [ ] How can we fix the fact that the libvivid-render3d.dylib is loaded by the cli even for 2D-only chains?
 
   That's ~11MB of the render3d library mapped into memory even when not used.
@@ -271,3 +271,4 @@
                      chain.dylib → links → vivid-render3d.dylib (only if used)
 
  Let's investigate making the addons truly optional/lazy-loaded? But only implement if it's not a major effort
+ [ ] I want to move towards deleting _CODE_RESTRUCTURE.md, _IMGUI_UPDATE.md, _OPERATOR_REFACTOR.md. What is finished and what should the next steps be?
