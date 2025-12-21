@@ -11,6 +11,7 @@
 #include <vivid/cli.h>
 #include <vivid/addon_manager.h>
 #include <vivid/window_manager.h>
+#include <vivid/asset_loader.h>
 #include "imgui/imgui_integration.h"
 #include "imgui/chain_visualizer.h"
 #include <webgpu/webgpu.h>
@@ -1298,6 +1299,8 @@ int main(int argc, char** argv) {
         // Set imgui.ini to save in the project directory
         if (!projectDir.empty()) {
             vivid::imgui::setIniDirectory(projectDir.string().c_str());
+            // Set project directory for asset resolution
+            AssetLoader::instance().setProjectDir(projectDir);
         }
 
         if (fs::exists(chainPath)) {

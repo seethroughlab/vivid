@@ -9,8 +9,10 @@
 #include <vivid/video/video_player.h>
 #include <vivid/video/hap_decoder.h>
 #include <vivid/context.h>
+#include <vivid/asset_loader.h>
 #include <iostream>
 #include <cmath>
+#include <filesystem>
 
 // Platform-specific decoder includes
 #if defined(__APPLE__)
@@ -81,12 +83,25 @@ void VideoPlayer::loadVideo(Context& ctx) {
         return;
     }
 
+    // Resolve path using AssetLoader (searches project dir, assets/, parent dirs)
+    std::string resolvedPath = m_filePath;
+    auto resolved = AssetLoader::instance().resolve(m_filePath);
+    if (!resolved.empty()) {
+        resolvedPath = resolved.string();
+    } else {
+        // If not found via AssetLoader, check if it's already an absolute/existing path
+        if (!std::filesystem::exists(m_filePath)) {
+            std::cerr << "[VideoPlayer] File not found: " << m_filePath << std::endl;
+            return;
+        }
+    }
+
     // Check if it's a HAP file - use efficient DXT decoder
-    if (HAPDecoder::isHAPFile(m_filePath)) {
+    if (HAPDecoder::isHAPFile(resolvedPath)) {
         std::cout << "[VideoPlayer] Using HAP decoder (direct DXT upload)" << std::endl;
         m_hapDecoder = std::make_unique<HAPDecoder>();
 
-        if (m_hapDecoder->open(ctx, m_filePath, m_loop)) {
+        if (m_hapDecoder->open(ctx, resolvedPath, m_loop)) {
             m_isHAP = true;
             m_activeTexture = m_hapDecoder->texture();
             m_activeView = m_hapDecoder->textureView();
@@ -117,7 +132,7 @@ void VideoPlayer::loadVideo(Context& ctx) {
     std::cout << "[VideoPlayer] Using AVPlayer decoder (OS-level A/V sync)" << std::endl;
     m_playbackDecoder = std::make_unique<AVFPlaybackDecoder>();
 
-    if (m_playbackDecoder->open(ctx, m_filePath, m_loop)) {
+    if (m_playbackDecoder->open(ctx, resolvedPath, m_loop)) {
         m_usePlaybackDecoder = true;
         m_activeTexture = m_playbackDecoder->texture();
         m_activeView = m_playbackDecoder->textureView();
@@ -143,17 +158,17 @@ void VideoPlayer::loadVideo(Context& ctx) {
     std::cout << "[VideoPlayer] Using " << STANDARD_DECODER_NAME << " decoder" << std::endl;
     m_standardDecoder = std::make_unique<StandardDecoder>();
 
-    if (!m_standardDecoder->open(ctx, m_filePath, m_loop)) {
-        std::cerr << "[VideoPlayer] " << STANDARD_DECODER_NAME << " failed to open: " << m_filePath << std::endl;
+    if (!m_standardDecoder->open(ctx, resolvedPath, m_loop)) {
+        std::cerr << "[VideoPlayer] " << STANDARD_DECODER_NAME << " failed to open: " << resolvedPath << std::endl;
         m_standardDecoder.reset();
 
 #if defined(_WIN32)
         // Try DirectShow as a fallback for codecs MF doesn't support (e.g., ProRes)
-        if (DShowDecoder::canDecode(m_filePath)) {
+        if (DShowDecoder::canDecode(resolvedPath)) {
             std::cout << "[VideoPlayer] Trying DirectShow decoder (requires LAV Filters or similar)" << std::endl;
             m_dshowDecoder = std::make_unique<DShowDecoder>();
 
-            if (m_dshowDecoder->open(ctx, m_filePath, m_loop)) {
+            if (m_dshowDecoder->open(ctx, resolvedPath, m_loop)) {
                 m_useDShowDecoder = true;
                 m_activeTexture = m_dshowDecoder->texture();
                 m_activeView = m_dshowDecoder->textureView();

@@ -80,6 +80,33 @@ void AssetLoader::setExecutableDir(const fs::path& path) {
     }
 }
 
+void AssetLoader::setProjectDir(const fs::path& path) {
+    m_projectDir = path;
+
+    // Add project-related search paths (highest priority - insert at front)
+    // We insert in reverse order so the most specific paths are searched first
+
+    // 1. Project's assets/ folder (most specific)
+    fs::path projectAssets = path / "assets";
+    if (fs::exists(projectAssets) && fs::is_directory(projectAssets)) {
+        m_searchPaths.insert(m_searchPaths.begin(), projectAssets);
+    }
+
+    // 2. Project directory itself
+    m_searchPaths.insert(m_searchPaths.begin(), path);
+
+    // 3. Search parent directories for assets/ folders (up to 3 levels)
+    // This allows shared asset folders for multiple projects
+    fs::path parent = path.parent_path();
+    for (int i = 0; i < 3 && !parent.empty() && parent != parent.parent_path(); ++i) {
+        fs::path parentAssets = parent / "assets";
+        if (fs::exists(parentAssets) && fs::is_directory(parentAssets)) {
+            addSearchPath(parentAssets);
+        }
+        parent = parent.parent_path();
+    }
+}
+
 void AssetLoader::clearCache() {
     m_textCache.clear();
     m_binaryCache.clear();

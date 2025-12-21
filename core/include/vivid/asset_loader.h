@@ -103,6 +103,20 @@ public:
      */
     std::filesystem::path executableDir() const { return m_executableDir; }
 
+    /**
+     * @brief Set the project directory (where chain.cpp lives)
+     * @param path Path to project directory
+     *
+     * This adds the project directory and its assets/ subfolder to the search paths.
+     * Also searches parent directories for assets/ folders.
+     */
+    void setProjectDir(const std::filesystem::path& path);
+
+    /**
+     * @brief Get the project directory
+     */
+    std::filesystem::path projectDir() const { return m_projectDir; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Cache Management
@@ -133,6 +147,7 @@ private:
     std::filesystem::path findAsset(const std::string& path);
 
     std::filesystem::path m_executableDir;
+    std::filesystem::path m_projectDir;
     std::vector<std::filesystem::path> m_searchPaths;
 
     bool m_cacheEnabled = true;
