@@ -1,8 +1,8 @@
 # Vivid Roadmap
 
-A **minimal-core, addon-first creative coding framework** built on WebGPU. Plain C++ that language models can read and write.
+A **minimal-core, addon-first creative coding framework** built on WebGPU. Plain C++ that language models can read and write. Audio and visuals are treated as equal peers—native synthesis, sequencing, and effects work alongside 2D/3D graphics through the same chain-based architecture.
 
-See [PHILOSOPHY.md](PHILOSOPHY.md) for design goals and principles.
+See [PHILOSOPHY.md](PHILOSOPHY.md) for design goals and principles, including Audio-Visual Parity.
 
 ---
 

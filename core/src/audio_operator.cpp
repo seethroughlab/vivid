@@ -39,6 +39,11 @@ AudioOperator* AudioOperator::audioInput(int index) const {
 
 void AudioOperator::allocateOutput(uint32_t frames, uint32_t channels, uint32_t sampleRate) {
     m_output.allocate(frames, channels, sampleRate);
+    // Pre-allocate extra capacity to avoid allocations on audio thread
+    // Max expected: 2048 frames (for lower latency configurations or video export)
+    constexpr uint32_t MAX_EXPECTED_FRAMES = 2048;
+    uint32_t maxCapacity = MAX_EXPECTED_FRAMES * channels;
+    m_output.ensureCapacity(maxCapacity);
 }
 
 void AudioOperator::clearOutput() {

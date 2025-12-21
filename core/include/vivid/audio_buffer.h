@@ -82,6 +82,10 @@ struct AudioBuffer {
  * OwnedAudioBuffer extends AudioBuffer with internal storage.
  * Use allocate() to create the buffer, release() to free it.
  *
+ * REAL-TIME SAFETY: resize() is safe to call from the audio thread
+ * as long as the requested size doesn't exceed the pre-allocated capacity.
+ * Use ensureCapacity() in init() to pre-allocate for expected max sizes.
+ *
  * @par Example
  * @code
  * OwnedAudioBuffer output;
@@ -105,23 +109,27 @@ public:
     // Movable
     OwnedAudioBuffer(OwnedAudioBuffer&& other) noexcept {
         storage_ = std::move(other.storage_);
+        capacity_ = other.capacity_;
         samples = storage_.data();
         frameCount = other.frameCount;
         channels = other.channels;
         sampleRate = other.sampleRate;
         other.samples = nullptr;
         other.frameCount = 0;
+        other.capacity_ = 0;
     }
 
     OwnedAudioBuffer& operator=(OwnedAudioBuffer&& other) noexcept {
         if (this != &other) {
             storage_ = std::move(other.storage_);
+            capacity_ = other.capacity_;
             samples = storage_.data();
             frameCount = other.frameCount;
             channels = other.channels;
             sampleRate = other.sampleRate;
             other.samples = nullptr;
             other.frameCount = 0;
+            other.capacity_ = 0;
         }
         return *this;
     }
@@ -131,6 +139,9 @@ public:
      * @param frames Number of frames to allocate
      * @param ch Number of channels (default: stereo)
      * @param rate Sample rate in Hz (default: 48kHz)
+     *
+     * This also sets capacity to the allocated size. Call ensureCapacity()
+     * after allocate() if you need larger capacity for runtime resizing.
      */
     void allocate(uint32_t frames,
                   uint32_t ch = AUDIO_CHANNELS,
@@ -139,8 +150,29 @@ public:
         channels = ch;
         sampleRate = rate;
         storage_.resize(frames * ch, 0.0f);
+        capacity_ = frames * ch;
         samples = storage_.data();
     }
+
+    /**
+     * @brief Ensure buffer has capacity for at least the given number of samples
+     * @param sampleCapacity Minimum sample capacity (frames * channels)
+     *
+     * IMPORTANT: Call this from init() (main thread) to pre-allocate for the
+     * maximum expected buffer size. This makes resize() real-time safe.
+     */
+    void ensureCapacity(uint32_t sampleCapacity) {
+        if (sampleCapacity > capacity_) {
+            storage_.resize(sampleCapacity, 0.0f);
+            capacity_ = sampleCapacity;
+            samples = storage_.data();
+        }
+    }
+
+    /**
+     * @brief Get current capacity in samples
+     */
+    uint32_t capacity() const { return capacity_; }
 
     /**
      * @brief Release buffer storage
@@ -150,20 +182,33 @@ public:
         storage_.shrink_to_fit();
         samples = nullptr;
         frameCount = 0;
+        capacity_ = 0;
     }
 
     /**
-     * @brief Resize buffer (preserves existing data where possible)
+     * @brief Resize buffer (real-time safe if within capacity)
      * @param frames New frame count
+     *
+     * If the requested size fits within capacity, no allocation occurs
+     * and this is safe to call from the audio thread. If capacity is
+     * exceeded, allocation will occur (NOT real-time safe).
      */
     void resize(uint32_t frames) {
         frameCount = frames;
-        storage_.resize(frames * channels, 0.0f);
-        samples = storage_.data();
+        uint32_t needed = frames * channels;
+        if (needed > capacity_) {
+            // Grow capacity with some headroom to avoid repeated allocations
+            uint32_t newCapacity = needed + (needed / 4);  // 25% headroom
+            storage_.resize(newCapacity, 0.0f);
+            capacity_ = newCapacity;
+            samples = storage_.data();
+        }
+        // Note: samples pointer stays valid, just update frameCount
     }
 
 private:
     std::vector<float> storage_;
+    uint32_t capacity_ = 0;  ///< Current capacity in samples (not frames)
 };
 
 } // namespace vivid

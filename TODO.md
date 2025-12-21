@@ -237,10 +237,23 @@
     - Internal reorganization for readability
 [x] TouchDesigner has 1 renderer and many materials (Phong, PBR, constant, etc). But we have many different renderers. Why is that? How can we simplify our system to make it easier for users?
 [x] I have a new goal for vivid. Historically, there has been a division between creative coding platforms for visuals (TouchDesigner, openFrameworks, cinder, Unity, Resolume, VVVV) and music-making software like Ableton, FruityLoops. There are some platforms in the middle, like MaxMSP, but they are not LLM friendly because they are not text-based. I'd like Vivid to encourage creating music IN PARALLEL with visuals. What features can we add that would encourage this kind of creation? For instance, we've done a lot of work on pretty complex visual techniques, but there are no synths that are even close to the complexity of Ableton's Meld, Wavetable, Operator, Simpler, or something like Serum, Artura Pigments. If I said I wanted to "Make me a evolving Boards of Canada style track (lead, bass, ambient beat, atmospherics), with a retro, nostalgic, reactive visual, featuring footage from the prelinger archive", and and i want audio as high-quality as the visuals - what other features would we need. For the moment, let's leave CLAP plugins out of this. 
+[x] Is there anything else we should do to make audio playback rock solid? Lets do some stress tests to make sure thre audio dsp thread is rock solid  - no interrupted playback or clicks/pops, no buffer underruns
+[x] I'd like to add the new Audio-Visual-Parity concept (explained in _AUDIO_PARITY.md under Core Principle) to all of the core Vivid documents - the PHILOSOPHY docment, the README, and any other documents it should appear in. Its very important. 
+[x] testing-fixtures/tape-effect-test/ should use the enums in notes.h
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle. Please add examples of these toggles to a few of the examples. 
 [ ] How can we make an example the demonstrates frustum culling in a way that is easy to see?
 [ ] I'd like to see an example of shadows (point, directional, and spot) with more complicate models - either boolean geometry or loaded GLTF models.
-[ ] Is there anything else we should do to make audio playback rock solid? Lets do some stress tests to make sure thre audio dsp thread is rock solid  - no interrupted playback or clicks/pops, no buffer underruns
-[ ] testing-fixtures/tape-effect-test/ should use the enums in notes.h
-[ ] I'd like to add the new Audio-Visual-Parity concept (explained in the Core Principle in _AUDIO_PARITY.md) to all of the relevant documents - the PHILOSOPHY docment, the README, and any other documents it should appear in. Its very important. 
+[ ] Try testing-fixtures/audio-stress-test/ - runs at 180 BPM with:
+  - 4 drum voices (Kick, Snare, HiHat, Clap)
+  - Polyphonic synth with arpeggio
+  - Effects chain (Delay, Reverb, Limiter)
+  - Real-time parameter modulation
+
+  What to Listen For
+
+  When running the stress test, verify:
+  - No clicks/pops - would indicate buffer underruns
+  - Consistent tempo - timing drift would indicate thread contention
+  - No dropouts - would indicate processing taking too long
+

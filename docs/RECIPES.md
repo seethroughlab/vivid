@@ -1,9 +1,10 @@
 # Vivid Recipes
 
-Complete chain.cpp examples for common visual effects.
+Complete chain.cpp examples for common effects. Vivid treats audio and visuals as equal peers—many recipes combine both domains.
 
 ## Table of Contents
 
+### Visual Effects
 1. [VHS/Retro Look](#vhsretro-look)
 2. [Feedback Tunnel](#feedback-tunnel)
 3. [Video with Overlay Effects](#video-with-overlay-effects)
@@ -13,6 +14,11 @@ Complete chain.cpp examples for common visual effects.
 7. [Fire/Plasma](#fireplasma)
 8. [Kaleidoscope](#kaleidoscope)
 9. [Layer Compositing with Canvas](#layer-compositing-with-canvas)
+
+### Audio-Visual
+10. [Drum Machine with Visual Triggers](#drum-machine-with-visual-triggers)
+11. [Audio-Reactive Particles](#audio-reactive-particles)
+12. [Bidirectional Modulation](#bidirectional-modulation)
 
 ---
 
@@ -772,3 +778,285 @@ VIVID_CHAIN(setup, update)
 5. **Match your chain resolution** to output - Higher res = sharper but slower
 6. **Watch performance** - Blur and feedback are expensive; keep passes low
 7. **State preservation** - Feedback and video playback state survives hot-reloads automatically
+
+---
+
+## Drum Machine with Visual Triggers
+
+Sequenced drums with synchronized visual feedback. Audio triggers fire both sound and visual events.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Audio: Clock and sequencers
+    auto& clock = chain.add<Clock>("clock");
+    clock.bpm = 120.0f;
+
+    auto& kickSeq = chain.add<Sequencer>("kickSeq");
+    kickSeq.steps = 16;
+    kickSeq.setPattern(0b0001000100010001);  // Four on floor
+
+    auto& snareSeq = chain.add<Sequencer>("snareSeq");
+    snareSeq.steps = 16;
+    snareSeq.setPattern(0b0000000100000001);  // Backbeat
+
+    auto& hatSeq = chain.add<Euclidean>("hatSeq");
+    hatSeq.steps = 16;
+    hatSeq.hits = 7;
+
+    // Drum synths
+    auto& kick = chain.add<Kick>("kick");
+    auto& snare = chain.add<Snare>("snare");
+    auto& hihat = chain.add<HiHat>("hihat");
+
+    // Audio mix
+    auto& mixer = chain.add<AudioMixer>("mixer");
+    mixer.setInput(0, "kick");
+    mixer.setGain(0, 0.8f);
+    mixer.setInput(1, "snare");
+    mixer.setGain(1, 0.6f);
+    mixer.setInput(2, "hihat");
+    mixer.setGain(2, 0.4f);
+
+    auto& audioOut = chain.add<AudioOutput>("audioOut");
+    audioOut.setInput("mixer");
+    chain.audioOutput("audioOut");
+
+    // Visuals: Noise background with flash overlays
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+
+    auto& kickFlash = chain.add<Flash>("kickFlash");
+    kickFlash.input(&noise);
+    kickFlash.decay = 0.85f;
+    kickFlash.color.set(1.0f, 1.0f, 1.0f);
+
+    auto& snareFlash = chain.add<Flash>("snareFlash");
+    snareFlash.input(&kickFlash);
+    snareFlash.decay = 0.9f;
+    snareFlash.color.set(1.0f, 0.5f, 0.2f);
+
+    chain.output("snareFlash");
+
+    // Connect triggers: audio + visual fire together
+    auto* chainPtr = &chain;
+
+    kickSeq.onTrigger([chainPtr](float vel) {
+        chainPtr->get<Kick>("kick").trigger();
+        chainPtr->get<Flash>("kickFlash").trigger(vel);
+    });
+
+    snareSeq.onTrigger([chainPtr](float vel) {
+        chainPtr->get<Snare>("snare").trigger();
+        chainPtr->get<Flash>("snareFlash").trigger(vel);
+    });
+
+    hatSeq.onTrigger([chainPtr]() {
+        chainPtr->get<HiHat>("hihat").trigger();
+    });
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& clock = chain.get<Clock>("clock");
+
+    if (clock.triggered()) {
+        chain.get<Sequencer>("kickSeq").advance();
+        chain.get<Sequencer>("snareSeq").advance();
+        chain.get<Euclidean>("hatSeq").advance();
+    }
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+---
+
+## Audio-Reactive Particles
+
+Particle system driven by audio analysis. Bass triggers bursts, frequency bands control behavior.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Audio input (microphone or line in)
+    auto& audioIn = chain.add<AudioIn>("audioIn");
+
+    // Analysis
+    auto& bands = chain.add<BandSplit>("bands");
+    bands.input("audioIn");
+
+    auto& levels = chain.add<Levels>("levels");
+    levels.input("audioIn");
+
+    // Output the input (monitoring)
+    auto& audioOut = chain.add<AudioOutput>("audioOut");
+    audioOut.setInput("audioIn");
+    chain.audioOutput("audioOut");
+
+    // Visuals: Particles
+    auto& particles = chain.add<Particles>("particles");
+    particles.emitter(EmitterShape::Disc);
+    particles.position(0.5f, 0.5f);
+    particles.emitterSize(0.1f);
+    particles.maxParticles(500);
+    particles.life(2.0f);
+    particles.size(0.02f, 0.005f);
+    particles.color(0.2f, 0.8f, 1.0f, 1.0f);
+    particles.colorEnd(1.0f, 0.3f, 0.5f, 0.0f);
+
+    // Bloom for glow
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input(&particles);
+    bloom.threshold = 0.3f;
+    bloom.radius = 15.0f;
+
+    chain.output("bloom");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& bands = chain.get<BandSplit>("bands");
+    auto& levels = chain.get<Levels>("levels");
+    auto& particles = chain.get<Particles>("particles");
+    auto& bloom = chain.get<Bloom>("bloom");
+
+    float bass = bands.bass();
+    float mid = bands.mid();
+    float high = bands.high();
+    float rms = levels.rms();
+
+    // Bass controls emit rate and burst
+    particles.emitRate(bass * 200.0f);
+    if (bass > 0.7f) {
+        particles.burst(static_cast<int>(bass * 50));
+    }
+
+    // Mid controls velocity
+    particles.radialVelocity(0.2f + mid * 0.5f);
+
+    // High controls spread
+    particles.spread(90.0f + high * 180.0f);
+
+    // Overall level controls bloom
+    bloom.intensity = 0.5f + rms * 2.0f;
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+---
+
+## Bidirectional Modulation
+
+Mouse controls both audio (pitch) and visuals (scale) simultaneously. Demonstrates audio-visual parity.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Audio: Synth controlled by mouse
+    auto& synth = chain.add<PolySynth>("synth");
+    synth.waveform(Waveform::Saw);
+    synth.attack = 0.01f;
+    synth.release = 0.3f;
+    synth.volume = 0.4f;
+
+    auto& reverb = chain.add<Reverb>("reverb");
+    reverb.input("synth");
+    reverb.roomSize = 0.7f;
+    reverb.mix = 0.3f;
+
+    auto& audioOut = chain.add<AudioOutput>("audioOut");
+    audioOut.setInput("reverb");
+    chain.audioOutput("audioOut");
+
+    // Visuals: Noise controlled by same input
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+    noise.octaves = 4;
+
+    auto& hsv = chain.add<HSV>("color");
+    hsv.input(&noise);
+    hsv.saturation = 0.8f;
+
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input(&hsv);
+    bloom.threshold = 0.4f;
+
+    chain.output("bloom");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& synth = chain.get<PolySynth>("synth");
+    auto& noise = chain.get<Noise>("noise");
+    auto& hsv = chain.get<HSV>("color");
+    auto& bloom = chain.get<Bloom>("bloom");
+
+    // Normalized mouse position (0 to 1)
+    float mouseX = (ctx.mouseNorm().x + 1.0f) * 0.5f;
+    float mouseY = (ctx.mouseNorm().y + 1.0f) * 0.5f;
+
+    // X controls pitch (audio) and hue (visual)
+    float frequency = 200.0f + mouseX * 600.0f;  // 200-800 Hz
+    hsv.hueShift = mouseX * 0.5f;
+
+    // Y controls filter (audio) and scale (visual)
+    noise.scale = 2.0f + mouseY * 10.0f;
+    bloom.intensity = 0.5f + mouseY * 2.0f;
+
+    // Click to play note
+    if (ctx.mouseButton(0).pressed) {
+        synth.noteOn(frequency);
+    }
+    if (ctx.mouseButton(0).released) {
+        synth.allNotesOff();
+    }
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+### Key Patterns
+
+1. **Trigger callbacks** - `seq.onTrigger([&]() { ... })` fires audio + visual events simultaneously
+2. **Audio analysis** - `BandSplit` gives bass/mid/high; `Levels` gives RMS/peak
+3. **Parameter binding** - Same value drives both domains (mouse → pitch + scale)
+4. **Capture chain pointer** - Use `auto* chainPtr = &chain` in callbacks to avoid dangling references

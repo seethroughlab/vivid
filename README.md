@@ -4,13 +4,14 @@
 [![Docs](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml/badge.svg?branch=master)](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A creative coding framework for real-time graphics with hot-reloadable C++ chains. Clean, consistent API designed for both manual coding and AI-assisted development.
+A creative coding framework for real-time audio-visual work with hot-reloadable C++ chains. Clean, consistent API designed for both manual coding and AI-assisted development.
 
 ## Features
 
+- **Audio-Visual Parity** - Audio and visuals are equal peers in code. Native synthesis, sequencing, and effects—no external plugins needed
 - **Hot Reload** - Edit your C++ code and see changes instantly without restarting
 - **WebGPU Backend** - Modern GPU API via wgpu-native (Metal on macOS, Vulkan/DX12 elsewhere)
-- **Chain-Based Architecture** - Connect operators to build visual pipelines
+- **Chain-Based Architecture** - Connect operators to build audio-visual pipelines
 - **Addon System** - Modular design with automatic dependency discovery
 - **State Preservation** - Feedback loops and animations survive hot reloads
 - **LLM-Friendly** - Designed for AI-assisted development (see below)
@@ -162,6 +163,47 @@ Edit your code while it's running - changes apply automatically.
 - `Particles` - 2D particle system with physics
 - `PointSprites` - GPU point rendering
 
+### Audio Synthesis (vivid-audio addon)
+
+**Timing & Sequencing:**
+- `Clock` - BPM-based timing with swing and divisions
+- `Sequencer` - 16-step pattern sequencer with trigger callbacks
+- `Euclidean` - Euclidean rhythm generator
+
+**Drums:**
+- `Kick` - 808-style kick with pitch envelope
+- `Snare` - Snare with tone/noise mix
+- `HiHat` - Hi-hat with open/closed modes
+- `Clap` - Handclap with multiple bursts
+
+**Synthesis:**
+- `Oscillator` - Waveforms (sine, saw, square, triangle)
+- `PolySynth` - Polyphonic synthesizer with voice management
+- `Envelope` - ADSR envelope generator
+
+**Effects:**
+- `Delay` - Delay with feedback
+- `Reverb` - Room reverb
+- `Chorus`, `Flanger`, `Phaser` - Modulation effects
+- `Compressor`, `Limiter` - Dynamics
+- `TapeEffect` - Wow, flutter, saturation (vintage character)
+
+**Lo-fi:**
+- `Bitcrush` - Bit/sample rate reduction
+- `Overdrive` - Soft saturation
+- `Crackle` - Vinyl crackle
+
+**Analysis:**
+- `FFT` - Spectrum analysis
+- `BandSplit` - Frequency band levels (bass/mid/high)
+- `BeatDetect` - Beat/transient detection
+- `Levels` - RMS and peak metering
+
+**I/O:**
+- `AudioIn` - Microphone/line input
+- `AudioFile` - Audio file playback
+- `MidiIn` - MIDI note/CC input
+
 ### 3D Rendering (vivid-render3d addon)
 
 **Primitives:**
@@ -294,6 +336,74 @@ void update(Context& ctx) {
     // Animate camera orbit
     auto& camera = ctx.chain().get<CameraOperator>("camera");
     camera.azimuth(static_cast<float>(ctx.time()) * 0.3f);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+## Example: Audio-Reactive Visuals
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Audio: drum machine
+    auto& clock = chain.add<Clock>("clock");
+    clock.bpm = 120.0f;
+
+    auto& kickSeq = chain.add<Sequencer>("kickSeq");
+    kickSeq.steps = 16;
+    kickSeq.setPattern(0b0001000100010001);
+
+    auto& kick = chain.add<Kick>("kick");
+    auto& bands = chain.add<BandSplit>("bands");
+    bands.input("kick");
+
+    auto& audioOut = chain.add<AudioOutput>("audioOut");
+    audioOut.setInput("kick");
+    chain.audioOutput("audioOut");
+
+    // Visuals: bass-reactive particles
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+
+    auto& flash = chain.add<Flash>("flash");
+    flash.input(&noise);
+    flash.decay = 0.9f;
+    flash.color.set(1.0f, 0.5f, 0.2f);
+
+    chain.output("flash");
+
+    // Connect audio triggers to visuals
+    auto* chainPtr = &chain;
+    kickSeq.onTrigger([chainPtr](float velocity) {
+        chainPtr->get<Kick>("kick").trigger();
+        chainPtr->get<Flash>("flash").trigger(velocity);
+    });
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& clock = chain.get<Clock>("clock");
+
+    if (clock.triggered()) {
+        chain.get<Sequencer>("kickSeq").advance();
+    }
+
+    // Modulate visuals from audio analysis
+    float bass = chain.get<BandSplit>("bands").bass();
+    chain.get<Noise>("noise").scale = 4.0f + bass * 10.0f;
+
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

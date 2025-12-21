@@ -2,6 +2,10 @@
 
 A compact reference for LLMs helping users build vivid projects.
 
+## Audio-Visual Parity
+
+Vivid treats audio and visuals as equal peers. A drum machine should be as easy to create as a particle system. Sequencer triggers should fire visual events just as naturally as audio events. Both domains share the same operator pattern, parameter system, and chain architecture.
+
 ## Project Structure
 
 ```

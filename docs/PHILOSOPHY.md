@@ -22,6 +22,27 @@ Vivid combines the inspect-anywhere philosophy of TouchDesigner, the extensibili
 
 ## Core Principles
 
+### Audio-Visual Parity
+
+**Keep creators in a unified audio-visual headspace by making both domains equally expressive through the same code-first workflow.**
+
+Vivid treats audio and visuals as equal peers. A drum machine should be as easy to create as a particle system. An LFO should modulate both a filter cutoff and a bloom intensity. Sequencer triggers should fire visual events just as naturally as audio events.
+
+This philosophy extends to how operators are built:
+
+| Visual | Audio | Purpose |
+|--------|-------|---------|
+| CRTEffect | TapeEffect | Vintage character |
+| FilmGrain | Crackle | Surface texture |
+| Noise | Oscillator | Generation |
+| Feedback | Delay | Temporal recursion |
+| Bloom | Reverb | Diffusion/space |
+| Particles | Granular | Discrete elements |
+
+**Why native operators matter:** External plugins create distance between creator and creation. When you use a commercial synth plugin, you can't read its source to understand how it works. With native operators, everything is learnable—you can trace the DSP code, modify parameters, and truly understand your instrument.
+
+The goal is co-creation: encouraging "artist making audio-visual work" rather than "musician adding visuals" or "visual artist adding audio."
+
 ### Don't Reinvent the Wheel
 
 Before building something from scratch, research existing solutions. If a well-maintained library, engine feature, or standard approach exists, use it. Custom code should only be written when:
