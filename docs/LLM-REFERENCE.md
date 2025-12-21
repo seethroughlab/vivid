@@ -211,6 +211,8 @@ using namespace vivid::audio;
 | `Crackle` | Vinyl crackle | `.density(0.3)` `.amplitude(0.5)` |
 | `Formant` | Vowel formant filter | `.vowel(Vowel::A)` `.morph(0.5)` `.resonance(8.0)` `.mix(1.0)` |
 | `Synth` | Oscillator + ADSR | `.setWaveform(Waveform::Saw)` `frequency` `attack` `decay` `sustain` `release` |
+| `PolySynth` | Polyphonic synth | `.waveform(Waveform::Saw)` `maxVoices` `attack` `release` `.noteOn(hz)` `.noteOff(hz)` |
+| `WavetableSynth` | Wavetable morphing | `.loadBuiltin(BuiltinTable::Analog)` `position` `maxVoices` `detune` |
 
 **Synth usage:**
 ```cpp
@@ -224,6 +226,32 @@ synth.release = 0.5f;
 synth.noteOn();   // Start attack
 synth.noteOff();  // Start release
 ```
+
+**WavetableSynth usage:**
+```cpp
+auto& wt = chain.add<WavetableSynth>("wt");
+wt.loadBuiltin(BuiltinTable::Analog);  // or Basic, Digital, Vocal, Texture, PWM
+wt.maxVoices = 4;
+wt.attack = 0.02f;
+wt.release = 0.5f;
+wt.detune = 5.0f;  // Stereo spread in cents
+
+// Play notes (polyphonic)
+wt.noteOn(freq::C4);  // Play middle C
+wt.noteOn(freq::E4);  // Add E (chord)
+wt.noteOff(freq::C4); // Release C
+
+// Morph through wavetable (0-1)
+wt.position = lfo.outputValue();
+```
+
+**Built-in wavetables:**
+- `BuiltinTable::Basic` - Sine → Triangle → Saw → Square morph
+- `BuiltinTable::Analog` - Warm analog character with harmonic drift
+- `BuiltinTable::Digital` - FM-like harsh digital timbres
+- `BuiltinTable::Vocal` - Formant-based vowel sounds (A-E-I-O-U)
+- `BuiltinTable::Texture` - Noise-based granular textures
+- `BuiltinTable::PWM` - Pulse width modulation sweep
 
 **Formant vowel presets:**
 - `Vowel::A` - "ah" as in "father" (800, 1200, 2500 Hz)

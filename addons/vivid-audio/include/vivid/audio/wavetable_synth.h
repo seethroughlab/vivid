@@ -1,0 +1,262 @@
+#pragma once
+
+/**
+ * @file wavetable_synth.h
+ * @brief Polyphonic wavetable synthesizer with morphing timbres
+ *
+ * The audio equivalent of procedural textures - rich, evolving sounds from
+ * mathematical wavetables. Supports built-in tables, custom loading, and
+ * programmatic generation.
+ */
+
+#include <vivid/audio_operator.h>
+#include <vivid/audio/envelope.h>
+#include <vivid/param.h>
+#include <string>
+#include <vector>
+#include <array>
+#include <functional>
+#include <cmath>
+
+namespace vivid::audio {
+
+/**
+ * @brief Built-in wavetable presets
+ */
+enum class BuiltinTable {
+    Basic,      ///< Sine -> Triangle -> Saw -> Square (classic morph)
+    Analog,     ///< Warm, slightly detuned classics with subtle harmonics
+    Digital,    ///< Harsh, FM-like timbres with sharp edges
+    Vocal,      ///< Formant-based vowel sounds (A-E-I-O-U)
+    Texture,    ///< Noise-based, granular feel with organic movement
+    PWM         ///< Pulse width modulation sweep from thin to thick
+};
+
+/**
+ * @brief Polyphonic wavetable synthesizer
+ *
+ * Morphs through multi-frame wavetables for evolving timbres. Includes
+ * built-in tables covering classic analog sounds, FM-style digital tones,
+ * vocal formants, and textural noise.
+ *
+ * @par Parameters
+ * | Name | Type | Range | Default | Description |
+ * |------|------|-------|---------|-------------|
+ * | position | float | 0-1 | 0.0 | Morph position through wavetable |
+ * | maxVoices | int | 1-8 | 4 | Maximum simultaneous voices |
+ * | detune | float | 0-50 | 0 | Voice detune spread in cents |
+ * | volume | float | 0-1 | 0.5 | Output volume |
+ * | attack | float | 0.001-5 | 0.01 | Attack time in seconds |
+ * | decay | float | 0.001-5 | 0.1 | Decay time in seconds |
+ * | sustain | float | 0-1 | 0.7 | Sustain level |
+ * | release | float | 0.001-10 | 0.3 | Release time in seconds |
+ *
+ * @par Example
+ * @code
+ * auto& wt = chain.add<WavetableSynth>("wt");
+ * wt.loadBuiltin(BuiltinTable::Analog);
+ * wt.maxVoices = 4;
+ * wt.attack = 0.1f;
+ * wt.release = 0.5f;
+ *
+ * // Modulate wavetable position for evolving timbre
+ * wt.position = lfo.value();
+ *
+ * // Play a chord
+ * wt.noteOn(freq::C4);
+ * wt.noteOn(freq::E4);
+ * wt.noteOn(freq::G4);
+ * @endcode
+ */
+class WavetableSynth : public AudioOperator {
+public:
+    // -------------------------------------------------------------------------
+    /// @name Parameters (public for direct access)
+    /// @{
+
+    Param<float> position{"position", 0.0f, 0.0f, 1.0f};    ///< Wavetable morph position
+    Param<int> maxVoices{"maxVoices", 4, 1, 8};             ///< Maximum voices
+    Param<float> detune{"detune", 0.0f, 0.0f, 50.0f};       ///< Detune spread in cents
+    Param<float> volume{"volume", 0.5f, 0.0f, 1.0f};        ///< Output volume
+
+    // Envelope parameters (shared by all voices)
+    Param<float> attack{"attack", 0.01f, 0.001f, 5.0f};     ///< Attack time
+    Param<float> decay{"decay", 0.1f, 0.001f, 5.0f};        ///< Decay time
+    Param<float> sustain{"sustain", 0.7f, 0.0f, 1.0f};      ///< Sustain level
+    Param<float> release{"release", 0.3f, 0.001f, 10.0f};   ///< Release time
+
+    /// @}
+    // -------------------------------------------------------------------------
+
+    WavetableSynth();
+    ~WavetableSynth() override = default;
+
+    // -------------------------------------------------------------------------
+    /// @name Wavetable Loading
+    /// @{
+
+    /**
+     * @brief Load a built-in wavetable preset
+     * @param table The preset to load
+     */
+    void loadBuiltin(BuiltinTable table);
+
+    /**
+     * @brief Load wavetable from audio file (single-cycle frames)
+     * @param path Path to audio file (WAV format)
+     * @param framesPerCycle Samples per waveform cycle (default 2048)
+     * @return true if loaded successfully
+     *
+     * The file should contain multiple single-cycle waveforms concatenated.
+     * The total sample count divided by framesPerCycle determines the number
+     * of wavetable frames.
+     */
+    bool loadWavetable(const std::string& path, uint32_t framesPerCycle = 2048);
+
+    /**
+     * @brief Generate wavetable from harmonic amplitudes
+     * @param harmonics Vector of harmonic amplitudes (1 = fundamental)
+     * @param frameCount Number of wavetable frames to generate
+     *
+     * Creates an additive synthesis wavetable where each frame has
+     * progressively more harmonics.
+     */
+    void generateFromHarmonics(const std::vector<float>& harmonics, uint32_t frameCount = 8);
+
+    /**
+     * @brief Generate wavetable from custom formula
+     * @param fn Function taking (phase 0-1, position 0-1) returning sample -1 to 1
+     * @param frameCount Number of wavetable frames to generate
+     */
+    void generateFromFormula(std::function<float(float phase, float position)> fn,
+                            uint32_t frameCount = 8);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Playback Control
+    /// @{
+
+    /**
+     * @brief Play a note at the given frequency
+     * @param hz Frequency in Hz
+     * @return Voice index used, or -1 if no voice available
+     */
+    int noteOn(float hz);
+
+    /**
+     * @brief Release a note at the given frequency
+     * @param hz Frequency in Hz (must match noteOn frequency)
+     */
+    void noteOff(float hz);
+
+    /**
+     * @brief Play a MIDI note
+     * @param midiNote MIDI note number (60 = middle C)
+     * @return Voice index used, or -1 if no voice available
+     */
+    int noteOnMidi(int midiNote);
+
+    /**
+     * @brief Release a MIDI note
+     * @param midiNote MIDI note number
+     */
+    void noteOffMidi(int midiNote);
+
+    /**
+     * @brief Release all playing notes
+     */
+    void allNotesOff();
+
+    /**
+     * @brief Immediately silence all voices
+     */
+    void panic();
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name State Queries
+    /// @{
+
+    /**
+     * @brief Get number of currently active voices
+     */
+    int activeVoiceCount() const;
+
+    /**
+     * @brief Get number of wavetable frames
+     */
+    uint32_t frameCount() const { return m_frameCount; }
+
+    /**
+     * @brief Check if any voices are playing
+     */
+    bool isPlaying() const { return activeVoiceCount() > 0; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Operator Interface
+    /// @{
+
+    void init(Context& ctx) override;
+    void process(Context& ctx) override;
+    void cleanup() override;
+    std::string name() const override { return "WavetableSynth"; }
+
+    void generateBlock(uint32_t frameCount) override;
+
+    /// @}
+
+private:
+    // Wavetable storage
+    static constexpr uint32_t SAMPLES_PER_FRAME = 2048;
+    static constexpr uint32_t MAX_FRAMES = 256;
+
+    std::vector<float> m_wavetable;  // Frames * SAMPLES_PER_FRAME
+    uint32_t m_frameCount = 0;
+
+    // Voice state
+    struct Voice {
+        float frequency = 0.0f;
+        float phase = 0.0f;
+        EnvelopeStage envStage = EnvelopeStage::Idle;
+        float envValue = 0.0f;
+        float envProgress = 0.0f;
+        float releaseStartValue = 0.0f;
+        uint64_t noteId = 0;
+
+        bool isActive() const { return envStage != EnvelopeStage::Idle; }
+        bool isReleasing() const { return envStage == EnvelopeStage::Release; }
+    };
+
+    std::vector<Voice> m_voices;
+    uint64_t m_noteCounter = 0;
+    uint32_t m_sampleRate = 48000;
+
+    // Voice management
+    int findFreeVoice() const;
+    int findVoiceToSteal() const;
+    int findVoiceByFrequency(float hz) const;
+
+    // Sample generation
+    float sampleWavetable(float phase, float position) const;
+    float linearInterpolate(float a, float b, float t) const;
+    float centsToRatio(float cents) const;
+
+    // Envelope
+    void advanceEnvelope(Voice& voice, uint32_t samples);
+    float computeEnvelope(Voice& voice) const;
+
+    // Wavetable generation helpers
+    void generateBasicTable();
+    void generateAnalogTable();
+    void generateDigitalTable();
+    void generateVocalTable();
+    void generateTextureTable();
+    void generatePWMTable();
+
+    static constexpr float PI = 3.14159265358979323846f;
+    static constexpr float TWO_PI = 2.0f * PI;
+    static constexpr float FREQ_TOLERANCE = 0.5f;
+};
+
+} // namespace vivid::audio

@@ -49,6 +49,7 @@ set(AUDIO_SOURCES
     src/envelope.cpp
     src/synth.cpp
     src/poly_synth.cpp
+    src/wavetable_synth.cpp
     src/noise_gen.cpp
     src/crackle.cpp
     src/pitch_env.cpp

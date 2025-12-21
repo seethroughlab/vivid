@@ -55,7 +55,7 @@ void setup(Context& ctx) {
     auto& kick = chain.add<Kick>("kick");
     kick.pitch = 45.0f;
     kick.pitchEnv = 120.0f;
-    kick.decay = 0.4f;
+    kick.decay = 0.15f;  // Short for clear transients
     kick.drive = 0.3f;
 
     // Snare - backbeat
@@ -67,6 +67,8 @@ void setup(Context& ctx) {
     snare.tone = 0.6f;
     snare.noise = 0.7f;
     snare.snappy = 0.5f;
+    snare.toneDecay = 0.05f;   // Short for clear transients
+    snare.noiseDecay = 0.08f;
 
     // Hi-hat - busy pattern via euclidean
     auto& hatSeq = chain.add<Euclidean>("hatSeq");
@@ -83,7 +85,7 @@ void setup(Context& ctx) {
     clapSeq.setPattern(0b0010001000100010);
 
     auto& clap = chain.add<Clap>("clap");
-    clap.decay = 0.25f;
+    clap.decay = 0.1f;   // Short for clear transients
     clap.spread = 0.6f;
 
     // =========================================================================
@@ -92,10 +94,10 @@ void setup(Context& ctx) {
 
     auto& synth = chain.add<PolySynth>("synth");
     synth.waveform(Waveform::Saw);
-    synth.attack = 0.02f;
-    synth.decay = 0.1f;
-    synth.sustain = 0.4f;
-    synth.release = 0.3f;
+    synth.attack = 0.01f;
+    synth.decay = 0.08f;
+    synth.sustain = 0.3f;
+    synth.release = 0.1f;  // Short for clear transients
     synth.volume = 0.3f;
 
     // Arp sequencer
@@ -110,7 +112,7 @@ void setup(Context& ctx) {
     // Drum submix
     auto& drumMix = chain.add<AudioMixer>("drumMix");
     drumMix.setInput(0, "kick");
-    drumMix.setGain(0, 0.9f);
+    drumMix.setGain(0, 0.5f);  // Tamed to not overwhelm
     drumMix.setInput(1, "snare");
     drumMix.setGain(1, 0.7f);
     drumMix.setInput(2, "hihat");
@@ -118,19 +120,19 @@ void setup(Context& ctx) {
     drumMix.setInput(3, "clap");
     drumMix.setGain(3, 0.6f);
 
-    // Delay on drums
+    // Delay on drums (minimal for timing clarity)
     auto& drumDelay = chain.add<Delay>("drumDelay");
     drumDelay.input("drumMix");
     drumDelay.delayTime = 166.0f;  // Dotted eighth at 180 BPM (in ms)
-    drumDelay.feedback = 0.35f;
-    drumDelay.mix = 0.25f;
+    drumDelay.feedback = 0.15f;    // Low feedback for clarity
+    drumDelay.mix = 0.15f;         // Subtle mix
 
-    // Reverb on synth
+    // Reverb on synth (minimal for timing clarity)
     auto& synthVerb = chain.add<Reverb>("synthVerb");
     synthVerb.input("synth");
-    synthVerb.roomSize = 0.7f;
-    synthVerb.damping = 0.5f;
-    synthVerb.mix = 0.3f;
+    synthVerb.roomSize = 0.4f;     // Smaller room
+    synthVerb.damping = 0.7f;      // More damping
+    synthVerb.mix = 0.15f;         // Subtle mix
 
     // Master mix
     auto& master = chain.add<AudioMixer>("master");
@@ -244,8 +246,8 @@ void update(Context& ctx) {
 
     // Modulate parameters (adds CPU load + tests param updates)
     float lfo = std::sin(time * 2.0f) * 0.5f + 0.5f;
-    chain.get<Delay>("drumDelay").feedback = 0.25f + lfo * 0.2f;
-    chain.get<Reverb>("synthVerb").roomSize = 0.5f + lfo * 0.3f;
+    chain.get<Delay>("drumDelay").feedback = 0.1f + lfo * 0.1f;   // Keep subtle
+    chain.get<Reverb>("synthVerb").roomSize = 0.3f + lfo * 0.2f;  // Keep small
 
     // Print stats every 5 seconds
     if (time - lastReportTime >= 5.0f) {

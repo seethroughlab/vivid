@@ -44,6 +44,7 @@
 #include <vivid/audio/envelope.h>
 #include <vivid/audio/synth.h>
 #include <vivid/audio/poly_synth.h>
+#include <vivid/audio/wavetable_synth.h>
 #include <vivid/audio/noise_gen.h>
 #include <vivid/audio/crackle.h>
 #include <vivid/audio/pitch_env.h>
