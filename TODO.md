@@ -246,29 +246,10 @@
 [x] is it safe to delete _AUDIO_PARITY.md?
 [x] Synths need a system for presets
 [x] the chain visualization for an operator should live closer to the functional code, not in a monolithic chain_visualizer file. Think about when there are community contributed operators. 
+[x] I want to move towards deleting _CODE_RESTRUCTURE.md, _IMGUI_UPDATE.md, _OPERATOR_REFACTOR.md. What is finished and what should the next steps be?
+[x] Exported apps should have a custom icon, and the name should be the same as the project. 
+[x] Does the chain visualization (including previews) render if it's not visible? It shouldn't.
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle. Please add examples of these toggles to a few of the examples. 
 [ ] How can we make an example the demonstrates frustum culling in a way that is easy to see?
 [ ] I'd like to see an example of shadows (point, directional, and spot) with more complicate models - either boolean geometry or loaded GLTF models.
-[ ] Does the chain visualization (including previews) render if it's not visible? It shouldn't.
-[x] Exported apps should have a custom icon, and the name should be the same as the project. 
-[ ] How can we fix the fact that the libvivid-render3d.dylib is loaded by the cli even for 2D-only chains?
-
-  That's ~11MB of the render3d library mapped into memory even when not used.
-
-  This happens because the CLI executable links render3d at build time. To truly avoid loading it for 2D workflows, we'd need to either:
-
-  1. Remove the link from CLI and have user chain DLLs link render3d themselves
-  2. Use dlopen() to dynamically load render3d only when a chain needs it
-
-  Currently the architecture is:
-  vivid (executable) → links → vivid-render3d.dylib (always loaded)
-                     → links → vivid-audio.dylib (always loaded)
-
-  A cleaner approach would be:
-  vivid (executable) → loads user chain.dylib
-                            ↓
-                     chain.dylib → links → vivid-render3d.dylib (only if used)
-
- Let's investigate making the addons truly optional/lazy-loaded? But only implement if it's not a major effort
- [ ] I want to move towards deleting _CODE_RESTRUCTURE.md, _IMGUI_UPDATE.md, _OPERATOR_REFACTOR.md. What is finished and what should the next steps be?
