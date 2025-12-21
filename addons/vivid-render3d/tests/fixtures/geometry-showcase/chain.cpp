@@ -119,7 +119,7 @@ void setup(Context& ctx) {
     auto& hollowSphere = chain.add<Sphere>("hollowSphere").radius(0.8f).segments(24);
     csgSubtractPtr = &chain.add<Boolean>("csgSubtract")
         .inputA(hollowBoxPtr)
-        .inputB(&hollowSphere)
+        .inputB("hollowSphere")
         .operation(BooleanOp::Subtract)
         .flatShading(useFlatShading);
 
@@ -131,8 +131,8 @@ void setup(Context& ctx) {
     auto& outerCyl = chain.add<Cylinder>("outerCyl").radius(0.5f).height(1.5f).segments(32);
     auto& innerCyl = chain.add<Cylinder>("innerCyl").radius(0.3f).height(1.8f).segments(32);
     pipePtr = &chain.add<Boolean>("pipe")
-        .inputA(&outerCyl)
-        .inputB(&innerCyl)
+        .inputA("outerCyl")
+        .inputB("innerCyl")
         .operation(BooleanOp::Subtract)
         .flatShading(useFlatShading);
 
@@ -167,7 +167,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& render = chain.add<Render3D>("render3d")
-        .input(&scene)
+        .input("scene")
         .cameraInput(&camera)
         .lightInput(&sun)
         .shadingMode(ShadingMode::Flat)

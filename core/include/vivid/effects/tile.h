@@ -69,9 +69,6 @@ public:
         registerParam(mirror);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     TileUniforms getUniforms() const {
         return {

@@ -36,32 +36,32 @@ void setup(Context& ctx) {
     gradient.colorB.set(0.0f, 0.0f, 0.05f, 1.0f);  // Nearly black edge
 
     // Composite shape over gradient
-    comp.inputA(&gradient);
-    comp.inputB(&shape);
+    comp.inputA("gradient");
+    comp.inputB("shape");
     comp.mode(BlendMode::Add);
 
     // HSV for hue cycling
-    hsv.input(&comp);
+    hsv.input("comp");
 
     // Retro pipeline: downsample to low-res
-    downsample.input(&hsv);
+    downsample.input("hsv");
     downsample.targetW = 320;
     downsample.targetH = 240;
 
     // Dither for retro color banding
-    dither.input(&downsample);
+    dither.input("downsample");
     dither.pattern(DitherPattern::Bayer4x4);
     dither.levels = 16;
     dither.strength = 0.8f;
 
     // CRT scanlines
-    scanlines.input(&dither);
+    scanlines.input("dither");
     scanlines.spacing = 3;
     scanlines.thickness = 0.4f;
     scanlines.intensity = 0.25f;
 
     // Full CRT effect
-    crt.input(&scanlines);
+    crt.input("scanlines");
     crt.curvature = 0.15f;
     crt.vignette = 0.4f;
     crt.scanlines = 0.1f;

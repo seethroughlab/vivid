@@ -26,13 +26,13 @@ void setup(Context& ctx) {
     noise.octaves = 4;
 
     auto& hsv = chain.add<HSV>("hsv");
-    hsv.input(&noise);
+    hsv.input("noise");
     hsv.hueShift = 0.0f;
     hsv.saturation = 1.0f;
     hsv.value = 1.0f;
 
     auto& blur = chain.add<Blur>("blur");
-    blur.input(&hsv);
+    blur.input("hsv");
     blur.radius = 0.0f;
     blur.passes = 2;
 

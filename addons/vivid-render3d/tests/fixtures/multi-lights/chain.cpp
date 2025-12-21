@@ -90,7 +90,7 @@ void setup(Context& ctx) {
 
     // Render with PBR shading and multiple lights
     auto& render = chain.add<Render3D>("render")
-        .input(&scene)
+        .input("scene")
         .cameraInput(&camera)
         .lightInput(&sun)       // Primary light
         .addLight(&redLight)    // Additional lights

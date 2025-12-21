@@ -66,9 +66,6 @@ public:
         registerParam(value);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     HSVUniforms getUniforms() const {
         return {hueShift, saturation, value, 0.0f};

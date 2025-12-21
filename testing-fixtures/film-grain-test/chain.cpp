@@ -16,7 +16,7 @@ void setup(Context& ctx) {
 
     // Film grain overlay
     auto& grain = chain.add<FilmGrain>("grain");
-    grain.input(&gradient);
+    grain.input("gradient");
     grain.intensity = 0.25f;  // Noticeable grain
     grain.size = 1.5f;        // Medium grain size
     grain.speed = 24.0f;      // Film-like frame rate

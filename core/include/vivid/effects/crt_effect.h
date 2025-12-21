@@ -76,9 +76,6 @@ public:
         registerParam(chromatic);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     CRTEffectUniforms getUniforms() const {
         return {curvature, vignette, scanlines, bloom, chromatic, static_cast<float>(m_width) / m_height, {0, 0}};

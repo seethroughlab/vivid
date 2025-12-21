@@ -91,7 +91,7 @@ void setup(Context& ctx) {
 
     // Main 3D render
     auto& render = chain.add<Render3D>("render")
-        .input(&scene)
+        .input("scene")
         .cameraInput(&camera)
         .lightInput(&keyLight)
         .shadingMode(ShadingMode::PBR)
@@ -106,14 +106,14 @@ void setup(Context& ctx) {
 
     // Bloom for highlights
     auto& bloom = chain.add<Bloom>("bloom")
-        .input(&render)
+        .input("render")
         .threshold(0.8f)
         .intensity(0.4f)
         .radius(8.0f);
 
     // Subtle vignette
     auto& vignette = chain.add<CRTEffect>("vignette")
-        .input(&bloom)
+        .input("bloom")
         .curvature(0.0f)
         .vignette(0.3f)
         .scanlines(0.0f)
@@ -122,7 +122,7 @@ void setup(Context& ctx) {
 
     // Color grading - slight warmth
     auto& colorGrade = chain.add<HSV>("colorGrade")
-        .input(&vignette)
+        .input("vignette")
         .saturation(1.1f);
 
     chain.output("colorGrade");

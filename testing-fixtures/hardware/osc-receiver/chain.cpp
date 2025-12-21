@@ -39,13 +39,13 @@ void setup(Context& ctx) {
 
     // Composite
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&bg);
-    comp.inputB(&shape);
+    comp.inputA("bg");
+    comp.inputB("shape");
     comp.mode(BlendMode::Add);
 
     // Bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&comp);
+    bloom.input("comp");
     bloom.threshold = 0.4f;
     bloom.intensity = 0.5f;
 

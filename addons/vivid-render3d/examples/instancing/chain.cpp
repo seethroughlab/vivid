@@ -45,7 +45,7 @@ void setup(Context& ctx) {
 
     // Invert and threshold tightly to get tiny points
     auto& starPoints = chain.add<Brightness>("starPoints")
-        .input(&starNoise)
+        .input("starNoise")
         .brightness(0.48f)    // Tighter = smaller points
         .contrast(-20.0f)     // Sharp cutoff
         .gamma(1.0f);
@@ -59,8 +59,8 @@ void setup(Context& ctx) {
 
     // Multiply stars by brightness variation
     auto& stars = chain.add<Composite>("stars")
-        .inputA(&starPoints)
-        .inputB(&starBrightness)
+        .inputA("starPoints")
+        .inputB("starBrightness")
         .mode(BlendMode::Multiply);
 
     // === Asteroid Geometry ===
@@ -108,8 +108,8 @@ void setup(Context& ctx) {
 
     // Over blend: asteroids (with alpha) composited over stars
     auto& final = chain.add<Composite>("final")
-        .inputA(&stars)      // Background: stars
-        .inputB(&instanced)  // Foreground: asteroids (alpha=1 where geometry)
+        .inputA("stars")      // Background: stars
+        .inputB("instanced")  // Foreground: asteroids (alpha=1 where geometry)
         .mode(BlendMode::Over);
 
     // Reserve capacity for asteroids

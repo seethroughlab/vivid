@@ -89,7 +89,7 @@ void setup(Context& ctx) {
     noise.set("scale", 50.0f).set("speed", 0.5f);
 
     auto& composite = chain.add<Composite>("vis");
-    composite.inputA(&gradient).inputB(&noise).mode(BlendMode::Add).opacity(0.3f);
+    composite.inputA("gradient").inputB("noise").mode(BlendMode::Add).opacity(0.3f);
 
     // Set outputs
     chain.output("vis");

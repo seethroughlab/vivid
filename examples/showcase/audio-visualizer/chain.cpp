@@ -177,10 +177,10 @@ void setup(Context& ctx) {
 
     // Composite particles
     auto& particleComp = chain.add<Composite>("particleComp");
-    particleComp.input(0, &bg);
-    particleComp.input(1, &bassParticles);
-    particleComp.input(2, &midParticles);
-    particleComp.input(3, &highParticles);
+    particleComp.input(0, "bg");
+    particleComp.input(1, "bassParticles");
+    particleComp.input(2, "midParticles");
+    particleComp.input(3, "highParticles");
     particleComp.mode(BlendMode::Add);
 
     // Central shape - pulses with beat
@@ -192,13 +192,13 @@ void setup(Context& ctx) {
     beatShape.softness = 0.3f;
 
     auto& shapeComp = chain.add<Composite>("shapeComp");
-    shapeComp.inputA(&particleComp);
-    shapeComp.inputB(&beatShape);
+    shapeComp.inputA("particleComp");
+    shapeComp.inputB("beatShape");
     shapeComp.mode(BlendMode::Add);
 
     // Feedback for trails
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input(&shapeComp);
+    feedback.input("shapeComp");
     feedback.decay = 0.92f;
     feedback.mix = 0.5f;
     feedback.zoom = 1.002f;
@@ -206,14 +206,14 @@ void setup(Context& ctx) {
 
     // Bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&feedback);
+    bloom.input("feedback");
     bloom.threshold = 0.15f;
     bloom.intensity = 0.7f;
     bloom.radius = 0.02f;
 
     // Chromatic aberration - triggered on beat
     auto& chroma = chain.add<ChromaticAberration>("chroma");
-    chroma.input(&bloom);
+    chroma.input("bloom");
     chroma.amount = 0.0f;
     chroma.radial = true;
 

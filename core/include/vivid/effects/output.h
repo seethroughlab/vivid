@@ -36,11 +36,6 @@ public:
     Output() = default;
     ~Output() override = default;
 
-    /**
-     * @brief Connect input texture
-     * @param op Source operator to display
-     */
-    void input(TextureOperator* op) { setInput(0, op); }
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{

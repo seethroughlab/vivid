@@ -156,7 +156,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& dof = chain.add<DepthOfField>("dof");
-    dof.input(&render);
+    dof.input("render");
     dof.focusDistance(g_focusDistance);
     dof.focusRange(0.05f);
     dof.blurStrength(g_blurStrength);
@@ -166,13 +166,13 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&dof);
+    bloom.input("dof");
     bloom.threshold = 0.8f;
     bloom.intensity = 0.3f;
     bloom.radius = 6.0f;
 
     auto& vignette = chain.add<CRTEffect>("vignette");
-    vignette.input(&bloom);
+    vignette.input("bloom");
     vignette.curvature = 0.0f;
     vignette.vignette = 0.4f;
     vignette.scanlines = 0.0f;

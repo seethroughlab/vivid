@@ -37,8 +37,8 @@ void setup(Context& ctx) {
     noise.persistence = 0.5f;
 
     // Displace: processor that inherits resolution from its source input (image)
-    displace.source(&image);
-    displace.map(&noise);
+    displace.source("image");
+    displace.map("noise");
     displace.strength = 0.08f;
 
     // HSV ramp for color tinting - generator with its own resolution
@@ -49,8 +49,8 @@ void setup(Context& ctx) {
     ramp.brightness = 1.0f;
 
     // Composite: inherits resolution from first input (displace → image resolution)
-    comp.inputA(&displace);
-    comp.inputB(&ramp);
+    comp.inputA("displace");
+    comp.inputB("ramp");
     comp.mode(BlendMode::Multiply);
 
     // Final output is scaled to window size for display

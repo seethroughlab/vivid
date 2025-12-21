@@ -23,7 +23,7 @@ void setup(Context& ctx) {
 
     // Feedback with zoom and rotation for spiral trails
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input(&noise);
+    feedback.input("noise");
     feedback.decay = 0.92f;
     feedback.mix = 0.4f;
     feedback.zoom = 1.003f;
@@ -38,8 +38,8 @@ void setup(Context& ctx) {
 
     // Multiply feedback with color
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&feedback);
-    comp.inputB(&ramp);
+    comp.inputA("feedback");
+    comp.inputB("ramp");
     comp.mode(BlendMode::Multiply);
 
     chain.output("comp");

@@ -69,9 +69,6 @@ public:
         registerParam(colored);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     FilmGrainUniforms getUniforms() const {
         return {

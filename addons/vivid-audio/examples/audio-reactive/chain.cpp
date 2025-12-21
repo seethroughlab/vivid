@@ -89,18 +89,18 @@ void setup(Context& ctx) {
 
     // Composite layers
     auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA(&gradient).inputB(&noise).mode(BlendMode::Add).opacity(0.3f);
+    comp1.inputA("gradient").inputB("noise").mode(BlendMode::Add).opacity(0.3f);
 
     auto& comp2 = chain.add<Composite>("comp2");
-    comp2.inputA(&comp1).inputB(&shape).mode(BlendMode::Add).opacity(1.0f);
+    comp2.inputA("comp1").inputB("shape").mode(BlendMode::Add).opacity(1.0f);
 
     // Final bloom for glow effect
     auto& bloom = chain.add<Blur>("bloom");
-    bloom.input(&comp2);
+    bloom.input("comp2");
     bloom.set("radius", 8.0f);
 
     auto& final = chain.add<Composite>("final");
-    final.inputA(&comp2).inputB(&bloom).mode(BlendMode::Add).opacity(0.4f);
+    final.inputA("comp2").inputB("bloom").mode(BlendMode::Add).opacity(0.4f);
 
     chain.output("final");
 

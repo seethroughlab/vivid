@@ -51,9 +51,6 @@ public:
         registerParam(curvature);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     BarrelDistortionUniforms getUniforms() const {
         return {curvature, {0, 0, 0}};

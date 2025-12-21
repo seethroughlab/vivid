@@ -68,19 +68,19 @@ void setup(Context& ctx) {
 
     // Flash for each drum
     auto& kickFlash = chain.add<Flash>("kickFlash");
-    kickFlash.input(&noise);
+    kickFlash.input("noise");
     kickFlash.decay = 0.82f;
     kickFlash.color.set(1.0f, 1.0f, 1.0f);
     kickFlash.mode = 0;  // Additive
 
     auto& snareFlash = chain.add<Flash>("snareFlash");
-    snareFlash.input(&kickFlash);
+    snareFlash.input("kickFlash");
     snareFlash.decay = 0.90f;
     snareFlash.color.set(1.0f, 0.5f, 0.2f);
     snareFlash.mode = 1;  // Screen
 
     auto& hatFlash = chain.add<Flash>("hatFlash");
-    hatFlash.input(&snareFlash);
+    hatFlash.input("snareFlash");
     hatFlash.decay = 0.75f;
     hatFlash.color.set(0.3f, 0.8f, 1.0f);
     hatFlash.mode = 0;  // Additive
@@ -102,8 +102,8 @@ void setup(Context& ctx) {
 
     // Composite particles over flashes
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&hatFlash);
-    comp.inputB(&particles);
+    comp.inputA("hatFlash");
+    comp.inputB("particles");
     comp.mode(BlendMode::Add);
 
     chain.output("comp");

@@ -21,8 +21,8 @@ void Clock::process(Context& ctx) {
     float divMultiplier = getDivisionMultiplier();
     float triggersPerSecond = beatsPerSecond * divMultiplier;
 
-    // Phase increment per frame
-    double phaseInc = triggersPerSecond * ctx.dt();
+    // Phase increment per frame (sample-accurate, not frame-rate dependent)
+    double phaseInc = triggersPerSecond * (ctx.audioFramesThisFrame() / static_cast<double>(m_sampleRate));
 
     // Check for trigger
     double oldPhase = m_phase;

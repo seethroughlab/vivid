@@ -68,9 +68,6 @@ public:
         registerParam(invert);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     EdgeUniforms getUniforms() const {
         return {

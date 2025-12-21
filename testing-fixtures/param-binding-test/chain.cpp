@@ -53,7 +53,7 @@ void setup(Context& ctx) {
 
     // Quantize to harsh black/white
     auto& quantize = chain.add<Quantize>("quantize");
-    quantize.input(&staticNoise);
+    quantize.input("staticNoise");
     quantize.levels = 2;
 
     // =========================================================================
@@ -99,43 +99,43 @@ void setup(Context& ctx) {
 
     // Static + circle
     auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA(&quantize);
-    comp1.inputB(&circle);
+    comp1.inputA("quantize");
+    comp1.inputB("circle");
     comp1.mode(BlendMode::Add);
     comp1.opacity = 0.8f;
 
     // Add bars
     auto& comp2 = chain.add<Composite>("comp2");
-    comp2.inputA(&comp1);
-    comp2.inputB(&bar1);
+    comp2.inputA("comp1");
+    comp2.inputB("bar1");
     comp2.mode(BlendMode::Screen);
 
     auto& comp3 = chain.add<Composite>("comp3");
-    comp3.inputA(&comp2);
-    comp3.inputB(&bar2);
+    comp3.inputA("comp2");
+    comp3.inputB("bar2");
     comp3.mode(BlendMode::Screen);
 
     // Desaturate the geometric layers (not the text)
     auto& hsv = chain.add<HSV>("hsv");
-    hsv.input(&comp3);
+    hsv.input("comp3");
     hsv.saturation = 0.0f;  // Monochrome base
 
     // Re-add red through flash
     auto& flash = chain.add<Flash>("flash");
-    flash.input(&hsv);
+    flash.input("hsv");
     flash.color.set(0.8f, 0.0f, 0.0f);
     flash.decay = 0.9f;
     flash.mode = 0;  // Additive
 
     // Add text on top (after HSV so it stays white)
     auto& comp4 = chain.add<Composite>("comp4");
-    comp4.inputA(&flash);   // Flash result as base
-    comp4.inputB(&canvas);  // Canvas (text) blended on top
+    comp4.inputA("flash");   // Flash result as base
+    comp4.inputB("canvas");  // Canvas (text) blended on top
     comp4.mode(BlendMode::Over);
 
     // Final scanlines
     auto& scanlines = chain.add<Scanlines>("scanlines");
-    scanlines.input(&comp4);
+    scanlines.input("comp4");
     scanlines.spacing = 3;
     scanlines.intensity = 0.15f;
 

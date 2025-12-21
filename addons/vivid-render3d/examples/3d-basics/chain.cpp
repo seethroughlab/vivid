@@ -64,8 +64,8 @@ void setup(Context& ctx) {
         .segments(24);
 
     auto& hollowCube = chain.add<Boolean>("hollowCube")
-        .inputA(&box)
-        .inputB(&sphere)
+        .inputA("box")
+        .inputB("sphere")
         .operation(BooleanOp::Subtract)
         .flatShading(true);
 
@@ -93,7 +93,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& render = chain.add<Render3D>("render3d")
-        .input(&scene)
+        .input("scene")
         .cameraInput(&camera)
         .shadingMode(ShadingMode::Flat)
         .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))

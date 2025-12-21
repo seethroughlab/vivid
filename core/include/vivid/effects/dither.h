@@ -73,9 +73,6 @@ public:
         registerParam(strength);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Set dither pattern (enum, not a Param)
     void pattern(DitherPattern p) {
         if (m_pattern != p) { m_pattern = p; markDirty(); }

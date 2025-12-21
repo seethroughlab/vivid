@@ -3,6 +3,7 @@
 #include <vivid/chain.h>
 #include <vivid/context.h>
 #include <vivid/operator.h>
+#include <vivid/effects/texture_operator.h>
 #include <vivid/audio_operator.h>
 #include <vivid/audio_output.h>
 #include <vivid/audio_buffer.h>
@@ -270,9 +271,16 @@ void Chain::init(Context& ctx) {
     // Check for debug environment variable
     checkDebugEnvVar();
 
-    // First pass: call init on all operators to resolve named inputs
+    // First pass: resolve string-based inputs for texture operators
     // This must happen before computeExecutionOrder() so the topological
     // sort can see the actual dependencies
+    for (const auto& [name, op] : m_operators) {
+        if (auto* texOp = dynamic_cast<effects::TextureOperator*>(op.get())) {
+            texOp->resolveInputs(*this);
+        }
+    }
+
+    // Second pass: call init on all operators
     for (const auto& [name, op] : m_operators) {
         op->init(ctx);
     }

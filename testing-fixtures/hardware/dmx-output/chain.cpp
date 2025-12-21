@@ -29,7 +29,7 @@ void setup(Context& ctx) {
 
     // Add vignette for depth
     auto& vignette = chain.add<Vignette>("vignette");
-    vignette.input(&color);
+    vignette.input("color");
     vignette.intensity = 0.5f;
     vignette.softness = 0.6f;
 

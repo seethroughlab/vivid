@@ -127,7 +127,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&timeMachine);
+    bloom.input("timeMachine");
     bloom.threshold = 0.9f;   // Higher threshold for webcam
     bloom.intensity = 0.2f;
     bloom.radius = 0.003f;

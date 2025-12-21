@@ -34,13 +34,13 @@ void setup(Context& ctx) {
 
     // Composite with additive blending
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&bg);
-    comp.inputB(&points);
+    comp.inputA("bg");
+    comp.inputB("points");
     comp.mode(BlendMode::Add);
 
     // Add bloom for glow effect
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&comp);
+    bloom.input("comp");
     bloom.threshold = 0.3f;
     bloom.intensity = 0.6f;
     bloom.radius = 8.0f;

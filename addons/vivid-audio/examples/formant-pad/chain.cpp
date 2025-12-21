@@ -158,7 +158,7 @@ void setup(Context& ctx) {
     bg.set("scale", 3.0f).set("speed", 0.05f);
 
     auto& bgColor = chain.add<HSV>("bg_color");
-    bgColor.input(&bg).saturation(0.6f).value(0.15f);
+    bgColor.input("bg").saturation(0.6f).value(0.15f);
 
     // Pulsing shape that responds to audio
     auto& pulse = chain.add<Shape>("pulse");
@@ -167,8 +167,8 @@ void setup(Context& ctx) {
          .color(1.0f, 0.5f, 0.3f, 0.8f);
 
     auto& final_ = chain.add<Composite>("final");
-    final_.input(0, &bgColor)
-          .input(1, &pulse)
+    final_.input(0, "bgColor")
+          .input(1, "pulse")
           .mode(BlendMode::Add);
 
     chain.output("final");

@@ -111,14 +111,14 @@ void setup(Context& ctx) {
 
     // Subtle bloom for atmosphere glow
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&render);
+    bloom.input("render");
     bloom.threshold = 0.9f;
     bloom.intensity = 0.2f;
     bloom.radius = 6.0f;
 
     // Vignette for cinematic look
     auto& vignette = chain.add<CRTEffect>("vignette");
-    vignette.input(&bloom);
+    vignette.input("bloom");
     vignette.curvature = 0.0f;
     vignette.vignette = 0.4f;
     vignette.scanlines = 0.0f;

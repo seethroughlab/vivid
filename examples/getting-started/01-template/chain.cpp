@@ -14,7 +14,7 @@
 //   update() - Called every frame (typically 60fps)
 //
 // Tips:
-//   - Operators connect via operator.input(&other)
+//   - Operators connect via operator.input("other")
 //   - Use chain.output("name") to specify what displays
 //   - Check the terminal for compile errors if hot-reload fails
 //   - See docs/LLM-REFERENCE.md for all operators
@@ -47,7 +47,7 @@ void setup(Context& ctx) {
     //   Pixelate, Tile, ChromaticAberration, Bloom, Feedback
 
     auto& colorize = chain.add<HSV>("colorize");
-    colorize.input(&noise);       // Connect to the noise generator
+    colorize.input("noise");      // Connect to the noise generator
     colorize.hueShift = 0.6f;     // Shift hue (0-1 wraps around color wheel)
     colorize.saturation = 0.8f;   // Color intensity (0 = grayscale)
     colorize.value = 1.0f;        // Brightness multiplier

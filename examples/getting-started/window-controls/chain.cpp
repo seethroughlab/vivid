@@ -40,8 +40,8 @@ void setup(Context& ctx) {
     noise.speed = 0.2f;
 
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&grad);
-    comp.inputB(&noise);
+    comp.inputA("gradient");
+    comp.inputB("noise");
     comp.mode(BlendMode::Add);
     comp.opacity = 0.3f;
 

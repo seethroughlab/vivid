@@ -21,21 +21,21 @@ void setup(Context& ctx) {
 
     // Kick flash - white, fast decay (additive)
     auto& kickFlash = chain.add<Flash>("kickFlash");
-    kickFlash.input(&noise);
+    kickFlash.input("noise");
     kickFlash.decay = 0.85f;
     kickFlash.color.set(1.0f, 1.0f, 1.0f);
     kickFlash.mode = 0;  // Additive
 
     // Snare flash - orange, slower decay (screen)
     auto& snareFlash = chain.add<Flash>("snareFlash");
-    snareFlash.input(&kickFlash);
+    snareFlash.input("kickFlash");
     snareFlash.decay = 0.92f;
     snareFlash.color.set(1.0f, 0.6f, 0.2f);
     snareFlash.mode = 1;  // Screen
 
     // Hat flash - cyan, medium decay (replace)
     auto& hatFlash = chain.add<Flash>("hatFlash");
-    hatFlash.input(&snareFlash);
+    hatFlash.input("snareFlash");
     hatFlash.decay = 0.88f;
     hatFlash.color.set(0.2f, 0.8f, 1.0f);
     hatFlash.mode = 2;  // Replace

@@ -534,8 +534,8 @@ void setup(Context& ctx) {
 
     // Composite grime over livery using Overlay blend for realistic weathering
     auto& liveryWithGrime = chain.add<Composite>("liveryGrime")
-        .input(0, &livery)
-        .input(1, &grimeTexture)
+        .input(0, "livery")
+        .input(1, "grimeTexture")
         .mode(BlendMode::Overlay)
         .opacity(0.7f);  // More visible weathering
 
@@ -693,7 +693,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& render = chain.add<Render3D>("render")
-        .input(&scene)
+        .input("scene")
         .cameraInput(&camera)
         .lightInput(&keyLight)
         .addLight(&fillLight)
@@ -710,7 +710,7 @@ void setup(Context& ctx) {
     // Bloom for engine glow (before downsample to preserve detail)
     // Note: Render output is clamped to [0,1], so we need low threshold
     auto& bloom = chain.add<Bloom>("bloom")
-        .input(&render)
+        .input("render")
         .threshold(0.3f)      // Low threshold to catch orange glow (luminance ~0.73)
         .intensity(4.0f)      // Strong bloom to compensate for clamped HDR
         .radius(40.0f)        // Wide glow for halo effect
@@ -718,13 +718,13 @@ void setup(Context& ctx) {
 
     // Downsample to low resolution (PS1-style)
     auto& downsample = chain.add<Downsample>("downsample")
-        .input(&bloom)        // Now takes bloom output
+        .input("bloom")        // Now takes bloom output
         .resolution(480, 270)
         .filter(FilterMode::Nearest);
 
     // Dither for color banding
     auto& dither = chain.add<Dither>("dither")
-        .input(&downsample)
+        .input("downsample")
         .pattern(DitherPattern::Bayer4x4)
         .levels(32)
         .strength(0.7f);
@@ -735,25 +735,25 @@ void setup(Context& ctx) {
 
     // Scanlines - alternating dark lines
     auto& scanlines = chain.add<Scanlines>("scanlines")
-        .input(&dither)
+        .input("dither")
         .spacing(3)
         .thickness(0.4f)
         .intensity(0.15f);
 
     // Barrel distortion - curved CRT screen
     auto& barrel = chain.add<BarrelDistortion>("barrel")
-        .input(&scanlines)
+        .input("scanlines")
         .curvature(0.08f);
 
     // Chromatic aberration - color fringing
     auto& chroma = chain.add<ChromaticAberration>("chroma")
-        .input(&barrel)
+        .input("barrel")
         .amount(0.015f)
         .radial(false);  // Linear horizontal separation like original CRT
 
     // Vignette - edge darkening
     auto& vignette = chain.add<Vignette>("vignette")
-        .input(&chroma)
+        .input("chroma")
         .intensity(0.3f)
         .softness(0.5f);
 
@@ -770,8 +770,8 @@ void setup(Context& ctx) {
 
     // Composite UI over post-processed render
     auto& composite = chain.add<Composite>("composite")
-        .input(0, &vignette)
-        .input(1, &ui)
+        .input(0, "vignette")
+        .input(1, "ui")
         .mode(BlendMode::Over);
 
     chain.output("composite");  // Full render with UI

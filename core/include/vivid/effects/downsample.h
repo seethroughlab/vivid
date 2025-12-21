@@ -71,9 +71,6 @@ public:
         registerParam(targetH);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Set upscale filter mode (Nearest = pixelated, Linear = smooth)
     void filter(FilterMode f) { if (m_filter != f) { m_filter = f; markDirty(); } }
 

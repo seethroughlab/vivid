@@ -20,7 +20,7 @@ void setup(Context& ctx) {
 
     // Gaussian blur
     auto& blur = chain.add<Blur>("blur");
-    blur.input(&noise);
+    blur.input("noise");
     blur.radius = 5.0f;
 
     // Color tint via HSV ramp
@@ -30,8 +30,8 @@ void setup(Context& ctx) {
 
     // Combine
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&blur);
-    comp.inputB(&ramp);
+    comp.inputA("blur");
+    comp.inputB("ramp");
     comp.mode(BlendMode::Multiply);
 
     chain.output("comp");

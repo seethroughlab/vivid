@@ -31,37 +31,37 @@ void setup(Context& ctx) {
 
     // Composite shape over gradient
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&gradient);
-    comp.inputB(&shape);
+    comp.inputA("gradient");
+    comp.inputB("shape");
     comp.mode(BlendMode::Add);
 
     // HSV for hue cycling
     auto& hsv = chain.add<HSV>("hsv");
-    hsv.input(&comp);
+    hsv.input("comp");
 
     // Downsample to low-res
     auto& downsample = chain.add<Downsample>("downsample");
-    downsample.input(&hsv);
+    downsample.input("hsv");
     downsample.targetW = 320;
     downsample.targetH = 240;
 
     // Dither for retro color banding
     auto& dither = chain.add<Dither>("dither");
-    dither.input(&downsample);
+    dither.input("downsample");
     dither.pattern(DitherPattern::Bayer4x4);
     dither.levels = 16;
     dither.strength = 0.8f;
 
     // CRT scanlines
     auto& scanlines = chain.add<Scanlines>("scanlines");
-    scanlines.input(&dither);
+    scanlines.input("dither");
     scanlines.spacing = 3;
     scanlines.thickness = 0.4f;
     scanlines.intensity = 0.25f;
 
     // Full CRT effect
     auto& crt = chain.add<CRTEffect>("crt");
-    crt.input(&scanlines);
+    crt.input("scanlines");
     crt.curvature = 0.15f;
     crt.vignette = 0.4f;
     crt.scanlines = 0.1f;

@@ -24,27 +24,27 @@ void setup(Context& ctx) {
 
     // Downsample for that chunky pixel look
     auto& downsample = chain.add<Downsample>("downsample");
-    downsample.input(&webcam);
+    downsample.input("webcam");
     downsample.targetW = 320;
     downsample.targetH = 180;
 
     // Dither for limited color palette feel
     auto& dither = chain.add<Dither>("dither");
-    dither.input(&downsample);
+    dither.input("downsample");
     dither.pattern(DitherPattern::Bayer4x4);
     dither.levels = 8;
     dither.strength = 0.8f;
 
     // Scanlines for CRT monitor effect
     auto& scanlines = chain.add<Scanlines>("scanlines");
-    scanlines.input(&dither);
+    scanlines.input("dither");
     scanlines.spacing = 3;
     scanlines.thickness = 0.4f;
     scanlines.intensity = 0.3f;
 
     // CRT curvature and vignette
     auto& crt = chain.add<CRTEffect>("crt");
-    crt.input(&scanlines);
+    crt.input("scanlines");
     crt.curvature = 0.15f;
     crt.vignette = 0.3f;
 

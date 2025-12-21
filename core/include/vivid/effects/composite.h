@@ -86,20 +86,20 @@ public:
     }
 
     /// @brief Set input at specific index (0 = base, 1-7 = layers)
-    void input(int index, TextureOperator* op) {
+    void input(int index, const std::string& name) {
         if (index >= 0 && index < COMPOSITE_MAX_INPUTS) {
-            setInput(index, op);
+            setInputByName(index, name);
             if (index >= m_inputCount) {
                 m_inputCount = index + 1;
             }
         }
     }
 
-    /// @brief Set background input (legacy API, same as input(0, op))
-    void inputA(TextureOperator* op) { input(0, op); }
+    /// @brief Set background input (same as input(0, name))
+    void inputA(const std::string& name) { input(0, name); }
 
-    /// @brief Set foreground input (legacy API, same as input(1, op))
-    void inputB(TextureOperator* op) { input(1, op); }
+    /// @brief Set foreground input (same as input(1, name))
+    void inputB(const std::string& name) { input(1, name); }
 
     /// @brief Get number of active inputs
     int inputCount() const { return m_inputCount; }

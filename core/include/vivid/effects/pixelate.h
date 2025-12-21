@@ -59,9 +59,6 @@ public:
         registerParam(size);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     PixelateUniforms getUniforms() const {
         return {size.x(), size.y(), static_cast<float>(m_width), static_cast<float>(m_height)};

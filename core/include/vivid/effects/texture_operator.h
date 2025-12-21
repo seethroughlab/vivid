@@ -14,6 +14,10 @@
 #include <vivid/effects/gpu_handle.h>
 #include <webgpu/webgpu.h>
 
+namespace vivid {
+class Chain;  // Forward declaration
+}
+
 namespace vivid::effects {
 
 /// @brief Common texture format for effects pipeline (RGBA 16-bit float)
@@ -192,8 +196,32 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
-    /// @name Input Access
+    /// @name Input Connections
     /// @{
+
+    /**
+     * @brief Connect input by operator name
+     * @param name Name of operator to connect
+     *
+     * Input is resolved to a pointer during init().
+     * @code
+     * auto& noise = chain.add<Noise>("noise");
+     * auto& blur = chain.add<Blur>("blur");
+     * blur.input("noise");  // Connects blur to noise
+     * @endcode
+     */
+    void input(const std::string& name) {
+        setInputByName(0, name);
+    }
+
+    /**
+     * @brief Connect input at specific index by operator name
+     * @param index Input slot index
+     * @param name Name of operator to connect
+     */
+    void input(int index, const std::string& name) {
+        setInputByName(index, name);
+    }
 
     /**
      * @brief Get input texture view from connected operator
@@ -201,6 +229,14 @@ public:
      * @return Texture view from input operator, or nullptr if none
      */
     WGPUTextureView inputView(int index = 0) const;
+
+    /**
+     * @brief Resolve input names to operator pointers
+     * @param chain The chain to look up operators in
+     *
+     * Called during init() to resolve string-based inputs.
+     */
+    void resolveInputs(vivid::Chain& chain);
 
     /// @}
 

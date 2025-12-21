@@ -116,7 +116,7 @@ void setup(Context& ctx) {
 
     // Render with PBR + IBL
     auto& render = chain.add<Render3D>("render")
-        .input(&scene)
+        .input("scene")
         .cameraInput(&camera)
         .lightInput(&light)
         .shadingMode(ShadingMode::PBR)

@@ -34,28 +34,28 @@ void setup(Context& ctx) {
     noise.persistence = 0.55f;
 
     // Transform: will animate rotation
-    transform.input(&noise);
+    transform.input("noise");
 
     // Mirror: kaleidoscope mode with 8 segments
-    mirror.input(&transform);
+    mirror.input("transform");
     mirror.mode(MirrorMode::Kaleidoscope);
     mirror.segments = 8;
     mirror.center.set(0.5f, 0.5f);
 
     // HSV: hue shift for color
-    hsv.input(&mirror);
+    hsv.input("mirror");
     hsv.saturation = 0.7f;
     hsv.value = 1.0f;
 
     // Bloom: glow on bright areas
-    bloom.input(&hsv);
+    bloom.input("hsv");
     bloom.threshold = 0.5f;
     bloom.intensity = 0.6f;
     bloom.radius = 8.0f;
     bloom.passes = 2;
 
     // Chromatic aberration for optical effect
-    chromatic.input(&bloom);
+    chromatic.input("bloom");
     chromatic.amount = 0.3f;
     chromatic.radial = true;
 

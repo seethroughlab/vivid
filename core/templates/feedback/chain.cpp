@@ -19,7 +19,7 @@ void setup(Context& ctx) {
 
     // Feedback with trails
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input(&noise);
+    feedback.input("noise");
     feedback.decay = 0.92f;
     feedback.mix = 0.3f;
     feedback.zoom = 1.002f;
@@ -33,8 +33,8 @@ void setup(Context& ctx) {
 
     // Multiply for color
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&feedback);
-    comp.inputB(&ramp);
+    comp.inputA("feedback");
+    comp.inputB("ramp");
     comp.mode(BlendMode::Multiply);
 
     chain.output("comp");

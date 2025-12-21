@@ -51,7 +51,7 @@ void setup(Context& ctx) {
 
     // Create chain: SceneComposer -> Render3D -> ChromaticAberration -> output
     auto& renderer = chain.add<Render3D>("render3d");
-    renderer.input(&scene)
+    renderer.input("scene")
             .camera(camera)
             .shadingMode(ShadingMode::Flat)
             .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
@@ -62,7 +62,7 @@ void setup(Context& ctx) {
 
     // Add chromatic aberration effect
     auto& chromatic = chain.add<ChromaticAberration>("chromatic");
-    chromatic.input(&renderer)
+    chromatic.input("renderer")
              .amount(0.008f)
              .radial(true);
 

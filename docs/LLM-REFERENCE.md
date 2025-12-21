@@ -72,7 +72,7 @@ VIVID_CHAIN(setup, update)
 | `LFO` | Oscillator (value) | `.waveform(LFOWaveform::Sine)` `frequency` `amplitude` |
 | `Image` | Load image file | `file = "assets/image.jpg"` |
 
-### Effects (require `.input(&op)`)
+### Effects (require `.input("name")`)
 
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
@@ -81,7 +81,7 @@ VIVID_CHAIN(setup, update)
 | `Brightness` | Brightness/contrast | `brightness` `contrast` `gamma` |
 | `Transform` | Scale/rotate/translate | `scale.set(x,y)` `rotation` `translate.set(x,y)` |
 | `Mirror` | Axis mirroring | `.mode(MirrorMode::Kaleidoscope)` `segments` |
-| `Displace` | Texture distortion | `.source(&op)` `.map(&op)` `strength` |
+| `Displace` | Texture distortion | `.source("name")` `.map("name")` `strength` |
 | `Edge` | Edge detection | `strength` |
 | `Pixelate` | Mosaic effect | `size.set(w,h)` |
 | `Tile` | Texture tiling | `tilesX` `tilesY` |
@@ -91,7 +91,7 @@ VIVID_CHAIN(setup, update)
 | `BarrelDistortion` | CRT screen curvature | `curvature` |
 | `Feedback` | Frame feedback | `decay` `mix` `zoom` `rotation` |
 | `FrameCache` | Buffer N frames | `frameCount` |
-| `TimeMachine` | Temporal displacement | `.cache(&fc)` `.displacementMap(&tex)` `depth` |
+| `TimeMachine` | Temporal displacement | `.cache("name")` `.displacementMap("name")` `depth` |
 | `Plexus` | Particle network | `.setNodeCount(200)` `.setConnectionDistance(0.1)` `.setTurbulence(0.1)` |
 
 ### Retro Effects
@@ -110,8 +110,8 @@ VIVID_CHAIN(setup, update)
 
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
-| `Composite` | Blend two textures | `.inputA(&op)` `.inputB(&op)` `.mode(BlendMode::Over)` `opacity` |
-| `Switch` | Select input | `.input(0, &op)` `.input(1, &op)` `index` `blend` |
+| `Composite` | Blend two textures | `.inputA("name")` `.inputB("name")` `.mode(BlendMode::Over)` `opacity` |
+| `Switch` | Select input | `.input(0, "name")` `.input(1, "name")` `index` `blend` |
 
 ### Particles
 
@@ -314,12 +314,12 @@ void setup(Context& ctx) {
         .frequency(110.0f);
 
     auto& formant = chain.add<Formant>("formant")
-        .input(&osc)
+        .input("osc")
         .vowel(Vowel::A)
         .resonance(8.0f);
 
     auto& reverb = chain.add<Reverb>("reverb")
-        .input(&formant)
+        .input("formant")
         .roomSize(0.7f)
         .mix(0.3f);
 
@@ -358,7 +358,7 @@ All 3D components are operators that appear in the chain visualizer.
 
 | Operator | Description | Key Parameters |
 |----------|-------------|----------------|
-| `Boolean` | CSG operations | `.inputA(&mesh1)` `.inputB(&mesh2)` `.operation(BooleanOp::Subtract)` |
+| `Boolean` | CSG operations | `.inputA("mesh1")` `.inputB("mesh2")` `.operation(BooleanOp::Subtract)` |
 
 Operations: `BooleanOp::Union`, `BooleanOp::Subtract`, `BooleanOp::Intersect`
 
@@ -387,8 +387,8 @@ void setup(Context& ctx) {
 
     // CSG: hollow cube
     auto& csg = chain.add<Boolean>("csg")
-        .inputA(&box)
-        .inputB(&sphere)
+        .inputA("box")
+        .inputB("sphere")
         .operation(BooleanOp::Subtract);
 
     // Scene composition
@@ -408,7 +408,7 @@ void setup(Context& ctx) {
 
     // Render
     auto& render = chain.add<Render3D>("render")
-        .input(&scene)
+        .input("scene")
         .cameraInput(&camera)
         .lightInput(&sun)
         .shadingMode(ShadingMode::PBR)
@@ -477,7 +477,7 @@ auto& spot = chain.add<SpotLight>("spot")
     .spotAngle(25.0f).spotBlend(0.3f).intensity(5.0f).range(12.0f);
 
 auto& render = chain.add<Render3D>("render")
-    .input(&scene)
+    .input("scene")
     .lightInput(&sun)       // Primary light
     .addLight(&redLight)    // Additional lights
     .addLight(&blueLight)
@@ -552,11 +552,11 @@ void setup(Context& ctx) {
     noise.scale = 4.0f;
 
     auto& color = chain.add<HSV>("color");
-    color.input(&noise);
+    color.input("noise");
     color.hueShift = 0.3f;
 
     auto& blur = chain.add<Blur>("blur");
-    blur.input(&color);
+    blur.input("color");
     blur.radius = 3.0f;
 
     chain.output("blur");
@@ -573,7 +573,7 @@ void setup(Context& ctx) {
     noise.scale = 4.0f;
 
     auto& fb = chain.add<Feedback>("fb");
-    fb.input(&noise);
+    fb.input("noise");
     fb.decay = 0.95f;
     fb.zoom = 1.01f;
 
@@ -593,8 +593,8 @@ void setup(Context& ctx) {
     img.file = "assets/photo.jpg";
 
     auto& blend = chain.add<Composite>("blend");
-    blend.inputA(&img);
-    blend.inputB(&noise);
+    blend.inputA("img");
+    blend.inputB("noise");
     blend.mode(BlendMode::Overlay);
     blend.opacity = 0.5f;
 
@@ -616,8 +616,8 @@ void setup(Context& ctx) {
     noise.speed = 0.3f;
 
     auto& warp = chain.add<Displace>("warp");
-    warp.source(&img);
-    warp.map(&noise);
+    warp.source("img");
+    warp.map("noise");
     warp.strength = 0.05f;
 
     chain.output("warp");
@@ -634,16 +634,16 @@ void setup(Context& ctx) {
     vid.file("assets/video.mov");
 
     auto& chroma = chain.add<ChromaticAberration>("chroma");
-    chroma.input(&vid);
+    chroma.input("vid");
     chroma.amount = 0.005f;
 
     auto& lines = chain.add<Scanlines>("lines");
-    lines.input(&chroma);
+    lines.input("chroma");
     lines.spacing = 3;
     lines.intensity = 0.2f;
 
     auto& quant = chain.add<Quantize>("quant");
-    quant.input(&lines);
+    quant.input("lines");
     quant.levels = 32;
 
     chain.output("quant");
@@ -710,7 +710,7 @@ void setup(Context& ctx) {
 
     // Cache 64 frames for temporal effects
     auto& cache = chain.add<FrameCache>("cache");
-    cache.input(&video);
+    cache.input("video");
     cache.frameCount = 64;
 
     // Gradient controls which frame is shown where
@@ -720,8 +720,8 @@ void setup(Context& ctx) {
 
     // TimeMachine samples different frames based on gradient
     auto& timeMachine = chain.add<TimeMachine>("slit");
-    timeMachine.cache(&cache);
-    timeMachine.displacementMap(&gradient);
+    timeMachine.cache("cache");
+    timeMachine.displacementMap("map");
     timeMachine.depth = 1.0f;
 
     chain.output("slit");

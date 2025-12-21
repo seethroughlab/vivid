@@ -111,23 +111,23 @@ void setup(Context& ctx) {
 
     // Composite layers: bg + shapes + particles
     auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA(&bg);
-    comp1.inputB(&centerShape);
+    comp1.inputA("bg");
+    comp1.inputB("centerShape");
     comp1.mode(BlendMode::Add);
 
     auto& comp2 = chain.add<Composite>("comp2");
-    comp2.inputA(&comp1);
-    comp2.inputB(&ringShape);
+    comp2.inputA("comp1");
+    comp2.inputB("ringShape");
     comp2.mode(BlendMode::Add);
 
     auto& comp3 = chain.add<Composite>("comp3");
-    comp3.inputA(&comp2);
-    comp3.inputB(&particles);
+    comp3.inputA("comp2");
+    comp3.inputB("particles");
     comp3.mode(BlendMode::Add);
 
     // Feedback for trailing effect
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input(&comp3);
+    feedback.input("comp3");
     feedback.decay = 0.92f;
     feedback.mix = 0.3f;
     feedback.zoom = 1.01f;
@@ -135,19 +135,19 @@ void setup(Context& ctx) {
 
     // Mirror for kaleidoscope
     auto& mirror = chain.add<Mirror>("mirror");
-    mirror.input(&feedback);
+    mirror.input("feedback");
     mirror.segments = 6;
 
     // Bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&mirror);
+    bloom.input("mirror");
     bloom.threshold = 0.4f;
     bloom.intensity = 0.8f;
     bloom.radius = 15.0f;
 
     // Color grading
     auto& hsv = chain.add<HSV>("hsv");
-    hsv.input(&bloom);
+    hsv.input("bloom");
     hsv.saturation = 1.2f;
     hsv.value = 1.1f;
 

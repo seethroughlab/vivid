@@ -61,7 +61,7 @@ void setup(Context& ctx) {
          .loop(true);
 
     // Subtle color adjustment
-    hsv.input(&video)
+    hsv.input("video")
        .saturation(1.1f)
        .value(1.0f);
 

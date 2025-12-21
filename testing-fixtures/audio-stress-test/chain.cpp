@@ -160,7 +160,7 @@ void setup(Context& ctx) {
     noise.scale = 4.0f;
 
     auto& flash = chain.add<Flash>("flash");
-    flash.input(&noise);
+    flash.input("noise");
     flash.decay = 0.9f;
     flash.color.set(0.2f, 0.8f, 0.4f);
 

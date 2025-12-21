@@ -81,7 +81,7 @@ void setup(Context& ctx) {
 
     // Create Render3D with initial shading mode
     auto& renderer = chain.add<Render3D>("render3d");
-    renderer.input(&scene)
+    renderer.input("scene")
             .camera(camera)
             .shadingMode(ShadingMode::Flat)
             .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))

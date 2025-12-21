@@ -49,18 +49,18 @@ void setup(Context& ctx) {
 
     // Compositing
     auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA(&bg);
-    comp1.inputB(&ring);
+    comp1.inputA("bg");
+    comp1.inputB("ring");
     comp1.mode(BlendMode::Add);
 
     auto& comp2 = chain.add<Composite>("comp2");
-    comp2.inputA(&comp1);
-    comp2.inputB(&shape);
+    comp2.inputA("comp1");
+    comp2.inputB("shape");
     comp2.mode(BlendMode::Add);
 
     // Bloom
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&comp2);
+    bloom.input("comp2");
     bloom.threshold = 0.5f;
     bloom.intensity = 0.8f;
 

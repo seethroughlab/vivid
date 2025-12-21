@@ -66,9 +66,6 @@ public:
     }
     ~Feedback() override;
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{

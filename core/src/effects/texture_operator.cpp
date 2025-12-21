@@ -3,6 +3,7 @@
 #include <vivid/effects/texture_operator.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>
+#include <iostream>
 
 namespace vivid::effects {
 
@@ -12,6 +13,10 @@ TextureOperator::~TextureOperator() {
 
 WGPUTextureView TextureOperator::inputView(int index) const {
     Operator* input = getInput(index);
+
+    // If no pointer but we have a name, try to resolve it
+    // Note: Resolution requires non-const access, so we defer to process()
+    // This const version just returns what we have
     if (!input) return nullptr;
 
     // Any operator with OutputKind::Texture has an outputView()
@@ -19,6 +24,27 @@ WGPUTextureView TextureOperator::inputView(int index) const {
         return input->outputView();
     }
     return nullptr;
+}
+
+void TextureOperator::resolveInputs(Chain& chain) {
+    for (size_t i = 0; i < inputNameCount(); ++i) {
+        const std::string& name = getInputName(static_cast<int>(i));
+        if (name.empty()) continue;
+
+        // Skip if already resolved
+        if (getInput(static_cast<int>(i))) continue;
+
+        Operator* op = chain.getByName(name);
+        if (op && op->outputKind() == OutputKind::Texture) {
+            setInput(static_cast<int>(i), op);
+        } else if (!op) {
+            std::cerr << "[" << this->name() << "] Input '" << name
+                      << "' not found in chain" << std::endl;
+        } else {
+            std::cerr << "[" << this->name() << "] Input '" << name
+                      << "' is not a texture operator" << std::endl;
+        }
+    }
 }
 
 void TextureOperator::createOutput(Context& ctx) {

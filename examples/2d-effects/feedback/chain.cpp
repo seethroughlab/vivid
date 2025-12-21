@@ -23,7 +23,7 @@ void setup(Context& ctx) {
     noise.octaves = 2;
 
     // Configure feedback - trails with slight zoom and rotation
-    feedback.input(&noise);
+    feedback.input("noise");
     feedback.decay = 0.92f;       // 8% decay per frame - long trails
     feedback.mix = 0.3f;          // 30% new input, 70% feedback
     feedback.zoom = 1.002f;       // Slight zoom out for spiral effect
@@ -37,8 +37,8 @@ void setup(Context& ctx) {
     ramp.brightness = 1.0f;
 
     // Multiply feedback trails with color ramp
-    comp.inputA(&feedback);
-    comp.inputB(&ramp);
+    comp.inputA("feedback");
+    comp.inputB("ramp");
     comp.mode(BlendMode::Multiply);
 
     chain.output("comp");

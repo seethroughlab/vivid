@@ -71,9 +71,6 @@ public:
         registerParam(vertical);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     ScanlinesUniforms getUniforms() const {
         return {spacing, vertical ? 1 : 0, thickness, intensity, static_cast<float>(m_height), {0, 0, 0}};

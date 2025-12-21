@@ -18,12 +18,12 @@ void setup(Context& ctx) {
 
     // FFT analysis
     auto& fft = chain.add<FFT>("fft");
-    fft.input(&mic);
+    fft.input("mic");
     fft.smoothing = 0.8f;
 
     // Beat detection
     auto& beat = chain.add<BeatDetect>("beat");
-    beat.input(&mic);
+    beat.input("mic");
 
     // Noise generator driven by audio
     auto& noise = chain.add<Noise>("noise");
@@ -33,7 +33,7 @@ void setup(Context& ctx) {
 
     // Feedback for trails
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input(&noise);
+    feedback.input("noise");
     feedback.decay = 0.85f;
     feedback.mix = 0.4f;
 
@@ -44,8 +44,8 @@ void setup(Context& ctx) {
 
     // Combine
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&feedback);
-    comp.inputB(&ramp);
+    comp.inputA("feedback");
+    comp.inputB("ramp");
     comp.mode(BlendMode::Screen);
 
     chain.output("comp");

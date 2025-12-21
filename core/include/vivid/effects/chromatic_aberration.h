@@ -66,9 +66,6 @@ public:
         registerParam(radial);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     ChromaticAberrationUniforms getUniforms() const {
         return {amount, angle, radial ? 1 : 0, 0.0f};

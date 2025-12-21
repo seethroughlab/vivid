@@ -55,9 +55,6 @@ public:
     }
     ~FrameCache() override;
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get the 2D array texture view for temporal sampling
     WGPUTextureView cacheView() const { return m_cacheView; }
 

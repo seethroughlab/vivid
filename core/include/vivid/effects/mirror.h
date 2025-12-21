@@ -79,9 +79,6 @@ public:
         registerParam(center);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Set mirror mode (enum, not a Param)
     void mode(MirrorMode m) {
         if (m_mode != m) { m_mode = m; markDirty(); }

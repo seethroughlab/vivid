@@ -326,6 +326,35 @@ public:
      */
     size_t inputCount() const { return m_inputs.size(); }
 
+    /**
+     * @brief Set input by name (resolved at init time)
+     * @param index Input slot index
+     * @param name Name of operator to connect
+     */
+    void setInputByName(int index, const std::string& name) {
+        if (index >= static_cast<int>(m_inputNames.size())) {
+            m_inputNames.resize(index + 1);
+        }
+        m_inputNames[index] = name;
+    }
+
+    /**
+     * @brief Get input name at index
+     * @param index Input slot index
+     * @return Name of connected operator, or empty string if none
+     */
+    const std::string& getInputName(int index) const {
+        static const std::string empty;
+        return (index < static_cast<int>(m_inputNames.size()))
+            ? m_inputNames[index] : empty;
+    }
+
+    /**
+     * @brief Get number of named inputs
+     * @return Count of input names
+     */
+    size_t inputNameCount() const { return m_inputNames.size(); }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Bypass
@@ -441,8 +470,9 @@ protected:
      */
     void resetInit() { m_initialized = false; }
 
-    std::vector<Operator*> m_inputs; ///< Connected input operators
-    bool m_registered = false;       ///< Whether already registered for visualization
+    std::vector<Operator*> m_inputs;      ///< Connected input operators (resolved pointers)
+    std::vector<std::string> m_inputNames; ///< Input names for deferred resolution
+    bool m_registered = false;            ///< Whether already registered for visualization
     bool m_bypassed = false;         ///< Whether operator is bypassed (pass-through)
     bool m_initialized = false;      ///< Whether init() has completed
 

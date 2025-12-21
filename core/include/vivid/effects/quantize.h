@@ -57,9 +57,6 @@ public:
         registerParam(levels);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     QuantizeUniforms getUniforms() const {
         return {levels, {0, 0, 0}};

@@ -53,16 +53,16 @@ void setup(Context& ctx) {
 
     // Color modulated by remapped LFO
     auto& noiseColor = chain.add<HSV>("noise_color");
-    noiseColor.input(&noise);
+    noiseColor.input("noise");
     noiseColor.saturation = 0.8f;
 
     // Blur amount controlled by absolute LFO
     auto& blur = chain.add<Blur>("blur");
-    blur.input(&noiseColor);
+    blur.input("noiseColor");
 
     // Brightness
     auto& brightness = chain.add<Brightness>("brightness");
-    brightness.input(&blur);
+    brightness.input("blur");
     brightness.brightness = 0.1f;
     brightness.contrast = 1.2f;
 
@@ -74,7 +74,7 @@ void setup(Context& ctx) {
 
     // Final composite
     auto& final = chain.add<Composite>("final");
-    final.input(0, &brightness);
+    final.input(0, "brightness");
     final.input(1, shape);
     final.mode(BlendMode::Add);
 

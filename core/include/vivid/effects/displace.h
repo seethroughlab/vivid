@@ -62,10 +62,10 @@ public:
     ~Displace() override;
 
     /// @brief Set source texture to distort
-    void source(TextureOperator* op) { setInput(0, op); }
+    void source(const std::string& name) { setInputByName(0, name); }
 
     /// @brief Set displacement map texture (R=X, G=Y)
-    void map(TextureOperator* op) { setInput(1, op); }
+    void map(const std::string& name) { setInputByName(1, name); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

@@ -58,8 +58,8 @@ public:
     }
     ~Switch() override;
 
-    /// @brief Set input at index
-    void input(int idx, TextureOperator* op) { setInput(idx, op); }
+    /// @brief Set input at index by name
+    void input(int idx, const std::string& name) { setInputByName(idx, name); }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface

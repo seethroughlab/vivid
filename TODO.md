@@ -244,16 +244,4 @@
 [ ] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle. Please add examples of these toggles to a few of the examples. 
 [ ] How can we make an example the demonstrates frustum culling in a way that is easy to see?
 [ ] I'd like to see an example of shadows (point, directional, and spot) with more complicate models - either boolean geometry or loaded GLTF models.
-[ ] Try testing-fixtures/audio-stress-test/ - runs at 180 BPM with:
-  - 4 drum voices (Kick, Snare, HiHat, Clap)
-  - Polyphonic synth with arpeggio
-  - Effects chain (Delay, Reverb, Limiter)
-  - Real-time parameter modulation
-
-  What to Listen For
-
-  When running the stress test, verify:
-  - No clicks/pops - would indicate buffer underruns
-  - Consistent tempo - timing drift would indicate thread contention
-  - No dropouts - would indicate processing taking too long
-
+[ ] Now that we've standardized on string name lookup for operator inputs and outputs, ../vivid-vscode should do some kind of type checking for operator inputs

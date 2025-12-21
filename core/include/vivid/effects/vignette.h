@@ -61,9 +61,6 @@ public:
         registerParam(roundness);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     /// @brief Get uniform values for GPU
     VignetteUniforms getUniforms() const {
         return {

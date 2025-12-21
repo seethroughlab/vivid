@@ -120,14 +120,14 @@ void setup(Context& ctx) {
 
     // Sepia-ish color grading
     auto& color = chain.add<HSV>("color");
-    color.input(&video);
+    color.input("video");
     color.hueShift = 0.08f;  // Warm sepia tone
     color.saturation = 0.4f;  // Desaturated
     color.value = 0.9f;
 
     // Film grain overlay
     auto& grain = chain.add<FilmGrain>("grain");
-    grain.input(&color);
+    grain.input("color");
     grain.intensity = 0.2f;
     grain.size = 1.2f;
     grain.speed = 24.0f;  // Film frame rate
@@ -135,14 +135,14 @@ void setup(Context& ctx) {
 
     // Vignette for period look
     auto& vignette = chain.add<Vignette>("vignette");
-    vignette.input(&grain);
+    vignette.input("grain");
     vignette.intensity = 0.7f;
     vignette.softness = 0.8f;
     vignette.roundness = 0.8f;
 
     // Optional CRT effect
     auto& crt = chain.add<CRTEffect>("crt");
-    crt.input(&vignette);
+    crt.input("vignette");
     crt.scanlines = 0.15f;
     crt.curvature = 0.03f;
     crt.vignette = 0.2f;

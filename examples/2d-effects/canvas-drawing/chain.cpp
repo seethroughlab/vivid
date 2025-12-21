@@ -16,7 +16,7 @@ void setup(Context& ctx) {
 
     // Add HSV color cycling effect
     auto& hsv = chain.add<HSV>("hsv");
-    hsv.input(&canvas);
+    hsv.input("canvas");
 
     chain.output("hsv");
 

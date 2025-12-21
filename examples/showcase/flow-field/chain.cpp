@@ -140,10 +140,10 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& particleComp = chain.add<Composite>("particleComp");
-    particleComp.input(0, &flow1)
-                .input(1, &flow2)
-                .input(2, &flow3)
-                .input(3, &plexus)
+    particleComp.input(0, "flow1")
+                .input(1, "flow2")
+                .input(2, "flow3")
+                .input(3, "plexus")
                 .mode(BlendMode::Add);
 
     // =========================================================================
@@ -151,7 +151,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input(&particleComp)
+    feedback.input("particleComp")
         .decay(0.96f)
         .mix(0.4f)
         .zoom(1.001f)
@@ -162,7 +162,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&feedback)
+    bloom.input("feedback")
         .threshold(0.3f)
         .intensity(0.4f)
         .radius(0.01f);

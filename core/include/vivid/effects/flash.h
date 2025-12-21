@@ -67,9 +67,6 @@ public:
         registerParam(mode);
     }
 
-    /// @brief Set input texture
-    void input(TextureOperator* op) { setInput(0, op); }
-
     // --- Triggering ---
 
     /// Trigger a flash (sets intensity to 1.0)

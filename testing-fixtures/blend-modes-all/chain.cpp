@@ -31,8 +31,8 @@ void setup(Context& ctx) {
 
     // Composite with blend mode
     auto& comp = chain.add<Composite>("comp");
-    comp.inputA(&layerA);
-    comp.inputB(&layerB);
+    comp.inputA("layerA");
+    comp.inputB("layerB");
     comp.mode(BlendMode::Over);
 
     chain.output("comp");

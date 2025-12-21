@@ -91,7 +91,7 @@ void setup(Context& ctx) {
     bg_noise.set("scale", 4.0f).set("speed", 0.1f);
 
     auto& bg_color = chain.add<HSV>("bg_color");
-    bg_color.input(&bg_noise);
+    bg_color.input("bg_noise");
     bg_color.hue(0.6f).saturation(0.3f).value(0.2f);
 
     // Pulsing circle based on audio levels

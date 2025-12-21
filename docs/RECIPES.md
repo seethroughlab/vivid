@@ -108,7 +108,7 @@ void setup(Context& ctx) {
 
     // Flash overlay - white strobe
     auto& flash = chain.add<Flash>("flash");
-    flash.input(&noise);
+    flash.input("noise");
     flash.decay = 0.85f;  // Fast decay (0.5-0.995)
     flash.color.set(1.0f, 1.0f, 1.0f);  // White
     flash.mode = 0;  // 0=Additive, 1=Screen, 2=Replace
@@ -179,7 +179,7 @@ void setup(Context& ctx) {
     // Visual
     auto& noise = chain.add<Noise>("noise");
     auto& flash = chain.add<Flash>("flash");
-    flash.input(&noise);
+    flash.input("noise");
 
     auto& particles = chain.add<Particles>("particles");
     particles.emitRate(0.0f);  // Only burst on trigger
@@ -239,7 +239,7 @@ void setup(Context& ctx) {
     // Visual
     auto& noise = chain.add<Noise>("noise");
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&noise);
+    bloom.input("noise");
 
     // === Parameter bindings ===
 
@@ -483,8 +483,8 @@ void setup(Context& ctx) {
 
     // Displace the image
     chain.add<Displace>("displaced")
-        .source(&src)
-        .map(&blocks)
+        .source("src")
+        .map("blocks")
         .strength(0.1f);
 
     // Heavy chromatic aberration
@@ -548,8 +548,8 @@ void setup(Context& ctx) {
 
     // Gentle warping
     chain.add<Displace>("warp")
-        .source(&desat)
-        .map(&warpNoise)
+        .source("desat")
+        .map("warpNoise")
         .strength(0.02f);
 
     // Heavy blur for dreamy softness
@@ -724,7 +724,7 @@ void setup(Context& ctx) {
 
     // Apply effects to the composited result
     auto& blur = chain.add<Blur>("blur");
-    blur.input(&canvas);
+    blur.input("canvas");
     blur.radius = 5.0f;
 
     chain.output("blur");
@@ -837,12 +837,12 @@ void setup(Context& ctx) {
     noise.scale = 4.0f;
 
     auto& kickFlash = chain.add<Flash>("kickFlash");
-    kickFlash.input(&noise);
+    kickFlash.input("noise");
     kickFlash.decay = 0.85f;
     kickFlash.color.set(1.0f, 1.0f, 1.0f);
 
     auto& snareFlash = chain.add<Flash>("snareFlash");
-    snareFlash.input(&kickFlash);
+    snareFlash.input("kickFlash");
     snareFlash.decay = 0.9f;
     snareFlash.color.set(1.0f, 0.5f, 0.2f);
 
@@ -929,7 +929,7 @@ void setup(Context& ctx) {
 
     // Bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&particles);
+    bloom.input("particles");
     bloom.threshold = 0.3f;
     bloom.radius = 15.0f;
 
@@ -1011,11 +1011,11 @@ void setup(Context& ctx) {
     noise.octaves = 4;
 
     auto& hsv = chain.add<HSV>("color");
-    hsv.input(&noise);
+    hsv.input("noise");
     hsv.saturation = 0.8f;
 
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input(&hsv);
+    bloom.input("hsv");
     bloom.threshold = 0.4f;
 
     chain.output("bloom");
