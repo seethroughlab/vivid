@@ -2965,14 +2965,32 @@ void Render3D::process(Context& ctx) {
         }
 
         // Render directional/spot shadow pass
+        // Check shadowAutoUpdate and shadowNeedsUpdate flags to determine if we should render
         if (hasDirectionalOrSpotShadow && dirSpotLight && sceneForShadow && m_shadowManager->hasShadowResources()) {
-            shadowPassRendered = m_shadowManager->renderShadowPass(ctx, encoder, *sceneForShadow, *dirSpotLight);
+            bool shouldUpdate = dirSpotLight->shadowAutoUpdate || dirSpotLight->shadowNeedsUpdate;
+            if (shouldUpdate) {
+                shadowPassRendered = m_shadowManager->renderShadowPass(ctx, encoder, *sceneForShadow, *dirSpotLight);
+                // Clear the manual update flag after rendering
+                dirSpotLight->shadowNeedsUpdate = false;
+            } else {
+                // Shadow map already rendered previously, still enabled for sampling
+                shadowPassRendered = true;
+            }
         }
 
-        // Render point shadow pass (6 separate textures)
+        // Render point shadow pass (6 cube faces to atlas)
+        // Check shadowAutoUpdate and shadowNeedsUpdate flags to determine if we should render
         if (hasPointShadow && pointLight && sceneForShadow && m_shadowManager->hasPointShadowResources()) {
-            pointShadowPassRendered = m_shadowManager->renderPointShadowPass(
-                ctx, encoder, *sceneForShadow, pointLight->position, pointLight->range);
+            bool shouldUpdate = pointLight->shadowAutoUpdate || pointLight->shadowNeedsUpdate;
+            if (shouldUpdate) {
+                pointShadowPassRendered = m_shadowManager->renderPointShadowPass(
+                    ctx, encoder, *sceneForShadow, pointLight->position, pointLight->range);
+                // Clear the manual update flag after rendering
+                pointLight->shadowNeedsUpdate = false;
+            } else {
+                // Shadow map already rendered previously, still enabled for sampling
+                pointShadowPassRendered = true;
+            }
         }
 
         // Update shadow sample uniforms with light-space matrix and point light data

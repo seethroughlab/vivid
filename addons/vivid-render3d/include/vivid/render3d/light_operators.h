@@ -47,6 +47,8 @@ struct LightData {
     // Shadow parameters
     bool castShadow = false;                     ///< Whether this light casts shadows
     float shadowBias = 0.001f;                   ///< Depth bias to prevent shadow acne
+    bool shadowAutoUpdate = true;                ///< Automatically update shadow map every frame
+    mutable bool shadowNeedsUpdate = true;       ///< Flag to trigger shadow map update (auto-cleared)
 
     // Debug visualization
     bool drawDebug = false;                      ///< Draw wireframe visualization of light
@@ -156,6 +158,18 @@ public:
             m_light.shadowBias = bias;
             markDirty();
         }
+    }
+
+    /// Enable/disable automatic shadow map updates each frame
+    /// Set to false for static lights to improve performance
+    void shadowAutoUpdate(bool enabled) {
+        m_light.shadowAutoUpdate = enabled;
+    }
+
+    /// Manually trigger a shadow map update (for static lights)
+    /// The flag is automatically cleared after the update
+    void shadowNeedsUpdate() {
+        m_light.shadowNeedsUpdate = true;
     }
 
     /// Enable/disable debug wireframe visualization
@@ -275,6 +289,18 @@ public:
             m_light.shadowBias = bias;
             markDirty();
         }
+    }
+
+    /// Enable/disable automatic shadow map updates each frame
+    /// Set to false for static lights to improve performance
+    void shadowAutoUpdate(bool enabled) {
+        m_light.shadowAutoUpdate = enabled;
+    }
+
+    /// Manually trigger a shadow map update (for static lights)
+    /// The flag is automatically cleared after the update
+    void shadowNeedsUpdate() {
+        m_light.shadowNeedsUpdate = true;
     }
 
     /// Enable/disable debug wireframe visualization
@@ -412,6 +438,18 @@ public:
             m_light.shadowBias = bias;
             markDirty();
         }
+    }
+
+    /// Enable/disable automatic shadow map updates each frame
+    /// Set to false for static lights to improve performance
+    void shadowAutoUpdate(bool enabled) {
+        m_light.shadowAutoUpdate = enabled;
+    }
+
+    /// Manually trigger a shadow map update (for static lights)
+    /// The flag is automatically cleared after the update
+    void shadowNeedsUpdate() {
+        m_light.shadowNeedsUpdate = true;
     }
 
     /// Enable/disable debug wireframe visualization
