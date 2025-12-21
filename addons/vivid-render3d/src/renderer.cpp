@@ -160,6 +160,22 @@ fn getSpotFactor(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f
     return saturate((cosAngle - outerAngle) / max(innerAngle - outerAngle, EPSILON));
 }
 
+// ============================================================================
+// PCF (Percentage Closer Filtering) helpers for soft shadows
+// ============================================================================
+
+// Interleaved Gradient Noise - per-pixel rotation to break banding artifacts
+fn interleavedGradientNoise(pos: vec2f) -> f32 {
+    return fract(52.9829189 * fract(dot(pos, vec2f(0.06711056, 0.00583715))));
+}
+
+// Vogel disk - golden angle spiral for well-distributed samples
+fn vogelDiskSample(idx: i32, count: i32, phi: f32) -> vec2f {
+    let r = sqrt(f32(idx) + 0.5) / sqrt(f32(count));
+    let theta = f32(idx) * 2.39996323 + phi;  // golden angle ≈ 2.4 radians
+    return r * vec2f(cos(theta), sin(theta));
+}
+
 // Sample shadow map and return shadow factor (1.0 = lit, 0.0 = in shadow)
 // Uses PCF (Percentage Closer Filtering) for soft shadow edges
 fn sampleShadow(worldPos: vec3f) -> f32 {
@@ -189,13 +205,21 @@ fn sampleShadow(worldPos: vec3f) -> f32 {
     // Apply bias - subtract from depth so fragments at same depth as shadow caster pass
     let currentDepth = texCoordZ - shadow.shadowBias;
 
-    // Simple single sample for debugging
-    let shadowResult = textureSampleCompare(
-        shadowMap, shadowSampler,
-        vec2f(texCoordX, texCoordY), currentDepth
-    );
+    // PCF with 5-sample Vogel disk
+    let texelSize = 1.0 / shadow.shadowMapSize;
+    let phi = interleavedGradientNoise(vec2f(texCoordX, texCoordY) * shadow.shadowMapSize) * 6.28318;
+    let texCoord = vec2f(texCoordX, texCoordY);
 
-    return shadowResult;
+    var shadowSum = 0.0;
+    for (var i = 0; i < 5; i++) {
+        let offset = vogelDiskSample(i, 5, phi) * texelSize * 2.0;
+        shadowSum += textureSampleCompare(
+            shadowMap, shadowSampler,
+            texCoord + offset, currentDepth
+        );
+    }
+
+    return shadowSum * 0.2;  // Average of 5 samples
 }
 
 // Sample point light shadow from 6 separate 2D textures (workaround for wgpu cube map bug)
@@ -270,30 +294,40 @@ fn samplePointShadow(worldPos: vec3f) -> f32 {
     let texV = 0.5 - (v / ma) * 0.5;  // Flip V for WebGPU coordinate system
     let texCoord = vec2f(texU, texV);
 
-    // Sample the appropriate face texture
-    var sampledDepth: f32;
-    switch (faceIndex) {
-        case 0: { sampledDepth = textureSample(pointShadowFace0, pointShadowSampler, texCoord).r; }
-        case 1: { sampledDepth = textureSample(pointShadowFace1, pointShadowSampler, texCoord).r; }
-        case 2: { sampledDepth = textureSample(pointShadowFace2, pointShadowSampler, texCoord).r; }
-        case 3: { sampledDepth = textureSample(pointShadowFace3, pointShadowSampler, texCoord).r; }
-        case 4: { sampledDepth = textureSample(pointShadowFace4, pointShadowSampler, texCoord).r; }
-        case 5: { sampledDepth = textureSample(pointShadowFace5, pointShadowSampler, texCoord).r; }
-        default: { sampledDepth = 1.0; }
-    }
-
-    // Compare: fragment is in shadow if its distance > stored depth
     // Normalize fragment distance to [0,1] range (same as what we stored)
     let normalizedFragDist = fragDist / shadow.pointLightPosAndRange.w;
 
     // Apply bias in normalized space
     let biasedFragDist = normalizedFragDist - shadow.shadowBias;
 
-    // Shadow test: if fragment is farther than stored depth, it's in shadow
-    if (biasedFragDist > sampledDepth) {
-        return 0.0;  // In shadow
+    // PCF with 5-sample Vogel disk
+    let texelSize = 1.0 / shadow.shadowMapSize;
+    let phi = interleavedGradientNoise(texCoord * shadow.shadowMapSize) * 6.28318;
+
+    var shadowSum = 0.0;
+    for (var i = 0; i < 5; i++) {
+        let offset = vogelDiskSample(i, 5, phi) * texelSize * 2.0;
+        let sampleCoord = texCoord + offset;
+
+        // Sample the appropriate face texture
+        var sampledDepth: f32;
+        switch (faceIndex) {
+            case 0: { sampledDepth = textureSample(pointShadowFace0, pointShadowSampler, sampleCoord).r; }
+            case 1: { sampledDepth = textureSample(pointShadowFace1, pointShadowSampler, sampleCoord).r; }
+            case 2: { sampledDepth = textureSample(pointShadowFace2, pointShadowSampler, sampleCoord).r; }
+            case 3: { sampledDepth = textureSample(pointShadowFace3, pointShadowSampler, sampleCoord).r; }
+            case 4: { sampledDepth = textureSample(pointShadowFace4, pointShadowSampler, sampleCoord).r; }
+            case 5: { sampledDepth = textureSample(pointShadowFace5, pointShadowSampler, sampleCoord).r; }
+            default: { sampledDepth = 1.0; }
+        }
+
+        // Shadow test: if fragment is closer than stored depth, it's lit
+        if (biasedFragDist <= sampledDepth) {
+            shadowSum += 1.0;
+        }
     }
-    return 1.0;  // Lit
+
+    return shadowSum * 0.2;  // Average of 5 samples
 }
 
 // Debug function to get shadow info as vec3 (for visualization)
