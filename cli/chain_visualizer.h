@@ -3,7 +3,7 @@
 // Vivid Chain Visualizer
 // ImNodes-based node editor for visualizing operator chains
 
-#include "imgui_integration.h"
+#include "imgui/imgui_integration.h"
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/video_exporter.h>

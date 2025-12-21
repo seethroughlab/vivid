@@ -2,7 +2,7 @@
 // Provides autoreleasepool wrapper for Metal/WebGPU frame loop
 
 #import <Foundation/Foundation.h>
-#include "platform_macos.h"
+#include <vivid/platform_macos.h>
 
 namespace vivid {
 namespace platform {

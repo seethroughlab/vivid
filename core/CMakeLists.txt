@@ -92,6 +92,11 @@ set(VIVID_CORE_LIB_SOURCES
     src/audio_operator.cpp
     src/audio_output.cpp
     src/audio_graph.cpp
+    # Runtime utilities (used by CLI but also useful for library consumers)
+    src/display.cpp
+    src/hot_reload.cpp
+    src/addon_registry.cpp
+    src/addon_manager.cpp
     # ImGui integration (in core so addons can use ImGui for visualization)
     imgui/imgui_integration.cpp
     # vivid-io (image loading)
@@ -143,26 +148,13 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/operator_registrations.cpp
 )
 
-# Vivid runtime sources (executable only)
-set(VIVID_CORE_SOURCES
-    src/main.cpp
-    src/cli.cpp
-    src/display.cpp
-    src/hot_reload.cpp
-    src/addon_registry.cpp
-    src/addon_manager.cpp
-    src/editor_bridge.cpp
-    # Chain visualizer (uses render3d addon, so can't be in vivid-core)
-    imgui/chain_visualizer.cpp
-)
-
-# Platform-specific sources
+# Platform-specific library sources
 if(APPLE)
-    list(APPEND VIVID_CORE_SOURCES src/video_exporter.mm src/platform_macos.mm)
+    list(APPEND VIVID_CORE_LIB_SOURCES src/video_exporter.mm src/platform_macos.mm)
 elseif(WIN32)
-    list(APPEND VIVID_CORE_SOURCES src/video_exporter_win.cpp src/platform_stub.cpp)
+    list(APPEND VIVID_CORE_LIB_SOURCES src/video_exporter_win.cpp src/platform_stub.cpp)
 elseif(UNIX)
-    list(APPEND VIVID_CORE_SOURCES src/video_exporter_linux.cpp src/platform_stub.cpp)
+    list(APPEND VIVID_CORE_LIB_SOURCES src/video_exporter_linux.cpp src/platform_stub.cpp)
 endif()
 
 set(VIVID_CORE_HEADERS
@@ -177,10 +169,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/audio_buffer.h
     include/vivid/audio_operator.h
     include/vivid/audio_output.h
-    include/vivid/editor_bridge.h
-    include/vivid/cli.h
     imgui/imgui_integration.h
-    imgui/chain_visualizer.h
 )
 
 # Core library (shared between executable and addons)
@@ -219,8 +208,7 @@ target_link_libraries(vivid-core PUBLIC
     nlohmann_json::nlohmann_json
 )
 
-# IXWebSocket for EditorBridge
-target_link_libraries(vivid-core PUBLIC ixwebsocket)
+# Note: ixwebsocket moved to cli/ for EditorBridge
 
 # Platform-specific settings for vivid-core
 if(APPLE)
@@ -235,10 +223,16 @@ if(APPLE)
             COMPILE_OPTIONS "-x;objective-c++"
             LANGUAGE CXX
     )
-    # Link against required frameworks for ImGui
+    # Link against required frameworks for ImGui and video export
     target_link_libraries(vivid-core PUBLIC
         "-framework Cocoa"
         "-framework QuartzCore"
+        "-framework IOKit"
+        "-framework CoreVideo"
+        "-framework Metal"
+        "-framework VideoToolbox"
+        "-framework AVFoundation"
+        "-framework CoreMedia"
     )
 elseif(WIN32)
     # Export all symbols to generate import library (.lib)
@@ -268,63 +262,6 @@ if(WIN32)
     )
 endif()
 
-# Main runtime executable
-add_executable(vivid
-    ${VIVID_CORE_SOURCES}
-    ${VIVID_CORE_HEADERS}
-)
-
-target_include_directories(vivid
-    PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_SOURCE_DIR}/addons/vivid-render3d/include
-        ${CMAKE_SOURCE_DIR}/addons/vivid-audio/include
-        ${stb_SOURCE_DIR}
-)
-
-# Pass version from CMake (or CI override)
-target_compile_definitions(vivid PRIVATE
-    VIVID_VERSION="${VIVID_VERSION}"
-)
-
-# Link against core library (includes ImGui), render3d, audio
-# Note: glfw3webgpu is explicitly linked here because main.cpp uses glfwCreateWindowWGPUSurface
-target_link_libraries(vivid
-    PRIVATE
-        vivid-core
-        glfw3webgpu
-        vivid-render3d
-        vivid-audio
-        CLI11::CLI11
-)
-
-# Platform-specific settings
-if(APPLE)
-    # macOS: Link against required frameworks for video export, etc.
-    target_link_libraries(vivid PRIVATE
-        "-framework IOKit"
-        "-framework CoreVideo"
-        "-framework Metal"
-        "-framework VideoToolbox"
-        "-framework AVFoundation"
-        "-framework CoreMedia"
-    )
-elseif(WIN32)
-    # Export symbols for dynamically loaded chain DLLs
-    # ENABLE_EXPORTS generates an import library (vivid.lib) for the executable
-    # WINDOWS_EXPORT_ALL_SYMBOLS exports all symbols automatically
-    set_target_properties(vivid PROPERTIES
-        ENABLE_EXPORTS ON
-        WINDOWS_EXPORT_ALL_SYMBOLS ON
-    )
-elseif(UNIX)
-    # Linux: Link against X11 if needed
-    find_package(X11)
-    if(X11_FOUND)
-        target_link_libraries(vivid PRIVATE ${X11_LIBRARIES})
-    endif()
-endif()
-
 # Suppress warnings in third-party code
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     set_source_files_properties(
@@ -334,24 +271,6 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     )
 endif()
 
-# Copy shaders to build directory
-add_custom_command(TARGET vivid POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/shaders
-        $<TARGET_FILE_DIR:vivid>/shaders
-    COMMENT "Copying shaders..."
-)
-
-# Copy templates to build directory
-add_custom_command(TARGET vivid POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/templates
-        $<TARGET_FILE_DIR:vivid>/templates
-    COMMENT "Copying templates..."
-)
-
-# Install target
-install(TARGETS vivid RUNTIME DESTINATION bin)
-install(DIRECTORY shaders/ DESTINATION share/vivid/shaders)
-
 message(STATUS "[vivid-core] Configured with integrated ImGui/ImNodes")
+
+# Note: The vivid executable is now built in cli/CMakeLists.txt
