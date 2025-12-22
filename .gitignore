@@ -68,3 +68,5 @@ nul
 *-job-logs.txt
 **/snapshot_*.png
 three.js
+std*.txt
+test*.png

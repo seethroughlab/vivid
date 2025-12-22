@@ -58,7 +58,7 @@ void setup(Context& ctx) {
 
     // Blur amount controlled by absolute LFO
     auto& blur = chain.add<Blur>("blur");
-    blur.input("noiseColor");
+    blur.input("noise_color");
 
     // Brightness
     auto& brightness = chain.add<Brightness>("brightness");
@@ -75,7 +75,7 @@ void setup(Context& ctx) {
     // Final composite
     auto& final = chain.add<Composite>("final");
     final.input(0, "brightness");
-    final.input(1, shape);
+    final.input(1, "shape");
     final.mode(BlendMode::Add);
 
     chain.output("final");

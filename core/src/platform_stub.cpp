@@ -1,6 +1,6 @@
 // Platform stubs for non-macOS platforms
 
-#include "platform_macos.h"
+#include <vivid/platform_macos.h>
 
 namespace vivid {
 namespace platform {
