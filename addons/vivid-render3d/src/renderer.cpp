@@ -1554,6 +1554,10 @@ void Render3D::setLightInput(LightOperator* lightOp) {
         if (changed) {
             Operator::setInput(2, lightOp);  // Slot 2 for primary light
             markDirty();
+            // Mark shadow bind group dirty so it rebuilds with correct textures
+            if (m_shadowManager) {
+                m_shadowManager->markShadowBindGroupDirty();
+            }
         }
     }
 }
@@ -2975,7 +2979,7 @@ void Render3D::process(Context& ctx) {
             if (shouldUpdate) {
                 shadowPassRendered = m_shadowManager->renderShadowPass(ctx, encoder, *sceneForShadow, *dirSpotLight);
                 // Clear the manual update flag after rendering
-                dirSpotLight->shadowNeedsUpdate = false;
+                const_cast<LightData*>(dirSpotLight)->shadowNeedsUpdate = false;
             } else {
                 // Shadow map already rendered previously, still enabled for sampling
                 shadowPassRendered = true;

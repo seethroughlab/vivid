@@ -107,6 +107,9 @@ public:
     /// Check if bind group needs rebuild
     bool isShadowBindGroupDirty() const { return m_shadowBindGroupDirty; }
 
+    /// Mark shadow bind group as needing rebuild (call when light type changes)
+    void markShadowBindGroupDirty() { m_shadowBindGroupDirty = true; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Resource State
