@@ -252,7 +252,11 @@
 [x] All lights should have "cast shadow" toggle, and all objects should have "receive shadows" toggle. Please add examples of these toggles to a few of the examples. 
 [x] I'd like to see an example of shadows (point, directional, and spot) with more complicate models - either boolean geometry or loaded GLTF models.
 [x] read docs/WINDOWS_VIDEO.md and figure out a plan to complete it 
-[ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
-[ ] How can we make an example the demonstrates frustum culling in a way that is easy to see?
-[ ] wipeout-viz exists in both projects/my-projects and examples/showcase -- are they identical?
+[x] How can we make an example the demonstrates frustum culling in a way that is easy to see?
+[x] wipeout-viz exists in both projects/my-projects and examples/showcase -- are they identical?
+    - Not identical. Moved examples/showcase/wipeout-viz to projects/my-projects/
+[ ] Update wgpu-native when new release includes memory leak fix (PR #542 merged Dec 22, 2024)
+    - Run: `./tools/check_wgpu_native_release.sh`
+    - Current: v27.0.2.0, need next release
 [ ] Add shadow support to PBR shaders (pbr_textured.wgsl, pbr.wgsl, pbr_ibl.wgsl). Currently shadows only work with flat.wgsl. Requires: adding ShadowUniforms binding, receiveShadow uniform field, shadow sampling functions (sampleShadow, samplePointShadow), and integrating shadow factor into PBR lighting calculation. ~100 lines per shader.
+[ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.

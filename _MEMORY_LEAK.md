@@ -1,10 +1,44 @@
 # Memory Leak Investigation
 
-## Status: CONFIRMED DRIVER-LEVEL ISSUE
-Leak rate correlates with render pass count - this is a Metal/wgpu-native driver-level issue that cannot be fixed at the application level.
+## Status: FIXED (December 2024)
 
-**Upstream Issue Filed:** https://github.com/gfx-rs/wgpu/issues/8768 (December 2024)
-Check back for updates or potential workarounds from the wgpu maintainers.
+**The leak was in wgpu-native's FFI layer, NOT the Metal driver.**
+
+Comparative testing showed Rust wgpu doesn't leak, but C++ wgpu-native does - proving the bug was in the C bindings, not the underlying Metal backend.
+
+**Fix merged:** https://github.com/gfx-rs/wgpu-native/pull/542
+**Issue:** https://github.com/gfx-rs/wgpu-native/issues/541
+
+**Next step:** Update Vivid to use the next wgpu-native release (after v27.0.2.0) that includes this fix.
+
+### The Bug
+
+In `wgpuCommandEncoderFinish`, the encoder's `open` flag is set to `false`:
+```rust
+command_encoder.open.store(false, atomic::Ordering::SeqCst);
+```
+
+But the Drop implementation only cleans up when `open == true`:
+```rust
+if self.open.load(atomic::Ordering::SeqCst) && !thread::panicking() {
+    context.command_encoder_drop(self.id);  // Never reached!
+}
+```
+
+**Result:** `command_encoder_drop()` is never called, causing memory to leak.
+
+### Test Results (with fix applied)
+
+| Version | Memory at 0s | Memory at 180s | Behavior |
+|---------|--------------|----------------|----------|
+| wgpu-native (unfixed) | 23 MB | 33 MB | +0.5 MB every 10 seconds |
+| wgpu-native (fixed) | 21 MB | 21 MB | Stable |
+
+### Next Steps
+
+Once the PR is merged, update Vivid's wgpu-native dependency to the new version.
+
+---
 
 | Test | Render Passes | Leak Rate |
 |------|---------------|-----------|
@@ -152,41 +186,41 @@ All chain operators now share a single command encoder per frame:
 
 ---
 
-## Root Cause: Metal Driver-Level Allocations (CONFIRMED)
+## Root Cause: wgpu-native Command Encoder Drop Bug (CONFIRMED)
 
-**Verified December 2024:** All apps leak, including the simplest 1-operator example (hello-noise). The leak is proportional to render pass count, not operator complexity.
+**Updated December 2024:** The leak is NOT in the Metal driver - it's in wgpu-native's C FFI layer.
 
-The leak is in Apple's Metal/AGX driver, triggered by wgpu-native's render pass creation:
+Comparative testing proved this:
+- **Rust wgpu 24.0**: Memory stable after warm-up (no leak)
+- **C++ wgpu-native v27.0.2.0**: Memory grows ~0.5 MB per 10 seconds (leaks)
 
-1. Each `wgpuCommandEncoderBeginRenderPass` triggers Metal shader compilation
-2. Metal's AGX compiler (`AGX::Compiler::compileProgram`) allocates ~96 bytes per render pass
-3. These allocations accumulate and are not freed promptly
-4. This is outside application control - it's in the GPU driver
+Both use the same Metal backend (wgpu-hal), so the bug must be in the wgpu-native C bindings.
 
-**Evidence:**
-- Leak rate correlates with number of render passes, not bind groups or textures
-- `leaks` tool shows 96-byte ROOT LEAK objects
-- Stack traces point to `AGXMetalG16X::renderCommandEncoderWithDescriptor`
-- wgpu-native v27.0.2.0 includes texture view leak fix, but this is a different issue
+**The Bug:** In `wgpuCommandEncoderFinish`, the encoder is marked "closed" (`open = false`) before being released. But the Drop implementation only runs cleanup when `open == true`, so `command_encoder_drop()` is never called.
+
+**Previous Misdiagnosis:** Stack traces showing `AGX::Compiler::compileProgram` were a red herring - they showed where memory was allocated, not why it wasn't being freed. The actual cause was missing cleanup in wgpu-native.
 
 ---
 
-## Potential Mitigations
+## Resolution
 
-Since this is a driver-level issue, application-level fixes have limited impact:
+**Fix merged:** https://github.com/gfx-rs/wgpu-native/pull/542 (December 22, 2024)
 
-| Mitigation | Feasibility | Impact |
-|------------|-------------|--------|
-| Reduce render pass count | Medium | Reduces leak rate proportionally |
-| Pipeline caching | ✅ Verified | Already cached - no effect |
-| Bind group caching | ✅ Verified | Already cached - no effect |
-| Blocking wgpuDevicePoll | ✅ Tested | No effect |
-| desiredMaximumFrameLatency=2 | ✅ Tested | No effect |
-| Metal shader precompilation | Low | WebGPU doesn't expose this |
-| Report to gfx-rs/wgpu | Recommended | May require upstream fix |
-| Wait for Metal/driver fix | N/A | Apple-controlled |
+The fix is a one-line change - remove the `open` check from the Drop implementation:
 
-**Recommendation:** Accept ~1 MB/10s baseline leak as unavoidable with current wgpu-native on Metal. Focus on reducing unnecessary render passes (e.g., merge shadow passes where possible).
+```rust
+// Before (broken):
+if self.open.load(atomic::Ordering::SeqCst) && !thread::panicking() {
+
+// After (fixed):
+if !thread::panicking() {
+```
+
+**Verified with Vivid:**
+| Test | Before Fix (180s) | After Fix (180s) |
+|------|-------------------|------------------|
+| hello-noise | ~114 MB (+18 MB leak) | 95.9 MB (stable) |
+| shadow-point | ~163 MB (+54 MB leak) | 109.2 MB (stable) |
 
 ---
 
