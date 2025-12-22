@@ -258,5 +258,5 @@
 [ ] Update wgpu-native when new release includes memory leak fix (PR #542 merged Dec 22, 2024)
     - Run: `./tools/check_wgpu_native_release.sh`
     - Current: v27.0.2.0, need next release
-[ ] Add shadow support to PBR shaders (pbr_textured.wgsl, pbr.wgsl, pbr_ibl.wgsl). Currently shadows only work with flat.wgsl. Requires: adding ShadowUniforms binding, receiveShadow uniform field, shadow sampling functions (sampleShadow, samplePointShadow), and integrating shadow factor into PBR lighting calculation. ~100 lines per shader.
+[ ] Add shadow support to PBR shaders (pbr_textured.wgsl, pbr.wgsl, pbr_ibl.wgsl). Currently shadows only work with flat.wgsl. Requires: adding ShadowUniforms binding, receiveShadow uniform field, shadow sampling functions (sampleShadow, samplePointShadow), and integrating shadow factor into PBR lighting calculation. ~100 lines per shader. There's a docuemnt at _PBR_SHADOWS.md with more instructions. 
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
