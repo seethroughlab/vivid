@@ -1,3 +1,9 @@
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include <vivid/serial/serial_out.h>
 #include <vivid/operator_registry.h>
 #include <imgui.h>

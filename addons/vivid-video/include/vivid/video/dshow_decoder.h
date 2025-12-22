@@ -77,6 +77,8 @@ public:
 private:
     void createTexture();
     void resetPlayback();
+    void setupAudioPipeline();
+    void processAudioSamples();
 
     struct Impl;
     std::unique_ptr<Impl> impl_;

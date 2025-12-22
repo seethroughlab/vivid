@@ -1,3 +1,9 @@
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include <vivid/network/web_server.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>

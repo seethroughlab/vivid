@@ -123,14 +123,26 @@ private:
     WGPUTexture texture_ = nullptr;
     WGPUTextureView textureView_ = nullptr;
 
+    // NV12 compute conversion resources
+    bool useNV12Compute_ = false;
+    WGPUTexture yTexture_ = nullptr;
+    WGPUTexture uvTexture_ = nullptr;
+    WGPUTexture outputTexture_ = nullptr;  // Storage texture for compute output
+    WGPUComputePipeline nv12Pipeline_ = nullptr;
+    WGPUBindGroup nv12BindGroup_ = nullptr;
+    WGPUBindGroupLayout nv12BindGroupLayout_ = nullptr;
+
     // Audio player
     std::unique_ptr<AudioPlayer> audioPlayer_;
 
     void createTexture();
+    void createNV12Pipeline();
+    void cleanupNV12Resources();
     void resetReader();
     void prebufferAudio();
     void readAudioSamplesToBuffer();
     void decodeVideoSample(void* sample);  // IMFSample*
+    void decodeNV12Sample(void* sample);   // IMFSample* for NV12 format
 };
 
 } // namespace vivid::video

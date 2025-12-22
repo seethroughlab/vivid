@@ -7,6 +7,7 @@
 #include <vivid/video/dshow_decoder.h>
 #include <vivid/video/audio_player.h>
 #include <vivid/context.h>
+#include "pixel_convert.h"
 #include <iostream>
 #include <chrono>
 #include <algorithm>
@@ -68,7 +69,7 @@ static bool checkHR(HRESULT hr, const char* operation) {
     return true;
 }
 
-// Sample grabber callback for receiving frames
+// Sample grabber callback for receiving video frames
 class SampleGrabberCallback : public ISampleGrabberCB {
 public:
     SampleGrabberCallback() : refCount_(1) {}
@@ -121,16 +122,84 @@ private:
     bool hasNewFrame_ = false;
 };
 
+// Sample grabber callback for receiving audio samples
+class AudioSampleCallback : public ISampleGrabberCB {
+public:
+    AudioSampleCallback() : refCount_(1) {}
+
+    // IUnknown
+    STDMETHODIMP QueryInterface(REFIID riid, void** ppv) {
+        if (riid == IID_IUnknown || riid == IID_ISampleGrabberCB) {
+            *ppv = static_cast<ISampleGrabberCB*>(this);
+            AddRef();
+            return S_OK;
+        }
+        *ppv = nullptr;
+        return E_NOINTERFACE;
+    }
+
+    STDMETHODIMP_(ULONG) AddRef() { return InterlockedIncrement(&refCount_); }
+    STDMETHODIMP_(ULONG) Release() {
+        ULONG count = InterlockedDecrement(&refCount_);
+        if (count == 0) delete this;
+        return count;
+    }
+
+    // ISampleGrabberCB
+    STDMETHODIMP SampleCB(double time, IMediaSample* pSample) { return S_OK; }
+
+    STDMETHODIMP BufferCB(double time, BYTE* pBuffer, long bufferLen) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (pBuffer && bufferLen > 0) {
+            // Append to audio buffer (accumulate samples between updates)
+            size_t prevSize = audioBuffer_.size();
+            audioBuffer_.resize(prevSize + bufferLen);
+            std::memcpy(audioBuffer_.data() + prevSize, pBuffer, bufferLen);
+        }
+        return S_OK;
+    }
+
+    // Get accumulated audio samples and clear buffer
+    bool getAudioSamples(std::vector<uint8_t>& buffer) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (audioBuffer_.empty()) return false;
+        buffer.swap(audioBuffer_);
+        audioBuffer_.clear();
+        return true;
+    }
+
+    void clear() {
+        std::lock_guard<std::mutex> lock(mutex_);
+        audioBuffer_.clear();
+    }
+
+private:
+    LONG refCount_;
+    std::mutex mutex_;
+    std::vector<uint8_t> audioBuffer_;
+};
+
 struct DShowDecoder::Impl {
     IGraphBuilder* graphBuilder = nullptr;
     IMediaControl* mediaControl = nullptr;
     IMediaSeeking* mediaSeeking = nullptr;
     IMediaEventEx* mediaEvent = nullptr;
     IBaseFilter* sourceFilter = nullptr;
+
+    // Video sample grabber
     IBaseFilter* grabberFilter = nullptr;
     IBaseFilter* nullRenderer = nullptr;
     ISampleGrabber* sampleGrabber = nullptr;
     SampleGrabberCallback* callback = nullptr;
+
+    // Audio sample grabber
+    IBaseFilter* audioGrabberFilter = nullptr;
+    IBaseFilter* audioNullRenderer = nullptr;
+    ISampleGrabber* audioSampleGrabber = nullptr;
+    AudioSampleCallback* audioCallback = nullptr;
+    int audioBitsPerSample = 16;
+    int audioChannels = 2;
+    int audioSampleRate = 48000;
 
     std::chrono::steady_clock::time_point lastUpdateTime;
     bool bottomUp = true;  // DIB format is usually bottom-up
@@ -362,11 +431,15 @@ bool DShowDecoder::open(Context& ctx, const std::string& path, bool loop) {
         duration_ = duration / 10000000.0f;
     }
 
-    // Set up callback
+    // Set up video callback
     impl_->callback = new SampleGrabberCallback();
     impl_->sampleGrabber->SetBufferSamples(FALSE);
     impl_->sampleGrabber->SetOneShot(FALSE);
     impl_->sampleGrabber->SetCallback(impl_->callback, 1);  // BufferCB
+
+    // Set up audio pipeline
+    hasAudio_ = false;
+    setupAudioPipeline();
 
     // Create texture
     createTexture();
@@ -380,16 +453,25 @@ bool DShowDecoder::open(Context& ctx, const std::string& path, bool loop) {
     std::cout << "[DShowDecoder] Opened " << path
               << " (" << width_ << "x" << height_
               << ", " << frameRate_ << "fps"
-              << ", " << duration_ << "s)\n";
+              << ", " << duration_ << "s"
+              << (hasAudio_ ? ", with audio" : "") << ")\n";
 
     return true;
 }
 
 void DShowDecoder::close() {
+    // Stop audio player first
+    if (audioPlayer_) {
+        audioPlayer_->pause();
+        audioPlayer_->shutdown();
+        audioPlayer_.reset();
+    }
+
     if (impl_->mediaControl) {
         impl_->mediaControl->Stop();
     }
 
+    // Clean up video sample grabber
     if (impl_->sampleGrabber) {
         impl_->sampleGrabber->SetCallback(nullptr, 0);
     }
@@ -412,6 +494,31 @@ void DShowDecoder::close() {
     if (impl_->grabberFilter) {
         impl_->grabberFilter->Release();
         impl_->grabberFilter = nullptr;
+    }
+
+    // Clean up audio sample grabber
+    if (impl_->audioSampleGrabber) {
+        impl_->audioSampleGrabber->SetCallback(nullptr, 0);
+    }
+
+    if (impl_->audioCallback) {
+        impl_->audioCallback->Release();
+        impl_->audioCallback = nullptr;
+    }
+
+    if (impl_->audioNullRenderer) {
+        impl_->audioNullRenderer->Release();
+        impl_->audioNullRenderer = nullptr;
+    }
+
+    if (impl_->audioSampleGrabber) {
+        impl_->audioSampleGrabber->Release();
+        impl_->audioSampleGrabber = nullptr;
+    }
+
+    if (impl_->audioGrabberFilter) {
+        impl_->audioGrabberFilter->Release();
+        impl_->audioGrabberFilter = nullptr;
     }
 
     if (impl_->sourceFilter) {
@@ -438,6 +545,8 @@ void DShowDecoder::close() {
         impl_->graphBuilder->Release();
         impl_->graphBuilder = nullptr;
     }
+
+    hasAudio_ = false;
 
     if (textureView_) {
         wgpuTextureViewRelease(textureView_);
@@ -501,10 +610,222 @@ void DShowDecoder::resetPlayback() {
                                        nullptr, AM_SEEKING_NoPositioning);
     currentTime_ = 0.0f;
     isFinished_ = false;
+
+    // Flush audio buffer on seek
+    if (audioPlayer_) {
+        audioPlayer_->flush();
+    }
+    if (impl_->audioCallback) {
+        impl_->audioCallback->clear();
+    }
+}
+
+void DShowDecoder::setupAudioPipeline() {
+    // Try to find and connect audio stream
+    HRESULT hr;
+
+    // Create audio sample grabber filter
+    hr = CoCreateInstance(CLSID_SampleGrabber, nullptr, CLSCTX_INPROC_SERVER,
+                          IID_IBaseFilter, (void**)&impl_->audioGrabberFilter);
+    if (FAILED(hr)) return;
+
+    hr = impl_->graphBuilder->AddFilter(impl_->audioGrabberFilter, L"Audio Sample Grabber");
+    if (FAILED(hr)) {
+        impl_->audioGrabberFilter->Release();
+        impl_->audioGrabberFilter = nullptr;
+        return;
+    }
+
+    hr = impl_->audioGrabberFilter->QueryInterface(IID_ISampleGrabber, (void**)&impl_->audioSampleGrabber);
+    if (FAILED(hr)) {
+        impl_->graphBuilder->RemoveFilter(impl_->audioGrabberFilter);
+        impl_->audioGrabberFilter->Release();
+        impl_->audioGrabberFilter = nullptr;
+        return;
+    }
+
+    // Configure for PCM audio
+    AM_MEDIA_TYPE audioMT = {};
+    audioMT.majortype = MEDIATYPE_Audio;
+    audioMT.subtype = MEDIASUBTYPE_PCM;
+    audioMT.formattype = FORMAT_WaveFormatEx;
+
+    hr = impl_->audioSampleGrabber->SetMediaType(&audioMT);
+    if (FAILED(hr)) {
+        impl_->audioSampleGrabber->Release();
+        impl_->audioSampleGrabber = nullptr;
+        impl_->graphBuilder->RemoveFilter(impl_->audioGrabberFilter);
+        impl_->audioGrabberFilter->Release();
+        impl_->audioGrabberFilter = nullptr;
+        return;
+    }
+
+    // Create audio null renderer
+    hr = CoCreateInstance(CLSID_NullRenderer, nullptr, CLSCTX_INPROC_SERVER,
+                          IID_IBaseFilter, (void**)&impl_->audioNullRenderer);
+    if (FAILED(hr)) {
+        impl_->audioSampleGrabber->Release();
+        impl_->audioSampleGrabber = nullptr;
+        impl_->graphBuilder->RemoveFilter(impl_->audioGrabberFilter);
+        impl_->audioGrabberFilter->Release();
+        impl_->audioGrabberFilter = nullptr;
+        return;
+    }
+
+    hr = impl_->graphBuilder->AddFilter(impl_->audioNullRenderer, L"Audio Null Renderer");
+    if (FAILED(hr)) {
+        impl_->audioNullRenderer->Release();
+        impl_->audioNullRenderer = nullptr;
+        impl_->audioSampleGrabber->Release();
+        impl_->audioSampleGrabber = nullptr;
+        impl_->graphBuilder->RemoveFilter(impl_->audioGrabberFilter);
+        impl_->audioGrabberFilter->Release();
+        impl_->audioGrabberFilter = nullptr;
+        return;
+    }
+
+    // Find audio output pin from source and render through our grabber
+    IEnumPins* enumPins = nullptr;
+    IPin* audioOutPin = nullptr;
+
+    hr = impl_->sourceFilter->EnumPins(&enumPins);
+    if (SUCCEEDED(hr)) {
+        IPin* pin;
+        while (enumPins->Next(1, &pin, nullptr) == S_OK) {
+            PIN_DIRECTION dir;
+            pin->QueryDirection(&dir);
+            if (dir == PINDIR_OUTPUT) {
+                // Check if this is an audio pin
+                IEnumMediaTypes* enumMT;
+                if (SUCCEEDED(pin->EnumMediaTypes(&enumMT))) {
+                    AM_MEDIA_TYPE* pmt;
+                    while (enumMT->Next(1, &pmt, nullptr) == S_OK) {
+                        if (pmt->majortype == MEDIATYPE_Audio) {
+                            // Check if not already connected
+                            IPin* connectedPin = nullptr;
+                            if (pin->ConnectedTo(&connectedPin) == VFW_E_NOT_CONNECTED) {
+                                audioOutPin = pin;
+                                audioOutPin->AddRef();
+                            } else if (connectedPin) {
+                                connectedPin->Release();
+                            }
+                        }
+                        if (pmt->pbFormat) CoTaskMemFree(pmt->pbFormat);
+                        CoTaskMemFree(pmt);
+                        if (audioOutPin) break;
+                    }
+                    enumMT->Release();
+                }
+            }
+            pin->Release();
+            if (audioOutPin) break;
+        }
+        enumPins->Release();
+    }
+
+    if (!audioOutPin) {
+        // No unconnected audio pin found
+        impl_->graphBuilder->RemoveFilter(impl_->audioNullRenderer);
+        impl_->audioNullRenderer->Release();
+        impl_->audioNullRenderer = nullptr;
+        impl_->audioSampleGrabber->Release();
+        impl_->audioSampleGrabber = nullptr;
+        impl_->graphBuilder->RemoveFilter(impl_->audioGrabberFilter);
+        impl_->audioGrabberFilter->Release();
+        impl_->audioGrabberFilter = nullptr;
+        return;
+    }
+
+    // Render the audio pin through our filter graph
+    hr = impl_->graphBuilder->Render(audioOutPin);
+    audioOutPin->Release();
+
+    if (FAILED(hr)) {
+        impl_->graphBuilder->RemoveFilter(impl_->audioNullRenderer);
+        impl_->audioNullRenderer->Release();
+        impl_->audioNullRenderer = nullptr;
+        impl_->audioSampleGrabber->Release();
+        impl_->audioSampleGrabber = nullptr;
+        impl_->graphBuilder->RemoveFilter(impl_->audioGrabberFilter);
+        impl_->audioGrabberFilter->Release();
+        impl_->audioGrabberFilter = nullptr;
+        return;
+    }
+
+    // Get actual audio format
+    AM_MEDIA_TYPE connectedMT = {};
+    hr = impl_->audioSampleGrabber->GetConnectedMediaType(&connectedMT);
+    if (SUCCEEDED(hr) && connectedMT.formattype == FORMAT_WaveFormatEx) {
+        WAVEFORMATEX* wfx = (WAVEFORMATEX*)connectedMT.pbFormat;
+        impl_->audioSampleRate = wfx->nSamplesPerSec;
+        impl_->audioChannels = wfx->nChannels;
+        impl_->audioBitsPerSample = wfx->wBitsPerSample;
+        audioSampleRate_ = wfx->nSamplesPerSec;
+        audioChannels_ = wfx->nChannels;
+
+        if (connectedMT.pbFormat) CoTaskMemFree(connectedMT.pbFormat);
+    }
+
+    // Set up audio callback
+    impl_->audioCallback = new AudioSampleCallback();
+    impl_->audioSampleGrabber->SetBufferSamples(FALSE);
+    impl_->audioSampleGrabber->SetOneShot(FALSE);
+    impl_->audioSampleGrabber->SetCallback(impl_->audioCallback, 1);  // BufferCB
+
+    // Create audio player
+    audioPlayer_ = std::make_unique<AudioPlayer>();
+    if (audioPlayer_->init(impl_->audioSampleRate, impl_->audioChannels)) {
+        hasAudio_ = true;
+        std::cout << "[DShowDecoder] Audio: " << impl_->audioSampleRate << "Hz, "
+                  << impl_->audioChannels << " ch, " << impl_->audioBitsPerSample << " bit\n";
+    } else {
+        std::cerr << "[DShowDecoder] Failed to initialize audio player\n";
+        audioPlayer_.reset();
+        hasAudio_ = false;
+    }
+}
+
+void DShowDecoder::processAudioSamples() {
+    if (!audioPlayer_ || !impl_->audioCallback || !hasAudio_ || !internalAudioEnabled_) return;
+
+    std::vector<uint8_t> audioData;
+    if (!impl_->audioCallback->getAudioSamples(audioData)) return;
+
+    // Convert to float samples
+    std::vector<float> floatSamples;
+    int bytesPerSample = impl_->audioBitsPerSample / 8;
+    int numSamples = static_cast<int>(audioData.size()) / bytesPerSample;
+    floatSamples.resize(numSamples);
+
+    if (impl_->audioBitsPerSample == 16) {
+        const int16_t* src = reinterpret_cast<const int16_t*>(audioData.data());
+        for (int i = 0; i < numSamples; i++) {
+            floatSamples[i] = src[i] / 32768.0f;
+        }
+    } else if (impl_->audioBitsPerSample == 32) {
+        // Could be 32-bit int or 32-bit float
+        const int32_t* src = reinterpret_cast<const int32_t*>(audioData.data());
+        for (int i = 0; i < numSamples; i++) {
+            floatSamples[i] = src[i] / 2147483648.0f;
+        }
+    } else if (impl_->audioBitsPerSample == 8) {
+        const uint8_t* src = audioData.data();
+        for (int i = 0; i < numSamples; i++) {
+            floatSamples[i] = (src[i] - 128) / 128.0f;
+        }
+    }
+
+    if (!floatSamples.empty()) {
+        uint32_t frameCount = static_cast<uint32_t>(numSamples / impl_->audioChannels);
+        audioPlayer_->pushSamples(floatSamples.data(), frameCount);
+    }
 }
 
 void DShowDecoder::update(Context& ctx) {
     if (!impl_->graphBuilder || !isPlaying_) return;
+
+    // Process audio samples
+    processAudioSamples();
 
     // Check for end of stream
     if (impl_->mediaEvent) {
@@ -516,16 +837,20 @@ void DShowDecoder::update(Context& ctx) {
                 if (isLooping_) {
                     resetPlayback();
                     impl_->mediaControl->Run();
+                    if (audioPlayer_) audioPlayer_->play();
                 } else {
                     isFinished_ = true;
                     isPlaying_ = false;
+                    if (audioPlayer_) audioPlayer_->pause();
                 }
             }
         }
     }
 
-    // Get current position
-    if (impl_->mediaSeeking) {
+    // Use audio playback position as master clock if available
+    if (audioPlayer_ && hasAudio_) {
+        currentTime_ = static_cast<float>(audioPlayer_->getPlaybackPosition());
+    } else if (impl_->mediaSeeking) {
         LONGLONG pos = 0;
         impl_->mediaSeeking->GetCurrentPosition(&pos);
         currentTime_ = pos / 10000000.0f;
@@ -538,19 +863,13 @@ void DShowDecoder::update(Context& ctx) {
         // Convert RGB24 (BGR) to RGBA
         size_t expectedSize = width_ * height_ * 3;
         if (frameData.size() >= expectedSize) {
+            // Use SIMD-optimized pixel conversion (processes 4 pixels at a time)
             for (int y = 0; y < height_; y++) {
                 int srcY = impl_->bottomUp ? (height_ - 1 - y) : y;
                 const uint8_t* src = frameData.data() + srcY * width_ * 3;
                 uint8_t* dst = pixelBuffer_.data() + y * width_ * 4;
 
-                for (int x = 0; x < width_; x++) {
-                    dst[0] = src[2];  // R <- B (BGR to RGB)
-                    dst[1] = src[1];  // G
-                    dst[2] = src[0];  // B <- R
-                    dst[3] = 255;     // A
-                    src += 3;
-                    dst += 4;
-                }
+                convertRowBGR24toRGBA(src, dst, width_);
             }
 
             // Upload to GPU
@@ -576,6 +895,14 @@ void DShowDecoder::update(Context& ctx) {
 void DShowDecoder::seek(float seconds) {
     if (!impl_->mediaSeeking) return;
 
+    // Flush audio buffer before seeking
+    if (audioPlayer_) {
+        audioPlayer_->flush();
+    }
+    if (impl_->audioCallback) {
+        impl_->audioCallback->clear();
+    }
+
     LONGLONG pos = static_cast<LONGLONG>(seconds * 10000000.0);
     impl_->mediaSeeking->SetPositions(&pos, AM_SEEKING_AbsolutePositioning,
                                        nullptr, AM_SEEKING_NoPositioning);
@@ -593,6 +920,11 @@ void DShowDecoder::play() {
     impl_->mediaControl->Run();
     isPlaying_ = true;
     impl_->lastUpdateTime = std::chrono::steady_clock::now();
+
+    // Start audio playback
+    if (audioPlayer_) {
+        audioPlayer_->play();
+    }
 }
 
 void DShowDecoder::pause() {
@@ -600,13 +932,23 @@ void DShowDecoder::pause() {
 
     impl_->mediaControl->Pause();
     isPlaying_ = false;
+
+    // Pause audio playback
+    if (audioPlayer_) {
+        audioPlayer_->pause();
+    }
 }
 
 void DShowDecoder::setVolume(float volume) {
-    // TODO: Implement audio volume control via IBasicAudio
+    if (audioPlayer_) {
+        audioPlayer_->setVolume(volume);
+    }
 }
 
 float DShowDecoder::getVolume() const {
+    if (audioPlayer_) {
+        return audioPlayer_->getVolume();
+    }
     return 1.0f;
 }
 

@@ -6,8 +6,13 @@
 #include <vivid/video/mf_decoder.h>
 #include <vivid/video/audio_player.h>
 #include <vivid/context.h>
+#include "pixel_convert.h"
 #include <iostream>
 #include <chrono>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -81,6 +86,7 @@ enum class OutputFormat {
     BGRA,   // MFVideoFormat_RGB32
     ARGB,   // MFVideoFormat_ARGB32
     RGB24,  // MFVideoFormat_RGB24
+    NV12,   // MFVideoFormat_NV12 (GPU conversion)
 };
 
 struct MFDecoder::Impl {
@@ -91,6 +97,21 @@ struct MFDecoder::Impl {
     LONG stride = 0;
 
     std::chrono::steady_clock::time_point lastUpdateTime;
+
+    // Async decode thread members
+    std::thread decodeThread;
+    std::atomic<bool> stopThread{false};
+    std::atomic<bool> seekRequested{false};
+    std::atomic<float> seekTime{0.0f};
+
+    // Double-buffered frame data
+    std::mutex frameMutex;
+    std::condition_variable frameCV;
+    std::vector<uint8_t> frameBuffer[2];  // Double buffer
+    std::atomic<int> writeBuffer{0};      // Buffer being written by decode thread
+    std::atomic<int> readBuffer{-1};      // Buffer ready to be read (-1 = none)
+    std::atomic<bool> frameReady{false};
+    LONGLONG frameTimestamp{0};           // Timestamp of ready frame
 };
 
 MFDecoder::MFDecoder() : impl_(std::make_unique<Impl>()) {
@@ -176,13 +197,25 @@ bool MFDecoder::open(Context& ctx, const std::string& path, bool loop) {
     // Try formats in order of preference
     bool formatSet = false;
 
-    // Try RGB32 (BGRA) first - ideal for direct upload
-    hr = outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+    // Try NV12 first - smaller memory bandwidth than RGB32
+    hr = outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
     if (SUCCEEDED(hr)) {
         hr = impl_->sourceReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, outputType);
         if (SUCCEEDED(hr)) {
             formatSet = true;
-            impl_->outputFormat = OutputFormat::BGRA;
+            impl_->outputFormat = OutputFormat::NV12;
+        }
+    }
+
+    // Try RGB32 (BGRA) - direct upload without color conversion
+    if (!formatSet) {
+        hr = outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
+        if (SUCCEEDED(hr)) {
+            hr = impl_->sourceReader->SetCurrentMediaType(MF_SOURCE_READER_FIRST_VIDEO_STREAM, nullptr, outputType);
+            if (SUCCEEDED(hr)) {
+                formatSet = true;
+                impl_->outputFormat = OutputFormat::BGRA;
+            }
         }
     }
 
@@ -252,7 +285,14 @@ bool MFDecoder::open(Context& ctx, const std::string& path, bool loop) {
     if (SUCCEEDED(hr)) {
         impl_->stride = stride;
     } else {
-        impl_->stride = width_ * 4;
+        // Default stride depends on format
+        if (impl_->outputFormat == OutputFormat::NV12) {
+            impl_->stride = width_;  // Y plane: 1 byte per pixel
+        } else if (impl_->outputFormat == OutputFormat::RGB24) {
+            impl_->stride = width_ * 3;
+        } else {
+            impl_->stride = width_ * 4;
+        }
     }
 
     actualType->Release();
@@ -398,6 +438,9 @@ void MFDecoder::close() {
         impl_->sourceReader = nullptr;
     }
 
+    // Clean up NV12 GPU resources
+    cleanupNV12Resources();
+
     if (textureView_) {
         wgpuTextureViewRelease(textureView_);
         textureView_ = nullptr;
@@ -449,6 +492,46 @@ void MFDecoder::createTexture() {
     viewDesc.arrayLayerCount = 1;
 
     textureView_ = wgpuTextureCreateView(texture_, &viewDesc);
+}
+
+void MFDecoder::createNV12Pipeline() {
+    // TODO: Implement GPU compute pipeline for NV12->RGBA conversion
+    // For now, NV12 is converted on CPU using SIMD
+    useNV12Compute_ = false;
+}
+
+void MFDecoder::cleanupNV12Resources() {
+    if (nv12BindGroup_) {
+        wgpuBindGroupRelease(nv12BindGroup_);
+        nv12BindGroup_ = nullptr;
+    }
+    if (nv12BindGroupLayout_) {
+        wgpuBindGroupLayoutRelease(nv12BindGroupLayout_);
+        nv12BindGroupLayout_ = nullptr;
+    }
+    if (nv12Pipeline_) {
+        wgpuComputePipelineRelease(nv12Pipeline_);
+        nv12Pipeline_ = nullptr;
+    }
+    if (yTexture_) {
+        wgpuTextureRelease(yTexture_);
+        yTexture_ = nullptr;
+    }
+    if (uvTexture_) {
+        wgpuTextureRelease(uvTexture_);
+        uvTexture_ = nullptr;
+    }
+    if (outputTexture_) {
+        wgpuTextureRelease(outputTexture_);
+        outputTexture_ = nullptr;
+    }
+    useNV12Compute_ = false;
+}
+
+void MFDecoder::decodeNV12Sample(void* samplePtr) {
+    // TODO: Implement GPU compute path for NV12->RGBA conversion
+    // For now, fall back to CPU conversion
+    decodeVideoSample(samplePtr);
 }
 
 void MFDecoder::resetReader() {
@@ -545,44 +628,46 @@ void MFDecoder::decodeVideoSample(void* samplePtr) {
         return;
     }
 
-    // Convert to RGBA
-    LONG absStride = (impl_->stride < 0) ? -impl_->stride : impl_->stride;
-    if (absStride == 0) {
-        absStride = (impl_->outputFormat == OutputFormat::RGB24) ? width_ * 3 : width_ * 4;
-    }
+    // Handle NV12 format specially
+    if (impl_->outputFormat == OutputFormat::NV12) {
+        // NV12: Y plane is width*height, UV plane follows at half resolution
+        LONG yStride = (impl_->stride > 0) ? impl_->stride : width_;
+        const uint8_t* yPlane = data;
+        const uint8_t* uvPlane = data + yStride * height_;
+        LONG uvStride = yStride;  // UV plane has same stride as Y plane
 
-    bool bottomUp = (impl_->stride < 0);
+        // Convert NV12 to RGBA
+        convertNV12toRGBA_SIMD(yPlane, yStride, uvPlane, uvStride,
+                               pixelBuffer_.data(), width_, height_);
+    } else {
+        // Convert RGB/ARGB/BGRA to RGBA
+        LONG absStride = (impl_->stride < 0) ? -impl_->stride : impl_->stride;
+        if (absStride == 0) {
+            absStride = (impl_->outputFormat == OutputFormat::RGB24) ? width_ * 3 : width_ * 4;
+        }
 
-    for (int y = 0; y < height_; y++) {
-        int srcY = bottomUp ? (height_ - 1 - y) : y;
-        const uint8_t* src = data + srcY * absStride;
-        uint8_t* dst = pixelBuffer_.data() + y * width_ * 4;
+        bool bottomUp = (impl_->stride < 0);
 
-        for (int x = 0; x < width_; x++) {
+        // Use SIMD-optimized pixel conversion (processes 4 pixels at a time)
+        for (int y = 0; y < height_; y++) {
+            int srcY = bottomUp ? (height_ - 1 - y) : y;
+            const uint8_t* src = data + srcY * absStride;
+            uint8_t* dst = pixelBuffer_.data() + y * width_ * 4;
+
             switch (impl_->outputFormat) {
                 case OutputFormat::BGRA:
-                    dst[0] = src[2];  // R <- B
-                    dst[1] = src[1];  // G
-                    dst[2] = src[0];  // B <- R
-                    dst[3] = src[3];  // A
-                    src += 4;
+                    convertRowBGRAtoRGBA(src, dst, width_);
                     break;
                 case OutputFormat::ARGB:
-                    dst[0] = src[1];  // R
-                    dst[1] = src[2];  // G
-                    dst[2] = src[3];  // B
-                    dst[3] = src[0];  // A
-                    src += 4;
+                    convertRowARGBtoRGBA(src, dst, width_);
                     break;
                 case OutputFormat::RGB24:
-                    dst[0] = src[0];  // R
-                    dst[1] = src[1];  // G
-                    dst[2] = src[2];  // B
-                    dst[3] = 255;     // A
-                    src += 3;
+                    convertRowRGB24toRGBA(src, dst, width_);
+                    break;
+                case OutputFormat::NV12:
+                    // Already handled above
                     break;
             }
-            dst += 4;
         }
     }
 
