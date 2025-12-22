@@ -1,0 +1,28 @@
+error[E0597]: `window` does not live long enough
+   --> src/main.rs:36:47
+    |
+ 30 |     fn init_wgpu(&mut self, window: Window) {
+    |                             ------ binding `window` declared here
+...
+ 36 |         let surface = instance.create_surface(&window).unwrap();
+    |                                               ^^^^^^^ borrowed value does not live long enough
+...
+ 98 |         self.surface = Some(surface);
+    |         ------------ assignment requires that `window` is borrowed for `'static`
+...
+105 |     }
+    |     - `window` dropped here while still borrowed
+
+error[E0505]: cannot move out of `window` because it is borrowed
+  --> src/main.rs:97:28
+   |
+30 |     fn init_wgpu(&mut self, window: Window) {
+   |                             ------ binding `window` declared here
+...
+36 |         let surface = instance.create_surface(&window).unwrap();
+   |                                               ------- borrow of `window` occurs here
+...
+97 |         self.window = Some(window);
+   |                            ^^^^^^ move out of `window` occurs here
+98 |         self.surface = Some(surface);
+   |         ------------ assignment requires that `window` is borrowed for `'static`
