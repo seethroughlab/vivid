@@ -29,11 +29,11 @@ static int g_pointLightMarkerIndex = -1;
 static int g_spotLightMarkerIndex = -1;
 
 // Object selection for shadow toggling
-// Objects: 0=ground, 1=metalCube, 2=pipe, 3=torus, 4=sphere, 5=frontCube
+// Objects: 0=ground, 1=metalCube, 2=pipe, 3=torus, 4=sphere, 5=frontCube, 6=helmet
 static int g_selectedObject = 1;  // Start with metal cube
-static const char* g_objectNames[] = {"Ground", "Metal Cube", "Pipe", "Torus", "Sphere", "Front Cube"};
-static bool g_castShadow[] = {false, true, true, true, false, true};
-static bool g_receiveShadow[] = {true, true, true, true, true, false};
+static const char* g_objectNames[] = {"Ground", "Metal Cube", "Pipe", "Torus", "Sphere", "Front Cube", "Helmet"};
+static bool g_castShadow[] = {false, true, true, true, false, true, true};
+static bool g_receiveShadow[] = {true, true, true, true, true, false, true};
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
@@ -170,6 +170,17 @@ void setup(Context& ctx) {
     cubeEntry.setReceiveShadow(false);  // Demo: always fully lit
     scene.entries().back().material = &graniteMat;
 
+    // DamagedHelmet glTF model - proves glTF shadows work
+    auto& helmet = chain.add<GLTFLoader>("helmet");
+    helmet.file("assets/meshes/DamagedHelmet.glb");
+
+    glm::mat4 helmetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(3.5f, 1.0f, 0.0f)) *
+                                glm::scale(glm::mat4(1.0f), glm::vec3(0.8f));
+    auto helmetEntry = scene.add(&helmet, nullptr);
+    helmetEntry.setTransform(helmetTransform);
+    helmetEntry.setCastShadow(true);
+    helmetEntry.setReceiveShadow(true);
+
     // Point light marker (yellow, emissive)
     g_pointLightMarkerIndex = static_cast<int>(scene.entries().size());
     auto pointMarkerEntry = scene.add(&pointMarker, nullptr);
@@ -274,6 +285,7 @@ void setup(Context& ctx) {
     std::cout << "  Torus:       cast=ON  receive=ON" << std::endl;
     std::cout << "  Sphere:      cast=OFF receive=ON" << std::endl;
     std::cout << "  Front Cube:  cast=ON  receive=OFF" << std::endl;
+    std::cout << "  Helmet:      cast=ON  receive=ON  (glTF)" << std::endl;
     std::cout << "========================================\n" << std::endl;
 }
 
@@ -340,8 +352,8 @@ void update(Context& ctx) {
 
     // Object shadow controls
     if (ctx.key(GLFW_KEY_C).pressed) {
-        // Cycle through objects (0-5)
-        g_selectedObject = (g_selectedObject + 1) % 6;
+        // Cycle through objects (0-6)
+        g_selectedObject = (g_selectedObject + 1) % 7;
         std::cout << "Selected: " << g_objectNames[g_selectedObject]
                   << " (cast=" << (g_castShadow[g_selectedObject] ? "ON" : "OFF")
                   << ", receive=" << (g_receiveShadow[g_selectedObject] ? "ON" : "OFF") << ")" << std::endl;
