@@ -29,7 +29,8 @@ struct ComposerEntry {
     glm::vec4 color = glm::vec4(1.0f);
     TexturedMaterial* material = nullptr;  // Optional per-object material
     int inputIndex = -1;  // Index in m_inputs array, or -1 if not connected
-    bool castShadow = true;  // Whether this object casts shadows
+    bool castShadow = true;     // Whether this object casts shadows
+    bool receiveShadow = true;  // Whether this object receives shadows
 };
 
 /**
@@ -186,6 +187,11 @@ public:
         /// Set whether this object casts shadows
         void setCastShadow(bool enabled) {
             m_composer.m_entries[m_index].castShadow = enabled;
+        }
+
+        /// Set whether this object receives shadows
+        void setReceiveShadow(bool enabled) {
+            m_composer.m_entries[m_index].receiveShadow = enabled;
         }
 
     private:
@@ -394,6 +400,7 @@ public:
                         // Add to scene with material
                         SceneObject obj(mesh, finalTransform, entry.color, mat);
                         obj.castShadow = entry.castShadow;
+                        obj.receiveShadow = entry.receiveShadow;
                         m_scene.objects().push_back(obj);
                     }
                 }

@@ -15,21 +15,22 @@ struct SceneObject {
     glm::mat4 transform = glm::mat4(1.0f);
     glm::vec4 color = glm::vec4(1.0f);
     TexturedMaterial* material = nullptr;  // Optional per-object material
-    bool castShadow = true;  // Whether this object casts shadows
+    bool castShadow = true;     // Whether this object casts shadows
+    bool receiveShadow = true;  // Whether this object receives shadows
 
     SceneObject() = default;
 
     SceneObject(Mesh* m)
-        : mesh(m), transform(glm::mat4(1.0f)), color(glm::vec4(1.0f)), material(nullptr), castShadow(true) {}
+        : mesh(m), transform(glm::mat4(1.0f)), color(glm::vec4(1.0f)), material(nullptr), castShadow(true), receiveShadow(true) {}
 
     SceneObject(Mesh* m, const glm::mat4& t)
-        : mesh(m), transform(t), color(glm::vec4(1.0f)), material(nullptr), castShadow(true) {}
+        : mesh(m), transform(t), color(glm::vec4(1.0f)), material(nullptr), castShadow(true), receiveShadow(true) {}
 
     SceneObject(Mesh* m, const glm::mat4& t, const glm::vec4& c)
-        : mesh(m), transform(t), color(c), material(nullptr), castShadow(true) {}
+        : mesh(m), transform(t), color(c), material(nullptr), castShadow(true), receiveShadow(true) {}
 
     SceneObject(Mesh* m, const glm::mat4& t, const glm::vec4& c, TexturedMaterial* mat)
-        : mesh(m), transform(t), color(c), material(mat), castShadow(true) {}
+        : mesh(m), transform(t), color(c), material(mat), castShadow(true), receiveShadow(true) {}
 };
 
 /// Container for multiple meshes with transforms

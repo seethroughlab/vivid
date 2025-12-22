@@ -28,6 +28,8 @@ struct Uniforms {
     shadingMode: u32,
     lightCount: u32,
     toonLevels: u32,
+    receiveShadow: u32, // 1=receive shadows, 0=ignore shadows
+    _pad1: vec3f,       // Padding to align lights array
     lights: array<Light, 4>,
 };
 
@@ -155,7 +157,8 @@ fn calculateSimpleLightingNoShadow(worldPos: vec3f, N: vec3f) -> vec3f {
 fn calculateSimpleLighting(worldPos: vec3f, N: vec3f) -> vec3f {
     var Lo = vec3f(0.0);
     let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
-    let shadowFactor = sampleShadow(worldPos);
+    // Skip shadow sampling if object doesn't receive shadows
+    let shadowFactor = select(1.0, sampleShadow(worldPos), uniforms.receiveShadow != 0u);
     for (var i = 0u; i < lightCount; i++) {
         let light = uniforms.lights[i];
         var L: vec3f; var attenuation: f32 = 1.0; var lightShadow: f32 = 1.0;
@@ -167,7 +170,8 @@ fn calculateSimpleLighting(worldPos: vec3f, N: vec3f) -> vec3f {
             let dist = length(lightVec);
             L = lightVec / max(dist, EPSILON);
             attenuation = getAttenuation(dist, light.range);
-            if (i == 0u) { lightShadow = samplePointShadow(worldPos); }
+            // Apply point light shadow (skip if not receiving shadows)
+            if (i == 0u && uniforms.receiveShadow != 0u) { lightShadow = samplePointShadow(worldPos); }
         } else {
             let lightVec = light.position - worldPos;
             let dist = length(lightVec);

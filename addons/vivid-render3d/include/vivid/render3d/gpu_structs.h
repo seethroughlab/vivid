@@ -50,10 +50,12 @@ struct Uniforms {
     uint32_t shadingMode;       // u32: 4 bytes, offset 164
     uint32_t lightCount;        // u32: 4 bytes, offset 168
     uint32_t toonLevels;        // u32: 4 bytes, offset 172
-    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 176
-};                               // Total: 432 bytes
+    uint32_t receiveShadow;     // u32: 4 bytes, offset 176 (1=receive shadows, 0=ignore)
+    float _pad1[3];             // 12 bytes padding, offset 180 (align lights to 192)
+    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 192
+};                               // Total: 448 bytes
 
-static_assert(sizeof(Uniforms) == 432, "Uniforms struct must be 432 bytes");
+static_assert(sizeof(Uniforms) == 448, "Uniforms struct must be 448 bytes");
 
 // PBR uniform buffer structure (with multi-light support)
 struct PBRUniforms {

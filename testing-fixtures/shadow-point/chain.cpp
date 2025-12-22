@@ -41,28 +41,39 @@ void setup(Context& ctx) {
     // Scene Composition
     auto& scene = SceneComposer::create(chain, "scene");
 
-    // Ground plane at Y=0
-    scene.add(&plane, glm::mat4(1.0f), glm::vec4(0.85f, 0.85f, 0.85f, 1.0f));
+    // Ground plane at Y=0 - receives shadows but doesn't cast
+    auto groundEntry = scene.add(&plane, nullptr);
+    groundEntry.setColor(0.85f, 0.85f, 0.85f, 1.0f);
+    groundEntry.setCastShadow(false);
+    groundEntry.setReceiveShadow(true);
 
     // Objects at various positions around the light
-    // Cube (front-left)
+    // Cube (front-left) - casts and receives shadows
     glm::mat4 cubeTransform = glm::translate(glm::mat4(1.0f), glm::vec3(-1.5f, 0.75f, 2.0f));
-    scene.add(&cube, cubeTransform, glm::vec4(0.8f, 0.3f, 0.3f, 1.0f));
+    auto cubeEntry = scene.add(&cube, nullptr);
+    cubeEntry.setTransform(cubeTransform);
+    cubeEntry.setColor(0.8f, 0.3f, 0.3f, 1.0f);
 
-    // Sphere (front-right)
+    // Sphere (front-right) - casts shadow but does NOT receive (always lit)
     glm::mat4 sphereTransform = glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.6f, 1.5f));
-    scene.add(&sphere, sphereTransform, glm::vec4(0.3f, 0.8f, 0.3f, 1.0f));
+    auto sphereEntry = scene.add(&sphere, nullptr);
+    sphereEntry.setTransform(sphereTransform);
+    sphereEntry.setColor(0.3f, 0.8f, 0.3f, 1.0f);
+    sphereEntry.setReceiveShadow(false);  // Always fully lit
 
-    // Cylinder (back)
+    // Cylinder (back) - casts and receives
     glm::mat4 cylTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.6f, -2.0f));
     scene.add(&cylinder, cylTransform, glm::vec4(0.3f, 0.3f, 0.8f, 1.0f));
 
     // Light marker - bright yellow, will be updated each frame
-    // Marked as non-shadow-casting since it's at the light position
+    // Doesn't cast or receive shadows (it IS the light source)
     glm::mat4 lightMarkerTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f));
     g_lightMarkerIndex = static_cast<int>(scene.entries().size());  // Save index before adding
-    scene.add(&lightMarker, lightMarkerTransform, glm::vec4(1.0f, 1.0f, 0.2f, 1.0f));
-    scene.entries().back().castShadow = false;
+    auto markerEntry = scene.add(&lightMarker, nullptr);
+    markerEntry.setTransform(lightMarkerTransform);
+    markerEntry.setColor(1.0f, 1.0f, 0.2f, 1.0f);
+    markerEntry.setCastShadow(false);
+    markerEntry.setReceiveShadow(false);
 
     // Point Light (casts shadows in all directions)
     auto& light = chain.add<PointLight>("pointlight");
@@ -98,7 +109,11 @@ void setup(Context& ctx) {
     std::cout << "Shadow Test - Point Light (Cube Map)" << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "Yellow sphere = light position" << std::endl;
-    std::cout << "Shadows should point AWAY from yellow sphere" << std::endl;
+    std::cout << "Shadows point AWAY from yellow sphere" << std::endl;
+    std::cout << "" << std::endl;
+    std::cout << "Shadow toggles demo:" << std::endl;
+    std::cout << "  - Green sphere: receiveShadow=false (always lit)" << std::endl;
+    std::cout << "  - Light marker: no cast/receive (is the light)" << std::endl;
     std::cout << "========================================\n" << std::endl;
 }
 

@@ -100,6 +100,8 @@ struct Uniforms {
     shadingMode: u32,  // 0=Unlit, 1=Flat, 2=Gouraud, 3=VertexLit, 4=Toon
     lightCount: u32,
     toonLevels: u32,   // Number of toon shading bands (2-8)
+    receiveShadow: u32, // 1=receive shadows, 0=ignore shadows
+    _pad1: vec3f,      // Padding to align lights array
     lights: array<Light, 4>,
 };
 
@@ -379,7 +381,8 @@ fn calculateSimpleLighting(worldPos: vec3f, N: vec3f) -> vec3f {
     let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
 
     // Get shadow factor once for the first shadow-casting light (directional or spot)
-    let shadowFactor = sampleShadow(worldPos);
+    // Skip shadow sampling if object doesn't receive shadows
+    let shadowFactor = select(1.0, sampleShadow(worldPos), uniforms.receiveShadow != 0u);
 
     for (var i = 0u; i < lightCount; i++) {
         let light = uniforms.lights[i];
@@ -400,8 +403,8 @@ fn calculateSimpleLighting(worldPos: vec3f, N: vec3f) -> vec3f {
             let dist = length(lightVec);
             L = lightVec / max(dist, EPSILON);
             attenuation = getAttenuation(dist, light.range);
-            // Apply point light shadow from cube map
-            if (i == 0u) {
+            // Apply point light shadow from cube map (skip if not receiving shadows)
+            if (i == 0u && uniforms.receiveShadow != 0u) {
                 lightShadow = samplePointShadow(worldPos);
             }
         } else {
@@ -1831,6 +1834,7 @@ void Render3D::renderDebugVisualization(Context& ctx, WGPURenderPassEncoder pass
     uniforms.shadingMode = 0; // Unlit
     uniforms.lightCount = 0;  // No lights for debug geometry
     uniforms.toonLevels = 0;
+    uniforms.receiveShadow = 1;  // Default to receiving shadows
 
     // Create uniform buffer
     WGPUBufferDescriptor uniformBufDesc = {};
@@ -3160,6 +3164,7 @@ void Render3D::process(Context& ctx) {
             uniforms.shadingMode = static_cast<uint32_t>(m_shadingMode);
             uniforms.lightCount = lightCount;
             uniforms.toonLevels = static_cast<uint32_t>(m_toonLevels);
+            uniforms.receiveShadow = obj.receiveShadow ? 1 : 0;
             memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
 
             size_t offset = i * m_uniformAlignment;

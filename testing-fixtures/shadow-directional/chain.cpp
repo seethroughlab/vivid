@@ -41,19 +41,35 @@ void setup(Context& ctx) {
     auto& scene = SceneComposer::create(chain, "scene");
 
     // Ground plane at Y=0 (white to show shadows clearly)
-    scene.add(&plane, glm::mat4(1.0f), glm::vec4(0.9f, 0.9f, 0.9f, 1.0f));
+    // Note: Ground receives shadows but doesn't cast them
+    auto groundEntry = scene.add(&plane, nullptr);
+    groundEntry.setColor(0.9f, 0.9f, 0.9f, 1.0f);
+    groundEntry.setCastShadow(false);   // Ground doesn't cast shadows
+    groundEntry.setReceiveShadow(true); // Ground receives shadows
 
     // Cube (left) - floating above ground for visible shadow
     glm::mat4 cubeTransform = glm::translate(glm::mat4(1.0f), glm::vec3(-1.2f, 1.8f, 0.0f));
-    scene.add(&cube, cubeTransform, glm::vec4(0.8f, 0.3f, 0.3f, 1.0f));
+    auto cubeEntry = scene.add(&cube, nullptr);
+    cubeEntry.setTransform(cubeTransform);
+    cubeEntry.setColor(0.8f, 0.3f, 0.3f, 1.0f);
+    cubeEntry.setCastShadow(true);      // Cube casts shadows
+    cubeEntry.setReceiveShadow(true);   // Cube can receive shadows too
 
     // Sphere (center-front) - floating above ground for visible shadow
     glm::mat4 sphereTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.3f, 1.2f, 0.8f));
-    scene.add(&sphere, sphereTransform, glm::vec4(0.3f, 0.8f, 0.3f, 1.0f));
+    auto sphereEntry = scene.add(&sphere, nullptr);
+    sphereEntry.setTransform(sphereTransform);
+    sphereEntry.setColor(0.3f, 0.8f, 0.3f, 1.0f);
+    sphereEntry.setCastShadow(false);   // Sphere does NOT cast shadows (demo)
+    sphereEntry.setReceiveShadow(true); // But it receives them
 
     // Cylinder (right) - floating above ground for visible shadow
     glm::mat4 cylTransform = glm::translate(glm::mat4(1.0f), glm::vec3(1.5f, 1.2f, -0.3f));
-    scene.add(&cylinder, cylTransform, glm::vec4(0.3f, 0.3f, 0.8f, 1.0f));
+    auto cylEntry = scene.add(&cylinder, nullptr);
+    cylEntry.setTransform(cylTransform);
+    cylEntry.setColor(0.3f, 0.3f, 0.8f, 1.0f);
+    cylEntry.setCastShadow(true);       // Cylinder casts shadows
+    cylEntry.setReceiveShadow(false);   // But does NOT receive them (demo)
 
     // =========================================================================
     // Sun Light (casts shadows)
@@ -93,8 +109,13 @@ void setup(Context& ctx) {
     std::cout << "\n========================================" << std::endl;
     std::cout << "Shadow Test - Directional Light" << std::endl;
     std::cout << "========================================" << std::endl;
-    std::cout << "Shadow mapping enabled" << std::endl;
-    std::cout << "Resolution: 1024x1024" << std::endl;
+    std::cout << "Shadow mapping enabled (1024x1024)" << std::endl;
+    std::cout << "" << std::endl;
+    std::cout << "Shadow toggles demo:" << std::endl;
+    std::cout << "  - Ground: receives shadows, doesn't cast" << std::endl;
+    std::cout << "  - Red cube: casts and receives shadows" << std::endl;
+    std::cout << "  - Green sphere: no shadow (castShadow=false)" << std::endl;
+    std::cout << "  - Blue cylinder: casts but doesn't receive" << std::endl;
     std::cout << "========================================\n" << std::endl;
 }
 
