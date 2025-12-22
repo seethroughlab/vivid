@@ -163,7 +163,8 @@ fn calculateLightContribution(
     var radiance: vec3f;
 
     if (light.lightType == LIGHT_DIRECTIONAL) {
-        L = normalize(light.direction);
+        // Negate: light.direction points from light to scene, we need surface to light
+        L = -normalize(light.direction);
         radiance = light.color * light.intensity;
     } else if (light.lightType == LIGHT_POINT) {
         let lightVec = light.position - worldPos;

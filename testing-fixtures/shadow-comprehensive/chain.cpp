@@ -22,10 +22,18 @@ using namespace vivid::render3d;
 // Light selection state
 static int g_activeLight = 0;  // 0=directional, 1=point, 2=spot
 static bool g_shadowsEnabled = true;
+static int g_shadingMode = 1;  // 0=Flat, 1=PBR, 2=Toon
 
 // Light marker indices in scene
 static int g_pointLightMarkerIndex = -1;
 static int g_spotLightMarkerIndex = -1;
+
+// Object selection for shadow toggling
+// Objects: 0=ground, 1=metalCube, 2=pipe, 3=torus, 4=sphere, 5=frontCube
+static int g_selectedObject = 1;  // Start with metal cube
+static const char* g_objectNames[] = {"Ground", "Metal Cube", "Pipe", "Torus", "Sphere", "Front Cube"};
+static bool g_castShadow[] = {false, true, true, true, false, true};
+static bool g_receiveShadow[] = {true, true, true, true, true, false};
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
@@ -231,7 +239,7 @@ void setup(Context& ctx) {
     render.setCameraInput(&camera);
     // Start with directional light
     render.setLightInput(&sun);
-    render.setShadingMode(ShadingMode::Flat);
+    render.setShadingMode(ShadingMode::PBR);
     render.setAmbient(0.2f);
     render.setShadows(true);
     render.setShadowMapResolution(1024);
@@ -244,16 +252,28 @@ void setup(Context& ctx) {
     std::cout << "========================================" << std::endl;
     std::cout << "PBR materials + All light types with shadows" << std::endl;
     std::cout << "" << std::endl;
-    std::cout << "Controls:" << std::endl;
+    std::cout << "Light Controls:" << std::endl;
     std::cout << "  1 = Directional light (sun)" << std::endl;
     std::cout << "  2 = Point light (orbiting)" << std::endl;
     std::cout << "  3 = Spot light (corner)" << std::endl;
-    std::cout << "  SPACE = Toggle shadows" << std::endl;
     std::cout << "  S = Toggle current light's shadow casting" << std::endl;
     std::cout << "" << std::endl;
-    std::cout << "Shadow toggles:" << std::endl;
-    std::cout << "  - Granite sphere: castShadow=false" << std::endl;
-    std::cout << "  - Front cube: receiveShadow=false" << std::endl;
+    std::cout << "Object Shadow Controls:" << std::endl;
+    std::cout << "  C = Cycle selected object" << std::endl;
+    std::cout << "  V = Toggle castShadow on selected object" << std::endl;
+    std::cout << "  B = Toggle receiveShadow on selected object" << std::endl;
+    std::cout << "" << std::endl;
+    std::cout << "Other:" << std::endl;
+    std::cout << "  SPACE = Toggle shadows globally" << std::endl;
+    std::cout << "  M = Cycle shading mode (Flat/PBR/Toon)" << std::endl;
+    std::cout << "" << std::endl;
+    std::cout << "Initial shadow states:" << std::endl;
+    std::cout << "  Ground:      cast=OFF receive=ON" << std::endl;
+    std::cout << "  Metal Cube:  cast=ON  receive=ON" << std::endl;
+    std::cout << "  Pipe:        cast=ON  receive=ON" << std::endl;
+    std::cout << "  Torus:       cast=ON  receive=ON" << std::endl;
+    std::cout << "  Sphere:      cast=OFF receive=ON" << std::endl;
+    std::cout << "  Front Cube:  cast=ON  receive=OFF" << std::endl;
     std::cout << "========================================\n" << std::endl;
 }
 
@@ -288,6 +308,14 @@ void update(Context& ctx) {
         render.setShadows(g_shadowsEnabled);
         std::cout << "Shadows: " << (g_shadowsEnabled ? "ON" : "OFF") << std::endl;
     }
+    if (ctx.key(GLFW_KEY_M).pressed) {
+        // Cycle shading mode: Flat -> PBR -> Toon -> Flat
+        g_shadingMode = (g_shadingMode + 1) % 3;
+        const char* modeNames[] = {"Flat", "PBR", "Toon"};
+        ShadingMode modes[] = {ShadingMode::Flat, ShadingMode::PBR, ShadingMode::Toon};
+        render.setShadingMode(modes[g_shadingMode]);
+        std::cout << "Shading mode: " << modeNames[g_shadingMode] << std::endl;
+    }
     if (ctx.key(GLFW_KEY_S).pressed) {
         // Toggle shadow casting on current light
         // Note: We toggle via the castShadow method; there's no getter for current state
@@ -308,6 +336,29 @@ void update(Context& ctx) {
             spot.castShadow(spotCasts);
             std::cout << "Spot castShadow: " << (spotCasts ? "ON" : "OFF") << std::endl;
         }
+    }
+
+    // Object shadow controls
+    if (ctx.key(GLFW_KEY_C).pressed) {
+        // Cycle through objects (0-5)
+        g_selectedObject = (g_selectedObject + 1) % 6;
+        std::cout << "Selected: " << g_objectNames[g_selectedObject]
+                  << " (cast=" << (g_castShadow[g_selectedObject] ? "ON" : "OFF")
+                  << ", receive=" << (g_receiveShadow[g_selectedObject] ? "ON" : "OFF") << ")" << std::endl;
+    }
+    if (ctx.key(GLFW_KEY_V).pressed) {
+        // Toggle castShadow on selected object
+        g_castShadow[g_selectedObject] = !g_castShadow[g_selectedObject];
+        scene.entries()[g_selectedObject].castShadow = g_castShadow[g_selectedObject];
+        std::cout << g_objectNames[g_selectedObject] << " castShadow: "
+                  << (g_castShadow[g_selectedObject] ? "ON" : "OFF") << std::endl;
+    }
+    if (ctx.key(GLFW_KEY_B).pressed) {
+        // Toggle receiveShadow on selected object
+        g_receiveShadow[g_selectedObject] = !g_receiveShadow[g_selectedObject];
+        scene.entries()[g_selectedObject].receiveShadow = g_receiveShadow[g_selectedObject];
+        std::cout << g_objectNames[g_selectedObject] << " receiveShadow: "
+                  << (g_receiveShadow[g_selectedObject] ? "ON" : "OFF") << std::endl;
     }
 
     // Animate point light position (orbiting)

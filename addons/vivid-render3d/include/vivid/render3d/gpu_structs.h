@@ -70,7 +70,7 @@ struct PBRUniforms {
     float metallic;             // f32: 4 bytes, offset 224
     float roughness;            // f32: 4 bytes, offset 228
     uint32_t lightCount;        // u32: 4 bytes, offset 232
-    float _pad0;                // 4 bytes, offset 236
+    uint32_t receiveShadow;     // u32: 4 bytes, offset 236 (1=receive shadows)
     GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 240
 };                               // Total: 496 bytes
 
@@ -94,10 +94,14 @@ struct PBRTexturedUniforms {
     uint32_t lightCount;        // u32: 4 bytes, offset 260
     float alphaCutoff;          // f32: 4 bytes, offset 264 (for alpha mask mode)
     uint32_t alphaMode;         // u32: 4 bytes, offset 268 (0=opaque, 1=mask, 2=blend)
-    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 272
-};                               // Total: 528 bytes
+    uint32_t receiveShadow;     // u32: 4 bytes, offset 272 (1=receive shadows)
+    uint32_t _pad1;             // u32: 4 bytes, offset 276
+    uint32_t _pad2;             // u32: 4 bytes, offset 280
+    uint32_t _pad3;             // u32: 4 bytes, offset 284
+    GPULight lights[MAX_LIGHTS]; // 64 * 4 = 256 bytes, offset 288
+};                               // Total: 544 bytes
 
-static_assert(sizeof(PBRTexturedUniforms) == 528, "PBRTexturedUniforms struct must be 528 bytes");
+static_assert(sizeof(PBRTexturedUniforms) == 544, "PBRTexturedUniforms struct must be 544 bytes");
 
 // Skybox uniform buffer structure
 struct SkyboxUniforms {

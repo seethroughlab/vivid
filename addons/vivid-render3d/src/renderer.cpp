@@ -486,24 +486,25 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 
 // PBR shader source with multi-light support
 const char* PBR_SHADER_SOURCE = R"(
+// PBR shader with multi-light support and shadow sampling
+
 const PI: f32 = 3.14159265359;
 const EPSILON: f32 = 0.0001;
 const MAX_LIGHTS: u32 = 4u;
 
-// Light types
 const LIGHT_DIRECTIONAL: u32 = 0u;
 const LIGHT_POINT: u32 = 1u;
 const LIGHT_SPOT: u32 = 2u;
 
 struct Light {
-    position: vec3f,       // World position (point/spot)
-    range: f32,            // Falloff range (point/spot)
-    direction: vec3f,      // Light direction (directional/spot)
-    spotAngle: f32,        // Cosine of outer cone angle (spot)
-    color: vec3f,          // Light color
-    intensity: f32,        // Light intensity
-    lightType: u32,        // 0=directional, 1=point, 2=spot
-    spotBlend: f32,        // Cosine of inner cone angle (spot)
+    position: vec3f,
+    range: f32,
+    direction: vec3f,
+    spotAngle: f32,
+    color: vec3f,
+    intensity: f32,
+    lightType: u32,
+    spotBlend: f32,
     _pad: vec2f,
 }
 
@@ -517,11 +518,26 @@ struct Uniforms {
     metallic: f32,
     roughness: f32,
     lightCount: u32,
-    _pad0: f32,
+    receiveShadow: u32,
     lights: array<Light, 4>,
 }
 
+struct ShadowUniforms {
+    lightViewProj: mat4x4f,
+    shadowBias: f32,
+    shadowMapSize: f32,
+    shadowEnabled: u32,
+    pointShadowEnabled: u32,
+    pointLightPosAndRange: vec4f,
+}
+
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+@group(1) @binding(0) var<uniform> shadow: ShadowUniforms;
+@group(1) @binding(1) var shadowMap: texture_depth_2d;
+@group(1) @binding(2) var shadowSampler: sampler_comparison;
+@group(1) @binding(3) var pointShadowAtlas: texture_2d<f32>;
+@group(1) @binding(4) var pointShadowSampler: sampler;
 
 struct VertexInput {
     @location(0) position: vec3f,
@@ -571,7 +587,6 @@ fn F_Schlick(cosTheta: f32, F0: vec3f) -> vec3f {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-// Point light attenuation (inverse square with range cutoff)
 fn getAttenuation(distance: f32, range: f32) -> f32 {
     if (range <= 0.0) { return 1.0; }
     let d = max(distance, EPSILON);
@@ -580,36 +595,71 @@ fn getAttenuation(distance: f32, range: f32) -> f32 {
     return att * falloff * falloff;
 }
 
-// Spot light cone factor
 fn getSpotFactor(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f32) -> f32 {
     let cosAngle = dot(lightDir, spotDir);
     return saturate((cosAngle - outerAngle) / max(innerAngle - outerAngle, EPSILON));
 }
 
-// Calculate contribution from a single light
+fn sampleShadow(worldPos: vec3f) -> f32 {
+    if (shadow.shadowEnabled == 0u) { return 1.0; }
+    let lightSpacePos = shadow.lightViewProj * vec4f(worldPos, 1.0);
+    var projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    let texCoordX = projCoords.x * 0.5 + 0.5;
+    let texCoordY = 1.0 - (projCoords.y * 0.5 + 0.5);
+    let texCoordZ = projCoords.z;
+    if (texCoordX < 0.0 || texCoordX > 1.0 || texCoordY < 0.0 || texCoordY > 1.0 || texCoordZ < 0.0 || texCoordZ > 1.0) { return 1.0; }
+    let currentDepth = texCoordZ - shadow.shadowBias;
+    return textureSampleCompare(shadowMap, shadowSampler, vec2f(texCoordX, texCoordY), currentDepth);
+}
+
+fn samplePointShadow(worldPos: vec3f) -> f32 {
+    if (shadow.pointShadowEnabled == 0u) { return 1.0; }
+    let lightToFrag = worldPos - shadow.pointLightPosAndRange.xyz;
+    let fragDist = length(lightToFrag);
+    let absDir = abs(lightToFrag);
+    var faceIndex: i32; var u: f32; var v: f32; var ma: f32;
+    if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
+        ma = absDir.x;
+        if (lightToFrag.x > 0.0) { faceIndex = 0; u = -lightToFrag.z; v = -lightToFrag.y; }
+        else { faceIndex = 1; u = lightToFrag.z; v = -lightToFrag.y; }
+    } else if (absDir.y >= absDir.x && absDir.y >= absDir.z) {
+        ma = absDir.y;
+        if (lightToFrag.y > 0.0) { faceIndex = 2; u = lightToFrag.x; v = lightToFrag.z; }
+        else { faceIndex = 3; u = lightToFrag.x; v = -lightToFrag.z; }
+    } else {
+        ma = absDir.z;
+        if (lightToFrag.z > 0.0) { faceIndex = 4; u = lightToFrag.x; v = -lightToFrag.y; }
+        else { faceIndex = 5; u = -lightToFrag.x; v = -lightToFrag.y; }
+    }
+    let texU = (u / ma) * 0.5 + 0.5;
+    let texV = 0.5 - (v / ma) * 0.5;
+    let faceUV = vec2f(texU, texV);
+    let col = f32(faceIndex % 3);
+    let row = f32(faceIndex / 3);
+    let atlasUV = (faceUV + vec2f(col, row)) / vec2f(3.0, 2.0);
+    let sampledDepth = textureSample(pointShadowAtlas, pointShadowSampler, atlasUV).r;
+    let normalizedFragDist = fragDist / shadow.pointLightPosAndRange.w;
+    if (normalizedFragDist - shadow.shadowBias > sampledDepth) { return 0.0; }
+    return 1.0;
+}
+
 fn calculateLightContribution(
-    light: Light,
-    worldPos: vec3f,
-    N: vec3f,
-    V: vec3f,
-    albedo: vec3f,
-    metallic: f32,
-    roughness: f32,
-    F0: vec3f
+    light: Light, lightIndex: u32, worldPos: vec3f, N: vec3f, V: vec3f,
+    albedo: vec3f, metallic: f32, roughness: f32, F0: vec3f
 ) -> vec3f {
     var L: vec3f;
     var radiance: vec3f;
 
     if (light.lightType == LIGHT_DIRECTIONAL) {
-        L = normalize(light.direction);
+        // Negate: light.direction points from light to scene, we need surface to light
+        L = -normalize(light.direction);
         radiance = light.color * light.intensity;
     } else if (light.lightType == LIGHT_POINT) {
         let lightVec = light.position - worldPos;
         let dist = length(lightVec);
         L = lightVec / max(dist, EPSILON);
-        let att = getAttenuation(dist, light.range);
-        radiance = light.color * light.intensity * att;
-    } else { // LIGHT_SPOT
+        radiance = light.color * light.intensity * getAttenuation(dist, light.range);
+    } else {
         let lightVec = light.position - worldPos;
         let dist = length(lightVec);
         L = lightVec / max(dist, EPSILON);
@@ -626,20 +676,26 @@ fn calculateLightContribution(
 
     if (NdotL <= 0.0) { return vec3f(0.0); }
 
+    // Shadow factor (only for first light, only if receiving shadows)
+    var shadowFactor: f32 = 1.0;
+    if (lightIndex == 0u && uniforms.receiveShadow != 0u) {
+        if (light.lightType == LIGHT_POINT) {
+            shadowFactor = samplePointShadow(worldPos);
+        } else {
+            shadowFactor = sampleShadow(worldPos);
+        }
+    }
+
     let D = D_GGX(NdotH, roughness);
     let G = G_Smith(NdotV, NdotL, roughness);
     let F = F_Schlick(HdotV, F0);
 
-    let numerator = D * G * F;
-    let denominator = 4.0 * NdotV * NdotL + EPSILON;
-    let specular = numerator / denominator;
-
+    let specular = (D * G * F) / (4.0 * NdotV * NdotL + EPSILON);
     let kS = F;
     var kD = vec3f(1.0) - kS;
     kD *= 1.0 - metallic;
 
-    let diffuse = kD * albedo / PI;
-    return (diffuse + specular) * radiance * NdotL;
+    return (kD * albedo / PI + specular) * radiance * NdotL * shadowFactor;
 }
 
 @fragment
@@ -652,20 +708,16 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let roughness = max(uniforms.roughness, 0.04);
     let F0 = mix(vec3f(0.04), albedo, metallic);
 
-    // Accumulate lighting from all lights
     var Lo = vec3f(0.0);
     let lightCount = min(uniforms.lightCount, MAX_LIGHTS);
     for (var i = 0u; i < lightCount; i++) {
-        Lo += calculateLightContribution(
-            uniforms.lights[i], in.worldPos, N, V, albedo, metallic, roughness, F0
-        );
+        Lo += calculateLightContribution(uniforms.lights[i], i, in.worldPos, N, V, albedo, metallic, roughness, F0);
     }
 
     let ambient = vec3f(0.03) * albedo * uniforms.ambientIntensity;
-
     var color = ambient + Lo;
-    color = color / (color + vec3f(1.0));  // Reinhard tone mapping
-    color = pow(color, vec3f(1.0 / 2.2));  // Gamma correction
+    color = color / (color + vec3f(1.0));
+    color = pow(color, vec3f(1.0 / 2.2));
 
     return vec4f(color, uniforms.baseColor.a * in.color.a);
 }
@@ -809,7 +861,8 @@ fn calculateLightContribution(
     var radiance: vec3f;
 
     if (light.lightType == LIGHT_DIRECTIONAL) {
-        L = normalize(light.direction);
+        // Negate: light.direction points from light to scene, we need surface to light
+        L = -normalize(light.direction);
         radiance = light.color * light.intensity;
     } else if (light.lightType == LIGHT_POINT) {
         let lightVec = light.position - worldPos;
@@ -1082,7 +1135,8 @@ fn calculateLightContribution(
     var radiance: vec3f;
 
     if (light.lightType == LIGHT_DIRECTIONAL) {
-        L = normalize(light.direction);
+        // Negate: light.direction points from light to scene, we need surface to light
+        L = -normalize(light.direction);
         radiance = light.color * light.intensity;
     } else if (light.lightType == LIGHT_POINT) {
         let lightVec = light.position - worldPos;
@@ -1332,7 +1386,8 @@ fn calculateLightContribution(
     var radiance: vec3f;
 
     if (light.lightType == LIGHT_DIRECTIONAL) {
-        L = normalize(light.direction);
+        // Negate: light.direction points from light to scene, we need surface to light
+        L = -normalize(light.direction);
         radiance = light.color * light.intensity;
     } else if (light.lightType == LIGHT_POINT) {
         let lightVec = light.position - worldPos;
@@ -2248,10 +2303,11 @@ void Render3D::createPipeline(Context& ctx) {
     pbrLayoutDesc.entries = &pbrLayoutEntry;
     m_pbrBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &pbrLayoutDesc);
 
-    // Create PBR pipeline layout
+    // Create PBR pipeline layout (2 bind groups: uniforms + shadow)
+    WGPUBindGroupLayout pbrLayouts[2] = { m_pbrBindGroupLayout, m_shadowManager->getShadowSampleBindGroupLayout() };
     WGPUPipelineLayoutDescriptor pbrPipelineLayoutDesc = {};
-    pbrPipelineLayoutDesc.bindGroupLayoutCount = 1;
-    pbrPipelineLayoutDesc.bindGroupLayouts = &m_pbrBindGroupLayout;
+    pbrPipelineLayoutDesc.bindGroupLayoutCount = 2;
+    pbrPipelineLayoutDesc.bindGroupLayouts = pbrLayouts;
     WGPUPipelineLayout pbrPipelineLayout = wgpuDeviceCreatePipelineLayout(device, &pbrPipelineLayoutDesc);
 
     // PBR fragment state
@@ -2356,10 +2412,11 @@ void Render3D::createPipeline(Context& ctx) {
     pbrTexLayoutDesc.entries = pbrTexLayoutEntries;
     m_pbrTexturedBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &pbrTexLayoutDesc);
 
-    // Create textured PBR pipeline layout
+    // Create textured PBR pipeline layout (2 bind groups: material + shadow)
+    WGPUBindGroupLayout pbrTexLayouts[2] = { m_pbrTexturedBindGroupLayout, m_shadowManager->getShadowSampleBindGroupLayout() };
     WGPUPipelineLayoutDescriptor pbrTexPipelineLayoutDesc = {};
-    pbrTexPipelineLayoutDesc.bindGroupLayoutCount = 1;
-    pbrTexPipelineLayoutDesc.bindGroupLayouts = &m_pbrTexturedBindGroupLayout;
+    pbrTexPipelineLayoutDesc.bindGroupLayoutCount = 2;
+    pbrTexPipelineLayoutDesc.bindGroupLayouts = pbrTexLayouts;
     WGPUPipelineLayout pbrTexPipelineLayout = wgpuDeviceCreatePipelineLayout(device, &pbrTexPipelineLayoutDesc);
 
     // Textured PBR fragment state
@@ -2496,10 +2553,10 @@ void Render3D::createPipeline(Context& ctx) {
     iblSamplerDesc.maxAnisotropy = 1;
     m_iblSampler = wgpuDeviceCreateSampler(device, &iblSamplerDesc);
 
-    // Create IBL pipeline layout (2 bind groups: material + IBL)
-    WGPUBindGroupLayout iblBindGroupLayouts[2] = { m_pbrTexturedBindGroupLayout, m_iblBindGroupLayout };
+    // Create IBL pipeline layout (3 bind groups: material + IBL + shadow)
+    WGPUBindGroupLayout iblBindGroupLayouts[3] = { m_pbrTexturedBindGroupLayout, m_iblBindGroupLayout, m_shadowManager->getShadowSampleBindGroupLayout() };
     WGPUPipelineLayoutDescriptor iblPipelineLayoutDesc = {};
-    iblPipelineLayoutDesc.bindGroupLayoutCount = 2;
+    iblPipelineLayoutDesc.bindGroupLayoutCount = 3;
     iblPipelineLayoutDesc.bindGroupLayouts = iblBindGroupLayouts;
     WGPUPipelineLayout iblPipelineLayout = wgpuDeviceCreatePipelineLayout(device, &iblPipelineLayoutDesc);
 
@@ -3128,6 +3185,7 @@ void Render3D::process(Context& ctx) {
             uniforms.lightCount = lightCount;
             uniforms.alphaCutoff = activeMaterial->getAlphaCutoff();
             uniforms.alphaMode = static_cast<uint32_t>(activeMaterial->getAlphaMode());
+            uniforms.receiveShadow = obj.receiveShadow ? 1 : 0;
             memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
 
             size_t offset = i * m_pbrUniformAlignment;
@@ -3151,6 +3209,7 @@ void Render3D::process(Context& ctx) {
             uniforms.metallic = m_metallic;
             uniforms.roughness = m_roughness;
             uniforms.lightCount = lightCount;
+            uniforms.receiveShadow = obj.receiveShadow ? 1 : 0;
             memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
 
             size_t offset = i * m_pbrUniformAlignment;
@@ -3295,13 +3354,21 @@ void Render3D::process(Context& ctx) {
             // Bind displacement textures if using displacement
             if (objUseDisplacement && m_displacementBindGroup) {
                 wgpuRenderPassEncoderSetBindGroup(pass, 1, m_displacementBindGroup, 0, nullptr);
+                // Note: displacement shaders don't have shadow support yet
             }
             // Bind IBL textures if using IBL (and not displacement - they share group 1)
             else if (objUseIBL && m_iblBindGroup) {
                 wgpuRenderPassEncoderSetBindGroup(pass, 1, m_iblBindGroup, 0, nullptr);
+                // Shadow at group 2 for IBL pipeline
+                wgpuRenderPassEncoderSetBindGroup(pass, 2, m_shadowManager->getShadowSampleBindGroup(), 0, nullptr);
+            } else {
+                // Shadow at group 1 for textured PBR pipeline (no IBL)
+                wgpuRenderPassEncoderSetBindGroup(pass, 1, m_shadowManager->getShadowSampleBindGroup(), 0, nullptr);
             }
         } else if (usePBR) {
             wgpuRenderPassEncoderSetBindGroup(pass, 0, scalarPbrBindGroup, 1, &dynamicOffset);
+            // Shadow at group 1 for scalar PBR pipeline
+            wgpuRenderPassEncoderSetBindGroup(pass, 1, m_shadowManager->getShadowSampleBindGroup(), 0, nullptr);
         } else {
             uint32_t flatOffset = static_cast<uint32_t>(i * m_uniformAlignment);
             wgpuRenderPassEncoderSetBindGroup(pass, 0, flatBindGroup, 1, &flatOffset);
