@@ -323,9 +323,22 @@ void update(Context& ctx) {
             glm::translate(glm::mat4(1.0f), glm::vec3(pointX, pointHeight, pointZ));
     }
 
-    // Animate spot light (swinging direction)
-    float spotSwing = std::sin(time * 0.4f) * 0.3f;
-    spot.direction(-0.5f + spotSwing, -1.0f, -0.5f - spotSwing);
+    // Animate spot light - move position in a circle AND swing direction
+    // Much more dramatic movement so shadow changes are obvious
+    float spotAngle = time * 0.8f;  // Faster orbit
+    float spotRadius = 4.0f;
+    float spotX = std::cos(spotAngle) * spotRadius;
+    float spotZ = std::sin(spotAngle) * spotRadius;
+    float spotY = 5.0f + std::sin(time * 1.5f) * 1.0f;  // Bob up and down
+    spot.position(spotX, spotY, spotZ);
+    // Point toward center of scene
+    spot.direction(-spotX * 0.3f, -1.0f, -spotZ * 0.3f);
+
+    // Update spot light marker to follow
+    if (g_spotLightMarkerIndex >= 0 && g_spotLightMarkerIndex < static_cast<int>(scene.entries().size())) {
+        scene.entries()[g_spotLightMarkerIndex].transform =
+            glm::translate(glm::mat4(1.0f), glm::vec3(spotX, spotY, spotZ));
+    }
 
     // Rotate CSG objects slowly
     auto& entries = scene.entries();
