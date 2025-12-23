@@ -477,6 +477,34 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             }
         }
 
+        // Start ImGui frame BEFORE user update so user chains can use ImGui
+        {
+            float xscale, yscale;
+            glfwGetWindowContentScale(mlc.window, &xscale, &yscale);
+
+            vivid::imgui::FrameInput frameInput;
+            frameInput.width = mlc.ctx->width();
+            frameInput.height = mlc.ctx->height();
+            frameInput.contentScale = xscale;
+            frameInput.dt = static_cast<float>(mlc.ctx->dt());
+            frameInput.mousePos = mlc.ctx->mouse();
+            frameInput.mouseDown[0] = mlc.ctx->mouseButton(0).held;
+            frameInput.mouseDown[1] = mlc.ctx->mouseButton(1).held;
+            frameInput.mouseDown[2] = mlc.ctx->mouseButton(2).held;
+            frameInput.scroll = mlc.ctx->scroll();
+            frameInput.keyCtrl = glfwGetKey(mlc.window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
+                                 glfwGetKey(mlc.window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
+            frameInput.keyShift = glfwGetKey(mlc.window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
+                                  glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
+            frameInput.keyAlt = glfwGetKey(mlc.window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
+                                glfwGetKey(mlc.window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+            frameInput.keySuper = glfwGetKey(mlc.window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
+                                  glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
+
+            // Always begin ImGui frame (even if visualizer not visible) so user chains can use ImGui
+            vivid::imgui::beginFrame(frameInput);
+        }
+
         // Call user's update function
         mlc.hotReload->getUpdateFn()(*mlc.ctx);
 
@@ -617,8 +645,8 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                           glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
 
     // Run chain visualizer BEFORE blit so solo mode can override output texture
+    // (beginFrame was already called before user update)
     if (vivid::imgui::isVisible()) {
-        vivid::imgui::beginFrame(frameInput);
         mlc.chainVisualizer->render(frameInput, *mlc.ctx);
     }
 
@@ -627,10 +655,9 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         mlc.display->blit(pass, mlc.ctx->outputTexture());
     }
 
-    // Render ImGui on top of the blit
-    if (vivid::imgui::isVisible()) {
-        vivid::imgui::render(pass);
-    }
+    // Always render ImGui (ends the frame started before user update)
+    // This renders both user ImGui widgets and chain visualizer (if visible)
+    vivid::imgui::render(pass);
 
     // Render error message if present
     if (mlc.ctx->hasError() && mlc.display->isValid()) {

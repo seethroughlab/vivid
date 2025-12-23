@@ -331,6 +331,10 @@ bool HotReload::compile() {
                     if (fs::exists(entry.path() / "glm" / "glm.hpp")) {
                         depIncludes.push_back(entry.path());
                     }
+                    // Add imgui for ImGui support in user chains
+                    if (fs::exists(entry.path() / "imgui.h")) {
+                        depIncludes.push_back(entry.path());
+                    }
                 }
             }
         }
