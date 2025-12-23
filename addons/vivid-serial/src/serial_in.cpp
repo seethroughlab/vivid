@@ -6,7 +6,6 @@
 
 #include <vivid/serial/serial_in.h>
 #include <vivid/operator_registry.h>
-#include <imgui.h>
 #include <sstream>
 #include <iostream>
 
@@ -179,7 +178,7 @@ void SerialIn::parseCSV(const std::string& line) {
     }
 }
 
-bool SerialIn::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+bool SerialIn::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
     float w = maxX - minX;
     float h = maxY - minY;
     float cx = minX + w * 0.5f;
@@ -188,34 +187,34 @@ bool SerialIn::drawVisualization(ImDrawList* dl, float minX, float minY, float m
 
     // Background circle
     bool connected = isConnected();
-    ImU32 bgColor = connected ? IM_COL32(30, 80, 30, 255) : IM_COL32(60, 30, 30, 255);
-    dl->AddCircleFilled(ImVec2(cx, cy), r, bgColor);
-    dl->AddCircle(ImVec2(cx, cy), r, IM_COL32(100, 100, 100, 255), 32, 2.0f);
+    uint32_t bgColor = connected ? VIZ_COL32(30, 80, 30, 255) : VIZ_COL32(60, 30, 30, 255);
+    dl->AddCircleFilled(VizVec2(cx, cy), r, bgColor);
+    dl->AddCircle(VizVec2(cx, cy), r, VIZ_COL32(100, 100, 100, 255), 32, 2.0f);
 
     // RX indicator with activity flash
-    ImU32 textColor = m_hasNewData ? IM_COL32(100, 255, 100, 255) : IM_COL32(180, 180, 180, 255);
+    uint32_t textColor = m_hasNewData ? VIZ_COL32(100, 255, 100, 255) : VIZ_COL32(180, 180, 180, 255);
 
     const char* label = "RX";
-    ImVec2 textSize = ImGui::CalcTextSize(label);
-    dl->AddText(ImVec2(cx - textSize.x * 0.5f, cy - textSize.y * 0.5f - r * 0.15f), textColor, label);
+    VizTextSize textSize = dl->CalcTextSize(label);
+    dl->AddText(VizVec2(cx - textSize.x * 0.5f, cy - textSize.y * 0.5f - r * 0.15f), textColor, label);
 
     // Serial icon (USB plug)
     float iconY = cy + r * 0.15f;
-    dl->AddRectFilled(ImVec2(cx - r * 0.2f, iconY), ImVec2(cx + r * 0.2f, iconY + r * 0.3f),
-                      connected ? IM_COL32(100, 200, 100, 255) : IM_COL32(150, 150, 150, 255));
+    dl->AddRectFilled(VizVec2(cx - r * 0.2f, iconY), VizVec2(cx + r * 0.2f, iconY + r * 0.3f),
+                      connected ? VIZ_COL32(100, 200, 100, 255) : VIZ_COL32(150, 150, 150, 255));
 
     // Activity indicator dot
     if (m_hasNewData) {
         float dotR = r * 0.15f;
-        dl->AddCircleFilled(ImVec2(cx + r * 0.6f, cy - r * 0.6f), dotR, IM_COL32(100, 255, 100, 255));
+        dl->AddCircleFilled(VizVec2(cx + r * 0.6f, cy - r * 0.6f), dotR, VIZ_COL32(100, 255, 100, 255));
     }
 
     // Show first value if available
     if (!m_values.empty()) {
         char valStr[32];
         snprintf(valStr, sizeof(valStr), "%.2f", m_values[0]);
-        ImVec2 valSize = ImGui::CalcTextSize(valStr);
-        dl->AddText(ImVec2(cx - valSize.x * 0.5f, maxY - valSize.y - 2), IM_COL32(100, 255, 100, 200), valStr);
+        VizTextSize valSize = dl->CalcTextSize(valStr);
+        dl->AddText(VizVec2(cx - valSize.x * 0.5f, maxY - valSize.y - 2), VIZ_COL32(100, 255, 100, 200), valStr);
     }
 
     return true;

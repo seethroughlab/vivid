@@ -1,5 +1,4 @@
 #include <vivid/network/udp_in.h>
-#include <imgui.h>
 #include <iostream>
 #include <cstring>
 
@@ -221,7 +220,7 @@ void UdpIn::receiveThread() {
     }
 }
 
-bool UdpIn::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
+bool UdpIn::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
     float w = maxX - minX;
     float h = maxY - minY;
     float cx = minX + w * 0.5f;
@@ -229,36 +228,36 @@ bool UdpIn::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX
     float r = std::min(w, h) * 0.35f;
 
     // Background circle
-    ImU32 bgColor = m_listening.load() ? IM_COL32(30, 80, 30, 255) : IM_COL32(60, 30, 30, 255);
-    dl->AddCircleFilled(ImVec2(cx, cy), r, bgColor);
-    dl->AddCircle(ImVec2(cx, cy), r, IM_COL32(100, 100, 100, 255), 32, 2.0f);
+    uint32_t bgColor = m_listening.load() ? VIZ_COL32(30, 80, 30, 255) : VIZ_COL32(60, 30, 30, 255);
+    dl->AddCircleFilled(VizVec2(cx, cy), r, bgColor);
+    dl->AddCircle(VizVec2(cx, cy), r, VIZ_COL32(100, 100, 100, 255), 32, 2.0f);
 
     // RX indicator with activity flash
     bool hasActivity = !m_readBuffer.empty();
-    ImU32 textColor = hasActivity ? IM_COL32(100, 255, 100, 255) : IM_COL32(180, 180, 180, 255);
+    uint32_t textColor = hasActivity ? VIZ_COL32(100, 255, 100, 255) : VIZ_COL32(180, 180, 180, 255);
 
     const char* label = "RX";
-    ImVec2 textSize = ImGui::CalcTextSize(label);
-    dl->AddText(ImVec2(cx - textSize.x * 0.5f, cy - textSize.y * 0.5f - r * 0.15f), textColor, label);
+    VizTextSize textSize = dl->CalcTextSize(label);
+    dl->AddText(VizVec2(cx - textSize.x * 0.5f, cy - textSize.y * 0.5f - r * 0.15f), textColor, label);
 
     // Port number below
     char portStr[16];
     snprintf(portStr, sizeof(portStr), ":%d", m_port);
-    ImVec2 portSize = ImGui::CalcTextSize(portStr);
-    dl->AddText(ImVec2(cx - portSize.x * 0.5f, cy + r * 0.15f), IM_COL32(150, 150, 150, 255), portStr);
+    VizTextSize portSize = dl->CalcTextSize(portStr);
+    dl->AddText(VizVec2(cx - portSize.x * 0.5f, cy + r * 0.15f), VIZ_COL32(150, 150, 150, 255), portStr);
 
     // Activity indicator dot
     if (hasActivity) {
         float dotR = r * 0.15f;
-        dl->AddCircleFilled(ImVec2(cx + r * 0.6f, cy - r * 0.6f), dotR, IM_COL32(100, 255, 100, 255));
+        dl->AddCircleFilled(VizVec2(cx + r * 0.6f, cy - r * 0.6f), dotR, VIZ_COL32(100, 255, 100, 255));
     }
 
     // Bytes received this frame
     if (!m_readBuffer.empty()) {
         char sizeStr[32];
         snprintf(sizeStr, sizeof(sizeStr), "%zu B", m_readBuffer.size());
-        ImVec2 sizeSize = ImGui::CalcTextSize(sizeStr);
-        dl->AddText(ImVec2(cx - sizeSize.x * 0.5f, maxY - sizeSize.y - 2), IM_COL32(100, 255, 100, 200), sizeStr);
+        VizTextSize sizeSize = dl->CalcTextSize(sizeStr);
+        dl->AddText(VizVec2(cx - sizeSize.x * 0.5f, maxY - sizeSize.y - 2), VIZ_COL32(100, 255, 100, 200), sizeStr);
     }
 
     return true;

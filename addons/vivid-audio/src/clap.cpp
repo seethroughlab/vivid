@@ -1,7 +1,7 @@
 #include <vivid/audio/clap.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
-#include <imgui.h>
+
 #include <cmath>
 
 namespace vivid::audio {
@@ -139,14 +139,14 @@ float Clap::bandpass(float in, int ch) {
     return m_bpState1[ch] * 3.0f;  // Boost bandpass output
 }
 
-bool Clap::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool Clap::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX;
     float height = maxY - minY;
 
     // Dark magenta background
-    dl->AddRectFilled(min, max, IM_COL32(50, 30, 45, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(50, 30, 45, 255), 4.0f);
 
     // Draw 4 burst bars
     float barW = (width - 20) / 4.0f;
@@ -158,14 +158,14 @@ bool Clap::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX,
         float barX = min.x + 6 + i * (barW + 2);
 
         // Pink/magenta gradient based on intensity
-        ImU32 burstColor = IM_COL32(
+        uint32_t burstColor = VIZ_COL32(
             200 + (int)(55 * burstEnv),
             80 + (int)(100 * burstEnv),
             180, 255);
 
         dl->AddRectFilled(
-            ImVec2(barX, max.y - 4 - barH),
-            ImVec2(barX + barW - 2, max.y - 4),
+            VizVec2(barX, max.y - 4 - barH),
+            VizVec2(barX + barW - 2, max.y - 4),
             burstColor, 2.0f);
     }
 

@@ -1,6 +1,6 @@
 #include <vivid/audio/limiter.h>
 #include <vivid/context.h>
-#include <imgui.h>
+
 #include <cmath>
 #include <algorithm>
 
@@ -52,23 +52,23 @@ void Limiter::cleanupEffect() {
     m_initialized = false;
 }
 
-bool Limiter::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool Limiter::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX;
     float height = maxY - minY;
     float cx = (minX + maxX) * 0.5f;
 
     // Dark red background
-    dl->AddRectFilled(min, max, IM_COL32(45, 30, 30, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(45, 30, 30, 255), 4.0f);
 
     float grDb = m_currentGainReductionDb;
     float grNorm = std::min(1.0f, std::abs(grDb) / 12.0f);  // Up to -12dB
 
     // Draw ceiling line (horizontal, near top)
     float ceilingY = min.y + height * 0.15f;
-    dl->AddLine(ImVec2(min.x + 4, ceilingY), ImVec2(max.x - 4, ceilingY),
-        IM_COL32(255, 80, 80, 200), 2.0f);
+    dl->AddLine(VizVec2(min.x + 4, ceilingY), VizVec2(max.x - 4, ceilingY),
+        VIZ_COL32(255, 80, 80, 200), 2.0f);
 
     // Draw gain reduction bar
     float barW = width * 0.4f;
@@ -77,17 +77,17 @@ bool Limiter::drawVisualization(ImDrawList* dl, float minX, float minY, float ma
     float barX = cx - barW * 0.5f;
 
     // Flash red when limiting hard
-    ImU32 grColor = IM_COL32(200 + (int)(55 * grNorm), 80, 80, 255);
+    uint32_t grColor = VIZ_COL32(200 + (int)(55 * grNorm), 80, 80, 255);
 
     dl->AddRectFilled(
-        ImVec2(barX, min.y + height * 0.2f),
-        ImVec2(barX + barW, min.y + height * 0.2f + barH),
+        VizVec2(barX, min.y + height * 0.2f),
+        VizVec2(barX + barW, min.y + height * 0.2f + barH),
         grColor, 2.0f);
 
     // "LIMIT" indicator when active
     if (grDb < -0.5f) {
-        dl->AddText(ImVec2(cx - 15, max.y - 16),
-            IM_COL32(255, 100, 100, 255), "LIM");
+        dl->AddText(VizVec2(cx - 15, max.y - 16),
+            VIZ_COL32(255, 100, 100, 255), "LIM");
     }
 
     return true;

@@ -22,7 +22,7 @@ public:
     void init(Context& ctx) override;
     void process(Context& ctx) override;
     std::string name() const override { return "DMXOut"; }
-    bool drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) override;
+    bool drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) override;
 
     // Parameter interface
     std::vector<ParamDecl> params() override;

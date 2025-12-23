@@ -238,6 +238,29 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Topmost Layer (for tooltips - renders on top of everything)
+    /// @{
+
+    /**
+     * @brief Draw a filled rounded rectangle in the topmost layer
+     * @note Use for tooltips that should appear above all other content
+     */
+    void fillRoundedRectTopmost(float x, float y, float w, float h, float radius,
+                                 const glm::vec4& color, int segments = 8);
+
+    /**
+     * @brief Draw a rounded rectangle outline in the topmost layer
+     */
+    void strokeRoundedRectTopmost(float x, float y, float w, float h, float radius,
+                                   float lineWidth, const glm::vec4& color, int segments = 8);
+
+    /**
+     * @brief Draw text in the topmost layer (for tooltips)
+     */
+    void textTopmost(const std::string& str, float x, float y, const glm::vec4& color, int fontIndex = 0);
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Text
     /// @{
 
@@ -357,6 +380,11 @@ private:
     // Per-font text batches (up to 3 fonts)
     std::vector<OverlayVertex> m_textVertices[3];
     std::vector<uint32_t> m_textIndices[3];
+    // Topmost layer (for tooltips - rendered last, on top of everything)
+    std::vector<OverlayVertex> m_topmostVertices;
+    std::vector<uint32_t> m_topmostIndices;
+    std::vector<OverlayVertex> m_topmostTextVertices[3];
+    std::vector<uint32_t> m_topmostTextIndices[3];
 
     // Textured rects (for operator previews - not batched, drawn individually)
     struct TexturedRect {
@@ -385,12 +413,12 @@ private:
     // Persistent buffers
     WGPUBuffer m_solidVertexBuffer = nullptr;
     WGPUBuffer m_solidIndexBuffer = nullptr;
-    WGPUBuffer m_textVertexBuffer = nullptr;
-    WGPUBuffer m_textIndexBuffer = nullptr;
+    WGPUBuffer m_textVertexBuffer[3] = {nullptr, nullptr, nullptr};
+    WGPUBuffer m_textIndexBuffer[3] = {nullptr, nullptr, nullptr};
     size_t m_solidVertexCapacity = 0;
     size_t m_solidIndexCapacity = 0;
-    size_t m_textVertexCapacity = 0;
-    size_t m_textIndexCapacity = 0;
+    size_t m_textVertexCapacity[3] = {0, 0, 0};
+    size_t m_textIndexCapacity[3] = {0, 0, 0};
 
     // Transform state
     glm::mat3 m_transform = glm::mat3(1.0f);

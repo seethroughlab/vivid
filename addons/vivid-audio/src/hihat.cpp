@@ -1,7 +1,7 @@
 #include <vivid/audio/hihat.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
-#include <imgui.h>
+
 #include <cmath>
 
 namespace vivid::audio {
@@ -146,16 +146,16 @@ float HiHat::highpass(float in, int ch) {
     return out * 0.5f + delta * 0.5f;
 }
 
-bool HiHat::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool HiHat::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX;
     float height = maxY - minY;
     float cx = (minX + maxX) * 0.5f;
     float cy = (minY + maxY) * 0.5f;
 
     // Dark cyan background
-    dl->AddRectFilled(min, max, IM_COL32(30, 45, 50, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(30, 45, 50, 255), 4.0f);
 
     float env = m_env;
 
@@ -168,19 +168,19 @@ bool HiHat::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX
         float angle = (i / (float)numRays) * TWO_PI;
         float r1 = radius * 0.3f;
         float r2 = radius;
-        ImU32 rayColor = IM_COL32(
+        uint32_t rayColor = VIZ_COL32(
             150 + (int)(105 * env),
             200 + (int)(55 * env),
             220, (int)(200 * env));
         dl->AddLine(
-            ImVec2(cx + r1 * std::cos(angle), cy + r1 * std::sin(angle)),
-            ImVec2(cx + r2 * std::cos(angle), cy + r2 * std::sin(angle)),
+            VizVec2(cx + r1 * std::cos(angle), cy + r1 * std::sin(angle)),
+            VizVec2(cx + r2 * std::cos(angle), cy + r2 * std::sin(angle)),
             rayColor, 1.5f + env);
     }
 
     // Center dot
-    dl->AddCircleFilled(ImVec2(cx, cy), 3.0f + env * 4.0f,
-        IM_COL32(200, 240, 255, (int)(255 * env)));
+    dl->AddCircleFilled(VizVec2(cx, cy), 3.0f + env * 4.0f,
+        VIZ_COL32(200, 240, 255, (int)(255 * env)));
 
     return true;
 }

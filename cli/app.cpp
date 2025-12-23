@@ -14,8 +14,8 @@
 #include <vivid/addon_manager.h>
 #include <vivid/window_manager.h>
 #include <vivid/asset_loader.h>
-#include "imgui/imgui_integration.h"
-#include "imgui/chain_visualizer.h"
+#include <vivid/frame_input.h>
+#include <vivid/chain_visualizer.h>
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>  // wgpu-native extensions (wgpuDevicePoll)
 #include <glfw3webgpu.h>
@@ -35,10 +35,95 @@
 // Memory debugging (macOS)
 #ifdef __APPLE__
 #include <mach/mach.h>
+#include <dlfcn.h>  // For dlsym
+#endif
+
+#ifdef __linux__
+#include <dlfcn.h>
+#endif
+
+#ifdef _WIN32
+#include <windows.h>
 #endif
 
 // Platform-specific helpers (autoreleasepool for macOS)
 #include <vivid/platform_macos.h>
+
+// -----------------------------------------------------------------------------
+// Dynamic ImGui Support (vivid-gui addon)
+// -----------------------------------------------------------------------------
+// Function pointers for optional vivid-gui addon
+// These are looked up at runtime if the addon is loaded
+
+namespace vivid::imgui_dynamic {
+
+using InitFn = void(*)(WGPUDevice, WGPUQueue, WGPUTextureFormat);
+using BeginFrameFn = void(*)(const vivid::FrameInput*);
+using RenderFn = void(*)(WGPURenderPassEncoder);
+using ShutdownFn = void(*)();
+using IsAvailableFn = bool(*)();
+
+static InitFn init = nullptr;
+static BeginFrameFn beginFrame = nullptr;
+static RenderFn render = nullptr;
+static ShutdownFn shutdown = nullptr;
+static IsAvailableFn isAvailable = nullptr;
+static bool g_lookedUp = false;
+static bool g_initialized = false;
+
+// Try to find vivid-gui functions via dlsym (C-linkage names)
+static void lookupFunctions() {
+    if (g_lookedUp) return;
+    g_lookedUp = true;
+
+#if defined(__APPLE__) || defined(__linux__)
+    // RTLD_DEFAULT searches all loaded libraries
+    init = (InitFn)dlsym(RTLD_DEFAULT, "vivid_gui_init");
+    beginFrame = (BeginFrameFn)dlsym(RTLD_DEFAULT, "vivid_gui_begin_frame");
+    render = (RenderFn)dlsym(RTLD_DEFAULT, "vivid_gui_render");
+    shutdown = (ShutdownFn)dlsym(RTLD_DEFAULT, "vivid_gui_shutdown");
+    isAvailable = (IsAvailableFn)dlsym(RTLD_DEFAULT, "vivid_gui_is_available");
+#endif
+}
+
+static bool available() {
+    lookupFunctions();
+    return init != nullptr && beginFrame != nullptr && render != nullptr;
+}
+
+static void tryInit(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
+    if (!available() || g_initialized) return;
+    init(device, queue, format);
+    g_initialized = true;
+}
+
+static void tryBeginFrame(const vivid::FrameInput& input) {
+    if (!available() || !g_initialized) return;
+    beginFrame(&input);
+}
+
+static void tryRender(WGPURenderPassEncoder pass) {
+    if (!available() || !g_initialized) return;
+    render(pass);
+}
+
+static void tryShutdown() {
+    if (!available() || !g_initialized) return;
+    shutdown();
+    g_initialized = false;
+}
+
+// Reset lookup state (called after chain reload since libs may have changed)
+static void resetLookup() {
+    g_lookedUp = false;
+    init = nullptr;
+    beginFrame = nullptr;
+    render = nullptr;
+    shutdown = nullptr;
+    isAvailable = nullptr;
+}
+
+} // namespace vivid::imgui_dynamic
 
 namespace fs = std::filesystem;
 
@@ -66,6 +151,7 @@ static size_t getMemoryUsageMB() {
 static double g_lastMemoryLogTime = 0.0;
 static size_t g_initialMemory = 0;
 static size_t g_lastMemory = 0;
+
 
 static void logMemoryUsage(double time) {
     size_t currentMB = getMemoryUsageMB();
@@ -192,12 +278,13 @@ struct MainLoopContext {
     bool cliRecordingStarted = false;
     bool chainNeedsSetup = true;
     bool tabKeyWasPressed = false;
+    bool visualizerVisible = false;  // Chain visualizer visibility (Tab to toggle)
 
     // Core runtime objects (non-owning pointers)
     Context* ctx = nullptr;
     Display* display = nullptr;
     HotReload* hotReload = nullptr;
-    vivid::imgui::ChainVisualizer* chainVisualizer = nullptr;
+    vivid::ChainVisualizer* chainVisualizer = nullptr;
     EditorBridge* editorBridge = nullptr;
 
     // CLI args needed in loop
@@ -243,11 +330,12 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
     }
 
-    // Toggle chain visualizer on Tab key (edge detection)
+    // Toggle chain visualizer on Tab key
+    // Note: Tab won't work when ImGui widgets have keyboard focus (click outside first)
     {
         bool tabKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_TAB) == GLFW_PRESS;
         if (tabKeyPressed && !mlc.tabKeyWasPressed) {
-            vivid::imgui::toggleVisible();
+            mlc.visualizerVisible = !mlc.visualizerVisible;
         }
         mlc.tabKeyWasPressed = tabKeyPressed;
     }
@@ -442,6 +530,11 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
             mlc.chainNeedsSetup = false;
 
+            // Check if vivid-gui addon was loaded and initialize ImGui
+            imgui_dynamic::resetLookup();  // Re-scan since new libs may be loaded
+            imgui_dynamic::tryInit(mlc.device, mlc.queue, mlc.surfaceFormat);
+
+
             // Update operator source line numbers from chain.cpp
             if (mlc.updateSourceLines) {
                 mlc.updateSourceLines(mlc.ctx->chainPath());
@@ -478,12 +571,12 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             }
         }
 
-        // Start ImGui frame BEFORE user update so user chains can use ImGui
+        // Begin ImGui frame if vivid-gui is loaded (before user update)
         {
             float xscale, yscale;
             glfwGetWindowContentScale(mlc.window, &xscale, &yscale);
 
-            vivid::imgui::FrameInput frameInput;
+            vivid::FrameInput frameInput;
             frameInput.width = mlc.ctx->width();
             frameInput.height = mlc.ctx->height();
             frameInput.contentScale = xscale;
@@ -502,8 +595,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             frameInput.keySuper = glfwGetKey(mlc.window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
                                   glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
 
-            // Always begin ImGui frame (even if visualizer not visible) so user chains can use ImGui
-            vivid::imgui::beginFrame(frameInput);
+            imgui_dynamic::tryBeginFrame(frameInput);
         }
 
         // Call user's update function
@@ -626,7 +718,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     float xscale, yscale;
     glfwGetWindowContentScale(mlc.window, &xscale, &yscale);
 
-    vivid::imgui::FrameInput frameInput;
+    vivid::FrameInput frameInput;
     frameInput.width = mlc.ctx->width();
     frameInput.height = mlc.ctx->height();
     frameInput.contentScale = xscale;
@@ -646,34 +738,23 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                           glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
     frameInput.surfaceFormat = mlc.surfaceFormat;
 
-    // Toggle between imnodes and new NodeGraph (press 'G' key)
-    static bool lastGKeyPressed = false;
-    bool gKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_G) == GLFW_PRESS;
-    if (gKeyPressed && !lastGKeyPressed) {
-        mlc.chainVisualizer->setUseNodeGraph(!mlc.chainVisualizer->useNodeGraph());
-        std::cout << "[Vivid] NodeGraph mode: " << (mlc.chainVisualizer->useNodeGraph() ? "ON" : "OFF") << std::endl;
-    }
-    lastGKeyPressed = gKeyPressed;
-
-    // Run chain visualizer BEFORE blit so solo mode can override output texture
-    // (beginFrame was already called before user update)
-    if (vivid::imgui::isVisible() && !mlc.chainVisualizer->useNodeGraph()) {
-        mlc.chainVisualizer->render(frameInput, *mlc.ctx);
-    }
-
     // Blit output texture (may have been modified by solo mode)
     if (mlc.ctx->outputTexture() && mlc.display->isValid()) {
         mlc.display->blit(pass, mlc.ctx->outputTexture());
     }
 
-    // Render new NodeGraph if enabled (after blit, so it overlays the output)
-    if (vivid::imgui::isVisible() && mlc.chainVisualizer->useNodeGraph()) {
+    // Render ImGui if vivid-gui is loaded (user chain UI)
+    imgui_dynamic::tryRender(pass);
+
+    // Render NodeGraph overlay (uses OverlayCanvas, no ImGui dependency)
+    if (mlc.visualizerVisible) {
+        static bool firstRender = true;
+        if (firstRender) {
+            std::cout << "[DEBUG] Rendering NodeGraph for first time" << std::endl;
+            firstRender = false;
+        }
         mlc.chainVisualizer->renderNodeGraph(pass, frameInput, *mlc.ctx);
     }
-
-    // Always render ImGui (ends the frame started before user update)
-    // This renders both user ImGui widgets and chain visualizer (if visible)
-    vivid::imgui::render(pass);
 
     // Render error message if present
     if (mlc.ctx->hasError() && mlc.display->isValid()) {
@@ -771,7 +852,7 @@ struct Application::Impl {
     std::unique_ptr<Context> ctx;
     std::unique_ptr<Display> display;
     std::unique_ptr<HotReload> hotReload;
-    std::unique_ptr<vivid::imgui::ChainVisualizer> chainVisualizer;
+    std::unique_ptr<vivid::ChainVisualizer> chainVisualizer;
     std::unique_ptr<EditorBridge> editorBridge;
 
     // WebGPU objects
@@ -1033,16 +1114,8 @@ int Application::init(const AppConfig& config) {
         std::cerr << "Warning: Display initialization failed (shaders may be missing)" << std::endl;
     }
 
-    // Initialize ImGui
-    vivid::imgui::init(m_impl->device, m_impl->queue, m_impl->surfaceFormat);
-
-    // Show UI immediately if requested (for --show-ui flag)
-    if (config.showUI) {
-        vivid::imgui::setVisible(true);
-    }
-
     // Create chain visualizer
-    m_impl->chainVisualizer = std::make_unique<vivid::imgui::ChainVisualizer>();
+    m_impl->chainVisualizer = std::make_unique<vivid::ChainVisualizer>();
 
     // Create hot-reload system
     m_impl->hotReload = std::make_unique<HotReload>();
@@ -1233,7 +1306,6 @@ int Application::init(const AppConfig& config) {
         }
 
         if (!projectDir.empty()) {
-            vivid::imgui::setIniDirectory(projectDir.string().c_str());
             AssetLoader::instance().setProjectDir(projectDir);
         }
 
@@ -1282,6 +1354,9 @@ int Application::init(const AppConfig& config) {
     mlc.hotReload = m_impl->hotReload.get();
     mlc.chainVisualizer = m_impl->chainVisualizer.get();
     mlc.editorBridge = m_impl->editorBridge.get();
+
+    // Show visualizer if requested via --show-ui flag
+    mlc.visualizerVisible = config.showUI;
 
     // CLI args
     mlc.snapshotPath = config.snapshotPath;
@@ -1359,11 +1434,13 @@ void Application::shutdown() {
         m_impl->ctx->resetChain();
     }
 
-    // Shutdown ImGui
+    // Shutdown ImGui if vivid-gui was loaded
+    imgui_dynamic::tryShutdown();
+
+    // Shutdown chain visualizer
     if (m_impl->chainVisualizer) {
         m_impl->chainVisualizer->shutdown();
     }
-    vivid::imgui::shutdown();
 
     // Release display resources
     if (m_impl->display) {

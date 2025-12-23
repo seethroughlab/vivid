@@ -1,17 +1,17 @@
 #pragma once
 
 // Vivid Chain Visualizer
-// ImNodes-based node editor for visualizing operator chains
+// OverlayCanvas-based node graph for visualizing operator chains
 //
 // Addon-agnostic: operators provide their own visualization via drawVisualization().
-// No direct dependencies on render3d, audio, or other addons.
+// No direct dependencies on render3d, audio, ImGui, or other addons.
 
-#include "imgui_integration.h"
+#include <vivid/frame_input.h>
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/video_exporter.h>
 #include <vivid/overlay_canvas.h>
-#include "../nodegraph/node_graph.h"
+#include <vivid/node_graph.h>
 #include <webgpu/webgpu.h>
 #include <string>
 #include <unordered_map>
@@ -20,7 +20,7 @@
 #include <memory>
 #include <array>
 
-namespace vivid::imgui {
+namespace vivid {
 
 class ChainVisualizer {
 public:
@@ -39,14 +39,14 @@ public:
 
     // Render the chain visualizer
     // Call between imgui::beginFrame() and imgui::render()
-    void render(const FrameInput& input, vivid::Context& ctx);
+    void render(const FrameInput& input, Context& ctx);
 
 private:
     // Build graph layout from registered operators
-    void buildLayout(const std::vector<vivid::OperatorInfo>& operators);
+    void buildLayout(const std::vector<OperatorInfo>& operators);
 
     // Estimate node height based on content (params, inputs, thumbnail type)
-    float estimateNodeHeight(const vivid::OperatorInfo& info) const;
+    float estimateNodeHeight(const OperatorInfo& info) const;
 
     // Attribute ID helpers
     int outputAttrId(int nodeId) { return nodeId * 100; }
@@ -56,29 +56,29 @@ private:
     bool m_layoutBuilt = false;
 
     // Map operator pointers to node IDs
-    std::unordered_map<vivid::Operator*, int> m_opToNodeId;
+    std::unordered_map<Operator*, int> m_opToNodeId;
 
     // Node positions (indexed by node ID)
     std::unordered_map<int, bool> m_nodePositioned;
 
     // Selection state for inspector panel
     int m_selectedNodeId = -1;
-    vivid::Operator* m_selectedOp = nullptr;
+    Operator* m_selectedOp = nullptr;
     std::string m_selectedOpName;
 
     // Solo mode state
-    vivid::Operator* m_soloOperator = nullptr;
+    Operator* m_soloOperator = nullptr;
     bool m_inSoloMode = false;
     std::string m_soloOperatorName;  // Cached for display
 
     // Solo mode helpers (internal)
-    void renderSoloOverlay(const FrameInput& input, vivid::Context& ctx);
+    void renderSoloOverlay(const FrameInput& input, Context& ctx);
 
     // Debug value panel (shows ctx.debug() values with sparkline graphs)
-    void renderDebugPanel(vivid::Context& ctx);
+    void renderDebugPanel(Context& ctx);
 
     // Selection helpers (for editor sync)
-    void updateSelection(const std::vector<vivid::OperatorInfo>& operators);
+    void updateSelection(const std::vector<OperatorInfo>& operators);
     void clearSelection();
 
     // Pending editor selection (set by selectNodeFromEditor, applied in render)
@@ -90,8 +90,8 @@ private:
 
     // Video recording
     VideoExporter m_exporter;
-    void startRecording(ExportCodec codec, vivid::Context& ctx);
-    void stopRecording(vivid::Context& ctx);
+    void startRecording(ExportCodec codec, Context& ctx);
+    void stopRecording(Context& ctx);
 
     // Snapshot
     bool m_snapshotRequested = false;
@@ -102,11 +102,11 @@ public:
     VideoExporter& exporter() { return m_exporter; }
 
     // Save a single frame snapshot (call from main loop after rendering)
-    void saveSnapshot(WGPUDevice device, WGPUQueue queue, WGPUTexture texture, vivid::Context& ctx);
+    void saveSnapshot(WGPUDevice device, WGPUQueue queue, WGPUTexture texture, Context& ctx);
     bool snapshotRequested() const { return m_snapshotRequested; }
 
     // Solo mode control (for EditorBridge integration)
-    void enterSoloMode(vivid::Operator* op, const std::string& name);
+    void enterSoloMode(Operator* op, const std::string& name);
     void exitSoloMode();
     bool inSoloMode() const { return m_inSoloMode; }
     const std::string& soloOperatorName() const { return m_soloOperatorName; }
@@ -118,24 +118,21 @@ public:
     bool isFocused(const std::string& operatorName) const;
 
     // -------------------------------------------------------------------------
-    // New NodeGraph system (testing, will replace imnodes)
+    // NodeGraph system (OverlayCanvas-based)
     // -------------------------------------------------------------------------
-    void initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfaceFormat);
-    void renderNodeGraph(WGPURenderPassEncoder pass, const FrameInput& input, vivid::Context& ctx);
-    bool useNodeGraph() const { return m_useNodeGraph; }
-    void setUseNodeGraph(bool use) { m_useNodeGraph = use; }
+    void initNodeGraph(Context& ctx, WGPUTextureFormat surfaceFormat);
+    void renderNodeGraph(WGPURenderPassEncoder pass, const FrameInput& input, Context& ctx);
 
 private:
     // Status bar, tooltip, and debug panel rendering (uses OverlayCanvas)
-    void renderStatusBar(const FrameInput& input, vivid::Context& ctx);
-    void renderTooltip(const FrameInput& input, const vivid::OperatorInfo& info);
-    void renderDebugPanelOverlay(const FrameInput& input, vivid::Context& ctx);
+    void renderStatusBar(const FrameInput& input, Context& ctx);
+    void renderTooltip(const FrameInput& input, const OperatorInfo& info);
+    void renderDebugPanelOverlay(const FrameInput& input, Context& ctx);
 
-    // New node graph system
-    vivid::OverlayCanvas m_overlay;
-    vivid::NodeGraph m_nodeGraph;
+    // Node graph system
+    OverlayCanvas m_overlay;
+    NodeGraph m_nodeGraph;
     bool m_nodeGraphInitialized = false;
-    bool m_useNodeGraph = true;  // Toggle between imnodes and new NodeGraph
 };
 
-} // namespace vivid::imgui
+} // namespace vivid

@@ -1,5 +1,5 @@
-# Vivid Core - Runtime executable
-# Includes: window, timing, input, hot-reload, display, chain visualization (ImGui)
+# Vivid Core - Runtime library
+# Includes: window, timing, input, hot-reload, display, chain visualization (OverlayCanvas)
 
 include(FetchContent)
 
@@ -40,47 +40,6 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(earcut)
 message(STATUS "[vivid-core] Earcut source: ${earcut_SOURCE_DIR}")
 
-# Fetch ImGui from master (required for wgpu-native v24.x compatibility)
-# We manually specify source files, so use SOURCE_SUBDIR to skip its CMakeLists
-FetchContent_Declare(
-    imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG master
-    GIT_SHALLOW TRUE
-    SOURCE_SUBDIR nonexistent  # Prevents CMake from processing imgui's CMakeLists.txt
-)
-FetchContent_MakeAvailable(imgui)
-
-# Fetch ImNodes for node graph editor
-# We manually specify source files, so use SOURCE_SUBDIR to skip its CMakeLists
-FetchContent_Declare(
-    imnodes
-    GIT_REPOSITORY https://github.com/Nelarius/imnodes.git
-    GIT_TAG master
-    GIT_SHALLOW TRUE
-    SOURCE_SUBDIR nonexistent  # Prevents CMake from processing imnodes's CMakeLists.txt
-)
-FetchContent_MakeAvailable(imnodes)
-
-message(STATUS "[vivid-core] ImGui source: ${imgui_SOURCE_DIR}")
-message(STATUS "[vivid-core] ImNodes source: ${imnodes_SOURCE_DIR}")
-
-# ImGui core sources
-set(IMGUI_SOURCES
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/imgui_demo.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_wgpu.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-)
-
-# ImNodes sources
-set(IMNODES_SOURCES
-    ${imnodes_SOURCE_DIR}/imnodes.cpp
-)
-
 # Vivid core library sources (shared by executable and addons)
 set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
@@ -97,9 +56,10 @@ set(VIVID_CORE_LIB_SOURCES
     src/hot_reload.cpp
     src/addon_registry.cpp
     src/addon_manager.cpp
-    # ImGui integration (in core so addons can use ImGui for visualization)
-    imgui/imgui_integration.cpp
-    imgui/chain_visualizer.cpp
+    # Chain visualizer (uses OverlayCanvas, no ImGui)
+    src/chain_visualizer.cpp
+    # Node graph (OverlayCanvas-based node editor)
+    src/node_graph.cpp
     # vivid-io (image loading)
     src/io/image_loader.cpp
     # vivid-effects-2d (2D texture effects)
@@ -148,8 +108,6 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/canvas.cpp
     src/effects/operator_registrations.cpp
     src/overlay_canvas.cpp
-    # Node graph visualization (replaces imnodes)
-    nodegraph/node_graph.cpp
 )
 
 # Platform-specific library sources
@@ -174,36 +132,25 @@ set(VIVID_CORE_HEADERS
     include/vivid/audio_operator.h
     include/vivid/audio_output.h
     include/vivid/overlay_canvas.h
-    imgui/imgui_integration.h
-    imgui/chain_visualizer.h
+    include/vivid/frame_input.h
+    include/vivid/chain_visualizer.h
+    include/vivid/node_graph.h
 )
 
 # Core library (shared between executable and addons)
-# Includes ImGui so addons can implement visualization
 add_library(vivid-core SHARED
     ${VIVID_CORE_LIB_SOURCES}
-    ${IMGUI_SOURCES}
-    ${IMNODES_SOURCES}
 )
 
 target_include_directories(vivid-core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${imgui_SOURCE_DIR}
-        ${imgui_SOURCE_DIR}/backends
-        ${imnodes_SOURCE_DIR}
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}
-        ${CMAKE_CURRENT_SOURCE_DIR}/nodegraph
         ${stb_SOURCE_DIR}
         ${freetype_SOURCE_DIR}/include
         ${earcut_SOURCE_DIR}/include
-)
-
-# ImGui backend configuration
-target_compile_definitions(vivid-core PUBLIC
-    IMGUI_IMPL_WEBGPU_BACKEND_WGPU
 )
 
 target_link_libraries(vivid-core PUBLIC
@@ -223,14 +170,7 @@ if(APPLE)
         INSTALL_RPATH "@executable_path"
         BUILD_WITH_INSTALL_RPATH TRUE
     )
-    # imgui_impl_wgpu.cpp needs Objective-C++ on macOS for Cocoa/CAMetalLayer
-    set_source_files_properties(
-        ${imgui_SOURCE_DIR}/backends/imgui_impl_wgpu.cpp
-        PROPERTIES
-            COMPILE_OPTIONS "-x;objective-c++"
-            LANGUAGE CXX
-    )
-    # Link against required frameworks for ImGui and video export
+    # Link against required frameworks for video export
     target_link_libraries(vivid-core PUBLIC
         "-framework Cocoa"
         "-framework QuartzCore"
@@ -269,15 +209,6 @@ if(WIN32)
     )
 endif()
 
-# Suppress warnings in third-party code
-if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
-    set_source_files_properties(
-        ${IMGUI_SOURCES}
-        ${IMNODES_SOURCES}
-        PROPERTIES COMPILE_FLAGS "-Wno-deprecated-declarations -Wno-unused-parameter"
-    )
-endif()
-
-message(STATUS "[vivid-core] Configured with integrated ImGui/ImNodes")
+message(STATUS "[vivid-core] Configured")
 
 # Note: The vivid executable is now built in cli/CMakeLists.txt

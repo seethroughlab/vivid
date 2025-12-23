@@ -95,18 +95,20 @@ void OverlayCanvas::cleanup() {
         wgpuBufferRelease(m_solidIndexBuffer);
         m_solidIndexBuffer = nullptr;
     }
-    if (m_textVertexBuffer) {
-        wgpuBufferRelease(m_textVertexBuffer);
-        m_textVertexBuffer = nullptr;
-    }
-    if (m_textIndexBuffer) {
-        wgpuBufferRelease(m_textIndexBuffer);
-        m_textIndexBuffer = nullptr;
+    for (int i = 0; i < 3; i++) {
+        if (m_textVertexBuffer[i]) {
+            wgpuBufferRelease(m_textVertexBuffer[i]);
+            m_textVertexBuffer[i] = nullptr;
+        }
+        if (m_textIndexBuffer[i]) {
+            wgpuBufferRelease(m_textIndexBuffer[i]);
+            m_textIndexBuffer[i] = nullptr;
+        }
+        m_textVertexCapacity[i] = 0;
+        m_textIndexCapacity[i] = 0;
     }
     m_solidVertexCapacity = 0;
     m_solidIndexCapacity = 0;
-    m_textVertexCapacity = 0;
-    m_textIndexCapacity = 0;
 
     // Release pipeline resources
     if (m_sampler) {
@@ -358,6 +360,13 @@ void OverlayCanvas::begin(int width, int height) {
         m_textIndices[i].clear();
     }
     m_texturedRects.clear();
+    // Clear topmost layer
+    m_topmostVertices.clear();
+    m_topmostIndices.clear();
+    for (int i = 0; i < 3; i++) {
+        m_topmostTextVertices[i].clear();
+        m_topmostTextIndices[i].clear();
+    }
 
     // Reset transform
     m_transform = glm::mat3(1.0f);
@@ -383,7 +392,7 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
     // Set pipeline
     wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
 
-    // Render solid primitives
+    // Render solid primitives first (node backgrounds, etc.)
     if (!m_solidVertices.empty()) {
         // Ensure buffer capacity
         size_t neededVertexSize = m_solidVertices.size() * sizeof(OverlayVertex);
@@ -507,41 +516,116 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
         }
     }
 
-    // Render text for each font batch
+    // Render text for each font batch (each font has its own buffers)
     for (int fontIdx = 0; fontIdx < 3; fontIdx++) {
         if (m_textVertices[fontIdx].empty() || !m_fontBindGroups[fontIdx]) continue;
 
         size_t neededVertexSize = m_textVertices[fontIdx].size() * sizeof(OverlayVertex);
         size_t neededIndexSize = m_textIndices[fontIdx].size() * sizeof(uint32_t);
 
-        if (neededVertexSize > m_textVertexCapacity) {
-            if (m_textVertexBuffer) wgpuBufferRelease(m_textVertexBuffer);
+        // Ensure per-font buffer capacity
+        if (neededVertexSize > m_textVertexCapacity[fontIdx]) {
+            if (m_textVertexBuffer[fontIdx]) wgpuBufferRelease(m_textVertexBuffer[fontIdx]);
             size_t newCapacity = std::max(neededVertexSize, INITIAL_VERTEX_CAPACITY * sizeof(OverlayVertex));
-            newCapacity = std::max(newCapacity, m_textVertexCapacity * 2);
+            newCapacity = std::max(newCapacity, m_textVertexCapacity[fontIdx] * 2);
             WGPUBufferDescriptor vbDesc = {};
             vbDesc.size = newCapacity;
             vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-            m_textVertexBuffer = wgpuDeviceCreateBuffer(m_device, &vbDesc);
-            m_textVertexCapacity = newCapacity;
+            m_textVertexBuffer[fontIdx] = wgpuDeviceCreateBuffer(m_device, &vbDesc);
+            m_textVertexCapacity[fontIdx] = newCapacity;
         }
-        if (neededIndexSize > m_textIndexCapacity) {
-            if (m_textIndexBuffer) wgpuBufferRelease(m_textIndexBuffer);
+        if (neededIndexSize > m_textIndexCapacity[fontIdx]) {
+            if (m_textIndexBuffer[fontIdx]) wgpuBufferRelease(m_textIndexBuffer[fontIdx]);
             size_t newCapacity = std::max(neededIndexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
-            newCapacity = std::max(newCapacity, m_textIndexCapacity * 2);
+            newCapacity = std::max(newCapacity, m_textIndexCapacity[fontIdx] * 2);
             WGPUBufferDescriptor ibDesc = {};
             ibDesc.size = newCapacity;
             ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-            m_textIndexBuffer = wgpuDeviceCreateBuffer(m_device, &ibDesc);
-            m_textIndexCapacity = newCapacity;
+            m_textIndexBuffer[fontIdx] = wgpuDeviceCreateBuffer(m_device, &ibDesc);
+            m_textIndexCapacity[fontIdx] = newCapacity;
         }
 
-        wgpuQueueWriteBuffer(m_queue, m_textVertexBuffer, 0, m_textVertices[fontIdx].data(), neededVertexSize);
-        wgpuQueueWriteBuffer(m_queue, m_textIndexBuffer, 0, m_textIndices[fontIdx].data(), neededIndexSize);
+        wgpuQueueWriteBuffer(m_queue, m_textVertexBuffer[fontIdx], 0, m_textVertices[fontIdx].data(), neededVertexSize);
+        wgpuQueueWriteBuffer(m_queue, m_textIndexBuffer[fontIdx], 0, m_textIndices[fontIdx].data(), neededIndexSize);
 
         wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroups[fontIdx], 0, nullptr);
-        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer, 0, neededVertexSize);
-        wgpuRenderPassEncoderSetIndexBuffer(pass, m_textIndexBuffer, WGPUIndexFormat_Uint32, 0, neededIndexSize);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer[fontIdx], 0, neededVertexSize);
+        wgpuRenderPassEncoderSetIndexBuffer(pass, m_textIndexBuffer[fontIdx], WGPUIndexFormat_Uint32, 0, neededIndexSize);
         wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_textIndices[fontIdx].size()), 1, 0, 0, 0);
+    }
+
+    // -------------------------------------------------------------------------
+    // TOPMOST LAYER - rendered last, on top of everything (for tooltips)
+    // -------------------------------------------------------------------------
+
+    // Topmost solid primitives (tooltip backgrounds)
+    if (!m_topmostVertices.empty()) {
+        size_t neededVertexSize = m_topmostVertices.size() * sizeof(OverlayVertex);
+        size_t neededIndexSize = m_topmostIndices.size() * sizeof(uint32_t);
+
+        // Reuse solid buffers for topmost (they've already been rendered)
+        if (neededVertexSize > m_solidVertexCapacity) {
+            if (m_solidVertexBuffer) wgpuBufferRelease(m_solidVertexBuffer);
+            size_t newCapacity = std::max(neededVertexSize, INITIAL_VERTEX_CAPACITY * sizeof(OverlayVertex));
+            WGPUBufferDescriptor vbDesc = {};
+            vbDesc.size = newCapacity;
+            vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+            m_solidVertexBuffer = wgpuDeviceCreateBuffer(m_device, &vbDesc);
+            m_solidVertexCapacity = newCapacity;
+        }
+        if (neededIndexSize > m_solidIndexCapacity) {
+            if (m_solidIndexBuffer) wgpuBufferRelease(m_solidIndexBuffer);
+            size_t newCapacity = std::max(neededIndexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
+            WGPUBufferDescriptor ibDesc = {};
+            ibDesc.size = newCapacity;
+            ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+            m_solidIndexBuffer = wgpuDeviceCreateBuffer(m_device, &ibDesc);
+            m_solidIndexCapacity = newCapacity;
+        }
+
+        wgpuQueueWriteBuffer(m_queue, m_solidVertexBuffer, 0, m_topmostVertices.data(), neededVertexSize);
+        wgpuQueueWriteBuffer(m_queue, m_solidIndexBuffer, 0, m_topmostIndices.data(), neededIndexSize);
+
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_solidVertexBuffer, 0, neededVertexSize);
+        wgpuRenderPassEncoderSetIndexBuffer(pass, m_solidIndexBuffer, WGPUIndexFormat_Uint32, 0, neededIndexSize);
+        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_topmostIndices.size()), 1, 0, 0, 0);
+    }
+
+    // Topmost text (tooltip text)
+    for (int fontIdx = 0; fontIdx < 3; fontIdx++) {
+        if (m_topmostTextVertices[fontIdx].empty() || !m_fontBindGroups[fontIdx]) continue;
+
+        size_t neededVertexSize = m_topmostTextVertices[fontIdx].size() * sizeof(OverlayVertex);
+        size_t neededIndexSize = m_topmostTextIndices[fontIdx].size() * sizeof(uint32_t);
+
+        // Reuse text buffers (they've already been rendered)
+        if (neededVertexSize > m_textVertexCapacity[fontIdx]) {
+            if (m_textVertexBuffer[fontIdx]) wgpuBufferRelease(m_textVertexBuffer[fontIdx]);
+            size_t newCapacity = std::max(neededVertexSize, INITIAL_VERTEX_CAPACITY * sizeof(OverlayVertex));
+            WGPUBufferDescriptor vbDesc = {};
+            vbDesc.size = newCapacity;
+            vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+            m_textVertexBuffer[fontIdx] = wgpuDeviceCreateBuffer(m_device, &vbDesc);
+            m_textVertexCapacity[fontIdx] = newCapacity;
+        }
+        if (neededIndexSize > m_textIndexCapacity[fontIdx]) {
+            if (m_textIndexBuffer[fontIdx]) wgpuBufferRelease(m_textIndexBuffer[fontIdx]);
+            size_t newCapacity = std::max(neededIndexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
+            WGPUBufferDescriptor ibDesc = {};
+            ibDesc.size = newCapacity;
+            ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+            m_textIndexBuffer[fontIdx] = wgpuDeviceCreateBuffer(m_device, &ibDesc);
+            m_textIndexCapacity[fontIdx] = newCapacity;
+        }
+
+        wgpuQueueWriteBuffer(m_queue, m_textVertexBuffer[fontIdx], 0, m_topmostTextVertices[fontIdx].data(), neededVertexSize);
+        wgpuQueueWriteBuffer(m_queue, m_textIndexBuffer[fontIdx], 0, m_topmostTextIndices[fontIdx].data(), neededIndexSize);
+
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroups[fontIdx], 0, nullptr);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer[fontIdx], 0, neededVertexSize);
+        wgpuRenderPassEncoderSetIndexBuffer(pass, m_textIndexBuffer[fontIdx], WGPUIndexFormat_Uint32, 0, neededIndexSize);
+        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_topmostTextIndices[fontIdx].size()), 1, 0, 0, 0);
     }
 }
 
@@ -824,6 +908,184 @@ void OverlayCanvas::strokeRoundedRect(float x, float y, float w, float h, float 
     drawCornerArc(x + w - radius, y + radius, 4.71238898f);       // Top-right
     drawCornerArc(x + w - radius, y + h - radius, 0.0f);          // Bottom-right
     drawCornerArc(x + radius, y + h - radius, 1.5707963f);        // Bottom-left
+}
+
+// -------------------------------------------------------------------------
+// Topmost Layer (for tooltips)
+// -------------------------------------------------------------------------
+
+void OverlayCanvas::fillRoundedRectTopmost(float x, float y, float w, float h, float radius,
+                                            const glm::vec4& color, int segments) {
+    radius = std::min(radius, std::min(w, h) * 0.5f);
+    glm::vec2 uv(0.5f, 0.5f);
+
+    // Helper to add a quad to topmost layer
+    auto addQuadTopmost = [&](glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3) {
+        uint32_t baseIndex = static_cast<uint32_t>(m_topmostVertices.size());
+        m_topmostVertices.push_back({p0, uv, color});
+        m_topmostVertices.push_back({p1, uv, color});
+        m_topmostVertices.push_back({p2, uv, color});
+        m_topmostVertices.push_back({p3, uv, color});
+        m_topmostIndices.push_back(baseIndex + 0);
+        m_topmostIndices.push_back(baseIndex + 1);
+        m_topmostIndices.push_back(baseIndex + 2);
+        m_topmostIndices.push_back(baseIndex + 0);
+        m_topmostIndices.push_back(baseIndex + 2);
+        m_topmostIndices.push_back(baseIndex + 3);
+    };
+
+    // Center rectangle
+    glm::vec2 p0 = transformPoint({x + radius, y});
+    glm::vec2 p1 = transformPoint({x + w - radius, y});
+    glm::vec2 p2 = transformPoint({x + w - radius, y + h});
+    glm::vec2 p3 = transformPoint({x + radius, y + h});
+    addQuadTopmost(p0, p1, p2, p3);
+
+    // Left rectangle
+    p0 = transformPoint({x, y + radius});
+    p1 = transformPoint({x + radius, y + radius});
+    p2 = transformPoint({x + radius, y + h - radius});
+    p3 = transformPoint({x, y + h - radius});
+    addQuadTopmost(p0, p1, p2, p3);
+
+    // Right rectangle
+    p0 = transformPoint({x + w - radius, y + radius});
+    p1 = transformPoint({x + w, y + radius});
+    p2 = transformPoint({x + w, y + h - radius});
+    p3 = transformPoint({x + w - radius, y + h - radius});
+    addQuadTopmost(p0, p1, p2, p3);
+
+    // Four corner arcs
+    auto drawCorner = [&](float cx, float cy, float startAngle) {
+        glm::vec2 center = transformPoint({cx, cy});
+        uint32_t centerIndex = static_cast<uint32_t>(m_topmostVertices.size());
+        m_topmostVertices.push_back({center, uv, color});
+
+        for (int i = 0; i <= segments; i++) {
+            float angle = startAngle + static_cast<float>(i) / segments * 1.5707963f;
+            glm::vec2 p = transformPoint({cx + std::cos(angle) * radius, cy + std::sin(angle) * radius});
+            m_topmostVertices.push_back({p, uv, color});
+        }
+
+        for (int i = 0; i < segments; i++) {
+            m_topmostIndices.push_back(centerIndex);
+            m_topmostIndices.push_back(centerIndex + 1 + i);
+            m_topmostIndices.push_back(centerIndex + 2 + i);
+        }
+    };
+
+    drawCorner(x + radius, y + radius, 3.14159265f);
+    drawCorner(x + w - radius, y + radius, 4.71238898f);
+    drawCorner(x + w - radius, y + h - radius, 0.0f);
+    drawCorner(x + radius, y + h - radius, 1.5707963f);
+}
+
+void OverlayCanvas::strokeRoundedRectTopmost(float x, float y, float w, float h, float radius,
+                                              float lineWidth, const glm::vec4& color, int segments) {
+    radius = std::min(radius, std::min(w, h) * 0.5f);
+    glm::vec2 uv(0.5f, 0.5f);
+
+    // Helper to draw a line in topmost layer
+    auto lineTopmost = [&](float x1, float y1, float x2, float y2) {
+        glm::vec2 p1t = transformPoint({x1, y1});
+        glm::vec2 p2t = transformPoint({x2, y2});
+        glm::vec2 dir = p2t - p1t;
+        float len = glm::length(dir);
+        if (len < 0.001f) return;
+        dir = dir / len;
+        glm::vec2 perp(-dir.y, dir.x);
+        float halfWidth = lineWidth * 0.5f;
+
+        glm::vec2 v0 = p1t - perp * halfWidth;
+        glm::vec2 v1 = p1t + perp * halfWidth;
+        glm::vec2 v2 = p2t + perp * halfWidth;
+        glm::vec2 v3 = p2t - perp * halfWidth;
+
+        uint32_t baseIndex = static_cast<uint32_t>(m_topmostVertices.size());
+        m_topmostVertices.push_back({v0, uv, color});
+        m_topmostVertices.push_back({v1, uv, color});
+        m_topmostVertices.push_back({v2, uv, color});
+        m_topmostVertices.push_back({v3, uv, color});
+        m_topmostIndices.push_back(baseIndex + 0);
+        m_topmostIndices.push_back(baseIndex + 1);
+        m_topmostIndices.push_back(baseIndex + 2);
+        m_topmostIndices.push_back(baseIndex + 0);
+        m_topmostIndices.push_back(baseIndex + 2);
+        m_topmostIndices.push_back(baseIndex + 3);
+    };
+
+    // Four straight edges
+    lineTopmost(x + radius, y, x + w - radius, y);
+    lineTopmost(x + w, y + radius, x + w, y + h - radius);
+    lineTopmost(x + w - radius, y + h, x + radius, y + h);
+    lineTopmost(x, y + h - radius, x, y + radius);
+
+    // Four corner arcs
+    auto drawCornerArc = [&](float cx, float cy, float startAngle) {
+        for (int i = 0; i < segments; i++) {
+            float a0 = startAngle + static_cast<float>(i) / segments * 1.5707963f;
+            float a1 = startAngle + static_cast<float>(i + 1) / segments * 1.5707963f;
+            lineTopmost(cx + std::cos(a0) * radius, cy + std::sin(a0) * radius,
+                        cx + std::cos(a1) * radius, cy + std::sin(a1) * radius);
+        }
+    };
+
+    drawCornerArc(x + radius, y + radius, 3.14159265f);
+    drawCornerArc(x + w - radius, y + radius, 4.71238898f);
+    drawCornerArc(x + w - radius, y + h - radius, 0.0f);
+    drawCornerArc(x + radius, y + h - radius, 1.5707963f);
+}
+
+void OverlayCanvas::textTopmost(const std::string& str, float x, float y, const glm::vec4& color, int fontIndex) {
+    if (fontIndex < 0 || fontIndex >= 3 || !m_fonts[fontIndex]) return;
+
+    FontAtlas& font = *m_fonts[fontIndex];
+    float cursorX = x;
+    float cursorY = y;
+    char prevChar = 0;
+
+    for (char c : str) {
+        if (c == '\n') {
+            cursorX = x;
+            cursorY += font.lineHeight();
+            prevChar = 0;
+            continue;
+        }
+
+        const GlyphInfo* glyph = font.getGlyph(c);
+        if (!glyph) continue;
+
+        if (prevChar != 0) {
+            cursorX += font.getKerning(prevChar, c);
+        }
+
+        float x0 = cursorX + glyph->xoff;
+        float y0 = cursorY + glyph->yoff;
+        float x1 = x0 + glyph->width;
+        float y1 = y0 + glyph->height;
+
+        glm::vec2 p0 = transformPoint({x0, y0});
+        glm::vec2 p1 = transformPoint({x1, y0});
+        glm::vec2 p2 = transformPoint({x1, y1});
+        glm::vec2 p3 = transformPoint({x0, y1});
+
+        // Add to topmost text batch
+        uint32_t baseIndex = static_cast<uint32_t>(m_topmostTextVertices[fontIndex].size());
+        m_topmostTextVertices[fontIndex].push_back({p0, {glyph->u0, glyph->v0}, color});
+        m_topmostTextVertices[fontIndex].push_back({p1, {glyph->u1, glyph->v0}, color});
+        m_topmostTextVertices[fontIndex].push_back({p2, {glyph->u1, glyph->v1}, color});
+        m_topmostTextVertices[fontIndex].push_back({p3, {glyph->u0, glyph->v1}, color});
+
+        m_topmostTextIndices[fontIndex].push_back(baseIndex + 0);
+        m_topmostTextIndices[fontIndex].push_back(baseIndex + 1);
+        m_topmostTextIndices[fontIndex].push_back(baseIndex + 2);
+        m_topmostTextIndices[fontIndex].push_back(baseIndex + 0);
+        m_topmostTextIndices[fontIndex].push_back(baseIndex + 2);
+        m_topmostTextIndices[fontIndex].push_back(baseIndex + 3);
+
+        cursorX += glyph->xadvance;
+        prevChar = c;
+    }
 }
 
 // -------------------------------------------------------------------------

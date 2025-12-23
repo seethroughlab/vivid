@@ -109,7 +109,7 @@ public:
     std::string name() const override { return "BeatDetect"; }
 
     // Custom visualization
-    bool drawVisualization(ImDrawList* drawList, float minX, float minY,
+    bool drawVisualization(VizDrawList* drawList, float minX, float minY,
                            float maxX, float maxY) override;
 
     /// @}

@@ -246,7 +246,6 @@ FetchContent_MakeAvailable(ixwebsocket)
 
 # -----------------------------------------------------------------------------
 # Addons (optional libraries with external dependencies)
-# Note: ImGui is now integrated into core - it's not optional
 # vivid-io is now part of core (provides image loading)
 # vivid-effects-2d is now part of core (provides 2D texture effects)
 # -----------------------------------------------------------------------------
@@ -267,6 +266,10 @@ add_subdirectory(addons/vivid-midi)
 # Core library
 # -----------------------------------------------------------------------------
 add_subdirectory(core)
+
+# GUI addon (provides ImGui for user chains)
+# Core uses OverlayCanvas for chain visualizer; user chains that need ImGui use this addon
+add_subdirectory(addons/vivid-gui)
 
 # -----------------------------------------------------------------------------
 # CLI executable

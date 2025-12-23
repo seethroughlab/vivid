@@ -145,7 +145,7 @@ public:
     void cleanup() override;
     std::string name() const override { return "MidiFilePlayer"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
-    bool drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) override;
+    bool drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) override;
 
     std::vector<ParamDecl> params() override { return registeredParams(); }
     bool getParam(const std::string& name, float out[4]) override {

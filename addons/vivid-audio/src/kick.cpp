@@ -1,7 +1,7 @@
 #include <vivid/audio/kick.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
-#include <imgui.h>
+
 #include <cmath>
 
 namespace vivid::audio {
@@ -121,15 +121,15 @@ float Kick::softClip(float x) const {
     return x;
 }
 
-bool Kick::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool Kick::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX;
     float height = maxY - minY;
     float cx = (minX + maxX) * 0.5f;
 
     // Dark background
-    dl->AddRectFilled(min, max, IM_COL32(30, 25, 35, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(30, 25, 35, 255), 4.0f);
 
     // Get envelope values
     float ampEnv = m_ampEnv;
@@ -139,21 +139,21 @@ bool Kick::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX,
     float barWidth = width * 0.6f;
     float barMaxH = height * 0.75f;
     float barH = barMaxH * ampEnv;
-    ImU32 barColor = IM_COL32(255, 140, 50, 255);
+    uint32_t barColor = VIZ_COL32(255, 140, 50, 255);
     float barLeft = cx - barWidth * 0.5f;
     float barRight = cx + barWidth * 0.5f;
     dl->AddRectFilled(
-        ImVec2(barLeft, maxY - 4 - barH),
-        ImVec2(barRight, maxY - 4),
+        VizVec2(barLeft, maxY - 4 - barH),
+        VizVec2(barRight, maxY - 4),
         barColor, 3.0f);
 
     // Pitch indicator (small dot or line that moves down as pitch decays)
     if (pitchEnv > 0.01f) {
         float pitchY = minY + 8 + (height - 16) * (1.0f - pitchEnv);
-        ImU32 pitchColor = IM_COL32(100, 200, 255, 200);
+        uint32_t pitchColor = VIZ_COL32(100, 200, 255, 200);
         dl->AddLine(
-            ImVec2(barLeft - 4, pitchY),
-            ImVec2(barRight + 4, pitchY),
+            VizVec2(barLeft - 4, pitchY),
+            VizVec2(barRight + 4, pitchY),
             pitchColor, 2.0f);
     }
 

@@ -5,7 +5,7 @@
 
 #include <vivid/audio/fm_synth.h>
 #include <nlohmann/json.hpp>
-#include <imgui.h>
+
 #include <cstring>
 #include <algorithm>
 #include <fstream>
@@ -497,16 +497,16 @@ int FMSynth::findVoiceByFrequency(float hz) const {
     return -1;
 }
 
-bool FMSynth::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool FMSynth::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX;
     float height = maxY - minY;
     float cx = (minX + maxX) * 0.5f;
     float cy = (minY + maxY) * 0.5f;
 
     // Dark purple background
-    dl->AddRectFilled(min, max, IM_COL32(35, 25, 45, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(35, 25, 45, 255), 4.0f);
 
     // Get operator envelope values for brightness
     float opEnv[4];
@@ -522,11 +522,11 @@ bool FMSynth::drawVisualization(ImDrawList* dl, float minX, float minY, float ma
     float gridX = cx - gridW * 0.5f;
     float gridY = cy - gridH * 0.5f;
 
-    ImVec2 opPos[4] = {
-        ImVec2(gridX + opSize * 0.5f, gridY + opSize * 0.5f),                    // Op1 top-left
-        ImVec2(gridX + opSize * 1.5f + spacing, gridY + opSize * 0.5f),         // Op2 top-right
-        ImVec2(gridX + opSize * 0.5f, gridY + opSize * 1.5f + spacing),         // Op3 bottom-left
-        ImVec2(gridX + opSize * 1.5f + spacing, gridY + opSize * 1.5f + spacing) // Op4 bottom-right
+    VizVec2 opPos[4] = {
+        VizVec2(gridX + opSize * 0.5f, gridY + opSize * 0.5f),                    // Op1 top-left
+        VizVec2(gridX + opSize * 1.5f + spacing, gridY + opSize * 0.5f),         // Op2 top-right
+        VizVec2(gridX + opSize * 0.5f, gridY + opSize * 1.5f + spacing),         // Op3 bottom-left
+        VizVec2(gridX + opSize * 1.5f + spacing, gridY + opSize * 1.5f + spacing) // Op4 bottom-right
     };
 
     // Define algorithm connections: {from, to} pairs
@@ -569,22 +569,22 @@ bool FMSynth::drawVisualization(ImDrawList* dl, float minX, float minY, float ma
     }
 
     // Draw connections (lines between operators)
-    ImU32 lineColor = IM_COL32(100, 80, 140, 180);
+    uint32_t lineColor = VIZ_COL32(100, 80, 140, 180);
     for (const auto& conn : connections) {
         dl->AddLine(opPos[conn.from], opPos[conn.to], lineColor, 1.5f);
         // Draw arrow head
-        ImVec2 dir = ImVec2(opPos[conn.to].x - opPos[conn.from].x,
+        VizVec2 dir = VizVec2(opPos[conn.to].x - opPos[conn.from].x,
                             opPos[conn.to].y - opPos[conn.from].y);
         float len = std::sqrt(dir.x * dir.x + dir.y * dir.y);
         if (len > 0) {
             dir.x /= len; dir.y /= len;
-            ImVec2 arrowTip = ImVec2(opPos[conn.to].x - dir.x * opSize * 0.5f,
+            VizVec2 arrowTip = VizVec2(opPos[conn.to].x - dir.x * opSize * 0.5f,
                                       opPos[conn.to].y - dir.y * opSize * 0.5f);
-            ImVec2 perp = ImVec2(-dir.y * 4, dir.x * 4);
+            VizVec2 perp = VizVec2(-dir.y * 4, dir.x * 4);
             dl->AddTriangleFilled(
                 arrowTip,
-                ImVec2(arrowTip.x - dir.x * 6 + perp.x, arrowTip.y - dir.y * 6 + perp.y),
-                ImVec2(arrowTip.x - dir.x * 6 - perp.x, arrowTip.y - dir.y * 6 - perp.y),
+                VizVec2(arrowTip.x - dir.x * 6 + perp.x, arrowTip.y - dir.y * 6 + perp.y),
+                VizVec2(arrowTip.x - dir.x * 6 - perp.x, arrowTip.y - dir.y * 6 - perp.y),
                 lineColor);
         }
     }
@@ -595,25 +595,25 @@ bool FMSynth::drawVisualization(ImDrawList* dl, float minX, float minY, float ma
         float env = opEnv[i];
 
         // Carrier = brighter, filled; Modulator = dimmer, outline
-        ImU32 opColor;
+        uint32_t opColor;
         if (isCarrier) {
-            opColor = IM_COL32(180 + (int)(75 * env), 100 + (int)(100 * env), 255, 255);
+            opColor = VIZ_COL32(180 + (int)(75 * env), 100 + (int)(100 * env), 255, 255);
             dl->AddCircleFilled(opPos[i], opSize * 0.4f, opColor);
         } else {
-            opColor = IM_COL32(100 + (int)(80 * env), 80 + (int)(60 * env), 180, 200);
+            opColor = VIZ_COL32(100 + (int)(80 * env), 80 + (int)(60 * env), 180, 200);
             dl->AddCircle(opPos[i], opSize * 0.4f, opColor, 0, 2.0f);
             // Fill slightly when active
             if (env > 0.01f) {
                 dl->AddCircleFilled(opPos[i], opSize * 0.35f * env,
-                    IM_COL32(100, 80, 180, (int)(150 * env)));
+                    VIZ_COL32(100, 80, 180, (int)(150 * env)));
             }
         }
 
         // Operator number label
         char label[2] = {(char)('1' + i), 0};
-        ImVec2 textSize = ImGui::CalcTextSize(label);
-        dl->AddText(ImVec2(opPos[i].x - textSize.x * 0.5f, opPos[i].y - textSize.y * 0.5f),
-                   IM_COL32(255, 255, 255, 200), label);
+        VizTextSize textSize = dl->CalcTextSize(label);
+        dl->AddText(VizVec2(opPos[i].x - textSize.x * 0.5f, opPos[i].y - textSize.y * 0.5f),
+                   VIZ_COL32(255, 255, 255, 200), label);
     }
 
     return true;

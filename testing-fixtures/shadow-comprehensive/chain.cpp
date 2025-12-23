@@ -8,7 +8,7 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/render3d/render3d.h>
-#include <imgui.h>
+#include <vivid/gui/imgui.h>
 #include <cmath>
 
 using namespace vivid;

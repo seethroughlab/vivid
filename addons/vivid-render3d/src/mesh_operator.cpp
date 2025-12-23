@@ -6,7 +6,6 @@
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/render3d/scene.h>
 #include <vivid/context.h>
-#include <imgui.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cfloat>
@@ -131,15 +130,14 @@ void MeshOperator::cleanupPreview() {
     m_lastPreviewMesh = nullptr;
 }
 
-bool MeshOperator::drawVisualization(ImDrawList* dl,
+bool MeshOperator::drawVisualization(VizDrawList* dl,
                                      float minX, float minY,
                                      float maxX, float maxY) {
     // Display the preview texture if available
     if (m_previewRenderer) {
         WGPUTextureView view = m_previewRenderer->outputView();
         if (view) {
-            ImTextureID texId = reinterpret_cast<ImTextureID>(view);
-            dl->AddImage(texId, ImVec2(minX, minY), ImVec2(maxX, maxY));
+            dl->AddImage(reinterpret_cast<void*>(view), VizVec2(minX, minY), VizVec2(maxX, maxY));
             return true;
         }
     }
@@ -150,24 +148,24 @@ bool MeshOperator::drawVisualization(ImDrawList* dl,
     float size = std::min(maxX - minX, maxY - minY) * 0.4f;
 
     // Dark background
-    dl->AddRectFilled(ImVec2(minX, minY), ImVec2(maxX, maxY),
-                      IM_COL32(30, 50, 70, 255), 4.0f);
+    dl->AddRectFilled(VizVec2(minX, minY), VizVec2(maxX, maxY),
+                      VIZ_COL32(30, 50, 70, 255), 4.0f);
 
     // Simple isometric cube wireframe
-    ImU32 lineColor = IM_COL32(100, 180, 255, 200);
+    uint32_t lineColor = VIZ_COL32(100, 180, 255, 200);
     float s = size * 0.5f;
     float iso = 0.5f;  // Isometric skew
 
     // Front face
-    dl->AddLine(ImVec2(cx - s, cy + s * iso), ImVec2(cx + s, cy + s * iso), lineColor, 1.5f);
-    dl->AddLine(ImVec2(cx - s, cy - s + s * iso), ImVec2(cx + s, cy - s + s * iso), lineColor, 1.5f);
-    dl->AddLine(ImVec2(cx - s, cy + s * iso), ImVec2(cx - s, cy - s + s * iso), lineColor, 1.5f);
-    dl->AddLine(ImVec2(cx + s, cy + s * iso), ImVec2(cx + s, cy - s + s * iso), lineColor, 1.5f);
+    dl->AddLine(VizVec2(cx - s, cy + s * iso), VizVec2(cx + s, cy + s * iso), lineColor, 1.5f);
+    dl->AddLine(VizVec2(cx - s, cy - s + s * iso), VizVec2(cx + s, cy - s + s * iso), lineColor, 1.5f);
+    dl->AddLine(VizVec2(cx - s, cy + s * iso), VizVec2(cx - s, cy - s + s * iso), lineColor, 1.5f);
+    dl->AddLine(VizVec2(cx + s, cy + s * iso), VizVec2(cx + s, cy - s + s * iso), lineColor, 1.5f);
 
     // Top lines
-    dl->AddLine(ImVec2(cx - s, cy - s + s * iso), ImVec2(cx - s * 0.3f, cy - s - s * 0.3f), lineColor, 1.5f);
-    dl->AddLine(ImVec2(cx + s, cy - s + s * iso), ImVec2(cx + s * 0.7f, cy - s - s * 0.3f), lineColor, 1.5f);
-    dl->AddLine(ImVec2(cx - s * 0.3f, cy - s - s * 0.3f), ImVec2(cx + s * 0.7f, cy - s - s * 0.3f), lineColor, 1.5f);
+    dl->AddLine(VizVec2(cx - s, cy - s + s * iso), VizVec2(cx - s * 0.3f, cy - s - s * 0.3f), lineColor, 1.5f);
+    dl->AddLine(VizVec2(cx + s, cy - s + s * iso), VizVec2(cx + s * 0.7f, cy - s - s * 0.3f), lineColor, 1.5f);
+    dl->AddLine(VizVec2(cx - s * 0.3f, cy - s - s * 0.3f), VizVec2(cx + s * 0.7f, cy - s - s * 0.3f), lineColor, 1.5f);
 
     return true;
 }

@@ -421,7 +421,7 @@ public:
     std::string name() const override { return "SceneComposer"; }
 
     /// Draw the scene preview in the chain visualizer
-    bool drawVisualization(ImDrawList* drawList,
+    bool drawVisualization(VizDrawList* drawList,
                            float minX, float minY,
                            float maxX, float maxY) override;
 

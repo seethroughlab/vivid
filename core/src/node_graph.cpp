@@ -1,4 +1,4 @@
-#include "node_graph.h"
+#include <vivid/node_graph.h>
 #include <vivid/overlay_canvas.h>
 #include <algorithm>
 #include <cmath>

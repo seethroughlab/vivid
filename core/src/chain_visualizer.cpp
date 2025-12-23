@@ -4,13 +4,13 @@
 // Addon-agnostic: operators provide their own visualization via drawVisualization().
 // No direct dependencies on audio, render3d, or other addons.
 
-#include "chain_visualizer.h"
+#include <vivid/chain_visualizer.h>
+#include <vivid/viz_draw_list.h>
 #include <vivid/operator_viz.h>
 #include <vivid/audio_operator.h>
 #include <vivid/audio_graph.h>
 #include <vivid/asset_loader.h>
-#include <imgui.h>
-#include <imnodes.h>
+#include <vivid/frame_input.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <fstream>
@@ -35,7 +35,7 @@
 
 namespace fs = std::filesystem;
 
-namespace vivid::imgui {
+namespace vivid {
 
 // Special node IDs for output nodes
 static constexpr int SCREEN_NODE_ID = 9999;
@@ -91,32 +91,7 @@ ChainVisualizer::~ChainVisualizer() {
 
 void ChainVisualizer::init() {
     if (m_initialized) return;
-
-    ImNodes::CreateContext();
-    ImNodes::StyleColorsDark();
-
-    // Enable trackpad-friendly panning: Control + Left Click to pan
-    // (Can't use Cmd on Mac - system intercepts Cmd+Click)
-    ImNodesIO& io = ImNodes::GetIO();
-    io.EmulateThreeButtonMouse.Modifier = &ImGui::GetIO().KeyCtrl;
-
-    // Configure style
-    ImNodesStyle& style = ImNodes::GetStyle();
-    style.NodeCornerRounding = 4.0f;
-    style.NodePadding = ImVec2(8.0f, 8.0f);
-    style.LinkThickness = 3.0f;
-    style.PinCircleRadius = 4.0f;
-
-    // Transparent background - nodes float over the chain output
-    ImNodes::GetStyle().Colors[ImNodesCol_GridBackground] = IM_COL32(0, 0, 0, 0);  // Fully transparent
-    ImNodes::GetStyle().Colors[ImNodesCol_GridLine] = IM_COL32(60, 60, 80, 40);     // Very subtle grid
-    ImNodes::GetStyle().Colors[ImNodesCol_GridLinePrimary] = IM_COL32(80, 80, 100, 60);
-
-    // Semi-transparent node backgrounds
-    ImNodes::GetStyle().Colors[ImNodesCol_NodeBackground] = IM_COL32(30, 30, 40, 200);
-    ImNodes::GetStyle().Colors[ImNodesCol_NodeBackgroundHovered] = IM_COL32(40, 40, 55, 220);
-    ImNodes::GetStyle().Colors[ImNodesCol_NodeBackgroundSelected] = IM_COL32(50, 50, 70, 240);
-
+    // NodeGraph initialization happens in initNodeGraph() - called lazily
     m_initialized = true;
 }
 
@@ -128,7 +103,6 @@ void ChainVisualizer::shutdown() {
         exitSoloMode();
     }
 
-    ImNodes::DestroyContext();
     m_initialized = false;
     m_layoutBuilt = false;
     m_opToNodeId.clear();
@@ -235,7 +209,8 @@ void ChainVisualizer::buildLayout(const std::vector<vivid::OperatorInfo>& operat
         for (size_t idx = 0; idx < columns[col].size(); ++idx) {
             int nodeId = columns[col][idx];
             float x = startX + col * xSpacing;
-            ImNodes::SetNodeGridSpacePos(nodeId, ImVec2(x, y));
+            // Position is now managed by NodeGraph, not imnodes
+            m_nodeGraph.setNodePosition(nodeId, {x, y});
             m_nodePositioned[nodeId] = true;
 
             // Move y down by this node's estimated height + padding
@@ -259,44 +234,14 @@ void ChainVisualizer::exitSoloMode() {
     m_inSoloMode = false;
 }
 
+// =========================================================================
+// OLD IMNODES-BASED CODE - DISABLED
+// This code is no longer used. renderNodeGraph() uses the new OverlayCanvas.
+// =========================================================================
+#if 0
+
 void ChainVisualizer::renderSoloOverlay(const FrameInput& input, vivid::Context& ctx) {
-    if (!m_soloOperator) {
-        exitSoloMode();
-        return;
-    }
-
-    vivid::OutputKind kind = m_soloOperator->outputKind();
-
-    if (kind == vivid::OutputKind::Texture) {
-        // For texture operators, display their output texture
-        WGPUTextureView view = m_soloOperator->outputView();
-        if (view) {
-            ctx.setOutputTexture(view);
-        }
-    }
-    // For geometry/audio/other operators, just show the overlay
-    // (Geometry operators render their own preview which the user can see in the node)
-
-    // Check for Escape key to exit solo mode
-    if (ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-        exitSoloMode();
-        return;
-    }
-
-    // Draw solo mode overlay (semi-transparent)
-    ImGui::SetNextWindowPos(ImVec2(10, 10));
-    ImGui::SetNextWindowBgAlpha(0.5f);  // Semi-transparent background
-    ImGui::Begin("Solo Mode", nullptr,
-        ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
-        ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoTitleBar |
-        ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
-    ImGui::TextColored(ImVec4(1.0f, 0.9f, 0.4f, 1.0f), "SOLO: %s", m_soloOperatorName.c_str());
-    if (ImGui::Button("Exit Solo")) {
-        exitSoloMode();
-    }
-    ImGui::SameLine();
-    ImGui::TextColored(ImVec4(0.6f, 0.6f, 0.7f, 1.0f), "(or press ESC)");
-    ImGui::End();
+    // Old ImGui-based implementation - now handled in renderNodeGraph()
 }
 
 void ChainVisualizer::render(const FrameInput& input, vivid::Context& ctx) {
@@ -1061,6 +1006,8 @@ void ChainVisualizer::renderDebugPanel(vivid::Context& ctx) {
     ImGui::End();
 }
 
+#endif // disabled old imnodes code
+
 // -------------------------------------------------------------------------
 // Video Recording
 // -------------------------------------------------------------------------
@@ -1153,6 +1100,7 @@ void ChainVisualizer::saveSnapshot(WGPUDevice device, WGPUQueue queue, WGPUTextu
     }
 }
 
+#if 0 // disabled - uses ImNodes
 void ChainVisualizer::updateSelection(const std::vector<vivid::OperatorInfo>& operators) {
     int numSelected = ImNodes::NumSelectedNodes();
     if (numSelected == 1) {
@@ -1181,6 +1129,7 @@ void ChainVisualizer::updateSelection(const std::vector<vivid::OperatorInfo>& op
         }
     }
 }
+#endif
 
 void ChainVisualizer::clearSelection() {
     m_selectedNodeId = -1;
@@ -1310,6 +1259,13 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
 
             vivid::OutputKind kind = op->outputKind();
 
+            // First try operator's custom visualization via VizDrawList
+            VizDrawList dl(canvas);
+            if (op->drawVisualization(&dl, x, y, x + w, y + h)) {
+                return; // Operator drew its own visualization
+            }
+
+            // Fallback visualization based on output type
             if (kind == vivid::OutputKind::Texture) {
                 // Render texture preview
                 WGPUTextureView view = op->outputView();
@@ -1331,15 +1287,15 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
             } else if (kind == vivid::OutputKind::Audio) {
                 // Audio - draw waveform icon
                 canvas.fillRect(x, y, w, h, {0.2f, 0.12f, 0.25f, 1.0f});
-                float cy = y + h * 0.5f;
+                float centerY = y + h * 0.5f;
                 glm::vec4 waveColor = {0.7f, 0.5f, 0.9f, 0.9f};
                 // Draw simple wave
                 float prevX = x + 4;
-                float prevY = cy;
+                float prevY = centerY;
                 for (int i = 1; i <= 8; i++) {
                     float px = x + 4 + (w - 8) * i / 8.0f;
                     float amplitude = (i % 2 == 0) ? 0.3f : -0.25f;
-                    float py = cy + amplitude * h * 0.6f;
+                    float py = centerY + amplitude * h * 0.6f;
                     canvas.line(prevX, prevY, px, py, 2.0f, waveColor);
                     prevX = px;
                     prevY = py;
@@ -1542,6 +1498,76 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
 
     // Render debug values panel (bottom-left corner)
     renderDebugPanelOverlay(input, ctx);
+
+    // Handle keyboard shortcuts (using new key input system)
+    using vivid::Key;
+
+    // S key - solo selected node
+    if (input.isKeyPressed(Key::S)) {
+        int selectedNodeId = m_nodeGraph.getSelectedNode();
+        if (selectedNodeId >= 0 && selectedNodeId != SCREEN_NODE_ID && selectedNodeId != SPEAKERS_NODE_ID) {
+            if (static_cast<size_t>(selectedNodeId) < operators.size()) {
+                const vivid::OperatorInfo& info = operators[selectedNodeId];
+                if (info.op) {
+                    enterSoloMode(info.op, info.name);
+                }
+            }
+        }
+    }
+
+    // Escape key - exit solo mode
+    if (input.isKeyPressed(Key::Escape) && m_inSoloMode) {
+        exitSoloMode();
+    }
+
+    // B key - toggle bypass on selected node
+    if (input.isKeyPressed(Key::B)) {
+        int selectedNodeId = m_nodeGraph.getSelectedNode();
+        if (selectedNodeId >= 0 && selectedNodeId != SCREEN_NODE_ID && selectedNodeId != SPEAKERS_NODE_ID) {
+            if (static_cast<size_t>(selectedNodeId) < operators.size()) {
+                const vivid::OperatorInfo& info = operators[selectedNodeId];
+                if (info.op) {
+                    info.op->setBypassed(!info.op->isBypassed());
+                }
+            }
+        }
+    }
+
+    // Render solo mode overlay (if active)
+    if (m_inSoloMode && m_soloOperator) {
+        // Set the output texture to the solo operator's output
+        vivid::OutputKind kind = m_soloOperator->outputKind();
+        if (kind == vivid::OutputKind::Texture) {
+            WGPUTextureView view = m_soloOperator->outputView();
+            if (view) {
+                ctx.setOutputTexture(view);
+            }
+        }
+
+        // Draw solo mode indicator (top-left corner, using topmost layer)
+        float lineH = m_overlay.fontLineHeight(0);
+        float ascent = m_overlay.fontAscent(0);
+        if (lineH <= 0) lineH = 22.0f;
+        if (ascent <= 0) ascent = 16.0f;
+
+        const float padding = 10.0f;
+        std::string soloText = "SOLO: " + m_soloOperatorName;
+        std::string escText = "(press ESC to exit)";
+        float soloWidth = m_overlay.measureText(soloText, 0);
+        float escWidth = m_overlay.measureText(escText, 0);
+        float boxWidth = std::max(soloWidth, escWidth) + padding * 2;
+        float boxHeight = lineH * 2 + padding * 2;
+
+        glm::vec4 bgColor = {0.15f, 0.12f, 0.05f, 0.9f};
+        glm::vec4 borderColor = {0.8f, 0.6f, 0.2f, 1.0f};
+        glm::vec4 soloColor = {1.0f, 0.9f, 0.4f, 1.0f};
+        glm::vec4 dimColor = {0.6f, 0.6f, 0.7f, 1.0f};
+
+        m_overlay.fillRoundedRectTopmost(padding, padding, boxWidth, boxHeight, 4.0f, bgColor);
+        m_overlay.strokeRoundedRectTopmost(padding, padding, boxWidth, boxHeight, 4.0f, 1.0f, borderColor);
+        m_overlay.textTopmost(soloText, padding * 2, padding + ascent, soloColor);
+        m_overlay.textTopmost(escText, padding * 2, padding + lineH + ascent, dimColor);
+    }
 
     // Render the overlay
     m_overlay.render(pass);
@@ -1776,14 +1802,14 @@ void ChainVisualizer::renderTooltip(const FrameInput& input, const vivid::Operat
         tooltipY = mouseY - tooltipHeight - 10;
     }
 
-    // Draw background
-    m_overlay.fillRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, bgColor);
-    m_overlay.strokeRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, 1.0f, borderColor);
+    // Draw background (use topmost layer so tooltips appear above thumbnails)
+    m_overlay.fillRoundedRectTopmost(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, bgColor);
+    m_overlay.strokeRoundedRectTopmost(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, 1.0f, borderColor);
 
     // Draw text lines (position at baseline = top + ascent)
     float textY = tooltipY + padding + ascent;
     for (const auto& line : lines) {
-        m_overlay.text(line.first, tooltipX + padding, textY, line.second);
+        m_overlay.textTopmost(line.first, tooltipX + padding, textY, line.second);
         textY += lineHeight;
     }
 }
@@ -1876,4 +1902,4 @@ void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Co
     }
 }
 
-} // namespace vivid::imgui
+} // namespace vivid

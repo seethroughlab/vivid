@@ -1,6 +1,6 @@
 #include <vivid/audio/audio_filter.h>
 #include <vivid/context.h>
-#include <imgui.h>
+
 #include <cmath>
 
 namespace vivid::audio {
@@ -166,15 +166,15 @@ float AudioFilter::processSample(float in, int ch) {
     return out;
 }
 
-bool AudioFilter::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool AudioFilter::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX;
     float height = maxY - minY;
     float cx = (minX + maxX) * 0.5f;
 
     // Dark blue background
-    dl->AddRectFilled(min, max, IM_COL32(30, 35, 50, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(30, 35, 50, 255), 4.0f);
 
     float cutoffHz = static_cast<float>(cutoff);
     float q = static_cast<float>(resonance);
@@ -188,8 +188,8 @@ bool AudioFilter::drawVisualization(ImDrawList* dl, float minX, float minY, floa
 
     // Draw horizontal center line (0 dB)
     float zeroY = curveY + curveH * 0.5f;
-    dl->AddLine(ImVec2(curveX, zeroY), ImVec2(curveX + curveW, zeroY),
-        IM_COL32(60, 70, 90, 150), 1.0f);
+    dl->AddLine(VizVec2(curveX, zeroY), VizVec2(curveX + curveW, zeroY),
+        VIZ_COL32(60, 70, 90, 150), 1.0f);
 
     // Calculate cutoff position on log scale (20Hz to 20kHz)
     float cutoffNorm = std::log10(cutoffHz / 20.0f) / std::log10(1000.0f);
@@ -197,11 +197,11 @@ bool AudioFilter::drawVisualization(ImDrawList* dl, float minX, float minY, floa
     float cutoffX = curveX + curveW * cutoffNorm;
 
     // Draw cutoff line
-    dl->AddLine(ImVec2(cutoffX, curveY), ImVec2(cutoffX, curveY + curveH),
-        IM_COL32(255, 180, 100, 100), 1.0f);
+    dl->AddLine(VizVec2(cutoffX, curveY), VizVec2(cutoffX, curveY + curveH),
+        VIZ_COL32(255, 180, 100, 100), 1.0f);
 
     // Draw filter curve based on type
-    ImU32 curveColor = IM_COL32(100, 180, 255, 255);
+    uint32_t curveColor = VIZ_COL32(100, 180, 255, 255);
     constexpr int NUM_POINTS = 32;
 
     auto computeFilterResponse = [&](float freqNorm) -> float {
@@ -252,7 +252,7 @@ bool AudioFilter::drawVisualization(ImDrawList* dl, float minX, float minY, floa
         float x1 = curveX + curveW * t1;
         float x2 = curveX + curveW * t2;
 
-        dl->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), curveColor, 2.0f);
+        dl->AddLine(VizVec2(x1, y1), VizVec2(x2, y2), curveColor, 2.0f);
     }
 
     // Filter type label
@@ -266,9 +266,9 @@ bool AudioFilter::drawVisualization(ImDrawList* dl, float minX, float minY, floa
         case FilterType::Highshelf: typeLabel = "HSHF"; break;
         case FilterType::Peak: typeLabel = "PEAK"; break;
     }
-    ImVec2 labelSize = ImGui::CalcTextSize(typeLabel);
-    dl->AddText(ImVec2(cx - labelSize.x * 0.5f, max.y - 14),
-        IM_COL32(180, 200, 255, 255), typeLabel);
+    VizTextSize labelSize = dl->CalcTextSize(typeLabel);
+    dl->AddText(VizVec2(cx - labelSize.x * 0.5f, max.y - 14),
+        VIZ_COL32(180, 200, 255, 255), typeLabel);
 
     return true;
 }

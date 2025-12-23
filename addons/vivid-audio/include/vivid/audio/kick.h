@@ -97,7 +97,7 @@ public:
     void handleEvent(const AudioEvent& event) override;
 
     // Custom visualization for chain visualizer
-    bool drawVisualization(ImDrawList* drawList,
+    bool drawVisualization(VizDrawList* drawList,
                            float minX, float minY,
                            float maxX, float maxY) override;
 

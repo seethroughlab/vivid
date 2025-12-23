@@ -1,6 +1,6 @@
 #include <vivid/audio/compressor.h>
 #include <vivid/context.h>
-#include <imgui.h>
+
 #include <cmath>
 
 namespace vivid::audio {
@@ -82,15 +82,15 @@ void Compressor::cleanupEffect() {
     m_initialized = false;
 }
 
-bool Compressor::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool Compressor::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX;
     float height = maxY - minY;
     float cx = (minX + maxX) * 0.5f;
 
     // Warm brown background
-    dl->AddRectFilled(min, max, IM_COL32(40, 35, 30, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(40, 35, 30, 255), 4.0f);
 
     float grDb = m_currentGainReductionDb;  // Negative dB value
     float grNorm = std::min(1.0f, std::abs(grDb) / 20.0f);  // Normalize to 0-1 for up to -20dB
@@ -98,8 +98,8 @@ bool Compressor::drawVisualization(ImDrawList* dl, float minX, float minY, float
     // Draw threshold line (horizontal)
     float threshNorm = (static_cast<float>(threshold) + 60.0f) / 60.0f;
     float threshY = min.y + height * 0.1f + (height * 0.8f) * (1.0f - threshNorm);
-    dl->AddLine(ImVec2(min.x + 4, threshY), ImVec2(max.x - 4, threshY),
-        IM_COL32(255, 200, 100, 150), 1.0f);
+    dl->AddLine(VizVec2(min.x + 4, threshY), VizVec2(max.x - 4, threshY),
+        VIZ_COL32(255, 200, 100, 150), 1.0f);
 
     // Draw gain reduction bar (vertical, from top down)
     float barW = width * 0.3f;
@@ -110,20 +110,20 @@ bool Compressor::drawVisualization(ImDrawList* dl, float minX, float minY, float
     // Color: green when no reduction, orange/red when compressing
     int r = (int)(100 + 155 * grNorm);
     int g = (int)(200 - 100 * grNorm);
-    ImU32 grColor = IM_COL32(r, g, 50, 255);
+    uint32_t grColor = VIZ_COL32(r, g, 50, 255);
 
     dl->AddRectFilled(
-        ImVec2(barX, min.y + height * 0.1f),
-        ImVec2(barX + barW, min.y + height * 0.1f + barH),
+        VizVec2(barX, min.y + height * 0.1f),
+        VizVec2(barX + barW, min.y + height * 0.1f + barH),
         grColor, 2.0f);
 
     // GR label
     if (grDb < -0.5f) {
         char grLabel[16];
         snprintf(grLabel, sizeof(grLabel), "%.1f", grDb);
-        ImVec2 textSize = ImGui::CalcTextSize(grLabel);
-        dl->AddText(ImVec2(cx - textSize.x * 0.5f, max.y - 18),
-            IM_COL32(255, 180, 100, 255), grLabel);
+        VizTextSize textSize = dl->CalcTextSize(grLabel);
+        dl->AddText(VizVec2(cx - textSize.x * 0.5f, max.y - 18),
+            VIZ_COL32(255, 180, 100, 255), grLabel);
     }
 
     return true;

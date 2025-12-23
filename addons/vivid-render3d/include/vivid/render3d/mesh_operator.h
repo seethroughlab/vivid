@@ -171,7 +171,7 @@ public:
      * Renders a rotating preview of the mesh to a small texture during process(),
      * then displays it in the chain visualizer via drawVisualization().
      */
-    bool drawVisualization(ImDrawList* drawList,
+    bool drawVisualization(VizDrawList* drawList,
                            float minX, float minY,
                            float maxX, float maxY) override;
 

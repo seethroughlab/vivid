@@ -1,7 +1,7 @@
 #include <vivid/audio/fft.h>
 #include <vivid/audio_buffer.h>
 #include <kiss_fft.h>
-#include <imgui.h>
+
 #include <cmath>
 #include <algorithm>
 
@@ -153,15 +153,15 @@ float FFT::band(float lowHz, float highHz) const {
     return count > 0 ? sum / count : 0.0f;
 }
 
-bool FFT::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool FFT::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX - 8.0f;
     float height = maxY - minY - 8.0f;
     float startX = minX + 4.0f;
 
     // Dark purple background
-    dl->AddRectFilled(min, max, IM_COL32(40, 30, 50, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(40, 30, 50, 255), 4.0f);
 
     const float* spec = m_spectrum.data();
     int bins = binCount();
@@ -185,8 +185,8 @@ bool FFT::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, 
         uint8_t r = static_cast<uint8_t>(80 + t * 140);
         uint8_t g = static_cast<uint8_t>(80 - t * 40);
         uint8_t b = static_cast<uint8_t>(180 - t * 40);
-        dl->AddRectFilled(ImVec2(x, y), ImVec2(x + barW, max.y - 4.0f),
-                         IM_COL32(r, g, b, 220), 1.0f);
+        dl->AddRectFilled(VizVec2(x, y), VizVec2(x + barW, max.y - 4.0f),
+                         VIZ_COL32(r, g, b, 220), 1.0f);
     }
 
     return true;

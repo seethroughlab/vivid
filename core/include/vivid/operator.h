@@ -14,8 +14,8 @@
 #include <vector>
 #include <memory>
 
-// Forward declaration for ImGui drawing
-struct ImDrawList;
+// Visualization drawing (ImGui-free)
+#include <vivid/viz_draw_list.h>
 
 namespace vivid {
 
@@ -459,15 +459,15 @@ public:
      * waveform/texture preview when it returns true.
      *
      * @code
-     * bool drawVisualization(ImDrawList* dl, float minX, float minY,
+     * bool drawVisualization(VizDrawList* dl, float minX, float minY,
      *                        float maxX, float maxY) override {
      *     // Draw envelope shape
-     *     dl->AddRectFilled({minX, minY}, {maxX, maxY}, 0xFF000000);
+     *     dl->AddRectFilled({minX, minY}, {maxX, maxY}, VIZ_COL32(0, 0, 0, 255));
      *     return true;
      * }
      * @endcode
      */
-    virtual bool drawVisualization(ImDrawList* drawList,
+    virtual bool drawVisualization(VizDrawList* drawList,
                                    float minX, float minY,
                                    float maxX, float maxY) { return false; }
 

@@ -3,7 +3,7 @@
 #include <vivid/audio/poly_synth.h>
 #include <vivid/audio/notes.h>
 #include <vivid/context.h>
-#include <imgui.h>
+
 #include <cstring>
 #include <limits>
 
@@ -341,16 +341,16 @@ void PolySynth::generateBlock(uint32_t frameCount) {
     }
 }
 
-bool PolySynth::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool PolySynth::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX;
     float height = maxY - minY;
     float cx = (minX + maxX) * 0.5f;
     float cy = (minY + maxY) * 0.5f;
 
     // Dark purple background
-    dl->AddRectFilled(min, max, IM_COL32(30, 25, 50, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(30, 25, 50, 255), 4.0f);
 
     int activeVoices_ = activeVoiceCount();
     int maxVoices_ = static_cast<int>(maxVoices);
@@ -364,17 +364,17 @@ bool PolySynth::drawVisualization(ImDrawList* dl, float minX, float minY, float 
 
     for (int i = 0; i < maxVoices_ && i < 8; i++) {  // Show max 8 dots
         float dotY = dotsStartY + i * dotSpacing;
-        ImU32 dotColor = (i < activeVoices_)
-            ? IM_COL32(100, 255, 150, 255)   // Active - green
-            : IM_COL32(60, 60, 70, 200);     // Inactive - dim
-        dl->AddCircleFilled(ImVec2(dotsX, dotY), dotRadius, dotColor);
+        uint32_t dotColor = (i < activeVoices_)
+            ? VIZ_COL32(100, 255, 150, 255)   // Active - green
+            : VIZ_COL32(60, 60, 70, 200);     // Inactive - dim
+        dl->AddCircleFilled(VizVec2(dotsX, dotY), dotRadius, dotColor);
     }
 
     // Draw waveform icon (center)
     float iconSize = std::min(width, height) * 0.4f;
     float iconX = cx - iconSize * 0.5f;
     float iconY = cy - iconSize * 0.5f;
-    ImU32 waveColor = IM_COL32(180, 120, 255, 180 + (int)(75 * maxEnv));
+    uint32_t waveColor = VIZ_COL32(180, 120, 255, 180 + (int)(75 * maxEnv));
 
     if (m_waveform == Waveform::Sine) {
         for (int i = 0; i < 20; i++) {
@@ -382,36 +382,36 @@ bool PolySynth::drawVisualization(ImDrawList* dl, float minX, float minY, float 
             float t2 = (i + 1) / 20.0f;
             float y1 = iconY + iconSize * 0.5f - std::sin(t1 * TWO_PI) * iconSize * 0.4f;
             float y2 = iconY + iconSize * 0.5f - std::sin(t2 * TWO_PI) * iconSize * 0.4f;
-            dl->AddLine(ImVec2(iconX + t1 * iconSize, y1),
-                       ImVec2(iconX + t2 * iconSize, y2), waveColor, 2.0f);
+            dl->AddLine(VizVec2(iconX + t1 * iconSize, y1),
+                       VizVec2(iconX + t2 * iconSize, y2), waveColor, 2.0f);
         }
     } else if (m_waveform == Waveform::Square || m_waveform == Waveform::Pulse) {
         float midY = iconY + iconSize * 0.5f;
         float amp = iconSize * 0.4f;
-        dl->AddLine(ImVec2(iconX, midY - amp), ImVec2(iconX + iconSize * 0.5f, midY - amp), waveColor, 2.0f);
-        dl->AddLine(ImVec2(iconX + iconSize * 0.5f, midY - amp), ImVec2(iconX + iconSize * 0.5f, midY + amp), waveColor, 2.0f);
-        dl->AddLine(ImVec2(iconX + iconSize * 0.5f, midY + amp), ImVec2(iconX + iconSize, midY + amp), waveColor, 2.0f);
+        dl->AddLine(VizVec2(iconX, midY - amp), VizVec2(iconX + iconSize * 0.5f, midY - amp), waveColor, 2.0f);
+        dl->AddLine(VizVec2(iconX + iconSize * 0.5f, midY - amp), VizVec2(iconX + iconSize * 0.5f, midY + amp), waveColor, 2.0f);
+        dl->AddLine(VizVec2(iconX + iconSize * 0.5f, midY + amp), VizVec2(iconX + iconSize, midY + amp), waveColor, 2.0f);
     } else if (m_waveform == Waveform::Saw) {
         float midY = iconY + iconSize * 0.5f;
         float amp = iconSize * 0.4f;
-        dl->AddLine(ImVec2(iconX, midY + amp), ImVec2(iconX + iconSize * 0.5f, midY - amp), waveColor, 2.0f);
-        dl->AddLine(ImVec2(iconX + iconSize * 0.5f, midY - amp), ImVec2(iconX + iconSize * 0.5f, midY + amp), waveColor, 2.0f);
-        dl->AddLine(ImVec2(iconX + iconSize * 0.5f, midY + amp), ImVec2(iconX + iconSize, midY - amp), waveColor, 2.0f);
+        dl->AddLine(VizVec2(iconX, midY + amp), VizVec2(iconX + iconSize * 0.5f, midY - amp), waveColor, 2.0f);
+        dl->AddLine(VizVec2(iconX + iconSize * 0.5f, midY - amp), VizVec2(iconX + iconSize * 0.5f, midY + amp), waveColor, 2.0f);
+        dl->AddLine(VizVec2(iconX + iconSize * 0.5f, midY + amp), VizVec2(iconX + iconSize, midY - amp), waveColor, 2.0f);
     } else if (m_waveform == Waveform::Triangle) {
         float midY = iconY + iconSize * 0.5f;
         float amp = iconSize * 0.4f;
-        dl->AddLine(ImVec2(iconX, midY), ImVec2(iconX + iconSize * 0.25f, midY - amp), waveColor, 2.0f);
-        dl->AddLine(ImVec2(iconX + iconSize * 0.25f, midY - amp), ImVec2(iconX + iconSize * 0.75f, midY + amp), waveColor, 2.0f);
-        dl->AddLine(ImVec2(iconX + iconSize * 0.75f, midY + amp), ImVec2(iconX + iconSize, midY), waveColor, 2.0f);
+        dl->AddLine(VizVec2(iconX, midY), VizVec2(iconX + iconSize * 0.25f, midY - amp), waveColor, 2.0f);
+        dl->AddLine(VizVec2(iconX + iconSize * 0.25f, midY - amp), VizVec2(iconX + iconSize * 0.75f, midY + amp), waveColor, 2.0f);
+        dl->AddLine(VizVec2(iconX + iconSize * 0.75f, midY + amp), VizVec2(iconX + iconSize, midY), waveColor, 2.0f);
     }
 
     // Max envelope level bar (right side)
     float barW = 10.0f;
     float barH = (height - 12) * maxEnv;
-    ImU32 levelColor = IM_COL32(180 + (int)(75 * maxEnv), 120, 255, 255);
+    uint32_t levelColor = VIZ_COL32(180 + (int)(75 * maxEnv), 120, 255, 255);
     dl->AddRectFilled(
-        ImVec2(max.x - barW - 4, max.y - 4 - barH),
-        ImVec2(max.x - 4, max.y - 4),
+        VizVec2(max.x - barW - 4, max.y - 4 - barH),
+        VizVec2(max.x - 4, max.y - 4),
         levelColor, 2.0f);
 
     return true;

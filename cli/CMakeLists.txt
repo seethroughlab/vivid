@@ -31,7 +31,7 @@ target_compile_definitions(vivid PRIVATE
     VIVID_VERSION="${VIVID_VERSION}"
 )
 
-# Link against core library (includes ImGui)
+# Link against core library
 # Note: glfw3webgpu is explicitly linked here because app.cpp uses glfwCreateWindowWGPUSurface
 # Addons (audio, render3d, etc.) are NOT linked - chains link them when needed
 target_link_libraries(vivid

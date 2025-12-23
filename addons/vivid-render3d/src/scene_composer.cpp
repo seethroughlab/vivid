@@ -5,7 +5,6 @@
 #include <vivid/render3d/renderer.h>
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/context.h>
-#include <imgui.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cfloat>
@@ -107,15 +106,14 @@ void SceneComposer::cleanupScenePreview() {
     }
 }
 
-bool SceneComposer::drawVisualization(ImDrawList* dl,
+bool SceneComposer::drawVisualization(VizDrawList* dl,
                                       float minX, float minY,
                                       float maxX, float maxY) {
     // Display the preview texture if available
     if (m_previewRenderer) {
         WGPUTextureView view = m_previewRenderer->outputView();
         if (view) {
-            ImTextureID texId = reinterpret_cast<ImTextureID>(view);
-            dl->AddImage(texId, ImVec2(minX, minY), ImVec2(maxX, maxY));
+            dl->AddImage(reinterpret_cast<void*>(view), VizVec2(minX, minY), VizVec2(maxX, maxY));
             return true;
         }
     }
@@ -126,24 +124,24 @@ bool SceneComposer::drawVisualization(ImDrawList* dl,
     float size = std::min(maxX - minX, maxY - minY) * 0.3f;
 
     // Dark background
-    dl->AddRectFilled(ImVec2(minX, minY), ImVec2(maxX, maxY),
-                      IM_COL32(30, 50, 70, 255), 4.0f);
+    dl->AddRectFilled(VizVec2(minX, minY), VizVec2(maxX, maxY),
+                      VIZ_COL32(30, 50, 70, 255), 4.0f);
 
     // Draw multiple small cubes to indicate a scene
-    ImU32 lineColor = IM_COL32(100, 180, 255, 200);
+    uint32_t lineColor = VIZ_COL32(100, 180, 255, 200);
     float s = size * 0.4f;
 
     // Left cube
     float lx = cx - size * 0.6f;
-    dl->AddRect(ImVec2(lx - s, cy - s), ImVec2(lx + s, cy + s), lineColor, 2.0f, 0, 1.5f);
+    dl->AddRect(VizVec2(lx - s, cy - s), VizVec2(lx + s, cy + s), lineColor, 2.0f, 0, 1.5f);
 
     // Right cube
     float rx = cx + size * 0.6f;
-    dl->AddRect(ImVec2(rx - s, cy - s), ImVec2(rx + s, cy + s), lineColor, 2.0f, 0, 1.5f);
+    dl->AddRect(VizVec2(rx - s, cy - s), VizVec2(rx + s, cy + s), lineColor, 2.0f, 0, 1.5f);
 
     // Top connecting lines
-    dl->AddLine(ImVec2(lx + s, cy - s), ImVec2(rx - s, cy - s), lineColor, 1.0f);
-    dl->AddLine(ImVec2(lx + s, cy + s), ImVec2(rx - s, cy + s), lineColor, 1.0f);
+    dl->AddLine(VizVec2(lx + s, cy - s), VizVec2(rx - s, cy - s), lineColor, 1.0f);
+    dl->AddLine(VizVec2(lx + s, cy + s), VizVec2(rx - s, cy + s), lineColor, 1.0f);
 
     return true;
 }

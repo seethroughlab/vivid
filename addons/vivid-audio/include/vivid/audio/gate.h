@@ -80,7 +80,7 @@ public:
     std::string name() const override { return "Gate"; }
 
     // Custom visualization
-    bool drawVisualization(ImDrawList* drawList, float minX, float minY,
+    bool drawVisualization(VizDrawList* drawList, float minX, float minY,
                            float maxX, float maxY) override;
 
     /// @}

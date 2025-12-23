@@ -1,20 +1,39 @@
-// Vivid ImGui Integration Implementation
+// Vivid GUI Addon - ImGui Integration
+//
+// Provides Dear ImGui for use in Vivid chains.
 
-#include "imgui_integration.h"
-#include <imgui.h>
+#include <vivid/gui/imgui.h>
 #include <imgui_impl_wgpu.h>
+#include <vivid/frame_input.h>
+#include <vivid/context.h>
 #include <iostream>
 
-namespace vivid::imgui {
+namespace vivid::gui {
 
 static bool g_initialized = false;
-static bool g_visible = false;
+static bool g_visible = true;  // Visible by default for user chains
 static WGPUDevice g_device = nullptr;
 static WGPUQueue g_queue = nullptr;
 static WGPUTextureFormat g_format = WGPUTextureFormat_RGBA8Unorm;
-static std::string g_iniFilePath;  // Persisted path for imgui.ini
+static std::string g_iniFilePath;
+
+bool isAvailable() {
+    return g_initialized;
+}
+
+ImGuiContext* getContext() {
+    if (!g_initialized) return nullptr;
+    return ImGui::GetCurrentContext();
+}
+
+} // namespace vivid::gui
+
+// Also provide the vivid::imgui namespace for backward compatibility
+namespace vivid::imgui {
 
 void init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
+    using namespace vivid::gui;
+
     if (g_initialized) return;
 
     g_device = device;
@@ -22,7 +41,7 @@ void init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
     g_format = format;
 
     if (!g_device || !g_queue) {
-        std::cerr << "[vivid-imgui] Invalid WebGPU device or queue\n";
+        std::cerr << "[vivid-gui] Invalid WebGPU device or queue\n";
         return;
     }
 
@@ -48,27 +67,39 @@ void init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
     init_info.DepthStencilFormat = WGPUTextureFormat_Undefined;
 
     if (!ImGui_ImplWGPU_Init(&init_info)) {
-        std::cerr << "[vivid-imgui] Failed to initialize WebGPU backend\n";
+        std::cerr << "[vivid-gui] Failed to initialize WebGPU backend\n";
         ImGui::DestroyContext();
         return;
     }
 
     g_initialized = true;
-    g_visible = false;  // Start hidden (Tab to toggle)
-    std::cout << "[vivid-imgui] Initialized successfully\n";
+    g_visible = true;
+    std::cout << "[vivid-gui] ImGui initialized successfully\n";
+}
+
+void init(Context& ctx) {
+    // Get WebGPU device and queue from context
+    WGPUDevice device = ctx.device();
+    WGPUQueue queue = ctx.queue();
+
+    // Use BGRA8Unorm as default format (matches most surfaces)
+    WGPUTextureFormat format = WGPUTextureFormat_BGRA8Unorm;
+
+    init(device, queue, format);
 }
 
 void setIniDirectory(const char* path) {
+    using namespace vivid::gui;
+
     if (!g_initialized) return;
 
-    // Build full path: directory + "/imgui.ini"
     g_iniFilePath = std::string(path) + "/imgui.ini";
-
-    // Set ImGui to use this path (must persist for lifetime of ImGui)
     ImGui::GetIO().IniFilename = g_iniFilePath.c_str();
 }
 
 void shutdown() {
+    using namespace vivid::gui;
+
     if (!g_initialized) return;
 
     ImGui_ImplWGPU_Shutdown();
@@ -79,40 +110,30 @@ void shutdown() {
     g_queue = nullptr;
 }
 
-void beginFrame(const FrameInput& input) {
+void beginFrame(const vivid::FrameInput& input) {
+    using namespace vivid::gui;
+
     if (!g_initialized) return;
 
     ImGuiIO& io = ImGui::GetIO();
 
-    // Get content scale (DPI scaling for Retina displays)
     float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-
-    // DisplaySize is in screen coordinates (window size, not framebuffer)
-    // DisplayFramebufferScale tells ImGui how to convert to framebuffer pixels
     float windowWidth = static_cast<float>(input.width) / scale;
     float windowHeight = static_cast<float>(input.height) / scale;
     io.DisplaySize = ImVec2(windowWidth, windowHeight);
     io.DisplayFramebufferScale = ImVec2(scale, scale);
 
-    // Update delta time
     io.DeltaTime = input.dt > 0 ? input.dt : 1.0f / 60.0f;
-
-    // Update mouse position (GLFW gives us window coordinates, which is what ImGui expects)
     io.MousePos = ImVec2(input.mousePos.x, input.mousePos.y);
 
-    // Update mouse buttons
-    io.AddMouseButtonEvent(0, input.mouseDown[0]);  // Left
-    io.AddMouseButtonEvent(1, input.mouseDown[1]);  // Right
-    io.AddMouseButtonEvent(2, input.mouseDown[2]);  // Middle
-
-    // Update scroll
+    io.AddMouseButtonEvent(0, input.mouseDown[0]);
+    io.AddMouseButtonEvent(1, input.mouseDown[1]);
+    io.AddMouseButtonEvent(2, input.mouseDown[2]);
     io.AddMouseWheelEvent(input.scroll.x, input.scroll.y);
 
-    // Start new frame
     ImGui_ImplWGPU_NewFrame();
     ImGui::NewFrame();
 
-    // Update modifier keys AFTER NewFrame (ImNodes reads these during rendering)
     io.AddKeyEvent(ImGuiMod_Ctrl, input.keyCtrl);
     io.AddKeyEvent(ImGuiMod_Shift, input.keyShift);
     io.AddKeyEvent(ImGuiMod_Alt, input.keyAlt);
@@ -124,6 +145,8 @@ void beginFrame(const FrameInput& input) {
 }
 
 void render(WGPURenderPassEncoder pass) {
+    using namespace vivid::gui;
+
     if (!g_initialized) return;
 
     ImGui::Render();
@@ -131,25 +154,55 @@ void render(WGPURenderPassEncoder pass) {
 }
 
 bool wantsMouse() {
+    using namespace vivid::gui;
     if (!g_initialized || !g_visible) return false;
     return ImGui::GetIO().WantCaptureMouse;
 }
 
 bool wantsKeyboard() {
+    using namespace vivid::gui;
     if (!g_initialized || !g_visible) return false;
     return ImGui::GetIO().WantCaptureKeyboard;
 }
 
 void setVisible(bool visible) {
-    g_visible = visible;
+    vivid::gui::g_visible = visible;
 }
 
 bool isVisible() {
+    using namespace vivid::gui;
     return g_visible && g_initialized;
 }
 
 void toggleVisible() {
-    g_visible = !g_visible;
+    vivid::gui::g_visible = !vivid::gui::g_visible;
 }
 
 } // namespace vivid::imgui
+
+// C-linkage exports for dynamic loading from CLI
+extern "C" {
+
+void vivid_gui_init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
+    vivid::imgui::init(device, queue, format);
+}
+
+void vivid_gui_begin_frame(const vivid::FrameInput* input) {
+    if (input) {
+        vivid::imgui::beginFrame(*input);
+    }
+}
+
+void vivid_gui_render(WGPURenderPassEncoder pass) {
+    vivid::imgui::render(pass);
+}
+
+void vivid_gui_shutdown() {
+    vivid::imgui::shutdown();
+}
+
+bool vivid_gui_is_available() {
+    return vivid::gui::isAvailable();
+}
+
+} // extern "C"

@@ -1,7 +1,7 @@
 #include <vivid/audio/band_split.h>
 #include <vivid/audio_buffer.h>
 #include <kiss_fft.h>
-#include <imgui.h>
+
 #include <cmath>
 #include <algorithm>
 
@@ -161,28 +161,28 @@ void BandSplit::cleanupAnalyzer() {
     }
 }
 
-bool BandSplit::drawVisualization(ImDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    ImVec2 min(minX, minY);
-    ImVec2 max(maxX, maxY);
+bool BandSplit::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
     float width = maxX - minX - 8.0f;
     float height = maxY - minY - 8.0f;
     float startX = minX + 4.0f;
 
     // Dark purple background
-    dl->AddRectFilled(min, max, IM_COL32(40, 30, 50, 255), 4.0f);
+    dl->AddRectFilled(min, max, VIZ_COL32(40, 30, 50, 255), 4.0f);
 
     // 6 frequency band bars
     float bandValues[6] = {
         m_subBass, m_bass, m_lowMid,
         m_mid, m_highMid, m_high
     };
-    ImU32 bandColors[6] = {
-        IM_COL32(120, 60, 160, 255),  // SubBass - deep purple
-        IM_COL32(60, 100, 200, 255),  // Bass - blue
-        IM_COL32(60, 180, 180, 255),  // LowMid - cyan
-        IM_COL32(100, 200, 100, 255), // Mid - green
-        IM_COL32(220, 200, 60, 255),  // HighMid - yellow
-        IM_COL32(220, 100, 80, 255)   // High - red/orange
+    uint32_t bandColors[6] = {
+        VIZ_COL32(120, 60, 160, 255),  // SubBass - deep purple
+        VIZ_COL32(60, 100, 200, 255),  // Bass - blue
+        VIZ_COL32(60, 180, 180, 255),  // LowMid - cyan
+        VIZ_COL32(100, 200, 100, 255), // Mid - green
+        VIZ_COL32(220, 200, 60, 255),  // HighMid - yellow
+        VIZ_COL32(220, 100, 80, 255)   // High - red/orange
     };
 
     float barW = width / 6.0f - 2.0f;
@@ -191,7 +191,7 @@ bool BandSplit::drawVisualization(ImDrawList* dl, float minX, float minY, float 
         barH = std::min(barH, height);
         float x = startX + i * (barW + 2.0f) + 1.0f;
         float y = max.y - 4.0f - barH;
-        dl->AddRectFilled(ImVec2(x, y), ImVec2(x + barW, max.y - 4.0f),
+        dl->AddRectFilled(VizVec2(x, y), VizVec2(x + barW, max.y - 4.0f),
                          bandColors[i], 2.0f);
     }
 
