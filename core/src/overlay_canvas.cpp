@@ -110,6 +110,30 @@ void OverlayCanvas::cleanup() {
     m_solidVertexCapacity = 0;
     m_solidIndexCapacity = 0;
 
+    // Release topmost layer buffers
+    if (m_topmostSolidVertexBuffer) {
+        wgpuBufferRelease(m_topmostSolidVertexBuffer);
+        m_topmostSolidVertexBuffer = nullptr;
+    }
+    if (m_topmostSolidIndexBuffer) {
+        wgpuBufferRelease(m_topmostSolidIndexBuffer);
+        m_topmostSolidIndexBuffer = nullptr;
+    }
+    for (int i = 0; i < 3; i++) {
+        if (m_topmostTextVertexBuffer[i]) {
+            wgpuBufferRelease(m_topmostTextVertexBuffer[i]);
+            m_topmostTextVertexBuffer[i] = nullptr;
+        }
+        if (m_topmostTextIndexBuffer[i]) {
+            wgpuBufferRelease(m_topmostTextIndexBuffer[i]);
+            m_topmostTextIndexBuffer[i] = nullptr;
+        }
+        m_topmostTextVertexCapacity[i] = 0;
+        m_topmostTextIndexCapacity[i] = 0;
+    }
+    m_topmostSolidVertexCapacity = 0;
+    m_topmostSolidIndexCapacity = 0;
+
     // Release pipeline resources
     if (m_sampler) {
         wgpuSamplerRelease(m_sampler);
@@ -556,6 +580,7 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
 
     // -------------------------------------------------------------------------
     // TOPMOST LAYER - rendered last, on top of everything (for tooltips)
+    // Uses dedicated buffers to avoid overwriting main solid/text buffers
     // -------------------------------------------------------------------------
 
     // Topmost solid primitives (tooltip backgrounds)
@@ -563,32 +588,34 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
         size_t neededVertexSize = m_topmostVertices.size() * sizeof(OverlayVertex);
         size_t neededIndexSize = m_topmostIndices.size() * sizeof(uint32_t);
 
-        // Reuse solid buffers for topmost (they've already been rendered)
-        if (neededVertexSize > m_solidVertexCapacity) {
-            if (m_solidVertexBuffer) wgpuBufferRelease(m_solidVertexBuffer);
+        // Use dedicated topmost buffers
+        if (neededVertexSize > m_topmostSolidVertexCapacity) {
+            if (m_topmostSolidVertexBuffer) wgpuBufferRelease(m_topmostSolidVertexBuffer);
             size_t newCapacity = std::max(neededVertexSize, INITIAL_VERTEX_CAPACITY * sizeof(OverlayVertex));
+            newCapacity = std::max(newCapacity, m_topmostSolidVertexCapacity * 2);
             WGPUBufferDescriptor vbDesc = {};
             vbDesc.size = newCapacity;
             vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-            m_solidVertexBuffer = wgpuDeviceCreateBuffer(m_device, &vbDesc);
-            m_solidVertexCapacity = newCapacity;
+            m_topmostSolidVertexBuffer = wgpuDeviceCreateBuffer(m_device, &vbDesc);
+            m_topmostSolidVertexCapacity = newCapacity;
         }
-        if (neededIndexSize > m_solidIndexCapacity) {
-            if (m_solidIndexBuffer) wgpuBufferRelease(m_solidIndexBuffer);
+        if (neededIndexSize > m_topmostSolidIndexCapacity) {
+            if (m_topmostSolidIndexBuffer) wgpuBufferRelease(m_topmostSolidIndexBuffer);
             size_t newCapacity = std::max(neededIndexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
+            newCapacity = std::max(newCapacity, m_topmostSolidIndexCapacity * 2);
             WGPUBufferDescriptor ibDesc = {};
             ibDesc.size = newCapacity;
             ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-            m_solidIndexBuffer = wgpuDeviceCreateBuffer(m_device, &ibDesc);
-            m_solidIndexCapacity = newCapacity;
+            m_topmostSolidIndexBuffer = wgpuDeviceCreateBuffer(m_device, &ibDesc);
+            m_topmostSolidIndexCapacity = newCapacity;
         }
 
-        wgpuQueueWriteBuffer(m_queue, m_solidVertexBuffer, 0, m_topmostVertices.data(), neededVertexSize);
-        wgpuQueueWriteBuffer(m_queue, m_solidIndexBuffer, 0, m_topmostIndices.data(), neededIndexSize);
+        wgpuQueueWriteBuffer(m_queue, m_topmostSolidVertexBuffer, 0, m_topmostVertices.data(), neededVertexSize);
+        wgpuQueueWriteBuffer(m_queue, m_topmostSolidIndexBuffer, 0, m_topmostIndices.data(), neededIndexSize);
 
         wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
-        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_solidVertexBuffer, 0, neededVertexSize);
-        wgpuRenderPassEncoderSetIndexBuffer(pass, m_solidIndexBuffer, WGPUIndexFormat_Uint32, 0, neededIndexSize);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_topmostSolidVertexBuffer, 0, neededVertexSize);
+        wgpuRenderPassEncoderSetIndexBuffer(pass, m_topmostSolidIndexBuffer, WGPUIndexFormat_Uint32, 0, neededIndexSize);
         wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_topmostIndices.size()), 1, 0, 0, 0);
     }
 
@@ -599,32 +626,34 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
         size_t neededVertexSize = m_topmostTextVertices[fontIdx].size() * sizeof(OverlayVertex);
         size_t neededIndexSize = m_topmostTextIndices[fontIdx].size() * sizeof(uint32_t);
 
-        // Reuse text buffers (they've already been rendered)
-        if (neededVertexSize > m_textVertexCapacity[fontIdx]) {
-            if (m_textVertexBuffer[fontIdx]) wgpuBufferRelease(m_textVertexBuffer[fontIdx]);
+        // Use dedicated topmost text buffers
+        if (neededVertexSize > m_topmostTextVertexCapacity[fontIdx]) {
+            if (m_topmostTextVertexBuffer[fontIdx]) wgpuBufferRelease(m_topmostTextVertexBuffer[fontIdx]);
             size_t newCapacity = std::max(neededVertexSize, INITIAL_VERTEX_CAPACITY * sizeof(OverlayVertex));
+            newCapacity = std::max(newCapacity, m_topmostTextVertexCapacity[fontIdx] * 2);
             WGPUBufferDescriptor vbDesc = {};
             vbDesc.size = newCapacity;
             vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-            m_textVertexBuffer[fontIdx] = wgpuDeviceCreateBuffer(m_device, &vbDesc);
-            m_textVertexCapacity[fontIdx] = newCapacity;
+            m_topmostTextVertexBuffer[fontIdx] = wgpuDeviceCreateBuffer(m_device, &vbDesc);
+            m_topmostTextVertexCapacity[fontIdx] = newCapacity;
         }
-        if (neededIndexSize > m_textIndexCapacity[fontIdx]) {
-            if (m_textIndexBuffer[fontIdx]) wgpuBufferRelease(m_textIndexBuffer[fontIdx]);
+        if (neededIndexSize > m_topmostTextIndexCapacity[fontIdx]) {
+            if (m_topmostTextIndexBuffer[fontIdx]) wgpuBufferRelease(m_topmostTextIndexBuffer[fontIdx]);
             size_t newCapacity = std::max(neededIndexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
+            newCapacity = std::max(newCapacity, m_topmostTextIndexCapacity[fontIdx] * 2);
             WGPUBufferDescriptor ibDesc = {};
             ibDesc.size = newCapacity;
             ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-            m_textIndexBuffer[fontIdx] = wgpuDeviceCreateBuffer(m_device, &ibDesc);
-            m_textIndexCapacity[fontIdx] = newCapacity;
+            m_topmostTextIndexBuffer[fontIdx] = wgpuDeviceCreateBuffer(m_device, &ibDesc);
+            m_topmostTextIndexCapacity[fontIdx] = newCapacity;
         }
 
-        wgpuQueueWriteBuffer(m_queue, m_textVertexBuffer[fontIdx], 0, m_topmostTextVertices[fontIdx].data(), neededVertexSize);
-        wgpuQueueWriteBuffer(m_queue, m_textIndexBuffer[fontIdx], 0, m_topmostTextIndices[fontIdx].data(), neededIndexSize);
+        wgpuQueueWriteBuffer(m_queue, m_topmostTextVertexBuffer[fontIdx], 0, m_topmostTextVertices[fontIdx].data(), neededVertexSize);
+        wgpuQueueWriteBuffer(m_queue, m_topmostTextIndexBuffer[fontIdx], 0, m_topmostTextIndices[fontIdx].data(), neededIndexSize);
 
         wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroups[fontIdx], 0, nullptr);
-        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer[fontIdx], 0, neededVertexSize);
-        wgpuRenderPassEncoderSetIndexBuffer(pass, m_textIndexBuffer[fontIdx], WGPUIndexFormat_Uint32, 0, neededIndexSize);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_topmostTextVertexBuffer[fontIdx], 0, neededVertexSize);
+        wgpuRenderPassEncoderSetIndexBuffer(pass, m_topmostTextIndexBuffer[fontIdx], WGPUIndexFormat_Uint32, 0, neededIndexSize);
         wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_topmostTextIndices[fontIdx].size()), 1, 0, 0, 0);
     }
 }

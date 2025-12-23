@@ -3,8 +3,10 @@
 #include <vivid/render3d/textured_material.h>
 #include <vivid/io/image_loader.h>  // Full definition for io::ImageData
 #include <vivid/effects/texture_operator.h>  // for toStringView
+#include <vivid/viz_draw_list.h>
 #include <vivid/context.h>
 #include <iostream>
+#include <algorithm>
 
 using vivid::effects::toStringView;
 
@@ -633,6 +635,48 @@ void TexturedMaterial::cleanup() {
     m_emissiveView = nullptr;
 
     m_initialized = false;
+}
+
+bool TexturedMaterial::drawVisualization(VizDrawList* dl,
+                                         float minX, float minY,
+                                         float maxX, float maxY) {
+    // Display the base color (albedo) texture as preview
+    if (m_baseColorView && m_baseColorView != m_defaultWhiteView) {
+        // Material textures are typically square (1:1 aspect ratio)
+        dl->AddImage(reinterpret_cast<void*>(m_baseColorView),
+                     VizVec2(minX, minY), VizVec2(maxX, maxY), 1.0f);
+        return true;
+    }
+
+    // Fallback: draw a material swatch icon
+    float cx = (minX + maxX) * 0.5f;
+    float cy = (minY + maxY) * 0.5f;
+    float size = std::min(maxX - minX, maxY - minY) * 0.35f;
+
+    // Dark background
+    dl->AddRectFilled(VizVec2(minX, minY), VizVec2(maxX, maxY),
+                      VIZ_COL32(40, 35, 50, 255), 4.0f);
+
+    // Draw a sphere-like gradient using concentric circles (material preview icon)
+    // Base color factor tint
+    uint8_t r = static_cast<uint8_t>(m_baseColorFallback.r * 255);
+    uint8_t g = static_cast<uint8_t>(m_baseColorFallback.g * 255);
+    uint8_t b = static_cast<uint8_t>(m_baseColorFallback.b * 255);
+
+    // Outer circle (darker)
+    dl->AddCircleFilled(VizVec2(cx, cy), size,
+                        VIZ_COL32(r / 3, g / 3, b / 3, 255));
+    // Middle circle
+    dl->AddCircleFilled(VizVec2(cx - size * 0.15f, cy - size * 0.15f), size * 0.75f,
+                        VIZ_COL32(r / 2, g / 2, b / 2, 255));
+    // Highlight
+    dl->AddCircleFilled(VizVec2(cx - size * 0.3f, cy - size * 0.3f), size * 0.35f,
+                        VIZ_COL32(r, g, b, 255));
+
+    // Outline
+    dl->AddCircle(VizVec2(cx, cy), size, VIZ_COL32(150, 150, 180, 200), 0, 1.5f);
+
+    return true;
 }
 
 } // namespace vivid::render3d

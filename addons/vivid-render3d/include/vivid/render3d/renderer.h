@@ -224,6 +224,20 @@ public:
     std::string name() const override { return "Render3D"; }
     // outputKind() and outputView() inherited from TextureOperator
 
+    std::string getInputName(int index) const override {
+        switch (index) {
+            case 0: return "scene";
+            case 1: return "camera";
+            case 2: return "light1";
+            case 3: return "light2";
+            case 4: return "light3";
+            case 5: return "light4";
+            case 6: return "material";
+            case 7: return "displacement";
+            default: return "";
+        }
+    }
+
     std::vector<ParamDecl> params() override {
         return {
             {"metallic", ParamType::Float, 0.0f, 1.0f, {m_metallic, 0, 0, 0}},

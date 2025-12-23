@@ -28,11 +28,18 @@ void setup(Context& ctx) {
     // Earth Sphere
     // =========================================================================
 
+    // Load Earth texture
+    auto& material = chain.add<TexturedMaterial>("earthMat");
+    material.baseColor("assets/textures/flat_earth_Largest_still.0330.jpg");
+    material.roughnessFactor(0.75f);  // More matte, less shiny
+    material.metallicFactor(0.0f);    // Non-metallic
+
     // Create a high-detail sphere for the globe
     auto& sphere = chain.add<Sphere>("earth");
     sphere.radius(1.0f);
     sphere.segments(128);  // Very high detail for displacement
     sphere.computeTangents();
+    sphere.setMaterial(&material);  // Material assigned directly to mesh
 
     // =========================================================================
     // Displacement Noise
@@ -46,15 +53,9 @@ void setup(Context& ctx) {
     noise.type(NoiseType::Simplex);
     noise.setResolution(512, 512);
 
-    // Load Earth texture
-    auto& material = chain.add<TexturedMaterial>("earthMat");
-    material.baseColor("assets/textures/flat_earth_Largest_still.0330.jpg");
-    material.roughnessFactor(0.75f);  // More matte, less shiny
-    material.metallicFactor(0.0f);    // Non-metallic
-
     // Compose the scene
     auto& scene = SceneComposer::create(chain, "scene");
-    scene.add(&sphere, glm::mat4(1.0f), glm::vec4(1.0f));
+    scene.add(&sphere);
 
     // =========================================================================
     // Camera & Lighting
@@ -96,7 +97,6 @@ void setup(Context& ctx) {
     render.setLightInput(&sunLight);
     render.addLight(&fillLight);
     render.addLight(&rimLight);
-    render.setMaterial(&material);
     render.setShadingMode(ShadingMode::PBR);
     render.setColor(0.02f, 0.02f, 0.04f, 1.0f);  // Dark space background
 

@@ -82,6 +82,44 @@ public:
     }
 
     /**
+     * @brief Builder for configuring scene entries with fluent API
+     */
+    class EntryBuilder {
+    public:
+        EntryBuilder(SceneComposer& composer, size_t index)
+            : m_composer(composer), m_index(index) {}
+
+        /// Set transform matrix
+        void setTransform(const glm::mat4& t) {
+            m_composer.m_entries[m_index].transform = t;
+        }
+
+        /// Set color
+        void setColor(const glm::vec4& c) {
+            m_composer.m_entries[m_index].color = c;
+        }
+
+        /// Set color (convenience)
+        void setColor(float r, float g, float b, float a = 1.0f) {
+            m_composer.m_entries[m_index].color = glm::vec4(r, g, b, a);
+        }
+
+        /// Set whether this object casts shadows
+        void setCastShadow(bool enabled) {
+            m_composer.m_entries[m_index].castShadow = enabled;
+        }
+
+        /// Set whether this object receives shadows
+        void setReceiveShadow(bool enabled) {
+            m_composer.m_entries[m_index].receiveShadow = enabled;
+        }
+
+    private:
+        SceneComposer& m_composer;
+        size_t m_index;
+    };
+
+    /**
      * @brief Create and add a mesh operator to the scene
      * @tparam T MeshOperator type (e.g., Box, Sphere)
      * @param name Unique name for the mesh operator
@@ -125,9 +163,20 @@ public:
     /**
      * @brief Add a mesh with identity transform and white color
      * @param op MeshOperator to add
+     * @return EntryBuilder for fluent configuration
+     *
+     * Material is taken from op->outputMaterial() if available.
      */
-    void add(MeshOperator* op) {
-        add(op, glm::mat4(1.0f), glm::vec4(1.0f));
+    EntryBuilder add(MeshOperator* op) {
+        ComposerEntry entry;
+        entry.geometry = op;
+        entry.inputIndex = static_cast<int>(m_inputs.size());
+
+        // Register geometry as input for dependency tracking
+        setInput(entry.inputIndex, op);
+
+        m_entries.push_back(entry);
+        return EntryBuilder(*this, m_entries.size() - 1);
     }
 
     /**
@@ -159,46 +208,12 @@ public:
     }
 
     /**
-     * @brief Add a mesh with a textured material
+     * @brief Add a mesh with an explicit material (deprecated - use mesh.setMaterial() instead)
      * @param op MeshOperator to add
      * @param material TexturedMaterial for this object
-     * @return Reference to an EntryBuilder for additional configuration
+     * @return EntryBuilder for additional configuration
+     * @deprecated Prefer assigning materials directly to meshes via mesh.setMaterial()
      */
-    class EntryBuilder {
-    public:
-        EntryBuilder(SceneComposer& composer, size_t index)
-            : m_composer(composer), m_index(index) {}
-
-        /// Set transform matrix
-        void setTransform(const glm::mat4& t) {
-            m_composer.m_entries[m_index].transform = t;
-        }
-
-        /// Set color
-        void setColor(const glm::vec4& c) {
-            m_composer.m_entries[m_index].color = c;
-        }
-
-        /// Set color (convenience)
-        void setColor(float r, float g, float b, float a = 1.0f) {
-            m_composer.m_entries[m_index].color = glm::vec4(r, g, b, a);
-        }
-
-        /// Set whether this object casts shadows
-        void setCastShadow(bool enabled) {
-            m_composer.m_entries[m_index].castShadow = enabled;
-        }
-
-        /// Set whether this object receives shadows
-        void setReceiveShadow(bool enabled) {
-            m_composer.m_entries[m_index].receiveShadow = enabled;
-        }
-
-    private:
-        SceneComposer& m_composer;
-        size_t m_index;
-    };
-
     EntryBuilder add(MeshOperator* op, TexturedMaterial* material) {
         ComposerEntry entry;
         entry.geometry = op;
@@ -419,6 +434,22 @@ public:
     }
 
     std::string name() const override { return "SceneComposer"; }
+
+    std::string getInputName(int index) const override {
+        // Inputs are typically: mesh0, [mat0], mesh1, [mat1], ...
+        // Find which entry this input belongs to
+        for (size_t i = 0; i < m_entries.size(); ++i) {
+            const auto& entry = m_entries[i];
+            if (index == entry.inputIndex) {
+                return "mesh" + std::to_string(i);
+            }
+            // Check if this is the material slot for this entry
+            if (entry.material && index == entry.inputIndex + 1) {
+                return "mat" + std::to_string(i);
+            }
+        }
+        return "in" + std::to_string(index);
+    }
 
     /// Draw the scene preview in the chain visualizer
     bool drawVisualization(VizDrawList* drawList,

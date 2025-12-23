@@ -343,14 +343,16 @@ public:
     }
 
     /**
-     * @brief Get input name at index
+     * @brief Get input pin label at index
      * @param index Input slot index
-     * @return Name of connected operator, or empty string if none
+     * @return Label for the input pin (for node graph visualization)
+     *
+     * Override in derived classes to provide meaningful pin names.
+     * Default returns empty string (visualizer will use "in0", "in1", etc.)
      */
-    const std::string& getInputName(int index) const {
-        static const std::string empty;
+    virtual std::string getInputName(int index) const {
         return (index < static_cast<int>(m_inputNames.size()))
-            ? m_inputNames[index] : empty;
+            ? m_inputNames[index] : std::string();
     }
 
     /**

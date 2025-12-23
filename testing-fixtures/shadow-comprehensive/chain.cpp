@@ -21,9 +21,12 @@ static bool g_shadowsEnabled = true;
 static int g_shadingMode = 1;  // 0=Flat, 1=PBR, 2=Toon
 static bool g_lightCastsShadow[] = {true, true, true};  // sun, point, spot
 
-// Light marker indices in scene
-static int g_pointLightMarkerIndex = -1;
-static int g_spotLightMarkerIndex = -1;
+// Camera orbit control state
+static float g_cameraAzimuth = 0.3f;
+static float g_cameraElevation = 0.5f;
+static float g_cameraDistance = 12.0f;
+static glm::vec2 g_lastMouse = {0, 0};
+static bool g_isDragging = false;
 
 // Object shadow states
 // Objects: 0=ground, 1=metalCube, 2=pipe, 3=torus, 4=sphere, 5=frontCube, 6=helmet
@@ -72,42 +75,38 @@ void setup(Context& ctx) {
     graniteMat.ao("assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_ao.png");
 
     // =========================================================================
-    // Geometry for Scene
+    // Geometry for Scene (with materials assigned directly to meshes)
     // =========================================================================
 
     auto& hollowCube = chain.add<Box>("hollowCube");
     hollowCube.size(1.5f);
+    hollowCube.setMaterial(&metalMat);
 
     auto& pipe = chain.add<Cylinder>("pipe");
     pipe.radius(0.5f);
     pipe.height(2.0f);
     pipe.segments(32);
+    pipe.setMaterial(&bronzeMat);
 
     auto& gear = chain.add<Torus>("gear");
     gear.outerRadius(0.8f);
     gear.innerRadius(0.3f);
     gear.segments(32);
     gear.rings(16);
+    // gear has no material - uses vertex color
 
     auto& groundPlane = chain.add<Plane>("groundPlane");
     groundPlane.size(12.0f, 12.0f);
+    groundPlane.setMaterial(&groundMat);
 
     auto& sphere = chain.add<Sphere>("sphere");
     sphere.radius(0.7f);
     sphere.segments(32);
+    sphere.setMaterial(&graniteMat);
 
     auto& cube = chain.add<Box>("cube");
     cube.size(1.0f, 1.0f, 1.0f);
-
-    // Light markers
-    auto& pointMarker = chain.add<Sphere>("pointMarker");
-    pointMarker.radius(0.15f);
-    pointMarker.segments(12);
-
-    auto& spotMarker = chain.add<Cone>("spotMarker");
-    spotMarker.radius(0.2f);
-    spotMarker.height(0.4f);
-    spotMarker.segments(12);
+    cube.setMaterial(&graniteMat);
 
     // =========================================================================
     // Scene Composition
@@ -116,31 +115,28 @@ void setup(Context& ctx) {
     auto& scene = SceneComposer::create(chain, "scene");
 
     // Ground plane (receives shadows, doesn't cast)
-    auto groundEntry = scene.add(&groundPlane, nullptr);
+    auto groundEntry = scene.add(&groundPlane);
     groundEntry.setTransform(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 0.0f, 0.0f)));
     groundEntry.setCastShadow(false);
     groundEntry.setReceiveShadow(true);
-    scene.entries().back().material = &groundMat;
 
-    // Hollow cube (left) - casts and receives shadows, metal material
+    // Hollow cube (left) - casts and receives shadows
     glm::mat4 hollowCubeTransform = glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 1.0f, 0.0f));
-    auto hollowCubeEntry = scene.add(&hollowCube, nullptr);
+    auto hollowCubeEntry = scene.add(&hollowCube);
     hollowCubeEntry.setTransform(hollowCubeTransform);
     hollowCubeEntry.setCastShadow(true);
     hollowCubeEntry.setReceiveShadow(true);
-    scene.entries().back().material = &metalMat;
 
-    // Pipe (center) - casts shadows, bronze material
+    // Pipe (center) - casts shadows
     glm::mat4 pipeTransform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 1.0f, 0.0f));
-    auto pipeEntry = scene.add(&pipe, nullptr);
+    auto pipeEntry = scene.add(&pipe);
     pipeEntry.setTransform(pipeTransform);
     pipeEntry.setCastShadow(true);
     pipeEntry.setReceiveShadow(true);
-    scene.entries().back().material = &bronzeMat;
 
-    // Gear/Torus (right) - casts shadows
+    // Gear/Torus (right) - casts shadows, no material (uses vertex color)
     glm::mat4 gearTransform = glm::translate(glm::mat4(1.0f), glm::vec3(1.8f, 0.8f, 0.0f));
-    auto gearEntry = scene.add(&gear, nullptr);
+    auto gearEntry = scene.add(&gear);
     gearEntry.setTransform(gearTransform);
     gearEntry.setColor(0.7f, 0.7f, 0.8f, 1.0f);
     gearEntry.setCastShadow(true);
@@ -148,46 +144,29 @@ void setup(Context& ctx) {
 
     // Granite sphere (front-left) - receives shadows but does NOT cast
     glm::mat4 sphereTransform = glm::translate(glm::mat4(1.0f), glm::vec3(-1.5f, 0.7f, 2.0f));
-    auto sphereEntry = scene.add(&sphere, nullptr);
+    auto sphereEntry = scene.add(&sphere);
     sphereEntry.setTransform(sphereTransform);
     sphereEntry.setCastShadow(false);
     sphereEntry.setReceiveShadow(true);
-    scene.entries().back().material = &graniteMat;
 
     // Simple cube (front-right) - casts but does NOT receive shadows
     glm::mat4 cubeTransform = glm::translate(glm::mat4(1.0f), glm::vec3(1.5f, 0.5f, 2.0f));
-    auto cubeEntry = scene.add(&cube, nullptr);
+    auto cubeEntry = scene.add(&cube);
     cubeEntry.setTransform(cubeTransform);
     cubeEntry.setCastShadow(true);
     cubeEntry.setReceiveShadow(false);
-    scene.entries().back().material = &graniteMat;
 
-    // DamagedHelmet glTF model
+    // DamagedHelmet glTF model (has its own embedded material)
     auto& helmet = chain.add<GLTFLoader>("helmet");
     helmet.file("assets/meshes/DamagedHelmet.glb");
+    helmet.loadTextures(true);  // Load embedded PBR textures
 
     glm::mat4 helmetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(3.5f, 1.0f, 0.0f)) *
                                 glm::scale(glm::mat4(1.0f), glm::vec3(0.8f));
-    auto helmetEntry = scene.add(&helmet, nullptr);
+    auto helmetEntry = scene.add(&helmet);
     helmetEntry.setTransform(helmetTransform);
     helmetEntry.setCastShadow(true);
     helmetEntry.setReceiveShadow(true);
-
-    // Point light marker (yellow)
-    g_pointLightMarkerIndex = static_cast<int>(scene.entries().size());
-    auto pointMarkerEntry = scene.add(&pointMarker, nullptr);
-    pointMarkerEntry.setTransform(glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 4.0f, 0.0f)));
-    pointMarkerEntry.setColor(1.0f, 0.9f, 0.3f, 1.0f);
-    pointMarkerEntry.setCastShadow(false);
-    pointMarkerEntry.setReceiveShadow(false);
-
-    // Spot light marker (orange cone)
-    g_spotLightMarkerIndex = static_cast<int>(scene.entries().size());
-    auto spotMarkerEntry = scene.add(&spotMarker, nullptr);
-    spotMarkerEntry.setTransform(glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, 5.0f, 3.0f)));
-    spotMarkerEntry.setColor(1.0f, 0.5f, 0.2f, 1.0f);
-    spotMarkerEntry.setCastShadow(false);
-    spotMarkerEntry.setReceiveShadow(false);
 
     // =========================================================================
     // Lights - All Three Types with Shadow Casting
@@ -199,6 +178,7 @@ void setup(Context& ctx) {
     sun.intensity = 2.0f;
     sun.castShadow(true);
     sun.shadowBias(0.01f);
+    sun.drawDebug(true);  // Show yellow arrow indicating sun direction
 
     auto& point = chain.add<PointLight>("point");
     point.position(0.0f, 4.0f, 0.0f);
@@ -207,6 +187,7 @@ void setup(Context& ctx) {
     point.range = 15.0f;
     point.castShadow(true);
     point.shadowBias(0.02f);
+    point.drawDebug(true);  // Show wireframe sphere at light position
 
     auto& spot = chain.add<SpotLight>("spot");
     spot.position(3.0f, 5.0f, 3.0f);
@@ -218,6 +199,7 @@ void setup(Context& ctx) {
     spot.spotBlend = 0.2f;
     spot.castShadow(true);
     spot.shadowBias(0.01f);
+    spot.drawDebug(true);  // Show wireframe cone at light position
 
     // =========================================================================
     // Camera
@@ -237,7 +219,9 @@ void setup(Context& ctx) {
     auto& render = chain.add<Render3D>("render");
     render.setInput(&scene);
     render.setCameraInput(&camera);
-    render.setLightInput(&sun);
+    render.setLightInput(&sun);      // Primary light (slot 0)
+    render.addLight(&point);          // Additional light (slot 1) - for debug viz
+    render.addLight(&spot);           // Additional light (slot 2) - for debug viz
     render.setShadingMode(ShadingMode::PBR);
     render.setAmbient(0.2f);
     render.setShadows(true);
@@ -256,6 +240,52 @@ void update(Context& ctx) {
     auto& spot = chain.get<SpotLight>("spot");
     auto& render = chain.get<Render3D>("render");
     auto& scene = chain.get<SceneComposer>("scene");
+    auto& camera = chain.get<CameraOperator>("camera");
+
+    // =========================================================================
+    // Orbit Camera Controls (drag to rotate, scroll to zoom)
+    // =========================================================================
+
+    glm::vec2 mousePos = ctx.mouse();
+    auto leftButton = ctx.mouseButton(0);
+    glm::vec2 scrollDelta = ctx.scroll();
+
+    // Check if mouse is over ImGui window
+    bool imguiWantsMouse = ImGui::GetIO().WantCaptureMouse;
+
+    if (!imguiWantsMouse) {
+        // Start dragging on left mouse button press
+        if (leftButton.pressed) {
+            g_isDragging = true;
+            g_lastMouse = mousePos;
+        }
+
+        // Update camera while dragging
+        if (g_isDragging && leftButton.held) {
+            glm::vec2 delta = mousePos - g_lastMouse;
+            g_cameraAzimuth -= delta.x * 0.005f;
+            g_cameraElevation += delta.y * 0.005f;
+            // Clamp elevation to avoid gimbal lock
+            g_cameraElevation = std::clamp(g_cameraElevation, -1.5f, 1.5f);
+            g_lastMouse = mousePos;
+        }
+
+        // Stop dragging on release
+        if (leftButton.released) {
+            g_isDragging = false;
+        }
+
+        // Zoom with scroll wheel
+        if (std::abs(scrollDelta.y) > 0.01f) {
+            g_cameraDistance -= scrollDelta.y * 0.5f;
+            g_cameraDistance = std::clamp(g_cameraDistance, 3.0f, 30.0f);
+        }
+    }
+
+    // Apply camera settings
+    camera.azimuth(g_cameraAzimuth);
+    camera.elevation(g_cameraElevation);
+    camera.distance(g_cameraDistance);
 
     // =========================================================================
     // ImGui Control Panel
@@ -313,11 +343,13 @@ void update(Context& ctx) {
                 // Cast shadow checkbox
                 if (ImGui::Checkbox("Cast", &g_castShadow[i])) {
                     scene.entries()[i].castShadow = g_castShadow[i];
+                    scene.markDirty();  // Trigger scene rebuild
                 }
                 ImGui::SameLine();
                 // Receive shadow checkbox
                 if (ImGui::Checkbox("Receive", &g_receiveShadow[i])) {
                     scene.entries()[i].receiveShadow = g_receiveShadow[i];
+                    scene.markDirty();  // Trigger scene rebuild
                 }
                 ImGui::TreePop();
             }
@@ -340,12 +372,6 @@ void update(Context& ctx) {
     float pointZ = std::sin(time * 0.3f) * pointRadius;
     point.position(pointX, pointHeight, pointZ);
 
-    // Update point light marker
-    if (g_pointLightMarkerIndex >= 0 && g_pointLightMarkerIndex < static_cast<int>(scene.entries().size())) {
-        scene.entries()[g_pointLightMarkerIndex].transform =
-            glm::translate(glm::mat4(1.0f), glm::vec3(pointX, pointHeight, pointZ));
-    }
-
     // Animate spot light
     float spotAngle = time * 0.8f;
     float spotRadius = 4.0f;
@@ -354,12 +380,6 @@ void update(Context& ctx) {
     float spotY = 5.0f + std::sin(time * 1.5f) * 1.0f;
     spot.position(spotX, spotY, spotZ);
     spot.direction(-spotX * 0.3f, -1.0f, -spotZ * 0.3f);
-
-    // Update spot light marker
-    if (g_spotLightMarkerIndex >= 0 && g_spotLightMarkerIndex < static_cast<int>(scene.entries().size())) {
-        scene.entries()[g_spotLightMarkerIndex].transform =
-            glm::translate(glm::mat4(1.0f), glm::vec3(spotX, spotY, spotZ));
-    }
 
     // Rotate objects
     auto& entries = scene.entries();
@@ -376,6 +396,9 @@ void update(Context& ctx) {
     // Gear/Torus (index 3)
     entries[3].transform = glm::translate(glm::mat4(1.0f), glm::vec3(1.8f, 0.8f, 0.0f)) *
                            glm::rotate(glm::mat4(1.0f), time * 0.5f, glm::vec3(0, 1, 0));
+
+    // Mark scene dirty so transforms are synced to Scene objects
+    scene.markDirty();
 
     // Animate sun direction
     float sunAngle = time * 0.1f;

@@ -420,6 +420,16 @@ private:
     size_t m_textVertexCapacity[3] = {0, 0, 0};
     size_t m_textIndexCapacity[3] = {0, 0, 0};
 
+    // Topmost layer buffers (separate to avoid overwriting main solid buffers)
+    WGPUBuffer m_topmostSolidVertexBuffer = nullptr;
+    WGPUBuffer m_topmostSolidIndexBuffer = nullptr;
+    WGPUBuffer m_topmostTextVertexBuffer[3] = {nullptr, nullptr, nullptr};
+    WGPUBuffer m_topmostTextIndexBuffer[3] = {nullptr, nullptr, nullptr};
+    size_t m_topmostSolidVertexCapacity = 0;
+    size_t m_topmostSolidIndexCapacity = 0;
+    size_t m_topmostTextVertexCapacity[3] = {0, 0, 0};
+    size_t m_topmostTextIndexCapacity[3] = {0, 0, 0};
+
     // Transform state
     glm::mat3 m_transform = glm::mat3(1.0f);
     std::vector<glm::mat3> m_transformStack;

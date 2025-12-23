@@ -2,6 +2,7 @@
 #include <vivid/overlay_canvas.h>
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 
 namespace vivid {
 
@@ -96,7 +97,7 @@ void NodeGraph::endNode() {
         float contentAreaHeight = 0.0f;
         if (node.contentCallback) {
             // 16:9 aspect ratio thumbnail: width ~100px, height ~56px + padding
-            contentAreaHeight = 64.0f;
+            contentAreaHeight = 128.0f;
         }
 
         node.size.y = m_style.nodeTitleHeight + contentAreaHeight + pinsHeight;
@@ -182,13 +183,34 @@ glm::vec2 NodeGraph::getNodePosition(int nodeId) const {
     return {0, 0};
 }
 
+glm::vec2 NodeGraph::getNodeSize(int nodeId) const {
+    auto it = m_nodes.find(nodeId);
+    if (it != m_nodes.end()) {
+        return it->second.size;
+    }
+    return {200, 100};  // Default size
+}
+
 void NodeGraph::autoLayout() {
     // TODO: Implement Sugiyama hierarchical layout
-    // For now, just arrange nodes in a grid
+    // For now, arrange nodes in a grid based on actual node sizes
+
+    // Find maximum node dimensions
+    float maxWidth = m_style.nodeWidth;
+    float maxHeight = 100.0f;
+    for (const auto& [id, node] : m_nodes) {
+        maxWidth = std::max(maxWidth, node.size.x);
+        maxHeight = std::max(maxHeight, node.size.y);
+    }
+
+    // Add padding between nodes
+    float spacingX = maxWidth + 40.0f;
+    float spacingY = maxHeight + 30.0f;
+
     int col = 0;
     int row = 0;
     for (auto& [id, node] : m_nodes) {
-        node.gridPos = {col * 250.0f + 50, row * 150.0f + 50};
+        node.gridPos = {col * spacingX + 50, row * spacingY + 50};
         col++;
         if (col >= 4) {
             col = 0;
@@ -378,7 +400,7 @@ void NodeGraph::renderNode(NodeState& node) {
     float textScale = m_zoom * 0.85f;  // Slightly smaller for better fit in title bar
 
     // Content area height (for operator preview)
-    float contentAreaH = node.contentCallback ? 64.0f * m_zoom : 0.0f;
+    float contentAreaH = node.contentCallback ? 128.0f * m_zoom : 0.0f;
 
     // Node background
     m_canvas->fillRoundedRect(pos.x, pos.y, w, h, cornerR, m_style.nodeBackground);

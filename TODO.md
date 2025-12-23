@@ -263,7 +263,9 @@
 [ ] I put [text](assets/fonts/Pixeled.ttf) [text](<assets/fonts/Game Of Squids.ttf>) [text](assets/fonts/SilverStream.ttf) [text](<assets/fonts/space age.ttf>) into the root assets folder originally for the wipeout demo. Are they used anywhere else? If so, can you please move them to the specific projects that use them and then remove them from the root asets folder? In general, I want to clean out the root assets folder wherever possibe. 
 [ ] It seems like we added a lot of functionality to overlay_canvas. Would any of these be helpful additions to the vivid core canvas rendering API?
 [ ] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
-[ ] we should ensure that vivid-gui works with testing-fixtures/shadow-comprehensive/ 
+[x] we should ensure that vivid-gui works with testing-fixtures/shadow-comprehensive/ 
 [ ] Update Vivid's wgpu-native dependency to v27.0.4.0
 [x] Why is there still a folder called imgui in core? imgui should be totally separate now.
 [x] you said "ImGui stays in core for backward compatibility - addons (network, serial, etc.) still use drawVisualization(ImDrawList*)" -- let's update the addons (network, serial, etc.) still use drawVisualization(ImDrawList*)
+[x] Why does the overlay and grid go away when I mouse over a node?
+[ ] Are we done with _REPLACE_IMNODES.md?

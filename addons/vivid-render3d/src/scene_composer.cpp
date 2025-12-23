@@ -11,9 +11,9 @@
 
 namespace vivid::render3d {
 
-// Preview thumbnail size (16:9 aspect ratio)
-static constexpr int PREVIEW_WIDTH = 100;
-static constexpr int PREVIEW_HEIGHT = 56;
+// Preview thumbnail size (16:9 aspect ratio, 2x for quality)
+static constexpr int PREVIEW_WIDTH = 256;
+static constexpr int PREVIEW_HEIGHT = 144;
 
 void SceneComposer::updateScenePreview(Context& ctx) {
     // Skip if empty scene
@@ -92,6 +92,8 @@ void SceneComposer::updateScenePreview(Context& ctx) {
 #pragma warning(pop)
 #endif
     m_previewCamera->process(ctx);
+    // Mark dirty to force re-render (camera orbits for rotation animation)
+    m_previewRenderer->markDirty();
     m_previewRenderer->process(ctx);
 }
 

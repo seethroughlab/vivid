@@ -94,13 +94,39 @@ public:
         m_canvas.text(textStr, pos.x, pos.y, col32ToVec4(col));
     }
 
-    // Image (texture ID is opaque - chain visualizer passes the right format)
-    void AddImage(void* texId, VizVec2 min, VizVec2 max) {
-        // Images need special handling - pass through to ImGui if available
-        // For now, just draw a placeholder rectangle
-        (void)texId;
-        m_canvas.strokeRect(min.x, min.y, max.x - min.x, max.y - min.y,
-                           1.0f, col32ToVec4(VIZ_COL32(100, 100, 100, 255)));
+    // Image (texture ID is WGPUTextureView cast to void*)
+    // Assumes 16:9 aspect ratio for preview textures (256x144)
+    void AddImage(void* texId, VizVec2 min, VizVec2 max, float srcAspect = 256.0f / 144.0f) {
+        float areaW = max.x - min.x;
+        float areaH = max.y - min.y;
+
+        if (texId) {
+            WGPUTextureView view = reinterpret_cast<WGPUTextureView>(texId);
+
+            // Preserve aspect ratio - fit image within area
+            float areaAspect = areaW / areaH;
+            float drawW, drawH, drawX, drawY;
+
+            if (srcAspect > areaAspect) {
+                // Image is wider than area - fit to width, center vertically
+                drawW = areaW;
+                drawH = areaW / srcAspect;
+                drawX = min.x;
+                drawY = min.y + (areaH - drawH) * 0.5f;
+            } else {
+                // Image is taller than area - fit to height, center horizontally
+                drawH = areaH;
+                drawW = areaH * srcAspect;
+                drawX = min.x + (areaW - drawW) * 0.5f;
+                drawY = min.y;
+            }
+
+            m_canvas.texturedRect(drawX, drawY, drawW, drawH, view);
+        } else {
+            // No texture - draw placeholder rectangle
+            m_canvas.strokeRect(min.x, min.y, areaW, areaH,
+                               1.0f, col32ToVec4(VIZ_COL32(100, 100, 100, 255)));
+        }
     }
 
     // Text size calculation (approximate)

@@ -240,6 +240,8 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "TexturedMaterial"; }
+    bool drawVisualization(VizDrawList* dl, float minX, float minY,
+                           float maxX, float maxY) override;
 
     /// @}
 

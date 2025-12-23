@@ -11,11 +11,13 @@
 #include <vivid/audio_graph.h>
 #include <vivid/asset_loader.h>
 #include <vivid/frame_input.h>
+#include <vivid/effects/texture_operator.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
 #include <cmath>
+#include <climits>
 #include <filesystem>
 
 // Platform-specific memory monitoring
@@ -117,17 +119,23 @@ void ChainVisualizer::selectNodeFromEditor(const std::string& operatorName) {
 
 // Estimate node height based on content (parameters are now in inspector panel)
 float ChainVisualizer::estimateNodeHeight(const vivid::OperatorInfo& info) const {
-    float height = 0.0f;
+    // Match the actual calculation in node_graph.cpp endNode():
+    // node.size.y = nodeTitleHeight + contentAreaHeight + pinsHeight
+    // where pinsHeight = max(1, maxPins) * pinSpacing + nodeContentPadding * 2
+    //
+    // NodeGraphStyle defaults:
+    //   nodeTitleHeight = 48.0f
+    //   pinSpacing = 40.0f
+    //   nodeContentPadding = 8.0f
+    //   contentAreaHeight = 128.0f (if has content callback)
 
-    // Title bar
-    height += 24.0f;
+    const float nodeTitleHeight = 48.0f;
+    const float pinSpacing = 40.0f;
+    const float nodeContentPadding = 8.0f;
+    const float contentAreaHeight = 128.0f;
 
-    // Type name (if different from registered name)
-    if (info.op && info.op->name() != info.name) {
-        height += 18.0f;
-    }
-
-    // Input pins (~20px each)
+    // Count pins
+    int maxPins = 1;  // At least 1 for output
     if (info.op) {
         int inputCount = 0;
         for (size_t j = 0; j < info.op->inputCount(); ++j) {
@@ -135,24 +143,11 @@ float ChainVisualizer::estimateNodeHeight(const vivid::OperatorInfo& info) const
                 inputCount = static_cast<int>(j) + 1;
             }
         }
-        height += inputCount * 20.0f;
+        maxPins = std::max(maxPins, inputCount);
     }
 
-    // Thumbnail/preview area
-    if (info.op) {
-        vivid::OutputKind kind = info.op->outputKind();
-        if (kind == vivid::OutputKind::Texture || kind == vivid::OutputKind::Geometry) {
-            height += 60.0f;  // 56px image + padding
-        } else {
-            height += 54.0f;  // Icons are slightly smaller
-        }
-    }
-
-    // Output pin
-    height += 20.0f;
-
-    // Node padding
-    height += 16.0f;
+    float pinsHeight = maxPins * pinSpacing + nodeContentPadding * 2;
+    float height = nodeTitleHeight + contentAreaHeight + pinsHeight;
 
     return height;
 }
@@ -1267,10 +1262,38 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
 
             // Fallback visualization based on output type
             if (kind == vivid::OutputKind::Texture) {
-                // Render texture preview
+                // Render texture preview with aspect ratio preservation
                 WGPUTextureView view = op->outputView();
                 if (view) {
-                    canvas.texturedRect(x, y, w, h, view);
+                    // Get texture dimensions from operator if available
+                    float srcAspect = 16.0f / 9.0f;  // Default to 16:9
+                    if (auto* texOp = dynamic_cast<vivid::effects::TextureOperator*>(op)) {
+                        int texW = texOp->outputWidth();
+                        int texH = texOp->outputHeight();
+                        if (texW > 0 && texH > 0) {
+                            srcAspect = static_cast<float>(texW) / static_cast<float>(texH);
+                        }
+                    }
+
+                    // Preserve aspect ratio - fit image within area
+                    float areaAspect = w / h;
+                    float drawW, drawH, drawX, drawY;
+
+                    if (srcAspect > areaAspect) {
+                        // Image is wider - fit to width
+                        drawW = w;
+                        drawH = w / srcAspect;
+                        drawX = x;
+                        drawY = y + (h - drawH) * 0.5f;
+                    } else {
+                        // Image is taller - fit to height
+                        drawH = h;
+                        drawW = h * srcAspect;
+                        drawX = x + (w - drawW) * 0.5f;
+                        drawY = y;
+                    }
+
+                    canvas.texturedRect(drawX, drawY, drawW, drawH, view);
                 } else {
                     // No texture yet - draw placeholder
                     canvas.fillRect(x, y, w, h, {0.15f, 0.15f, 0.2f, 1.0f});
@@ -1385,6 +1408,22 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
             }
         }
 
+        // Build reverse map: for each operator, which operators use it as input
+        std::vector<std::vector<int>> consumers(operators.size());
+        for (size_t i = 0; i < operators.size(); ++i) {
+            vivid::Operator* op = operators[i].op;
+            if (!op) continue;
+
+            for (size_t j = 0; j < op->inputCount(); ++j) {
+                vivid::Operator* inputOp = op->getInput(static_cast<int>(j));
+                if (inputOp && opToIdx.count(inputOp)) {
+                    int inputIdx = opToIdx[inputOp];
+                    consumers[inputIdx].push_back(static_cast<int>(i));
+                }
+            }
+        }
+
+        // First pass: Calculate forward depth (from sources)
         for (size_t i = 0; i < operators.size(); ++i) {
             vivid::Operator* op = operators[i].op;
             if (!op) continue;
@@ -1400,6 +1439,23 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
             depths[i] = maxInputDepth + 1;
         }
 
+        // Second pass: Reposition source nodes (depth 0) with consumers
+        // Place them one column before their earliest consumer
+        // This positions lights near the renderer and materials near their meshes
+        for (size_t i = 0; i < operators.size(); ++i) {
+            if (depths[i] == 0 && !consumers[i].empty()) {
+                // Find minimum consumer depth
+                int minConsumerDepth = INT_MAX;
+                for (int consumerIdx : consumers[i]) {
+                    minConsumerDepth = std::min(minConsumerDepth, depths[consumerIdx]);
+                }
+                // Position one column before the consumer (but at least 0)
+                if (minConsumerDepth > 1) {
+                    depths[i] = minConsumerDepth - 1;
+                }
+            }
+        }
+
         // Group operators by depth (column)
         int maxDepth = 0;
         for (int d : depths) maxDepth = std::max(maxDepth, d);
@@ -1410,26 +1466,46 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
         }
 
         // Position nodes in columns (left-to-right data flow)
-        const float xSpacing = 280.0f;
-        const float ySpacing = 180.0f;
+        // Use actual node sizes for spacing
+        const float xPadding = 80.0f;
+        const float yPadding = 30.0f;
         const float startX = 100.0f;
         const float startY = 100.0f;
 
+        // Find max width for each column
+        std::vector<float> columnWidths(columns.size(), 200.0f);
+        for (int col = 0; col < static_cast<int>(columns.size()); ++col) {
+            for (int nodeId : columns[col]) {
+                glm::vec2 size = m_nodeGraph.getNodeSize(nodeId);
+                columnWidths[col] = std::max(columnWidths[col], size.x);
+            }
+        }
+
+        // Calculate column X positions
+        std::vector<float> columnX(columns.size());
+        float currentX = startX;
+        for (int col = 0; col < static_cast<int>(columns.size()); ++col) {
+            columnX[col] = currentX;
+            currentX += columnWidths[col] + xPadding;
+        }
+
+        // Position nodes using actual heights
         for (int col = 0; col < static_cast<int>(columns.size()); ++col) {
             float y = startY;
             for (int nodeId : columns[col]) {
-                float x = startX + col * xSpacing;
-                m_nodeGraph.setNodePosition(nodeId, glm::vec2(x, y));
-                y += ySpacing;
+                m_nodeGraph.setNodePosition(nodeId, glm::vec2(columnX[col], y));
+                glm::vec2 size = m_nodeGraph.getNodeSize(nodeId);
+                y += size.y + yPadding;
             }
         }
 
         // Position Screen and Speakers nodes at the end (rightmost column)
-        float outputX = startX + (maxDepth + 1) * xSpacing;
+        float outputX = currentX;  // After the last column
         float outputY = startY;
         if (outputNodeId >= 0) {
             m_nodeGraph.setNodePosition(SCREEN_NODE_ID, glm::vec2(outputX, outputY));
-            outputY += ySpacing;
+            glm::vec2 screenSize = m_nodeGraph.getNodeSize(SCREEN_NODE_ID);
+            outputY += screenSize.y + yPadding;
         }
         if (audioOutputNodeId >= 0) {
             m_nodeGraph.setNodePosition(SPEAKERS_NODE_ID, glm::vec2(outputX, outputY));

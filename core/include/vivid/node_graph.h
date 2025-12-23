@@ -262,6 +262,11 @@ public:
     glm::vec2 getNodePosition(int nodeId) const;
 
     /**
+     * @brief Get node size (computed in endNode)
+     */
+    glm::vec2 getNodeSize(int nodeId) const;
+
+    /**
      * @brief Run hierarchical auto-layout
      */
     void autoLayout();

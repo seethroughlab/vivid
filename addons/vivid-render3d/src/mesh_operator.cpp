@@ -2,6 +2,7 @@
 // Renders a rotating 3D preview for the chain visualizer
 
 #include <vivid/render3d/mesh_operator.h>
+#include <vivid/render3d/textured_material.h>
 #include <vivid/render3d/renderer.h>
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/render3d/scene.h>
@@ -12,9 +13,20 @@
 
 namespace vivid::render3d {
 
-// Preview thumbnail size (16:9 aspect ratio)
-static constexpr int PREVIEW_WIDTH = 100;
-static constexpr int PREVIEW_HEIGHT = 56;
+MeshOperator& MeshOperator::setMaterial(TexturedMaterial* mat) {
+    if (m_material != mat) {
+        m_material = mat;
+        if (mat) {
+            setInput(10, mat);  // Slot 10 for material (high slot to avoid conflicts)
+        }
+        markDirty();
+    }
+    return *this;
+}
+
+// Preview thumbnail size (16:9 aspect ratio, 2x for quality)
+static constexpr int PREVIEW_WIDTH = 256;
+static constexpr int PREVIEW_HEIGHT = 144;
 
 void MeshOperator::updatePreview(Context& ctx) {
     // Skip if no mesh
@@ -114,6 +126,8 @@ void MeshOperator::updatePreview(Context& ctx) {
 #pragma warning(pop)
 #endif
     m_previewCamera->process(ctx);
+    // Mark dirty to force re-render (scene transform changed for rotation animation)
+    m_previewRenderer->markDirty();
     m_previewRenderer->process(ctx);
 }
 

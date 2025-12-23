@@ -72,34 +72,50 @@ inline void generateCameraFrustum(std::vector<Vertex3D>& verts, const Camera3D& 
     addLine(verts, corners[3], corners[7], color);
 }
 
-// Generate directional light arrow (5 lines: shaft + 4 arrowhead)
+// Generate directional light debug (multiple parallel arrows showing light rays)
+// Like Unity's directional light widget - parallel arrows pointing in light direction
 inline void generateDirectionalLightDebug(std::vector<Vertex3D>& verts, const LightData& light, const glm::vec4& color) {
     glm::vec3 dir = glm::normalize(light.direction);
-    float len = 2.0f;  // Arrow length
+    float len = 1.2f;  // Arrow length
+    float headSize = 0.15f;
 
-    // Arrow shaft from origin in light direction
-    glm::vec3 start = glm::vec3(0, 0, 0);
-    glm::vec3 end = start + dir * len;
-    addLine(verts, start, end, color);
-
-    // Create arrowhead basis vectors
+    // Create basis vectors perpendicular to light direction
     glm::vec3 up = glm::abs(dir.y) < 0.9f ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
     glm::vec3 right = glm::normalize(glm::cross(dir, up));
     glm::vec3 forward = glm::normalize(glm::cross(right, dir));
 
-    // Arrowhead
-    float headSize = 0.3f;
-    glm::vec3 headBase = end - dir * headSize * 2.0f;
-    addLine(verts, end, headBase + right * headSize, color);
-    addLine(verts, end, headBase - right * headSize, color);
-    addLine(verts, end, headBase + forward * headSize, color);
-    addLine(verts, end, headBase - forward * headSize, color);
+    // Center position above scene
+    glm::vec3 center = glm::vec3(0, 7, 0);
+
+    // Draw 5 parallel arrows in a cross pattern
+    float spacing = 0.5f;
+    glm::vec3 offsets[] = {
+        glm::vec3(0, 0, 0),                    // Center
+        right * spacing,                        // Right
+        -right * spacing,                       // Left
+        forward * spacing,                      // Forward
+        -forward * spacing                      // Back
+    };
+
+    for (const auto& offset : offsets) {
+        glm::vec3 start = center + offset;
+        glm::vec3 end = start + dir * len;
+
+        // Arrow shaft
+        addLine(verts, start, end, color);
+
+        // Arrowhead (2 lines forming a V)
+        glm::vec3 headBase = end - dir * headSize * 2.0f;
+        addLine(verts, end, headBase + right * headSize, color);
+        addLine(verts, end, headBase - right * headSize, color);
+    }
 }
 
 // Generate point light sphere wireframe (3 circles on XY, XZ, YZ planes)
+// Uses a small fixed indicator size for visibility, not the actual light range
 inline void generatePointLightDebug(std::vector<Vertex3D>& verts, const LightData& light, const glm::vec4& color) {
-    const int segments = 24;
-    float r = light.range;
+    const int segments = 16;
+    const float r = 0.4f;  // Small fixed indicator size
     glm::vec3 pos = light.position;
 
     for (int i = 0; i < segments; i++) {
@@ -119,12 +135,13 @@ inline void generatePointLightDebug(std::vector<Vertex3D>& verts, const LightDat
 }
 
 // Generate spot light cone wireframe (edges from apex to base circle)
+// Uses a small fixed indicator size for visibility, preserving the actual cone angle
 inline void generateSpotLightDebug(std::vector<Vertex3D>& verts, const LightData& light, const glm::vec4& color) {
     glm::vec3 pos = light.position;
     glm::vec3 dir = glm::normalize(light.direction);
-    float range = light.range;
+    const float indicatorLength = 1.0f;  // Small fixed cone length
     float angleRad = glm::radians(light.spotAngle);
-    float baseRadius = tanf(angleRad) * range;
+    float baseRadius = tanf(angleRad) * indicatorLength;
 
     // Create cone basis vectors
     glm::vec3 up = glm::abs(dir.y) < 0.9f ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0);
@@ -132,7 +149,7 @@ inline void generateSpotLightDebug(std::vector<Vertex3D>& verts, const LightData
     glm::vec3 forward = glm::normalize(glm::cross(right, dir));
 
     glm::vec3 apex = pos;
-    glm::vec3 baseCenter = pos + dir * range;
+    glm::vec3 baseCenter = pos + dir * indicatorLength;
 
     // Cone edges from apex to base circle
     const int edges = 8;
@@ -143,7 +160,7 @@ inline void generateSpotLightDebug(std::vector<Vertex3D>& verts, const LightData
     }
 
     // Base circle
-    const int segments = 24;
+    const int segments = 16;
     for (int i = 0; i < segments; i++) {
         float a1 = (float)i / segments * 2.0f * 3.14159f;
         float a2 = (float)(i + 1) / segments * 2.0f * 3.14159f;

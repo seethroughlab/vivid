@@ -25,6 +25,8 @@ struct ImDrawList;
 
 namespace vivid::render3d {
 
+class TexturedMaterial;
+
 /**
  * @brief Base class for operators that produce 3D meshes
  *
@@ -119,13 +121,30 @@ public:
     virtual const MeshBuilder* outputBuilder() const { return m_builder.vertexCount() > 0 ? &m_builder : nullptr; }
 
     /**
-     * @brief Get material for this mesh (for textured models like GLTF)
+     * @brief Get material for this mesh
      * @return Pointer to TexturedMaterial, or nullptr if none
      *
-     * Override this in subclasses that load materials (e.g., GLTFLoader).
-     * SceneComposer will check this during process() to get materials dynamically.
+     * Returns the material assigned via setMaterial(), or overridden by
+     * subclasses that load materials (e.g., GLTFLoader).
      */
-    virtual class TexturedMaterial* outputMaterial() { return nullptr; }
+    virtual TexturedMaterial* outputMaterial() { return m_material; }
+
+    /**
+     * @brief Assign a material to this mesh
+     * @param mat TexturedMaterial to use for rendering
+     * @return Reference to this operator for chaining
+     *
+     * The material will be used when this mesh is rendered via SceneComposer.
+     * The connection is shown in the node graph visualizer.
+     *
+     * @par Example
+     * @code
+     * auto& sphere = chain.add<Sphere>("earth");
+     * auto& material = chain.add<TexturedMaterial>("earthMat");
+     * sphere.setMaterial(&material);
+     * @endcode
+     */
+    MeshOperator& setMaterial(TexturedMaterial* mat);  // Implemented in mesh_operator.cpp
 
     /// @}
     // -------------------------------------------------------------------------
@@ -177,9 +196,15 @@ public:
 
     /// @}
 
+    std::string getInputName(int index) const override {
+        if (index == 10) return "material";
+        return "";
+    }
+
 protected:
     Mesh m_mesh;           ///< Output mesh storage
     MeshBuilder m_builder; ///< Builder with manifold data (for CSG operations)
+    TexturedMaterial* m_material = nullptr; ///< Material for this mesh
 
     // -------------------------------------------------------------------------
     // Preview rendering infrastructure (lazy-initialized)
