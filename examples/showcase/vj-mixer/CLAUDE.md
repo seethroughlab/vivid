@@ -56,8 +56,8 @@ Users should provide their own video content:
 - `assets/videos/loop3.mov`
 - `assets/videos/loop4.mov`
 
-Font for typography:
-- `assets/fonts/space age.ttf` (or any bold TTF)
+Font for typography (included):
+- `assets/fonts/space age.ttf`
 
 ## Technical Approach
 

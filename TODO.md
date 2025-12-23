@@ -256,15 +256,15 @@
 [x] wipeout-viz exists in both projects/my-projects and examples/showcase -- are they identical?
     - Not identical. Moved examples/showcase/wipeout-viz to projects/my-projects/
 [x] Add shadow support to PBR shaders (pbr_textured.wgsl, pbr.wgsl, pbr_ibl.wgsl). Shadows now work with all shading modes including flat, PBR, PBR textured, and PBR IBL. 
-[ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
-[ ] Update wgpu-native when new release includes memory leak fix (PR #542 merged Dec 22, 2024)
-    - Run: `./tools/check_wgpu_native_release.sh`
-    - Current: v27.0.2.0, need next release
-[ ] I put [text](assets/fonts/Pixeled.ttf) [text](<assets/fonts/Game Of Squids.ttf>) [text](assets/fonts/SilverStream.ttf) [text](<assets/fonts/space age.ttf>) into the root assets folder originally for the wipeout demo. Are they used anywhere else? If so, can you please move them to the specific projects that use them and then remove them from the root asets folder? In general, I want to clean out the root assets folder wherever possibe. 
-[ ] It seems like we added a lot of functionality to overlay_canvas. Would any of these be helpful additions to the vivid core canvas rendering API?
-[ ] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
+[x] Update wgpu-native when new release includes memory leak fix (PR #542 merged Dec 22, 2024)
+    - Updated to v27.0.4.0 which includes the fix
+    - Deleted _MEMORY_LEAK.md
+[x] I put [text](assets/fonts/Pixeled.ttf) [text](<assets/fonts/Game Of Squids.ttf>) [text](assets/fonts/SilverStream.ttf) [text](<assets/fonts/space age.ttf>) into the root assets folder originally for the wipeout demo. Are they used anywhere else? If so, can you please move them to the specific projects that use them and then remove them from the root asets folder? In general, I want to clean out the root assets folder wherever possibe.
+    - Moved `space age.ttf` to `examples/showcase/vj-mixer/assets/fonts/` (only project using it)
+    - Deleted unused fonts: Pixeled.ttf, Game Of Squids.ttf, SilverStream.ttf
+    - Deleted font zip archive
 [x] we should ensure that vivid-gui works with testing-fixtures/shadow-comprehensive/ 
-[ ] Update Vivid's wgpu-native dependency to v27.0.4.0
+[x] Update Vivid's wgpu-native dependency to v27.0.4.0
 [x] Why is there still a folder called imgui in core? imgui should be totally separate now.
 [x] you said "ImGui stays in core for backward compatibility - addons (network, serial, etc.) still use drawVisualization(ImDrawList*)" -- let's update the addons (network, serial, etc.) still use drawVisualization(ImDrawList*)
 [x] Why does the overlay and grid go away when I mouse over a node?
@@ -273,10 +273,13 @@
     - Added mini-map with viewport indicator and click-to-navigate
     - Added keyboard navigation (F=fit, 1=100%, arrows, Enter, B, Escape)
     - Deleted plan file
-[ ] Node graph: Add search/filter for operators (text search, filter by type)
 [ ] When I record with audio, it KILLS the audio performance. Is there any way to prevent this?
+[ ] Node graph: Add search/filter for operators (text search, filter by type)
 [ ] When the chain visualizer is active, mouse events shouldn't be passed on to the app (for instance, when I pan around the shadow-comprehensive, it orbits the camera around.)
     - Attempted fix: Added `consumedInput()` to NodeGraph/ChainVisualizer that returns true when panning, dragging, hovering nodes, or scrolling
     - Added `Context::blockMouseInput()` to zero out mouse buttons, scroll, and delta
     - Called blockMouseInput() in app.cpp before user update when visualizer consumed input last frame
     - Issue: Still not working - may need to check timing or move input processing earlier in frame
+[ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
+[ ] It seems like we added a lot of functionality to overlay_canvas. Would any of these be helpful additions to the vivid core canvas rendering API?
+[ ] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
