@@ -307,6 +307,25 @@ public:
         };
     }
 
+    /**
+     * @brief Block mouse input for this frame
+     *
+     * Call this when the UI has consumed mouse input (e.g., chain visualizer
+     * panning/dragging) to prevent it from affecting user code.
+     */
+    void blockMouseInput() {
+        // Zero out mouse buttons
+        for (int i = 0; i < 3; ++i) {
+            m_mouseButtons[i].pressed = false;
+            m_mouseButtons[i].released = false;
+            m_mouseButtons[i].held = false;
+        }
+        // Zero out scroll
+        m_scroll = {0, 0};
+        // Make delta zero by setting last pos to current
+        m_lastMousePos = m_mousePos;
+    }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Keyboard

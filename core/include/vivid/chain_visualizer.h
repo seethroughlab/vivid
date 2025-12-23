@@ -95,6 +95,9 @@ public:
     void initNodeGraph(Context& ctx, WGPUTextureFormat surfaceFormat);
     void renderNodeGraph(WGPURenderPassEncoder pass, const FrameInput& input, Context& ctx);
 
+    // Check if visualizer consumed mouse input (for blocking input to user code)
+    bool consumedInput() const { return m_nodeGraphInitialized && m_nodeGraph.consumedInput(); }
+
 private:
     // Status bar, tooltip, and debug panel rendering (uses OverlayCanvas)
     void renderStatusBar(const FrameInput& input, Context& ctx);

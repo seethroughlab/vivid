@@ -275,4 +275,8 @@
     - Deleted plan file
 [ ] Node graph: Add search/filter for operators (text search, filter by type)
 [ ] When I record with audio, it KILLS the audio performance. Is there any way to prevent this?
-[ ] When the chain visualizer is active, mouse events shouldn't be passed on to the app (for instance, when I pan around the shadow-comprehensive, it orbits the camer aaround. )
+[ ] When the chain visualizer is active, mouse events shouldn't be passed on to the app (for instance, when I pan around the shadow-comprehensive, it orbits the camera around.)
+    - Attempted fix: Added `consumedInput()` to NodeGraph/ChainVisualizer that returns true when panning, dragging, hovering nodes, or scrolling
+    - Added `Context::blockMouseInput()` to zero out mouse buttons, scroll, and delta
+    - Called blockMouseInput() in app.cpp before user update when visualizer consumed input last frame
+    - Issue: Still not working - may need to check timing or move input processing earlier in frame

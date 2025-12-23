@@ -598,11 +598,21 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             imgui_dynamic::tryBeginFrame(frameInput);
         }
 
+        // Block mouse input if visualizer consumed it last frame
+        // (prevents camera orbit when panning node graph, etc.)
+        static bool visualizerConsumedInput = false;
+        if (visualizerConsumedInput && mlc.visualizerVisible) {
+            mlc.ctx->blockMouseInput();
+        }
+
         // Call user's update function
         mlc.hotReload->getUpdateFn()(*mlc.ctx);
 
         // Auto-process the chain
         mlc.ctx->chain().process(*mlc.ctx);
+
+        // Track if visualizer consumed input for next frame
+        visualizerConsumedInput = mlc.chainVisualizer->consumedInput();
 
         // Capture frame for video export if recording
         if (mlc.chainVisualizer->exporter().isRecording() && mlc.ctx->outputTexture()) {

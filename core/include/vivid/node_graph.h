@@ -392,6 +392,18 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Input Consumption
+    /// @{
+
+    /**
+     * @brief Check if the node graph consumed mouse input this frame
+     * Use this to prevent input from being passed to user code when
+     * the user is interacting with the visualizer (panning, dragging, etc.)
+     */
+    bool consumedInput() const { return m_consumedInput; }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Keyboard Callbacks
     /// @{
 
@@ -482,6 +494,9 @@ private:
     bool m_isDraggingNode = false;
     glm::vec2 m_dragStartPos = {0, 0};
     glm::vec2 m_dragNodeStartGridPos = {0, 0};
+
+    // Input consumption tracking
+    bool m_consumedInput = false;  // True if visualizer consumed mouse input this frame
 
     // Mini-map state
     bool m_isDraggingMiniMap = false;

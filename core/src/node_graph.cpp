@@ -772,17 +772,29 @@ glm::vec2 NodeGraph::getPinScreenPos(int pinId) const {
 // -------------------------------------------------------------------------
 
 void NodeGraph::handleInput() {
+    // Reset consumed flag at start of frame
+    m_consumedInput = false;
+
     // Handle mini-map input first (takes priority)
     handleMiniMapInput();
 
     // Skip other input handling if dragging in mini-map
-    if (m_isDraggingMiniMap) return;
+    if (m_isDraggingMiniMap) {
+        m_consumedInput = true;
+        return;
+    }
 
     handleKeyboard();
     handleZoom();
     handlePan();
     handleNodeDrag();
     handleSelection();
+
+    // Mark input as consumed if we're doing any interaction
+    if (m_isPanning || m_isDraggingNode || m_hoveredNodeId >= 0 ||
+        std::abs(m_input.scroll.y) > 0.01f) {
+        m_consumedInput = true;
+    }
 }
 
 void NodeGraph::handleZoom() {
