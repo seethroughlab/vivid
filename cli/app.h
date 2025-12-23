@@ -30,6 +30,9 @@ struct AppConfig {
 
     // Frame limit
     int maxFrames = 0;  // 0 = unlimited
+
+    // Start with UI visible (for snapshots including node graph)
+    bool showUI = false;
 };
 
 // Main application class

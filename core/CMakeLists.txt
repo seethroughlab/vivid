@@ -147,6 +147,9 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/canvas_renderer.cpp
     src/effects/canvas.cpp
     src/effects/operator_registrations.cpp
+    src/overlay_canvas.cpp
+    # Node graph visualization (replaces imnodes)
+    nodegraph/node_graph.cpp
 )
 
 # Platform-specific library sources
@@ -170,6 +173,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/audio_buffer.h
     include/vivid/audio_operator.h
     include/vivid/audio_output.h
+    include/vivid/overlay_canvas.h
     imgui/imgui_integration.h
     imgui/chain_visualizer.h
 )
@@ -191,6 +195,7 @@ target_include_directories(vivid-core
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
         ${CMAKE_CURRENT_SOURCE_DIR}
+        ${CMAKE_CURRENT_SOURCE_DIR}/nodegraph
         ${stb_SOURCE_DIR}
         ${freetype_SOURCE_DIR}/include
         ${earcut_SOURCE_DIR}/include

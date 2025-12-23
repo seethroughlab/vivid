@@ -260,3 +260,5 @@
 [ ] Update wgpu-native when new release includes memory leak fix (PR #542 merged Dec 22, 2024)
     - Run: `./tools/check_wgpu_native_release.sh`
     - Current: v27.0.2.0, need next release
+[ ] I put [text](assets/fonts/Pixeled.ttf) [text](<assets/fonts/Game Of Squids.ttf>) [text](assets/fonts/SilverStream.ttf) [text](<assets/fonts/space age.ttf>) into the root assets folder originally for the wipeout demo. Are they used anywhere else? If so, can you please move them to the specific projects that use them and then remove them from the root asets folder? In general, I want to clean out the root assets folder wherever possibe. 
+[ ] It seems like we added a lot of functionality to overlay_canvas. Would any of these be helpful additions to the vivid core canvas rendering API?

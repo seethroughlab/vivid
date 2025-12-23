@@ -8,6 +8,7 @@
 #include <vivid/operator_viz.h>
 #include <vivid/audio_operator.h>
 #include <vivid/audio_graph.h>
+#include <vivid/asset_loader.h>
 #include <imgui.h>
 #include <imnodes.h>
 #include <glm/gtc/matrix_transform.hpp>
@@ -1199,6 +1200,680 @@ void ChainVisualizer::clearFocusedNode() {
 
 bool ChainVisualizer::isFocused(const std::string& operatorName) const {
     return m_focusedModeActive && m_focusedOperatorName == operatorName;
+}
+
+// -------------------------------------------------------------------------
+// New NodeGraph System (testing)
+// -------------------------------------------------------------------------
+
+void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfaceFormat) {
+    if (m_nodeGraphInitialized) return;
+
+    // Initialize overlay canvas with correct surface format
+    if (!m_overlay.init(ctx, surfaceFormat)) {
+        std::cerr << "[ChainVisualizer] Failed to initialize OverlayCanvas\n";
+        return;
+    }
+
+    // Load fonts for node graph:
+    // Font index 0: Inter Regular (body text, labels)
+    // Font index 1: Inter Medium (node titles only)
+    // Font index 2: Roboto Mono (numeric displays - FPS, timings, etc.)
+    auto exeDir = AssetLoader::instance().executableDir();
+    auto projectRoot = exeDir.parent_path().parent_path();  // build/bin -> build -> project
+
+    // Paths to font files
+    std::string regularPath = (projectRoot / "assets/fonts/Inter/static/Inter_18pt-Regular.ttf").string();
+    std::string mediumPath = (projectRoot / "assets/fonts/Inter/static/Inter_18pt-Medium.ttf").string();
+    std::string monoPath = (projectRoot / "assets/fonts/Roboto_Mono/static/RobotoMono-Regular.ttf").string();
+
+    // Load Inter Regular as primary font (index 0) - 36px for tooltips/labels
+    if (m_overlay.loadFont(ctx, regularPath, 36.0f)) {
+        std::cerr << "[ChainVisualizer] Loaded Inter Regular (36px)\n";
+    } else {
+        std::cerr << "[ChainVisualizer] Warning: Could not load Inter Regular font\n";
+    }
+
+    // Load Inter Medium for node titles (index 1) - larger for visibility
+    if (m_overlay.loadFontSize(ctx, mediumPath, 40.0f, 1)) {
+        std::cerr << "[ChainVisualizer] Loaded Inter Medium (40px) for titles\n";
+    } else {
+        std::cerr << "[ChainVisualizer] Warning: Could not load Inter Medium font\n";
+    }
+
+    // Load Roboto Mono for numeric displays (index 2) - 32px for status bar
+    if (m_overlay.loadFontSize(ctx, monoPath, 32.0f, 2)) {
+        std::cerr << "[ChainVisualizer] Loaded Roboto Mono (32px) for metrics\n";
+    } else {
+        std::cerr << "[ChainVisualizer] Warning: Could not load Roboto Mono font\n";
+    }
+
+    m_nodeGraphInitialized = true;
+    std::cerr << "[ChainVisualizer] NodeGraph initialized\n";
+}
+
+void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInput& input, vivid::Context& ctx) {
+    if (!m_nodeGraphInitialized) {
+        initNodeGraph(ctx, input.surfaceFormat);
+        if (!m_nodeGraphInitialized) return;
+    }
+
+    const auto& operators = ctx.registeredOperators();
+    if (operators.empty()) return;
+
+    // Build input for node graph
+    // Scale mouse from window coords to framebuffer coords (for HiDPI/Retina)
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+    glm::vec2 scaledMousePos = input.mousePos * scale;
+
+    vivid::NodeGraphInput graphInput;
+    graphInput.mousePos = scaledMousePos;
+    // Calculate mouse delta from previous frame
+    static glm::vec2 lastMousePos = scaledMousePos;
+    graphInput.mouseDelta = scaledMousePos - lastMousePos;
+    lastMousePos = scaledMousePos;
+    graphInput.scroll = input.scroll;
+    graphInput.mouseDown[0] = input.mouseDown[0];
+    graphInput.mouseDown[1] = input.mouseDown[1];
+    graphInput.mouseDown[2] = input.mouseDown[2];
+    // Track clicks
+    static bool lastMouseDown[3] = {false, false, false};
+    for (int i = 0; i < 3; i++) {
+        graphInput.mouseClicked[i] = input.mouseDown[i] && !lastMouseDown[i];
+        graphInput.mouseReleased[i] = !input.mouseDown[i] && lastMouseDown[i];
+        lastMouseDown[i] = input.mouseDown[i];
+    }
+    graphInput.keyCtrl = input.keyCtrl;
+    graphInput.keyShift = input.keyShift;
+    graphInput.keyAlt = input.keyAlt;
+
+    // Begin overlay rendering
+    m_overlay.begin(input.width, input.height);
+
+    // Begin node graph editor
+    m_nodeGraph.beginEditor(m_overlay, static_cast<float>(input.width), static_cast<float>(input.height), graphInput);
+
+    // Add nodes for each operator
+    for (size_t i = 0; i < operators.size(); ++i) {
+        const vivid::OperatorInfo& info = operators[i];
+        if (!info.op) continue;
+
+        int nodeId = static_cast<int>(i);
+
+        m_nodeGraph.beginNode(nodeId);
+        m_nodeGraph.setNodeTitle(info.name);
+
+        // Set content callback to render operator preview/thumbnail
+        vivid::Operator* op = info.op;  // Capture for lambda
+        m_nodeGraph.setNodeContent([op](OverlayCanvas& canvas, float x, float y, float w, float h) {
+            if (!op) return;
+
+            vivid::OutputKind kind = op->outputKind();
+
+            if (kind == vivid::OutputKind::Texture) {
+                // Render texture preview
+                WGPUTextureView view = op->outputView();
+                if (view) {
+                    canvas.texturedRect(x, y, w, h, view);
+                } else {
+                    // No texture yet - draw placeholder
+                    canvas.fillRect(x, y, w, h, {0.15f, 0.15f, 0.2f, 1.0f});
+                }
+            } else if (kind == vivid::OutputKind::Geometry) {
+                // Geometry - draw 3D cube icon
+                canvas.fillRect(x, y, w, h, {0.12f, 0.2f, 0.28f, 1.0f});
+                float cx = x + w * 0.5f;
+                float cy = y + h * 0.5f;
+                float sz = std::min(w, h) * 0.3f;
+                // Simple wireframe cube representation
+                glm::vec4 lineColor = {0.4f, 0.7f, 1.0f, 0.8f};
+                canvas.strokeRect(cx - sz, cy - sz * 0.6f, sz * 1.6f, sz * 1.2f, 1.5f, lineColor);
+            } else if (kind == vivid::OutputKind::Audio) {
+                // Audio - draw waveform icon
+                canvas.fillRect(x, y, w, h, {0.2f, 0.12f, 0.25f, 1.0f});
+                float cy = y + h * 0.5f;
+                glm::vec4 waveColor = {0.7f, 0.5f, 0.9f, 0.9f};
+                // Draw simple wave
+                float prevX = x + 4;
+                float prevY = cy;
+                for (int i = 1; i <= 8; i++) {
+                    float px = x + 4 + (w - 8) * i / 8.0f;
+                    float amplitude = (i % 2 == 0) ? 0.3f : -0.25f;
+                    float py = cy + amplitude * h * 0.6f;
+                    canvas.line(prevX, prevY, px, py, 2.0f, waveColor);
+                    prevX = px;
+                    prevY = py;
+                }
+            } else {
+                // Other types - generic placeholder
+                canvas.fillRect(x, y, w, h, {0.15f, 0.15f, 0.18f, 1.0f});
+            }
+        });
+
+        // Add input pins for each connected input
+        size_t numInputs = info.op->inputCount();
+        for (size_t j = 0; j < numInputs; ++j) {
+            if (info.op->getInput(static_cast<int>(j))) {
+                int pinId = nodeId * 100 + static_cast<int>(j) + 1;
+                m_nodeGraph.beginInputAttribute(pinId);
+                // Use input name if available, otherwise "in{j}"
+                std::string label = info.op->getInputName(static_cast<int>(j));
+                if (label.empty()) {
+                    label = "in" + std::to_string(j);
+                }
+                m_nodeGraph.pinLabel(label);
+                m_nodeGraph.endInputAttribute();
+            }
+        }
+
+        // Add output pin
+        int outputPinId = nodeId * 100;
+        m_nodeGraph.beginOutputAttribute(outputPinId);
+        m_nodeGraph.pinLabel("out");
+        m_nodeGraph.endOutputAttribute();
+
+        m_nodeGraph.endNode();
+    }
+
+    // Add Screen output node (represents the display)
+    vivid::Operator* outputOp = ctx.hasChain() ? ctx.chain().getOutput() : nullptr;
+    int outputNodeId = -1;
+    if (outputOp) {
+        for (size_t i = 0; i < operators.size(); ++i) {
+            if (operators[i].op == outputOp) {
+                outputNodeId = static_cast<int>(i);
+                break;
+            }
+        }
+
+        if (outputNodeId >= 0) {
+            m_nodeGraph.beginNode(SCREEN_NODE_ID);
+            m_nodeGraph.setNodeTitle("Screen");
+            m_nodeGraph.beginInputAttribute(SCREEN_NODE_ID * 100 + 1);
+            m_nodeGraph.pinLabel("display");
+            m_nodeGraph.endInputAttribute();
+            m_nodeGraph.endNode();
+        }
+    }
+
+    // Add Speakers output node (represents audio output)
+    vivid::Operator* audioOutputOp = ctx.hasChain() ? ctx.chain().getAudioOutput() : nullptr;
+    int audioOutputNodeId = -1;
+    if (audioOutputOp) {
+        for (size_t i = 0; i < operators.size(); ++i) {
+            if (operators[i].op == audioOutputOp) {
+                audioOutputNodeId = static_cast<int>(i);
+                break;
+            }
+        }
+
+        if (audioOutputNodeId >= 0) {
+            m_nodeGraph.beginNode(SPEAKERS_NODE_ID);
+            m_nodeGraph.setNodeTitle("Speakers");
+            m_nodeGraph.beginInputAttribute(SPEAKERS_NODE_ID * 100 + 1);
+            m_nodeGraph.pinLabel("audio");
+            m_nodeGraph.endInputAttribute();
+            m_nodeGraph.endNode();
+        }
+    }
+
+    // Do initial layout if not yet done
+    static bool layoutDone = false;
+    if (!layoutDone && !operators.empty()) {
+        // Calculate depth for each operator (distance from sources)
+        std::vector<int> depths(operators.size(), 0);
+        std::unordered_map<vivid::Operator*, int> opToIdx;
+        for (size_t i = 0; i < operators.size(); ++i) {
+            if (operators[i].op) {
+                opToIdx[operators[i].op] = static_cast<int>(i);
+            }
+        }
+
+        for (size_t i = 0; i < operators.size(); ++i) {
+            vivid::Operator* op = operators[i].op;
+            if (!op) continue;
+
+            int maxInputDepth = -1;
+            for (size_t j = 0; j < op->inputCount(); ++j) {
+                vivid::Operator* inputOp = op->getInput(static_cast<int>(j));
+                if (inputOp && opToIdx.count(inputOp)) {
+                    int inputIdx = opToIdx[inputOp];
+                    maxInputDepth = std::max(maxInputDepth, depths[inputIdx]);
+                }
+            }
+            depths[i] = maxInputDepth + 1;
+        }
+
+        // Group operators by depth (column)
+        int maxDepth = 0;
+        for (int d : depths) maxDepth = std::max(maxDepth, d);
+
+        std::vector<std::vector<int>> columns(maxDepth + 1);
+        for (size_t i = 0; i < operators.size(); ++i) {
+            columns[depths[i]].push_back(static_cast<int>(i));
+        }
+
+        // Position nodes in columns (left-to-right data flow)
+        const float xSpacing = 280.0f;
+        const float ySpacing = 180.0f;
+        const float startX = 100.0f;
+        const float startY = 100.0f;
+
+        for (int col = 0; col < static_cast<int>(columns.size()); ++col) {
+            float y = startY;
+            for (int nodeId : columns[col]) {
+                float x = startX + col * xSpacing;
+                m_nodeGraph.setNodePosition(nodeId, glm::vec2(x, y));
+                y += ySpacing;
+            }
+        }
+
+        // Position Screen and Speakers nodes at the end (rightmost column)
+        float outputX = startX + (maxDepth + 1) * xSpacing;
+        float outputY = startY;
+        if (outputNodeId >= 0) {
+            m_nodeGraph.setNodePosition(SCREEN_NODE_ID, glm::vec2(outputX, outputY));
+            outputY += ySpacing;
+        }
+        if (audioOutputNodeId >= 0) {
+            m_nodeGraph.setNodePosition(SPEAKERS_NODE_ID, glm::vec2(outputX, outputY));
+        }
+
+        // Zoom to fit all nodes with some padding
+        m_nodeGraph.zoomToFit();
+        layoutDone = true;
+    }
+
+    // Add links based on operator connections
+    int linkId = 0;
+    for (size_t i = 0; i < operators.size(); ++i) {
+        const vivid::OperatorInfo& info = operators[i];
+        if (!info.op) continue;
+
+        int nodeId = static_cast<int>(i);
+        size_t numInputs = info.op->inputCount();
+
+        for (size_t j = 0; j < numInputs; ++j) {
+            vivid::Operator* inputOp = info.op->getInput(static_cast<int>(j));
+            if (!inputOp) continue;
+
+            // Find the node ID for the input operator
+            for (size_t k = 0; k < operators.size(); ++k) {
+                if (operators[k].op == inputOp) {
+                    int srcNodeId = static_cast<int>(k);
+                    int srcOutputPinId = srcNodeId * 100;
+                    int dstInputPinId = nodeId * 100 + static_cast<int>(j) + 1;
+                    m_nodeGraph.link(linkId++, srcOutputPinId, dstInputPinId);
+                    break;
+                }
+            }
+        }
+    }
+
+    // Link from output operator to Screen node
+    if (outputNodeId >= 0) {
+        m_nodeGraph.link(linkId++, outputNodeId * 100, SCREEN_NODE_ID * 100 + 1);
+    }
+
+    // Link from audio output operator to Speakers node
+    if (audioOutputNodeId >= 0) {
+        m_nodeGraph.link(linkId++, audioOutputNodeId * 100, SPEAKERS_NODE_ID * 100 + 1);
+    }
+
+    // End node graph editor
+    m_nodeGraph.endEditor();
+
+    // Render status bar (in screen space, not node graph space)
+    m_overlay.resetTransform();
+    renderStatusBar(input, ctx);
+
+    // Render tooltip for hovered node
+    int hoveredNodeId = -1;
+    if (m_nodeGraph.isNodeHovered(&hoveredNodeId) && hoveredNodeId >= 0 &&
+        hoveredNodeId != SCREEN_NODE_ID && hoveredNodeId != SPEAKERS_NODE_ID) {
+        // Find the operator for this node
+        if (static_cast<size_t>(hoveredNodeId) < operators.size()) {
+            const vivid::OperatorInfo& info = operators[hoveredNodeId];
+            if (info.op) {
+                renderTooltip(input, info);
+            }
+        }
+    }
+
+    // Render debug values panel (bottom-left corner)
+    renderDebugPanelOverlay(input, ctx);
+
+    // Render the overlay
+    m_overlay.render(pass);
+}
+
+void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& ctx) {
+    // Use mono font metrics for bar height calculation
+    const int monoFont = 2;
+    float lineH = m_overlay.fontLineHeight(monoFont);
+    float ascent = m_overlay.fontAscent(monoFont);
+    if (lineH <= 0) lineH = 20.0f;  // Fallback
+    if (ascent <= 0) ascent = 14.0f;
+
+    const float padding = 6.0f;
+    const float barHeight = lineH + padding * 2;
+    float x = padding;
+    // Position text so it's vertically centered (baseline = top padding + ascent)
+    float y = padding + ascent;
+
+    // Smoothed values for FPS and frame time (exponential moving average)
+    static float smoothedFps = 60.0f;
+    static float smoothedMs = 16.67f;
+    const float smoothing = 0.05f;  // Lower = smoother (0.05 = ~20 frame average)
+
+    float instantFps = input.dt > 0 ? 1.0f / input.dt : smoothedFps;
+    float instantMs = input.dt * 1000.0f;
+    smoothedFps = smoothedFps + smoothing * (instantFps - smoothedFps);
+    smoothedMs = smoothedMs + smoothing * (instantMs - smoothedMs);
+
+    // Semi-transparent background
+    m_overlay.fillRect(0, 0, static_cast<float>(input.width), barHeight,
+                       {0.1f, 0.1f, 0.12f, 0.85f});
+
+    // Colors
+    glm::vec4 textColor = {0.9f, 0.9f, 0.9f, 1.0f};
+    glm::vec4 dimColor = {0.5f, 0.5f, 0.55f, 1.0f};
+    glm::vec4 greenColor = {0.4f, 0.9f, 0.4f, 1.0f};
+    glm::vec4 yellowColor = {0.9f, 0.9f, 0.4f, 1.0f};
+    glm::vec4 redColor = {0.9f, 0.4f, 0.4f, 1.0f};
+
+    char buf[64];
+    // Separator line inset from top/bottom
+    const float sepInset = padding;
+
+    // FPS (fixed width: 5 chars for number + " FPS")
+    snprintf(buf, sizeof(buf), "%5.1f FPS", smoothedFps);
+    m_overlay.text(buf, x, y, textColor, monoFont);
+    x += m_overlay.measureText(buf, monoFont) + padding * 2;
+
+    // Separator
+    m_overlay.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    x += padding * 2;
+
+    // Frame time (fixed width: 6 chars for number + "ms")
+    snprintf(buf, sizeof(buf), "%6.2fms", smoothedMs);
+    m_overlay.text(buf, x, y, textColor, monoFont);
+    x += m_overlay.measureText(buf, monoFont) + padding * 2;
+
+    // Separator
+    m_overlay.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    x += padding * 2;
+
+    // Resolution (fixed width for common resolutions)
+    snprintf(buf, sizeof(buf), "%4dx%-4d", input.width, input.height);
+    m_overlay.text(buf, x, y, textColor, monoFont);
+    x += m_overlay.measureText(buf, monoFont) + padding * 2;
+
+    // Separator
+    m_overlay.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    x += padding * 2;
+
+    // Operator count
+    const auto& operators = ctx.registeredOperators();
+    snprintf(buf, sizeof(buf), "%2zu ops", operators.size());
+    m_overlay.text(buf, x, y, textColor, monoFont);
+    x += m_overlay.measureText(buf, monoFont) + padding * 2;
+
+    // Separator
+    m_overlay.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    x += padding * 2;
+
+    // Memory usage (color-coded)
+    size_t memBytes = getProcessMemoryUsage();
+    std::string memStr = formatMemory(memBytes);
+    glm::vec4 memColor;
+    if (memBytes < 500 * 1024 * 1024) {
+        memColor = greenColor;
+    } else if (memBytes < 2ULL * 1024 * 1024 * 1024) {
+        memColor = yellowColor;
+    } else {
+        memColor = redColor;
+    }
+    m_overlay.text("MEM:", x, y, dimColor);
+    x += m_overlay.measureText("MEM:") + 4;
+    m_overlay.text(memStr, x, y, memColor, monoFont);
+    x += m_overlay.measureText(memStr, monoFont) + padding * 2;
+
+    // Audio stats (if audio active)
+    AudioGraph* audioGraph = ctx.chain().audioGraph();
+    if (audioGraph && !audioGraph->empty()) {
+        // Separator
+        m_overlay.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+        x += padding * 2;
+
+        // DSP Load
+        float dspLoad = audioGraph->dspLoad();
+        glm::vec4 dspColor;
+        if (dspLoad < 0.5f) {
+            dspColor = greenColor;
+        } else if (dspLoad < 0.8f) {
+            dspColor = yellowColor;
+        } else {
+            dspColor = redColor;
+        }
+        m_overlay.text("DSP:", x, y, dimColor);
+        x += m_overlay.measureText("DSP:") + 4;
+        snprintf(buf, sizeof(buf), "%3.0f%%", dspLoad * 100.0f);
+        m_overlay.text(buf, x, y, dspColor, monoFont);
+        x += m_overlay.measureText(buf, monoFont) + padding * 2;
+
+        // Dropped events (if any)
+        uint64_t dropped = audioGraph->droppedEventCount();
+        if (dropped > 0) {
+            snprintf(buf, sizeof(buf), "%llu dropped", dropped);
+            m_overlay.text(buf, x, y, redColor, monoFont);
+            x += m_overlay.measureText(buf, monoFont) + padding * 2;
+        }
+    }
+
+    // Recording indicator (right side)
+    if (m_exporter.isRecording()) {
+        snprintf(buf, sizeof(buf), "REC %d frames (%.1fs)",
+                 m_exporter.frameCount(), m_exporter.duration());
+        float recWidth = m_overlay.measureText(buf, monoFont) + 20;
+        float recX = input.width - recWidth - padding;
+
+        // Red dot (vertically centered)
+        m_overlay.fillCircle(recX + 6, barHeight * 0.5f, 4, redColor);
+        m_overlay.text(buf, recX + 16, y, redColor, monoFont);
+    }
+}
+
+void ChainVisualizer::renderTooltip(const FrameInput& input, const vivid::OperatorInfo& info) {
+    if (!info.op) return;
+
+    // Use font 0 (Inter Regular) metrics for tooltip
+    float lineH = m_overlay.fontLineHeight(0);
+    float ascent = m_overlay.fontAscent(0);
+    if (lineH <= 0) lineH = 22.0f;  // Fallback
+    if (ascent <= 0) ascent = 16.0f;
+
+    const float padding = 8.0f;
+    const float lineHeight = lineH;
+    float tooltipWidth = 200.0f;
+
+    // Colors - fully opaque background for readability
+    glm::vec4 bgColor = {0.12f, 0.12f, 0.14f, 1.0f};
+    glm::vec4 borderColor = {0.4f, 0.4f, 0.45f, 1.0f};
+    glm::vec4 titleColor = {0.5f, 0.8f, 1.0f, 1.0f};
+    glm::vec4 textColor = {0.9f, 0.9f, 0.9f, 1.0f};
+    glm::vec4 dimColor = {0.65f, 0.65f, 0.7f, 1.0f};
+    glm::vec4 orangeColor = {1.0f, 0.6f, 0.3f, 1.0f};
+
+    // Build tooltip content
+    std::vector<std::pair<std::string, glm::vec4>> lines;
+
+    // Operator type name
+    lines.push_back({info.op->name(), titleColor});
+
+    // Registered name if different
+    if (info.name != info.op->name()) {
+        lines.push_back({"(" + info.name + ")", dimColor});
+    }
+
+    // Output type
+    vivid::OutputKind kind = info.op->outputKind();
+    const char* kindStr = "Unknown";
+    switch (kind) {
+        case vivid::OutputKind::Texture: kindStr = "Output: Texture"; break;
+        case vivid::OutputKind::Geometry: kindStr = "Output: Geometry"; break;
+        case vivid::OutputKind::Audio: kindStr = "Output: Audio"; break;
+        case vivid::OutputKind::AudioValue: kindStr = "Output: Audio Value"; break;
+        case vivid::OutputKind::Value: kindStr = "Output: Value"; break;
+        case vivid::OutputKind::ValueArray: kindStr = "Output: Value Array"; break;
+        case vivid::OutputKind::Camera: kindStr = "Output: Camera"; break;
+        case vivid::OutputKind::Light: kindStr = "Output: Light"; break;
+    }
+    lines.push_back({kindStr, textColor});
+
+    // Resource info for textures
+    if (kind == vivid::OutputKind::Texture) {
+        WGPUTexture tex = info.op->outputTexture();
+        if (tex) {
+            uint32_t w = wgpuTextureGetWidth(tex);
+            uint32_t h = wgpuTextureGetHeight(tex);
+            size_t memBytes = w * h * 8;  // RGBA16Float = 8 bytes per pixel
+            char buf[64];
+            snprintf(buf, sizeof(buf), "Size: %ux%u", w, h);
+            lines.push_back({buf, textColor});
+            snprintf(buf, sizeof(buf), "Memory: ~%.1f MB", memBytes / (1024.0f * 1024.0f));
+            lines.push_back({buf, textColor});
+        } else {
+            lines.push_back({"No texture", dimColor});
+        }
+    }
+
+    // Bypass status
+    if (info.op->isBypassed()) {
+        lines.push_back({"BYPASSED", orangeColor});
+    }
+
+    // Calculate tooltip size
+    float maxWidth = 0;
+    for (const auto& line : lines) {
+        float w = m_overlay.measureText(line.first);
+        maxWidth = std::max(maxWidth, w);
+    }
+    tooltipWidth = maxWidth + padding * 2;
+    float tooltipHeight = lines.size() * lineHeight + padding * 2;
+
+    // Position tooltip near mouse (offset to not obscure cursor)
+    float mouseX = input.mousePos.x * (input.contentScale > 0 ? input.contentScale : 1.0f);
+    float mouseY = input.mousePos.y * (input.contentScale > 0 ? input.contentScale : 1.0f);
+    float tooltipX = mouseX + 15;
+    float tooltipY = mouseY + 15;
+
+    // Keep on screen
+    if (tooltipX + tooltipWidth > input.width) {
+        tooltipX = mouseX - tooltipWidth - 10;
+    }
+    if (tooltipY + tooltipHeight > input.height) {
+        tooltipY = mouseY - tooltipHeight - 10;
+    }
+
+    // Draw background
+    m_overlay.fillRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, bgColor);
+    m_overlay.strokeRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, 1.0f, borderColor);
+
+    // Draw text lines (position at baseline = top + ascent)
+    float textY = tooltipY + padding + ascent;
+    for (const auto& line : lines) {
+        m_overlay.text(line.first, tooltipX + padding, textY, line.second);
+        textY += lineHeight;
+    }
+}
+
+void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Context& ctx) {
+    const auto& debugValues = ctx.debugValues();
+    if (debugValues.empty()) return;
+
+    // Use font metrics for layout
+    const int monoFont = 2;
+    float lineH = m_overlay.fontLineHeight(monoFont);
+    float ascent = m_overlay.fontAscent(monoFont);
+    if (lineH <= 0) lineH = 20.0f;  // Fallback
+    if (ascent <= 0) ascent = 14.0f;
+
+    const float padding = 8.0f;
+    const float lineHeight = lineH + 4;  // Add some spacing between rows
+    const float nameWidth = 90.0f;
+    const float sparklineWidth = 100.0f;
+    const float sparklineHeight = lineH - 2;
+    const float valueWidth = 65.0f;
+    const float panelWidth = nameWidth + sparklineWidth + valueWidth + padding * 4;
+    const float panelHeight = debugValues.size() * lineHeight + padding * 2;
+
+    // Position in bottom-left corner
+    float panelX = padding;
+    float panelY = input.height - panelHeight - padding;
+
+    // Colors
+    glm::vec4 bgColor = {0.12f, 0.12f, 0.15f, 0.9f};
+    glm::vec4 borderColor = {0.3f, 0.3f, 0.35f, 1.0f};
+    glm::vec4 textColor = {0.85f, 0.85f, 0.85f, 1.0f};
+    glm::vec4 dimColor = {0.5f, 0.5f, 0.55f, 1.0f};
+    glm::vec4 graphColor = {0.4f, 0.7f, 0.9f, 1.0f};
+    glm::vec4 graphBgColor = {0.08f, 0.08f, 0.1f, 1.0f};
+
+    // Draw panel background
+    m_overlay.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f, bgColor);
+    m_overlay.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f, 1.0f, borderColor);
+
+    float y = panelY + padding;
+    for (const auto& [name, dv] : debugValues) {
+        float x = panelX + padding;
+
+        glm::vec4 color = dv.updatedThisFrame ? textColor : dimColor;
+
+        // Name (baseline positioned with ascent)
+        m_overlay.text(name, x, y + ascent, color);
+        x += nameWidth;
+
+        // Sparkline background (vertically centered in line)
+        float sparkY = y + (lineHeight - sparklineHeight) * 0.5f;
+        m_overlay.fillRect(x, sparkY, sparklineWidth, sparklineHeight, graphBgColor);
+
+        // Sparkline graph
+        if (!dv.history.empty()) {
+            std::vector<float> historyVec(dv.history.begin(), dv.history.end());
+
+            // Find min/max for scaling
+            float minVal = *std::min_element(historyVec.begin(), historyVec.end());
+            float maxVal = *std::max_element(historyVec.begin(), historyVec.end());
+
+            // Ensure some range even for constant values
+            if (maxVal - minVal < 0.001f) {
+                minVal -= 0.5f;
+                maxVal += 0.5f;
+            }
+
+            float range = maxVal - minVal;
+            float graphX = x;
+            float graphBottom = sparkY + sparklineHeight;
+
+            // Draw line segments
+            for (size_t i = 1; i < historyVec.size(); i++) {
+                float x1 = graphX + (i - 1) * sparklineWidth / (historyVec.size() - 1);
+                float x2 = graphX + i * sparklineWidth / (historyVec.size() - 1);
+                float y1 = graphBottom - ((historyVec[i-1] - minVal) / range) * sparklineHeight;
+                float y2 = graphBottom - ((historyVec[i] - minVal) / range) * sparklineHeight;
+                m_overlay.line(x1, y1, x2, y2, 1.5f, graphColor);
+            }
+        }
+        x += sparklineWidth + padding;
+
+        // Current value (use mono font for alignment)
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%7.3f", dv.current);
+        m_overlay.text(buf, x, y + ascent, color, monoFont);
+
+        y += lineHeight;
+    }
 }
 
 } // namespace vivid::imgui

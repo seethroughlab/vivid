@@ -86,6 +86,8 @@ int main(int argc, char** argv) {
             config.maxFrames = std::atoi(argv[++i]);
         } else if (arg.rfind("--frames=", 0) == 0) {
             config.maxFrames = std::atoi(arg.substr(9).c_str());
+        } else if (arg == "--show-ui") {
+            config.showUI = true;
         } else if (arg[0] != '-') {
             // Non-flag argument is the project path
             config.projectPath = arg;

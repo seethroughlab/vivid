@@ -54,7 +54,7 @@ void init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat format) {
     }
 
     g_initialized = true;
-    g_visible = false;  // Start hidden
+    g_visible = false;  // Start hidden (Tab to toggle)
     std::cout << "[vivid-imgui] Initialized successfully\n";
 }
 

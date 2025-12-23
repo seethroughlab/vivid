@@ -22,6 +22,8 @@ struct FrameInput {
     bool keyShift = false;
     bool keyAlt = false;
     bool keySuper = false;      // Command on Mac
+    // Surface format for overlay rendering
+    WGPUTextureFormat surfaceFormat = WGPUTextureFormat_BGRA8UnormSrgb;
 };
 
 // Initialize ImGui with WebGPU context

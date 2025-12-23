@@ -214,6 +214,7 @@ struct MainLoopContext {
     int maxFrames = 0;
     int windowWidth = 1280;
     int windowHeight = 720;
+    bool showUI = false;
 
     // Project info
     std::string projectName;
@@ -643,16 +644,31 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                         glfwGetKey(mlc.window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
     frameInput.keySuper = glfwGetKey(mlc.window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
                           glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
+    frameInput.surfaceFormat = mlc.surfaceFormat;
+
+    // Toggle between imnodes and new NodeGraph (press 'G' key)
+    static bool lastGKeyPressed = false;
+    bool gKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_G) == GLFW_PRESS;
+    if (gKeyPressed && !lastGKeyPressed) {
+        mlc.chainVisualizer->setUseNodeGraph(!mlc.chainVisualizer->useNodeGraph());
+        std::cout << "[Vivid] NodeGraph mode: " << (mlc.chainVisualizer->useNodeGraph() ? "ON" : "OFF") << std::endl;
+    }
+    lastGKeyPressed = gKeyPressed;
 
     // Run chain visualizer BEFORE blit so solo mode can override output texture
     // (beginFrame was already called before user update)
-    if (vivid::imgui::isVisible()) {
+    if (vivid::imgui::isVisible() && !mlc.chainVisualizer->useNodeGraph()) {
         mlc.chainVisualizer->render(frameInput, *mlc.ctx);
     }
 
     // Blit output texture (may have been modified by solo mode)
     if (mlc.ctx->outputTexture() && mlc.display->isValid()) {
         mlc.display->blit(pass, mlc.ctx->outputTexture());
+    }
+
+    // Render new NodeGraph if enabled (after blit, so it overlays the output)
+    if (vivid::imgui::isVisible() && mlc.chainVisualizer->useNodeGraph()) {
+        mlc.chainVisualizer->renderNodeGraph(pass, frameInput, *mlc.ctx);
     }
 
     // Always render ImGui (ends the frame started before user update)
@@ -1020,6 +1036,11 @@ int Application::init(const AppConfig& config) {
     // Initialize ImGui
     vivid::imgui::init(m_impl->device, m_impl->queue, m_impl->surfaceFormat);
 
+    // Show UI immediately if requested (for --show-ui flag)
+    if (config.showUI) {
+        vivid::imgui::setVisible(true);
+    }
+
     // Create chain visualizer
     m_impl->chainVisualizer = std::make_unique<vivid::imgui::ChainVisualizer>();
 
@@ -1276,6 +1297,7 @@ int Application::init(const AppConfig& config) {
     mlc.maxFrames = config.maxFrames;
     mlc.windowWidth = config.windowWidth;
     mlc.windowHeight = config.windowHeight;
+    mlc.showUI = config.showUI;
 
     // Project info
     mlc.projectName = projectName;

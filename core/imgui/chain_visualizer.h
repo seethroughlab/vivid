@@ -10,6 +10,8 @@
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/video_exporter.h>
+#include <vivid/overlay_canvas.h>
+#include "../nodegraph/node_graph.h"
 #include <webgpu/webgpu.h>
 #include <string>
 #include <unordered_map>
@@ -114,6 +116,26 @@ public:
     void setFocusedNode(const std::string& operatorName);
     void clearFocusedNode();
     bool isFocused(const std::string& operatorName) const;
+
+    // -------------------------------------------------------------------------
+    // New NodeGraph system (testing, will replace imnodes)
+    // -------------------------------------------------------------------------
+    void initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfaceFormat);
+    void renderNodeGraph(WGPURenderPassEncoder pass, const FrameInput& input, vivid::Context& ctx);
+    bool useNodeGraph() const { return m_useNodeGraph; }
+    void setUseNodeGraph(bool use) { m_useNodeGraph = use; }
+
+private:
+    // Status bar, tooltip, and debug panel rendering (uses OverlayCanvas)
+    void renderStatusBar(const FrameInput& input, vivid::Context& ctx);
+    void renderTooltip(const FrameInput& input, const vivid::OperatorInfo& info);
+    void renderDebugPanelOverlay(const FrameInput& input, vivid::Context& ctx);
+
+    // New node graph system
+    vivid::OverlayCanvas m_overlay;
+    vivid::NodeGraph m_nodeGraph;
+    bool m_nodeGraphInitialized = false;
+    bool m_useNodeGraph = true;  // Toggle between imnodes and new NodeGraph
 };
 
 } // namespace vivid::imgui
