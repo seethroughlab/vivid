@@ -49,6 +49,11 @@ void NodeGraph::endEditor() {
     renderNodes();  // Computes pin screen positions
     renderLinks();  // Uses pin positions (renders on top of nodes)
 
+    // Render mini-map last (on top of everything)
+    if (m_style.showMiniMap) {
+        renderMiniMap();
+    }
+
     m_inEditor = false;
     m_canvas = nullptr;
 }
@@ -192,29 +197,198 @@ glm::vec2 NodeGraph::getNodeSize(int nodeId) const {
 }
 
 void NodeGraph::autoLayout() {
-    // TODO: Implement Sugiyama hierarchical layout
-    // For now, arrange nodes in a grid based on actual node sizes
+    if (m_nodes.empty()) return;
 
-    // Find maximum node dimensions
-    float maxWidth = m_style.nodeWidth;
-    float maxHeight = 100.0f;
+    // =========================================================================
+    // Sugiyama Hierarchical Layout Algorithm
+    // =========================================================================
+    //
+    // 1. Build adjacency (which nodes connect to which)
+    // 2. Assign layers (depth from sources)
+    // 3. Reduce crossings (barycenter heuristic)
+    // 4. Assign coordinates (position within layers)
+
+    // Step 1: Build adjacency lists from links
+    // For each link: startPin (output) -> endPin (input)
+    // Direction: source node -> destination node
+    std::unordered_map<int, std::vector<int>> outgoing;  // nodeId -> [connected nodeIds]
+    std::unordered_map<int, std::vector<int>> incoming;  // nodeId -> [source nodeIds]
+    std::unordered_map<int, int> inDegree;
+
+    // Initialize all nodes
     for (const auto& [id, node] : m_nodes) {
-        maxWidth = std::max(maxWidth, node.size.x);
-        maxHeight = std::max(maxHeight, node.size.y);
+        outgoing[id] = {};
+        incoming[id] = {};
+        inDegree[id] = 0;
     }
 
-    // Add padding between nodes
-    float spacingX = maxWidth + 40.0f;
-    float spacingY = maxHeight + 30.0f;
+    // Build adjacency from links
+    for (const auto& [linkId, link] : m_links) {
+        // Find nodes for each pin
+        auto startIt = m_pinToNode.find(link.startPinId);
+        auto endIt = m_pinToNode.find(link.endPinId);
+        if (startIt == m_pinToNode.end() || endIt == m_pinToNode.end()) continue;
 
-    int col = 0;
-    int row = 0;
-    for (auto& [id, node] : m_nodes) {
-        node.gridPos = {col * spacingX + 50, row * spacingY + 50};
-        col++;
-        if (col >= 4) {
-            col = 0;
-            row++;
+        int srcNode = startIt->second;
+        int dstNode = endIt->second;
+        if (srcNode == dstNode) continue;  // Skip self-loops
+
+        outgoing[srcNode].push_back(dstNode);
+        incoming[dstNode].push_back(srcNode);
+        inDegree[dstNode]++;
+    }
+
+    // Step 2: Layer assignment using longest path from sources
+    // Find sources (nodes with no incoming edges)
+    std::vector<int> sources;
+    for (const auto& [id, degree] : inDegree) {
+        if (degree == 0) {
+            sources.push_back(id);
+        }
+    }
+
+    // If no sources found (cycle?), pick arbitrary starting nodes
+    if (sources.empty()) {
+        for (const auto& [id, node] : m_nodes) {
+            sources.push_back(id);
+            break;
+        }
+    }
+
+    // BFS to assign layers (longest path gives better spread)
+    std::unordered_map<int, int> nodeLayer;
+    for (const auto& [id, node] : m_nodes) {
+        nodeLayer[id] = -1;  // Unassigned
+    }
+
+    // Use longest path: each node's layer = max(predecessor layers) + 1
+    // Process in topological order
+    std::vector<int> topoOrder;
+    std::unordered_map<int, int> tempInDegree = inDegree;
+    std::vector<int> queue = sources;
+
+    while (!queue.empty()) {
+        int curr = queue.back();
+        queue.pop_back();
+        topoOrder.push_back(curr);
+
+        for (int next : outgoing[curr]) {
+            tempInDegree[next]--;
+            if (tempInDegree[next] == 0) {
+                queue.push_back(next);
+            }
+        }
+    }
+
+    // Handle nodes not in topological order (cycles)
+    for (const auto& [id, node] : m_nodes) {
+        bool found = false;
+        for (int n : topoOrder) {
+            if (n == id) { found = true; break; }
+        }
+        if (!found) {
+            topoOrder.push_back(id);
+        }
+    }
+
+    // Assign layers based on longest incoming path
+    for (int id : topoOrder) {
+        int maxPredLayer = -1;
+        for (int pred : incoming[id]) {
+            if (nodeLayer[pred] > maxPredLayer) {
+                maxPredLayer = nodeLayer[pred];
+            }
+        }
+        nodeLayer[id] = maxPredLayer + 1;
+    }
+
+    // Group nodes by layer
+    int maxLayer = 0;
+    for (const auto& [id, layer] : nodeLayer) {
+        maxLayer = std::max(maxLayer, layer);
+    }
+
+    std::vector<std::vector<int>> layers(maxLayer + 1);
+    for (const auto& [id, layer] : nodeLayer) {
+        if (layer >= 0) {
+            layers[layer].push_back(id);
+        }
+    }
+
+    // Step 3: Crossing reduction using barycenter heuristic
+    // For each layer (except first), sort nodes by average position of predecessors
+    for (int iter = 0; iter < 4; iter++) {  // Multiple passes improve quality
+        // Forward pass
+        for (size_t layerIdx = 1; layerIdx < layers.size(); layerIdx++) {
+            std::vector<std::pair<float, int>> positions;
+            for (int nodeId : layers[layerIdx]) {
+                float sum = 0;
+                int count = 0;
+                // Find position of predecessors in previous layer
+                for (int pred : incoming[nodeId]) {
+                    auto& prevLayer = layers[layerIdx - 1];
+                    for (size_t i = 0; i < prevLayer.size(); i++) {
+                        if (prevLayer[i] == pred) {
+                            sum += static_cast<float>(i);
+                            count++;
+                            break;
+                        }
+                    }
+                }
+                float barycenter = (count > 0) ? sum / count : static_cast<float>(positions.size());
+                positions.push_back({barycenter, nodeId});
+            }
+            // Sort by barycenter
+            std::sort(positions.begin(), positions.end());
+            layers[layerIdx].clear();
+            for (const auto& [pos, id] : positions) {
+                layers[layerIdx].push_back(id);
+            }
+        }
+
+        // Backward pass
+        for (int layerIdx = static_cast<int>(layers.size()) - 2; layerIdx >= 0; layerIdx--) {
+            std::vector<std::pair<float, int>> positions;
+            for (int nodeId : layers[layerIdx]) {
+                float sum = 0;
+                int count = 0;
+                // Find position of successors in next layer
+                for (int succ : outgoing[nodeId]) {
+                    auto& nextLayer = layers[layerIdx + 1];
+                    for (size_t i = 0; i < nextLayer.size(); i++) {
+                        if (nextLayer[i] == succ) {
+                            sum += static_cast<float>(i);
+                            count++;
+                            break;
+                        }
+                    }
+                }
+                float barycenter = (count > 0) ? sum / count : static_cast<float>(positions.size());
+                positions.push_back({barycenter, nodeId});
+            }
+            std::sort(positions.begin(), positions.end());
+            layers[layerIdx].clear();
+            for (const auto& [pos, id] : positions) {
+                layers[layerIdx].push_back(id);
+            }
+        }
+    }
+
+    // Step 4: Assign coordinates
+    const float xSpacing = 280.0f;   // Horizontal space between layers
+    const float yPadding = 30.0f;    // Vertical padding between nodes
+    const float startX = 50.0f;
+    const float startY = 50.0f;
+
+    for (size_t layerIdx = 0; layerIdx < layers.size(); layerIdx++) {
+        float x = startX + layerIdx * xSpacing;
+        float y = startY;
+
+        for (int nodeId : layers[layerIdx]) {
+            if (m_nodes.count(nodeId)) {
+                m_nodes[nodeId].gridPos = {x, y};
+                y += m_nodes[nodeId].size.y + yPadding;
+            }
         }
     }
 }
@@ -598,6 +772,13 @@ glm::vec2 NodeGraph::getPinScreenPos(int pinId) const {
 // -------------------------------------------------------------------------
 
 void NodeGraph::handleInput() {
+    // Handle mini-map input first (takes priority)
+    handleMiniMapInput();
+
+    // Skip other input handling if dragging in mini-map
+    if (m_isDraggingMiniMap) return;
+
+    handleKeyboard();
     handleZoom();
     handlePan();
     handleNodeDrag();
@@ -679,6 +860,316 @@ void NodeGraph::handleSelection() {
         clearSelection();
     }
     wasPanning = m_isPanning;
+}
+
+void NodeGraph::handleKeyboard() {
+    // F: Fit all nodes in view
+    if (m_input.keyF) {
+        zoomToFit();
+    }
+
+    // 1: Zoom to 100%
+    if (m_input.key1) {
+        // Center on selected node if any, otherwise center on content
+        if (m_selectedNodeId >= 0 && m_nodes.count(m_selectedNodeId)) {
+            const auto& node = m_nodes[m_selectedNodeId];
+            glm::vec2 nodeCenter = node.gridPos + node.size * 0.5f;
+            m_zoom = 1.0f;
+            m_pan.x = m_width * 0.5f - nodeCenter.x * m_zoom;
+            m_pan.y = m_height * 0.5f - nodeCenter.y * m_zoom;
+        } else {
+            // Center on content center
+            float minX, minY, maxX, maxY;
+            getContentBounds(minX, minY, maxX, maxY);
+            glm::vec2 center = {(minX + maxX) * 0.5f, (minY + maxY) * 0.5f};
+            m_zoom = 1.0f;
+            m_pan.x = m_width * 0.5f - center.x * m_zoom;
+            m_pan.y = m_height * 0.5f - center.y * m_zoom;
+        }
+    }
+
+    // Arrow keys: Navigate selection
+    if (m_input.keyUp || m_input.keyDown || m_input.keyLeft || m_input.keyRight) {
+        if (m_nodes.empty()) return;
+
+        // If nothing selected, select first node
+        if (m_selectedNodeId < 0) {
+            auto it = m_nodes.begin();
+            selectNode(it->first);
+            return;
+        }
+
+        // Find nearest node in direction
+        if (!m_nodes.count(m_selectedNodeId)) return;
+        const auto& current = m_nodes[m_selectedNodeId];
+        glm::vec2 currentCenter = current.gridPos + current.size * 0.5f;
+
+        int bestNode = -1;
+        float bestScore = 1e9f;
+
+        for (const auto& [id, node] : m_nodes) {
+            if (id == m_selectedNodeId) continue;
+
+            glm::vec2 nodeCenter = node.gridPos + node.size * 0.5f;
+            glm::vec2 delta = nodeCenter - currentCenter;
+
+            // Direction filter
+            bool validDirection = false;
+            if (m_input.keyUp && delta.y < -20) validDirection = true;
+            if (m_input.keyDown && delta.y > 20) validDirection = true;
+            if (m_input.keyLeft && delta.x < -20) validDirection = true;
+            if (m_input.keyRight && delta.x > 20) validDirection = true;
+
+            if (!validDirection) continue;
+
+            // Score: prefer nodes in the direction, penalize perpendicular distance
+            float primaryDist = 0, perpDist = 0;
+            if (m_input.keyUp || m_input.keyDown) {
+                primaryDist = std::abs(delta.y);
+                perpDist = std::abs(delta.x);
+            } else {
+                primaryDist = std::abs(delta.x);
+                perpDist = std::abs(delta.y);
+            }
+
+            float score = primaryDist + perpDist * 2.0f;  // Penalize perpendicular distance
+            if (score < bestScore) {
+                bestScore = score;
+                bestNode = id;
+            }
+        }
+
+        if (bestNode >= 0) {
+            selectNode(bestNode);
+
+            // Pan to keep selected node visible
+            const auto& selectedNode = m_nodes[bestNode];
+            glm::vec2 screenPos = gridToScreen(selectedNode.gridPos);
+            glm::vec2 screenEnd = gridToScreen(selectedNode.gridPos + selectedNode.size);
+
+            float margin = 50.0f;
+            if (screenPos.x < margin) {
+                m_pan.x += margin - screenPos.x;
+            } else if (screenEnd.x > m_width - margin) {
+                m_pan.x -= screenEnd.x - (m_width - margin);
+            }
+            if (screenPos.y < margin) {
+                m_pan.y += margin - screenPos.y;
+            } else if (screenEnd.y > m_height - margin) {
+                m_pan.y -= screenEnd.y - (m_height - margin);
+            }
+        }
+    }
+
+    // Enter: Solo mode callback
+    if (m_input.keyEnter && m_enterCallback) {
+        m_enterCallback(m_selectedNodeId);
+    }
+
+    // B: Bypass callback
+    if (m_input.keyB && m_bypassCallback) {
+        m_bypassCallback(m_selectedNodeId);
+    }
+
+    // Escape: Exit/deselect callback
+    if (m_input.keyEscape) {
+        if (m_escapeCallback) {
+            m_escapeCallback();
+        }
+        clearSelection();
+    }
+}
+
+// -------------------------------------------------------------------------
+// Mini-map
+// -------------------------------------------------------------------------
+
+void NodeGraph::getContentBounds(float& minX, float& minY, float& maxX, float& maxY) const {
+    if (m_nodes.empty()) {
+        minX = minY = 0;
+        maxX = maxY = 100;
+        return;
+    }
+
+    minX = minY = 1e9f;
+    maxX = maxY = -1e9f;
+
+    for (const auto& [id, node] : m_nodes) {
+        minX = std::min(minX, node.gridPos.x);
+        minY = std::min(minY, node.gridPos.y);
+        maxX = std::max(maxX, node.gridPos.x + node.size.x);
+        maxY = std::max(maxY, node.gridPos.y + node.size.y);
+    }
+
+    // Add padding
+    float padX = (maxX - minX) * 0.1f + 50.0f;
+    float padY = (maxY - minY) * 0.1f + 50.0f;
+    minX -= padX;
+    minY -= padY;
+    maxX += padX;
+    maxY += padY;
+}
+
+bool NodeGraph::isPointInMiniMap(glm::vec2 screenPos) const {
+    // Mini-map is in bottom-right corner
+    float mmX = m_width - m_style.miniMapWidth - m_style.miniMapMargin;
+    float mmY = m_height - m_style.miniMapHeight - m_style.miniMapMargin;
+
+    return screenPos.x >= mmX && screenPos.x <= mmX + m_style.miniMapWidth &&
+           screenPos.y >= mmY && screenPos.y <= mmY + m_style.miniMapHeight;
+}
+
+void NodeGraph::handleMiniMapInput() {
+    if (!m_style.showMiniMap) return;
+
+    // Check if clicking in mini-map
+    if (m_input.mouseClicked[0] && isPointInMiniMap(m_input.mousePos)) {
+        m_isDraggingMiniMap = true;
+    }
+
+    if (m_isDraggingMiniMap) {
+        if (m_input.mouseDown[0]) {
+            // Get mini-map screen position
+            float mmX = m_width - m_style.miniMapWidth - m_style.miniMapMargin;
+            float mmY = m_height - m_style.miniMapHeight - m_style.miniMapMargin;
+
+            // Get content bounds
+            float contentMinX, contentMinY, contentMaxX, contentMaxY;
+            getContentBounds(contentMinX, contentMinY, contentMaxX, contentMaxY);
+
+            float contentW = contentMaxX - contentMinX;
+            float contentH = contentMaxY - contentMinY;
+
+            // Scale to fit mini-map while preserving aspect ratio
+            float scaleX = m_style.miniMapWidth / contentW;
+            float scaleY = m_style.miniMapHeight / contentH;
+            float scale = std::min(scaleX, scaleY);
+
+            // Calculate offset to center content in mini-map
+            float scaledW = contentW * scale;
+            float scaledH = contentH * scale;
+            float offsetX = (m_style.miniMapWidth - scaledW) * 0.5f;
+            float offsetY = (m_style.miniMapHeight - scaledH) * 0.5f;
+
+            // Convert mouse position in mini-map to grid position
+            float relX = (m_input.mousePos.x - mmX - offsetX) / scale + contentMinX;
+            float relY = (m_input.mousePos.y - mmY - offsetY) / scale + contentMinY;
+
+            // Set pan so this grid position is at center of screen
+            m_pan.x = m_width * 0.5f - relX * m_zoom;
+            m_pan.y = m_height * 0.5f - relY * m_zoom;
+        } else {
+            m_isDraggingMiniMap = false;
+        }
+    }
+}
+
+void NodeGraph::renderMiniMap() {
+    if (m_nodes.empty()) return;
+
+    // Mini-map position (bottom-right corner)
+    float mmX = m_width - m_style.miniMapWidth - m_style.miniMapMargin;
+    float mmY = m_height - m_style.miniMapHeight - m_style.miniMapMargin;
+    float mmW = m_style.miniMapWidth;
+    float mmH = m_style.miniMapHeight;
+
+    // Background
+    m_canvas->fillRoundedRect(mmX, mmY, mmW, mmH, 4.0f, m_style.miniMapBackground);
+    m_canvas->strokeRoundedRect(mmX, mmY, mmW, mmH, 4.0f, 1.0f, m_style.miniMapBorder);
+
+    // Get content bounds
+    float contentMinX, contentMinY, contentMaxX, contentMaxY;
+    getContentBounds(contentMinX, contentMinY, contentMaxX, contentMaxY);
+
+    float contentW = contentMaxX - contentMinX;
+    float contentH = contentMaxY - contentMinY;
+
+    // Scale to fit mini-map while preserving aspect ratio
+    float scaleX = mmW / contentW;
+    float scaleY = mmH / contentH;
+    float scale = std::min(scaleX, scaleY);
+
+    // Calculate offset to center content in mini-map
+    float scaledW = contentW * scale;
+    float scaledH = contentH * scale;
+    float offsetX = (mmW - scaledW) * 0.5f;
+    float offsetY = (mmH - scaledH) * 0.5f;
+
+    // Lambda to convert grid pos to mini-map screen pos
+    auto gridToMiniMap = [&](glm::vec2 gridPos) -> glm::vec2 {
+        float x = mmX + offsetX + (gridPos.x - contentMinX) * scale;
+        float y = mmY + offsetY + (gridPos.y - contentMinY) * scale;
+        return {x, y};
+    };
+
+    // Draw links (simplified as lines)
+    for (const auto& [id, link] : m_links) {
+        // Find source and dest nodes
+        auto srcNodeIt = m_pinToNode.find(link.startPinId);
+        auto dstNodeIt = m_pinToNode.find(link.endPinId);
+        if (srcNodeIt == m_pinToNode.end() || dstNodeIt == m_pinToNode.end()) continue;
+
+        auto srcIt = m_nodes.find(srcNodeIt->second);
+        auto dstIt = m_nodes.find(dstNodeIt->second);
+        if (srcIt == m_nodes.end() || dstIt == m_nodes.end()) continue;
+
+        const NodeState& srcNode = srcIt->second;
+        const NodeState& dstNode = dstIt->second;
+
+        glm::vec2 srcCenter = srcNode.gridPos + srcNode.size * 0.5f;
+        glm::vec2 dstCenter = dstNode.gridPos + dstNode.size * 0.5f;
+
+        glm::vec2 srcMM = gridToMiniMap(srcCenter);
+        glm::vec2 dstMM = gridToMiniMap(dstCenter);
+
+        m_canvas->line(srcMM.x, srcMM.y, dstMM.x, dstMM.y, 1.0f, m_style.linkColor * glm::vec4(1, 1, 1, 0.5f));
+    }
+
+    // Draw nodes as small rectangles
+    for (const auto& [id, node] : m_nodes) {
+        glm::vec2 topLeft = gridToMiniMap(node.gridPos);
+        float nodeW = node.size.x * scale;
+        float nodeH = node.size.y * scale;
+
+        // Minimum size for visibility
+        nodeW = std::max(nodeW, 4.0f);
+        nodeH = std::max(nodeH, 3.0f);
+
+        glm::vec4 nodeColor = m_style.miniMapNodeColor;
+        if (node.selected) {
+            nodeColor = m_style.nodeSelectedBorder;
+        }
+
+        m_canvas->fillRect(topLeft.x, topLeft.y, nodeW, nodeH, nodeColor);
+    }
+
+    // Draw viewport rectangle
+    // Current viewport in grid space:
+    // top-left: screenToGrid({0, 0})
+    // bottom-right: screenToGrid({m_width, m_height})
+    glm::vec2 vpTopLeft = screenToGrid({0, 0});
+    glm::vec2 vpBottomRight = screenToGrid({m_width, m_height});
+
+    glm::vec2 vpMM1 = gridToMiniMap(vpTopLeft);
+    glm::vec2 vpMM2 = gridToMiniMap(vpBottomRight);
+
+    float vpW = vpMM2.x - vpMM1.x;
+    float vpH = vpMM2.y - vpMM1.y;
+
+    // Clamp viewport rect to mini-map bounds
+    float clampedX = std::max(mmX, std::min(vpMM1.x, mmX + mmW));
+    float clampedY = std::max(mmY, std::min(vpMM1.y, mmY + mmH));
+    float clampedW = std::min(vpW, mmX + mmW - clampedX);
+    float clampedH = std::min(vpH, mmY + mmH - clampedY);
+
+    if (clampedW > 0 && clampedH > 0) {
+        // Semi-transparent fill
+        m_canvas->fillRect(clampedX, clampedY, clampedW, clampedH,
+                           m_style.miniMapViewportColor * glm::vec4(1, 1, 1, 0.3f));
+        // Border
+        m_canvas->strokeRect(clampedX, clampedY, clampedW, clampedH, 1.5f,
+                             m_style.miniMapViewportColor);
+    }
 }
 
 } // namespace vivid

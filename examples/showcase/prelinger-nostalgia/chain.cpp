@@ -52,7 +52,12 @@ void setup(Context& ctx) {
     // =====================================================================
 
     auto& midi = chain.add<MidiIn>("midi");
-    midi.openPortByName("MIDImix");
+    midi.openPortByName("MIDI Mix");
+
+    // Debug: print all incoming MIDI
+    midi.onCC([](uint8_t cc, float value, uint8_t channel) {
+        std::cout << "MIDI CC " << (int)cc << " = " << value << " (ch " << (int)channel << ")\n";
+    });
 
     // =====================================================================
     // TIMING

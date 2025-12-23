@@ -53,11 +53,11 @@ struct NodeGraphStyle {
 
     // Sizes (in grid units, scale with zoom)
     float nodeWidth = 200.0f;
-    float nodeTitleHeight = 48.0f;  // Larger for 40px title font
-    float nodeContentPadding = 8.0f;
-    float nodeCornerRadius = 8.0f;
-    float pinRadius = 8.0f;
-    float pinSpacing = 40.0f;  // Larger for 36px label font
+    float nodeTitleHeight = 28.0f;  // For 18px title font
+    float nodeContentPadding = 6.0f;
+    float nodeCornerRadius = 6.0f;
+    float pinRadius = 6.0f;
+    float pinSpacing = 24.0f;  // For 16px label font
 
     // Sizes (in screen pixels, don't scale with zoom)
     float nodeBorderWidth = 1.0f;
@@ -67,6 +67,16 @@ struct NodeGraphStyle {
     // Grid
     float gridSpacing = 20.0f;
     bool showGrid = true;
+
+    // Mini-map
+    bool showMiniMap = true;
+    float miniMapWidth = 200.0f;
+    float miniMapHeight = 150.0f;
+    float miniMapMargin = 16.0f;  // Distance from corner
+    glm::vec4 miniMapBackground = {0.05f, 0.05f, 0.08f, 0.85f};
+    glm::vec4 miniMapBorder = {0.3f, 0.3f, 0.4f, 1.0f};
+    glm::vec4 miniMapNodeColor = {0.4f, 0.4f, 0.5f, 0.8f};
+    glm::vec4 miniMapViewportColor = {0.8f, 0.6f, 0.2f, 0.6f};
 };
 
 // -------------------------------------------------------------------------
@@ -128,6 +138,16 @@ struct NodeGraphInput {
     bool keyCtrl = false;
     bool keyShift = false;
     bool keyAlt = false;
+    // Key presses this frame (one-shot)
+    bool keyF = false;      // Fit to view
+    bool key1 = false;      // Zoom to 100%
+    bool keyUp = false;     // Move selection up
+    bool keyDown = false;   // Move selection down
+    bool keyLeft = false;   // Move selection left
+    bool keyRight = false;  // Move selection right
+    bool keyEnter = false;  // Solo mode
+    bool keyB = false;      // Bypass
+    bool keyEscape = false; // Exit solo / deselect
 };
 
 // -------------------------------------------------------------------------
@@ -371,6 +391,28 @@ public:
     const NodeGraphStyle& style() const { return m_style; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Keyboard Callbacks
+    /// @{
+
+    /**
+     * @brief Set callback for Enter key (solo mode)
+     * Called with the selected node ID (-1 if none)
+     */
+    void setEnterCallback(std::function<void(int nodeId)> cb) { m_enterCallback = cb; }
+
+    /**
+     * @brief Set callback for B key (bypass)
+     * Called with the selected node ID (-1 if none)
+     */
+    void setBypassCallback(std::function<void(int nodeId)> cb) { m_bypassCallback = cb; }
+
+    /**
+     * @brief Set callback for Escape key
+     */
+    void setEscapeCallback(std::function<void()> cb) { m_escapeCallback = cb; }
+
+    /// @}
 
 private:
     // Rendering helpers
@@ -379,6 +421,7 @@ private:
     void renderLinks();
     void renderNodes();
     void renderNode(NodeState& node);
+    void renderMiniMap();
 
     // Hit testing
     void updateHover();
@@ -392,6 +435,12 @@ private:
     void handlePan();
     void handleNodeDrag();
     void handleSelection();
+    void handleMiniMapInput();
+    void handleKeyboard();
+
+    // Mini-map helpers
+    void getContentBounds(float& minX, float& minY, float& maxX, float& maxY) const;
+    bool isPointInMiniMap(glm::vec2 screenPos) const;
 
     // Get pin screen position
     glm::vec2 getPinScreenPos(int pinId) const;
@@ -433,6 +482,16 @@ private:
     bool m_isDraggingNode = false;
     glm::vec2 m_dragStartPos = {0, 0};
     glm::vec2 m_dragNodeStartGridPos = {0, 0};
+
+    // Mini-map state
+    bool m_isDraggingMiniMap = false;
+    glm::vec2 m_miniMapContentMin = {0, 0};  // Cached content bounds
+    glm::vec2 m_miniMapContentMax = {0, 0};
+
+    // Keyboard callbacks
+    std::function<void(int)> m_enterCallback;
+    std::function<void(int)> m_bypassCallback;
+    std::function<void()> m_escapeCallback;
 };
 
 } // namespace vivid

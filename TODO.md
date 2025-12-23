@@ -268,4 +268,11 @@
 [x] Why is there still a folder called imgui in core? imgui should be totally separate now.
 [x] you said "ImGui stays in core for backward compatibility - addons (network, serial, etc.) still use drawVisualization(ImDrawList*)" -- let's update the addons (network, serial, etc.) still use drawVisualization(ImDrawList*)
 [x] Why does the overlay and grid go away when I mouse over a node?
-[ ] Are we done with _REPLACE_IMNODES.md?
+[x] Are we done with _REPLACE_IMNODES.md?
+    - Implemented Sugiyama hierarchical layout with crossing reduction
+    - Added mini-map with viewport indicator and click-to-navigate
+    - Added keyboard navigation (F=fit, 1=100%, arrows, Enter, B, Escape)
+    - Deleted plan file
+[ ] Node graph: Add search/filter for operators (text search, filter by type)
+[ ] When I record with audio, it KILLS the audio performance. Is there any way to prevent this?
+[ ] When the chain visualizer is active, mouse events shouldn't be passed on to the app (for instance, when I pan around the shadow-comprehensive, it orbits the camer aaround. )

@@ -16,12 +16,23 @@ namespace vivid {
 // Key codes for common keys (matches GLFW values)
 enum class Key : int {
     Escape = 256,
+    Enter = 257,
     Tab = 258,
     Space = 32,
-    S = 83,
+    // Number keys
+    Num0 = 48,
+    Num1 = 49,
+    Num2 = 50,
+    // Letter keys
     B = 66,
     F = 70,
     R = 82,
+    S = 83,
+    // Arrow keys
+    Right = 262,
+    Left = 263,
+    Down = 264,
+    Up = 265,
 };
 
 // Input state for frame rendering

@@ -27,7 +27,7 @@ public:
     ChainVisualizer() = default;
     ~ChainVisualizer();
 
-    // Initialize ImNodes context
+    // Initialize
     void init();
 
     // Cleanup
@@ -37,29 +37,8 @@ public:
     // Will highlight the node in the graph
     void selectNodeFromEditor(const std::string& operatorName);
 
-    // Render the chain visualizer
-    // Call between imgui::beginFrame() and imgui::render()
-    void render(const FrameInput& input, Context& ctx);
-
 private:
-    // Build graph layout from registered operators
-    void buildLayout(const std::vector<OperatorInfo>& operators);
-
-    // Estimate node height based on content (params, inputs, thumbnail type)
-    float estimateNodeHeight(const OperatorInfo& info) const;
-
-    // Attribute ID helpers
-    int outputAttrId(int nodeId) { return nodeId * 100; }
-    int inputAttrId(int nodeId, int inputIndex) { return nodeId * 100 + inputIndex + 1; }
-
     bool m_initialized = false;
-    bool m_layoutBuilt = false;
-
-    // Map operator pointers to node IDs
-    std::unordered_map<Operator*, int> m_opToNodeId;
-
-    // Node positions (indexed by node ID)
-    std::unordered_map<int, bool> m_nodePositioned;
 
     // Selection state for inspector panel
     int m_selectedNodeId = -1;
@@ -71,14 +50,7 @@ private:
     bool m_inSoloMode = false;
     std::string m_soloOperatorName;  // Cached for display
 
-    // Solo mode helpers (internal)
-    void renderSoloOverlay(const FrameInput& input, Context& ctx);
-
-    // Debug value panel (shows ctx.debug() values with sparkline graphs)
-    void renderDebugPanel(Context& ctx);
-
     // Selection helpers (for editor sync)
-    void updateSelection(const std::vector<OperatorInfo>& operators);
     void clearSelection();
 
     // Pending editor selection (set by selectNodeFromEditor, applied in render)
@@ -133,6 +105,21 @@ private:
     OverlayCanvas m_overlay;
     NodeGraph m_nodeGraph;
     bool m_nodeGraphInitialized = false;
+
+    // Button hit regions (set during renderStatusBar, checked for clicks after)
+    struct ButtonRect { float x, y, w, h; bool valid = false; };
+    ButtonRect m_recordButton;
+    ButtonRect m_stopButton;
+    ButtonRect m_snapshotButton;
+    // Codec dropdown menu
+    bool m_codecDropdownOpen = false;
+    ButtonRect m_codecH264;
+    ButtonRect m_codecH265;
+    ButtonRect m_codecProRes;
+    bool isMouseInRect(const ButtonRect& r, glm::vec2 mousePos) const {
+        return r.valid && mousePos.x >= r.x && mousePos.x < r.x + r.w &&
+               mousePos.y >= r.y && mousePos.y < r.y + r.h;
+    }
 };
 
 } // namespace vivid
