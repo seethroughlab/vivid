@@ -402,6 +402,18 @@ public:
      */
     bool consumedInput() const { return m_consumedInput; }
 
+    /**
+     * @brief Check if the node graph is currently in an active interaction
+     * (panning, dragging a node, or dragging the mini-map).
+     *
+     * Unlike consumedInput() which is only set after processing,
+     * this can be checked at the START of a frame to block input
+     * during ongoing drag operations.
+     */
+    bool isInteracting() const {
+        return m_isPanning || m_isDraggingNode || m_isDraggingMiniMap;
+    }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Keyboard Callbacks

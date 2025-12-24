@@ -279,12 +279,7 @@
     - Updated app.cpp and chain_visualizer.cpp to use tap instead of generateAudioForExport()
     - Moved audio encoding to background dispatch queue (off main thread)
     - Audio is master clock: video frames sync to audio time (like video playback)
-[ ] Node graph: Add search/filter for operators (text search, filter by type)
-[ ] When the chain visualizer is active, mouse events shouldn't be passed on to the app (for instance, when I pan around the shadow-comprehensive, it orbits the camera around.)
-    - Attempted fix: Added `consumedInput()` to NodeGraph/ChainVisualizer that returns true when panning, dragging, hovering nodes, or scrolling
-    - Added `Context::blockMouseInput()` to zero out mouse buttons, scroll, and delta
-    - Called blockMouseInput() in app.cpp before user update when visualizer consumed input last frame
-    - Issue: Still not working - may need to check timing or move input processing earlier in frame
-[ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
-[ ] It seems like we added a lot of functionality to overlay_canvas. Would any of these be helpful additions to the vivid core canvas rendering API?
+[x] When the chain visualizer is active, mouse events shouldn't be passed on to the app (for instance, when I pan around the shadow-comprehensive, it orbits the camera around.)
+[x] It seems like we added a lot of functionality to overlay_canvas. Would any of these be helpful additions to the vivid core canvas rendering API?
 [ ] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
+[ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.

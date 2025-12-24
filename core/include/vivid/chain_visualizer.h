@@ -98,6 +98,10 @@ public:
     // Check if visualizer consumed mouse input (for blocking input to user code)
     bool consumedInput() const { return m_nodeGraphInitialized && m_nodeGraph.consumedInput(); }
 
+    // Check if visualizer is currently in an active interaction (pan/drag in progress)
+    // Use this at the START of a frame to block input during ongoing interactions
+    bool isInteracting() const { return m_nodeGraphInitialized && m_nodeGraph.isInteracting(); }
+
 private:
     // Status bar, tooltip, and debug panel rendering (uses OverlayCanvas)
     void renderStatusBar(const FrameInput& input, Context& ctx);

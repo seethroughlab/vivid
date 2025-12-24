@@ -325,6 +325,10 @@ struct MainLoopContext {
 // -----------------------------------------------------------------------------
 // Returns true to continue running, false to exit.
 
+// Saved scroll value from before blockMouseInput() is called
+// Used to pass scroll to NodeGraph even when blocking input to user code
+static glm::vec2 g_savedScrollForVisualizer;
+
 static bool mainLoopIteration(MainLoopContext& mlc) {
     glfwPollEvents();
 
@@ -609,10 +613,11 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             imgui_dynamic::tryBeginFrame(frameInput);
         }
 
-        // Block mouse input if visualizer consumed it last frame
-        // (prevents camera orbit when panning node graph, etc.)
-        static bool visualizerConsumedInput = false;
-        if (visualizerConsumedInput && mlc.visualizerVisible) {
+        // Block mouse input when visualizer is visible
+        // The visualizer is a full-screen overlay, so all mouse input should go to it
+        // Save scroll before blocking since NodeGraph needs it for zooming
+        g_savedScrollForVisualizer = mlc.ctx->scroll();
+        if (mlc.visualizerVisible) {
             mlc.ctx->blockMouseInput();
         }
 
@@ -621,9 +626,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
         // Auto-process the chain
         mlc.ctx->chain().process(*mlc.ctx);
-
-        // Track if visualizer consumed input for next frame
-        visualizerConsumedInput = mlc.chainVisualizer->consumedInput();
 
         // Capture frame for video export if recording
         if (mlc.chainVisualizer->exporter().isRecording() && mlc.ctx->outputTexture()) {
@@ -745,20 +747,28 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     // Update display with current screen size
     mlc.display->setScreenSize(mlc.width, mlc.height);
 
-    // Build frame input for ImGui
+    // Build frame input for NodeGraph/ImGui
+    // IMPORTANT: Use raw GLFW state for mouse buttons, NOT Context's state
+    // because blockMouseInput() may have zeroed Context's mouse state to prevent
+    // user code from receiving input while the visualizer is being interacted with.
     float xscale, yscale;
     glfwGetWindowContentScale(mlc.window, &xscale, &yscale);
+
+    double mx, my;
+    glfwGetCursorPos(mlc.window, &mx, &my);
 
     vivid::FrameInput frameInput;
     frameInput.width = mlc.ctx->width();
     frameInput.height = mlc.ctx->height();
     frameInput.contentScale = xscale;
     frameInput.dt = static_cast<float>(mlc.ctx->dt());
-    frameInput.mousePos = mlc.ctx->mouse();
-    frameInput.mouseDown[0] = mlc.ctx->mouseButton(0).held;
-    frameInput.mouseDown[1] = mlc.ctx->mouseButton(1).held;
-    frameInput.mouseDown[2] = mlc.ctx->mouseButton(2).held;
-    frameInput.scroll = mlc.ctx->scroll();
+    frameInput.mousePos = glm::vec2(static_cast<float>(mx), static_cast<float>(my));
+    frameInput.mouseDown[0] = glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+    frameInput.mouseDown[1] = glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
+    frameInput.mouseDown[2] = glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
+    // Use saved scroll from before blockMouseInput() was called
+    // This ensures NodeGraph can still zoom even when we're blocking input to user code
+    frameInput.scroll = g_savedScrollForVisualizer;
     frameInput.keyCtrl = glfwGetKey(mlc.window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS ||
                          glfwGetKey(mlc.window, GLFW_KEY_RIGHT_CONTROL) == GLFW_PRESS;
     frameInput.keyShift = glfwGetKey(mlc.window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS ||
