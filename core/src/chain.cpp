@@ -147,6 +147,25 @@ void Chain::generateAudioForExport(float* output, uint32_t frameCount) {
     m_audioOutput->generateForExport(output, frameCount);
 }
 
+void Chain::startAudioRecordingTap() {
+    if (m_audioOutput) {
+        m_audioOutput->startRecordingTap();
+    }
+}
+
+void Chain::stopAudioRecordingTap() {
+    if (m_audioOutput) {
+        m_audioOutput->stopRecordingTap();
+    }
+}
+
+uint32_t Chain::popAudioRecordedSamples(float* output, uint32_t maxFrames) {
+    if (!m_audioOutput) {
+        return 0;
+    }
+    return m_audioOutput->popRecordedSamples(output, maxFrames);
+}
+
 void Chain::buildDependencyGraph() {
     // For each operator, find which other operators it depends on
     // by looking at its inputs

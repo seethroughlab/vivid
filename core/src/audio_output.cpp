@@ -39,7 +39,7 @@ struct AudioOutput::Impl {
     // Pull-based audio generation
     AudioGraph* audioGraph = nullptr;
 
-    // Ring buffer for recording mode (video export) - NOT used for live playback
+    // Ring buffer for legacy recording mode (deprecated)
     std::vector<float> ringBuffer;
     std::atomic<uint32_t> writePos{0};
     std::atomic<uint32_t> readPos{0};
@@ -47,9 +47,17 @@ struct AudioOutput::Impl {
 
     std::atomic<float> volume{1.0f};
     std::atomic<bool> playing{false};
-    std::atomic<bool> recordingMode{false};  // True when exporting video
+    std::atomic<bool> recordingMode{false};  // True when exporting video (deprecated)
+
+    // Recording tap: captures audio during live playback (NEW)
+    std::vector<float> tapBuffer;
+    std::atomic<uint32_t> tapWritePos{0};
+    std::atomic<uint32_t> tapReadPos{0};
+    uint32_t tapBufferSize = 0;
+    std::atomic<bool> tapEnabled{false};
 
     static constexpr uint32_t BUFFER_FRAMES = 48000;  // ~1 second at 48kHz
+    static constexpr uint32_t TAP_BUFFER_FRAMES = 48000 * 2;  // ~2 seconds at 48kHz
 
     static void dataCallback(ma_device* pDevice, void* output, const void* input, ma_uint32 frameCount);
 };
@@ -61,7 +69,7 @@ void AudioOutput::Impl::dataCallback(ma_device* pDevice, void* output, const voi
     uint32_t channels = pDevice->playback.channels;
 
     if (impl->recordingMode.load(std::memory_order_relaxed)) {
-        // Recording mode: read from ring buffer (filled by main thread)
+        // Legacy recording mode: read from ring buffer (filled by main thread)
         uint32_t samplesToRead = frameCount * channels;
         uint32_t write = impl->writePos.load(std::memory_order_acquire);
         uint32_t read = impl->readPos.load(std::memory_order_relaxed);
@@ -80,7 +88,7 @@ void AudioOutput::Impl::dataCallback(ma_device* pDevice, void* output, const voi
 
         impl->readPos.store(read, std::memory_order_release);
     } else {
-        // Live mode: pull directly from AudioGraph (the key change!)
+        // Live mode: pull directly from AudioGraph
         if (impl->audioGraph) {
             impl->audioGraph->processBlock(out, frameCount);
 
@@ -92,6 +100,26 @@ void AudioOutput::Impl::dataCallback(ma_device* pDevice, void* output, const voi
         } else {
             // No audio graph - silence
             std::memset(out, 0, frameCount * channels * sizeof(float));
+        }
+
+        // Recording tap: copy output samples to tap buffer for video export
+        // This is non-blocking - if buffer is full, we drop samples (acceptable)
+        if (impl->tapEnabled.load(std::memory_order_relaxed) && impl->tapBufferSize > 0) {
+            uint32_t sampleCount = frameCount * channels;
+            uint32_t tapWrite = impl->tapWritePos.load(std::memory_order_relaxed);
+            uint32_t tapRead = impl->tapReadPos.load(std::memory_order_acquire);
+
+            // Calculate available space
+            uint32_t used = (tapWrite >= tapRead) ?
+                (tapWrite - tapRead) : (impl->tapBufferSize - tapRead + tapWrite);
+            uint32_t available = impl->tapBufferSize - used - 1;
+
+            uint32_t toWrite = std::min(sampleCount, available);
+            for (uint32_t i = 0; i < toWrite; i++) {
+                impl->tapBuffer[tapWrite] = out[i];
+                tapWrite = (tapWrite + 1) % impl->tapBufferSize;
+            }
+            impl->tapWritePos.store(tapWrite, std::memory_order_release);
         }
     }
 }
@@ -181,6 +209,47 @@ void AudioOutput::setRecordingMode(bool recording) {
     }
 }
 
+void AudioOutput::startRecordingTap() {
+    // Reset tap buffer
+    m_impl->tapWritePos.store(0, std::memory_order_relaxed);
+    m_impl->tapReadPos.store(0, std::memory_order_relaxed);
+    // Enable tap - audio callback will start copying samples
+    m_impl->tapEnabled.store(true, std::memory_order_release);
+    std::cout << "[AudioOutput] Recording tap started\n";
+}
+
+void AudioOutput::stopRecordingTap() {
+    m_impl->tapEnabled.store(false, std::memory_order_release);
+    std::cout << "[AudioOutput] Recording tap stopped\n";
+}
+
+bool AudioOutput::isRecordingTapActive() const {
+    return m_impl && m_impl->tapEnabled.load(std::memory_order_relaxed);
+}
+
+uint32_t AudioOutput::popRecordedSamples(float* output, uint32_t maxFrames) {
+    if (!m_impl || !output || maxFrames == 0) return 0;
+
+    uint32_t maxSamples = maxFrames * AUDIO_CHANNELS;
+    uint32_t tapWrite = m_impl->tapWritePos.load(std::memory_order_acquire);
+    uint32_t tapRead = m_impl->tapReadPos.load(std::memory_order_relaxed);
+
+    // Calculate available samples
+    uint32_t available = (tapWrite >= tapRead) ?
+        (tapWrite - tapRead) : (m_impl->tapBufferSize - tapRead + tapWrite);
+
+    uint32_t toRead = std::min(maxSamples, available);
+
+    for (uint32_t i = 0; i < toRead; i++) {
+        output[i] = m_impl->tapBuffer[tapRead];
+        tapRead = (tapRead + 1) % m_impl->tapBufferSize;
+    }
+
+    m_impl->tapReadPos.store(tapRead, std::memory_order_release);
+
+    return toRead / AUDIO_CHANNELS;  // Return frame count
+}
+
 void AudioOutput::init(Context& ctx) {
     if (!beginInit()) return;
 
@@ -193,13 +262,21 @@ void AudioOutput::init(Context& ctx) {
         }
     }
 
-    // Initialize ring buffer for recording mode (stereo)
+    // Initialize ring buffer for legacy recording mode (stereo)
     m_impl->bufferSize = Impl::BUFFER_FRAMES * AUDIO_CHANNELS;
     m_impl->ringBuffer.resize(m_impl->bufferSize);
     std::fill(m_impl->ringBuffer.begin(), m_impl->ringBuffer.end(), 0.0f);
     m_impl->writePos = 0;
     m_impl->readPos = 0;
     m_impl->volume = m_volume;
+
+    // Initialize tap buffer for non-blocking recording (NEW)
+    m_impl->tapBufferSize = Impl::TAP_BUFFER_FRAMES * AUDIO_CHANNELS;
+    m_impl->tapBuffer.resize(m_impl->tapBufferSize);
+    std::fill(m_impl->tapBuffer.begin(), m_impl->tapBuffer.end(), 0.0f);
+    m_impl->tapWritePos = 0;
+    m_impl->tapReadPos = 0;
+    m_impl->tapEnabled = false;
 
     // Configure miniaudio device
     ma_device_config config = ma_device_config_init(ma_device_type_playback);

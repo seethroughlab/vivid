@@ -183,13 +183,42 @@ public:
     void setAudioGraph(AudioGraph* graph);
 
     /**
-     * @brief Enable/disable recording mode
+     * @brief Enable/disable recording mode (DEPRECATED)
      *
-     * In recording mode, audio is read from ring buffer instead of
-     * being generated in the callback. The video exporter pushes
-     * samples to the ring buffer.
+     * Legacy mode where main thread generates audio. Prefer using
+     * the recording tap (startRecordingTap/popRecordedSamples) instead.
      */
     void setRecordingMode(bool recording);
+
+    /**
+     * @brief Start capturing audio for recording
+     *
+     * When enabled, the audio callback copies samples to an internal
+     * ring buffer while they play. Use popRecordedSamples() to drain
+     * the buffer for video export. Does NOT block audio playback.
+     */
+    void startRecordingTap();
+
+    /**
+     * @brief Stop capturing audio for recording
+     */
+    void stopRecordingTap();
+
+    /**
+     * @brief Check if recording tap is active
+     */
+    bool isRecordingTapActive() const;
+
+    /**
+     * @brief Pop recorded samples from the tap buffer
+     * @param output Output buffer to fill
+     * @param maxFrames Maximum number of frames to read
+     * @return Number of frames actually read
+     *
+     * Call this from the main thread to get audio for video export.
+     * Returns 0 if no samples are available.
+     */
+    uint32_t popRecordedSamples(float* output, uint32_t maxFrames);
 
     /**
      * @brief Generate audio for video export (called from main thread)

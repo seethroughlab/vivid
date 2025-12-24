@@ -185,6 +185,9 @@ bool VideoExporter::start(const std::string& path, int width, int height,
     // Create encoding queue
     m_impl->encodingQueue = dispatch_queue_create("com.vivid.videoexporter", DISPATCH_QUEUE_SERIAL);
 
+    // Record start time for wall-clock based timestamps (deltaTime compatible)
+    m_startTime = std::chrono::steady_clock::now();
+
     m_recording = true;
     m_audioEnabled = false;
     printf("[VideoExporter] Started recording: %s (%dx%d @ %.1f fps)\n",
@@ -305,6 +308,9 @@ bool VideoExporter::startWithAudio(const std::string& path, int width, int heigh
     m_impl->audioTime = kCMTimeZero;
     m_impl->encodingQueue = dispatch_queue_create("com.vivid.videoexporter", DISPATCH_QUEUE_SERIAL);
 
+    // Create audio encoding queue (processes audio off main thread)
+    m_impl->audioQueue = dispatch_queue_create("com.vivid.audioexporter", DISPATCH_QUEUE_SERIAL);
+
     // Clear any old audio entries
     {
         std::lock_guard<std::mutex> lock(m_impl->audioMutex);
@@ -312,6 +318,9 @@ bool VideoExporter::startWithAudio(const std::string& path, int width, int heigh
             m_impl->audioEntries.pop();
         }
     }
+
+    // Record start time (used as fallback, audio time is primary for A/V sync)
+    m_startTime = std::chrono::steady_clock::now();
 
     m_impl->audioWriterRunning = true;
     m_recording = true;
@@ -422,7 +431,7 @@ void VideoExporter::pushAudioSamples(const float* samples, uint32_t frameCount) 
         return;
     }
 
-    // Queue the audio data
+    // Queue the audio data (fast, non-blocking on main thread)
     {
         std::lock_guard<std::mutex> lock(m_impl->audioMutex);
         AudioQueueEntry entry;
@@ -430,7 +439,7 @@ void VideoExporter::pushAudioSamples(const float* samples, uint32_t frameCount) 
         entry.frameCount = frameCount;
         entry.presentationTime = m_impl->audioTime;
 
-        // Limit queue size
+        // Limit queue size (drop if falling behind)
         if (m_impl->audioEntries.size() < 200) {
             m_impl->audioEntries.push(std::move(entry));
             // Advance audio time for next entry
@@ -447,31 +456,32 @@ void VideoExporter::pushAudioSamples(const float* samples, uint32_t frameCount) 
                frameCount, CMTimeGetSeconds(m_impl->audioTime));
     }
 
-    // Try to write queued audio while input is ready
-    int writtenThisCall = 0;
-    while ([m_impl->audioInput isReadyForMoreMediaData]) {
-        AudioQueueEntry entry;
-        {
-            std::lock_guard<std::mutex> lock(m_impl->audioMutex);
-            if (m_impl->audioEntries.empty()) {
-                break;
+    // Dispatch audio encoding to background queue (non-blocking)
+    // This keeps audio encoding off the main thread
+    if (m_impl->audioQueue) {
+        // Capture required values for the block
+        AVAssetWriterInput* audioInput = m_impl->audioInput;
+        AVAssetWriter* assetWriter = m_impl->assetWriter;
+        uint32_t channels = m_audioChannels;
+        uint32_t sampleRate = m_audioSampleRate;
+        Impl* impl = m_impl;
+
+        dispatch_async(m_impl->audioQueue, ^{
+            // Write queued audio while input is ready
+            while ([audioInput isReadyForMoreMediaData]) {
+                AudioQueueEntry entry;
+                {
+                    std::lock_guard<std::mutex> lock(impl->audioMutex);
+                    if (impl->audioEntries.empty()) {
+                        break;
+                    }
+                    entry = std::move(impl->audioEntries.front());
+                    impl->audioEntries.pop();
+                }
+
+                writeAudioEntryImpl(audioInput, assetWriter, entry, channels, sampleRate);
             }
-            entry = std::move(m_impl->audioEntries.front());
-            m_impl->audioEntries.pop();
-        }
-
-        writeAudioEntryImpl(m_impl->audioInput, m_impl->assetWriter, entry, m_audioChannels, m_audioSampleRate);
-        writtenThisCall++;
-    }
-
-    // Log queue status periodically
-    static int pushCount = 0;
-    pushCount++;
-    if (pushCount % 60 == 0) {
-        std::lock_guard<std::mutex> lock(m_impl->audioMutex);
-        printf("[VideoExporter] Audio push #%d: queued=%zu, wrote=%d this call, total=%.2fs\n",
-               pushCount, m_impl->audioEntries.size(), writtenThisCall,
-               (float)m_audioFrameCount / m_audioSampleRate);
+        });
     }
 }
 
@@ -596,21 +606,16 @@ void VideoExporter::captureFrame(WGPUDevice device, WGPUQueue queue, WGPUTexture
     // Poll device (non-blocking) to check if previous frame's map completed
     wgpuDevicePoll(device, false, nullptr);
 
-    // Try to encode any pending frame
+    // Try to encode any pending frame (NON-BLOCKING to protect audio performance)
     if (m_hasPendingFrame) {
         if (!tryEncodePendingFrame()) {
-            // Previous frame still not ready - we need to wait (this is the slow path)
-            // This happens when GPU is slower than expected
-            int pollCount = 0;
-            while (!tryEncodePendingFrame() && pollCount < 100) {
-                wgpuDevicePoll(device, true, nullptr);
-                pollCount++;
+            // Previous frame still not ready - DROP this frame instead of blocking
+            // This prevents audio starvation when GPU is slow
+            m_droppedFrames++;
+            if (m_droppedFrames <= 10 || m_droppedFrames % 60 == 0) {
+                printf("[VideoExporter] Dropped frame %u (GPU backpressure)\n", m_droppedFrames);
             }
-            if (pollCount >= 100) {
-                printf("[VideoExporter] Warning: Timeout waiting for previous frame\n");
-                m_hasPendingFrame = false;
-                m_pendingBuffer = -1;
-            }
+            return;  // Skip this capture, try again next frame
         }
     }
 
@@ -800,8 +805,20 @@ void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesP
     CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
     // Don't unmap here - caller handles unmapping
 
-    // Append to video
-    CMTime presentationTime = m_impl->currentTime;
+    // Determine presentation time:
+    // - With audio: use audio time as master clock (keeps video in sync)
+    // - Without audio: use wall-clock time (compatible with deltaTime animation)
+    CMTime presentationTime;
+    if (m_audioEnabled) {
+        // Audio is master clock - video syncs to audio time
+        presentationTime = m_impl->audioTime;
+    } else {
+        // No audio - use wall-clock time for deltaTime compatibility
+        auto now = std::chrono::steady_clock::now();
+        double elapsedSeconds = std::chrono::duration<double>(now - m_startTime).count();
+        presentationTime = CMTimeMakeWithSeconds(elapsedSeconds, 600);  // 600 = common timebase
+    }
+
     if (![m_impl->pixelBufferAdaptor appendPixelBuffer:pixelBuffer
                                   withPresentationTime:presentationTime]) {
         NSLog(@"Failed to append pixel buffer at frame %d", m_frameCount);
@@ -809,7 +826,7 @@ void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesP
 
     // Debug: log every 60th frame (once per second at 60fps)
     if (m_frameCount % 60 == 0) {
-        float videoTime = CMTimeGetSeconds(m_impl->currentTime);
+        float videoTime = CMTimeGetSeconds(presentationTime);
         float audioTime = CMTimeGetSeconds(m_impl->audioTime);
         printf("[VideoExporter] Frame %d: video=%.2fs, audio=%.2fs, diff=%.3fs\n",
                m_frameCount, videoTime, audioTime, videoTime - audioTime);
@@ -817,7 +834,8 @@ void VideoExporter::encodeFrame(uint32_t width, uint32_t height, uint32_t bytesP
 
     CVPixelBufferRelease(pixelBuffer);
 
-    m_impl->currentTime = CMTimeAdd(m_impl->currentTime, m_impl->frameDuration);
+    // Update current time to match presentation time
+    m_impl->currentTime = presentationTime;
     m_frameCount++;
 }
 
@@ -855,6 +873,10 @@ void VideoExporter::stop() {
     printf("[VideoExporter] Stopping recording...\n");
     printf("[VideoExporter] Video: %d frames = %.2f sec, Audio: %llu frames = %.2f sec\n",
            m_frameCount, videoSeconds, m_audioFrameCount, audioSeconds);
+    if (m_droppedFrames > 0) {
+        printf("[VideoExporter] Dropped %u video frames (%.1f%%) due to GPU backpressure\n",
+               m_droppedFrames, 100.0f * m_droppedFrames / (m_frameCount + m_droppedFrames));
+    }
 
     // Warning: if audio was enabled but no audio was written, this could cause issues
     if (m_audioEnabled && m_audioFrameCount == 0) {
@@ -876,6 +898,13 @@ void VideoExporter::stop() {
     // Stop audio writer
     if (m_audioEnabled) {
         m_impl->audioWriterRunning = false;
+
+        // Wait for any pending async audio encoding to complete
+        if (m_impl->audioQueue) {
+            dispatch_sync(m_impl->audioQueue, ^{
+                // This block runs after all previously queued blocks complete
+            });
+        }
 
         // Drain remaining audio queue before marking finished
         int drainedCount = 0;
@@ -1001,8 +1030,12 @@ cleanup:
     if (m_impl->encodingQueue) {
         m_impl->encodingQueue = nil;
     }
+    if (m_impl->audioQueue) {
+        m_impl->audioQueue = nil;
+    }
     m_audioEnabled = false;
     m_audioFrameCount = 0;
+    m_droppedFrames = 0;
 }
 
 float VideoExporter::duration() const {

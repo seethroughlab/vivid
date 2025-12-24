@@ -240,8 +240,32 @@ public:
      *
      * Call this from the main thread during recording. Generates audio
      * deterministically in sync with video frames, avoiding race conditions.
+     *
+     * @deprecated Use startAudioRecordingTap() and popAudioRecordedSamples() instead.
      */
     void generateAudioForExport(float* output, uint32_t frameCount);
+
+    /**
+     * @brief Start the audio recording tap
+     *
+     * When active, the audio callback copies samples to a ring buffer
+     * while they play. Call popAudioRecordedSamples() each frame to drain
+     * the buffer. This does NOT block audio playback.
+     */
+    void startAudioRecordingTap();
+
+    /**
+     * @brief Stop the audio recording tap
+     */
+    void stopAudioRecordingTap();
+
+    /**
+     * @brief Pop recorded audio samples from the tap
+     * @param output Buffer to fill
+     * @param maxFrames Maximum frames to read
+     * @return Number of frames actually read (may be less if buffer is empty)
+     */
+    uint32_t popAudioRecordedSamples(float* output, uint32_t maxFrames);
 
     /// @}
     // -------------------------------------------------------------------------

@@ -65,7 +65,7 @@ vivid_v2
 examples/*/vivid_*
 nul
 /*.obj
-*-job-logs.txt
+job-logs*.txt
 **/snapshot_*.png
 three.js
 std*.txt

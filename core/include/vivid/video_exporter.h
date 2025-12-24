@@ -11,6 +11,7 @@
 #include <webgpu/webgpu.h>
 #include <string>
 #include <functional>
+#include <chrono>
 
 namespace vivid {
 
@@ -210,6 +211,10 @@ private:
     uint32_t m_audioSampleRate = 48000;
     uint32_t m_audioChannels = 2;
     uint64_t m_audioFrameCount = 0;  // Total audio frames written
+    uint32_t m_droppedFrames = 0;    // Frames dropped due to GPU backpressure
+
+    // Wall-clock timing for video-only recording (deltaTime compatible)
+    std::chrono::steady_clock::time_point m_startTime;
 
     // Async readback helpers
     void submitCopyCommand(WGPUDevice device, WGPUQueue queue, WGPUTexture texture,

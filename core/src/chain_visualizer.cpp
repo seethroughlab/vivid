@@ -163,7 +163,8 @@ void ChainVisualizer::startRecording(ExportCodec codec, vivid::Context& ctx) {
         // Start with audio muxing
         started = m_exporter.startWithAudio(outputPath, width, height, fps, codec, 48000, 2);
         if (started) {
-            // Set recording mode so audio operators generate correct amount per frame
+            // Start audio recording tap (captures audio during playback)
+            ctx.chain().startAudioRecordingTap();
             ctx.setRecordingMode(true, fps);
             printf("[ChainVisualizer] Recording started with audio: %s\n", outputPath.c_str());
         }
@@ -181,6 +182,8 @@ void ChainVisualizer::startRecording(ExportCodec codec, vivid::Context& ctx) {
 }
 
 void ChainVisualizer::stopRecording(vivid::Context& ctx) {
+    // Stop audio recording tap first
+    ctx.chain().stopAudioRecordingTap();
     m_exporter.stop();
     ctx.setRecordingMode(false);
 }
