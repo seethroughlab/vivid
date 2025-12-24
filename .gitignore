@@ -71,3 +71,4 @@ three.js
 std*.txt
 test*.png
 memory_leak_repro/target
+assets/sample_packs/**
