@@ -279,7 +279,6 @@
     - Updated app.cpp and chain_visualizer.cpp to use tap instead of generateAudioForExport()
     - Moved audio encoding to background dispatch queue (off main thread)
     - Audio is master clock: video frames sync to audio time (like video playback)
-    - Video-only uses wall-clock time (compatible with deltaTime animation)
 [ ] Node graph: Add search/filter for operators (text search, filter by type)
 [ ] When the chain visualizer is active, mouse events shouldn't be passed on to the app (for instance, when I pan around the shadow-comprehensive, it orbits the camera around.)
     - Attempted fix: Added `consumedInput()` to NodeGraph/ChainVisualizer that returns true when panning, dragging, hovering nodes, or scrolling
@@ -289,4 +288,3 @@
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] It seems like we added a lot of functionality to overlay_canvas. Would any of these be helpful additions to the vivid core canvas rendering API?
 [ ] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
-[ ] 

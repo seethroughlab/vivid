@@ -1,6 +1,13 @@
 // Vivid Application Implementation
 // Contains WebGPU initialization, main loop, and cleanup
 
+// Prevent Windows.h from defining min/max macros
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include "app.h"
 
 #include <vivid/vivid.h>

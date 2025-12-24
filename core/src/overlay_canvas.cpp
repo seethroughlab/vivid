@@ -2,6 +2,7 @@
 #include <vivid/context.h>
 #include "effects/font_atlas.h"
 #include <cmath>
+#include <cstring>
 #include <algorithm>
 #include <iostream>
 
