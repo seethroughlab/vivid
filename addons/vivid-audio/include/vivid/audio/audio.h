@@ -81,6 +81,7 @@
 #include <vivid/audio/sample_bank.h>
 #include <vivid/audio/sample_player.h>
 #include <vivid/audio/sampler.h>
+#include <vivid/audio/multi_sampler.h>
 
 // Musical constants
 #include <vivid/audio/notes.h>

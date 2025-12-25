@@ -76,6 +76,7 @@ set(AUDIO_SOURCES
     src/sample_bank.cpp
     src/sample_player.cpp
     src/sampler.cpp
+    src/multi_sampler.cpp
     # Presets
     src/preset.cpp
 )
