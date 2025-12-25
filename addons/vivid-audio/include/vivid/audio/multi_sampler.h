@@ -162,6 +162,16 @@ public:
     bool loadPreset(const std::string& jsonPath);
 
     /**
+     * @brief Load a Decent Sampler .dspreset file directly
+     * @param dspresetPath Path to .dspreset XML file
+     * @return true if loaded successfully
+     *
+     * Parses the Decent Sampler XML format and loads all sample mappings.
+     * Supports: key zones, velocity layers, loop settings, envelope settings.
+     */
+    bool loadDspreset(const std::string& dspresetPath);
+
+    /**
      * @brief Add a sample region to the default group
      * @param region Region to add (sample will be loaded on first use)
      */
@@ -259,6 +269,7 @@ public:
     void cleanup() override;
     std::string name() const override { return "MultiSampler"; }
     void generateBlock(uint32_t frameCount) override;
+    bool drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) override;
 
     /// @}
 

@@ -4,6 +4,7 @@
 #include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <nlohmann/json.hpp>
+#include <pugixml.hpp>
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -83,22 +84,9 @@ bool MultiSampler::loadPreset(const std::string& jsonPath) {
     // Clear existing data
     clear();
 
-    // Create a group from the preset
-    SampleGroup group;
-    group.name = preset.value("name", "Preset");
-
-    // Load envelope settings
-    if (preset.contains("envelope")) {
-        auto& env = preset["envelope"];
-        group.attack = env.value("attack", -1.0f);
-        group.decay = env.value("decay", -1.0f);
-        group.sustain = env.value("sustain", -1.0f);
-        group.release = env.value("release", -1.0f);
-    }
-
-    // Load samples
-    if (preset.contains("samples")) {
-        for (auto& s : preset["samples"]) {
+    // Helper to load samples into a group
+    auto loadSamplesIntoGroup = [this](SampleGroup& group, const json& samples) {
+        for (auto& s : samples) {
             SampleRegion region;
             region.path = s.value("path", "");
             region.rootNote = s.value("root_note", 60);
@@ -118,25 +106,193 @@ bool MultiSampler::loadPreset(const std::string& jsonPath) {
                 region.loopEnd = s["loop_end"].get<uint64_t>();
             }
 
+            // Normalize path separators (Windows backslashes to forward slashes)
+            std::string normalizedPath = region.path;
+            std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
+
+            // Resolve path relative to preset
+            std::filesystem::path fullPath = std::filesystem::path(m_basePath) / normalizedPath;
+            region.path = fullPath.string();
+
             group.regions.push_back(std::move(region));
+        }
+    };
+
+    // Check for multi-group format with keyswitches
+    if (preset.contains("groups")) {
+        for (auto& g : preset["groups"]) {
+            SampleGroup group;
+            group.name = g.value("name", "Group");
+            group.keyswitch = g.value("keyswitch", -1);
+            group.volumeDb = g.value("volume_db", 0.0f);
+
+            // Load group envelope
+            if (g.contains("envelope")) {
+                auto& env = g["envelope"];
+                group.attack = env.value("attack", -1.0f);
+                group.decay = env.value("decay", -1.0f);
+                group.sustain = env.value("sustain", -1.0f);
+                group.release = env.value("release", -1.0f);
+            }
+
+            // Load samples
+            if (g.contains("samples")) {
+                loadSamplesIntoGroup(group, g["samples"]);
+            }
+
+            m_groups.push_back(std::move(group));
+        }
+    }
+    // Single group format (backward compatible)
+    else if (preset.contains("samples")) {
+        SampleGroup group;
+        group.name = preset.value("name", "Preset");
+
+        // Load envelope settings
+        if (preset.contains("envelope")) {
+            auto& env = preset["envelope"];
+            group.attack = env.value("attack", -1.0f);
+            group.decay = env.value("decay", -1.0f);
+            group.sustain = env.value("sustain", -1.0f);
+            group.release = env.value("release", -1.0f);
+        }
+
+        loadSamplesIntoGroup(group, preset["samples"]);
+        m_groups.push_back(std::move(group));
+    }
+
+    m_activeGroup = 0;
+    return true;
+}
+
+bool MultiSampler::loadDspreset(const std::string& dspresetPath) {
+    // If not initialized yet, store path for later
+    if (!m_initialized) {
+        m_pendingPreset = dspresetPath;
+        return true;
+    }
+
+    // Resolve path
+    auto resolved = AssetLoader::instance().resolve(dspresetPath);
+    std::string loadPath = resolved.empty() ? dspresetPath : resolved.string();
+
+    pugi::xml_document doc;
+    pugi::xml_parse_result result = doc.load_file(loadPath.c_str());
+    if (!result) {
+        return false;
+    }
+
+    // Store base path for resolving sample paths
+    m_basePath = std::filesystem::path(loadPath).parent_path().string();
+
+    // Clear existing data
+    clear();
+
+    // Parse <DecentSampler> root
+    auto root = doc.child("DecentSampler");
+    if (!root) {
+        return false;
+    }
+
+    // Helper to parse time strings like "100ms", "1.5s", or plain numbers
+    auto parseTime = [](const char* str) -> float {
+        if (!str || str[0] == '\0') return 0.0f;
+        std::string s(str);
+        if (s.find("ms") != std::string::npos) {
+            return std::stof(s) / 1000.0f;
+        }
+        if (s.find("s") != std::string::npos) {
+            size_t pos = s.find("s");
+            return std::stof(s.substr(0, pos));
+        }
+        return std::stof(s);
+    };
+
+    // Helper to parse dB strings like "-3dB", "0dB"
+    auto parseDb = [](const char* str) -> float {
+        if (!str || str[0] == '\0') return 0.0f;
+        std::string s(str);
+        size_t pos = s.find("dB");
+        if (pos != std::string::npos) {
+            s = s.substr(0, pos);
+        }
+        pos = s.find("db");
+        if (pos != std::string::npos) {
+            s = s.substr(0, pos);
+        }
+        try {
+            return std::stof(s);
+        } catch (...) {
+            return 0.0f;
+        }
+    };
+
+    // Parse <groups> element
+    for (auto groups : root.children("groups")) {
+        // Groups-level envelope defaults
+        float groupsAttack = parseTime(groups.attribute("attack").value());
+        float groupsDecay = parseTime(groups.attribute("decay").value());
+        float groupsSustain = groups.attribute("sustain").as_float(1.0f);
+        float groupsRelease = parseTime(groups.attribute("release").value());
+        float groupsVolume = parseDb(groups.attribute("volume").value());
+
+        // Parse each <group>
+        for (auto group : groups.children("group")) {
+            SampleGroup sg;
+            sg.name = group.attribute("name").as_string("Group");
+            sg.volumeDb = parseDb(group.attribute("volume").value()) + groupsVolume;
+
+            // Group envelope (inherit from groups if not specified)
+            sg.attack = group.attribute("attack") ? parseTime(group.attribute("attack").value()) : groupsAttack;
+            sg.decay = group.attribute("decay") ? parseTime(group.attribute("decay").value()) : groupsDecay;
+            sg.sustain = group.attribute("sustain") ? group.attribute("sustain").as_float(1.0f) : groupsSustain;
+            sg.release = group.attribute("release") ? parseTime(group.attribute("release").value()) : groupsRelease;
+
+            // Keyswitch (if present)
+            sg.keyswitch = group.attribute("keyswitch").as_int(-1);
+
+            // Parse each <sample>
+            for (auto sample : group.children("sample")) {
+                SampleRegion region;
+                region.path = sample.attribute("path").as_string("");
+                region.rootNote = sample.attribute("rootNote").as_int(60);
+                region.loNote = sample.attribute("loNote").as_int(region.rootNote);
+                region.hiNote = sample.attribute("hiNote").as_int(region.rootNote);
+                region.loVel = sample.attribute("loVel").as_int(0);
+                region.hiVel = sample.attribute("hiVel").as_int(127);
+                region.volumeDb = parseDb(sample.attribute("volume").value());
+                region.pan = sample.attribute("pan").as_float(0.0f);
+                region.tuneCents = sample.attribute("tuning").as_int(0);
+
+                // Loop settings
+                region.loopEnabled = std::string(sample.attribute("loopEnabled").as_string("false")) == "true";
+                region.loopStart = sample.attribute("loopStart").as_ullong(0);
+                region.loopEnd = sample.attribute("loopEnd").as_ullong(0);
+                region.loopCrossfade = sample.attribute("loopCrossfade").as_ullong(0);
+
+                // Normalize path separators
+                std::string normalizedPath = region.path;
+                std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
+
+                // Resolve path relative to preset
+                std::filesystem::path fullPath = std::filesystem::path(m_basePath) / normalizedPath;
+                region.path = fullPath.string();
+
+                sg.regions.push_back(std::move(region));
+            }
+
+            if (!sg.regions.empty()) {
+                m_groups.push_back(std::move(sg));
+            }
         }
     }
 
-    // Load samples (or defer to first use)
-    for (auto& region : group.regions) {
-        // Normalize path separators (Windows backslashes to forward slashes)
-        std::string normalizedPath = region.path;
-        std::replace(normalizedPath.begin(), normalizedPath.end(), '\\', '/');
-
-        // Resolve path relative to preset
-        std::filesystem::path fullPath = std::filesystem::path(m_basePath) / normalizedPath;
-        region.path = fullPath.string();
-        // Defer actual loading to first noteOn for faster startup
+    // If no groups were loaded, create empty default group
+    if (m_groups.empty()) {
+        m_groups.push_back(SampleGroup{"Default", {}, -1, -1, -1, -1, 0.0f, -1});
     }
 
-    m_groups.push_back(std::move(group));
     m_activeGroup = 0;
-
     return true;
 }
 
@@ -655,6 +811,142 @@ bool MultiSampler::loadWAV(const std::string& path, SampleRegion& region) {
     }
 
     region.loaded = true;
+    return true;
+}
+
+bool MultiSampler::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizVec2 min(minX, minY);
+    VizVec2 max(maxX, maxY);
+    float width = maxX - minX;
+    float height = maxY - minY;
+
+    // Dark wood-brown background (like a piano)
+    dl->AddRectFilled(min, max, VIZ_COL32(45, 35, 30, 255), 4.0f);
+
+    // Get active group info
+    std::string groupName = "No Preset";
+    int regionCount_ = 0;
+    int loNote = 127;
+    int hiNote = 0;
+
+    if (!m_groups.empty() && m_activeGroup >= 0 && m_activeGroup < static_cast<int>(m_groups.size())) {
+        const auto& group = m_groups[m_activeGroup];
+        groupName = group.name;
+        regionCount_ = static_cast<int>(group.regions.size());
+        for (const auto& region : group.regions) {
+            loNote = std::min(loNote, region.loNote);
+            hiNote = std::max(hiNote, region.hiNote);
+        }
+    }
+
+    // Draw mini keyboard (2 octaves centered around middle C)
+    int keyboardLo = std::max(36, loNote - 6);  // At least C2
+    int keyboardHi = std::min(96, hiNote + 6);  // At most C7
+    int numKeys = keyboardHi - keyboardLo + 1;
+
+    float keyboardY = minY + height * 0.35f;
+    float keyboardHeight = height * 0.5f;
+    float keyWidth = (width - 20) / static_cast<float>(numKeys);
+
+    // Collect active notes
+    std::vector<int> activeNotes;
+    int maxVoices_ = static_cast<int>(maxVoices);
+    for (int i = 0; i < maxVoices_ && i < static_cast<int>(m_voices.size()); i++) {
+        if (m_voices[i].isActive()) {
+            activeNotes.push_back(m_voices[i].midiNote);
+        }
+    }
+
+    // Draw white keys first
+    for (int note = keyboardLo; note <= keyboardHi; note++) {
+        int noteInOctave = note % 12;
+        bool isBlack = (noteInOctave == 1 || noteInOctave == 3 || noteInOctave == 6 ||
+                        noteInOctave == 8 || noteInOctave == 10);
+        if (isBlack) continue;
+
+        int keyIndex = note - keyboardLo;
+        float x = minX + 10 + keyIndex * keyWidth;
+
+        // Check if this note has a sample
+        bool hasSample = false;
+        if (!m_groups.empty() && m_activeGroup >= 0) {
+            for (const auto& region : m_groups[m_activeGroup].regions) {
+                if (note >= region.loNote && note <= region.hiNote) {
+                    hasSample = true;
+                    break;
+                }
+            }
+        }
+
+        // Check if actively playing
+        bool isPlaying = std::find(activeNotes.begin(), activeNotes.end(), note) != activeNotes.end();
+
+        uint32_t keyColor;
+        if (isPlaying) {
+            keyColor = VIZ_COL32(255, 200, 100, 255);  // Gold when playing
+        } else if (hasSample) {
+            keyColor = VIZ_COL32(240, 235, 220, 255);  // Ivory with sample
+        } else {
+            keyColor = VIZ_COL32(180, 175, 165, 255);  // Darker if no sample
+        }
+
+        dl->AddRectFilled(VizVec2(x, keyboardY), VizVec2(x + keyWidth - 1, keyboardY + keyboardHeight), keyColor, 2.0f);
+        dl->AddRect(VizVec2(x, keyboardY), VizVec2(x + keyWidth - 1, keyboardY + keyboardHeight), VIZ_COL32(100, 90, 80, 255), 2.0f, 0, 1.0f);
+    }
+
+    // Draw black keys on top
+    for (int note = keyboardLo; note <= keyboardHi; note++) {
+        int noteInOctave = note % 12;
+        bool isBlack = (noteInOctave == 1 || noteInOctave == 3 || noteInOctave == 6 ||
+                        noteInOctave == 8 || noteInOctave == 10);
+        if (!isBlack) continue;
+
+        int keyIndex = note - keyboardLo;
+        float x = minX + 10 + keyIndex * keyWidth - keyWidth * 0.3f;
+
+        // Check if actively playing
+        bool isPlaying = std::find(activeNotes.begin(), activeNotes.end(), note) != activeNotes.end();
+
+        uint32_t keyColor;
+        if (isPlaying) {
+            keyColor = VIZ_COL32(255, 180, 80, 255);  // Orange-gold when playing
+        } else {
+            keyColor = VIZ_COL32(35, 30, 25, 255);    // Dark
+        }
+
+        float blackHeight = keyboardHeight * 0.6f;
+        dl->AddRectFilled(VizVec2(x, keyboardY), VizVec2(x + keyWidth * 0.6f, keyboardY + blackHeight), keyColor, 2.0f);
+    }
+
+    // Voice count dots (top left)
+    float dotRadius = 3.0f;
+    float dotSpacing = 8.0f;
+    float dotsY = minY + 8;
+
+    for (int i = 0; i < std::min(8, maxVoices_); i++) {
+        float dotX = minX + 8 + i * dotSpacing;
+        uint32_t dotColor = (i < static_cast<int>(activeNotes.size()))
+            ? VIZ_COL32(255, 200, 100, 255)   // Active - gold
+            : VIZ_COL32(80, 70, 60, 200);     // Inactive - dim
+        dl->AddCircleFilled(VizVec2(dotX, dotsY), dotRadius, dotColor);
+    }
+
+    // Region count (top right)
+    if (regionCount_ > 0) {
+        char countText[32];
+        snprintf(countText, sizeof(countText), "%d smp", regionCount_);
+        float textX = maxX - 40;
+        float textY = minY + 5;
+        dl->AddText(VizVec2(textX, textY), VIZ_COL32(180, 170, 150, 255), countText);
+    }
+
+    // Group name (bottom)
+    if (!groupName.empty() && groupName != "No Preset") {
+        float textY = maxY - 15;
+        float textX = minX + 10;
+        dl->AddText(VizVec2(textX, textY), VIZ_COL32(200, 190, 170, 255), groupName.c_str());
+    }
+
     return true;
 }
 

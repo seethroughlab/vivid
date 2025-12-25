@@ -19,6 +19,15 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(kissfft)
 
+# pugixml for .dspreset XML parsing
+FetchContent_Declare(
+    pugixml
+    GIT_REPOSITORY https://github.com/zeux/pugixml.git
+    GIT_TAG        v1.14
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(pugixml)
+
 set(AUDIO_SOURCES
     # Sources
     src/audio_in.cpp
@@ -92,6 +101,7 @@ target_include_directories(vivid-audio PUBLIC
 target_link_libraries(vivid-audio PUBLIC
     vivid-core
     kissfft
+    pugixml
 )
 
 # Platform-specific configuration

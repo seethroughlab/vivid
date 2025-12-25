@@ -291,3 +291,19 @@
     - Stripped VSCode extension to minimal: auto-download + WGSL syntax highlighting only
     - Removed all process control, parameter editing, and MCP server from extension
     - Claude now owns all code changes; UI provides preview-only parameter adjustment
+[x] MultiSampler Phase 1 (Kontakt-style multi-sample instrument) - see _MULTI_SAMPLER.md
+    - Created multi_sampler.h with SampleRegion, SampleGroup, MultiSampler classes
+    - Implemented JSON preset loading with Windows path normalization
+    - Key zones, velocity layers, round-robin sample selection
+    - Voice management with ADSR envelopes
+    - Test: testing-fixtures/multi-sampler-test/ (Ganer Square Piano preset)
+[x] MultiSampler Phase 2 (Advanced Features)
+    - Round-robin support for alternating samples at same note/velocity
+    - Keyswitch groups for articulation switching (multi-group JSON format)
+    - Velocity curve parameter (soft/linear/hard response)
+    - Direct .dspreset loading via pugixml (no Python conversion needed)
+    - Tests: testing-fixtures/keyswitch-test/, testing-fixtures/dspreset-test/
+[x] MultiSampler Phase 3 (Polish)
+    - Lazy sample loading (ensureLoaded in noteOn, loads on first play)
+    - GUI visualization (mini keyboard, active notes gold, voice dots, sample count)
+    - Sample streaming DEFERRED (complex, needs background I/O thread)
