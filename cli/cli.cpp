@@ -1,7 +1,8 @@
 // Vivid CLI Commands
-// Handles: vivid new, vivid --help, vivid --version, vivid bundle, vivid operators, vivid addons
+// Handles: vivid new, vivid --help, vivid --version, vivid bundle, vivid operators, vivid addons, vivid mcp
 
 #include <vivid/cli.h>
+#include <vivid/mcp_server.h>
 #include <vivid/operator_registry.h>
 #include <vivid/addon_manager.h>
 #include <vivid/addon_registry.h>
@@ -1046,6 +1047,9 @@ int handleCommand(int argc, char** argv) {
     auto* addonsUpdateCmd = addonsCmd->add_subcommand("update", "Update addon(s)");
     addonsUpdateCmd->add_option("name", addonsUpdateName, "Addon name (empty = update all)");
 
+    // 'mcp' subcommand - MCP server for Claude Code integration
+    auto* mcpCmd = app.add_subcommand("mcp", "Run MCP server for Claude Code integration");
+
     // Check if first argument is a known subcommand or flag
     if (argc < 2) {
         printUsage();
@@ -1057,7 +1061,7 @@ int handleCommand(int argc, char** argv) {
     // If first arg doesn't look like a subcommand or flag, it's a project path
     // Let main runtime handle it
     if (firstArg != "new" && firstArg != "bundle" && firstArg != "operators" &&
-        firstArg != "addons" &&
+        firstArg != "addons" && firstArg != "mcp" &&
         firstArg != "-h" && firstArg != "--help" &&
         firstArg != "-v" && firstArg != "--version") {
         return -1;  // Continue to main runtime
@@ -1079,6 +1083,10 @@ int handleCommand(int argc, char** argv) {
 
     if (bundleCmd->parsed()) {
         return bundleProject(bundleProjectPath, bundleOutput, bundleName, bundlePlatform);
+    }
+
+    if (mcpCmd->parsed()) {
+        return mcp::runServer();
     }
 
     if (operatorsCmd->parsed()) {

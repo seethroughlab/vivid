@@ -29,6 +29,7 @@
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
 
+#include <nlohmann/json.hpp>
 #include <iostream>
 #include <iomanip>
 #include <string>
@@ -135,6 +136,50 @@ static void resetLookup() {
 namespace fs = std::filesystem;
 
 namespace vivid {
+
+// -----------------------------------------------------------------------------
+// MCP Configuration Check
+// -----------------------------------------------------------------------------
+// Checks if Claude Code MCP is configured for Vivid integration
+
+static std::string checkMcpConfiguration() {
+    // Look for Claude Code MCP config
+    const char* home = getenv("HOME");
+    if (!home) return "";
+
+    fs::path claudeConfig = fs::path(home) / ".claude.json";
+
+    // Also check for Claude Code-specific config locations
+    std::vector<fs::path> configPaths = {
+        claudeConfig,
+        fs::path(home) / ".config" / "claude" / "settings.json",
+    };
+
+    for (const auto& configPath : configPaths) {
+        if (!fs::exists(configPath)) continue;
+
+        try {
+            std::ifstream file(configPath);
+            if (!file) continue;
+
+            nlohmann::json config = nlohmann::json::parse(file);
+
+            // Check for mcpServers.vivid
+            if (config.contains("mcpServers")) {
+                auto& servers = config["mcpServers"];
+                if (servers.contains("vivid")) {
+                    // MCP is configured
+                    return "";
+                }
+            }
+        } catch (...) {
+            // Ignore parse errors
+        }
+    }
+
+    // MCP not configured - return warning
+    return "MCP not configured";
+}
 
 // -----------------------------------------------------------------------------
 // Memory Debugging
@@ -794,6 +839,10 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             std::cout << "[DEBUG] Rendering NodeGraph for first time" << std::endl;
             firstRender = false;
         }
+        // Update pending change count for status bar display
+        if (mlc.editorBridge) {
+            mlc.chainVisualizer->setPendingChangeCount(mlc.editorBridge->pendingChangeCount());
+        }
         mlc.chainVisualizer->renderNodeGraph(pass, frameInput, *mlc.ctx);
     }
 
@@ -1158,6 +1207,14 @@ int Application::init(const AppConfig& config) {
     // Create chain visualizer
     m_impl->chainVisualizer = std::make_unique<vivid::ChainVisualizer>();
 
+    // Check MCP configuration
+    {
+        std::string warning = checkMcpConfiguration();
+        if (!warning.empty()) {
+            m_impl->chainVisualizer->setMcpWarning(warning);
+        }
+    }
+
     // Create hot-reload system
     m_impl->hotReload = std::make_unique<HotReload>();
 
@@ -1172,9 +1229,94 @@ int Application::init(const AppConfig& config) {
         if (!m_impl->ctx->hasChain()) return;
         Operator* op = m_impl->ctx->chain().getByName(opName);
         if (op) {
+            // Get current value before applying (for pending change tracking)
+            float oldValue[4] = {0};
+            op->getParam(paramName, oldValue);
+
+            // Apply the change immediately (preview)
             op->setParam(paramName, value);
+
+            // Store as pending change for Claude to review
+            PendingChange change;
+            change.operatorName = opName;
+            change.paramName = paramName;
+            for (int i = 0; i < 4; ++i) {
+                change.oldValue[i] = oldValue[i];
+                change.newValue[i] = value[i];
+            }
+            change.sourceLine = op->sourceLine;
+
+            // Get param type from operator's param declarations
+            for (const auto& decl : op->params()) {
+                if (decl.name == paramName) {
+                    switch (decl.type) {
+                        case ParamType::Float:    change.paramType = "Float"; break;
+                        case ParamType::Int:      change.paramType = "Int"; break;
+                        case ParamType::Bool:     change.paramType = "Bool"; break;
+                        case ParamType::Vec2:     change.paramType = "Vec2"; break;
+                        case ParamType::Vec3:     change.paramType = "Vec3"; break;
+                        case ParamType::Vec4:     change.paramType = "Vec4"; break;
+                        case ParamType::Color:    change.paramType = "Color"; break;
+                        case ParamType::String:   change.paramType = "String"; break;
+                        case ParamType::FilePath: change.paramType = "FilePath"; break;
+                    }
+                    break;
+                }
+            }
+
+            m_impl->editorBridge->addPendingChange(change);
         }
     });
+    m_impl->editorBridge->onDiscardChanges([this](const std::vector<PendingChange>& changes) {
+        if (!m_impl->ctx->hasChain()) return;
+        // Revert each change to its original value
+        for (const auto& change : changes) {
+            Operator* op = m_impl->ctx->chain().getByName(change.operatorName);
+            if (op) {
+                op->setParam(change.paramName, change.oldValue);
+            }
+        }
+    });
+
+    // Connect chain visualizer inspector panel to pending changes system
+    m_impl->chainVisualizer->onParamChange([this](const std::string& opName, const std::string& paramName,
+                                                   const float oldValue[4], const float newValue[4], int sourceLine) {
+        // Queue as pending change for Claude to review
+        PendingChange change;
+        change.operatorName = opName;
+        change.paramName = paramName;
+        change.sourceLine = sourceLine;
+        for (int i = 0; i < 4; ++i) {
+            change.oldValue[i] = oldValue[i];
+            change.newValue[i] = newValue[i];
+        }
+
+        // Get param type from operator
+        if (m_impl->ctx->hasChain()) {
+            Operator* op = m_impl->ctx->chain().getByName(opName);
+            if (op) {
+                for (const auto& decl : op->params()) {
+                    if (decl.name == paramName) {
+                        switch (decl.type) {
+                            case ParamType::Float:    change.paramType = "Float"; break;
+                            case ParamType::Int:      change.paramType = "Int"; break;
+                            case ParamType::Bool:     change.paramType = "Bool"; break;
+                            case ParamType::Vec2:     change.paramType = "Vec2"; break;
+                            case ParamType::Vec3:     change.paramType = "Vec3"; break;
+                            case ParamType::Vec4:     change.paramType = "Vec4"; break;
+                            case ParamType::Color:    change.paramType = "Color"; break;
+                            case ParamType::String:   change.paramType = "String"; break;
+                            case ParamType::FilePath: change.paramType = "FilePath"; break;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        m_impl->editorBridge->addPendingChange(change);
+    });
+
     m_impl->editorBridge->onSoloNode([this](const std::string& opName) {
         if (!m_impl->ctx->hasChain()) return;
         Operator* op = m_impl->ctx->chain().getByName(opName);

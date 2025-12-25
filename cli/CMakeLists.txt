@@ -6,11 +6,13 @@ set(VIVID_CLI_SOURCES
     app.cpp
     cli.cpp
     editor_bridge.cpp
+    mcp_server.cpp
 )
 
 set(VIVID_CLI_HEADERS
     include/vivid/cli.h
     include/vivid/editor_bridge.h
+    include/vivid/mcp_server.h
 )
 
 add_executable(vivid

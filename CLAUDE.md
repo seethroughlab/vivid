@@ -18,7 +18,45 @@ doxygen Doxyfile                          # Generate API docs
 ./build/bin/vivid <project-path> --snapshot output.png        # Capture frame and exit
 ./build/bin/vivid <project-path> --snapshot=output.png        # Alternative syntax
 ./build/bin/vivid <project-path> --snapshot output.png --snapshot-frame 10  # Wait 10 frames
+./build/bin/vivid mcp                                         # Run MCP server for Claude Code
 ```
+
+## MCP Server (Claude Code Integration)
+
+The `vivid mcp` command runs an MCP server that Claude Code can use for live integration with Vivid.
+
+### Setup
+Add to your Claude Code MCP config (`~/.claude.json`):
+```json
+{
+  "mcpServers": {
+    "vivid": {
+      "command": "/path/to/vivid",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Available MCP Tools
+| Tool | Description |
+|------|-------------|
+| `get_pending_changes` | Get slider changes waiting to be applied to chain.cpp |
+| `get_live_params` | Get real-time parameter values from running Vivid |
+| `clear_pending_changes` | Confirm changes were applied (call after editing code) |
+| `discard_pending_changes` | Revert parameters to original values |
+| `get_runtime_status` | Get compile errors and runtime status |
+| `list_operators` | List all available operators with parameters |
+| `get_operator` | Get details for a specific operator |
+| `search_docs` | Search Vivid documentation |
+
+### Claude-First Workflow
+1. Claude starts Vivid: `./build/bin/vivid <project>`
+2. User adjusts sliders in visualizer (preview updates immediately)
+3. Claude calls `get_pending_changes` to see what changed
+4. Claude edits chain.cpp with the new values
+5. Claude calls `clear_pending_changes` to confirm
+6. Hot-reload applies the changes
 
 ### Snapshot Mode (for CI/Testing)
 The `--snapshot` flag runs the chain for a few frames, saves a PNG, and exits. Useful for:

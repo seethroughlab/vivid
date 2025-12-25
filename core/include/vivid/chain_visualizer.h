@@ -19,6 +19,7 @@
 #include <vector>
 #include <memory>
 #include <array>
+#include <functional>
 
 namespace vivid {
 
@@ -60,6 +61,12 @@ private:
     std::string m_focusedOperatorName;
     bool m_focusedModeActive = false;
 
+    // Pending changes count (Claude-first workflow)
+    size_t m_pendingChangeCount = 0;
+
+    // MCP configuration warning
+    std::string m_mcpWarning;
+
     // Video recording
     VideoExporter m_exporter;
     void startRecording(ExportCodec codec, Context& ctx);
@@ -89,6 +96,22 @@ public:
     void clearFocusedNode();
     bool isFocused(const std::string& operatorName) const;
 
+    // Pending changes indicator (Claude-first workflow)
+    // Set by app.cpp each frame based on EditorBridge pending count
+    void setPendingChangeCount(size_t count) { m_pendingChangeCount = count; }
+    size_t pendingChangeCount() const { return m_pendingChangeCount; }
+
+    // MCP configuration warning (shown if Claude Code MCP not configured)
+    void setMcpWarning(const std::string& warning) { m_mcpWarning = warning; }
+    const std::string& mcpWarning() const { return m_mcpWarning; }
+
+    // Parameter change callback (for queueing pending changes)
+    // Called when user adjusts a slider in the inspector panel
+    // Arguments: operatorName, paramName, oldValue[4], newValue[4], sourceLine
+    using ParamChangeCallback = std::function<void(const std::string&, const std::string&,
+                                                    const float[4], const float[4], int)>;
+    void onParamChange(ParamChangeCallback callback) { m_paramChangeCallback = callback; }
+
     // -------------------------------------------------------------------------
     // NodeGraph system (OverlayCanvas-based)
     // -------------------------------------------------------------------------
@@ -103,10 +126,11 @@ public:
     bool isInteracting() const { return m_nodeGraphInitialized && m_nodeGraph.isInteracting(); }
 
 private:
-    // Status bar, tooltip, and debug panel rendering (uses OverlayCanvas)
+    // Status bar, tooltip, debug panel, and inspector rendering (uses OverlayCanvas)
     void renderStatusBar(const FrameInput& input, Context& ctx);
     void renderTooltip(const FrameInput& input, const OperatorInfo& info);
     void renderDebugPanelOverlay(const FrameInput& input, Context& ctx);
+    void renderInspectorPanel(const FrameInput& input, Context& ctx);
 
     // Node graph system
     OverlayCanvas m_overlay;
@@ -127,6 +151,23 @@ private:
         return r.valid && mousePos.x >= r.x && mousePos.x < r.x + r.w &&
                mousePos.y >= r.y && mousePos.y < r.y + r.h;
     }
+
+    // Inspector panel state
+    ParamChangeCallback m_paramChangeCallback;
+    bool m_inspectorVisible = true;
+    float m_inspectorWidth = 280.0f;
+
+    // Slider interaction state
+    struct SliderState {
+        bool dragging = false;
+        std::string operatorName;
+        std::string paramName;
+        int paramIndex = 0;  // Which component (0-3) for Vec types
+        float startValue = 0.0f;
+        float startMouseX = 0.0f;
+        float originalValue[4] = {0};
+    };
+    SliderState m_sliderState;
 };
 
 } // namespace vivid

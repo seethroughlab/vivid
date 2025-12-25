@@ -203,6 +203,42 @@ Requests current window configuration.
 
 ---
 
+### request_pending_changes
+
+Requests current pending parameter changes (Claude-first workflow).
+
+```json
+{"type": "request_pending_changes"}
+```
+
+**Response**: `pending_changes` message.
+
+---
+
+### commit_changes
+
+Clears the pending changes queue (call after Claude applies changes to chain.cpp).
+
+```json
+{"type": "commit_changes"}
+```
+
+**Response**: `pending_changes` message with empty changes array.
+
+---
+
+### discard_changes
+
+Discards pending changes and reverts parameters to their original values.
+
+```json
+{"type": "discard_changes"}
+```
+
+**Response**: `pending_changes` message with empty changes array. Runtime reverts parameter values.
+
+---
+
 ## Messages (Runtime → Client)
 
 ### compile_status
@@ -374,6 +410,54 @@ Window configuration and available monitors.
   ]
 }
 ```
+
+---
+
+### pending_changes
+
+Pending parameter changes from slider adjustments (Claude-first workflow).
+
+Broadcast when:
+- A parameter is changed via `param_change` command
+- `commit_changes` or `discard_changes` is called
+- `request_pending_changes` is received
+
+```json
+{
+  "type": "pending_changes",
+  "hasChanges": true,
+  "changes": [
+    {
+      "operator": "noise",
+      "param": "scale",
+      "paramType": "Float",
+      "oldValue": [4.0, 0.0, 0.0, 0.0],
+      "newValue": [8.0, 0.0, 0.0, 0.0],
+      "sourceLine": 12,
+      "timestamp": 1735123456789
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| hasChanges | Whether there are pending changes |
+| changes | Array of pending parameter changes |
+| operator | Chain name of the operator |
+| param | Parameter name |
+| paramType | Type: Float, Int, Bool, Vec2, Vec3, Vec4, Color |
+| oldValue | Original value before slider adjustment |
+| newValue | New value from slider |
+| sourceLine | Line number in chain.cpp |
+| timestamp | Unix timestamp in milliseconds |
+
+**Claude-First Workflow:**
+1. User adjusts slider → `param_change` is applied immediately (preview visible)
+2. Runtime stores change in pending queue and broadcasts `pending_changes`
+3. Claude calls MCP tool `get_pending_changes` to see changes
+4. Claude edits chain.cpp with new values
+5. Claude calls `commit_changes` → queue cleared, `pending_changes` broadcast with empty array
 
 ---
 

@@ -283,3 +283,11 @@
 [x] It seems like we added a lot of functionality to overlay_canvas. Would any of these be helpful additions to the vivid core canvas rendering API?
 [ ] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
+[x] There's a UX issue where Claude SHOULD be in charge of stopping/starting vivid projects in order to see output, but currently, the extension also wants to do that. Is there any reason to keep the CLI launching functionality in the extension? Or should it be totally up to the LLM to launch the CLI? Is there any advantage to adding MCP tools for running VSCode actions? Or is that just adding more intermediate steps? Eliminating the extension could also be a solution to the UX issue where Claude and the extension are making conflicting changes. There could just be a way to adjust values through the chain visualization and then it would output structured data to Claude about the changes. Then Claude would ask if the user wants to apply the changes. Websocket request (MCP tools) to get live changes. Included parameter name, line number, etc. or changes are saved to a diff file?
+    - Implemented Claude-first architecture:
+    - Added pending changes system to EditorBridge (queue slider changes, broadcast via WebSocket)
+    - Added CLI-hosted MCP server (`vivid mcp`) with 8 tools: get_pending_changes, get_live_params, clear_pending_changes, etc.
+    - Added inspector panel to chain visualizer for parameter editing
+    - Stripped VSCode extension to minimal: auto-download + WGSL syntax highlighting only
+    - Removed all process control, parameter editing, and MCP server from extension
+    - Claude now owns all code changes; UI provides preview-only parameter adjustment

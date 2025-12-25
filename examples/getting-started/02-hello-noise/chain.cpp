@@ -19,11 +19,12 @@ void setup(Context& ctx) {
     // (default is 1280x720 if not specified)
     auto& noise = chain.add<Noise>("noise");
     noise.setResolution(1920, 1080);  // Set to 1080p
-    noise.scale = 4.0f;
+    noise.scale = 13.3f;
     noise.speed = 0.5f;
     noise.octaves = 4;
     noise.lacunarity = 2.0f;
-    noise.persistence = 0.5f;
+    noise.persistence = 0.68f;
+    noise.offset.set(35.3f, 0.0f, 0.0f);
 
     // Specify output - will be scaled to window size for display
     chain.output("noise");

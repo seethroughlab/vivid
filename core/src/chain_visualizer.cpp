@@ -340,8 +340,27 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     // Begin overlay rendering
     m_overlay.begin(input.width, input.height);
 
+    // Check if mouse is in inspector panel area (block node graph panning if so)
+    bool blockNodeGraphInput = m_sliderState.dragging;
+    if (!blockNodeGraphInput && m_inspectorVisible) {
+        // Check if mouse is over inspector panel area (right side)
+        float panelX = input.width - m_inspectorWidth - 12.0f;
+        float statusBarHeight = 32.0f;
+        if (scaledMousePos.x >= panelX && scaledMousePos.y >= statusBarHeight) {
+            blockNodeGraphInput = true;
+        }
+    }
+
+    // Create modified input for node graph (block all mouse events if in inspector area)
+    vivid::NodeGraphInput nodeGraphInput = graphInput;
+    if (blockNodeGraphInput) {
+        nodeGraphInput.mouseClicked[0] = false;
+        nodeGraphInput.mouseDown[0] = false;
+        nodeGraphInput.mouseReleased[0] = false;  // Block release too, prevents selection clearing
+    }
+
     // Begin node graph editor
-    m_nodeGraph.beginEditor(m_overlay, static_cast<float>(input.width), static_cast<float>(input.height), graphInput);
+    m_nodeGraph.beginEditor(m_overlay, static_cast<float>(input.width), static_cast<float>(input.height), nodeGraphInput);
 
     // Add nodes for each operator
     for (size_t i = 0; i < operators.size(); ++i) {
@@ -605,6 +624,9 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     // Render debug values panel (bottom-left corner)
     renderDebugPanelOverlay(input, ctx);
 
+    // Render inspector panel (right side, shows selected node's parameters)
+    renderInspectorPanel(input, ctx);
+
     // Handle keyboard shortcuts (using new key input system)
     using vivid::Key;
 
@@ -770,6 +792,27 @@ void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& c
     x += m_overlay.measureText("MEM:") + 4;
     m_overlay.text(memStr, x, y, memColor, monoFont);
     x += m_overlay.measureText(memStr, monoFont) + padding * 2;
+
+    // Pending changes indicator (Claude-first workflow)
+    if (m_pendingChangeCount > 0) {
+        // Separator
+        m_overlay.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+        x += padding * 2;
+
+        snprintf(buf, sizeof(buf), "Pending: %zu", m_pendingChangeCount);
+        m_overlay.text(buf, x, y, yellowColor, monoFont);
+        x += m_overlay.measureText(buf, monoFont) + padding * 2;
+    }
+
+    // MCP configuration warning
+    if (!m_mcpWarning.empty()) {
+        // Separator
+        m_overlay.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+        x += padding * 2;
+
+        m_overlay.text(m_mcpWarning, x, y, redColor, monoFont);
+        x += m_overlay.measureText(m_mcpWarning, monoFont) + padding * 2;
+    }
 
     // Audio stats (if audio active)
     AudioGraph* audioGraph = ctx.chain().audioGraph();
@@ -1014,6 +1057,218 @@ void ChainVisualizer::renderTooltip(const FrameInput& input, const vivid::Operat
     for (const auto& line : lines) {
         m_overlay.textTopmost(line.first, tooltipX + padding, textY, line.second);
         textY += lineHeight;
+    }
+}
+
+void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Context& ctx) {
+    if (!m_inspectorVisible) return;
+
+    // Get selected node
+    int selectedNodeId = m_nodeGraph.getSelectedNode();
+    if (selectedNodeId < 0 || selectedNodeId == SCREEN_NODE_ID || selectedNodeId == SPEAKERS_NODE_ID) {
+        return;  // No valid selection
+    }
+
+    const auto& operators = ctx.registeredOperators();
+    if (static_cast<size_t>(selectedNodeId) >= operators.size()) return;
+
+    const vivid::OperatorInfo& info = operators[selectedNodeId];
+    if (!info.op) return;
+
+    // Get parameters
+    auto params = info.op->params();
+    if (params.empty()) return;
+
+    // Font metrics
+    const int labelFont = 0;  // Inter Regular
+    const int monoFont = 2;   // Roboto Mono
+    float lineH = m_overlay.fontLineHeight(labelFont);
+    float ascent = m_overlay.fontAscent(labelFont);
+    if (lineH <= 0) lineH = 20.0f;
+    if (ascent <= 0) ascent = 14.0f;
+
+    // Layout
+    const float padding = 12.0f;
+    const float rowHeight = lineH + 8.0f;
+    const float sliderHeight = 20.0f;
+    const float headerHeight = lineH + padding * 2;
+
+    // Calculate panel height based on parameters
+    size_t totalRows = 0;
+    for (const auto& p : params) {
+        switch (p.type) {
+            case ParamType::Vec2: totalRows += 2; break;
+            case ParamType::Vec3: totalRows += 3; break;
+            case ParamType::Vec4:
+            case ParamType::Color: totalRows += 4; break;
+            default: totalRows += 1; break;
+        }
+    }
+    float panelHeight = headerHeight + totalRows * rowHeight + padding * 2;
+
+    // Panel position (right side, below status bar)
+    float statusBarHeight = lineH + 12.0f;
+    float panelX = input.width - m_inspectorWidth - padding;
+    float panelY = statusBarHeight + padding;
+
+    // Clamp panel height to available space
+    float maxHeight = input.height - panelY - padding;
+    if (panelHeight > maxHeight) panelHeight = maxHeight;
+
+    // Colors
+    glm::vec4 bgColor = {0.12f, 0.12f, 0.15f, 0.95f};
+    glm::vec4 headerBg = {0.16f, 0.16f, 0.2f, 1.0f};
+    glm::vec4 borderColor = {0.3f, 0.3f, 0.35f, 1.0f};
+    glm::vec4 titleColor = {0.5f, 0.8f, 1.0f, 1.0f};
+    glm::vec4 textColor = {0.85f, 0.85f, 0.85f, 1.0f};
+    glm::vec4 dimColor = {0.5f, 0.5f, 0.55f, 1.0f};
+    glm::vec4 sliderBg = {0.2f, 0.2f, 0.25f, 1.0f};
+    glm::vec4 sliderFill = {0.4f, 0.6f, 0.9f, 1.0f};
+    glm::vec4 sliderActive = {0.5f, 0.7f, 1.0f, 1.0f};
+
+    // Draw panel background
+    m_overlay.fillRoundedRect(panelX, panelY, m_inspectorWidth, panelHeight, 6.0f, bgColor);
+    m_overlay.strokeRoundedRect(panelX, panelY, m_inspectorWidth, panelHeight, 6.0f, 1.0f, borderColor);
+
+    // Header
+    m_overlay.fillRect(panelX, panelY, m_inspectorWidth, headerHeight, headerBg);
+    std::string title = info.op->name() + " (" + info.name + ")";
+    m_overlay.text(title, panelX + padding, panelY + padding + ascent, titleColor, labelFont);
+
+    // Mouse state
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+    glm::vec2 mousePos = input.mousePos * scale;
+    bool mouseDown = input.mouseDown[0];
+    static bool lastMouseDown = false;
+    bool mouseClicked = mouseDown && !lastMouseDown;
+    bool mouseReleased = !mouseDown && lastMouseDown;
+    lastMouseDown = mouseDown;
+
+    // Content area
+    float contentY = panelY + headerHeight + padding;
+    float sliderWidth = m_inspectorWidth - padding * 4 - 60.0f;  // Leave room for value label
+
+    for (const auto& p : params) {
+        float value[4] = {0};
+        info.op->getParam(p.name, value);
+
+        int componentCount = 1;
+        const char* componentLabels[] = {"", "", "", ""};
+
+        switch (p.type) {
+            case ParamType::Vec2:
+                componentCount = 2;
+                componentLabels[0] = "X"; componentLabels[1] = "Y";
+                break;
+            case ParamType::Vec3:
+                componentCount = 3;
+                componentLabels[0] = "X"; componentLabels[1] = "Y"; componentLabels[2] = "Z";
+                break;
+            case ParamType::Vec4:
+                componentCount = 4;
+                componentLabels[0] = "X"; componentLabels[1] = "Y";
+                componentLabels[2] = "Z"; componentLabels[3] = "W";
+                break;
+            case ParamType::Color:
+                componentCount = 4;
+                componentLabels[0] = "R"; componentLabels[1] = "G";
+                componentLabels[2] = "B"; componentLabels[3] = "A";
+                break;
+            default:
+                break;
+        }
+
+        for (int c = 0; c < componentCount; ++c) {
+            float y = contentY;
+
+            // Label
+            std::string label = (componentCount > 1) ? p.name + "." + componentLabels[c] : p.name;
+            m_overlay.text(label, panelX + padding, y + ascent, dimColor, labelFont);
+
+            // Slider background
+            float sliderX = panelX + padding;
+            float sliderY = y + lineH;
+            m_overlay.fillRoundedRect(sliderX, sliderY, sliderWidth, sliderHeight, 3.0f, sliderBg);
+
+            // Calculate normalized value
+            float range = p.maxVal - p.minVal;
+            float normalizedVal = (range > 0.0001f) ? (value[c] - p.minVal) / range : 0.0f;
+            normalizedVal = std::max(0.0f, std::min(1.0f, normalizedVal));
+
+            // Slider fill
+            float fillWidth = normalizedVal * sliderWidth;
+            if (fillWidth > 0) {
+                bool isActive = m_sliderState.dragging &&
+                                m_sliderState.operatorName == info.name &&
+                                m_sliderState.paramName == p.name &&
+                                m_sliderState.paramIndex == c;
+                glm::vec4 fillColor = isActive ? sliderActive : sliderFill;
+                m_overlay.fillRoundedRect(sliderX, sliderY, fillWidth, sliderHeight, 3.0f, fillColor);
+            }
+
+            // Value label
+            char valueBuf[32];
+            if (p.type == ParamType::Int) {
+                snprintf(valueBuf, sizeof(valueBuf), "%d", static_cast<int>(value[c]));
+            } else if (p.type == ParamType::Bool) {
+                snprintf(valueBuf, sizeof(valueBuf), "%s", value[c] > 0.5f ? "ON" : "OFF");
+            } else {
+                snprintf(valueBuf, sizeof(valueBuf), "%.2f", value[c]);
+            }
+            m_overlay.text(valueBuf, sliderX + sliderWidth + 8, sliderY + ascent, textColor, monoFont);
+
+            // Handle slider interaction
+            bool inSlider = mousePos.x >= sliderX && mousePos.x <= sliderX + sliderWidth &&
+                           mousePos.y >= sliderY && mousePos.y <= sliderY + sliderHeight;
+
+            if (mouseClicked && inSlider) {
+                // Start dragging
+                m_sliderState.dragging = true;
+                m_sliderState.operatorName = info.name;
+                m_sliderState.paramName = p.name;
+                m_sliderState.paramIndex = c;
+                m_sliderState.startMouseX = mousePos.x;
+                m_sliderState.startValue = value[c];
+                for (int i = 0; i < 4; ++i) {
+                    m_sliderState.originalValue[i] = value[i];
+                }
+            }
+
+            if (m_sliderState.dragging &&
+                m_sliderState.operatorName == info.name &&
+                m_sliderState.paramName == p.name &&
+                m_sliderState.paramIndex == c) {
+
+                // Update value based on mouse position
+                float newNormalized = (mousePos.x - sliderX) / sliderWidth;
+                newNormalized = std::max(0.0f, std::min(1.0f, newNormalized));
+                float newValue = p.minVal + newNormalized * range;
+
+                // Apply to operator
+                float newValues[4];
+                for (int i = 0; i < 4; ++i) newValues[i] = value[i];
+                newValues[c] = newValue;
+                info.op->setParam(p.name, newValues);
+
+                if (mouseReleased) {
+                    // Finished dragging - notify callback
+                    m_sliderState.dragging = false;
+
+                    if (m_paramChangeCallback) {
+                        m_paramChangeCallback(info.name, p.name,
+                                             m_sliderState.originalValue, newValues,
+                                             info.op->sourceLine);
+                    }
+                }
+            }
+
+            contentY += rowHeight;
+        }
+    }
+
+    // Cancel drag if mouse released outside
+    if (mouseReleased && m_sliderState.dragging) {
+        m_sliderState.dragging = false;
     }
 }
 

@@ -11,6 +11,7 @@
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <mutex>
+#include <chrono>
 
 using json = nlohmann::json;
 
@@ -129,6 +130,21 @@ void EditorBridge::start(int port) {
                             // (main.cpp handles both in the same callback area)
                             m_requestOperatorsCallback();
                         }
+                    }
+                    else if (type == "commit_changes") {
+                        std::cout << "[EditorBridge] Commit pending changes\n";
+                        commitPendingChanges();
+                    }
+                    else if (type == "discard_changes") {
+                        std::cout << "[EditorBridge] Discard pending changes\n";
+                        auto discarded = discardPendingChanges();
+                        if (m_discardChangesCallback && !discarded.empty()) {
+                            m_discardChangesCallback(discarded);
+                        }
+                    }
+                    else if (type == "request_pending_changes") {
+                        std::cout << "[EditorBridge] Pending changes requested\n";
+                        sendPendingChanges();
                     }
                 } catch (const json::exception& e) {
                     std::cerr << "[EditorBridge] JSON parse error: " << e.what() << "\n";
@@ -321,6 +337,77 @@ void EditorBridge::sendWindowState(const EditorWindowState& state) {
     for (auto& client : m_impl->server.getClients()) {
         client->send(msg);
     }
+}
+
+void EditorBridge::addPendingChange(const PendingChange& change) {
+    // Check if we already have a pending change for this operator.param
+    for (auto& existing : m_pendingChanges) {
+        if (existing.operatorName == change.operatorName &&
+            existing.paramName == change.paramName) {
+            // Update the new value, keep the original old value
+            for (int i = 0; i < 4; ++i) {
+                existing.newValue[i] = change.newValue[i];
+            }
+            existing.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::system_clock::now().time_since_epoch()).count();
+            std::cout << "[EditorBridge] Updated pending change: " << change.operatorName
+                      << "." << change.paramName << "\n";
+            sendPendingChanges();
+            return;
+        }
+    }
+
+    // New pending change
+    PendingChange newChange = change;
+    newChange.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    m_pendingChanges.push_back(newChange);
+    std::cout << "[EditorBridge] Added pending change: " << change.operatorName
+              << "." << change.paramName << " (total: " << m_pendingChanges.size() << ")\n";
+    sendPendingChanges();
+}
+
+void EditorBridge::sendPendingChanges() {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "pending_changes";
+    j["hasChanges"] = !m_pendingChanges.empty();
+    j["changes"] = json::array();
+
+    for (const auto& change : m_pendingChanges) {
+        json cJson;
+        cJson["operator"] = change.operatorName;
+        cJson["param"] = change.paramName;
+        cJson["paramType"] = change.paramType;
+        cJson["oldValue"] = {change.oldValue[0], change.oldValue[1], change.oldValue[2], change.oldValue[3]};
+        cJson["newValue"] = {change.newValue[0], change.newValue[1], change.newValue[2], change.newValue[3]};
+        cJson["sourceLine"] = change.sourceLine;
+        cJson["timestamp"] = change.timestamp;
+        j["changes"].push_back(cJson);
+    }
+
+    std::string msg = j.dump();
+
+    // Broadcast to all clients
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+void EditorBridge::commitPendingChanges() {
+    std::cout << "[EditorBridge] Committing " << m_pendingChanges.size() << " pending changes\n";
+    m_pendingChanges.clear();
+    sendPendingChanges();
+}
+
+std::vector<PendingChange> EditorBridge::discardPendingChanges() {
+    std::cout << "[EditorBridge] Discarding " << m_pendingChanges.size() << " pending changes\n";
+    std::vector<PendingChange> discarded = std::move(m_pendingChanges);
+    m_pendingChanges.clear();
+    sendPendingChanges();
+    return discarded;
 }
 
 } // namespace vivid

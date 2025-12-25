@@ -74,6 +74,17 @@ struct EditorWindowState {
     std::vector<EditorMonitorInfo> monitors;    ///< Available monitors
 };
 
+/// Pending parameter change (slider adjustment waiting for Claude to apply)
+struct PendingChange {
+    std::string operatorName;                   ///< Operator chain name
+    std::string paramName;                      ///< Parameter name
+    std::string paramType;                      ///< Parameter type (Float, Vec3, etc.)
+    float oldValue[4] = {0};                    ///< Value before change
+    float newValue[4] = {0};                    ///< New value from slider
+    int sourceLine = 0;                         ///< Line number in chain.cpp
+    int64_t timestamp = 0;                      ///< When the change was made (ms since epoch)
+};
+
 /// EditorBridge provides a WebSocket server for communication with external editors (VS Code, etc.)
 /// Handles compile status notifications and commands like reload.
 class EditorBridge {
@@ -122,6 +133,36 @@ public:
     /// Send window state to all connected clients (Phase 14)
     /// @param state Current window state including fullscreen, borderless, monitors
     void sendWindowState(const EditorWindowState& state);
+
+    /// Send pending changes to all connected clients
+    /// Called automatically when a pending change is added/removed
+    void sendPendingChanges();
+
+    // -------------------------------------------------------------------------
+    // Pending changes management (Claude-first workflow)
+    // -------------------------------------------------------------------------
+
+    /// Add a pending parameter change (from visualizer slider)
+    /// @param change The pending change to queue
+    void addPendingChange(const PendingChange& change);
+
+    /// Get all pending changes
+    /// @return Vector of pending changes waiting to be applied
+    const std::vector<PendingChange>& getPendingChanges() const { return m_pendingChanges; }
+
+    /// Check if there are any pending changes
+    bool hasPendingChanges() const { return !m_pendingChanges.empty(); }
+
+    /// Get count of pending changes
+    size_t pendingChangeCount() const { return m_pendingChanges.size(); }
+
+    /// Commit all pending changes (mark as applied, clear queue)
+    /// Called after Claude applies changes to chain.cpp
+    void commitPendingChanges();
+
+    /// Discard all pending changes (revert to original values)
+    /// Returns the changes that were discarded so caller can revert runtime state
+    std::vector<PendingChange> discardPendingChanges();
 
     // -------------------------------------------------------------------------
     // Incoming commands (editor -> runtime)
@@ -179,6 +220,13 @@ public:
     /// Set callback for window control commands (Phase 14)
     void onWindowControl(WindowControlCallback callback) { m_windowControlCallback = callback; }
 
+    /// Callback type for discard changes command (runtime should revert values)
+    using DiscardChangesCallback = std::function<void(const std::vector<PendingChange>& changes)>;
+
+    /// Set callback for discard changes command
+    /// Called when pending changes should be reverted to original values
+    void onDiscardChanges(DiscardChangesCallback callback) { m_discardChangesCallback = callback; }
+
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
@@ -192,6 +240,10 @@ private:
     FocusedNodeCallback m_focusedNodeCallback;
     RequestOperatorsCallback m_requestOperatorsCallback;
     WindowControlCallback m_windowControlCallback;
+    DiscardChangesCallback m_discardChangesCallback;
+
+    // Pending changes queue (Claude-first workflow)
+    std::vector<PendingChange> m_pendingChanges;
 };
 
 } // namespace vivid
