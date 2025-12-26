@@ -1,6 +1,7 @@
 #include <vivid/audio/kick.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
+#include <vivid/viz_helpers.h>
 
 #include <cmath>
 
@@ -122,39 +123,20 @@ float Kick::softClip(float x) const {
 }
 
 bool Kick::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    VizVec2 min(minX, minY);
-    VizVec2 max(maxX, maxY);
-    float width = maxX - minX;
-    float height = maxY - minY;
-    float cx = (minX + maxX) * 0.5f;
+    VizHelpers viz(dl);
+    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
 
-    // Dark background
-    dl->AddRectFilled(min, max, VIZ_COL32(30, 25, 35, 255), 4.0f);
+    viz.drawBackground(bounds, VizColors::BackgroundDark);
 
-    // Get envelope values
-    float ampEnv = m_ampEnv;
-    float pitchEnv = m_pitchEnvValue;
+    // Amplitude envelope bar
+    VizBounds barBounds = bounds.inset(bounds.w * 0.2f, 4.0f);
+    viz.drawEnvelopeBar(barBounds, m_ampEnv, VizColors::EnvelopeWarm);
 
-    // Amplitude envelope bar (bottom up, warm orange)
-    float barWidth = width * 0.6f;
-    float barMaxH = height * 0.75f;
-    float barH = barMaxH * ampEnv;
-    uint32_t barColor = VIZ_COL32(255, 140, 50, 255);
-    float barLeft = cx - barWidth * 0.5f;
-    float barRight = cx + barWidth * 0.5f;
-    dl->AddRectFilled(
-        VizVec2(barLeft, maxY - 4 - barH),
-        VizVec2(barRight, maxY - 4),
-        barColor, 3.0f);
-
-    // Pitch indicator (small dot or line that moves down as pitch decays)
-    if (pitchEnv > 0.01f) {
-        float pitchY = minY + 8 + (height - 16) * (1.0f - pitchEnv);
-        uint32_t pitchColor = VIZ_COL32(100, 200, 255, 200);
-        dl->AddLine(
-            VizVec2(barLeft - 4, pitchY),
-            VizVec2(barRight + 4, pitchY),
-            pitchColor, 2.0f);
+    // Pitch indicator line
+    if (m_pitchEnvValue > 0.01f) {
+        float pitchY = bounds.y + 8 + (bounds.h - 16) * (1.0f - m_pitchEnvValue);
+        dl->AddLine({barBounds.x - 4, pitchY}, {barBounds.right() + 4, pitchY},
+                    VizColors::Active, 2.0f);
     }
 
     return true;

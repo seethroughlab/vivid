@@ -20,8 +20,24 @@ WavetableSynth::WavetableSynth() {
     registerParam(sustain);
     registerParam(release);
 
-    // Pre-allocate voices
-    m_voices.resize(8);
+    // Unison parameters
+    registerParam(unisonVoices);
+    registerParam(unisonSpread);
+    registerParam(unisonStereo);
+
+    // Sub oscillator
+    registerParam(subLevel);
+    registerParam(subOctave);
+
+    // Portamento
+    registerParam(portamento);
+
+    // Velocity sensitivity
+    registerParam(velToVolume);
+    registerParam(velToAttack);
+
+    // Pre-allocate voices (8 notes * 8 unison = 64 max)
+    m_voices.resize(64);
 
     // Load default wavetable
     loadBuiltin(BuiltinTable::Basic);
@@ -357,29 +373,78 @@ void WavetableSynth::generatePWMTable() {
 // Voice Management
 // =============================================================================
 
-int WavetableSynth::noteOn(float hz) {
-    int voiceIdx = findFreeVoice();
-    if (voiceIdx < 0) {
-        voiceIdx = findVoiceToSteal();
-    }
-    if (voiceIdx < 0) {
-        return -1;
+int WavetableSynth::noteOn(float hz, float vel) {
+    int numUnison = static_cast<int>(unisonVoices);
+    float spreadCents = static_cast<float>(unisonSpread);
+    float stereoWidth = static_cast<float>(unisonStereo);
+    float portaMs = static_cast<float>(portamento);
+
+    // Create a new unison group
+    uint64_t groupId = ++m_unisonGroupCounter;
+    int voicesSpawned = 0;
+
+    for (int u = 0; u < numUnison; ++u) {
+        int voiceIdx = findFreeVoice();
+        if (voiceIdx < 0) {
+            voiceIdx = findVoiceToSteal();
+        }
+        if (voiceIdx < 0) {
+            break;  // No more voices available
+        }
+
+        Voice& voice = m_voices[voiceIdx];
+
+        // Calculate unison detune offset
+        // Spread voices evenly from -spread/2 to +spread/2
+        float detuneOffset = 0.0f;
+        if (numUnison > 1) {
+            float t = static_cast<float>(u) / static_cast<float>(numUnison - 1);
+            detuneOffset = (t - 0.5f) * spreadCents;
+        }
+
+        // Calculate stereo pan position
+        float pan = 0.0f;
+        if (numUnison > 1) {
+            float t = static_cast<float>(u) / static_cast<float>(numUnison - 1);
+            pan = (t - 0.5f) * 2.0f * stereoWidth;  // -1 to +1
+        }
+
+        voice.frequency = hz;
+        voice.detuneOffset = detuneOffset;
+        voice.pan = pan;
+        voice.velocity = std::clamp(vel, 0.0f, 1.0f);
+        voice.unisonGroup = groupId;
+
+        // Portamento: start from last played frequency
+        if (portaMs > 0.0f && m_lastFrequency > 0.0f) {
+            voice.currentFrequency = m_lastFrequency;
+            voice.targetFrequency = hz;
+        } else {
+            voice.currentFrequency = hz;
+            voice.targetFrequency = hz;
+        }
+
+        voice.phase = 0.0f;
+        voice.subPhase = 0.0f;
+        voice.envStage = EnvelopeStage::Attack;
+        voice.envValue = 0.0f;
+        voice.envProgress = 0.0f;
+        voice.noteId = ++m_noteCounter;
+
+        ++voicesSpawned;
     }
 
-    Voice& voice = m_voices[voiceIdx];
-    voice.frequency = hz;
-    voice.phase = 0.0f;
-    voice.envStage = EnvelopeStage::Attack;
-    voice.envValue = 0.0f;
-    voice.envProgress = 0.0f;
-    voice.noteId = ++m_noteCounter;
+    if (voicesSpawned > 0) {
+        m_lastFrequency = hz;
+    }
 
-    return voiceIdx;
+    return voicesSpawned;
 }
 
 void WavetableSynth::noteOff(float hz) {
-    int voiceIdx = findVoiceByFrequency(hz);
-    if (voiceIdx >= 0) {
+    // Find and release all voices with this base frequency (handles unison)
+    std::vector<int> voiceIndices = findVoicesByBaseFrequency(hz);
+    for (int voiceIdx : voiceIndices) {
         Voice& voice = m_voices[voiceIdx];
         if (voice.envStage != EnvelopeStage::Idle &&
             voice.envStage != EnvelopeStage::Release) {
@@ -390,8 +455,9 @@ void WavetableSynth::noteOff(float hz) {
     }
 }
 
-int WavetableSynth::noteOnMidi(int midiNote) {
-    return noteOn(midiToFreq(midiNote));
+int WavetableSynth::noteOnMidi(int midiNote, int vel) {
+    float velocity = static_cast<float>(std::clamp(vel, 0, 127)) / 127.0f;
+    return noteOn(midiToFreq(midiNote), velocity);
 }
 
 void WavetableSynth::noteOffMidi(int midiNote) {
@@ -459,6 +525,18 @@ int WavetableSynth::findVoiceByFrequency(float hz) const {
         }
     }
     return -1;
+}
+
+std::vector<int> WavetableSynth::findVoicesByBaseFrequency(float hz) const {
+    std::vector<int> result;
+    for (int i = 0; i < static_cast<int>(m_voices.size()); ++i) {
+        if (m_voices[i].isActive() &&
+            !m_voices[i].isReleasing() &&
+            std::abs(m_voices[i].frequency - hz) < FREQ_TOLERANCE) {
+            result.push_back(i);
+        }
+    }
+    return result;
 }
 
 // =============================================================================
@@ -535,6 +613,17 @@ void WavetableSynth::advanceEnvelope(Voice& voice, uint32_t samples) {
     switch (voice.envStage) {
         case EnvelopeStage::Attack: {
             float attackTime = std::max(0.001f, static_cast<float>(attack));
+
+            // Velocity to attack modulation:
+            // velToAttack > 0: high velocity = shorter attack
+            // velToAttack < 0: high velocity = longer attack
+            float velAtk = static_cast<float>(velToAttack);
+            if (velAtk != 0.0f) {
+                float velMod = velAtk * (1.0f - voice.velocity);  // high vel = less mod
+                attackTime *= std::pow(2.0f, velMod * 2.0f);  // ±2 octaves range
+                attackTime = std::clamp(attackTime, 0.001f, 10.0f);
+            }
+
             voice.envProgress += timeSeconds / attackTime;
             if (voice.envProgress >= 1.0f) {
                 voice.envProgress = 0.0f;
@@ -585,64 +674,92 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
     // Clear output
     std::memset(m_output.samples, 0, blockFrameCount * 2 * sizeof(float));
 
-    // Get current wavetable position
+    // Get parameters
     float pos = static_cast<float>(position);
     float vol = static_cast<float>(volume);
     float detuneAmount = static_cast<float>(detune);
+    float subLvl = static_cast<float>(subLevel);
+    int subOct = static_cast<int>(subOctave);
+    float portaMs = static_cast<float>(portamento);
+    float velToVol = static_cast<float>(velToVolume);
+    // Note: velToAttack is applied in advanceEnvelope()
+
+    // Portamento rate coefficient (per sample)
+    float portaRate = 1.0f;  // Instant by default
+    if (portaMs > 0.0f) {
+        // Exponential glide: higher values = slower glide
+        float portaSamples = portaMs * 0.001f * static_cast<float>(m_sampleRate);
+        portaRate = 1.0f - std::exp(-4.0f / portaSamples);  // 4 time constants to reach target
+    }
+
+    // Sub oscillator frequency divisor
+    float subDivisor = (subOct == -2) ? 4.0f : 2.0f;
 
     // Process each active voice
-    int max = static_cast<int>(maxVoices);
     int activeCount = 0;
 
-    for (int v = 0; v < max && v < static_cast<int>(m_voices.size()); ++v) {
+    for (int v = 0; v < static_cast<int>(m_voices.size()); ++v) {
         Voice& voice = m_voices[v];
         if (!voice.isActive()) continue;
 
         ++activeCount;
 
-        // Calculate detuned frequencies for stereo spread
-        float detuneL = -detuneAmount * 0.5f;
-        float detuneR = detuneAmount * 0.5f;
-        float freqL = voice.frequency * centsToRatio(detuneL);
-        float freqR = voice.frequency * centsToRatio(detuneR);
-
-        // Phase increments per sample
-        float phaseIncL = freqL / static_cast<float>(m_sampleRate);
-        float phaseIncR = freqR / static_cast<float>(m_sampleRate);
-
-        // Track separate phases for stereo (start from same point but diverge)
-        float phaseL = voice.phase;
-        float phaseR = voice.phase;
+        // Apply velocity to volume
+        float velVolume = 1.0f - velToVol * (1.0f - voice.velocity);
 
         for (uint32_t i = 0; i < blockFrameCount; ++i) {
-            // Advance envelope
+            // Apply velocity to attack time (done in advanceEnvelope)
             advanceEnvelope(voice, 1);
 
             if (voice.envStage == EnvelopeStage::Idle) {
                 break;
             }
 
-            float env = voice.envValue;
+            // Portamento: glide currentFrequency toward targetFrequency
+            if (portaMs > 0.0f && voice.currentFrequency != voice.targetFrequency) {
+                voice.currentFrequency += (voice.targetFrequency - voice.currentFrequency) * portaRate;
+                // Snap to target when close
+                if (std::abs(voice.currentFrequency - voice.targetFrequency) < 0.01f) {
+                    voice.currentFrequency = voice.targetFrequency;
+                }
+            }
 
-            // Sample wavetable at current position
-            float sampleL = sampleWavetable(phaseL, pos) * env;
-            float sampleR = sampleWavetable(phaseR, pos) * env;
+            // Calculate final frequency with unison detune + global detune
+            float totalDetune = voice.detuneOffset + detuneAmount * 0.5f;
+            float freq = voice.currentFrequency * centsToRatio(totalDetune);
+            float phaseInc = freq / static_cast<float>(m_sampleRate);
+
+            // Sample main wavetable
+            float sample = sampleWavetable(voice.phase, pos);
+
+            // Add sub oscillator (simple sine)
+            if (subLvl > 0.0f) {
+                float subFreq = voice.currentFrequency / subDivisor;
+                float subPhaseInc = subFreq / static_cast<float>(m_sampleRate);
+                float subSample = std::sin(voice.subPhase * TWO_PI);
+                sample = sample * (1.0f - subLvl) + subSample * subLvl;
+
+                // Advance sub phase
+                voice.subPhase += subPhaseInc;
+                if (voice.subPhase >= 1.0f) voice.subPhase -= 1.0f;
+            }
+
+            // Apply envelope and velocity
+            float env = voice.envValue * velVolume;
+            sample *= env;
+
+            // Apply panning for unison stereo spread
+            float panL = std::min(1.0f, 1.0f - voice.pan);  // pan -1 = full left
+            float panR = std::min(1.0f, 1.0f + voice.pan);  // pan +1 = full right
 
             // Accumulate to output
-            m_output.samples[i * 2] += sampleL;
-            m_output.samples[i * 2 + 1] += sampleR;
+            m_output.samples[i * 2] += sample * panL;
+            m_output.samples[i * 2 + 1] += sample * panR;
 
-            // Advance phases
-            phaseL += phaseIncL;
-            phaseR += phaseIncR;
-
-            // Wrap phases
-            if (phaseL >= 1.0f) phaseL -= 1.0f;
-            if (phaseR >= 1.0f) phaseR -= 1.0f;
+            // Advance phase
+            voice.phase += phaseInc;
+            if (voice.phase >= 1.0f) voice.phase -= 1.0f;
         }
-
-        // Store phase back (use average for consistency)
-        voice.phase = (phaseL + phaseR) * 0.5f;
     }
 
     // Apply volume and normalize by voice count

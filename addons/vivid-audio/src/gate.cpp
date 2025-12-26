@@ -1,5 +1,6 @@
 #include <vivid/audio/gate.h>
 #include <vivid/context.h>
+#include <vivid/viz_helpers.h>
 
 #include <cmath>
 #include <algorithm>
@@ -75,50 +76,11 @@ void Gate::cleanupEffect() {
 }
 
 bool Gate::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    VizVec2 min(minX, minY);
-    VizVec2 max(maxX, maxY);
-    float width = maxX - minX;
-    float height = maxY - minY;
-    float cx = (minX + maxX) * 0.5f;
-    float cy = (minY + maxY) * 0.5f;
+    VizHelpers viz(dl);
+    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
 
-    // Dark green background
-    dl->AddRectFilled(min, max, VIZ_COL32(30, 40, 35, 255), 4.0f);
-
-    // Draw gate visualization (door/barrier metaphor)
-    float gateW = width * 0.6f;
-    float gateH = height * 0.5f;
-    float gateX = cx - gateW * 0.5f;
-    float gateY = cy - gateH * 0.5f;
-
-    // Gate frame
-    uint32_t frameColor = VIZ_COL32(100, 120, 100, 200);
-    dl->AddRect(VizVec2(gateX, gateY), VizVec2(gateX + gateW, gateY + gateH),
-        frameColor, 2.0f, 0, 1.5f);
-
-    // Gate "bars" that open/close based on gate gain
-    float openAmount = m_gateGain;  // 0 = closed, 1 = open
-    int numBars = 5;
-    float barSpacing = gateW / (numBars + 1);
-
-    for (int i = 0; i < numBars; i++) {
-        float bX = gateX + barSpacing * (i + 1);
-        float barTop = gateY + 4 + (gateH - 8) * (1.0f - openAmount) * 0.5f;
-        float barBot = gateY + gateH - 4 - (gateH - 8) * (1.0f - openAmount) * 0.5f;
-
-        uint32_t barColor = m_gateOpen
-            ? VIZ_COL32(100, 200, 120, 255)   // Green when open
-            : VIZ_COL32(150, 100, 100, 200);  // Red-ish when closed
-
-        dl->AddLine(VizVec2(bX, barTop), VizVec2(bX, barBot), barColor, 2.0f);
-    }
-
-    // Status text
-    const char* status = m_gateOpen ? "OPEN" : "GATE";
-    VizTextSize textSize = dl->CalcTextSize(status);
-    uint32_t textColor = m_gateOpen ? VIZ_COL32(100, 255, 120, 255) : VIZ_COL32(180, 100, 100, 200);
-    dl->AddText(VizVec2(cx - textSize.x * 0.5f, max.y - 16), textColor, status);
-
+    viz.drawBackground(bounds, VIZ_COL32(30, 40, 35, 255));
+    viz.drawGate(bounds.inset(4), m_gateOpen, m_gateGain);
     return true;
 }
 

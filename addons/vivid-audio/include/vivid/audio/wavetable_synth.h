@@ -33,6 +33,24 @@ enum class BuiltinTable {
 };
 
 /**
+ * @brief Phase warp modes for timbral variety
+ *
+ * Warp modes transform the oscillator phase before wavetable lookup,
+ * dramatically expanding the timbral range from a single wavetable.
+ */
+enum class WarpMode {
+    None,       ///< No warping (default)
+    Sync,       ///< Hard sync - resets phase at warp frequency
+    BendPlus,   ///< Phase bend up - emphasizes attack/brightness
+    BendMinus,  ///< Phase bend down - softer, rounder tone
+    Mirror,     ///< Mirror at midpoint - creates symmetrical waveform
+    Asym,       ///< Asymmetric - positive half stretched
+    Quantize,   ///< Bit-reduce phase - lo-fi stepped effect
+    FM,         ///< Self-FM - phase modulated by own output
+    Flip        ///< Flip second half - octave-up harmonic content
+};
+
+/**
  * @brief Polyphonic wavetable synthesizer
  *
  * Morphs through multi-frame wavetables for evolving timbres. Includes
@@ -84,6 +102,25 @@ public:
     Param<float> decay{"decay", 0.1f, 0.001f, 5.0f};        ///< Decay time
     Param<float> sustain{"sustain", 0.7f, 0.0f, 1.0f};      ///< Sustain level
     Param<float> release{"release", 0.3f, 0.001f, 10.0f};   ///< Release time
+
+    // Unison parameters
+    Param<int> unisonVoices{"unisonVoices", 1, 1, 8};       ///< Unison voice count
+    Param<float> unisonSpread{"unisonSpread", 20.0f, 0.0f, 100.0f}; ///< Detune spread in cents
+    Param<float> unisonStereo{"unisonStereo", 1.0f, 0.0f, 1.0f};    ///< Stereo width (0=mono, 1=full)
+
+    // Sub oscillator
+    Param<float> subLevel{"subLevel", 0.0f, 0.0f, 1.0f};    ///< Sub oscillator level
+    Param<int> subOctave{"subOctave", -1, -2, -1};          ///< Sub octave (-1 or -2)
+
+    // Portamento
+    Param<float> portamento{"portamento", 0.0f, 0.0f, 2000.0f}; ///< Glide time in ms
+
+    // Velocity sensitivity
+    Param<float> velToVolume{"velToVolume", 1.0f, 0.0f, 1.0f};  ///< Velocity to volume amount
+    Param<float> velToAttack{"velToAttack", 0.0f, -1.0f, 1.0f}; ///< Velocity to attack modulation
+
+    // Warp parameters
+    Param<float> warpAmount{"warpAmount", 0.0f, 0.0f, 1.0f};    ///< Warp intensity (0=off)
 
     /// @}
     // -------------------------------------------------------------------------
@@ -139,9 +176,10 @@ public:
     /**
      * @brief Play a note at the given frequency
      * @param hz Frequency in Hz
-     * @return Voice index used, or -1 if no voice available
+     * @param velocity Velocity 0-1 (default 1.0)
+     * @return Number of voices spawned (including unison), or 0 if failed
      */
-    int noteOn(float hz);
+    int noteOn(float hz, float velocity = 1.0f);
 
     /**
      * @brief Release a note at the given frequency
@@ -152,9 +190,10 @@ public:
     /**
      * @brief Play a MIDI note
      * @param midiNote MIDI note number (60 = middle C)
-     * @return Voice index used, or -1 if no voice available
+     * @param velocity MIDI velocity 0-127 (default 127)
+     * @return Number of voices spawned (including unison), or 0 if failed
      */
-    int noteOnMidi(int midiNote);
+    int noteOnMidi(int midiNote, int velocity = 127);
 
     /**
      * @brief Release a MIDI note
@@ -216,13 +255,24 @@ private:
 
     // Voice state
     struct Voice {
-        float frequency = 0.0f;
+        float frequency = 0.0f;        // Base frequency (before detune)
+        float targetFrequency = 0.0f;  // For portamento
+        float currentFrequency = 0.0f; // Interpolated frequency
         float phase = 0.0f;
+        float subPhase = 0.0f;         // Sub oscillator phase
         EnvelopeStage envStage = EnvelopeStage::Idle;
         float envValue = 0.0f;
         float envProgress = 0.0f;
         float releaseStartValue = 0.0f;
         uint64_t noteId = 0;
+
+        // Unison tracking
+        uint64_t unisonGroup = 0;      // Groups voices for same note
+        float detuneOffset = 0.0f;     // Cents offset for this voice
+        float pan = 0.0f;              // -1 to 1 stereo position
+
+        // Velocity
+        float velocity = 1.0f;         // 0-1 velocity captured at noteOn
 
         bool isActive() const { return envStage != EnvelopeStage::Idle; }
         bool isReleasing() const { return envStage == EnvelopeStage::Release; }
@@ -230,12 +280,15 @@ private:
 
     std::vector<Voice> m_voices;
     uint64_t m_noteCounter = 0;
+    uint64_t m_unisonGroupCounter = 0;  // For grouping unison voices
+    float m_lastFrequency = 0.0f;       // For legato portamento
     uint32_t m_sampleRate = 48000;
 
     // Voice management
     int findFreeVoice() const;
     int findVoiceToSteal() const;
     int findVoiceByFrequency(float hz) const;
+    std::vector<int> findVoicesByBaseFrequency(float hz) const;  // For unison noteOff
 
     // Sample generation
     float sampleWavetable(float phase, float position) const;

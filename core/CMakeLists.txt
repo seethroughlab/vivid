@@ -108,6 +108,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/canvas.cpp
     src/effects/operator_registrations.cpp
     src/overlay_canvas.cpp
+    src/viz_helpers.cpp
 )
 
 # Platform-specific library sources
@@ -135,6 +136,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/frame_input.h
     include/vivid/chain_visualizer.h
     include/vivid/node_graph.h
+    include/vivid/viz_helpers.h
 )
 
 # Core library (shared between executable and addons)

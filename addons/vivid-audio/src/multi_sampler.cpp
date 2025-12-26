@@ -3,6 +3,7 @@
 #include <vivid/audio/multi_sampler.h>
 #include <vivid/asset_loader.h>
 #include <vivid/context.h>
+#include <vivid/viz_helpers.h>
 #include <nlohmann/json.hpp>
 #include <pugixml.hpp>
 #include <algorithm>
@@ -815,19 +816,16 @@ bool MultiSampler::loadWAV(const std::string& path, SampleRegion& region) {
 }
 
 bool MultiSampler::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    VizVec2 min(minX, minY);
-    VizVec2 max(maxX, maxY);
-    float width = maxX - minX;
-    float height = maxY - minY;
+    VizHelpers viz(dl);
+    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
 
-    // Dark wood-brown background (like a piano)
-    dl->AddRectFilled(min, max, VIZ_COL32(45, 35, 30, 255), 4.0f);
+    // Dark wood-brown background
+    viz.drawBackground(bounds, VIZ_COL32(45, 35, 30, 255));
 
     // Get active group info
     std::string groupName = "No Preset";
     int regionCount_ = 0;
-    int loNote = 127;
-    int hiNote = 0;
+    int loNote = 127, hiNote = 0;
 
     if (!m_groups.empty() && m_activeGroup >= 0 && m_activeGroup < static_cast<int>(m_groups.size())) {
         const auto& group = m_groups[m_activeGroup];
@@ -839,17 +837,8 @@ bool MultiSampler::drawVisualization(VizDrawList* dl, float minX, float minY, fl
         }
     }
 
-    // Draw mini keyboard (2 octaves centered around middle C)
-    int keyboardLo = std::max(36, loNote - 6);  // At least C2
-    int keyboardHi = std::min(96, hiNote + 6);  // At most C7
-    int numKeys = keyboardHi - keyboardLo + 1;
-
-    float keyboardY = minY + height * 0.35f;
-    float keyboardHeight = height * 0.5f;
-    float keyWidth = (width - 20) / static_cast<float>(numKeys);
-
-    // Collect active notes
-    std::vector<int> activeNotes;
+    // Collect active notes and available notes
+    std::vector<int> activeNotes, availableNotes;
     int maxVoices_ = static_cast<int>(maxVoices);
     for (int i = 0; i < maxVoices_ && i < static_cast<int>(m_voices.size()); i++) {
         if (m_voices[i].isActive()) {
@@ -857,94 +846,39 @@ bool MultiSampler::drawVisualization(VizDrawList* dl, float minX, float minY, fl
         }
     }
 
-    // Draw white keys first
-    for (int note = keyboardLo; note <= keyboardHi; note++) {
-        int noteInOctave = note % 12;
-        bool isBlack = (noteInOctave == 1 || noteInOctave == 3 || noteInOctave == 6 ||
-                        noteInOctave == 8 || noteInOctave == 10);
-        if (isBlack) continue;
-
-        int keyIndex = note - keyboardLo;
-        float x = minX + 10 + keyIndex * keyWidth;
-
-        // Check if this note has a sample
-        bool hasSample = false;
-        if (!m_groups.empty() && m_activeGroup >= 0) {
-            for (const auto& region : m_groups[m_activeGroup].regions) {
-                if (note >= region.loNote && note <= region.hiNote) {
-                    hasSample = true;
-                    break;
+    if (!m_groups.empty() && m_activeGroup >= 0) {
+        for (const auto& region : m_groups[m_activeGroup].regions) {
+            for (int n = region.loNote; n <= region.hiNote; n++) {
+                if (std::find(availableNotes.begin(), availableNotes.end(), n) == availableNotes.end()) {
+                    availableNotes.push_back(n);
                 }
             }
         }
-
-        // Check if actively playing
-        bool isPlaying = std::find(activeNotes.begin(), activeNotes.end(), note) != activeNotes.end();
-
-        uint32_t keyColor;
-        if (isPlaying) {
-            keyColor = VIZ_COL32(255, 200, 100, 255);  // Gold when playing
-        } else if (hasSample) {
-            keyColor = VIZ_COL32(240, 235, 220, 255);  // Ivory with sample
-        } else {
-            keyColor = VIZ_COL32(180, 175, 165, 255);  // Darker if no sample
-        }
-
-        dl->AddRectFilled(VizVec2(x, keyboardY), VizVec2(x + keyWidth - 1, keyboardY + keyboardHeight), keyColor, 2.0f);
-        dl->AddRect(VizVec2(x, keyboardY), VizVec2(x + keyWidth - 1, keyboardY + keyboardHeight), VIZ_COL32(100, 90, 80, 255), 2.0f, 0, 1.0f);
     }
 
-    // Draw black keys on top
-    for (int note = keyboardLo; note <= keyboardHi; note++) {
-        int noteInOctave = note % 12;
-        bool isBlack = (noteInOctave == 1 || noteInOctave == 3 || noteInOctave == 6 ||
-                        noteInOctave == 8 || noteInOctave == 10);
-        if (!isBlack) continue;
-
-        int keyIndex = note - keyboardLo;
-        float x = minX + 10 + keyIndex * keyWidth - keyWidth * 0.3f;
-
-        // Check if actively playing
-        bool isPlaying = std::find(activeNotes.begin(), activeNotes.end(), note) != activeNotes.end();
-
-        uint32_t keyColor;
-        if (isPlaying) {
-            keyColor = VIZ_COL32(255, 180, 80, 255);  // Orange-gold when playing
-        } else {
-            keyColor = VIZ_COL32(35, 30, 25, 255);    // Dark
-        }
-
-        float blackHeight = keyboardHeight * 0.6f;
-        dl->AddRectFilled(VizVec2(x, keyboardY), VizVec2(x + keyWidth * 0.6f, keyboardY + blackHeight), keyColor, 2.0f);
-    }
+    // Draw mini keyboard
+    int keyboardLo = std::max(36, loNote - 6);
+    int keyboardHi = std::min(96, hiNote + 6);
+    VizBounds keyboardBounds = bounds.sub(10, bounds.h * 0.35f, bounds.w - 20, bounds.h * 0.5f);
+    viz.drawKeyboard(keyboardBounds, keyboardLo, keyboardHi, activeNotes, availableNotes);
 
     // Voice count dots (top left)
-    float dotRadius = 3.0f;
-    float dotSpacing = 8.0f;
-    float dotsY = minY + 8;
-
     for (int i = 0; i < std::min(8, maxVoices_); i++) {
-        float dotX = minX + 8 + i * dotSpacing;
-        uint32_t dotColor = (i < static_cast<int>(activeNotes.size()))
-            ? VIZ_COL32(255, 200, 100, 255)   // Active - gold
-            : VIZ_COL32(80, 70, 60, 200);     // Inactive - dim
-        dl->AddCircleFilled(VizVec2(dotX, dotsY), dotRadius, dotColor);
+        float dotX = minX + 8 + i * 8.0f;
+        float intensity = (i < static_cast<int>(activeNotes.size())) ? 1.0f : 0.2f;
+        viz.drawActivityDot(dotX, minY + 8, intensity, VizColors::Highlight);
     }
 
     // Region count (top right)
     if (regionCount_ > 0) {
         char countText[32];
         snprintf(countText, sizeof(countText), "%d smp", regionCount_);
-        float textX = maxX - 40;
-        float textY = minY + 5;
-        dl->AddText(VizVec2(textX, textY), VIZ_COL32(180, 170, 150, 255), countText);
+        dl->AddText({maxX - 40, minY + 5}, VizColors::TextSecondary, countText);
     }
 
     // Group name (bottom)
     if (!groupName.empty() && groupName != "No Preset") {
-        float textY = maxY - 15;
-        float textX = minX + 10;
-        dl->AddText(VizVec2(textX, textY), VIZ_COL32(200, 190, 170, 255), groupName.c_str());
+        dl->AddText({minX + 10, maxY - 15}, VizColors::TextSecondary, groupName.c_str());
     }
 
     return true;

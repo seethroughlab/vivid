@@ -1,6 +1,7 @@
 #include <vivid/audio/snare.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
+#include <vivid/viz_helpers.h>
 
 #include <cmath>
 
@@ -116,38 +117,12 @@ float Snare::highpass(float in, int ch) {
 }
 
 bool Snare::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    VizVec2 min(minX, minY);
-    VizVec2 max(maxX, maxY);
-    float height = maxY - minY;
-    float cy = (minY + maxY) * 0.5f;
+    VizHelpers viz(dl);
+    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
 
-    // Dark background
-    dl->AddRectFilled(min, max, VIZ_COL32(45, 40, 50, 255), 4.0f);
-
-    float toneEnv = m_toneEnv;
-    float noiseEnv = m_noiseEnv;
-    float halfH = height * 0.45f;
-
-    // Tone envelope (bottom half, warm color)
-    float toneBarH = halfH * toneEnv;
-    uint32_t toneColor = VIZ_COL32(200, 140, 80, 255);
-    dl->AddRectFilled(
-        VizVec2(minX + 4, cy + 2),
-        VizVec2(maxX - 4, cy + 2 + toneBarH),
-        toneColor, 2.0f);
-
-    // Noise envelope (top half, white/gray)
-    float noiseBarH = halfH * noiseEnv;
-    uint32_t noiseColor = VIZ_COL32(220, 220, 230, 255);
-    dl->AddRectFilled(
-        VizVec2(minX + 4, cy - 2 - noiseBarH),
-        VizVec2(maxX - 4, cy - 2),
-        noiseColor, 2.0f);
-
-    // Divider line
-    dl->AddLine(VizVec2(minX + 4, cy), VizVec2(maxX - 4, cy),
-        VIZ_COL32(100, 100, 110, 150), 1.0f);
-
+    viz.drawBackground(bounds);
+    viz.drawDualEnvelope(bounds.inset(4), m_toneEnv, m_noiseEnv,
+                         VizColors::EnvelopeWarm, VizColors::TextPrimary);
     return true;
 }
 

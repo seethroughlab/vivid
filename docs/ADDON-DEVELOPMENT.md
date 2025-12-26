@@ -524,3 +524,155 @@ ctx.chain().setDebug(true);
 ```
 
 This shows which operators are processing each frame and helps identify cooking issues.
+
+## Custom Visualization (drawVisualization)
+
+Operators can provide custom visualizations for the chain visualizer. This is useful for showing real-time state like levels, envelopes, or keyboard activity.
+
+### Basic Setup
+
+Override `drawVisualization()` in your operator:
+
+```cpp
+#include <vivid/viz_helpers.h>
+
+class MyAnalyzer : public Operator {
+public:
+    bool drawVisualization(VizDrawList* dl, float minX, float minY,
+                           float maxX, float maxY) override;
+private:
+    float m_level = 0.0f;
+};
+```
+
+### Using VizHelpers (Recommended)
+
+The `VizHelpers` class provides high-level drawing functions that handle layout, colors, and styling:
+
+```cpp
+bool MyAnalyzer::drawVisualization(VizDrawList* dl, float minX, float minY,
+                                    float maxX, float maxY) {
+    VizHelpers viz(dl);
+    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
+
+    // Draw background
+    viz.drawBackground(bounds);
+
+    // Draw a level meter with gradient (green→yellow→red)
+    viz.drawMeter(bounds.inset(4), m_level);
+
+    return true;  // Return true if you drew something
+}
+```
+
+### VizBounds Layout Helper
+
+`VizBounds` simplifies layout calculations:
+
+```cpp
+VizBounds bounds{x, y, width, height};
+
+bounds.cx();        // Center X
+bounds.cy();        // Center Y
+bounds.right();     // Right edge (x + w)
+bounds.bottom();    // Bottom edge (y + h)
+
+bounds.inset(4);              // Shrink by 4px on all sides
+bounds.inset(4, 8);           // Shrink by 4px horizontal, 8px vertical
+bounds.splitLeft(0.5f);       // Left 50%
+bounds.splitRight(0.5f);      // Right 50%
+bounds.splitTop(0.3f);        // Top 30%
+bounds.splitBottom(0.7f);     // Bottom 70%
+bounds.sub(10, 20, 50, 30);   // Sub-region at (x+10, y+20) size 50x30
+```
+
+### VizHelpers Functions
+
+| Function | Description |
+|----------|-------------|
+| `drawBackground(bounds, color)` | Dark background fill |
+| `drawMeter(bounds, value, horizontal)` | Level meter with gradient |
+| `drawDualMeter(bounds, rms, peak)` | RMS + Peak side-by-side |
+| `drawSpectrum(bounds, bins, count, numBars)` | FFT spectrum bars |
+| `drawWaveform(bounds, samples, count, color)` | Audio waveform |
+| `drawEnvelopeADSR(bounds, a, d, s, r, current)` | ADSR shape |
+| `drawEnvelopeBar(bounds, value, color)` | Simple vertical bar |
+| `drawDualEnvelope(bounds, v1, v2, c1, c2)` | Two envelopes stacked |
+| `drawKeyboard(bounds, lo, hi, active, available)` | Piano keyboard |
+| `drawGate(bounds, isOpen, openAmount)` | Gate open/closed |
+| `drawActivityDot(cx, cy, intensity, color)` | Activity indicator |
+| `drawLabel(bounds, text, color)` | Centered text |
+| `drawValue(bounds, value, suffix, precision)` | Formatted number |
+
+### VizColors Standard Palette
+
+```cpp
+VizColors::Background       // Dark purple (40, 30, 50)
+VizColors::BackgroundDark   // Darker variant
+VizColors::MeterGreen       // Level meter low
+VizColors::MeterYellow      // Level meter mid
+VizColors::MeterRed         // Level meter high
+VizColors::Highlight        // Warm gold accent
+VizColors::Active           // Bright blue
+VizColors::StatusOpen       // Gate open (green)
+VizColors::StatusClosed     // Gate closed (red)
+VizColors::EnvelopeWarm     // Orange for envelopes
+VizColors::TextPrimary      // White text
+VizColors::TextSecondary    // Dim text
+
+// Helpers
+VizColors::meterGradient(t);      // Get color for 0-1 position
+VizColors::lerp(a, b, t);         // Blend two colors
+```
+
+### Low-Level Drawing (VizDrawList)
+
+For custom shapes, use `VizDrawList` directly:
+
+```cpp
+bool MyOp::drawVisualization(VizDrawList* dl, float minX, float minY,
+                              float maxX, float maxY) {
+    // Filled shapes
+    dl->AddRectFilled({x, y}, {x+w, y+h}, VIZ_COL32(255, 0, 0, 255));
+    dl->AddCircleFilled({cx, cy}, radius, color);
+    dl->AddTriangleFilled({p1x, p1y}, {p2x, p2y}, {p3x, p3y}, color);
+
+    // Outlines
+    dl->AddRect({x, y}, {x+w, y+h}, color, rounding, flags, thickness);
+    dl->AddCircle({cx, cy}, radius, color, segments, thickness);
+    dl->AddLine({x1, y1}, {x2, y2}, color, thickness);
+
+    // Text
+    dl->AddText({x, y}, color, "Hello");
+    VizTextSize size = dl->CalcTextSize("Hello");
+
+    return true;
+}
+```
+
+### Example: Level Meter
+
+Before VizHelpers (50 lines):
+```cpp
+// Manual gradient loop, layout calculations, color picking...
+for (int i = 0; i < height; i++) {
+    float t = static_cast<float>(i) / height;
+    uint32_t col;
+    if (t < 0.5f) col = VIZ_COL32(80, 180, 80, 255);
+    else if (t < 0.8f) col = VIZ_COL32(200, 180, 60, 255);
+    else col = VIZ_COL32(200, 80, 80, 255);
+    // ...
+}
+```
+
+After VizHelpers (5 lines):
+```cpp
+bool Levels::drawVisualization(VizDrawList* dl, float minX, float minY,
+                                float maxX, float maxY) {
+    VizHelpers viz(dl);
+    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
+    viz.drawBackground(bounds);
+    viz.drawDualMeter(bounds.inset(4), m_rms, m_peak);
+    return true;
+}
+```

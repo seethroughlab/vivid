@@ -1,4 +1,5 @@
 #include <vivid/audio/levels.h>
+#include <vivid/viz_helpers.h>
 
 #include <cmath>
 #include <algorithm>
@@ -69,54 +70,11 @@ float Levels::peakDb() const {
 }
 
 bool Levels::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
-    VizVec2 min(minX, minY);
-    VizVec2 max(maxX, maxY);
-    float width = maxX - minX;
-    float height = maxY - minY;
-    float startX = minX + 4.0f;
-    float startY = minY + 4.0f;
-    float h = height - 8.0f;
-    float w = width - 8.0f;
+    VizHelpers viz(dl);
+    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
 
-    // Dark purple background
-    dl->AddRectFilled(min, max, VIZ_COL32(40, 30, 50, 255), 4.0f);
-
-    float rmsVal = m_rms;
-    float peakVal = m_peak;
-
-    float barWidth = w * 0.35f;
-    float gap = w * 0.1f;
-    float leftX = startX + w * 0.1f;
-    float rightX = leftX + barWidth + gap;
-
-    // Draw RMS bar (left) with gradient
-    float rmsHeight = rmsVal * h;
-    for (int i = 0; i < static_cast<int>(rmsHeight); i++) {
-        float t = static_cast<float>(i) / h;
-        uint32_t col;
-        if (t < 0.5f) col = VIZ_COL32(80, 180, 80, 255);       // Green
-        else if (t < 0.8f) col = VIZ_COL32(200, 180, 60, 255); // Yellow
-        else col = VIZ_COL32(200, 80, 80, 255);                 // Red
-        float y = max.y - 4.0f - i;
-        dl->AddLine(VizVec2(leftX, y), VizVec2(leftX + barWidth, y), col);
-    }
-    dl->AddRect(VizVec2(leftX, startY), VizVec2(leftX + barWidth, max.y - 4.0f),
-               VIZ_COL32(80, 80, 100, 150), 2.0f);
-
-    // Draw Peak bar (right)
-    float peakHeight = peakVal * h;
-    for (int i = 0; i < static_cast<int>(peakHeight); i++) {
-        float t = static_cast<float>(i) / h;
-        uint32_t col;
-        if (t < 0.5f) col = VIZ_COL32(80, 180, 80, 255);
-        else if (t < 0.8f) col = VIZ_COL32(200, 180, 60, 255);
-        else col = VIZ_COL32(200, 80, 80, 255);
-        float y = max.y - 4.0f - i;
-        dl->AddLine(VizVec2(rightX, y), VizVec2(rightX + barWidth, y), col);
-    }
-    dl->AddRect(VizVec2(rightX, startY), VizVec2(rightX + barWidth, max.y - 4.0f),
-               VIZ_COL32(80, 80, 100, 150), 2.0f);
-
+    viz.drawBackground(bounds);
+    viz.drawDualMeter(bounds.inset(4), m_rms, m_peak);
     return true;
 }
 
