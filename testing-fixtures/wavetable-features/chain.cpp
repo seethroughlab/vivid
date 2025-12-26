@@ -58,7 +58,9 @@ void setup(Context& ctx) {
     synth->filterEnvAmount = 0.8f;           // Strong envelope modulation
 
     // Output to speakers
-    ctx.chain().add<AudioOutput>("out");
+    auto& out = ctx.chain().add<AudioOutput>("out");
+    out.setInput("wt");
+    ctx.chain().audioOutput("out");
 }
 
 void update(Context& ctx) {
