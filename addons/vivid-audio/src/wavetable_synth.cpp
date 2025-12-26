@@ -36,6 +36,21 @@ WavetableSynth::WavetableSynth() {
     registerParam(velToVolume);
     registerParam(velToAttack);
 
+    // Warp
+    registerParam(warpAmount);
+
+    // Filter
+    registerParam(filterCutoff);
+    registerParam(filterResonance);
+    registerParam(filterKeytrack);
+
+    // Filter envelope
+    registerParam(filterAttack);
+    registerParam(filterDecay);
+    registerParam(filterSustain);
+    registerParam(filterRelease);
+    registerParam(filterEnvAmount);
+
     // Pre-allocate voices (8 notes * 8 unison = 64 max)
     m_voices.resize(64);
 
@@ -426,9 +441,19 @@ int WavetableSynth::noteOn(float hz, float vel) {
 
         voice.phase = 0.0f;
         voice.subPhase = 0.0f;
+        voice.lastSample = 0.0f;
+
+        // Amplitude envelope
         voice.envStage = EnvelopeStage::Attack;
         voice.envValue = 0.0f;
         voice.envProgress = 0.0f;
+
+        // Filter envelope
+        voice.filterEnvStage = EnvelopeStage::Attack;
+        voice.filterEnvValue = 0.0f;
+        voice.filterEnvProgress = 0.0f;
+        voice.resetFilter();
+
         voice.noteId = ++m_noteCounter;
 
         ++voicesSpawned;
@@ -448,9 +473,15 @@ void WavetableSynth::noteOff(float hz) {
         Voice& voice = m_voices[voiceIdx];
         if (voice.envStage != EnvelopeStage::Idle &&
             voice.envStage != EnvelopeStage::Release) {
+            // Release amplitude envelope
             voice.envStage = EnvelopeStage::Release;
             voice.envProgress = 0.0f;
             voice.releaseStartValue = voice.envValue;
+
+            // Release filter envelope
+            voice.filterEnvStage = EnvelopeStage::Release;
+            voice.filterEnvProgress = 0.0f;
+            voice.filterReleaseStartValue = voice.filterEnvValue;
         }
     }
 }
@@ -471,6 +502,10 @@ void WavetableSynth::allNotesOff() {
             voice.envStage = EnvelopeStage::Release;
             voice.envProgress = 0.0f;
             voice.releaseStartValue = voice.envValue;
+
+            voice.filterEnvStage = EnvelopeStage::Release;
+            voice.filterEnvProgress = 0.0f;
+            voice.filterReleaseStartValue = voice.filterEnvValue;
         }
     }
 }
@@ -479,6 +514,9 @@ void WavetableSynth::panic() {
     for (auto& voice : m_voices) {
         voice.envStage = EnvelopeStage::Idle;
         voice.envValue = 0.0f;
+        voice.filterEnvStage = EnvelopeStage::Idle;
+        voice.filterEnvValue = 0.0f;
+        voice.resetFilter();
         voice.frequency = 0.0f;
     }
 }
@@ -583,6 +621,91 @@ float WavetableSynth::centsToRatio(float cents) const {
     return std::pow(2.0f, cents / 1200.0f);
 }
 
+float WavetableSynth::warpPhase(float phase, float amount, float lastSample) const {
+    if (amount <= 0.0f || m_warpMode == WarpMode::None) {
+        return phase;
+    }
+
+    // Ensure phase is 0-1
+    phase = phase - std::floor(phase);
+
+    switch (m_warpMode) {
+        case WarpMode::None:
+            return phase;
+
+        case WarpMode::Sync: {
+            // Hard sync: multiply frequency by sync ratio
+            // Higher amount = higher sync frequency
+            float syncRatio = 1.0f + amount * 7.0f;  // 1x to 8x
+            float syncPhase = phase * syncRatio;
+            return syncPhase - std::floor(syncPhase);
+        }
+
+        case WarpMode::BendPlus: {
+            // Phase bend up: emphasizes attack portion
+            // Uses power function to compress/expand phase
+            float exponent = 1.0f + amount * 3.0f;  // 1 to 4
+            return std::pow(phase, exponent);
+        }
+
+        case WarpMode::BendMinus: {
+            // Phase bend down: softer, rounder
+            float exponent = 1.0f / (1.0f + amount * 3.0f);  // 1 to 0.25
+            return std::pow(phase, exponent);
+        }
+
+        case WarpMode::Mirror: {
+            // Mirror at midpoint - creates symmetrical waveform
+            float midpoint = 0.5f - amount * 0.3f;  // Adjustable mirror point
+            if (phase > midpoint) {
+                return midpoint - (phase - midpoint);
+            }
+            return phase / midpoint * 0.5f;  // Scale first half
+        }
+
+        case WarpMode::Asym: {
+            // Asymmetric: stretch positive half, compress negative
+            // Creates odd-harmonic emphasis
+            if (phase < 0.5f) {
+                // First half: stretch based on amount
+                float stretch = 0.5f + amount * 0.3f;
+                return (phase / 0.5f) * stretch;
+            } else {
+                // Second half: compress
+                float stretch = 0.5f + amount * 0.3f;
+                return stretch + ((phase - 0.5f) / 0.5f) * (1.0f - stretch);
+            }
+        }
+
+        case WarpMode::Quantize: {
+            // Bit-reduce phase for lo-fi stepped effect
+            int steps = static_cast<int>(256.0f - amount * 252.0f);  // 256 to 4 steps
+            steps = std::max(4, steps);
+            return std::floor(phase * static_cast<float>(steps)) / static_cast<float>(steps);
+        }
+
+        case WarpMode::FM: {
+            // Self-FM: phase modulated by previous output
+            // Creates increasingly complex harmonics
+            float modDepth = amount * 0.5f;  // Max 0.5 phase deviation
+            float modPhase = phase + lastSample * modDepth;
+            return modPhase - std::floor(modPhase);
+        }
+
+        case WarpMode::Flip: {
+            // Flip second half for octave-up harmonic content
+            if (phase >= 0.5f) {
+                // Blend between normal and flipped based on amount
+                float flipped = 1.0f - phase;
+                return phase * (1.0f - amount) + flipped * amount;
+            }
+            return phase;
+        }
+    }
+
+    return phase;
+}
+
 // =============================================================================
 // Envelope
 // =============================================================================
@@ -660,6 +783,162 @@ void WavetableSynth::advanceEnvelope(Voice& voice, uint32_t samples) {
 }
 
 // =============================================================================
+// Filter Envelope
+// =============================================================================
+
+float WavetableSynth::computeFilterEnvelope(Voice& voice) const {
+    switch (voice.filterEnvStage) {
+        case EnvelopeStage::Attack:
+            return voice.filterEnvProgress;
+        case EnvelopeStage::Decay: {
+            float s = static_cast<float>(filterSustain);
+            return 1.0f - voice.filterEnvProgress * (1.0f - s);
+        }
+        case EnvelopeStage::Sustain:
+            return static_cast<float>(filterSustain);
+        case EnvelopeStage::Release:
+            return voice.filterReleaseStartValue * (1.0f - voice.filterEnvProgress);
+        case EnvelopeStage::Idle:
+        default:
+            return 0.0f;
+    }
+}
+
+void WavetableSynth::advanceFilterEnvelope(Voice& voice, uint32_t samples) {
+    if (voice.filterEnvStage == EnvelopeStage::Idle) return;
+
+    float timeSeconds = static_cast<float>(samples) / static_cast<float>(m_sampleRate);
+
+    switch (voice.filterEnvStage) {
+        case EnvelopeStage::Attack: {
+            float attackTime = std::max(0.001f, static_cast<float>(filterAttack));
+            voice.filterEnvProgress += timeSeconds / attackTime;
+            if (voice.filterEnvProgress >= 1.0f) {
+                voice.filterEnvProgress = 0.0f;
+                voice.filterEnvStage = EnvelopeStage::Decay;
+            }
+            break;
+        }
+        case EnvelopeStage::Decay: {
+            float decayTime = std::max(0.001f, static_cast<float>(filterDecay));
+            voice.filterEnvProgress += timeSeconds / decayTime;
+            if (voice.filterEnvProgress >= 1.0f) {
+                voice.filterEnvProgress = 0.0f;
+                voice.filterEnvStage = EnvelopeStage::Sustain;
+            }
+            break;
+        }
+        case EnvelopeStage::Sustain:
+            // Stay until noteOff
+            break;
+        case EnvelopeStage::Release: {
+            float releaseTime = std::max(0.001f, static_cast<float>(filterRelease));
+            voice.filterEnvProgress += timeSeconds / releaseTime;
+            if (voice.filterEnvProgress >= 1.0f) {
+                voice.filterEnvStage = EnvelopeStage::Idle;
+                voice.filterEnvValue = 0.0f;
+            }
+            break;
+        }
+        default:
+            break;
+    }
+
+    voice.filterEnvValue = computeFilterEnvelope(voice);
+}
+
+// =============================================================================
+// Per-Voice Filter (Biquad)
+// =============================================================================
+
+float WavetableSynth::applyFilter(Voice& voice, float input, float cutoffHz, float resonance) {
+    // Clamp cutoff to valid range
+    cutoffHz = std::clamp(cutoffHz, 20.0f, static_cast<float>(m_sampleRate) * 0.45f);
+    resonance = std::clamp(resonance, 0.0f, 1.0f);
+
+    // Calculate biquad coefficients
+    float omega = TWO_PI * cutoffHz / static_cast<float>(m_sampleRate);
+    float sinOmega = std::sin(omega);
+    float cosOmega = std::cos(omega);
+
+    // Q from resonance (0.5 to 20)
+    float Q = 0.5f + resonance * 19.5f;
+    float alpha = sinOmega / (2.0f * Q);
+
+    // Calculate coefficients based on filter type
+    float b0, b1, b2, a0, a1, a2;
+
+    switch (m_filterType) {
+        case SynthFilterType::LP12:
+        case SynthFilterType::LP24: {
+            // Low-pass
+            b0 = (1.0f - cosOmega) / 2.0f;
+            b1 = 1.0f - cosOmega;
+            b2 = (1.0f - cosOmega) / 2.0f;
+            a0 = 1.0f + alpha;
+            a1 = -2.0f * cosOmega;
+            a2 = 1.0f - alpha;
+            break;
+        }
+        case SynthFilterType::HP12: {
+            // High-pass
+            b0 = (1.0f + cosOmega) / 2.0f;
+            b1 = -(1.0f + cosOmega);
+            b2 = (1.0f + cosOmega) / 2.0f;
+            a0 = 1.0f + alpha;
+            a1 = -2.0f * cosOmega;
+            a2 = 1.0f - alpha;
+            break;
+        }
+        case SynthFilterType::BP: {
+            // Band-pass (constant skirt gain)
+            b0 = sinOmega / 2.0f;
+            b1 = 0.0f;
+            b2 = -sinOmega / 2.0f;
+            a0 = 1.0f + alpha;
+            a1 = -2.0f * cosOmega;
+            a2 = 1.0f - alpha;
+            break;
+        }
+        case SynthFilterType::Notch: {
+            // Notch
+            b0 = 1.0f;
+            b1 = -2.0f * cosOmega;
+            b2 = 1.0f;
+            a0 = 1.0f + alpha;
+            a1 = -2.0f * cosOmega;
+            a2 = 1.0f - alpha;
+            break;
+        }
+        default:
+            return input;
+    }
+
+    // Normalize coefficients
+    b0 /= a0;
+    b1 /= a0;
+    b2 /= a0;
+    a1 /= a0;
+    a2 /= a0;
+
+    // Apply filter using transposed direct form II
+    // First stage
+    float output = b0 * input + voice.filterZ1[0];
+    voice.filterZ1[0] = b1 * input - a1 * output + voice.filterZ2[0];
+    voice.filterZ2[0] = b2 * input - a2 * output;
+
+    // For 24dB (4-pole), apply second stage
+    if (m_filterType == SynthFilterType::LP24) {
+        float input2 = output;
+        output = b0 * input2 + voice.filterZ1[1];
+        voice.filterZ1[1] = b1 * input2 - a1 * output + voice.filterZ2[1];
+        voice.filterZ2[1] = b2 * input2 - a2 * output;
+    }
+
+    return output;
+}
+
+// =============================================================================
 // Audio Generation
 // =============================================================================
 
@@ -682,7 +961,14 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
     int subOct = static_cast<int>(subOctave);
     float portaMs = static_cast<float>(portamento);
     float velToVol = static_cast<float>(velToVolume);
+    float warpAmt = static_cast<float>(warpAmount);
     // Note: velToAttack is applied in advanceEnvelope()
+
+    // Filter parameters
+    float baseCutoff = static_cast<float>(filterCutoff);
+    float reso = static_cast<float>(filterResonance);
+    float keytrack = static_cast<float>(filterKeytrack);
+    float envAmt = static_cast<float>(filterEnvAmount);
 
     // Portamento rate coefficient (per sample)
     float portaRate = 1.0f;  // Instant by default
@@ -708,8 +994,9 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
         float velVolume = 1.0f - velToVol * (1.0f - voice.velocity);
 
         for (uint32_t i = 0; i < blockFrameCount; ++i) {
-            // Apply velocity to attack time (done in advanceEnvelope)
+            // Advance envelopes
             advanceEnvelope(voice, 1);
+            advanceFilterEnvelope(voice, 1);
 
             if (voice.envStage == EnvelopeStage::Idle) {
                 break;
@@ -729,8 +1016,14 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
             float freq = voice.currentFrequency * centsToRatio(totalDetune);
             float phaseInc = freq / static_cast<float>(m_sampleRate);
 
+            // Apply phase warp before sampling
+            float warpedPhase = warpPhase(voice.phase, warpAmt, voice.lastSample);
+
             // Sample main wavetable
-            float sample = sampleWavetable(voice.phase, pos);
+            float sample = sampleWavetable(warpedPhase, pos);
+
+            // Store sample for FM feedback (used next sample)
+            voice.lastSample = sample;
 
             // Add sub oscillator (simple sine)
             if (subLvl > 0.0f) {
@@ -742,6 +1035,27 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
                 // Advance sub phase
                 voice.subPhase += subPhaseInc;
                 if (voice.subPhase >= 1.0f) voice.subPhase -= 1.0f;
+            }
+
+            // Apply per-voice filter
+            // Calculate modulated cutoff: base + envelope + keytracking
+            float cutoff = baseCutoff;
+
+            // Filter envelope modulation (bipolar: envAmt can be negative)
+            // When envAmt > 0: envelope opens filter, when < 0: envelope closes filter
+            float envMod = voice.filterEnvValue * envAmt;
+            cutoff = cutoff * std::pow(2.0f, envMod * 4.0f);  // ±4 octaves range
+
+            // Keytracking: higher notes = higher cutoff
+            // Reference: middle C (MIDI 60) = 261.63 Hz
+            if (keytrack > 0.0f) {
+                float octavesFromC4 = std::log2(voice.currentFrequency / 261.63f);
+                cutoff *= std::pow(2.0f, octavesFromC4 * keytrack);
+            }
+
+            // Apply filter (only if cutoff is below Nyquist)
+            if (cutoff < static_cast<float>(m_sampleRate) * 0.45f) {
+                sample = applyFilter(voice, sample, cutoff, reso);
             }
 
             // Apply envelope and velocity

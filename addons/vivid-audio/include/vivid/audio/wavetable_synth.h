@@ -51,6 +51,17 @@ enum class WarpMode {
 };
 
 /**
+ * @brief Filter types for WavetableSynth per-voice filtering
+ */
+enum class SynthFilterType {
+    LP12,       ///< 12dB/oct low-pass (2-pole)
+    LP24,       ///< 24dB/oct low-pass (4-pole, classic subtractive)
+    HP12,       ///< 12dB/oct high-pass
+    BP,         ///< Band-pass
+    Notch       ///< Notch (band-reject)
+};
+
+/**
  * @brief Polyphonic wavetable synthesizer
  *
  * Morphs through multi-frame wavetables for evolving timbres. Includes
@@ -122,12 +133,59 @@ public:
     // Warp parameters
     Param<float> warpAmount{"warpAmount", 0.0f, 0.0f, 1.0f};    ///< Warp intensity (0=off)
 
+    // Filter parameters
+    Param<float> filterCutoff{"filterCutoff", 20000.0f, 20.0f, 20000.0f};  ///< Filter cutoff Hz
+    Param<float> filterResonance{"filterResonance", 0.0f, 0.0f, 1.0f};    ///< Filter resonance (0-1)
+    Param<float> filterKeytrack{"filterKeytrack", 0.0f, 0.0f, 1.0f};      ///< Cutoff tracks pitch
+
+    // Filter envelope
+    Param<float> filterAttack{"filterAttack", 0.01f, 0.001f, 10.0f};      ///< Filter env attack
+    Param<float> filterDecay{"filterDecay", 0.3f, 0.001f, 10.0f};         ///< Filter env decay
+    Param<float> filterSustain{"filterSustain", 0.0f, 0.0f, 1.0f};        ///< Filter env sustain
+    Param<float> filterRelease{"filterRelease", 0.3f, 0.001f, 10.0f};     ///< Filter env release
+    Param<float> filterEnvAmount{"filterEnvAmount", 0.0f, -1.0f, 1.0f};   ///< Env to cutoff amount
+
     /// @}
     // -------------------------------------------------------------------------
 
     WavetableSynth();
     ~WavetableSynth() override = default;
 
+    // -------------------------------------------------------------------------
+    /// @name Warp Mode
+    /// @{
+
+    /**
+     * @brief Set the phase warp mode
+     * @param mode The warp mode to use
+     *
+     * Warp modes transform the phase before wavetable lookup, creating
+     * dramatic timbral variations from a single wavetable.
+     */
+    void setWarpMode(WarpMode mode) { m_warpMode = mode; }
+
+    /**
+     * @brief Get the current warp mode
+     */
+    WarpMode warpMode() const { return m_warpMode; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Filter
+    /// @{
+
+    /**
+     * @brief Set the filter type
+     * @param type The filter type to use
+     */
+    void setFilterType(SynthFilterType type) { m_filterType = type; }
+
+    /**
+     * @brief Get the current filter type
+     */
+    SynthFilterType filterType() const { return m_filterType; }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Wavetable Loading
     /// @{
@@ -274,14 +332,35 @@ private:
         // Velocity
         float velocity = 1.0f;         // 0-1 velocity captured at noteOn
 
+        // For FM warp mode (self-modulation feedback)
+        float lastSample = 0.0f;
+
+        // Filter envelope (separate from amplitude envelope)
+        EnvelopeStage filterEnvStage = EnvelopeStage::Idle;
+        float filterEnvValue = 0.0f;
+        float filterEnvProgress = 0.0f;
+        float filterReleaseStartValue = 0.0f;
+
+        // Biquad filter state (2 cascaded stages for 24dB)
+        // Each stage: z1, z2 for transposed direct form II
+        float filterZ1[2] = {0.0f, 0.0f};
+        float filterZ2[2] = {0.0f, 0.0f};
+
         bool isActive() const { return envStage != EnvelopeStage::Idle; }
         bool isReleasing() const { return envStage == EnvelopeStage::Release; }
+
+        void resetFilter() {
+            filterZ1[0] = filterZ1[1] = 0.0f;
+            filterZ2[0] = filterZ2[1] = 0.0f;
+        }
     };
 
     std::vector<Voice> m_voices;
     uint64_t m_noteCounter = 0;
     uint64_t m_unisonGroupCounter = 0;  // For grouping unison voices
     float m_lastFrequency = 0.0f;       // For legato portamento
+    WarpMode m_warpMode = WarpMode::None;  // Current warp mode
+    SynthFilterType m_filterType = SynthFilterType::LP24;  // Default to classic 24dB LP
     uint32_t m_sampleRate = 48000;
 
     // Voice management
@@ -295,9 +374,19 @@ private:
     float linearInterpolate(float a, float b, float t) const;
     float centsToRatio(float cents) const;
 
-    // Envelope
+    // Phase warping
+    float warpPhase(float phase, float amount, float lastSample) const;
+
+    // Amplitude envelope
     void advanceEnvelope(Voice& voice, uint32_t samples);
     float computeEnvelope(Voice& voice) const;
+
+    // Filter envelope
+    void advanceFilterEnvelope(Voice& voice, uint32_t samples);
+    float computeFilterEnvelope(Voice& voice) const;
+
+    // Per-voice filter
+    float applyFilter(Voice& voice, float input, float cutoffHz, float resonance);
 
     // Wavetable generation helpers
     void generateBasicTable();
