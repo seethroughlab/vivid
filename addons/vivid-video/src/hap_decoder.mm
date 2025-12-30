@@ -11,6 +11,22 @@
 
 #include <iostream>
 
+// Helper to load tracks synchronously using async API (avoids deprecation warning on macOS 15+)
+static NSArray* loadTracksWithMediaType(AVAsset* asset, AVMediaType mediaType) {
+    __block NSArray* result = nil;
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+
+    [asset loadTracksWithMediaType:mediaType completionHandler:^(NSArray<AVAssetTrack*>* tracks, NSError* error) {
+        if (!error) {
+            result = tracks;
+        }
+        dispatch_semaphore_signal(semaphore);
+    }];
+
+    dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+    return result;
+}
+
 // Helper to create WGPUStringView from C string
 inline WGPUStringView toStringView(const char* str) {
     WGPUStringView sv;
@@ -69,7 +85,7 @@ bool HAPDecoder::isHAPFile(const std::string& path) {
         AVAsset* asset = [AVAsset assetWithURL:url];
 
         // Check video tracks for HAP codec
-        NSArray* videoTracks = [asset tracksWithMediaType:AVMediaTypeVideo];
+        NSArray* videoTracks = loadTracksWithMediaType(asset, AVMediaTypeVideo);
         if (videoTracks.count == 0) return false;
 
         AVAssetTrack* track = videoTracks[0];
@@ -142,7 +158,7 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
         }
 
         // Get video track
-        NSArray* videoTracks = [impl_->asset tracksWithMediaType:AVMediaTypeVideo];
+        NSArray* videoTracks = loadTracksWithMediaType(impl_->asset, AVMediaTypeVideo);
         if (videoTracks.count == 0) {
             std::cerr << "[HAPDecoder] No video track found" << std::endl;
             close();
@@ -188,7 +204,7 @@ bool HAPDecoder::open(Context& ctx, const std::string& path, bool loop) {
         }
 
         // Setup audio if available
-        NSArray* audioTracks = [impl_->asset tracksWithMediaType:AVMediaTypeAudio];
+        NSArray* audioTracks = loadTracksWithMediaType(impl_->asset, AVMediaTypeAudio);
         if (audioTracks.count > 0) {
             NSDictionary* audioSettings = @{
                 AVFormatIDKey: @(kAudioFormatLinearPCM),
@@ -505,7 +521,7 @@ void HAPDecoder::loopAudioReader() {
     if (!impl_->asset) return;
 
     @autoreleasepool {
-        NSArray* audioTracks = [impl_->asset tracksWithMediaType:AVMediaTypeAudio];
+        NSArray* audioTracks = loadTracksWithMediaType(impl_->asset, AVMediaTypeAudio);
         if (audioTracks.count == 0) {
             std::cerr << "[HAPDecoder] No audio tracks found for loop" << std::endl;
             return;
@@ -931,7 +947,7 @@ void HAPDecoder::seek(float seconds) {
             return;
         }
 
-        NSArray* videoTracks = [impl_->asset tracksWithMediaType:AVMediaTypeVideo];
+        NSArray* videoTracks = loadTracksWithMediaType(impl_->asset, AVMediaTypeVideo);
         AVAssetTrack* videoTrack = videoTracks[0];
 
         impl_->videoOutput = [[AVAssetReaderTrackOutput alloc]
@@ -941,7 +957,7 @@ void HAPDecoder::seek(float seconds) {
         [impl_->reader addOutput:impl_->videoOutput];
 
         if (hasAudio_) {
-            NSArray* audioTracks = [impl_->asset tracksWithMediaType:AVMediaTypeAudio];
+            NSArray* audioTracks = loadTracksWithMediaType(impl_->asset, AVMediaTypeAudio);
             if (audioTracks.count > 0) {
                 NSDictionary* audioSettings = @{
                     AVFormatIDKey: @(kAudioFormatLinearPCM),

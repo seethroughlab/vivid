@@ -22,6 +22,22 @@
 #include <mutex>
 #include <deque>
 
+// Helper to load tracks synchronously using async API (avoids deprecation warning on macOS 15+)
+static NSArray* loadTracksWithMediaType(AVAsset* asset, AVMediaType mediaType) {
+    __block NSArray* result = nil;
+    dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
+
+    [asset loadTracksWithMediaType:mediaType completionHandler:^(NSArray<AVAssetTrack*>* tracks, NSError* error) {
+        if (!error) {
+            result = tracks;
+        }
+        dispatch_semaphore_signal(semaphore);
+    }];
+
+    dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
+    return result;
+}
+
 // Helper to create WGPUStringView from C string
 inline WGPUStringView toStringView(const char* str) {
     WGPUStringView sv;
@@ -117,7 +133,7 @@ struct AVFPlaybackDecoder::Impl {
             return false;
         }
 
-        NSArray* audioTracks = [asset tracksWithMediaType:AVMediaTypeAudio];
+        NSArray* audioTracks = loadTracksWithMediaType(asset, AVMediaTypeAudio);
         if (audioTracks.count == 0) {
             audioReader = nil;
             return false;
@@ -251,8 +267,7 @@ bool AVFPlaybackDecoder::open(Context& ctx, const std::string& path, bool loop) 
         }
 
         // Get video track info synchronously (for dimensions/framerate)
-        // Note: In production, should use async loading, but sync is simpler here
-        NSArray* videoTracks = [impl_->asset tracksWithMediaType:AVMediaTypeVideo];
+        NSArray* videoTracks = loadTracksWithMediaType(impl_->asset, AVMediaTypeVideo);
         if (videoTracks.count == 0) {
             std::cerr << "[AVFPlaybackDecoder] No video track found" << std::endl;
             close();
@@ -268,7 +283,7 @@ bool AVFPlaybackDecoder::open(Context& ctx, const std::string& path, bool loop) 
         duration_ = CMTimeGetSeconds(impl_->asset.duration);
 
         // Check for audio and set up extraction
-        NSArray* audioTracks = [impl_->asset tracksWithMediaType:AVMediaTypeAudio];
+        NSArray* audioTracks = loadTracksWithMediaType(impl_->asset, AVMediaTypeAudio);
         hasAudio_ = (audioTracks.count > 0);
         impl_->filePath = path;
 
