@@ -194,6 +194,12 @@ public:
         }
     }
 
+    /// Get near clip plane
+    float getNear() const { return m_near; }
+
+    /// Get far clip plane
+    float getFar() const { return m_far; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Animated Inputs

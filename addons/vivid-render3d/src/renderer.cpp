@@ -1596,6 +1596,14 @@ void Render3D::setCameraInput(CameraOperator* camOp) {
     }
 }
 
+float Render3D::getNearPlane() const {
+    return m_cameraOp ? m_cameraOp->getNear() : 0.1f;
+}
+
+float Render3D::getFarPlane() const {
+    return m_cameraOp ? m_cameraOp->getFar() : 100.0f;
+}
+
 void Render3D::setLightInput(LightOperator* lightOp) {
     if (lightOp) {
         bool changed = false;

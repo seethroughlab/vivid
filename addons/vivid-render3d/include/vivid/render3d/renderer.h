@@ -170,6 +170,12 @@ public:
     /// Check if depth output is enabled
     bool hasDepthOutput() const { return m_depthOutputEnabled; }
 
+    /// Get camera near plane (for post-processing effects like Fog)
+    float getNearPlane() const;
+
+    /// Get camera far plane (for post-processing effects like Fog)
+    float getFarPlane() const;
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Displacement
