@@ -7,7 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - 2025-01-XX
+## [0.1.2] - 2025-01-XX
+
+### Added
+
+#### Audio
+- **Wavetable Synth** - Full-featured wavetable synthesizer with morphing, unison, and modulation
+- **MultiSampler** - Kontakt-style multi-sample instrument with key zones, velocity layers, round-robin, and keyswitch groups
+- **Synth Presets** - JSON preset save/load system for FMSynth (8 factory presets: EPiano, Bass, Bell, Brass, Organ, Pad, Pluck, Lead)
+- **Audio Operator Visualizations** - Custom chain visualizer graphics for all synths and audio effects
+
+#### 3D Rendering
+- **Fog Effect** - Depth-based atmospheric fog post-processor with Linear, Exponential, and ExponentialSquared modes
+- **PCF Soft Shadows** - Vogel disk sampling for smooth shadow edges on all light types
+- **Frustum Culling** - Automatic culling of off-screen geometry with debug visualization
+- **Debug Gizmos** - Wireframe visualizations for cameras (frustum) and lights (direction/cone)
+- **Shadow Controls** - `receiveShadow` toggle for objects, `castShadow` toggle for lights, manual shadow update control
+
+#### System
+- **Custom Node Graph** - Replaced ImNodes with custom Sugiyama hierarchical layout, mini-map, and keyboard navigation
+- **Claude-First Architecture** - MCP server (`vivid mcp`) for Claude Code integration with live parameter editing
+- **Custom App Icons** - Bundled apps can have project-specific icons and window titles
+- **Multi-Window Support** - Window spanning and multi-monitor configurations
+- **String-Based Connections** - Operators now use string names for inputs/outputs (type-safe)
+
+#### Addons
+- **vivid-midi** - MIDI input/output, file playback, and controller mapping
+- **vivid-serial** - Serial port communication and DMX output (Enttec devices)
+- **vivid-network** - OSC, UDP, and WebSocket operators (moved from core)
+
+### Changed
+
+- **wgpu-native upgraded to v27.0.4.0** - Includes critical memory leak fix (PR #542)
+- **Chain visualizer moved to core** - No longer requires addon dependencies
+- **ImGui removed from core** - Addons use `drawVisualization()` override instead
+- **Operator visualizations** - Network, serial, and MIDI operators now have custom chain visualizer graphics
+- **Plan files organized** - Moved to `plans/` directory
+
+### Fixed
+
+- **Memory leak** - Fixed persistent ~1MB/10s leak via wgpu-native upgrade
+- **Noise operator contrast** - Output was mostly grey, now full dynamic range
+- **Aspect ratio** - Noise and Ramp generators respect aspect ratio
+- **Audio-video recording** - Non-blocking GPU poll, audio tap instead of blocking export
+- **Windows video export** - Snapshot save now works on Windows
+- **Point light shadows** - Fixed cube map sampling issues with 6 separate textures
+- **CI builds** - Ubuntu 24.04 compatibility, Raspberry Pi cross-compilation fixes
+
+### Documentation
+
+- MCP server documentation complete
+- WebSocket API documentation added
+- Updated README with current API patterns
+
+## [0.1.0] - 2024-12-XX
 
 ### Added
 
@@ -58,5 +111,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebGPU via wgpu-native
 - Cross-platform: macOS, Windows, Linux
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/seethroughlab/vivid/compare/v0.1.0...v0.1.2
 [0.1.0]: https://github.com/seethroughlab/vivid/releases/tag/v0.1.0
