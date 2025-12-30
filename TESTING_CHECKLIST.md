@@ -1,168 +1,229 @@
-# v0.1.2 Release Testing Checklist
+# v0.1.1 Release Testing Checklist
 
 Use this checklist to verify functionality before tagging the release.
 
+Legend: **Mac** = macOS, **Win** = Windows, **RPi** = Raspberry Pi
+
+---
+
 ## Build Verification
 
-### macOS (Apple Silicon)
-- [ ] `cmake -B build && cmake --build build` completes without errors
-- [ ] `./build/bin/vivid --version` shows correct version
-- [ ] All addons build: vivid-audio, vivid-video, vivid-render3d, vivid-midi, vivid-serial, vivid-network
-
-### Windows
-- [ ] CI build passes (GitHub Actions)
-- [ ] Local build completes (if available)
-
-### Raspberry Pi
-- [ ] CI cross-compile passes (GitHub Actions)
+| Test                                                         | Mac | Win | RPi |
+|--------------------------------------------------------------|-----|-----|-----|
+| `cmake -B build && cmake --build build` completes            | [x] | [ ] | [ ] |
+| `./build/bin/vivid --version` shows correct version          | [x] | [ ] | [ ] |
+| All addons build (check `build/lib/` for dylib/dll/so files) | [x] | [ ] | [ ] |
 
 ---
 
 ## Core Features
 
 ### Hot Reload
-- [ ] `./build/bin/vivid examples/getting-started/02-hello-noise`
-- [ ] Edit chain.cpp while running → changes apply without restart
-- [ ] No crashes on repeated hot-reloads
+
+| Test                                                          | Mac | Win | RPi |
+|---------------------------------------------------------------|-----|-----|-----|
+| `./build/bin/vivid examples/getting-started/02-hello-noise`   | [x] | [ ] | [ ] |
+| Edit chain.cpp while running → changes apply without restart  | [x] | [ ] | [ ] |
+| No crashes on repeated hot-reloads                            | [x] | [ ] | [ ] |
 
 ### Chain Visualizer
-- [ ] Press `V` to toggle visualizer
-- [ ] Node graph renders correctly (Sugiyama layout)
-- [ ] Mini-map shows and click-to-navigate works
-- [ ] Keyboard navigation: `F` (fit), `1` (100%), arrows, Enter
-- [ ] Parameter inspector shows when node selected
-- [ ] Slider adjustments update preview in real-time
+
+| Test                                              | Mac | Win | RPi |
+|---------------------------------------------------|-----|-----|-----|
+| Press `Tab` to toggle visualizer                  | [x] | [ ] | [ ] |
+| Node graph renders correctly (Sugiyama layout)    | [ ] | [ ] | [ ] |
+| Mini-map click-to-navigate works                  | [ ] | [ ] | [ ] |
+| Keyboard navigation: `F` (fit), `1` (100%), Enter | [ ] | [ ] | [ ] |
+| Parameter inspector shows when node selected      | [ ] | [ ] | [ ] |
+| Slider adjustments update preview in real-time    | [ ] | [ ] | [ ] |
 
 ### Snapshot Mode
-- [ ] `./build/bin/vivid examples/getting-started/02-hello-noise --snapshot /tmp/test.png`
-- [ ] PNG file created successfully
+
+| Test                                     | Mac | Win | RPi |
+|------------------------------------------|-----|-----|-----|
+| `--snapshot /tmp/test.png` creates PNG   | [ ] | [ ] | [ ] |
 
 ---
 
 ## 2D Effects
 
-### Run each and verify visual output:
-- [ ] `examples/getting-started/01-hello-vivid` - Gradient renders
-- [ ] `examples/getting-started/02-hello-noise` - Animated noise
-- [ ] `examples/getting-started/03-hello-feedback` - Feedback effect
-- [ ] `examples/2d-effects/blur-bloom` - Blur and bloom visible
-- [ ] `examples/2d-effects/color-effects` - HSV/color manipulation
+| Example                                                        | Mac | Win | RPi |
+|----------------------------------------------------------------|-----|-----|-----|
+| `examples/getting-started/01-hello-vivid` - Gradient renders   | [ ] | [ ] | [ ] |
+| `examples/getting-started/02-hello-noise` - Animated noise     | [ ] | [ ] | [ ] |
+| `examples/getting-started/03-hello-feedback` - Feedback effect | [ ] | [ ] | [ ] |
+| `examples/2d-effects/blur-bloom` - Blur and bloom visible      | [ ] | [ ] | [ ] |
+| `examples/2d-effects/color-effects` - HSV/color manipulation   | [ ] | [ ] | [ ] |
 
 ---
 
 ## 3D Rendering
 
 ### Basic 3D
-- [ ] `examples/3d-rendering/3d-basics` - Geometry renders with lighting
-- [ ] `examples/3d-rendering/pbr-materials` - PBR shading works
 
-### Shadows (New in v0.1.2)
-- [ ] `testing-fixtures/shadow-comprehensive` - All shadow types render
-- [ ] Directional light shadows visible
-- [ ] Point light shadows visible
-- [ ] Spot light shadows visible
-- [ ] PCF soft edges visible (not hard pixelated)
+| Test                                                              | Mac | Win | RPi |
+|-------------------------------------------------------------------|-----|-----|-----|
+| `examples/3d-rendering/3d-basics` - Geometry renders with lighting| [ ] | [ ] | [ ] |
+| `examples/3d-rendering/pbr-materials` - PBR shading works         | [ ] | [ ] | [ ] |
 
-### Fog (New in v0.1.2)
-- [ ] `examples/3d-rendering/fog-test` - Fog fades distant objects
-- [ ] Near objects visible, far objects fade to fog color
+### Shadows (New in v0.1.1)
+
+| Test                                                           | Mac | Win | RPi |
+|----------------------------------------------------------------|-----|-----|-----|
+| `testing-fixtures/shadow-comprehensive` - All shadow types     | [ ] | [ ] | [ ] |
+| Directional light shadows visible                              | [ ] | [ ] | [ ] |
+| Point light shadows visible                                    | [ ] | [ ] | [ ] |
+| Spot light shadows visible                                     | [ ] | [ ] | [ ] |
+| PCF soft edges visible (not hard pixelated)                    | [ ] | [ ] | [ ] |
+
+### Fog (New in v0.1.1)
+
+| Test                                                     | Mac | Win | RPi |
+|----------------------------------------------------------|-----|-----|-----|
+| `examples/3d-rendering/fog-test` - Fog fades distant obj | [ ] | [ ] | [ ] |
+| Near objects visible, far objects fade to fog color      | [ ] | [ ] | [ ] |
 
 ### Debug Gizmos
-- [ ] Camera frustum wireframe visible when enabled
-- [ ] Light direction/cone wireframes visible when enabled
+
+| Test                                              | Mac | Win | RPi |
+|---------------------------------------------------|-----|-----|-----|
+| Camera frustum wireframe visible when enabled     | [ ] | [ ] | [ ] |
+| Light direction/cone wireframes visible           | [ ] | [ ] | [ ] |
 
 ---
 
 ## Audio
 
 ### Playback
-- [ ] `examples/audio/audio-reactive` - Audio plays without clicks/pops
-- [ ] No buffer underruns during playback
-- [ ] FFT visualization responds to audio
 
-### Synthesis (New in v0.1.2)
-- [ ] `testing-fixtures/wavetable-test` - Wavetable synth plays
-- [ ] `testing-fixtures/multi-sampler-test` - MultiSampler loads and plays
+| Test                                                        | Mac | Win | RPi |
+|-------------------------------------------------------------|-----|-----|-----|
+| `examples/audio/audio-reactive` - Audio plays, no pops      | [ ] | [ ] | [ ] |
+| No buffer underruns during playback                         | [ ] | [ ] | [ ] |
+| FFT visualization responds to audio                         | [ ] | [ ] | [ ] |
+
+### Synthesis (New in v0.1.1)
+
+| Test                                                        | Mac | Win | RPi |
+|-------------------------------------------------------------|-----|-----|-----|
+| `testing-fixtures/wavetable-test` - Wavetable synth plays   | [ ] | [ ] | [ ] |
+| `testing-fixtures/multi-sampler-test` - MultiSampler works  | [ ] | [ ] | [ ] |
 
 ### Audio-Visual Recording
-- [ ] Record button in visualizer works
-- [ ] Exported video has synchronized audio
-- [ ] No audio glitches during recording
+
+| Test                                   | Mac | Win | RPi |
+|----------------------------------------|-----|-----|-----|
+| Record button in visualizer works      | [ ] | [ ] | [ ] |
+| Exported video has synchronized audio  | [ ] | [ ] | [ ] |
+| No audio glitches during recording     | [ ] | [ ] | [ ] |
 
 ---
 
 ## Video
 
 ### Playback
-- [ ] `examples/video/video-basics` - Video plays (if test video available)
-- [ ] HAP codec video plays (macOS)
+
+| Test                                                        | Mac | Win | RPi |
+|-------------------------------------------------------------|-----|-----|-----|
+| `examples/video/video-basics` - Video plays                 | [ ] | [ ] | [ ] |
+| HAP codec video plays                                       | [ ] | N/A | N/A |
 
 ### Export
-- [ ] Video export produces valid file
-- [ ] Snapshot export works on all platforms
+
+| Test                             | Mac | Win | RPi |
+|----------------------------------|-----|-----|-----|
+| Video export produces valid file | [ ] | [ ] | [ ] |
+| Snapshot export works            | [ ] | [ ] | [ ] |
 
 ---
 
 ## Addons
 
 ### vivid-midi
-- [ ] MIDI input detection works (if controller available)
-- [ ] `testing-fixtures/midi-test` runs without errors
+
+| Test                                              | Mac | Win | RPi |
+|---------------------------------------------------|-----|-----|-----|
+| MIDI input detection works (if controller avail)  | [ ] | [ ] | [ ] |
+| `testing-fixtures/midi-test` runs without errors  | [ ] | [ ] | [ ] |
 
 ### vivid-serial
-- [ ] Serial port enumeration works
-- [ ] DMX output works (if Enttec device available)
+
+| Test                                        | Mac | Win | RPi |
+|---------------------------------------------|-----|-----|-----|
+| Serial port enumeration works               | [ ] | [ ] | [ ] |
+| DMX output works (if Enttec device avail)   | [ ] | [ ] | [ ] |
 
 ### vivid-network
-- [ ] OSC receive works
-- [ ] WebSocket connection works
+
+| Test                      | Mac | Win | RPi |
+|---------------------------|-----|-----|-----|
+| OSC receive works         | [ ] | [ ] | [ ] |
+| WebSocket connection works| [ ] | [ ] | [ ] |
 
 ---
 
 ## MCP Server (Claude Integration)
 
-- [ ] `./build/bin/vivid mcp` starts without errors
-- [ ] Responds to JSON-RPC initialize request
-- [ ] `list_operators` returns operator list
-- [ ] `search_docs` returns documentation results
+| Test                                          | Mac | Win | RPi |
+|-----------------------------------------------|-----|-----|-----|
+| `./build/bin/vivid mcp` starts without errors | [ ] | [ ] | [ ] |
+| Responds to JSON-RPC initialize request       | [ ] | [ ] | [ ] |
+| `list_operators` returns operator list        | [ ] | [ ] | [ ] |
+| `search_docs` returns documentation results   | [ ] | [ ] | [ ] |
 
 ---
 
 ## Memory & Stability
 
 ### Memory Leak Test
-- [ ] Run `examples/getting-started/02-hello-noise` for 5 minutes
-- [ ] Memory usage stays stable (no continuous growth)
+
+| Test                                            | Mac | Win | RPi |
+|-------------------------------------------------|-----|-----|-----|
+| Run example for 5 min, memory stays stable      | [ ] | [ ] | [ ] |
 
 ### Stress Test
-- [ ] Rapid hot-reload (save file 10+ times quickly)
-- [ ] No crashes or hangs
+
+| Test                                            | Mac | Win | RPi |
+|-------------------------------------------------|-----|-----|-----|
+| Rapid hot-reload (save file 10+ times quickly)  | [ ] | [ ] | [ ] |
+| No crashes or hangs                             | [ ] | [ ] | [ ] |
 
 ---
 
 ## Platform-Specific
 
 ### macOS
-- [ ] Window resizing works
-- [ ] Fullscreen toggle (`F` key) works
-- [ ] Retina display renders at correct resolution
+
+| Test                                        | Status |
+|---------------------------------------------|--------|
+| Window resizing works                       | [ ]    |
+| Fullscreen toggle (`F` key) works           | [ ]    |
+| Retina display renders at correct resolution| [ ]    |
 
 ### Windows
-- [ ] Window resizing works
-- [ ] Fullscreen toggle works
-- [ ] DPI scaling handled correctly
+
+| Test                           | Status |
+|--------------------------------|--------|
+| Window resizing works          | [ ]    |
+| Fullscreen toggle works        | [ ]    |
+| DPI scaling handled correctly  | [ ]    |
 
 ### Raspberry Pi
-- [ ] Basic examples run at acceptable framerate
-- [ ] No GPU driver errors
+
+| Test                                      | Status |
+|-------------------------------------------|--------|
+| Basic examples run at acceptable framerate| [ ]    |
+| No GPU driver errors                      | [ ]    |
 
 ---
 
 ## Documentation
 
-- [ ] README examples still accurate
-- [ ] CHANGELOG.md reflects all changes
-- [ ] docs/LLM-REFERENCE.md up to date
+| Test                              | Status |
+|-----------------------------------|--------|
+| README examples still accurate    | [ ]    |
+| CHANGELOG.md reflects all changes | [ ]    |
+| docs/LLM-REFERENCE.md up to date  | [ ]    |
 
 ---
 
@@ -174,4 +235,4 @@ Use this checklist to verify functionality before tagging the release.
 | Windows  |        |      |           |
 | RPi      |        |      |           |
 
-**Ready for v0.1.2 tag:** [ ] Yes / [ ] No
+**Ready for v0.1.1 tag:** [ ] Yes / [ ] No
