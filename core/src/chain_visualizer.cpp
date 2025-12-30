@@ -341,13 +341,17 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     m_overlay.begin(input.width, input.height);
 
     // Check if mouse is in inspector panel area (block node graph panning if so)
+    // But don't block if the mouse is in the mini-map (which is in bottom-right)
     bool blockNodeGraphInput = m_sliderState.dragging;
     if (!blockNodeGraphInput && m_inspectorVisible) {
         // Check if mouse is over inspector panel area (right side)
         float panelX = input.width - m_inspectorWidth - 12.0f;
         float statusBarHeight = 32.0f;
         if (scaledMousePos.x >= panelX && scaledMousePos.y >= statusBarHeight) {
-            blockNodeGraphInput = true;
+            // Don't block if in mini-map area
+            if (!m_nodeGraph.isPointInMiniMap(scaledMousePos)) {
+                blockNodeGraphInput = true;
+            }
         }
     }
 

@@ -437,6 +437,18 @@ public:
     void setEscapeCallback(std::function<void()> cb) { m_escapeCallback = cb; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Mini-map
+    /// @{
+
+    /**
+     * @brief Check if a screen position is within the mini-map area
+     * @param screenPos Position in screen coordinates
+     * @return true if the point is inside the mini-map
+     */
+    bool isPointInMiniMap(glm::vec2 screenPos) const;
+
+    /// @}
 
 private:
     // Rendering helpers
@@ -464,7 +476,6 @@ private:
 
     // Mini-map helpers
     void getContentBounds(float& minX, float& minY, float& maxX, float& maxY) const;
-    bool isPointInMiniMap(glm::vec2 screenPos) const;
 
     // Get pin screen position
     glm::vec2 getPinScreenPos(int pinId) const;
