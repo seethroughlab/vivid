@@ -8,6 +8,7 @@
 #include <ixwebsocket/IXWebSocket.h>
 #include <iostream>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <mutex>
 #include <condition_variable>
