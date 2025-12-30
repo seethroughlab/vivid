@@ -21,6 +21,7 @@
 #else
 #include <unistd.h>
 #include <signal.h>
+#include <sys/wait.h>
 #endif
 
 using json = nlohmann::json;

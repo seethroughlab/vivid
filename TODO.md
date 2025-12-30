@@ -306,9 +306,9 @@
     - GUI visualization (mini keyboard, active notes gold, voice dots, sample count)
     - Sample streaming DEFERRED (complex, needs background I/O thread)
 [x] Push v0.1.1. Ask Claude to make a changelog entry
-[ ] Lots of "has been explicitly marked deprecated here" warnings in the MacOS build.
-[ ] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
+[x] Lots of "has been explicitly marked deprecated here" warnings in the MacOS build.
+[x] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] Port liquid/fluid sim from ofxFluid? https://github.com/moostrik/ofxFlowTools
 [ ] I want to prepare to push v0.1.1, but I need a way to test everything (on Mac, Windows, and RPI) -- a checklist that will keep track of testing progress. 
-[ ] Make sure vivid-ml works with addon system and works in general
+[ ] Make sure vivid-ml works with addon system and works in general https://github.com/seethroughlab/vivid-ml
