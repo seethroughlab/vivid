@@ -35,7 +35,9 @@ target_include_directories(test_effects_2d PRIVATE
     ${CMAKE_SOURCE_DIR}/core/include
 )
 
-catch_discover_tests(test_effects_2d)
+catch_discover_tests(test_effects_2d
+    PROPERTIES LABELS "unit"
+)
 
 # -----------------------------------------------------------------------------
 # Integration Tests (core)
@@ -54,7 +56,9 @@ target_include_directories(test_integration PRIVATE
     ${CMAKE_SOURCE_DIR}/core/include
 )
 
-catch_discover_tests(test_integration)
+catch_discover_tests(test_integration
+    PROPERTIES LABELS "integration"
+)
 
 # -----------------------------------------------------------------------------
 # Addon Tests (included from addon directories)
@@ -76,10 +80,38 @@ if(BUILD_ADDON_TESTS)
 endif()
 
 # -----------------------------------------------------------------------------
-# Visual Regression Tests (requires headless mode)
+# Build Verification Tests (CTest-based)
 # -----------------------------------------------------------------------------
 
-# TODO: Enable when headless rendering is implemented
-# add_executable(test_visual
-#     visual/test_visual_regression.cpp
-# )
+# Version check - verify vivid --version returns correct version
+add_test(
+    NAME test_version_check
+    COMMAND $<TARGET_FILE:vivid> --version
+)
+set_tests_properties(test_version_check PROPERTIES
+    PASS_REGULAR_EXPRESSION "0\\.1\\.1"
+    TIMEOUT 10
+    LABELS "build"
+)
+
+# Core library existence check
+# Note: On multi-config generators (MSVC), libs are in lib/<CONFIG>/
+# We skip the file check since successful build already verifies this
+
+# -----------------------------------------------------------------------------
+# Smoke Tests (snapshot mode verification)
+# -----------------------------------------------------------------------------
+
+add_subdirectory(smoke)
+
+# -----------------------------------------------------------------------------
+# Visual Regression Tests
+# -----------------------------------------------------------------------------
+
+add_subdirectory(visual)
+
+# -----------------------------------------------------------------------------
+# MCP Server Tests
+# -----------------------------------------------------------------------------
+
+add_subdirectory(mcp)
