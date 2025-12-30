@@ -281,8 +281,6 @@
     - Audio is master clock: video frames sync to audio time (like video playback)
 [x] When the chain visualizer is active, mouse events shouldn't be passed on to the app (for instance, when I pan around the shadow-comprehensive, it orbits the camera around.)
 [x] It seems like we added a lot of functionality to overlay_canvas. Would any of these be helpful additions to the vivid core canvas rendering API?
-[ ] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
-[ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [x] There's a UX issue where Claude SHOULD be in charge of stopping/starting vivid projects in order to see output, but currently, the extension also wants to do that. Is there any reason to keep the CLI launching functionality in the extension? Or should it be totally up to the LLM to launch the CLI? Is there any advantage to adding MCP tools for running VSCode actions? Or is that just adding more intermediate steps? Eliminating the extension could also be a solution to the UX issue where Claude and the extension are making conflicting changes. There could just be a way to adjust values through the chain visualization and then it would output structured data to Claude about the changes. Then Claude would ask if the user wants to apply the changes. Websocket request (MCP tools) to get live changes. Included parameter name, line number, etc. or changes are saved to a diff file?
     - Implemented Claude-first architecture:
     - Added pending changes system to EditorBridge (queue slider changes, broadcast via WebSocket)
@@ -307,3 +305,10 @@
     - Lazy sample loading (ensureLoaded in noteOn, loads on first play)
     - GUI visualization (mini keyboard, active notes gold, voice dots, sample count)
     - Sample streaming DEFERRED (complex, needs background I/O thread)
+[x] Push v0.1.1. Ask Claude to make a changelog entry
+[ ] Lots of "has been explicitly marked deprecated here" warnings in the MacOS build.
+[ ] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
+[ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
+[ ] Port liquid/fluid sim from ofxFluid? https://github.com/moostrik/ofxFlowTools
+[ ] I want to prepare to push v0.1.1, but I need a way to test everything (on Mac, Windows, and RPI) -- a checklist that will keep track of testing progress. 
+[ ] Make sure vivid-ml works with addon system and works in general
