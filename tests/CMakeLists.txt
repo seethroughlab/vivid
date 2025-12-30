@@ -35,7 +35,9 @@ target_include_directories(test_effects_2d PRIVATE
     ${CMAKE_SOURCE_DIR}/core/include
 )
 
-catch_discover_tests(test_effects_2d)
+catch_discover_tests(test_effects_2d
+    PROPERTIES LABELS "unit"
+)
 
 # -----------------------------------------------------------------------------
 # Integration Tests (core)
@@ -54,7 +56,9 @@ target_include_directories(test_integration PRIVATE
     ${CMAKE_SOURCE_DIR}/core/include
 )
 
-catch_discover_tests(test_integration)
+catch_discover_tests(test_integration
+    PROPERTIES LABELS "integration"
+)
 
 # -----------------------------------------------------------------------------
 # Addon Tests (included from addon directories)
@@ -76,10 +80,57 @@ if(BUILD_ADDON_TESTS)
 endif()
 
 # -----------------------------------------------------------------------------
-# Visual Regression Tests (requires headless mode)
+# Build Verification Tests (CTest-based)
 # -----------------------------------------------------------------------------
 
-# TODO: Enable when headless rendering is implemented
-# add_executable(test_visual
-#     visual/test_visual_regression.cpp
-# )
+# Version check - verify vivid --version returns correct version
+add_test(
+    NAME test_version_check
+    COMMAND $<TARGET_FILE:vivid> --version
+)
+set_tests_properties(test_version_check PROPERTIES
+    PASS_REGULAR_EXPRESSION "0\\.1\\.1"
+    TIMEOUT 10
+    LABELS "build"
+)
+
+# Platform-specific library extension
+if(WIN32)
+    set(VIVID_LIB_SUFFIX ".dll")
+    set(VIVID_LIB_PREFIX "")
+elseif(APPLE)
+    set(VIVID_LIB_SUFFIX ".dylib")
+    set(VIVID_LIB_PREFIX "lib")
+else()
+    set(VIVID_LIB_SUFFIX ".so")
+    set(VIVID_LIB_PREFIX "lib")
+endif()
+
+# Core library existence check
+add_test(
+    NAME test_core_lib_exists
+    COMMAND ${CMAKE_COMMAND} -E env --
+        ${CMAKE_COMMAND} -P ${CMAKE_CURRENT_SOURCE_DIR}/check_file_exists.cmake
+        "${CMAKE_BINARY_DIR}/lib/${VIVID_LIB_PREFIX}vivid-core${VIVID_LIB_SUFFIX}"
+)
+set_tests_properties(test_core_lib_exists PROPERTIES
+    LABELS "build"
+)
+
+# -----------------------------------------------------------------------------
+# Smoke Tests (snapshot mode verification)
+# -----------------------------------------------------------------------------
+
+add_subdirectory(smoke)
+
+# -----------------------------------------------------------------------------
+# Visual Regression Tests
+# -----------------------------------------------------------------------------
+
+add_subdirectory(visual)
+
+# -----------------------------------------------------------------------------
+# MCP Server Tests
+# -----------------------------------------------------------------------------
+
+add_subdirectory(mcp)
