@@ -26,20 +26,20 @@ void setup(Context& ctx) {
     noise.octaves = 4;
 
     auto& hsv = chain.add<HSV>("hsv");
-    hsv.input("noise");
+    hsv.setInput(0, &noise);
     hsv.hueShift = 0.0f;
     hsv.saturation = 1.0f;
     hsv.value = 1.0f;
 
     auto& blur = chain.add<Blur>("blur");
-    blur.input("hsv");
+    blur.setInput(0, &hsv);
     blur.radius = 0.0f;
     blur.passes = 2;
 
     // Web server
-    chain.add<WebServer>("web")
-        .port(8080)
-        .staticDir("examples/network/web-control/web/");
+    auto& web = chain.add<WebServer>("web");
+    web.port(8080);
+    web.staticDir("examples/network/web-control/web/");
 
     chain.output("blur");
 

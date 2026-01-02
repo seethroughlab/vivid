@@ -56,9 +56,10 @@ std::vector<std::string> AddonRegistry::scanIncludes(const fs::path& sourcePath)
         if (std::regex_search(line, match, includeRegex)) {
             std::string ns = match[1].str();
             // Skip core namespaces (not addons)
+            // Note: "network" and "gui" are addons, not core - don't skip them
             if (ns != "vivid" && ns != "context" && ns != "display" &&
                 ns != "hot_reload" && ns != "operator" && ns != "chain" &&
-                ns != "effects" && ns != "network" && ns != "io") {
+                ns != "effects" && ns != "io") {
                 namespaces.insert(ns);
             }
         }

@@ -313,6 +313,7 @@
 [x] I want to prepare to push v0.1.1, but I need a way to test everything (on Mac, Windows, and RPI) -- a checklist that will keep track of testing progress. 
 [x] The MCP CI tests were disabled "because they need more work", but I'd like to fix them. 
 [x] Let's try to fix the error where snapshots appear much darker than the acutal app
+[x] Make animated gifs of division-raster, chain-basics, candy-crash, globe (2fps, 12 frames)
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] Port liquid/fluid sim from ofxFluid? https://github.com/moostrik/ofxFlowTools
 [ ] Make sure vivid-ml works with addon system and works in general https://github.com/seethroughlab/vivid-ml

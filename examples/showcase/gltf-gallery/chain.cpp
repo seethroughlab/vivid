@@ -51,7 +51,8 @@ void setup(Context& ctx) {
     g_models = findModels("assets/models");
     if (g_models.empty()) {
         std::cerr << "[gallery] No models found in assets/models/" << std::endl;
-        chain.add<SolidColor>("fallback").color(Color::fromHex("#331A26"));
+        auto& fallback = chain.add<SolidColor>("fallback");
+        fallback.color.set(0.2f, 0.1f, 0.15f, 1.0f);  // Dark purple
         chain.output("fallback");
         return;
     }
@@ -61,69 +62,69 @@ void setup(Context& ctx) {
     // =========================================================================
 
     // Load model
-    auto& model = chain.add<GLTFLoader>("model")
-        .file(g_models[g_currentModel])
-        .loadTextures(true)
-        .computeTangents(true)
-        .scale(1.0f);
+    auto& model = chain.add<GLTFLoader>("model");
+    model.file(g_models[g_currentModel]);
+    model.loadTextures(true);
+    model.computeTangents(true);
+    model.scale = 1.0f;
 
     // Scene composer
     auto& scene = SceneComposer::create(chain, "scene");
     scene.add(&model, glm::mat4(1.0f), glm::vec4(1.0f));
 
     // Camera with orbit controls
-    auto& camera = chain.add<CameraOperator>("camera")
-        .orbitCenter(0, 0, 0)
-        .distance(3.0f)
-        .elevation(0.2f)
-        .azimuth(0.0f)
-        .fov(45.0f);
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.orbitCenter(0, 0, 0);
+    camera.distance(3.0f);
+    camera.elevation(0.2f);
+    camera.azimuth(0.0f);
+    camera.fov(45.0f);
 
     // Key light (warm, from upper right)
-    auto& keyLight = chain.add<DirectionalLight>("keyLight")
-        .direction(1.0f, 2.0f, 1.5f)
-        .color(Color::fromHex("#FFF2E6"))  // Warm white
-        .intensity(2.5f);
+    auto& keyLight = chain.add<DirectionalLight>("keyLight");
+    keyLight.direction(-1.0f, -2.0f, -1.5f);  // From upper-right-front
+    keyLight.color(1.0f, 0.95f, 0.9f);  // Warm white
+    keyLight.intensity = 2.5f;
 
     // IBL environment for reflections
-    auto& ibl = chain.add<IBLEnvironment>("ibl")
-        .hdrFile("assets/hdris/warm_reception_dinner_4k.hdr");
+    auto& ibl = chain.add<IBLEnvironment>("ibl");
+    ibl.setHdrFile("assets/hdris/warm_reception_dinner_4k.hdr");
 
     // Main 3D render
-    auto& render = chain.add<Render3D>("render")
-        .input("scene")
-        .cameraInput(&camera)
-        .lightInput(&keyLight)
-        .shadingMode(ShadingMode::PBR)
-        .ibl(true)
-        .environmentInput(&ibl)
-        .showSkybox(true)
-        .clearColor(Color::fromHex("#140F1A"));
+    auto& render = chain.add<Render3D>("render");
+    render.setInput(&scene);
+    render.setCameraInput(&camera);
+    render.setLightInput(&keyLight);
+    render.setShadingMode(ShadingMode::PBR);
+    render.setIbl(true);
+    render.setEnvironmentInput(&ibl);
+    render.setShowSkybox(true);
+    render.setColor(0.08f, 0.06f, 0.1f, 1.0f);  // Dark purple background
 
     // =========================================================================
     // Post-Processing Effects
     // =========================================================================
 
     // Bloom for highlights
-    auto& bloom = chain.add<Bloom>("bloom")
-        .input("render")
-        .threshold(0.8f)
-        .intensity(0.4f)
-        .radius(8.0f);
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.setInput(0, &render);
+    bloom.threshold = 0.8f;
+    bloom.intensity = 0.4f;
+    bloom.radius = 8.0f;
 
     // Subtle vignette
-    auto& vignette = chain.add<CRTEffect>("vignette")
-        .input("bloom")
-        .curvature(0.0f)
-        .vignette(0.3f)
-        .scanlines(0.0f)
-        .bloom(0.0f)
-        .chromatic(0.0f);
+    auto& vignette = chain.add<CRTEffect>("vignette");
+    vignette.setInput(0, &bloom);
+    vignette.curvature = 0.0f;
+    vignette.vignette = 0.3f;
+    vignette.scanlines = 0.0f;
+    vignette.bloom = 0.0f;
+    vignette.chromatic = 0.0f;
 
     // Color grading - slight warmth
-    auto& colorGrade = chain.add<HSV>("colorGrade")
-        .input("vignette")
-        .saturation(1.1f);
+    auto& colorGrade = chain.add<HSV>("colorGrade");
+    colorGrade.setInput(0, &vignette);
+    colorGrade.saturation = 1.1f;
 
     chain.output("colorGrade");
 
@@ -219,7 +220,7 @@ void update(Context& ctx) {
     // Effect Updates
     // =========================================================================
 
-    bloom.intensity(g_enableBloom ? 0.4f : 0.0f);
+    bloom.intensity = g_enableBloom ? 0.4f : 0.0f;
 }
 
 VIVID_CHAIN(setup, update)

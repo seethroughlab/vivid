@@ -24,10 +24,12 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // UDP receiver on port 5000
-    chain.add<UdpIn>("udp").port(5000);
+    auto& udp = chain.add<UdpIn>("udp");
+    udp.port(5000);
 
     // Visual display
-    chain.add<Canvas>("display").size(800, 600);
+    auto& display = chain.add<Canvas>("display");
+    display.setResolution(800, 600);
 
     chain.output("display");
 
@@ -93,27 +95,32 @@ void update(Context& ctx) {
     canvas.clear(0.05f, 0.05f, 0.1f, 1.0f);
 
     // Title
-    canvas.text("UDP Receiver - Port 5000", 20, 30, {1.0f, 1.0f, 1.0f, 1.0f});
+    canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
+    canvas.fillText("UDP Receiver - Port 5000", 20, 30);
 
     // Packet count
     std::string countStr = "Packets received: " + std::to_string(g_packetCount);
-    canvas.text(countStr.c_str(), 20, 60, {0.7f, 0.7f, 0.7f, 1.0f});
+    canvas.fillStyle(0.7f, 0.7f, 0.7f, 1.0f);
+    canvas.fillText(countStr, 20, 60);
 
     // Last message with fade
     if (!g_lastMessage.empty()) {
         float alpha = std::max(0.0f, 1.0f - g_messageAge * 0.2f);
-        canvas.text("Last message:", 20, 120, {0.5f, 0.8f, 1.0f, alpha});
+        canvas.fillStyle(0.5f, 0.8f, 1.0f, alpha);
+        canvas.fillText("Last message:", 20, 120);
 
         // Truncate long messages
         std::string displayMsg = g_lastMessage.substr(0, 50);
         if (g_lastMessage.length() > 50) displayMsg += "...";
-        canvas.text(displayMsg.c_str(), 40, 150, {1.0f, 1.0f, 1.0f, alpha});
+        canvas.fillStyle(1.0f, 1.0f, 1.0f, alpha);
+        canvas.fillText(displayMsg, 40, 150);
     }
 
     // Float visualization as bars
     if (!g_receivedFloats.empty()) {
         float alpha = std::max(0.0f, 1.0f - g_messageAge * 0.2f);
-        canvas.text("Float values:", 20, 220, {0.5f, 0.8f, 1.0f, alpha});
+        canvas.fillStyle(0.5f, 0.8f, 1.0f, alpha);
+        canvas.fillText("Float values:", 20, 220);
 
         float barWidth = 60.0f;
         float barMaxHeight = 200.0f;
@@ -126,25 +133,29 @@ void update(Context& ctx) {
             float y = 450 - barHeight;
 
             // Bar background
-            canvas.rectFilled(x, 250, barWidth, barMaxHeight, {0.2f, 0.2f, 0.2f, alpha});
+            canvas.fillStyle(0.2f, 0.2f, 0.2f, alpha);
+            canvas.fillRect(x, 250, barWidth, barMaxHeight);
 
             // Bar fill
-            glm::vec4 barColor = {0.3f + value * 0.5f, 0.8f - value * 0.3f, 0.3f, alpha};
-            canvas.rectFilled(x, y, barWidth, barHeight, barColor);
+            canvas.fillStyle(0.3f + value * 0.5f, 0.8f - value * 0.3f, 0.3f, alpha);
+            canvas.fillRect(x, y, barWidth, barHeight);
 
             // Value label
             char label[16];
             snprintf(label, sizeof(label), "%.2f", g_receivedFloats[i]);
-            canvas.text(label, x + 10, 470, {1.0f, 1.0f, 1.0f, alpha * 0.8f});
+            canvas.fillStyle(1.0f, 1.0f, 1.0f, alpha * 0.8f);
+            canvas.fillText(label, x + 10, 470);
         }
     }
 
     // Connection indicator
     float pulse = (sin(static_cast<float>(ctx.time()) * 3.0f) + 1.0f) * 0.5f;
-    glm::vec4 indicatorColor = udp.isListening()
-        ? glm::vec4(0.2f, 0.8f, 0.2f, 0.5f + pulse * 0.5f)
-        : glm::vec4(0.8f, 0.2f, 0.2f, 1.0f);
-    canvas.circleFilled(760, 30, 10, indicatorColor, 16);
+    if (udp.isListening()) {
+        canvas.fillStyle(0.2f, 0.8f, 0.2f, 0.5f + pulse * 0.5f);
+    } else {
+        canvas.fillStyle(0.8f, 0.2f, 0.2f, 1.0f);
+    }
+    canvas.fillCircle(760, 30, 10, 16);
 }
 
 VIVID_CHAIN(setup, update)
