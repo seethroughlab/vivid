@@ -5,6 +5,7 @@
 #include <iomanip>
 #include <chrono>
 #include <ctime>
+#include <cstring>
 
 namespace vivid {
 
