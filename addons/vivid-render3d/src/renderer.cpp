@@ -1019,8 +1019,7 @@ struct Uniforms {
 struct DisplacementUniforms {
     amplitude: f32,
     midpoint: f32,
-    _pad0: f32,
-    _pad1: f32,
+    texelSize: vec2f,  // 1.0 / texture dimensions for finite differences
 }
 
 // Group 0: Material (same as textured PBR)
@@ -1060,31 +1059,45 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    // Sample displacement map at vertex UV using LOD 0
-    let dispSample = textureSampleLevel(displacementMap, displacementSampler, in.uv, 0.0).r;
+    // Sample displacement map at vertex UV and neighbors for normal calculation
+    let dispCenter = textureSampleLevel(displacementMap, displacementSampler, in.uv, 0.0).r;
+    let dispRight = textureSampleLevel(displacementMap, displacementSampler, in.uv + vec2f(displacement.texelSize.x, 0.0), 0.0).r;
+    let dispUp = textureSampleLevel(displacementMap, displacementSampler, in.uv + vec2f(0.0, displacement.texelSize.y), 0.0).r;
 
-    // DEBUG: Use UV-based test pattern as fallback when texture sampling fails
-    // This creates a visible terrain pattern for testing on Windows/Vulkan
-    var testPattern = sin(in.uv.x * 20.0) * sin(in.uv.y * 20.0) * 0.5 + 0.5;
-
-    // Use texture sample if it has variation, otherwise use test pattern
-    var finalSample = dispSample;
-    if (abs(dispSample - 0.5) < 0.01 || dispSample < 0.01) {
-        finalSample = testPattern;
-    }
-
-    // Calculate displacement: (sample - midpoint) * amplitude
-    let dispAmount = (finalSample - displacement.midpoint) * displacement.amplitude;
+    // Calculate displacement amounts
+    let dispAmount = (dispCenter - displacement.midpoint) * displacement.amplitude;
+    let dispAmountRight = (dispRight - displacement.midpoint) * displacement.amplitude;
+    let dispAmountUp = (dispUp - displacement.midpoint) * displacement.amplitude;
 
     // Displace position along normal
     let displacedPos = in.position + in.normal * dispAmount;
+
+    // Compute displaced normal using finite differences
+    let T_obj = in.tangent.xyz;
+    let B_obj = cross(in.normal, T_obj) * in.tangent.w;
+
+    // Approximate neighboring displaced positions
+    let uvScale = 2.0;  // Approximate object-space distance per UV unit
+    let posRight = in.position + T_obj * displacement.texelSize.x * uvScale + in.normal * dispAmountRight;
+    let posUp = in.position + B_obj * displacement.texelSize.y * uvScale + in.normal * dispAmountUp;
+
+    // Cross product gives displaced normal
+    let dPdU = posRight - displacedPos;
+    let dPdV = posUp - displacedPos;
+    var displacedNormal = normalize(cross(dPdU, dPdV));
+
+    // Ensure normal points outward
+    if (dot(displacedNormal, in.normal) < 0.0) {
+        displacedNormal = -displacedNormal;
+    }
 
     // Use displaced position for rendering
     let worldPos = uniforms.model * vec4f(displacedPos, 1.0);
     out.worldPos = worldPos.xyz;
     out.clipPos = uniforms.mvp * vec4f(displacedPos, 1.0);
 
-    let N = normalize((uniforms.normalMatrix * vec4f(in.normal, 0.0)).xyz);
+    // Transform displaced normal to world space
+    let N = normalize((uniforms.normalMatrix * vec4f(displacedNormal, 0.0)).xyz);
     let T = normalize((uniforms.model * vec4f(in.tangent.xyz, 0.0)).xyz);
     let B = cross(N, T) * in.tangent.w;
 
@@ -2944,10 +2957,16 @@ void Render3D::process(Context& ctx) {
             struct DisplacementUniforms {
                 float amplitude;
                 float midpoint;
-                float _pad[2];
+                float texelSizeX;
+                float texelSizeY;
             } dispUniforms;
             dispUniforms.amplitude = m_displacementAmplitude;
             dispUniforms.midpoint = m_displacementMidpoint;
+            // Texel size for finite difference normal calculation
+            int dispWidth = m_displacementOp->outputWidth();
+            int dispHeight = m_displacementOp->outputHeight();
+            dispUniforms.texelSizeX = 1.0f / static_cast<float>(dispWidth);
+            dispUniforms.texelSizeY = 1.0f / static_cast<float>(dispHeight);
             wgpuQueueWriteBuffer(ctx.queue(), m_displacementUniformBuffer, 0, &dispUniforms, sizeof(dispUniforms));
 
             // Create displacement bind group

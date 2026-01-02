@@ -1,12 +1,14 @@
 // Depth of Field Showcase - Vivid
 // Demonstrates real depth-based DOF using Render3D's depth output
-// Objects at varying depths blur based on focus distance
+// Features procedural PBR materials with varying surface properties:
+//   - Near objects: Rocky orange with rough procedural surface
+//   - Mid objects: Polished green metal with cellular roughness
+//   - Far objects: Glowing blue with animated emissive
 //
 // Controls:
 //   LEFT/RIGHT: Adjust focus distance
 //   UP/DOWN: Adjust blur strength
 //   D: Toggle depth debug view
-//   TAB: Open parameter controls
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -28,28 +30,70 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // =========================================================================
-    // Geometry
+    // Procedural Textures for Materials
     // =========================================================================
 
-    // Materials for each depth layer - highly saturated colors
+    // Near material: Rocky red with procedural roughness variation
+    auto& nearRoughnessTex = chain.add<Noise>("nearRoughness");
+    nearRoughnessTex.scale = 8.0f;
+    nearRoughnessTex.octaves = 4;
+    nearRoughnessTex.type(NoiseType::Simplex);
+    nearRoughnessTex.setResolution(256, 256);
+
+    // Mid material: Metallic green with cellular pattern
+    auto& midRoughnessTex = chain.add<Noise>("midRoughness");
+    midRoughnessTex.scale = 12.0f;
+    midRoughnessTex.octaves = 2;
+    midRoughnessTex.type(NoiseType::Worley);
+    midRoughnessTex.setResolution(256, 256);
+
+    // Far material: Glowing blue with animated emissive
+    auto& farEmissiveTex = chain.add<Noise>("farEmissive");
+    farEmissiveTex.scale = 5.0f;
+    farEmissiveTex.speed = 0.3f;
+    farEmissiveTex.octaves = 3;
+    farEmissiveTex.type(NoiseType::Simplex);
+    farEmissiveTex.setResolution(256, 256);
+
+    // Ground: Subtle noise for variation
+    auto& groundRoughnessTex = chain.add<Noise>("groundRoughness");
+    groundRoughnessTex.scale = 4.0f;
+    groundRoughnessTex.octaves = 2;
+    groundRoughnessTex.type(NoiseType::Simplex);
+    groundRoughnessTex.setResolution(256, 256);
+
+    // =========================================================================
+    // Materials with Procedural Textures
+    // =========================================================================
+
+    // Near material: Rocky red/orange with rough surface
     auto& nearMat = chain.add<TexturedMaterial>("nearMat");
-    nearMat.baseColorFactor(1.0f, 0.0f, 0.0f, 1.0f);  // Pure red
-    nearMat.roughnessFactor(0.5f);
+    nearMat.baseColorFactor(0.9f, 0.25f, 0.1f, 1.0f);  // Orange-red
+    nearMat.roughnessInput(&nearRoughnessTex);
+    nearMat.roughnessFactor(0.8f);  // Generally rough
     nearMat.metallicFactor(0.0f);
 
+    // Mid material: Polished green metal
     auto& midMat = chain.add<TexturedMaterial>("midMat");
-    midMat.baseColorFactor(0.0f, 1.0f, 0.0f, 1.0f);  // Pure green
-    midMat.roughnessFactor(0.5f);
-    midMat.metallicFactor(0.0f);
+    midMat.baseColorFactor(0.2f, 0.85f, 0.3f, 1.0f);  // Bright green
+    midMat.roughnessInput(&midRoughnessTex);
+    midMat.roughnessFactor(0.25f);  // Mostly smooth/shiny
+    midMat.metallicFactor(0.9f);    // Metallic
 
+    // Far material: Glowing blue with emissive
     auto& farMat = chain.add<TexturedMaterial>("farMat");
-    farMat.baseColorFactor(0.0f, 0.3f, 1.0f, 1.0f);  // Bright blue
-    farMat.roughnessFactor(0.5f);
-    farMat.metallicFactor(0.0f);
+    farMat.baseColorFactor(0.1f, 0.3f, 0.9f, 1.0f);  // Blue
+    farMat.emissiveInput(&farEmissiveTex);
+    farMat.emissiveFactor(0.2f, 0.5f, 1.0f);  // Blue glow
+    farMat.emissiveStrength(2.0f);
+    farMat.roughnessFactor(0.3f);
+    farMat.metallicFactor(0.5f);
 
+    // Ground material: Subtle concrete-like surface
     auto& groundMat = chain.add<TexturedMaterial>("groundMat");
-    groundMat.baseColorFactor(0.3f, 0.3f, 0.32f, 1.0f);  // Gray
-    groundMat.roughnessFactor(0.9f);
+    groundMat.baseColorFactor(0.25f, 0.25f, 0.27f, 1.0f);  // Gray
+    groundMat.roughnessInput(&groundRoughnessTex);
+    groundMat.roughnessFactor(0.85f);
     groundMat.metallicFactor(0.0f);
 
     // Near geometry (red) - with material colors
@@ -240,12 +284,14 @@ void setup(Context& ctx) {
     std::cout << "Depth of Field Showcase" << std::endl;
     std::cout << "========================================" << std::endl;
     std::cout << "Real depth-based DOF using depth buffer" << std::endl;
-    std::cout << "Objects: NEAR (red), MID (green), FAR (blue)" << std::endl;
+    std::cout << "Materials with procedural textures:" << std::endl;
+    std::cout << "  NEAR: Rocky orange (rough)" << std::endl;
+    std::cout << "  MID: Polished green metal" << std::endl;
+    std::cout << "  FAR: Glowing blue (emissive)" << std::endl;
     std::cout << "\nControls:" << std::endl;
     std::cout << "  LEFT/RIGHT: Focus distance" << std::endl;
     std::cout << "  UP/DOWN: Blur strength" << std::endl;
     std::cout << "  D: Toggle depth debug view" << std::endl;
-    std::cout << "  TAB: Parameters" << std::endl;
     std::cout << "========================================\n" << std::endl;
 }
 

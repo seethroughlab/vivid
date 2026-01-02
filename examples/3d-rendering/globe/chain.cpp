@@ -44,8 +44,8 @@ void setup(Context& ctx) {
 
     auto& material = chain.add<TexturedMaterial>("earthMat");
     material.baseColor("assets/textures/flat_earth_Largest_still.0330.jpg");
-    material.roughnessFactor(0.75f);
-    material.metallicFactor(0.0f);
+    material.roughnessFactor(0.15f);  // Very shiny to show off PBR reflections
+    material.metallicFactor(0.2f);    // Metallic for extra sheen
 
     auto& sphere = chain.add<Sphere>("earth");
     sphere.radius(1.0f);
