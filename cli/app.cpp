@@ -79,7 +79,7 @@ static IsAvailableFn isAvailable = nullptr;
 static bool g_lookedUp = false;
 static bool g_initialized = false;
 
-// Try to find vivid-gui functions via dlsym (C-linkage names)
+// Try to find vivid-gui functions via dlsym/GetProcAddress (C-linkage names)
 static void lookupFunctions() {
     if (g_lookedUp) return;
     g_lookedUp = true;
@@ -91,6 +91,16 @@ static void lookupFunctions() {
     render = (RenderFn)dlsym(RTLD_DEFAULT, "vivid_gui_render");
     shutdown = (ShutdownFn)dlsym(RTLD_DEFAULT, "vivid_gui_shutdown");
     isAvailable = (IsAvailableFn)dlsym(RTLD_DEFAULT, "vivid_gui_is_available");
+#elif defined(_WIN32)
+    // On Windows, try to get the vivid-gui.dll module handle
+    HMODULE guiModule = GetModuleHandleA("vivid-gui.dll");
+    if (guiModule) {
+        init = (InitFn)GetProcAddress(guiModule, "vivid_gui_init");
+        beginFrame = (BeginFrameFn)GetProcAddress(guiModule, "vivid_gui_begin_frame");
+        render = (RenderFn)GetProcAddress(guiModule, "vivid_gui_render");
+        shutdown = (ShutdownFn)GetProcAddress(guiModule, "vivid_gui_shutdown");
+        isAvailable = (IsAvailableFn)GetProcAddress(guiModule, "vivid_gui_is_available");
+    }
 #endif
 }
 

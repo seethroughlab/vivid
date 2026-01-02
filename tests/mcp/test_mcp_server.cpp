@@ -13,6 +13,7 @@
 #include <array>
 #include <mutex>
 #include <atomic>
+#include <fcntl.h>
 
 #ifdef _WIN32
 #define popen _popen
@@ -64,10 +65,13 @@ public:
         }
         SetHandleInformation(m_stdoutRead, HANDLE_FLAG_INHERIT, 0);
 
+        // Open NUL device for stderr (discard log messages)
+        HANDLE hNul = CreateFileA("NUL", GENERIC_WRITE, 0, &saAttr, OPEN_EXISTING, 0, NULL);
+
         STARTUPINFOA si;
         ZeroMemory(&si, sizeof(si));
         si.cb = sizeof(si);
-        si.hStdError = m_stdoutWrite;
+        si.hStdError = hNul;  // Discard stderr (log messages go there)
         si.hStdOutput = m_stdoutWrite;
         si.hStdInput = m_stdinRead;
         si.dwFlags |= STARTF_USESTDHANDLES;
@@ -84,12 +88,14 @@ public:
             CloseHandle(m_stdinWrite);
             CloseHandle(m_stdoutRead);
             CloseHandle(m_stdoutWrite);
+            if (hNul != INVALID_HANDLE_VALUE) CloseHandle(hNul);
             return false;
         }
 
-        // Close unused ends of pipes
+        // Close unused ends of pipes and NUL handle
         CloseHandle(m_stdinRead);
         CloseHandle(m_stdoutWrite);
+        if (hNul != INVALID_HANDLE_VALUE) CloseHandle(hNul);
 
         m_running = true;
 #else
@@ -110,7 +116,12 @@ public:
             close(stdoutPipe[0]);
             dup2(stdinPipe[0], STDIN_FILENO);
             dup2(stdoutPipe[1], STDOUT_FILENO);
-            dup2(stdoutPipe[1], STDERR_FILENO);
+            // Redirect stderr to /dev/null (discard log messages)
+            int devNull = open("/dev/null", O_WRONLY);
+            if (devNull >= 0) {
+                dup2(devNull, STDERR_FILENO);
+                close(devNull);
+            }
             close(stdinPipe[0]);
             close(stdoutPipe[1]);
 

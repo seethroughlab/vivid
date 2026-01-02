@@ -260,7 +260,14 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
     // Font index 1: Inter Medium (node titles only)
     // Font index 2: Roboto Mono (numeric displays - FPS, timings, etc.)
     auto exeDir = AssetLoader::instance().executableDir();
+
+    // Find project root by walking up until we find the assets folder
+    // This handles both single-config (build/bin/) and multi-config (build/bin/Debug/) generators
     auto projectRoot = exeDir.parent_path().parent_path();  // build/bin -> build -> project
+    if (!std::filesystem::exists(projectRoot / "assets")) {
+        // Try one more level up (for MSVC multi-config: build/bin/Debug -> build/bin -> build -> project)
+        projectRoot = projectRoot.parent_path();
+    }
 
     // Paths to font files
     std::string regularPath = (projectRoot / "assets/fonts/Inter/static/Inter_18pt-Regular.ttf").string();

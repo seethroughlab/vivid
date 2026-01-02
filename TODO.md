@@ -309,9 +309,10 @@
 [x] Lots of "has been explicitly marked deprecated here" warnings in the MacOS build.
 [x] One thing I'm not clear about is the relationship between the vivid built-in video export and the vivid-video addon. Is the addon needed to support video export? 
 [x] Not all tests need to be CI -- If there are tests that Claude Code can do, we can run them locally. 
+[x] I realize now that there are 3 kinds of tests: (1) CI tests that can run on Github, (2) Automated tests that can be run locally by Claude Code, (3) Tests that require human judgement. Please organize the v0.1.1-checklist.md into these 3 categories. 
+[x] I want to prepare to push v0.1.1, but I need a way to test everything (on Mac, Windows, and RPI) -- a checklist that will keep track of testing progress. 
+[x] The MCP CI tests were disabled "because they need more work", but I'd like to fix them. 
+[x] Let's try to fix the error where snapshots appear much darker than the acutal app
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] Port liquid/fluid sim from ofxFluid? https://github.com/moostrik/ofxFlowTools
-[ ] I want to prepare to push v0.1.1, but I need a way to test everything (on Mac, Windows, and RPI) -- a checklist that will keep track of testing progress. 
 [ ] Make sure vivid-ml works with addon system and works in general https://github.com/seethroughlab/vivid-ml
-[ ] The MCP CI tests were disabled "because they need more work", but I'd like to fix them. 
-[ ] I realize now that there are 3 kinds of tests: (1) CI tests that can run on Github, (2) Automated tests that can be run locally by Claude Code, (3) Tests that require human judgement. Please organize the v0.1.1-checklist.md into these 3 categories. 

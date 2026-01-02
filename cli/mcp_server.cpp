@@ -166,7 +166,10 @@ public:
             try {
                 json request = json::parse(line);
                 json response = handleRequest(request);
-                std::cout << response.dump() << "\n" << std::flush;
+                // Only send response if not empty (notifications don't get responses)
+                if (!response.is_null() && !response.empty()) {
+                    std::cout << response.dump() << "\n" << std::flush;
+                }
             } catch (const json::exception& e) {
                 json error;
                 error["jsonrpc"] = "2.0";
@@ -191,8 +194,11 @@ private:
 
         if (method == "initialize") {
             response["result"] = handleInitialize(params);
-        } else if (method == "initialized") {
+        } else if (method == "initialized" || method == "notifications/initialized") {
             // Notification, no response needed
+            return json();
+        } else if (method.rfind("notifications/", 0) == 0) {
+            // All notifications (methods starting with notifications/) don't need a response
             return json();
         } else if (method == "shutdown") {
             response["result"] = nullptr;

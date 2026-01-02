@@ -1019,8 +1019,7 @@ struct Uniforms {
 struct DisplacementUniforms {
     amplitude: f32,
     midpoint: f32,
-    _pad0: f32,
-    _pad1: f32,
+    texelSize: vec2f,  // 1.0 / texture dimensions for finite differences
 }
 
 // Group 0: Material (same as textured PBR)
@@ -1060,21 +1059,45 @@ struct VertexOutput {
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    // Sample displacement map at vertex UV using LOD 0
-    let dispSample = textureSampleLevel(displacementMap, displacementSampler, in.uv, 0.0).r;
+    // Sample displacement map at vertex UV and neighbors for normal calculation
+    let dispCenter = textureSampleLevel(displacementMap, displacementSampler, in.uv, 0.0).r;
+    let dispRight = textureSampleLevel(displacementMap, displacementSampler, in.uv + vec2f(displacement.texelSize.x, 0.0), 0.0).r;
+    let dispUp = textureSampleLevel(displacementMap, displacementSampler, in.uv + vec2f(0.0, displacement.texelSize.y), 0.0).r;
 
-    // Calculate displacement: (sample - midpoint) * amplitude
-    let dispAmount = (dispSample - displacement.midpoint) * displacement.amplitude;
+    // Calculate displacement amounts
+    let dispAmount = (dispCenter - displacement.midpoint) * displacement.amplitude;
+    let dispAmountRight = (dispRight - displacement.midpoint) * displacement.amplitude;
+    let dispAmountUp = (dispUp - displacement.midpoint) * displacement.amplitude;
 
     // Displace position along normal
     let displacedPos = in.position + in.normal * dispAmount;
+
+    // Compute displaced normal using finite differences
+    let T_obj = in.tangent.xyz;
+    let B_obj = cross(in.normal, T_obj) * in.tangent.w;
+
+    // Approximate neighboring displaced positions
+    let uvScale = 2.0;  // Approximate object-space distance per UV unit
+    let posRight = in.position + T_obj * displacement.texelSize.x * uvScale + in.normal * dispAmountRight;
+    let posUp = in.position + B_obj * displacement.texelSize.y * uvScale + in.normal * dispAmountUp;
+
+    // Cross product gives displaced normal
+    let dPdU = posRight - displacedPos;
+    let dPdV = posUp - displacedPos;
+    var displacedNormal = normalize(cross(dPdU, dPdV));
+
+    // Ensure normal points outward
+    if (dot(displacedNormal, in.normal) < 0.0) {
+        displacedNormal = -displacedNormal;
+    }
 
     // Use displaced position for rendering
     let worldPos = uniforms.model * vec4f(displacedPos, 1.0);
     out.worldPos = worldPos.xyz;
     out.clipPos = uniforms.mvp * vec4f(displacedPos, 1.0);
 
-    let N = normalize((uniforms.normalMatrix * vec4f(in.normal, 0.0)).xyz);
+    // Transform displaced normal to world space
+    let N = normalize((uniforms.normalMatrix * vec4f(displacedNormal, 0.0)).xyz);
     let T = normalize((uniforms.model * vec4f(in.tangent.xyz, 0.0)).xyz);
     let B = cross(N, T) * in.tangent.w;
 
@@ -1230,6 +1253,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var color = ambient + Lo + emissive;
     color = color / (color + vec3f(1.0));
     color = pow(color, vec3f(1.0 / 2.2));
+
+    // DEBUG: Output constant orange to verify shader is running
+    return vec4f(1.0, 0.5, 0.0, 1.0);  // Constant orange color
 
     var outAlpha = finalAlpha;
     if (uniforms.alphaMode == ALPHA_OPAQUE) {
@@ -2793,10 +2819,10 @@ void Render3D::createPipeline(Context& ctx) {
     dispVertexAttrs[2].shaderLocation = 2;
     dispVertexAttrs[3].format = WGPUVertexFormat_Float32x2;
     dispVertexAttrs[3].offset = offsetof(Vertex3D, uv);
-    dispVertexAttrs[3].shaderLocation = 3;
+    dispVertexAttrs[3].shaderLocation = 3;  // Matches shader @location(3)
     dispVertexAttrs[4].format = WGPUVertexFormat_Float32x4;
     dispVertexAttrs[4].offset = offsetof(Vertex3D, color);
-    dispVertexAttrs[4].shaderLocation = 4;
+    dispVertexAttrs[4].shaderLocation = 4;  // Matches shader @location(4)
 
     WGPUVertexBufferLayout dispVertexLayout = {};
     dispVertexLayout.arrayStride = sizeof(Vertex3D);
@@ -2820,6 +2846,12 @@ void Render3D::createPipeline(Context& ctx) {
     dispPipelineDesc.fragment = &dispFragmentState;
 
     m_pbrDisplacementPipeline = wgpuDeviceCreateRenderPipeline(device, &dispPipelineDesc);
+
+    if (!m_pbrDisplacementPipeline) {
+        std::cerr << "[Render3D] ERROR: Failed to create displacement pipeline!\n";
+    } else {
+        std::cerr << "[Render3D] Displacement pipeline created successfully\n";
+    }
 
     // Cleanup displacement pipeline resources
     wgpuPipelineLayoutRelease(dispPipelineLayout);
@@ -2906,7 +2938,8 @@ void Render3D::process(Context& ctx) {
     }
 
     // Check if displacement is ready to use
-    bool useDisplacement = m_displacementOp != nullptr && m_material != nullptr;
+    // Note: per-object material check happens later in render loop
+    bool useDisplacement = m_displacementOp != nullptr;
     if (useDisplacement) {
         // Process displacement operator to ensure texture is ready
         m_displacementOp->process(ctx);
@@ -2924,10 +2957,16 @@ void Render3D::process(Context& ctx) {
             struct DisplacementUniforms {
                 float amplitude;
                 float midpoint;
-                float _pad[2];
+                float texelSizeX;
+                float texelSizeY;
             } dispUniforms;
             dispUniforms.amplitude = m_displacementAmplitude;
             dispUniforms.midpoint = m_displacementMidpoint;
+            // Texel size for finite difference normal calculation
+            int dispWidth = m_displacementOp->outputWidth();
+            int dispHeight = m_displacementOp->outputHeight();
+            dispUniforms.texelSizeX = 1.0f / static_cast<float>(dispWidth);
+            dispUniforms.texelSizeY = 1.0f / static_cast<float>(dispHeight);
             wgpuQueueWriteBuffer(ctx.queue(), m_displacementUniformBuffer, 0, &dispUniforms, sizeof(dispUniforms));
 
             // Create displacement bind group
@@ -3177,10 +3216,12 @@ void Render3D::process(Context& ctx) {
             uniforms.cameraPos[1] = cameraPos.y;
             uniforms.cameraPos[2] = cameraPos.z;
             uniforms.ambientIntensity = m_ambient;
-            uniforms.baseColorFactor[0] = baseColorFactor.r * objColor.r;
-            uniforms.baseColorFactor[1] = baseColorFactor.g * objColor.g;
-            uniforms.baseColorFactor[2] = baseColorFactor.b * objColor.b;
-            uniforms.baseColorFactor[3] = baseColorFactor.a * objColor.a;
+            // For textured PBR, use material's baseColorFactor multiplied by object color only
+            // (not m_defaultColor, which is meant for background/non-textured objects)
+            uniforms.baseColorFactor[0] = baseColorFactor.r * obj.color.r;
+            uniforms.baseColorFactor[1] = baseColorFactor.g * obj.color.g;
+            uniforms.baseColorFactor[2] = baseColorFactor.b * obj.color.b;
+            uniforms.baseColorFactor[3] = baseColorFactor.a * obj.color.a;
             uniforms.metallicFactor = activeMaterial->getMetallicFactor();
             uniforms.roughnessFactor = activeMaterial->getRoughnessFactor();
             uniforms.normalScale = activeMaterial->getNormalScale();
