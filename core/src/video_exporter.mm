@@ -1202,17 +1202,27 @@ bool VideoExporter::saveSnapshot(WGPUDevice device, WGPUQueue queue,
         const uint8_t* srcRow = mappedData + y * bytesPerRow;
         uint8_t* dstRow = pixels.data() + y * width * 4;
 
+        // Linear to sRGB conversion (gamma correction for proper display matching)
+        auto linearToSrgb = [](float linear) -> float {
+            linear = std::max(0.0f, std::min(1.0f, linear));  // Clamp to [0,1]
+            if (linear <= 0.0031308f) {
+                return linear * 12.92f;
+            }
+            return 1.055f * std::pow(linear, 1.0f / 2.4f) - 0.055f;
+        };
+
         if (isFloat32) {
-            // Convert RGBA32Float to RGBA8
+            // Convert RGBA32Float to RGBA8 with sRGB gamma
             const float* srcFloat = reinterpret_cast<const float*>(srcRow);
             for (uint32_t x = 0; x < width; ++x) {
-                dstRow[x * 4 + 0] = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, srcFloat[x * 4 + 0] * 255.0f)));
-                dstRow[x * 4 + 1] = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, srcFloat[x * 4 + 1] * 255.0f)));
-                dstRow[x * 4 + 2] = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, srcFloat[x * 4 + 2] * 255.0f)));
+                // Apply sRGB gamma to RGB, leave alpha linear
+                dstRow[x * 4 + 0] = static_cast<uint8_t>(linearToSrgb(srcFloat[x * 4 + 0]) * 255.0f + 0.5f);
+                dstRow[x * 4 + 1] = static_cast<uint8_t>(linearToSrgb(srcFloat[x * 4 + 1]) * 255.0f + 0.5f);
+                dstRow[x * 4 + 2] = static_cast<uint8_t>(linearToSrgb(srcFloat[x * 4 + 2]) * 255.0f + 0.5f);
                 dstRow[x * 4 + 3] = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, srcFloat[x * 4 + 3] * 255.0f)));
             }
         } else if (isFloat16) {
-            // Convert RGBA16Float to RGBA8 (half-float conversion)
+            // Convert RGBA16Float to RGBA8 (half-float conversion with sRGB gamma)
             const uint16_t* srcHalf = reinterpret_cast<const uint16_t*>(srcRow);
             for (uint32_t x = 0; x < width; ++x) {
                 // Simple half-float to float conversion (approximate)
@@ -1232,9 +1242,10 @@ bool VideoExporter::saveSnapshot(WGPUDevice device, WGPUQueue queue,
                 float g = halfToFloat(srcHalf[x * 4 + 1]);
                 float b = halfToFloat(srcHalf[x * 4 + 2]);
                 float a = halfToFloat(srcHalf[x * 4 + 3]);
-                dstRow[x * 4 + 0] = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, r * 255.0f)));
-                dstRow[x * 4 + 1] = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, g * 255.0f)));
-                dstRow[x * 4 + 2] = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, b * 255.0f)));
+                // Apply sRGB gamma to RGB, leave alpha linear
+                dstRow[x * 4 + 0] = static_cast<uint8_t>(linearToSrgb(r) * 255.0f + 0.5f);
+                dstRow[x * 4 + 1] = static_cast<uint8_t>(linearToSrgb(g) * 255.0f + 0.5f);
+                dstRow[x * 4 + 2] = static_cast<uint8_t>(linearToSrgb(b) * 255.0f + 0.5f);
                 dstRow[x * 4 + 3] = static_cast<uint8_t>(std::min(255.0f, std::max(0.0f, a * 255.0f)));
             }
         } else if (isBGRA) {

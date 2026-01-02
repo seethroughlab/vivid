@@ -213,7 +213,11 @@ void DepthOfField::createPipeline(Context& ctx) {
 }
 
 void DepthOfField::process(Context& ctx) {
-    if (!m_initialized) init(ctx);
+    bool justInitialized = false;
+    if (!m_initialized) {
+        init(ctx);
+        justInitialized = true;
+    }
 
     // Match input resolution
     matchInputResolution(0);
@@ -224,7 +228,8 @@ void DepthOfField::process(Context& ctx) {
         return;
     }
 
-    if (!needsCook()) return;
+    // Always process on first frame after init
+    if (!justInitialized && !needsCook()) return;
 
     WGPUDevice device = ctx.device();
 

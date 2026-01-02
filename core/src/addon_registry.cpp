@@ -57,7 +57,8 @@ std::vector<std::string> AddonRegistry::scanIncludes(const fs::path& sourcePath)
             std::string ns = match[1].str();
             // Skip core namespaces (not addons)
             if (ns != "vivid" && ns != "context" && ns != "display" &&
-                ns != "hot_reload" && ns != "operator" && ns != "chain") {
+                ns != "hot_reload" && ns != "operator" && ns != "chain" &&
+                ns != "effects" && ns != "network" && ns != "io") {
                 namespaces.insert(ns);
             }
         }

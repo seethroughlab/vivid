@@ -76,10 +76,9 @@ jobs:
       - name: Run unit and integration tests
         run: ctest --test-dir build --output-on-failure -C Release -L "unit|integration|build"
 
-      # MCP server tests disabled for now - requires subprocess stdin/stdout handling fixes
-      # - name: Run MCP server tests
-      #   run: ctest --test-dir build --output-on-failure -C Release -L "mcp"
-      #   timeout-minutes: 5
+      - name: Run MCP server tests
+        run: ctest --test-dir build --output-on-failure -C Release -L "mcp"
+        timeout-minutes: 5
 
       # GPU-based tests require real GPU or software renderer (llvmpipe)
       # These are marked continue-on-error until headless WebGPU is configured

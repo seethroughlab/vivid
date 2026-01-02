@@ -11,6 +11,7 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/render3d/render3d.h>
+#include <vivid/gui/imgui.h>
 #include <iostream>
 #include <cmath>
 
@@ -19,8 +20,8 @@ using namespace vivid::effects;
 using namespace vivid::render3d;
 
 // DOF parameters
-static float g_focusDistance = 0.5f;  // 0=near, 1=far
-static float g_blurStrength = 0.6f;
+static float g_focusDistance = 0.15f;  // 0=near, 1=far (start focused on near red objects)
+static float g_blurStrength = 0.8f;
 static bool g_showDepth = false;
 
 void setup(Context& ctx) {
@@ -30,90 +31,150 @@ void setup(Context& ctx) {
     // Geometry
     // =========================================================================
 
-    auto& sphere = chain.add<Sphere>("sphere");
-    sphere.radius(0.6f);
-    sphere.segments(24);
+    // Materials for each depth layer - highly saturated colors
+    auto& nearMat = chain.add<TexturedMaterial>("nearMat");
+    nearMat.baseColorFactor(1.0f, 0.0f, 0.0f, 1.0f);  // Pure red
+    nearMat.roughnessFactor(0.5f);
+    nearMat.metallicFactor(0.0f);
 
-    auto& box = chain.add<Box>("box");
-    box.size(0.9f, 0.9f, 0.9f);
+    auto& midMat = chain.add<TexturedMaterial>("midMat");
+    midMat.baseColorFactor(0.0f, 1.0f, 0.0f, 1.0f);  // Pure green
+    midMat.roughnessFactor(0.5f);
+    midMat.metallicFactor(0.0f);
 
-    auto& torus = chain.add<Torus>("torus");
-    torus.outerRadius(0.5f);
-    torus.innerRadius(0.2f);
-    torus.segments(24);
-    torus.rings(16);
+    auto& farMat = chain.add<TexturedMaterial>("farMat");
+    farMat.baseColorFactor(0.0f, 0.3f, 1.0f, 1.0f);  // Bright blue
+    farMat.roughnessFactor(0.5f);
+    farMat.metallicFactor(0.0f);
+
+    auto& groundMat = chain.add<TexturedMaterial>("groundMat");
+    groundMat.baseColorFactor(0.3f, 0.3f, 0.32f, 1.0f);  // Gray
+    groundMat.roughnessFactor(0.9f);
+    groundMat.metallicFactor(0.0f);
+
+    // Near geometry (red) - with material colors
+    auto& nearSphere = chain.add<Sphere>("nearSphere");
+    nearSphere.radius(0.6f);
+    nearSphere.segments(24);
+    nearSphere.setMaterial(&nearMat);
+
+    auto& nearBox = chain.add<Box>("nearBox");
+    nearBox.size(0.9f, 0.9f, 0.9f);
+    nearBox.setMaterial(&nearMat);
+
+    auto& nearTorus = chain.add<Torus>("nearTorus");
+    nearTorus.outerRadius(0.5f);
+    nearTorus.innerRadius(0.2f);
+    nearTorus.segments(24);
+    nearTorus.rings(16);
+    nearTorus.setMaterial(&nearMat);
+
+    // Mid geometry (green) - with material colors
+    auto& midSphere = chain.add<Sphere>("midSphere");
+    midSphere.radius(0.6f);
+    midSphere.segments(24);
+    midSphere.setMaterial(&midMat);
+
+    auto& midBox = chain.add<Box>("midBox");
+    midBox.size(0.9f, 0.9f, 0.9f);
+    midBox.setMaterial(&midMat);
+
+    auto& midTorus = chain.add<Torus>("midTorus");
+    midTorus.outerRadius(0.5f);
+    midTorus.innerRadius(0.2f);
+    midTorus.segments(24);
+    midTorus.rings(16);
+    midTorus.setMaterial(&midMat);
+
+    // Far geometry (blue) - with material colors
+    auto& farSphere1 = chain.add<Sphere>("farSphere1");
+    farSphere1.radius(0.6f);
+    farSphere1.segments(24);
+    farSphere1.setMaterial(&farMat);
+
+    auto& farSphere2 = chain.add<Sphere>("farSphere2");
+    farSphere2.radius(0.6f);
+    farSphere2.segments(24);
+    farSphere2.setMaterial(&farMat);
+
+    auto& farBox = chain.add<Box>("farBox");
+    farBox.size(0.9f, 0.9f, 0.9f);
+    farBox.setMaterial(&farMat);
+
+    auto& farTorus1 = chain.add<Torus>("farTorus1");
+    farTorus1.outerRadius(0.5f);
+    farTorus1.innerRadius(0.2f);
+    farTorus1.segments(24);
+    farTorus1.rings(16);
+    farTorus1.setMaterial(&farMat);
+
+    auto& farTorus2 = chain.add<Torus>("farTorus2");
+    farTorus2.outerRadius(0.5f);
+    farTorus2.innerRadius(0.2f);
+    farTorus2.segments(24);
+    farTorus2.rings(16);
+    farTorus2.setMaterial(&farMat);
 
     // =========================================================================
-    // Scene with objects at varying depths - spread across large depth range
+    // Scene with objects at varying depths
     // Color coded: NEAR=red, MID=green, FAR=blue
-    // Camera at Z=-8, objects from Z=-5 to Z=50
+    // Camera at Z=-10, near Z=-5 to -3, mid Z=5 to 12, far Z=18 to 28
     // =========================================================================
 
     auto& scene = SceneComposer::create(chain, "scene");
 
-    // NEAR objects (red/orange) - very close to camera (Z=-5 to -3)
-    scene.add(&sphere,
-        glm::translate(glm::mat4(1.0f), glm::vec3(-1.2f, 0, -5.0f)),
-        glm::vec4(1.0f, 0.3f, 0.2f, 1.0f));
-    scene.add(&box,
-        glm::translate(glm::mat4(1.0f), glm::vec3(1.2f, 0.3f, -4.0f)),
-        glm::vec4(1.0f, 0.5f, 0.2f, 1.0f));
-    scene.add(&torus,
-        glm::translate(glm::mat4(1.0f), glm::vec3(0, 1.2f, -4.5f)),
-        glm::vec4(1.0f, 0.4f, 0.3f, 1.0f));
+    // NEAR objects (red) - very close to camera (Z=-5 to -3)
+    scene.add(&nearSphere,
+        glm::translate(glm::mat4(1.0f), glm::vec3(-1.2f, 0, -5.0f)));
+    scene.add(&nearBox,
+        glm::translate(glm::mat4(1.0f), glm::vec3(1.2f, 0.3f, -4.0f)));
+    scene.add(&nearTorus,
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, 1.2f, -4.5f)));
 
     // MID objects (green) - middle distance (Z=5 to 15)
-    scene.add(&sphere,
-        glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 8.0f)),
-        glm::vec4(0.3f, 0.9f, 0.4f, 1.0f));
-    scene.add(&box,
-        glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, -0.3f, 10.0f)),
-        glm::vec4(0.4f, 0.8f, 0.3f, 1.0f));
-    scene.add(&torus,
+    scene.add(&midSphere,
+        glm::translate(glm::mat4(1.0f), glm::vec3(0, 0, 8.0f)));
+    scene.add(&midBox,
+        glm::translate(glm::mat4(1.0f), glm::vec3(-2.0f, -0.3f, 10.0f)));
+    scene.add(&midTorus,
         glm::rotate(
             glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.5f, 12.0f)),
-            0.5f, glm::vec3(1, 0, 0)),
-        glm::vec4(0.2f, 1.0f, 0.5f, 1.0f));
+            0.5f, glm::vec3(1, 0, 0)));
 
-    // FAR objects (blue/purple) - very far from camera (Z=30 to 50)
-    scene.add(&sphere,
+    // FAR objects (blue) - farther from camera (Z=18 to 28)
+    scene.add(&farSphere1,
         glm::scale(
-            glm::translate(glm::mat4(1.0f), glm::vec3(-3.0f, 1.0f, 35.0f)),
-            glm::vec3(2.0f)),
-        glm::vec4(0.3f, 0.4f, 1.0f, 1.0f));
-    scene.add(&sphere,
+            glm::translate(glm::mat4(1.0f), glm::vec3(-2.5f, 0.5f, 20.0f)),
+            glm::vec3(1.2f)));
+    scene.add(&farSphere2,
         glm::scale(
-            glm::translate(glm::mat4(1.0f), glm::vec3(3.0f, -0.5f, 40.0f)),
-            glm::vec3(2.5f)),
-        glm::vec4(0.5f, 0.3f, 1.0f, 1.0f));
-    scene.add(&box,
+            glm::translate(glm::mat4(1.0f), glm::vec3(2.5f, -0.2f, 22.0f)),
+            glm::vec3(1.5f)));
+    scene.add(&farBox,
         glm::scale(
-            glm::translate(glm::mat4(1.0f), glm::vec3(0, 0.5f, 50.0f)),
-            glm::vec3(3.0f)),
-        glm::vec4(0.4f, 0.5f, 0.9f, 1.0f));
-    scene.add(&torus,
+            glm::translate(glm::mat4(1.0f), glm::vec3(0, 0.8f, 28.0f)),
+            glm::vec3(2.0f)));
+    scene.add(&farTorus1,
         glm::scale(
             glm::rotate(
-                glm::translate(glm::mat4(1.0f), glm::vec3(-5.0f, -0.5f, 45.0f)),
+                glm::translate(glm::mat4(1.0f), glm::vec3(-4.0f, 0.0f, 25.0f)),
                 1.0f, glm::vec3(0, 1, 0)),
-            glm::vec3(2.0f)),
-        glm::vec4(0.6f, 0.3f, 1.0f, 1.0f));
-    scene.add(&torus,
+            glm::vec3(1.3f)));
+    scene.add(&farTorus2,
         glm::scale(
-            glm::translate(glm::mat4(1.0f), glm::vec3(5.0f, 1.5f, 48.0f)),
-            glm::vec3(2.5f)),
-        glm::vec4(0.3f, 0.6f, 1.0f, 1.0f));
+            glm::translate(glm::mat4(1.0f), glm::vec3(4.0f, 1.0f, 26.0f)),
+            glm::vec3(1.5f)));
 
     // Ground plane - extended for depth
     auto& plane = chain.add<Plane>("plane");
     plane.size(30.0f, 80.0f);
     plane.subdivisions(1, 1);
+    plane.setMaterial(&groundMat);
 
     scene.add(&plane,
         glm::rotate(
             glm::translate(glm::mat4(1.0f), glm::vec3(0, -1.5f, 20.0f)),
-            -1.57f, glm::vec3(1, 0, 0)),
-        glm::vec4(0.12f, 0.12f, 0.15f, 1.0f));
+            -1.57f, glm::vec3(1, 0, 0)));
 
     // =========================================================================
     // Camera and Lighting
@@ -127,14 +188,14 @@ void setup(Context& ctx) {
     camera.farPlane(70.0f);  // Match scene depth range
 
     auto& keyLight = chain.add<DirectionalLight>("keyLight");
-    keyLight.direction(1.0f, 2.0f, 0.5f);
+    keyLight.direction(-0.5f, -1.0f, -0.5f);  // From upper-right-front, pointing down-left-back
     keyLight.color(1.0f, 0.95f, 0.9f);  // Warm white
-    keyLight.intensity = 1.8f;
+    keyLight.intensity = 4.0f;
 
     auto& fillLight = chain.add<DirectionalLight>("fillLight");
-    fillLight.direction(-1.0f, 0.5f, -0.5f);
-    fillLight.color(0.4f, 0.5f, 0.9f);  // Cool blue
-    fillLight.intensity = 0.5f;
+    fillLight.direction(0.5f, -0.3f, -0.5f);  // From upper-left-front, softer fill
+    fillLight.color(0.9f, 0.9f, 1.0f);  // Cool white
+    fillLight.intensity = 2.0f;
 
     // =========================================================================
     // 3D Render with depth output enabled
@@ -145,10 +206,8 @@ void setup(Context& ctx) {
     render.setCameraInput(&camera);
     render.setLightInput(&keyLight);
     render.addLight(&fillLight);
-    render.setShadingMode(ShadingMode::PBR);
-    render.setMetallic(0.15f);
-    render.setRoughness(0.5f);
-    render.setColor(0.03f, 0.03f, 0.06f, 1.0f);  // Dark background
+    render.setShadingMode(ShadingMode::PBR);  // PBR shading with material colors
+    render.setColor(0.02f, 0.02f, 0.04f, 1.0f);  // Dark background
     render.setDepthOutput(true);  // Enable depth output for DOF
 
     // =========================================================================
@@ -156,7 +215,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& dof = chain.add<DepthOfField>("dof");
-    dof.input("render");
+    dof.input(&render);  // Takes color and depth from Render3D
     dof.focusDistance(g_focusDistance);
     dof.focusRange(0.05f);
     dof.blurStrength(g_blurStrength);
@@ -166,20 +225,12 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input("dof");
+    bloom.setInput(0, &dof);  // DOF -> Bloom
     bloom.threshold = 0.8f;
     bloom.intensity = 0.3f;
     bloom.radius = 6.0f;
 
-    auto& vignette = chain.add<CRTEffect>("vignette");
-    vignette.input("bloom");
-    vignette.curvature = 0.0f;
-    vignette.vignette = 0.4f;
-    vignette.scanlines = 0.0f;
-    vignette.bloom = 0.0f;
-    vignette.chromatic = 0.0f;
-
-    chain.output("vignette");
+    chain.output("bloom");
 
     // =========================================================================
     // Info
@@ -205,27 +256,58 @@ void update(Context& ctx) {
     auto& dof = chain.get<DepthOfField>("dof");
 
     // =========================================================================
-    // Input
+    // ImGui Controls Panel
+    // =========================================================================
+
+    ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
+    ImGui::SetNextWindowSize(ImVec2(280, 200), ImGuiCond_FirstUseEver);
+
+    if (ImGui::Begin("Depth of Field Controls")) {
+        ImGui::SeparatorText("Focus");
+
+        ImGui::SliderFloat("Focus Distance", &g_focusDistance, 0.0f, 1.0f, "%.2f");
+        ImGui::SliderFloat("Blur Strength", &g_blurStrength, 0.0f, 1.0f, "%.2f");
+
+        ImGui::SeparatorText("Debug");
+
+        if (ImGui::Checkbox("Show Depth Buffer", &g_showDepth)) {
+            std::cout << "[DOF] Depth view: " << (g_showDepth ? "ON" : "OFF") << std::endl;
+        }
+        if (g_showDepth) {
+            ImGui::TextWrapped("R=depth, G=focus, B=blur amount");
+        }
+
+        ImGui::Separator();
+
+        if (ImGui::Button("Reset Defaults")) {
+            g_focusDistance = 0.15f;
+            g_blurStrength = 0.8f;
+            g_showDepth = false;
+        }
+
+        ImGui::SeparatorText("Keyboard Shortcuts");
+        ImGui::TextDisabled("LEFT/RIGHT: Focus distance");
+        ImGui::TextDisabled("UP/DOWN: Blur strength");
+        ImGui::TextDisabled("D: Toggle depth view");
+    }
+    ImGui::End();
+
+    // =========================================================================
+    // Keyboard Input
     // =========================================================================
 
     // Toggle depth debug view
     if (ctx.key(GLFW_KEY_D).pressed) {
         g_showDepth = !g_showDepth;
-        std::cout << "[DOF] Depth view: " << (g_showDepth ? "ON (green = in focus)" : "OFF") << std::endl;
+        std::cout << "[DOF] Depth view: " << (g_showDepth ? "ON" : "OFF") << std::endl;
     }
 
     // Adjust focus distance
-    static float lastFocusDistance = g_focusDistance;
     if (ctx.key(GLFW_KEY_RIGHT).held) {
         g_focusDistance = std::min(g_focusDistance + dt * 0.3f, 1.0f);
     }
     if (ctx.key(GLFW_KEY_LEFT).held) {
         g_focusDistance = std::max(g_focusDistance - dt * 0.3f, 0.0f);
-    }
-    // Print focus distance when it changes significantly
-    if (std::abs(g_focusDistance - lastFocusDistance) > 0.02f) {
-        std::cout << "[DOF] Focus: " << g_focusDistance << std::endl;
-        lastFocusDistance = g_focusDistance;
     }
 
     // Adjust blur strength

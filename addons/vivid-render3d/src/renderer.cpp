@@ -1063,8 +1063,18 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     // Sample displacement map at vertex UV using LOD 0
     let dispSample = textureSampleLevel(displacementMap, displacementSampler, in.uv, 0.0).r;
 
+    // DEBUG: Use UV-based test pattern as fallback when texture sampling fails
+    // This creates a visible terrain pattern for testing on Windows/Vulkan
+    var testPattern = sin(in.uv.x * 20.0) * sin(in.uv.y * 20.0) * 0.5 + 0.5;
+
+    // Use texture sample if it has variation, otherwise use test pattern
+    var finalSample = dispSample;
+    if (abs(dispSample - 0.5) < 0.01 || dispSample < 0.01) {
+        finalSample = testPattern;
+    }
+
     // Calculate displacement: (sample - midpoint) * amplitude
-    let dispAmount = (dispSample - displacement.midpoint) * displacement.amplitude;
+    let dispAmount = (finalSample - displacement.midpoint) * displacement.amplitude;
 
     // Displace position along normal
     let displacedPos = in.position + in.normal * dispAmount;
@@ -1230,6 +1240,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var color = ambient + Lo + emissive;
     color = color / (color + vec3f(1.0));
     color = pow(color, vec3f(1.0 / 2.2));
+
+    // DEBUG: Output constant orange to verify shader is running
+    return vec4f(1.0, 0.5, 0.0, 1.0);  // Constant orange color
 
     var outAlpha = finalAlpha;
     if (uniforms.alphaMode == ALPHA_OPAQUE) {
@@ -2793,10 +2806,10 @@ void Render3D::createPipeline(Context& ctx) {
     dispVertexAttrs[2].shaderLocation = 2;
     dispVertexAttrs[3].format = WGPUVertexFormat_Float32x2;
     dispVertexAttrs[3].offset = offsetof(Vertex3D, uv);
-    dispVertexAttrs[3].shaderLocation = 3;
+    dispVertexAttrs[3].shaderLocation = 3;  // Matches shader @location(3)
     dispVertexAttrs[4].format = WGPUVertexFormat_Float32x4;
     dispVertexAttrs[4].offset = offsetof(Vertex3D, color);
-    dispVertexAttrs[4].shaderLocation = 4;
+    dispVertexAttrs[4].shaderLocation = 4;  // Matches shader @location(4)
 
     WGPUVertexBufferLayout dispVertexLayout = {};
     dispVertexLayout.arrayStride = sizeof(Vertex3D);
@@ -2820,6 +2833,12 @@ void Render3D::createPipeline(Context& ctx) {
     dispPipelineDesc.fragment = &dispFragmentState;
 
     m_pbrDisplacementPipeline = wgpuDeviceCreateRenderPipeline(device, &dispPipelineDesc);
+
+    if (!m_pbrDisplacementPipeline) {
+        std::cerr << "[Render3D] ERROR: Failed to create displacement pipeline!\n";
+    } else {
+        std::cerr << "[Render3D] Displacement pipeline created successfully\n";
+    }
 
     // Cleanup displacement pipeline resources
     wgpuPipelineLayoutRelease(dispPipelineLayout);
@@ -2906,7 +2925,8 @@ void Render3D::process(Context& ctx) {
     }
 
     // Check if displacement is ready to use
-    bool useDisplacement = m_displacementOp != nullptr && m_material != nullptr;
+    // Note: per-object material check happens later in render loop
+    bool useDisplacement = m_displacementOp != nullptr;
     if (useDisplacement) {
         // Process displacement operator to ensure texture is ready
         m_displacementOp->process(ctx);
@@ -3177,10 +3197,12 @@ void Render3D::process(Context& ctx) {
             uniforms.cameraPos[1] = cameraPos.y;
             uniforms.cameraPos[2] = cameraPos.z;
             uniforms.ambientIntensity = m_ambient;
-            uniforms.baseColorFactor[0] = baseColorFactor.r * objColor.r;
-            uniforms.baseColorFactor[1] = baseColorFactor.g * objColor.g;
-            uniforms.baseColorFactor[2] = baseColorFactor.b * objColor.b;
-            uniforms.baseColorFactor[3] = baseColorFactor.a * objColor.a;
+            // For textured PBR, use material's baseColorFactor multiplied by object color only
+            // (not m_defaultColor, which is meant for background/non-textured objects)
+            uniforms.baseColorFactor[0] = baseColorFactor.r * obj.color.r;
+            uniforms.baseColorFactor[1] = baseColorFactor.g * obj.color.g;
+            uniforms.baseColorFactor[2] = baseColorFactor.b * obj.color.b;
+            uniforms.baseColorFactor[3] = baseColorFactor.a * obj.color.a;
             uniforms.metallicFactor = activeMaterial->getMetallicFactor();
             uniforms.roughnessFactor = activeMaterial->getRoughnessFactor();
             uniforms.normalScale = activeMaterial->getNormalScale();
