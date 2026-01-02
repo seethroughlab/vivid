@@ -10,7 +10,7 @@ A beautiful, slowly rotating Earth floating in space with terrain-like surface d
 
 - High-detail sphere (128 segments) with Earth texture
 - Procedural Simplex noise for vertex displacement (terrain effect)
-- Three-light setup: warm key light (sun), cool fill light (bounce), and rim light
+- Four-light setup: warm sun, orange-gold spotlight accent, cool blue point light, and rim light
 - PBR shading with roughness/metallic material properties
 - Vertex shader displacement using noise texture sampling
 - Post-processing: subtle bloom for atmosphere, vignette for cinematic framing
@@ -24,7 +24,9 @@ A beautiful, slowly rotating Earth floating in space with terrain-like surface d
 | TexturedMaterial | Earth texture with PBR properties |
 | SceneComposer | Scene graph with transforms |
 | CameraOperator | Orbit camera with gentle bob |
-| DirectionalLight (x3) | Sun key + blue fill + rim light |
+| DirectionalLight (x2) | Warm sun key + rim light |
+| SpotLight | Orange-gold spotlight accent |
+| PointLight | Cool blue fill from left |
 | Render3D | PBR rendering with displacement |
 | Bloom | Subtle atmosphere glow |
 | CRTEffect | Vignette only (other params zeroed) |

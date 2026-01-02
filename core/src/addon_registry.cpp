@@ -77,6 +77,9 @@ std::string AddonRegistry::namespaceToAddon(const std::string& ns) {
     if (ns == "render3d") {
         return "vivid-render3d";
     }
+    if (ns == "gui") {
+        return "vivid-gui";
+    }
 
     // Default: vivid-<namespace>
     return "vivid-" + ns;

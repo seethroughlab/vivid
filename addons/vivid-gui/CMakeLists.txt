@@ -80,6 +80,13 @@ if(APPLE)
             LANGUAGE CXX
     )
 elseif(WIN32)
+    # Export all symbols to generate import library for hot-reload chains
+    set_target_properties(vivid-gui PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS ON
+        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug
+        ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release
+    )
     # Copy DLL to bin directory
     add_custom_command(TARGET vivid-gui POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different

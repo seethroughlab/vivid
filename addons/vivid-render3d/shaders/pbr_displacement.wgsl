@@ -41,6 +41,10 @@ struct Uniforms {
     lightCount: u32,
     alphaCutoff: f32,
     alphaMode: u32,
+    receiveShadow: u32,
+    _pad1: u32,
+    _pad2: u32,
+    _pad3: u32,
     lights: array<Light, 4>,
 }
 
@@ -241,7 +245,9 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         normalize(in.worldBitangent),
         normalize(in.worldNormal)
     );
-    let N = normalize(TBN * tangentNormal);
+    // Use raw geometry normal for now (bypass normal mapping which may have issues)
+    let N = normalize(in.worldNormal);
+    // let N = normalize(TBN * tangentNormal);  // Normal mapping disabled
     let V = normalize(uniforms.cameraPos - in.worldPos);
     let F0 = mix(vec3f(0.04), albedo, metallic);
 
