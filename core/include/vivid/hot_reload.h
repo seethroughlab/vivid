@@ -59,6 +59,13 @@ public:
     bool checkNeedsReload();  // Returns true if source file changed
     bool reload();            // Compile and load (unloads old library first)
 
+    // Safe hot-reload API (preserves old chain on failure):
+    // 1. Call tryCompile() to attempt compilation without affecting old chain
+    // 2. If true, destroy old chain and call loadCompiled() to load new code
+    // 3. If false, old chain is still valid - just show the error
+    bool tryCompile();        // Compile only, returns true on success
+    bool loadCompiled();      // Load last compiled library (unloads old first)
+
     // Get the current chain functions (may be null if not loaded)
     SetupFn getSetupFn() const { return m_setupFn; }
     UpdateFn getUpdateFn() const { return m_updateFn; }

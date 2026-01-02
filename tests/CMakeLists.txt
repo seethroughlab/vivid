@@ -4,6 +4,18 @@
 
 cmake_minimum_required(VERSION 3.16)
 
+# -----------------------------------------------------------------------------
+# Coverage Support (GCC/Clang only)
+# -----------------------------------------------------------------------------
+option(COVERAGE "Enable code coverage reporting" OFF)
+
+if(COVERAGE AND (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang"))
+    message(STATUS "[vivid-tests] Coverage enabled")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} --coverage -fprofile-arcs -ftest-coverage")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} --coverage")
+endif()
+
 # Fetch Catch2 v3
 include(FetchContent)
 FetchContent_Declare(
@@ -74,7 +86,7 @@ option(BUILD_ADDON_TESTS "Build addon test suites" ON)
 
 if(BUILD_ADDON_TESTS)
     include(${CMAKE_SOURCE_DIR}/addons/vivid-audio/tests/CMakeLists.txt)
-
+    include(${CMAKE_SOURCE_DIR}/addons/vivid-render3d/tests/CMakeLists.txt)
     include(${CMAKE_SOURCE_DIR}/addons/vivid-network/tests/CMakeLists.txt)
     include(${CMAKE_SOURCE_DIR}/addons/vivid-serial/tests/CMakeLists.txt)
 endif()

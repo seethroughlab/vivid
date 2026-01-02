@@ -15,9 +15,9 @@ doxygen Doxyfile                          # Generate API docs
 
 ```bash
 ./build/bin/vivid <project-path>                              # Run normally
-./build/bin/vivid <project-path> --snapshot output.png        # Capture frame and exit
-./build/bin/vivid <project-path> --snapshot=output.png        # Alternative syntax
-./build/bin/vivid <project-path> --snapshot output.png --snapshot-frame 10  # Wait 10 frames
+./build/bin/vivid <project-path> --snapshot output.png        # Capture single frame
+./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-11  # Capture 12 frames for GIF
+./build/bin/vivid <project-path> --snapshot out.png --snapshot-frame 0-30:5  # Every 5th frame
 ./build/bin/vivid mcp                                         # Run MCP server for Claude Code
 ```
 
@@ -63,10 +63,19 @@ The `--snapshot` flag runs the chain for a few frames, saves a PNG, and exits. U
 - **Automated testing**: Verify visual output hasn't regressed
 - **AI evaluation**: Claude can run chains and inspect the output
 - **CI pipelines**: Generate thumbnails or verify examples compile and run
+- **GIF creation**: Capture multiple frames for animation
 
 Options:
 - `--snapshot <path.png>` - Output path for the snapshot
-- `--snapshot-frame <N>` - Wait N frames before capture (default: 5, allows warm-up)
+- `--snapshot-frame <spec>` - Frame(s) to capture (default: 5)
+
+Frame specification formats:
+- `5` - Single frame (backwards compatible)
+- `0,5,10,15` - Specific frames (comma-separated)
+- `0-11` - Range (frames 0 through 11, inclusive)
+- `0-20:2` - Range with step (frames 0, 2, 4, ..., 20)
+
+When capturing multiple frames, filenames include frame numbers: `output.png` becomes `output_0000.png`, `output_0001.png`, etc.
 
 ## Project Structure
 

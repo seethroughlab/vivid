@@ -4,6 +4,7 @@
 #include <vivid/addon_registry.h>
 #include <vivid/addon_manager.h>
 #include <vivid/context.h>
+#include <vivid/log.h>
 
 #include <iostream>
 #include <fstream>
@@ -179,7 +180,7 @@ bool HotReload::reload() {
     // Update modification time
     m_lastModTime = getFileModTime();
 
-    std::cout << "Detected change in " << m_sourcePath.filename() << ", reloading..." << std::endl;
+    Log::info() << "Detected change in " << m_sourcePath.filename().string() << ", reloading...";
 
     // Compile
     if (!compile()) {
@@ -192,6 +193,41 @@ bool HotReload::reload() {
     }
 
     m_error.clear();
+    m_needsSetup = true;
+    return true;
+}
+
+bool HotReload::tryCompile() {
+    if (m_sourcePath.empty()) {
+        return false;
+    }
+
+    // Check if file exists
+    if (!fs::exists(m_sourcePath)) {
+        m_error = "Source file not found: " + m_sourcePath.string();
+        return false;
+    }
+
+    // Update modification time so we don't re-check
+    m_lastModTime = getFileModTime();
+
+    Log::info() << "Detected change in " << m_sourcePath.filename().string() << ", reloading...";
+
+    // Just compile - don't touch the old library
+    if (!compile()) {
+        return false;
+    }
+
+    m_error.clear();
+    return true;
+}
+
+bool HotReload::loadCompiled() {
+    // Load the last compiled library (unloads old first)
+    if (!load()) {
+        return false;
+    }
+
     m_needsSetup = true;
     return true;
 }
@@ -357,7 +393,7 @@ bool HotReload::compile() {
     std::string vcvarsall = findVcVarsAll();
     if (vcvarsall.empty()) {
         m_error = "Could not find Visual Studio installation. Please install Visual Studio with C++ workload.";
-        std::cerr << m_error << std::endl;
+        Log::error() << m_error;
         return false;
     }
 
@@ -507,14 +543,14 @@ bool HotReload::compile() {
     cmd << "2>&1";
 #endif
 
-    std::cout << "Compiling: " << m_sourcePath.filename() << std::endl;
+    Log::info() << "Compiling: " << m_sourcePath.filename().string();
 
     auto [exitCode, output] = executeCommand(cmd.str());
 
     if (exitCode != 0) {
         m_error = "Compilation failed:\n" + output;
         parseCompilerOutput(output);
-        std::cerr << m_error << std::endl;
+        Log::error() << m_error;
         return false;
     }
 
@@ -523,10 +559,10 @@ bool HotReload::compile() {
 
     if (!output.empty()) {
         // Print warnings
-        std::cout << output;
+        Log::warn() << output;
     }
 
-    std::cout << "Compilation successful" << std::endl;
+    Log::info() << "Compilation successful";
     return true;
 }
 
@@ -552,7 +588,7 @@ bool HotReload::load() {
     m_library = dlopen(m_libraryPath.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!m_library) {
         m_error = "Failed to load library: " + std::string(dlerror());
-        std::cerr << m_error << std::endl;
+        Log::error() << m_error;
         return false;
     }
 
@@ -566,7 +602,7 @@ bool HotReload::load() {
         return false;
     }
 
-    std::cout << "Chain loaded successfully" << std::endl;
+    Log::info() << "Chain loaded successfully";
     return true;
 }
 

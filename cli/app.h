@@ -6,6 +6,8 @@
 #include <vivid/video_exporter.h>
 #include <string>
 #include <filesystem>
+#include <vector>
+#include <set>
 
 namespace vivid {
 
@@ -13,7 +15,7 @@ namespace vivid {
 struct AppConfig {
     std::filesystem::path projectPath;
     std::string snapshotPath;
-    int snapshotFrame = 5;
+    std::set<int> snapshotFrames;  // Frames to capture (empty = frame 5 only)
     bool headless = false;
     int windowWidth = 1280;
     int windowHeight = 720;
