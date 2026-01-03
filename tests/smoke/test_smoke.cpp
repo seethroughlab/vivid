@@ -90,7 +90,7 @@ TEST_CASE("Snapshot mode creates valid PNG", "[smoke][snapshot]") {
     fs::remove(outputPath);
 
     // Run with a simple example
-    std::string examplePath = getSourceDir() + "/examples/getting-started/02-hello-noise";
+    std::string examplePath = getSourceDir() + "/projects/getting-started/02-hello-noise";
     int result = runSnapshot(examplePath, outputPath, 5);
 
     INFO("Command exit code: " << result);
@@ -124,7 +124,7 @@ TEST_CASE("Getting started examples run without crash", "[smoke][2d][getting-sta
         fs::path outputPath = getTempOutputPath(sanitizeName(example));
         fs::remove(outputPath);
 
-        std::string examplePath = getSourceDir() + "/examples/" + example;
+        std::string examplePath = getSourceDir() + "/projects/" + example;
 
         // Skip if example doesn't exist
         if (!fs::exists(examplePath)) {
@@ -161,7 +161,7 @@ TEST_CASE("2D effect examples run without crash", "[smoke][2d][effects]") {
         fs::path outputPath = getTempOutputPath(sanitizeName(example));
         fs::remove(outputPath);
 
-        std::string examplePath = getSourceDir() + "/examples/" + example;
+        std::string examplePath = getSourceDir() + "/projects/" + example;
 
         // Skip if example doesn't exist
         if (!fs::exists(examplePath)) {
@@ -198,7 +198,7 @@ TEST_CASE("3D rendering examples run without crash", "[smoke][3d]") {
         fs::path outputPath = getTempOutputPath(sanitizeName(example));
         fs::remove(outputPath);
 
-        std::string examplePath = getSourceDir() + "/examples/" + example;
+        std::string examplePath = getSourceDir() + "/projects/" + example;
 
         // Skip if example doesn't exist
         if (!fs::exists(examplePath)) {

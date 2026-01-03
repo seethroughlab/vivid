@@ -18,8 +18,8 @@ void AddonRegistry::setRootDir(const fs::path& rootDir) {
     // Build search paths
     m_searchPaths.clear();
 
-    // Development mode: addons/ in source tree
-    fs::path addonsDir = m_rootDir / "addons";
+    // Development mode: src/addons/ in source tree
+    fs::path addonsDir = m_rootDir / "src" / "addons";
     if (fs::exists(addonsDir)) {
         m_searchPaths.push_back(addonsDir);
     }

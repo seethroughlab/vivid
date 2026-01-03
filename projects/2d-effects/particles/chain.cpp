@@ -59,9 +59,9 @@ void setup(Context& ctx) {
 
     // Composite all particle layers
     auto& comp = chain.add<Composite>("comp");
-    comp.input(0, &fire);
-    comp.input(1, &fountain);
-    comp.input(2, &ring);
+    comp.input(0, "fire");
+    comp.input(1, "fountain");
+    comp.input(2, "ring");
     comp.mode(BlendMode::Add);
 
     chain.output("comp");
