@@ -39,8 +39,8 @@ add_library(vivid-midi SHARED ${MIDI_SOURCES})
 
 target_include_directories(vivid-midi PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/core/include
-    ${CMAKE_SOURCE_DIR}/addons/vivid-audio/include
+    ${CMAKE_SOURCE_DIR}/src/core/include
+    ${CMAKE_SOURCE_DIR}/src/addons/vivid-audio/include
     ${midifile_SOURCE_DIR}/include
 )
 

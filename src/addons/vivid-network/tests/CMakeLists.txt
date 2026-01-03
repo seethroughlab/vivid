@@ -12,8 +12,8 @@ target_link_libraries(test_network_addon PRIVATE
 )
 
 target_include_directories(test_network_addon PRIVATE
-    ${CMAKE_SOURCE_DIR}/core/include
-    ${CMAKE_SOURCE_DIR}/addons/vivid-network/include
+    ${CMAKE_SOURCE_DIR}/src/core/include
+    ${CMAKE_SOURCE_DIR}/src/addons/vivid-network/include
 )
 
 catch_discover_tests(test_network_addon)

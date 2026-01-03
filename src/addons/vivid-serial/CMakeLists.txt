@@ -15,7 +15,7 @@ add_library(vivid-serial SHARED ${SERIAL_SOURCES})
 
 target_include_directories(vivid-serial PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/src/core/include
 )
 
 target_link_libraries(vivid-serial PUBLIC vivid-core)

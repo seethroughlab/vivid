@@ -250,31 +250,31 @@ FetchContent_MakeAvailable(ixwebsocket)
 # vivid-effects-2d is now part of core (provides 2D texture effects)
 # -----------------------------------------------------------------------------
 
-add_subdirectory(addons/vivid-network)
-add_subdirectory(addons/vivid-serial)
+add_subdirectory(src/addons/vivid-network)
+add_subdirectory(src/addons/vivid-serial)
 
 # Cross-platform addons
-add_subdirectory(addons/vivid-video)
-add_subdirectory(addons/vivid-render3d)
-add_subdirectory(addons/vivid-audio)
+add_subdirectory(src/addons/vivid-video)
+add_subdirectory(src/addons/vivid-render3d)
+add_subdirectory(src/addons/vivid-audio)
 
 # MIDI addon (depends on vivid-audio)
-add_subdirectory(addons/vivid-midi)
+add_subdirectory(src/addons/vivid-midi)
 # vivid-ml moved to separate repo: https://github.com/jeff/vivid-ml
 
 # -----------------------------------------------------------------------------
 # Core library
 # -----------------------------------------------------------------------------
-add_subdirectory(core)
+add_subdirectory(src/core)
 
 # GUI addon (provides ImGui for user chains)
 # Core uses OverlayCanvas for chain visualizer; user chains that need ImGui use this addon
-add_subdirectory(addons/vivid-gui)
+add_subdirectory(src/addons/vivid-gui)
 
 # -----------------------------------------------------------------------------
 # CLI executable
 # -----------------------------------------------------------------------------
-add_subdirectory(cli)
+add_subdirectory(src/cli)
 
 # -----------------------------------------------------------------------------
 # Examples

@@ -19,20 +19,20 @@ A creative coding framework for real-time audio-visual work with hot-reloadable 
 ## Showcase
 
 <p align="center">
-  <img src="images/chain-basics.gif" width="400" alt="Chain Basics" />
-  <img src="images/globe.gif" width="400" alt="3D Globe" />
+  <img src="docs/images/chain-basics.gif" width="400" alt="Chain Basics" />
+  <img src="docs/images/globe.gif" width="400" alt="3D Globe" />
 </p>
 <p align="center">
-  <img src="images/candy-crash.gif" width="400" alt="Candy Crash" />
-  <img src="images/division-raster.gif" width="400" alt="Division Raster" />
+  <img src="docs/images/candy-crash.gif" width="400" alt="Candy Crash" />
+  <img src="docs/images/division-raster.gif" width="400" alt="Division Raster" />
 </p>
 <p align="center">
-  <img src="images/feedback.png" width="400" alt="Feedback Spirals" />
-  <img src="images/particles.png" width="400" alt="Particles" />
+  <img src="docs/images/feedback.png" width="400" alt="Feedback Spirals" />
+  <img src="docs/images/particles.png" width="400" alt="Particles" />
 </p>
 <p align="center">
-  <img src="images/retro-crt.png" width="400" alt="Retro CRT" />
-  <img src="images/depth-of-field.png" width="400" alt="Depth of Field" />
+  <img src="docs/images/retro-crt.png" width="400" alt="Retro CRT" />
+  <img src="docs/images/depth-of-field.png" width="400" alt="Depth of Field" />
 </p>
 
 *Animated: Chain basics, 3D PBR globe, Candy-style animation, Division raster. Static: Feedback spirals, GPU particles, Retro CRT simulation, Depth of field*
@@ -53,10 +53,10 @@ cd vivid
 cmake -B build && cmake --build build
 ```
 
-### Run an Example
+### Run a Project
 
 ```bash
-./build/bin/vivid examples/2d-effects/chain-basics
+./build/bin/vivid projects/2d-effects/chain-basics
 ```
 
 Press `F` to toggle fullscreen, `Tab` to view chain visualizer, `Esc` to quit.
@@ -431,26 +431,26 @@ Vivid includes a built-in chain visualizer powered by ImGui and ImNodes.
 
 ```
 vivid/
-├── core/                     # Runtime engine with integrated UI
-│   ├── src/                  # Main runtime, hot-reload, addon discovery
-│   ├── include/vivid/        # Public API headers
-│   ├── imgui/                # Chain visualizer (ImGui/ImNodes)
-│   └── shaders/              # Blit and text shaders
-├── addons/                   # Optional feature packages
-│   ├── vivid-io/             # Image loading utilities (shared by other addons)
-│   ├── vivid-effects-2d/     # 2D texture operators (always linked)
-│   ├── vivid-video/          # Video playback (HAP, H.264, etc.)
-│   └── vivid-render3d/       # 3D rendering (PBR, CSG, IBL)
-├── examples/                 # Curated user examples (by category)
-├── testing-fixtures/         # Test examples for CI/regression
-└── assets/                   # Shared resources
+├── src/                      # All source code
+│   ├── core/                 # Runtime engine with integrated UI
+│   ├── cli/                  # Command-line interface
+│   └── addons/               # Optional feature packages
+│       ├── vivid-video/      # Video playback (HAP, H.264, etc.)
+│       ├── vivid-render3d/   # 3D rendering (PBR, CSG, IBL)
+│       ├── vivid-audio/      # Audio synthesis and analysis
+│       └── ...               # Network, MIDI, serial, GUI
+├── projects/                 # Runnable example projects (by category)
+├── assets/                   # Shared media resources
+├── docs/                     # Documentation and images
+├── tests/                    # Automated tests and fixtures
+└── dev/                      # Developer tools and planning docs
 ```
 
-## Examples
+## Projects
 
-Examples are organized by category. See `examples/README.md` for the full learning path.
+Projects are organized by category. See `projects/README.md` for the full learning path.
 
-| Category | Example | Description |
+| Category | Project | Description |
 |----------|---------|-------------|
 | Getting Started | `01-template` | Heavily commented starter |
 | Getting Started | `02-hello-noise` | Minimal noise generator |
@@ -464,9 +464,9 @@ Examples are organized by category. See `examples/README.md` for the full learni
 | 3D Rendering | `gltf-loader` | GLTF/GLB model loading |
 | 3D Rendering | `instancing` | GPU instanced rendering |
 
-Run any example:
+Run any project:
 ```bash
-./build/bin/vivid examples/getting-started/01-template
+./build/bin/vivid projects/getting-started/01-template
 ```
 
 ## Addon System
@@ -526,7 +526,7 @@ Create a `CLAUDE.md` file in your project folder to give AI assistants context a
 - docs/RECIPES.md - Effect examples
 ```
 
-See `examples/getting-started/01-template/` for a complete starter project with CLAUDE.md.
+See `projects/getting-started/01-template/` for a complete starter project with CLAUDE.md.
 
 ## License
 

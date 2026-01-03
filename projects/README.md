@@ -1,11 +1,11 @@
-# Vivid Examples
+# Vivid Projects
 
-Curated examples demonstrating Vivid's capabilities. Each example is a complete, runnable project.
+Curated projects demonstrating Vivid's capabilities. Each project is complete and runnable.
 
-## Running Examples
+## Running Projects
 
 ```bash
-./build/bin/vivid examples/getting-started/01-template
+./build/bin/vivid projects/getting-started/01-template
 ```
 
 Press `Tab` to open the chain visualizer and adjust parameters in real-time.
@@ -23,22 +23,21 @@ Start here if you're new to Vivid.
 
 ---
 
-## Addon Examples
+## Addon Projects
 
-Each addon contains its own examples in its `examples/` directory:
+Each addon contains its own projects in its `examples/` directory:
 
-| Addon | Examples | Description |
+| Addon | Projects | Description |
 |-------|----------|-------------|
-| [vivid-effects-2d](../addons/vivid-effects-2d/examples/) | 6 examples | 2D effects, particles, canvas drawing |
-| [vivid-render3d](../addons/vivid-render3d/examples/) | 3 examples | 3D rendering, GLTF, instancing |
-| [vivid-audio](../addons/vivid-audio/examples/) | 4 examples | Synthesis, sequencing, audio-reactive |
-| [vivid-network](../addons/vivid-network/examples/) | 3 examples | OSC, UDP, web control |
-| [vivid-ml](../addons/vivid-ml/examples/) | 1 example | ML inference, pose tracking |
+| [vivid-effects-2d](../src/addons/vivid-effects-2d/examples/) | 6 projects | 2D effects, particles, canvas drawing |
+| [vivid-render3d](../src/addons/vivid-render3d/examples/) | 3 projects | 3D rendering, GLTF, instancing |
+| [vivid-audio](../src/addons/vivid-audio/examples/) | 4 projects | Synthesis, sequencing, audio-reactive |
+| [vivid-network](../src/addons/vivid-network/examples/) | 3 projects | OSC, UDP, web control |
 
-Run addon examples the same way:
+Run addon projects the same way:
 ```bash
-./build/bin/vivid addons/vivid-effects-2d/examples/kaleidoscope
-./build/bin/vivid addons/vivid-audio/examples/drum-machine
+./build/bin/vivid src/addons/vivid-effects-2d/examples/kaleidoscope
+./build/bin/vivid src/addons/vivid-audio/examples/drum-machine
 ```
 
 ---
@@ -61,4 +60,4 @@ Impressive multi-addon demos showing the best of what Vivid can do. These are "w
 
 - [LLM-REFERENCE.md](../docs/LLM-REFERENCE.md) - Compact operator reference
 - [RECIPES.md](../docs/RECIPES.md) - Common patterns and techniques
-- [testing-fixtures/](../testing-fixtures/) - Core testing examples
+- [tests/fixtures/](../tests/fixtures/) - Core testing examples

@@ -36,19 +36,19 @@ catch_discover_tests(test_visual_regression
 add_custom_target(generate-reference-images
     COMMAND ${CMAKE_COMMAND} -E echo "Generating reference images..."
     COMMAND $<TARGET_FILE:vivid> ${CMAKE_SOURCE_DIR}/examples/2d-effects/chain-basics
-            --snapshot ${CMAKE_SOURCE_DIR}/testing-fixtures/reference-images/2d-effects/chain-basics.png
+            --snapshot ${CMAKE_SOURCE_DIR}/tests/fixtures/reference-images/2d-effects/chain-basics.png
             --snapshot-frame 30
     COMMAND $<TARGET_FILE:vivid> ${CMAKE_SOURCE_DIR}/examples/2d-effects/kaleidoscope
-            --snapshot ${CMAKE_SOURCE_DIR}/testing-fixtures/reference-images/2d-effects/kaleidoscope.png
+            --snapshot ${CMAKE_SOURCE_DIR}/tests/fixtures/reference-images/2d-effects/kaleidoscope.png
             --snapshot-frame 30
     COMMAND $<TARGET_FILE:vivid> ${CMAKE_SOURCE_DIR}/examples/2d-effects/retro-crt
-            --snapshot ${CMAKE_SOURCE_DIR}/testing-fixtures/reference-images/2d-effects/retro-crt.png
+            --snapshot ${CMAKE_SOURCE_DIR}/tests/fixtures/reference-images/2d-effects/retro-crt.png
             --snapshot-frame 30
-    COMMAND $<TARGET_FILE:vivid> ${CMAKE_SOURCE_DIR}/testing-fixtures/retro-suite
-            --snapshot ${CMAKE_SOURCE_DIR}/testing-fixtures/reference-images/retro-suite.png
+    COMMAND $<TARGET_FILE:vivid> ${CMAKE_SOURCE_DIR}/tests/fixtures/retro-suite
+            --snapshot ${CMAKE_SOURCE_DIR}/tests/fixtures/reference-images/retro-suite.png
             --snapshot-frame 30
-    COMMAND $<TARGET_FILE:vivid> ${CMAKE_SOURCE_DIR}/testing-fixtures/blend-modes-all
-            --snapshot ${CMAKE_SOURCE_DIR}/testing-fixtures/reference-images/blend-modes-all.png
+    COMMAND $<TARGET_FILE:vivid> ${CMAKE_SOURCE_DIR}/tests/fixtures/blend-modes-all
+            --snapshot ${CMAKE_SOURCE_DIR}/tests/fixtures/reference-images/blend-modes-all.png
             --snapshot-frame 30
     DEPENDS vivid
     COMMENT "Generating reference images for visual regression tests"

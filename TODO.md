@@ -317,3 +317,4 @@
 [ ] We *should* be using AVLooperPlayer on Mac for looping video, but we can't seem to get it to work.
 [ ] Port liquid/fluid sim from ofxFluid? https://github.com/moostrik/ofxFlowTools
 [ ] Make sure vivid-ml works with addon system and works in general https://github.com/seethroughlab/vivid-ml
+[ ] the root folder structure has gotten out of hand. I am worried that it will be confusing to new users. There are lots of testing folders, many different source folders, tools and scripts. Help me come up with a plan to re-organize the root folder to make it simpler. Not only for users, but to be closer to best practices and conventions. 

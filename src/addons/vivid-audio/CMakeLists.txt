@@ -94,7 +94,7 @@ add_library(vivid-audio SHARED ${AUDIO_SOURCES})
 
 target_include_directories(vivid-audio PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/src/core/include
     ${kissfft_SOURCE_DIR}
 )
 

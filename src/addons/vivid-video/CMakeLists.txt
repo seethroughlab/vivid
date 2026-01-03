@@ -63,7 +63,7 @@ add_library(vivid-video SHARED ${VIDEO_SOURCES})
 
 target_include_directories(vivid-video PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/src/core/include
 )
 
 # Include snappy headers (generated config is in binary dir)

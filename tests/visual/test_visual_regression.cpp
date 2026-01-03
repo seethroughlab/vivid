@@ -156,20 +156,20 @@ struct VisualTestCase {
 static const VisualTestCase VISUAL_TESTS[] = {
     // Static/deterministic effects - low tolerance
     {"chain-basics", "examples/2d-effects/chain-basics",
-     "testing-fixtures/reference-images/2d-effects/chain-basics.png", 30, 0.05},
+     "tests/fixtures/reference-images/2d-effects/chain-basics.png", 30, 0.05},
 
     {"kaleidoscope", "examples/2d-effects/kaleidoscope",
-     "testing-fixtures/reference-images/2d-effects/kaleidoscope.png", 30, 0.05},
+     "tests/fixtures/reference-images/2d-effects/kaleidoscope.png", 30, 0.05},
 
     {"retro-crt", "examples/2d-effects/retro-crt",
-     "testing-fixtures/reference-images/2d-effects/retro-crt.png", 30, 0.05},
+     "tests/fixtures/reference-images/2d-effects/retro-crt.png", 30, 0.05},
 
     // Test fixtures
-    {"retro-suite", "testing-fixtures/retro-suite",
-     "testing-fixtures/reference-images/retro-suite.png", 30, 0.05},
+    {"retro-suite", "tests/fixtures/retro-suite",
+     "tests/fixtures/reference-images/retro-suite.png", 30, 0.05},
 
-    {"blend-modes-all", "testing-fixtures/blend-modes-all",
-     "testing-fixtures/reference-images/blend-modes-all.png", 30, 0.05},
+    {"blend-modes-all", "tests/fixtures/blend-modes-all",
+     "tests/fixtures/reference-images/blend-modes-all.png", 30, 0.05},
 };
 
 TEST_CASE("Visual regression tests", "[visual]") {

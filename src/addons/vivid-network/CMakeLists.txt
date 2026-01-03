@@ -16,7 +16,7 @@ add_library(vivid-network SHARED ${NETWORK_SOURCES})
 
 target_include_directories(vivid-network PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/core/include
+    ${CMAKE_SOURCE_DIR}/src/core/include
 )
 
 target_link_libraries(vivid-network PUBLIC

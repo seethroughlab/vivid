@@ -24,8 +24,8 @@ target_include_directories(vivid
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/core
-        ${CMAKE_SOURCE_DIR}/core/include
+        ${CMAKE_SOURCE_DIR}/src/core
+        ${CMAKE_SOURCE_DIR}/src/core/include
 )
 
 # Pass version from CMake (or CI override)
@@ -67,7 +67,7 @@ endif()
 # Copy shaders to build directory
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/core/shaders
+        ${CMAKE_SOURCE_DIR}/src/core/shaders
         $<TARGET_FILE_DIR:vivid>/shaders
     COMMENT "Copying shaders..."
 )
@@ -75,7 +75,7 @@ add_custom_command(TARGET vivid POST_BUILD
 # Copy templates to build directory
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/core/templates
+        ${CMAKE_SOURCE_DIR}/src/core/templates
         $<TARGET_FILE_DIR:vivid>/templates
     COMMENT "Copying templates..."
 )
@@ -83,7 +83,7 @@ add_custom_command(TARGET vivid POST_BUILD
 # Copy presets to build directory
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/addons/vivid-audio/presets
+        ${CMAKE_SOURCE_DIR}/src/addons/vivid-audio/presets
         $<TARGET_FILE_DIR:vivid>/presets
     COMMENT "Copying presets..."
 )

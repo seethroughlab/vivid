@@ -226,10 +226,10 @@ TEST_CASE("3D rendering examples run without crash", "[smoke][3d]") {
 
 TEST_CASE("Testing fixtures run without crash", "[smoke][fixtures]") {
     auto fixture = GENERATE(
-        "testing-fixtures/feedback-effects",
-        "testing-fixtures/canvas-compositing",
-        "testing-fixtures/blend-modes-all",
-        "testing-fixtures/retro-suite"
+        "tests/fixtures/feedback-effects",
+        "tests/fixtures/canvas-compositing",
+        "tests/fixtures/blend-modes-all",
+        "tests/fixtures/retro-suite"
     );
 
     DYNAMIC_SECTION("Fixture: " << fixture) {

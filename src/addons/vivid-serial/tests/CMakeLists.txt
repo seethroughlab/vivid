@@ -12,8 +12,8 @@ target_link_libraries(test_serial_addon PRIVATE
 )
 
 target_include_directories(test_serial_addon PRIVATE
-    ${CMAKE_SOURCE_DIR}/core/include
-    ${CMAKE_SOURCE_DIR}/addons/vivid-serial/include
+    ${CMAKE_SOURCE_DIR}/src/core/include
+    ${CMAKE_SOURCE_DIR}/src/addons/vivid-serial/include
 )
 
 catch_discover_tests(test_serial_addon)

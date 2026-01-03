@@ -62,7 +62,7 @@ Desktop.ini
 vivid_v1
 vivid_v2
 **/imgui.ini
-examples/*/vivid_*
+projects/*/vivid_*
 nul
 /*.obj
 job-logs*.txt

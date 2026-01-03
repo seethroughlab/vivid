@@ -7,7 +7,7 @@ WebGPU-based creative coding framework with hot-reload. Minimal core (~600 lines
 ```bash
 cmake -B build && cmake --build build    # Full build
 cmake --build build                       # Incremental build
-./build/bin/vivid examples/getting-started/02-hello-noise    # Run example
+./build/bin/vivid projects/getting-started/02-hello-noise    # Run project
 doxygen Doxyfile                          # Generate API docs
 ```
 
@@ -80,18 +80,15 @@ When capturing multiple frames, filenames include frame numbers: `output.png` be
 ## Project Structure
 
 ```
-core/           Runtime engine + integrated features:
-                - context, chain, hot-reload, ImGui visualizer
-                - io/ (image loading via stb)
-                - effects/ (25+ 2D texture operators)
-                - network/ (OSC, UDP, WebSocket)
-addons/         Optional modular features:
-  vivid-video/        Video playback (HAP, platform codecs)
-  vivid-render3d/     3D rendering (PBR, CSG, instancing)
-  vivid-audio/        Audio synthesis, sequencing, analysis
-examples/       Curated user examples (getting-started/, 2d-effects/, audio/, 3d-rendering/)
-testing-fixtures/  Test examples for CI/regression testing
+src/            All source code:
+  core/           Runtime engine + integrated features
+  cli/            Command-line interface and app
+  addons/         Optional modular features (video, audio, render3d, etc.)
+projects/       Runnable example projects (getting-started/, 2d-effects/, audio/, 3d-rendering/)
+assets/         Shared media resources (images, fonts, models, audio)
 docs/           LLM-REFERENCE.md, RECIPES.md, OPERATOR-API.md
+tests/          Automated tests and fixtures
+dev/            Developer tools and planning docs
 ```
 
 ## Key Patterns
@@ -150,12 +147,12 @@ VIVID_CHAIN(setup, update)
 
 | Task | File |
 |------|------|
-| Add new 2D effect | `core/include/vivid/effects/` |
-| Add network operator | `core/include/vivid/network/` |
-| Modify chain visualizer UI | `core/imgui/chain_visualizer.cpp` |
-| Hot-reload logic | `core/src/hot_reload.cpp` |
-| Main runtime loop | `core/src/main.cpp` |
-| Operator base class | `core/include/vivid/operator.h` |
+| Add new 2D effect | `src/core/include/vivid/effects/` |
+| Add network operator | `src/core/include/vivid/network/` |
+| Modify chain visualizer UI | `src/core/imgui/chain_visualizer.cpp` |
+| Hot-reload logic | `src/core/src/hot_reload.cpp` |
+| Main runtime loop | `src/core/src/main.cpp` |
+| Operator base class | `src/core/include/vivid/operator.h` |
 
 ## Documentation
 
