@@ -4,7 +4,7 @@ Test assets are not included in the repository. To run asset-dependent tests loc
 
 ## Download
 
-Download from: **[TODO: Add download URL]**
+Download from: **https://vivid-test-assets.s3.us-east-1.amazonaws.com**
 
 Available packs:
 - `vivid-test-audio.zip` (31 MB) - WAV/MP3 audio files
@@ -15,15 +15,15 @@ Available packs:
 
 ## Installation
 
-Extract each zip file into this directory:
+Download and extract each zip file into this directory:
 
 ```bash
 cd tests/assets
-unzip ~/Downloads/vivid-test-audio.zip
-unzip ~/Downloads/vivid-test-materials.zip
-unzip ~/Downloads/vivid-test-meshes.zip
-unzip ~/Downloads/vivid-test-sample_packs.zip
-unzip ~/Downloads/vivid-test-videos.zip
+curl -O https://vivid-test-assets.s3.us-east-1.amazonaws.com/vivid-test-audio.zip && unzip vivid-test-audio.zip
+curl -O https://vivid-test-assets.s3.us-east-1.amazonaws.com/vivid-test-materials.zip && unzip vivid-test-materials.zip
+curl -O https://vivid-test-assets.s3.us-east-1.amazonaws.com/vivid-test-meshes.zip && unzip vivid-test-meshes.zip
+curl -O https://vivid-test-assets.s3.us-east-1.amazonaws.com/vivid-test-sample_packs.zip && unzip vivid-test-sample_packs.zip
+curl -O https://vivid-test-assets.s3.us-east-1.amazonaws.com/vivid-test-videos.zip && unzip vivid-test-videos.zip
 ```
 
 Expected directory structure:
