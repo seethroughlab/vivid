@@ -87,7 +87,7 @@ jobs:
           cp build/lib/*.so package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
 
           # Copy headers
-          cp -r core/include/vivid package/vivid-${{ matrix.target }}/include/
+          cp -r src/core/include/vivid package/vivid-${{ matrix.target }}/include/
           cp -r build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
 
           # Copy dependency headers (needed by addons building against SDK)
@@ -101,9 +101,9 @@ jobs:
           cp docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
           cp docs/OPERATOR-API.md package/vivid-${{ matrix.target }}/docs/
           cp docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
-          cp addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md 2>/dev/null || true
-          cp addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md 2>/dev/null || true
-          cp addons/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md 2>/dev/null || true
+          cp src/addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md 2>/dev/null || true
+          cp src/addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md 2>/dev/null || true
+          cp src/addons/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md 2>/dev/null || true
 
           # Create archive (no version in filename - extension expects this)
           cd package
@@ -126,7 +126,7 @@ jobs:
           Copy-Item build/lib/Release/*.dll package/vivid-${{ matrix.target }}/lib/ -ErrorAction SilentlyContinue
 
           # Copy headers
-          Copy-Item -Recurse core/include/vivid package/vivid-${{ matrix.target }}/include/
+          Copy-Item -Recurse src/core/include/vivid package/vivid-${{ matrix.target }}/include/
           Copy-Item -Recurse build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
 
           # Copy dependency headers (needed by addons building against SDK)
@@ -145,9 +145,9 @@ jobs:
           Copy-Item docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item docs/OPERATOR-API.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
-          Copy-Item addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md -ErrorAction SilentlyContinue
-          Copy-Item addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md -ErrorAction SilentlyContinue
-          Copy-Item addons/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md -ErrorAction SilentlyContinue
+          Copy-Item src/addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md -ErrorAction SilentlyContinue
+          Copy-Item src/addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md -ErrorAction SilentlyContinue
+          Copy-Item src/addons/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md -ErrorAction SilentlyContinue
 
           # Create archive
           Compress-Archive -Path package/vivid-${{ matrix.target }} -DestinationPath package/vivid-${{ matrix.target }}.${{ matrix.archive_ext }}
