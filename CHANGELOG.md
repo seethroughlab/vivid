@@ -10,6 +10,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.3] - 2026-01-03
+
+### Added
+
+#### MCP Server
+- `create_project` tool - Create new projects with template and addon selection
+- `run_project` / `stop_project` tools - Start and stop Vivid projects from Claude Code
+- `capture_snapshot` tool - Render frame(s) to PNG for testing and verification
+- `validate_chain` tool - Check if chain.cpp compiles without running
+- `bundle_project` tool - Package projects as standalone applications
+- `list_addons` tool - List installed addons
+
+#### VS Code Extension
+- Auto-configure `~/.claude.json` with Vivid MCP server on extension activation
+- "Vivid: Configure Claude Code Integration" command
+- Warning notifications when MCP config is missing or broken
+- Validation by running `vivid mcp --help` to verify binary works
+
+### Changed
+- MCP server now exposes 15 tools (up from 8)
+- All CLI commands accessible via MCP without interactive prompts (uses `-y` flag)
+
+## [0.1.0-alpha.2] - 2026-01-03
+
+### Changed
+- Reorganized documentation for better LLM and human discoverability
+- Moved test assets to external S3 storage (LFS budget exceeded)
+
 ## [0.1.0-alpha.1] - 2026-01-03
 
 First alpha release of Vivid. This consolidates all previous development into a single
@@ -89,5 +117,7 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.1...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.3...HEAD
+[0.1.0-alpha.3]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
+[0.1.0-alpha.2]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/seethroughlab/vivid/releases/tag/v0.1.0-alpha.1

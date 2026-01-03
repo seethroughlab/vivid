@@ -17,9 +17,18 @@
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
+#include <array>
+#include <csignal>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
+#endif
+
+#ifndef _WIN32
+#include <unistd.h>
+#include <sys/wait.h>
+#else
+#include <windows.h>
 #endif
 
 using json = nlohmann::json;
@@ -141,6 +150,72 @@ private:
     json m_pendingChanges = {{"hasChanges", false}, {"changes", json::array()}};
     json m_compileStatus = {{"success", true}, {"message", ""}};
 };
+
+// Helper to get the path to the vivid executable
+std::string getVividExecutable() {
+    char pathBuf[4096];
+#ifdef __APPLE__
+    uint32_t size = sizeof(pathBuf);
+    if (_NSGetExecutablePath(pathBuf, &size) == 0) {
+        return std::string(pathBuf);
+    }
+#elif defined(_WIN32)
+    GetModuleFileNameA(nullptr, pathBuf, sizeof(pathBuf));
+    return std::string(pathBuf);
+#else
+    ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
+    if (len != -1) {
+        pathBuf[len] = '\0';
+        return std::string(pathBuf);
+    }
+#endif
+    return "vivid";  // Fallback to PATH
+}
+
+// Helper to run a command and capture output
+struct CommandResult {
+    int exitCode;
+    std::string output;
+    std::string error;
+};
+
+CommandResult runCommand(const std::vector<std::string>& args, int timeoutMs = 60000) {
+    CommandResult result;
+    result.exitCode = -1;
+
+    std::string command = args[0];
+    for (size_t i = 1; i < args.size(); ++i) {
+        command += " ";
+        // Quote arguments with spaces
+        if (args[i].find(' ') != std::string::npos) {
+            command += "\"" + args[i] + "\"";
+        } else {
+            command += args[i];
+        }
+    }
+    command += " 2>&1";  // Redirect stderr to stdout
+
+    FILE* pipe = popen(command.c_str(), "r");
+    if (!pipe) {
+        result.error = "Failed to execute command";
+        return result;
+    }
+
+    std::array<char, 256> buffer;
+    while (fgets(buffer.data(), buffer.size(), pipe) != nullptr) {
+        result.output += buffer.data();
+    }
+
+    result.exitCode = pclose(pipe);
+#ifndef _WIN32
+    result.exitCode = WEXITSTATUS(result.exitCode);
+#endif
+
+    return result;
+}
+
+// PID of running vivid instance (for run_project/stop_project)
+static pid_t s_runningPid = 0;
 
 // MCP Server implementation
 class McpServer {
@@ -322,6 +397,99 @@ private:
             }}
         });
 
+        // create_project - Create new project
+        tools.push_back({
+            {"name", "create_project"},
+            {"description", "Create a new Vivid project with the specified name and template."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"name", {{"type", "string"}, {"description", "Project name"}}},
+                    {"path", {{"type", "string"}, {"description", "Parent directory (optional, defaults to current directory)"}}},
+                    {"template", {{"type", "string"}, {"description", "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit"}}},
+                    {"addons", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Addons to include: vivid-audio, vivid-video, vivid-render3d"}}}
+                }},
+                {"required", json::array({"name"})}
+            }}
+        });
+
+        // run_project - Start a project
+        tools.push_back({
+            {"name", "run_project"},
+            {"description", "Start a Vivid project in the background. Returns once the project is running."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}}
+                }},
+                {"required", json::array({"path"})}
+            }}
+        });
+
+        // stop_project - Stop running project
+        tools.push_back({
+            {"name", "stop_project"},
+            {"description", "Stop the currently running Vivid project."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // capture_snapshot - Render to PNG
+        tools.push_back({
+            {"name", "capture_snapshot"},
+            {"description", "Render a project to PNG image(s). Useful for testing and verification."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
+                    {"output", {{"type", "string"}, {"description", "Output PNG file path"}}},
+                    {"frame", {{"type", "string"}, {"description", "Frame specification: single number, comma-separated list, or range (e.g., '5', '0,5,10', '0-11')"}}}
+                }},
+                {"required", json::array({"path", "output"})}
+            }}
+        });
+
+        // validate_chain - Check if chain compiles
+        tools.push_back({
+            {"name", "validate_chain"},
+            {"description", "Check if a project's chain.cpp compiles without running it. Returns compilation errors if any."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}}
+                }},
+                {"required", json::array({"path"})}
+            }}
+        });
+
+        // bundle_project - Package as standalone app
+        tools.push_back({
+            {"name", "bundle_project"},
+            {"description", "Bundle a Vivid project as a standalone application."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
+                    {"output", {{"type", "string"}, {"description", "Output directory for the bundled app"}}},
+                    {"name", {{"type", "string"}, {"description", "App display name (optional)"}}},
+                    {"platform", {{"type", "string"}, {"description", "Target platform: mac, windows, linux (optional, defaults to current)"}}}
+                }},
+                {"required", json::array({"path"})}
+            }}
+        });
+
+        // list_addons - List available addons
+        tools.push_back({
+            {"name", "list_addons"},
+            {"description", "List installed Vivid addons."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
         return {{"tools", tools}};
     }
 
@@ -484,6 +652,227 @@ private:
                 {"type", "text"},
                 {"text", searchDocs(query)}
             }};
+        }
+        else if (name == "create_project") {
+            std::string projectName = args.value("name", "");
+            std::string parentPath = args.value("path", ".");
+            std::string templateName = args.value("template", "blank");
+
+            if (projectName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Project name is required"}}};
+                return result;
+            }
+
+            std::vector<std::string> cmdArgs = {
+                getVividExecutable(), "new", projectName,
+                "-y",  // Skip prompts
+                "-t", templateName
+            };
+
+            // Add addons if specified
+            if (args.contains("addons") && args["addons"].is_array()) {
+                std::string addonList;
+                for (const auto& addon : args["addons"]) {
+                    if (!addonList.empty()) addonList += ",";
+                    addonList += addon.get<std::string>();
+                }
+                if (!addonList.empty()) {
+                    cmdArgs.push_back("-a");
+                    cmdArgs.push_back(addonList);
+                }
+            }
+
+            // Change to parent directory for the command
+            std::string origDir = fs::current_path().string();
+            try {
+                fs::current_path(parentPath);
+            } catch (...) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Invalid path: " + parentPath}}};
+                return result;
+            }
+
+            auto cmdResult = runCommand(cmdArgs);
+            fs::current_path(origDir);  // Restore directory
+
+            if (cmdResult.exitCode == 0) {
+                fs::path projectPath = fs::path(parentPath) / projectName;
+                json response;
+                response["success"] = true;
+                response["path"] = fs::absolute(projectPath).string();
+                response["output"] = cmdResult.output;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Failed to create project:\n" + cmdResult.output}}};
+            }
+        }
+        else if (name == "run_project") {
+            std::string projectPath = args.value("path", "");
+
+            if (projectPath.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Project path is required"}}};
+                return result;
+            }
+
+            if (!fs::exists(projectPath)) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Project path does not exist: " + projectPath}}};
+                return result;
+            }
+
+            // Stop any existing instance first
+            if (s_runningPid > 0) {
+                kill(s_runningPid, SIGTERM);
+                s_runningPid = 0;
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
+
+            // Fork and run vivid in background
+            pid_t pid = fork();
+            if (pid == 0) {
+                // Child process
+                std::string exe = getVividExecutable();
+                execlp(exe.c_str(), exe.c_str(), projectPath.c_str(), nullptr);
+                _exit(1);  // Only reached if exec fails
+            } else if (pid > 0) {
+                s_runningPid = pid;
+                // Wait a moment for it to start
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+
+                // Try to connect to verify it started
+                m_vivid.disconnect();
+                bool connected = m_vivid.connect();
+
+                json response;
+                response["success"] = true;
+                response["pid"] = pid;
+                response["connected"] = connected;
+                response["port"] = 9876;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Failed to start project"}}};
+            }
+        }
+        else if (name == "stop_project") {
+            if (s_runningPid > 0) {
+                kill(s_runningPid, SIGTERM);
+                int status;
+                waitpid(s_runningPid, &status, WNOHANG);
+                s_runningPid = 0;
+                m_vivid.disconnect();
+                result["content"] = {{{"type", "text"}, {"text", "Project stopped"}}};
+            } else {
+                result["content"] = {{{"type", "text"}, {"text", "No project is running"}}};
+            }
+        }
+        else if (name == "capture_snapshot") {
+            std::string projectPath = args.value("path", "");
+            std::string outputPath = args.value("output", "");
+            std::string frameSpec = args.value("frame", "5");
+
+            if (projectPath.empty() || outputPath.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both path and output are required"}}};
+                return result;
+            }
+
+            std::vector<std::string> cmdArgs = {
+                getVividExecutable(), projectPath,
+                "--snapshot", outputPath,
+                "--snapshot-frame", frameSpec
+            };
+
+            auto cmdResult = runCommand(cmdArgs, 120000);  // 2 minute timeout for rendering
+
+            if (cmdResult.exitCode == 0) {
+                json response;
+                response["success"] = true;
+                response["output"] = outputPath;
+                response["log"] = cmdResult.output;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Snapshot failed:\n" + cmdResult.output}}};
+            }
+        }
+        else if (name == "validate_chain") {
+            std::string projectPath = args.value("path", "");
+
+            if (projectPath.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Project path is required"}}};
+                return result;
+            }
+
+            // Use snapshot with frame 0 and /dev/null output to just compile
+            std::vector<std::string> cmdArgs = {
+                getVividExecutable(), projectPath,
+                "--snapshot", "/dev/null",
+                "--snapshot-frame", "0"
+            };
+
+            auto cmdResult = runCommand(cmdArgs, 60000);
+
+            json response;
+            response["valid"] = (cmdResult.exitCode == 0);
+            if (cmdResult.exitCode != 0) {
+                // Extract compile errors from output
+                response["errors"] = cmdResult.output;
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "bundle_project") {
+            std::string projectPath = args.value("path", "");
+            std::string outputDir = args.value("output", "");
+            std::string appName = args.value("name", "");
+            std::string platform = args.value("platform", "");
+
+            if (projectPath.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Project path is required"}}};
+                return result;
+            }
+
+            std::vector<std::string> cmdArgs = {
+                getVividExecutable(), "bundle", projectPath
+            };
+
+            if (!outputDir.empty()) {
+                cmdArgs.push_back("-o");
+                cmdArgs.push_back(outputDir);
+            }
+            if (!appName.empty()) {
+                cmdArgs.push_back("-n");
+                cmdArgs.push_back(appName);
+            }
+            if (!platform.empty()) {
+                cmdArgs.push_back("-p");
+                cmdArgs.push_back(platform);
+            }
+
+            auto cmdResult = runCommand(cmdArgs, 300000);  // 5 minute timeout for bundling
+
+            if (cmdResult.exitCode == 0) {
+                json response;
+                response["success"] = true;
+                response["output"] = cmdResult.output;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Bundle failed:\n" + cmdResult.output}}};
+            }
+        }
+        else if (name == "list_addons") {
+            std::vector<std::string> cmdArgs = {
+                getVividExecutable(), "addons", "list"
+            };
+
+            auto cmdResult = runCommand(cmdArgs);
+            result["content"] = {{{"type", "text"}, {"text", cmdResult.output}}};
         }
         else {
             result["isError"] = true;
