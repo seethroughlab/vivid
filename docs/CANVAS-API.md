@@ -889,5 +889,5 @@ VIVID_CHAIN(setup, update)
 
 - [MDN Canvas Tutorial](https://developer.mozilla.org/en-US/docs/Web/API/Canvas_API/Tutorial)
 - [MDN CanvasRenderingContext2D](https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D)
-- [Vivid Operator API](OPERATOR-API.md)
+- [Vivid Operator API](ADDON-DEVELOPMENT.md)
 - [Vivid Recipes](RECIPES.md)

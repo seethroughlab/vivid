@@ -342,7 +342,7 @@ This outputs the processing order and shows which operator is the screen output:
 
 ## See Also
 
-- [OPERATOR-API.md](OPERATOR-API.md) - Creating custom operators
+- [ADDON-DEVELOPMENT.md](ADDON-DEVELOPMENT.md) - Creating custom operators
 - [SHADER-CONVENTIONS.md](SHADER-CONVENTIONS.md) - Writing shaders
 - `projects/2d-effects/chain-basics/` - Full working example
 - `projects/2d-effects/particles/` - 2D particle system

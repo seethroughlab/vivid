@@ -99,7 +99,6 @@ jobs:
 
           # Copy documentation for MCP server
           cp docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
-          cp docs/OPERATOR-API.md package/vivid-${{ matrix.target }}/docs/
           cp docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
           cp src/addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md 2>/dev/null || true
           cp src/addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md 2>/dev/null || true
@@ -143,7 +142,6 @@ jobs:
 
           # Copy documentation for MCP server
           Copy-Item docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
-          Copy-Item docs/OPERATOR-API.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item src/addons/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md -ErrorAction SilentlyContinue
           Copy-Item src/addons/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md -ErrorAction SilentlyContinue
