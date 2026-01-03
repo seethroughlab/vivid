@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-01-03
+
+### Changed
+
+#### Repository Structure
+- **Source Reorganization** - All source code now lives under `src/`:
+  - `core/` → `src/core/`
+  - `cli/` → `src/cli/`
+  - `addons/` → `src/addons/`
+- **Examples → Projects** - Renamed `examples/` to `projects/` to better reflect their purpose
+- **Development Files** - Moved `plans/`, `tools/`, `scripts/` into `dev/` directory
+- **Test Organization** - Moved `testing-fixtures/` to `tests/fixtures/`, `testing-checklists/` to `tests/checklists/`
+
+#### Asset Management
+- **Assets Folder Eliminated** - No more shared `assets/` folder at root:
+  - Framework fonts and icons → `src/core/assets/`
+  - Project-specific assets → `projects/<name>/assets/`
+  - Test assets → `tests/assets/` with Git LFS tracking
+- **Git LFS** - Large test files (videos, sample packs, meshes, HDRIs) now use Git LFS for faster clones
+
+### Fixed
+- **Hot Reload** - Fixed include path resolution after folder restructuring
+- **Addon Discovery** - Fixed addon registry path to find addons in `src/addons/`
+- **Particles Example** - Fixed Composite input API (string names instead of pointers)
+- **Test Paths** - Updated all test references from `examples/` to `projects/`
+
 ## [0.1.1] - 2025-01-XX
 
 ### Added
@@ -111,6 +137,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - WebGPU via wgpu-native
 - Cross-platform: macOS, Windows, Linux
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/seethroughlab/vivid/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/seethroughlab/vivid/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/seethroughlab/vivid/releases/tag/v0.1.0
