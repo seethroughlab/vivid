@@ -44,35 +44,35 @@ void setup(Context& ctx) {
 
     // Ground material - hexagon pavers (great for showing shadows)
     auto& groundMat = chain.add<TexturedMaterial>("groundMat");
-    groundMat.baseColor("assets/materials/hexagon-pavers1-bl/hexagon-pavers1_albedo.png");
-    groundMat.normal("assets/materials/hexagon-pavers1-bl/hexagon-pavers1_normal-ogl.png");
-    groundMat.metallic("assets/materials/hexagon-pavers1-bl/hexagon-pavers1_metallic.png");
-    groundMat.roughness("assets/materials/hexagon-pavers1-bl/hexagon-pavers1_roughness.png");
-    groundMat.ao("assets/materials/hexagon-pavers1-bl/hexagon-pavers1_ao.png");
+    groundMat.baseColor("tests/assets/materials/hexagon-pavers1-bl/hexagon-pavers1_albedo.png");
+    groundMat.normal("tests/assets/materials/hexagon-pavers1-bl/hexagon-pavers1_normal-ogl.png");
+    groundMat.metallic("tests/assets/materials/hexagon-pavers1-bl/hexagon-pavers1_metallic.png");
+    groundMat.roughness("tests/assets/materials/hexagon-pavers1-bl/hexagon-pavers1_roughness.png");
+    groundMat.ao("tests/assets/materials/hexagon-pavers1-bl/hexagon-pavers1_ao.png");
 
     // Metal material for CSG objects
     auto& metalMat = chain.add<TexturedMaterial>("metalMat");
-    metalMat.baseColor("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-albedo.png");
-    metalMat.normal("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Normal-ogl.png");
-    metalMat.metallic("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Metallic.png");
-    metalMat.roughness("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Roughness.png");
-    metalMat.ao("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-ao.png");
+    metalMat.baseColor("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-albedo.png");
+    metalMat.normal("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Normal-ogl.png");
+    metalMat.metallic("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Metallic.png");
+    metalMat.roughness("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Roughness.png");
+    metalMat.ao("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-ao.png");
 
     // Bronze material
     auto& bronzeMat = chain.add<TexturedMaterial>("bronzeMat");
-    bronzeMat.baseColor("assets/materials/bronze-bl/bronze_albedo.png");
-    bronzeMat.normal("assets/materials/bronze-bl/bronze_normal-ogl.png");
-    bronzeMat.metallic("assets/materials/bronze-bl/bronze_metallic.png");
-    bronzeMat.roughness("assets/materials/bronze-bl/bronze_roughness.png");
-    bronzeMat.ao("assets/materials/bronze-bl/bronze_ao.png");
+    bronzeMat.baseColor("tests/assets/materials/bronze-bl/bronze_albedo.png");
+    bronzeMat.normal("tests/assets/materials/bronze-bl/bronze_normal-ogl.png");
+    bronzeMat.metallic("tests/assets/materials/bronze-bl/bronze_metallic.png");
+    bronzeMat.roughness("tests/assets/materials/bronze-bl/bronze_roughness.png");
+    bronzeMat.ao("tests/assets/materials/bronze-bl/bronze_ao.png");
 
     // Granite material for primitive objects
     auto& graniteMat = chain.add<TexturedMaterial>("graniteMat");
-    graniteMat.baseColor("assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_albedo.png");
-    graniteMat.normal("assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_normal-ogl.png");
-    graniteMat.metallic("assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_metallic.png");
-    graniteMat.roughness("assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_roughness.png");
-    graniteMat.ao("assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_ao.png");
+    graniteMat.baseColor("tests/assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_albedo.png");
+    graniteMat.normal("tests/assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_normal-ogl.png");
+    graniteMat.metallic("tests/assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_metallic.png");
+    graniteMat.roughness("tests/assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_roughness.png");
+    graniteMat.ao("tests/assets/materials/speckled-granite-tiles-bl/speckled-granite-tiles_ao.png");
 
     // =========================================================================
     // Geometry for Scene (with materials assigned directly to meshes)
@@ -158,7 +158,7 @@ void setup(Context& ctx) {
 
     // DamagedHelmet glTF model (has its own embedded material)
     auto& helmet = chain.add<GLTFLoader>("helmet");
-    helmet.file("assets/meshes/DamagedHelmet.glb");
+    helmet.file("tests/assets/meshes/DamagedHelmet.glb");
     helmet.loadTextures(true);  // Load embedded PBR textures
 
     glm::mat4 helmetTransform = glm::translate(glm::mat4(1.0f), glm::vec3(3.5f, 1.0f, 0.0f)) *

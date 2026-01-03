@@ -88,7 +88,7 @@ void setup(Context& ctx) {
 
     // IBL environment for reflections
     auto& ibl = chain.add<IBLEnvironment>("ibl");
-    ibl.setHdrFile("assets/hdris/warm_reception_dinner_4k.hdr");
+    ibl.setHdrFile("assets/warm_reception_dinner_4k.hdr");
 
     // Main 3D render
     auto& render = chain.add<Render3D>("render");

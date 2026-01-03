@@ -31,7 +31,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& lapsteel = chain.add<MultiSampler>("lapsteel");
-    lapsteel.loadPreset("assets/sample_packs/lapsteel-articulations/lapsteel-combined.json");
+    lapsteel.loadPreset("tests/assets/sample_packs/lapsteel-articulations/lapsteel-combined.json");
     lapsteel.volume = 0.9f;
     lapsteel.attack = 0.02f;
     lapsteel.release = 0.8f;

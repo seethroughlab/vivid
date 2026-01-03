@@ -21,9 +21,9 @@ using namespace vivid::audio;
 
 // Audio files
 static const std::vector<std::string> audioFiles = {
-    "assets/audio/836863__josefpres__piano-loops-197-octave-short-loop-120-bpm.wav",
-    "assets/audio/836911__josefpres__piano-loops-197-octave-down-short-loop-120-bpm.wav",
-    "assets/audio/file_example_WAV_5MG.wav",
+    "tests/assets/audio/836863__josefpres__piano-loops-197-octave-short-loop-120-bpm.wav",
+    "tests/assets/audio/836911__josefpres__piano-loops-197-octave-down-short-loop-120-bpm.wav",
+    "tests/assets/audio/file_example_WAV_5MG.wav",
 };
 
 static int currentFileIndex = 0;

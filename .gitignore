@@ -58,17 +58,11 @@ ehthumbs.db
 Desktop.ini
 .claude
 
-# Old versions of vivid - for reference
-vivid_v1
-vivid_v2
 **/imgui.ini
 projects/*/vivid_*
 nul
 /*.obj
-job-logs*.txt
 **/snapshot_*.png
-three.js
 std*.txt
 test*.png
-memory_leak_repro/target
-assets/sample_packs/**
+

@@ -24,7 +24,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
 
     // Load an image - uses the file's native resolution
-    image.file = "assets/images/nature.jpg";
+    image.file = "assets/nature.jpg";
 
     // Configure noise for displacement - use Simplex for smooth distortion
     // Note: Noise resolution should match the image for proper displacement

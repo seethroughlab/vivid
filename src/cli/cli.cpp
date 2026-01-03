@@ -692,7 +692,7 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
 
         // Copy app icon (project icon overrides default)
         fs::path projectIcon = srcProject / "icon.icns";
-        fs::path defaultIcon = rootDir / "assets" / "icons" / "vivid.icns";
+        fs::path defaultIcon = rootDir / "src" / "core" / "assets" / "icons" / "vivid.icns";
         fs::path destIcon = resourcesPath / "AppIcon.icns";
 
         if (fs::exists(projectIcon)) {
@@ -824,7 +824,7 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
         // Copy app icon (project icon overrides default)
         // Note: .ico can be used for creating shortcuts with custom icons
         fs::path projectIcon = srcProject / "icon.ico";
-        fs::path defaultIcon = rootDir / "assets" / "icons" / "vivid.ico";
+        fs::path defaultIcon = rootDir / "src" / "core" / "assets" / "icons" / "vivid.ico";
         fs::path destIcon = bundlePath / (appName + ".ico");
 
         if (fs::exists(projectIcon)) {

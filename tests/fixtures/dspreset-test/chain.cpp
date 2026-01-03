@@ -25,7 +25,7 @@ void setup(Context& ctx) {
 
     // Load directly from .dspreset (no JSON conversion needed!)
     auto& lapsteel = chain.add<MultiSampler>("lapsteel");
-    lapsteel.loadDspreset("assets/sample_packs/lapsteel-articulations/open.dspreset");
+    lapsteel.loadDspreset("tests/assets/sample_packs/lapsteel-articulations/open.dspreset");
     lapsteel.volume = 0.9f;
     lapsteel.attack = 0.02f;
     lapsteel.release = 1.0f;

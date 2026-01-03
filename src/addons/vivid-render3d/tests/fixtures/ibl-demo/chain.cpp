@@ -28,7 +28,7 @@ void setup(Context& ctx) {
 
     // IBL environment (now a proper chain operator)
     auto& ibl = chain.add<IBLEnvironment>("ibl")
-        .hdrFile("assets/hdris/bryanston_park_sunrise_4k.hdr");
+        .hdrFile("tests/assets/hdris/bryanston_park_sunrise_4k.hdr");
 
     // Create scene composer
     auto& scene = SceneComposer::create(chain, "scene");
@@ -37,40 +37,40 @@ void setup(Context& ctx) {
     // Row 0: Worn Shiny Metal (textured PBR)
     // =========================================================================
     auto& wornMetal = chain.add<TexturedMaterial>("worn_metal")
-        .baseColor("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-albedo.png")
-        .normal("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Normal-ogl.png")
-        .metallic("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Metallic.png")
-        .roughness("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Roughness.png")
-        .ao("assets/materials/worn-shiny-metal-bl/worn-shiny-metal-ao.png");
+        .baseColor("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-albedo.png")
+        .normal("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Normal-ogl.png")
+        .metallic("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Metallic.png")
+        .roughness("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-Roughness.png")
+        .ao("tests/assets/materials/worn-shiny-metal-bl/worn-shiny-metal-ao.png");
 
     // =========================================================================
     // Row 1: Bronze (textured PBR)
     // =========================================================================
     auto& bronze = chain.add<TexturedMaterial>("bronze")
-        .baseColor("assets/materials/bronze-bl/bronze_albedo.png")
-        .normal("assets/materials/bronze-bl/bronze_normal-ogl.png")
-        .metallic("assets/materials/bronze-bl/bronze_metallic.png")
-        .roughness("assets/materials/bronze-bl/bronze_roughness.png")
-        .ao("assets/materials/bronze-bl/bronze_ao.png");
+        .baseColor("tests/assets/materials/bronze-bl/bronze_albedo.png")
+        .normal("tests/assets/materials/bronze-bl/bronze_normal-ogl.png")
+        .metallic("tests/assets/materials/bronze-bl/bronze_metallic.png")
+        .roughness("tests/assets/materials/bronze-bl/bronze_roughness.png")
+        .ao("tests/assets/materials/bronze-bl/bronze_ao.png");
 
     // =========================================================================
     // Row 2: Titanium Scuffed (textured PBR)
     // =========================================================================
     auto& titanium = chain.add<TexturedMaterial>("titanium")
-        .baseColor("assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_basecolor.png")
-        .normal("assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_normal.png")
-        .metallic("assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_metallic.png")
-        .roughness("assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_roughness.png");
+        .baseColor("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_basecolor.png")
+        .normal("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_normal.png")
+        .metallic("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_metallic.png")
+        .roughness("tests/assets/materials/Titanium-Scuffed-bl/Titanium-Scuffed_roughness.png");
 
     // =========================================================================
     // Row 3: Rock (textured PBR - dielectric)
     // =========================================================================
     auto& rock = chain.add<TexturedMaterial>("rock")
-        .baseColor("assets/materials/roughrockface2-bl/roughrockface2_Base_Color.png")
-        .normal("assets/materials/roughrockface2-bl/roughrockface2_Normal.png")
-        .metallic("assets/materials/roughrockface2-bl/roughrockface2_Metallic.png")
-        .roughness("assets/materials/roughrockface2-bl/roughrockface2_Roughness.png")
-        .ao("assets/materials/roughrockface2-bl/roughrockface2_Ambient_Occlusion.png");
+        .baseColor("tests/assets/materials/roughrockface2-bl/roughrockface2_Base_Color.png")
+        .normal("tests/assets/materials/roughrockface2-bl/roughrockface2_Normal.png")
+        .metallic("tests/assets/materials/roughrockface2-bl/roughrockface2_Metallic.png")
+        .roughness("tests/assets/materials/roughrockface2-bl/roughrockface2_Roughness.png")
+        .ao("tests/assets/materials/roughrockface2-bl/roughrockface2_Ambient_Occlusion.png");
 
     // Array of materials for easy iteration
     TexturedMaterial* materials[] = { &wornMetal, &bronze, &titanium, &rock };

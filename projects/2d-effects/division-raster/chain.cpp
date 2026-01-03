@@ -52,7 +52,7 @@ void setup(Context& ctx) {
 
     // Load source image with CPU data for pixel sampling
     auto& image = chain.add<Image>("raster");
-    image.file = "assets/images/nature.jpg";
+    image.file = "assets/nature.jpg";
     image.keepCpuData = true;  // Enable pixel sampling
 
     auto& canvas = chain.add<Canvas>("canvas");

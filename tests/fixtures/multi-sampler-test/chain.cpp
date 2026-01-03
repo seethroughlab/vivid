@@ -32,7 +32,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& piano = chain.add<MultiSampler>("piano");
-    piano.loadPreset("assets/sample_packs/1781 - Ganer Square Piano/1781 Ganer Square.json");
+    piano.loadPreset("tests/assets/sample_packs/1781 - Ganer Square Piano/1781 Ganer Square.json");
     piano.volume = 0.8f;
     piano.attack = 0.01f;
     piano.decay = 0.2f;

@@ -26,14 +26,13 @@ struct VideoEntry {
 };
 
 static const std::vector<VideoEntry> videos = {
-    {"assets/videos/sync-test-h264.mp4",       "H.264",      "A/V sync test - beep aligns with flash"},
-    {"assets/videos/sync-test-hevc.mp4",       "HEVC/H.265", "High efficiency codec"},
-    {"assets/videos/sync-test-prores.mov",     "ProRes",     "Apple professional codec"},
-    {"assets/videos/sync-test-hap.mov",        "HAP",        "GPU-compressed DXT1"},
-    {"assets/videos/sync-test-hapq.mov",       "HAP-Q",      "GPU-compressed, higher quality"},
-    {"assets/videos/sync-test-hap-alpha.mov",  "HAP-Alpha",  "GPU-compressed with alpha"},
-    {"assets/videos/sync-test-mjpeg.mov",      "MJPEG",      "Motion JPEG"},
-    {"assets/videos/hap-1080p-audio.mov",      "HAP (long)", "617MB HAP with audio track"},
+    {"tests/assets/videos/sync-test-h264.mp4",       "H.264",      "A/V sync test - beep aligns with flash"},
+    {"tests/assets/videos/sync-test-hevc.mp4",       "HEVC/H.265", "High efficiency codec"},
+    {"tests/assets/videos/sync-test-prores.mov",     "ProRes",     "Apple professional codec"},
+    {"tests/assets/videos/sync-test-hap.mov",        "HAP",        "GPU-compressed DXT1"},
+    {"tests/assets/videos/sync-test-hapq.mov",       "HAP-Q",      "GPU-compressed, higher quality"},
+    {"tests/assets/videos/sync-test-hap-alpha.mov",  "HAP-Alpha",  "GPU-compressed with alpha"},
+    {"tests/assets/videos/sync-test-mjpeg.mov",      "MJPEG",      "Motion JPEG"},
 };
 
 void printCurrentVideo() {

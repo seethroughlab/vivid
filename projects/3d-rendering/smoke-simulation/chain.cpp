@@ -61,7 +61,7 @@ void setup(Context& ctx) {
     smoke.colorEnd(0.8f, 0.8f, 0.8f, 0.0f);
 
     // Texture: smoke spritesheet
-    smoke.texture("assets/textures/Smoke30Frames.png");
+    smoke.texture("assets/Smoke30Frames.png");
     smoke.spriteSheet(6, 5);    // 6 columns, 5 rows
     smoke.spriteFrames(30);     // 30 total frames
     smoke.spriteAnimateByLife(false); // Time-based animation, not lifetime
