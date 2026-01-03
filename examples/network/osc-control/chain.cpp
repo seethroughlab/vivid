@@ -27,10 +27,13 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // OSC input (receive from TouchOSC, etc.)
-    chain.add<OscIn>("oscIn").port(8000);
+    auto& oscIn = chain.add<OscIn>("oscIn");
+    oscIn.port(8000);
 
     // OSC output (send feedback to controller)
-    chain.add<OscOut>("oscOut").host("127.0.0.1").port(9000);
+    auto& oscOut = chain.add<OscOut>("oscOut");
+    oscOut.host("127.0.0.1");
+    oscOut.port(9000);
 
     // Visual chain
     auto& noise = chain.add<Noise>("noise");
@@ -39,12 +42,12 @@ void setup(Context& ctx) {
     noise.octaves = 4;
 
     auto& hsv = chain.add<HSV>("hsv");
-    hsv.input("noise");
+    hsv.setInput(0, &noise);
     hsv.hueShift = g_hueShift;
     hsv.saturation = g_saturation;
 
     auto& blur = chain.add<Blur>("blur");
-    blur.input("hsv");
+    blur.setInput(0, &hsv);
     blur.radius = g_blurRadius;
 
     chain.output("blur");

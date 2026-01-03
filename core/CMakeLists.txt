@@ -54,6 +54,7 @@ set(VIVID_CORE_LIB_SOURCES
     # Runtime utilities (used by CLI but also useful for library consumers)
     src/display.cpp
     src/hot_reload.cpp
+    src/log.cpp
     src/addon_registry.cpp
     src/addon_manager.cpp
     # Chain visualizer (uses OverlayCanvas, no ImGui)

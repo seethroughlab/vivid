@@ -40,7 +40,8 @@ jobs:
             libxkbcommon-dev \
             libgl1-mesa-dev \
             xvfb \
-            mesa-utils
+            mesa-utils \
+            lcov
 
       - name: Download wgpu-native
         env:
@@ -68,7 +69,13 @@ jobs:
         shell: bash
 
       - name: Configure CMake
-        run: cmake -B build -DBUILD_TESTS=ON ${{ matrix.cmake_args }}
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            cmake -B build -DBUILD_TESTS=ON -DCOVERAGE=ON ${{ matrix.cmake_args }}
+          else
+            cmake -B build -DBUILD_TESTS=ON ${{ matrix.cmake_args }}
+          fi
+        shell: bash
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -80,23 +87,36 @@ jobs:
         run: ctest --test-dir build --output-on-failure -C Release -L "mcp"
         timeout-minutes: 5
 
-      # GPU-based tests require real GPU or software renderer (llvmpipe)
-      # These are marked continue-on-error until headless WebGPU is configured
+      # GPU-based tests run on Linux with Mesa llvmpipe software renderer
       - name: Run smoke tests (Linux headless)
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a --server-args="-screen 0 1280x720x24" \
-            ctest --test-dir build --output-on-failure -C Release -L "smoke" || true
+            ctest --test-dir build --output-on-failure -C Release -L "smoke"
         timeout-minutes: 10
-        continue-on-error: true
 
       - name: Run visual regression tests (Linux headless)
         if: runner.os == 'Linux'
         run: |
           xvfb-run -a --server-args="-screen 0 1280x720x24" \
-            ctest --test-dir build --output-on-failure -C Release -L "visual" || true
+            ctest --test-dir build --output-on-failure -C Release -L "visual"
         timeout-minutes: 15
-        continue-on-error: true
+
+      - name: Generate coverage report
+        if: runner.os == 'Linux'
+        run: |
+          lcov --capture --directory build --output-file coverage.info
+          # Remove coverage for external dependencies and test code
+          lcov --remove coverage.info '/usr/*' '*/build/_deps/*' '*/tests/*' --output-file coverage.info
+          lcov --list coverage.info
+
+      - name: Upload coverage to Codecov
+        if: runner.os == 'Linux'
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage.info
+          fail_ci_if_error: false
+          verbose: true
 
       - name: Upload test artifacts
         if: failure()

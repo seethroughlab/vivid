@@ -90,27 +90,8 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // =========================================================================
-    // Video Layers - Users should replace these paths with their own videos
-    // =========================================================================
-
-    auto& v1 = chain.add<VideoPlayer>("video1");
-    v1.file = "assets/videos/loop1.mov";  // Replace with your video
-    v1.loop(true);
-
-    auto& v2 = chain.add<VideoPlayer>("video2");
-    v2.file = "assets/videos/loop2.mov";  // Replace with your video
-    v2.loop(true);
-
-    auto& v3 = chain.add<VideoPlayer>("video3");
-    v3.file = "assets/videos/loop3.mov";  // Replace with your video
-    v3.loop(true);
-
-    auto& v4 = chain.add<VideoPlayer>("video4");
-    v4.file = "assets/videos/loop4.mov";  // Replace with your video
-    v4.loop(true);
-
-    // =========================================================================
-    // Fallback: Generated Content (when videos aren't available)
+    // Fallback: Generated Content (noise patterns)
+    // Note: Video layers would require assets - using generated content for demo
     // =========================================================================
 
     // Noise patterns as fallback/overlay content
@@ -126,12 +107,12 @@ void setup(Context& ctx) {
 
     // Color the noise
     auto& colored1 = chain.add<HSV>("colored1");
-    colored1.input("noise1");
+    colored1.setInput(0, &noise1);
     colored1.hueShift = 0.0f;
     colored1.saturation = 1.2f;
 
     auto& colored2 = chain.add<HSV>("colored2");
-    colored2.input("noise2");
+    colored2.setInput(0, &noise2);
     colored2.hueShift = 0.5f;
     colored2.saturation = 1.2f;
 
@@ -141,34 +122,34 @@ void setup(Context& ctx) {
 
     // Layer 1+2 mix
     auto& mix12 = chain.add<Composite>("mix12");
-    mix12.input(0, "colored1");  // Use noise as fallback
-    mix12.input(1, "colored2");
+    mix12.setInput(0, &colored1);
+    mix12.setInput(1, &colored2);
     mix12.mode(BlendMode::Add);
 
     // Layer 3+4 mix (uses same sources for demo)
     auto& mix34 = chain.add<Composite>("mix34");
-    mix34.input(0, "noise1");
-    mix34.input(1, "noise2");
+    mix34.setInput(0, &noise1);
+    mix34.setInput(1, &noise2);
     mix34.mode(BlendMode::Screen);
 
     // Crossfade between pairs
     auto& mixer = chain.add<Composite>("mixer");
-    mixer.inputA("mix12");
-    mixer.inputB("mix34");
+    mixer.setInput(0, &mix12);
+    mixer.setInput(1, &mix34);
     mixer.mode(BlendMode::Over);
-    mixer.opacity(0.0f);  // Full layer A by default
+    mixer.opacity = 0.0f;  // Full layer A by default
 
     // =========================================================================
     // Geometry Canvas
     // =========================================================================
 
     auto& shapes = chain.add<Canvas>("shapes");
-    shapes.size(1920, 1080);
+    shapes.setResolution(1920, 1080);
 
     // Composite shapes over video
     auto& withShapes = chain.add<Composite>("withShapes");
-    withShapes.inputA("mixer");
-    withShapes.inputB("shapes");
+    withShapes.setInput(0, &mixer);
+    withShapes.setInput(1, &shapes);
     withShapes.mode(BlendMode::Add);
 
     // =========================================================================
@@ -176,7 +157,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& text = chain.add<Canvas>("text");
-    text.size(1920, 1080);
+    text.setResolution(1920, 1080);
 
     // Try to load a bold font (users can provide their own)
     if (!text.loadFont(ctx, "assets/fonts/space age.ttf", 180.0f)) {
@@ -186,8 +167,8 @@ void setup(Context& ctx) {
 
     // Composite text over shapes
     auto& withText = chain.add<Composite>("withText");
-    withText.inputA("withShapes");
-    withText.inputB("text");
+    withText.setInput(0, &withShapes);
+    withText.setInput(1, &text);
     withText.mode(BlendMode::Add);
 
     // =========================================================================
@@ -196,25 +177,25 @@ void setup(Context& ctx) {
 
     // Feedback for trails
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.input("withText");
+    feedback.setInput(0, &withText);
     feedback.decay = 0.85f;
     feedback.mix = 0.0f;  // Off by default
 
     // Bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input("feedback");
+    bloom.setInput(0, &feedback);
     bloom.threshold = 0.4f;
     bloom.intensity = 0.6f;
     bloom.radius = 15.0f;
 
     // Chromatic aberration (triggered on hits)
     auto& chroma = chain.add<ChromaticAberration>("chroma");
-    chroma.input("bloom");
+    chroma.setInput(0, &bloom);
     chroma.amount = 0.0f;
 
     // Color cycling
     auto& hsv = chain.add<HSV>("finalColor");
-    hsv.input("chroma");
+    hsv.setInput(0, &chroma);
     hsv.hueShift = 0.0f;
 
     chain.output("finalColor");
@@ -288,12 +269,12 @@ void update(Context& ctx) {
     // Crossfade (UP/DOWN)
     if (ctx.key(GLFW_KEY_UP).held) {
         g_crossfade = std::min(1.0f, g_crossfade + dt * 0.5f);
-        mixer.opacity(g_crossfade);
+        mixer.opacity = g_crossfade;
         printStatus();
     }
     if (ctx.key(GLFW_KEY_DOWN).held) {
         g_crossfade = std::max(0.0f, g_crossfade - dt * 0.5f);
-        mixer.opacity(g_crossfade);
+        mixer.opacity = g_crossfade;
         printStatus();
     }
 

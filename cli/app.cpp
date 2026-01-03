@@ -335,7 +335,8 @@ struct MainLoopContext {
 
     // Loop control
     int snapshotFrameCounter = 0;
-    bool snapshotSaved = false;
+    std::set<int> snapshotFramesPending;  // Frames still to capture
+    int snapshotFramesCaptured = 0;        // Count of frames captured
     VideoExporter cliRecorder;
     bool cliRecordingStarted = false;
     bool chainNeedsSetup = true;
@@ -351,7 +352,7 @@ struct MainLoopContext {
 
     // CLI args needed in loop
     std::string snapshotPath;
-    int snapshotFrame = 5;
+    std::set<int> snapshotFrames;  // All frames to capture
     bool headless = false;
     int renderWidth = 0;
     int renderHeight = 0;
@@ -536,17 +537,22 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     // Check for hot-reload using safe API
     bool justReloaded = false;
     if (mlc.hotReload->checkNeedsReload()) {
-        // Save operator states before destroying chain
-        if (mlc.ctx->hasChain()) {
-            mlc.ctx->preserveStates(mlc.ctx->chain());
-        }
-        // Destroy operators BEFORE unloading the library
-        mlc.ctx->clearRegisteredOperators();
-        mlc.ctx->resetChain();
+        // Try to compile first - this doesn't affect the old chain
+        if (mlc.hotReload->tryCompile()) {
+            // Compilation succeeded - now safe to destroy old chain and load new one
+            // Save operator states before destroying chain
+            if (mlc.ctx->hasChain()) {
+                mlc.ctx->preserveStates(mlc.ctx->chain());
+            }
+            // Destroy operators BEFORE unloading the library
+            mlc.ctx->clearRegisteredOperators();
+            mlc.ctx->resetChain();
 
-        // Now safe to reload
-        mlc.hotReload->reload();
-        mlc.chainNeedsSetup = true;
+            // Load the newly compiled library
+            mlc.hotReload->loadCompiled();
+            mlc.chainNeedsSetup = true;
+        }
+        // If tryCompile() failed, the old chain is still running - just show the error
         justReloaded = true;
     }
 
@@ -751,24 +757,42 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
 
         // Track total frames for --snapshot and --frames options
+        int currentFrame = mlc.snapshotFrameCounter;
         mlc.snapshotFrameCounter++;
 
         // Automated snapshot mode (CLI --snapshot flag)
-        if (!mlc.snapshotPath.empty() && !mlc.snapshotSaved) {
-            if (mlc.snapshotFrameCounter >= mlc.snapshotFrame) {
+        // Captures multiple frames if specified
+        if (!mlc.snapshotPath.empty() && !mlc.snapshotFramesPending.empty()) {
+            if (mlc.snapshotFramesPending.count(currentFrame) > 0) {
                 WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
                 if (outputTex) {
-                    std::cout << "Saving snapshot to: " << mlc.snapshotPath << std::endl;
-                    if (VideoExporter::saveSnapshot(mlc.device, mlc.queue, outputTex, mlc.snapshotPath)) {
-                        std::cout << "Snapshot saved successfully" << std::endl;
-                        mlc.snapshotSaved = true;
-                        // Exit after saving (unless --frames is also set)
-                        if (mlc.maxFrames == 0) {
+                    // Generate output path with frame number if multiple frames
+                    std::string outputPath = mlc.snapshotPath;
+                    if (mlc.snapshotFrames.size() > 1) {
+                        // Insert frame number before extension: output.png -> output_0005.png
+                        fs::path p(mlc.snapshotPath);
+                        std::string stem = p.stem().string();
+                        std::string ext = p.extension().string();
+                        fs::path dir = p.parent_path();
+                        char buf[32];
+                        snprintf(buf, sizeof(buf), "_%04d", currentFrame);
+                        outputPath = (dir / (stem + buf + ext)).string();
+                    }
+
+                    std::cout << "Saving snapshot frame " << currentFrame << " to: " << outputPath << std::endl;
+                    if (VideoExporter::saveSnapshot(mlc.device, mlc.queue, outputTex, outputPath)) {
+                        mlc.snapshotFramesCaptured++;
+                        mlc.snapshotFramesPending.erase(currentFrame);
+                        std::cout << "Snapshot saved (" << mlc.snapshotFramesCaptured
+                                  << "/" << mlc.snapshotFrames.size() << ")" << std::endl;
+
+                        // Exit after saving all frames (unless --frames is also set)
+                        if (mlc.snapshotFramesPending.empty() && mlc.maxFrames == 0) {
                             glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
                         }
                     } else {
-                        std::cerr << "Failed to save snapshot" << std::endl;
-                        mlc.snapshotSaved = true;  // Don't retry
+                        std::cerr << "Failed to save snapshot for frame " << currentFrame << std::endl;
+                        mlc.snapshotFramesPending.erase(currentFrame);  // Don't retry
                     }
                 }
             }
@@ -1553,7 +1577,15 @@ int Application::init(const AppConfig& config) {
 
     // CLI args
     mlc.snapshotPath = config.snapshotPath;
-    mlc.snapshotFrame = config.snapshotFrame;
+    // Set up snapshot frames (default to frame 5 for backwards compatibility)
+    if (!config.snapshotPath.empty()) {
+        if (config.snapshotFrames.empty()) {
+            mlc.snapshotFrames.insert(5);  // Default: capture frame 5
+        } else {
+            mlc.snapshotFrames = config.snapshotFrames;
+        }
+        mlc.snapshotFramesPending = mlc.snapshotFrames;
+    }
     mlc.headless = config.headless;
     mlc.renderWidth = config.renderWidth;
     mlc.renderHeight = config.renderHeight;
