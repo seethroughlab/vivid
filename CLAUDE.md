@@ -85,7 +85,7 @@ src/            All source code:
   cli/            Command-line interface and app
   addons/         Optional modular features (video, audio, render3d, etc.)
 projects/       Runnable example projects (each with own assets/ folder)
-docs/           LLM-REFERENCE.md, RECIPES.md, ADDON-DEVELOPMENT.md
+docs/           LLM-REFERENCE.md, RECIPES.md, OPERATOR-API.md
 tests/          Automated tests, fixtures, and test assets (Git LFS)
 dev/            Developer tools and planning docs
 ```
