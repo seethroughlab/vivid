@@ -341,7 +341,7 @@ someOp.input(feedback);  // This works with Feedback
 
 Set environment variable before running:
 ```bash
-VIVID_DEBUG_CHAIN=1 ./build/bin/vivid examples/my-project
+VIVID_DEBUG_CHAIN=1 ./build/bin/vivid projects/my-project
 ```
 
 Or in code:

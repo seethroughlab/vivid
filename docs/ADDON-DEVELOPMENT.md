@@ -173,7 +173,7 @@ void update(Chain& chain, Context& ctx) {
 
 **Performance:** All shapes are rendered in a single GPU draw call using instancing.
 
-**See:** `examples/2d-effects/particles/` for a complete particle system example.
+**See:** `projects/2d-effects/particles/` for a complete particle system example.
 
 ## Parameters
 

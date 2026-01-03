@@ -439,10 +439,9 @@ vivid/
 │       ├── vivid-render3d/   # 3D rendering (PBR, CSG, IBL)
 │       ├── vivid-audio/      # Audio synthesis and analysis
 │       └── ...               # Network, MIDI, serial, GUI
-├── projects/                 # Runnable example projects (by category)
-├── assets/                   # Shared media resources
+├── projects/                 # Runnable example projects (each with own assets/)
 ├── docs/                     # Documentation and images
-├── tests/                    # Automated tests and fixtures
+├── tests/                    # Automated tests, fixtures, and test assets
 └── dev/                      # Developer tools and planning docs
 ```
 

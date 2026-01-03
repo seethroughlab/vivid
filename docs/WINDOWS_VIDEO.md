@@ -378,16 +378,16 @@ The Windows video system has multiple decoder paths and platform dependencies. H
 
 | Purpose | Path |
 |---------|------|
-| HAP Decoder | `addons/vivid-video/src/hap_decoder.cpp` |
-| HAP Library | `addons/vivid-video/src/hap.c`, `hap.h` |
-| MOV Parser | `addons/vivid-video/src/mov_parser.cpp` |
-| MF Decoder | `addons/vivid-video/src/mf_decoder.cpp` |
-| DShow Decoder | `addons/vivid-video/src/dshow_decoder.cpp` |
-| Video Player | `addons/vivid-video/src/video_player.cpp` |
-| Audio Player | `addons/vivid-video/src/audio_player.cpp` |
-| MF Header | `addons/vivid-video/include/vivid/video/mf_decoder.h` |
-| DShow Header | `addons/vivid-video/include/vivid/video/dshow_decoder.h` |
-| CMakeLists | `addons/vivid-video/CMakeLists.txt` |
+| HAP Decoder | `src/addons/vivid-video/src/hap_decoder.cpp` |
+| HAP Library | `src/addons/vivid-video/src/hap.c`, `hap.h` |
+| MOV Parser | `src/addons/vivid-video/src/mov_parser.cpp` |
+| MF Decoder | `src/addons/vivid-video/src/mf_decoder.cpp` |
+| DShow Decoder | `src/addons/vivid-video/src/dshow_decoder.cpp` |
+| Video Player | `src/addons/vivid-video/src/video_player.cpp` |
+| Audio Player | `src/addons/vivid-video/src/audio_player.cpp` |
+| MF Header | `src/addons/vivid-video/include/vivid/video/mf_decoder.h` |
+| DShow Header | `src/addons/vivid-video/include/vivid/video/dshow_decoder.h` |
+| CMakeLists | `src/addons/vivid-video/CMakeLists.txt` |
 
 ---
 

@@ -344,7 +344,7 @@ This outputs the processing order and shows which operator is the screen output:
 
 - [OPERATOR-API.md](OPERATOR-API.md) - Creating custom operators
 - [SHADER-CONVENTIONS.md](SHADER-CONVENTIONS.md) - Writing shaders
-- `examples/2d-effects/chain-basics/` - Full working example
-- `examples/2d-effects/particles/` - 2D particle system
-- `examples/3d-rendering/3d-basics/` - 3D mesh rendering
-- `examples/3d-rendering/instancing/` - GPU instanced rendering
+- `projects/2d-effects/chain-basics/` - Full working example
+- `projects/2d-effects/particles/` - 2D particle system
+- `projects/3d-rendering/3d-basics/` - 3D mesh rendering
+- `projects/3d-rendering/instancing/` - GPU instanced rendering

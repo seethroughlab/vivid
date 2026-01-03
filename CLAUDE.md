@@ -81,13 +81,12 @@ When capturing multiple frames, filenames include frame numbers: `output.png` be
 
 ```
 src/            All source code:
-  core/           Runtime engine + integrated features
+  core/           Runtime engine + integrated features (includes assets/fonts, assets/icons)
   cli/            Command-line interface and app
   addons/         Optional modular features (video, audio, render3d, etc.)
-projects/       Runnable example projects (getting-started/, 2d-effects/, audio/, 3d-rendering/)
-assets/         Shared media resources (images, fonts, models, audio)
+projects/       Runnable example projects (each with own assets/ folder)
 docs/           LLM-REFERENCE.md, RECIPES.md, OPERATOR-API.md
-tests/          Automated tests and fixtures
+tests/          Automated tests, fixtures, and test assets (Git LFS)
 dev/            Developer tools and planning docs
 ```
 

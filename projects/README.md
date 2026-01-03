@@ -23,25 +23,6 @@ Start here if you're new to Vivid.
 
 ---
 
-## Addon Projects
-
-Each addon contains its own projects in its `examples/` directory:
-
-| Addon | Projects | Description |
-|-------|----------|-------------|
-| [vivid-effects-2d](../src/addons/vivid-effects-2d/examples/) | 6 projects | 2D effects, particles, canvas drawing |
-| [vivid-render3d](../src/addons/vivid-render3d/examples/) | 3 projects | 3D rendering, GLTF, instancing |
-| [vivid-audio](../src/addons/vivid-audio/examples/) | 4 projects | Synthesis, sequencing, audio-reactive |
-| [vivid-network](../src/addons/vivid-network/examples/) | 3 projects | OSC, UDP, web control |
-
-Run addon projects the same way:
-```bash
-./build/bin/vivid src/addons/vivid-effects-2d/examples/kaleidoscope
-./build/bin/vivid src/addons/vivid-audio/examples/drum-machine
-```
-
----
-
 ## Showcase
 
 Impressive multi-addon demos showing the best of what Vivid can do. These are "wow factor" examples with audio-reactive visuals, generative art, and multi-layered effects.

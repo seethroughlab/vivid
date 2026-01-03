@@ -25,7 +25,7 @@ cmake -B build
 cmake --build build
 
 # Run an example
-./build/bin/vivid examples/getting-started/hello-noise
+./build/bin/vivid projects/getting-started/02-hello-noise
 ```
 
 ### Running Tests
@@ -94,25 +94,23 @@ ctest --test-dir build --output-on-failure
 
 ```
 vivid/
-├── core/           # Runtime engine
-├── addons/         # Modular features
-│   ├── vivid-effects-2d/
-│   ├── vivid-render3d/
-│   ├── vivid-video/
-│   ├── vivid-audio/
-│   └── vivid-io/
-├── examples/       # Demo projects
-├── tests/          # Test suite
-└── docs/           # Documentation
+├── src/            # All source code
+│   ├── core/         # Runtime engine
+│   ├── cli/          # Command-line interface
+│   └── addons/       # Modular features (video, audio, render3d, etc.)
+├── projects/       # Runnable example projects
+├── tests/          # Test suite and fixtures
+├── docs/           # Documentation
+└── dev/            # Developer tools and planning
 ```
 
 ## Adding a New Operator
 
-1. Create header in `addons/vivid-effects-2d/include/vivid/effects/`
-2. Create implementation in `addons/vivid-effects-2d/src/`
+1. Create header in `src/core/include/vivid/effects/`
+2. Create implementation in `src/core/src/effects/`
 3. Add to CMakeLists.txt
 4. Include in `effects.h`
-5. Add example usage in `examples/`
+5. Add example usage in `projects/`
 6. Document with Doxygen comments
 
 ## Questions?

@@ -588,5 +588,5 @@ The WebSocket API enables building custom control interfaces:
 
 - [CHAIN-API.md](CHAIN-API.md) - Chain programming API
 - [OPERATOR-API.md](OPERATOR-API.md) - Creating custom operators
-- `core/include/vivid/editor_bridge.h` - API header
-- `core/src/editor_bridge.cpp` - Implementation
+- `src/core/include/vivid/editor_bridge.h` - API header
+- `src/core/src/editor_bridge.cpp` - Implementation
