@@ -5,6 +5,7 @@
 #include <vivid/cli.h>
 #include <vivid/addon_manager.h>
 #include <vivid/log.h>
+#include <climits>
 #include <iostream>
 #include <string>
 #include <filesystem>
