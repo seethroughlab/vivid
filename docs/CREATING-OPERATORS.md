@@ -1,6 +1,8 @@
-# Addon Development Guide
+# Creating Custom Operators
 
-This guide walks through creating custom operators for Vivid. Whether you're building a one-off effect for your project or creating a reusable addon, the process is the same.
+This guide covers creating custom operators for Vivid. Whether you're building a one-off effect for your project or creating a reusable addon, the process is the same.
+
+> **Note:** Vivid uses WebGPU (wgpu-native) for all GPU operations and WGSL for shaders.
 
 ## Quick Start: Minimal Operator
 
@@ -70,6 +72,23 @@ void MyFill::cleanup() {
     if (m_texture) wgpuTextureRelease(m_texture);
 }
 ```
+
+### Required Methods
+
+| Method | Description |
+|--------|-------------|
+| `process(Context& ctx)` | Called every frame. Generate your output here. |
+
+### Optional Methods
+
+| Method | Description |
+|--------|-------------|
+| `init(Context& ctx)` | Called once when the operator is created. Create textures here. |
+| `cleanup()` | Called before the operator is destroyed. Release resources. |
+| `saveState()` | Return state to preserve across hot-reload. |
+| `loadState(state)` | Restore state after hot-reload. |
+| `params()` | Return parameter declarations for the editor. |
+| `outputKind()` | Return `Texture`, `Value`, `ValueArray`, or `Geometry`. |
 
 ## Operator Types
 
@@ -143,6 +162,76 @@ int w = ctx.width();     // Output width in pixels
 int h = ctx.height();    // Output height in pixels
 ```
 
+### Creating Textures
+
+```cpp
+// Create at default resolution
+Texture tex = ctx.createTexture();
+
+// Create at specific resolution
+Texture tex = ctx.createTexture(512, 512);
+```
+
+### Running Shaders
+
+```cpp
+// Simple: no input texture
+ctx.runShader("shaders/noise.wgsl", nullptr, output_);
+
+// With input texture
+ctx.runShader("shaders/blur.wgsl", &inputTex, output_);
+
+// With parameters
+Context::ShaderParams params;
+params.param0 = 4.0f;   // scale
+params.param1 = 0.5f;   // speed
+params.mode = 1;        // mode selector
+ctx.runShader("shaders/noise.wgsl", nullptr, output_, params);
+
+// With two input textures
+ctx.runShader("shaders/composite.wgsl", &tex1, &tex2, output_, params);
+
+// With multiple input textures (up to 8)
+std::vector<const Texture*> inputs = {&tex1, &tex2, &tex3, &tex4};
+ctx.runShaderMulti("shaders/composite_multi.wgsl", inputs, output_, params);
+```
+
+### ShaderParams Struct
+
+The `ShaderParams` struct maps to shader uniforms:
+
+| C++ Field | Shader Uniform | Description |
+|-----------|----------------|-------------|
+| `param0` - `param7` | `u.param0` - `u.param7` | 8 generic float parameters |
+| `vec0X`, `vec0Y` | `u.vec0` | 2D vector parameter |
+| `vec1X`, `vec1Y` | `u.vec1` | 2D vector parameter |
+| `mode` | `u.mode` | Integer mode selector |
+
+### Setting Outputs
+
+Every operator should set at least one output:
+
+```cpp
+// Texture output
+ctx.setOutput("out", myTexture);
+
+// Value output (single float)
+ctx.setOutput("value", 0.73f);
+
+// Value array output
+ctx.setOutput("samples", std::vector<float>{0.1f, 0.5f, 0.9f});
+```
+
+### Getting Inputs from Other Operators
+
+```cpp
+// Get texture from another operator
+Texture* input = ctx.getInputTexture("NoiseOp");
+
+// Get value from another operator
+float val = ctx.getInputValue("LFO", "out", 0.0f);  // default if not found
+```
+
 ### Debug Values
 
 ```cpp
@@ -169,6 +258,16 @@ void update(Chain& chain, Context& ctx) {
     Texture output = ctx.createTexture();
     ctx.drawCircles(circles, output, glm::vec4(0, 0, 0, 1));  // clearColor
 }
+```
+
+The `Circle2D` struct has multiple constructors:
+
+```cpp
+// Using glm types
+Circle2D(glm::vec2 position, float radius, glm::vec4 color);
+
+// Using individual floats
+Circle2D(float x, float y, float radius, float r, float g, float b, float alpha = 1.0f);
 ```
 
 **Performance:** All shapes are rendered in a single GPU draw call using instancing.
@@ -319,17 +418,29 @@ fn fs_main(@location(0) uv: vec2f) -> @location(0) vec4f {
 For operators that maintain state (like Feedback), override save/load:
 
 ```cpp
-std::unique_ptr<OperatorState> saveState() override {
-    auto state = std::make_unique<TextureState>();
-    // Copy texture pixels to state->pixels
-    return state;
-}
+struct MyState : vivid::OperatorState {
+    float phase = 0.0f;
+    int counter = 0;
+};
 
-void loadState(std::unique_ptr<OperatorState> state) override {
-    if (auto* ts = dynamic_cast<TextureState*>(state.get())) {
-        // Restore texture from ts->pixels
+class MyOperator : public vivid::Operator {
+    float phase_ = 0.0f;
+    int counter_ = 0;
+
+    std::unique_ptr<OperatorState> saveState() override {
+        auto state = std::make_unique<MyState>();
+        state->phase = phase_;
+        state->counter = counter_;
+        return state;
     }
-}
+
+    void loadState(std::unique_ptr<OperatorState> state) override {
+        if (auto* s = dynamic_cast<MyState*>(state.get())) {
+            phase_ = s->phase;
+            counter_ = s->counter;
+        }
+    }
+};
 ```
 
 ## Complete Example: Invert Effect
@@ -500,31 +611,6 @@ target_link_libraries(my-addon PRIVATE vivid-core)
 file(COPY shaders DESTINATION ${CMAKE_BINARY_DIR})
 ```
 
-## Tips
-
-1. **Look at existing operators** - `core/src/effects/` has many examples
-2. **Start simple** - Get basic rendering working before adding features
-3. **Use Param<T>** - It handles UI integration automatically
-4. **Call didCook()** - Forgetting this causes downstream operators to skip updates
-5. **Check needsCook()** - Improves performance when nothing changed
-6. **Test with snapshot mode** - `--snapshot test.png` for automated testing
-
-## Debugging
-
-Enable debug output to trace cooking:
-
-```bash
-VIVID_DEBUG_CHAIN=1 ./build/bin/vivid my-project
-```
-
-Or in code:
-
-```cpp
-ctx.chain().setDebug(true);
-```
-
-This shows which operators are processing each frame and helps identify cooking issues.
-
 ## Custom Visualization (drawVisualization)
 
 Operators can provide custom visualizations for the chain visualizer. This is useful for showing real-time state like levels, envelopes, or keyboard activity.
@@ -547,7 +633,7 @@ private:
 
 ### Using VizHelpers (Recommended)
 
-The `VizHelpers` class provides high-level drawing functions that handle layout, colors, and styling:
+The `VizHelpers` class provides high-level drawing functions:
 
 ```cpp
 bool MyAnalyzer::drawVisualization(VizDrawList* dl, float minX, float minY,
@@ -567,8 +653,6 @@ bool MyAnalyzer::drawVisualization(VizDrawList* dl, float minX, float minY,
 
 ### VizBounds Layout Helper
 
-`VizBounds` simplifies layout calculations:
-
 ```cpp
 VizBounds bounds{x, y, width, height};
 
@@ -578,12 +662,8 @@ bounds.right();     // Right edge (x + w)
 bounds.bottom();    // Bottom edge (y + h)
 
 bounds.inset(4);              // Shrink by 4px on all sides
-bounds.inset(4, 8);           // Shrink by 4px horizontal, 8px vertical
 bounds.splitLeft(0.5f);       // Left 50%
 bounds.splitRight(0.5f);      // Right 50%
-bounds.splitTop(0.3f);        // Top 30%
-bounds.splitBottom(0.7f);     // Bottom 70%
-bounds.sub(10, 20, 50, 30);   // Sub-region at (x+10, y+20) size 50x30
 ```
 
 ### VizHelpers Functions
@@ -596,83 +676,32 @@ bounds.sub(10, 20, 50, 30);   // Sub-region at (x+10, y+20) size 50x30
 | `drawSpectrum(bounds, bins, count, numBars)` | FFT spectrum bars |
 | `drawWaveform(bounds, samples, count, color)` | Audio waveform |
 | `drawEnvelopeADSR(bounds, a, d, s, r, current)` | ADSR shape |
-| `drawEnvelopeBar(bounds, value, color)` | Simple vertical bar |
-| `drawDualEnvelope(bounds, v1, v2, c1, c2)` | Two envelopes stacked |
 | `drawKeyboard(bounds, lo, hi, active, available)` | Piano keyboard |
-| `drawGate(bounds, isOpen, openAmount)` | Gate open/closed |
 | `drawActivityDot(cx, cy, intensity, color)` | Activity indicator |
 | `drawLabel(bounds, text, color)` | Centered text |
 | `drawValue(bounds, value, suffix, precision)` | Formatted number |
 
-### VizColors Standard Palette
+## Tips
 
-```cpp
-VizColors::Background       // Dark purple (40, 30, 50)
-VizColors::BackgroundDark   // Darker variant
-VizColors::MeterGreen       // Level meter low
-VizColors::MeterYellow      // Level meter mid
-VizColors::MeterRed         // Level meter high
-VizColors::Highlight        // Warm gold accent
-VizColors::Active           // Bright blue
-VizColors::StatusOpen       // Gate open (green)
-VizColors::StatusClosed     // Gate closed (red)
-VizColors::EnvelopeWarm     // Orange for envelopes
-VizColors::TextPrimary      // White text
-VizColors::TextSecondary    // Dim text
+1. **Look at existing operators** - `src/core/src/effects/` has many examples
+2. **Start simple** - Get basic rendering working before adding features
+3. **Use Param<T>** - It handles UI integration automatically
+4. **Call didCook()** - Forgetting this causes downstream operators to skip updates
+5. **Check needsCook()** - Improves performance when nothing changed
+6. **Test with snapshot mode** - `--snapshot test.png` for automated testing
 
-// Helpers
-VizColors::meterGradient(t);      // Get color for 0-1 position
-VizColors::lerp(a, b, t);         // Blend two colors
+## Debugging
+
+Enable debug output to trace cooking:
+
+```bash
+VIVID_DEBUG_CHAIN=1 ./build/bin/vivid my-project
 ```
 
-### Low-Level Drawing (VizDrawList)
-
-For custom shapes, use `VizDrawList` directly:
+Or in code:
 
 ```cpp
-bool MyOp::drawVisualization(VizDrawList* dl, float minX, float minY,
-                              float maxX, float maxY) {
-    // Filled shapes
-    dl->AddRectFilled({x, y}, {x+w, y+h}, VIZ_COL32(255, 0, 0, 255));
-    dl->AddCircleFilled({cx, cy}, radius, color);
-    dl->AddTriangleFilled({p1x, p1y}, {p2x, p2y}, {p3x, p3y}, color);
-
-    // Outlines
-    dl->AddRect({x, y}, {x+w, y+h}, color, rounding, flags, thickness);
-    dl->AddCircle({cx, cy}, radius, color, segments, thickness);
-    dl->AddLine({x1, y1}, {x2, y2}, color, thickness);
-
-    // Text
-    dl->AddText({x, y}, color, "Hello");
-    VizTextSize size = dl->CalcTextSize("Hello");
-
-    return true;
-}
+ctx.chain().setDebug(true);
 ```
 
-### Example: Level Meter
-
-Before VizHelpers (50 lines):
-```cpp
-// Manual gradient loop, layout calculations, color picking...
-for (int i = 0; i < height; i++) {
-    float t = static_cast<float>(i) / height;
-    uint32_t col;
-    if (t < 0.5f) col = VIZ_COL32(80, 180, 80, 255);
-    else if (t < 0.8f) col = VIZ_COL32(200, 180, 60, 255);
-    else col = VIZ_COL32(200, 80, 80, 255);
-    // ...
-}
-```
-
-After VizHelpers (5 lines):
-```cpp
-bool Levels::drawVisualization(VizDrawList* dl, float minX, float minY,
-                                float maxX, float maxY) {
-    VizHelpers viz(dl);
-    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
-    viz.drawBackground(bounds);
-    viz.drawDualMeter(bounds.inset(4), m_rms, m_peak);
-    return true;
-}
-```
+This shows which operators are processing each frame and helps identify cooking issues.
