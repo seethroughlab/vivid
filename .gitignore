@@ -67,3 +67,12 @@ std*.txt
 test*.png
 
 TODO.md
+
+# Test assets (downloaded separately, not in repo)
+tests/assets/audio/
+tests/assets/materials/
+tests/assets/meshes/
+tests/assets/sample_packs/
+tests/assets/videos/
+tests/assets/hdris/
+tests/assets/*.zip
