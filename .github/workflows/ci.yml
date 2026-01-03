@@ -107,14 +107,16 @@ jobs:
 
       - name: Generate coverage report
         if: runner.os == 'Linux'
+        continue-on-error: true
         run: |
-          lcov --capture --directory build --output-file coverage.info
+          lcov --capture --directory build --output-file coverage.info || exit 0
           # Remove coverage for external dependencies and test code
-          lcov --remove coverage.info '/usr/*' '*/build/_deps/*' '*/tests/*' --output-file coverage.info
-          lcov --list coverage.info
+          lcov --remove coverage.info '/usr/*' '*/build/_deps/*' '*/tests/*' --output-file coverage.info || true
+          lcov --list coverage.info || true
 
       - name: Upload coverage to Codecov
         if: runner.os == 'Linux'
+        continue-on-error: true
         uses: codecov/codecov-action@v4
         with:
           file: coverage.info
