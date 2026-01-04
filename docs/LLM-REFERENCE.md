@@ -120,6 +120,18 @@ VIVID_CHAIN(setup, update)
 | `Particles` | 2D particle system | `.emitRate(50)` `.life(2.0)` `.gravity(0.1)` `.size(0.02)` |
 | `PointSprites` | Point-based particles | `.points(vector)` `.size(4.0)` |
 
+**Particles capabilities:**
+- Emitter shapes: Point, Line, Ring, Disc, Rectangle
+- Physics: gravity, drag, turbulence (random), single point attractor
+- Color modes: Solid, Gradient, Rainbow, Random
+- Size interpolation over lifetime
+
+**Limitations:**
+- Turbulence is random perturbation, **not curl noise/flow fields**
+- Only one attractor (single point)
+- CPU-based physics (practical limit ~10k particles)
+- For organic swirling motion, animate attractor position over time (see `projects/showcase/flow-field/`)
+
 ### Math/Logic
 
 | Operator | Description | Key Parameters |

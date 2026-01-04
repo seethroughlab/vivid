@@ -6,7 +6,21 @@ if(DEFINED VIVID_VERSION_OVERRIDE)
     set(VIVID_VERSION "${VIVID_VERSION_OVERRIDE}")
     message(STATUS "Using version from CI: ${VIVID_VERSION}")
 else()
-    set(VIVID_VERSION "${CMAKE_PROJECT_VERSION}")
+    # Get git commit hash for dev builds
+    execute_process(
+        COMMAND git rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        OUTPUT_VARIABLE GIT_HASH
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE GIT_RESULT
+    )
+    if(GIT_RESULT EQUAL 0 AND GIT_HASH)
+        set(VIVID_VERSION "${CMAKE_PROJECT_VERSION}-dev+${GIT_HASH}")
+    else()
+        set(VIVID_VERSION "${CMAKE_PROJECT_VERSION}-dev")
+    endif()
+    message(STATUS "Dev version: ${VIVID_VERSION}")
 endif()
 
 set(CMAKE_CXX_STANDARD 17)

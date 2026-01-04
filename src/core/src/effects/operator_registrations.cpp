@@ -46,53 +46,135 @@
 using namespace vivid::effects;
 
 // Generators (no input required)
-REGISTER_OPERATOR(Noise, "Generators", "Fractal noise generator", false);
-REGISTER_OPERATOR(SolidColor, "Generators", "Solid color fill", false);
-REGISTER_OPERATOR(Gradient, "Generators", "Color gradient", false);
-REGISTER_OPERATOR(Ramp, "Generators", "Animated HSV gradient", false);
-REGISTER_OPERATOR(Shape, "Generators", "SDF shape generator", false);
+REGISTER_OPERATOR_FULL(Noise, "Generators", "Fractal noise generator", false)
+    .related({"Gradient", "Displace", "FBM"})
+    .examples({"projects/getting-started/02-hello-noise/"})
+    ;
+REGISTER_OPERATOR_FULL(SolidColor, "Generators", "Solid color fill", false)
+    .related({"Gradient", "Shape"})
+    ;
+REGISTER_OPERATOR_FULL(Gradient, "Generators", "Color gradient", false)
+    .related({"Noise", "Ramp", "SolidColor"})
+    ;
+REGISTER_OPERATOR_FULL(Ramp, "Generators", "Animated HSV gradient", false)
+    .related({"Gradient", "LFO"})
+    ;
+REGISTER_OPERATOR_FULL(Shape, "Generators", "SDF shape generator", false)
+    .related({"Canvas", "SolidColor"})
+    ;
 REGISTER_OPERATOR_EX(LFO, "Generators", "Low frequency oscillator", false, vivid::OutputKind::Value);
-REGISTER_OPERATOR(Image, "Generators", "Load image from file", false);
+REGISTER_OPERATOR_FULL(Image, "Generators", "Load image from file", false)
+    .limitations({"Supports PNG, JPG, BMP, TGA", "Large images may cause memory pressure"})
+    .related({"Video", "Transform"})
+    ;
 
 // Effects (require input)
-REGISTER_OPERATOR(Blur, "Effects", "Gaussian blur", true);
-REGISTER_OPERATOR(HSV, "Effects", "Hue/saturation/value adjustment", true);
-REGISTER_OPERATOR(Brightness, "Effects", "Brightness and contrast", true);
-REGISTER_OPERATOR(Transform, "Effects", "Scale, rotate, translate", true);
-REGISTER_OPERATOR(Mirror, "Effects", "Axis mirroring and kaleidoscope", true);
-REGISTER_OPERATOR(Displace, "Effects", "Texture displacement", true);
-REGISTER_OPERATOR(Edge, "Effects", "Edge detection", true);
-REGISTER_OPERATOR(Pixelate, "Effects", "Mosaic/pixelation effect", true);
-REGISTER_OPERATOR(Tile, "Effects", "Texture tiling", true);
-REGISTER_OPERATOR(ChromaticAberration, "Effects", "RGB channel separation", true);
-REGISTER_OPERATOR(Bloom, "Effects", "Glow/bloom effect", true);
-REGISTER_OPERATOR(Vignette, "Effects", "Edge darkening vignette", true);
-REGISTER_OPERATOR(BarrelDistortion, "Effects", "Barrel/pincushion distortion", true);
-REGISTER_OPERATOR(Feedback, "Effects", "Frame feedback loop", true);
-REGISTER_OPERATOR(FrameCache, "Effects", "Buffer multiple frames", true);
-REGISTER_OPERATOR(TimeMachine, "Effects", "Temporal displacement", true);
-REGISTER_OPERATOR(Plexus, "Effects", "Connected particle network", true);
+REGISTER_OPERATOR_FULL(Blur, "Effects", "Gaussian blur", true)
+    .related({"Bloom", "Edge", "Feedback"})
+    ;
+REGISTER_OPERATOR_FULL(HSV, "Effects", "Hue/saturation/value adjustment", true)
+    .related({"Brightness", "Quantize"})
+    ;
+REGISTER_OPERATOR_FULL(Brightness, "Effects", "Brightness and contrast", true)
+    .related({"HSV", "Bloom"})
+    ;
+REGISTER_OPERATOR_FULL(Transform, "Effects", "Scale, rotate, translate", true)
+    .related({"Mirror", "Tile", "Feedback"})
+    ;
+REGISTER_OPERATOR_FULL(Mirror, "Effects", "Axis mirroring and kaleidoscope", true)
+    .related({"Transform", "Tile"})
+    ;
+REGISTER_OPERATOR_FULL(Displace, "Effects", "Texture displacement", true)
+    .related({"Noise", "Transform", "TimeMachine"})
+    ;
+REGISTER_OPERATOR_FULL(Edge, "Effects", "Edge detection", true)
+    .related({"Blur", "Brightness"})
+    ;
+REGISTER_OPERATOR_FULL(Pixelate, "Effects", "Mosaic/pixelation effect", true)
+    .related({"Downsample", "Quantize", "Dither"})
+    ;
+REGISTER_OPERATOR_FULL(Tile, "Effects", "Texture tiling", true)
+    .related({"Transform", "Mirror"})
+    ;
+REGISTER_OPERATOR_FULL(ChromaticAberration, "Effects", "RGB channel separation", true)
+    .related({"BarrelDistortion", "CRTEffect"})
+    ;
+REGISTER_OPERATOR_FULL(Bloom, "Effects", "Glow/bloom effect", true)
+    .related({"Blur", "Brightness", "Flash"})
+    ;
+REGISTER_OPERATOR_FULL(Vignette, "Effects", "Edge darkening vignette", true)
+    .related({"CRTEffect", "BarrelDistortion"})
+    ;
+REGISTER_OPERATOR_FULL(BarrelDistortion, "Effects", "Barrel/pincushion distortion", true)
+    .related({"ChromaticAberration", "CRTEffect", "Vignette"})
+    ;
+REGISTER_OPERATOR_FULL(Feedback, "Effects", "Frame feedback loop", true)
+    .limitations({"Requires careful decay settings to avoid whiteout", "High memory usage at large resolutions"})
+    .related({"Particles", "Transform", "Blur"})
+    .examples({"examples/2d-effects/feedback/"})
+    ;
+REGISTER_OPERATOR_FULL(FrameCache, "Effects", "Buffer multiple frames", true)
+    .limitations({"Memory usage scales with frame count", "Max 128 frames"})
+    .related({"TimeMachine", "Feedback"})
+    ;
+REGISTER_OPERATOR_FULL(TimeMachine, "Effects", "Temporal displacement", true)
+    .related({"FrameCache", "Displace", "Feedback"})
+    ;
+REGISTER_OPERATOR_FULL(Plexus, "Effects", "Connected particle network", true)
+    .limitations({"CPU-based line drawing", "Performance degrades with many points"})
+    .related({"Particles", "PointSprites"})
+    ;
 
 // Retro Effects
-REGISTER_OPERATOR(Dither, "Retro", "Ordered dithering", true);
-REGISTER_OPERATOR(Quantize, "Retro", "Color quantization", true);
-REGISTER_OPERATOR(Scanlines, "Retro", "CRT scanline effect", true);
-REGISTER_OPERATOR(CRTEffect, "Retro", "Full CRT simulation", true);
-REGISTER_OPERATOR(Downsample, "Retro", "Low resolution effect", true);
-REGISTER_OPERATOR(FilmGrain, "Retro", "Film grain overlay", true);
-REGISTER_OPERATOR(Flash, "Retro", "Beat-synced flash overlay", true);
+REGISTER_OPERATOR_FULL(Dither, "Retro", "Ordered dithering", true)
+    .related({"Quantize", "Downsample", "Pixelate"})
+    ;
+REGISTER_OPERATOR_FULL(Quantize, "Retro", "Color quantization", true)
+    .related({"Dither", "Downsample", "HSV"})
+    ;
+REGISTER_OPERATOR_FULL(Scanlines, "Retro", "CRT scanline effect", true)
+    .related({"CRTEffect", "Downsample"})
+    ;
+REGISTER_OPERATOR_FULL(CRTEffect, "Retro", "Full CRT simulation", true)
+    .related({"Scanlines", "BarrelDistortion", "ChromaticAberration", "Vignette"})
+    .examples({"examples/retro/retro-crt/"})
+    ;
+REGISTER_OPERATOR_FULL(Downsample, "Retro", "Low resolution effect", true)
+    .related({"Pixelate", "Quantize", "Dither"})
+    ;
+REGISTER_OPERATOR_FULL(FilmGrain, "Retro", "Film grain overlay", true)
+    .related({"Noise", "Composite"})
+    ;
+REGISTER_OPERATOR_FULL(Flash, "Retro", "Beat-synced flash overlay", true)
+    .limitations({"Requires trigger() call or audio input for sync"})
+    .related({"Bloom", "Composite"})
+    ;
 
 // Compositing
-REGISTER_OPERATOR(Composite, "Compositing", "Blend two textures", true);
-REGISTER_OPERATOR(Switch, "Compositing", "Switch between inputs", true);
+REGISTER_OPERATOR_FULL(Composite, "Compositing", "Blend two textures", true)
+    .related({"Switch", "Transform", "Canvas"})
+    ;
+REGISTER_OPERATOR_FULL(Switch, "Compositing", "Switch between inputs", true)
+    .limitations({"Max 8 inputs"})
+    .related({"Composite", "Logic"})
+    ;
 
 // Particles
-REGISTER_OPERATOR(Particles, "Particles", "2D particle system", false);
-REGISTER_OPERATOR(PointSprites, "Particles", "Point-based particles", false);
+REGISTER_OPERATOR_FULL(Particles, "Particles", "2D particle system", false)
+    .limitations({"Turbulence is random, not curl noise/flow fields", "Single attractor only", "CPU-based physics (~10k particle limit)"})
+    .related({"Plexus", "PointSprites", "Feedback"})
+    .examples({"examples/2d-effects/particles/"})
+    ;
+REGISTER_OPERATOR_FULL(PointSprites, "Particles", "Point-based particles", false)
+    .related({"Particles", "Plexus"})
+    ;
 
 // Canvas
-REGISTER_OPERATOR(Canvas, "Canvas", "Imperative 2D drawing", false);
+REGISTER_OPERATOR_FULL(Canvas, "Canvas", "Imperative 2D drawing", false)
+    .related({"Shape", "Composite"})
+    .examples({"examples/showcase/canvas-compositing/"})
+    ;
 
-// Math/Logic
+// Math/Logic (keep basic registration for correct OutputKind::Value)
 REGISTER_OPERATOR_EX(Math, "Math/Logic", "Mathematical operations", false, vivid::OutputKind::Value);
 REGISTER_OPERATOR_EX(Logic, "Math/Logic", "Logical comparisons", false, vivid::OutputKind::Value);

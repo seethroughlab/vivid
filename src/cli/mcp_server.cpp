@@ -428,7 +428,8 @@ private:
                     {"name", {{"type", "string"}, {"description", "Project name"}}},
                     {"path", {{"type", "string"}, {"description", "Parent directory (optional, defaults to current directory)"}}},
                     {"template", {{"type", "string"}, {"description", "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit"}}},
-                    {"addons", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Addons to include: vivid-audio, vivid-video, vivid-render3d"}}}
+                    {"addons", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Addons to include: vivid-audio, vivid-video, vivid-render3d"}}},
+                    {"force", {{"type", "boolean"}, {"description", "If true, remove existing directory first (use with caution)"}}}
                 }},
                 {"required", json::array({"name"})}
             }}
@@ -661,6 +662,17 @@ private:
                     opInfo["usage"] = opInfo["usage"].get<std::string>() + "\nop.input(&other);";
                 }
 
+                // Add enriched metadata from registry
+                if (!meta->limitations.empty()) {
+                    opInfo["limitations"] = meta->limitations;
+                }
+                if (!meta->related.empty()) {
+                    opInfo["related"] = meta->related;
+                }
+                if (!meta->examples.empty()) {
+                    opInfo["examples"] = meta->examples;
+                }
+
                 result["content"] = {{
                     {"type", "text"},
                     {"text", opInfo.dump(2)}
@@ -678,11 +690,40 @@ private:
             std::string projectName = args.value("name", "");
             std::string parentPath = args.value("path", ".");
             std::string templateName = args.value("template", "blank");
+            bool force = args.value("force", false);
 
             if (projectName.empty()) {
                 result["isError"] = true;
                 result["content"] = {{{"type", "text"}, {"text", "Project name is required"}}};
                 return result;
+            }
+
+            // Check if project directory already exists
+            fs::path fullPath = fs::path(parentPath) / projectName;
+            if (fs::exists(fullPath)) {
+                if (force) {
+                    // Remove existing directory
+                    std::error_code ec;
+                    fs::remove_all(fullPath, ec);
+                    if (ec) {
+                        result["isError"] = true;
+                        result["content"] = {{{"type", "text"}, {"text", "Failed to remove existing directory: " + ec.message()}}};
+                        return result;
+                    }
+                } else {
+                    // Return helpful error with suggestions
+                    json error;
+                    error["error"] = "Directory already exists";
+                    error["path"] = fs::absolute(fullPath).string();
+                    error["suggestions"] = json::array({
+                        "Use a different project name",
+                        "Set force=true to replace the existing directory (WARNING: deletes all contents)",
+                        "Manually delete the directory first"
+                    });
+                    result["isError"] = true;
+                    result["content"] = {{{"type", "text"}, {"text", error.dump(2)}}};
+                    return result;
+                }
             }
 
             std::vector<std::string> cmdArgs = {
@@ -1009,20 +1050,54 @@ private:
     }
 
     std::string loadDocsFile(const std::string& filename) {
-        // Try ~/.vivid/docs first, then build directory
-        std::vector<fs::path> searchPaths = {
-            fs::path(getenv("HOME") ? getenv("HOME") : ".") / ".vivid" / "docs" / filename,
-        };
+        // Search multiple locations for documentation files
+        std::vector<fs::path> searchPaths;
 
-        // Add build directory paths
-        char pathBuf[4096];
+        // 1. Current working directory (common for dev builds)
+        searchPaths.push_back(fs::current_path() / "docs" / filename);
+
+        // 2. User home directory cache
+        const char* home = getenv("HOME");
+#ifdef _WIN32
+        if (!home) home = getenv("USERPROFILE");
+#endif
+        if (home) {
+            searchPaths.push_back(fs::path(home) / ".vivid" / "docs" / filename);
+        }
+
+        // 3. Paths relative to executable
+        fs::path exeDir;
 #ifdef __APPLE__
+        char pathBuf[4096];
         uint32_t size = sizeof(pathBuf);
         if (_NSGetExecutablePath(pathBuf, &size) == 0) {
-            fs::path exeDir = fs::path(pathBuf).parent_path();
-            searchPaths.push_back(exeDir.parent_path().parent_path() / "docs" / filename);
+            exeDir = fs::path(pathBuf).parent_path();
+        }
+#elif defined(_WIN32)
+        char pathBuf[MAX_PATH];
+        if (GetModuleFileNameA(NULL, pathBuf, MAX_PATH) > 0) {
+            exeDir = fs::path(pathBuf).parent_path();
+        }
+#else
+        // Linux: read /proc/self/exe
+        char pathBuf[4096];
+        ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
+        if (len != -1) {
+            pathBuf[len] = '\0';
+            exeDir = fs::path(pathBuf).parent_path();
         }
 #endif
+
+        if (!exeDir.empty()) {
+            // build/bin/vivid -> docs (go up 2 levels)
+            searchPaths.push_back(exeDir.parent_path().parent_path() / "docs" / filename);
+            // build/bin/vivid -> project root/docs (go up 3 levels for some layouts)
+            searchPaths.push_back(exeDir.parent_path().parent_path().parent_path() / "docs" / filename);
+            // Installed location: bin/../share/vivid/docs
+            searchPaths.push_back(exeDir.parent_path() / "share" / "vivid" / "docs" / filename);
+            // macOS app bundle: .app/Contents/MacOS/vivid -> .app/Contents/Resources/docs
+            searchPaths.push_back(exeDir.parent_path() / "Resources" / "docs" / filename);
+        }
 
         for (const auto& path : searchPaths) {
             if (fs::exists(path)) {

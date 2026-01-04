@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.4] - 2026-01-03
+
+### Added
+
+#### Operator Metadata System
+- Extended `OperatorMeta` struct with `limitations`, `related`, and `examples` vectors
+- New `OperatorMetaBuilder` class with fluent API for registering operators with rich metadata
+- `REGISTER_OPERATOR_FULL` and `REGISTER_ADDON_OPERATOR_FULL` macros for extended registration
+- All 35+ core operators now have related operators documented
+- Key operators (Particles, Feedback, FrameCache, etc.) include limitations and example paths
+
+### Changed
+- MCP `get_operator` tool now returns limitations, related operators, and examples from registry
+- Removed hardcoded operator metadata maps from `mcp_server.cpp` - metadata now lives with operators
+- Version string includes git hash for dev builds (e.g., `0.1.1-dev+abc123`)
+
 ## [0.1.0-alpha.3] - 2026-01-03
 
 ### Added
@@ -117,7 +133,8 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.3...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.4...HEAD
+[0.1.0-alpha.4]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.3...v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/seethroughlab/vivid/releases/tag/v0.1.0-alpha.1
