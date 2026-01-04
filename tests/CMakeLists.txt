@@ -52,6 +52,27 @@ catch_discover_tests(test_effects_2d
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (particle forces)
+# -----------------------------------------------------------------------------
+
+add_executable(test_particle_forces
+    unit/test_particle_forces.cpp
+)
+
+target_link_libraries(test_particle_forces PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_particle_forces PRIVATE
+    ${CMAKE_SOURCE_DIR}/src/core/include
+)
+
+catch_discover_tests(test_particle_forces
+    PROPERTIES LABELS "unit"
+)
+
+# -----------------------------------------------------------------------------
 # Integration Tests (core)
 # -----------------------------------------------------------------------------
 

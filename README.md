@@ -4,13 +4,13 @@
 [![Docs](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml/badge.svg?branch=master)](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A creative coding framework for real-time audio-visual work. Hot-reloadable C++ chains, WebGPU rendering, and optional AI-assisted development via Claude Code.
+A creative coding framework for real-time audio-visual work. Hot-reloadable C++ chains, WebGPU rendering, and optional AI-assisted development via built-in MCP.
 
 ## Features
 
 - **Audio-Visual Parity** - Audio and visuals are equal peers in code. Native synthesis, sequencing, and effects—no external plugins needed
 - **Hot Reload** - Edit your C++ code and see changes instantly without restarting
-- **IDE & AI Integration** - [VS Code extension](https://github.com/seethroughlab/vivid-vscode) for autocomplete and diagnostics, plus Claude Code MCP server for AI-assisted development
+- **IDE & AI Integration** - [VS Code extension](https://github.com/seethroughlab/vivid-vscode) for autocomplete and diagnostics, plus MCP server for AI-assisted development
 - **WebGPU Backend** - Modern GPU API via wgpu-native (Metal on macOS, Vulkan/DX12 elsewhere)
 - **Chain-Based Architecture** - Connect operators to build audio-visual pipelines
 - **Addon System** - Modular design with automatic dependency discovery

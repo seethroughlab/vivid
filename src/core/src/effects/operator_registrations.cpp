@@ -39,6 +39,8 @@
 #include <vivid/effects/switch_op.h>
 #include <vivid/effects/particles.h>
 #include <vivid/effects/point_sprites.h>
+#include <vivid/effects/gpu_particles.h>
+#include <vivid/effects/particle_system.h>
 #include <vivid/effects/canvas.h>
 #include <vivid/effects/math_op.h>
 #include <vivid/effects/logic_op.h>
@@ -167,6 +169,15 @@ REGISTER_OPERATOR_FULL(Particles, "Particles", "2D particle system", false)
     ;
 REGISTER_OPERATOR_FULL(PointSprites, "Particles", "Point-based particles", false)
     .related({"Particles", "Plexus"})
+    ;
+REGISTER_OPERATOR_FULL(GPUParticles, "Particles", "GPU compute particle system", false)
+    .limitations({"Requires WebGPU compute shader support", "Fixed 64-byte particle struct"})
+    .related({"Particles", "Plexus", "PointSprites", "ParticleSystem"})
+    ;
+REGISTER_OPERATOR_FULL(ParticleSystem, "Particles", "Unified particle system with CPU/GPU simulation and multiple render modes", false)
+    .limitations({"GPU simulation and Billboard/Mesh rendering are work in progress"})
+    .related({"Particles", "GPUParticles", "Particles3D"})
+    .examples({"projects/particles/"})
     ;
 
 // Canvas
