@@ -4,17 +4,17 @@
 [![Docs](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml/badge.svg?branch=master)](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A creative coding framework for real-time audio-visual work with hot-reloadable C++ chains. Clean, consistent API designed for both manual coding and AI-assisted development.
+A creative coding framework for real-time audio-visual work. Hot-reloadable C++ chains, WebGPU rendering, and optional AI-assisted development via Claude Code.
 
 ## Features
 
 - **Audio-Visual Parity** - Audio and visuals are equal peers in code. Native synthesis, sequencing, and effects—no external plugins needed
 - **Hot Reload** - Edit your C++ code and see changes instantly without restarting
+- **IDE & AI Integration** - [VS Code extension](https://github.com/seethroughlab/vivid-vscode) for autocomplete and diagnostics, plus Claude Code MCP server for AI-assisted development
 - **WebGPU Backend** - Modern GPU API via wgpu-native (Metal on macOS, Vulkan/DX12 elsewhere)
 - **Chain-Based Architecture** - Connect operators to build audio-visual pipelines
 - **Addon System** - Modular design with automatic dependency discovery
 - **State Preservation** - Feedback loops and animations survive hot reloads
-- **LLM-Friendly** - Designed for AI-assisted development (see below)
 
 ## Showcase
 
@@ -35,7 +35,7 @@ A creative coding framework for real-time audio-visual work with hot-reloadable 
   <img src="docs/images/depth-of-field.png" width="400" alt="Depth of Field" />
 </p>
 
-*Animated: Chain basics, 3D PBR globe, Candy-style animation, Division raster. Static: Feedback spirals, GPU particles, Retro CRT simulation, Depth of field*
+*Chain basics (90 lines), 3D globe (306 lines), Candy physics (241 lines), Division raster (144 lines), Feedback spirals (78 lines), Particles (97 lines), Retro CRT (104 lines), Depth of field (376 lines)*
 
 ## Quick Start
 
@@ -60,6 +60,40 @@ cmake -B build && cmake --build build
 ```
 
 Press `F` to toggle fullscreen, `Tab` to view chain visualizer, `Esc` to quit.
+
+## Development Workflow
+
+### VS Code Extension (Recommended)
+
+Install the [Vivid VS Code extension](https://github.com/seethroughlab/vivid-vscode) for:
+- Syntax highlighting for chain.cpp
+- Autocomplete for operators and parameters
+- Live error diagnostics
+- Parameter documentation on hover
+
+### Claude Code Integration
+
+For AI-assisted development, add Vivid's MCP server to your Claude Code config:
+
+```json
+// ~/.claude.json
+{
+  "mcpServers": {
+    "vivid": {
+      "command": "/path/to/build/bin/vivid",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+This enables Claude to:
+- See live parameter values from your running project
+- Apply slider adjustments directly to your code
+- Query available operators and documentation
+- Create, run, and test projects
+
+**Workflow:** Edit code manually OR adjust sliders in the visualizer and let Claude sync the changes back to your chain.cpp.
 
 ## Usage
 
@@ -113,135 +147,29 @@ Edit your code while it's running - changes apply automatically.
 
 ## Available Operators
 
-### Generators
-- `Noise` - Fractal noise (Perlin, Simplex, Worley, Value)
-- `SolidColor` - Constant color
-- `Ramp` - Linear gradient
-- `Gradient` - Multi-mode gradients (linear, radial, angular, diamond)
-- `Shape` - SDF shapes (circle, rect, triangle, star, polygon)
-- `LFO` - Oscillators (sine, triangle, saw, square)
-- `Image` - Load images from disk
+### 2D Effects (Core)
+`Noise`, `Gradient`, `Shape`, `Image` — Generators
+`Blur`, `Transform`, `HSV`, `Feedback`, `Bloom`, `Displace` — Effects
+`Dither`, `Scanlines`, `CRTEffect` — Retro
+`Composite`, `Math`, `Particles` — Utility
 
-### Effects
-- `Blur` - Gaussian blur
-- `Transform` - Scale, rotate, translate
-- `HSV` - Hue/saturation/value adjustment
-- `Brightness` - Brightness, contrast, gamma
-- `Mirror` - Axis mirroring and kaleidoscope
-- `Displace` - Texture-based distortion
-- `Edge` - Sobel edge detection
-- `Pixelate` - Mosaic effect
-- `ChromaticAberration` - RGB separation
-- `Bloom` - Glow effect
-- `Tile` - Texture tiling
-- `Feedback` - Frame feedback with decay
-
-### Retro/Post-Processing
-- `Dither` - Ordered dithering (Bayer 2x2, 4x4, 8x8)
-- `Quantize` - Color palette reduction
-- `Scanlines` - CRT-style lines
-- `CRTEffect` - Full CRT simulation (curvature, vignette, phosphor)
-- `Downsample` - Low-res pixelated look
-
-### Modulation
-- `Math` - Mathematical operations (add, multiply, clamp, remap, etc.)
-- `Logic` - Comparison and logic (greater than, in range, toggle, etc.)
-
-### Compositing
-- `Composite` - Blend multiple inputs
-- `Switch` - Select between inputs
-
-### Media (vivid-video addon)
-- `VideoPlayer` - Video playback with codec support:
-  - HAP (GPU-compressed, best performance)
-  - H.264, ProRes, MPEG-2
-  - Methods: `.play()`, `.pause()`, `.restart()`, `.seek()`, `.loop()`, `.speed()`
-- `Webcam` - Camera capture (macOS: AVFoundation, Windows: Media Foundation)
-- `Image` - Static image loading (PNG, JPG, BMP, TGA)
-
-### Particles
-- `Particles` - 2D particle system with physics
-- `PointSprites` - GPU point rendering
-
-### Audio Synthesis (vivid-audio addon)
-
-**Timing & Sequencing:**
-- `Clock` - BPM-based timing with swing and divisions
-- `Sequencer` - 16-step pattern sequencer with trigger callbacks
-- `Euclidean` - Euclidean rhythm generator
-
-**Drums:**
-- `Kick` - 808-style kick with pitch envelope
-- `Snare` - Snare with tone/noise mix
-- `HiHat` - Hi-hat with open/closed modes
-- `Clap` - Handclap with multiple bursts
-
-**Synthesis:**
-- `Oscillator` - Waveforms (sine, saw, square, triangle)
-- `PolySynth` - Polyphonic synthesizer with voice management
-- `Envelope` - ADSR envelope generator
-
-**Effects:**
-- `Delay` - Delay with feedback
-- `Reverb` - Room reverb
-- `Chorus`, `Flanger`, `Phaser` - Modulation effects
-- `Compressor`, `Limiter` - Dynamics
-- `TapeEffect` - Wow, flutter, saturation (vintage character)
-
-**Lo-fi:**
-- `Bitcrush` - Bit/sample rate reduction
-- `Overdrive` - Soft saturation
-- `Crackle` - Vinyl crackle
-
-**Analysis:**
-- `FFT` - Spectrum analysis
-- `BandSplit` - Frequency band levels (bass/mid/high)
-- `BeatDetect` - Beat/transient detection
-- `Levels` - RMS and peak metering
-
-**I/O:**
-- `AudioIn` - Microphone/line input
-- `AudioFile` - Audio file playback
-- `MidiIn` - MIDI note/CC input
+### Audio (vivid-audio addon)
+`Clock`, `Sequencer` — Timing
+`Kick`, `Snare`, `HiHat`, `Oscillator`, `PolySynth` — Synthesis
+`Delay`, `Reverb`, `Bitcrush`, `TapeEffect` — Effects
+`FFT`, `BandSplit`, `BeatDetect` — Analysis
 
 ### 3D Rendering (vivid-render3d addon)
+`Box`, `Sphere`, `Cylinder`, `Torus`, `Plane` — Primitives
+`Boolean` — CSG operations
+`Render3D`, `SceneComposer` — Rendering (PBR, Flat, Gouraud, Unlit)
+`DirectionalLight`, `PointLight`, `SpotLight` — Lighting
 
-**Primitives:**
-- `Box` - `.size(w, h, d)`, `.flatShading()`
-- `Sphere` - `.radius()`, `.segments()`, `.computeTangents()`
-- `Cylinder` - `.radius()`, `.height()`, `.segments()`, `.flatShading()`
-- `Cone` - `.radius()`, `.height()`, `.segments()`
-- `Torus` - `.outerRadius()`, `.innerRadius()`, `.segments()`, `.rings()`
-- `Plane` - `.size(w, h)`, `.subdivisions()`
+### Media (vivid-video addon)
+`VideoPlayer` — HAP, H.264, ProRes playback
+`Webcam` — Camera capture
 
-**CSG Boolean Operations:**
-- `Boolean` - `.inputA()`, `.inputB()`, `.operation(BooleanOp::Union/Subtract/Intersect)`
-
-**Scene Composition:**
-- `SceneComposer` - Compose multiple meshes with transforms and colors
-- `Render3D` - Render scenes with multiple shading modes
-
-**Shading Modes:**
-- `ShadingMode::PBR` - Physically-based rendering (Cook-Torrance BRDF)
-- `ShadingMode::Flat` - Per-fragment flat shading
-- `ShadingMode::Gouraud` - Per-vertex shading (PS1-style)
-- `ShadingMode::Unlit` - No lighting, pure color/texture
-
-**Lighting (supports up to 4 lights):**
-- `DirectionalLight` - Sun-like parallel rays with direction, color, intensity
-- `PointLight` - Omnidirectional light with position, color, intensity, range
-- `SpotLight` - Cone-shaped light with position, direction, angle, falloff
-- `CameraOperator` - Perspective camera with orbit controls
-
-**GPU Instancing:**
-- `InstancedRender3D` - Render thousands of identical meshes in a single draw call
-  - Per-instance transforms, colors, and material properties
-  - Use cases: asteroid fields, forests, crowds, particle debris
-
-**PBR Materials:**
-- `TexturedMaterial` - Full PBR material with texture maps:
-  - `.baseColor()`, `.normal()`, `.metallic()`, `.roughness()`, `.ao()`, `.emissive()`
-- `IBLEnvironment` - Image-based lighting from HDR environment maps
+See [docs/LLM-REFERENCE.md](docs/LLM-REFERENCE.md) for the complete operator reference with all parameters.
 
 ## Example: Video with Effects
 
@@ -488,44 +416,15 @@ Each addon has an `addon.json` with metadata:
 
 The hot-reload system automatically adds include paths and links libraries for discovered addons.
 
-## LLM-Friendly Design
-
-Vivid is designed with AI-assisted development in mind:
-
-- **Minimal Core** - ~600 lines of runtime code that fits in context windows
-- **Self-Contained Operators** - Each operator is a single .h/.cpp pair with embedded shaders
-- **Consistent Patterns** - All operators follow the same structure (init/process/cleanup)
-- **Comprehensive Documentation** - LLM-optimized reference docs and recipes
-- **Hot Reload** - Instant feedback loop when iterating with AI assistance
-- **Automatic State Management** - No boilerplate for chain lifecycle
-
-### Documentation for LLMs
+## Documentation
 
 | File | Purpose |
 |------|---------|
-| [docs/LLM-REFERENCE.md](docs/LLM-REFERENCE.md) | Compact operator reference (~200 lines) |
-| [docs/RECIPES.md](docs/RECIPES.md) | Complete chain.cpp examples for common effects |
-| [ROADMAP.md](ROADMAP.md) | Full architecture and development history |
+| [docs/LLM-REFERENCE.md](docs/LLM-REFERENCE.md) | Compact operator reference |
+| [docs/RECIPES.md](docs/RECIPES.md) | Complete chain.cpp examples |
+| [docs/CREATING-OPERATORS.md](docs/CREATING-OPERATORS.md) | Custom operators and addons |
 
-### Using AI Assistants with Your Project
-
-Create a `CLAUDE.md` file in your project folder to give AI assistants context about your specific project:
-
-```markdown
-# My Vivid Project
-
-## Goal
-[What effect you're trying to create]
-
-## Current Chain
-[Brief description of your operator chain]
-
-## Resources
-- docs/LLM-REFERENCE.md - Operator reference
-- docs/RECIPES.md - Effect examples
-```
-
-See `projects/getting-started/01-template/` for a complete starter project with CLAUDE.md.
+**Tip:** Create a `CLAUDE.md` in your project folder to give Claude context about your specific project. See `projects/getting-started/01-template/` for an example.
 
 ## License
 
@@ -533,4 +432,4 @@ MIT
 
 ## Contributing
 
-Contributions welcome! Please read the [ROADMAP.md](ROADMAP.md) for current development priorities.
+Contributions welcome! Please read the [dev/docs/ROADMAP.md](dev/docs/ROADMAP.md) for current development priorities.
