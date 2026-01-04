@@ -179,7 +179,7 @@ struct CommandResult {
     std::string error;
 };
 
-CommandResult runCommand(const std::vector<std::string>& args, int timeoutMs = 60000) {
+CommandResult runCommand(const std::vector<std::string>& args, int /*timeoutMs*/ = 60000) {
     CommandResult result;
     result.exitCode = -1;
 
@@ -195,7 +195,11 @@ CommandResult runCommand(const std::vector<std::string>& args, int timeoutMs = 6
     }
     command += " 2>&1";  // Redirect stderr to stdout
 
+#ifdef _WIN32
+    FILE* pipe = _popen(command.c_str(), "r");
+#else
     FILE* pipe = popen(command.c_str(), "r");
+#endif
     if (!pipe) {
         result.error = "Failed to execute command";
         return result;
@@ -206,16 +210,23 @@ CommandResult runCommand(const std::vector<std::string>& args, int timeoutMs = 6
         result.output += buffer.data();
     }
 
+#ifdef _WIN32
+    result.exitCode = _pclose(pipe);
+#else
     result.exitCode = pclose(pipe);
-#ifndef _WIN32
     result.exitCode = WEXITSTATUS(result.exitCode);
 #endif
 
     return result;
 }
 
-// PID of running vivid instance (for run_project/stop_project)
+// Running vivid process handle (for run_project/stop_project)
+#ifdef _WIN32
+static HANDLE s_runningProcess = nullptr;
+static DWORD s_runningPid = 0;
+#else
 static pid_t s_runningPid = 0;
+#endif
 
 // MCP Server implementation
 class McpServer {
@@ -723,6 +734,46 @@ private:
                 return result;
             }
 
+#ifdef _WIN32
+            // Stop any existing instance first
+            if (s_runningProcess != nullptr) {
+                TerminateProcess(s_runningProcess, 0);
+                CloseHandle(s_runningProcess);
+                s_runningProcess = nullptr;
+                s_runningPid = 0;
+                std::this_thread::sleep_for(std::chrono::milliseconds(500));
+            }
+
+            // Start process on Windows
+            std::string exe = getVividExecutable();
+            std::string cmdLine = "\"" + exe + "\" \"" + projectPath + "\"";
+
+            STARTUPINFOA si = {};
+            si.cb = sizeof(si);
+            PROCESS_INFORMATION pi = {};
+
+            if (CreateProcessA(nullptr, const_cast<char*>(cmdLine.c_str()),
+                              nullptr, nullptr, FALSE,
+                              CREATE_NEW_CONSOLE, nullptr, nullptr, &si, &pi)) {
+                s_runningProcess = pi.hProcess;
+                s_runningPid = pi.dwProcessId;
+                CloseHandle(pi.hThread);
+
+                std::this_thread::sleep_for(std::chrono::seconds(2));
+                m_vivid.disconnect();
+                bool connected = m_vivid.connect();
+
+                json response;
+                response["success"] = true;
+                response["pid"] = static_cast<int>(s_runningPid);
+                response["connected"] = connected;
+                response["port"] = 9876;
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Failed to start project"}}};
+            }
+#else
             // Stop any existing instance first
             if (s_runningPid > 0) {
                 kill(s_runningPid, SIGTERM);
@@ -756,8 +807,21 @@ private:
                 result["isError"] = true;
                 result["content"] = {{{"type", "text"}, {"text", "Failed to start project"}}};
             }
+#endif
         }
         else if (name == "stop_project") {
+#ifdef _WIN32
+            if (s_runningProcess != nullptr) {
+                TerminateProcess(s_runningProcess, 0);
+                CloseHandle(s_runningProcess);
+                s_runningProcess = nullptr;
+                s_runningPid = 0;
+                m_vivid.disconnect();
+                result["content"] = {{{"type", "text"}, {"text", "Project stopped"}}};
+            } else {
+                result["content"] = {{{"type", "text"}, {"text", "No project is running"}}};
+            }
+#else
             if (s_runningPid > 0) {
                 kill(s_runningPid, SIGTERM);
                 int status;
@@ -768,6 +832,7 @@ private:
             } else {
                 result["content"] = {{{"type", "text"}, {"text", "No project is running"}}};
             }
+#endif
         }
         else if (name == "capture_snapshot") {
             std::string projectPath = args.value("path", "");
@@ -808,10 +873,15 @@ private:
                 return result;
             }
 
-            // Use snapshot with frame 0 and /dev/null output to just compile
+            // Use snapshot with frame 0 and null output to just compile
+#ifdef _WIN32
+            std::string nullDevice = "NUL";
+#else
+            std::string nullDevice = "/dev/null";
+#endif
             std::vector<std::string> cmdArgs = {
                 getVividExecutable(), projectPath,
-                "--snapshot", "/dev/null",
+                "--snapshot", nullDevice,
                 "--snapshot-frame", "0"
             };
 
