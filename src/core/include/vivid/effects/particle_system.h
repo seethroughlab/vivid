@@ -12,6 +12,7 @@
 // - Full Param<T> support for MCP slider integration
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/effects/particle_forces.h>
 #include <vivid/param.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -19,6 +20,7 @@
 #include <random>
 #include <string>
 #include <functional>
+#include <memory>
 
 namespace vivid::effects {
 
@@ -353,6 +355,71 @@ public:
     void depthTest(bool enable) { m_depthTest = enable; }
 
     // =========================================================================
+    // Force Stack API (Modular Force System)
+    // =========================================================================
+
+    /**
+     * @brief Add a force to the stack
+     * @tparam T Force type (e.g., CurlNoiseForce, GravityForce)
+     * @return Reference to the added force for configuration
+     *
+     * @code
+     * ps.addForce<CurlNoiseForce>().strength = 1.5f;
+     * ps.addForce<VortexForce>().axis.set(0, 1, 0);
+     * @endcode
+     */
+    template<typename T>
+    T& addForce() {
+        auto force = std::make_unique<T>();
+        T& ref = *force;
+        m_forces.push_back(std::move(force));
+        m_forcesDirty = true;
+        return ref;
+    }
+
+    /**
+     * @brief Remove all forces from the stack
+     */
+    void clearForces() {
+        m_forces.clear();
+        m_forcesDirty = true;
+    }
+
+    /**
+     * @brief Get force by index
+     * @param index Force index
+     * @return Pointer to force or nullptr if out of bounds
+     */
+    ParticleForce* getForce(size_t index) {
+        return index < m_forces.size() ? m_forces[index].get() : nullptr;
+    }
+
+    /**
+     * @brief Get force by type (first match)
+     * @tparam T Force type to find
+     * @return Pointer to force or nullptr if not found
+     */
+    template<typename T>
+    T* getForce() {
+        for (auto& f : m_forces) {
+            if (auto* ptr = dynamic_cast<T*>(f.get())) {
+                return ptr;
+            }
+        }
+        return nullptr;
+    }
+
+    /**
+     * @brief Number of forces in stack
+     */
+    size_t forceCount() const { return m_forces.size(); }
+
+    /**
+     * @brief Check if force stack has been modified (triggers GPU rebuild)
+     */
+    bool forcesDirty() const { return m_forcesDirty; }
+
+    // =========================================================================
     // Operator Interface
     // =========================================================================
 
@@ -453,9 +520,15 @@ private:
     std::vector<size_t> m_sortedIndices;
 
     // -------------------------------------------------------------------------
-    // Custom Force Callback
+    // Custom Force Callback (legacy, deprecated - use force stack instead)
     // -------------------------------------------------------------------------
     std::function<glm::vec3(const Particle&, float time)> m_forceCallback;
+
+    // -------------------------------------------------------------------------
+    // Modular Force Stack
+    // -------------------------------------------------------------------------
+    std::vector<ParticleForcePtr> m_forces;
+    bool m_forcesDirty = true;  // Triggers GPU pipeline rebuild
 
     // -------------------------------------------------------------------------
     // GPU Resources

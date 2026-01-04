@@ -105,6 +105,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/point_sprites.cpp
     src/effects/gpu_particles.cpp
     src/effects/particle_system.cpp
+    src/effects/forces/curl_noise_force.cpp
     src/effects/plexus.cpp
     src/effects/font_atlas.cpp
     src/effects/canvas_renderer.cpp

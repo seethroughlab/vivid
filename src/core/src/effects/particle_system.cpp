@@ -5,6 +5,7 @@
 #include <vivid/effects/particle_renderer.h>
 #include <vivid/effects/gpu_common.h>
 #include <vivid/effects/types.h>
+#include <vivid/effects/forces/all_forces.h>
 #include <vivid/context.h>
 #include <cmath>
 #include <algorithm>
@@ -1441,6 +1442,10 @@ glm::vec4 ParticleSystem::getSpawnColor() {
 // =============================================================================
 
 void ParticleSystem::updateParticlesCPU(float dt) {
+    bool is3D = (m_particleSpace == ParticleSpace::World3D);
+    bool useForceStack = !m_forces.empty();
+
+    // Pre-compute legacy parameters (used if force stack is empty)
     glm::vec3 grav(gravity.x(), gravity.y(), gravity.z());
     float dragVal = static_cast<float>(drag);
     float turbVal = static_cast<float>(turbulence);
@@ -1448,49 +1453,64 @@ void ParticleSystem::updateParticlesCPU(float dt) {
     float attStr = static_cast<float>(attractorStrength);
     float curlStr = static_cast<float>(curlStrength);
 
-    bool is3D = (m_particleSpace == ParticleSpace::World3D);
-
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
     for (auto& p : m_particles) {
-        // Apply gravity
-        if (is3D) {
-            p.velocity += grav * dt;
+        if (useForceStack) {
+            // === New modular force stack ===
+            for (auto& force : m_forces) {
+                if (!force->enabled) continue;
+
+                // Handle drag specially (velocity multiplier)
+                if (force->type() == ForceType::Drag) {
+                    auto* dragForce = static_cast<DragForce*>(force.get());
+                    p.velocity *= dragForce->getDragFactor(dt);
+                } else {
+                    // Regular additive forces
+                    p.velocity += force->compute(p, m_time, dt);
+                }
+            }
         } else {
-            // 2D: gravity is just Y component
-            p.velocity.y += grav.y * dt;
-        }
+            // === Legacy parameter-based forces (backward compat) ===
 
-        // Apply drag
-        if (dragVal > 0.0f) {
-            p.velocity *= (1.0f - dragVal * dt);
-        }
-
-        // Apply turbulence
-        if (turbVal > 0.0f) {
+            // Apply gravity
             if (is3D) {
-                p.velocity += glm::vec3(dist(m_rng), dist(m_rng), dist(m_rng)) * turbVal * dt;
+                p.velocity += grav * dt;
             } else {
-                p.velocity += glm::vec3(dist(m_rng), dist(m_rng), 0.0f) * turbVal * dt;
+                p.velocity.y += grav.y * dt;
+            }
+
+            // Apply drag
+            if (dragVal > 0.0f) {
+                p.velocity *= (1.0f - dragVal * dt);
+            }
+
+            // Apply turbulence
+            if (turbVal > 0.0f) {
+                if (is3D) {
+                    p.velocity += glm::vec3(dist(m_rng), dist(m_rng), dist(m_rng)) * turbVal * dt;
+                } else {
+                    p.velocity += glm::vec3(dist(m_rng), dist(m_rng), 0.0f) * turbVal * dt;
+                }
+            }
+
+            // Apply attractor
+            if (std::abs(attStr) > 0.0001f) {
+                glm::vec3 toAtt = attPos - p.position;
+                float distance = glm::length(toAtt);
+                if (distance > 0.01f) {
+                    p.velocity += glm::normalize(toAtt) * attStr * dt / distance;
+                }
+            }
+
+            // Apply curl noise
+            if (curlStr > 0.0001f) {
+                glm::vec3 curl = computeCurlNoise(p.position, m_time + p.seed * 10.0f);
+                p.velocity += curl * curlStr * dt;
             }
         }
 
-        // Apply attractor
-        if (std::abs(attStr) > 0.0001f) {
-            glm::vec3 toAtt = attPos - p.position;
-            float distance = glm::length(toAtt);
-            if (distance > 0.01f) {
-                p.velocity += glm::normalize(toAtt) * attStr * dt / distance;
-            }
-        }
-
-        // Apply curl noise
-        if (curlStr > 0.0001f) {
-            glm::vec3 curl = computeCurlNoise(p.position, m_time + p.seed * 10.0f);
-            p.velocity += curl * curlStr * dt;
-        }
-
-        // Apply custom force callback
+        // Apply custom force callback (always, for both modes)
         if (m_forceCallback) {
             glm::vec3 customForce = m_forceCallback(p, m_time);
             p.velocity += customForce * dt;
@@ -2212,23 +2232,74 @@ void ParticleSystem::dispatchComputeSimulation(Context& ctx, float dt) {
     uniforms.particleCount = static_cast<uint32_t>(m_aliveCountGPU);
     uniforms.is3D = (m_particleSpace == ParticleSpace::World3D) ? 1u : 0u;
 
-    uniforms.curlStrength = static_cast<float>(curlStrength);
-    uniforms.curlScale = static_cast<float>(curlScale);
-    uniforms.curlSpeed = static_cast<float>(curlSpeed);
-    uniforms.curlOctaves = static_cast<int>(curlOctaves);
+    // Check if using force stack or legacy parameters
+    bool useForceStack = !m_forces.empty();
 
-    uniforms.gravityX = gravity.x();
-    uniforms.gravityY = gravity.y();
-    uniforms.gravityZ = gravity.z();
-    uniforms.drag = static_cast<float>(drag);
+    if (useForceStack) {
+        // Read parameters from force stack
+        // Find each force type and extract its parameters
+        for (auto& force : m_forces) {
+            if (!force->enabled) continue;
 
-    uniforms.turbulence = static_cast<float>(turbulence);
-    uniforms.turbulenceSeed = m_time;
+            switch (force->type()) {
+                case ForceType::CurlNoise: {
+                    auto* f = static_cast<CurlNoiseForce*>(force.get());
+                    uniforms.curlStrength = static_cast<float>(f->strength);
+                    uniforms.curlScale = static_cast<float>(f->scale);
+                    uniforms.curlSpeed = static_cast<float>(f->speed);
+                    uniforms.curlOctaves = static_cast<int>(f->octaves);
+                    break;
+                }
+                case ForceType::Gravity: {
+                    auto* f = static_cast<GravityForce*>(force.get());
+                    uniforms.gravityX = f->direction.x();
+                    uniforms.gravityY = f->direction.y();
+                    uniforms.gravityZ = f->direction.z();
+                    break;
+                }
+                case ForceType::Drag: {
+                    auto* f = static_cast<DragForce*>(force.get());
+                    uniforms.drag = static_cast<float>(f->coefficient);
+                    break;
+                }
+                case ForceType::Turbulence: {
+                    auto* f = static_cast<TurbulenceForce*>(force.get());
+                    uniforms.turbulence = static_cast<float>(f->strength);
+                    break;
+                }
+                case ForceType::PointAttractor: {
+                    auto* f = static_cast<PointAttractorForce*>(force.get());
+                    uniforms.attractorX = f->position.x();
+                    uniforms.attractorY = f->position.y();
+                    uniforms.attractorZ = f->position.z();
+                    uniforms.attractorStrength = static_cast<float>(f->strength);
+                    break;
+                }
+                default:
+                    break;
+            }
+        }
+        uniforms.turbulenceSeed = m_time;
+    } else {
+        // Legacy parameter-based path
+        uniforms.curlStrength = static_cast<float>(curlStrength);
+        uniforms.curlScale = static_cast<float>(curlScale);
+        uniforms.curlSpeed = static_cast<float>(curlSpeed);
+        uniforms.curlOctaves = static_cast<int>(curlOctaves);
 
-    uniforms.attractorX = attractorPosition.x();
-    uniforms.attractorY = attractorPosition.y();
-    uniforms.attractorZ = attractorPosition.z();
-    uniforms.attractorStrength = static_cast<float>(attractorStrength);
+        uniforms.gravityX = gravity.x();
+        uniforms.gravityY = gravity.y();
+        uniforms.gravityZ = gravity.z();
+        uniforms.drag = static_cast<float>(drag);
+
+        uniforms.turbulence = static_cast<float>(turbulence);
+        uniforms.turbulenceSeed = m_time;
+
+        uniforms.attractorX = attractorPosition.x();
+        uniforms.attractorY = attractorPosition.y();
+        uniforms.attractorZ = attractorPosition.z();
+        uniforms.attractorStrength = static_cast<float>(attractorStrength);
+    }
 
     wgpuQueueWriteBuffer(queue, m_computeUniformBuffer, 0, &uniforms, sizeof(uniforms));
 
@@ -2798,8 +2869,19 @@ void ParticleSystem::renderMeshesGPU(Context& ctx) {
     }
 
     // Ensure builtin mesh is created if needed
-    if (m_useBuiltinMesh && !m_builtinMeshUploaded) {
+    if (m_useBuiltinMesh && !m_builtinMeshCreated) {
         createBuiltinCubeMesh(ctx.device());
+    }
+
+    // Upload deferred builtin mesh data (same as CPU path)
+    if (m_builtinMeshCreated && !m_builtinMeshUploaded && !m_builtinVertexData.empty()) {
+        wgpuQueueWriteBuffer(ctx.queue(), m_meshVertexBuffer, 0,
+                             m_builtinVertexData.data(), m_builtinVertexData.size());
+        wgpuQueueWriteBuffer(ctx.queue(), m_meshIndexBuffer, 0,
+                             m_builtinIndexData.data(), m_builtinIndexData.size());
+        m_builtinMeshUploaded = true;
+        m_builtinVertexData.clear();
+        m_builtinIndexData.clear();
     }
 
     auto device = ctx.device();
@@ -2824,9 +2906,16 @@ void ParticleSystem::renderMeshesGPU(Context& ctx) {
     uniforms.colorEndG = colorEnd.g();
     uniforms.colorEndB = colorEnd.b();
     uniforms.colorEndA = colorEnd.a();
-    uniforms.meshScaleX = m_builtinCubeWidth;
-    uniforms.meshScaleY = m_builtinCubeWidth;
-    uniforms.meshScaleZ = m_builtinCubeLength;
+    // Builtin mesh has dimensions baked in; custom mesh needs scaling
+    if (m_useBuiltinMesh) {
+        uniforms.meshScaleX = 1.0f;
+        uniforms.meshScaleY = 1.0f;
+        uniforms.meshScaleZ = 1.0f;
+    } else {
+        uniforms.meshScaleX = m_builtinCubeWidth;
+        uniforms.meshScaleY = m_builtinCubeWidth;
+        uniforms.meshScaleZ = m_builtinCubeLength;
+    }
 
     wgpuQueueWriteBuffer(queue, m_gpuMeshUniformBuffer, 0, &uniforms, sizeof(uniforms));
 
