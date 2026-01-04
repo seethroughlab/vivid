@@ -6,6 +6,7 @@
  */
 
 #include <vivid/effects/particle_forces.h>
+#include <cstring>  // for std::memcpy
 
 namespace vivid::effects {
 
