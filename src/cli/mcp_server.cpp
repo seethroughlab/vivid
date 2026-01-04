@@ -2,6 +2,13 @@
 // Implements Model Context Protocol over stdio for Claude Code integration
 // Connects to running Vivid instance via WebSocket to provide live state access
 
+// Prevent Windows min/max macros from interfering with std::min/std::max
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#endif
+
 #include <vivid/cli.h>
 #include <vivid/operator_registry.h>
 #include <nlohmann/json.hpp>
@@ -28,6 +35,9 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #else
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #endif
 
@@ -1044,7 +1054,7 @@ private:
             if (refLower.find(queryLower) != std::string::npos) {
                 results += "# From LLM-REFERENCE.md:\n\n";
                 // Extract relevant section (simplified - just return first 2000 chars for now)
-                results += refContent.substr(0, std::min(refContent.size(), size_t(2000)));
+                results += refContent.substr(0, (std::min)(refContent.size(), size_t(2000)));
                 results += "\n\n";
             }
         }
@@ -1055,7 +1065,7 @@ private:
             std::transform(recipesLower.begin(), recipesLower.end(), recipesLower.begin(), ::tolower);
             if (recipesLower.find(queryLower) != std::string::npos) {
                 results += "# From RECIPES.md:\n\n";
-                results += recipesContent.substr(0, std::min(recipesContent.size(), size_t(2000)));
+                results += recipesContent.substr(0, (std::min)(recipesContent.size(), size_t(2000)));
             }
         }
 
