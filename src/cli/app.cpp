@@ -823,8 +823,10 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &renderPassDesc);
 
-    // Update display with current screen size
-    mlc.display->setScreenSize(mlc.width, mlc.height);
+    // Update display with current screen size (if display is valid)
+    if (mlc.display->isValid()) {
+        mlc.display->setScreenSize(mlc.width, mlc.height);
+    }
 
     // Build frame input for NodeGraph/ImGui
     // IMPORTANT: Use raw GLFW state for mouse buttons, NOT Context's state

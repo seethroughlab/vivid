@@ -621,9 +621,11 @@ void Display::setScreenSize(int width, int height) {
     m_screenWidth = width;
     m_screenHeight = height;
 
-    // Update uniform buffer
-    float uniforms[4] = {(float)width, (float)height, 0.0f, 0.0f};
-    wgpuQueueWriteBuffer(m_queue, m_textUniformBuffer, 0, uniforms, sizeof(uniforms));
+    // Update uniform buffer (only if text pipeline was initialized)
+    if (m_textUniformBuffer) {
+        float uniforms[4] = {(float)width, (float)height, 0.0f, 0.0f};
+        wgpuQueueWriteBuffer(m_queue, m_textUniformBuffer, 0, uniforms, sizeof(uniforms));
+    }
 }
 
 void Display::blit(WGPURenderPassEncoder pass, WGPUTextureView texture) {
