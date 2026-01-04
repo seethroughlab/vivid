@@ -3,6 +3,7 @@
 
 #include <vivid/vivid.h>
 #include <vivid/effects/particle_system.h>
+#include <vivid/effects/forces/all_forces.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -49,13 +50,15 @@ void setup(Context& ctx) {
     ps.sizeEnd = 0.3f;
 
     // Strong curl noise
-    ps.curlStrength = 1.5f;
-    ps.curlScale = 2.5f;
-    ps.curlSpeed = 0.4f;
-    ps.curlOctaves = 4;
+    auto& curl = ps.addForce<CurlNoiseForce>();
+    curl.strength = 1.5f;
+    curl.scale = 2.5f;
+    curl.speed = 0.4f;
+    curl.octaves = 4;
 
     // Light drag
-    ps.drag = 0.15f;
+    auto& drag = ps.addForce<DragForce>();
+    drag.coefficient = 0.15f;
 
     // Cyan to magenta gradient
     ps.colorMode(PsColorMode::Gradient);

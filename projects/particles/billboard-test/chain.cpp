@@ -3,6 +3,7 @@
 
 #include <vivid/vivid.h>
 #include <vivid/effects/particle_system.h>
+#include <vivid/effects/forces/all_forces.h>
 #include <vivid/render3d/render3d.h>
 
 using namespace vivid;
@@ -48,8 +49,11 @@ void setup(Context& ctx) {
     ps.spread = 45.0f;
 
     // Gravity and turbulence for organic motion
-    ps.gravity.set(0.0f, -0.5f, 0.0f);
-    ps.turbulence = 0.3f;
+    auto& grav = ps.addForce<GravityForce>();
+    grav.direction.set(0.0f, -0.5f, 0.0f);
+
+    auto& turb = ps.addForce<TurbulenceForce>();
+    turb.strength = 0.3f;
 
     // Color gradient - fire-like
     ps.colorMode(PsColorMode::Gradient);

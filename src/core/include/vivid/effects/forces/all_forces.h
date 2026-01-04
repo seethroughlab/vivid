@@ -10,7 +10,6 @@
 #include <vivid/effects/forces/drag_force.h>
 #include <vivid/effects/forces/turbulence_force.h>
 #include <vivid/effects/forces/point_attractor_force.h>
-// Future forces:
-// #include <vivid/effects/forces/vortex_force.h>
-// #include <vivid/effects/forces/wind_force.h>
-// #include <vivid/effects/forces/velocity_field_force.h>
+#include <vivid/effects/forces/vortex_force.h>
+#include <vivid/effects/forces/wind_force.h>
+#include <vivid/effects/forces/velocity_field_force.h>

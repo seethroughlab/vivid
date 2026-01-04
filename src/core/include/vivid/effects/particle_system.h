@@ -195,41 +195,6 @@ public:
     Param<float> velocityVariation{"velocityVariation", 0.0f, 0.0f, 1.0f};
 
     // =========================================================================
-    // Parameters - Physics
-    // =========================================================================
-
-    /// Gravity force (z ignored for 2D)
-    Vec3Param gravity{"gravity", 0.0f, 0.0f, 0.0f, -20.0f, 20.0f};
-
-    /// Velocity damping (0 = no drag)
-    Param<float> drag{"drag", 0.0f, 0.0f, 5.0f};
-
-    /// Random turbulence strength
-    Param<float> turbulence{"turbulence", 0.0f, 0.0f, 2.0f};
-
-    /// Attractor position (z ignored for 2D)
-    Vec3Param attractorPosition{"attractorPosition", 0.5f, 0.5f, 0.0f, -10.0f, 10.0f};
-
-    /// Attractor strength (negative = repel)
-    Param<float> attractorStrength{"attractorStrength", 0.0f, -10.0f, 10.0f};
-
-    // =========================================================================
-    // Parameters - Curl Noise Force Field
-    // =========================================================================
-
-    /// Curl noise force strength (0 = disabled)
-    Param<float> curlStrength{"curlStrength", 0.0f, 0.0f, 5.0f};
-
-    /// Curl noise scale (frequency)
-    Param<float> curlScale{"curlScale", 4.0f, 0.1f, 20.0f};
-
-    /// Curl noise animation speed
-    Param<float> curlSpeed{"curlSpeed", 0.3f, 0.0f, 2.0f};
-
-    /// Curl noise FBM octaves
-    Param<int> curlOctaves{"curlOctaves", 3, 1, 6};
-
-    // =========================================================================
     // Parameters - Color
     // =========================================================================
 
@@ -590,7 +555,6 @@ private:
     glm::vec3 getInitialVelocity(const glm::vec3& spawnPos);
     glm::vec4 getSpawnColor();
     void updateParticlesCPU(float dt);
-    glm::vec3 computeCurlNoise(const glm::vec3& pos, float time);
     glm::vec4 computeParticleColor(const Particle& p, float age);
     float computeParticleSize(const Particle& p, float age);
     static glm::vec4 hsvToRgb(float h, float s, float v);

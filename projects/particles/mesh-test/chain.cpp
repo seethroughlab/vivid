@@ -3,6 +3,7 @@
 
 #include <vivid/vivid.h>
 #include <vivid/effects/particle_system.h>
+#include <vivid/effects/forces/all_forces.h>
 #include <vivid/render3d/render3d.h>
 
 using namespace vivid;
@@ -51,13 +52,15 @@ void setup(Context& ctx) {
     ps.sizeEnd = 0.5f;
 
     // Curl noise for organic flow
-    ps.curlStrength = 2.0f;
-    ps.curlScale = 0.6f;
-    ps.curlSpeed = 0.03f;
-    ps.curlOctaves = 2;
+    auto& curl = ps.addForce<CurlNoiseForce>();
+    curl.strength = 2.0f;
+    curl.scale = 0.6f;
+    curl.speed = 0.03f;
+    curl.octaves = 2;
 
     // Light drag
-    ps.drag = 0.02f;
+    auto& drag = ps.addForce<DragForce>();
+    drag.coefficient = 0.02f;
 
     // Deep red color (like the gpu-curl-flow reference)
     ps.colorMode(PsColorMode::Gradient);

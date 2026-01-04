@@ -3,6 +3,7 @@
 
 #include <vivid/vivid.h>
 #include <vivid/effects/particle_system.h>
+#include <vivid/effects/forces/all_forces.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -41,14 +42,18 @@ void setup(Context& ctx) {
     ps.sizeEnd = 0.02f;
 
     // Curl noise for organic motion
-    ps.curlStrength = 0.8f;
-    ps.curlScale = 2.0f;
-    ps.curlSpeed = 0.3f;
-    ps.curlOctaves = 3;
+    auto& curl = ps.addForce<CurlNoiseForce>();
+    curl.strength = 0.8f;
+    curl.scale = 2.0f;
+    curl.speed = 0.3f;
+    curl.octaves = 3;
 
     // Upward drift
-    ps.gravity.set(0.0f, 0.1f, 0.0f);
-    ps.drag = 0.2f;
+    auto& grav = ps.addForce<GravityForce>();
+    grav.direction.set(0.0f, 0.1f, 0.0f);
+
+    auto& drag = ps.addForce<DragForce>();
+    drag.coefficient = 0.2f;
 
     // Fire-like gradient
     ps.colorMode(PsColorMode::Gradient);

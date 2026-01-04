@@ -3,6 +3,7 @@
 
 #include <vivid/vivid.h>
 #include <vivid/effects/particle_system.h>
+#include <vivid/effects/forces/all_forces.h>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -34,13 +35,15 @@ void setup(Context& ctx) {
     ps.sizeEnd = 0.003f;
 
     // Curl noise for organic motion
-    ps.curlStrength = 1.0f;
-    ps.curlScale = 3.0f;
-    ps.curlSpeed = 0.2f;
-    ps.curlOctaves = 3;
+    auto& curl = ps.addForce<CurlNoiseForce>();
+    curl.strength = 1.0f;
+    curl.scale = 3.0f;
+    curl.speed = 0.2f;
+    curl.octaves = 3;
 
     // Light drag
-    ps.drag = 0.1f;
+    auto& drag = ps.addForce<DragForce>();
+    drag.coefficient = 0.1f;
 
     // Color gradient - blue to purple
     ps.colorMode(PsColorMode::Gradient);

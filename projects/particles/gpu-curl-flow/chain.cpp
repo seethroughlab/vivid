@@ -10,6 +10,7 @@
 
 #include <vivid/vivid.h>
 #include <vivid/effects/particle_system.h>
+#include <vivid/effects/forces/all_forces.h>
 #include <vivid/effects/bloom.h>
 #include <vivid/render3d/render3d.h>
 #include <vivid/gui/imgui.h>
@@ -22,6 +23,8 @@ using namespace vivid::render3d;
 static CameraOperator* g_camera = nullptr;
 static ParticleSystem* g_particles = nullptr;
 static Bloom* g_bloom = nullptr;
+static CurlNoiseForce* g_curl = nullptr;
+static DragForce* g_drag = nullptr;
 
 // Camera state
 static float cameraAzimuth = 0.4f;
@@ -69,14 +72,16 @@ void setup(Context& ctx) {
     ps.sizeStart = 1.0f;
     ps.sizeEnd = 1.0f;
 
-    // Curl noise for organic flow
-    ps.curlStrength = 2.5f;
-    ps.curlScale = 0.5f;
-    ps.curlSpeed = 0.02f;
-    ps.curlOctaves = 2;
+    // Curl noise for organic flow (keep reference for ImGui)
+    g_curl = &ps.addForce<CurlNoiseForce>();
+    g_curl->strength = 2.5f;
+    g_curl->scale = 0.5f;
+    g_curl->speed = 0.02f;
+    g_curl->octaves = 2;
 
-    // Light drag
-    ps.drag = 0.02f;
+    // Light drag (keep reference for ImGui)
+    g_drag = &ps.addForce<DragForce>();
+    g_drag->coefficient = 0.02f;
 
     // Deep crimson/burgundy color (matching original)
     ps.colorMode(PsColorMode::Gradient);
@@ -137,24 +142,24 @@ void update(Context& ctx) {
     if (ImGui::Begin("Curl Flow Controls")) {
         ImGui::SeparatorText("Curl Noise");
 
-        float curlScale = g_particles->curlScale;
+        float curlScale = static_cast<float>(g_curl->scale);
         if (ImGui::SliderFloat("Scale", &curlScale, 0.1f, 2.0f)) {
-            g_particles->curlScale = curlScale;
+            g_curl->scale = curlScale;
         }
 
-        float curlStrength = g_particles->curlStrength;
+        float curlStrength = static_cast<float>(g_curl->strength);
         if (ImGui::SliderFloat("Strength", &curlStrength, 0.5f, 5.0f)) {
-            g_particles->curlStrength = curlStrength;
+            g_curl->strength = curlStrength;
         }
 
-        float curlSpeed = g_particles->curlSpeed;
+        float curlSpeed = static_cast<float>(g_curl->speed);
         if (ImGui::SliderFloat("Speed", &curlSpeed, 0.0f, 0.1f, "%.3f")) {
-            g_particles->curlSpeed = curlSpeed;
+            g_curl->speed = curlSpeed;
         }
 
-        int curlOctaves = g_particles->curlOctaves;
+        int curlOctaves = static_cast<int>(g_curl->octaves);
         if (ImGui::SliderInt("Octaves", &curlOctaves, 1, 4)) {
-            g_particles->curlOctaves = curlOctaves;
+            g_curl->octaves = curlOctaves;
         }
 
         ImGui::SeparatorText("Particles");
@@ -169,9 +174,9 @@ void update(Context& ctx) {
             g_particles->emitterSize = emitterSize;
         }
 
-        float drag = g_particles->drag;
-        if (ImGui::SliderFloat("Drag", &drag, 0.0f, 1.0f, "%.3f")) {
-            g_particles->drag = drag;
+        float dragCoeff = static_cast<float>(g_drag->coefficient);
+        if (ImGui::SliderFloat("Drag", &dragCoeff, 0.0f, 1.0f, "%.3f")) {
+            g_drag->coefficient = dragCoeff;
         }
 
         ImGui::SeparatorText("Visuals");
@@ -192,13 +197,13 @@ void update(Context& ctx) {
 
         ImGui::Separator();
         if (ImGui::Button("Reset Defaults")) {
-            g_particles->curlScale = 0.5f;
-            g_particles->curlStrength = 2.5f;
-            g_particles->curlSpeed = 0.02f;
-            g_particles->curlOctaves = 2;
+            g_curl->scale = 0.5f;
+            g_curl->strength = 2.5f;
+            g_curl->speed = 0.02f;
+            g_curl->octaves = 2;
             g_particles->emitRate = 6000.0f;
             g_particles->emitterSize = 0.8f;
-            g_particles->drag = 0.02f;
+            g_drag->coefficient = 0.02f;
             g_bloom->intensity = 0.3f;
             g_bloom->threshold = 0.6f;
         }

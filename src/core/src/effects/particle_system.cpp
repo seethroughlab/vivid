@@ -287,6 +287,26 @@ struct SimulateUniforms {
     attractorY: f32,
     attractorZ: f32,
     attractorStrength: f32,
+
+    // Vortex
+    vortexCenterX: f32,
+    vortexCenterY: f32,
+    vortexCenterZ: f32,
+    vortexStrength: f32,
+    vortexAxisX: f32,
+    vortexAxisY: f32,
+    vortexAxisZ: f32,
+    vortexFalloff: f32,
+
+    // Wind
+    windDirX: f32,
+    windDirY: f32,
+    windDirZ: f32,
+    windStrength: f32,
+    windGustStrength: f32,
+    windGustFrequency: f32,
+    _windPad0: f32,
+    _windPad1: f32,
 }
 
 @group(0) @binding(0) var<uniform> u: SimulateUniforms;
@@ -509,6 +529,36 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         }
     }
 
+    // Vortex
+    if (abs(u.vortexStrength) > 0.001) {
+        let vCenter = vec3f(u.vortexCenterX, u.vortexCenterY, u.vortexCenterZ);
+        let vAxis = normalize(vec3f(u.vortexAxisX, u.vortexAxisY, u.vortexAxisZ));
+        let toP = pos - vCenter;
+        let alongAxis = dot(toP, vAxis);
+        let radial = toP - vAxis * alongAxis;
+        let dist = length(radial);
+        if (dist > 0.01) {
+            let tangent = cross(vAxis, normalize(radial));
+            var forceMag = u.vortexStrength;
+            if (u.vortexFalloff > 0.001) {
+                forceMag /= pow(dist, u.vortexFalloff);
+            }
+            vel += tangent * forceMag * u.dt;
+        }
+    }
+
+    // Wind
+    if (abs(u.windStrength) > 0.001) {
+        let windDir = normalize(vec3f(u.windDirX, u.windDirY, u.windDirZ));
+        var windForce = u.windStrength;
+        if (u.windGustStrength > 0.001) {
+            let noiseInput = pos.x * u.windGustFrequency + pos.y * u.windGustFrequency + u.time * u.windGustFrequency;
+            let gustValue = sin(noiseInput * 6.28318) * 0.5 + 0.5;
+            windForce *= (1.0 + gustValue * u.windGustStrength);
+        }
+        vel += windDir * windForce * u.dt;
+    }
+
     // === Integrate Position ===
     pos += vel * u.dt;
 
@@ -567,6 +617,26 @@ struct GPUSimulateUniforms {
     float attractorY;
     float attractorZ;
     float attractorStrength;
+
+    // Vortex
+    float vortexCenterX;
+    float vortexCenterY;
+    float vortexCenterZ;
+    float vortexStrength;
+    float vortexAxisX;
+    float vortexAxisY;
+    float vortexAxisZ;
+    float vortexFalloff;
+
+    // Wind
+    float windDirX;
+    float windDirY;
+    float windDirZ;
+    float windStrength;
+    float windGustStrength;
+    float windGustFrequency;
+    float _windPad0;
+    float _windPad1;
 };
 
 // =============================================================================
@@ -1442,75 +1512,22 @@ glm::vec4 ParticleSystem::getSpawnColor() {
 // =============================================================================
 
 void ParticleSystem::updateParticlesCPU(float dt) {
-    bool is3D = (m_particleSpace == ParticleSpace::World3D);
-    bool useForceStack = !m_forces.empty();
-
-    // Pre-compute legacy parameters (used if force stack is empty)
-    glm::vec3 grav(gravity.x(), gravity.y(), gravity.z());
-    float dragVal = static_cast<float>(drag);
-    float turbVal = static_cast<float>(turbulence);
-    glm::vec3 attPos(attractorPosition.x(), attractorPosition.y(), attractorPosition.z());
-    float attStr = static_cast<float>(attractorStrength);
-    float curlStr = static_cast<float>(curlStrength);
-
-    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-
     for (auto& p : m_particles) {
-        if (useForceStack) {
-            // === New modular force stack ===
-            for (auto& force : m_forces) {
-                if (!force->enabled) continue;
+        // Apply forces from force stack
+        for (auto& force : m_forces) {
+            if (!force->enabled) continue;
 
-                // Handle drag specially (velocity multiplier)
-                if (force->type() == ForceType::Drag) {
-                    auto* dragForce = static_cast<DragForce*>(force.get());
-                    p.velocity *= dragForce->getDragFactor(dt);
-                } else {
-                    // Regular additive forces
-                    p.velocity += force->compute(p, m_time, dt);
-                }
-            }
-        } else {
-            // === Legacy parameter-based forces (backward compat) ===
-
-            // Apply gravity
-            if (is3D) {
-                p.velocity += grav * dt;
+            // Handle drag specially (velocity multiplier)
+            if (force->type() == ForceType::Drag) {
+                auto* dragForce = static_cast<DragForce*>(force.get());
+                p.velocity *= dragForce->getDragFactor(dt);
             } else {
-                p.velocity.y += grav.y * dt;
-            }
-
-            // Apply drag
-            if (dragVal > 0.0f) {
-                p.velocity *= (1.0f - dragVal * dt);
-            }
-
-            // Apply turbulence
-            if (turbVal > 0.0f) {
-                if (is3D) {
-                    p.velocity += glm::vec3(dist(m_rng), dist(m_rng), dist(m_rng)) * turbVal * dt;
-                } else {
-                    p.velocity += glm::vec3(dist(m_rng), dist(m_rng), 0.0f) * turbVal * dt;
-                }
-            }
-
-            // Apply attractor
-            if (std::abs(attStr) > 0.0001f) {
-                glm::vec3 toAtt = attPos - p.position;
-                float distance = glm::length(toAtt);
-                if (distance > 0.01f) {
-                    p.velocity += glm::normalize(toAtt) * attStr * dt / distance;
-                }
-            }
-
-            // Apply curl noise
-            if (curlStr > 0.0001f) {
-                glm::vec3 curl = computeCurlNoise(p.position, m_time + p.seed * 10.0f);
-                p.velocity += curl * curlStr * dt;
+                // Regular additive forces
+                p.velocity += force->compute(p, m_time, dt);
             }
         }
 
-        // Apply custom force callback (always, for both modes)
+        // Apply custom force callback
         if (m_forceCallback) {
             glm::vec3 customForce = m_forceCallback(p, m_time);
             p.velocity += customForce * dt;
@@ -1524,45 +1541,6 @@ void ParticleSystem::updateParticlesCPU(float dt) {
 
         // Update life
         p.life -= dt;
-    }
-}
-
-glm::vec3 ParticleSystem::computeCurlNoise(const glm::vec3& pos, float time) {
-    float scale = static_cast<float>(curlScale);
-    float speed = static_cast<float>(curlSpeed);
-    int octaves = static_cast<int>(curlOctaves);
-
-    const float e = 0.001f;
-    glm::vec3 p = pos * scale;
-    float t = time * speed;
-
-    bool is3D = (m_particleSpace == ParticleSpace::World3D);
-
-    // Potential function using FBM noise
-    auto potential = [&](glm::vec3 q) -> glm::vec3 {
-        return glm::vec3(
-            fbm3(q.x + t, q.y + 100.0f, q.z, octaves),
-            fbm3(q.x + 200.0f, q.y + t, q.z + 100.0f, octaves),
-            is3D ? fbm3(q.x + 100.0f, q.y + 300.0f, q.z + t, octaves) : 0.0f
-        );
-    };
-
-    // Finite differences to compute curl
-    glm::vec3 dx = potential(p + glm::vec3(e, 0, 0)) - potential(p - glm::vec3(e, 0, 0));
-    glm::vec3 dy = potential(p + glm::vec3(0, e, 0)) - potential(p - glm::vec3(0, e, 0));
-
-    if (is3D) {
-        glm::vec3 dz = potential(p + glm::vec3(0, 0, e)) - potential(p - glm::vec3(0, 0, e));
-        float d = 2.0f * e;
-        return glm::vec3(
-            dy.z / d - dz.y / d,
-            dz.x / d - dx.z / d,
-            dx.y / d - dy.x / d
-        );
-    } else {
-        // 2D curl: perpendicular to gradient
-        float d = 2.0f * e;
-        return glm::vec3(dy.x / d, -dx.x / d, 0.0f);
     }
 }
 
@@ -2232,74 +2210,72 @@ void ParticleSystem::dispatchComputeSimulation(Context& ctx, float dt) {
     uniforms.particleCount = static_cast<uint32_t>(m_aliveCountGPU);
     uniforms.is3D = (m_particleSpace == ParticleSpace::World3D) ? 1u : 0u;
 
-    // Check if using force stack or legacy parameters
-    bool useForceStack = !m_forces.empty();
+    // Read parameters from force stack
+    for (auto& force : m_forces) {
+        if (!force->enabled) continue;
 
-    if (useForceStack) {
-        // Read parameters from force stack
-        // Find each force type and extract its parameters
-        for (auto& force : m_forces) {
-            if (!force->enabled) continue;
-
-            switch (force->type()) {
-                case ForceType::CurlNoise: {
-                    auto* f = static_cast<CurlNoiseForce*>(force.get());
-                    uniforms.curlStrength = static_cast<float>(f->strength);
-                    uniforms.curlScale = static_cast<float>(f->scale);
-                    uniforms.curlSpeed = static_cast<float>(f->speed);
-                    uniforms.curlOctaves = static_cast<int>(f->octaves);
-                    break;
-                }
-                case ForceType::Gravity: {
-                    auto* f = static_cast<GravityForce*>(force.get());
-                    uniforms.gravityX = f->direction.x();
-                    uniforms.gravityY = f->direction.y();
-                    uniforms.gravityZ = f->direction.z();
-                    break;
-                }
-                case ForceType::Drag: {
-                    auto* f = static_cast<DragForce*>(force.get());
-                    uniforms.drag = static_cast<float>(f->coefficient);
-                    break;
-                }
-                case ForceType::Turbulence: {
-                    auto* f = static_cast<TurbulenceForce*>(force.get());
-                    uniforms.turbulence = static_cast<float>(f->strength);
-                    break;
-                }
-                case ForceType::PointAttractor: {
-                    auto* f = static_cast<PointAttractorForce*>(force.get());
-                    uniforms.attractorX = f->position.x();
-                    uniforms.attractorY = f->position.y();
-                    uniforms.attractorZ = f->position.z();
-                    uniforms.attractorStrength = static_cast<float>(f->strength);
-                    break;
-                }
-                default:
-                    break;
+        switch (force->type()) {
+            case ForceType::CurlNoise: {
+                auto* f = static_cast<CurlNoiseForce*>(force.get());
+                uniforms.curlStrength = static_cast<float>(f->strength);
+                uniforms.curlScale = static_cast<float>(f->scale);
+                uniforms.curlSpeed = static_cast<float>(f->speed);
+                uniforms.curlOctaves = static_cast<int>(f->octaves);
+                break;
             }
+            case ForceType::Gravity: {
+                auto* f = static_cast<GravityForce*>(force.get());
+                uniforms.gravityX = f->direction.x();
+                uniforms.gravityY = f->direction.y();
+                uniforms.gravityZ = f->direction.z();
+                break;
+            }
+            case ForceType::Drag: {
+                auto* f = static_cast<DragForce*>(force.get());
+                uniforms.drag = static_cast<float>(f->coefficient);
+                break;
+            }
+            case ForceType::Turbulence: {
+                auto* f = static_cast<TurbulenceForce*>(force.get());
+                uniforms.turbulence = static_cast<float>(f->strength);
+                break;
+            }
+            case ForceType::PointAttractor: {
+                auto* f = static_cast<PointAttractorForce*>(force.get());
+                uniforms.attractorX = f->position.x();
+                uniforms.attractorY = f->position.y();
+                uniforms.attractorZ = f->position.z();
+                uniforms.attractorStrength = static_cast<float>(f->strength);
+                break;
+            }
+            case ForceType::Vortex: {
+                auto* f = static_cast<VortexForce*>(force.get());
+                uniforms.vortexCenterX = f->center.x();
+                uniforms.vortexCenterY = f->center.y();
+                uniforms.vortexCenterZ = f->center.z();
+                uniforms.vortexStrength = static_cast<float>(f->strength);
+                uniforms.vortexAxisX = f->axis.x();
+                uniforms.vortexAxisY = f->axis.y();
+                uniforms.vortexAxisZ = f->axis.z();
+                uniforms.vortexFalloff = static_cast<float>(f->falloff);
+                break;
+            }
+            case ForceType::Wind: {
+                auto* f = static_cast<WindForce*>(force.get());
+                glm::vec3 dir = glm::normalize(glm::vec3(f->direction.x(), f->direction.y(), f->direction.z()));
+                uniforms.windDirX = dir.x;
+                uniforms.windDirY = dir.y;
+                uniforms.windDirZ = dir.z;
+                uniforms.windStrength = static_cast<float>(f->strength);
+                uniforms.windGustStrength = static_cast<float>(f->gustStrength);
+                uniforms.windGustFrequency = static_cast<float>(f->gustFrequency);
+                break;
+            }
+            default:
+                break;
         }
-        uniforms.turbulenceSeed = m_time;
-    } else {
-        // Legacy parameter-based path
-        uniforms.curlStrength = static_cast<float>(curlStrength);
-        uniforms.curlScale = static_cast<float>(curlScale);
-        uniforms.curlSpeed = static_cast<float>(curlSpeed);
-        uniforms.curlOctaves = static_cast<int>(curlOctaves);
-
-        uniforms.gravityX = gravity.x();
-        uniforms.gravityY = gravity.y();
-        uniforms.gravityZ = gravity.z();
-        uniforms.drag = static_cast<float>(drag);
-
-        uniforms.turbulence = static_cast<float>(turbulence);
-        uniforms.turbulenceSeed = m_time;
-
-        uniforms.attractorX = attractorPosition.x();
-        uniforms.attractorY = attractorPosition.y();
-        uniforms.attractorZ = attractorPosition.z();
-        uniforms.attractorStrength = static_cast<float>(attractorStrength);
     }
+    uniforms.turbulenceSeed = m_time;
 
     wgpuQueueWriteBuffer(queue, m_computeUniformBuffer, 0, &uniforms, sizeof(uniforms));
 
@@ -3399,15 +3375,6 @@ std::vector<ParamDecl> ParticleSystem::params() {
         radialVelocity.decl(),
         spread.decl(),
         velocityVariation.decl(),
-        gravity.decl(),
-        drag.decl(),
-        turbulence.decl(),
-        attractorPosition.decl(),
-        attractorStrength.decl(),
-        curlStrength.decl(),
-        curlScale.decl(),
-        curlSpeed.decl(),
-        curlOctaves.decl(),
         colorStart.decl(),
         colorEnd.decl(),
         fadeInTime.decl(),
@@ -3430,13 +3397,6 @@ bool ParticleSystem::getParam(const std::string& name, float out[4]) {
     if (name == "radialVelocity") { out[0] = radialVelocity; return true; }
     if (name == "spread") { out[0] = spread; return true; }
     if (name == "velocityVariation") { out[0] = velocityVariation; return true; }
-    if (name == "drag") { out[0] = drag; return true; }
-    if (name == "turbulence") { out[0] = turbulence; return true; }
-    if (name == "attractorStrength") { out[0] = attractorStrength; return true; }
-    if (name == "curlStrength") { out[0] = curlStrength; return true; }
-    if (name == "curlScale") { out[0] = curlScale; return true; }
-    if (name == "curlSpeed") { out[0] = curlSpeed; return true; }
-    if (name == "curlOctaves") { out[0] = static_cast<float>(static_cast<int>(curlOctaves)); return true; }
     if (name == "fadeInTime") { out[0] = fadeInTime; return true; }
     if (name == "fadeOut") { out[0] = static_cast<bool>(fadeOut) ? 1.0f : 0.0f; return true; }
 
@@ -3444,8 +3404,6 @@ bool ParticleSystem::getParam(const std::string& name, float out[4]) {
     if (name == "emitterPosition") { out[0] = emitterPosition.x(); out[1] = emitterPosition.y(); out[2] = emitterPosition.z(); return true; }
     if (name == "emitterDirection") { out[0] = emitterDirection.x(); out[1] = emitterDirection.y(); out[2] = emitterDirection.z(); return true; }
     if (name == "initialVelocity") { out[0] = initialVelocity.x(); out[1] = initialVelocity.y(); out[2] = initialVelocity.z(); return true; }
-    if (name == "gravity") { out[0] = gravity.x(); out[1] = gravity.y(); out[2] = gravity.z(); return true; }
-    if (name == "attractorPosition") { out[0] = attractorPosition.x(); out[1] = attractorPosition.y(); out[2] = attractorPosition.z(); return true; }
 
     // Color params
     if (name == "colorStart") { colorStart.getData(out); return true; }
@@ -3469,13 +3427,6 @@ bool ParticleSystem::setParam(const std::string& name, const float value[4]) {
     if (name == "radialVelocity") { radialVelocity = value[0]; return true; }
     if (name == "spread") { spread = value[0]; return true; }
     if (name == "velocityVariation") { velocityVariation = value[0]; return true; }
-    if (name == "drag") { drag = value[0]; return true; }
-    if (name == "turbulence") { turbulence = value[0]; return true; }
-    if (name == "attractorStrength") { attractorStrength = value[0]; return true; }
-    if (name == "curlStrength") { curlStrength = value[0]; return true; }
-    if (name == "curlScale") { curlScale = value[0]; return true; }
-    if (name == "curlSpeed") { curlSpeed = value[0]; return true; }
-    if (name == "curlOctaves") { curlOctaves = static_cast<int>(value[0]); return true; }
     if (name == "fadeInTime") { fadeInTime = value[0]; return true; }
     if (name == "fadeOut") { fadeOut = value[0] > 0.5f; return true; }
 
@@ -3483,8 +3434,6 @@ bool ParticleSystem::setParam(const std::string& name, const float value[4]) {
     if (name == "emitterPosition") { emitterPosition.set(value[0], value[1], value[2]); return true; }
     if (name == "emitterDirection") { emitterDirection.set(value[0], value[1], value[2]); return true; }
     if (name == "initialVelocity") { initialVelocity.set(value[0], value[1], value[2]); return true; }
-    if (name == "gravity") { gravity.set(value[0], value[1], value[2]); return true; }
-    if (name == "attractorPosition") { attractorPosition.set(value[0], value[1], value[2]); return true; }
 
     // Color params
     if (name == "colorStart") { colorStart.set(value[0], value[1], value[2], value[3]); return true; }
