@@ -10,6 +10,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.5] - 2026-01-04
+
+### Added
+
+#### Modular Particle Force System
+- New force stack API: `ps.addForce<T>()`, `ps.clearForces()`, `ps.getForce<T>()`
+- 8 composable force types that work on both CPU and GPU:
+  - `GravityForce` - Constant directional acceleration
+  - `DragForce` - Velocity damping
+  - `CurlNoiseForce` - Organic, divergence-free flow fields
+  - `TurbulenceForce` - Random jitter/turbulence
+  - `PointAttractorForce` - Point attraction/repulsion
+  - `VortexForce` - Rotational force around an axis (new)
+  - `WindForce` - Directional wind with turbulent gusts (new)
+  - `VelocityFieldForce` - Procedural flow fields (CPU-only, new)
+- Forces generate their own WGSL shader code for GPU compute simulation
+- Dynamic shader composition - pipeline rebuilds when force stack changes
+- 14 example projects demonstrating various force configurations
+
+#### ParticleSystem Operator
+- Unified particle system supporting 2D and 3D particles
+- 3 simulation modes: CPU, GPU (WebGPU compute)
+- 3 render modes: Circle (2D), Billboard (3D), Mesh (3D instanced)
+- 8 emitter shapes: Point, Line, Ring, Disc, Rectangle, Sphere, Box, Cone
+- Color modes: Solid, Gradient, Rainbow, Random
+- Velocity-aligned mesh rendering for trail effects
+- Built-in elongated cube mesh for curl noise visualizations
+
+### Changed
+- Force parameters moved from ParticleSystem to individual force classes
+- GPU particle simulation uses dynamically generated shaders based on active forces
+
+### Breaking Changes
+- Removed legacy physics params from ParticleSystem:
+  - `gravity`, `drag`, `turbulence`
+  - `attractorPosition`, `attractorStrength`
+  - `curlStrength`, `curlScale`, `curlSpeed`, `curlOctaves`
+- Use force stack API instead:
+  ```cpp
+  // Old (removed):
+  ps.gravity.set(0.0f, -9.8f, 0.0f);
+  ps.curlStrength = 1.5f;
+
+  // New:
+  ps.addForce<GravityForce>().direction.set(0.0f, -9.8f, 0.0f);
+  ps.addForce<CurlNoiseForce>().strength = 1.5f;
+  ```
+
 ## [0.1.0-alpha.4] - 2026-01-03
 
 ### Added
@@ -133,7 +181,8 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.4...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.5...HEAD
+[0.1.0-alpha.5]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.3...v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.2...v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.1...v0.1.0-alpha.2
