@@ -1245,16 +1245,13 @@ void InstancedRender3D::process(Context& ctx) {
     WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
 
     // Draw instanced (only visible instances after frustum culling)
-    wgpuRenderPassEncoderSetPipeline(pass, useTextured ? m_texturedPipeline : m_pipeline);
-    wgpuRenderPassEncoderSetBindGroup(pass, 0, activeBindGroup, 0, nullptr);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, meshToRender->vertexBuffer(), 0, WGPU_WHOLE_SIZE);
-    wgpuRenderPassEncoderSetVertexBuffer(pass, 1, m_instanceBuffer, 0,
-                                          m_visibleCount * sizeof(GPUInstance));
-    wgpuRenderPassEncoderSetIndexBuffer(pass, meshToRender->indexBuffer(),
-                                         WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
-
-    // Single draw call for all visible instances
     if (m_visibleCount > 0) {
+        wgpuRenderPassEncoderSetPipeline(pass, useTextured ? m_texturedPipeline : m_pipeline);
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, activeBindGroup, 0, nullptr);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, meshToRender->vertexBuffer(), 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 1, m_instanceBuffer, 0, WGPU_WHOLE_SIZE);
+        wgpuRenderPassEncoderSetIndexBuffer(pass, meshToRender->indexBuffer(),
+                                             WGPUIndexFormat_Uint32, 0, WGPU_WHOLE_SIZE);
         wgpuRenderPassEncoderDrawIndexed(pass, meshToRender->indexCount(),
                                           static_cast<uint32_t>(m_visibleCount), 0, 0, 0);
     }
