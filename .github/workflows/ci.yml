@@ -11,7 +11,7 @@ jobs:
     name: Build (Linux)
     # Use self-hosted for pushes and PRs from the same repo (trusted)
     # Use GitHub-hosted for PRs from forks (untrusted)
-    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "Linux"]') || 'ubuntu-latest' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "Linux", "X64"]') || 'ubuntu-latest' }}
 
     steps:
       - name: Checkout
@@ -199,13 +199,17 @@ jobs:
 
   build-raspberry-pi:
     name: Build (Raspberry Pi ARM64)
-    runs-on: ubuntu-latest
+    # Use self-hosted Pi for pushes and PRs from the same repo (trusted)
+    # Use GitHub-hosted with cross-compilation for PRs from forks (untrusted)
+    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "Linux", "ARM64"]') || 'ubuntu-latest' }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Cross-compilation setup (only for GitHub-hosted runners / fork PRs)
       - name: Install cross-compilation toolchain
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -214,75 +218,85 @@ jobs:
             cmake \
             pkg-config
 
-      - name: Install ARM64 libraries
+      - name: Install ARM64 libraries (cross-compile)
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         run: |
-          # Add ARM64 architecture
           sudo dpkg --add-architecture arm64
-
-          # Ubuntu 24.04 uses DEB822 format in /etc/apt/sources.list.d/ubuntu.sources
-          # We need to restrict it to amd64 only, then add ARM64 sources from ports.ubuntu.com
-
-          # Add Architectures: amd64 to the default sources to prevent ARM64 fetches from main mirrors
           if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
             sudo sed -i '/^Types:/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
           fi
-
-          # Also fix traditional sources.list if it exists
           if [ -f /etc/apt/sources.list ]; then
             sudo sed -i 's/^deb http/deb [arch=amd64] http/' /etc/apt/sources.list
           fi
-
-          # Add ARM64 package sources from ports.ubuntu.com (the only mirror with ARM64)
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble main restricted universe multiverse" | sudo tee /etc/apt/sources.list.d/arm64.list
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-updates main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports noble-security main restricted universe multiverse" | sudo tee -a /etc/apt/sources.list.d/arm64.list
-
           sudo apt-get update
           sudo apt-get install -y \
-            libx11-dev:arm64 \
-            libxrandr-dev:arm64 \
-            libxinerama-dev:arm64 \
-            libxcursor-dev:arm64 \
-            libxi-dev:arm64 \
-            libxext-dev:arm64 \
-            libwayland-dev:arm64 \
-            libxkbcommon-dev:arm64 \
-            libgl1-mesa-dev:arm64
+            libx11-dev:arm64 libxrandr-dev:arm64 libxinerama-dev:arm64 \
+            libxcursor-dev:arm64 libxi-dev:arm64 libxext-dev:arm64 \
+            libwayland-dev:arm64 libxkbcommon-dev:arm64 libgl1-mesa-dev:arm64
 
-      - name: Create CMake toolchain file
+      - name: Create CMake toolchain file (cross-compile)
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
         run: |
           cat > arm64-toolchain.cmake << 'EOF'
           set(CMAKE_SYSTEM_NAME Linux)
           set(CMAKE_SYSTEM_PROCESSOR aarch64)
-
           set(CMAKE_C_COMPILER aarch64-linux-gnu-gcc)
           set(CMAKE_CXX_COMPILER aarch64-linux-gnu-g++)
-
-          # Include both cross-compile sysroot and host paths for headers/libs
           set(CMAKE_FIND_ROOT_PATH /usr/aarch64-linux-gnu /usr)
           set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
           set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
           set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-
-          # ARM64 library path
           set(CMAKE_LIBRARY_PATH /usr/lib/aarch64-linux-gnu)
           list(APPEND CMAKE_PREFIX_PATH /usr/lib/aarch64-linux-gnu)
-
-          # Help find ARM64 packages via pkg-config
           set(PKG_CONFIG_EXECUTABLE /usr/bin/pkg-config)
           set(ENV{PKG_CONFIG_PATH} "/usr/lib/aarch64-linux-gnu/pkgconfig")
           set(ENV{PKG_CONFIG_LIBDIR} "/usr/lib/aarch64-linux-gnu/pkgconfig")
           EOF
 
       - name: Configure CMake (cross-compile)
-        run: |
-          cmake -B build \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=arm64-toolchain.cmake \
-            -DBUILD_TESTS=OFF
+        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=arm64-toolchain.cmake -DBUILD_TESTS=OFF
 
+      # Native build setup (for self-hosted Pi runner)
+      - name: Install dependencies (native)
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libxext-dev libwayland-dev libxkbcommon-dev libgl1-mesa-dev
+
+      - name: Download wgpu-native
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WGPU_VERSION="v24.0.0.2"
+          mkdir -p build/_deps/wgpu
+          curl -fL --retry 3 \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -o "build/_deps/wgpu/wgpu.zip" \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/wgpu-linux-aarch64-release.zip"
+
+      - name: Configure CMake (native)
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: cmake -B build -DBUILD_TESTS=ON
+
+      # Shared build step
       - name: Build
         run: cmake --build build --config Release --parallel
+
+      # Tests (only on native self-hosted runner)
+      - name: Run unit and integration tests
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: ctest --test-dir build --output-on-failure -C Release -L "unit|integration|build"
+
+      - name: Run MCP server tests
+        if: ${{ contains(runner.labels, 'self-hosted') }}
+        run: ctest --test-dir build --output-on-failure -C Release -L "mcp"
+        timeout-minutes: 5
 
       - name: Upload build artifacts
         if: failure()
