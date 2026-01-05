@@ -209,7 +209,7 @@ jobs:
 
       # Cross-compilation setup (only for GitHub-hosted runners / fork PRs)
       - name: Install cross-compilation toolchain
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        if: runner.environment == 'github-hosted'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -219,7 +219,7 @@ jobs:
             pkg-config
 
       - name: Install ARM64 libraries (cross-compile)
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        if: runner.environment == 'github-hosted'
         run: |
           sudo dpkg --add-architecture arm64
           if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
@@ -237,7 +237,7 @@ jobs:
             libwayland-dev:arm64 libxkbcommon-dev:arm64 libgl1-mesa-dev:arm64
 
       - name: Create CMake toolchain file (cross-compile)
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        if: runner.environment == 'github-hosted'
         run: |
           cat > arm64-toolchain.cmake << 'EOF'
           set(CMAKE_SYSTEM_NAME Linux)
@@ -256,12 +256,12 @@ jobs:
           EOF
 
       - name: Configure CMake (cross-compile)
-        if: ${{ !contains(runner.labels, 'self-hosted') }}
+        if: runner.environment == 'github-hosted'
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=arm64-toolchain.cmake -DBUILD_TESTS=OFF
 
       # Native build setup (for self-hosted Pi runner)
       - name: Install dependencies (native)
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: runner.environment == 'self-hosted'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -269,7 +269,7 @@ jobs:
             libxext-dev libwayland-dev libxkbcommon-dev libgl1-mesa-dev
 
       - name: Download wgpu-native
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: runner.environment == 'self-hosted'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -281,7 +281,7 @@ jobs:
             "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/wgpu-linux-aarch64-release.zip"
 
       - name: Configure CMake (native)
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: runner.environment == 'self-hosted'
         run: cmake -B build -DBUILD_TESTS=ON
 
       # Shared build step
@@ -290,11 +290,11 @@ jobs:
 
       # Tests (only on native self-hosted runner)
       - name: Run unit and integration tests
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: runner.environment == 'self-hosted'
         run: ctest --test-dir build --output-on-failure -C Release -L "unit|integration|build"
 
       - name: Run MCP server tests
-        if: ${{ contains(runner.labels, 'self-hosted') }}
+        if: runner.environment == 'self-hosted'
         run: ctest --test-dir build --output-on-failure -C Release -L "mcp"
         timeout-minutes: 5
 
