@@ -9,7 +9,9 @@ on:
 jobs:
   build-linux:
     name: Build (Linux)
-    runs-on: ubuntu-latest
+    # Use self-hosted for pushes and PRs from the same repo (trusted)
+    # Use GitHub-hosted for PRs from forks (untrusted)
+    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "Linux"]') || 'ubuntu-latest' }}
 
     steps:
       - name: Checkout
