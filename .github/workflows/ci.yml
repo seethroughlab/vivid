@@ -7,25 +7,15 @@ on:
     branches: [master, main, dev]
 
 jobs:
-  build:
-    name: Build (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-        include:
-          - os: ubuntu-latest
-            cmake_args: ""
-          - os: windows-latest
-            cmake_args: ""
+  build-linux:
+    name: Build (Linux)
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Linux dependencies
-        if: runner.os == 'Linux'
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
@@ -46,34 +36,14 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           WGPU_VERSION="v24.0.0.2"
-          if [[ "$RUNNER_OS" == "Windows" ]]; then
-            WGPU_FILE="wgpu-windows-x86_64-msvc-release.zip"
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            ARCH=$(uname -m)
-            if [[ "$ARCH" == "arm64" ]]; then
-              WGPU_FILE="wgpu-macos-aarch64-release.zip"
-            else
-              WGPU_FILE="wgpu-macos-x86_64-release.zip"
-            fi
-          else
-            WGPU_FILE="wgpu-linux-x86_64-release.zip"
-          fi
           mkdir -p build/_deps/wgpu
           curl -fL --retry 3 \
             -H "Authorization: token $GITHUB_TOKEN" \
             -o "build/_deps/wgpu/wgpu.zip" \
-            "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/${WGPU_FILE}"
-          ls -la build/_deps/wgpu/
-        shell: bash
+            "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/wgpu-linux-x86_64-release.zip"
 
       - name: Configure CMake
-        run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            cmake -B build -DBUILD_TESTS=ON -DCOVERAGE=ON ${{ matrix.cmake_args }}
-          else
-            cmake -B build -DBUILD_TESTS=ON ${{ matrix.cmake_args }}
-          fi
-        shell: bash
+        run: cmake -B build -DBUILD_TESTS=ON -DCOVERAGE=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel
@@ -85,18 +55,16 @@ jobs:
         run: ctest --test-dir build --output-on-failure -C Release -L "mcp"
         timeout-minutes: 5
 
-      # GPU-based tests run on Linux with Mesa llvmpipe software renderer
+      # GPU-based tests run with Mesa llvmpipe software renderer
       # continue-on-error: wgpu-native surface creation doesn't work reliably with Mesa/xvfb
-      - name: Run smoke tests (Linux headless)
-        if: runner.os == 'Linux'
+      - name: Run smoke tests (headless)
         run: |
           xvfb-run -a --server-args="-screen 0 1280x720x24" \
             ctest --test-dir build --output-on-failure -C Release -L "smoke" || true
         timeout-minutes: 10
         continue-on-error: true
 
-      - name: Run visual regression tests (Linux headless)
-        if: runner.os == 'Linux'
+      - name: Run visual regression tests (headless)
         run: |
           xvfb-run -a --server-args="-screen 0 1280x720x24" \
             ctest --test-dir build --output-on-failure -C Release -L "visual" || true
@@ -104,16 +72,13 @@ jobs:
         continue-on-error: true
 
       - name: Generate coverage report
-        if: runner.os == 'Linux'
         continue-on-error: true
         run: |
           lcov --capture --directory build --output-file coverage.info || exit 0
-          # Remove coverage for external dependencies and test code
           lcov --remove coverage.info '/usr/*' '*/build/_deps/*' '*/tests/*' --output-file coverage.info || true
           lcov --list coverage.info || true
 
       - name: Upload coverage to Codecov
-        if: runner.os == 'Linux'
         continue-on-error: true
         uses: codecov/codecov-action@v4
         with:
@@ -125,7 +90,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-artifacts-${{ matrix.os }}
+          name: test-artifacts-linux
           path: |
             build/CMakeFiles/CMakeOutput.log
             build/CMakeFiles/CMakeError.log
@@ -180,6 +145,50 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-artifacts-macos
+          path: |
+            build/CMakeFiles/CMakeOutput.log
+            build/CMakeFiles/CMakeError.log
+            build/Testing/
+          if-no-files-found: ignore
+
+  build-windows:
+    name: Build (Windows)
+    # Use self-hosted for pushes and PRs from the same repo (trusted)
+    # Use GitHub-hosted for PRs from forks (untrusted)
+    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "Windows"]') || 'windows-latest' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download wgpu-native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $WGPU_VERSION = "v24.0.0.2"
+          New-Item -ItemType Directory -Force -Path build/_deps/wgpu | Out-Null
+          $headers = @{ Authorization = "token $env:GITHUB_TOKEN" }
+          Invoke-WebRequest -Uri "https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/wgpu-windows-x86_64-msvc-release.zip" -Headers $headers -OutFile "build/_deps/wgpu/wgpu.zip"
+        shell: pwsh
+
+      - name: Configure CMake
+        run: cmake -B build -DBUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Run unit and integration tests
+        run: ctest --test-dir build --output-on-failure -C Release -L "unit|integration|build"
+
+      - name: Run MCP server tests
+        run: ctest --test-dir build --output-on-failure -C Release -L "mcp"
+        timeout-minutes: 5
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-windows
           path: |
             build/CMakeFiles/CMakeOutput.log
             build/CMakeFiles/CMakeError.log
