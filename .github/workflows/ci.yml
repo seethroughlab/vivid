@@ -169,7 +169,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path build/_deps/wgpu | Out-Null
           $headers = @{ Authorization = "token $env:GITHUB_TOKEN" }
           Invoke-WebRequest -Uri "https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/wgpu-windows-x86_64-msvc-release.zip" -Headers $headers -OutFile "build/_deps/wgpu/wgpu.zip"
-        shell: pwsh
+        shell: powershell
 
       - name: Configure CMake
         run: cmake -B build -DBUILD_TESTS=ON
