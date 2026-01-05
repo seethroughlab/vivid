@@ -259,31 +259,26 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(ixwebsocket)
 
 # -----------------------------------------------------------------------------
-# Addons (optional libraries with external dependencies)
-# vivid-io is now part of core (provides image loading)
-# vivid-effects-2d is now part of core (provides 2D texture effects)
-# -----------------------------------------------------------------------------
-
-add_subdirectory(src/addons/vivid-network)
-add_subdirectory(src/addons/vivid-serial)
-
-# Cross-platform addons
-add_subdirectory(src/addons/vivid-video)
-add_subdirectory(src/addons/vivid-render3d)
-add_subdirectory(src/addons/vivid-audio)
-
-# MIDI addon (depends on vivid-audio)
-add_subdirectory(src/addons/vivid-midi)
-# vivid-ml moved to separate repo: https://github.com/jeff/vivid-ml
-
-# -----------------------------------------------------------------------------
 # Core library
 # -----------------------------------------------------------------------------
-add_subdirectory(src/core)
+add_subdirectory(src/vivid-core)
 
-# GUI addon (provides ImGui for user chains)
-# Core uses OverlayCanvas for chain visualizer; user chains that need ImGui use this addon
-add_subdirectory(src/addons/vivid-gui)
+# -----------------------------------------------------------------------------
+# Optional libraries (libs/)
+# All optional functionality lives here - both Vivid's own implementations
+# and wrappers around third-party libraries like ImGui and OpenCV.
+# -----------------------------------------------------------------------------
+
+add_subdirectory(libs/vivid-network)
+add_subdirectory(libs/vivid-serial)
+add_subdirectory(libs/vivid-video)
+add_subdirectory(libs/vivid-render3d)
+add_subdirectory(libs/vivid-audio)
+add_subdirectory(libs/vivid-midi)
+add_subdirectory(libs/vivid-imgui)
+# add_subdirectory(libs/vivid-opencv)  # Stub - uncomment when implementing
+
+# vivid-ml moved to separate repo: https://github.com/seethroughlab/vivid-ml
 
 # -----------------------------------------------------------------------------
 # CLI executable

@@ -94,20 +94,28 @@ ctest --test-dir build --output-on-failure
 
 ```
 vivid/
-├── src/            # All source code
-│   ├── core/         # Runtime engine
-│   ├── cli/          # Command-line interface
-│   └── addons/       # Modular features (video, audio, render3d, etc.)
-├── projects/       # Runnable example projects
-├── tests/          # Test suite and fixtures
-├── docs/           # Documentation
-└── dev/            # Developer tools and planning
+├── src/                # All source code
+│   ├── vivid-core/       # Runtime engine (required)
+│   ├── vivid-audio/      # Audio module (optional)
+│   ├── vivid-video/      # Video module (optional)
+│   ├── vivid-render3d/   # 3D rendering module (optional)
+│   ├── vivid-network/    # Network module (optional)
+│   ├── vivid-serial/     # Serial/DMX module (optional)
+│   ├── vivid-midi/       # MIDI module (optional)
+│   └── cli/              # Command-line interface
+├── addons/             # Third-party/swappable integrations
+│   ├── vivid-imgui/      # Dear ImGui integration
+│   └── vivid-opencv/     # OpenCV integration (stub)
+├── projects/           # Runnable example projects
+├── tests/              # Test suite and fixtures
+├── docs/               # Documentation
+└── dev/                # Developer tools and planning
 ```
 
 ## Adding a New Operator
 
-1. Create header in `src/core/include/vivid/effects/`
-2. Create implementation in `src/core/src/effects/`
+1. Create header in `src/vivid-core/include/vivid/effects/`
+2. Create implementation in `src/vivid-core/src/effects/`
 3. Add to CMakeLists.txt
 4. Include in `effects.h`
 5. Add example usage in `projects/`

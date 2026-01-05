@@ -1,0 +1,8 @@
+{
+  "name": "vivid-network",
+  "version": "0.1.0",
+  "description": "Network operators: OSC, UDP, and WebSocket/HTTP server",
+  "author": "Vivid",
+  "license": "MIT",
+  "vivid": ">=0.1.0"
+}

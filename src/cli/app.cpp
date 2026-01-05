@@ -18,7 +18,7 @@
 #include <vivid/audio_buffer.h>
 #include <vivid/video_exporter.h>
 #include <vivid/cli.h>
-#include <vivid/addon_manager.h>
+#include <vivid/library_manager.h>
 #include <vivid/window_manager.h>
 #include <vivid/asset_loader.h>
 #include <vivid/frame_input.h>

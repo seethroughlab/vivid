@@ -44,7 +44,7 @@ target_link_libraries(test_effects_2d PRIVATE
 )
 
 target_include_directories(test_effects_2d PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/core/include
+    ${CMAKE_SOURCE_DIR}/src/vivid-core/include
 )
 
 catch_discover_tests(test_effects_2d
@@ -65,7 +65,7 @@ target_link_libraries(test_particle_forces PRIVATE
 )
 
 target_include_directories(test_particle_forces PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/core/include
+    ${CMAKE_SOURCE_DIR}/src/vivid-core/include
 )
 
 catch_discover_tests(test_particle_forces
@@ -86,7 +86,7 @@ target_link_libraries(test_integration PRIVATE
 )
 
 target_include_directories(test_integration PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/core/include
+    ${CMAKE_SOURCE_DIR}/src/vivid-core/include
 )
 
 catch_discover_tests(test_integration
@@ -106,10 +106,10 @@ catch_discover_tests(test_integration
 option(BUILD_ADDON_TESTS "Build addon test suites" ON)
 
 if(BUILD_ADDON_TESTS)
-    include(${CMAKE_SOURCE_DIR}/src/addons/vivid-audio/tests/CMakeLists.txt)
-    include(${CMAKE_SOURCE_DIR}/src/addons/vivid-render3d/tests/CMakeLists.txt)
-    include(${CMAKE_SOURCE_DIR}/src/addons/vivid-network/tests/CMakeLists.txt)
-    include(${CMAKE_SOURCE_DIR}/src/addons/vivid-serial/tests/CMakeLists.txt)
+    include(${CMAKE_SOURCE_DIR}/libs/vivid-audio/tests/CMakeLists.txt)
+    include(${CMAKE_SOURCE_DIR}/libs/vivid-render3d/tests/CMakeLists.txt)
+    include(${CMAKE_SOURCE_DIR}/libs/vivid-network/tests/CMakeLists.txt)
+    include(${CMAKE_SOURCE_DIR}/libs/vivid-serial/tests/CMakeLists.txt)
 endif()
 
 # -----------------------------------------------------------------------------

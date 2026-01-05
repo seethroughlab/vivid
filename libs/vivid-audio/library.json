@@ -1,0 +1,8 @@
+{
+  "name": "vivid-audio",
+  "version": "0.1.0",
+  "description": "Audio synthesis, sequencing, and analysis for creative coding",
+  "author": "Vivid",
+  "license": "MIT",
+  "vivid": ">=0.1.0"
+}

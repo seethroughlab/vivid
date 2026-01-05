@@ -3,7 +3,7 @@
 
 #include "app.h"
 #include <vivid/cli.h>
-#include <vivid/addon_manager.h>
+#include <vivid/library_manager.h>
 #include <vivid/log.h>
 #include <climits>
 #include <iostream>
@@ -136,8 +136,8 @@ int main(int argc, char** argv) {
 
     vivid::Log::info() << "Vivid - Starting...";
 
-    // Load user-installed addons from ~/.vivid/addons/
-    vivid::AddonManager::instance().loadUserAddons();
+    // Load user-installed libraries from ~/.vivid/libs/
+    vivid::LibraryManager::instance().loadUserLibraries();
 
     // Parse arguments into AppConfig
     vivid::AppConfig config;
