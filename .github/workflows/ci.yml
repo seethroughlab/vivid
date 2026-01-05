@@ -260,6 +260,12 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=arm64-toolchain.cmake -DBUILD_TESTS=OFF
 
       # Native build setup (for self-hosted Pi runner)
+      - name: Clean up stale apt sources
+        if: runner.environment == 'self-hosted'
+        run: |
+          # Remove any leftover cross-compilation apt sources from previous runs
+          sudo rm -f /etc/apt/sources.list.d/arm64.list
+
       - name: Install dependencies (native)
         if: runner.environment == 'self-hosted'
         run: |
