@@ -134,10 +134,10 @@ jobs:
           if-no-files-found: ignore
 
   build-macos:
-    name: Build (macOS ARM64)
+    name: Build (macOS)
     # Use self-hosted for pushes and PRs from the same repo (trusted)
     # Use GitHub-hosted for PRs from forks (untrusted)
-    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "macOS", "ARM64"]') || 'macos-latest' }}
+    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "macOS"]') || 'macos-latest' }}
 
     steps:
       - name: Checkout
