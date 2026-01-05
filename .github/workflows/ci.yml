@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, dev]
   pull_request:
-    branches: [master, main]
+    branches: [master, main, dev]
 
 jobs:
   build:
@@ -13,11 +13,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, windows-latest]
         include:
           - os: ubuntu-latest
-            cmake_args: ""
-          - os: macos-latest
             cmake_args: ""
           - os: windows-latest
             cmake_args: ""
@@ -133,6 +131,59 @@ jobs:
             build/CMakeFiles/CMakeError.log
             build/Testing/
             /tmp/vivid_*.png
+          if-no-files-found: ignore
+
+  build-macos:
+    name: Build (macOS ARM64)
+    # Use self-hosted for pushes and PRs from the same repo (trusted)
+    # Use GitHub-hosted for PRs from forks (untrusted)
+    runs-on: ${{ (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted", "macOS", "ARM64"]') || 'macos-latest' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download wgpu-native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WGPU_VERSION="v24.0.0.2"
+          ARCH=$(uname -m)
+          if [[ "$ARCH" == "arm64" ]]; then
+            WGPU_FILE="wgpu-macos-aarch64-release.zip"
+          else
+            WGPU_FILE="wgpu-macos-x86_64-release.zip"
+          fi
+          mkdir -p build/_deps/wgpu
+          curl -fL --retry 3 \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -o "build/_deps/wgpu/wgpu.zip" \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/${WGPU_FILE}"
+          ls -la build/_deps/wgpu/
+        shell: bash
+
+      - name: Configure CMake
+        run: cmake -B build -DBUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Run unit and integration tests
+        run: ctest --test-dir build --output-on-failure -C Release -L "unit|integration|build"
+
+      - name: Run MCP server tests
+        run: ctest --test-dir build --output-on-failure -C Release -L "mcp"
+        timeout-minutes: 5
+
+      - name: Upload test artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-artifacts-macos
+          path: |
+            build/CMakeFiles/CMakeOutput.log
+            build/CMakeFiles/CMakeError.log
+            build/Testing/
           if-no-files-found: ignore
 
   build-raspberry-pi:
