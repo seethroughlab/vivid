@@ -17,7 +17,7 @@ struct ChromaticAberrationUniforms {
     float amount;
     float angle;
     int radial;
-    float _pad;
+    float aspect;
 };
 
 /**
@@ -68,7 +68,8 @@ public:
 
     /// @brief Get uniform values for GPU
     ChromaticAberrationUniforms getUniforms() const {
-        return {amount, angle, radial ? 1 : 0, 0.0f};
+        float aspect = (m_height > 0) ? static_cast<float>(m_width) / static_cast<float>(m_height) : 1.0f;
+        return {amount, angle, radial ? 1 : 0, aspect};
     }
 
     std::string name() const override { return "ChromaticAberration"; }

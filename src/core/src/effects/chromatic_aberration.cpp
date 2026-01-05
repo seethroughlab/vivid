@@ -10,7 +10,7 @@ struct Uniforms {
     amount: f32,
     angle: f32,
     radial: i32,
-    _pad: f32,
+    aspect: f32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -23,10 +23,16 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 
     if (uniforms.radial != 0) {
         // Radial: offset direction points away from center
-        offsetDir = normalize(input.uv - 0.5);
-        // Scale by distance from center
-        let dist = length(input.uv - 0.5) * 2.0;
+        // Apply aspect correction for circular pattern
+        var p = input.uv - 0.5;
+        p.x *= uniforms.aspect;
+        offsetDir = normalize(p);
+        // Reverse aspect for distance calculation to get circular distance
+        let circularP = vec2f(p.x / uniforms.aspect, p.y);
+        let dist = length(circularP) * 2.0;
         offsetDir *= dist;
+        // Reverse aspect on offset direction so it samples correctly
+        offsetDir.x /= uniforms.aspect;
     } else {
         // Linear: fixed direction
         offsetDir = vec2f(cos(uniforms.angle), sin(uniforms.angle));
