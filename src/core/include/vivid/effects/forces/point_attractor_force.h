@@ -13,15 +13,19 @@ namespace vivid::effects {
  * @brief Point attractor/repulsor
  *
  * Attracts or repels particles from a point in space.
- * Force falls off with distance (inverse distance).
  *
  * - Positive strength = attract
  * - Negative strength = repel
+ *
+ * @par Falloff Modes
+ * - **radius = 0** (default): Inverse distance falloff (1/d), unbounded range
+ * - **radius > 0**: Quadratic falloff 1-(d/r)², force smoothly reaches zero at radius
  */
 class PointAttractorForce : public ParticleForce {
 public:
     Vec3Param position{"position", 0.5f, 0.5f, 0.0f, -10.0f, 10.0f};
     Param<float> strength{"strength", 0.0f, -10.0f, 10.0f};
+    Param<float> radius{"radius", 0.0f, 0.0f, 20.0f};  // 0 = unbounded (1/d), >0 = quadratic falloff
 
     ForceType type() const override { return ForceType::PointAttractor; }
     std::string name() const override { return "PointAttractor"; }
@@ -36,14 +40,30 @@ public:
 
         if (dist < 0.01f) return glm::vec3(0.0f);
 
-        return glm::normalize(toAtt) * s * dt / dist;
+        float r = static_cast<float>(radius);
+        float falloff;
+        if (r > 0.0f) {
+            // Quadratic falloff: 1 - (d/r)², smoothly reaches zero at radius
+            if (dist >= r) return glm::vec3(0.0f);
+            float t = dist / r;
+            falloff = 1.0f - t * t;
+        } else {
+            // Classic inverse distance falloff
+            falloff = 1.0f / dist;
+        }
+
+        return glm::normalize(toAtt) * s * falloff * dt;
     }
 
     std::string wgslUniformFields() const override {
         return "  attractorX: f32,\n"
                "  attractorY: f32,\n"
                "  attractorZ: f32,\n"
-               "  attractorStrength: f32,\n";
+               "  attractorStrength: f32,\n"
+               "  attractorRadius: f32,\n"
+               "  _attractorPad1: f32,\n"
+               "  _attractorPad2: f32,\n"
+               "  _attractorPad3: f32,\n";  // Pad to 32 bytes (8 floats)
     }
 
     std::string wgslComputeCode(const std::string& u) const override {
@@ -53,12 +73,22 @@ public:
                "    let toAtt = attPos - pos;\n"
                "    let dist = length(toAtt);\n"
                "    if (dist > 0.01) {\n"
-               "        vel += normalize(toAtt) * " + u + ".attractorStrength * dt / dist;\n"
+               "        var falloff: f32;\n"
+               "        if (" + u + ".attractorRadius > 0.0) {\n"
+               "            // Quadratic falloff: 1 - (d/r)²\n"
+               "            let t = dist / " + u + ".attractorRadius;\n"
+               "            if (t >= 1.0) { falloff = 0.0; }\n"
+               "            else { falloff = 1.0 - t * t; }\n"
+               "        } else {\n"
+               "            // Classic inverse distance\n"
+               "            falloff = 1.0 / dist;\n"
+               "        }\n"
+               "        vel += normalize(toAtt) * " + u + ".attractorStrength * falloff * dt;\n"
                "    }\n"
                "}\n";
     }
 
-    size_t uniformSize() const override { return 16; }
+    size_t uniformSize() const override { return 32; }  // 8 floats for alignment
 
     void writeUniforms(void* dest) const override {
         float* f = static_cast<float*>(dest);
@@ -66,10 +96,14 @@ public:
         f[1] = position.y();
         f[2] = position.z();
         f[3] = static_cast<float>(strength);
+        f[4] = static_cast<float>(radius);
+        f[5] = 0.0f;  // padding
+        f[6] = 0.0f;
+        f[7] = 0.0f;
     }
 
     std::vector<ParamDecl> params() const override {
-        return { position.decl(), strength.decl() };
+        return { position.decl(), strength.decl(), radius.decl() };
     }
 
     bool getParam(const std::string& paramName, float out[4]) const override {
@@ -80,6 +114,7 @@ public:
             return true;
         }
         if (paramName == "strength") { out[0] = strength; return true; }
+        if (paramName == "radius") { out[0] = radius; return true; }
         return false;
     }
 
@@ -89,6 +124,7 @@ public:
             return true;
         }
         if (paramName == "strength") { strength = value[0]; return true; }
+        if (paramName == "radius") { radius = value[0]; return true; }
         return false;
     }
 };

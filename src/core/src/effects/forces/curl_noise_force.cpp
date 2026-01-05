@@ -77,7 +77,7 @@ float snoise3(float x, float y, float z) {
                           grad3(perm[BB + 1], x - 1, y - 1, z - 1), u), v), w);
 }
 
-float fbm3(float x, float y, float z, int octaves) {
+float fbm3(float x, float y, float z, int octaves, float lacunarity = 2.0f, float persistence = 0.5f) {
     float result = 0.0f;
     float amplitude = 1.0f;
     float frequency = 1.0f;
@@ -86,8 +86,8 @@ float fbm3(float x, float y, float z, int octaves) {
     for (int i = 0; i < octaves; i++) {
         result += amplitude * snoise3(x * frequency, y * frequency, z * frequency);
         maxAmp += amplitude;
-        amplitude *= 0.5f;
-        frequency *= 2.0f;
+        amplitude *= persistence;
+        frequency *= lacunarity;
     }
 
     return result / maxAmp;
@@ -102,17 +102,19 @@ glm::vec3 CurlNoiseForce::compute(const Particle& p, float time, float dt) {
     float scaleVal = static_cast<float>(scale);
     float speedVal = static_cast<float>(speed);
     int octavesVal = static_cast<int>(octaves);
+    float e = static_cast<float>(epsilon);
+    float lac = static_cast<float>(lacunarity);
+    float pers = static_cast<float>(persistence);
 
-    const float e = 0.001f;
     glm::vec3 pos = p.position * scaleVal;
     float t = (time + p.seed * 10.0f) * speedVal;
 
-    // Potential function using FBM noise
+    // Potential function using FBM noise with configurable lacunarity/persistence
     auto potential = [&](glm::vec3 q) -> glm::vec3 {
         return glm::vec3(
-            fbm3(q.x + t, q.y + 100.0f, q.z, octavesVal),
-            fbm3(q.x + 200.0f, q.y + t, q.z + 100.0f, octavesVal),
-            is3D ? fbm3(q.x + 100.0f, q.y + 300.0f, q.z + t, octavesVal) : 0.0f
+            fbm3(q.x + t, q.y + 100.0f, q.z, octavesVal, lac, pers),
+            fbm3(q.x + 200.0f, q.y + t, q.z + 100.0f, octavesVal, lac, pers),
+            is3D ? fbm3(q.x + 100.0f, q.y + 300.0f, q.z + t, octavesVal, lac, pers) : 0.0f
         );
     };
 

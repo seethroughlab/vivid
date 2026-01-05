@@ -130,7 +130,9 @@ fn fs_textured(input: VertexOutput) -> @location(0) vec4f {
 @fragment
 fn fs_circle(input: VertexOutput) -> @location(0) vec4f {
     let dist = length(input.uv - vec2f(0.5, 0.5)) * 2.0;
-    let alpha = 1.0 - smoothstep(0.9, 1.0, dist);
+    // Soft radial gradient: opaque center, transparent edges
+    let alpha = max(0.0, 1.0 - dist * dist);  // Quadratic falloff
+    if (alpha < 0.01) { discard; }
     return vec4f(input.color.rgb, input.color.a * alpha);
 }
 )";
@@ -305,7 +307,7 @@ struct SimulateUniforms {
     windStrength: f32,
     windGustStrength: f32,
     windGustFrequency: f32,
-    _windPad0: f32,
+    aspectRatio: f32,
     _windPad1: f32,
 }
 
@@ -399,6 +401,23 @@ fn fbm(p: vec3f, octaves: i32) -> f32 {
     return result / maxAmp;
 }
 
+// Extended FBM with configurable lacunarity and persistence
+fn fbmEx(p: vec3f, octaves: i32, lacunarity: f32, persistence: f32) -> f32 {
+    var result = 0.0;
+    var amplitude = 1.0;
+    var frequency = 1.0;
+    var maxAmp = 0.0;
+
+    for (var i = 0; i < octaves; i++) {
+        result += amplitude * snoise(p * frequency);
+        maxAmp += amplitude;
+        amplitude *= persistence;
+        frequency *= lacunarity;
+    }
+
+    return result / maxAmp;
+}
+
 // 3D Curl noise - divergence-free velocity field
 fn curlNoise3D(pos: vec3f, z: f32, scale: f32, octaves: i32) -> vec3f {
     let eps = 0.001;
@@ -446,6 +465,57 @@ fn curlNoise2D(pos: vec2f, z: f32, scale: f32, octaves: i32) -> vec2f {
     let n = fbm(p, octaves);
     let nx = fbm(vec3f(p.x + eps, p.y, p.z), octaves);
     let ny = fbm(vec3f(p.x, p.y + eps, p.z), octaves);
+
+    let d = 2.0 * eps;
+    // Perpendicular to gradient (divergence-free)
+    return vec2f((ny - n) / d, -(nx - n) / d);
+}
+
+// Extended 3D Curl noise with configurable epsilon, lacunarity, persistence
+fn curlNoise3DEx(pos: vec3f, z: f32, scale: f32, octaves: i32, eps: f32, lac: f32, pers: f32) -> vec3f {
+    let p = pos * scale;
+
+    // Sample noise at offset positions for finite differences
+    let n = vec3f(
+        fbmEx(vec3f(p.x, p.y + 100.0, p.z + z), octaves, lac, pers),
+        fbmEx(vec3f(p.x + 200.0, p.y, p.z + z + 100.0), octaves, lac, pers),
+        fbmEx(vec3f(p.x + 100.0, p.y + 300.0, p.z + z + 200.0), octaves, lac, pers)
+    );
+
+    let nx = vec3f(
+        fbmEx(vec3f(p.x + eps, p.y + 100.0, p.z + z), octaves, lac, pers),
+        fbmEx(vec3f(p.x + eps + 200.0, p.y, p.z + z + 100.0), octaves, lac, pers),
+        fbmEx(vec3f(p.x + eps + 100.0, p.y + 300.0, p.z + z + 200.0), octaves, lac, pers)
+    );
+
+    let ny = vec3f(
+        fbmEx(vec3f(p.x, p.y + eps + 100.0, p.z + z), octaves, lac, pers),
+        fbmEx(vec3f(p.x + 200.0, p.y + eps, p.z + z + 100.0), octaves, lac, pers),
+        fbmEx(vec3f(p.x + 100.0, p.y + eps + 300.0, p.z + z + 200.0), octaves, lac, pers)
+    );
+
+    let nz = vec3f(
+        fbmEx(vec3f(p.x, p.y + 100.0, p.z + eps + z), octaves, lac, pers),
+        fbmEx(vec3f(p.x + 200.0, p.y, p.z + eps + z + 100.0), octaves, lac, pers),
+        fbmEx(vec3f(p.x + 100.0, p.y + 300.0, p.z + eps + z + 200.0), octaves, lac, pers)
+    );
+
+    // Curl = nabla x F
+    let d = 2.0 * eps;
+    return vec3f(
+        (ny.z - n.z) / d - (nz.y - n.y) / d,
+        (nz.x - n.x) / d - (nx.z - n.z) / d,
+        (nx.y - n.y) / d - (ny.x - n.x) / d
+    );
+}
+
+// Extended 2D Curl noise with configurable epsilon, lacunarity, persistence
+fn curlNoise2DEx(pos: vec2f, z: f32, scale: f32, octaves: i32, eps: f32, lac: f32, pers: f32) -> vec2f {
+    let p = vec3f(pos * scale, z);
+
+    let n = fbmEx(p, octaves, lac, pers);
+    let nx = fbmEx(vec3f(p.x + eps, p.y, p.z), octaves, lac, pers);
+    let ny = fbmEx(vec3f(p.x, p.y + eps, p.z), octaves, lac, pers);
 
     let d = 2.0 * eps;
     // Perpendicular to gradient (divergence-free)
@@ -559,6 +629,14 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
         vel += windDir * windForce * u.dt;
     }
 
+    // Apply aspect ratio correction for 2D mode (keeps motion circular on widescreen)
+    if (!is3D && u.aspectRatio > 0.001) {
+        // Scale X velocity by 1/aspectRatio to compensate for wider screen space
+        let originalVelX = vec3f(p.velX, p.velY, p.velZ).x;
+        let velChangeX = vel.x - originalVelX;
+        vel.x = originalVelX + velChangeX / u.aspectRatio;
+    }
+
     // === Integrate Position ===
     pos += vel * u.dt;
 
@@ -635,7 +713,7 @@ struct GPUSimulateUniforms {
     float windStrength;
     float windGustStrength;
     float windGustFrequency;
-    float _windPad0;
+    float aspectRatio;
     float _windPad1;
 };
 
@@ -725,9 +803,9 @@ fn vs_main(
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    // SDF circle with soft edge
+    // Soft radial gradient: opaque center, transparent edges
     let dist = length(input.localPos);
-    let alpha = 1.0 - smoothstep(0.8, 1.0, dist);
+    let alpha = max(0.0, 1.0 - dist * dist);  // Quadratic falloff
 
     if (alpha < 0.01) { discard; }
 
@@ -863,7 +941,8 @@ fn vs_main(
 @fragment
 fn fs_circle(input: VertexOutput) -> @location(0) vec4f {
     let dist = length(input.uv - vec2f(0.5, 0.5)) * 2.0;
-    let alpha = 1.0 - smoothstep(0.9, 1.0, dist);
+    // Soft radial gradient: opaque center, transparent edges
+    let alpha = max(0.0, 1.0 - dist * dist);  // Quadratic falloff
     if (alpha < 0.01) { discard; }
     return vec4f(input.color.rgb, input.color.a * alpha);
 }
@@ -1217,6 +1296,11 @@ void ParticleSystem::process(Context& ctx) {
     float dt = static_cast<float>(ctx.dt());
     m_time += dt;
 
+    // Update aspect ratio for Screen2D emitter correction
+    if (outputHeight() > 0) {
+        m_aspectRatio = static_cast<float>(outputWidth()) / static_cast<float>(outputHeight());
+    }
+
     if (m_simulationMode == SimulationMode::CPU) {
         // === CPU Mode ===
         // Handle burst emission
@@ -1361,7 +1445,10 @@ glm::vec3 ParticleSystem::getEmitterPosition() {
                 // Horizontal ring in XZ plane
                 return center + size * glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
             } else {
-                return center + size * glm::vec3(std::cos(angle), std::sin(angle), 0.0f);
+                // Apply aspect ratio correction so ring appears circular on screen
+                float x = std::cos(angle) / m_aspectRatio;
+                float y = std::sin(angle);
+                return center + size * glm::vec3(x, y, 0.0f);
             }
         }
 
@@ -1371,7 +1458,10 @@ glm::vec3 ParticleSystem::getEmitterPosition() {
             if (is3D) {
                 return center + radius * glm::vec3(std::cos(angle), 0.0f, std::sin(angle));
             } else {
-                return center + radius * glm::vec3(std::cos(angle), std::sin(angle), 0.0f);
+                // Apply aspect ratio correction so disc appears circular on screen
+                float x = std::cos(angle) / m_aspectRatio;
+                float y = std::sin(angle);
+                return center + radius * glm::vec3(x, y, 0.0f);
             }
         }
 
@@ -1489,8 +1579,11 @@ glm::vec3 ParticleSystem::getInitialVelocity(const glm::vec3& spawnPos) {
 glm::vec4 ParticleSystem::getSpawnColor() {
     switch (m_colorMode) {
         case PsColorMode::Solid:
-        case PsColorMode::Gradient:
             return glm::vec4(colorStart.r(), colorStart.g(), colorStart.b(), colorStart.a());
+
+        case PsColorMode::Gradient:
+            // Return white - the gradient is computed in the shader from uniforms
+            return glm::vec4(1.0f, 1.0f, 1.0f, 1.0f);
 
         case PsColorMode::Rainbow: {
             float hue = std::fmod(m_particleIndex * 0.05f, 1.0f);
@@ -1512,6 +1605,9 @@ glm::vec4 ParticleSystem::getSpawnColor() {
 // =============================================================================
 
 void ParticleSystem::updateParticlesCPU(float dt) {
+    bool isScreen2D = (m_particleSpace == ParticleSpace::Screen2D);
+    float aspectCorrection = isScreen2D ? (1.0f / m_aspectRatio) : 1.0f;
+
     for (auto& p : m_particles) {
         // Apply forces from force stack
         for (auto& force : m_forces) {
@@ -1523,7 +1619,10 @@ void ParticleSystem::updateParticlesCPU(float dt) {
                 p.velocity *= dragForce->getDragFactor(dt);
             } else {
                 // Regular additive forces
-                p.velocity += force->compute(p, m_time, dt);
+                glm::vec3 f = force->compute(p, m_time, dt);
+                // Apply aspect ratio correction for Screen2D to keep circular motion
+                f.x *= aspectCorrection;
+                p.velocity += f;
             }
         }
 
@@ -2276,6 +2375,7 @@ void ParticleSystem::dispatchComputeSimulation(Context& ctx, float dt) {
         }
     }
     uniforms.turbulenceSeed = m_time;
+    uniforms.aspectRatio = m_aspectRatio;
 
     wgpuQueueWriteBuffer(queue, m_computeUniformBuffer, 0, &uniforms, sizeof(uniforms));
 

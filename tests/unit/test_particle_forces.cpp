@@ -181,6 +181,9 @@ TEST_CASE("CurlNoiseForce", "[forces][curl]") {
         REQUIRE(static_cast<float>(force.scale) == 4.0f);
         REQUIRE(static_cast<float>(force.speed) == 0.3f);
         REQUIRE(static_cast<int>(force.octaves) == 3);
+        REQUIRE(static_cast<float>(force.epsilon) == 0.1f);
+        REQUIRE(static_cast<float>(force.lacunarity) == 2.0f);
+        REQUIRE(static_cast<float>(force.persistence) == 0.5f);
     }
 
     SECTION("parameter assignment") {
@@ -188,11 +191,17 @@ TEST_CASE("CurlNoiseForce", "[forces][curl]") {
         force.scale = 8.0f;
         force.speed = 0.5f;
         force.octaves = 4;
+        force.epsilon = 0.05f;
+        force.lacunarity = 2.5f;
+        force.persistence = 0.6f;
 
         REQUIRE(static_cast<float>(force.strength) == 2.0f);
         REQUIRE(static_cast<float>(force.scale) == 8.0f);
         REQUIRE(static_cast<float>(force.speed) == 0.5f);
         REQUIRE(static_cast<int>(force.octaves) == 4);
+        REQUIRE(static_cast<float>(force.epsilon) == 0.05f);
+        REQUIRE(static_cast<float>(force.lacunarity) == 2.5f);
+        REQUIRE(static_cast<float>(force.persistence) == 0.6f);
     }
 
     SECTION("compute returns zero when strength is zero") {
@@ -221,6 +230,9 @@ TEST_CASE("CurlNoiseForce", "[forces][curl]") {
     SECTION("getParam API") {
         force.strength = 1.5f;
         force.scale = 6.0f;
+        force.epsilon = 0.05f;
+        force.lacunarity = 2.5f;
+        force.persistence = 0.6f;
         float out[4] = {0};
 
         REQUIRE(force.getParam("strength", out));
@@ -231,6 +243,15 @@ TEST_CASE("CurlNoiseForce", "[forces][curl]") {
 
         REQUIRE(force.getParam("octaves", out));
         REQUIRE(out[0] == 3.0f);  // default octaves as float
+
+        REQUIRE(force.getParam("epsilon", out));
+        REQUIRE(out[0] == 0.05f);
+
+        REQUIRE(force.getParam("lacunarity", out));
+        REQUIRE(out[0] == 2.5f);
+
+        REQUIRE(force.getParam("persistence", out));
+        REQUIRE(out[0] == 0.6f);
     }
 
     SECTION("setParam API") {
@@ -241,11 +262,23 @@ TEST_CASE("CurlNoiseForce", "[forces][curl]") {
         value[0] = 5.0f;
         REQUIRE(force.setParam("octaves", value));
         REQUIRE(static_cast<int>(force.octaves) == 5);
+
+        value[0] = 0.2f;
+        REQUIRE(force.setParam("epsilon", value));
+        REQUIRE(static_cast<float>(force.epsilon) == 0.2f);
+
+        value[0] = 3.0f;
+        REQUIRE(force.setParam("lacunarity", value));
+        REQUIRE(static_cast<float>(force.lacunarity) == 3.0f);
+
+        value[0] = 0.7f;
+        REQUIRE(force.setParam("persistence", value));
+        REQUIRE(static_cast<float>(force.persistence) == 0.7f);
     }
 
     SECTION("params returns all declarations") {
         auto decls = force.params();
-        REQUIRE(decls.size() == 4);
+        REQUIRE(decls.size() == 7);
 
         std::vector<std::string> names;
         for (const auto& d : decls) names.push_back(d.name);
@@ -254,6 +287,13 @@ TEST_CASE("CurlNoiseForce", "[forces][curl]") {
         REQUIRE(std::find(names.begin(), names.end(), "scale") != names.end());
         REQUIRE(std::find(names.begin(), names.end(), "speed") != names.end());
         REQUIRE(std::find(names.begin(), names.end(), "octaves") != names.end());
+        REQUIRE(std::find(names.begin(), names.end(), "epsilon") != names.end());
+        REQUIRE(std::find(names.begin(), names.end(), "lacunarity") != names.end());
+        REQUIRE(std::find(names.begin(), names.end(), "persistence") != names.end());
+    }
+
+    SECTION("uniformSize is 32 bytes") {
+        REQUIRE(force.uniformSize() == 32);
     }
 }
 
@@ -326,6 +366,7 @@ TEST_CASE("PointAttractorForce", "[forces][attractor]") {
         REQUIRE(force.position.y() == 0.5f);
         REQUIRE(force.position.z() == 0.0f);
         REQUIRE(static_cast<float>(force.strength) == 0.0f);
+        REQUIRE(static_cast<float>(force.radius) == 0.0f);  // unbounded by default
     }
 
     SECTION("compute returns zero when strength is zero") {
@@ -374,9 +415,51 @@ TEST_CASE("PointAttractorForce", "[forces][attractor]") {
         REQUIRE(result.z == 0.0f);
     }
 
+    SECTION("radius=0 uses inverse distance falloff") {
+        force.position.set(0.0f, 0.0f, 0.0f);
+        force.strength = 1.0f;
+        force.radius = 0.0f;  // unbounded
+
+        Particle p1 = makeTestParticle(glm::vec3(1, 0, 0));
+        Particle p2 = makeTestParticle(glm::vec3(2, 0, 0));
+
+        glm::vec3 r1 = force.compute(p1, 0.0f, 1.0f);
+        glm::vec3 r2 = force.compute(p2, 0.0f, 1.0f);
+
+        // Inverse distance: force at 2x distance should be ~0.5x
+        REQUIRE_THAT(r2.x / r1.x, WithinRel(0.5f, 0.01f));
+    }
+
+    SECTION("radius>0 uses quadratic falloff") {
+        force.position.set(0.0f, 0.0f, 0.0f);
+        force.strength = 1.0f;
+        force.radius = 2.0f;
+
+        // At distance 0, falloff = 1
+        // At distance 1 (halfway to radius), falloff = 1 - (0.5)² = 0.75
+        // At distance 2 (at radius), falloff = 0
+        Particle pHalf = makeTestParticle(glm::vec3(1, 0, 0));
+        Particle pAtRadius = makeTestParticle(glm::vec3(2, 0, 0));
+        Particle pBeyond = makeTestParticle(glm::vec3(3, 0, 0));
+
+        glm::vec3 rHalf = force.compute(pHalf, 0.0f, 1.0f);
+        glm::vec3 rAtRadius = force.compute(pAtRadius, 0.0f, 1.0f);
+        glm::vec3 rBeyond = force.compute(pBeyond, 0.0f, 1.0f);
+
+        // At halfway: falloff = 1 - (1/2)² = 0.75, pulling toward origin (negative)
+        REQUIRE_THAT(rHalf.x, WithinRel(-0.75f, 0.01f));
+
+        // At radius: force is zero
+        REQUIRE_THAT(rAtRadius.x, WithinAbs(0.0f, 0.0001f));
+
+        // Beyond radius: force is zero
+        REQUIRE_THAT(rBeyond.x, WithinAbs(0.0f, 0.0001f));
+    }
+
     SECTION("getParam API") {
         force.position.set(2.0f, 3.0f, 4.0f);
         force.strength = 5.0f;
+        force.radius = 3.0f;
         float out[4] = {0};
 
         REQUIRE(force.getParam("position", out));
@@ -386,6 +469,9 @@ TEST_CASE("PointAttractorForce", "[forces][attractor]") {
 
         REQUIRE(force.getParam("strength", out));
         REQUIRE(out[0] == 5.0f);
+
+        REQUIRE(force.getParam("radius", out));
+        REQUIRE(out[0] == 3.0f);
     }
 
     SECTION("setParam API") {
@@ -398,6 +484,19 @@ TEST_CASE("PointAttractorForce", "[forces][attractor]") {
         float str[4] = {-5.0f, 0, 0, 0};
         REQUIRE(force.setParam("strength", str));
         REQUIRE(static_cast<float>(force.strength) == -5.0f);
+
+        float rad[4] = {4.0f, 0, 0, 0};
+        REQUIRE(force.setParam("radius", rad));
+        REQUIRE(static_cast<float>(force.radius) == 4.0f);
+    }
+
+    SECTION("params returns all declarations") {
+        auto decls = force.params();
+        REQUIRE(decls.size() == 3);  // position, strength, radius
+    }
+
+    SECTION("uniformSize is 32 bytes") {
+        REQUIRE(force.uniformSize() == 32);
     }
 }
 
@@ -422,6 +521,7 @@ TEST_CASE("VortexForce", "[forces][vortex]") {
         REQUIRE(force.axis.z() == 0.0f);
         REQUIRE(static_cast<float>(force.strength) == 0.0f);
         REQUIRE(static_cast<float>(force.falloff) == 1.0f);
+        REQUIRE(static_cast<float>(force.radius) == 0.0f);  // unbounded by default
     }
 
     SECTION("compute returns zero when strength is zero") {
@@ -463,9 +563,52 @@ TEST_CASE("VortexForce", "[forces][vortex]") {
         REQUIRE_THAT(result.z, WithinAbs(0.0f, 0.001f));
     }
 
+    SECTION("radius=0 uses power falloff") {
+        force.center.set(0.0f, 0.0f, 0.0f);
+        force.axis.set(0.0f, 1.0f, 0.0f);
+        force.strength = 1.0f;
+        force.falloff = 1.0f;  // linear falloff
+        force.radius = 0.0f;   // unbounded
+
+        Particle p1 = makeTestParticle(glm::vec3(1, 0, 0));
+        Particle p2 = makeTestParticle(glm::vec3(2, 0, 0));
+
+        glm::vec3 r1 = force.compute(p1, 0.0f, 1.0f);
+        glm::vec3 r2 = force.compute(p2, 0.0f, 1.0f);
+
+        // With linear falloff (1/d), force at 2x distance should be ~0.5x
+        REQUIRE_THAT(r2.z / r1.z, WithinRel(0.5f, 0.01f));
+    }
+
+    SECTION("radius>0 uses quadratic falloff") {
+        force.center.set(0.0f, 0.0f, 0.0f);
+        force.axis.set(0.0f, 1.0f, 0.0f);
+        force.strength = 1.0f;
+        force.radius = 2.0f;
+
+        // At distance 1 (halfway), falloff = 1 - (0.5)² = 0.75
+        Particle pHalf = makeTestParticle(glm::vec3(1, 0, 0));
+        Particle pAtRadius = makeTestParticle(glm::vec3(2, 0, 0));
+        Particle pBeyond = makeTestParticle(glm::vec3(3, 0, 0));
+
+        glm::vec3 rHalf = force.compute(pHalf, 0.0f, 1.0f);
+        glm::vec3 rAtRadius = force.compute(pAtRadius, 0.0f, 1.0f);
+        glm::vec3 rBeyond = force.compute(pBeyond, 0.0f, 1.0f);
+
+        // At halfway: falloff = 0.75
+        REQUIRE_THAT(rHalf.z, WithinRel(-0.75f, 0.01f));
+
+        // At radius: force is zero
+        REQUIRE_THAT(rAtRadius.z, WithinAbs(0.0f, 0.0001f));
+
+        // Beyond radius: force is zero
+        REQUIRE_THAT(rBeyond.z, WithinAbs(0.0f, 0.0001f));
+    }
+
     SECTION("getParam API") {
         force.center.set(1.0f, 2.0f, 3.0f);
         force.strength = 5.0f;
+        force.radius = 4.0f;
         float out[4] = {0};
 
         REQUIRE(force.getParam("center", out));
@@ -475,6 +618,9 @@ TEST_CASE("VortexForce", "[forces][vortex]") {
 
         REQUIRE(force.getParam("strength", out));
         REQUIRE(out[0] == 5.0f);
+
+        REQUIRE(force.getParam("radius", out));
+        REQUIRE(out[0] == 4.0f);
     }
 
     SECTION("setParam API") {
@@ -482,11 +628,19 @@ TEST_CASE("VortexForce", "[forces][vortex]") {
         REQUIRE(force.setParam("axis", axis));
         REQUIRE(force.axis.x() == 1.0f);
         REQUIRE(force.axis.y() == 0.0f);
+
+        float rad[4] = {5.0f, 0, 0, 0};
+        REQUIRE(force.setParam("radius", rad));
+        REQUIRE(static_cast<float>(force.radius) == 5.0f);
     }
 
     SECTION("params returns all declarations") {
         auto decls = force.params();
-        REQUIRE(decls.size() == 5);
+        REQUIRE(decls.size() == 6);  // center, axis, strength, falloff, radius, minDistance
+    }
+
+    SECTION("uniformSize is 48 bytes") {
+        REQUIRE(force.uniformSize() == 48);
     }
 }
 

@@ -312,6 +312,7 @@ public:
 
     /// Enable additive blending (good for fire, sparks)
     void additive(bool enable) { m_additiveBlend = enable; }
+    bool additive() const { return m_additiveBlend; }
 
     /// Enable depth sorting (slower but correct transparency)
     void depthSort(bool enable) { m_depthSort = enable; }
@@ -471,6 +472,7 @@ private:
     bool m_additiveBlend = false;
     bool m_depthSort = true;
     bool m_depthTest = false;
+    float m_aspectRatio = 1.0f;  // For Screen2D emitter correction
 
     // -------------------------------------------------------------------------
     // Random State

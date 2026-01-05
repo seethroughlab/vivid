@@ -20,6 +20,7 @@ namespace vivid::effects {
  * - **axis**: Rotation axis (normalized)
  * - **strength**: Rotation force (positive = CCW, negative = CW)
  * - **falloff**: Distance falloff exponent (0 = no falloff, 1 = linear, 2 = quadratic)
+ * - **radius**: Max influence distance (0 = unbounded, >0 = quadratic falloff to zero)
  */
 class VortexForce : public ParticleForce {
 public:
@@ -27,6 +28,7 @@ public:
     Vec3Param axis{"axis", 0.0f, 1.0f, 0.0f, -1.0f, 1.0f};
     Param<float> strength{"strength", 0.0f, -10.0f, 10.0f};
     Param<float> falloff{"falloff", 1.0f, 0.0f, 3.0f};
+    Param<float> radius{"radius", 0.0f, 0.0f, 20.0f};  // 0 = unbounded, >0 = bounded with quadratic
     Param<float> minDistance{"minDistance", 0.01f, 0.001f, 1.0f};
 
     ForceType type() const override { return ForceType::Vortex; }
@@ -39,6 +41,7 @@ public:
         glm::vec3 c(center.x(), center.y(), center.z());
         glm::vec3 ax = glm::normalize(glm::vec3(axis.x(), axis.y(), axis.z()));
         float fall = static_cast<float>(falloff);
+        float r = static_cast<float>(radius);
         float minDist = static_cast<float>(minDistance);
 
         // Vector from center to particle
@@ -56,7 +59,13 @@ public:
 
         // Apply falloff
         float forceMag = s;
-        if (fall > 0.001f) {
+        if (r > 0.0f) {
+            // Bounded: quadratic falloff 1 - (d/r)², smoothly reaches zero at radius
+            if (dist >= r) return glm::vec3(0.0f);
+            float t = dist / r;
+            forceMag *= (1.0f - t * t);
+        } else if (fall > 0.001f) {
+            // Unbounded: power falloff
             forceMag /= std::pow(dist, fall);
         }
 
@@ -71,7 +80,11 @@ public:
                "  vortexAxisX: f32,\n"
                "  vortexAxisY: f32,\n"
                "  vortexAxisZ: f32,\n"
-               "  vortexFalloff: f32,\n";
+               "  vortexFalloff: f32,\n"
+               "  vortexRadius: f32,\n"
+               "  _vortexPad1: f32,\n"
+               "  _vortexPad2: f32,\n"
+               "  _vortexPad3: f32,\n";  // Pad to 48 bytes (12 floats)
     }
 
     std::string wgslComputeCode(const std::string& u) const override {
@@ -86,7 +99,13 @@ public:
                "    if (dist > 0.01) {\n"
                "        let tangent = cross(vAxis, normalize(radial));\n"
                "        var forceMag = " + u + ".vortexStrength;\n"
-               "        if (" + u + ".vortexFalloff > 0.001) {\n"
+               "        if (" + u + ".vortexRadius > 0.0) {\n"
+               "            // Bounded: quadratic falloff\n"
+               "            let t = dist / " + u + ".vortexRadius;\n"
+               "            if (t >= 1.0) { forceMag = 0.0; }\n"
+               "            else { forceMag *= (1.0 - t * t); }\n"
+               "        } else if (" + u + ".vortexFalloff > 0.001) {\n"
+               "            // Unbounded: power falloff\n"
                "            forceMag /= pow(dist, " + u + ".vortexFalloff);\n"
                "        }\n"
                "        vel += tangent * forceMag * dt;\n"
@@ -94,7 +113,7 @@ public:
                "}\n";
     }
 
-    size_t uniformSize() const override { return 32; }  // 8 floats
+    size_t uniformSize() const override { return 48; }  // 12 floats for alignment
 
     void writeUniforms(void* dest) const override {
         float* f = static_cast<float*>(dest);
@@ -106,10 +125,14 @@ public:
         f[5] = axis.y();
         f[6] = axis.z();
         f[7] = static_cast<float>(falloff);
+        f[8] = static_cast<float>(radius);
+        f[9] = 0.0f;   // padding
+        f[10] = 0.0f;
+        f[11] = 0.0f;
     }
 
     std::vector<ParamDecl> params() const override {
-        return { center.decl(), axis.decl(), strength.decl(), falloff.decl(), minDistance.decl() };
+        return { center.decl(), axis.decl(), strength.decl(), falloff.decl(), radius.decl(), minDistance.decl() };
     }
 
     bool getParam(const std::string& paramName, float out[4]) const override {
@@ -123,6 +146,7 @@ public:
         }
         if (paramName == "strength") { out[0] = strength; return true; }
         if (paramName == "falloff") { out[0] = falloff; return true; }
+        if (paramName == "radius") { out[0] = radius; return true; }
         if (paramName == "minDistance") { out[0] = minDistance; return true; }
         return false;
     }
@@ -132,6 +156,7 @@ public:
         if (paramName == "axis") { axis.set(value[0], value[1], value[2]); return true; }
         if (paramName == "strength") { strength = value[0]; return true; }
         if (paramName == "falloff") { falloff = value[0]; return true; }
+        if (paramName == "radius") { radius = value[0]; return true; }
         if (paramName == "minDistance") { minDistance = value[0]; return true; }
         return false;
     }
