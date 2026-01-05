@@ -1,11 +1,11 @@
 // Vivid CLI Commands
-// Handles: vivid new, vivid --help, vivid --version, vivid bundle, vivid operators, vivid addons, vivid mcp
+// Handles: vivid new, vivid --help, vivid --version, vivid bundle, vivid operators, vivid libs, vivid mcp
 
 #include <vivid/cli.h>
 #include <vivid/mcp_server.h>
 #include <vivid/operator_registry.h>
-#include <vivid/addon_manager.h>
-#include <vivid/addon_registry.h>
+#include <vivid/library_manager.h>
+#include <vivid/library_registry.h>
 #include <CLI/CLI.hpp>
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -601,13 +601,13 @@ std::vector<std::string> getRequiredLibraries(const fs::path& chainPath, const f
     // exeDir is typically build/bin, so root is build/bin/../../
     fs::path rootDir = exeDir.parent_path().parent_path();
 
-    // Scan chain for addon dependencies
-    AddonRegistry registry;
+    // Scan chain for library dependencies
+    LibraryRegistry registry;
     registry.setRootDir(rootDir);
-    auto addons = registry.discoverFromChain(chainPath);
+    auto libraries = registry.discoverFromChain(chainPath);
 
-    for (const auto& addon : addons) {
-        libs.push_back(addon.name);
+    for (const auto& lib : libraries) {
+        libs.push_back(lib.name);
     }
 
     return libs;
@@ -1021,31 +1021,31 @@ int handleCommand(int argc, char** argv) {
     operatorsCmd->add_option("name", operatorName, "Show details for specific operator");
     operatorsCmd->add_flag("--json", operatorsJson, "Output as JSON");
 
-    // 'addons' subcommand group
-    auto* addonsCmd = app.add_subcommand("addons", "Manage installed addons");
-    addonsCmd->require_subcommand(0, 1);  // 0 or 1 subcommand
+    // 'libs' subcommand group
+    auto* libsCmd = app.add_subcommand("libs", "Manage installed libraries");
+    libsCmd->require_subcommand(0, 1);  // 0 or 1 subcommand
 
-    // addons list (default when no subcommand)
-    bool addonsJson = false;
-    auto* addonsListCmd = addonsCmd->add_subcommand("list", "List installed addons");
-    addonsListCmd->add_flag("--json", addonsJson, "Output as JSON");
+    // libs list (default when no subcommand)
+    bool libsJson = false;
+    auto* libsListCmd = libsCmd->add_subcommand("list", "List installed libraries");
+    libsListCmd->add_flag("--json", libsJson, "Output as JSON");
 
-    // addons install
-    std::string addonsInstallUrl;
-    std::string addonsInstallRef;
-    auto* addonsInstallCmd = addonsCmd->add_subcommand("install", "Install addon from git URL");
-    addonsInstallCmd->add_option("url", addonsInstallUrl, "Git repository URL")->required();
-    addonsInstallCmd->add_option("-r,--ref", addonsInstallRef, "Git ref (tag, branch, or commit)");
+    // libs install
+    std::string libsInstallUrl;
+    std::string libsInstallRef;
+    auto* libsInstallCmd = libsCmd->add_subcommand("install", "Install library from git URL");
+    libsInstallCmd->add_option("url", libsInstallUrl, "Git repository URL")->required();
+    libsInstallCmd->add_option("-r,--ref", libsInstallRef, "Git ref (tag, branch, or commit)");
 
-    // addons remove
-    std::string addonsRemoveName;
-    auto* addonsRemoveCmd = addonsCmd->add_subcommand("remove", "Remove an installed addon");
-    addonsRemoveCmd->add_option("name", addonsRemoveName, "Addon name")->required();
+    // libs remove
+    std::string libsRemoveName;
+    auto* libsRemoveCmd = libsCmd->add_subcommand("remove", "Remove an installed library");
+    libsRemoveCmd->add_option("name", libsRemoveName, "Library name")->required();
 
-    // addons update
-    std::string addonsUpdateName;
-    auto* addonsUpdateCmd = addonsCmd->add_subcommand("update", "Update addon(s)");
-    addonsUpdateCmd->add_option("name", addonsUpdateName, "Addon name (empty = update all)");
+    // libs update
+    std::string libsUpdateName;
+    auto* libsUpdateCmd = libsCmd->add_subcommand("update", "Update library(s)");
+    libsUpdateCmd->add_option("name", libsUpdateName, "Library name (empty = update all)");
 
     // 'mcp' subcommand - MCP server for Claude Code integration
     auto* mcpCmd = app.add_subcommand("mcp", "Run MCP server for Claude Code integration");
@@ -1061,7 +1061,7 @@ int handleCommand(int argc, char** argv) {
     // If first arg doesn't look like a subcommand or flag, it's a project path
     // Let main runtime handle it
     if (firstArg != "new" && firstArg != "bundle" && firstArg != "operators" &&
-        firstArg != "addons" && firstArg != "mcp" &&
+        firstArg != "libs" && firstArg != "mcp" &&
         firstArg != "-h" && firstArg != "--help" &&
         firstArg != "-v" && firstArg != "--version") {
         return -1;  // Continue to main runtime
@@ -1197,43 +1197,43 @@ int handleCommand(int argc, char** argv) {
         return 0;
     }
 
-    if (addonsCmd->parsed()) {
-        auto& addonMgr = AddonManager::instance();
+    if (libsCmd->parsed()) {
+        auto& libMgr = LibraryManager::instance();
 
-        if (addonsInstallCmd->parsed()) {
-            return addonMgr.install(addonsInstallUrl, addonsInstallRef) ? 0 : 1;
+        if (libsInstallCmd->parsed()) {
+            return libMgr.install(libsInstallUrl, libsInstallRef) ? 0 : 1;
         }
 
-        if (addonsRemoveCmd->parsed()) {
-            return addonMgr.remove(addonsRemoveName) ? 0 : 1;
+        if (libsRemoveCmd->parsed()) {
+            return libMgr.remove(libsRemoveName) ? 0 : 1;
         }
 
-        if (addonsUpdateCmd->parsed()) {
-            return addonMgr.update(addonsUpdateName) ? 0 : 1;
+        if (libsUpdateCmd->parsed()) {
+            return libMgr.update(libsUpdateName) ? 0 : 1;
         }
 
-        // Default: list (or explicit 'addons list')
-        if (addonsJson || addonsListCmd->parsed()) {
-            if (addonsJson) {
-                addonMgr.outputJson();
+        // Default: list (or explicit 'libs list')
+        if (libsJson || libsListCmd->parsed()) {
+            if (libsJson) {
+                libMgr.outputJson();
             } else {
-                auto addons = addonMgr.listInstalled();
-                if (addons.empty()) {
-                    std::cout << "No addons installed.\n\n";
-                    std::cout << "Install an addon with:\n";
-                    std::cout << "  vivid addons install <git-url>\n\n";
+                auto libs = libMgr.listInstalled();
+                if (libs.empty()) {
+                    std::cout << "No libraries installed.\n\n";
+                    std::cout << "Install a library with:\n";
+                    std::cout << "  vivid libs install <git-url>\n\n";
                     std::cout << "Example:\n";
-                    std::cout << "  vivid addons install https://github.com/seethroughlab/vivid-ml\n";
+                    std::cout << "  vivid libs install https://github.com/seethroughlab/vivid-ml\n";
                 } else {
-                    std::cout << "Installed addons (" << addons.size() << "):\n\n";
-                    for (const auto& addon : addons) {
-                        std::cout << "  " << addon.name << " v" << addon.version;
-                        if (!addon.gitRef.empty()) {
-                            std::cout << " (" << addon.gitRef << ")";
+                    std::cout << "Installed libraries (" << libs.size() << "):\n\n";
+                    for (const auto& lib : libs) {
+                        std::cout << "  " << lib.name << " v" << lib.version;
+                        if (!lib.gitRef.empty()) {
+                            std::cout << " (" << lib.gitRef << ")";
                         }
                         std::cout << "\n";
-                        std::cout << "    Source: " << addon.builtFrom << "\n";
-                        std::cout << "    Path: " << addon.installPath.string() << "\n";
+                        std::cout << "    Source: " << lib.builtFrom << "\n";
+                        std::cout << "    Path: " << lib.installPath.string() << "\n";
                     }
                 }
             }
@@ -1241,15 +1241,15 @@ int handleCommand(int argc, char** argv) {
         }
 
         // No subcommand - show list
-        auto addons = addonMgr.listInstalled();
-        if (addons.empty()) {
-            std::cout << "No addons installed.\n\n";
-            std::cout << "Install an addon with:\n";
-            std::cout << "  vivid addons install <git-url>\n";
+        auto libs = libMgr.listInstalled();
+        if (libs.empty()) {
+            std::cout << "No libraries installed.\n\n";
+            std::cout << "Install a library with:\n";
+            std::cout << "  vivid libs install <git-url>\n";
         } else {
-            std::cout << "Installed addons (" << addons.size() << "):\n\n";
-            for (const auto& addon : addons) {
-                std::cout << "  " << addon.name << " v" << addon.version << "\n";
+            std::cout << "Installed libraries (" << libs.size() << "):\n\n";
+            for (const auto& lib : libs) {
+                std::cout << "  " << lib.name << " v" << lib.version << "\n";
             }
         }
         return 0;

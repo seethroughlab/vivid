@@ -565,6 +565,133 @@ void update(Context& ctx) {
 VIVID_CHAIN(setup, update)
 ```
 
+## LLM Metadata (MCP Integration)
+
+Vivid's MCP server exposes operator metadata to LLMs like Claude. Adding metadata helps AI assistants understand your operator's purpose, limitations, and relationships.
+
+### Basic Registration
+
+Register operators in a `.cpp` file using the `REGISTER_OPERATOR` macro:
+
+```cpp
+#include <vivid/operator_registry.h>
+
+// Basic registration
+REGISTER_OPERATOR(MyEffect, "Effects", "Brief description", true);
+//                ^Type      ^Category  ^Description        ^RequiresInput
+```
+
+Categories used in core: `"Generators"`, `"Effects"`, `"Retro"`, `"Compositing"`, `"Particles"`, `"Drawing"`, `"Math"`.
+
+### Extended Metadata (Recommended)
+
+Use `REGISTER_OPERATOR_FULL` to add LLM-friendly metadata:
+
+```cpp
+REGISTER_OPERATOR_FULL(MyEffect, "Effects", "Brief description", true)
+    .limitations({"Known limitation 1", "Known limitation 2"})
+    .related({"SimilarOp", "AlternativeOp", "OftenUsedWith"})
+    .examples({"examples/showcase/my-demo/"})
+    ;
+```
+
+| Method | Purpose |
+|--------|---------|
+| `.limitations({...})` | Caveats, performance notes, edge cases |
+| `.related({...})` | Similar or complementary operators |
+| `.examples({...})` | Project paths demonstrating usage |
+
+### Real Examples
+
+```cpp
+// From operator_registrations.cpp
+
+REGISTER_OPERATOR_FULL(Noise, "Generators", "Fractal noise generator", false)
+    .related({"Gradient", "Displace", "FBM"})
+    .examples({"projects/getting-started/02-hello-noise/"})
+    ;
+
+REGISTER_OPERATOR_FULL(Feedback, "Effects", "Frame feedback loop", true)
+    .limitations({
+        "Requires careful decay settings to avoid whiteout",
+        "High memory usage at large resolutions"
+    })
+    .related({"Particles", "Transform", "Blur"})
+    .examples({"examples/2d-effects/feedback/"})
+    ;
+
+REGISTER_OPERATOR_FULL(Plexus, "Effects", "Connected particle network", true)
+    .limitations({
+        "CPU-based line drawing",
+        "Performance degrades with many points"
+    })
+    .related({"Particles", "PointSprites"})
+    ;
+```
+
+### Addon Operators
+
+For operators in addons, use `REGISTER_ADDON_OPERATOR_FULL`:
+
+```cpp
+REGISTER_ADDON_OPERATOR_FULL(VideoPlayer, "Media", "Play video files", false, "vivid-video")
+    .limitations({"HAP codec recommended for performance"})
+    .related({"Image", "Webcam"})
+    ;
+```
+
+### Custom Output Kinds
+
+For non-texture operators, use `REGISTER_OPERATOR_EX`:
+
+```cpp
+// Value output (single float)
+REGISTER_OPERATOR_EX(LFO, "Generators", "Low frequency oscillator", false,
+                     vivid::OutputKind::Value);
+
+// Geometry output
+REGISTER_OPERATOR_EX(Box, "Geometry", "Box primitive", false,
+                     vivid::OutputKind::Geometry);
+```
+
+### How LLMs Use This Metadata
+
+When a user asks Claude about effects via the MCP server:
+
+1. **`list_operators`** - Shows all operators grouped by category
+2. **`get_operator`** - Returns full details including:
+   - Parameters with types, ranges, defaults
+   - Limitations (helps Claude avoid common pitfalls)
+   - Related operators (helps Claude suggest alternatives)
+   - Example paths (Claude can read these for reference)
+
+Example MCP response for `get_operator("Feedback")`:
+```json
+{
+  "name": "Feedback",
+  "category": "Effects",
+  "description": "Frame feedback loop",
+  "requiresInput": true,
+  "limitations": [
+    "Requires careful decay settings to avoid whiteout",
+    "High memory usage at large resolutions"
+  ],
+  "related": ["Particles", "Transform", "Blur"],
+  "examples": ["examples/2d-effects/feedback/"],
+  "parameters": [
+    {"name": "decay", "type": "float", "default": 0.95, "min": 0.0, "max": 1.0}
+  ]
+}
+```
+
+### Best Practices
+
+1. **Keep descriptions concise** - One line, action-oriented
+2. **Document real limitations** - Performance, edge cases, common mistakes
+3. **Link related operators** - Help LLMs suggest alternatives
+4. **Include example paths** - LLMs can read the code for context
+5. **Register in a central file** - See `src/vivid-core/src/effects/operator_registrations.cpp`
+
 ## Creating an Addon
 
 For reusable operators, create an addon structure:
@@ -592,10 +719,13 @@ my-addon/
     "name": "my-addon",
     "version": "1.0.0",
     "description": "My custom Vivid addon",
-    "operators": ["MyEffect"],
-    "dependencies": []
+    "author": "Your Name",
+    "license": "MIT",
+    "vivid": ">=0.1.0"
 }
 ```
+
+Note: Operators are registered via C++ macros (see [LLM Metadata](#llm-metadata-mcp-integration)), not in addon.json.
 
 ### CMakeLists.txt
 
@@ -683,7 +813,7 @@ bounds.splitRight(0.5f);      // Right 50%
 
 ## Tips
 
-1. **Look at existing operators** - `src/core/src/effects/` has many examples
+1. **Look at existing operators** - `src/vivid-core/src/effects/` has many examples
 2. **Start simple** - Get basic rendering working before adding features
 3. **Use Param<T>** - It handles UI integration automatically
 4. **Call didCook()** - Forgetting this causes downstream operators to skip updates

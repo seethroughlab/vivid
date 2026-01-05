@@ -1,6 +1,6 @@
 # Vivid
 
-WebGPU-based creative coding framework with hot-reload. Minimal core (~600 lines) + modular addons.
+WebGPU-based creative coding framework with hot-reload. Minimal core + optional libraries.
 
 ## Build Commands
 
@@ -80,15 +80,26 @@ When capturing multiple frames, filenames include frame numbers: `output.png` be
 ## Project Structure
 
 ```
-src/            All source code:
-  core/           Runtime engine + integrated features (includes assets/fonts, assets/icons)
-  cli/            Command-line interface and app
-  addons/         Optional modular features (video, audio, render3d, etc.)
-projects/       Runnable example projects (each with own assets/ folder)
-docs/           LLM-REFERENCE.md, RECIPES.md, CREATING-OPERATORS.md
-tests/          Automated tests, fixtures, and test assets (Git LFS)
-dev/            Developer tools and planning docs
+src/
+  vivid-core/         Runtime engine (required)
+  cli/                Command-line interface and app
+libs/               Optional libraries (all ship with Vivid):
+  vivid-audio/        Audio input, FFT, oscillators
+  vivid-video/        Video playback (HAP, AVFoundation)
+  vivid-render3d/     3D rendering with PBR, GLTF, CSG
+  vivid-network/      OSC, UDP, WebSocket
+  vivid-serial/       Serial port, DMX
+  vivid-midi/         MIDI input/output
+  vivid-imgui/        Dear ImGui integration (UI addon template)
+  vivid-opencv/       OpenCV integration (stub template)
+projects/           Runnable example projects (each with own assets/ folder)
+docs/               LLM-REFERENCE.md, RECIPES.md, CREATING-OPERATORS.md
+tests/              Automated tests, fixtures, and test assets (Git LFS)
+dev/                Developer tools and planning docs
+~/.vivid/libs/      User-installed third-party libraries
 ```
+
+All libraries in `libs/` use `library.json` for metadata.
 
 ## Key Patterns
 
@@ -146,12 +157,12 @@ VIVID_CHAIN(setup, update)
 
 | Task | File |
 |------|------|
-| Add new 2D effect | `src/core/include/vivid/effects/` |
-| Add network operator | `src/core/include/vivid/network/` |
-| Modify chain visualizer UI | `src/core/imgui/chain_visualizer.cpp` |
-| Hot-reload logic | `src/core/src/hot_reload.cpp` |
-| Main runtime loop | `src/core/src/main.cpp` |
-| Operator base class | `src/core/include/vivid/operator.h` |
+| Add new 2D effect | `src/vivid-core/include/vivid/effects/` |
+| Add network operator | `libs/vivid-network/include/vivid/network/` |
+| Modify chain visualizer UI | `src/vivid-core/src/chain_visualizer.cpp` |
+| Hot-reload logic | `src/vivid-core/src/hot_reload.cpp` |
+| Main runtime loop | `src/vivid-core/src/main.cpp` |
+| Operator base class | `src/vivid-core/include/vivid/operator.h` |
 
 ## Documentation
 

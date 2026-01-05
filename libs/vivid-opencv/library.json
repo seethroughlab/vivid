@@ -1,0 +1,8 @@
+{
+  "name": "vivid-opencv",
+  "version": "0.1.0",
+  "description": "OpenCV integration for computer vision operators",
+  "author": "Community",
+  "license": "MIT",
+  "vivid": ">=0.1.0"
+}
