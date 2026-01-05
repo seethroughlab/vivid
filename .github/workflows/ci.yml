@@ -292,7 +292,13 @@ jobs:
 
       # Shared build step
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: |
+          # Limit parallelism on Pi to avoid OOM (self-hosted ARM64 has limited RAM)
+          if [ "${{ runner.environment }}" = "self-hosted" ]; then
+            cmake --build build --config Release --parallel 2
+          else
+            cmake --build build --config Release --parallel
+          fi
 
       # Tests (only on native self-hosted runner)
       - name: Run unit and integration tests
