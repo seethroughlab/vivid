@@ -90,6 +90,11 @@ jobs:
           cp -r src/vivid-core/include/vivid package/vivid-${{ matrix.target }}/include/
           cp -r build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
 
+          # Copy addon headers (needed for third-party libraries that depend on addons)
+          for addon in libs/*/include/vivid/*/; do
+            cp -r "$addon" package/vivid-${{ matrix.target }}/include/vivid/
+          done
+
           # Copy dependency headers (needed by addons building against SDK)
           cp -r build/_deps/glm-src/glm package/vivid-${{ matrix.target }}/include/
           cp -r build/_deps/glfw-src/include/GLFW package/vivid-${{ matrix.target }}/include/
