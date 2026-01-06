@@ -1,6 +1,6 @@
-// Vivid - Library Manager Implementation
+// Vivid - Module Manager Implementation
 
-#include <vivid/library_manager.h>
+#include <vivid/module_manager.h>
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -56,15 +56,15 @@ static std::pair<int, std::string> executeCommand(const std::string& cmd) {
 }
 
 // -----------------------------------------------------------------------------
-// LibraryManager Implementation
+// ModuleManager Implementation
 // -----------------------------------------------------------------------------
 
-LibraryManager& LibraryManager::instance() {
-    static LibraryManager instance;
+ModuleManager& ModuleManager::instance() {
+    static ModuleManager instance;
     return instance;
 }
 
-LibraryManager::LibraryManager() {
+ModuleManager::ModuleManager() {
     // Set up libs directory
 #ifdef _WIN32
     const char* homeDir = std::getenv("USERPROFILE");
@@ -72,20 +72,20 @@ LibraryManager::LibraryManager() {
     const char* homeDir = std::getenv("HOME");
 #endif
     if (homeDir) {
-        m_libsDir = fs::path(homeDir) / ".vivid" / "libs";
+        m_modulesDir = fs::path(homeDir) / ".vivid" / "modules";
     } else {
-        m_libsDir = fs::current_path() / ".vivid" / "libs";
+        m_modulesDir = fs::current_path() / ".vivid" / "modules";
     }
 
     // Create directory if needed
     std::error_code ec;
-    fs::create_directories(m_libsDir, ec);
+    fs::create_directories(m_modulesDir, ec);
 
     // Load manifest
     loadManifest();
 }
 
-std::string LibraryManager::getPlatform() const {
+std::string ModuleManager::getPlatform() const {
 #ifdef __APPLE__
     #if defined(__arm64__) || defined(__aarch64__)
         return "darwin-arm64";
@@ -99,7 +99,7 @@ std::string LibraryManager::getPlatform() const {
 #endif
 }
 
-std::optional<LibraryJson> LibraryManager::parseLibraryJson(const fs::path& path) const {
+std::optional<ModuleJson> ModuleManager::parseModuleJson(const fs::path& path) const {
     if (!fs::exists(path)) {
         return std::nullopt;
     }
@@ -112,7 +112,7 @@ std::optional<LibraryJson> LibraryManager::parseLibraryJson(const fs::path& path
     try {
         json j = json::parse(file);
 
-        LibraryJson lib;
+        ModuleJson lib;
         lib.name = j.value("name", "");
         lib.version = j.value("version", "");
         lib.description = j.value("description", "");
@@ -144,10 +144,10 @@ std::optional<LibraryJson> LibraryManager::parseLibraryJson(const fs::path& path
     }
 }
 
-void LibraryManager::loadManifest() {
-    m_installedLibraries.clear();
+void ModuleManager::loadManifest() {
+    m_installedModules.clear();
 
-    fs::path manifestPath = m_libsDir / "manifest.json";
+    fs::path manifestPath = m_modulesDir / "manifest.json";
     if (!fs::exists(manifestPath)) {
         return;
     }
@@ -162,17 +162,17 @@ void LibraryManager::loadManifest() {
 
         if (j.contains("libraries") && j["libraries"].is_object()) {
             for (const auto& [name, libData] : j["libraries"].items()) {
-                InstalledLibrary lib;
+                InstalledModule lib;
                 lib.name = name;
                 lib.version = libData.value("version", "");
                 lib.gitUrl = libData.value("gitUrl", "");
                 lib.gitRef = libData.value("gitRef", "");
                 lib.installedAt = libData.value("installedAt", "");
                 lib.builtFrom = libData.value("builtFrom", "");
-                lib.installPath = m_libsDir / name;
+                lib.installPath = m_modulesDir / name;
 
                 if (!lib.name.empty()) {
-                    m_installedLibraries.push_back(lib);
+                    m_installedModules.push_back(lib);
                 }
             }
         }
@@ -181,14 +181,14 @@ void LibraryManager::loadManifest() {
     }
 }
 
-void LibraryManager::saveManifest() const {
-    fs::path manifestPath = m_libsDir / "manifest.json";
+void ModuleManager::saveManifest() const {
+    fs::path manifestPath = m_modulesDir / "manifest.json";
 
     json j;
     j["version"] = 1;
     j["libraries"] = json::object();
 
-    for (const auto& lib : m_installedLibraries) {
+    for (const auto& lib : m_installedModules) {
         j["libraries"][lib.name] = {
             {"version", lib.version},
             {"gitUrl", lib.gitUrl},
@@ -207,22 +207,22 @@ void LibraryManager::saveManifest() const {
     file << j.dump(2) << std::endl;
 }
 
-void LibraryManager::addToManifest(const InstalledLibrary& lib) {
+void ModuleManager::addToManifest(const InstalledModule& lib) {
     // Remove existing entry if present
     removeFromManifest(lib.name);
-    m_installedLibraries.push_back(lib);
+    m_installedModules.push_back(lib);
     saveManifest();
 }
 
-void LibraryManager::removeFromManifest(const std::string& name) {
-    m_installedLibraries.erase(
-        std::remove_if(m_installedLibraries.begin(), m_installedLibraries.end(),
-                       [&name](const InstalledLibrary& l) { return l.name == name; }),
-        m_installedLibraries.end());
+void ModuleManager::removeFromManifest(const std::string& name) {
+    m_installedModules.erase(
+        std::remove_if(m_installedModules.begin(), m_installedModules.end(),
+                       [&name](const InstalledModule& l) { return l.name == name; }),
+        m_installedModules.end());
     saveManifest();
 }
 
-bool LibraryManager::downloadFile(const std::string& url, const fs::path& dest) {
+bool ModuleManager::downloadFile(const std::string& url, const fs::path& dest) {
     std::cout << "Downloading: " << url << std::endl;
 
     std::stringstream cmd;
@@ -236,7 +236,7 @@ bool LibraryManager::downloadFile(const std::string& url, const fs::path& dest) 
     return true;
 }
 
-bool LibraryManager::extractArchive(const fs::path& archive, const fs::path& dest) {
+bool ModuleManager::extractArchive(const fs::path& archive, const fs::path& dest) {
     std::cout << "Extracting: " << archive.filename() << std::endl;
 
     std::stringstream cmd;
@@ -265,7 +265,7 @@ bool LibraryManager::extractArchive(const fs::path& archive, const fs::path& des
     return true;
 }
 
-bool LibraryManager::cloneRepo(const std::string& url, const std::string& ref, const fs::path& dest) {
+bool ModuleManager::cloneRepo(const std::string& url, const std::string& ref, const fs::path& dest) {
     std::cout << "Cloning: " << url << std::endl;
 
     std::stringstream cmd;
@@ -283,7 +283,7 @@ bool LibraryManager::cloneRepo(const std::string& url, const std::string& ref, c
     return true;
 }
 
-bool LibraryManager::cmakeBuild(const fs::path& sourceDir, const fs::path& buildDir,
+bool ModuleManager::cmakeBuild(const fs::path& sourceDir, const fs::path& buildDir,
                               const fs::path& installDir) {
     std::cout << "Building from source..." << std::endl;
 
@@ -351,9 +351,9 @@ bool LibraryManager::cmakeBuild(const fs::path& sourceDir, const fs::path& build
     return true;
 }
 
-bool LibraryManager::tryPrebuiltRelease(const std::string& gitUrl, const std::string& ref,
+bool ModuleManager::tryPrebuiltRelease(const std::string& gitUrl, const std::string& ref,
                                       const fs::path& libDir) {
-    // First, we need to get the library.json to find prebuilt URLs
+    // First, we need to get the module.json to find prebuilt URLs
     // Try to fetch it from the repo's default branch
 
     // Extract owner/repo from URL
@@ -366,26 +366,26 @@ bool LibraryManager::tryPrebuiltRelease(const std::string& gitUrl, const std::st
     std::string owner = match[1].str();
     std::string repo = match[2].str();
 
-    // Fetch library.json from GitHub raw
+    // Fetch module.json from GitHub raw
     std::string branch = ref.empty() ? "main" : ref;
-    std::string libraryJsonUrl = "https://raw.githubusercontent.com/" + owner + "/" + repo +
-                               "/" + branch + "/library.json";
+    std::string moduleJsonUrl = "https://raw.githubusercontent.com/" + owner + "/" + repo +
+                               "/" + branch + "/module.json";
 
-    fs::path tempJson = m_libsDir / "temp_library.json";
-    if (!downloadFile(libraryJsonUrl, tempJson)) {
+    fs::path tempModuleJson = m_modulesDir / "temp_module.json";
+    if (!downloadFile(moduleJsonUrl, tempModuleJson)) {
         // Try master branch
         branch = "master";
-        libraryJsonUrl = "https://raw.githubusercontent.com/" + owner + "/" + repo +
-                       "/" + branch + "/library.json";
-        if (!downloadFile(libraryJsonUrl, tempJson)) {
+        moduleJsonUrl = "https://raw.githubusercontent.com/" + owner + "/" + repo +
+                       "/" + branch + "/module.json";
+        if (!downloadFile(moduleJsonUrl, tempModuleJson)) {
             return false;
         }
     }
 
-    auto libraryJson = parseLibraryJson(tempJson);
-    fs::remove(tempJson);
+    auto moduleJson = parseModuleJson(tempModuleJson);
+    fs::remove(tempModuleJson);
 
-    if (!libraryJson) {
+    if (!moduleJson) {
         return false;
     }
 
@@ -394,13 +394,13 @@ bool LibraryManager::tryPrebuiltRelease(const std::string& gitUrl, const std::st
     std::string prebuiltUrl;
 
     if (platform == "darwin-arm64") {
-        prebuiltUrl = libraryJson->prebuilt.darwinArm64;
+        prebuiltUrl = moduleJson->prebuilt.darwinArm64;
     } else if (platform == "darwin-x64") {
-        prebuiltUrl = libraryJson->prebuilt.darwinX64;
+        prebuiltUrl = moduleJson->prebuilt.darwinX64;
     } else if (platform == "linux-x64") {
-        prebuiltUrl = libraryJson->prebuilt.linuxX64;
+        prebuiltUrl = moduleJson->prebuilt.linuxX64;
     } else if (platform == "win32-x64") {
-        prebuiltUrl = libraryJson->prebuilt.win32X64;
+        prebuiltUrl = moduleJson->prebuilt.win32X64;
     }
 
     if (prebuiltUrl.empty()) {
@@ -409,7 +409,7 @@ bool LibraryManager::tryPrebuiltRelease(const std::string& gitUrl, const std::st
     }
 
     // Replace ${version} placeholder
-    std::string version = ref.empty() ? ("v" + libraryJson->version) : ref;
+    std::string version = ref.empty() ? ("v" + moduleJson->version) : ref;
     size_t pos = prebuiltUrl.find("${version}");
     if (pos != std::string::npos) {
         prebuiltUrl.replace(pos, 10, version);
@@ -417,7 +417,7 @@ bool LibraryManager::tryPrebuiltRelease(const std::string& gitUrl, const std::st
 
     // Download prebuilt archive
     std::string ext = prebuiltUrl.substr(prebuiltUrl.rfind('.'));
-    fs::path archivePath = m_libsDir / ("temp_prebuilt" + ext);
+    fs::path archivePath = m_modulesDir / ("temp_prebuilt" + ext);
 
     if (!downloadFile(prebuiltUrl, archivePath)) {
         return false;
@@ -428,7 +428,7 @@ bool LibraryManager::tryPrebuiltRelease(const std::string& gitUrl, const std::st
     fs::create_directories(libDir, ec);
 
     // Extract to temp, then move contents
-    fs::path tempExtract = m_libsDir / "temp_extract";
+    fs::path tempExtract = m_modulesDir / "temp_extract";
     fs::create_directories(tempExtract, ec);
 
     if (!extractArchive(archivePath, tempExtract)) {
@@ -461,11 +461,11 @@ bool LibraryManager::tryPrebuiltRelease(const std::string& gitUrl, const std::st
 
     fs::remove_all(tempExtract);
 
-    std::cout << "Installed prebuilt " << libraryJson->name << " v" << libraryJson->version << std::endl;
+    std::cout << "Installed prebuilt " << moduleJson->name << " v" << moduleJson->version << std::endl;
     return true;
 }
 
-bool LibraryManager::buildFromSource(const std::string& gitUrl, const std::string& ref,
+bool ModuleManager::buildFromSource(const std::string& gitUrl, const std::string& ref,
                                    const fs::path& libDir) {
     // Create library directory structure
     std::error_code ec;
@@ -487,7 +487,7 @@ bool LibraryManager::buildFromSource(const std::string& gitUrl, const std::strin
     return true;
 }
 
-bool LibraryManager::install(const std::string& gitUrl, const std::string& ref) {
+bool ModuleManager::install(const std::string& gitUrl, const std::string& ref) {
     m_error.clear();
 
     // Extract library name from URL
@@ -501,14 +501,14 @@ bool LibraryManager::install(const std::string& gitUrl, const std::string& ref) 
     std::string repoName = match[2].str();
 
     // Check if already installed
-    for (const auto& lib : m_installedLibraries) {
+    for (const auto& lib : m_installedModules) {
         if (lib.name == repoName) {
-            std::cout << repoName << " is already installed. Use 'vivid libs update " << repoName << "' to update." << std::endl;
+            std::cout << repoName << " is already installed. Use 'vivid modules update " << repoName << "' to update." << std::endl;
             return true;
         }
     }
 
-    fs::path libDir = m_libsDir / repoName;
+    fs::path libDir = m_modulesDir / repoName;
 
     std::cout << "Installing " << repoName << "..." << std::endl;
 
@@ -526,14 +526,14 @@ bool LibraryManager::install(const std::string& gitUrl, const std::string& ref) 
         }
     }
 
-    // Read library.json for version info
-    fs::path libraryJsonPath = libDir / "library.json";
-    auto libraryJson = parseLibraryJson(libraryJsonPath);
+    // Read module.json for version info
+    fs::path moduleJsonPath = libDir / "module.json";
+    auto moduleJson = parseModuleJson(moduleJsonPath);
 
     // Create manifest entry
-    InstalledLibrary entry;
+    InstalledModule entry;
     entry.name = repoName;
-    entry.version = libraryJson ? libraryJson->version : "unknown";
+    entry.version = moduleJson ? moduleJson->version : "unknown";
     entry.gitUrl = gitUrl;
     entry.gitRef = ref;
     entry.builtFrom = builtFrom;
@@ -552,12 +552,12 @@ bool LibraryManager::install(const std::string& gitUrl, const std::string& ref) 
     return true;
 }
 
-bool LibraryManager::remove(const std::string& name) {
+bool ModuleManager::remove(const std::string& name) {
     m_error.clear();
 
     // Find the library
     bool found = false;
-    for (const auto& lib : m_installedLibraries) {
+    for (const auto& lib : m_installedModules) {
         if (lib.name == name) {
             found = true;
             break;
@@ -570,7 +570,7 @@ bool LibraryManager::remove(const std::string& name) {
         return false;
     }
 
-    fs::path libDir = m_libsDir / name;
+    fs::path libDir = m_modulesDir / name;
 
     std::cout << "Removing " << name << "..." << std::endl;
 
@@ -590,17 +590,17 @@ bool LibraryManager::remove(const std::string& name) {
     return true;
 }
 
-bool LibraryManager::update(const std::string& name) {
+bool ModuleManager::update(const std::string& name) {
     m_error.clear();
 
-    std::vector<InstalledLibrary> toUpdate;
+    std::vector<InstalledModule> toUpdate;
 
     if (name.empty()) {
         // Update all
-        toUpdate = m_installedLibraries;
+        toUpdate = m_installedModules;
     } else {
         // Find specific library
-        for (const auto& lib : m_installedLibraries) {
+        for (const auto& lib : m_installedModules) {
             if (lib.name == name) {
                 toUpdate.push_back(lib);
                 break;
@@ -619,7 +619,7 @@ bool LibraryManager::update(const std::string& name) {
         std::cout << "Updating " << lib.name << "..." << std::endl;
 
         // Remove and reinstall
-        fs::path libDir = m_libsDir / lib.name;
+        fs::path libDir = m_modulesDir / lib.name;
         std::error_code ec;
         fs::remove_all(libDir, ec);
 
@@ -634,15 +634,15 @@ bool LibraryManager::update(const std::string& name) {
     return allSuccess;
 }
 
-std::vector<InstalledLibrary> LibraryManager::listInstalled() const {
-    return m_installedLibraries;
+std::vector<InstalledModule> ModuleManager::listInstalled() const {
+    return m_installedModules;
 }
 
-void LibraryManager::outputJson() const {
+void ModuleManager::outputJson() const {
     json j;
     j["libraries"] = json::array();
 
-    for (const auto& lib : m_installedLibraries) {
+    for (const auto& lib : m_installedModules) {
         j["libraries"].push_back({
             {"name", lib.name},
             {"version", lib.version},
@@ -656,17 +656,17 @@ void LibraryManager::outputJson() const {
     std::cout << j.dump(2) << std::endl;
 }
 
-void LibraryManager::loadUserLibraries() {
-    if (m_installedLibraries.empty()) {
+void ModuleManager::loadUserModules() {
+    if (m_installedModules.empty()) {
         return;
     }
 
-    std::cout << "Loading user libraries..." << std::endl;
+    std::cout << "Loading user modules..." << std::endl;
 
-    for (const auto& lib : m_installedLibraries) {
+    for (const auto& lib : m_installedModules) {
         fs::path libDir = lib.installPath / "lib";
         if (!fs::exists(libDir)) {
-            std::cerr << "Warning: No lib directory for " << lib.name << std::endl;
+            std::cerr << "Warning: No module lib directory for " << lib.name << std::endl;
             continue;
         }
 
@@ -694,7 +694,7 @@ void LibraryManager::loadUserLibraries() {
                 std::cerr << "  Failed to load " << filename << ": " << GetLastError() << std::endl;
                 continue;
             }
-            m_loadedLibraries.push_back(handle);
+            m_loadedModules.push_back(handle);
 #else
             // Use RTLD_GLOBAL so static initializers can register with OperatorRegistry
             void* handle = dlopen(libPath.c_str(), RTLD_NOW | RTLD_GLOBAL);
@@ -702,19 +702,19 @@ void LibraryManager::loadUserLibraries() {
                 std::cerr << "  Failed to load " << filename << ": " << dlerror() << std::endl;
                 continue;
             }
-            m_loadedLibraries.push_back(handle);
+            m_loadedModules.push_back(handle);
 #endif
         }
     }
 
-    if (!m_loadedLibraries.empty()) {
-        std::cout << "Loaded " << m_loadedLibraries.size() << " user libraries" << std::endl;
+    if (!m_loadedModules.empty()) {
+        std::cout << "Loaded " << m_loadedModules.size() << " user modules" << std::endl;
     }
 }
 
-std::vector<fs::path> LibraryManager::getIncludePaths() const {
+std::vector<fs::path> ModuleManager::getIncludePaths() const {
     std::vector<fs::path> paths;
-    for (const auto& lib : m_installedLibraries) {
+    for (const auto& lib : m_installedModules) {
         fs::path includePath = lib.installPath / "include";
         if (fs::exists(includePath)) {
             paths.push_back(includePath);
@@ -723,9 +723,9 @@ std::vector<fs::path> LibraryManager::getIncludePaths() const {
     return paths;
 }
 
-std::vector<fs::path> LibraryManager::getLibraryPaths() const {
+std::vector<fs::path> ModuleManager::getModuleLibPaths() const {
     std::vector<fs::path> paths;
-    for (const auto& lib : m_installedLibraries) {
+    for (const auto& lib : m_installedModules) {
         fs::path libPath = lib.installPath / "lib";
         if (fs::exists(libPath)) {
             paths.push_back(libPath);

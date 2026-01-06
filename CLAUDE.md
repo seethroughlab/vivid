@@ -83,7 +83,7 @@ When capturing multiple frames, filenames include frame numbers: `output.png` be
 src/
   vivid-core/         Runtime engine (required)
   cli/                Command-line interface and app
-libs/               Optional libraries (all ship with Vivid):
+modules/               Optional libraries (all ship with Vivid):
   vivid-audio/        Audio input, FFT, oscillators
   vivid-video/        Video playback (HAP, AVFoundation)
   vivid-render3d/     3D rendering with PBR, GLTF, CSG
@@ -96,10 +96,10 @@ projects/           Runnable example projects (each with own assets/ folder)
 docs/               LLM-REFERENCE.md, RECIPES.md, CREATING-OPERATORS.md
 tests/              Automated tests, fixtures, and test assets (Git LFS)
 dev/                Developer tools and planning docs
-~/.vivid/libs/      User-installed third-party libraries
+~/.vivid/modules/      User-installed third-party libraries
 ```
 
-All libraries in `libs/` use `library.json` for metadata.
+All libraries in `modules/` use `module.json` for metadata.
 
 ## Key Patterns
 
@@ -158,7 +158,7 @@ VIVID_CHAIN(setup, update)
 | Task | File |
 |------|------|
 | Add new 2D effect | `src/vivid-core/include/vivid/effects/` |
-| Add network operator | `libs/vivid-network/include/vivid/network/` |
+| Add network operator | `modules/vivid-network/include/vivid/network/` |
 | Modify chain visualizer UI | `src/vivid-core/src/chain_visualizer.cpp` |
 | Hot-reload logic | `src/vivid-core/src/hot_reload.cpp` |
 | Main runtime loop | `src/vivid-core/src/main.cpp` |

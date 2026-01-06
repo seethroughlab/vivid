@@ -55,8 +55,8 @@ set(VIVID_CORE_LIB_SOURCES
     src/display.cpp
     src/hot_reload.cpp
     src/log.cpp
-    src/library_registry.cpp
-    src/library_manager.cpp
+    src/module_registry.cpp
+    src/module_manager.cpp
     # Chain visualizer (uses OverlayCanvas, no ImGui)
     src/chain_visualizer.cpp
     # Node graph (OverlayCanvas-based node editor)

@@ -13,7 +13,7 @@ target_link_libraries(test_render3d_addon PRIVATE
 
 target_include_directories(test_render3d_addon PRIVATE
     ${CMAKE_SOURCE_DIR}/src/vivid-core/include
-    ${CMAKE_SOURCE_DIR}/libs/vivid-render3d/include
+    ${CMAKE_SOURCE_DIR}/modules/vivid-render3d/include
 )
 
 catch_discover_tests(test_render3d_addon

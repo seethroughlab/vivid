@@ -1,6 +1,6 @@
-// Vivid Library Registry Implementation
+// Vivid Module Registry Implementation
 
-#include <vivid/library_registry.h>
+#include <vivid/module_registry.h>
 #include <nlohmann/json.hpp>
 
 #include <fstream>
@@ -12,14 +12,14 @@ using json = nlohmann::json;
 
 namespace vivid {
 
-void LibraryRegistry::setRootDir(const fs::path& rootDir) {
+void ModuleRegistry::setRootDir(const fs::path& rootDir) {
     m_rootDir = rootDir;
 
     // Build search paths
     m_searchPaths.clear();
 
     // libs/ directory contains all optional libraries
-    fs::path libsDir = m_rootDir / "libs";
+    fs::path libsDir = m_rootDir / "modules";
     if (fs::exists(libsDir)) {
         m_searchPaths.push_back(libsDir);
     }
@@ -27,18 +27,18 @@ void LibraryRegistry::setRootDir(const fs::path& rootDir) {
     // User-installed libraries (~/.vivid/libs/)
     const char* home = getenv("HOME");
     if (home) {
-        fs::path userLibs = fs::path(home) / ".vivid" / "libs";
+        fs::path userLibs = fs::path(home) / ".vivid" / "modules";
         if (fs::exists(userLibs)) {
             m_searchPaths.push_back(userLibs);
         }
     }
 }
 
-std::vector<fs::path> LibraryRegistry::getSearchPaths() const {
+std::vector<fs::path> ModuleRegistry::getSearchPaths() const {
     return m_searchPaths;
 }
 
-std::vector<std::string> LibraryRegistry::scanIncludes(const fs::path& sourcePath) {
+std::vector<std::string> ModuleRegistry::scanIncludes(const fs::path& sourcePath) {
     std::set<std::string> namespaces;
 
     std::ifstream file(sourcePath);
@@ -71,7 +71,7 @@ std::vector<std::string> LibraryRegistry::scanIncludes(const fs::path& sourcePat
     return std::vector<std::string>(namespaces.begin(), namespaces.end());
 }
 
-std::string LibraryRegistry::namespaceToLibrary(const std::string& ns) {
+std::string ModuleRegistry::namespaceToModule(const std::string& ns) {
     // Map include namespace to library directory name
     // Most libraries follow the pattern: vivid-<namespace>
     // Special cases can be handled here
@@ -90,35 +90,35 @@ std::string LibraryRegistry::namespaceToLibrary(const std::string& ns) {
     return "vivid-" + ns;
 }
 
-std::optional<fs::path> LibraryRegistry::findLibrary(const std::string& name) {
+std::optional<fs::path> ModuleRegistry::findModule(const std::string& name) {
     for (const auto& searchPath : m_searchPaths) {
-        fs::path libraryPath = searchPath / name;
-        if (fs::exists(libraryPath)) {
-            return libraryPath;
+        fs::path modulePath = searchPath / name;
+        if (fs::exists(modulePath)) {
+            return modulePath;
         }
     }
     return std::nullopt;
 }
 
-std::optional<LibraryInfo> LibraryRegistry::loadLibraryJson(const fs::path& libraryPath) {
-    fs::path jsonPath = libraryPath / "library.json";
+std::optional<ModuleInfo> ModuleRegistry::loadModuleJson(const fs::path& modulePath) {
+    fs::path jsonPath = modulePath / "module.json";
 
-    // library.json is optional - we can still use the library without it
-    LibraryInfo info;
-    info.path = libraryPath;
-    info.name = libraryPath.filename().string();
+    // module.json is optional - we can still use the library without it
+    ModuleInfo info;
+    info.path = modulePath;
+    info.name = modulePath.filename().string();
     info.libraryName = info.name;
 
     // Default include path
-    fs::path incPath = libraryPath / "include";
+    fs::path incPath = modulePath / "include";
     if (fs::exists(incPath)) {
         info.includePath = incPath;
     } else {
-        info.includePath = libraryPath;
+        info.includePath = modulePath;
     }
 
     if (!fs::exists(jsonPath)) {
-        // No library.json - return with defaults
+        // No module.json - return with defaults
         return info;
     }
 
@@ -145,8 +145,8 @@ std::optional<LibraryInfo> LibraryRegistry::loadLibraryJson(const fs::path& libr
     return info;
 }
 
-std::optional<LibraryInfo> LibraryRegistry::getLibrary(const std::string& name) const {
-    for (const auto& lib : m_libraries) {
+std::optional<ModuleInfo> ModuleRegistry::getModule(const std::string& name) const {
+    for (const auto& lib : m_modules) {
         if (lib.name == name) {
             return lib;
         }
@@ -154,8 +154,8 @@ std::optional<LibraryInfo> LibraryRegistry::getLibrary(const std::string& name) 
     return std::nullopt;
 }
 
-std::vector<LibraryInfo> LibraryRegistry::discoverFromChain(const fs::path& chainPath) {
-    m_libraries.clear();
+std::vector<ModuleInfo> ModuleRegistry::discoverFromChain(const fs::path& chainPath) {
+    m_modules.clear();
 
     // Scan chain.cpp for include directives
     auto namespaces = scanIncludes(chainPath);
@@ -163,14 +163,14 @@ std::vector<LibraryInfo> LibraryRegistry::discoverFromChain(const fs::path& chai
     std::cout << "Scanning " << chainPath.filename() << " for library dependencies..." << std::endl;
 
     for (const auto& ns : namespaces) {
-        std::string libName = namespaceToLibrary(ns);
-        auto libPath = findLibrary(libName);
+        std::string libName = namespaceToModule(ns);
+        auto libPath = findModule(libName);
 
         if (libPath) {
-            auto info = loadLibraryJson(*libPath);
+            auto info = loadModuleJson(*libPath);
             if (info) {
-                m_libraries.push_back(*info);
-                std::cout << "  Found library: " << info->name;
+                m_modules.push_back(*info);
+                std::cout << "  Found module: " << info->name;
                 if (!info->version.empty()) {
                     std::cout << " v" << info->version;
                 }
@@ -182,7 +182,7 @@ std::vector<LibraryInfo> LibraryRegistry::discoverFromChain(const fs::path& chai
         }
     }
 
-    return m_libraries;
+    return m_modules;
 }
 
 } // namespace vivid

@@ -14,7 +14,7 @@ namespace fs = std::filesystem;
 namespace vivid {
 
 class Context;
-class LibraryRegistry;
+class ModuleRegistry;
 
 /**
  * @brief Structured representation of a compile error
@@ -107,7 +107,7 @@ private:
     std::vector<CompileError> m_compileErrors;  // Parsed errors
     bool m_needsSetup = false;      // True after reload, before setup is called
 
-    std::unique_ptr<LibraryRegistry> m_libraryRegistry;
+    std::unique_ptr<ModuleRegistry> m_moduleRegistry;
 
     // Parse compiler output into structured errors
     void parseCompilerOutput(const std::string& output);

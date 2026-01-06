@@ -17,7 +17,7 @@ target_link_libraries(test_audio_addon PRIVATE
 
 target_include_directories(test_audio_addon PRIVATE
     ${CMAKE_SOURCE_DIR}/src/vivid-core/include
-    ${CMAKE_SOURCE_DIR}/libs/vivid-audio/include
+    ${CMAKE_SOURCE_DIR}/modules/vivid-audio/include
 )
 
 catch_discover_tests(test_audio_addon)

@@ -264,19 +264,19 @@ FetchContent_MakeAvailable(ixwebsocket)
 add_subdirectory(src/vivid-core)
 
 # -----------------------------------------------------------------------------
-# Optional libraries (libs/)
+# Optional libraries (modules/)
 # All optional functionality lives here - both Vivid's own implementations
 # and wrappers around third-party libraries like ImGui and OpenCV.
 # -----------------------------------------------------------------------------
 
-add_subdirectory(libs/vivid-network)
-add_subdirectory(libs/vivid-serial)
-add_subdirectory(libs/vivid-video)
-add_subdirectory(libs/vivid-render3d)
-add_subdirectory(libs/vivid-audio)
-add_subdirectory(libs/vivid-midi)
-add_subdirectory(libs/vivid-imgui)
-# add_subdirectory(libs/vivid-opencv)  # Stub - uncomment when implementing
+add_subdirectory(modules/vivid-network)
+add_subdirectory(modules/vivid-serial)
+add_subdirectory(modules/vivid-video)
+add_subdirectory(modules/vivid-render3d)
+add_subdirectory(modules/vivid-audio)
+add_subdirectory(modules/vivid-midi)
+add_subdirectory(modules/vivid-imgui)
+# add_subdirectory(modules/vivid-opencv)  # Stub - uncomment when implementing
 
 # vivid-ml moved to separate repo: https://github.com/seethroughlab/vivid-ml
 

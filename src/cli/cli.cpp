@@ -4,8 +4,8 @@
 #include <vivid/cli.h>
 #include <vivid/mcp_server.h>
 #include <vivid/operator_registry.h>
-#include <vivid/library_manager.h>
-#include <vivid/library_registry.h>
+#include <vivid/module_manager.h>
+#include <vivid/module_registry.h>
 #include <CLI/CLI.hpp>
 #include <nlohmann/json.hpp>
 #include <iostream>
@@ -602,7 +602,7 @@ std::vector<std::string> getRequiredLibraries(const fs::path& chainPath, const f
     fs::path rootDir = exeDir.parent_path().parent_path();
 
     // Scan chain for library dependencies
-    LibraryRegistry registry;
+    ModuleRegistry registry;
     registry.setRootDir(rootDir);
     auto libraries = registry.discoverFromChain(chainPath);
 
@@ -1022,30 +1022,30 @@ int handleCommand(int argc, char** argv) {
     operatorsCmd->add_flag("--json", operatorsJson, "Output as JSON");
 
     // 'libs' subcommand group
-    auto* libsCmd = app.add_subcommand("libs", "Manage installed libraries");
-    libsCmd->require_subcommand(0, 1);  // 0 or 1 subcommand
+    auto* modulesCmd = app.add_subcommand("modules", "Manage installed modules");
+    modulesCmd->require_subcommand(0, 1);  // 0 or 1 subcommand
 
-    // libs list (default when no subcommand)
-    bool libsJson = false;
-    auto* libsListCmd = libsCmd->add_subcommand("list", "List installed libraries");
-    libsListCmd->add_flag("--json", libsJson, "Output as JSON");
+    // modules list (default when no subcommand)
+    bool modulesJson = false;
+    auto* modulesListCmd = modulesCmd->add_subcommand("list", "List installed modules");
+    modulesListCmd->add_flag("--json", modulesJson, "Output as JSON");
 
-    // libs install
-    std::string libsInstallUrl;
-    std::string libsInstallRef;
-    auto* libsInstallCmd = libsCmd->add_subcommand("install", "Install library from git URL");
-    libsInstallCmd->add_option("url", libsInstallUrl, "Git repository URL")->required();
-    libsInstallCmd->add_option("-r,--ref", libsInstallRef, "Git ref (tag, branch, or commit)");
+    // modules install
+    std::string modulesInstallUrl;
+    std::string modulesInstallRef;
+    auto* modulesInstallCmd = modulesCmd->add_subcommand("install", "Install module from git URL");
+    modulesInstallCmd->add_option("url", modulesInstallUrl, "Git repository URL")->required();
+    modulesInstallCmd->add_option("-r,--ref", modulesInstallRef, "Git ref (tag, branch, or commit)");
 
-    // libs remove
-    std::string libsRemoveName;
-    auto* libsRemoveCmd = libsCmd->add_subcommand("remove", "Remove an installed library");
-    libsRemoveCmd->add_option("name", libsRemoveName, "Library name")->required();
+    // modules remove
+    std::string modulesRemoveName;
+    auto* modulesRemoveCmd = modulesCmd->add_subcommand("remove", "Remove an installed module");
+    modulesRemoveCmd->add_option("name", modulesRemoveName, "Library name")->required();
 
-    // libs update
-    std::string libsUpdateName;
-    auto* libsUpdateCmd = libsCmd->add_subcommand("update", "Update library(s)");
-    libsUpdateCmd->add_option("name", libsUpdateName, "Library name (empty = update all)");
+    // modules update
+    std::string modulesUpdateName;
+    auto* modulesUpdateCmd = modulesCmd->add_subcommand("update", "Update module(s)");
+    modulesUpdateCmd->add_option("name", modulesUpdateName, "Library name (empty = update all)");
 
     // 'mcp' subcommand - MCP server for Claude Code integration
     auto* mcpCmd = app.add_subcommand("mcp", "Run MCP server for Claude Code integration");
@@ -1061,7 +1061,7 @@ int handleCommand(int argc, char** argv) {
     // If first arg doesn't look like a subcommand or flag, it's a project path
     // Let main runtime handle it
     if (firstArg != "new" && firstArg != "bundle" && firstArg != "operators" &&
-        firstArg != "libs" && firstArg != "mcp" &&
+        firstArg != "modules" && firstArg != "mcp" &&
         firstArg != "-h" && firstArg != "--help" &&
         firstArg != "-v" && firstArg != "--version") {
         return -1;  // Continue to main runtime
@@ -1197,35 +1197,35 @@ int handleCommand(int argc, char** argv) {
         return 0;
     }
 
-    if (libsCmd->parsed()) {
-        auto& libMgr = LibraryManager::instance();
+    if (modulesCmd->parsed()) {
+        auto& moduleMgr = ModuleManager::instance();
 
-        if (libsInstallCmd->parsed()) {
-            return libMgr.install(libsInstallUrl, libsInstallRef) ? 0 : 1;
+        if (modulesInstallCmd->parsed()) {
+            return moduleMgr.install(modulesInstallUrl, modulesInstallRef) ? 0 : 1;
         }
 
-        if (libsRemoveCmd->parsed()) {
-            return libMgr.remove(libsRemoveName) ? 0 : 1;
+        if (modulesRemoveCmd->parsed()) {
+            return moduleMgr.remove(modulesRemoveName) ? 0 : 1;
         }
 
-        if (libsUpdateCmd->parsed()) {
-            return libMgr.update(libsUpdateName) ? 0 : 1;
+        if (modulesUpdateCmd->parsed()) {
+            return moduleMgr.update(modulesUpdateName) ? 0 : 1;
         }
 
-        // Default: list (or explicit 'libs list')
-        if (libsJson || libsListCmd->parsed()) {
-            if (libsJson) {
-                libMgr.outputJson();
+        // Default: list (or explicit 'modules list')
+        if (modulesJson || modulesListCmd->parsed()) {
+            if (modulesJson) {
+                moduleMgr.outputJson();
             } else {
-                auto libs = libMgr.listInstalled();
+                auto libs = moduleMgr.listInstalled();
                 if (libs.empty()) {
-                    std::cout << "No libraries installed.\n\n";
+                    std::cout << "No modules installed.\n\n";
                     std::cout << "Install a library with:\n";
-                    std::cout << "  vivid libs install <git-url>\n\n";
+                    std::cout << "  vivid modules install <git-url>\n\n";
                     std::cout << "Example:\n";
-                    std::cout << "  vivid libs install https://github.com/seethroughlab/vivid-ml\n";
+                    std::cout << "  vivid modules install https://github.com/seethroughlab/vivid-ml\n";
                 } else {
-                    std::cout << "Installed libraries (" << libs.size() << "):\n\n";
+                    std::cout << "Installed modules (" << libs.size() << "):\n\n";
                     for (const auto& lib : libs) {
                         std::cout << "  " << lib.name << " v" << lib.version;
                         if (!lib.gitRef.empty()) {
@@ -1241,13 +1241,13 @@ int handleCommand(int argc, char** argv) {
         }
 
         // No subcommand - show list
-        auto libs = libMgr.listInstalled();
+        auto libs = moduleMgr.listInstalled();
         if (libs.empty()) {
-            std::cout << "No libraries installed.\n\n";
+            std::cout << "No modules installed.\n\n";
             std::cout << "Install a library with:\n";
-            std::cout << "  vivid libs install <git-url>\n";
+            std::cout << "  vivid modules install <git-url>\n";
         } else {
-            std::cout << "Installed libraries (" << libs.size() << "):\n\n";
+            std::cout << "Installed modules (" << libs.size() << "):\n\n";
             for (const auto& lib : libs) {
                 std::cout << "  " << lib.name << " v" << lib.version << "\n";
             }

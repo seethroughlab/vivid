@@ -3,7 +3,7 @@
 
 #include "app.h"
 #include <vivid/cli.h>
-#include <vivid/library_manager.h>
+#include <vivid/module_manager.h>
 #include <vivid/log.h>
 #include <climits>
 #include <iostream>
@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
     vivid::Log::info() << "Vivid - Starting...";
 
     // Load user-installed libraries from ~/.vivid/libs/
-    vivid::LibraryManager::instance().loadUserLibraries();
+    vivid::ModuleManager::instance().loadUserModules();
 
     // Parse arguments into AppConfig
     vivid::AppConfig config;

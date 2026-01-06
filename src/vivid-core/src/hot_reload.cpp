@@ -1,8 +1,8 @@
 // Vivid - Hot Reload Implementation
 
 #include <vivid/hot_reload.h>
-#include <vivid/library_registry.h>
-#include <vivid/library_manager.h>
+#include <vivid/module_registry.h>
+#include <vivid/module_manager.h>
 #include <vivid/context.h>
 #include <vivid/log.h>
 
@@ -106,7 +106,7 @@ static std::pair<int, std::string> executeCommand(const std::string& cmd) {
 }
 
 HotReload::HotReload()
-    : m_libraryRegistry(std::make_unique<LibraryRegistry>())
+    : m_moduleRegistry(std::make_unique<ModuleRegistry>())
 {
     // Create a build directory in temp
 #ifdef _WIN32
@@ -341,10 +341,10 @@ bool HotReload::compile() {
 #endif
 
         // Set up library registry for dynamic discovery
-        m_libraryRegistry->setRootDir(fs::canonical(rootDir));
+        m_moduleRegistry->setRootDir(fs::canonical(rootDir));
 
         // Discover libraries needed by this chain
-        auto libraries = m_libraryRegistry->discoverFromChain(m_sourcePath);
+        auto libraries = m_moduleRegistry->discoverFromChain(m_sourcePath);
 
         // Add include paths for each discovered library
         for (const auto& lib : libraries) {
@@ -381,9 +381,9 @@ bool HotReload::compile() {
     }
 
     // Add user library paths from ~/.vivid/libs/
-    auto& libMgr = LibraryManager::instance();
+    auto& libMgr = ModuleManager::instance();
     std::vector<fs::path> userLibIncludes = libMgr.getIncludePaths();
-    std::vector<fs::path> userLibPaths = libMgr.getLibraryPaths();
+    std::vector<fs::path> userLibPaths = libMgr.getModuleLibPaths();
 
     // Build the compile command
     std::stringstream cmd;
@@ -434,7 +434,7 @@ bool HotReload::compile() {
     }
 
     // Link discovered libraries
-    for (const auto& lib : m_libraryRegistry->libraries()) {
+    for (const auto& lib : m_moduleRegistry->modules()) {
         fs::path libPath = addonsLib / (lib.libraryName + ".lib");
         if (fs::exists(libPath)) {
             clCmd << "\"" << libPath.string() << "\" ";
@@ -475,7 +475,7 @@ bool HotReload::compile() {
     cmd << "-undefined dynamic_lookup ";  // Allow symbols from vivid executable
     cmd << "-L\"" << addonsLib.string() << "\" ";
     // Link discovered libraries
-    for (const auto& lib : m_libraryRegistry->libraries()) {
+    for (const auto& lib : m_moduleRegistry->modules()) {
         fs::path libPath = addonsLib / ("lib" + lib.libraryName + ".dylib");
         if (fs::exists(libPath)) {
             cmd << "-l" << lib.libraryName << " ";
@@ -507,7 +507,7 @@ bool HotReload::compile() {
 #else
     cmd << "-L\"" << addonsLib.string() << "\" ";
     // Link discovered libraries
-    for (const auto& lib : m_libraryRegistry->libraries()) {
+    for (const auto& lib : m_moduleRegistry->modules()) {
         fs::path libPath = addonsLib / ("lib" + lib.libraryName + ".so");
         if (fs::exists(libPath)) {
             cmd << "-l" << lib.libraryName << " ";

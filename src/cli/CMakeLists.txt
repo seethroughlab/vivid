@@ -83,7 +83,7 @@ add_custom_command(TARGET vivid POST_BUILD
 # Copy presets to build directory
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/libs/vivid-audio/presets
+        ${CMAKE_SOURCE_DIR}/modules/vivid-audio/presets
         $<TARGET_FILE_DIR:vivid>/presets
     COMMENT "Copying presets..."
 )
