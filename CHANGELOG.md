@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.8] - 2026-01-06
+
+### Changed
+
+#### Rename "libraries" to "modules"
+Renamed to avoid confusion with `lib/` (compiled .dylib files):
+- `libs/` → `modules/`
+- `~/.vivid/libs/` → `~/.vivid/modules/`
+- `library.json` → `module.json`
+- CLI: `vivid libs` → `vivid modules`
+- Classes: `LibraryManager` → `ModuleManager`, `LibraryRegistry` → `ModuleRegistry`
+
+#### Module ownership
+- Moved network examples into `modules/vivid-network/examples/`
+- Moved video examples into `modules/vivid-video/examples/`
+
 ## [0.1.0-alpha.7] - 2026-01-06
 
 ### Added
