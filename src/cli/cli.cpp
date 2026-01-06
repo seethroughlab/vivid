@@ -1223,7 +1223,7 @@ int handleCommand(int argc, char** argv) {
                     std::cout << "Install a library with:\n";
                     std::cout << "  vivid modules install <git-url>\n\n";
                     std::cout << "Example:\n";
-                    std::cout << "  vivid modules install https://github.com/seethroughlab/vivid-ml\n";
+                    std::cout << "  vivid modules install https://github.com/seethroughlab/vivid-onnx\n";
                 } else {
                     std::cout << "Installed modules (" << libs.size() << "):\n\n";
                     for (const auto& lib : libs) {

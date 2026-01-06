@@ -278,7 +278,7 @@ add_subdirectory(modules/vivid-midi)
 add_subdirectory(modules/vivid-imgui)
 # add_subdirectory(modules/vivid-opencv)  # Stub - uncomment when implementing
 
-# vivid-ml moved to separate repo: https://github.com/seethroughlab/vivid-ml
+# vivid-onnx moved to separate repo: https://github.com/seethroughlab/vivid-onnx
 
 # -----------------------------------------------------------------------------
 # CLI executable
