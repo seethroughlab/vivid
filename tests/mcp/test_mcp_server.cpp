@@ -261,7 +261,7 @@ public:
         } catch (...) {}
     }
 
-    json sendRequest(const std::string& method, const json& params = json::object()) {
+    json sendRequest(const std::string& method, const json& params = json::object(), int timeoutMs = 5000) {
         json request;
         request["jsonrpc"] = "2.0";
         request["id"] = m_nextId++;
@@ -274,7 +274,7 @@ public:
         }
 
         // Read response
-        std::string responseStr = m_process.readLine();
+        std::string responseStr = m_process.readLine(timeoutMs);
         if (responseStr.empty()) {
             throw std::runtime_error("No response from MCP server");
         }
@@ -407,12 +407,12 @@ TEST_CASE("MCP search_docs tool returns results", "[mcp]") {
     client.sendRequest("initialize", initParams);
     client.sendNotification("notifications/initialized", {});
 
-    // Call search_docs tool
+    // Call search_docs tool (use longer timeout - doc search can be slow on CI)
     json params;
     params["name"] = "search_docs";
     params["arguments"] = {{"query", "noise"}};
 
-    json response = client.sendRequest("tools/call", params);
+    json response = client.sendRequest("tools/call", params, 30000);
 
     INFO("Response: " << response.dump(2));
 

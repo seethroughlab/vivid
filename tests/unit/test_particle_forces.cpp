@@ -11,8 +11,9 @@
 
 #include <vivid/effects/particle_system.h>  // For Particle struct and ParticleSystem
 #include <vivid/effects/forces/all_forces.h>
-#include <glm/glm.hpp>
+#include <algorithm>
 #include <cmath>
+#include <glm/glm.hpp>
 
 using namespace vivid::effects;
 using Catch::Matchers::WithinRel;

@@ -2,6 +2,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <manifold/manifold.h>
 #include <manifold/cross_section.h>
+#include <algorithm>
 #include <cmath>
 #include <unordered_map>
 
