@@ -1,8 +1,14 @@
 #include <vivid/audio/formant.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Formant, "Audio Effects", "Vowel formant filter for vocal synthesis", true, OutputKind::Audio)
+    .related({"AudioFilter", "NoiseGen", "Oscillator"})
+    .limitations({"5 vowel sounds (A/E/I/O/U)", "Based on male voice formants"})
+    .examples({"modules/vivid-audio/examples/vocal-synth"});
 
 // Formant frequencies for each vowel (F1, F2, F3 in Hz)
 // Based on typical male voice formants

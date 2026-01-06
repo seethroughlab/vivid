@@ -1,4 +1,5 @@
 #include <vivid/network/udp_in.h>
+#include <vivid/operator_registry.h>
 #include <iostream>
 #include <cstring>
 
@@ -24,6 +25,11 @@
 #endif
 
 namespace vivid::network {
+
+REGISTER_OPERATOR_FULL(UdpIn, "Network", "Receive raw UDP packets", false)
+    .related({"UdpOut", "OscIn", "WebServer"})
+    .limitations({"Max packet size 65535 bytes"})
+    .examples({"modules/vivid-network/examples/udp-demo"});
 
 #ifdef _WIN32
 // Shared WSA initialization for all network code

@@ -7,6 +7,7 @@
 #include <vivid/render3d/gpu_structs.h>
 #include <vivid/render3d/debug_geometry.h>
 #include <vivid/asset_loader.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -15,6 +16,11 @@
 #include <cmath>
 
 namespace vivid::render3d {
+
+REGISTER_OPERATOR_FULL(Render3D, "3D Rendering", "PBR 3D renderer with shadows and IBL support", true)
+    .related({"CameraOperator", "DirectionalLight", "PointLight", "SpotLight", "Box", "Sphere", "GLTFLoader", "SceneComposer", "IBLEnvironment", "TexturedMaterial", "Fog", "DepthOfField"})
+    .limitations({"Max 4 shadow-casting lights", "Single camera per renderer"})
+    .examples({"modules/vivid-render3d/examples/3d-basics", "modules/vivid-render3d/examples/shadow-test"});
 
 using namespace vivid::effects;
 

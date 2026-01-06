@@ -1,4 +1,5 @@
 #include <vivid/network/osc_out.h>
+#include <vivid/operator_registry.h>
 #include <iostream>
 #include <cstring>
 
@@ -22,6 +23,11 @@
 #endif
 
 namespace vivid::network {
+
+REGISTER_OPERATOR_FULL(OscOut, "Network", "Send OSC messages over UDP", false)
+    .related({"OscIn", "UdpOut", "MidiOut"})
+    .limitations({"UDP only, no TCP"})
+    .examples({"modules/vivid-network/examples/osc-control"});
 
 #ifdef _WIN32
 extern bool g_wsaInitialized;

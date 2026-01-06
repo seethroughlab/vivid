@@ -1,4 +1,5 @@
 #include <vivid/audio/fft.h>
+#include <vivid/operator_registry.h>
 #include <vivid/audio_buffer.h>
 #include <vivid/viz_helpers.h>
 #include <kiss_fft.h>
@@ -7,6 +8,11 @@
 #include <algorithm>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL(FFT, "Audio Analysis", "Fast Fourier Transform for frequency spectrum analysis", true)
+    .related({"Levels", "BandSplit", "BeatDetect", "AudioIn"})
+    .limitations({"1024-sample window", "~23ms latency"})
+    .examples({"modules/vivid-audio/examples/audio-reactive"});
 
 struct FFT::Impl {
     kiss_fft_cfg cfg = nullptr;

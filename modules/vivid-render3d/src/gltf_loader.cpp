@@ -6,6 +6,7 @@
 
 #include <vivid/render3d/gltf_loader.h>
 #include <vivid/io/image_loader.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <iostream>
 #include <fstream>
@@ -16,6 +17,11 @@
 #include <glm/gtc/quaternion.hpp>
 
 namespace vivid::render3d {
+
+REGISTER_OPERATOR_FULL_EX(GLTFLoader, "3D Assets", "Load GLTF/GLB 3D models with materials", false, OutputKind::Geometry)
+    .related({"Render3D", "SceneComposer", "Boolean", "TexturedMaterial", "InstancedRender3D"})
+    .limitations({"Large models may have long load times", "Some GLTF extensions not supported"})
+    .examples({"modules/vivid-render3d/examples/gltf-demo"});
 
 GLTFLoader::GLTFLoader() {
     registerParam(scale);

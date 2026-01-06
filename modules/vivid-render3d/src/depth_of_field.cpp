@@ -2,10 +2,16 @@
 
 #include <vivid/render3d/depth_of_field.h>
 #include <vivid/render3d/renderer.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <cstring>
 
 namespace vivid::render3d {
+
+REGISTER_OPERATOR_FULL(DepthOfField, "3D Post-Processing", "Depth-based focus blur effect", true)
+    .related({"Render3D", "Fog", "CameraOperator", "Blur"})
+    .limitations({"Requires Render3D depth output enabled", "Bokeh is circular, not shaped"})
+    .examples({"modules/vivid-render3d/examples/dof-test"});
 
 using namespace vivid::effects;
 

@@ -10,6 +10,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.9] - 2026-01-06
+
+### Added
+
+#### LLM Metadata for All Module Operators
+- All 81 module operators now have rich metadata for LLM assistants
+- New `REGISTER_OPERATOR_FULL_EX` macro for non-Texture operators with metadata builder
+- Each operator includes:
+  - `related` - Links to related operators for discovery
+  - `limitations` - Constraints and caveats
+  - `examples` - Paths to example projects
+
+**Module coverage:**
+| Module | Operators |
+|--------|-----------|
+| vivid-render3d | 17 |
+| vivid-audio | 50 |
+| vivid-video | 3 |
+| vivid-network | 5 |
+| vivid-serial | 3 |
+| vivid-midi | 3 |
+
+### Changed
+- MCP `get_operator` now returns enriched metadata for all 120 operators (core + modules)
+- Simplified operator registration macros - removed `REGISTER_ADDON_*` variants
+
 ## [0.1.0-alpha.8] - 2026-01-06
 
 ### Changed
@@ -221,7 +247,11 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.5...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.9...HEAD
+[0.1.0-alpha.9]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.8...v0.1.0-alpha.9
+[0.1.0-alpha.8]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.7...v0.1.0-alpha.8
+[0.1.0-alpha.7]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.6...v0.1.0-alpha.7
+[0.1.0-alpha.6]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.5...v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.3...v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.2...v0.1.0-alpha.3

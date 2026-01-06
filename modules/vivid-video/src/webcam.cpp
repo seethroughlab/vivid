@@ -1,6 +1,7 @@
 // Vivid Video - Webcam Operator Implementation
 
 #include <vivid/video/webcam.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <iostream>
 
@@ -13,6 +14,11 @@ using WebcamBackend = vivid::video::MFWebcam;
 #endif
 
 namespace vivid::video {
+
+REGISTER_OPERATOR_FULL(Webcam, "Video Input", "Live webcam/camera input", false)
+    .related({"VideoPlayer", "Image", "Composite", "Transform"})
+    .limitations({"macOS/Windows only", "Single camera at a time"})
+    .examples({"modules/vivid-video/examples/webcam-demo"});
 
 Webcam::Webcam() = default;
 

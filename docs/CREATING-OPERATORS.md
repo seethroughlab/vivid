@@ -629,17 +629,6 @@ REGISTER_OPERATOR_FULL(Plexus, "Effects", "Connected particle network", true)
     ;
 ```
 
-### Addon Operators
-
-For operators in addons, use `REGISTER_ADDON_OPERATOR_FULL`:
-
-```cpp
-REGISTER_ADDON_OPERATOR_FULL(VideoPlayer, "Media", "Play video files", false, "vivid-video")
-    .limitations({"HAP codec recommended for performance"})
-    .related({"Image", "Webcam"})
-    ;
-```
-
 ### Custom Output Kinds
 
 For non-texture operators, use `REGISTER_OPERATOR_EX`:

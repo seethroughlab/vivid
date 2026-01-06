@@ -6,7 +6,10 @@
 namespace vivid {
 namespace serial {
 
-REGISTER_ADDON_OPERATOR(DMXOut, "IO", "DMX lighting output via Enttec USB Pro", false, "vivid-serial");
+REGISTER_OPERATOR_FULL(DMXOut, "IO", "DMX lighting output via Enttec USB Pro", false)
+    .related({"SerialOut", "SerialIn"})
+    .limitations({"Enttec USB Pro only", "512 channels max"})
+    .examples({"modules/vivid-serial/examples/dmx-lights"});
 
 DMXOut::DMXOut() : SerialOut() {
     // DMX requires 250000 baud for Enttec Pro

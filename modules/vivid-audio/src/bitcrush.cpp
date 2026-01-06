@@ -1,8 +1,13 @@
 #include <vivid/audio/bitcrush.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Bitcrush, "Audio Effects", "Bit depth and sample rate reduction for lo-fi sound", true, OutputKind::Audio)
+    .related({"Overdrive", "TapeEffect", "Downsample", "Dither"})
+    .examples({"modules/vivid-audio/examples/lofi-demo"});
 
 void Bitcrush::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

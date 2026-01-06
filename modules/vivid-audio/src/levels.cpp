@@ -1,10 +1,15 @@
 #include <vivid/audio/levels.h>
+#include <vivid/operator_registry.h>
 #include <vivid/viz_helpers.h>
 
 #include <cmath>
 #include <algorithm>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL(Levels, "Audio Analysis", "Audio level meter with RMS and peak values", true)
+    .related({"FFT", "BandSplit", "BeatDetect", "AudioIn"})
+    .examples({"modules/vivid-audio/examples/audio-reactive"});
 
 void Levels::analyze(const float* input, uint32_t frames, uint32_t channels) {
     if (frames == 0) return;

@@ -2,6 +2,7 @@
 // Renders thousands of identical meshes in a single draw call
 
 #include <vivid/render3d/instanced_render3d.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/matrix_inverse.hpp>
@@ -9,6 +10,11 @@
 #include <cmath>
 
 namespace vivid::render3d {
+
+REGISTER_OPERATOR_FULL(InstancedRender3D, "3D Rendering", "GPU-instanced rendering for thousands of meshes", true)
+    .related({"Render3D", "CameraOperator", "DirectionalLight", "PointLight", "SpotLight", "Box", "Sphere", "GLTFLoader"})
+    .limitations({"All instances share same mesh", "Per-instance materials not supported"})
+    .examples({"modules/vivid-render3d/examples/instancing-demo"});
 
 using namespace vivid::effects;
 

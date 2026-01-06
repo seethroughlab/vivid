@@ -1,8 +1,13 @@
 #include <vivid/audio/phaser.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Phaser, "Audio Effects", "Multi-stage phaser with LFO modulation", true, OutputKind::Audio)
+    .related({"Flanger", "Chorus", "AudioFilter"})
+    .examples({"modules/vivid-audio/examples/effects-chain"});
 
 void Phaser::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

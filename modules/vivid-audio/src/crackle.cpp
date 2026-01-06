@@ -1,7 +1,12 @@
 #include <vivid/audio/crackle.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Crackle, "Audio Generators", "Random impulse generator for vinyl crackle sounds", false, OutputKind::Audio)
+    .related({"NoiseGen", "TapeEffect", "Bitcrush"})
+    .examples({"modules/vivid-audio/examples/lofi-demo"});
 
 void Crackle::init(Context& ctx) {
     allocateOutput();

@@ -2,10 +2,16 @@
 
 #include <vivid/render3d/fog.h>
 #include <vivid/render3d/renderer.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <cstring>
 
 namespace vivid::render3d {
+
+REGISTER_OPERATOR_FULL(Fog, "3D Post-Processing", "Depth-based atmospheric fog effect", true)
+    .related({"Render3D", "DepthOfField", "CameraOperator"})
+    .limitations({"Requires Render3D depth output enabled"})
+    .examples({"modules/vivid-render3d/examples/fog-test"});
 
 using namespace vivid::effects;
 

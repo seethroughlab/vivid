@@ -5,11 +5,17 @@
 
 #include <vivid/video/video_audio.h>
 #include <vivid/video/video_player.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>
 #include <iostream>
 
 namespace vivid::video {
+
+REGISTER_OPERATOR_FULL_EX(VideoAudio, "Video Input", "Extract audio from video file", false, OutputKind::Audio)
+    .related({"VideoPlayer", "AudioMixer", "FFT", "BeatDetect"})
+    .limitations({"Requires named VideoPlayer source"})
+    .examples({"modules/vivid-video/examples/video-with-audio"});
 
 VideoAudio::VideoAudio() = default;
 

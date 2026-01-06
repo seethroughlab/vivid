@@ -1,4 +1,5 @@
 #include <vivid/midi/midi_out.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <RtMidi.h>
 
@@ -7,6 +8,11 @@
 #include <cmath>
 
 namespace vivid::midi {
+
+REGISTER_OPERATOR_FULL(MidiOut, "MIDI", "Send MIDI output to synths and devices", false)
+    .related({"MidiIn", "MidiFilePlayer", "Sequencer", "OscOut"})
+    .limitations({"Single port per instance"})
+    .examples({"modules/vivid-midi/examples/midi-output"});
 
 // -----------------------------------------------------------------------------
 // Implementation (pimpl)

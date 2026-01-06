@@ -1,4 +1,5 @@
 #include <vivid/audio/sample_player.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>
 #include <cmath>
@@ -6,6 +7,11 @@
 #include <iostream>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(SamplePlayer, "Audio Sampling", "Multi-voice sample player with pitch control", false, OutputKind::Audio)
+    .related({"Sampler", "MultiSampler", "SampleBank", "AudioFile", "Sequencer"})
+    .limitations({"Requires SampleBank for samples", "Max 16 voices"})
+    .examples({"modules/vivid-audio/examples/sample-player-demo"});
 
 void SamplePlayer::setBank(const std::string& bankName) {
     m_bankName = bankName;

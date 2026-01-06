@@ -5,6 +5,8 @@
 
 namespace vivid::audio {
 
+// AudioAnalyzer is an abstract base class - concrete analyzers (FFT, Levels, BeatDetect) register themselves
+
 void AudioAnalyzer::init(Context& ctx) {
     // Find and connect to input operator
     if (!m_inputName.empty()) {

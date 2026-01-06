@@ -1,8 +1,14 @@
 #include <vivid/audio/audio_mixer.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <algorithm>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(AudioMixer, "Audio Routing", "Mix multiple audio sources with gain control", true, OutputKind::Audio)
+    .related({"AudioGain", "Compressor", "Limiter"})
+    .limitations({"Max 8 inputs"})
+    .examples({"modules/vivid-audio/examples/mastering-chain"});
 
 void AudioMixer::setInput(int index, const std::string& name) {
     if (index >= 0 && index < MAX_INPUTS) {

@@ -29,6 +29,11 @@
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
+#include <dlfcn.h>
+#endif
+
+#ifdef __linux__
+#include <dlfcn.h>
 #endif
 
 #ifndef _WIN32
@@ -1154,7 +1159,114 @@ private:
     VividConnection m_vivid;
 };
 
+// Load a single module library
+static void loadModuleLibrary(const fs::path& libPath) {
+#ifdef _WIN32
+    HMODULE h = LoadLibraryA(libPath.string().c_str());
+    if (!h) {
+        std::cerr << "[MCP] Warning: Failed to load " << libPath.filename().string() << std::endl;
+    }
+#else
+    // Use RTLD_GLOBAL so static initializers register with OperatorRegistry
+    void* h = dlopen(libPath.c_str(), RTLD_NOW | RTLD_GLOBAL);
+    if (!h) {
+        std::cerr << "[MCP] Warning: Failed to load " << libPath.filename().string() << ": " << dlerror() << std::endl;
+    }
+#endif
+}
+
+// Load module libraries so their operators register with OperatorRegistry
+static void loadAllModules() {
+    // Get executable directory for built-in modules
+    fs::path exeDir;
+#ifdef __APPLE__
+    char pathBuf[PATH_MAX];
+    uint32_t size = sizeof(pathBuf);
+    if (_NSGetExecutablePath(pathBuf, &size) == 0) {
+        exeDir = fs::path(pathBuf).parent_path();
+    }
+#elif defined(_WIN32)
+    char pathBuf[MAX_PATH];
+    GetModuleFileNameA(nullptr, pathBuf, MAX_PATH);
+    exeDir = fs::path(pathBuf).parent_path();
+#else
+    char pathBuf[PATH_MAX];
+    ssize_t count = readlink("/proc/self/exe", pathBuf, PATH_MAX);
+    if (count > 0) {
+        pathBuf[count] = '\0';
+        exeDir = fs::path(pathBuf).parent_path();
+    }
+#endif
+
+    // Load built-in modules
+    if (!exeDir.empty()) {
+        const std::vector<std::string> builtinModules = {
+            "vivid-audio",
+            "vivid-video",
+            "vivid-render3d",
+            "vivid-network",
+            "vivid-serial",
+            "vivid-midi"
+        };
+
+        for (const auto& moduleName : builtinModules) {
+#ifdef __APPLE__
+            fs::path libPath = exeDir / ("lib" + moduleName + ".dylib");
+#elif defined(_WIN32)
+            fs::path libPath = exeDir / (moduleName + ".dll");
+#else
+            fs::path libPath = exeDir / ("lib" + moduleName + ".so");
+#endif
+            if (fs::exists(libPath)) {
+                loadModuleLibrary(libPath);
+            }
+        }
+    }
+
+    // Load user-installed modules from ~/.vivid/modules/
+    fs::path userModulesDir;
+#ifdef _WIN32
+    const char* userProfile = std::getenv("USERPROFILE");
+    if (userProfile) {
+        userModulesDir = fs::path(userProfile) / ".vivid" / "modules";
+    }
+#else
+    const char* home = std::getenv("HOME");
+    if (home) {
+        userModulesDir = fs::path(home) / ".vivid" / "modules";
+    }
+#endif
+
+    if (!userModulesDir.empty() && fs::exists(userModulesDir)) {
+        for (const auto& moduleDir : fs::directory_iterator(userModulesDir)) {
+            if (!moduleDir.is_directory()) continue;
+
+            fs::path libDir = moduleDir.path() / "lib";
+            if (!fs::exists(libDir)) continue;
+
+            for (const auto& entry : fs::directory_iterator(libDir)) {
+                std::string filename = entry.path().filename().string();
+
+#ifdef __APPLE__
+                if (filename.find(".dylib") == std::string::npos) continue;
+#elif defined(_WIN32)
+                if (filename.find(".dll") == std::string::npos) continue;
+#else
+                if (filename.find(".so") == std::string::npos) continue;
+#endif
+                // Skip dependency libraries like onnxruntime
+                if (filename.find("onnxruntime") != std::string::npos) continue;
+
+                loadModuleLibrary(entry.path());
+            }
+        }
+    }
+}
+
 int runServer() {
+    // Load all modules (built-in + user-installed) to populate OperatorRegistry
+    loadAllModules();
+
     McpServer server;
     return server.run();
 }

@@ -1,5 +1,6 @@
 #include <vivid/audio/audio_gain.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/operator_registry.h>
 #include <vivid/chain.h>
 #include <vivid/context.h>
 #include <cmath>
@@ -7,6 +8,10 @@
 #include <iostream>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(AudioGain, "Audio Utility", "Gain and pan control with envelope modulation", true, OutputKind::Audio)
+    .related({"AudioMixer", "Compressor", "Envelope"})
+    .examples({"modules/vivid-audio/examples/mastering-chain"});
 
 void AudioGain::initEffect(Context& ctx) {
     // Resolve gain modulation input by name

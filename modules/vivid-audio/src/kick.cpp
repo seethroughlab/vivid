@@ -1,4 +1,5 @@
 #include <vivid/audio/kick.h>
+#include <vivid/operator_registry.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
 #include <vivid/viz_helpers.h>
@@ -6,6 +7,10 @@
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Kick, "Audio Drums", "Analog-style kick drum synthesizer", false, OutputKind::Audio)
+    .related({"Snare", "HiHat", "Clap", "Sequencer", "Clock", "PitchEnv", "Decay"})
+    .examples({"modules/vivid-audio/examples/drum-machine"});
 
 void Kick::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

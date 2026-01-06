@@ -3,6 +3,7 @@
 
 #include <vivid/render3d/ibl_environment.h>
 #include <vivid/io/image_loader.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 
 #include <cmath>
@@ -12,6 +13,11 @@
 #include <glm/gtc/packing.hpp>
 
 namespace vivid::render3d {
+
+REGISTER_OPERATOR_FULL(IBLEnvironment, "3D Lighting", "HDRI environment map for image-based lighting", false)
+    .related({"Render3D", "DirectionalLight", "PointLight", "SpotLight", "TexturedMaterial"})
+    .limitations({"Requires equirectangular HDR image", "Processing time on first load"})
+    .examples({"modules/vivid-render3d/examples/ibl-test"});
 
 // ============================================================================
 // WGSL Compute Shaders for IBL Processing

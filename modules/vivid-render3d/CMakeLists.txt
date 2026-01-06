@@ -50,6 +50,7 @@ add_library(vivid-render3d SHARED
     src/depth_of_field.cpp
     src/fog.cpp
     src/particles3d.cpp
+    src/registrations.cpp
 )
 
 target_include_directories(vivid-render3d PUBLIC

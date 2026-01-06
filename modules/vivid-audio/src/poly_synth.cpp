@@ -1,6 +1,7 @@
 // Vivid Audio - PolySynth Implementation
 
 #include <vivid/audio/poly_synth.h>
+#include <vivid/operator_registry.h>
 #include <vivid/audio/notes.h>
 #include <vivid/context.h>
 
@@ -8,6 +9,11 @@
 #include <limits>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(PolySynth, "Audio Synthesis", "Polyphonic synthesizer with multiple voices", false, OutputKind::Audio)
+    .related({"Synth", "FMSynth", "WavetableSynth", "Oscillator", "Envelope", "MidiIn"})
+    .limitations({"Max 16 voices", "CPU usage scales with voice count"})
+    .examples({"modules/vivid-audio/examples/poly-synth-demo"});
 
 PolySynth::PolySynth() {
     registerParam(maxVoices);

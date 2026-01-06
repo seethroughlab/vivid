@@ -4,12 +4,18 @@
 #include <vivid/render3d/scene_composer.h>
 #include <vivid/render3d/renderer.h>
 #include <vivid/render3d/camera_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <algorithm>
 #include <cfloat>
 
 namespace vivid::render3d {
+
+REGISTER_OPERATOR_FULL_EX(SceneComposer, "3D Scene", "Compose meshes and transforms into a renderable scene", false, OutputKind::Geometry)
+    .related({"Render3D", "Box", "Sphere", "Cylinder", "Cone", "Torus", "Plane", "GLTFLoader", "Boolean"})
+    .limitations({"Scene graph is flat, no hierarchy"})
+    .examples({"modules/vivid-render3d/examples/geometry-showcase"});
 
 // Preview thumbnail size (16:9 aspect ratio, 2x for quality)
 static constexpr int PREVIEW_WIDTH = 256;

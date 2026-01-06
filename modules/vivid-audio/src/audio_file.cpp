@@ -1,4 +1,5 @@
 #include <vivid/audio/audio_file.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <fstream>
 #include <iostream>
@@ -6,6 +7,11 @@
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(AudioFile, "Audio Sampling", "Load and play audio files (WAV)", false, OutputKind::Audio)
+    .related({"Sampler", "SampleBank", "VideoAudio", "AudioMixer"})
+    .limitations({"WAV format only", "Entire file loaded to memory"})
+    .examples({"modules/vivid-audio/examples/audio-reactive"});
 
 AudioFile::AudioFile() {
     registerParam(volume);

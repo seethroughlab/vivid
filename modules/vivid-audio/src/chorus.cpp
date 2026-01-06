@@ -1,8 +1,13 @@
 #include <vivid/audio/chorus.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Chorus, "Audio Effects", "Chorus effect with multiple voices", true, OutputKind::Audio)
+    .related({"Flanger", "Phaser", "Delay", "Reverb"})
+    .examples({"modules/vivid-audio/examples/effects-chain"});
 
 void Chorus::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

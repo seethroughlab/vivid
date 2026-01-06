@@ -1,9 +1,14 @@
 #include <vivid/audio/audio_filter.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(AudioFilter, "Audio Effects", "Biquad filter (lowpass, highpass, bandpass)", true, OutputKind::Audio)
+    .related({"Formant", "Phaser", "Synth", "Oscillator", "BandSplit"})
+    .examples({"modules/vivid-audio/examples/synth-basics"});
 
 void AudioFilter::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

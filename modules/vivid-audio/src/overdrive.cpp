@@ -1,8 +1,13 @@
 #include <vivid/audio/overdrive.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Overdrive, "Audio Effects", "Soft-clipping distortion with tone control", true, OutputKind::Audio)
+    .related({"Bitcrush", "TapeEffect", "Compressor", "AudioFilter"})
+    .examples({"modules/vivid-audio/examples/guitar-fx"});
 
 void Overdrive::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

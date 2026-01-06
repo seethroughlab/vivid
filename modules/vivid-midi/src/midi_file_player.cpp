@@ -1,4 +1,5 @@
 #include <vivid/midi/midi_file_player.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/audio/clock.h>
 #include <MidiFile.h>
@@ -7,6 +8,11 @@
 #include <cmath>
 
 namespace vivid::midi {
+
+REGISTER_OPERATOR_FULL(MidiFilePlayer, "MIDI", "Play MIDI files with tempo sync", false)
+    .related({"MidiIn", "MidiOut", "Clock", "Synth", "FMSynth"})
+    .limitations({"Standard MIDI file format only"})
+    .examples({"modules/vivid-midi/examples/midi-playback"});
 
 // -----------------------------------------------------------------------------
 // Implementation (pimpl)

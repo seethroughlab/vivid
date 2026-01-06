@@ -7,6 +7,8 @@
 
 namespace vivid::audio {
 
+// AudioEffect is an abstract base class - concrete effects (Reverb, Delay, etc.) register themselves
+
 void AudioEffect::init(Context& ctx) {
     // Allocate output buffer
     allocateOutput();

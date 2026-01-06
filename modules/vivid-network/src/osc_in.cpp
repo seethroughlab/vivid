@@ -1,4 +1,5 @@
 #include <vivid/network/osc_in.h>
+#include <vivid/operator_registry.h>
 #include <iostream>
 #include <cstring>
 #include <algorithm>
@@ -25,6 +26,11 @@
 #endif
 
 namespace vivid::network {
+
+REGISTER_OPERATOR_FULL(OscIn, "Network", "Receive OSC messages over UDP", false)
+    .related({"OscOut", "UdpIn", "MidiIn"})
+    .limitations({"UDP only, no TCP", "No OSC bundles yet"})
+    .examples({"modules/vivid-network/examples/osc-control"});
 
 // =============================================================================
 // OscMessage helpers

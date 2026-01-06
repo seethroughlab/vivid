@@ -1,6 +1,7 @@
 // Vivid Audio - MultiSampler Implementation
 
 #include <vivid/audio/multi_sampler.h>
+#include <vivid/operator_registry.h>
 #include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <vivid/viz_helpers.h>
@@ -12,6 +13,11 @@
 #include <filesystem>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(MultiSampler, "Audio Sampling", "Multi-zone sampler with velocity layers and SFZ support", false, OutputKind::Audio)
+    .related({"Sampler", "SamplePlayer", "SampleBank", "MidiIn", "Granular"})
+    .limitations({"Memory usage scales with sample count", "Max 32 voices"})
+    .examples({"modules/vivid-audio/examples/multi-sampler-test"});
 
 using json = nlohmann::json;
 

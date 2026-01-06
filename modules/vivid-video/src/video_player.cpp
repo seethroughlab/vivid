@@ -8,6 +8,7 @@
 
 #include <vivid/video/video_player.h>
 #include <vivid/video/hap_decoder.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/asset_loader.h>
 #include <iostream>
@@ -32,6 +33,11 @@ using StandardDecoder = vivid::video::FFmpegDecoder;
 #endif
 
 namespace vivid::video {
+
+REGISTER_OPERATOR_FULL(VideoPlayer, "Video Input", "Video file playback with HAP, H.264, HEVC, ProRes support", false)
+    .related({"Webcam", "VideoAudio", "Image", "Composite", "Transform"})
+    .limitations({"HAP recommended for performance", "Audio sync via VideoAudio operator"})
+    .examples({"modules/vivid-video/examples/video-playback", "projects/showcase/vj-mixer"});
 
 VideoPlayer::VideoPlayer() = default;
 

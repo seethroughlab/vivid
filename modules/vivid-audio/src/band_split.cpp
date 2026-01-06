@@ -1,4 +1,5 @@
 #include <vivid/audio/band_split.h>
+#include <vivid/operator_registry.h>
 #include <vivid/audio_buffer.h>
 #include <kiss_fft.h>
 
@@ -6,6 +7,11 @@
 #include <algorithm>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL(BandSplit, "Audio Analysis", "Split audio into frequency bands (low/mid/high)", true)
+    .related({"FFT", "Levels", "BeatDetect", "AudioIn"})
+    .limitations({"Fixed 3-band split (low/mid/high)"})
+    .examples({"modules/vivid-audio/examples/audio-reactive"});
 
 struct BandSplit::Impl {
     kiss_fft_cfg cfg = nullptr;

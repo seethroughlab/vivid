@@ -5,11 +5,16 @@
 
 #include <vivid/audio/song.h>
 #include <vivid/audio/clock.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>
 #include <algorithm>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL(Song, "Audio Sequencing", "Song structure with sections and arrangement", false)
+    .related({"Clock", "Sequencer", "Euclidean"})
+    .examples({"modules/vivid-audio/examples/song-structure"});
 
 void Song::addSection(const std::string& name, uint32_t startBar, uint32_t endBar,
                       int repeatCount) {

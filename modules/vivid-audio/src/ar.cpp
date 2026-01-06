@@ -1,8 +1,13 @@
 #include <vivid/audio/ar.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(AR, "Audio Envelopes", "Attack-release envelope generator", false, OutputKind::Audio)
+    .related({"Envelope", "Decay", "Kick", "Snare"})
+    .examples({"modules/vivid-audio/examples/drum-machine"});
 
 void AR::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

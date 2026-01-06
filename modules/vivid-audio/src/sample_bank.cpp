@@ -1,4 +1,5 @@
 #include <vivid/audio/sample_bank.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/audio_buffer.h>
 #include <fstream>
@@ -10,6 +11,11 @@
 namespace fs = std::filesystem;
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL(SampleBank, "Audio Sampling", "Load folder of audio samples for triggering", false)
+    .related({"SamplePlayer", "Sampler", "Sequencer", "AudioFile"})
+    .limitations({"WAV format only", "All samples loaded to memory on init"})
+    .examples({"modules/vivid-audio/examples/sample-player-demo"});
 
 void SampleBank::setFolder(const std::string& path) {
     m_folderPath = path;

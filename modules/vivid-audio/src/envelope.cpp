@@ -1,10 +1,15 @@
 #include <vivid/audio/envelope.h>
+#include <vivid/operator_registry.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
 #include <algorithm>
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Envelope, "Audio Modulation", "ADSR envelope generator", false, OutputKind::Audio)
+    .related({"AR", "Decay", "Synth", "Oscillator", "AudioGain"})
+    .examples({"modules/vivid-audio/examples/synth-basics"});
 
 void Envelope::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

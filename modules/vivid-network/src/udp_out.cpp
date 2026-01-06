@@ -1,4 +1,5 @@
 #include <vivid/network/udp_out.h>
+#include <vivid/operator_registry.h>
 #include <iostream>
 #include <cstring>
 
@@ -22,6 +23,10 @@
 #endif
 
 namespace vivid::network {
+
+REGISTER_OPERATOR_FULL(UdpOut, "Network", "Send raw UDP packets", false)
+    .related({"UdpIn", "OscOut", "WebServer"})
+    .examples({"modules/vivid-network/examples/udp-demo"});
 
 #ifdef _WIN32
 extern bool g_wsaInitialized;

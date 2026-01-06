@@ -4,6 +4,7 @@
  */
 
 #include <vivid/audio/fm_synth.h>
+#include <vivid/operator_registry.h>
 #include <nlohmann/json.hpp>
 
 #include <cstring>
@@ -12,6 +13,11 @@
 #include <iostream>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(FMSynth, "Audio Synthesis", "4-operator FM synthesizer with preset support", false, OutputKind::Audio)
+    .related({"Synth", "PolySynth", "WavetableSynth", "Oscillator", "MidiIn"})
+    .limitations({"4 operators fixed", "Limited to built-in algorithms"})
+    .examples({"modules/vivid-audio/examples/fm-synth-demo"});
 
 FMSynth::FMSynth() {
     registerParam(ratio1);

@@ -1,7 +1,13 @@
 #include <vivid/audio/sequencer.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL(Sequencer, "Audio Sequencing", "Step sequencer with pattern and trigger output", false)
+    .related({"Clock", "Euclidean", "Song", "Kick", "Snare", "HiHat", "Synth"})
+    .limitations({"Max 64 steps per pattern"})
+    .examples({"modules/vivid-audio/examples/drum-machine"});
 
 void Sequencer::init(Context& ctx) {
     // Don't clear pattern - it may have been set before init()

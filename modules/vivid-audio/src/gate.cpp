@@ -1,4 +1,5 @@
 #include <vivid/audio/gate.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/viz_helpers.h>
 
@@ -6,6 +7,10 @@
 #include <algorithm>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Gate, "Audio Dynamics", "Noise gate for reducing background noise", true, OutputKind::Audio)
+    .related({"Compressor", "Limiter", "AudioIn"})
+    .examples({"modules/vivid-audio/examples/live-input"});
 
 void Gate::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

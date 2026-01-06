@@ -11,6 +11,7 @@
 #endif
 
 #include <vivid/audio/audio_in.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 
 // Include miniaudio - it's already implemented in audio_output.cpp,
@@ -25,6 +26,11 @@
 #include <vector>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(AudioIn, "Audio Input", "Live audio input from microphone or line-in", false, OutputKind::Audio)
+    .related({"FFT", "Levels", "BeatDetect", "AudioMixer", "Gate"})
+    .limitations({"Single device at a time", "System default device by default"})
+    .examples({"modules/vivid-audio/examples/live-input", "modules/vivid-audio/examples/audio-reactive"});
 
 struct AudioIn::Impl {
     ma_device device;

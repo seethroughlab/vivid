@@ -1,4 +1,5 @@
 #include <vivid/midi/midi_in.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <RtMidi.h>
 
@@ -6,6 +7,11 @@
 #include <algorithm>
 
 namespace vivid::midi {
+
+REGISTER_OPERATOR_FULL(MidiIn, "MIDI", "Receive MIDI input from controllers and keyboards", false)
+    .related({"MidiOut", "MidiFilePlayer", "Synth", "FMSynth", "Sampler", "OscIn"})
+    .limitations({"Single port per instance"})
+    .examples({"modules/vivid-midi/examples/midi-control"});
 
 // -----------------------------------------------------------------------------
 // Implementation (pimpl)

@@ -1,6 +1,7 @@
 // Vivid Audio - WavetableSynth Implementation
 
 #include <vivid/audio/wavetable_synth.h>
+#include <vivid/operator_registry.h>
 #include <vivid/audio/notes.h>
 #include <vivid/context.h>
 #include <cstring>
@@ -9,6 +10,11 @@
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(WavetableSynth, "Audio Synthesis", "Wavetable synthesizer with morphing", false, OutputKind::Audio)
+    .related({"Synth", "FMSynth", "PolySynth", "Granular", "MidiIn"})
+    .limitations({"Max 8 voices", "256 sample wavetable frames"})
+    .examples({"modules/vivid-audio/examples/wavetable-demo"});
 
 WavetableSynth::WavetableSynth() {
     registerParam(position);

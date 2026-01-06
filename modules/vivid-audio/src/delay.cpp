@@ -1,7 +1,13 @@
 #include <vivid/audio/delay.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Delay, "Audio Effects", "Delay effect with feedback and ping-pong mode", true, OutputKind::Audio)
+    .related({"Echo", "Reverb", "Chorus", "Flanger"})
+    .limitations({"Max 2 second delay", "Sync to Clock not automatic"})
+    .examples({"modules/vivid-audio/examples/effects-chain"});
 
 void Delay::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

@@ -184,37 +184,6 @@ private:
     }); \
     static_assert(true, "")
 
-/**
- * @brief Macro to register an addon operator
- */
-#define REGISTER_ADDON_OPERATOR(Type, Category, Description, RequiresInput, Addon) \
-    static ::vivid::OperatorRegistrar s_reg_##Type({ \
-        #Type, \
-        Category, \
-        Description, \
-        Addon, \
-        RequiresInput, \
-        ::vivid::OutputKind::Texture, \
-        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {} \
-    }); \
-    static_assert(true, "")
-
-/**
- * @brief Macro to register an addon operator with custom output kind
- */
-#define REGISTER_ADDON_OPERATOR_EX(Type, Category, Description, RequiresInput, Addon, OutKind) \
-    static ::vivid::OperatorRegistrar s_reg_##Type({ \
-        #Type, \
-        Category, \
-        Description, \
-        Addon, \
-        RequiresInput, \
-        OutKind, \
-        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {} \
-    }); \
-    static_assert(true, "")
 
 /**
  * @brief Macro to register an operator with extended metadata
@@ -236,16 +205,20 @@ private:
     })
 
 /**
- * @brief Macro to register an addon operator with extended metadata
+ * @brief Macro to register an operator with extended metadata and custom output kind
+ *
+ * Returns a builder that allows chaining .limitations(), .related(), .examples()
+ * Usage: REGISTER_OPERATOR_FULL_EX(Oscillator, "Audio Synthesis", "Basic oscillator", false, OutputKind::Audio)
+ *            .related({"NoiseGen", "FMSynth"}).limitations({"Mono output only"});
  */
-#define REGISTER_ADDON_OPERATOR_FULL(Type, Category, Description, RequiresInput, Addon) \
+#define REGISTER_OPERATOR_FULL_EX(Type, Category, Description, RequiresInput, OutKind) \
     static int s_reg_##Type = ::vivid::OperatorMetaBuilder(::vivid::OperatorMeta{ \
         #Type, \
         Category, \
         Description, \
-        Addon, \
+        "", \
         RequiresInput, \
-        ::vivid::OutputKind::Texture, \
+        OutKind, \
         []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
         {}, {}, {} \
     })

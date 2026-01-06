@@ -1,8 +1,14 @@
 #include <vivid/audio/echo.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Echo, "Audio Effects", "Multi-tap echo with diffusion", true, OutputKind::Audio)
+    .related({"Delay", "Reverb", "TapeEffect"})
+    .limitations({"Max 4 taps"})
+    .examples({"modules/vivid-audio/examples/effects-chain"});
 
 void Echo::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

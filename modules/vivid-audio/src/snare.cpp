@@ -1,4 +1,5 @@
 #include <vivid/audio/snare.h>
+#include <vivid/operator_registry.h>
 #include <vivid/audio_graph.h>
 #include <vivid/context.h>
 #include <vivid/viz_helpers.h>
@@ -6,6 +7,10 @@
 #include <cmath>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Snare, "Audio Drums", "Analog-style snare drum synthesizer", false, OutputKind::Audio)
+    .related({"Kick", "HiHat", "Clap", "Sequencer", "Clock", "NoiseGen"})
+    .examples({"modules/vivid-audio/examples/drum-machine"});
 
 void Snare::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

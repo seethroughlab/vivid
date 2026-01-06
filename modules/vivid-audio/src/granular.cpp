@@ -4,11 +4,17 @@
  */
 
 #include <vivid/audio/granular.h>
+#include <vivid/operator_registry.h>
 #include <cstring>
 #include <fstream>
 #include <algorithm>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Granular, "Audio Synthesis", "Granular synthesizer for time-stretching and texture", false, OutputKind::Audio)
+    .related({"WavetableSynth", "Sampler", "AudioFile", "Delay", "Reverb"})
+    .limitations({"Requires loaded sample", "Max 64 concurrent grains"})
+    .examples({"modules/vivid-audio/examples/granular-demo"});
 
 Granular::Granular() {
     registerParam(grainSize);

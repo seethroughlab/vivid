@@ -3,6 +3,7 @@
 #include <vivid/render3d/textured_material.h>
 #include <vivid/io/image_loader.h>  // Full definition for io::ImageData
 #include <vivid/effects/texture_operator.h>  // for toStringView
+#include <vivid/operator_registry.h>
 #include <vivid/viz_draw_list.h>
 #include <vivid/context.h>
 #include <iostream>
@@ -11,6 +12,11 @@
 using vivid::effects::toStringView;
 
 namespace vivid::render3d {
+
+REGISTER_OPERATOR_FULL(TexturedMaterial, "3D Materials", "PBR material with albedo, normal, metallic, roughness maps", false)
+    .related({"Render3D", "GLTFLoader", "IBLEnvironment"})
+    .limitations({"Textures must be power-of-two for mipmaps"})
+    .examples({"modules/vivid-render3d/examples/textured-material-test"});
 
 TexturedMaterial::TexturedMaterial() = default;
 

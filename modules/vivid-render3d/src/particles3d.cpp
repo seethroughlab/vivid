@@ -2,6 +2,7 @@
 
 #include <vivid/render3d/particles3d.h>
 #include <vivid/render3d/camera_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/io/image_loader.h>
 #include <vivid/effects/gpu_common.h>
@@ -11,6 +12,11 @@
 #include <iostream>
 
 namespace vivid::render3d {
+
+REGISTER_OPERATOR_FULL(Particles3D, "3D Effects", "GPU billboard particle system with physics", false)
+    .related({"ParticleSystem", "Particles", "PointSprites", "CameraOperator", "Render3D"})
+    .limitations({"Billboard sprites only", "No mesh instancing", "Max 100K particles"})
+    .examples({"modules/vivid-render3d/examples/particles3d-test"});
 
 // Billboard particle shader with spritesheet animation support
 static const char* PARTICLE3D_SHADER = R"(

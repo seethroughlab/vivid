@@ -5,6 +5,7 @@
 #endif
 
 #include <vivid/network/web_server.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>
 #include <ixwebsocket/IXHttpServer.h>
@@ -15,6 +16,11 @@
 #include <algorithm>
 
 namespace vivid::network {
+
+REGISTER_OPERATOR_FULL(WebServer, "Network", "HTTP/WebSocket server for browser integration", false)
+    .related({"OscIn", "OscOut", "UdpIn", "UdpOut"})
+    .limitations({"Single port per instance"})
+    .examples({"modules/vivid-network/examples/web-control"});
 
 WebServer::WebServer() = default;
 

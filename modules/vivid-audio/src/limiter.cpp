@@ -1,10 +1,16 @@
 #include <vivid/audio/limiter.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 
 #include <cmath>
 #include <algorithm>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Limiter, "Audio Dynamics", "Brick-wall limiter for preventing clipping", true, OutputKind::Audio)
+    .related({"Compressor", "Gate", "AudioGain"})
+    .limitations({"Look-ahead not implemented"})
+    .examples({"modules/vivid-audio/examples/mastering-chain"});
 
 void Limiter::initEffect(Context& ctx) {
     // Very fast attack for brick-wall limiting

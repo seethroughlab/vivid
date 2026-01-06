@@ -1,6 +1,7 @@
 // Vivid Audio - Sampler Implementation
 
 #include <vivid/audio/sampler.h>
+#include <vivid/operator_registry.h>
 #include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <cstring>
@@ -8,6 +9,11 @@
 #include <limits>
 
 namespace vivid::audio {
+
+REGISTER_OPERATOR_FULL_EX(Sampler, "Audio Sampling", "Sample playback with MIDI triggering", false, OutputKind::Audio)
+    .related({"MultiSampler", "SamplePlayer", "SampleBank", "AudioFile", "MidiIn", "Granular"})
+    .limitations({"Single sample per instance", "Max 8 voices"})
+    .examples({"modules/vivid-audio/examples/sampler-demo"});
 
 Sampler::Sampler() {
     registerParam(volume);
