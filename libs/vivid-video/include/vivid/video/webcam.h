@@ -1,9 +1,11 @@
 #pragma once
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/io/image_loader.h>
 #include <vivid/video/export.h>
-#include <string>
 #include <memory>
+#include <optional>
+#include <string>
 
 namespace vivid::video {
 
@@ -77,6 +79,12 @@ public:
      * @brief Get size of CPU pixel buffer
      */
     size_t cpuPixelDataSize() const;
+
+    /**
+     * @brief Get CPU pixel data as ImageData (Operator interface override)
+     * @return ImageData with RGBA pixels, or nullopt if not capturing
+     */
+    std::optional<io::ImageData> cpuPixels() const override;
 
     // Operator interface
     void init(Context& ctx) override;

@@ -86,6 +86,21 @@ size_t Webcam::cpuPixelDataSize() const {
 #endif
 }
 
+std::optional<io::ImageData> Webcam::cpuPixels() const {
+    const uint8_t* data = cpuPixelData();
+    size_t size = cpuPixelDataSize();
+    if (!data || size == 0 || m_captureWidth <= 0 || m_captureHeight <= 0) {
+        return std::nullopt;
+    }
+
+    io::ImageData result;
+    result.pixels.assign(data, data + size);
+    result.width = m_captureWidth;
+    result.height = m_captureHeight;
+    result.channels = 4;  // RGBA
+    return result;
+}
+
 void Webcam::init(Context& ctx) {
     openCamera(ctx);
 }

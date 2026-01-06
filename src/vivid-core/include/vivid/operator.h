@@ -9,10 +9,12 @@
  */
 
 #include <vivid/operator_viz.h>
+#include <vivid/io/image_loader.h>
 #include <webgpu/webgpu.h>
 #include <string>
 #include <vector>
 #include <memory>
+#include <optional>
 
 // Visualization drawing (ImGui-free)
 #include <vivid/viz_draw_list.h>
@@ -272,6 +274,15 @@ public:
      * @return The current output value, or 0.0 if not a value operator
      */
     virtual float outputValue() const { return 0.0f; }
+
+    /**
+     * @brief Get CPU pixel data if available
+     * @return ImageData with pixel buffer, or nullopt if not available
+     *
+     * Override in operators that maintain CPU pixel buffers (e.g., Webcam).
+     * Useful for ML inference which needs CPU access without GPU readback.
+     */
+    virtual std::optional<io::ImageData> cpuPixels() const { return std::nullopt; }
 
     /// @}
     // -------------------------------------------------------------------------
