@@ -15,7 +15,8 @@ namespace vivid::video {
 REGISTER_OPERATOR_FULL_EX(VideoAudio, "Video Input", "Extract audio from video file", false, OutputKind::Audio)
     .related({"VideoPlayer", "AudioMixer", "FFT", "BeatDetect"})
     .limitations({"Requires named VideoPlayer source"})
-    .examples({"modules/vivid-video/examples/video-with-audio"});
+    .examples({"modules/vivid-video/examples/video-with-audio"})
+    .api({".setSource(string videoOpName)"});
 
 VideoAudio::VideoAudio() = default;
 

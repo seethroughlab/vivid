@@ -7,7 +7,8 @@ namespace vivid::audio {
 
 REGISTER_OPERATOR_FULL_EX(NoiseGen, "Audio Synthesis", "Noise generator (white, pink, brown)", false, OutputKind::Audio)
     .related({"Oscillator", "Crackle", "AudioFilter", "HiHat", "Snare"})
-    .examples({"modules/vivid-audio/examples/synth-basics"});
+    .examples({"modules/vivid-audio/examples/synth-basics"})
+    .api({".setColor(NoiseColor)"});
 
 void NoiseGen::init(Context& ctx) {
     allocateOutput();

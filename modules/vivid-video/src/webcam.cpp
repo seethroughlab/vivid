@@ -18,7 +18,8 @@ namespace vivid::video {
 REGISTER_OPERATOR_FULL(Webcam, "Video Input", "Live webcam/camera input", false)
     .related({"VideoPlayer", "Image", "Composite", "Transform"})
     .limitations({"macOS/Windows only", "Single camera at a time"})
-    .examples({"modules/vivid-video/examples/webcam-demo"});
+    .examples({"modules/vivid-video/examples/webcam-demo"})
+    .api({".setDevice(int index)", ".setDevice(string deviceId)", ".setResolution(int w, int h)", ".setFrameRate(float fps)", ".listDevices()"});
 
 Webcam::Webcam() = default;
 

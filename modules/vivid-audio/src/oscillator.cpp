@@ -8,7 +8,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL_EX(Oscillator, "Audio Synthesis", "Basic waveform oscillator (sine, saw, square, triangle)", false, OutputKind::Audio)
     .related({"Synth", "FMSynth", "NoiseGen", "WavetableSynth", "Envelope", "AudioFilter"})
     .limitations({"Mono output", "No polyphony - use Synth for MIDI"})
-    .examples({"modules/vivid-audio/examples/synth-basics"});
+    .examples({"modules/vivid-audio/examples/synth-basics"})
+    .api({".waveform(Waveform)", ".reset()"});
 
 void Oscillator::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

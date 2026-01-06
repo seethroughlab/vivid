@@ -37,7 +37,8 @@ namespace vivid::video {
 REGISTER_OPERATOR_FULL(VideoPlayer, "Video Input", "Video file playback with HAP, H.264, HEVC, ProRes support", false)
     .related({"Webcam", "VideoAudio", "Image", "Composite", "Transform"})
     .limitations({"HAP recommended for performance", "Audio sync via VideoAudio operator"})
-    .examples({"modules/vivid-video/examples/video-playback", "projects/showcase/vj-mixer"});
+    .examples({"modules/vivid-video/examples/video-playback", "projects/showcase/vj-mixer"})
+    .api({".setFile(string path)", ".setLoop(bool)", ".setSpeed(float)", ".setVolume(float)", ".play()", ".pause()", ".seek(float seconds)", ".currentTime()", ".duration()", ".isPlaying()"});
 
 VideoPlayer::VideoPlayer() = default;
 

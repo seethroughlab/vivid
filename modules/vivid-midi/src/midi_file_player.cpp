@@ -12,7 +12,8 @@ namespace vivid::midi {
 REGISTER_OPERATOR_FULL(MidiFilePlayer, "MIDI", "Play MIDI files with tempo sync", false)
     .related({"MidiIn", "MidiOut", "Clock", "Synth", "FMSynth"})
     .limitations({"Standard MIDI file format only"})
-    .examples({"modules/vivid-midi/examples/midi-playback"});
+    .examples({"modules/vivid-midi/examples/midi-playback"})
+    .api({".load(string path)", ".unload()", ".play()", ".pause()", ".stop()", ".seek(double seconds)", ".syncToClock(Clock*)", ".useFileTempo()", ".position()", ".durationSeconds()", ".trackCount()"});
 
 // -----------------------------------------------------------------------------
 // Implementation (pimpl)

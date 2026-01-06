@@ -110,6 +110,17 @@ jobs:
           cp src/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md 2>/dev/null || true
           cp src/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md 2>/dev/null || true
 
+          # Copy examples
+          cp -r examples package/vivid-${{ matrix.target }}/
+
+          # Copy module examples (referenced by operator .api() metadata)
+          mkdir -p package/vivid-${{ matrix.target }}/modules
+          for module in modules/*/examples; do
+            module_name=$(dirname "$module" | xargs basename)
+            mkdir -p "package/vivid-${{ matrix.target }}/modules/$module_name"
+            cp -r "$module" "package/vivid-${{ matrix.target }}/modules/$module_name/"
+          done
+
           # Create archive (no version in filename - extension expects this)
           cd package
           tar -czvf vivid-${{ matrix.target }}.${{ matrix.archive_ext }} vivid-${{ matrix.target }}
@@ -153,6 +164,21 @@ jobs:
           Copy-Item src/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md -ErrorAction SilentlyContinue
           Copy-Item src/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md -ErrorAction SilentlyContinue
           Copy-Item src/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md -ErrorAction SilentlyContinue
+
+          # Copy examples
+          Copy-Item -Recurse examples package/vivid-${{ matrix.target }}/
+
+          # Copy module examples (referenced by operator .api() metadata)
+          New-Item -ItemType Directory -Force -Path package/vivid-${{ matrix.target }}/modules
+          Get-ChildItem -Path modules -Directory | ForEach-Object {
+            $moduleName = $_.Name
+            $examplesPath = Join-Path $_.FullName "examples"
+            if (Test-Path $examplesPath) {
+              $destPath = Join-Path "package/vivid-${{ matrix.target }}/modules" $moduleName
+              New-Item -ItemType Directory -Force -Path $destPath
+              Copy-Item -Recurse $examplesPath $destPath
+            }
+          }
 
           # Create archive
           Compress-Archive -Path package/vivid-${{ matrix.target }} -DestinationPath package/vivid-${{ matrix.target }}.${{ matrix.archive_ext }}

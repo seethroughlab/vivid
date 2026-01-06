@@ -15,7 +15,8 @@ namespace vivid::render3d {
 REGISTER_OPERATOR_FULL_EX(SceneComposer, "3D Scene", "Compose meshes and transforms into a renderable scene", false, OutputKind::Geometry)
     .related({"Render3D", "Box", "Sphere", "Cylinder", "Cone", "Torus", "Plane", "GLTFLoader", "Boolean"})
     .limitations({"Scene graph is flat, no hierarchy"})
-    .examples({"modules/vivid-render3d/examples/geometry-showcase"});
+    .examples({"modules/vivid-render3d/examples/geometry-showcase"})
+    .api({".add(MeshOperator*, glm::mat4, glm::vec4)", ".add<T>(string name, glm::mat4, glm::vec4)", ".clear()"});
 
 // Preview thumbnail size (16:9 aspect ratio, 2x for quality)
 static constexpr int PREVIEW_WIDTH = 256;

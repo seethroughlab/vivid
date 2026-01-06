@@ -4,6 +4,7 @@
 #include <vivid/cli.h>
 #include <vivid/mcp_server.h>
 #include <vivid/operator_registry.h>
+#include <vivid/module_loader.h>
 #include <vivid/module_manager.h>
 #include <vivid/module_registry.h>
 #include <CLI/CLI.hpp>
@@ -1090,6 +1091,8 @@ int handleCommand(int argc, char** argv) {
     }
 
     if (operatorsCmd->parsed()) {
+        // Load addon modules so all operators are available
+        loadAllModules();
         auto& registry = OperatorRegistry::instance();
 
         // If operator name specified, show details for that operator

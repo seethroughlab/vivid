@@ -13,7 +13,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL_EX(PolySynth, "Audio Synthesis", "Polyphonic synthesizer with multiple voices", false, OutputKind::Audio)
     .related({"Synth", "FMSynth", "WavetableSynth", "Oscillator", "Envelope", "MidiIn"})
     .limitations({"Max 16 voices", "CPU usage scales with voice count"})
-    .examples({"modules/vivid-audio/examples/poly-synth-demo"});
+    .examples({"modules/vivid-audio/examples/poly-synth-demo"})
+    .api({".waveform(Waveform)", ".stealMode(VoiceStealMode)", ".noteOn(float hz)", ".noteOff(float hz)", ".noteOnMidi(int note)", ".noteOffMidi(int note)", ".allNotesOff()", ".panic()"});
 
 PolySynth::PolySynth() {
     registerParam(maxVoices);

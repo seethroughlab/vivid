@@ -11,7 +11,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL_EX(SamplePlayer, "Audio Sampling", "Multi-voice sample player with pitch control", false, OutputKind::Audio)
     .related({"Sampler", "MultiSampler", "SampleBank", "AudioFile", "Sequencer"})
     .limitations({"Requires SampleBank for samples", "Max 16 voices"})
-    .examples({"modules/vivid-audio/examples/sample-player-demo"});
+    .examples({"modules/vivid-audio/examples/sample-player-demo"})
+    .api({".setBank(string name)", ".setVoices(int)", ".trigger(int index)", ".trigger(string name)", ".trigger(int index, float vol, float pan, float pitch)", ".triggerLoop(int index)", ".stop(int voiceId)", ".stopSample(int index)", ".stopAll()"});
 
 void SamplePlayer::setBank(const std::string& bankName) {
     m_bankName = bankName;

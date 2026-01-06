@@ -30,7 +30,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL_EX(AudioIn, "Audio Input", "Live audio input from microphone or line-in", false, OutputKind::Audio)
     .related({"FFT", "Levels", "BeatDetect", "AudioMixer", "Gate"})
     .limitations({"Single device at a time", "System default device by default"})
-    .examples({"modules/vivid-audio/examples/live-input", "modules/vivid-audio/examples/audio-reactive"});
+    .examples({"modules/vivid-audio/examples/live-input", "modules/vivid-audio/examples/audio-reactive"})
+    .api({".setMute(bool)"});
 
 struct AudioIn::Impl {
     ma_device device;

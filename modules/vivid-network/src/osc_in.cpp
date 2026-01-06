@@ -30,7 +30,8 @@ namespace vivid::network {
 REGISTER_OPERATOR_FULL(OscIn, "Network", "Receive OSC messages over UDP", false)
     .related({"OscOut", "UdpIn", "MidiIn"})
     .limitations({"UDP only, no TCP", "No OSC bundles yet"})
-    .examples({"modules/vivid-network/examples/osc-control"});
+    .examples({"modules/vivid-network/examples/osc-control"})
+    .api({".port(int)", ".bufferSize(int)", ".hasMessage(string address)", ".getFloat(string address, float default)", ".getInt(string address, int default)", ".getMessages(string pattern)"});
 
 // =============================================================================
 // OscMessage helpers

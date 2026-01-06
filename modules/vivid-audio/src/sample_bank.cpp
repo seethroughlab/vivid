@@ -15,7 +15,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL(SampleBank, "Audio Sampling", "Load folder of audio samples for triggering", false)
     .related({"SamplePlayer", "Sampler", "Sequencer", "AudioFile"})
     .limitations({"WAV format only", "All samples loaded to memory on init"})
-    .examples({"modules/vivid-audio/examples/sample-player-demo"});
+    .examples({"modules/vivid-audio/examples/sample-player-demo"})
+    .api({".setFolder(string path)", ".addFile(string path)"});
 
 void SampleBank::setFolder(const std::string& path) {
     m_folderPath = path;

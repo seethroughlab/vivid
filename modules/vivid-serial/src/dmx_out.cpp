@@ -9,7 +9,8 @@ namespace serial {
 REGISTER_OPERATOR_FULL(DMXOut, "IO", "DMX lighting output via Enttec USB Pro", false)
     .related({"SerialOut", "SerialIn"})
     .limitations({"Enttec USB Pro only", "512 channels max"})
-    .examples({"modules/vivid-serial/examples/dmx-lights"});
+    .examples({"modules/vivid-serial/examples/dmx-lights"})
+    .api({".port(string)", ".channel(int ch, uint8_t value)", ".channels(int start, vector<uint8_t>)", ".rgb(int start, r, g, b)", ".rgbw(int start, r, g, b, w)", ".blackout()", ".getChannel(int)"});
 
 DMXOut::DMXOut() : SerialOut() {
     // DMX requires 250000 baud for Enttec Pro

@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.10] - 2026-01-06
+
+### Added
+
+#### API Method Signatures for LLM Discovery
+- All 120 operators now include `.api()` metadata with method signatures
+- Enables LLMs to discover setter methods, configuration options, and static functions
+- Example: `FFT` shows `.setSize(int n)`, `MidiOut` shows `.noteOn(ch, note, velocity)`, etc.
+
+#### Examples in Release Packages
+- Release archives now include `examples/` directory with all example projects
+- Module-specific examples included in `modules/*/examples/`
+- Users can run examples immediately after downloading
+
+### Fixed
+- Fixed nlohmann JSON forward declaration causing build errors with newer compilers
+
 ## [0.1.0-alpha.9] - 2026-01-06
 
 ### Added

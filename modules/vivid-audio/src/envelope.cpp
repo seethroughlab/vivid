@@ -9,7 +9,8 @@ namespace vivid::audio {
 
 REGISTER_OPERATOR_FULL_EX(Envelope, "Audio Modulation", "ADSR envelope generator", false, OutputKind::Audio)
     .related({"AR", "Decay", "Synth", "Oscillator", "AudioGain"})
-    .examples({"modules/vivid-audio/examples/synth-basics"});
+    .examples({"modules/vivid-audio/examples/synth-basics"})
+    .api({".trigger()", ".releaseNote()", ".reset()"});
 
 void Envelope::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

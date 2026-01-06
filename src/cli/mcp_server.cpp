@@ -11,6 +11,7 @@
 
 #include <vivid/cli.h>
 #include <vivid/operator_registry.h>
+#include <vivid/module_loader.h>
 #include <nlohmann/json.hpp>
 #include <ixwebsocket/IXWebSocket.h>
 #include <iostream>
@@ -25,6 +26,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <array>
+#include <set>
 #include <csignal>
 
 #ifdef __APPLE__
@@ -423,6 +425,19 @@ private:
             }}
         });
 
+        // search_operators - Search operators by keyword
+        tools.push_back({
+            {"name", "search_operators"},
+            {"description", "Search for Vivid operators by keyword. Searches operator names, descriptions, categories, and related operators."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"query", {{"type", "string"}, {"description", "Search keyword (e.g., 'camera', 'distortion', 'audio')"}}}
+                }},
+                {"required", json::array({"query"})}
+            }}
+        });
+
         // create_project - Create new project
         tools.push_back({
             {"name", "create_project"},
@@ -580,42 +595,7 @@ private:
         }
         else if (name == "list_operators") {
             auto& registry = OperatorRegistry::instance();
-            const auto& ops = registry.operators();
-
-            json opList = json::object();
-            for (const auto& op : ops) {
-                if (opList.find(op.category) == opList.end()) {
-                    opList[op.category] = json::array();
-                }
-
-                json opInfo;
-                opInfo["name"] = op.name;
-                opInfo["description"] = op.description;
-                opInfo["requiresInput"] = op.requiresInput;
-                opInfo["outputType"] = outputKindName(op.outputKind);
-                if (!op.addon.empty()) {
-                    opInfo["addon"] = op.addon;
-                }
-
-                // Get parameters
-                if (op.factory) {
-                    try {
-                        auto tempOp = op.factory();
-                        auto params = tempOp->params();
-                        opInfo["params"] = json::array();
-                        for (const auto& p : params) {
-                            opInfo["params"].push_back({
-                                {"name", p.name},
-                                {"min", p.minVal},
-                                {"max", p.maxVal},
-                                {"default", p.defaultVal[0]}
-                            });
-                        }
-                    } catch (...) {}
-                }
-
-                opList[op.category].push_back(opInfo);
-            }
+            json opList = registry.toJsonGrouped();
 
             result["content"] = {{
                 {"type", "text"},
@@ -677,6 +657,9 @@ private:
                 if (!meta->examples.empty()) {
                     opInfo["examples"] = meta->examples;
                 }
+                if (!meta->api.empty()) {
+                    opInfo["api"] = meta->api;
+                }
 
                 result["content"] = {{
                     {"type", "text"},
@@ -690,6 +673,79 @@ private:
                 {"type", "text"},
                 {"text", searchDocs(query)}
             }};
+        }
+        else if (name == "search_operators") {
+            std::string query = args.value("query", "");
+            if (query.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Query is required"}}};
+                return result;
+            }
+
+            // Convert query to lowercase for case-insensitive matching
+            std::string queryLower = query;
+            std::transform(queryLower.begin(), queryLower.end(), queryLower.begin(), ::tolower);
+
+            // Split query into words
+            std::vector<std::string> queryWords;
+            std::istringstream iss(queryLower);
+            std::string word;
+            while (iss >> word) {
+                if (word.length() >= 2) {
+                    queryWords.push_back(word);
+                }
+            }
+
+            auto& registry = OperatorRegistry::instance();
+            json matches = json::array();
+
+            // Helper to check if text contains any query word
+            auto containsQuery = [&](const std::string& text) {
+                std::string textLower = text;
+                std::transform(textLower.begin(), textLower.end(), textLower.begin(), ::tolower);
+                for (const auto& qword : queryWords) {
+                    if (textLower.find(qword) != std::string::npos) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            for (const auto& meta : registry.operators()) {
+                bool match = containsQuery(meta.name) ||
+                             containsQuery(meta.description) ||
+                             containsQuery(meta.category);
+
+                // Check related operators
+                if (!match) {
+                    for (const auto& rel : meta.related) {
+                        if (containsQuery(rel)) {
+                            match = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (match) {
+                    matches.push_back({
+                        {"name", meta.name},
+                        {"category", meta.category},
+                        {"description", meta.description}
+                    });
+                }
+            }
+
+            if (matches.empty()) {
+                result["content"] = {{
+                    {"type", "text"},
+                    {"text", "No operators found matching '" + query + "'"}
+                }};
+            } else {
+                result["content"] = {{
+                    {"type", "text"},
+                    {"text", matches.dump(2)}
+                }};
+            }
         }
         else if (name == "create_project") {
             std::string projectName = args.value("name", "");
@@ -1118,39 +1174,152 @@ private:
         return "Documentation file not found: " + filename;
     }
 
+    // Split a string into words, filtering out common stop words
+    std::vector<std::string> splitIntoWords(const std::string& text) {
+        std::vector<std::string> words;
+        std::istringstream iss(text);
+        std::string word;
+        // Common stop words to ignore
+        static const std::set<std::string> stopWords = {
+            "a", "an", "the", "is", "are", "was", "were", "be", "been",
+            "to", "of", "in", "for", "on", "with", "at", "by", "from",
+            "or", "and", "it", "as", "do", "how", "what", "which"
+        };
+        while (iss >> word) {
+            // Remove punctuation and convert to lowercase
+            word.erase(std::remove_if(word.begin(), word.end(), ::ispunct), word.end());
+            std::transform(word.begin(), word.end(), word.begin(), ::tolower);
+            if (word.length() >= 2 && stopWords.find(word) == stopWords.end()) {
+                words.push_back(word);
+            }
+        }
+        return words;
+    }
+
+    // Parse markdown into sections (## headers and their content)
+    struct DocSection {
+        std::string header;
+        std::string content;
+        std::string contentLower;
+    };
+
+    std::vector<DocSection> parseMarkdownSections(const std::string& content) {
+        std::vector<DocSection> sections;
+        std::istringstream stream(content);
+        std::string line;
+        DocSection current;
+
+        while (std::getline(stream, line)) {
+            // Check for headers (##, ###, etc.) - not just top-level #
+            if (line.length() >= 2 && line[0] == '#' && line[1] == '#') {
+                // Save previous section if it has content
+                if (!current.header.empty() || !current.content.empty()) {
+                    current.contentLower = current.content;
+                    std::transform(current.contentLower.begin(), current.contentLower.end(),
+                                   current.contentLower.begin(), ::tolower);
+                    sections.push_back(current);
+                }
+                // Start new section
+                current.header = line;
+                current.content.clear();
+            } else {
+                current.content += line + "\n";
+            }
+        }
+        // Don't forget the last section
+        if (!current.header.empty() || !current.content.empty()) {
+            current.contentLower = current.content;
+            std::transform(current.contentLower.begin(), current.contentLower.end(),
+                           current.contentLower.begin(), ::tolower);
+            sections.push_back(current);
+        }
+        return sections;
+    }
+
+    // Count how many query words match in a section
+    int countMatches(const DocSection& section, const std::vector<std::string>& queryWords) {
+        int count = 0;
+        std::string headerLower = section.header;
+        std::transform(headerLower.begin(), headerLower.end(), headerLower.begin(), ::tolower);
+
+        for (const auto& word : queryWords) {
+            // Check both header and content, header matches count double
+            if (headerLower.find(word) != std::string::npos) {
+                count += 2;
+            }
+            if (section.contentLower.find(word) != std::string::npos) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
     std::string searchDocs(const std::string& query) {
-        // Simple search: load docs and find matching sections
-        std::string refContent = loadDocsFile("LLM-REFERENCE.md");
-        std::string recipesContent = loadDocsFile("RECIPES.md");
+        // Search examples and conceptual docs (not operator reference - use get_operator for that)
+        std::vector<std::pair<std::string, std::string>> docs = {
+            {"RECIPES.md", loadDocsFile("RECIPES.md")},         // Full chain examples
+            {"CHAIN-API.md", loadDocsFile("CHAIN-API.md")},     // Chain concepts and API
+            {"CANVAS-API.md", loadDocsFile("CANVAS-API.md")},   // 2D canvas drawing API
+        };
 
+        // Split query into searchable words
+        std::vector<std::string> queryWords = splitIntoWords(query);
+        if (queryWords.empty()) {
+            return "No valid search terms in query: '" + query + "'";
+        }
+
+        // Collect matching sections with scores
+        struct ScoredSection {
+            std::string source;
+            std::string header;
+            std::string content;
+            int score;
+        };
+        std::vector<ScoredSection> matches;
+
+        // Search each document
+        for (const auto& [docName, docContent] : docs) {
+            if (!docContent.empty() && docContent.rfind("Documentation file not found:", 0) != 0) {
+                auto sections = parseMarkdownSections(docContent);
+                for (const auto& section : sections) {
+                    int score = countMatches(section, queryWords);
+                    if (score > 0) {
+                        matches.push_back({docName, section.header, section.content, score});
+                    }
+                }
+            }
+        }
+
+        if (matches.empty()) {
+            return "No documentation found matching '" + query + "'";
+        }
+
+        // Sort by score descending
+        std::sort(matches.begin(), matches.end(),
+                  [](const ScoredSection& a, const ScoredSection& b) { return a.score > b.score; });
+
+        // Build result - return top 5 matches, max ~4000 chars total
         std::string results;
-        std::string queryLower = query;
-        std::transform(queryLower.begin(), queryLower.end(), queryLower.begin(), ::tolower);
+        size_t totalChars = 0;
+        const size_t maxChars = 4000;
+        int count = 0;
 
-        // Search in reference
-        if (!refContent.empty() && refContent.find("not found") == std::string::npos) {
-            std::string refLower = refContent;
-            std::transform(refLower.begin(), refLower.end(), refLower.begin(), ::tolower);
-            if (refLower.find(queryLower) != std::string::npos) {
-                results += "# From LLM-REFERENCE.md:\n\n";
-                // Extract relevant section (simplified - just return first 2000 chars for now)
-                results += refContent.substr(0, (std::min)(refContent.size(), size_t(2000)));
-                results += "\n\n";
+        for (const auto& match : matches) {
+            if (count >= 5 || totalChars >= maxChars) break;
+
+            std::string sectionText = match.header + "\n" + match.content;
+
+            // Truncate very long sections
+            if (sectionText.size() > 1500) {
+                sectionText = sectionText.substr(0, 1500) + "\n...(truncated)\n";
             }
-        }
 
-        // Search in recipes
-        if (!recipesContent.empty() && recipesContent.find("not found") == std::string::npos) {
-            std::string recipesLower = recipesContent;
-            std::transform(recipesLower.begin(), recipesLower.end(), recipesLower.begin(), ::tolower);
-            if (recipesLower.find(queryLower) != std::string::npos) {
-                results += "# From RECIPES.md:\n\n";
-                results += recipesContent.substr(0, (std::min)(recipesContent.size(), size_t(2000)));
+            if (count == 0 || matches[count - 1].source != match.source) {
+                results += "# From " + match.source + ":\n\n";
             }
-        }
-
-        if (results.empty()) {
-            results = "No documentation found matching '" + query + "'";
+            results += sectionText + "\n";
+            totalChars += sectionText.size();
+            count++;
         }
 
         return results;
@@ -1159,113 +1328,9 @@ private:
     VividConnection m_vivid;
 };
 
-// Load a single module library
-static void loadModuleLibrary(const fs::path& libPath) {
-#ifdef _WIN32
-    HMODULE h = LoadLibraryA(libPath.string().c_str());
-    if (!h) {
-        std::cerr << "[MCP] Warning: Failed to load " << libPath.filename().string() << std::endl;
-    }
-#else
-    // Use RTLD_GLOBAL so static initializers register with OperatorRegistry
-    void* h = dlopen(libPath.c_str(), RTLD_NOW | RTLD_GLOBAL);
-    if (!h) {
-        std::cerr << "[MCP] Warning: Failed to load " << libPath.filename().string() << ": " << dlerror() << std::endl;
-    }
-#endif
-}
-
-// Load module libraries so their operators register with OperatorRegistry
-static void loadAllModules() {
-    // Get executable directory for built-in modules
-    fs::path exeDir;
-#ifdef __APPLE__
-    char pathBuf[PATH_MAX];
-    uint32_t size = sizeof(pathBuf);
-    if (_NSGetExecutablePath(pathBuf, &size) == 0) {
-        exeDir = fs::path(pathBuf).parent_path();
-    }
-#elif defined(_WIN32)
-    char pathBuf[MAX_PATH];
-    GetModuleFileNameA(nullptr, pathBuf, MAX_PATH);
-    exeDir = fs::path(pathBuf).parent_path();
-#else
-    char pathBuf[PATH_MAX];
-    ssize_t count = readlink("/proc/self/exe", pathBuf, PATH_MAX);
-    if (count > 0) {
-        pathBuf[count] = '\0';
-        exeDir = fs::path(pathBuf).parent_path();
-    }
-#endif
-
-    // Load built-in modules
-    if (!exeDir.empty()) {
-        const std::vector<std::string> builtinModules = {
-            "vivid-audio",
-            "vivid-video",
-            "vivid-render3d",
-            "vivid-network",
-            "vivid-serial",
-            "vivid-midi"
-        };
-
-        for (const auto& moduleName : builtinModules) {
-#ifdef __APPLE__
-            fs::path libPath = exeDir / ("lib" + moduleName + ".dylib");
-#elif defined(_WIN32)
-            fs::path libPath = exeDir / (moduleName + ".dll");
-#else
-            fs::path libPath = exeDir / ("lib" + moduleName + ".so");
-#endif
-            if (fs::exists(libPath)) {
-                loadModuleLibrary(libPath);
-            }
-        }
-    }
-
-    // Load user-installed modules from ~/.vivid/modules/
-    fs::path userModulesDir;
-#ifdef _WIN32
-    const char* userProfile = std::getenv("USERPROFILE");
-    if (userProfile) {
-        userModulesDir = fs::path(userProfile) / ".vivid" / "modules";
-    }
-#else
-    const char* home = std::getenv("HOME");
-    if (home) {
-        userModulesDir = fs::path(home) / ".vivid" / "modules";
-    }
-#endif
-
-    if (!userModulesDir.empty() && fs::exists(userModulesDir)) {
-        for (const auto& moduleDir : fs::directory_iterator(userModulesDir)) {
-            if (!moduleDir.is_directory()) continue;
-
-            fs::path libDir = moduleDir.path() / "lib";
-            if (!fs::exists(libDir)) continue;
-
-            for (const auto& entry : fs::directory_iterator(libDir)) {
-                std::string filename = entry.path().filename().string();
-
-#ifdef __APPLE__
-                if (filename.find(".dylib") == std::string::npos) continue;
-#elif defined(_WIN32)
-                if (filename.find(".dll") == std::string::npos) continue;
-#else
-                if (filename.find(".so") == std::string::npos) continue;
-#endif
-                // Skip dependency libraries like onnxruntime
-                if (filename.find("onnxruntime") != std::string::npos) continue;
-
-                loadModuleLibrary(entry.path());
-            }
-        }
-    }
-}
-
 int runServer() {
     // Load all modules (built-in + user-installed) to populate OperatorRegistry
-    loadAllModules();
+    vivid::loadAllModules();
 
     McpServer server;
     return server.run();

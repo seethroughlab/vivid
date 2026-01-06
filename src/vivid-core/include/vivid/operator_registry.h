@@ -14,6 +14,9 @@
 #include <functional>
 #include <memory>
 
+// Forward declare nlohmann::json to avoid including heavy header
+#include <nlohmann/json_fwd.hpp>
+
 namespace vivid {
 
 /**
@@ -34,6 +37,7 @@ struct OperatorMeta {
     std::vector<std::string> limitations;  ///< Known limitations or caveats
     std::vector<std::string> related;      ///< Related operator names
     std::vector<std::string> examples;     ///< Example project paths
+    std::vector<std::string> api;          ///< Method signatures for LLM discovery
 };
 
 /**
@@ -63,6 +67,14 @@ public:
 
     /// @brief Output all operators as JSON to stdout
     void outputJson() const;
+
+    /// @brief Get all operators as JSON (flat array format)
+    /// Returns: {"version": "1.0.0", "operators": [...]}
+    nlohmann::json toJson() const;
+
+    /// @brief Get all operators as JSON grouped by category
+    /// Returns: {"Generators": [...], "Effects": [...], ...}
+    nlohmann::json toJsonGrouped() const;
 
 private:
     OperatorRegistry() = default;
@@ -118,6 +130,11 @@ public:
         return std::move(*this);
     }
 
+    OperatorMetaBuilder api(std::initializer_list<std::string> items) && {
+        m_meta.api = items;
+        return std::move(*this);
+    }
+
     // Explicit registration
     void reg() {
         if (!m_registered) {
@@ -164,7 +181,7 @@ private:
         RequiresInput, \
         ::vivid::OutputKind::Texture, \
         []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {} \
+        {}, {}, {}, {} \
     }); \
     static_assert(true, "")
 
@@ -180,7 +197,7 @@ private:
         RequiresInput, \
         OutKind, \
         []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {} \
+        {}, {}, {}, {} \
     }); \
     static_assert(true, "")
 
@@ -201,7 +218,7 @@ private:
         RequiresInput, \
         ::vivid::OutputKind::Texture, \
         []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {} \
+        {}, {}, {}, {} \
     })
 
 /**
@@ -220,7 +237,7 @@ private:
         RequiresInput, \
         OutKind, \
         []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {} \
+        {}, {}, {}, {} \
     })
 
 } // namespace vivid

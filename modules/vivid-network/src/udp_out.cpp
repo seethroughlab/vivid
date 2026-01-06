@@ -26,7 +26,8 @@ namespace vivid::network {
 
 REGISTER_OPERATOR_FULL(UdpOut, "Network", "Send raw UDP packets", false)
     .related({"UdpIn", "OscOut", "WebServer"})
-    .examples({"modules/vivid-network/examples/udp-demo"});
+    .examples({"modules/vivid-network/examples/udp-demo"})
+    .api({".host(string)", ".port(int)", ".broadcast(bool)", ".send(void* data, size_t)", ".send(string)", ".send(vector<uint8_t>)", ".send(vector<float>)"});
 
 #ifdef _WIN32
 extern bool g_wsaInitialized;

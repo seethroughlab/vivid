@@ -15,7 +15,8 @@ namespace serial {
 
 REGISTER_OPERATOR_FULL(SerialOut, "IO", "Serial output for Arduino and other devices", false)
     .related({"SerialIn", "DMXOut", "OscOut"})
-    .examples({"modules/vivid-serial/examples/arduino-control"});
+    .examples({"modules/vivid-serial/examples/arduino-control"})
+    .api({".port(string)", ".send(uint8_t* data, size_t)", ".send(string)", ".sendLine(string)", ".sendFloat(float)", ".sendInt(int)", ".sendCSV(vector<float>)"});
 
 SerialOut::SerialOut() {
     m_serial = std::make_unique<SerialPort>();

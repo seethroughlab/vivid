@@ -11,7 +11,8 @@ namespace vivid::render3d {
 REGISTER_OPERATOR_FULL(Fog, "3D Post-Processing", "Depth-based atmospheric fog effect", true)
     .related({"Render3D", "DepthOfField", "CameraOperator"})
     .limitations({"Requires Render3D depth output enabled"})
-    .examples({"modules/vivid-render3d/examples/fog-test"});
+    .examples({"modules/vivid-render3d/examples/fog-test"})
+    .api({".input(Render3D*)", ".fogColor[3]", ".fogMode = FogMode::Linear|Exponential|ExponentialSquared"});
 
 using namespace vivid::effects;
 

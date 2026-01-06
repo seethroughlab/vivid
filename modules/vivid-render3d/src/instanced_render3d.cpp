@@ -14,7 +14,8 @@ namespace vivid::render3d {
 REGISTER_OPERATOR_FULL(InstancedRender3D, "3D Rendering", "GPU-instanced rendering for thousands of meshes", true)
     .related({"Render3D", "CameraOperator", "DirectionalLight", "PointLight", "SpotLight", "Box", "Sphere", "GLTFLoader"})
     .limitations({"All instances share same mesh", "Per-instance materials not supported"})
-    .examples({"modules/vivid-render3d/examples/instancing-demo"});
+    .examples({"modules/vivid-render3d/examples/instancing-demo"})
+    .api({".setMeshInput(MeshOperator*)", ".setCameraInput(CameraOperator*)", ".setInstances(vector<glm::mat4>)", ".setColors(vector<glm::vec4>)", ".addLightInput(LightOperator*)"});
 
 using namespace vivid::effects;
 

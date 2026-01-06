@@ -10,7 +10,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL_EX(HiHat, "Audio Drums", "Hi-hat cymbal synthesizer with open/closed modes", false, OutputKind::Audio)
     .related({"Kick", "Snare", "Clap", "Sequencer", "Clock", "NoiseGen"})
     .limitations({"Open/closed are mutually exclusive"})
-    .examples({"modules/vivid-audio/examples/drum-machine"});
+    .examples({"modules/vivid-audio/examples/drum-machine"})
+    .api({".trigger()", ".choke()", ".reset()"});
 
 void HiHat::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

@@ -15,7 +15,8 @@ namespace serial {
 REGISTER_OPERATOR_FULL(SerialIn, "IO", "Serial input from Arduino and sensors", false)
     .related({"SerialOut", "DMXOut", "OscIn"})
     .limitations({"One port per instance"})
-    .examples({"modules/vivid-serial/examples/arduino-sensor"});
+    .examples({"modules/vivid-serial/examples/arduino-sensor"})
+    .api({".port(string)", ".getValue(int index)", ".getLines()", ".hasNewData()", ".lastLine()"});
 
 SerialIn::SerialIn() {
     m_serial = std::make_unique<SerialPort>();

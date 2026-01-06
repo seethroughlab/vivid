@@ -10,7 +10,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL_EX(Synth, "Audio Synthesis", "Polyphonic subtractive synthesizer", false, OutputKind::Audio)
     .related({"PolySynth", "FMSynth", "WavetableSynth", "Oscillator", "Envelope", "AudioFilter", "MidiIn"})
     .limitations({"Max 16 voices", "Single oscillator per voice"})
-    .examples({"modules/vivid-audio/examples/synth-basics", "modules/vivid-audio/examples/audio-reactive"});
+    .examples({"modules/vivid-audio/examples/synth-basics", "modules/vivid-audio/examples/audio-reactive"})
+    .api({".setWaveform(Waveform)", ".noteOn()", ".noteOff()", ".noteOn(float hz)", ".reset()"});
 
 void Synth::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

@@ -7,7 +7,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL(Sequencer, "Audio Sequencing", "Step sequencer with pattern and trigger output", false)
     .related({"Clock", "Euclidean", "Song", "Kick", "Snare", "HiHat", "Synth"})
     .limitations({"Max 64 steps per pattern"})
-    .examples({"modules/vivid-audio/examples/drum-machine"});
+    .examples({"modules/vivid-audio/examples/drum-machine"})
+    .api({".setStep(int step, bool on, float velocity)", ".clearPattern()", ".setPattern(uint16_t)", ".advance()", ".reset()", ".onTrigger(callback)"});
 
 void Sequencer::init(Context& ctx) {
     // Don't clear pattern - it may have been set before init()

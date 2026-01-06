@@ -11,7 +11,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL_EX(AudioFile, "Audio Sampling", "Load and play audio files (WAV)", false, OutputKind::Audio)
     .related({"Sampler", "SampleBank", "VideoAudio", "AudioMixer"})
     .limitations({"WAV format only", "Entire file loaded to memory"})
-    .examples({"modules/vivid-audio/examples/audio-reactive"});
+    .examples({"modules/vivid-audio/examples/audio-reactive"})
+    .api({".setFile(string path)", ".loop(bool)", ".play()", ".pause()", ".stop()", ".seek(float seconds)"});
 
 AudioFile::AudioFile() {
     registerParam(volume);

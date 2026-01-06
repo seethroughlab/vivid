@@ -7,7 +7,8 @@ namespace vivid::audio {
 
 REGISTER_OPERATOR_FULL(Clock, "Audio Sequencing", "Master tempo clock with beat/bar triggers", false)
     .related({"Sequencer", "Euclidean", "Song", "Kick", "Snare", "HiHat"})
-    .examples({"modules/vivid-audio/examples/drum-machine", "modules/vivid-audio/examples/song-structure"});
+    .examples({"modules/vivid-audio/examples/drum-machine", "modules/vivid-audio/examples/song-structure"})
+    .api({".division(ClockDiv)", ".start()", ".stop()", ".reset()", ".onTrigger(callback)"});
 
 void Clock::init(Context& ctx) {
     m_sampleRate = 48000;  // Standard audio sample rate

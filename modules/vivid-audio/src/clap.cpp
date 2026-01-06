@@ -9,7 +9,8 @@ namespace vivid::audio {
 
 REGISTER_OPERATOR_FULL_EX(Clap, "Audio Drums", "Clap/handclap synthesizer", false, OutputKind::Audio)
     .related({"Kick", "Snare", "HiHat", "Sequencer", "Clock", "NoiseGen"})
-    .examples({"modules/vivid-audio/examples/drum-machine"});
+    .examples({"modules/vivid-audio/examples/drum-machine"})
+    .api({".trigger()", ".reset()"});
 
 void Clap::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

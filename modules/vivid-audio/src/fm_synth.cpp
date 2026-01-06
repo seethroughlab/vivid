@@ -17,7 +17,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL_EX(FMSynth, "Audio Synthesis", "4-operator FM synthesizer with preset support", false, OutputKind::Audio)
     .related({"Synth", "PolySynth", "WavetableSynth", "Oscillator", "MidiIn"})
     .limitations({"4 operators fixed", "Limited to built-in algorithms"})
-    .examples({"modules/vivid-audio/examples/fm-synth-demo"});
+    .examples({"modules/vivid-audio/examples/fm-synth-demo"})
+    .api({".setAlgorithm(FMAlgorithm)", ".loadPreset(FMPreset)", ".setEnvelope(int op, float a, float d, float s, float r)", ".noteOn(float hz)", ".noteOff(float hz)", ".noteOnMidi(int note)", ".noteOffMidi(int note)", ".allNotesOff()", ".panic()"});
 
 FMSynth::FMSynth() {
     registerParam(ratio1);

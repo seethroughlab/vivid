@@ -8,7 +8,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL_EX(Formant, "Audio Effects", "Vowel formant filter for vocal synthesis", true, OutputKind::Audio)
     .related({"AudioFilter", "NoiseGen", "Oscillator"})
     .limitations({"5 vowel sounds (A/E/I/O/U)", "Based on male voice formants"})
-    .examples({"modules/vivid-audio/examples/vocal-synth"});
+    .examples({"modules/vivid-audio/examples/vocal-synth"})
+    .api({".setVowel(Vowel)", ".setAmplitudes(float a1, float a2, float a3)"});
 
 // Formant frequencies for each vowel (F1, F2, F3 in Hz)
 // Based on typical male voice formants

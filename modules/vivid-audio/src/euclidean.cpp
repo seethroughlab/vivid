@@ -8,7 +8,8 @@ namespace vivid::audio {
 REGISTER_OPERATOR_FULL(Euclidean, "Audio Sequencing", "Euclidean rhythm pattern generator", false)
     .related({"Clock", "Sequencer", "Kick", "Snare", "HiHat"})
     .limitations({"Max 32 steps"})
-    .examples({"modules/vivid-audio/examples/euclidean-rhythms"});
+    .examples({"modules/vivid-audio/examples/euclidean-rhythms"})
+    .api({".advance()", ".reset()", ".onTrigger(callback)"});
 
 void Euclidean::init(Context& ctx) {
     regenerate();

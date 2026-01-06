@@ -16,7 +16,8 @@ namespace vivid::render3d {
 REGISTER_OPERATOR_FULL(Particles3D, "3D Effects", "GPU billboard particle system with physics", false)
     .related({"ParticleSystem", "Particles", "PointSprites", "CameraOperator", "Render3D"})
     .limitations({"Billboard sprites only", "No mesh instancing", "Max 100K particles"})
-    .examples({"modules/vivid-render3d/examples/particles3d-test"});
+    .examples({"modules/vivid-render3d/examples/particles3d-test"})
+    .api({".setCameraInput(CameraOperator*)", ".emitter(Emitter3DShape)", ".position(x,y,z)", ".emitterSize(float)", ".emitRate(float)", ".maxParticles(int)", ".burst(int)", ".velocity(x,y,z)", ".radialVelocity(float)", ".spread(float deg)", ".gravity(x,y,z)", ".drag(float)", ".turbulence(float)", ".attractor(x,y,z,strength)", ".life(float)", ".size(float)", ".size(start,end)", ".color(r,g,b,a)", ".colorEnd(r,g,b,a)", ".colorMode(Color3DMode)", ".fadeIn(float)", ".fadeOut(bool)", ".texture(string)", ".spin(float)", ".spriteSheet(cols,rows)", ".additive(bool)", ".depthSort(bool)", ".seed(int)"});
 
 // Billboard particle shader with spritesheet animation support
 static const char* PARTICLE3D_SHADER = R"(
