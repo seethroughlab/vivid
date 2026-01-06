@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6] - 2026-01-06
+
+### Changed
+
+#### Project Restructure
+- Renamed `addons/` directory to `libs/` for clarity
+- Renamed "addon" terminology to "library" throughout codebase
+- `AddonManager` → `LibraryManager`
+- All libraries now use `library.json` instead of `addon.json`
+
+### Fixed
+- Add missing `<algorithm>` include for `std::min`/`std::max` with initializer lists (GCC 14 compatibility)
+- CI: Use self-hosted runners for macOS, Windows, and Raspberry Pi builds
+- CI: Fix build parallelism on Pi to avoid OOM
+
 ## [0.1.0-alpha.5] - 2026-01-04
 
 ### Added
