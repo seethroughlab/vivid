@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7] - 2026-01-06
+
+### Added
+- `cpuPixels()` virtual method on `Operator` base class - returns `std::optional<io::ImageData>` for CPU-side pixel access
+- `Webcam::cpuPixels()` implementation - enables ML inference without GPU readback
+
+### Fixed
+- SDK release package now includes library headers (`vivid-audio`, `vivid-video`, etc.)
+
 ## [0.1.0-alpha.6] - 2026-01-06
 
 ### Changed
