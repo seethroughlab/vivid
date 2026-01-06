@@ -207,7 +207,7 @@ private:
  *
  * Returns a builder that allows chaining .limitations(), .related(), .examples()
  * Usage: REGISTER_OPERATOR_FULL(Noise, "Generators", "Noise", false)
- *            .related({"Gradient"}).examples({"projects/noise/"});
+ *            .related({"Gradient"}).examples({"modules/vivid-core/examples/hello-noise/"});
  */
 #define REGISTER_OPERATOR_FULL(Type, Category, Description, RequiresInput) \
     static int s_reg_##Type = ::vivid::OperatorMetaBuilder(::vivid::OperatorMeta{ \

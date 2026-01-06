@@ -116,10 +116,5 @@ elseif(WIN32)
     )
 endif()
 
-# Copy library next to vivid executable
-add_custom_command(TARGET vivid-audio POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:vivid-audio>
-        $<TARGET_FILE_DIR:vivid>/
-    COMMENT "Copying vivid-audio library"
-)
+# Library is built to lib/ directly (CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+# Executable finds it via RPATH

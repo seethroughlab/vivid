@@ -59,7 +59,8 @@ static fs::path getExecutableDir() {
 // Read template from file, returns empty string if not found
 static std::string readTemplateFile(const std::string& templateName) {
     fs::path exeDir = getExecutableDir();
-    fs::path templatePath = exeDir / "templates" / templateName / "chain.cpp";
+    // Templates are in parent dir (build root), not in bin/
+    fs::path templatePath = exeDir.parent_path() / "templates" / templateName / "chain.cpp";
 
     if (fs::exists(templatePath)) {
         std::ifstream file(templatePath);
@@ -436,14 +437,17 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
 
 // Copy common resources (headers, shaders, etc.) to bundle
 void copyCommonResources(const fs::path& exeDir, const fs::path& destDir, const fs::path& includeDir) {
+    // Assets are in parent dir (build root), not in bin/
+    fs::path buildRoot = exeDir.parent_path();
+
     // Copy shaders
-    fs::path shadersDir = exeDir / "shaders";
+    fs::path shadersDir = buildRoot / "shaders";
     if (fs::exists(shadersDir)) {
         fs::copy(shadersDir, destDir / "shaders", fs::copy_options::recursive);
     }
 
     // Copy templates
-    fs::path templatesDir = exeDir / "templates";
+    fs::path templatesDir = buildRoot / "templates";
     if (fs::exists(templatesDir)) {
         fs::copy(templatesDir, destDir / "templates", fs::copy_options::recursive);
     }
@@ -673,9 +677,11 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
         }
         std::cout << "\n";
 
+        // Libraries are in lib/ directory (sibling to bin/)
+        fs::path libDir = exeDir.parent_path() / "lib";
         for (const auto& libName : requiredLibs) {
             std::string libFile = getLibraryFilename(libName);
-            fs::path libPath = exeDir / libFile;
+            fs::path libPath = libDir / libFile;
             if (fs::exists(libPath)) {
                 fs::copy_file(libPath, macosPath / libFile);
             } else {
@@ -904,9 +910,11 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
         }
         std::cout << "\n";
 
+        // Libraries are in lib/ directory (sibling to bin/)
+        fs::path srcLibDir = exeDir.parent_path() / "lib";
         for (const auto& libName : requiredLibs) {
             std::string soFile = getLibraryFilename(libName);
-            fs::path srcLib = exeDir / soFile;
+            fs::path srcLib = srcLibDir / soFile;
             if (fs::exists(srcLib)) {
                 fs::copy_file(srcLib, libPath / soFile);
             } else {

@@ -197,20 +197,15 @@ elseif(WIN32)
     )
 endif()
 
-# Copy vivid-core library next to vivid executable
-add_custom_command(TARGET vivid-core POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:vivid-core>
-        ${CMAKE_BINARY_DIR}/bin/
-    COMMENT "Copying vivid-core library"
-)
+# Libraries are built to lib/ directly (CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+# Executable finds them via RPATH (@executable_path/../lib or $ORIGIN/../lib)
 
-# On Windows, copy GLFW DLL to bin directory (when built as shared library)
+# On Windows, copy GLFW DLL to lib directory (when built as shared library)
 if(WIN32)
     add_custom_command(TARGET vivid-core POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
             $<TARGET_FILE:glfw>
-            ${CMAKE_BINARY_DIR}/bin/
+            ${CMAKE_BINARY_DIR}/lib/
         COMMENT "Copying GLFW DLL"
     )
 endif()

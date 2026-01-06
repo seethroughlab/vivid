@@ -50,7 +50,7 @@ using namespace vivid::effects;
 // Generators (no input required)
 REGISTER_OPERATOR_FULL(Noise, "Generators", "Fractal noise generator", false)
     .related({"Gradient", "Displace", "FBM"})
-    .examples({"projects/getting-started/02-hello-noise/"})
+    .examples({"modules/vivid-core/examples/hello-noise/"})
     ;
 REGISTER_OPERATOR_FULL(SolidColor, "Generators", "Solid color fill", false)
     .related({"Gradient", "Shape"})
@@ -113,7 +113,7 @@ REGISTER_OPERATOR_FULL(BarrelDistortion, "Effects", "Barrel/pincushion distortio
 REGISTER_OPERATOR_FULL(Feedback, "Effects", "Frame feedback loop", true)
     .limitations({"Requires careful decay settings to avoid whiteout", "High memory usage at large resolutions"})
     .related({"Particles", "Transform", "Blur"})
-    .examples({"examples/2d-effects/feedback/"})
+    .examples({"modules/vivid-core/examples/feedback/"})
     ;
 REGISTER_OPERATOR_FULL(FrameCache, "Effects", "Buffer multiple frames", true)
     .limitations({"Memory usage scales with frame count", "Max 128 frames"})
@@ -139,7 +139,7 @@ REGISTER_OPERATOR_FULL(Scanlines, "Retro", "CRT scanline effect", true)
     ;
 REGISTER_OPERATOR_FULL(CRTEffect, "Retro", "Full CRT simulation", true)
     .related({"Scanlines", "BarrelDistortion", "ChromaticAberration", "Vignette"})
-    .examples({"examples/retro/retro-crt/"})
+    .examples({"modules/vivid-core/examples/retro-crt/"})
     ;
 REGISTER_OPERATOR_FULL(Downsample, "Retro", "Low resolution effect", true)
     .related({"Pixelate", "Quantize", "Dither"})
@@ -165,7 +165,7 @@ REGISTER_OPERATOR_FULL(Switch, "Compositing", "Switch between inputs", true)
 REGISTER_OPERATOR_FULL(Particles, "Particles", "2D particle system", false)
     .limitations({"Turbulence is random, not curl noise/flow fields", "Single attractor only", "CPU-based physics (~10k particle limit)"})
     .related({"Plexus", "PointSprites", "Feedback"})
-    .examples({"examples/2d-effects/particles/"})
+    .examples({"modules/vivid-core/examples/particles/"})
     ;
 REGISTER_OPERATOR_FULL(PointSprites, "Particles", "Point-based particles", false)
     .related({"Particles", "Plexus"})
@@ -177,13 +177,13 @@ REGISTER_OPERATOR_FULL(GPUParticles, "Particles", "GPU compute particle system",
 REGISTER_OPERATOR_FULL(ParticleSystem, "Particles", "Unified particle system with CPU/GPU simulation and multiple render modes", false)
     .limitations({"GPU simulation and Billboard/Mesh rendering are work in progress"})
     .related({"Particles", "GPUParticles", "Particles3D"})
-    .examples({"projects/particles/"})
+    .examples({"modules/vivid-core/examples/particle-forces/"})
     ;
 
 // Canvas
 REGISTER_OPERATOR_FULL(Canvas, "Canvas", "Imperative 2D drawing", false)
     .related({"Shape", "Composite"})
-    .examples({"examples/showcase/canvas-compositing/"})
+    .examples({"modules/vivid-core/examples/canvas-drawing/"})
     ;
 
 // Math/Logic (keep basic registration for correct OutputKind::Value)

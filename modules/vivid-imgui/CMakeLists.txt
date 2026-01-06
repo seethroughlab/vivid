@@ -87,22 +87,17 @@ elseif(WIN32)
         ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug
         ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release
     )
-    # Copy DLL to bin directory
+    # Windows: DLLs must be in same directory as exe (no RPATH on Windows)
     add_custom_command(TARGET vivid-imgui POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:vivid-imgui>
             ${CMAKE_BINARY_DIR}/bin/
-        COMMENT "Copying vivid-imgui DLL"
+        COMMENT "Copying vivid-imgui DLL to bin"
     )
 endif()
 
-# Copy to lib directory for consistency
-add_custom_command(TARGET vivid-imgui POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        $<TARGET_FILE:vivid-imgui>
-        ${CMAKE_BINARY_DIR}/lib/
-    COMMENT "Copying vivid-imgui library"
-)
+# Library is built to lib/ directly (CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+# macOS/Linux find it via RPATH; Windows copies to bin/ above
 
 # Copy ImGui headers to build directory so user chains can include them
 # Hot-reload needs these when compiling user chains that use <vivid/gui/imgui.h>

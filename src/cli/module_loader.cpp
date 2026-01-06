@@ -61,8 +61,11 @@ void loadAllModules() {
     }
 #endif
 
-    // Load built-in modules
+    // Load built-in modules from lib/ directory (sibling to bin/)
     if (!exeDir.empty()) {
+        // Libraries are in ../lib/ relative to the executable in bin/
+        fs::path libDir = exeDir.parent_path() / "lib";
+
         const std::vector<std::string> builtinModules = {
             "vivid-audio",
             "vivid-video",
@@ -74,11 +77,11 @@ void loadAllModules() {
 
         for (const auto& moduleName : builtinModules) {
 #ifdef __APPLE__
-            fs::path libPath = exeDir / ("lib" + moduleName + ".dylib");
+            fs::path libPath = libDir / ("lib" + moduleName + ".dylib");
 #elif defined(_WIN32)
-            fs::path libPath = exeDir / (moduleName + ".dll");
+            fs::path libPath = libDir / (moduleName + ".dll");
 #else
-            fs::path libPath = exeDir / ("lib" + moduleName + ".so");
+            fs::path libPath = libDir / ("lib" + moduleName + ".so");
 #endif
             if (fs::exists(libPath)) {
                 loadModuleLibrary(libPath);

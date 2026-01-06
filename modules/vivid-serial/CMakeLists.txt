@@ -49,10 +49,5 @@ else()
     endif()
 endif()
 
-# Copy library next to vivid executable
-add_custom_command(TARGET vivid-serial POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:vivid-serial>
-        $<TARGET_FILE_DIR:vivid>/
-    COMMENT "Copying vivid-serial library"
-)
+# Library is built to lib/ directly (CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+# Executable finds it via RPATH

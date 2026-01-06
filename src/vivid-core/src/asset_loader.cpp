@@ -27,13 +27,16 @@ AssetLoader::AssetLoader() {
     detectExecutableDir();
 
     // Add default search paths
-    // 1. Executable directory (installed builds)
+    // 1. Build root (parent of bin/) - where shaders/, templates/, presets/ live
+    m_searchPaths.push_back(m_executableDir.parent_path());
+
+    // 2. Executable directory (for backwards compatibility)
     m_searchPaths.push_back(m_executableDir);
 
-    // 2. Current working directory (development)
+    // 3. Current working directory (development)
     m_searchPaths.push_back(fs::current_path());
 
-    // 3. Common development paths
+    // 4. Common development paths
     m_searchPaths.push_back(fs::current_path() / "core");
     m_searchPaths.push_back(fs::current_path() / "addons");
 }

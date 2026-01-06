@@ -50,6 +50,11 @@ target_link_libraries(vivid
 # Platform-specific settings
 if(APPLE)
     # macOS frameworks are linked via vivid-core
+    # Set RPATH to find libraries in ../lib relative to executable
+    set_target_properties(vivid PROPERTIES
+        INSTALL_RPATH "@executable_path/../lib"
+        BUILD_WITH_INSTALL_RPATH TRUE
+    )
 elseif(WIN32)
     # Export symbols for dynamically loaded chain DLLs
     # ENABLE_EXPORTS generates an import library (vivid.lib) for the executable
@@ -64,30 +69,71 @@ elseif(UNIX)
     if(X11_FOUND)
         target_link_libraries(vivid PRIVATE ${X11_LIBRARIES})
     endif()
+    # Set RPATH to find libraries in ../lib relative to executable
+    set_target_properties(vivid PROPERTIES
+        INSTALL_RPATH "$ORIGIN/../lib"
+        BUILD_WITH_INSTALL_RPATH TRUE
+    )
 endif()
 
-# Copy shaders to build directory
+# Copy shaders to build root (matches release structure)
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/src/vivid-core/shaders
-        $<TARGET_FILE_DIR:vivid>/shaders
+        ${CMAKE_BINARY_DIR}/shaders
     COMMENT "Copying shaders..."
 )
 
-# Copy templates to build directory
+# Copy templates to build root (matches release structure)
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/src/vivid-core/templates
-        $<TARGET_FILE_DIR:vivid>/templates
+        ${CMAKE_BINARY_DIR}/templates
     COMMENT "Copying templates..."
 )
 
-# Copy presets to build directory
+# Copy presets to build root (matches release structure)
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${CMAKE_SOURCE_DIR}/modules/vivid-audio/presets
-        $<TARGET_FILE_DIR:vivid>/presets
+        ${CMAKE_BINARY_DIR}/presets
     COMMENT "Copying presets..."
+)
+
+# Copy projects to build root (matches release structure)
+add_custom_command(TARGET vivid POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/projects
+        ${CMAKE_BINARY_DIR}/projects
+    COMMENT "Copying projects..."
+)
+
+# Copy vivid-core examples (source is in src/vivid-core/examples/, output to modules/vivid-core/examples/)
+add_custom_command(TARGET vivid POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/src/vivid-core/examples
+        ${CMAKE_BINARY_DIR}/modules/vivid-core/examples
+    COMMENT "Copying vivid-core examples..."
+)
+
+# Copy module examples to build root (for .examples() paths in operator metadata)
+# These paths are like "modules/vivid-audio/examples/..." so we preserve that structure
+file(GLOB MODULE_EXAMPLE_DIRS ${CMAKE_SOURCE_DIR}/modules/*/examples)
+foreach(EXAMPLE_DIR ${MODULE_EXAMPLE_DIRS})
+    # Get the module name from the path (e.g., vivid-audio from modules/vivid-audio/examples)
+    get_filename_component(MODULE_PATH ${EXAMPLE_DIR} DIRECTORY)
+    get_filename_component(MODULE_NAME ${MODULE_PATH} NAME)
+    add_custom_command(TARGET vivid POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            ${EXAMPLE_DIR}
+            ${CMAKE_BINARY_DIR}/modules/${MODULE_NAME}/examples
+        COMMENT "Copying ${MODULE_NAME} examples..."
+    )
+endforeach()
+
+# Generate version.json for extension compatibility (at configure time)
+file(WRITE ${CMAKE_BINARY_DIR}/version.json
+    "{\"version\": \"${VIVID_VERSION}\", \"channel\": \"dev\"}\n"
 )
 
 # Install target

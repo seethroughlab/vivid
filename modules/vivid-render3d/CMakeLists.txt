@@ -75,20 +75,15 @@ if(APPLE)
     )
 endif()
 
-# Copy library next to vivid executable
-add_custom_command(TARGET vivid-render3d POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:vivid-render3d>
-        $<TARGET_FILE_DIR:vivid>/
-    COMMENT "Copying vivid-render3d library"
-)
+# Library is built to lib/ directly (CMAKE_LIBRARY_OUTPUT_DIRECTORY)
+# Executable finds it via RPATH
 
-# Copy shaders to build directory
+# Copy shaders to build root (matches release structure)
 file(GLOB RENDER3D_SHADERS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.wgsl)
 if(RENDER3D_SHADERS)
     add_custom_command(TARGET vivid-render3d POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:vivid>/shaders
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${RENDER3D_SHADERS} $<TARGET_FILE_DIR:vivid>/shaders/
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${RENDER3D_SHADERS} ${CMAKE_BINARY_DIR}/shaders/
         COMMENT "Copying render3d shaders"
     )
 endif()
