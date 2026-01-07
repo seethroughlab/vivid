@@ -69,7 +69,7 @@ static json operatorMetaToJson(const OperatorMeta& meta) {
     op["name"] = meta.name;
     op["category"] = meta.category;
     op["description"] = meta.description;
-    op["addon"] = meta.addon.empty() ? json(nullptr) : json(meta.addon);
+    op["module"] = meta.module.empty() ? json(nullptr) : json(meta.module);
     op["requiresInput"] = meta.requiresInput;
     op["outputType"] = outputKindName(meta.outputKind);
 

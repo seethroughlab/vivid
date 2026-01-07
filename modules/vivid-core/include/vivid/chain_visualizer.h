@@ -3,8 +3,8 @@
 // Vivid Chain Visualizer
 // OverlayCanvas-based node graph for visualizing operator chains
 //
-// Addon-agnostic: operators provide their own visualization via drawVisualization().
-// No direct dependencies on render3d, audio, ImGui, or other addons.
+// Module-agnostic: operators provide their own visualization via drawVisualization().
+// No direct dependencies on render3d, audio, ImGui, or other modules.
 
 #include <vivid/frame_input.h>
 #include <vivid/context.h>

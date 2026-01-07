@@ -38,7 +38,7 @@ AssetLoader::AssetLoader() {
 
     // 4. Common development paths
     m_searchPaths.push_back(fs::current_path() / "core");
-    m_searchPaths.push_back(fs::current_path() / "addons");
+    m_searchPaths.push_back(fs::current_path() / "modules");
 }
 
 void AssetLoader::detectExecutableDir() {
@@ -212,11 +212,10 @@ std::string AssetLoader::loadText(const std::string& path) {
 std::string AssetLoader::loadShader(const std::string& name) {
     // Try shader-specific paths
     std::vector<std::string> shaderPaths = {
-        "shaders/" + name,                          // Installed build
-        "core/shaders/" + name,                     // Development
-        "addons/vivid-effects-2d/shaders/" + name,  // Legacy addon path
-        "addons/vivid-render3d/shaders/" + name,    // 3D addon
-        "addons/vivid-video/shaders/" + name,       // Video addon
+        "shaders/" + name,                            // Installed build
+        "core/shaders/" + name,                       // Development
+        "modules/vivid-render3d/shaders/" + name,     // 3D module
+        "modules/vivid-video/shaders/" + name,        // Video module
     };
 
     for (const auto& path : shaderPaths) {

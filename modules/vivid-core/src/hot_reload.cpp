@@ -295,7 +295,7 @@ bool HotReload::compile() {
 
     // Find vivid include directories (look relative to exe or in source tree)
     fs::path vividInclude;
-    fs::path addonsLib;
+    fs::path modulesLib;
     std::vector<fs::path> depIncludes;
 
     // Try source tree first (development mode)
@@ -330,14 +330,14 @@ bool HotReload::compile() {
 #ifdef _WIN32
         // Check for Debug/Release subdirectories (MSVC multi-config)
         if (fs::exists(libDir / "Debug")) {
-            addonsLib = libDir / "Debug";
+            modulesLib = libDir / "Debug";
         } else if (fs::exists(libDir / "Release")) {
-            addonsLib = libDir / "Release";
+            modulesLib = libDir / "Release";
         } else {
-            addonsLib = libDir;
+            modulesLib = libDir;
         }
 #else
-        addonsLib = libDir;
+        modulesLib = libDir;
 #endif
 
         // Set up library registry for dynamic discovery
@@ -377,7 +377,7 @@ bool HotReload::compile() {
     } else {
         // Fallback to installed location
         vividInclude = exeDir / ".." / "include";
-        addonsLib = exeDir;
+        modulesLib = exeDir;
     }
 
     // Add user library paths from ~/.vivid/libs/
@@ -420,22 +420,22 @@ bool HotReload::compile() {
     clCmd << "/link ";
 
     // Link against vivid-core.lib import library (required for core symbols like Context, Chain)
-    // vivid-core.lib is generated in build/lib/Debug (same as addon libs)
-    fs::path vividCoreLib = addonsLib / "vivid-core.lib";
+    // vivid-core.lib is generated in build/lib/Debug (same as module libs)
+    fs::path vividCoreLib = modulesLib / "vivid-core.lib";
     if (fs::exists(vividCoreLib)) {
         clCmd << "\"" << vividCoreLib.string() << "\" ";
     }
 
     // Link against vivid.lib import library (for symbols in vivid.exe if needed)
-    // vivid.lib is generated in build/lib/Debug (same as addon libs)
-    fs::path vividLib = addonsLib / "vivid.lib";
+    // vivid.lib is generated in build/lib/Debug (same as module libs)
+    fs::path vividLib = modulesLib / "vivid.lib";
     if (fs::exists(vividLib)) {
         clCmd << "\"" << vividLib.string() << "\" ";
     }
 
     // Link discovered libraries
     for (const auto& lib : m_moduleRegistry->modules()) {
-        fs::path libPath = addonsLib / (lib.libraryName + ".lib");
+        fs::path libPath = modulesLib / (lib.libraryName + ".lib");
         if (fs::exists(libPath)) {
             clCmd << "\"" << libPath.string() << "\" ";
         }
@@ -473,10 +473,10 @@ bool HotReload::compile() {
 
 #ifdef __APPLE__
     cmd << "-undefined dynamic_lookup ";  // Allow symbols from vivid executable
-    cmd << "-L\"" << addonsLib.string() << "\" ";
+    cmd << "-L\"" << modulesLib.string() << "\" ";
     // Link discovered libraries
     for (const auto& lib : m_moduleRegistry->modules()) {
-        fs::path libPath = addonsLib / ("lib" + lib.libraryName + ".dylib");
+        fs::path libPath = modulesLib / ("lib" + lib.libraryName + ".dylib");
         if (fs::exists(libPath)) {
             cmd << "-l" << lib.libraryName << " ";
         }
@@ -503,12 +503,12 @@ bool HotReload::compile() {
         }
         cmd << "-Wl,-rpath,\"" << libDir.string() << "\" ";
     }
-    cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
+    cmd << "-Wl,-rpath,\"" << modulesLib.string() << "\" ";
 #else
-    cmd << "-L\"" << addonsLib.string() << "\" ";
+    cmd << "-L\"" << modulesLib.string() << "\" ";
     // Link discovered libraries
     for (const auto& lib : m_moduleRegistry->modules()) {
-        fs::path libPath = addonsLib / ("lib" + lib.libraryName + ".so");
+        fs::path libPath = modulesLib / ("lib" + lib.libraryName + ".so");
         if (fs::exists(libPath)) {
             cmd << "-l" << lib.libraryName << " ";
         }
@@ -535,7 +535,7 @@ bool HotReload::compile() {
         }
         cmd << "-Wl,-rpath,\"" << libDir.string() << "\" ";
     }
-    cmd << "-Wl,-rpath,\"" << addonsLib.string() << "\" ";
+    cmd << "-Wl,-rpath,\"" << modulesLib.string() << "\" ";
 #endif
 
     cmd << "-o \"" << m_libraryPath.string() << "\" ";

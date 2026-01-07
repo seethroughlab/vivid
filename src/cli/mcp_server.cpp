@@ -418,51 +418,13 @@ private:
         });
 
         // list_operators - List available operators (from registry)
+        // Returns minimal info: name, category, module. For details, read the header files.
         tools.push_back({
             {"name", "list_operators"},
-            {"description", "Get a list of all available Vivid operators with their parameters, grouped by category."},
+            {"description", "List all Vivid operators with name, category, and source module. For API details, read the operator's header file (grep for 'class OperatorName' in include/)."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", json::object()}
-            }}
-        });
-
-        // get_operator - Get details for specific operator
-        tools.push_back({
-            {"name", "get_operator"},
-            {"description", "Get detailed information about a specific Vivid operator including parameters and usage."},
-            {"inputSchema", {
-                {"type", "object"},
-                {"properties", {
-                    {"name", {{"type", "string"}, {"description", "Operator name (e.g., 'Noise', 'Blur', 'Feedback')"}}}
-                }},
-                {"required", json::array({"name"})}
-            }}
-        });
-
-        // search_docs - Search documentation
-        tools.push_back({
-            {"name", "search_docs"},
-            {"description", "Search Vivid documentation for relevant information about operators, patterns, or API details."},
-            {"inputSchema", {
-                {"type", "object"},
-                {"properties", {
-                    {"query", {{"type", "string"}, {"description", "Search query"}}}
-                }},
-                {"required", json::array({"query"})}
-            }}
-        });
-
-        // search_operators - Search operators by keyword
-        tools.push_back({
-            {"name", "search_operators"},
-            {"description", "Search for Vivid operators by keyword. Searches operator names, descriptions, categories, and related operators."},
-            {"inputSchema", {
-                {"type", "object"},
-                {"properties", {
-                    {"query", {{"type", "string"}, {"description", "Search keyword (e.g., 'camera', 'distortion', 'audio')"}}}
-                }},
-                {"required", json::array({"query"})}
             }}
         });
 
@@ -476,7 +438,7 @@ private:
                     {"name", {{"type", "string"}, {"description", "Project name"}}},
                     {"path", {{"type", "string"}, {"description", "Parent directory (optional, defaults to current directory)"}}},
                     {"template", {{"type", "string"}, {"description", "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit"}}},
-                    {"addons", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Modules to include (use list_addons to see available)"}}},
+                    {"modules", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Modules to include (use list_modules to see available)"}}},
                     {"force", {{"type", "boolean"}, {"description", "If true, remove existing directory first (use with caution)"}}}
                 }},
                 {"required", json::array({"name"})}
@@ -550,10 +512,10 @@ private:
             }}
         });
 
-        // list_addons - List available addons
+        // list_modules - List available modules
         tools.push_back({
-            {"name", "list_addons"},
-            {"description", "List installed Vivid addons."},
+            {"name", "list_modules"},
+            {"description", "List installed Vivid modules."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", json::object()}
@@ -564,29 +526,6 @@ private:
         tools.push_back({
             {"name", "list_templates"},
             {"description", "List available project templates with descriptions. Use with create_project."},
-            {"inputSchema", {
-                {"type", "object"},
-                {"properties", json::object()}
-            }}
-        });
-
-        // get_example - Get documentation for an example
-        tools.push_back({
-            {"name", "get_example"},
-            {"description", "Get the CLAUDE.md documentation for a specific example project. Returns API patterns and usage info."},
-            {"inputSchema", {
-                {"type", "object"},
-                {"properties", {
-                    {"path", {{"type", "string"}, {"description", "Example path (e.g., 'src/vivid-core/examples/2d-effects/feedback' or 'modules/vivid-audio/examples/drum-machine')"}}}
-                }},
-                {"required", json::array({"path"})}
-            }}
-        });
-
-        // list_examples - List all available examples
-        tools.push_back({
-            {"name", "list_examples"},
-            {"description", "List all available example projects with descriptions, grouped by category."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", json::object()}
@@ -681,8 +620,8 @@ private:
                 opInfo["description"] = meta->description;
                 opInfo["requiresInput"] = meta->requiresInput;
                 opInfo["outputType"] = outputKindName(meta->outputKind);
-                if (!meta->addon.empty()) {
-                    opInfo["addon"] = meta->addon;
+                if (!meta->module.empty()) {
+                    opInfo["module"] = meta->module;
                 }
 
                 // Get parameters
@@ -854,16 +793,16 @@ private:
                 "-t", templateName
             };
 
-            // Add addons if specified
-            if (args.contains("addons") && args["addons"].is_array()) {
-                std::string addonList;
-                for (const auto& addon : args["addons"]) {
-                    if (!addonList.empty()) addonList += ",";
-                    addonList += addon.get<std::string>();
+            // Add modules if specified
+            if (args.contains("modules") && args["modules"].is_array()) {
+                std::string moduleList;
+                for (const auto& mod : args["modules"]) {
+                    if (!moduleList.empty()) moduleList += ",";
+                    moduleList += mod.get<std::string>();
                 }
-                if (!addonList.empty()) {
-                    cmdArgs.push_back("-a");
-                    cmdArgs.push_back(addonList);
+                if (!moduleList.empty()) {
+                    cmdArgs.push_back("-m");
+                    cmdArgs.push_back(moduleList);
                 }
             }
 
@@ -1109,9 +1048,9 @@ private:
                 result["content"] = {{{"type", "text"}, {"text", "Bundle failed:\n" + cmdResult.output}}};
             }
         }
-        else if (name == "list_addons") {
+        else if (name == "list_modules") {
             std::vector<std::string> cmdArgs = {
-                getVividExecutable(), "addons", "list"
+                getVividExecutable(), "modules", "list"
             };
 
             auto cmdResult = runCommand(cmdArgs);

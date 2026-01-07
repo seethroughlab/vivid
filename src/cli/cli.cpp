@@ -130,9 +130,9 @@ static const char* CLAUDE_MD_TEMPLATE = R"(# %PROJECT_NAME%
 - Working on: [current task]
 - Issues: [any problems]
 
-## Addons Enabled
+## Modules Enabled
 
-%ADDONS_LIST%
+%MODULES_LIST%
 
 ## Style Preferences
 
@@ -176,20 +176,54 @@ std::string replaceAll(std::string str, const std::string& from, const std::stri
     return str;
 }
 
-// Available addons with descriptions
-struct AddonInfo {
+// Available modules with descriptions
+struct ModuleInfo {
     std::string name;
     std::string description;
+    fs::path path;  // Full path to module directory
 };
 
-static const std::vector<AddonInfo> AVAILABLE_ADDONS = {
-    {"vivid-audio", "Audio input, FFT analysis, beat detection, oscillators"},
-    {"vivid-video", "Video playback (HAP codec, platform decoders)"},
-    {"vivid-render3d", "3D rendering with PBR materials, GLTF loading, CSG"}
-};
+// Dynamically discover available modules by scanning the modules directory
+static std::vector<ModuleInfo> discoverModules() {
+    std::vector<ModuleInfo> modules;
+
+    fs::path exeDir = getExecutableDir();
+    fs::path modulesDir = exeDir.parent_path() / "modules";
+
+    if (!fs::exists(modulesDir) || !fs::is_directory(modulesDir)) {
+        return modules;
+    }
+
+    for (const auto& entry : fs::directory_iterator(modulesDir)) {
+        if (!entry.is_directory()) continue;
+
+        fs::path moduleJson = entry.path() / "module.json";
+        if (!fs::exists(moduleJson)) continue;
+
+        try {
+            std::ifstream f(moduleJson);
+            if (!f) continue;
+
+            json j = json::parse(f);
+            ModuleInfo info;
+            info.name = j.value("name", entry.path().filename().string());
+            info.description = j.value("description", "");
+            info.path = entry.path();
+            modules.push_back(info);
+        } catch (...) {
+            // Skip modules with invalid JSON
+        }
+    }
+
+    // Sort by name for consistent ordering
+    std::sort(modules.begin(), modules.end(),
+              [](const ModuleInfo& a, const ModuleInfo& b) { return a.name < b.name; });
+
+    return modules;
+}
 
 int createProject(const std::string& name, const std::string& templateName,
-                  bool minimal, bool skipPrompts, const std::vector<std::string>& addons) {
+                  bool minimal, bool skipPrompts, const std::vector<std::string>& modules) {
     fs::path projectPath = fs::current_path() / name;
 
     // Check if directory already exists
@@ -198,20 +232,21 @@ int createProject(const std::string& name, const std::string& templateName,
         return 1;
     }
 
-    // Validate addon names
-    for (const auto& addon : addons) {
+    // Validate module names
+    auto availableModules = discoverModules();
+    for (const auto& mod : modules) {
         bool valid = false;
-        for (const auto& available : AVAILABLE_ADDONS) {
-            if (addon == available.name) {
+        for (const auto& available : availableModules) {
+            if (mod == available.name) {
                 valid = true;
                 break;
             }
         }
         if (!valid) {
-            std::cerr << "Error: Unknown addon '" << addon << "'\n";
-            std::cerr << "Available addons:\n";
-            for (const auto& a : AVAILABLE_ADDONS) {
-                std::cerr << "  " << a.name << " - " << a.description << "\n";
+            std::cerr << "Error: Unknown module '" << mod << "'\n";
+            std::cerr << "Available modules:\n";
+            for (const auto& m : availableModules) {
+                std::cerr << "  " << m.name << " - " << m.description << "\n";
             }
             return 1;
         }
@@ -220,11 +255,11 @@ int createProject(const std::string& name, const std::string& templateName,
     // Confirm creation (unless --yes flag)
     if (!skipPrompts && !minimal) {
         std::cout << "Creating project '" << name << "' with template '" << templateName << "'";
-        if (!addons.empty()) {
-            std::cout << " and addons: ";
-            for (size_t i = 0; i < addons.size(); i++) {
+        if (!modules.empty()) {
+            std::cout << " and modules: ";
+            for (size_t i = 0; i < modules.size(); i++) {
                 if (i > 0) std::cout << ", ";
-                std::cout << addons[i];
+                std::cout << modules[i];
             }
         }
         std::cout << "...\n";
@@ -281,16 +316,16 @@ int createProject(const std::string& name, const std::string& templateName,
         gitignore << "imgui.ini\n";
         gitignore.close();
 
-        // Build addons list for CLAUDE.md
-        std::string addonsList;
-        addonsList += "- **Core** (always included): 2D effects, noise, blur, composite, feedback\n";
-        if (addons.empty()) {
-            addonsList += "\nNo additional addons selected. Add with `vivid new --addons vivid-audio,vivid-video`\n";
+        // Build modules list for CLAUDE.md
+        std::string modulesList;
+        modulesList += "- **Core** (always included): 2D effects, noise, blur, composite, feedback\n";
+        if (modules.empty()) {
+            modulesList += "\nNo additional modules selected. Add with `vivid new --modules vivid-audio,vivid-video`\n";
         } else {
-            for (const auto& addon : addons) {
-                for (const auto& info : AVAILABLE_ADDONS) {
-                    if (addon == info.name) {
-                        addonsList += "- **" + info.name + "**: " + info.description + "\n";
+            for (const auto& mod : modules) {
+                for (const auto& info : availableModules) {
+                    if (mod == info.name) {
+                        modulesList += "- **" + info.name + "**: " + info.description + "\n";
                         break;
                     }
                 }
@@ -299,7 +334,7 @@ int createProject(const std::string& name, const std::string& templateName,
 
         // Write CLAUDE.md
         std::string claudeMd = replaceAll(CLAUDE_MD_TEMPLATE, "%PROJECT_NAME%", name);
-        claudeMd = replaceAll(claudeMd, "%ADDONS_LIST%", addonsList);
+        claudeMd = replaceAll(claudeMd, "%MODULES_LIST%", modulesList);
         std::ofstream claudeFile(projectPath / "CLAUDE.md");
         if (claudeFile) {
             claudeFile << claudeMd;
@@ -463,11 +498,11 @@ void copyCommonResources(const fs::path& exeDir, const fs::path& destDir, const 
         fs::copy(srcInclude, includeDir, fs::copy_options::recursive);
     }
 
-    // Copy addon headers
-    for (const auto& addon : {"vivid-audio", "vivid-render3d", "vivid-video"}) {
-        fs::path addonInclude = exeDir.parent_path().parent_path() / "addons" / addon / "include";
-        if (fs::exists(addonInclude)) {
-            fs::copy(addonInclude, includeDir,
+    // Copy module headers
+    for (const auto& mod : discoverModules()) {
+        fs::path moduleInclude = mod.path / "include";
+        if (fs::exists(moduleInclude)) {
+            fs::copy(moduleInclude, includeDir,
                      fs::copy_options::recursive | fs::copy_options::overwrite_existing);
         }
     }
@@ -596,7 +631,7 @@ void copyProjectFiles(const fs::path& srcProject, const fs::path& chainPath,
     }
 }
 
-// Determine which addon libraries are required by analyzing the chain
+// Determine which module libraries are required by analyzing the chain
 std::vector<std::string> getRequiredLibraries(const fs::path& chainPath, const fs::path& exeDir) {
     std::vector<std::string> libs;
 
@@ -1003,7 +1038,7 @@ static int handleOperatorsCommand(const std::string& operatorName, bool jsonOutp
             op["name"] = meta->name;
             op["category"] = meta->category;
             op["description"] = meta->description;
-            op["addon"] = meta->addon.empty() ? json(nullptr) : json(meta->addon);
+            op["module"] = meta->module.empty() ? json(nullptr) : json(meta->module);
             op["requiresInput"] = meta->requiresInput;
             op["outputType"] = outputKindName(meta->outputKind);
             op["params"] = json::array();
@@ -1027,8 +1062,8 @@ static int handleOperatorsCommand(const std::string& operatorName, bool jsonOutp
             std::cout << "# " << meta->name << "\n\n";
             std::cout << meta->description << "\n\n";
             std::cout << "Category: " << meta->category << "\n";
-            if (!meta->addon.empty()) {
-                std::cout << "Addon: " << meta->addon << "\n";
+            if (!meta->module.empty()) {
+                std::cout << "Module: " << meta->module << "\n";
             }
             std::cout << "Output: " << outputKindName(meta->outputKind) << "\n";
             std::cout << "Requires input: " << (meta->requiresInput ? "Yes" : "No") << "\n";
@@ -1074,8 +1109,8 @@ static int handleOperatorsCommand(const std::string& operatorName, bool jsonOutp
                 std::cout << "## " << currentCategory << "\n";
             }
             std::cout << "  " << op.name;
-            if (!op.addon.empty()) {
-                std::cout << " [" << op.addon << "]";
+            if (!op.module.empty()) {
+                std::cout << " [" << op.module << "]";
             }
             std::cout << " - " << op.description << "\n";
         }
@@ -1244,7 +1279,7 @@ ParseResult parseArgs(int argc, char** argv) {
     // 'new' subcommand
     std::string newProjectName;
     std::string newTemplate = "blank";
-    std::vector<std::string> newAddons;
+    std::vector<std::string> newModules;
     bool newMinimal = false;
     bool newYes = false;
 
@@ -1252,8 +1287,8 @@ ParseResult parseArgs(int argc, char** argv) {
     newCmd->add_option("name", newProjectName, "Project name")->required();
     newCmd->add_option("-t,--template", newTemplate, "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit")
           ->default_val("blank");
-    newCmd->add_option("-a,--addons", newAddons,
-                       "Modules to include: vivid-audio, vivid-video, vivid-render3d")
+    newCmd->add_option("-m,--modules", newModules,
+                       "Modules to include (use 'vivid modules' to see available)")
           ->delimiter(',');
     newCmd->add_flag("--minimal", newMinimal, "Use minimal template");
     newCmd->add_flag("-y,--yes", newYes, "Skip confirmation prompts");
@@ -1320,7 +1355,7 @@ ParseResult parseArgs(int argc, char** argv) {
     if (newCmd->parsed()) {
         if (newMinimal) newTemplate = "minimal";
         result.handled = true;
-        result.exitCode = createProject(newProjectName, newTemplate, newMinimal, newYes, newAddons);
+        result.exitCode = createProject(newProjectName, newTemplate, newMinimal, newYes, newModules);
         return result;
     }
 

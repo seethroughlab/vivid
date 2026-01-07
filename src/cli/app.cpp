@@ -58,10 +58,10 @@
 #include <vivid/platform_macos.h>
 
 // -----------------------------------------------------------------------------
-// Dynamic ImGui Support (vivid-gui addon)
+// Dynamic ImGui Support (vivid-gui module)
 // -----------------------------------------------------------------------------
-// Function pointers for optional vivid-gui addon
-// These are looked up at runtime if the addon is loaded
+// Function pointers for optional vivid-gui module
+// These are looked up at runtime if the module is loaded
 
 namespace vivid::imgui_dynamic {
 
@@ -617,7 +617,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
             mlc.chainNeedsSetup = false;
 
-            // Check if vivid-gui addon was loaded and initialize ImGui
+            // Check if vivid-gui module was loaded and initialize ImGui
             imgui_dynamic::resetLookup();  // Re-scan since new libs may be loaded
             imgui_dynamic::tryInit(mlc.device, mlc.queue, mlc.surfaceFormat);
 

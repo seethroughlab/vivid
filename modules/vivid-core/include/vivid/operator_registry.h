@@ -26,7 +26,7 @@ struct OperatorMeta {
     std::string name;           ///< Operator class name (e.g., "Noise")
     std::string category;       ///< Category (e.g., "Generators", "Effects")
     std::string description;    ///< Brief description
-    std::string addon;          ///< Addon name if not core (e.g., "vivid-audio")
+    std::string module;         ///< Module name if not core (e.g., "vivid-audio")
     bool requiresInput;         ///< True if operator needs input connection
     OutputKind outputKind;      ///< Output type (Texture, Audio, etc.)
 

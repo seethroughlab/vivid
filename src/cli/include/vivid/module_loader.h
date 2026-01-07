@@ -1,5 +1,5 @@
 // Module Loader - shared dynamic library loading for CLI and MCP
-// Loads built-in addons and user-installed modules into OperatorRegistry
+// Loads built-in and user-installed modules into OperatorRegistry
 
 #pragma once
 
@@ -10,8 +10,8 @@ namespace vivid {
 /// Load a single module library (dylib/dll/so)
 void loadModuleLibrary(const std::filesystem::path& libPath);
 
-/// Load all modules: built-in addons from executable directory
-/// and user-installed modules from ~/.vivid/modules/
+/// Load all modules: built-in from executable directory
+/// and user-installed from ~/.vivid/modules/
 void loadAllModules();
 
 } // namespace vivid

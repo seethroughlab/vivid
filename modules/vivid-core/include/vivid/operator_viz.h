@@ -6,7 +6,7 @@
  *
  * Operators can override getVisualizationData() to provide hints
  * about how to visualize them. The chain visualizer renders based
- * on the data type - no registration or addon coupling needed.
+ * on the data type - no registration or module coupling needed.
  */
 
 #include <cstdint>

@@ -40,7 +40,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(earcut)
 message(STATUS "[vivid-core] Earcut source: ${earcut_SOURCE_DIR}")
 
-# Vivid core library sources (shared by executable and addons)
+# Vivid core library sources (shared by executable and modules)
 set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
     src/chain.cpp
@@ -143,7 +143,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/viz_helpers.h
 )
 
-# Core library (shared between executable and addons)
+# Core library (shared between executable and modules)
 add_library(vivid-core SHARED
     ${VIVID_CORE_LIB_SOURCES}
 )

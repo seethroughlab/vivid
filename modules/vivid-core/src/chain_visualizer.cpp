@@ -1,8 +1,8 @@
 // Vivid Chain Visualizer Implementation
 // Shows registered operators as nodes with connections
 //
-// Addon-agnostic: operators provide their own visualization via drawVisualization().
-// No direct dependencies on audio, render3d, or other addons.
+// Module-agnostic: operators provide their own visualization via drawVisualization().
+// No direct dependencies on audio, render3d, or other modules.
 
 #include <vivid/chain_visualizer.h>
 #include <vivid/viz_draw_list.h>
