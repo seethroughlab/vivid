@@ -49,6 +49,14 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     // For solid shapes, texture is white (1,1,1,1)
     return vec4f(in.color.rgb, in.color.a * texColor.a);
 }
+
+// Image fragment shader - samples full RGBA from texture
+@fragment
+fn fs_image(in: VertexOutput) -> @location(0) vec4f {
+    let texColor = textureSample(tex, texSampler, in.uv);
+    // Multiply texture color by vertex color (allows tinting, vertex white = use texture as-is)
+    return texColor * in.color;
+}
 )";
 
 CanvasRenderer::~CanvasRenderer() {
@@ -92,6 +100,11 @@ void CanvasRenderer::cleanup() {
     if (m_clipPipeline) {
         wgpuRenderPipelineRelease(m_clipPipeline);
         m_clipPipeline = nullptr;
+    }
+    // Clean up image pipeline
+    if (m_imagePipeline) {
+        wgpuRenderPipelineRelease(m_imagePipeline);
+        m_imagePipeline = nullptr;
     }
     // Clean up stencil buffer
     if (m_stencilView) {
@@ -250,6 +263,13 @@ void CanvasRenderer::createPipeline(Context& ctx) {
     pipelineDesc.multisample.mask = ~0u;
 
     m_pipeline = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
+
+    // Create image pipeline (uses fs_image shader for full RGBA texture sampling)
+    WGPUFragmentState imageFragmentState = fragmentState;
+    imageFragmentState.entryPoint = effects::toStringView("fs_image");
+    WGPURenderPipelineDescriptor imagePipelineDesc = pipelineDesc;
+    imagePipelineDesc.fragment = &imageFragmentState;
+    m_imagePipeline = wgpuDeviceCreateRenderPipeline(device, &imagePipelineDesc);
 
     // Create clip pipeline (writes to stencil, no color output)
     WGPUDepthStencilState clipDepthStencilState = {};
@@ -820,6 +840,8 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
     }
 
     // Render images (each with its own texture bind group and clip depth)
+    // Switch to image pipeline that samples full RGBA from texture
+    wgpuRenderPassEncoderSetPipeline(pass, m_imagePipeline);
     for (const auto& cmd : m_imageCommands) {
         if (cmd.vertices.empty() || !cmd.textureView) continue;
 

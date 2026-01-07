@@ -60,8 +60,16 @@ void setup(Context& ctx) {
     star.color.set(1.0f, 0.4f, 0.8f, 1.0f);
 
     // Create 2x3 grid using Canvas
+    // NOTE: Canvas.drawImage() requires operators to be processed first.
+    // Use input() to establish dependencies for correct processing order.
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
+    canvas.input(0, "solid");
+    canvas.input(1, "gradient");
+    canvas.input(2, "ramp");
+    canvas.input(3, "circle");
+    canvas.input(4, "rect");
+    canvas.input(5, "star");
 
     chain.output("canvas");
 }

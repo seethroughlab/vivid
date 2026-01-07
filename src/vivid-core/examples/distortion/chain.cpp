@@ -63,8 +63,14 @@ void setup(Context& ctx) {
     displace.strengthY = 1.0f;
 
     // Canvas for grid layout
+    // NOTE: Canvas.drawImage() requires operators to be processed first.
+    // Use input() to establish dependencies for correct processing order.
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
+    canvas.input(0, "chroma");
+    canvas.input(1, "barrel");
+    canvas.input(2, "edge");
+    canvas.input(3, "displace");
 
     chain.output("canvas");
 }

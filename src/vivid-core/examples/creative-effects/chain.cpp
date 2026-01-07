@@ -48,8 +48,14 @@ void setup(Context& ctx) {
     flash.mode = 0;  // Additive
 
     // Canvas for grid layout
+    // NOTE: Canvas.drawImage() requires operators to be processed first.
+    // Use input() to establish dependencies for correct processing order.
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
+    canvas.input(0, "pixelate");
+    canvas.input(1, "plexus");
+    canvas.input(2, "grain");
+    canvas.input(3, "flash");
 
     chain.output("canvas");
 }

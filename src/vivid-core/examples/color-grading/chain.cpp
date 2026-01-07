@@ -41,8 +41,14 @@ void setup(Context& ctx) {
     combined_quant.input("combined_bright");
 
     // Canvas for layout
+    // NOTE: Canvas.drawImage() requires operators to be processed first.
+    // Use input() to establish dependencies for correct processing order.
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
+    canvas.input(0, "source");
+    canvas.input(1, "hsv");
+    canvas.input(2, "brightness");
+    canvas.input(3, "combined_quant");
 
     chain.output("canvas");
 }

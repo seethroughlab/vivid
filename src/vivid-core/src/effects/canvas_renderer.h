@@ -229,6 +229,7 @@ private:
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;           ///< Main drawing pipeline (with stencil test)
+    WGPURenderPipeline m_imagePipeline = nullptr;      ///< Image drawing pipeline (samples full RGBA)
     WGPURenderPipeline m_clipPipeline = nullptr;       ///< Stencil-write pipeline (for clip paths)
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;

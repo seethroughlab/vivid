@@ -40,8 +40,14 @@ void setup(Context& ctx) {
     combined.repeat.set(2.0f, 2.0f);
 
     // Canvas for grid layout
+    // NOTE: Canvas.drawImage() requires operators to be processed first.
+    // Use input() to establish dependencies for correct processing order.
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
+    canvas.input(0, "transform");
+    canvas.input(1, "mirror");
+    canvas.input(2, "tile");
+    canvas.input(3, "combined");
 
     chain.output("canvas");
 }

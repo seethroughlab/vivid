@@ -81,8 +81,14 @@ void setup(Context& ctx) {
     combined_vignette.input("combined_bloom");
 
     // Canvas for grid layout
+    // NOTE: Canvas.drawImage() requires operators to be processed first.
+    // Use input() to establish dependencies for correct processing order.
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
+    canvas.input(0, "source");
+    canvas.input(1, "blur");
+    canvas.input(2, "bloom");
+    canvas.input(3, "combined_vignette");
 
     chain.output("canvas");
 }

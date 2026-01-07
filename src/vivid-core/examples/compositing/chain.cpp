@@ -66,8 +66,14 @@ void setup(Context& ctx) {
     logic.inputB = 0.5f;
 
     // Canvas for grid layout
+    // NOTE: Canvas.drawImage() requires operators to be processed first.
+    // Use input() to establish dependencies for correct processing order.
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
+    canvas.input(0, "compOver");
+    canvas.input(1, "compAdd");
+    canvas.input(2, "compMult");
+    canvas.input(3, "compScreen");
 
     chain.output("canvas");
 }
