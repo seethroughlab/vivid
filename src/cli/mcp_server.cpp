@@ -189,6 +189,34 @@ std::string getVividExecutable() {
     return "vivid";  // Fallback to PATH
 }
 
+// Helper to get discovered modules (relative to executable)
+// Works for both dev builds (build/bin/vivid → build/modules/)
+// and installed binaries (~/.vivid/bin/vivid → ~/.vivid/modules/)
+std::vector<std::pair<std::string, fs::path>> getDiscoveredModules() {
+    std::vector<std::pair<std::string, fs::path>> modules;
+
+    // Get executable directory
+    fs::path exeDir = fs::path(getVividExecutable()).parent_path();
+
+    // Modules are at ../modules relative to bin/
+    fs::path modulesDir = exeDir.parent_path() / "modules";
+
+    if (fs::exists(modulesDir) && fs::is_directory(modulesDir)) {
+        for (const auto& entry : fs::directory_iterator(modulesDir)) {
+            if (entry.is_directory()) {
+                // Check for module.json OR examples/ to identify as module
+                fs::path moduleJson = entry.path() / "module.json";
+                fs::path examplesDir = entry.path() / "examples";
+                if (fs::exists(moduleJson) || fs::exists(examplesDir)) {
+                    modules.push_back({entry.path().filename().string(), entry.path()});
+                }
+            }
+        }
+    }
+
+    return modules;
+}
+
 // Helper to run a command and capture output
 struct CommandResult {
     int exitCode;
@@ -448,7 +476,7 @@ private:
                     {"name", {{"type", "string"}, {"description", "Project name"}}},
                     {"path", {{"type", "string"}, {"description", "Parent directory (optional, defaults to current directory)"}}},
                     {"template", {{"type", "string"}, {"description", "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit"}}},
-                    {"addons", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Addons to include: vivid-audio, vivid-video, vivid-render3d"}}},
+                    {"addons", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Modules to include (use list_addons to see available)"}}},
                     {"force", {{"type", "boolean"}, {"description", "If true, remove existing directory first (use with caution)"}}}
                 }},
                 {"required", json::array({"name"})}
@@ -1178,31 +1206,42 @@ private:
                 return categoryExamples;
             };
 
-            // Get project root
-            fs::path projectRoot = fs::current_path();
+            // Get root relative to executable (works for dev builds and installed binaries)
+            fs::path exeDir = fs::path(getVividExecutable()).parent_path();
+            fs::path rootDir = exeDir.parent_path();
 
-            // Core examples
-            auto coreExamples = scanExamples(projectRoot / "src/vivid-core/examples/2d-effects", "2D Effects");
-            if (!coreExamples.empty()) examples["Core - 2D Effects"] = coreExamples;
+            // Core examples (in src/vivid-core/examples/ for dev, or examples/ for installed)
+            fs::path coreExamplesDir = rootDir / "src" / "vivid-core" / "examples";
+            if (!fs::exists(coreExamplesDir)) {
+                coreExamplesDir = rootDir / "examples";  // Installed layout
+            }
 
-            coreExamples = scanExamples(projectRoot / "src/vivid-core/examples/utility", "Utility");
-            if (!coreExamples.empty()) examples["Core - Utility"] = coreExamples;
+            if (fs::exists(coreExamplesDir)) {
+                auto coreExamples = scanExamples(coreExamplesDir / "2d-effects", "2D Effects");
+                if (!coreExamples.empty()) examples["Core - 2D Effects"] = coreExamples;
 
-            // Module examples
-            for (const auto& moduleName : {"vivid-audio", "vivid-video", "vivid-render3d", "vivid-network", "vivid-serial", "vivid-midi"}) {
-                auto moduleExamples = scanExamples(projectRoot / "modules" / moduleName / "examples", moduleName);
+                coreExamples = scanExamples(coreExamplesDir / "utility", "Utility");
+                if (!coreExamples.empty()) examples["Core - Utility"] = coreExamples;
+            }
+
+            // Module examples - discover dynamically
+            for (const auto& [moduleName, modulePath] : getDiscoveredModules()) {
+                auto moduleExamples = scanExamples(modulePath / "examples", moduleName);
                 if (!moduleExamples.empty()) {
                     examples[std::string("Module - ") + moduleName] = moduleExamples;
                 }
             }
 
             // Getting started examples
-            auto gettingStarted = scanExamples(projectRoot / "projects/getting-started", "Getting Started");
-            if (!gettingStarted.empty()) examples["Getting Started"] = gettingStarted;
+            fs::path projectsDir = rootDir / "projects";
+            if (fs::exists(projectsDir)) {
+                auto gettingStarted = scanExamples(projectsDir / "getting-started", "Getting Started");
+                if (!gettingStarted.empty()) examples["Getting Started"] = gettingStarted;
 
-            // Showcase examples
-            auto showcase = scanExamples(projectRoot / "projects/showcase", "Showcase");
-            if (!showcase.empty()) examples["Showcase"] = showcase;
+                // Showcase examples
+                auto showcase = scanExamples(projectsDir / "showcase", "Showcase");
+                if (!showcase.empty()) examples["Showcase"] = showcase;
+            }
 
             result["content"] = {{{"type", "text"}, {"text", examples.dump(2)}}};
         }
@@ -1495,10 +1534,31 @@ private:
             {"CANVAS-API.md", loadDocsFile("CANVAS-API.md")},               // 2D canvas drawing API
             {"ERROR-REFERENCE.md", loadDocsFile("ERROR-REFERENCE.md")},     // Debugging help
             {"CREATING-OPERATORS.md", loadDocsFile("CREATING-OPERATORS.md")}, // Custom operators
-            {"vivid-audio/README.md", loadModuleReadme("vivid-audio")},     // Audio module
-            {"vivid-video/README.md", loadModuleReadme("vivid-video")},     // Video module
-            {"vivid-render3d/README.md", loadModuleReadme("vivid-render3d")}, // 3D module
         };
+
+        // Dynamically discover module READMEs
+        // Check both build/modules/ and source modules/ directories
+        for (const auto& [moduleName, modulePath] : getDiscoveredModules()) {
+            fs::path readme = modulePath / "README.md";
+
+            // If not in build dir, try source dir
+            if (!fs::exists(readme)) {
+                fs::path exeDir = fs::path(getVividExecutable()).parent_path();
+                fs::path sourceModules = exeDir.parent_path().parent_path() / "modules" / moduleName / "README.md";
+                if (fs::exists(sourceModules)) {
+                    readme = sourceModules;
+                }
+            }
+
+            if (fs::exists(readme)) {
+                std::ifstream file(readme);
+                if (file) {
+                    std::stringstream buffer;
+                    buffer << file.rdbuf();
+                    docs.push_back({moduleName + "/README.md", buffer.str()});
+                }
+            }
+        }
 
         // Split query into searchable words
         std::vector<std::string> queryWords = splitIntoWords(query);
