@@ -532,6 +532,39 @@ private:
             }}
         });
 
+        // list_templates - List available project templates
+        tools.push_back({
+            {"name", "list_templates"},
+            {"description", "List available project templates with descriptions. Use with create_project."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // get_example - Get documentation for an example
+        tools.push_back({
+            {"name", "get_example"},
+            {"description", "Get the CLAUDE.md documentation for a specific example project. Returns API patterns and usage info."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Example path (e.g., 'src/vivid-core/examples/2d-effects/feedback' or 'modules/vivid-audio/examples/drum-machine')"}}}
+                }},
+                {"required", json::array({"path"})}
+            }}
+        });
+
+        // list_examples - List all available examples
+        tools.push_back({
+            {"name", "list_examples"},
+            {"description", "List all available example projects with descriptions, grouped by category."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
         return {{"tools", tools}};
     }
 
@@ -1056,6 +1089,123 @@ private:
             auto cmdResult = runCommand(cmdArgs);
             result["content"] = {{{"type", "text"}, {"text", cmdResult.output}}};
         }
+        else if (name == "list_templates") {
+            // Return hardcoded template info (matches CLI new command)
+            json templates = json::array();
+            templates.push_back({
+                {"name", "blank"},
+                {"description", "Empty project with minimal setup - just outputs a solid color"}
+            });
+            templates.push_back({
+                {"name", "minimal"},
+                {"description", "Minimal setup() and update() functions with no operators"}
+            });
+            templates.push_back({
+                {"name", "noise-demo"},
+                {"description", "Animated fractal noise generator - good starting point for visuals"}
+            });
+            templates.push_back({
+                {"name", "feedback"},
+                {"description", "Feedback loop with zoom/rotate - creates tunnel and trail effects"}
+            });
+            templates.push_back({
+                {"name", "audio-visualizer"},
+                {"description", "FFT audio analysis driving visual parameters (requires vivid-audio)"}
+            });
+            templates.push_back({
+                {"name", "3d-orbit"},
+                {"description", "Orbiting 3D camera around a sphere (requires vivid-render3d)"}
+            });
+
+            result["content"] = {{{"type", "text"}, {"text", templates.dump(2)}}};
+        }
+        else if (name == "get_example") {
+            std::string examplePath = args.value("path", "");
+            if (examplePath.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Example path is required"}}};
+                return result;
+            }
+
+            std::string doc = loadExampleDoc(examplePath);
+            if (doc.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "No CLAUDE.md found for example: " + examplePath}}};
+            } else {
+                result["content"] = {{{"type", "text"}, {"text", doc}}};
+            }
+        }
+        else if (name == "list_examples") {
+            // List examples from known locations
+            json examples = json::object();
+
+            // Helper to scan a directory for examples
+            auto scanExamples = [this](const fs::path& baseDir, const std::string& category) {
+                json categoryExamples = json::array();
+                if (fs::exists(baseDir) && fs::is_directory(baseDir)) {
+                    for (const auto& entry : fs::directory_iterator(baseDir)) {
+                        if (entry.is_directory()) {
+                            fs::path chainFile = entry.path() / "chain.cpp";
+                            if (fs::exists(chainFile)) {
+                                json example;
+                                example["name"] = entry.path().filename().string();
+                                example["path"] = entry.path().string();
+
+                                // Try to get description from CLAUDE.md
+                                fs::path claudeFile = entry.path() / "CLAUDE.md";
+                                if (fs::exists(claudeFile)) {
+                                    std::ifstream file(claudeFile);
+                                    if (file) {
+                                        std::string line;
+                                        // Read first non-empty, non-header line as description
+                                        while (std::getline(file, line)) {
+                                            if (!line.empty() && line[0] != '#' && line[0] != '-') {
+                                                example["description"] = line;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                    example["hasDoc"] = true;
+                                } else {
+                                    example["hasDoc"] = false;
+                                }
+
+                                categoryExamples.push_back(example);
+                            }
+                        }
+                    }
+                }
+                return categoryExamples;
+            };
+
+            // Get project root
+            fs::path projectRoot = fs::current_path();
+
+            // Core examples
+            auto coreExamples = scanExamples(projectRoot / "src/vivid-core/examples/2d-effects", "2D Effects");
+            if (!coreExamples.empty()) examples["Core - 2D Effects"] = coreExamples;
+
+            coreExamples = scanExamples(projectRoot / "src/vivid-core/examples/utility", "Utility");
+            if (!coreExamples.empty()) examples["Core - Utility"] = coreExamples;
+
+            // Module examples
+            for (const auto& moduleName : {"vivid-audio", "vivid-video", "vivid-render3d", "vivid-network", "vivid-serial", "vivid-midi"}) {
+                auto moduleExamples = scanExamples(projectRoot / "modules" / moduleName / "examples", moduleName);
+                if (!moduleExamples.empty()) {
+                    examples[std::string("Module - ") + moduleName] = moduleExamples;
+                }
+            }
+
+            // Getting started examples
+            auto gettingStarted = scanExamples(projectRoot / "projects/getting-started", "Getting Started");
+            if (!gettingStarted.empty()) examples["Getting Started"] = gettingStarted;
+
+            // Showcase examples
+            auto showcase = scanExamples(projectRoot / "projects/showcase", "Showcase");
+            if (!showcase.empty()) examples["Showcase"] = showcase;
+
+            result["content"] = {{{"type", "text"}, {"text", examples.dump(2)}}};
+        }
         else {
             result["isError"] = true;
             result["content"] = {{
@@ -1161,6 +1311,102 @@ private:
         return "Documentation file not found: " + filename;
     }
 
+    std::string loadModuleReadme(const std::string& moduleName) {
+        // Search for module README.md in various locations
+        std::vector<fs::path> searchPaths;
+
+        // 1. Current working directory (common for dev builds)
+        searchPaths.push_back(fs::current_path() / "modules" / moduleName / "README.md");
+
+        // 2. Paths relative to executable
+        fs::path exeDir;
+#ifdef __APPLE__
+        char pathBuf[4096];
+        uint32_t size = sizeof(pathBuf);
+        if (_NSGetExecutablePath(pathBuf, &size) == 0) {
+            exeDir = fs::path(pathBuf).parent_path();
+        }
+#elif defined(_WIN32)
+        char pathBuf[MAX_PATH];
+        if (GetModuleFileNameA(NULL, pathBuf, MAX_PATH) > 0) {
+            exeDir = fs::path(pathBuf).parent_path();
+        }
+#else
+        char pathBuf[4096];
+        ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
+        if (len != -1) {
+            pathBuf[len] = '\0';
+            exeDir = fs::path(pathBuf).parent_path();
+        }
+#endif
+
+        if (!exeDir.empty()) {
+            // build/bin/vivid -> modules (go up 2 levels)
+            searchPaths.push_back(exeDir.parent_path().parent_path() / "modules" / moduleName / "README.md");
+        }
+
+        for (const auto& path : searchPaths) {
+            if (fs::exists(path)) {
+                std::ifstream file(path);
+                if (file) {
+                    std::stringstream buffer;
+                    buffer << file.rdbuf();
+                    return buffer.str();
+                }
+            }
+        }
+
+        return "";  // Not found - don't add error message to search
+    }
+
+    std::string loadExampleDoc(const std::string& examplePath) {
+        // Load CLAUDE.md from an example directory
+        std::vector<fs::path> searchPaths;
+
+        // 1. Current working directory
+        searchPaths.push_back(fs::current_path() / examplePath / "CLAUDE.md");
+
+        // 2. Paths relative to executable
+        fs::path exeDir;
+#ifdef __APPLE__
+        char pathBuf[4096];
+        uint32_t size = sizeof(pathBuf);
+        if (_NSGetExecutablePath(pathBuf, &size) == 0) {
+            exeDir = fs::path(pathBuf).parent_path();
+        }
+#elif defined(_WIN32)
+        char pathBuf[MAX_PATH];
+        if (GetModuleFileNameA(NULL, pathBuf, MAX_PATH) > 0) {
+            exeDir = fs::path(pathBuf).parent_path();
+        }
+#else
+        char pathBuf[4096];
+        ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
+        if (len != -1) {
+            pathBuf[len] = '\0';
+            exeDir = fs::path(pathBuf).parent_path();
+        }
+#endif
+
+        if (!exeDir.empty()) {
+            // build/bin/vivid -> project root (go up 2 levels)
+            searchPaths.push_back(exeDir.parent_path().parent_path() / examplePath / "CLAUDE.md");
+        }
+
+        for (const auto& path : searchPaths) {
+            if (fs::exists(path)) {
+                std::ifstream file(path);
+                if (file) {
+                    std::stringstream buffer;
+                    buffer << file.rdbuf();
+                    return buffer.str();
+                }
+            }
+        }
+
+        return "";
+    }
+
     // Split a string into words, filtering out common stop words
     std::vector<std::string> splitIntoWords(const std::string& text) {
         std::vector<std::string> words;
@@ -1244,9 +1490,14 @@ private:
     std::string searchDocs(const std::string& query) {
         // Search examples and conceptual docs (not operator reference - use get_operator for that)
         std::vector<std::pair<std::string, std::string>> docs = {
-            {"RECIPES.md", loadDocsFile("RECIPES.md")},         // Full chain examples
-            {"CHAIN-API.md", loadDocsFile("CHAIN-API.md")},     // Chain concepts and API
-            {"CANVAS-API.md", loadDocsFile("CANVAS-API.md")},   // 2D canvas drawing API
+            {"RECIPES.md", loadDocsFile("RECIPES.md")},                     // Full chain examples
+            {"CHAIN-API.md", loadDocsFile("CHAIN-API.md")},                 // Chain concepts and API
+            {"CANVAS-API.md", loadDocsFile("CANVAS-API.md")},               // 2D canvas drawing API
+            {"ERROR-REFERENCE.md", loadDocsFile("ERROR-REFERENCE.md")},     // Debugging help
+            {"CREATING-OPERATORS.md", loadDocsFile("CREATING-OPERATORS.md")}, // Custom operators
+            {"vivid-audio/README.md", loadModuleReadme("vivid-audio")},     // Audio module
+            {"vivid-video/README.md", loadModuleReadme("vivid-video")},     // Video module
+            {"vivid-render3d/README.md", loadModuleReadme("vivid-render3d")}, // 3D module
         };
 
         // Split query into searchable words
