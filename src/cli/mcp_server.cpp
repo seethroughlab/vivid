@@ -1071,13 +1071,6 @@ private:
         json resources = json::array();
 
         resources.push_back({
-            {"uri", "vivid://docs/reference"},
-            {"name", "Vivid Operator Reference"},
-            {"description", "Core API reference for Vivid operators"},
-            {"mimeType", "text/markdown"}
-        });
-
-        resources.push_back({
             {"uri", "vivid://docs/recipes"},
             {"name", "Vivid Recipes"},
             {"description", "Complete chain.cpp examples and patterns"},
@@ -1091,13 +1084,7 @@ private:
         std::string uri = params.value("uri", "");
         json result;
 
-        if (uri == "vivid://docs/reference") {
-            result["contents"] = {{
-                {"uri", uri},
-                {"mimeType", "text/markdown"},
-                {"text", loadDocsFile("LLM-REFERENCE.md")}
-            }};
-        } else if (uri == "vivid://docs/recipes") {
+        if (uri == "vivid://docs/recipes") {
             result["contents"] = {{
                 {"uri", uri},
                 {"mimeType", "text/markdown"},

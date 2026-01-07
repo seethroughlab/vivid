@@ -93,7 +93,7 @@ modules/               Optional libraries (all ship with Vivid):
   vivid-imgui/        Dear ImGui integration (UI addon template)
   vivid-opencv/       OpenCV integration (stub template)
 projects/           Runnable example projects (each with own assets/ folder)
-docs/               LLM-REFERENCE.md, RECIPES.md, CREATING-OPERATORS.md
+docs/               RECIPES.md, CREATING-OPERATORS.md
 tests/              Automated tests, fixtures, and test assets (Git LFS)
 dev/                Developer tools and planning docs
 ~/.vivid/modules/      User-installed third-party libraries
@@ -166,6 +166,5 @@ VIVID_CHAIN(setup, update)
 
 ## Documentation
 
-- `docs/LLM-REFERENCE.md` - Compact operator reference (optimized for LLM context)
 - `docs/RECIPES.md` - Complete chain.cpp examples
 - `docs/ROADMAP.md` - Architecture decisions and development history

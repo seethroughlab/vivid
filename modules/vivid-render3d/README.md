@@ -114,7 +114,7 @@ VIVID_CHAIN(setup, update)
 
 ## API Reference
 
-See [LLM-REFERENCE.md](../../docs/LLM-REFERENCE.md) for complete operator documentation.
+See the examples in `modules/vivid-render3d/examples/` for usage patterns.
 
 ## Dependencies
 

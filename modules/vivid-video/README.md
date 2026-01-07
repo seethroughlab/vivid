@@ -89,7 +89,7 @@ chain.add<Output>("out")
 
 ## API Reference
 
-See [LLM-REFERENCE.md](../../docs/LLM-REFERENCE.md) for complete operator documentation.
+See the examples in `modules/vivid-video/examples/` for usage patterns.
 
 ## Dependencies
 

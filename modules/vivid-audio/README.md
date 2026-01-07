@@ -129,7 +129,7 @@ chain.add<Noise>("noise")
 
 ## API Reference
 
-See [LLM-REFERENCE.md](../../docs/LLM-REFERENCE.md) for complete operator documentation.
+See the examples in `modules/vivid-audio/examples/` for usage patterns.
 
 ## Dependencies
 

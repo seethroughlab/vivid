@@ -2,7 +2,6 @@
 
 ## Getting Started
 
-- [LLM-REFERENCE](LLM-REFERENCE.md) - Quick operator reference (LLM-optimized)
 - [RECIPES](RECIPES.md) - Complete working examples
 
 ## API Reference

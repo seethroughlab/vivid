@@ -13,7 +13,7 @@ error: 'Noize' was not declared in this scope
 
 **Cause:** Typo in operator name or missing include.
 
-**Fix:** Check spelling against LLM-REFERENCE.md. Common typos:
+**Fix:** Check spelling against the examples. Common typos:
 - `Noize` → `Noise`
 - `Blurr` → `Blur`
 - `Composit` → `Composite`

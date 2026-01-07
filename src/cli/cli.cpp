@@ -141,8 +141,8 @@ static const char* CLAUDE_MD_TEMPLATE = R"(# %PROJECT_NAME%
 ## Resources
 
 - Run with: `vivid .` (from this directory)
-- Operator reference: https://github.com/jeff/vivid/blob/main/docs/LLM-REFERENCE.md
-- Effect recipes: https://github.com/jeff/vivid/blob/main/docs/RECIPES.md
+- Effect recipes: https://github.com/seethroughlab/vivid/blob/main/docs/RECIPES.md
+- Examples: https://github.com/seethroughlab/vivid/tree/main/src/vivid-core/examples
 
 ## Notes for AI Assistants
 

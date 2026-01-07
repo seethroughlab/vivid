@@ -169,7 +169,7 @@ Edit your code while it's running - changes apply automatically.
 `VideoPlayer` — HAP, H.264, ProRes playback
 `Webcam` — Camera capture
 
-See [docs/LLM-REFERENCE.md](docs/LLM-REFERENCE.md) for the complete operator reference with all parameters.
+See examples in `src/vivid-core/examples/` and `modules/*/examples/` for operator usage patterns.
 
 ## Example: Video with Effects
 
@@ -420,7 +420,6 @@ The hot-reload system automatically adds include paths and links libraries for d
 
 | File | Purpose |
 |------|---------|
-| [docs/LLM-REFERENCE.md](docs/LLM-REFERENCE.md) | Compact operator reference |
 | [docs/RECIPES.md](docs/RECIPES.md) | Complete chain.cpp examples |
 | [docs/CREATING-OPERATORS.md](docs/CREATING-OPERATORS.md) | Custom operators and addons |
 

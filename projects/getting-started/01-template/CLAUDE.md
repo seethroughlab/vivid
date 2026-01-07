@@ -17,8 +17,8 @@ This is a vivid creative coding project.
 
 ## Resources
 
-- [docs/LLM-REFERENCE.md](../../docs/LLM-REFERENCE.md) - Operator reference
 - [docs/RECIPES.md](../../docs/RECIPES.md) - Effect recipes
+- [src/vivid-core/examples/](../../src/vivid-core/examples/) - Core examples
 
 ## Notes for LLMs
 

@@ -17,8 +17,8 @@
 //   - Operators connect via operator.input("other")
 //   - Use chain.output("name") to specify what displays
 //   - Check the terminal for compile errors if hot-reload fails
-//   - See docs/LLM-REFERENCE.md for all operators
 //   - See docs/RECIPES.md for effect examples
+//   - See src/vivid-core/examples/ for working examples
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>

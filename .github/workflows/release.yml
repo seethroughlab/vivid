@@ -112,7 +112,6 @@ jobs:
           cp -r build/bin/shaders package/vivid-${{ matrix.target }}/ 2>/dev/null || true
 
           # Copy documentation for MCP server
-          cp docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
           cp docs/CREATING-OPERATORS.md package/vivid-${{ matrix.target }}/docs/
           cp docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
           cp src/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md 2>/dev/null || true
@@ -167,7 +166,6 @@ jobs:
           }
 
           # Copy documentation for MCP server
-          Copy-Item docs/LLM-REFERENCE.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item docs/CREATING-OPERATORS.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item src/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md -ErrorAction SilentlyContinue

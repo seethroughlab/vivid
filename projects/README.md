@@ -39,6 +39,5 @@ Impressive multi-addon demos showing the best of what Vivid can do. These are "w
 
 ## More Resources
 
-- [LLM-REFERENCE.md](../docs/LLM-REFERENCE.md) - Compact operator reference
 - [RECIPES.md](../docs/RECIPES.md) - Common patterns and techniques
 - [tests/fixtures/](../tests/fixtures/) - Core testing examples
