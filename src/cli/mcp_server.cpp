@@ -779,7 +779,7 @@ private:
         // list_modules - List available modules
         tools.push_back({
             {"name", "list_modules"},
-            {"description", "List installed Vivid modules."},
+            {"description", "List installed Vivid modules. Modules are auto-linked when you #include their headers - no manual add/install step needed."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", json::object()}
@@ -1110,6 +1110,14 @@ private:
             info["category"] = meta->category;
             info["description"] = meta->description;
             info["module"] = meta->module.empty() ? "vivid-core" : meta->module;
+            // Add include guidance for non-core modules
+            if (!meta->module.empty()) {
+                // Map module name to namespace: vivid-video -> video, vivid-render3d -> render3d
+                std::string ns = meta->module;
+                if (ns.rfind("vivid-", 0) == 0) ns = ns.substr(6);
+                info["include"] = "#include <vivid/" + ns + "/" + ns + ".h>";
+                info["includeNote"] = "Module is auto-linked when you add this include. No manual installation needed.";
+            }
             info["requiresInput"] = meta->requiresInput;
             info["outputType"] = outputKindName(meta->outputKind);
             info["params"] = json::array();
