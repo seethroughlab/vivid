@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(NoiseGen, "Audio Synthesis", "Noise generator (white, pink, brown)", false, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(NoiseGen, "Audio Synthesis", "Noise generator (white, pink, brown)", false, OutputKind::Audio, "vivid-audio");
 
 void NoiseGen::init(Context& ctx) {
     allocateOutput();

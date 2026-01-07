@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(Formant, "Audio Effects", "Vowel formant filter for vocal synthesis", true, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(Formant, "Audio Effects", "Vowel formant filter for vocal synthesis", true, OutputKind::Audio, "vivid-audio");
 
 // Formant frequencies for each vowel (F1, F2, F3 in Hz)
 // Based on typical male voice formants

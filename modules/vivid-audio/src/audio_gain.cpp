@@ -9,7 +9,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(AudioGain, "Audio Utility", "Gain and pan control with envelope modulation", true, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(AudioGain, "Audio Utility", "Gain and pan control with envelope modulation", true, OutputKind::Audio, "vivid-audio");
 
 void AudioGain::initEffect(Context& ctx) {
     // Resolve gain modulation input by name

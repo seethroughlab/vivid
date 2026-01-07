@@ -201,8 +201,12 @@ Audio output is optional:
 Use `chain.output("name")` to designate the output operator:
 
 ```cpp
-chain.add<Noise>("noise").scale(4.0f);
-chain.add<HSV>("color").input("noise");
+auto& noise = chain.add<Noise>("noise");
+noise.scale = 4.0f;
+
+auto& color = chain.add<HSV>("color");
+color.input("noise");
+
 chain.output("color");  // Display the color operator
 ```
 

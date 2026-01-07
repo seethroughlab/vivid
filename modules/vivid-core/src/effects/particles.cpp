@@ -10,7 +10,7 @@ namespace vivid::effects {
 
 Particles::Particles() {
     m_rng.seed(m_seed);
-    m_particles.reserve(m_maxParticles);
+    m_particles.reserve(static_cast<int>(maxParticles));
 }
 
 Particles::~Particles() {
@@ -43,18 +43,23 @@ void Particles::process(Context& ctx) {
 
     float dt = static_cast<float>(ctx.dt());
 
+    // Get current param values
+    glm::vec2 emitterPos(position.x(), position.y());
+    float emitRateVal = static_cast<float>(emitRate);
+    int maxParticlesVal = static_cast<int>(maxParticles);
+
     // Handle burst emission
     if (m_needsBurst) {
-        for (int i = 0; i < m_burstCount && static_cast<int>(m_particles.size()) < m_maxParticles; i++) {
-            emitParticle(m_emitterPos);
+        for (int i = 0; i < m_burstCount && static_cast<int>(m_particles.size()) < maxParticlesVal; i++) {
+            emitParticle(emitterPos);
         }
         m_needsBurst = false;
     }
 
     // Continuous emission
-    m_emitAccumulator += m_emitRate * dt;
-    while (m_emitAccumulator >= 1.0f && static_cast<int>(m_particles.size()) < m_maxParticles) {
-        emitParticle(m_emitterPos);
+    m_emitAccumulator += emitRateVal * dt;
+    while (m_emitAccumulator >= 1.0f && static_cast<int>(m_particles.size()) < maxParticlesVal) {
+        emitParticle(emitterPos);
         m_emitAccumulator -= 1.0f;
     }
 
@@ -68,6 +73,13 @@ void Particles::process(Context& ctx) {
         m_particles.end()
     );
 
+    // Get rendering params
+    float sizeStartVal = static_cast<float>(size);
+    float sizeEndVal = static_cast<float>(sizeEnd);
+    float fadeInTimeVal = static_cast<float>(fadeInTime);
+    bool fadeOutVal = static_cast<bool>(fadeOut);
+    glm::vec4 clearColorVal(clearColor.r(), clearColor.g(), clearColor.b(), clearColor.a());
+
     // Build render data
     if (m_useSprites && m_spriteTextureView) {
         // Render as textured sprites
@@ -79,34 +91,34 @@ void Particles::process(Context& ctx) {
             float age = 1.0f - lifeRatio;
 
             // Calculate size
-            float size = glm::mix(m_sizeStart, m_sizeEnd, age);
-            size *= p.size / m_sizeStart;  // Apply per-particle variation
+            float sz = glm::mix(sizeStartVal, sizeEndVal, age);
+            sz *= p.size / sizeStartVal;  // Apply per-particle variation
 
             // Calculate color
-            glm::vec4 color = getParticleColor(p, age);
+            glm::vec4 col = getParticleColor(p, age);
 
             // Apply fade in/out
-            float alpha = color.a;
-            if (m_fadeInTime > 0.0f && age < m_fadeInTime) {
-                alpha *= age / m_fadeInTime;
+            float alpha = col.a;
+            if (fadeInTimeVal > 0.0f && age < fadeInTimeVal) {
+                alpha *= age / fadeInTimeVal;
             }
-            if (m_fadeOut) {
+            if (fadeOutVal) {
                 alpha *= lifeRatio;
             }
-            color.a = alpha;
+            col.a = alpha;
 
             Sprite2D sprite;
             sprite.position = p.position;
-            sprite.size = size;
+            sprite.size = sz;
             sprite.rotation = p.rotation;
-            sprite.color = color;
+            sprite.color = col;
             sprite.uvOffset = glm::vec2(0.0f);
             sprite.uvScale = glm::vec2(1.0f);
             sprites.push_back(sprite);
         }
 
         m_renderer.renderSprites(ctx, sprites, m_spriteTextureView, m_outputView,
-                                 m_width, m_height, m_clearColor);
+                                 m_width, m_height, clearColorVal);
     } else {
         // Render as SDF circles
         std::vector<Circle2D> circles;
@@ -117,26 +129,26 @@ void Particles::process(Context& ctx) {
             float age = 1.0f - lifeRatio;
 
             // Calculate size
-            float size = glm::mix(m_sizeStart, m_sizeEnd, age);
-            size *= p.size / m_sizeStart;  // Apply per-particle variation
+            float sz = glm::mix(sizeStartVal, sizeEndVal, age);
+            sz *= p.size / sizeStartVal;  // Apply per-particle variation
 
             // Calculate color
-            glm::vec4 color = getParticleColor(p, age);
+            glm::vec4 col = getParticleColor(p, age);
 
             // Apply fade in/out
-            float alpha = color.a;
-            if (m_fadeInTime > 0.0f && age < m_fadeInTime) {
-                alpha *= age / m_fadeInTime;
+            float alpha = col.a;
+            if (fadeInTimeVal > 0.0f && age < fadeInTimeVal) {
+                alpha *= age / fadeInTimeVal;
             }
-            if (m_fadeOut) {
+            if (fadeOutVal) {
                 alpha *= lifeRatio;
             }
-            color.a = alpha;
+            col.a = alpha;
 
-            circles.emplace_back(p.position, size, color);
+            circles.emplace_back(p.position, sz, col);
         }
 
-        m_renderer.renderCircles(ctx, circles, m_outputView, m_width, m_height, m_clearColor);
+        m_renderer.renderCircles(ctx, circles, m_outputView, m_width, m_height, clearColorVal);
     }
 
     didCook();
@@ -154,11 +166,15 @@ void Particles::emitParticle(const glm::vec2& emitterPos) {
 
     // Lifetime with variation
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-    p.maxLife = m_baseLife * (1.0f + m_lifeVariation * dist(m_rng));
+    float lifeVal = static_cast<float>(life);
+    float lifeVarVal = static_cast<float>(lifeVariation);
+    p.maxLife = lifeVal * (1.0f + lifeVarVal * dist(m_rng));
     p.life = p.maxLife;
 
     // Size with variation
-    p.size = m_sizeStart * (1.0f + m_sizeVariation * dist(m_rng));
+    float sizeVal = static_cast<float>(size);
+    float sizeVarVal = static_cast<float>(sizeVariation);
+    p.size = sizeVal * (1.0f + sizeVarVal * dist(m_rng));
 
     // Rotation for sprites
     std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159265f);
@@ -166,7 +182,7 @@ void Particles::emitParticle(const glm::vec2& emitterPos) {
     p.angularVel = m_spinSpeed * (0.5f + 0.5f * dist(m_rng));
 
     // Initial color
-    p.color = m_colorStart;
+    p.color = glm::vec4(color.r(), color.g(), color.b(), color.a());
 
     m_particles.push_back(p);
 }
@@ -175,30 +191,33 @@ glm::vec2 Particles::getEmitterPosition(const glm::vec2& center) {
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
 
-    switch (m_emitterShape) {
+    float emitterSizeVal = static_cast<float>(emitterSize);
+    float emitterAngleVal = static_cast<float>(emitterAngle);
+
+    switch (emitterShape) {
         case EmitterShape::Point:
             return center;
 
         case EmitterShape::Line: {
-            float offset = dist(m_rng) * m_emitterSize * 0.5f;
-            float ca = std::cos(m_emitterAngle);
-            float sa = std::sin(m_emitterAngle);
+            float offset = dist(m_rng) * emitterSizeVal * 0.5f;
+            float ca = std::cos(emitterAngleVal);
+            float sa = std::sin(emitterAngleVal);
             return center + glm::vec2(offset * ca, offset * sa);
         }
 
         case EmitterShape::Ring: {
             float angle = dist01(m_rng) * 2.0f * 3.14159265f;
-            return center + m_emitterSize * glm::vec2(std::cos(angle), std::sin(angle));
+            return center + emitterSizeVal * glm::vec2(std::cos(angle), std::sin(angle));
         }
 
         case EmitterShape::Disc: {
             float angle = dist01(m_rng) * 2.0f * 3.14159265f;
-            float radius = std::sqrt(dist01(m_rng)) * m_emitterSize;
+            float radius = std::sqrt(dist01(m_rng)) * emitterSizeVal;
             return center + radius * glm::vec2(std::cos(angle), std::sin(angle));
         }
 
         case EmitterShape::Rectangle:
-            return center + glm::vec2(dist(m_rng), dist(m_rng)) * m_emitterSize * 0.5f;
+            return center + glm::vec2(dist(m_rng), dist(m_rng)) * emitterSizeVal * 0.5f;
 
         default:
             return center;
@@ -206,33 +225,36 @@ glm::vec2 Particles::getEmitterPosition(const glm::vec2& center) {
 }
 
 glm::vec2 Particles::getInitialVelocity(const glm::vec2& pos, const glm::vec2& emitterCenter) {
-    glm::vec2 vel = m_baseVelocity;
+    glm::vec2 vel(velocity.x(), velocity.y());
+    float radialVelVal = static_cast<float>(radialVelocity);
+    float spreadVal = glm::radians(static_cast<float>(spread));
+    float velVarVal = static_cast<float>(velocityVariation);
 
     // Add radial velocity (away from center)
-    if (m_radialVelocity != 0.0f) {
+    if (radialVelVal != 0.0f) {
         glm::vec2 dir = pos - emitterCenter;
         if (glm::length(dir) > 0.001f) {
-            vel += glm::normalize(dir) * m_radialVelocity;
+            vel += glm::normalize(dir) * radialVelVal;
         } else {
             // Random direction if at center
             std::uniform_real_distribution<float> dist(0.0f, 2.0f * 3.14159265f);
             float angle = dist(m_rng);
-            vel += m_radialVelocity * glm::vec2(std::cos(angle), std::sin(angle));
+            vel += radialVelVal * glm::vec2(std::cos(angle), std::sin(angle));
         }
     }
 
     // Apply spread (cone of randomness)
-    if (m_spread > 0.0f) {
+    if (spreadVal > 0.0f) {
         std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
-        float angle = dist(m_rng) * m_spread * 0.5f;
+        float angle = dist(m_rng) * spreadVal * 0.5f;
         float ca = std::cos(angle);
         float sa = std::sin(angle);
         vel = glm::vec2(vel.x * ca - vel.y * sa, vel.x * sa + vel.y * ca);
     }
 
     // Velocity variation
-    if (m_velocityVariation > 0.0f) {
-        std::uniform_real_distribution<float> dist(1.0f - m_velocityVariation, 1.0f + m_velocityVariation);
+    if (velVarVal > 0.0f) {
+        std::uniform_real_distribution<float> dist(1.0f - velVarVal, 1.0f + velVarVal);
         vel *= dist(m_rng);
     }
 
@@ -242,26 +264,32 @@ glm::vec2 Particles::getInitialVelocity(const glm::vec2& pos, const glm::vec2& e
 void Particles::updateParticles(float dt) {
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
 
+    float gravityVal = static_cast<float>(gravity);
+    float dragVal = static_cast<float>(drag);
+    float turbulenceVal = static_cast<float>(turbulence);
+    glm::vec2 attractorPosVal(attractorPosition.x(), attractorPosition.y());
+    float attractorStrengthVal = static_cast<float>(attractorStrength);
+
     for (auto& p : m_particles) {
         // Apply gravity
-        p.velocity.y += m_gravity * dt;
+        p.velocity.y += gravityVal * dt;
 
         // Apply drag
-        if (m_drag > 0.0f) {
-            p.velocity *= (1.0f - m_drag * dt);
+        if (dragVal > 0.0f) {
+            p.velocity *= (1.0f - dragVal * dt);
         }
 
         // Apply turbulence
-        if (m_turbulence > 0.0f) {
-            p.velocity += glm::vec2(dist(m_rng), dist(m_rng)) * m_turbulence * dt;
+        if (turbulenceVal > 0.0f) {
+            p.velocity += glm::vec2(dist(m_rng), dist(m_rng)) * turbulenceVal * dt;
         }
 
         // Apply attractor
-        if (m_attractorStrength != 0.0f) {
-            glm::vec2 toAttractor = m_attractorPos - p.position;
+        if (attractorStrengthVal != 0.0f) {
+            glm::vec2 toAttractor = attractorPosVal - p.position;
             float distance = glm::length(toAttractor);
             if (distance > 0.01f) {
-                p.velocity += glm::normalize(toAttractor) * m_attractorStrength * dt / distance;
+                p.velocity += glm::normalize(toAttractor) * attractorStrengthVal * dt / distance;
             }
         }
 
@@ -277,12 +305,15 @@ void Particles::updateParticles(float dt) {
 }
 
 glm::vec4 Particles::getParticleColor(const Particle& p, float age) {
-    switch (m_colorMode) {
+    glm::vec4 colorStartVal(color.r(), color.g(), color.b(), color.a());
+    glm::vec4 colorEndVal(colorEnd.r(), colorEnd.g(), colorEnd.b(), colorEnd.a());
+
+    switch (colorMode) {
         case ColorMode::Solid:
-            return m_colorStart;
+            return colorStartVal;
 
         case ColorMode::Gradient:
-            return glm::mix(m_colorStart, m_colorEnd, age);
+            return glm::mix(colorStartVal, colorEndVal, age);
 
         case ColorMode::Rainbow: {
             float hue = std::fmod(p.index * 0.1f, 1.0f);
@@ -297,7 +328,7 @@ glm::vec4 Particles::getParticleColor(const Particle& p, float age) {
         }
 
         default:
-            return m_colorStart;
+            return colorStartVal;
     }
 }
 

@@ -8,7 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(AudioFile, "Audio Sampling", "Load and play audio files (WAV)", false, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(AudioFile, "Audio Sampling", "Load and play audio files (WAV)", false, OutputKind::Audio, "vivid-audio");
 
 AudioFile::AudioFile() {
     registerParam(volume);

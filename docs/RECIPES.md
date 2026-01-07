@@ -39,41 +39,42 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Source - video or image
-    chain.add<VideoPlayer>("src").file("assets/video.mov");
+    auto& src = chain.add<VideoPlayer>("src");
+    src.file = "assets/video.mov";
 
     // Chromatic aberration (color bleeding)
-    chain.add<ChromaticAberration>("chroma")
-        .input("src")
-        .amount(0.004f)
-        .angle(0.0f);
+    auto& chroma = chain.add<ChromaticAberration>("chroma");
+    chroma.input("src");
+    chroma.amount = 0.004f;
+    chroma.angle = 0.0f;
 
     // Reduce color depth
-    chain.add<Quantize>("quant")
-        .input("chroma")
-        .levels(32);
+    auto& quant = chain.add<Quantize>("quant");
+    quant.input("chroma");
+    quant.levels = 32;
 
     // Add scan lines
-    chain.add<Scanlines>("lines")
-        .input("quant")
-        .spacing(3)
-        .intensity(0.25f)
-        .thickness(0.4f);
+    auto& lines = chain.add<Scanlines>("lines");
+    lines.input("quant");
+    lines.spacing = 3;
+    lines.intensity = 0.25f;
+    lines.thickness = 0.4f;
 
     // Subtle noise overlay
-    chain.add<Noise>("noise")
-        .scale(100.0f)
-        .speed(10.0f);
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 100.0f;
+    noise.speed = 10.0f;
 
-    chain.add<Composite>("noisy")
-        .inputA("lines")
-        .inputB("noise")
-        .mode(BlendMode::Add)
-        .opacity(0.05f);
+    auto& noisy = chain.add<Composite>("noisy");
+    noisy.inputA("lines");
+    noisy.inputB("noise");
+    noisy.mode = BlendMode::Add;
+    noisy.opacity = 0.05f;
 
     // Slight blur for softness
-    chain.add<Blur>("soft")
-        .input("noisy")
-        .radius(0.5f);
+    auto& soft = chain.add<Blur>("soft");
+    soft.input("noisy");
+    soft.radius = 0.5f;
 
     chain.output("soft");
 }
@@ -182,7 +183,7 @@ void setup(Context& ctx) {
     flash.input("noise");
 
     auto& particles = chain.add<Particles>("particles");
-    particles.emitRate(0.0f);  // Only burst on trigger
+    particles.emitRate = 0.0f;  // Only burst on trigger
 
     // === The key: onTrigger callback ===
     kickSeq.onTrigger([&](float velocity) {
@@ -289,32 +290,32 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Seed shape in the center
-    chain.add<Shape>("shape")
-        .type(ShapeType::Star)
-        .size(0.1f)
-        .position(0.5f, 0.5f)
-        .color(1.0f, 0.3f, 0.5f);
+    auto& shape = chain.add<Shape>("shape");
+    shape.type = ShapeType::Star;
+    shape.size = 0.1f;
+    shape.position.set(0.5f, 0.5f);
+    shape.color.set(1.0f, 0.3f, 0.5f);
 
     // Feedback creates the tunnel
-    chain.add<Feedback>("tunnel")
-        .input("shape")
-        .decay(0.98f)
-        .zoom(1.02f)      // Slight zoom creates depth
-        .rotate(0.01f)    // Rotation adds spiral
-        .mix(0.95f);
+    auto& tunnel = chain.add<Feedback>("tunnel");
+    tunnel.input("shape");
+    tunnel.decay = 0.98f;
+    tunnel.zoom = 1.02f;      // Slight zoom creates depth
+    tunnel.rotate = 0.01f;    // Rotation adds spiral
+    tunnel.mix = 0.95f;
 
     // Color shift for rainbow effect
-    chain.add<HSV>("rainbow")
-        .input("tunnel")
-        .hueShift(0.002f)  // Shifts each frame
-        .saturation(1.2f);
+    auto& rainbow = chain.add<HSV>("rainbow");
+    rainbow.input("tunnel");
+    rainbow.hueShift = 0.002f;  // Shifts each frame
+    rainbow.saturation = 1.2f;
 
     // Bloom for glow
-    chain.add<Bloom>("glow")
-        .input("rainbow")
-        .threshold(0.3f)
-        .intensity(0.8f)
-        .radius(10.0f);
+    auto& glow = chain.add<Bloom>("glow");
+    glow.input("rainbow");
+    glow.threshold = 0.3f;
+    glow.intensity = 0.8f;
+    glow.radius = 10.0f;
 
     chain.output("glow");
 }
@@ -345,36 +346,37 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Background video
-    chain.add<VideoPlayer>("video").file("assets/background.mov");
+    auto& video = chain.add<VideoPlayer>("video");
+    video.file = "assets/background.mov";
 
     // Animated noise pattern
-    chain.add<Noise>("noise")
-        .scale(3.0f)
-        .speed(0.3f)
-        .type(NoiseType::Simplex);
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 3.0f;
+    noise.speed = 0.3f;
+    noise.type = NoiseType::Simplex;
 
     // Colorize the noise
-    chain.add<HSV>("colored")
-        .input("noise")
-        .hueShift(0.6f)
-        .saturation(0.8f);
+    auto& colored = chain.add<HSV>("colored");
+    colored.input("noise");
+    colored.hueShift = 0.6f;
+    colored.saturation = 0.8f;
 
     // Blend noise with video
-    chain.add<Composite>("blend")
-        .inputA("video")
-        .inputB("colored")
-        .mode(BlendMode::Overlay)
-        .opacity(0.3f);
+    auto& blend = chain.add<Composite>("blend");
+    blend.inputA("video");
+    blend.inputB("colored");
+    blend.mode = BlendMode::Overlay;
+    blend.opacity = 0.3f;
 
     // Add logo/watermark
     auto& logo = chain.add<Image>("logo");
     logo.file = "assets/logo.png";
 
-    chain.add<Composite>("final")
-        .inputA("blend")
-        .inputB("logo")
-        .mode(BlendMode::Over)
-        .opacity(0.8f);
+    auto& final_ = chain.add<Composite>("final");
+    final_.inputA("blend");
+    final_.inputB("logo");
+    final_.mode = BlendMode::Over;
+    final_.opacity = 0.8f;
 
     chain.output("final");
 }
@@ -403,42 +405,42 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Base noise layer
-    chain.add<Noise>("base")
-        .scale(2.0f)
-        .speed(0.1f)
-        .type(NoiseType::Simplex)
-        .octaves(3);
+    auto& base = chain.add<Noise>("base");
+    base.scale = 2.0f;
+    base.speed = 0.1f;
+    base.type = NoiseType::Simplex;
+    base.octaves = 3;
 
     // Second noise for variation
-    chain.add<Noise>("detail")
-        .scale(8.0f)
-        .speed(0.2f)
-        .type(NoiseType::Perlin);
+    auto& detail = chain.add<Noise>("detail");
+    detail.scale = 8.0f;
+    detail.speed = 0.2f;
+    detail.type = NoiseType::Perlin;
 
     // Combine noise layers
-    chain.add<Composite>("combined")
-        .inputA("base")
-        .inputB("detail")
-        .mode(BlendMode::Multiply)
-        .opacity(1.0f);
+    auto& combined = chain.add<Composite>("combined");
+    combined.inputA("base");
+    combined.inputB("detail");
+    combined.mode = BlendMode::Multiply;
+    combined.opacity = 1.0f;
 
     // Animated color gradient
-    chain.add<Ramp>("colors")
-        .hueSpeed(0.05f)
-        .saturation(0.7f)
-        .type(RampType::Radial);
+    auto& colors = chain.add<Ramp>("colors");
+    colors.hueSpeed = 0.05f;
+    colors.saturation = 0.7f;
+    colors.type = RampType::Radial;
 
     // Apply colors to noise
-    chain.add<Composite>("colored")
-        .inputA("combined")
-        .inputB("colors")
-        .mode(BlendMode::Overlay)
-        .opacity(1.0f);
+    auto& colored = chain.add<Composite>("colored");
+    colored.inputA("combined");
+    colored.inputB("colors");
+    colored.mode = BlendMode::Overlay;
+    colored.opacity = 1.0f;
 
     // Smooth it out
-    chain.add<Blur>("smooth")
-        .input("colored")
-        .radius(3.0f);
+    auto& smooth = chain.add<Blur>("smooth");
+    smooth.input("colored");
+    smooth.radius = 3.0f;
 
     chain.output("smooth");
 }
@@ -471,31 +473,31 @@ void setup(Context& ctx) {
     src.file = "assets/photo.jpg";
 
     // Horizontal displacement noise
-    chain.add<Noise>("glitchNoise")
-        .scale(1.0f)
-        .speed(5.0f)
-        .type(NoiseType::Value);
+    auto& glitchNoise = chain.add<Noise>("glitchNoise");
+    glitchNoise.scale = 1.0f;
+    glitchNoise.speed = 5.0f;
+    glitchNoise.type = NoiseType::Value;
 
     // Pixelate the noise for blocky glitches
-    auto& blocks = chain.add<Pixelate>("blocks")
-        .input("glitchNoise")
-        .size(20);
+    auto& blocks = chain.add<Pixelate>("blocks");
+    blocks.input("glitchNoise");
+    blocks.size = 20;
 
     // Displace the image
-    chain.add<Displace>("displaced")
-        .source("src")
-        .map("blocks")
-        .strength(0.1f);
+    auto& displaced = chain.add<Displace>("displaced");
+    displaced.source("src");
+    displaced.map("blocks");
+    displaced.strength = 0.1f;
 
     // Heavy chromatic aberration
-    chain.add<ChromaticAberration>("rgb")
-        .input("displaced")
-        .amount(0.015f);
+    auto& rgb = chain.add<ChromaticAberration>("rgb");
+    rgb.input("displaced");
+    rgb.amount = 0.015f;
 
     // Quantize for digital look
-    chain.add<Quantize>("quant")
-        .input("rgb")
-        .levels(16);
+    auto& quant = chain.add<Quantize>("quant");
+    quant.input("rgb");
+    quant.levels = 16;
 
     chain.output("quant");
 }
@@ -526,43 +528,44 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Source
-    chain.add<VideoPlayer>("src").file("assets/video.mov");
+    auto& src = chain.add<VideoPlayer>("src");
+    src.file = "assets/video.mov";
 
     // Soft glow
-    chain.add<Bloom>("glow")
-        .input("src")
-        .threshold(0.4f)
-        .intensity(1.5f)
-        .radius(20.0f);
+    auto& glow = chain.add<Bloom>("glow");
+    glow.input("src");
+    glow.threshold = 0.4f;
+    glow.intensity = 1.5f;
+    glow.radius = 20.0f;
 
     // Desaturate slightly
-    auto& desat = chain.add<HSV>("desat")
-        .input("glow")
-        .saturation(0.6f)
-        .value(1.1f);
+    auto& desat = chain.add<HSV>("desat");
+    desat.input("glow");
+    desat.saturation = 0.6f;
+    desat.value = 1.1f;
 
     // Subtle noise for displacement
-    auto& warpNoise = chain.add<Noise>("warpNoise")
-        .scale(5.0f)
-        .speed(0.2f);
+    auto& warpNoise = chain.add<Noise>("warpNoise");
+    warpNoise.scale = 5.0f;
+    warpNoise.speed = 0.2f;
 
     // Gentle warping
-    chain.add<Displace>("warp")
-        .source("desat")
-        .map("warpNoise")
-        .strength(0.02f);
+    auto& warp = chain.add<Displace>("warp");
+    warp.source("desat");
+    warp.map("warpNoise");
+    warp.strength = 0.02f;
 
     // Heavy blur for dreamy softness
-    chain.add<Blur>("soft")
-        .input("warp")
-        .radius(5.0f);
+    auto& soft = chain.add<Blur>("soft");
+    soft.input("warp");
+    soft.radius = 5.0f;
 
     // Blend sharp and soft
-    chain.add<Composite>("dream")
-        .inputA("warp")
-        .inputB("soft")
-        .mode(BlendMode::Screen)
-        .opacity(0.5f);
+    auto& dream = chain.add<Composite>("dream");
+    dream.inputA("warp");
+    dream.inputB("soft");
+    dream.mode = BlendMode::Screen;
+    dream.opacity = 0.5f;
 
     chain.output("dream");
 }
@@ -591,38 +594,38 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Base turbulent noise
-    chain.add<Noise>("turb")
-        .scale(4.0f)
-        .speed(0.8f)
-        .type(NoiseType::Simplex)
-        .octaves(6);
+    auto& turb = chain.add<Noise>("turb");
+    turb.scale = 4.0f;
+    turb.speed = 0.8f;
+    turb.type = NoiseType::Simplex;
+    turb.octaves = 6;
 
     // Vertical gradient for fire shape
-    chain.add<Gradient>("grad")
-        .mode(GradientMode::Linear)
-        .angle(90.0f)
-        .colorA(1.0f, 1.0f, 1.0f)
-        .colorB(0.0f, 0.0f, 0.0f);
+    auto& grad = chain.add<Gradient>("grad");
+    grad.mode = GradientMode::Linear;
+    grad.angle = 90.0f;
+    grad.colorA.set(1.0f, 1.0f, 1.0f);
+    grad.colorB.set(0.0f, 0.0f, 0.0f);
 
     // Multiply to shape flames
-    chain.add<Composite>("shaped")
-        .inputA("turb")
-        .inputB("grad")
-        .mode(BlendMode::Multiply);
+    auto& shaped = chain.add<Composite>("shaped");
+    shaped.inputA("turb");
+    shaped.inputB("grad");
+    shaped.mode = BlendMode::Multiply;
 
     // Fire colors
-    chain.add<HSV>("colored")
-        .input("shaped")
-        .hueShift(-0.05f)  // Shift toward orange/red
-        .saturation(1.5f)
-        .value(1.2f);
+    auto& colored = chain.add<HSV>("colored");
+    colored.input("shaped");
+    colored.hueShift = -0.05f;  // Shift toward orange/red
+    colored.saturation = 1.5f;
+    colored.value = 1.2f;
 
     // Bloom for glow
-    chain.add<Bloom>("glow")
-        .input("colored")
-        .threshold(0.3f)
-        .intensity(1.0f)
-        .radius(8.0f);
+    auto& glow = chain.add<Bloom>("glow");
+    glow.input("colored");
+    glow.threshold = 0.3f;
+    glow.intensity = 1.0f;
+    glow.radius = 8.0f;
 
     chain.output("glow");
 }
@@ -652,32 +655,32 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Animated source pattern
-    chain.add<Noise>("pattern")
-        .scale(3.0f)
-        .speed(0.3f)
-        .type(NoiseType::Worley);
+    auto& pattern = chain.add<Noise>("pattern");
+    pattern.scale = 3.0f;
+    pattern.speed = 0.3f;
+    pattern.type = NoiseType::Worley;
 
     // Colorize
-    chain.add<HSV>("colored")
-        .input("pattern")
-        .hueShift(0.3f)
-        .saturation(1.0f);
+    auto& colored = chain.add<HSV>("colored");
+    colored.input("pattern");
+    colored.hueShift = 0.3f;
+    colored.saturation = 1.0f;
 
     // Kaleidoscope mirror
-    chain.add<Mirror>("kaleido")
-        .input("colored")
-        .mode(MirrorMode::Kaleidoscope)
-        .segments(8);  // 8-fold symmetry
+    auto& kaleido = chain.add<Mirror>("kaleido");
+    kaleido.input("colored");
+    kaleido.mode = MirrorMode::Kaleidoscope;
+    kaleido.segments = 8;  // 8-fold symmetry
 
     // Transform for rotation
-    chain.add<Transform>("spin")
-        .input("kaleido");
+    auto& spin = chain.add<Transform>("spin");
+    spin.input("kaleido");
 
     // Feedback for trails
-    chain.add<Feedback>("trails")
-        .input("spin")
-        .decay(0.95f)
-        .mix(0.3f);
+    auto& trails = chain.add<Feedback>("trails");
+    trails.input("spin");
+    trails.decay = 0.95f;
+    trails.mix = 0.3f;
 
     chain.output("trails");
 }
@@ -685,7 +688,7 @@ void setup(Context& ctx) {
 void update(Context& ctx) {
     // Animate rotation
     auto& spin = ctx.chain().get<Transform>("spin");
-    spin.rotate(static_cast<float>(ctx.time()) * 0.1f);
+    spin.rotation = static_cast<float>(ctx.time()) * 0.1f;
 }
 
 VIVID_CHAIN(setup, update)
@@ -712,7 +715,7 @@ void setup(Context& ctx) {
     // Create source operators
     auto& video = chain.add<VideoPlayer>("video");
     video.file = "assets/videos/background.mov";
-    video.loop(true);
+    video.loop = true;
 
     auto& noise = chain.add<Noise>("overlay");
     noise.setResolution(400, 400);
@@ -918,14 +921,15 @@ void setup(Context& ctx) {
 
     // Visuals: Particles
     auto& particles = chain.add<Particles>("particles");
-    particles.emitter(EmitterShape::Disc);
-    particles.position(0.5f, 0.5f);
-    particles.emitterSize(0.1f);
-    particles.maxParticles(500);
-    particles.life(2.0f);
-    particles.size(0.02f, 0.005f);
-    particles.color(0.2f, 0.8f, 1.0f, 1.0f);
-    particles.colorEnd(1.0f, 0.3f, 0.5f, 0.0f);
+    particles.emitterShape = EmitterShape::Disc;
+    particles.position.set(0.5f, 0.5f);
+    particles.emitterSize = 0.1f;
+    particles.maxParticles = 500;
+    particles.life = 2.0f;
+    particles.size = 0.02f;
+    particles.sizeEnd = 0.005f;
+    particles.color.set(0.2f, 0.8f, 1.0f, 1.0f);
+    particles.colorEnd.set(1.0f, 0.3f, 0.5f, 0.0f);
 
     // Bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");
@@ -950,16 +954,16 @@ void update(Context& ctx) {
     float rms = levels.rms();
 
     // Bass controls emit rate and burst
-    particles.emitRate(bass * 200.0f);
+    particles.emitRate = bass * 200.0f;
     if (bass > 0.7f) {
-        particles.burst(static_cast<int>(bass * 50));
+        particles.burst(static_cast<int>(bass * 50));  // burst() is a method, not a property
     }
 
     // Mid controls velocity
-    particles.radialVelocity(0.2f + mid * 0.5f);
+    particles.radialVelocity = 0.2f + mid * 0.5f;
 
     // High controls spread
-    particles.spread(90.0f + high * 180.0f);
+    particles.spread = 90.0f + high * 180.0f;
 
     // Overall level controls bloom
     bloom.intensity = 0.5f + rms * 2.0f;
@@ -991,7 +995,7 @@ void setup(Context& ctx) {
 
     // Audio: Synth controlled by mouse
     auto& synth = chain.add<PolySynth>("synth");
-    synth.waveform(Waveform::Saw);
+    synth.waveform = Waveform::Saw;
     synth.attack = 0.01f;
     synth.release = 0.3f;
     synth.volume = 0.4f;

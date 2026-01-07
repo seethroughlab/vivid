@@ -345,6 +345,10 @@ struct MainLoopContext {
     bool tabKeyWasPressed = false;
     bool visualizerVisible = false;  // Chain visualizer visibility (Tab to toggle)
 
+    // MCP live capture request (set by WebSocket command, cleared after capture)
+    std::string mcpCaptureRequestPath;  // Non-empty = capture requested
+    std::mutex mcpCaptureMutex;
+
     // Core runtime objects (non-owning pointers)
     Context* ctx = nullptr;
     Display* display = nullptr;
@@ -768,6 +772,36 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
             if (outputTex) {
                 mlc.chainVisualizer->saveSnapshot(mlc.device, mlc.queue, outputTex, *mlc.ctx);
+            }
+        }
+
+        // MCP live capture request (WebSocket command from Claude Code)
+        {
+            std::lock_guard<std::mutex> lock(mlc.mcpCaptureMutex);
+            if (!mlc.mcpCaptureRequestPath.empty()) {
+                std::string outputPath = mlc.mcpCaptureRequestPath;
+                mlc.mcpCaptureRequestPath.clear();  // Clear the request
+
+                WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
+                if (outputTex) {
+                    std::cout << "[MCP] Capturing frame to: " << outputPath << std::endl;
+                    if (VideoExporter::saveSnapshot(mlc.device, mlc.queue, outputTex, outputPath)) {
+                        std::cout << "[MCP] Capture saved successfully" << std::endl;
+                        if (mlc.editorBridge) {
+                            mlc.editorBridge->sendCaptureResult(true, outputPath);
+                        }
+                    } else {
+                        std::cerr << "[MCP] Failed to save capture" << std::endl;
+                        if (mlc.editorBridge) {
+                            mlc.editorBridge->sendCaptureResult(false, outputPath, "Failed to save PNG");
+                        }
+                    }
+                } else {
+                    std::cerr << "[MCP] No output texture available for capture" << std::endl;
+                    if (mlc.editorBridge) {
+                        mlc.editorBridge->sendCaptureResult(false, outputPath, "No output texture");
+                    }
+                }
             }
         }
 
@@ -1530,6 +1564,21 @@ int Application::init(const AppConfig& config) {
         m_impl->editorBridge->sendOperatorList(gatherOperatorInfo());
         m_impl->editorBridge->sendParamValues(gatherParamValues());
         m_impl->editorBridge->sendWindowState(gatherWindowState());
+    });
+
+    // MCP compile status callback - sends current compile status from hot_reload
+    m_impl->editorBridge->onRequestCompileStatus([this]() {
+        if (m_impl->hotReload->hasError()) {
+            m_impl->editorBridge->sendCompileStatus(false, m_impl->hotReload->getError());
+        } else {
+            m_impl->editorBridge->sendCompileStatus(true, "");
+        }
+    });
+
+    // MCP capture frame callback - sets the request path, main loop handles actual capture
+    m_impl->editorBridge->onCaptureFrame([this](const std::string& outputPath) {
+        std::lock_guard<std::mutex> lock(m_impl->mlc.mcpCaptureMutex);
+        m_impl->mlc.mcpCaptureRequestPath = outputPath;
     });
 
     // Extract project name and set up chain path

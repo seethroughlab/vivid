@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(Oscillator, "Audio Synthesis", "Basic waveform oscillator (sine, saw, square, triangle)", false, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(Oscillator, "Audio Synthesis", "Basic waveform oscillator (sine, saw, square, triangle)", false, OutputKind::Audio, "vivid-audio");
 
 void Oscillator::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

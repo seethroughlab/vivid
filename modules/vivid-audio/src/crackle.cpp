@@ -4,7 +4,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(Crackle, "Audio Generators", "Random impulse generator for vinyl crackle sounds", false, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(Crackle, "Audio Generators", "Random impulse generator for vinyl crackle sounds", false, OutputKind::Audio, "vivid-audio");
 
 void Crackle::init(Context& ctx) {
     allocateOutput();

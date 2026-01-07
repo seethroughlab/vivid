@@ -4,7 +4,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR(Sequencer, "Audio Sequencing", "Step sequencer with pattern and trigger output", false);
+REGISTER_MODULE_OPERATOR(Sequencer, "Audio Sequencing", "Step sequencer with pattern and trigger output", false, "vivid-audio");
 
 void Sequencer::init(Context& ctx) {
     // Don't clear pattern - it may have been set before init()

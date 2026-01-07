@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(PitchEnv, "Audio Envelopes", "Pitch sweep envelope for drum synthesis", false, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(PitchEnv, "Audio Envelopes", "Pitch sweep envelope for drum synthesis", false, OutputKind::Audio, "vivid-audio");
 
 void PitchEnv::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

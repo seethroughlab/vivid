@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <array>
 #include <csignal>
+#include <regex>
 
 #ifdef __APPLE__
 #include <mach-o/dyld.h>
@@ -50,13 +51,32 @@
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
+// Helper to convert ParamType to string (matches operator_registry.cpp)
+static const char* paramTypeName(vivid::ParamType type) {
+    switch (type) {
+        case vivid::ParamType::Float:    return "Float";
+        case vivid::ParamType::Int:      return "Int";
+        case vivid::ParamType::Bool:     return "Bool";
+        case vivid::ParamType::Vec2:     return "Vec2";
+        case vivid::ParamType::Vec3:     return "Vec3";
+        case vivid::ParamType::Vec4:     return "Vec4";
+        case vivid::ParamType::Color:    return "Color";
+        case vivid::ParamType::String:   return "String";
+        case vivid::ParamType::FilePath: return "FilePath";
+        default:                         return "Unknown";
+    }
+}
+
 namespace vivid::mcp {
 
 // WebSocket connection to running Vivid instance
 class VividConnection {
 public:
     VividConnection() = default;
-    ~VividConnection() { disconnect(); }
+    ~VividConnection() {
+        stopHeartbeat();
+        disconnect();
+    }
 
     bool connect(int port = 9876) {
         std::string url = "ws://127.0.0.1:" + std::to_string(port);
@@ -67,11 +87,34 @@ public:
                 handleMessage(msg->str);
             } else if (msg->type == ix::WebSocketMessageType::Open) {
                 m_connected = true;
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    m_lastError.clear();
+                    m_lastMessageTime = std::chrono::steady_clock::now();
+                }
+                std::cerr << "[MCP] Connected to Vivid runtime on port 9876\n";
                 // Request current state
                 sendCommand("request_operators");
                 sendCommand("request_pending_changes");
+                sendCommand("request_compile_status");
             } else if (msg->type == ix::WebSocketMessageType::Close) {
                 m_connected = false;
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    if (!msg->closeInfo.reason.empty()) {
+                        m_lastError = "Connection closed: " + msg->closeInfo.reason;
+                    } else {
+                        m_lastError = "Connection closed (code " + std::to_string(msg->closeInfo.code) + ")";
+                    }
+                }
+                std::cerr << "[MCP] Disconnected from Vivid runtime: " << m_lastError << "\n";
+            } else if (msg->type == ix::WebSocketMessageType::Error) {
+                m_connected = false;
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    m_lastError = "Connection error: " + msg->errorInfo.reason;
+                }
+                std::cerr << "[MCP] Connection error: " << msg->errorInfo.reason << "\n";
             }
         });
 
@@ -82,24 +125,104 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
 
-        // Wait a bit longer for operator/param data to arrive
+        // Wait for operator/param data to arrive (up to 2 seconds)
+        // This is critical for reliable tool responses
         if (m_connected) {
-            for (int i = 0; i < 10; ++i) {
+            auto start = std::chrono::steady_clock::now();
+            while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(2000)) {
+                {
+                    std::lock_guard<std::mutex> lock(m_mutex);
+                    // Wait until we have BOTH operators and params
+                    if (!m_operators.empty() && !m_params.empty()) {
+                        std::cerr << "[MCP] Received initial state: "
+                                  << m_operators.size() << " operators, "
+                                  << m_params.size() << " params\n";
+                        break;
+                    }
+                }
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
-                std::lock_guard<std::mutex> lock(m_mutex);
-                if (!m_params.empty()) break;  // Got data
             }
+
+            // Log warning if we timed out
+            std::lock_guard<std::mutex> lock(m_mutex);
+            if (m_operators.empty() || m_params.empty()) {
+                std::cerr << "[MCP] Warning: Timeout waiting for data. "
+                          << "operators=" << m_operators.size()
+                          << " params=" << m_params.size() << "\n";
+            }
+        }
+
+        // Start heartbeat to detect stale connections
+        if (m_connected) {
+            startHeartbeat();
         }
 
         return m_connected;
     }
 
     void disconnect() {
+        stopHeartbeat();
         m_ws.stop();
         m_connected = false;
     }
 
     bool isConnected() const { return m_connected; }
+
+    // Get detailed connection state for MCP responses
+    struct ConnectionState {
+        bool connected;
+        bool stale;       // Data is from a now-dead connection
+        std::string lastError;
+    };
+
+    ConnectionState getConnectionState() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        ConnectionState state;
+        state.connected = m_connected.load();
+        state.stale = !state.connected && m_dataReceived;
+        state.lastError = m_lastError;
+        return state;
+    }
+
+    void clearError() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_lastError.clear();
+    }
+
+    // Start heartbeat thread to detect stale connections
+    void startHeartbeat() {
+        if (m_heartbeatRunning) return;
+
+        m_heartbeatRunning = true;
+        m_heartbeatThread = std::thread([this]() {
+            while (m_heartbeatRunning) {
+                std::this_thread::sleep_for(std::chrono::seconds(5));
+                if (!m_heartbeatRunning) break;
+
+                // Check if we've received any message in the last 15 seconds
+                // (Vivid sends param_values periodically, so silence indicates a problem)
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_connected && m_dataReceived) {
+                    auto now = std::chrono::steady_clock::now();
+                    auto elapsed = std::chrono::duration_cast<std::chrono::seconds>(
+                        now - m_lastMessageTime).count();
+
+                    if (elapsed > 15) {
+                        std::cerr << "[MCP] No messages for " << elapsed << "s, connection may be stale\n";
+                        // Don't set m_connected = false here, just log
+                        // The WebSocket error callback will handle actual disconnection
+                    }
+                }
+            }
+        });
+    }
+
+    void stopHeartbeat() {
+        m_heartbeatRunning = false;
+        if (m_heartbeatThread.joinable()) {
+            m_heartbeatThread.join();
+        }
+    }
 
     void sendCommand(const std::string& type) {
         json cmd;
@@ -136,6 +259,83 @@ public:
         return m_compileStatus;
     }
 
+    json getPerformanceStats() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_performanceStats;
+    }
+
+    json getSoloState() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_soloState;
+    }
+
+    json getWindowState() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_windowState;
+    }
+
+    json getCaptureResult() const {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        return m_captureResult;
+    }
+
+    void clearCaptureResult() {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_captureResult = json::object();
+        m_captureResultReceived = false;
+    }
+
+    // Send capture_frame command and wait for result
+    json captureFrame(const std::string& outputPath, int timeoutMs = 5000) {
+        // Clear any previous result
+        clearCaptureResult();
+
+        // Send command
+        json cmd;
+        cmd["type"] = "capture_frame";
+        cmd["outputPath"] = outputPath;
+        m_ws.send(cmd.dump());
+
+        // Wait for capture_result response (up to timeout)
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_captureResultReceived) {
+                    return m_captureResult;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        // Timeout
+        json result;
+        result["success"] = false;
+        result["error"] = "Timeout waiting for capture result";
+        result["outputPath"] = outputPath;
+        return result;
+    }
+
+    // Send commands to Vivid
+    void soloOperator(const std::string& opName) {
+        json cmd;
+        cmd["type"] = "solo_node";
+        cmd["operator"] = opName;
+        m_ws.send(cmd.dump());
+    }
+
+    void exitSolo() {
+        sendCommand("solo_exit");
+    }
+
+    void setWindowControl(const std::string& setting, int value) {
+        json cmd;
+        cmd["type"] = "window_control";
+        cmd["setting"] = setting;
+        cmd["value"] = value;
+        m_ws.send(cmd.dump());
+    }
+
 private:
     void handleMessage(const std::string& msgStr) {
         try {
@@ -143,6 +343,8 @@ private:
             std::string type = msg.value("type", "");
 
             std::lock_guard<std::mutex> lock(m_mutex);
+            m_lastMessageTime = std::chrono::steady_clock::now();
+            m_dataReceived = true;
 
             if (type == "operator_list") {
                 m_operators = msg["operators"];
@@ -152,8 +354,25 @@ private:
                 m_pendingChanges = msg;
             } else if (type == "compile_status") {
                 m_compileStatus = msg;
+            } else if (type == "performance_stats") {
+                m_performanceStats = msg;
+            } else if (type == "solo_state") {
+                m_soloState = msg;
+            } else if (type == "window_state") {
+                m_windowState = msg;
+            } else if (type == "capture_result") {
+                m_captureResult = msg;
+                m_captureResultReceived = true;
             }
-        } catch (...) {}
+        } catch (const json::exception& e) {
+            std::cerr << "[MCP] JSON parse error: " << e.what() << "\n";
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_lastError = std::string("JSON parse error: ") + e.what();
+        } catch (const std::exception& e) {
+            std::cerr << "[MCP] Error handling message: " << e.what() << "\n";
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_lastError = std::string("Message handling error: ") + e.what();
+        }
     }
 
     ix::WebSocket m_ws;
@@ -165,6 +384,20 @@ private:
     json m_params = json::array();
     json m_pendingChanges = {{"hasChanges", false}, {"changes", json::array()}};
     json m_compileStatus = {{"success", true}, {"message", ""}};
+    json m_performanceStats = json::object();
+    json m_soloState = {{"active", false}};
+    json m_windowState = json::object();
+    json m_captureResult = json::object();
+    bool m_captureResultReceived{false};
+
+    // Connection state tracking
+    std::string m_lastError;
+    std::chrono::steady_clock::time_point m_lastMessageTime;
+    bool m_dataReceived{false};  // True once we've received any data from Vivid
+
+    // Heartbeat thread for detecting stale connections
+    std::thread m_heartbeatThread;
+    std::atomic<bool> m_heartbeatRunning{false};
 };
 
 // Helper to get the path to the vivid executable
@@ -285,6 +518,42 @@ public:
     }
 
 private:
+    // Parse clang/gcc error format into structured JSON
+    // Format: file:line:col: error|warning: message
+    json parseCompileErrors(const std::string& rawError) {
+        json errors = json::array();
+
+        // Process line by line to avoid regex matching across context lines
+        std::istringstream stream(rawError);
+        std::string line;
+
+        // Match patterns like:
+        // /path/to/file.cpp:42:15: error: use of undeclared identifier 'foo'
+        // /path/to/file.cpp:42:15: warning: unused variable 'x'
+        // Also handles "fatal error" and "note"
+        // File path must start with / or letter (Windows drive)
+        std::regex errorRegex(R"(^([/A-Za-z][^:]*):(\d+):(\d+): (error|warning|fatal error|note): (.+)$)");
+
+        while (std::getline(stream, line)) {
+            std::smatch match;
+            if (std::regex_match(line, match, errorRegex)) {
+                json err;
+                err["file"] = match[1].str();
+                err["line"] = std::stoi(match[2].str());
+                err["column"] = std::stoi(match[3].str());
+
+                std::string severity = match[4].str();
+                if (severity == "fatal error") severity = "error";
+                err["severity"] = severity;
+
+                err["message"] = match[5].str();
+                errors.push_back(err);
+            }
+        }
+
+        return errors;
+    }
+
     json handleRequest(const json& request) {
         std::string method = request.value("method", "");
         auto id = request.value("id", json(nullptr));
@@ -388,14 +657,38 @@ private:
             }}
         });
 
-        // list_operators - List available operators (from registry)
-        // Returns minimal info: name, category, module. For details, read the header files.
+        // get_compile_errors - Get structured compile errors
         tools.push_back({
-            {"name", "list_operators"},
-            {"description", "List all Vivid operators with name, category, and source module. For API details, read the operator's header file (grep for 'class OperatorName' in include/)."},
+            {"name", "get_compile_errors"},
+            {"description", "Get structured compile errors from the last chain.cpp compilation. Returns parsed errors with file, line, column, severity, and message. More actionable than raw error text."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", json::object()}
+            }}
+        });
+
+        // list_operators - List available operators (from registry)
+        tools.push_back({
+            {"name", "list_operators"},
+            {"description", "List all Vivid operators grouped by category. Returns name, module, and requiresInput. Use get_operator for full parameter details."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"verbose", {{"type", "boolean"}, {"description", "Include full parameter details (default: false, returns compact summary)"}}}
+                }}
+            }}
+        });
+
+        // get_operator - Get details for a specific operator
+        tools.push_back({
+            {"name", "get_operator"},
+            {"description", "Get detailed information about a Vivid operator: parameters with types/ranges/defaults, usage example, and source module."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"name", {{"type", "string"}, {"description", "Operator name (e.g., 'Noise', 'Blur', 'Webcam')"}}}
+                }},
+                {"required", json::array({"name"})}
             }}
         });
 
@@ -516,7 +809,119 @@ private:
             }}
         });
 
+        // get_performance_stats - Get real-time performance metrics
+        tools.push_back({
+            {"name", "get_performance_stats"},
+            {"description", "Get real-time performance metrics from running Vivid: FPS, frame time, per-operator timing, texture memory usage. Use to identify slow operators or performance issues."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // solo_operator - Isolate a single operator's output
+        tools.push_back({
+            {"name", "solo_operator"},
+            {"description", "Solo an operator to see only its output (bypass the rest of the chain). Useful for debugging individual operators."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"name", {{"type", "string"}, {"description", "Operator name to solo (e.g., 'noise', 'blur')"}}}
+                }},
+                {"required", json::array({"name"})}
+            }}
+        });
+
+        // exit_solo - Return to normal chain output
+        tools.push_back({
+            {"name", "exit_solo"},
+            {"description", "Exit solo mode and return to normal chain output."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // get_solo_state - Get current solo state
+        tools.push_back({
+            {"name", "get_solo_state"},
+            {"description", "Check if solo mode is active and which operator is soloed."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // get_window_state - Get current window configuration
+        tools.push_back({
+            {"name", "get_window_state"},
+            {"description", "Get current window configuration: fullscreen, borderless, monitors, etc."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // set_window_mode - Control window mode
+        tools.push_back({
+            {"name", "set_window_mode"},
+            {"description", "Set window mode: fullscreen, windowed, borderless, always-on-top, or hide cursor."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"setting", {{"type", "string"}, {"description", "Setting: 'fullscreen', 'borderless', 'alwaysOnTop', 'cursor'"}}},
+                    {"value", {{"type", "boolean"}, {"description", "Enable (true) or disable (false) the setting"}}}
+                }},
+                {"required", json::array({"setting", "value"})}
+            }}
+        });
+
+        // capture_frame - Capture current frame from running Vivid
+        tools.push_back({
+            {"name", "capture_frame"},
+            {"description", "Capture the current frame from a running Vivid instance to a PNG file. Unlike capture_snapshot which spawns a new process, this captures from the live running instance immediately. Use this to verify visual output after making changes."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"outputPath", {{"type", "string"}, {"description", "Path to save the PNG file (default: /tmp/vivid_capture.png)"}}}
+                }}
+            }}
+        });
+
         return {{"tools", tools}};
+    }
+
+    // Helper to wrap tool results with connection state
+    // This ensures Claude Code always knows if data is live or stale
+    json makeToolResult(const json& data, bool requiresConnection = false) {
+        auto connState = m_vivid.getConnectionState();
+
+        json result;
+        result["isError"] = false;
+
+        // Build response with connection state
+        json response;
+        response["connected"] = connState.connected;
+
+        if (!connState.connected && requiresConnection) {
+            // Tool requires connection but we're disconnected
+            response["stale"] = connState.stale;
+            if (!connState.lastError.empty()) {
+                response["error"] = connState.lastError;
+            } else {
+                response["error"] = "Vivid not running on port 9876";
+            }
+            response["suggestion"] = "Run: ./build/bin/vivid <project>";
+            response["data"] = data;  // Still include cached data, but mark as stale
+        } else {
+            response["data"] = data;
+        }
+
+        result["content"] = {{
+            {"type", "text"},
+            {"text", response.dump(2)}
+        }};
+        return result;
     }
 
     json handleToolsCall(const json& params) {
@@ -527,10 +932,8 @@ private:
         result["isError"] = false;
 
         if (name == "get_pending_changes") {
-            result["content"] = {{
-                {"type", "text"},
-                {"text", m_vivid.getPendingChanges().dump(2)}
-            }};
+            json data = m_vivid.getPendingChanges();
+            return makeToolResult(data, true);  // Requires connection
         }
         else if (name == "get_live_params") {
             json liveParams = m_vivid.getParams();
@@ -546,28 +949,56 @@ private:
                 liveParams = filtered;
             }
 
-            result["content"] = {{
-                {"type", "text"},
-                {"text", liveParams.dump(2)}
-            }};
+            return makeToolResult(liveParams, true);  // Requires connection
         }
         else if (name == "clear_pending_changes") {
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = connState.lastError.empty() ?
+                    "Cannot clear changes: Vivid not running" : connState.lastError;
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
             m_vivid.commitChanges();
-            result["content"] = {{
-                {"type", "text"},
-                {"text", "Pending changes cleared."}
-            }};
+            json response;
+            response["success"] = true;
+            response["connected"] = true;
+            response["message"] = "Pending changes cleared.";
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            return result;
         }
         else if (name == "discard_pending_changes") {
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = connState.lastError.empty() ?
+                    "Cannot discard changes: Vivid not running" : connState.lastError;
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
             m_vivid.discardChanges();
-            result["content"] = {{
-                {"type", "text"},
-                {"text", "Pending changes discarded. Parameters reverted to original values."}
-            }};
+            json response;
+            response["success"] = true;
+            response["connected"] = true;
+            response["message"] = "Pending changes discarded. Parameters reverted to original values.";
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            return result;
         }
         else if (name == "get_runtime_status") {
+            auto connState = m_vivid.getConnectionState();
             json status;
-            status["connected"] = m_vivid.isConnected();
+            status["connected"] = connState.connected;
+            status["stale"] = connState.stale;
+            if (!connState.lastError.empty()) {
+                status["lastError"] = connState.lastError;
+            }
             status["compileStatus"] = m_vivid.getCompileStatus();
             status["operators"] = m_vivid.getOperators();
             status["pendingChanges"] = m_vivid.getPendingChanges()["hasChanges"];
@@ -577,14 +1008,170 @@ private:
                 {"text", status.dump(2)}
             }};
         }
-        else if (name == "list_operators") {
-            auto& registry = OperatorRegistry::instance();
-            json opList = registry.toJsonGrouped();
+        else if (name == "get_compile_errors") {
+            auto connState = m_vivid.getConnectionState();
+            json response;
+            response["connected"] = connState.connected;
 
-            result["content"] = {{
-                {"type", "text"},
-                {"text", opList.dump(2)}
-            }};
+            if (!connState.connected) {
+                response["error"] = "Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            json compileStatus = m_vivid.getCompileStatus();
+            bool success = compileStatus.value("success", true);
+            std::string rawMessage = compileStatus.value("message", "");
+
+            response["success"] = success;
+
+            if (success) {
+                response["errors"] = json::array();
+                response["message"] = "Compilation successful";
+            } else {
+                // Parse the raw error message into structured format
+                json errors = parseCompileErrors(rawMessage);
+                response["errors"] = errors;
+                response["errorCount"] = errors.size();
+
+                // Include raw message for reference (in case parsing missed something)
+                if (!rawMessage.empty()) {
+                    response["raw"] = rawMessage;
+                }
+
+                // If we couldn't parse any errors but there was a failure, include raw
+                if (errors.empty() && !rawMessage.empty()) {
+                    response["warning"] = "Could not parse error format, see 'raw' field";
+                }
+            }
+
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "list_operators") {
+            bool verbose = args.value("verbose", false);
+            auto& registry = OperatorRegistry::instance();
+
+            if (verbose) {
+                // Full output with all parameter details
+                json opList = registry.toJsonGrouped();
+                result["content"] = {{{"type", "text"}, {"text", opList.dump(2)}}};
+            } else {
+                // Compact output: just name, category, module, requiresInput
+                json compact = json::object();
+                for (const auto& meta : registry.operators()) {
+                    if (compact.find(meta.category) == compact.end()) {
+                        compact[meta.category] = json::array();
+                    }
+                    compact[meta.category].push_back({
+                        {"name", meta.name},
+                        {"module", meta.module.empty() ? json(nullptr) : json(meta.module)},
+                        {"requiresInput", meta.requiresInput}
+                    });
+                }
+                result["content"] = {{{"type", "text"}, {"text", compact.dump(2)}}};
+            }
+        }
+        else if (name == "get_operator") {
+            std::string opName = args.value("name", "");
+            if (opName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Operator name is required"}}};
+                return result;
+            }
+
+            auto& registry = OperatorRegistry::instance();
+            const OperatorMeta* meta = registry.find(opName);
+
+            // Case-insensitive fallback search
+            if (!meta) {
+                std::string opLower = opName;
+                std::transform(opLower.begin(), opLower.end(), opLower.begin(), ::tolower);
+                for (const auto& m : registry.operators()) {
+                    std::string nameLower = m.name;
+                    std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+                    if (nameLower == opLower) {
+                        meta = &m;
+                        break;
+                    }
+                }
+            }
+
+            if (!meta) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"},
+                    {"text", "Operator '" + opName + "' not found. Use list_operators to see available operators."}}};
+                return result;
+            }
+
+            // Build response
+            json info;
+            info["name"] = meta->name;
+            info["category"] = meta->category;
+            info["description"] = meta->description;
+            info["module"] = meta->module.empty() ? "vivid-core" : meta->module;
+            info["requiresInput"] = meta->requiresInput;
+            info["outputType"] = outputKindName(meta->outputKind);
+            info["params"] = json::array();
+
+            // Get parameters via factory
+            if (meta->factory) {
+                try {
+                    auto tempOp = meta->factory();
+                    auto params = tempOp->params();
+                    for (const auto& p : params) {
+                        json param;
+                        param["name"] = p.name;
+                        param["type"] = paramTypeName(p.type);
+
+                        // Format default based on type
+                        if (p.type == ParamType::String || p.type == ParamType::FilePath) {
+                            param["default"] = p.stringDefault;
+                            if (!p.fileFilter.empty()) param["fileFilter"] = p.fileFilter;
+                        } else if (p.type == ParamType::Bool) {
+                            param["default"] = (p.defaultVal[0] != 0.0f);
+                        } else if (p.type == ParamType::Int) {
+                            param["default"] = static_cast<int>(p.defaultVal[0]);
+                            param["min"] = static_cast<int>(p.minVal);
+                            param["max"] = static_cast<int>(p.maxVal);
+                        } else if (p.type == ParamType::Vec2) {
+                            param["default"] = json::array({p.defaultVal[0], p.defaultVal[1]});
+                        } else if (p.type == ParamType::Vec3 || p.type == ParamType::Color) {
+                            param["default"] = json::array({p.defaultVal[0], p.defaultVal[1], p.defaultVal[2]});
+                        } else if (p.type == ParamType::Vec4) {
+                            param["default"] = json::array({p.defaultVal[0], p.defaultVal[1], p.defaultVal[2], p.defaultVal[3]});
+                        } else {
+                            // Float
+                            param["default"] = p.defaultVal[0];
+                            param["min"] = p.minVal;
+                            param["max"] = p.maxVal;
+                        }
+                        info["params"].push_back(param);
+                    }
+                } catch (...) {
+                    info["params_error"] = "Could not introspect parameters";
+                }
+            }
+
+            // Generate usage example
+            std::string usage = "auto& op = chain.add<" + meta->name + ">(\"name\");\n";
+            if (meta->requiresInput) {
+                usage += "op.input(\"source_operator\");\n";
+            }
+            if (!info["params"].empty()) {
+                usage += "// Parameters:\n";
+                size_t count = 0;
+                for (const auto& p : info["params"]) {
+                    if (count++ >= 3) {
+                        usage += "// ... and " + std::to_string(info["params"].size() - 3) + " more\n";
+                        break;
+                    }
+                    usage += "op." + p["name"].get<std::string>() + " = " + p["default"].dump() + ";\n";
+                }
+            }
+            info["usage"] = usage;
+
+            result["content"] = {{{"type", "text"}, {"text", info.dump(2)}}};
         }
         else if (name == "create_project") {
             std::string projectName = args.value("name", "");
@@ -888,12 +1475,50 @@ private:
             }
         }
         else if (name == "list_modules") {
-            std::vector<std::string> cmdArgs = {
-                getVividExecutable(), "modules", "list"
-            };
+            json output = json::object();
 
-            auto cmdResult = runCommand(cmdArgs);
-            result["content"] = {{{"type", "text"}, {"text", cmdResult.output}}};
+            // Built-in modules (always available)
+            output["builtin"] = json::array();
+            const std::vector<std::pair<std::string, std::string>> builtins = {
+                {"vivid-audio", "Audio synthesis, sequencing, FFT analysis, and drum machines"},
+                {"vivid-video", "Video playback with HAP, H.264, ProRes, and webcam input"},
+                {"vivid-render3d", "3D rendering with PBR, GLTF loading, CSG operations"},
+                {"vivid-network", "OSC, UDP, and WebSocket communication"},
+                {"vivid-serial", "Serial port I/O and DMX lighting control"},
+                {"vivid-midi", "MIDI input/output and file playback"}
+            };
+            for (const auto& [modName, desc] : builtins) {
+                output["builtin"].push_back({
+                    {"name", modName},
+                    {"description", desc}
+                });
+            }
+
+            // User-installed modules (from ~/.vivid/modules/)
+            output["user_installed"] = json::array();
+            fs::path userModulesDir = fs::path(getenv("HOME") ? getenv("HOME") : "") / ".vivid" / "modules";
+            if (fs::exists(userModulesDir) && fs::is_directory(userModulesDir)) {
+                for (const auto& entry : fs::directory_iterator(userModulesDir)) {
+                    if (entry.is_directory()) {
+                        fs::path moduleJson = entry.path() / "module.json";
+                        if (fs::exists(moduleJson)) {
+                            try {
+                                std::ifstream f(moduleJson);
+                                json meta = json::parse(f);
+                                output["user_installed"].push_back({
+                                    {"name", meta.value("name", entry.path().filename().string())},
+                                    {"description", meta.value("description", "")},
+                                    {"version", meta.value("version", "")}
+                                });
+                            } catch (...) {
+                                // Malformed module.json, skip
+                            }
+                        }
+                    }
+                }
+            }
+
+            result["content"] = {{{"type", "text"}, {"text", output.dump(2)}}};
         }
         else if (name == "list_templates") {
             // Return hardcoded template info (matches CLI new command)
@@ -933,14 +1558,32 @@ private:
                 return result;
             }
 
-            // Convert query to lowercase for case-insensitive search
-            std::string queryLower = query;
-            std::transform(queryLower.begin(), queryLower.end(), queryLower.begin(), ::tolower);
+            // Split query into words (lowercase, strip punctuation)
+            std::vector<std::string> queryWords;
+            {
+                std::string queryLower = query;
+                std::transform(queryLower.begin(), queryLower.end(), queryLower.begin(), ::tolower);
+                std::istringstream iss(queryLower);
+                std::string word;
+                while (iss >> word) {
+                    // Strip punctuation from word
+                    word.erase(std::remove_if(word.begin(), word.end(),
+                        [](char c) { return !std::isalnum(static_cast<unsigned char>(c)); }), word.end());
+                    if (!word.empty()) {
+                        queryWords.push_back(word);
+                    }
+                }
+            }
+
+            if (queryWords.empty()) {
+                result["content"] = {{{"type", "text"}, {"text", "No valid search terms in query"}}};
+                return result;
+            }
 
             // Dynamically discover all doc files
             auto docs = getDocFiles();
-
             json matches = json::array();
+
             for (const auto& [filename, title] : docs) {
                 std::string content = loadDocsFile(filename);
                 if (content.empty()) continue;
@@ -949,47 +1592,77 @@ private:
                 std::string contentLower = content;
                 std::transform(contentLower.begin(), contentLower.end(), contentLower.begin(), ::tolower);
 
-                // Find all occurrences and extract context
+                // Split into sections by markdown headers
+                std::vector<std::tuple<std::string, size_t, size_t>> sections;  // header, start, end
                 size_t pos = 0;
-                while ((pos = contentLower.find(queryLower, pos)) != std::string::npos) {
-                    // Extract surrounding context (up to 200 chars before/after)
-                    size_t start = (pos > 200) ? pos - 200 : 0;
-                    size_t end = std::min(pos + queryLower.length() + 200, content.length());
+                std::string currentHeader = title;
+                size_t currentStart = 0;
 
-                    // Find section header (line starting with #)
-                    size_t headerStart = content.rfind("\n#", pos);
-                    std::string section = title;
-                    if (headerStart != std::string::npos) {
-                        size_t headerEnd = content.find('\n', headerStart + 1);
-                        if (headerEnd != std::string::npos) {
-                            section = title + " > " + content.substr(headerStart + 1, headerEnd - headerStart - 1);
-                            // Clean up # characters
-                            size_t hashEnd = section.find_first_not_of("# ", title.length() + 3);
-                            if (hashEnd != std::string::npos) {
-                                section = title + " > " + section.substr(hashEnd);
-                            }
+                while ((pos = content.find("\n#", pos)) != std::string::npos) {
+                    // Save previous section
+                    if (pos > currentStart) {
+                        sections.emplace_back(currentHeader, currentStart, pos);
+                    }
+                    // Extract new header
+                    size_t headerEnd = content.find('\n', pos + 1);
+                    if (headerEnd != std::string::npos) {
+                        std::string header = content.substr(pos + 1, headerEnd - pos - 1);
+                        // Clean up # characters
+                        size_t hashEnd = header.find_first_not_of("# ");
+                        if (hashEnd != std::string::npos) {
+                            currentHeader = title + " > " + header.substr(hashEnd);
+                        } else {
+                            currentHeader = title + " > " + header;
+                        }
+                    }
+                    currentStart = pos + 1;
+                    pos++;
+                }
+                // Add final section
+                sections.emplace_back(currentHeader, currentStart, content.length());
+
+                // Search each section for ALL query words
+                for (const auto& [section, sectionStart, sectionEnd] : sections) {
+                    std::string sectionContent = contentLower.substr(sectionStart, sectionEnd - sectionStart);
+
+                    // Check if ALL words appear in this section
+                    bool allFound = true;
+                    size_t firstWordPos = std::string::npos;
+                    for (const auto& word : queryWords) {
+                        size_t wordPos = sectionContent.find(word);
+                        if (wordPos == std::string::npos) {
+                            allFound = false;
+                            break;
+                        }
+                        if (firstWordPos == std::string::npos || wordPos < firstWordPos) {
+                            firstWordPos = wordPos;
                         }
                     }
 
-                    std::string context = content.substr(start, end - start);
-                    // Trim to word boundaries
-                    if (start > 0) {
-                        size_t firstSpace = context.find(' ');
-                        if (firstSpace != std::string::npos) context = "..." + context.substr(firstSpace);
-                    }
-                    if (end < content.length()) {
-                        size_t lastSpace = context.rfind(' ');
-                        if (lastSpace != std::string::npos) context = context.substr(0, lastSpace) + "...";
-                    }
+                    if (allFound && firstWordPos != std::string::npos) {
+                        // Extract context around first word (in original case)
+                        size_t contextStart = (firstWordPos > 150) ? firstWordPos - 150 : 0;
+                        size_t contextLen = std::min(size_t(400), sectionEnd - sectionStart - contextStart);
 
-                    matches.push_back({
-                        {"file", filename},
-                        {"section", section},
-                        {"context", context}
-                    });
+                        std::string context = content.substr(sectionStart + contextStart, contextLen);
+                        // Trim to word boundaries
+                        if (contextStart > 0) {
+                            size_t firstSpace = context.find(' ');
+                            if (firstSpace != std::string::npos) context = "..." + context.substr(firstSpace);
+                        }
+                        if (contextStart + contextLen < sectionEnd - sectionStart) {
+                            size_t lastSpace = context.rfind(' ');
+                            if (lastSpace != std::string::npos) context = context.substr(0, lastSpace) + "...";
+                        }
 
-                    pos += queryLower.length();
-                    if (matches.size() >= 10) break;  // Limit results
+                        matches.push_back({
+                            {"file", filename},
+                            {"section", section},
+                            {"context", context}
+                        });
+
+                        if (matches.size() >= 10) break;
+                    }
                 }
                 if (matches.size() >= 10) break;
             }
@@ -999,6 +1672,134 @@ private:
             } else {
                 result["content"] = {{{"type", "text"}, {"text", matches.dump(2)}}};
             }
+        }
+        else if (name == "get_performance_stats") {
+            json stats = m_vivid.getPerformanceStats();
+            if (stats.empty()) {
+                json response;
+                response["connected"] = m_vivid.isConnected();
+                response["warning"] = "No performance data available yet. Vivid sends stats periodically.";
+                response["suggestion"] = "Wait a moment and try again, or check if Vivid is running.";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                return makeToolResult(stats, true);
+            }
+        }
+        else if (name == "solo_operator") {
+            std::string opName = args.value("name", "");
+            if (opName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Operator name is required"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot solo: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            m_vivid.soloOperator(opName);
+            json response;
+            response["success"] = true;
+            response["connected"] = true;
+            response["message"] = "Soloed operator: " + opName;
+            response["hint"] = "Use exit_solo to return to normal output";
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "exit_solo") {
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot exit solo: Vivid not running";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            m_vivid.exitSolo();
+            json response;
+            response["success"] = true;
+            response["connected"] = true;
+            response["message"] = "Exited solo mode";
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "get_solo_state") {
+            json state = m_vivid.getSoloState();
+            return makeToolResult(state, true);
+        }
+        else if (name == "get_window_state") {
+            json state = m_vivid.getWindowState();
+            if (state.empty()) {
+                json response;
+                response["connected"] = m_vivid.isConnected();
+                response["warning"] = "No window state available yet.";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                return makeToolResult(state, true);
+            }
+        }
+        else if (name == "set_window_mode") {
+            std::string setting = args.value("setting", "");
+            bool value = args.value("value", false);
+
+            if (setting.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Setting is required (fullscreen, borderless, alwaysOnTop, cursor)"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot set window mode: Vivid not running";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            m_vivid.setWindowControl(setting, value ? 1 : 0);
+            json response;
+            response["success"] = true;
+            response["connected"] = true;
+            response["message"] = "Set " + setting + " = " + (value ? "true" : "false");
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "capture_frame") {
+            std::string outputPath = args.value("outputPath", "/tmp/vivid_capture.png");
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot capture frame: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Send capture command and wait for result
+            json captureResult = m_vivid.captureFrame(outputPath);
+
+            json response;
+            response["connected"] = true;
+            response["success"] = captureResult.value("success", false);
+            response["outputPath"] = captureResult.value("outputPath", outputPath);
+            if (captureResult.contains("error")) {
+                response["error"] = captureResult["error"];
+            }
+            if (response["success"].get<bool>()) {
+                response["hint"] = "Use the Read tool to view the captured image";
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else {
             result["isError"] = true;

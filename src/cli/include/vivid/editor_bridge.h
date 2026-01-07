@@ -217,6 +217,12 @@ public:
     /// Set callback for request operators command (client requests current operator list)
     void onRequestOperators(RequestOperatorsCallback callback) { m_requestOperatorsCallback = callback; }
 
+    /// Callback type for request compile status command
+    using RequestCompileStatusCallback = std::function<void()>;
+
+    /// Set callback for request compile status command (client requests current compile status)
+    void onRequestCompileStatus(RequestCompileStatusCallback callback) { m_requestCompileStatusCallback = callback; }
+
     /// Set callback for window control commands (Phase 14)
     void onWindowControl(WindowControlCallback callback) { m_windowControlCallback = callback; }
 
@@ -226,6 +232,20 @@ public:
     /// Set callback for discard changes command
     /// Called when pending changes should be reverted to original values
     void onDiscardChanges(DiscardChangesCallback callback) { m_discardChangesCallback = callback; }
+
+    /// Callback type for capture frame command (MCP live screenshot)
+    /// @param outputPath Path to save the PNG file
+    using CaptureFrameCallback = std::function<void(const std::string& outputPath)>;
+
+    /// Set callback for capture frame command
+    /// Called when MCP requests a screenshot of the current frame
+    void onCaptureFrame(CaptureFrameCallback callback) { m_captureFrameCallback = callback; }
+
+    /// Send capture result back to clients
+    /// @param success True if capture succeeded
+    /// @param outputPath Path where the file was saved
+    /// @param error Error message if failed
+    void sendCaptureResult(bool success, const std::string& outputPath, const std::string& error = "");
 
 private:
     class Impl;
@@ -239,8 +259,10 @@ private:
     SelectNodeCallback m_selectNodeCallback;
     FocusedNodeCallback m_focusedNodeCallback;
     RequestOperatorsCallback m_requestOperatorsCallback;
+    RequestCompileStatusCallback m_requestCompileStatusCallback;
     WindowControlCallback m_windowControlCallback;
     DiscardChangesCallback m_discardChangesCallback;
+    CaptureFrameCallback m_captureFrameCallback;
 
     // Pending changes queue (Claude-first workflow)
     std::vector<PendingChange> m_pendingChanges;

@@ -124,4 +124,45 @@ struct OperatorRegistrar {
     }); \
     static_assert(true, "")
 
+/**
+ * @brief Register an operator from a specific module (texture output)
+ *
+ * Use in module operator .cpp files to indicate which module provides the operator:
+ * @code
+ * REGISTER_MODULE_OPERATOR(Webcam, "Video Input", "Live webcam input", false, "vivid-video");
+ * @endcode
+ */
+#define REGISTER_MODULE_OPERATOR(Type, Category, Description, RequiresInput, ModuleName) \
+    static ::vivid::OperatorRegistrar s_reg_##Type({ \
+        #Type, \
+        Category, \
+        Description, \
+        ModuleName, \
+        RequiresInput, \
+        ::vivid::OutputKind::Texture, \
+        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); } \
+    }); \
+    static_assert(true, "")
+
+/**
+ * @brief Register a module operator with custom output kind
+ *
+ * Use for operators that produce non-Texture output (Audio, Value, etc.):
+ * @code
+ * REGISTER_MODULE_OPERATOR_EX(Oscillator, "Audio Synthesis", "Basic waveform oscillator",
+ *                             false, OutputKind::Audio, "vivid-audio");
+ * @endcode
+ */
+#define REGISTER_MODULE_OPERATOR_EX(Type, Category, Description, RequiresInput, OutKind, ModuleName) \
+    static ::vivid::OperatorRegistrar s_reg_##Type({ \
+        #Type, \
+        Category, \
+        Description, \
+        ModuleName, \
+        RequiresInput, \
+        OutKind, \
+        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); } \
+    }); \
+    static_assert(true, "")
+
 } // namespace vivid

@@ -146,6 +146,19 @@ void EditorBridge::start(int port) {
                         std::cout << "[EditorBridge] Pending changes requested\n";
                         sendPendingChanges();
                     }
+                    else if (type == "request_compile_status") {
+                        std::cout << "[EditorBridge] Compile status requested\n";
+                        if (m_requestCompileStatusCallback) {
+                            m_requestCompileStatusCallback();
+                        }
+                    }
+                    else if (type == "capture_frame") {
+                        std::string outputPath = j.value("outputPath", "/tmp/vivid_capture.png");
+                        std::cout << "[EditorBridge] Capture frame requested: " << outputPath << "\n";
+                        if (m_captureFrameCallback) {
+                            m_captureFrameCallback(outputPath);
+                        }
+                    }
                 } catch (const json::exception& e) {
                     std::cerr << "[EditorBridge] JSON parse error: " << e.what() << "\n";
                 }
@@ -408,6 +421,26 @@ std::vector<PendingChange> EditorBridge::discardPendingChanges() {
     m_pendingChanges.clear();
     sendPendingChanges();
     return discarded;
+}
+
+void EditorBridge::sendCaptureResult(bool success, const std::string& outputPath, const std::string& error) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "capture_result";
+    j["success"] = success;
+    j["outputPath"] = outputPath;
+    if (!error.empty()) {
+        j["error"] = error;
+    }
+
+    std::string msg = j.dump();
+
+    // Broadcast to all clients
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
 }
 
 } // namespace vivid

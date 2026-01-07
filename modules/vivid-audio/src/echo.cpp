@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(Echo, "Audio Effects", "Multi-tap echo with diffusion", true, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(Echo, "Audio Effects", "Multi-tap echo with diffusion", true, OutputKind::Audio, "vivid-audio");
 
 void Echo::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

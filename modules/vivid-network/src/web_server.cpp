@@ -17,7 +17,7 @@
 
 namespace vivid::network {
 
-REGISTER_OPERATOR(WebServer, "Network", "HTTP/WebSocket server for browser integration", false);
+REGISTER_MODULE_OPERATOR(WebServer, "Network", "HTTP/WebSocket server for browser integration", false, "vivid-network");
 
 WebServer::WebServer() = default;
 

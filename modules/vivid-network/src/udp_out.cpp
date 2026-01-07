@@ -24,7 +24,7 @@
 
 namespace vivid::network {
 
-REGISTER_OPERATOR(UdpOut, "Network", "Send raw UDP packets", false);
+REGISTER_MODULE_OPERATOR(UdpOut, "Network", "Send raw UDP packets", false, "vivid-network");
 
 #ifdef _WIN32
 extern bool g_wsaInitialized;

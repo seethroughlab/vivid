@@ -34,7 +34,7 @@ using StandardDecoder = vivid::video::FFmpegDecoder;
 
 namespace vivid::video {
 
-REGISTER_OPERATOR(VideoPlayer, "Video Input", "Video file playback with HAP, H.264, HEVC, ProRes support", false);
+REGISTER_MODULE_OPERATOR(VideoPlayer, "Video Input", "Video file playback with HAP, H.264, HEVC, ProRes support", false, "vivid-video");
 
 VideoPlayer::VideoPlayer() = default;
 

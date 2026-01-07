@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.14] - 2026-01-07
+
+### Changed
+
+- **Particles operator uses Param<> properties** - Replaced 20+ setter methods with public `Param<>` properties for consistency with other operators (Shape, Noise, etc.)
+  - Before: `particles.emitter(EmitterShape::Disc); particles.position(0.5f, 0.5f);`
+  - After: `particles.emitterShape = EmitterShape::Disc; particles.position.set(0.5f, 0.5f);`
+  - Action methods preserved: `burst()`, `seed()`, `setTexture()`, `setSpin()`
+- **MCP connection reliability** - Added heartbeat mechanism, better error handling, and proper state synchronization on connect
+- **Module operator registration** - All 80+ module operators now register with their module name for better MCP discoverability
+
+### Fixed
+
+- **MCP server tools** - Fixed `list_operators`, `get_operator`, `search_docs`, and `list_modules` returning empty/incorrect results
+- **Documentation examples** - Fixed incorrect fluent-style syntax in RECIPES.md and CHAIN-API.md that would never have compiled
+- **Showcase examples** - Updated flow-field and audio-visualizer to use correct property assignment syntax
+
 ## [0.1.0-alpha.13] - 2026-01-07
 
 ### Added

@@ -26,7 +26,7 @@
 
 namespace vivid::network {
 
-REGISTER_OPERATOR(UdpIn, "Network", "Receive raw UDP packets", false);
+REGISTER_MODULE_OPERATOR(UdpIn, "Network", "Receive raw UDP packets", false, "vivid-network");
 
 #ifdef _WIN32
 // Shared WSA initialization for all network code

@@ -13,7 +13,7 @@ using vivid::effects::toStringView;
 
 namespace vivid::render3d {
 
-REGISTER_OPERATOR(TexturedMaterial, "3D Materials", "PBR material with albedo, normal, metallic, roughness maps", false);
+REGISTER_MODULE_OPERATOR(TexturedMaterial, "3D Materials", "PBR material with albedo, normal, metallic, roughness maps", false, "vivid-render3d");
 
 TexturedMaterial::TexturedMaterial() = default;
 

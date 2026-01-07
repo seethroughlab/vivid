@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR(Clock, "Audio Sequencing", "Master tempo clock with beat/bar triggers", false);
+REGISTER_MODULE_OPERATOR(Clock, "Audio Sequencing", "Master tempo clock with beat/bar triggers", false, "vivid-audio");
 
 void Clock::init(Context& ctx) {
     m_sampleRate = 48000;  // Standard audio sample rate

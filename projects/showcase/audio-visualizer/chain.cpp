@@ -42,7 +42,7 @@ void setup(Context& ctx) {
     // Internal synth - generates beats for visualization
     auto& clock = chain.add<Clock>("clock");
     clock.bpm = 128.0f;
-    clock.division(ClockDiv::Sixteenth);
+    clock.division = ClockDiv::Sixteenth;
 
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
     kickSeq.setPattern(0x1111);  // Four on floor
@@ -125,67 +125,70 @@ void setup(Context& ctx) {
 
     // Bass particles - large, slow, react to sub-bass
     auto& bassParticles = chain.add<Particles>("bassParticles");
-    bassParticles.emitter(EmitterShape::Ring);
-    bassParticles.position(0.5f, 0.5f);
-    bassParticles.emitterSize(0.3f);
-    bassParticles.emitRate(30.0f);
-    bassParticles.maxParticles(3000);
-    bassParticles.radialVelocity(0.08f);
-    bassParticles.turbulence(0.1f);
-    bassParticles.drag(0.8f);
-    bassParticles.life(3.0f);
-    bassParticles.size(0.025f, 0.005f);
-    bassParticles.color(Color::fromHex("#CC3366"));
-    bassParticles.colorEnd(Color::fromHex("#661A99").withAlpha(0.0f));
-    bassParticles.fadeOut(true);
-    bassParticles.clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    bassParticles.emitterShape = EmitterShape::Ring;
+    bassParticles.position.set(0.5f, 0.5f);
+    bassParticles.emitterSize = 0.3f;
+    bassParticles.emitRate = 30.0f;
+    bassParticles.maxParticles = 3000;
+    bassParticles.radialVelocity = 0.08f;
+    bassParticles.turbulence = 0.1f;
+    bassParticles.drag = 0.8f;
+    bassParticles.life = 3.0f;
+    bassParticles.size = 0.025f;
+    bassParticles.sizeEnd = 0.005f;
+    bassParticles.color = Color::fromHex("#CC3366");
+    bassParticles.colorEnd = Color::fromHex("#661A99").withAlpha(0.0f);
+    bassParticles.fadeOut = true;
+    bassParticles.clearColor.set(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Mid particles - medium, react to mids
     auto& midParticles = chain.add<Particles>("midParticles");
-    midParticles.emitter(EmitterShape::Disc);
-    midParticles.position(0.5f, 0.5f);
-    midParticles.emitterSize(0.2f);
-    midParticles.emitRate(60.0f);
-    midParticles.maxParticles(4000);
-    midParticles.velocity(0.0f, -0.05f);
-    midParticles.spread(180.0f);
-    midParticles.turbulence(0.15f);
-    midParticles.drag(0.5f);
-    midParticles.life(2.5f);
-    midParticles.size(0.012f, 0.003f);
-    midParticles.color(Color::DodgerBlue);
-    midParticles.colorEnd(Color::MediumBlue.withAlpha(0.0f));
-    midParticles.fadeOut(true);
-    midParticles.clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    midParticles.emitterShape = EmitterShape::Disc;
+    midParticles.position.set(0.5f, 0.5f);
+    midParticles.emitterSize = 0.2f;
+    midParticles.emitRate = 60.0f;
+    midParticles.maxParticles = 4000;
+    midParticles.velocity.set(0.0f, -0.05f);
+    midParticles.spread = 180.0f;
+    midParticles.turbulence = 0.15f;
+    midParticles.drag = 0.5f;
+    midParticles.life = 2.5f;
+    midParticles.size = 0.012f;
+    midParticles.sizeEnd = 0.003f;
+    midParticles.color = Color::DodgerBlue;
+    midParticles.colorEnd = Color::MediumBlue.withAlpha(0.0f);
+    midParticles.fadeOut = true;
+    midParticles.clearColor.set(0.0f, 0.0f, 0.0f, 0.0f);
 
     // High particles - small, fast, sparkle effect
     auto& highParticles = chain.add<Particles>("highParticles");
-    highParticles.emitter(EmitterShape::Disc);
-    highParticles.position(0.5f, 0.5f);
-    highParticles.emitterSize(0.4f);
-    highParticles.emitRate(100.0f);
-    highParticles.maxParticles(5000);
-    highParticles.velocity(0.0f, 0.0f);
-    highParticles.radialVelocity(0.15f);
-    highParticles.turbulence(0.2f);
-    highParticles.drag(0.3f);
-    highParticles.life(1.5f);
-    highParticles.size(0.006f, 0.001f);
-    highParticles.colorMode(ColorMode::Rainbow);
-    highParticles.fadeOut(true);
-    highParticles.clearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    highParticles.emitterShape = EmitterShape::Disc;
+    highParticles.position.set(0.5f, 0.5f);
+    highParticles.emitterSize = 0.4f;
+    highParticles.emitRate = 100.0f;
+    highParticles.maxParticles = 5000;
+    highParticles.velocity.set(0.0f, 0.0f);
+    highParticles.radialVelocity = 0.15f;
+    highParticles.turbulence = 0.2f;
+    highParticles.drag = 0.3f;
+    highParticles.life = 1.5f;
+    highParticles.size = 0.006f;
+    highParticles.sizeEnd = 0.001f;
+    highParticles.colorMode = ColorMode::Rainbow;
+    highParticles.fadeOut = true;
+    highParticles.clearColor.set(0.0f, 0.0f, 0.0f, 0.0f);
 
     // Composite particles
     auto& particleComp = chain.add<Composite>("particleComp");
-    particleComp.input(0, "bg");
-    particleComp.input(1, "bassParticles");
-    particleComp.input(2, "midParticles");
-    particleComp.input(3, "highParticles");
-    particleComp.mode(BlendMode::Add);
+    particleComp.setInput(0, "bg");
+    particleComp.setInput(1, "bassParticles");
+    particleComp.setInput(2, "midParticles");
+    particleComp.setInput(3, "highParticles");
+    particleComp.mode = BlendMode::Add;
 
     // Central shape - pulses with beat
     auto& beatShape = chain.add<Shape>("beatShape");
-    beatShape.type(ShapeType::Circle);
+    beatShape.type = ShapeType::Circle;
     beatShape.position.set(0.5f, 0.5f);
     beatShape.size.set(0.15f, 0.15f);
     beatShape.color.set(Color::White.withAlpha(0.8f));
@@ -194,7 +197,7 @@ void setup(Context& ctx) {
     auto& shapeComp = chain.add<Composite>("shapeComp");
     shapeComp.inputA("particleComp");
     shapeComp.inputB("beatShape");
-    shapeComp.mode(BlendMode::Add);
+    shapeComp.mode = BlendMode::Add;
 
     // Feedback for trails
     auto& feedback = chain.add<Feedback>("feedback");
@@ -370,9 +373,9 @@ void update(Context& ctx) {
 
     // Bass particles - emit more on bass, expand ring
     float bassEmit = 20.0f + bass * 200.0f;
-    bassParticles.emitRate(bassEmit);
-    bassParticles.emitterSize(0.2f + bassAccum * 0.4f);
-    bassParticles.radialVelocity(0.05f + subBass * 0.2f);
+    bassParticles.emitRate = bassEmit;
+    bassParticles.emitterSize = 0.2f + bassAccum * 0.4f;
+    bassParticles.radialVelocity = 0.05f + subBass * 0.2f;
 
     // Burst on beat
     if (isBeat) {
@@ -381,13 +384,13 @@ void update(Context& ctx) {
 
     // Mid particles - turbulence and emit rate
     float midEmit = 40.0f + mid * 150.0f;
-    midParticles.emitRate(midEmit);
-    midParticles.turbulence(0.1f + mid * 0.3f);
+    midParticles.emitRate = midEmit;
+    midParticles.turbulence = 0.1f + mid * 0.3f;
 
     // High particles - sparkle intensity
     float highEmit = 60.0f + high * 200.0f + highMid * 100.0f;
-    highParticles.emitRate(highEmit);
-    highParticles.radialVelocity(0.1f + high * 0.2f);
+    highParticles.emitRate = highEmit;
+    highParticles.radialVelocity = 0.1f + high * 0.2f;
 
     // Beat shape - size and color
     float shapeSize = 0.08f + energy * 0.15f + beatFlash * 0.2f;

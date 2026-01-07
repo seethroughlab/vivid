@@ -4,7 +4,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(Reverb, "Audio Effects", "Reverb effect with room size and damping", true, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(Reverb, "Audio Effects", "Reverb effect with room size and damping", true, OutputKind::Audio, "vivid-audio");
 
 // Static constexpr definitions
 constexpr int Reverb::COMB_DELAYS_L[NUM_COMBS];

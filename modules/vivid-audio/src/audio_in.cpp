@@ -27,7 +27,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(AudioIn, "Audio Input", "Live audio input from microphone or line-in", false, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(AudioIn, "Audio Input", "Live audio input from microphone or line-in", false, OutputKind::Audio, "vivid-audio");
 
 struct AudioIn::Impl {
     ma_device device;

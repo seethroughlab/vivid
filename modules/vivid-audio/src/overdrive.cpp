@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(Overdrive, "Audio Effects", "Soft-clipping distortion with tone control", true, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(Overdrive, "Audio Effects", "Soft-clipping distortion with tone control", true, OutputKind::Audio, "vivid-audio");
 
 void Overdrive::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

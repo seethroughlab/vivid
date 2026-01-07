@@ -7,7 +7,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(Synth, "Audio Synthesis", "Polyphonic subtractive synthesizer", false, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(Synth, "Audio Synthesis", "Polyphonic subtractive synthesizer", false, OutputKind::Audio, "vivid-audio");
 
 void Synth::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

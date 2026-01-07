@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_EX(Decay, "Audio Envelopes", "One-shot decay envelope with multiple curve shapes", false, OutputKind::Audio);
+REGISTER_MODULE_OPERATOR_EX(Decay, "Audio Envelopes", "One-shot decay envelope with multiple curve shapes", false, OutputKind::Audio, "vivid-audio");
 
 void Decay::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;
