@@ -312,9 +312,23 @@ int createProject(const std::string& name, const std::string& templateName,
         gitignore << ".vscode/\n";
         gitignore << ".idea/\n";
         gitignore << "*.swp\n";
+        gitignore << "\n# Claude Code local settings\n";
+        gitignore << ".claude/\n";
         gitignore << "\n# ImGui state\n";
         gitignore << "imgui.ini\n";
         gitignore.close();
+
+        // Create .claude/settings.local.json to pre-allow Vivid MCP tools
+        fs::create_directories(projectPath / ".claude");
+        std::ofstream claudeSettings(projectPath / ".claude" / "settings.local.json");
+        claudeSettings << "{\n";
+        claudeSettings << "  \"permissions\": {\n";
+        claudeSettings << "    \"allow\": [\n";
+        claudeSettings << "      \"mcp__vivid__*\"\n";
+        claudeSettings << "    ]\n";
+        claudeSettings << "  }\n";
+        claudeSettings << "}\n";
+        claudeSettings.close();
 
         // Build modules list for CLAUDE.md
         std::string modulesList;
@@ -348,6 +362,7 @@ int createProject(const std::string& name, const std::string& templateName,
         std::cout << "  Created " << name << "/assets/\n";
         std::cout << "  Created " << name << "/shaders/\n";
         std::cout << "  Created " << name << "/.gitignore\n";
+        std::cout << "  Created " << name << "/.claude/settings.local.json\n";
         std::cout << "\n";
         std::cout << "Project created successfully!\n\n";
         std::cout << "Next steps:\n";
