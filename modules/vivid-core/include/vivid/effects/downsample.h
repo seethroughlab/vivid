@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -56,6 +57,24 @@ enum class FilterMode {
  */
 class Downsample : public SimpleTextureEffect<Downsample, DownsampleUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Downsample", "Retro", "Low resolution effect")
+            .requireInput()
+            .withAliases({"LowRes", "Pixelate8Bit"})
+            .withUsage(
+                "auto& lowres = chain.add<Downsample>(\"lowres\");\n"
+                "lowres.input(\"source\");\n"
+                "lowres.targetW = 160;\n"
+                "lowres.targetH = 120;\n"
+                "lowres.filter(FilterMode::Nearest);  // Nearest or Linear\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -52,6 +53,24 @@ struct TileUniforms {
  */
 class Tile : public SimpleTextureEffect<Tile, TileUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Tile", "Effects", "Texture tiling")
+            .requireInput()
+            .withAliases({"Repeat", "TileRepeat"})
+            .withUsage(
+                "auto& tile = chain.add<Tile>(\"tiled\");\n"
+                "tile.input(\"source\");\n"
+                "tile.repeat.set(4.0f, 4.0f);  // 4x4 tile grid\n"
+                "tile.offset.set(0.25f, 0.0f);\n"
+                "tile.mirror = true;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

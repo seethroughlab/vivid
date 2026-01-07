@@ -13,7 +13,7 @@
 namespace vivid {
 namespace serial {
 
-REGISTER_MODULE_OPERATOR(SerialOut, "IO", "Serial output for Arduino and other devices", false, "vivid-serial");
+REGISTER(SerialOut);
 
 SerialOut::SerialOut() {
     m_serial = std::make_unique<SerialPort>();

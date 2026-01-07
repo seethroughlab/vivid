@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -45,6 +46,26 @@ namespace vivid::audio {
  */
 class PitchEnv : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("PitchEnv", "Audio Envelope", "Pitch sweep envelope for drum synthesis")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& pitch = chain.add<PitchEnv>(\"pitch\");\n"
+                "pitch.startFreq = 150.0f;  // Start at 150Hz\n"
+                "pitch.endFreq = 50.0f;     // End at 50Hz\n"
+                "pitch.time = 0.1f;         // 100ms sweep\n"
+                "\n"
+                "pitch.trigger();\n"
+                "float freq = pitch.currentFreq();  // Get current freq\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

@@ -43,12 +43,48 @@ std::vector<std::string> OperatorRegistry::categories() const {
 }
 
 const OperatorMeta* OperatorRegistry::find(const std::string& name) const {
+    // First check exact name match
     for (const auto& op : m_operators) {
         if (op.name == name) {
             return &op;
         }
     }
+    // Then check aliases
+    for (const auto& op : m_operators) {
+        for (const auto& alias : op.aliases) {
+            if (alias == name) {
+                return &op;
+            }
+        }
+    }
     return nullptr;
+}
+
+OperatorMeta* OperatorRegistry::findMutable(const std::string& name) {
+    for (auto& op : m_operators) {
+        if (op.name == name) {
+            return &op;
+        }
+    }
+    return nullptr;
+}
+
+void OperatorRegistry::setUsage(const std::string& name, const std::string& usage) {
+    if (auto* meta = findMutable(name)) {
+        meta->usage = usage;
+    }
+}
+
+void OperatorRegistry::setAliases(const std::string& name, std::vector<std::string> aliases) {
+    if (auto* meta = findMutable(name)) {
+        meta->aliases = std::move(aliases);
+    }
+}
+
+void OperatorRegistry::setInputs(const std::string& name, std::vector<InputMeta> inputs) {
+    if (auto* meta = findMutable(name)) {
+        meta->inputs = std::move(inputs);
+    }
 }
 
 // Helper to convert ParamType to string
@@ -76,6 +112,24 @@ static json operatorMetaToJson(const OperatorMeta& meta) {
     op["module"] = meta.module.empty() ? json(nullptr) : json(meta.module);
     op["requiresInput"] = meta.requiresInput;
     op["outputType"] = outputKindName(meta.outputKind);
+
+    // Extended metadata for LLM/MCP
+    if (!meta.usage.empty()) {
+        op["usage"] = meta.usage;
+    }
+    if (!meta.aliases.empty()) {
+        op["aliases"] = meta.aliases;
+    }
+    if (!meta.inputs.empty()) {
+        op["inputs"] = json::array();
+        for (const auto& input : meta.inputs) {
+            op["inputs"].push_back({
+                {"method", input.method},
+                {"description", input.description},
+                {"required", input.required}
+            });
+        }
+    }
 
     // Get params by instantiating a temp operator
     op["params"] = json::array();

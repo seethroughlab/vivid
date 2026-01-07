@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/filters.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <array>
 
@@ -42,6 +43,25 @@ namespace vivid::audio {
  */
 class Reverb : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Reverb", "Audio Effects", "Freeverb-style algorithmic reverb")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& reverb = chain.add<Reverb>(\"reverb\");\n"
+                "reverb.input(\"audio\");\n"
+                "reverb.roomSize = 0.7f;  // Large room\n"
+                "reverb.damping = 0.5f;   // Moderate damping\n"
+                "reverb.mix = 0.3f;       // 30% wet\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

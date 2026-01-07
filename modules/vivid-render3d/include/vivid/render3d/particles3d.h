@@ -4,6 +4,7 @@
 // 3D GPU particle system with world-space physics and billboard rendering
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/effects/texture_operator.h>
 #include <vivid/render3d/camera.h>
 #include <glm/glm.hpp>
@@ -61,6 +62,21 @@ enum class Color3DMode {
  */
 class Particles3D : public effects::TextureOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Particles3D", "3D Effects", "GPU billboard particle system with physics")
+            .output(OutputKind::Texture)
+            .inModule("vivid-render3d")
+            .withAliases({"Particles3D", "Billboard"})
+            .withUsage(
+                "auto& fire = chain.add<Particles3D>(\"fire\");\n"
+                "fire.setCameraInput(&cam);\n"
+                "fire.emitter(Emitter3DShape::Cone);\n"
+                "fire.velocity(0, 2.0f, 0);\n"
+                "fire.color(1, 0.5f, 0.1f);\n"
+                "fire.additive(true);\n"
+            );
+    }
+
     Particles3D();
     ~Particles3D() override;
 

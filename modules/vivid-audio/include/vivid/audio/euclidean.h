@@ -8,6 +8,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <vivid/param_registry.h>
 #include <string>
@@ -61,6 +62,31 @@ class Euclidean : public Operator, public ParamRegistry {
 public:
     static constexpr int MAX_STEPS = 16;
 
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Euclidean", "Audio Sequencing", "Euclidean rhythm pattern generator")
+            .output(OutputKind::Value)
+            .inModule("vivid-audio")
+            .withAliases({"Eucl"})
+            .withUsage(
+                "auto& eucl = chain.add<Euclidean>(\"eucl\");\n"
+                "eucl.steps = 16;      // Total steps\n"
+                "eucl.hits = 5;        // Number of hits\n"
+                "eucl.rotation = 0;    // Pattern offset\n"
+                "\n"
+                "// Common rhythms: E(3,8)=tresillo, E(5,8)=cinquillo\n"
+                "// In update with clock:\n"
+                "if (clock.triggered()) {\n"
+                "    eucl.advance();\n"
+                "    if (eucl.triggered()) hihat.trigger();\n"
+                "}\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

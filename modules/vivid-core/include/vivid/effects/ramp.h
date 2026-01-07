@@ -9,6 +9,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -57,6 +58,21 @@ enum class RampType {
  */
 class Ramp : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Ramp", "Generators", "Animated HSV color ramp")
+            .withUsage(
+                "auto& ramp = chain.add<Ramp>(\"rainbow\");\n"
+                "ramp.type(RampType::Radial);  // Linear, Radial, Angular, Diamond\n"
+                "ramp.hueSpeed = 0.2f;\n"
+                "ramp.saturation = 0.8f;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

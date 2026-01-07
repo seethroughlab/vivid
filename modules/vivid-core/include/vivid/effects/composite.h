@@ -9,6 +9,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 #include <array>
 
 namespace vivid::effects {
@@ -66,6 +67,28 @@ enum class BlendMode {
  */
 class Composite : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description (for MCP/registry)
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Composite", "Compositing", "Blend two textures")
+            .requireInput()
+            .withInputs({
+                {"inputA", "Background/base texture"},
+                {"inputB", "Foreground/overlay texture"}
+            })
+            .withAliases({"Blend", "Mix"})
+            .withUsage(
+                "auto& comp = chain.add<Composite>(\"comp\");\n"
+                "comp.inputA(\"background\");\n"
+                "comp.inputB(\"overlay\");\n"
+                "comp.mode(BlendMode::Multiply);  // Over, Add, Screen, Overlay, Difference\n"
+                "comp.opacity = 1.0f;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

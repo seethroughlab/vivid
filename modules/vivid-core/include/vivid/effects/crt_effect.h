@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -55,6 +56,26 @@ struct CRTEffectUniforms {
  */
 class CRTEffect : public SimpleTextureEffect<CRTEffect, CRTEffectUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("CRTEffect", "Retro", "Full CRT simulation")
+            .requireInput()
+            .withAliases({"CRT", "Retro", "OldTV"})
+            .withUsage(
+                "auto& crt = chain.add<CRTEffect>(\"crt\");\n"
+                "crt.input(\"source\");\n"
+                "crt.curvature = 0.15f;   // Barrel distortion\n"
+                "crt.scanlines = 0.3f;    // Scanline visibility\n"
+                "crt.vignette = 0.4f;     // Edge darkening\n"
+                "crt.bloom = 0.1f;        // Phosphor glow\n"
+                "crt.chromatic = 0.02f;   // RGB separation\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

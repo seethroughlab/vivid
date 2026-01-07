@@ -27,7 +27,7 @@
 
 namespace vivid::network {
 
-REGISTER_MODULE_OPERATOR(OscIn, "Network", "Receive OSC messages over UDP", false, "vivid-network");
+REGISTER(OscIn);
 
 // =============================================================================
 // OscMessage helpers

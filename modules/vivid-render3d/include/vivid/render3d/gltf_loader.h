@@ -13,6 +13,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/textured_material.h>
 #include <vivid/param_registry.h>
@@ -75,6 +76,18 @@ struct Bounds3D {
  */
 class GLTFLoader : public MeshOperator, public ParamRegistry {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("GLTFLoader", "3D Assets", "Load GLTF/GLB 3D models with materials")
+            .output(OutputKind::Geometry)
+            .inModule("vivid-render3d")
+            .withAliases({"GLTF", "GLB", "Model"})
+            .withUsage(
+                "auto& model = chain.add<GLTFLoader>(\"model\");\n"
+                "model.file(\"assets/models/helmet.glb\");\n"
+                "model.loadTextures(true);\n"
+            );
+    }
+
     Param<float> scale{"scale", 1.0f, 0.001f, 100.0f};  ///< Model scale factor
 
     GLTFLoader();

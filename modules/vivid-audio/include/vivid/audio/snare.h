@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -46,6 +47,26 @@ namespace vivid::audio {
  */
 class Snare : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Snare", "Audio Drums", "Snare drum with tone and noise")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& snare = chain.add<Snare>(\"snare\");\n"
+                "snare.tone = 0.4f;         // Tone/body amount\n"
+                "snare.noise = 0.8f;        // Noise/snare amount\n"
+                "snare.pitch = 180.0f;      // Tone pitch Hz\n"
+                "snare.snappy = 0.6f;       // High-freq emphasis\n"
+                "\n"
+                "snare.trigger();  // Play drum\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

@@ -10,6 +10,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.15] - 2026-01-07
+
+### Changed
+
+#### Self-Describing Operator Registration
+All 120 operators now define metadata via a static `describe()` method in their header files. This consolidates operator information in one place instead of spreading it across registration macros and separate init blocks.
+
+**Before (multiple files):**
+```cpp
+// In operator_registrations.cpp
+REGISTER_OPERATOR(Displace, "Effects", "Texture displacement", true);
+// Elsewhere: separate metadata setup
+```
+
+**After (single location in header):**
+```cpp
+class Displace : public TextureOperator {
+public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Displace", "Effects", "Texture displacement")
+            .requireInput()
+            .withAliases({"Warp", "Distort"})
+            .withUsage("auto& d = chain.add<Displace>(\"d\");...");
+    }
+    // ... rest of class
+};
+
+// In .cpp: just REGISTER(Displace);
+```
+
+Benefits:
+- **Single source of truth** - Everything about an operator in one place
+- **IDE navigation** - Jump from registration to full class definition
+- **Self-documenting** - Reading the class tells you everything
+- **Less boilerplate** - `REGISTER(Displace)` vs multi-argument macro + separate metadata
+
+### Fixed
+
+- **particles example** - Updated to use new `Param<>` property assignment syntax (was using removed setter methods)
+
 ## [0.1.0-alpha.14] - 2026-01-07
 
 ### Changed
@@ -345,7 +385,11 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.11...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.15...HEAD
+[0.1.0-alpha.15]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.14...v0.1.0-alpha.15
+[0.1.0-alpha.14]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.13...v0.1.0-alpha.14
+[0.1.0-alpha.13]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.12...v0.1.0-alpha.13
+[0.1.0-alpha.12]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.11...v0.1.0-alpha.12
 [0.1.0-alpha.11]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.10...v0.1.0-alpha.11
 [0.1.0-alpha.10]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.9...v0.1.0-alpha.10
 [0.1.0-alpha.9]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.8...v0.1.0-alpha.9

@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/envelope.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -43,6 +44,27 @@ namespace vivid::audio {
  */
 class Compressor : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Compressor", "Audio Effects", "Dynamic range compressor")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withAliases({"Comp"})
+            .withUsage(
+                "auto& comp = chain.add<Compressor>(\"comp\");\n"
+                "comp.input(\"audio\");\n"
+                "comp.threshold = -12.0f;  // Compress above -12dB\n"
+                "comp.ratio = 4.0f;        // 4:1 compression\n"
+                "comp.attack = 10.0f;      // 10ms attack\n"
+                "comp.release = 100.0f;    // 100ms release\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -47,6 +48,23 @@ enum class NoiseColor {
  */
 class NoiseGen : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("NoiseGen", "Audio Synth", "Noise generator (white, pink, brown)")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withAliases({"Noise"})
+            .withUsage(
+                "auto& noise = chain.add<NoiseGen>(\"noise\");\n"
+                "noise.setColor(NoiseColor::White);  // White, Pink, or Brown\n"
+                "noise.volume = 0.5f;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

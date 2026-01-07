@@ -83,10 +83,8 @@ void setup(Context& ctx) {
     g_drag = &ps.addForce<DragForce>();
     g_drag->coefficient = 0.02f;
 
-    // Deep crimson/burgundy color (matching original)
-    ps.colorMode(PsColorMode::Gradient);
-    ps.colorStart.set(1.2f, 0.02f, 0.02f, 1.0f);  // Oversaturated red
-    ps.colorEnd.set(0.6f, 0.01f, 0.01f, 0.5f);
+    // Rainbow colors for variety
+    ps.colorMode(PsColorMode::Rainbow);
     ps.fadeOut = true;
 
     // Dark background

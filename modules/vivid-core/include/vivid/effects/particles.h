@@ -8,6 +8,7 @@
 #include <vivid/effects/particle_renderer.h>
 #include <vivid/param.h>
 #include <vivid/color.h>
+#include <vivid/operator_registry.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include <random>
@@ -57,6 +58,26 @@ enum class ColorMode {
  */
 class Particles : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Particles", "Particles", "2D particle system")
+            .withUsage(
+                "auto& p = chain.add<Particles>(\"fire\");\n"
+                "p.position.set(0.5f, 0.8f);  // Emitter position\n"
+                "p.emitterShape = EmitterShape::Line;  // Point, Line, Ring, Disc, Rectangle\n"
+                "p.velocity.set(0.0f, -0.3f);  // Direction\n"
+                "p.gravity = -0.1f;  // Negative = rise\n"
+                "p.life = 2.0f;\n"
+                "p.emitRate = 100;\n"
+                "p.color.set(1.0f, 0.5f, 0.1f, 1.0f);  // Orange\n"
+            );
+    }
+
+    /// @}
+
     Particles();
     ~Particles() override;
 

@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(AudioMixer, "Audio Routing", "Mix multiple audio sources with gain control", true, OutputKind::Audio, "vivid-audio");
+REGISTER(AudioMixer);
 
 void AudioMixer::setInput(int index, const std::string& name) {
     if (index >= 0 && index < MAX_INPUTS) {

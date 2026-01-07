@@ -8,6 +8,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/midi/midi_event.h>
 #include <string>
 #include <vector>
@@ -35,6 +36,29 @@ namespace vivid::midi {
  */
 class MidiOut : public Operator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("MidiOut", "MIDI", "Send MIDI output to synths and devices")
+            .output(OutputKind::Value)
+            .inModule("vivid-midi")
+            .withAliases({"MIDIOutput", "MIDISend"})
+            .withUsage(
+                "auto& midi = chain.add<MidiOut>(\"midiOut\");\n"
+                "midi.openPortByName(\"IAC Driver\");  // macOS virtual MIDI\n"
+                "\n"
+                "// Send messages:\n"
+                "midi.noteOn(0, 60, 0.8f);   // Channel 0, middle C, velocity 0.8\n"
+                "midi.noteOff(0, 60);\n"
+                "midi.sendCC(0, 1, 0.5f);    // Mod wheel to 50%\n"
+                "midi.sendPitchBend(0, 0.5f);  // Pitch bend up\n"
+            );
+    }
+
+    /// @}
+
     MidiOut();
     ~MidiOut() override;
 

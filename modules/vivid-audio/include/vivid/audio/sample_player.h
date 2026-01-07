@@ -7,6 +7,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/sample_bank.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -56,6 +57,27 @@ namespace vivid::audio {
 class SamplePlayer : public AudioOperator {
 public:
     static constexpr int MAX_VOICES = 32;
+
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("SamplePlayer", "Audio Sampler", "Multi-voice sample player with pitch control")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& player = chain.add<SamplePlayer>(\"player\");\n"
+                "player.setBank(\"drums\");  // Connect to SampleBank\n"
+                "player.setVoices(8);\n"
+                "\n"
+                "player.trigger(0);              // By index\n"
+                "player.trigger(\"kick\", 0.8f); // By name + volume\n"
+            );
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
 
     Param<float> volume{"volume", 1.0f, 0.0f, 2.0f};  ///< Master volume
 

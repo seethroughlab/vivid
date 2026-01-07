@@ -9,6 +9,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -72,6 +73,29 @@ struct Section {
  */
 class Song : public Operator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Song", "Audio Sampler", "Song structure with sections and arrangement")
+            .output(OutputKind::Value)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& song = chain.add<Song>(\"song\");\n"
+                "song.syncTo(\"clock\");\n"
+                "song.addSection(\"intro\", 0, 8);\n"
+                "song.addSection(\"verse\", 8, 24);\n"
+                "song.addSection(\"chorus\", 24, 32);\n"
+                "\n"
+                "// In update:\n"
+                "if (song.section() == \"chorus\") { /* intense visuals */ }\n"
+            );
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
+
     Song() = default;
     ~Song() override = default;
 

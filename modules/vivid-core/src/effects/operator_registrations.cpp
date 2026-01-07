@@ -1,5 +1,6 @@
 // Operator Registrations for Core Effects
 // This file registers all core operators for CLI introspection
+// All metadata is now self-contained in each operator's describe() method
 
 #include <vivid/operator_registry.h>
 
@@ -47,56 +48,70 @@
 
 using namespace vivid::effects;
 
+// =============================================================================
 // Generators (no input required)
-REGISTER_OPERATOR(Noise, "Generators", "Fractal noise generator", false);
-REGISTER_OPERATOR(SolidColor, "Generators", "Solid color fill", false);
-REGISTER_OPERATOR(Gradient, "Generators", "Color gradient", false);
-REGISTER_OPERATOR(Ramp, "Generators", "Animated HSV gradient", false);
-REGISTER_OPERATOR(Shape, "Generators", "SDF shape generator", false);
-REGISTER_OPERATOR_EX(LFO, "Generators", "Low frequency oscillator", false, vivid::OutputKind::Value);
-REGISTER_OPERATOR(Image, "Generators", "Load image from file", false);
+// =============================================================================
+REGISTER(Noise);
+REGISTER(SolidColor);
+REGISTER(Gradient);
+REGISTER(Ramp);
+REGISTER(Shape);
+REGISTER(LFO);
+REGISTER(Image);
 
+// =============================================================================
 // Effects (require input)
-REGISTER_OPERATOR(Blur, "Effects", "Gaussian blur", true);
-REGISTER_OPERATOR(HSV, "Effects", "Hue/saturation/value adjustment", true);
-REGISTER_OPERATOR(Brightness, "Effects", "Brightness and contrast", true);
-REGISTER_OPERATOR(Transform, "Effects", "Scale, rotate, translate", true);
-REGISTER_OPERATOR(Mirror, "Effects", "Axis mirroring and kaleidoscope", true);
-REGISTER_OPERATOR(Displace, "Effects", "Texture displacement", true);
-REGISTER_OPERATOR(Edge, "Effects", "Edge detection", true);
-REGISTER_OPERATOR(Pixelate, "Effects", "Mosaic/pixelation effect", true);
-REGISTER_OPERATOR(Tile, "Effects", "Texture tiling", true);
-REGISTER_OPERATOR(ChromaticAberration, "Effects", "RGB channel separation", true);
-REGISTER_OPERATOR(Bloom, "Effects", "Glow/bloom effect", true);
-REGISTER_OPERATOR(Vignette, "Effects", "Edge darkening vignette", true);
-REGISTER_OPERATOR(BarrelDistortion, "Effects", "Barrel/pincushion distortion", true);
-REGISTER_OPERATOR(Feedback, "Effects", "Frame feedback loop", true);
-REGISTER_OPERATOR(FrameCache, "Effects", "Buffer multiple frames", true);
-REGISTER_OPERATOR(TimeMachine, "Effects", "Temporal displacement", true);
-REGISTER_OPERATOR(Plexus, "Effects", "Connected particle network", true);
+// =============================================================================
+REGISTER(Blur);
+REGISTER(HSV);
+REGISTER(Brightness);
+REGISTER(Transform);
+REGISTER(Mirror);
+REGISTER(Displace);
+REGISTER(Edge);
+REGISTER(Pixelate);
+REGISTER(Tile);
+REGISTER(ChromaticAberration);
+REGISTER(Bloom);
+REGISTER(Vignette);
+REGISTER(BarrelDistortion);
+REGISTER(Feedback);
+REGISTER(FrameCache);
+REGISTER(TimeMachine);
+REGISTER(Plexus);
 
+// =============================================================================
 // Retro Effects
-REGISTER_OPERATOR(Dither, "Retro", "Ordered dithering", true);
-REGISTER_OPERATOR(Quantize, "Retro", "Color quantization", true);
-REGISTER_OPERATOR(Scanlines, "Retro", "CRT scanline effect", true);
-REGISTER_OPERATOR(CRTEffect, "Retro", "Full CRT simulation", true);
-REGISTER_OPERATOR(Downsample, "Retro", "Low resolution effect", true);
-REGISTER_OPERATOR(FilmGrain, "Retro", "Film grain overlay", true);
-REGISTER_OPERATOR(Flash, "Retro", "Beat-synced flash overlay", true);
+// =============================================================================
+REGISTER(Dither);
+REGISTER(Quantize);
+REGISTER(Scanlines);
+REGISTER(CRTEffect);
+REGISTER(Downsample);
+REGISTER(FilmGrain);
+REGISTER(Flash);
 
+// =============================================================================
 // Compositing
-REGISTER_OPERATOR(Composite, "Compositing", "Blend two textures", true);
-REGISTER_OPERATOR(Switch, "Compositing", "Switch between inputs", true);
+// =============================================================================
+REGISTER(Composite);
+REGISTER(Switch);
 
+// =============================================================================
 // Particles
-REGISTER_OPERATOR(Particles, "Particles", "2D particle system", false);
-REGISTER_OPERATOR(PointSprites, "Particles", "Point-based particles", false);
-REGISTER_OPERATOR(GPUParticles, "Particles", "GPU compute particle system", false);
-REGISTER_OPERATOR(ParticleSystem, "Particles", "Unified particle system with CPU/GPU simulation and multiple render modes", false);
+// =============================================================================
+REGISTER(Particles);
+REGISTER(PointSprites);
+REGISTER(GPUParticles);
+REGISTER(ParticleSystem);
 
-// Canvas
-REGISTER_OPERATOR(Canvas, "Canvas", "Imperative 2D drawing", false);
+// =============================================================================
+// Canvas (imperative drawing)
+// =============================================================================
+REGISTER(Canvas);
 
-// Math/Logic (use FULL_EX for chaining .examples())
-REGISTER_OPERATOR_EX(Math, "Math/Logic", "Mathematical operations", false, vivid::OutputKind::Value);
-REGISTER_OPERATOR_EX(Logic, "Math/Logic", "Logical comparisons", false, vivid::OutputKind::Value);
+// =============================================================================
+// Math/Logic (value-based operators)
+// =============================================================================
+REGISTER(Math);
+REGISTER(Logic);

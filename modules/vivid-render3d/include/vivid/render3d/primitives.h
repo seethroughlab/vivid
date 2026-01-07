@@ -18,6 +18,7 @@
 
 #include <vivid/render3d/geometry_operator.h>
 #include <vivid/render3d/mesh_builder.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <vivid/context.h>
 
@@ -41,6 +42,14 @@ namespace vivid::render3d {
  */
 class Box : public GeometryOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Box", "3D Primitives", "Box/cube mesh generator")
+            .output(OutputKind::Geometry)
+            .inModule("vivid-render3d")
+            .withAliases({"Cube"})
+            .withUsage("auto& box = chain.add<Box>(\"box\");\nbox.size(1.0f, 2.0f, 1.0f);");
+    }
+
     Box() {
         registerParam(m_width);
         registerParam(m_height);
@@ -96,6 +105,14 @@ private:
  */
 class Sphere : public GeometryOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Sphere", "3D Primitives", "UV sphere mesh generator")
+            .output(OutputKind::Geometry)
+            .inModule("vivid-render3d")
+            .withAliases({"Ball"})
+            .withUsage("auto& sphere = chain.add<Sphere>(\"sphere\");\nsphere.radius(0.5f);\nsphere.segments(32);");
+    }
+
     Sphere() {
         registerParam(m_radius);
         registerParam(m_segments);
@@ -186,6 +203,14 @@ private:
  */
 class Cylinder : public GeometryOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Cylinder", "3D Primitives", "Cylinder mesh generator")
+            .output(OutputKind::Geometry)
+            .inModule("vivid-render3d")
+            .withAliases({"Tube"})
+            .withUsage("auto& cyl = chain.add<Cylinder>(\"cyl\");\ncyl.radius(0.5f);\ncyl.height(2.0f);");
+    }
+
     Cylinder() {
         registerParam(m_radius);
         registerParam(m_height);
@@ -251,6 +276,13 @@ private:
  */
 class Cone : public GeometryOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Cone", "3D Primitives", "Cone mesh generator")
+            .output(OutputKind::Geometry)
+            .inModule("vivid-render3d")
+            .withUsage("auto& cone = chain.add<Cone>(\"cone\");\ncone.radius(0.5f);\ncone.height(1.0f);");
+    }
+
     Cone() {
         m_flatShading = true;  // Cones look better with flat shading by default
         registerParam(m_radius);
@@ -318,6 +350,14 @@ private:
  */
 class Torus : public GeometryOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Torus", "3D Primitives", "Torus (donut) mesh generator")
+            .output(OutputKind::Geometry)
+            .inModule("vivid-render3d")
+            .withAliases({"Donut"})
+            .withUsage("auto& torus = chain.add<Torus>(\"torus\");\ntorus.outerRadius(0.5f);\ntorus.innerRadius(0.2f);");
+    }
+
     Torus() {
         registerParam(m_outerRadius);
         registerParam(m_innerRadius);
@@ -392,6 +432,14 @@ private:
  */
 class Plane : public GeometryOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Plane", "3D Primitives", "Flat plane mesh generator")
+            .output(OutputKind::Geometry)
+            .inModule("vivid-render3d")
+            .withAliases({"Quad", "Ground"})
+            .withUsage("auto& plane = chain.add<Plane>(\"plane\");\nplane.size(10.0f, 10.0f);\nplane.subdivisions(16, 16);");
+    }
+
     Plane() {
         registerParam(m_width);
         registerParam(m_height);

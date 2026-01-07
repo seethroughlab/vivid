@@ -11,6 +11,7 @@
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/filters.h>
 #include <vivid/audio/dsp/lfo.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <array>
 
@@ -45,6 +46,26 @@ namespace vivid::audio {
  */
 class Phaser : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Phaser", "Audio Effects", "Multi-stage phaser with LFO modulation")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& phaser = chain.add<Phaser>(\"phaser\");\n"
+                "phaser.input(\"audio\");\n"
+                "phaser.rate = 0.3f;      // Sweep rate Hz\n"
+                "phaser.depth = 0.8f;     // Deep modulation\n"
+                "phaser.stages = 6;       // 6 stages\n"
+                "phaser.feedback = 0.5f;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

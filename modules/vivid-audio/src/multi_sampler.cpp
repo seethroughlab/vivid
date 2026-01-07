@@ -14,7 +14,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(MultiSampler, "Audio Sampling", "Multi-zone sampler with velocity layers and SFZ support", false, OutputKind::Audio, "vivid-audio");
+REGISTER(MultiSampler);
 
 using json = nlohmann::json;
 

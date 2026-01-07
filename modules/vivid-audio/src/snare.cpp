@@ -8,7 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(Snare, "Audio Drums", "Analog-style snare drum synthesizer", false, OutputKind::Audio, "vivid-audio");
+REGISTER(Snare);
 
 void Snare::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

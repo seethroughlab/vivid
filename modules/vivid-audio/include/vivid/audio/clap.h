@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -42,6 +43,25 @@ namespace vivid::audio {
  */
 class Clap : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Clap", "Audio Drums", "Hand clap with multiple noise bursts")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& clap = chain.add<Clap>(\"clap\");\n"
+                "clap.decay = 0.3f;     // Overall decay\n"
+                "clap.tone = 0.6f;      // Brightness\n"
+                "clap.spread = 0.5f;    // Timing spread\n"
+                "\n"
+                "clap.trigger();  // Play clap\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

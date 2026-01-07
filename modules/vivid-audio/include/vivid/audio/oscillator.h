@@ -9,6 +9,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 #include <string>
 #include <vector>
 #include <cmath>
@@ -56,6 +57,28 @@ enum class Waveform {
  */
 class Oscillator : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Oscillator", "Audio Synthesis", "Audio-rate oscillator for synthesis")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withAliases({"Osc", "VCO"})
+            .withUsage(
+                "auto& osc = chain.add<Oscillator>(\"osc\");\n"
+                "osc.frequency = 440.0f;        // Frequency in Hz\n"
+                "osc.waveform(Waveform::Saw);   // Sine, Triangle, Square, Saw, Pulse\n"
+                "osc.volume = 0.5f;\n"
+                "osc.detune = 0.0f;             // Cents\n"
+                "\n"
+                "chain.add<AudioOutput>(\"out\").input(\"osc\");\n"
+                "chain.audioOutput(\"out\");\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

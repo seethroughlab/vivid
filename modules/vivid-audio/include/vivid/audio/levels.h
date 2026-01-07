@@ -11,6 +11,7 @@
  */
 
 #include <vivid/audio/audio_analyzer.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -34,6 +35,27 @@ namespace vivid::audio {
  */
 class Levels : public AudioAnalyzer {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Levels", "Audio Analysis", "Audio level meter with RMS and peak values")
+            .output(OutputKind::Value)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& levels = chain.add<Levels>(\"levels\");\n"
+                "levels.input(\"audio\");\n"
+                "levels.smoothing = 0.9f;\n"
+                "\n"
+                "// In update:\n"
+                "float volume = levels.rms();   // Average loudness\n"
+                "float peak = levels.peak();    // Peak level\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

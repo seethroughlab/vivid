@@ -9,6 +9,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/video/export.h>
+#include <vivid/operator_registry.h>
 #include <string>
 #include <memory>
 
@@ -45,6 +46,29 @@ namespace vivid::video {
  */
 class VIVID_VIDEO_API VideoPlayer : public effects::TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("VideoPlayer", "Video Input", "Video playback as texture source")
+            .inModule("vivid-video")
+            .withAliases({"Video", "Movie"})
+            .withUsage(
+                "auto& video = chain.add<VideoPlayer>(\"video\");\n"
+                "video.setFile(\"assets/videos/my_video.mov\");\n"
+                "video.setLoop(true);\n"
+                "video.play();\n"
+                "\n"
+                "// Control playback\n"
+                "video.pause();\n"
+                "video.seek(2.5f);  // Seek to 2.5 seconds\n"
+                "video.setSpeed(0.5f);  // Half speed\n"
+            );
+    }
+
+    /// @}
+
     VideoPlayer();
     ~VideoPlayer() override;
 

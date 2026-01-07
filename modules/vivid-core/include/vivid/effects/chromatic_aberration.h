@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -49,6 +50,23 @@ struct ChromaticAberrationUniforms {
  */
 class ChromaticAberration : public SimpleTextureEffect<ChromaticAberration, ChromaticAberrationUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("ChromaticAberration", "Effects", "RGB channel separation")
+            .requireInput()
+            .withAliases({"ChromaAb", "RGBSplit", "Aberration"})
+            .withUsage(
+                "auto& ca = chain.add<ChromaticAberration>(\"aberration\");\n"
+                "ca.input(\"source\");\n"
+                "ca.amount = 0.02f;\n"
+                "ca.radial = true;  // Radial vs linear separation\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

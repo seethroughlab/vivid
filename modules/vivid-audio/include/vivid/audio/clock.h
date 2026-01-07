@@ -8,6 +8,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <vivid/param_registry.h>
 #include <string>
@@ -62,6 +63,27 @@ enum class ClockDiv {
  */
 class Clock : public Operator, public ParamRegistry {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Clock", "Audio Sequencing", "Master tempo clock with beat/bar triggers")
+            .output(OutputKind::Value)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& clock = chain.add<Clock>(\"clock\");\n"
+                "clock.bpm = 120.0f;\n"
+                "clock.swing = 0.1f;\n"
+                "clock.division(ClockDiv::Sixteenth);\n"
+                "clock.start();\n"
+                "\n"
+                "// In update:\n"
+                "if (clock.triggered()) { kick.trigger(); }\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

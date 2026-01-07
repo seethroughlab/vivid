@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -41,6 +42,20 @@ struct SolidColorUniforms {
  */
 class SolidColor : public SimpleGeneratorEffect<SolidColor, SolidColorUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("SolidColor", "Generators", "Solid color fill")
+            .withAliases({"Color", "Fill", "Solid"})
+            .withUsage(
+                "auto& bg = chain.add<SolidColor>(\"bg\");\n"
+                "bg.color.set(0.1f, 0.1f, 0.2f, 1.0f);  // Dark blue\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

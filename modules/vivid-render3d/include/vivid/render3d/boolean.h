@@ -12,6 +12,7 @@
 
 #include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/mesh_builder.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param_registry.h>
 #include <vivid/context.h>
 
@@ -45,6 +46,20 @@ enum class BooleanOp {
  */
 class Boolean : public MeshOperator, public ParamRegistry {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Boolean", "3D CSG", "CSG boolean operations (union, subtract, intersect)")
+            .output(OutputKind::Geometry)
+            .requireInput()
+            .inModule("vivid-render3d")
+            .withAliases({"CSG"})
+            .withUsage(
+                "auto& csg = chain.add<Boolean>(\"csg\");\n"
+                "csg.setInputA(&box);\n"
+                "csg.setInputB(&sphere);\n"
+                "csg.setOperation(BooleanOp::Subtract);  // box - sphere\n"
+            );
+    }
+
     Param<bool> flatShading{"flatShading", true, false, true};  ///< Use flat shading on result
 
     Boolean() {

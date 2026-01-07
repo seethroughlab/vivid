@@ -11,6 +11,7 @@
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/delay_line.h>
 #include <vivid/audio/dsp/lfo.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -41,6 +42,26 @@ namespace vivid::audio {
  */
 class Chorus : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Chorus", "Audio Effects", "Chorus effect with multiple voices")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& chorus = chain.add<Chorus>(\"chorus\");\n"
+                "chorus.input(\"audio\");\n"
+                "chorus.rate = 0.5f;    // Slow modulation\n"
+                "chorus.depth = 5.0f;   // 5ms depth\n"
+                "chorus.voices = 2;     // 2 voices\n"
+                "chorus.mix = 0.5f;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

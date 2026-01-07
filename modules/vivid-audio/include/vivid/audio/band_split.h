@@ -11,6 +11,7 @@
  */
 
 #include <vivid/audio/audio_analyzer.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <vector>
 #include <memory>
@@ -117,6 +118,19 @@ public:
     /// @{
 
     std::string name() const override { return "BandSplit"; }
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("BandSplit", "Audio Analysis", "Split audio into frequency bands (low/mid/high)")
+            .output(OutputKind::Value)
+            .inModule("vivid-audio")
+            .requireInput()
+            .withUsage(R"(chain.add<BandSplit>("bands").input("audio");
+
+// Access individual bands:
+float bass = chain.get<BandSplit>("bands").bass();
+float mids = chain.get<BandSplit>("bands").mid();
+float highs = chain.get<BandSplit>("bands").high();)");
+    }
 
     // Custom visualization
     bool drawVisualization(VizDrawList* drawList, float minX, float minY,

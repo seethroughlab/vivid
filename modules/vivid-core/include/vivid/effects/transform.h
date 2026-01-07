@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -56,6 +57,25 @@ struct TransformUniforms {
  */
 class Transform : public SimpleTextureEffect<Transform, TransformUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Transform", "Effects", "Scale, rotate, translate")
+            .requireInput()
+            .withAliases({"Scale", "Rotate", "Translate", "Move"})
+            .withUsage(
+                "auto& xform = chain.add<Transform>(\"xform\");\n"
+                "xform.input(\"source\");\n"
+                "xform.scale.set(1.5f, 1.5f);\n"
+                "xform.rotation = 0.785f;  // 45 degrees in radians\n"
+                "xform.translate.set(0.0f, 0.0f);\n"
+                "xform.pivot.set(0.5f, 0.5f);  // Center pivot\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

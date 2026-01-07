@@ -18,7 +18,7 @@
 
 namespace vivid::render3d {
 
-REGISTER_MODULE_OPERATOR_EX(GLTFLoader, "3D Assets", "Load GLTF/GLB 3D models with materials", false, OutputKind::Geometry, "vivid-render3d");
+REGISTER(GLTFLoader);
 
 GLTFLoader::GLTFLoader() {
     registerParam(scale);

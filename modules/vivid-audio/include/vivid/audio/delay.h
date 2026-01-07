@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/delay_line.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -38,6 +39,25 @@ namespace vivid::audio {
  */
 class Delay : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Delay", "Audio Effects", "Delay effect with feedback and ping-pong mode")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& delay = chain.add<Delay>(\"delay\");\n"
+                "delay.input(\"audio\");\n"
+                "delay.delayTime = 250.0f;  // 250ms\n"
+                "delay.feedback = 0.4f;     // Moderate feedback\n"
+                "delay.mix = 0.3f;          // 30% wet\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

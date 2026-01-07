@@ -12,6 +12,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -69,6 +70,26 @@ class Granular : public AudioOperator {
 public:
     static constexpr int MAX_GRAINS = 64;
 
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Granular", "Audio Sampler", "Granular synthesizer for time-stretching and texture")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& grain = chain.add<Granular>(\"clouds\");\n"
+                "grain.loadSample(\"assets/audio/texture.wav\");\n"
+                "grain.grainSize = 80.0f;      // 80ms grains\n"
+                "grain.density = 15.0f;        // 15 grains/sec\n"
+                "grain.position = 0.3f;        // 30% through sample\n"
+                "grain.pitch = 0.5f;           // Octave down\n"
+                "grain.setFreeze(true);        // Hold position\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

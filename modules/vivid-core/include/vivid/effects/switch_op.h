@@ -9,6 +9,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -42,6 +43,27 @@ namespace vivid::effects {
  */
 class Switch : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Switch", "Compositing", "Switch between inputs")
+            .requireInput()
+            .withInputs({
+                {"input", "Add inputs with input(index, \"name\")", true}
+            })
+            .withUsage(
+                "auto& sw = chain.add<Switch>(\"switch\");\n"
+                "sw.input(0, \"option_a\");\n"
+                "sw.input(1, \"option_b\");\n"
+                "sw.input(2, \"option_c\");\n"
+                "sw.index = 0;    // Which input to output (0-indexed)\n"
+                "sw.blend = 0.0f; // Crossfade between adjacent inputs\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

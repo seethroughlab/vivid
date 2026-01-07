@@ -10,6 +10,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -50,6 +51,24 @@ struct FilmGrainUniforms {
  */
 class FilmGrain : public SimpleTextureEffect<FilmGrain, FilmGrainUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("FilmGrain", "Retro", "Film grain overlay")
+            .requireInput()
+            .withAliases({"Grain", "NoiseOverlay"})
+            .withUsage(
+                "auto& grain = chain.add<FilmGrain>(\"grain\");\n"
+                "grain.input(\"source\");\n"
+                "grain.intensity = 0.2f;   // Grain strength\n"
+                "grain.size = 1.5f;        // Grain size (lower = finer)\n"
+                "grain.colored = 0.3f;     // 0=mono, 1=colored\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

@@ -7,7 +7,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(Envelope, "Audio Modulation", "ADSR envelope generator", false, OutputKind::Audio, "vivid-audio");
+REGISTER(Envelope);
 
 void Envelope::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

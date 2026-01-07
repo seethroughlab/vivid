@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(Phaser, "Audio Effects", "Multi-stage phaser with LFO modulation", true, OutputKind::Audio, "vivid-audio");
+REGISTER(Phaser);
 
 void Phaser::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

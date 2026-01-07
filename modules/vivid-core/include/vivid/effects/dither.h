@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -58,6 +59,24 @@ struct DitherUniforms {
  */
 class Dither : public SimpleTextureEffect<Dither, DitherUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Dither", "Retro", "Ordered dithering")
+            .requireInput()
+            .withAliases({"BayerDither", "OrderedDither"})
+            .withUsage(
+                "auto& dither = chain.add<Dither>(\"dither\");\n"
+                "dither.input(\"source\");\n"
+                "dither.pattern(DitherPattern::Bayer4x4);  // Bayer2x2, Bayer4x4, Bayer8x8\n"
+                "dither.levels = 4;\n"
+                "dither.strength = 1.0f;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

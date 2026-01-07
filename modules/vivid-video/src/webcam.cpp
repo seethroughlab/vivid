@@ -15,7 +15,7 @@ using WebcamBackend = vivid::video::MFWebcam;
 
 namespace vivid::video {
 
-REGISTER_MODULE_OPERATOR(Webcam, "Video Input", "Live webcam/camera input", false, "vivid-video");
+REGISTER(Webcam);
 
 Webcam::Webcam() = default;
 

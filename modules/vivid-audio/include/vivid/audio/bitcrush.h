@@ -9,6 +9,7 @@
  */
 
 #include <vivid/audio/audio_effect.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -38,6 +39,26 @@ namespace vivid::audio {
  */
 class Bitcrush : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Bitcrush", "Audio Effects", "Bit depth and sample rate reduction for lo-fi sound")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withAliases({"Lofi"})
+            .withUsage(
+                "auto& bc = chain.add<Bitcrush>(\"bitcrush\");\n"
+                "bc.input(\"audio\");\n"
+                "bc.bits = 8;                  // 8-bit audio\n"
+                "bc.targetSampleRate = 8000;   // 8kHz sample rate\n"
+                "bc.mix = 0.5f;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

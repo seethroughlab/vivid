@@ -9,6 +9,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <memory>
 #include <string>
@@ -38,6 +39,28 @@ namespace vivid::audio {
  */
 class AudioIn : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("AudioIn", "Audio IO", "Live audio input from microphone or line-in")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withAliases({"Mic", "Input"})
+            .withUsage(
+                "auto& mic = chain.add<AudioIn>(\"mic\");\n"
+                "mic.volume = 1.0f;  // Input gain\n"
+                "\n"
+                "// Apply effects to mic input\n"
+                "auto& reverb = chain.add<Reverb>(\"reverb\");\n"
+                "reverb.input(\"mic\");\n"
+            );
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
+
     Param<float> volume{"volume", 1.0f, 0.0f, 2.0f};  ///< Input volume/gain
 
     AudioIn();

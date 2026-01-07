@@ -12,7 +12,7 @@
 
 namespace vivid::video {
 
-REGISTER_MODULE_OPERATOR_EX(VideoAudio, "Video Input", "Extract audio from video file", false, OutputKind::Audio, "vivid-video");
+REGISTER(VideoAudio);
 
 VideoAudio::VideoAudio() = default;
 

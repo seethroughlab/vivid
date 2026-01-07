@@ -9,7 +9,7 @@
 
 namespace vivid::midi {
 
-REGISTER_MODULE_OPERATOR(MidiOut, "MIDI", "Send MIDI output to synths and devices", false, "vivid-midi");
+REGISTER(MidiOut);
 
 // -----------------------------------------------------------------------------
 // Implementation (pimpl)

@@ -20,6 +20,62 @@
 namespace vivid {
 
 /**
+ * @brief Describes an input method for multi-input operators
+ */
+struct InputMeta {
+    std::string method;       ///< Method name (e.g., "source", "map", "inputA")
+    std::string description;  ///< What this input is for
+    bool required = true;     ///< Whether this input must be connected
+
+    InputMeta() = default;
+    InputMeta(std::string m, std::string d, bool r = true)
+        : method(std::move(m)), description(std::move(d)), required(r) {}
+};
+
+/**
+ * @brief Self-describing operator descriptor with fluent builder API (C++17)
+ *
+ * Used by operators that implement a static describe() method:
+ * @code
+ * class Displace : public TextureOperator {
+ * public:
+ *     static OperatorDescriptor describe() {
+ *         return OperatorDescriptor("Displace", "Effects", "Texture displacement")
+ *             .requireInput()
+ *             .withInputs({{"source", "Texture to distort"},
+ *                          {"map", "Displacement map (R=X, G=Y)"}})
+ *             .withUsage("auto& d = chain.add<Displace>(\"d\");\n"
+ *                        "d.source(\"input\");\n"
+ *                        "d.map(\"noise\");");
+ *     }
+ * };
+ * @endcode
+ */
+struct OperatorDescriptor {
+    std::string name;
+    std::string category;
+    std::string description;
+    OutputKind outputKind = OutputKind::Texture;
+    bool requiresInput = false;
+    std::string module;
+    std::vector<std::string> aliases;
+    std::vector<InputMeta> inputs;
+    std::string usage;
+
+    /// Constructor with required fields
+    OperatorDescriptor(const char* n, const char* cat, const char* desc)
+        : name(n), category(cat), description(desc) {}
+
+    /// Fluent builder methods
+    OperatorDescriptor& output(OutputKind k) { outputKind = k; return *this; }
+    OperatorDescriptor& requireInput(bool r = true) { requiresInput = r; return *this; }
+    OperatorDescriptor& inModule(const char* m) { module = m; return *this; }
+    OperatorDescriptor& withAliases(std::vector<std::string> a) { aliases = std::move(a); return *this; }
+    OperatorDescriptor& withInputs(std::vector<InputMeta> i) { inputs = std::move(i); return *this; }
+    OperatorDescriptor& withUsage(std::string u) { usage = std::move(u); return *this; }
+};
+
+/**
  * @brief Metadata about an operator type
  */
 struct OperatorMeta {
@@ -32,6 +88,11 @@ struct OperatorMeta {
 
     // Factory function to create instance for param introspection
     std::function<std::unique_ptr<Operator>()> factory;
+
+    // Extended metadata for LLM/MCP integration
+    std::string usage;                    ///< Explicit usage example (overrides auto-generated)
+    std::vector<std::string> aliases;     ///< Alternative names (e.g., "Grain" for FilmGrain)
+    std::vector<InputMeta> inputs;        ///< Input method documentation for multi-input operators
 };
 
 /**
@@ -56,8 +117,17 @@ public:
     /// @brief Get all categories
     std::vector<std::string> categories() const;
 
-    /// @brief Find operator by name
+    /// @brief Find operator by name (also checks aliases)
     const OperatorMeta* find(const std::string& name) const;
+
+    /// @brief Set extended metadata for an operator (usage example)
+    void setUsage(const std::string& name, const std::string& usage);
+
+    /// @brief Set aliases for an operator (alternative names for discovery)
+    void setAliases(const std::string& name, std::vector<std::string> aliases);
+
+    /// @brief Set input method documentation for multi-input operators
+    void setInputs(const std::string& name, std::vector<InputMeta> inputs);
 
     /// @brief Output all operators as JSON to stdout
     void outputJson() const;
@@ -72,6 +142,7 @@ public:
 
 private:
     OperatorRegistry() = default;
+    OperatorMeta* findMutable(const std::string& name);
     std::vector<OperatorMeta> m_operators;
 };
 
@@ -79,7 +150,25 @@ private:
  * @brief Helper for static registration
  */
 struct OperatorRegistrar {
+    /// Legacy constructor for REGISTER_OPERATOR macros
     OperatorRegistrar(const OperatorMeta& meta) {
+        OperatorRegistry::instance().registerOperator(meta);
+    }
+
+    /// New constructor for self-describing operators (REGISTER macro)
+    OperatorRegistrar(const OperatorDescriptor& info,
+                      std::function<std::unique_ptr<Operator>()> factory) {
+        OperatorMeta meta;
+        meta.name = info.name;
+        meta.category = info.category;
+        meta.description = info.description;
+        meta.module = info.module;
+        meta.requiresInput = info.requiresInput;
+        meta.outputKind = info.outputKind;
+        meta.factory = std::move(factory);
+        meta.usage = info.usage;
+        meta.aliases = info.aliases;
+        meta.inputs = info.inputs;
         OperatorRegistry::instance().registerOperator(meta);
     }
 };
@@ -163,6 +252,34 @@ struct OperatorRegistrar {
         OutKind, \
         []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); } \
     }); \
+    static_assert(true, "")
+
+/**
+ * @brief Register a self-describing operator
+ *
+ * Use with operators that implement a static describe() method:
+ * @code
+ * // In displace.h
+ * class Displace : public TextureOperator {
+ * public:
+ *     static OperatorDescriptor describe() {
+ *         return OperatorDescriptor("Displace", "Effects", "Texture displacement")
+ *             .requireInput()
+ *             .withInputs({{"source", "Texture to distort"},
+ *                          {"map", "Displacement map"}});
+ *     }
+ *     // ... rest of class
+ * };
+ *
+ * // In operator_registrations.cpp (or displace.cpp)
+ * REGISTER(Displace);
+ * @endcode
+ */
+#define REGISTER(Type) \
+    static ::vivid::OperatorRegistrar s_reg_##Type{ \
+        Type::describe(), \
+        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); } \
+    }; \
     static_assert(true, "")
 
 } // namespace vivid

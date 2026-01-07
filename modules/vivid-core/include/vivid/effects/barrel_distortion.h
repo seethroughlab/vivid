@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -38,6 +39,22 @@ struct BarrelDistortionUniforms {
  */
 class BarrelDistortion : public SimpleTextureEffect<BarrelDistortion, BarrelDistortionUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("BarrelDistortion", "Effects", "Barrel/pincushion distortion")
+            .requireInput()
+            .withAliases({"Barrel", "Fisheye", "LensDistortion"})
+            .withUsage(
+                "auto& barrel = chain.add<BarrelDistortion>(\"barrel\");\n"
+                "barrel.input(\"source\");\n"
+                "barrel.curvature = 0.08f;  // 0=none, 1=extreme\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

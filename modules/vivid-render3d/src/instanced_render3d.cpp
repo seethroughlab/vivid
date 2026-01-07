@@ -11,7 +11,7 @@
 
 namespace vivid::render3d {
 
-REGISTER_MODULE_OPERATOR(InstancedRender3D, "3D Rendering", "GPU-instanced rendering for thousands of meshes", true, "vivid-render3d");
+REGISTER(InstancedRender3D);
 
 using namespace vivid::effects;
 

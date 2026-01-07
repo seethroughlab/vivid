@@ -11,6 +11,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -101,6 +102,30 @@ enum class SynthFilterType {
  */
 class WavetableSynth : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("WavetableSynth", "Audio Synth", "Polyphonic wavetable synthesizer with morphing timbres")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withAliases({"Wavetable", "WT"})
+            .withUsage(
+                "auto& wt = chain.add<WavetableSynth>(\"wt\");\n"
+                "wt.loadBuiltin(BuiltinTable::Analog);\n"
+                "wt.maxVoices = 4;\n"
+                "wt.attack = 0.1f;\n"
+                "wt.release = 0.5f;\n"
+                "\n"
+                "// Modulate wavetable position for evolving timbre\n"
+                "wt.position = 0.5f;  // Or animate with LFO\n"
+                "\n"
+                "wt.noteOn(440.0f);   // Play A4\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

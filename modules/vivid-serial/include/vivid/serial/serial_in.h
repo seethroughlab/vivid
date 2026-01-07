@@ -2,6 +2,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 #include <vivid/serial/serial_port.h>
 #include <memory>
 #include <string>
@@ -37,6 +38,30 @@ namespace serial {
  */
 class SerialIn : public Operator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("SerialIn", "IO", "Serial input from Arduino and sensors")
+            .output(OutputKind::Value)
+            .inModule("vivid-serial")
+            .withAliases({"Arduino", "Sensor"})
+            .withUsage(
+                "auto& sensor = chain.add<SerialIn>(\"sensor\");\n"
+                "sensor.port(\"/dev/tty.usbmodem14201\");  // or \"COM3\" on Windows\n"
+                "sensor.baudRate = 115200;\n"
+                "\n"
+                "// In update():\n"
+                "if (sensor.hasData()) {\n"
+                "    float value = sensor.getValue(0);  // First CSV column\n"
+                "    noise.scale = value * 10.0f;\n"
+                "}\n"
+            );
+    }
+
+    /// @}
+
     /// Baud rate parameter (exposed to UI)
     Param<int> baudRate{"baudRate", 9600, 300, 115200};
 

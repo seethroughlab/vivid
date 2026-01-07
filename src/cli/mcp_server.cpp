@@ -1162,22 +1162,53 @@ private:
             }
 
             // Generate usage example
-            std::string usage = "auto& op = chain.add<" + meta->name + ">(\"name\");\n";
-            if (meta->requiresInput) {
-                usage += "op.input(\"source_operator\");\n";
-            }
-            if (!info["params"].empty()) {
-                usage += "// Parameters:\n";
-                size_t count = 0;
-                for (const auto& p : info["params"]) {
-                    if (count++ >= 3) {
-                        usage += "// ... and " + std::to_string(info["params"].size() - 3) + " more\n";
-                        break;
+            std::string usage;
+            if (!meta->usage.empty()) {
+                // Use explicit usage from operator metadata
+                usage = meta->usage;
+            } else {
+                // Auto-generate usage
+                usage = "auto& op = chain.add<" + meta->name + ">(\"name\");\n";
+
+                // Use explicit inputs if available, otherwise generic input()
+                if (!meta->inputs.empty()) {
+                    for (const auto& input : meta->inputs) {
+                        usage += "op." + input.method + "(\"" + input.method + "_source\");\n";
                     }
-                    usage += "op." + p["name"].get<std::string>() + " = " + p["default"].dump() + ";\n";
+                } else if (meta->requiresInput) {
+                    usage += "op.input(\"source_operator\");\n";
+                }
+
+                if (!info["params"].empty()) {
+                    usage += "// Parameters:\n";
+                    size_t count = 0;
+                    for (const auto& p : info["params"]) {
+                        if (count++ >= 3) {
+                            usage += "// ... and " + std::to_string(info["params"].size() - 3) + " more\n";
+                            break;
+                        }
+                        usage += "op." + p["name"].get<std::string>() + " = " + p["default"].dump() + ";\n";
+                    }
                 }
             }
             info["usage"] = usage;
+
+            // Include inputs documentation if available
+            if (!meta->inputs.empty()) {
+                info["inputs"] = json::array();
+                for (const auto& input : meta->inputs) {
+                    info["inputs"].push_back({
+                        {"method", input.method},
+                        {"description", input.description},
+                        {"required", input.required}
+                    });
+                }
+            }
+
+            // Include aliases if available
+            if (!meta->aliases.empty()) {
+                info["aliases"] = meta->aliases;
+            }
 
             result["content"] = {{{"type", "text"}, {"text", info.dump(2)}}};
         }

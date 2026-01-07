@@ -12,6 +12,7 @@
 #include <vivid/render3d/static_mesh.h>
 #include <vivid/render3d/scene.h>
 #include <vivid/render3d/textured_material.h>
+#include <vivid/operator_registry.h>
 #include <vivid/context.h>
 #include <vivid/chain.h>
 #include <glm/glm.hpp>
@@ -67,6 +68,20 @@ struct ComposerEntry {
  */
 class SceneComposer : public MeshOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("SceneComposer", "3D Scene", "Compose meshes and transforms into a renderable scene")
+            .output(OutputKind::Geometry)
+            .inModule("vivid-render3d")
+            .withAliases({"Scene"})
+            .withUsage(
+                "auto& scene = SceneComposer::create(chain, \"scene\");\n"
+                "scene.add<Box>(\"box\").size(1.0f);\n"
+                "scene.add<Sphere>(\"ball\", transform, color);\n"
+                "\n"
+                "auto& render = chain.add<Render3D>(\"render\").input(&scene);\n"
+            );
+    }
+
     /**
      * @brief Create a SceneComposer and register it with the chain
      * @param chain The chain to register with

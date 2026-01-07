@@ -11,6 +11,7 @@
  */
 
 #include <vivid/audio/audio_analyzer.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <vector>
 
@@ -38,6 +39,28 @@ namespace vivid::audio {
  */
 class BeatDetect : public AudioAnalyzer {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("BeatDetect", "Audio Analysis", "Beat detection with adaptive threshold")
+            .output(OutputKind::Value)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withAliases({"Beat"})
+            .withUsage(
+                "auto& bd = chain.add<BeatDetect>(\"beat\");\n"
+                "bd.input(\"audio\");\n"
+                "bd.sensitivity = 1.5f;  // Detection sensitivity\n"
+                "\n"
+                "// In update:\n"
+                "if (bd.beat()) { /* flash on beat */ }\n"
+                "float energy = bd.energy();\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

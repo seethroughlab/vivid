@@ -9,6 +9,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -43,6 +44,27 @@ namespace vivid::effects {
  */
 class Displace : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description (for MCP/registry)
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Displace", "Effects", "Texture displacement")
+            .requireInput()
+            .withInputs({
+                {"source", "Texture to distort"},
+                {"map", "Displacement map (R=X, G=Y)"}
+            })
+            .withAliases({"Warp", "Distort"})
+            .withUsage(
+                "auto& d = chain.add<Displace>(\"displace\");\n"
+                "d.source(\"input_texture\");\n"
+                "d.map(\"noise\");\n"
+                "d.strength = 0.1f;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

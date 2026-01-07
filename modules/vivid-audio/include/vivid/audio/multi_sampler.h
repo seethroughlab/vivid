@@ -10,6 +10,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -119,6 +120,25 @@ struct SampleGroup {
  */
 class MultiSampler : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("MultiSampler", "Audio Sampler", "Multi-zone sampler with velocity layers and SFZ support")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& piano = chain.add<MultiSampler>(\"piano\");\n"
+                "piano.loadPreset(\"assets/sample_packs/Piano/preset.json\");\n"
+                "piano.attack = 0.01f;\n"
+                "piano.release = 1.5f;\n"
+                "\n"
+                "piano.noteOn(60, 0.8f);  // Play C4\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters
     /// @{

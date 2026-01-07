@@ -6,6 +6,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -41,6 +42,29 @@ namespace vivid::audio {
 class AudioMixer : public AudioOperator {
 public:
     static constexpr int MAX_INPUTS = 8;
+
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("AudioMixer", "Audio IO", "Mix multiple audio sources with gain control")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withAliases({"Mixer"})
+            .withUsage(
+                "auto& mixer = chain.add<AudioMixer>(\"mixer\");\n"
+                "mixer.setInput(0, \"kick\");\n"
+                "mixer.setInput(1, \"snare\");\n"
+                "mixer.setGain(0, 1.0f);\n"
+                "mixer.setGain(1, 0.8f);\n"
+                "mixer.volume = 0.8f;  // Master volume\n"
+            );
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
 
     Param<float> volume{"volume", 1.0f, 0.0f, 2.0f};  ///< Master output volume
 

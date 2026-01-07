@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/delay_line.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -40,6 +41,25 @@ namespace vivid::audio {
  */
 class Echo : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Echo", "Audio Effects", "Multi-tap echo with diffusion")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& echo = chain.add<Echo>(\"echo\");\n"
+                "echo.input(\"audio\");\n"
+                "echo.delayTime = 300.0f;  // 300ms between echoes\n"
+                "echo.decay = 0.6f;        // Each echo at 60%\n"
+                "echo.taps = 4;            // 4 echo repeats\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

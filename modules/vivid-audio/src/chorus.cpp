@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(Chorus, "Audio Effects", "Chorus effect with multiple voices", true, OutputKind::Audio, "vivid-audio");
+REGISTER(Chorus);
 
 void Chorus::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

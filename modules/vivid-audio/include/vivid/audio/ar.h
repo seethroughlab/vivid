@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -51,6 +52,25 @@ enum class ARStage {
  */
 class AR : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("AR", "Audio Envelope", "Attack-release envelope generator")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& env = chain.add<AR>(\"env\");\n"
+                "env.input(\"osc\");\n"
+                "env.attack = 0.005f;   // 5ms attack\n"
+                "env.release = 0.5f;    // 500ms release\n"
+                "\n"
+                "env.trigger();  // Start envelope\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

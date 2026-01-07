@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -71,6 +72,21 @@ enum class GradientMode {
  */
 class Gradient : public SimpleGeneratorEffect<Gradient, GradientUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Gradient", "Generators", "Color gradient")
+            .withUsage(
+                "auto& grad = chain.add<Gradient>(\"grad\");\n"
+                "grad.mode(GradientMode::Radial);  // Linear, Radial, Angular, Diamond\n"
+                "grad.colorA.set(1, 0, 0, 1);      // Red\n"
+                "grad.colorB.set(0, 0, 1, 1);      // Blue\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

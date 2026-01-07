@@ -9,6 +9,7 @@
  */
 
 #include <vivid/audio/audio_effect.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -130,6 +131,18 @@ public:
     /// @{
 
     std::string name() const override { return "Formant"; }
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Formant", "Audio Effects", "Vowel formant filter for vocal synthesis")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .requireInput()
+            .withUsage(R"(auto& formant = chain.add<Formant>("formant");
+formant.input("osc");
+formant.setVowel(Vowel::A);
+formant.resonance = 8.0f;
+formant.morph = 0.5f;  // Morph between vowels)");
+    }
 
     /// @}
 

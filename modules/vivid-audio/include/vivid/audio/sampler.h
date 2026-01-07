@@ -10,6 +10,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -61,6 +62,27 @@ enum class SamplerVoiceStealMode {
  */
 class Sampler : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Sampler", "Audio Sampler", "Sample playback with MIDI triggering")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& sampler = chain.add<Sampler>(\"piano\");\n"
+                "sampler.loadSample(\"assets/piano_c4.wav\");\n"
+                "sampler.rootNote = 60;  // C4\n"
+                "sampler.attack = 0.01f;\n"
+                "sampler.release = 1.0f;\n"
+                "\n"
+                "sampler.noteOn(60, 0.8f);  // Play C4\n"
+                "sampler.noteOff(60);\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters
     /// @{

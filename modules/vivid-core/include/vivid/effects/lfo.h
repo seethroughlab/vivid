@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -70,6 +71,24 @@ struct LFOUniforms {
  */
 class LFO : public SimpleGeneratorEffect<LFO, LFOUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("LFO", "Generators", "Low-frequency oscillator")
+            .output(OutputKind::Value)
+            .withUsage(
+                "auto& lfo = chain.add<LFO>(\"lfo\");\n"
+                "lfo.waveform(LFOWaveform::Sine);  // Sine, Triangle, Saw, Square, Noise\n"
+                "lfo.frequency = 0.5f;  // Hz\n"
+                "lfo.amplitude = 0.5f;\n"
+                "lfo.offset = 0.5f;  // Output range 0-1\n"
+                "// Use lfo.value() or lfo.outputValue() for CPU-side modulation\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

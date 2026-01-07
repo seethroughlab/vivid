@@ -8,7 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(Gate, "Audio Dynamics", "Noise gate for reducing background noise", true, OutputKind::Audio, "vivid-audio");
+REGISTER(Gate);
 
 void Gate::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

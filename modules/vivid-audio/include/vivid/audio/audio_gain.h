@@ -6,6 +6,7 @@
  */
 
 #include <vivid/audio/audio_effect.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -40,6 +41,25 @@ namespace vivid::audio {
  */
 class AudioGain : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("AudioGain", "Audio IO", "Gain and pan control with envelope modulation")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withAliases({"Gain", "Volume"})
+            .withUsage(
+                "auto& vol = chain.add<AudioGain>(\"vol\");\n"
+                "vol.input(\"osc\");\n"
+                "vol.gain = 0.5f;    // 50% volume\n"
+                "vol.pan = -0.3f;    // Slight left pan\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

@@ -10,6 +10,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -41,6 +42,22 @@ namespace vivid::effects {
  */
 class FrameCache : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("FrameCache", "Effects", "Buffer multiple frames")
+            .requireInput()
+            .withUsage(
+                "auto& cache = chain.add<FrameCache>(\"cache\");\n"
+                "cache.input(\"source\");\n"
+                "cache.frameCount = 30;  // Frames to store\n"
+                "// Use with TimeMachine for temporal effects\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters
     /// @{

@@ -7,6 +7,7 @@
 #include <vivid/effects/texture_operator.h>
 #include <vivid/effects/gpu_handle.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 #include <glm/glm.hpp>
 #include <vector>
 #include <random>
@@ -64,6 +65,28 @@ enum class GPUColorMode {
  */
 class GPUParticles : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("GPUParticles", "Particles", "GPU compute-based particle system")
+            .withAliases({"ComputeParticles", "FlowField"})
+            .withUsage(
+                "auto& p = chain.add<GPUParticles>(\"flow\");\n"
+                "p.maxParticles = 100000;  // GPU handles 100k+ easily\n"
+                "p.emitRate = 2000.0f;\n"
+                "p.curlStrength = 0.8f;    // Curl noise force field\n"
+                "p.curlScale = 6.0f;\n"
+                "p.curlSpeed = 0.5f;\n"
+                "p.vortexStrength = 0.3f;  // Swirling vortex\n"
+                "p.colorStart.set(1.0f, 0.6f, 0.2f, 1.0f);\n"
+                "p.colorEnd.set(1.0f, 0.0f, 0.0f, 0.0f);\n"
+            );
+    }
+
+    /// @}
+
     GPUParticles();
     ~GPUParticles() override;
 

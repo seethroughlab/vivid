@@ -9,6 +9,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <vector>
 #include <string>
 
@@ -46,6 +47,29 @@ namespace vivid::network {
  */
 class UdpOut : public Operator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("UdpOut", "Network", "Send raw UDP packets for hardware control and Artnet")
+            .output(OutputKind::Value)
+            .inModule("vivid-network")
+            .withAliases({"UDPSender", "UDPOutput", "Artnet"})
+            .withUsage(
+                "auto& udp = chain.add<UdpOut>(\"lights\");\n"
+                "udp.host(\"192.168.1.100\");\n"
+                "udp.port(6454);  // Artnet port\n"
+                "\n"
+                "// In update():\n"
+                "std::vector<uint8_t> dmxData(512);\n"
+                "dmxData[0] = static_cast<uint8_t>(levels.level(0) * 255);\n"
+                "udp.send(dmxData);\n"
+            );
+    }
+
+    /// @}
+
     UdpOut();
     ~UdpOut() override;
 

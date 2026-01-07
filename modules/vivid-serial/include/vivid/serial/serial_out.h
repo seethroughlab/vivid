@@ -2,6 +2,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 #include <vivid/serial/serial_port.h>
 #include <memory>
 #include <string>
@@ -34,6 +35,27 @@ namespace serial {
  */
 class SerialOut : public Operator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("SerialOut", "IO", "Serial output for Arduino and other devices")
+            .output(OutputKind::Value)
+            .inModule("vivid-serial")
+            .withUsage(
+                "auto& arduino = chain.add<SerialOut>(\"arduino\");\n"
+                "arduino.port(\"/dev/tty.usbmodem14201\");  // or \"COM3\" on Windows\n"
+                "arduino.baudRate = 115200;\n"
+                "\n"
+                "// In update():\n"
+                "float r = levels.level(0);\n"
+                "arduino.sendCSV({r * 255, g * 255, b * 255});  // \"R,G,B\\n\"\n"
+            );
+    }
+
+    /// @}
+
     /// Baud rate parameter (exposed to UI)
     Param<int> baudRate{"baudRate", 9600, 300, 115200};
 

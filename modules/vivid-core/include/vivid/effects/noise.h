@@ -9,6 +9,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -50,6 +51,21 @@ enum class NoiseType {
  */
 class Noise : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Noise", "Generators", "Fractal noise generator")
+            .withUsage(
+                "auto& noise = chain.add<Noise>(\"noise\");\n"
+                "noise.scale = 4.0f;\n"
+                "noise.speed = 0.5f;\n"
+                "noise.octaves = 4;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

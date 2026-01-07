@@ -16,6 +16,7 @@
  */
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/render3d/mesh.h>
 #include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/camera.h>
@@ -71,6 +72,23 @@ struct Instance3D {
  */
 class InstancedRender3D : public vivid::effects::TextureOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("InstancedRender3D", "3D Rendering", "GPU-instanced rendering for thousands of meshes")
+            .output(OutputKind::Texture)
+            .requireInput()
+            .inModule("vivid-render3d")
+            .withAliases({"Instanced", "GPUInstancing"})
+            .withUsage(
+                "auto& inst = chain.add<InstancedRender3D>(\"inst\");\n"
+                "inst.setMesh(&sphere);\n"
+                "inst.setCameraInput(&cam);\n"
+                "inst.setLightInput(&sun);\n"
+                "\n"
+                "std::vector<Instance3D> instances;\n"
+                "inst.setInstances(instances);\n"
+            );
+    }
+
     Param<float> metallic{"metallic", 0.0f, 0.0f, 1.0f};    ///< Base metallic value
     Param<float> roughness{"roughness", 0.5f, 0.0f, 1.0f};  ///< Base roughness value
     Param<float> ambient{"ambient", 0.3f, 0.0f, 2.0f};      ///< Ambient light intensity

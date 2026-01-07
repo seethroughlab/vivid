@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR(Euclidean, "Audio Sequencing", "Euclidean rhythm pattern generator", false, "vivid-audio");
+REGISTER(Euclidean);
 
 void Euclidean::init(Context& ctx) {
     regenerate();

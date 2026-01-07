@@ -8,7 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR(BandSplit, "Audio Analysis", "Split audio into frequency bands (low/mid/high)", true, "vivid-audio");
+REGISTER(BandSplit);
 
 struct BandSplit::Impl {
     kiss_fft_cfg cfg = nullptr;

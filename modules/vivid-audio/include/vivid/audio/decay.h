@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -51,6 +52,25 @@ enum class DecayCurve {
  */
 class Decay : public AudioOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Decay", "Audio Envelope", "One-shot decay envelope with multiple curve shapes")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& env = chain.add<Decay>(\"env\");\n"
+                "env.input(\"noise\");\n"
+                "env.time = 0.05f;                    // 50ms decay\n"
+                "env.setCurve(DecayCurve::Exponential);\n"
+                "\n"
+                "env.trigger();  // Start decay\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

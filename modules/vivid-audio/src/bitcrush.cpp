@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(Bitcrush, "Audio Effects", "Bit depth and sample rate reduction for lo-fi sound", true, OutputKind::Audio, "vivid-audio");
+REGISTER(Bitcrush);
 
 void Bitcrush::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/filters.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -40,6 +41,26 @@ namespace vivid::audio {
  */
 class Overdrive : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Overdrive", "Audio Effects", "Soft-clipping distortion with tone control")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withAliases({"Distortion", "Saturate"})
+            .withUsage(
+                "auto& od = chain.add<Overdrive>(\"overdrive\");\n"
+                "od.input(\"audio\");\n"
+                "od.drive = 3.0f;   // Medium drive\n"
+                "od.tone = 0.6f;    // Slightly bright\n"
+                "od.level = 0.8f;   // Reduce output\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

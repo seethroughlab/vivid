@@ -5,6 +5,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -45,6 +46,25 @@ struct FlashUniforms {
  */
 class Flash : public SimpleTextureEffect<Flash, FlashUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Flash", "Retro", "Beat-synced flash overlay")
+            .requireInput()
+            .withAliases({"Strobe", "BeatFlash"})
+            .withUsage(
+                "auto& flash = chain.add<Flash>(\"flash\");\n"
+                "flash.input(\"source\");\n"
+                "flash.decay = 0.9f;  // Fast decay\n"
+                "flash.color.set(1.0f, 0.9f, 0.8f);  // Warm white\n"
+                "flash.mode = 0;  // 0=Additive, 1=Screen, 2=Replace\n"
+                "// In update(): if (beat) flash.trigger();\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

@@ -9,6 +9,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -44,6 +45,25 @@ namespace vivid::effects {
  */
 class Feedback : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Feedback", "Effects", "Frame feedback loop")
+            .requireInput()
+            .withAliases({"Trail", "Echo"})
+            .withUsage(
+                "auto& fb = chain.add<Feedback>(\"feedback\");\n"
+                "fb.input(\"source\");\n"
+                "fb.decay = 0.92f;     // How much previous frame persists\n"
+                "fb.mix = 0.5f;        // Blend between input and feedback\n"
+                "fb.zoom = 1.01f;      // Scale factor per frame\n"
+                "fb.rotate = 0.02f;    // Rotation per frame (radians)\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

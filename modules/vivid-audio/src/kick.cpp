@@ -8,7 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(Kick, "Audio Drums", "Analog-style kick drum synthesizer", false, OutputKind::Audio, "vivid-audio");
+REGISTER(Kick);
 
 void Kick::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

@@ -24,7 +24,7 @@
 
 namespace vivid::network {
 
-REGISTER_MODULE_OPERATOR(OscOut, "Network", "Send OSC messages over UDP", false, "vivid-network");
+REGISTER(OscOut);
 
 #ifdef _WIN32
 extern bool g_wsaInitialized;

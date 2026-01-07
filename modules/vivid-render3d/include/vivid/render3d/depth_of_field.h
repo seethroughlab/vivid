@@ -8,6 +8,7 @@
  */
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::render3d {
@@ -45,6 +46,20 @@ class Render3D;
  */
 class DepthOfField : public effects::TextureOperator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("DepthOfField", "3D Post-Processing", "Depth-based focus blur effect")
+            .output(OutputKind::Texture)
+            .requireInput()
+            .inModule("vivid-render3d")
+            .withAliases({"DOF", "Bokeh"})
+            .withUsage(
+                "auto& dof = chain.add<DepthOfField>(\"dof\");\n"
+                "dof.input(&render);  // Requires depthOutput(true)\n"
+                "dof.focusDistance(0.3f);\n"
+                "dof.blurStrength(0.8f);\n"
+            );
+    }
+
     DepthOfField() = default;
     ~DepthOfField() override;
 

@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -60,6 +61,15 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Crackle"; }
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Crackle", "Audio Utility", "Random impulse generator for vinyl crackle sounds")
+            .output(OutputKind::Audio)
+            .inModule("vivid-audio")
+            .withUsage(R"(auto& crackle = chain.add<Crackle>("crackle");
+crackle.density = 0.001f;  // Sparse clicks
+crackle.volume = 0.1f;     // Subtle level)");
+    }
 
     /// @}
 

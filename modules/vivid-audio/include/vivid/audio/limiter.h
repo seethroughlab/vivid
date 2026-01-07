@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/envelope.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -37,6 +38,24 @@ namespace vivid::audio {
  */
 class Limiter : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Limiter", "Audio Effects", "Brick-wall limiter for preventing clipping")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& lim = chain.add<Limiter>(\"limiter\");\n"
+                "lim.input(\"audio\");\n"
+                "lim.ceiling = -0.3f;   // Limit to -0.3dB\n"
+                "lim.release = 100.0f;  // 100ms release\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

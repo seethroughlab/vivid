@@ -10,6 +10,7 @@
 
 #include <vivid/effects/texture_operator.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -45,6 +46,24 @@ namespace vivid::effects {
  */
 class Bloom : public TextureOperator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Bloom", "Effects", "Glow/bloom effect")
+            .requireInput()
+            .withAliases({"Glow", "HDRBloom"})
+            .withUsage(
+                "auto& bloom = chain.add<Bloom>(\"glow\");\n"
+                "bloom.input(\"source\");\n"
+                "bloom.threshold = 0.7f;   // Brightness cutoff\n"
+                "bloom.intensity = 1.5f;   // Bloom strength\n"
+                "bloom.radius = 15.0f;     // Blur radius\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

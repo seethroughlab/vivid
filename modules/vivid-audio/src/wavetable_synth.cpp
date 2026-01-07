@@ -11,7 +11,7 @@
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR_EX(WavetableSynth, "Audio Synthesis", "Wavetable synthesizer with morphing", false, OutputKind::Audio, "vivid-audio");
+REGISTER(WavetableSynth);
 
 WavetableSynth::WavetableSynth() {
     registerParam(position);

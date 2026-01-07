@@ -9,6 +9,7 @@
 
 #include <vivid/effects/simple_texture_effect.h>
 #include <vivid/param.h>
+#include <vivid/operator_registry.h>
 
 namespace vivid::effects {
 
@@ -51,6 +52,24 @@ struct EdgeUniforms {
  */
 class Edge : public SimpleTextureEffect<Edge, EdgeUniforms> {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Edge", "Effects", "Edge detection")
+            .requireInput()
+            .withAliases({"Sobel", "EdgeDetect"})
+            .withUsage(
+                "auto& edges = chain.add<Edge>(\"edges\");\n"
+                "edges.input(\"source\");\n"
+                "edges.strength = 2.0f;\n"
+                "edges.threshold = 0.1f;\n"
+                "edges.invert = false;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

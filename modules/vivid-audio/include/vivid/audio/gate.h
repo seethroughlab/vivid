@@ -10,6 +10,7 @@
 
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/envelope.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -43,6 +44,27 @@ namespace vivid::audio {
  */
 class Gate : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Gate", "Audio Effects", "Noise gate for reducing background noise")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withAliases({"NoiseGate"})
+            .withUsage(
+                "auto& gate = chain.add<Gate>(\"gate\");\n"
+                "gate.input(\"audio\");\n"
+                "gate.threshold = -40.0f;  // Gate below -40dB\n"
+                "gate.attack = 1.0f;       // Fast attack\n"
+                "gate.hold = 50.0f;        // 50ms hold\n"
+                "gate.release = 100.0f;    // 100ms release\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

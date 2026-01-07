@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <webgpu/webgpu.h>
 #include <string>
 
@@ -39,6 +40,21 @@ struct CubemapData {
  */
 class IBLEnvironment : public Operator {
 public:
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("IBLEnvironment", "3D Lighting", "HDRI environment map for image-based lighting")
+            .output(OutputKind::Value)
+            .inModule("vivid-render3d")
+            .withAliases({"HDRI", "Skybox", "EnvironmentMap"})
+            .withUsage(
+                "auto& ibl = chain.add<IBLEnvironment>(\"ibl\");\n"
+                "ibl.setHdrFile(\"assets/hdris/studio.hdr\");\n"
+                "\n"
+                "auto& render = chain.add<Render3D>(\"render\");\n"
+                "render.setEnvironmentInput(&ibl);\n"
+                "render.setIbl(true);\n"
+            );
+    }
+
     IBLEnvironment();
     ~IBLEnvironment() override;
 

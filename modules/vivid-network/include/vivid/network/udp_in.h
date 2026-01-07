@@ -9,6 +9,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <vector>
 #include <string>
 #include <mutex>
@@ -50,6 +51,32 @@ namespace vivid::network {
  */
 class UdpIn : public Operator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("UdpIn", "Network", "Receive raw UDP packets for custom protocols")
+            .output(OutputKind::Value)
+            .inModule("vivid-network")
+            .withAliases({"UDPReceiver", "UDPInput"})
+            .withUsage(
+                "auto& udp = chain.add<UdpIn>(\"sensor\");\n"
+                "udp.port(5000);\n"
+                "\n"
+                "// In update():\n"
+                "if (udp.hasData()) {\n"
+                "    auto floats = udp.asFloats();\n"
+                "    if (floats.size() >= 2) {\n"
+                "        noise.scale = floats[0];\n"
+                "        noise.speed = floats[1];\n"
+                "    }\n"
+                "}\n"
+            );
+    }
+
+    /// @}
+
     UdpIn();
     ~UdpIn() override;
 

@@ -12,7 +12,7 @@ namespace fs = std::filesystem;
 
 namespace vivid::audio {
 
-REGISTER_MODULE_OPERATOR(SampleBank, "Audio Sampling", "Load folder of audio samples for triggering", false, "vivid-audio");
+REGISTER(SampleBank);
 
 void SampleBank::setFolder(const std::string& path) {
     m_folderPath = path;

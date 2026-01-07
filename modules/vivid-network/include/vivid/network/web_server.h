@@ -9,6 +9,7 @@
  */
 
 #include <vivid/operator.h>
+#include <vivid/operator_registry.h>
 #include <string>
 #include <functional>
 #include <memory>
@@ -61,6 +62,30 @@ namespace vivid::network {
  */
 class WebServer : public Operator {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("WebServer", "Network", "HTTP/WebSocket server for web-based control interfaces")
+            .output(OutputKind::Value)
+            .inModule("vivid-network")
+            .withAliases({"HTTP", "WebSocket", "REST"})
+            .withUsage(
+                "auto& web = chain.add<WebServer>(\"web\");\n"
+                "web.port(8080);\n"
+                "web.staticDir(\"web/\");  // Serve HTML/CSS/JS\n"
+                "\n"
+                "// Built-in API:\n"
+                "// GET /api/operators - list operators\n"
+                "// GET /api/operator/:id - get params\n"
+                "// POST /api/operator/:id - set params\n"
+                "// ws://localhost:8080/ws - WebSocket\n"
+            );
+    }
+
+    /// @}
+
     WebServer();
     ~WebServer() override;
 

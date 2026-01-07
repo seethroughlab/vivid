@@ -11,6 +11,7 @@
 #include <vivid/audio/audio_effect.h>
 #include <vivid/audio/dsp/delay_line.h>
 #include <vivid/audio/dsp/lfo.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 
 namespace vivid::audio {
@@ -41,6 +42,26 @@ namespace vivid::audio {
  */
 class Flanger : public AudioEffect {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("Flanger", "Audio Effects", "Flanger effect with LFO modulation")
+            .output(OutputKind::Audio)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& flanger = chain.add<Flanger>(\"flanger\");\n"
+                "flanger.input(\"audio\");\n"
+                "flanger.rate = 0.2f;      // Slow sweep\n"
+                "flanger.depth = 0.7f;     // Deep modulation\n"
+                "flanger.feedback = 0.5f;  // Moderate feedback\n"
+                "flanger.mix = 0.5f;\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{

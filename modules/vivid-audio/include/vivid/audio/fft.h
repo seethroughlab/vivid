@@ -11,6 +11,7 @@
  */
 
 #include <vivid/audio/audio_analyzer.h>
+#include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <vector>
 #include <memory>
@@ -35,6 +36,27 @@ namespace vivid::audio {
  */
 class FFT : public AudioAnalyzer {
 public:
+    // -------------------------------------------------------------------------
+    /// @name Self-Description
+    /// @{
+
+    static OperatorDescriptor describe() {
+        return OperatorDescriptor("FFT", "Audio Analysis", "Fast Fourier Transform for frequency spectrum")
+            .output(OutputKind::Value)
+            .requireInput()
+            .inModule("vivid-audio")
+            .withUsage(
+                "auto& fft = chain.add<FFT>(\"fft\");\n"
+                "fft.input(\"audio\");\n"
+                "fft.setSize(1024);      // FFT size\n"
+                "fft.smoothing = 0.8f;   // Spectrum smoothing\n"
+                "\n"
+                "// In update:\n"
+                "float bass = fft.band(20, 250);  // Get bass energy\n"
+            );
+    }
+
+    /// @}
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
