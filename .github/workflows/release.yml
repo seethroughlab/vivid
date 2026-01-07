@@ -34,8 +34,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Get version from tag
-        id: version
+      - name: Get version from tag (Unix)
+        if: runner.os != 'Windows'
+        id: version_unix
         shell: bash
         run: |
           if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
@@ -44,6 +45,19 @@ jobs:
             VERSION="0.0.0-dev"
           fi
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "Building version: $VERSION"
+
+      - name: Get version from tag (Windows)
+        if: runner.os == 'Windows'
+        id: version_windows
+        shell: pwsh
+        run: |
+          if ("${{ github.ref }}" -match "^refs/tags/v(.+)$") {
+            $VERSION = $matches[1]
+          } else {
+            $VERSION = "0.0.0-dev"
+          }
+          echo "VERSION=$VERSION" >> $env:GITHUB_OUTPUT
           echo "Building version: $VERSION"
 
       - name: Install Linux dependencies
@@ -62,13 +76,14 @@ jobs:
 
       - name: Configure CMake (darwin-x64 cross-compile)
         if: matrix.target == 'darwin-x64'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWGPU_FORCE_ARCH=x86_64 -DVIVID_VERSION_OVERRIDE=${{ steps.version.outputs.VERSION }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWGPU_FORCE_ARCH=x86_64 -DVIVID_VERSION_OVERRIDE=${{ steps.version_unix.outputs.VERSION || steps.version_windows.outputs.VERSION }}
 
       - name: Configure CMake
         if: matrix.target != 'darwin-x64'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIVID_VERSION_OVERRIDE=${{ steps.version.outputs.VERSION }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIVID_VERSION_OVERRIDE=${{ steps.version_unix.outputs.VERSION || steps.version_windows.outputs.VERSION }}
 
-      - name: Build
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
         run: |
           if [[ "${{ matrix.target }}" == "linux-arm64" ]]; then
             cmake --build build --config Release --parallel 2
@@ -76,6 +91,10 @@ jobs:
             cmake --build build --config Release --parallel
           fi
         shell: bash
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        run: cmake --build build --config Release --parallel
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
