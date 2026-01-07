@@ -50,6 +50,21 @@ static bool isValidPng(const fs::path& path) {
         && magic[4] == 0x0D && magic[5] == 0x0A && magic[6] == 0x1A && magic[7] == 0x0A;
 }
 
+// Check if example has required user-provided assets
+static bool hasRequiredAssets(const fs::path& examplePath, const std::string& example) {
+    if (example == "gltf-loader") {
+        // Requires models in assets/models/
+        fs::path modelsDir = examplePath / "assets" / "models";
+        if (!fs::exists(modelsDir)) return false;
+        for (const auto& entry : fs::directory_iterator(modelsDir)) {
+            auto ext = entry.path().extension();
+            if (ext == ".glb" || ext == ".gltf") return true;
+        }
+        return false;  // No models found
+    }
+    return true;  // No special assets required
+}
+
 TEST_CASE("vivid-render3d examples run without crash", "[smoke][examples][render3d]") {
     auto example = GENERATE(
         "3d-basics",
@@ -65,6 +80,13 @@ TEST_CASE("vivid-render3d examples run without crash", "[smoke][examples][render
 
         if (!fs::exists(examplePath)) {
             WARN("Skipping missing example: " << examplePath.string());
+            SUCCEED();
+            return;
+        }
+
+        // Skip examples that require user-provided assets
+        if (!hasRequiredAssets(examplePath, example)) {
+            WARN("Skipping " << example << ": requires user-provided assets (place .glb files in assets/models/)");
             SUCCEED();
             return;
         }

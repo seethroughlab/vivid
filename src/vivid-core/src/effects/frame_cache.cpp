@@ -200,6 +200,7 @@ void FrameCache::blitToTarget(Context& ctx, WGPUTextureView srcView, WGPUTexture
     // Create render pass
     WGPURenderPassColorAttachment colorAttachment = {};
     colorAttachment.view = dstView;
+    colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;  // Required for 2D textures
     colorAttachment.loadOp = WGPULoadOp_Clear;
     colorAttachment.storeOp = WGPUStoreOp_Store;
     colorAttachment.clearValue = {0.0, 0.0, 0.0, 1.0};
