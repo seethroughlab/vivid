@@ -39,6 +39,7 @@
 #include <fstream>
 #include <regex>
 #include <functional>
+#include <mutex>
 
 // Memory debugging (macOS)
 #ifdef __APPLE__
