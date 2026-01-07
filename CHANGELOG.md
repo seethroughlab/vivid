@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Critical: Hot reload include path** - Fixed `hot_reload.cpp` to find headers at `modules/vivid-core/include` instead of old `src/vivid-core/include` path (broke all user project compilation after project restructure)
 - **Critical: OperatorRegistry crash on exit** - Changed to leaky singleton to prevent static destruction order crash during program exit
+- **Release build: darwin-arm64** - Scoped `-Wsuggest-override` to C++ only via generator expression (CMake 4.x compatibility)
+- **Release build: win32-x64** - Fixed PowerShell packaging script failing when copying duplicate module headers
 
 ## [0.1.0-alpha.12] - 2026-01-06
 

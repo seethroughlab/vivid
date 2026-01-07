@@ -154,7 +154,8 @@ jobs:
           Copy-Item -Recurse build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
 
           # Copy module headers (needed for third-party libraries that depend on vivid libraries)
-          Get-ChildItem -Path modules -Directory | ForEach-Object {
+          # Skip vivid-core since its headers are already copied above
+          Get-ChildItem -Path modules -Directory | Where-Object { $_.Name -ne "vivid-core" } | ForEach-Object {
             $headerPath = Join-Path $_.FullName "include/vivid"
             if (Test-Path $headerPath) {
               Get-ChildItem -Path $headerPath -Directory | ForEach-Object {
