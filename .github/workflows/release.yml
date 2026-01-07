@@ -14,16 +14,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14          # Apple Silicon
+          - os: ["self-hosted", "macOS"]
             target: darwin-arm64
             archive_ext: tar.gz
-          - os: macos-14          # Intel (cross-compile)
+          - os: ["self-hosted", "macOS"]  # Cross-compile for Intel
             target: darwin-x64
             archive_ext: tar.gz
-          - os: ubuntu-latest
+          - os: ["self-hosted", "Linux", "X64"]
             target: linux-x64
             archive_ext: tar.gz
-          - os: windows-latest
+          - os: ["self-hosted", "Windows"]
             target: win32-x64
             archive_ext: zip
           - os: ["self-hosted", "Linux", "ARM64"]
