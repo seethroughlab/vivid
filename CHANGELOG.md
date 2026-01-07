@@ -12,6 +12,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0-alpha.11] - 2026-01-06
 
+### Added
+
+#### Utility Examples for MCP Context
+Three new examples demonstrating core API patterns for LLM discoverability:
+
+- **input-handling** - Mouse position/buttons, keyboard input, modifier keys, drag patterns
+- **window-control** - Window resize, fullscreen, vsync, time functions (dt, realDt, frame)
+- **param-modulation** - Lambda bindings with `bind()`, LFO modulation, time-based animation
+
+Each includes comprehensive `CLAUDE.md` documentation with code patterns and API reference.
+
 ### Changed
 
 #### Unified CLI with CLI11
