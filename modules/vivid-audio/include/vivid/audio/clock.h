@@ -57,6 +57,8 @@ enum class ClockDiv {
  *     }
  * }
  * @endcode
+ 
+ * @see Sequencer, Euclidean, Song, Kick, Snare, HiHat
  */
 class Clock : public Operator, public ParamRegistry {
 public:

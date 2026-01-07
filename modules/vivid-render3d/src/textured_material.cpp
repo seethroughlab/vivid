@@ -13,11 +13,7 @@ using vivid::effects::toStringView;
 
 namespace vivid::render3d {
 
-REGISTER_OPERATOR_FULL(TexturedMaterial, "3D Materials", "PBR material with albedo, normal, metallic, roughness maps", false)
-    .related({"Render3D", "GLTFLoader", "IBLEnvironment"})
-    .limitations({"Textures must be power-of-two for mipmaps"})
-    .examples({"modules/vivid-render3d/examples/textured-material-test"})
-    .api({".setAlbedoMap(string path)", ".setNormalMap(string path)", ".setMetallicRoughnessMap(string path)", ".setAOMap(string path)", ".setEmissiveMap(string path)"});
+REGISTER_OPERATOR(TexturedMaterial, "3D Materials", "PBR material with albedo, normal, metallic, roughness maps", false);
 
 TexturedMaterial::TexturedMaterial() = default;
 

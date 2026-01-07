@@ -261,7 +261,7 @@ FetchContent_MakeAvailable(ixwebsocket)
 # -----------------------------------------------------------------------------
 # Core library
 # -----------------------------------------------------------------------------
-add_subdirectory(src/vivid-core)
+add_subdirectory(modules/vivid-core)
 
 # -----------------------------------------------------------------------------
 # Optional libraries (modules/)

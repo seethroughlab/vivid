@@ -63,6 +63,8 @@ enum class VoiceStealMode {
  * // Release all
  * synth.allNotesOff();
  * @endcode
+ 
+ * @see Synth, FMSynth, WavetableSynth, Oscillator, Envelope, MidiIn
  */
 class PolySynth : public AudioOperator {
 public:

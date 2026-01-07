@@ -40,6 +40,8 @@ namespace vivid::audio {
  * float mids = chain.get<BandSplit>("bands").mid();
  * chain.get<Circle>("circle").radius(0.2f + bass * 0.3f);
  * @endcode
+ 
+ * @see FFT, Levels, BeatDetect, AudioIn
  */
 class BandSplit : public AudioAnalyzer {
 public:

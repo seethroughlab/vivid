@@ -8,11 +8,7 @@
 
 namespace vivid::midi {
 
-REGISTER_OPERATOR_FULL(MidiIn, "MIDI", "Receive MIDI input from controllers and keyboards", false)
-    .related({"MidiOut", "MidiFilePlayer", "Synth", "FMSynth", "Sampler", "OscIn"})
-    .limitations({"Single port per instance"})
-    .examples({"modules/vivid-midi/examples/midi-control"})
-    .api({".openPort(int index)", ".openPortByName(string)", ".closePort()", ".noteOn(uint8_t note)", ".cc(uint8_t number)", ".onNoteOn(callback)", ".onNoteOff(callback)", ".onCC(callback)", "MidiIn::listPorts()"});
+REGISTER_OPERATOR(MidiIn, "MIDI", "Receive MIDI input from controllers and keyboards", false);
 
 // -----------------------------------------------------------------------------
 // Implementation (pimpl)

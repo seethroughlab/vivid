@@ -52,6 +52,8 @@ enum class FogMode {
  * fog.fogEnd = 50.0f;
  * fog.fogMode = FogMode::Linear;
  * @endcode
+ 
+ * @see Render3D, DepthOfField, CameraOperator
  */
 class Fog : public effects::TextureOperator {
 public:

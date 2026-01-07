@@ -35,6 +35,8 @@ namespace vivid::audio {
  * chain.get<AudioGain>("vol")->pan = -0.3f;
  * chain.add<AudioOutput>("out").input("vol");
  * @endcode
+ 
+ * @see AudioMixer, Compressor, Envelope
  */
 class AudioGain : public AudioEffect {
 public:

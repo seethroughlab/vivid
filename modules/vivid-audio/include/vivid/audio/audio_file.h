@@ -37,6 +37,8 @@ namespace vivid::audio {
  * chain.add<AudioOutput>("out").input("reverb");
  * chain.audioOutput("out");
  * @endcode
+ 
+ * @see Sampler, SampleBank, VideoAudio, AudioMixer
  */
 class AudioFile : public AudioOperator {
 public:

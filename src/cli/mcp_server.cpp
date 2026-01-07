@@ -26,7 +26,6 @@
 #include <filesystem>
 #include <algorithm>
 #include <array>
-#include <set>
 #include <csignal>
 
 #ifdef __APPLE__
@@ -187,34 +186,6 @@ std::string getVividExecutable() {
     }
 #endif
     return "vivid";  // Fallback to PATH
-}
-
-// Helper to get discovered modules (relative to executable)
-// Works for both dev builds (build/bin/vivid → build/modules/)
-// and installed binaries (~/.vivid/bin/vivid → ~/.vivid/modules/)
-std::vector<std::pair<std::string, fs::path>> getDiscoveredModules() {
-    std::vector<std::pair<std::string, fs::path>> modules;
-
-    // Get executable directory
-    fs::path exeDir = fs::path(getVividExecutable()).parent_path();
-
-    // Modules are at ../modules relative to bin/
-    fs::path modulesDir = exeDir.parent_path() / "modules";
-
-    if (fs::exists(modulesDir) && fs::is_directory(modulesDir)) {
-        for (const auto& entry : fs::directory_iterator(modulesDir)) {
-            if (entry.is_directory()) {
-                // Check for module.json OR examples/ to identify as module
-                fs::path moduleJson = entry.path() / "module.json";
-                fs::path examplesDir = entry.path() / "examples";
-                if (fs::exists(moduleJson) || fs::exists(examplesDir)) {
-                    modules.push_back({entry.path().filename().string(), entry.path()});
-                }
-            }
-        }
-    }
-
-    return modules;
 }
 
 // Helper to run a command and capture output
@@ -532,6 +503,19 @@ private:
             }}
         });
 
+        // search_docs - Search documentation
+        tools.push_back({
+            {"name", "search_docs"},
+            {"description", "Search Vivid documentation (RECIPES, CHAIN-API, CANVAS-API, ERROR-REFERENCE, PHILOSOPHY, CREATING-OPERATORS). Returns matching sections."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"query", {{"type", "string"}, {"description", "Search query (case-insensitive)"}}}
+                }},
+                {"required", json::array({"query"})}
+            }}
+        });
+
         return {{"tools", tools}};
     }
 
@@ -601,151 +585,6 @@ private:
                 {"type", "text"},
                 {"text", opList.dump(2)}
             }};
-        }
-        else if (name == "get_operator") {
-            std::string opName = args.value("name", "");
-            auto& registry = OperatorRegistry::instance();
-            const auto* meta = registry.find(opName);
-
-            if (!meta) {
-                result["isError"] = true;
-                result["content"] = {{
-                    {"type", "text"},
-                    {"text", "Operator '" + opName + "' not found."}
-                }};
-            } else {
-                json opInfo;
-                opInfo["name"] = meta->name;
-                opInfo["category"] = meta->category;
-                opInfo["description"] = meta->description;
-                opInfo["requiresInput"] = meta->requiresInput;
-                opInfo["outputType"] = outputKindName(meta->outputKind);
-                if (!meta->module.empty()) {
-                    opInfo["module"] = meta->module;
-                }
-
-                // Get parameters
-                if (meta->factory) {
-                    try {
-                        auto tempOp = meta->factory();
-                        auto params = tempOp->params();
-                        opInfo["params"] = json::array();
-                        for (const auto& p : params) {
-                            opInfo["params"].push_back({
-                                {"name", p.name},
-                                {"min", p.minVal},
-                                {"max", p.maxVal},
-                                {"default", p.defaultVal[0]}
-                            });
-                        }
-                    } catch (...) {}
-                }
-
-                // Usage example
-                opInfo["usage"] = "auto& op = chain.add<" + meta->name + ">(\"name\");";
-                if (meta->requiresInput) {
-                    opInfo["usage"] = opInfo["usage"].get<std::string>() + "\nop.input(&other);";
-                }
-
-                // Add enriched metadata from registry
-                if (!meta->limitations.empty()) {
-                    opInfo["limitations"] = meta->limitations;
-                }
-                if (!meta->related.empty()) {
-                    opInfo["related"] = meta->related;
-                }
-                if (!meta->examples.empty()) {
-                    opInfo["examples"] = meta->examples;
-                }
-                if (!meta->api.empty()) {
-                    opInfo["api"] = meta->api;
-                }
-
-                result["content"] = {{
-                    {"type", "text"},
-                    {"text", opInfo.dump(2)}
-                }};
-            }
-        }
-        else if (name == "search_docs") {
-            std::string query = args.value("query", "");
-            result["content"] = {{
-                {"type", "text"},
-                {"text", searchDocs(query)}
-            }};
-        }
-        else if (name == "search_operators") {
-            std::string query = args.value("query", "");
-            if (query.empty()) {
-                result["isError"] = true;
-                result["content"] = {{{"type", "text"}, {"text", "Query is required"}}};
-                return result;
-            }
-
-            // Convert query to lowercase for case-insensitive matching
-            std::string queryLower = query;
-            std::transform(queryLower.begin(), queryLower.end(), queryLower.begin(), ::tolower);
-
-            // Split query into words
-            std::vector<std::string> queryWords;
-            std::istringstream iss(queryLower);
-            std::string word;
-            while (iss >> word) {
-                if (word.length() >= 2) {
-                    queryWords.push_back(word);
-                }
-            }
-
-            auto& registry = OperatorRegistry::instance();
-            json matches = json::array();
-
-            // Helper to check if text contains any query word
-            auto containsQuery = [&](const std::string& text) {
-                std::string textLower = text;
-                std::transform(textLower.begin(), textLower.end(), textLower.begin(), ::tolower);
-                for (const auto& qword : queryWords) {
-                    if (textLower.find(qword) != std::string::npos) {
-                        return true;
-                    }
-                }
-                return false;
-            };
-
-            for (const auto& meta : registry.operators()) {
-                bool match = containsQuery(meta.name) ||
-                             containsQuery(meta.description) ||
-                             containsQuery(meta.category);
-
-                // Check related operators
-                if (!match) {
-                    for (const auto& rel : meta.related) {
-                        if (containsQuery(rel)) {
-                            match = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (match) {
-                    matches.push_back({
-                        {"name", meta.name},
-                        {"category", meta.category},
-                        {"description", meta.description}
-                    });
-                }
-            }
-
-            if (matches.empty()) {
-                result["content"] = {{
-                    {"type", "text"},
-                    {"text", "No operators found matching '" + query + "'"}
-                }};
-            } else {
-                result["content"] = {{
-                    {"type", "text"},
-                    {"text", matches.dump(2)}
-                }};
-            }
         }
         else if (name == "create_project") {
             std::string projectName = args.value("name", "");
@@ -1086,103 +925,80 @@ private:
 
             result["content"] = {{{"type", "text"}, {"text", templates.dump(2)}}};
         }
-        else if (name == "get_example") {
-            std::string examplePath = args.value("path", "");
-            if (examplePath.empty()) {
+        else if (name == "search_docs") {
+            std::string query = args.value("query", "");
+            if (query.empty()) {
                 result["isError"] = true;
-                result["content"] = {{{"type", "text"}, {"text", "Example path is required"}}};
+                result["content"] = {{{"type", "text"}, {"text", "Query is required"}}};
                 return result;
             }
 
-            std::string doc = loadExampleDoc(examplePath);
-            if (doc.empty()) {
-                result["isError"] = true;
-                result["content"] = {{{"type", "text"}, {"text", "No CLAUDE.md found for example: " + examplePath}}};
-            } else {
-                result["content"] = {{{"type", "text"}, {"text", doc}}};
-            }
-        }
-        else if (name == "list_examples") {
-            // List examples from known locations
-            json examples = json::object();
+            // Convert query to lowercase for case-insensitive search
+            std::string queryLower = query;
+            std::transform(queryLower.begin(), queryLower.end(), queryLower.begin(), ::tolower);
 
-            // Helper to scan a directory for examples
-            auto scanExamples = [this](const fs::path& baseDir, const std::string& category) {
-                json categoryExamples = json::array();
-                if (fs::exists(baseDir) && fs::is_directory(baseDir)) {
-                    for (const auto& entry : fs::directory_iterator(baseDir)) {
-                        if (entry.is_directory()) {
-                            fs::path chainFile = entry.path() / "chain.cpp";
-                            if (fs::exists(chainFile)) {
-                                json example;
-                                example["name"] = entry.path().filename().string();
-                                example["path"] = entry.path().string();
+            // Dynamically discover all doc files
+            auto docs = getDocFiles();
 
-                                // Try to get description from CLAUDE.md
-                                fs::path claudeFile = entry.path() / "CLAUDE.md";
-                                if (fs::exists(claudeFile)) {
-                                    std::ifstream file(claudeFile);
-                                    if (file) {
-                                        std::string line;
-                                        // Read first non-empty, non-header line as description
-                                        while (std::getline(file, line)) {
-                                            if (!line.empty() && line[0] != '#' && line[0] != '-') {
-                                                example["description"] = line;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    example["hasDoc"] = true;
-                                } else {
-                                    example["hasDoc"] = false;
-                                }
+            json matches = json::array();
+            for (const auto& [filename, title] : docs) {
+                std::string content = loadDocsFile(filename);
+                if (content.empty()) continue;
 
-                                categoryExamples.push_back(example);
+                // Convert content to lowercase for searching
+                std::string contentLower = content;
+                std::transform(contentLower.begin(), contentLower.end(), contentLower.begin(), ::tolower);
+
+                // Find all occurrences and extract context
+                size_t pos = 0;
+                while ((pos = contentLower.find(queryLower, pos)) != std::string::npos) {
+                    // Extract surrounding context (up to 200 chars before/after)
+                    size_t start = (pos > 200) ? pos - 200 : 0;
+                    size_t end = std::min(pos + queryLower.length() + 200, content.length());
+
+                    // Find section header (line starting with #)
+                    size_t headerStart = content.rfind("\n#", pos);
+                    std::string section = title;
+                    if (headerStart != std::string::npos) {
+                        size_t headerEnd = content.find('\n', headerStart + 1);
+                        if (headerEnd != std::string::npos) {
+                            section = title + " > " + content.substr(headerStart + 1, headerEnd - headerStart - 1);
+                            // Clean up # characters
+                            size_t hashEnd = section.find_first_not_of("# ", title.length() + 3);
+                            if (hashEnd != std::string::npos) {
+                                section = title + " > " + section.substr(hashEnd);
                             }
                         }
                     }
+
+                    std::string context = content.substr(start, end - start);
+                    // Trim to word boundaries
+                    if (start > 0) {
+                        size_t firstSpace = context.find(' ');
+                        if (firstSpace != std::string::npos) context = "..." + context.substr(firstSpace);
+                    }
+                    if (end < content.length()) {
+                        size_t lastSpace = context.rfind(' ');
+                        if (lastSpace != std::string::npos) context = context.substr(0, lastSpace) + "...";
+                    }
+
+                    matches.push_back({
+                        {"file", filename},
+                        {"section", section},
+                        {"context", context}
+                    });
+
+                    pos += queryLower.length();
+                    if (matches.size() >= 10) break;  // Limit results
                 }
-                return categoryExamples;
-            };
-
-            // Get root relative to executable (works for dev builds and installed binaries)
-            fs::path exeDir = fs::path(getVividExecutable()).parent_path();
-            fs::path rootDir = exeDir.parent_path();
-
-            // Core examples (in src/vivid-core/examples/ for dev, or examples/ for installed)
-            fs::path coreExamplesDir = rootDir / "src" / "vivid-core" / "examples";
-            if (!fs::exists(coreExamplesDir)) {
-                coreExamplesDir = rootDir / "examples";  // Installed layout
+                if (matches.size() >= 10) break;
             }
 
-            if (fs::exists(coreExamplesDir)) {
-                auto coreExamples = scanExamples(coreExamplesDir / "2d-effects", "2D Effects");
-                if (!coreExamples.empty()) examples["Core - 2D Effects"] = coreExamples;
-
-                coreExamples = scanExamples(coreExamplesDir / "utility", "Utility");
-                if (!coreExamples.empty()) examples["Core - Utility"] = coreExamples;
+            if (matches.empty()) {
+                result["content"] = {{{"type", "text"}, {"text", "No matches found for '" + query + "'"}}};
+            } else {
+                result["content"] = {{{"type", "text"}, {"text", matches.dump(2)}}};
             }
-
-            // Module examples - discover dynamically
-            for (const auto& [moduleName, modulePath] : getDiscoveredModules()) {
-                auto moduleExamples = scanExamples(modulePath / "examples", moduleName);
-                if (!moduleExamples.empty()) {
-                    examples[std::string("Module - ") + moduleName] = moduleExamples;
-                }
-            }
-
-            // Getting started examples
-            fs::path projectsDir = rootDir / "projects";
-            if (fs::exists(projectsDir)) {
-                auto gettingStarted = scanExamples(projectsDir / "getting-started", "Getting Started");
-                if (!gettingStarted.empty()) examples["Getting Started"] = gettingStarted;
-
-                // Showcase examples
-                auto showcase = scanExamples(projectsDir / "showcase", "Showcase");
-                if (!showcase.empty()) examples["Showcase"] = showcase;
-            }
-
-            result["content"] = {{{"type", "text"}, {"text", examples.dump(2)}}};
         }
         else {
             result["isError"] = true;
@@ -1195,15 +1011,75 @@ private:
         return result;
     }
 
+    // Find the docs directory
+    fs::path findDocsDir() {
+        std::vector<fs::path> searchPaths;
+
+        // 1. Current working directory
+        searchPaths.push_back(fs::current_path() / "docs");
+
+        // 2. Relative to executable
+        fs::path exeDir = fs::path(getVividExecutable()).parent_path();
+        searchPaths.push_back(exeDir.parent_path().parent_path() / "docs");
+        searchPaths.push_back(exeDir.parent_path() / "docs");
+
+        // 3. User's .vivid directory
+        const char* home = getenv("HOME");
+#ifdef _WIN32
+        if (!home) home = getenv("USERPROFILE");
+#endif
+        if (home) {
+            searchPaths.push_back(fs::path(home) / ".vivid" / "docs");
+        }
+
+        for (const auto& path : searchPaths) {
+            if (fs::exists(path) && fs::is_directory(path)) {
+                return path;
+            }
+        }
+        return {};
+    }
+
+    // Get all markdown files in docs directory
+    std::vector<std::pair<std::string, std::string>> getDocFiles() {
+        std::vector<std::pair<std::string, std::string>> docs;
+        fs::path docsDir = findDocsDir();
+        if (docsDir.empty()) return docs;
+
+        for (const auto& entry : fs::directory_iterator(docsDir)) {
+            if (entry.is_regular_file() && entry.path().extension() == ".md") {
+                std::string filename = entry.path().filename().string();
+                // Skip README.md (usually just an index)
+                if (filename == "README.md") continue;
+
+                // Create human-readable name from filename
+                std::string name = filename.substr(0, filename.length() - 3);  // Remove .md
+                // Replace - and _ with spaces, capitalize words
+                std::replace(name.begin(), name.end(), '-', ' ');
+                std::replace(name.begin(), name.end(), '_', ' ');
+
+                docs.push_back({filename, name});
+            }
+        }
+        return docs;
+    }
+
     json handleResourcesList() {
         json resources = json::array();
 
-        resources.push_back({
-            {"uri", "vivid://docs/recipes"},
-            {"name", "Vivid Recipes"},
-            {"description", "Complete chain.cpp examples and patterns"},
-            {"mimeType", "text/markdown"}
-        });
+        // Dynamically discover all .md files in docs/
+        for (const auto& [filename, name] : getDocFiles()) {
+            // Create URI from filename (lowercase, no extension)
+            std::string uriPath = filename.substr(0, filename.length() - 3);
+            std::transform(uriPath.begin(), uriPath.end(), uriPath.begin(), ::tolower);
+
+            resources.push_back({
+                {"uri", "vivid://docs/" + uriPath},
+                {"name", name},
+                {"description", "Vivid documentation: " + name},
+                {"mimeType", "text/markdown"}
+            });
+        }
 
         return {{"resources", resources}};
     }
@@ -1212,16 +1088,26 @@ private:
         std::string uri = params.value("uri", "");
         json result;
 
-        if (uri == "vivid://docs/recipes") {
-            result["contents"] = {{
-                {"uri", uri},
-                {"mimeType", "text/markdown"},
-                {"text", loadDocsFile("RECIPES.md")}
-            }};
-        } else {
-            result["contents"] = json::array();
+        // Extract filename from URI (vivid://docs/chain-api -> CHAIN-API.md)
+        const std::string prefix = "vivid://docs/";
+        if (uri.find(prefix) == 0) {
+            std::string uriPath = uri.substr(prefix.length());
+            // Convert to uppercase and add .md
+            std::transform(uriPath.begin(), uriPath.end(), uriPath.begin(), ::toupper);
+            std::string filename = uriPath + ".md";
+
+            std::string content = loadDocsFile(filename);
+            if (!content.empty()) {
+                result["contents"] = {{
+                    {"uri", uri},
+                    {"mimeType", "text/markdown"},
+                    {"text", content}
+                }};
+                return result;
+            }
         }
 
+        result["contents"] = json::array();
         return result;
     }
 
@@ -1287,279 +1173,6 @@ private:
         }
 
         return "Documentation file not found: " + filename;
-    }
-
-    std::string loadModuleReadme(const std::string& moduleName) {
-        // Search for module README.md in various locations
-        std::vector<fs::path> searchPaths;
-
-        // 1. Current working directory (common for dev builds)
-        searchPaths.push_back(fs::current_path() / "modules" / moduleName / "README.md");
-
-        // 2. Paths relative to executable
-        fs::path exeDir;
-#ifdef __APPLE__
-        char pathBuf[4096];
-        uint32_t size = sizeof(pathBuf);
-        if (_NSGetExecutablePath(pathBuf, &size) == 0) {
-            exeDir = fs::path(pathBuf).parent_path();
-        }
-#elif defined(_WIN32)
-        char pathBuf[MAX_PATH];
-        if (GetModuleFileNameA(NULL, pathBuf, MAX_PATH) > 0) {
-            exeDir = fs::path(pathBuf).parent_path();
-        }
-#else
-        char pathBuf[4096];
-        ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
-        if (len != -1) {
-            pathBuf[len] = '\0';
-            exeDir = fs::path(pathBuf).parent_path();
-        }
-#endif
-
-        if (!exeDir.empty()) {
-            // build/bin/vivid -> modules (go up 2 levels)
-            searchPaths.push_back(exeDir.parent_path().parent_path() / "modules" / moduleName / "README.md");
-        }
-
-        for (const auto& path : searchPaths) {
-            if (fs::exists(path)) {
-                std::ifstream file(path);
-                if (file) {
-                    std::stringstream buffer;
-                    buffer << file.rdbuf();
-                    return buffer.str();
-                }
-            }
-        }
-
-        return "";  // Not found - don't add error message to search
-    }
-
-    std::string loadExampleDoc(const std::string& examplePath) {
-        // Load CLAUDE.md from an example directory
-        std::vector<fs::path> searchPaths;
-
-        // 1. Current working directory
-        searchPaths.push_back(fs::current_path() / examplePath / "CLAUDE.md");
-
-        // 2. Paths relative to executable
-        fs::path exeDir;
-#ifdef __APPLE__
-        char pathBuf[4096];
-        uint32_t size = sizeof(pathBuf);
-        if (_NSGetExecutablePath(pathBuf, &size) == 0) {
-            exeDir = fs::path(pathBuf).parent_path();
-        }
-#elif defined(_WIN32)
-        char pathBuf[MAX_PATH];
-        if (GetModuleFileNameA(NULL, pathBuf, MAX_PATH) > 0) {
-            exeDir = fs::path(pathBuf).parent_path();
-        }
-#else
-        char pathBuf[4096];
-        ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
-        if (len != -1) {
-            pathBuf[len] = '\0';
-            exeDir = fs::path(pathBuf).parent_path();
-        }
-#endif
-
-        if (!exeDir.empty()) {
-            // build/bin/vivid -> project root (go up 2 levels)
-            searchPaths.push_back(exeDir.parent_path().parent_path() / examplePath / "CLAUDE.md");
-        }
-
-        for (const auto& path : searchPaths) {
-            if (fs::exists(path)) {
-                std::ifstream file(path);
-                if (file) {
-                    std::stringstream buffer;
-                    buffer << file.rdbuf();
-                    return buffer.str();
-                }
-            }
-        }
-
-        return "";
-    }
-
-    // Split a string into words, filtering out common stop words
-    std::vector<std::string> splitIntoWords(const std::string& text) {
-        std::vector<std::string> words;
-        std::istringstream iss(text);
-        std::string word;
-        // Common stop words to ignore
-        static const std::set<std::string> stopWords = {
-            "a", "an", "the", "is", "are", "was", "were", "be", "been",
-            "to", "of", "in", "for", "on", "with", "at", "by", "from",
-            "or", "and", "it", "as", "do", "how", "what", "which"
-        };
-        while (iss >> word) {
-            // Remove punctuation and convert to lowercase
-            word.erase(std::remove_if(word.begin(), word.end(), ::ispunct), word.end());
-            std::transform(word.begin(), word.end(), word.begin(), ::tolower);
-            if (word.length() >= 2 && stopWords.find(word) == stopWords.end()) {
-                words.push_back(word);
-            }
-        }
-        return words;
-    }
-
-    // Parse markdown into sections (## headers and their content)
-    struct DocSection {
-        std::string header;
-        std::string content;
-        std::string contentLower;
-    };
-
-    std::vector<DocSection> parseMarkdownSections(const std::string& content) {
-        std::vector<DocSection> sections;
-        std::istringstream stream(content);
-        std::string line;
-        DocSection current;
-
-        while (std::getline(stream, line)) {
-            // Check for headers (##, ###, etc.) - not just top-level #
-            if (line.length() >= 2 && line[0] == '#' && line[1] == '#') {
-                // Save previous section if it has content
-                if (!current.header.empty() || !current.content.empty()) {
-                    current.contentLower = current.content;
-                    std::transform(current.contentLower.begin(), current.contentLower.end(),
-                                   current.contentLower.begin(), ::tolower);
-                    sections.push_back(current);
-                }
-                // Start new section
-                current.header = line;
-                current.content.clear();
-            } else {
-                current.content += line + "\n";
-            }
-        }
-        // Don't forget the last section
-        if (!current.header.empty() || !current.content.empty()) {
-            current.contentLower = current.content;
-            std::transform(current.contentLower.begin(), current.contentLower.end(),
-                           current.contentLower.begin(), ::tolower);
-            sections.push_back(current);
-        }
-        return sections;
-    }
-
-    // Count how many query words match in a section
-    int countMatches(const DocSection& section, const std::vector<std::string>& queryWords) {
-        int count = 0;
-        std::string headerLower = section.header;
-        std::transform(headerLower.begin(), headerLower.end(), headerLower.begin(), ::tolower);
-
-        for (const auto& word : queryWords) {
-            // Check both header and content, header matches count double
-            if (headerLower.find(word) != std::string::npos) {
-                count += 2;
-            }
-            if (section.contentLower.find(word) != std::string::npos) {
-                count += 1;
-            }
-        }
-        return count;
-    }
-
-    std::string searchDocs(const std::string& query) {
-        // Search examples and conceptual docs (not operator reference - use get_operator for that)
-        std::vector<std::pair<std::string, std::string>> docs = {
-            {"RECIPES.md", loadDocsFile("RECIPES.md")},                     // Full chain examples
-            {"CHAIN-API.md", loadDocsFile("CHAIN-API.md")},                 // Chain concepts and API
-            {"CANVAS-API.md", loadDocsFile("CANVAS-API.md")},               // 2D canvas drawing API
-            {"ERROR-REFERENCE.md", loadDocsFile("ERROR-REFERENCE.md")},     // Debugging help
-            {"CREATING-OPERATORS.md", loadDocsFile("CREATING-OPERATORS.md")}, // Custom operators
-        };
-
-        // Dynamically discover module READMEs
-        // Check both build/modules/ and source modules/ directories
-        for (const auto& [moduleName, modulePath] : getDiscoveredModules()) {
-            fs::path readme = modulePath / "README.md";
-
-            // If not in build dir, try source dir
-            if (!fs::exists(readme)) {
-                fs::path exeDir = fs::path(getVividExecutable()).parent_path();
-                fs::path sourceModules = exeDir.parent_path().parent_path() / "modules" / moduleName / "README.md";
-                if (fs::exists(sourceModules)) {
-                    readme = sourceModules;
-                }
-            }
-
-            if (fs::exists(readme)) {
-                std::ifstream file(readme);
-                if (file) {
-                    std::stringstream buffer;
-                    buffer << file.rdbuf();
-                    docs.push_back({moduleName + "/README.md", buffer.str()});
-                }
-            }
-        }
-
-        // Split query into searchable words
-        std::vector<std::string> queryWords = splitIntoWords(query);
-        if (queryWords.empty()) {
-            return "No valid search terms in query: '" + query + "'";
-        }
-
-        // Collect matching sections with scores
-        struct ScoredSection {
-            std::string source;
-            std::string header;
-            std::string content;
-            int score;
-        };
-        std::vector<ScoredSection> matches;
-
-        // Search each document
-        for (const auto& [docName, docContent] : docs) {
-            if (!docContent.empty() && docContent.rfind("Documentation file not found:", 0) != 0) {
-                auto sections = parseMarkdownSections(docContent);
-                for (const auto& section : sections) {
-                    int score = countMatches(section, queryWords);
-                    if (score > 0) {
-                        matches.push_back({docName, section.header, section.content, score});
-                    }
-                }
-            }
-        }
-
-        if (matches.empty()) {
-            return "No documentation found matching '" + query + "'";
-        }
-
-        // Sort by score descending
-        std::sort(matches.begin(), matches.end(),
-                  [](const ScoredSection& a, const ScoredSection& b) { return a.score > b.score; });
-
-        // Build result - return top 5 matches, max ~4000 chars total
-        std::string results;
-        size_t totalChars = 0;
-        const size_t maxChars = 4000;
-        int count = 0;
-
-        for (const auto& match : matches) {
-            if (count >= 5 || totalChars >= maxChars) break;
-
-            std::string sectionText = match.header + "\n" + match.content;
-
-            // Truncate very long sections
-            if (sectionText.size() > 1500) {
-                sectionText = sectionText.substr(0, 1500) + "\n...(truncated)\n";
-            }
-
-            if (count == 0 || matches[count - 1].source != match.source) {
-                results += "# From " + match.source + ":\n\n";
-            }
-            results += sectionText + "\n";
-            totalChars += sectionText.size();
-            count++;
-        }
-
-        return results;
     }
 
     VividConnection m_vivid;

@@ -40,6 +40,8 @@ namespace vivid::audio {
  * float freq = chain.get<PitchEnv>("pitchEnv")->currentFreq();
  * chain.get<Oscillator>("osc")->frequency(freq);
  * @endcode
+ 
+ * @see Decay, AR, Kick, Oscillator
  */
 class PitchEnv : public AudioOperator {
 public:

@@ -24,11 +24,7 @@
 
 namespace vivid::network {
 
-REGISTER_OPERATOR_FULL(OscOut, "Network", "Send OSC messages over UDP", false)
-    .related({"OscIn", "UdpOut", "MidiOut"})
-    .limitations({"UDP only, no TCP"})
-    .examples({"modules/vivid-network/examples/osc-control"})
-    .api({".host(string)", ".port(int)", ".broadcast(bool)", ".send(string address)", ".send(string address, float)", ".send(string address, int)", ".send(string address, string)", ".send(string address, float, float)", ".send(string address, float, float, float)"});
+REGISTER_OPERATOR(OscOut, "Network", "Send OSC messages over UDP", false);
 
 #ifdef _WIN32
 extern bool g_wsaInitialized;

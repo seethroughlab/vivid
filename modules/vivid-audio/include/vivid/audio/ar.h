@@ -46,6 +46,8 @@ enum class ARStage {
  *
  * chain.get<AR>("env")->trigger();
  * @endcode
+ 
+ * @see Envelope, Decay, Kick, Snare
  */
 class AR : public AudioOperator {
 public:

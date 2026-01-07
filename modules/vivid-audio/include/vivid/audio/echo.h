@@ -35,6 +35,8 @@ namespace vivid::audio {
  *     .taps(4)          // 4 echo repeats
  *     .mix(0.5f);
  * @endcode
+ 
+ * @see Delay, Reverb, TapeEffect
  */
 class Echo : public AudioEffect {
 public:

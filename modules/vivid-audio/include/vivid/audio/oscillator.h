@@ -51,6 +51,8 @@ enum class Waveform {
  * chain.add<AudioOutput>("out").input("osc");
  * chain.audioOutput("out");
  * @endcode
+ 
+ * @see Synth, FMSynth, NoiseGen, WavetableSynth, Envelope, AudioFilter
  */
 class Oscillator : public AudioOperator {
 public:

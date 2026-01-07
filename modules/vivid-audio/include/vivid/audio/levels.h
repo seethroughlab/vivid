@@ -29,6 +29,8 @@ namespace vivid::audio {
  * float volume = chain.get<Levels>("levels").rms();
  * chain.get<Noise>("noise").scale(1.0f + volume * 10.0f);
  * @endcode
+ 
+ * @see FFT, BandSplit, BeatDetect, AudioIn
  */
 class Levels : public AudioAnalyzer {
 public:

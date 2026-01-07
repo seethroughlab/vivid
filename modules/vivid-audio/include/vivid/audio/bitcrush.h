@@ -33,6 +33,8 @@ namespace vivid::audio {
  * bc->targetSampleRate = 8000.0f;  // 8kHz sample rate
  * bc->mix = 0.5f;
  * @endcode
+ 
+ * @see Overdrive, TapeEffect, Downsample, Dither
  */
 class Bitcrush : public AudioEffect {
 public:

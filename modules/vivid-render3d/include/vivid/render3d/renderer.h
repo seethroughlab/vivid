@@ -35,7 +35,32 @@ enum class ShadingMode {
     PBR        ///< Physically-based rendering with Cook-Torrance BRDF
 };
 
-/// 3D renderer operator - extends TextureOperator for consistent architecture
+/**
+ * @brief 3D scene renderer with PBR, shadows, and IBL
+ *
+ * Renders 3D scenes with physically-based rendering, multiple shading modes,
+ * shadow mapping, image-based lighting, and displacement. Outputs to a texture
+ * that can be composited with 2D effects.
+ *
+ * @par Example
+ * @code
+ * auto& cam = chain.add<PerspectiveCamera>("cam");
+ * cam.position = {0, 2, 5};
+ * cam.target = {0, 0, 0};
+ *
+ * auto& scene = chain.add<SceneComposer>("scene");
+ * scene.addMesh(createCube());
+ *
+ * auto& render = chain.add<Render3D>("render");
+ * render.setCameraInput(&cam);
+ * render.setInput(&scene);
+ * render.setShadingMode(ShadingMode::PBR);
+ * render.setMetallic(0.0f);
+ * render.setRoughness(0.5f);
+ * @endcode
+ *
+ * @see SceneComposer, PerspectiveCamera, DirectionalLight, IBLEnvironment
+ */
 class Render3D : public effects::TextureOperator {
 public:
     Render3D();

@@ -43,6 +43,8 @@ namespace vivid::render3d {
  *     .elevation(0.4f)
  *     .azimuthInput(&time);  // Animate rotation
  * @endcode
+ 
+ * @see Render3D, InstancedRender3D, DirectionalLight, PointLight, SpotLight
  */
 class CameraOperator : public Operator {
 public:

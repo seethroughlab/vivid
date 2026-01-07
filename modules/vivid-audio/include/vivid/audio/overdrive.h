@@ -35,6 +35,8 @@ namespace vivid::audio {
  *     .level(0.8f)      // Reduce output level
  *     .mix(1.0f);       // Fully wet
  * @endcode
+ 
+ * @see Bitcrush, TapeEffect, Compressor, AudioFilter
  */
 class Overdrive : public AudioEffect {
 public:

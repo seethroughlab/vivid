@@ -42,6 +42,8 @@ enum class NoiseColor {
  * chain.add<NoiseGen>("noise").color(NoiseColor::White).volume(0.3f);
  * chain.add<Decay>("env").input("noise").time(0.05f);
  * @endcode
+ 
+ * @see Oscillator, Crackle, AudioFilter, HiHat, Snare
  */
 class NoiseGen : public AudioOperator {
 public:

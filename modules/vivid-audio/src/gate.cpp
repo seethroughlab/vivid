@@ -8,9 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Gate, "Audio Dynamics", "Noise gate for reducing background noise", true, OutputKind::Audio)
-    .related({"Compressor", "Limiter", "AudioIn"})
-    .examples({"modules/vivid-audio/examples/live-input"});
+REGISTER_OPERATOR_EX(Gate, "Audio Dynamics", "Noise gate for reducing background noise", true, OutputKind::Audio);
 
 void Gate::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

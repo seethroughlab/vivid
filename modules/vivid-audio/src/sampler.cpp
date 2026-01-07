@@ -10,11 +10,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Sampler, "Audio Sampling", "Sample playback with MIDI triggering", false, OutputKind::Audio)
-    .related({"MultiSampler", "SamplePlayer", "SampleBank", "AudioFile", "MidiIn", "Granular"})
-    .limitations({"Single sample per instance", "Max 8 voices"})
-    .examples({"modules/vivid-audio/examples/sampler-demo"})
-    .api({".loadSample(string path)", ".setLoop(bool)", ".setLoopPoints(float start, float end)", ".noteOn(int note, float velocity)", ".noteOff(int note)", ".allNotesOff()", ".panic()", ".setVoiceStealMode(mode)"});
+REGISTER_OPERATOR_EX(Sampler, "Audio Sampling", "Sample playback with MIDI triggering", false, OutputKind::Audio);
 
 Sampler::Sampler() {
     registerParam(volume);

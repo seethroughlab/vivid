@@ -70,6 +70,8 @@ struct Bounds3D {
  *     scene.entries().back().material = material;
  * }
  * @endcode
+ 
+ * @see Render3D, SceneComposer, Boolean, TexturedMaterial, InstancedRender3D
  */
 class GLTFLoader : public MeshOperator, public ParamRegistry {
 public:

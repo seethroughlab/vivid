@@ -5,10 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(AR, "Audio Envelopes", "Attack-release envelope generator", false, OutputKind::Audio)
-    .related({"Envelope", "Decay", "Kick", "Snare"})
-    .examples({"modules/vivid-audio/examples/drum-machine"})
-    .api({".trigger()", ".reset()"});
+REGISTER_OPERATOR_EX(AR, "Audio Envelopes", "Attack-release envelope generator", false, OutputKind::Audio);
 
 void AR::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

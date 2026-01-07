@@ -67,6 +67,8 @@ struct Section {
  * float t = song.sectionProgress();  // 0-1 through current section
  * filter.cutoff = 500 + t * 3500;
  * @endcode
+ 
+ * @see Clock, Sequencer, Euclidean
  */
 class Song : public Operator {
 public:

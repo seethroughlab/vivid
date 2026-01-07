@@ -9,11 +9,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL(FFT, "Audio Analysis", "Fast Fourier Transform for frequency spectrum analysis", true)
-    .related({"Levels", "BandSplit", "BeatDetect", "AudioIn"})
-    .limitations({"1024-sample window", "~23ms latency"})
-    .examples({"modules/vivid-audio/examples/audio-reactive"})
-    .api({".setSize(int n)"});
+REGISTER_OPERATOR(FFT, "Audio Analysis", "Fast Fourier Transform for frequency spectrum analysis", true);
 
 struct FFT::Impl {
     kiss_fft_cfg cfg = nullptr;

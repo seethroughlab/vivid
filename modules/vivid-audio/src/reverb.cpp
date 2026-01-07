@@ -4,10 +4,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Reverb, "Audio Effects", "Reverb effect with room size and damping", true, OutputKind::Audio)
-    .related({"Delay", "Echo", "Chorus", "Flanger"})
-    .limitations({"Stereo only", "Fixed comb/allpass topology"})
-    .examples({"modules/vivid-audio/examples/effects-chain"});
+REGISTER_OPERATOR_EX(Reverb, "Audio Effects", "Reverb effect with room size and damping", true, OutputKind::Audio);
 
 // Static constexpr definitions
 constexpr int Reverb::COMB_DELAYS_L[NUM_COMBS];

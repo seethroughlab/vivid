@@ -5,9 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(TapeEffect, "Audio Effects", "Analog tape emulation with wow, flutter, hiss, and saturation", true, OutputKind::Audio)
-    .related({"Bitcrush", "Crackle", "Echo", "Reverb"})
-    .examples({"modules/vivid-audio/examples/lofi-demo"});
+REGISTER_OPERATOR_EX(TapeEffect, "Audio Effects", "Analog tape emulation with wow, flutter, hiss, and saturation", true, OutputKind::Audio);
 
 void TapeEffect::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

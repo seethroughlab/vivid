@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.13] - 2026-01-07
+
+### Added
+
+- **LLM metadata for all 81 module operators** - Added `@see` tags and class-level documentation to audio, video, render3d, network, serial, and MIDI operators for better MCP discoverability
+- **Dynamic MCP docs discovery** - All docs/*.md files now exposed as MCP resources automatically
+
+### Changed
+
+- **Simplified MCP server** - Reduced from 19 to 15 tools by removing redundant endpoints; dynamic module discovery for `list_examples` and `search_docs`
+- **Simplified operator registry** - Removed verbose `REGISTER_OPERATOR_FULL` macros in favor of direct `OperatorMeta` construction
+
+### Fixed
+
+- **Critical: Hot reload include path** - Fixed `hot_reload.cpp` to find headers at `modules/vivid-core/include` instead of old `src/vivid-core/include` path (broke all user project compilation after project restructure)
+- **Critical: OperatorRegistry crash on exit** - Changed to leaky singleton to prevent static destruction order crash during program exit
+
 ## [0.1.0-alpha.12] - 2026-01-06
 
 ### Added
@@ -23,7 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Fixed Doxyfile paths after project restructure (`core/` → `src/vivid-core/`, `addons/` → `modules/`)
+- Fixed Doxyfile paths after project restructure (`core/` → `modules/vivid-core/`, `addons/` → `modules/`)
 - Fixed operator registration example paths in metadata
 - Fixed Webcam operator examples metadata
 
@@ -53,7 +70,7 @@ Each includes comprehensive `CLAUDE.md` documentation with code patterns and API
 - Snapshot mode now exits immediately on compile error (was hanging indefinitely)
 - Snapshot mode now exits immediately on context error (e.g., missing chain file)
 - Added 30-second timeout for snapshot mode if no frames captured
-- Fixed smoke test path after examples restructure (`src/vivid-core/examples/`)
+- Fixed smoke test path after examples restructure (`modules/vivid-core/examples/`)
 
 ## [0.1.0-alpha.10] - 2026-01-06
 

@@ -36,6 +36,8 @@ namespace vivid::audio {
  * flanger->feedback = 0.5f;   // Moderate feedback
  * flanger->mix = 0.5f;
  * @endcode
+ 
+ * @see Chorus, Phaser, Delay
  */
 class Flanger : public AudioEffect {
 public:

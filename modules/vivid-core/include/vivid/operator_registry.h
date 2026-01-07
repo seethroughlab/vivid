@@ -32,12 +32,6 @@ struct OperatorMeta {
 
     // Factory function to create instance for param introspection
     std::function<std::unique_ptr<Operator>()> factory;
-
-    // Extended metadata (optional, for MCP/documentation)
-    std::vector<std::string> limitations;  ///< Known limitations or caveats
-    std::vector<std::string> related;      ///< Related operator names
-    std::vector<std::string> examples;     ///< Example project paths
-    std::vector<std::string> api;          ///< Method signatures for LLM discovery
 };
 
 /**
@@ -91,75 +85,6 @@ struct OperatorRegistrar {
 };
 
 /**
- * @brief Builder for operator metadata with fluent API
- *
- * Allows adding extended metadata (limitations, related, examples) using
- * a fluent interface. Registration happens in destructor.
- *
- * Methods are rvalue-qualified and return by value, enabling chains like:
- *   REGISTER_OPERATOR_FULL(...).limitations({...}).related({...});
- */
-class OperatorMetaBuilder {
-public:
-    OperatorMetaBuilder(OperatorMeta meta) : m_meta(std::move(meta)) {}
-
-    // Move constructor (required for return-by-value from methods)
-    OperatorMetaBuilder(OperatorMetaBuilder&& other) noexcept
-        : m_meta(std::move(other.m_meta)), m_registered(other.m_registered) {
-        other.m_registered = true; // Prevent moved-from object from registering
-    }
-
-    // Delete copy operations
-    OperatorMetaBuilder(const OperatorMetaBuilder&) = delete;
-    OperatorMetaBuilder& operator=(const OperatorMetaBuilder&) = delete;
-    OperatorMetaBuilder& operator=(OperatorMetaBuilder&&) = delete;
-
-    // Rvalue-qualified methods return by value for proper chaining on temporaries
-    OperatorMetaBuilder limitations(std::initializer_list<std::string> items) && {
-        m_meta.limitations = items;
-        return std::move(*this);
-    }
-
-    OperatorMetaBuilder related(std::initializer_list<std::string> items) && {
-        m_meta.related = items;
-        return std::move(*this);
-    }
-
-    OperatorMetaBuilder examples(std::initializer_list<std::string> items) && {
-        m_meta.examples = items;
-        return std::move(*this);
-    }
-
-    OperatorMetaBuilder api(std::initializer_list<std::string> items) && {
-        m_meta.api = items;
-        return std::move(*this);
-    }
-
-    // Explicit registration
-    void reg() {
-        if (!m_registered) {
-            OperatorRegistry::instance().registerOperator(std::move(m_meta));
-            m_registered = true;
-        }
-    }
-
-    // Conversion to int triggers registration - allows static init to work
-    // Usage: static int s_reg = OperatorMetaBuilder(...).method1().method2();
-    operator int() && {
-        reg();
-        return 0;
-    }
-
-    ~OperatorMetaBuilder() {
-        reg();
-    }
-
-private:
-    OperatorMeta m_meta;
-    bool m_registered = false;
-};
-
-/**
  * @brief Macro to register an operator type
  *
  * Use in the operator's .cpp file after the class definition:
@@ -180,8 +105,7 @@ private:
         "", \
         RequiresInput, \
         ::vivid::OutputKind::Texture, \
-        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {}, {} \
+        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); } \
     }); \
     static_assert(true, "")
 
@@ -196,48 +120,8 @@ private:
         "", \
         RequiresInput, \
         OutKind, \
-        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {}, {} \
+        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); } \
     }); \
     static_assert(true, "")
-
-
-/**
- * @brief Macro to register an operator with extended metadata
- *
- * Returns a builder that allows chaining .limitations(), .related(), .examples()
- * Usage: REGISTER_OPERATOR_FULL(Noise, "Generators", "Noise", false)
- *            .related({"Gradient"}).examples({"modules/vivid-core/examples/hello-noise/"});
- */
-#define REGISTER_OPERATOR_FULL(Type, Category, Description, RequiresInput) \
-    static int s_reg_##Type = ::vivid::OperatorMetaBuilder(::vivid::OperatorMeta{ \
-        #Type, \
-        Category, \
-        Description, \
-        "", \
-        RequiresInput, \
-        ::vivid::OutputKind::Texture, \
-        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {}, {} \
-    })
-
-/**
- * @brief Macro to register an operator with extended metadata and custom output kind
- *
- * Returns a builder that allows chaining .limitations(), .related(), .examples()
- * Usage: REGISTER_OPERATOR_FULL_EX(Oscillator, "Audio Synthesis", "Basic oscillator", false, OutputKind::Audio)
- *            .related({"NoiseGen", "FMSynth"}).limitations({"Mono output only"});
- */
-#define REGISTER_OPERATOR_FULL_EX(Type, Category, Description, RequiresInput, OutKind) \
-    static int s_reg_##Type = ::vivid::OperatorMetaBuilder(::vivid::OperatorMeta{ \
-        #Type, \
-        Category, \
-        Description, \
-        "", \
-        RequiresInput, \
-        OutKind, \
-        []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); }, \
-        {}, {}, {}, {} \
-    })
 
 } // namespace vivid

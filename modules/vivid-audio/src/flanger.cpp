@@ -5,9 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Flanger, "Audio Effects", "Flanger effect with LFO modulation", true, OutputKind::Audio)
-    .related({"Chorus", "Phaser", "Delay"})
-    .examples({"modules/vivid-audio/examples/effects-chain"});
+REGISTER_OPERATOR_EX(Flanger, "Audio Effects", "Flanger effect with LFO modulation", true, OutputKind::Audio);
 
 void Flanger::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

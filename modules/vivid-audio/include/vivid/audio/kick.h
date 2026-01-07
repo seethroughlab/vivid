@@ -41,6 +41,8 @@ namespace vivid::audio {
  *
  * chain.get<Kick>("kick")->trigger();
  * @endcode
+ 
+ * @see Snare, HiHat, Clap, Sequencer, Clock, PitchEnv, Decay
  */
 class Kick : public AudioOperator {
 public:

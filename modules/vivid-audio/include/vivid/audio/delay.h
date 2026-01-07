@@ -33,6 +33,8 @@ namespace vivid::audio {
  * delay->feedback = 0.4f;     // Moderate feedback
  * delay->mix = 0.3f;          // 30% wet
  * @endcode
+ 
+ * @see Echo, Reverb, Chorus, Flanger
  */
 class Delay : public AudioEffect {
 public:

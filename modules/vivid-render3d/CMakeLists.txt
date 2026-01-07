@@ -55,7 +55,7 @@ add_library(vivid-render3d SHARED
 
 target_include_directories(vivid-render3d PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_SOURCE_DIR}/src/vivid-core/include
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
     ${cgltf_SOURCE_DIR}
 )
 

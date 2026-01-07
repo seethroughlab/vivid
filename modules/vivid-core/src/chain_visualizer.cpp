@@ -264,15 +264,15 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
     // Find project root by walking up until we find the assets folder
     // This handles both single-config (build/bin/) and multi-config (build/bin/Debug/) generators
     auto projectRoot = exeDir.parent_path().parent_path();  // build/bin -> build -> project
-    if (!std::filesystem::exists(projectRoot / "src/vivid-core/assets")) {
+    if (!std::filesystem::exists(projectRoot / "modules/vivid-core/assets")) {
         // Try one more level up (for MSVC multi-config: build/bin/Debug -> build/bin -> build -> project)
         projectRoot = projectRoot.parent_path();
     }
 
-    // Paths to font files (in src/vivid-core/assets/fonts/)
-    std::string regularPath = (projectRoot / "src/vivid-core/assets/fonts/Inter_18pt-Regular.ttf").string();
-    std::string mediumPath = (projectRoot / "src/vivid-core/assets/fonts/Inter_18pt-Medium.ttf").string();
-    std::string monoPath = (projectRoot / "src/vivid-core/assets/fonts/RobotoMono-Regular.ttf").string();
+    // Paths to font files (in modules/vivid-core/assets/fonts/)
+    std::string regularPath = (projectRoot / "modules/vivid-core/assets/fonts/Inter_18pt-Regular.ttf").string();
+    std::string mediumPath = (projectRoot / "modules/vivid-core/assets/fonts/Inter_18pt-Medium.ttf").string();
+    std::string monoPath = (projectRoot / "modules/vivid-core/assets/fonts/RobotoMono-Regular.ttf").string();
 
     // Load Inter Regular as primary font (index 0) - for tooltips/labels
     if (m_overlay.loadFont(ctx, regularPath, 16.0f)) {

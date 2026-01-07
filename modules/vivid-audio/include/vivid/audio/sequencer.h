@@ -53,6 +53,8 @@ namespace vivid::audio {
  *     }
  * }
  * @endcode
+ 
+ * @see Clock, Euclidean, Song, Kick, Snare, HiHat, Synth
  */
 class Sequencer : public Operator, public ParamRegistry {
 public:

@@ -36,6 +36,8 @@ namespace vivid::audio {
  * chorus->voices = 2;       // 2 voices
  * chorus->mix = 0.5f;
  * @endcode
+ 
+ * @see Flanger, Phaser, Delay, Reverb
  */
 class Chorus : public AudioEffect {
 public:

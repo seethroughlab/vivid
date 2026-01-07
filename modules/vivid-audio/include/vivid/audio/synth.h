@@ -51,6 +51,8 @@ namespace vivid::audio {
  * // ... later
  * synth->noteOff();
  * @endcode
+ 
+ * @see PolySynth, FMSynth, WavetableSynth, Oscillator, Envelope, AudioFilter, MidiIn
  */
 class Synth : public AudioOperator {
 public:

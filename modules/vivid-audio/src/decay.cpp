@@ -5,10 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Decay, "Audio Envelopes", "One-shot decay envelope with multiple curve shapes", false, OutputKind::Audio)
-    .related({"Envelope", "AR", "PitchEnv", "Kick", "Snare"})
-    .examples({"modules/vivid-audio/examples/drum-machine"})
-    .api({".setCurve(DecayCurve)", ".trigger()", ".reset()"});
+REGISTER_OPERATOR_EX(Decay, "Audio Envelopes", "One-shot decay envelope with multiple curve shapes", false, OutputKind::Audio);
 
 void Decay::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

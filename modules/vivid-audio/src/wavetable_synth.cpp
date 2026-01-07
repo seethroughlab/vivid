@@ -11,11 +11,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(WavetableSynth, "Audio Synthesis", "Wavetable synthesizer with morphing", false, OutputKind::Audio)
-    .related({"Synth", "FMSynth", "PolySynth", "Granular", "MidiIn"})
-    .limitations({"Max 8 voices", "256 sample wavetable frames"})
-    .examples({"modules/vivid-audio/examples/wavetable-demo"})
-    .api({".setWarpMode(WarpMode)", ".setFilterType(SynthFilterType)", ".loadBuiltin(BuiltinTable)", ".loadWavetable(string path, int framesPerCycle)", ".noteOn(float hz, float velocity)", ".noteOff(float hz)", ".noteOnMidi(int note, int velocity)", ".noteOffMidi(int note)", ".allNotesOff()", ".panic()"});
+REGISTER_OPERATOR_EX(WavetableSynth, "Audio Synthesis", "Wavetable synthesizer with morphing", false, OutputKind::Audio);
 
 WavetableSynth::WavetableSynth() {
     registerParam(position);

@@ -114,6 +114,8 @@ struct SampleGroup {
  * snare.loNote = snare.hiNote = 38;
  * drums.addRegion(snare);
  * @endcode
+ 
+ * @see Sampler, SamplePlayer, SampleBank, MidiIn, Granular
  */
 class MultiSampler : public AudioOperator {
 public:

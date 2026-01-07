@@ -38,6 +38,8 @@ namespace vivid::audio {
  *     .release(100)      // 100ms release
  *     .range(-80);       // Reduce to -80 dB when gated
  * @endcode
+ 
+ * @see Compressor, Limiter, AudioIn
  */
 class Gate : public AudioEffect {
 public:

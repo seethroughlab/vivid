@@ -30,6 +30,8 @@ namespace vivid::midi {
  * midiOut.noteOn(0, 60, 0.8f);   // Channel 0, middle C, velocity 0.8
  * midiOut.sendCC(0, 1, 0.5f);    // Mod wheel to 50%
  * @endcode
+ 
+ * @see MidiIn, MidiFilePlayer, Sequencer, OscOut
  */
 class MidiOut : public Operator {
 public:

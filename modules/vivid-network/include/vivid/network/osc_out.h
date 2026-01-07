@@ -49,6 +49,8 @@ namespace vivid::network {
  *
  * @par Output
  * None (sends messages via UDP)
+ 
+ * @see OscIn, UdpOut, MidiOut
  */
 class OscOut : public Operator {
 public:

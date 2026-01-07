@@ -679,7 +679,7 @@ Example MCP response for `get_operator("Feedback")`:
 2. **Document real limitations** - Performance, edge cases, common mistakes
 3. **Link related operators** - Help LLMs suggest alternatives
 4. **Include example paths** - LLMs can read the code for context
-5. **Register in a central file** - See `src/vivid-core/src/effects/operator_registrations.cpp`
+5. **Register in a central file** - See `modules/vivid-core/src/effects/operator_registrations.cpp`
 
 ## Creating an Addon
 
@@ -802,7 +802,7 @@ bounds.splitRight(0.5f);      // Right 50%
 
 ## Tips
 
-1. **Look at existing operators** - `src/vivid-core/src/effects/` has many examples
+1. **Look at existing operators** - `modules/vivid-core/src/effects/` has many examples
 2. **Start simple** - Get basic rendering working before adding features
 3. **Use Param<T>** - It handles UI integration automatically
 4. **Call didCook()** - Forgetting this causes downstream operators to skip updates

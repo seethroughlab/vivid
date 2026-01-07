@@ -38,6 +38,8 @@ namespace vivid::audio {
  *
  * chain.get<HiHat>("hihatC")->trigger();
  * @endcode
+ 
+ * @see Kick, Snare, Clap, Sequencer, Clock, NoiseGen
  */
 class HiHat : public AudioOperator {
 public:

@@ -8,10 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Kick, "Audio Drums", "Analog-style kick drum synthesizer", false, OutputKind::Audio)
-    .related({"Snare", "HiHat", "Clap", "Sequencer", "Clock", "PitchEnv", "Decay"})
-    .examples({"modules/vivid-audio/examples/drum-machine"})
-    .api({".trigger()", ".reset()"});
+REGISTER_OPERATOR_EX(Kick, "Audio Drums", "Analog-style kick drum synthesizer", false, OutputKind::Audio);
 
 void Kick::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

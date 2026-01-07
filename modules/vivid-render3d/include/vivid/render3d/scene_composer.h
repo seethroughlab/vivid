@@ -62,6 +62,8 @@ struct ComposerEntry {
  *
  * auto& render = chain.add<Render3D>("render").input(&scene);
  * @endcode
+ 
+ * @see Render3D, Box, Sphere, Cylinder, Cone, Torus, Plane, GLTFLoader, Boolean
  */
 class SceneComposer : public MeshOperator {
 public:

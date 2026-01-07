@@ -56,6 +56,8 @@ namespace vivid::network {
  *
  * @par Output
  * None (serves HTTP/WebSocket requests)
+ 
+ * @see OscIn, OscOut, UdpIn, UdpOut
  */
 class WebServer : public Operator {
 public:

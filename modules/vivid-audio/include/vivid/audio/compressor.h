@@ -38,6 +38,8 @@ namespace vivid::audio {
  *     .release(100)       // 100ms release
  *     .makeupGain(6);     // +6dB makeup gain
  * @endcode
+ 
+ * @see Limiter, Gate, AudioGain, AudioMixer
  */
 class Compressor : public AudioEffect {
 public:

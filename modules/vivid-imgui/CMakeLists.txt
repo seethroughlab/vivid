@@ -45,7 +45,7 @@ target_include_directories(vivid-imgui
         ${imgui_gui_SOURCE_DIR}
         ${imgui_gui_SOURCE_DIR}/backends
     PRIVATE
-        ${CMAKE_SOURCE_DIR}/src/vivid-core/include
+        ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
 )
 
 # ImGui backend configuration

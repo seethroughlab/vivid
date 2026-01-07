@@ -40,6 +40,8 @@ namespace vivid::midi {
  *     }
  * }
  * @endcode
+ 
+ * @see MidiIn, MidiOut, Clock, Synth, FMSynth
  */
 class MidiFilePlayer : public Operator, public ParamRegistry {
 public:

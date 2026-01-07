@@ -10,7 +10,28 @@
 namespace vivid {
 namespace serial {
 
-/// Base serial output operator for sending data to Arduino and other devices
+/**
+ * @brief Send serial data to Arduino and microcontrollers
+ *
+ * Sends data over a serial port to control LEDs, motors, or other hardware.
+ * Supports raw bytes, strings, and CSV-formatted values. Commonly used with
+ * Arduino, ESP32, and similar microcontrollers.
+ *
+ * @par Example
+ * @code
+ * auto& arduino = chain.add<SerialOut>("arduino");
+ * arduino.port("/dev/tty.usbmodem14201");  // or "COM3" on Windows
+ * arduino.baudRate = 115200;
+ *
+ * // In update():
+ * float r = levels.level(0);
+ * float g = levels.level(1);
+ * float b = levels.level(2);
+ * arduino.sendCSV({r * 255, g * 255, b * 255});  // "R,G,B\n"
+ * @endcode
+ *
+ * @see SerialIn, DMXOut, OscOut
+ */
 class SerialOut : public Operator {
 public:
     /// Baud rate parameter (exposed to UI)

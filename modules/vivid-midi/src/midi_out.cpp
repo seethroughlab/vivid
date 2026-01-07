@@ -9,11 +9,7 @@
 
 namespace vivid::midi {
 
-REGISTER_OPERATOR_FULL(MidiOut, "MIDI", "Send MIDI output to synths and devices", false)
-    .related({"MidiIn", "MidiFilePlayer", "Sequencer", "OscOut"})
-    .limitations({"Single port per instance"})
-    .examples({"modules/vivid-midi/examples/midi-output"})
-    .api({".openPort(int index)", ".openPortByName(string)", ".closePort()", ".noteOn(ch, note, velocity)", ".noteOff(ch, note)", ".sendCC(ch, cc, value)", ".programChange(ch, program)", ".sendPitchBend(ch, bend)", ".allNotesOff(ch)", ".panic()", "MidiOut::listPorts()"});
+REGISTER_OPERATOR(MidiOut, "MIDI", "Send MIDI output to synths and devices", false);
 
 // -----------------------------------------------------------------------------
 // Implementation (pimpl)

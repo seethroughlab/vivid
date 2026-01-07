@@ -40,6 +40,8 @@ namespace vivid::audio {
  * phaser->feedback = 0.5f;   // Some feedback
  * phaser->mix = 0.5f;
  * @endcode
+ 
+ * @see Flanger, Chorus, AudioFilter
  */
 class Phaser : public AudioEffect {
 public:

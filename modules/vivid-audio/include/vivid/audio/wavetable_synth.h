@@ -96,6 +96,8 @@ enum class SynthFilterType {
  * wt.noteOn(freq::E4);
  * wt.noteOn(freq::G4);
  * @endcode
+ 
+ * @see Synth, FMSynth, PolySynth, Granular, MidiIn
  */
 class WavetableSynth : public AudioOperator {
 public:

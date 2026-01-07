@@ -12,7 +12,7 @@ target_link_libraries(test_network_addon PRIVATE
 )
 
 target_include_directories(test_network_addon PRIVATE
-    ${CMAKE_SOURCE_DIR}/src/vivid-core/include
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
     ${CMAKE_SOURCE_DIR}/modules/vivid-network/include
 )
 

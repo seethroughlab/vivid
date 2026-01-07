@@ -72,6 +72,8 @@ enum class Vowel {
  *     .vowel(Vowel::A)
  *     .morphInput("morph_lfo");
  * @endcode
+ 
+ * @see AudioFilter, NoiseGen, Oscillator
  */
 class Formant : public AudioEffect {
 public:

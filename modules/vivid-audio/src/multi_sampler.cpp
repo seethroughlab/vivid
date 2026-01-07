@@ -14,11 +14,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(MultiSampler, "Audio Sampling", "Multi-zone sampler with velocity layers and SFZ support", false, OutputKind::Audio)
-    .related({"Sampler", "SamplePlayer", "SampleBank", "MidiIn", "Granular"})
-    .limitations({"Memory usage scales with sample count", "Max 32 voices"})
-    .examples({"modules/vivid-audio/examples/multi-sampler-test"})
-    .api({".loadPreset(string path)", ".loadDspreset(string path)", ".addRegion(SampleRegion)", ".addGroup(SampleGroup)", ".clear()", ".noteOn(int note, float velocity)", ".noteOff(int note)", ".allNotesOff()", ".panic()", ".setKeyswitch(int note)", ".setActiveGroup(int index)"});
+REGISTER_OPERATOR_EX(MultiSampler, "Audio Sampling", "Multi-zone sampler with velocity layers and SFZ support", false, OutputKind::Audio);
 
 using json = nlohmann::json;
 

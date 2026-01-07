@@ -17,11 +17,7 @@
 
 namespace vivid::network {
 
-REGISTER_OPERATOR_FULL(WebServer, "Network", "HTTP/WebSocket server for browser integration", false)
-    .related({"OscIn", "OscOut", "UdpIn", "UdpOut"})
-    .limitations({"Single port per instance"})
-    .examples({"modules/vivid-network/examples/web-control"})
-    .api({".port(int)", ".host(string)", ".staticDir(string path)", ".route(string path, handler)", ".broadcast(string msg)", ".broadcastJson(string type, string data)", ".connectionCount()"});
+REGISTER_OPERATOR(WebServer, "Network", "HTTP/WebSocket server for browser integration", false);
 
 WebServer::WebServer() = default;
 

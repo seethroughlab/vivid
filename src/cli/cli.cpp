@@ -142,7 +142,7 @@ static const char* CLAUDE_MD_TEMPLATE = R"(# %PROJECT_NAME%
 
 - Run with: `vivid .` (from this directory)
 - Effect recipes: https://github.com/seethroughlab/vivid/blob/main/docs/RECIPES.md
-- Examples: https://github.com/seethroughlab/vivid/tree/main/src/vivid-core/examples
+- Examples: https://github.com/seethroughlab/vivid/tree/main/modules/vivid-core/examples
 
 ## Notes for AI Assistants
 

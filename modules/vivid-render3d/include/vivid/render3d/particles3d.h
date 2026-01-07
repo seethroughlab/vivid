@@ -32,6 +32,33 @@ enum class Color3DMode {
     Random      // Random color per particle
 };
 
+/**
+ * @brief 3D GPU particle system with billboard rendering
+ *
+ * Creates volumetric particle effects in world space with configurable emitters,
+ * physics simulation, and camera-facing billboard rendering. Supports sprite
+ * textures with spritesheet animation.
+ *
+ * @par Example
+ * @code
+ * auto& cam = chain.add<PerspectiveCamera>("cam");
+ * cam.position = {0, 3, 8};
+ *
+ * auto& fire = chain.add<Particles3D>("fire");
+ * fire.setCameraInput(&cam);
+ * fire.emitter(Emitter3DShape::Cone);
+ * fire.position(0, 0, 0);
+ * fire.coneAngle(15.0f);
+ * fire.velocity(0, 2.0f, 0);
+ * fire.gravity(0, -0.5f, 0);
+ * fire.size(0.3f, 0.0f);
+ * fire.color(1, 0.5f, 0.1f);
+ * fire.colorEnd(1, 0, 0, 0);
+ * fire.additive(true);
+ * @endcode
+ *
+ * @see Particles, Render3D, PerspectiveCamera
+ */
 class Particles3D : public effects::TextureOperator {
 public:
     Particles3D();

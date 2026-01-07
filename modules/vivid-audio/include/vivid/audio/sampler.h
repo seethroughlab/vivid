@@ -56,6 +56,8 @@ enum class SamplerVoiceStealMode {
  *     }
  * }
  * @endcode
+ 
+ * @see MultiSampler, SamplePlayer, SampleBank, AudioFile, MidiIn, Granular
  */
 class Sampler : public AudioOperator {
 public:

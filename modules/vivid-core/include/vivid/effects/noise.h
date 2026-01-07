@@ -45,6 +45,8 @@ enum class NoiseType {
  *
  * @par Output
  * Grayscale texture
+ 
+ * @see Gradient, Displace, FBM
  */
 class Noise : public TextureOperator {
 public:

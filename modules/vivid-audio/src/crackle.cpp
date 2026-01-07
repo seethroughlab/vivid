@@ -4,9 +4,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Crackle, "Audio Generators", "Random impulse generator for vinyl crackle sounds", false, OutputKind::Audio)
-    .related({"NoiseGen", "TapeEffect", "Bitcrush"})
-    .examples({"modules/vivid-audio/examples/lofi-demo"});
+REGISTER_OPERATOR_EX(Crackle, "Audio Generators", "Random impulse generator for vinyl crackle sounds", false, OutputKind::Audio);
 
 void Crackle::init(Context& ctx) {
     allocateOutput();

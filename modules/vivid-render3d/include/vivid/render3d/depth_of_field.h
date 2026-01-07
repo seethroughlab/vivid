@@ -40,6 +40,8 @@ class Render3D;
  *     .focusRange(0.1f)
  *     .blurStrength(0.8f);
  * @endcode
+ 
+ * @see Render3D, Fog, CameraOperator, Blur
  */
 class DepthOfField : public effects::TextureOperator {
 public:

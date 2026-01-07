@@ -8,10 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL(BeatDetect, "Audio Analysis", "Beat detection with adaptive threshold", true)
-    .related({"FFT", "Levels", "BandSplit", "Clock", "AudioIn"})
-    .limitations({"Adaptive threshold may miss quiet beats", "~50ms detection latency"})
-    .examples({"modules/vivid-audio/examples/audio-reactive"});
+REGISTER_OPERATOR(BeatDetect, "Audio Analysis", "Beat detection with adaptive threshold", true);
 
 void BeatDetect::initAnalyzer(Context& ctx) {
     m_energyHistory.resize(HISTORY_SIZE, 0.0f);

@@ -62,6 +62,8 @@ enum class GrainWindow {
  * grain.pitch = 0.5f;        // Octave down
  * grain.freeze = true;       // Hold position, just spray
  * @endcode
+ 
+ * @see WavetableSynth, Sampler, AudioFile, Delay, Reverb
  */
 class Granular : public AudioOperator {
 public:

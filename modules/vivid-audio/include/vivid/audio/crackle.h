@@ -31,6 +31,8 @@ namespace vivid::audio {
  * // Vinyl crackle texture
  * chain.add<Crackle>("crackle").density(0.001f).volume(0.1f);
  * @endcode
+ 
+ * @see NoiseGen, TapeEffect, Bitcrush
  */
 class Crackle : public AudioOperator {
 public:

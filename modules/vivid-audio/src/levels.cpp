@@ -7,9 +7,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL(Levels, "Audio Analysis", "Audio level meter with RMS and peak values", true)
-    .related({"FFT", "BandSplit", "BeatDetect", "AudioIn"})
-    .examples({"modules/vivid-audio/examples/audio-reactive"});
+REGISTER_OPERATOR(Levels, "Audio Analysis", "Audio level meter with RMS and peak values", true);
 
 void Levels::analyze(const float* input, uint32_t frames, uint32_t channels) {
     if (frames == 0) return;

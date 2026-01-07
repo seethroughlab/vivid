@@ -30,6 +30,8 @@ namespace vivid::audio {
  * const float* spectrum = chain.get<FFT>("fft").spectrum();
  * float bass = chain.get<FFT>("fft").band(20, 250);
  * @endcode
+ 
+ * @see Levels, BandSplit, BeatDetect, AudioIn
  */
 class FFT : public AudioAnalyzer {
 public:

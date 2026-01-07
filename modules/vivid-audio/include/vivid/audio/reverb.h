@@ -37,6 +37,8 @@ namespace vivid::audio {
  * reverb->width = 1.0f;       // Full stereo
  * reverb->mix = 0.3f;         // 30% wet
  * @endcode
+ 
+ * @see Delay, Echo, Chorus, Flanger
  */
 class Reverb : public AudioEffect {
 public:

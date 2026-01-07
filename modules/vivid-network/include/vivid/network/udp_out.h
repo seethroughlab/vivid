@@ -41,6 +41,8 @@ namespace vivid::network {
  *
  * @par Output
  * None (sends data via UDP)
+ 
+ * @see UdpIn, OscOut, WebServer
  */
 class UdpOut : public Operator {
 public:

@@ -49,6 +49,8 @@ enum class FilterType {
  *     .cutoff(8000.0f)
  *     .resonance(2.0f);
  * @endcode
+ 
+ * @see Formant, Phaser, Synth, Oscillator, BandSplit
  */
 class AudioFilter : public AudioOperator {
 public:

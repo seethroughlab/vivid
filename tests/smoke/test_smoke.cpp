@@ -90,7 +90,7 @@ TEST_CASE("Snapshot mode creates valid PNG", "[smoke][snapshot]") {
     fs::remove(outputPath);
 
     // Run with a simple example (hello-noise moved to vivid-core examples during restructure)
-    std::string examplePath = getSourceDir() + "/src/vivid-core/examples/hello-noise";
+    std::string examplePath = getSourceDir() + "/modules/vivid-core/examples/hello-noise";
     int result = runSnapshot(examplePath, outputPath, 5);
 
     INFO("Command exit code: " << result);

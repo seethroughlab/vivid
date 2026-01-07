@@ -38,6 +38,8 @@ namespace vivid::midi {
  *     }
  * }
  * @endcode
+ 
+ * @see MidiOut, MidiFilePlayer, Synth, FMSynth, Sampler, OscIn
  */
 class MidiIn : public Operator, public ParamRegistry {
 public:

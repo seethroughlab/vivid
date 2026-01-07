@@ -13,7 +13,28 @@
 namespace vivid {
 namespace serial {
 
-/// Serial input operator for receiving data from Arduino and sensors
+/**
+ * @brief Receive serial data from Arduino, sensors, and microcontrollers
+ *
+ * Reads data from a serial port in a background thread. Supports raw lines,
+ * parsed CSV values, and indexed value access. Automatically reconnects if
+ * connection is lost.
+ *
+ * @par Example
+ * @code
+ * auto& sensor = chain.add<SerialIn>("sensor");
+ * sensor.port("/dev/tty.usbmodem14201");  // or "COM3" on Windows
+ * sensor.baudRate = 115200;
+ *
+ * // In update():
+ * if (sensor.hasData()) {
+ *     float value = sensor.getValue(0);  // First CSV column
+ *     noise.scale = value * 10.0f;
+ * }
+ * @endcode
+ *
+ * @see SerialOut, DMXOut, OscIn
+ */
 class SerialIn : public Operator {
 public:
     /// Baud rate parameter (exposed to UI)

@@ -18,7 +18,7 @@ This is a vivid creative coding project.
 ## Resources
 
 - [docs/RECIPES.md](../../docs/RECIPES.md) - Effect recipes
-- [src/vivid-core/examples/](../../src/vivid-core/examples/) - Core examples
+- [modules/vivid-core/examples/](../../modules/vivid-core/examples/) - Core examples
 
 ## Notes for LLMs
 

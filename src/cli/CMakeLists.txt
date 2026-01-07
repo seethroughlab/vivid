@@ -26,8 +26,8 @@ target_include_directories(vivid
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
         ${CMAKE_CURRENT_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/src/vivid-core
-        ${CMAKE_SOURCE_DIR}/src/vivid-core/include
+        ${CMAKE_SOURCE_DIR}/modules/vivid-core
+        ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
 )
 
 # Pass version from CMake (or CI override)
@@ -79,7 +79,7 @@ endif()
 # Copy shaders to build root (matches release structure)
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/src/vivid-core/shaders
+        ${CMAKE_SOURCE_DIR}/modules/vivid-core/shaders
         ${CMAKE_BINARY_DIR}/shaders
     COMMENT "Copying shaders..."
 )
@@ -87,7 +87,7 @@ add_custom_command(TARGET vivid POST_BUILD
 # Copy templates to build root (matches release structure)
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/src/vivid-core/templates
+        ${CMAKE_SOURCE_DIR}/modules/vivid-core/templates
         ${CMAKE_BINARY_DIR}/templates
     COMMENT "Copying templates..."
 )
@@ -108,10 +108,10 @@ add_custom_command(TARGET vivid POST_BUILD
     COMMENT "Copying projects..."
 )
 
-# Copy vivid-core examples (source is in src/vivid-core/examples/, output to modules/vivid-core/examples/)
+# Copy vivid-core examples (source is in modules/vivid-core/examples/, output to modules/vivid-core/examples/)
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_SOURCE_DIR}/src/vivid-core/examples
+        ${CMAKE_SOURCE_DIR}/modules/vivid-core/examples
         ${CMAKE_BINARY_DIR}/modules/vivid-core/examples
     COMMENT "Copying vivid-core examples..."
 )

@@ -45,6 +45,8 @@ namespace vivid::network {
  *
  * @par Output
  * None (query data via hasData(), data(), etc.)
+ 
+ * @see UdpOut, OscIn, WebServer
  */
 class UdpIn : public Operator {
 public:

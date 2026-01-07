@@ -33,6 +33,8 @@ namespace vivid::audio {
  * @par Controls
  * - `volume(float)` - Input gain (0.0 to 2.0, default 1.0)
  * - `mute(bool)` - Mute input (default false)
+ 
+ * @see FFT, Levels, BeatDetect, AudioMixer, Gate
  */
 class AudioIn : public AudioOperator {
 public:

@@ -66,6 +66,8 @@ struct Instance3D {
  * }
  * instanced.setInstances(instances);
  * @endcode
+ 
+ * @see Render3D, CameraOperator, DirectionalLight, PointLight, SpotLight, Box, Sphere, GLTFLoader
  */
 class InstancedRender3D : public vivid::effects::TextureOperator {
 public:

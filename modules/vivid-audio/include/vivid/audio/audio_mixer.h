@@ -35,6 +35,8 @@ namespace vivid::audio {
  *
  * chain.add<AudioOutput>("out").input("mixer");
  * @endcode
+ 
+ * @see AudioGain, Compressor, Limiter
  */
 class AudioMixer : public AudioOperator {
 public:

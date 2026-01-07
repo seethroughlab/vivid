@@ -43,6 +43,8 @@ struct Sample {
  * player.trigger("kick");         // Trigger by name
  * player.trigger(1, 0.8f, 0.5f);  // With volume and pan
  * @endcode
+ 
+ * @see SamplePlayer, Sampler, Sequencer, AudioFile
  */
 class SampleBank : public Operator {
 public:

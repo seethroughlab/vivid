@@ -50,6 +50,8 @@ namespace vivid::audio {
  * player.triggerLoop(2);
  * player.stop(2);
  * @endcode
+ 
+ * @see Sampler, MultiSampler, SampleBank, AudioFile, Sequencer
  */
 class SamplePlayer : public AudioOperator {
 public:

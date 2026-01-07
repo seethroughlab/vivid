@@ -16,22 +16,27 @@ struct CubemapData {
     bool valid() const { return texture != nullptr; }
 };
 
-/// Image-Based Lighting environment operator
-///
-/// Provides environment lighting through pre-computed cubemaps:
-/// - Irradiance map for diffuse lighting
-/// - Pre-filtered radiance map for specular reflections
-/// - BRDF lookup table for split-sum approximation
-///
-/// Example usage:
-/// ```cpp
-/// auto& ibl = chain.add<IBLEnvironment>("ibl")
-///     .hdrFile("assets/hdris/studio.hdr");
-///
-/// chain.add<Render3D>("render")
-///     .environmentInput(&ibl)
-///     .ibl(true);
-/// ```
+/**
+ * @brief Image-based lighting from HDR environment maps
+ *
+ * Provides physically-based environment lighting through pre-computed cubemaps:
+ * irradiance for diffuse lighting, pre-filtered radiance for specular reflections,
+ * and BRDF lookup table for split-sum approximation. Load an HDR environment map
+ * or use the default procedural sky.
+ *
+ * @par Example
+ * @code
+ * auto& ibl = chain.add<IBLEnvironment>("ibl");
+ * ibl.setHdrFile("assets/hdris/studio.hdr");
+ *
+ * auto& render = chain.add<Render3D>("render");
+ * render.setEnvironmentInput(&ibl);
+ * render.setIbl(true);
+ * render.setShowSkybox(true);  // Optional: show environment as background
+ * @endcode
+ *
+ * @see Render3D, DirectionalLight, PBR
+ */
 class IBLEnvironment : public Operator {
 public:
     IBLEnvironment();

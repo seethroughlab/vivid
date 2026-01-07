@@ -12,8 +12,12 @@ using json = nlohmann::json;
 namespace vivid {
 
 OperatorRegistry& OperatorRegistry::instance() {
-    static OperatorRegistry registry;
-    return registry;
+    // Use heap allocation to avoid static destruction order issues.
+    // The registry is accessed during static initialization (operator registration)
+    // and must outlive all static OperatorRegistrar objects. A leaky singleton
+    // ensures it's never destroyed, preventing use-after-free crashes on exit.
+    static OperatorRegistry* registry = new OperatorRegistry();
+    return *registry;
 }
 
 void OperatorRegistry::registerOperator(const OperatorMeta& meta) {

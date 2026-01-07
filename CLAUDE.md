@@ -157,12 +157,12 @@ VIVID_CHAIN(setup, update)
 
 | Task | File |
 |------|------|
-| Add new 2D effect | `src/vivid-core/include/vivid/effects/` |
+| Add new 2D effect | `modules/vivid-core/include/vivid/effects/` |
 | Add network operator | `modules/vivid-network/include/vivid/network/` |
-| Modify chain visualizer UI | `src/vivid-core/src/chain_visualizer.cpp` |
-| Hot-reload logic | `src/vivid-core/src/hot_reload.cpp` |
-| Main runtime loop | `src/vivid-core/src/main.cpp` |
-| Operator base class | `src/vivid-core/include/vivid/operator.h` |
+| Modify chain visualizer UI | `modules/vivid-core/src/chain_visualizer.cpp` |
+| Hot-reload logic | `modules/vivid-core/src/hot_reload.cpp` |
+| Main runtime loop | `modules/vivid-core/src/main.cpp` |
+| Operator base class | `modules/vivid-core/include/vivid/operator.h` |
 
 ## Documentation
 

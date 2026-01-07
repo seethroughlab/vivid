@@ -76,6 +76,8 @@ struct OscMessage {
  *
  * @par Output
  * None (query messages via hasMessage(), getFloat(), etc.)
+ 
+ * @see OscOut, UdpIn, MidiIn
  */
 class OscIn : public Operator {
 public:

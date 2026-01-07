@@ -169,7 +169,7 @@ Edit your code while it's running - changes apply automatically.
 `VideoPlayer` — HAP, H.264, ProRes playback
 `Webcam` — Camera capture
 
-See examples in `src/vivid-core/examples/` and `modules/*/examples/` for operator usage patterns.
+See examples in `modules/vivid-core/examples/` and `modules/*/examples/` for operator usage patterns.
 
 ## Example: Video with Effects
 

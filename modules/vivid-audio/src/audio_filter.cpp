@@ -6,10 +6,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(AudioFilter, "Audio Effects", "Biquad filter (lowpass, highpass, bandpass)", true, OutputKind::Audio)
-    .related({"Formant", "Phaser", "Synth", "Oscillator", "BandSplit"})
-    .examples({"modules/vivid-audio/examples/synth-basics"})
-    .api({".setType(FilterType)", ".setLowpass(float hz)", ".setHighpass(float hz)", ".setBandpass(float hz)"});
+REGISTER_OPERATOR_EX(AudioFilter, "Audio Effects", "Biquad filter (lowpass, highpass, bandpass)", true, OutputKind::Audio);
 
 void AudioFilter::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

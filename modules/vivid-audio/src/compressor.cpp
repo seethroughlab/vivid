@@ -6,9 +6,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Compressor, "Audio Dynamics", "Dynamic range compressor", true, OutputKind::Audio)
-    .related({"Limiter", "Gate", "AudioGain", "AudioMixer"})
-    .examples({"modules/vivid-audio/examples/mastering-chain"});
+REGISTER_OPERATOR_EX(Compressor, "Audio Dynamics", "Dynamic range compressor", true, OutputKind::Audio);
 
 void Compressor::initEffect(Context& ctx) {
     float attackMs = static_cast<float>(attack);

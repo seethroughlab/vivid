@@ -58,6 +58,8 @@ namespace vivid::audio {
  * tape.hiss = 0.05f;
  * tape.age = 0.3f;
  * @endcode
+ 
+ * @see Bitcrush, Crackle, Echo, Reverb
  */
 class TapeEffect : public AudioEffect {
 public:

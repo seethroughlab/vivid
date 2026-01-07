@@ -54,6 +54,8 @@ namespace vivid::audio {
  *     }
  * }
  * @endcode
+ 
+ * @see Clock, Sequencer, Kick, Snare, HiHat
  */
 class Euclidean : public Operator, public ParamRegistry {
 public:

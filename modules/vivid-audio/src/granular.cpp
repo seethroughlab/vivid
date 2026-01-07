@@ -11,11 +11,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Granular, "Audio Synthesis", "Granular synthesizer for time-stretching and texture", false, OutputKind::Audio)
-    .related({"WavetableSynth", "Sampler", "AudioFile", "Delay", "Reverb"})
-    .limitations({"Requires loaded sample", "Max 64 concurrent grains"})
-    .examples({"modules/vivid-audio/examples/granular-demo"})
-    .api({".loadSample(string path)", ".setWindow(GrainWindow)", ".setFreeze(bool)", ".setAutoAdvance(bool)", ".triggerGrain()"});
+REGISTER_OPERATOR_EX(Granular, "Audio Synthesis", "Granular synthesizer for time-stretching and texture", false, OutputKind::Audio);
 
 Granular::Granular() {
     registerParam(grainSize);

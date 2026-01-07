@@ -302,7 +302,7 @@ bool HotReload::compile() {
     // exe could be at:
     //   build/bin/vivid (single-config: make/ninja)
     //   build/bin/Debug/vivid.exe (multi-config: MSVC)
-    // Search upwards to find the vivid root (contains src/vivid-core/include/vivid)
+    // Search upwards to find the vivid root (contains modules/vivid-core/include/vivid)
     fs::path rootDir;
     fs::path devVividInclude;
     bool isDevelopmentMode = false;
@@ -312,7 +312,7 @@ bool HotReload::compile() {
         for (int j = 0; j < i; ++j) {
             candidate = candidate / "..";
         }
-        fs::path candidateInclude = candidate / "src" / "vivid-core" / "include";
+        fs::path candidateInclude = candidate / "modules" / "vivid-core" / "include";
         if (fs::exists(candidateInclude / "vivid")) {
             rootDir = candidate;
             devVividInclude = candidateInclude;

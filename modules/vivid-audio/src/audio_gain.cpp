@@ -9,10 +9,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(AudioGain, "Audio Utility", "Gain and pan control with envelope modulation", true, OutputKind::Audio)
-    .related({"AudioMixer", "Compressor", "Envelope"})
-    .examples({"modules/vivid-audio/examples/mastering-chain"})
-    .api({".setMute(bool)", ".setGainInput(string name)"});
+REGISTER_OPERATOR_EX(AudioGain, "Audio Utility", "Gain and pan control with envelope modulation", true, OutputKind::Audio);
 
 void AudioGain::initEffect(Context& ctx) {
     // Resolve gain modulation input by name

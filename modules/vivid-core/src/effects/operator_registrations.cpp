@@ -48,183 +48,55 @@
 using namespace vivid::effects;
 
 // Generators (no input required)
-REGISTER_OPERATOR_FULL(Noise, "Generators", "Fractal noise generator", false)
-    .related({"Gradient", "Displace", "FBM"})
-    .examples({"src/vivid-core/examples/hello-noise/"})
-    ;
-REGISTER_OPERATOR_FULL(SolidColor, "Generators", "Solid color fill", false)
-    .related({"Gradient", "Shape"})
-    .examples({"src/vivid-core/examples/generators/"})
-    ;
-REGISTER_OPERATOR_FULL(Gradient, "Generators", "Color gradient", false)
-    .related({"Noise", "Ramp", "SolidColor"})
-    .examples({"src/vivid-core/examples/generators/"})
-    ;
-REGISTER_OPERATOR_FULL(Ramp, "Generators", "Animated HSV gradient", false)
-    .related({"Gradient", "LFO"})
-    .examples({"src/vivid-core/examples/generators/"})
-    ;
-REGISTER_OPERATOR_FULL(Shape, "Generators", "SDF shape generator", false)
-    .related({"Canvas", "SolidColor"})
-    .examples({"src/vivid-core/examples/generators/"})
-    ;
-REGISTER_OPERATOR_FULL_EX(LFO, "Generators", "Low frequency oscillator", false, vivid::OutputKind::Value)
-    .examples({"src/vivid-core/examples/generators/"})
-    ;
-REGISTER_OPERATOR_FULL(Image, "Generators", "Load image from file", false)
-    .limitations({"Supports PNG, JPG, BMP, TGA", "Large images may cause memory pressure"})
-    .related({"Video", "Transform"})
-    .examples({"src/vivid-core/examples/image-pipeline/"})
-    ;
+REGISTER_OPERATOR(Noise, "Generators", "Fractal noise generator", false);
+REGISTER_OPERATOR(SolidColor, "Generators", "Solid color fill", false);
+REGISTER_OPERATOR(Gradient, "Generators", "Color gradient", false);
+REGISTER_OPERATOR(Ramp, "Generators", "Animated HSV gradient", false);
+REGISTER_OPERATOR(Shape, "Generators", "SDF shape generator", false);
+REGISTER_OPERATOR_EX(LFO, "Generators", "Low frequency oscillator", false, vivid::OutputKind::Value);
+REGISTER_OPERATOR(Image, "Generators", "Load image from file", false);
 
 // Effects (require input)
-REGISTER_OPERATOR_FULL(Blur, "Effects", "Gaussian blur", true)
-    .related({"Bloom", "Edge", "Feedback"})
-    .examples({"src/vivid-core/examples/blur-bloom/"})
-    ;
-REGISTER_OPERATOR_FULL(HSV, "Effects", "Hue/saturation/value adjustment", true)
-    .related({"Brightness", "Quantize"})
-    .examples({"src/vivid-core/examples/color-grading/"})
-    ;
-REGISTER_OPERATOR_FULL(Brightness, "Effects", "Brightness and contrast", true)
-    .related({"HSV", "Bloom"})
-    .examples({"src/vivid-core/examples/color-grading/"})
-    ;
-REGISTER_OPERATOR_FULL(Transform, "Effects", "Scale, rotate, translate", true)
-    .related({"Mirror", "Tile", "Feedback"})
-    .examples({"src/vivid-core/examples/image-pipeline/"})
-    ;
-REGISTER_OPERATOR_FULL(Mirror, "Effects", "Axis mirroring and kaleidoscope", true)
-    .related({"Transform", "Tile"})
-    .examples({"src/vivid-core/examples/image-pipeline/"})
-    ;
-REGISTER_OPERATOR_FULL(Displace, "Effects", "Texture displacement", true)
-    .related({"Noise", "Transform", "TimeMachine", "Webcam"})
-    .examples({"src/vivid-core/examples/distortion/", "modules/vivid-video/examples/webcam-displace"})
-    ;
-REGISTER_OPERATOR_FULL(Edge, "Effects", "Edge detection", true)
-    .related({"Blur", "Brightness"})
-    .examples({"src/vivid-core/examples/distortion/"})
-    ;
-REGISTER_OPERATOR_FULL(Pixelate, "Effects", "Mosaic/pixelation effect", true)
-    .related({"Downsample", "Quantize", "Dither"})
-    .examples({"src/vivid-core/examples/creative-effects/"})
-    ;
-REGISTER_OPERATOR_FULL(Tile, "Effects", "Texture tiling", true)
-    .related({"Transform", "Mirror"})
-    .examples({"src/vivid-core/examples/image-pipeline/"})
-    ;
-REGISTER_OPERATOR_FULL(ChromaticAberration, "Effects", "RGB channel separation", true)
-    .related({"BarrelDistortion", "CRTEffect"})
-    .examples({"src/vivid-core/examples/distortion/"})
-    ;
-REGISTER_OPERATOR_FULL(Bloom, "Effects", "Glow/bloom effect", true)
-    .related({"Blur", "Brightness", "Flash"})
-    .examples({"src/vivid-core/examples/blur-bloom/"})
-    ;
-REGISTER_OPERATOR_FULL(Vignette, "Effects", "Edge darkening vignette", true)
-    .related({"CRTEffect", "BarrelDistortion"})
-    .examples({"src/vivid-core/examples/blur-bloom/"})
-    ;
-REGISTER_OPERATOR_FULL(BarrelDistortion, "Effects", "Barrel/pincushion distortion", true)
-    .related({"ChromaticAberration", "CRTEffect", "Vignette"})
-    .examples({"src/vivid-core/examples/distortion/"})
-    ;
-REGISTER_OPERATOR_FULL(Feedback, "Effects", "Frame feedback loop", true)
-    .limitations({"Requires careful decay settings to avoid whiteout", "High memory usage at large resolutions"})
-    .related({"Particles", "Transform", "Blur"})
-    .examples({"src/vivid-core/examples/feedback/"})
-    ;
-REGISTER_OPERATOR_FULL(FrameCache, "Effects", "Buffer multiple frames", true)
-    .limitations({"Memory usage scales with frame count", "Max 128 frames"})
-    .related({"TimeMachine", "Feedback"})
-    .examples({"modules/vivid-video/examples/time-machine/"})
-    ;
-REGISTER_OPERATOR_FULL(TimeMachine, "Effects", "Temporal displacement", true)
-    .related({"FrameCache", "Displace", "Feedback"})
-    .examples({"modules/vivid-video/examples/time-machine/"})
-    ;
-REGISTER_OPERATOR_FULL(Plexus, "Effects", "Connected particle network", true)
-    .limitations({"CPU-based line drawing", "Performance degrades with many points"})
-    .related({"Particles", "PointSprites"})
-    .examples({"src/vivid-core/examples/creative-effects/"})
-    ;
+REGISTER_OPERATOR(Blur, "Effects", "Gaussian blur", true);
+REGISTER_OPERATOR(HSV, "Effects", "Hue/saturation/value adjustment", true);
+REGISTER_OPERATOR(Brightness, "Effects", "Brightness and contrast", true);
+REGISTER_OPERATOR(Transform, "Effects", "Scale, rotate, translate", true);
+REGISTER_OPERATOR(Mirror, "Effects", "Axis mirroring and kaleidoscope", true);
+REGISTER_OPERATOR(Displace, "Effects", "Texture displacement", true);
+REGISTER_OPERATOR(Edge, "Effects", "Edge detection", true);
+REGISTER_OPERATOR(Pixelate, "Effects", "Mosaic/pixelation effect", true);
+REGISTER_OPERATOR(Tile, "Effects", "Texture tiling", true);
+REGISTER_OPERATOR(ChromaticAberration, "Effects", "RGB channel separation", true);
+REGISTER_OPERATOR(Bloom, "Effects", "Glow/bloom effect", true);
+REGISTER_OPERATOR(Vignette, "Effects", "Edge darkening vignette", true);
+REGISTER_OPERATOR(BarrelDistortion, "Effects", "Barrel/pincushion distortion", true);
+REGISTER_OPERATOR(Feedback, "Effects", "Frame feedback loop", true);
+REGISTER_OPERATOR(FrameCache, "Effects", "Buffer multiple frames", true);
+REGISTER_OPERATOR(TimeMachine, "Effects", "Temporal displacement", true);
+REGISTER_OPERATOR(Plexus, "Effects", "Connected particle network", true);
 
 // Retro Effects
-REGISTER_OPERATOR_FULL(Dither, "Retro", "Ordered dithering", true)
-    .related({"Quantize", "Downsample", "Pixelate"})
-    .examples({"src/vivid-core/examples/retro-crt/"})
-    ;
-REGISTER_OPERATOR_FULL(Quantize, "Retro", "Color quantization", true)
-    .related({"Dither", "Downsample", "HSV"})
-    .examples({"src/vivid-core/examples/color-grading/", "src/vivid-core/examples/retro-crt/"})
-    ;
-REGISTER_OPERATOR_FULL(Scanlines, "Retro", "CRT scanline effect", true)
-    .related({"CRTEffect", "Downsample"})
-    .examples({"src/vivid-core/examples/retro-crt/"})
-    ;
-REGISTER_OPERATOR_FULL(CRTEffect, "Retro", "Full CRT simulation", true)
-    .related({"Scanlines", "BarrelDistortion", "ChromaticAberration", "Vignette"})
-    .examples({"src/vivid-core/examples/retro-crt/"})
-    ;
-REGISTER_OPERATOR_FULL(Downsample, "Retro", "Low resolution effect", true)
-    .related({"Pixelate", "Quantize", "Dither"})
-    .examples({"src/vivid-core/examples/retro-crt/"})
-    ;
-REGISTER_OPERATOR_FULL(FilmGrain, "Retro", "Film grain overlay", true)
-    .related({"Noise", "Composite"})
-    .examples({"src/vivid-core/examples/creative-effects/"})
-    ;
-REGISTER_OPERATOR_FULL(Flash, "Retro", "Beat-synced flash overlay", true)
-    .limitations({"Requires trigger() call or audio input for sync"})
-    .related({"Bloom", "Composite"})
-    .examples({"src/vivid-core/examples/creative-effects/"})
-    ;
+REGISTER_OPERATOR(Dither, "Retro", "Ordered dithering", true);
+REGISTER_OPERATOR(Quantize, "Retro", "Color quantization", true);
+REGISTER_OPERATOR(Scanlines, "Retro", "CRT scanline effect", true);
+REGISTER_OPERATOR(CRTEffect, "Retro", "Full CRT simulation", true);
+REGISTER_OPERATOR(Downsample, "Retro", "Low resolution effect", true);
+REGISTER_OPERATOR(FilmGrain, "Retro", "Film grain overlay", true);
+REGISTER_OPERATOR(Flash, "Retro", "Beat-synced flash overlay", true);
 
 // Compositing
-REGISTER_OPERATOR_FULL(Composite, "Compositing", "Blend two textures", true)
-    .related({"Switch", "Transform", "Canvas"})
-    .examples({"src/vivid-core/examples/compositing/"})
-    ;
-REGISTER_OPERATOR_FULL(Switch, "Compositing", "Switch between inputs", true)
-    .limitations({"Max 8 inputs"})
-    .related({"Composite", "Logic"})
-    .examples({"src/vivid-core/examples/compositing/"})
-    ;
+REGISTER_OPERATOR(Composite, "Compositing", "Blend two textures", true);
+REGISTER_OPERATOR(Switch, "Compositing", "Switch between inputs", true);
 
 // Particles
-REGISTER_OPERATOR_FULL(Particles, "Particles", "2D particle system", false)
-    .limitations({"Turbulence is random, not curl noise/flow fields", "Single attractor only", "CPU-based physics (~10k particle limit)"})
-    .related({"Plexus", "PointSprites", "Feedback"})
-    .examples({"src/vivid-core/examples/particles/"})
-    ;
-REGISTER_OPERATOR_FULL(PointSprites, "Particles", "Point-based particles", false)
-    .related({"Particles", "Plexus"})
-    .examples({"src/vivid-core/examples/particles/"})
-    ;
-REGISTER_OPERATOR_FULL(GPUParticles, "Particles", "GPU compute particle system", false)
-    .limitations({"Requires WebGPU compute shader support", "Fixed 64-byte particle struct"})
-    .related({"Particles", "Plexus", "PointSprites", "ParticleSystem"})
-    .examples({"src/vivid-core/examples/particles/"})
-    ;
-REGISTER_OPERATOR_FULL(ParticleSystem, "Particles", "Unified particle system with CPU/GPU simulation and multiple render modes", false)
-    .limitations({"GPU simulation and Billboard/Mesh rendering are work in progress"})
-    .related({"Particles", "GPUParticles", "Particles3D"})
-    .examples({"src/vivid-core/examples/particle-forces/"})
-    ;
+REGISTER_OPERATOR(Particles, "Particles", "2D particle system", false);
+REGISTER_OPERATOR(PointSprites, "Particles", "Point-based particles", false);
+REGISTER_OPERATOR(GPUParticles, "Particles", "GPU compute particle system", false);
+REGISTER_OPERATOR(ParticleSystem, "Particles", "Unified particle system with CPU/GPU simulation and multiple render modes", false);
 
 // Canvas
-REGISTER_OPERATOR_FULL(Canvas, "Canvas", "Imperative 2D drawing", false)
-    .related({"Shape", "Composite"})
-    .examples({"src/vivid-core/examples/canvas-drawing/"})
-    ;
+REGISTER_OPERATOR(Canvas, "Canvas", "Imperative 2D drawing", false);
 
 // Math/Logic (use FULL_EX for chaining .examples())
-REGISTER_OPERATOR_FULL_EX(Math, "Math/Logic", "Mathematical operations", false, vivid::OutputKind::Value)
-    .related({"Logic", "LFO"})
-    .examples({"src/vivid-core/examples/compositing/"})
-    ;
-REGISTER_OPERATOR_FULL_EX(Logic, "Math/Logic", "Logical comparisons", false, vivid::OutputKind::Value)
-    .related({"Math", "Switch"})
-    .examples({"src/vivid-core/examples/compositing/"})
-    ;
+REGISTER_OPERATOR_EX(Math, "Math/Logic", "Mathematical operations", false, vivid::OutputKind::Value);
+REGISTER_OPERATOR_EX(Logic, "Math/Logic", "Logical comparisons", false, vivid::OutputKind::Value);

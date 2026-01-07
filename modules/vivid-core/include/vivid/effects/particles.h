@@ -28,6 +28,30 @@ enum class ColorMode {
     Random      // Random color per particle
 };
 
+/**
+ * @brief 2D GPU particle system with physics and lifetime
+ *
+ * Creates dynamic particle effects with configurable emitters, physics,
+ * colors, and optional sprite textures. Particles are simulated on CPU
+ * and rendered efficiently on GPU.
+ *
+ * @par Example
+ * @code
+ * auto& particles = chain.add<Particles>("fire");
+ * particles.position(0.5f, 0.8f);          // Emit from bottom center
+ * particles.emitter(EmitterShape::Line);   // Line emitter
+ * particles.emitterSize(0.3f);
+ * particles.velocity(0, -0.3f);            // Float upward
+ * particles.gravity(-0.1f);                // Negative = rise
+ * particles.life(2.0f);
+ * particles.size(0.05f, 0.0f);             // Shrink over lifetime
+ * particles.color(1, 0.5f, 0.1f);          // Orange
+ * particles.colorEnd(1, 0, 0, 0);          // Fade to red/transparent
+ * particles.emitRate(100);
+ * @endcode
+ *
+ * @see PointSprites, Plexus, Noise
+ */
 class Particles : public TextureOperator {
 public:
     Particles();

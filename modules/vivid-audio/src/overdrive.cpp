@@ -5,9 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL_EX(Overdrive, "Audio Effects", "Soft-clipping distortion with tone control", true, OutputKind::Audio)
-    .related({"Bitcrush", "TapeEffect", "Compressor", "AudioFilter"})
-    .examples({"modules/vivid-audio/examples/guitar-fx"});
+REGISTER_OPERATOR_EX(Overdrive, "Audio Effects", "Soft-clipping distortion with tone control", true, OutputKind::Audio);
 
 void Overdrive::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

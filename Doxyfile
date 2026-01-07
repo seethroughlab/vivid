@@ -7,7 +7,7 @@ PROJECT_BRIEF          = "A creative coding framework for real-time graphics wit
 OUTPUT_DIRECTORY       = docs/api
 
 # Input configuration
-INPUT                  = src/vivid-core/include/vivid \
+INPUT                  = modules/vivid-core/include/vivid \
                          modules/vivid-audio/include/vivid/audio \
                          modules/vivid-render3d/include/vivid/render3d \
                          modules/vivid-video/include/vivid/video \

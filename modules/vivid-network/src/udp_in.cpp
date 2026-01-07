@@ -26,11 +26,7 @@
 
 namespace vivid::network {
 
-REGISTER_OPERATOR_FULL(UdpIn, "Network", "Receive raw UDP packets", false)
-    .related({"UdpOut", "OscIn", "WebServer"})
-    .limitations({"Max packet size 65535 bytes"})
-    .examples({"modules/vivid-network/examples/udp-demo"})
-    .api({".port(int)", ".bufferSize(int)", ".asString()", ".asFloats()", ".asInts()", ".hasData()"});
+REGISTER_OPERATOR(UdpIn, "Network", "Receive raw UDP packets", false);
 
 #ifdef _WIN32
 // Shared WSA initialization for all network code

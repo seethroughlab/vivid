@@ -27,6 +27,27 @@ enum class PointColorMode {
     Random      // Random colors
 };
 
+/**
+ * @brief Pattern-based point rendering with GPU instancing
+ *
+ * Renders collections of circular points in configurable patterns.
+ * Supports grid, random, circular, spiral, and custom position layouts.
+ * Points can animate, pulse, and use various coloring modes.
+ *
+ * @par Example
+ * @code
+ * auto& dots = chain.add<PointSprites>("dots");
+ * dots.setPattern(Pattern::Spiral);
+ * dots.setCount(200);
+ * dots.setSpiralTurns(5.0f);
+ * dots.setColorMode(PointColorMode::Rainbow);
+ * dots.setSize(0.01f);
+ * dots.setAnimate(true);
+ * dots.setAnimateSpeed(0.5f);
+ * @endcode
+ *
+ * @see Particles, Plexus, Shape
+ */
 class PointSprites : public TextureOperator {
 public:
     PointSprites();

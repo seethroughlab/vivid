@@ -11,6 +11,25 @@
 
 namespace vivid::effects {
 
+/**
+ * @brief Load and display an image file
+ *
+ * Loads PNG, JPG, BMP, TGA, or EXR image files and outputs them as textures.
+ * Supports optional CPU-side pixel access for color sampling.
+ *
+ * @par Example
+ * @code
+ * auto& img = chain.add<Image>("bg");
+ * img.file = "assets/background.png";
+ *
+ * // For pixel sampling, enable CPU data:
+ * img.keepCpuData = true;
+ * // Then in update():
+ * glm::vec4 color = img.getPixel(100, 100);
+ * @endcode
+ *
+ * @see Composite, Transform, VideoPlayer
+ */
 class Image : public TextureOperator {
 public:
     // -------------------------------------------------------------------------

@@ -33,6 +33,8 @@ namespace vivid::audio {
  * }
  * float energy = chain.get<BeatDetect>("beat").energy();
  * @endcode
+ 
+ * @see FFT, Levels, BandSplit, Clock, AudioIn
  */
 class BeatDetect : public AudioAnalyzer {
 public:

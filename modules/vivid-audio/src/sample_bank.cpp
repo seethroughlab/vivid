@@ -12,11 +12,7 @@ namespace fs = std::filesystem;
 
 namespace vivid::audio {
 
-REGISTER_OPERATOR_FULL(SampleBank, "Audio Sampling", "Load folder of audio samples for triggering", false)
-    .related({"SamplePlayer", "Sampler", "Sequencer", "AudioFile"})
-    .limitations({"WAV format only", "All samples loaded to memory on init"})
-    .examples({"modules/vivid-audio/examples/sample-player-demo"})
-    .api({".setFolder(string path)", ".addFile(string path)"});
+REGISTER_OPERATOR(SampleBank, "Audio Sampling", "Load folder of audio samples for triggering", false);
 
 void SampleBank::setFolder(const std::string& path) {
     m_folderPath = path;

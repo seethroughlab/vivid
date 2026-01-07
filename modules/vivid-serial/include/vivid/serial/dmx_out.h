@@ -7,8 +7,31 @@
 namespace vivid {
 namespace serial {
 
-/// DMX output operator via Enttec DMX USB Pro
-/// Inherits from SerialOut and adds DMX-specific functionality
+/**
+ * @brief Control DMX lighting fixtures via Enttec DMX USB Pro
+ *
+ * Sends DMX512 data to control stage lighting, LED fixtures, fog machines,
+ * and other DMX-compatible hardware. Requires an Enttec DMX USB Pro or
+ * compatible adapter connected via USB serial.
+ *
+ * @par Example
+ * @code
+ * auto& dmx = chain.add<DMXOut>("dmx");
+ * dmx.port("/dev/tty.usbserial-EN123456");  // Enttec device
+ *
+ * // Set RGB fixture starting at channel 1
+ * dmx.rgb(1, 255, 0, 127);  // Purple
+ *
+ * // Control individual channels
+ * dmx.channel(10, 200);  // Dimmer at channel 10
+ *
+ * // Audio-reactive lighting
+ * float bass = fft.band(0);
+ * dmx.channel(1, static_cast<uint8_t>(bass * 255));
+ * @endcode
+ *
+ * @see SerialOut, OscOut, MidiOut
+ */
 class DMXOut : public SerialOut {
 public:
     /// Universe number (1-16)

@@ -54,6 +54,8 @@ enum class EnvelopeStage {
  * // Trigger the envelope
  * env->trigger();
  * @endcode
+ 
+ * @see AR, Decay, Synth, Oscillator, AudioGain
  */
 class Envelope : public AudioOperator {
 public:

@@ -14,11 +14,7 @@
 
 namespace vivid::render3d {
 
-REGISTER_OPERATOR_FULL(IBLEnvironment, "3D Lighting", "HDRI environment map for image-based lighting", false)
-    .related({"Render3D", "DirectionalLight", "PointLight", "SpotLight", "TexturedMaterial"})
-    .limitations({"Requires equirectangular HDR image", "Processing time on first load"})
-    .examples({"modules/vivid-render3d/examples/ibl-test"})
-    .api({".file(string path)", ".setBackgroundEnabled(bool)", ".setIntensity(float)"});
+REGISTER_OPERATOR(IBLEnvironment, "3D Lighting", "HDRI environment map for image-based lighting", false);
 
 // ============================================================================
 // WGSL Compute Shaders for IBL Processing

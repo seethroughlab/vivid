@@ -37,6 +37,8 @@ namespace vivid::audio {
  *
  * chain.get<Clap>("clap")->trigger();
  * @endcode
+ 
+ * @see Kick, Snare, HiHat, Sequencer, Clock, NoiseGen
  */
 class Clap : public AudioOperator {
 public:

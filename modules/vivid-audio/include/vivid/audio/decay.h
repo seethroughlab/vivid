@@ -46,6 +46,8 @@ enum class DecayCurve {
  * // Trigger on beat
  * chain.get<Decay>("env")->trigger();
  * @endcode
+ 
+ * @see Envelope, AR, PitchEnv, Kick, Snare
  */
 class Decay : public AudioOperator {
 public:

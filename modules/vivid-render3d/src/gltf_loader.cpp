@@ -18,11 +18,7 @@
 
 namespace vivid::render3d {
 
-REGISTER_OPERATOR_FULL_EX(GLTFLoader, "3D Assets", "Load GLTF/GLB 3D models with materials", false, OutputKind::Geometry)
-    .related({"Render3D", "SceneComposer", "Boolean", "TexturedMaterial", "InstancedRender3D"})
-    .limitations({"Large models may have long load times", "Some GLTF extensions not supported"})
-    .examples({"modules/vivid-render3d/examples/gltf-demo"})
-    .api({".file(string path)", ".meshIndex(int)", ".loadTextures(bool)", ".computeTangents(bool)"});
+REGISTER_OPERATOR_EX(GLTFLoader, "3D Assets", "Load GLTF/GLB 3D models with materials", false, OutputKind::Geometry);
 
 GLTFLoader::GLTFLoader() {
     registerParam(scale);

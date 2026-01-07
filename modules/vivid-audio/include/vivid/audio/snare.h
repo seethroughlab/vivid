@@ -41,6 +41,8 @@ namespace vivid::audio {
  *
  * chain.get<Snare>("snare")->trigger();
  * @endcode
+ 
+ * @see Kick, HiHat, Clap, Sequencer, Clock, NoiseGen
  */
 class Snare : public AudioOperator {
 public:

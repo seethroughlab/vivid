@@ -114,8 +114,8 @@ vivid/
 
 ## Adding a New Operator
 
-1. Create header in `src/vivid-core/include/vivid/effects/`
-2. Create implementation in `src/vivid-core/src/effects/`
+1. Create header in `modules/vivid-core/include/vivid/effects/`
+2. Create implementation in `modules/vivid-core/src/effects/`
 3. Add to CMakeLists.txt
 4. Include in `effects.h`
 5. Add example usage in `projects/`

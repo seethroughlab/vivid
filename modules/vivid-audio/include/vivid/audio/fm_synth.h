@@ -86,6 +86,8 @@ enum class FMPreset {
  *
  * fm.noteOn(440.0f);  // Play A4
  * @endcode
+ 
+ * @see Synth, PolySynth, WavetableSynth, Oscillator, MidiIn
  */
 class FMSynth : public AudioOperator, public PresetCapable {
 public:

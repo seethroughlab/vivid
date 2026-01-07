@@ -45,6 +45,8 @@ namespace vivid::render3d {
  *
  * Each texture map is optional. When not provided, a scalar fallback value is used.
  * Textures are loaded once during init() and cached.
+ 
+ * @see Render3D, GLTFLoader, IBLEnvironment
  */
 class TexturedMaterial : public Operator {
 public:

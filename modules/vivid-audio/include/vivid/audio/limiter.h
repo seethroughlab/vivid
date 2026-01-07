@@ -32,6 +32,8 @@ namespace vivid::audio {
  *     .ceiling(-0.3f)    // Limit to -0.3 dB (prevent clipping)
  *     .release(100);     // 100ms release
  * @endcode
+ 
+ * @see Compressor, Gate, AudioGain
  */
 class Limiter : public AudioEffect {
 public:
