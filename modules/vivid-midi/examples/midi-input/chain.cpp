@@ -1,0 +1,193 @@
+// MIDI Input Example
+// Demonstrates: MidiIn, MidiOut, MidiFilePlayer
+//
+// Shows MIDI device connection and event handling with visual feedback
+
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/midi/midi.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::midi;
+
+// Store MIDI state globally for visualization
+static float g_noteDisplay = 0.0f;
+static float g_velocityDisplay = 0.0f;
+static float g_ccValues[8] = {0};
+static bool g_noteActive = false;
+static int g_lastNote = 60;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // MidiIn - receive from hardware controllers
+    auto& midiIn = chain.add<MidiIn>("midiIn");
+    midiIn.channel = 0;  // Omni (receive all channels)
+
+    // Try to open the first available MIDI input
+    auto ports = MidiIn::listPorts();
+    if (!ports.empty()) {
+        midiIn.openPort(0);
+    }
+
+    // MidiOut - send to external synths/DAWs
+    auto& midiOut = chain.add<MidiOut>("midiOut");
+
+    // Try to open the first available MIDI output
+    auto outPorts = MidiOut::listPorts();
+    if (!outPorts.empty()) {
+        midiOut.openPort(0);
+    }
+
+    // Visual feedback - background color responds to notes
+    auto& bg = chain.add<SolidColor>("bg");
+    bg.setColor(0.1f, 0.1f, 0.15f, 1.0f);
+
+    // Shape for note visualization
+    auto& noteShape = chain.add<Shape>("noteShape");
+    noteShape.type = Shape::Circle;
+    noteShape.radius = 0.15f;
+    noteShape.color = glm::vec4(0.2f, 0.6f, 1.0f, 0.0f);
+
+    // Canvas for UI
+    auto& canvas = chain.add<Canvas>("canvas");
+    canvas.setSize(ctx.width(), ctx.height());
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    float t = ctx.time();
+
+    auto& midiIn = chain.get<MidiIn>("midiIn");
+    auto& midiOut = chain.get<MidiOut>("midiOut");
+
+    // Process incoming MIDI events
+    for (const auto& e : midiIn.events()) {
+        switch (e.type) {
+            case MidiEventType::NoteOn:
+                g_noteActive = true;
+                g_lastNote = e.note;
+                g_noteDisplay = 1.0f;
+                g_velocityDisplay = e.velocity / 127.0f;
+
+                // Echo note to output (if open)
+                if (midiOut.isOpen()) {
+                    midiOut.noteOn(0, e.note, e.velocity / 127.0f);
+                }
+                break;
+
+            case MidiEventType::NoteOff:
+                g_noteActive = false;
+                if (midiOut.isOpen()) {
+                    midiOut.noteOff(0, e.note);
+                }
+                break;
+
+            case MidiEventType::ControlChange:
+                if (e.cc < 8) {
+                    g_ccValues[e.cc] = e.value / 127.0f;
+                }
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    // Decay note display
+    g_noteDisplay *= 0.95f;
+    if (g_noteDisplay < 0.01f) g_noteDisplay = 0.0f;
+
+    // Update visual feedback
+    auto& bg = chain.get<SolidColor>("bg");
+    float brightness = 0.1f + g_noteDisplay * 0.3f;
+    bg.setColor(brightness * 0.8f, brightness * 0.8f, brightness, 1.0f);
+
+    auto& noteShape = chain.get<Shape>("noteShape");
+    noteShape.radius = 0.1f + g_velocityDisplay * 0.1f;
+    noteShape.color = glm::vec4(0.2f, 0.6f, 1.0f, g_noteDisplay * 0.8f);
+    // Position based on note (C4 = center)
+    float noteX = (g_lastNote - 60) / 24.0f;  // -1 to 1 for 2 octaves
+    noteShape.position = glm::vec2(noteX * 0.5f, 0.0f);
+
+    chain.process();
+
+    // Draw UI
+    auto& canvas = chain.get<Canvas>("canvas");
+    canvas.clear(0.08f, 0.08f, 0.12f, 1.0f);
+
+    int w = ctx.width();
+    int h = ctx.height();
+
+    // Draw note visualization
+    if (g_noteDisplay > 0.01f) {
+        canvas.drawTexture(noteShape.output(), 0, 0, w, h);
+    }
+
+    // Draw MIDI status
+    canvas.setFont(16);
+    canvas.setFillColor(1.0f, 1.0f, 1.0f, 1.0f);
+    canvas.fillText("MIDI Input Example", 20, 30);
+
+    canvas.setFont(12);
+    canvas.setFillColor(0.7f, 0.7f, 0.7f, 1.0f);
+
+    // Input port status
+    char inStatus[128];
+    snprintf(inStatus, sizeof(inStatus), "Input: %s",
+        midiIn.isOpen() ? midiIn.portName().c_str() : "No MIDI device");
+    canvas.fillText(inStatus, 20, 60);
+
+    // Output port status
+    char outStatus[128];
+    snprintf(outStatus, sizeof(outStatus), "Output: %s",
+        midiOut.isOpen() ? midiOut.portName().c_str() : "No MIDI device");
+    canvas.fillText(outStatus, 20, 80);
+
+    // Note activity
+    canvas.setFillColor(g_noteActive ? 1.0f : 0.5f,
+                        g_noteActive ? 1.0f : 0.5f,
+                        g_noteActive ? 1.0f : 0.5f, 1.0f);
+    char noteStr[64];
+    const char* noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    int octave = (g_lastNote / 12) - 1;
+    int noteIndex = g_lastNote % 12;
+    snprintf(noteStr, sizeof(noteStr), "Last Note: %s%d (vel: %.0f%%)",
+        noteNames[noteIndex], octave, g_velocityDisplay * 100);
+    canvas.fillText(noteStr, 20, 110);
+
+    // CC bars
+    canvas.setFillColor(0.5f, 0.5f, 0.5f, 1.0f);
+    canvas.fillText("CC 0-7:", 20, 150);
+
+    for (int i = 0; i < 8; i++) {
+        int barX = 80 + i * 30;
+        int barY = 135;
+        int barH = 40;
+
+        // Background
+        canvas.setFillColor(0.2f, 0.2f, 0.25f, 1.0f);
+        canvas.fillRect(barX, barY, 20, barH);
+
+        // Value bar
+        float val = g_ccValues[i];
+        canvas.setFillColor(0.3f, 0.7f, 0.4f, 1.0f);
+        canvas.fillRect(barX, barY + barH * (1.0f - val), 20, barH * val);
+
+        // CC number
+        canvas.setFillColor(0.5f, 0.5f, 0.5f, 1.0f);
+        char ccLabel[8];
+        snprintf(ccLabel, sizeof(ccLabel), "%d", i);
+        canvas.fillText(ccLabel, barX + 4, barY + barH + 15);
+    }
+
+    // Instructions
+    canvas.setFillColor(0.5f, 0.5f, 0.6f, 1.0f);
+    canvas.fillText("Connect a MIDI controller to see input visualization", 20, h - 50);
+    canvas.fillText("Notes are echoed to MIDI output (if available)", 20, h - 30);
+
+    chain.setOutput(canvas);
+}
+
+VIVID_CHAIN(setup, update)

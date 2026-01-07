@@ -67,7 +67,9 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& clock = chain.add<Clock>("clock");
-    clock.bpm(120.0f).division(ClockDiv::Sixteenth).swing(0.0f);
+    clock.bpm = 120.0f;
+    clock.division(ClockDiv::Sixteenth);
+    clock.swing = 0.0f;
 
     // =========================================================================
     // Sequencers - Pattern-based triggering
@@ -94,10 +96,21 @@ void setup(Context& ctx) {
     auto& clapEucl = chain.add<Euclidean>("clapEucl");
 
     // Classic Euclidean patterns
-    kickEucl.steps(16).hits(4).rotation(0);    // 4 evenly spaced kicks
-    snareEucl.steps(16).hits(2).rotation(4);   // 2 snares, offset to backbeat
-    hihatEucl.steps(16).hits(8).rotation(0);   // 8th note hi-hats
-    clapEucl.steps(16).hits(3).rotation(2);    // Tresillo-ish claps
+    kickEucl.steps = 16;
+    kickEucl.hits = 4;
+    kickEucl.rotation = 0;
+
+    snareEucl.steps = 16;
+    snareEucl.hits = 2;
+    snareEucl.rotation = 4;
+
+    hihatEucl.steps = 16;
+    hihatEucl.hits = 8;
+    hihatEucl.rotation = 0;
+
+    clapEucl.steps = 16;
+    clapEucl.hits = 3;
+    clapEucl.rotation = 2;
 
     // =========================================================================
     // Drum Voices
@@ -105,37 +118,37 @@ void setup(Context& ctx) {
 
     // 808-style kick
     auto& kick = chain.add<Kick>("kick");
-    kick.pitch(50.0f)
-        .pitchEnv(120.0f)
-        .pitchDecay(0.08f)
-        .decay(0.4f)
-        .click(0.4f)
-        .drive(0.2f)
-        .volume(0.9f);
+    kick.pitch = 50.0f;
+    kick.pitchEnv = 120.0f;
+    kick.pitchDecay = 0.08f;
+    kick.decay = 0.4f;
+    kick.click = 0.4f;
+    kick.drive = 0.2f;
+    kick.volume = 0.9f;
 
     // Punchy snare
     auto& snare = chain.add<Snare>("snare");
-    snare.tone(0.4f)
-         .noise(0.7f)
-         .pitch(180.0f)
-         .toneDecay(0.08f)
-         .noiseDecay(0.15f)
-         .snappy(0.6f)
-         .volume(0.7f);
+    snare.tone = 0.4f;
+    snare.noise = 0.7f;
+    snare.pitch = 180.0f;
+    snare.toneDecay = 0.08f;
+    snare.noiseDecay = 0.15f;
+    snare.snappy = 0.6f;
+    snare.volume = 0.7f;
 
     // Closed hi-hat
     auto& hihat = chain.add<HiHat>("hihat");
-    hihat.decay(0.05f)
-         .tone(0.7f)
-         .ring(0.4f)
-         .volume(0.4f);
+    hihat.decay = 0.05f;
+    hihat.tone = 0.7f;
+    hihat.ring = 0.4f;
+    hihat.volume = 0.4f;
 
     // Hand clap
     auto& clap = chain.add<Clap>("clap");
-    clap.decay(0.25f)
-        .tone(0.5f)
-        .spread(0.6f)
-        .volume(0.5f);
+    clap.decay = 0.25f;
+    clap.tone = 0.5f;
+    clap.spread = 0.6f;
+    clap.volume = 0.5f;
 
     // =========================================================================
     // Audio Output
@@ -143,14 +156,19 @@ void setup(Context& ctx) {
 
     // Mix all drums together
     auto& mixer = chain.add<AudioMixer>("mixer");
-    mixer.input(0, "kick").gain(0, 1.0f)
-         .input(1, "snare").gain(1, 0.8f)
-         .input(2, "hihat").gain(2, 0.5f)
-         .input(3, "clap").gain(3, 0.6f)
-         .volume(0.8f);
+    mixer.setInput(0, "kick");
+    mixer.setGain(0, 1.0f);
+    mixer.setInput(1, "snare");
+    mixer.setGain(1, 0.8f);
+    mixer.setInput(2, "hihat");
+    mixer.setGain(2, 0.5f);
+    mixer.setInput(3, "clap");
+    mixer.setGain(3, 0.6f);
+    mixer.volume = 0.8f;
 
     auto& audioOut = chain.add<AudioOutput>("audioOut");
-    audioOut.input("mixer").volume(1.0f);
+    audioOut.setInput("mixer");
+    audioOut.setVolume(1.0f);
     chain.audioOutput("audioOut");
 
     // =========================================================================
@@ -159,48 +177,48 @@ void setup(Context& ctx) {
 
     // Background
     auto& bg = chain.add<SolidColor>("bg");
-    bg.color(Color::fromHex("#0D0D14"));
+    bg.color.set(0.05f, 0.05f, 0.08f, 1.0f);
 
     // Kick visualizer (bottom) - red/orange
     auto& kickVis = chain.add<Shape>("kickVis");
-    kickVis.type(ShapeType::Circle)
-           .position(0.5f, 0.3f)
-           .size(0.15f)
-           .color(Color::Tomato)
-           .softness(0.1f);
+    kickVis.type(ShapeType::Circle);
+    kickVis.position.set(0.5f, 0.3f);
+    kickVis.size.set(0.15f, 0.15f);
+    kickVis.color.set(1.0f, 0.39f, 0.28f, 1.0f);  // Tomato
+    kickVis.softness = 0.1f;
 
     // Snare visualizer (center-left) - yellow/gold
     auto& snareVis = chain.add<Shape>("snareVis");
-    snareVis.type(ShapeType::Circle)
-            .position(0.35f, 0.5f)
-            .size(0.12f)
-            .color(Color::Gold)
-            .softness(0.1f);
+    snareVis.type(ShapeType::Circle);
+    snareVis.position.set(0.35f, 0.5f);
+    snareVis.size.set(0.12f, 0.12f);
+    snareVis.color.set(1.0f, 0.84f, 0.0f, 1.0f);  // Gold
+    snareVis.softness = 0.1f;
 
     // Hi-hat visualizer (center-right) - cyan
     auto& hihatVis = chain.add<Shape>("hihatVis");
-    hihatVis.type(ShapeType::Circle)
-            .position(0.65f, 0.5f)
-            .size(0.08f)
-            .color(Color::Cyan)
-            .softness(0.1f);
+    hihatVis.type(ShapeType::Circle);
+    hihatVis.position.set(0.65f, 0.5f);
+    hihatVis.size.set(0.08f, 0.08f);
+    hihatVis.color.set(0.0f, 1.0f, 1.0f, 1.0f);  // Cyan
+    hihatVis.softness = 0.1f;
 
     // Clap visualizer (top) - magenta/violet
     auto& clapVis = chain.add<Shape>("clapVis");
-    clapVis.type(ShapeType::Circle)
-           .position(0.5f, 0.7f)
-           .size(0.1f)
-           .color(Color::Orchid)
-           .softness(0.1f);
+    clapVis.type(ShapeType::Circle);
+    clapVis.position.set(0.5f, 0.7f);
+    clapVis.size.set(0.1f, 0.1f);
+    clapVis.color.set(0.85f, 0.44f, 0.84f, 1.0f);  // Orchid
+    clapVis.softness = 0.1f;
 
     // Composite all layers
     auto& comp = chain.add<Composite>("comp");
-    comp.input(0, &bg)
-        .input(1, &kickVis)
-        .input(2, &snareVis)
-        .input(3, &hihatVis)
-        .input(4, &clapVis)
-        .mode(BlendMode::Add);
+    comp.input(0, "bg");
+    comp.input(1, "kickVis");
+    comp.input(2, "snareVis");
+    comp.input(3, "hihatVis");
+    comp.input(4, "clapVis");
+    comp.mode(BlendMode::Add);
 
     chain.output("comp");
 
@@ -266,7 +284,7 @@ void update(Context& ctx) {
         } else {
             clock.start();
         }
-        printStatus(clock.getBpm(), clock.isRunning());
+        printStatus(static_cast<float>(clock.bpm), clock.isRunning());
     }
 
     // Manual triggers (1-4)
@@ -288,16 +306,16 @@ void update(Context& ctx) {
     }
 
     // BPM adjustment
-    float bpm = clock.getBpm();
+    float bpmVal = static_cast<float>(clock.bpm);
     if (ctx.key(GLFW_KEY_UP).pressed) {
-        bpm = std::min(bpm + 5.0f, 300.0f);
-        clock.bpm(bpm);
-        printStatus(bpm, clock.isRunning());
+        bpmVal = std::min(bpmVal + 5.0f, 300.0f);
+        clock.bpm = bpmVal;
+        printStatus(bpmVal, clock.isRunning());
     }
     if (ctx.key(GLFW_KEY_DOWN).pressed) {
-        bpm = std::max(bpm - 5.0f, 60.0f);
-        clock.bpm(bpm);
-        printStatus(bpm, clock.isRunning());
+        bpmVal = std::max(bpmVal - 5.0f, 60.0f);
+        clock.bpm = bpmVal;
+        printStatus(bpmVal, clock.isRunning());
     }
 
     // Pattern change
@@ -307,7 +325,7 @@ void update(Context& ctx) {
         snareSeq.setPattern(snarePatterns[currentPattern]);
         hihatSeq.setPattern(hihatPatterns[currentPattern]);
         clapSeq.setPattern(clapPatterns[currentPattern]);
-        printStatus(bpm, clock.isRunning());
+        printStatus(bpmVal, clock.isRunning());
     }
     if (ctx.key(GLFW_KEY_LEFT).pressed) {
         currentPattern = (currentPattern - 1 + numPatterns) % numPatterns;
@@ -315,7 +333,7 @@ void update(Context& ctx) {
         snareSeq.setPattern(snarePatterns[currentPattern]);
         hihatSeq.setPattern(hihatPatterns[currentPattern]);
         clapSeq.setPattern(clapPatterns[currentPattern]);
-        printStatus(bpm, clock.isRunning());
+        printStatus(bpmVal, clock.isRunning());
     }
 
     // Toggle Euclidean mode
@@ -330,16 +348,16 @@ void update(Context& ctx) {
         snareEucl.reset();
         hihatEucl.reset();
         clapEucl.reset();
-        printStatus(bpm, clock.isRunning());
+        printStatus(bpmVal, clock.isRunning());
     }
 
     // Swing adjustment
     if (ctx.key(GLFW_KEY_S).pressed) {
-        float swing = clock.getSwing();
-        swing = std::fmod(swing + 0.25f, 1.0f);
-        clock.swing(swing);
-        std::cout << "\n[Swing: " << static_cast<int>(swing * 100) << "%]" << std::endl;
-        printStatus(bpm, clock.isRunning());
+        float swingVal = static_cast<float>(clock.swing);
+        swingVal = std::fmod(swingVal + 0.25f, 1.0f);
+        clock.swing = swingVal;
+        std::cout << "\n[Swing: " << static_cast<int>(swingVal * 100) << "%]" << std::endl;
+        printStatus(bpmVal, clock.isRunning());
     }
 
     // =========================================================================
@@ -407,16 +425,16 @@ void update(Context& ctx) {
     clapDecay *= decayRate;
 
     // Update visualizer sizes based on hit intensity
-    kickVis.size(0.08f + kickDecay * 0.15f);
-    snareVis.size(0.06f + snareDecay * 0.12f);
-    hihatVis.size(0.04f + hihatDecay * 0.08f);
-    clapVis.size(0.05f + clapDecay * 0.1f);
+    kickVis.size.set(0.08f + kickDecay * 0.15f, 0.08f + kickDecay * 0.15f);
+    snareVis.size.set(0.06f + snareDecay * 0.12f, 0.06f + snareDecay * 0.12f);
+    hihatVis.size.set(0.04f + hihatDecay * 0.08f, 0.04f + hihatDecay * 0.08f);
+    clapVis.size.set(0.05f + clapDecay * 0.1f, 0.05f + clapDecay * 0.1f);
 
-    // Pulse colors on hit - using Color constants with dynamic alpha
-    kickVis.color(Color::Tomato.withAlpha(0.3f + kickDecay * 0.7f));
-    snareVis.color(Color::Gold.withAlpha(0.3f + snareDecay * 0.7f));
-    hihatVis.color(Color::Cyan.withAlpha(0.3f + hihatDecay * 0.7f));
-    clapVis.color(Color::Orchid.withAlpha(0.3f + clapDecay * 0.7f));
+    // Pulse colors on hit
+    kickVis.color.set(1.0f, 0.39f, 0.28f, 0.3f + kickDecay * 0.7f);
+    snareVis.color.set(1.0f, 0.84f, 0.0f, 0.3f + snareDecay * 0.7f);
+    hihatVis.color.set(0.0f, 1.0f, 1.0f, 0.3f + hihatDecay * 0.7f);
+    clapVis.color.set(0.85f, 0.44f, 0.84f, 0.3f + clapDecay * 0.7f);
 }
 
 VIVID_CHAIN(setup, update)

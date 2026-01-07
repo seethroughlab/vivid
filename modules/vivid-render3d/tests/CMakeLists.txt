@@ -19,3 +19,21 @@ target_include_directories(test_render3d_addon PRIVATE
 catch_discover_tests(test_render3d_addon
     PROPERTIES LABELS "unit"
 )
+
+# Example smoke tests
+add_executable(test_render3d_examples
+    ${CMAKE_CURRENT_LIST_DIR}/test_examples.cpp
+)
+
+target_link_libraries(test_render3d_examples PRIVATE
+    Catch2::Catch2WithMain
+)
+
+target_compile_definitions(test_render3d_examples PRIVATE
+    VIVID_BINARY_PATH="$<TARGET_FILE:vivid>"
+    VIVID_SOURCE_DIR="${CMAKE_SOURCE_DIR}"
+)
+
+catch_discover_tests(test_render3d_examples
+    PROPERTIES LABELS "smoke;examples;render3d"
+)

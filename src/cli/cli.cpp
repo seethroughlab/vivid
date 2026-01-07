@@ -2,6 +2,7 @@
 // Handles: vivid new, vivid --help, vivid --version, vivid bundle, vivid operators, vivid libs, vivid mcp
 
 #include <vivid/cli.h>
+#include <vivid/app.h>
 #include <vivid/mcp_server.h>
 #include <vivid/operator_registry.h>
 #include <vivid/module_loader.h>
@@ -984,14 +985,261 @@ int bundleForIOS(const fs::path& srcProject, const fs::path& chainPath,
     return 1;
 }
 
-// Returns: 0 = handled (exit with this code), -1 = not a CLI command (continue to main)
-int handleCommand(int argc, char** argv) {
-    CLI::App app{"Vivid - Creative coding framework with hot-reload"};
+// Helper: Handle 'operators' subcommand
+static int handleOperatorsCommand(const std::string& operatorName, bool jsonOutput) {
+    auto& registry = OperatorRegistry::instance();
+
+    // If operator name specified, show details for that operator
+    if (!operatorName.empty()) {
+        const auto* meta = registry.find(operatorName);
+        if (!meta) {
+            std::cerr << "Error: Operator '" << operatorName << "' not found.\n";
+            std::cerr << "Use 'vivid operators' to list all available operators.\n";
+            return 1;
+        }
+
+        if (jsonOutput) {
+            json op;
+            op["name"] = meta->name;
+            op["category"] = meta->category;
+            op["description"] = meta->description;
+            op["addon"] = meta->addon.empty() ? json(nullptr) : json(meta->addon);
+            op["requiresInput"] = meta->requiresInput;
+            op["outputType"] = outputKindName(meta->outputKind);
+            op["params"] = json::array();
+
+            if (meta->factory) {
+                try {
+                    auto tempOp = meta->factory();
+                    auto params = tempOp->params();
+                    for (const auto& p : params) {
+                        json param;
+                        param["name"] = p.name;
+                        param["min"] = p.minVal;
+                        param["max"] = p.maxVal;
+                        param["default"] = p.defaultVal[0];
+                        op["params"].push_back(param);
+                    }
+                } catch (...) {}
+            }
+            std::cout << op.dump(2) << std::endl;
+        } else {
+            std::cout << "# " << meta->name << "\n\n";
+            std::cout << meta->description << "\n\n";
+            std::cout << "Category: " << meta->category << "\n";
+            if (!meta->addon.empty()) {
+                std::cout << "Addon: " << meta->addon << "\n";
+            }
+            std::cout << "Output: " << outputKindName(meta->outputKind) << "\n";
+            std::cout << "Requires input: " << (meta->requiresInput ? "Yes" : "No") << "\n";
+
+            if (meta->factory) {
+                try {
+                    auto tempOp = meta->factory();
+                    auto params = tempOp->params();
+                    if (!params.empty()) {
+                        std::cout << "\nParameters:\n";
+                        for (const auto& p : params) {
+                            std::cout << "  " << p.name;
+                            std::cout << " (" << p.minVal << " - " << p.maxVal << ")";
+                            std::cout << " default: " << p.defaultVal[0] << "\n";
+                        }
+                    }
+                } catch (...) {
+                    std::cout << "\n(Could not inspect parameters)\n";
+                }
+            }
+
+            std::cout << "\nUsage:\n";
+            std::cout << "  auto& op = chain.add<" << meta->name << ">(\"name\");\n";
+            if (meta->requiresInput) {
+                std::cout << "  op.input(&other);\n";
+            }
+        }
+        return 0;
+    }
+
+    // List all operators
+    if (jsonOutput) {
+        registry.outputJson();
+    } else {
+        const auto& ops = registry.operators();
+        std::cout << "Available operators (" << ops.size() << "):\n\n";
+
+        std::string currentCategory;
+        for (const auto& op : ops) {
+            if (op.category != currentCategory) {
+                if (!currentCategory.empty()) std::cout << "\n";
+                currentCategory = op.category;
+                std::cout << "## " << currentCategory << "\n";
+            }
+            std::cout << "  " << op.name;
+            if (!op.addon.empty()) {
+                std::cout << " [" << op.addon << "]";
+            }
+            std::cout << " - " << op.description << "\n";
+        }
+
+        if (ops.empty()) {
+            std::cout << "No operators registered. This may be a build issue.\n";
+        }
+
+        std::cout << "\nFor details: vivid operators <name>\n";
+    }
+    return 0;
+}
+
+// Helper: Handle 'modules' subcommand
+static int handleModulesCommand(CLI::App* installCmd, CLI::App* removeCmd, CLI::App* updateCmd, CLI::App* listCmd,
+                                const std::string& installUrl, const std::string& installRef,
+                                const std::string& removeName, const std::string& updateName, bool jsonOutput) {
+    auto& moduleMgr = ModuleManager::instance();
+
+    if (installCmd->parsed()) {
+        return moduleMgr.install(installUrl, installRef) ? 0 : 1;
+    }
+
+    if (removeCmd->parsed()) {
+        return moduleMgr.remove(removeName) ? 0 : 1;
+    }
+
+    if (updateCmd->parsed()) {
+        return moduleMgr.update(updateName) ? 0 : 1;
+    }
+
+    // Default: list
+    if (jsonOutput) {
+        moduleMgr.outputJson();
+    } else {
+        auto libs = moduleMgr.listInstalled();
+        if (libs.empty()) {
+            std::cout << "No modules installed.\n\n";
+            std::cout << "Install with:\n";
+            std::cout << "  vivid modules install <git-url>\n\n";
+            std::cout << "Example:\n";
+            std::cout << "  vivid modules install https://github.com/seethroughlab/vivid-onnx\n";
+        } else {
+            std::cout << "Installed modules (" << libs.size() << "):\n\n";
+            for (const auto& lib : libs) {
+                std::cout << "  " << lib.name << " v" << lib.version;
+                if (!lib.gitRef.empty()) {
+                    std::cout << " (" << lib.gitRef << ")";
+                }
+                std::cout << "\n";
+                if (listCmd->parsed()) {
+                    std::cout << "    Source: " << lib.builtFrom << "\n";
+                    std::cout << "    Path: " << lib.installPath.string() << "\n";
+                }
+            }
+        }
+    }
+    return 0;
+}
+
+// Helper to parse frame specification (e.g., "5", "0,5,10", "0-11", "0-20:2")
+static bool parseFrameSpec(const std::string& spec, std::set<int>& frames) {
+    frames.clear();
+    size_t start = 0;
+    while (start < spec.length()) {
+        size_t comma = spec.find(',', start);
+        std::string part = spec.substr(start, comma == std::string::npos ? std::string::npos : comma - start);
+
+        // Check for range: N-M or N-M:S
+        size_t dash = part.find('-');
+        if (dash != std::string::npos && dash > 0) {
+            int rangeStart, rangeEnd, step = 1;
+            size_t colon = part.find(':', dash);
+
+            try {
+                rangeStart = std::stoi(part.substr(0, dash));
+                if (colon != std::string::npos) {
+                    rangeEnd = std::stoi(part.substr(dash + 1, colon - dash - 1));
+                    step = std::stoi(part.substr(colon + 1));
+                } else {
+                    rangeEnd = std::stoi(part.substr(dash + 1));
+                }
+            } catch (...) {
+                return false;
+            }
+
+            if (rangeStart < 0 || rangeEnd < 0 || step < 1 || rangeEnd < rangeStart) {
+                return false;
+            }
+
+            for (int i = rangeStart; i <= rangeEnd; i += step) {
+                frames.insert(i);
+            }
+        } else {
+            try {
+                int frame = std::stoi(part);
+                if (frame < 0) return false;
+                frames.insert(frame);
+            } catch (...) {
+                return false;
+            }
+        }
+
+        if (comma == std::string::npos) break;
+        start = comma + 1;
+    }
+    return !frames.empty();
+}
+
+// Parse all CLI arguments using CLI11
+ParseResult parseArgs(int argc, char** argv) {
+    ParseResult result;
+
+    CLI::App app{"Vivid - Creative coding framework with hot-reload\n\n"
+                 "USAGE:\n"
+                 "  vivid <project-path> [OPTIONS]    Run a project\n"
+                 "  vivid <SUBCOMMAND>                Run a subcommand\n"};
     app.set_version_flag("-v,--version", std::string(VERSION));
     app.set_help_flag("-h,--help", "Show this help");
+    app.allow_extras(true);  // Allow project path as positional
 
-    // Allow positional argument for project path (handled by main runtime, not here)
-    // We need to detect if the first arg is a subcommand or a project path
+    // === Runtime options (for running a project) ===
+    std::string projectPath;
+    std::string snapshotPath;
+    std::string snapshotFrameSpec;
+    bool headless = false;
+    std::string windowSize;
+    std::string renderSize;
+    bool fullscreen = false;
+    std::string recordPath;
+    float recordFps = 60.0f;
+    float recordDuration = 0.0f;
+    bool recordAudio = false;
+    std::string recordCodec = "h264";
+    int maxFrames = 0;
+    bool showUI = false;
+
+    app.add_option("project", projectPath, "Project directory to run")
+       ->type_name("PATH");
+    app.add_option("--snapshot", snapshotPath, "Save screenshot to file and exit")
+       ->type_name("FILE");
+    app.add_option("--snapshot-frame", snapshotFrameSpec,
+                   "Frame(s) to capture: 5 | 0,5,10 | 0-11 | 0-20:2")
+       ->type_name("SPEC");
+    app.add_flag("--headless", headless, "Run without window (requires --snapshot or --record)");
+    app.add_option("--window", windowSize, "Window size (e.g., 1920x1080)")
+       ->type_name("WxH");
+    app.add_option("--render", renderSize, "Render resolution (e.g., 1920x1080)")
+       ->type_name("WxH");
+    app.add_flag("--fullscreen", fullscreen, "Start in fullscreen mode");
+    app.add_option("--record", recordPath, "Record video to file")
+       ->type_name("FILE");
+    app.add_option("--record-fps", recordFps, "Recording frame rate (default: 60)")
+       ->check(CLI::Range(0.1f, 240.0f));
+    app.add_option("--record-duration", recordDuration, "Recording duration in seconds")
+       ->check(CLI::Range(0.01f, 86400.0f));
+    app.add_flag("--record-audio", recordAudio, "Include audio in recording");
+    app.add_option("--record-codec", recordCodec, "Video codec: h264, h265, prores")
+       ->type_name("CODEC");
+    app.add_option("--frames", maxFrames, "Exit after N frames")
+       ->check(CLI::Range(1, 10000000));
+    app.add_flag("--show-ui", showUI, "Show chain visualizer UI");
+
+    // === Subcommands ===
 
     // 'new' subcommand
     std::string newProjectName;
@@ -1005,7 +1253,7 @@ int handleCommand(int argc, char** argv) {
     newCmd->add_option("-t,--template", newTemplate, "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit")
           ->default_val("blank");
     newCmd->add_option("-a,--addons", newAddons,
-                       "Addons to include (comma-separated): vivid-audio, vivid-video, vivid-render3d")
+                       "Modules to include: vivid-audio, vivid-video, vivid-render3d")
           ->delimiter(',');
     newCmd->add_flag("--minimal", newMinimal, "Use minimal template");
     newCmd->add_flag("-y,--yes", newYes, "Skip confirmation prompts");
@@ -1030,7 +1278,7 @@ int handleCommand(int argc, char** argv) {
     operatorsCmd->add_option("name", operatorName, "Show details for specific operator");
     operatorsCmd->add_flag("--json", operatorsJson, "Output as JSON");
 
-    // 'libs' subcommand group
+    // 'modules' subcommand group
     auto* modulesCmd = app.add_subcommand("modules", "Manage installed modules");
     modulesCmd->require_subcommand(0, 1);  // 0 or 1 subcommand
 
@@ -1059,215 +1307,127 @@ int handleCommand(int argc, char** argv) {
     // 'mcp' subcommand - MCP server for Claude Code integration
     auto* mcpCmd = app.add_subcommand("mcp", "Run MCP server for Claude Code integration");
 
-    // Check if first argument is a known subcommand or flag
-    if (argc < 2) {
-        printUsage();
-        return 0;
-    }
-
-    std::string firstArg = argv[1];
-
-    // If first arg doesn't look like a subcommand or flag, it's a project path
-    // Let main runtime handle it
-    if (firstArg != "new" && firstArg != "bundle" && firstArg != "operators" &&
-        firstArg != "modules" && firstArg != "mcp" &&
-        firstArg != "-h" && firstArg != "--help" &&
-        firstArg != "-v" && firstArg != "--version") {
-        return -1;  // Continue to main runtime
-    }
-
+    // Parse arguments
     try {
         app.parse(argc, argv);
     } catch (const CLI::ParseError& e) {
-        return app.exit(e);
+        result.handled = true;
+        result.exitCode = app.exit(e);
+        return result;
     }
 
-    // Handle subcommands
+    // Handle subcommands first
     if (newCmd->parsed()) {
-        if (newMinimal) {
-            newTemplate = "minimal";
-        }
-        return createProject(newProjectName, newTemplate, newMinimal, newYes, newAddons);
+        if (newMinimal) newTemplate = "minimal";
+        result.handled = true;
+        result.exitCode = createProject(newProjectName, newTemplate, newMinimal, newYes, newAddons);
+        return result;
     }
 
     if (bundleCmd->parsed()) {
-        return bundleProject(bundleProjectPath, bundleOutput, bundleName, bundlePlatform);
+        result.handled = true;
+        result.exitCode = bundleProject(bundleProjectPath, bundleOutput, bundleName, bundlePlatform);
+        return result;
     }
 
     if (mcpCmd->parsed()) {
-        return mcp::runServer();
+        result.handled = true;
+        result.exitCode = mcp::runServer();
+        return result;
     }
 
     if (operatorsCmd->parsed()) {
-        // Load addon modules so all operators are available
         loadAllModules();
-        auto& registry = OperatorRegistry::instance();
-
-        // If operator name specified, show details for that operator
-        if (!operatorName.empty()) {
-            const auto* meta = registry.find(operatorName);
-            if (!meta) {
-                std::cerr << "Error: Operator '" << operatorName << "' not found.\n";
-                std::cerr << "Use 'vivid operators' to list all available operators.\n";
-                return 1;
-            }
-
-            if (operatorsJson) {
-                // JSON output for single operator
-                json op;
-                op["name"] = meta->name;
-                op["category"] = meta->category;
-                op["description"] = meta->description;
-                op["addon"] = meta->addon.empty() ? json(nullptr) : json(meta->addon);
-                op["requiresInput"] = meta->requiresInput;
-                op["outputType"] = outputKindName(meta->outputKind);
-                op["params"] = json::array();
-
-                if (meta->factory) {
-                    try {
-                        auto tempOp = meta->factory();
-                        auto params = tempOp->params();
-                        for (const auto& p : params) {
-                            json param;
-                            param["name"] = p.name;
-                            param["min"] = p.minVal;
-                            param["max"] = p.maxVal;
-                            param["default"] = p.defaultVal[0];
-                            op["params"].push_back(param);
-                        }
-                    } catch (...) {}
-                }
-                std::cout << op.dump(2) << std::endl;
-            } else {
-                // Human-readable single operator details
-                std::cout << "# " << meta->name << "\n\n";
-                std::cout << meta->description << "\n\n";
-                std::cout << "Category: " << meta->category << "\n";
-                if (!meta->addon.empty()) {
-                    std::cout << "Addon: " << meta->addon << "\n";
-                }
-                std::cout << "Output: " << outputKindName(meta->outputKind) << "\n";
-                std::cout << "Requires input: " << (meta->requiresInput ? "Yes" : "No") << "\n";
-
-                // Show parameters
-                if (meta->factory) {
-                    try {
-                        auto tempOp = meta->factory();
-                        auto params = tempOp->params();
-                        if (!params.empty()) {
-                            std::cout << "\nParameters:\n";
-                            for (const auto& p : params) {
-                                std::cout << "  " << p.name;
-                                std::cout << " (" << p.minVal << " - " << p.maxVal << ")";
-                                std::cout << " default: " << p.defaultVal[0] << "\n";
-                            }
-                        }
-                    } catch (...) {
-                        std::cout << "\n(Could not inspect parameters)\n";
-                    }
-                }
-
-                // Usage example
-                std::cout << "\nUsage:\n";
-                std::cout << "  auto& op = chain.add<" << meta->name << ">(\"name\");\n";
-                if (meta->requiresInput) {
-                    std::cout << "  op.input(&other);\n";
-                }
-            }
-            return 0;
-        }
-
-        // List all operators
-        if (operatorsJson) {
-            registry.outputJson();
-        } else {
-            // Human-readable output
-            const auto& ops = registry.operators();
-            std::cout << "Available operators (" << ops.size() << "):\n\n";
-
-            std::string currentCategory;
-            for (const auto& op : ops) {
-                if (op.category != currentCategory) {
-                    if (!currentCategory.empty()) std::cout << "\n";
-                    currentCategory = op.category;
-                    std::cout << "## " << currentCategory << "\n";
-                }
-                std::cout << "  " << op.name;
-                if (!op.addon.empty()) {
-                    std::cout << " [" << op.addon << "]";
-                }
-                std::cout << " - " << op.description << "\n";
-            }
-
-            if (ops.empty()) {
-                std::cout << "No operators registered. This may be a build issue.\n";
-            }
-
-            std::cout << "\nFor details: vivid operators <name>\n";
-        }
-        return 0;
+        result.handled = true;
+        result.exitCode = handleOperatorsCommand(operatorName, operatorsJson);
+        return result;
     }
 
     if (modulesCmd->parsed()) {
-        auto& moduleMgr = ModuleManager::instance();
-
-        if (modulesInstallCmd->parsed()) {
-            return moduleMgr.install(modulesInstallUrl, modulesInstallRef) ? 0 : 1;
-        }
-
-        if (modulesRemoveCmd->parsed()) {
-            return moduleMgr.remove(modulesRemoveName) ? 0 : 1;
-        }
-
-        if (modulesUpdateCmd->parsed()) {
-            return moduleMgr.update(modulesUpdateName) ? 0 : 1;
-        }
-
-        // Default: list (or explicit 'modules list')
-        if (modulesJson || modulesListCmd->parsed()) {
-            if (modulesJson) {
-                moduleMgr.outputJson();
-            } else {
-                auto libs = moduleMgr.listInstalled();
-                if (libs.empty()) {
-                    std::cout << "No modules installed.\n\n";
-                    std::cout << "Install a library with:\n";
-                    std::cout << "  vivid modules install <git-url>\n\n";
-                    std::cout << "Example:\n";
-                    std::cout << "  vivid modules install https://github.com/seethroughlab/vivid-onnx\n";
-                } else {
-                    std::cout << "Installed modules (" << libs.size() << "):\n\n";
-                    for (const auto& lib : libs) {
-                        std::cout << "  " << lib.name << " v" << lib.version;
-                        if (!lib.gitRef.empty()) {
-                            std::cout << " (" << lib.gitRef << ")";
-                        }
-                        std::cout << "\n";
-                        std::cout << "    Source: " << lib.builtFrom << "\n";
-                        std::cout << "    Path: " << lib.installPath.string() << "\n";
-                    }
-                }
-            }
-            return 0;
-        }
-
-        // No subcommand - show list
-        auto libs = moduleMgr.listInstalled();
-        if (libs.empty()) {
-            std::cout << "No modules installed.\n\n";
-            std::cout << "Install a library with:\n";
-            std::cout << "  vivid modules install <git-url>\n";
-        } else {
-            std::cout << "Installed modules (" << libs.size() << "):\n\n";
-            for (const auto& lib : libs) {
-                std::cout << "  " << lib.name << " v" << lib.version << "\n";
-            }
-        }
-        return 0;
+        result.handled = true;
+        result.exitCode = handleModulesCommand(modulesInstallCmd, modulesRemoveCmd, modulesUpdateCmd, modulesListCmd,
+                                               modulesInstallUrl, modulesInstallRef, modulesRemoveName,
+                                               modulesUpdateName, modulesJson);
+        return result;
     }
 
-    // If we got here with --help or --version, CLI11 already handled it
-    return 0;
+    // No subcommand - need a project path
+    if (projectPath.empty()) {
+        printUsage();
+        result.handled = true;
+        result.exitCode = 0;
+        return result;
+    }
+
+    // Build AppConfig from parsed options
+    AppConfig config;
+    config.projectPath = projectPath;
+    config.snapshotPath = snapshotPath;
+    config.headless = headless;
+    config.startFullscreen = fullscreen;
+    config.showUI = showUI;
+    config.maxFrames = maxFrames;
+    config.recordPath = recordPath;
+    config.recordFps = recordFps;
+    config.recordDuration = recordDuration;
+    config.recordAudio = recordAudio;
+
+    // Parse snapshot frames
+    if (!snapshotFrameSpec.empty()) {
+        if (!parseFrameSpec(snapshotFrameSpec, config.snapshotFrames)) {
+            std::cerr << "Error: Invalid --snapshot-frame specification\n";
+            std::cerr << "  Usage: --snapshot-frame 5 | 0,5,10 | 0-11 | 0-20:2\n";
+            result.handled = true;
+            result.exitCode = 1;
+            return result;
+        }
+    }
+
+    // Parse window size
+    if (!windowSize.empty()) {
+        size_t x = windowSize.find('x');
+        if (x == std::string::npos) x = windowSize.find('X');
+        if (x != std::string::npos) {
+            try {
+                config.windowWidth = std::stoi(windowSize.substr(0, x));
+                config.windowHeight = std::stoi(windowSize.substr(x + 1));
+            } catch (...) {
+                std::cerr << "Error: Invalid --window size format. Use WxH (e.g., 1920x1080)\n";
+                result.handled = true;
+                result.exitCode = 1;
+                return result;
+            }
+        }
+    }
+
+    // Parse render size
+    if (!renderSize.empty()) {
+        size_t x = renderSize.find('x');
+        if (x == std::string::npos) x = renderSize.find('X');
+        if (x != std::string::npos) {
+            try {
+                config.renderWidth = std::stoi(renderSize.substr(0, x));
+                config.renderHeight = std::stoi(renderSize.substr(x + 1));
+            } catch (...) {
+                std::cerr << "Error: Invalid --render size format. Use WxH (e.g., 1920x1080)\n";
+                result.handled = true;
+                result.exitCode = 1;
+                return result;
+            }
+        }
+    }
+
+    // Parse record codec
+    if (recordCodec == "h265" || recordCodec == "hevc") {
+        config.recordCodec = ExportCodec::H265;
+    } else if (recordCodec == "prores" || recordCodec == "animation") {
+        config.recordCodec = ExportCodec::Animation;
+    } else {
+        config.recordCodec = ExportCodec::H264;
+    }
+
+    result.config = config;
+    return result;
 }
 
 } // namespace vivid::cli

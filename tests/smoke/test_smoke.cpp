@@ -89,8 +89,8 @@ TEST_CASE("Snapshot mode creates valid PNG", "[smoke][snapshot]") {
     // Clean up any existing file
     fs::remove(outputPath);
 
-    // Run with a simple example
-    std::string examplePath = getSourceDir() + "/projects/getting-started/02-hello-noise";
+    // Run with a simple example (hello-noise moved to vivid-core examples during restructure)
+    std::string examplePath = getSourceDir() + "/src/vivid-core/examples/hello-noise";
     int result = runSnapshot(examplePath, outputPath, 5);
 
     INFO("Command exit code: " << result);
@@ -219,10 +219,6 @@ TEST_CASE("3D rendering examples run without crash", "[smoke][3d]") {
         fs::remove(outputPath);
     }
 }
-
-// -----------------------------------------------------------------------------
-// Testing Fixtures Smoke Tests
-// -----------------------------------------------------------------------------
 
 TEST_CASE("Testing fixtures run without crash", "[smoke][fixtures]") {
     auto fixture = GENERATE(

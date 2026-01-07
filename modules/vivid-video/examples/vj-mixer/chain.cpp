@@ -107,12 +107,12 @@ void setup(Context& ctx) {
 
     // Color the noise
     auto& colored1 = chain.add<HSV>("colored1");
-    colored1.setInput(0, &noise1);
+    colored1.input("noise1");
     colored1.hueShift = 0.0f;
     colored1.saturation = 1.2f;
 
     auto& colored2 = chain.add<HSV>("colored2");
-    colored2.setInput(0, &noise2);
+    colored2.input("noise2");
     colored2.hueShift = 0.5f;
     colored2.saturation = 1.2f;
 
@@ -122,20 +122,20 @@ void setup(Context& ctx) {
 
     // Layer 1+2 mix
     auto& mix12 = chain.add<Composite>("mix12");
-    mix12.setInput(0, &colored1);
-    mix12.setInput(1, &colored2);
+    mix12.inputA("colored1");
+    mix12.inputB("colored2");
     mix12.mode(BlendMode::Add);
 
     // Layer 3+4 mix (uses same sources for demo)
     auto& mix34 = chain.add<Composite>("mix34");
-    mix34.setInput(0, &noise1);
-    mix34.setInput(1, &noise2);
+    mix34.inputA("noise1");
+    mix34.inputB("noise2");
     mix34.mode(BlendMode::Screen);
 
     // Crossfade between pairs
     auto& mixer = chain.add<Composite>("mixer");
-    mixer.setInput(0, &mix12);
-    mixer.setInput(1, &mix34);
+    mixer.inputA("mix12");
+    mixer.inputB("mix34");
     mixer.mode(BlendMode::Over);
     mixer.opacity = 0.0f;  // Full layer A by default
 
@@ -148,8 +148,8 @@ void setup(Context& ctx) {
 
     // Composite shapes over video
     auto& withShapes = chain.add<Composite>("withShapes");
-    withShapes.setInput(0, &mixer);
-    withShapes.setInput(1, &shapes);
+    withShapes.inputA("mixer");
+    withShapes.inputB("shapes");
     withShapes.mode(BlendMode::Add);
 
     // =========================================================================
@@ -167,8 +167,8 @@ void setup(Context& ctx) {
 
     // Composite text over shapes
     auto& withText = chain.add<Composite>("withText");
-    withText.setInput(0, &withShapes);
-    withText.setInput(1, &text);
+    withText.inputA("withShapes");
+    withText.inputB("text");
     withText.mode(BlendMode::Add);
 
     // =========================================================================
@@ -177,25 +177,25 @@ void setup(Context& ctx) {
 
     // Feedback for trails
     auto& feedback = chain.add<Feedback>("feedback");
-    feedback.setInput(0, &withText);
+    feedback.input("withText");
     feedback.decay = 0.85f;
     feedback.mix = 0.0f;  // Off by default
 
     // Bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");
-    bloom.setInput(0, &feedback);
+    bloom.input("feedback");
     bloom.threshold = 0.4f;
     bloom.intensity = 0.6f;
     bloom.radius = 15.0f;
 
     // Chromatic aberration (triggered on hits)
     auto& chroma = chain.add<ChromaticAberration>("chroma");
-    chroma.setInput(0, &bloom);
+    chroma.input("bloom");
     chroma.amount = 0.0f;
 
     // Color cycling
     auto& hsv = chain.add<HSV>("finalColor");
-    hsv.setInput(0, &chroma);
+    hsv.input("chroma");
     hsv.hueShift = 0.0f;
 
     chain.output("finalColor");

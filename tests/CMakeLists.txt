@@ -106,10 +106,13 @@ catch_discover_tests(test_integration
 option(BUILD_ADDON_TESTS "Build addon test suites" ON)
 
 if(BUILD_ADDON_TESTS)
+    include(${CMAKE_SOURCE_DIR}/src/vivid-core/tests/CMakeLists.txt)
     include(${CMAKE_SOURCE_DIR}/modules/vivid-audio/tests/CMakeLists.txt)
+    include(${CMAKE_SOURCE_DIR}/modules/vivid-video/tests/CMakeLists.txt)
     include(${CMAKE_SOURCE_DIR}/modules/vivid-render3d/tests/CMakeLists.txt)
     include(${CMAKE_SOURCE_DIR}/modules/vivid-network/tests/CMakeLists.txt)
     include(${CMAKE_SOURCE_DIR}/modules/vivid-serial/tests/CMakeLists.txt)
+    include(${CMAKE_SOURCE_DIR}/modules/vivid-midi/tests/CMakeLists.txt)
 endif()
 
 # -----------------------------------------------------------------------------

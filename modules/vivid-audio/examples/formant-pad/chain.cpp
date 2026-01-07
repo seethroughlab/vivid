@@ -67,37 +67,37 @@ void setup(Context& ctx) {
 
     // Main oscillator - saw wave
     auto& osc1 = chain.add<Oscillator>("osc1");
-    osc1.frequency(currentFreq)
-        .waveform(Waveform::Saw)
-        .volume(0.25f);
+    osc1.frequency = currentFreq;
+    osc1.waveform(Waveform::Saw);
+    osc1.volume = 0.25f;
 
     // Detuned oscillator - slightly sharp
     auto& osc2 = chain.add<Oscillator>("osc2");
-    osc2.frequency(currentFreq * 1.005f)
-        .waveform(Waveform::Saw)
-        .volume(0.20f);
+    osc2.frequency = currentFreq * 1.005f;
+    osc2.waveform(Waveform::Saw);
+    osc2.volume = 0.20f;
 
     // Detuned oscillator - slightly flat
     auto& osc3 = chain.add<Oscillator>("osc3");
-    osc3.frequency(currentFreq * 0.995f)
-        .waveform(Waveform::Saw)
-        .volume(0.20f);
+    osc3.frequency = currentFreq * 0.995f;
+    osc3.waveform(Waveform::Saw);
+    osc3.volume = 0.20f;
 
     // Sub oscillator - one octave down, sine for warmth
     auto& sub = chain.add<Oscillator>("sub");
-    sub.frequency(currentFreq * 0.5f)
-       .waveform(Waveform::Sine)
-       .volume(0.15f);
+    sub.frequency = currentFreq * 0.5f;
+    sub.waveform(Waveform::Sine);
+    sub.volume = 0.15f;
 
     // =========================================================================
     // ENVELOPE - Soft pad envelope
     // =========================================================================
 
     auto& env = chain.add<Envelope>("env");
-    env.attack(0.15f)    // Slow attack for pad feel
-       .decay(0.2f)
-       .sustain(0.7f)
-       .release(0.8f);   // Long release for pad
+    env.attack = 0.15f;    // Slow attack for pad feel
+    env.decay = 0.2f;
+    env.sustain = 0.7f;
+    env.release = 0.8f;    // Long release for pad
 
     // =========================================================================
     // MIXING & PROCESSING
@@ -105,44 +105,49 @@ void setup(Context& ctx) {
 
     // Mix oscillators
     auto& oscMix = chain.add<AudioMixer>("osc_mix");
-    oscMix.input(0, "osc1").gain(0, 1.0f)
-          .input(1, "osc2").gain(1, 1.0f)
-          .input(2, "osc3").gain(2, 1.0f)
-          .input(3, "sub").gain(3, 1.0f);
+    oscMix.setInput(0, "osc1");
+    oscMix.setGain(0, 1.0f);
+    oscMix.setInput(1, "osc2");
+    oscMix.setGain(1, 1.0f);
+    oscMix.setInput(2, "osc3");
+    oscMix.setGain(2, 1.0f);
+    oscMix.setInput(3, "sub");
+    oscMix.setGain(3, 1.0f);
 
     // Apply envelope
     auto& enveloped = chain.add<AudioGain>("enveloped");
     enveloped.input("osc_mix");
-    enveloped.gainInput("env");
+    enveloped.setGainInput("env");
 
     // =========================================================================
     // FORMANT FILTER - The vocal character
     // =========================================================================
 
     auto& formant = chain.add<Formant>("formant");
-    formant.input("enveloped")
-           .vowel(Vowel::A)
-           .resonance(resonance)
-           .mix(1.0f);
+    formant.input("enveloped");
+    formant.setVowel(Vowel::A);
+    formant.resonance = resonance;
+    formant.mix = 1.0f;
 
     // =========================================================================
     // EFFECTS - Reverb for space
     // =========================================================================
 
     auto& reverb = chain.add<Reverb>("reverb");
-    reverb.input("formant")
-          .roomSize(0.85f)
-          .damping(0.4f)
-          .mix(reverbMix);
+    reverb.input("formant");
+    reverb.roomSize = 0.85f;
+    reverb.damping = 0.4f;
+    reverb.mix = reverbMix;
 
     // Master gain
     auto& master = chain.add<AudioGain>("master");
     master.input("reverb");
-    master.gain(0.6f);
+    master.gain = 0.6f;
 
     // Audio output
     auto& audioOut = chain.add<AudioOutput>("audioOut");
-    audioOut.input("master").volume(0.8f);
+    audioOut.setInput("master");
+    audioOut.setVolume(0.8f);
 
     // Levels for visualization
     auto& levels = chain.add<Levels>("levels");
@@ -155,21 +160,24 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& bg = chain.add<Noise>("bg");
-    bg.set("scale", 3.0f).set("speed", 0.05f);
+    bg.scale = 3.0f;
+    bg.speed = 0.05f;
 
     auto& bgColor = chain.add<HSV>("bg_color");
-    bgColor.input("bg").saturation(0.6f).value(0.15f);
+    bgColor.input("bg");
+    bgColor.saturation = 0.6f;
+    bgColor.value = 0.15f;
 
     // Pulsing shape that responds to audio
     auto& pulse = chain.add<Shape>("pulse");
-    pulse.type(ShapeType::Circle)
-         .size(0.3f)
-         .color(1.0f, 0.5f, 0.3f, 0.8f);
+    pulse.type(ShapeType::Circle);
+    pulse.size.set(0.3f, 0.3f);
+    pulse.color.set(1.0f, 0.5f, 0.3f, 0.8f);
 
     auto& final_ = chain.add<Composite>("final");
-    final_.input(0, "bgColor")
-          .input(1, "pulse")
-          .mode(BlendMode::Add);
+    final_.inputA("bg_color");
+    final_.inputB("pulse");
+    final_.mode(BlendMode::Add);
 
     chain.output("final");
 
@@ -201,15 +209,15 @@ void update(Context& ctx) {
             currentFreq = freq;
 
             // Update oscillator frequencies
-            osc1.frequency(freq);
-            osc2.frequency(freq * 1.005f);
-            osc3.frequency(freq * 0.995f);
-            sub.frequency(freq * 0.5f);
+            osc1.frequency = freq;
+            osc2.frequency = freq * 1.005f;
+            osc3.frequency = freq * 0.995f;
+            sub.frequency = freq * 0.5f;
 
             // Random vowel selection
             int newVowel = std::rand() % 5;
             currentVowel = newVowel;
-            formant.vowel(static_cast<Vowel>(newVowel));
+            formant.setVowel(static_cast<Vowel>(newVowel));
 
             // Trigger envelope
             env.trigger();
@@ -226,24 +234,24 @@ void update(Context& ctx) {
     // Resonance adjustment
     if (ctx.key(GLFW_KEY_UP).pressed) {
         resonance = std::min(resonance + 1.0f, 20.0f);
-        formant.resonance(resonance);
+        formant.resonance = resonance;
         printStatus();
     }
     if (ctx.key(GLFW_KEY_DOWN).pressed) {
         resonance = std::max(resonance - 1.0f, 1.0f);
-        formant.resonance(resonance);
+        formant.resonance = resonance;
         printStatus();
     }
 
     // Reverb adjustment
     if (ctx.key(GLFW_KEY_RIGHT).pressed) {
         reverbMix = std::min(reverbMix + 0.1f, 1.0f);
-        reverb.mix(reverbMix);
+        reverb.mix = reverbMix;
         printStatus();
     }
     if (ctx.key(GLFW_KEY_LEFT).pressed) {
         reverbMix = std::max(reverbMix - 0.1f, 0.0f);
-        reverb.mix(reverbMix);
+        reverb.mix = reverbMix;
         printStatus();
     }
 
@@ -256,18 +264,18 @@ void update(Context& ctx) {
     noteDecay *= 0.95f;
 
     // Hue shifts based on current vowel
-    float hueOffset = visualHue + ctx.time() * 0.02f;
-    bgColor.hueShift(std::fmod(hueOffset, 1.0f));
+    float hueOffset = visualHue + static_cast<float>(ctx.time()) * 0.02f;
+    bgColor.hueShift = std::fmod(hueOffset, 1.0f);
 
     // Pulse size based on audio level
     float level = levels.rms();
-    pulse.size(0.15f + level * 0.3f);
+    pulse.size.set(0.15f + level * 0.3f, 0.15f + level * 0.3f);
 
     // Pulse color based on vowel (warm colors for back vowels, cool for front)
     float r = (currentVowel == 0 || currentVowel == 3 || currentVowel == 4) ? 1.0f : 0.4f;
     float g = 0.3f + noteDecay * 0.5f;
     float b = (currentVowel == 1 || currentVowel == 2) ? 1.0f : 0.4f;
-    pulse.color(r, g, b, 0.7f + noteDecay * 0.3f);
+    pulse.color.set(r, g, b, 0.7f + noteDecay * 0.3f);
 }
 
 VIVID_CHAIN(setup, update)

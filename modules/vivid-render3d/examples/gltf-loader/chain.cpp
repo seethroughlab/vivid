@@ -42,45 +42,45 @@ void setup(Context& ctx) {
     }
 
     // Load first model
-    auto& model = chain.add<GLTFLoader>("model")
-        .file(g_models[g_currentModel])
-        .loadTextures(true)
-        .computeTangents(true)
-        .scale(1.0f);
+    auto& model = chain.add<GLTFLoader>("model");
+    model.file(g_models[g_currentModel]);
+    model.loadTextures(true);
+    model.computeTangents(true);
+    model.scale = 1.0f;
 
     // Create scene
     auto& scene = SceneComposer::create(chain, "scene");
     scene.add(&model, glm::mat4(1.0f), glm::vec4(1.0f));
 
     // Camera - will be adjusted based on model bounds
-    auto& camera = chain.add<CameraOperator>("camera")
-        .orbitCenter(0, 0, 0)
-        .distance(3.0f)
-        .elevation(0.2f)
-        .fov(50.0f);
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.orbitCenter(0, 0, 0);
+    camera.distance(3.0f);
+    camera.elevation(0.2f);
+    camera.fov(50.0f);
 
     // Lighting
-    auto& sun = chain.add<DirectionalLight>("sun")
-        .direction(1, 2, 1)
-        .color(Color::fromHex("#FFFAF2"))  // Warm white
-        .intensity(2.0f);
+    auto& sun = chain.add<DirectionalLight>("sun");
+    sun.direction(1, 2, 1);
+    sun.color(1.0f, 0.98f, 0.95f);  // Warm white
+    sun.intensity = 2.0f;
 
     // IBL environment (now a proper chain operator)
-    auto& ibl = chain.add<IBLEnvironment>("ibl")
-        .hdrFile("assets/hdris/warm_reception_dinner_4k.hdr");
+    auto& ibl = chain.add<IBLEnvironment>("ibl");
+    ibl.setHdrFile("assets/hdris/warm_reception_dinner_4k.hdr");
 
     // Render with PBR + IBL
-    auto& render = chain.add<Render3D>("render")
-        .input("scene")
-        .cameraInput(&camera)
-        .lightInput(&sun)
-        .shadingMode(ShadingMode::PBR)
-        .ibl(true)
-        .environmentInput(&ibl)
-        .showSkybox(true)
-        .metallic(0.0f)
-        .roughness(0.5f)
-        .clearColor(Color::fromHex("#1A1A26"));
+    auto& render = chain.add<Render3D>("render");
+    render.setInput(&scene);
+    render.setCameraInput(&camera);
+    render.setLightInput(&sun);
+    render.setShadingMode(ShadingMode::PBR);
+    render.setIbl(true);
+    render.setEnvironmentInput(&ibl);
+    render.setShowSkybox(true);
+    render.setMetallic(0.0f);
+    render.setRoughness(0.5f);
+    render.setClearColor(0.1f, 0.1f, 0.15f);
 
     chain.output("render");
 
@@ -105,6 +105,9 @@ void fitCameraToModel(CameraOperator& camera, const Bounds3D& bounds) {
 }
 
 void update(Context& ctx) {
+    // Skip if no models were found
+    if (g_models.empty()) return;
+
     auto& camera = ctx.chain().get<CameraOperator>("camera");
     auto& model = ctx.chain().get<GLTFLoader>("model");
 

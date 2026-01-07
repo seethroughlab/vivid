@@ -37,80 +37,80 @@ void setup(Context& ctx) {
 
     // === Procedural Star Background ===
     // Worley noise = distance to nearest random point
-    auto& starNoise = chain.add<Noise>("starNoise")
-        .type(NoiseType::Worley)
-        .scale(80.0f)        // More, smaller stars
-        .octaves(1)
-        .speed(0.0f);
+    auto& starNoise = chain.add<Noise>("starNoise");
+    starNoise.type(NoiseType::Worley);
+    starNoise.scale = 80.0f;       // More, smaller stars
+    starNoise.octaves = 1;
+    starNoise.speed = 0.0f;
 
     // Invert and threshold tightly to get tiny points
-    auto& starPoints = chain.add<Brightness>("starPoints")
-        .input("starNoise")
-        .brightness(0.48f)    // Tighter = smaller points
-        .contrast(-20.0f)     // Sharp cutoff
-        .gamma(1.0f);
+    auto& starPoints = chain.add<Brightness>("starPoints");
+    starPoints.input("starNoise");
+    starPoints.brightness = 0.48f;    // Tighter = smaller points
+    starPoints.contrast = -20.0f;     // Sharp cutoff
+    starPoints.gamma = 1.0f;
 
     // Brightness variation layer
-    auto& starBrightness = chain.add<Noise>("starBrightness")
-        .type(NoiseType::Value)
-        .scale(40.0f)
-        .octaves(1)
-        .speed(0.0f);
+    auto& starBrightness = chain.add<Noise>("starBrightness");
+    starBrightness.type(NoiseType::Value);
+    starBrightness.scale = 40.0f;
+    starBrightness.octaves = 1;
+    starBrightness.speed = 0.0f;
 
     // Multiply stars by brightness variation
-    auto& stars = chain.add<Composite>("stars")
-        .inputA("starPoints")
-        .inputB("starBrightness")
-        .mode(BlendMode::Multiply);
+    auto& stars = chain.add<Composite>("stars");
+    stars.inputA("starPoints");
+    stars.inputB("starBrightness");
+    stars.mode(BlendMode::Multiply);
 
     // === Asteroid Geometry ===
     // Create asteroid mesh (higher poly for textures)
-    auto& asteroid = chain.add<Sphere>("asteroid")
-        .radius(0.15f)
-        .segments(16)
-        .computeTangents();  // Required for normal mapping
+    auto& asteroid = chain.add<Sphere>("asteroid");
+    asteroid.radius(0.15f);
+    asteroid.segments(16);
+    asteroid.computeTangents();  // Required for normal mapping
 
     // PBR rock material
-    auto& rockMaterial = chain.add<TexturedMaterial>("rockMaterial")
-        .baseColor("assets/materials/roughrockface2-bl/roughrockface2_Base_Color.png")
-        .normal("assets/materials/roughrockface2-bl/roughrockface2_Normal.png")
-        .metallic("assets/materials/roughrockface2-bl/roughrockface2_Metallic.png")
-        .roughness("assets/materials/roughrockface2-bl/roughrockface2_Roughness.png")
-        .ao("assets/materials/roughrockface2-bl/roughrockface2_Ambient_Occlusion.png");
+    auto& rockMaterial = chain.add<TexturedMaterial>("rockMaterial");
+    rockMaterial.baseColor("assets/materials/roughrockface2-bl/roughrockface2_Base_Color.png");
+    rockMaterial.normal("assets/materials/roughrockface2-bl/roughrockface2_Normal.png");
+    rockMaterial.metallic("assets/materials/roughrockface2-bl/roughrockface2_Metallic.png");
+    rockMaterial.roughness("assets/materials/roughrockface2-bl/roughrockface2_Roughness.png");
+    rockMaterial.ao("assets/materials/roughrockface2-bl/roughrockface2_Ambient_Occlusion.png");
 
     // Camera - will be positioned manually in update()
-    auto& camera = chain.add<CameraOperator>("camera")
-        .fov(70.0f)  // Wider FOV for immersion
-        .farPlane(300.0f);  // Extended for tunnel depth
+    auto& camera = chain.add<CameraOperator>("camera");
+    camera.fov(70.0f);  // Wider FOV for immersion
+    camera.farPlane(300.0f);  // Extended for tunnel depth
 
     // Lighting - from behind/above for dramatic effect
-    auto& sun = chain.add<DirectionalLight>("sun")
-        .direction(0.2f, 0.5f, 1.0f)  // Light from behind
-        .color(Color::fromHex("#FFF2E6"))  // Warm white
-        .intensity(1.5f);
+    auto& sun = chain.add<DirectionalLight>("sun");
+    sun.direction(0.2f, 0.5f, 1.0f);  // Light from behind
+    sun.color(1.0f, 0.95f, 0.9f);     // Warm white
+    sun.intensity = 1.5f;
 
     // Add a subtle fill light from the front
-    auto& fillLight = chain.add<DirectionalLight>("fill")
-        .direction(0.0f, 0.3f, -1.0f)
-        .color(Color::SteelBlue)
-        .intensity(0.5f);
+    auto& fillLight = chain.add<DirectionalLight>("fill");
+    fillLight.direction(0.0f, 0.3f, -1.0f);
+    fillLight.color(0.27f, 0.51f, 0.71f);  // Steel blue
+    fillLight.intensity = 0.5f;
 
     // Create instanced renderer with textured material
     // Transparent clear so stars show through empty space
-    auto& instanced = chain.add<InstancedRender3D>("asteroids")
-        .mesh(&asteroid)
-        .material(&rockMaterial)
-        .cameraInput(&camera)
-        .lightInput(&sun)
-        .addLight(&fillLight)
-        .ambient(0.15f)
-        .clearColor(Color::Transparent);
+    auto& instanced = chain.add<InstancedRender3D>("asteroids");
+    instanced.setMesh(&asteroid);
+    instanced.setMaterial(&rockMaterial);
+    instanced.setCameraInput(&camera);
+    instanced.setLightInput(&sun);
+    instanced.addLight(&fillLight);
+    instanced.ambient = 0.15f;
+    instanced.setClearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent
 
     // Over blend: asteroids (with alpha) composited over stars
-    auto& final = chain.add<Composite>("final")
-        .inputA("stars")      // Background: stars
-        .inputB("instanced")  // Foreground: asteroids (alpha=1 where geometry)
-        .mode(BlendMode::Over);
+    auto& final = chain.add<Composite>("final");
+    final.inputA("stars");       // Background: stars
+    final.inputB("asteroids");   // Foreground: asteroids (alpha=1 where geometry)
+    final.mode(BlendMode::Over);
 
     // Reserve capacity for asteroids
     instanced.reserve(NUM_ASTEROIDS);

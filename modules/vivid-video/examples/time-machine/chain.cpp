@@ -61,8 +61,6 @@ void setup(Context& ctx) {
     auto& webcam = chain.add<vivid::video::Webcam>("webcam");
     webcam.setResolution(1280, 720);
     webcam.setFrameRate(30.0f);
-
-    TextureOperator* source = &webcam;
     std::cout << "[Source: Webcam]" << std::endl;
 
 
@@ -71,7 +69,7 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& cache = chain.add<FrameCache>("cache");
-    cache.input(source);
+    cache.input("webcam");
     cache.frameCount = 64;  // ~2 seconds at 30fps
 
     // =========================================================================

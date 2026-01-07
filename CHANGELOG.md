@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.11] - 2026-01-06
+
+### Changed
+
+#### Unified CLI with CLI11
+- All runtime options now handled by CLI11 argument parser
+- `vivid --help` now documents all 14 runtime options (previously missing from help)
+- Runtime options: `--snapshot`, `--snapshot-frame`, `--headless`, `--record`, `--width`, `--height`, `--fps`, `--window`, `--frames`, `--vsync`, `--fullscreen`, `--float`, `--span`, `--debug-mode`
+- Subcommands retain full help: `vivid new --help`, `vivid bundle --help`, etc.
+- Simplified main.cpp from ~250 lines to ~50 lines
+
+### Fixed
+- Snapshot mode now exits immediately on compile error (was hanging indefinitely)
+- Snapshot mode now exits immediately on context error (e.g., missing chain file)
+- Added 30-second timeout for snapshot mode if no frames captured
+- Fixed smoke test path after examples restructure (`src/vivid-core/examples/`)
+
 ## [0.1.0-alpha.10] - 2026-01-06
 
 ### Added
@@ -264,7 +281,9 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.9...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.11...HEAD
+[0.1.0-alpha.11]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.10...v0.1.0-alpha.11
+[0.1.0-alpha.10]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.9...v0.1.0-alpha.10
 [0.1.0-alpha.9]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.8...v0.1.0-alpha.9
 [0.1.0-alpha.8]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.7...v0.1.0-alpha.8
 [0.1.0-alpha.7]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.6...v0.1.0-alpha.7

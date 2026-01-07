@@ -8,7 +8,7 @@
 #endif
 #endif
 
-#include "app.h"
+#include <vivid/app.h>
 
 #include <vivid/vivid.h>
 #include <vivid/context.h>
@@ -337,6 +337,8 @@ struct MainLoopContext {
     int snapshotFrameCounter = 0;
     std::set<int> snapshotFramesPending;  // Frames still to capture
     int snapshotFramesCaptured = 0;        // Count of frames captured
+    double snapshotStartTime = 0.0;        // When snapshot mode started (for timeout)
+    static constexpr double kSnapshotTimeout = 30.0;  // Exit after 30s if no snapshot
     VideoExporter cliRecorder;
     bool cliRecordingStarted = false;
     bool chainNeedsSetup = true;
@@ -559,8 +561,21 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     // Update error state from hot-reload
     if (mlc.hotReload->hasError()) {
         mlc.ctx->setError(mlc.hotReload->getError());
+
+        // In snapshot mode, exit immediately on compile error (don't wait for timeout)
+        if (!mlc.snapshotPath.empty() && !mlc.snapshotFramesPending.empty()) {
+            std::cerr << "Snapshot aborted: chain failed to compile\n"
+                      << mlc.hotReload->getError() << std::endl;
+            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
+        }
     } else if (mlc.hotReload->isLoaded()) {
         mlc.ctx->clearError();
+    }
+
+    // In snapshot mode, also exit immediately if there's a context-level error (e.g., file not found)
+    if (!mlc.snapshotPath.empty() && !mlc.snapshotFramesPending.empty() && mlc.ctx->hasError()) {
+        std::cerr << "Snapshot aborted: " << mlc.ctx->errorMessage() << std::endl;
+        glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
     }
 
     // Notify connected editors of compile status
@@ -795,6 +810,14 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                         mlc.snapshotFramesPending.erase(currentFrame);  // Don't retry
                     }
                 }
+            }
+
+            // Timeout check: if no snapshots captured after kSnapshotTimeout seconds, exit with error
+            if (mlc.snapshotFramesCaptured == 0 &&
+                glfwGetTime() - mlc.snapshotStartTime > mlc.kSnapshotTimeout) {
+                std::cerr << "Snapshot timeout: no frames captured after "
+                          << mlc.kSnapshotTimeout << " seconds (chain may have failed to compile)" << std::endl;
+                glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
             }
         }
 
@@ -1587,6 +1610,7 @@ int Application::init(const AppConfig& config) {
             mlc.snapshotFrames = config.snapshotFrames;
         }
         mlc.snapshotFramesPending = mlc.snapshotFrames;
+        mlc.snapshotStartTime = glfwGetTime();  // Start timeout clock
     }
     mlc.headless = config.headless;
     mlc.renderWidth = config.renderWidth;

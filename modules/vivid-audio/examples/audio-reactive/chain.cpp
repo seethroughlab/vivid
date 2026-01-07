@@ -37,10 +37,13 @@ void setup(Context& ctx) {
     // =========================================================================
 
     auto& audioFile = chain.add<AudioFile>("audioFile");
-    audioFile.file(audioFiles[currentFileIndex]).loop(true).volume(0.8f);
+    audioFile.setFile(audioFiles[currentFileIndex]);
+    audioFile.loop(true);
+    audioFile.volume = 0.8f;
 
     auto& mic = chain.add<AudioIn>("mic");
-    mic.volume(1.0f).mute(true);
+    mic.volume = 1.0f;
+    mic.setMute(true);
 
     // =========================================================================
     // Audio Analysis
@@ -48,26 +51,33 @@ void setup(Context& ctx) {
 
     // Levels - overall amplitude
     auto& levels = chain.add<Levels>("levels");
-    levels.input("audioFile").smoothing(0.85f);
+    levels.input("audioFile");
+    levels.smoothing = 0.85f;
 
     // BandSplit - frequency bands (bass, mids, highs)
     auto& bands = chain.add<BandSplit>("bands");
-    bands.input("audioFile").smoothing(0.9f);
+    bands.input("audioFile");
+    bands.smoothing = 0.9f;
 
     // BeatDetect - onset detection
     auto& beat = chain.add<BeatDetect>("beat");
-    beat.input("audioFile").sensitivity(1.5f).decay(0.92f);
+    beat.input("audioFile");
+    beat.sensitivity = 1.5f;
+    beat.decay = 0.92f;
 
     // FFT - full spectrum
     auto& fft = chain.add<FFT>("fft");
-    fft.input("audioFile").size(512).smoothing(0.7f);
+    fft.input("audioFile");
+    fft.setSize(512);
+    fft.smoothing = 0.7f;
 
     // =========================================================================
     // Audio Output
     // =========================================================================
 
     auto& out = chain.add<AudioOutput>("out");
-    out.input("audioFile").volume(0.8f);
+    out.setInput("audioFile");
+    out.setVolume(0.8f);
     chain.audioOutput("out");
 
     // =========================================================================
@@ -76,31 +86,45 @@ void setup(Context& ctx) {
 
     // Background gradient - color shifts with bass
     auto& gradient = chain.add<Gradient>("bg");
-    gradient.colorA(Color::fromHex("#0D0519")).colorB(Color::fromHex("#050D14"));
+    gradient.colorA.set(0.05f, 0.02f, 0.1f, 1.0f);
+    gradient.colorB.set(0.02f, 0.05f, 0.08f, 1.0f);
 
     // Noise layer - reacts to mids
     auto& noise = chain.add<Noise>("noise");
-    noise.set("scale", 20.0f).set("speed", 0.5f).set("octaves", 4);
+    noise.scale = 20.0f;
+    noise.speed = 0.5f;
+    noise.octaves = 4;
 
     // Shape - pulses with beat
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Circle).size(0.3f).softness(0.05f);
-    shape.color(Color::Gold);
+    shape.type(ShapeType::Circle);
+    shape.size.set(0.3f, 0.3f);
+    shape.softness = 0.05f;
+    shape.color.set(1.0f, 0.84f, 0.0f, 1.0f);  // Gold
 
     // Composite layers
     auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA("gradient").inputB("noise").mode(BlendMode::Add).opacity(0.3f);
+    comp1.inputA("bg");
+    comp1.inputB("noise");
+    comp1.mode(BlendMode::Add);
+    comp1.opacity = 0.3f;
 
     auto& comp2 = chain.add<Composite>("comp2");
-    comp2.inputA("comp1").inputB("shape").mode(BlendMode::Add).opacity(1.0f);
+    comp2.inputA("comp1");
+    comp2.inputB("shape");
+    comp2.mode(BlendMode::Add);
+    comp2.opacity = 1.0f;
 
     // Final bloom for glow effect
     auto& bloom = chain.add<Blur>("bloom");
     bloom.input("comp2");
-    bloom.set("radius", 8.0f);
+    bloom.radius = 8.0f;
 
-    auto& final = chain.add<Composite>("final");
-    final.inputA("comp2").inputB("bloom").mode(BlendMode::Add).opacity(0.4f);
+    auto& final_ = chain.add<Composite>("final");
+    final_.inputA("comp2");
+    final_.inputB("bloom");
+    final_.mode(BlendMode::Add);
+    final_.opacity = 0.4f;
 
     chain.output("final");
 
@@ -145,20 +169,20 @@ void update(Context& ctx) {
         useMic = !useMic;
         if (useMic) {
             audioFile.pause();
-            mic.mute(false);
+            mic.setMute(false);
             levels.input("mic");
             bands.input("mic");
             beat.input("mic");
             fft.input("mic");
-            chain.get<AudioOutput>("out").input("mic");
+            chain.get<AudioOutput>("out").setInput("mic");
             std::cout << "[Audio] Switched to MICROPHONE" << std::endl;
         } else {
-            mic.mute(true);
+            mic.setMute(true);
             levels.input("audioFile");
             bands.input("audioFile");
             beat.input("audioFile");
             fft.input("audioFile");
-            chain.get<AudioOutput>("out").input("audioFile");
+            chain.get<AudioOutput>("out").setInput("audioFile");
             audioFile.play();
             std::cout << "[Audio] Switched to FILE" << std::endl;
         }
@@ -166,10 +190,10 @@ void update(Context& ctx) {
 
     // Number keys - switch files
     if (!useMic) {
-        for (int i = 0; i < std::min((int)audioFiles.size(), 3); i++) {
+        for (int i = 0; i < std::min(static_cast<int>(audioFiles.size()), 3); i++) {
             if (ctx.key(GLFW_KEY_1 + i).pressed && i != currentFileIndex) {
                 currentFileIndex = i;
-                audioFile.file(audioFiles[currentFileIndex]);
+                audioFile.setFile(audioFiles[currentFileIndex]);
                 std::cout << "[Audio] Switched to: " << audioFiles[currentFileIndex] << std::endl;
             }
         }
@@ -192,7 +216,6 @@ void update(Context& ctx) {
 
     // Get analysis values
     float rms = levels.rms();
-    float peak = levels.peak();
     float bass = bands.bass();
     float subBass = bands.subBass();
     float mid = bands.mid();
@@ -205,30 +228,44 @@ void update(Context& ctx) {
     float r = 0.05f + bass * 0.2f;
     float g = 0.02f + subBass * 0.1f;
     float b = 0.1f + mid * 0.15f;
-    gradient.colorA(r, g, b);
-    gradient.colorB(r * 0.4f, g * 0.8f, b * 0.6f);
+    gradient.colorA.set(r, g, b, 1.0f);
+    gradient.colorB.set(r * 0.4f, g * 0.8f, b * 0.6f, 1.0f);
 
     // Noise reacts to mids and highs
     float noiseScale = 15.0f + mid * 30.0f + high * 20.0f;
     float noiseSpeed = 0.3f + energy * 2.0f;
-    noise.set("scale", noiseScale);
-    noise.set("speed", noiseSpeed);
-    comp1.opacity(0.2f + rms * 0.5f);
+    noise.scale = noiseScale;
+    noise.speed = noiseSpeed;
+    comp1.opacity = 0.2f + rms * 0.5f;
 
     // Shape pulses with beat
     float baseSize = 0.2f + rms * 0.2f;
     float beatPulse = isBeat ? 0.3f : beatIntensity * 0.2f;
-    shape.size(baseSize + beatPulse);
-    shape.softness(0.02f + beatIntensity * 0.1f);
+    shape.size.set(baseSize + beatPulse, baseSize + beatPulse);
+    shape.softness = 0.02f + beatIntensity * 0.1f;
 
-    // Shape color shifts with HSV - using Color::fromHSV() for clean conversion
+    // Shape color shifts with HSV
     float hue = std::fmod(static_cast<float>(ctx.time()) * 0.1f + bass, 1.0f);
     float sat = 0.7f + high * 0.3f;
     float val = 0.8f + beatIntensity * 0.2f;
-    shape.color(Color::fromHSV(hue, sat, val));
+    // Convert HSV to RGB
+    float c = val * sat;
+    float x = c * (1.0f - std::abs(std::fmod(hue * 6.0f, 2.0f) - 1.0f));
+    float m = val - c;
+    float rs, gs, bs;
+    int hi = static_cast<int>(hue * 6.0f) % 6;
+    switch (hi) {
+        case 0: rs = c; gs = x; bs = 0; break;
+        case 1: rs = x; gs = c; bs = 0; break;
+        case 2: rs = 0; gs = c; bs = x; break;
+        case 3: rs = 0; gs = x; bs = c; break;
+        case 4: rs = x; gs = 0; bs = c; break;
+        default: rs = c; gs = 0; bs = x; break;
+    }
+    shape.color.set(rs + m, gs + m, bs + m, 1.0f);
 
     // Bloom radius increases with energy
-    bloom.set("radius", 4.0f + energy * 20.0f);
+    bloom.radius = 4.0f + energy * 20.0f;
 }
 
 VIVID_CHAIN(setup, update)

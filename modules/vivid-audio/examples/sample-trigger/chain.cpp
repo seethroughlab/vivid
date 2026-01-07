@@ -12,6 +12,7 @@
 #include <vivid/audio_output.h>
 #include <iostream>
 #include <cmath>
+#include <cstdlib>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -31,21 +32,21 @@ void setup(Context& ctx) {
     // Or change the path below to your sample folder
 
     auto& bank = chain.add<SampleBank>("bank");
-    bank.folder("assets/audio/samples");
+    bank.setFolder("assets/audio/samples");
 
     // Alternative: Load individual files
-    // bank.file("assets/audio/kick.wav")
-    //     .file("assets/audio/snare.wav")
-    //     .file("assets/audio/hihat.wav");
+    // bank.addFile("assets/audio/kick.wav");
+    // bank.addFile("assets/audio/snare.wav");
+    // bank.addFile("assets/audio/hihat.wav");
 
     // =========================================================================
     // Sample Player - Polyphonic sample playback
     // =========================================================================
 
     auto& player = chain.add<SamplePlayer>("player");
-    player.bank("bank")
-          .voices(16)    // Max 16 simultaneous voices
-          .volume(0.8f);
+    player.setBank("bank");
+    player.setVoices(16);    // Max 16 simultaneous voices
+    player.volume = 0.8f;
 
     // =========================================================================
     // Effects Chain
@@ -53,21 +54,23 @@ void setup(Context& ctx) {
 
     // Add reverb for ambience
     auto& reverb = chain.add<Reverb>("reverb");
-    reverb.input("player")
-          .roomSize(0.4f)
-          .damping(0.5f)
-          .mix(0.2f);
+    reverb.input("player");
+    reverb.roomSize = 0.4f;
+    reverb.damping = 0.5f;
+    reverb.mix = 0.2f;
 
     // Master gain control
     auto& gain = chain.add<AudioGain>("gain");
-    gain.gain(1.0f).input("reverb");
+    gain.input("reverb");
+    gain.gain = 1.0f;
 
     // =========================================================================
     // Audio Output
     // =========================================================================
 
     auto& audioOut = chain.add<AudioOutput>("audioOut");
-    audioOut.input("gain").volume(1.0f);
+    audioOut.setInput("gain");
+    audioOut.setVolume(1.0f);
     chain.audioOutput("audioOut");
 
     // =========================================================================
@@ -76,7 +79,7 @@ void setup(Context& ctx) {
 
     // Dark background
     auto& bg = chain.add<SolidColor>("bg");
-    bg.color(Color::fromHex("#140F1A"));
+    bg.color.set(0.08f, 0.06f, 0.1f, 1.0f);
 
     // Create 8 pad visualizers in a 4x2 grid
     for (int i = 0; i < 8; ++i) {
@@ -86,23 +89,35 @@ void setup(Context& ctx) {
         float x = 0.2f + (i % 4) * 0.2f;  // 4 columns
         float y = 0.4f + (i / 4) * 0.3f;  // 2 rows
 
-        // Color palette - different color per pad using HSV
+        // Color palette - different color per pad using HSV conversion
         float hue = static_cast<float>(i) / 8.0f;
-        Color padColor = Color::fromHSV(hue, 0.8f, 1.0f);
+        // Convert HSV to RGB (S=0.8, V=1.0)
+        float c = 1.0f * 0.8f;
+        float xx = c * (1.0f - std::abs(std::fmod(hue * 6.0f, 2.0f) - 1.0f));
+        float m = 1.0f - c;
+        float r, g, b;
+        int hi = static_cast<int>(hue * 6.0f) % 6;
+        switch (hi) {
+            case 0: r = c; g = xx; b = 0; break;
+            case 1: r = xx; g = c; b = 0; break;
+            case 2: r = 0; g = c; b = xx; break;
+            case 3: r = 0; g = xx; b = c; break;
+            case 4: r = xx; g = 0; b = c; break;
+            default: r = c; g = 0; b = xx; break;
+        }
 
-        pad.type(ShapeType::Rectangle)
-           .position(x, y)
-           .size(0.12f, 0.18f)
-           .color(padColor.withAlpha(0.3f))
-           .cornerRadius(0.02f);
+        pad.type(ShapeType::Rectangle);
+        pad.position.set(x, y);
+        pad.size.set(0.12f, 0.18f);
+        pad.color.set(r + m, g + m, b + m, 0.3f);
+        pad.cornerRadius = 0.02f;
     }
 
     // Composite all layers
     auto& comp = chain.add<Composite>("comp");
-    comp.input(0, &bg);
+    comp.input(0, "bg");
     for (int i = 0; i < 8; ++i) {
-        auto& pad = chain.get<Shape>("pad" + std::to_string(i));
-        comp.input(i + 1, &pad);
+        comp.input(i + 1, "pad" + std::to_string(i));
     }
     comp.mode(BlendMode::Add);
 
@@ -207,20 +222,16 @@ void update(Context& ctx) {
     // Volume Control
     // =========================================================================
 
-    float currentGain = 1.0f;
-    float gainVal[4];
-    if (gain.getParam("gain", gainVal)) {
-        currentGain = gainVal[0];
-    }
+    float currentGain = static_cast<float>(gain.gain);
 
     if (ctx.key(GLFW_KEY_UP).pressed) {
         currentGain = std::min(currentGain + 0.1f, 2.0f);
-        gain.gain(currentGain);
+        gain.gain = currentGain;
         std::cout << "\r[Volume: " << static_cast<int>(currentGain * 100) << "%]   " << std::flush;
     }
     if (ctx.key(GLFW_KEY_DOWN).pressed) {
         currentGain = std::max(currentGain - 0.1f, 0.0f);
-        gain.gain(currentGain);
+        gain.gain = currentGain;
         std::cout << "\r[Volume: " << static_cast<int>(currentGain * 100) << "%]   " << std::flush;
     }
 
@@ -238,13 +249,26 @@ void update(Context& ctx) {
         // Update size - pulse on hit
         float baseSize = 0.12f;
         float hitSize = baseSize + hitDecay[i] * 0.04f;
-        pad.size(hitSize, hitSize * 1.5f);
+        pad.size.set(hitSize, hitSize * 1.5f);
 
-        // Update color - brighten on hit using HSV
+        // Update color - brighten on hit
         float hue = static_cast<float>(i) / 8.0f;
-        Color padColor = Color::fromHSV(hue, 0.8f, 1.0f);
+        // Convert HSV to RGB
+        float c = 1.0f * 0.8f;
+        float xx = c * (1.0f - std::abs(std::fmod(hue * 6.0f, 2.0f) - 1.0f));
+        float m = 1.0f - c;
+        float r, g, b;
+        int hi = static_cast<int>(hue * 6.0f) % 6;
+        switch (hi) {
+            case 0: r = c; g = xx; b = 0; break;
+            case 1: r = xx; g = c; b = 0; break;
+            case 2: r = 0; g = c; b = xx; break;
+            case 3: r = 0; g = xx; b = c; break;
+            case 4: r = xx; g = 0; b = c; break;
+            default: r = c; g = 0; b = xx; break;
+        }
         float brightness = 0.3f + hitDecay[i] * 0.7f;
-        pad.color(padColor.withAlpha(brightness));
+        pad.color.set(r + m, g + m, b + m, brightness);
     }
 }
 

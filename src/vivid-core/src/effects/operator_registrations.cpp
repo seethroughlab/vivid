@@ -54,61 +54,81 @@ REGISTER_OPERATOR_FULL(Noise, "Generators", "Fractal noise generator", false)
     ;
 REGISTER_OPERATOR_FULL(SolidColor, "Generators", "Solid color fill", false)
     .related({"Gradient", "Shape"})
+    .examples({"modules/vivid-core/examples/generators/"})
     ;
 REGISTER_OPERATOR_FULL(Gradient, "Generators", "Color gradient", false)
     .related({"Noise", "Ramp", "SolidColor"})
+    .examples({"modules/vivid-core/examples/generators/"})
     ;
 REGISTER_OPERATOR_FULL(Ramp, "Generators", "Animated HSV gradient", false)
     .related({"Gradient", "LFO"})
+    .examples({"modules/vivid-core/examples/generators/"})
     ;
 REGISTER_OPERATOR_FULL(Shape, "Generators", "SDF shape generator", false)
     .related({"Canvas", "SolidColor"})
+    .examples({"modules/vivid-core/examples/generators/"})
     ;
-REGISTER_OPERATOR_EX(LFO, "Generators", "Low frequency oscillator", false, vivid::OutputKind::Value);
+REGISTER_OPERATOR_FULL_EX(LFO, "Generators", "Low frequency oscillator", false, vivid::OutputKind::Value)
+    .examples({"modules/vivid-core/examples/generators/"})
+    ;
 REGISTER_OPERATOR_FULL(Image, "Generators", "Load image from file", false)
     .limitations({"Supports PNG, JPG, BMP, TGA", "Large images may cause memory pressure"})
     .related({"Video", "Transform"})
+    .examples({"modules/vivid-core/examples/image-pipeline/"})
     ;
 
 // Effects (require input)
 REGISTER_OPERATOR_FULL(Blur, "Effects", "Gaussian blur", true)
     .related({"Bloom", "Edge", "Feedback"})
+    .examples({"modules/vivid-core/examples/blur-bloom/"})
     ;
 REGISTER_OPERATOR_FULL(HSV, "Effects", "Hue/saturation/value adjustment", true)
     .related({"Brightness", "Quantize"})
+    .examples({"modules/vivid-core/examples/color-grading/"})
     ;
 REGISTER_OPERATOR_FULL(Brightness, "Effects", "Brightness and contrast", true)
     .related({"HSV", "Bloom"})
+    .examples({"modules/vivid-core/examples/color-grading/"})
     ;
 REGISTER_OPERATOR_FULL(Transform, "Effects", "Scale, rotate, translate", true)
     .related({"Mirror", "Tile", "Feedback"})
+    .examples({"modules/vivid-core/examples/image-pipeline/"})
     ;
 REGISTER_OPERATOR_FULL(Mirror, "Effects", "Axis mirroring and kaleidoscope", true)
     .related({"Transform", "Tile"})
+    .examples({"modules/vivid-core/examples/image-pipeline/"})
     ;
 REGISTER_OPERATOR_FULL(Displace, "Effects", "Texture displacement", true)
     .related({"Noise", "Transform", "TimeMachine"})
+    .examples({"modules/vivid-core/examples/distortion/"})
     ;
 REGISTER_OPERATOR_FULL(Edge, "Effects", "Edge detection", true)
     .related({"Blur", "Brightness"})
+    .examples({"modules/vivid-core/examples/distortion/"})
     ;
 REGISTER_OPERATOR_FULL(Pixelate, "Effects", "Mosaic/pixelation effect", true)
     .related({"Downsample", "Quantize", "Dither"})
+    .examples({"modules/vivid-core/examples/creative-effects/"})
     ;
 REGISTER_OPERATOR_FULL(Tile, "Effects", "Texture tiling", true)
     .related({"Transform", "Mirror"})
+    .examples({"modules/vivid-core/examples/image-pipeline/"})
     ;
 REGISTER_OPERATOR_FULL(ChromaticAberration, "Effects", "RGB channel separation", true)
     .related({"BarrelDistortion", "CRTEffect"})
+    .examples({"modules/vivid-core/examples/distortion/"})
     ;
 REGISTER_OPERATOR_FULL(Bloom, "Effects", "Glow/bloom effect", true)
     .related({"Blur", "Brightness", "Flash"})
+    .examples({"modules/vivid-core/examples/blur-bloom/"})
     ;
 REGISTER_OPERATOR_FULL(Vignette, "Effects", "Edge darkening vignette", true)
     .related({"CRTEffect", "BarrelDistortion"})
+    .examples({"modules/vivid-core/examples/blur-bloom/"})
     ;
 REGISTER_OPERATOR_FULL(BarrelDistortion, "Effects", "Barrel/pincushion distortion", true)
     .related({"ChromaticAberration", "CRTEffect", "Vignette"})
+    .examples({"modules/vivid-core/examples/distortion/"})
     ;
 REGISTER_OPERATOR_FULL(Feedback, "Effects", "Frame feedback loop", true)
     .limitations({"Requires careful decay settings to avoid whiteout", "High memory usage at large resolutions"})
@@ -118,24 +138,30 @@ REGISTER_OPERATOR_FULL(Feedback, "Effects", "Frame feedback loop", true)
 REGISTER_OPERATOR_FULL(FrameCache, "Effects", "Buffer multiple frames", true)
     .limitations({"Memory usage scales with frame count", "Max 128 frames"})
     .related({"TimeMachine", "Feedback"})
+    .examples({"modules/vivid-video/examples/time-machine/"})
     ;
 REGISTER_OPERATOR_FULL(TimeMachine, "Effects", "Temporal displacement", true)
     .related({"FrameCache", "Displace", "Feedback"})
+    .examples({"modules/vivid-video/examples/time-machine/"})
     ;
 REGISTER_OPERATOR_FULL(Plexus, "Effects", "Connected particle network", true)
     .limitations({"CPU-based line drawing", "Performance degrades with many points"})
     .related({"Particles", "PointSprites"})
+    .examples({"modules/vivid-core/examples/creative-effects/"})
     ;
 
 // Retro Effects
 REGISTER_OPERATOR_FULL(Dither, "Retro", "Ordered dithering", true)
     .related({"Quantize", "Downsample", "Pixelate"})
+    .examples({"modules/vivid-core/examples/retro-crt/"})
     ;
 REGISTER_OPERATOR_FULL(Quantize, "Retro", "Color quantization", true)
     .related({"Dither", "Downsample", "HSV"})
+    .examples({"modules/vivid-core/examples/color-grading/", "modules/vivid-core/examples/retro-crt/"})
     ;
 REGISTER_OPERATOR_FULL(Scanlines, "Retro", "CRT scanline effect", true)
     .related({"CRTEffect", "Downsample"})
+    .examples({"modules/vivid-core/examples/retro-crt/"})
     ;
 REGISTER_OPERATOR_FULL(CRTEffect, "Retro", "Full CRT simulation", true)
     .related({"Scanlines", "BarrelDistortion", "ChromaticAberration", "Vignette"})
@@ -143,22 +169,27 @@ REGISTER_OPERATOR_FULL(CRTEffect, "Retro", "Full CRT simulation", true)
     ;
 REGISTER_OPERATOR_FULL(Downsample, "Retro", "Low resolution effect", true)
     .related({"Pixelate", "Quantize", "Dither"})
+    .examples({"modules/vivid-core/examples/retro-crt/"})
     ;
 REGISTER_OPERATOR_FULL(FilmGrain, "Retro", "Film grain overlay", true)
     .related({"Noise", "Composite"})
+    .examples({"modules/vivid-core/examples/creative-effects/"})
     ;
 REGISTER_OPERATOR_FULL(Flash, "Retro", "Beat-synced flash overlay", true)
     .limitations({"Requires trigger() call or audio input for sync"})
     .related({"Bloom", "Composite"})
+    .examples({"modules/vivid-core/examples/creative-effects/"})
     ;
 
 // Compositing
 REGISTER_OPERATOR_FULL(Composite, "Compositing", "Blend two textures", true)
     .related({"Switch", "Transform", "Canvas"})
+    .examples({"modules/vivid-core/examples/compositing/"})
     ;
 REGISTER_OPERATOR_FULL(Switch, "Compositing", "Switch between inputs", true)
     .limitations({"Max 8 inputs"})
     .related({"Composite", "Logic"})
+    .examples({"modules/vivid-core/examples/compositing/"})
     ;
 
 // Particles
@@ -169,10 +200,12 @@ REGISTER_OPERATOR_FULL(Particles, "Particles", "2D particle system", false)
     ;
 REGISTER_OPERATOR_FULL(PointSprites, "Particles", "Point-based particles", false)
     .related({"Particles", "Plexus"})
+    .examples({"modules/vivid-core/examples/particles/"})
     ;
 REGISTER_OPERATOR_FULL(GPUParticles, "Particles", "GPU compute particle system", false)
     .limitations({"Requires WebGPU compute shader support", "Fixed 64-byte particle struct"})
     .related({"Particles", "Plexus", "PointSprites", "ParticleSystem"})
+    .examples({"modules/vivid-core/examples/particles/"})
     ;
 REGISTER_OPERATOR_FULL(ParticleSystem, "Particles", "Unified particle system with CPU/GPU simulation and multiple render modes", false)
     .limitations({"GPU simulation and Billboard/Mesh rendering are work in progress"})
@@ -186,6 +219,12 @@ REGISTER_OPERATOR_FULL(Canvas, "Canvas", "Imperative 2D drawing", false)
     .examples({"modules/vivid-core/examples/canvas-drawing/"})
     ;
 
-// Math/Logic (keep basic registration for correct OutputKind::Value)
-REGISTER_OPERATOR_EX(Math, "Math/Logic", "Mathematical operations", false, vivid::OutputKind::Value);
-REGISTER_OPERATOR_EX(Logic, "Math/Logic", "Logical comparisons", false, vivid::OutputKind::Value);
+// Math/Logic (use FULL_EX for chaining .examples())
+REGISTER_OPERATOR_FULL_EX(Math, "Math/Logic", "Mathematical operations", false, vivid::OutputKind::Value)
+    .related({"Logic", "LFO"})
+    .examples({"modules/vivid-core/examples/compositing/"})
+    ;
+REGISTER_OPERATOR_FULL_EX(Logic, "Math/Logic", "Logical comparisons", false, vivid::OutputKind::Value)
+    .related({"Math", "Switch"})
+    .examples({"modules/vivid-core/examples/compositing/"})
+    ;

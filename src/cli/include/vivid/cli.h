@@ -1,9 +1,11 @@
 // Vivid CLI Commands
-// Handles: vivid new, vivid --help, vivid --version
+// Handles all CLI parsing via CLI11
 
 #pragma once
 
+#include <vivid/app.h>
 #include <string>
+#include <optional>
 
 namespace vivid::cli {
 
@@ -13,9 +15,16 @@ namespace vivid::cli {
 #endif
 constexpr const char* VERSION = VIVID_VERSION;
 
-// Handle CLI commands before GPU initialization
-// Returns: 0+ = handled (exit with this code), -1 = not a CLI command (continue to main)
-int handleCommand(int argc, char** argv);
+// Result of parsing CLI arguments
+struct ParseResult {
+    bool handled = false;          // True if a subcommand was handled (use exitCode)
+    int exitCode = 0;              // Exit code if handled
+    std::optional<AppConfig> config;  // Config if project should be run
+};
+
+// Parse all CLI arguments using CLI11
+// Returns ParseResult indicating what to do next
+ParseResult parseArgs(int argc, char** argv);
 
 // Create a new project
 int createProject(const std::string& name, const std::string& templateName, bool minimal, bool skipPrompts);
