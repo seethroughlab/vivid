@@ -50,7 +50,7 @@ jobs:
       - name: Get version from tag (Windows)
         if: runner.os == 'Windows'
         id: version_windows
-        shell: pwsh
+        shell: powershell
         run: |
           if ("${{ github.ref }}" -match "^refs/tags/v(.+)$") {
             $VERSION = $matches[1]
@@ -154,7 +154,7 @@ jobs:
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: powershell
         run: |
           New-Item -ItemType Directory -Force -Path package/vivid-${{ matrix.target }}/bin
           New-Item -ItemType Directory -Force -Path package/vivid-${{ matrix.target }}/lib
