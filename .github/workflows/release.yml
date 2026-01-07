@@ -26,6 +26,9 @@ jobs:
           - os: windows-latest
             target: win32-x64
             archive_ext: zip
+          - os: ["self-hosted", "Linux", "ARM64"]
+            target: linux-arm64
+            archive_ext: tar.gz
 
     steps:
       - name: Checkout
@@ -66,7 +69,13 @@ jobs:
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DVIVID_VERSION_OVERRIDE=${{ steps.version.outputs.VERSION }}
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: |
+          if [[ "${{ matrix.target }}" == "linux-arm64" ]]; then
+            cmake --build build --config Release --parallel 2
+          else
+            cmake --build build --config Release --parallel
+          fi
+        shell: bash
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
