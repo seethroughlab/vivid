@@ -111,7 +111,7 @@ jobs:
           cp src/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md 2>/dev/null || true
 
           # Copy examples
-          cp -r examples package/vivid-${{ matrix.target }}/
+          cp -r src/vivid-core/examples package/vivid-${{ matrix.target }}/
 
           # Copy module examples (referenced by operator .api() metadata)
           mkdir -p package/vivid-${{ matrix.target }}/modules
@@ -166,7 +166,7 @@ jobs:
           Copy-Item src/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md -ErrorAction SilentlyContinue
 
           # Copy examples
-          Copy-Item -Recurse examples package/vivid-${{ matrix.target }}/
+          Copy-Item -Recurse src/vivid-core/examples package/vivid-${{ matrix.target }}/
 
           # Copy module examples (referenced by operator .api() metadata)
           New-Item -ItemType Directory -Force -Path package/vivid-${{ matrix.target }}/modules
