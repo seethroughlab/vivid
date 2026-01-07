@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.12] - 2026-01-06
+
+### Added
+
+- **webcam-displace example** - Demonstrates video operators interacting with generator operators (Webcam → Noise → Displace pipeline)
+
+### Removed
+
+- **LLM-REFERENCE.md** - Static operator reference (845 lines) removed; MCP `list_operators` and `get_operator` tools provide dynamic, always-accurate operator information
+- Removed `vivid://docs/reference` MCP resource endpoint
+
+### Fixed
+
+- Fixed Doxyfile paths after project restructure (`core/` → `src/vivid-core/`, `addons/` → `modules/`)
+- Fixed operator registration example paths in metadata
+- Fixed Webcam operator examples metadata
+
 ## [0.1.0-alpha.11] - 2026-01-06
 
 ### Added
