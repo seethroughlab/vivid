@@ -7,6 +7,7 @@
 #include <vivid/effects/effects.h>
 #include <GLFW/glfw3.h>
 #include <cmath>
+#include <cinttypes>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -176,7 +177,7 @@ void update(Context& ctx) {
     canvas.fillText(dtInfo, 20, 115);
 
     char frameInfo[64];
-    snprintf(frameInfo, sizeof(frameInfo), "Frame: %llu", frame);
+    snprintf(frameInfo, sizeof(frameInfo), "Frame: %" PRIu64, frame);
     canvas.fillText(frameInfo, 20, 135);
 
     // VSync status
