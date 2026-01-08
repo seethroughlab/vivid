@@ -100,19 +100,28 @@ void update(Context& ctx) {
     // Bottom-right: Combined (Mirror + Tile)
     canvas.drawImage(combined, halfW + pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
 
-    // Labels
-    canvas.fillStyle(1.0f, 1.0f, 1.0f, 0.9f);
-    canvas.fillText("Transform (scale, rotate, translate)", pad + 5, pad + 20);
+    // Helper to draw label with background box (x, y is top-left of box)
+    auto drawLabel = [&](const char* text, float x, float y) {
+        glm::vec2 size = canvas.measureText(text);
+        float labelPad = 4.0f;
+        canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.7f);
+        canvas.fillRect(x, y, size.x + labelPad * 2, size.y + labelPad * 2);
+        canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
+        canvas.fillText(text, x + labelPad, y + size.y + labelPad);
+    };
+
+    // Draw labels (top-left of each quadrant)
+    drawLabel("Transform (scale, rotate, translate)", pad, pad);
 
     char mirrorLabel[64];
     snprintf(mirrorLabel, sizeof(mirrorLabel), "Mirror (kaleidoscope: %d segments)", segments);
-    canvas.fillText(mirrorLabel, halfW + pad + 5, pad + 20);
+    drawLabel(mirrorLabel, halfW + pad, pad);
 
     char tileLabel[32];
     snprintf(tileLabel, sizeof(tileLabel), "Tile (%.0fx%.0f)", repeatX, repeatY);
-    canvas.fillText(tileLabel, pad + 5, halfH + pad + 20);
+    drawLabel(tileLabel, pad, halfH + pad);
 
-    canvas.fillText("Combined: Mirror + Tile", halfW + pad + 5, halfH + pad + 20);
+    drawLabel("Combined: Mirror + Tile", halfW + pad, halfH + pad);
 }
 
 VIVID_CHAIN(setup, update)

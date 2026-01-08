@@ -1,7 +1,9 @@
 #include <vivid/audio/clock.h>
 #include <vivid/operator_registry.h>
 #include <vivid/context.h>
+#include <vivid/viz_helpers.h>
 #include <cmath>
+#include <cstdio>
 
 namespace vivid::audio {
 
@@ -94,6 +96,62 @@ float Clock::getDivisionMultiplier() const {
         case ClockDiv::TripletEighth:  return 3.0f;
         default:                       return 1.0f;
     }
+}
+
+bool Clock::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizHelpers viz(dl);
+    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
+
+    viz.drawBackground(bounds);
+
+    // Draw beat grid (4 beats per bar)
+    constexpr int BEATS_PER_BAR = 4;
+    float dotSpacing = (bounds.w - 16) / (BEATS_PER_BAR - 1);
+    float dotY = bounds.cy() - 8;
+    float startX = bounds.x + 8;
+
+    uint32_t currentBeat = beat();
+
+    for (int i = 0; i < BEATS_PER_BAR; ++i) {
+        float x = startX + i * dotSpacing;
+        float radius = 5.0f;
+
+        bool isCurrent = (i == static_cast<int>(currentBeat)) && m_running;
+        bool isDownbeat = (i == 0);
+
+        // Color based on state
+        uint32_t color;
+        if (isCurrent && m_triggered) {
+            color = VIZ_COL32(255, 200, 100, 255);  // Gold flash on trigger
+        } else if (isCurrent) {
+            color = VIZ_COL32(100, 200, 255, 255);  // Blue for current beat
+        } else if (isDownbeat) {
+            color = VIZ_COL32(150, 150, 170, 255);  // Lighter for downbeat
+        } else {
+            color = VIZ_COL32(80, 80, 100, 255);    // Dim for other beats
+        }
+
+        dl->AddCircleFilled({x, dotY}, radius, color);
+
+        // Draw outline on downbeat
+        if (isDownbeat) {
+            dl->AddCircle({x, dotY}, radius + 1.0f, VIZ_COL32(180, 180, 200, 200), 0, 1.0f);
+        }
+    }
+
+    // Draw bar indicator at left
+    uint32_t barNum = bar();
+    char barStr[16];
+    snprintf(barStr, sizeof(barStr), "%u", barNum + 1);
+    dl->AddText({bounds.x + 2, bounds.y + 12}, VizColors::TextDim, barStr);
+
+    // Draw BPM and status at bottom
+    char label[32];
+    snprintf(label, sizeof(label), "%.0f BPM", static_cast<float>(bpm));
+    VizBounds labelBounds = bounds.splitBottom(0.25f);
+    viz.drawLabel(labelBounds, label, m_running ? VizColors::TextSecondary : VizColors::TextDim);
+
+    return true;
 }
 
 } // namespace vivid::audio

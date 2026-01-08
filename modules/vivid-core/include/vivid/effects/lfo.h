@@ -134,6 +134,10 @@ public:
     std::string name() const override { return "LFO"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
+    /// @brief Draw waveform visualization for chain visualizer
+    bool drawVisualization(VizDrawList* drawList, float minX, float minY,
+                           float maxX, float maxY) override;
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name CRTP Interface

@@ -8,23 +8,12 @@ Demonstrates all core generator operators in a 2x3 grid layout.
 - **Gradient** - Linear gradient with rotating angle
 - **Ramp** - Animated HSV rainbow gradient
 - **Shape** - SDF shapes (Circle, Rectangle, Polygon)
-- **LFO** - Low frequency oscillator for parameter modulation
 - **Canvas** - Grid layout and text labels
 
 ## Key Concepts
 
 ### Generators vs Effects
 Generators create content from nothing (no input required). Effects transform existing textures.
-
-### LFO Modulation
-LFOs output values between -1 and 1, useful for animating parameters:
-```cpp
-auto& lfo = chain.add<LFO>("lfo");
-lfo.frequency = 0.5f;
-lfo.waveform(LFOWaveform::Sine);
-// In update():
-float value = lfo.value();  // -1 to 1
-```
 
 ### Shape Types
 ```cpp

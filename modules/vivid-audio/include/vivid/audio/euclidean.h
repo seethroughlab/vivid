@@ -169,6 +169,10 @@ public:
     std::string name() const override { return "Euclidean"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
+    /// @brief Draw step pattern visualization
+    bool drawVisualization(VizDrawList* drawList, float minX, float minY,
+                           float maxX, float maxY) override;
+
     /// @}
 
 private:

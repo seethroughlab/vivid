@@ -11,6 +11,7 @@
 #include <vivid/param.h>
 #include <vivid/param_registry.h>
 #include <vivid/operator_registry.h>
+#include <vivid/viz_helpers.h>
 #include <cmath>
 
 namespace vivid::effects {
@@ -192,6 +193,47 @@ public:
     bool setParam(const std::string& name, const float value[4]) override {
         if (setRegisteredParam(name, value)) { markDirty(); return true; }
         return false;
+    }
+
+    /// @brief Draw boolean indicator visualization
+    bool drawVisualization(VizDrawList* dl, float minX, float minY,
+                           float maxX, float maxY) override {
+        VizHelpers viz(dl);
+        VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
+
+        viz.drawBackground(bounds);
+
+        // Operation names
+        const char* opNames[] = {
+            ">", "<", "==", "!=", ">=", "<=",
+            "InRange", "AND", "OR", "NOT", "Toggle"
+        };
+        int opIdx = static_cast<int>(m_operation);
+        if (opIdx < 0 || opIdx > 10) opIdx = 0;
+
+        // Draw large indicator circle
+        float cx = bounds.cx();
+        float cy = bounds.cy() - 6;  // Shift up for label
+        float radius = std::min(bounds.w, bounds.h) * 0.25f;
+
+        // Color based on result
+        uint32_t indicatorColor = m_result
+            ? VIZ_COL32(80, 255, 120, 255)   // Bright green for true
+            : VIZ_COL32(60, 60, 80, 255);    // Dark gray for false
+
+        dl->AddCircleFilled({cx, cy}, radius, indicatorColor);
+
+        // Draw border around circle
+        uint32_t borderColor = m_result
+            ? VIZ_COL32(150, 255, 180, 255)
+            : VIZ_COL32(80, 80, 100, 200);
+        dl->AddCircle({cx, cy}, radius, borderColor, 0, 2.0f);
+
+        // Draw operation name at bottom
+        VizBounds opBounds = bounds.splitBottom(0.25f);
+        viz.drawLabel(opBounds, opNames[opIdx], VizColors::TextSecondary);
+
+        return true;
     }
 
     /// @}

@@ -1,8 +1,8 @@
 // Parameter Modulation Example
-// Demonstrates: Lambda bindings for dynamic parameter control
+// Demonstrates: Trackable operator bindings for dynamic parameter control
 //
-// Shows how to use bind() and bindDirect() to modulate parameters
-// with mouse position, time-based functions, and LFO values.
+// Shows how to use bind(Operator&) to modulate parameters with LFO values.
+// Operator bindings are visualized as dashed orange lines in the chain visualizer.
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -11,9 +11,8 @@
 using namespace vivid;
 using namespace vivid::effects;
 
-// Store references for lambda captures
+// Store context reference for lambda captures (mouse-based bindings only)
 static Context* g_ctx = nullptr;
-static LFO* g_lfo = nullptr;
 
 void setup(Context& ctx) {
     g_ctx = &ctx;
@@ -23,9 +22,9 @@ void setup(Context& ctx) {
     auto& lfo = chain.add<LFO>("lfo");
     lfo.frequency = 0.5f;
     lfo.waveform(LFOWaveform::Sine);
-    g_lfo = &lfo;
 
     // Shape 1: Scale modulated by mouse X position
+    // Mouse bindings still use lambda (no trackable source)
     auto& shape1 = chain.add<Shape>("shape1");
     shape1.type(ShapeType::Circle);
     shape1.color.set(1.0f, 0.4f, 0.2f, 1.0f);
@@ -39,12 +38,15 @@ void setup(Context& ctx) {
         0.05f, 0.3f  // Output range
     );
 
-    // Shape 2: Position will be modulated by LFO in update()
+    // Shape 2: X position modulated by LFO (TRACKABLE - shows in visualizer!)
     auto& shape2 = chain.add<Shape>("shape2");
     shape2.type(ShapeType::Rectangle);
     shape2.size.set(0.15f, 0.15f);
     shape2.color.set(0.2f, 0.8f, 0.4f, 1.0f);
-    shape2.position.set(0.0f, -0.2f);
+    // Bind X position to LFO: input -1..1 maps to output -0.3..0.3
+    // This creates a dashed orange connection line in the chain visualizer
+    shape2.position.bindX(lfo, -1.0f, 1.0f, -0.3f, 0.3f);
+    shape2.position.set(0.0f, -0.2f);  // Set Y position
 
     // Shape 3: Color will be modulated by time in update()
     auto& shape3 = chain.add<Shape>("shape3");
@@ -53,16 +55,12 @@ void setup(Context& ctx) {
     shape3.size.set(0.12f, 0.12f);
     shape3.position.set(0.3f, 0.0f);
 
-    // Noise with scale modulated by LFO
+    // Noise with scale modulated by LFO (TRACKABLE - shows in visualizer!)
     auto& noise = chain.add<Noise>("noise");
     noise.octaves = 3;
-    // Bind scale: LFO (remapped 0-1) -> scale 2.0 to 8.0
-    noise.scale.bind(
-        [&]() {
-            return (g_lfo->value() + 1.0f) * 0.5f;  // -1..1 -> 0..1
-        },
-        2.0f, 8.0f
-    );
+    // Bind scale: LFO -1..1 maps to scale 2.0..8.0
+    // This creates a dashed orange connection line in the chain visualizer
+    noise.scale.bind(lfo, -1.0f, 1.0f, 2.0f, 8.0f);
 
     // Background
     auto& bg = chain.add<SolidColor>("bg");
@@ -101,14 +99,12 @@ void setup(Context& ctx) {
 void update(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Param<T>::bind() evaluates automatically - no manual update needed
-    // For Vec2Param and ColorParam without bindDirect, update manually:
+    // Param bindings with bind(Operator&) evaluate automatically!
+    // shape2.position.x and noise.scale are both auto-updated from LFO
 
-    // Shape 2: Position modulated by LFO
+    // Get LFO value for display (not needed for bound params)
     auto& lfo = chain.get<LFO>("lfo");
-    auto& shape2 = chain.get<Shape>("shape2");
     float lfoVal = lfo.value();  // -1 to 1
-    shape2.position.set(lfoVal * 0.3f, -0.2f);
 
     // Shape 3: Color modulated by time (hue cycling)
     auto& shape3 = chain.get<Shape>("shape3");
@@ -133,26 +129,31 @@ void update(Context& ctx) {
 
     // Info panel
     canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.75f);
-    canvas.fillRect(10, 10, 400, 180);
+    canvas.fillRect(10, 10, 440, 200);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
     canvas.fillText("Parameter Modulation Demo", 20, 35);
 
-    canvas.fillStyle(0.7f, 0.9f, 1.0f, 1.0f);
-    canvas.fillText("Active Bindings:", 20, 60);
+    canvas.fillStyle(1.0f, 0.7f, 0.3f, 1.0f);  // Orange for trackable
+    canvas.fillText("Trackable Bindings (shown as dashed lines):", 20, 60);
 
     canvas.fillStyle(0.9f, 0.9f, 0.9f, 1.0f);
-    canvas.fillText("  shape1.size <- mouse.x (0.05 to 0.3)", 20, 80);
-    canvas.fillText("  shape2.position <- LFO (sine wave)", 20, 100);
-    canvas.fillText("  shape3.color <- time (hue cycling)", 20, 120);
-    canvas.fillText("  noise.scale <- LFO (2.0 to 8.0)", 20, 140);
+    canvas.fillText("  shape2.position.x <- LFO (-0.3 to 0.3)", 20, 80);
+    canvas.fillText("  noise.scale <- LFO (2.0 to 8.0)", 20, 100);
+
+    canvas.fillStyle(0.7f, 0.9f, 1.0f, 1.0f);
+    canvas.fillText("Lambda Bindings (not trackable):", 20, 125);
+
+    canvas.fillStyle(0.9f, 0.9f, 0.9f, 1.0f);
+    canvas.fillText("  shape1.size <- mouse.x (0.05 to 0.3)", 20, 145);
+    canvas.fillText("  shape3.color <- time (hue cycling)", 20, 165);
 
     // Show current values
     char valInfo[128];
     snprintf(valInfo, sizeof(valInfo), "LFO: %.2f  |  Mouse X: %.2f",
         lfoVal, ctx.mouseNorm().x);
     canvas.fillStyle(0.8f, 0.8f, 0.5f, 1.0f);
-    canvas.fillText(valInfo, 20, 165);
+    canvas.fillText(valInfo, 20, 185);
 }
 
 VIVID_CHAIN(setup, update)

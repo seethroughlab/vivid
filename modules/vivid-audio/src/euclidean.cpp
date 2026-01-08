@@ -1,7 +1,9 @@
 #include <vivid/audio/euclidean.h>
 #include <vivid/operator_registry.h>
 #include <vivid/context.h>
+#include <vivid/viz_helpers.h>
 #include <algorithm>
+#include <cstdio>
 
 namespace vivid::audio {
 
@@ -138,6 +140,76 @@ void Euclidean::regenerate() {
             }
         }
     }
+}
+
+bool Euclidean::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
+    VizHelpers viz(dl);
+    VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
+
+    viz.drawBackground(bounds);
+
+    int numSteps = static_cast<int>(steps);
+    int numHits = static_cast<int>(hits);
+    int rot = static_cast<int>(rotation);
+
+    if (numSteps < 2) numSteps = 2;
+    if (numSteps > MAX_STEPS) numSteps = MAX_STEPS;
+
+    // Draw step circles
+    float padding = 8.0f;
+    float availableWidth = bounds.w - padding * 2;
+    float stepWidth = availableWidth / numSteps;
+    float radius = std::min(stepWidth * 0.35f, 5.0f);
+    float circleY = bounds.cy() - 4;
+    float startX = bounds.x + padding + stepWidth * 0.5f;
+
+    for (int i = 0; i < numSteps; ++i) {
+        float x = startX + i * stepWidth;
+
+        // Apply rotation to get pattern index
+        int patternIdx = (i + rot) % numSteps;
+        bool isHit = m_pattern[patternIdx];
+        bool isCurrent = (i == m_currentStep);
+
+        // Color based on state
+        uint32_t color;
+        if (isCurrent && m_triggered) {
+            color = VIZ_COL32(255, 200, 100, 255);  // Gold flash on trigger
+        } else if (isCurrent) {
+            color = VIZ_COL32(100, 200, 255, 255);  // Blue for current step
+        } else if (isHit) {
+            color = VIZ_COL32(200, 150, 255, 255);  // Purple for hit
+        } else {
+            color = VIZ_COL32(60, 60, 80, 255);     // Dark for rest
+        }
+
+        if (isHit) {
+            dl->AddCircleFilled({x, circleY}, radius, color);
+        } else {
+            dl->AddCircle({x, circleY}, radius, color, 0, 1.5f);
+        }
+    }
+
+    // Draw current step indicator (triangle below)
+    if (m_currentStep >= 0 && m_currentStep < numSteps) {
+        float markerX = startX + m_currentStep * stepWidth;
+        float markerY = circleY + radius + 4;
+        float triSize = 4.0f;
+        dl->AddTriangleFilled(
+            {markerX, markerY},
+            {markerX - triSize, markerY + triSize * 1.5f},
+            {markerX + triSize, markerY + triSize * 1.5f},
+            VIZ_COL32(255, 200, 100, 255)
+        );
+    }
+
+    // Draw E(k,n) notation at bottom
+    char label[32];
+    snprintf(label, sizeof(label), "E(%d,%d)", numHits, numSteps);
+    VizBounds labelBounds = bounds.splitBottom(0.25f);
+    viz.drawLabel(labelBounds, label, VizColors::TextSecondary);
+
+    return true;
 }
 
 } // namespace vivid::audio

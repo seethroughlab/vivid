@@ -71,6 +71,9 @@ enum class ParamType {
     FilePath  ///< File path (texture, video, model, etc.)
 };
 
+// Forward declaration for binding tracking
+class Operator;
+
 /**
  * @brief Parameter declaration for introspection and UI generation
  *
@@ -87,6 +90,9 @@ struct ParamDecl {
     std::string stringDefault;  ///< Default string value
     std::string fileFilter;     ///< File filter (e.g., "*.png;*.jpg;*.exr")
     std::string fileCategory;   ///< Category hint ("image", "video", "audio", "model")
+
+    // For trackable value operator bindings
+    Operator* boundOperator = nullptr;  ///< Source value operator if bound (for visualization)
 };
 
 /**

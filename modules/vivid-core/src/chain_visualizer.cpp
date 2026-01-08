@@ -486,6 +486,24 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
             }
         }
 
+        // Check if this operator has value bindings (for dashed link visualization)
+        // If so, add a "values" input pin for the connections
+        auto paramDecls = info.op->params();
+        bool hasValueBindings = false;
+        for (const auto& p : paramDecls) {
+            if (p.boundOperator) {
+                hasValueBindings = true;
+                break;
+            }
+        }
+        if (hasValueBindings) {
+            // Use pin ID at slot after all potential inputs (up to 10 texture inputs)
+            int valuePinId = nodeId * 100 + 50;  // Offset to avoid texture input pins
+            m_nodeGraph.beginInputAttribute(valuePinId);
+            m_nodeGraph.pinLabel("values");
+            m_nodeGraph.endInputAttribute();
+        }
+
         // Add output pin
         int outputPinId = nodeId * 100;
         m_nodeGraph.beginOutputAttribute(outputPinId);
@@ -573,6 +591,34 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     // Link from audio output operator to Speakers node
     if (audioOutputNodeId >= 0) {
         m_nodeGraph.link(linkId++, audioOutputNodeId * 100, SPEAKERS_NODE_ID * 100 + 1);
+    }
+
+    // Add dashed links for value operator bindings (LFO -> param, etc.)
+    // These show as orange dashed lines in the visualizer
+    glm::vec4 valueBindingColor = {1.0f, 0.7f, 0.3f, 0.9f};  // Orange for value connections
+    for (size_t i = 0; i < operators.size(); ++i) {
+        const vivid::OperatorInfo& info = operators[i];
+        if (!info.op) continue;
+
+        int dstNodeId = static_cast<int>(i);
+
+        // Query params for value bindings
+        auto paramDecls = info.op->params();
+        for (const auto& param : paramDecls) {
+            if (!param.boundOperator) continue;
+
+            // Find source node for the bound operator
+            for (size_t k = 0; k < operators.size(); ++k) {
+                if (operators[k].op == param.boundOperator) {
+                    int srcNodeId = static_cast<int>(k);
+                    // Connect to the "values" input pin (offset 50)
+                    int srcOutputPinId = srcNodeId * 100;
+                    int dstInputPinId = dstNodeId * 100 + 50;  // "values" input pin
+                    m_nodeGraph.linkDashed(linkId++, srcOutputPinId, dstInputPinId, valueBindingColor);
+                    break;
+                }
+            }
+        }
     }
 
     // Do hierarchical layout using Sugiyama algorithm (with crossing reduction)

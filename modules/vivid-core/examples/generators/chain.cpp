@@ -13,24 +13,23 @@ using namespace vivid::effects;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // LFOs for animation
-    auto& lfo1 = chain.add<LFO>("lfo1");
-    lfo1.frequency = 0.5f;
-    lfo1.waveform(LFOWaveform::Sine);
-
-    auto& lfo2 = chain.add<LFO>("lfo2");
-    lfo2.frequency = 0.3f;
-    lfo2.waveform(LFOWaveform::Triangle);
+    // LFO for modulation (outputs -1 to 1)
+    // This creates visible dashed connections in the chain visualizer
+    auto& lfo = chain.add<LFO>("lfo");
+    lfo.frequency = 0.5f;
+    lfo.waveform(LFOWaveform::Sine);
 
     // 1. SolidColor - Simple flat color (animated hue)
     auto& solid = chain.add<SolidColor>("solid");
     solid.color.set(1.0f, 0.5f, 0.2f, 1.0f);
 
     // 2. Gradient - Linear gradient between two colors
+    // Angle modulated by LFO (TRACKABLE - shows as dashed line in visualizer!)
     auto& gradient = chain.add<Gradient>("gradient");
     gradient.colorA.set(1.0f, 0.2f, 0.5f, 1.0f);
     gradient.colorB.set(0.2f, 0.5f, 1.0f, 1.0f);
-    gradient.angle = 0.785f;  // 45 degrees in radians
+    // Bind angle: LFO -1..1 maps to 0..π radians
+    gradient.angle.bind(lfo, -1.0f, 1.0f, 0.0f, 3.14159f);
 
     // 3. Ramp - Animated HSV gradient
     auto& ramp = chain.add<Ramp>("ramp");
@@ -39,13 +38,14 @@ void setup(Context& ctx) {
     ramp.brightness = 0.9f;
 
     // 4. Shape - SDF circle
-    // Generators now match window resolution, and Canvas.drawImage() defaults to
-    // FitMode::Fit which preserves aspect ratio - no manual compensation needed!
+    // Position modulated by LFO (TRACKABLE - shows as dashed line in visualizer!)
     auto& circle = chain.add<Shape>("circle");
     circle.type(ShapeType::Circle);
     circle.size.set(0.4f, 0.4f);  // Square size - will render as circle
     circle.color.set(1.0f, 0.8f, 0.2f, 1.0f);
     circle.softness = 0.02f;
+    // Bind X position: LFO -1..1 maps to 0.4..0.6
+    circle.position.bindX(lfo, -1.0f, 1.0f, 0.4f, 0.6f);
 
     // 5. Shape - SDF rectangle (wider than tall)
     auto& rect = chain.add<Shape>("rect");
@@ -66,26 +66,27 @@ void setup(Context& ctx) {
     // Use input() to establish dependencies for correct processing order.
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
-    canvas.input(0, "solid");
-    canvas.input(1, "gradient");
-    canvas.input(2, "ramp");
-    canvas.input(3, "circle");
-    canvas.input(4, "rect");
-    canvas.input(5, "star");
+    canvas.input(0, "lfo");      // LFO must be processed before bound params evaluate
+    canvas.input(1, "solid");
+    canvas.input(2, "gradient");
+    canvas.input(3, "ramp");
+    canvas.input(4, "circle");
+    canvas.input(5, "rect");
+    canvas.input(6, "star");
 
     chain.output("canvas");
 }
 
 void update(Context& ctx) {
     auto& chain = ctx.chain();
+    float t = ctx.time();
 
-    // Get LFO values
-    auto& lfo1 = chain.get<LFO>("lfo1");
-    auto& lfo2 = chain.get<LFO>("lfo2");
-    float v1 = lfo1.value();
-    float v2 = lfo2.value();
+    // LFO-bound params (gradient.angle, circle.position.x) update automatically!
+    // Get LFO value for debug display
+    auto& lfo = chain.get<LFO>("lfo");
+    float lfoVal = lfo.value();
 
-    // Animate solid color hue
+    // Animate solid color hue (time-based, not LFO)
     auto& solid = chain.get<SolidColor>("solid");
     float hue = std::fmod(ctx.time() * 0.1f, 1.0f);
     solid.color.set(
@@ -95,13 +96,9 @@ void update(Context& ctx) {
         1.0f
     );
 
-    // Animate gradient angle
-    auto& gradient = chain.get<Gradient>("gradient");
-    gradient.angle = v1 * 3.14159f;  // radians
+    // gradient.angle is auto-bound to LFO (no manual update needed!)
 
-    // Animate shape positions using LFO
-    auto& circle = chain.get<Shape>("circle");
-    circle.position.set(0.5f + v1 * 0.1f, 0.5f + v2 * 0.1f);
+    // circle.position.x is auto-bound to LFO (no manual update needed!)
 
     auto& star = chain.get<Shape>("star");
     star.rotation = ctx.time() * 0.5f;  // radians
@@ -115,7 +112,9 @@ void update(Context& ctx) {
     float cellW = w / 3.0f;
     float cellH = h / 2.0f;
 
+    auto& gradient = chain.get<Gradient>("gradient");
     auto& ramp = chain.get<Ramp>("ramp");
+    auto& circle = chain.get<Shape>("circle");
     auto& rect = chain.get<Shape>("rect");
 
     // Row 1: SolidColor, Gradient, Ramp
@@ -131,18 +130,28 @@ void update(Context& ctx) {
     canvas.drawImage(rect, cellW, cellH, cellW, cellH);
     canvas.drawImage(star, cellW * 2, cellH, cellW, cellH);
 
-    // Draw labels
-    canvas.fillStyle(1.0f, 1.0f, 1.0f, 0.8f);
-    canvas.fillText("SolidColor", 10, 25);
-    canvas.fillText("Gradient", cellW + 10, 25);
-    canvas.fillText("Ramp", cellW * 2 + 10, 25);
-    canvas.fillText("Shape: Circle", 10, cellH + 25);
-    canvas.fillText("Shape: Rectangle", cellW + 10, cellH + 25);
-    canvas.fillText("Shape: Polygon", cellW * 2 + 10, cellH + 25);
+    // Helper to draw label with background box (x, y is top-left of box)
+    auto drawLabel = [&](const char* text, float x, float y) {
+        glm::vec2 size = canvas.measureText(text);
+        float pad = 4.0f;
+        canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.6f);
+        canvas.fillRect(x, y, size.x + pad * 2, size.y + pad * 2);
+        canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
+        canvas.fillText(text, x + pad, y + size.y + pad);
+    };
 
-    ctx.debug("time", ctx.time());
-    ctx.debug("lfo1", lfo1.value());
-    ctx.debug("lfo2", lfo2.value());
+    // Row 1 labels (top-left of each cell)
+    drawLabel("SolidColor", 4, 4);
+    drawLabel("Gradient", cellW + 4, 4);
+    drawLabel("Ramp", cellW * 2 + 4, 4);
+
+    // Row 2 labels (top-left of each cell)
+    drawLabel("Shape: Circle", 4, cellH + 4);
+    drawLabel("Shape: Rectangle", cellW + 4, cellH + 4);
+    drawLabel("Shape: Polygon", cellW * 2 + 4, cellH + 4);
+
+    ctx.debug("time", t);
+    ctx.debug("lfo", lfoVal);
 }
 
 VIVID_CHAIN(setup, update)

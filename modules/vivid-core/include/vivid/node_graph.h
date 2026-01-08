@@ -119,6 +119,8 @@ struct LinkState {
     int startPinId = 0;  // Output pin
     int endPinId = 0;    // Input pin
     bool hovered = false;
+    bool dashed = false;           ///< Render as dashed line (for value bindings)
+    glm::vec4 customColor = {0, 0, 0, 0};  ///< Custom color (if alpha > 0, overrides style)
 };
 
 // -------------------------------------------------------------------------
@@ -265,6 +267,15 @@ public:
      * @param endPinId Input pin ID (destination)
      */
     void link(int id, int startPinId, int endPinId);
+
+    /**
+     * @brief Define a dashed link between pins (for value bindings)
+     * @param id Unique link ID
+     * @param startPinId Output pin ID (source)
+     * @param endPinId Input pin ID (destination)
+     * @param color Custom link color (e.g., orange for value connections)
+     */
+    void linkDashed(int id, int startPinId, int endPinId, const glm::vec4& color);
 
     /// @}
     // -------------------------------------------------------------------------

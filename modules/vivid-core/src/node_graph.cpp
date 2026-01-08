@@ -168,6 +168,18 @@ void NodeGraph::link(int id, int startPinId, int endPinId) {
     lnk.id = id;
     lnk.startPinId = startPinId;
     lnk.endPinId = endPinId;
+    lnk.dashed = false;
+    lnk.customColor = {0, 0, 0, 0};
+    m_links[id] = lnk;
+}
+
+void NodeGraph::linkDashed(int id, int startPinId, int endPinId, const glm::vec4& color) {
+    LinkState lnk;
+    lnk.id = id;
+    lnk.startPinId = startPinId;
+    lnk.endPinId = endPinId;
+    lnk.dashed = true;
+    lnk.customColor = color;
     m_links[id] = lnk;
 }
 
@@ -543,9 +555,95 @@ void NodeGraph::renderLinks() {
         float cx2 = end.x - dx;
         float cy2 = end.y;
 
-        glm::vec4 color = link.hovered ? m_style.linkHoveredColor : m_style.linkColor;
-        m_canvas->bezierCurve(start.x, start.y, cx1, cy1, cx2, cy2, end.x, end.y,
-                               m_style.linkWidth, color, 32);
+        // Determine link color
+        glm::vec4 color;
+        if (link.hovered) {
+            color = m_style.linkHoveredColor;
+        } else if (link.customColor.a > 0) {
+            color = link.customColor;
+        } else {
+            color = m_style.linkColor;
+        }
+
+        if (link.dashed) {
+            // Draw dashed bezier: sample points and draw alternating segments
+            // Scale dash pattern with zoom, but enforce minimum size for visibility
+            float dashLength = std::max(4.0f, 8.0f * m_zoom);   // At least 4 pixels
+            float gapLength = std::max(3.0f, 6.0f * m_zoom);    // At least 3 pixels
+
+            // Estimate curve length using control polygon (more accurate than chord)
+            // Control polygon: start -> cp1 -> cp2 -> end
+            glm::vec2 cp1 = {cx1, cy1};
+            glm::vec2 cp2 = {cx2, cy2};
+            float polyLength = glm::length(cp1 - start) + glm::length(cp2 - cp1) + glm::length(end - cp2);
+            // Sample at least every 3 pixels for smooth dashes (smaller than gap)
+            int numSamples = std::max(16, static_cast<int>(polyLength / 3.0f));
+            numSamples = std::min(numSamples, 512);  // Cap for performance
+
+            // Sample points along the bezier curve
+            std::vector<glm::vec2> points(numSamples + 1);
+            for (int i = 0; i <= numSamples; ++i) {
+                float t = static_cast<float>(i) / numSamples;
+                float t2 = t * t;
+                float t3 = t2 * t;
+                float mt = 1.0f - t;
+                float mt2 = mt * mt;
+                float mt3 = mt2 * mt;
+
+                float x = mt3 * start.x + 3 * mt2 * t * cx1 + 3 * mt * t2 * cx2 + t3 * end.x;
+                float y = mt3 * start.y + 3 * mt2 * t * cy1 + 3 * mt * t2 * cy2 + t3 * end.y;
+                points[i] = {x, y};
+            }
+
+            // Calculate cumulative arc length for proper dash spacing
+            std::vector<float> arcLengths(numSamples + 1);
+            arcLengths[0] = 0.0f;
+            for (int i = 1; i <= numSamples; ++i) {
+                arcLengths[i] = arcLengths[i - 1] + glm::length(points[i] - points[i - 1]);
+            }
+            float totalLength = arcLengths[numSamples];
+
+            // Draw dashes
+            float dashCycle = dashLength + gapLength;
+            float pos = 0.0f;
+            int segmentStart = 0;
+
+            while (pos < totalLength) {
+                // Start of dash
+                float dashStart = pos;
+                float dashEnd = std::min(pos + dashLength, totalLength);
+
+                // Find segment indices for dash start/end
+                int i1 = 0, i2 = 0;
+                for (int i = segmentStart; i <= numSamples; ++i) {
+                    if (arcLengths[i] >= dashStart) {
+                        i1 = std::max(0, i - 1);
+                        break;
+                    }
+                }
+                for (int i = i1; i <= numSamples; ++i) {
+                    if (arcLengths[i] >= dashEnd) {
+                        i2 = i;
+                        break;
+                    }
+                    i2 = i;
+                }
+
+                // Draw dash as connected line segments
+                for (int i = i1; i < i2; ++i) {
+                    m_canvas->line(points[i].x, points[i].y,
+                                  points[i + 1].x, points[i + 1].y,
+                                  m_style.linkWidth, color);
+                }
+
+                segmentStart = i2;
+                pos += dashCycle;
+            }
+        } else {
+            // Solid bezier curve
+            m_canvas->bezierCurve(start.x, start.y, cx1, cy1, cx2, cy2, end.x, end.y,
+                                   m_style.linkWidth, color, 32);
+        }
     }
 }
 

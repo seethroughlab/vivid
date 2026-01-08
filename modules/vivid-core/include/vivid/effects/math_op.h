@@ -11,8 +11,10 @@
 #include <vivid/param.h>
 #include <vivid/param_registry.h>
 #include <vivid/operator_registry.h>
+#include <vivid/viz_helpers.h>
 #include <algorithm>
 #include <cmath>
+#include <cstdio>
 
 namespace vivid::effects {
 
@@ -218,6 +220,48 @@ public:
     bool setParam(const std::string& name, const float value[4]) override {
         if (setRegisteredParam(name, value)) { markDirty(); return true; }
         return false;
+    }
+
+    /// @brief Draw value display visualization
+    bool drawVisualization(VizDrawList* dl, float minX, float minY,
+                           float maxX, float maxY) override {
+        VizHelpers viz(dl);
+        VizBounds bounds{minX, minY, maxX - minX, maxY - minY};
+
+        viz.drawBackground(bounds);
+
+        // Operation names
+        const char* opNames[] = {
+            "+", "-", "*", "/", "Clamp", "Remap",
+            "Abs", "Sin", "Cos", "Pow", "Sqrt",
+            "Floor", "Ceil", "Fract", "Min", "Max"
+        };
+        int opIdx = static_cast<int>(m_operation);
+        if (opIdx < 0 || opIdx > 15) opIdx = 0;
+
+        // Draw result value (large, centered)
+        char valueStr[32];
+        if (std::abs(m_result) >= 100.0f) {
+            snprintf(valueStr, sizeof(valueStr), "%.0f", m_result);
+        } else if (std::abs(m_result) >= 10.0f) {
+            snprintf(valueStr, sizeof(valueStr), "%.1f", m_result);
+        } else {
+            snprintf(valueStr, sizeof(valueStr), "%.2f", m_result);
+        }
+
+        // Color based on sign
+        uint32_t valueColor = m_result >= 0.0f
+            ? VIZ_COL32(100, 255, 150, 255)   // Green for positive
+            : VIZ_COL32(255, 100, 100, 255);  // Red for negative
+
+        VizBounds valueBounds = bounds.inset(4).splitTop(0.65f);
+        viz.drawLabel(valueBounds, valueStr, valueColor);
+
+        // Draw operation name at bottom
+        VizBounds opBounds = bounds.splitBottom(0.3f);
+        viz.drawLabel(opBounds, opNames[opIdx], VizColors::TextSecondary);
+
+        return true;
     }
 
     /// @}

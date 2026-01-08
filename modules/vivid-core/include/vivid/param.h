@@ -84,6 +84,7 @@ public:
     Param& operator=(T v) {
         m_value = v;
         m_binding = nullptr;
+        m_boundOperator = nullptr;
         return *this;
     }
 
@@ -120,6 +121,50 @@ public:
      */
     void bindDirect(std::function<T()> source) {
         m_binding = std::move(source);
+        m_boundOperator = nullptr;  // Lambda binding not trackable
+    }
+
+    /**
+     * @brief Bind to a value operator with explicit range mapping (trackable)
+     * @param source Value operator to bind to
+     * @param inMin Input minimum (operator's output range)
+     * @param inMax Input maximum (operator's output range)
+     * @param outMin Output minimum (parameter's range)
+     * @param outMax Output maximum (parameter's range)
+     *
+     * This binding is trackable and will appear in the chain visualizer.
+     *
+     * Example:
+     * @code
+     * // LFO outputs -1 to 1, map to scale 5 to 20
+     * noise.scale.bind(lfo, -1.0f, 1.0f, 5.0f, 20.0f);
+     * @endcode
+     */
+    void bind(Operator& source, float inMin, float inMax, T outMin, T outMax) {
+        m_boundOperator = &source;
+        m_binding = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);  // Normalize to 0..1
+            return static_cast<T>(outMin + t * (outMax - outMin));
+        };
+    }
+
+    /**
+     * @brief Bind directly to a value operator (no range mapping, trackable)
+     * @param source Value operator to bind to
+     *
+     * This binding is trackable and will appear in the chain visualizer.
+     *
+     * Example:
+     * @code
+     * myParam.bindDirect(mathOp);  // Use operator output directly
+     * @endcode
+     */
+    void bindDirect(Operator& source) {
+        m_boundOperator = &source;
+        m_binding = [&source]() {
+            return static_cast<T>(source.outputValue());
+        };
     }
 
     /**
@@ -127,12 +172,19 @@ public:
      */
     void unbind() {
         m_binding = nullptr;
+        m_boundOperator = nullptr;
     }
 
     /**
      * @brief Check if parameter has a binding
      */
     bool isBound() const { return m_binding != nullptr; }
+
+    /**
+     * @brief Get bound operator (for visualization)
+     * @return Pointer to bound operator, or nullptr if not bound to an operator
+     */
+    Operator* boundOperator() const { return m_boundOperator; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -148,12 +200,17 @@ public:
 
     /**
      * @brief Generate ParamDecl for introspection
-     * @return ParamDecl with name, type, range, and default
+     * @return ParamDecl with name, type, range, default, and bound operator
      */
     ParamDecl decl() const {
-        return {m_name, ParamTypeFor<T>::value,
-                static_cast<float>(m_min), static_cast<float>(m_max),
-                {static_cast<float>(m_value)}};
+        ParamDecl d;
+        d.name = m_name;
+        d.type = ParamTypeFor<T>::value;
+        d.minVal = static_cast<float>(m_min);
+        d.maxVal = static_cast<float>(m_max);
+        d.defaultVal[0] = static_cast<float>(m_value);
+        d.boundOperator = m_boundOperator;
+        return d;
     }
 
 private:
@@ -161,6 +218,7 @@ private:
     T m_value;
     T m_min, m_max;
     std::function<T()> m_binding;
+    Operator* m_boundOperator = nullptr;  ///< Bound value operator (for visualization)
 };
 
 /**
@@ -209,6 +267,9 @@ public:
         m_bindingX = nullptr;
         m_bindingY = nullptr;
         m_bindingUniform = nullptr;
+        m_boundOperatorX = nullptr;
+        m_boundOperatorY = nullptr;
+        m_boundOperatorUniform = nullptr;
     }
 
     // -------------------------------------------------------------------------
@@ -222,12 +283,41 @@ public:
         m_uniformMax = outMax;
         m_bindingX = nullptr;
         m_bindingY = nullptr;
+        m_boundOperatorX = nullptr;
+        m_boundOperatorY = nullptr;
+        m_boundOperatorUniform = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind both components uniformly to a value operator (trackable)
+    void bind(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorUniform = &source;
+        m_boundOperatorX = nullptr;
+        m_boundOperatorY = nullptr;
+        m_bindingX = nullptr;
+        m_bindingY = nullptr;
+        m_bindingUniform = [&source, inMin, inMax]() {
+            float v = source.outputValue();
+            return (v - inMin) / (inMax - inMin);  // Return normalized 0..1
+        };
+        m_uniformMin = outMin;
+        m_uniformMax = outMax;
     }
 
     /// @brief Bind X component to a 0-1 source with range
     void bindX(std::function<float()> source, float outMin, float outMax) {
         m_bindingX = [source = std::move(source), outMin, outMax]() {
             return outMin + source() * (outMax - outMin);
+        };
+        m_boundOperatorX = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind X component to a value operator (trackable)
+    void bindX(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorX = &source;
+        m_bindingX = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);
+            return outMin + t * (outMax - outMin);
         };
     }
 
@@ -236,6 +326,17 @@ public:
         m_bindingY = [source = std::move(source), outMin, outMax]() {
             return outMin + source() * (outMax - outMin);
         };
+        m_boundOperatorY = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind Y component to a value operator (trackable)
+    void bindY(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorY = &source;
+        m_bindingY = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);
+            return outMin + t * (outMax - outMin);
+        };
     }
 
     /// @brief Clear all bindings
@@ -243,6 +344,9 @@ public:
         m_bindingX = nullptr;
         m_bindingY = nullptr;
         m_bindingUniform = nullptr;
+        m_boundOperatorX = nullptr;
+        m_boundOperatorY = nullptr;
+        m_boundOperatorUniform = nullptr;
     }
 
     /// @brief Check if any binding is set
@@ -250,13 +354,32 @@ public:
         return m_bindingX || m_bindingY || m_bindingUniform;
     }
 
+    /// @brief Get bound operator for X component (for visualization)
+    Operator* boundOperatorX() const { return m_boundOperatorX; }
+
+    /// @brief Get bound operator for Y component (for visualization)
+    Operator* boundOperatorY() const { return m_boundOperatorY; }
+
+    /// @brief Get bound operator for uniform binding (for visualization)
+    Operator* boundOperatorUniform() const { return m_boundOperatorUniform; }
+
     /// @}
     // -------------------------------------------------------------------------
 
     const char* name() const { return m_name; }
 
     ParamDecl decl() const {
-        return {m_name, ParamType::Vec2, m_min, m_max, {m_x, m_y}};
+        ParamDecl d;
+        d.name = m_name;
+        d.type = ParamType::Vec2;
+        d.minVal = m_min;
+        d.maxVal = m_max;
+        d.defaultVal[0] = m_x;
+        d.defaultVal[1] = m_y;
+        // Report first bound operator found (uniform > X > Y)
+        d.boundOperator = m_boundOperatorUniform ? m_boundOperatorUniform
+                        : (m_boundOperatorX ? m_boundOperatorX : m_boundOperatorY);
+        return d;
     }
 
 private:
@@ -267,6 +390,9 @@ private:
     std::function<float()> m_bindingY;
     std::function<float()> m_bindingUniform;
     float m_uniformMin = 0.0f, m_uniformMax = 1.0f;
+    Operator* m_boundOperatorX = nullptr;
+    Operator* m_boundOperatorY = nullptr;
+    Operator* m_boundOperatorUniform = nullptr;
 };
 
 /**
@@ -309,6 +435,9 @@ public:
         m_bindingX = nullptr;
         m_bindingY = nullptr;
         m_bindingZ = nullptr;
+        m_boundOperatorX = nullptr;
+        m_boundOperatorY = nullptr;
+        m_boundOperatorZ = nullptr;
     }
 
     // -------------------------------------------------------------------------
@@ -320,12 +449,34 @@ public:
         m_bindingX = [source = std::move(source), outMin, outMax]() {
             return outMin + source() * (outMax - outMin);
         };
+        m_boundOperatorX = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind X component to a value operator (trackable)
+    void bindX(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorX = &source;
+        m_bindingX = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);
+            return outMin + t * (outMax - outMin);
+        };
     }
 
     /// @brief Bind Y component to a 0-1 source with range
     void bindY(std::function<float()> source, float outMin, float outMax) {
         m_bindingY = [source = std::move(source), outMin, outMax]() {
             return outMin + source() * (outMax - outMin);
+        };
+        m_boundOperatorY = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind Y component to a value operator (trackable)
+    void bindY(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorY = &source;
+        m_bindingY = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);
+            return outMin + t * (outMax - outMin);
         };
     }
 
@@ -334,6 +485,17 @@ public:
         m_bindingZ = [source = std::move(source), outMin, outMax]() {
             return outMin + source() * (outMax - outMin);
         };
+        m_boundOperatorZ = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind Z component to a value operator (trackable)
+    void bindZ(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorZ = &source;
+        m_bindingZ = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);
+            return outMin + t * (outMax - outMin);
+        };
     }
 
     /// @brief Clear all bindings
@@ -341,6 +503,9 @@ public:
         m_bindingX = nullptr;
         m_bindingY = nullptr;
         m_bindingZ = nullptr;
+        m_boundOperatorX = nullptr;
+        m_boundOperatorY = nullptr;
+        m_boundOperatorZ = nullptr;
     }
 
     /// @brief Check if any binding is set
@@ -348,13 +513,33 @@ public:
         return m_bindingX || m_bindingY || m_bindingZ;
     }
 
+    /// @brief Get bound operator for X component
+    Operator* boundOperatorX() const { return m_boundOperatorX; }
+
+    /// @brief Get bound operator for Y component
+    Operator* boundOperatorY() const { return m_boundOperatorY; }
+
+    /// @brief Get bound operator for Z component
+    Operator* boundOperatorZ() const { return m_boundOperatorZ; }
+
     /// @}
     // -------------------------------------------------------------------------
 
     const char* name() const { return m_name; }
 
     ParamDecl decl() const {
-        return {m_name, ParamType::Vec3, m_min, m_max, {m_x, m_y, m_z}};
+        ParamDecl d;
+        d.name = m_name;
+        d.type = ParamType::Vec3;
+        d.minVal = m_min;
+        d.maxVal = m_max;
+        d.defaultVal[0] = m_x;
+        d.defaultVal[1] = m_y;
+        d.defaultVal[2] = m_z;
+        // Report first bound operator found (X > Y > Z)
+        d.boundOperator = m_boundOperatorX ? m_boundOperatorX
+                        : (m_boundOperatorY ? m_boundOperatorY : m_boundOperatorZ);
+        return d;
     }
 
 private:
@@ -364,6 +549,9 @@ private:
     std::function<float()> m_bindingX;
     std::function<float()> m_bindingY;
     std::function<float()> m_bindingZ;
+    Operator* m_boundOperatorX = nullptr;
+    Operator* m_boundOperatorY = nullptr;
+    Operator* m_boundOperatorZ = nullptr;
 };
 
 /**
@@ -421,6 +609,10 @@ public:
         m_bindingG = nullptr;
         m_bindingB = nullptr;
         m_bindingA = nullptr;
+        m_boundOperatorR = nullptr;
+        m_boundOperatorG = nullptr;
+        m_boundOperatorB = nullptr;
+        m_boundOperatorA = nullptr;
     }
 
     void set(const Color& c);  // Defined in color.h
@@ -436,12 +628,34 @@ public:
         m_bindingR = [source = std::move(source), outMin, outMax]() {
             return outMin + source() * (outMax - outMin);
         };
+        m_boundOperatorR = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind red component to a value operator (trackable)
+    void bindR(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorR = &source;
+        m_bindingR = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);
+            return outMin + t * (outMax - outMin);
+        };
     }
 
     /// @brief Bind green component to a 0-1 source with range
     void bindG(std::function<float()> source, float outMin, float outMax) {
         m_bindingG = [source = std::move(source), outMin, outMax]() {
             return outMin + source() * (outMax - outMin);
+        };
+        m_boundOperatorG = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind green component to a value operator (trackable)
+    void bindG(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorG = &source;
+        m_bindingG = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);
+            return outMin + t * (outMax - outMin);
         };
     }
 
@@ -450,12 +664,34 @@ public:
         m_bindingB = [source = std::move(source), outMin, outMax]() {
             return outMin + source() * (outMax - outMin);
         };
+        m_boundOperatorB = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind blue component to a value operator (trackable)
+    void bindB(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorB = &source;
+        m_bindingB = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);
+            return outMin + t * (outMax - outMin);
+        };
     }
 
     /// @brief Bind alpha component to a 0-1 source with range
     void bindA(std::function<float()> source, float outMin, float outMax) {
         m_bindingA = [source = std::move(source), outMin, outMax]() {
             return outMin + source() * (outMax - outMin);
+        };
+        m_boundOperatorA = nullptr;  // Lambda not trackable
+    }
+
+    /// @brief Bind alpha component to a value operator (trackable)
+    void bindA(Operator& source, float inMin, float inMax, float outMin, float outMax) {
+        m_boundOperatorA = &source;
+        m_bindingA = [&source, inMin, inMax, outMin, outMax]() {
+            float v = source.outputValue();
+            float t = (v - inMin) / (inMax - inMin);
+            return outMin + t * (outMax - outMin);
         };
     }
 
@@ -465,6 +701,10 @@ public:
         m_bindingG = nullptr;
         m_bindingB = nullptr;
         m_bindingA = nullptr;
+        m_boundOperatorR = nullptr;
+        m_boundOperatorG = nullptr;
+        m_boundOperatorB = nullptr;
+        m_boundOperatorA = nullptr;
     }
 
     /// @brief Check if any binding is set
@@ -472,13 +712,38 @@ public:
         return m_bindingR || m_bindingG || m_bindingB || m_bindingA;
     }
 
+    /// @brief Get bound operator for R component
+    Operator* boundOperatorR() const { return m_boundOperatorR; }
+
+    /// @brief Get bound operator for G component
+    Operator* boundOperatorG() const { return m_boundOperatorG; }
+
+    /// @brief Get bound operator for B component
+    Operator* boundOperatorB() const { return m_boundOperatorB; }
+
+    /// @brief Get bound operator for A component
+    Operator* boundOperatorA() const { return m_boundOperatorA; }
+
     /// @}
     // -------------------------------------------------------------------------
 
     const char* name() const { return m_name; }
 
     ParamDecl decl() const {
-        return {m_name, ParamType::Color, 0.0f, 1.0f, {m_r, m_g, m_b, m_a}};
+        ParamDecl d;
+        d.name = m_name;
+        d.type = ParamType::Color;
+        d.minVal = 0.0f;
+        d.maxVal = 1.0f;
+        d.defaultVal[0] = m_r;
+        d.defaultVal[1] = m_g;
+        d.defaultVal[2] = m_b;
+        d.defaultVal[3] = m_a;
+        // Report first bound operator found (R > G > B > A)
+        d.boundOperator = m_boundOperatorR ? m_boundOperatorR
+                        : (m_boundOperatorG ? m_boundOperatorG
+                        : (m_boundOperatorB ? m_boundOperatorB : m_boundOperatorA));
+        return d;
     }
 
 private:
@@ -488,6 +753,10 @@ private:
     std::function<float()> m_bindingG;
     std::function<float()> m_bindingB;
     std::function<float()> m_bindingA;
+    Operator* m_boundOperatorR = nullptr;
+    Operator* m_boundOperatorG = nullptr;
+    Operator* m_boundOperatorB = nullptr;
+    Operator* m_boundOperatorA = nullptr;
 };
 
 /**

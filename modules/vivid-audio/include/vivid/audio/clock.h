@@ -183,6 +183,10 @@ public:
     std::string name() const override { return "Clock"; }
     OutputKind outputKind() const override { return OutputKind::Value; }
 
+    /// @brief Draw beat grid visualization
+    bool drawVisualization(VizDrawList* drawList, float minX, float minY,
+                           float maxX, float maxY) override;
+
     std::vector<ParamDecl> params() override { return registeredParams(); }
     bool getParam(const std::string& name, float out[4]) override {
         return getRegisteredParam(name, out);
