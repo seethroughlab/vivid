@@ -59,7 +59,7 @@ void setup(Context& ctx) {
     auto& final_comp = chain.add<Composite>("final");
     final_comp.inputA("source");
     final_comp.inputB("glow");
-    final_comp.mode(BlendMode::Add);
+    final_comp.mode = BlendMode::Add;
 
     // Canvas for comparison
     auto& canvas = chain.add<Canvas>("canvas");

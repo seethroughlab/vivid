@@ -26,7 +26,7 @@ void setup(Context& ctx) {
 
     // Interactive circle (position controlled by mouse)
     auto& circle = chain.add<Shape>("circle");
-    circle.type(ShapeType::Circle);
+    circle.type = ShapeType::Circle;
     circle.size.set(circleSize, circleSize);
     circle.color.set(circleColor.r, circleColor.g, circleColor.b, circleColor.a);
     circle.softness = 0.01f;
@@ -35,7 +35,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
     comp.inputB("circle");
-    comp.mode(BlendMode::Over);
+    comp.mode = BlendMode::Over;
 
     // Canvas for UI overlay
     auto& canvas = chain.add<Canvas>("canvas");

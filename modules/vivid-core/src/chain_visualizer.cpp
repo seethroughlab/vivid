@@ -88,6 +88,62 @@ static std::string formatMemory(size_t bytes) {
     return buf;
 }
 
+// -------------------------------------------------------------------------
+// Color conversion helpers for color picker
+// -------------------------------------------------------------------------
+
+// RGB (0-1) to HSV (H: 0-360, S: 0-1, V: 0-1)
+static void rgbToHsv(float r, float g, float b, float& h, float& s, float& v) {
+    float maxVal = std::max({r, g, b});
+    float minVal = std::min({r, g, b});
+    float delta = maxVal - minVal;
+
+    v = maxVal;
+    s = (maxVal > 0.0001f) ? (delta / maxVal) : 0.0f;
+
+    if (delta < 0.0001f) {
+        h = 0.0f;
+    } else if (maxVal == r) {
+        h = 60.0f * std::fmod((g - b) / delta + 6.0f, 6.0f);
+    } else if (maxVal == g) {
+        h = 60.0f * ((b - r) / delta + 2.0f);
+    } else {
+        h = 60.0f * ((r - g) / delta + 4.0f);
+    }
+}
+
+// HSV (H: 0-360, S: 0-1, V: 0-1) to RGB (0-1)
+static void hsvToRgb(float h, float s, float v, float& r, float& g, float& b) {
+    float c = v * s;
+    float x = c * (1.0f - std::abs(std::fmod(h / 60.0f, 2.0f) - 1.0f));
+    float m = v - c;
+
+    float rp, gp, bp;
+    if (h < 60.0f)       { rp = c; gp = x; bp = 0; }
+    else if (h < 120.0f) { rp = x; gp = c; bp = 0; }
+    else if (h < 180.0f) { rp = 0; gp = c; bp = x; }
+    else if (h < 240.0f) { rp = 0; gp = x; bp = c; }
+    else if (h < 300.0f) { rp = x; gp = 0; bp = c; }
+    else                 { rp = c; gp = 0; bp = x; }
+
+    r = rp + m;
+    g = gp + m;
+    b = bp + m;
+}
+
+// Format RGB (0-1) as hex string (#RRGGBB)
+static std::string rgbToHex(float r, float g, float b) {
+    int ri = static_cast<int>(std::round(r * 255.0f));
+    int gi = static_cast<int>(std::round(g * 255.0f));
+    int bi = static_cast<int>(std::round(b * 255.0f));
+    ri = std::max(0, std::min(255, ri));
+    gi = std::max(0, std::min(255, gi));
+    bi = std::max(0, std::min(255, bi));
+    char buf[8];
+    snprintf(buf, sizeof(buf), "#%02X%02X%02X", ri, gi, bi);
+    return buf;
+}
+
 ChainVisualizer::~ChainVisualizer() {
     shutdown();
 }
@@ -1220,6 +1276,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
             case ParamType::Vec3: totalRows += 3; break;
             case ParamType::Vec4:
             case ParamType::Color: totalRows += 4; break;
+            case ParamType::Enum: totalRows += 1; break;  // Dropdown is single row
             default: totalRows += 1; break;
         }
     }
@@ -1308,8 +1365,349 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 componentLabels[0] = "R"; componentLabels[1] = "G";
                 componentLabels[2] = "B"; componentLabels[3] = "A";
                 break;
+            case ParamType::Enum:
+                // Handled separately below
+                break;
             default:
                 break;
+        }
+
+        // Handle Enum type with dropdown
+        if (p.type == ParamType::Enum) {
+            float y = contentY;
+            float itemBottom = y + rowHeight;
+            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+
+            int currentIndex = static_cast<int>(value[0]);
+            std::string currentLabel = (currentIndex >= 0 && currentIndex < static_cast<int>(p.enumLabels.size()))
+                ? p.enumLabels[currentIndex] : "?";
+
+            if (isVisible) {
+                // Label
+                m_overlay.text(p.name, panelX + padding, y + ascent, dimColor, labelFont);
+
+                // Dropdown button
+                float buttonX = panelX + padding;
+                float buttonY = y + lineH;
+                float buttonWidth = sliderWidth;
+
+                // Check if this dropdown is currently open
+                bool isOpen = m_dropdown.open &&
+                              m_dropdown.operatorName == info.name &&
+                              m_dropdown.paramName == p.name;
+
+                // Button background
+                glm::vec4 buttonBg = isOpen ? sliderActive : sliderBg;
+                m_overlay.fillRoundedRect(buttonX, buttonY, buttonWidth, sliderHeight, 3.0f * scale, buttonBg);
+
+                // Current value text
+                m_overlay.text(currentLabel, buttonX + 8.0f * scale, buttonY + ascent, textColor, monoFont);
+
+                // Dropdown arrow
+                m_overlay.text(isOpen ? "▲" : "▼", buttonX + buttonWidth - 20.0f * scale, buttonY + ascent, dimColor, monoFont);
+
+                // Handle click to open/close dropdown
+                bool inButton = mousePos.x >= buttonX && mousePos.x <= buttonX + buttonWidth &&
+                               mousePos.y >= buttonY && mousePos.y <= buttonY + sliderHeight;
+
+                if (mouseClicked && inButton) {
+                    if (isOpen) {
+                        // Close dropdown
+                        m_dropdown.open = false;
+                    } else {
+                        // Open dropdown
+                        m_dropdown.open = true;
+                        m_dropdown.operatorName = info.name;
+                        m_dropdown.paramName = p.name;
+                        m_dropdown.menuX = buttonX;
+                        m_dropdown.menuY = buttonY + sliderHeight;
+                        m_dropdown.menuWidth = buttonWidth;
+                        m_dropdown.options = p.enumLabels;
+                        m_dropdown.currentIndex = currentIndex;
+                    }
+                }
+
+                // Draw dropdown menu if open
+                if (isOpen && !p.enumLabels.empty()) {
+                    float menuItemHeight = lineH + 4.0f * scale;
+                    float menuHeight = p.enumLabels.size() * menuItemHeight;
+                    float menuY = m_dropdown.menuY;
+
+                    // Menu background
+                    glm::vec4 menuBg = {0.15f, 0.15f, 0.18f, 0.98f};
+                    m_overlay.setLayer(UILayer::Menus);
+                    m_overlay.fillRoundedRect(m_dropdown.menuX, menuY, m_dropdown.menuWidth, menuHeight, 3.0f * scale, menuBg);
+                    m_overlay.strokeRoundedRect(m_dropdown.menuX, menuY, m_dropdown.menuWidth, menuHeight, 3.0f * scale, 1.0f, borderColor);
+
+                    // Menu items
+                    for (size_t i = 0; i < p.enumLabels.size(); ++i) {
+                        float itemY = menuY + i * menuItemHeight;
+                        bool isHovered = mousePos.x >= m_dropdown.menuX &&
+                                        mousePos.x <= m_dropdown.menuX + m_dropdown.menuWidth &&
+                                        mousePos.y >= itemY && mousePos.y <= itemY + menuItemHeight;
+                        bool isSelected = (static_cast<int>(i) == currentIndex);
+
+                        // Item background (highlight on hover)
+                        if (isHovered) {
+                            m_overlay.fillRoundedRect(m_dropdown.menuX + 2.0f, itemY + 1.0f,
+                                                     m_dropdown.menuWidth - 4.0f, menuItemHeight - 2.0f,
+                                                     2.0f * scale, sliderFill);
+                        }
+
+                        // Item text
+                        glm::vec4 itemColor = isSelected ? sliderActive : textColor;
+                        m_overlay.text(p.enumLabels[i], m_dropdown.menuX + 8.0f * scale, itemY + ascent, itemColor, monoFont);
+
+                        // Checkmark for selected item
+                        if (isSelected) {
+                            m_overlay.text("✓", m_dropdown.menuX + m_dropdown.menuWidth - 20.0f * scale,
+                                          itemY + ascent, sliderActive, monoFont);
+                        }
+
+                        // Handle click on menu item
+                        if (mouseClicked && isHovered) {
+                            // Set the new value
+                            float newValue[4] = {static_cast<float>(i), 0, 0, 0};
+                            info.op->setParam(p.name, newValue);
+
+                            // Fire change callback
+                            if (m_paramChangeCallback) {
+                                float oldValue[4] = {static_cast<float>(currentIndex), 0, 0, 0};
+                                m_paramChangeCallback(info.name, p.name, oldValue, newValue, info.op->sourceLine);
+                            }
+
+                            // Close dropdown
+                            m_dropdown.open = false;
+                        }
+                    }
+
+                    m_overlay.setLayer(UILayer::Panels);
+                }
+            }
+
+            // Close dropdown if clicked outside
+            if (mouseClicked && m_dropdown.open &&
+                m_dropdown.operatorName == info.name &&
+                m_dropdown.paramName == p.name) {
+                // Check if click is outside the dropdown menu
+                float menuItemHeight = lineH + 4.0f * scale;
+                float menuHeight = p.enumLabels.size() * menuItemHeight;
+                bool inMenu = mousePos.x >= m_dropdown.menuX &&
+                             mousePos.x <= m_dropdown.menuX + m_dropdown.menuWidth &&
+                             mousePos.y >= m_dropdown.menuY &&
+                             mousePos.y <= m_dropdown.menuY + menuHeight;
+                float buttonX = panelX + padding;
+                float buttonY = y + lineH;
+                bool inButton = mousePos.x >= buttonX && mousePos.x <= buttonX + sliderWidth &&
+                               mousePos.y >= buttonY && mousePos.y <= buttonY + sliderHeight;
+                if (!inMenu && !inButton) {
+                    m_dropdown.open = false;
+                }
+            }
+
+            contentY += rowHeight;
+            continue;  // Skip the slider rendering loop
+        }
+
+        // Handle Color type with color picker
+        if (p.type == ParamType::Color) {
+            float y = contentY;
+            float swatchHeight = sliderHeight + lineH + 8.0f * scale;  // Taller for swatch + hex
+            float itemBottom = y + swatchHeight;
+            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+
+            // Check if this color picker is expanded
+            bool isExpanded = m_colorPicker.expanded &&
+                             m_colorPicker.operatorName == info.name &&
+                             m_colorPicker.paramName == p.name;
+
+            // Calculate total height needed
+            float expandedHeight = isExpanded ? (4 * rowHeight + swatchHeight) : swatchHeight;
+
+            if (isVisible) {
+                // Label
+                m_overlay.text(p.name, panelX + padding, y + ascent, dimColor, labelFont);
+
+                // Color swatch with checkerboard alpha preview
+                float swatchX = panelX + padding;
+                float swatchY = y + lineH;
+                float swatchW = 50.0f * scale;
+                float swatchH = sliderHeight;
+
+                // Draw checkerboard for alpha visualization
+                float checkSize = 6.0f * scale;
+                glm::vec4 checkLight = {0.7f, 0.7f, 0.7f, 1.0f};
+                glm::vec4 checkDark = {0.4f, 0.4f, 0.4f, 1.0f};
+                for (float cx = swatchX; cx < swatchX + swatchW; cx += checkSize) {
+                    for (float cy = swatchY; cy < swatchY + swatchH; cy += checkSize) {
+                        int xi = static_cast<int>((cx - swatchX) / checkSize);
+                        int yi = static_cast<int>((cy - swatchY) / checkSize);
+                        bool dark = (xi + yi) % 2 == 0;
+                        float w = std::min(checkSize, swatchX + swatchW - cx);
+                        float h = std::min(checkSize, swatchY + swatchH - cy);
+                        m_overlay.fillRect(cx, cy, w, h, dark ? checkDark : checkLight);
+                    }
+                }
+
+                // Draw color on top (with alpha)
+                glm::vec4 color = {value[0], value[1], value[2], value[3]};
+                m_overlay.fillRoundedRect(swatchX, swatchY, swatchW, swatchH, 3.0f * scale, color);
+                m_overlay.strokeRoundedRect(swatchX, swatchY, swatchW, swatchH, 3.0f * scale, 1.0f, borderColor);
+
+                // Hex value display
+                std::string hexStr = rgbToHex(value[0], value[1], value[2]);
+                m_overlay.text(hexStr, swatchX + swatchW + 8.0f * scale, swatchY + ascent, textColor, monoFont);
+
+                // Alpha percentage
+                char alphaBuf[16];
+                snprintf(alphaBuf, sizeof(alphaBuf), " %.0f%%", value[3] * 100.0f);
+                float hexWidth = 70.0f * scale;
+                m_overlay.text(alphaBuf, swatchX + swatchW + hexWidth, swatchY + ascent, dimColor, monoFont);
+
+                // Expand/collapse arrow
+                m_overlay.text(isExpanded ? "▲" : "▼", panelX + inspectorWidth - padding - 20.0f * scale,
+                              swatchY + ascent, dimColor, monoFont);
+
+                // Handle click on swatch area to expand/collapse
+                bool inSwatch = mousePos.x >= swatchX && mousePos.x <= panelX + inspectorWidth - padding &&
+                               mousePos.y >= swatchY && mousePos.y <= swatchY + swatchH;
+                if (mouseClicked && inSwatch) {
+                    if (isExpanded) {
+                        m_colorPicker.expanded = false;
+                    } else {
+                        m_colorPicker.expanded = true;
+                        m_colorPicker.operatorName = info.name;
+                        m_colorPicker.paramName = p.name;
+                        for (int i = 0; i < 4; ++i) {
+                            m_colorPicker.originalColor[i] = value[i];
+                        }
+                    }
+                }
+            }
+
+            contentY += swatchHeight;
+
+            // If expanded, show H, S, V, A sliders
+            if (isExpanded) {
+                // Convert RGB to HSV
+                float h, s, v;
+                rgbToHsv(value[0], value[1], value[2], h, s, v);
+
+                const char* hsvLabels[] = {"H", "S", "V", "A"};
+                float hsvValues[] = {h / 360.0f, s, v, value[3]};  // Normalize H to 0-1 for slider
+                float hsvMins[] = {0.0f, 0.0f, 0.0f, 0.0f};
+                float hsvMaxs[] = {1.0f, 1.0f, 1.0f, 1.0f};
+
+                for (int c = 0; c < 4; ++c) {
+                    float y = contentY;
+                    float itemBottom = y + rowHeight;
+                    bool isSliderVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+
+                    if (isSliderVisible) {
+                        // Label
+                        std::string label = std::string(p.name) + "." + hsvLabels[c];
+                        m_overlay.text(label, panelX + padding, y + ascent, dimColor, labelFont);
+
+                        // Slider background
+                        float sliderX = panelX + padding;
+                        float sliderY = y + lineH;
+                        m_overlay.fillRoundedRect(sliderX, sliderY, sliderWidth, sliderHeight, 3.0f * scale, sliderBg);
+
+                        // For Hue slider, draw rainbow gradient
+                        if (c == 0) {
+                            // Draw hue gradient
+                            float gradW = sliderWidth / 6.0f;
+                            for (int i = 0; i < 6; ++i) {
+                                float hStart = i * 60.0f;
+                                float hEnd = (i + 1) * 60.0f;
+                                float r1, g1, b1, r2, g2, b2;
+                                hsvToRgb(hStart, 1.0f, 1.0f, r1, g1, b1);
+                                hsvToRgb(hEnd, 1.0f, 1.0f, r2, g2, b2);
+                                // Just draw a single color per section
+                                glm::vec4 hueColor = {r1, g1, b1, 1.0f};
+                                m_overlay.fillRect(sliderX + i * gradW, sliderY, gradW + 1.0f, sliderHeight, hueColor);
+                            }
+                        } else {
+                            // Fill based on normalized value
+                            float fillWidth = hsvValues[c] * sliderWidth;
+                            if (fillWidth > 0) {
+                                bool isActive = m_sliderState.dragging &&
+                                               m_sliderState.operatorName == info.name &&
+                                               m_sliderState.paramName == p.name &&
+                                               m_sliderState.paramIndex == c;
+                                glm::vec4 fillColor = isActive ? sliderActive : sliderFill;
+                                m_overlay.fillRoundedRect(sliderX, sliderY, fillWidth, sliderHeight, 3.0f * scale, fillColor);
+                            }
+                        }
+
+                        // Value display
+                        char valBuf[16];
+                        if (c == 0) {
+                            snprintf(valBuf, sizeof(valBuf), "%.0f°", h);
+                        } else if (c == 3) {
+                            snprintf(valBuf, sizeof(valBuf), "%.0f%%", value[3] * 100.0f);
+                        } else {
+                            snprintf(valBuf, sizeof(valBuf), "%.0f%%", hsvValues[c] * 100.0f);
+                        }
+                        m_overlay.text(valBuf, sliderX + sliderWidth + 8.0f * scale, sliderY + ascent, textColor, monoFont);
+                    }
+
+                    // Handle HSV slider interaction
+                    float sliderX = panelX + padding;
+                    float sliderY = y + lineH;
+
+                    bool inSlider = mousePos.x >= sliderX && mousePos.x <= sliderX + sliderWidth &&
+                                   mousePos.y >= sliderY && mousePos.y <= sliderY + sliderHeight &&
+                                   isSliderVisible;
+
+                    if (mouseClicked && inSlider) {
+                        m_sliderState.dragging = true;
+                        m_sliderState.operatorName = info.name;
+                        m_sliderState.paramName = p.name;
+                        m_sliderState.paramIndex = c;
+                        m_sliderState.startMouseX = mousePos.x;
+                        m_sliderState.startValue = hsvValues[c];
+                        for (int i = 0; i < 4; ++i) {
+                            m_sliderState.originalValue[i] = value[i];
+                        }
+                    }
+
+                    if (m_sliderState.dragging &&
+                        m_sliderState.operatorName == info.name &&
+                        m_sliderState.paramName == p.name &&
+                        m_sliderState.paramIndex == c) {
+
+                        float newNormalized = (mousePos.x - sliderX) / sliderWidth;
+                        newNormalized = std::max(0.0f, std::min(1.0f, newNormalized));
+
+                        // Update HSV value and convert back to RGB
+                        float newH = h, newS = s, newV = v, newA = value[3];
+                        if (c == 0) newH = newNormalized * 360.0f;
+                        else if (c == 1) newS = newNormalized;
+                        else if (c == 2) newV = newNormalized;
+                        else newA = newNormalized;
+
+                        float newR, newG, newB;
+                        hsvToRgb(newH, newS, newV, newR, newG, newB);
+
+                        float newValues[4] = {newR, newG, newB, newA};
+                        info.op->setParam(p.name, newValues);
+
+                        if (mouseReleased) {
+                            m_sliderState.dragging = false;
+                            if (m_paramChangeCallback) {
+                                m_paramChangeCallback(info.name, p.name,
+                                                     m_sliderState.originalValue, newValues,
+                                                     info.op->sourceLine);
+                            }
+                        }
+                    }
+
+                    contentY += rowHeight;
+                }
+            }
+
+            continue;  // Skip the normal slider rendering loop
         }
 
         for (int c = 0; c < componentCount; ++c) {

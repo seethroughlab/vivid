@@ -46,7 +46,7 @@ The displacement map controls which frame each pixel reads from:
 Horizontal slices show different times:
 ```cpp
 auto& gradient = chain.add<Gradient>("gradient");
-gradient.mode(GradientMode::Linear);
+gradient.mode = GradientMode::Linear;
 gradient.direction.set(0.0f, 1.0f);  // Vertical gradient
 gradient.colorA.set(0, 0, 0, 1);     // Bottom = past
 gradient.colorB.set(1, 1, 1, 1);     // Top = present
@@ -60,7 +60,7 @@ slit.displacementMap(&gradient);
 Center shows present, edges show past:
 ```cpp
 auto& radial = chain.add<Gradient>("radial");
-radial.mode(GradientMode::Radial);
+radial.mode = GradientMode::Radial;
 radial.colorA.set(1, 1, 1, 1);  // Center = present
 radial.colorB.set(0, 0, 0, 1);  // Edge = past
 ```

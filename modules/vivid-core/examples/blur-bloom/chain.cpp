@@ -18,19 +18,19 @@ void setup(Context& ctx) {
     bg.color.set(0.02f, 0.02f, 0.05f, 1.0f);
 
     auto& shape1 = chain.add<Shape>("shape1");
-    shape1.type(ShapeType::Circle);
+    shape1.type = ShapeType::Circle;
     shape1.size.set(0.15f, 0.15f);
     shape1.color.set(1.0f, 0.4f, 0.1f, 1.0f);  // Orange
     shape1.position.set(0.25f, 0.5f);  // Left of center
 
     auto& shape2 = chain.add<Shape>("shape2");
-    shape2.type(ShapeType::Circle);
+    shape2.type = ShapeType::Circle;
     shape2.size.set(0.12f, 0.12f);
     shape2.color.set(0.2f, 0.6f, 1.0f, 1.0f);  // Blue
     shape2.position.set(0.75f, 0.5f);  // Right of center
 
     auto& shape3 = chain.add<Shape>("shape3");
-    shape3.type(ShapeType::Polygon);
+    shape3.type = ShapeType::Polygon;
     shape3.sides = 6;
     shape3.size.set(0.1f, 0.1f);
     shape3.color.set(0.4f, 1.0f, 0.4f, 1.0f);  // Green
@@ -42,7 +42,7 @@ void setup(Context& ctx) {
     source.input(1, "shape1");
     source.input(2, "shape2");
     source.input(3, "shape3");
-    source.mode(BlendMode::Add);
+    source.mode = BlendMode::Add;
 
     // Blur - Gaussian blur effect
     auto& blur = chain.add<Blur>("blur");

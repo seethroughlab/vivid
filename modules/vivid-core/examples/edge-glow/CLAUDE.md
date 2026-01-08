@@ -61,7 +61,7 @@ glow.radius = 20.0f;      // Wide spread
 auto& final = chain.add<Composite>("final");
 final.inputA("source");
 final.inputB("glow");
-final.mode(BlendMode::Add);
+final.mode = BlendMode::Add;
 ```
 
 ## Controls

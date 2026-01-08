@@ -149,7 +149,7 @@ auto& gradient = chain->add<Gradient>("gradient");
 auto& comp = chain->add<Composite>("comp");
 comp.inputA(&gradient)     // Background
     .inputB(&noise)        // Foreground
-    .mode(BlendMode::Add);
+    .mode = BlendMode::Add;
 ```
 
 ## Dynamic Updates

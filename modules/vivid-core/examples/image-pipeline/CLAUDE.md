@@ -37,10 +37,10 @@ transform.translate.set(0.1f, 0.0f);   // Offset
 ```cpp
 auto& mirror = chain.add<Mirror>("mirror");
 mirror.input("source");
-mirror.mode(MirrorMode::Horizontal);   // Flip horizontally
-mirror.mode(MirrorMode::Vertical);     // Flip vertically
-mirror.mode(MirrorMode::Both);         // Both axes
-mirror.mode(MirrorMode::Kaleidoscope); // Kaleidoscope effect
+mirror.mode = MirrorMode::Horizontal;   // Flip horizontally
+mirror.mode = MirrorMode::Vertical;     // Flip vertically
+mirror.mode = MirrorMode::Quad;         // Both axes (4 quadrants)
+mirror.mode = MirrorMode::Kaleidoscope; // Kaleidoscope effect
 mirror.segments = 6;                   // Number of kaleidoscope segments
 mirror.angle = 0.0f;                   // Rotation offset
 ```

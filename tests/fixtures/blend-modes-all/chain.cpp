@@ -19,13 +19,13 @@ void setup(Context& ctx) {
 
     // Layer A: Warm animated gradient
     auto& layerA = chain.add<Gradient>("layerA");
-    layerA.mode(GradientMode::Linear);
+    layerA.mode = GradientMode::Linear;
     layerA.colorA.set(0.9f, 0.3f, 0.1f, 1.0f);
     layerA.colorB.set(1.0f, 0.8f, 0.2f, 1.0f);
 
     // Layer B: Cool animated gradient with transparency
     auto& layerB = chain.add<Gradient>("layerB");
-    layerB.mode(GradientMode::Linear);
+    layerB.mode = GradientMode::Linear;
     layerB.colorA.set(0.1f, 0.3f, 0.9f, 0.8f);
     layerB.colorB.set(0.5f, 0.1f, 0.8f, 0.8f);
 
@@ -33,7 +33,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("layerA");
     comp.inputB("layerB");
-    comp.mode(BlendMode::Over);
+    comp.mode = BlendMode::Over;
 
     chain.output("comp");
 
@@ -64,12 +64,12 @@ void update(Context& ctx) {
     // Apply blend mode
     auto& comp = chain.get<Composite>("comp");
     switch (currentMode) {
-        case 0: comp.mode(BlendMode::Over); break;
-        case 1: comp.mode(BlendMode::Add); break;
-        case 2: comp.mode(BlendMode::Multiply); break;
-        case 3: comp.mode(BlendMode::Screen); break;
-        case 4: comp.mode(BlendMode::Overlay); break;
-        case 5: comp.mode(BlendMode::Difference); break;
+        case 0: comp.mode = BlendMode::Over; break;
+        case 1: comp.mode = BlendMode::Add; break;
+        case 2: comp.mode = BlendMode::Multiply; break;
+        case 3: comp.mode = BlendMode::Screen; break;
+        case 4: comp.mode = BlendMode::Overlay; break;
+        case 5: comp.mode = BlendMode::Difference; break;
     }
 }
 

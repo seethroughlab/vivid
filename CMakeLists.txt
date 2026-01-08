@@ -103,6 +103,15 @@ FetchContent_Declare(
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 FetchContent_MakeAvailable(nlohmann_json)
 
+# magic_enum - Enum reflection (header-only)
+FetchContent_Declare(
+    magic_enum
+    GIT_REPOSITORY https://github.com/Neargye/magic_enum.git
+    GIT_TAG        v0.9.7
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(magic_enum)
+
 # -----------------------------------------------------------------------------
 # WebGPU via wgpu-native (prebuilt binaries)
 # Using prebuilt binaries for reliable cross-platform support

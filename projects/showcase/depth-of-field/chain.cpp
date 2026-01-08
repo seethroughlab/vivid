@@ -37,14 +37,14 @@ void setup(Context& ctx) {
     auto& nearRoughnessTex = chain.add<Noise>("nearRoughness");
     nearRoughnessTex.scale = 8.0f;
     nearRoughnessTex.octaves = 4;
-    nearRoughnessTex.type(NoiseType::Simplex);
+    nearRoughnessTex.type = NoiseType::Simplex;
     nearRoughnessTex.setResolution(256, 256);
 
     // Mid material: Metallic green with cellular pattern
     auto& midRoughnessTex = chain.add<Noise>("midRoughness");
     midRoughnessTex.scale = 12.0f;
     midRoughnessTex.octaves = 2;
-    midRoughnessTex.type(NoiseType::Worley);
+    midRoughnessTex.type = NoiseType::Worley;
     midRoughnessTex.setResolution(256, 256);
 
     // Far material: Glowing blue with animated emissive
@@ -52,14 +52,14 @@ void setup(Context& ctx) {
     farEmissiveTex.scale = 5.0f;
     farEmissiveTex.speed = 0.3f;
     farEmissiveTex.octaves = 3;
-    farEmissiveTex.type(NoiseType::Simplex);
+    farEmissiveTex.type = NoiseType::Simplex;
     farEmissiveTex.setResolution(256, 256);
 
     // Ground: Subtle noise for variation
     auto& groundRoughnessTex = chain.add<Noise>("groundRoughness");
     groundRoughnessTex.scale = 4.0f;
     groundRoughnessTex.octaves = 2;
-    groundRoughnessTex.type(NoiseType::Simplex);
+    groundRoughnessTex.type = NoiseType::Simplex;
     groundRoughnessTex.setResolution(256, 256);
 
     // =========================================================================

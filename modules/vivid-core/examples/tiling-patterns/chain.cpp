@@ -17,10 +17,10 @@ void setup(Context& ctx) {
     auto& noise = chain.add<Noise>("noise");
     noise.scale = 4.0f;
     noise.octaves = 3;
-    noise.type(NoiseType::Simplex);
+    noise.type = NoiseType::Simplex;
 
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Star);
+    shape.type = ShapeType::Star;
     shape.sides = 6;
     shape.size.set(0.3f, 0.3f);
     shape.softness = 0.05f;
@@ -29,7 +29,7 @@ void setup(Context& ctx) {
     auto& source = chain.add<Composite>("source");
     source.inputA("noise");
     source.inputB("shape");
-    source.mode(BlendMode::Add);
+    source.mode = BlendMode::Add;
 
     // HSV for color variation
     auto& hsv = chain.add<HSV>("hsv");
@@ -67,7 +67,7 @@ void setup(Context& ctx) {
     // Kaleidoscope-style mirroring
     auto& mirror = chain.add<Mirror>("mirror");
     mirror.input("hsv");
-    mirror.mode(MirrorMode::Quad);  // 4-way symmetry
+    mirror.mode = MirrorMode::Quad;  // 4-way symmetry
     mirror.segments = 4;
 
     // ----- KALEIDOSCOPE (Transform + Mirror) -----
@@ -77,7 +77,7 @@ void setup(Context& ctx) {
 
     auto& kaleidoscope = chain.add<Mirror>("kaleidoscope");
     kaleidoscope.input("transform_k");
-    kaleidoscope.mode(MirrorMode::Kaleidoscope);
+    kaleidoscope.mode = MirrorMode::Kaleidoscope;
     kaleidoscope.segments = 8;  // 8-way symmetry
 
     // Post-process with bloom for polish

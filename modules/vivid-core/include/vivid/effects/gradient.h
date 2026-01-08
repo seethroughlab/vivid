@@ -80,7 +80,7 @@ public:
         return OperatorDescriptor("Gradient", "Generators", "Color gradient")
             .withUsage(
                 "auto& grad = chain.add<Gradient>(\"grad\");\n"
-                "grad.mode(GradientMode::Radial);  // Linear, Radial, Angular, Diamond\n"
+                "grad.mode = GradientMode::Radial;  // Linear, Radial, Angular, Diamond\n"
                 "grad.colorA.set(1, 0, 0, 1);      // Red\n"
                 "grad.colorB.set(0, 0, 1, 1);      // Blue\n"
             )
@@ -92,6 +92,7 @@ public:
     /// @name Parameters (public for direct access)
     /// @{
 
+    EnumParam<GradientMode> mode{"mode", GradientMode::Linear};  ///< Gradient mode
     Param<float> angle{"angle", 0.0f, 0.0f, 6.283f};       ///< Gradient angle (linear mode)
     Param<float> scale{"scale", 1.0f, 0.1f, 10.0f};        ///< Gradient scale
     Param<float> offset{"offset", 0.0f, -1.0f, 1.0f};      ///< Gradient offset
@@ -103,6 +104,7 @@ public:
     // -------------------------------------------------------------------------
 
     Gradient() {
+        registerParam(mode);
         registerParam(angle);
         registerParam(scale);
         registerParam(offset);
@@ -110,9 +112,6 @@ public:
         registerParam(colorA);
         registerParam(colorB);
     }
-
-    /// @brief Set gradient mode (Linear, Radial, Angular, Diamond)
-    void mode(GradientMode m) { if (m_mode != m) { m_mode = m; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface
@@ -131,7 +130,7 @@ public:
      */
     GradientUniforms getUniforms() const {
         GradientUniforms uniforms = {};
-        uniforms.mode = static_cast<int>(m_mode);
+        uniforms.mode = mode.index();
         uniforms.angle = angle;
         uniforms.centerX = center.x();
         uniforms.centerY = center.y();
@@ -155,9 +154,6 @@ public:
     const char* fragmentShader() const override;
 
     /// @}
-
-private:
-    GradientMode m_mode = GradientMode::Linear;
 };
 
 #ifdef _WIN32

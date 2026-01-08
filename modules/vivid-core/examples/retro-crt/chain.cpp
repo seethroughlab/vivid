@@ -24,21 +24,21 @@ void setup(Context& ctx) {
     auto& crt = chain.add<CRTEffect>("crt");
 
     // Animated star shape
-    shape.type(ShapeType::Star);
+    shape.type = ShapeType::Star;
     shape.sides = 5;
     shape.size.set(0.4f, 0.4f);
     shape.softness = 0.01f;
     shape.color.set(1.0f, 1.0f, 1.0f, 1.0f);  // White
 
     // Radial gradient background
-    gradient.mode(GradientMode::Radial);
+    gradient.mode = GradientMode::Radial;
     gradient.colorA.set(0.1f, 0.0f, 0.2f, 1.0f);   // Dark purple center
     gradient.colorB.set(0.0f, 0.0f, 0.05f, 1.0f);  // Nearly black edge
 
     // Composite shape over gradient
     comp.inputA("gradient");
     comp.inputB("shape");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     // HSV for hue cycling
     hsv.input("comp");

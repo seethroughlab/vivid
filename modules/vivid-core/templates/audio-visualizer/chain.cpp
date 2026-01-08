@@ -27,7 +27,7 @@ void setup(Context& ctx) {
 
     // Noise generator driven by audio
     auto& noise = chain.add<Noise>("noise");
-    noise.type(NoiseType::Simplex);
+    noise.type = NoiseType::Simplex;
     noise.scale = 4.0f;
     noise.octaves = 3;
 
@@ -46,7 +46,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("feedback");
     comp.inputB("ramp");
-    comp.mode(BlendMode::Screen);
+    comp.mode = BlendMode::Screen;
 
     chain.output("comp");
 }

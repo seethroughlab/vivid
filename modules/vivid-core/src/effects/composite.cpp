@@ -299,7 +299,7 @@ void Composite::process(Context& ctx) {
 
     // Update uniforms
     CompositeUniforms uniforms = {};
-    uniforms.mode = static_cast<int>(m_mode);
+    uniforms.mode = mode.index();
     uniforms.opacity = static_cast<float>(opacity);
     uniforms.inputCount = activeCount;
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));

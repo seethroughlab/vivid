@@ -69,7 +69,7 @@ void setup(Context& ctx) {
     posLFO.frequency = 0.1f;  // Slow sweep through wavetable
     posLFO.amplitude = 0.5f;
     posLFO.offset = 0.5f;
-    posLFO.waveform(LFOWaveform::Triangle);
+    posLFO.waveform = LFOWaveform::Triangle;
 
     // Reverb for space
     auto& reverb = chain.add<Reverb>("reverb");
@@ -100,7 +100,7 @@ void setup(Context& ctx) {
 
     // Noise layer
     auto& noise = chain.add<Noise>("noise");
-    noise.type(NoiseType::Simplex);
+    noise.type = NoiseType::Simplex;
     noise.scale = 4.0f;
     noise.octaves = 3;
     noise.speed = 0.2f;

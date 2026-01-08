@@ -81,7 +81,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bloom");
     comp.inputB("canvas");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     chain.output("comp");
     chain.audioOutput("audioOut");

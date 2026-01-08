@@ -19,8 +19,10 @@
  */
 
 #include <vivid/operator.h>
+#include <magic_enum/magic_enum.hpp>
 #include <string>
 #include <functional>
+#include <type_traits>
 
 namespace vivid {
 
@@ -824,6 +826,108 @@ private:
     std::string m_path;
     const char* m_filter;
     const char* m_category;
+};
+
+/**
+ * @brief Base class for type-erased enum parameter access
+ *
+ * Provides virtual interface for ParamRef to access enum parameters
+ * without knowing the concrete enum type.
+ */
+class EnumParamBase {
+public:
+    virtual ~EnumParamBase() = default;
+    virtual const char* name() const = 0;
+    virtual int index() const = 0;
+    virtual void setIndex(int i) = 0;
+    virtual ParamDecl decl() const = 0;
+};
+
+/**
+ * @brief Enumeration parameter wrapper with automatic label extraction
+ * @tparam E Enum type (must be a scoped enum)
+ *
+ * Uses magic_enum for compile-time enum reflection. Labels are automatically
+ * extracted from enum value names.
+ *
+ * @par Example
+ * @code
+ * enum class BlendMode { Over, Add, Multiply, Screen };
+ *
+ * class Composite : public TextureOperator {
+ *     EnumParam<BlendMode> m_mode{"mode", BlendMode::Over};
+ *
+ *     std::vector<ParamDecl> params() override {
+ *         return { m_mode.decl() };  // Labels auto-populated: ["Over", "Add", "Multiply", "Screen"]
+ *     }
+ * };
+ * @endcode
+ */
+template<typename E>
+class EnumParam : public EnumParamBase {
+    static_assert(std::is_enum_v<E>, "EnumParam requires an enum type");
+public:
+    /**
+     * @brief Construct an enum parameter
+     * @param name Display name for UI
+     * @param defaultVal Default enum value
+     */
+    EnumParam(const char* name, E defaultVal)
+        : m_name(name), m_value(defaultVal), m_default(defaultVal) {}
+
+    /// @brief Implicit conversion to enum type
+    operator E() const { return m_value; }
+
+    /// @brief Get value explicitly
+    E get() const { return m_value; }
+
+    /// @brief Assignment operator
+    EnumParam& operator=(E v) { m_value = v; return *this; }
+
+    /// @brief Get parameter name
+    const char* name() const override { return m_name; }
+
+    /// @brief Get current value as index (for UI)
+    int index() const override {
+        auto idx = magic_enum::enum_index(m_value);
+        return idx.has_value() ? static_cast<int>(idx.value()) : 0;
+    }
+
+    /// @brief Set value by index (from UI)
+    void setIndex(int i) override {
+        if (i >= 0 && static_cast<size_t>(i) < magic_enum::enum_count<E>()) {
+            m_value = magic_enum::enum_value<E>(static_cast<size_t>(i));
+        }
+    }
+
+    /// @brief Get current value as string
+    std::string_view valueName() const {
+        return magic_enum::enum_name(m_value);
+    }
+
+    /**
+     * @brief Generate ParamDecl for introspection
+     * @return ParamDecl with type=Enum and auto-populated labels
+     */
+    ParamDecl decl() const override {
+        ParamDecl d;
+        d.name = m_name;
+        d.type = ParamType::Enum;
+        auto defaultIdx = magic_enum::enum_index(m_default);
+        d.defaultVal[0] = defaultIdx.has_value() ? static_cast<float>(defaultIdx.value()) : 0.0f;
+        d.minVal = 0.0f;
+        d.maxVal = static_cast<float>(magic_enum::enum_count<E>() - 1);
+        // Auto-populate labels from enum names
+        for (auto name : magic_enum::enum_names<E>()) {
+            d.enumLabels.emplace_back(name);
+        }
+        return d;
+    }
+
+private:
+    const char* m_name;
+    E m_value;
+    E m_default;
 };
 
 } // namespace vivid

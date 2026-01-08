@@ -67,7 +67,7 @@ void setup(Context& ctx) {
         char name[32];
         snprintf(name, sizeof(name), "key_%d", i);
         auto& key = chain.add<Shape>(name);
-        key.type(ShapeType::Rectangle);
+        key.type = ShapeType::Rectangle;
         key.size.set(0.08f, 0.25f);
         key.position.set(-0.35f + i * 0.1f, 0.0f);
         key.color.set(0.2f, 0.2f, 0.3f, 1.0f);
@@ -78,7 +78,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
     comp.inputB("key_0");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     for (int i = 1; i < 8; i++) {
         char prevName[32], currName[32], compName[32];
@@ -89,7 +89,7 @@ void setup(Context& ctx) {
         auto& c = chain.add<Composite>(compName);
         c.inputA(prevName);
         c.inputB(currName);
-        c.mode(BlendMode::Add);
+        c.mode = BlendMode::Add;
     }
 
     // Bloom

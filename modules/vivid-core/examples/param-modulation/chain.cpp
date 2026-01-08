@@ -21,12 +21,12 @@ void setup(Context& ctx) {
     // LFO for modulation source (outputs -1 to 1)
     auto& lfo = chain.add<LFO>("lfo");
     lfo.frequency = 0.5f;
-    lfo.waveform(LFOWaveform::Sine);
+    lfo.waveform = LFOWaveform::Sine;
 
     // Shape 1: Scale modulated by mouse X position
     // Mouse bindings still use lambda (no trackable source)
     auto& shape1 = chain.add<Shape>("shape1");
-    shape1.type(ShapeType::Circle);
+    shape1.type = ShapeType::Circle;
     shape1.color.set(1.0f, 0.4f, 0.2f, 1.0f);
     shape1.position.set(-0.3f, 0.2f);
     // Bind size to mouse X (normalized 0-1 mapped to 0.05-0.3)
@@ -40,7 +40,7 @@ void setup(Context& ctx) {
 
     // Shape 2: X position modulated by LFO (TRACKABLE - shows in visualizer!)
     auto& shape2 = chain.add<Shape>("shape2");
-    shape2.type(ShapeType::Rectangle);
+    shape2.type = ShapeType::Rectangle;
     shape2.size.set(0.15f, 0.15f);
     shape2.color.set(0.2f, 0.8f, 0.4f, 1.0f);
     // Bind X position to LFO: input -1..1 maps to output -0.3..0.3
@@ -50,7 +50,7 @@ void setup(Context& ctx) {
 
     // Shape 3: Color will be modulated by time in update()
     auto& shape3 = chain.add<Shape>("shape3");
-    shape3.type(ShapeType::Polygon);
+    shape3.type = ShapeType::Polygon;
     shape3.sides = 6;
     shape3.size.set(0.12f, 0.12f);
     shape3.position.set(0.3f, 0.0f);
@@ -70,23 +70,23 @@ void setup(Context& ctx) {
     auto& comp1 = chain.add<Composite>("comp1");
     comp1.inputA("bg");
     comp1.inputB("noise");
-    comp1.mode(BlendMode::Add);
+    comp1.mode = BlendMode::Add;
     comp1.opacity = 0.3f;
 
     auto& comp2 = chain.add<Composite>("comp2");
     comp2.inputA("comp1");
     comp2.inputB("shape1");
-    comp2.mode(BlendMode::Over);
+    comp2.mode = BlendMode::Over;
 
     auto& comp3 = chain.add<Composite>("comp3");
     comp3.inputA("comp2");
     comp3.inputB("shape2");
-    comp3.mode(BlendMode::Over);
+    comp3.mode = BlendMode::Over;
 
     auto& comp4 = chain.add<Composite>("comp4");
     comp4.inputA("comp3");
     comp4.inputB("shape3");
-    comp4.mode(BlendMode::Over);
+    comp4.mode = BlendMode::Over;
 
     // Canvas for UI
     auto& canvas = chain.add<Canvas>("canvas");

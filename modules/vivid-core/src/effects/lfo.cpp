@@ -68,7 +68,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 void LFO::process(Context& ctx) {
     // Calculate current value for CPU access (LFO-specific logic)
     float t = static_cast<float>(ctx.time()) * frequency + phase;
-    switch (m_waveform) {
+    switch (static_cast<LFOWaveform>(waveform)) {
         case LFOWaveform::Sine:
             m_currentValue = std::sin(t * 6.28318530718f) * 0.5f + 0.5f;
             break;
@@ -139,7 +139,7 @@ bool LFO::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX,
         float value = 0.0f;
 
         // Sample the waveform at this phase
-        switch (m_waveform) {
+        switch (static_cast<LFOWaveform>(waveform)) {
             case LFOWaveform::Sine:
                 value = std::sin(t * 6.28318530718f) * 0.5f + 0.5f;
                 break;
@@ -187,7 +187,7 @@ bool LFO::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX,
 
     // Draw waveform name and frequency at bottom
     const char* waveNames[] = {"Sine", "Tri", "Saw", "Sqr", "Noise"};
-    int waveIdx = static_cast<int>(m_waveform);
+    int waveIdx = waveform.index();
     if (waveIdx < 0 || waveIdx > 4) waveIdx = 0;
 
     char label[32];

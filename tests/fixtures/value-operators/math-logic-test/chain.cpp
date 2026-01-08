@@ -21,11 +21,11 @@ void setup(Context& ctx) {
     // LFO oscillators at different rates
     auto& lfoSlow = chain.add<LFO>("lfo_slow");
     lfoSlow.frequency = 0.2f;
-    lfoSlow.waveform(LFOWaveform::Sine);
+    lfoSlow.waveform = LFOWaveform::Sine;
 
     auto& lfoFast = chain.add<LFO>("lfo_fast");
     lfoFast.frequency = 1.5f;
-    lfoFast.waveform(LFOWaveform::Triangle);
+    lfoFast.waveform = LFOWaveform::Triangle;
 
     // Math: Remap slow LFO from [-1,1] to [0,1]
     auto& mathRemap = chain.add<Math>("math_remap");
@@ -68,7 +68,7 @@ void setup(Context& ctx) {
 
     // Pulsing shape based on logic result
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Circle);
+    shape.type = ShapeType::Circle;
     shape.size.set(0.2f, 0.2f);
     shape.color.set(1.0f, 0.5f, 0.2f, 1.0f);
 
@@ -76,7 +76,7 @@ void setup(Context& ctx) {
     auto& final = chain.add<Composite>("final");
     final.input(0, "brightness");
     final.input(1, "shape");
-    final.mode(BlendMode::Add);
+    final.mode = BlendMode::Add;
 
     chain.output("final");
 }

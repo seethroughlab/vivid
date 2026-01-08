@@ -65,7 +65,7 @@ void setup(Context& ctx) {
     comp.input(0, "fire");
     comp.input(1, "fountain");
     comp.input(2, "ring");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     chain.output("comp");
 }

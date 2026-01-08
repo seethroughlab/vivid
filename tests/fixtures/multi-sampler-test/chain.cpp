@@ -64,7 +64,7 @@ void setup(Context& ctx) {
     levels.input("reverb");
 
     auto& shape = chain.add<Shape>("meter");
-    shape.type(ShapeType::Rectangle);
+    shape.type = ShapeType::Rectangle;
     shape.position.set(0.5f, 0.5f);
     shape.size.set(0.6f, 0.02f);
     shape.color.set(0.3f, 0.7f, 1.0f, 0.8f);
@@ -72,7 +72,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
     comp.inputB("meter");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     chain.output("comp");
 

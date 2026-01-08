@@ -42,7 +42,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("gradient");
     comp.inputB("noise");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
     comp.opacity = 0.3f;
 
     chain.output("comp");

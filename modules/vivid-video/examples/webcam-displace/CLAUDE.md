@@ -91,7 +91,7 @@ displace.strength = 0.15f;
 ```cpp
 // Create directional displacement
 auto& gradient = chain.add<Gradient>("gradient");
-gradient.mode(GradientMode::Linear);
+gradient.mode = GradientMode::Linear;
 gradient.angle = 0.0f;  // Horizontal
 gradient.colorA.set(0.0f, 0.5f, 0.5f, 1.0f);  // No X, neutral Y
 gradient.colorB.set(1.0f, 0.5f, 0.5f, 1.0f);  // Max X, neutral Y

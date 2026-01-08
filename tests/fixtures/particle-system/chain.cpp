@@ -18,7 +18,7 @@ void setup(Context& ctx) {
 
     // Dark background
     auto& bg = chain.add<Gradient>("bg");
-    bg.mode(GradientMode::Radial);
+    bg.mode = GradientMode::Radial;
     bg.colorA.set(0.05f, 0.05f, 0.1f, 1.0f);
     bg.colorB.set(0.02f, 0.02f, 0.04f, 1.0f);
 
@@ -36,7 +36,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
     comp.inputB("points");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     // Add bloom for glow effect
     auto& bloom = chain.add<Bloom>("bloom");

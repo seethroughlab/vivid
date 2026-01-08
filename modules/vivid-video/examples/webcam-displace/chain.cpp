@@ -42,7 +42,7 @@ void setup(Context& ctx) {
     noise.scale = noiseScale;
     noise.speed = 0.5f;
     noise.octaves = 3;
-    noise.type(NoiseType::Simplex);
+    noise.type = NoiseType::Simplex;
 
     // =========================================================================
     // Effect - Displacement

@@ -35,7 +35,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("feedback");
     comp.inputB("ramp");
-    comp.mode(BlendMode::Multiply);
+    comp.mode = BlendMode::Multiply;
 
     chain.output("comp");
 }

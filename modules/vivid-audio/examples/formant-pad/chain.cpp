@@ -170,14 +170,14 @@ void setup(Context& ctx) {
 
     // Pulsing shape that responds to audio
     auto& pulse = chain.add<Shape>("pulse");
-    pulse.type(ShapeType::Circle);
+    pulse.type = ShapeType::Circle;
     pulse.size.set(0.3f, 0.3f);
     pulse.color.set(1.0f, 0.5f, 0.3f, 0.8f);
 
     auto& final_ = chain.add<Composite>("final");
     final_.inputA("bg_color");
     final_.inputB("pulse");
-    final_.mode(BlendMode::Add);
+    final_.mode = BlendMode::Add;
 
     chain.output("final");
 

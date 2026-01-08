@@ -176,19 +176,19 @@ void setup(Context& ctx) {
     bg.color(0.02f, 0.02f, 0.04f);
 
     auto& padVis = chain.add<Shape>("padVis");
-    padVis.type(ShapeType::Circle).position(0.5f, 0.5f).size(0.35f)
+    padVis.type = ShapeType::Circle.position(0.5f, 0.5f).size(0.35f)
           .color(0.15f, 0.25f, 0.45f, 0.25f).softness(0.6f);
 
     auto& leadVis = chain.add<Shape>("leadVis");
-    leadVis.type(ShapeType::Circle).position(0.5f, 0.55f).size(0.08f)
+    leadVis.type = ShapeType::Circle.position(0.5f, 0.55f).size(0.08f)
            .color(1.0f, 0.8f, 0.4f, 0.7f).softness(0.25f);
 
     auto& kickVis = chain.add<Shape>("kickVis");
-    kickVis.type(ShapeType::Circle).position(0.5f, 0.2f).size(0.06f)
+    kickVis.type = ShapeType::Circle.position(0.5f, 0.2f).size(0.06f)
            .color(0.9f, 0.3f, 0.35f, 0.5f).softness(0.35f);
 
     auto& hihatVis = chain.add<Shape>("hihatVis");
-    hihatVis.type(ShapeType::Circle).position(0.5f, 0.8f).size(0.03f)
+    hihatVis.type = ShapeType::Circle.position(0.5f, 0.8f).size(0.03f)
             .color(0.7f, 0.9f, 1.0f, 0.4f).softness(0.4f);
 
     auto& comp = chain.add<Composite>("comp");
@@ -197,7 +197,7 @@ void setup(Context& ctx) {
         .input(2, &leadVis)
         .input(3, &kickVis)
         .input(4, &hihatVis)
-        .mode(BlendMode::Add);
+        .mode = BlendMode::Add;
 
     chain.output("comp");
 

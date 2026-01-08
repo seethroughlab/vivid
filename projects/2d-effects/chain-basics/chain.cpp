@@ -29,7 +29,7 @@ void setup(Context& ctx) {
     // Configure noise for displacement - use Simplex for smooth distortion
     // Note: Noise resolution should match the image for proper displacement
     // If not specified, generators default to 1280x720
-    noise.type(NoiseType::Simplex);
+    noise.type = NoiseType::Simplex;
     noise.scale = 3.0f;
     noise.speed = 0.3f;
     noise.octaves = 3;
@@ -51,7 +51,7 @@ void setup(Context& ctx) {
     // Composite: inherits resolution from first input (displace → image resolution)
     comp.inputA("displace");
     comp.inputB("ramp");
-    comp.mode(BlendMode::Multiply);
+    comp.mode = BlendMode::Multiply;
 
     // Final output is scaled to window size for display
     chain.output("comp");

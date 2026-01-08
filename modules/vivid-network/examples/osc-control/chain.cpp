@@ -44,7 +44,7 @@ void setup(Context& ctx) {
 
     // Animated shape
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Star);
+    shape.type = ShapeType::Star;
     shape.sides = 6;
     shape.size.set(g_size, g_size);
     shape.softness = 0.1f;
@@ -59,7 +59,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("hsv");
     comp.inputB("shape");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     // Flash effect (triggered by OSC)
     auto& flash = chain.add<Flash>("flash");

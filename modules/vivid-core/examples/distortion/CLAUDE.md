@@ -1,9 +1,11 @@
 # Distortion Effects
 
-Demonstrates spatial distortion and edge detection operators.
+Demonstrates spatial distortion and edge detection operators with a grid overlay.
 
 ## Operators Used
 
+- **Ramp** - Animated rainbow gradient source
+- **Canvas** - Grid overlay for distortion visibility
 - **ChromaticAberration** - RGB channel separation (lens fringing)
 - **BarrelDistortion** - CRT-style curved screen effect
 - **Displace** - Distort using a displacement map
@@ -86,4 +88,4 @@ edge.invert = true;  // White background
 
 ## Controls
 
-No interactive controls - animations run automatically.
+- **G**: Toggle grid overlay on/off (helps see pure distortion effect)

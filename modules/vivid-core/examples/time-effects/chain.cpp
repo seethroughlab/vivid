@@ -32,21 +32,21 @@ void setup(Context& ctx) {
 
     // Vertical gradient: classic slit-scan (horizontal slices from different times)
     auto& gradient_v = chain.add<Gradient>("gradient_v");
-    gradient_v.mode(GradientMode::Linear);
+    gradient_v.mode = GradientMode::Linear;
     gradient_v.angle = 1.5708f;  // π/2 = bottom to top
     gradient_v.colorA.set(0.0f, 0.0f, 0.0f, 1.0f);  // Black (old frames)
     gradient_v.colorB.set(1.0f, 1.0f, 1.0f, 1.0f);  // White (new frames)
 
     // Horizontal gradient: vertical slit-scan
     auto& gradient_h = chain.add<Gradient>("gradient_h");
-    gradient_h.mode(GradientMode::Linear);
+    gradient_h.mode = GradientMode::Linear;
     gradient_h.angle = 0.0f;  // 0 = left to right
     gradient_h.colorA.set(0.0f, 0.0f, 0.0f, 1.0f);
     gradient_h.colorB.set(1.0f, 1.0f, 1.0f, 1.0f);
 
     // Radial gradient: center shows current, edges show past
     auto& gradient_r = chain.add<Gradient>("gradient_r");
-    gradient_r.mode(GradientMode::Radial);
+    gradient_r.mode = GradientMode::Radial;
     gradient_r.colorA.set(1.0f, 1.0f, 1.0f, 1.0f);  // Center = current
     gradient_r.colorB.set(0.0f, 0.0f, 0.0f, 1.0f);  // Edge = past
 
@@ -54,7 +54,7 @@ void setup(Context& ctx) {
     auto& disp_noise = chain.add<Noise>("disp_noise");
     disp_noise.scale = 2.0f;
     disp_noise.speed = 0.3f;
-    disp_noise.type(NoiseType::Perlin);
+    disp_noise.type = NoiseType::Perlin;
 
     // ----- TIME MACHINE EFFECTS -----
     // Each uses the same cache but different displacement maps

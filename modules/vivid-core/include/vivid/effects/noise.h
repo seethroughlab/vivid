@@ -32,7 +32,7 @@ enum class NoiseType {
  * @par Example
  * @code
  * auto& noise = chain.add<Noise>("noise");
- * noise.type(NoiseType::Simplex);
+ * noise.type = NoiseType::Simplex;
  * noise.scale = 4.0f;
  * noise.speed = 0.5f;
  * noise.octaves = 4;
@@ -75,6 +75,7 @@ public:
     /// @name Parameters (public for direct access)
     /// @{
 
+    EnumParam<NoiseType> type{"type", NoiseType::Perlin};    ///< Noise algorithm type
     Param<float> scale{"scale", 4.0f, 0.1f, 20.0f};         ///< Noise scale (higher = finer detail)
     Param<float> speed{"speed", 0.5f, 0.0f, 5.0f};          ///< Animation speed
     Param<int> octaves{"octaves", 4, 1, 8};                 ///< Fractal layers
@@ -86,6 +87,7 @@ public:
     // -------------------------------------------------------------------------
 
     Noise() {
+        registerParam(type);
         registerParam(scale);
         registerParam(speed);
         registerParam(octaves);
@@ -94,9 +96,6 @@ public:
         registerParam(offset);
     }
     ~Noise() override;
-
-    /// @brief Set noise algorithm
-    void type(NoiseType t) { if (m_type != t) { m_type = t; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Operator Interface
@@ -111,8 +110,6 @@ public:
 
 private:
     void createPipeline(Context& ctx);
-
-    NoiseType m_type = NoiseType::Perlin;
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;

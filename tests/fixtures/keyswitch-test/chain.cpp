@@ -59,7 +59,7 @@ void setup(Context& ctx) {
 
     // Articulation indicator
     auto& indicator = chain.add<Shape>("indicator");
-    indicator.type(ShapeType::Rectangle);
+    indicator.type = ShapeType::Rectangle;
     indicator.position.set(0.5f, 0.5f);
     indicator.size.set(0.3f, 0.1f);
     indicator.color.set(0.8f, 0.6f, 0.2f, 0.9f);
@@ -67,7 +67,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
     comp.inputB("indicator");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     chain.output("comp");
 }

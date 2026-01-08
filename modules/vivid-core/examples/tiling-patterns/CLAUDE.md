@@ -53,7 +53,7 @@ Symmetrical reflections:
 ```cpp
 auto& mirror = chain.add<Mirror>("mirror");
 mirror.input("source");
-mirror.mode(MirrorMode::Kaleidoscope);
+mirror.mode = MirrorMode::Kaleidoscope;
 mirror.segments = 8;  // 8-way symmetry
 ```
 
@@ -72,7 +72,7 @@ transform.rotation = ctx.time() * 0.2f;
 
 auto& kaleidoscope = chain.add<Mirror>("kaleidoscope");
 kaleidoscope.input("transform");
-kaleidoscope.mode(MirrorMode::Kaleidoscope);
+kaleidoscope.mode = MirrorMode::Kaleidoscope;
 kaleidoscope.segments = 8;
 ```
 
@@ -99,7 +99,7 @@ tile.offset.set(scroll, scroll);
 ### Mandala
 ```cpp
 auto& kaleidoscope = chain.add<Mirror>("kaleidoscope");
-kaleidoscope.mode(MirrorMode::Kaleidoscope);
+kaleidoscope.mode = MirrorMode::Kaleidoscope;
 kaleidoscope.segments = 12;  // 12-fold symmetry
 ```
 

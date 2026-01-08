@@ -405,7 +405,7 @@ void Noise::process(Context& ctx) {
     uniforms.offsetX = offset.x();
     uniforms.offsetY = offset.y();
     uniforms.octaves = octaves;
-    uniforms.noiseType = static_cast<int>(m_type);
+    uniforms.noiseType = type.index();
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

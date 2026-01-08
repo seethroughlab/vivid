@@ -74,7 +74,7 @@ void setup(Context& ctx) {
 
     // Central pulsing shape - responds to chord envelope
     auto& centerShape = chain.add<Shape>("centerShape");
-    centerShape.type(ShapeType::Polygon);
+    centerShape.type = ShapeType::Polygon;
     centerShape.sides = 6;
     centerShape.size.set(0.3f, 0.3f);
     centerShape.position.set(0.5f, 0.5f);
@@ -83,7 +83,7 @@ void setup(Context& ctx) {
 
     // Orbiting ring shape
     auto& ringShape = chain.add<Shape>("ringShape");
-    ringShape.type(ShapeType::Ring);
+    ringShape.type = ShapeType::Ring;
     ringShape.size.set(0.4f, 0.4f);
     ringShape.position.set(0.5f, 0.5f);
     ringShape.thickness = 0.02f;
@@ -113,17 +113,17 @@ void setup(Context& ctx) {
     auto& comp1 = chain.add<Composite>("comp1");
     comp1.inputA("bg");
     comp1.inputB("centerShape");
-    comp1.mode(BlendMode::Add);
+    comp1.mode = BlendMode::Add;
 
     auto& comp2 = chain.add<Composite>("comp2");
     comp2.inputA("comp1");
     comp2.inputB("ringShape");
-    comp2.mode(BlendMode::Add);
+    comp2.mode = BlendMode::Add;
 
     auto& comp3 = chain.add<Composite>("comp3");
     comp3.inputA("comp2");
     comp3.inputB("particles");
-    comp3.mode(BlendMode::Add);
+    comp3.mode = BlendMode::Add;
 
     // Feedback for trailing effect
     auto& feedback = chain.add<Feedback>("feedback");

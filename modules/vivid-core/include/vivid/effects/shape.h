@@ -91,7 +91,7 @@ public:
         return OperatorDescriptor("Shape", "Generators", "SDF-based shape generator")
             .withUsage(
                 "auto& shape = chain.add<Shape>(\"circle\");\n"
-                "shape.type(ShapeType::Circle);  // Circle, Rectangle, RoundedRect, Triangle, Star, Ring, Polygon\n"
+                "shape.type = ShapeType::Circle;  // Circle, Rectangle, RoundedRect, Triangle, Star, Ring, Polygon\n"
                 "shape.size.set(0.3f, 0.3f);\n"
                 "shape.position.set(0.5f, 0.5f);\n"
                 "shape.color.set(1.0f, 0.5f, 0.0f, 1.0f);  // Orange\n"
@@ -108,6 +108,7 @@ public:
     /// @name Parameters (public for direct access)
     /// @{
 
+    EnumParam<ShapeType> type{"type", ShapeType::Circle};         ///< Shape type
     Vec2Param size{"size", 0.5f, 0.5f, 0.0f, 2.0f};              ///< Shape size
     Vec2Param position{"position", 0.5f, 0.5f, 0.0f, 1.0f};      ///< Center position
     Param<float> rotation{"rotation", 0.0f, -6.28f, 6.28f};      ///< Rotation angle
@@ -121,6 +122,7 @@ public:
     // -------------------------------------------------------------------------
 
     Shape() {
+        registerParam(type);
         registerParam(size);
         registerParam(position);
         registerParam(rotation);
@@ -131,13 +133,10 @@ public:
         registerParam(color);
     }
 
-    /// @brief Set shape type (Circle, Rectangle, RoundedRect, etc.)
-    void type(ShapeType t) { if (m_type != t) { m_type = t; markDirty(); } }
-
     /// @brief Get uniform values for GPU
     ShapeUniforms getUniforms() const {
         ShapeUniforms uniforms = {};
-        uniforms.shapeType = static_cast<int>(m_type);
+        uniforms.shapeType = type.index();
         uniforms.sizeX = size.x();
         uniforms.sizeY = size.y();
         uniforms.posX = position.x();
@@ -163,9 +162,6 @@ public:
     const char* fragmentShader() const override;
 
     /// @}
-
-private:
-    ShapeType m_type = ShapeType::Circle;
 };
 
 #ifdef _WIN32

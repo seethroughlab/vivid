@@ -96,7 +96,7 @@ void setup(Context& ctx) {
     auto& final = chain.add<Composite>("final");
     final.inputA("cubes");
     final.inputB("spheres");
-    final.mode(BlendMode::Over);
+    final.mode = BlendMode::Over;
 
     chain.output("final");
 

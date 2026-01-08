@@ -18,10 +18,10 @@ Generators create content from nothing (no input required). Effects transform ex
 ### Shape Types
 ```cpp
 auto& shape = chain.add<Shape>("shape");
-shape.type(ShapeType::Circle);      // Circle
-shape.type(ShapeType::Rectangle);   // Rectangle
-shape.type(ShapeType::Polygon);     // Polygon with N sides
-shape.type(ShapeType::Line);        // Line segment
+shape.type = ShapeType::Circle;      // Circle
+shape.type = ShapeType::Rectangle;   // Rectangle
+shape.type = ShapeType::Polygon;     // Polygon with N sides
+shape.type = ShapeType::Line;        // Line segment
 
 // Common properties
 shape.size.set(0.3f, 0.3f);         // Width/height

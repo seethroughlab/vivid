@@ -166,6 +166,7 @@ target_link_libraries(vivid-core PUBLIC
     glfw3webgpu
     freetype
     nlohmann_json::nlohmann_json
+    magic_enum::magic_enum
 )
 
 # Note: ixwebsocket moved to cli/ for EditorBridge

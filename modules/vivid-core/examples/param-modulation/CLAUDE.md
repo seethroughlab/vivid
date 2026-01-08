@@ -77,7 +77,7 @@ shape.position.bindDirect(
 ```cpp
 auto& lfo = chain.add<LFO>("lfo");
 lfo.frequency = 0.5f;
-lfo.waveform(LFOWaveform::Sine);
+lfo.waveform = LFOWaveform::Sine;
 
 // LFO outputs -1 to 1, convert to 0-1 for bind()
 effect.param.bind(

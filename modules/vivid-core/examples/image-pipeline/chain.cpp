@@ -26,7 +26,7 @@ void setup(Context& ctx) {
     // Mirror - kaleidoscope mode
     auto& mirror = chain.add<Mirror>("mirror");
     mirror.input("transform");
-    mirror.mode(MirrorMode::Kaleidoscope);
+    mirror.mode = MirrorMode::Kaleidoscope;
     mirror.segments = 6;
 
     // Tile - repeat the texture

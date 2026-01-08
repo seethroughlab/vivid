@@ -97,7 +97,7 @@ void setup(Context& ctx) {
 
     // Kick visualization
     auto& kick_viz = chain.add<Shape>("kick_viz");
-    kick_viz.type(ShapeType::Circle);
+    kick_viz.type = ShapeType::Circle;
     kick_viz.position.set(-0.4f, 0.0f);
     kick_viz.size.set(0.15f, 0.15f);
     kick_viz.color.set(1.0f, 0.3f, 0.1f, 1.0f);
@@ -105,7 +105,7 @@ void setup(Context& ctx) {
 
     // Snare visualization
     auto& snare_viz = chain.add<Shape>("snare_viz");
-    snare_viz.type(ShapeType::Circle);
+    snare_viz.type = ShapeType::Circle;
     snare_viz.position.set(-0.13f, 0.0f);
     snare_viz.size.set(0.12f, 0.12f);
     snare_viz.color.set(1.0f, 1.0f, 0.2f, 1.0f);
@@ -113,7 +113,7 @@ void setup(Context& ctx) {
 
     // HiHat visualization
     auto& hat_viz = chain.add<Shape>("hat_viz");
-    hat_viz.type(ShapeType::Polygon);
+    hat_viz.type = ShapeType::Polygon;
     hat_viz.sides = 8;
     hat_viz.position.set(0.13f, 0.0f);
     hat_viz.size.set(0.08f, 0.08f);
@@ -122,7 +122,7 @@ void setup(Context& ctx) {
 
     // Clap visualization
     auto& clap_viz = chain.add<Shape>("clap_viz");
-    clap_viz.type(ShapeType::Star);
+    clap_viz.type = ShapeType::Star;
     clap_viz.sides = 5;
     clap_viz.position.set(0.4f, 0.0f);
     clap_viz.size.set(0.1f, 0.1f);
@@ -133,22 +133,22 @@ void setup(Context& ctx) {
     auto& comp1 = chain.add<Composite>("comp1");
     comp1.inputA("bg");
     comp1.inputB("kick_viz");
-    comp1.mode(BlendMode::Add);
+    comp1.mode = BlendMode::Add;
 
     auto& comp2 = chain.add<Composite>("comp2");
     comp2.inputA("comp1");
     comp2.inputB("snare_viz");
-    comp2.mode(BlendMode::Add);
+    comp2.mode = BlendMode::Add;
 
     auto& comp3 = chain.add<Composite>("comp3");
     comp3.inputA("comp2");
     comp3.inputB("hat_viz");
-    comp3.mode(BlendMode::Add);
+    comp3.mode = BlendMode::Add;
 
     auto& comp4 = chain.add<Composite>("comp4");
     comp4.inputA("comp3");
     comp4.inputB("clap_viz");
-    comp4.mode(BlendMode::Add);
+    comp4.mode = BlendMode::Add;
 
     // Add bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");

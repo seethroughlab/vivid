@@ -83,20 +83,21 @@ void setup(Context& ctx) {
     // ----- VISUALS -----
     // Envelope visualization
     auto& bg = chain.add<Gradient>("bg");
-    bg.mode(GradientMode::Vertical);
+    bg.mode = GradientMode::Linear;
+    bg.angle = 1.5708f;  // 90 degrees (vertical)
     bg.colorA.set(0.1f, 0.05f, 0.15f, 1.0f);
     bg.colorB.set(0.02f, 0.02f, 0.05f, 1.0f);
 
     // Visual representation of envelope
     auto& envShape = chain.add<Shape>("envShape");
-    envShape.type(ShapeType::Rectangle);
+    envShape.type = ShapeType::Rectangle;
     envShape.size.set(0.1f, 0.3f);
     envShape.softness = 0.1f;
     envShape.color.set(0.3f, 0.8f, 0.5f, 1.0f);
 
     // Stage indicator
     auto& stageIndicator = chain.add<Shape>("stageIndicator");
-    stageIndicator.type(ShapeType::Circle);
+    stageIndicator.type = ShapeType::Circle;
     stageIndicator.size.set(0.05f, 0.05f);
     stageIndicator.position.set(0.0f, -0.35f);
     stageIndicator.softness = 0.3f;
@@ -104,12 +105,12 @@ void setup(Context& ctx) {
     auto& comp1 = chain.add<Composite>("comp1");
     comp1.inputA("bg");
     comp1.inputB("envShape");
-    comp1.mode(BlendMode::Add);
+    comp1.mode = BlendMode::Add;
 
     auto& comp2 = chain.add<Composite>("comp2");
     comp2.inputA("comp1");
     comp2.inputB("stageIndicator");
-    comp2.mode(BlendMode::Add);
+    comp2.mode = BlendMode::Add;
 
     chain.output("comp2");
 }

@@ -96,13 +96,13 @@ void setup(Context& ctx) {
     // ----- VISUALS -----
     // Effect visualization
     auto& bg = chain.add<Gradient>("bg");
-    bg.mode(GradientMode::Radial);
+    bg.mode = GradientMode::Radial;
     bg.colorA.set(0.15f, 0.1f, 0.2f, 1.0f);
     bg.colorB.set(0.02f, 0.02f, 0.04f, 1.0f);
 
     // Waveform-inspired shape
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Circle);
+    shape.type = ShapeType::Circle;
     shape.size.set(0.25f, 0.25f);
     shape.softness = 0.3f;
     shape.color.set(0.5f, 0.8f, 1.0f, 1.0f);
@@ -110,7 +110,7 @@ void setup(Context& ctx) {
     auto& comp1 = chain.add<Composite>("comp1");
     comp1.inputA("bg");
     comp1.inputB("shape");
-    comp1.mode(BlendMode::Add);
+    comp1.mode = BlendMode::Add;
 
     // Post-process with bloom
     auto& bloom = chain.add<Bloom>("bloom");

@@ -78,27 +78,27 @@ void setup(Context& ctx) {
 
     // Vertical gradient (classic slit-scan) - angle=π/2 for vertical
     auto& vertGrad = chain.add<Gradient>("vertGrad");
-    vertGrad.mode(GradientMode::Linear);
+    vertGrad.mode = GradientMode::Linear;
     vertGrad.angle = 1.5708f;  // π/2 radians = 90 degrees (vertical)
     vertGrad.colorA.set(0.0f, 0.0f, 0.0f, 1.0f);  // Black
     vertGrad.colorB.set(1.0f, 1.0f, 1.0f, 1.0f);  // White
 
     // Horizontal gradient (horizontal slit-scan) - angle=0
     auto& horzGrad = chain.add<Gradient>("horzGrad");
-    horzGrad.mode(GradientMode::Linear);
+    horzGrad.mode = GradientMode::Linear;
     horzGrad.angle = 0.0f;  // Horizontal
     horzGrad.colorA.set(0.0f, 0.0f, 0.0f, 1.0f);
     horzGrad.colorB.set(1.0f, 1.0f, 1.0f, 1.0f);
 
     // Radial gradient (time tunnel effect)
     auto& radialGrad = chain.add<Gradient>("radialGrad");
-    radialGrad.mode(GradientMode::Radial);
+    radialGrad.mode = GradientMode::Radial;
     radialGrad.colorA.set(0.0f, 0.0f, 0.0f, 1.0f);
     radialGrad.colorB.set(1.0f, 1.0f, 1.0f, 1.0f);
 
     // Diagonal gradient - angle=π/4
     auto& diagGrad = chain.add<Gradient>("diagGrad");
-    diagGrad.mode(GradientMode::Linear);
+    diagGrad.mode = GradientMode::Linear;
     diagGrad.angle = 0.7854f;  // π/4 radians = 45 degrees (diagonal)
     diagGrad.colorA.set(0.0f, 0.0f, 0.0f, 1.0f);
     diagGrad.colorB.set(1.0f, 1.0f, 1.0f, 1.0f);

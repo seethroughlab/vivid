@@ -26,7 +26,7 @@ void setup(Context& ctx) {
     auto& chromatic = chain.add<ChromaticAberration>("chromatic");
 
     // Configure noise: complex fractal pattern
-    noise.type(NoiseType::Simplex);
+    noise.type = NoiseType::Simplex;
     noise.scale = 2.5f;
     noise.speed = 0.4f;
     noise.octaves = 4;
@@ -38,7 +38,7 @@ void setup(Context& ctx) {
 
     // Mirror: kaleidoscope mode with 8 segments
     mirror.input("transform");
-    mirror.mode(MirrorMode::Kaleidoscope);
+    mirror.mode = MirrorMode::Kaleidoscope;
     mirror.segments = 8;
     mirror.center.set(0.5f, 0.5f);
 

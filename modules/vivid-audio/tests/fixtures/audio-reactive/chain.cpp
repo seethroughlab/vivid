@@ -31,18 +31,18 @@ void setup(Context& ctx) {
 
     // Visual elements
     auto& bg = chain.add<Gradient>("bg");
-    bg.mode(GradientMode::Radial);
+    bg.mode = GradientMode::Radial;
     bg.colorA.set(0.1f, 0.1f, 0.2f, 1.0f);
     bg.colorB.set(0.05f, 0.02f, 0.1f, 1.0f);
 
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Circle);
+    shape.type = ShapeType::Circle;
     shape.size.set(0.3f, 0.3f);
     shape.color.set(1.0f, 0.5f, 0.2f, 1.0f);
     shape.softness = 0.1f;
 
     auto& ring = chain.add<Shape>("ring");
-    ring.type(ShapeType::Ring);
+    ring.type = ShapeType::Ring;
     ring.size.set(0.5f, 0.5f);
     ring.thickness = 0.02f;
     ring.color.set(1.0f, 1.0f, 1.0f, 0.5f);
@@ -51,12 +51,12 @@ void setup(Context& ctx) {
     auto& comp1 = chain.add<Composite>("comp1");
     comp1.inputA("bg");
     comp1.inputB("ring");
-    comp1.mode(BlendMode::Add);
+    comp1.mode = BlendMode::Add;
 
     auto& comp2 = chain.add<Composite>("comp2");
     comp2.inputA("comp1");
     comp2.inputB("shape");
-    comp2.mode(BlendMode::Add);
+    comp2.mode = BlendMode::Add;
 
     // Bloom
     auto& bloom = chain.add<Bloom>("bloom");

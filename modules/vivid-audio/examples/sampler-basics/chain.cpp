@@ -67,7 +67,7 @@ void setup(Context& ctx) {
 
     // ----- VISUALS -----
     auto& bg = chain.add<Gradient>("bg");
-    bg.mode(GradientMode::Radial);
+    bg.mode = GradientMode::Radial;
     bg.colorA.set(0.15f, 0.1f, 0.12f, 1.0f);
     bg.colorB.set(0.03f, 0.02f, 0.04f, 1.0f);
 
@@ -78,7 +78,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
     comp.inputB("canvas");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     chain.output("comp");
 }

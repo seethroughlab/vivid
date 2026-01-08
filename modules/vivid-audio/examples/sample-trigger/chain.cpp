@@ -106,7 +106,7 @@ void setup(Context& ctx) {
             default: r = c; g = 0; b = xx; break;
         }
 
-        pad.type(ShapeType::Rectangle);
+        pad.type = ShapeType::Rectangle;
         pad.position.set(x, y);
         pad.size.set(0.12f, 0.18f);
         pad.color.set(r + m, g + m, b + m, 0.3f);
@@ -119,7 +119,7 @@ void setup(Context& ctx) {
     for (int i = 0; i < 8; ++i) {
         comp.input(i + 1, "pad" + std::to_string(i));
     }
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     chain.output("comp");
 

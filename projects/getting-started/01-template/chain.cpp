@@ -38,14 +38,14 @@ void setup(Context& ctx) {
 
     // Create an animated color gradient
     auto& gradient = chain.add<Gradient>("gradient");
-    gradient.mode(GradientMode::Linear);
+    gradient.mode = GradientMode::Linear;
     gradient.angle = 0.785f;  // 45 degrees
     gradient.colorA.set(0.2f, 0.4f, 0.9f, 1.0f);  // Blue
     gradient.colorB.set(0.9f, 0.3f, 0.5f, 1.0f);  // Pink
 
     // Create animated noise for displacement
     auto& noise = chain.add<Noise>("noise");
-    noise.type(NoiseType::Simplex);
+    noise.type = NoiseType::Simplex;
     noise.scale = 3.0f;      // Size of noise pattern (higher = smaller details)
     noise.speed = 0.3f;      // Animation speed
     noise.octaves = 3;       // Layers of detail (more = richer, slower)

@@ -80,7 +80,7 @@ public:
             .output(OutputKind::Value)
             .withUsage(
                 "auto& lfo = chain.add<LFO>(\"lfo\");\n"
-                "lfo.waveform(LFOWaveform::Sine);  // Sine, Triangle, Saw, Square, Noise\n"
+                "lfo.waveform = LFOWaveform::Sine;  // Sine, Triangle, Saw, Square, Noise\n"
                 "lfo.frequency = 0.5f;  // Hz\n"
                 "lfo.amplitude = 0.5f;\n"
                 "lfo.offset = 0.5f;  // Output range 0-1\n"
@@ -94,6 +94,7 @@ public:
     /// @name Parameters (public for direct access)
     /// @{
 
+    EnumParam<LFOWaveform> waveform{"waveform", LFOWaveform::Sine};  ///< Waveform type
     Param<float> frequency{"frequency", 1.0f, 0.01f, 20.0f};   ///< Oscillation frequency in Hz
     Param<float> amplitude{"amplitude", 1.0f, 0.0f, 2.0f};     ///< Output amplitude
     Param<float> offset{"offset", 0.0f, -1.0f, 1.0f};          ///< DC offset
@@ -104,6 +105,7 @@ public:
     // -------------------------------------------------------------------------
 
     LFO() {
+        registerParam(waveform);
         registerParam(frequency);
         registerParam(amplitude);
         registerParam(offset);
@@ -111,9 +113,6 @@ public:
         registerParam(pulseWidth);
     }
     ~LFO() override;
-
-    /// @brief Set waveform type (Sine, Triangle, Saw, Square, Noise)
-    void waveform(LFOWaveform w) { if (m_waveform != w) { m_waveform = w; markDirty(); } }
 
     // -------------------------------------------------------------------------
     /// @name Value Access
@@ -152,7 +151,7 @@ public:
         uniforms.offset = offset;
         uniforms.phase = phase;
         uniforms.pulseWidth = pulseWidth;
-        uniforms.waveform = static_cast<int>(m_waveform);
+        uniforms.waveform = waveform.index();
         return uniforms;
     }
 
@@ -162,7 +161,6 @@ public:
     /// @}
 
 private:
-    LFOWaveform m_waveform = LFOWaveform::Sine;
     float m_currentValue = 0.0f;
 };
 

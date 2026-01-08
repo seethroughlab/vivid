@@ -50,7 +50,7 @@ struct MirrorUniforms {
  * @code
  * auto& kaleido = chain.add<Mirror>("kaleido");
  * kaleido.input(&source);
- * kaleido.mode(MirrorMode::Kaleidoscope);
+ * kaleido.mode = MirrorMode::Kaleidoscope;
  * kaleido.segments = 8;
  * kaleido.angle = time * 0.1f;
  * @endcode
@@ -74,7 +74,7 @@ public:
             .withUsage(
                 "auto& kaleido = chain.add<Mirror>(\"kaleido\");\n"
                 "kaleido.input(\"source\");\n"
-                "kaleido.mode(MirrorMode::Kaleidoscope);  // Horizontal, Vertical, Quad, Kaleidoscope\n"
+                "kaleido.mode = MirrorMode::Kaleidoscope;  // Horizontal, Vertical, Quad, Kaleidoscope\n"
                 "kaleido.segments = 8;\n"
                 "kaleido.angle = ctx.time() * 0.1f;\n"
             )
@@ -86,6 +86,7 @@ public:
     /// @name Parameters (public for direct access)
     /// @{
 
+    EnumParam<MirrorMode> mode{"mode", MirrorMode::Horizontal};  ///< Mirror mode
     Param<int> segments{"segments", 6, 2, 32};       ///< Kaleidoscope segments
     Param<float> angle{"angle", 0.0f, -6.28f, 6.28f}; ///< Rotation angle
     Vec2Param center{"center", 0.5f, 0.5f, 0.0f, 1.0f}; ///< Center point
@@ -94,20 +95,16 @@ public:
     // -------------------------------------------------------------------------
 
     Mirror() {
+        registerParam(mode);
         registerParam(segments);
         registerParam(angle);
         registerParam(center);
     }
 
-    /// @brief Set mirror mode (enum, not a Param)
-    void mode(MirrorMode m) {
-        if (m_mode != m) { m_mode = m; markDirty(); }
-    }
-
     /// @brief Get uniform values for GPU
     MirrorUniforms getUniforms() const {
         return {
-            static_cast<int>(m_mode),
+            mode.index(),
             segments,
             angle,
             center.x(),
@@ -120,9 +117,6 @@ public:
 
     /// @brief Fragment shader source (used by CRTP base)
     const char* fragmentShader() const override;
-
-private:
-    MirrorMode m_mode = MirrorMode::Horizontal;
 };
 
 #ifdef _WIN32

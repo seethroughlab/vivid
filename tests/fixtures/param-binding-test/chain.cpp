@@ -62,7 +62,7 @@ void setup(Context& ctx) {
 
     // Center circle - pulses with bass (smaller to leave room for text)
     auto& circle = chain.add<Shape>("circle");
-    circle.type(ShapeType::Circle);
+    circle.type = ShapeType::Circle;
     circle.position.set(0.5f, 0.65f);  // Moved down
     circle.size.set(0.15f, 0.15f);     // Smaller
     circle.color.set(1.0f, 0.0f, 0.0f, 1.0f);  // Red
@@ -70,14 +70,14 @@ void setup(Context& ctx) {
 
     // Thick horizontal bars
     auto& bar1 = chain.add<Shape>("bar1");
-    bar1.type(ShapeType::Rectangle);
+    bar1.type = ShapeType::Rectangle;
     bar1.position.set(0.5f, 0.15f);
     bar1.size.set(0.8f, 0.08f);
     bar1.color.set(1.0f, 1.0f, 1.0f, 1.0f);  // White
     bar1.softness = 0.0f;
 
     auto& bar2 = chain.add<Shape>("bar2");
-    bar2.type(ShapeType::Rectangle);
+    bar2.type = ShapeType::Rectangle;
     bar2.position.set(0.5f, 0.85f);
     bar2.size.set(0.8f, 0.08f);
     bar2.color.set(1.0f, 1.0f, 1.0f, 1.0f);
@@ -101,19 +101,19 @@ void setup(Context& ctx) {
     auto& comp1 = chain.add<Composite>("comp1");
     comp1.inputA("quantize");
     comp1.inputB("circle");
-    comp1.mode(BlendMode::Add);
+    comp1.mode = BlendMode::Add;
     comp1.opacity = 0.8f;
 
     // Add bars
     auto& comp2 = chain.add<Composite>("comp2");
     comp2.inputA("comp1");
     comp2.inputB("bar1");
-    comp2.mode(BlendMode::Screen);
+    comp2.mode = BlendMode::Screen;
 
     auto& comp3 = chain.add<Composite>("comp3");
     comp3.inputA("comp2");
     comp3.inputB("bar2");
-    comp3.mode(BlendMode::Screen);
+    comp3.mode = BlendMode::Screen;
 
     // Desaturate the geometric layers (not the text)
     auto& hsv = chain.add<HSV>("hsv");
@@ -131,7 +131,7 @@ void setup(Context& ctx) {
     auto& comp4 = chain.add<Composite>("comp4");
     comp4.inputA("flash");   // Flash result as base
     comp4.inputB("canvas");  // Canvas (text) blended on top
-    comp4.mode(BlendMode::Over);
+    comp4.mode = BlendMode::Over;
 
     // Final scanlines
     auto& scanlines = chain.add<Scanlines>("scanlines");

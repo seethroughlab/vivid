@@ -172,6 +172,28 @@ private:
         float originalValue[4] = {0};
     };
     SliderState m_sliderState;
+
+    // Dropdown interaction state (for enum parameters)
+    struct DropdownState {
+        bool open = false;
+        std::string operatorName;
+        std::string paramName;
+        float menuX = 0.0f;
+        float menuY = 0.0f;
+        float menuWidth = 0.0f;
+        std::vector<std::string> options;
+        int currentIndex = 0;
+    };
+    DropdownState m_dropdown;
+
+    // Color picker state
+    struct ColorPickerState {
+        bool expanded = false;
+        std::string operatorName;
+        std::string paramName;
+        float originalColor[4] = {0, 0, 0, 1};
+    };
+    ColorPickerState m_colorPicker;
 };
 
 } // namespace vivid

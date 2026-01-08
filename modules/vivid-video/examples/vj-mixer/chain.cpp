@@ -98,12 +98,12 @@ void setup(Context& ctx) {
     auto& noise1 = chain.add<Noise>("noise1");
     noise1.scale = 3.0f;
     noise1.speed = 0.3f;
-    noise1.type(NoiseType::Simplex);
+    noise1.type = NoiseType::Simplex;
 
     auto& noise2 = chain.add<Noise>("noise2");
     noise2.scale = 8.0f;
     noise2.speed = 0.5f;
-    noise2.type(NoiseType::Worley);
+    noise2.type = NoiseType::Worley;
 
     // Color the noise
     auto& colored1 = chain.add<HSV>("colored1");
@@ -124,19 +124,19 @@ void setup(Context& ctx) {
     auto& mix12 = chain.add<Composite>("mix12");
     mix12.inputA("colored1");
     mix12.inputB("colored2");
-    mix12.mode(BlendMode::Add);
+    mix12.mode = BlendMode::Add;
 
     // Layer 3+4 mix (uses same sources for demo)
     auto& mix34 = chain.add<Composite>("mix34");
     mix34.inputA("noise1");
     mix34.inputB("noise2");
-    mix34.mode(BlendMode::Screen);
+    mix34.mode = BlendMode::Screen;
 
     // Crossfade between pairs
     auto& mixer = chain.add<Composite>("mixer");
     mixer.inputA("mix12");
     mixer.inputB("mix34");
-    mixer.mode(BlendMode::Over);
+    mixer.mode = BlendMode::Over;
     mixer.opacity = 0.0f;  // Full layer A by default
 
     // =========================================================================
@@ -150,7 +150,7 @@ void setup(Context& ctx) {
     auto& withShapes = chain.add<Composite>("withShapes");
     withShapes.inputA("mixer");
     withShapes.inputB("shapes");
-    withShapes.mode(BlendMode::Add);
+    withShapes.mode = BlendMode::Add;
 
     // =========================================================================
     // Typography Canvas
@@ -169,7 +169,7 @@ void setup(Context& ctx) {
     auto& withText = chain.add<Composite>("withText");
     withText.inputA("withShapes");
     withText.inputB("text");
-    withText.mode(BlendMode::Add);
+    withText.mode = BlendMode::Add;
 
     // =========================================================================
     // Post Effects

@@ -56,19 +56,19 @@ void setup(Context& ctx) {
 
     // Three circles representing fixtures
     auto& fix1 = chain.add<Shape>("fix1");
-    fix1.type(ShapeType::Circle);
+    fix1.type = ShapeType::Circle;
     fix1.size.set(0.15f, 0.15f);
     fix1.position.set(-0.35f, 0.0f);
     fix1.softness = 0.5f;
 
     auto& fix2 = chain.add<Shape>("fix2");
-    fix2.type(ShapeType::Circle);
+    fix2.type = ShapeType::Circle;
     fix2.size.set(0.15f, 0.15f);
     fix2.position.set(0.0f, 0.0f);
     fix2.softness = 0.5f;
 
     auto& fix3 = chain.add<Shape>("fix3");
-    fix3.type(ShapeType::Circle);
+    fix3.type = ShapeType::Circle;
     fix3.size.set(0.15f, 0.15f);
     fix3.position.set(0.35f, 0.0f);
     fix3.softness = 0.5f;
@@ -77,17 +77,17 @@ void setup(Context& ctx) {
     auto& comp1 = chain.add<Composite>("comp1");
     comp1.inputA("bg");
     comp1.inputB("fix1");
-    comp1.mode(BlendMode::Add);
+    comp1.mode = BlendMode::Add;
 
     auto& comp2 = chain.add<Composite>("comp2");
     comp2.inputA("comp1");
     comp2.inputB("fix2");
-    comp2.mode(BlendMode::Add);
+    comp2.mode = BlendMode::Add;
 
     auto& comp3 = chain.add<Composite>("comp3");
     comp3.inputA("comp2");
     comp3.inputB("fix3");
-    comp3.mode(BlendMode::Add);
+    comp3.mode = BlendMode::Add;
 
     // Bloom for glow effect
     auto& bloom = chain.add<Bloom>("bloom");

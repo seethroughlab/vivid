@@ -18,12 +18,12 @@ comp.inputB("foreground");
 comp.opacity = 1.0f;
 
 // Blend modes
-comp.mode(BlendMode::Over);       // Normal alpha compositing
-comp.mode(BlendMode::Add);        // Additive (A + B)
-comp.mode(BlendMode::Multiply);   // Darkens (A * B)
-comp.mode(BlendMode::Screen);     // Lightens (1 - (1-A)(1-B))
-comp.mode(BlendMode::Overlay);    // Combines multiply and screen
-comp.mode(BlendMode::Difference); // Absolute difference |A - B|
+comp.mode = BlendMode::Over;       // Normal alpha compositing
+comp.mode = BlendMode::Add;        // Additive (A + B)
+comp.mode = BlendMode::Multiply;   // Darkens (A * B)
+comp.mode = BlendMode::Screen;     // Lightens (1 - (1-A)(1-B))
+comp.mode = BlendMode::Overlay;    // Combines multiply and screen
+comp.mode = BlendMode::Difference; // Absolute difference |A - B|
 ```
 
 ### Multi-Layer Compositing
@@ -114,7 +114,7 @@ bloom.input("source");
 auto& comp = chain.add<Composite>("comp");
 comp.inputA("source");
 comp.inputB("bloom");
-comp.mode(BlendMode::Add);
+comp.mode = BlendMode::Add;
 comp.opacity = 0.5f;
 ```
 
@@ -122,7 +122,7 @@ comp.opacity = 0.5f;
 ```cpp
 comp.inputA("photo");
 comp.inputB("grainTexture");
-comp.mode(BlendMode::Overlay);
+comp.mode = BlendMode::Overlay;
 comp.opacity = 0.3f;
 ```
 

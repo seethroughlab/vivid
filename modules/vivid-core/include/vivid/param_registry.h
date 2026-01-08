@@ -61,6 +61,9 @@ public:
     /// @brief Construct from FilePathParam
     ParamRef(FilePathParam* p) : m_ptr(p), m_type(ParamType::FilePath) {}
 
+    /// @brief Construct from EnumParamBase (type-erased enum)
+    ParamRef(EnumParamBase* p) : m_ptr(p), m_type(ParamType::Enum) {}
+
     /// @brief Get parameter name
     const char* name() const {
         switch (m_type) {
@@ -71,6 +74,7 @@ public:
             case ParamType::Vec3:     return static_cast<Vec3Param*>(m_ptr)->name();
             case ParamType::Color:    return static_cast<ColorParam*>(m_ptr)->name();
             case ParamType::FilePath: return static_cast<FilePathParam*>(m_ptr)->name();
+            case ParamType::Enum:     return static_cast<EnumParamBase*>(m_ptr)->name();
             default:                  return "";
         }
     }
@@ -88,6 +92,7 @@ public:
             case ParamType::Vec3:     return static_cast<Vec3Param*>(m_ptr)->decl();
             case ParamType::Color:    return static_cast<ColorParam*>(m_ptr)->decl();
             case ParamType::FilePath: return static_cast<FilePathParam*>(m_ptr)->decl();
+            case ParamType::Enum:     return static_cast<EnumParamBase*>(m_ptr)->decl();
             default:                  return {};
         }
     }
@@ -134,6 +139,11 @@ public:
             case ParamType::FilePath:
                 // FilePath doesn't use float array
                 return false;
+            case ParamType::Enum: {
+                auto* p = static_cast<EnumParamBase*>(m_ptr);
+                out[0] = static_cast<float>(p->index());
+                return true;
+            }
             default:
                 return false;
         }
@@ -196,6 +206,15 @@ public:
             case ParamType::FilePath:
                 // FilePath doesn't use float array
                 return false;
+            case ParamType::Enum: {
+                auto* p = static_cast<EnumParamBase*>(m_ptr);
+                int newIdx = static_cast<int>(value[0]);
+                if (p->index() != newIdx) {
+                    p->setIndex(newIdx);
+                    return true;
+                }
+                return false;
+            }
             default:
                 return false;
         }

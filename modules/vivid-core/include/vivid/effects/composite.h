@@ -43,19 +43,18 @@ enum class BlendMode {
  * @par Example
  * @code
  * // Multi-layer compositing
- * chain.add<Composite>("comp")
- *     .input(0, &background)
- *     .input(1, &layer1)
- *     .input(2, &layer2)
- *     .input(3, &layer3)
- *     .mode(BlendMode::Over)
- *     .opacity(1.0f);
+ * auto& comp = chain.add<Composite>("comp");
+ * comp.input(0, "background");
+ * comp.input(1, "layer1");
+ * comp.input(2, "layer2");
+ * comp.mode = BlendMode::Over;
+ * comp.opacity = 1.0f;
  *
- * // Legacy 2-input API still works
- * chain.add<Composite>("blend")
- *     .inputA(&photo)
- *     .inputB(&noise)
- *     .mode(BlendMode::Overlay);
+ * // Simple 2-input API
+ * auto& blend = chain.add<Composite>("blend");
+ * blend.inputA("photo");
+ * blend.inputB("noise");
+ * blend.mode = BlendMode::Overlay;
  * @endcode
  *
  * @par Inputs
@@ -83,7 +82,7 @@ public:
                 "auto& comp = chain.add<Composite>(\"comp\");\n"
                 "comp.inputA(\"background\");\n"
                 "comp.inputB(\"overlay\");\n"
-                "comp.mode(BlendMode::Multiply);  // Over, Add, Screen, Overlay, Difference\n"
+                "comp.mode = BlendMode::Multiply;  // Over, Add, Screen, Overlay, Difference\n"
                 "comp.opacity = 1.0f;\n"
             )
             .withExamples({
@@ -99,18 +98,22 @@ public:
     /// @{
 
     Param<float> opacity{"opacity", 1.0f, 0.0f, 1.0f}; ///< Blend opacity for all layers
+    EnumParam<BlendMode> mode{"mode", BlendMode::Over}; ///< Blend mode
 
     /// @}
     // -------------------------------------------------------------------------
 
     Composite() {
         registerParam(opacity);
+        registerParam(mode);
     }
     ~Composite() override;
 
     /// @brief Set blend mode (Over, Add, Multiply, Screen, Overlay, Difference)
-    void mode(BlendMode m) {
-        if (m_mode != m) { m_mode = m; markDirty(); }
+    Composite& setMode(BlendMode m) {
+        mode = m;
+        markDirty();
+        return *this;
     }
 
     /// @brief Set input at specific index (0 = base, 1-7 = layers)
@@ -165,8 +168,6 @@ private:
     void updateBindGroup(Context& ctx);
     void createDummyTexture(Context& ctx);
 
-    BlendMode m_mode = BlendMode::Over;
-    Param<float> m_opacity{"opacity", 1.0f, 0.0f, 1.0f};
     int m_inputCount = 0;
 
     WGPURenderPipeline m_pipeline = nullptr;

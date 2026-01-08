@@ -17,7 +17,7 @@ void setup(Context& ctx) {
 
     // Animated star shape
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Star);
+    shape.type = ShapeType::Star;
     shape.sides = 5;
     shape.size.set(0.4f, 0.4f);
     shape.softness = 0.01f;
@@ -25,7 +25,7 @@ void setup(Context& ctx) {
 
     // Radial gradient background
     auto& gradient = chain.add<Gradient>("gradient");
-    gradient.mode(GradientMode::Radial);
+    gradient.mode = GradientMode::Radial;
     gradient.colorA.set(0.2f, 0.0f, 0.4f, 1.0f);
     gradient.colorB.set(0.0f, 0.0f, 0.1f, 1.0f);
 
@@ -33,7 +33,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("gradient");
     comp.inputB("shape");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     // HSV for hue cycling
     auto& hsv = chain.add<HSV>("hsv");

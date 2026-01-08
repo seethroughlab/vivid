@@ -97,7 +97,7 @@ void setup(Context& ctx) {
 
     // Shape - pulses with beat
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Circle);
+    shape.type = ShapeType::Circle;
     shape.size.set(0.3f, 0.3f);
     shape.softness = 0.05f;
     shape.color.set(1.0f, 0.84f, 0.0f, 1.0f);  // Gold
@@ -106,13 +106,13 @@ void setup(Context& ctx) {
     auto& comp1 = chain.add<Composite>("comp1");
     comp1.inputA("bg");
     comp1.inputB("noise");
-    comp1.mode(BlendMode::Add);
+    comp1.mode = BlendMode::Add;
     comp1.opacity = 0.3f;
 
     auto& comp2 = chain.add<Composite>("comp2");
     comp2.inputA("comp1");
     comp2.inputB("shape");
-    comp2.mode(BlendMode::Add);
+    comp2.mode = BlendMode::Add;
     comp2.opacity = 1.0f;
 
     // Final bloom for glow effect
@@ -123,7 +123,7 @@ void setup(Context& ctx) {
     auto& final_ = chain.add<Composite>("final");
     final_.inputA("comp2");
     final_.inputB("bloom");
-    final_.mode(BlendMode::Add);
+    final_.mode = BlendMode::Add;
     final_.opacity = 0.4f;
 
     chain.output("final");

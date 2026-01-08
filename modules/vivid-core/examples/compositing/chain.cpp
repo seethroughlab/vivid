@@ -24,7 +24,7 @@ void setup(Context& ctx) {
 
     // Shape layer
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Circle);
+    shape.type = ShapeType::Circle;
     shape.size.set(0.35f, 0.35f);
     shape.color.set(1.0f, 1.0f, 1.0f, 0.8f);
 
@@ -32,25 +32,25 @@ void setup(Context& ctx) {
     auto& compOver = chain.add<Composite>("compOver");
     compOver.inputA("layerA");
     compOver.inputB("shape");
-    compOver.mode(BlendMode::Over);
+    compOver.mode = BlendMode::Over;
 
     // Composite with Add mode
     auto& compAdd = chain.add<Composite>("compAdd");
     compAdd.inputA("layerA");
     compAdd.inputB("noise");
-    compAdd.mode(BlendMode::Add);
+    compAdd.mode = BlendMode::Add;
 
     // Composite with Multiply mode
     auto& compMult = chain.add<Composite>("compMult");
     compMult.inputA("layerA");
     compMult.inputB("noise");
-    compMult.mode(BlendMode::Multiply);
+    compMult.mode = BlendMode::Multiply;
 
     // Composite with Screen mode
     auto& compScreen = chain.add<Composite>("compScreen");
     compScreen.inputA("layerA");
     compScreen.inputB("noise");
-    compScreen.mode(BlendMode::Screen);
+    compScreen.mode = BlendMode::Screen;
 
     // Math operator for value remapping
     auto& mathRemap = chain.add<Math>("mathRemap");

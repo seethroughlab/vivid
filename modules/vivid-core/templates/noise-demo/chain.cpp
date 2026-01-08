@@ -13,7 +13,7 @@ void setup(Context& ctx) {
 
     // Simplex noise generator
     auto& noise = chain.add<Noise>("noise");
-    noise.type(NoiseType::Simplex);
+    noise.type = NoiseType::Simplex;
     noise.scale = 4.0f;
     noise.speed = 0.3f;
     noise.octaves = 4;
@@ -32,7 +32,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("blur");
     comp.inputB("ramp");
-    comp.mode(BlendMode::Multiply);
+    comp.mode = BlendMode::Multiply;
 
     chain.output("comp");
 }

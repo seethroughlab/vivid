@@ -68,7 +68,8 @@ enum class ParamType {
     Vec4,     ///< 4D vector (x, y, z, w)
     Color,    ///< RGBA color (0-1 range)
     String,   ///< Text string
-    FilePath  ///< File path (texture, video, model, etc.)
+    FilePath, ///< File path (texture, video, model, etc.)
+    Enum      ///< Enumeration (dropdown selection)
 };
 
 // Forward declaration for binding tracking
@@ -90,6 +91,9 @@ struct ParamDecl {
     std::string stringDefault;  ///< Default string value
     std::string fileFilter;     ///< File filter (e.g., "*.png;*.jpg;*.exr")
     std::string fileCategory;   ///< Category hint ("image", "video", "audio", "model")
+
+    // For Enum parameters
+    std::vector<std::string> enumLabels;  ///< Display labels for enum values
 
     // For trackable value operator bindings
     Operator* boundOperator = nullptr;  ///< Source value operator if bound (for visualization)

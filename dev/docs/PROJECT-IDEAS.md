@@ -52,7 +52,7 @@ Layer multiple `Noise` operators with different scales and speeds, composite the
 ```cpp
 chain.add<Noise>("macro").scale(2.0f).speed(0.1f);
 chain.add<Noise>("detail").scale(8.0f).speed(0.3f);
-chain.add<Composite>("blend").mode(BlendMode::Multiply);
+chain.add<Composite>("blend").mode = BlendMode::Multiply;
 chain.add<HSV>("color");  // Add color shifting
 ```
 

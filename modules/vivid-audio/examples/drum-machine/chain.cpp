@@ -181,7 +181,7 @@ void setup(Context& ctx) {
 
     // Kick visualizer (bottom) - red/orange
     auto& kickVis = chain.add<Shape>("kickVis");
-    kickVis.type(ShapeType::Circle);
+    kickVis.type = ShapeType::Circle;
     kickVis.position.set(0.5f, 0.3f);
     kickVis.size.set(0.15f, 0.15f);
     kickVis.color.set(1.0f, 0.39f, 0.28f, 1.0f);  // Tomato
@@ -189,7 +189,7 @@ void setup(Context& ctx) {
 
     // Snare visualizer (center-left) - yellow/gold
     auto& snareVis = chain.add<Shape>("snareVis");
-    snareVis.type(ShapeType::Circle);
+    snareVis.type = ShapeType::Circle;
     snareVis.position.set(0.35f, 0.5f);
     snareVis.size.set(0.12f, 0.12f);
     snareVis.color.set(1.0f, 0.84f, 0.0f, 1.0f);  // Gold
@@ -197,7 +197,7 @@ void setup(Context& ctx) {
 
     // Hi-hat visualizer (center-right) - cyan
     auto& hihatVis = chain.add<Shape>("hihatVis");
-    hihatVis.type(ShapeType::Circle);
+    hihatVis.type = ShapeType::Circle;
     hihatVis.position.set(0.65f, 0.5f);
     hihatVis.size.set(0.08f, 0.08f);
     hihatVis.color.set(0.0f, 1.0f, 1.0f, 1.0f);  // Cyan
@@ -205,7 +205,7 @@ void setup(Context& ctx) {
 
     // Clap visualizer (top) - magenta/violet
     auto& clapVis = chain.add<Shape>("clapVis");
-    clapVis.type(ShapeType::Circle);
+    clapVis.type = ShapeType::Circle;
     clapVis.position.set(0.5f, 0.7f);
     clapVis.size.set(0.1f, 0.1f);
     clapVis.color.set(0.85f, 0.44f, 0.84f, 1.0f);  // Orchid
@@ -218,7 +218,7 @@ void setup(Context& ctx) {
     comp.input(2, "snareVis");
     comp.input(3, "hihatVis");
     comp.input(4, "clapVis");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     chain.output("comp");
 

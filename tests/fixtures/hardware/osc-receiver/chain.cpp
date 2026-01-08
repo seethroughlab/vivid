@@ -26,13 +26,13 @@ void setup(Context& ctx) {
 
     // Background
     auto& bg = chain.add<Gradient>("bg");
-    bg.mode(GradientMode::Radial);
+    bg.mode = GradientMode::Radial;
     bg.colorA.set(0.1f, 0.1f, 0.2f, 1.0f);
     bg.colorB.set(0.05f, 0.05f, 0.1f, 1.0f);
 
     // Reactive shape
     auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Circle);
+    shape.type = ShapeType::Circle;
     shape.size.set(0.2f, 0.2f);
     shape.color.set(1.0f, 0.5f, 0.2f, 1.0f);
     shape.softness = 0.1f;
@@ -41,7 +41,7 @@ void setup(Context& ctx) {
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
     comp.inputB("shape");
-    comp.mode(BlendMode::Add);
+    comp.mode = BlendMode::Add;
 
     // Bloom for glow
     auto& bloom = chain.add<Bloom>("bloom");

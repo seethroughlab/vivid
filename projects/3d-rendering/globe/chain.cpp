@@ -61,7 +61,7 @@ void setup(Context& ctx) {
     noise.scale = 3.0f;
     noise.speed = 0.3f;
     noise.octaves = 4;
-    noise.type(NoiseType::Simplex);
+    noise.type = NoiseType::Simplex;
     noise.setResolution(512, 512);
 
     auto& scene = SceneComposer::create(chain, "scene");

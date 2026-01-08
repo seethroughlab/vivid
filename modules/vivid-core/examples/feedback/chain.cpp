@@ -39,7 +39,7 @@ void setup(Context& ctx) {
     // Multiply feedback trails with color ramp
     comp.inputA("feedback");
     comp.inputB("ramp");
-    comp.mode(BlendMode::Multiply);
+    comp.mode = BlendMode::Multiply;
 
     chain.output("comp");
 }
