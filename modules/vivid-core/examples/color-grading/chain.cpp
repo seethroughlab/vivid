@@ -5,17 +5,21 @@
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
+#include <vivid/video/video.h>
 #include <cmath>
 
 using namespace vivid;
 using namespace vivid::effects;
+using namespace vivid::video;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Source: animated gradient
-    auto& source = chain.add<Ramp>("source");
-    source.hueSpeed = 0.1f;
+    // Source: video
+    auto& source = chain.add<VideoPlayer>("source");
+    source.setFile("assets/sword.mp4");
+    source.setLoop(true);
+    source.play();
 
     // HSV adjustment - hue shift, saturation, value
     auto& hsv = chain.add<HSV>("hsv");
@@ -30,16 +34,6 @@ void setup(Context& ctx) {
     quantize.input("source");
     quantize.levels = 8;
 
-    // Combined: HSV -> Brightness -> Quantize
-    auto& combined = chain.add<HSV>("combined_hsv");
-    combined.input("source");
-
-    auto& combined_bright = chain.add<Brightness>("combined_bright");
-    combined_bright.input("combined_hsv");
-
-    auto& combined_quant = chain.add<Quantize>("combined_quant");
-    combined_quant.input("combined_bright");
-
     // Canvas for layout
     // NOTE: Canvas.drawImage() requires operators to be processed first.
     // Use input() to establish dependencies for correct processing order.
@@ -48,7 +42,7 @@ void setup(Context& ctx) {
     canvas.input(0, "source");
     canvas.input(1, "hsv");
     canvas.input(2, "brightness");
-    canvas.input(3, "combined_quant");
+    canvas.input(3, "quantize");
 
     chain.output("canvas");
 }
@@ -72,17 +66,6 @@ void update(Context& ctx) {
     auto& quantize = chain.get<Quantize>("quantize");
     quantize.levels = 4 + static_cast<int>(std::abs(std::sin(t * 0.2f)) * 12);  // 4 to 16 levels
 
-    // Combined chain settings
-    auto& combined_hsv = chain.get<HSV>("combined_hsv");
-    combined_hsv.hueShift = 0.15f;  // Warm shift
-    combined_hsv.saturation = 1.2f;
-
-    auto& combined_bright = chain.get<Brightness>("combined_bright");
-    combined_bright.contrast = 1.3f;
-
-    auto& combined_quant = chain.get<Quantize>("combined_quant");
-    combined_quant.levels = 6;
-
     // Draw 2x2 grid
     auto& canvas = chain.get<Canvas>("canvas");
     canvas.clear(0.05f, 0.05f, 0.07f, 1.0f);
@@ -93,9 +76,8 @@ void update(Context& ctx) {
     int halfH = h / 2;
     int pad = 8;
 
-    auto& source = chain.get<Ramp>("source");
-
     // Top-left: Original
+    auto& source = chain.get<VideoPlayer>("source");
     canvas.drawImage(source, pad, pad, halfW - pad * 2, halfH - pad * 2);
 
     // Top-right: HSV
@@ -104,15 +86,15 @@ void update(Context& ctx) {
     // Bottom-left: Brightness/Contrast
     canvas.drawImage(brightness, pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
 
-    // Bottom-right: Quantize (or combined)
-    canvas.drawImage(combined_quant, halfW + pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
+    // Bottom-right: Quantize
+    canvas.drawImage(quantize, halfW + pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
 
     // Labels with background boxes
     canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.7f);
     canvas.fillRect(pad, pad, 80, 22);
     canvas.fillRect(halfW + pad, pad, 180, 22);
     canvas.fillRect(pad, halfH + pad, 200, 22);
-    canvas.fillRect(halfW + pad, halfH + pad, 180, 22);
+    canvas.fillRect(halfW + pad, halfH + pad, 140, 22);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
     canvas.fillText("Original", pad + 5, pad + 16);
@@ -127,7 +109,10 @@ void update(Context& ctx) {
         static_cast<float>(brightness.brightness), static_cast<float>(brightness.contrast));
     canvas.fillText(brightLabel, pad + 5, halfH + pad + 16);
 
-    canvas.fillText("Combined: HSV + Bright + Quantize", halfW + pad + 5, halfH + pad + 16);
+    char quantLabel[64];
+    snprintf(quantLabel, sizeof(quantLabel), "Quantize: %d levels",
+        static_cast<int>(quantize.levels));
+    canvas.fillText(quantLabel, halfW + pad + 5, halfH + pad + 16);
 }
 
 VIVID_CHAIN(setup, update)

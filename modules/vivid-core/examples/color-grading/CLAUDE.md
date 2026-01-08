@@ -4,10 +4,10 @@ Demonstrates color correction and stylization operators.
 
 ## Operators Used
 
+- **VideoPlayer** - Video source
 - **HSV** - Hue shift, saturation, value adjustment
 - **Brightness** - Brightness and contrast control
 - **Quantize** - Reduce color palette (posterization)
-- **Ramp** - Animated source gradient
 
 ## Key Concepts
 

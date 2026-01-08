@@ -45,8 +45,9 @@ void NodeGraph::endEditor() {
 
     // Render everything
     // NOTE: Nodes must render BEFORE links because pin.screenPos is computed during node rendering
-    renderBackground();
+    // Only render background/grid when showGrid is true (allows see-through when disabled)
     if (m_style.showGrid) {
+        renderBackground();
         renderGrid();
     }
     renderNodes();  // Computes pin screen positions
