@@ -88,6 +88,15 @@ void setup(Context& ctx) {
     camera.farPlane(100.0f);
 
     // =========================================================================
+    // LIGHTING - DirectionalLight operator for sun-like illumination
+    // =========================================================================
+
+    auto& sun = chain.add<DirectionalLight>("sun");
+    sun.direction(1, 2, 1);
+    sun.color(1.0f, 1.0f, 1.0f);
+    sun.intensity = 1.0f;
+
+    // =========================================================================
     // RENDER3D - Render scene to texture
     // Set explicit resolution for the render target (1920x1080 for HD output)
     // =========================================================================
@@ -95,9 +104,8 @@ void setup(Context& ctx) {
     auto& render = chain.add<Render3D>("render3d");
     render.setInput(&scene);
     render.setCameraInput(&camera);
+    render.setLightInput(&sun);
     render.setShadingMode(ShadingMode::Flat);
-    render.setLightDirection(glm::normalize(glm::vec3(1, 2, 1)));
-    render.setLightColor(glm::vec3(1, 1, 1));
     render.setAmbient(0.2f);
     render.setClearColor(0.08f, 0.08f, 0.12f);
     render.setResolution(1920, 1080);

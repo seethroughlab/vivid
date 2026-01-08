@@ -1077,6 +1077,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     // Get selected node
     int selectedNodeId = m_nodeGraph.getSelectedNode();
     if (selectedNodeId < 0 || selectedNodeId == SCREEN_NODE_ID || selectedNodeId == SPEAKERS_NODE_ID) {
+        m_inspectorScrollOffset = 0.0f;  // Reset scroll when no selection
         return;  // No valid selection
     }
 
@@ -1104,7 +1105,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     const float sliderHeight = 20.0f;
     const float headerHeight = lineH + padding * 2;
 
-    // Calculate panel height based on parameters
+    // Calculate total content height based on parameters
     size_t totalRows = 0;
     for (const auto& p : params) {
         switch (p.type) {
@@ -1115,16 +1116,30 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
             default: totalRows += 1; break;
         }
     }
-    float panelHeight = headerHeight + totalRows * rowHeight + padding * 2;
+    m_inspectorContentHeight = totalRows * rowHeight + padding * 2;
 
     // Panel position (right side, below status bar)
     float statusBarHeight = lineH + 12.0f;
     float panelX = input.width - m_inspectorWidth - padding;
     float panelY = statusBarHeight + padding;
 
-    // Clamp panel height to available space
-    float maxHeight = input.height - panelY - padding;
-    if (panelHeight > maxHeight) panelHeight = maxHeight;
+    // Calculate visible area height (clamped to screen)
+    float maxPanelHeight = input.height - panelY - padding;
+    float contentAreaHeight = maxPanelHeight - headerHeight;  // Visible content area
+    float panelHeight = std::min(headerHeight + m_inspectorContentHeight, maxPanelHeight);
+
+    // Handle scroll input (UI-only, no GPU operations)
+    // Only scroll if mouse is in the panel area
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+    glm::vec2 mousePos = input.mousePos * scale;
+    bool mouseInPanel = mousePos.x >= panelX && mousePos.x <= panelX + m_inspectorWidth &&
+                        mousePos.y >= panelY && mousePos.y <= panelY + panelHeight;
+
+    if (mouseInPanel && (input.scroll.y != 0.0f)) {
+        m_inspectorScrollOffset -= input.scroll.y * 30.0f;
+        float maxScroll = std::max(0.0f, m_inspectorContentHeight - contentAreaHeight);
+        m_inspectorScrollOffset = std::max(0.0f, std::min(m_inspectorScrollOffset, maxScroll));
+    }
 
     // Colors
     glm::vec4 bgColor = {0.12f, 0.12f, 0.15f, 0.95f};
@@ -1146,18 +1161,20 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     std::string title = info.op->name() + " (" + info.name + ")";
     m_overlay.text(title, panelX + padding, panelY + padding + ascent, titleColor, labelFont);
 
-    // Mouse state
-    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-    glm::vec2 mousePos = input.mousePos * scale;
+    // Mouse state (mousePos and scale already calculated above for scroll)
     bool mouseDown = input.mouseDown[0];
     static bool lastMouseDown = false;
     bool mouseClicked = mouseDown && !lastMouseDown;
     bool mouseReleased = !mouseDown && lastMouseDown;
     lastMouseDown = mouseDown;
 
-    // Content area
-    float contentY = panelY + headerHeight + padding;
+    // Visible content bounds (for visibility culling)
+    float visibleTop = panelY + headerHeight;
+    float visibleBottom = panelY + panelHeight;
     float sliderWidth = m_inspectorWidth - padding * 4 - 60.0f;  // Leave room for value label
+
+    // Content area - apply scroll offset (UI coordinate only)
+    float contentY = panelY + headerHeight + padding - m_inspectorScrollOffset;
 
     for (const auto& p : params) {
         float value[4] = {0};
@@ -1191,46 +1208,58 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
         for (int c = 0; c < componentCount; ++c) {
             float y = contentY;
+            float itemBottom = y + rowHeight;
 
-            // Label
-            std::string label = (componentCount > 1) ? p.name + "." + componentLabels[c] : p.name;
-            m_overlay.text(label, panelX + padding, y + ascent, dimColor, labelFont);
+            // Visibility culling - skip rendering items outside visible area
+            // CRITICAL: Only skip m_overlay draw calls, nothing else
+            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
 
-            // Slider background
+            if (isVisible) {
+                // Label
+                std::string label = (componentCount > 1) ? p.name + "." + componentLabels[c] : p.name;
+                m_overlay.text(label, panelX + padding, y + ascent, dimColor, labelFont);
+
+                // Slider background
+                float sliderX = panelX + padding;
+                float sliderY = y + lineH;
+                m_overlay.fillRoundedRect(sliderX, sliderY, sliderWidth, sliderHeight, 3.0f, sliderBg);
+
+                // Calculate normalized value
+                float range = p.maxVal - p.minVal;
+                float normalizedVal = (range > 0.0001f) ? (value[c] - p.minVal) / range : 0.0f;
+                normalizedVal = std::max(0.0f, std::min(1.0f, normalizedVal));
+
+                // Slider fill
+                float fillWidth = normalizedVal * sliderWidth;
+                if (fillWidth > 0) {
+                    bool isActive = m_sliderState.dragging &&
+                                    m_sliderState.operatorName == info.name &&
+                                    m_sliderState.paramName == p.name &&
+                                    m_sliderState.paramIndex == c;
+                    glm::vec4 fillColor = isActive ? sliderActive : sliderFill;
+                    m_overlay.fillRoundedRect(sliderX, sliderY, fillWidth, sliderHeight, 3.0f, fillColor);
+                }
+
+                // Value label
+                char valueBuf[32];
+                if (p.type == ParamType::Int) {
+                    snprintf(valueBuf, sizeof(valueBuf), "%d", static_cast<int>(value[c]));
+                } else if (p.type == ParamType::Bool) {
+                    snprintf(valueBuf, sizeof(valueBuf), "%s", value[c] > 0.5f ? "ON" : "OFF");
+                } else {
+                    snprintf(valueBuf, sizeof(valueBuf), "%.2f", value[c]);
+                }
+                m_overlay.text(valueBuf, sliderX + sliderWidth + 8, sliderY + ascent, textColor, monoFont);
+            }
+
+            // Handle slider interaction (needs to work even if not visible for drag continuation)
             float sliderX = panelX + padding;
             float sliderY = y + lineH;
-            m_overlay.fillRoundedRect(sliderX, sliderY, sliderWidth, sliderHeight, 3.0f, sliderBg);
-
-            // Calculate normalized value
             float range = p.maxVal - p.minVal;
-            float normalizedVal = (range > 0.0001f) ? (value[c] - p.minVal) / range : 0.0f;
-            normalizedVal = std::max(0.0f, std::min(1.0f, normalizedVal));
 
-            // Slider fill
-            float fillWidth = normalizedVal * sliderWidth;
-            if (fillWidth > 0) {
-                bool isActive = m_sliderState.dragging &&
-                                m_sliderState.operatorName == info.name &&
-                                m_sliderState.paramName == p.name &&
-                                m_sliderState.paramIndex == c;
-                glm::vec4 fillColor = isActive ? sliderActive : sliderFill;
-                m_overlay.fillRoundedRect(sliderX, sliderY, fillWidth, sliderHeight, 3.0f, fillColor);
-            }
-
-            // Value label
-            char valueBuf[32];
-            if (p.type == ParamType::Int) {
-                snprintf(valueBuf, sizeof(valueBuf), "%d", static_cast<int>(value[c]));
-            } else if (p.type == ParamType::Bool) {
-                snprintf(valueBuf, sizeof(valueBuf), "%s", value[c] > 0.5f ? "ON" : "OFF");
-            } else {
-                snprintf(valueBuf, sizeof(valueBuf), "%.2f", value[c]);
-            }
-            m_overlay.text(valueBuf, sliderX + sliderWidth + 8, sliderY + ascent, textColor, monoFont);
-
-            // Handle slider interaction
             bool inSlider = mousePos.x >= sliderX && mousePos.x <= sliderX + sliderWidth &&
-                           mousePos.y >= sliderY && mousePos.y <= sliderY + sliderHeight;
+                           mousePos.y >= sliderY && mousePos.y <= sliderY + sliderHeight &&
+                           isVisible;  // Only start new drags on visible items
 
             if (mouseClicked && inSlider) {
                 // Start dragging

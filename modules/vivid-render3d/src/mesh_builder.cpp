@@ -720,9 +720,11 @@ MeshBuilder MeshBuilder::sphere(float radius, int segments) {
 
     MeshBuilder builder(std::move(m));
 
-    // Compute spherical UV coordinates for texture mapping
+    // Compute spherical UV coordinates and analytical normals
     for (auto& v : builder.m_vertices) {
         glm::vec3 n = glm::normalize(v.position);
+        // Analytical normal for sphere (more accurate than averaged face normals)
+        v.normal = n;
         // Spherical UV mapping: u = longitude, v = latitude
         float u = 0.5f + std::atan2(n.z, n.x) / (2.0f * glm::pi<float>());
         float vCoord = 0.5f - std::asin(n.y) / glm::pi<float>();

@@ -10,6 +10,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.16] - 2026-01-07
+
+### Added
+
+- **Inspector panel scrolling** - Parameter panels with many sliders now scroll when content exceeds visible area
+- **Dynamic window resize for Render3D** - Render target follows window size unless `setResolution()` is explicitly called
+
+### Changed
+
+- **Deprecated legacy light methods** - `setLightDirection()` and `setLightColor()` are now deprecated; use `setParam("lightDir", ...)` or `setLightInput(LightOperator*)` instead
+- **3d-basics example** - Updated to use `DirectionalLight` operator instead of deprecated direct light configuration
+- **Preview renderers** - SceneComposer and MeshOperator preview thumbnails now use `setParam()` API
+
+### Fixed
+
+- **Render3D texture resize** - Fixed depth/color buffer size mismatch when following window size (was causing WebGPU validation errors)
+
 ## [0.1.0-alpha.15] - 2026-01-07
 
 ### Changed

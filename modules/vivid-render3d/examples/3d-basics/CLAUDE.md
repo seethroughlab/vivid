@@ -103,17 +103,25 @@ auto& camera = chain.add<CameraOperator>("camera")
 camera.azimuth(ctx.time() * 0.2f);
 ```
 
+### Lighting
+```cpp
+// Create directional light (sun-like)
+auto& sun = chain.add<DirectionalLight>("sun");
+sun.direction(1, 2, 1);        // Will be normalized
+sun.color(1.0f, 1.0f, 1.0f);   // White light
+sun.intensity = 1.0f;           // Full brightness
+```
+
 ### Rendering
 ```cpp
-auto& render = chain.add<Render3D>("render")
-    .input("scene")
-    .cameraInput(&camera)
-    .shadingMode(ShadingMode::Flat)
-    .lightDirection(glm::normalize(glm::vec3(1, 2, 1)))
-    .lightColor(glm::vec3(1, 1, 1))
-    .ambient(0.2f)
-    .clearColor(0.08f, 0.08f, 0.12f)
-    .resolution(1920, 1080);  // Render target size
+auto& render = chain.add<Render3D>("render");
+render.setInput(&scene);
+render.setCameraInput(&camera);
+render.setLightInput(&sun);         // Use light operator
+render.setShadingMode(ShadingMode::Flat);
+render.setAmbient(0.2f);
+render.setClearColor(0.08f, 0.08f, 0.12f);
+render.setResolution(1920, 1080);   // Render target size
 ```
 
 ### Animating Scene Objects

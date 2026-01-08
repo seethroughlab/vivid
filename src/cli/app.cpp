@@ -345,6 +345,7 @@ struct MainLoopContext {
     bool chainNeedsSetup = true;
     bool tabKeyWasPressed = false;
     bool visualizerVisible = false;  // Chain visualizer visibility (Tab to toggle)
+    bool initialStatusShown = false;  // Have we shown the startup status banner?
 
     // MCP live capture request (set by WebSocket command, cleared after capture)
     std::string mcpCaptureRequestPath;  // Non-empty = capture requested
@@ -567,6 +568,14 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     if (mlc.hotReload->hasError()) {
         mlc.ctx->setError(mlc.hotReload->getError());
 
+        // Show prominent status banner on initial load failure
+        if (!mlc.initialStatusShown) {
+            std::cerr << "\n══════════════════════════════════════\n"
+                      << "  VIVID: COMPILE FAILED\n"
+                      << "══════════════════════════════════════\n" << std::endl;
+            mlc.initialStatusShown = true;
+        }
+
         // In snapshot mode, exit immediately on compile error (don't wait for timeout)
         if (!mlc.snapshotPath.empty() && !mlc.snapshotFramesPending.empty()) {
             std::cerr << "Snapshot aborted: chain failed to compile\n"
@@ -575,6 +584,14 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
     } else if (mlc.hotReload->isLoaded()) {
         mlc.ctx->clearError();
+
+        // Show prominent status banner on initial load success
+        if (!mlc.initialStatusShown) {
+            std::cout << "\n══════════════════════════════════════\n"
+                      << "  VIVID: READY\n"
+                      << "══════════════════════════════════════\n" << std::endl;
+            mlc.initialStatusShown = true;
+        }
     }
 
     // In snapshot mode, also exit immediately if there's a context-level error (e.g., file not found)

@@ -2866,7 +2866,20 @@ void Render3D::process(Context& ctx) {
         init(ctx);
     }
 
-    // 3D renderer uses declared resolution() - no auto-resize
+    // Follow window size if resolution not explicitly set
+    if (!m_resolutionLocked) {
+        int newW = ctx.width();
+        int newH = ctx.height();
+        if (newW > 0 && newH > 0 && (newW != m_width || newH != m_height)) {
+            // Must release before updating dimensions (createOutput checks m_width/m_height)
+            releaseOutput();
+            m_width = newW;
+            m_height = newH;
+            createOutput(ctx);
+            markDirty();
+        }
+    }
+
     createDepthBuffer(ctx);  // Recreate depth buffer if size changed
 
     if (!needsCook()) return;

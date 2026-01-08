@@ -44,7 +44,9 @@ void MeshOperator::updatePreview(Context& ctx) {
         m_previewRenderer->setShadingMode(ShadingMode::Flat);
         m_previewRenderer->setClearColor(0.12f, 0.14f, 0.18f);
         m_previewRenderer->setAmbient(0.3f);
-        m_previewRenderer->setLightDirection(glm::normalize(glm::vec3(1, 2, 1)));
+        // Use setParam() for light direction - avoids legacy API
+        float lightDir[4] = {0.408f, 0.816f, 0.408f, 0.0f};  // normalized (1,2,1)
+        m_previewRenderer->setParam("lightDir", lightDir);
         m_previewRenderer->setCameraInput(m_previewCamera.get());
         m_previewRenderer->init(ctx);
 

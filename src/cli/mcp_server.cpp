@@ -285,6 +285,36 @@ public:
         m_captureResultReceived = false;
     }
 
+    // Wait for compile status after connecting (for run_project)
+    json waitForCompileStatus(int timeoutMs = 10000) {
+        // Mark that we're waiting for compile status
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_compileStatusReceived = false;
+        }
+
+        // Request compile status
+        sendCommand("request_compile_status");
+
+        // Wait for compile_status response (up to timeout)
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_compileStatusReceived) {
+                    return m_compileStatus;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+
+        // Timeout - return whatever we have (default is success=true)
+        std::lock_guard<std::mutex> lock(m_mutex);
+        json result = m_compileStatus;
+        result["timeout"] = true;
+        return result;
+    }
+
     // Send capture_frame command and wait for result
     json captureFrame(const std::string& outputPath, int timeoutMs = 5000) {
         // Clear any previous result
@@ -354,6 +384,7 @@ private:
                 m_pendingChanges = msg;
             } else if (type == "compile_status") {
                 m_compileStatus = msg;
+                m_compileStatusReceived = true;
             } else if (type == "performance_stats") {
                 m_performanceStats = msg;
             } else if (type == "solo_state") {
@@ -389,6 +420,7 @@ private:
     json m_windowState = json::object();
     json m_captureResult = json::object();
     bool m_captureResultReceived{false};
+    bool m_compileStatusReceived{false};
 
     // Connection state tracking
     std::string m_lastError;
@@ -702,8 +734,7 @@ private:
                     {"name", {{"type", "string"}, {"description", "Project name"}}},
                     {"path", {{"type", "string"}, {"description", "Parent directory (optional, defaults to current directory)"}}},
                     {"template", {{"type", "string"}, {"description", "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit"}}},
-                    {"modules", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Modules to include (use list_modules to see available)"}}},
-                    {"force", {{"type", "boolean"}, {"description", "If true, remove existing directory first (use with caution)"}}}
+                    {"modules", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Modules to include (use list_modules to see available)"}}}
                 }},
                 {"required", json::array({"name"})}
             }}
@@ -1216,7 +1247,6 @@ private:
             std::string projectName = args.value("name", "");
             std::string parentPath = args.value("path", ".");
             std::string templateName = args.value("template", "blank");
-            bool force = args.value("force", false);
 
             if (projectName.empty()) {
                 result["isError"] = true;
@@ -1224,32 +1254,20 @@ private:
                 return result;
             }
 
-            // Check if project directory already exists
+            // Check if project directory already exists - refuse to overwrite
             fs::path fullPath = fs::path(parentPath) / projectName;
             if (fs::exists(fullPath)) {
-                if (force) {
-                    // Remove existing directory
-                    std::error_code ec;
-                    fs::remove_all(fullPath, ec);
-                    if (ec) {
-                        result["isError"] = true;
-                        result["content"] = {{{"type", "text"}, {"text", "Failed to remove existing directory: " + ec.message()}}};
-                        return result;
-                    }
-                } else {
-                    // Return helpful error with suggestions
-                    json error;
-                    error["error"] = "Directory already exists";
-                    error["path"] = fs::absolute(fullPath).string();
-                    error["suggestions"] = json::array({
-                        "Use a different project name",
-                        "Set force=true to replace the existing directory (WARNING: deletes all contents)",
-                        "Manually delete the directory first"
-                    });
-                    result["isError"] = true;
-                    result["content"] = {{{"type", "text"}, {"text", error.dump(2)}}};
-                    return result;
-                }
+                json error;
+                error["error"] = "Directory already exists";
+                error["path"] = fs::absolute(fullPath).string();
+                error["suggestions"] = json::array({
+                    "Use a different project name",
+                    "Ask the user if they want to delete the existing directory",
+                    "Work with the existing project instead"
+                });
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", error.dump(2)}}};
+                return result;
             }
 
             std::vector<std::string> cmdArgs = {
@@ -1345,6 +1363,17 @@ private:
                 response["pid"] = static_cast<int>(s_runningPid);
                 response["connected"] = connected;
                 response["port"] = 9876;
+
+                // Wait for compile status if connected
+                if (connected) {
+                    json compileStatus = m_vivid.waitForCompileStatus(10000);
+                    response["compileStatus"] = compileStatus;
+                    // Make compile failure obvious
+                    if (!compileStatus.value("success", true)) {
+                        response["warning"] = "COMPILATION FAILED - see compileStatus.message";
+                    }
+                }
+
                 result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
             } else {
                 result["isError"] = true;
@@ -1379,6 +1408,17 @@ private:
                 response["pid"] = pid;
                 response["connected"] = connected;
                 response["port"] = 9876;
+
+                // Wait for compile status if connected
+                if (connected) {
+                    json compileStatus = m_vivid.waitForCompileStatus(10000);
+                    response["compileStatus"] = compileStatus;
+                    // Make compile failure obvious
+                    if (!compileStatus.value("success", true)) {
+                        response["warning"] = "COMPILATION FAILED - see compileStatus.message";
+                    }
+                }
+
                 result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
             } else {
                 result["isError"] = true;

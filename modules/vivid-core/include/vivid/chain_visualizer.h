@@ -156,6 +156,8 @@ private:
     ParamChangeCallback m_paramChangeCallback;
     bool m_inspectorVisible = true;
     float m_inspectorWidth = 280.0f;
+    float m_inspectorScrollOffset = 0.0f;
+    float m_inspectorContentHeight = 0.0f;
 
     // Slider interaction state
     struct SliderState {

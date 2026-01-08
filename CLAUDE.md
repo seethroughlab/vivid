@@ -51,12 +51,28 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 | `search_docs` | Search Vivid documentation |
 
 ### Claude-First Workflow
-1. Claude starts Vivid: `./build/bin/vivid <project>`
+1. Claude starts Vivid using MCP `run_project` tool (returns compile status)
 2. User adjusts sliders in visualizer (preview updates immediately)
 3. Claude calls `get_pending_changes` to see what changed
 4. Claude edits chain.cpp with the new values
 5. Claude calls `clear_pending_changes` to confirm
 6. Hot-reload applies the changes
+7. **IMPORTANT**: Claude calls `get_runtime_status` to verify compilation succeeded
+
+### Checking Compile Status (Critical!)
+After editing `chain.cpp`, Vivid hot-reloads automatically. **You MUST check if compilation succeeded:**
+```
+# Use MCP tool:
+get_runtime_status → check compileStatus.success
+
+# Response when successful:
+{"connected": true, "compileStatus": {"success": true}}
+
+# Response when failed:
+{"connected": true, "compileStatus": {"success": false, "message": "chain.cpp:42:10: error: ..."}}
+```
+
+If `compileStatus.success` is `false`, read the error message and fix the code before proceeding.
 
 ### Snapshot Mode (for CI/Testing)
 The `--snapshot` flag runs the chain for a few frames, saves a PNG, and exits. Useful for:

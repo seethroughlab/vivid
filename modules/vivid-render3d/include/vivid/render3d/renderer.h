@@ -153,9 +153,13 @@ public:
     /// @{
 
     /// Set light direction (normalized) - direct configuration
+    /// @deprecated Use setParam("lightDir", ...) or setLightInput(LightOperator*)
+    [[deprecated("Use setParam(\"lightDir\", ...) or setLightInput(LightOperator*)")]]
     void setLightDirection(glm::vec3 dir);
 
     /// Set light color - direct configuration
+    /// @deprecated Use setParam("lightColor", ...) or setLightInput(LightOperator*)
+    [[deprecated("Use setParam(\"lightColor\", ...) or setLightInput(LightOperator*)")]]
     void setLightColor(glm::vec3 color);
 
     /// Set ambient light level
@@ -201,10 +205,12 @@ public:
     /// @{
 
     /// Set output resolution (overrides TextureOperator::setResolution)
+    /// When explicitly set, resolution is locked and won't follow window size
     void setResolution(int width, int height) {
         if (m_width != width || m_height != height) {
             m_width = width;
             m_height = height;
+            m_resolutionLocked = true;  // Lock to explicit size
             markDirty();
         }
     }
@@ -409,6 +415,7 @@ private:
 
     // Output - m_output, m_outputView, m_width, m_height inherited from TextureOperator
     glm::vec4 m_clearColor = glm::vec4(0.1f, 0.1f, 0.15f, 1.0f);
+    bool m_resolutionLocked = false;  // When true, resolution doesn't follow window size
 
     // Debug
     bool m_wireframe = false;
