@@ -61,11 +61,8 @@ void loadAllModules() {
     }
 #endif
 
-    // Load built-in modules from lib/ directory (sibling to bin/)
+    // Load built-in modules
     if (!exeDir.empty()) {
-        // Libraries are in ../lib/ relative to the executable in bin/
-        fs::path libDir = exeDir.parent_path() / "lib";
-
         const std::vector<std::string> builtinModules = {
             "vivid-audio",
             "vivid-video",
@@ -75,16 +72,37 @@ void loadAllModules() {
             "vivid-midi"
         };
 
-        for (const auto& moduleName : builtinModules) {
-#ifdef __APPLE__
-            fs::path libPath = libDir / ("lib" + moduleName + ".dylib");
-#elif defined(_WIN32)
-            fs::path libPath = libDir / (moduleName + ".dll");
+        // Possible library locations to search
+        std::vector<fs::path> searchPaths;
+#ifdef _WIN32
+        // On Windows, DLLs are typically in the same directory as the executable
+        searchPaths.push_back(exeDir);
+        // Also check ../lib/ for installed layouts
+        searchPaths.push_back(exeDir.parent_path() / "lib");
 #else
-            fs::path libPath = libDir / ("lib" + moduleName + ".so");
+        // On Unix, libraries are in ../lib/ relative to the executable in bin/
+        searchPaths.push_back(exeDir.parent_path() / "lib");
+        // Also check same directory as fallback
+        searchPaths.push_back(exeDir);
 #endif
-            if (fs::exists(libPath)) {
-                loadModuleLibrary(libPath);
+
+        for (const auto& moduleName : builtinModules) {
+            bool loaded = false;
+            for (const auto& searchDir : searchPaths) {
+                if (!fs::exists(searchDir)) continue;
+
+#ifdef __APPLE__
+                fs::path libPath = searchDir / ("lib" + moduleName + ".dylib");
+#elif defined(_WIN32)
+                fs::path libPath = searchDir / (moduleName + ".dll");
+#else
+                fs::path libPath = searchDir / ("lib" + moduleName + ".so");
+#endif
+                if (fs::exists(libPath)) {
+                    loadModuleLibrary(libPath);
+                    loaded = true;
+                    break;
+                }
             }
         }
     }

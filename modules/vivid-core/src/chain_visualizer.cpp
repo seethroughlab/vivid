@@ -678,11 +678,15 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     }
 
     // Do hierarchical layout using Sugiyama algorithm (with crossing reduction)
-    static bool autoLayoutDone = false;
-    if (!autoLayoutDone && !operators.empty()) {
+    // Reset layout if operator count changes (chain was hot-reloaded)
+    if (operators.size() != m_lastOperatorCount) {
+        m_autoLayoutDone = false;
+        m_lastOperatorCount = operators.size();
+    }
+    if (!m_autoLayoutDone && !operators.empty()) {
         m_nodeGraph.autoLayout();
         m_nodeGraph.zoomToFit();
-        autoLayoutDone = true;
+        m_autoLayoutDone = true;
     }
 
     // End node graph editor

@@ -136,6 +136,8 @@ private:
     OverlayCanvas m_overlay;
     NodeGraph m_nodeGraph;
     bool m_nodeGraphInitialized = false;
+    bool m_autoLayoutDone = false;
+    size_t m_lastOperatorCount = 0;
 
     // Button hit regions (set during renderStatusBar, checked for clicks after)
     struct ButtonRect { float x, y, w, h; bool valid = false; };

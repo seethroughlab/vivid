@@ -28,8 +28,9 @@ static NSArray* loadTracksWithMediaType(AVAsset* asset, AVMediaType mediaType) {
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
 
     [asset loadTracksWithMediaType:mediaType completionHandler:^(NSArray<AVAssetTrack*>* tracks, NSError* error) {
-        if (!error) {
-            result = tracks;
+        if (!error && tracks) {
+            // Copy to ensure the array survives the async callback
+            result = [tracks copy];
         }
         dispatch_semaphore_signal(semaphore);
     }];

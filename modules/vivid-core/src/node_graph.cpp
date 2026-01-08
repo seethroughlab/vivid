@@ -23,12 +23,14 @@ void NodeGraph::beginEditor(OverlayCanvas& canvas, float width, float height, co
     m_hoveredLinkId = -1;
     m_hoveredPinId = -1;
 
-    // Reset node hover/dragging state
+    // Clear links and pin mappings - they get rebuilt each frame
+    // This ensures stale data doesn't persist after hot reloads
+    m_links.clear();
+    m_pinToNode.clear();
+
+    // Reset node hover/dragging state (but keep node positions)
     for (auto& [id, node] : m_nodes) {
         node.hovered = false;
-    }
-    for (auto& [id, link] : m_links) {
-        link.hovered = false;
     }
 }
 

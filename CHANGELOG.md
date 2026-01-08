@@ -10,6 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.17] - 2026-01-08
+
+### Added
+
+- **Value operators** - LFO, Ramp, and other value-producing operators for parameter modulation
+- **New inspector widgets** - Improved parameter editing in the inspector panel
+- **`withExamples()` OperatorMeta** - Operators can now declare example project paths in metadata
+
+### Changed
+
+- **Distortion example** - Restored 4-quadrant layout with video + grid overlay demonstrating ChromaticAberration, BarrelDistortion, Edge, and Displace effects
+
+### Fixed
+
+- **Chain visualizer connections** - Fixed stale connections persisting after hot reloads; connections now correctly rebuild each frame
+- **Chain visualizer auto-layout** - Fixed layout not resetting after chain hot-reload (converted static variable to member variable)
+- **Video decoder crash on macOS 15+** - Fixed memory management bug in async track loading (`loadTracksWithMediaType()`) that caused segfaults due to NSArray not being retained across callbacks
+- **GPU encoder sharing** - Fixed SimpleTextureEffect and SimpleGeneratorEffect to use shared GPU encoder instead of creating new instances
+
 ## [0.1.0-alpha.16] - 2026-01-07
 
 ### Added
@@ -402,7 +421,9 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.15...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.17...HEAD
+[0.1.0-alpha.17]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.16...v0.1.0-alpha.17
+[0.1.0-alpha.16]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.15...v0.1.0-alpha.16
 [0.1.0-alpha.15]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.14...v0.1.0-alpha.15
 [0.1.0-alpha.14]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.13...v0.1.0-alpha.14
 [0.1.0-alpha.13]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.12...v0.1.0-alpha.13
