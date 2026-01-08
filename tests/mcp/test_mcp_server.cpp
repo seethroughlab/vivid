@@ -597,13 +597,9 @@ TEST_CASE("MCP operator inputs/outputs metadata is valid", "[mcp][metadata]") {
         }
     }
 
-    // Report all errors
-    if (!errors.empty()) {
-        std::string msg = "Metadata validation errors:\n";
-        for (const auto& err : errors) {
-            msg += "  - " + err + "\n";
-        }
-        INFO(msg);
+    // Report all errors - use FAIL_CHECK for each so they appear in CI output
+    for (const auto& err : errors) {
+        FAIL_CHECK("Metadata validation error: " + err);
     }
     REQUIRE(errors.empty());
 }
