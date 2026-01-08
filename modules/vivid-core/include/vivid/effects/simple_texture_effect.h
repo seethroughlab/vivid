@@ -144,9 +144,8 @@ void SimpleTextureEffect<Derived, Uniforms>::process(Context& ctx) {
     bindDesc.entries = bindEntries;
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
 
-    // Execute render pass
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
     WGPURenderPassEncoder pass;
     beginRenderPass(pass, encoder);
@@ -257,9 +256,8 @@ void SimpleGeneratorEffect<Derived, Uniforms>::process(Context& ctx) {
     Uniforms uniforms = static_cast<Derived*>(this)->getUniforms();
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 
-    // Execute render pass
-    WGPUCommandEncoderDescriptor encoderDesc = {};
-    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(ctx.device(), &encoderDesc);
+    // Use shared command encoder for batched submission
+    WGPUCommandEncoder encoder = ctx.gpuEncoder();
 
     WGPURenderPassEncoder pass;
     beginRenderPass(pass, encoder);
