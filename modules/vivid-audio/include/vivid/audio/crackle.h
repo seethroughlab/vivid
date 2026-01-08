@@ -68,7 +68,8 @@ public:
             .inModule("vivid-audio")
             .withUsage(R"(auto& crackle = chain.add<Crackle>("crackle");
 crackle.density = 0.001f;  // Sparse clicks
-crackle.volume = 0.1f;     // Subtle level)");
+crackle.volume = 0.1f;     // Subtle level)")
+            .withExamples({{"modules/vivid-audio/examples/lofi-textures"}});
     }
 
     /// @}

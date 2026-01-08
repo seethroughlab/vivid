@@ -88,7 +88,8 @@ public:
                 "synth.noteOn(261.63f);  // C4\n"
                 "synth.noteOn(329.63f);  // E4\n"
                 "synth.noteOn(392.00f);  // G4\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/wavetable-poly"}});
     }
 
     /// @}

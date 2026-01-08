@@ -57,7 +57,8 @@ public:
                 "// In update:\n"
                 "if (bd.beat()) { /* flash on beat */ }\n"
                 "float energy = bd.energy();\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
     }
 
     /// @}

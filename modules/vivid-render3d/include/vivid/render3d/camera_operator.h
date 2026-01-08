@@ -66,7 +66,8 @@ public:
                 "\n"
                 "// Or use orbit mode:\n"
                 "cam.orbitCenter(0, 0, 0).distance(8.0f).elevation(0.3f);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
     }
 
     /// @}

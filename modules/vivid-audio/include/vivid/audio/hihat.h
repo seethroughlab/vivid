@@ -62,7 +62,8 @@ public:
                 "\n"
                 "hh.trigger();  // Play\n"
                 "hh.choke();    // Cut off (for closed interrupting open)\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
     }
 
     /// @}

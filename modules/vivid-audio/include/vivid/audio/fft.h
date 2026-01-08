@@ -53,7 +53,8 @@ public:
                 "\n"
                 "// In update:\n"
                 "float bass = fft.band(20, 250);  // Get bass energy\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
     }
 
     /// @}

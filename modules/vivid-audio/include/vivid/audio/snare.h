@@ -63,7 +63,8 @@ public:
                 "snare.snappy = 0.6f;       // High-freq emphasis\n"
                 "\n"
                 "snare.trigger();  // Play drum\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
     }
 
     /// @}

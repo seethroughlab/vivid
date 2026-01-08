@@ -62,7 +62,8 @@ public:
                 "noise.scale = 4.0f;\n"
                 "noise.speed = 0.5f;\n"
                 "noise.octaves = 4;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/hello-noise"}});
     }
 
     /// @}

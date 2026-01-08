@@ -141,7 +141,8 @@ public:
 formant.input("osc");
 formant.setVowel(Vowel::A);
 formant.resonance = 8.0f;
-formant.morph = 0.5f;  // Morph between vowels)");
+formant.morph = 0.5f;  // Morph between vowels)")
+            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
     }
 
     /// @}

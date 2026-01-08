@@ -52,7 +52,8 @@ public:
                 "lim.input(\"audio\");\n"
                 "lim.ceiling = -0.3f;   // Limit to -0.3dB\n"
                 "lim.release = 100.0f;  // 100ms release\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     /// @}

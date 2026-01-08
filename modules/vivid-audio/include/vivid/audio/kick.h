@@ -63,7 +63,8 @@ public:
                 "kick.click = 0.3f;        // Transient click\n"
                 "\n"
                 "kick.trigger();  // Play drum\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
     }
 
     /// @}

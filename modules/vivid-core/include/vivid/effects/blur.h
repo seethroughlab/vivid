@@ -53,7 +53,8 @@ public:
                 "blur.input(\"source\");\n"
                 "blur.radius = 10.0f;\n"
                 "blur.passes = 2;  // More passes = smoother result\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/blur-bloom"}});
     }
 
     /// @}

@@ -85,7 +85,8 @@ public:
                 "lfo.amplitude = 0.5f;\n"
                 "lfo.offset = 0.5f;  // Output range 0-1\n"
                 "// Use lfo.value() or lfo.outputValue() for CPU-side modulation\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/param-modulation"}});
     }
 
     /// @}

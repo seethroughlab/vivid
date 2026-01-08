@@ -77,7 +77,8 @@ public:
                 "kaleido.mode(MirrorMode::Kaleidoscope);  // Horizontal, Vertical, Quad, Kaleidoscope\n"
                 "kaleido.segments = 8;\n"
                 "kaleido.angle = ctx.time() * 0.1f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/tiling-patterns"}});
     }
 
     /// @}

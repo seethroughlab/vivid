@@ -85,7 +85,8 @@ public:
                 "comp.inputB(\"overlay\");\n"
                 "comp.mode(BlendMode::Multiply);  // Over, Add, Screen, Overlay, Difference\n"
                 "comp.opacity = 1.0f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/compositing"}});
     }
 
     /// @}

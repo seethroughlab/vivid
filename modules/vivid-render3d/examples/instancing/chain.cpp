@@ -1,223 +1,162 @@
-// Instancing Demo - GPU-instanced rendering of thousands of objects
-// Fly through an asteroid field with PBR textured materials and procedural stars
+// Instancing - Vivid Example
+// Demonstrates: InstancedRender3D, Box, Sphere
+//
+// GPU instancing for rendering thousands of objects efficiently
+
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/render3d/render3d.h>
-#include <random>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <vector>
+#include <cmath>
 
 using namespace vivid;
 using namespace vivid::effects;
 using namespace vivid::render3d;
 
-// Constants
-static constexpr int NUM_ASTEROIDS = 20000;
-static constexpr float TUNNEL_LENGTH = 800.0f;
-static constexpr float TUNNEL_RADIUS = 20.0f;
-static constexpr float CAMERA_SPEED = 3.0f;
-
-// Per-asteroid state
-struct AsteroidState {
-    glm::vec3 basePosition;  // Position relative to camera Z
-    glm::vec3 rotationAxis;
-    float rotationSpeed;
-    float scale;
-    glm::vec4 color;
-};
-
-static std::vector<AsteroidState> asteroids;
+// Instance data
+static std::vector<Instance3D> g_instances;
+static const int NUM_INSTANCES = 500;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Start in fullscreen (comment out for windowed)
-    ctx.fullscreen(true);
+    // ----- MESH -----
+    // Box mesh that will be instanced
+    auto& box = chain.add<Box>("box");
+    box.size(1.0f, 1.0f, 1.0f);
 
-    // Clear static state for hot-reload safety
-    asteroids.clear();
+    // ----- CAMERA -----
+    auto& cam = chain.add<CameraOperator>("camera");
+    cam.position(0.0f, 5.0f, 20.0f);
+    cam.target(0.0f, 0.0f, 0.0f);
+    cam.fov(60.0f);
 
-    // === Procedural Star Background ===
-    // Worley noise = distance to nearest random point
-    auto& starNoise = chain.add<Noise>("starNoise");
-    starNoise.type(NoiseType::Worley);
-    starNoise.scale = 80.0f;       // More, smaller stars
-    starNoise.octaves = 1;
-    starNoise.speed = 0.0f;
-
-    // Invert and threshold tightly to get tiny points
-    auto& starPoints = chain.add<Brightness>("starPoints");
-    starPoints.input("starNoise");
-    starPoints.brightness = 0.48f;    // Tighter = smaller points
-    starPoints.contrast = -20.0f;     // Sharp cutoff
-    starPoints.gamma = 1.0f;
-
-    // Brightness variation layer
-    auto& starBrightness = chain.add<Noise>("starBrightness");
-    starBrightness.type(NoiseType::Value);
-    starBrightness.scale = 40.0f;
-    starBrightness.octaves = 1;
-    starBrightness.speed = 0.0f;
-
-    // Multiply stars by brightness variation
-    auto& stars = chain.add<Composite>("stars");
-    stars.inputA("starPoints");
-    stars.inputB("starBrightness");
-    stars.mode(BlendMode::Multiply);
-
-    // === Asteroid Geometry ===
-    // Create asteroid mesh (higher poly for textures)
-    auto& asteroid = chain.add<Sphere>("asteroid");
-    asteroid.radius(0.15f);
-    asteroid.segments(16);
-    asteroid.computeTangents();  // Required for normal mapping
-
-    // PBR rock material
-    auto& rockMaterial = chain.add<TexturedMaterial>("rockMaterial");
-    rockMaterial.baseColor("assets/materials/roughrockface2-bl/roughrockface2_Base_Color.png");
-    rockMaterial.normal("assets/materials/roughrockface2-bl/roughrockface2_Normal.png");
-    rockMaterial.metallic("assets/materials/roughrockface2-bl/roughrockface2_Metallic.png");
-    rockMaterial.roughness("assets/materials/roughrockface2-bl/roughrockface2_Roughness.png");
-    rockMaterial.ao("assets/materials/roughrockface2-bl/roughrockface2_Ambient_Occlusion.png");
-
-    // Camera - will be positioned manually in update()
-    auto& camera = chain.add<CameraOperator>("camera");
-    camera.fov(70.0f);  // Wider FOV for immersion
-    camera.farPlane(300.0f);  // Extended for tunnel depth
-
-    // Lighting - from behind/above for dramatic effect
+    // ----- LIGHTS -----
+    // Note: InstancedRender3D supports single light - combine sun + fill contribution
     auto& sun = chain.add<DirectionalLight>("sun");
-    sun.direction(0.2f, 0.5f, 1.0f);  // Light from behind
-    sun.color(1.0f, 0.95f, 0.9f);     // Warm white
-    sun.intensity = 1.5f;
+    sun.direction(-0.3f, -1.0f, -0.2f);
+    sun.intensity = 1.4f;
+    sun.color(1.0f, 0.97f, 0.95f);
 
-    // Add a subtle fill light from the front
-    auto& fillLight = chain.add<DirectionalLight>("fill");
-    fillLight.direction(0.0f, 0.3f, -1.0f);
-    fillLight.color(0.27f, 0.51f, 0.71f);  // Steel blue
-    fillLight.intensity = 0.5f;
-
-    // Create instanced renderer with textured material
-    // Transparent clear so stars show through empty space
-    auto& instanced = chain.add<InstancedRender3D>("asteroids");
-    instanced.setMesh(&asteroid);
-    instanced.setMaterial(&rockMaterial);
-    instanced.setCameraInput(&camera);
+    // ----- INSTANCED RENDERER -----
+    auto& instanced = chain.add<InstancedRender3D>("instanced");
+    instanced.setMesh(&box);
+    instanced.setCameraInput(&cam);
     instanced.setLightInput(&sun);
-    instanced.addLight(&fillLight);
-    instanced.ambient = 0.15f;
-    instanced.setClearColor(0.0f, 0.0f, 0.0f, 0.0f);  // Transparent
+    instanced.setClearColor(0.02f, 0.02f, 0.05f, 1.0f);
+    instanced.metallic = 0.2f;
+    instanced.roughness = 0.6f;
+    instanced.ambient = 0.2f;
 
-    // Over blend: asteroids (with alpha) composited over stars
-    auto& final = chain.add<Composite>("final");
-    final.inputA("stars");       // Background: stars
-    final.inputB("asteroids");   // Foreground: asteroids (alpha=1 where geometry)
-    final.mode(BlendMode::Over);
+    // Initialize instances in a grid pattern
+    g_instances.resize(NUM_INSTANCES);
+    int gridSize = static_cast<int>(std::ceil(std::cbrt(NUM_INSTANCES)));
+    float spacing = 2.5f;
+    float offset = gridSize * spacing * 0.5f;
 
-    // Reserve capacity for asteroids
-    instanced.reserve(NUM_ASTEROIDS);
+    for (int i = 0; i < NUM_INSTANCES; i++) {
+        int x = i % gridSize;
+        int y = (i / gridSize) % gridSize;
+        int z = i / (gridSize * gridSize);
 
-    // Initialize asteroid states - distributed in a tunnel around the flight path
-    std::mt19937 rng(42);
-    std::uniform_real_distribution<float> dist01(0.0f, 1.0f);
-    std::uniform_real_distribution<float> distAngle(0.0f, 6.28318f);
-    std::uniform_real_distribution<float> distAxis(-1.0f, 1.0f);
+        float px = x * spacing - offset;
+        float py = y * spacing - offset;
+        float pz = z * spacing - offset;
 
-    asteroids.resize(NUM_ASTEROIDS);
-    for (int i = 0; i < NUM_ASTEROIDS; i++) {
-        AsteroidState& a = asteroids[i];
+        Instance3D& inst = g_instances[i];
+        inst.transform = glm::translate(glm::mat4(1.0f), glm::vec3(px, py, pz));
 
-        // Distribute along the tunnel length (will wrap around)
-        float z = dist01(rng) * TUNNEL_LENGTH;
-
-        // Distribute in a hollow cylinder - more asteroids near the edges
-        float angle = distAngle(rng);
-        float radiusBias = dist01(rng);
-        // Bias towards outer radius for tunnel effect
-        float radius = TUNNEL_RADIUS * (0.3f + 0.7f * std::sqrt(radiusBias));
-
-        // Some asteroids closer to center for near-misses
-        if (dist01(rng) < 0.15f) {
-            radius = dist01(rng) * TUNNEL_RADIUS * 0.4f;
-        }
-
-        a.basePosition = glm::vec3(
-            std::cos(angle) * radius,
-            std::sin(angle) * radius,
-            z
+        // Colorful rainbow based on position
+        float hue = static_cast<float>(i) / NUM_INSTANCES;
+        inst.color = glm::vec4(
+            0.5f + 0.5f * std::sin(hue * 6.28f),
+            0.5f + 0.5f * std::sin(hue * 6.28f + 2.09f),
+            0.5f + 0.5f * std::sin(hue * 6.28f + 4.19f),
+            1.0f
         );
 
-        // Random rotation
-        a.rotationAxis = glm::normalize(glm::vec3(distAxis(rng), distAxis(rng), distAxis(rng)));
-        a.rotationSpeed = 0.5f + dist01(rng) * 2.0f;
-
-        // Random scale - more dramatic size variation
-        float sizeRoll = dist01(rng);
-        if (sizeRoll < 0.6f) {
-            a.scale = 0.15f + dist01(rng) * 0.5f;  // Tiny rocks (0.15 - 0.65)
-        } else if (sizeRoll < 0.85f) {
-            a.scale = 0.6f + dist01(rng) * 1.2f;   // Medium rocks (0.6 - 1.8)
-        } else if (sizeRoll < 0.97f) {
-            a.scale = 1.8f + dist01(rng) * 2.0f;   // Large rocks (1.8 - 3.8)
-        } else {
-            a.scale = 4.0f + dist01(rng) * 3.0f;   // Giant boulders (4.0 - 7.0)
-        }
-
-        // Slight color/brightness variation
-        float brightness = 0.7f + dist01(rng) * 0.5f;
-        a.color = glm::vec4(brightness, brightness, brightness, 1.0f);
+        // Vary material properties
+        inst.metallic = std::sin(hue * 3.14f) * 0.5f + 0.5f;
+        inst.roughness = std::cos(hue * 3.14f) * 0.3f + 0.5f;
     }
 
-    chain.output("final");
+    // Post-process
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input("instanced");
+    bloom.threshold = 0.7f;
+    bloom.intensity = 0.6f;
+    bloom.radius = 12.0f;
+
+    chain.output("bloom");
 }
 
 void update(Context& ctx) {
+    auto& chain = ctx.chain();
     float t = ctx.time();
 
-    // Camera flies forward through the tunnel
-    float cameraZ = t * CAMERA_SPEED;
+    auto& cam = chain.get<CameraOperator>("camera");
+    auto& instanced = chain.get<InstancedRender3D>("instanced");
 
-    // Gentle side-to-side and up-down sway
-    float swayX = std::sin(t * 0.7f) * 0.8f;
-    float swayY = std::sin(t * 0.5f) * 0.5f;
+    // Mouse controls camera
+    float mouseX = ctx.mouseNorm().x;
+    float mouseY = ctx.mouseNorm().y;
 
-    glm::vec3 cameraPos(swayX, swayY, cameraZ);
-    glm::vec3 targetPos(swayX * 0.5f, swayY * 0.3f, cameraZ + 10.0f);
+    // Orbit camera around scene
+    float camRadius = 25.0f + mouseY * 10.0f;
+    float camAngle = t * 0.2f + mouseX * 3.14f;
+    cam.position(
+        std::cos(camAngle) * camRadius,
+        8.0f + mouseY * 5.0f,
+        std::sin(camAngle) * camRadius
+    );
+    cam.target(0.0f, 0.0f, 0.0f);
 
-    auto& camera = ctx.chain().get<CameraOperator>("camera");
-    camera.position(cameraPos.x, cameraPos.y, cameraPos.z);
-    camera.target(targetPos.x, targetPos.y, targetPos.z);
+    // Animate instances
+    int gridSize = static_cast<int>(std::ceil(std::cbrt(NUM_INSTANCES)));
+    float spacing = 2.5f;
+    float offset = gridSize * spacing * 0.5f;
 
-    // Update asteroid instances
-    auto& instanced = ctx.chain().get<InstancedRender3D>("asteroids");
-    instanced.clearInstances();
+    for (int i = 0; i < NUM_INSTANCES; i++) {
+        int x = i % gridSize;
+        int y = (i / gridSize) % gridSize;
+        int z = i / (gridSize * gridSize);
 
-    for (int i = 0; i < NUM_ASTEROIDS; i++) {
-        AsteroidState& a = asteroids[i];
+        float px = x * spacing - offset;
+        float py = y * spacing - offset;
+        float pz = z * spacing - offset;
 
-        // Wrap asteroid position relative to camera
-        float relZ = a.basePosition.z - std::fmod(cameraZ, TUNNEL_LENGTH);
-        if (relZ < -10.0f) relZ += TUNNEL_LENGTH;
-        if (relZ > TUNNEL_LENGTH - 10.0f) relZ -= TUNNEL_LENGTH;
+        // Add wave motion
+        float wave = std::sin(t * 2.0f + (x + z) * 0.3f) * 1.0f;
+        py += wave;
 
-        glm::vec3 pos(a.basePosition.x, a.basePosition.y, cameraZ + relZ);
+        // Build transform with rotation
+        glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(px, py, pz));
+        
+        float rotY = t * 0.5f + i * 0.1f;
+        float rotX = t * 0.3f + i * 0.05f;
+        transform = glm::rotate(transform, rotY, glm::vec3(0.0f, 1.0f, 0.0f));
+        transform = glm::rotate(transform, rotX, glm::vec3(1.0f, 0.0f, 0.0f));
 
-        // Build transform matrix
-        glm::mat4 transform = glm::translate(glm::mat4(1.0f), pos);
-        transform = glm::rotate(transform, t * a.rotationSpeed, a.rotationAxis);
-        transform = glm::scale(transform, glm::vec3(a.scale));
+        // Scale slightly
+        float scale = 0.4f + std::sin(t + i * 0.1f) * 0.1f;
+        transform = glm::scale(transform, glm::vec3(scale));
 
-        // Add instance
-        Instance3D inst;
-        inst.transform = transform;
-        inst.color = a.color;
-        inst.metallic = 0.2f;
-        inst.roughness = 0.8f;
-        instanced.addInstance(inst);
+        g_instances[i].transform = transform;
+
+        // Animate colors
+        float hue = std::fmod(static_cast<float>(i) / NUM_INSTANCES + t * 0.1f, 1.0f);
+        g_instances[i].color = glm::vec4(
+            0.5f + 0.5f * std::sin(hue * 6.28f),
+            0.5f + 0.5f * std::sin(hue * 6.28f + 2.09f),
+            0.5f + 0.5f * std::sin(hue * 6.28f + 4.19f),
+            1.0f
+        );
     }
 
-    // V key toggles vsync
-    if (ctx.key(GLFW_KEY_V).pressed) {
-        ctx.vsync(!ctx.vsync());
-    }
+    // Update instances
+    instanced.setInstances(g_instances);
 }
 
 VIVID_CHAIN(setup, update)

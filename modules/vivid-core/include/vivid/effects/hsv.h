@@ -64,7 +64,8 @@ public:
                 "hsv.hueShift = 0.5f;    // Shift hue 180°\n"
                 "hsv.saturation = 1.2f;  // Boost saturation\n"
                 "hsv.value = 1.0f;       // Brightness multiplier\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/color-grading"}});
     }
 
     /// @}

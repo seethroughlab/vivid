@@ -95,7 +95,8 @@ public:
                 "shape.size.set(0.3f, 0.3f);\n"
                 "shape.position.set(0.5f, 0.5f);\n"
                 "shape.color.set(1.0f, 0.5f, 0.0f, 1.0f);  // Orange\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/generators"}});
     }
 
     /// @}

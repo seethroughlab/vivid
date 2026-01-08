@@ -129,7 +129,8 @@ public:
 // Access individual bands:
 float bass = chain.get<BandSplit>("bands").bass();
 float mids = chain.get<BandSplit>("bands").mid();
-float highs = chain.get<BandSplit>("bands").high();)");
+float highs = chain.get<BandSplit>("bands").high();)")
+            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
     }
 
     // Custom visualization

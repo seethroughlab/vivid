@@ -239,7 +239,8 @@ public:
                 "canvas.fillRect(10, 10, 200, 50);\n"
                 "canvas.loadFont(ctx, \"assets/font.ttf\", 24);\n"
                 "canvas.fillText(\"Hello\", 20, 30);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/canvas-drawing"}});
     }
 
     /// @}

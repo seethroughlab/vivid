@@ -61,7 +61,8 @@ public:
                 "d.source(\"input_texture\");\n"
                 "d.map(\"noise\");\n"
                 "d.strength = 0.1f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/distortion"}});
     }
 
     /// @}

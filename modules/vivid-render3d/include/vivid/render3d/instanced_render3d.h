@@ -86,7 +86,8 @@ public:
                 "\n"
                 "std::vector<Instance3D> instances;\n"
                 "inst.setInstances(instances);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-render3d/examples/instancing"}});
     }
 
     Param<float> metallic{"metallic", 0.0f, 0.0f, 1.0f};    ///< Base metallic value

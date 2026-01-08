@@ -33,6 +33,19 @@ struct InputMeta {
 };
 
 /**
+ * @brief Describes an example that demonstrates an operator
+ */
+struct ExampleMeta {
+    std::string path;         ///< Example path (e.g., "modules/vivid-audio/examples/envelope-modulation")
+    std::string description;  ///< Optional description of what the example shows
+
+    ExampleMeta() = default;
+    ExampleMeta(std::string p) : path(std::move(p)) {}
+    ExampleMeta(std::string p, std::string desc)
+        : path(std::move(p)), description(std::move(desc)) {}
+};
+
+/**
  * @brief Self-describing operator descriptor with fluent builder API (C++17)
  *
  * Used by operators that implement a static describe() method:
@@ -61,6 +74,7 @@ struct OperatorDescriptor {
     std::vector<std::string> aliases;
     std::vector<InputMeta> inputs;
     std::string usage;
+    std::vector<ExampleMeta> examples;  ///< Example projects demonstrating this operator
 
     /// Constructor with required fields
     OperatorDescriptor(const char* n, const char* cat, const char* desc)
@@ -73,6 +87,7 @@ struct OperatorDescriptor {
     OperatorDescriptor& withAliases(std::vector<std::string> a) { aliases = std::move(a); return *this; }
     OperatorDescriptor& withInputs(std::vector<InputMeta> i) { inputs = std::move(i); return *this; }
     OperatorDescriptor& withUsage(std::string u) { usage = std::move(u); return *this; }
+    OperatorDescriptor& withExamples(std::vector<ExampleMeta> e) { examples = std::move(e); return *this; }
 };
 
 /**
@@ -93,6 +108,7 @@ struct OperatorMeta {
     std::string usage;                    ///< Explicit usage example (overrides auto-generated)
     std::vector<std::string> aliases;     ///< Alternative names (e.g., "Grain" for FilmGrain)
     std::vector<InputMeta> inputs;        ///< Input method documentation for multi-input operators
+    std::vector<ExampleMeta> examples;    ///< Example projects demonstrating this operator
 };
 
 /**
@@ -169,6 +185,7 @@ struct OperatorRegistrar {
         meta.usage = info.usage;
         meta.aliases = info.aliases;
         meta.inputs = info.inputs;
+        meta.examples = info.examples;
         OperatorRegistry::instance().registerOperator(meta);
     }
 };

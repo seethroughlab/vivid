@@ -57,7 +57,8 @@ public:
                 "auto& quant = chain.add<Quantize>(\"posterize\");\n"
                 "quant.input(\"source\");\n"
                 "quant.levels = 4;  // 4 levels = 64 colors (4^3)\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/pixel-art"}});
     }
 
     /// @}

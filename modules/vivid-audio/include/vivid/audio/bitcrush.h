@@ -55,7 +55,8 @@ public:
                 "bc.bits = 8;                  // 8-bit audio\n"
                 "bc.targetSampleRate = 8000;   // 8kHz sample rate\n"
                 "bc.mix = 0.5f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/lofi-textures"}});
     }
 
     /// @}

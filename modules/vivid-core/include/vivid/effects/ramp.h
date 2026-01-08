@@ -69,7 +69,8 @@ public:
                 "ramp.type(RampType::Radial);  // Linear, Radial, Angular, Diamond\n"
                 "ramp.hueSpeed = 0.2f;\n"
                 "ramp.saturation = 0.8f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/param-modulation"}});
     }
 
     /// @}

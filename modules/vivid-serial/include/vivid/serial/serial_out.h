@@ -51,7 +51,8 @@ public:
                 "// In update():\n"
                 "float r = levels.level(0);\n"
                 "arduino.sendCSV({r * 255, g * 255, b * 255});  // \"R,G,B\\n\"\n"
-            );
+            )
+            .withExamples({{"modules/vivid-serial/examples/arduino-led"}});
     }
 
     /// @}

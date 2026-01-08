@@ -58,7 +58,8 @@ public:
                 "\n"
                 "chain.output(\"video\");       // Visual\n"
                 "chain.audioOutput(\"out\");    // Audio\n"
-            );
+            )
+            .withExamples({{"modules/vivid-video/examples/video-audio"}});
     }
 
     /// @}

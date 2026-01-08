@@ -76,7 +76,8 @@ public:
                 "\n"
                 "synth.noteOn();  // Start playing\n"
                 "synth.noteOff(); // Release\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
     }
 
     /// @}

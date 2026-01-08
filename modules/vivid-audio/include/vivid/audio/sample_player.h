@@ -73,7 +73,10 @@ public:
                 "\n"
                 "player.trigger(0);              // By index\n"
                 "player.trigger(\"kick\", 0.8f); // By name + volume\n"
-            );
+                "\n"
+                "// See: modules/vivid-audio/examples/sampler-basics/\n"
+            )
+            .withExamples({{"modules/vivid-audio/examples/sampler-basics"}});
     }
 
     /// @}

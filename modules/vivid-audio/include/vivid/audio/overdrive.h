@@ -57,7 +57,8 @@ public:
                 "od.drive = 3.0f;   // Medium drive\n"
                 "od.tone = 0.6f;    // Slightly bright\n"
                 "od.level = 0.8f;   // Reduce output\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     /// @}

@@ -135,7 +135,10 @@ public:
                 "piano.release = 1.5f;\n"
                 "\n"
                 "piano.noteOn(60, 0.8f);  // Play C4\n"
-            );
+                "\n"
+                "// See: modules/vivid-audio/examples/sampler-basics/\n"
+            )
+            .withExamples({{"modules/vivid-audio/examples/sampler-basics"}});
     }
 
     /// @}

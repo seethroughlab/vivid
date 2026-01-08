@@ -73,7 +73,8 @@ public:
                 "dither.pattern(DitherPattern::Bayer4x4);  // Bayer2x2, Bayer4x4, Bayer8x8\n"
                 "dither.levels = 4;\n"
                 "dither.strength = 1.0f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/retro-crt"}});
     }
 
     /// @}

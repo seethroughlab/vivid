@@ -65,7 +65,8 @@ public:
                 "    }\n"
                 "}\n"
                 "float modWheel = midi.cc(1);  // CC values 0.0-1.0\n"
-            );
+            )
+            .withExamples({{"modules/vivid-midi/examples/midi-input"}});
     }
 
     /// @}

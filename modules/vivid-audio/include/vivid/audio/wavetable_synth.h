@@ -122,7 +122,8 @@ public:
                 "wt.position = 0.5f;  // Or animate with LFO\n"
                 "\n"
                 "wt.noteOn(440.0f);   // Play A4\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/wavetable-poly"}});
     }
 
     /// @}

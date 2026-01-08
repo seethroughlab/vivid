@@ -55,7 +55,8 @@ public:
                 "// Apply effects to mic input\n"
                 "auto& reverb = chain.add<Reverb>(\"reverb\");\n"
                 "reverb.input(\"mic\");\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
     }
 
     /// @}

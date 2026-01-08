@@ -80,7 +80,8 @@ public:
                 "\n"
                 "// In update:\n"
                 "if (clock.triggered()) { kick.trigger(); }\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/euclidean-rhythms"}});
     }
 
     /// @}

@@ -115,7 +115,8 @@ public:
                 "fm.feedback = 0.3f;\n"
                 "\n"
                 "fm.noteOn(440.0f);  // Play A4\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
     }
 
     /// @}

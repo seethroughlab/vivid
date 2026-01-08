@@ -58,7 +58,8 @@ public:
                 "reverb.roomSize = 0.7f;  // Large room\n"
                 "reverb.damping = 0.5f;   // Moderate damping\n"
                 "reverb.mix = 0.3f;       // 30% wet\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
     }
 
     /// @}

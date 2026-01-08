@@ -56,7 +56,8 @@ public:
                 "echo.delayTime = 300.0f;  // 300ms between echoes\n"
                 "echo.decay = 0.6f;        // Each echo at 60%\n"
                 "echo.taps = 4;            // 4 echo repeats\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     /// @}

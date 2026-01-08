@@ -58,7 +58,8 @@ public:
                 "chorus.depth = 5.0f;   // 5ms depth\n"
                 "chorus.voices = 2;     // 2 voices\n"
                 "chorus.mix = 0.5f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     /// @}

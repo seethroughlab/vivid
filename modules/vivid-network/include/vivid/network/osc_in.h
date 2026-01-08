@@ -100,7 +100,8 @@ public:
                 "    float value = osc.getFloat(\"/fader/1\");\n"
                 "    noise.scale = value * 10.0f;\n"
                 "}\n"
-            );
+            )
+            .withExamples({{"modules/vivid-network/examples/osc-control"}});
     }
 
     /// @}

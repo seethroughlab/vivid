@@ -60,7 +60,8 @@ public:
                 "mixer.setGain(0, 1.0f);\n"
                 "mixer.setGain(1, 0.8f);\n"
                 "mixer.volume = 0.8f;  // Master volume\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/drum-machine"}});
     }
 
     /// @}

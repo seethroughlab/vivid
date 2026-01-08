@@ -68,7 +68,8 @@ public:
                 "        synth.noteOn(midiToFreq(e.note));\n"
                 "    }\n"
                 "}\n"
-            );
+            )
+            .withExamples({{"modules/vivid-midi/examples/midi-sequencer"}});
     }
 
     /// @}

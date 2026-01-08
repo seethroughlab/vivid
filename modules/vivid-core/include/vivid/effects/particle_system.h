@@ -139,7 +139,8 @@ public:
                 "ps.space(ParticleSpace::World3D);\n"
                 "ps.rendering(RenderMode::Mesh);\n"
                 "ps.addForce<GravityForce>().direction.set(0, -9.8f, 0);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/particle-forces"}});
     }
 
     /// @}

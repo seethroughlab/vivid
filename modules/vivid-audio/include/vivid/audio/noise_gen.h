@@ -61,7 +61,8 @@ public:
                 "auto& noise = chain.add<NoiseGen>(\"noise\");\n"
                 "noise.setColor(NoiseColor::White);  // White, Pink, or Brown\n"
                 "noise.volume = 0.5f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
     }
 
     /// @}

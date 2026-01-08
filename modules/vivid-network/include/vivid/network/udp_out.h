@@ -65,7 +65,8 @@ public:
                 "std::vector<uint8_t> dmxData(512);\n"
                 "dmxData[0] = static_cast<uint8_t>(levels.level(0) * 255);\n"
                 "udp.send(dmxData);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-network/examples/udp-receiver"}});
     }
 
     /// @}

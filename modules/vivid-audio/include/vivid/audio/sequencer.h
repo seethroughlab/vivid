@@ -81,7 +81,8 @@ public:
                 "    seq.advance();\n"
                 "    if (seq.triggered()) kick.trigger();\n"
                 "}\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/drum-machine"}});
     }
 
     /// @}

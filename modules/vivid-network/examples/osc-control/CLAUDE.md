@@ -1,38 +1,74 @@
 # OSC Control
 
-Demonstrates receiving and sending OSC (Open Sound Control) messages for remote parameter control. Compatible with TouchOSC, Max/MSP, Pure Data, and other OSC-enabled software.
+External control via OSC (Open Sound Control).
 
-## Vision
+## Operators Used
 
-Control visual parameters in real-time from external hardware or software. Faders adjust hue, saturation, blur, and noise scale. Button presses trigger feedback messages. Perfect for live performance setups.
+- **OscIn** - Receive OSC messages
+- **OscOut** - Send OSC messages
+- **Flash** - Triggerable visual effect
 
-## Network Configuration
+## Hardware Requirements
 
-- **Receive**: Port 8000
-- **Send**: 127.0.0.1:9000
+This example requires an OSC controller:
+- **TouchOSC** (iOS/Android) - Most common
+- **Lemur** (iOS) - Advanced layouts
+- **Max/MSP, PureData** - Software OSC
 
-## OSC Address Mapping
+## Key Concepts
 
-| Address | Parameter | Range |
-|---------|-----------|-------|
-| `/fader/hue` | Hue shift | 0-1 |
-| `/fader/sat` | Saturation | 0-1 |
-| `/fader/blur` | Blur radius | 0-50 |
-| `/fader/scale` | Noise scale | 1-16 |
-| `/button/*` | Triggers feedback | - |
+### OSC Receiver Setup
+```cpp
+auto& osc = chain.add<OscIn>("osc");
+osc.port(8000);  // Listen on UDP port 8000
+```
 
-## Bidirectional Sync
+### Reading Messages
+```cpp
+if (osc.hasMessage("/fader/1")) {
+    float value = osc.getFloat("/fader/1");
+}
 
-- Sends `/status/fps` and `/status/time` at 10 Hz
-- Sends `/feedback/button` on button press
-- Allows controller UI to stay synchronized
+// Get with default
+float value = osc.getFloat("/fader/1", 0.5f);
 
-## Testing
+// Multiple arguments
+float x = osc.getFloat("/xy/1", 0);
+float y = osc.getFloat("/xy/1", 1);
+```
+
+### OSC Sender
+```cpp
+auto& oscOut = chain.add<OscOut>("oscOut");
+oscOut.host("192.168.1.100");
+oscOut.port(9000);
+
+oscOut.send("/led/1", 1.0f);
+oscOut.send("/position", 0.5f, 0.3f);
+```
+
+## TouchOSC Setup
+
+1. In TouchOSC Settings:
+   - **Host**: Your computer IP
+   - **Port (outgoing)**: 8000
+   - **Port (incoming)**: 9000
+
+## Address Mapping
+
+| Address | Type | Controls |
+|---------|------|----------|
+| /fader/1 | float | Hue |
+| /fader/2 | float | Saturation |
+| /fader/3 | float | Size |
+| /xy/1 | float,float | Noise |
+| /button/1 | float | Flash |
+| /knob/1 | float | Rotation |
+
+## Testing Without Hardware
 
 ```bash
-# Send test message
-oscsend localhost 8000 /fader/hue f 0.5
-
-# Monitor outgoing
-oscdump 9000
+# Using oscsend
+oscsend localhost 8000 /fader/1 f 0.5
+oscsend localhost 8000 /button/1 f 1.0
 ```

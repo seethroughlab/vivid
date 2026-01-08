@@ -72,7 +72,8 @@ public:
                 "xform.rotation = 0.785f;  // 45 degrees in radians\n"
                 "xform.translate.set(0.0f, 0.0f);\n"
                 "xform.pivot.set(0.5f, 0.5f);  // Center pivot\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/tiling-patterns"}});
     }
 
     /// @}

@@ -54,7 +54,8 @@ public:
                 "midi.noteOff(0, 60);\n"
                 "midi.sendCC(0, 1, 0.5f);    // Mod wheel to 50%\n"
                 "midi.sendPitchBend(0, 0.5f);  // Pitch bend up\n"
-            );
+            )
+            .withExamples({{"modules/vivid-midi/examples/midi-sequencer"}});
     }
 
     /// @}

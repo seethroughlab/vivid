@@ -52,7 +52,8 @@ public:
                 "// In update:\n"
                 "float volume = levels.rms();   // Average loudness\n"
                 "float peak = levels.peak();    // Peak level\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
     }
 
     /// @}

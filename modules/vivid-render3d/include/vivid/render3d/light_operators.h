@@ -117,7 +117,8 @@ public:
                 "sun.color(1.0f, 0.95f, 0.9f);\n"
                 "sun.intensity = 1.5f;\n"
                 "sun.castShadow(true);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
     }
 
     /// @}
@@ -261,7 +262,8 @@ public:
                 "bulb.color(1.0f, 0.9f, 0.8f);\n"
                 "bulb.intensity = 2.0f;\n"
                 "bulb.range = 15.0f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
     }
 
     /// @}
@@ -408,7 +410,8 @@ public:
                 "spot.direction(0, -1, 0);\n"
                 "spot.spotAngle = 30.0f;\n"
                 "spot.intensity = 3.0f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
     }
 
     /// @}

@@ -47,7 +47,8 @@ public:
                 "// Process webcam: cam → displace\n"
                 "auto& displace = chain.add<Displace>(\"d\");\n"
                 "displace.source(\"cam\").map(\"noise\");\n"
-            );
+            )
+            .withExamples({{"projects/showcase/webcam-displace"}});
     }
 
     /// @}

@@ -72,7 +72,8 @@ public:
                 "        noise.speed = floats[1];\n"
                 "    }\n"
                 "}\n"
-            );
+            )
+            .withExamples({{"modules/vivid-network/examples/udp-receiver"}});
     }
 
     /// @}

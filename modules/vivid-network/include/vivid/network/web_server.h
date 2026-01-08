@@ -81,7 +81,8 @@ public:
                 "// GET /api/operator/:id - get params\n"
                 "// POST /api/operator/:id - set params\n"
                 "// ws://localhost:8080/ws - WebSocket\n"
-            );
+            )
+            .withExamples({{"modules/vivid-network/examples/websocket-ui"}});
     }
 
     /// @}

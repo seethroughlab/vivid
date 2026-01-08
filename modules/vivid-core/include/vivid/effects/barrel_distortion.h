@@ -51,7 +51,8 @@ public:
                 "auto& barrel = chain.add<BarrelDistortion>(\"barrel\");\n"
                 "barrel.input(\"source\");\n"
                 "barrel.curvature = 0.08f;  // 0=none, 1=extreme\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/distortion"}});
     }
 
     /// @}

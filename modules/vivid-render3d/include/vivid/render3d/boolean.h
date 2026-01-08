@@ -57,7 +57,8 @@ public:
                 "csg.setInputA(&box);\n"
                 "csg.setInputB(&sphere);\n"
                 "csg.setOperation(BooleanOp::Subtract);  // box - sphere\n"
-            );
+            )
+            .withExamples({{"modules/vivid-render3d/examples/csg-modeling"}});
     }
 
     Param<bool> flatShading{"flatShading", true, false, true};  ///< Use flat shading on result

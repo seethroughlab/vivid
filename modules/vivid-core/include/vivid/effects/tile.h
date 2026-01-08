@@ -67,7 +67,8 @@ public:
                 "tile.repeat.set(4.0f, 4.0f);  // 4x4 tile grid\n"
                 "tile.offset.set(0.25f, 0.0f);\n"
                 "tile.mirror = true;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/tiling-patterns"}});
     }
 
     /// @}

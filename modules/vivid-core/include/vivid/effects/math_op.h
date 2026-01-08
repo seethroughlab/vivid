@@ -92,7 +92,8 @@ public:
                 "math.inMin = -1.0f; math.inMax = 1.0f;\n"
                 "math.outMin = 0.0f; math.outMax = 1.0f;\n"
                 "float result = math.value();\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/conditional-routing"}});
     }
 
     /// @}

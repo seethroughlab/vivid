@@ -61,7 +61,8 @@ public:
                 "flash.color.set(1.0f, 0.9f, 0.8f);  // Warm white\n"
                 "flash.mode = 0;  // 0=Additive, 1=Screen, 2=Replace\n"
                 "// In update(): if (beat) flash.trigger();\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/creative-effects"}});
     }
 
     /// @}

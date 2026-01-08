@@ -62,7 +62,8 @@ public:
                 "phaser.depth = 0.8f;     // Deep modulation\n"
                 "phaser.stages = 6;       // 6 stages\n"
                 "phaser.feedback = 0.5f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     /// @}

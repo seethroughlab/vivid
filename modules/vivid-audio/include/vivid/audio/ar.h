@@ -67,7 +67,10 @@ public:
                 "env.release = 0.5f;    // 500ms release\n"
                 "\n"
                 "env.trigger();  // Start envelope\n"
-            );
+                "\n"
+                "// See: modules/vivid-audio/examples/envelope-modulation/\n"
+            )
+            .withExamples({{"modules/vivid-audio/examples/envelope-modulation"}});
     }
 
     /// @}

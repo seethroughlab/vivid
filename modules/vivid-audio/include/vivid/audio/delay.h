@@ -54,7 +54,8 @@ public:
                 "delay.delayTime = 250.0f;  // 250ms\n"
                 "delay.feedback = 0.4f;     // Moderate feedback\n"
                 "delay.mix = 0.3f;          // 30% wet\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     /// @}

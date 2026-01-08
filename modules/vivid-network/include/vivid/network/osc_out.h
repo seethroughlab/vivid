@@ -72,7 +72,8 @@ public:
                 "// In update():\n"
                 "osc.send(\"/fader/1\", levels.level(0));\n"
                 "osc.send(\"/xy\", mouseX, mouseY);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-network/examples/osc-control"}});
     }
 
     /// @}

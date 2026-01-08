@@ -58,7 +58,8 @@ public:
                 "clap.spread = 0.5f;    // Timing spread\n"
                 "\n"
                 "clap.trigger();  // Play clap\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
     }
 
     /// @}

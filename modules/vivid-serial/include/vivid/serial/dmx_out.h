@@ -54,7 +54,8 @@ public:
                 "// Audio-reactive lighting\n"
                 "float bass = fft.band(0);\n"
                 "dmx.channel(1, static_cast<uint8_t>(bass * 255));\n"
-            );
+            )
+            .withExamples({{"modules/vivid-serial/examples/dmx-lighting"}});
     }
 
     /// @}

@@ -60,7 +60,8 @@ public:
                 "bloom.threshold = 0.7f;   // Brightness cutoff\n"
                 "bloom.intensity = 1.5f;   // Bloom strength\n"
                 "bloom.radius = 15.0f;     // Blur radius\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/blur-bloom"}});
     }
 
     /// @}

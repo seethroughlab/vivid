@@ -64,7 +64,8 @@ public:
                 "video.pause();\n"
                 "video.seek(2.5f);  // Seek to 2.5 seconds\n"
                 "video.setSpeed(0.5f);  // Half speed\n"
-            );
+            )
+            .withExamples({{"modules/vivid-video/examples/video-audio"}});
     }
 
     /// @}

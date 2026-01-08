@@ -83,7 +83,8 @@ public:
                 "    eucl.advance();\n"
                 "    if (eucl.triggered()) hihat.trigger();\n"
                 "}\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/euclidean-rhythms"}});
     }
 
     /// @}

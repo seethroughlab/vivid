@@ -85,7 +85,8 @@ public:
                 "auto& model = chain.add<GLTFLoader>(\"model\");\n"
                 "model.file(\"assets/models/helmet.glb\");\n"
                 "model.loadTextures(true);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-render3d/examples/gltf-loader"}});
     }
 
     Param<float> scale{"scale", 1.0f, 0.001f, 100.0f};  ///< Model scale factor

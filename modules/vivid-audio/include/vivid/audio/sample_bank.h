@@ -64,7 +64,8 @@ public:
                 "// Connect to SamplePlayer\n"
                 "auto& player = chain.add<SamplePlayer>(\"player\");\n"
                 "player.setBank(\"drums\");\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/sample-trigger"}});
     }
 
     /// @}

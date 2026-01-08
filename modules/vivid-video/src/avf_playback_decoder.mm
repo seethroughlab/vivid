@@ -317,6 +317,28 @@ bool AVFPlaybackDecoder::open(Context& ctx, const std::string& path, bool loop) 
 
         impl_->isLooping = loop;
 
+        // TODO: Use AVPlayerLooper for gapless video looping
+        //
+        // PROBLEM: The current notification-based looping (seek to start on end) causes a visible
+        // gap/stutter when the video loops. AVPlayerLooper provides truly seamless, gapless looping
+        // by pre-loading the next iteration.
+        //
+        // WHY IT DOESN'T WORK NOW: AVPlayerLooper creates internal copies of the AVPlayerItem,
+        // and these copies don't inherit our AVPlayerItemVideoOutput. When the looper switches
+        // to the copied item, copyPixelBufferForItemTime returns NULL because the output isn't
+        // attached to the active item.
+        //
+        // PLAN TO FIX:
+        // 1. Use AVPlayerLooper normally: looper = [AVPlayerLooper looperWithPlayer:player templateItem:playerItem]
+        // 2. Instead of attaching output to the template item, observe AVPlayerLooper's loopingPlayerItems
+        //    property and attach a fresh AVPlayerItemVideoOutput to EACH item in the array
+        // 3. Keep track of which output corresponds to the current item (use player.currentItem)
+        // 4. In update(), get the output for the current item and use that for copyPixelBufferForItemTime
+        // 5. Handle audio reader recreation when looper switches items (similar to current resetAudioForLoop)
+        //
+        // REFERENCE: Apple's AVPlayerLooper documentation notes that you must add outputs to each
+        // looping item individually, not just the template.
+        //
         // Insert item directly - we handle looping manually via notifications
         // AVPlayerLooper creates copies that don't inherit video output
         [impl_->player insertItem:impl_->playerItem afterItem:nil];

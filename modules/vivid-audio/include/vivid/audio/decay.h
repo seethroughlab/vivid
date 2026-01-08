@@ -67,7 +67,8 @@ public:
                 "env.setCurve(DecayCurve::Exponential);\n"
                 "\n"
                 "env.trigger();  // Start decay\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
     }
 
     /// @}

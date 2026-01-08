@@ -59,7 +59,8 @@ public:
                 "auto& pix = chain.add<Pixelate>(\"pixels\");\n"
                 "pix.input(\"source\");\n"
                 "pix.size.set(16.0f, 16.0f);  // 16x16 pixel blocks\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/pixel-art"}});
     }
 
     /// @}

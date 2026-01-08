@@ -61,7 +61,8 @@ public:
                 "comp.ratio = 4.0f;        // 4:1 compression\n"
                 "comp.attack = 10.0f;      // 10ms attack\n"
                 "comp.release = 100.0f;    // 100ms release\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     /// @}

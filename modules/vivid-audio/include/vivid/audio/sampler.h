@@ -79,7 +79,10 @@ public:
                 "\n"
                 "sampler.noteOn(60, 0.8f);  // Play C4\n"
                 "sampler.noteOff(60);\n"
-            );
+                "\n"
+                "// See: modules/vivid-audio/examples/sampler-basics/\n"
+            )
+            .withExamples({{"modules/vivid-audio/examples/sampler-basics"}});
     }
 
     /// @}

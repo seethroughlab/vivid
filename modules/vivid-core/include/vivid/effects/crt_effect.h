@@ -72,7 +72,8 @@ public:
                 "crt.vignette = 0.4f;     // Edge darkening\n"
                 "crt.bloom = 0.1f;        // Phosphor glow\n"
                 "crt.chromatic = 0.02f;   // RGB separation\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/retro-crt"}});
     }
 
     /// @}

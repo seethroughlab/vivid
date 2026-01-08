@@ -62,7 +62,10 @@ public:
                 "\n"
                 "pitch.trigger();\n"
                 "float freq = pitch.currentFreq();  // Get current freq\n"
-            );
+                "\n"
+                "// See: modules/vivid-audio/examples/envelope-modulation/\n"
+            )
+            .withExamples({{"modules/vivid-audio/examples/envelope-modulation"}});
     }
 
     /// @}

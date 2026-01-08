@@ -82,10 +82,19 @@ public:
                 "p.vortexStrength = 0.3f;  // Swirling vortex\n"
                 "p.colorStart.set(1.0f, 0.6f, 0.2f, 1.0f);\n"
                 "p.colorEnd.set(1.0f, 0.0f, 0.0f, 0.0f);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/particle-forces"}});
     }
 
     /// @}
+
+    // TODO: Refactor to use ParamRegistry pattern:
+    // 1. Call registerParam() in constructor for all Param<T> members
+    // 2. Remove manual params() override - use registeredParams() instead
+    // 3. Override getParam/setParam to: first call getRegisteredParam/setRegisteredParam,
+    //    then handle Vec2/Color params (emitterPosition, vortexCenter, gravity,
+    //    initialVelocity, colorStart, colorEnd, clearColor) as fallback
+    // This reduces ~100 lines of boilerplate in gpu_particles.cpp
 
     GPUParticles();
     ~GPUParticles() override;

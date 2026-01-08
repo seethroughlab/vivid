@@ -75,7 +75,8 @@ public:
                 "\n"
                 "chain.add<AudioOutput>(\"out\").input(\"osc\");\n"
                 "chain.audioOutput(\"out\");\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
     }
 
     /// @}

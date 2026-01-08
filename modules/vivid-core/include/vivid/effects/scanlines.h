@@ -67,7 +67,8 @@ public:
                 "crt.thickness = 0.5f;\n"
                 "crt.intensity = 0.4f;\n"
                 "crt.vertical = false;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/retro-crt"}});
     }
 
     /// @}

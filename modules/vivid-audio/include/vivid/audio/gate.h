@@ -61,7 +61,8 @@ public:
                 "gate.attack = 1.0f;       // Fast attack\n"
                 "gate.hold = 50.0f;        // 50ms hold\n"
                 "gate.release = 100.0f;    // 100ms release\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     /// @}

@@ -56,7 +56,8 @@ public:
                 "vol.input(\"osc\");\n"
                 "vol.gain = 0.5f;    // 50% volume\n"
                 "vol.pan = -0.3f;    // Slight left pan\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
     }
 
     /// @}

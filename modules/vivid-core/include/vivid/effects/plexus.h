@@ -47,7 +47,8 @@ public:
                 "plexus.setNodeColor(0.0f, 0.8f, 1.0f, 1.0f);\n"
                 "plexus.setLineColor(0.0f, 0.6f, 0.9f, 0.4f);\n"
                 "plexus.setTurbulence(0.1f);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-core/examples/creative-effects"}});
     }
 
     /// @}

@@ -91,7 +91,8 @@ public:
                 "render.setShadingMode(ShadingMode::PBR);\n"
                 "render.setMetallic(0.0f);\n"
                 "render.setRoughness(0.5f);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
     }
 
     /// @}

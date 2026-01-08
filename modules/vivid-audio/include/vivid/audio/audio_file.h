@@ -57,7 +57,8 @@ public:
                 "music.loop(true);\n"
                 "music.volume = 0.8f;\n"
                 "music.play();\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
     }
 
     /// @}

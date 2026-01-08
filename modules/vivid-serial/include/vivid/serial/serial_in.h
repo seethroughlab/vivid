@@ -57,7 +57,8 @@ public:
                 "    float value = sensor.getValue(0);  // First CSV column\n"
                 "    noise.scale = value * 10.0f;\n"
                 "}\n"
-            );
+            )
+            .withExamples({{"modules/vivid-serial/examples/arduino-led"}});
     }
 
     /// @}

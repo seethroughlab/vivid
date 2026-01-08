@@ -1,122 +1,102 @@
 # Instancing
 
-Demonstrates GPU-instanced rendering of thousands of objects with PBR materials.
+GPU instancing for rendering thousands of objects efficiently.
 
 ## Operators Used
 
-- **InstancedRender3D** - GPU-instanced rendering
-- **Sphere** - Base mesh geometry
-- **TexturedMaterial** - PBR material with textures
-- **CameraOperator** - First-person camera
+- **InstancedRender3D** - GPU-instanced mesh rendering
+- **Box** - Base mesh to instance
+- **CameraOperator** - 3D camera
 - **DirectionalLight** - Scene lighting
-- **Noise** - Procedural star background
-- **Composite** - Layer asteroids over stars
+- **Bloom** - Post-processing
 
 ## Key Concepts
 
-### Basic Instancing
+### Basic Setup
 ```cpp
-// Create base mesh
-auto& sphere = chain.add<Sphere>("asteroid")
-    .radius(0.15f)
-    .segments(16)
-    .computeTangents();  // Required for normal maps
+auto& box = chain.add<Box>("box");
+auto& cam = chain.add<CameraOperator>("camera");
+auto& sun = chain.add<DirectionalLight>("sun");
 
-// Create instanced renderer
-auto& instanced = chain.add<InstancedRender3D>("asteroids")
-    .mesh(&sphere)
-    .cameraInput(&camera)
-    .lightInput(&sun);
-
-// Reserve capacity for performance
-instanced.reserve(20000);
-
-// In update(), add instances each frame
-instanced.clearInstances();
-for (int i = 0; i < count; i++) {
-    Instance3D inst;
-    inst.transform = glm::translate(glm::mat4(1.0f), position) *
-                     glm::rotate(glm::mat4(1.0f), angle, axis) *
-                     glm::scale(glm::mat4(1.0f), glm::vec3(scale));
-    inst.color = glm::vec4(0.8f, 0.8f, 0.8f, 1.0f);
-    inst.metallic = 0.2f;
-    inst.roughness = 0.8f;
-    instanced.addInstance(inst);
-}
+auto& inst = chain.add<InstancedRender3D>("inst");
+inst.setMesh(&box);
+inst.setCameraInput(&cam);
+inst.setLightInput(&sun);
 ```
 
-### PBR Textured Materials
-```cpp
-auto& rockMaterial = chain.add<TexturedMaterial>("rock")
-    .baseColor("assets/materials/rock/base_color.png")
-    .normal("assets/materials/rock/normal.png")
-    .metallic("assets/materials/rock/metallic.png")
-    .roughness("assets/materials/rock/roughness.png")
-    .ao("assets/materials/rock/ambient_occlusion.png");
-
-// Apply to instanced renderer
-instanced.material(&rockMaterial);
-```
-
-### Multiple Lights
-```cpp
-auto& sun = chain.add<DirectionalLight>("sun")
-    .direction(0.2f, 0.5f, 1.0f)
-    .color(Color::fromHex("#FFF2E6"))
-    .intensity(1.5f);
-
-auto& fill = chain.add<DirectionalLight>("fill")
-    .direction(0.0f, 0.3f, -1.0f)
-    .color(Color::SteelBlue)
-    .intensity(0.5f);
-
-instanced.lightInput(&sun)
-         .addLight(&fill);
-```
-
-### First-Person Camera
-```cpp
-auto& camera = chain.add<CameraOperator>("camera")
-    .fov(70.0f)
-    .farPlane(300.0f);
-
-// In update() - set position and look-at directly
-camera.position(posX, posY, posZ);
-camera.target(targetX, targetY, targetZ);
-```
-
-### Transparent Background for Compositing
-```cpp
-// Render with transparent clear color
-instanced.clearColor(Color::Transparent);
-
-// Composite over background
-auto& final = chain.add<Composite>("final")
-    .inputA("stars")       // Background
-    .inputB("asteroids")   // Foreground with alpha
-    .mode(BlendMode::Over);
-```
-
-### Per-Instance Properties
+### Instance3D Structure
 ```cpp
 struct Instance3D {
-    glm::mat4 transform;  // Position, rotation, scale
-    glm::vec4 color;      // RGBA color multiplier
-    float metallic;       // PBR metallic (0-1)
-    float roughness;      // PBR roughness (0-1)
+    glm::mat4 transform;  // World transform
+    glm::vec4 color;      // Instance color
+    float metallic;       // PBR metallic
+    float roughness;      // PBR roughness
 };
 ```
 
-## Performance Tips
+### Creating Instances
+```cpp
+std::vector<Instance3D> instances(1000);
 
-- Call `reserve(count)` with expected instance count
-- Use `clearInstances()` at start of each frame
-- Minimize per-instance state (use uniforms for shared data)
-- Lower mesh segment count for distant objects
-- Use frustum culling for off-screen objects
+for (int i = 0; i < 1000; i++) {
+    Instance3D& inst = instances[i];
+    
+    // Position
+    inst.transform = glm::translate(
+        glm::mat4(1.0f),
+        glm::vec3(x, y, z)
+    );
+    
+    // Rotation
+    inst.transform = glm::rotate(
+        inst.transform, angle,
+        glm::vec3(0, 1, 0)
+    );
+    
+    // Scale
+    inst.transform = glm::scale(
+        inst.transform,
+        glm::vec3(0.5f)
+    );
+    
+    // Color
+    inst.color = glm::vec4(1.0f, 0.5f, 0.2f, 1.0f);
+    
+    // Material
+    inst.metallic = 0.3f;
+    inst.roughness = 0.6f;
+}
+
+instanced.setInstances(instances);
+```
+
+### Animating Instances
+Update transforms each frame:
+```cpp
+for (int i = 0; i < instances.size(); i++) {
+    glm::mat4 t = glm::translate(glm::mat4(1.0f), positions[i]);
+    t = glm::rotate(t, ctx.time() + i * 0.1f, glm::vec3(0, 1, 0));
+    instances[i].transform = t;
+}
+instanced.setInstances(instances);
+```
+
+## Performance
+
+- **500-1000 instances** - Smooth on most GPUs
+- **5000+ instances** - May need LOD or culling
+- All instances use same mesh = single draw call
+- Transform buffer updated per frame
+
+## Use Cases
+
+- Forests (trees, grass)
+- Asteroid fields
+- Crowds
+- Debris
+- Procedural cities
 
 ## Controls
 
-- **V**: Toggle vsync
-
-Camera automatically flies through the asteroid field.
+- **Mouse X** - Camera orbit angle
+- **Mouse Y** - Camera height/distance

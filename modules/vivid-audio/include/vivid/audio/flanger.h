@@ -58,7 +58,8 @@ public:
                 "flanger.depth = 0.7f;     // Deep modulation\n"
                 "flanger.feedback = 0.5f;  // Moderate feedback\n"
                 "flanger.mix = 0.5f;\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     /// @}

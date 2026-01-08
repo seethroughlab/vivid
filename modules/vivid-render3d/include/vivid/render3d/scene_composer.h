@@ -79,7 +79,8 @@ public:
                 "scene.add<Sphere>(\"ball\", transform, color);\n"
                 "\n"
                 "auto& render = chain.add<Render3D>(\"render\").input(&scene);\n"
-            );
+            )
+            .withExamples({{"modules/vivid-render3d/examples/scene-composition"}});
     }
 
     /**

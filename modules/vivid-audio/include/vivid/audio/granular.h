@@ -86,7 +86,8 @@ public:
                 "grain.position = 0.3f;        // 30% through sample\n"
                 "grain.pitch = 0.5f;           // Octave down\n"
                 "grain.setFreeze(true);        // Hold position\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/granular-synthesis"}});
     }
 
     /// @}

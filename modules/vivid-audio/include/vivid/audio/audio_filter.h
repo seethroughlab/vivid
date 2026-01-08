@@ -110,7 +110,8 @@ public:
 filter.input("noise");
 filter.setType(FilterType::Lowpass);
 filter.cutoff = 2000.0f;
-filter.resonance = 2.0f;)");
+filter.resonance = 2.0f;)")
+            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
     }
 
     // Custom visualization

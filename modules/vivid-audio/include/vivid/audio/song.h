@@ -90,7 +90,8 @@ public:
                 "\n"
                 "// In update:\n"
                 "if (song.section() == \"chorus\") { /* intense visuals */ }\n"
-            );
+            )
+            .withExamples({{"modules/vivid-audio/examples/song-arrangement"}});
     }
 
     /// @}

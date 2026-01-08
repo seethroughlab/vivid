@@ -79,7 +79,10 @@ public:
                 "\n"
                 "env.trigger();       // Note on\n"
                 "env.releaseNote();   // Note off\n"
-            );
+                "\n"
+                "// See: modules/vivid-audio/examples/envelope-modulation/\n"
+            )
+            .withExamples({{"modules/vivid-audio/examples/envelope-modulation"}});
     }
 
     /// @}
