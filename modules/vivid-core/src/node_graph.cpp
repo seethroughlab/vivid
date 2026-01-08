@@ -1,5 +1,6 @@
 #include <vivid/node_graph.h>
 #include <vivid/overlay_canvas.h>
+#include <vivid/ui_style.h>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -498,12 +499,17 @@ glm::vec2 NodeGraph::screenToGrid(glm::vec2 screenPos) const {
 // -------------------------------------------------------------------------
 
 void NodeGraph::renderBackground() {
+    // Background renders on Background layer
+    m_canvas->setLayer(UILayer::Background);
     m_canvas->fillRect(0, 0, m_width, m_height, m_style.backgroundColor);
 }
 
 void NodeGraph::renderGrid() {
     float gridSize = m_style.gridSpacing * m_zoom;
     if (gridSize < 5.0f) return;  // Don't draw grid if too dense
+
+    // Grid renders on Background layer
+    m_canvas->setLayer(UILayer::Background);
 
     // Offset for pan
     float offsetX = std::fmod(m_pan.x, gridSize);
@@ -521,6 +527,8 @@ void NodeGraph::renderGrid() {
 }
 
 void NodeGraph::renderLinks() {
+    // Links render on Nodes layer
+    m_canvas->setLayer(UILayer::Nodes);
     for (auto& [id, link] : m_links) {
         glm::vec2 start = getPinScreenPos(link.startPinId);
         glm::vec2 end = getPinScreenPos(link.endPinId);
@@ -576,6 +584,9 @@ void NodeGraph::renderNode(NodeState& node) {
     // Content area height (for operator preview)
     float contentAreaH = node.contentCallback ? 128.0f * m_zoom : 0.0f;
 
+    // Render node structure on Nodes layer
+    m_canvas->setLayer(UILayer::Nodes);
+
     // Node background
     m_canvas->fillRoundedRect(pos.x, pos.y, w, h, cornerR, m_style.nodeBackground);
 
@@ -605,13 +616,16 @@ void NodeGraph::renderNode(NodeState& node) {
     }
 
     // Content area (operator preview) - rendered between title and pins
+    // Use NodeContent layer so thumbnails render above node boxes but below panels
     if (node.contentCallback) {
+        m_canvas->setLayer(UILayer::NodeContent);
         float padding = m_style.nodeContentPadding * m_zoom;
         float contentX = pos.x + padding;
         float contentY = pos.y + titleH + padding * 0.5f;
         float contentW = w - padding * 2;
         float contentH = contentAreaH - padding;
         node.contentCallback(*m_canvas, contentX, contentY, contentW, contentH);
+        m_canvas->setLayer(UILayer::Nodes);  // Switch back for pins
     }
 
     // Pins start after content area
@@ -1078,6 +1092,9 @@ void NodeGraph::handleMiniMapInput() {
 
 void NodeGraph::renderMiniMap() {
     if (m_nodes.empty()) return;
+
+    // Mini-map renders on Panels layer (above nodes)
+    m_canvas->setLayer(UILayer::Panels);
 
     // Mini-map position (bottom-right corner)
     float mmX = m_width - m_style.miniMapWidth - m_style.miniMapMargin;

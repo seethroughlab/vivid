@@ -180,6 +180,17 @@ public:
     float aspect() const { return m_height > 0 ? static_cast<float>(m_width) / m_height : 1.0f; }
 
     /**
+     * @brief Get display content scale (DPI scaling factor)
+     * @return Scale factor (1.0 = standard, 2.0 = Retina/HiDPI)
+     *
+     * Use this to scale font sizes and UI elements for HiDPI displays.
+     */
+    float contentScale() const { return m_contentScale; }
+
+    /// @brief Set content scale (called by runtime)
+    void setContentScale(float scale) { m_contentScale = scale; }
+
+    /**
      * @brief Get window X position
      * @return X position in screen coordinates
      */
@@ -992,6 +1003,7 @@ private:
     // Window
     int m_width = 0;
     int m_height = 0;
+    float m_contentScale = 1.0f;
     int m_windowX = 0;
     int m_windowY = 0;
     int m_targetWindowX = 0;

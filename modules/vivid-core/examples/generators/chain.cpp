@@ -39,24 +39,26 @@ void setup(Context& ctx) {
     ramp.brightness = 0.9f;
 
     // 4. Shape - SDF circle
+    // Generators now match window resolution, and Canvas.drawImage() defaults to
+    // FitMode::Fit which preserves aspect ratio - no manual compensation needed!
     auto& circle = chain.add<Shape>("circle");
     circle.type(ShapeType::Circle);
-    circle.size.set(0.3f, 0.3f);
+    circle.size.set(0.4f, 0.4f);  // Square size - will render as circle
     circle.color.set(1.0f, 0.8f, 0.2f, 1.0f);
     circle.softness = 0.02f;
 
-    // 5. Shape - SDF rectangle
+    // 5. Shape - SDF rectangle (wider than tall)
     auto& rect = chain.add<Shape>("rect");
     rect.type(ShapeType::Rectangle);
-    rect.size.set(0.4f, 0.3f);
+    rect.size.set(0.5f, 0.35f);  // Wider rectangle
     rect.color.set(0.2f, 1.0f, 0.6f, 1.0f);
     rect.cornerRadius = 0.05f;
 
-    // 6. Shape - SDF polygon (star-like)
+    // 6. Shape - SDF polygon (5-sided star)
     auto& star = chain.add<Shape>("star");
     star.type(ShapeType::Polygon);
     star.sides = 5;
-    star.size.set(0.35f, 0.35f);
+    star.size.set(0.45f, 0.45f);
     star.color.set(1.0f, 0.4f, 0.8f, 1.0f);
 
     // Create 2x3 grid using Canvas
@@ -110,18 +112,21 @@ void update(Context& ctx) {
 
     int w = ctx.width();
     int h = ctx.height();
-    int cellW = w / 3;
-    int cellH = h / 2;
+    float cellW = w / 3.0f;
+    float cellH = h / 2.0f;
 
     auto& ramp = chain.get<Ramp>("ramp");
     auto& rect = chain.get<Shape>("rect");
 
     // Row 1: SolidColor, Gradient, Ramp
+    // Use Stretch mode for gradients since they look fine stretched
+    canvas.setFitMode(FitMode::Stretch);
     canvas.drawImage(solid, 0, 0, cellW, cellH);
     canvas.drawImage(gradient, cellW, 0, cellW, cellH);
     canvas.drawImage(ramp, cellW * 2, 0, cellW, cellH);
 
-    // Row 2: Circle, Rectangle, Star
+    // Row 2: Shapes - use Fit mode to preserve aspect ratio (circles stay circular!)
+    canvas.setFitMode(FitMode::Fit);
     canvas.drawImage(circle, 0, cellH, cellW, cellH);
     canvas.drawImage(rect, cellW, cellH, cellW, cellH);
     canvas.drawImage(star, cellW * 2, cellH, cellW, cellH);
@@ -134,6 +139,10 @@ void update(Context& ctx) {
     canvas.fillText("Shape: Circle", 10, cellH + 25);
     canvas.fillText("Shape: Rectangle", cellW + 10, cellH + 25);
     canvas.fillText("Shape: Polygon", cellW * 2 + 10, cellH + 25);
+
+    ctx.debug("time", ctx.time());
+    ctx.debug("lfo1", lfo1.value());
+    ctx.debug("lfo2", lfo2.value());
 }
 
 VIVID_CHAIN(setup, update)

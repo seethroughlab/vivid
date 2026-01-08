@@ -36,24 +36,32 @@ void setup(Context& ctx) {
     // GENERATORS create images from nothing:
     //   Noise, SolidColor, Gradient, Ramp, Shape, LFO, Image
 
+    // Create an animated color gradient
+    auto& gradient = chain.add<Gradient>("gradient");
+    gradient.mode(GradientMode::Linear);
+    gradient.angle = 0.785f;  // 45 degrees
+    gradient.colorA.set(0.2f, 0.4f, 0.9f, 1.0f);  // Blue
+    gradient.colorB.set(0.9f, 0.3f, 0.5f, 1.0f);  // Pink
+
+    // Create animated noise for displacement
     auto& noise = chain.add<Noise>("noise");
     noise.type(NoiseType::Simplex);
-    noise.scale = 4.0f;      // Size of noise pattern (higher = smaller details)
-    noise.speed = 0.5f;      // Animation speed
-    noise.octaves = 4;       // Layers of detail (more = richer, slower)
+    noise.scale = 3.0f;      // Size of noise pattern (higher = smaller details)
+    noise.speed = 0.3f;      // Animation speed
+    noise.octaves = 3;       // Layers of detail (more = richer, slower)
 
     // EFFECTS transform their input:
     //   Blur, HSV, Brightness, Transform, Mirror, Displace, Edge,
     //   Pixelate, Tile, ChromaticAberration, Bloom, Feedback
 
-    auto& colorize = chain.add<HSV>("colorize");
-    colorize.input("noise");      // Connect to the noise generator
-    colorize.hueShift = 0.6f;     // Shift hue (0-1 wraps around color wheel)
-    colorize.saturation = 0.8f;   // Color intensity (0 = grayscale)
-    colorize.value = 1.0f;        // Brightness multiplier
+    // Use noise to displace the gradient (creates flowing, organic motion)
+    auto& displace = chain.add<Displace>("displace");
+    displace.source("gradient");      // What to displace
+    displace.map("noise");            // What drives the displacement
+    displace.strength = 0.15f;        // How much to displace (0-1)
 
     // Specify output - this is what gets displayed
-    chain.output("colorize");
+    chain.output("displace");
 }
 
 void update(Context& ctx) {

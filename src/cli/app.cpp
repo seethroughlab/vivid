@@ -688,6 +688,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         {
             float xscale, yscale;
             glfwGetWindowContentScale(mlc.window, &xscale, &yscale);
+            mlc.ctx->setContentScale(xscale);  // Store for Canvas/ChainVisualizer font scaling
 
             vivid::FrameInput frameInput;
             frameInput.width = mlc.ctx->width();
@@ -909,6 +910,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     // user code from receiving input while the visualizer is being interacted with.
     float xscale, yscale;
     glfwGetWindowContentScale(mlc.window, &xscale, &yscale);
+    mlc.ctx->setContentScale(xscale);  // Store for Canvas font scaling
 
     double mx, my;
     glfwGetCursorPos(mlc.window, &mx, &my);

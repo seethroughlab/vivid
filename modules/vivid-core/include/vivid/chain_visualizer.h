@@ -147,6 +147,8 @@ private:
     ButtonRect m_codecH264;
     ButtonRect m_codecH265;
     ButtonRect m_codecProRes;
+    // Grid toggle
+    ButtonRect m_gridToggleButton;
     bool isMouseInRect(const ButtonRect& r, glm::vec2 mousePos) const {
         return r.valid && mousePos.x >= r.x && mousePos.x < r.x + r.w &&
                mousePos.y >= r.y && mousePos.y < r.y + r.h;

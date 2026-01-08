@@ -10,16 +10,19 @@
  *
  * Features:
  * - Renders to existing render pass (no texture allocation)
- * - Batched drawing (single draw call)
+ * - Z-layered rendering (use setLayer() to control draw order)
+ * - Batched drawing per layer
  * - Transform stack for zoom/pan
  * - Text rendering with FontAtlas
  * - No clipping support (simpler pipeline, no stencil needed)
  */
 
+#include <vivid/ui_style.h>  // For UILayer constants
 #include <webgpu/webgpu.h>
 #include <glm/glm.hpp>
 #include <string>
 #include <vector>
+#include <map>
 #include <memory>
 
 namespace vivid {
@@ -115,6 +118,35 @@ public:
      * and should not be ended until after this returns.
      */
     void render(WGPURenderPassEncoder pass);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Layer Control
+    /// @{
+
+    /**
+     * @brief Set the current drawing layer
+     * @param layer Layer index (higher values render on top)
+     *
+     * All subsequent draw calls will go to this layer until changed.
+     * Use UILayer constants (Background, Nodes, NodeContent, Panels, Menus, Tooltips)
+     * or any integer value. Layers are rendered in ascending order.
+     *
+     * @code
+     * canvas.setLayer(UILayer::Nodes);      // Node boxes
+     * canvas.fillRect(...);
+     * canvas.setLayer(UILayer::Panels);     // Inspector panel (above nodes)
+     * canvas.fillRect(...);
+     * canvas.setLayer(UILayer::Tooltips);   // Tooltips (above everything)
+     * canvas.text(...);
+     * @endcode
+     */
+    void setLayer(int layer);
+
+    /**
+     * @brief Get the current drawing layer
+     */
+    int layer() const { return m_currentLayer; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -238,29 +270,6 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
-    /// @name Topmost Layer (for tooltips - renders on top of everything)
-    /// @{
-
-    /**
-     * @brief Draw a filled rounded rectangle in the topmost layer
-     * @note Use for tooltips that should appear above all other content
-     */
-    void fillRoundedRectTopmost(float x, float y, float w, float h, float radius,
-                                 const glm::vec4& color, int segments = 8);
-
-    /**
-     * @brief Draw a rounded rectangle outline in the topmost layer
-     */
-    void strokeRoundedRectTopmost(float x, float y, float w, float h, float radius,
-                                   float lineWidth, const glm::vec4& color, int segments = 8);
-
-    /**
-     * @brief Draw text in the topmost layer (for tooltips)
-     */
-    void textTopmost(const std::string& str, float x, float y, const glm::vec4& color, int fontIndex = 0);
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Text
     /// @{
 
@@ -374,26 +383,26 @@ private:
                      glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2, glm::vec2 uv3,
                      const glm::vec4& color, int fontIndex);
 
-    // Batched geometry
-    std::vector<OverlayVertex> m_solidVertices;
-    std::vector<uint32_t> m_solidIndices;
-    // Per-font text batches (up to 3 fonts)
-    std::vector<OverlayVertex> m_textVertices[3];
-    std::vector<uint32_t> m_textIndices[3];
-    // Topmost layer (for tooltips - rendered last, on top of everything)
-    std::vector<OverlayVertex> m_topmostVertices;
-    std::vector<uint32_t> m_topmostIndices;
-    std::vector<OverlayVertex> m_topmostTextVertices[3];
-    std::vector<uint32_t> m_topmostTextIndices[3];
+    // Current layer for draw operations
+    int m_currentLayer = 0;
 
-    // Textured rects (for operator previews - not batched, drawn individually)
+    // Per-layer batched geometry (sorted by layer key in render())
+    struct LayerBatch {
+        std::vector<OverlayVertex> solidVertices;
+        std::vector<uint32_t> solidIndices;
+        std::vector<OverlayVertex> textVertices[3];  // Per-font
+        std::vector<uint32_t> textIndices[3];
+    };
+    std::map<int, LayerBatch> m_layers;
+
+    // Textured rects per layer (for operator previews - drawn individually per layer)
     struct TexturedRect {
         glm::vec2 pos;
         glm::vec2 size;
         WGPUTextureView textureView;
         glm::vec4 tint;
     };
-    std::vector<TexturedRect> m_texturedRects;
+    std::map<int, std::vector<TexturedRect>> m_texturedRects;
 
     // GPU resources
     WGPURenderPipeline m_pipeline = nullptr;
@@ -410,7 +419,7 @@ private:
     std::unique_ptr<FontAtlas> m_fonts[3];
     WGPUBindGroup m_fontBindGroups[3] = {nullptr, nullptr, nullptr};
 
-    // Persistent buffers
+    // Persistent buffers (reused across layers)
     WGPUBuffer m_solidVertexBuffer = nullptr;
     WGPUBuffer m_solidIndexBuffer = nullptr;
     WGPUBuffer m_textVertexBuffer[3] = {nullptr, nullptr, nullptr};
@@ -419,16 +428,6 @@ private:
     size_t m_solidIndexCapacity = 0;
     size_t m_textVertexCapacity[3] = {0, 0, 0};
     size_t m_textIndexCapacity[3] = {0, 0, 0};
-
-    // Topmost layer buffers (separate to avoid overwriting main solid buffers)
-    WGPUBuffer m_topmostSolidVertexBuffer = nullptr;
-    WGPUBuffer m_topmostSolidIndexBuffer = nullptr;
-    WGPUBuffer m_topmostTextVertexBuffer[3] = {nullptr, nullptr, nullptr};
-    WGPUBuffer m_topmostTextIndexBuffer[3] = {nullptr, nullptr, nullptr};
-    size_t m_topmostSolidVertexCapacity = 0;
-    size_t m_topmostSolidIndexCapacity = 0;
-    size_t m_topmostTextVertexCapacity[3] = {0, 0, 0};
-    size_t m_topmostTextIndexCapacity[3] = {0, 0, 0};
 
     // Transform state
     glm::mat3 m_transform = glm::mat3(1.0f);

@@ -1,5 +1,6 @@
 #include <vivid/effects/canvas.h>
 #include <vivid/context.h>
+#include <vivid/asset_loader.h>
 #include "canvas_renderer.h"
 #include "font_atlas.h"
 #include <mapbox/earcut.hpp>
@@ -7,6 +8,7 @@
 #include <cmath>
 #include <iostream>
 #include <array>
+#include <filesystem>
 
 namespace vivid::effects {
 
@@ -156,7 +158,71 @@ glm::vec4 Canvas::getStrokeColorAt(const glm::vec2& pos) const {
 // -------------------------------------------------------------------------
 
 bool Canvas::loadFont(Context& ctx, const std::string& path, float fontSize) {
+    m_lastContext = &ctx;
     return m_font->load(ctx, path, fontSize);
+}
+
+bool Canvas::loadBuiltinFont(Context& ctx, BuiltinFont font, float fontSize) {
+    m_lastContext = &ctx;
+
+    // Resolve font path relative to executable
+    auto exeDir = AssetLoader::instance().executableDir();
+
+    // Find project root by walking up until we find the assets folder
+    // This handles both single-config (build/bin/) and multi-config (build/bin/Debug/) generators
+    auto projectRoot = exeDir.parent_path().parent_path();  // build/bin -> build -> project
+    if (!std::filesystem::exists(projectRoot / "modules/vivid-core/assets")) {
+        // Try one more level up (for MSVC multi-config)
+        projectRoot = projectRoot.parent_path();
+    }
+
+    // Select font file based on enum
+    std::string fontFile;
+    switch (font) {
+        case BuiltinFont::Inter:
+            fontFile = "Inter_18pt-Regular.ttf";
+            break;
+        case BuiltinFont::InterMedium:
+            fontFile = "Inter_18pt-Medium.ttf";
+            break;
+        case BuiltinFont::Mono:
+            fontFile = "RobotoMono-Regular.ttf";
+            break;
+    }
+
+    std::string fontPath = (projectRoot / "modules/vivid-core/assets/fonts" / fontFile).string();
+    return m_font->load(ctx, fontPath, fontSize);
+}
+
+void Canvas::ensureDefaultFont() {
+    // Already have a valid font - nothing to do
+    if (m_font->valid()) return;
+
+    // Need a context to load the font
+    if (!m_lastContext) {
+        static bool warned = false;
+        if (!warned) {
+            std::cerr << "[Canvas] Warning: Cannot auto-load font - no context available. "
+                      << "Call loadFont() or loadBuiltinFont() in setup().\n";
+            warned = true;
+        }
+        return;
+    }
+
+    // Scale font size for HiDPI displays (e.g., 16pt * 2.0 = 32pt on Retina)
+    float scale = m_lastContext->contentScale();
+    if (scale < 1.0f) scale = 1.0f;  // Safety clamp
+    float scaledSize = m_defaultFontSize * scale;
+
+    // Load default font (Inter at scaled size)
+    if (!loadBuiltinFont(*m_lastContext, BuiltinFont::Inter, scaledSize)) {
+        static bool warned = false;
+        if (!warned) {
+            std::cerr << "[Canvas] Warning: Could not auto-load default font. "
+                      << "Text rendering will not work.\n";
+            warned = true;
+        }
+    }
 }
 
 // -------------------------------------------------------------------------
@@ -819,9 +885,61 @@ void Canvas::drawImage(Operator& source, float dx, float dy, float dw, float dh)
         return;
     }
 
-    int srcW = texOp->outputWidth();
-    int srcH = texOp->outputHeight();
-    drawImage(source, 0, 0, static_cast<float>(srcW), static_cast<float>(srcH), dx, dy, dw, dh);
+    float srcW = static_cast<float>(texOp->outputWidth());
+    float srcH = static_cast<float>(texOp->outputHeight());
+
+    // Apply fit mode to calculate actual draw region
+    float drawX = dx, drawY = dy, drawW = dw, drawH = dh;
+    float srcAspect = srcW / srcH;
+    float dstAspect = dw / dh;
+
+    switch (m_fitMode) {
+        case FitMode::Stretch:
+            // Use destination as-is (current behavior)
+            break;
+
+        case FitMode::Fit:
+            // Scale to fit inside, centered (letterbox/pillarbox)
+            if (srcAspect > dstAspect) {
+                // Source wider - fit to width
+                drawW = dw;
+                drawH = dw / srcAspect;
+                drawY = dy + (dh - drawH) / 2.0f;
+            } else {
+                // Source taller - fit to height
+                drawH = dh;
+                drawW = dh * srcAspect;
+                drawX = dx + (dw - drawW) / 2.0f;
+            }
+            break;
+
+        case FitMode::Fill:
+            // Scale to fill, may crop (we adjust source UVs later)
+            // For now, just scale to fill and let UV clipping handle it
+            if (srcAspect > dstAspect) {
+                // Source wider - crop sides
+                float visibleW = srcH * dstAspect;
+                float cropX = (srcW - visibleW) / 2.0f;
+                drawImage(source, cropX, 0, visibleW, srcH, dx, dy, dw, dh);
+                return;  // Early return - we called the full version
+            } else {
+                // Source taller - crop top/bottom
+                float visibleH = srcW / dstAspect;
+                float cropY = (srcH - visibleH) / 2.0f;
+                drawImage(source, 0, cropY, srcW, visibleH, dx, dy, dw, dh);
+                return;  // Early return - we called the full version
+            }
+
+        case FitMode::Native:
+            // Draw at source size, centered in destination
+            drawW = srcW;
+            drawH = srcH;
+            drawX = dx + (dw - srcW) / 2.0f;
+            drawY = dy + (dh - srcH) / 2.0f;
+            break;
+    }
+
+    drawImage(source, 0, 0, srcW, srcH, drawX, drawY, drawW, drawH);
 }
 
 void Canvas::drawImage(Operator& source,
@@ -888,11 +1006,12 @@ void Canvas::fillText(const std::string& str, float x, float y, float letterSpac
     if (!m_frameBegun) {
         clear(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
     }
+
+    // Lazy-load default font if none loaded
+    ensureDefaultFont();
+
     if (!m_font || !m_font->valid()) {
-        static int warnCount = 0;
-        if (warnCount++ < 5) {
-            std::cerr << "[Canvas::fillText] Warning: font not valid for text '" << str << "'\n";
-        }
+        // ensureDefaultFont already warns once, so just silently return
         return;
     }
 
@@ -948,6 +1067,9 @@ void Canvas::fillText(const std::string& str, float x, float y, float letterSpac
 }
 
 void Canvas::fillTextCentered(const std::string& str, float x, float y, float letterSpacing) {
+    // Lazy-load default font if none loaded
+    ensureDefaultFont();
+
     if (!m_font || !m_font->valid()) return;
 
     // Save current alignment
@@ -999,6 +1121,9 @@ TextMetrics Canvas::measureTextMetrics(const std::string& str) const {
 
 void Canvas::init(Context& ctx) {
     if (!beginInit()) return;
+
+    // Store context for lazy font loading
+    m_lastContext = &ctx;
 
     createOutput(ctx, m_width, m_height);
 

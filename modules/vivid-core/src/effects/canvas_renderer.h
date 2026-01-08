@@ -192,22 +192,19 @@ private:
                      const std::vector<uint32_t>& indices,
                      WGPUBindGroup bindGroup);
 
-    // Image draw command for deferred rendering
-    struct ImageDrawCmd {
-        WGPUTextureView textureView;
+    // Command types for painter's algorithm (draw-order rendering)
+    enum class DrawCmdType { Solid, Text, Image };
+
+    // Unified draw command - stores all data needed to render in order
+    struct DrawCmd {
+        DrawCmdType type;
         std::vector<CanvasVertex> vertices;
         std::vector<uint32_t> indices;
-        int clipDepth;  // Stencil reference for this draw
+        WGPUTextureView textureView = nullptr;  // For Image type
+        int clipDepth = 0;
     };
 
-    // Solid draw command (tracks clip state at submission time)
-    struct SolidDrawCmd {
-        std::vector<CanvasVertex> vertices;
-        std::vector<uint32_t> indices;
-        int clipDepth;  // Stencil reference for this draw
-    };
-
-    // Clip command for stencil rendering
+    // Clip command for stencil rendering (processed before draw commands)
     struct ClipCmd {
         std::vector<CanvasVertex> vertices;
         std::vector<uint32_t> indices;
@@ -215,15 +212,17 @@ private:
     };
 
     void createStencilTexture(Context& ctx, int width, int height);
-    void flushSolidBatch();  ///< Flush current solid vertices to a command
+    void flushCurrentBatch();  ///< Flush current vertices to a command
 
-    // Batched geometry - separate batches for solid and text primitives
-    std::vector<CanvasVertex> m_solidVertices;  ///< Current batch being built
-    std::vector<uint32_t> m_solidIndices;
-    std::vector<SolidDrawCmd> m_solidCommands;  ///< Completed solid draw commands
-    std::vector<CanvasVertex> m_textVertices;
-    std::vector<uint32_t> m_textIndices;
-    std::vector<ImageDrawCmd> m_imageCommands;
+    // Unified command list - maintains draw order (painter's algorithm)
+    std::vector<DrawCmd> m_drawCommands;
+
+    // Current batch being built (flushed on type change or render)
+    DrawCmdType m_currentBatchType = DrawCmdType::Solid;
+    std::vector<CanvasVertex> m_currentVertices;
+    std::vector<uint32_t> m_currentIndices;
+    WGPUTextureView m_currentTextureView = nullptr;  // For image batching
+
     std::vector<ClipCmd> m_clipCommands;
     int m_clipDepth = 0;  ///< Current stencil reference value
 
@@ -251,14 +250,10 @@ private:
     FontAtlas* m_currentFont = nullptr;
 
     // Persistent vertex/index buffers (reused each frame to avoid allocation churn)
-    WGPUBuffer m_solidVertexBuffer = nullptr;
-    WGPUBuffer m_solidIndexBuffer = nullptr;
-    WGPUBuffer m_textVertexBuffer = nullptr;
-    WGPUBuffer m_textIndexBuffer = nullptr;
-    size_t m_solidVertexCapacity = 0;
-    size_t m_solidIndexCapacity = 0;
-    size_t m_textVertexCapacity = 0;
-    size_t m_textIndexCapacity = 0;
+    WGPUBuffer m_vertexBuffer = nullptr;
+    WGPUBuffer m_indexBuffer = nullptr;
+    size_t m_vertexCapacity = 0;
+    size_t m_indexCapacity = 0;
 
     // Frame state
     int m_width = 0;

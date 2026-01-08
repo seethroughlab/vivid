@@ -27,6 +27,21 @@ namespace vivid::effects {
 // Canvas State Types (HTML Canvas 2D-style)
 // -------------------------------------------------------------------------
 
+/// @brief Fit mode for drawImage() - controls how source images are scaled
+enum class FitMode {
+    Stretch,  ///< Stretch to fill destination (ignores aspect ratio)
+    Fit,      ///< Scale uniformly to fit inside destination, centered (letterbox/pillarbox)
+    Fill,     ///< Scale uniformly to fill destination, may crop edges
+    Native    ///< Draw at source resolution, centered in destination
+};
+
+/// @brief Built-in fonts bundled with Vivid
+enum class BuiltinFont {
+    Inter,        ///< Inter Regular - clean sans-serif (default)
+    InterMedium,  ///< Inter Medium - slightly bolder
+    Mono          ///< Roboto Mono - monospace font
+};
+
 /// @brief Line cap style for stroke endpoints
 enum class LineCap {
     Butt,   ///< Flat end at exactly the endpoint
@@ -266,6 +281,24 @@ public:
     }
 
     /**
+     * @brief Set fit mode for drawImage() operations
+     * @param mode FitMode::Stretch, Fit, Fill, or Native
+     *
+     * Controls how source images are scaled when drawn to the canvas:
+     * - Stretch: Stretch to fill destination (ignores aspect ratio)
+     * - Fit: Scale uniformly to fit inside destination, centered (default)
+     * - Fill: Scale uniformly to fill destination, may crop edges
+     * - Native: Draw at source resolution, centered in destination
+     */
+    void setFitMode(FitMode mode) { m_fitMode = mode; }
+
+    /**
+     * @brief Get current fit mode for drawImage() operations
+     * @return Current FitMode value
+     */
+    FitMode getFitMode() const { return m_fitMode; }
+
+    /**
      * @brief Load a TTF font for text rendering
      * @param ctx Context for GPU access
      * @param path Path to TTF file
@@ -273,6 +306,21 @@ public:
      * @return true on success
      */
     bool loadFont(Context& ctx, const std::string& path, float fontSize);
+
+    /**
+     * @brief Load a built-in font bundled with Vivid
+     * @param ctx Context for GPU access
+     * @param font Which built-in font to load
+     * @param fontSize Font size in pixels
+     * @return true on success
+     *
+     * @par Example
+     * @code
+     * canvas.loadBuiltinFont(ctx, BuiltinFont::Inter, 24.0f);
+     * canvas.fillText("Hello", 10, 30);
+     * @endcode
+     */
+    bool loadBuiltinFont(Context& ctx, BuiltinFont font, float fontSize);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -781,6 +829,7 @@ private:
     // Helper methods
     glm::vec2 transformPoint(const glm::vec2& p) const;
     glm::vec4 applyAlpha(const glm::vec4& color) const;
+    void ensureDefaultFont();  ///< Lazy-load default font on first text use
     glm::vec4 getFillColorAt(const glm::vec2& pos) const;    ///< Get fill color at position (samples gradient if set)
     glm::vec4 getStrokeColorAt(const glm::vec2& pos) const;  ///< Get stroke color at position (samples gradient if set)
     std::vector<glm::vec2> pathToPolygon() const;
@@ -806,6 +855,9 @@ private:
 
     glm::vec4 m_clearColor = {0, 0, 0, 1};
     bool m_frameBegun = false;
+    FitMode m_fitMode = FitMode::Fit;  ///< Default to aspect-preserving fit
+    Context* m_lastContext = nullptr;  ///< Cached context for lazy font loading
+    float m_defaultFontSize = 16.0f;   ///< Default font size for auto-loaded font
 };
 
 } // namespace vivid::effects

@@ -12,6 +12,7 @@
 #include <vivid/asset_loader.h>
 #include <vivid/frame_input.h>
 #include <vivid/effects/texture_operator.h>
+#include <vivid/ui_style.h>
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <fstream>
@@ -274,23 +275,27 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
     std::string mediumPath = (projectRoot / "modules/vivid-core/assets/fonts/Inter_18pt-Medium.ttf").string();
     std::string monoPath = (projectRoot / "modules/vivid-core/assets/fonts/RobotoMono-Regular.ttf").string();
 
+    // Scale font sizes for HiDPI displays
+    float scale = ctx.contentScale();
+    if (scale < 1.0f) scale = 1.0f;
+
     // Load Inter Regular as primary font (index 0) - for tooltips/labels
-    if (m_overlay.loadFont(ctx, regularPath, 16.0f)) {
-        std::cerr << "[ChainVisualizer] Loaded Inter Regular (16px)\n";
+    if (m_overlay.loadFont(ctx, regularPath, 16.0f * scale)) {
+        std::cerr << "[ChainVisualizer] Loaded Inter Regular (" << (16 * scale) << "px)\n";
     } else {
         std::cerr << "[ChainVisualizer] Warning: Could not load Inter Regular font\n";
     }
 
     // Load Inter Medium for node titles (index 1)
-    if (m_overlay.loadFontSize(ctx, mediumPath, 18.0f, 1)) {
-        std::cerr << "[ChainVisualizer] Loaded Inter Medium (18px) for titles\n";
+    if (m_overlay.loadFontSize(ctx, mediumPath, 18.0f * scale, 1)) {
+        std::cerr << "[ChainVisualizer] Loaded Inter Medium (" << (18 * scale) << "px) for titles\n";
     } else {
         std::cerr << "[ChainVisualizer] Warning: Could not load Inter Medium font\n";
     }
 
     // Load Roboto Mono for numeric displays (index 2) - status bar
-    if (m_overlay.loadFontSize(ctx, monoPath, 14.0f, 2)) {
-        std::cerr << "[ChainVisualizer] Loaded Roboto Mono (14px) for metrics\n";
+    if (m_overlay.loadFontSize(ctx, monoPath, 14.0f * scale, 2)) {
+        std::cerr << "[ChainVisualizer] Loaded Roboto Mono (" << (14 * scale) << "px) for metrics\n";
     } else {
         std::cerr << "[ChainVisualizer] Warning: Could not load Roboto Mono font\n";
     }
@@ -352,8 +357,8 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     bool blockNodeGraphInput = m_sliderState.dragging;
     if (!blockNodeGraphInput && m_inspectorVisible) {
         // Check if mouse is over inspector panel area (right side)
-        float panelX = input.width - m_inspectorWidth - 12.0f;
-        float statusBarHeight = 32.0f;
+        float panelX = input.width - m_inspectorWidth * scale - 12.0f * scale;
+        float statusBarHeight = 32.0f * scale;
         if (scaledMousePos.x >= panelX && scaledMousePos.y >= statusBarHeight) {
             // Don't block if in mini-map area
             if (!m_nodeGraph.isPointInMiniMap(scaledMousePos)) {
@@ -615,6 +620,9 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
                 stopRecording(ctx);
             } else if (isMouseInRect(m_snapshotButton, mousePos)) {
                 requestSnapshot();
+            } else if (isMouseInRect(m_gridToggleButton, mousePos)) {
+                // Toggle grid visibility
+                m_nodeGraph.style().showGrid = !m_nodeGraph.style().showGrid;
             }
         }
     }
@@ -683,7 +691,9 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
             }
         }
 
-        // Draw solo mode indicator (top-left corner, using topmost layer)
+        // Draw solo mode indicator (top-left corner, in tooltips layer)
+        m_overlay.setLayer(UILayer::Tooltips);
+
         float lineH = m_overlay.fontLineHeight(0);
         float ascent = m_overlay.fontAscent(0);
         if (lineH <= 0) lineH = 22.0f;
@@ -702,10 +712,10 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
         glm::vec4 soloColor = {1.0f, 0.9f, 0.4f, 1.0f};
         glm::vec4 dimColor = {0.6f, 0.6f, 0.7f, 1.0f};
 
-        m_overlay.fillRoundedRectTopmost(padding, padding, boxWidth, boxHeight, 4.0f, bgColor);
-        m_overlay.strokeRoundedRectTopmost(padding, padding, boxWidth, boxHeight, 4.0f, 1.0f, borderColor);
-        m_overlay.textTopmost(soloText, padding * 2, padding + ascent, soloColor);
-        m_overlay.textTopmost(escText, padding * 2, padding + lineH + ascent, dimColor);
+        m_overlay.fillRoundedRect(padding, padding, boxWidth, boxHeight, 4.0f, bgColor);
+        m_overlay.strokeRoundedRect(padding, padding, boxWidth, boxHeight, 4.0f, 1.0f, borderColor);
+        m_overlay.text(soloText, padding * 2, padding + ascent, soloColor);
+        m_overlay.text(escText, padding * 2, padding + lineH + ascent, dimColor);
     }
 
     // Render the overlay
@@ -857,6 +867,46 @@ void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& c
         }
     }
 
+    // Grid toggle (between stats and recording controls)
+    {
+        // Separator
+        m_overlay.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+        x += padding * 2;
+
+        // Checkbox
+        float checkSize = lineH * 0.7f;
+        float checkY = (barHeight - checkSize) * 0.5f;
+        glm::vec4 checkBg = {0.2f, 0.2f, 0.25f, 1.0f};
+        glm::vec4 checkBorder = {0.4f, 0.4f, 0.45f, 1.0f};
+        glm::vec4 checkFill = {0.4f, 0.7f, 0.9f, 1.0f};
+
+        m_overlay.fillRect(x, checkY, checkSize, checkSize, checkBg);
+        m_overlay.strokeRect(x, checkY, checkSize, checkSize, 1, checkBorder);
+
+        // Draw checkmark if grid is enabled
+        if (m_nodeGraph.style().showGrid) {
+            // Simple checkmark: two lines forming a check
+            float cx = x + checkSize * 0.5f;
+            float cy = checkY + checkSize * 0.5f;
+            float s = checkSize * 0.3f;
+            m_overlay.line(cx - s, cy, cx - s * 0.3f, cy + s * 0.7f, 2.0f, checkFill);
+            m_overlay.line(cx - s * 0.3f, cy + s * 0.7f, cx + s, cy - s * 0.5f, 2.0f, checkFill);
+        }
+
+        float checkboxWidth = checkSize;
+        x += checkboxWidth + 4;
+
+        // Label
+        m_overlay.text("Grid", x, y, textColor, monoFont);
+        float labelWidth = m_overlay.measureText("Grid", monoFont);
+
+        // Store button region (checkbox + label)
+        float totalWidth = checkboxWidth + 4 + labelWidth;
+        m_gridToggleButton = {x - checkboxWidth - 4, checkY, totalWidth, checkSize, true};
+
+        x += labelWidth + padding * 2;
+    }
+
     // Recording controls (right side)
     // Reset button hit regions
     m_recordButton.valid = false;
@@ -932,6 +982,9 @@ void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& c
         m_codecProRes.valid = false;
 
         if (m_codecDropdownOpen) {
+            // Dropdown menus render on menus layer (above panels)
+            m_overlay.setLayer(UILayer::Menus);
+
             const char* items[] = {"H.264 (recommended)", "H.265", "ProRes 4444"};
             float menuWidth = 0;
             for (const char* item : items) {
@@ -948,21 +1001,21 @@ void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& c
             glm::vec4 itemHover = {0.3f, 0.3f, 0.35f, 1.0f};
 
             // Menu background
-            m_overlay.fillRoundedRectTopmost(menuX, menuY, menuWidth, menuH, 4, menuBg);
-            m_overlay.strokeRoundedRectTopmost(menuX, menuY, menuWidth, menuH, 4, 1, buttonBorder);
+            m_overlay.fillRoundedRect(menuX, menuY, menuWidth, menuH, 4, menuBg);
+            m_overlay.strokeRoundedRect(menuX, menuY, menuWidth, menuH, 4, 1, buttonBorder);
 
             // Menu items
             float itemY = menuY;
             m_codecH264 = {menuX, itemY, menuWidth, itemH, true};
-            m_overlay.textTopmost(items[0], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
+            m_overlay.text(items[0], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
 
             itemY += itemH;
             m_codecH265 = {menuX, itemY, menuWidth, itemH, true};
-            m_overlay.textTopmost(items[1], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
+            m_overlay.text(items[1], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
 
             itemY += itemH;
             m_codecProRes = {menuX, itemY, menuWidth, itemH, true};
-            m_overlay.textTopmost(items[2], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
+            m_overlay.text(items[2], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
         }
     }
 }
@@ -1059,14 +1112,15 @@ void ChainVisualizer::renderTooltip(const FrameInput& input, const vivid::Operat
         tooltipY = mouseY - tooltipHeight - 10;
     }
 
-    // Draw background (use topmost layer so tooltips appear above thumbnails)
-    m_overlay.fillRoundedRectTopmost(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, bgColor);
-    m_overlay.strokeRoundedRectTopmost(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, 1.0f, borderColor);
+    // Draw background (use tooltips layer so tooltips appear above everything)
+    m_overlay.setLayer(UILayer::Tooltips);
+    m_overlay.fillRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, bgColor);
+    m_overlay.strokeRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, 1.0f, borderColor);
 
     // Draw text lines (position at baseline = top + ascent)
     float textY = tooltipY + padding + ascent;
     for (const auto& line : lines) {
-        m_overlay.textTopmost(line.first, tooltipX + padding, textY, line.second);
+        m_overlay.text(line.first, tooltipX + padding, textY, line.second);
         textY += lineHeight;
     }
 }
@@ -1091,6 +1145,9 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     auto params = info.op->params();
     if (params.empty()) return;
 
+    // Inspector panel renders on Panels layer (above nodes/thumbnails)
+    m_overlay.setLayer(UILayer::Panels);
+
     // Font metrics
     const int labelFont = 0;  // Inter Regular
     const int monoFont = 2;   // Roboto Mono
@@ -1099,10 +1156,14 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     if (lineH <= 0) lineH = 20.0f;
     if (ascent <= 0) ascent = 14.0f;
 
-    // Layout
-    const float padding = 12.0f;
-    const float rowHeight = lineH + 8.0f;
-    const float sliderHeight = 20.0f;
+    // Scale layout values for HiDPI
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+    float inspectorWidth = m_inspectorWidth * scale;  // Scale the panel width
+
+    // Layout (scaled for HiDPI)
+    const float padding = 12.0f * scale;
+    const float sliderHeight = 20.0f * scale;
+    const float rowHeight = lineH + sliderHeight + 4.0f * scale;  // Label + slider + spacing
     const float headerHeight = lineH + padding * 2;
 
     // Calculate total content height based on parameters
@@ -1119,8 +1180,8 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     m_inspectorContentHeight = totalRows * rowHeight + padding * 2;
 
     // Panel position (right side, below status bar)
-    float statusBarHeight = lineH + 12.0f;
-    float panelX = input.width - m_inspectorWidth - padding;
+    float statusBarHeight = lineH + 12.0f * scale;
+    float panelX = input.width - inspectorWidth - padding;
     float panelY = statusBarHeight + padding;
 
     // Calculate visible area height (clamped to screen)
@@ -1130,13 +1191,12 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
     // Handle scroll input (UI-only, no GPU operations)
     // Only scroll if mouse is in the panel area
-    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
     glm::vec2 mousePos = input.mousePos * scale;
-    bool mouseInPanel = mousePos.x >= panelX && mousePos.x <= panelX + m_inspectorWidth &&
+    bool mouseInPanel = mousePos.x >= panelX && mousePos.x <= panelX + inspectorWidth &&
                         mousePos.y >= panelY && mousePos.y <= panelY + panelHeight;
 
     if (mouseInPanel && (input.scroll.y != 0.0f)) {
-        m_inspectorScrollOffset -= input.scroll.y * 30.0f;
+        m_inspectorScrollOffset -= input.scroll.y * 30.0f * scale;
         float maxScroll = std::max(0.0f, m_inspectorContentHeight - contentAreaHeight);
         m_inspectorScrollOffset = std::max(0.0f, std::min(m_inspectorScrollOffset, maxScroll));
     }
@@ -1153,11 +1213,11 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     glm::vec4 sliderActive = {0.5f, 0.7f, 1.0f, 1.0f};
 
     // Draw panel background
-    m_overlay.fillRoundedRect(panelX, panelY, m_inspectorWidth, panelHeight, 6.0f, bgColor);
-    m_overlay.strokeRoundedRect(panelX, panelY, m_inspectorWidth, panelHeight, 6.0f, 1.0f, borderColor);
+    m_overlay.fillRoundedRect(panelX, panelY, inspectorWidth, panelHeight, 6.0f * scale, bgColor);
+    m_overlay.strokeRoundedRect(panelX, panelY, inspectorWidth, panelHeight, 6.0f * scale, 1.0f * scale, borderColor);
 
     // Header
-    m_overlay.fillRect(panelX, panelY, m_inspectorWidth, headerHeight, headerBg);
+    m_overlay.fillRect(panelX, panelY, inspectorWidth, headerHeight, headerBg);
     std::string title = info.op->name() + " (" + info.name + ")";
     m_overlay.text(title, panelX + padding, panelY + padding + ascent, titleColor, labelFont);
 
@@ -1171,7 +1231,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     // Visible content bounds (for visibility culling)
     float visibleTop = panelY + headerHeight;
     float visibleBottom = panelY + panelHeight;
-    float sliderWidth = m_inspectorWidth - padding * 4 - 60.0f;  // Leave room for value label
+    float sliderWidth = inspectorWidth - padding * 4 - 60.0f * scale;  // Leave room for value label
 
     // Content area - apply scroll offset (UI coordinate only)
     float contentY = panelY + headerHeight + padding - m_inspectorScrollOffset;
@@ -1222,7 +1282,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 // Slider background
                 float sliderX = panelX + padding;
                 float sliderY = y + lineH;
-                m_overlay.fillRoundedRect(sliderX, sliderY, sliderWidth, sliderHeight, 3.0f, sliderBg);
+                m_overlay.fillRoundedRect(sliderX, sliderY, sliderWidth, sliderHeight, 3.0f * scale, sliderBg);
 
                 // Calculate normalized value
                 float range = p.maxVal - p.minVal;
@@ -1237,7 +1297,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                                     m_sliderState.paramName == p.name &&
                                     m_sliderState.paramIndex == c;
                     glm::vec4 fillColor = isActive ? sliderActive : sliderFill;
-                    m_overlay.fillRoundedRect(sliderX, sliderY, fillWidth, sliderHeight, 3.0f, fillColor);
+                    m_overlay.fillRoundedRect(sliderX, sliderY, fillWidth, sliderHeight, 3.0f * scale, fillColor);
                 }
 
                 // Value label
@@ -1249,7 +1309,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 } else {
                     snprintf(valueBuf, sizeof(valueBuf), "%.2f", value[c]);
                 }
-                m_overlay.text(valueBuf, sliderX + sliderWidth + 8, sliderY + ascent, textColor, monoFont);
+                m_overlay.text(valueBuf, sliderX + sliderWidth + 8.0f * scale, sliderY + ascent, textColor, monoFont);
             }
 
             // Handle slider interaction (needs to work even if not visible for drag continuation)
@@ -1316,19 +1376,25 @@ void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Co
     const auto& debugValues = ctx.debugValues();
     if (debugValues.empty()) return;
 
+    // Debug panel renders on Panels layer (above nodes/thumbnails)
+    m_overlay.setLayer(UILayer::Panels);
+
+    // Scale for HiDPI
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+
     // Use font metrics for layout
     const int monoFont = 2;
     float lineH = m_overlay.fontLineHeight(monoFont);
     float ascent = m_overlay.fontAscent(monoFont);
-    if (lineH <= 0) lineH = 20.0f;  // Fallback
-    if (ascent <= 0) ascent = 14.0f;
+    if (lineH <= 0) lineH = 20.0f * scale;  // Fallback (scaled)
+    if (ascent <= 0) ascent = 14.0f * scale;
 
-    const float padding = 8.0f;
-    const float lineHeight = lineH + 4;  // Add some spacing between rows
-    const float nameWidth = 90.0f;
-    const float sparklineWidth = 100.0f;
-    const float sparklineHeight = lineH - 2;
-    const float valueWidth = 65.0f;
+    const float padding = 8.0f * scale;
+    const float lineHeight = lineH + 4 * scale;  // Add some spacing between rows
+    const float nameWidth = 90.0f * scale;
+    const float sparklineWidth = 100.0f * scale;
+    const float sparklineHeight = lineH - 2 * scale;
+    const float valueWidth = 65.0f * scale;
     const float panelWidth = nameWidth + sparklineWidth + valueWidth + padding * 4;
     const float panelHeight = debugValues.size() * lineHeight + padding * 2;
 
@@ -1345,8 +1411,8 @@ void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Co
     glm::vec4 graphBgColor = {0.08f, 0.08f, 0.1f, 1.0f};
 
     // Draw panel background
-    m_overlay.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f, bgColor);
-    m_overlay.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f, 1.0f, borderColor);
+    m_overlay.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f * scale, bgColor);
+    m_overlay.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f * scale, 1.0f * scale, borderColor);
 
     float y = panelY + padding;
     for (const auto& [name, dv] : debugValues) {
@@ -1386,7 +1452,7 @@ void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Co
                 float x2 = graphX + i * sparklineWidth / (historyVec.size() - 1);
                 float y1 = graphBottom - ((historyVec[i-1] - minVal) / range) * sparklineHeight;
                 float y2 = graphBottom - ((historyVec[i] - minVal) / range) * sparklineHeight;
-                m_overlay.line(x1, y1, x2, y2, 1.5f, graphColor);
+                m_overlay.line(x1, y1, x2, y2, 1.5f * scale, graphColor);
             }
         }
         x += sparklineWidth + padding;

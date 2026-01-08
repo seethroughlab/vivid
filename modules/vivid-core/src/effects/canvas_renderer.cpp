@@ -118,26 +118,16 @@ void CanvasRenderer::cleanup() {
     m_stencilWidth = 0;
     m_stencilHeight = 0;
     // Clean up persistent vertex/index buffers
-    if (m_solidVertexBuffer) {
-        wgpuBufferRelease(m_solidVertexBuffer);
-        m_solidVertexBuffer = nullptr;
+    if (m_vertexBuffer) {
+        wgpuBufferRelease(m_vertexBuffer);
+        m_vertexBuffer = nullptr;
     }
-    if (m_solidIndexBuffer) {
-        wgpuBufferRelease(m_solidIndexBuffer);
-        m_solidIndexBuffer = nullptr;
+    if (m_indexBuffer) {
+        wgpuBufferRelease(m_indexBuffer);
+        m_indexBuffer = nullptr;
     }
-    if (m_textVertexBuffer) {
-        wgpuBufferRelease(m_textVertexBuffer);
-        m_textVertexBuffer = nullptr;
-    }
-    if (m_textIndexBuffer) {
-        wgpuBufferRelease(m_textIndexBuffer);
-        m_textIndexBuffer = nullptr;
-    }
-    m_solidVertexCapacity = 0;
-    m_solidIndexCapacity = 0;
-    m_textVertexCapacity = 0;
-    m_textIndexCapacity = 0;
+    m_vertexCapacity = 0;
+    m_indexCapacity = 0;
     m_initialized = false;
 }
 
@@ -405,12 +395,11 @@ void CanvasRenderer::createStencilTexture(Context& ctx, int width, int height) {
 }
 
 void CanvasRenderer::begin(int width, int height, const glm::vec4& clearColor) {
-    m_solidVertices.clear();
-    m_solidIndices.clear();
-    m_solidCommands.clear();
-    m_textVertices.clear();
-    m_textIndices.clear();
-    m_imageCommands.clear();
+    m_drawCommands.clear();
+    m_currentVertices.clear();
+    m_currentIndices.clear();
+    m_currentBatchType = DrawCmdType::Solid;
+    m_currentTextureView = nullptr;
     m_clipCommands.clear();
     m_clipDepth = 0;
     m_width = width;
@@ -419,55 +408,70 @@ void CanvasRenderer::begin(int width, int height, const glm::vec4& clearColor) {
     m_currentFont = nullptr;
 }
 
-void CanvasRenderer::flushSolidBatch() {
-    if (m_solidVertices.empty()) return;
+void CanvasRenderer::flushCurrentBatch() {
+    if (m_currentVertices.empty()) return;
 
-    SolidDrawCmd cmd;
-    cmd.vertices = std::move(m_solidVertices);
-    cmd.indices = std::move(m_solidIndices);
+    DrawCmd cmd;
+    cmd.type = m_currentBatchType;
+    cmd.vertices = std::move(m_currentVertices);
+    cmd.indices = std::move(m_currentIndices);
+    cmd.textureView = m_currentTextureView;
     cmd.clipDepth = m_clipDepth;
 
-    m_solidCommands.push_back(std::move(cmd));
+    m_drawCommands.push_back(std::move(cmd));
 
-    m_solidVertices.clear();
-    m_solidIndices.clear();
+    m_currentVertices.clear();
+    m_currentIndices.clear();
+    m_currentTextureView = nullptr;
 }
 
 void CanvasRenderer::addSolidQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3, const glm::vec4& color) {
-    uint32_t baseIndex = static_cast<uint32_t>(m_solidVertices.size());
+    // Flush if switching from a different batch type
+    if (m_currentBatchType != DrawCmdType::Solid) {
+        flushCurrentBatch();
+        m_currentBatchType = DrawCmdType::Solid;
+    }
+
+    uint32_t baseIndex = static_cast<uint32_t>(m_currentVertices.size());
     glm::vec2 uv(0.5f, 0.5f);  // Center of white texture
 
-    m_solidVertices.push_back({p0, uv, color});
-    m_solidVertices.push_back({p1, uv, color});
-    m_solidVertices.push_back({p2, uv, color});
-    m_solidVertices.push_back({p3, uv, color});
+    m_currentVertices.push_back({p0, uv, color});
+    m_currentVertices.push_back({p1, uv, color});
+    m_currentVertices.push_back({p2, uv, color});
+    m_currentVertices.push_back({p3, uv, color});
 
     // Two triangles: 0-1-2, 0-2-3
-    m_solidIndices.push_back(baseIndex + 0);
-    m_solidIndices.push_back(baseIndex + 1);
-    m_solidIndices.push_back(baseIndex + 2);
-    m_solidIndices.push_back(baseIndex + 0);
-    m_solidIndices.push_back(baseIndex + 2);
-    m_solidIndices.push_back(baseIndex + 3);
+    m_currentIndices.push_back(baseIndex + 0);
+    m_currentIndices.push_back(baseIndex + 1);
+    m_currentIndices.push_back(baseIndex + 2);
+    m_currentIndices.push_back(baseIndex + 0);
+    m_currentIndices.push_back(baseIndex + 2);
+    m_currentIndices.push_back(baseIndex + 3);
 }
 
 void CanvasRenderer::addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3,
                                   glm::vec2 uv0, glm::vec2 uv1, glm::vec2 uv2, glm::vec2 uv3,
                                   const glm::vec4& color) {
-    uint32_t baseIndex = static_cast<uint32_t>(m_textVertices.size());
+    // Flush if switching from a different batch type
+    if (m_currentBatchType != DrawCmdType::Text) {
+        flushCurrentBatch();
+        m_currentBatchType = DrawCmdType::Text;
+    }
 
-    m_textVertices.push_back({p0, uv0, color});
-    m_textVertices.push_back({p1, uv1, color});
-    m_textVertices.push_back({p2, uv2, color});
-    m_textVertices.push_back({p3, uv3, color});
+    uint32_t baseIndex = static_cast<uint32_t>(m_currentVertices.size());
+
+    m_currentVertices.push_back({p0, uv0, color});
+    m_currentVertices.push_back({p1, uv1, color});
+    m_currentVertices.push_back({p2, uv2, color});
+    m_currentVertices.push_back({p3, uv3, color});
 
     // Two triangles: 0-1-2, 0-2-3
-    m_textIndices.push_back(baseIndex + 0);
-    m_textIndices.push_back(baseIndex + 1);
-    m_textIndices.push_back(baseIndex + 2);
-    m_textIndices.push_back(baseIndex + 0);
-    m_textIndices.push_back(baseIndex + 2);
-    m_textIndices.push_back(baseIndex + 3);
+    m_currentIndices.push_back(baseIndex + 0);
+    m_currentIndices.push_back(baseIndex + 1);
+    m_currentIndices.push_back(baseIndex + 2);
+    m_currentIndices.push_back(baseIndex + 0);
+    m_currentIndices.push_back(baseIndex + 2);
+    m_currentIndices.push_back(baseIndex + 3);
 }
 
 void CanvasRenderer::addImage(WGPUTextureView textureView,
@@ -476,6 +480,14 @@ void CanvasRenderer::addImage(WGPUTextureView textureView,
                               float dx, float dy, float dw, float dh,
                               float alpha) {
     if (!textureView) return;
+
+    // Flush if switching from different type OR different texture view
+    // (Images with different textures cannot be batched together)
+    if (m_currentBatchType != DrawCmdType::Image || m_currentTextureView != textureView) {
+        flushCurrentBatch();
+        m_currentBatchType = DrawCmdType::Image;
+        m_currentTextureView = textureView;
+    }
 
     // Calculate UVs based on source rect
     float u0 = sx / srcWidth;
@@ -486,20 +498,21 @@ void CanvasRenderer::addImage(WGPUTextureView textureView,
     // Create quad vertices with UV coords
     glm::vec4 color(1.0f, 1.0f, 1.0f, alpha);
 
-    ImageDrawCmd cmd;
-    cmd.textureView = textureView;
-    cmd.clipDepth = m_clipDepth;  // Track clip state at submission time
+    uint32_t baseIndex = static_cast<uint32_t>(m_currentVertices.size());
 
     // Four corners
-    cmd.vertices.push_back({{dx, dy}, {u0, v0}, color});
-    cmd.vertices.push_back({{dx + dw, dy}, {u1, v0}, color});
-    cmd.vertices.push_back({{dx + dw, dy + dh}, {u1, v1}, color});
-    cmd.vertices.push_back({{dx, dy + dh}, {u0, v1}, color});
+    m_currentVertices.push_back({{dx, dy}, {u0, v0}, color});
+    m_currentVertices.push_back({{dx + dw, dy}, {u1, v0}, color});
+    m_currentVertices.push_back({{dx + dw, dy + dh}, {u1, v1}, color});
+    m_currentVertices.push_back({{dx, dy + dh}, {u0, v1}, color});
 
     // Two triangles
-    cmd.indices = {0, 1, 2, 0, 2, 3};
-
-    m_imageCommands.push_back(std::move(cmd));
+    m_currentIndices.push_back(baseIndex + 0);
+    m_currentIndices.push_back(baseIndex + 1);
+    m_currentIndices.push_back(baseIndex + 2);
+    m_currentIndices.push_back(baseIndex + 0);
+    m_currentIndices.push_back(baseIndex + 2);
+    m_currentIndices.push_back(baseIndex + 3);
 }
 
 void CanvasRenderer::rectFilled(float x, float y, float w, float h, const glm::vec4& color) {
@@ -515,25 +528,31 @@ void CanvasRenderer::rect(float x, float y, float w, float h, float lineWidth, c
 }
 
 void CanvasRenderer::circleFilled(float cx, float cy, float radius, const glm::vec4& color, int segments) {
+    // Flush if switching from a different batch type
+    if (m_currentBatchType != DrawCmdType::Solid) {
+        flushCurrentBatch();
+        m_currentBatchType = DrawCmdType::Solid;
+    }
+
     glm::vec2 uv(0.5f, 0.5f);
-    uint32_t centerIndex = static_cast<uint32_t>(m_solidVertices.size());
+    uint32_t centerIndex = static_cast<uint32_t>(m_currentVertices.size());
 
     // Center vertex
-    m_solidVertices.push_back({{cx, cy}, uv, color});
+    m_currentVertices.push_back({{cx, cy}, uv, color});
 
     // Edge vertices
     for (int i = 0; i <= segments; i++) {
         float angle = (float)i / segments * 2.0f * 3.14159265f;
         float px = cx + std::cos(angle) * radius;
         float py = cy + std::sin(angle) * radius;
-        m_solidVertices.push_back({{px, py}, uv, color});
+        m_currentVertices.push_back({{px, py}, uv, color});
     }
 
     // Triangles (fan)
     for (int i = 0; i < segments; i++) {
-        m_solidIndices.push_back(centerIndex);
-        m_solidIndices.push_back(centerIndex + 1 + i);
-        m_solidIndices.push_back(centerIndex + 2 + i);
+        m_currentIndices.push_back(centerIndex);
+        m_currentIndices.push_back(centerIndex + 1 + i);
+        m_currentIndices.push_back(centerIndex + 2 + i);
     }
 }
 
@@ -570,23 +589,29 @@ void CanvasRenderer::line(float x1, float y1, float x2, float y2, float width, c
 }
 
 void CanvasRenderer::triangleFilled(glm::vec2 a, glm::vec2 b, glm::vec2 c, const glm::vec4& color) {
+    // Flush if switching from a different batch type
+    if (m_currentBatchType != DrawCmdType::Solid) {
+        flushCurrentBatch();
+        m_currentBatchType = DrawCmdType::Solid;
+    }
+
     glm::vec2 uv(0.5f, 0.5f);
-    uint32_t baseIndex = static_cast<uint32_t>(m_solidVertices.size());
+    uint32_t baseIndex = static_cast<uint32_t>(m_currentVertices.size());
 
-    m_solidVertices.push_back({a, uv, color});
-    m_solidVertices.push_back({b, uv, color});
-    m_solidVertices.push_back({c, uv, color});
+    m_currentVertices.push_back({a, uv, color});
+    m_currentVertices.push_back({b, uv, color});
+    m_currentVertices.push_back({c, uv, color});
 
-    m_solidIndices.push_back(baseIndex + 0);
-    m_solidIndices.push_back(baseIndex + 1);
-    m_solidIndices.push_back(baseIndex + 2);
+    m_currentIndices.push_back(baseIndex + 0);
+    m_currentIndices.push_back(baseIndex + 1);
+    m_currentIndices.push_back(baseIndex + 2);
 }
 
 void CanvasRenderer::addClip(const std::vector<glm::vec2>& vertices, const std::vector<uint32_t>& indices) {
     if (vertices.empty() || indices.empty()) return;
 
-    // Flush any pending solid geometry before changing clip state
-    flushSolidBatch();
+    // Flush any pending geometry before changing clip state
+    flushCurrentBatch();
 
     ClipCmd cmd;
     cmd.clipDepth = m_clipDepth;
@@ -605,8 +630,8 @@ void CanvasRenderer::addClip(const std::vector<glm::vec2>& vertices, const std::
 
 void CanvasRenderer::setClipDepth(int depth) {
     if (depth != m_clipDepth) {
-        // Flush any pending solid geometry before changing clip state
-        flushSolidBatch();
+        // Flush any pending geometry before changing clip state
+        flushCurrentBatch();
         m_clipDepth = depth;
     }
 }
@@ -666,17 +691,16 @@ void CanvasRenderer::renderBatch(WGPURenderPassEncoder pass, Context& ctx,
 }
 
 void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTextureView targetView) {
-    // Flush any pending solid vertices to a command
-    flushSolidBatch();
+    // Flush any pending vertices to a command
+    flushCurrentBatch();
 
-    // Check if any batch has content
-    if (m_solidCommands.empty() && m_textVertices.empty() && m_imageCommands.empty()) return;
+    // Check if any commands exist
+    if (m_drawCommands.empty()) return;
 
     WGPUDevice device = ctx.device();
     WGPUQueue queue = ctx.queue();
 
     // Always create stencil texture (pipeline requires it)
-    // TODO: Could optimize by having two pipelines - one with stencil, one without
     createStencilTexture(ctx, m_width, m_height);
     bool useStencil = !m_clipCommands.empty();
 
@@ -684,8 +708,15 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
     float uniforms[4] = {(float)m_width, (float)m_height, 0.0f, 0.0f};
     wgpuQueueWriteBuffer(queue, m_uniformBuffer, 0, uniforms, sizeof(uniforms));
 
-    // Create font bind group if text was used
-    if (m_currentFont && m_currentFont->textureView() && !m_textVertices.empty()) {
+    // Create font bind group if text commands exist
+    bool hasTextCommands = false;
+    for (const auto& cmd : m_drawCommands) {
+        if (cmd.type == DrawCmdType::Text) {
+            hasTextCommands = true;
+            break;
+        }
+    }
+    if (m_currentFont && m_currentFont->textureView() && hasTextCommands) {
         WGPUBindGroupEntry bgEntries[3] = {};
         bgEntries[0].binding = 0;
         bgEntries[0].buffer = m_uniformBuffer;
@@ -704,35 +735,6 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
             wgpuBindGroupRelease(m_fontBindGroup);
         }
         m_fontBindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
-    }
-
-    // Ensure text vertex buffer is large enough
-    if (!m_textVertices.empty()) {
-        size_t neededVertexSize = m_textVertices.size() * sizeof(CanvasVertex);
-        size_t neededIndexSize = m_textIndices.size() * sizeof(uint32_t);
-
-        if (neededVertexSize > m_textVertexCapacity) {
-            if (m_textVertexBuffer) wgpuBufferRelease(m_textVertexBuffer);
-            size_t newCapacity = std::max(neededVertexSize, INITIAL_VERTEX_CAPACITY * sizeof(CanvasVertex));
-            newCapacity = std::max(newCapacity, m_textVertexCapacity * 2);
-            WGPUBufferDescriptor vbDesc = {};
-            vbDesc.size = newCapacity;
-            vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-            m_textVertexBuffer = wgpuDeviceCreateBuffer(device, &vbDesc);
-            m_textVertexCapacity = newCapacity;
-        }
-        if (neededIndexSize > m_textIndexCapacity) {
-            if (m_textIndexBuffer) wgpuBufferRelease(m_textIndexBuffer);
-            size_t newCapacity = std::max(neededIndexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
-            newCapacity = std::max(newCapacity, m_textIndexCapacity * 2);
-            WGPUBufferDescriptor ibDesc = {};
-            ibDesc.size = newCapacity;
-            ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-            m_textIndexBuffer = wgpuDeviceCreateBuffer(device, &ibDesc);
-            m_textIndexCapacity = newCapacity;
-        }
-        wgpuQueueWriteBuffer(queue, m_textVertexBuffer, 0, m_textVertices.data(), neededVertexSize);
-        wgpuQueueWriteBuffer(queue, m_textIndexBuffer, 0, m_textIndices.data(), neededIndexSize);
     }
 
     // Use shared command encoder for batched submission
@@ -781,9 +783,7 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
             WGPUBuffer ib = wgpuDeviceCreateBuffer(device, &ibDesc);
             wgpuQueueWriteBuffer(queue, ib, 0, clipCmd.indices.data(), ibDesc.size);
 
-            // Set stencil reference value for this clip level
             wgpuRenderPassEncoderSetStencilReference(pass, static_cast<uint32_t>(clipCmd.clipDepth));
-
             wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, vbDesc.size);
             wgpuRenderPassEncoderSetIndexBuffer(pass, ib, WGPUIndexFormat_Uint32, 0, ibDesc.size);
             wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(clipCmd.indices.size()), 1, 0, 0, 0);
@@ -793,15 +793,36 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
         }
     }
 
-    // Switch to main pipeline for drawing
+    // Process draw commands in order (painter's algorithm)
+    // Track current pipeline to minimize state changes
+    DrawCmdType currentPipeline = DrawCmdType::Solid;
     wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
-
-    // Render solid commands (each with its own clip depth)
     wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
-    for (const auto& cmd : m_solidCommands) {
+
+    for (const auto& cmd : m_drawCommands) {
         if (cmd.vertices.empty()) continue;
 
-        // Set stencil reference for this command
+        // Switch pipeline if needed
+        if (cmd.type != currentPipeline) {
+            currentPipeline = cmd.type;
+            switch (cmd.type) {
+                case DrawCmdType::Solid:
+                    wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
+                    wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
+                    break;
+                case DrawCmdType::Text:
+                    wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
+                    if (m_fontBindGroup) {
+                        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroup, 0, nullptr);
+                    }
+                    break;
+                case DrawCmdType::Image:
+                    wgpuRenderPassEncoderSetPipeline(pass, m_imagePipeline);
+                    break;
+            }
+        }
+
+        // Set stencil reference
         if (useStencil) {
             wgpuRenderPassEncoderSetStencilReference(pass, static_cast<uint32_t>(cmd.clipDepth));
         }
@@ -819,75 +840,35 @@ void CanvasRenderer::render(Context& ctx, WGPUTexture targetTexture, WGPUTexture
         WGPUBuffer ib = wgpuDeviceCreateBuffer(device, &ibDesc);
         wgpuQueueWriteBuffer(queue, ib, 0, cmd.indices.data(), ibDesc.size);
 
-        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, vbDesc.size);
-        wgpuRenderPassEncoderSetIndexBuffer(pass, ib, WGPUIndexFormat_Uint32, 0, ibDesc.size);
-        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(cmd.indices.size()), 1, 0, 0, 0);
+        // For images, create a bind group for the texture
+        WGPUBindGroup imageBindGroup = nullptr;
+        if (cmd.type == DrawCmdType::Image && cmd.textureView) {
+            WGPUBindGroupEntry bgEntries[3] = {};
+            bgEntries[0].binding = 0;
+            bgEntries[0].buffer = m_uniformBuffer;
+            bgEntries[0].size = 16;
+            bgEntries[1].binding = 1;
+            bgEntries[1].sampler = m_sampler;
+            bgEntries[2].binding = 2;
+            bgEntries[2].textureView = cmd.textureView;
 
-        wgpuBufferRelease(vb);
-        wgpuBufferRelease(ib);
-    }
-
-    // Render text primitives (with font texture)
-    // TODO: Add clip depth tracking for text as well
-    if (m_fontBindGroup && !m_textVertices.empty()) {
-        if (useStencil) {
-            wgpuRenderPassEncoderSetStencilReference(pass, 0);  // Text uses no clipping for now
+            WGPUBindGroupDescriptor bgDesc = {};
+            bgDesc.layout = m_bindGroupLayout;
+            bgDesc.entryCount = 3;
+            bgDesc.entries = bgEntries;
+            imageBindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
+            wgpuRenderPassEncoderSetBindGroup(pass, 0, imageBindGroup, 0, nullptr);
         }
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroup, 0, nullptr);
-        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer, 0, m_textVertices.size() * sizeof(CanvasVertex));
-        wgpuRenderPassEncoderSetIndexBuffer(pass, m_textIndexBuffer, WGPUIndexFormat_Uint32, 0, m_textIndices.size() * sizeof(uint32_t));
-        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(m_textIndices.size()), 1, 0, 0, 0);
-    }
-
-    // Render images (each with its own texture bind group and clip depth)
-    // Switch to image pipeline that samples full RGBA from texture
-    wgpuRenderPassEncoderSetPipeline(pass, m_imagePipeline);
-    for (const auto& cmd : m_imageCommands) {
-        if (cmd.vertices.empty() || !cmd.textureView) continue;
-
-        // Set stencil reference for this image's clip depth
-        if (useStencil) {
-            wgpuRenderPassEncoderSetStencilReference(pass, static_cast<uint32_t>(cmd.clipDepth));
-        }
-
-        // Create temporary vertex buffer
-        WGPUBufferDescriptor vbDesc = {};
-        vbDesc.size = cmd.vertices.size() * sizeof(CanvasVertex);
-        vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-        WGPUBuffer vb = wgpuDeviceCreateBuffer(device, &vbDesc);
-        wgpuQueueWriteBuffer(queue, vb, 0, cmd.vertices.data(), vbDesc.size);
-
-        // Create temporary index buffer
-        WGPUBufferDescriptor ibDesc = {};
-        ibDesc.size = cmd.indices.size() * sizeof(uint32_t);
-        ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-        WGPUBuffer ib = wgpuDeviceCreateBuffer(device, &ibDesc);
-        wgpuQueueWriteBuffer(queue, ib, 0, cmd.indices.data(), ibDesc.size);
-
-        // Create bind group for this texture
-        WGPUBindGroupEntry bgEntries[3] = {};
-        bgEntries[0].binding = 0;
-        bgEntries[0].buffer = m_uniformBuffer;
-        bgEntries[0].size = 16;
-        bgEntries[1].binding = 1;
-        bgEntries[1].sampler = m_sampler;
-        bgEntries[2].binding = 2;
-        bgEntries[2].textureView = cmd.textureView;
-
-        WGPUBindGroupDescriptor bgDesc = {};
-        bgDesc.layout = m_bindGroupLayout;
-        bgDesc.entryCount = 3;
-        bgDesc.entries = bgEntries;
-        WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
 
         // Draw
-        wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
         wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vb, 0, vbDesc.size);
         wgpuRenderPassEncoderSetIndexBuffer(pass, ib, WGPUIndexFormat_Uint32, 0, ibDesc.size);
         wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(cmd.indices.size()), 1, 0, 0, 0);
 
         // Release temporary resources
-        wgpuBindGroupRelease(bindGroup);
+        if (imageBindGroup) {
+            wgpuBindGroupRelease(imageBindGroup);
+        }
         wgpuBufferRelease(vb);
         wgpuBufferRelease(ib);
     }
