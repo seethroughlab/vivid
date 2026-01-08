@@ -51,7 +51,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("HiHat", "Audio Drums", "Hi-hat cymbal with open/closed modes")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withAliases({"HH"})
             .withUsage(
                 "// Closed hi-hat\n"
@@ -63,7 +62,7 @@ public:
                 "hh.trigger();  // Play\n"
                 "hh.choke();    // Cut off (for closed interrupting open)\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
+            .withExamples({{"examples/drum-synthesis"}});
     }
 
     /// @}

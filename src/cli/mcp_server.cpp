@@ -1241,6 +1241,27 @@ private:
                 info["aliases"] = meta->aliases;
             }
 
+            // Include examples if available (resolve module-relative paths)
+            if (!meta->examples.empty()) {
+                info["examples"] = json::array();
+                for (const auto& ex : meta->examples) {
+                    json example;
+                    std::string path = ex.path;
+                    // Resolve module-relative paths to full paths
+                    if (!meta->module.empty() &&
+                        path.find("modules/") != 0 &&
+                        path.find("projects/") != 0 &&
+                        path.find("../") != 0) {
+                        path = "modules/" + meta->module + "/" + path;
+                    }
+                    example["path"] = path;
+                    if (!ex.description.empty()) {
+                        example["description"] = ex.description;
+                    }
+                    info["examples"].push_back(example);
+                }
+            }
+
             result["content"] = {{{"type", "text"}, {"text", info.dump(2)}}};
         }
         else if (name == "create_project") {

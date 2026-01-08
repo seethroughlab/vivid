@@ -65,7 +65,7 @@ public:
                 "hsv.saturation = 1.2f;  // Boost saturation\n"
                 "hsv.value = 1.0f;       // Brightness multiplier\n"
             )
-            .withExamples({{"modules/vivid-core/examples/color-grading"}});
+            .withExamples({{"examples/color-grading"}});
     }
 
     /// @}

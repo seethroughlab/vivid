@@ -69,7 +69,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("WebServer", "Network", "HTTP/WebSocket server for web-based control interfaces")
             .output(OutputKind::Value)
-            .inModule("vivid-network")
             .withAliases({"HTTP", "WebSocket", "REST"})
             .withUsage(
                 "auto& web = chain.add<WebServer>(\"web\");\n"
@@ -82,7 +81,7 @@ public:
                 "// POST /api/operator/:id - set params\n"
                 "// ws://localhost:8080/ws - WebSocket\n"
             )
-            .withExamples({{"modules/vivid-network/examples/websocket-ui"}});
+            .withExamples({{"examples/websocket-ui"}});
     }
 
     /// @}

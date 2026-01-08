@@ -64,7 +64,7 @@ public:
                 "ca.amount = 0.02f;\n"
                 "ca.radial = true;  // Radial vs linear separation\n"
             )
-            .withExamples({{"modules/vivid-core/examples/distortion"}});
+            .withExamples({{"examples/distortion"}});
     }
 
     /// @}

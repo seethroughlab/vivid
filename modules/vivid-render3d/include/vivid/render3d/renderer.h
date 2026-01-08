@@ -71,7 +71,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Render3D", "3D Rendering", "3D scene renderer with PBR, shadows, and IBL")
             .requireInput()
-            .inModule("vivid-render3d")
             .withInputs({
                 {"scene", "SceneComposer with meshes to render", true},
                 {"camera", "CameraOperator for view/projection", true},
@@ -92,7 +91,12 @@ public:
                 "render.setMetallic(0.0f);\n"
                 "render.setRoughness(0.5f);\n"
             )
-            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
+            .withExamples({
+                {"examples/3d-basics"},
+                {"examples/gltf-loader"},
+                {"examples/csg-modeling"},
+                {"examples/instancing"}
+            });
     }
 
     /// @}

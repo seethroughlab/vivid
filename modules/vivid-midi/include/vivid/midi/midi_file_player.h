@@ -53,7 +53,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("MidiFilePlayer", "MIDI", "Play MIDI files with tempo sync")
             .output(OutputKind::Value)
-            .inModule("vivid-midi")
             .withAliases({"MIDIFile", "MIDIPlayer"})
             .withUsage(
                 "auto& player = chain.add<MidiFilePlayer>(\"player\");\n"
@@ -69,7 +68,7 @@ public:
                 "    }\n"
                 "}\n"
             )
-            .withExamples({{"modules/vivid-midi/examples/midi-sequencer"}});
+            .withExamples({{"examples/midi-sequencer"}});
     }
 
     /// @}

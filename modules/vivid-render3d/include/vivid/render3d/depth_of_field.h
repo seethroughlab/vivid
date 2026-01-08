@@ -50,7 +50,6 @@ public:
         return OperatorDescriptor("DepthOfField", "3D Post-Processing", "Depth-based focus blur effect")
             .output(OutputKind::Texture)
             .requireInput()
-            .inModule("vivid-render3d")
             .withAliases({"DOF", "Bokeh"})
             .withUsage(
                 "auto& dof = chain.add<DepthOfField>(\"dof\");\n"

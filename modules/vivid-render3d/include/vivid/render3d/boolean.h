@@ -50,7 +50,6 @@ public:
         return OperatorDescriptor("Boolean", "3D CSG", "CSG boolean operations (union, subtract, intersect)")
             .output(OutputKind::Geometry)
             .requireInput()
-            .inModule("vivid-render3d")
             .withAliases({"CSG"})
             .withUsage(
                 "auto& csg = chain.add<Boolean>(\"csg\");\n"
@@ -58,7 +57,7 @@ public:
                 "csg.setInputB(&sphere);\n"
                 "csg.setOperation(BooleanOp::Subtract);  // box - sphere\n"
             )
-            .withExamples({{"modules/vivid-render3d/examples/csg-modeling"}});
+            .withExamples({{"examples/csg-modeling"}});
     }
 
     Param<bool> flatShading{"flatShading", true, false, true};  ///< Use flat shading on result

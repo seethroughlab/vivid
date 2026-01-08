@@ -64,7 +64,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Synth", "Audio Synth", "Simple synthesizer with oscillator and ADSR envelope")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& synth = chain.add<Synth>(\"synth\");\n"
                 "synth.setWaveform(Waveform::Saw);\n"
@@ -77,7 +76,7 @@ public:
                 "synth.noteOn();  // Start playing\n"
                 "synth.noteOff(); // Release\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
+            .withExamples({{"examples/formant-pad"}});
     }
 
     /// @}

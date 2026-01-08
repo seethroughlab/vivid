@@ -45,7 +45,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("SerialIn", "IO", "Serial input from Arduino and sensors")
             .output(OutputKind::Value)
-            .inModule("vivid-serial")
             .withAliases({"Arduino", "Sensor"})
             .withUsage(
                 "auto& sensor = chain.add<SerialIn>(\"sensor\");\n"
@@ -58,7 +57,7 @@ public:
                 "    noise.scale = value * 10.0f;\n"
                 "}\n"
             )
-            .withExamples({{"modules/vivid-serial/examples/arduino-led"}});
+            .withExamples({{"examples/arduino-led"}});
     }
 
     /// @}

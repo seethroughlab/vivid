@@ -53,7 +53,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("PitchEnv", "Audio Envelope", "Pitch sweep envelope for drum synthesis")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& pitch = chain.add<PitchEnv>(\"pitch\");\n"
                 "pitch.startFreq = 150.0f;  // Start at 150Hz\n"
@@ -65,7 +64,7 @@ public:
                 "\n"
                 "// See: modules/vivid-audio/examples/envelope-modulation/\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/envelope-modulation"}});
+            .withExamples({{"examples/envelope-modulation"}});
     }
 
     /// @}

@@ -61,7 +61,11 @@ public:
                 "bloom.intensity = 1.5f;   // Bloom strength\n"
                 "bloom.radius = 15.0f;     // Blur radius\n"
             )
-            .withExamples({{"modules/vivid-core/examples/blur-bloom"}});
+            .withExamples({
+                {"examples/blur-bloom"},
+                {"examples/edge-glow"},
+                {"examples/retro-crt"}
+            });
     }
 
     /// @}

@@ -51,7 +51,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("MidiIn", "MIDI", "Receive MIDI input from controllers and keyboards")
             .output(OutputKind::Value)
-            .inModule("vivid-midi")
             .withAliases({"MIDIInput", "MIDIController"})
             .withUsage(
                 "auto& midi = chain.add<MidiIn>(\"midi\");\n"
@@ -66,7 +65,7 @@ public:
                 "}\n"
                 "float modWheel = midi.cc(1);  // CC values 0.0-1.0\n"
             )
-            .withExamples({{"modules/vivid-midi/examples/midi-input"}});
+            .withExamples({{"examples/midi-input"}});
     }
 
     /// @}

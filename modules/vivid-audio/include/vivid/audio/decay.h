@@ -59,7 +59,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Decay", "Audio Envelope", "One-shot decay envelope with multiple curve shapes")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& env = chain.add<Decay>(\"env\");\n"
                 "env.input(\"noise\");\n"
@@ -68,7 +67,7 @@ public:
                 "\n"
                 "env.trigger();  // Start decay\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
+            .withExamples({{"examples/drum-synthesis"}});
     }
 
     /// @}

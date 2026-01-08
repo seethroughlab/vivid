@@ -59,7 +59,7 @@ public:
                 "vig.softness = 0.6f;    // Edge gradient width\n"
                 "vig.roundness = 1.0f;   // 0=rectangular, 1=circular\n"
             )
-            .withExamples({{"modules/vivid-core/examples/creative-effects"}});
+            .withExamples({{"examples/creative-effects"}});
     }
 
     /// @}

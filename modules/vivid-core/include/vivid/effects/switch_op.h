@@ -61,7 +61,7 @@ public:
                 "sw.index = 0;    // Which input to output (0-indexed)\n"
                 "sw.blend = 0.0f; // Crossfade between adjacent inputs\n"
             )
-            .withExamples({{"modules/vivid-core/examples/conditional-routing"}});
+            .withExamples({{"examples/conditional-routing"}});
     }
 
     /// @}

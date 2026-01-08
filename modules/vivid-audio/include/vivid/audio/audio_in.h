@@ -46,7 +46,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("AudioIn", "Audio IO", "Live audio input from microphone or line-in")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withAliases({"Mic", "Input"})
             .withUsage(
                 "auto& mic = chain.add<AudioIn>(\"mic\");\n"
@@ -56,7 +55,7 @@ public:
                 "auto& reverb = chain.add<Reverb>(\"reverb\");\n"
                 "reverb.input(\"mic\");\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
+            .withExamples({{"examples/audio-reactive"}});
     }
 
     /// @}

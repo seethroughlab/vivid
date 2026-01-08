@@ -51,7 +51,6 @@ public:
         return OperatorDescriptor("Reverb", "Audio Effects", "Freeverb-style algorithmic reverb")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& reverb = chain.add<Reverb>(\"reverb\");\n"
                 "reverb.input(\"audio\");\n"
@@ -59,7 +58,7 @@ public:
                 "reverb.damping = 0.5f;   // Moderate damping\n"
                 "reverb.mix = 0.3f;       // 30% wet\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
+            .withExamples({{"examples/formant-pad"}});
     }
 
     /// @}

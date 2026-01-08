@@ -49,7 +49,6 @@ public:
         return OperatorDescriptor("Echo", "Audio Effects", "Multi-tap echo with diffusion")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& echo = chain.add<Echo>(\"echo\");\n"
                 "echo.input(\"audio\");\n"
@@ -57,7 +56,7 @@ public:
                 "echo.decay = 0.6f;        // Each echo at 60%\n"
                 "echo.taps = 4;            // 4 echo repeats\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     /// @}

@@ -54,7 +54,6 @@ public:
         return OperatorDescriptor("Phaser", "Audio Effects", "Multi-stage phaser with LFO modulation")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& phaser = chain.add<Phaser>(\"phaser\");\n"
                 "phaser.input(\"audio\");\n"
@@ -63,7 +62,7 @@ public:
                 "phaser.stages = 6;       // 6 stages\n"
                 "phaser.feedback = 0.5f;\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     /// @}

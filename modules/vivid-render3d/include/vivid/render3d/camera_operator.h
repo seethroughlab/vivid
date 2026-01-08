@@ -56,7 +56,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("CameraOperator", "3D Camera", "Perspective camera with orbit and position controls")
             .output(OutputKind::Camera)
-            .inModule("vivid-render3d")
             .withAliases({"Camera", "Camera3D", "PerspectiveCamera"})
             .withUsage(
                 "auto& cam = chain.add<CameraOperator>(\"cam\");\n"
@@ -67,7 +66,12 @@ public:
                 "// Or use orbit mode:\n"
                 "cam.orbitCenter(0, 0, 0).distance(8.0f).elevation(0.3f);\n"
             )
-            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
+            .withExamples({
+                {"examples/3d-basics"},
+                {"examples/gltf-loader"},
+                {"examples/instancing"},
+                {"examples/scene-composition"}
+            });
     }
 
     /// @}

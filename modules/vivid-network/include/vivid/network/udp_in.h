@@ -58,7 +58,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("UdpIn", "Network", "Receive raw UDP packets for custom protocols")
             .output(OutputKind::Value)
-            .inModule("vivid-network")
             .withAliases({"UDPReceiver", "UDPInput"})
             .withUsage(
                 "auto& udp = chain.add<UdpIn>(\"sensor\");\n"
@@ -73,7 +72,7 @@ public:
                 "    }\n"
                 "}\n"
             )
-            .withExamples({{"modules/vivid-network/examples/udp-receiver"}});
+            .withExamples({{"examples/udp-receiver"}});
     }
 
     /// @}

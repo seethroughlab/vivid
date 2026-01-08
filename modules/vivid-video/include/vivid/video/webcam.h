@@ -36,7 +36,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Webcam", "Video", "Live webcam capture for real-time video input")
             .output(OutputKind::Texture)
-            .inModule("vivid-video")
             .withAliases({"Camera", "WebCam", "CameraCapture"})
             .withUsage(
                 "auto& cam = chain.add<Webcam>(\"cam\");\n"
@@ -48,7 +47,7 @@ public:
                 "auto& displace = chain.add<Displace>(\"d\");\n"
                 "displace.source(\"cam\").map(\"noise\");\n"
             )
-            .withExamples({{"projects/showcase/webcam-displace"}});
+            .withExamples({{"../../projects/showcase/webcam-displace"}});
     }
 
     /// @}

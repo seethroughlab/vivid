@@ -62,7 +62,7 @@ public:
                 "flash.mode = 0;  // 0=Additive, 1=Screen, 2=Replace\n"
                 "// In update(): if (beat) flash.trigger();\n"
             )
-            .withExamples({{"modules/vivid-core/examples/creative-effects"}});
+            .withExamples({{"examples/creative-effects"}});
     }
 
     /// @}

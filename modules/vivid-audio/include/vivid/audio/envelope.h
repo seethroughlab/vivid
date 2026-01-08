@@ -67,7 +67,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Envelope", "Audio Envelope", "ADSR envelope generator")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withAliases({"ADSR", "Env"})
             .withUsage(
                 "auto& env = chain.add<Envelope>(\"env\");\n"
@@ -82,7 +81,7 @@ public:
                 "\n"
                 "// See: modules/vivid-audio/examples/envelope-modulation/\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/envelope-modulation"}});
+            .withExamples({{"examples/envelope-modulation"}});
     }
 
     /// @}

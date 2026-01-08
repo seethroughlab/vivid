@@ -43,7 +43,6 @@ public:
         return OperatorDescriptor("Levels", "Audio Analysis", "Audio level meter with RMS and peak values")
             .output(OutputKind::Value)
             .requireInput()
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& levels = chain.add<Levels>(\"levels\");\n"
                 "levels.input(\"audio\");\n"
@@ -53,7 +52,7 @@ public:
                 "float volume = levels.rms();   // Average loudness\n"
                 "float peak = levels.peak();    // Peak level\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
+            .withExamples({{"examples/audio-reactive"}});
     }
 
     /// @}

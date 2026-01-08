@@ -49,7 +49,6 @@ public:
         return OperatorDescriptor("AudioGain", "Audio IO", "Gain and pan control with envelope modulation")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withAliases({"Gain", "Volume"})
             .withUsage(
                 "auto& vol = chain.add<AudioGain>(\"vol\");\n"
@@ -57,7 +56,7 @@ public:
                 "vol.gain = 0.5f;    // 50% volume\n"
                 "vol.pan = -0.3f;    // Slight left pan\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
+            .withExamples({{"examples/formant-pad"}});
     }
 
     /// @}

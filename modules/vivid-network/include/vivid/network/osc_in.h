@@ -89,7 +89,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("OscIn", "Network", "Receive OSC messages from controllers and software")
             .output(OutputKind::Value)
-            .inModule("vivid-network")
             .withAliases({"OSCReceiver", "TouchOSC", "Lemur"})
             .withUsage(
                 "auto& osc = chain.add<OscIn>(\"osc\");\n"
@@ -101,7 +100,7 @@ public:
                 "    noise.scale = value * 10.0f;\n"
                 "}\n"
             )
-            .withExamples({{"modules/vivid-network/examples/osc-control"}});
+            .withExamples({{"examples/osc-control"}});
     }
 
     /// @}

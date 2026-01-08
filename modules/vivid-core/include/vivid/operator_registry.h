@@ -20,6 +20,26 @@
 namespace vivid {
 
 /**
+ * @brief Deduce module name from file path
+ *
+ * Extracts module name from paths like "modules/vivid-audio/include/..."
+ * Returns empty string if not in a module directory.
+ */
+inline std::string deduceModuleFromPath(const char* file) {
+    std::string path(file);
+    // Look for "modules/<module-name>/" pattern
+    auto pos = path.find("modules/");
+    if (pos != std::string::npos) {
+        auto start = pos + 8; // length of "modules/"
+        auto end = path.find('/', start);
+        if (end != std::string::npos) {
+            return path.substr(start, end - start);
+        }
+    }
+    return "";
+}
+
+/**
  * @brief Describes an input method for multi-input operators
  */
 struct InputMeta {
@@ -88,6 +108,15 @@ struct OperatorDescriptor {
     OperatorDescriptor& withInputs(std::vector<InputMeta> i) { inputs = std::move(i); return *this; }
     OperatorDescriptor& withUsage(std::string u) { usage = std::move(u); return *this; }
     OperatorDescriptor& withExamples(std::vector<ExampleMeta> e) { examples = std::move(e); return *this; }
+
+    /// Auto-detect module from file path (called by REGISTER macro with __FILE__)
+    /// Only sets module if not already set (explicit .inModule() takes precedence)
+    OperatorDescriptor& autoModule(const char* file) {
+        if (module.empty()) {
+            module = deduceModuleFromPath(file);
+        }
+        return *this;
+    }
 };
 
 /**
@@ -294,7 +323,7 @@ struct OperatorRegistrar {
  */
 #define REGISTER(Type) \
     static ::vivid::OperatorRegistrar s_reg_##Type{ \
-        Type::describe(), \
+        Type::describe().autoModule(__FILE__), \
         []() -> std::unique_ptr<::vivid::Operator> { return std::make_unique<Type>(); } \
     }; \
     static_assert(true, "")

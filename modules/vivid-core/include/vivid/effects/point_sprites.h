@@ -68,7 +68,7 @@ public:
                 "dots.setAnimate(true);\n"
                 "dots.setAnimateSpeed(0.5f);\n"
             )
-            .withExamples({{"modules/vivid-core/examples/particles"}});
+            .withExamples({{"examples/particles"}});
     }
 
     /// @}

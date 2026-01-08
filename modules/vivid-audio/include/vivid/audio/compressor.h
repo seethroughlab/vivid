@@ -52,7 +52,6 @@ public:
         return OperatorDescriptor("Compressor", "Audio Effects", "Dynamic range compressor")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withAliases({"Comp"})
             .withUsage(
                 "auto& comp = chain.add<Compressor>(\"comp\");\n"
@@ -62,7 +61,7 @@ public:
                 "comp.attack = 10.0f;      // 10ms attack\n"
                 "comp.release = 100.0f;    // 100ms release\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     /// @}

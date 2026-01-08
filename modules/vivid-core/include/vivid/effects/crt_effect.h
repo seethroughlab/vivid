@@ -73,7 +73,7 @@ public:
                 "crt.bloom = 0.1f;        // Phosphor glow\n"
                 "crt.chromatic = 0.02f;   // RGB separation\n"
             )
-            .withExamples({{"modules/vivid-core/examples/retro-crt"}});
+            .withExamples({{"examples/retro-crt"}});
     }
 
     /// @}

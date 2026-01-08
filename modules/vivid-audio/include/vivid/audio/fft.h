@@ -44,7 +44,6 @@ public:
         return OperatorDescriptor("FFT", "Audio Analysis", "Fast Fourier Transform for frequency spectrum")
             .output(OutputKind::Value)
             .requireInput()
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& fft = chain.add<FFT>(\"fft\");\n"
                 "fft.input(\"audio\");\n"
@@ -54,7 +53,7 @@ public:
                 "// In update:\n"
                 "float bass = fft.band(20, 250);  // Get bass energy\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
+            .withExamples({{"examples/audio-reactive"}});
     }
 
     /// @}

@@ -97,7 +97,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("TapeEffect", "Audio Effects", "Analog tape emulation with wow, flutter, hiss, and saturation")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .requireInput()
             .withUsage(R"(auto& tape = chain.add<TapeEffect>("tape");
 tape.input("synth");
@@ -105,7 +104,7 @@ tape.wow = 0.3f;        // Slow pitch drift
 tape.flutter = 0.2f;    // Fast pitch wobble
 tape.saturation = 0.5f; // Warm compression
 tape.hiss = 0.1f;       // Tape noise)")
-            .withExamples({{"modules/vivid-audio/examples/lofi-textures"}});
+            .withExamples({{"examples/lofi-textures"}});
     }
 
     /// @}

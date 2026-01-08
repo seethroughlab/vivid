@@ -49,7 +49,6 @@ public:
         return OperatorDescriptor("Overdrive", "Audio Effects", "Soft-clipping distortion with tone control")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withAliases({"Distortion", "Saturate"})
             .withUsage(
                 "auto& od = chain.add<Overdrive>(\"overdrive\");\n"
@@ -58,7 +57,7 @@ public:
                 "od.tone = 0.6f;    // Slightly bright\n"
                 "od.level = 0.8f;   // Reduce output\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     /// @}

@@ -64,7 +64,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Oscillator", "Audio Synthesis", "Audio-rate oscillator for synthesis")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withAliases({"Osc", "VCO"})
             .withUsage(
                 "auto& osc = chain.add<Oscillator>(\"osc\");\n"
@@ -76,7 +75,7 @@ public:
                 "chain.add<AudioOutput>(\"out\").input(\"osc\");\n"
                 "chain.audioOutput(\"out\");\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
+            .withExamples({{"examples/formant-pad"}});
     }
 
     /// @}

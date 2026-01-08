@@ -50,7 +50,6 @@ public:
         return OperatorDescriptor("Flanger", "Audio Effects", "Flanger effect with LFO modulation")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& flanger = chain.add<Flanger>(\"flanger\");\n"
                 "flanger.input(\"audio\");\n"
@@ -59,7 +58,7 @@ public:
                 "flanger.feedback = 0.5f;  // Moderate feedback\n"
                 "flanger.mix = 0.5f;\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     /// @}

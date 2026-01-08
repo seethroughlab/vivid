@@ -2,24 +2,15 @@
 
 Demonstrates sample playback with three sampler types.
 
-## Sample Requirements
+## Assets
 
-This example needs audio samples in the `assets/` folder:
+Included audio samples:
+- `assets/audio/piano_c4.wav` - Piano note (C4/middle C) for Sampler demo
+- `assets/audio/drums/kick.wav` - Kick drum
+- `assets/audio/drums/snare.wav` - Snare drum
+- `assets/audio/drums/hihat.mp3` - Hi-hat
 
-### For Sampler (Demo 1)
-- `assets/audio/piano_c4.wav` - A single piano note (C4/middle C)
-
-### For SamplePlayer (Demo 2)
-- `assets/audio/drums/` folder containing WAV files:
-  - kick.wav
-  - snare.wav
-  - hihat.wav
-  - clap.wav
-  - etc.
-
-### For MultiSampler (Demo 3)
-- `assets/sample_packs/Piano/preset.json` - A JSON preset file
-- Sample WAV files referenced by the preset
+Note: MultiSampler demo (Demo 3) requires a preset.json file which is not included.
 
 ## Operators Used
 

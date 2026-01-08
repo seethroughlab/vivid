@@ -109,7 +109,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("DirectionalLight", "3D Lighting", "Infinite distance directional light (sun)")
             .output(OutputKind::Light)
-            .inModule("vivid-render3d")
             .withAliases({"Sun", "SunLight"})
             .withUsage(
                 "auto& sun = chain.add<DirectionalLight>(\"sun\");\n"
@@ -118,7 +117,7 @@ public:
                 "sun.intensity = 1.5f;\n"
                 "sun.castShadow(true);\n"
             )
-            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
+            .withExamples({{"examples/3d-basics"}});
     }
 
     /// @}
@@ -254,7 +253,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("PointLight", "3D Lighting", "Omnidirectional point light with falloff")
             .output(OutputKind::Light)
-            .inModule("vivid-render3d")
             .withAliases({"Bulb", "OmniLight"})
             .withUsage(
                 "auto& bulb = chain.add<PointLight>(\"bulb\");\n"
@@ -263,7 +261,7 @@ public:
                 "bulb.intensity = 2.0f;\n"
                 "bulb.range = 15.0f;\n"
             )
-            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
+            .withExamples({{"examples/3d-basics"}});
     }
 
     /// @}
@@ -402,7 +400,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("SpotLight", "3D Lighting", "Cone-shaped spotlight with falloff")
             .output(OutputKind::Light)
-            .inModule("vivid-render3d")
             .withAliases({"Spotlight", "ConeLight"})
             .withUsage(
                 "auto& spot = chain.add<SpotLight>(\"spot\");\n"
@@ -411,7 +408,7 @@ public:
                 "spot.spotAngle = 30.0f;\n"
                 "spot.intensity = 3.0f;\n"
             )
-            .withExamples({{"modules/vivid-render3d/examples/3d-basics"}});
+            .withExamples({{"examples/3d-basics"}});
     }
 
     /// @}

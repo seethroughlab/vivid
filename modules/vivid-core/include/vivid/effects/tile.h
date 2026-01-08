@@ -68,7 +68,7 @@ public:
                 "tile.offset.set(0.25f, 0.0f);\n"
                 "tile.mirror = true;\n"
             )
-            .withExamples({{"modules/vivid-core/examples/tiling-patterns"}});
+            .withExamples({{"examples/tiling-patterns"}});
     }
 
     /// @}

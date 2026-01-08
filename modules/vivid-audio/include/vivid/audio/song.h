@@ -80,7 +80,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Song", "Audio Sampler", "Song structure with sections and arrangement")
             .output(OutputKind::Value)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& song = chain.add<Song>(\"song\");\n"
                 "song.syncTo(\"clock\");\n"
@@ -91,7 +90,7 @@ public:
                 "// In update:\n"
                 "if (song.section() == \"chorus\") { /* intense visuals */ }\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/song-arrangement"}});
+            .withExamples({{"examples/song-arrangement"}});
     }
 
     /// @}

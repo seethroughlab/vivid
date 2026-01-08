@@ -70,7 +70,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Clock", "Audio Sequencing", "Master tempo clock with beat/bar triggers")
             .output(OutputKind::Value)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& clock = chain.add<Clock>(\"clock\");\n"
                 "clock.bpm = 120.0f;\n"
@@ -81,7 +80,11 @@ public:
                 "// In update:\n"
                 "if (clock.triggered()) { kick.trigger(); }\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/euclidean-rhythms"}});
+            .withExamples({
+                {"examples/euclidean-rhythms"},
+                {"examples/drum-machine"},
+                {"examples/drum-synthesis"}
+            });
     }
 
     /// @}

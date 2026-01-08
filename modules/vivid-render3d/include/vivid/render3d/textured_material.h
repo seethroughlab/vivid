@@ -54,7 +54,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("TexturedMaterial", "3D Materials", "PBR material with texture maps")
             .output(OutputKind::Value)
-            .inModule("vivid-render3d")
             .withAliases({"PBRMaterial", "Material"})
             .withUsage(
                 "auto& mat = chain.add<TexturedMaterial>(\"mat\");\n"

@@ -68,7 +68,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Sequencer", "Audio Sequencing", "Step sequencer with pattern and trigger output")
             .output(OutputKind::Value)
-            .inModule("vivid-audio")
             .withAliases({"Seq"})
             .withUsage(
                 "auto& seq = chain.add<Sequencer>(\"seq\");\n"
@@ -82,7 +81,11 @@ public:
                 "    if (seq.triggered()) kick.trigger();\n"
                 "}\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/drum-machine"}});
+            .withExamples({
+                {"examples/drum-machine"},
+                {"examples/drum-synthesis"},
+                {"examples/euclidean-rhythms"}
+            });
     }
 
     /// @}

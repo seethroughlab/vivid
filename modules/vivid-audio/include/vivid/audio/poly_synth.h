@@ -76,7 +76,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("PolySynth", "Audio Synth", "Polyphonic synthesizer with 4-16 voices")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& synth = chain.add<PolySynth>(\"synth\");\n"
                 "synth.waveform(Waveform::Saw);\n"
@@ -89,7 +88,7 @@ public:
                 "synth.noteOn(329.63f);  // E4\n"
                 "synth.noteOn(392.00f);  // G4\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/wavetable-poly"}});
+            .withExamples({{"examples/wavetable-poly"}});
     }
 
     /// @}

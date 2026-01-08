@@ -54,7 +54,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Kick", "Audio Drums", "808-style kick drum with pitch envelope")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& kick = chain.add<Kick>(\"kick\");\n"
                 "kick.pitch = 50.0f;       // Base pitch Hz\n"
@@ -64,7 +63,7 @@ public:
                 "\n"
                 "kick.trigger();  // Play drum\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
+            .withExamples({{"examples/drum-synthesis"}});
     }
 
     /// @}

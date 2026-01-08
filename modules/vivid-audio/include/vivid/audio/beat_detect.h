@@ -47,7 +47,6 @@ public:
         return OperatorDescriptor("BeatDetect", "Audio Analysis", "Beat detection with adaptive threshold")
             .output(OutputKind::Value)
             .requireInput()
-            .inModule("vivid-audio")
             .withAliases({"Beat"})
             .withUsage(
                 "auto& bd = chain.add<BeatDetect>(\"beat\");\n"
@@ -58,7 +57,7 @@ public:
                 "if (bd.beat()) { /* flash on beat */ }\n"
                 "float energy = bd.energy();\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
+            .withExamples({{"examples/audio-reactive"}});
     }
 
     /// @}

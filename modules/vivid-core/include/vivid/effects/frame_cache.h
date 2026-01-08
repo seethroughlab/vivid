@@ -55,7 +55,7 @@ public:
                 "cache.frameCount = 30;  // Frames to store\n"
                 "// Use with TimeMachine for temporal effects\n"
             )
-            .withExamples({{"modules/vivid-core/examples/time-effects"}});
+            .withExamples({{"examples/time-effects"}});
     }
 
     /// @}

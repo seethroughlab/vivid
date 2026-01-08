@@ -76,7 +76,6 @@ public:
         return OperatorDescriptor("InstancedRender3D", "3D Rendering", "GPU-instanced rendering for thousands of meshes")
             .output(OutputKind::Texture)
             .requireInput()
-            .inModule("vivid-render3d")
             .withAliases({"Instanced", "GPUInstancing"})
             .withUsage(
                 "auto& inst = chain.add<InstancedRender3D>(\"inst\");\n"
@@ -87,7 +86,7 @@ public:
                 "std::vector<Instance3D> instances;\n"
                 "inst.setInstances(instances);\n"
             )
-            .withExamples({{"modules/vivid-render3d/examples/instancing"}});
+            .withExamples({{"examples/instancing"}});
     }
 
     Param<float> metallic{"metallic", 0.0f, 0.0f, 1.0f};    ///< Base metallic value

@@ -61,7 +61,7 @@ public:
                 "fb.zoom = 1.01f;      // Scale factor per frame\n"
                 "fb.rotate = 0.02f;    // Rotation per frame (radians)\n"
             )
-            .withExamples({{"modules/vivid-core/examples/feedback"}});
+            .withExamples({{"examples/feedback"}});
     }
 
     /// @}

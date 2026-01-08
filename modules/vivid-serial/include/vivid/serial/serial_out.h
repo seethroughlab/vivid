@@ -42,7 +42,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("SerialOut", "IO", "Serial output for Arduino and other devices")
             .output(OutputKind::Value)
-            .inModule("vivid-serial")
             .withUsage(
                 "auto& arduino = chain.add<SerialOut>(\"arduino\");\n"
                 "arduino.port(\"/dev/tty.usbmodem14201\");  // or \"COM3\" on Windows\n"
@@ -52,7 +51,7 @@ public:
                 "float r = levels.level(0);\n"
                 "arduino.sendCSV({r * 255, g * 255, b * 255});  // \"R,G,B\\n\"\n"
             )
-            .withExamples({{"modules/vivid-serial/examples/arduino-led"}});
+            .withExamples({{"examples/arduino-led"}});
     }
 
     /// @}

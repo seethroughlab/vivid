@@ -68,7 +68,7 @@ public:
                 "crt.intensity = 0.4f;\n"
                 "crt.vertical = false;\n"
             )
-            .withExamples({{"modules/vivid-core/examples/retro-crt"}});
+            .withExamples({{"examples/retro-crt"}});
     }
 
     /// @}

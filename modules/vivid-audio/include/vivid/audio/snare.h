@@ -54,7 +54,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Snare", "Audio Drums", "Snare drum with tone and noise")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& snare = chain.add<Snare>(\"snare\");\n"
                 "snare.tone = 0.4f;         // Tone/body amount\n"
@@ -64,7 +63,7 @@ public:
                 "\n"
                 "snare.trigger();  // Play drum\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
+            .withExamples({{"examples/drum-synthesis"}});
     }
 
     /// @}

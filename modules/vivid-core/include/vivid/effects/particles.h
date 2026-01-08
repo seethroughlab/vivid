@@ -74,7 +74,7 @@ public:
                 "p.emitRate = 100;\n"
                 "p.color.set(1.0f, 0.5f, 0.1f, 1.0f);  // Orange\n"
             )
-            .withExamples({{"modules/vivid-core/examples/particles"}});
+            .withExamples({{"examples/particles"}});
     }
 
     /// @}

@@ -127,7 +127,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("MultiSampler", "Audio Sampler", "Multi-zone sampler with velocity layers and SFZ support")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& piano = chain.add<MultiSampler>(\"piano\");\n"
                 "piano.loadPreset(\"assets/sample_packs/Piano/preset.json\");\n"
@@ -138,7 +137,7 @@ public:
                 "\n"
                 "// See: modules/vivid-audio/examples/sampler-basics/\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/sampler-basics"}});
+            .withExamples({{"examples/sampler-basics"}});
     }
 
     /// @}

@@ -59,7 +59,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("AR", "Audio Envelope", "Attack-release envelope generator")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& env = chain.add<AR>(\"env\");\n"
                 "env.input(\"osc\");\n"
@@ -70,7 +69,7 @@ public:
                 "\n"
                 "// See: modules/vivid-audio/examples/envelope-modulation/\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/envelope-modulation"}});
+            .withExamples({{"examples/envelope-modulation"}});
     }
 
     /// @}

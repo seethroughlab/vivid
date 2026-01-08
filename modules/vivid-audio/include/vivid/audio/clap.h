@@ -50,7 +50,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Clap", "Audio Drums", "Hand clap with multiple noise bursts")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& clap = chain.add<Clap>(\"clap\");\n"
                 "clap.decay = 0.3f;     // Overall decay\n"
@@ -59,7 +58,7 @@ public:
                 "\n"
                 "clap.trigger();  // Play clap\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
+            .withExamples({{"examples/drum-synthesis"}});
     }
 
     /// @}

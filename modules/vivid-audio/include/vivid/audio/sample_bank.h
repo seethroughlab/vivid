@@ -56,7 +56,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("SampleBank", "Audio Sampler", "Load folder of audio samples for triggering")
             .output(OutputKind::Value)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& drums = chain.add<SampleBank>(\"drums\");\n"
                 "drums.setFolder(\"assets/audio/drums\");\n"
@@ -65,7 +64,7 @@ public:
                 "auto& player = chain.add<SamplePlayer>(\"player\");\n"
                 "player.setBank(\"drums\");\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/sample-trigger"}});
+            .withExamples({{"examples/sample-trigger"}});
     }
 
     /// @}

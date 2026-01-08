@@ -240,7 +240,7 @@ public:
                 "canvas.loadFont(ctx, \"assets/font.ttf\", 24);\n"
                 "canvas.fillText(\"Hello\", 20, 30);\n"
             )
-            .withExamples({{"modules/vivid-core/examples/canvas-drawing"}});
+            .withExamples({{"examples/canvas-drawing"}});
     }
 
     /// @}

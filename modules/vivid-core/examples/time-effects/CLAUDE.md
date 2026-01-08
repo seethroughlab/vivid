@@ -2,8 +2,13 @@
 
 Creates slit-scan and temporal displacement effects using frame caching.
 
+## Assets
+
+- `assets/movie.mp4` - Video source with movement (essential for time effects)
+
 ## Operators Used
 
+- **VideoPlayer** - Plays video as texture source (from vivid-video module)
 - **FrameCache** - Stores N frames of history
 - **TimeMachine** - Samples from cache based on grayscale map
 - **Gradient** - Displacement maps for different time effects

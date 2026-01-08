@@ -73,7 +73,7 @@ public:
                 "xform.translate.set(0.0f, 0.0f);\n"
                 "xform.pivot.set(0.5f, 0.5f);  // Center pivot\n"
             )
-            .withExamples({{"modules/vivid-core/examples/tiling-patterns"}});
+            .withExamples({{"examples/tiling-patterns"}});
     }
 
     /// @}

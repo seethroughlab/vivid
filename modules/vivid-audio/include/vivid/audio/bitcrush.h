@@ -47,7 +47,6 @@ public:
         return OperatorDescriptor("Bitcrush", "Audio Effects", "Bit depth and sample rate reduction for lo-fi sound")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withAliases({"Lofi"})
             .withUsage(
                 "auto& bc = chain.add<Bitcrush>(\"bitcrush\");\n"
@@ -56,7 +55,7 @@ public:
                 "bc.targetSampleRate = 8000;   // 8kHz sample rate\n"
                 "bc.mix = 0.5f;\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/lofi-textures"}});
+            .withExamples({{"examples/lofi-textures"}});
     }
 
     /// @}

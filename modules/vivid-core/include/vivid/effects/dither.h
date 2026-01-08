@@ -74,7 +74,7 @@ public:
                 "dither.levels = 4;\n"
                 "dither.strength = 1.0f;\n"
             )
-            .withExamples({{"modules/vivid-core/examples/retro-crt"}});
+            .withExamples({{"examples/retro-crt"}});
     }
 
     /// @}

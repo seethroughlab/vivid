@@ -43,7 +43,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("IBLEnvironment", "3D Lighting", "HDRI environment map for image-based lighting")
             .output(OutputKind::Value)
-            .inModule("vivid-render3d")
             .withAliases({"HDRI", "Skybox", "EnvironmentMap"})
             .withUsage(
                 "auto& ibl = chain.add<IBLEnvironment>(\"ibl\");\n"

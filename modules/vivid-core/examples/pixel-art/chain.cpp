@@ -1,5 +1,5 @@
 // Pixel Art - Vivid Example
-// Demonstrates: Pixelate, Quantize
+// Demonstrates: Pixelate, Quantize, Image
 //
 // Creates a pixel art aesthetic with chunky pixels and limited color palette
 
@@ -13,37 +13,9 @@ using namespace vivid::effects;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Create a vibrant source with smooth gradients
-    // The pixel art effect looks best on colorful, high-detail sources
-    auto& gradient = chain.add<Gradient>("gradient");
-    gradient.mode(GradientMode::Radial);
-    gradient.colorA.set(1.0f, 0.4f, 0.1f, 1.0f);   // Warm orange center
-    gradient.colorB.set(0.1f, 0.2f, 0.8f, 1.0f);   // Cool blue edge
-
-    // Animated shape for visual interest
-    auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Star);
-    shape.sides = 6;
-    shape.size.set(0.35f, 0.35f);
-    shape.softness = 0.1f;
-    shape.color.set(0.2f, 1.0f, 0.4f, 1.0f);  // Bright green
-
-    auto& shape2 = chain.add<Shape>("shape2");
-    shape2.type(ShapeType::Circle);
-    shape2.size.set(0.15f, 0.15f);
-    shape2.position.set(-0.3f, 0.2f);
-    shape2.color.set(1.0f, 0.2f, 0.6f, 1.0f);  // Magenta
-
-    // Composite shapes onto gradient
-    auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA("gradient");
-    comp1.inputB("shape");
-    comp1.mode(BlendMode::Add);
-
-    auto& source = chain.add<Composite>("source");
-    source.inputA("comp1");
-    source.inputB("shape2");
-    source.mode(BlendMode::Add);
+    // Load sprite image - pixel art effects work great on detailed images
+    auto& source = chain.add<Image>("source");
+    source.file = "assets/sprite.png";
 
     // ----- PIXELATE EFFECT -----
     // Creates blocky mosaic pixels - different from Downsample
@@ -85,27 +57,6 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float t = ctx.time();
 
-    // Animate shapes
-    auto& shape = chain.get<Shape>("shape");
-    shape.rotation = t * 0.3f;
-    float pulse = 0.3f + 0.1f * std::sin(t * 1.5f);
-    shape.size.set(pulse, pulse);
-
-    auto& shape2 = chain.get<Shape>("shape2");
-    shape2.position.set(-0.3f + std::sin(t * 0.7f) * 0.15f,
-                        0.2f + std::cos(t * 0.9f) * 0.15f);
-
-    // Animate gradient hue via colors
-    float hueShift = std::fmod(t * 0.1f, 1.0f);
-    auto& gradient = chain.get<Gradient>("gradient");
-    // Shift warm color through spectrum
-    gradient.colorA.set(
-        0.5f + 0.5f * std::sin(hueShift * 6.28f),
-        0.5f + 0.5f * std::sin(hueShift * 6.28f + 2.09f),
-        0.5f + 0.5f * std::sin(hueShift * 6.28f + 4.19f),
-        1.0f
-    );
-
     // Mouse controls pixelation amount
     // X axis: pixel size (4-32)
     float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;  // 0-1
@@ -139,7 +90,7 @@ void update(Context& ctx) {
     int halfH = h / 2;
     int pad = 8;
 
-    auto& source = chain.get<Composite>("source");
+    auto& source = chain.get<Image>("source");
 
     // Top-left: Original
     canvas.drawImage(source, pad, pad, halfW - pad * 2, halfH - pad * 2);

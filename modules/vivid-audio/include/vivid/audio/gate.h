@@ -52,7 +52,6 @@ public:
         return OperatorDescriptor("Gate", "Audio Effects", "Noise gate for reducing background noise")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withAliases({"NoiseGate"})
             .withUsage(
                 "auto& gate = chain.add<Gate>(\"gate\");\n"
@@ -62,7 +61,7 @@ public:
                 "gate.hold = 50.0f;        // 50ms hold\n"
                 "gate.release = 100.0f;    // 100ms release\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     /// @}

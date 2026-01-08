@@ -76,7 +76,7 @@ public:
                 "tm.displacementMap(\"noise\");  // Time offset map\n"
                 "tm.depth = 1.0f;               // How deep into cache\n"
             )
-            .withExamples({{"modules/vivid-core/examples/time-effects"}});
+            .withExamples({{"examples/time-effects"}});
     }
 
     /// @}

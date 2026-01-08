@@ -72,7 +72,7 @@ public:
                 "lowres.targetH = 120;\n"
                 "lowres.filter(FilterMode::Nearest);  // Nearest or Linear\n"
             )
-            .withExamples({{"modules/vivid-core/examples/retro-crt"}});
+            .withExamples({{"examples/retro-crt"}});
     }
 
     /// @}

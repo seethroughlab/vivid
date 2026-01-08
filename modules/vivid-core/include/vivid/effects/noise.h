@@ -63,7 +63,11 @@ public:
                 "noise.speed = 0.5f;\n"
                 "noise.octaves = 4;\n"
             )
-            .withExamples({{"modules/vivid-core/examples/hello-noise"}});
+            .withExamples({
+                {"examples/hello-noise"},
+                {"examples/distortion"},
+                {"examples/feedback"}
+            });
     }
 
     /// @}

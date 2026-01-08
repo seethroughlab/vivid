@@ -71,7 +71,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("SceneComposer", "3D Scene", "Compose meshes and transforms into a renderable scene")
             .output(OutputKind::Geometry)
-            .inModule("vivid-render3d")
             .withAliases({"Scene"})
             .withUsage(
                 "auto& scene = SceneComposer::create(chain, \"scene\");\n"
@@ -80,7 +79,7 @@ public:
                 "\n"
                 "auto& render = chain.add<Render3D>(\"render\").input(&scene);\n"
             )
-            .withExamples({{"modules/vivid-render3d/examples/scene-composition"}});
+            .withExamples({{"examples/scene-composition"}});
     }
 
     /**

@@ -52,7 +52,6 @@ public:
 
     static OperatorDescriptor describe() {
         return OperatorDescriptor("VideoPlayer", "Video Input", "Video playback as texture source")
-            .inModule("vivid-video")
             .withAliases({"Video", "Movie"})
             .withUsage(
                 "auto& video = chain.add<VideoPlayer>(\"video\");\n"
@@ -65,7 +64,7 @@ public:
                 "video.seek(2.5f);  // Seek to 2.5 seconds\n"
                 "video.setSpeed(0.5f);  // Half speed\n"
             )
-            .withExamples({{"modules/vivid-video/examples/video-audio"}});
+            .withExamples({{"examples/video-audio"}});
     }
 
     /// @}

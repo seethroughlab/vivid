@@ -65,7 +65,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("SamplePlayer", "Audio Sampler", "Multi-voice sample player with pitch control")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& player = chain.add<SamplePlayer>(\"player\");\n"
                 "player.setBank(\"drums\");  // Connect to SampleBank\n"
@@ -76,7 +75,7 @@ public:
                 "\n"
                 "// See: modules/vivid-audio/examples/sampler-basics/\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/sampler-basics"}});
+            .withExamples({{"examples/sampler-basics"}});
     }
 
     /// @}

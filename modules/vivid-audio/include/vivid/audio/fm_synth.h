@@ -102,7 +102,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("FMSynth", "Audio Synth", "4-operator FM synthesizer with DX7-style algorithms")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withAliases({"FM"})
             .withUsage(
                 "auto& fm = chain.add<FMSynth>(\"fm\");\n"
@@ -116,7 +115,7 @@ public:
                 "\n"
                 "fm.noteOn(440.0f);  // Play A4\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
+            .withExamples({{"examples/formant-pad"}});
     }
 
     /// @}

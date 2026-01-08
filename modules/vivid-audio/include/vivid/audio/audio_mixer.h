@@ -51,7 +51,6 @@ public:
         return OperatorDescriptor("AudioMixer", "Audio IO", "Mix multiple audio sources with gain control")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withAliases({"Mixer"})
             .withUsage(
                 "auto& mixer = chain.add<AudioMixer>(\"mixer\");\n"
@@ -61,7 +60,7 @@ public:
                 "mixer.setGain(1, 0.8f);\n"
                 "mixer.volume = 0.8f;  // Master volume\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/drum-machine"}});
+            .withExamples({{"examples/drum-machine"}});
     }
 
     /// @}

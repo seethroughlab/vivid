@@ -46,7 +46,7 @@ public:
                 "img.keepCpuData = true;\n"
                 "glm::vec4 color = img.getPixel(100, 100);\n"
             )
-            .withExamples({{"modules/vivid-core/examples/image-pipeline"}});
+            .withExamples({{"examples/image-pipeline"}});
     }
 
     /// @}

@@ -65,7 +65,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Particles3D", "3D Effects", "GPU billboard particle system with physics")
             .output(OutputKind::Texture)
-            .inModule("vivid-render3d")
             .withAliases({"Particles3D", "Billboard"})
             .withUsage(
                 "auto& fire = chain.add<Particles3D>(\"fire\");\n"

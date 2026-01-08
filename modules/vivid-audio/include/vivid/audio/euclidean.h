@@ -69,7 +69,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Euclidean", "Audio Sequencing", "Euclidean rhythm pattern generator")
             .output(OutputKind::Value)
-            .inModule("vivid-audio")
             .withAliases({"Eucl"})
             .withUsage(
                 "auto& eucl = chain.add<Euclidean>(\"eucl\");\n"
@@ -84,7 +83,10 @@ public:
                 "    if (eucl.triggered()) hihat.trigger();\n"
                 "}\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/euclidean-rhythms"}});
+            .withExamples({
+                {"examples/euclidean-rhythms"},
+                {"examples/drum-machine"}
+            });
     }
 
     /// @}

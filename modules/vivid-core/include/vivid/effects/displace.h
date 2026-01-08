@@ -62,7 +62,7 @@ public:
                 "d.map(\"noise\");\n"
                 "d.strength = 0.1f;\n"
             )
-            .withExamples({{"modules/vivid-core/examples/distortion"}});
+            .withExamples({{"examples/distortion"}});
     }
 
     /// @}

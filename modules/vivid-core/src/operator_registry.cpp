@@ -130,6 +130,26 @@ static json operatorMetaToJson(const OperatorMeta& meta) {
             });
         }
     }
+    if (!meta.examples.empty()) {
+        op["examples"] = json::array();
+        for (const auto& ex : meta.examples) {
+            json example;
+            // Resolve module-relative paths to full paths
+            std::string path = ex.path;
+            if (!meta.module.empty() &&
+                path.find("modules/") != 0 &&
+                path.find("projects/") != 0 &&
+                path.find("../") != 0) {
+                // Module-relative path: prepend modules/<module>/
+                path = "modules/" + meta.module + "/" + path;
+            }
+            example["path"] = path;
+            if (!ex.description.empty()) {
+                example["description"] = ex.description;
+            }
+            op["examples"].push_back(example);
+        }
+    }
 
     // Get params by instantiating a temp operator
     op["params"] = json::array();

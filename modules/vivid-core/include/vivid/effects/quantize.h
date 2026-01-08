@@ -58,7 +58,7 @@ public:
                 "quant.input(\"source\");\n"
                 "quant.levels = 4;  // 4 levels = 64 colors (4^3)\n"
             )
-            .withExamples({{"modules/vivid-core/examples/pixel-art"}});
+            .withExamples({{"examples/pixel-art"}});
     }
 
     /// @}

@@ -43,7 +43,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("MidiOut", "MIDI", "Send MIDI output to synths and devices")
             .output(OutputKind::Value)
-            .inModule("vivid-midi")
             .withAliases({"MIDIOutput", "MIDISend"})
             .withUsage(
                 "auto& midi = chain.add<MidiOut>(\"midiOut\");\n"
@@ -55,7 +54,7 @@ public:
                 "midi.sendCC(0, 1, 0.5f);    // Mod wheel to 50%\n"
                 "midi.sendPitchBend(0, 0.5f);  // Pitch bend up\n"
             )
-            .withExamples({{"modules/vivid-midi/examples/midi-sequencer"}});
+            .withExamples({{"examples/midi-sequencer"}});
     }
 
     /// @}

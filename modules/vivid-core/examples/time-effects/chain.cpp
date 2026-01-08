@@ -1,40 +1,25 @@
 // Time Effects - Vivid Example
-// Demonstrates: TimeMachine, FrameCache, Switch
+// Demonstrates: TimeMachine, FrameCache, VideoPlayer
 //
 // Creates slit-scan and temporal displacement effects
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
+#include <vivid/video/video.h>
 #include <cmath>
 
 using namespace vivid;
 using namespace vivid::effects;
+using namespace vivid::video;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Animated source - movement is essential for time effects
-    auto& noise = chain.add<Noise>("noise");
-    noise.scale = 3.0f;
-    noise.speed = 1.0f;
-    noise.octaves = 3;
-    noise.type(NoiseType::Simplex);
-
-    auto& hsv = chain.add<HSV>("hsv");
-    hsv.input("noise");
-    hsv.saturation = 1.5f;
-
-    // Add moving shapes for more interesting time displacement
-    auto& shape = chain.add<Shape>("shape");
-    shape.type(ShapeType::Circle);
-    shape.size.set(0.2f, 0.2f);
-    shape.softness = 0.1f;
-    shape.color.set(1.0f, 1.0f, 1.0f, 1.0f);
-
-    auto& source = chain.add<Composite>("source");
-    source.inputA("hsv");
-    source.inputB("shape");
-    source.mode(BlendMode::Add);
+    // Video source - movement is essential for time effects
+    auto& source = chain.add<VideoPlayer>("source");
+    source.setFile("assets/movie.mp4");
+    source.setLoop(true);
+    source.play();
 
     // ----- FRAME CACHE -----
     // Stores N frames of history for temporal effects
@@ -48,14 +33,14 @@ void setup(Context& ctx) {
     // Vertical gradient: classic slit-scan (horizontal slices from different times)
     auto& gradient_v = chain.add<Gradient>("gradient_v");
     gradient_v.mode(GradientMode::Linear);
-    gradient_v.direction.set(0.0f, 1.0f);  // Bottom to top
+    gradient_v.angle = 1.5708f;  // π/2 = bottom to top
     gradient_v.colorA.set(0.0f, 0.0f, 0.0f, 1.0f);  // Black (old frames)
     gradient_v.colorB.set(1.0f, 1.0f, 1.0f, 1.0f);  // White (new frames)
 
     // Horizontal gradient: vertical slit-scan
     auto& gradient_h = chain.add<Gradient>("gradient_h");
     gradient_h.mode(GradientMode::Linear);
-    gradient_h.direction.set(1.0f, 0.0f);  // Left to right
+    gradient_h.angle = 0.0f;  // 0 = left to right
     gradient_h.colorA.set(0.0f, 0.0f, 0.0f, 1.0f);
     gradient_h.colorB.set(1.0f, 1.0f, 1.0f, 1.0f);
 
@@ -112,19 +97,6 @@ void setup(Context& ctx) {
 void update(Context& ctx) {
     auto& chain = ctx.chain();
     float t = ctx.time();
-
-    // Animate source
-    auto& noise = chain.get<Noise>("noise");
-    noise.scale = 2.5f + std::sin(t * 0.3f) * 1.0f;
-
-    auto& hsv = chain.get<HSV>("hsv");
-    hsv.hueShift = std::fmod(t * 0.05f, 1.0f);
-
-    // Move shape in a circle for clear time displacement
-    auto& shape = chain.get<Shape>("shape");
-    float radius = 0.25f;
-    shape.position.set(std::cos(t * 0.8f) * radius,
-                       std::sin(t * 0.8f) * radius);
 
     // Mouse controls time depth and offset
     float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;  // 0-1

@@ -66,7 +66,7 @@ public:
                 "grain.size = 1.5f;        // Grain size (lower = finer)\n"
                 "grain.colored = 0.3f;     // 0=mono, 1=colored\n"
             )
-            .withExamples({{"modules/vivid-core/examples/creative-effects"}});
+            .withExamples({{"examples/creative-effects"}});
     }
 
     /// @}

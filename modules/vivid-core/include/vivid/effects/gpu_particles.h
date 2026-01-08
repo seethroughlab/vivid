@@ -83,7 +83,7 @@ public:
                 "p.colorStart.set(1.0f, 0.6f, 0.2f, 1.0f);\n"
                 "p.colorEnd.set(1.0f, 0.0f, 0.0f, 0.0f);\n"
             )
-            .withExamples({{"modules/vivid-core/examples/particle-forces"}});
+            .withExamples({{"examples/particle-forces"}});
     }
 
     /// @}

@@ -67,7 +67,7 @@ public:
                 "edges.threshold = 0.1f;\n"
                 "edges.invert = false;\n"
             )
-            .withExamples({{"modules/vivid-core/examples/edge-glow"}});
+            .withExamples({{"examples/edge-glow"}});
     }
 
     /// @}

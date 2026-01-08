@@ -55,14 +55,13 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("NoiseGen", "Audio Synth", "Noise generator (white, pink, brown)")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withAliases({"Noise"})
             .withUsage(
                 "auto& noise = chain.add<NoiseGen>(\"noise\");\n"
                 "noise.setColor(NoiseColor::White);  // White, Pink, or Brown\n"
                 "noise.volume = 0.5f;\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/drum-synthesis"}});
+            .withExamples({{"examples/drum-synthesis"}});
     }
 
     /// @}

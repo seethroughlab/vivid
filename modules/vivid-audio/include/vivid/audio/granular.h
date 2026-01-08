@@ -77,7 +77,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Granular", "Audio Sampler", "Granular synthesizer for time-stretching and texture")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& grain = chain.add<Granular>(\"clouds\");\n"
                 "grain.loadSample(\"assets/audio/texture.wav\");\n"
@@ -87,7 +86,7 @@ public:
                 "grain.pitch = 0.5f;           // Octave down\n"
                 "grain.setFreeze(true);        // Hold position\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/granular-synthesis"}});
+            .withExamples({{"examples/granular-synthesis"}});
     }
 
     /// @}

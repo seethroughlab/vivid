@@ -62,7 +62,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("OscOut", "Network", "Send OSC messages to external software and hardware")
             .output(OutputKind::Value)
-            .inModule("vivid-network")
             .withAliases({"OSCSender", "OSCOutput"})
             .withUsage(
                 "auto& osc = chain.add<OscOut>(\"osc\");\n"
@@ -73,7 +72,7 @@ public:
                 "osc.send(\"/fader/1\", levels.level(0));\n"
                 "osc.send(\"/xy\", mouseX, mouseY);\n"
             )
-            .withExamples({{"modules/vivid-network/examples/osc-control"}});
+            .withExamples({{"examples/osc-control"}});
     }
 
     /// @}

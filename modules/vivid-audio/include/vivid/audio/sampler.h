@@ -69,7 +69,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Sampler", "Audio Sampler", "Sample playback with MIDI triggering")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& sampler = chain.add<Sampler>(\"piano\");\n"
                 "sampler.loadSample(\"assets/piano_c4.wav\");\n"
@@ -82,7 +81,7 @@ public:
                 "\n"
                 "// See: modules/vivid-audio/examples/sampler-basics/\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/sampler-basics"}});
+            .withExamples({{"examples/sampler-basics"}});
     }
 
     /// @}

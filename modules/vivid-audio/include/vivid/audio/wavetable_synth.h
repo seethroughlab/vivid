@@ -109,7 +109,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("WavetableSynth", "Audio Synth", "Polyphonic wavetable synthesizer with morphing timbres")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withAliases({"Wavetable", "WT"})
             .withUsage(
                 "auto& wt = chain.add<WavetableSynth>(\"wt\");\n"
@@ -123,7 +122,7 @@ public:
                 "\n"
                 "wt.noteOn(440.0f);   // Play A4\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/wavetable-poly"}});
+            .withExamples({{"examples/wavetable-poly"}});
     }
 
     /// @}

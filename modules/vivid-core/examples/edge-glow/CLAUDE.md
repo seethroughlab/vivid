@@ -2,13 +2,17 @@
 
 Creates neon outline effects using edge detection and bloom.
 
+## Assets
+
+- `assets/photo.jpg` - High-contrast photo for edge detection
+
 ## Operators Used
 
+- **Image** - Loads source photo from assets
 - **Edge** - Sobel edge detection
 - **Brightness** - Contrast/brightness adjustment
 - **HSV** - Color tinting
 - **Bloom** - Glow effect
-- **Shape** - Source geometry
 - **Composite** - Layer combination
 
 ## Key Concepts

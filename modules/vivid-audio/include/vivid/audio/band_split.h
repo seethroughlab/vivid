@@ -122,7 +122,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("BandSplit", "Audio Analysis", "Split audio into frequency bands (low/mid/high)")
             .output(OutputKind::Value)
-            .inModule("vivid-audio")
             .requireInput()
             .withUsage(R"(chain.add<BandSplit>("bands").input("audio");
 
@@ -130,7 +129,7 @@ public:
 float bass = chain.get<BandSplit>("bands").bass();
 float mids = chain.get<BandSplit>("bands").mid();
 float highs = chain.get<BandSplit>("bands").high();)")
-            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
+            .withExamples({{"examples/audio-reactive"}});
     }
 
     // Custom visualization

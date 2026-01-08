@@ -50,7 +50,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("AudioFile", "Audio IO", "Load and play audio files (WAV)")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& music = chain.add<AudioFile>(\"music\");\n"
                 "music.setFile(\"assets/audio/loop.wav\");\n"
@@ -58,7 +57,7 @@ public:
                 "music.volume = 0.8f;\n"
                 "music.play();\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-reactive"}});
+            .withExamples({{"examples/audio-reactive"}});
     }
 
     /// @}

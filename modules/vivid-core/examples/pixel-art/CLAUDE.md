@@ -2,13 +2,15 @@
 
 Creates pixel art aesthetics with chunky pixels and limited color palettes.
 
+## Assets
+
+- `assets/sprite.png` - Source image for pixel art effects
+
 ## Operators Used
 
+- **Image** - Loads source image from assets
 - **Pixelate** - Creates blocky mosaic pixels (different from Downsample)
 - **Quantize** - Reduces colors per channel (posterization)
-- **Shape** - Animated source geometry
-- **Gradient** - Colorful background
-- **Composite** - Layer combination
 - **Canvas** - 2x2 comparison grid
 
 ## Key Concepts

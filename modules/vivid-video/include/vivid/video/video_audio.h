@@ -49,7 +49,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("VideoAudio", "Video", "Extract audio from VideoPlayer for chain routing")
             .output(OutputKind::Audio)
-            .inModule("vivid-video")
             .withAliases({"VideoSound", "MovieAudio"})
             .withUsage(
                 "chain.add<VideoPlayer>(\"video\").file(\"movie.mov\");\n"
@@ -59,7 +58,7 @@ public:
                 "chain.output(\"video\");       // Visual\n"
                 "chain.audioOutput(\"out\");    // Audio\n"
             )
-            .withExamples({{"modules/vivid-video/examples/video-audio"}});
+            .withExamples({{"examples/video-audio"}});
     }
 
     /// @}

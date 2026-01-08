@@ -47,7 +47,6 @@ public:
         return OperatorDescriptor("Delay", "Audio Effects", "Delay effect with feedback and ping-pong mode")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& delay = chain.add<Delay>(\"delay\");\n"
                 "delay.input(\"audio\");\n"
@@ -55,7 +54,7 @@ public:
                 "delay.feedback = 0.4f;     // Moderate feedback\n"
                 "delay.mix = 0.3f;          // 30% wet\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     /// @}

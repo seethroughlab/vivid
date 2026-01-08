@@ -53,7 +53,7 @@ public:
                 "auto& bg = chain.add<SolidColor>(\"bg\");\n"
                 "bg.color.set(0.1f, 0.1f, 0.2f, 1.0f);  // Dark blue\n"
             )
-            .withExamples({{"modules/vivid-core/examples/generators"}});
+            .withExamples({{"examples/generators"}});
     }
 
     /// @}

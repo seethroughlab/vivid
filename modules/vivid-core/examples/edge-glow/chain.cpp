@@ -1,5 +1,5 @@
 // Edge Glow - Vivid Example
-// Demonstrates: Edge, Brightness, Math, Bloom
+// Demonstrates: Edge, Brightness, HSV, Bloom, Image
 //
 // Creates neon outline effects using edge detection
 
@@ -13,48 +13,9 @@ using namespace vivid::effects;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Create interesting geometry for edge detection
-    auto& bg = chain.add<SolidColor>("bg");
-    bg.color.set(0.02f, 0.02f, 0.05f, 1.0f);  // Near black
-
-    // Multiple shapes for complex edges
-    auto& shape1 = chain.add<Shape>("shape1");
-    shape1.type(ShapeType::Star);
-    shape1.sides = 5;
-    shape1.size.set(0.3f, 0.3f);
-    shape1.softness = 0.02f;
-    shape1.color.set(0.4f, 0.4f, 0.4f, 1.0f);
-
-    auto& shape2 = chain.add<Shape>("shape2");
-    shape2.type(ShapeType::Polygon);
-    shape2.sides = 6;
-    shape2.size.set(0.2f, 0.2f);
-    shape2.position.set(-0.25f, 0.15f);
-    shape2.softness = 0.02f;
-    shape2.color.set(0.5f, 0.5f, 0.5f, 1.0f);
-
-    auto& shape3 = chain.add<Shape>("shape3");
-    shape3.type(ShapeType::Circle);
-    shape3.size.set(0.15f, 0.15f);
-    shape3.position.set(0.25f, -0.15f);
-    shape3.softness = 0.05f;  // Softer for gradient edges
-    shape3.color.set(0.6f, 0.6f, 0.6f, 1.0f);
-
-    // Composite shapes onto background
-    auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA("bg");
-    comp1.inputB("shape1");
-    comp1.mode(BlendMode::Add);
-
-    auto& comp2 = chain.add<Composite>("comp2");
-    comp2.inputA("comp1");
-    comp2.inputB("shape2");
-    comp2.mode(BlendMode::Add);
-
-    auto& source = chain.add<Composite>("source");
-    source.inputA("comp2");
-    source.inputB("shape3");
-    source.mode(BlendMode::Add);
+    // Load photo - edge detection works great on high-contrast images
+    auto& source = chain.add<Image>("source");
+    source.file = "assets/photo.jpg";
 
     // ----- EDGE DETECTION -----
     // Sobel operator detects edges (gradients) in the image
@@ -115,21 +76,6 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float t = ctx.time();
 
-    // Animate shapes
-    auto& shape1 = chain.get<Shape>("shape1");
-    shape1.rotation = t * 0.2f;
-    float pulse1 = 0.25f + 0.08f * std::sin(t * 1.2f);
-    shape1.size.set(pulse1, pulse1);
-
-    auto& shape2 = chain.get<Shape>("shape2");
-    shape2.rotation = -t * 0.3f;
-    shape2.position.set(-0.25f + std::sin(t * 0.5f) * 0.1f,
-                        0.15f + std::cos(t * 0.7f) * 0.1f);
-
-    auto& shape3 = chain.get<Shape>("shape3");
-    shape3.position.set(0.25f + std::cos(t * 0.6f) * 0.12f,
-                        -0.15f + std::sin(t * 0.8f) * 0.12f);
-
     // Mouse controls edge parameters
     float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;  // 0-1
     float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;  // 0-1
@@ -167,7 +113,7 @@ void update(Context& ctx) {
     int halfH = h / 2;
     int pad = 8;
 
-    auto& source = chain.get<Composite>("source");
+    auto& source = chain.get<Image>("source");
     auto& final_comp = chain.get<Composite>("final");
 
     // Top-left: Original

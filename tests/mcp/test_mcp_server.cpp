@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <signal.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
 #endif
 
 using json = nlohmann::json;
@@ -427,4 +428,282 @@ TEST_CASE("MCP search_docs tool returns results", "[mcp]") {
         // Should contain something related to noise
         REQUIRE(!content.empty());
     }
+}
+
+// -----------------------------------------------------------------------------
+// Operator Metadata Validation Tests
+// -----------------------------------------------------------------------------
+
+// Helper to get vivid root directory (parent of build/bin)
+static std::string getVividRoot() {
+    std::string path = getVividPath();
+    // Go up from build/bin/vivid to project root
+    auto pos = path.rfind("/build/");
+    if (pos != std::string::npos) {
+        return path.substr(0, pos);
+    }
+    // Fallback - try relative path
+    return ".";
+}
+
+// Helper to check if directory exists
+static bool directoryExists(const std::string& path) {
+#ifdef _WIN32
+    DWORD attrib = GetFileAttributesA(path.c_str());
+    return (attrib != INVALID_FILE_ATTRIBUTES && (attrib & FILE_ATTRIBUTE_DIRECTORY));
+#else
+    struct stat st;
+    return stat(path.c_str(), &st) == 0 && S_ISDIR(st.st_mode);
+#endif
+}
+
+TEST_CASE("MCP operator examples exist", "[mcp][metadata]") {
+    McpClient client;
+
+    // Initialize
+    json initParams;
+    initParams["protocolVersion"] = "2024-11-05";
+    initParams["capabilities"] = json::object();
+    initParams["clientInfo"] = {{"name", "test-client"}, {"version", "1.0.0"}};
+    client.sendRequest("initialize", initParams);
+    client.sendNotification("notifications/initialized", {});
+
+    // Get list of operators (grouped format)
+    json params;
+    params["name"] = "list_operators";
+    params["arguments"] = json::object();
+
+    json response = client.sendRequest("tools/call", params, 10000);
+    REQUIRE(response.contains("result"));
+    REQUIRE(response["result"]["content"].size() > 0);
+
+    std::string content = response["result"]["content"][0]["text"];
+    json operators = json::parse(content);
+
+    std::string root = getVividRoot();
+    std::vector<std::string> missingExamples;
+
+    // Iterate through all categories
+    for (auto& [category, ops] : operators.items()) {
+        for (const auto& op : ops) {
+            if (!op.contains("examples")) continue;
+
+            std::string opName = op["name"];
+            for (const auto& ex : op["examples"]) {
+                std::string exPath = ex["path"];
+                std::string fullPath = root + "/" + exPath;
+
+                if (!directoryExists(fullPath)) {
+                    missingExamples.push_back(opName + ": " + exPath);
+                }
+            }
+        }
+    }
+
+    // Report all missing examples
+    if (!missingExamples.empty()) {
+        std::string msg = "Missing example directories:\n";
+        for (const auto& missing : missingExamples) {
+            msg += "  - " + missing + "\n";
+        }
+        INFO(msg);
+    }
+    REQUIRE(missingExamples.empty());
+}
+
+TEST_CASE("MCP operator inputs/outputs metadata is valid", "[mcp][metadata]") {
+    McpClient client;
+
+    // Initialize
+    json initParams;
+    initParams["protocolVersion"] = "2024-11-05";
+    initParams["capabilities"] = json::object();
+    initParams["clientInfo"] = {{"name", "test-client"}, {"version", "1.0.0"}};
+    client.sendRequest("initialize", initParams);
+    client.sendNotification("notifications/initialized", {});
+
+    // Get detailed info for a few key operators
+    std::vector<std::string> testOps = {"Bloom", "Noise", "Composite", "Clock", "Render3D"};
+    std::vector<std::string> errors;
+
+    for (const auto& opName : testOps) {
+        json params;
+        params["name"] = "get_operator";
+        params["arguments"] = {{"name", opName}};
+
+        json response = client.sendRequest("tools/call", params, 5000);
+
+        if (!response.contains("result") || response["result"]["isError"].get<bool>()) {
+            errors.push_back(opName + ": failed to get operator info");
+            continue;
+        }
+
+        std::string content = response["result"]["content"][0]["text"];
+        json info = json::parse(content);
+
+        // Validate required fields exist
+        if (!info.contains("name")) {
+            errors.push_back(opName + ": missing 'name' field");
+        }
+        if (!info.contains("category")) {
+            errors.push_back(opName + ": missing 'category' field");
+        }
+        if (!info.contains("outputType")) {
+            errors.push_back(opName + ": missing 'outputType' field");
+        }
+
+        // Validate outputType is a known type
+        if (info.contains("outputType")) {
+            std::string outType = info["outputType"];
+            std::vector<std::string> validTypes = {
+                "Texture", "Audio", "Value", "Geometry", "Camera", "Light", "None"
+            };
+            bool validOutput = std::find(validTypes.begin(), validTypes.end(), outType) != validTypes.end();
+            if (!validOutput) {
+                errors.push_back(opName + ": invalid outputType '" + outType + "'");
+            }
+        }
+
+        // Validate requiresInput consistency with inputs
+        if (info.contains("requiresInput") && info["requiresInput"].get<bool>()) {
+            // If requiresInput is true, usage should mention input() or have inputs defined
+            bool hasInputMethod = false;
+            if (info.contains("usage")) {
+                std::string usage = info["usage"];
+                hasInputMethod = usage.find("input(") != std::string::npos ||
+                                 usage.find("inputA(") != std::string::npos ||
+                                 usage.find("source(") != std::string::npos ||
+                                 usage.find("setInput(") != std::string::npos ||
+                                 usage.find("setCameraInput(") != std::string::npos;
+            }
+            if (info.contains("inputs") && !info["inputs"].empty()) {
+                hasInputMethod = true;
+            }
+            if (!hasInputMethod) {
+                errors.push_back(opName + ": requiresInput=true but no input method in usage/inputs");
+            }
+        }
+
+        // Validate params have required fields
+        if (info.contains("params")) {
+            for (const auto& param : info["params"]) {
+                if (!param.contains("name")) {
+                    errors.push_back(opName + ": param missing 'name' field");
+                }
+                if (!param.contains("type")) {
+                    errors.push_back(opName + ": param '" + param.value("name", "?") + "' missing 'type' field");
+                }
+            }
+        }
+    }
+
+    // Report all errors
+    if (!errors.empty()) {
+        std::string msg = "Metadata validation errors:\n";
+        for (const auto& err : errors) {
+            msg += "  - " + err + "\n";
+        }
+        INFO(msg);
+    }
+    REQUIRE(errors.empty());
+}
+
+TEST_CASE("MCP operator usage examples have valid syntax", "[mcp][metadata]") {
+    McpClient client;
+
+    // Initialize
+    json initParams;
+    initParams["protocolVersion"] = "2024-11-05";
+    initParams["capabilities"] = json::object();
+    initParams["clientInfo"] = {{"name", "test-client"}, {"version", "1.0.0"}};
+    client.sendRequest("initialize", initParams);
+    client.sendNotification("notifications/initialized", {});
+
+    // Get list of all operators
+    json params;
+    params["name"] = "list_operators";
+    params["arguments"] = {{"verbose", true}};
+
+    json response = client.sendRequest("tools/call", params, 10000);
+    REQUIRE(response.contains("result"));
+
+    std::string content = response["result"]["content"][0]["text"];
+    json operators = json::parse(content);
+
+    std::vector<std::string> usageErrors;
+
+    // Check usage syntax for all operators
+    for (auto& [category, ops] : operators.items()) {
+        for (const auto& op : ops) {
+            std::string opName = op["name"];
+
+            if (!op.contains("usage")) continue;
+            std::string usage = op["usage"];
+
+            // Check for common syntax issues
+            // 1. Unbalanced quotes
+            int doubleQuotes = std::count(usage.begin(), usage.end(), '"');
+            if (doubleQuotes % 2 != 0) {
+                usageErrors.push_back(opName + ": unbalanced double quotes in usage");
+            }
+
+            // 2. Unbalanced parentheses
+            int openParens = std::count(usage.begin(), usage.end(), '(');
+            int closeParens = std::count(usage.begin(), usage.end(), ')');
+            if (openParens != closeParens) {
+                usageErrors.push_back(opName + ": unbalanced parentheses in usage (" +
+                                      std::to_string(openParens) + " open, " +
+                                      std::to_string(closeParens) + " close)");
+            }
+
+            // 3. Unbalanced braces
+            int openBraces = std::count(usage.begin(), usage.end(), '{');
+            int closeBraces = std::count(usage.begin(), usage.end(), '}');
+            if (openBraces != closeBraces) {
+                usageErrors.push_back(opName + ": unbalanced braces in usage");
+            }
+
+            // 4. Should reference the operator name
+            if (usage.find(opName) == std::string::npos) {
+                // Check for aliases or common variations
+                bool foundRef = false;
+                if (op.contains("aliases")) {
+                    for (const auto& alias : op["aliases"]) {
+                        if (usage.find(alias.get<std::string>()) != std::string::npos) {
+                            foundRef = true;
+                            break;
+                        }
+                    }
+                }
+                if (!foundRef) {
+                    usageErrors.push_back(opName + ": usage doesn't reference operator name");
+                }
+            }
+
+            // 5. Should have chain.add or similar pattern
+            bool hasAddPattern = usage.find("chain.add<") != std::string::npos ||
+                                 usage.find("add<") != std::string::npos;
+            if (!hasAddPattern) {
+                usageErrors.push_back(opName + ": usage missing chain.add<> pattern");
+            }
+        }
+    }
+
+    // Report all errors (but don't fail for minor issues)
+    if (!usageErrors.empty()) {
+        std::string msg = "Usage syntax issues found:\n";
+        for (const auto& err : usageErrors) {
+            msg += "  - " + err + "\n";
+        }
+        INFO(msg);
+    }
+
+    // Only fail for critical issues (unbalanced quotes/parens)
+    int criticalErrors = 0;
+    for (const auto& err : usageErrors) {
+        if (err.find("unbalanced") != std::string::npos) {
+            criticalErrors++;
+        }
+    }
+    REQUIRE(criticalErrors == 0);
 }

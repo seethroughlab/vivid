@@ -46,14 +46,13 @@ public:
         return OperatorDescriptor("Limiter", "Audio Effects", "Brick-wall limiter for preventing clipping")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& lim = chain.add<Limiter>(\"limiter\");\n"
                 "lim.input(\"audio\");\n"
                 "lim.ceiling = -0.3f;   // Limit to -0.3dB\n"
                 "lim.release = 100.0f;  // 100ms release\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     /// @}

@@ -135,14 +135,13 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Formant", "Audio Effects", "Vowel formant filter for vocal synthesis")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .requireInput()
             .withUsage(R"(auto& formant = chain.add<Formant>("formant");
 formant.input("osc");
 formant.setVowel(Vowel::A);
 formant.resonance = 8.0f;
 formant.morph = 0.5f;  // Morph between vowels)")
-            .withExamples({{"modules/vivid-audio/examples/formant-pad"}});
+            .withExamples({{"examples/formant-pad"}});
     }
 
     /// @}

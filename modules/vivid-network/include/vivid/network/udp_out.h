@@ -54,7 +54,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("UdpOut", "Network", "Send raw UDP packets for hardware control and Artnet")
             .output(OutputKind::Value)
-            .inModule("vivid-network")
             .withAliases({"UDPSender", "UDPOutput", "Artnet"})
             .withUsage(
                 "auto& udp = chain.add<UdpOut>(\"lights\");\n"
@@ -66,7 +65,7 @@ public:
                 "dmxData[0] = static_cast<uint8_t>(levels.level(0) * 255);\n"
                 "udp.send(dmxData);\n"
             )
-            .withExamples({{"modules/vivid-network/examples/udp-receiver"}});
+            .withExamples({{"examples/udp-receiver"}});
     }
 
     /// @}

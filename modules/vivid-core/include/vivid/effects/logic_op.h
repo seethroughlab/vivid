@@ -82,7 +82,7 @@ public:
                 "cmp.inputB = 0.5f;\n"
                 "if (cmp.result()) { /* triggered */ }\n"
             )
-            .withExamples({{"modules/vivid-core/examples/conditional-routing"}});
+            .withExamples({{"examples/conditional-routing"}});
     }
 
     /// @}

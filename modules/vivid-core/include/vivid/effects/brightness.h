@@ -58,7 +58,7 @@ public:
                 "bc.contrast = 1.2f;    // Multiplier\n"
                 "bc.gamma = 0.9f;       // Gamma correction\n"
             )
-            .withExamples({{"modules/vivid-core/examples/edge-glow"}});
+            .withExamples({{"examples/edge-glow"}});
     }
 
     /// @}

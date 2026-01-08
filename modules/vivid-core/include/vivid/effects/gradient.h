@@ -84,7 +84,7 @@ public:
                 "grad.colorA.set(1, 0, 0, 1);      // Red\n"
                 "grad.colorB.set(0, 0, 1, 1);      // Blue\n"
             )
-            .withExamples({{"modules/vivid-core/examples/generators"}});
+            .withExamples({{"examples/generators"}});
     }
 
     /// @}

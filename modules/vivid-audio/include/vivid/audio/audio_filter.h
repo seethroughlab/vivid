@@ -104,14 +104,13 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("AudioFilter", "Audio Effects", "Biquad filter (lowpass, highpass, bandpass)")
             .output(OutputKind::Audio)
-            .inModule("vivid-audio")
             .requireInput()
             .withUsage(R"(auto& filter = chain.add<AudioFilter>("filter");
 filter.input("noise");
 filter.setType(FilterType::Lowpass);
 filter.cutoff = 2000.0f;
 filter.resonance = 2.0f;)")
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     // Custom visualization

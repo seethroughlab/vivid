@@ -62,7 +62,6 @@ public:
         return OperatorDescriptor("Fog", "3D Post-Processing", "Depth-based atmospheric fog effect")
             .output(OutputKind::Texture)
             .requireInput()
-            .inModule("vivid-render3d")
             .withAliases({"AtmosphericFog", "DistanceFog"})
             .withUsage(
                 "auto& fog = chain.add<Fog>(\"fog\");\n"

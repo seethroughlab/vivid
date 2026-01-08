@@ -42,7 +42,6 @@ public:
     static OperatorDescriptor describe() {
         return OperatorDescriptor("DMXOut", "IO", "DMX lighting output via Enttec USB Pro")
             .output(OutputKind::Value)
-            .inModule("vivid-serial")
             .withAliases({"DMX", "Lighting", "Enttec"})
             .withUsage(
                 "auto& dmx = chain.add<DMXOut>(\"dmx\");\n"
@@ -55,7 +54,7 @@ public:
                 "float bass = fft.band(0);\n"
                 "dmx.channel(1, static_cast<uint8_t>(bass * 255));\n"
             )
-            .withExamples({{"modules/vivid-serial/examples/dmx-lighting"}});
+            .withExamples({{"examples/dmx-lighting"}});
     }
 
     /// @}

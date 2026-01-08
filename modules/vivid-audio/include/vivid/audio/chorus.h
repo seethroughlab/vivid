@@ -50,7 +50,6 @@ public:
         return OperatorDescriptor("Chorus", "Audio Effects", "Chorus effect with multiple voices")
             .output(OutputKind::Audio)
             .requireInput()
-            .inModule("vivid-audio")
             .withUsage(
                 "auto& chorus = chain.add<Chorus>(\"chorus\");\n"
                 "chorus.input(\"audio\");\n"
@@ -59,7 +58,7 @@ public:
                 "chorus.voices = 2;     // 2 voices\n"
                 "chorus.mix = 0.5f;\n"
             )
-            .withExamples({{"modules/vivid-audio/examples/audio-effects"}});
+            .withExamples({{"examples/audio-effects"}});
     }
 
     /// @}
