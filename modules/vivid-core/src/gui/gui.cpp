@@ -7,6 +7,49 @@
 #include <algorithm>
 #include <cmath>
 
+namespace {
+
+// RGB (0-1) to HSV (H: 0-360, S: 0-1, V: 0-1)
+void rgbToHsv(float r, float g, float b, float& h, float& s, float& v) {
+    float maxVal = std::max({r, g, b});
+    float minVal = std::min({r, g, b});
+    float delta = maxVal - minVal;
+
+    v = maxVal;
+    s = (maxVal > 0.0001f) ? (delta / maxVal) : 0.0f;
+
+    if (delta < 0.0001f) {
+        h = 0.0f;
+    } else if (maxVal == r) {
+        h = 60.0f * std::fmod((g - b) / delta + 6.0f, 6.0f);
+    } else if (maxVal == g) {
+        h = 60.0f * ((b - r) / delta + 2.0f);
+    } else {
+        h = 60.0f * ((r - g) / delta + 4.0f);
+    }
+}
+
+// HSV (H: 0-360, S: 0-1, V: 0-1) to RGB (0-1)
+void hsvToRgb(float h, float s, float v, float& r, float& g, float& b) {
+    float c = v * s;
+    float x = c * (1.0f - std::abs(std::fmod(h / 60.0f, 2.0f) - 1.0f));
+    float m = v - c;
+
+    float rp, gp, bp;
+    if (h < 60.0f)       { rp = c; gp = x; bp = 0; }
+    else if (h < 120.0f) { rp = x; gp = c; bp = 0; }
+    else if (h < 180.0f) { rp = 0; gp = c; bp = x; }
+    else if (h < 240.0f) { rp = 0; gp = x; bp = c; }
+    else if (h < 300.0f) { rp = x; gp = 0; bp = c; }
+    else                 { rp = c; gp = 0; bp = x; }
+
+    r = rp + m;
+    g = gp + m;
+    b = bp + m;
+}
+
+} // anonymous namespace
+
 namespace vivid {
 
 // Static interaction state (persists across frames)
@@ -717,6 +760,757 @@ bool Gui::isLastWidgetVisible() const {
     // Widget is visible if it overlaps with visible region
     return m_lastWidgetBottom > m_scrollArea.visibleTop &&
            m_lastWidgetTop < m_scrollArea.visibleBottom;
+}
+
+// -------------------------------------------------------------------------
+// Color Picker HSV
+// -------------------------------------------------------------------------
+
+Gui::ColorPickerResult Gui::colorPickerHSV(const char* label, glm::vec4* color, bool* expanded) {
+    ColorPickerResult result;
+    if (!m_inPanel || !color || !expanded) return result;
+
+    const float x = m_panel.x + m_style.padding;
+    float y = m_panel.cursorY;
+    const float w = contentWidth();
+
+    uint32_t id = hashId(label);
+
+    // Swatch dimensions
+    const float swatchHeight = m_style.widgetHeight;
+    const float swatchWidth = 50.0f;
+
+    // Track widget bounds for visibility
+    m_lastWidgetTop = y;
+    m_lastWidgetBottom = y + swatchHeight;
+
+    // Label
+    drawLabel(x, y, label);
+    y += m_canvas.fontLineHeight(0) + 2.0f;
+
+    // Color swatch with checkerboard alpha preview
+    float swatchX = x;
+    float swatchY = y;
+
+    // Draw checkerboard pattern for alpha visualization
+    float checkSize = 6.0f;
+    glm::vec4 checkLight = {0.7f, 0.7f, 0.7f, 1.0f};
+    glm::vec4 checkDark = {0.4f, 0.4f, 0.4f, 1.0f};
+    for (float cx = swatchX; cx < swatchX + swatchWidth; cx += checkSize) {
+        for (float cy = swatchY; cy < swatchY + swatchHeight; cy += checkSize) {
+            int xi = static_cast<int>((cx - swatchX) / checkSize);
+            int yi = static_cast<int>((cy - swatchY) / checkSize);
+            bool dark = (xi + yi) % 2 == 0;
+            float cw = std::min(checkSize, swatchX + swatchWidth - cx);
+            float ch = std::min(checkSize, swatchY + swatchHeight - cy);
+            m_canvas.fillRect(cx, cy, cw, ch, dark ? checkDark : checkLight);
+        }
+    }
+
+    // Draw color on top
+    m_canvas.fillRoundedRect(swatchX, swatchY, swatchWidth, swatchHeight,
+                             m_style.cornerRadius, *color);
+    m_canvas.strokeRoundedRect(swatchX, swatchY, swatchWidth, swatchHeight,
+                               m_style.cornerRadius, m_style.borderWidth, m_style.widgetBorder);
+
+    // Hex value display
+    char hexBuf[16];
+    int ri = static_cast<int>(std::round(color->r * 255.0f));
+    int gi = static_cast<int>(std::round(color->g * 255.0f));
+    int bi = static_cast<int>(std::round(color->b * 255.0f));
+    ri = std::clamp(ri, 0, 255);
+    gi = std::clamp(gi, 0, 255);
+    bi = std::clamp(bi, 0, 255);
+    snprintf(hexBuf, sizeof(hexBuf), "#%02X%02X%02X", ri, gi, bi);
+    m_canvas.text(hexBuf, swatchX + swatchWidth + 8.0f, swatchY + m_canvas.fontAscent(0),
+                  m_style.text, 0);
+
+    // Expand/collapse arrow
+    const char* arrow = *expanded ? "▲" : "▼";
+    m_canvas.text(arrow, x + w - 20.0f, swatchY + m_canvas.fontAscent(0), m_style.textDim, 0);
+
+    // Handle click on swatch area to expand/collapse
+    bool inSwatch = isMouseInRect(swatchX, swatchY, w, swatchHeight);
+    if (m_mouseClicked && inSwatch) {
+        *expanded = !*expanded;
+    }
+
+    float totalHeight = swatchHeight + m_canvas.fontLineHeight(0) + 4.0f;
+
+    // If expanded, show H/S/V/A sliders
+    if (*expanded) {
+        float sliderY = swatchY + swatchHeight + m_style.spacing;
+        const float sliderHeight = m_style.widgetHeight;
+        const float sliderWidth = w - m_style.valueWidth - m_style.padding;
+
+        // Convert RGB to HSV
+        float h, s, v;
+        rgbToHsv(color->r, color->g, color->b, h, s, v);
+
+        const char* hsvLabels[] = {"H", "S", "V", "A"};
+        float hsvValues[] = {h / 360.0f, s, v, color->a};
+
+        for (int c = 0; c < 4; ++c) {
+            uint32_t sliderId = id + c + 1;  // Unique ID for each slider
+
+            // Label
+            m_canvas.text(hsvLabels[c], x, sliderY + m_canvas.fontAscent(0), m_style.textDim, 0);
+
+            float barX = x;
+            float barY = sliderY + m_canvas.fontLineHeight(0) + 2.0f;
+
+            // Slider background
+            m_canvas.fillRoundedRect(barX, barY, sliderWidth, sliderHeight,
+                                     m_style.cornerRadius, m_style.widgetBackground);
+
+            // For Hue slider, draw rainbow gradient
+            if (c == 0) {
+                float gradW = sliderWidth / 6.0f;
+                for (int i = 0; i < 6; ++i) {
+                    float hStart = i * 60.0f;
+                    float r1, g1, b1;
+                    hsvToRgb(hStart, 1.0f, 1.0f, r1, g1, b1);
+                    glm::vec4 hueColor = {r1, g1, b1, 1.0f};
+                    m_canvas.fillRect(barX + i * gradW, barY, gradW + 1.0f, sliderHeight, hueColor);
+                }
+            } else {
+                // Fill based on normalized value
+                float fillWidth = hsvValues[c] * sliderWidth;
+                if (fillWidth > 0) {
+                    bool isActive = s_state.activeColorSlider == sliderId;
+                    glm::vec4 fillColor = isActive ? m_style.sliderFillActive : m_style.sliderFill;
+                    m_canvas.fillRoundedRect(barX, barY, fillWidth, sliderHeight,
+                                             m_style.cornerRadius, fillColor);
+                }
+            }
+
+            // Value display
+            char valBuf[16];
+            if (c == 0) {
+                snprintf(valBuf, sizeof(valBuf), "%.0f°", h);
+            } else if (c == 3) {
+                snprintf(valBuf, sizeof(valBuf), "%.0f%%", color->a * 100.0f);
+            } else {
+                snprintf(valBuf, sizeof(valBuf), "%.0f%%", hsvValues[c] * 100.0f);
+            }
+            m_canvas.text(valBuf, barX + sliderWidth + 8.0f, barY + m_canvas.fontAscent(0),
+                          m_style.text, 0);
+
+            // Handle slider interaction
+            bool inSlider = isMouseInRect(barX, barY, sliderWidth, sliderHeight);
+
+            // Start drag
+            if (m_mouseClicked && inSlider) {
+                s_state.activeColorSlider = sliderId;
+                s_state.colorStartValue = *color;
+                result.dragStarted = true;
+                result.startColor = *color;
+            }
+
+            // Continue drag
+            if (s_state.activeColorSlider == sliderId) {
+                float newNormalized = (m_mousePos.x - barX) / sliderWidth;
+                newNormalized = std::clamp(newNormalized, 0.0f, 1.0f);
+
+                // Update HSV value and convert back to RGB
+                float newH = h, newS = s, newV = v, newA = color->a;
+                if (c == 0) newH = newNormalized * 360.0f;
+                else if (c == 1) newS = newNormalized;
+                else if (c == 2) newV = newNormalized;
+                else newA = newNormalized;
+
+                float newR, newG, newB;
+                hsvToRgb(newH, newS, newV, newR, newG, newB);
+
+                color->r = newR;
+                color->g = newG;
+                color->b = newB;
+                color->a = newA;
+                result.changed = true;
+
+                // End drag
+                if (m_mouseReleased) {
+                    s_state.activeColorSlider = 0;
+                    result.dragEnded = true;
+                    result.startColor = s_state.colorStartValue;
+                    m_colorDragEnded = true;
+                    m_lastColorDragId = sliderId;
+                }
+            }
+
+            sliderY += m_canvas.fontLineHeight(0) + sliderHeight + m_style.spacing + 4.0f;
+        }
+
+        totalHeight = sliderY - swatchY;
+    }
+
+    advanceCursor(totalHeight + m_style.spacing);
+    return result;
+}
+
+// -------------------------------------------------------------------------
+// XY Pad
+// -------------------------------------------------------------------------
+
+Gui::XYPadResult Gui::xyPad(const char* label, glm::vec2* value, float min, float max, float size) {
+    return xyPadEx(label, value, min, max, min, max, size);
+}
+
+Gui::XYPadResult Gui::xyPadEx(const char* label, glm::vec2* value,
+                               float minX, float maxX, float minY, float maxY, float size) {
+    XYPadResult result;
+    if (!m_inPanel || !value) return result;
+
+    uint32_t id = hashId(label);
+    float x = m_panel.x + m_style.padding;
+    float y = m_panel.cursorY;
+    float w = contentWidth();
+
+    // Label height
+    float labelH = m_canvas.fontLineHeight(0);
+    if (labelH <= 0) labelH = 16.0f;
+
+    // Pad size: default to widgetHeight * 3.5 or 60% of width, whichever is smaller
+    float padSize = size > 0 ? size : std::min(m_style.widgetHeight * 2.5f, w * 0.6f);
+
+    // Layout positions
+    float padX = x;
+    float padY = y + labelH + 4.0f;
+
+    // Value display area (to the right of pad)
+    float valueDisplayX = padX + padSize + m_style.padding;
+
+    // Total height
+    float totalHeight = labelH + 4.0f + padSize;
+
+    // Track widget bounds
+    m_lastWidgetTop = y;
+    m_lastWidgetBottom = y + totalHeight;
+
+    // Draw label
+    float baseline = y + m_canvas.fontAscent(0);
+    m_canvas.text(label, x, baseline, m_style.textDim, 0);
+
+    // Draw pad background
+    m_canvas.fillRoundedRect(padX, padY, padSize, padSize,
+                             m_style.cornerRadius, m_style.widgetBackground);
+
+    // Calculate normalized position (0-1)
+    float rangeX = maxX - minX;
+    float rangeY = maxY - minY;
+    float normX = rangeX > 0 ? std::clamp((value->x - minX) / rangeX, 0.0f, 1.0f) : 0.5f;
+    float normY = rangeY > 0 ? std::clamp((value->y - minY) / rangeY, 0.0f, 1.0f) : 0.5f;
+
+    // Position in pad coordinates (Y is inverted: top = max, bottom = min)
+    float indicatorX = padX + normX * padSize;
+    float indicatorY = padY + (1.0f - normY) * padSize;
+
+    // Hit testing and drag tracking
+    bool hovered = isMouseInRect(padX, padY, padSize, padSize);
+    bool active = (s_state.activeXYPad == id);
+
+    // Start drag
+    if (hovered && m_mouseClicked) {
+        s_state.activeXYPad = id;
+        s_state.xyPadStartValue = *value;
+        active = true;
+        result.dragStarted = true;
+        result.startValue = *value;
+    }
+
+    // Continue drag
+    if (active) {
+        result.startValue = s_state.xyPadStartValue;
+
+        if (m_input.mouseDown[0]) {
+            // Calculate new values from mouse position
+            float tX = std::clamp((m_mousePos.x - padX) / padSize, 0.0f, 1.0f);
+            float tY = std::clamp((m_mousePos.y - padY) / padSize, 0.0f, 1.0f);
+
+            float newX = minX + tX * rangeX;
+            float newY = maxY - tY * rangeY;  // Invert Y: top = max
+
+            if (newX != value->x || newY != value->y) {
+                value->x = newX;
+                value->y = newY;
+                result.changed = true;
+            }
+
+            // Update indicator position after change
+            normX = rangeX > 0 ? std::clamp((value->x - minX) / rangeX, 0.0f, 1.0f) : 0.5f;
+            normY = rangeY > 0 ? std::clamp((value->y - minY) / rangeY, 0.0f, 1.0f) : 0.5f;
+            indicatorX = padX + normX * padSize;
+            indicatorY = padY + (1.0f - normY) * padSize;
+        } else {
+            // End drag
+            s_state.activeXYPad = 0;
+            result.dragEnded = true;
+            m_xyPadDragEnded = true;
+            m_lastXYPadDragId = id;
+        }
+    }
+
+    // Draw crosshairs
+    glm::vec4 crosshairColor = active ? m_style.sliderFillActive : m_style.sliderFill;
+    glm::vec4 lineColor = {crosshairColor.r, crosshairColor.g, crosshairColor.b, 0.4f};
+
+    // Vertical line
+    m_canvas.line(indicatorX, padY, indicatorX, padY + padSize, 1.0f, lineColor);
+    // Horizontal line
+    m_canvas.line(padX, indicatorY, padX + padSize, indicatorY, 1.0f, lineColor);
+
+    // Draw indicator circle at intersection
+    float indicatorRadius = 5.0f;
+    m_canvas.fillCircle(indicatorX, indicatorY, indicatorRadius, crosshairColor, 16);
+    m_canvas.strokeCircle(indicatorX, indicatorY, indicatorRadius, 1.0f, m_style.widgetBorder, 16);
+
+    // Draw border
+    m_canvas.strokeRoundedRect(padX, padY, padSize, padSize,
+                               m_style.cornerRadius, m_style.borderWidth, m_style.widgetBorder);
+
+    // Draw value labels to the right
+    char xBuf[32], yBuf[32];
+    snprintf(xBuf, sizeof(xBuf), "X: %.2f", value->x);
+    snprintf(yBuf, sizeof(yBuf), "Y: %.2f", value->y);
+    float textY1 = padY + padSize * 0.33f;
+    float textY2 = padY + padSize * 0.66f;
+    m_canvas.text(xBuf, valueDisplayX, textY1 + m_canvas.fontAscent(0) * 0.35f, m_style.text, 0);
+    m_canvas.text(yBuf, valueDisplayX, textY2 + m_canvas.fontAscent(0) * 0.35f, m_style.text, 0);
+
+    advanceCursor(totalHeight);
+    return result;
+}
+
+// -------------------------------------------------------------------------
+// Vec3 Row
+// -------------------------------------------------------------------------
+
+Gui::Vec3RowResult Gui::vec3Row(const char* label, glm::vec3* value, float min, float max) {
+    return vec3RowEx(label, value, glm::vec3(min), glm::vec3(max));
+}
+
+Gui::Vec3RowResult Gui::vec3RowEx(const char* label, glm::vec3* value,
+                                   const glm::vec3& mins, const glm::vec3& maxs) {
+    Vec3RowResult result;
+    if (!m_inPanel || !value) return result;
+
+    uint32_t baseId = hashId(label);
+    float x = m_panel.x + m_style.padding;
+    float y = m_panel.cursorY;
+    float w = contentWidth();
+
+    // Layout constants
+    float labelH = m_canvas.fontLineHeight(0);
+    if (labelH <= 0) labelH = 16.0f;
+
+    float sliderH = m_style.widgetHeight - 4.0f;
+    float componentLabelH = labelH * 0.8f;
+
+    // Three sliders with spacing between them
+    float spacing = 4.0f;
+    float sliderW = (w - spacing * 2) / 3.0f;
+
+    // Total height: main label + component labels + sliders
+    float totalHeight = labelH + 2.0f + componentLabelH + 2.0f + sliderH;
+
+    // Starting Y positions
+    float mainLabelY = y;
+    float componentLabelsY = y + labelH + 2.0f;
+    float slidersY = componentLabelsY + componentLabelH + 2.0f;
+
+    // Track widget bounds
+    m_lastWidgetTop = y;
+    m_lastWidgetBottom = y + totalHeight;
+
+    // Draw main label
+    float mainBaseline = mainLabelY + m_canvas.fontAscent(0);
+    m_canvas.text(label, x, mainBaseline, m_style.textDim, 0);
+
+    const char* componentLabels[] = {"X", "Y", "Z"};
+    const glm::vec4 componentColors[] = {
+        {0.9f, 0.5f, 0.5f, 1.0f},  // X = red-ish
+        {0.5f, 0.9f, 0.5f, 1.0f},  // Y = green-ish
+        {0.5f, 0.6f, 0.9f, 1.0f}   // Z = blue-ish
+    };
+
+    for (int c = 0; c < 3; ++c) {
+        uint32_t sliderId = baseId + c + 1;
+        float sliderX = x + c * (sliderW + spacing);
+
+        // Component label (X/Y/Z) with color hint
+        float compBaseline = componentLabelsY + m_canvas.fontAscent(0) * 0.8f;
+        m_canvas.text(componentLabels[c], sliderX, compBaseline, componentColors[c], 0);
+
+        // Mini-slider background
+        m_canvas.fillRoundedRect(sliderX, slidersY, sliderW, sliderH,
+                                 m_style.cornerRadius, m_style.widgetBackground);
+
+        // Calculate fill
+        float range = maxs[c] - mins[c];
+        float norm = range > 0 ? std::clamp(((*value)[c] - mins[c]) / range, 0.0f, 1.0f) : 0.0f;
+        float fillW = norm * sliderW;
+
+        // Hit testing
+        bool hovered = isMouseInRect(sliderX, slidersY, sliderW, sliderH);
+        bool active = (s_state.activeVec3Slider == sliderId);
+
+        // Start drag
+        if (hovered && m_mouseClicked) {
+            s_state.activeVec3Slider = sliderId;
+            s_state.vec3ActiveComponent = c;
+            s_state.vec3StartValue = *value;
+            active = true;
+            result.dragStarted = true;
+            result.startValue = *value;
+            result.activeComponent = c;
+        }
+
+        // Continue drag
+        if (active) {
+            result.startValue = s_state.vec3StartValue;
+            result.activeComponent = c;
+
+            if (m_input.mouseDown[0]) {
+                float t = std::clamp((m_mousePos.x - sliderX) / sliderW, 0.0f, 1.0f);
+                float newVal = mins[c] + t * range;
+
+                if (newVal != (*value)[c]) {
+                    (*value)[c] = newVal;
+                    result.changed = true;
+                    // Update fill after change
+                    norm = range > 0 ? std::clamp(((*value)[c] - mins[c]) / range, 0.0f, 1.0f) : 0.0f;
+                    fillW = norm * sliderW;
+                }
+            } else {
+                // End drag
+                s_state.activeVec3Slider = 0;
+                s_state.vec3ActiveComponent = -1;
+                result.dragEnded = true;
+                m_vec3DragEnded = true;
+                m_lastVec3DragId = sliderId;
+            }
+        }
+
+        // Draw fill
+        if (fillW > 0) {
+            glm::vec4 fillColor = active ? m_style.sliderFillActive : m_style.sliderFill;
+            m_canvas.fillRoundedRect(sliderX, slidersY, fillW, sliderH,
+                                     m_style.cornerRadius, fillColor);
+        }
+
+        // Border
+        m_canvas.strokeRoundedRect(sliderX, slidersY, sliderW, sliderH,
+                                   m_style.cornerRadius, m_style.borderWidth, m_style.widgetBorder);
+
+        // Value text (centered, use 1 decimal for compact display)
+        char valBuf[16];
+        snprintf(valBuf, sizeof(valBuf), "%.1f", (*value)[c]);
+        float textW = m_canvas.measureText(valBuf, 0);
+        float textX = sliderX + (sliderW - textW) * 0.5f;
+        float textY = slidersY + sliderH * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+        m_canvas.text(valBuf, textX, textY, m_style.text, 0);
+    }
+
+    advanceCursor(totalHeight);
+    return result;
+}
+
+// -------------------------------------------------------------------------
+// ADSR Envelope Widget
+// -------------------------------------------------------------------------
+
+Gui::ADSRResult Gui::adsrEnvelope(const char* label,
+                                   float* attack, float* decay,
+                                   float* sustain, float* release,
+                                   float maxTime) {
+    ADSRResult result;
+    if (!m_inPanel || !attack || !decay || !sustain || !release) return result;
+
+    uint32_t id = hashId(label);
+    float x = m_panel.x + m_style.padding;
+    float y = m_panel.cursorY;
+    float w = contentWidth();
+
+    // Label height
+    float labelH = m_canvas.fontLineHeight(0);
+    if (labelH <= 0) labelH = 16.0f;
+
+    // Graph dimensions
+    float graphH = 60.0f;
+    float graphY = y + labelH + 4.0f;
+
+    // Mini-sliders below graph
+    float slidersY = graphY + graphH + 6.0f;
+    float sliderH = m_style.widgetHeight * 0.8f;
+    float sliderSpacing = 4.0f;
+    float sliderW = (w - 3 * sliderSpacing) / 4.0f;
+
+    // Total height
+    float totalHeight = labelH + 4.0f + graphH + 6.0f + sliderH + 4.0f;
+
+    // Track widget bounds
+    m_lastWidgetTop = y;
+    m_lastWidgetBottom = y + totalHeight;
+
+    // Draw label
+    float baseline = y + m_canvas.fontAscent(0);
+    m_canvas.text(label, x, baseline, m_style.textDim, 0);
+
+    // Draw graph background
+    m_canvas.fillRoundedRect(x, graphY, w, graphH, m_style.cornerRadius, m_style.widgetBackground);
+
+    // Calculate envelope curve points using FIXED scale
+    // This prevents the graph from rescaling during drag, making interaction intuitive
+    float sustainDisplayTime = maxTime * 0.1f;  // Fixed sustain display width
+    float fixedTotalTime = maxTime * 3.0f + sustainDisplayTime;  // A + D + S + R at max
+    float timeScale = w / fixedTotalTime;
+
+    // X positions for envelope points
+    float x0 = x;                                           // Start (0, 0)
+    float x1 = x + (*attack) * timeScale;                   // End of attack (peak)
+    float x2 = x1 + (*decay) * timeScale;                   // End of decay (sustain start)
+    float x3 = x2 + sustainDisplayTime * timeScale;         // End of sustain
+    float x4 = x3 + (*release) * timeScale;                 // End of release
+
+    // Clamp to graph bounds
+    x1 = std::min(x1, x + w);
+    x2 = std::min(x2, x + w);
+    x3 = std::min(x3, x + w);
+    x4 = std::min(x4, x + w);
+
+    // Y positions (inverted: top = 1, bottom = 0)
+    float graphBottom = graphY + graphH - 4.0f;
+    float graphTop = graphY + 4.0f;
+    float graphRange = graphBottom - graphTop;
+
+    float y0 = graphBottom;                                 // Start at 0
+    float y1 = graphTop;                                    // Peak at 1
+    float y2 = graphTop + (1.0f - *sustain) * graphRange;   // Sustain level
+    float y3 = y2;                                          // Sustain continues
+    float y4 = graphBottom;                                 // End at 0
+
+    // Draw envelope curve
+    glm::vec4 curveColor = {0.4f, 0.7f, 0.9f, 1.0f};
+    glm::vec4 curveColorDim = {0.3f, 0.5f, 0.7f, 0.6f};
+
+    // Fill under curve
+    m_canvas.fillTriangle({x0, y0}, {x1, y1}, {x1, y0}, curveColorDim);  // Attack triangle
+    m_canvas.fillTriangle({x1, y1}, {x2, y2}, {x1, y0}, curveColorDim);  // Decay part 1
+    m_canvas.fillTriangle({x2, y2}, {x2, y0}, {x1, y0}, curveColorDim);  // Decay part 2
+    m_canvas.fillRect(x2, y2, x3 - x2, y0 - y2, curveColorDim);          // Sustain
+    m_canvas.fillTriangle({x3, y2}, {x4, y4}, {x3, y0}, curveColorDim);  // Release
+
+    // Draw curve lines
+    float lineWidth = 2.0f;
+    m_canvas.line(x0, y0, x1, y1, lineWidth, curveColor);  // Attack
+    m_canvas.line(x1, y1, x2, y2, lineWidth, curveColor);  // Decay
+    m_canvas.line(x2, y2, x3, y3, lineWidth, curveColor);  // Sustain
+    m_canvas.line(x3, y3, x4, y4, lineWidth, curveColor);  // Release
+
+    // Draw control points
+    float pointRadius = 5.0f;
+    glm::vec4 pointColor = {0.9f, 0.9f, 0.9f, 1.0f};
+    glm::vec4 pointColorActive = {1.0f, 0.8f, 0.3f, 1.0f};
+
+    bool active = (s_state.activeADSR == id);
+    int activeComp = s_state.adsrActiveComponent;
+
+    // Control point positions and hit areas
+    struct ControlPoint {
+        float cx, cy;
+        int component;  // 0=A, 1=D, 2=S, 3=R
+    };
+    ControlPoint points[] = {
+        {x1, y1, 0},  // Attack (peak point)
+        {x2, y2, 1},  // Decay end / Sustain start
+        {(x2 + x3) * 0.5f, y2, 2},  // Sustain level (middle of sustain line)
+        {x4, y4, 3},  // Release end
+    };
+
+    // Hit testing for control points
+    int hoveredPoint = -1;
+    for (int i = 0; i < 4; ++i) {
+        float dx = m_mousePos.x - points[i].cx;
+        float dy = m_mousePos.y - points[i].cy;
+        if (dx * dx + dy * dy < 100.0f) {  // 10px radius
+            hoveredPoint = i;
+            break;
+        }
+    }
+
+    // Start drag on click
+    if (hoveredPoint >= 0 && m_mouseClicked) {
+        s_state.activeADSR = id;
+        s_state.adsrActiveComponent = hoveredPoint;
+        s_state.adsrStartA = *attack;
+        s_state.adsrStartD = *decay;
+        s_state.adsrStartS = *sustain;
+        s_state.adsrStartR = *release;
+        result.dragStarted = true;
+        result.startA = *attack;
+        result.startD = *decay;
+        result.startS = *sustain;
+        result.startR = *release;
+        active = true;
+        activeComp = hoveredPoint;
+    }
+
+    // Continue drag
+    if (active && s_state.activeADSR == id) {
+        result.startA = s_state.adsrStartA;
+        result.startD = s_state.adsrStartD;
+        result.startS = s_state.adsrStartS;
+        result.startR = s_state.adsrStartR;
+
+        if (m_input.mouseDown[0]) {
+            float mouseX = m_mousePos.x;
+            float mouseY = m_mousePos.y;
+
+            switch (activeComp) {
+                case 0: {  // Attack - horizontal drag changes attack time
+                    float newAttack = std::clamp((mouseX - x) / timeScale, 0.001f, maxTime);
+                    if (newAttack != *attack) {
+                        *attack = newAttack;
+                        result.changed = true;
+                    }
+                    break;
+                }
+                case 1: {  // Decay - horizontal drag changes decay time
+                    float decayStart = x + (*attack) * timeScale;
+                    float newDecay = std::clamp((mouseX - decayStart) / timeScale, 0.001f, maxTime);
+                    if (newDecay != *decay) {
+                        *decay = newDecay;
+                        result.changed = true;
+                    }
+                    break;
+                }
+                case 2: {  // Sustain - vertical drag changes sustain level
+                    float newSustain = std::clamp(1.0f - (mouseY - graphTop) / graphRange, 0.0f, 1.0f);
+                    if (newSustain != *sustain) {
+                        *sustain = newSustain;
+                        result.changed = true;
+                    }
+                    break;
+                }
+                case 3: {  // Release - horizontal drag changes release time
+                    float releaseStart = x + (*attack + *decay + sustainDisplayTime) * timeScale;
+                    float newRelease = std::clamp((mouseX - releaseStart) / timeScale, 0.001f, maxTime);
+                    if (newRelease != *release) {
+                        *release = newRelease;
+                        result.changed = true;
+                    }
+                    break;
+                }
+            }
+        } else {
+            // End drag
+            s_state.activeADSR = 0;
+            s_state.adsrActiveComponent = -1;
+            result.dragEnded = true;
+            m_adsrDragEnded = true;
+            m_lastADSRDragId = id;
+        }
+    }
+
+    // Draw control points
+    for (int i = 0; i < 4; ++i) {
+        bool isActive = (active && activeComp == i);
+        bool isHovered = (hoveredPoint == i);
+        glm::vec4 color = isActive ? pointColorActive : (isHovered ? m_style.widgetHover : pointColor);
+        float r = isActive ? pointRadius * 1.3f : (isHovered ? pointRadius * 1.1f : pointRadius);
+        m_canvas.fillCircle(points[i].cx, points[i].cy, r, color);
+    }
+
+    // Draw graph border
+    m_canvas.strokeRoundedRect(x, graphY, w, graphH, m_style.cornerRadius, m_style.borderWidth, m_style.widgetBorder);
+
+    // Draw mini-sliders below graph
+    const char* sliderLabels[] = {"A", "D", "S", "R"};
+    float* sliderValues[] = {attack, decay, sustain, release};
+    float sliderMins[] = {0.001f, 0.001f, 0.0f, 0.001f};
+    float sliderMaxs[] = {maxTime, maxTime, 1.0f, maxTime};
+
+    for (int i = 0; i < 4; ++i) {
+        float sliderX = x + i * (sliderW + sliderSpacing);
+
+        // Slider background
+        m_canvas.fillRoundedRect(sliderX, slidersY, sliderW, sliderH,
+                                 m_style.cornerRadius * 0.5f, m_style.widgetBackground);
+
+        // Slider fill
+        float range = sliderMaxs[i] - sliderMins[i];
+        float fillRatio = range > 0 ? std::clamp((*sliderValues[i] - sliderMins[i]) / range, 0.0f, 1.0f) : 0.0f;
+        float fillW = fillRatio * (sliderW - 4.0f);
+        if (fillW > 0) {
+            m_canvas.fillRoundedRect(sliderX + 2.0f, slidersY + 2.0f, fillW, sliderH - 4.0f,
+                                     m_style.cornerRadius * 0.5f, m_style.sliderFill);
+        }
+
+        // Draw label and value centered, label on left half, value on right half
+        float labelY = slidersY + sliderH * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+
+        // Label (left-aligned in left portion)
+        float labelX = sliderX + 3.0f;
+        m_canvas.text(sliderLabels[i], labelX, labelY, m_style.textDim, 0);
+
+        // Value (right-aligned) - use shorter format to avoid overlap
+        char valBuf[16];
+        if (i == 2) {  // Sustain is 0-1
+            snprintf(valBuf, sizeof(valBuf), ".%d", static_cast<int>(*sliderValues[i] * 100));
+        } else {  // Times in seconds - compact format
+            if (*sliderValues[i] < 0.1f) {
+                snprintf(valBuf, sizeof(valBuf), "%dms", static_cast<int>(*sliderValues[i] * 1000));
+            } else {
+                snprintf(valBuf, sizeof(valBuf), "%.1f", *sliderValues[i]);
+            }
+        }
+        float textW = m_canvas.measureText(valBuf, 0);
+        float textX = sliderX + sliderW - textW - 3.0f;
+        m_canvas.text(valBuf, textX, labelY, m_style.text, 0);
+
+        // Mini-slider interaction
+        if (isMouseInRect(sliderX, slidersY, sliderW, sliderH)) {
+            if (m_mouseClicked) {
+                // Start drag on mini-slider
+                s_state.activeADSR = id;
+                s_state.adsrActiveComponent = i + 10;  // Offset to distinguish from graph points
+                s_state.adsrStartA = *attack;
+                s_state.adsrStartD = *decay;
+                s_state.adsrStartS = *sustain;
+                s_state.adsrStartR = *release;
+                result.dragStarted = true;
+                result.startA = *attack;
+                result.startD = *decay;
+                result.startS = *sustain;
+                result.startR = *release;
+            }
+        }
+
+        // Handle mini-slider drag
+        if (s_state.activeADSR == id && s_state.adsrActiveComponent == i + 10) {
+            if (m_input.mouseDown[0]) {
+                float t = std::clamp((m_mousePos.x - sliderX) / sliderW, 0.0f, 1.0f);
+                float newVal = sliderMins[i] + t * range;
+                if (newVal != *sliderValues[i]) {
+                    *sliderValues[i] = newVal;
+                    result.changed = true;
+                }
+            } else {
+                s_state.activeADSR = 0;
+                s_state.adsrActiveComponent = -1;
+                result.dragEnded = true;
+                m_adsrDragEnded = true;
+                m_lastADSRDragId = id;
+            }
+        }
+
+        // Border
+        m_canvas.strokeRoundedRect(sliderX, slidersY, sliderW, sliderH,
+                                   m_style.cornerRadius * 0.5f, m_style.borderWidth * 0.5f, m_style.widgetBorder);
+    }
+
+    advanceCursor(totalHeight);
+    return result;
 }
 
 } // namespace vivid

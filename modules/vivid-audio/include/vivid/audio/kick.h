@@ -74,19 +74,24 @@ public:
     Param<float> pitch{"pitch", 50.0f, 20.0f, 200.0f};           ///< Base pitch in Hz
     Param<float> pitchEnv{"pitchEnv", 100.0f, 0.0f, 500.0f};     ///< Pitch envelope amount
     Param<float> pitchDecay{"pitchDecay", 0.1f, 0.01f, 0.5f};    ///< Pitch envelope decay
-    Param<float> decay{"decay", 0.5f, 0.05f, 2.0f};              ///< Amplitude decay time
+    ADSRParam envelope{"envelope", 0.001f, 0.5f, 0.0f, 0.1f, 2.0f};  ///< Amplitude ADSR envelope
     Param<float> click{"click", 0.3f, 0.0f, 1.0f};               ///< Click/transient amount
     Param<float> drive{"drive", 0.0f, 0.0f, 1.0f};               ///< Soft saturation
     Param<float> volume{"volume", 0.8f, 0.0f, 1.0f};             ///< Output volume
 
+    /// Convenience: access decay time (alias for envelope.decay)
+    float& decay;
+
     /// @}
     // -------------------------------------------------------------------------
 
-    Kick() {
+    Kick()
+        : decay(envelope.decayRef())
+    {
         registerParam(pitch);
         registerParam(pitchEnv);
         registerParam(pitchDecay);
-        registerParam(decay);
+        registerParam(envelope);
         registerParam(click);
         registerParam(drive);
         registerParam(volume);

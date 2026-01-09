@@ -1,7 +1,7 @@
 // Tiling Patterns - Vivid Example
-// Demonstrates: Tile, Transform, Mirror
+// Demonstrates: Image, Tile, Transform, Mirror
 //
-// Creates repeating patterns and kaleidoscopic effects
+// Creates repeating patterns and kaleidoscopic effects from an image
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -13,27 +13,13 @@ using namespace vivid::effects;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Create an interesting source pattern
-    auto& noise = chain.add<Noise>("noise");
-    noise.scale = 4.0f;
-    noise.octaves = 3;
-    noise.type = NoiseType::Simplex;
-
-    auto& shape = chain.add<Shape>("shape");
-    shape.type = ShapeType::Star;
-    shape.sides = 6;
-    shape.size.set(0.3f, 0.3f);
-    shape.softness = 0.05f;
-    shape.color.set(1.0f, 0.6f, 0.2f, 1.0f);
-
-    auto& source = chain.add<Composite>("source");
-    source.inputA("noise");
-    source.inputB("shape");
-    source.mode = BlendMode::Add;
+    // Load source image
+    auto& image = chain.add<Image>("image");
+    image.file = "assets/nature.jpg";
 
     // HSV for color variation
     auto& hsv = chain.add<HSV>("hsv");
-    hsv.input("source");
+    hsv.input("image");
     hsv.saturation = 1.3f;
 
     // ----- TILE EFFECT -----
@@ -102,15 +88,7 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float t = ctx.time();
 
-    // Animate source
-    auto& noise = chain.get<Noise>("noise");
-    noise.scale = 3.0f + std::sin(t * 0.2f) * 1.5f;
-
-    auto& shape = chain.get<Shape>("shape");
-    shape.rotation = t * 0.3f;
-    float pulse = 0.25f + 0.1f * std::sin(t * 1.5f);
-    shape.size.set(pulse, pulse);
-
+    // Animate HSV color shift
     auto& hsv = chain.get<HSV>("hsv");
     hsv.hueShift = std::fmod(t * 0.05f, 1.0f);
 

@@ -344,6 +344,138 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Color Picker
+    /// @{
+
+    /**
+     * @brief Color picker result with drag state information
+     */
+    struct ColorPickerResult {
+        bool changed = false;       ///< Color changed this frame
+        bool dragStarted = false;   ///< Drag started this frame
+        bool dragEnded = false;     ///< Drag ended this frame
+        glm::vec4 startColor;       ///< Color when drag started
+    };
+
+    /**
+     * @brief XY pad result with drag state information
+     */
+    struct XYPadResult {
+        bool changed = false;       ///< Value changed this frame
+        bool dragStarted = false;   ///< Drag started this frame
+        bool dragEnded = false;     ///< Drag ended this frame
+        glm::vec2 startValue;       ///< Value when drag started
+    };
+
+    /**
+     * @brief Vec3 row result with drag state information
+     */
+    struct Vec3RowResult {
+        bool changed = false;       ///< Value changed this frame
+        bool dragStarted = false;   ///< Drag started this frame
+        bool dragEnded = false;     ///< Drag ended this frame
+        glm::vec3 startValue;       ///< Value when drag started
+        int activeComponent = -1;   ///< Which component is active (0=X, 1=Y, 2=Z, -1=none)
+    };
+
+    /**
+     * @brief HSV color picker with expandable sliders
+     * @param label Color picker label
+     * @param color Pointer to color (RGBA, 0-1 range)
+     * @param expanded Pointer to expanded state (managed by caller)
+     * @return ColorPickerResult with change and drag state
+     *
+     * When collapsed, shows a color swatch. Click to expand.
+     * When expanded, shows H/S/V/A sliders with hue gradient.
+     */
+    ColorPickerResult colorPickerHSV(const char* label, glm::vec4* color, bool* expanded);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Vector Widgets
+    /// @{
+
+    /**
+     * @brief Display a 2D XY pad for vec2 input
+     * @param label Widget label
+     * @param value Pointer to vec2 value
+     * @param min Minimum value for both axes
+     * @param max Maximum value for both axes
+     * @param size Size of the pad in pixels (square, 0 = use default)
+     * @return XYPadResult with change and drag state
+     */
+    XYPadResult xyPad(const char* label, glm::vec2* value, float min, float max, float size = 0);
+
+    /**
+     * @brief Display a 2D XY pad with separate min/max per axis
+     * @param label Widget label
+     * @param value Pointer to vec2 value
+     * @param minX Minimum X value
+     * @param maxX Maximum X value
+     * @param minY Minimum Y value
+     * @param maxY Maximum Y value
+     * @param size Size of the pad in pixels (square, 0 = use default)
+     * @return XYPadResult with change and drag state
+     */
+    XYPadResult xyPadEx(const char* label, glm::vec2* value,
+                        float minX, float maxX, float minY, float maxY, float size = 0);
+
+    /**
+     * @brief Display three mini-sliders in a row for vec3 input
+     * @param label Widget label
+     * @param value Pointer to vec3 value
+     * @param min Minimum value for all components
+     * @param max Maximum value for all components
+     * @return Vec3RowResult with change and drag state
+     */
+    Vec3RowResult vec3Row(const char* label, glm::vec3* value, float min, float max);
+
+    /**
+     * @brief Display three mini-sliders with separate ranges per component
+     * @param label Widget label
+     * @param value Pointer to vec3 value
+     * @param mins Minimum values per component
+     * @param maxs Maximum values per component
+     * @return Vec3RowResult with change and drag state
+     */
+    Vec3RowResult vec3RowEx(const char* label, glm::vec3* value,
+                            const glm::vec3& mins, const glm::vec3& maxs);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name ADSR Envelope
+    /// @{
+
+    /**
+     * @brief ADSR envelope result with drag state information
+     */
+    struct ADSRResult {
+        bool changed = false;       ///< Value changed this frame
+        bool dragStarted = false;   ///< Drag started this frame
+        bool dragEnded = false;     ///< Drag ended this frame
+        float startA = 0, startD = 0, startS = 0, startR = 0;  ///< Values when drag started
+    };
+
+    /**
+     * @brief Display an ADSR envelope editor
+     * @param label Widget label
+     * @param attack Pointer to attack time (seconds)
+     * @param decay Pointer to decay time (seconds)
+     * @param sustain Pointer to sustain level (0-1)
+     * @param release Pointer to release time (seconds)
+     * @param maxTime Maximum time for A/D/R (seconds, default 2.0)
+     * @return ADSRResult with change and drag state
+     *
+     * Displays an envelope curve with draggable control points,
+     * plus four mini-sliders for precise value entry.
+     */
+    ADSRResult adsrEnvelope(const char* label,
+                            float* attack, float* decay,
+                            float* sustain, float* release,
+                            float maxTime = 2.0f);
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Style
     /// @{
 
@@ -385,6 +517,20 @@ private:
         float sliderStartMouseX = 0;        // Mouse X when drag started
         float panelScrollTarget = 0;        // Panel scroll offset
         uint32_t scrollingPanel = 0;        // ID of panel being scrolled
+        // Color picker drag tracking
+        uint32_t activeColorSlider = 0;     // ID of color slider being dragged
+        glm::vec4 colorStartValue;          // Color when drag started (RGBA)
+        // XY pad drag tracking
+        uint32_t activeXYPad = 0;           // ID of XY pad being dragged
+        glm::vec2 xyPadStartValue;          // Value when drag started
+        // Vec3 row drag tracking
+        uint32_t activeVec3Slider = 0;      // ID of vec3 mini-slider being dragged
+        int vec3ActiveComponent = -1;       // Which component (0=X, 1=Y, 2=Z)
+        glm::vec3 vec3StartValue;           // Value when drag started
+        // ADSR envelope drag tracking
+        uint32_t activeADSR = 0;            // ID of ADSR widget being dragged
+        int adsrActiveComponent = -1;       // Which component (0=A, 1=D, 2=S, 3=R)
+        float adsrStartA = 0, adsrStartD = 0, adsrStartS = 0, adsrStartR = 0;  // Values when drag started
     } s_state;
 
     // Input tracking
@@ -409,6 +555,22 @@ private:
     // Slider drag tracking
     bool m_sliderDragEnded = false;
     uint32_t m_lastSliderDragId = 0;
+
+    // Color picker drag tracking
+    bool m_colorDragEnded = false;
+    uint32_t m_lastColorDragId = 0;
+
+    // XY pad drag tracking
+    bool m_xyPadDragEnded = false;
+    uint32_t m_lastXYPadDragId = 0;
+
+    // Vec3 row drag tracking
+    bool m_vec3DragEnded = false;
+    uint32_t m_lastVec3DragId = 0;
+
+    // ADSR drag tracking
+    bool m_adsrDragEnded = false;
+    uint32_t m_lastADSRDragId = 0;
 
     // Helper methods
     uint32_t hashId(const char* label) const;

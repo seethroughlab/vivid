@@ -2,18 +2,18 @@
 
 /**
  * @file clock.h
- * @brief BPM-based trigger generator
+ * @brief BPM-based trigger generator with sample-accurate timing
  *
- * Generates triggers at musical timing intervals.
+ * Generates triggers at musical timing intervals on the audio thread.
  */
 
-#include <vivid/operator.h>
+#include <vivid/audio_operator.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
-#include <vivid/param_registry.h>
 #include <string>
 #include <vector>
 #include <functional>
+#include <atomic>
 
 namespace vivid::audio {
 
@@ -34,11 +34,11 @@ enum class ClockDiv {
 };
 
 /**
- * @brief BPM-based clock/trigger generator
+ * @brief BPM-based clock/trigger generator with sample-accurate timing
  *
- * Generates triggers at musical time divisions. Use to drive drum machines,
- * sequencers, and synchronized effects. Supports multiple subdivisions and
- * swing timing.
+ * Generates triggers at musical time divisions on the audio thread for
+ * precise timing. Use to drive drum machines, sequencers, and synchronized
+ * effects.
  *
  * @par Parameters
  * | Name | Type | Range | Default | Description |
@@ -58,10 +58,10 @@ enum class ClockDiv {
  *     }
  * }
  * @endcode
- 
+ *
  * @see Sequencer, Euclidean, Song, Kick, Snare, HiHat
  */
-class Clock : public Operator, public ParamRegistry {
+class Clock : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
     /// @name Self-Description
@@ -69,7 +69,7 @@ public:
 
     static OperatorDescriptor describe() {
         return OperatorDescriptor("Clock", "Audio Sequencing", "Master tempo clock with beat/bar triggers")
-            .output(OutputKind::Value)
+            .output(OutputKind::Audio)
             .withUsage(
                 "auto& clock = chain.add<Clock>(\"clock\");\n"
                 "clock.bpm = 120.0f;\n"
@@ -116,30 +116,42 @@ public:
     /// @{
 
     /**
-     * @brief Check if clock triggered this frame
+     * @brief Check if clock triggered since last check (main thread)
      * @return True if trigger occurred
+     *
+     * This reads the atomic trigger flag set by the audio thread.
+     * The flag is cleared after reading to detect the next trigger.
      */
-    bool triggered() const { return m_triggered; }
+    bool triggered() {
+        return m_triggeredFlag.exchange(false, std::memory_order_acquire);
+    }
+
+    /**
+     * @brief Check trigger state without clearing (for visualization)
+     */
+    bool triggeredPeek() const {
+        return m_triggeredFlag.load(std::memory_order_relaxed);
+    }
 
     /**
      * @brief Get number of triggers since start
      */
-    uint64_t triggerCount() const { return m_triggerCount; }
+    uint64_t triggerCount() const { return m_triggerCount.load(std::memory_order_relaxed); }
 
     /**
      * @brief Get current beat position (0-based)
      */
-    uint32_t beat() const { return static_cast<uint32_t>(m_triggerCount) % 4; }
+    uint32_t beat() const { return static_cast<uint32_t>(triggerCount()) % 4; }
 
     /**
      * @brief Get current bar (4 beats = 1 bar)
      */
-    uint32_t bar() const { return static_cast<uint32_t>(m_triggerCount) / 4; }
+    uint32_t bar() const { return static_cast<uint32_t>(triggerCount()) / 4; }
 
     /**
      * @brief Check if this is the downbeat (beat 0)
      */
-    bool isDownbeat() const { return triggered() && beat() == 0; }
+    bool isDownbeat() const { return triggeredPeek() && beat() == 0; }
 
     /**
      * @brief Reset clock to start
@@ -149,17 +161,17 @@ public:
     /**
      * @brief Start the clock
      */
-    void start() { m_running = true; }
+    void start() { m_running.store(true, std::memory_order_release); }
 
     /**
      * @brief Stop the clock
      */
-    void stop() { m_running = false; }
+    void stop() { m_running.store(false, std::memory_order_release); }
 
     /**
      * @brief Check if clock is running
      */
-    bool isRunning() const { return m_running; }
+    bool isRunning() const { return m_running.load(std::memory_order_relaxed); }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -167,7 +179,7 @@ public:
     /// @{
 
     /**
-     * @brief Set callback for triggers
+     * @brief Set callback for triggers (called on audio thread)
      * @param cb Callback function
      */
     void onTrigger(std::function<void()> cb) { m_callback = cb; }
@@ -181,19 +193,14 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Clock"; }
-    OutputKind outputKind() const override { return OutputKind::Value; }
+    OutputKind outputKind() const override { return OutputKind::Audio; }
+
+    /// @brief Generate audio block with sample-accurate triggers (audio thread)
+    void generateBlock(uint32_t frameCount) override;
 
     /// @brief Draw beat grid visualization
     bool drawVisualization(VizDrawList* drawList, float minX, float minY,
                            float maxX, float maxY) override;
-
-    std::vector<ParamDecl> params() override { return registeredParams(); }
-    bool getParam(const std::string& name, float out[4]) override {
-        return getRegisteredParam(name, out);
-    }
-    bool setParam(const std::string& name, const float value[4]) override {
-        return setRegisteredParam(name, value);
-    }
 
     /// @}
 
@@ -202,16 +209,18 @@ private:
 
     ClockDiv m_division = ClockDiv::Quarter;
 
-    // State
+    // State (accessed from audio thread)
     double m_phase = 0.0;
-    uint64_t m_triggerCount = 0;
-    bool m_triggered = false;
-    bool m_running = true;
     bool m_lastTickOdd = false;
+
+    // Shared state (atomic for thread safety)
+    std::atomic<uint64_t> m_triggerCount{0};
+    std::atomic<bool> m_triggeredFlag{false};  // Set by audio thread, cleared by main thread
+    std::atomic<bool> m_running{true};
 
     std::function<void()> m_callback;
 
-    uint32_t m_sampleRate = 48000;
+    static constexpr uint32_t SAMPLE_RATE = 48000;
 };
 
 } // namespace vivid::audio

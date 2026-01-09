@@ -140,6 +140,7 @@ private:
 
     // Highpass filter state for snappy
     float m_hpState[2] = {0, 0};
+    float m_hpPrev[2] = {0, 0};  // Previous output for proper filter continuity
 
     uint32_t m_sampleRate = 48000;
 

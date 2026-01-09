@@ -251,6 +251,14 @@ public:
                            float lineWidth, const glm::vec4& color, int segments = 8);
 
     /**
+     * @brief Draw a filled rectangle with only top corners rounded
+     * @param radius Corner radius for top-left and top-right
+     * @param segments Segments per corner arc
+     */
+    void fillRoundedRectTop(float x, float y, float w, float h, float radius,
+                            const glm::vec4& color, int segments = 8);
+
+    /**
      * @brief Draw a textured rectangle (for operator previews)
      * @param x Left edge
      * @param y Top edge
@@ -314,6 +322,21 @@ public:
      * @return Current clip rect (x, y, w, h), or (0,0,0,0) if no clipping
      */
     glm::vec4 currentClipRect() const;
+
+    /**
+     * @brief Set a clip rect for a specific layer (applied during render)
+     * @param layer The layer index
+     * @param x Left edge
+     * @param y Top edge
+     * @param w Width
+     * @param h Height
+     */
+    void setLayerClipRect(int layer, float x, float y, float w, float h);
+
+    /**
+     * @brief Clear the clip rect for a specific layer
+     */
+    void clearLayerClipRect(int layer);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -416,6 +439,21 @@ public:
      */
     glm::vec2 inverseTransformPoint(const glm::vec2& p) const;
 
+    /**
+     * @brief Set content scale for VizDrawList text rendering
+     * @param scale Scale factor (typically zoom level)
+     *
+     * This is used by NodeGraph to communicate zoom level to operator
+     * preview callbacks that use VizDrawList for drawing.
+     */
+    void setContentScale(float scale) { m_contentScale = scale; }
+
+    /**
+     * @brief Get current content scale
+     * @return Content scale factor (1.0 = no scaling)
+     */
+    float contentScale() const { return m_contentScale; }
+
     /// @}
 
 private:
@@ -433,14 +471,37 @@ private:
     // Current layer for draw operations
     int m_currentLayer = 0;
 
+    // Clip state (screen-space rectangles)
+    struct ClipRect {
+        float x, y, w, h;
+    };
+    std::vector<ClipRect> m_clipStack;
+
+    // Per-layer clip rects (simpler alternative to segment-based clipping)
+    std::map<int, ClipRect> m_layerClipRects;
+
+    // Draw segment with optional clip rect (for scissor clipping)
+    struct DrawSegment {
+        uint32_t startIndex = 0;
+        uint32_t indexCount = 0;
+        bool hasClip = false;
+        ClipRect clipRect = {0, 0, 0, 0};
+    };
+
     // Per-layer batched geometry (sorted by layer key in render())
     struct LayerBatch {
         std::vector<OverlayVertex> solidVertices;
         std::vector<uint32_t> solidIndices;
+        std::vector<DrawSegment> solidSegments;  // Segments with clip info
         std::vector<OverlayVertex> textVertices[3];  // Per-font
         std::vector<uint32_t> textIndices[3];
+        std::vector<DrawSegment> textSegments[3];  // Segments with clip info per font
     };
     std::map<int, LayerBatch> m_layers;
+
+    // Last clip state for segment tracking
+    bool m_lastHasClip = false;
+    ClipRect m_lastClipRect = {0, 0, 0, 0};
 
     // Textured rects per layer (for operator previews - drawn individually per layer)
     struct TexturedRect {
@@ -481,6 +542,9 @@ private:
     glm::mat3 m_transform = glm::mat3(1.0f);
     std::vector<glm::mat3> m_transformStack;
 
+    // Content scale for VizDrawList text rendering (set by NodeGraph)
+    float m_contentScale = 1.0f;
+
     // Frame state
     int m_width = 0;
     int m_height = 0;
@@ -488,12 +552,6 @@ private:
     WGPUQueue m_queue = nullptr;
     WGPUTextureFormat m_surfaceFormat = WGPUTextureFormat_BGRA8UnormSrgb;
     bool m_initialized = false;
-
-    // Clip state (screen-space rectangles)
-    struct ClipRect {
-        float x, y, w, h;
-    };
-    std::vector<ClipRect> m_clipStack;
 
     static constexpr size_t INITIAL_VERTEX_CAPACITY = 1024;
     static constexpr size_t INITIAL_INDEX_CAPACITY = 4096;

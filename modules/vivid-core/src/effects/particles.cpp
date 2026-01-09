@@ -3,8 +3,11 @@
 
 #include <vivid/effects/particles.h>
 #include <vivid/context.h>
+#include <vivid/io/image_loader.h>
 #include <cmath>
 #include <algorithm>
+#include <cstring>
+#include <iostream>
 
 namespace vivid::effects {
 
@@ -30,9 +33,106 @@ void Particles::init(Context& ctx) {
 }
 
 void Particles::loadTexture(Context& ctx) {
-    // TODO: Implement texture loading using stb_image or similar
-    // For now, sprite mode will fall back to circles
-    // This would load m_texturePath and create m_spriteTexture + m_spriteTextureView
+    if (m_texturePath.empty()) return;
+
+    // Load image via vivid-io
+    auto imageData = vivid::io::loadImage(m_texturePath);
+
+    if (!imageData.valid()) {
+        std::cerr << "[Particles] Failed to load sprite: " << m_texturePath << std::endl;
+        m_useSprites = false;  // Fall back to circles
+        return;
+    }
+
+    int width = imageData.width;
+    int height = imageData.height;
+
+    // Release old texture if exists
+    if (m_spriteTexture) {
+        wgpuTextureRelease(m_spriteTexture);
+        m_spriteTexture = nullptr;
+    }
+    if (m_spriteTextureView) {
+        wgpuTextureViewRelease(m_spriteTextureView);
+        m_spriteTextureView = nullptr;
+    }
+
+    // Create GPU texture using EFFECTS_FORMAT for compatibility
+    WGPUTextureDescriptor texDesc = {};
+    texDesc.label = toStringView("Particle Sprite");
+    texDesc.size.width = width;
+    texDesc.size.height = height;
+    texDesc.size.depthOrArrayLayers = 1;
+    texDesc.mipLevelCount = 1;
+    texDesc.sampleCount = 1;
+    texDesc.dimension = WGPUTextureDimension_2D;
+    texDesc.format = EFFECTS_FORMAT;  // RGBA16Float
+    texDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+
+    m_spriteTexture = wgpuDeviceCreateTexture(ctx.device(), &texDesc);
+    if (!m_spriteTexture) {
+        std::cerr << "[Particles] Failed to create sprite texture" << std::endl;
+        m_useSprites = false;
+        return;
+    }
+
+    // Create texture view
+    WGPUTextureViewDescriptor viewDesc = {};
+    viewDesc.format = EFFECTS_FORMAT;
+    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.baseMipLevel = 0;
+    viewDesc.mipLevelCount = 1;
+    viewDesc.baseArrayLayer = 0;
+    viewDesc.arrayLayerCount = 1;
+    viewDesc.aspect = WGPUTextureAspect_All;
+    m_spriteTextureView = wgpuTextureCreateView(m_spriteTexture, &viewDesc);
+
+    // Convert 8-bit RGBA to 16-bit float RGBA
+    std::vector<uint16_t> floatPixels(width * height * 4);
+    for (size_t i = 0; i < imageData.pixels.size(); ++i) {
+        float normalized = imageData.pixels[i] / 255.0f;
+
+        // Handle zero specially
+        if (normalized == 0.0f) {
+            floatPixels[i] = 0;
+            continue;
+        }
+
+        // Convert float32 to float16 using bit manipulation
+        uint32_t f32;
+        std::memcpy(&f32, &normalized, sizeof(float));
+        uint32_t sign = (f32 >> 16) & 0x8000;
+        int32_t exp = static_cast<int32_t>(((f32 >> 23) & 0xFF)) - 127 + 15;
+        uint32_t mant = (f32 >> 13) & 0x3FF;
+
+        if (exp <= 0) {
+            floatPixels[i] = static_cast<uint16_t>(sign);
+        } else if (exp >= 31) {
+            floatPixels[i] = static_cast<uint16_t>(sign | 0x7C00);
+        } else {
+            floatPixels[i] = static_cast<uint16_t>(sign | (exp << 10) | mant);
+        }
+    }
+
+    // Upload pixel data
+    WGPUTexelCopyTextureInfo destination = {};
+    destination.texture = m_spriteTexture;
+    destination.mipLevel = 0;
+    destination.origin = {0, 0, 0};
+    destination.aspect = WGPUTextureAspect_All;
+
+    WGPUTexelCopyBufferLayout dataLayout = {};
+    dataLayout.offset = 0;
+    dataLayout.bytesPerRow = width * 4 * sizeof(uint16_t);
+    dataLayout.rowsPerImage = height;
+
+    WGPUExtent3D writeSize = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+
+    wgpuQueueWriteTexture(ctx.queue(), &destination, floatPixels.data(),
+                          floatPixels.size() * sizeof(uint16_t), &dataLayout, &writeSize);
+
+    std::cout << "[Particles] Loaded sprite: " << m_texturePath
+              << " (" << width << "x" << height << ")" << std::endl;
 }
 
 void Particles::process(Context& ctx) {
@@ -40,6 +140,9 @@ void Particles::process(Context& ctx) {
     // Generators use their declared resolution (default 1280x720)
 
     // Particles is a simulation - always cooks
+
+    // Update aspect ratio for circular emitter shapes
+    m_aspectRatio = static_cast<float>(m_width) / m_height;
 
     float dt = static_cast<float>(ctx.dt());
 
@@ -207,13 +310,15 @@ glm::vec2 Particles::getEmitterPosition(const glm::vec2& center) {
 
         case EmitterShape::Ring: {
             float angle = dist01(m_rng) * 2.0f * 3.14159265f;
-            return center + emitterSizeVal * glm::vec2(std::cos(angle), std::sin(angle));
+            // Scale X by 1/aspect to make circle appear round on widescreen
+            return center + emitterSizeVal * glm::vec2(std::cos(angle) / m_aspectRatio, std::sin(angle));
         }
 
         case EmitterShape::Disc: {
             float angle = dist01(m_rng) * 2.0f * 3.14159265f;
             float radius = std::sqrt(dist01(m_rng)) * emitterSizeVal;
-            return center + radius * glm::vec2(std::cos(angle), std::sin(angle));
+            // Scale X by 1/aspect to make circle appear round on widescreen
+            return center + radius * glm::vec2(std::cos(angle) / m_aspectRatio, std::sin(angle));
         }
 
         case EmitterShape::Rectangle:

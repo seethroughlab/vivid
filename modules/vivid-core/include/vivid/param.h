@@ -82,13 +82,19 @@ public:
         return m_value;
     }
 
-    /// @brief Assignment operator (clears any binding)
+    /// @brief Assignment operator (clears any binding, marks owner dirty)
     Param& operator=(T v) {
-        m_value = v;
-        m_binding = nullptr;
-        m_boundOperator = nullptr;
+        if (m_value != v || m_binding) {
+            m_value = v;
+            m_binding = nullptr;
+            m_boundOperator = nullptr;
+            if (m_owner) m_owner->markDirty();
+        }
         return *this;
     }
+
+    /// @brief Set owner operator (called by registerParam)
+    void setOwner(Operator* owner) { m_owner = owner; }
 
     // -------------------------------------------------------------------------
     /// @name Binding
@@ -221,6 +227,7 @@ private:
     T m_min, m_max;
     std::function<T()> m_binding;
     Operator* m_boundOperator = nullptr;  ///< Bound value operator (for visualization)
+    Operator* m_owner = nullptr;          ///< Owning operator (for dirty tracking)
 };
 
 /**
@@ -263,8 +270,9 @@ public:
         return m_y;
     }
 
-    /// @brief Set both components (clears bindings)
+    /// @brief Set both components (clears bindings, marks owner dirty)
     void set(float x, float y) {
+        bool changed = (m_x != x || m_y != y || m_bindingX || m_bindingY || m_bindingUniform);
         m_x = x; m_y = y;
         m_bindingX = nullptr;
         m_bindingY = nullptr;
@@ -272,7 +280,11 @@ public:
         m_boundOperatorX = nullptr;
         m_boundOperatorY = nullptr;
         m_boundOperatorUniform = nullptr;
+        if (changed && m_owner) m_owner->markDirty();
     }
+
+    /// @brief Set owner operator (called by registerParam)
+    void setOwner(Operator* owner) { m_owner = owner; }
 
     // -------------------------------------------------------------------------
     /// @name Binding
@@ -395,6 +407,7 @@ private:
     Operator* m_boundOperatorX = nullptr;
     Operator* m_boundOperatorY = nullptr;
     Operator* m_boundOperatorUniform = nullptr;
+    Operator* m_owner = nullptr;
 };
 
 /**
@@ -431,8 +444,9 @@ public:
         return m_z;
     }
 
-    /// @brief Set all components (clears bindings)
+    /// @brief Set all components (clears bindings, marks owner dirty)
     void set(float x, float y, float z) {
+        bool changed = (m_x != x || m_y != y || m_z != z || m_bindingX || m_bindingY || m_bindingZ);
         m_x = x; m_y = y; m_z = z;
         m_bindingX = nullptr;
         m_bindingY = nullptr;
@@ -440,7 +454,11 @@ public:
         m_boundOperatorX = nullptr;
         m_boundOperatorY = nullptr;
         m_boundOperatorZ = nullptr;
+        if (changed && m_owner) m_owner->markDirty();
     }
+
+    /// @brief Set owner operator (called by registerParam)
+    void setOwner(Operator* owner) { m_owner = owner; }
 
     // -------------------------------------------------------------------------
     /// @name Binding
@@ -554,6 +572,7 @@ private:
     Operator* m_boundOperatorX = nullptr;
     Operator* m_boundOperatorY = nullptr;
     Operator* m_boundOperatorZ = nullptr;
+    Operator* m_owner = nullptr;
 };
 
 /**
@@ -604,8 +623,10 @@ public:
         out[0] = r(); out[1] = g(); out[2] = b(); out[3] = a();
     }
 
-    /// @brief Set all components (clears bindings)
+    /// @brief Set all components (clears bindings, marks owner dirty)
     void set(float r, float g, float b, float a = 1.0f) {
+        bool changed = (m_r != r || m_g != g || m_b != b || m_a != a ||
+                        m_bindingR || m_bindingG || m_bindingB || m_bindingA);
         m_r = r; m_g = g; m_b = b; m_a = a;
         m_bindingR = nullptr;
         m_bindingG = nullptr;
@@ -615,7 +636,11 @@ public:
         m_boundOperatorG = nullptr;
         m_boundOperatorB = nullptr;
         m_boundOperatorA = nullptr;
+        if (changed && m_owner) m_owner->markDirty();
     }
+
+    /// @brief Set owner operator (called by registerParam)
+    void setOwner(Operator* owner) { m_owner = owner; }
 
     void set(const Color& c);  // Defined in color.h
 
@@ -759,6 +784,104 @@ private:
     Operator* m_boundOperatorG = nullptr;
     Operator* m_boundOperatorB = nullptr;
     Operator* m_boundOperatorA = nullptr;
+    Operator* m_owner = nullptr;
+};
+
+/**
+ * @brief ADSR envelope parameter wrapper
+ *
+ * Stores Attack, Decay, Sustain, Release values for envelope generators.
+ * Values are stored as: attack (seconds), decay (seconds), sustain (0-1 level), release (seconds).
+ *
+ * @par Example
+ * @code
+ * ADSRParam m_envelope{"envelope", 0.01f, 0.2f, 0.7f, 0.3f};
+ *
+ * void applyEnvelope(float& amp) {
+ *     // Use envelope values for amplitude shaping
+ * }
+ * @endcode
+ */
+class ADSRParam {
+public:
+    /**
+     * @brief Construct an ADSR envelope parameter
+     * @param name Display name
+     * @param attack Attack time in seconds (default 0.01)
+     * @param decay Decay time in seconds (default 0.2)
+     * @param sustain Sustain level 0-1 (default 0.7)
+     * @param release Release time in seconds (default 0.3)
+     * @param maxTime Maximum time for A/D/R sliders (default 2.0)
+     */
+    ADSRParam(const char* name,
+              float attack = 0.01f, float decay = 0.2f,
+              float sustain = 0.7f, float release = 0.3f,
+              float maxTime = 2.0f)
+        : m_name(name), m_attack(attack), m_decay(decay),
+          m_sustain(sustain), m_release(release), m_maxTime(maxTime) {}
+
+    /// @brief Get attack time in seconds
+    float attack() const { return m_attack; }
+
+    /// @brief Get decay time in seconds
+    float decay() const { return m_decay; }
+
+    /// @brief Get sustain level (0-1)
+    float sustain() const { return m_sustain; }
+
+    /// @brief Get release time in seconds
+    float release() const { return m_release; }
+
+    /// @brief Get maximum time for sliders
+    float maxTime() const { return m_maxTime; }
+
+    /// @brief Get attack reference for direct binding
+    float& attackRef() { return m_attack; }
+
+    /// @brief Get decay reference for direct binding
+    float& decayRef() { return m_decay; }
+
+    /// @brief Get sustain reference for direct binding
+    float& sustainRef() { return m_sustain; }
+
+    /// @brief Get release reference for direct binding
+    float& releaseRef() { return m_release; }
+
+    /// @brief Set all ADSR values
+    void set(float a, float d, float s, float r) {
+        bool changed = (m_attack != a || m_decay != d || m_sustain != s || m_release != r);
+        m_attack = a;
+        m_decay = d;
+        m_sustain = s;
+        m_release = r;
+        if (changed && m_owner) m_owner->markDirty();
+    }
+
+    /// @brief Set owner operator (called by registerParam)
+    void setOwner(Operator* owner) { m_owner = owner; }
+
+    /// @brief Get parameter name
+    const char* name() const { return m_name; }
+
+    /// @brief Generate parameter declaration for introspection
+    ParamDecl decl() const {
+        ParamDecl d;
+        d.name = m_name;
+        d.type = ParamType::ADSR;
+        d.minVal = 0.0f;
+        d.maxVal = m_maxTime;
+        d.defaultVal[0] = m_attack;
+        d.defaultVal[1] = m_decay;
+        d.defaultVal[2] = m_sustain;
+        d.defaultVal[3] = m_release;
+        return d;
+    }
+
+private:
+    const char* m_name;
+    float m_attack, m_decay, m_sustain, m_release;
+    float m_maxTime;
+    Operator* m_owner = nullptr;
 };
 
 /**
@@ -792,11 +915,26 @@ public:
     /// @brief Implicit conversion to string reference
     operator const std::string&() const { return m_path; }
 
-    /// @brief Assignment from string
-    FilePathParam& operator=(const std::string& path) { m_path = path; return *this; }
+    /// @brief Assignment from string (marks owner dirty)
+    FilePathParam& operator=(const std::string& path) {
+        if (m_path != path) {
+            m_path = path;
+            if (m_owner) m_owner->markDirty();
+        }
+        return *this;
+    }
 
-    /// @brief Assignment from C-string
-    FilePathParam& operator=(const char* path) { m_path = path; return *this; }
+    /// @brief Assignment from C-string (marks owner dirty)
+    FilePathParam& operator=(const char* path) {
+        if (m_path != path) {
+            m_path = path;
+            if (m_owner) m_owner->markDirty();
+        }
+        return *this;
+    }
+
+    /// @brief Set owner operator (called by registerParam)
+    void setOwner(Operator* owner) { m_owner = owner; }
 
     /// @brief Get parameter name
     const char* name() const { return m_name; }
@@ -826,6 +964,7 @@ private:
     std::string m_path;
     const char* m_filter;
     const char* m_category;
+    Operator* m_owner = nullptr;
 };
 
 /**
@@ -841,6 +980,7 @@ public:
     virtual int index() const = 0;
     virtual void setIndex(int i) = 0;
     virtual ParamDecl decl() const = 0;
+    virtual void setOwner(Operator* owner) = 0;
 };
 
 /**
@@ -881,8 +1021,17 @@ public:
     /// @brief Get value explicitly
     E get() const { return m_value; }
 
-    /// @brief Assignment operator
-    EnumParam& operator=(E v) { m_value = v; return *this; }
+    /// @brief Assignment operator (marks owner dirty)
+    EnumParam& operator=(E v) {
+        if (m_value != v) {
+            m_value = v;
+            if (m_owner) m_owner->markDirty();
+        }
+        return *this;
+    }
+
+    /// @brief Set owner operator (called by registerParam)
+    void setOwner(Operator* owner) override { m_owner = owner; }
 
     /// @brief Get parameter name
     const char* name() const override { return m_name; }
@@ -893,10 +1042,14 @@ public:
         return idx.has_value() ? static_cast<int>(idx.value()) : 0;
     }
 
-    /// @brief Set value by index (from UI)
+    /// @brief Set value by index (from UI, marks owner dirty)
     void setIndex(int i) override {
         if (i >= 0 && static_cast<size_t>(i) < magic_enum::enum_count<E>()) {
-            m_value = magic_enum::enum_value<E>(static_cast<size_t>(i));
+            E newVal = magic_enum::enum_value<E>(static_cast<size_t>(i));
+            if (m_value != newVal) {
+                m_value = newVal;
+                if (m_owner) m_owner->markDirty();
+            }
         }
     }
 
@@ -928,6 +1081,7 @@ private:
     const char* m_name;
     E m_value;
     E m_default;
+    Operator* m_owner = nullptr;
 };
 
 } // namespace vivid

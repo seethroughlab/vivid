@@ -365,12 +365,15 @@ void ParticleRenderer::createCirclePipeline() {
 }
 
 void ParticleRenderer::createSpriteQuad() {
-    // Simple quad: two triangles
+    // Quad as triangle strip - vertices must alternate sides for proper winding
+    // Layout:  0 --- 2
+    //          |  \  |
+    //          1 --- 3
     SpriteVertex vertices[4] = {
-        {-0.5f, -0.5f, 0.0f, 1.0f},  // Bottom-left
-        { 0.5f, -0.5f, 1.0f, 1.0f},  // Bottom-right
-        { 0.5f,  0.5f, 1.0f, 0.0f},  // Top-right
-        {-0.5f,  0.5f, 0.0f, 0.0f},  // Top-left
+        {-0.5f,  0.5f, 0.0f, 0.0f},  // Top-left     (0)
+        {-0.5f, -0.5f, 0.0f, 1.0f},  // Bottom-left  (1)
+        { 0.5f,  0.5f, 1.0f, 0.0f},  // Top-right    (2)
+        { 0.5f, -0.5f, 1.0f, 1.0f},  // Bottom-right (3)
     };
 
     WGPUBufferDescriptor vertexDesc = {};

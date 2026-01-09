@@ -299,6 +299,18 @@ void Chain::init(Context& ctx) {
         }
     }
 
+    // Resolve trigger sources for all operators (for visualization)
+    for (const auto& [name, op] : m_operators) {
+        const std::string& triggerName = op->pendingTriggerSourceName();
+        if (!triggerName.empty()) {
+            Operator* triggerOp = getByName(triggerName);
+            if (triggerOp) {
+                op->setTriggerSource(triggerOp);
+            }
+            op->clearPendingTriggerSourceName();
+        }
+    }
+
     // Second pass: call init on all operators
     for (const auto& [name, op] : m_operators) {
         op->init(ctx);

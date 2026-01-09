@@ -230,12 +230,15 @@ void NodeGraph::autoLayout() {
     std::unordered_map<int, std::vector<int>> outgoing;  // nodeId -> [connected nodeIds]
     std::unordered_map<int, std::vector<int>> incoming;  // nodeId -> [source nodeIds]
     std::unordered_map<int, int> inDegree;
+    // Also track destination pin IDs for input slot ordering
+    std::unordered_map<int, std::vector<std::pair<int, int>>> outgoingWithPin;  // srcNode -> [(dstNode, endPinId)]
 
     // Initialize all nodes
     for (const auto& [id, node] : m_nodes) {
         outgoing[id] = {};
         incoming[id] = {};
         inDegree[id] = 0;
+        outgoingWithPin[id] = {};
     }
 
     // Build adjacency from links
@@ -252,6 +255,7 @@ void NodeGraph::autoLayout() {
         outgoing[srcNode].push_back(dstNode);
         incoming[dstNode].push_back(srcNode);
         inDegree[dstNode]++;
+        outgoingWithPin[srcNode].push_back({dstNode, link.endPinId});
     }
 
     // Step 2: Layer assignment using longest path from sources
@@ -362,24 +366,37 @@ void NodeGraph::autoLayout() {
             }
         }
 
-        // Backward pass
+        // Backward pass - look at ALL successors across all later layers
+        // Weight by layer distance and use input pin slot for sub-ordering
         for (int layerIdx = static_cast<int>(layers.size()) - 2; layerIdx >= 0; layerIdx--) {
             std::vector<std::pair<float, int>> positions;
             for (int nodeId : layers[layerIdx]) {
                 float sum = 0;
-                int count = 0;
-                // Find position of successors in next layer
-                for (int succ : outgoing[nodeId]) {
-                    auto& nextLayer = layers[layerIdx + 1];
-                    for (size_t i = 0; i < nextLayer.size(); i++) {
-                        if (nextLayer[i] == succ) {
-                            sum += static_cast<float>(i);
-                            count++;
+                float totalWeight = 0;
+                // Find position of successors in ANY later layer (not just adjacent)
+                // Use pin information to order by input slot when connecting to same node
+                for (const auto& [succ, endPinId] : outgoingWithPin[nodeId]) {
+                    int succLayer = nodeLayer[succ];
+                    if (succLayer <= layerIdx) continue;  // Only look forward
+
+                    auto& targetLayer = layers[succLayer];
+                    for (size_t i = 0; i < targetLayer.size(); i++) {
+                        if (targetLayer[i] == succ) {
+                            // Weight by inverse layer distance (closer = more weight)
+                            float weight = 1.0f / static_cast<float>(succLayer - layerIdx);
+                            // Use input pin slot to sub-order within the same destination node
+                            // Pin ID format: nodeId * 100 + slot (slot 1-49 for inputs, 50 for values)
+                            int pinSlot = endPinId % 100;
+                            // Add small offset based on pin slot (0.01 per slot)
+                            // This ensures nodes connecting to earlier slots are positioned higher
+                            float slotOffset = static_cast<float>(pinSlot) * 0.01f;
+                            sum += (static_cast<float>(i) + slotOffset) * weight;
+                            totalWeight += weight;
                             break;
                         }
                     }
                 }
-                float barycenter = (count > 0) ? sum / count : static_cast<float>(positions.size());
+                float barycenter = (totalWeight > 0) ? sum / totalWeight : static_cast<float>(positions.size());
                 positions.push_back({barycenter, nodeId});
             }
             std::sort(positions.begin(), positions.end());
@@ -725,7 +742,10 @@ void NodeGraph::renderNode(NodeState& node) {
         float contentY = pos.y + titleH + padding * 0.5f;
         float contentW = w - padding * 2;
         float contentH = contentAreaH - padding;
+        // Set content scale so VizDrawList can scale text appropriately
+        m_canvas->setContentScale(m_zoom);
         node.contentCallback(*m_canvas, contentX, contentY, contentW, contentH);
+        m_canvas->setContentScale(1.0f);  // Reset after callback
         m_canvas->setLayer(UILayer::Nodes);  // Switch back for pins
     }
 

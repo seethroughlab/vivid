@@ -69,7 +69,8 @@ enum class ParamType {
     Color,    ///< RGBA color (0-1 range)
     String,   ///< Text string
     FilePath, ///< File path (texture, video, model, etc.)
-    Enum      ///< Enumeration (dropdown selection)
+    Enum,     ///< Enumeration (dropdown selection)
+    ADSR      ///< ADSR envelope (attack, decay, sustain, release)
 };
 
 // Forward declaration for binding tracking
@@ -404,6 +405,44 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Trigger Source (for visualization)
+    /// @{
+
+    /**
+     * @brief Set trigger source operator for visualization
+     * @param source Operator that triggers this one
+     *
+     * This is for chain visualizer display only - it shows cyan dashed
+     * lines from trigger sources (e.g., Sequencer -> Kick).
+     * The actual triggering must still be done in update() code.
+     */
+    void setTriggerSource(Operator* source) { m_triggerSource = source; }
+
+    /**
+     * @brief Set trigger source by name (resolved at init time)
+     * @param name Name of the trigger source operator
+     */
+    void setTriggerSource(const std::string& name) { m_pendingTriggerSourceName = name; }
+
+    /**
+     * @brief Get trigger source operator
+     * @return Trigger source, or nullptr if none
+     */
+    Operator* triggerSource() const { return m_triggerSource; }
+
+    /**
+     * @brief Get pending trigger source name (for deferred resolution)
+     * @return Name string, or empty if already resolved
+     */
+    const std::string& pendingTriggerSourceName() const { return m_pendingTriggerSourceName; }
+
+    /**
+     * @brief Clear pending trigger source name after resolution
+     */
+    void clearPendingTriggerSourceName() { m_pendingTriggerSourceName.clear(); }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Cooking / Dependency System
     /// @{
 
@@ -542,6 +581,10 @@ protected:
     bool m_registered = false;            ///< Whether already registered for visualization
     bool m_bypassed = false;         ///< Whether operator is bypassed (pass-through)
     bool m_initialized = false;      ///< Whether init() has completed
+
+    // Trigger source (for chain visualizer - shows trigger flow)
+    Operator* m_triggerSource = nullptr;           ///< Trigger source operator (for visualization)
+    std::string m_pendingTriggerSourceName;        ///< Deferred trigger source name
 
     // Cooking system
     uint64_t m_generation = 0;                ///< Output generation counter

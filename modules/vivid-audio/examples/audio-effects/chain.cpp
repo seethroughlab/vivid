@@ -6,7 +6,10 @@
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
 #include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
 #include <cmath>
+#include <cstring>
+#include <string>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -22,7 +25,7 @@ void setup(Context& ctx) {
     // ----- AUDIO SOURCE -----
     // Simple synth as effect input
     auto& synth = chain.add<Synth>("synth");
-    synth.waveform(Waveform::Sawtooth);
+    synth.setWaveform(Waveform::Saw);
     synth.attack = 0.01f;
     synth.decay = 0.2f;
     synth.sustain = 0.6f;
@@ -69,8 +72,8 @@ void setup(Context& ctx) {
     // 4. BITCRUSH - Lo-fi digital destruction
     auto& bitcrush = chain.add<Bitcrush>("bitcrush");
     bitcrush.input("synth");
-    bitcrush.bits = 8;         // 8-bit quantization
-    bitcrush.sampleRate = 12000.0f;  // Downsample
+    bitcrush.bits = 8;                    // 8-bit quantization
+    bitcrush.targetSampleRate = 12000.0f; // Downsample
     bitcrush.mix = 1.0f;
 
     // 5. OVERDRIVE - Soft clipping saturation
@@ -83,43 +86,35 @@ void setup(Context& ctx) {
     // ----- MIXER -----
     // We'll switch between effects in update()
     auto& mixer = chain.add<AudioMixer>("mixer");
-    mixer.addInput(&comp, 0.0f);      // Start with all off
-    mixer.addInput(&phaser, 0.0f);
-    mixer.addInput(&flanger, 0.0f);
-    mixer.addInput(&bitcrush, 0.0f);
-    mixer.addInput(&overdrive, 0.0f);
+    mixer.setInput(0, "compressor");
+    mixer.setInput(1, "phaser");
+    mixer.setInput(2, "flanger");
+    mixer.setInput(3, "bitcrush");
+    mixer.setInput(4, "overdrive");
+    // Start with all gains at 0 (we'll set active effect in update)
+    for (int i = 0; i < NUM_EFFECTS; i++) {
+        mixer.setGain(i, 0.0f);
+    }
+
+    // ----- FFT ANALYZER -----
+    // Analyze the effected output for visualization
+    auto& fft = chain.add<FFT>("fft");
+    fft.input("mixer");
+    fft.setSize(512);
+    fft.smoothing = 0.85f;
 
     // ----- AUDIO OUTPUT -----
     auto& output = chain.add<AudioOutput>("audio_out");
-    output.input("mixer");
+    output.setInput("mixer");
+    chain.audioOutput("audio_out");
 
     // ----- VISUALS -----
-    // Effect visualization
-    auto& bg = chain.add<Gradient>("bg");
-    bg.mode = GradientMode::Radial;
-    bg.colorA.set(0.15f, 0.1f, 0.2f, 1.0f);
-    bg.colorB.set(0.02f, 0.02f, 0.04f, 1.0f);
+    // Canvas for text labels and spectrum visualization
+    auto& canvas = chain.add<Canvas>("canvas");
+    canvas.size(1280, 720);
+    canvas.loadBuiltinFont(ctx, BuiltinFont::Mono, 14.0f);  // Load font once
 
-    // Waveform-inspired shape
-    auto& shape = chain.add<Shape>("shape");
-    shape.type = ShapeType::Circle;
-    shape.size.set(0.25f, 0.25f);
-    shape.softness = 0.3f;
-    shape.color.set(0.5f, 0.8f, 1.0f, 1.0f);
-
-    auto& comp1 = chain.add<Composite>("comp1");
-    comp1.inputA("bg");
-    comp1.inputB("shape");
-    comp1.mode = BlendMode::Add;
-
-    // Post-process with bloom
-    auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input("comp1");
-    bloom.threshold = 0.4f;
-    bloom.intensity = 1.5f;
-    bloom.radius = 30.0f;
-
-    chain.output("bloom");
+    chain.output("canvas");
 }
 
 void update(Context& ctx) {
@@ -135,9 +130,9 @@ void update(Context& ctx) {
     g_activeEffect = static_cast<int>(mouseX * NUM_EFFECTS);
     if (g_activeEffect >= NUM_EFFECTS) g_activeEffect = NUM_EFFECTS - 1;
 
-    // Set mixer levels based on active effect
+    // Set mixer gains based on active effect
     for (int i = 0; i < NUM_EFFECTS; i++) {
-        mixer.setLevel(i, (i == g_activeEffect) ? 1.0f : 0.0f);
+        mixer.setGain(i, (i == g_activeEffect) ? 1.0f : 0.0f);
     }
 
     // Mouse Y: effect intensity parameter
@@ -165,7 +160,7 @@ void update(Context& ctx) {
         case 3: {  // Bitcrush
             auto& bitcrush = chain.get<Bitcrush>("bitcrush");
             bitcrush.bits = 2 + static_cast<int>((1.0f - mouseY) * 14);  // 2-16 bits
-            bitcrush.sampleRate = 4000.0f + (1.0f - mouseY) * 40000.0f;
+            bitcrush.targetSampleRate = 4000.0f + (1.0f - mouseY) * 40000.0f;
             break;
         }
         case 4: {  // Overdrive
@@ -177,66 +172,79 @@ void update(Context& ctx) {
 
     // Auto-trigger synth with clock
     if (clock.triggered()) {
-        // Cycle through notes in a simple pattern
+        // Cycle through notes in a simple pattern (MIDI note numbers)
         static const int notes[] = {48, 51, 55, 48, 53, 55, 51, 48};
         static int noteIndex = 0;
-        synth.note(notes[noteIndex]);
-        synth.trigger();
+        synth.noteOn(midiToFreq(notes[noteIndex]));
         noteIndex = (noteIndex + 1) % 8;
     }
 
-    // Visual feedback
-    auto& shape = chain.get<Shape>("shape");
+    // ----- CANVAS VISUALIZATION -----
+    static const char* effectNames[] = {
+        "COMPRESSOR", "PHASER", "FLANGER", "BITCRUSH", "OVERDRIVE"
+    };
 
-    // Color based on active effect
+    auto& canvas = chain.get<Canvas>("canvas");
+    auto& fft = chain.get<FFT>("fft");
+
+    // Dark background
+    canvas.clear(0.05f, 0.05f, 0.08f, 1.0f);
+
+    // Color hue based on active effect
     float hue = static_cast<float>(g_activeEffect) / NUM_EFFECTS;
-    shape.color.set(
-        0.5f + 0.5f * std::sin(hue * 6.28f),
-        0.5f + 0.5f * std::sin(hue * 6.28f + 2.09f),
-        0.5f + 0.5f * std::sin(hue * 6.28f + 4.19f),
-        1.0f
-    );
 
-    // Pulse with synth envelope
-    float envScale = synth.isActive() ? 0.1f : 0.0f;
-    float size = 0.2f + envScale + 0.05f * std::sin(t * 3.0f);
-    shape.size.set(size, size);
+    // Draw effect name at top (font loaded in setup)
+    canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
+    canvas.textAlign(TextAlign::Left);
+    canvas.textBaseline(TextBaseline::Top);
+    // Manually center: monospace 14px is ~8.4px per char
+    float nameX = 640.0f - strlen(effectNames[g_activeEffect]) * 4.2f;
+    canvas.fillText(effectNames[g_activeEffect], nameX, 40.0f);
 
-    // Effect-specific animation
+    // Draw parameter info below
+    canvas.fillStyle(0.7f, 0.7f, 0.7f, 1.0f);
+
+    // Format parameter text based on active effect
+    char paramBuf[64];
     switch (g_activeEffect) {
-        case 1:  // Phaser - swirl
-            shape.rotation = t * 0.5f;
-            break;
-        case 2:  // Flanger - jet sweep
-            shape.rotation = std::sin(t * 0.3f) * 0.5f;
-            break;
-        case 3:  // Bitcrush - jittery
-            shape.position.set(
-                std::sin(t * 20.0f) * 0.01f,
-                std::cos(t * 23.0f) * 0.01f
-            );
-            break;
-        case 4:  // Overdrive - throb
-            {
-                float throb = 0.2f + mouseY * 0.15f;
-                shape.size.set(size + throb * std::sin(t * 8.0f) * 0.1f,
-                               size + throb * std::sin(t * 8.0f) * 0.1f);
-            }
-            break;
-        default:
-            shape.rotation = 0.0f;
-            shape.position.set(0.0f, 0.0f);
-            break;
+        case 0: snprintf(paramBuf, sizeof(paramBuf), "Ratio: %d:1", 2 + (int)(mouseY * 18)); break;
+        case 1: snprintf(paramBuf, sizeof(paramBuf), "Rate: %.2f Hz", 0.1f + mouseY * 2.0f); break;
+        case 2: snprintf(paramBuf, sizeof(paramBuf), "Rate: %.2f Hz", 0.05f + mouseY * 1.0f); break;
+        case 3: snprintf(paramBuf, sizeof(paramBuf), "Bits: %d", 2 + (int)((1.0f - mouseY) * 14)); break;
+        case 4: snprintf(paramBuf, sizeof(paramBuf), "Drive: %d%%", (int)(mouseY * 100)); break;
+    }
+    float paramX = 640.0f - strlen(paramBuf) * 4.2f;
+    canvas.fillText(paramBuf, paramX, 60.0f);
+
+    // Draw FFT spectrum bars
+    int binCount = fft.binCount();
+    float barWidth = 1200.0f / 64.0f;
+    float spectrumY = 620.0f;
+    float spectrumHeight = 400.0f;
+
+    for (int i = 0; i < 64; i++) {
+        // Logarithmic mapping for better bass visibility
+        int bin = static_cast<int>(std::pow(static_cast<float>(i) / 64.0f, 2.0f) * binCount * 0.5f);
+        float mag = fft.bin(bin);
+
+        float barHeight = mag * spectrumHeight;
+        float x = 40.0f + i * barWidth;
+
+        // Color varies with frequency and effect
+        canvas.fillStyle(
+            0.3f + 0.7f * std::sin(hue * 6.28f + i * 0.1f),
+            0.3f + 0.7f * std::sin(hue * 6.28f + 2.09f + i * 0.05f),
+            0.5f + 0.5f * std::sin(hue * 6.28f + 4.19f),
+            0.9f
+        );
+        canvas.fillRect(x, spectrumY - barHeight, barWidth - 2.0f, barHeight);
     }
 
-    // Background color shift
-    auto& bg = chain.get<Gradient>("bg");
-    bg.colorA.set(
-        0.1f + 0.1f * std::sin(hue * 6.28f + t * 0.2f),
-        0.08f + 0.08f * std::sin(hue * 6.28f + 2.09f + t * 0.2f),
-        0.15f + 0.1f * std::sin(hue * 6.28f + 4.19f + t * 0.2f),
-        1.0f
-    );
+    // Draw control hints at bottom
+    canvas.fillStyle(0.4f, 0.4f, 0.4f, 1.0f);
+    canvas.textAlign(TextAlign::Left);
+    canvas.textBaseline(TextBaseline::Bottom);
+    canvas.fillText("Mouse X: Select Effect    Mouse Y: Adjust Parameter", 40.0f, 700.0f);
 }
 
 VIVID_CHAIN(setup, update)

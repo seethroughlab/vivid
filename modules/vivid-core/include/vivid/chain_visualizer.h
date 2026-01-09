@@ -168,32 +168,13 @@ private:
     float m_inspectorScrollOffset = 0.0f;
     float m_inspectorContentHeight = 0.0f;
 
-    // Slider interaction state
-    struct SliderState {
-        bool dragging = false;
-        std::string operatorName;
-        std::string paramName;
-        int paramIndex = 0;  // Which component (0-3) for Vec types
-        float startValue = 0.0f;
-        float startMouseX = 0.0f;
-        float originalValue[4] = {0};
-    };
-    SliderState m_sliderState;
+    // Inspector panel bounds for input blocking
+    struct {
+        float x = 0, y = 0, w = 0, h = 0;
+        bool valid = false;
+    } m_inspectorBounds;
 
-    // Dropdown interaction state (for enum parameters)
-    struct DropdownState {
-        bool open = false;
-        std::string operatorName;
-        std::string paramName;
-        float menuX = 0.0f;
-        float menuY = 0.0f;
-        float menuWidth = 0.0f;
-        std::vector<std::string> options;
-        int currentIndex = 0;
-    };
-    DropdownState m_dropdown;
-
-    // Color picker state
+    // Color picker expanded state (tracks which picker is open)
     struct ColorPickerState {
         bool expanded = false;
         std::string operatorName;
@@ -201,6 +182,17 @@ private:
         float originalColor[4] = {0, 0, 0, 1};
     };
     ColorPickerState m_colorPicker;
+
+    // Active drag context for Gui widget callbacks
+    // Tracks operator/param context during slider drags for change callbacks
+    struct ActiveDragContext {
+        std::string operatorName;
+        std::string paramName;
+        int sourceLine = 0;
+        float originalValue[4] = {0, 0, 0, 0};
+        bool active = false;
+    };
+    ActiveDragContext m_activeDrag;
 };
 
 } // namespace vivid

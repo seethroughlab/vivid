@@ -64,6 +64,9 @@ public:
     /// @brief Construct from EnumParamBase (type-erased enum)
     ParamRef(EnumParamBase* p) : m_ptr(p), m_type(ParamType::Enum) {}
 
+    /// @brief Construct from ADSRParam
+    ParamRef(ADSRParam* p) : m_ptr(p), m_type(ParamType::ADSR) {}
+
     /// @brief Get parameter name
     const char* name() const {
         switch (m_type) {
@@ -75,6 +78,7 @@ public:
             case ParamType::Color:    return static_cast<ColorParam*>(m_ptr)->name();
             case ParamType::FilePath: return static_cast<FilePathParam*>(m_ptr)->name();
             case ParamType::Enum:     return static_cast<EnumParamBase*>(m_ptr)->name();
+            case ParamType::ADSR:     return static_cast<ADSRParam*>(m_ptr)->name();
             default:                  return "";
         }
     }
@@ -93,6 +97,7 @@ public:
             case ParamType::Color:    return static_cast<ColorParam*>(m_ptr)->decl();
             case ParamType::FilePath: return static_cast<FilePathParam*>(m_ptr)->decl();
             case ParamType::Enum:     return static_cast<EnumParamBase*>(m_ptr)->decl();
+            case ParamType::ADSR:     return static_cast<ADSRParam*>(m_ptr)->decl();
             default:                  return {};
         }
     }
@@ -142,6 +147,14 @@ public:
             case ParamType::Enum: {
                 auto* p = static_cast<EnumParamBase*>(m_ptr);
                 out[0] = static_cast<float>(p->index());
+                return true;
+            }
+            case ParamType::ADSR: {
+                auto* p = static_cast<ADSRParam*>(m_ptr);
+                out[0] = p->attack();
+                out[1] = p->decay();
+                out[2] = p->sustain();
+                out[3] = p->release();
                 return true;
             }
             default:
@@ -211,6 +224,15 @@ public:
                 int newIdx = static_cast<int>(value[0]);
                 if (p->index() != newIdx) {
                     p->setIndex(newIdx);
+                    return true;
+                }
+                return false;
+            }
+            case ParamType::ADSR: {
+                auto* p = static_cast<ADSRParam*>(m_ptr);
+                if (p->attack() != value[0] || p->decay() != value[1] ||
+                    p->sustain() != value[2] || p->release() != value[3]) {
+                    p->set(value[0], value[1], value[2], value[3]);
                     return true;
                 }
                 return false;

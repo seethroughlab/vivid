@@ -84,14 +84,16 @@ public:
                               glm::vec2(p3.x, p3.y), col32ToVec4(col));
     }
 
-    // Text
+    // Text (scales with canvas contentScale, typically set to zoom level)
     void AddText(VizVec2 pos, uint32_t col, const char* textStr) {
-        m_canvas.text(textStr, pos.x, pos.y, col32ToVec4(col));
+        float scale = m_canvas.contentScale();
+        m_canvas.textScaled(textStr, pos.x, pos.y, col32ToVec4(col), scale, 0);
     }
 
     void AddText(VizVec2 pos, uint32_t col, const char* textStr, float fontSize) {
         (void)fontSize; // OverlayCanvas uses font index, not size
-        m_canvas.text(textStr, pos.x, pos.y, col32ToVec4(col));
+        float scale = m_canvas.contentScale();
+        m_canvas.textScaled(textStr, pos.x, pos.y, col32ToVec4(col), scale, 0);
     }
 
     // Image (texture ID is WGPUTextureView cast to void*)
@@ -129,12 +131,14 @@ public:
         }
     }
 
-    // Text size calculation (approximate)
+    // Text size calculation (approximate, accounts for content scale)
     VizTextSize CalcTextSize(const char* textStr, float fontSize = 12.0f) const {
         // Approximate: 7 pixels per character width, fontSize for height
+        // Scaled by contentScale to match actual rendered size
+        float scale = m_canvas.contentScale();
         size_t len = 0;
         while (textStr && textStr[len]) len++;
-        return { static_cast<float>(len) * fontSize * 0.6f, fontSize };
+        return { static_cast<float>(len) * fontSize * 0.6f * scale, fontSize * scale };
     }
 
 private:

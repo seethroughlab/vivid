@@ -270,6 +270,9 @@ private:
 
     // Rendering
     ParticleRenderer m_renderer;
+
+    // Aspect ratio for circular emitter shapes (updated in process)
+    float m_aspectRatio = 16.0f / 9.0f;
 };
 
 } // namespace vivid::effects

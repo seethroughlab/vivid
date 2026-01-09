@@ -391,12 +391,13 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
 
     // Check if mouse is in inspector panel area (block node graph panning if so)
     // But don't block if the mouse is in the mini-map (which is in bottom-right)
-    bool blockNodeGraphInput = m_sliderState.dragging;
-    if (!blockNodeGraphInput && m_inspectorVisible) {
-        // Check if mouse is over inspector panel area (right side)
-        float panelX = input.width - m_inspectorWidth * scale - 12.0f * scale;
-        float statusBarHeight = 32.0f * scale;
-        if (scaledMousePos.x >= panelX && scaledMousePos.y >= statusBarHeight) {
+    bool blockNodeGraphInput = m_activeDrag.active;
+    if (!blockNodeGraphInput && m_inspectorVisible && m_inspectorBounds.valid) {
+        // Use tracked inspector bounds for accurate hit testing
+        if (scaledMousePos.x >= m_inspectorBounds.x &&
+            scaledMousePos.x <= m_inspectorBounds.x + m_inspectorBounds.w &&
+            scaledMousePos.y >= m_inspectorBounds.y &&
+            scaledMousePos.y <= m_inspectorBounds.y + m_inspectorBounds.h) {
             // Don't block if in mini-map area
             if (!m_nodeGraph.isPointInMiniMap(scaledMousePos)) {
                 blockNodeGraphInput = true;
@@ -542,6 +543,14 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
             m_nodeGraph.endInputAttribute();
         }
 
+        // Check if this operator has a trigger source (for dashed link visualization)
+        if (info.op->triggerSource()) {
+            int trigPinId = nodeId * 100 + 51;  // Offset 51 for trigger pins
+            m_nodeGraph.beginInputAttribute(trigPinId);
+            m_nodeGraph.pinLabel("trig");
+            m_nodeGraph.endInputAttribute();
+        }
+
         // Add output pin
         int outputPinId = nodeId * 100;
         m_nodeGraph.beginOutputAttribute(outputPinId);
@@ -655,6 +664,30 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
                     m_nodeGraph.linkDashed(linkId++, srcOutputPinId, dstInputPinId, valueBindingColor);
                     break;
                 }
+            }
+        }
+    }
+
+    // Add dashed links for trigger connections (parallel to value bindings above)
+    glm::vec4 triggerColor = {0.4f, 0.8f, 1.0f, 0.9f};  // Cyan for trigger connections
+    for (size_t i = 0; i < operators.size(); ++i) {
+        const vivid::OperatorInfo& info = operators[i];
+        if (!info.op) continue;
+
+        vivid::Operator* triggerSrc = info.op->triggerSource();
+        if (!triggerSrc) continue;
+
+        int dstNodeId = static_cast<int>(i);
+
+        // Find source node for the trigger operator
+        for (size_t k = 0; k < operators.size(); ++k) {
+            if (operators[k].op == triggerSrc) {
+                int srcNodeId = static_cast<int>(k);
+                // Connect to the "trig" input pin (offset 51)
+                int srcOutputPinId = srcNodeId * 100;
+                int dstInputPinId = dstNodeId * 100 + 51;
+                m_nodeGraph.linkDashed(linkId++, srcOutputPinId, dstInputPinId, triggerColor);
+                break;
             }
         }
     }
@@ -811,6 +844,9 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
 }
 
 void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& ctx) {
+    // Draw status bar on its own layer (below Panels content to avoid clipping)
+    m_overlay.setLayer(UILayer::Panels - 2);
+
     // Use mono font metrics for bar height calculation
     const int monoFont = 2;
     float lineH = m_overlay.fontLineHeight(monoFont);
@@ -1214,24 +1250,37 @@ void ChainVisualizer::renderTooltip(const FrameInput& input, const vivid::Operat
 }
 
 void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Context& ctx) {
-    if (!m_inspectorVisible) return;
+    if (!m_inspectorVisible) {
+        m_inspectorBounds.valid = false;
+        return;
+    }
 
     // Get selected node
     int selectedNodeId = m_nodeGraph.getSelectedNode();
     if (selectedNodeId < 0 || selectedNodeId == SCREEN_NODE_ID || selectedNodeId == SPEAKERS_NODE_ID) {
         m_inspectorScrollOffset = 0.0f;  // Reset scroll when no selection
+        m_inspectorBounds.valid = false;
         return;  // No valid selection
     }
 
     const auto& operators = ctx.registeredOperators();
-    if (static_cast<size_t>(selectedNodeId) >= operators.size()) return;
+    if (static_cast<size_t>(selectedNodeId) >= operators.size()) {
+        m_inspectorBounds.valid = false;
+        return;
+    }
 
     const vivid::OperatorInfo& info = operators[selectedNodeId];
-    if (!info.op) return;
+    if (!info.op) {
+        m_inspectorBounds.valid = false;
+        return;
+    }
 
     // Get parameters
     auto params = info.op->params();
-    if (params.empty()) return;
+    if (params.empty()) {
+        m_inspectorBounds.valid = false;
+        return;
+    }
 
     // Inspector panel renders on Panels layer (above nodes/thumbnails)
     m_overlay.setLayer(UILayer::Panels);
@@ -1248,6 +1297,23 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
     float inspectorWidth = m_inspectorWidth * scale;  // Scale the panel width
 
+    // Create scaled FrameInput for Gui widgets (HiDPI support)
+    FrameInput scaledInput = input;
+    scaledInput.mousePos *= scale;
+
+    // Create Gui instance with inspector-compatible style
+    Gui gui(m_overlay, scaledInput);
+    gui.style().labelPosition = LabelPosition::Above;
+    gui.style().valuePosition = ValuePosition::Right;
+    gui.style().padding = 12.0f * scale;
+    gui.style().widgetHeight = 20.0f * scale;
+    gui.style().valueWidth = 60.0f * scale;
+    gui.style().cornerRadius = 3.0f * scale;
+    gui.style().widgetBackground = {0.2f, 0.2f, 0.25f, 1.0f};
+    gui.style().sliderFill = {0.4f, 0.6f, 0.9f, 1.0f};
+    gui.style().sliderFillActive = {0.5f, 0.7f, 1.0f, 1.0f};
+    gui.style().textDim = {0.5f, 0.5f, 0.55f, 1.0f};
+
     // Layout (scaled for HiDPI)
     const float padding = 12.0f * scale;
     const float sliderHeight = 20.0f * scale;
@@ -1255,28 +1321,44 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     const float headerHeight = lineH + padding * 2;
 
     // Calculate total content height based on parameters
-    size_t totalRows = 0;
+    float totalRowsHeight = 0;
     for (const auto& p : params) {
         switch (p.type) {
-            case ParamType::Vec2: totalRows += 2; break;
-            case ParamType::Vec3: totalRows += 3; break;
+            case ParamType::Vec2:
+                // XY pad takes ~3.5 row heights (label + square pad)
+                totalRowsHeight += rowHeight * 2.5f;
+                break;
+            case ParamType::Vec3:
+                // Compact row takes ~2 row heights (label + component labels + sliders)
+                totalRowsHeight += rowHeight * 2.0f;
+                break;
             case ParamType::Vec4:
-            case ParamType::Color: totalRows += 4; break;
-            case ParamType::Enum: totalRows += 1; break;  // Dropdown is single row
-            default: totalRows += 1; break;
+            case ParamType::Color: totalRowsHeight += rowHeight * 4; break;
+            case ParamType::Enum: totalRowsHeight += rowHeight; break;  // Dropdown is single row
+            case ParamType::ADSR: totalRowsHeight += rowHeight * 4; break;  // Graph + 4 mini-sliders
+            default: totalRowsHeight += rowHeight; break;
         }
     }
-    m_inspectorContentHeight = totalRows * rowHeight + padding * 2;
+    m_inspectorContentHeight = totalRowsHeight + padding * 2;
 
     // Panel position (right side, below status bar)
     float statusBarHeight = lineH + 12.0f * scale;
     float panelX = input.width - inspectorWidth - padding;
     float panelY = statusBarHeight + padding;
 
-    // Calculate visible area height (clamped to screen)
-    float maxPanelHeight = input.height - panelY - padding;
+    // Calculate visible area height (clamped to screen, accounting for mini map)
+    // Mini map is in bottom-right corner: height=150, margin=16 (from NodeGraphStyle defaults)
+    float miniMapReservedHeight = (150.0f + 16.0f + padding) * scale;
+    float maxPanelHeight = input.height - panelY - miniMapReservedHeight;
     float contentAreaHeight = maxPanelHeight - headerHeight;  // Visible content area
     float panelHeight = std::min(headerHeight + m_inspectorContentHeight, maxPanelHeight);
+
+    // Store bounds for input blocking (used in renderNodeGraph)
+    m_inspectorBounds.x = panelX;
+    m_inspectorBounds.y = panelY;
+    m_inspectorBounds.w = inspectorWidth;
+    m_inspectorBounds.h = panelHeight;
+    m_inspectorBounds.valid = true;
 
     // Handle scroll input (UI-only, no GPU operations)
     // Only scroll if mouse is in the panel area
@@ -1301,14 +1383,19 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
     glm::vec4 sliderFill = {0.4f, 0.6f, 0.9f, 1.0f};
     glm::vec4 sliderActive = {0.5f, 0.7f, 1.0f, 1.0f};
 
-    // Draw panel background
-    m_overlay.fillRoundedRect(panelX, panelY, inspectorWidth, panelHeight, 6.0f * scale, bgColor);
-    m_overlay.strokeRoundedRect(panelX, panelY, inspectorWidth, panelHeight, 6.0f * scale, 1.0f * scale, borderColor);
+    // Draw panel background on a layer below the content (so it's not clipped)
+    m_overlay.setLayer(UILayer::Panels - 1);  // Panel background layer
+    float cornerRadius = 6.0f * scale;
+    m_overlay.fillRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, bgColor);
+    m_overlay.strokeRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, 1.0f * scale, borderColor);
 
-    // Header
-    m_overlay.fillRect(panelX, panelY, inspectorWidth, headerHeight, headerBg);
+    // Header (use fillRoundedRectTop so top corners match the panel's rounded corners)
+    m_overlay.fillRoundedRectTop(panelX, panelY, inspectorWidth, headerHeight, cornerRadius, headerBg);
     std::string title = info.op->name() + " (" + info.name + ")";
     m_overlay.text(title, panelX + padding, panelY + padding + ascent, titleColor, labelFont);
+
+    // Switch to main Panels layer for content (this layer will be clipped)
+    m_overlay.setLayer(UILayer::Panels);
 
     // Mouse state (mousePos and scale already calculated above for scroll)
     bool mouseDown = input.mouseDown[0];
@@ -1324,6 +1411,15 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
     // Content area - apply scroll offset (UI coordinate only)
     float contentY = panelY + headerHeight + padding - m_inspectorScrollOffset;
+
+    // Set up Gui content area for widgets
+    float contentAreaX = panelX + padding;
+    float contentAreaW = inspectorWidth - padding * 2;
+    gui.beginArea(contentAreaX, visibleTop, contentAreaW, contentAreaHeight);
+
+    // Set layer clip rect to clip content to panel bounds
+    // This applies scissor rect when rendering the Panels layer
+    m_overlay.setLayerClipRect(UILayer::Panels, panelX, visibleTop, inspectorWidth, contentAreaHeight);
 
     for (const auto& p : params) {
         float value[4] = {0};
@@ -1358,448 +1454,418 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 break;
         }
 
-        // Handle Enum type with dropdown
+        // Handle Enum type with dropdown - use Gui dropdown
         if (p.type == ParamType::Enum) {
             float y = contentY;
             float itemBottom = y + rowHeight;
             bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
 
-            int currentIndex = static_cast<int>(value[0]);
-            std::string currentLabel = (currentIndex >= 0 && currentIndex < static_cast<int>(p.enumLabels.size()))
-                ? p.enumLabels[currentIndex] : "?";
+            if (isVisible && !p.enumLabels.empty()) {
+                // Position Gui cursor
+                gui.setCursorY(y);
+                gui.pushId(info.name.c_str());
+                gui.pushId(p.name.c_str());
 
-            if (isVisible) {
-                // Label
-                m_overlay.text(p.name, panelX + padding, y + ascent, dimColor, labelFont);
+                // Get current index and track previous for callback
+                int currentIndex = static_cast<int>(value[0]);
+                int prevIndex = currentIndex;
 
-                // Dropdown button
-                float buttonX = panelX + padding;
-                float buttonY = y + lineH;
-                float buttonWidth = sliderWidth;
+                // Use Gui dropdown
+                if (gui.dropdown(p.name.c_str(), &currentIndex, p.enumLabels)) {
+                    // Selection changed - update operator
+                    float newValue[4] = {static_cast<float>(currentIndex), 0, 0, 0};
+                    info.op->setParam(p.name, newValue);
 
-                // Check if this dropdown is currently open
-                bool isOpen = m_dropdown.open &&
-                              m_dropdown.operatorName == info.name &&
-                              m_dropdown.paramName == p.name;
-
-                // Button background
-                glm::vec4 buttonBg = isOpen ? sliderActive : sliderBg;
-                m_overlay.fillRoundedRect(buttonX, buttonY, buttonWidth, sliderHeight, 3.0f * scale, buttonBg);
-
-                // Current value text
-                m_overlay.text(currentLabel, buttonX + 8.0f * scale, buttonY + ascent, textColor, monoFont);
-
-                // Dropdown arrow
-                m_overlay.text(isOpen ? "▲" : "▼", buttonX + buttonWidth - 20.0f * scale, buttonY + ascent, dimColor, monoFont);
-
-                // Handle click to open/close dropdown
-                bool inButton = mousePos.x >= buttonX && mousePos.x <= buttonX + buttonWidth &&
-                               mousePos.y >= buttonY && mousePos.y <= buttonY + sliderHeight;
-
-                if (mouseClicked && inButton) {
-                    if (isOpen) {
-                        // Close dropdown
-                        m_dropdown.open = false;
-                    } else {
-                        // Open dropdown
-                        m_dropdown.open = true;
-                        m_dropdown.operatorName = info.name;
-                        m_dropdown.paramName = p.name;
-                        m_dropdown.menuX = buttonX;
-                        m_dropdown.menuY = buttonY + sliderHeight;
-                        m_dropdown.menuWidth = buttonWidth;
-                        m_dropdown.options = p.enumLabels;
-                        m_dropdown.currentIndex = currentIndex;
+                    // Fire change callback
+                    if (m_paramChangeCallback) {
+                        float oldValue[4] = {static_cast<float>(prevIndex), 0, 0, 0};
+                        m_paramChangeCallback(info.name, p.name, oldValue, newValue, info.op->sourceLine);
                     }
                 }
 
-                // Draw dropdown menu if open
-                if (isOpen && !p.enumLabels.empty()) {
-                    float menuItemHeight = lineH + 4.0f * scale;
-                    float menuHeight = p.enumLabels.size() * menuItemHeight;
-                    float menuY = m_dropdown.menuY;
-
-                    // Menu background
-                    glm::vec4 menuBg = {0.15f, 0.15f, 0.18f, 0.98f};
-                    m_overlay.setLayer(UILayer::Menus);
-                    m_overlay.fillRoundedRect(m_dropdown.menuX, menuY, m_dropdown.menuWidth, menuHeight, 3.0f * scale, menuBg);
-                    m_overlay.strokeRoundedRect(m_dropdown.menuX, menuY, m_dropdown.menuWidth, menuHeight, 3.0f * scale, 1.0f, borderColor);
-
-                    // Menu items
-                    for (size_t i = 0; i < p.enumLabels.size(); ++i) {
-                        float itemY = menuY + i * menuItemHeight;
-                        bool isHovered = mousePos.x >= m_dropdown.menuX &&
-                                        mousePos.x <= m_dropdown.menuX + m_dropdown.menuWidth &&
-                                        mousePos.y >= itemY && mousePos.y <= itemY + menuItemHeight;
-                        bool isSelected = (static_cast<int>(i) == currentIndex);
-
-                        // Item background (highlight on hover)
-                        if (isHovered) {
-                            m_overlay.fillRoundedRect(m_dropdown.menuX + 2.0f, itemY + 1.0f,
-                                                     m_dropdown.menuWidth - 4.0f, menuItemHeight - 2.0f,
-                                                     2.0f * scale, sliderFill);
-                        }
-
-                        // Item text
-                        glm::vec4 itemColor = isSelected ? sliderActive : textColor;
-                        m_overlay.text(p.enumLabels[i], m_dropdown.menuX + 8.0f * scale, itemY + ascent, itemColor, monoFont);
-
-                        // Checkmark for selected item
-                        if (isSelected) {
-                            m_overlay.text("✓", m_dropdown.menuX + m_dropdown.menuWidth - 20.0f * scale,
-                                          itemY + ascent, sliderActive, monoFont);
-                        }
-
-                        // Handle click on menu item
-                        if (mouseClicked && isHovered) {
-                            // Set the new value
-                            float newValue[4] = {static_cast<float>(i), 0, 0, 0};
-                            info.op->setParam(p.name, newValue);
-
-                            // Fire change callback
-                            if (m_paramChangeCallback) {
-                                float oldValue[4] = {static_cast<float>(currentIndex), 0, 0, 0};
-                                m_paramChangeCallback(info.name, p.name, oldValue, newValue, info.op->sourceLine);
-                            }
-
-                            // Close dropdown
-                            m_dropdown.open = false;
-                        }
-                    }
-
-                    m_overlay.setLayer(UILayer::Panels);
-                }
-            }
-
-            // Close dropdown if clicked outside
-            if (mouseClicked && m_dropdown.open &&
-                m_dropdown.operatorName == info.name &&
-                m_dropdown.paramName == p.name) {
-                // Check if click is outside the dropdown menu
-                float menuItemHeight = lineH + 4.0f * scale;
-                float menuHeight = p.enumLabels.size() * menuItemHeight;
-                bool inMenu = mousePos.x >= m_dropdown.menuX &&
-                             mousePos.x <= m_dropdown.menuX + m_dropdown.menuWidth &&
-                             mousePos.y >= m_dropdown.menuY &&
-                             mousePos.y <= m_dropdown.menuY + menuHeight;
-                float buttonX = panelX + padding;
-                float buttonY = y + lineH;
-                bool inButton = mousePos.x >= buttonX && mousePos.x <= buttonX + sliderWidth &&
-                               mousePos.y >= buttonY && mousePos.y <= buttonY + sliderHeight;
-                if (!inMenu && !inButton) {
-                    m_dropdown.open = false;
-                }
+                gui.popId();
+                gui.popId();
             }
 
             contentY += rowHeight;
             continue;  // Skip the slider rendering loop
         }
 
-        // Handle Color type with color picker
+        // Handle Color type with HSV color picker - use Gui
         if (p.type == ParamType::Color) {
             float y = contentY;
-            float swatchHeight = sliderHeight + lineH + 8.0f * scale;  // Taller for swatch + hex
-            float itemBottom = y + swatchHeight;
+            float itemBottom = y + rowHeight;
             bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
 
-            // Check if this color picker is expanded
-            bool isExpanded = m_colorPicker.expanded &&
-                             m_colorPicker.operatorName == info.name &&
-                             m_colorPicker.paramName == p.name;
-
-            // Calculate total height needed
-            float expandedHeight = isExpanded ? (4 * rowHeight + swatchHeight) : swatchHeight;
-
             if (isVisible) {
-                // Label
-                m_overlay.text(p.name, panelX + padding, y + ascent, dimColor, labelFont);
+                // Position Gui cursor
+                gui.setCursorY(y);
+                gui.pushId(info.name.c_str());
+                gui.pushId(p.name.c_str());
 
-                // Color swatch with checkerboard alpha preview
-                float swatchX = panelX + padding;
-                float swatchY = y + lineH;
-                float swatchW = 50.0f * scale;
-                float swatchH = sliderHeight;
+                // Check if THIS color picker is expanded
+                bool isExpanded = m_colorPicker.expanded &&
+                                 m_colorPicker.operatorName == info.name &&
+                                 m_colorPicker.paramName == p.name;
+                bool wasExpanded = isExpanded;
 
-                // Draw checkerboard for alpha visualization
-                float checkSize = 6.0f * scale;
-                glm::vec4 checkLight = {0.7f, 0.7f, 0.7f, 1.0f};
-                glm::vec4 checkDark = {0.4f, 0.4f, 0.4f, 1.0f};
-                for (float cx = swatchX; cx < swatchX + swatchW; cx += checkSize) {
-                    for (float cy = swatchY; cy < swatchY + swatchH; cy += checkSize) {
-                        int xi = static_cast<int>((cx - swatchX) / checkSize);
-                        int yi = static_cast<int>((cy - swatchY) / checkSize);
-                        bool dark = (xi + yi) % 2 == 0;
-                        float w = std::min(checkSize, swatchX + swatchW - cx);
-                        float h = std::min(checkSize, swatchY + swatchH - cy);
-                        m_overlay.fillRect(cx, cy, w, h, dark ? checkDark : checkLight);
-                    }
-                }
-
-                // Draw color on top (with alpha)
+                // Get color as vec4
                 glm::vec4 color = {value[0], value[1], value[2], value[3]};
-                m_overlay.fillRoundedRect(swatchX, swatchY, swatchW, swatchH, 3.0f * scale, color);
-                m_overlay.strokeRoundedRect(swatchX, swatchY, swatchW, swatchH, 3.0f * scale, 1.0f, borderColor);
 
-                // Hex value display
-                std::string hexStr = rgbToHex(value[0], value[1], value[2]);
-                m_overlay.text(hexStr, swatchX + swatchW + 8.0f * scale, swatchY + ascent, textColor, monoFont);
+                // Use Gui color picker
+                auto result = gui.colorPickerHSV(p.name.c_str(), &color, &isExpanded);
 
-                // Alpha percentage
-                char alphaBuf[16];
-                snprintf(alphaBuf, sizeof(alphaBuf), " %.0f%%", value[3] * 100.0f);
-                float hexWidth = 70.0f * scale;
-                m_overlay.text(alphaBuf, swatchX + swatchW + hexWidth, swatchY + ascent, dimColor, monoFont);
-
-                // Expand/collapse arrow
-                m_overlay.text(isExpanded ? "▲" : "▼", panelX + inspectorWidth - padding - 20.0f * scale,
-                              swatchY + ascent, dimColor, monoFont);
-
-                // Handle click on swatch area to expand/collapse
-                bool inSwatch = mousePos.x >= swatchX && mousePos.x <= panelX + inspectorWidth - padding &&
-                               mousePos.y >= swatchY && mousePos.y <= swatchY + swatchH;
-                if (mouseClicked && inSwatch) {
+                // Handle expand/collapse state change
+                if (isExpanded != wasExpanded) {
                     if (isExpanded) {
-                        m_colorPicker.expanded = false;
-                    } else {
                         m_colorPicker.expanded = true;
                         m_colorPicker.operatorName = info.name;
                         m_colorPicker.paramName = p.name;
                         for (int i = 0; i < 4; ++i) {
                             m_colorPicker.originalColor[i] = value[i];
                         }
+                    } else {
+                        m_colorPicker.expanded = false;
                     }
                 }
+
+                // On drag start: capture context for callback
+                if (result.dragStarted) {
+                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.paramName = p.name;
+                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.originalValue[0] = result.startColor.r;
+                    m_activeDrag.originalValue[1] = result.startColor.g;
+                    m_activeDrag.originalValue[2] = result.startColor.b;
+                    m_activeDrag.originalValue[3] = result.startColor.a;
+                    m_activeDrag.active = true;
+                }
+
+                // On value change: update operator
+                if (result.changed) {
+                    float newValues[4] = {color.r, color.g, color.b, color.a};
+                    info.op->setParam(p.name, newValues);
+                }
+
+                // On drag end: fire callback
+                if (result.dragEnded && m_activeDrag.active &&
+                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.paramName == p.name) {
+                    float newValues[4] = {color.r, color.g, color.b, color.a};
+                    if (m_paramChangeCallback) {
+                        m_paramChangeCallback(m_activeDrag.operatorName, m_activeDrag.paramName,
+                                              m_activeDrag.originalValue, newValues,
+                                              m_activeDrag.sourceLine);
+                    }
+                    m_activeDrag.active = false;
+                }
+
+                gui.popId();
+                gui.popId();
             }
 
+            // Advance content by appropriate height
+            float swatchHeight = sliderHeight + lineH + 8.0f * scale;
+            bool isExpanded = m_colorPicker.expanded &&
+                             m_colorPicker.operatorName == info.name &&
+                             m_colorPicker.paramName == p.name;
             contentY += swatchHeight;
-
-            // If expanded, show H, S, V, A sliders
             if (isExpanded) {
-                // Convert RGB to HSV
-                float h, s, v;
-                rgbToHsv(value[0], value[1], value[2], h, s, v);
-
-                const char* hsvLabels[] = {"H", "S", "V", "A"};
-                float hsvValues[] = {h / 360.0f, s, v, value[3]};  // Normalize H to 0-1 for slider
-                float hsvMins[] = {0.0f, 0.0f, 0.0f, 0.0f};
-                float hsvMaxs[] = {1.0f, 1.0f, 1.0f, 1.0f};
-
-                for (int c = 0; c < 4; ++c) {
-                    float y = contentY;
-                    float itemBottom = y + rowHeight;
-                    bool isSliderVisible = (itemBottom > visibleTop) && (y < visibleBottom);
-
-                    if (isSliderVisible) {
-                        // Label
-                        std::string label = std::string(p.name) + "." + hsvLabels[c];
-                        m_overlay.text(label, panelX + padding, y + ascent, dimColor, labelFont);
-
-                        // Slider background
-                        float sliderX = panelX + padding;
-                        float sliderY = y + lineH;
-                        m_overlay.fillRoundedRect(sliderX, sliderY, sliderWidth, sliderHeight, 3.0f * scale, sliderBg);
-
-                        // For Hue slider, draw rainbow gradient
-                        if (c == 0) {
-                            // Draw hue gradient
-                            float gradW = sliderWidth / 6.0f;
-                            for (int i = 0; i < 6; ++i) {
-                                float hStart = i * 60.0f;
-                                float hEnd = (i + 1) * 60.0f;
-                                float r1, g1, b1, r2, g2, b2;
-                                hsvToRgb(hStart, 1.0f, 1.0f, r1, g1, b1);
-                                hsvToRgb(hEnd, 1.0f, 1.0f, r2, g2, b2);
-                                // Just draw a single color per section
-                                glm::vec4 hueColor = {r1, g1, b1, 1.0f};
-                                m_overlay.fillRect(sliderX + i * gradW, sliderY, gradW + 1.0f, sliderHeight, hueColor);
-                            }
-                        } else {
-                            // Fill based on normalized value
-                            float fillWidth = hsvValues[c] * sliderWidth;
-                            if (fillWidth > 0) {
-                                bool isActive = m_sliderState.dragging &&
-                                               m_sliderState.operatorName == info.name &&
-                                               m_sliderState.paramName == p.name &&
-                                               m_sliderState.paramIndex == c;
-                                glm::vec4 fillColor = isActive ? sliderActive : sliderFill;
-                                m_overlay.fillRoundedRect(sliderX, sliderY, fillWidth, sliderHeight, 3.0f * scale, fillColor);
-                            }
-                        }
-
-                        // Value display
-                        char valBuf[16];
-                        if (c == 0) {
-                            snprintf(valBuf, sizeof(valBuf), "%.0f°", h);
-                        } else if (c == 3) {
-                            snprintf(valBuf, sizeof(valBuf), "%.0f%%", value[3] * 100.0f);
-                        } else {
-                            snprintf(valBuf, sizeof(valBuf), "%.0f%%", hsvValues[c] * 100.0f);
-                        }
-                        m_overlay.text(valBuf, sliderX + sliderWidth + 8.0f * scale, sliderY + ascent, textColor, monoFont);
-                    }
-
-                    // Handle HSV slider interaction
-                    float sliderX = panelX + padding;
-                    float sliderY = y + lineH;
-
-                    bool inSlider = mousePos.x >= sliderX && mousePos.x <= sliderX + sliderWidth &&
-                                   mousePos.y >= sliderY && mousePos.y <= sliderY + sliderHeight &&
-                                   isSliderVisible;
-
-                    if (mouseClicked && inSlider) {
-                        m_sliderState.dragging = true;
-                        m_sliderState.operatorName = info.name;
-                        m_sliderState.paramName = p.name;
-                        m_sliderState.paramIndex = c;
-                        m_sliderState.startMouseX = mousePos.x;
-                        m_sliderState.startValue = hsvValues[c];
-                        for (int i = 0; i < 4; ++i) {
-                            m_sliderState.originalValue[i] = value[i];
-                        }
-                    }
-
-                    if (m_sliderState.dragging &&
-                        m_sliderState.operatorName == info.name &&
-                        m_sliderState.paramName == p.name &&
-                        m_sliderState.paramIndex == c) {
-
-                        float newNormalized = (mousePos.x - sliderX) / sliderWidth;
-                        newNormalized = std::max(0.0f, std::min(1.0f, newNormalized));
-
-                        // Update HSV value and convert back to RGB
-                        float newH = h, newS = s, newV = v, newA = value[3];
-                        if (c == 0) newH = newNormalized * 360.0f;
-                        else if (c == 1) newS = newNormalized;
-                        else if (c == 2) newV = newNormalized;
-                        else newA = newNormalized;
-
-                        float newR, newG, newB;
-                        hsvToRgb(newH, newS, newV, newR, newG, newB);
-
-                        float newValues[4] = {newR, newG, newB, newA};
-                        info.op->setParam(p.name, newValues);
-
-                        if (mouseReleased) {
-                            m_sliderState.dragging = false;
-                            if (m_paramChangeCallback) {
-                                m_paramChangeCallback(info.name, p.name,
-                                                     m_sliderState.originalValue, newValues,
-                                                     info.op->sourceLine);
-                            }
-                        }
-                    }
-
-                    contentY += rowHeight;
-                }
+                contentY += 4 * rowHeight;
             }
 
             continue;  // Skip the normal slider rendering loop
         }
 
-        for (int c = 0; c < componentCount; ++c) {
+        // ADSR envelope type - use Gui ADSR widget
+        if (p.type == ParamType::ADSR) {
             float y = contentY;
-            float itemBottom = y + rowHeight;
-
-            // Visibility culling - skip rendering items outside visible area
-            // CRITICAL: Only skip m_overlay draw calls, nothing else
+            float adsrHeight = rowHeight * 4;  // Match height calculation above
+            float itemBottom = y + adsrHeight;
             bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
 
             if (isVisible) {
-                // Label
-                std::string label = (componentCount > 1) ? p.name + "." + componentLabels[c] : p.name;
-                m_overlay.text(label, panelX + padding, y + ascent, dimColor, labelFont);
+                // Position Gui cursor
+                gui.setCursorY(y);
+                gui.pushId(info.name.c_str());
+                gui.pushId(p.name.c_str());
 
-                // Slider background
-                float sliderX = panelX + padding;
-                float sliderY = y + lineH;
-                m_overlay.fillRoundedRect(sliderX, sliderY, sliderWidth, sliderHeight, 3.0f * scale, sliderBg);
+                // Get ADSR values: value[0]=attack, value[1]=decay, value[2]=sustain, value[3]=release
+                float attack = value[0];
+                float decay = value[1];
+                float sustain = value[2];
+                float release = value[3];
 
-                // Calculate normalized value
-                float range = p.maxVal - p.minVal;
-                float normalizedVal = (range > 0.0001f) ? (value[c] - p.minVal) / range : 0.0f;
-                normalizedVal = std::max(0.0f, std::min(1.0f, normalizedVal));
+                // Use Gui ADSR widget
+                auto result = gui.adsrEnvelope(p.name.c_str(), &attack, &decay, &sustain, &release, p.maxVal);
 
-                // Slider fill
-                float fillWidth = normalizedVal * sliderWidth;
-                if (fillWidth > 0) {
-                    bool isActive = m_sliderState.dragging &&
-                                    m_sliderState.operatorName == info.name &&
-                                    m_sliderState.paramName == p.name &&
-                                    m_sliderState.paramIndex == c;
-                    glm::vec4 fillColor = isActive ? sliderActive : sliderFill;
-                    m_overlay.fillRoundedRect(sliderX, sliderY, fillWidth, sliderHeight, 3.0f * scale, fillColor);
+                // On drag start: capture context for callback
+                if (result.dragStarted) {
+                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.paramName = p.name;
+                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.originalValue[0] = result.startA;
+                    m_activeDrag.originalValue[1] = result.startD;
+                    m_activeDrag.originalValue[2] = result.startS;
+                    m_activeDrag.originalValue[3] = result.startR;
+                    m_activeDrag.active = true;
                 }
 
-                // Value label
-                char valueBuf[32];
-                if (p.type == ParamType::Int) {
-                    snprintf(valueBuf, sizeof(valueBuf), "%d", static_cast<int>(value[c]));
-                } else if (p.type == ParamType::Bool) {
-                    snprintf(valueBuf, sizeof(valueBuf), "%s", value[c] > 0.5f ? "ON" : "OFF");
-                } else {
-                    snprintf(valueBuf, sizeof(valueBuf), "%.2f", value[c]);
+                // On value change: update operator
+                if (result.changed) {
+                    float newValues[4] = {attack, decay, sustain, release};
+                    info.op->setParam(p.name, newValues);
                 }
-                m_overlay.text(valueBuf, sliderX + sliderWidth + 8.0f * scale, sliderY + ascent, textColor, monoFont);
-            }
 
-            // Handle slider interaction (needs to work even if not visible for drag continuation)
-            float sliderX = panelX + padding;
-            float sliderY = y + lineH;
-            float range = p.maxVal - p.minVal;
-
-            bool inSlider = mousePos.x >= sliderX && mousePos.x <= sliderX + sliderWidth &&
-                           mousePos.y >= sliderY && mousePos.y <= sliderY + sliderHeight &&
-                           isVisible;  // Only start new drags on visible items
-
-            if (mouseClicked && inSlider) {
-                // Start dragging
-                m_sliderState.dragging = true;
-                m_sliderState.operatorName = info.name;
-                m_sliderState.paramName = p.name;
-                m_sliderState.paramIndex = c;
-                m_sliderState.startMouseX = mousePos.x;
-                m_sliderState.startValue = value[c];
-                for (int i = 0; i < 4; ++i) {
-                    m_sliderState.originalValue[i] = value[i];
-                }
-            }
-
-            if (m_sliderState.dragging &&
-                m_sliderState.operatorName == info.name &&
-                m_sliderState.paramName == p.name &&
-                m_sliderState.paramIndex == c) {
-
-                // Update value based on mouse position
-                float newNormalized = (mousePos.x - sliderX) / sliderWidth;
-                newNormalized = std::max(0.0f, std::min(1.0f, newNormalized));
-                float newValue = p.minVal + newNormalized * range;
-
-                // Apply to operator
-                float newValues[4];
-                for (int i = 0; i < 4; ++i) newValues[i] = value[i];
-                newValues[c] = newValue;
-                info.op->setParam(p.name, newValues);
-
-                if (mouseReleased) {
-                    // Finished dragging - notify callback
-                    m_sliderState.dragging = false;
-
+                // On drag end: fire callback
+                if (result.dragEnded && m_activeDrag.active &&
+                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.paramName == p.name) {
+                    float newValues[4] = {attack, decay, sustain, release};
                     if (m_paramChangeCallback) {
-                        m_paramChangeCallback(info.name, p.name,
-                                             m_sliderState.originalValue, newValues,
-                                             info.op->sourceLine);
+                        m_paramChangeCallback(m_activeDrag.operatorName, m_activeDrag.paramName,
+                                              m_activeDrag.originalValue, newValues,
+                                              m_activeDrag.sourceLine);
                     }
+                    m_activeDrag.active = false;
                 }
+
+                gui.popId();
+                gui.popId();
+            }
+
+            contentY += adsrHeight;
+            continue;  // Skip the normal slider rendering loop
+        }
+
+        // Simple params (Float/Int/Bool) - use Gui slider
+        if (componentCount == 1) {
+            float y = contentY;
+            float itemBottom = y + rowHeight;
+            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+
+            if (isVisible) {
+                // Position Gui cursor and use pushId for scoping
+                gui.setCursorY(y);
+                gui.pushId(info.name.c_str());
+                gui.pushId(p.name.c_str());
+
+                // Use sliderEx to get drag state
+                auto result = gui.sliderEx(p.name.c_str(), &value[0], p.minVal, p.maxVal);
+
+                // On drag start: capture context for callback
+                if (result.dragStarted) {
+                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.paramName = p.name;
+                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    for (int i = 0; i < 4; ++i) {
+                        m_activeDrag.originalValue[i] = value[i];
+                    }
+                    m_activeDrag.active = true;
+                }
+
+                // On value change: update operator
+                if (result.changed) {
+                    float newValues[4] = {value[0], 0, 0, 0};
+                    info.op->setParam(p.name, newValues);
+                }
+
+                // On drag end: fire callback
+                if (result.dragEnded && m_activeDrag.active &&
+                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.paramName == p.name) {
+                    float newValues[4] = {value[0], 0, 0, 0};
+                    if (m_paramChangeCallback) {
+                        m_paramChangeCallback(m_activeDrag.operatorName, m_activeDrag.paramName,
+                                              m_activeDrag.originalValue, newValues,
+                                              m_activeDrag.sourceLine);
+                    }
+                    m_activeDrag.active = false;
+                }
+
+                gui.popId();
+                gui.popId();
+            }
+
+            contentY += rowHeight;
+            continue;
+        }
+
+        // Vec2 params - use XY pad
+        if (p.type == ParamType::Vec2) {
+            float y = contentY;
+            float padHeight = rowHeight * 2.5f;  // Match height calculation above
+            float itemBottom = y + padHeight;
+            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+
+            if (isVisible) {
+                gui.setCursorY(y);
+                gui.pushId(info.name.c_str());
+                gui.pushId(p.name.c_str());
+
+                glm::vec2 vec2Value = {value[0], value[1]};
+                auto result = gui.xyPadEx(p.name.c_str(), &vec2Value,
+                                          p.minVal, p.maxVal, p.minVal, p.maxVal, 0);
+
+                if (result.dragStarted) {
+                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.paramName = p.name;
+                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.originalValue[0] = result.startValue.x;
+                    m_activeDrag.originalValue[1] = result.startValue.y;
+                    m_activeDrag.originalValue[2] = 0;
+                    m_activeDrag.originalValue[3] = 0;
+                    m_activeDrag.active = true;
+                }
+
+                if (result.changed) {
+                    float newValues[4] = {vec2Value.x, vec2Value.y, 0, 0};
+                    info.op->setParam(p.name, newValues);
+                }
+
+                if (result.dragEnded && m_activeDrag.active &&
+                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.paramName == p.name) {
+                    float newValues[4] = {vec2Value.x, vec2Value.y, 0, 0};
+                    if (m_paramChangeCallback) {
+                        m_paramChangeCallback(m_activeDrag.operatorName, m_activeDrag.paramName,
+                                              m_activeDrag.originalValue, newValues,
+                                              m_activeDrag.sourceLine);
+                    }
+                    m_activeDrag.active = false;
+                }
+
+                gui.popId();
+                gui.popId();
+            }
+
+            contentY += padHeight;
+            continue;
+        }
+
+        // Vec3 params - use compact row
+        if (p.type == ParamType::Vec3) {
+            float y = contentY;
+            float rowH = rowHeight * 2.0f;  // Match height calculation above
+            float itemBottom = y + rowH;
+            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+
+            if (isVisible) {
+                gui.setCursorY(y);
+                gui.pushId(info.name.c_str());
+                gui.pushId(p.name.c_str());
+
+                glm::vec3 vec3Value = {value[0], value[1], value[2]};
+                auto result = gui.vec3Row(p.name.c_str(), &vec3Value, p.minVal, p.maxVal);
+
+                if (result.dragStarted) {
+                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.paramName = p.name;
+                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.originalValue[0] = result.startValue.x;
+                    m_activeDrag.originalValue[1] = result.startValue.y;
+                    m_activeDrag.originalValue[2] = result.startValue.z;
+                    m_activeDrag.originalValue[3] = 0;
+                    m_activeDrag.active = true;
+                }
+
+                if (result.changed) {
+                    float newValues[4] = {vec3Value.x, vec3Value.y, vec3Value.z, 0};
+                    info.op->setParam(p.name, newValues);
+                }
+
+                if (result.dragEnded && m_activeDrag.active &&
+                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.paramName == p.name) {
+                    float newValues[4] = {vec3Value.x, vec3Value.y, vec3Value.z, 0};
+                    if (m_paramChangeCallback) {
+                        m_paramChangeCallback(m_activeDrag.operatorName, m_activeDrag.paramName,
+                                              m_activeDrag.originalValue, newValues,
+                                              m_activeDrag.sourceLine);
+                    }
+                    m_activeDrag.active = false;
+                }
+
+                gui.popId();
+                gui.popId();
+            }
+
+            contentY += rowH;
+            continue;
+        }
+
+        // Multi-component params (Vec4 only now) - use Gui sliders with shared drag context
+        gui.pushId(info.name.c_str());
+        gui.pushId(p.name.c_str());
+
+        for (int c = 0; c < componentCount; ++c) {
+            float y = contentY;
+            float itemBottom = y + rowHeight;
+            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+
+            if (isVisible) {
+                // Position Gui cursor and use pushId for component scope
+                gui.setCursorY(y);
+                gui.pushId(std::to_string(c).c_str());
+
+                // Build component label (e.g., "position.X")
+                std::string label = p.name + "." + componentLabels[c];
+
+                // Use sliderEx to get drag state
+                auto result = gui.sliderEx(label.c_str(), &value[c], p.minVal, p.maxVal);
+
+                // On drag start: capture context for callback (store ALL component values)
+                if (result.dragStarted) {
+                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.paramName = p.name;
+                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    for (int i = 0; i < 4; ++i) {
+                        m_activeDrag.originalValue[i] = value[i];
+                    }
+                    m_activeDrag.active = true;
+                }
+
+                // On value change: update operator with all current values
+                if (result.changed) {
+                    float newValues[4];
+                    for (int i = 0; i < 4; ++i) newValues[i] = value[i];
+                    newValues[c] = value[c];  // This is already updated by sliderEx
+                    info.op->setParam(p.name, newValues);
+                }
+
+                // On drag end: fire callback with original and new values
+                if (result.dragEnded && m_activeDrag.active &&
+                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.paramName == p.name) {
+                    float newValues[4];
+                    for (int i = 0; i < 4; ++i) newValues[i] = value[i];
+                    if (m_paramChangeCallback) {
+                        m_paramChangeCallback(m_activeDrag.operatorName, m_activeDrag.paramName,
+                                              m_activeDrag.originalValue, newValues,
+                                              m_activeDrag.sourceLine);
+                    }
+                    m_activeDrag.active = false;
+                }
+
+                gui.popId();
             }
 
             contentY += rowHeight;
         }
+
+        gui.popId();
+        gui.popId();
     }
 
-    // Cancel drag if mouse released outside
-    if (mouseReleased && m_sliderState.dragging) {
-        m_sliderState.dragging = false;
+    // Cancel drag if mouse released outside (handled by Gui widgets now)
+    if (mouseReleased && m_activeDrag.active) {
+        m_activeDrag.active = false;
     }
+
+    // End Gui content area
+    gui.endArea();
+    // Note: Layer clip rect is NOT cleared here - it persists until render() uses it.
+    // It will be automatically cleared in begin() at the start of the next frame.
 }
 
 void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Context& ctx) {

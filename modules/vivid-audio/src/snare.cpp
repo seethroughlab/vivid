@@ -99,6 +99,7 @@ void Snare::reset() {
     m_toneEnv = 0.0f;
     m_noiseEnv = 0.0f;
     m_hpState[0] = m_hpState[1] = 0.0f;
+    m_hpPrev[0] = m_hpPrev[1] = 0.0f;
 }
 
 float Snare::generateNoise() {
@@ -114,8 +115,9 @@ float Snare::highpass(float in, int ch) {
     float rc = 1.0f / (TWO_PI * cutoff);
     float alpha = rc / (rc + 1.0f / m_sampleRate);
 
-    float out = alpha * (m_hpState[ch] + in - m_hpState[ch]);
+    float out = alpha * (m_hpPrev[ch] + in - m_hpState[ch]);
     m_hpState[ch] = in;
+    m_hpPrev[ch] = out;
     return out;
 }
 

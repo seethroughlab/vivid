@@ -868,6 +868,10 @@ private:
         float alpha;
     };
     std::vector<PendingImage> m_pendingImages;
+
+    /// @brief Flush pending images to renderer to maintain draw order
+    /// Called before immediate draw operations (fillRect, fillText, etc.)
+    void flushPendingImages();
 };
 
 } // namespace vivid::effects

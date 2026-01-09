@@ -56,6 +56,25 @@ public:
     virtual ~AudioOperator() = default;
 
     // -------------------------------------------------------------------------
+    /// @name Parameter Registration
+    /// @{
+
+    /**
+     * @brief Register a parameter for introspection and dirty tracking
+     * @tparam T Parameter type (Param<T>, Vec2Param, ColorParam, etc.)
+     * @param param Reference to the parameter member
+     *
+     * This shadows ParamRegistry::registerParam to also set up owner
+     * tracking for automatic dirty marking when parameter values change.
+     */
+    template<typename T>
+    void registerParam(T& param) {
+        ParamRegistry::registerParam(param);
+        param.setOwner(static_cast<Operator*>(this));
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 

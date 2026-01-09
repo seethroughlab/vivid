@@ -49,6 +49,7 @@ add_library(vivid-render3d SHARED
     src/gltf_loader.cpp
     src/depth_of_field.cpp
     src/fog.cpp
+    src/depth_mask.cpp
     src/particles3d.cpp
     src/registrations.cpp
 )

@@ -647,6 +647,9 @@ void Canvas::fill() {
         clear(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
     }
 
+    // Flush pending images to maintain draw order
+    flushPendingImages();
+
     auto polygon = pathToPolygon();
     if (polygon.size() < 3) return;
 
@@ -702,6 +705,9 @@ void Canvas::stroke() {
     if (!m_frameBegun) {
         clear(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
     }
+
+    // Flush pending images to maintain draw order
+    flushPendingImages();
 
     auto polygon = pathToPolygon();
     if (polygon.size() < 2) return;
@@ -766,6 +772,9 @@ void Canvas::fillRect(float x, float y, float w, float h) {
         clear(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
     }
 
+    // Flush pending images to maintain draw order
+    flushPendingImages();
+
     // Get untransformed corner positions for gradient sampling
     glm::vec2 c0{x, y};
     glm::vec2 c1{x + w, y};
@@ -811,6 +820,9 @@ void Canvas::clearRect(float x, float y, float w, float h) {
         clear(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
     }
 
+    // Flush pending images to maintain draw order
+    flushPendingImages();
+
     glm::vec2 p0 = transformPoint({x, y});
     glm::vec2 p1 = transformPoint({x + w, y});
     glm::vec2 p2 = transformPoint({x + w, y + h});
@@ -824,6 +836,9 @@ void Canvas::fillCircle(float x, float y, float radius, int segments) {
     if (!m_frameBegun) {
         clear(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
     }
+
+    // Flush pending images to maintain draw order
+    flushPendingImages();
 
     glm::vec2 centerOrig{x, y};
     glm::vec2 center = transformPoint(centerOrig);
@@ -1013,6 +1028,9 @@ void Canvas::fillText(const std::string& str, float x, float y, float letterSpac
         clear(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
     }
 
+    // Flush pending images to maintain draw order
+    flushPendingImages();
+
     // Lazy-load default font if none loaded
     ensureDefaultFont();
 
@@ -1140,22 +1158,12 @@ void Canvas::init(Context& ctx) {
     }
 }
 
-void Canvas::process(Context& ctx) {
-    if (!isInitialized()) {
-        init(ctx);
-    }
-
-    // Auto-begin frame if user didn't call clear()
-    if (!m_frameBegun) {
-        m_renderer->begin(m_width, m_height, m_clearColor);
-    }
-
-    // Resolve pending images to texture views now that all operators have processed
-    // This is done here rather than in drawImage() because operators may recreate
-    // their output textures during their process() calls
+void Canvas::flushPendingImages() {
+    // Resolve pending images to texture views and add to renderer
+    // This maintains draw order when immediate draw calls (fillRect, fillText) follow drawImage()
     for (const auto& img : m_pendingImages) {
         if (!img.source || !img.source->outputView()) {
-            std::cerr << "[Canvas::process] Warning: pending image source has no texture output\n";
+            std::cerr << "[Canvas::flushPendingImages] Warning: pending image source has no texture output\n";
             continue;
         }
 
@@ -1171,6 +1179,20 @@ void Canvas::process(Context& ctx) {
         );
     }
     m_pendingImages.clear();
+}
+
+void Canvas::process(Context& ctx) {
+    if (!isInitialized()) {
+        init(ctx);
+    }
+
+    // Auto-begin frame if user didn't call clear()
+    if (!m_frameBegun) {
+        m_renderer->begin(m_width, m_height, m_clearColor);
+    }
+
+    // Flush any remaining pending images (in case no immediate draws followed)
+    flushPendingImages();
 
     // Render all batched primitives to our output texture
     m_renderer->render(ctx, m_output, m_outputView);

@@ -358,8 +358,13 @@ void OverlayCanvas::begin(int width, int height) {
     // Reset to default layer
     m_currentLayer = 0;
 
-    // Clear clip stack
+    // Clear clip stack and reset tracking state
     m_clipStack.clear();
+    m_lastHasClip = false;
+    m_lastClipRect = {0, 0, 0, 0};
+
+    // Clear per-layer clip rects
+    m_layerClipRects.clear();
 
     // Reset transform
     m_transform = glm::mat3(1.0f);
@@ -390,17 +395,19 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
 
     // =======================================================================
     // Accumulate ALL content from all layers into combined buffers.
-    // This fixes the buffer-overwrite bug where uploading layer N's data
-    // would overwrite layer N-1's data before the GPU could render it.
+    // Track segments with clip info for scissor clipping.
     // =======================================================================
 
-    // Track draw ranges for each layer (start index, index count)
-    struct DrawRange {
+    // Segment with adjusted indices for combined buffer
+    struct CombinedSegment {
         uint32_t startIndex;
         uint32_t indexCount;
+        bool hasClip;
+        ClipRect clipRect;
+        int layer;
     };
-    std::vector<std::pair<int, DrawRange>> solidDrawRanges;
-    std::vector<std::pair<int, DrawRange>> textDrawRanges[3];  // Per-font
+    std::vector<CombinedSegment> allSolidSegments;
+    std::vector<CombinedSegment> allTextSegments[3];  // Per-font
 
     // Accumulate solid primitives from all layers
     std::vector<OverlayVertex> allSolidVertices;
@@ -411,18 +418,38 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
 
         const auto& batch = layerIt->second;
         uint32_t vertexOffset = static_cast<uint32_t>(allSolidVertices.size());
-        uint32_t startIndex = static_cast<uint32_t>(allSolidIndices.size());
+        uint32_t indexOffset = static_cast<uint32_t>(allSolidIndices.size());
 
         // Copy vertices
         allSolidVertices.insert(allSolidVertices.end(),
                                 batch.solidVertices.begin(), batch.solidVertices.end());
 
-        // Copy indices with offset adjustment
+        // Copy indices with vertex offset adjustment
         for (uint32_t idx : batch.solidIndices) {
             allSolidIndices.push_back(idx + vertexOffset);
         }
 
-        solidDrawRanges.push_back({layer, {startIndex, static_cast<uint32_t>(batch.solidIndices.size())}});
+        // Copy segments with index offset adjustment
+        // If the layer has content but no segments (edge case), create a default segment
+        if (batch.solidSegments.empty() && !batch.solidIndices.empty()) {
+            CombinedSegment combined;
+            combined.startIndex = indexOffset;
+            combined.indexCount = static_cast<uint32_t>(batch.solidIndices.size());
+            combined.hasClip = false;
+            combined.clipRect = {0, 0, 0, 0};
+            combined.layer = layer;
+            allSolidSegments.push_back(combined);
+        } else {
+            for (const auto& seg : batch.solidSegments) {
+                CombinedSegment combined;
+                combined.startIndex = seg.startIndex + indexOffset;
+                combined.indexCount = seg.indexCount;
+                combined.hasClip = seg.hasClip;
+                combined.clipRect = seg.clipRect;
+                combined.layer = layer;
+                allSolidSegments.push_back(combined);
+            }
+        }
     }
 
     // Accumulate text from all layers (per font)
@@ -435,7 +462,7 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
 
             const auto& batch = layerIt->second;
             uint32_t vertexOffset = static_cast<uint32_t>(allTextVertices[fontIdx].size());
-            uint32_t startIndex = static_cast<uint32_t>(allTextIndices[fontIdx].size());
+            uint32_t indexOffset = static_cast<uint32_t>(allTextIndices[fontIdx].size());
 
             allTextVertices[fontIdx].insert(allTextVertices[fontIdx].end(),
                                             batch.textVertices[fontIdx].begin(),
@@ -445,12 +472,32 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
                 allTextIndices[fontIdx].push_back(idx + vertexOffset);
             }
 
-            textDrawRanges[fontIdx].push_back({layer, {startIndex, static_cast<uint32_t>(batch.textIndices[fontIdx].size())}});
+            // Copy segments with index offset adjustment
+            // If the layer has content but no segments (edge case), create a default segment
+            if (batch.textSegments[fontIdx].empty() && !batch.textIndices[fontIdx].empty()) {
+                CombinedSegment combined;
+                combined.startIndex = indexOffset;
+                combined.indexCount = static_cast<uint32_t>(batch.textIndices[fontIdx].size());
+                combined.hasClip = false;
+                combined.clipRect = {0, 0, 0, 0};
+                combined.layer = layer;
+                allTextSegments[fontIdx].push_back(combined);
+            } else {
+                for (const auto& seg : batch.textSegments[fontIdx]) {
+                    CombinedSegment combined;
+                    combined.startIndex = seg.startIndex + indexOffset;
+                    combined.indexCount = seg.indexCount;
+                    combined.hasClip = seg.hasClip;
+                    combined.clipRect = seg.clipRect;
+                    combined.layer = layer;
+                    allTextSegments[fontIdx].push_back(combined);
+                }
+            }
         }
     }
 
     // =======================================================================
-    // Upload combined buffers ONCE, then issue draw calls per layer
+    // Upload combined buffers ONCE
     // =======================================================================
 
     // Upload solid primitives (all layers combined)
@@ -519,28 +566,86 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
 
     // =======================================================================
     // Render each layer in order: solids -> textured rects -> text
+    // Apply scissor rects per segment for clipping
     // =======================================================================
 
-    // Build index for quick lookup of draw ranges
-    size_t solidRangeIdx = 0;
-    size_t textRangeIdx[3] = {0, 0, 0};
+    // Helper to apply scissor rect
+    auto applyScissor = [&](const CombinedSegment& seg) {
+        if (seg.hasClip) {
+            // Clamp to viewport bounds and ensure positive dimensions
+            uint32_t x = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.x));
+            uint32_t y = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.y));
+            uint32_t w = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.w));
+            uint32_t h = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.h));
+            // Clamp to viewport
+            if (x + w > static_cast<uint32_t>(m_width)) w = static_cast<uint32_t>(m_width) - x;
+            if (y + h > static_cast<uint32_t>(m_height)) h = static_cast<uint32_t>(m_height) - y;
+            // Only set scissor if we have valid dimensions
+            if (w > 0 && h > 0) {
+                wgpuRenderPassEncoderSetScissorRect(pass, x, y, w, h);
+            }
+        } else {
+            // Reset to full viewport
+            wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
+                                                 static_cast<uint32_t>(m_width),
+                                                 static_cast<uint32_t>(m_height));
+        }
+    };
+
+    // Track segment indices
+    size_t solidSegIdx = 0;
+    size_t textSegIdx[3] = {0, 0, 0};
 
     for (int layer : allLayers) {
-        // 1. Render solid primitives for this layer
-        if (solidRangeIdx < solidDrawRanges.size() && solidDrawRanges[solidRangeIdx].first == layer) {
-            const auto& range = solidDrawRanges[solidRangeIdx].second;
-            wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
-            wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_solidVertexBuffer, 0,
-                                                  allSolidVertices.size() * sizeof(OverlayVertex));
-            wgpuRenderPassEncoderSetIndexBuffer(pass, m_solidIndexBuffer, WGPUIndexFormat_Uint32, 0,
-                                                 allSolidIndices.size() * sizeof(uint32_t));
-            wgpuRenderPassEncoderDrawIndexed(pass, range.indexCount, 1, range.startIndex, 0, 0);
-            solidRangeIdx++;
+        // Check if this layer has a clip rect
+        auto layerClipIt = m_layerClipRects.find(layer);
+        bool hasLayerClip = (layerClipIt != m_layerClipRects.end());
+        if (hasLayerClip) {
+            const auto& clip = layerClipIt->second;
+            uint32_t x = static_cast<uint32_t>(std::max(0.0f, clip.x));
+            uint32_t y = static_cast<uint32_t>(std::max(0.0f, clip.y));
+            uint32_t w = static_cast<uint32_t>(std::max(0.0f, clip.w));
+            uint32_t h = static_cast<uint32_t>(std::max(0.0f, clip.h));
+            if (x + w > static_cast<uint32_t>(m_width)) w = static_cast<uint32_t>(m_width) - x;
+            if (y + h > static_cast<uint32_t>(m_height)) h = static_cast<uint32_t>(m_height) - y;
+            if (w > 0 && h > 0) {
+                wgpuRenderPassEncoderSetScissorRect(pass, x, y, w, h);
+            }
+        } else {
+            // Reset to full viewport for layers without clip
+            wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
+                                                 static_cast<uint32_t>(m_width),
+                                                 static_cast<uint32_t>(m_height));
+        }
+
+        // 1. Render solid segments for this layer
+        while (solidSegIdx < allSolidSegments.size() && allSolidSegments[solidSegIdx].layer == layer) {
+            const auto& seg = allSolidSegments[solidSegIdx];
+            if (seg.indexCount > 0) {
+                // Only apply segment scissor if no layer clip (layer clip takes precedence)
+                if (!hasLayerClip) {
+                    applyScissor(seg);
+                }
+                wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
+                wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_solidVertexBuffer, 0,
+                                                      allSolidVertices.size() * sizeof(OverlayVertex));
+                wgpuRenderPassEncoderSetIndexBuffer(pass, m_solidIndexBuffer, WGPUIndexFormat_Uint32, 0,
+                                                     allSolidIndices.size() * sizeof(uint32_t));
+                wgpuRenderPassEncoderDrawIndexed(pass, seg.indexCount, 1, seg.startIndex, 0, 0);
+            }
+            solidSegIdx++;
         }
 
         // 2. Render textured rects for this layer
         auto texIt = m_texturedRects.find(layer);
         if (texIt != m_texturedRects.end() && !texIt->second.empty()) {
+            // Only reset scissor if no layer clip (layer clip is already set above)
+            if (!hasLayerClip) {
+                wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
+                                                     static_cast<uint32_t>(m_width),
+                                                     static_cast<uint32_t>(m_height));
+            }
+
             const auto& rects = texIt->second;
 
             std::vector<OverlayVertex> texVertices;
@@ -616,21 +721,32 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
             for (auto bg : tempBindGroups) wgpuBindGroupRelease(bg);
         }
 
-        // 3. Render text for each font at this layer
+        // 3. Render text segments for each font at this layer
         for (int fontIdx = 0; fontIdx < 3; fontIdx++) {
-            if (textRangeIdx[fontIdx] < textDrawRanges[fontIdx].size() &&
-                textDrawRanges[fontIdx][textRangeIdx[fontIdx]].first == layer) {
-                const auto& range = textDrawRanges[fontIdx][textRangeIdx[fontIdx]].second;
-                wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroups[fontIdx], 0, nullptr);
-                wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer[fontIdx], 0,
-                                                      allTextVertices[fontIdx].size() * sizeof(OverlayVertex));
-                wgpuRenderPassEncoderSetIndexBuffer(pass, m_textIndexBuffer[fontIdx], WGPUIndexFormat_Uint32, 0,
-                                                     allTextIndices[fontIdx].size() * sizeof(uint32_t));
-                wgpuRenderPassEncoderDrawIndexed(pass, range.indexCount, 1, range.startIndex, 0, 0);
-                textRangeIdx[fontIdx]++;
+            while (textSegIdx[fontIdx] < allTextSegments[fontIdx].size() &&
+                   allTextSegments[fontIdx][textSegIdx[fontIdx]].layer == layer) {
+                const auto& seg = allTextSegments[fontIdx][textSegIdx[fontIdx]];
+                if (seg.indexCount > 0) {
+                    // Only apply segment scissor if no layer clip (layer clip takes precedence)
+                    if (!hasLayerClip) {
+                        applyScissor(seg);
+                    }
+                    wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroups[fontIdx], 0, nullptr);
+                    wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer[fontIdx], 0,
+                                                          allTextVertices[fontIdx].size() * sizeof(OverlayVertex));
+                    wgpuRenderPassEncoderSetIndexBuffer(pass, m_textIndexBuffer[fontIdx], WGPUIndexFormat_Uint32, 0,
+                                                         allTextIndices[fontIdx].size() * sizeof(uint32_t));
+                    wgpuRenderPassEncoderDrawIndexed(pass, seg.indexCount, 1, seg.startIndex, 0, 0);
+                }
+                textSegIdx[fontIdx]++;
             }
         }
     }
+
+    // Reset scissor to full viewport at the end
+    wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
+                                         static_cast<uint32_t>(m_width),
+                                         static_cast<uint32_t>(m_height));
 }
 
 // -------------------------------------------------------------------------
@@ -691,6 +807,31 @@ glm::vec2 OverlayCanvas::inverseTransformPoint(const glm::vec2& p) const {
 
 void OverlayCanvas::addQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3, const glm::vec4& color) {
     auto& batch = m_layers[m_currentLayer];
+
+    // Check current clip state
+    bool hasClip = !m_clipStack.empty();
+    ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
+
+    // Check if we need to start a new segment (clip state changed)
+    bool needNewSegment = batch.solidSegments.empty() ||
+                          hasClip != m_lastHasClip ||
+                          (hasClip && (currentClip.x != m_lastClipRect.x ||
+                                       currentClip.y != m_lastClipRect.y ||
+                                       currentClip.w != m_lastClipRect.w ||
+                                       currentClip.h != m_lastClipRect.h));
+
+    if (needNewSegment) {
+        // Start new segment
+        DrawSegment seg;
+        seg.startIndex = static_cast<uint32_t>(batch.solidIndices.size());
+        seg.indexCount = 0;
+        seg.hasClip = hasClip;
+        seg.clipRect = currentClip;
+        batch.solidSegments.push_back(seg);
+        m_lastHasClip = hasClip;
+        m_lastClipRect = currentClip;
+    }
+
     uint32_t baseIndex = static_cast<uint32_t>(batch.solidVertices.size());
     glm::vec2 uv(0.5f, 0.5f);
 
@@ -705,6 +846,9 @@ void OverlayCanvas::addQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 
     batch.solidIndices.push_back(baseIndex + 0);
     batch.solidIndices.push_back(baseIndex + 2);
     batch.solidIndices.push_back(baseIndex + 3);
+
+    // Update current segment's index count
+    batch.solidSegments.back().indexCount += 6;
 }
 
 void OverlayCanvas::addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3,
@@ -712,6 +856,31 @@ void OverlayCanvas::addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::v
                                  const glm::vec4& color, int fontIndex) {
     if (fontIndex < 0 || fontIndex >= 3) fontIndex = 0;
     auto& batch = m_layers[m_currentLayer];
+
+    // Check current clip state
+    bool hasClip = !m_clipStack.empty();
+    ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
+
+    // Check if we need to start a new segment (clip state changed)
+    bool needNewSegment = batch.textSegments[fontIndex].empty() ||
+                          hasClip != m_lastHasClip ||
+                          (hasClip && (currentClip.x != m_lastClipRect.x ||
+                                       currentClip.y != m_lastClipRect.y ||
+                                       currentClip.w != m_lastClipRect.w ||
+                                       currentClip.h != m_lastClipRect.h));
+
+    if (needNewSegment) {
+        // Start new segment
+        DrawSegment seg;
+        seg.startIndex = static_cast<uint32_t>(batch.textIndices[fontIndex].size());
+        seg.indexCount = 0;
+        seg.hasClip = hasClip;
+        seg.clipRect = currentClip;
+        batch.textSegments[fontIndex].push_back(seg);
+        m_lastHasClip = hasClip;
+        m_lastClipRect = currentClip;
+    }
+
     uint32_t baseIndex = static_cast<uint32_t>(batch.textVertices[fontIndex].size());
 
     batch.textVertices[fontIndex].push_back({p0, uv0, color});
@@ -725,6 +894,9 @@ void OverlayCanvas::addTextQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::v
     batch.textIndices[fontIndex].push_back(baseIndex + 0);
     batch.textIndices[fontIndex].push_back(baseIndex + 2);
     batch.textIndices[fontIndex].push_back(baseIndex + 3);
+
+    // Update current segment's index count
+    batch.textSegments[fontIndex].back().indexCount += 6;
 }
 
 void OverlayCanvas::fillRect(float x, float y, float w, float h, const glm::vec4& color) {
@@ -761,6 +933,29 @@ void OverlayCanvas::strokeRect(float x, float y, float w, float h, float lineWid
 
 void OverlayCanvas::fillCircle(float cx, float cy, float radius, const glm::vec4& color, int segments) {
     auto& batch = m_layers[m_currentLayer];
+
+    // Check current clip state and ensure segment tracking
+    bool hasClip = !m_clipStack.empty();
+    ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
+
+    bool needNewSegment = batch.solidSegments.empty() ||
+                          hasClip != m_lastHasClip ||
+                          (hasClip && (currentClip.x != m_lastClipRect.x ||
+                                       currentClip.y != m_lastClipRect.y ||
+                                       currentClip.w != m_lastClipRect.w ||
+                                       currentClip.h != m_lastClipRect.h));
+
+    if (needNewSegment) {
+        DrawSegment seg;
+        seg.startIndex = static_cast<uint32_t>(batch.solidIndices.size());
+        seg.indexCount = 0;
+        seg.hasClip = hasClip;
+        seg.clipRect = currentClip;
+        batch.solidSegments.push_back(seg);
+        m_lastHasClip = hasClip;
+        m_lastClipRect = currentClip;
+    }
+
     glm::vec2 center = transformPoint({cx, cy});
     uint32_t centerIndex = static_cast<uint32_t>(batch.solidVertices.size());
     glm::vec2 uv(0.5f, 0.5f);
@@ -778,6 +973,9 @@ void OverlayCanvas::fillCircle(float cx, float cy, float radius, const glm::vec4
         batch.solidIndices.push_back(centerIndex + 1 + i);
         batch.solidIndices.push_back(centerIndex + 2 + i);
     }
+
+    // Update segment index count
+    batch.solidSegments.back().indexCount += segments * 3;
 }
 
 void OverlayCanvas::strokeCircle(float cx, float cy, float radius, float lineWidth, const glm::vec4& color, int segments) {
@@ -867,6 +1065,29 @@ void OverlayCanvas::fillRoundedRect(float x, float y, float w, float h, float ra
     // Four corner arcs (as filled pie slices)
     auto drawCorner = [&](float cx, float cy, float startAngle) {
         auto& batch = m_layers[m_currentLayer];
+
+        // Check current clip state and ensure segment tracking
+        bool hasClip = !m_clipStack.empty();
+        ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
+
+        bool needNewSegment = batch.solidSegments.empty() ||
+                              hasClip != m_lastHasClip ||
+                              (hasClip && (currentClip.x != m_lastClipRect.x ||
+                                           currentClip.y != m_lastClipRect.y ||
+                                           currentClip.w != m_lastClipRect.w ||
+                                           currentClip.h != m_lastClipRect.h));
+
+        if (needNewSegment) {
+            DrawSegment seg;
+            seg.startIndex = static_cast<uint32_t>(batch.solidIndices.size());
+            seg.indexCount = 0;
+            seg.hasClip = hasClip;
+            seg.clipRect = currentClip;
+            batch.solidSegments.push_back(seg);
+            m_lastHasClip = hasClip;
+            m_lastClipRect = currentClip;
+        }
+
         glm::vec2 center = transformPoint({cx, cy});
         uint32_t centerIndex = static_cast<uint32_t>(batch.solidVertices.size());
         glm::vec2 uv(0.5f, 0.5f);
@@ -884,6 +1105,9 @@ void OverlayCanvas::fillRoundedRect(float x, float y, float w, float h, float ra
             batch.solidIndices.push_back(centerIndex + 1 + i);
             batch.solidIndices.push_back(centerIndex + 2 + i);
         }
+
+        // Update segment index count
+        batch.solidSegments.back().indexCount += segments * 3;
     };
 
     drawCorner(x + radius, y + radius, 3.14159265f);           // Top-left
@@ -917,6 +1141,69 @@ void OverlayCanvas::strokeRoundedRect(float x, float y, float w, float h, float 
     drawCornerArc(x + w - radius, y + radius, 4.71238898f);       // Top-right
     drawCornerArc(x + w - radius, y + h - radius, 0.0f);          // Bottom-right
     drawCornerArc(x + radius, y + h - radius, 1.5707963f);        // Bottom-left
+}
+
+void OverlayCanvas::fillRoundedRectTop(float x, float y, float w, float h, float radius,
+                                        const glm::vec4& color, int segments) {
+    // Clamp radius to half the smaller dimension
+    radius = std::min(radius, std::min(w, h) * 0.5f);
+
+    // Main body: full width rectangle below top corners
+    fillRect(x, y + radius, w, h - radius, color);
+
+    // Top center: rectangle between corners
+    fillRect(x + radius, y, w - 2 * radius, radius, color);
+
+    // Top-left and top-right corner arcs
+    auto drawCorner = [&](float cx, float cy, float startAngle) {
+        auto& batch = m_layers[m_currentLayer];
+
+        // Check current clip state and ensure segment tracking
+        bool hasClip = !m_clipStack.empty();
+        ClipRect currentClip = hasClip ? m_clipStack.back() : ClipRect{0, 0, 0, 0};
+
+        bool needNewSegment = batch.solidSegments.empty() ||
+                              hasClip != m_lastHasClip ||
+                              (hasClip && (currentClip.x != m_lastClipRect.x ||
+                                           currentClip.y != m_lastClipRect.y ||
+                                           currentClip.w != m_lastClipRect.w ||
+                                           currentClip.h != m_lastClipRect.h));
+
+        if (needNewSegment) {
+            DrawSegment seg;
+            seg.startIndex = static_cast<uint32_t>(batch.solidIndices.size());
+            seg.indexCount = 0;
+            seg.hasClip = hasClip;
+            seg.clipRect = currentClip;
+            batch.solidSegments.push_back(seg);
+            m_lastHasClip = hasClip;
+            m_lastClipRect = currentClip;
+        }
+
+        glm::vec2 center = transformPoint({cx, cy});
+        uint32_t centerIndex = static_cast<uint32_t>(batch.solidVertices.size());
+        glm::vec2 uv(0.5f, 0.5f);
+
+        batch.solidVertices.push_back({center, uv, color});
+
+        for (int i = 0; i <= segments; i++) {
+            float angle = startAngle + static_cast<float>(i) / segments * 1.5707963f;  // PI/2
+            glm::vec2 p = transformPoint({cx + std::cos(angle) * radius, cy + std::sin(angle) * radius});
+            batch.solidVertices.push_back({p, uv, color});
+        }
+
+        for (int i = 0; i < segments; i++) {
+            batch.solidIndices.push_back(centerIndex);
+            batch.solidIndices.push_back(centerIndex + 1 + i);
+            batch.solidIndices.push_back(centerIndex + 2 + i);
+        }
+
+        // Update segment index count
+        batch.solidSegments.back().indexCount += segments * 3;
+    };
+
+    drawCorner(x + radius, y + radius, 3.14159265f);           // Top-left (PI)
+    drawCorner(x + w - radius, y + radius, 4.71238898f);       // Top-right (3*PI/2)
 }
 
 // -------------------------------------------------------------------------
@@ -1074,6 +1361,14 @@ glm::vec4 OverlayCanvas::currentClipRect() const {
     }
     const auto& rect = m_clipStack.back();
     return glm::vec4(rect.x, rect.y, rect.w, rect.h);
+}
+
+void OverlayCanvas::setLayerClipRect(int layer, float x, float y, float w, float h) {
+    m_layerClipRects[layer] = {x, y, w, h};
+}
+
+void OverlayCanvas::clearLayerClipRect(int layer) {
+    m_layerClipRects.erase(layer);
 }
 
 // -------------------------------------------------------------------------

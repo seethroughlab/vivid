@@ -1,12 +1,14 @@
 # Tiling Patterns
 
-Creates repeating patterns and kaleidoscopic effects.
+Creates repeating patterns and kaleidoscopic effects from an image.
 
 ## Operators Used
 
+- **Image** - Load source image (nature.jpg)
 - **Tile** - Repeats texture in a grid
 - **Transform** - Rotate/scale before tiling
 - **Mirror** - Kaleidoscope symmetry
+- **HSV** - Animated color shifting
 - **Bloom** - Post-process glow
 
 ## Key Concepts

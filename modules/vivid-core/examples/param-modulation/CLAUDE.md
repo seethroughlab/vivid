@@ -1,111 +1,130 @@
 # Parameter Modulation
 
-Demonstrates lambda bindings for dynamic parameter control.
+Demonstrates the different binding methods for dynamic parameter control in Vivid.
 
-## Features Demonstrated
+## Binding Methods Overview
 
-- **bind()** - Map a 0-1 normalized source to an output range
-- **bindDirect()** - Direct value assignment from lambda
-- **Mouse modulation** - Parameters controlled by mouse position
-- **Time-based modulation** - Animated parameters using ctx.time()
-- **LFO modulation** - Using LFO operator as modulation source
+| Method | Source | Trackable | Description |
+|--------|--------|-----------|-------------|
+| `bind(operator, inMin, inMax, outMin, outMax)` | Operator | Yes | Map operator output range to parameter range |
+| `bind(lambda, outMin, outMax)` | Lambda | No | Map 0-1 lambda output to parameter range |
+| `bindDirect(lambda)` | Lambda | No | Lambda returns exact value (full control) |
+| `bindX()`/`bindY()` | Any | Depends | Per-component binding for Vec2/Vec3 |
+
+**Trackable bindings** appear as dashed orange lines in the chain visualizer.
+
+## This Example Shows
+
+1. **Operator binding** (Circle): Position oscillates via LFO
+2. **Lambda with range** (Square): Size controlled by mouse X
+3. **Lambda direct** (Hexagon): Rotation controlled by time
 
 ## Key Concepts
 
-### Parameter Binding with Range Mapping
-
-Use `bind()` when your source returns a normalized 0-1 value and you want to map it to a specific output range:
-
-```cpp
-// Source returns 0-1, output mapped to 5.0-20.0
-noise.scale.bind(
-    [&]() { return bands.bass(); },  // 0-1 normalized
-    5.0f, 20.0f  // Output range
-);
-
-// Mouse X is already 0-1, mapped to size range
-shape.size.bind(
-    [&]() {
-        return ctx.mouseNorm().x;  // 0..1 range
-    },
-    0.05f, 0.3f  // Size range
-);
-```
-
-### Direct Parameter Binding
-
-Use `bindDirect()` when your lambda returns the exact value you want:
-
-```cpp
-// Direct position control from LFO
-shape.position.bindDirect(
-    [&]() {
-        float lfoVal = lfo.value();  // -1 to 1
-        return glm::vec2(lfoVal * 0.3f, 0.0f);
-    }
-);
-
-// Direct color control with time-based hue
-shape.color.bindDirect(
-    [&]() {
-        float hue = std::fmod(ctx.time() * 0.2f, 1.0f);
-        return hsvToRgb(hue, 1.0f, 1.0f);
-    }
-);
-```
-
-### Binding to Mouse Position
-
-```cpp
-// Size follows mouse X (mouseNorm returns 0-1)
-shape.size.bind(
-    [&]() { return ctx.mouseNorm().x; },
-    minSize, maxSize
-);
-
-// Position follows mouse directly (0-1 range, Y-down)
-shape.position.bindDirect(
-    [&]() {
-        glm::vec2 m = ctx.mouseNorm();
-        return glm::vec2(m.x * 0.4f, m.y * 0.4f);
-    }
-);
-```
-
-### Binding to LFO
+### 1. Operator Binding (Trackable)
 
 ```cpp
 auto& lfo = chain.add<LFO>("lfo");
 lfo.frequency = 0.5f;
-lfo.waveform = LFOWaveform::Sine;
 
-// LFO outputs -1 to 1, convert to 0-1 for bind()
-effect.param.bind(
-    [&lfo]() { return (lfo.value() + 1.0f) * 0.5f; },
-    minVal, maxVal
-);
+auto& shape = chain.add<Shape>("shape");
+// LFO outputs -1 to 1, map to X position 0.2 to 0.8
+shape.position.bindX(lfo, -1.0f, 1.0f, 0.2f, 0.8f);
+//                   │     │      │     │     └─ output max
+//                   │     │      │     └─ output min
+//                   │     │      └─ input max (LFO range)
+//                   │     └─ input min
+//                   └─ source operator
 ```
 
-### Binding to Time
+This binding is **trackable** and appears as a dashed orange line in the chain visualizer.
+
+### 2. Lambda with Range Mapping
 
 ```cpp
-// Oscillating value based on time
-effect.intensity.bindDirect(
-    [&ctx]() {
-        return 0.5f + 0.3f * std::sin(ctx.time() * 2.0f);
-    }
-);
+static Context* g_ctx = nullptr;  // Store context for lambdas
 
-// Cycling through values
-effect.mode.bindDirect(
-    [&ctx]() {
-        return static_cast<int>(ctx.time()) % 4;
-    }
+void setup(Context& ctx) {
+    g_ctx = &ctx;
+
+    auto& shape = chain.add<Shape>("shape");
+    // Mouse X (0-1) maps to size 0.06 to 0.2
+    shape.size.bind(
+        [&]() { return g_ctx->mouseNorm().x; },  // Must return 0-1
+        0.06f, 0.2f  // Output range
+    );
+}
+```
+
+Lambda must return a normalized 0-1 value. Not trackable (no visualizer line).
+
+### 3. Lambda Direct (Full Control)
+
+```cpp
+auto& shape = chain.add<Shape>("shape");
+// Rotation = time * 0.5 (exact radians, no mapping)
+shape.rotation.bindDirect([&]() {
+    return g_ctx->time() * 0.5f;  // Returns exact value
+});
+```
+
+Lambda returns the exact parameter value. Use when you need full control over the calculation.
+
+### 4. Per-Component Binding
+
+```cpp
+// Bind X and Y separately
+shape.position.bindX(lfoX, -1.0f, 1.0f, 0.2f, 0.8f);
+shape.position.bindY(lfoY, -1.0f, 1.0f, 0.3f, 0.7f);
+
+// Or bind both uniformly
+shape.size.bind(lfo, -1.0f, 1.0f, 0.1f, 0.3f);  // Both X and Y
+```
+
+## Parameter Types and Their Bindings
+
+| Param Type | `bind()` | `bindDirect()` | Per-Component |
+|------------|----------|----------------|---------------|
+| `Param<float>` | Yes | Yes | N/A |
+| `Vec2Param` | Yes (uniform) | No | `bindX()`, `bindY()` |
+| `Vec3Param` | Yes (uniform) | No | `bindX()`, `bindY()`, `bindZ()` |
+| `ColorParam` | No | No | `bindR()`, `bindG()`, `bindB()`, `bindA()` |
+
+## Common Patterns
+
+### Mouse Control
+```cpp
+// Size follows mouse X (0-1 → 0.1-0.4)
+shape.size.bind(
+    [&]() { return ctx.mouseNorm().x; },
+    0.1f, 0.4f
 );
 ```
 
-### Unbinding Parameters
+### Time-Based Animation
+```cpp
+// Rotation spins at constant speed
+shape.rotation.bindDirect([&]() {
+    return ctx.time() * 0.5f;  // 0.5 rad/sec
+});
 
+// Oscillating value
+effect.intensity.bindDirect([&]() {
+    return 0.5f + 0.3f * std::sin(ctx.time() * 2.0f);
+});
+```
+
+### LFO Modulation
+```cpp
+auto& lfo = chain.add<LFO>("lfo");
+lfo.frequency = 0.5f;
+lfo.waveform = LFOWaveform::Sine;  // -1 to 1 output
+
+// Map LFO to parameter range
+effect.param.bind(lfo, -1.0f, 1.0f, minVal, maxVal);
+```
+
+### Unbinding
 ```cpp
 // Remove binding, return to manual control
 shape.size.unbind();
@@ -116,104 +135,8 @@ if (shape.size.isBound()) {
 }
 ```
 
-## Vec2 and Vec4 Parameter Bindings
-
-Vector parameters support both uniform and per-component binding:
-
-```cpp
-// Uniform binding - both X and Y scale together
-shape.size.bind(
-    [&]() { return lfo.value(); },
-    0.1f, 0.5f  // Both components use same range
-);
-
-// Direct binding for independent control
-shape.size.bindDirect(
-    [&]() {
-        return glm::vec2(
-            0.2f + std::sin(t) * 0.1f,
-            0.3f + std::cos(t) * 0.1f
-        );
-    }
-);
-```
-
-## Lambda Capture Patterns
-
-### Capturing Context
-
-```cpp
-// Capture ctx by reference for time/mouse access
-noise.scale.bindDirect([&ctx]() {
-    return 5.0f + std::sin(ctx.time()) * 3.0f;
-});
-```
-
-### Capturing Operators
-
-```cpp
-// Capture operator references for cross-modulation
-shape.position.bindDirect([&lfo, &noise]() {
-    return glm::vec2(lfo.value() * 0.3f, noise.value() * 0.2f);
-});
-```
-
-### Using Global Pointers
-
-For complex setups, store pointers globally:
-
-```cpp
-static Context* g_ctx = nullptr;
-static LFO* g_lfo = nullptr;
-
-void setup(Context& ctx) {
-    g_ctx = &ctx;
-    g_lfo = &chain.add<LFO>("lfo");
-
-    shape.size.bind(
-        []() { return (g_lfo->value() + 1.0f) * 0.5f; },
-        0.1f, 0.4f
-    );
-}
-```
-
-## Common Modulation Patterns
-
-### Audio-Reactive Parameters
-
-```cpp
-auto& fft = chain.add<FFT>("fft");
-auto& bands = chain.add<BandSplit>("bands");
-bands.input("fft");
-
-// Size pulses with bass
-shape.size.bind(
-    [&bands]() { return bands.bass(); },
-    0.1f, 0.5f
-);
-
-// Color intensity from mid frequencies
-bloom.intensity.bind(
-    [&bands]() { return bands.mid(); },
-    0.5f, 2.0f
-);
-```
-
-### Smooth Transitions
-
-```cpp
-static float smoothed = 0.0f;
-
-shape.size.bindDirect([&]() {
-    float target = ctx.mouseNorm().x;  // 0-1 range
-    smoothed += (target - smoothed) * 0.1f;  // Lerp
-    return smoothed * 0.3f + 0.05f;
-});
-```
-
 ## Controls
 
-- **Move mouse horizontally**: Changes circle size (shape1)
-- LFO automatically animates rectangle position (shape2)
-- Time automatically cycles hexagon color (shape3)
-- LFO automatically modulates noise scale
+- **Mouse X**: Changes square size (demonstrates lambda range binding)
+- Circle oscillates automatically (LFO binding)
+- Hexagon spins automatically (lambda direct binding)

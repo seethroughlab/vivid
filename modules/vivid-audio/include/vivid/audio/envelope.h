@@ -89,19 +89,24 @@ public:
     /// @name Parameters (public for direct access)
     /// @{
 
-    Param<float> attack{"attack", 0.01f, 0.001f, 5.0f};    ///< Attack time in seconds
-    Param<float> decay{"decay", 0.1f, 0.001f, 5.0f};       ///< Decay time in seconds
-    Param<float> sustain{"sustain", 0.7f, 0.0f, 1.0f};     ///< Sustain level
-    Param<float> release{"release", 0.3f, 0.001f, 10.0f};  ///< Release time in seconds
+    ADSRParam envelope{"envelope", 0.01f, 0.1f, 0.7f, 0.3f, 5.0f};  ///< ADSR envelope parameters
+
+    /// Convenience accessors (read/write individual ADSR values)
+    float& attack;    ///< Attack time in seconds
+    float& decay;     ///< Decay time in seconds
+    float& sustain;   ///< Sustain level
+    float& release;   ///< Release time in seconds
 
     /// @}
     // -------------------------------------------------------------------------
 
-    Envelope() {
-        registerParam(attack);
-        registerParam(decay);
-        registerParam(sustain);
-        registerParam(release);
+    Envelope()
+        : attack(envelope.attackRef())
+        , decay(envelope.decayRef())
+        , sustain(envelope.sustainRef())
+        , release(envelope.releaseRef())
+    {
+        registerParam(envelope);
     }
     ~Envelope() override = default;
     // -------------------------------------------------------------------------
