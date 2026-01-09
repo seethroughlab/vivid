@@ -24,6 +24,11 @@ namespace vivid::network {
  * Receives raw UDP packets for custom protocols and hardware integration.
  * Data is received in a background thread and made available each frame.
  *
+ * @par Thread Safety
+ * All public query methods (hasData, data, asString, etc.) are thread-safe
+ * and can be called from the main thread while the receive thread is running.
+ * Uses double-buffering with mutex protection for data exchange.
+ *
  * @par Example
  * @code
  * void setup(Context& ctx) {
@@ -96,13 +101,13 @@ public:
     /// @{
 
     /// @brief Check if new data was received this frame
-    bool hasData() const { return m_hasNewData; }
+    [[nodiscard]] bool hasData() const { return m_hasNewData; }
 
     /// @brief Check if receiver is listening
-    bool isListening() const { return m_listening.load(); }
+    [[nodiscard]] bool isListening() const { return m_listening.load(); }
 
     /// @brief Get configured port number
-    int getPort() const { return m_port; }
+    [[nodiscard]] int getPort() const { return m_port; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -110,19 +115,19 @@ public:
     /// @{
 
     /// @brief Get received data (valid until next process() call)
-    const std::vector<uint8_t>& data() const { return m_readBuffer; }
+    [[nodiscard]] const std::vector<uint8_t>& data() const { return m_readBuffer; }
 
     /// @brief Get size of received data in bytes
-    size_t size() const { return m_readBuffer.size(); }
+    [[nodiscard]] size_t size() const { return m_readBuffer.size(); }
 
     /// @brief Interpret data as UTF-8 string
-    std::string asString() const;
+    [[nodiscard]] std::string asString() const;
 
     /// @brief Interpret data as array of floats
-    std::vector<float> asFloats() const;
+    [[nodiscard]] std::vector<float> asFloats() const;
 
     /// @brief Interpret data as array of 32-bit integers
-    std::vector<int32_t> asInts() const;
+    [[nodiscard]] std::vector<int32_t> asInts() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -130,10 +135,10 @@ public:
     /// @{
 
     /// @brief Get IP address of last packet sender
-    std::string senderAddress() const { return m_senderAddress; }
+    [[nodiscard]] std::string senderAddress() const { return m_senderAddress; }
 
     /// @brief Get port of last packet sender
-    int senderPort() const { return m_senderPort; }
+    [[nodiscard]] int senderPort() const { return m_senderPort; }
 
     /// @}
     // -------------------------------------------------------------------------

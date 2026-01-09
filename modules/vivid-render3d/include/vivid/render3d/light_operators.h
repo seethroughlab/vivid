@@ -67,12 +67,12 @@ public:
      * @brief Get the light data
      * @return Reference to the light configuration
      */
-    virtual const LightData& outputLight() const { return m_light; }
+    [[nodiscard]] virtual const LightData& outputLight() const { return m_light; }
 
     /**
      * @brief Get output kind (Light)
      */
-    OutputKind outputKind() const override { return OutputKind::Light; }
+    [[nodiscard]] OutputKind outputKind() const override { return OutputKind::Light; }
 
 protected:
     LightData m_light;

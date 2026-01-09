@@ -136,18 +136,18 @@ public:
     // State Queries
     // -------------------------------------------------------------------------
 
-    bool isPlaying() const;
-    bool isFinished() const;
-    bool isOpen() const;
+    [[nodiscard]] bool isPlaying() const;
+    [[nodiscard]] bool isFinished() const;
+    [[nodiscard]] bool isOpen() const;
 
-    float currentTime() const;
-    float duration() const;
-    float frameRate() const;
+    [[nodiscard]] float currentTime() const;
+    [[nodiscard]] float duration() const;
+    [[nodiscard]] float frameRate() const;
 
-    int videoWidth() const;
-    int videoHeight() const;
+    [[nodiscard]] int videoWidth() const;
+    [[nodiscard]] int videoHeight() const;
 
-    bool hasAudio() const;
+    [[nodiscard]] bool hasAudio() const;
 
     /**
      * @brief Read audio samples for external routing
@@ -155,7 +155,7 @@ public:
      * @param maxFrames Maximum frames to read
      * @return Number of frames actually read
      */
-    uint32_t readAudioSamples(float* buffer, uint32_t maxFrames);
+    [[nodiscard]] uint32_t readAudioSamples(float* buffer, uint32_t maxFrames);
 
     /**
      * @brief Read audio samples synchronized to video PTS
@@ -164,17 +164,17 @@ public:
      * @param maxFrames Maximum frames to read
      * @return Number of frames actually read
      */
-    uint32_t readAudioSamplesForPTS(float* buffer, double videoPTS, uint32_t maxFrames);
+    [[nodiscard]] uint32_t readAudioSamplesForPTS(float* buffer, double videoPTS, uint32_t maxFrames);
 
     /**
      * @brief Get the PTS of the oldest audio sample available
      */
-    double audioAvailableStartPTS() const;
+    [[nodiscard]] double audioAvailableStartPTS() const;
 
     /**
      * @brief Get the PTS of the newest audio sample available
      */
-    double audioAvailableEndPTS() const;
+    [[nodiscard]] double audioAvailableEndPTS() const;
 
     /**
      * @brief Enable/disable internal audio playback
@@ -185,17 +185,17 @@ public:
     /**
      * @brief Check if internal audio is enabled
      */
-    bool isInternalAudioEnabled() const;
+    [[nodiscard]] bool isInternalAudioEnabled() const;
 
     /**
      * @brief Get audio sample rate
      */
-    uint32_t audioSampleRate() const;
+    [[nodiscard]] uint32_t audioSampleRate() const;
 
     /**
      * @brief Get audio channel count
      */
-    uint32_t audioChannels() const;
+    [[nodiscard]] uint32_t audioChannels() const;
 
     // -------------------------------------------------------------------------
     // Operator Interface

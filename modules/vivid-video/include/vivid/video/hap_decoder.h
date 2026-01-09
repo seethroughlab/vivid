@@ -35,12 +35,12 @@ public:
     /**
      * @brief Check if a file is a HAP-encoded video.
      */
-    static bool isHAPFile(const std::string& path);
+    [[nodiscard]] static bool isHAPFile(const std::string& path);
 
     /**
      * @brief Open a HAP video file.
      */
-    bool open(Context& ctx, const std::string& path, bool loop = false);
+    [[nodiscard]] bool open(Context& ctx, const std::string& path, bool loop = false);
 
     /**
      * @brief Close and release resources.
@@ -50,7 +50,7 @@ public:
     /**
      * @brief Check if open.
      */
-    bool isOpen() const;
+    [[nodiscard]] bool isOpen() const;
 
     /**
      * @brief Update - decode next frame and upload to texture.
@@ -75,42 +75,42 @@ public:
     /**
      * @brief Check if playing.
      */
-    bool isPlaying() const { return isPlaying_; }
+    [[nodiscard]] bool isPlaying() const { return isPlaying_; }
 
     /**
      * @brief Check if finished.
      */
-    bool isFinished() const { return isFinished_; }
+    [[nodiscard]] bool isFinished() const { return isFinished_; }
 
     /**
      * @brief Get current time in seconds.
      */
-    float currentTime() const { return currentTime_; }
+    [[nodiscard]] float currentTime() const { return currentTime_; }
 
     /**
      * @brief Get duration in seconds.
      */
-    float duration() const { return duration_; }
+    [[nodiscard]] float duration() const { return duration_; }
 
     /**
      * @brief Get video width.
      */
-    int width() const { return width_; }
+    [[nodiscard]] int width() const { return width_; }
 
     /**
      * @brief Get video height.
      */
-    int height() const { return height_; }
+    [[nodiscard]] int height() const { return height_; }
 
     /**
      * @brief Get frame rate.
      */
-    float frameRate() const { return frameRate_; }
+    [[nodiscard]] float frameRate() const { return frameRate_; }
 
     /**
      * @brief Check if file has audio.
      */
-    bool hasAudio() const { return hasAudio_; }
+    [[nodiscard]] bool hasAudio() const { return hasAudio_; }
 
     /**
      * @brief Set audio volume (0.0 - 1.0).
@@ -120,7 +120,7 @@ public:
     /**
      * @brief Get audio volume.
      */
-    float getVolume() const;
+    [[nodiscard]] float getVolume() const;
 
     /**
      * @brief Read audio samples into buffer (for external audio routing).
@@ -131,7 +131,7 @@ public:
      * This reads audio samples that would otherwise go to internal playback.
      * Use this when you want to route audio through the chain's audio system.
      */
-    uint32_t readAudioSamples(float* buffer, uint32_t maxFrames);
+    [[nodiscard]] uint32_t readAudioSamples(float* buffer, uint32_t maxFrames);
 
     /**
      * @brief Read audio samples synchronized to a video PTS.
@@ -143,17 +143,17 @@ public:
      * This reads audio samples that correspond to the given video time.
      * Used for PTS-based audio/video synchronization during recording.
      */
-    uint32_t readAudioSamplesForPTS(float* buffer, double videoPTS, uint32_t maxFrames);
+    [[nodiscard]] uint32_t readAudioSamplesForPTS(float* buffer, double videoPTS, uint32_t maxFrames);
 
     /**
      * @brief Get the PTS of the oldest audio sample in the buffer.
      */
-    double audioAvailableStartPTS() const;
+    [[nodiscard]] double audioAvailableStartPTS() const;
 
     /**
      * @brief Get the PTS of the newest audio sample in the buffer.
      */
-    double audioAvailableEndPTS() const;
+    [[nodiscard]] double audioAvailableEndPTS() const;
 
     /**
      * @brief Enable/disable internal audio playback.
@@ -166,27 +166,27 @@ public:
     /**
      * @brief Check if internal audio is enabled.
      */
-    bool isInternalAudioEnabled() const { return internalAudioEnabled_; }
+    [[nodiscard]] bool isInternalAudioEnabled() const { return internalAudioEnabled_; }
 
     /**
      * @brief Get audio sample rate.
      */
-    uint32_t audioSampleRate() const { return audioSampleRate_; }
+    [[nodiscard]] uint32_t audioSampleRate() const { return audioSampleRate_; }
 
     /**
      * @brief Get audio channel count.
      */
-    uint32_t audioChannels() const { return audioChannels_; }
+    [[nodiscard]] uint32_t audioChannels() const { return audioChannels_; }
 
     /**
      * @brief Get texture.
      */
-    WGPUTexture texture() const { return texture_; }
+    [[nodiscard]] WGPUTexture texture() const { return texture_; }
 
     /**
      * @brief Get texture view.
      */
-    WGPUTextureView textureView() const { return textureView_; }
+    [[nodiscard]] WGPUTextureView textureView() const { return textureView_; }
 
 private:
     struct Impl;

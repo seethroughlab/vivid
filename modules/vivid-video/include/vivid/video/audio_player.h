@@ -31,7 +31,7 @@ public:
      * @param channels Number of channels (1 for mono, 2 for stereo).
      * @return true if initialization succeeded.
      */
-    bool init(uint32_t sampleRate, uint32_t channels);
+    [[nodiscard]] bool init(uint32_t sampleRate, uint32_t channels);
 
     /**
      * @brief Shutdown audio device and release resources.
@@ -41,7 +41,7 @@ public:
     /**
      * @brief Check if audio player is initialized.
      */
-    bool isInitialized() const { return initialized_; }
+    [[nodiscard]] bool isInitialized() const { return initialized_; }
 
     /**
      * @brief Start audio playback.
@@ -56,7 +56,7 @@ public:
     /**
      * @brief Check if currently playing.
      */
-    bool isPlaying() const { return playing_; }
+    [[nodiscard]] bool isPlaying() const { return playing_; }
 
     /**
      * @brief Clear the audio buffer and reset position.
@@ -74,12 +74,12 @@ public:
     /**
      * @brief Get the current playback position in seconds.
      */
-    double getPlaybackPosition() const;
+    [[nodiscard]] double getPlaybackPosition() const;
 
     /**
      * @brief Get number of buffered frames available for playback.
      */
-    uint32_t getBufferedFrames() const;
+    [[nodiscard]] uint32_t getBufferedFrames() const;
 
     /**
      * @brief Set the playback volume (0.0 to 1.0).
@@ -89,7 +89,7 @@ public:
     /**
      * @brief Get current volume.
      */
-    float getVolume() const { return volume_; }
+    [[nodiscard]] float getVolume() const { return volume_; }
 
 private:
     static void dataCallback(struct ma_device* device, void* output, const void* input, unsigned int frameCount);

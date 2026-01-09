@@ -114,7 +114,7 @@ public:
      *
      * When recording, returns deterministic time based on frame count and fps.
      */
-    double time() const {
+    [[nodiscard]] double time() const {
         if (m_recording && m_recordingFps > 0) {
             return static_cast<double>(m_frame) / m_recordingFps;
         }
@@ -125,7 +125,7 @@ public:
      * @brief Get real wall-clock time (even during recording)
      * @return Actual elapsed time in seconds
      */
-    double realTime() const { return m_time; }
+    [[nodiscard]] double realTime() const { return m_time; }
 
     /**
      * @brief Get time since last frame
@@ -134,7 +134,7 @@ public:
      * When recording, returns a fixed timestep (1/fps) for deterministic output.
      * Use this for all time-based calculations in operators.
      */
-    double dt() const {
+    [[nodiscard]] double dt() const {
         if (m_recording) {
             return m_recordingFps > 0 ? 1.0 / m_recordingFps : m_dt;
         }
@@ -148,13 +148,13 @@ public:
      * Use this sparingly - most operators should use dt() which is
      * deterministic during recording.
      */
-    double realDt() const { return m_dt; }
+    [[nodiscard]] double realDt() const { return m_dt; }
 
     /**
      * @brief Get current frame number
      * @return Frame count (0-indexed)
      */
-    uint64_t frame() const { return m_frame; }
+    [[nodiscard]] uint64_t frame() const { return m_frame; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -165,19 +165,19 @@ public:
      * @brief Get window width
      * @return Width in pixels
      */
-    int width() const { return m_width; }
+    [[nodiscard]] int width() const { return m_width; }
 
     /**
      * @brief Get window height
      * @return Height in pixels
      */
-    int height() const { return m_height; }
+    [[nodiscard]] int height() const { return m_height; }
 
     /**
      * @brief Get aspect ratio
      * @return Width divided by height
      */
-    float aspect() const { return m_height > 0 ? static_cast<float>(m_width) / m_height : 1.0f; }
+    [[nodiscard]] float aspect() const { return m_height > 0 ? static_cast<float>(m_width) / m_height : 1.0f; }
 
     /**
      * @brief Get display content scale (DPI scaling factor)
@@ -185,7 +185,7 @@ public:
      *
      * Use this to scale font sizes and UI elements for HiDPI displays.
      */
-    float contentScale() const { return m_contentScale; }
+    [[nodiscard]] float contentScale() const { return m_contentScale; }
 
     /// @brief Set content scale (called by runtime)
     void setContentScale(float scale) { m_contentScale = scale; }
@@ -445,10 +445,10 @@ public:
     /// @{
 
     /// @brief Check if an error has occurred
-    bool hasError() const { return !m_errorMessage.empty(); }
+    [[nodiscard]] bool hasError() const { return !m_errorMessage.empty(); }
 
     /// @brief Get the error message
-    const std::string& errorMessage() const { return m_errorMessage; }
+    [[nodiscard]] const std::string& errorMessage() const { return m_errorMessage; }
 
     /// @brief Set an error message
     void setError(const std::string& message) { m_errorMessage = message; }
@@ -506,7 +506,7 @@ public:
      * @brief Get all registered operators
      * @return Vector of operator info structs
      */
-    const std::vector<OperatorInfo>& registeredOperators() const { return m_operators; }
+    [[nodiscard]] const std::vector<OperatorInfo>& registeredOperators() const { return m_operators; }
 
     /// @brief Clear all registered operators (called on hot-reload)
     void clearRegisteredOperators() { m_operators.clear(); }
@@ -559,7 +559,7 @@ public:
      * @brief Get all debug values for rendering
      * @return Map of name to DebugValue
      */
-    const std::map<std::string, DebugValue>& debugValues() const { return m_debugValues; }
+    [[nodiscard]] const std::map<std::string, DebugValue>& debugValues() const { return m_debugValues; }
 
     /**
      * @brief Prepare debug values for next frame
@@ -593,7 +593,7 @@ public:
     const Chain& chain() const;
 
     /// @brief Check if a chain exists
-    bool hasChain() const { return m_chain != nullptr; }
+    [[nodiscard]] bool hasChain() const { return m_chain != nullptr; }
 
     /// @brief Reset the chain (called by core before setup)
     void resetChain();

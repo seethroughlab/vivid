@@ -112,19 +112,19 @@ public:
     /// @{
 
     /// @brief Check if socket is ready to send
-    bool isReady() const { return m_socket != -1; }
+    [[nodiscard]] bool isReady() const { return m_socket != -1; }
 
     /// @brief Get configured hostname
-    std::string getHost() const { return m_host; }
+    [[nodiscard]] std::string getHost() const { return m_host; }
 
     /// @brief Get configured port
-    int getPort() const { return m_port; }
+    [[nodiscard]] int getPort() const { return m_port; }
 
     /// @brief Get total packets sent
-    size_t packetsSent() const { return m_packetsSent; }
+    [[nodiscard]] size_t packetsSent() const { return m_packetsSent; }
 
     /// @brief Get total bytes sent
-    size_t bytesSent() const { return m_bytesSent; }
+    [[nodiscard]] size_t bytesSent() const { return m_bytesSent; }
 
     /// @}
     // -------------------------------------------------------------------------

@@ -235,16 +235,16 @@ public:
 
     /// Get the linear depth texture view (nullptr if depth output disabled)
     /// Depth is normalized: 0.0 = near plane, 1.0 = far plane
-    WGPUTextureView depthOutputView() const { return m_depthOutputView; }
+    [[nodiscard]] WGPUTextureView depthOutputView() const { return m_depthOutputView; }
 
     /// Check if depth output is enabled
-    bool hasDepthOutput() const { return m_depthOutputEnabled; }
+    [[nodiscard]] bool hasDepthOutput() const { return m_depthOutputEnabled; }
 
     /// Get camera near plane (for post-processing effects like Fog)
-    float getNearPlane() const;
+    [[nodiscard]] float getNearPlane() const;
 
     /// Get camera far plane (for post-processing effects like Fog)
-    float getFarPlane() const;
+    [[nodiscard]] float getFarPlane() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -279,7 +279,7 @@ public:
     void setShadowMapResolution(int size);
 
     /// Check if shadows are enabled
-    bool hasShadows() const;
+    [[nodiscard]] bool hasShadows() const;
 
     /// @}
     // -------------------------------------------------------------------------

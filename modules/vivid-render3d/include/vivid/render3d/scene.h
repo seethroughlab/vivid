@@ -68,20 +68,20 @@ public:
     /// @{
 
     /// Get all objects in the scene
-    const std::vector<SceneObject>& objects() const { return m_objects; }
+    [[nodiscard]] const std::vector<SceneObject>& objects() const { return m_objects; }
 
     /// Get mutable access to objects
-    std::vector<SceneObject>& objects() { return m_objects; }
+    [[nodiscard]] std::vector<SceneObject>& objects() { return m_objects; }
 
     /// Get number of objects
-    size_t objectCount() const { return m_objects.size(); }
+    [[nodiscard]] size_t objectCount() const { return m_objects.size(); }
 
     /// Check if scene is empty
-    bool empty() const { return m_objects.empty(); }
+    [[nodiscard]] bool empty() const { return m_objects.empty(); }
 
     /// Access object by index
-    SceneObject& operator[](size_t index) { return m_objects[index]; }
-    const SceneObject& operator[](size_t index) const { return m_objects[index]; }
+    [[nodiscard]] SceneObject& operator[](size_t index) { return m_objects[index]; }
+    [[nodiscard]] const SceneObject& operator[](size_t index) const { return m_objects[index]; }
 
     /// @}
     // -------------------------------------------------------------------------

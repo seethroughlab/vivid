@@ -49,6 +49,11 @@ struct OscMessage {
  * Receives OSC messages from external software and hardware controllers.
  * Messages are received in a background thread and made available each frame.
  *
+ * @par Thread Safety
+ * All public query methods (hasMessage, getFloat, messages, etc.) are thread-safe
+ * and can be called from the main thread while the receive thread is running.
+ * Uses double-buffering with mutex protection for data exchange.
+ *
  * @par Example
  * @code
  * void setup(Context& ctx) {
@@ -124,10 +129,10 @@ public:
     /// @{
 
     /// @brief Check if receiver is listening
-    bool isListening() const { return m_listening.load(); }
+    [[nodiscard]] bool isListening() const { return m_listening.load(); }
 
     /// @brief Get configured port number
-    int getPort() const { return m_port; }
+    [[nodiscard]] int getPort() const { return m_port; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -135,19 +140,19 @@ public:
     /// @{
 
     /// @brief Check if a message was received for an address this frame
-    bool hasMessage(const std::string& address) const;
+    [[nodiscard]] bool hasMessage(const std::string& address) const;
 
     /// @brief Get latest float value for an address
-    float getFloat(const std::string& address, float defaultVal = 0.0f) const;
+    [[nodiscard]] float getFloat(const std::string& address, float defaultVal = 0.0f) const;
 
     /// @brief Get latest int value for an address
-    int32_t getInt(const std::string& address, int32_t defaultVal = 0) const;
+    [[nodiscard]] int32_t getInt(const std::string& address, int32_t defaultVal = 0) const;
 
     /// @brief Get all messages matching a pattern (supports wildcards)
-    std::vector<OscMessage> getMessages(const std::string& pattern) const;
+    [[nodiscard]] std::vector<OscMessage> getMessages(const std::string& pattern) const;
 
     /// @brief Get all messages received this frame
-    const std::vector<OscMessage>& messages() const { return m_readMessages; }
+    [[nodiscard]] const std::vector<OscMessage>& messages() const { return m_readMessages; }
 
     /// @}
     // -------------------------------------------------------------------------

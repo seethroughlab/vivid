@@ -132,13 +132,13 @@ public:
     /// @{
 
     /// @brief Check if server is running
-    bool isRunning() const { return m_running; }
+    [[nodiscard]] bool isRunning() const { return m_running; }
 
     /// @brief Get configured port
-    int getPort() const { return m_port; }
+    [[nodiscard]] int getPort() const { return m_port; }
 
     /// @brief Get number of connected WebSocket clients
-    size_t connectionCount() const;
+    [[nodiscard]] size_t connectionCount() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -174,14 +174,15 @@ private:
     std::unique_ptr<ix::HttpServer> m_server;
     bool m_running = false;
 
-    // WebSocket clients
+    // WebSocket clients (pointers managed by ix::HttpServer, valid only in callbacks)
     std::set<ix::WebSocket*> m_wsClients;
-    std::mutex m_wsMutex;
+    mutable std::mutex m_wsMutex;  // mutable for const connectionCount()
 
     // Custom routes
     std::map<std::string, RouteHandler> m_routes;
 
-    // Pointer to context for API access
+    // Non-owning pointer to context for API access.
+    // Lifetime managed by Chain; valid after init() until cleanup().
     Context* m_ctx = nullptr;
 };
 

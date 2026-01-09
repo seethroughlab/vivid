@@ -93,7 +93,12 @@ public:
 
 private:
     std::string m_sourceName;
+
+    // Non-owning observer pointer to source VideoPlayer.
+    // Lifetime managed by Chain; valid after init() until cleanup().
+    // Accessed from main render thread only (no cross-thread concerns).
     VideoPlayer* m_videoPlayer = nullptr;
+
     bool m_connectedToSource = false;
 };
 

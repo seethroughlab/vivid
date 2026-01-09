@@ -225,10 +225,10 @@ public:
     }
 
     /// Get near clip plane
-    float getNear() const { return m_near; }
+    [[nodiscard]] float getNear() const { return m_near; }
 
     /// Get far clip plane
-    float getFar() const { return m_far; }
+    [[nodiscard]] float getFar() const { return m_far; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -269,16 +269,16 @@ public:
     /// @{
 
     /// Get the configured camera
-    const Camera3D& outputCamera() const { return m_camera; }
+    [[nodiscard]] const Camera3D& outputCamera() const { return m_camera; }
 
     /// Get output kind (Camera)
-    OutputKind outputKind() const override { return OutputKind::Camera; }
+    [[nodiscard]] OutputKind outputKind() const override { return OutputKind::Camera; }
 
     /// Enable/disable debug wireframe visualization (shows frustum)
     void drawDebug(bool enabled) { m_drawDebug = enabled; }
 
     /// Check if debug visualization is enabled
-    bool drawDebug() const { return m_drawDebug; }
+    [[nodiscard]] bool drawDebug() const { return m_drawDebug; }
 
     /// @}
     // -------------------------------------------------------------------------

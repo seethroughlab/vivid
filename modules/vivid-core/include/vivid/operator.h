@@ -143,6 +143,13 @@ struct TextureState : public OperatorState {
  * - Call `markDirty()` in setters when parameters change
  * - Call `didCook()` at the end of process() to update generation
  *
+ * ## Thread Safety
+ *
+ * Operators are NOT thread-safe. All methods (init, process, cleanup) are
+ * called from the main render thread. Raw pointer members (m_inputs, etc.)
+ * assume single-threaded access. For audio processing, use AudioOperator
+ * which separates main-thread and audio-thread APIs.
+ *
  * @par Example
  * @code
  * class MyEffect : public Operator {
@@ -207,7 +214,7 @@ public:
      * @brief Check if operator has been initialized
      * @return True if init() has completed successfully
      */
-    bool isInitialized() const { return m_initialized; }
+    [[nodiscard]] bool isInitialized() const { return m_initialized; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -218,13 +225,13 @@ public:
      * @brief Get the operator's display name
      * @return Human-readable name (e.g., "Noise", "Blur")
      */
-    virtual std::string name() const = 0;
+    [[nodiscard]] virtual std::string name() const = 0;
 
     /**
      * @brief Get the output type
      * @return OutputKind indicating what this operator produces
      */
-    virtual OutputKind outputKind() const { return OutputKind::Texture; }
+    [[nodiscard]] virtual OutputKind outputKind() const { return OutputKind::Texture; }
 
     /**
      * @brief Get parameter declarations for UI/introspection
@@ -263,13 +270,13 @@ public:
      * @brief Get the output texture view
      * @return WebGPU texture view for visualization/chaining
      */
-    virtual WGPUTextureView outputView() const { return nullptr; }
+    [[nodiscard]] virtual WGPUTextureView outputView() const { return nullptr; }
 
     /**
      * @brief Get the raw output texture (for video export/capture)
      * @return WebGPU texture, or nullptr if not a texture operator
      */
-    virtual WGPUTexture outputTexture() const { return nullptr; }
+    [[nodiscard]] virtual WGPUTexture outputTexture() const { return nullptr; }
 
     /**
      * @brief Get effective output (follows bypass chain)
@@ -278,7 +285,7 @@ public:
      * Use this when you need to respect bypass state. If this operator
      * is bypassed, returns the first input's effective output instead.
      */
-    WGPUTextureView effectiveOutputView() const {
+    [[nodiscard]] WGPUTextureView effectiveOutputView() const {
         if (m_bypassed && !m_inputs.empty() && m_inputs[0]) {
             return m_inputs[0]->effectiveOutputView();
         }
@@ -289,7 +296,7 @@ public:
      * @brief Get the output value (for Value/ValueArray operators)
      * @return The current output value, or 0.0 if not a value operator
      */
-    virtual float outputValue() const { return 0.0f; }
+    [[nodiscard]] virtual float outputValue() const { return 0.0f; }
 
     /**
      * @brief Get CPU pixel data if available
@@ -298,7 +305,7 @@ public:
      * Override in operators that maintain CPU pixel buffers (e.g., Webcam).
      * Useful for ML inference which needs CPU access without GPU readback.
      */
-    virtual std::optional<io::ImageData> cpuPixels() const { return std::nullopt; }
+    [[nodiscard]] virtual std::optional<io::ImageData> cpuPixels() const { return std::nullopt; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -347,7 +354,7 @@ public:
      * @param index Input slot index (default 0)
      * @return Connected operator, or nullptr if none
      */
-    Operator* getInput(int index = 0) const {
+    [[nodiscard]] Operator* getInput(int index = 0) const {
         return (index < static_cast<int>(m_inputs.size())) ? m_inputs[index] : nullptr;
     }
 
@@ -355,7 +362,7 @@ public:
      * @brief Get number of connected inputs
      * @return Input count
      */
-    size_t inputCount() const { return m_inputs.size(); }
+    [[nodiscard]] size_t inputCount() const { return m_inputs.size(); }
 
     /**
      * @brief Set input by name (resolved at init time)
@@ -377,7 +384,7 @@ public:
      * Override in derived classes to provide meaningful pin names.
      * Default returns empty string (visualizer will use "in0", "in1", etc.)
      */
-    virtual std::string getInputName(int index) const {
+    [[nodiscard]] virtual std::string getInputName(int index) const {
         return (index < static_cast<int>(m_inputNames.size()))
             ? m_inputNames[index] : std::string();
     }
@@ -386,7 +393,7 @@ public:
      * @brief Get number of named inputs
      * @return Count of input names
      */
-    size_t inputNameCount() const { return m_inputNames.size(); }
+    [[nodiscard]] size_t inputNameCount() const { return m_inputNames.size(); }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -406,7 +413,7 @@ public:
      * @brief Check if operator is bypassed
      * @return True if bypassed
      */
-    bool isBypassed() const { return m_bypassed; }
+    [[nodiscard]] bool isBypassed() const { return m_bypassed; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -458,7 +465,7 @@ public:
      * Call this at the start of process() to skip unnecessary work.
      * Compares current input generations to cached values.
      */
-    bool needsCook() const {
+    [[nodiscard]] bool needsCook() const {
         // Always cook if marked dirty
         if (m_selfDirty) return true;
 
@@ -505,7 +512,7 @@ public:
      *
      * Downstream operators use this to detect when inputs changed.
      */
-    uint64_t generation() const { return m_generation; }
+    [[nodiscard]] uint64_t generation() const { return m_generation; }
 
     /// @}
     // -------------------------------------------------------------------------

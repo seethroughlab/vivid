@@ -59,19 +59,19 @@ public:
     void release();
 
     /// Check if GPU buffers are valid
-    bool valid() const;
+    [[nodiscard]] bool valid() const;
 
     /// Get vertex buffer for rendering
-    WGPUBuffer vertexBuffer() const { return m_vertexBuffer; }
+    [[nodiscard]] WGPUBuffer vertexBuffer() const { return m_vertexBuffer; }
 
     /// Get index buffer for rendering
-    WGPUBuffer indexBuffer() const { return m_indexBuffer; }
+    [[nodiscard]] WGPUBuffer indexBuffer() const { return m_indexBuffer; }
 
     /// Get index count for draw calls
-    uint32_t indexCount() const { return static_cast<uint32_t>(indices.size()); }
+    [[nodiscard]] uint32_t indexCount() const { return static_cast<uint32_t>(indices.size()); }
 
     /// Get vertex count
-    uint32_t vertexCount() const { return static_cast<uint32_t>(vertices.size()); }
+    [[nodiscard]] uint32_t vertexCount() const { return static_cast<uint32_t>(vertices.size()); }
 
 private:
     WGPUBuffer m_vertexBuffer = nullptr;

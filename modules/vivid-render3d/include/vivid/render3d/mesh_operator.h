@@ -77,13 +77,13 @@ public:
      * Chain validation uses this to prevent mesh operators from
      * being set as chain outputs.
      */
-    OutputKind outputKind() const override { return OutputKind::Geometry; }
+    [[nodiscard]] OutputKind outputKind() const override { return OutputKind::Geometry; }
 
     /**
      * @brief Returns nullptr (mesh operators don't produce texture views)
      * @return nullptr
      */
-    WGPUTextureView outputView() const override { return nullptr; }
+    [[nodiscard]] WGPUTextureView outputView() const override { return nullptr; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -97,13 +97,13 @@ public:
      * The returned mesh is owned by this operator and remains valid until
      * the next process() call or until the operator is destroyed.
      */
-    virtual Mesh* outputMesh() { return &m_mesh; }
+    [[nodiscard]] virtual Mesh* outputMesh() { return &m_mesh; }
 
     /**
      * @brief Get the output mesh (const version)
      * @return Const pointer to the output mesh
      */
-    virtual const Mesh* outputMesh() const { return &m_mesh; }
+    [[nodiscard]] virtual const Mesh* outputMesh() const { return &m_mesh; }
 
     /**
      * @brief Get the MeshBuilder (for CSG operations)
@@ -112,13 +112,13 @@ public:
      * CSG operations require the manifold representation. Derived classes
      * should store their MeshBuilder and return it here for Boolean operators.
      */
-    virtual MeshBuilder* outputBuilder() { return m_builder.vertexCount() > 0 ? &m_builder : nullptr; }
+    [[nodiscard]] virtual MeshBuilder* outputBuilder() { return m_builder.vertexCount() > 0 ? &m_builder : nullptr; }
 
     /**
      * @brief Get the MeshBuilder (const version)
      * @return Const pointer to the builder
      */
-    virtual const MeshBuilder* outputBuilder() const { return m_builder.vertexCount() > 0 ? &m_builder : nullptr; }
+    [[nodiscard]] virtual const MeshBuilder* outputBuilder() const { return m_builder.vertexCount() > 0 ? &m_builder : nullptr; }
 
     /**
      * @brief Get material for this mesh
@@ -127,7 +127,7 @@ public:
      * Returns the material assigned via setMaterial(), or overridden by
      * subclasses that load materials (e.g., GLTFLoader).
      */
-    virtual TexturedMaterial* outputMaterial() { return m_material; }
+    [[nodiscard]] virtual TexturedMaterial* outputMaterial() { return m_material; }
 
     /**
      * @brief Assign a material to this mesh
@@ -171,7 +171,7 @@ public:
      * @param index Input slot index
      * @return MeshOperator pointer, or nullptr if not connected or wrong type
      */
-    MeshOperator* getMeshInput(int index = 0) const {
+    [[nodiscard]] MeshOperator* getMeshInput(int index = 0) const {
         Operator* op = getInput(index);
         if (op && op->outputKind() == OutputKind::Geometry) {
             return static_cast<MeshOperator*>(op);

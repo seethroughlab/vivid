@@ -29,9 +29,9 @@ struct Bounds3D {
     glm::vec3 min{std::numeric_limits<float>::max()};
     glm::vec3 max{std::numeric_limits<float>::lowest()};
 
-    glm::vec3 center() const { return (min + max) * 0.5f; }
-    glm::vec3 size() const { return max - min; }
-    float radius() const { return glm::length(size()) * 0.5f; }
+    [[nodiscard]] glm::vec3 center() const { return (min + max) * 0.5f; }
+    [[nodiscard]] glm::vec3 size() const { return max - min; }
+    [[nodiscard]] float radius() const { return glm::length(size()) * 0.5f; }
 
     void expand(const glm::vec3& point) {
         min = glm::min(min, point);
@@ -143,30 +143,30 @@ public:
      * @brief Get the loaded material (if textures were loaded)
      * @return Pointer to TexturedMaterial, or nullptr
      */
-    TexturedMaterial* material() { return m_material.get(); }
+    [[nodiscard]] TexturedMaterial* material() { return m_material.get(); }
 
     /**
      * @brief Override to expose material for SceneComposer
      */
-    TexturedMaterial* outputMaterial() override { return m_material.get(); }
+    [[nodiscard]] TexturedMaterial* outputMaterial() override { return m_material.get(); }
 
     /**
      * @brief Check if the model loaded successfully
      * @return True if geometry was loaded
      */
-    bool isLoaded() const { return m_loaded; }
+    [[nodiscard]] bool isLoaded() const { return m_loaded; }
 
     /**
      * @brief Get any error message from loading
      * @return Error string, or empty if no error
      */
-    const std::string& error() const { return m_error; }
+    [[nodiscard]] const std::string& error() const { return m_error; }
 
     /**
      * @brief Get the bounding box of the loaded model
      * @return Axis-aligned bounding box
      */
-    const Bounds3D& bounds() const { return m_bounds; }
+    [[nodiscard]] const Bounds3D& bounds() const { return m_bounds; }
 
     /// @}
     // -------------------------------------------------------------------------

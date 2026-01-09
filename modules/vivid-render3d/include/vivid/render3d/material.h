@@ -55,8 +55,8 @@ public:
     /// Set base color texture (sRGB, will be converted to linear in shader)
     PBRMaterial& baseColorTexture(WGPUTextureView view);
 
-    const glm::vec4& baseColorFactor() const { return m_baseColor; }
-    WGPUTextureView baseColorTextureView() const { return m_baseColorTex; }
+    [[nodiscard]] const glm::vec4& baseColorFactor() const { return m_baseColor; }
+    [[nodiscard]] WGPUTextureView baseColorTextureView() const { return m_baseColorTex; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -73,9 +73,9 @@ public:
     /// This follows glTF convention: roughness in G channel, metallic in B
     PBRMaterial& metallicRoughnessTexture(WGPUTextureView view);
 
-    float metallicFactor() const { return m_metallic; }
-    float roughnessFactor() const { return m_roughness; }
-    WGPUTextureView metallicRoughnessTextureView() const { return m_metallicRoughnessTex; }
+    [[nodiscard]] float metallicFactor() const { return m_metallic; }
+    [[nodiscard]] float roughnessFactor() const { return m_roughness; }
+    [[nodiscard]] WGPUTextureView metallicRoughnessTextureView() const { return m_metallicRoughnessTex; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -88,8 +88,8 @@ public:
     /// Set normal map scale (strength of normal perturbation)
     PBRMaterial& normalScale(float scale);
 
-    float normalScaleFactor() const { return m_normalScale; }
-    WGPUTextureView normalTextureView() const { return m_normalTex; }
+    [[nodiscard]] float normalScaleFactor() const { return m_normalScale; }
+    [[nodiscard]] WGPUTextureView normalTextureView() const { return m_normalTex; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -102,8 +102,8 @@ public:
     /// Set occlusion strength (0 = no effect, 1 = full occlusion)
     PBRMaterial& occlusionStrength(float strength);
 
-    float occlusionStrengthFactor() const { return m_occlusionStrength; }
-    WGPUTextureView occlusionTextureView() const { return m_occlusionTex; }
+    [[nodiscard]] float occlusionStrengthFactor() const { return m_occlusionStrength; }
+    [[nodiscard]] WGPUTextureView occlusionTextureView() const { return m_occlusionTex; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -120,9 +120,9 @@ public:
     /// Set emissive intensity multiplier
     PBRMaterial& emissiveStrength(float strength);
 
-    const glm::vec3& emissiveFactor() const { return m_emissive; }
-    float emissiveStrengthFactor() const { return m_emissiveStrength; }
-    WGPUTextureView emissiveTextureView() const { return m_emissiveTex; }
+    [[nodiscard]] const glm::vec3& emissiveFactor() const { return m_emissive; }
+    [[nodiscard]] float emissiveStrengthFactor() const { return m_emissiveStrength; }
+    [[nodiscard]] WGPUTextureView emissiveTextureView() const { return m_emissiveTex; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -144,9 +144,9 @@ public:
     /// Enable/disable double-sided rendering
     PBRMaterial& doubleSided(bool enabled);
 
-    AlphaMode alphaModeValue() const { return m_alphaMode; }
-    float alphaCutoffValue() const { return m_alphaCutoff; }
-    bool isDoubleSided() const { return m_doubleSided; }
+    [[nodiscard]] AlphaMode alphaModeValue() const { return m_alphaMode; }
+    [[nodiscard]] float alphaCutoffValue() const { return m_alphaCutoff; }
+    [[nodiscard]] bool isDoubleSided() const { return m_doubleSided; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -154,7 +154,7 @@ public:
     /// @{
 
     /// Check if material has any textures that require binding
-    bool hasTextures() const;
+    [[nodiscard]] bool hasTextures() const;
 
     /// Get the uniform data for this material (for GPU buffer)
     struct UniformData {
@@ -175,7 +175,7 @@ public:
         uint32_t _pad[1];           // padding to 16-byte alignment
     };
 
-    UniformData getUniformData() const;
+    [[nodiscard]] UniformData getUniformData() const;
 
     /// @}
 

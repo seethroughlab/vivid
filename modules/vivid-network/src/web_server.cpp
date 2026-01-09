@@ -58,7 +58,7 @@ void WebServer::broadcastJson(const std::string& type, const std::string& data) 
 }
 
 size_t WebServer::connectionCount() const {
-    std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(m_wsMutex));
+    std::lock_guard<std::mutex> lock(m_wsMutex);
     return m_wsClients.size();
 }
 

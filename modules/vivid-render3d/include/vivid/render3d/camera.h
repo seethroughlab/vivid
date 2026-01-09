@@ -15,10 +15,10 @@ public:
     /// @param center Sphere center in world space
     /// @param radius Sphere radius
     /// @return true if sphere is inside or intersects frustum
-    bool intersectsSphere(const glm::vec3& center, float radius) const;
+    [[nodiscard]] bool intersectsSphere(const glm::vec3& center, float radius) const;
 
     /// Test if a point is inside the frustum
-    bool containsPoint(const glm::vec3& point) const;
+    [[nodiscard]] bool containsPoint(const glm::vec3& point) const;
 
 private:
     // Frustum planes: left, right, bottom, top, near, far
@@ -90,34 +90,34 @@ public:
     /// @{
 
     /// Get view matrix
-    glm::mat4 viewMatrix() const;
+    [[nodiscard]] glm::mat4 viewMatrix() const;
 
     /// Get projection matrix
-    glm::mat4 projectionMatrix() const;
+    [[nodiscard]] glm::mat4 projectionMatrix() const;
 
     /// Get combined view-projection matrix
-    glm::mat4 viewProjectionMatrix() const;
+    [[nodiscard]] glm::mat4 viewProjectionMatrix() const;
 
     /// @}
     // -------------------------------------------------------------------------
     /// @name Accessors
     /// @{
 
-    glm::vec3 getPosition() const { return m_position; }
-    glm::vec3 getTarget() const { return m_target; }
-    glm::vec3 getUp() const { return m_up; }
-    float getFov() const { return m_fov; }
-    float getNear() const { return m_near; }
-    float getFar() const { return m_far; }
-    float getAspect() const { return m_aspect; }
-    ProjectionMode getProjectionMode() const { return m_projectionMode; }
-    float getOrthoSize() const { return m_orthoSize; }
+    [[nodiscard]] glm::vec3 getPosition() const { return m_position; }
+    [[nodiscard]] glm::vec3 getTarget() const { return m_target; }
+    [[nodiscard]] glm::vec3 getUp() const { return m_up; }
+    [[nodiscard]] float getFov() const { return m_fov; }
+    [[nodiscard]] float getNear() const { return m_near; }
+    [[nodiscard]] float getFar() const { return m_far; }
+    [[nodiscard]] float getAspect() const { return m_aspect; }
+    [[nodiscard]] ProjectionMode getProjectionMode() const { return m_projectionMode; }
+    [[nodiscard]] float getOrthoSize() const { return m_orthoSize; }
 
     /// Get forward direction (normalized)
-    glm::vec3 forward() const;
+    [[nodiscard]] glm::vec3 forward() const;
 
     /// Get right direction (normalized)
-    glm::vec3 right() const;
+    [[nodiscard]] glm::vec3 right() const;
 
     /// @}
 

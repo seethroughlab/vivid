@@ -43,10 +43,10 @@ public:
     void setShadowMapResolution(int size);
 
     /// Check if shadows are enabled
-    bool hasShadows() const { return m_shadowsEnabled; }
+    [[nodiscard]] bool hasShadows() const { return m_shadowsEnabled; }
 
     /// Get shadow map resolution
-    int shadowMapResolution() const { return m_shadowMapResolution; }
+    [[nodiscard]] int shadowMapResolution() const { return m_shadowMapResolution; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -96,16 +96,16 @@ public:
     /// @{
 
     /// Get shadow sample bind group for main rendering pass
-    WGPUBindGroup getShadowSampleBindGroup() const { return m_shadowSampleBindGroup; }
+    [[nodiscard]] WGPUBindGroup getShadowSampleBindGroup() const { return m_shadowSampleBindGroup; }
 
     /// Get shadow sample bind group layout
-    WGPUBindGroupLayout getShadowSampleBindGroupLayout() const { return m_shadowSampleBindGroupLayout; }
+    [[nodiscard]] WGPUBindGroupLayout getShadowSampleBindGroupLayout() const { return m_shadowSampleBindGroupLayout; }
 
     /// Update shadow sample bind group (call when shadow textures change)
     void updateShadowBindGroup(WGPUDevice device, bool hasDirShadow, bool hasPointShadow);
 
     /// Check if bind group needs rebuild
-    bool isShadowBindGroupDirty() const { return m_shadowBindGroupDirty; }
+    [[nodiscard]] bool isShadowBindGroupDirty() const { return m_shadowBindGroupDirty; }
 
     /// Mark shadow bind group as needing rebuild (call when light type changes)
     void markShadowBindGroupDirty() { m_shadowBindGroupDirty = true; }
@@ -116,10 +116,10 @@ public:
     /// @{
 
     /// Check if directional/spot shadow resources are created
-    bool hasShadowResources() const { return m_shadowPassPipeline != nullptr; }
+    [[nodiscard]] bool hasShadowResources() const { return m_shadowPassPipeline != nullptr; }
 
     /// Check if point shadow resources are created
-    bool hasPointShadowResources() const { return m_pointShadowPipeline != nullptr; }
+    [[nodiscard]] bool hasPointShadowResources() const { return m_pointShadowPipeline != nullptr; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -127,16 +127,16 @@ public:
     /// @{
 
     /// Get shadow map texture view
-    WGPUTextureView getShadowMapView() const { return m_shadowMapView; }
+    [[nodiscard]] WGPUTextureView getShadowMapView() const { return m_shadowMapView; }
 
     /// Get shadow sampler
-    WGPUSampler getShadowSampler() const { return m_shadowSampler; }
+    [[nodiscard]] WGPUSampler getShadowSampler() const { return m_shadowSampler; }
 
     /// Get point shadow atlas texture view
-    WGPUTextureView getPointShadowAtlasView() const { return m_pointShadowAtlasView; }
+    [[nodiscard]] WGPUTextureView getPointShadowAtlasView() const { return m_pointShadowAtlasView; }
 
     /// Get point shadow sampler
-    WGPUSampler getPointShadowSampler() const { return m_pointShadowSampler; }
+    [[nodiscard]] WGPUSampler getPointShadowSampler() const { return m_pointShadowSampler; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -144,7 +144,7 @@ public:
     /// @{
 
     /// Get shadow sample uniform buffer
-    WGPUBuffer getShadowSampleUniformBuffer() const { return m_shadowSampleUniformBuffer; }
+    [[nodiscard]] WGPUBuffer getShadowSampleUniformBuffer() const { return m_shadowSampleUniformBuffer; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -152,13 +152,13 @@ public:
     /// @{
 
     /// Get directional/spot light view-projection matrix
-    const glm::mat4& getLightViewProj() const { return m_lightViewProj; }
+    [[nodiscard]] const glm::mat4& getLightViewProj() const { return m_lightViewProj; }
 
     /// Get cached point light position
-    const glm::vec3& getPointLightPos() const { return m_pointLightPos; }
+    [[nodiscard]] const glm::vec3& getPointLightPos() const { return m_pointLightPos; }
 
     /// Get cached point light range
-    float getPointLightRange() const { return m_pointLightRange; }
+    [[nodiscard]] float getPointLightRange() const { return m_pointLightRange; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -166,10 +166,10 @@ public:
     /// @{
 
     /// Get dummy shadow texture view (1x1 white texture)
-    WGPUTextureView getDummyShadowView() const { return m_dummyShadowView; }
+    [[nodiscard]] WGPUTextureView getDummyShadowView() const { return m_dummyShadowView; }
 
     /// Get dummy point shadow atlas view
-    WGPUTextureView getDummyPointShadowAtlasView() const { return m_dummyPointShadowAtlasView; }
+    [[nodiscard]] WGPUTextureView getDummyPointShadowAtlasView() const { return m_dummyPointShadowAtlasView; }
 
     /// @}
 

@@ -45,6 +45,12 @@ struct ResourceStats {
  * Chain is the primary way to build vivid projects. Add operators with add<T>(),
  * connect them with input(), and call process() each frame.
  *
+ * ## Thread Safety
+ *
+ * Chain is NOT thread-safe. All methods must be called from a single thread
+ * (typically the main render thread). Audio processing uses a separate AudioGraph
+ * for pull-based generation on the audio thread.
+ *
  * @par Example
  * @code
  * Chain* chain = nullptr;
@@ -138,14 +144,14 @@ public:
      * @param name Operator name
      * @return Pointer to operator, or nullptr if not found
      */
-    Operator* getByName(const std::string& name);
+    [[nodiscard]] Operator* getByName(const std::string& name);
 
     /**
      * @brief Get name of an operator
      * @param op Pointer to operator
      * @return Operator name, or empty string if not found
      */
-    std::string getName(Operator* op) const;
+    [[nodiscard]] std::string getName(Operator* op) const;
 
     /**
      * @brief Specify which operator provides the final output
@@ -186,13 +192,13 @@ public:
      * @brief Get the designated output operator
      * @return Pointer to output operator, or nullptr if not set
      */
-    Operator* getOutput() const;
+    [[nodiscard]] Operator* getOutput() const;
 
     /**
      * @brief Get the output texture from the designated output operator
      * @return WebGPU texture, or nullptr if no output or not a texture operator
      */
-    WGPUTexture outputTexture() const {
+    [[nodiscard]] WGPUTexture outputTexture() const {
         Operator* out = getOutput();
         return out ? out->outputTexture() : nullptr;
     }
@@ -223,7 +229,7 @@ public:
      * @brief Get the designated audio output operator
      * @return Pointer to audio output operator, or nullptr if not set
      */
-    Operator* getAudioOutput() const;
+    [[nodiscard]] Operator* getAudioOutput() const;
 
     /**
      * @brief Get the audio buffer from the designated audio output
@@ -231,7 +237,7 @@ public:
      *
      * WARNING: For live playback only. For recording, use generateAudioForExport().
      */
-    const AudioBuffer* audioOutputBuffer() const;
+    [[nodiscard]] const AudioBuffer* audioOutputBuffer() const;
 
     /**
      * @brief Generate audio synchronously for video export
@@ -265,7 +271,7 @@ public:
      * @param maxFrames Maximum frames to read
      * @return Number of frames actually read (may be less if buffer is empty)
      */
-    uint32_t popAudioRecordedSamples(float* output, uint32_t maxFrames);
+    [[nodiscard]] uint32_t popAudioRecordedSamples(float* output, uint32_t maxFrames);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -313,10 +319,10 @@ public:
     /// @{
 
     /// @brief Check if an error has occurred
-    bool hasError() const { return !m_error.empty(); }
+    [[nodiscard]] bool hasError() const { return !m_error.empty(); }
 
     /// @brief Get the error message
-    const std::string& error() const { return m_error; }
+    [[nodiscard]] const std::string& error() const { return m_error; }
 
     /// @brief Clear the error state
     void clearError() { m_error.clear(); }
@@ -330,13 +336,13 @@ public:
      * @brief Get all operator names in add order
      * @return Vector of operator names
      */
-    const std::vector<std::string>& operatorNames() const { return m_orderedNames; }
+    [[nodiscard]] const std::vector<std::string>& operatorNames() const { return m_orderedNames; }
 
     /**
      * @brief Get the audio graph for pull-based audio processing
      * @return Pointer to AudioGraph
      */
-    AudioGraph* audioGraph() { return &m_audioGraph; }
+    [[nodiscard]] AudioGraph* audioGraph() { return &m_audioGraph; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -366,13 +372,13 @@ public:
     }
 
     /// @brief Get requested window width
-    int windowWidth() const { return m_windowWidth; }
+    [[nodiscard]] int windowWidth() const { return m_windowWidth; }
 
     /// @brief Get requested window height
-    int windowHeight() const { return m_windowHeight; }
+    [[nodiscard]] int windowHeight() const { return m_windowHeight; }
 
     /// @brief Check if window size was requested
-    bool hasWindowSize() const { return m_windowSizeSet; }
+    [[nodiscard]] bool hasWindowSize() const { return m_windowSizeSet; }
 
     /**
      * @brief Set default render resolution for generators

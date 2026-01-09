@@ -14,7 +14,7 @@ struct CubemapData {
     int size = 0;
     int mipLevels = 1;
 
-    bool valid() const { return texture != nullptr; }
+    [[nodiscard]] bool valid() const { return texture != nullptr; }
 };
 
 /**
@@ -98,15 +98,15 @@ public:
     bool initPipelines(Context& ctx);
 
     /// Check if environment is loaded and ready
-    bool isLoaded() const { return m_irradianceMap.valid(); }
+    [[nodiscard]] bool isLoaded() const { return m_irradianceMap.valid(); }
 
     /// Check if processor is initialized
-    bool isInitialized() const { return m_initialized; }
+    [[nodiscard]] bool isInitialized() const { return m_initialized; }
 
     // IBL texture accessors (for Render3D)
-    WGPUTextureView irradianceView() const;
-    WGPUTextureView prefilteredView() const;
-    WGPUTextureView brdfLUTView() const;
+    [[nodiscard]] WGPUTextureView irradianceView() const;
+    [[nodiscard]] WGPUTextureView prefilteredView() const;
+    [[nodiscard]] WGPUTextureView brdfLUTView() const;
 
     // Configuration
     static constexpr int CUBEMAP_SIZE = 512;       // Source environment cubemap
