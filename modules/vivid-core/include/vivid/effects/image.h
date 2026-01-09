@@ -99,6 +99,7 @@ public:
 private:
     void loadImage(Context& ctx);
     void createPipeline(Context& ctx);
+    void createMissingPlaceholder(Context& ctx);
 
     std::string m_loadedPath;  // Track which path is currently loaded
 

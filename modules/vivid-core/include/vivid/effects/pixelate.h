@@ -84,6 +84,11 @@ public:
 
     std::string name() const override { return "Pixelate"; }
 
+    /// @brief Use nearest-neighbor sampling to avoid interpolation artifacts
+    WGPUSampler getSampler(WGPUDevice device) override {
+        return gpu::getNearestClampSampler(device);
+    }
+
     /// @brief Fragment shader source (used by CRTP base)
     const char* fragmentShader() const override;
 };

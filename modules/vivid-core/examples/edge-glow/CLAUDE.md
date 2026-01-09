@@ -1,101 +1,111 @@
 # Edge Glow
 
-Creates neon outline effects using edge detection and bloom.
-
-## Assets
-
-- `assets/photo.jpg` - High-contrast photo for edge detection
+Creates neon outline effects using edge detection, colorization, and bloom.
 
 ## Operators Used
 
-- **Image** - Loads source photo from assets
-- **Edge** - Sobel edge detection
-- **Brightness** - Contrast/brightness adjustment
-- **HSV** - Color tinting
-- **Bloom** - Glow effect
-- **Composite** - Layer combination
+- **Image** - Source image
+- **Edge** - Sobel edge detection (outputs grayscale)
+- **SolidColor** - Solid color for colorizing edges
+- **Composite** - Multiply to colorize, Add to blend
+- **Bloom** - Glow effect on colored edges
+- **Brightness** - Darken original for contrast
 
 ## Key Concepts
 
-### Edge Detection (Sobel)
-Detects gradients/edges in the image:
+### Why Edge + HSV Doesn't Work
+Edge detection outputs **grayscale** (white edges on black). HSV adjustments only shift existing colors - they can't add color to grayscale. You must colorize first.
+
+### Colorizing Grayscale Edges
+Use SolidColor + Composite(Multiply):
 ```cpp
+// Edge outputs white on black (grayscale)
 auto& edges = chain.add<Edge>("edges");
 edges.input("source");
-edges.strength = 2.0f;     // Edge intensity (0-5)
-edges.threshold = 0.05f;   // Minimum edge value (0-1)
-edges.invert = false;      // false=white on black, true=black on white
+
+// Create the neon color
+auto& neonColor = chain.add<SolidColor>("neonColor");
+neonColor.color.set(0.0f, 1.0f, 1.0f, 1.0f);  // Cyan
+
+// Multiply: white edges * cyan = cyan edges
+auto& coloredEdges = chain.add<Composite>("coloredEdges");
+coloredEdges.inputA("edges");
+coloredEdges.inputB("neonColor");
+coloredEdges.mode = BlendMode::Multiply;
 ```
 
-### Brightness/Contrast
-Adjust edge visibility before bloom:
-```cpp
-auto& bright = chain.add<Brightness>("bright");
-bright.input("edges");
-bright.brightness = 0.1f;  // Add brightness (-1 to 1)
-bright.contrast = 1.5f;    // Multiply contrast (0-4)
-```
-
-### Neon Glow Pipeline
-Complete neon effect chain:
+### Complete Neon Glow Pipeline
 ```cpp
 // 1. Detect edges
 auto& edges = chain.add<Edge>("edges");
 edges.input("source");
-edges.strength = 2.0f;
+edges.strength = 3.0f;
+edges.threshold = 0.08f;
 
-// 2. Boost and color the edges
-auto& hsv = chain.add<HSV>("hsv");
-hsv.input("edges");
-hsv.hueShift = 0.5f;      // Shift to desired color
-hsv.saturation = 2.0f;    // Boost color intensity
+// 2. Colorize with solid color
+auto& neonColor = chain.add<SolidColor>("neonColor");
+neonColor.color.set(1.0f, 0.0f, 1.0f, 1.0f);  // Magenta
 
-// 3. Add glow
+auto& coloredEdges = chain.add<Composite>("coloredEdges");
+coloredEdges.inputA("edges");
+coloredEdges.inputB("neonColor");
+coloredEdges.mode = BlendMode::Multiply;
+
+// 3. Apply bloom for glow
 auto& glow = chain.add<Bloom>("glow");
-glow.input("hsv");
-glow.threshold = 0.2f;    // Low threshold for full glow
-glow.intensity = 2.5f;    // Strong glow
-glow.radius = 20.0f;      // Wide spread
+glow.input("coloredEdges");
+glow.threshold = 0.1f;
+glow.intensity = 3.0f;
+glow.radius = 25.0f;
 
-// 4. Composite over original
+// 4. Darken original for contrast
+auto& darkened = chain.add<Brightness>("darkened");
+darkened.input("source");
+darkened.brightness = -0.3f;
+
+// 5. Add glow over darkened original
 auto& final = chain.add<Composite>("final");
-final.inputA("source");
+final.inputA("darkened");
 final.inputB("glow");
 final.mode = BlendMode::Add;
 ```
 
+### Animating Neon Color
+Cycle through hues with manual HSV-to-RGB conversion:
+```cpp
+float hue = std::fmod(ctx.time() * 0.15f, 1.0f);
+float r, g, b;
+int i = static_cast<int>(hue * 6.0f);
+float f = hue * 6.0f - i;
+switch (i % 6) {
+    case 0: r = 1; g = f;     b = 0; break;
+    case 1: r = 1-f; g = 1;   b = 0; break;
+    case 2: r = 0; g = 1;     b = f; break;
+    case 3: r = 0; g = 1-f;   b = 1; break;
+    case 4: r = f; g = 0;     b = 1; break;
+    default: r = 1; g = 0;    b = 1-f; break;
+}
+neonColor.color.set(r, g, b, 1.0f);
+```
+
 ## Controls
 
-- **Mouse X** - Edge strength (0.5-4.0)
-- **Mouse Y** - Edge threshold (0-0.3)
+No interactive controls - color and glow animate automatically.
 
-## Common Presets
+## Common Variations
 
-### Subtle Outline
+### Static Cyan Neon
 ```cpp
-edges.strength = 1.0f;
-edges.threshold = 0.15f;
-glow.intensity = 1.0f;
-glow.radius = 8.0f;
+neonColor.color.set(0.0f, 1.0f, 1.0f, 1.0f);
 ```
 
-### Intense Neon
+### Hot Pink Neon
 ```cpp
-edges.strength = 3.0f;
-edges.threshold = 0.02f;
-glow.intensity = 3.0f;
-glow.radius = 30.0f;
+neonColor.color.set(1.0f, 0.2f, 0.8f, 1.0f);
 ```
 
-### Technical Drawing
+### Green Matrix Style
 ```cpp
-edges.strength = 2.0f;
-edges.threshold = 0.1f;
-edges.invert = true;  // Black lines on white
-// No bloom
-```
-
-### Animated Color Cycling
-```cpp
-hsv.hueShift = std::fmod(ctx.time() * 0.1f, 1.0f);
+neonColor.color.set(0.0f, 1.0f, 0.3f, 1.0f);
+edges.strength = 4.0f;  // Thinner, sharper lines
 ```

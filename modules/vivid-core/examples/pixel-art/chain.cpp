@@ -23,7 +23,7 @@ void setup(Context& ctx) {
     // Pixelate samples in blocks (sharp edges)
     auto& pixelate = chain.add<Pixelate>("pixelate");
     pixelate.input("source");
-    pixelate.size.set(12.0f, 12.0f);  // 12x12 pixel blocks
+    pixelate.size.set(8.0f, 8.0f);  // 8x8 pixel blocks
 
     // ----- QUANTIZE EFFECT -----
     // Reduces colors per channel (posterization)
@@ -36,11 +36,11 @@ void setup(Context& ctx) {
     // Classic pixel art: blocky pixels AND limited palette
     auto& pixelate_then_quantize = chain.add<Pixelate>("pixelate2");
     pixelate_then_quantize.input("source");
-    pixelate_then_quantize.size.set(8.0f, 8.0f);
+    pixelate_then_quantize.size.set(4.0f, 4.0f);
 
     auto& pixel_art = chain.add<Quantize>("pixel_art");
     pixel_art.input("pixelate2");
-    pixel_art.levels = 4;  // 64 colors - true retro feel
+    pixel_art.levels = 8;  // 512 colors
 
     // Canvas for 2x2 comparison grid
     auto& canvas = chain.add<Canvas>("canvas");
@@ -57,72 +57,63 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float t = ctx.time();
 
-    // Mouse controls pixelation amount
-    // X axis: pixel size (4-32)
-    float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;  // 0-1
-    float pixelSize = 4.0f + mouseX * 28.0f;
+    // Animate pixel size for visual interest
+    float baseSize = 6.0f + std::sin(t * 0.3f) * 2.0f;
 
     auto& pixelate = chain.get<Pixelate>("pixelate");
-    pixelate.size.set(pixelSize, pixelSize);
+    pixelate.size.set(baseSize, baseSize);
 
-    // Y axis: color levels (2-16)
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;  // 0-1
-    int levels = 2 + static_cast<int>(mouseY * 14.0f);
+    // Animate color levels
+    int levels = 6 + static_cast<int>(std::sin(t * 0.2f) * 2.0f);
 
     auto& quantize = chain.get<Quantize>("quantize");
     quantize.levels = levels;
 
-    // Combined effect uses moderate settings
+    // Combined effect uses fixed moderate settings
     auto& pixelate2 = chain.get<Pixelate>("pixelate2");
-    pixelate2.size.set(8.0f + std::sin(t * 0.5f) * 4.0f,
-                       8.0f + std::sin(t * 0.5f) * 4.0f);
+    pixelate2.size.set(4.0f, 4.0f);
 
     auto& pixel_art = chain.get<Quantize>("pixel_art");
-    pixel_art.levels = 4 + static_cast<int>(std::sin(t * 0.3f) * 2.0f);
+    pixel_art.levels = 8;
 
     // Draw 2x2 comparison grid
     auto& canvas = chain.get<Canvas>("canvas");
-    canvas.clear(0.05f, 0.05f, 0.08f, 1.0f);
+    canvas.clear(0.08f, 0.08f, 0.1f, 1.0f);
 
     int w = ctx.width();
     int h = ctx.height();
     int halfW = w / 2;
     int halfH = h / 2;
-    int pad = 8;
+    int pad = 10;
+    int labelH = 28;
 
     auto& source = chain.get<Image>("source");
 
-    // Top-left: Original
-    canvas.drawImage(source, pad, pad, halfW - pad * 2, halfH - pad * 2);
+    // Draw images first, then labels on top
+    canvas.drawImage(source, pad, pad + labelH, halfW - pad * 2, halfH - pad * 2 - labelH);
+    canvas.drawImage(pixelate, halfW + pad, pad + labelH, halfW - pad * 2, halfH - pad * 2 - labelH);
+    canvas.drawImage(quantize, pad, halfH + pad + labelH, halfW - pad * 2, halfH - pad * 2 - labelH);
+    canvas.drawImage(pixel_art, halfW + pad, halfH + pad + labelH, halfW - pad * 2, halfH - pad * 2 - labelH);
 
-    // Top-right: Pixelate only
-    canvas.drawImage(pixelate, halfW + pad, pad, halfW - pad * 2, halfH - pad * 2);
-
-    // Bottom-left: Quantize only
-    canvas.drawImage(quantize, pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
-
-    // Bottom-right: Pixelate + Quantize (pixel art)
-    canvas.drawImage(pixel_art, halfW + pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
-
-    // Labels with dark backgrounds
-    canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.7f);
-    canvas.fillRect(pad, pad, 70, 22);
-    canvas.fillRect(halfW + pad, pad, 200, 22);
-    canvas.fillRect(pad, halfH + pad, 200, 22);
-    canvas.fillRect(halfW + pad, halfH + pad, 220, 22);
+    // Labels with dark backgrounds on top
+    canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.85f);
+    canvas.fillRect(pad, pad, halfW - pad * 2, labelH);
+    canvas.fillRect(halfW + pad, pad, halfW - pad * 2, labelH);
+    canvas.fillRect(pad, halfH + pad, halfW - pad * 2, labelH);
+    canvas.fillRect(halfW + pad, halfH + pad, halfW - pad * 2, labelH);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
-    canvas.fillText("Original", pad + 5, pad + 16);
+    canvas.fillText("ORIGINAL", pad + 8, pad + 20);
 
     char pixLabel[64];
-    snprintf(pixLabel, sizeof(pixLabel), "Pixelate: size=%.0f", pixelSize);
-    canvas.fillText(pixLabel, halfW + pad + 5, pad + 16);
+    snprintf(pixLabel, sizeof(pixLabel), "PIXELATE  size=%.0f", baseSize);
+    canvas.fillText(pixLabel, halfW + pad + 8, pad + 20);
 
     char quantLabel[64];
-    snprintf(quantLabel, sizeof(quantLabel), "Quantize: levels=%d (%d colors)", levels, levels * levels * levels);
-    canvas.fillText(quantLabel, pad + 5, halfH + pad + 16);
+    snprintf(quantLabel, sizeof(quantLabel), "QUANTIZE  levels=%d", levels);
+    canvas.fillText(quantLabel, pad + 8, halfH + pad + 20);
 
-    canvas.fillText("Pixel Art: Pixelate + Quantize", halfW + pad + 5, halfH + pad + 16);
+    canvas.fillText("PIXEL ART  4px + 8 levels", halfW + pad + 8, halfH + pad + 20);
 }
 
 VIVID_CHAIN(setup, update)

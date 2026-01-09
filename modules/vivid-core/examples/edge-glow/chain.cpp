@@ -1,5 +1,5 @@
 // Edge Glow - Vivid Example
-// Demonstrates: Edge, Brightness, HSV, Bloom, Image
+// Demonstrates: Edge, SolidColor, Composite, Bloom
 //
 // Creates neon outline effects using edge detection
 
@@ -13,51 +13,44 @@ using namespace vivid::effects;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Load photo - edge detection works great on high-contrast images
+    // Image source
     auto& source = chain.add<Image>("source");
     source.file = "assets/photo.jpg";
 
     // ----- EDGE DETECTION -----
-    // Sobel operator detects edges (gradients) in the image
     auto& edges = chain.add<Edge>("edges");
     edges.input("source");
-    edges.strength = 2.0f;     // Edge intensity multiplier
-    edges.threshold = 0.05f;   // Minimum edge value to show
-    edges.invert = false;      // White edges on black
+    edges.strength = 3.0f;
+    edges.threshold = 0.08f;
+    edges.invert = false;  // White edges on black
 
-    // ----- BRIGHTNESS ADJUSTMENT -----
-    // Boost edge contrast for glow effect
-    auto& bright = chain.add<Brightness>("bright");
-    bright.input("edges");
-    bright.brightness = 0.1f;
-    bright.contrast = 1.5f;
+    // ----- COLORIZE EDGES -----
+    // Edge outputs grayscale - use SolidColor + Multiply to colorize
+    auto& neonColor = chain.add<SolidColor>("neonColor");
+    neonColor.color.set(0.0f, 1.0f, 1.0f, 1.0f);  // Cyan
 
-    // ----- HSV COLORING -----
-    // Tint edges with neon color
-    auto& hsv = chain.add<HSV>("hsv");
-    hsv.input("bright");
-    hsv.saturation = 2.0f;  // Boost saturation for color
+    auto& coloredEdges = chain.add<Composite>("coloredEdges");
+    coloredEdges.inputA("edges");
+    coloredEdges.inputB("neonColor");
+    coloredEdges.mode = BlendMode::Multiply;
 
     // ----- BLOOM FOR GLOW -----
-    // Add glow to the edges
     auto& glow = chain.add<Bloom>("glow");
-    glow.input("hsv");
-    glow.threshold = 0.2f;
-    glow.intensity = 2.5f;
-    glow.radius = 20.0f;
-    glow.passes = 3;
-
-    // ----- INVERTED EDGES (white background) -----
-    auto& edges_inv = chain.add<Edge>("edges_inv");
-    edges_inv.input("source");
-    edges_inv.strength = 1.5f;
-    edges_inv.threshold = 0.1f;
-    edges_inv.invert = true;  // Black edges on white
+    glow.input("coloredEdges");
+    glow.threshold = 0.1f;
+    glow.intensity = 3.0f;
+    glow.radius = 25.0f;
+    glow.passes = 4;
 
     // ----- FINAL COMPOSITE -----
-    // Combine original with glowing edges
+    // Add glowing edges over darkened original
+    auto& darkened = chain.add<Brightness>("darkened");
+    darkened.input("source");
+    darkened.brightness = -0.3f;
+    darkened.contrast = 0.8f;
+
     auto& final_comp = chain.add<Composite>("final");
-    final_comp.inputA("source");
+    final_comp.inputA("darkened");
     final_comp.inputB("glow");
     final_comp.mode = BlendMode::Add;
 
@@ -65,8 +58,8 @@ void setup(Context& ctx) {
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
     canvas.input(0, "source");
-    canvas.input(1, "edges");
-    canvas.input(2, "edges_inv");
+    canvas.input(1, "coloredEdges");
+    canvas.input(2, "glow");
     canvas.input(3, "final");
 
     chain.output("canvas");
@@ -76,36 +69,32 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float t = ctx.time();
 
-    // Mouse controls edge parameters
-    float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;  // 0-1
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;  // 0-1
+    // Animate neon color - cycle through hues
+    float hue = std::fmod(t * 0.15f, 1.0f);
+    // HSV to RGB (simplified - full saturation, full value)
+    float r, g, b;
+    int i = static_cast<int>(hue * 6.0f);
+    float f = hue * 6.0f - i;
+    switch (i % 6) {
+        case 0: r = 1.0f; g = f;      b = 0.0f; break;
+        case 1: r = 1.0f - f; g = 1.0f; b = 0.0f; break;
+        case 2: r = 0.0f; g = 1.0f; b = f;      break;
+        case 3: r = 0.0f; g = 1.0f - f; b = 1.0f; break;
+        case 4: r = f;      g = 0.0f; b = 1.0f; break;
+        default: r = 1.0f; g = 0.0f; b = 1.0f - f; break;
+    }
 
-    // X: edge strength (0.5-4)
-    float strength = 0.5f + mouseX * 3.5f;
+    auto& neonColor = chain.get<SolidColor>("neonColor");
+    neonColor.color.set(r, g, b, 1.0f);
 
-    // Y: edge threshold (0-0.3)
-    float threshold = mouseY * 0.3f;
-
-    auto& edges = chain.get<Edge>("edges");
-    edges.strength = strength;
-    edges.threshold = threshold;
-
-    auto& edges_inv = chain.get<Edge>("edges_inv");
-    edges_inv.strength = strength;
-    edges_inv.threshold = threshold;
-
-    // Animate glow color via HSV hue shift
-    auto& hsv = chain.get<HSV>("hsv");
-    hsv.hueShift = std::fmod(t * 0.1f, 1.0f);  // Cycle through colors
-
-    // Animate glow intensity
+    // Pulse glow intensity
     auto& glow = chain.get<Bloom>("glow");
-    glow.intensity = 2.0f + std::sin(t * 0.8f) * 1.0f;
-    glow.radius = 15.0f + std::sin(t * 0.5f) * 10.0f;
+    glow.intensity = 2.5f + std::sin(t * 1.5f) * 1.0f;
+    glow.radius = 20.0f + std::sin(t * 0.8f) * 10.0f;
 
     // Draw 2x2 comparison grid
     auto& canvas = chain.get<Canvas>("canvas");
-    canvas.clear(0.03f, 0.03f, 0.05f, 1.0f);
+    canvas.clear(0.02f, 0.02f, 0.04f, 1.0f);
 
     int w = ctx.width();
     int h = ctx.height();
@@ -114,36 +103,33 @@ void update(Context& ctx) {
     int pad = 8;
 
     auto& source = chain.get<Image>("source");
+    auto& coloredEdges = chain.get<Composite>("coloredEdges");
     auto& final_comp = chain.get<Composite>("final");
 
     // Top-left: Original
     canvas.drawImage(source, pad, pad, halfW - pad * 2, halfH - pad * 2);
 
-    // Top-right: Edge detection (normal)
-    canvas.drawImage(edges, halfW + pad, pad, halfW - pad * 2, halfH - pad * 2);
+    // Top-right: Colored edges
+    canvas.drawImage(coloredEdges, halfW + pad, pad, halfW - pad * 2, halfH - pad * 2);
 
-    // Bottom-left: Edge detection (inverted)
-    canvas.drawImage(edges_inv, pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
+    // Bottom-left: Edges with bloom
+    canvas.drawImage(glow, pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
 
-    // Bottom-right: Final (original + neon glow)
+    // Bottom-right: Final composite
     canvas.drawImage(final_comp, halfW + pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
 
     // Labels
     canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.7f);
     canvas.fillRect(pad, pad, 70, 22);
-    canvas.fillRect(halfW + pad, pad, 220, 22);
+    canvas.fillRect(halfW + pad, pad, 110, 22);
     canvas.fillRect(pad, halfH + pad, 130, 22);
-    canvas.fillRect(halfW + pad, halfH + pad, 150, 22);
+    canvas.fillRect(halfW + pad, halfH + pad, 140, 22);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
     canvas.fillText("Original", pad + 5, pad + 16);
-
-    char edgeLabel[64];
-    snprintf(edgeLabel, sizeof(edgeLabel), "Edge: strength=%.1f thresh=%.2f", strength, threshold);
-    canvas.fillText(edgeLabel, halfW + pad + 5, pad + 16);
-
-    canvas.fillText("Edge (inverted)", pad + 5, halfH + pad + 16);
-    canvas.fillText("Neon Glow Effect", halfW + pad + 5, halfH + pad + 16);
+    canvas.fillText("Colored Edges", halfW + pad + 5, pad + 16);
+    canvas.fillText("Edges + Bloom", pad + 5, halfH + pad + 16);
+    canvas.fillText("Neon Glow Final", halfW + pad + 5, halfH + pad + 16);
 }
 
 VIVID_CHAIN(setup, update)

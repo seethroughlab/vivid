@@ -92,6 +92,9 @@ void Image::loadImage(Context& ctx) {
 
     if (!imageData.valid()) {
         std::cerr << "Image: Failed to load: " << filePath << std::endl;
+        // Create a pink "missing" placeholder texture
+        createMissingPlaceholder(ctx);
+        m_loadedPath = filePath;  // Mark as attempted so we don't retry every frame
         return;
     }
 
@@ -156,19 +159,26 @@ void Image::loadImage(Context& ctx) {
     for (size_t i = 0; i < imageData.pixels.size(); ++i) {
         // Convert uint8 [0-255] to float16 [0.0-1.0]
         float normalized = imageData.pixels[i] / 255.0f;
-        // Convert float32 to float16 using simple bit manipulation
-        // This is a basic conversion - for values in [0,1] range it works well
+
+        // Handle zero specially (avoid exp underflow bug)
+        if (normalized == 0.0f) {
+            floatPixels[i] = 0;
+            continue;
+        }
+
+        // Convert float32 to float16 using bit manipulation
         uint32_t f32;
         std::memcpy(&f32, &normalized, sizeof(float));
         uint32_t sign = (f32 >> 16) & 0x8000;
-        uint32_t exp = ((f32 >> 23) & 0xFF) - 127 + 15;
+        int32_t exp = static_cast<int32_t>(((f32 >> 23) & 0xFF)) - 127 + 15;  // Use signed int!
         uint32_t mant = (f32 >> 13) & 0x3FF;
+
         if (exp <= 0) {
-            floatPixels[i] = sign;  // Denormalized or zero
+            floatPixels[i] = static_cast<uint16_t>(sign);  // Denormalized or zero
         } else if (exp >= 31) {
-            floatPixels[i] = sign | 0x7C00;  // Infinity
+            floatPixels[i] = static_cast<uint16_t>(sign | 0x7C00);  // Infinity
         } else {
-            floatPixels[i] = sign | (exp << 10) | mant;
+            floatPixels[i] = static_cast<uint16_t>(sign | (exp << 10) | mant);
         }
     }
 
@@ -267,6 +277,75 @@ void Image::cleanup() {
 
     releaseOutput();
     resetInit();
+}
+
+void Image::createMissingPlaceholder(Context& ctx) {
+    // Create a small magenta/black checkerboard pattern as "missing asset" indicator
+    const int width = 64;
+    const int height = 64;
+    const int checkSize = 8;
+
+    m_width = width;
+    m_height = height;
+
+    // Create the output texture
+    createOutput(ctx);
+
+    // Create GPU texture for the placeholder
+    WGPUTextureDescriptor texDesc = {};
+    texDesc.label = toStringView("Image Missing Placeholder");
+    texDesc.size.width = width;
+    texDesc.size.height = height;
+    texDesc.size.depthOrArrayLayers = 1;
+    texDesc.mipLevelCount = 1;
+    texDesc.sampleCount = 1;
+    texDesc.dimension = WGPUTextureDimension_2D;
+    texDesc.format = EFFECTS_FORMAT;
+    texDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+
+    m_loadedTexture = wgpuDeviceCreateTexture(ctx.device(), &texDesc);
+
+    WGPUTextureViewDescriptor viewDesc = {};
+    viewDesc.format = EFFECTS_FORMAT;
+    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.baseMipLevel = 0;
+    viewDesc.mipLevelCount = 1;
+    viewDesc.baseArrayLayer = 0;
+    viewDesc.arrayLayerCount = 1;
+    viewDesc.aspect = WGPUTextureAspect_All;
+
+    m_loadedTextureView = wgpuTextureCreateView(m_loadedTexture, &viewDesc);
+
+    // Generate checkerboard pattern: magenta (#FF00FF) and black
+    std::vector<uint16_t> pixels(width * height * 4);
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            int idx = (y * width + x) * 4;
+            bool isMagenta = ((x / checkSize) + (y / checkSize)) % 2 == 0;
+            // RGBA16Float: use half-float encoding (0x3C00 = 1.0, 0x0000 = 0.0)
+            pixels[idx + 0] = isMagenta ? 0x3C00 : 0x0000;  // R
+            pixels[idx + 1] = 0x0000;                        // G
+            pixels[idx + 2] = isMagenta ? 0x3C00 : 0x0000;  // B
+            pixels[idx + 3] = 0x3C00;                        // A
+        }
+    }
+
+    // Upload
+    WGPUTexelCopyTextureInfo destination = {};
+    destination.texture = m_loadedTexture;
+    destination.mipLevel = 0;
+    destination.origin = {0, 0, 0};
+    destination.aspect = WGPUTextureAspect_All;
+
+    WGPUTexelCopyBufferLayout dataLayout = {};
+    dataLayout.offset = 0;
+    dataLayout.bytesPerRow = width * 4 * sizeof(uint16_t);
+    dataLayout.rowsPerImage = height;
+
+    WGPUExtent3D writeSize = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+
+    wgpuQueueWriteTexture(ctx.queue(), &destination, pixels.data(),
+                          pixels.size() * sizeof(uint16_t), &dataLayout, &writeSize);
 }
 
 glm::vec4 Image::getPixel(int x, int y) const {

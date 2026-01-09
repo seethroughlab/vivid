@@ -950,8 +950,8 @@ void Canvas::drawImage(Operator& source,
     }
 
     auto* texOp = dynamic_cast<TextureOperator*>(&source);
-    if (!texOp || !texOp->outputView()) {
-        std::cerr << "[Canvas::drawImage] Warning: source operator has no texture output\n";
+    if (!texOp) {
+        std::cerr << "[Canvas::drawImage] Warning: source is not a texture operator\n";
         return;
     }
 
@@ -967,16 +967,21 @@ void Canvas::drawImage(Operator& source,
     float minY = std::min({p0.y, p1.y, p2.y, p3.y});
     float maxY = std::max({p0.y, p1.y, p2.y, p3.y});
 
-    int srcW = texOp->outputWidth();
-    int srcH = texOp->outputHeight();
-
-    m_renderer->addImage(
-        texOp->outputView(),
-        srcW, srcH,
-        sx, sy, sw, sh,
-        minX, minY, maxX - minX, maxY - minY,
-        m_state.globalAlpha
-    );
+    // Store pending image - texture view will be resolved at render time
+    // This is necessary because operators may recreate their output textures
+    // during process(), which would invalidate views stored during update()
+    PendingImage pending;
+    pending.source = texOp;
+    pending.sx = sx;
+    pending.sy = sy;
+    pending.sw = sw;
+    pending.sh = sh;
+    pending.dx = minX;
+    pending.dy = minY;
+    pending.dw = maxX - minX;
+    pending.dh = maxY - minY;
+    pending.alpha = m_state.globalAlpha;
+    m_pendingImages.push_back(pending);
 }
 
 // -------------------------------------------------------------------------
@@ -986,6 +991,7 @@ void Canvas::drawImage(Operator& source,
 void Canvas::clear(float r, float g, float b, float a) {
     m_clearColor = glm::vec4(r, g, b, a);
     m_frameBegun = true;
+    m_pendingImages.clear();  // Clear any pending images from previous frame
     m_renderer->begin(m_width, m_height, m_clearColor);
     markDirty();
 }
@@ -1143,6 +1149,28 @@ void Canvas::process(Context& ctx) {
     if (!m_frameBegun) {
         m_renderer->begin(m_width, m_height, m_clearColor);
     }
+
+    // Resolve pending images to texture views now that all operators have processed
+    // This is done here rather than in drawImage() because operators may recreate
+    // their output textures during their process() calls
+    for (const auto& img : m_pendingImages) {
+        if (!img.source || !img.source->outputView()) {
+            std::cerr << "[Canvas::process] Warning: pending image source has no texture output\n";
+            continue;
+        }
+
+        int srcW = img.source->outputWidth();
+        int srcH = img.source->outputHeight();
+
+        m_renderer->addImage(
+            img.source->outputView(),
+            srcW, srcH,
+            img.sx, img.sy, img.sw, img.sh,
+            img.dx, img.dy, img.dw, img.dh,
+            img.alpha
+        );
+    }
+    m_pendingImages.clear();
 
     // Render all batched primitives to our output texture
     m_renderer->render(ctx, m_output, m_outputView);

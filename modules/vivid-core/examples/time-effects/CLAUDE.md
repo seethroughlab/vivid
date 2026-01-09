@@ -21,11 +21,11 @@ Stores a rolling buffer of frames:
 ```cpp
 auto& cache = chain.add<FrameCache>("cache");
 cache.input("source");         // What to cache
-cache.frameCount = 60;         // ~2 seconds at 30fps
+cache.frameCount = 90;         // ~3 seconds at 30fps (more = visible effect)
 ```
 
 Parameters:
-- `frameCount` (int, 2-128, default 32) - Number of frames to store
+- `frameCount` (int, 2-128, default 32) - Number of frames to store (higher = more dramatic)
 
 ### Time Machine
 Samples from cache using a displacement map:
@@ -80,8 +80,8 @@ organic.depth = 0.8f;
 
 ## Controls
 
-- **Mouse X** - Time depth (how far back in time)
-- **Mouse Y** - Offset bias (shift toward newer/older frames)
+- **Automatic Animation** - Depth oscillates automatically to show the effect
+- **Mouse Y** - Adjusts offset for organic distortion effect
 
 ## Use Cases
 

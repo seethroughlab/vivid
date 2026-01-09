@@ -23,9 +23,10 @@ void setup(Context& ctx) {
 
     // ----- FRAME CACHE -----
     // Stores N frames of history for temporal effects
+    // More frames = more dramatic time displacement visible
     auto& cache = chain.add<FrameCache>("cache");
     cache.input("source");
-    cache.frameCount = 60;  // 2 seconds at 30fps
+    cache.frameCount = 90;  // 3 seconds at 30fps - very visible effect
 
     // ----- DISPLACEMENT MAPS -----
     // Different displacement patterns create different effects
@@ -98,68 +99,74 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float t = ctx.time();
 
-    // Mouse controls time depth and offset
-    float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;  // 0-1
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;  // 0-1
+    // Animate depth automatically to show effect clearly
+    // Oscillates between 0.3 and 1.0 for visible time displacement
+    float depth = 0.65f + 0.35f * std::sin(t * 0.5f);
 
-    // X: time depth (how far back in time to reach)
-    float depth = mouseX;
-
-    // Y: offset (bias toward newer or older frames)
-    float offset = mouseY * 0.5f;
+    // Mouse Y can still adjust offset
+    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;
+    float offset = mouseY * 0.3f;
 
     auto& slit_h = chain.get<TimeMachine>("slit_h");
     slit_h.depth = depth;
-    slit_h.offset = offset;
+    slit_h.offset = 0.0f;  // No offset for cleaner slit-scan
 
     auto& slit_v = chain.get<TimeMachine>("slit_v");
     slit_v.depth = depth;
-    slit_v.offset = offset;
+    slit_v.offset = 0.0f;
 
     auto& radial = chain.get<TimeMachine>("radial");
     radial.depth = depth;
-    radial.offset = offset;
+    radial.offset = 0.0f;
 
     auto& organic = chain.get<TimeMachine>("organic");
-    organic.depth = depth * 0.8f;
+    organic.depth = depth;
     organic.offset = offset;
 
-    // Animate displacement noise
+    // Animate displacement noise for organic effect
     auto& disp_noise = chain.get<Noise>("disp_noise");
-    disp_noise.scale = 1.5f + std::sin(t * 0.2f) * 0.5f;
+    disp_noise.scale = 3.0f + std::sin(t * 0.3f);
+    disp_noise.speed = 0.5f;
 
     // Draw 2x2 grid
     auto& canvas = chain.get<Canvas>("canvas");
-    canvas.clear(0.05f, 0.05f, 0.08f, 1.0f);
+    canvas.clear(0.1f, 0.1f, 0.12f, 1.0f);
 
     int w = ctx.width();
     int h = ctx.height();
     int halfW = w / 2;
     int halfH = h / 2;
-    int pad = 8;
+    int pad = 10;
+    int labelH = 32;
 
-    // Draw each effect
-    canvas.drawImage(slit_h, pad, pad, halfW - pad * 2, halfH - pad * 2);
-    canvas.drawImage(slit_v, halfW + pad, pad, halfW - pad * 2, halfH - pad * 2);
-    canvas.drawImage(radial, pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
-    canvas.drawImage(organic, halfW + pad, halfH + pad, halfW - pad * 2, halfH - pad * 2);
+    // Draw images FIRST
+    canvas.drawImage(slit_h, pad, pad + labelH, halfW - pad * 2, halfH - pad * 2 - labelH);
+    canvas.drawImage(slit_v, halfW + pad, pad + labelH, halfW - pad * 2, halfH - pad * 2 - labelH);
+    canvas.drawImage(radial, pad, halfH + pad + labelH, halfW - pad * 2, halfH - pad * 2 - labelH);
+    canvas.drawImage(organic, halfW + pad, halfH + pad + labelH, halfW - pad * 2, halfH - pad * 2 - labelH);
 
-    // Labels
-    canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.7f);
-    canvas.fillRect(pad, pad, 170, 22);
-    canvas.fillRect(halfW + pad, pad, 160, 22);
-    canvas.fillRect(pad, halfH + pad, 160, 22);
-    canvas.fillRect(halfW + pad, halfH + pad, 200, 22);
+    // Draw labels ON TOP of images
+    // Label backgrounds
+    canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.85f);
+    canvas.fillRect(pad, pad, halfW - pad * 2, labelH);
+    canvas.fillRect(halfW + pad, pad, halfW - pad * 2, labelH);
+    canvas.fillRect(pad, halfH + pad, halfW - pad * 2, labelH);
+    canvas.fillRect(halfW + pad, halfH + pad, halfW - pad * 2, labelH);
 
+    // Label text
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
 
     char label1[64];
-    snprintf(label1, sizeof(label1), "Horizontal Slit-Scan (depth=%.2f)", depth);
-    canvas.fillText(label1, pad + 5, pad + 16);
+    snprintf(label1, sizeof(label1), "HORIZONTAL SLIT-SCAN  depth=%.0f%%", depth * 100);
+    canvas.fillText(label1, pad + 8, pad + 22);
 
-    canvas.fillText("Vertical Slit-Scan", halfW + pad + 5, pad + 16);
-    canvas.fillText("Radial Time Warp", pad + 5, halfH + pad + 16);
-    canvas.fillText("Organic Time Distortion", halfW + pad + 5, halfH + pad + 16);
+    canvas.fillText("VERTICAL SLIT-SCAN", halfW + pad + 8, pad + 22);
+    canvas.fillText("RADIAL TIME WARP", pad + 8, halfH + pad + 22);
+    canvas.fillText("ORGANIC DISTORTION", halfW + pad + 8, halfH + pad + 22);
+
+    // Add hint at bottom
+    canvas.fillStyle(0.5f, 0.5f, 0.5f, 1.0f);
+    canvas.fillText("Move mouse up/down to adjust organic offset", w/2 - 180, h - 20);
 }
 
 VIVID_CHAIN(setup, update)

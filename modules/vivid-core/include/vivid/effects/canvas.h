@@ -858,6 +858,16 @@ private:
     FitMode m_fitMode = FitMode::Fit;  ///< Default to aspect-preserving fit
     Context* m_lastContext = nullptr;  ///< Cached context for lazy font loading
     float m_defaultFontSize = 16.0f;   ///< Default font size for auto-loaded font
+
+    // Deferred image drawing - texture views are resolved at render time
+    // to avoid issues with operators that recreate their output textures
+    struct PendingImage {
+        TextureOperator* source;
+        float sx, sy, sw, sh;  // Source rect
+        float dx, dy, dw, dh;  // Destination rect
+        float alpha;
+    };
+    std::vector<PendingImage> m_pendingImages;
 };
 
 } // namespace vivid::effects

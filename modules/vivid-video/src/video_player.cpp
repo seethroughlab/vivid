@@ -95,6 +95,7 @@ void VideoPlayer::loadVideo(Context& ctx) {
         // If not found via AssetLoader, check if it's already an absolute/existing path
         if (!std::filesystem::exists(m_filePath)) {
             std::cerr << "[VideoPlayer] File not found: " << m_filePath << std::endl;
+            m_needsReload = false;  // Don't keep retrying for missing files
             return;
         }
     }
