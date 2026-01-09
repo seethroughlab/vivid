@@ -10,8 +10,8 @@
 #include <vivid/context.h>
 #include <vivid/operator.h>
 #include <vivid/video_exporter.h>
-#include <vivid/overlay_canvas.h>
-#include <vivid/node_graph.h>
+#include <vivid/gui/overlay_canvas.h>
+#include <vivid/gui/node_graph.h>
 #include <webgpu/webgpu.h>
 #include <string>
 #include <unordered_map>
@@ -23,9 +23,11 @@
 
 namespace vivid {
 
+class FontAtlas;  // Forward declaration for font storage
+
 class ChainVisualizer {
 public:
-    ChainVisualizer() = default;
+    ChainVisualizer();
     ~ChainVisualizer();
 
     // Initialize
@@ -138,6 +140,9 @@ private:
     bool m_nodeGraphInitialized = false;
     bool m_autoLayoutDone = false;
     size_t m_lastOperatorCount = 0;
+
+    // Fonts (owned by ChainVisualizer, passed to OverlayCanvas)
+    std::unique_ptr<FontAtlas> m_fonts[3];
 
     // Button hit regions (set during renderStatusBar, checked for clicks after)
     struct ButtonRect { float x, y, w, h; bool valid = false; };

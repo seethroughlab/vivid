@@ -13,10 +13,9 @@ using namespace vivid::effects;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Fallback: generate a colorful noise pattern (always works)
-    auto& source = chain.add<Noise>("source");
-    source.scale = 3.0f;
-    source.octaves = 4;
+    // Load image from assets folder
+    auto& source = chain.add<Image>("source");
+    source.file = "assets/building.jpg";
 
     // Transform - scale, rotate, translate
     auto& transform = chain.add<Transform>("transform");

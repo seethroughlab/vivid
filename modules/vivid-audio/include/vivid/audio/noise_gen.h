@@ -61,7 +61,7 @@ public:
                 "noise.setColor(NoiseColor::White);  // White, Pink, or Brown\n"
                 "noise.volume = 0.5f;\n"
             )
-            .withExamples({{"examples/drum-synthesis"}});
+            .withExamples({{"examples/noise-generators"}, {"examples/drum-synthesis"}});
     }
 
     /// @}

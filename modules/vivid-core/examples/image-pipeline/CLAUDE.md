@@ -16,12 +16,7 @@ Demonstrates image loading and spatial transformation operators.
 ### Image Loading
 ```cpp
 auto& image = chain.add<Image>("image");
-image.setPath("assets/images/photo.png");
-
-// Check if loaded successfully
-if (image.hasTexture()) {
-    // Use image
-}
+image.file = "assets/images/photo.png";
 ```
 
 ### Transform Operations

@@ -3,7 +3,7 @@
 // VizDrawList - ImDrawList-compatible wrapper for OverlayCanvas
 // Allows operators to provide visualizations without direct ImGui dependency
 
-#include <vivid/overlay_canvas.h>
+#include <vivid/gui/overlay_canvas.h>
 #include <glm/glm.hpp>
 #include <cstdint>
 

@@ -5,9 +5,10 @@
  * @brief Font atlas for efficient text rendering
  *
  * Generates a texture atlas from a TTF font file using FreeType.
- * Used by Canvas operator for text rendering.
+ * Implements FontProvider interface for use with OverlayCanvas.
  */
 
+#include <vivid/gui/font_provider.h>
 #include <webgpu/webgpu.h>
 #include <glm/glm.hpp>
 #include <string>
@@ -23,19 +24,10 @@ namespace vivid {
 class Context;
 
 /**
- * @brief Glyph information for a single character
- */
-struct GlyphInfo {
-    float u0, v0, u1, v1;  ///< Texture coordinates (normalized 0-1)
-    float xoff, yoff;       ///< Offset from cursor position
-    float xadvance;         ///< How much to advance cursor
-    float width, height;    ///< Glyph dimensions in pixels
-};
-
-/**
  * @brief Font atlas for efficient text rendering
  *
  * Generates a texture atlas from a TTF font file using FreeType.
+ * Implements FontProvider interface for use with OverlayCanvas.
  * Supports ASCII characters 32-126 with kerning support.
  *
  * @par Example
@@ -45,7 +37,7 @@ struct GlyphInfo {
  * glm::vec2 size = font.measureText("Hello");
  * @endcode
  */
-class FontAtlas {
+class FontAtlas : public FontProvider {
 public:
     FontAtlas() = default;
     ~FontAtlas();
@@ -66,48 +58,17 @@ public:
     bool loadFromMemory(Context& ctx, const uint8_t* data, size_t size,
                         float fontSize, int atlasSize = 512);
 
-    /**
-     * @brief Get glyph info for a character
-     * @param c Character to look up
-     * @return Pointer to glyph info, or nullptr if not found
-     */
-    const GlyphInfo* getGlyph(char c) const;
-
-    /**
-     * @brief Measure text dimensions
-     * @param text Text string to measure
-     * @return Width and height in pixels
-     */
-    glm::vec2 measureText(const std::string& text) const;
-
-    /**
-     * @brief Get kerning adjustment between two characters
-     * @param left Previous character
-     * @param right Current character
-     * @return Kerning offset in pixels (typically negative for tighter pairs)
-     */
-    float getKerning(char left, char right) const;
-
-    /// @brief Check if font has kerning information
-    bool hasKerning() const { return m_hasKerning; }
-
-    /// @brief Get the atlas texture view
-    WGPUTextureView textureView() const { return m_textureView; }
-
-    /// @brief Check if font is loaded
-    bool valid() const { return m_texture != nullptr; }
-
-    /// @brief Get font size
-    float fontSize() const { return m_fontSize; }
-
-    /// @brief Get line height
-    float lineHeight() const { return m_lineHeight; }
-
-    /// @brief Get ascent (distance from baseline to top)
-    float ascent() const { return m_ascent; }
-
-    /// @brief Get descent (distance from baseline to bottom, negative)
-    float descent() const { return m_descent; }
+    // FontProvider interface implementation
+    const GlyphInfo* getGlyph(char c) const override;
+    glm::vec2 measureText(const std::string& text) const override;
+    float getKerning(char left, char right) const override;
+    bool hasKerning() const override { return m_hasKerning; }
+    WGPUTextureView textureView() const override { return m_textureView; }
+    bool valid() const override { return m_texture != nullptr; }
+    float fontSize() const override { return m_fontSize; }
+    float lineHeight() const override { return m_lineHeight; }
+    float ascent() const override { return m_ascent; }
+    float descent() const override { return m_descent; }
 
     /// @brief Release GPU resources
     void cleanup();

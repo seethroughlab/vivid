@@ -77,6 +77,10 @@ struct NodeGraphStyle {
     glm::vec4 miniMapBorder = {0.3f, 0.3f, 0.4f, 1.0f};
     glm::vec4 miniMapNodeColor = {0.4f, 0.4f, 0.5f, 0.8f};
     glm::vec4 miniMapViewportColor = {0.8f, 0.6f, 0.2f, 0.6f};
+
+    // Zoom limits
+    float minZoom = 0.1f;
+    float maxZoom = 4.0f;
 };
 
 // -------------------------------------------------------------------------
@@ -497,8 +501,6 @@ private:
     // Zoom/pan state
     float m_zoom = 1.0f;
     glm::vec2 m_pan = {0, 0};
-    static constexpr float MIN_ZOOM = 0.1f;
-    static constexpr float MAX_ZOOM = 4.0f;
 
     // Editor state
     float m_width = 0;

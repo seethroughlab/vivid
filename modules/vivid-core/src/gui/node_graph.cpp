@@ -1,6 +1,6 @@
-#include <vivid/node_graph.h>
-#include <vivid/overlay_canvas.h>
-#include <vivid/ui_style.h>
+#include <vivid/gui/node_graph.h>
+#include <vivid/gui/overlay_canvas.h>
+#include <vivid/gui/ui_style.h>
 #include <algorithm>
 #include <cmath>
 #include <iostream>
@@ -462,7 +462,7 @@ void NodeGraph::clearSelection() {
 // -------------------------------------------------------------------------
 
 void NodeGraph::setZoom(float z) {
-    m_zoom = std::clamp(z, MIN_ZOOM, MAX_ZOOM);
+    m_zoom = std::clamp(z, m_style.minZoom, m_style.maxZoom);
 }
 
 void NodeGraph::zoomToFit() {
@@ -488,7 +488,7 @@ void NodeGraph::zoomToFit() {
     // Calculate zoom to fit with extra margin (0.7x instead of 0.9x)
     float zoomX = m_width / contentWidth;
     float zoomY = m_height / contentHeight;
-    m_zoom = std::clamp(std::min(zoomX, zoomY) * 0.7f, MIN_ZOOM, MAX_ZOOM);
+    m_zoom = std::clamp(std::min(zoomX, zoomY) * 0.7f, m_style.minZoom, m_style.maxZoom);
 
     // Center content
     float centerX = (minX + maxX) * 0.5f;
@@ -915,7 +915,7 @@ void NodeGraph::handleInput() {
 void NodeGraph::handleZoom() {
     if (std::abs(m_input.scroll.y) > 0.01f) {
         float zoomDelta = m_input.scroll.y * 0.1f;
-        float newZoom = std::clamp(m_zoom * (1.0f + zoomDelta), MIN_ZOOM, MAX_ZOOM);
+        float newZoom = std::clamp(m_zoom * (1.0f + zoomDelta), m_style.minZoom, m_style.maxZoom);
 
         // Zoom toward mouse position
         glm::vec2 mouseGridPos = screenToGrid(m_input.mousePos);

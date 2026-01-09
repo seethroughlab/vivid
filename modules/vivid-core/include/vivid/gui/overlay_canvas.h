@@ -17,7 +17,8 @@
  * - No clipping support (simpler pipeline, no stencil needed)
  */
 
-#include <vivid/ui_style.h>  // For UILayer constants
+#include <vivid/gui/ui_style.h>  // For UILayer constants
+#include <vivid/gui/font_provider.h>
 #include <webgpu/webgpu.h>
 #include <glm/glm.hpp>
 #include <string>
@@ -26,9 +27,6 @@
 #include <memory>
 
 namespace vivid {
-
-class Context;
-class FontAtlas;
 
 /**
  * @brief Vertex for overlay rendering
@@ -67,30 +65,26 @@ public:
 
     /**
      * @brief Initialize GPU resources
-     * @param ctx Context for device/queue access
+     * @param device WebGPU device
+     * @param queue WebGPU queue
      * @param surfaceFormat The surface texture format (from window manager)
      * @return true on success
      */
-    bool init(Context& ctx, WGPUTextureFormat surfaceFormat = WGPUTextureFormat_BGRA8UnormSrgb);
+    bool init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat surfaceFormat = WGPUTextureFormat_BGRA8UnormSrgb);
 
     /**
-     * @brief Load a font for text rendering
-     * @param ctx Context for GPU access
-     * @param path Path to TTF file
-     * @param fontSize Font size in pixels
-     * @return true on success
+     * @brief Set a font provider for text rendering
+     * @param index Font index (0 = body, 1 = titles, 2 = mono)
+     * @param provider Font provider (OverlayCanvas does NOT take ownership)
      */
-    bool loadFont(Context& ctx, const std::string& path, float fontSize);
+    void setFont(int index, FontProvider* provider);
 
     /**
-     * @brief Load additional font size (for zoom-aware text)
-     * @param ctx Context for GPU access
-     * @param path Path to TTF file
-     * @param fontSize Font size in pixels
+     * @brief Get the font provider at the given index
      * @param index Font index (0-2)
-     * @return true on success
+     * @return Font provider, or nullptr if not set
      */
-    bool loadFontSize(Context& ctx, const std::string& path, float fontSize, int index);
+    FontProvider* getFont(int index) const;
 
     /**
      * @brief Clean up GPU resources
@@ -268,6 +262,59 @@ public:
     void texturedRect(float x, float y, float w, float h, WGPUTextureView textureView,
                       const glm::vec4& tint = glm::vec4(1.0f));
 
+    /**
+     * @brief Draw a filled polygon
+     * @param points Polygon vertices (minimum 3)
+     * @param color Fill color
+     *
+     * Uses triangle fan triangulation - works for convex polygons.
+     * For concave polygons, results may be incorrect.
+     */
+    void fillPolygon(const std::vector<glm::vec2>& points, const glm::vec4& color);
+
+    /**
+     * @brief Draw a polyline (connected line segments)
+     * @param points Line vertices (minimum 2)
+     * @param lineWidth Line width in screen pixels
+     * @param color Line color
+     * @param closed If true, connects last point to first
+     */
+    void polyline(const std::vector<glm::vec2>& points, float lineWidth, const glm::vec4& color, bool closed = false);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Clipping
+    /// @{
+
+    /**
+     * @brief Begin a clipping rectangle
+     * @param x Left edge in screen pixels
+     * @param y Top edge in screen pixels
+     * @param w Width in screen pixels
+     * @param h Height in screen pixels
+     *
+     * All subsequent draw calls will be clipped to this rectangle.
+     * Clip rects can be nested (intersection is used).
+     * Call endClipRect() to restore previous clip state.
+     *
+     * Note: Clip rectangles are in screen space and not affected by transform.
+     */
+    void beginClipRect(float x, float y, float w, float h);
+
+    /**
+     * @brief End the current clipping rectangle
+     *
+     * Restores the previous clip state. If no previous clip,
+     * clipping is disabled.
+     */
+    void endClipRect();
+
+    /**
+     * @brief Get current clip rectangle
+     * @return Current clip rect (x, y, w, h), or (0,0,0,0) if no clipping
+     */
+    glm::vec4 currentClipRect() const;
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Text
@@ -372,8 +419,8 @@ public:
     /// @}
 
 private:
-    void createPipeline(Context& ctx);
-    void createWhiteTexture(Context& ctx);
+    void createPipeline();
+    void createWhiteTexture();
 
     // Add a solid-colored quad (positions already in screen space)
     void addQuad(glm::vec2 p0, glm::vec2 p1, glm::vec2 p2, glm::vec2 p3, const glm::vec4& color);
@@ -416,7 +463,8 @@ private:
     WGPUBindGroup m_whiteBindGroup = nullptr;
 
     // Fonts (up to 3 sizes for zoom-aware text)
-    std::unique_ptr<FontAtlas> m_fonts[3];
+    // FontProvider pointers are NOT owned by OverlayCanvas
+    FontProvider* m_fonts[3] = {nullptr, nullptr, nullptr};
     WGPUBindGroup m_fontBindGroups[3] = {nullptr, nullptr, nullptr};
 
     // Persistent buffers (reused across layers)
@@ -440,6 +488,12 @@ private:
     WGPUQueue m_queue = nullptr;
     WGPUTextureFormat m_surfaceFormat = WGPUTextureFormat_BGRA8UnormSrgb;
     bool m_initialized = false;
+
+    // Clip state (screen-space rectangles)
+    struct ClipRect {
+        float x, y, w, h;
+    };
+    std::vector<ClipRect> m_clipStack;
 
     static constexpr size_t INITIAL_VERTEX_CAPACITY = 1024;
     static constexpr size_t INITIAL_INDEX_CAPACITY = 4096;

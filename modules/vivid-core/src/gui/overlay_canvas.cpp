@@ -1,6 +1,5 @@
-#include <vivid/overlay_canvas.h>
-#include <vivid/context.h>
-#include "effects/font_atlas.h"
+#include <vivid/gui/overlay_canvas.h>
+#include "effects/font_atlas.h"  // For backward compatibility
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -65,13 +64,13 @@ OverlayCanvas::~OverlayCanvas() {
 }
 
 void OverlayCanvas::cleanup() {
-    // Release font bind groups
+    // Release font bind groups (we don't own the FontProvider pointers)
     for (int i = 0; i < 3; i++) {
         if (m_fontBindGroups[i]) {
             wgpuBindGroupRelease(m_fontBindGroups[i]);
             m_fontBindGroups[i] = nullptr;
         }
-        m_fonts[i].reset();
+        m_fonts[i] = nullptr;
     }
 
     // Release white texture resources
@@ -133,22 +132,22 @@ void OverlayCanvas::cleanup() {
     m_initialized = false;
 }
 
-bool OverlayCanvas::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
+bool OverlayCanvas::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat surfaceFormat) {
     if (m_initialized) return true;
 
-    m_device = ctx.device();
-    m_queue = ctx.queue();
+    m_device = device;
+    m_queue = queue;
     m_surfaceFormat = surfaceFormat;
 
-    createPipeline(ctx);
-    createWhiteTexture(ctx);
+    createPipeline();
+    createWhiteTexture();
 
     m_initialized = true;
     return true;
 }
 
-void OverlayCanvas::createPipeline(Context& ctx) {
-    WGPUDevice device = ctx.device();
+void OverlayCanvas::createPipeline() {
+    WGPUDevice device = m_device;
 
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
@@ -264,9 +263,9 @@ void OverlayCanvas::createPipeline(Context& ctx) {
     m_sampler = wgpuDeviceCreateSampler(device, &samplerDesc);
 }
 
-void OverlayCanvas::createWhiteTexture(Context& ctx) {
-    WGPUDevice device = ctx.device();
-    WGPUQueue queue = ctx.queue();
+void OverlayCanvas::createWhiteTexture() {
+    WGPUDevice device = m_device;
+    WGPUQueue queue = m_queue;
 
     // Create 1x1 white texture
     WGPUTextureDescriptor texDesc = {};
@@ -313,40 +312,39 @@ void OverlayCanvas::createWhiteTexture(Context& ctx) {
     m_whiteBindGroup = wgpuDeviceCreateBindGroup(device, &bgDesc);
 }
 
-bool OverlayCanvas::loadFont(Context& ctx, const std::string& path, float fontSize) {
-    return loadFontSize(ctx, path, fontSize, 0);
-}
+void OverlayCanvas::setFont(int index, FontProvider* provider) {
+    if (index < 0 || index >= 3) return;
 
-bool OverlayCanvas::loadFontSize(Context& ctx, const std::string& path, float fontSize, int index) {
-    if (index < 0 || index >= 3) return false;
+    m_fonts[index] = provider;
 
-    m_fonts[index] = std::make_unique<FontAtlas>();
-    if (!m_fonts[index]->load(ctx, path, fontSize)) {
-        m_fonts[index].reset();
-        return false;
-    }
-
-    // Create bind group for this font
+    // Release old bind group
     if (m_fontBindGroups[index]) {
         wgpuBindGroupRelease(m_fontBindGroups[index]);
+        m_fontBindGroups[index] = nullptr;
     }
 
-    WGPUBindGroupEntry bgEntries[3] = {};
-    bgEntries[0].binding = 0;
-    bgEntries[0].buffer = m_uniformBuffer;
-    bgEntries[0].size = 16;
-    bgEntries[1].binding = 1;
-    bgEntries[1].sampler = m_sampler;
-    bgEntries[2].binding = 2;
-    bgEntries[2].textureView = m_fonts[index]->textureView();
+    // Create bind group for this font if provider is valid
+    if (provider && provider->valid() && m_device) {
+        WGPUBindGroupEntry bgEntries[3] = {};
+        bgEntries[0].binding = 0;
+        bgEntries[0].buffer = m_uniformBuffer;
+        bgEntries[0].size = 16;
+        bgEntries[1].binding = 1;
+        bgEntries[1].sampler = m_sampler;
+        bgEntries[2].binding = 2;
+        bgEntries[2].textureView = provider->textureView();
 
-    WGPUBindGroupDescriptor bgDesc = {};
-    bgDesc.layout = m_bindGroupLayout;
-    bgDesc.entryCount = 3;
-    bgDesc.entries = bgEntries;
-    m_fontBindGroups[index] = wgpuDeviceCreateBindGroup(ctx.device(), &bgDesc);
+        WGPUBindGroupDescriptor bgDesc = {};
+        bgDesc.layout = m_bindGroupLayout;
+        bgDesc.entryCount = 3;
+        bgDesc.entries = bgEntries;
+        m_fontBindGroups[index] = wgpuDeviceCreateBindGroup(m_device, &bgDesc);
+    }
+}
 
-    return true;
+FontProvider* OverlayCanvas::getFont(int index) const {
+    if (index < 0 || index >= 3) return nullptr;
+    return m_fonts[index];
 }
 
 void OverlayCanvas::begin(int width, int height) {
@@ -359,6 +357,9 @@ void OverlayCanvas::begin(int width, int height) {
 
     // Reset to default layer
     m_currentLayer = 0;
+
+    // Clear clip stack
+    m_clipStack.clear();
 
     // Reset transform
     m_transform = glm::mat3(1.0f);
@@ -929,7 +930,7 @@ void OverlayCanvas::text(const std::string& str, float x, float y, const glm::ve
 void OverlayCanvas::textScaled(const std::string& str, float x, float y, const glm::vec4& color, float scale, int fontIndex) {
     if (fontIndex < 0 || fontIndex >= 3 || !m_fonts[fontIndex]) return;
 
-    FontAtlas& font = *m_fonts[fontIndex];
+    FontProvider& font = *m_fonts[fontIndex];
     float cursorX = x;
     float cursorY = y;
     char prevChar = 0;
@@ -974,7 +975,7 @@ void OverlayCanvas::textScaled(const std::string& str, float x, float y, const g
 float OverlayCanvas::measureText(const std::string& str, int fontIndex) const {
     if (fontIndex < 0 || fontIndex >= 3 || !m_fonts[fontIndex]) return 0.0f;
 
-    FontAtlas& font = *m_fonts[fontIndex];
+    FontProvider& font = *m_fonts[fontIndex];
     float width = 0.0f;
     char prevChar = 0;
 
@@ -1036,6 +1037,76 @@ float OverlayCanvas::fontSize(int fontIndex) const {
 int OverlayCanvas::getCircleSegments(float radius, float zoom) {
     float screenRadius = radius * zoom;
     return std::clamp(static_cast<int>(screenRadius * 0.6f), 8, 128);
+}
+
+// -------------------------------------------------------------------------
+// Clipping
+// -------------------------------------------------------------------------
+
+void OverlayCanvas::beginClipRect(float x, float y, float w, float h) {
+    ClipRect rect{x, y, w, h};
+
+    // If there's an existing clip, intersect with it
+    if (!m_clipStack.empty()) {
+        const auto& prev = m_clipStack.back();
+        float x1 = std::max(rect.x, prev.x);
+        float y1 = std::max(rect.y, prev.y);
+        float x2 = std::min(rect.x + rect.w, prev.x + prev.w);
+        float y2 = std::min(rect.y + rect.h, prev.y + prev.h);
+        rect.x = x1;
+        rect.y = y1;
+        rect.w = std::max(0.0f, x2 - x1);
+        rect.h = std::max(0.0f, y2 - y1);
+    }
+
+    m_clipStack.push_back(rect);
+}
+
+void OverlayCanvas::endClipRect() {
+    if (!m_clipStack.empty()) {
+        m_clipStack.pop_back();
+    }
+}
+
+glm::vec4 OverlayCanvas::currentClipRect() const {
+    if (m_clipStack.empty()) {
+        return glm::vec4(0, 0, 0, 0);
+    }
+    const auto& rect = m_clipStack.back();
+    return glm::vec4(rect.x, rect.y, rect.w, rect.h);
+}
+
+// -------------------------------------------------------------------------
+// Polygon/Polyline
+// -------------------------------------------------------------------------
+
+void OverlayCanvas::fillPolygon(const std::vector<glm::vec2>& points, const glm::vec4& color) {
+    if (points.size() < 3) return;
+
+    // Transform all points
+    std::vector<glm::vec2> transformed;
+    transformed.reserve(points.size());
+    for (const auto& p : points) {
+        transformed.push_back(transformPoint(p));
+    }
+
+    // Triangle fan from first vertex
+    glm::vec4 premultColor = {color.r * color.a, color.g * color.a, color.b * color.a, color.a};
+    for (size_t i = 1; i < transformed.size() - 1; ++i) {
+        addQuad(transformed[0], transformed[i], transformed[i + 1], transformed[i + 1], premultColor);
+    }
+}
+
+void OverlayCanvas::polyline(const std::vector<glm::vec2>& points, float lineWidth, const glm::vec4& color, bool closed) {
+    if (points.size() < 2) return;
+
+    size_t count = points.size();
+    size_t segments = closed ? count : count - 1;
+
+    for (size_t i = 0; i < segments; ++i) {
+        size_t j = (i + 1) % count;
+        line(points[i].x, points[i].y, points[j].x, points[j].y, lineWidth, color);
+    }
 }
 
 } // namespace vivid

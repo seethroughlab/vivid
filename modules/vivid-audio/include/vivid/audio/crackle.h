@@ -68,7 +68,7 @@ public:
             .withUsage(R"(auto& crackle = chain.add<Crackle>("crackle");
 crackle.density = 0.001f;  // Sparse clicks
 crackle.volume = 0.1f;     // Subtle level)")
-            .withExamples({{"examples/lofi-textures"}});
+            .withExamples({{"examples/noise-generators"}, {"examples/lofi-textures"}});
     }
 
     /// @}

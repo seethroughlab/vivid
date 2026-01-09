@@ -60,7 +60,7 @@ set(VIVID_CORE_LIB_SOURCES
     # Chain visualizer (uses OverlayCanvas, no ImGui)
     src/chain_visualizer.cpp
     # Node graph (OverlayCanvas-based node editor)
-    src/node_graph.cpp
+    src/gui/node_graph.cpp
     # vivid-io (image loading)
     src/io/image_loader.cpp
     # vivid-effects-2d (2D texture effects)
@@ -111,7 +111,8 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/canvas_renderer.cpp
     src/effects/canvas.cpp
     src/effects/operator_registrations.cpp
-    src/overlay_canvas.cpp
+    src/gui/overlay_canvas.cpp
+    src/gui/gui.cpp
     src/viz_helpers.cpp
 )
 
@@ -136,10 +137,11 @@ set(VIVID_CORE_HEADERS
     include/vivid/audio_buffer.h
     include/vivid/audio_operator.h
     include/vivid/audio_output.h
-    include/vivid/overlay_canvas.h
+    include/vivid/gui/overlay_canvas.h
+    include/vivid/gui/node_graph.h
+    include/vivid/gui/ui_style.h
     include/vivid/frame_input.h
     include/vivid/chain_visualizer.h
-    include/vivid/node_graph.h
     include/vivid/viz_helpers.h
 )
 

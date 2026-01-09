@@ -12,7 +12,9 @@
 #include <vivid/asset_loader.h>
 #include <vivid/frame_input.h>
 #include <vivid/effects/texture_operator.h>
-#include <vivid/ui_style.h>
+#include <vivid/gui/ui_style.h>
+#include <vivid/gui/gui.h>
+#include "effects/font_atlas.h"
 #include <glm/gtc/matrix_transform.hpp>
 #include <iostream>
 #include <fstream>
@@ -143,6 +145,8 @@ static std::string rgbToHex(float r, float g, float b) {
     snprintf(buf, sizeof(buf), "#%02X%02X%02X", ri, gi, bi);
     return buf;
 }
+
+ChainVisualizer::ChainVisualizer() = default;
 
 ChainVisualizer::~ChainVisualizer() {
     shutdown();
@@ -278,7 +282,7 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
     if (m_nodeGraphInitialized) return;
 
     // Initialize overlay canvas with correct surface format
-    if (!m_overlay.init(ctx, surfaceFormat)) {
+    if (!m_overlay.init(ctx.device(), ctx.queue(), surfaceFormat)) {
         std::cerr << "[ChainVisualizer] Failed to initialize OverlayCanvas\n";
         return;
     }
@@ -307,21 +311,27 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
     if (scale < 1.0f) scale = 1.0f;
 
     // Load Inter Regular as primary font (index 0) - for tooltips/labels
-    if (m_overlay.loadFont(ctx, regularPath, 16.0f * scale)) {
+    m_fonts[0] = std::make_unique<FontAtlas>();
+    if (m_fonts[0]->load(ctx, regularPath, 16.0f * scale)) {
+        m_overlay.setFont(0, m_fonts[0].get());
         std::cerr << "[ChainVisualizer] Loaded Inter Regular (" << (16 * scale) << "px)\n";
     } else {
         std::cerr << "[ChainVisualizer] Warning: Could not load Inter Regular font\n";
     }
 
     // Load Inter Medium for node titles (index 1)
-    if (m_overlay.loadFontSize(ctx, mediumPath, 18.0f * scale, 1)) {
+    m_fonts[1] = std::make_unique<FontAtlas>();
+    if (m_fonts[1]->load(ctx, mediumPath, 18.0f * scale)) {
+        m_overlay.setFont(1, m_fonts[1].get());
         std::cerr << "[ChainVisualizer] Loaded Inter Medium (" << (18 * scale) << "px) for titles\n";
     } else {
         std::cerr << "[ChainVisualizer] Warning: Could not load Inter Medium font\n";
     }
 
     // Load Roboto Mono for numeric displays (index 2) - status bar
-    if (m_overlay.loadFontSize(ctx, monoPath, 14.0f * scale, 2)) {
+    m_fonts[2] = std::make_unique<FontAtlas>();
+    if (m_fonts[2]->load(ctx, monoPath, 14.0f * scale)) {
+        m_overlay.setFont(2, m_fonts[2].get());
         std::cerr << "[ChainVisualizer] Loaded Roboto Mono (" << (14 * scale) << "px) for metrics\n";
     } else {
         std::cerr << "[ChainVisualizer] Warning: Could not load Roboto Mono font\n";
@@ -400,6 +410,7 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
         nodeGraphInput.mouseClicked[0] = false;
         nodeGraphInput.mouseDown[0] = false;
         nodeGraphInput.mouseReleased[0] = false;  // Block release too, prevents selection clearing
+        nodeGraphInput.scroll = {0, 0};  // Block scroll to prevent zoom while scrolling inspector
     }
 
     // Begin node graph editor
