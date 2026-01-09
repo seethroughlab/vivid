@@ -105,7 +105,6 @@ output.input("mixer");
 
 ## Controls
 
-- **Mouse X** - BPM (80-160)
 - **Mouse Y** - Swing amount (0-0.5)
 
 ## Common Patterns

@@ -172,8 +172,8 @@ void SerialIn::parseCSV(const std::string& line) {
         try {
             float value = std::stof(token);
             m_values.push_back(value);
-        } catch (...) {
-            // Skip non-numeric values
+        } catch (const std::exception&) {
+            // Skip non-numeric values (std::invalid_argument, std::out_of_range)
         }
     }
 }

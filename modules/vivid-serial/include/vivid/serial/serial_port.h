@@ -11,7 +11,8 @@
 namespace vivid {
 namespace serial {
 
-/// Low-level serial port wrapper with cross-platform support
+/// Low-level serial port wrapper with cross-platform support.
+/// @note NOT thread-safe. Callers must synchronize access when used from multiple threads.
 class SerialPort {
 public:
     SerialPort() = default;
@@ -35,35 +36,35 @@ public:
     void close();
 
     /// Check if the port is open
-    bool isOpen() const;
+    [[nodiscard]] bool isOpen() const;
 
     /// Get the port name
-    const std::string& portName() const { return m_portName; }
+    [[nodiscard]] const std::string& portName() const { return m_portName; }
 
     /// Write raw bytes
     /// @return Number of bytes written
-    size_t write(const uint8_t* data, size_t len);
+    [[nodiscard]] size_t write(const uint8_t* data, size_t len);
 
     /// Write a string
-    size_t write(const std::string& str);
+    [[nodiscard]] size_t write(const std::string& str);
 
     /// Read raw bytes (non-blocking)
     /// @return Number of bytes read
-    size_t read(uint8_t* buffer, size_t maxLen);
+    [[nodiscard]] size_t read(uint8_t* buffer, size_t maxLen);
 
     /// Read a line (blocking until newline or timeout)
     /// @param timeoutMs Timeout in milliseconds (0 = no timeout)
     /// @return The line read (without newline), or empty string on timeout
-    std::string readLine(int timeoutMs = 1000);
+    [[nodiscard]] std::string readLine(int timeoutMs = 1000);
 
     /// Get number of bytes available to read
-    size_t available() const;
+    [[nodiscard]] size_t available() const;
 
     /// Flush input and output buffers
     void flush();
 
     /// Get list of available serial ports
-    static std::vector<std::string> availablePorts();
+    [[nodiscard]] static std::vector<std::string> availablePorts();
 
 private:
     std::string m_portName;

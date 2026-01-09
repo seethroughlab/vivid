@@ -230,7 +230,7 @@ private:
     float centsToRatio(float cents) const;
     void processVoice(Voice& voice, float* outputL, float* outputR, uint32_t frames);
     void advanceEnvelope(Voice& voice, uint32_t samples);
-    float computeEnvelope(Voice& voice);
+    float computeEnvelope(const Voice& voice) const;
 
     std::vector<Voice> m_voices;
     Waveform m_waveform = Waveform::Saw;

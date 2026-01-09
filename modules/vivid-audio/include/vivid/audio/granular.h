@@ -14,10 +14,11 @@
 #include <vivid/audio_operator.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
-#include <string>
-#include <vector>
 #include <array>
 #include <cmath>
+#include <optional>
+#include <string>
+#include <vector>
 #include <random>
 
 namespace vivid::audio {
@@ -202,7 +203,7 @@ private:
     // Sample buffer
     std::vector<float> m_sample;     // Interleaved stereo
     uint32_t m_sampleFrames = 0;
-    std::string m_pendingPath;
+    std::optional<std::string> m_pendingPath;  ///< Deferred load path (set before init)
 
     // Grain pool
     std::array<Grain, MAX_GRAINS> m_grains;

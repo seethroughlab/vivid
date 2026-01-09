@@ -20,7 +20,9 @@ namespace vivid::audio::dsp {
  * Provides efficient delay of audio samples with:
  * - Integer sample delays (fast)
  * - Fractional delays with linear interpolation
- * - Thread-safe single-writer, single-reader design
+ *
+ * @note NOT thread-safe. Assumes single-threaded access from audio thread.
+ *       For multi-threaded access, use external synchronization.
  */
 class DelayLine {
 public:
@@ -133,7 +135,9 @@ public:
     }
 
     DelayLine& left() { return m_left; }
+    const DelayLine& left() const { return m_left; }
     DelayLine& right() { return m_right; }
+    const DelayLine& right() const { return m_right; }
 
 private:
     DelayLine m_left;

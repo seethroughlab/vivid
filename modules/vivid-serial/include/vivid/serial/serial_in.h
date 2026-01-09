@@ -83,31 +83,31 @@ public:
     void port(const std::string& portName);
 
     /// Get the current port name
-    const std::string& port() const { return m_portName; }
+    [[nodiscard]] const std::string& port() const { return m_portName; }
 
     /// Check if connected
-    bool isConnected() const;
+    [[nodiscard]] bool isConnected() const;
 
     // Read data methods
 
     /// Check if new data is available since last frame
-    bool hasData() const { return m_hasNewData; }
+    [[nodiscard]] bool hasData() const { return m_hasNewData; }
 
     /// Get the last line received
-    const std::string& lastLine() const { return m_lastLine; }
+    [[nodiscard]] const std::string& lastLine() const { return m_lastLine; }
 
     /// Get all lines received since last frame
-    std::vector<std::string> getLines();
+    [[nodiscard]] std::vector<std::string> getLines();
 
     /// Get parsed CSV values from the last line
     /// e.g., if Arduino sends "1.0,2.5,3.0\n", returns {1.0, 2.5, 3.0}
-    const std::vector<float>& getValues() const { return m_values; }
+    [[nodiscard]] const std::vector<float>& getValues() const { return m_values; }
 
     /// Get a specific value by index (returns 0 if index out of range)
-    float getValue(int index = 0) const;
+    [[nodiscard]] float getValue(int index = 0) const;
 
     /// Get value as output (for connecting to other operators)
-    float value() const { return getValue(0); }
+    [[nodiscard]] float value() const { return getValue(0); }
 
 private:
     void startReadThread();

@@ -98,10 +98,10 @@ public:
     void closePort();
 
     /// @brief Check if a port is open
-    bool isOpen() const;
+    [[nodiscard]] bool isOpen() const;
 
     /// @brief Get the name of the open port
-    std::string portName() const;
+    [[nodiscard]] const std::string& portName() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -109,38 +109,38 @@ public:
     /// @{
 
     /// @brief Get all MIDI events received this frame
-    const std::vector<MidiEvent>& events() const { return m_frameEvents; }
+    [[nodiscard]] const std::vector<MidiEvent>& events() const { return m_frameEvents; }
 
     /// @brief Check if any note-on occurred this frame
-    bool noteOn() const { return m_hasNoteOn; }
+    [[nodiscard]] bool noteOn() const { return m_hasNoteOn; }
 
     /// @brief Check if a specific note was pressed this frame
-    bool noteOn(uint8_t noteNumber) const;
+    [[nodiscard]] bool noteOn(uint8_t noteNumber) const;
 
     /// @brief Get the most recent note-on note number (0-127)
-    uint8_t note() const { return m_lastNote; }
+    [[nodiscard]] uint8_t note() const { return m_lastNote; }
 
     /// @brief Get the most recent note-on velocity (0.0-1.0)
-    float velocity() const { return m_lastVelocity; }
+    [[nodiscard]] float velocity() const { return m_lastVelocity; }
 
     /// @brief Check if any note-off occurred this frame
-    bool noteOff() const { return m_hasNoteOff; }
+    [[nodiscard]] bool noteOff() const { return m_hasNoteOff; }
 
     /// @brief Check if any CC message was received this frame
-    bool ccReceived() const { return m_hasCC; }
+    [[nodiscard]] bool ccReceived() const { return m_hasCC; }
 
     /// @brief Check if a specific CC was received this frame
-    bool ccReceived(uint8_t ccNumber) const;
+    [[nodiscard]] bool ccReceived(uint8_t ccNumber) const;
 
     /// @brief Get current CC value (0.0-1.0) for a controller
     /// @note Returns last known value, even if not received this frame
-    float cc(uint8_t ccNumber) const;
+    [[nodiscard]] float cc(uint8_t ccNumber) const;
 
     /// @brief Check if pitch bend was received this frame
-    bool pitchBendReceived() const { return m_hasPitchBend; }
+    [[nodiscard]] bool pitchBendReceived() const { return m_hasPitchBend; }
 
     /// @brief Get current pitch bend value (-1.0 to +1.0)
-    float pitchBend() const { return m_pitchBendValue; }
+    [[nodiscard]] float pitchBend() const { return m_pitchBendValue; }
 
     /// @}
     // -------------------------------------------------------------------------

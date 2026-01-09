@@ -211,7 +211,7 @@ float PolySynth::centsToRatio(float cents) const {
     return std::pow(2.0f, cents / 1200.0f);
 }
 
-float PolySynth::computeEnvelope(Voice& voice) {
+float PolySynth::computeEnvelope(const Voice& voice) const {
     switch (voice.envStage) {
         case EnvelopeStage::Attack:
             return voice.envProgress;

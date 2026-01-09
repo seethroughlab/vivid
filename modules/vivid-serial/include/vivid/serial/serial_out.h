@@ -78,10 +78,10 @@ public:
     void port(const std::string& portName);
 
     /// Get the current port name
-    const std::string& port() const { return m_portName; }
+    [[nodiscard]] const std::string& port() const { return m_portName; }
 
     /// Check if connected
-    bool isConnected() const;
+    [[nodiscard]] bool isConnected() const;
 
     // Send data methods
 

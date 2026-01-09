@@ -20,7 +20,7 @@ public:
     Impl() {
         try {
             m_midiOut = std::make_unique<RtMidiOut>();
-        } catch (RtMidiError& error) {
+        } catch (const RtMidiError& error) {
             std::cerr << "MidiOut: " << error.getMessage() << std::endl;
         }
     }
@@ -52,7 +52,7 @@ std::vector<std::string> MidiOut::listPorts() {
         for (unsigned int i = 0; i < count; ++i) {
             ports.push_back(midiOut.getPortName(i));
         }
-    } catch (RtMidiError& error) {
+    } catch (const RtMidiError& error) {
         std::cerr << "MidiOut::listPorts: " << error.getMessage() << std::endl;
     }
     return ports;
@@ -71,7 +71,7 @@ void MidiOut::openPort(unsigned int portIndex) {
             m_impl->m_portName = m_impl->m_midiOut->getPortName(portIndex);
             std::cout << "MidiOut: Opened port " << m_impl->m_portName << std::endl;
         }
-    } catch (RtMidiError& error) {
+    } catch (const RtMidiError& error) {
         std::cerr << "MidiOut::openPort: " << error.getMessage() << std::endl;
     }
 }
@@ -95,7 +95,7 @@ void MidiOut::openPortByName(const std::string& name) {
             }
         }
         std::cerr << "MidiOut: No port matching '" << name << "' found" << std::endl;
-    } catch (RtMidiError& error) {
+    } catch (const RtMidiError& error) {
         std::cerr << "MidiOut::openPortByName: " << error.getMessage() << std::endl;
     }
 }
@@ -111,7 +111,7 @@ bool MidiOut::isOpen() const {
     return m_impl->m_midiOut && m_impl->m_midiOut->isPortOpen();
 }
 
-std::string MidiOut::portName() const {
+const std::string& MidiOut::portName() const {
     return m_impl->m_portName;
 }
 
@@ -216,7 +216,7 @@ void MidiOut::sendRaw(const std::vector<unsigned char>& message) {
 
     try {
         m_impl->m_midiOut->sendMessage(&message);
-    } catch (RtMidiError& error) {
+    } catch (const RtMidiError& error) {
         std::cerr << "MidiOut::sendRaw: " << error.getMessage() << std::endl;
     }
 }

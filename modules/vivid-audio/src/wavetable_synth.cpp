@@ -713,7 +713,7 @@ float WavetableSynth::warpPhase(float phase, float amount, float lastSample) con
 // Envelope
 // =============================================================================
 
-float WavetableSynth::computeEnvelope(Voice& voice) const {
+float WavetableSynth::computeEnvelope(const Voice& voice) const {
     switch (voice.envStage) {
         case EnvelopeStage::Attack:
             return voice.envProgress;
@@ -789,7 +789,7 @@ void WavetableSynth::advanceEnvelope(Voice& voice, uint32_t samples) {
 // Filter Envelope
 // =============================================================================
 
-float WavetableSynth::computeFilterEnvelope(Voice& voice) const {
+float WavetableSynth::computeFilterEnvelope(const Voice& voice) const {
     switch (voice.filterEnvStage) {
         case EnvelopeStage::Attack:
             return voice.filterEnvProgress;

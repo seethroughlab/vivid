@@ -12,9 +12,10 @@
 #include <vivid/audio/envelope.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
+#include <cmath>
+#include <optional>
 #include <string>
 #include <vector>
-#include <cmath>
 
 namespace vivid::audio {
 
@@ -114,17 +115,17 @@ public:
      * @param path Path to WAV file (uses AssetLoader for resolution)
      * @return true if loaded successfully
      */
-    bool loadSample(const std::string& path);
+    [[nodiscard]] bool loadSample(const std::string& path);
 
     /**
      * @brief Check if a sample is loaded
      */
-    bool hasSample() const { return !m_samples.empty(); }
+    [[nodiscard]] bool hasSample() const { return !m_samples.empty(); }
 
     /**
      * @brief Get sample duration in seconds
      */
-    float sampleDuration() const;
+    [[nodiscard]] float sampleDuration() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -250,7 +251,7 @@ private:
     uint32_t m_sampleFrames = 0;
     uint32_t m_sampleRate = 48000;
     uint32_t m_channels = 2;
-    std::string m_pendingPath;
+    std::optional<std::string> m_pendingPath;  ///< Deferred load path (set before init)
 
     // Loop settings
     bool m_loopEnabled = false;

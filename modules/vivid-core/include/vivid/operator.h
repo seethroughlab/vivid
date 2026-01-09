@@ -15,6 +15,7 @@
 #include <vector>
 #include <memory>
 #include <optional>
+#include <functional>
 
 // Visualization drawing (ImGui-free)
 #include <vivid/viz_draw_list.h>
@@ -60,17 +61,18 @@ inline const char* outputKindName(OutputKind kind) {
  * @brief Parameter types for UI/serialization
  */
 enum class ParamType {
-    Float,    ///< Single float value
-    Int,      ///< Integer value
-    Bool,     ///< Boolean toggle
-    Vec2,     ///< 2D vector (x, y)
-    Vec3,     ///< 3D vector (x, y, z)
-    Vec4,     ///< 4D vector (x, y, z, w)
-    Color,    ///< RGBA color (0-1 range)
-    String,   ///< Text string
-    FilePath, ///< File path (texture, video, model, etc.)
-    Enum,     ///< Enumeration (dropdown selection)
-    ADSR      ///< ADSR envelope (attack, decay, sustain, release)
+    Float,      ///< Single float value
+    Int,        ///< Integer value
+    Bool,       ///< Boolean toggle
+    Vec2,       ///< 2D vector (x, y)
+    Vec3,       ///< 3D vector (x, y, z)
+    Vec4,       ///< 4D vector (x, y, z, w)
+    Color,      ///< RGBA color (0-1 range)
+    String,     ///< Text string
+    FilePath,   ///< File path (texture, video, model, etc.)
+    Enum,       ///< Enumeration (dropdown selection)
+    ADSR,       ///< ADSR envelope (attack, decay, sustain, release)
+    DeviceList  ///< Dynamic device list dropdown (audio devices, etc.)
 };
 
 // Forward declaration for binding tracking
@@ -95,6 +97,9 @@ struct ParamDecl {
 
     // For Enum parameters
     std::vector<std::string> enumLabels;  ///< Display labels for enum values
+
+    // For DeviceList parameters (dynamic list that can change at runtime)
+    std::function<std::vector<std::string>()> deviceListProvider;  ///< Callback to get current device list
 
     // For trackable value operator bindings
     Operator* boundOperator = nullptr;  ///< Source value operator if bound (for visualization)

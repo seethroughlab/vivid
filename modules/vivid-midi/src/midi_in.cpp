@@ -19,7 +19,7 @@ public:
     Impl() {
         try {
             m_midiIn = std::make_unique<RtMidiIn>();
-        } catch (RtMidiError& error) {
+        } catch (const RtMidiError& error) {
             std::cerr << "MidiIn: " << error.getMessage() << std::endl;
         }
     }
@@ -53,7 +53,7 @@ std::vector<std::string> MidiIn::listPorts() {
         for (unsigned int i = 0; i < count; ++i) {
             ports.push_back(midiIn.getPortName(i));
         }
-    } catch (RtMidiError& error) {
+    } catch (const RtMidiError& error) {
         std::cerr << "MidiIn::listPorts: " << error.getMessage() << std::endl;
     }
     return ports;
@@ -74,7 +74,7 @@ void MidiIn::openPort(unsigned int portIndex) {
             m_impl->m_midiIn->ignoreTypes(false, false, false);
             std::cout << "MidiIn: Opened port " << m_impl->m_portName << std::endl;
         }
-    } catch (RtMidiError& error) {
+    } catch (const RtMidiError& error) {
         std::cerr << "MidiIn::openPort: " << error.getMessage() << std::endl;
     }
 }
@@ -98,7 +98,7 @@ void MidiIn::openPortByName(const std::string& name) {
             }
         }
         std::cerr << "MidiIn: No port matching '" << name << "' found" << std::endl;
-    } catch (RtMidiError& error) {
+    } catch (const RtMidiError& error) {
         std::cerr << "MidiIn::openPortByName: " << error.getMessage() << std::endl;
     }
 }
@@ -114,19 +114,22 @@ bool MidiIn::isOpen() const {
     return m_impl->m_midiIn && m_impl->m_midiIn->isPortOpen();
 }
 
-std::string MidiIn::portName() const {
+const std::string& MidiIn::portName() const {
     return m_impl->m_portName;
 }
 
 bool MidiIn::noteOn(uint8_t noteNumber) const {
+    if (noteNumber >= 128) return false;
     return m_noteOnThisFrame[noteNumber];
 }
 
 bool MidiIn::ccReceived(uint8_t ccNumber) const {
+    if (ccNumber >= 128) return false;
     return m_ccReceivedThisFrame[ccNumber];
 }
 
 float MidiIn::cc(uint8_t ccNumber) const {
+    if (ccNumber >= 128) return 0.0f;
     return m_ccValues[ccNumber];
 }
 

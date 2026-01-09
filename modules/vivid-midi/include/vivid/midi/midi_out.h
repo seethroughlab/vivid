@@ -79,10 +79,10 @@ public:
     void closePort();
 
     /// @brief Check if a port is open
-    bool isOpen() const;
+    [[nodiscard]] bool isOpen() const;
 
     /// @brief Get the name of the open port
-    std::string portName() const;
+    [[nodiscard]] const std::string& portName() const;
 
     /// @}
     // -------------------------------------------------------------------------

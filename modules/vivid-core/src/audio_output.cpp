@@ -39,6 +39,12 @@ struct AudioOutput::Impl {
     // Pull-based audio generation
     AudioGraph* audioGraph = nullptr;
 
+    // Runtime device switching
+    std::atomic<bool> switchRequested{false};
+    std::string pendingDeviceName;
+    int32_t pendingDeviceIndex = -1;
+    std::mutex deviceMutex;
+
     // Ring buffer for legacy recording mode (deprecated)
     std::vector<float> ringBuffer;
     std::atomic<uint32_t> writePos{0};
@@ -181,6 +187,130 @@ void AudioOutput::setDevice(const std::string& name) {
 void AudioOutput::setDeviceIndex(uint32_t index) {
     m_deviceIndex = static_cast<int32_t>(index);
     m_deviceName.clear();  // Use index-based selection
+}
+
+bool AudioOutput::switchDevice(const std::string& name) {
+    if (!isInitialized()) return false;
+
+    std::lock_guard<std::mutex> lock(m_impl->deviceMutex);
+    m_impl->pendingDeviceName = name;
+    m_impl->pendingDeviceIndex = -1;  // Use name-based selection
+    m_impl->switchRequested.store(true, std::memory_order_release);
+    return true;
+}
+
+bool AudioOutput::switchDeviceIndex(int32_t index) {
+    if (!isInitialized()) return false;
+
+    std::lock_guard<std::mutex> lock(m_impl->deviceMutex);
+    m_impl->pendingDeviceIndex = index;
+    m_impl->pendingDeviceName.clear();  // Use index-based selection
+    m_impl->switchRequested.store(true, std::memory_order_release);
+    return true;
+}
+
+void AudioOutput::performDeviceSwitch() {
+    std::lock_guard<std::mutex> lock(m_impl->deviceMutex);
+
+    bool wasPlaying = m_impl->playing.load();
+
+    // 1. Stop current device
+    if (wasPlaying) {
+        ma_device_stop(&m_impl->device);
+        m_impl->playing = false;
+    }
+
+    // 2. Uninit current device
+    if (m_impl->deviceInitialized) {
+        ma_device_uninit(&m_impl->device);
+        m_impl->deviceInitialized = false;
+    }
+
+    // 3. Update selection from pending values
+    m_deviceName = m_impl->pendingDeviceName;
+    m_deviceIndex = m_impl->pendingDeviceIndex;
+
+    // 4. Reinit with new device
+    ma_device_config config = ma_device_config_init(ma_device_type_playback);
+    config.playback.format = ma_format_f32;
+    config.playback.channels = AUDIO_CHANNELS;
+    config.sampleRate = AUDIO_SAMPLE_RATE;
+    config.dataCallback = &Impl::dataCallback;
+    config.pUserData = m_impl.get();
+    config.periodSizeInFrames = m_bufferSize;
+
+    // Device selection
+    ma_device_id* selectedDeviceId = nullptr;
+    ma_device_id selectedDeviceIdCopy;
+
+    // Ensure context is initialized for device enumeration
+    if (!m_impl->contextInitialized) {
+        if (ma_context_init(nullptr, 0, nullptr, &m_impl->context) == MA_SUCCESS) {
+            m_impl->contextInitialized = true;
+        }
+    }
+
+    if (m_impl->contextInitialized && (m_deviceIndex >= 0 || !m_deviceName.empty())) {
+        ma_device_info* pPlaybackDevices;
+        ma_uint32 playbackDeviceCount;
+        ma_device_info* pCaptureDevices;
+        ma_uint32 captureDeviceCount;
+
+        if (ma_context_get_devices(&m_impl->context, &pPlaybackDevices, &playbackDeviceCount,
+                                    &pCaptureDevices, &captureDeviceCount) == MA_SUCCESS) {
+            // Find device by index
+            if (m_deviceIndex >= 0 && m_deviceIndex < static_cast<int32_t>(playbackDeviceCount)) {
+                selectedDeviceIdCopy = pPlaybackDevices[m_deviceIndex].id;
+                selectedDeviceId = &selectedDeviceIdCopy;
+                m_currentDeviceIndex = m_deviceIndex;
+                std::cout << "[AudioOutput] Switched to device: "
+                          << pPlaybackDevices[m_deviceIndex].name << std::endl;
+            }
+            // Find device by name (partial match)
+            else if (!m_deviceName.empty()) {
+                for (ma_uint32 i = 0; i < playbackDeviceCount; ++i) {
+                    std::string deviceName = pPlaybackDevices[i].name;
+                    if (deviceName.find(m_deviceName) != std::string::npos) {
+                        selectedDeviceIdCopy = pPlaybackDevices[i].id;
+                        selectedDeviceId = &selectedDeviceIdCopy;
+                        m_currentDeviceIndex = static_cast<int32_t>(i);
+                        std::cout << "[AudioOutput] Switched to device: "
+                                  << deviceName << std::endl;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    // If using default device, set currentDeviceIndex to -1
+    if (!selectedDeviceId) {
+        m_currentDeviceIndex = -1;
+        std::cout << "[AudioOutput] Switched to default device" << std::endl;
+    }
+
+    config.playback.pDeviceID = selectedDeviceId;
+
+    ma_context* pContext = m_impl->contextInitialized ? &m_impl->context : nullptr;
+    if (ma_device_init(pContext, &config, &m_impl->device) != MA_SUCCESS) {
+        std::cerr << "[AudioOutput] Failed to switch device, trying default\n";
+        // Try with default device
+        config.playback.pDeviceID = nullptr;
+        if (ma_device_init(nullptr, &config, &m_impl->device) != MA_SUCCESS) {
+            std::cerr << "[AudioOutput] Failed to initialize any audio device\n";
+            return;
+        }
+        m_currentDeviceIndex = -1;
+    }
+
+    m_impl->deviceInitialized = true;
+
+    // 5. Restart playback if was playing
+    if (wasPlaying || m_autoPlay) {
+        if (ma_device_start(&m_impl->device) == MA_SUCCESS) {
+            m_impl->playing = true;
+        }
+    }
 }
 
 void AudioOutput::setBufferSize(uint32_t frames) {
@@ -387,6 +517,11 @@ void AudioOutput::generateBlock(uint32_t frameCount) {
 void AudioOutput::process(Context& ctx) {
     if (!isInitialized()) return;
 
+    // Check for pending device switch
+    if (m_impl->switchRequested.exchange(false, std::memory_order_acq_rel)) {
+        performDeviceSwitch();
+    }
+
     // In live (non-recording) mode, audio is generated by the audio callback.
     // process() is a no-op for live playback.
 
@@ -475,6 +610,69 @@ void AudioOutput::setVolume(float v) {
     if (m_impl) {
         m_impl->volume = m_volume;
     }
+}
+
+std::vector<ParamDecl> AudioOutput::params() {
+    std::vector<ParamDecl> decls;
+
+    // Volume parameter
+    decls.push_back(m_volumeParam.decl());
+
+    // Device selection parameter
+    ParamDecl deviceDecl;
+    deviceDecl.name = "device";
+    deviceDecl.type = ParamType::DeviceList;
+    deviceDecl.minVal = 0;
+    deviceDecl.maxVal = 100;  // Will be overridden by device count
+    deviceDecl.defaultVal[0] = 0;
+    deviceDecl.deviceListProvider = []() {
+        auto devices = AudioOutput::enumerateDevices();
+        std::vector<std::string> names;
+        names.push_back("(Default)");
+        for (const auto& d : devices) {
+            names.push_back(d.name);
+        }
+        return names;
+    };
+    decls.push_back(deviceDecl);
+
+    return decls;
+}
+
+bool AudioOutput::getParam(const std::string& pname, float out[4]) {
+    if (pname == "volume") {
+        out[0] = m_volume;
+        return true;
+    }
+    if (pname == "device") {
+        // Return current device index + 1 (0 = default, 1+ = devices)
+        out[0] = static_cast<float>(m_currentDeviceIndex + 1);
+        return true;
+    }
+    return false;
+}
+
+bool AudioOutput::setParam(const std::string& pname, const float value[4]) {
+    if (pname == "volume") {
+        setVolume(value[0]);
+        return true;
+    }
+    if (pname == "device") {
+        int newIndex = static_cast<int>(value[0]);
+        int currentIndex = m_currentDeviceIndex + 1;  // 0 = default, 1+ = devices
+
+        if (newIndex != currentIndex) {
+            if (newIndex == 0) {
+                // Switch to default device
+                switchDeviceIndex(-1);
+            } else {
+                // Switch to specific device (offset by 1 for "(Default)")
+                switchDeviceIndex(newIndex - 1);
+            }
+        }
+        return true;
+    }
+    return false;
 }
 
 } // namespace vivid

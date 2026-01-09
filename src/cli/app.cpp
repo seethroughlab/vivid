@@ -1347,15 +1347,18 @@ int Application::init(const AppConfig& config) {
             for (const auto& decl : op->params()) {
                 if (decl.name == paramName) {
                     switch (decl.type) {
-                        case ParamType::Float:    change.paramType = "Float"; break;
-                        case ParamType::Int:      change.paramType = "Int"; break;
-                        case ParamType::Bool:     change.paramType = "Bool"; break;
-                        case ParamType::Vec2:     change.paramType = "Vec2"; break;
-                        case ParamType::Vec3:     change.paramType = "Vec3"; break;
-                        case ParamType::Vec4:     change.paramType = "Vec4"; break;
-                        case ParamType::Color:    change.paramType = "Color"; break;
-                        case ParamType::String:   change.paramType = "String"; break;
-                        case ParamType::FilePath: change.paramType = "FilePath"; break;
+                        case ParamType::Float:      change.paramType = "Float"; break;
+                        case ParamType::Int:        change.paramType = "Int"; break;
+                        case ParamType::Bool:       change.paramType = "Bool"; break;
+                        case ParamType::Vec2:       change.paramType = "Vec2"; break;
+                        case ParamType::Vec3:       change.paramType = "Vec3"; break;
+                        case ParamType::Vec4:       change.paramType = "Vec4"; break;
+                        case ParamType::Color:      change.paramType = "Color"; break;
+                        case ParamType::String:     change.paramType = "String"; break;
+                        case ParamType::FilePath:   change.paramType = "FilePath"; break;
+                        case ParamType::Enum:       change.paramType = "Enum"; break;
+                        case ParamType::ADSR:       change.paramType = "ADSR"; break;
+                        case ParamType::DeviceList: change.paramType = "DeviceList"; break;
                     }
                     break;
                 }
@@ -1395,15 +1398,18 @@ int Application::init(const AppConfig& config) {
                 for (const auto& decl : op->params()) {
                     if (decl.name == paramName) {
                         switch (decl.type) {
-                            case ParamType::Float:    change.paramType = "Float"; break;
-                            case ParamType::Int:      change.paramType = "Int"; break;
-                            case ParamType::Bool:     change.paramType = "Bool"; break;
-                            case ParamType::Vec2:     change.paramType = "Vec2"; break;
-                            case ParamType::Vec3:     change.paramType = "Vec3"; break;
-                            case ParamType::Vec4:     change.paramType = "Vec4"; break;
-                            case ParamType::Color:    change.paramType = "Color"; break;
-                            case ParamType::String:   change.paramType = "String"; break;
-                            case ParamType::FilePath: change.paramType = "FilePath"; break;
+                            case ParamType::Float:      change.paramType = "Float"; break;
+                            case ParamType::Int:        change.paramType = "Int"; break;
+                            case ParamType::Bool:       change.paramType = "Bool"; break;
+                            case ParamType::Vec2:       change.paramType = "Vec2"; break;
+                            case ParamType::Vec3:       change.paramType = "Vec3"; break;
+                            case ParamType::Vec4:       change.paramType = "Vec4"; break;
+                            case ParamType::Color:      change.paramType = "Color"; break;
+                            case ParamType::String:     change.paramType = "String"; break;
+                            case ParamType::FilePath:   change.paramType = "FilePath"; break;
+                            case ParamType::Enum:       change.paramType = "Enum"; break;
+                            case ParamType::ADSR:       change.paramType = "ADSR"; break;
+                            case ParamType::DeviceList: change.paramType = "DeviceList"; break;
                         }
                         break;
                     }

@@ -31,9 +31,9 @@ void Sampler::init(Context& ctx) {
     m_initialized = true;
 
     // Load pending sample if set before init
-    if (!m_pendingPath.empty()) {
-        loadSample(m_pendingPath);
-        m_pendingPath.clear();
+    if (m_pendingPath) {
+        (void)loadSample(*m_pendingPath);  // Ignore result - error logged internally
+        m_pendingPath.reset();
     }
 }
 

@@ -95,10 +95,10 @@ public:
     void blackout();
 
     /// Get current value of a channel
-    uint8_t getChannel(int ch) const;
+    [[nodiscard]] uint8_t getChannel(int ch) const;
 
     /// Get the entire DMX buffer (512 channels)
-    const std::array<uint8_t, 512>& dmxBuffer() const { return m_dmxBuffer; }
+    [[nodiscard]] const std::array<uint8_t, 512>& dmxBuffer() const { return m_dmxBuffer; }
 
 private:
     void sendEnttecFrame();

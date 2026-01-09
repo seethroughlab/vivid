@@ -406,11 +406,11 @@ private:
 
     // Amplitude envelope
     void advanceEnvelope(Voice& voice, uint32_t samples);
-    float computeEnvelope(Voice& voice) const;
+    float computeEnvelope(const Voice& voice) const;
 
     // Filter envelope
     void advanceFilterEnvelope(Voice& voice, uint32_t samples);
-    float computeFilterEnvelope(Voice& voice) const;
+    float computeFilterEnvelope(const Voice& voice) const;
 
     // Per-voice filter
     float applyFilter(Voice& voice, float input, float cutoffHz, float resonance);

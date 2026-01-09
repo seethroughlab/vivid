@@ -92,22 +92,22 @@ public:
     /// @brief Load a Standard MIDI File
     /// @param path Path to .mid file
     /// @return true if loaded successfully
-    bool load(const std::string& path);
+    [[nodiscard]] bool load(const std::string& path);
 
     /// @brief Unload the current file
     void unload();
 
     /// @brief Check if a file is loaded
-    bool isLoaded() const;
+    [[nodiscard]] bool isLoaded() const;
 
     /// @brief Get the number of tracks in the file
-    int trackCount() const;
+    [[nodiscard]] int trackCount() const;
 
     /// @brief Get ticks per quarter note (PPQ) from file header
-    int ticksPerBeat() const;
+    [[nodiscard]] int ticksPerBeat() const;
 
     /// @brief Get total duration in seconds (at current tempo)
-    double durationSeconds() const;
+    [[nodiscard]] double durationSeconds() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -122,7 +122,7 @@ public:
     void useFileTempo();
 
     /// @brief Get current playback tempo in BPM
-    double tempo() const;
+    [[nodiscard]] double tempo() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -142,10 +142,10 @@ public:
     void seek(double seconds);
 
     /// @brief Check if currently playing
-    bool isPlaying() const;
+    [[nodiscard]] bool isPlaying() const;
 
     /// @brief Get current playback position in seconds
-    double position() const;
+    [[nodiscard]] double position() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -153,16 +153,16 @@ public:
     /// @{
 
     /// @brief Get MIDI events that occurred this frame
-    const std::vector<MidiEvent>& events() const { return m_frameEvents; }
+    [[nodiscard]] const std::vector<MidiEvent>& events() const { return m_frameEvents; }
 
     /// @brief Check if any note-on occurred this frame
-    bool noteOn() const { return m_hasNoteOn; }
+    [[nodiscard]] bool noteOn() const { return m_hasNoteOn; }
 
     /// @brief Get most recent note number (if noteOn() is true)
-    uint8_t note() const { return m_lastNote; }
+    [[nodiscard]] uint8_t note() const { return m_lastNote; }
 
     /// @brief Get most recent velocity (0.0-1.0)
-    float velocity() const { return m_lastVelocity; }
+    [[nodiscard]] float velocity() const { return m_lastVelocity; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -198,7 +198,9 @@ private:
     uint8_t m_lastNote = 60;
     float m_lastVelocity = 0.0f;
 
-    // Clock sync
+    // Clock sync (non-owning observer, lifetime managed by Chain).
+    // Cross-thread access: MidiFilePlayer runs on render thread, Clock on audio thread.
+    // Reading Clock::bpm is thread-safe because Param<float> uses atomics internally.
     vivid::audio::Clock* m_clock = nullptr;
 
     void clearFrameState();

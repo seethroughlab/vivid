@@ -97,6 +97,28 @@ public:
     void setDeviceIndex(uint32_t index);
 
     /**
+     * @brief Switch to a different audio device at runtime
+     * @param name Device name (partial match supported)
+     * @return true if switch initiated, false if failed
+     *
+     * Thread-safe. The actual switch happens on the next process() call.
+     */
+    bool switchDevice(const std::string& name);
+
+    /**
+     * @brief Switch to a different audio device by index at runtime
+     * @param index Device index from enumerateDevices(), or -1 for default
+     * @return true if switch initiated, false if failed
+     */
+    bool switchDeviceIndex(int32_t index);
+
+    /**
+     * @brief Get current device index
+     * @return Current device index, or -1 if using default
+     */
+    int32_t currentDeviceIndex() const { return m_currentDeviceIndex; }
+
+    /**
      * @brief Set buffer size for latency control
      * @param frames Buffer size in frames (64-2048, default 256)
      *
@@ -133,19 +155,9 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
 
-    std::vector<ParamDecl> params() override {
-        return { m_volumeParam.decl() };
-    }
-
-    bool getParam(const std::string& pname, float out[4]) override {
-        if (pname == "volume") { out[0] = m_volume; return true; }
-        return false;
-    }
-
-    bool setParam(const std::string& pname, const float value[4]) override {
-        if (pname == "volume") { setVolume(value[0]); return true; }
-        return false;
-    }
+    std::vector<ParamDecl> params() override;
+    bool getParam(const std::string& pname, float out[4]) override;
+    bool setParam(const std::string& pname, const float value[4]) override;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -254,6 +266,10 @@ private:
     std::string m_deviceName;           // Device name (empty = default)
     int32_t m_deviceIndex = -1;         // Device index (-1 = use name or default)
     uint32_t m_bufferSize = 256;        // Buffer size in frames
+    int32_t m_currentDeviceIndex = -1;  // Current device index (for param system)
+
+    // Runtime device switching
+    void performDeviceSwitch();
 
     // Parameter declarations for UI
     Param<float> m_volumeParam{"volume", 1.0f, 0.0f, 2.0f};

@@ -1255,28 +1255,39 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
         return;
     }
 
-    // Get selected node
+    // Determine which operator to inspect based on selected node
     int selectedNodeId = m_nodeGraph.getSelectedNode();
-    if (selectedNodeId < 0 || selectedNodeId == SCREEN_NODE_ID || selectedNodeId == SPEAKERS_NODE_ID) {
-        m_inspectorScrollOffset = 0.0f;  // Reset scroll when no selection
+    vivid::Operator* op = nullptr;
+    std::string title;
+
+    if (selectedNodeId == SPEAKERS_NODE_ID) {
+        op = ctx.hasChain() ? ctx.chain().getAudioOutput() : nullptr;
+        title = "Speakers";
+    } else if (selectedNodeId == SCREEN_NODE_ID) {
+        // Screen node has no inspector (yet - could add display settings)
+        m_inspectorScrollOffset = 0.0f;
         m_inspectorBounds.valid = false;
-        return;  // No valid selection
+        return;
+    } else if (selectedNodeId >= 0) {
+        const auto& operators = ctx.registeredOperators();
+        if (static_cast<size_t>(selectedNodeId) < operators.size()) {
+            op = operators[selectedNodeId].op;
+            title = operators[selectedNodeId].name;
+        }
     }
 
-    const auto& operators = ctx.registeredOperators();
-    if (static_cast<size_t>(selectedNodeId) >= operators.size()) {
+    if (!op) {
+        m_inspectorScrollOffset = 0.0f;
         m_inspectorBounds.valid = false;
         return;
     }
 
-    const vivid::OperatorInfo& info = operators[selectedNodeId];
-    if (!info.op) {
-        m_inspectorBounds.valid = false;
-        return;
-    }
+    renderOperatorInspector(input, op, title);
+}
 
+void ChainVisualizer::renderOperatorInspector(const FrameInput& input, vivid::Operator* op, const std::string& title) {
     // Get parameters
-    auto params = info.op->params();
+    auto params = op->params();
     if (params.empty()) {
         m_inspectorBounds.valid = false;
         return;
@@ -1335,6 +1346,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
             case ParamType::Vec4:
             case ParamType::Color: totalRowsHeight += rowHeight * 4; break;
             case ParamType::Enum: totalRowsHeight += rowHeight; break;  // Dropdown is single row
+            case ParamType::DeviceList: totalRowsHeight += rowHeight; break;  // Dynamic dropdown is single row
             case ParamType::ADSR: totalRowsHeight += rowHeight * 4; break;  // Graph + 4 mini-sliders
             default: totalRowsHeight += rowHeight; break;
         }
@@ -1391,8 +1403,8 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
     // Header (use fillRoundedRectTop so top corners match the panel's rounded corners)
     m_overlay.fillRoundedRectTop(panelX, panelY, inspectorWidth, headerHeight, cornerRadius, headerBg);
-    std::string title = info.op->name() + " (" + info.name + ")";
-    m_overlay.text(title, panelX + padding, panelY + padding + ascent, titleColor, labelFont);
+    std::string headerTitle = op->name() + " (" + title + ")";
+    m_overlay.text(headerTitle, panelX + padding, panelY + padding + ascent, titleColor, labelFont);
 
     // Switch to main Panels layer for content (this layer will be clipped)
     m_overlay.setLayer(UILayer::Panels);
@@ -1423,7 +1435,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
     for (const auto& p : params) {
         float value[4] = {0};
-        info.op->getParam(p.name, value);
+        op->getParam(p.name, value);
 
         int componentCount = 1;
         const char* componentLabels[] = {"", "", "", ""};
@@ -1448,6 +1460,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 componentLabels[2] = "B"; componentLabels[3] = "A";
                 break;
             case ParamType::Enum:
+            case ParamType::DeviceList:
                 // Handled separately below
                 break;
             default:
@@ -1463,7 +1476,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
             if (isVisible && !p.enumLabels.empty()) {
                 // Position Gui cursor
                 gui.setCursorY(y);
-                gui.pushId(info.name.c_str());
+                gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
                 // Get current index and track previous for callback
@@ -1474,12 +1487,58 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 if (gui.dropdown(p.name.c_str(), &currentIndex, p.enumLabels)) {
                     // Selection changed - update operator
                     float newValue[4] = {static_cast<float>(currentIndex), 0, 0, 0};
-                    info.op->setParam(p.name, newValue);
+                    op->setParam(p.name, newValue);
 
                     // Fire change callback
                     if (m_paramChangeCallback) {
                         float oldValue[4] = {static_cast<float>(prevIndex), 0, 0, 0};
-                        m_paramChangeCallback(info.name, p.name, oldValue, newValue, info.op->sourceLine);
+                        m_paramChangeCallback(title, p.name, oldValue, newValue, op->sourceLine);
+                    }
+                }
+
+                gui.popId();
+                gui.popId();
+            }
+
+            contentY += rowHeight;
+            continue;  // Skip the slider rendering loop
+        }
+
+        // Handle DeviceList type with dynamic dropdown - use Gui dropdown
+        if (p.type == ParamType::DeviceList) {
+            float y = contentY;
+            float itemBottom = y + rowHeight;
+            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+
+            if (isVisible && p.deviceListProvider) {
+                // Position Gui cursor
+                gui.setCursorY(y);
+                gui.pushId(title.c_str());
+                gui.pushId(p.name.c_str());
+
+                // Get dynamic device list
+                std::vector<std::string> deviceList = p.deviceListProvider();
+
+                // Get current index and track previous for callback
+                int currentIndex = static_cast<int>(value[0]);
+                int prevIndex = currentIndex;
+
+                // Clamp to valid range
+                if (currentIndex < 0) currentIndex = 0;
+                if (currentIndex >= static_cast<int>(deviceList.size())) {
+                    currentIndex = 0;
+                }
+
+                // Use Gui dropdown
+                if (gui.dropdown(p.name.c_str(), &currentIndex, deviceList)) {
+                    // Selection changed - update operator
+                    float newValue[4] = {static_cast<float>(currentIndex), 0, 0, 0};
+                    op->setParam(p.name, newValue);
+
+                    // Fire change callback
+                    if (m_paramChangeCallback) {
+                        float oldValue[4] = {static_cast<float>(prevIndex), 0, 0, 0};
+                        m_paramChangeCallback(title, p.name, oldValue, newValue, op->sourceLine);
                     }
                 }
 
@@ -1500,12 +1559,12 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
             if (isVisible) {
                 // Position Gui cursor
                 gui.setCursorY(y);
-                gui.pushId(info.name.c_str());
+                gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
                 // Check if THIS color picker is expanded
                 bool isExpanded = m_colorPicker.expanded &&
-                                 m_colorPicker.operatorName == info.name &&
+                                 m_colorPicker.operatorName == title &&
                                  m_colorPicker.paramName == p.name;
                 bool wasExpanded = isExpanded;
 
@@ -1519,7 +1578,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 if (isExpanded != wasExpanded) {
                     if (isExpanded) {
                         m_colorPicker.expanded = true;
-                        m_colorPicker.operatorName = info.name;
+                        m_colorPicker.operatorName = title;
                         m_colorPicker.paramName = p.name;
                         for (int i = 0; i < 4; ++i) {
                             m_colorPicker.originalColor[i] = value[i];
@@ -1531,9 +1590,9 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
                 // On drag start: capture context for callback
                 if (result.dragStarted) {
-                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.operatorName = title;
                     m_activeDrag.paramName = p.name;
-                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.sourceLine = op->sourceLine;
                     m_activeDrag.originalValue[0] = result.startColor.r;
                     m_activeDrag.originalValue[1] = result.startColor.g;
                     m_activeDrag.originalValue[2] = result.startColor.b;
@@ -1544,12 +1603,12 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 // On value change: update operator
                 if (result.changed) {
                     float newValues[4] = {color.r, color.g, color.b, color.a};
-                    info.op->setParam(p.name, newValues);
+                    op->setParam(p.name, newValues);
                 }
 
                 // On drag end: fire callback
                 if (result.dragEnded && m_activeDrag.active &&
-                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.operatorName == title &&
                     m_activeDrag.paramName == p.name) {
                     float newValues[4] = {color.r, color.g, color.b, color.a};
                     if (m_paramChangeCallback) {
@@ -1567,7 +1626,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
             // Advance content by appropriate height
             float swatchHeight = sliderHeight + lineH + 8.0f * scale;
             bool isExpanded = m_colorPicker.expanded &&
-                             m_colorPicker.operatorName == info.name &&
+                             m_colorPicker.operatorName == title &&
                              m_colorPicker.paramName == p.name;
             contentY += swatchHeight;
             if (isExpanded) {
@@ -1587,7 +1646,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
             if (isVisible) {
                 // Position Gui cursor
                 gui.setCursorY(y);
-                gui.pushId(info.name.c_str());
+                gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
                 // Get ADSR values: value[0]=attack, value[1]=decay, value[2]=sustain, value[3]=release
@@ -1601,9 +1660,9 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
                 // On drag start: capture context for callback
                 if (result.dragStarted) {
-                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.operatorName = title;
                     m_activeDrag.paramName = p.name;
-                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.sourceLine = op->sourceLine;
                     m_activeDrag.originalValue[0] = result.startA;
                     m_activeDrag.originalValue[1] = result.startD;
                     m_activeDrag.originalValue[2] = result.startS;
@@ -1614,12 +1673,12 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 // On value change: update operator
                 if (result.changed) {
                     float newValues[4] = {attack, decay, sustain, release};
-                    info.op->setParam(p.name, newValues);
+                    op->setParam(p.name, newValues);
                 }
 
                 // On drag end: fire callback
                 if (result.dragEnded && m_activeDrag.active &&
-                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.operatorName == title &&
                     m_activeDrag.paramName == p.name) {
                     float newValues[4] = {attack, decay, sustain, release};
                     if (m_paramChangeCallback) {
@@ -1647,7 +1706,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
             if (isVisible) {
                 // Position Gui cursor and use pushId for scoping
                 gui.setCursorY(y);
-                gui.pushId(info.name.c_str());
+                gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
                 // Use sliderEx to get drag state
@@ -1655,9 +1714,9 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
                 // On drag start: capture context for callback
                 if (result.dragStarted) {
-                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.operatorName = title;
                     m_activeDrag.paramName = p.name;
-                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.sourceLine = op->sourceLine;
                     for (int i = 0; i < 4; ++i) {
                         m_activeDrag.originalValue[i] = value[i];
                     }
@@ -1667,12 +1726,12 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                 // On value change: update operator
                 if (result.changed) {
                     float newValues[4] = {value[0], 0, 0, 0};
-                    info.op->setParam(p.name, newValues);
+                    op->setParam(p.name, newValues);
                 }
 
                 // On drag end: fire callback
                 if (result.dragEnded && m_activeDrag.active &&
-                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.operatorName == title &&
                     m_activeDrag.paramName == p.name) {
                     float newValues[4] = {value[0], 0, 0, 0};
                     if (m_paramChangeCallback) {
@@ -1700,7 +1759,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
             if (isVisible) {
                 gui.setCursorY(y);
-                gui.pushId(info.name.c_str());
+                gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
                 glm::vec2 vec2Value = {value[0], value[1]};
@@ -1708,9 +1767,9 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                                           p.minVal, p.maxVal, p.minVal, p.maxVal, 0);
 
                 if (result.dragStarted) {
-                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.operatorName = title;
                     m_activeDrag.paramName = p.name;
-                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.sourceLine = op->sourceLine;
                     m_activeDrag.originalValue[0] = result.startValue.x;
                     m_activeDrag.originalValue[1] = result.startValue.y;
                     m_activeDrag.originalValue[2] = 0;
@@ -1720,11 +1779,11 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
                 if (result.changed) {
                     float newValues[4] = {vec2Value.x, vec2Value.y, 0, 0};
-                    info.op->setParam(p.name, newValues);
+                    op->setParam(p.name, newValues);
                 }
 
                 if (result.dragEnded && m_activeDrag.active &&
-                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.operatorName == title &&
                     m_activeDrag.paramName == p.name) {
                     float newValues[4] = {vec2Value.x, vec2Value.y, 0, 0};
                     if (m_paramChangeCallback) {
@@ -1752,16 +1811,16 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
             if (isVisible) {
                 gui.setCursorY(y);
-                gui.pushId(info.name.c_str());
+                gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
                 glm::vec3 vec3Value = {value[0], value[1], value[2]};
                 auto result = gui.vec3Row(p.name.c_str(), &vec3Value, p.minVal, p.maxVal);
 
                 if (result.dragStarted) {
-                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.operatorName = title;
                     m_activeDrag.paramName = p.name;
-                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.sourceLine = op->sourceLine;
                     m_activeDrag.originalValue[0] = result.startValue.x;
                     m_activeDrag.originalValue[1] = result.startValue.y;
                     m_activeDrag.originalValue[2] = result.startValue.z;
@@ -1771,11 +1830,11 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
                 if (result.changed) {
                     float newValues[4] = {vec3Value.x, vec3Value.y, vec3Value.z, 0};
-                    info.op->setParam(p.name, newValues);
+                    op->setParam(p.name, newValues);
                 }
 
                 if (result.dragEnded && m_activeDrag.active &&
-                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.operatorName == title &&
                     m_activeDrag.paramName == p.name) {
                     float newValues[4] = {vec3Value.x, vec3Value.y, vec3Value.z, 0};
                     if (m_paramChangeCallback) {
@@ -1795,7 +1854,7 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
         }
 
         // Multi-component params (Vec4 only now) - use Gui sliders with shared drag context
-        gui.pushId(info.name.c_str());
+        gui.pushId(title.c_str());
         gui.pushId(p.name.c_str());
 
         for (int c = 0; c < componentCount; ++c) {
@@ -1816,9 +1875,9 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
 
                 // On drag start: capture context for callback (store ALL component values)
                 if (result.dragStarted) {
-                    m_activeDrag.operatorName = info.name;
+                    m_activeDrag.operatorName = title;
                     m_activeDrag.paramName = p.name;
-                    m_activeDrag.sourceLine = info.op->sourceLine;
+                    m_activeDrag.sourceLine = op->sourceLine;
                     for (int i = 0; i < 4; ++i) {
                         m_activeDrag.originalValue[i] = value[i];
                     }
@@ -1830,12 +1889,12 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
                     float newValues[4];
                     for (int i = 0; i < 4; ++i) newValues[i] = value[i];
                     newValues[c] = value[c];  // This is already updated by sliderEx
-                    info.op->setParam(p.name, newValues);
+                    op->setParam(p.name, newValues);
                 }
 
                 // On drag end: fire callback with original and new values
                 if (result.dragEnded && m_activeDrag.active &&
-                    m_activeDrag.operatorName == info.name &&
+                    m_activeDrag.operatorName == title &&
                     m_activeDrag.paramName == p.name) {
                     float newValues[4];
                     for (int i = 0; i < 4; ++i) newValues[i] = value[i];

@@ -33,9 +33,9 @@ void Granular::init(Context& ctx) {
     allocateOutput();
 
     // Load pending sample if set
-    if (!m_pendingPath.empty()) {
-        loadWAV(m_pendingPath);
-        m_pendingPath.clear();
+    if (m_pendingPath) {
+        loadWAV(*m_pendingPath);
+        m_pendingPath.reset();
     }
 
     // Reset grain timer

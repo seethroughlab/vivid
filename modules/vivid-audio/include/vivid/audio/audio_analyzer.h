@@ -104,7 +104,7 @@ protected:
      */
     const AudioBuffer* getInputBuffer() const;
 
-    // Input connection
+    // Input connection (non-owning observer, lifetime managed by Chain)
     std::string m_inputName;
     AudioOperator* m_connectedInput = nullptr;
 };

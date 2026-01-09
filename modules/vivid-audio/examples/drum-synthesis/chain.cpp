@@ -311,14 +311,8 @@ void update(Context& ctx) {
     auto& hihat_seq = chain.get<Sequencer>("hihat_seq");
     auto& clap_seq = chain.get<Sequencer>("clap_seq");
 
-    // Mouse controls
-    float mouseX = ctx.mouseNorm().x;  // 0-1
+    // Mouse Y controls swing
     float mouseY = ctx.mouseNorm().y;  // 0-1
-
-    // X: BPM (80-160)
-    clock.bpm = 80.0f + mouseX * 80.0f;
-
-    // Y: Swing (0-0.5)
     clock.swing = mouseY * 0.5f;
 
     // Process clock and advance sequencers

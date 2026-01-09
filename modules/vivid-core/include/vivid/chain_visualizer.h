@@ -133,6 +133,7 @@ private:
     void renderTooltip(const FrameInput& input, const OperatorInfo& info);
     void renderDebugPanelOverlay(const FrameInput& input, Context& ctx);
     void renderInspectorPanel(const FrameInput& input, Context& ctx);
+    void renderOperatorInspector(const FrameInput& input, Operator* op, const std::string& title);
 
     // Node graph system
     OverlayCanvas m_overlay;

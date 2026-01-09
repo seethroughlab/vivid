@@ -98,30 +98,30 @@ public:
      * @brief Get magnitude spectrum
      * @return Pointer to magnitude values (binCount() elements, 0-1 normalized)
      */
-    const float* spectrum() const { return m_spectrum.data(); }
+    [[nodiscard]] const float* spectrum() const { return m_spectrum.data(); }
 
     /**
      * @brief Get number of frequency bins
      * @return Number of bins (fftSize / 2)
      */
-    int binCount() const { return m_fftSize / 2; }
+    [[nodiscard]] int binCount() const { return m_fftSize / 2; }
 
     /**
      * @brief Get FFT size
      */
-    int fftSize() const { return m_fftSize; }
+    [[nodiscard]] int fftSize() const { return m_fftSize; }
 
     /**
      * @brief Get magnitude of a specific bin
      * @param index Bin index (0 to binCount()-1)
      */
-    float bin(int index) const;
+    [[nodiscard]] float bin(int index) const;
 
     /**
      * @brief Get frequency of a bin in Hz
      * @param index Bin index
      */
-    float binFrequency(int index) const;
+    [[nodiscard]] float binFrequency(int index) const;
 
     /**
      * @brief Get average magnitude in a frequency range
@@ -129,14 +129,14 @@ public:
      * @param highHz High frequency in Hz
      * @return Average magnitude in range (0-1)
      */
-    float band(float lowHz, float highHz) const;
+    [[nodiscard]] float band(float lowHz, float highHz) const;
 
     /**
      * @brief Get bin index for a frequency
      * @param hz Frequency in Hz
      * @return Nearest bin index
      */
-    int frequencyToBin(float hz) const;
+    [[nodiscard]] int frequencyToBin(float hz) const;
 
     /// @}
     // -------------------------------------------------------------------------
