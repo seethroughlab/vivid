@@ -71,11 +71,11 @@ void update(Context& ctx) {
 
     // Mouse interaction:
     // X controls displacement strength (0.02 to 0.15)
-    float strength = 0.02f + (ctx.mouseNorm().x * 0.5f + 0.5f) * 0.13f;
+    float strength = 0.02f + ctx.mouseNorm().x * 0.13f;
     displace.strength = strength;
 
     // Y controls color saturation
-    float saturation = 0.3f + (ctx.mouseNorm().y * 0.5f + 0.5f) * 0.7f;
+    float saturation = 0.3f + ctx.mouseNorm().y * 0.7f;
     ramp.saturation = saturation;
 
     // Slowly rotate hue offset

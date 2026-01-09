@@ -126,11 +126,11 @@ void update(Context& ctx) {
 
     // ----- MOUSE CONTROLS -----
     // Mouse X: Delay mix
-    float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;
+    float mouseX = ctx.mouseNorm().x;
     delay.mix = mouseX * 0.8f;
 
     // Mouse Y: Bloom intensity
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;
+    float mouseY = ctx.mouseNorm().y;
     bloom.intensity = 0.5f + mouseY * 1.5f;
 
     // ----- AUDIO-REACTIVE VISUALS -----

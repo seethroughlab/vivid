@@ -1,12 +1,24 @@
 # Compositing
 
-Demonstrates texture layering with blend modes and value operations.
+Demonstrates texture layering with blend modes and trackable value operator bindings.
 
 ## Operators Used
 
 - **Composite** - Blend multiple textures with various modes
+- **LFO** - Low frequency oscillator for modulation
 - **Math** - Mathematical operations on values
 - **Logic** - Comparison and boolean operations
+
+## Value Binding Chain
+
+This example demonstrates trackable value operator bindings that appear as
+**dashed orange lines** in the chain visualizer:
+
+```
+LFO → Math.inputA → Logic.inputA → Composite.opacity
+```
+
+The bindings are set up in `setup()` and values flow automatically each frame.
 
 ## Key Concepts
 
@@ -126,14 +138,42 @@ comp.mode = BlendMode::Overlay;
 comp.opacity = 0.3f;
 ```
 
-### Conditional Blend
+### Conditional Blend (Non-Trackable)
 ```cpp
-// Use Logic to control opacity based on LFO
+// Manual assignment - works but not visible in chain visualizer
 logic.operation(LogicOperation::GreaterThan);
-logic.inputA = lfo.outputValue();
+logic.inputA = lfo.outputValue();  // Direct assignment
 logic.inputB = 0.0f;
 
-comp.opacity = logic.result() ? 1.0f : 0.3f;
+comp.opacity = logic.result() ? 1.0f : 0.3f;  // Manual conditional
+```
+
+### Trackable Value Bindings (Recommended)
+```cpp
+// Trackable bindings - appear as dashed orange lines in chain visualizer
+// LFO → Math → Logic → Composite.opacity
+
+// LFO outputs -1 to 1
+auto& lfo = chain.add<LFO>("lfo");
+lfo.frequency = 0.5f;
+lfo.waveform = LFOWaveform::Sine;
+
+// Math remaps LFO output; bind LFO → Math.inputA
+auto& math = chain.add<Math>("remap");
+math.operation(MathOperation::Remap);
+math.inMin = -1.0f; math.inMax = 1.0f;
+math.outMin = 0.0f; math.outMax = 1.0f;
+math.inputA.bindDirect(lfo);  // TRACKABLE: LFO → Math
+
+// Logic compares; bind Math → Logic.inputA
+auto& logic = chain.add<Logic>("compare");
+logic.operation(LogicOperation::GreaterThan);
+logic.inputB = 0.5f;
+logic.inputA.bindDirect(math);  // TRACKABLE: Math → Logic
+
+// Composite opacity; bind Logic → opacity with range mapping
+// Logic outputs 0 or 1; map to opacity 0.3 or 1.0
+comp.opacity.bind(logic, 0.0f, 1.0f, 0.3f, 1.0f);  // TRACKABLE: Logic → Composite
 ```
 
 ## Controls

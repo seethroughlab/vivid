@@ -229,13 +229,13 @@ void update(Context& ctx) {
 
     glm::vec2 mouse = ctx.mouseNorm();
 
-    float turb = 0.05f + (mouse.x * 0.5f + 0.5f) * 0.35f;
+    float turb = 0.05f + mouse.x * 0.35f;
     flow1.turbulence = turb;
     flow2.turbulence = turb * 1.2f;
     flow3.turbulence = turb * 1.5f;
     plexus.turbulence = turb * 0.3f;
 
-    float decay = 0.9f + (mouse.y * 0.5f + 0.5f) * 0.09f;
+    float decay = 0.9f + mouse.y * 0.09f;
     feedback.decay = decay;
 
     // =========================================================================

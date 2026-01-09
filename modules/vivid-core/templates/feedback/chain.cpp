@@ -47,8 +47,8 @@ void update(Context& ctx) {
     // Animate noise
     chain.get<Noise>("noise").offset.set(time * 0.5f, time * 0.3f, 0.0f);
 
-    // Mouse controls feedback rotation
-    float rotation = ctx.mouseNorm().x * 0.02f;
+    // Mouse controls feedback rotation - mouseNorm() returns 0-1, map to -0.02..0.02
+    float rotation = (ctx.mouseNorm().x - 0.5f) * 0.04f;
     chain.get<Feedback>("feedback").rotate = rotation;
 
     // Animate ramp hue

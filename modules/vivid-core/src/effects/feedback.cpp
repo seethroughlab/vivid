@@ -136,8 +136,29 @@ void Feedback::process(Context& ctx) {
         init(ctx);
     }
 
-    // Match input resolution
+    // Match input resolution - recreate buffer if size changed
+    int oldWidth = m_width;
+    int oldHeight = m_height;
     matchInputResolution(0);
+
+    // Recreate textures if resolution changed
+    if (m_width != oldWidth || m_height != oldHeight) {
+        // Release old buffer
+        if (m_bufferView) {
+            wgpuTextureViewRelease(m_bufferView);
+            m_bufferView = nullptr;
+        }
+        if (m_buffer) {
+            wgpuTextureRelease(m_buffer);
+            m_buffer = nullptr;
+        }
+        // Release and recreate output texture
+        releaseOutput();
+        createOutput(ctx);
+        // Recreate buffer at new size
+        createBufferTexture(ctx);
+        m_firstFrame = true;  // Reset to avoid stale buffer content
+    }
 
     // Feedback is stateful - always cooks
 

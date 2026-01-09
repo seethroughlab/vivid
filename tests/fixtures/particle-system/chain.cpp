@@ -63,7 +63,7 @@ void update(Context& ctx) {
     points.setPulseSpeed(2.0f);
 
     // Mouse controls
-    float speed = 0.1f + (ctx.mouseNorm().x * 0.5f + 0.5f) * 0.4f;
+    float speed = 0.1f + ctx.mouseNorm().x * 0.4f;
     points.setAnimateSpeed(speed);
 }
 

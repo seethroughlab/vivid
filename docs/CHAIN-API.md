@@ -39,7 +39,8 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
 
     // Dynamic parameter updates each frame
-    chain.get<Feedback>("fb").rotate = ctx.mouseNorm().x * 0.1f;
+    // mouseNorm() returns 0-1 range, center at (0.5, 0.5)
+    chain.get<Feedback>("fb").rotate = (ctx.mouseNorm().x - 0.5f) * 0.2f;
     chain.get<HSV>("color").hueShift = static_cast<float>(ctx.time()) * 0.1f;
 }
 
@@ -160,8 +161,8 @@ Use `update()` for per-frame parameter changes:
 void update(Context& ctx) {
     if (!chain) return;
 
-    // Mouse control
-    float rotation = (ctx.mouseNormX() - 0.5f) * 0.1f;
+    // Mouse control - mouseNorm() returns 0-1 range
+    float rotation = (ctx.mouseNorm().x - 0.5f) * 0.1f;
     chain->get<Feedback>("fb").rotate(rotation);
 
     // Time-based animation
@@ -272,12 +273,12 @@ void setup(Context& ctx) {
 void update(Context& ctx) {
     if (!chain) return;
 
-    // Mouse X: rotation
-    float rot = (ctx.mouseNormX() - 0.5f) * 0.1f;
+    // Mouse X: rotation - mouseNorm() returns 0-1 range
+    float rot = (ctx.mouseNorm().x - 0.5f) * 0.1f;
     chain->get<Feedback>("feedback").rotate(rot);
 
     // Mouse Y: zoom
-    float zoom = 0.98f + ctx.mouseNormY() * 0.06f;
+    float zoom = 0.98f + ctx.mouseNorm().y * 0.06f;
     chain->get<Feedback>("feedback").zoom(zoom);
 
     // Cycle hue over time
@@ -285,7 +286,7 @@ void update(Context& ctx) {
     chain->get<HSV>("color").hueShift(hue);
 
     // Click to clear
-    if (ctx.wasMousePressed(0)) {
+    if (ctx.mouseButton(0).pressed) {
         chain->get<Feedback>("feedback").decay(0.0f);
     } else {
         chain->get<Feedback>("feedback").decay(0.92f);

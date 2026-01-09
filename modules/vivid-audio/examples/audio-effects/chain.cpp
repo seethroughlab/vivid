@@ -131,7 +131,7 @@ void update(Context& ctx) {
     auto& mixer = chain.get<AudioMixer>("mixer");
 
     // Mouse X: select effect (0-4)
-    float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;  // 0-1
+    float mouseX = ctx.mouseNorm().x;  // 0-1
     g_activeEffect = static_cast<int>(mouseX * NUM_EFFECTS);
     if (g_activeEffect >= NUM_EFFECTS) g_activeEffect = NUM_EFFECTS - 1;
 
@@ -141,7 +141,7 @@ void update(Context& ctx) {
     }
 
     // Mouse Y: effect intensity parameter
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;  // 0-1
+    float mouseY = ctx.mouseNorm().y;  // 0-1
 
     // Adjust active effect parameter
     switch (g_activeEffect) {

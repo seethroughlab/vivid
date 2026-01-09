@@ -788,37 +788,24 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
         // Save snapshot if requested (interactive UI)
         if (mlc.chainVisualizer->snapshotRequested()) {
-            WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
-            if (outputTex) {
-                mlc.chainVisualizer->saveSnapshot(mlc.device, mlc.queue, outputTex, *mlc.ctx);
-            }
+            mlc.chainVisualizer->saveSnapshot(*mlc.ctx);
         }
 
         // MCP live capture request (WebSocket command from Claude Code)
         {
             std::lock_guard<std::mutex> lock(mlc.mcpCaptureMutex);
             if (!mlc.mcpCaptureRequestPath.empty()) {
-                std::string outputPath = mlc.mcpCaptureRequestPath;
+                std::string requestedPath = mlc.mcpCaptureRequestPath;
                 mlc.mcpCaptureRequestPath.clear();  // Clear the request
 
-                WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
-                if (outputTex) {
-                    std::cout << "[MCP] Capturing frame to: " << outputPath << std::endl;
-                    if (VideoExporter::saveSnapshot(mlc.device, mlc.queue, outputTex, outputPath)) {
-                        std::cout << "[MCP] Capture saved successfully" << std::endl;
-                        if (mlc.editorBridge) {
-                            mlc.editorBridge->sendCaptureResult(true, outputPath);
-                        }
-                    } else {
-                        std::cerr << "[MCP] Failed to save capture" << std::endl;
-                        if (mlc.editorBridge) {
-                            mlc.editorBridge->sendCaptureResult(false, outputPath, "Failed to save PNG");
-                        }
+                std::string savedPath = mlc.ctx->snapshot(requestedPath);
+                if (!savedPath.empty()) {
+                    if (mlc.editorBridge) {
+                        mlc.editorBridge->sendCaptureResult(true, savedPath);
                     }
                 } else {
-                    std::cerr << "[MCP] No output texture available for capture" << std::endl;
                     if (mlc.editorBridge) {
-                        mlc.editorBridge->sendCaptureResult(false, outputPath, "No output texture");
+                        mlc.editorBridge->sendCaptureResult(false, requestedPath, "Failed to save snapshot");
                     }
                 }
             }
@@ -832,36 +819,33 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         // Captures multiple frames if specified
         if (!mlc.snapshotPath.empty() && !mlc.snapshotFramesPending.empty()) {
             if (mlc.snapshotFramesPending.count(currentFrame) > 0) {
-                WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
-                if (outputTex) {
-                    // Generate output path with frame number if multiple frames
-                    std::string outputPath = mlc.snapshotPath;
-                    if (mlc.snapshotFrames.size() > 1) {
-                        // Insert frame number before extension: output.png -> output_0005.png
-                        fs::path p(mlc.snapshotPath);
-                        std::string stem = p.stem().string();
-                        std::string ext = p.extension().string();
-                        fs::path dir = p.parent_path();
-                        char buf[32];
-                        snprintf(buf, sizeof(buf), "_%04d", currentFrame);
-                        outputPath = (dir / (stem + buf + ext)).string();
-                    }
+                // Generate output path with frame number if multiple frames
+                std::string outputPath = mlc.snapshotPath;
+                if (mlc.snapshotFrames.size() > 1) {
+                    // Insert frame number before extension: output.png -> output_0005.png
+                    fs::path p(mlc.snapshotPath);
+                    std::string stem = p.stem().string();
+                    std::string ext = p.extension().string();
+                    fs::path dir = p.parent_path();
+                    char buf[32];
+                    snprintf(buf, sizeof(buf), "_%04d", currentFrame);
+                    outputPath = (dir / (stem + buf + ext)).string();
+                }
 
-                    std::cout << "Saving snapshot frame " << currentFrame << " to: " << outputPath << std::endl;
-                    if (VideoExporter::saveSnapshot(mlc.device, mlc.queue, outputTex, outputPath)) {
-                        mlc.snapshotFramesCaptured++;
-                        mlc.snapshotFramesPending.erase(currentFrame);
-                        std::cout << "Snapshot saved (" << mlc.snapshotFramesCaptured
-                                  << "/" << mlc.snapshotFrames.size() << ")" << std::endl;
+                std::string savedPath = mlc.ctx->snapshot(outputPath);
+                if (!savedPath.empty()) {
+                    mlc.snapshotFramesCaptured++;
+                    mlc.snapshotFramesPending.erase(currentFrame);
+                    std::cout << "Snapshot saved (" << mlc.snapshotFramesCaptured
+                              << "/" << mlc.snapshotFrames.size() << ")" << std::endl;
 
-                        // Exit after saving all frames (unless --frames is also set)
-                        if (mlc.snapshotFramesPending.empty() && mlc.maxFrames == 0) {
-                            glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
-                        }
-                    } else {
-                        std::cerr << "Failed to save snapshot for frame " << currentFrame << std::endl;
-                        mlc.snapshotFramesPending.erase(currentFrame);  // Don't retry
+                    // Exit after saving all frames (unless --frames is also set)
+                    if (mlc.snapshotFramesPending.empty() && mlc.maxFrames == 0) {
+                        glfwSetWindowShouldClose(mlc.window, GLFW_TRUE);
                     }
+                } else {
+                    std::cerr << "Failed to save snapshot for frame " << currentFrame << std::endl;
+                    mlc.snapshotFramesPending.erase(currentFrame);  // Don't retry
                 }
             }
 

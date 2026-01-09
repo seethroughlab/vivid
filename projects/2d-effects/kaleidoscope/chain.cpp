@@ -88,11 +88,11 @@ void update(Context& ctx) {
     mirror.angle = time * 0.1f;
 
     // Mouse X controls hue
-    float hue = (ctx.mouseNorm().x * 0.5f + 0.5f);
+    float hue = ctx.mouseNorm().x;
     hsv.hueShift = hue;
 
     // Mouse Y controls bloom intensity
-    float bloomIntensity = 0.2f + (ctx.mouseNorm().y * 0.5f + 0.5f) * 0.8f;
+    float bloomIntensity = 0.2f + ctx.mouseNorm().y * 0.8f;
     bloom.intensity = bloomIntensity;
 
     // Number keys change segment count (if held)

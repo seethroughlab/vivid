@@ -188,11 +188,11 @@ void update(Context& ctx) {
     glm::vec2 mouse = ctx.mouseNorm();
 
     // X axis: Time depth (0.2 minimum so effect is always visible)
-    float depth = 0.2f + (mouse.x * 0.5f + 0.5f) * 0.8f;  // Map [-1,1] to [0.2,1.0]
+    float depth = 0.2f + mouse.x * 0.8f;  // Map [0,1] to [0.2,1.0]
     timeMachine.depth = depth;
 
     // Y axis: Offset bias
-    float offset = (mouse.y * 0.5f + 0.5f) * 0.5f;  // Map to [0, 0.5]
+    float offset = mouse.y * 0.5f;  // Map to [0, 0.5]
     timeMachine.offset = offset;
 
     // =========================================================================

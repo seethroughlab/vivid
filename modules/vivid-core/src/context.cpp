@@ -4,6 +4,7 @@
 #include <vivid/chain.h>
 #include <vivid/asset_loader.h>
 #include <vivid/window_manager.h>
+#include <vivid/video_exporter.h>
 #include <cstring>
 #include <filesystem>
 
@@ -95,9 +96,17 @@ void Context::endFrame() {
 glm::vec2 Context::mouseNorm() const {
     if (m_width <= 0 || m_height <= 0) return {0, 0};
 
+    // Mouse position from GLFW is in window coordinates, not framebuffer coordinates.
+    // On HiDPI/Retina displays, framebuffer is 2x larger than window.
+    // Get window size for proper normalization.
+    int windowW, windowH;
+    glfwGetWindowSize(m_window, &windowW, &windowH);
+    if (windowW <= 0 || windowH <= 0) return {0, 0};
+
+    // Returns 0-1 normalized coordinates, Y-down (matches UV, Shape, Canvas)
     return {
-        (m_mousePos.x / m_width) * 2.0f - 1.0f,
-        1.0f - (m_mousePos.y / m_height) * 2.0f  // Flip Y
+        m_mousePos.x / windowW,
+        m_mousePos.y / windowH
     };
 }
 
@@ -337,6 +346,51 @@ void Context::beginDebugFrame() {
         } else {
             ++it;
         }
+    }
+}
+
+// =============================================================================
+// Snapshot
+// =============================================================================
+
+std::string Context::snapshot(const std::string& filename) {
+    namespace fs = std::filesystem;
+
+    // Get output texture from chain
+    WGPUTexture tex = m_chain ? m_chain->outputTexture() : nullptr;
+    if (!tex) {
+        printf("[Context] Snapshot failed: no output texture\n");
+        return "";
+    }
+
+    std::string outputPath = filename;
+
+    // Auto-generate filename if not provided
+    if (outputPath.empty()) {
+        // Use project directory
+        std::string projectDir = ".";
+        if (!m_chainPath.empty()) {
+            fs::path p(m_chainPath);
+            if (p.has_parent_path()) {
+                projectDir = p.parent_path().string();
+            }
+        }
+
+        // Generate unique filename
+        static int snapshotNum = 1;
+        do {
+            outputPath = projectDir + "/snapshot_" + std::to_string(snapshotNum) + ".png";
+            snapshotNum++;
+        } while (fs::exists(outputPath) && snapshotNum < 10000);
+    }
+
+    // Save the snapshot
+    if (VideoExporter::saveSnapshot(m_device, m_queue, tex, outputPath)) {
+        printf("[Snapshot] Saved: %s\n", outputPath.c_str());
+        return outputPath;
+    } else {
+        printf("[Snapshot] Failed to save: %s\n", outputPath.c_str());
+        return "";
     }
 }
 

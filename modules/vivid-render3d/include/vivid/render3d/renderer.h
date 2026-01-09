@@ -95,7 +95,8 @@ public:
                 {"examples/3d-basics"},
                 {"examples/gltf-loader"},
                 {"examples/csg-modeling"},
-                {"examples/instancing"}
+                {"examples/instancing"},
+                {"examples/raycasting"}
             });
     }
 

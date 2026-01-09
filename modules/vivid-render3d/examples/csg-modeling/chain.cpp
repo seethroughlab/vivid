@@ -138,8 +138,8 @@ void update(Context& ctx) {
     auto& cam = chain.get<CameraOperator>("camera");
 
     // Mouse controls camera orbit
-    float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;
+    float mouseX = ctx.mouseNorm().x;
+    float mouseY = ctx.mouseNorm().y;
 
     cam.distance(8.0f + mouseY * 4.0f);
     cam.azimuth(mouseX * 6.28f + t * 0.2f);

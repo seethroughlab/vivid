@@ -114,9 +114,9 @@ void update(Context& ctx) {
     auto& hsv = chain.get<HSV>("hsv");
     hsv.hueShift = std::fmod(t * 0.05f, 1.0f);
 
-    // Mouse controls
-    float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;  // 0-1
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;  // 0-1
+    // Mouse controls - mouseNorm() returns 0-1 range
+    float mouseX = ctx.mouseNorm().x;
+    float mouseY = ctx.mouseNorm().y;
 
     // X: tile repeat count (1-6)
     float repeat = 1.0f + mouseX * 5.0f;

@@ -271,7 +271,10 @@ public:
 
     /**
      * @brief Get normalized mouse position
-     * @return Position in range (-1 to 1) with Y up
+     * @return Position in range (0 to 1), origin at top-left, Y-down
+     *
+     * Matches UV, Shape, and Canvas coordinate systems.
+     * (0,0) = top-left, (1,1) = bottom-right
      */
     glm::vec2 mouseNorm() const;
 
@@ -307,14 +310,19 @@ public:
      * @brief Get normalized mouse movement delta
      * @return Change in normalized position since last frame
      *
-     * Returns delta in range roughly (-2 to 2) based on window dimensions.
+     * Returns delta in range roughly (-1 to 1) based on window dimensions.
+     * Positive Y = mouse moved down (Y-down convention).
      */
     glm::vec2 mouseDeltaNorm() const {
-        if (m_width <= 0 || m_height <= 0) return {0, 0};
+        // Mouse delta from GLFW is in window coordinates, not framebuffer coordinates.
+        // Get window size for proper normalization.
+        int windowW, windowH;
+        glfwGetWindowSize(m_window, &windowW, &windowH);
+        if (windowW <= 0 || windowH <= 0) return {0, 0};
         glm::vec2 delta = m_mousePos - m_lastMousePos;
         return {
-            (delta.x / m_width) * 2.0f,
-            -(delta.y / m_height) * 2.0f  // Flip Y
+            delta.x / windowW,
+            delta.y / windowH
         };
     }
 
@@ -408,6 +416,28 @@ public:
      * @return Current output texture view
      */
     WGPUTextureView outputTexture() const { return m_outputTexture; }
+
+    /**
+     * @brief Save a snapshot of the current output to a PNG file
+     * @param filename Output filename (optional, auto-generated if empty)
+     * @return Path to the saved file, or empty string on failure
+     *
+     * Captures the chain's current output texture and saves it as a PNG.
+     * If filename is empty, generates "snapshot_N.png" in the project directory.
+     *
+     * @par Example
+     * @code
+     * void update(Context& ctx) {
+     *     if (ctx.key(GLFW_KEY_S).pressed) {
+     *         std::string path = ctx.snapshot();
+     *         if (!path.empty()) {
+     *             printf("Saved: %s\n", path.c_str());
+     *         }
+     *     }
+     * }
+     * @endcode
+     */
+    std::string snapshot(const std::string& filename = "");
 
     /// @}
     // -------------------------------------------------------------------------

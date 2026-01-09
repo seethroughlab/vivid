@@ -23,6 +23,7 @@ void setup(Context& ctx) {
     // Background
     auto& bg = chain.add<SolidColor>("bg");
     bg.color.set(0.1f, 0.1f, 0.15f, 1.0f);
+    bg.setResolution(ctx.width(), ctx.height());
 
     // Interactive circle (position controlled by mouse)
     auto& circle = chain.add<Shape>("circle");
@@ -30,12 +31,14 @@ void setup(Context& ctx) {
     circle.size.set(circleSize, circleSize);
     circle.color.set(circleColor.r, circleColor.g, circleColor.b, circleColor.a);
     circle.softness = 0.01f;
+    circle.setResolution(ctx.width(), ctx.height());
 
     // Composite
     auto& comp = chain.add<Composite>("comp");
     comp.inputA("bg");
     comp.inputB("circle");
     comp.mode = BlendMode::Over;
+    comp.setResolution(ctx.width(), ctx.height());
 
     // Canvas for UI overlay
     auto& canvas = chain.add<Canvas>("canvas");
@@ -52,7 +55,7 @@ void update(Context& ctx) {
     // MOUSE INPUT
     // =========================================================================
 
-    // Get mouse position in normalized coordinates (-1 to 1, Y up)
+    // Get mouse position in normalized coordinates (0 to 1, Y down)
     glm::vec2 mouseNorm = ctx.mouseNorm();
 
     // Get mouse position in pixels (0,0 at top-left)
@@ -96,9 +99,8 @@ void update(Context& ctx) {
         isDragging = false;
     }
     if (isDragging && leftBtn.held) {
-        // Convert mouse position to shape coordinates (0-1 range, centered)
-        circlePos.x = mouseNorm.x * 0.5f + 0.5f;
-        circlePos.y = mouseNorm.y * 0.5f + 0.5f;
+        // Both mouseNorm() and Shape use 0-1 range with Y-down
+        circlePos = mouseNorm;
     }
 
     // Right-click to change color randomly
@@ -132,7 +134,7 @@ void update(Context& ctx) {
     // =========================================================================
 
     auto& circle = chain.get<Shape>("circle");
-    circle.position.set(circlePos.x - 0.5f, circlePos.y - 0.5f);  // Shape uses -0.5 to 0.5
+    circle.position.set(circlePos.x, circlePos.y);  // Shape uses 0-1 range, (0.5,0.5) = center
     circle.size.set(circleSize, circleSize);
     circle.color.set(circleColor.r, circleColor.g, circleColor.b, circleColor.a);
 
@@ -141,9 +143,9 @@ void update(Context& ctx) {
     // =========================================================================
 
     auto& canvas = chain.get<Canvas>("canvas");
-    canvas.clear(0, 0, 0, 0);  // Transparent - shows comp underneath
+    canvas.clear(0, 0, 0, 0);
 
-    // Draw comp first
+    // Draw the composite (background + circle) first
     auto& comp = chain.get<Composite>("comp");
     canvas.drawImage(comp, 0, 0, ctx.width(), ctx.height());
 

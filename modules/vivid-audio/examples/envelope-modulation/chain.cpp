@@ -144,7 +144,7 @@ void update(Context& ctx) {
     bool shouldRelease = ctx.keyReleased(Key::Space) || ctx.mouseReleased(0);
 
     // ----- MOUSE Y: ENVELOPE PARAMS -----
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;  // 0-1
+    float mouseY = ctx.mouseNorm().y;  // 0-1
 
     // Current envelope value and stage (for visualization)
     float envValue = 0.0f;

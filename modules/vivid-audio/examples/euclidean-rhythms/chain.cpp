@@ -166,8 +166,8 @@ void update(Context& ctx) {
     auto& clap_eucl = chain.get<Euclidean>("clap_eucl");
 
     // Mouse controls
-    float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;  // 0-1
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;  // 0-1
+    float mouseX = ctx.mouseNorm().x;  // 0-1
+    float mouseY = ctx.mouseNorm().y;  // 0-1
 
     // X: BPM (80-160)
     clock.bpm = 80.0f + mouseX * 80.0f;

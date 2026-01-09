@@ -18,7 +18,7 @@ Demonstrates mouse input, keyboard input, and modifier keys for interactive appl
 // Pixel coordinates (0,0 at top-left)
 glm::vec2 mousePx = ctx.mouse();
 
-// Normalized coordinates (-1 to 1, Y axis up, centered at 0,0)
+// Normalized coordinates (0 to 1, Y axis down, origin at top-left)
 glm::vec2 mouseNorm = ctx.mouseNorm();
 
 // Movement since last frame

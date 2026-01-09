@@ -23,10 +23,10 @@ noise.scale.bind(
     5.0f, 20.0f  // Output range
 );
 
-// Mouse X (-1 to 1) converted to 0-1, mapped to size range
+// Mouse X is already 0-1, mapped to size range
 shape.size.bind(
     [&]() {
-        return (ctx.mouseNorm().x + 1.0f) * 0.5f;  // -1..1 -> 0..1
+        return ctx.mouseNorm().x;  // 0..1 range
     },
     0.05f, 0.3f  // Size range
 );
@@ -57,13 +57,13 @@ shape.color.bindDirect(
 ### Binding to Mouse Position
 
 ```cpp
-// Size follows mouse X
+// Size follows mouse X (mouseNorm returns 0-1)
 shape.size.bind(
-    [&]() { return (ctx.mouseNorm().x + 1.0f) * 0.5f; },
+    [&]() { return ctx.mouseNorm().x; },
     minSize, maxSize
 );
 
-// Position follows mouse directly
+// Position follows mouse directly (0-1 range, Y-down)
 shape.position.bindDirect(
     [&]() {
         glm::vec2 m = ctx.mouseNorm();
@@ -205,7 +205,7 @@ bloom.intensity.bind(
 static float smoothed = 0.0f;
 
 shape.size.bindDirect([&]() {
-    float target = (ctx.mouseNorm().x + 1.0f) * 0.5f;
+    float target = ctx.mouseNorm().x;  // 0-1 range
     smoothed += (target - smoothed) * 0.1f;  // Lerp
     return smoothed * 0.3f + 0.05f;
 });

@@ -140,7 +140,7 @@ void update(Context& ctx) {
 
     // Mouse X controls hue shift when HSV is enabled
     if (hsvEnabled) {
-        float hue = ctx.mouseNorm().x * 0.2f;
+        float hue = (ctx.mouseNorm().x - 0.5f) * 0.4f;  // Map [0,1] to [-0.2,0.2]
         hsv.hueShift(hue);
     }
 }

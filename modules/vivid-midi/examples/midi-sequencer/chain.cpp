@@ -111,8 +111,8 @@ void update(Context& ctx) {
     auto& midiOut = chain.get<MidiOut>("midiOut");
 
     // Mouse controls
-    float mouseX = ctx.mouseNorm().x * 0.5f + 0.5f;
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;
+    float mouseX = ctx.mouseNorm().x;
+    float mouseY = ctx.mouseNorm().y;
 
     // X: BPM (60-180)
     clock.bpm = 60.0f + mouseX * 120.0f;

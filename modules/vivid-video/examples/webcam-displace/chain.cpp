@@ -94,10 +94,10 @@ void update(Context& ctx) {
     glm::vec2 mouse = ctx.mouseNorm();
 
     // X axis: Displacement strength (0.01 to 0.15)
-    strength = 0.01f + (mouse.x * 0.5f + 0.5f) * 0.14f;
+    strength = 0.01f + mouse.x * 0.14f;
 
     // Y axis: Noise scale (1.0 to 10.0)
-    noiseScale = 1.0f + (mouse.y * 0.5f + 0.5f) * 9.0f;
+    noiseScale = 1.0f + mouse.y * 9.0f;
 
     // =========================================================================
     // Update Operators

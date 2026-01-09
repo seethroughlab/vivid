@@ -1032,9 +1032,9 @@ void update(Context& ctx) {
     auto& hsv = chain.get<HSV>("color");
     auto& bloom = chain.get<Bloom>("bloom");
 
-    // Normalized mouse position (0 to 1)
-    float mouseX = (ctx.mouseNorm().x + 1.0f) * 0.5f;
-    float mouseY = (ctx.mouseNorm().y + 1.0f) * 0.5f;
+    // Normalized mouse position (0 to 1, Y-down)
+    float mouseX = ctx.mouseNorm().x;
+    float mouseY = ctx.mouseNorm().y;
 
     // X controls pitch (audio) and hue (visual)
     float frequency = 200.0f + mouseX * 600.0f;  // 200-800 Hz

@@ -91,8 +91,8 @@ void update(Context& ctx) {
 
     // Mouse controls CRT
     auto& crt = chain.get<CRTEffect>("crt");
-    crt.curvature = (ctx.mouseNorm().x * 0.5f + 0.5f) * 0.3f;
-    crt.chromatic = (ctx.mouseNorm().y * 0.5f + 0.5f) * 0.05f;
+    crt.curvature = ctx.mouseNorm().x * 0.3f;
+    crt.chromatic = ctx.mouseNorm().y * 0.05f;
 }
 
 VIVID_CHAIN(setup, update)

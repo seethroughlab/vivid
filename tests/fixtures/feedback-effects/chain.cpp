@@ -63,8 +63,8 @@ void update(Context& ctx) {
 
     // Mouse controls
     auto& feedback = chain.get<Feedback>("feedback");
-    feedback.rotate = ctx.mouseNorm().x * 0.02f;
-    feedback.decay = 0.85f + (ctx.mouseNorm().y * 0.5f + 0.5f) * 0.1f;
+    feedback.rotate = (ctx.mouseNorm().x * 2.0f - 1.0f) * 0.02f;
+    feedback.decay = 0.85f + ctx.mouseNorm().y * 0.1f;
 }
 
 VIVID_CHAIN(setup, update)

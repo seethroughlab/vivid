@@ -245,38 +245,9 @@ void ChainVisualizer::stopRecording(vivid::Context& ctx) {
     ctx.setRecordingMode(false);
 }
 
-void ChainVisualizer::saveSnapshot(WGPUDevice device, WGPUQueue queue, WGPUTexture texture, vivid::Context& ctx) {
+void ChainVisualizer::saveSnapshot(vivid::Context& ctx) {
     m_snapshotRequested = false;
-
-    if (!texture) {
-        printf("[ChainVisualizer] Snapshot failed: no output texture\n");
-        return;
-    }
-
-    // Generate output filename in project directory
-    std::string projectDir = ".";
-    const std::string& chainPath = ctx.chainPath();
-    if (!chainPath.empty()) {
-        fs::path p(chainPath);
-        if (p.has_parent_path()) {
-            projectDir = p.parent_path().string();
-        }
-    }
-
-    // Find next available snapshot number
-    int snapshotNum = 1;
-    std::string outputPath;
-    do {
-        outputPath = projectDir + "/snapshot_" + std::to_string(snapshotNum) + ".png";
-        snapshotNum++;
-    } while (fs::exists(outputPath) && snapshotNum < 10000);
-
-    // Delegate to VideoExporter's static snapshot utility
-    if (VideoExporter::saveSnapshot(device, queue, texture, outputPath)) {
-        printf("[ChainVisualizer] Snapshot saved: %s\n", outputPath.c_str());
-    } else {
-        printf("[ChainVisualizer] Snapshot failed: couldn't save PNG\n");
-    }
+    ctx.snapshot();  // Delegate to Context's snapshot method
 }
 
 void ChainVisualizer::clearSelection() {

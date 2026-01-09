@@ -32,8 +32,8 @@ void setup(Context& ctx) {
     // Bind size to mouse X (normalized 0-1 mapped to 0.05-0.3)
     shape1.size.bind(
         [&]() {
-            // mouseNorm returns -1 to 1, convert to 0-1
-            return (g_ctx->mouseNorm().x + 1.0f) * 0.5f;
+            // mouseNorm returns 0 to 1, use directly
+            return g_ctx->mouseNorm().x;
         },
         0.05f, 0.3f  // Output range
     );

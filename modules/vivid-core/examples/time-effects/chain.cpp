@@ -103,8 +103,8 @@ void update(Context& ctx) {
     // Oscillates between 0.3 and 1.0 for visible time displacement
     float depth = 0.65f + 0.35f * std::sin(t * 0.5f);
 
-    // Mouse Y can still adjust offset
-    float mouseY = ctx.mouseNorm().y * 0.5f + 0.5f;
+    // Mouse Y can still adjust offset - mouseNorm() returns 0-1 range
+    float mouseY = ctx.mouseNorm().y;
     float offset = mouseY * 0.3f;
 
     auto& slit_h = chain.get<TimeMachine>("slit_h");

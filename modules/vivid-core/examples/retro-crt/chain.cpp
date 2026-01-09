@@ -91,11 +91,11 @@ void update(Context& ctx) {
     // Cycle hue over time
     hsv.hueShift = std::fmod(time * 0.1f, 1.0f);
 
-    // Mouse controls CRT parameters
+    // Mouse controls CRT parameters - mouseNorm() returns 0-1 range
     // X: curvature (0.0 to 0.3)
-    float curvature = (ctx.mouseNorm().x * 0.5f + 0.5f) * 0.3f;
+    float curvature = ctx.mouseNorm().x * 0.3f;
     // Y: chromatic aberration (0.0 to 0.05)
-    float chromatic = (ctx.mouseNorm().y * 0.5f + 0.5f) * 0.05f;
+    float chromatic = ctx.mouseNorm().y * 0.05f;
 
     crt.curvature = curvature;
     crt.chromatic = chromatic;

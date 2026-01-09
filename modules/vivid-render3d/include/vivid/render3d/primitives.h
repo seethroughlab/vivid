@@ -110,7 +110,7 @@ public:
             .output(OutputKind::Geometry)
             .withAliases({"Ball"})
             .withUsage("auto& sphere = chain.add<Sphere>(\"sphere\");\nsphere.radius(0.5f);\nsphere.segments(32);")
-            .withExamples({{"examples/csg-modeling"}});
+            .withExamples({{"examples/csg-modeling"}, {"examples/raycasting"}});
     }
 
     Sphere() {

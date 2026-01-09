@@ -81,7 +81,7 @@ public:
     VideoExporter& exporter() { return m_exporter; }
 
     // Save a single frame snapshot (call from main loop after rendering)
-    void saveSnapshot(WGPUDevice device, WGPUQueue queue, WGPUTexture texture, Context& ctx);
+    void saveSnapshot(Context& ctx);
     bool snapshotRequested() const { return m_snapshotRequested; }
 
     // Solo mode control (for EditorBridge integration)

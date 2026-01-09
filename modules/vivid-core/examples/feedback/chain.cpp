@@ -55,12 +55,12 @@ void update(Context& ctx) {
     // Mouse controls feedback parameters
     auto& feedback = chain.get<Feedback>("feedback");
 
-    // X: rotation speed (-0.02 to 0.02)
-    float rotation = (ctx.mouseNorm().x) * 0.02f;
+    // X: rotation speed (-0.02 to 0.02) - mouseNorm is 0-1, map to -0.02..0.02
+    float rotation = (ctx.mouseNorm().x - 0.5f) * 0.04f;
     feedback.rotate = rotation;
 
-    // Y: decay (0.85 to 0.98)
-    float decay = 0.85f + ctx.mouseNorm().y * 0.065f + 0.065f;
+    // Y: decay (0.85 to 0.98) - mouseNorm.y is 0-1
+    float decay = 0.85f + ctx.mouseNorm().y * 0.13f;
     feedback.decay = decay;
 
     // Animate ramp hue offset

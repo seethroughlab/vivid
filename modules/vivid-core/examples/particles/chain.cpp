@@ -74,10 +74,10 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float time = static_cast<float>(ctx.time());
 
-    // Fire follows mouse position
+    // Fire follows mouse position - mouseNorm() returns 0-1 with Y-down
     glm::vec2 mouse = ctx.mouseNorm();
-    float fireX = mouse.x * 0.5f + 0.5f;
-    float fireY = mouse.y * -0.5f + 0.5f;
+    float fireX = mouse.x;
+    float fireY = mouse.y;  // Y-down matches particle coordinates
     chain.get<Particles>("fire").position.set(fireX, fireY);
 
     // Pulsing emit rate for fountain

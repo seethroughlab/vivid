@@ -128,7 +128,7 @@ void update(Context& ctx) {
     };
 
     // Velocity from mouse Y
-    float velocity = ctx.mouseNorm().y * 0.5f + 0.5f;  // 0.5-1.0
+    float velocity = 0.5f + ctx.mouseNorm().y * 0.5f;  // 0.5-1.0
 
     // Process key events
     for (const auto& km : keyMap) {

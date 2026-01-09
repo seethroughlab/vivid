@@ -1,7 +1,8 @@
 // Compositing Example
-// Demonstrates: Composite (blend modes), Math, Logic
+// Demonstrates: Composite (blend modes), LFO, Math, Logic with value bindings
 //
 // Shows texture layering with different blend modes
+// Value operators use trackable bindings (visible as dashed lines in visualizer)
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -52,18 +53,35 @@ void setup(Context& ctx) {
     compScreen.inputB("noise");
     compScreen.mode = BlendMode::Screen;
 
-    // Math operator for value remapping
+    // ----- VALUE OPERATOR CHAIN -----
+    // LFO → Math (remap) → Logic → Composite opacity
+    // These bindings are trackable and show as dashed orange lines in the visualizer
+
+    // LFO: oscillates from -1 to 1
+    auto& lfo = chain.add<LFO>("lfo");
+    lfo.frequency = 0.3f;
+    lfo.waveform = LFOWaveform::Sine;
+
+    // Math: remap LFO [-1,1] to [0.2, 0.8]
     auto& mathRemap = chain.add<Math>("mathRemap");
     mathRemap.operation(MathOperation::Remap);
     mathRemap.inMin = -1.0f;
     mathRemap.inMax = 1.0f;
     mathRemap.outMin = 0.2f;
     mathRemap.outMax = 0.8f;
+    // TRACKABLE BINDING: LFO → Math.inputA
+    mathRemap.inputA.bindDirect(lfo);
 
-    // Logic operator for conditional
+    // Logic: check if remapped value > 0.5
     auto& logic = chain.add<Logic>("logic");
     logic.operation(LogicOperation::GreaterThan);
     logic.inputB = 0.5f;
+    // TRACKABLE BINDING: Math → Logic.inputA
+    logic.inputA.bindDirect(mathRemap);
+
+    // TRACKABLE BINDING: Logic → Composite.opacity
+    // Logic outputs 0 (false) or 1 (true), map to opacity 0.5 or 1.0
+    compAdd.opacity.bind(logic, 0.0f, 1.0f, 0.5f, 1.0f);
 
     // Canvas for grid layout
     // NOTE: Canvas.drawImage() requires operators to be processed first.
@@ -90,23 +108,23 @@ void update(Context& ctx) {
     auto& shape = chain.get<Shape>("shape");
     shape.position.set(0.5f + std::sin(t * 0.5f) * 0.2f, 0.5f + std::cos(t * 0.7f) * 0.2f);
 
-    // Animate composite opacities
+    // Animate compOver opacity (not bound to anything)
     auto& compOver = chain.get<Composite>("compOver");
     compOver.opacity = 0.7f + std::sin(t * 0.3f) * 0.3f;
 
-    // Math: remap a sine wave
+    // Get references to bound operators (for status display)
+    // NOTE: Values flow automatically through bindings!
+    // LFO → Math.inputA → Logic.inputA → compAdd.opacity
+    auto& lfo = chain.get<LFO>("lfo");
     auto& mathRemap = chain.get<Math>("mathRemap");
-    mathRemap.inputA = std::sin(t * 0.5f);  // -1 to 1
-    float remappedValue = mathRemap.value();  // 0.2 to 0.8
-
-    // Logic: check if remapped value is above threshold
     auto& logic = chain.get<Logic>("logic");
-    logic.inputA = remappedValue;
-    bool isAboveThreshold = logic.result();
-
-    // Use logic result to control blend mode opacity
     auto& compAdd = chain.get<Composite>("compAdd");
-    compAdd.opacity = isAboveThreshold ? 1.0f : 0.5f;
+
+    // Read values from the binding chain
+    float lfoValue = lfo.outputValue();              // -1 to 1
+    float remappedValue = mathRemap.outputValue();   // 0.2 to 0.8 (via binding)
+    bool isAboveThreshold = logic.result();          // true/false (via binding)
+    float addOpacity = compAdd.opacity.get();        // 0.5 or 1.0 (via binding)
 
     // Draw 2x2 grid of blend modes
     auto& canvas = chain.get<Canvas>("canvas");
@@ -136,7 +154,7 @@ void update(Context& ctx) {
     // Labels
     canvas.fillStyle(0.0f, 0.0f, 0.0f, 0.7f);
     canvas.fillRect(pad, pad, 140, 22);
-    canvas.fillRect(halfW + pad, pad, 180, 22);
+    canvas.fillRect(halfW + pad, pad, 200, 22);
     canvas.fillRect(pad, halfH + pad, 100, 22);
     canvas.fillRect(halfW + pad, halfH + pad, 90, 22);
 
@@ -148,23 +166,23 @@ void update(Context& ctx) {
     canvas.fillText(overLabel, pad + 5, pad + 16);
 
     char addLabel[80];
-    snprintf(addLabel, sizeof(addLabel), "Add: logic=%s opacity=%.1f",
-        isAboveThreshold ? "true" : "false", static_cast<float>(compAdd.opacity));
+    snprintf(addLabel, sizeof(addLabel), "Add: logic=%s opacity=%.2f (bound)",
+        isAboveThreshold ? "true" : "false", addOpacity);
     canvas.fillText(addLabel, halfW + pad + 5, pad + 16);
 
     canvas.fillText("Multiply", pad + 5, halfH + pad + 16);
     canvas.fillText("Screen", halfW + pad + 5, halfH + pad + 16);
 
-    // Show Math/Logic status in bottom area
+    // Show value binding chain status at bottom
     canvas.fillStyle(0.3f, 0.3f, 0.4f, 1.0f);
     canvas.fillRect(pad, h - 50, w - pad * 2, 42);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
-    char mathLabel[128];
-    snprintf(mathLabel, sizeof(mathLabel),
-        "Math: sin(t)=%.2f -> Remap[0.2,0.8]=%.2f  |  Logic: %.2f > 0.5 = %s",
-        std::sin(t * 0.5f), remappedValue, remappedValue, isAboveThreshold ? "true" : "false");
-    canvas.fillText(mathLabel, pad + 10, h - 30);
+    char bindLabel[160];
+    snprintf(bindLabel, sizeof(bindLabel),
+        "LFO=%.2f -> Math[0.2,0.8]=%.2f -> Logic(>0.5)=%s -> opacity=%.1f",
+        lfoValue, remappedValue, isAboveThreshold ? "true" : "false", addOpacity);
+    canvas.fillText(bindLabel, pad + 10, h - 30);
 }
 
 VIVID_CHAIN(setup, update)
