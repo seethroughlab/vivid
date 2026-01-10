@@ -311,6 +311,18 @@ void Chain::init(Context& ctx) {
         }
     }
 
+    // Resolve event sources for all operators (for visualization)
+    for (const auto& [name, op] : m_operators) {
+        const std::string& eventName = op->pendingEventSourceName();
+        if (!eventName.empty()) {
+            Operator* eventOp = getByName(eventName);
+            if (eventOp) {
+                op->setEventSource(eventOp);
+            }
+            op->clearPendingEventSourceName();
+        }
+    }
+
     // Second pass: call init on all operators
     for (const auto& [name, op] : m_operators) {
         op->init(ctx);

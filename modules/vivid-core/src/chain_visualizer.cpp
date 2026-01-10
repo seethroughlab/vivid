@@ -593,6 +593,14 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
             m_nodeGraph.endInputAttribute();
         }
 
+        // Check if this operator has an event source (for dashed link visualization)
+        if (info.op->eventSource()) {
+            int evtPinId = nodeId * 100 + 52;  // Offset 52 for event pins
+            m_nodeGraph.beginInputAttribute(evtPinId);
+            m_nodeGraph.pinLabel("evt");
+            m_nodeGraph.endInputAttribute();
+        }
+
         // Add output pin
         int outputPinId = nodeId * 100;
         m_nodeGraph.beginOutputAttribute(outputPinId);
@@ -729,6 +737,30 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
                 int srcOutputPinId = srcNodeId * 100;
                 int dstInputPinId = dstNodeId * 100 + 51;
                 m_nodeGraph.linkDashed(linkId++, srcOutputPinId, dstInputPinId, triggerColor);
+                break;
+            }
+        }
+    }
+
+    // Add dashed links for event connections
+    glm::vec4 eventColor = {0.4f, 1.0f, 0.6f, 0.9f};  // Green for event connections
+    for (size_t i = 0; i < operators.size(); ++i) {
+        const vivid::OperatorInfo& info = operators[i];
+        if (!info.op) continue;
+
+        vivid::Operator* eventSrc = info.op->eventSource();
+        if (!eventSrc) continue;
+
+        int dstNodeId = static_cast<int>(i);
+
+        // Find source node for the event operator
+        for (size_t k = 0; k < operators.size(); ++k) {
+            if (operators[k].op == eventSrc) {
+                int srcNodeId = static_cast<int>(k);
+                // Connect to the "evt" input pin (offset 52)
+                int srcOutputPinId = srcNodeId * 100;
+                int dstInputPinId = dstNodeId * 100 + 52;
+                m_nodeGraph.linkDashed(linkId++, srcOutputPinId, dstInputPinId, eventColor);
                 break;
             }
         }

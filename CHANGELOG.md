@@ -10,6 +10,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.19] - 2026-01-10
+
+### Added
+
+#### Event Operator System
+New `OutputKind::Event` type and input operators for exposing keyboard, mouse, and window events to user chains:
+
+- **KeyboardIn** - Keyboard input events with polling and convenience accessors
+  - `events()` returns vector of discrete key events per frame
+  - `keyPressed(key)`, `keyHeld(key)`, `keyReleased(key)` convenience methods
+  - Modifier state: `shiftHeld()`, `ctrlHeld()`, `altHeld()`, `superHeld()`
+- **MouseIn** - Mouse input events with position and button state
+  - `events()` for discrete mouse events (press, release, move, scroll)
+  - `position()`, `positionNorm()`, `delta()`, `scroll()` accessors
+  - `buttonPressed(btn)`, `buttonHeld(btn)`, `buttonReleased(btn)` methods
+- **WindowEvents** - Window lifecycle events
+  - `resized()`, `width()`, `height()`, `aspect()` accessors
+
+#### Event Source Visualization
+- `setEventSource(op)` / `setEventSource("name")` for connecting event flow in chain visualizer
+- Green dashed lines show event connections (similar to cyan trigger lines)
+
+**Example usage:**
+```cpp
+auto& keys = chain.add<KeyboardIn>("keys");
+
+// In update():
+if (keys.keyPressed(GLFW_KEY_SPACE)) {
+    flash.trigger();
+}
+```
+
 ## [0.1.0-alpha.18] - 2026-01-09
 
 ### Added
@@ -433,7 +465,8 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.18...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.19...HEAD
+[0.1.0-alpha.19]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.18...v0.1.0-alpha.19
 [0.1.0-alpha.18]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.17...v0.1.0-alpha.18
 [0.1.0-alpha.17]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.16...v0.1.0-alpha.17
 [0.1.0-alpha.16]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.15...v0.1.0-alpha.16

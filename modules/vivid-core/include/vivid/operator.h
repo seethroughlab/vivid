@@ -35,7 +35,8 @@ enum class OutputKind {
     Camera,     ///< Camera configuration
     Light,      ///< Light source
     Audio,      ///< Audio buffer output (PCM samples)
-    AudioValue  ///< Audio analysis values (levels, FFT bands)
+    AudioValue, ///< Audio analysis values (levels, FFT bands)
+    Event       ///< Event stream (keyboard, mouse, timing, etc.)
 };
 
 /**
@@ -53,6 +54,7 @@ inline const char* outputKindName(OutputKind kind) {
         case OutputKind::Light:      return "Light";
         case OutputKind::Audio:      return "Audio";
         case OutputKind::AudioValue: return "AudioValue";
+        case OutputKind::Event:      return "Event";
         default:                     return "Unknown";
     }
 }
@@ -307,6 +309,29 @@ public:
      */
     [[nodiscard]] virtual std::optional<io::ImageData> cpuPixels() const { return std::nullopt; }
 
+    /**
+     * @brief Zero-copy CPU pixel pointer access
+     */
+    struct CpuPixelView {
+        const uint8_t* data = nullptr;
+        int width = 0;
+        int height = 0;
+        int channels = 4;
+        size_t stride = 0;  ///< Bytes per row (0 = width * channels)
+
+        [[nodiscard]] bool valid() const { return data && width > 0 && height > 0; }
+        [[nodiscard]] size_t rowStride() const { return stride ? stride : width * channels; }
+    };
+
+    /**
+     * @brief Get zero-copy pointer to CPU pixel data
+     * @return CpuPixelView with pointer to pixel data, or invalid view if not available
+     *
+     * Faster than cpuPixels() as it avoids copying. The pointer is valid until
+     * the next frame. Override in operators with CPU pixel buffers.
+     */
+    [[nodiscard]] virtual CpuPixelView cpuPixelView() const { return {}; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name State Preservation
@@ -455,6 +480,44 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Event Source (for visualization)
+    /// @{
+
+    /**
+     * @brief Set event source operator for visualization
+     * @param source Operator that sends events to this one
+     *
+     * Similar to setTriggerSource(), this is for chain visualizer display.
+     * Shows green dashed lines from event sources (e.g., KeyboardIn -> Player).
+     * The actual event handling must still be done in update() code.
+     */
+    void setEventSource(Operator* source) { m_eventSource = source; }
+
+    /**
+     * @brief Set event source by name (resolved at init time)
+     * @param name Name of the event source operator
+     */
+    void setEventSource(const std::string& name) { m_pendingEventSourceName = name; }
+
+    /**
+     * @brief Get event source operator
+     * @return Event source, or nullptr if none
+     */
+    Operator* eventSource() const { return m_eventSource; }
+
+    /**
+     * @brief Get pending event source name (for deferred resolution)
+     * @return Name string, or empty if already resolved
+     */
+    const std::string& pendingEventSourceName() const { return m_pendingEventSourceName; }
+
+    /**
+     * @brief Clear pending event source name after resolution
+     */
+    void clearPendingEventSourceName() { m_pendingEventSourceName.clear(); }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Cooking / Dependency System
     /// @{
 
@@ -597,6 +660,10 @@ protected:
     // Trigger source (for chain visualizer - shows trigger flow)
     Operator* m_triggerSource = nullptr;           ///< Trigger source operator (for visualization)
     std::string m_pendingTriggerSourceName;        ///< Deferred trigger source name
+
+    // Event source (for chain visualizer - shows event flow)
+    Operator* m_eventSource = nullptr;             ///< Event source operator (for visualization)
+    std::string m_pendingEventSourceName;          ///< Deferred event source name
 
     // Cooking system
     uint64_t m_generation = 0;                ///< Output generation counter
