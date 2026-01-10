@@ -219,12 +219,12 @@ elseif(WIN32)
         set(OPENCV_LIB_DIR "${OPENCV_MOBILE_DIR}/x64/lib")
     endif()
 
+    # Note: opencv-mobile Windows static libs bundle zlib internally
     target_link_libraries(vivid-opencv PRIVATE
         ${OPENCV_LIB_DIR}/opencv_video4130.lib
         ${OPENCV_LIB_DIR}/opencv_features2d4130.lib
         ${OPENCV_LIB_DIR}/opencv_imgproc4130.lib
         ${OPENCV_LIB_DIR}/opencv_core4130.lib
-        ${OPENCV_LIB_DIR}/zlib.lib
     )
 
     target_compile_definitions(vivid-opencv PRIVATE vivid_opencv_EXPORTS)
