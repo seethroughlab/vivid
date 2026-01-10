@@ -15,6 +15,7 @@
 #include <vivid/effects/blur.h>
 #include <vivid/effects/hsv.h>
 #include <vivid/effects/brightness.h>
+#include <vivid/effects/threshold.h>
 #include <vivid/effects/transform.h>
 #include <vivid/effects/mirror.h>
 #include <vivid/effects/displace.h>
@@ -66,6 +67,7 @@ REGISTER_OPERATOR(Image, "Generators", "Load image from file", false);
 REGISTER_OPERATOR(Blur, "Effects", "Gaussian blur", true);
 REGISTER_OPERATOR(HSV, "Effects", "HSV color adjustment", true);
 REGISTER_OPERATOR(Brightness, "Effects", "Brightness and contrast adjustment", true);
+REGISTER_OPERATOR(Threshold, "Effects", "Binary thresholding", true);
 REGISTER_OPERATOR(Transform, "Effects", "2D transform (scale, rotate, translate)", true);
 REGISTER_OPERATOR(Mirror, "Effects", "Mirror/flip texture", true);
 REGISTER_OPERATOR(Displace, "Effects", "Texture displacement", true);

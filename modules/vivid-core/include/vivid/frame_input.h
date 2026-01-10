@@ -41,6 +41,7 @@ struct FrameInput {
     int height = 0;             // Framebuffer height (pixels)
     float contentScale = 1.0f;  // DPI scale (2.0 on Retina)
     float dt = 1.0f / 60.0f;
+    float time = 0.0f;          // Time since start in seconds
     glm::vec2 mousePos = {0, 0};
     bool mouseDown[3] = {false, false, false};
     glm::vec2 scroll = {0, 0};

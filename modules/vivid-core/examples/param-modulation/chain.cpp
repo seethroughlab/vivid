@@ -35,7 +35,7 @@ void setup(Context& ctx) {
     // bind(operator, inMin, inMax, outMin, outMax)
     // Shows as dashed orange line in chain visualizer
     auto& shape1 = chain.add<Shape>("shape1");
-    shape1.type = ShapeType::Circle;
+    shape1.type = ShapeType::Ellipse;
     shape1.size.set(0.12f, 0.12f);
     shape1.color.set(1.0f, 0.5f, 0.2f, 1.0f);  // Orange
     shape1.position.set(0.5f, 0.25f);

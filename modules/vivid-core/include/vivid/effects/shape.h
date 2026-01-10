@@ -17,12 +17,11 @@ namespace vivid::effects {
  * @brief Shape types
  */
 enum class ShapeType {
-    Circle,       ///< Circular shape
+    Ellipse,      ///< Ellipse/circle (use thickness > 0 for ring)
     Rectangle,    ///< Sharp-cornered rectangle
     RoundedRect,  ///< Rectangle with rounded corners
     Triangle,     ///< Equilateral triangle
     Star,         ///< Multi-pointed star
-    Ring,         ///< Hollow circle (donut)
     Polygon       ///< Regular polygon with N sides
 };
 
@@ -68,11 +67,17 @@ struct ShapeUniforms {
  *
  * @par Example
  * @code
+ * // Circle (equal width/height)
  * chain.add<Shape>("circle")
- *     .type(ShapeType::Circle)
- *     .size(0.3f)
- *     .position(0.5f, 0.5f)
+ *     .type(ShapeType::Ellipse)
+ *     .size(0.3f, 0.3f)
  *     .color(1.0f, 0.5f, 0.0f);  // Orange
+ *
+ * // Ring (ellipse with thickness)
+ * chain.add<Shape>("ring")
+ *     .type(ShapeType::Ellipse)
+ *     .size(0.4f, 0.4f)
+ *     .thickness(0.05f);
  * @endcode
  *
  * @par Inputs
@@ -87,7 +92,7 @@ public:
     /// @name Parameters (public for direct access)
     /// @{
 
-    EnumParam<ShapeType> type{"type", ShapeType::Circle};         ///< Shape type
+    EnumParam<ShapeType> type{"type", ShapeType::Ellipse};         ///< Shape type
     Vec2Param size{"size", 0.5f, 0.5f, 0.0f, 2.0f};              ///< Shape size
     Vec2Param position{"position", 0.5f, 0.5f, 0.0f, 1.0f};      ///< Center position
     Param<float> rotation{"rotation", 0.0f, -6.28f, 6.28f};      ///< Rotation angle

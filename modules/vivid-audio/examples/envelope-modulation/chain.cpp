@@ -97,7 +97,7 @@ void setup(Context& ctx) {
 
     // Stage indicator
     auto& stageIndicator = chain.add<Shape>("stageIndicator");
-    stageIndicator.type = ShapeType::Circle;
+    stageIndicator.type = ShapeType::Ellipse;
     stageIndicator.size.set(0.05f, 0.05f);
     stageIndicator.position.set(0.0f, -0.35f);
     stageIndicator.softness = 0.3f;

@@ -19,6 +19,7 @@
 #include <vivid/effects/lfo.h>
 #include <vivid/effects/hsv.h>
 #include <vivid/effects/brightness.h>
+#include <vivid/effects/threshold.h>
 #include <vivid/effects/mirror.h>
 #include <vivid/effects/edge.h>
 #include <vivid/effects/pixelate.h>

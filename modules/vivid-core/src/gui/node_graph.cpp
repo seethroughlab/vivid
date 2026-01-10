@@ -724,12 +724,12 @@ void NodeGraph::renderNode(NodeState& node) {
 
     // Title text (baseline positioned to vertically center in title bar)
     // Use font index 1 (Medium weight) for titles
-    // For 40px font at textScale (m_zoom * 0.85), baseline should be at center + ascent/2
     if (!node.title.empty()) {
         float textX = pos.x + 12 * m_zoom;
-        // Position baseline so text is vertically centered (ascent ~0.75 of font height)
-        float scaledFontSize = 40.0f * textScale;  // 40px base font * scale
-        float textY = pos.y + titleH * 0.5f + scaledFontSize * 0.35f;
+        // Position baseline so text is vertically centered using proper font metrics
+        float ascent = m_canvas->fontAscent(1) * textScale;
+        float descent = std::abs(m_canvas->fontDescent(1)) * textScale;
+        float textY = pos.y + titleH * 0.5f + (ascent - descent) * 0.5f;
         m_canvas->textScaled(node.title, textX, textY, m_style.textColor, textScale, 1);
     }
 
@@ -765,10 +765,10 @@ void NodeGraph::renderNode(NodeState& node) {
         m_canvas->fillCircle(pinX, pinY, pinR, pinColor);
 
         // Pin label (vertically centered with pin)
-        // For 36px font at textScale, position baseline at pin center + ~1/3 font height
         if (!pin.label.empty()) {
-            float scaledFontSize = 36.0f * textScale;
-            float labelY = pinY + scaledFontSize * 0.35f;
+            float pinAscent = m_canvas->fontAscent(0) * textScale;
+            float pinDescent = std::abs(m_canvas->fontDescent(0)) * textScale;
+            float labelY = pinY + (pinAscent - pinDescent) * 0.5f;
             m_canvas->textScaled(pin.label, pinX + pinR + 6 * m_zoom, labelY, m_style.textDimColor, textScale);
         }
     }
@@ -788,8 +788,9 @@ void NodeGraph::renderNode(NodeState& node) {
         // Pin label (right-aligned, vertically centered with pin)
         if (!pin.label.empty()) {
             float textW = m_canvas->measureTextScaled(pin.label, textScale);
-            float scaledFontSize = 36.0f * textScale;
-            float labelY = pinY + scaledFontSize * 0.35f;
+            float outAscent = m_canvas->fontAscent(0) * textScale;
+            float outDescent = std::abs(m_canvas->fontDescent(0)) * textScale;
+            float labelY = pinY + (outAscent - outDescent) * 0.5f;
             m_canvas->textScaled(pin.label, pinX - pinR - textW - 6 * m_zoom, labelY, m_style.textDimColor, textScale);
         }
     }
@@ -805,12 +806,42 @@ void NodeGraph::updateHover() {
     // Check pins first (smaller targets)
     m_hoveredPinId = findPinAtPosition(mousePos);
 
+    // Check if hovering an output pin and invoke callback
+    if (m_hoveredPinId >= 0 && m_outputPinHoverCallback) {
+        // Find which node this pin belongs to and if it's an output
+        auto nodeIt = m_pinToNode.find(m_hoveredPinId);
+        if (nodeIt != m_pinToNode.end()) {
+            int nodeId = nodeIt->second;
+            auto it = m_nodes.find(nodeId);
+            if (it != m_nodes.end()) {
+                const NodeState& node = it->second;
+                // Check if it's an output pin
+                for (size_t i = 0; i < node.outputs.size(); ++i) {
+                    if (node.outputs[i].id == m_hoveredPinId) {
+                        m_outputPinHoverCallback(nodeId, static_cast<int>(i));
+                        break;
+                    }
+                }
+            }
+        }
+    } else if (m_outputPinHoverCallback) {
+        // Not hovering any output pin
+        m_outputPinHoverCallback(-1, -1);
+    }
+
     // Check nodes
+    int hoveredCount = 0;
     for (auto& [id, node] : m_nodes) {
         node.hovered = isPointInNode(mousePos, node);
         if (node.hovered) {
-            m_hoveredNodeId = id;
+            hoveredCount++;
+            if (m_hoveredNodeId < 0) {  // Only set first hovered node
+                m_hoveredNodeId = id;
+            }
         }
+    }
+    if (hoveredCount > 1) {
+        std::cerr << "[NodeGraph] WARNING: " << hoveredCount << " nodes hovered at once!\n";
     }
 
     // Check links
@@ -975,6 +1006,27 @@ void NodeGraph::handlePan() {
 void NodeGraph::handleNodeDrag() {
     // Left click on node to drag (unless Ctrl is held for pan)
     if (m_input.mouseClicked[0] && !m_input.keyCtrl && m_hoveredNodeId >= 0) {
+        // Check for double-click
+        float timeSinceLastClick = m_input.time - m_lastClickTime;
+        std::cerr << "[NodeGraph] Click on node " << m_hoveredNodeId
+                  << ", lastClicked=" << m_lastClickedNodeId
+                  << ", timeSince=" << timeSinceLastClick << "s\n";
+        if (m_lastClickedNodeId == m_hoveredNodeId && timeSinceLastClick < DOUBLE_CLICK_TIME) {
+            // Double-click detected!
+            std::cerr << "[NodeGraph] DOUBLE-CLICK detected on node " << m_hoveredNodeId << "\n";
+            if (m_doubleClickCallback) {
+                m_doubleClickCallback(m_hoveredNodeId);
+            }
+            // Reset double-click state
+            m_lastClickedNodeId = -1;
+            m_lastClickTime = 0.0f;
+            return;  // Don't start a drag on double-click
+        }
+
+        // Record this click for double-click detection
+        m_lastClickTime = m_input.time;
+        m_lastClickedNodeId = m_hoveredNodeId;
+
         m_isDraggingNode = true;
         m_selectedNodeId = m_hoveredNodeId;
         if (m_nodes.count(m_hoveredNodeId)) {

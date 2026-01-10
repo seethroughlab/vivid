@@ -155,20 +155,23 @@ void update(Context& ctx) {
     canvas.fillRect(halfW + pad, halfH + pad, 200, 22);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
+    auto fm = canvas.fontMetrics();
+    float textY = pad + fm.ascent;
+    float textY2 = halfH + pad + fm.ascent;
 
     char label1[64];
     snprintf(label1, sizeof(label1), "Tile: %.1fx%.1f (no mirror)", repeat, repeat);
-    canvas.fillText(label1, pad + 5, pad + 16);
+    canvas.fillText(label1, pad + 5, textY);
 
     char label2[64];
     snprintf(label2, sizeof(label2), "Tile: %.1fx%.1f (mirror)", repeat, repeat);
-    canvas.fillText(label2, halfW + pad + 5, pad + 16);
+    canvas.fillText(label2, halfW + pad + 5, textY);
 
-    canvas.fillText("Transform + Tile", pad + 5, halfH + pad + 16);
+    canvas.fillText("Transform + Tile", pad + 5, textY2);
 
     char label4[64];
     snprintf(label4, sizeof(label4), "Kaleidoscope: %d segments", segments);
-    canvas.fillText(label4, halfW + pad + 5, halfH + pad + 16);
+    canvas.fillText(label4, halfW + pad + 5, textY2);
 }
 
 VIVID_CHAIN(setup, update)

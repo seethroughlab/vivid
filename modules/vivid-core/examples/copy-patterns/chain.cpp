@@ -17,7 +17,7 @@ void setup(Context& ctx) {
 
     // Circle for linear trail
     auto& circle = chain.add<Shape>("circle");
-    circle.type = ShapeType::Circle;
+    circle.type = ShapeType::Ellipse;
     circle.size.set(0.12f, 0.12f);
     circle.position.set(0.5f, 0.5f);
     circle.color.set(1.0f, 0.4f, 0.2f, 1.0f);

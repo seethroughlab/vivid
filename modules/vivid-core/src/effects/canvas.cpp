@@ -1139,6 +1139,19 @@ TextMetrics Canvas::measureTextMetrics(const std::string& str) const {
     return metrics;
 }
 
+FontMetrics Canvas::fontMetrics() const {
+    FontMetrics metrics;
+    if (!m_font || !m_font->valid()) {
+        return metrics;
+    }
+
+    metrics.ascent = m_font->ascent();
+    metrics.descent = -m_font->descent();  // Return as positive value
+    metrics.lineHeight = m_font->lineHeight();
+
+    return metrics;
+}
+
 // -------------------------------------------------------------------------
 // Operator Interface
 // -------------------------------------------------------------------------

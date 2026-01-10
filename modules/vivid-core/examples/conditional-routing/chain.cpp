@@ -24,7 +24,7 @@ void setup(Context& ctx) {
         .direction(GradientDirection::Radial);
 
     chain.add<Shape>("option_c")
-        .type = ShapeType::Circle
+        .type = ShapeType::Ellipse
         .radius(0.3f)
         .feather(0.1f);
 

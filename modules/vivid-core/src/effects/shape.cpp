@@ -37,8 +37,14 @@ fn rotate2d(p: vec2f, a: f32) -> vec2f {
     return vec2f(p.x * c - p.y * s, p.x * s + p.y * c);
 }
 
-fn sdCircle(p: vec2f, r: f32) -> f32 {
-    return length(p) - r;
+fn sdEllipse(p: vec2f, ab: vec2f) -> f32 {
+    // Approximate ellipse SDF
+    let pAbs = abs(p);
+    let abInv = 1.0 / ab;
+    let normalized = pAbs * abInv;
+    let k = length(normalized);
+    if (k < 0.0001) { return -min(ab.x, ab.y); }
+    return length(p) * (1.0 - 1.0 / k);
 }
 
 fn sdBox(p: vec2f, b: vec2f) -> f32 {
@@ -97,8 +103,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     var d: f32;
 
     if (uniforms.shapeType == 0) {
-        // Circle
-        d = sdCircle(p, uniforms.sizeX);
+        // Ellipse (circle when sizeX == sizeY)
+        d = sdEllipse(p, vec2f(uniforms.sizeX, uniforms.sizeY));
+        // Apply thickness for ring/hollow effect
+        if (uniforms.thickness > 0.0) {
+            d = abs(d) - uniforms.thickness;
+        }
     } else if (uniforms.shapeType == 1) {
         // Rectangle
         d = sdBox(p, vec2f(uniforms.sizeX, uniforms.sizeY));
@@ -111,9 +121,6 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     } else if (uniforms.shapeType == 4) {
         // Star
         d = sdStar(p, uniforms.sizeX, uniforms.sides, 2.0);
-    } else if (uniforms.shapeType == 5) {
-        // Ring
-        d = abs(sdCircle(p, uniforms.sizeX)) - uniforms.thickness;
     } else {
         // Polygon
         d = sdPolygon(p, uniforms.sizeX, uniforms.sides);

@@ -133,7 +133,9 @@ void Gui::drawWidgetBackground(float x, float y, float w, float h, bool hovered,
 }
 
 void Gui::drawLabel(float x, float y, const char* text) {
-    float baseline = y + m_style.widgetHeight * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+    float ascent = m_canvas.fontAscent(0);
+    float descent = std::abs(m_canvas.fontDescent(0));
+    float baseline = y + m_style.widgetHeight * 0.5f + (ascent - descent) * 0.5f;
     m_canvas.text(text, x, baseline, m_style.text, 0);
 }
 
@@ -157,7 +159,9 @@ void Gui::beginPanel(const char* title, float x, float y, float w, float h) {
 
     // Draw title bar
     m_canvas.fillRoundedRect(x, y, w, m_style.titleHeight, m_style.cornerRadius * 1.5f, m_style.panelHeader);
-    float titleBaseline = y + m_style.titleHeight * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+    float ascent = m_canvas.fontAscent(0);
+    float descent = std::abs(m_canvas.fontDescent(0));
+    float titleBaseline = y + m_style.titleHeight * 0.5f + (ascent - descent) * 0.5f;
     m_canvas.text(title, x + m_style.padding, titleBaseline, m_style.text, 0);
 
     // Set up clipping for content area
@@ -242,7 +246,9 @@ bool Gui::button(const char* label) {
     // Center text
     float textW = m_canvas.measureText(label, 0);
     float textX = x + (w - textW) * 0.5f;
-    float textY = y + h * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+    float btnAscent = m_canvas.fontAscent(0);
+    float btnDescent = std::abs(m_canvas.fontDescent(0));
+    float textY = y + h * 0.5f + (btnAscent - btnDescent) * 0.5f;
     m_canvas.text(label, textX, textY, m_style.text, 0);
 
     advanceCursor(h);
@@ -383,14 +389,16 @@ bool Gui::slider(const char* label, float* value, float min, float max) {
     char valueBuf[32];
     snprintf(valueBuf, sizeof(valueBuf), "%.2f", *value);
 
+    float sliderAscent = m_canvas.fontAscent(0);
+    float sliderDescent = std::abs(m_canvas.fontDescent(0));
     if (m_style.valuePosition == ValuePosition::Center) {
         float textW = m_canvas.measureText(valueBuf, 0);
         float textX = sliderX + (sliderW - textW) * 0.5f;
-        float textY = sliderY + sliderH * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+        float textY = sliderY + sliderH * 0.5f + (sliderAscent - sliderDescent) * 0.5f;
         m_canvas.text(valueBuf, textX, textY, m_style.text, 0);
     } else if (m_style.valuePosition == ValuePosition::Right) {
         float textX = sliderX + sliderW + m_style.padding;
-        float textY = sliderY + sliderH * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+        float textY = sliderY + sliderH * 0.5f + (sliderAscent - sliderDescent) * 0.5f;
         m_canvas.text(valueBuf, textX, textY, m_style.text, 0);
     }
     // ValuePosition::None - don't draw value
@@ -511,14 +519,16 @@ Gui::SliderResult Gui::sliderEx(const char* label, float* value, float min, floa
     char valueBuf[32];
     snprintf(valueBuf, sizeof(valueBuf), "%.2f", *value);
 
+    float sliderExAscent = m_canvas.fontAscent(0);
+    float sliderExDescent = std::abs(m_canvas.fontDescent(0));
     if (m_style.valuePosition == ValuePosition::Center) {
         float textW = m_canvas.measureText(valueBuf, 0);
         float textX = sliderX + (sliderW - textW) * 0.5f;
-        float textY = sliderY + sliderH * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+        float textY = sliderY + sliderH * 0.5f + (sliderExAscent - sliderExDescent) * 0.5f;
         m_canvas.text(valueBuf, textX, textY, m_style.text, 0);
     } else if (m_style.valuePosition == ValuePosition::Right) {
         float textX = sliderX + sliderW + m_style.padding;
-        float textY = sliderY + sliderH * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+        float textY = sliderY + sliderH * 0.5f + (sliderExAscent - sliderExDescent) * 0.5f;
         m_canvas.text(valueBuf, textX, textY, m_style.text, 0);
     }
     // ValuePosition::None - don't draw value
@@ -536,24 +546,46 @@ bool Gui::dropdown(const char* label, int* index, const std::vector<std::string>
     float w = contentWidth();
     float h = m_style.widgetHeight;
 
-    // Layout: [label] [dropdown button]
-    float labelW = m_style.labelWidth;
-    float buttonX = x + labelW;
-    float buttonW = w - labelW;
+    // Layout variables - depend on label position style
+    float buttonX, buttonY, buttonW;
+    float totalHeight = h;
+
+    if (m_style.labelPosition == LabelPosition::Above) {
+        // Label on its own row, dropdown below at full width
+        float labelH = m_canvas.fontLineHeight(0);
+        if (labelH <= 0) labelH = 16.0f;
+
+        buttonX = x;
+        buttonY = y + labelH + 2;
+        buttonW = w;
+        totalHeight = labelH + 2 + h;
+    } else {
+        // Label to the left (original side-by-side layout)
+        buttonX = x + m_style.labelWidth;
+        buttonY = y;
+        buttonW = w - m_style.labelWidth;
+    }
 
     bool isOpen = (s_state.openDropdown == id);
-    bool hovered = isMouseInRect(buttonX, y, buttonW, h);
+    bool hovered = isMouseInRect(buttonX, buttonY, buttonW, h);
 
-    // Draw label
-    drawLabel(x, y, label);
+    // Draw label (position depends on style)
+    if (m_style.labelPosition == LabelPosition::Above) {
+        float baseline = y + m_canvas.fontAscent(0);
+        m_canvas.text(label, x, baseline, m_style.textDim, 0);
+    } else {
+        drawLabel(x, y, label);
+    }
 
     // Draw dropdown button
-    drawWidgetBackground(buttonX, y, buttonW, h, hovered || isOpen, isOpen);
+    drawWidgetBackground(buttonX, buttonY, buttonW, h, hovered || isOpen, isOpen);
 
     // Draw current selection
     int safeIndex = std::clamp(*index, 0, static_cast<int>(options.size()) - 1);
     const std::string& current = options[safeIndex];
-    float textY = y + h * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+    float ddAscent = m_canvas.fontAscent(0);
+    float ddDescent = std::abs(m_canvas.fontDescent(0));
+    float textY = buttonY + h * 0.5f + (ddAscent - ddDescent) * 0.5f;
     m_canvas.text(current.c_str(), buttonX + m_style.padding, textY, m_style.text, 0);
 
     // Draw arrow
@@ -576,7 +608,7 @@ bool Gui::dropdown(const char* label, int* index, const std::vector<std::string>
     if (isOpen) {
         m_canvas.setLayer(UILayer::Menus);
 
-        float menuY = y + h;
+        float menuY = buttonY + h;
         float menuH = options.size() * h;
 
         // Menu background
@@ -584,6 +616,8 @@ bool Gui::dropdown(const char* label, int* index, const std::vector<std::string>
         m_canvas.strokeRoundedRect(buttonX, menuY, buttonW, menuH, m_style.cornerRadius, m_style.borderWidth, m_style.panelBorder);
 
         // Menu items
+        float itemAscent = m_canvas.fontAscent(0);
+        float itemDescent = std::abs(m_canvas.fontDescent(0));
         for (size_t i = 0; i < options.size(); ++i) {
             float itemY = menuY + i * h;
             bool itemHovered = isMouseInRect(buttonX, itemY, buttonW, h);
@@ -592,7 +626,7 @@ bool Gui::dropdown(const char* label, int* index, const std::vector<std::string>
                 m_canvas.fillRoundedRect(buttonX + 2, itemY + 2, buttonW - 4, h - 4, m_style.cornerRadius, m_style.widgetHover);
             }
 
-            float itemTextY = itemY + h * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+            float itemTextY = itemY + h * 0.5f + (itemAscent - itemDescent) * 0.5f;
 
             // Checkmark for selected
             if (static_cast<int>(i) == safeIndex) {
@@ -610,14 +644,14 @@ bool Gui::dropdown(const char* label, int* index, const std::vector<std::string>
         }
 
         // Close if clicked outside
-        if (m_mouseClicked && !isMouseInRect(buttonX, y, buttonW, h + menuH)) {
+        if (m_mouseClicked && !isMouseInRect(buttonX, buttonY, buttonW, h + menuH)) {
             s_state.openDropdown = 0;
         }
 
         m_canvas.setLayer(UILayer::Panels);
     }
 
-    advanceCursor(h);
+    advanceCursor(totalHeight);
     return changed;
 }
 
@@ -651,7 +685,9 @@ bool Gui::colorPicker(const char* label, glm::vec4* color) {
     int g = static_cast<int>(std::clamp(color->g, 0.0f, 1.0f) * 255);
     int b = static_cast<int>(std::clamp(color->b, 0.0f, 1.0f) * 255);
     snprintf(hexBuf, sizeof(hexBuf), "#%02X%02X%02X", r, g, b);
-    float textY = y + h * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+    float cpAscent = m_canvas.fontAscent(0);
+    float cpDescent = std::abs(m_canvas.fontDescent(0));
+    float textY = y + h * 0.5f + (cpAscent - cpDescent) * 0.5f;
     m_canvas.text(hexBuf, swatchX + swatchW + m_style.padding, textY, m_style.textDim, 0);
 
     // TODO: Expand/collapse for full HSV picker
@@ -1074,8 +1110,11 @@ Gui::XYPadResult Gui::xyPadEx(const char* label, glm::vec2* value,
     snprintf(yBuf, sizeof(yBuf), "Y: %.2f", value->y);
     float textY1 = padY + padSize * 0.33f;
     float textY2 = padY + padSize * 0.66f;
-    m_canvas.text(xBuf, valueDisplayX, textY1 + m_canvas.fontAscent(0) * 0.35f, m_style.text, 0);
-    m_canvas.text(yBuf, valueDisplayX, textY2 + m_canvas.fontAscent(0) * 0.35f, m_style.text, 0);
+    float xyAscent = m_canvas.fontAscent(0);
+    float xyDescent = std::abs(m_canvas.fontDescent(0));
+    float xyOffset = (xyAscent - xyDescent) * 0.5f;
+    m_canvas.text(xBuf, valueDisplayX, textY1 + xyOffset, m_style.text, 0);
+    m_canvas.text(yBuf, valueDisplayX, textY2 + xyOffset, m_style.text, 0);
 
     advanceCursor(totalHeight);
     return result;
@@ -1207,7 +1246,9 @@ Gui::Vec3RowResult Gui::vec3RowEx(const char* label, glm::vec3* value,
         snprintf(valBuf, sizeof(valBuf), "%.1f", (*value)[c]);
         float textW = m_canvas.measureText(valBuf, 0);
         float textX = sliderX + (sliderW - textW) * 0.5f;
-        float textY = slidersY + sliderH * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+        float v3Ascent = m_canvas.fontAscent(0);
+        float v3Descent = std::abs(m_canvas.fontDescent(0));
+        float textY = slidersY + sliderH * 0.5f + (v3Ascent - v3Descent) * 0.5f;
         m_canvas.text(valBuf, textX, textY, m_style.text, 0);
     }
 
@@ -1447,7 +1488,9 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
         }
 
         // Draw label and value centered, label on left half, value on right half
-        float labelY = slidersY + sliderH * 0.5f + m_canvas.fontAscent(0) * 0.35f;
+        float adsrAscent = m_canvas.fontAscent(0);
+        float adsrDescent = std::abs(m_canvas.fontDescent(0));
+        float labelY = slidersY + sliderH * 0.5f + (adsrAscent - adsrDescent) * 0.5f;
 
         // Label (left-aligned in left portion)
         float labelX = sliderX + 3.0f;

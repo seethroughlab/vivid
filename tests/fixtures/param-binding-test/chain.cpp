@@ -62,7 +62,7 @@ void setup(Context& ctx) {
 
     // Center circle - pulses with bass (smaller to leave room for text)
     auto& circle = chain.add<Shape>("circle");
-    circle.type = ShapeType::Circle;
+    circle.type = ShapeType::Ellipse;
     circle.position.set(0.5f, 0.65f);  // Moved down
     circle.size.set(0.15f, 0.15f);     // Smaller
     circle.color.set(1.0f, 0.0f, 0.0f, 1.0f);  // Red

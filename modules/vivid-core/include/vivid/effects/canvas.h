@@ -159,7 +159,14 @@ enum class TextBaseline {
     Bottom       ///< Bottom of em square
 };
 
-/// @brief Text measurement results
+/// @brief Font-level metrics (independent of specific text)
+struct FontMetrics {
+    float ascent = 0;      ///< Distance from baseline to top of tallest glyph
+    float descent = 0;     ///< Distance from baseline to bottom of lowest glyph (positive value)
+    float lineHeight = 0;  ///< Recommended line spacing (ascent + descent + leading)
+};
+
+/// @brief Text measurement results (HTML Canvas 2D compatible)
 struct TextMetrics {
     float width = 0;                    ///< Advance width of text
     float actualBoundingBoxLeft = 0;    ///< Distance to left edge from alignment point
@@ -793,6 +800,16 @@ public:
      * @return TextMetrics with detailed bounding box information
      */
     TextMetrics measureTextMetrics(const std::string& str) const;
+
+    /**
+     * @brief Get font-level metrics for current font
+     *
+     * Returns metrics that are properties of the font itself, independent
+     * of any specific text string. This is a Vivid extension (not in HTML Canvas).
+     *
+     * @return FontMetrics with ascent, descent, and line height
+     */
+    FontMetrics fontMetrics() const;
 
     /// @}
     // -------------------------------------------------------------------------

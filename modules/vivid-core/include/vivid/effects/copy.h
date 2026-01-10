@@ -33,7 +33,7 @@ enum class CopyMode {
  * @par Example (Linear)
  * @code
  * auto& shape = chain.add<Shape>("shape");
- * shape.type = ShapeType::Circle;
+ * shape.type = ShapeType::Ellipse;
  *
  * auto& copies = chain.add<Copy>("copies");
  * copies.input("shape");

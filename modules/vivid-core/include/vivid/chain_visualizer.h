@@ -53,6 +53,17 @@ private:
     bool m_inSoloMode = false;
     std::string m_soloOperatorName;  // Cached for display
 
+    // View state preservation for solo mode
+    float m_preSoloZoom = 1.0f;
+    glm::vec2 m_preSoloPan = {0, 0};
+
+    // Double-click handling (set by callback, cleared after processing)
+    int m_pendingDoubleClickNodeId = -1;
+
+    // Output pin hover state (for tooltip)
+    int m_hoveredOutputNodeId = -1;
+    int m_hoveredOutputPinIndex = -1;
+
     // Selection helpers (for editor sync)
     void clearSelection();
 
@@ -130,7 +141,8 @@ public:
 private:
     // Status bar, tooltip, debug panel, and inspector rendering (uses OverlayCanvas)
     void renderStatusBar(const FrameInput& input, Context& ctx);
-    void renderTooltip(const FrameInput& input, const OperatorInfo& info);
+    void renderOutputPinTooltip(const FrameInput& input, const OperatorInfo& info);
+    void renderSoloIndicator(const FrameInput& input);
     void renderDebugPanelOverlay(const FrameInput& input, Context& ctx);
     void renderInspectorPanel(const FrameInput& input, Context& ctx);
     void renderOperatorInspector(const FrameInput& input, Operator* op, const std::string& title);
@@ -157,6 +169,8 @@ private:
     ButtonRect m_codecProRes;
     // Grid toggle
     ButtonRect m_gridToggleButton;
+    // Solo mode close button
+    ButtonRect m_soloCloseButton;
     bool isMouseInRect(const ButtonRect& r, glm::vec2 mousePos) const {
         return r.valid && mousePos.x >= r.x && mousePos.x < r.x + r.w &&
                mousePos.y >= r.y && mousePos.y < r.y + r.h;

@@ -177,12 +177,24 @@ void ChainVisualizer::selectNodeFromEditor(const std::string& operatorName) {
 
 
 void ChainVisualizer::enterSoloMode(vivid::Operator* op, const std::string& name) {
+    // Save view state before entering solo
+    m_preSoloZoom = m_nodeGraph.zoom();
+    m_preSoloPan = m_nodeGraph.pan();
+
     m_soloOperator = op;
     m_soloOperatorName = name;
     m_inSoloMode = true;
+
+    // Select this node in the graph (so inspector shows its params)
+    // Find the node ID for this operator
+    // Note: This is set by the caller if using double-click
 }
 
 void ChainVisualizer::exitSoloMode() {
+    // Restore view state
+    m_nodeGraph.setZoom(m_preSoloZoom);
+    m_nodeGraph.setPan(m_preSoloPan);
+
     m_soloOperator = nullptr;
     m_soloOperatorName.clear();
     m_inSoloMode = false;
@@ -337,6 +349,16 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
         std::cerr << "[ChainVisualizer] Warning: Could not load Roboto Mono font\n";
     }
 
+    // Set up callbacks for node graph interactions
+    m_nodeGraph.setDoubleClickCallback([this](int nodeId) {
+        m_pendingDoubleClickNodeId = nodeId;
+    });
+
+    m_nodeGraph.setOutputPinHoverCallback([this](int nodeId, int pinIndex) {
+        m_hoveredOutputNodeId = nodeId;
+        m_hoveredOutputPinIndex = pinIndex;
+    });
+
     m_nodeGraphInitialized = true;
     std::cerr << "[ChainVisualizer] NodeGraph initialized\n";
 }
@@ -385,6 +407,7 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     graphInput.keyEnter = input.isKeyPressed(vivid::Key::Enter);
     graphInput.keyB = input.isKeyPressed(vivid::Key::B);
     graphInput.keyEscape = input.isKeyPressed(vivid::Key::Escape);
+    graphInput.time = input.time;
 
     // Begin overlay rendering
     m_overlay.begin(input.width, input.height);
@@ -414,6 +437,10 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
         nodeGraphInput.scroll = {0, 0};  // Block scroll to prevent zoom while scrolling inspector
     }
 
+    // Skip node graph rendering when in solo mode (but keep inspector)
+    bool renderNodeGraph = !m_inSoloMode;
+
+    if (renderNodeGraph) {
     // Begin node graph editor
     m_nodeGraph.beginEditor(m_overlay, static_cast<float>(input.width), static_cast<float>(input.height), nodeGraphInput);
 
@@ -706,6 +733,7 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
 
     // End node graph editor
     m_nodeGraph.endEditor();
+    } // end if (renderNodeGraph)
 
     // Render status bar (in screen space, not node graph space)
     m_overlay.resetTransform();
@@ -748,15 +776,12 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
         }
     }
 
-    // Render tooltip for hovered node
-    int hoveredNodeId = -1;
-    if (m_nodeGraph.isNodeHovered(&hoveredNodeId) && hoveredNodeId >= 0 &&
-        hoveredNodeId != SCREEN_NODE_ID && hoveredNodeId != SPEAKERS_NODE_ID) {
-        // Find the operator for this node
-        if (static_cast<size_t>(hoveredNodeId) < operators.size()) {
-            const vivid::OperatorInfo& info = operators[hoveredNodeId];
+    // Render output pin tooltip (lightweight: size, format only)
+    if (!m_inSoloMode && m_hoveredOutputNodeId >= 0 && m_hoveredOutputPinIndex >= 0) {
+        if (static_cast<size_t>(m_hoveredOutputNodeId) < operators.size()) {
+            const vivid::OperatorInfo& info = operators[m_hoveredOutputNodeId];
             if (info.op) {
-                renderTooltip(input, info);
+                renderOutputPinTooltip(input, info);
             }
         }
     }
@@ -770,13 +795,26 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     // Handle keyboard shortcuts (using new key input system)
     using vivid::Key;
 
-    // S key - solo selected node
-    if (input.isKeyPressed(Key::S)) {
-        int selectedNodeId = m_nodeGraph.getSelectedNode();
-        if (selectedNodeId >= 0 && selectedNodeId != SCREEN_NODE_ID && selectedNodeId != SPEAKERS_NODE_ID) {
-            if (static_cast<size_t>(selectedNodeId) < operators.size()) {
-                const vivid::OperatorInfo& info = operators[selectedNodeId];
+    // Handle double-click to enter solo mode
+    if (m_pendingDoubleClickNodeId >= 0) {
+        int nodeId = m_pendingDoubleClickNodeId;
+        m_pendingDoubleClickNodeId = -1;  // Clear pending
+
+        std::cerr << "[ChainVisualizer] Double-click nodeId=" << nodeId
+                  << ", operators.size()=" << operators.size() << "\n";
+
+        if (nodeId != SCREEN_NODE_ID && nodeId != SPEAKERS_NODE_ID) {
+            if (static_cast<size_t>(nodeId) < operators.size()) {
+                const vivid::OperatorInfo& info = operators[nodeId];
+                std::cerr << "[ChainVisualizer] Operator name='" << info.name
+                          << "', op=" << (void*)info.op << "\n";
                 if (info.op) {
+                    // Select this node so inspector shows its params
+                    m_nodeGraph.selectNode(nodeId);
+                    m_selectedNodeId = nodeId;
+                    m_selectedOp = info.op;
+                    m_selectedOpName = info.name;
+                    std::cerr << "[ChainVisualizer] Entering solo mode for '" << info.name << "'\n";
                     enterSoloMode(info.op, info.name);
                 }
             }
@@ -805,38 +843,23 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     if (m_inSoloMode && m_soloOperator) {
         // Set the output texture to the solo operator's output
         vivid::OutputKind kind = m_soloOperator->outputKind();
+        std::cerr << "[ChainVisualizer] Solo rendering: '" << m_soloOperatorName
+                  << "', outputKind=" << static_cast<int>(kind) << "\n";
         if (kind == vivid::OutputKind::Texture) {
             WGPUTextureView view = m_soloOperator->outputView();
+            std::cerr << "[ChainVisualizer] outputView=" << (void*)view << "\n";
             if (view) {
                 ctx.setOutputTexture(view);
             }
         }
 
-        // Draw solo mode indicator (top-left corner, in tooltips layer)
-        m_overlay.setLayer(UILayer::Tooltips);
+        // Draw solo indicator with close button
+        renderSoloIndicator(input);
 
-        float lineH = m_overlay.fontLineHeight(0);
-        float ascent = m_overlay.fontAscent(0);
-        if (lineH <= 0) lineH = 22.0f;
-        if (ascent <= 0) ascent = 16.0f;
-
-        const float padding = 10.0f;
-        std::string soloText = "SOLO: " + m_soloOperatorName;
-        std::string escText = "(press ESC to exit)";
-        float soloWidth = m_overlay.measureText(soloText, 0);
-        float escWidth = m_overlay.measureText(escText, 0);
-        float boxWidth = std::max(soloWidth, escWidth) + padding * 2;
-        float boxHeight = lineH * 2 + padding * 2;
-
-        glm::vec4 bgColor = {0.15f, 0.12f, 0.05f, 0.9f};
-        glm::vec4 borderColor = {0.8f, 0.6f, 0.2f, 1.0f};
-        glm::vec4 soloColor = {1.0f, 0.9f, 0.4f, 1.0f};
-        glm::vec4 dimColor = {0.6f, 0.6f, 0.7f, 1.0f};
-
-        m_overlay.fillRoundedRect(padding, padding, boxWidth, boxHeight, 4.0f, bgColor);
-        m_overlay.strokeRoundedRect(padding, padding, boxWidth, boxHeight, 4.0f, 1.0f, borderColor);
-        m_overlay.text(soloText, padding * 2, padding + ascent, soloColor);
-        m_overlay.text(escText, padding * 2, padding + lineH + ascent, dimColor);
+        // Handle close button click
+        if (graphInput.mouseClicked[0] && isMouseInRect(m_soloCloseButton, graphInput.mousePos)) {
+            exitSoloMode();
+        }
     }
 
     // Render the overlay
@@ -1144,109 +1167,137 @@ void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& c
     }
 }
 
-void ChainVisualizer::renderTooltip(const FrameInput& input, const vivid::OperatorInfo& info) {
+void ChainVisualizer::renderOutputPinTooltip(const FrameInput& input, const vivid::OperatorInfo& info) {
     if (!info.op) return;
 
     // Use font 0 (Inter Regular) metrics for tooltip
     float lineH = m_overlay.fontLineHeight(0);
     float ascent = m_overlay.fontAscent(0);
-    if (lineH <= 0) lineH = 22.0f;  // Fallback
+    if (lineH <= 0) lineH = 22.0f;
     if (ascent <= 0) ascent = 16.0f;
 
-    const float padding = 8.0f;
-    const float lineHeight = lineH;
-    float tooltipWidth = 200.0f;
+    const float padding = 6.0f;
 
-    // Colors - fully opaque background for readability
-    glm::vec4 bgColor = {0.12f, 0.12f, 0.14f, 1.0f};
+    // Colors
+    glm::vec4 bgColor = {0.1f, 0.1f, 0.12f, 0.95f};
     glm::vec4 borderColor = {0.4f, 0.4f, 0.45f, 1.0f};
-    glm::vec4 titleColor = {0.5f, 0.8f, 1.0f, 1.0f};
     glm::vec4 textColor = {0.9f, 0.9f, 0.9f, 1.0f};
-    glm::vec4 dimColor = {0.65f, 0.65f, 0.7f, 1.0f};
-    glm::vec4 orangeColor = {1.0f, 0.6f, 0.3f, 1.0f};
 
-    // Build tooltip content
-    std::vector<std::pair<std::string, glm::vec4>> lines;
-
-    // Operator type name
-    lines.push_back({info.op->name(), titleColor});
-
-    // Registered name if different
-    if (info.name != info.op->name()) {
-        lines.push_back({"(" + info.name + ")", dimColor});
-    }
-
-    // Output type
+    // Build minimal output info
+    std::string tooltipText;
     vivid::OutputKind kind = info.op->outputKind();
-    const char* kindStr = "Unknown";
-    switch (kind) {
-        case vivid::OutputKind::Texture: kindStr = "Output: Texture"; break;
-        case vivid::OutputKind::Geometry: kindStr = "Output: Geometry"; break;
-        case vivid::OutputKind::Audio: kindStr = "Output: Audio"; break;
-        case vivid::OutputKind::AudioValue: kindStr = "Output: Audio Value"; break;
-        case vivid::OutputKind::Value: kindStr = "Output: Value"; break;
-        case vivid::OutputKind::ValueArray: kindStr = "Output: Value Array"; break;
-        case vivid::OutputKind::Camera: kindStr = "Output: Camera"; break;
-        case vivid::OutputKind::Light: kindStr = "Output: Light"; break;
-    }
-    lines.push_back({kindStr, textColor});
 
-    // Resource info for textures
     if (kind == vivid::OutputKind::Texture) {
         WGPUTexture tex = info.op->outputTexture();
         if (tex) {
             uint32_t w = wgpuTextureGetWidth(tex);
             uint32_t h = wgpuTextureGetHeight(tex);
-            size_t memBytes = w * h * 8;  // RGBA16Float = 8 bytes per pixel
+            WGPUTextureFormat fmt = wgpuTextureGetFormat(tex);
+            const char* fmtStr = "RGBA16F";  // Default for EFFECTS_FORMAT
+            if (fmt == WGPUTextureFormat_BGRA8Unorm) fmtStr = "BGRA8";
+            else if (fmt == WGPUTextureFormat_RGBA8Unorm) fmtStr = "RGBA8";
+            else if (fmt == WGPUTextureFormat_BGRA8UnormSrgb) fmtStr = "BGRA8sRGB";
+            else if (fmt == WGPUTextureFormat_RGBA8UnormSrgb) fmtStr = "RGBA8sRGB";
+            else if (fmt == WGPUTextureFormat_RGBA32Float) fmtStr = "RGBA32F";
+
             char buf[64];
-            snprintf(buf, sizeof(buf), "Size: %ux%u", w, h);
-            lines.push_back({buf, textColor});
-            snprintf(buf, sizeof(buf), "Memory: ~%.1f MB", memBytes / (1024.0f * 1024.0f));
-            lines.push_back({buf, textColor});
+            snprintf(buf, sizeof(buf), "%ux%u %s", w, h, fmtStr);
+            tooltipText = buf;
         } else {
-            lines.push_back({"No texture", dimColor});
+            tooltipText = "No texture";
         }
+    } else if (kind == vivid::OutputKind::Audio) {
+        // TODO: Get actual audio stats from operator
+        tooltipText = "48000 Hz, stereo, 512 samples";
+    } else if (kind == vivid::OutputKind::Value) {
+        tooltipText = "Float value";
+    } else if (kind == vivid::OutputKind::Geometry) {
+        tooltipText = "3D Geometry";
+    } else {
+        tooltipText = vivid::outputKindName(kind);
     }
 
-    // Bypass status
-    if (info.op->isBypassed()) {
-        lines.push_back({"BYPASSED", orangeColor});
-    }
+    // Calculate size
+    float tooltipWidth = m_overlay.measureText(tooltipText) + padding * 2;
+    float tooltipHeight = lineH + padding * 2;
 
-    // Calculate tooltip size
-    float maxWidth = 0;
-    for (const auto& line : lines) {
-        float w = m_overlay.measureText(line.first);
-        maxWidth = std::max(maxWidth, w);
-    }
-    tooltipWidth = maxWidth + padding * 2;
-    float tooltipHeight = lines.size() * lineHeight + padding * 2;
-
-    // Position tooltip near mouse (offset to not obscure cursor)
+    // Position near mouse
     float mouseX = input.mousePos.x * (input.contentScale > 0 ? input.contentScale : 1.0f);
     float mouseY = input.mousePos.y * (input.contentScale > 0 ? input.contentScale : 1.0f);
-    float tooltipX = mouseX + 15;
-    float tooltipY = mouseY + 15;
+    float tooltipX = mouseX + 12;
+    float tooltipY = mouseY + 12;
 
     // Keep on screen
     if (tooltipX + tooltipWidth > input.width) {
-        tooltipX = mouseX - tooltipWidth - 10;
+        tooltipX = mouseX - tooltipWidth - 8;
     }
     if (tooltipY + tooltipHeight > input.height) {
-        tooltipY = mouseY - tooltipHeight - 10;
+        tooltipY = mouseY - tooltipHeight - 8;
     }
 
-    // Draw background (use tooltips layer so tooltips appear above everything)
+    // Draw tooltip
     m_overlay.setLayer(UILayer::Tooltips);
-    m_overlay.fillRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, bgColor);
-    m_overlay.strokeRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 4.0f, 1.0f, borderColor);
+    m_overlay.fillRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 3.0f, bgColor);
+    m_overlay.strokeRoundedRect(tooltipX, tooltipY, tooltipWidth, tooltipHeight, 3.0f, 1.0f, borderColor);
+    m_overlay.text(tooltipText, tooltipX + padding, tooltipY + padding + ascent, textColor);
+}
 
-    // Draw text lines (position at baseline = top + ascent)
-    float textY = tooltipY + padding + ascent;
-    for (const auto& line : lines) {
-        m_overlay.text(line.first, tooltipX + padding, textY, line.second);
-        textY += lineHeight;
-    }
+void ChainVisualizer::renderSoloIndicator(const FrameInput& input) {
+    if (!m_inSoloMode || !m_soloOperator) return;
+
+    m_overlay.setLayer(UILayer::Tooltips);
+
+    float lineH = m_overlay.fontLineHeight(0);
+    float ascent = m_overlay.fontAscent(0);
+    if (lineH <= 0) lineH = 22.0f;
+    if (ascent <= 0) ascent = 16.0f;
+
+    const float padding = 10.0f;
+    const float closeButtonSize = lineH;
+
+    std::string soloText = "SOLO: " + m_soloOperatorName;
+    float textWidth = m_overlay.measureText(soloText, 0);
+    float boxWidth = textWidth + padding * 3 + closeButtonSize;
+    float boxHeight = lineH + padding * 2;
+
+    glm::vec4 bgColor = {0.15f, 0.12f, 0.05f, 0.95f};
+    glm::vec4 borderColor = {0.8f, 0.6f, 0.2f, 1.0f};
+    glm::vec4 soloColor = {1.0f, 0.9f, 0.4f, 1.0f};
+    glm::vec4 closeColor = {0.7f, 0.7f, 0.7f, 1.0f};
+    glm::vec4 closeHoverColor = {1.0f, 0.4f, 0.4f, 1.0f};
+
+    float boxX = padding;
+    float boxY = padding;
+
+    // Draw background
+    m_overlay.fillRoundedRect(boxX, boxY, boxWidth, boxHeight, 4.0f, bgColor);
+    m_overlay.strokeRoundedRect(boxX, boxY, boxWidth, boxHeight, 4.0f, 1.0f, borderColor);
+
+    // Draw "SOLO: name" text
+    m_overlay.text(soloText, boxX + padding, boxY + padding + ascent, soloColor);
+
+    // Draw close button (×)
+    float closeX = boxX + boxWidth - padding - closeButtonSize;
+    float closeY = boxY + padding;
+
+    // Store close button rect for click detection
+    m_soloCloseButton = {closeX, closeY, closeButtonSize, closeButtonSize, true};
+
+    // Check if mouse is hovering the close button
+    float mouseX = input.mousePos.x * (input.contentScale > 0 ? input.contentScale : 1.0f);
+    float mouseY = input.mousePos.y * (input.contentScale > 0 ? input.contentScale : 1.0f);
+    bool hovering = mouseX >= closeX && mouseX <= closeX + closeButtonSize &&
+                    mouseY >= closeY && mouseY <= closeY + closeButtonSize;
+
+    glm::vec4 xColor = hovering ? closeHoverColor : closeColor;
+
+    // Draw × symbol centered in the button area
+    float xCenterX = closeX + closeButtonSize / 2;
+    float xCenterY = closeY + closeButtonSize / 2;
+    float xSize = closeButtonSize * 0.3f;
+
+    m_overlay.line(xCenterX - xSize, xCenterY - xSize, xCenterX + xSize, xCenterY + xSize, 2.0f, xColor);
+    m_overlay.line(xCenterX + xSize, xCenterY - xSize, xCenterX - xSize, xCenterY + xSize, 2.0f, xColor);
 }
 
 void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Context& ctx) {

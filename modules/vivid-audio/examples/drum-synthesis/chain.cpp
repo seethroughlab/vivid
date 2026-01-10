@@ -228,7 +228,7 @@ void setup(Context& ctx) {
 
     // RING OUTLINE - bold circular ring (hi-hat)
     auto& ring_outline = chain.add<Shape>("ring_outline");
-    ring_outline.type = ShapeType::Ring;
+    ring_outline.type = ShapeType::Ellipse;
     ring_outline.position.set(0.5f, 0.5f);
     ring_outline.size.set(0.45f, 0.45f);
     ring_outline.thickness = 0.015f;

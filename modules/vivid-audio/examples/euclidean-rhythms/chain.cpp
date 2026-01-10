@@ -91,28 +91,28 @@ void setup(Context& ctx) {
     // Ring visualizations for each euclidean pattern
     // Kick ring (large, center)
     auto& kick_ring = chain.add<Shape>("kick_ring");
-    kick_ring.type = ShapeType::Ring;
+    kick_ring.type = ShapeType::Ellipse;
     kick_ring.size.set(0.35f, 0.35f);
     kick_ring.thickness = 0.03f;
     kick_ring.color.set(1.0f, 0.3f, 0.1f, 1.0f);
 
     // Snare ring
     auto& snare_ring = chain.add<Shape>("snare_ring");
-    snare_ring.type = ShapeType::Ring;
+    snare_ring.type = ShapeType::Ellipse;
     snare_ring.size.set(0.28f, 0.28f);
     snare_ring.thickness = 0.025f;
     snare_ring.color.set(1.0f, 1.0f, 0.2f, 1.0f);
 
     // Hat ring
     auto& hat_ring = chain.add<Shape>("hat_ring");
-    hat_ring.type = ShapeType::Ring;
+    hat_ring.type = ShapeType::Ellipse;
     hat_ring.size.set(0.21f, 0.21f);
     hat_ring.thickness = 0.02f;
     hat_ring.color.set(0.6f, 0.8f, 1.0f, 1.0f);
 
     // Clap ring
     auto& clap_ring = chain.add<Shape>("clap_ring");
-    clap_ring.type = ShapeType::Ring;
+    clap_ring.type = ShapeType::Ellipse;
     clap_ring.size.set(0.14f, 0.14f);
     clap_ring.thickness = 0.015f;
     clap_ring.color.set(0.4f, 1.0f, 0.5f, 1.0f);

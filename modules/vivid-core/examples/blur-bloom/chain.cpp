@@ -18,13 +18,13 @@ void setup(Context& ctx) {
     bg.color.set(0.02f, 0.02f, 0.05f, 1.0f);
 
     auto& shape1 = chain.add<Shape>("shape1");
-    shape1.type = ShapeType::Circle;
+    shape1.type = ShapeType::Ellipse;
     shape1.size.set(0.15f, 0.15f);
     shape1.color.set(1.0f, 0.4f, 0.1f, 1.0f);  // Orange
     shape1.position.set(0.25f, 0.5f);  // Left of center
 
     auto& shape2 = chain.add<Shape>("shape2");
-    shape2.type = ShapeType::Circle;
+    shape2.type = ShapeType::Ellipse;
     shape2.size.set(0.12f, 0.12f);
     shape2.color.set(0.2f, 0.6f, 1.0f, 1.0f);  // Blue
     shape2.position.set(0.75f, 0.5f);  // Right of center
@@ -143,18 +143,21 @@ void update(Context& ctx) {
     canvas.fillRect(halfW + pad, halfH + pad, 180, 22);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
-    canvas.fillText("Original", pad + 5, pad + 16);
+    auto fm = canvas.fontMetrics();
+    float textY = pad + fm.ascent;
+    float textY2 = halfH + pad + fm.ascent;
+    canvas.fillText("Original", pad + 5, textY);
 
     char blurLabel[64];
     snprintf(blurLabel, sizeof(blurLabel), "Blur: radius=%.1f", static_cast<float>(blur.radius));
-    canvas.fillText(blurLabel, halfW + pad + 5, pad + 16);
+    canvas.fillText(blurLabel, halfW + pad + 5, textY);
 
     char vignetteLabel[64];
     snprintf(vignetteLabel, sizeof(vignetteLabel), "Vignette: int=%.2f soft=%.2f",
         static_cast<float>(vignette.intensity), static_cast<float>(vignette.softness));
-    canvas.fillText(vignetteLabel, pad + 5, halfH + pad + 16);
+    canvas.fillText(vignetteLabel, pad + 5, textY2);
 
-    canvas.fillText("Combined: Bloom + Vignette", halfW + pad + 5, halfH + pad + 16);
+    canvas.fillText("Combined: Bloom + Vignette", halfW + pad + 5, textY2);
 }
 
 VIVID_CHAIN(setup, update)

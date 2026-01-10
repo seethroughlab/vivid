@@ -188,7 +188,7 @@ void setup(Context& ctx) {
 
     // Central shape - pulses with beat
     auto& beatShape = chain.add<Shape>("beatShape");
-    beatShape.type = ShapeType::Circle;
+    beatShape.type = ShapeType::Ellipse;
     beatShape.position.set(0.5f, 0.5f);
     beatShape.size.set(0.15f, 0.15f);
     beatShape.color.set(Color::White.withAlpha(0.8f));

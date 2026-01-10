@@ -117,22 +117,25 @@ void update(Context& ctx) {
     canvas.fillRect(halfW + pad, halfH + pad, 140, 22);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
+    auto fm = canvas.fontMetrics();
+    float textY = pad + fm.ascent;
+    float textY2 = halfH + pad + fm.ascent;
 
     char pixLabel[64];
     snprintf(pixLabel, sizeof(pixLabel), "Pixelate: %.0fpx", pixelSize);
-    canvas.fillText(pixLabel, pad + 5, pad + 16);
+    canvas.fillText(pixLabel, pad + 5, textY);
 
-    canvas.fillText("Plexus: 150 nodes", halfW + pad + 5, pad + 16);
+    canvas.fillText("Plexus: 150 nodes", halfW + pad + 5, textY);
 
     char grainLabel[64];
     snprintf(grainLabel, sizeof(grainLabel), "FilmGrain: int=%.2f",
         static_cast<float>(grain.intensity));
-    canvas.fillText(grainLabel, pad + 5, halfH + pad + 16);
+    canvas.fillText(grainLabel, pad + 5, textY2);
 
     char flashLabel[64];
     snprintf(flashLabel, sizeof(flashLabel), "Flash: %.0f%%",
         flash.intensity() * 100.0f);
-    canvas.fillText(flashLabel, halfW + pad + 5, halfH + pad + 16);
+    canvas.fillText(flashLabel, halfW + pad + 5, textY2);
 }
 
 // Fullscreen showcase

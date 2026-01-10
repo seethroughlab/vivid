@@ -83,7 +83,7 @@ void setup(Context& ctx) {
 
     // Orbiting ring shape
     auto& ringShape = chain.add<Shape>("ringShape");
-    ringShape.type = ShapeType::Ring;
+    ringShape.type = ShapeType::Ellipse;
     ringShape.size.set(0.4f, 0.4f);
     ringShape.position.set(0.5f, 0.5f);
     ringShape.thickness = 0.02f;

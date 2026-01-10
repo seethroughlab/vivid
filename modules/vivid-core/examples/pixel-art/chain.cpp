@@ -103,17 +103,20 @@ void update(Context& ctx) {
     canvas.fillRect(halfW + pad, halfH + pad, halfW - pad * 2, labelH);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
-    canvas.fillText("ORIGINAL", pad + 8, pad + 20);
+    auto fm = canvas.fontMetrics();
+    float textY = pad + (labelH + fm.ascent - fm.descent) * 0.5f;
+    float textY2 = halfH + pad + (labelH + fm.ascent - fm.descent) * 0.5f;
+    canvas.fillText("ORIGINAL", pad + 8, textY);
 
     char pixLabel[64];
     snprintf(pixLabel, sizeof(pixLabel), "PIXELATE  size=%.0f", baseSize);
-    canvas.fillText(pixLabel, halfW + pad + 8, pad + 20);
+    canvas.fillText(pixLabel, halfW + pad + 8, textY);
 
     char quantLabel[64];
     snprintf(quantLabel, sizeof(quantLabel), "QUANTIZE  levels=%d", levels);
-    canvas.fillText(quantLabel, pad + 8, halfH + pad + 20);
+    canvas.fillText(quantLabel, pad + 8, textY2);
 
-    canvas.fillText("PIXEL ART  4px + 8 levels", halfW + pad + 8, halfH + pad + 20);
+    canvas.fillText("PIXEL ART  4px + 8 levels", halfW + pad + 8, textY2);
 }
 
 // Retro aesthetic - fixed 640x480 window

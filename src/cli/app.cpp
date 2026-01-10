@@ -695,6 +695,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             frameInput.height = mlc.ctx->height();
             frameInput.contentScale = xscale;
             frameInput.dt = static_cast<float>(mlc.ctx->dt());
+            frameInput.time = static_cast<float>(mlc.ctx->time());
             frameInput.mousePos = mlc.ctx->mouse();
             frameInput.mouseDown[0] = mlc.ctx->mouseButton(0).held;
             frameInput.mouseDown[1] = mlc.ctx->mouseButton(1).held;
@@ -904,6 +905,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     frameInput.height = mlc.ctx->height();
     frameInput.contentScale = xscale;
     frameInput.dt = static_cast<float>(mlc.ctx->dt());
+    frameInput.time = static_cast<float>(mlc.ctx->time());
     frameInput.mousePos = glm::vec2(static_cast<float>(mx), static_cast<float>(my));
     frameInput.mouseDown[0] = glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
     frameInput.mouseDown[1] = glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;

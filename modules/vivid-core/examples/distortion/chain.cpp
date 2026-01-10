@@ -143,26 +143,29 @@ void update(Context& ctx) {
     canvas.fillRect(halfW + pad, halfH + pad, 180, 22);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
+    auto fm = canvas.fontMetrics();
+    float textY = pad + fm.ascent;
+    float textY2 = halfH + pad + fm.ascent;
 
     char chromaLabel[64];
     snprintf(chromaLabel, sizeof(chromaLabel), "ChromaticAberration: %.3f",
         static_cast<float>(chroma.amount));
-    canvas.fillText(chromaLabel, pad + 5, pad + 16);
+    canvas.fillText(chromaLabel, pad + 5, textY);
 
     char barrelLabel[64];
     snprintf(barrelLabel, sizeof(barrelLabel), "BarrelDistortion: %.2f",
         static_cast<float>(barrel.curvature));
-    canvas.fillText(barrelLabel, halfW + pad + 5, pad + 16);
+    canvas.fillText(barrelLabel, halfW + pad + 5, textY);
 
     char edgeLabel[64];
     snprintf(edgeLabel, sizeof(edgeLabel), "Edge: str=%.1f thr=%.2f",
         static_cast<float>(edge.strength), static_cast<float>(edge.threshold));
-    canvas.fillText(edgeLabel, pad + 5, halfH + pad + 16);
+    canvas.fillText(edgeLabel, pad + 5, textY2);
 
     char displaceLabel[64];
     snprintf(displaceLabel, sizeof(displaceLabel), "Displace: str=%.2f",
         static_cast<float>(displace.strength));
-    canvas.fillText(displaceLabel, halfW + pad + 5, halfH + pad + 16);
+    canvas.fillText(displaceLabel, halfW + pad + 5, textY2);
 }
 
 VIVID_CHAIN(setup, update)

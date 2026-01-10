@@ -37,12 +37,13 @@ namespace vivid::video {
  * Standard codecs (H.264, HEVC) may be added in future.
  *
  * Usage:
- *   auto& video = chain->add<VideoPlayer>("video");
- *   video.file("assets/videos/my_video.mov")
- *        .loop(true);
+ *   auto& video = chain.add<VideoPlayer>("video");
+ *   video.setFile("assets/videos/my_video.mov");
+ *   video.setLoop(true);
+ *   video.play();
  *
  *   // In update:
- *   video.play();  // or video.pause(), video.seek(seconds)
+ *   video.pause();  // or video.seek(seconds)
  */
 class VIVID_VIDEO_API VideoPlayer : public effects::TextureOperator {
 public:

@@ -97,22 +97,25 @@ void update(Context& ctx) {
     canvas.fillRect(halfW + pad, halfH + pad, 140, 22);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
-    canvas.fillText("Original", pad + 5, pad + 16);
+    auto fm = canvas.fontMetrics();
+    float textY = pad + fm.ascent;
+    float textY2 = halfH + pad + fm.ascent;
+    canvas.fillText("Original", pad + 5, textY);
 
     char hsvLabel[64];
     snprintf(hsvLabel, sizeof(hsvLabel), "HSV: hue=%.2f sat=%.2f",
         static_cast<float>(hsv.hueShift), static_cast<float>(hsv.saturation));
-    canvas.fillText(hsvLabel, halfW + pad + 5, pad + 16);
+    canvas.fillText(hsvLabel, halfW + pad + 5, textY);
 
     char brightLabel[64];
     snprintf(brightLabel, sizeof(brightLabel), "Brightness: %.2f Contrast: %.2f",
         static_cast<float>(brightness.brightness), static_cast<float>(brightness.contrast));
-    canvas.fillText(brightLabel, pad + 5, halfH + pad + 16);
+    canvas.fillText(brightLabel, pad + 5, textY2);
 
     char quantLabel[64];
     snprintf(quantLabel, sizeof(quantLabel), "Quantize: %d levels",
         static_cast<int>(quantize.levels));
-    canvas.fillText(quantLabel, halfW + pad + 5, halfH + pad + 16);
+    canvas.fillText(quantLabel, halfW + pad + 5, textY2);
 }
 
 VIVID_CHAIN(setup, update)

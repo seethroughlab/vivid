@@ -82,6 +82,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/lfo.cpp
     src/effects/hsv.cpp
     src/effects/brightness.cpp
+    src/effects/threshold.cpp
     src/effects/mirror.cpp
     src/effects/edge.cpp
     src/effects/pixelate.cpp

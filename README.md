@@ -186,8 +186,8 @@ void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
     auto& video = chain.add<VideoPlayer>("video");
-    video.file = "assets/videos/my-video.mov";
-    video.loop(true);
+    video.setFile("assets/videos/my-video.mov");
+    video.setLoop(true);
 
     auto& hsv = chain.add<HSV>("color");
     hsv.input(&video);

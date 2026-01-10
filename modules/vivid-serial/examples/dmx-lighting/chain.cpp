@@ -56,19 +56,19 @@ void setup(Context& ctx) {
 
     // Three circles representing fixtures
     auto& fix1 = chain.add<Shape>("fix1");
-    fix1.type = ShapeType::Circle;
+    fix1.type = ShapeType::Ellipse;
     fix1.size.set(0.15f, 0.15f);
     fix1.position.set(-0.35f, 0.0f);
     fix1.softness = 0.5f;
 
     auto& fix2 = chain.add<Shape>("fix2");
-    fix2.type = ShapeType::Circle;
+    fix2.type = ShapeType::Ellipse;
     fix2.size.set(0.15f, 0.15f);
     fix2.position.set(0.0f, 0.0f);
     fix2.softness = 0.5f;
 
     auto& fix3 = chain.add<Shape>("fix3");
-    fix3.type = ShapeType::Circle;
+    fix3.type = ShapeType::Ellipse;
     fix3.size.set(0.15f, 0.15f);
     fix3.position.set(0.35f, 0.0f);
     fix3.softness = 0.5f;

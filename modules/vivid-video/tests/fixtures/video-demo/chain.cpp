@@ -56,8 +56,8 @@ void setup(Context& ctx) {
     auto& audioOut = chain.add<AudioOutput>("audioOut");
 
     // Load first video with looping
-    video.file(videos[currentVideoIndex].path)
-         .loop(true);
+    video.setFile(videos[currentVideoIndex].path);
+    video.setLoop(true);
 
     // Subtle color adjustment
     hsv.input("video")
@@ -92,7 +92,7 @@ void update(Context& ctx) {
     for (int i = 0; i < std::min((int)videos.size(), 9); i++) {
         if (ctx.key(GLFW_KEY_1 + i).pressed && i != currentVideoIndex) {
             currentVideoIndex = i;
-            video.file(videos[currentVideoIndex].path);
+            video.setFile(videos[currentVideoIndex].path);
             printCurrentVideo();
         }
     }
@@ -100,12 +100,12 @@ void update(Context& ctx) {
     // Left/Right arrows - prev/next video
     if (ctx.key(GLFW_KEY_LEFT).pressed && currentVideoIndex > 0) {
         currentVideoIndex--;
-        video.file(videos[currentVideoIndex].path);
+        video.setFile(videos[currentVideoIndex].path);
         printCurrentVideo();
     }
     if (ctx.key(GLFW_KEY_RIGHT).pressed && currentVideoIndex < (int)videos.size() - 1) {
         currentVideoIndex++;
-        video.file(videos[currentVideoIndex].path);
+        video.setFile(videos[currentVideoIndex].path);
         printCurrentVideo();
     }
 

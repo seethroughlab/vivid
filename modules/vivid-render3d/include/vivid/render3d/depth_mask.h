@@ -47,7 +47,7 @@ enum class DepthMaskMode {
  * render.setDepthOutput(true);  // Enable depth output!
  *
  * auto& glow = chain.add<Shape>("glow");
- * glow.type = ShapeType::Circle;
+ * glow.type = ShapeType::Ellipse;
  * glow.color.set(1.0f, 0.5f, 0.0f, 0.8f);
  *
  * auto& masked = chain.add<DepthMask>("masked");

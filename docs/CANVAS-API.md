@@ -777,6 +777,40 @@ canvas.strokeCircle(100, 100, 50);  // White circle outline
 
 Removes all clipping regions. In standard HTML Canvas, you must use `save()`/`restore()` to manage clipping.
 
+### `fontMetrics()`
+
+Returns font-level metrics for the current font, independent of any specific text string.
+
+```cpp
+FontMetrics fm = canvas.fontMetrics();
+float ascent = fm.ascent;      // Distance from baseline to top of tallest glyph
+float descent = fm.descent;    // Distance from baseline to bottom (positive value)
+float lineHeight = fm.lineHeight;  // Recommended line spacing
+```
+
+**Returns:** `FontMetrics` struct with:
+| Field | Type | Description |
+|-------|------|-------------|
+| `ascent` | float | Distance from baseline to top of tallest glyph |
+| `descent` | float | Distance from baseline to bottom of lowest glyph (positive) |
+| `lineHeight` | float | Recommended line spacing (ascent + descent + leading) |
+
+**Use case:** Proper text positioning. For text at the top of a cell with padding:
+```cpp
+auto fm = canvas.fontMetrics();
+float textY = pad + fm.ascent;  // Baseline position
+canvas.fillText("Label", pad + 5, textY);
+```
+
+For vertically centering text in a box of height `h`:
+```cpp
+auto fm = canvas.fontMetrics();
+float textY = boxY + (h + fm.ascent - fm.descent) * 0.5f;
+canvas.fillText("Centered", boxX, textY);
+```
+
+**Note:** This is better than HTML Canvas, which only provides `measureText()` returning string-specific metrics. `fontMetrics()` gives you font-level metrics without needing to measure a specific string.
+
 ### `fillTextCentered(text, x, y)`
 
 **Deprecated.** Use `textAlign(TextAlign::Center)` + `textBaseline(TextBaseline::Middle)` + `fillText()` instead.

@@ -98,7 +98,7 @@ void setup(Context& ctx) {
 
     // Crackle visualization
     auto& crackle_dot = chain.add<Shape>("crackle_dot");
-    crackle_dot.type = ShapeType::Circle;
+    crackle_dot.type = ShapeType::Ellipse;
     crackle_dot.position.set(0.0f, -0.3f);
     crackle_dot.size.set(0.02f, 0.02f);
     crackle_dot.color.set(0.8f, 0.8f, 0.6f, 1.0f);

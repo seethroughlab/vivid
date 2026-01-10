@@ -25,7 +25,7 @@ void setup(Context& ctx) {
 
     // Shape layer
     auto& shape = chain.add<Shape>("shape");
-    shape.type = ShapeType::Circle;
+    shape.type = ShapeType::Ellipse;
     shape.size.set(0.35f, 0.35f);
     shape.color.set(1.0f, 1.0f, 1.0f, 0.8f);
 
@@ -159,19 +159,22 @@ void update(Context& ctx) {
     canvas.fillRect(halfW + pad, halfH + pad, 90, 22);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
+    auto fm = canvas.fontMetrics();
+    float textY = pad + fm.ascent;
+    float textY2 = halfH + pad + fm.ascent;
 
     char overLabel[64];
     snprintf(overLabel, sizeof(overLabel), "Over: opacity=%.2f",
         static_cast<float>(compOver.opacity));
-    canvas.fillText(overLabel, pad + 5, pad + 16);
+    canvas.fillText(overLabel, pad + 5, textY);
 
     char addLabel[80];
     snprintf(addLabel, sizeof(addLabel), "Add: logic=%s opacity=%.2f (bound)",
         isAboveThreshold ? "true" : "false", addOpacity);
-    canvas.fillText(addLabel, halfW + pad + 5, pad + 16);
+    canvas.fillText(addLabel, halfW + pad + 5, textY);
 
-    canvas.fillText("Multiply", pad + 5, halfH + pad + 16);
-    canvas.fillText("Screen", halfW + pad + 5, halfH + pad + 16);
+    canvas.fillText("Multiply", pad + 5, textY2);
+    canvas.fillText("Screen", halfW + pad + 5, textY2);
 
     // Show value binding chain status at bottom
     canvas.fillStyle(0.3f, 0.3f, 0.4f, 1.0f);

@@ -144,6 +144,7 @@ struct NodeGraphInput {
     bool keyCtrl = false;
     bool keyShift = false;
     bool keyAlt = false;
+    float time = 0.0f;                // Current time in seconds (for double-click detection)
     // Key presses this frame (one-shot)
     bool keyF = false;      // Fit to view
     bool key1 = false;      // Zoom to 100%
@@ -451,6 +452,18 @@ public:
      */
     void setEscapeCallback(std::function<void()> cb) { m_escapeCallback = cb; }
 
+    /**
+     * @brief Set callback for double-click on a node
+     * Called with the node ID that was double-clicked
+     */
+    void setDoubleClickCallback(std::function<void(int nodeId)> cb) { m_doubleClickCallback = cb; }
+
+    /**
+     * @brief Set callback for output pin hover
+     * Called with node ID and pin index when hovering an output pin (-1, -1 when not hovering)
+     */
+    void setOutputPinHoverCallback(std::function<void(int nodeId, int pinIndex)> cb) { m_outputPinHoverCallback = cb; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Mini-map
@@ -543,6 +556,15 @@ private:
     std::function<void(int)> m_enterCallback;
     std::function<void(int)> m_bypassCallback;
     std::function<void()> m_escapeCallback;
+
+    // Mouse callbacks
+    std::function<void(int)> m_doubleClickCallback;
+    std::function<void(int, int)> m_outputPinHoverCallback;
+
+    // Double-click detection state
+    float m_lastClickTime = 0.0f;
+    int m_lastClickedNodeId = -1;
+    static constexpr float DOUBLE_CLICK_TIME = 0.3f;  // 300ms window
 };
 
 } // namespace vivid

@@ -126,10 +126,13 @@ void update(Context& ctx) {
     canvas.fillRect(halfW + pad, halfH + pad, 140, 22);
 
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
-    canvas.fillText("Original", pad + 5, pad + 16);
-    canvas.fillText("Colored Edges", halfW + pad + 5, pad + 16);
-    canvas.fillText("Edges + Bloom", pad + 5, halfH + pad + 16);
-    canvas.fillText("Neon Glow Final", halfW + pad + 5, halfH + pad + 16);
+    auto fm = canvas.fontMetrics();
+    float textY = pad + fm.ascent;
+    float textY2 = halfH + pad + fm.ascent;
+    canvas.fillText("Original", pad + 5, textY);
+    canvas.fillText("Colored Edges", halfW + pad + 5, textY);
+    canvas.fillText("Edges + Bloom", pad + 5, textY2);
+    canvas.fillText("Neon Glow Final", halfW + pad + 5, textY2);
 }
 
 VIVID_CHAIN(setup, update)

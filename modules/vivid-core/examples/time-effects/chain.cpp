@@ -155,14 +155,17 @@ void update(Context& ctx) {
 
     // Label text
     canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
+    auto fm = canvas.fontMetrics();
+    float textY = pad + (labelH + fm.ascent - fm.descent) * 0.5f;
+    float textY2 = halfH + pad + (labelH + fm.ascent - fm.descent) * 0.5f;
 
     char label1[64];
     snprintf(label1, sizeof(label1), "HORIZONTAL SLIT-SCAN  depth=%.0f%%", depth * 100);
-    canvas.fillText(label1, pad + 8, pad + 22);
+    canvas.fillText(label1, pad + 8, textY);
 
-    canvas.fillText("VERTICAL SLIT-SCAN", halfW + pad + 8, pad + 22);
-    canvas.fillText("RADIAL TIME WARP", pad + 8, halfH + pad + 22);
-    canvas.fillText("ORGANIC DISTORTION", halfW + pad + 8, halfH + pad + 22);
+    canvas.fillText("VERTICAL SLIT-SCAN", halfW + pad + 8, textY);
+    canvas.fillText("RADIAL TIME WARP", pad + 8, textY2);
+    canvas.fillText("ORGANIC DISTORTION", halfW + pad + 8, textY2);
 
     // Add hint at bottom
     canvas.fillStyle(0.5f, 0.5f, 0.5f, 1.0f);

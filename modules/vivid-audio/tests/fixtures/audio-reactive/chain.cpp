@@ -36,15 +36,15 @@ void setup(Context& ctx) {
     bg.colorB.set(0.05f, 0.02f, 0.1f, 1.0f);
 
     auto& shape = chain.add<Shape>("shape");
-    shape.type = ShapeType::Circle;
+    shape.type = ShapeType::Ellipse;
     shape.size.set(0.3f, 0.3f);
     shape.color.set(1.0f, 0.5f, 0.2f, 1.0f);
     shape.softness = 0.1f;
 
     auto& ring = chain.add<Shape>("ring");
-    ring.type = ShapeType::Ring;
+    ring.type = ShapeType::Ellipse;
     ring.size.set(0.5f, 0.5f);
-    ring.thickness = 0.02f;
+    ring.thickness = 0.02f;  // thickness > 0 creates ring effect
     ring.color.set(1.0f, 1.0f, 1.0f, 0.5f);
 
     // Compositing

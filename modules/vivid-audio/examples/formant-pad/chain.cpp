@@ -170,7 +170,7 @@ void setup(Context& ctx) {
 
     // Pulsing shape that responds to audio
     auto& pulse = chain.add<Shape>("pulse");
-    pulse.type = ShapeType::Circle;
+    pulse.type = ShapeType::Ellipse;
     pulse.size.set(0.3f, 0.3f);
     pulse.color.set(1.0f, 0.5f, 0.3f, 0.8f);
 

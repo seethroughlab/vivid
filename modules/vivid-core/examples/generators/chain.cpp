@@ -40,7 +40,7 @@ void setup(Context& ctx) {
     // 4. Shape - SDF circle
     // Position modulated by LFO (TRACKABLE - shows as dashed line in visualizer!)
     auto& circle = chain.add<Shape>("circle");
-    circle.type = ShapeType::Circle;
+    circle.type = ShapeType::Ellipse;
     circle.size.set(0.4f, 0.4f);  // Square size - will render as circle
     circle.color.set(1.0f, 0.8f, 0.2f, 1.0f);
     circle.softness = 0.02f;

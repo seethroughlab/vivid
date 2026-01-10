@@ -32,7 +32,7 @@ void setup(Context& ctx) {
 
     // Reactive shape
     auto& shape = chain.add<Shape>("shape");
-    shape.type = ShapeType::Circle;
+    shape.type = ShapeType::Ellipse;
     shape.size.set(0.2f, 0.2f);
     shape.color.set(1.0f, 0.5f, 0.2f, 1.0f);
     shape.softness = 0.1f;

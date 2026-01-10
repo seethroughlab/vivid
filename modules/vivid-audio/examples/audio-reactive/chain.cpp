@@ -97,7 +97,7 @@ void setup(Context& ctx) {
 
     // Shape - pulses with beat
     auto& shape = chain.add<Shape>("shape");
-    shape.type = ShapeType::Circle;
+    shape.type = ShapeType::Ellipse;
     shape.size.set(0.3f, 0.3f);
     shape.softness = 0.05f;
     shape.color.set(1.0f, 0.84f, 0.0f, 1.0f);  // Gold

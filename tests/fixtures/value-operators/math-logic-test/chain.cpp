@@ -68,7 +68,7 @@ void setup(Context& ctx) {
 
     // Pulsing shape based on logic result
     auto& shape = chain.add<Shape>("shape");
-    shape.type = ShapeType::Circle;
+    shape.type = ShapeType::Ellipse;
     shape.size.set(0.2f, 0.2f);
     shape.color.set(1.0f, 0.5f, 0.2f, 1.0f);
 
