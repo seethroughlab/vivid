@@ -179,9 +179,8 @@ if(APPLE)
     )
 
 elseif(WIN32)
-    # Windows: traditional lib/include layout
+    # Windows: opencv-mobile has platform subdirectories (x64, x86, arm64)
     set(OPENCV_MOBILE_DIR "${opencv_mobile_SOURCE_DIR}")
-    set(OPENCV_LIB_DIR "${OPENCV_MOBILE_DIR}/x64/vc17/staticlib")
 
     # Use the detected include directory, with fallback
     if(OPENCV_INCLUDE_DIR)
@@ -190,6 +189,32 @@ elseif(WIN32)
     else()
         target_include_directories(vivid-opencv PRIVATE ${OPENCV_MOBILE_DIR}/include)
         message(STATUS "vivid-opencv: Windows using fallback include dir: ${OPENCV_MOBILE_DIR}/include")
+    endif()
+
+    # Find the library directory - try multiple possible locations
+    set(OPENCV_WIN_LIB_PATHS
+        "${OPENCV_MOBILE_DIR}/x64/vc17/staticlib"
+        "${OPENCV_MOBILE_DIR}/x64/staticlib"
+        "${OPENCV_MOBILE_DIR}/x64/lib"
+    )
+    set(OPENCV_LIB_DIR "")
+    foreach(LIB_PATH ${OPENCV_WIN_LIB_PATHS})
+        if(EXISTS "${LIB_PATH}/opencv_core4130.lib")
+            set(OPENCV_LIB_DIR "${LIB_PATH}")
+            message(STATUS "vivid-opencv: Windows using lib dir: ${OPENCV_LIB_DIR}")
+            break()
+        endif()
+    endforeach()
+
+    if(NOT OPENCV_LIB_DIR)
+        # List x64 directory contents for debugging
+        message(STATUS "vivid-opencv: Could not find Windows libs. Contents of x64:")
+        file(GLOB X64_CONTENTS "${OPENCV_MOBILE_DIR}/x64/*")
+        foreach(ITEM ${X64_CONTENTS})
+            message(STATUS "  - ${ITEM}")
+        endforeach()
+        message(WARNING "vivid-opencv: Windows lib directory not found - link will fail")
+        set(OPENCV_LIB_DIR "${OPENCV_MOBILE_DIR}/x64/lib")
     endif()
 
     target_link_libraries(vivid-opencv PRIVATE
