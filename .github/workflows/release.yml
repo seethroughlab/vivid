@@ -80,7 +80,7 @@ jobs:
 
       - name: Configure CMake (darwin-arm64)
         if: matrix.target == 'darwin-arm64'
-        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DVIVID_VERSION_OVERRIDE=${{ steps.version_unix.outputs.VERSION || steps.version_windows.outputs.VERSION }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=arm64 -DWGPU_FORCE_ARCH=arm64 -DVIVID_VERSION_OVERRIDE=${{ steps.version_unix.outputs.VERSION || steps.version_windows.outputs.VERSION }}
 
       - name: Configure CMake
         if: matrix.target != 'darwin-x64' && matrix.target != 'darwin-arm64'
