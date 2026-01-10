@@ -91,8 +91,9 @@ set(OPENCV_SOURCES
     src/texture_converter.cpp
     src/contours.cpp
     src/optical_flow.cpp
-    src/blob_track.cpp
-    src/face_detect.cpp
+    # TODO: Add these when ready
+    # src/blob_track.cpp
+    # src/face_detect.cpp
 )
 
 add_library(vivid-opencv SHARED ${OPENCV_SOURCES})
