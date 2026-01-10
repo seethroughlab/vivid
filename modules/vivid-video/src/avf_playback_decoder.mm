@@ -460,7 +460,7 @@ void AVFPlaybackDecoder::createTexture() {
 
     WGPUTextureDescriptor desc = {};
     desc.label = toStringView("AVFPlaybackFrame");
-    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc;
     desc.dimension = WGPUTextureDimension_2D;
     desc.size = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1};
     desc.format = WGPUTextureFormat_BGRA8Unorm;  // Match CVPixelBuffer format
@@ -504,9 +504,9 @@ void AVFPlaybackDecoder::uploadFrame(const uint8_t* pixels, size_t bytesPerRow) 
                           bytesPerRow * height_, &dataLayout, &writeSize);
 }
 
-void AVFPlaybackDecoder::update(Context& ctx) {
+bool AVFPlaybackDecoder::update(Context& ctx) {
     if (!isOpen()) {
-        return;
+        return false;
     }
 
     @autoreleasepool {
@@ -518,7 +518,7 @@ void AVFPlaybackDecoder::update(Context& ctx) {
         // Get current item (should be our playerItem with the video output)
         AVPlayerItem* currentItem = impl_->player.currentItem;
         if (!currentItem) {
-            return;
+            return false;
         }
 
         // Get current playback time
@@ -527,7 +527,7 @@ void AVFPlaybackDecoder::update(Context& ctx) {
         // Use the stored video output (attached to our playerItem)
         AVPlayerItemVideoOutput* output = impl_->videoOutput;
         if (!output) {
-            return;
+            return false;
         }
 
         // Get pixel buffer for current time
@@ -536,7 +536,7 @@ void AVFPlaybackDecoder::update(Context& ctx) {
 
         if (!pixelBuffer) {
             // This can happen briefly during seeks or loop transitions
-            return;
+            return false;
         }
 
         // Lock the pixel buffer for CPU access
@@ -546,12 +546,26 @@ void AVFPlaybackDecoder::update(Context& ctx) {
         uint8_t* baseAddress = (uint8_t*)CVPixelBufferGetBaseAddress(pixelBuffer);
         size_t bytesPerRow = CVPixelBufferGetBytesPerRow(pixelBuffer);
 
+        // Copy to CPU buffer for operators that need CPU pixel access (e.g., OpenCV)
+        size_t expectedSize = static_cast<size_t>(width_) * static_cast<size_t>(height_) * 4;
+        if (pixelBuffer_.size() != expectedSize) {
+            pixelBuffer_.resize(expectedSize);
+        }
+        // Copy row by row (bytesPerRow may include padding)
+        for (int y = 0; y < height_; ++y) {
+            memcpy(pixelBuffer_.data() + y * width_ * 4,
+                   baseAddress + y * bytesPerRow,
+                   width_ * 4);
+        }
+
         // Upload to GPU texture
         uploadFrame(baseAddress, bytesPerRow);
 
         // Unlock and release
         CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
         CVPixelBufferRelease(pixelBuffer);
+
+        return true;  // New frame was decoded
     }
 }
 

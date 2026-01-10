@@ -1,50 +1,96 @@
 # vivid-opencv
 
-OpenCV integration addon for Vivid.
+OpenCV computer vision integration for Vivid.
 
-> **Note:** This is a stub/template addon. It demonstrates the expected structure for community addons but does not yet contain a full implementation.
+## Features
 
-## Status
+- **Contours** - Edge detection and contour drawing using Canny algorithm
 
-🚧 **Stub** - Structure only, no implementation yet.
+### Planned
+- OpticalFlow - Motion vector calculation
+- ColorTrack - Color-based object tracking
+- BlobTrack - Blob detection
+- FaceDetect - Face detection
 
-## Planned Features
+## Installation
 
-- `Webcam` operator using OpenCV capture
-- `FaceDetect` operator for face detection
-- `OpticalFlow` operator for motion detection
-- `Contours` operator for edge/shape detection
-- `ColorTrack` operator for color-based tracking
+The module automatically downloads [opencv-mobile](https://github.com/nihui/opencv-mobile) pre-built binaries during CMake configure. No manual installation required.
 
-## Structure
+Supported platforms:
+- macOS (arm64, x86_64)
+- Windows (x64, VS2022)
+- Linux (Ubuntu 22.04+)
 
-This addon follows the standard Vivid addon structure:
+## Usage
 
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/opencv/opencv.h>
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Load an image
+    auto& img = chain.add<Image>("img");
+    img.file = "photo.jpg";
+
+    // Detect contours
+    auto& contours = chain.add<vivid::opencv::Contours>("contours");
+    contours.input("img");
+    contours.threshold1 = 50.0f;   // Canny threshold 1
+    contours.threshold2 = 150.0f;  // Canny threshold 2
+    contours.lineWidth = 2.0f;
+    contours.colorG = 1.0f;        // Green contours
+
+    chain.output("contours");
+}
 ```
-vivid-opencv/
-├── addon.json           # Addon metadata
-├── CMakeLists.txt       # Build configuration
-├── README.md            # This file
-├── include/
-│   └── vivid/
-│       └── opencv/
-│           └── opencv.h # Public headers
-└── src/
-    └── opencv.cpp       # Implementation
-```
 
-## Building
+## Operator Reference
 
-Requires OpenCV 4.x to be installed:
+### Contours
 
+Detects edges using Canny algorithm and extracts contours.
+
+| Parameter | Type | Range | Default | Description |
+|-----------|------|-------|---------|-------------|
+| threshold1 | float | 0-255 | 100 | Canny first threshold |
+| threshold2 | float | 0-255 | 200 | Canny second threshold |
+| mode | int | 0-3 | 0 | Retrieval mode (0=External, 1=List, 2=CComp, 3=Tree) |
+| lineWidth | float | 1-20 | 2 | Contour line thickness |
+| colorR/G/B/A | float | 0-1 | 0,1,0,1 | Contour color (green default) |
+
+## Examples
+
+### contours-webcam
+Real-time contour detection from webcam with side-by-side comparison.
 ```bash
-# macOS
-brew install opencv
-
-# Ubuntu
-sudo apt install libopencv-dev
+./build/bin/vivid modules/vivid-opencv/examples/contours-webcam
 ```
 
-## Contributing
+**Controls:**
+- Mouse X: Canny threshold 1 (0-255)
+- Mouse Y: Canny threshold 2 (0-255)
+- 1-4: Contour mode selection
+- +/-: Line width
 
-This addon is a template for community contributions. Feel free to implement the planned operators or add new ones!
+### contours-video
+Contour detection on video files with overlay blending.
+```bash
+# Place your video as assets/video.mp4 first
+./build/bin/vivid modules/vivid-opencv/examples/contours-video
+```
+
+## Architecture Notes
+
+OpenCV operators require **CPU pixel data** from the input operator via the `cpuPixels()` interface. This avoids expensive GPU→CPU readback by using pixels that are already available on CPU before GPU upload.
+
+**Compatible input sources:**
+- `Webcam` - provides CPU pixels from camera capture
+- `VideoPlayer` - provides CPU pixels from video decoding
+
+**Incompatible sources:**
+- GPU-only operators (shaders, effects) - these only have GPU textures
+- To process GPU-generated content, you would need to capture to video first
+
+This design ensures efficient CPU-based computer vision without redundant data transfers.

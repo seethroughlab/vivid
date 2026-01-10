@@ -581,7 +581,7 @@ void DShowDecoder::createTexture() {
 
     WGPUTextureDescriptor texDesc = {};
     texDesc.label = { "DShowDecoder Texture", WGPU_STRLEN };
-    texDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    texDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc;
     texDesc.dimension = WGPUTextureDimension_2D;
     texDesc.size = { static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1 };
     texDesc.format = WGPUTextureFormat_RGBA8Unorm;

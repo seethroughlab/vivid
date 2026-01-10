@@ -166,8 +166,6 @@ void Webcam::openCamera(Context& ctx) {
 void Webcam::process(Context& ctx) {
     // Webcam uses camera resolution - no auto-resize
 
-    // Webcam is streaming - always cooks
-
 #if defined(__APPLE__) || defined(_WIN32)
     // Reopen camera if needed
     if (m_needsReopen) {
@@ -176,18 +174,20 @@ void Webcam::process(Context& ctx) {
     }
 
     if (!m_webcam) {
-        didCook();
         return;
     }
 
-    // Get new frame (non-blocking)
-    m_webcam->update(ctx);
+    // Get new frame (non-blocking) - returns true if new frame available
+    bool gotNewFrame = m_webcam->update(ctx);
 
     // Update output texture view (may have changed)
     m_activeView = m_webcam->textureView();
-#endif
 
-    didCook();
+    // Only mark as cooked when we actually got a new frame
+    if (gotNewFrame) {
+        didCook();
+    }
+#endif
 }
 
 void Webcam::cleanup() {

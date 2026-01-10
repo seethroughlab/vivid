@@ -8,10 +8,12 @@
 //   - Linux: HAP (direct DXT) + FFmpeg (stub - not yet implemented)
 
 #include <vivid/effects/texture_operator.h>
+#include <vivid/io/image_loader.h>
 #include <vivid/video/export.h>
 #include <vivid/operator_registry.h>
 #include <string>
 #include <memory>
+#include <optional>
 
 namespace vivid::video {
 class HAPDecoder;
@@ -188,6 +190,14 @@ public:
     // Override to return borrowed texture from active decoder
     WGPUTextureView outputView() const override { return m_activeView; }
     WGPUTexture outputTexture() const override { return m_activeTexture; }
+
+    /**
+     * @brief Get CPU pixel data as ImageData (Operator interface override)
+     * @return ImageData with BGRA pixels, or nullopt if no frame decoded yet
+     *
+     * Useful for CV operators that need CPU pixel access without GPU readback.
+     */
+    std::optional<io::ImageData> cpuPixels() const override;
 
     std::vector<ParamDecl> params() override {
         return {

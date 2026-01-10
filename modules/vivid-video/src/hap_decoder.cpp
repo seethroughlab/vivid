@@ -147,7 +147,7 @@ void HAPDecoder::createTexture() {
 
     WGPUTextureDescriptor desc = {};
     desc.label = { "HAPVideoFrame", WGPU_STRLEN };
-    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc;
     desc.dimension = WGPUTextureDimension_2D;
     desc.size = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1};
     desc.format = textureFormat_;

@@ -1,8 +1,9 @@
 {
   "name": "vivid-opencv",
   "version": "0.1.0",
-  "description": "OpenCV integration for computer vision operators",
-  "author": "Community",
+  "description": "OpenCV computer vision integration - contours, optical flow, tracking",
+  "author": "Vivid",
   "license": "MIT",
-  "vivid": ">=0.1.0"
+  "vivid": ">=0.1.0",
+  "dependencies": ["opencv >= 4.0"]
 }

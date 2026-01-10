@@ -224,34 +224,40 @@ void VideoPlayer::loadVideo(Context& ctx) {
 void VideoPlayer::process(Context& ctx) {
     // Video uses loaded file dimensions - no auto-resize
 
-    // VideoPlayer is streaming - always cooks
-
     // Check if we need to reload
     if (m_needsReload) {
         loadVideo(ctx);
     }
 
+    bool gotNewFrame = false;
+
     if (m_isHAP && m_hapDecoder) {
-        m_hapDecoder->update(ctx);
+        m_hapDecoder->update(ctx);  // TODO: update HAP decoder to return bool
         m_activeView = m_hapDecoder->textureView();
+        gotNewFrame = true;  // HAP always assumes new frame for now
     }
 #if defined(__APPLE__)
     else if (m_usePlaybackDecoder && m_playbackDecoder) {
-        m_playbackDecoder->update(ctx);
+        gotNewFrame = m_playbackDecoder->update(ctx);
         m_activeView = m_playbackDecoder->textureView();
     }
 #elif defined(_WIN32)
     else if (m_useDShowDecoder && m_dshowDecoder) {
-        m_dshowDecoder->update(ctx);
+        m_dshowDecoder->update(ctx);  // TODO: update DShow decoder to return bool
         m_activeView = m_dshowDecoder->textureView();
+        gotNewFrame = true;
     }
 #endif
     else if (m_standardDecoder) {
-        m_standardDecoder->update(ctx);
+        m_standardDecoder->update(ctx);  // TODO: update standard decoder to return bool
         m_activeView = m_standardDecoder->textureView();
+        gotNewFrame = true;
     }
 
-    didCook();
+    // Only mark as cooked when we actually got a new frame
+    if (gotNewFrame) {
+        didCook();
+    }
 }
 
 void VideoPlayer::cleanup() {
@@ -289,6 +295,29 @@ void VideoPlayer::cleanup() {
     m_activeView = nullptr;
 }
 
+std::optional<io::ImageData> VideoPlayer::cpuPixels() const {
+#if defined(__APPLE__)
+    // Get CPU pixels from the active playback decoder
+    if (m_usePlaybackDecoder && m_playbackDecoder) {
+        const uint8_t* data = m_playbackDecoder->cpuPixelData();
+        size_t size = m_playbackDecoder->cpuPixelDataSize();
+        int w = m_playbackDecoder->width();
+        int h = m_playbackDecoder->height();
+
+        if (data && size > 0 && w > 0 && h > 0) {
+            io::ImageData result;
+            result.width = w;
+            result.height = h;
+            result.channels = 4;
+            result.pixels.assign(data, data + size);
+            return result;
+        }
+    }
+#endif
+    // TODO: Add support for other decoders (HAP, MFDecoder, etc.)
+    return std::nullopt;
+}
+
 void VideoPlayer::createFallbackTexture(Context& ctx) {
     // Release existing fallback texture if it exists (so we can recreate with new content)
     if (m_fallbackTextureView) {
@@ -306,7 +335,7 @@ void VideoPlayer::createFallbackTexture(Context& ctx) {
 
     WGPUTextureDescriptor texDesc = {};
     texDesc.label = { "VideoPlayer Fallback", WGPU_STRLEN };
-    texDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    texDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst | WGPUTextureUsage_CopySrc;
     texDesc.dimension = WGPUTextureDimension_2D;
     texDesc.size = { texWidth, texHeight, 1 };
     texDesc.format = WGPUTextureFormat_RGBA8Unorm;

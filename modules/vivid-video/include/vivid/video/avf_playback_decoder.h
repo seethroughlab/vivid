@@ -63,8 +63,9 @@ public:
     /**
      * @brief Update - check for new frame and upload to texture
      * Call this every frame from the render loop.
+     * @return true if a new frame was decoded, false if no new frame
      */
-    void update(Context& ctx);
+    bool update(Context& ctx);
 
     /**
      * @brief Seek to specific time
@@ -170,6 +171,17 @@ public:
      * @brief Get the WebGPU texture view
      */
     WGPUTextureView textureView() const { return textureView_; }
+
+    /**
+     * @brief Get CPU pixel data (BGRA8, kept from last decoded frame)
+     * @return Pointer to pixel buffer, or nullptr if no frame decoded yet
+     */
+    const uint8_t* cpuPixelData() const { return pixelBuffer_.empty() ? nullptr : pixelBuffer_.data(); }
+
+    /**
+     * @brief Get size of CPU pixel buffer in bytes
+     */
+    size_t cpuPixelDataSize() const { return pixelBuffer_.size(); }
 
 private:
     struct Impl;

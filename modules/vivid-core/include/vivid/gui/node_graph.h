@@ -486,6 +486,7 @@ private:
     void renderNodes();
     void renderNode(NodeState& node);
     void renderMiniMap();
+    void computePinPositions();  // Compute pin screen positions for hover detection
 
     // Hit testing
     void updateHover();

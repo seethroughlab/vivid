@@ -37,6 +37,9 @@ void NodeGraph::beginEditor(OverlayCanvas& canvas, float width, float height, co
 void NodeGraph::endEditor() {
     if (!m_inEditor || !m_canvas) return;
 
+    // Compute pin screen positions before hover detection
+    computePinPositions();
+
     // Update hover states FIRST so handleInput knows what's under the mouse
     updateHover();
 
@@ -684,6 +687,31 @@ void NodeGraph::renderNodes() {
 
     for (int id : renderOrder) {
         renderNode(m_nodes[id]);
+    }
+}
+
+void NodeGraph::computePinPositions() {
+    // Compute screen positions for all pins (for hover detection)
+    // Must be called before updateHover() and uses same math as renderNode()
+    for (auto& [id, node] : m_nodes) {
+        glm::vec2 pos = gridToScreen(node.gridPos);
+        float w = node.size.x * m_zoom;
+        float titleH = m_style.nodeTitleHeight * m_zoom;
+        float pinR = m_style.pinRadius * m_zoom;
+        float contentAreaH = node.contentCallback ? 128.0f * m_zoom : 0.0f;
+        float pinStartY = pos.y + titleH + contentAreaH + m_style.nodeContentPadding * m_zoom;
+
+        for (size_t i = 0; i < node.inputs.size(); i++) {
+            float pinY = pinStartY + i * m_style.pinSpacing * m_zoom + pinR;
+            float pinX = pos.x;
+            node.inputs[i].screenPos = {pinX, pinY};
+        }
+
+        for (size_t i = 0; i < node.outputs.size(); i++) {
+            float pinY = pinStartY + i * m_style.pinSpacing * m_zoom + pinR;
+            float pinX = pos.x + w;
+            node.outputs[i].screenPos = {pinX, pinY};
+        }
     }
 }
 
