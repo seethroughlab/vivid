@@ -192,7 +192,9 @@ elseif(WIN32)
     endif()
 
     # Find the library directory - try multiple possible locations
+    # Note: opencv-mobile Windows archive has nested x64/x64/vc17/staticlib structure
     set(OPENCV_WIN_LIB_PATHS
+        "${OPENCV_MOBILE_DIR}/x64/x64/vc17/staticlib"
         "${OPENCV_MOBILE_DIR}/x64/vc17/staticlib"
         "${OPENCV_MOBILE_DIR}/x64/staticlib"
         "${OPENCV_MOBILE_DIR}/x64/lib"
