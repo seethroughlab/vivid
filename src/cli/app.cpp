@@ -1101,8 +1101,43 @@ int Application::init(const AppConfig& config) {
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
     }
 
+    // Get window settings from chain config (if available)
+    int windowWidth = config.windowWidth;
+    int windowHeight = config.windowHeight;
+    bool windowResizable = true;
+    bool startFullscreen = config.startFullscreen;
+
+    if (!config.projectPath.empty()) {
+        // Compile chain early to get its config before window creation
+        HotReload earlyLoader;
+        fs::path chainPath;
+
+        if (fs::is_directory(config.projectPath)) {
+            chainPath = config.projectPath / "chain.cpp";
+        } else if (fs::is_regular_file(config.projectPath)) {
+            chainPath = config.projectPath;
+        }
+
+        if (fs::exists(chainPath)) {
+            earlyLoader.setSourceFile(chainPath);
+            if (earlyLoader.tryCompile() && earlyLoader.loadCompiled()) {
+                if (earlyLoader.hasConfig()) {
+                    ChainConfig chainConfig = earlyLoader.getConfig();
+                    windowWidth = chainConfig.windowWidth;
+                    windowHeight = chainConfig.windowHeight;
+                    windowResizable = chainConfig.resizable;
+                    startFullscreen = chainConfig.fullscreen;
+                    std::cout << "Using chain config: " << windowWidth << "x" << windowHeight << std::endl;
+                }
+            }
+        }
+    }
+
+    // Set resizable hint
+    glfwWindowHint(GLFW_RESIZABLE, windowResizable ? GLFW_TRUE : GLFW_FALSE);
+
     // Create window
-    m_impl->window = glfwCreateWindow(config.windowWidth, config.windowHeight,
+    m_impl->window = glfwCreateWindow(windowWidth, windowHeight,
                                        initialWindowTitle.c_str(), nullptr, nullptr);
     if (!m_impl->window) {
         std::cerr << "Failed to create window" << std::endl;
@@ -1280,11 +1315,11 @@ int Application::init(const AppConfig& config) {
     if (config.renderWidth > 0 && config.renderHeight > 0) {
         m_impl->ctx->setRenderResolution(config.renderWidth, config.renderHeight);
     } else {
-        m_impl->ctx->setRenderResolution(config.windowWidth, config.windowHeight);
+        m_impl->ctx->setRenderResolution(windowWidth, windowHeight);
     }
 
     // Start in fullscreen if requested
-    if (config.startFullscreen) {
+    if (startFullscreen) {
         m_impl->ctx->fullscreen(true);
     }
 
@@ -1680,8 +1715,8 @@ int Application::init(const AppConfig& config) {
     mlc.recordAudio = config.recordAudio;
     mlc.recordCodec = config.recordCodec;
     mlc.maxFrames = config.maxFrames;
-    mlc.windowWidth = config.windowWidth;
-    mlc.windowHeight = config.windowHeight;
+    mlc.windowWidth = m_impl->width;   // Use actual window size (may differ from CLI if chain config used)
+    mlc.windowHeight = m_impl->height;
     mlc.showUI = config.showUI;
 
     // Project info

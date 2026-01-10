@@ -46,4 +46,10 @@ void update(Context& ctx) {
     chain.process();
 }
 
-VIVID_CHAIN(setup, update)
+// Good size for UI demonstrations
+static vivid::ChainConfig config{
+    .windowWidth = 1024,
+    .windowHeight = 768,
+    .resizable = true
+};
+VIVID_CHAIN_CONFIG(setup, update, config)

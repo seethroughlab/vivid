@@ -38,6 +38,7 @@
 #include <vivid/effects/downsample.h>
 #include <vivid/effects/composite.h>
 #include <vivid/effects/switch_op.h>
+#include <vivid/effects/copy.h>
 #include <vivid/effects/particles.h>
 #include <vivid/effects/point_sprites.h>
 #include <vivid/effects/gpu_particles.h>
@@ -79,6 +80,7 @@ REGISTER_OPERATOR(Feedback, "Effects", "Feedback loop effect", true);
 REGISTER_OPERATOR(FrameCache, "Effects", "Frame history buffer", true);
 REGISTER_OPERATOR(TimeMachine, "Effects", "Temporal displacement", true);
 REGISTER_OPERATOR(Plexus, "Effects", "Particle connection lines", true);
+REGISTER_OPERATOR(Copy, "Effects", "Replicate texture with transforms", true);
 
 // =============================================================================
 // Retro Effects

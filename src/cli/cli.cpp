@@ -1252,7 +1252,6 @@ ParseResult parseArgs(int argc, char** argv) {
     std::string snapshotPath;
     std::string snapshotFrameSpec;
     bool headless = false;
-    std::string windowSize;
     std::string renderSize;
     bool fullscreen = false;
     std::string recordPath;
@@ -1271,8 +1270,6 @@ ParseResult parseArgs(int argc, char** argv) {
                    "Frame(s) to capture: 5 | 0,5,10 | 0-11 | 0-20:2")
        ->type_name("SPEC");
     app.add_flag("--headless", headless, "Run without window (requires --snapshot or --record)");
-    app.add_option("--window", windowSize, "Window size (e.g., 1920x1080)")
-       ->type_name("WxH");
     app.add_option("--render", renderSize, "Render resolution (e.g., 1920x1080)")
        ->type_name("WxH");
     app.add_flag("--fullscreen", fullscreen, "Start in fullscreen mode");
@@ -1430,23 +1427,6 @@ ParseResult parseArgs(int argc, char** argv) {
             result.handled = true;
             result.exitCode = 1;
             return result;
-        }
-    }
-
-    // Parse window size
-    if (!windowSize.empty()) {
-        size_t x = windowSize.find('x');
-        if (x == std::string::npos) x = windowSize.find('X');
-        if (x != std::string::npos) {
-            try {
-                config.windowWidth = std::stoi(windowSize.substr(0, x));
-                config.windowHeight = std::stoi(windowSize.substr(x + 1));
-            } catch (...) {
-                std::cerr << "Error: Invalid --window size format. Use WxH (e.g., 1920x1080)\n";
-                result.handled = true;
-                result.exitCode = 1;
-                return result;
-            }
         }
     }
 

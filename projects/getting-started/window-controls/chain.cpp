@@ -104,4 +104,11 @@ void update(Context& ctx) {
     }
 }
 
-VIVID_CHAIN(setup, update)
+// Window configuration - using static variable style
+// This example demonstrates window control APIs
+static vivid::ChainConfig config{
+    .windowWidth = 800,
+    .windowHeight = 600,
+    .resizable = true
+};
+VIVID_CHAIN_CONFIG(setup, update, config)

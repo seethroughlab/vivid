@@ -373,4 +373,10 @@ void update(Context& ctx) {
     dof.showDepth(g_showDepth);
 }
 
-VIVID_CHAIN(setup, update)
+// Fullscreen cinematic showcase
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1920,
+    .windowHeight = 1080,
+    .resizable = true,
+    .fullscreen = true
+}))

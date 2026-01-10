@@ -231,4 +231,9 @@ void update(Context& ctx) {
     clap_ring.rotation = -t * 0.25f;
 }
 
-VIVID_CHAIN(setup, update)
+// Square window for circular ring visualization
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 800,
+    .windowHeight = 800,
+    .resizable = false
+}))

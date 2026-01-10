@@ -190,8 +190,21 @@ public:
      * @brief Set output resolution
      * @param w Width in pixels
      * @param h Height in pixels
+     *
+     * Marks the resolution as explicitly set. Generators with explicit
+     * resolution will NOT default to window size at init.
      */
-    void setResolution(int w, int h) { m_width = w; m_height = h; }
+    void setResolution(int w, int h) {
+        m_width = w;
+        m_height = h;
+        m_hasExplicitResolution = true;
+    }
+
+    /**
+     * @brief Check if resolution was explicitly set
+     * @return true if setResolution() was called
+     */
+    [[nodiscard]] bool hasExplicitResolution() const { return m_hasExplicitResolution; }
 
     /**
      * @brief DEPRECATED: No longer auto-resizes to window size
@@ -306,8 +319,9 @@ protected:
     vivid::TextureHandle m_output;           ///< Output texture (RAII)
     vivid::TextureViewHandle m_outputView;   ///< Output texture view (RAII)
 
-    int m_width = 1280;  ///< Output width
-    int m_height = 720;  ///< Output height
+    int m_width = 1280;   ///< Output width
+    int m_height = 720;   ///< Output height
+    bool m_hasExplicitResolution = false;  ///< True if setResolution() was called
 };
 
 } // namespace vivid::effects

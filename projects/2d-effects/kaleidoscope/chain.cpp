@@ -110,4 +110,9 @@ void update(Context& ctx) {
     ctx.debug("segments", mirror.segments);
 }
 
-VIVID_CHAIN(setup, update)
+// Square window for perfect kaleidoscope symmetry
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1080,
+    .windowHeight = 1080,
+    .resizable = false
+}))

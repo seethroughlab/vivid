@@ -101,4 +101,9 @@ void update(Context& ctx) {
     crt.chromatic = chromatic;
 }
 
-VIVID_CHAIN(setup, update)
+// CRT aesthetic - fixed low-res window
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 800,
+    .windowHeight = 600,
+    .resizable = false
+}))

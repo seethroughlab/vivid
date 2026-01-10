@@ -69,7 +69,57 @@ Chain-based projects export two functions:
 | `setup(Context&)` | Build the operator graph | Once on load/reload |
 | `update(Context&)` | Dynamic parameter changes | Every frame |
 
-The `VIVID_CHAIN(setup, update)` macro exports these for the runtime.
+The `VIVID_CHAIN(setup, update)` macro exports these for the runtime with default window settings (1280x720, resizable).
+
+### Window Configuration
+
+Use `VIVID_CHAIN_CONFIG` to set window properties before creation:
+
+```cpp
+void setup(Context& ctx) { /* ... */ }
+void update(Context& ctx) { /* ... */ }
+
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1920,
+    .windowHeight = 1080,
+    .resizable = false,
+    .fullscreen = false
+}))
+```
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `windowWidth` | 1280 | Initial window width |
+| `windowHeight` | 720 | Initial window height |
+| `resizable` | true | Allow window resizing |
+| `fullscreen` | false | Start in fullscreen mode |
+
+**Note:** Window configuration is read at startup and cannot be hot-reloaded. Changing these values requires restarting the application.
+
+### Resolution Behavior
+
+Operator resolution follows these rules:
+
+1. **Generators** (Noise, Gradient, Shape, etc.):
+   - Default to window size at initialization
+   - Use `setResolution(w, h)` for explicit dimensions
+   - Resolution is locked after init - window resize doesn't affect them
+
+2. **Processors** (Blur, HSV, Mirror, etc.):
+   - Inherit resolution from their input operator
+   - Automatically match input dimensions
+
+3. **Output/Display**:
+   - The only operators that scale to window size
+   - Always match current window dimensions
+
+```cpp
+auto& noise = chain.add<Noise>("noise");
+// Uses window size (e.g., 1920x1080 from config)
+
+auto& texture = chain.add<Noise>("texture");
+texture.setResolution(512, 512);  // Explicit 512x512
+```
 
 ### Architecture Notes
 

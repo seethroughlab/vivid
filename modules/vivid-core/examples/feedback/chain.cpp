@@ -75,4 +75,9 @@ void update(Context& ctx) {
     ctx.debug("hue", hueOffset);
 }
 
-VIVID_CHAIN(setup, update)
+// Feedback looks great at high resolution
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1920,
+    .windowHeight = 1080,
+    .resizable = true
+}))

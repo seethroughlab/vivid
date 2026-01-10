@@ -662,4 +662,9 @@ void update(Context& ctx) {
     clapVis.color.set(0.85f, 0.44f, 0.84f, 0.3f + clapDecay * 0.7f);
 }
 
-VIVID_CHAIN(setup, update)
+// Compact window for drum machine UI
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1024,
+    .windowHeight = 600,
+    .resizable = false
+}))

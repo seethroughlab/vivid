@@ -116,4 +116,9 @@ void update(Context& ctx) {
     canvas.fillText("PIXEL ART  4px + 8 levels", halfW + pad + 8, halfH + pad + 20);
 }
 
-VIVID_CHAIN(setup, update)
+// Retro aesthetic - fixed 640x480 window
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 640,
+    .windowHeight = 480,
+    .resizable = false
+}))

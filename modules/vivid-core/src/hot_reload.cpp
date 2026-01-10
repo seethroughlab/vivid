@@ -584,6 +584,7 @@ bool HotReload::load() {
 
     m_setupFn = reinterpret_cast<SetupFn>(GetProcAddress(static_cast<HMODULE>(m_library), "vivid_setup"));
     m_updateFn = reinterpret_cast<UpdateFn>(GetProcAddress(static_cast<HMODULE>(m_library), "vivid_update"));
+    m_configFn = reinterpret_cast<ConfigFn>(GetProcAddress(static_cast<HMODULE>(m_library), "vivid_config"));
 #else
     m_library = dlopen(m_libraryPath.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!m_library) {
@@ -594,6 +595,7 @@ bool HotReload::load() {
 
     m_setupFn = reinterpret_cast<SetupFn>(dlsym(m_library, "vivid_setup"));
     m_updateFn = reinterpret_cast<UpdateFn>(dlsym(m_library, "vivid_update"));
+    m_configFn = reinterpret_cast<ConfigFn>(dlsym(m_library, "vivid_config"));
 #endif
 
     if (!m_setupFn || !m_updateFn) {
@@ -618,6 +620,7 @@ void HotReload::unload() {
 
     m_setupFn = nullptr;
     m_updateFn = nullptr;
+    m_configFn = nullptr;
 }
 
 // Parse compiler output to extract structured errors

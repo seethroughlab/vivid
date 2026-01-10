@@ -351,4 +351,9 @@ void update(Context& ctx) {
     ImGui::End();
 }
 
-VIVID_CHAIN(setup, update)
+// Widescreen for particle visualization
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1600,
+    .windowHeight = 900,
+    .resizable = true
+}))

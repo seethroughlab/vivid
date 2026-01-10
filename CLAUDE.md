@@ -157,6 +157,15 @@ void update(Context& ctx) { ctx.chain().process(); }
 VIVID_CHAIN(setup, update)
 ```
 
+For custom window configuration, use `VIVID_CHAIN_CONFIG`:
+```cpp
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1920,
+    .windowHeight = 1080,
+    .resizable = false
+}))
+```
+
 ## Code Conventions
 
 - **C++17** required

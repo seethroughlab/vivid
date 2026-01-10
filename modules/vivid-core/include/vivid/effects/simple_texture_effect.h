@@ -243,9 +243,9 @@ template<typename Derived, typename Uniforms>
 void SimpleGeneratorEffect<Derived, Uniforms>::init(Context& ctx) {
     if (!this->beginInit()) return;
 
-    // If using default resolution, match window dimensions
-    // This ensures generators match the context rather than hardcoded 1280x720
-    if (this->m_width == 1280 && this->m_height == 720) {
+    // If no explicit resolution was set, use window size at init time.
+    // Resolution is locked after init - window resizes won't affect this operator.
+    if (!this->m_hasExplicitResolution) {
         this->m_width = ctx.width();
         this->m_height = ctx.height();
     }

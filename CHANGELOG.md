@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.18] - 2026-01-09
+
+### Added
+
+- **Copy operator** - TouchDesigner-style replication operator that creates multiple copies of an input texture with per-copy transforms
+  - **Linear mode**: Trail effects with offset, rotation step, and scale step
+  - **Radial mode**: Circular arrays like clock faces or flower petals
+  - **Grid mode**: Uniform grids with configurable columns and spacing
+  - Opacity falloff for fade trails
+  - Dynamic shader generation with pipeline caching (1-16 copies)
+- **copy-patterns example** - Demonstrates all three Copy modes with animated parameters
+
 ## [0.1.0-alpha.17] - 2026-01-08
 
 ### Added
@@ -421,7 +433,8 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.17...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.18...HEAD
+[0.1.0-alpha.18]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.17...v0.1.0-alpha.18
 [0.1.0-alpha.17]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.16...v0.1.0-alpha.17
 [0.1.0-alpha.16]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.15...v0.1.0-alpha.16
 [0.1.0-alpha.15]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.14...v0.1.0-alpha.15

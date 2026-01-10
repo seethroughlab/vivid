@@ -135,4 +135,10 @@ void update(Context& ctx) {
     canvas.fillText(flashLabel, halfW + pad + 5, halfH + pad + 16);
 }
 
-VIVID_CHAIN(setup, update)
+// Fullscreen showcase
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1920,
+    .windowHeight = 1080,
+    .resizable = true,
+    .fullscreen = true
+}))

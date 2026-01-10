@@ -62,4 +62,10 @@ void update(Context& ctx) {
     chain.process();
 }
 
-VIVID_CHAIN(setup, update)
+// Widescreen for waveform visualization
+static vivid::ChainConfig config{
+    .windowWidth = 1280,
+    .windowHeight = 800,
+    .resizable = true
+};
+VIVID_CHAIN_CONFIG(setup, update, config)

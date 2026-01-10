@@ -3,11 +3,13 @@
 // Vivid - Hot Reload
 // Watches for file changes, recompiles, and reloads chain code
 
+#include <vivid/vivid.h>  // For ChainConfig
 #include <string>
 #include <filesystem>
 #include <functional>
 #include <memory>
 #include <vector>
+#include <optional>
 
 namespace fs = std::filesystem;
 
@@ -34,6 +36,7 @@ struct CompileError {
 // Chain function types
 using SetupFn = void(*)(Context&);
 using UpdateFn = void(*)(Context&);
+using ConfigFn = ChainConfig(*)();
 
 class HotReload {
 public:
@@ -69,6 +72,15 @@ public:
     // Get the current chain functions (may be null if not loaded)
     SetupFn getSetupFn() const { return m_setupFn; }
     UpdateFn getUpdateFn() const { return m_updateFn; }
+    ConfigFn getConfigFn() const { return m_configFn; }
+
+    // Get chain config (returns default config if not provided by chain)
+    ChainConfig getConfig() const {
+        return m_configFn ? m_configFn() : ChainConfig{};
+    }
+
+    // Check if chain provides a config
+    bool hasConfig() const { return m_configFn != nullptr; }
 
     // Check if chain is loaded and valid
     bool isLoaded() const { return m_setupFn != nullptr && m_updateFn != nullptr; }
@@ -99,6 +111,7 @@ private:
     void* m_library = nullptr;      // Handle to loaded library (dlopen result)
     SetupFn m_setupFn = nullptr;
     UpdateFn m_updateFn = nullptr;
+    ConfigFn m_configFn = nullptr;
 
     fs::file_time_type m_lastModTime;
     int m_buildNumber = 0;          // Incremented each build to avoid caching

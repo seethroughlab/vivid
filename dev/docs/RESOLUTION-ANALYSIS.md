@@ -238,16 +238,62 @@ int height = 720;
 
 ---
 
-## Summary of Issues
+## Current State (Updated January 2026)
 
-1. **Scattered defaults**: 1280x720 appears in 15+ locations
-2. **Magic value detection**: `simple_texture_effect.h` uses equality check to detect "unset"
-3. **Implicit behavior**: 96% of examples rely on auto-sizing rather than explicit resolution
-4. **No single source of truth**: Each component defines its own default
+The resolution system has been overhauled to follow the openFrameworks/TouchDesigner/Cinder pattern where window size is divorced from texture resolution.
 
-## Potential Improvements
+### Changes Implemented
 
-1. **Central defaults**: Create `vivid/defaults.h` with `kDefaultWidth`/`kDefaultHeight`
-2. **Explicit flag**: Add `m_hasExplicitResolution` to avoid magic value detection
-3. **Require explicit resolution**: Remove auto-sizing, update all examples
-4. **Use render resolution**: Have generators default to `ctx.renderWidth()` instead of magic detection
+1. **Magic value detection eliminated** - `m_hasExplicitResolution` flag replaces the `== 1280x720` check
+2. **Resolution locking** - Generators lock resolution at init, never auto-resize
+3. **Window configuration** - `VIVID_CHAIN_CONFIG` macro sets window size before creation
+4. **`--window` CLI removed** - Simplifies the system, window size comes from chain config
+
+### Resolution Flow
+
+1. Chain config specifies window size (or uses 1280x720 default)
+2. Window is created at that size
+3. Generators without explicit resolution use window size at init
+4. Resolution is locked - window resize doesn't affect operators
+5. Only Output/Display scale to window
+
+### API Changes
+
+```cpp
+// Set explicit resolution
+noise.setResolution(512, 512);
+
+// Check if explicit resolution was set
+if (noise.hasExplicitResolution()) { ... }
+
+// Window configuration via macro
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1920,
+    .windowHeight = 1080,
+    .resizable = false,
+    .fullscreen = false
+}))
+```
+
+## Remaining 1280x720 Locations (Acceptable)
+
+These locations still use 1280x720 as defaults, which is appropriate:
+- `AppConfig::windowWidth/Height` - Default if no chain config
+- `ChainConfig::windowWidth/Height` - Struct defaults
+- Webcam requested resolution - Reasonable default for capture
+- Memory estimation fallback - Conservative estimate
+
+---
+
+## Historical Issues (Now Resolved)
+
+1. ~~**Magic value detection**: `simple_texture_effect.h` uses equality check to detect "unset"~~ - Fixed with `m_hasExplicitResolution` flag
+2. ~~**Implicit behavior**: Examples rely on auto-sizing rather than explicit resolution~~ - Now well-defined: generators use window size at init if not explicit
+3. ~~**No single source of truth**: Each component defines its own default~~ - ChainConfig provides centralized window settings
+
+## Previous Potential Improvements (Status)
+
+1. ~~**Central defaults**: Create `vivid/defaults.h`~~ - Not needed; ChainConfig handles window settings
+2. **Explicit flag**: Add `m_hasExplicitResolution` - **DONE**
+3. ~~**Require explicit resolution**: Remove auto-sizing~~ - Kept auto-sizing for convenience, but now well-defined
+4. ~~**Use render resolution**: Have generators default to `ctx.renderWidth()`~~ - Generators use window size at init instead

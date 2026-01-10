@@ -48,7 +48,16 @@ void TextureOperator::resolveInputs(Chain& chain) {
 }
 
 void TextureOperator::createOutput(Context& ctx) {
-    createOutput(ctx, m_width, m_height);
+    // If no explicit resolution was set, use window size at init time.
+    // This ensures generators match the window rather than the hardcoded default.
+    // Resolution is locked after init - window resizes won't affect this operator.
+    int width = m_width;
+    int height = m_height;
+    if (!m_hasExplicitResolution) {
+        width = ctx.width();
+        height = ctx.height();
+    }
+    createOutput(ctx, width, height);
 }
 
 bool TextureOperator::checkResize(Context& /*ctx*/) {

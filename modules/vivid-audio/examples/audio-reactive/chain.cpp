@@ -268,4 +268,9 @@ void update(Context& ctx) {
     bloom.radius = 4.0f + energy * 20.0f;
 }
 
-VIVID_CHAIN(setup, update)
+// Large canvas for audio visualizer
+VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+    .windowWidth = 1920,
+    .windowHeight = 1080,
+    .resizable = true
+}))

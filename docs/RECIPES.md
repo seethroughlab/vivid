@@ -778,9 +778,20 @@ VIVID_CHAIN(setup, update)
 2. **Use feedback sparingly** - High decay values (0.95+) create trails, lower values fade quickly
 3. **Displacement adds movement** - Even subtle displacement (0.01-0.05) adds life
 4. **Bloom sells it** - Bloom makes colors pop and creates atmosphere
-5. **Match your chain resolution** to output - Higher res = sharper but slower
+5. **Resolution behavior** - Generators use window size at init if no explicit resolution set:
+   - Use `setResolution(w, h)` for explicit dimensions (e.g., `noise.setResolution(512, 512)`)
+   - Resolution locks after init - window resize won't affect generator textures
+   - Only Output/Display scale to window
 6. **Watch performance** - Blur and feedback are expensive; keep passes low
 7. **State preservation** - Feedback and video playback state survives hot-reloads automatically
+8. **Window configuration** - Use `VIVID_CHAIN_CONFIG` for custom window sizes:
+   ```cpp
+   VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+       .windowWidth = 1920,
+       .windowHeight = 1080,
+       .resizable = false
+   }))
+   ```
 
 ---
 

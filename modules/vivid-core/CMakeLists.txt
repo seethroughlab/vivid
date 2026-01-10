@@ -70,6 +70,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/noise.cpp
     src/effects/solid_color.cpp
     src/effects/composite.cpp
+    src/effects/copy.cpp
     src/effects/ramp.cpp
     src/effects/feedback.cpp
     src/effects/output.cpp

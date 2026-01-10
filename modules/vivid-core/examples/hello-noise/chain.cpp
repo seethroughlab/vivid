@@ -42,4 +42,10 @@ void update(Context& ctx) {
     ctx.debug("fps", 1.0 / ctx.dt());
 }
 
-VIVID_CHAIN(setup, update)
+// Window configuration - using static variable style
+static vivid::ChainConfig config{
+    .windowWidth = 800,
+    .windowHeight = 600,
+    .resizable = true
+};
+VIVID_CHAIN_CONFIG(setup, update, config)

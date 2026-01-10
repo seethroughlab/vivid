@@ -158,8 +158,23 @@ int f = ctx.frame();     // Frame number
 ### Resolution
 
 ```cpp
-int w = ctx.width();     // Output width in pixels
-int h = ctx.height();    // Output height in pixels
+int w = ctx.width();     // Window width in pixels
+int h = ctx.height();    // Window height in pixels
+```
+
+**For TextureOperator subclasses:**
+- Generators use window size at init if no explicit resolution is set
+- Call `setResolution(w, h)` in setup for explicit dimensions
+- Resolution locks after init - window resize won't affect it
+- Use `hasExplicitResolution()` to check if explicit dimensions were set
+
+```cpp
+// In chain.cpp setup():
+auto& noise = chain.add<Noise>("noise");
+noise.setResolution(512, 512);  // Explicit 512x512
+
+auto& fullscreen = chain.add<Noise>("bg");
+// Uses window size (1280x720 or whatever chain config specifies)
 ```
 
 ### Creating Textures

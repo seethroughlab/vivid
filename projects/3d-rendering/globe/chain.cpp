@@ -303,4 +303,10 @@ void update(Context& ctx) {
     // Camera stays fixed - globe rotates instead
 }
 
-VIVID_CHAIN(setup, update)
+// Cinematic widescreen for 3D rendering
+static vivid::ChainConfig config{
+    .windowWidth = 1920,
+    .windowHeight = 1080,
+    .resizable = true
+};
+VIVID_CHAIN_CONFIG(setup, update, config)
