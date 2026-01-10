@@ -840,9 +840,7 @@ void NodeGraph::updateHover() {
             }
         }
     }
-    if (hoveredCount > 1) {
-        std::cerr << "[NodeGraph] WARNING: " << hoveredCount << " nodes hovered at once!\n";
-    }
+    (void)hoveredCount;  // Silence unused warning
 
     // Check links
     for (auto& [id, link] : m_links) {
@@ -1008,12 +1006,8 @@ void NodeGraph::handleNodeDrag() {
     if (m_input.mouseClicked[0] && !m_input.keyCtrl && m_hoveredNodeId >= 0) {
         // Check for double-click
         float timeSinceLastClick = m_input.time - m_lastClickTime;
-        std::cerr << "[NodeGraph] Click on node " << m_hoveredNodeId
-                  << ", lastClicked=" << m_lastClickedNodeId
-                  << ", timeSince=" << timeSinceLastClick << "s\n";
         if (m_lastClickedNodeId == m_hoveredNodeId && timeSinceLastClick < DOUBLE_CLICK_TIME) {
             // Double-click detected!
-            std::cerr << "[NodeGraph] DOUBLE-CLICK detected on node " << m_hoveredNodeId << "\n";
             if (m_doubleClickCallback) {
                 m_doubleClickCallback(m_hoveredNodeId);
             }

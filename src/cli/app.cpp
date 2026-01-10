@@ -393,8 +393,32 @@ struct MainLoopContext {
 // Used to pass scroll to NodeGraph even when blocking input to user code
 static glm::vec2 g_savedScrollForVisualizer;
 
+// Key press tracking for one-shot key events
+static bool g_keyPressed[512] = {};      // Keys pressed this frame
+static bool g_keyPrevDown[512] = {};     // Keys down previous frame
+
+// Update key states (call once per frame before using keyPressed)
+static void updateKeyStates(GLFWwindow* window) {
+    // Check common keys and detect rising edge (was up, now down)
+    const int keysToCheck[] = {
+        GLFW_KEY_ESCAPE, GLFW_KEY_ENTER, GLFW_KEY_TAB, GLFW_KEY_SPACE,
+        GLFW_KEY_B, GLFW_KEY_F, GLFW_KEY_R, GLFW_KEY_S,
+        GLFW_KEY_RIGHT, GLFW_KEY_LEFT, GLFW_KEY_DOWN, GLFW_KEY_UP,
+        GLFW_KEY_0, GLFW_KEY_1, GLFW_KEY_2
+    };
+
+    for (int key : keysToCheck) {
+        bool isDown = glfwGetKey(window, key) == GLFW_PRESS;
+        g_keyPressed[key] = isDown && !g_keyPrevDown[key];  // Rising edge
+        g_keyPrevDown[key] = isDown;
+    }
+}
+
 static bool mainLoopIteration(MainLoopContext& mlc) {
     glfwPollEvents();
+
+    // Update key states for one-shot detection
+    updateKeyStates(mlc.window);
 
     // Memory logging every 10 seconds
     {
@@ -921,7 +945,14 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                         glfwGetKey(mlc.window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
     frameInput.keySuper = glfwGetKey(mlc.window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
                           glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
+    // Copy one-shot key states
+    std::memcpy(frameInput.keyPressed, g_keyPressed, sizeof(g_keyPressed));
     frameInput.surfaceFormat = mlc.surfaceFormat;
+
+    // Update solo mode output texture before blit
+    if (mlc.visualizerVisible) {
+        mlc.chainVisualizer->updateSoloOutput(*mlc.ctx);
+    }
 
     // Blit output texture (may have been modified by solo mode)
     if (mlc.ctx->outputTexture() && mlc.display->isValid()) {

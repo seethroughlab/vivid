@@ -1,4 +1,5 @@
 // Blit shader - renders a texture to the screen using a full-screen triangle
+// Shows checkerboard pattern for transparent areas (like Photoshop)
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -27,7 +28,21 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 @group(0) @binding(0) var textureSampler: sampler;
 @group(0) @binding(1) var inputTexture: texture_2d<f32>;
 
+// Generate checkerboard pattern for transparent areas
+fn checkerboard(pos: vec2f) -> vec3f {
+    let size = 8.0;  // Checker size in pixels
+    let checker = floor(pos.x / size) + floor(pos.y / size);
+    let isLight = (i32(checker) & 1) == 0;
+    return select(vec3f(0.3, 0.3, 0.3), vec3f(0.5, 0.5, 0.5), isLight);
+}
+
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    return textureSample(inputTexture, textureSampler, input.uv);
+    let texColor = textureSample(inputTexture, textureSampler, input.uv);
+
+    // Blend texture over checkerboard pattern based on alpha
+    let bg = checkerboard(input.position.xy);
+    let blended = mix(bg, texColor.rgb, texColor.a);
+
+    return vec4f(blended, 1.0);
 }

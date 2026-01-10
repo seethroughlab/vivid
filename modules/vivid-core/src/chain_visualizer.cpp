@@ -200,6 +200,21 @@ void ChainVisualizer::exitSoloMode() {
     m_inSoloMode = false;
 }
 
+void ChainVisualizer::updateSoloOutput(vivid::Context& ctx) {
+    if (!m_inSoloMode || !m_soloOperator) {
+        return;
+    }
+
+    // Set the output texture to the solo operator's output
+    vivid::OutputKind kind = m_soloOperator->outputKind();
+    if (kind == vivid::OutputKind::Texture) {
+        WGPUTextureView view = m_soloOperator->outputView();
+        if (view) {
+            ctx.setOutputTexture(view);
+        }
+    }
+}
+
 // -------------------------------------------------------------------------
 // Video Recording
 // -------------------------------------------------------------------------
@@ -736,42 +751,45 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     } // end if (renderNodeGraph)
 
     // Render status bar (in screen space, not node graph space)
+    // Hidden in solo mode to maximize output visibility
     m_overlay.resetTransform();
-    renderStatusBar(input, ctx);
+    if (!m_inSoloMode) {
+        renderStatusBar(input, ctx);
 
-    // Handle status bar button clicks
-    if (graphInput.mouseClicked[0]) {
-        glm::vec2 mousePos = graphInput.mousePos;
+        // Handle status bar button clicks
+        if (graphInput.mouseClicked[0]) {
+            glm::vec2 mousePos = graphInput.mousePos;
 
-        // Check codec dropdown menu items first (when open)
-        if (m_codecDropdownOpen) {
-            if (isMouseInRect(m_codecH264, mousePos)) {
-                startRecording(ExportCodec::H264, ctx);
-                m_codecDropdownOpen = false;
-            } else if (isMouseInRect(m_codecH265, mousePos)) {
-                startRecording(ExportCodec::H265, ctx);
-                m_codecDropdownOpen = false;
-            } else if (isMouseInRect(m_codecProRes, mousePos)) {
-                startRecording(ExportCodec::Animation, ctx);
-                m_codecDropdownOpen = false;
-            } else if (isMouseInRect(m_recordButton, mousePos)) {
-                // Clicked record button while open - keep open
+            // Check codec dropdown menu items first (when open)
+            if (m_codecDropdownOpen) {
+                if (isMouseInRect(m_codecH264, mousePos)) {
+                    startRecording(ExportCodec::H264, ctx);
+                    m_codecDropdownOpen = false;
+                } else if (isMouseInRect(m_codecH265, mousePos)) {
+                    startRecording(ExportCodec::H265, ctx);
+                    m_codecDropdownOpen = false;
+                } else if (isMouseInRect(m_codecProRes, mousePos)) {
+                    startRecording(ExportCodec::Animation, ctx);
+                    m_codecDropdownOpen = false;
+                } else if (isMouseInRect(m_recordButton, mousePos)) {
+                    // Clicked record button while open - keep open
+                } else {
+                    // Clicked elsewhere - close dropdown
+                    m_codecDropdownOpen = false;
+                }
             } else {
-                // Clicked elsewhere - close dropdown
-                m_codecDropdownOpen = false;
-            }
-        } else {
-            // Dropdown closed - handle normal button clicks
-            if (isMouseInRect(m_recordButton, mousePos)) {
-                // Toggle dropdown
-                m_codecDropdownOpen = true;
-            } else if (isMouseInRect(m_stopButton, mousePos)) {
-                stopRecording(ctx);
-            } else if (isMouseInRect(m_snapshotButton, mousePos)) {
-                requestSnapshot();
-            } else if (isMouseInRect(m_gridToggleButton, mousePos)) {
-                // Toggle grid visibility
-                m_nodeGraph.style().showGrid = !m_nodeGraph.style().showGrid;
+                // Dropdown closed - handle normal button clicks
+                if (isMouseInRect(m_recordButton, mousePos)) {
+                    // Toggle dropdown
+                    m_codecDropdownOpen = true;
+                } else if (isMouseInRect(m_stopButton, mousePos)) {
+                    stopRecording(ctx);
+                } else if (isMouseInRect(m_snapshotButton, mousePos)) {
+                    requestSnapshot();
+                } else if (isMouseInRect(m_gridToggleButton, mousePos)) {
+                    // Toggle grid visibility
+                    m_nodeGraph.style().showGrid = !m_nodeGraph.style().showGrid;
+                }
             }
         }
     }
@@ -800,21 +818,15 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
         int nodeId = m_pendingDoubleClickNodeId;
         m_pendingDoubleClickNodeId = -1;  // Clear pending
 
-        std::cerr << "[ChainVisualizer] Double-click nodeId=" << nodeId
-                  << ", operators.size()=" << operators.size() << "\n";
-
         if (nodeId != SCREEN_NODE_ID && nodeId != SPEAKERS_NODE_ID) {
             if (static_cast<size_t>(nodeId) < operators.size()) {
                 const vivid::OperatorInfo& info = operators[nodeId];
-                std::cerr << "[ChainVisualizer] Operator name='" << info.name
-                          << "', op=" << (void*)info.op << "\n";
                 if (info.op) {
                     // Select this node so inspector shows its params
                     m_nodeGraph.selectNode(nodeId);
                     m_selectedNodeId = nodeId;
                     m_selectedOp = info.op;
                     m_selectedOpName = info.name;
-                    std::cerr << "[ChainVisualizer] Entering solo mode for '" << info.name << "'\n";
                     enterSoloMode(info.op, info.name);
                 }
             }
@@ -840,19 +852,8 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     }
 
     // Render solo mode overlay (if active)
+    // Note: Output texture is set by updateSoloOutput() before blit
     if (m_inSoloMode && m_soloOperator) {
-        // Set the output texture to the solo operator's output
-        vivid::OutputKind kind = m_soloOperator->outputKind();
-        std::cerr << "[ChainVisualizer] Solo rendering: '" << m_soloOperatorName
-                  << "', outputKind=" << static_cast<int>(kind) << "\n";
-        if (kind == vivid::OutputKind::Texture) {
-            WGPUTextureView view = m_soloOperator->outputView();
-            std::cerr << "[ChainVisualizer] outputView=" << (void*)view << "\n";
-            if (view) {
-                ctx.setOutputTexture(view);
-            }
-        }
-
         // Draw solo indicator with close button
         renderSoloIndicator(input);
 

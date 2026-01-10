@@ -103,6 +103,10 @@ public:
     bool inSoloMode() const { return m_inSoloMode; }
     const std::string& soloOperatorName() const { return m_soloOperatorName; }
 
+    // Update solo mode output texture (call before blit in app.cpp)
+    // Sets ctx.outputTexture to solo operator's output when in solo mode
+    void updateSoloOutput(Context& ctx);
+
     // Focused node mode (for EditorBridge integration)
     // When cursor is in an operator's code in the editor, that node gets a 3x larger preview
     void setFocusedNode(const std::string& operatorName);

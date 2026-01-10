@@ -69,7 +69,8 @@ void loadAllModules() {
             "vivid-render3d",
             "vivid-network",
             "vivid-serial",
-            "vivid-midi"
+            "vivid-midi",
+            "vivid-opencv"
         };
 
         // Possible library locations to search
