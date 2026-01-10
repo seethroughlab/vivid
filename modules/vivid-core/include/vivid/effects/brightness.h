@@ -44,25 +44,6 @@ namespace vivid::effects {
 class Brightness : public TextureOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Brightness", "Effects", "Brightness and contrast")
-            .requireInput()
-            .withAliases({"BrightnessContrast", "Levels"})
-            .withUsage(
-                "auto& bc = chain.add<Brightness>(\"levels\");\n"
-                "bc.input(\"source\");\n"
-                "bc.brightness = 0.1f;  // Offset (-1 to 1)\n"
-                "bc.contrast = 1.2f;    // Multiplier\n"
-                "bc.gamma = 0.9f;       // Gamma correction\n"
-            )
-            .withExamples({{"examples/edge-glow"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

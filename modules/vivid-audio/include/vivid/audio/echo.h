@@ -42,25 +42,6 @@ namespace vivid::audio {
 class Echo : public AudioEffect {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Echo", "Audio Effects", "Multi-tap echo with diffusion")
-            .output(OutputKind::Audio)
-            .requireInput()
-            .withUsage(
-                "auto& echo = chain.add<Echo>(\"echo\");\n"
-                "echo.input(\"audio\");\n"
-                "echo.delayTime = 300.0f;  // 300ms between echoes\n"
-                "echo.decay = 0.6f;        // Each echo at 60%\n"
-                "echo.taps = 4;            // 4 echo repeats\n"
-            )
-            .withExamples({{"examples/audio-effects"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

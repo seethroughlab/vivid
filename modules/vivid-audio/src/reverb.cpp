@@ -4,7 +4,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Reverb);
+REGISTER_OPERATOR_EX(Reverb, "Audio Effects", "Freeverb-style algorithmic reverb", true, vivid::OutputKind::Audio);
 
 // Static constexpr definitions
 constexpr int Reverb::COMB_DELAYS_L[NUM_COMBS];

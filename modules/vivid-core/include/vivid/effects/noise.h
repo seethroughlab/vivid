@@ -52,26 +52,6 @@ enum class NoiseType {
 class Noise : public TextureOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Noise", "Generators", "Fractal noise generator")
-            .withUsage(
-                "auto& noise = chain.add<Noise>(\"noise\");\n"
-                "noise.scale = 4.0f;\n"
-                "noise.speed = 0.5f;\n"
-                "noise.octaves = 4;\n"
-            )
-            .withExamples({
-                {"examples/hello-noise"},
-                {"examples/distortion"},
-                {"examples/feedback"}
-            });
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

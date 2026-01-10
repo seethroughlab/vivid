@@ -55,27 +55,6 @@ namespace vivid::network {
  */
 class OscOut : public Operator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("OscOut", "Network", "Send OSC messages to external software and hardware")
-            .output(OutputKind::Value)
-            .withAliases({"OSCSender", "OSCOutput"})
-            .withUsage(
-                "auto& osc = chain.add<OscOut>(\"osc\");\n"
-                "osc.host(\"127.0.0.1\");\n"
-                "osc.port(9000);\n"
-                "\n"
-                "// In update():\n"
-                "osc.send(\"/fader/1\", levels.level(0));\n"
-                "osc.send(\"/xy\", mouseX, mouseY);\n"
-            )
-            .withExamples({{"examples/osc-control"}});
-    }
-
-    /// @}
 
     OscOut();
     ~OscOut() override;

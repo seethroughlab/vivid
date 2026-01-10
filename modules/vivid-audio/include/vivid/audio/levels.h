@@ -36,27 +36,6 @@ namespace vivid::audio {
 class Levels : public AudioAnalyzer {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Levels", "Audio Analysis", "Audio level meter with RMS and peak values")
-            .output(OutputKind::Value)
-            .requireInput()
-            .withUsage(
-                "auto& levels = chain.add<Levels>(\"levels\");\n"
-                "levels.input(\"audio\");\n"
-                "levels.smoothing = 0.9f;\n"
-                "\n"
-                "// In update:\n"
-                "float volume = levels.rms();   // Average loudness\n"
-                "float peak = levels.peak();    // Peak level\n"
-            )
-            .withExamples({{"examples/audio-reactive"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

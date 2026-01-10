@@ -119,31 +119,6 @@ struct Particle {
  */
 class ParticleSystem : public TextureOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("ParticleSystem", "Particles", "Unified particle system with CPU/GPU simulation and multiple render modes")
-            .withAliases({"ParticleEmitter"})
-            .withUsage(
-                "// 2D curl noise flow\n"
-                "auto& ps = chain.add<ParticleSystem>(\"flow\");\n"
-                "ps.space(ParticleSpace::Screen2D);\n"
-                "ps.rendering(RenderMode::Circle);\n"
-                "ps.emitRate = 1000.0f;\n"
-                "ps.addForce<CurlNoiseForce>().strength = 0.8f;\n"
-                "ps.colorStart.set(1.0f, 0.6f, 0.2f, 1.0f);\n"
-                "\n"
-                "// 3D physics with mesh instances\n"
-                "ps.space(ParticleSpace::World3D);\n"
-                "ps.rendering(RenderMode::Mesh);\n"
-                "ps.addForce<GravityForce>().direction.set(0, -9.8f, 0);\n"
-            )
-            .withExamples({{"examples/particle-forces"}});
-    }
-
-    /// @}
 
     ParticleSystem();
     ~ParticleSystem() override;

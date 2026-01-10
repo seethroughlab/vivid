@@ -58,20 +58,6 @@ enum class FogMode {
  */
 class Fog : public effects::TextureOperator {
 public:
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Fog", "3D Post-Processing", "Depth-based atmospheric fog effect")
-            .output(OutputKind::Texture)
-            .requireInput()
-            .withAliases({"AtmosphericFog", "DistanceFog"})
-            .withUsage(
-                "auto& fog = chain.add<Fog>(\"fog\");\n"
-                "fog.input(&render);  // Requires depthOutput(true)\n"
-                "fog.fogColor[0] = 0.7f;  // RGB\n"
-                "fog.fogStart = 5.0f;\n"
-                "fog.fogEnd = 50.0f;\n"
-            );
-    }
-
     Fog() = default;
     ~Fog() override;
 

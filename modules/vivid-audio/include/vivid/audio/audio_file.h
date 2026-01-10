@@ -44,24 +44,6 @@ namespace vivid::audio {
 class AudioFile : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("AudioFile", "Audio IO", "Load and play audio files (WAV)")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& music = chain.add<AudioFile>(\"music\");\n"
-                "music.setFile(\"assets/audio/loop.wav\");\n"
-                "music.loop(true);\n"
-                "music.volume = 0.8f;\n"
-                "music.play();\n"
-            )
-            .withExamples({{"examples/audio-reactive"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
 
     Param<float> volume{"volume", 1.0f, 0.0f, 1.0f};  ///< Playback volume
 

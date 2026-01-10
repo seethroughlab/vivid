@@ -72,23 +72,6 @@ struct Instance3D {
  */
 class InstancedRender3D : public vivid::effects::TextureOperator {
 public:
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("InstancedRender3D", "3D Rendering", "GPU-instanced rendering for thousands of meshes")
-            .output(OutputKind::Texture)
-            .requireInput()
-            .withAliases({"Instanced", "GPUInstancing"})
-            .withUsage(
-                "auto& inst = chain.add<InstancedRender3D>(\"inst\");\n"
-                "inst.setMesh(&sphere);\n"
-                "inst.setCameraInput(&cam);\n"
-                "inst.setLightInput(&sun);\n"
-                "\n"
-                "std::vector<Instance3D> instances;\n"
-                "inst.setInstances(instances);\n"
-            )
-            .withExamples({{"examples/instancing"}});
-    }
-
     Param<float> metallic{"metallic", 0.0f, 0.0f, 1.0f};    ///< Base metallic value
     Param<float> roughness{"roughness", 0.5f, 0.0f, 1.0f};  ///< Base roughness value
     Param<float> ambient{"ambient", 0.3f, 0.0f, 2.0f};      ///< Ambient light intensity

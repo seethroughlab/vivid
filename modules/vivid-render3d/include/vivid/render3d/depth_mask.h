@@ -62,38 +62,9 @@ enum class DepthMaskMode {
  */
 class DepthMask : public effects::TextureOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("DepthMask", "3D Compositing", "Mask 2D effects using 3D depth")
-            .requireInput()
-            .withInputs({
-                {"input", "2D effect texture to mask"},
-                {"render3d", "Render3D operator with depth output"}
-            })
-            .withUsage(
-                "render.setDepthOutput(true);  // Enable depth!\n"
-                "auto& mask = chain.add<DepthMask>(\"mask\");\n"
-                "mask.input(\"glow\");         // 2D effect\n"
-                "mask.setRender3D(&render);    // Depth source\n"
-                "mask.mode(DepthMaskMode::Object);  // Object, Background, or DepthFade\n"
-            )
-            .withExamples({{"examples/depth-compositing"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
-    /// @name Parameters (public for direct access)
-    /// @{
-
     Param<float> threshold{"threshold", 0.99f, 0.0f, 1.0f};  ///< Depth threshold
     Param<float> softness{"softness", 0.1f, 0.0f, 1.0f};     ///< Edge softness
     Param<bool> invert{"invert", false};                      ///< Invert mask
-
-    /// @}
-    // -------------------------------------------------------------------------
 
     DepthMask() {
         registerParam(threshold);

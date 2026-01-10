@@ -8,7 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER(SamplePlayer);
+REGISTER_OPERATOR_EX(SamplePlayer, "Audio Sampler", "Multi-voice sample player with pitch control", false, vivid::OutputKind::Audio);
 
 void SamplePlayer::setBank(const std::string& bankName) {
     m_bankName = bankName;

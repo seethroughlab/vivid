@@ -46,28 +46,6 @@ namespace vivid::video {
  */
 class VIVID_VIDEO_API VideoPlayer : public effects::TextureOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("VideoPlayer", "Video Input", "Video playback as texture source")
-            .withAliases({"Video", "Movie"})
-            .withUsage(
-                "auto& video = chain.add<VideoPlayer>(\"video\");\n"
-                "video.setFile(\"assets/videos/my_video.mov\");\n"
-                "video.setLoop(true);\n"
-                "video.play();\n"
-                "\n"
-                "// Control playback\n"
-                "video.pause();\n"
-                "video.seek(2.5f);  // Seek to 2.5 seconds\n"
-                "video.setSpeed(0.5f);  // Half speed\n"
-            )
-            .withExamples({{"examples/video-audio"}});
-    }
-
-    /// @}
 
     VideoPlayer();
     ~VideoPlayer() override;

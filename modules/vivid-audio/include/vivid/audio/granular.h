@@ -72,26 +72,6 @@ public:
     static constexpr int MAX_GRAINS = 64;
 
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Granular", "Audio Sampler", "Granular synthesizer for time-stretching and texture")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& grain = chain.add<Granular>(\"clouds\");\n"
-                "grain.loadSample(\"assets/audio/texture.wav\");\n"
-                "grain.grainSize = 80.0f;      // 80ms grains\n"
-                "grain.density = 15.0f;        // 15 grains/sec\n"
-                "grain.position = 0.3f;        // 30% through sample\n"
-                "grain.pitch = 0.5f;           // Octave down\n"
-                "grain.setFreeze(true);        // Hold position\n"
-            )
-            .withExamples({{"examples/granular-synthesis"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

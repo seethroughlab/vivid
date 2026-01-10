@@ -12,7 +12,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Song);
+REGISTER_OPERATOR(Song, "Audio Sampler", "Song structure with sections and arrangement", false);
 
 void Song::addSection(const std::string& name, uint32_t startBar, uint32_t endBar,
                       int repeatCount) {

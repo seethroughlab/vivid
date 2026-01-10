@@ -46,23 +46,6 @@ struct QuantizeUniforms {
 class Quantize : public SimpleTextureEffect<Quantize, QuantizeUniforms> {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Quantize", "Retro", "Color quantization")
-            .requireInput()
-            .withAliases({"Posterize", "ColorReduce"})
-            .withUsage(
-                "auto& quant = chain.add<Quantize>(\"posterize\");\n"
-                "quant.input(\"source\");\n"
-                "quant.levels = 4;  // 4 levels = 64 colors (4^3)\n"
-            )
-            .withExamples({{"examples/pixel-art"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

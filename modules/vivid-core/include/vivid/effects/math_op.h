@@ -81,25 +81,6 @@ enum class MathOperation {
 class Math : public vivid::Operator, public vivid::ParamRegistry {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Math", "Math/Logic", "Mathematical operations")
-            .output(OutputKind::Value)
-            .withUsage(
-                "auto& math = chain.add<Math>(\"remap\");\n"
-                "math.operation(MathOperation::Remap);  // Add, Subtract, Multiply, Divide, Clamp, Remap, Sin, Cos, etc.\n"
-                "math.inputA = lfo.outputValue();\n"
-                "math.inMin = -1.0f; math.inMax = 1.0f;\n"
-                "math.outMin = 0.0f; math.outMax = 1.0f;\n"
-                "float result = math.value();\n"
-            )
-            .withExamples({{"examples/conditional-routing"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

@@ -17,7 +17,7 @@
 
 namespace vivid::network {
 
-REGISTER(WebServer);
+REGISTER_OPERATOR(WebServer, "Network", "HTTP/WebSocket server for web-based control interfaces", false);
 
 WebServer::WebServer() = default;
 

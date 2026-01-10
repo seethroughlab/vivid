@@ -8,7 +8,7 @@
 
 namespace vivid::render3d {
 
-REGISTER(DepthOfField);
+REGISTER_OPERATOR(DepthOfField, "3D Post-Processing", "Depth-based focus blur effect", true);
 
 using namespace vivid::effects;
 

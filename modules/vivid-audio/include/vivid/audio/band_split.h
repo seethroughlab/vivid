@@ -119,19 +119,6 @@ public:
 
     std::string name() const override { return "BandSplit"; }
 
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("BandSplit", "Audio Analysis", "Split audio into frequency bands (low/mid/high)")
-            .output(OutputKind::Value)
-            .requireInput()
-            .withUsage(R"(chain.add<BandSplit>("bands").input("audio");
-
-// Access individual bands:
-float bass = chain.get<BandSplit>("bands").bass();
-float mids = chain.get<BandSplit>("bands").mid();
-float highs = chain.get<BandSplit>("bands").high();)")
-            .withExamples({{"examples/audio-reactive"}});
-    }
-
     // Custom visualization
     bool drawVisualization(VizDrawList* drawList, float minX, float minY,
                            float maxX, float maxY) override;

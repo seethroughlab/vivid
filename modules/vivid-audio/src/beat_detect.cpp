@@ -8,7 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER(BeatDetect);
+REGISTER_OPERATOR(BeatDetect, "Audio Analysis", "Beat detection with adaptive threshold", true);
 
 void BeatDetect::initAnalyzer(Context& ctx) {
     m_energyHistory.resize(HISTORY_SIZE, 0.0f);

@@ -55,32 +55,6 @@ namespace vivid::effects {
 class TimeMachine : public TextureOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("TimeMachine", "Effects", "Temporal displacement")
-            .requireInput()
-            .withInputs({
-                {"cache", "FrameCache operator with cached frames", true},
-                {"displacementMap", "Grayscale map controlling time offset per pixel", true}
-            })
-            .withAliases({"SlitScan", "TimeDisplace"})
-            .withUsage(
-                "auto& cache = chain.add<FrameCache>(\"cache\");\n"
-                "cache.input(\"video\");\n"
-                "cache.frameCount = 30;\n"
-                "\n"
-                "auto& tm = chain.add<TimeMachine>(\"timemachine\");\n"
-                "tm.cache(&cache);              // Source with history\n"
-                "tm.displacementMap(\"noise\");  // Time offset map\n"
-                "tm.depth = 1.0f;               // How deep into cache\n"
-            )
-            .withExamples({{"examples/time-effects"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters
     /// @{
 

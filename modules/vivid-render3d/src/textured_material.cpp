@@ -13,7 +13,7 @@ using vivid::effects::toStringView;
 
 namespace vivid::render3d {
 
-REGISTER(TexturedMaterial);
+REGISTER_OPERATOR(TexturedMaterial, "3D Materials", "PBR material with texture maps", false);
 
 TexturedMaterial::TexturedMaterial() = default;
 

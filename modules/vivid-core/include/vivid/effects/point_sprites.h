@@ -51,27 +51,6 @@ enum class PointColorMode {
  */
 class PointSprites : public TextureOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("PointSprites", "Particles", "Pattern-based point rendering")
-            .withAliases({"Dots", "Points"})
-            .withUsage(
-                "auto& dots = chain.add<PointSprites>(\"dots\");\n"
-                "dots.setPattern(Pattern::Spiral);  // Grid, Random, Circle, Spiral, Custom\n"
-                "dots.setCount(200);\n"
-                "dots.setSpiralTurns(5.0f);\n"
-                "dots.setColorMode(PointColorMode::Rainbow);  // Solid, Rainbow, Gradient, Random\n"
-                "dots.setSize(0.01f);\n"
-                "dots.setAnimate(true);\n"
-                "dots.setAnimateSpeed(0.5f);\n"
-            )
-            .withExamples({{"examples/particles"}});
-    }
-
-    /// @}
 
     PointSprites();
     ~PointSprites() override;

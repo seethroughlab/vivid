@@ -64,44 +64,6 @@ enum class ShadingMode {
  */
 class Render3D : public effects::TextureOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Render3D", "3D Rendering", "3D scene renderer with PBR, shadows, and IBL")
-            .requireInput()
-            .withInputs({
-                {"scene", "SceneComposer with meshes to render", true},
-                {"camera", "CameraOperator for view/projection", true},
-                {"light1", "Primary light (DirectionalLight, etc.)", false},
-                {"material", "TexturedMaterial for PBR textures", false}
-            })
-            .withUsage(
-                "auto& cam = chain.add<PerspectiveCamera>(\"cam\");\n"
-                "cam.position = {0, 2, 5};\n"
-                "\n"
-                "auto& scene = chain.add<SceneComposer>(\"scene\");\n"
-                "scene.addMesh(createCube());\n"
-                "\n"
-                "auto& render = chain.add<Render3D>(\"render\");\n"
-                "render.setCameraInput(&cam);\n"
-                "render.setInput(&scene);\n"
-                "render.setShadingMode(ShadingMode::PBR);\n"
-                "render.setMetallic(0.0f);\n"
-                "render.setRoughness(0.5f);\n"
-            )
-            .withExamples({
-                {"examples/3d-basics"},
-                {"examples/gltf-loader"},
-                {"examples/csg-modeling"},
-                {"examples/instancing"},
-                {"examples/raycasting"}
-            });
-    }
-
-    /// @}
-
     Render3D();
     ~Render3D();
 

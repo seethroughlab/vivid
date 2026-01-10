@@ -70,29 +70,6 @@ enum class VoiceStealMode {
 class PolySynth : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("PolySynth", "Audio Synth", "Polyphonic synthesizer with 4-16 voices")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& synth = chain.add<PolySynth>(\"synth\");\n"
-                "synth.waveform(Waveform::Saw);\n"
-                "synth.maxVoices = 8;\n"
-                "synth.attack = 0.02f;\n"
-                "synth.release = 0.5f;\n"
-                "\n"
-                "// Play a chord\n"
-                "synth.noteOn(261.63f);  // C4\n"
-                "synth.noteOn(329.63f);  // E4\n"
-                "synth.noteOn(392.00f);  // G4\n"
-            )
-            .withExamples({{"examples/wavetable-poly"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

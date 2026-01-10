@@ -12,7 +12,7 @@
 
 namespace vivid::video {
 
-REGISTER(VideoAudio);
+REGISTER_OPERATOR(VideoAudio, "Video", "Extract audio from VideoPlayer for chain routing", false);
 
 VideoAudio::VideoAudio() = default;
 

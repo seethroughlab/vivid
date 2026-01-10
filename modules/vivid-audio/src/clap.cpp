@@ -7,7 +7,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Clap);
+REGISTER_OPERATOR_EX(Clap, "Audio Drums", "Hand clap with multiple noise bursts", false, vivid::OutputKind::Audio);
 
 void Clap::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

@@ -48,26 +48,6 @@ namespace vivid::audio {
 class Kick : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Kick", "Audio Drums", "808-style kick drum with pitch envelope")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& kick = chain.add<Kick>(\"kick\");\n"
-                "kick.pitch = 50.0f;       // Base pitch Hz\n"
-                "kick.pitchEnv = 150.0f;   // Pitch sweep amount\n"
-                "kick.decay = 0.5f;        // Amp decay time\n"
-                "kick.click = 0.3f;        // Transient click\n"
-                "\n"
-                "kick.trigger();  // Play drum\n"
-            )
-            .withExamples({{"examples/drum-synthesis"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

@@ -53,27 +53,6 @@ enum class ARStage {
 class AR : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("AR", "Audio Envelope", "Attack-release envelope generator")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& env = chain.add<AR>(\"env\");\n"
-                "env.input(\"osc\");\n"
-                "env.attack = 0.005f;   // 5ms attack\n"
-                "env.release = 0.5f;    // 500ms release\n"
-                "\n"
-                "env.trigger();  // Start envelope\n"
-                "\n"
-                "// See: modules/vivid-audio/examples/envelope-modulation/\n"
-            )
-            .withExamples({{"examples/envelope-modulation"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

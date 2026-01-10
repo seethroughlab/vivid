@@ -8,7 +8,7 @@
 
 namespace vivid::render3d {
 
-REGISTER(Fog);
+REGISTER_OPERATOR(Fog, "3D Post-Processing", "Depth-based atmospheric fog effect", true);
 
 using namespace vivid::effects;
 

@@ -11,7 +11,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Granular);
+REGISTER_OPERATOR_EX(Granular, "Audio Sampler", "Granular synthesizer for time-stretching and texture", false, vivid::OutputKind::Audio);
 
 Granular::Granular() {
     registerParam(grainSize);

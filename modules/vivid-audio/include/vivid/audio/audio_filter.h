@@ -101,18 +101,6 @@ public:
     void cleanup() override;
     std::string name() const override { return "AudioFilter"; }
 
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("AudioFilter", "Audio Effects", "Biquad filter (lowpass, highpass, bandpass)")
-            .output(OutputKind::Audio)
-            .requireInput()
-            .withUsage(R"(auto& filter = chain.add<AudioFilter>("filter");
-filter.input("noise");
-filter.setType(FilterType::Lowpass);
-filter.cutoff = 2000.0f;
-filter.resonance = 2.0f;)")
-            .withExamples({{"examples/audio-effects"}});
-    }
-
     // Custom visualization
     bool drawVisualization(VizDrawList* drawList, float minX, float minY,
                            float maxX, float maxY) override;

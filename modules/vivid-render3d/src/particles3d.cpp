@@ -13,7 +13,7 @@
 
 namespace vivid::render3d {
 
-REGISTER(Particles3D);
+REGISTER_OPERATOR(Particles3D, "3D Effects", "GPU billboard particle system with physics", false);
 
 // Billboard particle shader with spritesheet animation support
 static const char* PARTICLE3D_SHADER = R"(

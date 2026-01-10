@@ -61,31 +61,6 @@ enum class EnvelopeStage {
 class Envelope : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Envelope", "Audio Envelope", "ADSR envelope generator")
-            .output(OutputKind::Audio)
-            .withAliases({"ADSR", "Env"})
-            .withUsage(
-                "auto& env = chain.add<Envelope>(\"env\");\n"
-                "env.input(\"osc\");\n"
-                "env.attack = 0.01f;    // 10ms attack\n"
-                "env.decay = 0.2f;      // 200ms decay\n"
-                "env.sustain = 0.5f;    // 50% sustain level\n"
-                "env.release = 0.5f;    // 500ms release\n"
-                "\n"
-                "env.trigger();       // Note on\n"
-                "env.releaseNote();   // Note off\n"
-                "\n"
-                "// See: modules/vivid-audio/examples/envelope-modulation/\n"
-            )
-            .withExamples({{"examples/envelope-modulation"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

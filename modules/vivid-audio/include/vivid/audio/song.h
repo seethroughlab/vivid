@@ -73,29 +73,6 @@ struct Section {
  */
 class Song : public Operator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Song", "Audio Sampler", "Song structure with sections and arrangement")
-            .output(OutputKind::Value)
-            .withUsage(
-                "auto& song = chain.add<Song>(\"song\");\n"
-                "song.syncTo(\"clock\");\n"
-                "song.addSection(\"intro\", 0, 8);\n"
-                "song.addSection(\"verse\", 8, 24);\n"
-                "song.addSection(\"chorus\", 24, 32);\n"
-                "\n"
-                "// In update:\n"
-                "if (song.section() == \"chorus\") { /* intense visuals */ }\n"
-            )
-            .withExamples({{"examples/song-arrangement"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
-
     Song() = default;
     ~Song() override = default;
 

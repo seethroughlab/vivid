@@ -9,7 +9,7 @@
 
 namespace vivid::midi {
 
-REGISTER(MidiFilePlayer);
+REGISTER_OPERATOR(MidiFilePlayer, "MIDI", "Play MIDI files with tempo sync", false);
 
 // -----------------------------------------------------------------------------
 // Implementation (pimpl)

@@ -4,7 +4,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Sequencer);
+REGISTER_OPERATOR(Sequencer, "Audio Sequencing", "Step sequencer for triggering events", false);
 
 void Sequencer::init(Context& ctx) {
     // Don't clear pattern - it may have been set before init()

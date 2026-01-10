@@ -29,28 +29,6 @@ class MFWebcam;
  */
 class VIVID_VIDEO_API Webcam : public vivid::effects::TextureOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Webcam", "Video", "Live webcam capture for real-time video input")
-            .output(OutputKind::Texture)
-            .withAliases({"Camera", "WebCam", "CameraCapture"})
-            .withUsage(
-                "auto& cam = chain.add<Webcam>(\"cam\");\n"
-                "cam.setResolution(1280, 720);\n"
-                "cam.setFrameRate(30);\n"
-                "cam.setDevice(0);  // First camera\n"
-                "\n"
-                "// Process webcam: cam → displace\n"
-                "auto& displace = chain.add<Displace>(\"d\");\n"
-                "displace.source(\"cam\").map(\"noise\");\n"
-            )
-            .withExamples({{"../../projects/showcase/webcam-displace"}});
-    }
-
-    /// @}
 
     Webcam();
     ~Webcam();

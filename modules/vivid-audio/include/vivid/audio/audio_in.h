@@ -40,26 +40,6 @@ namespace vivid::audio {
 class AudioIn : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("AudioIn", "Audio IO", "Live audio input from microphone or line-in")
-            .output(OutputKind::Audio)
-            .withAliases({"Mic", "Input"})
-            .withUsage(
-                "auto& mic = chain.add<AudioIn>(\"mic\");\n"
-                "mic.volume = 1.0f;  // Input gain\n"
-                "\n"
-                "// Apply effects to mic input\n"
-                "auto& reverb = chain.add<Reverb>(\"reverb\");\n"
-                "reverb.input(\"mic\");\n"
-            )
-            .withExamples({{"examples/audio-reactive"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
 
     Param<float> volume{"volume", 1.0f, 0.0f, 2.0f};  ///< Input volume/gain
 

@@ -8,7 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Snare);
+REGISTER_OPERATOR_EX(Snare, "Audio Drums", "Snare drum with tone and noise", false, vivid::OutputKind::Audio);
 
 void Snare::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

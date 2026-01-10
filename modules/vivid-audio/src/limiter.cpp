@@ -7,7 +7,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Limiter);
+REGISTER_OPERATOR_EX(Limiter, "Audio Effects", "Brick-wall limiter for preventing clipping", true, vivid::OutputKind::Audio);
 
 void Limiter::initEffect(Context& ctx) {
     // Very fast attack for brick-wall limiting

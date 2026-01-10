@@ -10,22 +10,22 @@
 namespace vivid::render3d {
 
 // Camera
-REGISTER(CameraOperator);
+REGISTER_OPERATOR(CameraOperator, "3D Camera", "Perspective camera with orbit and position controls", false);
 
 // Lights
-REGISTER(DirectionalLight);
-REGISTER(PointLight);
-REGISTER(SpotLight);
+REGISTER_OPERATOR(DirectionalLight, "3D Lighting", "Infinite distance directional light (sun)", false);
+REGISTER_OPERATOR(PointLight, "3D Lighting", "Omnidirectional point light with falloff", false);
+REGISTER_OPERATOR(SpotLight, "3D Lighting", "Cone-shaped spotlight with falloff", false);
 
 // Primitive geometry generators
-REGISTER(Box);
-REGISTER(Sphere);
-REGISTER(Cylinder);
-REGISTER(Cone);
-REGISTER(Torus);
-REGISTER(Plane);
+REGISTER_OPERATOR(Box, "3D Primitives", "Box/cube mesh generator", false);
+REGISTER_OPERATOR(Sphere, "3D Primitives", "UV sphere mesh generator", false);
+REGISTER_OPERATOR(Cylinder, "3D Primitives", "Cylinder mesh generator", false);
+REGISTER_OPERATOR(Cone, "3D Primitives", "Cone mesh generator", false);
+REGISTER_OPERATOR(Torus, "3D Primitives", "Torus (donut) mesh generator", false);
+REGISTER_OPERATOR(Plane, "3D Primitives", "Flat plane mesh generator", false);
 
 // CSG (Constructive Solid Geometry)
-REGISTER(Boolean);
+REGISTER_OPERATOR(Boolean, "3D CSG", "CSG boolean operations (union, subtract, intersect)", true);
 
 } // namespace vivid::render3d

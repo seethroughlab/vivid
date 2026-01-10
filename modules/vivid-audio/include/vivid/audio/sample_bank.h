@@ -49,27 +49,6 @@ struct Sample {
  */
 class SampleBank : public Operator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("SampleBank", "Audio Sampler", "Load folder of audio samples for triggering")
-            .output(OutputKind::Value)
-            .withUsage(
-                "auto& drums = chain.add<SampleBank>(\"drums\");\n"
-                "drums.setFolder(\"assets/audio/drums\");\n"
-                "\n"
-                "// Connect to SamplePlayer\n"
-                "auto& player = chain.add<SamplePlayer>(\"player\");\n"
-                "player.setBank(\"drums\");\n"
-            )
-            .withExamples({{"examples/sample-trigger"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
-
     SampleBank() = default;
     ~SampleBank() override = default;
 

@@ -43,21 +43,6 @@ struct SolidColorUniforms {
 class SolidColor : public SimpleGeneratorEffect<SolidColor, SolidColorUniforms> {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("SolidColor", "Generators", "Solid color fill")
-            .withAliases({"Color", "Fill", "Solid"})
-            .withUsage(
-                "auto& bg = chain.add<SolidColor>(\"bg\");\n"
-                "bg.color.set(0.1f, 0.1f, 0.2f, 1.0f);  // Dark blue\n"
-            )
-            .withExamples({{"examples/generators"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

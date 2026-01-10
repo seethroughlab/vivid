@@ -62,20 +62,6 @@ enum class Color3DMode {
  */
 class Particles3D : public effects::TextureOperator {
 public:
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Particles3D", "3D Effects", "GPU billboard particle system with physics")
-            .output(OutputKind::Texture)
-            .withAliases({"Particles3D", "Billboard"})
-            .withUsage(
-                "auto& fire = chain.add<Particles3D>(\"fire\");\n"
-                "fire.setCameraInput(&cam);\n"
-                "fire.emitter(Emitter3DShape::Cone);\n"
-                "fire.velocity(0, 2.0f, 0);\n"
-                "fire.color(1, 0.5f, 0.1f);\n"
-                "fire.additive(true);\n"
-            );
-    }
-
     Particles3D();
     ~Particles3D() override;
 

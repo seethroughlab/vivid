@@ -9,7 +9,7 @@
 
 namespace vivid::audio {
 
-REGISTER(FFT);
+REGISTER_OPERATOR(FFT, "Audio Analysis", "Fast Fourier Transform for frequency spectrum", true);
 
 struct FFT::Impl {
     kiss_fft_cfg cfg = nullptr;

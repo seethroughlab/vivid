@@ -59,27 +59,6 @@ public:
     static constexpr int MAX_VOICES = 32;
 
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("SamplePlayer", "Audio Sampler", "Multi-voice sample player with pitch control")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& player = chain.add<SamplePlayer>(\"player\");\n"
-                "player.setBank(\"drums\");  // Connect to SampleBank\n"
-                "player.setVoices(8);\n"
-                "\n"
-                "player.trigger(0);              // By index\n"
-                "player.trigger(\"kick\", 0.8f); // By name + volume\n"
-                "\n"
-                "// See: modules/vivid-audio/examples/sampler-basics/\n"
-            )
-            .withExamples({{"examples/sampler-basics"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
 
     Param<float> volume{"volume", 1.0f, 0.0f, 2.0f};  ///< Master volume
 

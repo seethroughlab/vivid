@@ -46,20 +46,6 @@ enum class BooleanOp {
  */
 class Boolean : public MeshOperator, public ParamRegistry {
 public:
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Boolean", "3D CSG", "CSG boolean operations (union, subtract, intersect)")
-            .output(OutputKind::Geometry)
-            .requireInput()
-            .withAliases({"CSG"})
-            .withUsage(
-                "auto& csg = chain.add<Boolean>(\"csg\");\n"
-                "csg.setInputA(&box);\n"
-                "csg.setInputB(&sphere);\n"
-                "csg.setOperation(BooleanOp::Subtract);  // box - sphere\n"
-            )
-            .withExamples({{"examples/csg-modeling"}});
-    }
-
     Param<bool> flatShading{"flatShading", true, false, true};  ///< Use flat shading on result
 
     Boolean() {

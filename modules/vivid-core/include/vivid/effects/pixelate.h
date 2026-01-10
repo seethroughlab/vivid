@@ -48,23 +48,6 @@ struct PixelateUniforms {
 class Pixelate : public SimpleTextureEffect<Pixelate, PixelateUniforms> {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Pixelate", "Effects", "Mosaic/pixelation effect")
-            .requireInput()
-            .withAliases({"Mosaic", "BlockPixel"})
-            .withUsage(
-                "auto& pix = chain.add<Pixelate>(\"pixels\");\n"
-                "pix.input(\"source\");\n"
-                "pix.size.set(16.0f, 16.0f);  // 16x16 pixel blocks\n"
-            )
-            .withExamples({{"examples/pixel-art"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

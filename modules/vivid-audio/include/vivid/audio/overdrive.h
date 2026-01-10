@@ -42,26 +42,6 @@ namespace vivid::audio {
 class Overdrive : public AudioEffect {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Overdrive", "Audio Effects", "Soft-clipping distortion with tone control")
-            .output(OutputKind::Audio)
-            .requireInput()
-            .withAliases({"Distortion", "Saturate"})
-            .withUsage(
-                "auto& od = chain.add<Overdrive>(\"overdrive\");\n"
-                "od.input(\"audio\");\n"
-                "od.drive = 3.0f;   // Medium drive\n"
-                "od.tone = 0.6f;    // Slightly bright\n"
-                "od.level = 0.8f;   // Reduce output\n"
-            )
-            .withExamples({{"examples/audio-effects"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

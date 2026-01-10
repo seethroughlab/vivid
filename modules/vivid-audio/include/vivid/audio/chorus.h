@@ -43,26 +43,6 @@ namespace vivid::audio {
 class Chorus : public AudioEffect {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Chorus", "Audio Effects", "Chorus effect with multiple voices")
-            .output(OutputKind::Audio)
-            .requireInput()
-            .withUsage(
-                "auto& chorus = chain.add<Chorus>(\"chorus\");\n"
-                "chorus.input(\"audio\");\n"
-                "chorus.rate = 0.5f;    // Slow modulation\n"
-                "chorus.depth = 5.0f;   // 5ms depth\n"
-                "chorus.voices = 2;     // 2 voices\n"
-                "chorus.mix = 0.5f;\n"
-            )
-            .withExamples({{"examples/audio-effects"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

@@ -14,7 +14,7 @@
 
 namespace vivid::audio {
 
-REGISTER(FMSynth);
+REGISTER_OPERATOR_EX(FMSynth, "Audio Synth", "4-operator FM synthesizer with DX7-style algorithms", false, vivid::OutputKind::Audio);
 
 FMSynth::FMSynth() {
     registerParam(ratio1);

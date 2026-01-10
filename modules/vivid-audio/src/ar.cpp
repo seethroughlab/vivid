@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER(AR);
+REGISTER_OPERATOR_EX(AR, "Audio Envelope", "Attack-release envelope generator", false, vivid::OutputKind::Audio);
 
 void AR::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

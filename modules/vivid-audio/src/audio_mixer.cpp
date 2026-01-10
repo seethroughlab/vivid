@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER(AudioMixer);
+REGISTER_OPERATOR_EX(AudioMixer, "Audio IO", "Multi-channel audio mixer", true, vivid::OutputKind::Audio);
 
 void AudioMixer::setInput(int index, const std::string& name) {
     if (index >= 0 && index < MAX_INPUTS) {

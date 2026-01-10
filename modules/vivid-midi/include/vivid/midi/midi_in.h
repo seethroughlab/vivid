@@ -45,31 +45,6 @@ namespace vivid::midi {
 class MidiIn : public Operator, public ParamRegistry {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("MidiIn", "MIDI", "Receive MIDI input from controllers and keyboards")
-            .output(OutputKind::Value)
-            .withAliases({"MIDIInput", "MIDIController"})
-            .withUsage(
-                "auto& midi = chain.add<MidiIn>(\"midi\");\n"
-                "midi.openPortByName(\"Arturia\");  // Partial name match\n"
-                "midi.channel = 0;  // 0 = omni (all channels)\n"
-                "\n"
-                "// In update():\n"
-                "for (const auto& e : midi.events()) {\n"
-                "    if (e.type == MidiEventType::NoteOn) {\n"
-                "        synth.noteOn(midiToFreq(e.note));\n"
-                "    }\n"
-                "}\n"
-                "float modWheel = midi.cc(1);  // CC values 0.0-1.0\n"
-            )
-            .withExamples({{"examples/midi-input"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

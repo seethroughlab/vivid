@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER(TapeEffect);
+REGISTER_OPERATOR_EX(TapeEffect, "Audio Effects", "Analog tape emulation with wow, flutter, hiss, and saturation", true, vivid::OutputKind::Audio);
 
 void TapeEffect::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

@@ -54,25 +54,6 @@ struct ScanlinesUniforms {
 class Scanlines : public SimpleTextureEffect<Scanlines, ScanlinesUniforms> {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Scanlines", "Retro", "CRT scanline effect")
-            .requireInput()
-            .withUsage(
-                "auto& crt = chain.add<Scanlines>(\"crt\");\n"
-                "crt.input(\"source\");\n"
-                "crt.spacing = 2;\n"
-                "crt.thickness = 0.5f;\n"
-                "crt.intensity = 0.4f;\n"
-                "crt.vertical = false;\n"
-            )
-            .withExamples({{"examples/retro-crt"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

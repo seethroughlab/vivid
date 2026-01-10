@@ -51,25 +51,6 @@ struct HSVUniforms {
 class HSV : public SimpleTextureEffect<HSV, HSVUniforms> {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("HSV", "Effects", "Hue/saturation/value adjustment")
-            .requireInput()
-            .withAliases({"Saturate", "Saturation", "HueSaturation", "ColorAdjust"})
-            .withUsage(
-                "auto& hsv = chain.add<HSV>(\"hsv\");\n"
-                "hsv.input(\"source\");\n"
-                "hsv.hueShift = 0.5f;    // Shift hue 180°\n"
-                "hsv.saturation = 1.2f;  // Boost saturation\n"
-                "hsv.value = 1.0f;       // Brightness multiplier\n"
-            )
-            .withExamples({{"examples/color-grading"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

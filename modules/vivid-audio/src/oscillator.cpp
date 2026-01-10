@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Oscillator);
+REGISTER_OPERATOR_EX(Oscillator, "Audio Synthesis", "Audio-rate oscillator for synthesis", false, vivid::OutputKind::Audio);
 
 void Oscillator::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

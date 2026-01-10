@@ -62,15 +62,6 @@ public:
     void cleanup() override;
     std::string name() const override { return "Crackle"; }
 
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Crackle", "Audio Utility", "Random impulse generator for vinyl crackle sounds")
-            .output(OutputKind::Audio)
-            .withUsage(R"(auto& crackle = chain.add<Crackle>("crackle");
-crackle.density = 0.001f;  // Sparse clicks
-crackle.volume = 0.1f;     // Subtle level)")
-            .withExamples({{"examples/noise-generators"}, {"examples/lofi-textures"}});
-    }
-
     /// @}
 
 private:

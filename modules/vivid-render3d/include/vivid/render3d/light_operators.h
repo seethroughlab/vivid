@@ -102,26 +102,6 @@ protected:
  */
 class DirectionalLight : public LightOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("DirectionalLight", "3D Lighting", "Infinite distance directional light (sun)")
-            .output(OutputKind::Light)
-            .withAliases({"Sun", "SunLight"})
-            .withUsage(
-                "auto& sun = chain.add<DirectionalLight>(\"sun\");\n"
-                "sun.direction(1, 2, 1);\n"
-                "sun.color(1.0f, 0.95f, 0.9f);\n"
-                "sun.intensity = 1.5f;\n"
-                "sun.castShadow(true);\n"
-            )
-            .withExamples({{"examples/3d-basics"}});
-    }
-
-    /// @}
-
     Param<float> intensity{"intensity", 1.0f, 0.0f, 10.0f};  ///< Light intensity multiplier
 
     DirectionalLight() {
@@ -246,26 +226,6 @@ public:
  */
 class PointLight : public LightOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("PointLight", "3D Lighting", "Omnidirectional point light with falloff")
-            .output(OutputKind::Light)
-            .withAliases({"Bulb", "OmniLight"})
-            .withUsage(
-                "auto& bulb = chain.add<PointLight>(\"bulb\");\n"
-                "bulb.position(0, 3, 0);\n"
-                "bulb.color(1.0f, 0.9f, 0.8f);\n"
-                "bulb.intensity = 2.0f;\n"
-                "bulb.range = 15.0f;\n"
-            )
-            .withExamples({{"examples/3d-basics"}});
-    }
-
-    /// @}
-
     Param<float> intensity{"intensity", 1.0f, 0.0f, 10.0f};  ///< Light intensity multiplier
     Param<float> range{"range", 10.0f, 0.1f, 100.0f};        ///< Falloff distance
 
@@ -393,26 +353,6 @@ public:
  */
 class SpotLight : public LightOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("SpotLight", "3D Lighting", "Cone-shaped spotlight with falloff")
-            .output(OutputKind::Light)
-            .withAliases({"Spotlight", "ConeLight"})
-            .withUsage(
-                "auto& spot = chain.add<SpotLight>(\"spot\");\n"
-                "spot.position(0, 5, 0);\n"
-                "spot.direction(0, -1, 0);\n"
-                "spot.spotAngle = 30.0f;\n"
-                "spot.intensity = 3.0f;\n"
-            )
-            .withExamples({{"examples/3d-basics"}});
-    }
-
-    /// @}
-
     Param<float> intensity{"intensity", 1.0f, 0.0f, 10.0f};    ///< Light intensity multiplier
     Param<float> range{"range", 10.0f, 0.1f, 100.0f};          ///< Falloff distance
     Param<float> spotAngle{"spotAngle", 45.0f, 1.0f, 180.0f};  ///< Outer cone angle in degrees

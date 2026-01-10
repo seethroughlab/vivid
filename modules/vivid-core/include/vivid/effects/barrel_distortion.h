@@ -40,23 +40,6 @@ struct BarrelDistortionUniforms {
 class BarrelDistortion : public SimpleTextureEffect<BarrelDistortion, BarrelDistortionUniforms> {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("BarrelDistortion", "Effects", "Barrel/pincushion distortion")
-            .requireInput()
-            .withAliases({"Barrel", "Fisheye", "LensDistortion"})
-            .withUsage(
-                "auto& barrel = chain.add<BarrelDistortion>(\"barrel\");\n"
-                "barrel.input(\"source\");\n"
-                "barrel.curvature = 0.08f;  // 0=none, 1=extreme\n"
-            )
-            .withExamples({{"examples/distortion"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

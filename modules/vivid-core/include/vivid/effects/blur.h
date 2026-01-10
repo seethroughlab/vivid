@@ -42,23 +42,6 @@ namespace vivid::effects {
 class Blur : public TextureOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Blur", "Effects", "Gaussian blur")
-            .requireInput()
-            .withUsage(
-                "auto& blur = chain.add<Blur>(\"blur\");\n"
-                "blur.input(\"source\");\n"
-                "blur.radius = 10.0f;\n"
-                "blur.passes = 2;  // More passes = smoother result\n"
-            )
-            .withExamples({{"examples/blur-bloom"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

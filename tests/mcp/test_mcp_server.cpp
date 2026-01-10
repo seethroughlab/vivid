@@ -564,24 +564,9 @@ TEST_CASE("MCP operator inputs/outputs metadata is valid", "[mcp][metadata]") {
             }
         }
 
-        // Validate requiresInput consistency with inputs
-        if (info.contains("requiresInput") && info["requiresInput"].get<bool>()) {
-            // If requiresInput is true, usage should mention input() or have inputs defined
-            bool hasInputMethod = false;
-            if (info.contains("usage")) {
-                std::string usage = info["usage"];
-                hasInputMethod = usage.find("input(") != std::string::npos ||
-                                 usage.find("inputA(") != std::string::npos ||
-                                 usage.find("source(") != std::string::npos ||
-                                 usage.find("setInput(") != std::string::npos ||
-                                 usage.find("setCameraInput(") != std::string::npos;
-            }
-            if (info.contains("inputs") && !info["inputs"].empty()) {
-                hasInputMethod = true;
-            }
-            if (!hasInputMethod) {
-                errors.push_back(opName + ": requiresInput=true but no input method in usage/inputs");
-            }
+        // Validate headerPath is present
+        if (!info.contains("headerPath") || info["headerPath"].get<std::string>().empty()) {
+            errors.push_back(opName + ": missing 'headerPath' field");
         }
 
         // Validate params have required fields
@@ -604,7 +589,7 @@ TEST_CASE("MCP operator inputs/outputs metadata is valid", "[mcp][metadata]") {
     REQUIRE(errors.empty());
 }
 
-TEST_CASE("MCP operator usage examples have valid syntax", "[mcp][metadata]") {
+TEST_CASE("MCP operator headerPath points to valid files", "[mcp][metadata]") {
     McpClient client;
 
     // Initialize
@@ -615,91 +600,38 @@ TEST_CASE("MCP operator usage examples have valid syntax", "[mcp][metadata]") {
     client.sendRequest("initialize", initParams);
     client.sendNotification("notifications/initialized", {});
 
-    // Get list of all operators
-    json params;
-    params["name"] = "list_operators";
-    params["arguments"] = {{"verbose", true}};
+    // Test a few key operators
+    std::vector<std::string> testOps = {"Noise", "Blur", "Oscillator", "Render3D"};
+    std::vector<std::string> errors;
 
-    json response = client.sendRequest("tools/call", params, 10000);
-    REQUIRE(response.contains("result"));
+    for (const auto& opName : testOps) {
+        json params;
+        params["name"] = "get_operator";
+        params["arguments"] = {{"name", opName}};
 
-    std::string content = response["result"]["content"][0]["text"];
-    json operators = json::parse(content);
+        json response = client.sendRequest("tools/call", params, 5000);
 
-    std::vector<std::string> usageErrors;
+        if (!response.contains("result") || response["result"]["isError"].get<bool>()) {
+            continue;
+        }
 
-    // Check usage syntax for all operators
-    for (auto& [category, ops] : operators.items()) {
-        for (const auto& op : ops) {
-            std::string opName = op["name"];
+        std::string content = response["result"]["content"][0]["text"];
+        json info = json::parse(content);
 
-            if (!op.contains("usage")) continue;
-            std::string usage = op["usage"];
-
-            // Check for common syntax issues
-            // 1. Unbalanced quotes
-            int doubleQuotes = std::count(usage.begin(), usage.end(), '"');
-            if (doubleQuotes % 2 != 0) {
-                usageErrors.push_back(opName + ": unbalanced double quotes in usage");
+        if (info.contains("headerPath")) {
+            std::string headerPath = info["headerPath"];
+            // headerPath should follow convention: modules/<module>/include/vivid/...
+            if (headerPath.find("modules/") != 0) {
+                errors.push_back(opName + ": headerPath doesn't start with 'modules/'");
             }
-
-            // 2. Unbalanced parentheses
-            int openParens = std::count(usage.begin(), usage.end(), '(');
-            int closeParens = std::count(usage.begin(), usage.end(), ')');
-            if (openParens != closeParens) {
-                usageErrors.push_back(opName + ": unbalanced parentheses in usage (" +
-                                      std::to_string(openParens) + " open, " +
-                                      std::to_string(closeParens) + " close)");
-            }
-
-            // 3. Unbalanced braces
-            int openBraces = std::count(usage.begin(), usage.end(), '{');
-            int closeBraces = std::count(usage.begin(), usage.end(), '}');
-            if (openBraces != closeBraces) {
-                usageErrors.push_back(opName + ": unbalanced braces in usage");
-            }
-
-            // 4. Should reference the operator name
-            if (usage.find(opName) == std::string::npos) {
-                // Check for aliases or common variations
-                bool foundRef = false;
-                if (op.contains("aliases")) {
-                    for (const auto& alias : op["aliases"]) {
-                        if (usage.find(alias.get<std::string>()) != std::string::npos) {
-                            foundRef = true;
-                            break;
-                        }
-                    }
-                }
-                if (!foundRef) {
-                    usageErrors.push_back(opName + ": usage doesn't reference operator name");
-                }
-            }
-
-            // 5. Should have chain.add or similar pattern
-            bool hasAddPattern = usage.find("chain.add<") != std::string::npos ||
-                                 usage.find("add<") != std::string::npos;
-            if (!hasAddPattern) {
-                usageErrors.push_back(opName + ": usage missing chain.add<> pattern");
+            if (headerPath.find(".h") == std::string::npos) {
+                errors.push_back(opName + ": headerPath doesn't end with .h");
             }
         }
     }
 
-    // Report all errors (but don't fail for minor issues)
-    if (!usageErrors.empty()) {
-        std::string msg = "Usage syntax issues found:\n";
-        for (const auto& err : usageErrors) {
-            msg += "  - " + err + "\n";
-        }
-        INFO(msg);
+    for (const auto& err : errors) {
+        FAIL_CHECK("headerPath validation error: " + err);
     }
-
-    // Only fail for critical issues (unbalanced quotes/parens)
-    int criticalErrors = 0;
-    for (const auto& err : usageErrors) {
-        if (err.find("unbalanced") != std::string::npos) {
-            criticalErrors++;
-        }
-    }
-    REQUIRE(criticalErrors == 0);
+    REQUIRE(errors.empty());
 }

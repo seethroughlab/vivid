@@ -46,24 +46,6 @@ struct VignetteUniforms {
 class Vignette : public SimpleTextureEffect<Vignette, VignetteUniforms> {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Vignette", "Effects", "Edge darkening vignette")
-            .requireInput()
-            .withUsage(
-                "auto& vig = chain.add<Vignette>(\"vignette\");\n"
-                "vig.input(\"source\");\n"
-                "vig.intensity = 0.4f;   // Darkening strength\n"
-                "vig.softness = 0.6f;    // Edge gradient width\n"
-                "vig.roundness = 1.0f;   // 0=rectangular, 1=circular\n"
-            )
-            .withExamples({{"examples/creative-effects"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

@@ -10,7 +10,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Sampler);
+REGISTER_OPERATOR_EX(Sampler, "Audio Sampler", "Sample playback with MIDI triggering", false, vivid::OutputKind::Audio);
 
 Sampler::Sampler() {
     registerParam(volume);

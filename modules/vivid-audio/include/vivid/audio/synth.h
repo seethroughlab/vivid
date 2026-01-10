@@ -58,29 +58,6 @@ namespace vivid::audio {
 class Synth : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Synth", "Audio Synth", "Simple synthesizer with oscillator and ADSR envelope")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& synth = chain.add<Synth>(\"synth\");\n"
-                "synth.setWaveform(Waveform::Saw);\n"
-                "synth.frequency = 440.0f;\n"
-                "synth.attack = 0.01f;\n"
-                "synth.decay = 0.2f;\n"
-                "synth.sustain = 0.5f;\n"
-                "synth.release = 0.5f;\n"
-                "\n"
-                "synth.noteOn();  // Start playing\n"
-                "synth.noteOff(); // Release\n"
-            )
-            .withExamples({{"examples/formant-pad"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

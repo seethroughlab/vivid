@@ -34,23 +34,6 @@ namespace vivid::effects {
 class Image : public TextureOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Image", "Generators", "Load image file")
-            .withUsage(
-                "auto& img = chain.add<Image>(\"bg\");\n"
-                "img.file = \"assets/background.png\";\n"
-                "// For pixel sampling:\n"
-                "img.keepCpuData = true;\n"
-                "glm::vec4 color = img.getPixel(100, 100);\n"
-            )
-            .withExamples({{"examples/image-pipeline"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

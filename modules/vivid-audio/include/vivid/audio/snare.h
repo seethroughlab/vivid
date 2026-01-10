@@ -48,26 +48,6 @@ namespace vivid::audio {
 class Snare : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Snare", "Audio Drums", "Snare drum with tone and noise")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& snare = chain.add<Snare>(\"snare\");\n"
-                "snare.tone = 0.4f;         // Tone/body amount\n"
-                "snare.noise = 0.8f;        // Noise/snare amount\n"
-                "snare.pitch = 180.0f;      // Tone pitch Hz\n"
-                "snare.snappy = 0.6f;       // High-freq emphasis\n"
-                "\n"
-                "snare.trigger();  // Play drum\n"
-            )
-            .withExamples({{"examples/drum-synthesis"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

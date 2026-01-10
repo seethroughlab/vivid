@@ -49,33 +49,6 @@ namespace vivid::render3d {
  */
 class CameraOperator : public Operator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("CameraOperator", "3D Camera", "Perspective camera with orbit and position controls")
-            .output(OutputKind::Camera)
-            .withAliases({"Camera", "Camera3D", "PerspectiveCamera"})
-            .withUsage(
-                "auto& cam = chain.add<CameraOperator>(\"cam\");\n"
-                "cam.position(5, 3, 5);\n"
-                "cam.target(0, 0, 0);\n"
-                "cam.fov(60.0f);\n"
-                "\n"
-                "// Or use orbit mode:\n"
-                "cam.orbitCenter(0, 0, 0).distance(8.0f).elevation(0.3f);\n"
-            )
-            .withExamples({
-                {"examples/3d-basics"},
-                {"examples/gltf-loader"},
-                {"examples/instancing"},
-                {"examples/scene-composition"}
-            });
-    }
-
-    /// @}
-
     CameraOperator() = default;
 
     // -------------------------------------------------------------------------

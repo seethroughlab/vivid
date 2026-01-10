@@ -7,7 +7,7 @@
 
 namespace vivid::audio {
 
-REGISTER(HiHat);
+REGISTER_OPERATOR_EX(HiHat, "Audio Drums", "Hi-hat with metallic ring and noise", false, vivid::OutputKind::Audio);
 
 void HiHat::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

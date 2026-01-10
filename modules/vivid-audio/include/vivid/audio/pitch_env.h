@@ -47,28 +47,6 @@ namespace vivid::audio {
 class PitchEnv : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("PitchEnv", "Audio Envelope", "Pitch sweep envelope for drum synthesis")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& pitch = chain.add<PitchEnv>(\"pitch\");\n"
-                "pitch.startFreq = 150.0f;  // Start at 150Hz\n"
-                "pitch.endFreq = 50.0f;     // End at 50Hz\n"
-                "pitch.time = 0.1f;         // 100ms sweep\n"
-                "\n"
-                "pitch.trigger();\n"
-                "float freq = pitch.currentFreq();  // Get current freq\n"
-                "\n"
-                "// See: modules/vivid-audio/examples/envelope-modulation/\n"
-            )
-            .withExamples({{"examples/envelope-modulation"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

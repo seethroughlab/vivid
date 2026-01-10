@@ -64,31 +64,6 @@ enum class ClockDiv {
 class Clock : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Clock", "Audio Sequencing", "Master tempo clock with beat/bar triggers")
-            .output(OutputKind::Audio)
-            .withUsage(
-                "auto& clock = chain.add<Clock>(\"clock\");\n"
-                "clock.bpm = 120.0f;\n"
-                "clock.swing = 0.1f;\n"
-                "clock.division(ClockDiv::Sixteenth);\n"
-                "clock.start();\n"
-                "\n"
-                "// In update:\n"
-                "if (clock.triggered()) { kick.trigger(); }\n"
-            )
-            .withExamples({
-                {"examples/euclidean-rhythms"},
-                {"examples/drum-machine"},
-                {"examples/drum-synthesis"}
-            });
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

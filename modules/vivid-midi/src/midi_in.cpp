@@ -8,7 +8,7 @@
 
 namespace vivid::midi {
 
-REGISTER(MidiIn);
+REGISTER_OPERATOR(MidiIn, "MIDI", "Receive MIDI input from controllers and keyboards", false);
 
 // -----------------------------------------------------------------------------
 // Implementation (pimpl)

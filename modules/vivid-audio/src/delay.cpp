@@ -4,7 +4,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Delay);
+REGISTER_OPERATOR_EX(Delay, "Audio Effects", "Delay effect with feedback and ping-pong mode", true, vivid::OutputKind::Audio);
 
 void Delay::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

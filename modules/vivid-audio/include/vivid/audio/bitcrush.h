@@ -40,26 +40,6 @@ namespace vivid::audio {
 class Bitcrush : public AudioEffect {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Bitcrush", "Audio Effects", "Bit depth and sample rate reduction for lo-fi sound")
-            .output(OutputKind::Audio)
-            .requireInput()
-            .withAliases({"Lofi"})
-            .withUsage(
-                "auto& bc = chain.add<Bitcrush>(\"bitcrush\");\n"
-                "bc.input(\"audio\");\n"
-                "bc.bits = 8;                  // 8-bit audio\n"
-                "bc.targetSampleRate = 8000;   // 8kHz sample rate\n"
-                "bc.mix = 0.5f;\n"
-            )
-            .withExamples({{"examples/lofi-textures"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

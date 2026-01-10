@@ -6,7 +6,7 @@
 
 namespace vivid::audio {
 
-REGISTER(AudioFilter);
+REGISTER_OPERATOR_EX(AudioFilter, "Audio Effects", "Biquad filter (lowpass, highpass, bandpass)", true, vivid::OutputKind::Audio);
 
 void AudioFilter::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

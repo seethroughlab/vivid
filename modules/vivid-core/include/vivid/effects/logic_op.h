@@ -70,24 +70,6 @@ enum class LogicOperation {
 class Logic : public vivid::Operator, public vivid::ParamRegistry {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Logic", "Math/Logic", "Logical comparisons")
-            .output(OutputKind::Value)
-            .withUsage(
-                "auto& cmp = chain.add<Logic>(\"compare\");\n"
-                "cmp.operation(LogicOperation::GreaterThan);  // GreaterThan, LessThan, Equal, InRange, And, Or, Not, Toggle\n"
-                "cmp.inputA = lfo.outputValue();\n"
-                "cmp.inputB = 0.5f;\n"
-                "if (cmp.result()) { /* triggered */ }\n"
-            )
-            .withExamples({{"examples/conditional-routing"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

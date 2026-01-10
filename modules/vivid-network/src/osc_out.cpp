@@ -24,7 +24,7 @@
 
 namespace vivid::network {
 
-REGISTER(OscOut);
+REGISTER_OPERATOR(OscOut, "Network", "Send OSC messages to external software and hardware", false);
 
 #ifdef _WIN32
 extern bool g_wsaInitialized;

@@ -10,7 +10,7 @@
 
 namespace vivid::audio {
 
-REGISTER(PolySynth);
+REGISTER_OPERATOR_EX(PolySynth, "Audio Synth", "Polyphonic synthesizer with 4-16 voices", false, vivid::OutputKind::Audio);
 
 PolySynth::PolySynth() {
     registerParam(maxVoices);

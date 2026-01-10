@@ -240,25 +240,6 @@ struct CanvasState {
  */
 class Canvas : public TextureOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Canvas", "Canvas", "Imperative 2D drawing")
-            .withUsage(
-                "auto& canvas = chain.add<Canvas>(\"ui\");\n"
-                "// In update():\n"
-                "canvas.clear(0, 0, 0, 0);  // Transparent\n"
-                "canvas.fillStyle({0.2, 0.4, 0.8, 1.0});\n"
-                "canvas.fillRect(10, 10, 200, 50);\n"
-                "canvas.loadFont(ctx, \"assets/font.ttf\", 24);\n"
-                "canvas.fillText(\"Hello\", 20, 30);\n"
-            )
-            .withExamples({{"examples/canvas-drawing"}});
-    }
-
-    /// @}
 
     Canvas();
     ~Canvas() override;

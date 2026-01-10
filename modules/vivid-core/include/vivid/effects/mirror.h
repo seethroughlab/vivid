@@ -64,25 +64,6 @@ struct MirrorUniforms {
 class Mirror : public SimpleTextureEffect<Mirror, MirrorUniforms> {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Mirror", "Effects", "Axis mirroring and kaleidoscope")
-            .requireInput()
-            .withAliases({"Kaleidoscope", "Flip"})
-            .withUsage(
-                "auto& kaleido = chain.add<Mirror>(\"kaleido\");\n"
-                "kaleido.input(\"source\");\n"
-                "kaleido.mode = MirrorMode::Kaleidoscope;  // Horizontal, Vertical, Quad, Kaleidoscope\n"
-                "kaleido.segments = 8;\n"
-                "kaleido.angle = ctx.time() * 0.1f;\n"
-            )
-            .withExamples({{"examples/tiling-patterns"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

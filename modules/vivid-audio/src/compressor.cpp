@@ -6,7 +6,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Compressor);
+REGISTER_OPERATOR_EX(Compressor, "Audio Effects", "Dynamic range compressor with soft knee", true, vivid::OutputKind::Audio);
 
 void Compressor::initEffect(Context& ctx) {
     float attackMs = static_cast<float>(attack);

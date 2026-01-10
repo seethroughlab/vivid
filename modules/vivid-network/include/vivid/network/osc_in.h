@@ -87,28 +87,6 @@ struct OscMessage {
  */
 class OscIn : public Operator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("OscIn", "Network", "Receive OSC messages from controllers and software")
-            .output(OutputKind::Value)
-            .withAliases({"OSCReceiver", "TouchOSC", "Lemur"})
-            .withUsage(
-                "auto& osc = chain.add<OscIn>(\"osc\");\n"
-                "osc.port(8000);\n"
-                "\n"
-                "// In update():\n"
-                "if (osc.hasMessage(\"/fader/1\")) {\n"
-                "    float value = osc.getFloat(\"/fader/1\");\n"
-                "    noise.scale = value * 10.0f;\n"
-                "}\n"
-            )
-            .withExamples({{"examples/osc-control"}});
-    }
-
-    /// @}
 
     OscIn();
     ~OscIn() override;

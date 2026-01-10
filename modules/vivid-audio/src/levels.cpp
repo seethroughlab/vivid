@@ -7,7 +7,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Levels);
+REGISTER_OPERATOR(Levels, "Audio Analysis", "Audio level meter with RMS and peak values", true);
 
 void Levels::analyze(const float* input, uint32_t frames, uint32_t channels) {
     if (frames == 0) return;

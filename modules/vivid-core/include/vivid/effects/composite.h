@@ -67,33 +67,6 @@ enum class BlendMode {
 class Composite : public TextureOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description (for MCP/registry)
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Composite", "Compositing", "Blend two textures")
-            .requireInput()
-            .withInputs({
-                {"inputA", "Background/base texture"},
-                {"inputB", "Foreground/overlay texture"}
-            })
-            .withAliases({"Blend", "Mix"})
-            .withUsage(
-                "auto& comp = chain.add<Composite>(\"comp\");\n"
-                "comp.inputA(\"background\");\n"
-                "comp.inputB(\"overlay\");\n"
-                "comp.mode = BlendMode::Multiply;  // Over, Add, Screen, Overlay, Difference\n"
-                "comp.opacity = 1.0f;\n"
-            )
-            .withExamples({
-                {"examples/compositing"},
-                {"examples/blur-bloom"},
-                {"examples/feedback"}
-            });
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

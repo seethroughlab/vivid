@@ -40,20 +40,6 @@ struct CubemapData {
  */
 class IBLEnvironment : public Operator {
 public:
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("IBLEnvironment", "3D Lighting", "HDRI environment map for image-based lighting")
-            .output(OutputKind::Value)
-            .withAliases({"HDRI", "Skybox", "EnvironmentMap"})
-            .withUsage(
-                "auto& ibl = chain.add<IBLEnvironment>(\"ibl\");\n"
-                "ibl.setHdrFile(\"assets/hdris/studio.hdr\");\n"
-                "\n"
-                "auto& render = chain.add<Render3D>(\"render\");\n"
-                "render.setEnvironmentInput(&ibl);\n"
-                "render.setIbl(true);\n"
-            );
-    }
-
     IBLEnvironment();
     ~IBLEnvironment() override;
 

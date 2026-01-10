@@ -34,24 +34,6 @@ namespace vivid::effects {
  */
 class Plexus : public TextureOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Plexus", "Effects", "Connected particle network")
-            .withUsage(
-                "auto& plexus = chain.add<Plexus>(\"net\");\n"
-                "plexus.setNodeCount(300);\n"
-                "plexus.setConnectionDistance(0.1f);\n"
-                "plexus.setNodeColor(0.0f, 0.8f, 1.0f, 1.0f);\n"
-                "plexus.setLineColor(0.0f, 0.6f, 0.9f, 0.4f);\n"
-                "plexus.setTurbulence(0.1f);\n"
-            )
-            .withExamples({{"examples/creative-effects"}});
-    }
-
-    /// @}
 
     Plexus();
     ~Plexus() override;

@@ -5,7 +5,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Phaser);
+REGISTER_OPERATOR_EX(Phaser, "Audio Effects", "Multi-stage phaser effect with feedback", true, vivid::OutputKind::Audio);
 
 void Phaser::initEffect(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

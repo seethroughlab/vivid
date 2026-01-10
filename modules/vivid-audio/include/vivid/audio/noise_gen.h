@@ -49,23 +49,6 @@ enum class NoiseColor {
 class NoiseGen : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("NoiseGen", "Audio Synth", "Noise generator (white, pink, brown)")
-            .output(OutputKind::Audio)
-            .withAliases({"Noise"})
-            .withUsage(
-                "auto& noise = chain.add<NoiseGen>(\"noise\");\n"
-                "noise.setColor(NoiseColor::White);  // White, Pink, or Brown\n"
-                "noise.volume = 0.5f;\n"
-            )
-            .withExamples({{"examples/noise-generators"}, {"examples/drum-synthesis"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

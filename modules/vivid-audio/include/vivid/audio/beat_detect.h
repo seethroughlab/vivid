@@ -40,28 +40,6 @@ namespace vivid::audio {
 class BeatDetect : public AudioAnalyzer {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("BeatDetect", "Audio Analysis", "Beat detection with adaptive threshold")
-            .output(OutputKind::Value)
-            .requireInput()
-            .withAliases({"Beat"})
-            .withUsage(
-                "auto& bd = chain.add<BeatDetect>(\"beat\");\n"
-                "bd.input(\"audio\");\n"
-                "bd.sensitivity = 1.5f;  // Detection sensitivity\n"
-                "\n"
-                "// In update:\n"
-                "if (bd.beat()) { /* flash on beat */ }\n"
-                "float energy = bd.energy();\n"
-            )
-            .withExamples({{"examples/audio-reactive"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

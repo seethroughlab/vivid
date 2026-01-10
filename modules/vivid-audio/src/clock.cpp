@@ -7,7 +7,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Clock);
+REGISTER_OPERATOR_EX(Clock, "Audio Sequencing", "Master tempo clock with beat/bar triggers", false, vivid::OutputKind::Audio);
 
 void Clock::init(Context& ctx) {
     if (!beginInit()) return;

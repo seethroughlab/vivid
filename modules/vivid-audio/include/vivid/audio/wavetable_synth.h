@@ -103,30 +103,6 @@ enum class SynthFilterType {
 class WavetableSynth : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("WavetableSynth", "Audio Synth", "Polyphonic wavetable synthesizer with morphing timbres")
-            .output(OutputKind::Audio)
-            .withAliases({"Wavetable", "WT"})
-            .withUsage(
-                "auto& wt = chain.add<WavetableSynth>(\"wt\");\n"
-                "wt.loadBuiltin(BuiltinTable::Analog);\n"
-                "wt.maxVoices = 4;\n"
-                "wt.attack = 0.1f;\n"
-                "wt.release = 0.5f;\n"
-                "\n"
-                "// Modulate wavetable position for evolving timbre\n"
-                "wt.position = 0.5f;  // Or animate with LFO\n"
-                "\n"
-                "wt.noteOn(440.0f);   // Play A4\n"
-            )
-            .withExamples({{"examples/wavetable-poly"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

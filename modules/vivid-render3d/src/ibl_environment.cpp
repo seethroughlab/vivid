@@ -14,7 +14,7 @@
 
 namespace vivid::render3d {
 
-REGISTER(IBLEnvironment);
+REGISTER_OPERATOR(IBLEnvironment, "3D Lighting", "HDRI environment map for image-based lighting", false);
 
 // ============================================================================
 // WGSL Compute Shaders for IBL Processing

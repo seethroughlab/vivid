@@ -62,34 +62,6 @@ public:
     static constexpr int MAX_STEPS = 16;
 
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Sequencer", "Audio Sequencing", "Step sequencer with pattern and trigger output")
-            .output(OutputKind::Value)
-            .withAliases({"Seq"})
-            .withUsage(
-                "auto& seq = chain.add<Sequencer>(\"seq\");\n"
-                "seq.steps = 16;\n"
-                "seq.setStep(0, true);   // Kick on 1\n"
-                "seq.setStep(4, true);   // Kick on 5\n"
-                "\n"
-                "// In update with clock:\n"
-                "if (clock.triggered()) {\n"
-                "    seq.advance();\n"
-                "    if (seq.triggered()) kick.trigger();\n"
-                "}\n"
-            )
-            .withExamples({
-                {"examples/drum-machine"},
-                {"examples/drum-synthesis"},
-                {"examples/euclidean-rhythms"}
-            });
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

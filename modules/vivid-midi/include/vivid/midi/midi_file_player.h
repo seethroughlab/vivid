@@ -47,32 +47,6 @@ namespace vivid::midi {
 class MidiFilePlayer : public Operator, public ParamRegistry {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("MidiFilePlayer", "MIDI", "Play MIDI files with tempo sync")
-            .output(OutputKind::Value)
-            .withAliases({"MIDIFile", "MIDIPlayer"})
-            .withUsage(
-                "auto& player = chain.add<MidiFilePlayer>(\"player\");\n"
-                "player.load(\"song.mid\");\n"
-                "player.syncToClock(&clock);  // Optional: sync to Clock BPM\n"
-                "player.loop = true;\n"
-                "player.play();\n"
-                "\n"
-                "// In update():\n"
-                "for (const auto& e : player.events()) {\n"
-                "    if (e.type == MidiEventType::NoteOn) {\n"
-                "        synth.noteOn(midiToFreq(e.note));\n"
-                "    }\n"
-                "}\n"
-            )
-            .withExamples({{"examples/midi-sequencer"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

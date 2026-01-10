@@ -27,7 +27,7 @@
 
 namespace vivid::network {
 
-REGISTER(OscIn);
+REGISTER_OPERATOR(OscIn, "Network", "Receive OSC messages from controllers and software", false);
 
 // =============================================================================
 // OscMessage helpers

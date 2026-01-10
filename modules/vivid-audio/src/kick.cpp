@@ -8,7 +8,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Kick);
+REGISTER_OPERATOR_EX(Kick, "Audio Drums", "808-style kick drum with pitch envelope", false, vivid::OutputKind::Audio);
 
 void Kick::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

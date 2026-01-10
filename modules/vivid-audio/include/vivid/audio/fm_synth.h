@@ -96,30 +96,6 @@ public:
     static constexpr int NUM_OPS = 4;
 
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("FMSynth", "Audio Synth", "4-operator FM synthesizer with DX7-style algorithms")
-            .output(OutputKind::Audio)
-            .withAliases({"FM"})
-            .withUsage(
-                "auto& fm = chain.add<FMSynth>(\"fm\");\n"
-                "fm.loadPreset(FMPreset::EPiano);\n"
-                "// Or configure manually:\n"
-                "fm.setAlgorithm(FMAlgorithm::Stack4);\n"
-                "fm.ratio1 = 1.0f;   // Carrier\n"
-                "fm.ratio2 = 2.0f;   // Modulator\n"
-                "fm.level2 = 0.8f;   // Modulation depth\n"
-                "fm.feedback = 0.3f;\n"
-                "\n"
-                "fm.noteOn(440.0f);  // Play A4\n"
-            )
-            .withExamples({{"examples/formant-pad"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

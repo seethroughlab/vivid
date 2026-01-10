@@ -51,19 +51,6 @@ namespace vivid::render3d {
  */
 class TexturedMaterial : public Operator {
 public:
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("TexturedMaterial", "3D Materials", "PBR material with texture maps")
-            .output(OutputKind::Value)
-            .withAliases({"PBRMaterial", "Material"})
-            .withUsage(
-                "auto& mat = chain.add<TexturedMaterial>(\"mat\");\n"
-                "mat.baseColor(\"assets/textures/albedo.png\");\n"
-                "mat.normal(\"assets/textures/normal.png\");\n"
-                "mat.metallic(\"assets/textures/metallic.png\");\n"
-                "mat.roughness(\"assets/textures/roughness.png\");\n"
-            );
-    }
-
     TexturedMaterial();
     ~TexturedMaterial() override;
 

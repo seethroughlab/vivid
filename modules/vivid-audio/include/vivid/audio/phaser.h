@@ -47,26 +47,6 @@ namespace vivid::audio {
 class Phaser : public AudioEffect {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Phaser", "Audio Effects", "Multi-stage phaser with LFO modulation")
-            .output(OutputKind::Audio)
-            .requireInput()
-            .withUsage(
-                "auto& phaser = chain.add<Phaser>(\"phaser\");\n"
-                "phaser.input(\"audio\");\n"
-                "phaser.rate = 0.3f;      // Sweep rate Hz\n"
-                "phaser.depth = 0.8f;     // Deep modulation\n"
-                "phaser.stages = 6;       // 6 stages\n"
-                "phaser.feedback = 0.5f;\n"
-            )
-            .withExamples({{"examples/audio-effects"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

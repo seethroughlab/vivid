@@ -43,23 +43,6 @@ namespace vivid::effects {
 class FrameCache : public TextureOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("FrameCache", "Effects", "Buffer multiple frames")
-            .requireInput()
-            .withUsage(
-                "auto& cache = chain.add<FrameCache>(\"cache\");\n"
-                "cache.input(\"source\");\n"
-                "cache.frameCount = 30;  // Frames to store\n"
-                "// Use with TimeMachine for temporal effects\n"
-            )
-            .withExamples({{"examples/time-effects"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters
     /// @{
 

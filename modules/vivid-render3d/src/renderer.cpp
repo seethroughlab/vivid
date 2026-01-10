@@ -17,7 +17,7 @@
 
 namespace vivid::render3d {
 
-REGISTER(Render3D);
+REGISTER_OPERATOR(Render3D, "3D Rendering", "3D scene renderer with PBR, shadows, and IBL", true);
 
 using namespace vivid::effects;
 

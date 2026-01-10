@@ -45,28 +45,6 @@ namespace vivid::audio {
 class HiHat : public AudioOperator {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("HiHat", "Audio Drums", "Hi-hat cymbal with open/closed modes")
-            .output(OutputKind::Audio)
-            .withAliases({"HH"})
-            .withUsage(
-                "// Closed hi-hat\n"
-                "auto& hh = chain.add<HiHat>(\"hh\");\n"
-                "hh.decay = 0.05f;  // Short = closed\n"
-                "hh.tone = 0.7f;    // Brightness\n"
-                "hh.ring = 0.3f;    // Metallic ring\n"
-                "\n"
-                "hh.trigger();  // Play\n"
-                "hh.choke();    // Cut off (for closed interrupting open)\n"
-            )
-            .withExamples({{"examples/drum-synthesis"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

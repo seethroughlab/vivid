@@ -24,7 +24,7 @@
 
 namespace vivid::network {
 
-REGISTER(UdpOut);
+REGISTER_OPERATOR(UdpOut, "Network", "Send raw UDP packets for hardware control and Artnet", false);
 
 #ifdef _WIN32
 extern bool g_wsaInitialized;

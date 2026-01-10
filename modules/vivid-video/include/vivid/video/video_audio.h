@@ -42,26 +42,6 @@ class VideoPlayer;
  */
 class VIVID_VIDEO_API VideoAudio : public AudioOperator {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("VideoAudio", "Video", "Extract audio from VideoPlayer for chain routing")
-            .output(OutputKind::Audio)
-            .withAliases({"VideoSound", "MovieAudio"})
-            .withUsage(
-                "chain.add<VideoPlayer>(\"video\").file(\"movie.mov\");\n"
-                "chain.add<VideoAudio>(\"audio\").setSource(\"video\");\n"
-                "chain.add<AudioOutput>(\"out\").input(\"audio\");\n"
-                "\n"
-                "chain.output(\"video\");       // Visual\n"
-                "chain.audioOutput(\"out\");    // Audio\n"
-            )
-            .withExamples({{"examples/video-audio"}});
-    }
-
-    /// @}
 
     VideoAudio();
     ~VideoAudio() override = default;

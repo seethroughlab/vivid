@@ -35,29 +35,6 @@ namespace serial {
  */
 class DMXOut : public SerialOut {
 public:
-    // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("DMXOut", "IO", "DMX lighting output via Enttec USB Pro")
-            .output(OutputKind::Value)
-            .withAliases({"DMX", "Lighting", "Enttec"})
-            .withUsage(
-                "auto& dmx = chain.add<DMXOut>(\"dmx\");\n"
-                "dmx.port(\"/dev/tty.usbserial-EN123456\");  // Enttec device\n"
-                "\n"
-                "// Set RGB fixture starting at channel 1\n"
-                "dmx.rgb(1, 255, 0, 127);  // Purple\n"
-                "\n"
-                "// Audio-reactive lighting\n"
-                "float bass = fft.band(0);\n"
-                "dmx.channel(1, static_cast<uint8_t>(bass * 255));\n"
-            )
-            .withExamples({{"examples/dmx-lighting"}});
-    }
-
-    /// @}
 
     /// Universe number (1-16)
     Param<int> universe{"universe", 1, 1, 16};

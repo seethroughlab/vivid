@@ -44,25 +44,6 @@ namespace vivid::audio {
 class Reverb : public AudioEffect {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Reverb", "Audio Effects", "Freeverb-style algorithmic reverb")
-            .output(OutputKind::Audio)
-            .requireInput()
-            .withUsage(
-                "auto& reverb = chain.add<Reverb>(\"reverb\");\n"
-                "reverb.input(\"audio\");\n"
-                "reverb.roomSize = 0.7f;  // Large room\n"
-                "reverb.damping = 0.5f;   // Moderate damping\n"
-                "reverb.mix = 0.3f;       // 30% wet\n"
-            )
-            .withExamples({{"examples/formant-pad"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

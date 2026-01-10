@@ -12,7 +12,7 @@
 namespace vivid {
 namespace serial {
 
-REGISTER(SerialIn);
+REGISTER_OPERATOR(SerialIn, "IO", "Serial input from Arduino and sensors", false);
 
 SerialIn::SerialIn() {
     m_serial = std::make_unique<SerialPort>();

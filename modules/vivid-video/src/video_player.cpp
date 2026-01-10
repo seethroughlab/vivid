@@ -34,7 +34,7 @@ using StandardDecoder = vivid::video::FFmpegDecoder;
 
 namespace vivid::video {
 
-REGISTER(VideoPlayer);
+REGISTER_OPERATOR(VideoPlayer, "Video Input", "Video playback as texture source", false);
 
 VideoPlayer::VideoPlayer() = default;
 

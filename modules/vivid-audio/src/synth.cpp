@@ -7,7 +7,7 @@
 
 namespace vivid::audio {
 
-REGISTER(Synth);
+REGISTER_OPERATOR_EX(Synth, "Audio Synth", "Monophonic synthesizer with ADSR envelope", false, vivid::OutputKind::Audio);
 
 void Synth::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;

@@ -43,26 +43,6 @@ namespace vivid::audio {
 class Flanger : public AudioEffect {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("Flanger", "Audio Effects", "Flanger effect with LFO modulation")
-            .output(OutputKind::Audio)
-            .requireInput()
-            .withUsage(
-                "auto& flanger = chain.add<Flanger>(\"flanger\");\n"
-                "flanger.input(\"audio\");\n"
-                "flanger.rate = 0.2f;      // Slow sweep\n"
-                "flanger.depth = 0.7f;     // Deep modulation\n"
-                "flanger.feedback = 0.5f;  // Moderate feedback\n"
-                "flanger.mix = 0.5f;\n"
-            )
-            .withExamples({{"examples/audio-effects"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 

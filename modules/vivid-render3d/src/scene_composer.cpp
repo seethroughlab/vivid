@@ -12,7 +12,7 @@
 
 namespace vivid::render3d {
 
-REGISTER(SceneComposer);
+REGISTER_OPERATOR(SceneComposer, "3D Scene", "Compose meshes and transforms into a renderable scene", false);
 
 // Preview thumbnail size (16:9 aspect ratio, 2x for quality)
 static constexpr int PREVIEW_WIDTH = 256;

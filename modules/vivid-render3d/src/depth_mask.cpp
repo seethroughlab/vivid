@@ -8,7 +8,7 @@
 
 namespace vivid::render3d {
 
-REGISTER(DepthMask);
+REGISTER_OPERATOR(DepthMask, "3D Compositing", "Mask 2D effects using 3D depth", true);
 
 using namespace vivid::effects;
 

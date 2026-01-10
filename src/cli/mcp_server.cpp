@@ -1141,13 +1141,14 @@ private:
             info["category"] = meta->category;
             info["description"] = meta->description;
             info["module"] = meta->module.empty() ? "vivid-core" : meta->module;
+            info["headerPath"] = meta->headerPath;
+
             // Add include guidance for non-core modules
             if (!meta->module.empty()) {
                 // Map module name to namespace: vivid-video -> video, vivid-render3d -> render3d
                 std::string ns = meta->module;
                 if (ns.rfind("vivid-", 0) == 0) ns = ns.substr(6);
                 info["include"] = "#include <vivid/" + ns + "/" + ns + ".h>";
-                info["includeNote"] = "Module is auto-linked when you add this include. No manual installation needed.";
             }
             info["requiresInput"] = meta->requiresInput;
             info["outputType"] = outputKindName(meta->outputKind);
@@ -1189,76 +1190,6 @@ private:
                     }
                 } catch (...) {
                     info["params_error"] = "Could not introspect parameters";
-                }
-            }
-
-            // Generate usage example
-            std::string usage;
-            if (!meta->usage.empty()) {
-                // Use explicit usage from operator metadata
-                usage = meta->usage;
-            } else {
-                // Auto-generate usage
-                usage = "auto& op = chain.add<" + meta->name + ">(\"name\");\n";
-
-                // Use explicit inputs if available, otherwise generic input()
-                if (!meta->inputs.empty()) {
-                    for (const auto& input : meta->inputs) {
-                        usage += "op." + input.method + "(\"" + input.method + "_source\");\n";
-                    }
-                } else if (meta->requiresInput) {
-                    usage += "op.input(\"source_operator\");\n";
-                }
-
-                if (!info["params"].empty()) {
-                    usage += "// Parameters:\n";
-                    size_t count = 0;
-                    for (const auto& p : info["params"]) {
-                        if (count++ >= 3) {
-                            usage += "// ... and " + std::to_string(info["params"].size() - 3) + " more\n";
-                            break;
-                        }
-                        usage += "op." + p["name"].get<std::string>() + " = " + p["default"].dump() + ";\n";
-                    }
-                }
-            }
-            info["usage"] = usage;
-
-            // Include inputs documentation if available
-            if (!meta->inputs.empty()) {
-                info["inputs"] = json::array();
-                for (const auto& input : meta->inputs) {
-                    info["inputs"].push_back({
-                        {"method", input.method},
-                        {"description", input.description},
-                        {"required", input.required}
-                    });
-                }
-            }
-
-            // Include aliases if available
-            if (!meta->aliases.empty()) {
-                info["aliases"] = meta->aliases;
-            }
-
-            // Include examples if available (resolve module-relative paths)
-            if (!meta->examples.empty()) {
-                info["examples"] = json::array();
-                for (const auto& ex : meta->examples) {
-                    json example;
-                    std::string path = ex.path;
-                    // Resolve module-relative paths to full paths
-                    if (!meta->module.empty() &&
-                        path.find("modules/") != 0 &&
-                        path.find("projects/") != 0 &&
-                        path.find("../") != 0) {
-                        path = "modules/" + meta->module + "/" + path;
-                    }
-                    example["path"] = path;
-                    if (!ex.description.empty()) {
-                        example["description"] = ex.description;
-                    }
-                    info["examples"].push_back(example);
                 }
             }
 

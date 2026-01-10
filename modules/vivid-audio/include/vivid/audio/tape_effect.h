@@ -94,19 +94,6 @@ public:
 
     std::string name() const override { return "TapeEffect"; }
 
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("TapeEffect", "Audio Effects", "Analog tape emulation with wow, flutter, hiss, and saturation")
-            .output(OutputKind::Audio)
-            .requireInput()
-            .withUsage(R"(auto& tape = chain.add<TapeEffect>("tape");
-tape.input("synth");
-tape.wow = 0.3f;        // Slow pitch drift
-tape.flutter = 0.2f;    // Fast pitch wobble
-tape.saturation = 0.5f; // Warm compression
-tape.hiss = 0.1f;       // Tape noise)")
-            .withExamples({{"examples/lofi-textures"}});
-    }
-
     /// @}
 
 protected:

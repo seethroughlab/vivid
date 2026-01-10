@@ -37,27 +37,6 @@ namespace vivid::audio {
 class FFT : public AudioAnalyzer {
 public:
     // -------------------------------------------------------------------------
-    /// @name Self-Description
-    /// @{
-
-    static OperatorDescriptor describe() {
-        return OperatorDescriptor("FFT", "Audio Analysis", "Fast Fourier Transform for frequency spectrum")
-            .output(OutputKind::Value)
-            .requireInput()
-            .withUsage(
-                "auto& fft = chain.add<FFT>(\"fft\");\n"
-                "fft.input(\"audio\");\n"
-                "fft.setSize(1024);      // FFT size\n"
-                "fft.smoothing = 0.8f;   // Spectrum smoothing\n"
-                "\n"
-                "// In update:\n"
-                "float bass = fft.band(20, 250);  // Get bass energy\n"
-            )
-            .withExamples({{"examples/audio-reactive"}});
-    }
-
-    /// @}
-    // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
     /// @{
 
