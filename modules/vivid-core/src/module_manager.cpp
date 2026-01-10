@@ -169,7 +169,14 @@ void ModuleManager::loadManifest() {
                 lib.gitRef = libData.value("gitRef", "");
                 lib.installedAt = libData.value("installedAt", "");
                 lib.builtFrom = libData.value("builtFrom", "");
-                lib.installPath = m_modulesDir / name;
+                lib.linkedPath = libData.value("linkedPath", "");
+
+                // For linked modules, installPath points to the development directory
+                if (lib.builtFrom == "linked" && !lib.linkedPath.empty()) {
+                    lib.installPath = fs::path(lib.linkedPath);
+                } else {
+                    lib.installPath = m_modulesDir / name;
+                }
 
                 if (!lib.name.empty()) {
                     m_installedModules.push_back(lib);
@@ -196,6 +203,10 @@ void ModuleManager::saveManifest() const {
             {"installedAt", lib.installedAt},
             {"builtFrom", lib.builtFrom}
         };
+        // Only save linkedPath for linked modules
+        if (lib.builtFrom == "linked") {
+            j["libraries"][lib.name]["linkedPath"] = lib.linkedPath;
+        }
     }
 
     std::ofstream file(manifestPath);
@@ -556,18 +567,26 @@ bool ModuleManager::remove(const std::string& name) {
     m_error.clear();
 
     // Find the library
-    bool found = false;
+    const InstalledModule* foundLib = nullptr;
     for (const auto& lib : m_installedModules) {
         if (lib.name == name) {
-            found = true;
+            foundLib = &lib;
             break;
         }
     }
 
-    if (!found) {
+    if (!foundLib) {
         m_error = "Library not found: " + name;
         std::cerr << m_error << std::endl;
         return false;
+    }
+
+    // For linked modules, just remove from manifest (don't delete dev directory)
+    if (foundLib->builtFrom == "linked") {
+        std::cout << "Unlinking " << name << "..." << std::endl;
+        removeFromManifest(name);
+        std::cout << "Successfully unlinked " << name << std::endl;
+        return true;
     }
 
     fs::path libDir = m_modulesDir / name;
@@ -643,14 +662,18 @@ void ModuleManager::outputJson() const {
     j["libraries"] = json::array();
 
     for (const auto& lib : m_installedModules) {
-        j["libraries"].push_back({
+        json libJson = {
             {"name", lib.name},
             {"version", lib.version},
             {"gitUrl", lib.gitUrl},
             {"gitRef", lib.gitRef},
             {"installedAt", lib.installedAt},
             {"builtFrom", lib.builtFrom}
-        });
+        };
+        if (lib.builtFrom == "linked") {
+            libJson["linkedPath"] = lib.linkedPath;
+        }
+        j["libraries"].push_back(libJson);
     }
 
     std::cout << j.dump(2) << std::endl;
@@ -732,6 +755,108 @@ std::vector<fs::path> ModuleManager::getModuleLibPaths() const {
         }
     }
     return paths;
+}
+
+bool ModuleManager::linkModule(const fs::path& path) {
+    m_error.clear();
+
+    // Resolve to absolute path
+    std::error_code ec;
+    fs::path absPath = fs::canonical(path, ec);
+    if (ec) {
+        m_error = "Path does not exist: " + path.string();
+        std::cerr << m_error << std::endl;
+        return false;
+    }
+
+    // Verify module.json exists
+    fs::path moduleJsonPath = absPath / "module.json";
+    if (!fs::exists(moduleJsonPath)) {
+        m_error = "No module.json found at " + absPath.string();
+        std::cerr << m_error << std::endl;
+        return false;
+    }
+
+    // Parse module.json for name and version
+    auto info = parseModuleJson(moduleJsonPath);
+    if (!info) {
+        m_error = "Invalid module.json at " + moduleJsonPath.string();
+        std::cerr << m_error << std::endl;
+        return false;
+    }
+
+    // Check for existing installation
+    for (const auto& lib : m_installedModules) {
+        if (lib.name == info->name) {
+            if (lib.builtFrom == "linked") {
+                m_error = "Module already linked from: " + lib.linkedPath;
+            } else {
+                m_error = "Module already installed. Run 'vivid modules remove " +
+                          info->name + "' first.";
+            }
+            std::cerr << m_error << std::endl;
+            return false;
+        }
+    }
+
+    // Verify lib/ directory exists with library (warn if not)
+    fs::path libDir = absPath / "lib";
+    if (!fs::exists(libDir)) {
+        std::cerr << "Warning: No lib/ directory found. Build the module first:" << std::endl;
+        std::cerr << "  cmake -B build -DVIVID_ROOT=<path> && cmake --build build" << std::endl;
+        // Continue anyway - user might build later
+    }
+
+    // Create manifest entry
+    InstalledModule lib;
+    lib.name = info->name;
+    lib.version = info->version;
+    lib.builtFrom = "linked";
+    lib.linkedPath = absPath.string();
+    lib.installPath = absPath;  // Points to actual dev directory
+
+    // Get current timestamp
+    std::time_t now = std::time(nullptr);
+    char timeBuf[32];
+    std::strftime(timeBuf, sizeof(timeBuf), "%Y-%m-%dT%H:%M:%SZ", std::gmtime(&now));
+    lib.installedAt = timeBuf;
+
+    m_installedModules.push_back(lib);
+    saveManifest();
+
+    std::cout << "Linked " << lib.name << " v" << lib.version << " from " << absPath.string() << std::endl;
+    return true;
+}
+
+bool ModuleManager::unlinkModule(const std::string& name) {
+    m_error.clear();
+
+    for (auto it = m_installedModules.begin(); it != m_installedModules.end(); ++it) {
+        if (it->name == name) {
+            if (it->builtFrom != "linked") {
+                m_error = "Module '" + name + "' is installed, not linked. Use 'vivid modules remove' instead.";
+                std::cerr << m_error << std::endl;
+                return false;
+            }
+            m_installedModules.erase(it);
+            saveManifest();
+            std::cout << "Unlinked " << name << std::endl;
+            return true;
+        }
+    }
+
+    m_error = "Module not found: " + name;
+    std::cerr << m_error << std::endl;
+    return false;
+}
+
+bool ModuleManager::isLinked(const std::string& name) const {
+    for (const auto& lib : m_installedModules) {
+        if (lib.name == name) {
+            return lib.builtFrom == "linked";
+        }
+    }
+    return false;
 }
 
 } // namespace vivid

@@ -12,6 +12,7 @@
 
 ## Extending Vivid
 
+- [MODULES](MODULES.md) - Installing and creating modules
 - [CREATING-OPERATORS](CREATING-OPERATORS.md) - Custom operators and addons
 
 ## Contributing

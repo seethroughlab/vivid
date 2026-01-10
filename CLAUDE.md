@@ -93,6 +93,26 @@ Frame specification formats:
 
 When capturing multiple frames, filenames include frame numbers: `output.png` becomes `output_0000.png`, `output_0001.png`, etc.
 
+## User Modules
+
+Third-party modules extend Vivid with additional operators. See `docs/MODULES.md` for full documentation.
+
+```bash
+# Install from GitHub
+vivid modules install https://github.com/seethroughlab/vivid-onnx
+
+# List installed modules
+vivid modules list
+
+# For development: link a local module
+vivid modules link ~/Developer/vivid-example
+
+# Unlink when done
+vivid modules unlink vivid-example
+```
+
+Modules are stored in `~/.vivid/modules/`. Linked modules point to the original location.
+
 ## Project Structure
 
 ```

@@ -46,8 +46,9 @@ struct InstalledModule {
     std::string gitUrl;
     std::string gitRef;
     std::string installedAt;  // ISO 8601 timestamp
-    std::string builtFrom;    // "prebuilt" or "source"
-    fs::path installPath;     // ~/.vivid/modules/<name>
+    std::string builtFrom;    // "prebuilt", "source", or "linked"
+    std::string linkedPath;   // Only for linked modules: absolute path to dev directory
+    fs::path installPath;     // ~/.vivid/modules/<name> or linkedPath for linked modules
 };
 
 /**
@@ -93,6 +94,31 @@ public:
      * @return true on success
      */
     bool update(const std::string& name = "");
+
+    /**
+     * @brief Link a local module for development
+     * @param path Path to module directory (must contain module.json)
+     * @return true on success
+     *
+     * Linked modules are registered in manifest.json but point to the
+     * original development directory instead of copying files to ~/.vivid/modules/.
+     * This allows hot-reload to find include and library paths during development.
+     */
+    bool linkModule(const fs::path& path);
+
+    /**
+     * @brief Unlink a development module
+     * @param name Module name
+     * @return true if module was linked and is now unlinked
+     */
+    bool unlinkModule(const std::string& name);
+
+    /**
+     * @brief Check if a module is linked (vs installed)
+     * @param name Module name
+     * @return true if module is linked
+     */
+    bool isLinked(const std::string& name) const;
 
     /**
      * @brief Get list of installed libraries

@@ -1141,8 +1141,11 @@ static int handleOperatorsCommand(const std::string& operatorName, bool jsonOutp
 
 // Helper: Handle 'modules' subcommand
 static int handleModulesCommand(CLI::App* installCmd, CLI::App* removeCmd, CLI::App* updateCmd, CLI::App* listCmd,
+                                CLI::App* linkCmd, CLI::App* unlinkCmd,
                                 const std::string& installUrl, const std::string& installRef,
-                                const std::string& removeName, const std::string& updateName, bool jsonOutput) {
+                                const std::string& removeName, const std::string& updateName,
+                                const std::string& linkPath, const std::string& unlinkName,
+                                bool jsonOutput) {
     auto& moduleMgr = ModuleManager::instance();
 
     if (installCmd->parsed()) {
@@ -1155,6 +1158,14 @@ static int handleModulesCommand(CLI::App* installCmd, CLI::App* removeCmd, CLI::
 
     if (updateCmd->parsed()) {
         return moduleMgr.update(updateName) ? 0 : 1;
+    }
+
+    if (linkCmd->parsed()) {
+        return moduleMgr.linkModule(linkPath) ? 0 : 1;
+    }
+
+    if (unlinkCmd->parsed()) {
+        return moduleMgr.unlinkModule(unlinkName) ? 0 : 1;
     }
 
     // Default: list
@@ -1172,7 +1183,9 @@ static int handleModulesCommand(CLI::App* installCmd, CLI::App* removeCmd, CLI::
             std::cout << "Installed modules (" << libs.size() << "):\n\n";
             for (const auto& lib : libs) {
                 std::cout << "  " << lib.name << " v" << lib.version;
-                if (!lib.gitRef.empty()) {
+                if (lib.builtFrom == "linked") {
+                    std::cout << " [linked]";
+                } else if (!lib.gitRef.empty()) {
                     std::cout << " (" << lib.gitRef << ")";
                 }
                 std::cout << "\n";
@@ -1351,6 +1364,16 @@ ParseResult parseArgs(int argc, char** argv) {
     auto* modulesUpdateCmd = modulesCmd->add_subcommand("update", "Update module(s)");
     modulesUpdateCmd->add_option("name", modulesUpdateName, "Library name (empty = update all)");
 
+    // modules link (for development)
+    std::string modulesLinkPath;
+    auto* modulesLinkCmd = modulesCmd->add_subcommand("link", "Link a local module for development");
+    modulesLinkCmd->add_option("path", modulesLinkPath, "Path to module directory")->required();
+
+    // modules unlink
+    std::string modulesUnlinkName;
+    auto* modulesUnlinkCmd = modulesCmd->add_subcommand("unlink", "Unlink a development module");
+    modulesUnlinkCmd->add_option("name", modulesUnlinkName, "Module name")->required();
+
     // 'mcp' subcommand - MCP server for Claude Code integration
     auto* mcpCmd = app.add_subcommand("mcp", "Run MCP server for Claude Code integration");
 
@@ -1393,8 +1416,10 @@ ParseResult parseArgs(int argc, char** argv) {
     if (modulesCmd->parsed()) {
         result.handled = true;
         result.exitCode = handleModulesCommand(modulesInstallCmd, modulesRemoveCmd, modulesUpdateCmd, modulesListCmd,
+                                               modulesLinkCmd, modulesUnlinkCmd,
                                                modulesInstallUrl, modulesInstallRef, modulesRemoveName,
-                                               modulesUpdateName, modulesJson);
+                                               modulesUpdateName, modulesLinkPath, modulesUnlinkName,
+                                               modulesJson);
         return result;
     }
 
