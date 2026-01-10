@@ -1348,9 +1348,8 @@ void ChainVisualizer::renderInspectorPanel(const FrameInput& input, vivid::Conte
         op = ctx.hasChain() ? ctx.chain().getAudioOutput() : nullptr;
         title = "Speakers";
     } else if (selectedNodeId == SCREEN_NODE_ID) {
-        // Screen node has no inspector (yet - could add display settings)
-        m_inspectorScrollOffset = 0.0f;
-        m_inspectorBounds.valid = false;
+        // Screen node shows display settings
+        renderScreenInspector(input, ctx);
         return;
     } else if (selectedNodeId >= 0) {
         const auto& operators = ctx.registeredOperators();
@@ -2009,6 +2008,105 @@ void ChainVisualizer::renderOperatorInspector(const FrameInput& input, vivid::Op
     gui.endArea();
     // Note: Layer clip rect is NOT cleared here - it persists until render() uses it.
     // It will be automatically cleared in begin() at the start of the next frame.
+}
+
+void ChainVisualizer::renderScreenInspector(const FrameInput& input, vivid::Context& ctx) {
+    // Inspector panel renders on Panels layer (above nodes/thumbnails)
+    m_overlay.setLayer(UILayer::Panels);
+
+    // Font metrics
+    const int labelFont = 0;
+    float lineH = m_overlay.fontLineHeight(labelFont);
+    float ascent = m_overlay.fontAscent(labelFont);
+    if (lineH <= 0) lineH = 20.0f;
+    if (ascent <= 0) ascent = 14.0f;
+
+    // Scale layout values for HiDPI
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+    float inspectorWidth = m_inspectorWidth * scale;
+
+    // Create scaled FrameInput for Gui widgets (HiDPI support)
+    FrameInput scaledInput = input;
+    scaledInput.mousePos *= scale;
+
+    // Create Gui instance with inspector-compatible style
+    Gui gui(m_overlay, scaledInput);
+    gui.style().labelPosition = LabelPosition::Above;
+    gui.style().valuePosition = ValuePosition::Right;
+    gui.style().padding = 12.0f * scale;
+    gui.style().widgetHeight = 20.0f * scale;
+    gui.style().valueWidth = 60.0f * scale;
+    gui.style().cornerRadius = 3.0f * scale;
+    gui.style().widgetBackground = {0.2f, 0.2f, 0.25f, 1.0f};
+    gui.style().sliderFill = {0.4f, 0.6f, 0.9f, 1.0f};
+    gui.style().sliderFillActive = {0.5f, 0.7f, 1.0f, 1.0f};
+    gui.style().textDim = {0.5f, 0.5f, 0.55f, 1.0f};
+
+    // Layout
+    const float padding = 12.0f * scale;
+    const float rowHeight = lineH + 20.0f * scale + 4.0f * scale;
+    const float headerHeight = lineH + padding * 2;
+
+    // Single dropdown for display mode
+    m_inspectorContentHeight = rowHeight + padding * 2;
+
+    // Panel position (right side, below status bar)
+    float statusBarHeight = lineH + 12.0f * scale;
+    float panelX = input.width - inspectorWidth - padding;
+    float panelY = statusBarHeight + padding;
+    float panelHeight = headerHeight + m_inspectorContentHeight;
+
+    // Store bounds for input blocking
+    m_inspectorBounds.x = panelX;
+    m_inspectorBounds.y = panelY;
+    m_inspectorBounds.w = inspectorWidth;
+    m_inspectorBounds.h = panelHeight;
+    m_inspectorBounds.valid = true;
+
+    // Colors
+    glm::vec4 bgColor = {0.12f, 0.12f, 0.15f, 0.95f};
+    glm::vec4 headerBg = {0.16f, 0.16f, 0.2f, 1.0f};
+    glm::vec4 borderColor = {0.3f, 0.3f, 0.35f, 1.0f};
+    glm::vec4 titleColor = {0.5f, 0.8f, 1.0f, 1.0f};
+
+    // Draw panel background
+    m_overlay.setLayer(UILayer::Panels - 1);
+    float cornerRadius = 6.0f * scale;
+    m_overlay.fillRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, bgColor);
+    m_overlay.strokeRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, 1.0f * scale, borderColor);
+
+    // Header
+    m_overlay.fillRoundedRectTop(panelX, panelY, inspectorWidth, headerHeight, cornerRadius, headerBg);
+    m_overlay.text("Screen", panelX + padding, panelY + padding + ascent, titleColor, labelFont);
+
+    // Switch to main Panels layer for content
+    m_overlay.setLayer(UILayer::Panels);
+
+    // Content area
+    float contentY = panelY + headerHeight + padding;
+    float contentAreaX = panelX + padding;
+    float contentAreaW = inspectorWidth - padding * 2;
+
+    gui.beginArea(contentAreaX, panelY + headerHeight, contentAreaW, m_inspectorContentHeight);
+    gui.setCursorY(contentY);
+
+    // Display mode dropdown
+    static const std::vector<std::string> displayModeLabels = {
+        "Stretch",
+        "Fit",
+        "Fill",
+        "Fill Horizontal",
+        "Fill Vertical"
+    };
+
+    int currentMode = static_cast<int>(ctx.displayMode());
+    gui.pushId("screen");
+    if (gui.dropdown("Display Mode", &currentMode, displayModeLabels)) {
+        ctx.displayMode(static_cast<DisplayMode>(currentMode));
+    }
+    gui.popId();
+
+    gui.endArea();
 }
 
 void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Context& ctx) {

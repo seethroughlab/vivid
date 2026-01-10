@@ -8,6 +8,15 @@
 
 namespace vivid {
 
+/// Display scaling mode for final output
+enum class DisplayMode {
+    Stretch,        ///< Fill window, ignore aspect ratio (default)
+    Fit,            ///< Maintain aspect ratio, letterbox/pillarbox as needed
+    Fill,           ///< Maintain aspect ratio, fill window, crop edges
+    FillHorizontal, ///< Maintain aspect ratio, fill width, may crop top/bottom
+    FillVertical    ///< Maintain aspect ratio, fill height, may crop left/right
+};
+
 class Display {
 public:
     Display(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat surfaceFormat);
@@ -26,6 +35,12 @@ public:
 
     // Update screen size for text rendering
     void setScreenSize(int width, int height);
+
+    // Set display scaling mode
+    void setDisplayMode(DisplayMode mode);
+
+    // Set source texture size (for aspect ratio calculations)
+    void setTextureSize(int width, int height);
 
     // Check if initialized successfully
     bool isValid() const { return m_valid; }
@@ -47,6 +62,12 @@ private:
     WGPUBindGroupLayout m_blitBindGroupLayout = nullptr;
     WGPUBindGroup m_blitBindGroup = nullptr;        // Cached blit bind group
     WGPUTextureView m_lastBlitTexture = nullptr;    // Track texture changes
+    WGPUBuffer m_blitUniformBuffer = nullptr;       // Uniform buffer for display mode
+
+    // Display mode settings
+    DisplayMode m_displayMode = DisplayMode::Fit;
+    int m_textureWidth = 1280;
+    int m_textureHeight = 720;
 
     // Text resources
     WGPURenderPipeline m_textPipeline = nullptr;

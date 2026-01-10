@@ -10,6 +10,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.20] - 2026-01-10
+
+### Added
+
+#### Display Scaling Modes
+New display mode system for controlling how the final output texture is rendered to the window:
+
+- **DisplayMode enum** with 5 modes:
+  - `Stretch` - Fill window, ignore aspect ratio (may distort)
+  - `Fit` - Maintain aspect ratio, letterbox/pillarbox as needed (default)
+  - `Fill` - Maintain aspect ratio, fill window, crop edges
+  - `FillHorizontal` - Maintain aspect ratio, fill width, may crop top/bottom
+  - `FillVertical` - Maintain aspect ratio, fill height, may crop left/right
+
+- **ChainConfig.displayMode** - Set initial display mode:
+  ```cpp
+  VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
+      .windowWidth = 1280,
+      .windowHeight = 720,
+      .displayMode = vivid::DisplayMode::Fill
+  }))
+  ```
+
+- **Runtime API** - Change display mode dynamically:
+  ```cpp
+  ctx.displayMode(DisplayMode::Fit);
+  DisplayMode current = ctx.displayMode();
+  ```
+
+- **Screen inspector panel** - Display Mode dropdown in chain visualizer when Screen node is selected
+
+- **display-modes example** - Interactive demo showing all 5 modes with keyboard controls (1-5 keys)
+
+### Changed
+
+- Default display mode changed from implicit stretch to explicit `Fit` mode
+- Blit shader now uses uniform buffer for aspect-ratio-aware UV calculations
+
 ## [0.1.0-alpha.19] - 2026-01-10
 
 ### Added
@@ -465,7 +503,8 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.19...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.20...HEAD
+[0.1.0-alpha.20]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.19...v0.1.0-alpha.20
 [0.1.0-alpha.19]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.18...v0.1.0-alpha.19
 [0.1.0-alpha.18]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.17...v0.1.0-alpha.18
 [0.1.0-alpha.17]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.16...v0.1.0-alpha.17

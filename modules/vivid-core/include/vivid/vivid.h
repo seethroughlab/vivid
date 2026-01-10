@@ -8,6 +8,7 @@
 #include <vivid/chain.h>
 #include <vivid/param.h>
 #include <vivid/color.h>
+#include <vivid/display.h>
 
 namespace vivid {
 
@@ -34,6 +35,7 @@ struct ChainConfig {
     int windowHeight = 720;      ///< Initial window height
     bool resizable = true;       ///< Allow window resizing
     bool fullscreen = false;     ///< Start in fullscreen mode
+    DisplayMode displayMode = DisplayMode::Fit;  ///< Display scaling mode
 };
 
 // Platform-specific export macro for DLL symbols

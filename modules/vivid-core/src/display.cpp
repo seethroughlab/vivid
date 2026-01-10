@@ -231,6 +231,7 @@ Display::~Display() {
 void Display::shutdown() {
     if (m_blitBindGroup) { wgpuBindGroupRelease(m_blitBindGroup); m_blitBindGroup = nullptr; }
     m_lastBlitTexture = nullptr;
+    if (m_blitUniformBuffer) { wgpuBufferRelease(m_blitUniformBuffer); m_blitUniformBuffer = nullptr; }
     if (m_blitPipeline) { wgpuRenderPipelineRelease(m_blitPipeline); m_blitPipeline = nullptr; }
     if (m_sampler) { wgpuSamplerRelease(m_sampler); m_sampler = nullptr; }
     if (m_blitBindGroupLayout) { wgpuBindGroupLayoutRelease(m_blitBindGroupLayout); m_blitBindGroupLayout = nullptr; }
@@ -293,8 +294,21 @@ bool Display::createBlitPipeline() {
         return false;
     }
 
+    // Create uniform buffer for display mode settings
+    WGPUBufferDescriptor uniformBufferDesc = {};
+    uniformBufferDesc.label = toStringView("Blit Uniform Buffer");
+    uniformBufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    uniformBufferDesc.size = 32;  // screenSize(8) + textureSize(8) + displayMode(4) + padding(12)
+    uniformBufferDesc.mappedAtCreation = false;
+    m_blitUniformBuffer = wgpuDeviceCreateBuffer(m_device, &uniformBufferDesc);
+    if (!m_blitUniformBuffer) {
+        wgpuSamplerRelease(m_sampler);
+        wgpuShaderModuleRelease(shaderModule);
+        return false;
+    }
+
     // Create bind group layout
-    WGPUBindGroupLayoutEntry entries[2] = {};
+    WGPUBindGroupLayoutEntry entries[3] = {};
     entries[0].binding = 0;
     entries[0].visibility = WGPUShaderStage_Fragment;
     entries[0].sampler.type = WGPUSamplerBindingType_Filtering;
@@ -305,9 +319,14 @@ bool Display::createBlitPipeline() {
     entries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
     entries[1].texture.multisampled = false;
 
+    entries[2].binding = 2;
+    entries[2].visibility = WGPUShaderStage_Fragment | WGPUShaderStage_Vertex;
+    entries[2].buffer.type = WGPUBufferBindingType_Uniform;
+    entries[2].buffer.minBindingSize = 32;
+
     WGPUBindGroupLayoutDescriptor bindGroupLayoutDesc = {};
     bindGroupLayoutDesc.label = toStringView("Blit Bind Group Layout");
-    bindGroupLayoutDesc.entryCount = 2;
+    bindGroupLayoutDesc.entryCount = 3;
     bindGroupLayoutDesc.entries = entries;
 
     m_blitBindGroupLayout = wgpuDeviceCreateBindGroupLayout(m_device, &bindGroupLayoutDesc);
@@ -640,16 +659,20 @@ void Display::blit(WGPURenderPassEncoder pass, WGPUTextureView texture) {
             wgpuBindGroupRelease(m_blitBindGroup);
         }
 
-        WGPUBindGroupEntry entries[2] = {};
+        WGPUBindGroupEntry entries[3] = {};
         entries[0].binding = 0;
         entries[0].sampler = m_sampler;
         entries[1].binding = 1;
         entries[1].textureView = texture;
+        entries[2].binding = 2;
+        entries[2].buffer = m_blitUniformBuffer;
+        entries[2].offset = 0;
+        entries[2].size = 32;
 
         WGPUBindGroupDescriptor bindGroupDesc = {};
         bindGroupDesc.label = toStringView("Blit Bind Group");
         bindGroupDesc.layout = m_blitBindGroupLayout;
-        bindGroupDesc.entryCount = 2;
+        bindGroupDesc.entryCount = 3;
         bindGroupDesc.entries = entries;
 
         m_blitBindGroup = wgpuDeviceCreateBindGroup(m_device, &bindGroupDesc);
@@ -661,6 +684,24 @@ void Display::blit(WGPURenderPassEncoder pass, WGPUTextureView texture) {
         }
     }
 
+    // Update uniform buffer with display mode settings
+    struct BlitUniforms {
+        float screenWidth;
+        float screenHeight;
+        float textureWidth;
+        float textureHeight;
+        uint32_t displayMode;
+        float padding[3];
+    } uniforms = {
+        (float)m_screenWidth,
+        (float)m_screenHeight,
+        (float)m_textureWidth,
+        (float)m_textureHeight,
+        static_cast<uint32_t>(m_displayMode),
+        {0.0f, 0.0f, 0.0f}
+    };
+    wgpuQueueWriteBuffer(m_queue, m_blitUniformBuffer, 0, &uniforms, sizeof(uniforms));
+
     // Set viewport to cover the entire screen
     wgpuRenderPassEncoderSetViewport(pass, 0, 0, (float)m_screenWidth, (float)m_screenHeight, 0, 1);
     wgpuRenderPassEncoderSetScissorRect(pass, 0, 0, m_screenWidth, m_screenHeight);
@@ -668,6 +709,15 @@ void Display::blit(WGPURenderPassEncoder pass, WGPUTextureView texture) {
     wgpuRenderPassEncoderSetPipeline(pass, m_blitPipeline);
     wgpuRenderPassEncoderSetBindGroup(pass, 0, m_blitBindGroup, 0, nullptr);
     wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+}
+
+void Display::setDisplayMode(DisplayMode mode) {
+    m_displayMode = mode;
+}
+
+void Display::setTextureSize(int width, int height) {
+    m_textureWidth = width;
+    m_textureHeight = height;
 }
 
 void Display::renderText(WGPURenderPassEncoder pass, const std::string& text,

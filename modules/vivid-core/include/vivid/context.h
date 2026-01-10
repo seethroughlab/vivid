@@ -14,6 +14,7 @@
  */
 
 #include <vivid/chain.h>
+#include <vivid/display.h>
 
 #include <webgpu/webgpu.h>
 #include <GLFW/glfw3.h>
@@ -682,6 +683,26 @@ public:
     bool consumeBorderlessChange() { bool c = m_borderlessChanged; m_borderlessChanged = false; return c; }
 
     /**
+     * @brief Set the display scaling mode
+     * @param mode The display mode (Stretch, Fit, Fill, FillHorizontal, FillVertical)
+     *
+     * Controls how the rendered output is scaled to fit the window.
+     * Changes take effect on the next frame.
+     */
+    void displayMode(DisplayMode mode) {
+        if (m_displayMode != mode) {
+            m_displayMode = mode;
+            m_displayModeChanged = true;
+        }
+    }
+
+    /// @brief Get current display mode
+    DisplayMode displayMode() const { return m_displayMode; }
+
+    /// @brief Consume display mode change flag (returns true once, then false)
+    bool consumeDisplayModeChange() { bool c = m_displayModeChanged; m_displayModeChanged = false; return c; }
+
+    /**
      * @brief Enable or disable always-on-top (floating) mode
      * @param enabled True for always-on-top, false for normal
      *
@@ -1091,6 +1112,8 @@ private:
     bool m_borderlessChanged = false;
     bool m_alwaysOnTop = false;
     bool m_alwaysOnTopChanged = false;
+    DisplayMode m_displayMode = DisplayMode::Fit;
+    bool m_displayModeChanged = false;
     bool m_cursorVisible = true;
     bool m_cursorVisibleChanged = false;
     int m_targetMonitor = 0;

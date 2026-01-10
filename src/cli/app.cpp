@@ -501,6 +501,11 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             mlc.ctx->cursorVisible() ? GLFW_CURSOR_NORMAL : GLFW_CURSOR_HIDDEN);
     }
 
+    // Handle display mode change
+    if (mlc.ctx->consumeDisplayModeChange()) {
+        mlc.display->setDisplayMode(mlc.ctx->displayMode());
+    }
+
     // Handle monitor change (move window to different display)
     if (mlc.ctx->consumeMonitorChange()) {
         int monitorCount = 0;
@@ -956,6 +961,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
     // Blit output texture (may have been modified by solo mode)
     if (mlc.ctx->outputTexture() && mlc.display->isValid()) {
+        mlc.display->setTextureSize(mlc.ctx->renderWidth(), mlc.ctx->renderHeight());
         mlc.display->blit(pass, mlc.ctx->outputTexture());
     }
 
@@ -1139,6 +1145,7 @@ int Application::init(const AppConfig& config) {
     int windowHeight = config.windowHeight;
     bool windowResizable = true;
     bool startFullscreen = config.startFullscreen;
+    DisplayMode displayMode = DisplayMode::Fit;  // Default display mode
 
     if (!config.projectPath.empty()) {
         // Compile chain early to get its config before window creation
@@ -1160,6 +1167,7 @@ int Application::init(const AppConfig& config) {
                     windowHeight = chainConfig.windowHeight;
                     windowResizable = chainConfig.resizable;
                     startFullscreen = chainConfig.fullscreen;
+                    displayMode = chainConfig.displayMode;
                     std::cout << "Using chain config: " << windowWidth << "x" << windowHeight << std::endl;
                 }
             }
@@ -1356,6 +1364,9 @@ int Application::init(const AppConfig& config) {
         m_impl->ctx->fullscreen(true);
     }
 
+    // Set initial display mode
+    m_impl->ctx->displayMode(displayMode);
+
     // Set up scroll callback
     glfwSetWindowUserPointer(m_impl->window, m_impl->ctx.get());
     glfwSetScrollCallback(m_impl->window, [](GLFWwindow* w, double xoffset, double yoffset) {
@@ -1368,6 +1379,7 @@ int Application::init(const AppConfig& config) {
     if (!m_impl->display->isValid()) {
         std::cerr << "Warning: Display initialization failed (shaders may be missing)" << std::endl;
     }
+    m_impl->display->setDisplayMode(displayMode);
 
     // Create chain visualizer
     m_impl->chainVisualizer = std::make_unique<vivid::ChainVisualizer>();
