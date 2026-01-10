@@ -361,11 +361,12 @@ TEST_CASE("Kick setParam/getParam", "[audio][kick]") {
         REQUIRE_THAT(out[0], WithinAbs(70.0f, 0.001f));
     }
 
-    SECTION("setParam updates decay") {
-        float value[4] = {0.8f, 0, 0, 0};
-        REQUIRE(kick.setParam("decay", value));
-        REQUIRE(kick.getParam("decay", out));
-        REQUIRE_THAT(out[0], WithinAbs(0.8f, 0.001f));
+    SECTION("setParam updates envelope") {
+        // envelope is ADSR: attack, decay, sustain, release
+        float value[4] = {0.01f, 0.8f, 0.0f, 0.1f};
+        REQUIRE(kick.setParam("envelope", value));
+        REQUIRE(kick.getParam("envelope", out));
+        REQUIRE_THAT(out[1], WithinAbs(0.8f, 0.001f));  // decay is index 1
     }
 }
 
@@ -377,7 +378,7 @@ TEST_CASE("Kick params() declaration", "[audio][kick]") {
         REQUIRE(params.size() == 7);
 
         std::vector<std::string> expected = {
-            "pitch", "pitchEnv", "pitchDecay", "decay", "click", "drive", "volume"
+            "pitch", "pitchEnv", "pitchDecay", "envelope", "click", "drive", "volume"
         };
 
         for (const auto& name : expected) {
