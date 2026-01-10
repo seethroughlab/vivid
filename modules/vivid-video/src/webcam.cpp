@@ -104,6 +104,16 @@ std::optional<io::ImageData> Webcam::cpuPixels() const {
     return result;
 }
 
+Operator::CpuPixelView Webcam::cpuPixelView() const {
+    CpuPixelView view;
+    view.data = cpuPixelData();
+    view.width = m_captureWidth;
+    view.height = m_captureHeight;
+    view.channels = 4;
+    view.stride = 0;  // Contiguous
+    return view;
+}
+
 void Webcam::init(Context& ctx) {
     openCamera(ctx);
 }

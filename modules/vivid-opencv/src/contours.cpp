@@ -117,17 +117,17 @@ void Contours::process(Context& ctx) {
         return;
     }
 
-    // Require CPU pixels from input (no GPU readback)
-    auto cpuData = inputOp->cpuPixels();
-    if (!cpuData || !cpuData->valid()) {
+    // Use zero-copy view for CPU pixels (no 8MB copy)
+    auto cpuView = inputOp->cpuPixelView();
+    if (!cpuView.valid()) {
         // Input doesn't provide CPU pixels - skip processing
         // This is by design: OpenCV operators require CPU pixel sources
         didCook();
         return;
     }
 
-    int width = cpuData->width;
-    int height = cpuData->height;
+    int width = cpuView.width;
+    int height = cpuView.height;
 
     // Skip if too small to process
     if (width < 16 || height < 16) {
@@ -138,8 +138,8 @@ void Contours::process(Context& ctx) {
     // Create/resize output with COPY_DST flag
     createOutputWithCopyDst(ctx, width, height);
 
-    // Create cv::Mat from CPU pixel data (BGRA format from VideoPlayer/Webcam)
-    cv::Mat input(height, width, CV_8UC4, const_cast<uint8_t*>(cpuData->pixels.data()));
+    // Create cv::Mat from CPU pixel data (BGRA format from VideoPlayer/Webcam) - zero-copy
+    cv::Mat input(height, width, CV_8UC4, const_cast<uint8_t*>(cpuView.data));
 
     // Convert to grayscale
     cv::Mat gray;

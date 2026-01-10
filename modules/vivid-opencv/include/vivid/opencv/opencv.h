@@ -4,18 +4,16 @@
  * @file opencv.h
  * @brief OpenCV integration for Vivid
  *
- * This module provides computer vision operators using OpenCV:
+ * This module provides computer vision operators using opencv-mobile:
  * - Contours: Edge detection and contour extraction
- * - OpticalFlow: Motion vector calculation (planned)
- * - ColorTrack: Color-based object tracking (planned)
- * - BlobTrack: Blob detection and tracking (planned)
- * - FaceDetect: Face detection (planned)
+ * - OpticalFlow: Dense motion vector calculation
+ * - BlobTrack: Blob detection and tracking
+ *
+ * Note: Uses opencv-mobile which includes core, imgproc, video, features2d, photo.
+ * For face detection and other DNN-based features, use vivid-onnx instead.
  *
  * @par Requirements
- * OpenCV 4.x must be installed:
- * - macOS: `brew install opencv`
- * - Ubuntu: `sudo apt install libopencv-dev`
- * - Windows: `vcpkg install opencv4`
+ * opencv-mobile is automatically fetched during build - no manual installation needed.
  *
  * @par Example
  * @code
@@ -41,14 +39,13 @@
 #include <vivid/opencv/export.h>
 #include <vivid/opencv/contours.h>
 #include <vivid/opencv/optical_flow.h>
+#include <vivid/opencv/blob_track.h>
 
 // Note: texture_converter.h is internal-only (requires OpenCV headers)
 
 namespace vivid::opencv {
 
-// Future operators will be declared here as they are implemented:
-// - ColorTrack
-// - BlobTrack
-// - FaceDetect
+// Note: Face detection requires the objdetect module which is not in opencv-mobile.
+// Use vivid-onnx for deep learning-based face detection instead.
 
 } // namespace vivid::opencv

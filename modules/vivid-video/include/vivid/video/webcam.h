@@ -88,6 +88,11 @@ public:
      */
     std::optional<io::ImageData> cpuPixels() const override;
 
+    /**
+     * @brief Zero-copy access to CPU pixel buffer
+     */
+    CpuPixelView cpuPixelView() const override;
+
     // Operator interface
     void init(Context& ctx) override;
     void process(Context& ctx) override;

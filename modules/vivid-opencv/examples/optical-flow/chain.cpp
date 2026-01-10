@@ -24,8 +24,9 @@ void setup(Context& ctx) {
     // Optical flow - detects motion between frames
     auto& flow = chain.add<opencv::OpticalFlow>("flow");
     flow.input("cam");
-    flow.sensitivity = 2.0f;    // Amplify motion visualization
-    flow.vizMode = 0;           // 0=HSV color wheel, 1=arrows, 2=magnitude
+    flow.sensitivity = 3.0f;    // Amplify motion visualization
+    flow.vizMode = 1;           // 0=HSV color wheel, 1=arrows on webcam, 2=magnitude
+    flow.scale = 0.25f;         // Process at 25% resolution for speed
 
     chain.output("flow");
 }

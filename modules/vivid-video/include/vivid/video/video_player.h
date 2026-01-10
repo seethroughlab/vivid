@@ -199,6 +199,11 @@ public:
      */
     std::optional<io::ImageData> cpuPixels() const override;
 
+    /**
+     * @brief Zero-copy access to CPU pixel buffer
+     */
+    CpuPixelView cpuPixelView() const override;
+
     std::vector<ParamDecl> params() override {
         return {
             {"loop", ParamType::Float, 0.0f, 1.0f, {m_loop ? 1.0f : 0.0f, 0, 0, 0}},

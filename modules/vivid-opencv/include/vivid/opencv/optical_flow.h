@@ -58,12 +58,13 @@ public:
     /// @name Parameters
     /// @{
 
+    Param<float> scale{"scale", 0.15f, 0.05f, 1.0f};        ///< Processing scale (0.15 = ~288x162 from 1080p)
     Param<float> pyrScale{"pyrScale", 0.5f, 0.1f, 0.9f};    ///< Pyramid scale
-    Param<int> levels{"levels", 3, 1, 10};                   ///< Pyramid levels
-    Param<int> winSize{"winSize", 15, 3, 50};               ///< Window size
-    Param<int> iterations{"iterations", 3, 1, 20};          ///< Iterations
+    Param<int> levels{"levels", 1, 1, 5};                    ///< Pyramid levels (1=fastest)
+    Param<int> winSize{"winSize", 9, 3, 25};                ///< Window size (smaller=faster)
+    Param<int> iterations{"iterations", 1, 1, 10};          ///< Iterations (1=fastest)
     Param<int> polyN{"polyN", 5, 5, 7};                     ///< Poly neighborhood
-    Param<float> polySigma{"polySigma", 1.2f, 1.0f, 2.0f};  ///< Poly sigma
+    Param<float> polySigma{"polySigma", 1.1f, 1.0f, 2.0f};  ///< Poly sigma
     Param<int> vizMode{"vizMode", 0, 0, 2};                 ///< Visualization mode
     Param<float> sensitivity{"sensitivity", 1.0f, 0.1f, 10.0f}; ///< Motion sensitivity
 

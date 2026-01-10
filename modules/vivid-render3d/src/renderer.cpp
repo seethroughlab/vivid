@@ -2852,8 +2852,6 @@ void Render3D::createPipeline(Context& ctx) {
 
     if (!m_pbrDisplacementPipeline) {
         std::cerr << "[Render3D] ERROR: Failed to create displacement pipeline!\n";
-    } else {
-        std::cerr << "[Render3D] Displacement pipeline created successfully\n";
     }
 
     // Cleanup displacement pipeline resources

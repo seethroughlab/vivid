@@ -318,6 +318,21 @@ std::optional<io::ImageData> VideoPlayer::cpuPixels() const {
     return std::nullopt;
 }
 
+Operator::CpuPixelView VideoPlayer::cpuPixelView() const {
+    CpuPixelView view;
+#if defined(__APPLE__)
+    if (m_usePlaybackDecoder && m_playbackDecoder) {
+        view.data = m_playbackDecoder->cpuPixelData();
+        view.width = m_playbackDecoder->width();
+        view.height = m_playbackDecoder->height();
+        view.channels = 4;
+        view.stride = 0;  // Contiguous
+    }
+#endif
+    // TODO: Add support for other decoders
+    return view;
+}
+
 void VideoPlayer::createFallbackTexture(Context& ctx) {
     // Release existing fallback texture if it exists (so we can recreate with new content)
     if (m_fallbackTextureView) {
