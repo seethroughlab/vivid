@@ -174,11 +174,12 @@ jobs:
 
           # Copy module headers (needed for third-party libraries that depend on vivid libraries)
           # Skip vivid-core since its headers are already copied above
+          # Use -Force to handle overlapping directory names between modules
           Get-ChildItem -Path modules -Directory | Where-Object { $_.Name -ne "vivid-core" } | ForEach-Object {
             $headerPath = Join-Path $_.FullName "include/vivid"
             if (Test-Path $headerPath) {
               Get-ChildItem -Path $headerPath -Directory | ForEach-Object {
-                Copy-Item -Recurse $_.FullName package/vivid-${{ matrix.target }}/include/vivid/
+                Copy-Item -Recurse -Force $_.FullName package/vivid-${{ matrix.target }}/include/vivid/
               }
             }
           }
