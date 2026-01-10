@@ -20,23 +20,79 @@ elseif(WIN32)
     set(OPENCV_MOBILE_PLATFORM "windows-vs2022")
     set(OPENCV_MOBILE_URL "https://github.com/nihui/opencv-mobile/releases/download/${OPENCV_MOBILE_TAG}/opencv-mobile-${OPENCV_MOBILE_VERSION}-windows-vs2022.zip")
 else()
-    # Linux - use Ubuntu 22.04 build (widely compatible)
-    set(OPENCV_MOBILE_PLATFORM "ubuntu-2204")
-    set(OPENCV_MOBILE_URL "https://github.com/nihui/opencv-mobile/releases/download/${OPENCV_MOBILE_TAG}/opencv-mobile-${OPENCV_MOBILE_VERSION}-ubuntu-2204.zip")
+    # Linux - detect architecture
+    execute_process(COMMAND uname -m OUTPUT_VARIABLE LINUX_ARCH OUTPUT_STRIP_TRAILING_WHITESPACE)
+    message(STATUS "vivid-opencv: Detected Linux architecture: ${LINUX_ARCH}")
+
+    if(LINUX_ARCH STREQUAL "aarch64" OR LINUX_ARCH STREQUAL "arm64")
+        # ARM64 Linux (Raspberry Pi, etc.)
+        set(OPENCV_MOBILE_PLATFORM "armlinux")
+        set(OPENCV_MOBILE_URL "https://github.com/nihui/opencv-mobile/releases/download/${OPENCV_MOBILE_TAG}/opencv-mobile-${OPENCV_MOBILE_VERSION}-armlinux.zip")
+    else()
+        # x86_64 Linux - use Ubuntu 22.04 build
+        set(OPENCV_MOBILE_PLATFORM "ubuntu-2204")
+        set(OPENCV_MOBILE_URL "https://github.com/nihui/opencv-mobile/releases/download/${OPENCV_MOBILE_TAG}/opencv-mobile-${OPENCV_MOBILE_VERSION}-ubuntu-2204.zip")
+    endif()
 endif()
 
 message(STATUS "vivid-opencv: Fetching opencv-mobile ${OPENCV_MOBILE_VERSION} for ${OPENCV_MOBILE_PLATFORM}")
 
 FetchContent_Declare(opencv_mobile
     URL ${OPENCV_MOBILE_URL}
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
 )
 FetchContent_MakeAvailable(opencv_mobile)
+
+# Debug: Print the actual source directory
+message(STATUS "vivid-opencv: opencv_mobile_SOURCE_DIR = ${opencv_mobile_SOURCE_DIR}")
+
+# Verify the headers exist based on platform
+set(OPENCV_INCLUDE_FOUND FALSE)
+
+if(APPLE)
+    # macOS uses Headers/ directory (framework style)
+    if(EXISTS "${opencv_mobile_SOURCE_DIR}/Headers")
+        set(OPENCV_INCLUDE_FOUND TRUE)
+        message(STATUS "vivid-opencv: Found opencv2 headers at ${opencv_mobile_SOURCE_DIR}/Headers (macOS framework)")
+    endif()
+else()
+    # Windows/Linux use include/opencv2/ structure
+    if(EXISTS "${opencv_mobile_SOURCE_DIR}/include/opencv2")
+        set(OPENCV_INCLUDE_FOUND TRUE)
+        message(STATUS "vivid-opencv: Found opencv2 headers at ${opencv_mobile_SOURCE_DIR}/include/opencv2")
+    endif()
+
+    # Some archives extract with a subdirectory
+    if(NOT OPENCV_INCLUDE_FOUND)
+        file(GLOB OPENCV_SUBDIRS "${opencv_mobile_SOURCE_DIR}/opencv-mobile-*")
+        if(OPENCV_SUBDIRS)
+            list(GET OPENCV_SUBDIRS 0 OPENCV_SUBDIR)
+            if(EXISTS "${OPENCV_SUBDIR}/include/opencv2")
+                set(opencv_mobile_SOURCE_DIR "${OPENCV_SUBDIR}")
+                set(OPENCV_INCLUDE_FOUND TRUE)
+                message(STATUS "vivid-opencv: Found opencv-mobile in subdirectory: ${opencv_mobile_SOURCE_DIR}")
+            endif()
+        endif()
+    endif()
+endif()
+
+# List contents for debugging if not found
+if(NOT OPENCV_INCLUDE_FOUND)
+    message(STATUS "vivid-opencv: Listing contents of ${opencv_mobile_SOURCE_DIR}:")
+    file(GLOB OPENCV_CONTENTS "${opencv_mobile_SOURCE_DIR}/*")
+    foreach(ITEM ${OPENCV_CONTENTS})
+        message(STATUS "  - ${ITEM}")
+    endforeach()
+    message(WARNING "vivid-opencv: Could not find opencv2 headers - build may fail")
+endif()
 
 set(OPENCV_SOURCES
     src/opencv.cpp
     src/texture_converter.cpp
     src/contours.cpp
     src/optical_flow.cpp
+    src/blob_track.cpp
+    src/face_detect.cpp
 )
 
 add_library(vivid-opencv SHARED ${OPENCV_SOURCES})
