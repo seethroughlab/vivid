@@ -1,10 +1,11 @@
 # Vivid OpenCV Addon
-# Computer vision operators using OpenCV
+# Computer vision operators using opencv-mobile
 # - Contours: Edge detection and contour drawing
-# - OpticalFlow: Motion vector calculation (planned)
-# - ColorTrack: Color-based object tracking (planned)
-# - BlobTrack: Blob detection (planned)
-# - FaceDetect: Face detection (planned)
+# - OpticalFlow: Dense motion vector calculation
+# - BlobTrack: Blob detection and tracking
+#
+# Note: opencv-mobile includes core, imgproc, video, features2d, photo
+# Face detection and DNN features require vivid-onnx instead
 
 include(FetchContent)
 
@@ -46,42 +47,73 @@ FetchContent_MakeAvailable(opencv_mobile)
 # Debug: Print the actual source directory
 message(STATUS "vivid-opencv: opencv_mobile_SOURCE_DIR = ${opencv_mobile_SOURCE_DIR}")
 
+# List all contents recursively for debugging
+message(STATUS "vivid-opencv: Listing top-level contents:")
+file(GLOB OPENCV_TOP_CONTENTS "${opencv_mobile_SOURCE_DIR}/*")
+foreach(ITEM ${OPENCV_TOP_CONTENTS})
+    message(STATUS "  - ${ITEM}")
+endforeach()
+
 # Verify the headers exist based on platform
 set(OPENCV_INCLUDE_FOUND FALSE)
+set(OPENCV_INCLUDE_DIR "")
 
 if(APPLE)
     # macOS uses Headers/ directory (framework style)
     if(EXISTS "${opencv_mobile_SOURCE_DIR}/Headers")
         set(OPENCV_INCLUDE_FOUND TRUE)
+        set(OPENCV_INCLUDE_DIR "${CMAKE_CURRENT_BINARY_DIR}/opencv_include")
         message(STATUS "vivid-opencv: Found opencv2 headers at ${opencv_mobile_SOURCE_DIR}/Headers (macOS framework)")
     endif()
 else()
-    # Windows/Linux use include/opencv2/ structure
+    # Windows/Linux: Try multiple possible locations
+
+    # 1. Direct include/opencv2/ structure
     if(EXISTS "${opencv_mobile_SOURCE_DIR}/include/opencv2")
         set(OPENCV_INCLUDE_FOUND TRUE)
+        set(OPENCV_INCLUDE_DIR "${opencv_mobile_SOURCE_DIR}/include")
         message(STATUS "vivid-opencv: Found opencv2 headers at ${opencv_mobile_SOURCE_DIR}/include/opencv2")
     endif()
 
-    # Some archives extract with a subdirectory
+    # 2. Some archives extract with opencv-mobile-* subdirectory
     if(NOT OPENCV_INCLUDE_FOUND)
         file(GLOB OPENCV_SUBDIRS "${opencv_mobile_SOURCE_DIR}/opencv-mobile-*")
         if(OPENCV_SUBDIRS)
             list(GET OPENCV_SUBDIRS 0 OPENCV_SUBDIR)
             if(EXISTS "${OPENCV_SUBDIR}/include/opencv2")
-                set(opencv_mobile_SOURCE_DIR "${OPENCV_SUBDIR}")
                 set(OPENCV_INCLUDE_FOUND TRUE)
-                message(STATUS "vivid-opencv: Found opencv-mobile in subdirectory: ${opencv_mobile_SOURCE_DIR}")
+                set(OPENCV_INCLUDE_DIR "${OPENCV_SUBDIR}/include")
+                message(STATUS "vivid-opencv: Found opencv-mobile in subdirectory: ${OPENCV_SUBDIR}")
             endif()
+        endif()
+    endif()
+
+    # 3. Windows archive might have platform subdirectory
+    if(NOT OPENCV_INCLUDE_FOUND AND WIN32)
+        # Check for x64 subdirectory with include
+        if(EXISTS "${opencv_mobile_SOURCE_DIR}/x64/vc17/include/opencv2")
+            set(OPENCV_INCLUDE_FOUND TRUE)
+            set(OPENCV_INCLUDE_DIR "${opencv_mobile_SOURCE_DIR}/x64/vc17/include")
+            message(STATUS "vivid-opencv: Found opencv2 headers in Windows x64 layout")
+        endif()
+        # Also try directly in x64 folder
+        file(GLOB_RECURSE OPENCV_CORE_HEADERS "${opencv_mobile_SOURCE_DIR}/**/opencv2/core.hpp")
+        if(OPENCV_CORE_HEADERS)
+            list(GET OPENCV_CORE_HEADERS 0 OPENCV_CORE_PATH)
+            get_filename_component(OPENCV_CORE_DIR "${OPENCV_CORE_PATH}" DIRECTORY)
+            get_filename_component(OPENCV_INCLUDE_DIR "${OPENCV_CORE_DIR}" DIRECTORY)
+            set(OPENCV_INCLUDE_FOUND TRUE)
+            message(STATUS "vivid-opencv: Found opencv2/core.hpp via recursive search at ${OPENCV_INCLUDE_DIR}")
         endif()
     endif()
 endif()
 
 # List contents for debugging if not found
 if(NOT OPENCV_INCLUDE_FOUND)
-    message(STATUS "vivid-opencv: Listing contents of ${opencv_mobile_SOURCE_DIR}:")
-    file(GLOB OPENCV_CONTENTS "${opencv_mobile_SOURCE_DIR}/*")
-    foreach(ITEM ${OPENCV_CONTENTS})
-        message(STATUS "  - ${ITEM}")
+    message(STATUS "vivid-opencv: Searching for any opencv2 directory...")
+    file(GLOB_RECURSE ALL_OPENCV_DIRS "${opencv_mobile_SOURCE_DIR}/**/opencv2")
+    foreach(DIR ${ALL_OPENCV_DIRS})
+        message(STATUS "  Found: ${DIR}")
     endforeach()
     message(WARNING "vivid-opencv: Could not find opencv2 headers - build may fail")
 endif()
@@ -91,9 +123,7 @@ set(OPENCV_SOURCES
     src/texture_converter.cpp
     src/contours.cpp
     src/optical_flow.cpp
-    # TODO: Add these when ready
-    # src/blob_track.cpp
-    # src/face_detect.cpp
+    src/blob_track.cpp
 )
 
 add_library(vivid-opencv SHARED ${OPENCV_SOURCES})
@@ -142,11 +172,18 @@ elseif(WIN32)
     set(OPENCV_MOBILE_DIR "${opencv_mobile_SOURCE_DIR}")
     set(OPENCV_LIB_DIR "${OPENCV_MOBILE_DIR}/x64/vc17/staticlib")
 
-    target_include_directories(vivid-opencv PRIVATE
-        ${OPENCV_MOBILE_DIR}/include
-    )
+    # Use the detected include directory, with fallback
+    if(OPENCV_INCLUDE_DIR)
+        target_include_directories(vivid-opencv PRIVATE ${OPENCV_INCLUDE_DIR})
+        message(STATUS "vivid-opencv: Windows using include dir: ${OPENCV_INCLUDE_DIR}")
+    else()
+        target_include_directories(vivid-opencv PRIVATE ${OPENCV_MOBILE_DIR}/include)
+        message(STATUS "vivid-opencv: Windows using fallback include dir: ${OPENCV_MOBILE_DIR}/include")
+    endif()
 
     target_link_libraries(vivid-opencv PRIVATE
+        ${OPENCV_LIB_DIR}/opencv_video4130.lib
+        ${OPENCV_LIB_DIR}/opencv_features2d4130.lib
         ${OPENCV_LIB_DIR}/opencv_imgproc4130.lib
         ${OPENCV_LIB_DIR}/opencv_core4130.lib
         ${OPENCV_LIB_DIR}/zlib.lib
@@ -164,11 +201,18 @@ else()
     # Linux: traditional lib/include layout
     set(OPENCV_MOBILE_DIR "${opencv_mobile_SOURCE_DIR}")
 
-    target_include_directories(vivid-opencv PRIVATE
-        ${OPENCV_MOBILE_DIR}/include
-    )
+    # Use the detected include directory, with fallback
+    if(OPENCV_INCLUDE_DIR)
+        target_include_directories(vivid-opencv PRIVATE ${OPENCV_INCLUDE_DIR})
+        message(STATUS "vivid-opencv: Linux using include dir: ${OPENCV_INCLUDE_DIR}")
+    else()
+        target_include_directories(vivid-opencv PRIVATE ${OPENCV_MOBILE_DIR}/include)
+        message(STATUS "vivid-opencv: Linux using fallback include dir: ${OPENCV_MOBILE_DIR}/include")
+    endif()
 
     target_link_libraries(vivid-opencv PRIVATE
+        ${OPENCV_MOBILE_DIR}/lib/libopencv_video.a
+        ${OPENCV_MOBILE_DIR}/lib/libopencv_features2d.a
         ${OPENCV_MOBILE_DIR}/lib/libopencv_imgproc.a
         ${OPENCV_MOBILE_DIR}/lib/libopencv_core.a
         ${OPENCV_MOBILE_DIR}/lib/libz.a
