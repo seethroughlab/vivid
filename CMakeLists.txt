@@ -286,11 +286,7 @@ add_subdirectory(modules/vivid-audio)
 add_subdirectory(modules/vivid-midi)
 add_subdirectory(modules/vivid-imgui)
 
-# vivid-opencv: Disabled on Windows due to opencv-mobile MSVC compatibility issues
-# TODO: Fix C++ runtime symbol mismatch (__std_find_first_of_trivial_pos_1)
-if(NOT WIN32)
-    add_subdirectory(modules/vivid-opencv)
-endif()
+add_subdirectory(modules/vivid-opencv)
 
 # vivid-onnx moved to separate repo: https://github.com/seethroughlab/vivid-onnx
 

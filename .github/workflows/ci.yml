@@ -174,7 +174,9 @@ jobs:
         shell: powershell
 
       - name: Configure CMake
-        run: cmake -B build -DBUILD_TESTS=ON
+        # Force VS2022 toolset (v143) for opencv-mobile compatibility
+        # opencv-mobile prebuilt libs are built with VS2022; newer VS versions cause STL symbol mismatches
+        run: cmake -B build -DBUILD_TESTS=ON -T v143
 
       - name: Build
         run: cmake --build build --config Release --parallel
