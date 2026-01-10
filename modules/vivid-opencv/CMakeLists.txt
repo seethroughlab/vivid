@@ -88,33 +88,44 @@ else()
         endif()
     endif()
 
-    # 3. Windows archive might have platform subdirectory
+    # 3. Windows archive has platform subdirectories (x64, x86, arm64)
     if(NOT OPENCV_INCLUDE_FOUND AND WIN32)
-        # Check for x64 subdirectory with include
-        if(EXISTS "${opencv_mobile_SOURCE_DIR}/x64/vc17/include/opencv2")
-            set(OPENCV_INCLUDE_FOUND TRUE)
-            set(OPENCV_INCLUDE_DIR "${opencv_mobile_SOURCE_DIR}/x64/vc17/include")
-            message(STATUS "vivid-opencv: Found opencv2 headers in Windows x64 layout")
-        endif()
-        # Also try directly in x64 folder
-        file(GLOB_RECURSE OPENCV_CORE_HEADERS "${opencv_mobile_SOURCE_DIR}/**/opencv2/core.hpp")
-        if(OPENCV_CORE_HEADERS)
-            list(GET OPENCV_CORE_HEADERS 0 OPENCV_CORE_PATH)
-            get_filename_component(OPENCV_CORE_DIR "${OPENCV_CORE_PATH}" DIRECTORY)
-            get_filename_component(OPENCV_INCLUDE_DIR "${OPENCV_CORE_DIR}" DIRECTORY)
-            set(OPENCV_INCLUDE_FOUND TRUE)
-            message(STATUS "vivid-opencv: Found opencv2/core.hpp via recursive search at ${OPENCV_INCLUDE_DIR}")
-        endif()
+        # Check common Windows paths in order of preference
+        set(OPENCV_WIN_PATHS
+            "${opencv_mobile_SOURCE_DIR}/x64/vc17/include"
+            "${opencv_mobile_SOURCE_DIR}/x64/include"
+            "${opencv_mobile_SOURCE_DIR}/x86/vc17/include"
+            "${opencv_mobile_SOURCE_DIR}/x86/include"
+        )
+        foreach(WIN_PATH ${OPENCV_WIN_PATHS})
+            if(EXISTS "${WIN_PATH}/opencv2/core.hpp")
+                set(OPENCV_INCLUDE_FOUND TRUE)
+                set(OPENCV_INCLUDE_DIR "${WIN_PATH}")
+                message(STATUS "vivid-opencv: Found opencv2 headers at ${WIN_PATH}")
+                break()
+            endif()
+        endforeach()
     endif()
 endif()
 
 # List contents for debugging if not found
 if(NOT OPENCV_INCLUDE_FOUND)
-    message(STATUS "vivid-opencv: Searching for any opencv2 directory...")
-    file(GLOB_RECURSE ALL_OPENCV_DIRS "${opencv_mobile_SOURCE_DIR}/**/opencv2")
-    foreach(DIR ${ALL_OPENCV_DIRS})
-        message(STATUS "  Found: ${DIR}")
-    endforeach()
+    message(STATUS "vivid-opencv: Searching for opencv2 headers...")
+    # List x64 contents on Windows
+    if(WIN32 AND EXISTS "${opencv_mobile_SOURCE_DIR}/x64")
+        message(STATUS "vivid-opencv: Contents of x64 directory:")
+        file(GLOB X64_CONTENTS "${opencv_mobile_SOURCE_DIR}/x64/*")
+        foreach(ITEM ${X64_CONTENTS})
+            message(STATUS "  - ${ITEM}")
+        endforeach()
+        if(EXISTS "${opencv_mobile_SOURCE_DIR}/x64/vc17")
+            message(STATUS "vivid-opencv: Contents of x64/vc17 directory:")
+            file(GLOB X64_VC17_CONTENTS "${opencv_mobile_SOURCE_DIR}/x64/vc17/*")
+            foreach(ITEM ${X64_VC17_CONTENTS})
+                message(STATUS "  - ${ITEM}")
+            endforeach()
+        endif()
+    endif()
     message(WARNING "vivid-opencv: Could not find opencv2 headers - build may fail")
 endif()
 
