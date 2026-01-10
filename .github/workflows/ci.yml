@@ -174,10 +174,7 @@ jobs:
         shell: powershell
 
       - name: Configure CMake
-        # Force older VS2022 toolset version for opencv-mobile compatibility
-        # opencv-mobile prebuilt libs have STL ABI incompatibilities with newer MSVC 14.4x
-        # Try v143,version=14.38 to match likely opencv-mobile build version
-        run: cmake -B build -DBUILD_TESTS=ON -T "v143,version=14.38"
+        run: cmake -B build -DBUILD_TESTS=ON
 
       - name: Build
         run: cmake --build build --config Release --parallel

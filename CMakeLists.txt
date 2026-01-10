@@ -286,7 +286,14 @@ add_subdirectory(modules/vivid-audio)
 add_subdirectory(modules/vivid-midi)
 add_subdirectory(modules/vivid-imgui)
 
-add_subdirectory(modules/vivid-opencv)
+# vivid-opencv: Disabled on Windows due to opencv-mobile STL ABI incompatibility
+# Root cause: opencv-mobile v35 prebuilt libs were compiled with MSVC 14.3x STL,
+# but our CI uses MSVC 14.43+ which has different vectorized STL internals.
+# Error: LNK2019 unresolved __std_find_first_of_trivial_pos_1
+# Fix options: 1) Build opencv from source, 2) Wait for opencv-mobile update
+if(NOT WIN32)
+    add_subdirectory(modules/vivid-opencv)
+endif()
 
 # vivid-onnx moved to separate repo: https://github.com/seethroughlab/vivid-onnx
 
