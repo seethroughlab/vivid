@@ -83,6 +83,10 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/hsv.cpp
     src/effects/brightness.cpp
     src/effects/threshold.cpp
+    src/effects/level.cpp
+    src/effects/crop.cpp
+    src/effects/tone_map.cpp
+    src/effects/normal_map.cpp
     src/effects/mirror.cpp
     src/effects/edge.cpp
     src/effects/pixelate.cpp
