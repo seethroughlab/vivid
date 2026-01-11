@@ -48,7 +48,13 @@ jobs:
         run: cmake -B build -DBUILD_TESTS=ON -DCOVERAGE=ON
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: |
+          # Limit parallelism on self-hosted to avoid OOM (C++ compilation is memory-intensive)
+          if [ "${{ runner.environment }}" = "self-hosted" ]; then
+            cmake --build build --config Release --parallel 2
+          else
+            cmake --build build --config Release --parallel
+          fi
 
       - name: Run unit and integration tests
         run: ctest --test-dir build --output-on-failure -C Release -L "unit|integration|build"
@@ -133,7 +139,13 @@ jobs:
         run: cmake -B build -DBUILD_TESTS=ON
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: |
+          # Limit parallelism on self-hosted to avoid OOM (C++ compilation is memory-intensive)
+          if [ "${{ runner.environment }}" = "self-hosted" ]; then
+            cmake --build build --config Release --parallel 4
+          else
+            cmake --build build --config Release --parallel
+          fi
 
       - name: Run unit and integration tests
         run: ctest --test-dir build --output-on-failure -C Release -L "unit|integration|build"
@@ -177,7 +189,14 @@ jobs:
         run: cmake -B build -DBUILD_TESTS=ON
 
       - name: Build
-        run: cmake --build build --config Release --parallel
+        run: |
+          # Limit parallelism on self-hosted to avoid OOM (C++ compilation is memory-intensive)
+          if ("${{ runner.environment }}" -eq "self-hosted") {
+            cmake --build build --config Release --parallel 4
+          } else {
+            cmake --build build --config Release --parallel
+          }
+        shell: pwsh
 
       - name: Run unit and integration tests
         run: ctest --test-dir build --output-on-failure -C Release -L "unit|integration|build"
