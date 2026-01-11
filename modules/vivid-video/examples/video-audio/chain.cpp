@@ -22,7 +22,7 @@ using namespace vivid::video;
 using namespace vivid::audio;
 
 // Mode: true = use AVPlayer internal audio (synced), false = use chain routing
-static bool g_useInternalAudio = true;
+static bool g_useInternalAudio = false;
 
 // Effect parameters (only used when g_useInternalAudio = false)
 static float g_masterVolume = 0.8f;

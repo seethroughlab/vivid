@@ -21,6 +21,7 @@
 #include <vector>
 #include <mutex>
 #include <deque>
+#include <atomic>
 
 // Helper to load tracks synchronously using async API (avoids deprecation warning on macOS 15+)
 static NSArray* loadTracksWithMediaType(AVAsset* asset, AVMediaType mediaType) {
@@ -67,15 +68,32 @@ struct AVFPlaybackDecoder::Impl {
     // Audio extraction via AVAssetReader
     AVAssetReader* audioReader = nil;
     AVAssetReaderTrackOutput* audioOutput = nil;
-    std::deque<float> audioBuffer;  // Ring buffer for extracted audio
+
+    // Timestamped audio chunk for A/V sync
+    struct AudioChunk {
+        std::vector<float> samples;
+        double pts;  // Presentation timestamp in seconds
+    };
+    std::deque<AudioChunk> audioChunks;  // Queue of timestamped audio chunks
     std::mutex audioMutex;
-    double audioReadPosition = 0.0;  // Current read position in seconds
+    double audioBufferHeadPTS = 0.0;  // PTS of next sample to be read (front of buffer)
+    double audioBufferTailPTS = 0.0;  // PTS of last sample added (back of buffer)
     uint32_t sampleRate = 48000;
     uint32_t channels = 2;
     bool audioReaderExhausted = false;
     std::string filePath;  // Store for recreating reader on loop
 
+    // Video time for A/V sync (atomic for thread-safe access from audio thread)
+    std::atomic<double> lastVideoTimeSeconds{-1.0};  // -1 = not yet set (startup)
+    std::atomic<bool> videoHasStarted{false};  // True after first video frame decoded
+    std::atomic<bool> initialSyncDone{false};  // True after initial A/V alignment
+    std::atomic<double> resyncToTime{-1.0};  // If >= 0, recreate audio reader at this time
+    std::atomic<bool> isShuttingDown{false};  // True during cleanup - prevents audio thread access
+
     void cleanup() {
+        // Signal shutdown to prevent audio thread from accessing resources
+        isShuttingDown.store(true);
+
         // Remove notification observer for looping
         if (playerItem) {
             [[NSNotificationCenter defaultCenter] removeObserver:playerItem];
@@ -106,8 +124,15 @@ struct AVFPlaybackDecoder::Impl {
         audioOutput = nil;
         {
             std::lock_guard<std::mutex> lock(audioMutex);
-            audioBuffer.clear();
+            audioChunks.clear();
         }
+        audioBufferHeadPTS = 0.0;
+        audioBufferTailPTS = 0.0;
+        lastVideoTimeSeconds.store(-1.0);
+        videoHasStarted.store(false);
+        initialSyncDone.store(false);
+        resyncToTime.store(-1.0);
+        // Note: isShuttingDown stays true until next open()
 
         playerItem = nil;
         videoOutput = nil;
@@ -115,10 +140,9 @@ struct AVFPlaybackDecoder::Impl {
         isReady = false;
         isPlaying = false;
         audioReaderExhausted = false;
-        audioReadPosition = 0.0;
     }
 
-    bool setupAudioReader(AVAsset* asset) {
+    bool setupAudioReader(AVAsset* asset, double startTimeSeconds = 0.0) {
         if (audioReader) {
             [audioReader cancelReading];
             audioReader = nil;
@@ -142,19 +166,23 @@ struct AVFPlaybackDecoder::Impl {
 
         AVAssetTrack* audioTrack = audioTracks[0];
 
-        // Get actual audio format from track
+        // Get actual audio format from track (for channel count)
         NSArray* formatDescriptions = audioTrack.formatDescriptions;
         if (formatDescriptions.count > 0) {
             CMAudioFormatDescriptionRef formatDesc = (__bridge CMAudioFormatDescriptionRef)formatDescriptions[0];
             const AudioStreamBasicDescription* asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDesc);
             if (asbd) {
-                sampleRate = static_cast<uint32_t>(asbd->mSampleRate);
                 channels = asbd->mChannelsPerFrame;
                 if (channels > 2) channels = 2;  // Downmix to stereo max
             }
         }
 
-        // Output settings: PCM float, our target sample rate and channels
+        // IMPORTANT: Always output at 48000Hz to match AudioOutput
+        // AVAssetReader will resample from the file's native rate (e.g., 44100Hz)
+        // If we don't do this, there will be a sample rate mismatch causing drift
+        sampleRate = 48000;
+
+        // Output settings: PCM float, 48kHz stereo (matches AudioOutput)
         NSDictionary* outputSettings = @{
             AVFormatIDKey: @(kAudioFormatLinearPCM),
             AVLinearPCMBitDepthKey: @32,
@@ -178,6 +206,14 @@ struct AVFPlaybackDecoder::Impl {
 
         [audioReader addOutput:audioOutput];
 
+        // Set time range if seeking to a specific position
+        if (startTimeSeconds > 0.0) {
+            CMTime startTime = CMTimeMakeWithSeconds(startTimeSeconds, 600);
+            CMTime duration = asset.duration;
+            CMTime remaining = CMTimeSubtract(duration, startTime);
+            audioReader.timeRange = CMTimeRangeMake(startTime, remaining);
+        }
+
         if (![audioReader startReading]) {
             std::cerr << "[AVFPlaybackDecoder] Failed to start audio reader: "
                       << audioReader.error.localizedDescription.UTF8String << std::endl;
@@ -194,7 +230,7 @@ struct AVFPlaybackDecoder::Impl {
             return;
         }
 
-        // Read audio samples and add to buffer
+        // Read audio samples and add to buffer with timestamps
         while (audioReader.status == AVAssetReaderStatusReading) {
             CMSampleBufferRef sampleBuffer = [audioOutput copyNextSampleBuffer];
             if (!sampleBuffer) {
@@ -204,6 +240,10 @@ struct AVFPlaybackDecoder::Impl {
                 break;
             }
 
+            // Extract presentation timestamp for A/V sync
+            CMTime pts = CMSampleBufferGetOutputPresentationTimeStamp(sampleBuffer);
+            double ptsSeconds = CMTimeGetSeconds(pts);
+
             CMBlockBufferRef blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer);
             if (blockBuffer) {
                 size_t length = 0;
@@ -211,11 +251,29 @@ struct AVFPlaybackDecoder::Impl {
                 CMBlockBufferGetDataPointer(blockBuffer, 0, nullptr, &length, &dataPointer);
 
                 if (dataPointer && length > 0) {
-                    std::lock_guard<std::mutex> lock(audioMutex);
                     size_t sampleCount = length / sizeof(float);
                     const float* samples = reinterpret_cast<const float*>(dataPointer);
+
+                    // Create a new chunk with timestamp
+                    AudioChunk chunk;
+                    chunk.pts = ptsSeconds;
+                    chunk.samples.reserve(sampleCount);
                     for (size_t i = 0; i < sampleCount; i++) {
-                        audioBuffer.push_back(samples[i]);
+                        chunk.samples.push_back(samples[i]);
+                    }
+
+                    {
+                        std::lock_guard<std::mutex> lock(audioMutex);
+                        // Update tail PTS (end of buffer)
+                        double chunkDurationSec = static_cast<double>(sampleCount / channels) / sampleRate;
+                        audioBufferTailPTS = ptsSeconds + chunkDurationSec;
+
+                        // If this is the first chunk, set head PTS too
+                        if (audioChunks.empty()) {
+                            audioBufferHeadPTS = ptsSeconds;
+                        }
+
+                        audioChunks.push_back(std::move(chunk));
                     }
                 }
             }
@@ -225,7 +283,11 @@ struct AVFPlaybackDecoder::Impl {
             // Don't read too far ahead (limit buffer to ~1 second)
             {
                 std::lock_guard<std::mutex> lock(audioMutex);
-                if (audioBuffer.size() > sampleRate * channels * 2) {
+                size_t totalSamples = 0;
+                for (const auto& chunk : audioChunks) {
+                    totalSamples += chunk.samples.size();
+                }
+                if (totalSamples > sampleRate * channels * 2) {
                     break;
                 }
             }
@@ -237,9 +299,11 @@ struct AVFPlaybackDecoder::Impl {
         if (!filePath.empty() && asset) {
             {
                 std::lock_guard<std::mutex> lock(audioMutex);
-                audioBuffer.clear();
+                audioChunks.clear();
             }
-            audioReadPosition = 0.0;
+            audioBufferHeadPTS = 0.0;
+            audioBufferTailPTS = 0.0;
+            initialSyncDone.store(false);  // Re-sync on loop
             setupAudioReader(asset);
         }
     }
@@ -253,6 +317,9 @@ AVFPlaybackDecoder::~AVFPlaybackDecoder() {
 
 bool AVFPlaybackDecoder::open(Context& ctx, const std::string& path, bool loop) {
     close();
+
+    // Reset shutdown flag for new session
+    impl_->isShuttingDown.store(false);
 
     device_ = ctx.device();
     queue_ = ctx.queue();
@@ -521,8 +588,11 @@ bool AVFPlaybackDecoder::update(Context& ctx) {
             return false;
         }
 
-        // Get current playback time
+        // Get current playback time and publish for A/V sync
         CMTime currentTime = currentItem.currentTime;
+        double currentTimeSeconds = CMTimeGetSeconds(currentTime);
+        impl_->lastVideoTimeSeconds.store(currentTimeSeconds);
+        impl_->videoHasStarted.store(true);
 
         // Use the stored video output (attached to our playerItem)
         AVPlayerItemVideoOutput* output = impl_->videoOutput;
@@ -568,6 +638,12 @@ bool AVFPlaybackDecoder::update(Context& ctx) {
         // Pre-fill audio buffer on main thread (AVFoundation is not thread-safe)
         // This ensures the audio thread can read from the buffer without calling AVFoundation
         if (hasAudio_) {
+            // Check if we need to resync audio reader to a new position
+            double resyncTime = impl_->resyncToTime.exchange(-1.0);
+            if (resyncTime >= 0.0) {
+                impl_->setupAudioReader(impl_->asset, resyncTime);
+            }
+
             impl_->readMoreAudio();
         }
 
@@ -581,6 +657,18 @@ void AVFPlaybackDecoder::seek(float seconds) {
     @autoreleasepool {
         CMTime time = CMTimeMakeWithSeconds(seconds, 600);
         [impl_->player seekToTime:time toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+
+        // Reset audio for seek - clear buffer and recreate reader at new position
+        if (hasAudio_) {
+            {
+                std::lock_guard<std::mutex> lock(impl_->audioMutex);
+                impl_->audioChunks.clear();
+            }
+            impl_->audioBufferHeadPTS = seconds;
+            impl_->audioBufferTailPTS = seconds;
+            impl_->initialSyncDone.store(false);  // Re-sync after seek
+            impl_->setupAudioReader(impl_->asset, seconds);
+        }
     }
 }
 
@@ -637,6 +725,16 @@ float AVFPlaybackDecoder::getVolume() const {
 }
 
 uint32_t AVFPlaybackDecoder::readAudioSamples(float* buffer, uint32_t maxFrames) {
+    // Safety check for shutdown - audio thread may call this during cleanup
+    if (!impl_ || impl_->isShuttingDown.load()) {
+        if (buffer) {
+            for (uint32_t i = 0; i < maxFrames * audioChannels_; i++) {
+                buffer[i] = 0.0f;
+            }
+        }
+        return maxFrames;
+    }
+
     if (!hasAudio_ || !buffer || maxFrames == 0) {
         return 0;
     }
@@ -645,21 +743,141 @@ uint32_t AVFPlaybackDecoder::readAudioSamples(float* buffer, uint32_t maxFrames)
     // the audio thread, and AVFoundation is not thread-safe. The audio buffer
     // is pre-filled by update() on the main thread.
 
-    // Copy samples from our buffer
     uint32_t samplesNeeded = maxFrames * audioChannels_;
     uint32_t samplesCopied = 0;
+
+    // Get current video time for A/V sync
+    double videoPTS = impl_->lastVideoTimeSeconds.load();
+    bool videoStarted = impl_->videoHasStarted.load();
+    bool initialSyncDone = impl_->initialSyncDone.load();
 
     {
         std::lock_guard<std::mutex> lock(impl_->audioMutex);
 
-        while (samplesCopied < samplesNeeded && !impl_->audioBuffer.empty()) {
-            buffer[samplesCopied] = impl_->audioBuffer.front();
-            impl_->audioBuffer.pop_front();
-            samplesCopied++;
+        // Skip sync correction until video has started playing
+        // This prevents false sync errors during startup
+        if (!videoStarted || videoPTS < 0.0) {
+            // Output silence during startup - don't play audio until we can sync
+            for (uint32_t i = 0; i < samplesNeeded; i++) {
+                buffer[i] = 0.0f;
+            }
+            return maxFrames;
         }
+
+        // Calculate sync error: positive = audio behind, negative = audio ahead
+        double syncError = videoPTS - impl_->audioBufferHeadPTS;
+
+        // Initial sync: when video first starts, align audio to video time
+        if (!initialSyncDone) {
+            // For large offsets (>1 second), we need to recreate the audio reader
+            // at the correct position rather than trying to skip samples
+            if (std::abs(syncError) > 1.0) {
+                std::cout << "[AVFPlaybackDecoder] Initial A/V sync: resyncing audio to video time "
+                          << videoPTS << "s (was " << (syncError * 1000) << "ms off)" << std::endl;
+                // Clear current buffer and signal for resync
+                impl_->audioChunks.clear();
+                impl_->audioBufferHeadPTS = videoPTS;
+                impl_->audioBufferTailPTS = videoPTS;
+                impl_->initialSyncDone.store(true);
+                impl_->resyncToTime.store(videoPTS);  // Signal update() to recreate reader
+
+                // Return silence for this block - audio will resync on next update()
+                for (uint32_t i = 0; i < samplesNeeded; i++) {
+                    buffer[i] = 0.0f;
+                }
+                return maxFrames;
+            }
+            else if (syncError > 0.050) {
+                // Audio is slightly behind video - discard audio to catch up
+                double samplesToSkipSec = syncError;
+                size_t samplesToSkip = static_cast<size_t>(samplesToSkipSec * impl_->sampleRate * impl_->channels);
+
+                size_t skipped = 0;
+                while (skipped < samplesToSkip && !impl_->audioChunks.empty()) {
+                    auto& chunk = impl_->audioChunks.front();
+                    size_t canSkip = std::min(chunk.samples.size(), samplesToSkip - skipped);
+                    chunk.samples.erase(chunk.samples.begin(), chunk.samples.begin() + canSkip);
+                    skipped += canSkip;
+                    if (chunk.samples.empty()) {
+                        impl_->audioChunks.pop_front();
+                    }
+                }
+                if (!impl_->audioChunks.empty()) {
+                    impl_->audioBufferHeadPTS = impl_->audioChunks.front().pts;
+                }
+            }
+            else if (syncError < -0.050) {
+                // Audio is slightly ahead of video - set head PTS to match video
+                impl_->audioBufferHeadPTS = videoPTS;
+            }
+
+            impl_->initialSyncDone.store(true);
+            syncError = videoPTS - impl_->audioBufferHeadPTS;  // Recalculate after adjustment
+        }
+
+        // Sync thresholds (in seconds)
+        constexpr double SYNC_TOLERANCE = 0.100;      // ±100ms is imperceptible
+        constexpr double SYNC_WARNING = 0.300;        // 300ms triggers gradual correction
+        constexpr double SYNC_CRITICAL = 0.500;       // 500ms triggers aggressive correction
+
+        // Handle sync correction
+        if (syncError > SYNC_CRITICAL) {
+            // Audio is significantly behind video - skip audio samples to catch up
+            double samplesToSkipSec = syncError - SYNC_TOLERANCE;
+            size_t samplesToSkip = static_cast<size_t>(samplesToSkipSec * impl_->sampleRate * impl_->channels);
+
+            // Skip samples from the front of the buffer
+            size_t skipped = 0;
+            while (skipped < samplesToSkip && !impl_->audioChunks.empty()) {
+                auto& chunk = impl_->audioChunks.front();
+                size_t canSkip = std::min(chunk.samples.size(), samplesToSkip - skipped);
+                chunk.samples.erase(chunk.samples.begin(), chunk.samples.begin() + canSkip);
+                skipped += canSkip;
+
+                if (chunk.samples.empty()) {
+                    impl_->audioChunks.pop_front();
+                }
+            }
+
+            // Update head PTS after skipping
+            if (!impl_->audioChunks.empty()) {
+                impl_->audioBufferHeadPTS = impl_->audioChunks.front().pts;
+            }
+        }
+        else if (syncError < -SYNC_CRITICAL) {
+            // Audio is significantly ahead of video - insert silence
+            // Just return silence for this block; audio will naturally catch up
+            for (uint32_t i = 0; i < samplesNeeded; i++) {
+                buffer[i] = 0.0f;
+            }
+            return maxFrames;
+        }
+        // Note: Moderate drift (SYNC_WARNING) is tolerated without correction
+
+        // Copy samples from chunks to output buffer
+        while (samplesCopied < samplesNeeded && !impl_->audioChunks.empty()) {
+            auto& chunk = impl_->audioChunks.front();
+
+            while (samplesCopied < samplesNeeded && !chunk.samples.empty()) {
+                buffer[samplesCopied++] = chunk.samples.front();
+                chunk.samples.erase(chunk.samples.begin());
+            }
+
+            if (chunk.samples.empty()) {
+                impl_->audioChunks.pop_front();
+                // Update head PTS to the next chunk
+                if (!impl_->audioChunks.empty()) {
+                    impl_->audioBufferHeadPTS = impl_->audioChunks.front().pts;
+                }
+            }
+        }
+
+        // Update head PTS based on samples consumed
+        double consumedSec = static_cast<double>(samplesCopied / impl_->channels) / impl_->sampleRate;
+        impl_->audioBufferHeadPTS += consumedSec;
     }
 
-    // Zero-fill any remaining samples
+    // Zero-fill any remaining samples (buffer underrun)
     while (samplesCopied < samplesNeeded) {
         buffer[samplesCopied++] = 0.0f;
     }
