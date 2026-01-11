@@ -83,5 +83,17 @@
 #include <vivid/audio/sampler.h>
 #include <vivid/audio/multi_sampler.h>
 
+// Glitch effects
+#include <vivid/audio/glitch/circular_buffer.h>
+#include <vivid/audio/glitch/rate_utils.h>
+#include <vivid/audio/glitch/beat_repeat.h>
+#include <vivid/audio/glitch/reverse.h>
+#include <vivid/audio/glitch/stutter.h>
+#include <vivid/audio/glitch/scratch.h>
+#include <vivid/audio/glitch/tape_stop.h>
+#include <vivid/audio/glitch/frequency_shift.h>
+#include <vivid/audio/glitch/stretch.h>
+#include <vivid/audio/glitch/glitch.h>
+
 // Musical constants
 #include <vivid/audio/notes.h>

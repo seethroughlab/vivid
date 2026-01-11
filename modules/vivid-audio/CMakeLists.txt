@@ -88,6 +88,15 @@ set(AUDIO_SOURCES
     src/multi_sampler.cpp
     # Presets
     src/preset.cpp
+    # Glitch effects
+    src/glitch/beat_repeat.cpp
+    src/glitch/reverse.cpp
+    src/glitch/stutter.cpp
+    src/glitch/scratch.cpp
+    src/glitch/tape_stop.cpp
+    src/glitch/frequency_shift.cpp
+    src/glitch/stretch.cpp
+    src/glitch/glitch.cpp
 )
 
 add_library(vivid-audio SHARED ${AUDIO_SOURCES})

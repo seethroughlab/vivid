@@ -10,6 +10,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.22] - 2026-01-11
+
+### Added
+
+#### Glitch Effects Suite
+Complete tempo-synced audio manipulation system inspired by Ableton's Beat Repeat and Ned Rush's Lucky 16 MaxForLive pack:
+
+- **BeatRepeat** - Captures and loops audio slices rhythmically with configurable repeat count and decay
+- **Reverse** - Real-time backwards playback of captured audio with crossfade
+- **Stutter** - Rapid repeats with volume envelopes (Flat, Decay, Build, Triangle) for build-ups and breakdowns
+- **Scratch** - DJ-style varispeed playback with motion types (Forward, Backward, BackForth, Random)
+- **TapeStop** - Turntable slowdown/speedup effect with exponential curves
+- **FrequencyShift** - Bode frequency shifter using Hilbert transform for metallic, inharmonic textures
+- **Stretch** - Granular time-stretch without pitch change using overlapping Hann-windowed grains
+- **Glitch** - Meta-effect combining all 6 effects with per-effect probability controls
+
+#### Core Infrastructure
+- **CircularAudioBuffer** - Header-only circular buffer with interpolated read/write for all glitch effects
+- **rate_utils.h** - Tempo sync utilities: `divisionToSamples()`, `divisionToHz()`, `divisionToSeconds()`
+
+#### Example
+- **glitch-effects** - Interactive demo of all 8 glitch operators with mouse control (X: select effect, Y: adjust parameter)
+
+All glitch operator headers include `@see` references to the example for LLM discoverability.
+
 ## [0.1.0-alpha.20] - 2026-01-10
 
 ### Added
@@ -503,7 +528,8 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.20...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.22...HEAD
+[0.1.0-alpha.22]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.21...v0.1.0-alpha.22
 [0.1.0-alpha.20]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.19...v0.1.0-alpha.20
 [0.1.0-alpha.19]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.18...v0.1.0-alpha.19
 [0.1.0-alpha.18]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.17...v0.1.0-alpha.18
