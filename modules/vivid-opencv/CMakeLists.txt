@@ -26,9 +26,9 @@ else()
     message(STATUS "vivid-opencv: Detected Linux architecture: ${LINUX_ARCH}")
 
     if(LINUX_ARCH STREQUAL "aarch64" OR LINUX_ARCH STREQUAL "arm64")
-        # ARM64 Linux (Raspberry Pi, etc.)
-        set(OPENCV_MOBILE_PLATFORM "armlinux")
-        set(OPENCV_MOBILE_URL "https://github.com/nihui/opencv-mobile/releases/download/${OPENCV_MOBILE_TAG}/opencv-mobile-${OPENCV_MOBILE_VERSION}-armlinux.zip")
+        # ARM64 Linux (Raspberry Pi, etc.) - use Debian Bookworm native aarch64 build
+        set(OPENCV_MOBILE_PLATFORM "debian-bookworm-arm")
+        set(OPENCV_MOBILE_URL "https://github.com/nihui/opencv-mobile/releases/download/${OPENCV_MOBILE_TAG}/opencv-mobile-${OPENCV_MOBILE_VERSION}-debian-bookworm-arm.zip")
     else()
         # x86_64 Linux - use Ubuntu 22.04 build
         set(OPENCV_MOBILE_PLATFORM "ubuntu-2204")
@@ -80,10 +80,17 @@ else()
         file(GLOB OPENCV_SUBDIRS "${opencv_mobile_SOURCE_DIR}/opencv-mobile-*")
         if(OPENCV_SUBDIRS)
             list(GET OPENCV_SUBDIRS 0 OPENCV_SUBDIR)
-            if(EXISTS "${OPENCV_SUBDIR}/include/opencv2")
+            # Try include/opencv4/ first (Linux archives use this layout)
+            if(EXISTS "${OPENCV_SUBDIR}/include/opencv4/opencv2")
+                set(OPENCV_INCLUDE_FOUND TRUE)
+                set(OPENCV_INCLUDE_DIR "${OPENCV_SUBDIR}/include/opencv4")
+                set(OPENCV_LIB_BASE_DIR "${OPENCV_SUBDIR}")
+                message(STATUS "vivid-opencv: Found opencv2 headers at ${OPENCV_SUBDIR}/include/opencv4/opencv2")
+            elseif(EXISTS "${OPENCV_SUBDIR}/include/opencv2")
                 set(OPENCV_INCLUDE_FOUND TRUE)
                 set(OPENCV_INCLUDE_DIR "${OPENCV_SUBDIR}/include")
-                message(STATUS "vivid-opencv: Found opencv-mobile in subdirectory: ${OPENCV_SUBDIR}")
+                set(OPENCV_LIB_BASE_DIR "${OPENCV_SUBDIR}")
+                message(STATUS "vivid-opencv: Found opencv2 headers at ${OPENCV_SUBDIR}/include/opencv2")
             endif()
         endif()
     endif()
@@ -237,7 +244,13 @@ elseif(WIN32)
 
 else()
     # Linux: traditional lib/include layout
-    set(OPENCV_MOBILE_DIR "${opencv_mobile_SOURCE_DIR}")
+    # Use OPENCV_LIB_BASE_DIR if detected from nested archive, otherwise use source dir
+    if(OPENCV_LIB_BASE_DIR)
+        set(OPENCV_MOBILE_DIR "${OPENCV_LIB_BASE_DIR}")
+        message(STATUS "vivid-opencv: Linux using lib base dir: ${OPENCV_MOBILE_DIR}")
+    else()
+        set(OPENCV_MOBILE_DIR "${opencv_mobile_SOURCE_DIR}")
+    endif()
 
     # Use the detected include directory, with fallback
     if(OPENCV_INCLUDE_DIR)
@@ -253,7 +266,7 @@ else()
         ${OPENCV_MOBILE_DIR}/lib/libopencv_features2d.a
         ${OPENCV_MOBILE_DIR}/lib/libopencv_imgproc.a
         ${OPENCV_MOBILE_DIR}/lib/libopencv_core.a
-        ${OPENCV_MOBILE_DIR}/lib/libz.a
+        z  # System zlib (required by opencv_core)
         pthread
         dl
     )
