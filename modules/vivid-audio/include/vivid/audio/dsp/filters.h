@@ -258,4 +258,201 @@ private:
     float m_feedback = 0.5f;
 };
 
+/**
+ * @brief State Variable Filter (SVF) with LP/HP/BP modes
+ *
+ * Multi-mode resonant filter with simultaneous lowpass, highpass,
+ * and bandpass outputs. Can be cascaded for steeper slopes.
+ *
+ * Based on the Chamberlin SVF topology, with frequency warping
+ * for accurate response at high frequencies.
+ */
+class SVFFilter {
+public:
+    enum class Mode {
+        Lowpass,
+        Highpass,
+        Bandpass
+    };
+
+    SVFFilter() = default;
+
+    /**
+     * @brief Initialize the filter
+     * @param sampleRate Audio sample rate
+     */
+    void init(uint32_t sampleRate) {
+        m_sampleRate = sampleRate;
+        reset();
+    }
+
+    /**
+     * @brief Set filter mode
+     * @param mode Lowpass, Highpass, or Bandpass
+     */
+    void setMode(Mode mode) {
+        m_mode = mode;
+    }
+
+    /**
+     * @brief Set cutoff frequency
+     * @param hz Cutoff frequency in Hz
+     */
+    void setCutoff(float hz) {
+        // Frequency warping for stability at high frequencies
+        float w = 2.0f * PI_VAL * hz / static_cast<float>(m_sampleRate);
+        m_f = 2.0f * std::sin(w * 0.5f);
+        // Clamp to avoid instability
+        if (m_f > 1.0f) m_f = 1.0f;
+    }
+
+    /**
+     * @brief Set resonance (Q)
+     * @param q Resonance amount (0-1, where 1 is near self-oscillation)
+     */
+    void setResonance(float q) {
+        // Map 0-1 to damping factor (high Q = low damping)
+        m_q = 1.0f - q * 0.99f;
+        if (m_q < 0.01f) m_q = 0.01f;
+    }
+
+    /**
+     * @brief Process a sample through the filter
+     * @param sample Input sample
+     * @return Filtered output based on current mode
+     */
+    float process(float sample) {
+        // State Variable Filter update
+        m_low += m_f * m_band;
+        m_high = sample - m_low - m_q * m_band;
+        m_band += m_f * m_high;
+
+        switch (m_mode) {
+            case Mode::Lowpass:  return m_low;
+            case Mode::Highpass: return m_high;
+            case Mode::Bandpass: return m_band;
+        }
+        return m_low;
+    }
+
+    /**
+     * @brief Process with oversampling for better stability at high resonance
+     * @param sample Input sample
+     * @return Filtered output
+     */
+    float process2x(float sample) {
+        // Two iterations for stability
+        float out = 0.0f;
+        for (int i = 0; i < 2; ++i) {
+            m_low += m_f * 0.5f * m_band;
+            m_high = sample - m_low - m_q * m_band;
+            m_band += m_f * 0.5f * m_high;
+        }
+
+        switch (m_mode) {
+            case Mode::Lowpass:  out = m_low; break;
+            case Mode::Highpass: out = m_high; break;
+            case Mode::Bandpass: out = m_band; break;
+        }
+        return out;
+    }
+
+    /**
+     * @brief Get lowpass output (available regardless of mode)
+     */
+    float getLowpass() const { return m_low; }
+
+    /**
+     * @brief Get highpass output (available regardless of mode)
+     */
+    float getHighpass() const { return m_high; }
+
+    /**
+     * @brief Get bandpass output (available regardless of mode)
+     */
+    float getBandpass() const { return m_band; }
+
+    void reset() {
+        m_low = 0.0f;
+        m_high = 0.0f;
+        m_band = 0.0f;
+    }
+
+private:
+    uint32_t m_sampleRate = 48000;
+    Mode m_mode = Mode::Lowpass;
+    float m_f = 0.1f;   // Frequency coefficient
+    float m_q = 0.5f;   // Damping (inverse of resonance)
+
+    // State variables
+    float m_low = 0.0f;
+    float m_high = 0.0f;
+    float m_band = 0.0f;
+
+    static constexpr float PI_VAL = 3.14159265358979323846f;
+};
+
+/**
+ * @brief Cascaded SVF for 24dB/oct slopes
+ *
+ * Two SVF stages in series for steeper filter slopes.
+ * Commonly used for more aggressive filtering in drum synthesis.
+ */
+class SVFFilter24 {
+public:
+    SVFFilter24() = default;
+
+    /**
+     * @brief Initialize both filter stages
+     * @param sampleRate Audio sample rate
+     */
+    void init(uint32_t sampleRate) {
+        m_stage1.init(sampleRate);
+        m_stage2.init(sampleRate);
+    }
+
+    /**
+     * @brief Set filter mode for both stages
+     */
+    void setMode(SVFFilter::Mode mode) {
+        m_stage1.setMode(mode);
+        m_stage2.setMode(mode);
+    }
+
+    /**
+     * @brief Set cutoff frequency for both stages
+     */
+    void setCutoff(float hz) {
+        m_stage1.setCutoff(hz);
+        m_stage2.setCutoff(hz);
+    }
+
+    /**
+     * @brief Set resonance for first stage only
+     *
+     * Second stage runs with minimal resonance to avoid
+     * excessive ringing while still providing steep rolloff.
+     */
+    void setResonance(float q) {
+        m_stage1.setResonance(q);
+        m_stage2.setResonance(0.0f);  // No resonance on second stage
+    }
+
+    /**
+     * @brief Process a sample through both stages
+     */
+    float process(float sample) {
+        return m_stage2.process(m_stage1.process(sample));
+    }
+
+    void reset() {
+        m_stage1.reset();
+        m_stage2.reset();
+    }
+
+private:
+    SVFFilter m_stage1;
+    SVFFilter m_stage2;
+};
+
 } // namespace vivid::audio::dsp

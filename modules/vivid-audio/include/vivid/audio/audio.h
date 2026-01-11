@@ -61,6 +61,11 @@
 #include <vivid/audio/snare.h>
 #include <vivid/audio/hihat.h>
 #include <vivid/audio/clap.h>
+#include <vivid/audio/tom.h>
+#include <vivid/audio/cymbal.h>
+#include <vivid/audio/fm_drum.h>
+#include <vivid/audio/clang.h>
+#include <vivid/audio/drum_stack.h>
 
 // Sequencing
 #include <vivid/audio/clock.h>

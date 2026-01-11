@@ -73,6 +73,11 @@ set(AUDIO_SOURCES
     src/snare.cpp
     src/hihat.cpp
     src/clap.cpp
+    src/tom.cpp
+    src/cymbal.cpp
+    src/fm_drum.cpp
+    src/clang.cpp
+    src/drum_stack.cpp
     # Sequencing
     src/clock.cpp
     src/sequencer.cpp

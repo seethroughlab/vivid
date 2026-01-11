@@ -13,6 +13,7 @@ REGISTER_OPERATOR_EX(Snare, "Audio Drums", "Snare drum with tone and noise", fal
 void Snare::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;
     allocateOutput();
+    m_filter.init(m_sampleRate);
     reset();
     m_initialized = true;
 }
@@ -35,38 +36,67 @@ void Snare::generateBlock(uint32_t frameCount) {
     float toneDecayTime = static_cast<float>(toneDecay) * m_sampleRate;
     float noiseDecayTime = static_cast<float>(noiseDecay) * m_sampleRate;
     float snappyAmt = static_cast<float>(snappy);
+    float colorAmt = static_cast<float>(color);
     float vol = static_cast<float>(volume);
 
     float toneDecayRate = (toneDecayTime > 0) ? (1.0f / toneDecayTime) : 1.0f;
     float noiseDecayRate = (noiseDecayTime > 0) ? (1.0f / noiseDecayTime) : 1.0f;
     float phaseInc = freq / m_sampleRate;
 
+    // Configure SVF filter based on type
+    switch (m_filterType) {
+        case SnareFilterType::Highpass:
+            m_filter.setMode(dsp::SVFFilter::Mode::Highpass);
+            m_filter.setCutoff(2000.0f + snappyAmt * 4000.0f);  // 2-6kHz
+            break;
+        case SnareFilterType::Lowpass:
+            m_filter.setMode(dsp::SVFFilter::Mode::Lowpass);
+            m_filter.setCutoff(8000.0f - snappyAmt * 6000.0f);  // 8-2kHz
+            break;
+        case SnareFilterType::Bandpass:
+            m_filter.setMode(dsp::SVFFilter::Mode::Bandpass);
+            m_filter.setCutoff(1500.0f + snappyAmt * 3000.0f);  // 1.5-4.5kHz
+            break;
+    }
+    m_filter.setResonance(0.3f);  // Mild resonance
+
     for (uint32_t i = 0; i < frameCount; ++i) {
-        // Tone component (sine with slight 2nd harmonic)
-        float tone = std::sin(m_phase * TWO_PI);
-        tone += 0.3f * std::sin(m_phase * TWO_PI * 2.0f);  // 2nd harmonic
-        tone *= m_toneEnv * toneAmt;
+        // Tone component (fundamental sine)
+        float toneSample = std::sin(m_phase * TWO_PI);
+
+        // Add harmonics based on color parameter
+        // 2nd harmonic adds warmth, 3rd adds edge
+        float harm2 = std::sin(m_phase2 * TWO_PI) * 0.5f;
+        float harm3 = std::sin(m_phase3 * TWO_PI) * 0.25f;
+        toneSample = toneSample * (1.0f - colorAmt * 0.5f) + (harm2 + harm3) * colorAmt;
+        toneSample *= m_toneEnv * toneAmt;
 
         // Noise component
-        float noise = generateNoise();
+        float noiseSample = generateNoise();
 
-        // Apply snappy highpass filter to noise
+        // Apply SVF filter to noise
         if (snappyAmt > 0.0f) {
-            float filtered = highpass(noise, 0);
-            noise = noise * (1.0f - snappyAmt) + filtered * snappyAmt;
+            float filtered = m_filter.process(noiseSample);
+            noiseSample = noiseSample * (1.0f - snappyAmt) + filtered * snappyAmt;
         }
-        noise *= m_noiseEnv * noiseAmt;
+        noiseSample *= m_noiseEnv * noiseAmt;
 
         // Mix
-        float sample = (tone + noise) * vol;
+        float sample = (toneSample + noiseSample) * vol;
 
         // Output
         m_output.samples[i * 2] = sample;
         m_output.samples[i * 2 + 1] = sample;
 
-        // Advance phase
+        // Advance phases
         m_phase += phaseInc;
         if (m_phase >= 1.0f) m_phase -= 1.0f;
+
+        m_phase2 += phaseInc * 2.0f;  // 2nd harmonic
+        if (m_phase2 >= 1.0f) m_phase2 -= 1.0f;
+
+        m_phase3 += phaseInc * 3.0f;  // 3rd harmonic
+        if (m_phase3 >= 1.0f) m_phase3 -= 1.0f;
 
         // Decay envelopes (exponential)
         m_toneEnv *= (1.0f - toneDecayRate);
@@ -96,10 +126,11 @@ void Snare::onTrigger() {
 
 void Snare::reset() {
     m_phase = 0.0f;
+    m_phase2 = 0.0f;
+    m_phase3 = 0.0f;
     m_toneEnv = 0.0f;
     m_noiseEnv = 0.0f;
-    m_hpState[0] = m_hpState[1] = 0.0f;
-    m_hpPrev[0] = m_hpPrev[1] = 0.0f;
+    m_filter.reset();
 }
 
 float Snare::generateNoise() {
@@ -107,18 +138,6 @@ float Snare::generateNoise() {
     m_seed ^= m_seed >> 17;
     m_seed ^= m_seed << 5;
     return (static_cast<float>(m_seed) / 2147483648.0f) - 1.0f;
-}
-
-float Snare::highpass(float in, int ch) {
-    // Simple one-pole highpass at ~2kHz
-    float cutoff = 2000.0f / m_sampleRate;
-    float rc = 1.0f / (TWO_PI * cutoff);
-    float alpha = rc / (rc + 1.0f / m_sampleRate);
-
-    float out = alpha * (m_hpPrev[ch] + in - m_hpState[ch]);
-    m_hpState[ch] = in;
-    m_hpPrev[ch] = out;
-    return out;
 }
 
 bool Snare::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {

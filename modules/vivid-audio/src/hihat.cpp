@@ -12,6 +12,10 @@ REGISTER_OPERATOR_EX(HiHat, "Audio Drums", "Hi-hat with metallic ring and noise"
 void HiHat::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;
     allocateOutput();
+    m_filter1.init(m_sampleRate);
+    m_filter2.init(m_sampleRate);
+    m_filter1.setMode(dsp::SVFFilter::Mode::Highpass);
+    m_filter2.setMode(dsp::SVFFilter::Mode::Highpass);
     reset();
     m_initialized = true;
 }
@@ -25,7 +29,6 @@ void HiHat::process(Context& ctx) {
 void HiHat::generateBlock(uint32_t frameCount) {
     if (!m_initialized) return;
 
-    // Resize buffer if needed
     if (m_output.frameCount != frameCount) {
         m_output.resize(frameCount);
     }
@@ -33,41 +36,70 @@ void HiHat::generateBlock(uint32_t frameCount) {
     float decayTime = static_cast<float>(decay) * m_sampleRate;
     float toneAmt = static_cast<float>(tone);
     float ringAmt = static_cast<float>(ring);
+    float pitchMult = static_cast<float>(pitch);
+    float attackTime = static_cast<float>(attack);
     float vol = static_cast<float>(volume);
 
     float decayRate = (decayTime > 0) ? (1.0f / decayTime) : 1.0f;
 
+    // Attack envelope for filter sweep
+    uint32_t attackSamples = static_cast<uint32_t>(attackTime * m_sampleRate);
+    float attackRate = (attackSamples > 0) ? (1.0f / attackSamples) : 0.0f;
+
     // Ring oscillator frequencies (metallic hi-hat character)
-    // Based on 808 hi-hat - 6 square wave oscillators
-    const float ringFreqs[6] = {205.3f, 304.4f, 369.6f, 522.7f, 540.0f, 800.0f};
+    const float baseRingFreqs[6] = {205.3f, 304.4f, 369.6f, 522.7f, 540.0f, 800.0f};
+
+    // Configure filters
+    float baseCutoff = 4000.0f + toneAmt * 8000.0f;  // 4-12kHz
+    m_filter1.setResonance(0.2f);
+    m_filter2.setResonance(0.0f);
 
     for (uint32_t i = 0; i < frameCount; ++i) {
-        // Generate noise base
-        float noise = generateNoise();
+        // Generate noise based on type
+        float noise;
+        if (m_noiseType == NoiseType::Pink) {
+            noise = generatePinkNoise();
+        } else {
+            noise = generateNoise();
+        }
 
         // Add metallic ring (sum of square waves at inharmonic frequencies)
-        float ring = 0.0f;
+        float ringSample = 0.0f;
         if (ringAmt > 0.0f) {
             for (int r = 0; r < 6; ++r) {
-                float phaseInc = ringFreqs[r] / m_sampleRate;
-                ring += (m_ringPhase[r] < 0.5f) ? 1.0f : -1.0f;
+                float freq = baseRingFreqs[r] * pitchMult;
+                float phaseInc = freq / m_sampleRate;
+                ringSample += (m_ringPhase[r] < 0.5f) ? 1.0f : -1.0f;
                 m_ringPhase[r] += phaseInc;
                 if (m_ringPhase[r] >= 1.0f) m_ringPhase[r] -= 1.0f;
             }
-            ring /= 6.0f;
+            ringSample /= 6.0f;
         }
 
         // Mix noise and ring
-        float sample = noise * (1.0f - ringAmt * 0.5f) + ring * ringAmt;
+        float sample = noise * (1.0f - ringAmt * 0.5f) + ringSample * ringAmt;
 
-        // Apply highpass filter for brightness
-        sample = highpass(sample, 0);
+        // Update filter envelope (for attack)
+        if (m_attackSample < attackSamples) {
+            m_filterEnv = static_cast<float>(m_attackSample) * attackRate;
+            m_attackSample++;
+        } else {
+            m_filterEnv = 1.0f;
+        }
 
-        // Additional bandpass for tone shaping
-        float cutoff = 4000.0f + toneAmt * 8000.0f;  // 4kHz to 12kHz
-        sample = bandpass(sample, 0);
+        // Apply filter cutoff with envelope
+        float cutoff = baseCutoff * m_filterEnv;
+        m_filter1.setCutoff(std::max(100.0f, cutoff));
 
-        // Apply envelope
+        // Apply SVF highpass filter(s)
+        sample = m_filter1.process(sample);
+
+        if (m_filterSlope == FilterSlope::Slope24dB) {
+            m_filter2.setCutoff(std::max(100.0f, cutoff));
+            sample = m_filter2.process(sample);
+        }
+
+        // Apply amplitude envelope
         sample *= m_env * vol;
 
         // Output
@@ -103,6 +135,8 @@ void HiHat::cleanup() {
 
 void HiHat::onTrigger() {
     m_env = 1.0f;
+    m_filterEnv = 0.0f;
+    m_attackSample = 0;
 }
 
 void HiHat::choke() {
@@ -111,10 +145,14 @@ void HiHat::choke() {
 
 void HiHat::reset() {
     m_env = 0.0f;
+    m_filterEnv = 0.0f;
+    m_attackSample = 0;
     for (int i = 0; i < 6; ++i) m_ringPhase[i] = 0.0f;
-    m_bpState1[0] = m_bpState1[1] = 0.0f;
-    m_bpState2[0] = m_bpState2[1] = 0.0f;
-    m_hpState[0] = m_hpState[1] = 0.0f;
+    for (int i = 0; i < 16; ++i) m_pinkRows[i] = 0.0f;
+    m_pinkIndex = 0;
+    m_pinkRunningSum = 0.0f;
+    m_filter1.reset();
+    m_filter2.reset();
 }
 
 float HiHat::generateNoise() {
@@ -124,29 +162,30 @@ float HiHat::generateNoise() {
     return (static_cast<float>(m_seed) / 2147483648.0f) - 1.0f;
 }
 
-float HiHat::bandpass(float in, int ch) {
-    // Simple 2-pole bandpass around 8kHz
-    float freq = 8000.0f;
-    float Q = 2.0f;
-    float omega = TWO_PI * freq / m_sampleRate;
-    float f = 2.0f * std::sin(omega * 0.5f);  // Proper SVF frequency coefficient
+float HiHat::generatePinkNoise() {
+    // Voss-McCartney algorithm for pink noise
+    // Uses 16 random values updated at different rates
+    float white = generateNoise();
 
-    // State-variable filter (damping = 1/Q)
-    float damp = 1.0f / Q;
-    m_bpState2[ch] += f * m_bpState1[ch];  // lowpass
-    float hp = in - m_bpState2[ch] - damp * m_bpState1[ch];
-    m_bpState1[ch] += f * hp;  // bandpass
+    m_pinkIndex = (m_pinkIndex + 1) & 15;
 
-    return m_bpState1[ch];
-}
+    // Update rows based on trailing zeros in index
+    if (m_pinkIndex != 0) {
+        int numZeros = 0;
+        int n = m_pinkIndex;
+        while ((n & 1) == 0) {
+            numZeros++;
+            n >>= 1;
+        }
 
-float HiHat::highpass(float in, int ch) {
-    // One-pole highpass at ~7kHz
-    float alpha = 0.7f;  // Approximate for high cutoff
-    float out = alpha * (m_hpState[ch] + in);
-    float delta = in - m_hpState[ch];
-    m_hpState[ch] = in;
-    return out * 0.5f + delta * 0.5f;
+        m_pinkRunningSum -= m_pinkRows[numZeros];
+        float newRandom = generateNoise();
+        m_pinkRunningSum += newRandom;
+        m_pinkRows[numZeros] = newRandom;
+    }
+
+    // Sum and normalize
+    return (m_pinkRunningSum + white) * 0.0625f;  // /16 for normalization
 }
 
 bool HiHat::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {

@@ -8,12 +8,22 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/audio/dsp/filters.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
 
 namespace vivid::audio {
+
+/**
+ * @brief Snare filter mode
+ */
+enum class SnareFilterType {
+    Highpass,   ///< High-pass (default, bright snappy sound)
+    Lowpass,    ///< Low-pass (darker, thuddy sound)
+    Bandpass    ///< Band-pass (focused mid-range)
+};
 
 /**
  * @brief Snare drum synthesizer
@@ -30,7 +40,9 @@ namespace vivid::audio {
  * | pitch | float | 100-400 | 200 | Tone pitch in Hz |
  * | toneDecay | float | 0.01-0.5 | 0.1 | Tone envelope decay |
  * | noiseDecay | float | 0.05-0.5 | 0.2 | Noise envelope decay |
- * | snappy | float | 0-1 | 0.5 | High-frequency emphasis |
+ * | snappy | float | 0-1 | 0.5 | Filter emphasis amount |
+ * | color | float | 0-1 | 0.3 | Harmonic content of body |
+ * | filterType | enum | HP/LP/BP | HP | Noise filter mode |
  *
  * @par Example
  * @code
@@ -56,8 +68,21 @@ public:
     Param<float> pitch{"pitch", 200.0f, 100.0f, 400.0f};     ///< Tone pitch in Hz
     Param<float> toneDecay{"toneDecay", 0.1f, 0.01f, 0.5f};  ///< Tone envelope decay
     Param<float> noiseDecay{"noiseDecay", 0.2f, 0.05f, 0.5f}; ///< Noise envelope decay
-    Param<float> snappy{"snappy", 0.5f, 0.0f, 1.0f};         ///< High-freq emphasis
+    Param<float> snappy{"snappy", 0.5f, 0.0f, 1.0f};         ///< Filter emphasis
+    Param<float> color{"color", 0.3f, 0.0f, 1.0f};           ///< Harmonic content
     Param<float> volume{"volume", 0.8f, 0.0f, 1.0f};         ///< Output volume
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Configuration
+    /// @{
+
+    /**
+     * @brief Set noise filter type
+     * @param type Highpass, Lowpass, or Bandpass
+     */
+    void filterType(SnareFilterType type) { m_filterType = type; }
+    SnareFilterType filterType() const { return m_filterType; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -69,6 +94,7 @@ public:
         registerParam(toneDecay);
         registerParam(noiseDecay);
         registerParam(snappy);
+        registerParam(color);
         registerParam(volume);
     }
     ~Snare() override = default;
@@ -110,17 +136,18 @@ protected:
 
 private:
     float generateNoise();
-    float highpass(float in, int ch);
 
     // State
     float m_phase = 0.0f;
+    float m_phase2 = 0.0f;  // 2nd harmonic phase
+    float m_phase3 = 0.0f;  // 3rd harmonic phase
     float m_toneEnv = 0.0f;
     float m_noiseEnv = 0.0f;
     uint32_t m_seed = 12345;
 
-    // Highpass filter state for snappy
-    float m_hpState[2] = {0, 0};
-    float m_hpPrev[2] = {0, 0};  // Previous output for proper filter continuity
+    // SVF filter for noise shaping
+    dsp::SVFFilter m_filter;
+    SnareFilterType m_filterType = SnareFilterType::Highpass;
 
     uint32_t m_sampleRate = 48000;
 

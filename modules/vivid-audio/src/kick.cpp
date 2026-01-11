@@ -37,6 +37,8 @@ void Kick::generateBlock(uint32_t frameCount) {
     float ampDecayTime = static_cast<float>(decay) * m_sampleRate;
     float clickAmt = static_cast<float>(click);
     float driveAmt = static_cast<float>(drive);
+    float overtoneAmt = static_cast<float>(overtones);
+    float attackTime = static_cast<float>(attack);
     float vol = static_cast<float>(volume);
 
     float pitchDecayRate = (pitchDecayTime > 0) ? (1.0f / pitchDecayTime) : 1.0f;
@@ -44,27 +46,39 @@ void Kick::generateBlock(uint32_t frameCount) {
     float clickDecaySamples = m_sampleRate * 0.002f;  // 2ms = ~96 samples at 48kHz
     float clickDecayRate = 1.0f / clickDecaySamples;
 
+    // Attack envelope: fade-in time
+    uint32_t attackSamples = static_cast<uint32_t>(attackTime * m_sampleRate);
+    float attackRate = (attackSamples > 0) ? (1.0f / attackSamples) : 0.0f;
+
     for (uint32_t i = 0; i < frameCount; ++i) {
         // Compute current frequency (pitch envelope)
         float freq = basePitch + pitchEnvAmt * m_pitchEnvValue;
         float phaseInc = freq / m_sampleRate;
 
-        // Generate sine oscillator
+        // Generate fundamental sine oscillator
         float osc = std::sin(m_phase * TWO_PI);
 
+        // Add overtones (2nd and 3rd harmonics)
+        if (overtoneAmt > 0.0f) {
+            // 2nd harmonic at ~0.5x level, 3rd at ~0.25x level
+            float harm2 = std::sin(m_phase2 * TWO_PI) * 0.5f;
+            float harm3 = std::sin(m_phase3 * TWO_PI) * 0.25f;
+            osc = osc * (1.0f - overtoneAmt * 0.4f) + (harm2 + harm3) * overtoneAmt;
+        }
+
         // Generate click (short noise burst)
-        float click = 0.0f;
+        float clickSample = 0.0f;
         if (m_clickEnv > 0.0f && clickAmt > 0.0f) {
             // Simple noise for click
             uint32_t seed = static_cast<uint32_t>(m_phase * 1000000.0f) ^ 0x5DEECE66D;
             seed ^= seed << 13;
             seed ^= seed >> 17;
             seed ^= seed << 5;
-            click = ((seed / 2147483648.0f) - 1.0f) * m_clickEnv * clickAmt;
+            clickSample = ((seed / 2147483648.0f) - 1.0f) * m_clickEnv * clickAmt;
         }
 
-        // Mix and apply envelope
-        float sample = (osc + click) * m_ampEnv;
+        // Mix and apply envelope with attack
+        float sample = (osc + clickSample) * m_ampEnv * m_attackEnv;
 
         // Apply soft saturation/drive
         if (driveAmt > 0.0f) {
@@ -77,9 +91,23 @@ void Kick::generateBlock(uint32_t frameCount) {
         m_output.samples[i * 2] = sample;
         m_output.samples[i * 2 + 1] = sample;
 
-        // Advance phase
+        // Advance phases (fundamental and harmonics)
         m_phase += phaseInc;
         if (m_phase >= 1.0f) m_phase -= 1.0f;
+
+        m_phase2 += phaseInc * 2.0f;  // 2nd harmonic = 2x frequency
+        if (m_phase2 >= 1.0f) m_phase2 -= 1.0f;
+
+        m_phase3 += phaseInc * 3.0f;  // 3rd harmonic = 3x frequency
+        if (m_phase3 >= 1.0f) m_phase3 -= 1.0f;
+
+        // Update attack envelope (ramp up from 0 to 1)
+        if (m_attackSample < attackSamples) {
+            m_attackEnv = static_cast<float>(m_attackSample) * attackRate;
+            m_attackSample++;
+        } else {
+            m_attackEnv = 1.0f;
+        }
 
         // Decay envelopes (exponential)
         m_pitchEnvValue *= (1.0f - pitchDecayRate);
@@ -108,14 +136,20 @@ void Kick::onTrigger() {
     m_ampEnv = 1.0f;
     m_pitchEnvValue = 1.0f;
     m_clickEnv = 1.0f;
+    m_attackEnv = 0.0f;  // Start at 0 for attack fade-in
+    m_attackSample = 0;
     // Don't reset phase for punch
 }
 
 void Kick::reset() {
     m_phase = 0.0f;
+    m_phase2 = 0.0f;
+    m_phase3 = 0.0f;
     m_ampEnv = 0.0f;
     m_pitchEnvValue = 0.0f;
     m_clickEnv = 0.0f;
+    m_attackEnv = 1.0f;
+    m_attackSample = 0;
 }
 
 float Kick::softClip(float x) const {

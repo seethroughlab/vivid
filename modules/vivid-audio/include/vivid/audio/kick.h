@@ -31,6 +31,8 @@ namespace vivid::audio {
  * | decay | float | 0.05-2 | 0.5 | Amplitude decay time |
  * | click | float | 0-1 | 0.3 | Click/transient amount |
  * | drive | float | 0-1 | 0 | Soft saturation amount |
+ * | overtones | float | 0-1 | 0 | Harmonic content (2nd/3rd) |
+ * | attack | float | 0-0.1 | 0 | Transient softening time |
  *
  * @par Example
  * @code
@@ -57,6 +59,8 @@ public:
     ADSRParam envelope{"envelope", 0.001f, 0.5f, 0.0f, 0.1f, 2.0f};  ///< Amplitude ADSR envelope
     Param<float> click{"click", 0.3f, 0.0f, 1.0f};               ///< Click/transient amount
     Param<float> drive{"drive", 0.0f, 0.0f, 1.0f};               ///< Soft saturation
+    Param<float> overtones{"overtones", 0.0f, 0.0f, 1.0f};       ///< Harmonic content (2nd/3rd)
+    Param<float> attack{"attack", 0.0f, 0.0f, 0.1f};             ///< Transient softening time
     Param<float> volume{"volume", 0.8f, 0.0f, 1.0f};             ///< Output volume
 
     /// Convenience: access decay time (alias for envelope.decay)
@@ -74,6 +78,8 @@ public:
         registerParam(envelope);
         registerParam(click);
         registerParam(drive);
+        registerParam(overtones);
+        registerParam(attack);
         registerParam(volume);
     }
     ~Kick() override = default;
@@ -119,9 +125,13 @@ private:
 
     // State
     float m_phase = 0.0f;
+    float m_phase2 = 0.0f;      // 2nd harmonic phase
+    float m_phase3 = 0.0f;      // 3rd harmonic phase
     float m_ampEnv = 0.0f;
     float m_pitchEnvValue = 0.0f;
     float m_clickEnv = 0.0f;
+    float m_attackEnv = 1.0f;   // Attack fade-in (0->1)
+    uint32_t m_attackSample = 0;
     uint32_t m_sampleRate = 48000;
 
     static constexpr float TWO_PI = 6.28318530718f;

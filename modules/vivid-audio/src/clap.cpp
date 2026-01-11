@@ -12,6 +12,10 @@ REGISTER_OPERATOR_EX(Clap, "Audio Drums", "Hand clap with multiple noise bursts"
 void Clap::init(Context& ctx) {
     m_sampleRate = AUDIO_SAMPLE_RATE;
     allocateOutput();
+    m_filter.init(m_sampleRate);
+    m_filter.setMode(dsp::SVFFilter::Mode::Bandpass);
+    m_tailFilter.init(m_sampleRate);
+    m_tailFilter.setMode(dsp::SVFFilter::Mode::Bandpass);
     reset();
     m_initialized = true;
 }
@@ -30,40 +34,78 @@ void Clap::generateBlock(uint32_t frameCount) {
 
     float decayTime = static_cast<float>(decay) * m_sampleRate;
     float toneAmt = static_cast<float>(tone);
-    float spreadAmt = static_cast<float>(spread);
+    float tailAmt = static_cast<float>(tail);
+    float stereoAmt = static_cast<float>(stereoWidth);
+    float tuneHz = static_cast<float>(tune);
     float vol = static_cast<float>(volume);
 
     float decayRate = (decayTime > 0) ? (1.0f / decayTime) : 1.0f;
 
-    for (uint32_t i = 0; i < frameCount; ++i) {
-        float sample = 0.0f;
+    // Configure filters
+    float filterFreq = tuneHz + toneAmt * 1000.0f;  // tune + brightness adjustment
+    m_filter.setCutoff(filterFreq);
+    m_filter.setResonance(0.4f);
 
-        // Sum all burst envelopes
+    // Tail filter is slightly lower for body
+    m_tailFilter.setCutoff(filterFreq * 0.7f);
+    m_tailFilter.setResonance(0.3f);
+
+    for (uint32_t i = 0; i < frameCount; ++i) {
+        float sampleL = 0.0f;
+        float sampleR = 0.0f;
+
+        // Sum all burst envelopes with stereo placement
         for (int b = 0; b < NUM_BURSTS; ++b) {
             if (m_samplesSinceTrigger >= m_burstDelay[b] && m_burstEnv[b] > 0.0001f) {
                 float noise = generateNoise();
-                sample += noise * m_burstEnv[b];
+                float burstSample = noise * m_burstEnv[b];
+
+                // Apply stereo panning based on burst position
+                float pan = m_burstPan[b] * stereoAmt;
+                float gainL = 1.0f - std::max(0.0f, pan);   // Reduce left for right pan
+                float gainR = 1.0f - std::max(0.0f, -pan);  // Reduce right for left pan
+
+                sampleL += burstSample * gainL;
+                sampleR += burstSample * gainR;
 
                 // Decay each burst independently (fast attack for snap)
                 m_burstEnv[b] *= 0.99f;
             }
         }
 
-        // Bandpass filter for clap character (around 1-2kHz)
-        sample = bandpass(sample, 0);
+        // Bandpass filter for clap character
+        float monoSample = (sampleL + sampleR) * 0.5f;
+        float filtered = m_filter.process(monoSample) * 3.0f;
+
+        // Add filtered noise tail
+        if (tailAmt > 0.0f && m_tailEnv > 0.0001f) {
+            float tailNoise = generateNoise() * m_tailEnv * tailAmt;
+            float tailFiltered = m_tailFilter.process(tailNoise) * 2.0f;
+            filtered += tailFiltered;
+        }
 
         // Apply overall envelope
-        sample *= m_env * vol;
+        filtered *= m_env * vol;
+
+        // Mix stereo spread back in
+        if (stereoAmt > 0.0f) {
+            sampleL = filtered * (1.0f - stereoAmt * 0.5f) + m_filter.process(sampleL) * stereoAmt * 0.5f * m_env * vol * 3.0f;
+            sampleR = filtered * (1.0f - stereoAmt * 0.5f) + m_filter.process(sampleR) * stereoAmt * 0.5f * m_env * vol * 3.0f;
+        } else {
+            sampleL = filtered;
+            sampleR = filtered;
+        }
 
         // Output
-        m_output.samples[i * 2] = sample;
-        m_output.samples[i * 2 + 1] = sample;
+        m_output.samples[i * 2] = sampleL;
+        m_output.samples[i * 2 + 1] = sampleR;
 
         // Advance time
         m_samplesSinceTrigger++;
 
-        // Decay overall envelope
+        // Decay envelopes
         m_env *= (1.0f - decayRate * 0.2f);
+        m_tailEnv *= (1.0f - decayRate * 0.15f);  // Tail decays slightly slower
     }
 }
 
@@ -84,23 +126,31 @@ void Clap::cleanup() {
 
 void Clap::onTrigger() {
     m_env = 1.0f;
+    m_tailEnv = 1.0f;
     m_samplesSinceTrigger = 0;
 
-    float spreadAmt = static_cast<float>(spread);
+    float sloppyAmt = static_cast<float>(sloppy);
 
-    // Set up burst delays (spread determines timing between bursts)
+    // Set up burst delays (sloppy determines timing between bursts)
     // Base spacing: ~10-30ms between bursts
     uint32_t baseSpacing = static_cast<uint32_t>(m_sampleRate * 0.015f);  // 15ms base
-    uint32_t spreadRange = static_cast<uint32_t>(m_sampleRate * 0.02f * spreadAmt);  // 0-20ms variation
+    uint32_t sloppyRange = static_cast<uint32_t>(m_sampleRate * 0.02f * sloppyAmt);  // 0-20ms variation
 
     m_burstDelay[0] = 0;
+    m_burstEnv[0] = 1.0f;
+
     for (int b = 1; b < NUM_BURSTS; ++b) {
         // Add some randomness to timing
-        uint32_t variation = (m_seed >> (b * 3)) % (spreadRange + 1);
+        uint32_t variation = (m_seed >> (b * 3)) % (sloppyRange + 1);
         m_burstDelay[b] = m_burstDelay[b - 1] + baseSpacing + variation;
         m_burstEnv[b] = 1.0f;
     }
-    m_burstEnv[0] = 1.0f;
+
+    // Set up stereo panning for each burst (spread across stereo field)
+    m_burstPan[0] = -0.5f;  // Left-ish
+    m_burstPan[1] = 0.3f;   // Right-ish
+    m_burstPan[2] = -0.2f;  // Slightly left
+    m_burstPan[3] = 0.4f;   // Right
 
     // Randomize seed for next trigger
     m_seed ^= m_seed << 13;
@@ -110,13 +160,15 @@ void Clap::onTrigger() {
 
 void Clap::reset() {
     m_env = 0.0f;
+    m_tailEnv = 0.0f;
     m_samplesSinceTrigger = 0;
     for (int b = 0; b < NUM_BURSTS; ++b) {
         m_burstEnv[b] = 0.0f;
         m_burstDelay[b] = 0;
+        m_burstPan[b] = 0.0f;
     }
-    m_bpState1[0] = m_bpState1[1] = 0.0f;
-    m_bpState2[0] = m_bpState2[1] = 0.0f;
+    m_filter.reset();
+    m_tailFilter.reset();
 }
 
 float Clap::generateNoise() {
@@ -124,22 +176,6 @@ float Clap::generateNoise() {
     m_seed ^= m_seed >> 17;
     m_seed ^= m_seed << 5;
     return (static_cast<float>(m_seed) / 2147483648.0f) - 1.0f;
-}
-
-float Clap::bandpass(float in, int ch) {
-    // Bandpass around 1.5kHz with moderate Q
-    float freq = 1500.0f + static_cast<float>(tone) * 1000.0f;  // 1.5kHz to 2.5kHz
-    float Q = 1.5f;
-    float omega = 6.28318530718f * freq / m_sampleRate;
-    float f = 2.0f * std::sin(omega * 0.5f);  // Proper SVF frequency coefficient
-
-    // State-variable filter (damping = 1/Q)
-    float damp = 1.0f / Q;
-    m_bpState2[ch] += f * m_bpState1[ch];  // lowpass
-    float hp = in - m_bpState2[ch] - damp * m_bpState1[ch];
-    m_bpState1[ch] += f * hp;  // bandpass
-
-    return m_bpState1[ch] * 3.0f;  // Boost bandpass output
 }
 
 bool Clap::drawVisualization(VizDrawList* dl, float minX, float minY, float maxX, float maxY) {
