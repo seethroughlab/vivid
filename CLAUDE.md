@@ -209,6 +209,53 @@ VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
 | Main runtime loop | `modules/vivid-core/src/main.cpp` |
 | Operator base class | `modules/vivid-core/include/vivid/operator.h` |
 
+## Video Audio Modes
+
+When using `VideoPlayer` with audio, there are two modes:
+
+### Internal Audio (recommended for playback)
+```cpp
+video.setInternalAudioEnabled(true);  // Default
+```
+- Audio handled directly by AVPlayer (macOS) / platform decoder
+- **Perfect A/V sync** - audio and video are synchronized by the native player
+- No audio processing or effects available
+- Use this when you just want to play a video with sound
+
+### Chain Audio (for effects/processing)
+```cpp
+video.setInternalAudioEnabled(false);
+
+auto& videoAudio = chain.add<VideoAudio>("videoAudio");
+videoAudio.setSource("video");  // Extract audio from VideoPlayer
+
+auto& delay = chain.add<Delay>("delay");
+delay.input("videoAudio");
+
+auto& output = chain.add<AudioOutput>("out");
+output.setInput("delay");
+chain.audioOutput("out");
+```
+- Audio extracted and routed through Vivid's audio chain
+- Enables audio effects (delay, reverb, gain, etc.)
+- **May have A/V sync issues** due to processing latency
+- Use this when you need audio-reactive visuals or audio effects
+
+See `modules/vivid-video/examples/video-audio/` for a complete example with both modes.
+
+## Known Issues
+
+### Windows: vivid-opencv build disabled
+The OpenCV module is currently disabled on Windows due to MSVC STL ABI incompatibility.
+
+**Error:** `LNK2019: unresolved external symbol __std_find_first_of_trivial_pos_1`
+
+**Cause:** opencv-mobile v35 prebuilt libraries use MSVC 14.3x STL, but newer Visual Studio versions (14.43+) have breaking ABI changes.
+
+**Workarounds:**
+1. Build OpenCV from source on Windows
+2. Wait for opencv-mobile to release builds with newer MSVC
+
 ## Documentation
 
 - `docs/RECIPES.md` - Complete chain.cpp examples

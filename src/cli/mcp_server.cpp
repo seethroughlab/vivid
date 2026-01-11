@@ -830,7 +830,7 @@ private:
         // search_docs - Search documentation
         tools.push_back({
             {"name", "search_docs"},
-            {"description", "Search Vivid documentation (RECIPES, CHAIN-API, CANVAS-API, ERROR-REFERENCE, PHILOSOPHY, CREATING-OPERATORS). Returns matching sections."},
+            {"description", "Search Vivid documentation including core docs (RECIPES, CHAIN-API, etc.), module READMEs (Audio, Video, Render3D, etc.), and example CLAUDE.md files. Returns matching sections."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
@@ -1872,27 +1872,141 @@ private:
         return {};
     }
 
-    // Get all markdown files in docs directory
-    std::vector<std::pair<std::string, std::string>> getDocFiles() {
-        std::vector<std::pair<std::string, std::string>> docs;
-        fs::path docsDir = findDocsDir();
-        if (docsDir.empty()) return docs;
+    // Find the modules directory (built-in modules)
+    fs::path findModulesDir() {
+        std::vector<fs::path> searchPaths;
 
-        for (const auto& entry : fs::directory_iterator(docsDir)) {
-            if (entry.is_regular_file() && entry.path().extension() == ".md") {
-                std::string filename = entry.path().filename().string();
-                // Skip README.md (usually just an index)
-                if (filename == "README.md") continue;
+        // 1. Current working directory (dev: running from repo root)
+        searchPaths.push_back(fs::current_path() / "modules");
 
-                // Create human-readable name from filename
-                std::string name = filename.substr(0, filename.length() - 3);  // Remove .md
-                // Replace - and _ with spaces, capitalize words
-                std::replace(name.begin(), name.end(), '-', ' ');
-                std::replace(name.begin(), name.end(), '_', ' ');
+        // 2. Relative to executable
+        fs::path exeDir = fs::path(getVividExecutable()).parent_path();
+        // Release: exe in bin/, modules at ../modules/
+        searchPaths.push_back(exeDir.parent_path() / "modules");
+        // Dev: exe in build/bin/, modules at ../../modules/
+        searchPaths.push_back(exeDir.parent_path().parent_path() / "modules");
 
-                docs.push_back({filename, name});
+        for (const auto& path : searchPaths) {
+            if (fs::exists(path) && fs::is_directory(path)) {
+                return path;
             }
         }
+        return {};
+    }
+
+    // Get user's home directory
+    std::string getHomeDir() {
+        const char* home = getenv("HOME");
+#ifdef _WIN32
+        if (!home) home = getenv("USERPROFILE");
+#endif
+        return home ? home : "";
+    }
+
+    // Format module name: "vivid-audio" -> "Audio"
+    std::string formatModuleName(const std::string& dirName) {
+        std::string name = dirName;
+        // Remove "vivid-" prefix
+        if (name.rfind("vivid-", 0) == 0) {
+            name = name.substr(6);
+        }
+        // Capitalize first letter
+        if (!name.empty()) {
+            name[0] = std::toupper(static_cast<unsigned char>(name[0]));
+        }
+        return name;
+    }
+
+    // Format example name: "drum-machine" -> "Drum Machine"
+    std::string formatExampleName(const std::string& dirName) {
+        std::string name = dirName;
+        std::replace(name.begin(), name.end(), '-', ' ');
+        std::replace(name.begin(), name.end(), '_', ' ');
+        // Capitalize first letter of each word
+        bool capitalizeNext = true;
+        for (char& c : name) {
+            if (c == ' ') {
+                capitalizeNext = true;
+            } else if (capitalizeNext) {
+                c = std::toupper(static_cast<unsigned char>(c));
+                capitalizeNext = false;
+            }
+        }
+        return name;
+    }
+
+    // Scan a modules directory for READMEs and example CLAUDE.md files
+    void scanModulesDir(const fs::path& modulesDir, std::vector<std::pair<std::string, std::string>>& docs, bool isUserModules = false) {
+        if (!fs::exists(modulesDir) || !fs::is_directory(modulesDir)) return;
+
+        try {
+            for (const auto& moduleEntry : fs::directory_iterator(modulesDir)) {
+                if (!moduleEntry.is_directory()) continue;
+
+                std::string moduleDirName = moduleEntry.path().filename().string();
+                std::string moduleName = formatModuleName(moduleDirName);
+                std::string prefix = isUserModules ? "[User] " : "";
+
+                // Check for module README.md
+                fs::path readme = moduleEntry.path() / "README.md";
+                if (fs::exists(readme)) {
+                    docs.push_back({readme.string(), prefix + moduleName + " Module"});
+                }
+
+                // Scan examples for CLAUDE.md files
+                fs::path examplesDir = moduleEntry.path() / "examples";
+                if (fs::exists(examplesDir) && fs::is_directory(examplesDir)) {
+                    for (const auto& exampleEntry : fs::directory_iterator(examplesDir)) {
+                        if (!exampleEntry.is_directory()) continue;
+
+                        fs::path claudeMd = exampleEntry.path() / "CLAUDE.md";
+                        if (fs::exists(claudeMd)) {
+                            std::string exampleName = formatExampleName(exampleEntry.path().filename().string());
+                            docs.push_back({claudeMd.string(), prefix + moduleName + ": " + exampleName});
+                        }
+                    }
+                }
+            }
+        } catch (const std::exception& e) {
+            // Ignore errors (permission issues, etc.)
+        }
+    }
+
+    // Get all markdown files in docs directory and modules
+    std::vector<std::pair<std::string, std::string>> getDocFiles() {
+        std::vector<std::pair<std::string, std::string>> docs;
+
+        // 1. Scan docs/ directory
+        fs::path docsDir = findDocsDir();
+        if (!docsDir.empty()) {
+            for (const auto& entry : fs::directory_iterator(docsDir)) {
+                if (entry.is_regular_file() && entry.path().extension() == ".md") {
+                    std::string filename = entry.path().filename().string();
+                    // Skip README.md (usually just an index)
+                    if (filename == "README.md") continue;
+
+                    // Create human-readable name from filename
+                    std::string name = filename.substr(0, filename.length() - 3);  // Remove .md
+                    // Replace - and _ with spaces, capitalize words
+                    std::replace(name.begin(), name.end(), '-', ' ');
+                    std::replace(name.begin(), name.end(), '_', ' ');
+
+                    docs.push_back({entry.path().string(), name});
+                }
+            }
+        }
+
+        // 2. Scan built-in modules (modules/vivid-*/README.md and examples/*/CLAUDE.md)
+        fs::path modulesDir = findModulesDir();
+        scanModulesDir(modulesDir, docs, false);
+
+        // 3. Scan user-installed modules (~/.vivid/modules/*)
+        std::string homeDir = getHomeDir();
+        if (!homeDir.empty()) {
+            fs::path userModulesDir = fs::path(homeDir) / ".vivid" / "modules";
+            scanModulesDir(userModulesDir, docs, true);
+        }
+
         return docs;
     }
 
@@ -1944,7 +2058,19 @@ private:
     }
 
     std::string loadDocsFile(const std::string& filename) {
-        // Search multiple locations for documentation files
+        // First, check if filename is already a full/absolute path that exists
+        // (used for module docs which are returned with full paths)
+        fs::path directPath(filename);
+        if (fs::exists(directPath)) {
+            std::ifstream file(directPath);
+            if (file) {
+                std::stringstream buffer;
+                buffer << file.rdbuf();
+                return buffer.str();
+            }
+        }
+
+        // Search multiple locations for documentation files (for docs/ files)
         std::vector<fs::path> searchPaths;
 
         // 1. Current working directory (common for dev builds)

@@ -91,6 +91,8 @@ jobs:
         run: |
           if [[ "${{ matrix.target }}" == "linux-arm64" ]]; then
             cmake --build build --config Release --parallel 2
+          elif [[ "${{ matrix.target }}" == "linux-x64" ]]; then
+            cmake --build build --config Release --parallel 4
           else
             cmake --build build --config Release --parallel
           fi
@@ -118,14 +120,9 @@ jobs:
           cp build/lib/*.dylib package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
           cp build/lib/*.so package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
 
-          # Copy headers
+          # Copy headers (vivid-core + dependencies for SDK)
           cp -r modules/vivid-core/include/vivid package/vivid-${{ matrix.target }}/include/
           cp -r build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
-
-          # Copy module headers (needed for third-party libraries that depend on vivid libraries)
-          for lib in modules/*/include/vivid/*/; do
-            cp -r "$lib" package/vivid-${{ matrix.target }}/include/vivid/
-          done
 
           # Copy dependency headers (needed by libraries building against SDK)
           cp -r build/_deps/glm-src/glm package/vivid-${{ matrix.target }}/include/
@@ -137,19 +134,27 @@ jobs:
           # Copy documentation for MCP server
           cp docs/CREATING-OPERATORS.md package/vivid-${{ matrix.target }}/docs/
           cp docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
-          cp modules/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md 2>/dev/null || true
-          cp modules/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md 2>/dev/null || true
-          cp modules/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md 2>/dev/null || true
 
           # Copy examples
           cp -r modules/vivid-core/examples package/vivid-${{ matrix.target }}/
 
-          # Copy module examples (referenced by operator .api() metadata)
+          # Copy modules (self-contained: include/ + README.md + examples/)
           mkdir -p package/vivid-${{ matrix.target }}/modules
-          for module in modules/*/examples; do
-            module_name=$(dirname "$module" | xargs basename)
+          for module in modules/vivid-*/; do
+            module_name=$(basename "$module")
             mkdir -p "package/vivid-${{ matrix.target }}/modules/$module_name"
-            cp -r "$module" "package/vivid-${{ matrix.target }}/modules/$module_name/"
+            # Copy include/ if exists
+            if [ -d "$module/include" ]; then
+              cp -r "$module/include" "package/vivid-${{ matrix.target }}/modules/$module_name/"
+            fi
+            # Copy README.md if exists
+            if [ -f "$module/README.md" ]; then
+              cp "$module/README.md" "package/vivid-${{ matrix.target }}/modules/$module_name/"
+            fi
+            # Copy examples/ if exists
+            if [ -d "$module/examples" ]; then
+              cp -r "$module/examples" "package/vivid-${{ matrix.target }}/modules/$module_name/"
+            fi
           done
 
           # Create archive (no version in filename - extension expects this)
@@ -172,21 +177,9 @@ jobs:
           Copy-Item build/bin/Release/*.dll package/vivid-${{ matrix.target }}/lib/ -ErrorAction SilentlyContinue
           Copy-Item build/lib/Release/*.dll package/vivid-${{ matrix.target }}/lib/ -ErrorAction SilentlyContinue
 
-          # Copy headers
+          # Copy headers (vivid-core + dependencies for SDK)
           Copy-Item -Recurse modules/vivid-core/include/vivid package/vivid-${{ matrix.target }}/include/
           Copy-Item -Recurse build/_deps/wgpu/include/webgpu package/vivid-${{ matrix.target }}/include/
-
-          # Copy module headers (needed for third-party libraries that depend on vivid libraries)
-          # Skip vivid-core since its headers are already copied above
-          # Use -Force to handle overlapping directory names between modules
-          Get-ChildItem -Path modules -Directory | Where-Object { $_.Name -ne "vivid-core" } | ForEach-Object {
-            $headerPath = Join-Path $_.FullName "include/vivid"
-            if (Test-Path $headerPath) {
-              Get-ChildItem -Path $headerPath -Directory | ForEach-Object {
-                Copy-Item -Recurse -Force $_.FullName package/vivid-${{ matrix.target }}/include/vivid/
-              }
-            }
-          }
 
           # Copy dependency headers (needed by libraries building against SDK)
           Copy-Item -Recurse build/_deps/glm-src/glm package/vivid-${{ matrix.target }}/include/
@@ -203,21 +196,29 @@ jobs:
           # Copy documentation for MCP server
           Copy-Item docs/CREATING-OPERATORS.md package/vivid-${{ matrix.target }}/docs/
           Copy-Item docs/RECIPES.md package/vivid-${{ matrix.target }}/docs/
-          Copy-Item modules/vivid-audio/README.md package/vivid-${{ matrix.target }}/docs/audio.md -ErrorAction SilentlyContinue
-          Copy-Item modules/vivid-video/README.md package/vivid-${{ matrix.target }}/docs/video.md -ErrorAction SilentlyContinue
-          Copy-Item modules/vivid-render3d/README.md package/vivid-${{ matrix.target }}/docs/render3d.md -ErrorAction SilentlyContinue
 
           # Copy examples
           Copy-Item -Recurse modules/vivid-core/examples package/vivid-${{ matrix.target }}/
 
-          # Copy module examples (referenced by operator .api() metadata)
+          # Copy modules (self-contained: include/ + README.md + examples/)
           New-Item -ItemType Directory -Force -Path package/vivid-${{ matrix.target }}/modules
-          Get-ChildItem -Path modules -Directory | ForEach-Object {
+          Get-ChildItem -Path modules -Directory | Where-Object { $_.Name -like "vivid-*" } | ForEach-Object {
             $moduleName = $_.Name
+            $destPath = Join-Path "package/vivid-${{ matrix.target }}/modules" $moduleName
+            New-Item -ItemType Directory -Force -Path $destPath
+            # Copy include/ if exists
+            $includePath = Join-Path $_.FullName "include"
+            if (Test-Path $includePath) {
+              Copy-Item -Recurse $includePath $destPath
+            }
+            # Copy README.md if exists
+            $readmePath = Join-Path $_.FullName "README.md"
+            if (Test-Path $readmePath) {
+              Copy-Item $readmePath $destPath
+            }
+            # Copy examples/ if exists
             $examplesPath = Join-Path $_.FullName "examples"
             if (Test-Path $examplesPath) {
-              $destPath = Join-Path "package/vivid-${{ matrix.target }}/modules" $moduleName
-              New-Item -ItemType Directory -Force -Path $destPath
               Copy-Item -Recurse $examplesPath $destPath
             }
           }

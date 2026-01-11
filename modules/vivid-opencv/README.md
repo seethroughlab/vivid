@@ -18,8 +18,19 @@ The module automatically downloads [opencv-mobile](https://github.com/nihui/open
 
 Supported platforms:
 - macOS (arm64, x86_64)
-- Windows (x64, VS2022)
 - Linux (Ubuntu 22.04+)
+
+### Windows (currently unavailable)
+
+Windows builds are temporarily disabled due to MSVC STL ABI incompatibility with opencv-mobile v35.
+
+**Error:** `LNK2019: unresolved external symbol __std_find_first_of_trivial_pos_1`
+
+**Cause:** The opencv-mobile prebuilt libraries were compiled with MSVC 14.3x, which has breaking ABI changes compared to MSVC 14.43+ used in newer Visual Studio versions.
+
+**Workarounds:**
+1. Build OpenCV from source on Windows
+2. Wait for opencv-mobile to release updated builds with newer MSVC
 
 ## Usage
 

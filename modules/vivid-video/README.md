@@ -68,14 +68,59 @@ VIVID_CHAIN(setup, update)
 
 ## Video with Audio
 
-```cpp
-// Video with synchronized audio output
-chain.add<VideoPlayer>("video")
-    .file("assets/videos/hap-1080p-audio.mov");
+There are two modes for playing video with audio:
 
-chain.add<VideoAudio>("audio")
-    .video("video");
+### Internal Audio (default)
+
+Uses the platform's native player for perfect audio/video synchronization. Best for simple playback without effects.
+
+```cpp
+auto& video = chain.add<VideoPlayer>("video");
+video.setFile("assets/videos/movie.mov");
+video.setInternalAudioEnabled(true);  // Default - uses AVPlayer/Media Foundation
+video.play();
+
+chain.output("video");
+// Audio plays automatically through system audio
 ```
+
+### Chain Audio
+
+Routes audio through Vivid's audio chain for effects processing. May introduce slight A/V sync drift due to processing latency.
+
+```cpp
+auto& video = chain.add<VideoPlayer>("video");
+video.setFile("assets/videos/movie.mov");
+video.setInternalAudioEnabled(false);  // Disable native audio
+video.play();
+
+// Extract audio from video
+auto& videoAudio = chain.add<VideoAudio>("videoAudio");
+videoAudio.setSource("video");
+
+// Add effects
+auto& delay = chain.add<Delay>("delay");
+delay.input("videoAudio");
+
+auto& reverb = chain.add<Reverb>("reverb");
+reverb.input("delay");
+
+// Output through audio chain
+auto& output = chain.add<AudioOutput>("out");
+output.setInput("reverb");
+
+chain.output("video");
+chain.audioOutput("out");
+```
+
+**When to use each mode:**
+
+| Mode | A/V Sync | Audio Effects | Use Case |
+|------|----------|---------------|----------|
+| Internal Audio | Perfect | None | Simple video playback |
+| Chain Audio | May drift | Yes (delay, reverb, etc.) | Audio-reactive visuals, DJ apps |
+
+See `modules/vivid-video/examples/video-audio/` for a complete example demonstrating both modes.
 
 ## Webcam Input
 

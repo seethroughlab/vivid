@@ -10,6 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.24] - 2026-01-11
+
+### Added
+
+- **MCP: Module documentation search** - `search_docs` now searches module READMEs and example CLAUDE.md files in addition to core docs
+- **Docs: Video audio modes** - Documentation for internal audio vs chain audio routing modes in vivid-video
+
+### Changed
+
+- **Release: Self-contained modules** - Built-in modules now include `include/`, `README.md`, and `examples/` in releases, matching user-contributed module structure (e.g., vivid-onnx)
+
+### Fixed
+
+- **Docs: Windows OpenCV known issue** - Documented MSVC STL ABI incompatibility with opencv-mobile v35
+- **CI: Linux x64 OOM** - Added `--parallel 4` limit for Linux x64 release builds to prevent out-of-memory kills
+
 ## [0.1.0-alpha.23] - 2026-01-11
 
 ### Added
