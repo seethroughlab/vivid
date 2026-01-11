@@ -43,6 +43,9 @@ VideoPlayer::~VideoPlayer() {
 }
 
 void VideoPlayer::init(Context& ctx) {
+    // Always create fallback texture so we have something to display
+    createFallbackTexture(ctx);
+
     if (!m_filePath.empty()) {
         loadVideo(ctx);
     }
@@ -144,10 +147,10 @@ void VideoPlayer::loadVideo(Context& ctx) {
         m_height = m_playbackDecoder->height();
         m_needsReload = false;
 
-        // Apply stored volume
+        // Apply stored settings (internal audio first, then volume)
+        m_playbackDecoder->setInternalAudioEnabled(m_internalAudioEnabled);
         m_playbackDecoder->setVolume(m_volume);
 
-        // Note: AVPlayer auto-plays, and handles audio internally
         std::cout << "[VideoPlayer] Loaded: " << m_filePath
                   << " (" << m_width << "x" << m_height
                   << ", " << m_playbackDecoder->duration() << "s)" << std::endl;

@@ -1,6 +1,6 @@
 # Video Audio
 
-Extract and process audio from video files.
+Extract and process audio from video files with real-time effects.
 
 ## Requirements
 
@@ -13,7 +13,9 @@ Extract and process audio from video files.
 - **VideoAudio** - Extract audio from video
 - **FFT** - Frequency analysis for visualization
 - **Levels** - Audio metering
-- **Delay** - Audio effect processing
+- **Delay** - Delay/echo effect
+- **Reverb** - Room reverb effect
+- **AudioGain** - Master volume control
 
 ## Key Concepts
 
@@ -74,8 +76,8 @@ float highs = fft.band(10);
 auto& levels = chain.add<Levels>("levels");
 levels.input("videoAudio");
 
-float left = levels.level(0);
-float right = levels.level(1);
+float left = levels.rmsLeft();
+float right = levels.rmsRight();
 ```
 
 ## Playback Control
@@ -107,8 +109,8 @@ video.setVolume(0.8f);  // 80% volume
 
 ```cpp
 // Modulate video effects with audio
-float level = levels.level(0);
-float bass = fft.band(0);
+float level = levels.rmsLeft();
+float bass = fft.band(20.0f, 250.0f);  // Bass frequency range in Hz
 
 // Pulse vignette with audio
 vignette.intensity = 0.2f + level * 0.5f;
@@ -147,8 +149,33 @@ if (bass > 0.8f) {
 - **Space** - Play/Pause
 - **R** - Restart from beginning
 - **Left/Right** - Seek 5 seconds
-- **Mouse X** - Delay effect mix
-- **Mouse Y** - Bloom intensity
+- **TAB** - Toggle Audio Effects panel
+
+### ImGui Audio Effects Panel
+
+Press TAB to show/hide the effects panel with real-time controls:
+
+**Master**
+- Volume (0-2x)
+
+**Delay**
+- Time (0-1000ms)
+- Feedback (0-95%)
+- Mix (dry/wet)
+
+**Reverb**
+- Room Size (small to large)
+- Damping (high frequency absorption)
+- Width (stereo spread)
+- Mix (dry/wet)
+
+**Presets**
+- Dry - No effects
+- Small Room - Tight reverb
+- Hall - Large space reverb
+- Slapback - Quick echo
+- Echo - Rhythmic delay
+- Dub - Heavy delay + reverb
 
 ## Tips
 

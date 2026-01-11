@@ -64,31 +64,18 @@ void VideoAudio::process(Context& ctx) {
 }
 
 void VideoAudio::generateBlock(uint32_t frameCount) {
-    if (!m_connectedToSource || !m_videoPlayer) {
-        // Clear output buffer
-        if (m_output.frameCount != frameCount) {
-            m_output.resize(frameCount);
-        }
-        clearOutput();
-        return;
-    }
-
-    // Check if video has audio
-    if (!m_videoPlayer->hasAudio()) {
-        if (m_output.frameCount != frameCount) {
-            m_output.resize(frameCount);
-        }
-        clearOutput();
-        return;
-    }
-
     // Ensure output buffer is large enough
     if (m_output.frameCount != frameCount) {
         m_output.resize(frameCount);
     }
 
-    // Read audio samples from video player's audio buffer
-    // The audio buffer in HAPDecoder/AVFDecoder is thread-safe for reading
+    if (!m_connectedToSource || !m_videoPlayer || !m_videoPlayer->hasAudio()) {
+        clearOutput();
+        return;
+    }
+
+    // Read audio samples from video player's pre-filled audio buffer
+    // The buffer is filled by VideoPlayer::process() on the main thread
     uint32_t framesRead = m_videoPlayer->readAudioSamples(
         m_output.samples, frameCount);
 

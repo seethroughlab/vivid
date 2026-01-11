@@ -565,6 +565,12 @@ bool AVFPlaybackDecoder::update(Context& ctx) {
         CVPixelBufferUnlockBaseAddress(pixelBuffer, kCVPixelBufferLock_ReadOnly);
         CVPixelBufferRelease(pixelBuffer);
 
+        // Pre-fill audio buffer on main thread (AVFoundation is not thread-safe)
+        // This ensures the audio thread can read from the buffer without calling AVFoundation
+        if (hasAudio_) {
+            impl_->readMoreAudio();
+        }
+
         return true;  // New frame was decoded
     }
 }
@@ -635,8 +641,9 @@ uint32_t AVFPlaybackDecoder::readAudioSamples(float* buffer, uint32_t maxFrames)
         return 0;
     }
 
-    // Read more audio from the asset reader if needed
-    impl_->readMoreAudio();
+    // NOTE: Don't call readMoreAudio() here - this function may be called from
+    // the audio thread, and AVFoundation is not thread-safe. The audio buffer
+    // is pre-filled by update() on the main thread.
 
     // Copy samples from our buffer
     uint32_t samplesNeeded = maxFrames * audioChannels_;

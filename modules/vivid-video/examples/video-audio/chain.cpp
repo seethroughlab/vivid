@@ -1,107 +1,104 @@
-// Video Audio - Vivid Example
-// Demonstrates: VideoPlayer, VideoAudio - Extract and process audio from video files
+// Video Audio - Video playback with audio
 //
-// Shows how to route video audio through the chain's audio system
+// This example demonstrates two modes:
+// 1. Internal audio (default): Perfect A/V sync via AVPlayer, no effects
+// 2. Chain audio: Route through effects chain, may have sync issues
+//
+// Controls:
+//   Space - Play/Pause
+//   R - Restart
+//   Left/Right - Seek 5 seconds
+//   TAB - Toggle panel
 
 #include <vivid/vivid.h>
-#include <vivid/effects/effects.h>
-#include <vivid/audio/audio.h>
 #include <vivid/video/video.h>
-#include <cmath>
+#include <vivid/audio/audio.h>
+#include <vivid/audio_output.h>
+#include <vivid/gui/imgui.h>
+#include <iostream>
 
 using namespace vivid;
-using namespace vivid::effects;
-using namespace vivid::audio;
 using namespace vivid::video;
+using namespace vivid::audio;
+
+// Mode: true = use AVPlayer internal audio (synced), false = use chain routing
+static bool g_useInternalAudio = true;
+
+// Effect parameters (only used when g_useInternalAudio = false)
+static float g_masterVolume = 0.8f;
+static float g_delayTime = 300.0f;
+static float g_delayFeedback = 0.4f;
+static float g_delayMix = 0.3f;
+static float g_reverbSize = 0.5f;
+static float g_reverbDamping = 0.5f;
+static float g_reverbMix = 0.2f;
+static bool g_effectsEnabled = false;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // ----- VIDEO PLAYBACK -----
-    // Load a video file with audio
+    // Video playback
     auto& video = chain.add<VideoPlayer>("video");
-    video.setFile("assets/videos/sample.mov");  // Adjust path to your video
+    video.setFile("assets/videos/sample.mov");
     video.setLoop(true);
-    video.play();
 
-    // ----- VIDEO AUDIO EXTRACTION -----
-    // VideoAudio extracts audio from VideoPlayer for processing
-    auto& videoAudio = chain.add<VideoAudio>("videoAudio");
-    videoAudio.setSource("video");  // Connect to video player
+    // When using internal audio, AVPlayer handles everything in sync
+    // When using chain audio, we extract and route through effects
+    video.setInternalAudioEnabled(g_useInternalAudio);
 
-    // ----- AUDIO PROCESSING -----
-    // Apply effects to the video audio
+    if (!g_useInternalAudio) {
+        // Extract audio from video for chain routing
+        auto& videoAudio = chain.add<VideoAudio>("videoAudio");
+        videoAudio.setSource("video");
 
-    // FFT for visualization
-    auto& fft = chain.add<FFT>("fft");
-    fft.input("videoAudio");
-    fft.size(FFTSize::FFT_512);
+        // Audio effects chain
+        auto& delay = chain.add<Delay>("delay");
+        delay.input("videoAudio");
+        delay.delayTime = g_delayTime;
+        delay.feedback = g_delayFeedback;
+        delay.mix = g_delayMix;
+        delay.bypass(!g_effectsEnabled);
 
-    // Levels for volume metering
-    auto& levels = chain.add<Levels>("levels");
-    levels.input("videoAudio");
+        auto& reverb = chain.add<Reverb>("reverb");
+        reverb.input("delay");
+        reverb.roomSize = g_reverbSize;
+        reverb.damping = g_reverbDamping;
+        reverb.mix = g_reverbMix;
+        reverb.bypass(!g_effectsEnabled);
 
-    // Optional: Add delay effect
-    auto& delay = chain.add<Delay>("delay");
-    delay.input("videoAudio");
-    delay.time = 0.25f;       // 250ms delay
-    delay.feedback = 0.3f;    // 30% feedback
-    delay.mix = 0.0f;         // Start with no effect (mouse X controls)
+        auto& gain = chain.add<AudioGain>("gain");
+        gain.input("reverb");
+        gain.gain = g_masterVolume;
 
-    // ----- AUDIO OUTPUT -----
-    auto& output = chain.add<AudioOutput>("audioOut");
-    output.input("delay");
+        // Audio output
+        auto& output = chain.add<AudioOutput>("out");
+        output.setInput("gain");
+        chain.audioOutput("out");
+    }
 
-    // ----- VISUAL CHAIN -----
-    // Show video with audio-reactive effects
+    chain.output("video");
 
-    // Video texture
-    // Transform to fit screen
-    auto& videoTransform = chain.add<Transform>("videoTransform");
-    videoTransform.input("video");
-    videoTransform.scale.set(1.0f, 1.0f);
+    // Initialize ImGui
+    vivid::imgui::init(ctx);
 
-    // Audio-reactive vignette
-    auto& vignette = chain.add<Vignette>("vignette");
-    vignette.input("videoTransform");
-    vignette.intensity = 0.3f;
-    vignette.softness = 0.5f;
-
-    // Bloom based on audio
-    auto& bloom = chain.add<Bloom>("bloom");
-    bloom.input("vignette");
-    bloom.threshold = 0.7f;
-    bloom.intensity = 0.5f;
-    bloom.radius = 20.0f;
-
-    // Overlay for audio meters
-    auto& canvas = chain.add<Canvas>("canvas");
-    canvas.size(1280, 720);
-
-    auto& comp = chain.add<Composite>("comp");
-    comp.inputA("bloom");
-    comp.inputB("canvas");
-    comp.mode = BlendMode::Add;
-
-    chain.output("comp");
-    chain.audioOutput("audioOut");
+    std::cout << "\n========================================" << std::endl;
+    std::cout << "Video Audio Demo" << std::endl;
+    std::cout << "========================================" << std::endl;
+    std::cout << "Mode: " << (g_useInternalAudio ? "Internal Audio (synced)" : "Chain Audio (effects)") << std::endl;
+    std::cout << "Controls:" << std::endl;
+    std::cout << "  Space      - Play/Pause" << std::endl;
+    std::cout << "  R          - Restart" << std::endl;
+    std::cout << "  Left/Right - Seek 5 seconds" << std::endl;
+    std::cout << "  TAB        - Toggle panel" << std::endl;
+    std::cout << "========================================\n" << std::endl;
 }
 
 void update(Context& ctx) {
     auto& chain = ctx.chain();
-    float t = ctx.time();
-
     auto& video = chain.get<VideoPlayer>("video");
-    auto& fft = chain.get<FFT>("fft");
-    auto& levels = chain.get<Levels>("levels");
-    auto& delay = chain.get<Delay>("delay");
-    auto& vignette = chain.get<Vignette>("vignette");
-    auto& bloom = chain.get<Bloom>("bloom");
-    auto& canvas = chain.get<Canvas>("canvas");
 
-    // ----- PLAYBACK CONTROLS -----
-    // Space: Play/Pause
-    if (ctx.keyPressed(Key::Space)) {
+    // Keyboard controls
+    if (ctx.key(GLFW_KEY_SPACE).pressed) {
         if (video.isPlaying()) {
             video.pause();
         } else {
@@ -109,123 +106,90 @@ void update(Context& ctx) {
         }
     }
 
-    // R: Restart
-    if (ctx.keyPressed(Key::R)) {
+    if (ctx.key(GLFW_KEY_R).pressed) {
         video.restart();
     }
 
-    // Left/Right: Seek
-    if (ctx.keyPressed(Key::Left)) {
-        float newTime = std::max(0.0f, video.currentTime() - 5.0f);
-        video.seek(newTime);
-    }
-    if (ctx.keyPressed(Key::Right)) {
-        float newTime = std::min(video.duration(), video.currentTime() + 5.0f);
-        video.seek(newTime);
+    if (ctx.key(GLFW_KEY_LEFT).pressed) {
+        video.seek(std::max(0.0f, video.currentTime() - 5.0f));
     }
 
-    // ----- MOUSE CONTROLS -----
-    // Mouse X: Delay mix
-    float mouseX = ctx.mouseNorm().x;
-    delay.mix = mouseX * 0.8f;
-
-    // Mouse Y: Bloom intensity
-    float mouseY = ctx.mouseNorm().y;
-    bloom.intensity = 0.5f + mouseY * 1.5f;
-
-    // ----- AUDIO-REACTIVE VISUALS -----
-    // Get audio levels
-    float leftLevel = levels.level(0);
-    float rightLevel = levels.level(1);
-    float avgLevel = (leftLevel + rightLevel) * 0.5f;
-
-    // Pulse vignette with audio
-    vignette.intensity = 0.2f + avgLevel * 0.4f;
-
-    // Bass affects bloom
-    float bass = fft.band(0);
-    bloom.radius = 15.0f + bass * 30.0f;
-
-    // ----- DRAW AUDIO METERS -----
-    canvas.clear(0.0f, 0.0f, 0.0f, 0.0f);
-
-    // Progress bar at bottom
-    float progress = video.duration() > 0 ? video.currentTime() / video.duration() : 0.0f;
-    canvas.fill(Color(0.3f, 0.3f, 0.3f, 0.8f));
-    canvas.rect(50, 680, 1180, 10);  // Background
-    canvas.fill(Color(0.2f, 0.6f, 1.0f, 1.0f));
-    canvas.rect(50, 680, 1180 * progress, 10);  // Progress
-
-    // Time display
-    int mins = static_cast<int>(video.currentTime()) / 60;
-    int secs = static_cast<int>(video.currentTime()) % 60;
-    int totalMins = static_cast<int>(video.duration()) / 60;
-    int totalSecs = static_cast<int>(video.duration()) % 60;
-
-    canvas.fill(Color(1.0f, 1.0f, 1.0f, 0.9f));
-    canvas.textSize(16);
-    char timeStr[32];
-    snprintf(timeStr, sizeof(timeStr), "%02d:%02d / %02d:%02d", mins, secs, totalMins, totalSecs);
-    canvas.text(timeStr, 50, 660);
-
-    // Playback state
-    const char* state = video.isPlaying() ? "Playing" : "Paused";
-    canvas.text(state, 200, 660);
-
-    // FFT visualization (spectrum analyzer)
-    float barWidth = 10.0f;
-    float maxHeight = 150.0f;
-    float startX = 50.0f;
-    float baseY = 100.0f;
-
-    canvas.noStroke();
-    for (int i = 0; i < 32; i++) {
-        float val = fft.band(i);
-        float height = val * maxHeight;
-
-        // Color gradient based on frequency
-        float hue = static_cast<float>(i) / 32.0f;
-        canvas.fill(Color(
-            0.5f + 0.5f * std::sin(hue * 6.28f),
-            0.5f + 0.5f * std::sin(hue * 6.28f + 2.09f),
-            0.5f + 0.5f * std::sin(hue * 6.28f + 4.19f),
-            0.8f
-        ));
-
-        canvas.rect(startX + i * (barWidth + 2), baseY - height, barWidth, height);
+    if (ctx.key(GLFW_KEY_RIGHT).pressed) {
+        video.seek(std::min(video.duration(), video.currentTime() + 5.0f));
     }
 
-    // Level meters (L/R)
-    float meterX = 1150.0f;
-    float meterHeight = 100.0f;
+    if (ctx.key(GLFW_KEY_TAB).pressed) {
+        vivid::imgui::toggleVisible();
+    }
 
-    // Left channel
-    canvas.fill(Color(0.2f, 0.2f, 0.2f, 0.8f));
-    canvas.rect(meterX, baseY - meterHeight, 15, meterHeight);
-    canvas.fill(Color(0.2f, 1.0f, 0.3f, 0.9f));
-    canvas.rect(meterX, baseY - leftLevel * meterHeight, 15, leftLevel * meterHeight);
+    // ImGui panel
+    if (vivid::imgui::isVisible()) {
+        ImGui::Begin("Video Audio", nullptr, ImGuiWindowFlags_AlwaysAutoResize);
 
-    // Right channel
-    canvas.fill(Color(0.2f, 0.2f, 0.2f, 0.8f));
-    canvas.rect(meterX + 20, baseY - meterHeight, 15, meterHeight);
-    canvas.fill(Color(0.2f, 1.0f, 0.3f, 0.9f));
-    canvas.rect(meterX + 20, baseY - rightLevel * meterHeight, 15, rightLevel * meterHeight);
+        // Playback info
+        ImGui::Text("Time: %.1f / %.1f", video.currentTime(), video.duration());
+        ImGui::Text("Status: %s", video.isPlaying() ? "Playing" : "Paused");
+        ImGui::Separator();
 
-    // Labels
-    canvas.fill(Color(0.7f, 0.7f, 0.7f, 1.0f));
-    canvas.textSize(12);
-    canvas.text("L", meterX + 3, baseY + 15);
-    canvas.text("R", meterX + 23, baseY + 15);
+        // Audio mode info
+        if (g_useInternalAudio) {
+            ImGui::TextColored(ImVec4(0.4f, 1.0f, 0.4f, 1.0f), "Mode: Internal Audio (synced)");
+            ImGui::TextWrapped("Using AVPlayer's internal audio for perfect A/V sync. "
+                              "No effects available in this mode.");
+            ImGui::Separator();
+            ImGui::TextDisabled("To enable effects, change g_useInternalAudio to false");
+            ImGui::TextDisabled("and restart. Note: may have sync issues.");
+        } else {
+            ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.4f, 1.0f), "Mode: Chain Audio (effects)");
+            ImGui::TextWrapped("Audio routed through effects chain. "
+                              "May have A/V sync issues.");
+            ImGui::Separator();
 
-    // Controls help
-    canvas.textSize(14);
-    canvas.fill(Color(0.6f, 0.6f, 0.6f, 0.8f));
-    canvas.text("Space: Play/Pause | R: Restart | Left/Right: Seek 5s | Mouse X: Delay | Mouse Y: Bloom", 50, 30);
+            // Get effect operators
+            auto& delay = chain.get<Delay>("delay");
+            auto& reverb = chain.get<Reverb>("reverb");
+            auto& gain = chain.get<AudioGain>("gain");
 
-    // Debug
-    ctx.debug("progress", progress);
-    ctx.debug("avgLevel", avgLevel);
-    ctx.debug("delayMix", delay.mix);
+            if (ImGui::SliderFloat("Master Volume", &g_masterVolume, 0.0f, 2.0f)) {
+                gain.gain = g_masterVolume;
+            }
+
+            if (ImGui::Checkbox("Enable Effects", &g_effectsEnabled)) {
+                delay.bypass(!g_effectsEnabled);
+                reverb.bypass(!g_effectsEnabled);
+            }
+            ImGui::Separator();
+
+            if (g_effectsEnabled) {
+                ImGui::Text("Delay");
+                if (ImGui::SliderFloat("Time (ms)", &g_delayTime, 0.0f, 1000.0f)) {
+                    delay.delayTime = g_delayTime;
+                }
+                if (ImGui::SliderFloat("Feedback", &g_delayFeedback, 0.0f, 0.95f)) {
+                    delay.feedback = g_delayFeedback;
+                }
+                if (ImGui::SliderFloat("Delay Mix", &g_delayMix, 0.0f, 1.0f)) {
+                    delay.mix = g_delayMix;
+                }
+                ImGui::Separator();
+
+                ImGui::Text("Reverb");
+                if (ImGui::SliderFloat("Room Size", &g_reverbSize, 0.0f, 1.0f)) {
+                    reverb.roomSize = g_reverbSize;
+                }
+                if (ImGui::SliderFloat("Damping", &g_reverbDamping, 0.0f, 1.0f)) {
+                    reverb.damping = g_reverbDamping;
+                }
+                if (ImGui::SliderFloat("Reverb Mix", &g_reverbMix, 0.0f, 1.0f)) {
+                    reverb.mix = g_reverbMix;
+                }
+            }
+        }
+
+        ImGui::End();
+    }
+
+    ctx.debug("time", video.currentTime());
 }
 
 VIVID_CHAIN(setup, update)
