@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **CI: Build parallelism limits** - Self-hosted runners now limit parallel jobs to prevent OOM during C++ compilation (Linux: 2, macOS: 4, Windows: 4, Raspberry Pi: 2)
+
+### Fixed
+
+- **Hot reload** - Fixed hot reload not triggering in certain conditions
+- **CI: darwin-arm64 builds** - Added `WGPU_FORCE_ARCH=arm64` to ensure correct architecture detection on Apple Silicon
+
 ## [0.1.0-alpha.22] - 2026-01-11
 
 ### Added
