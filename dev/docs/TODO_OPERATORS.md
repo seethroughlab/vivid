@@ -18,7 +18,7 @@ Simple texture operators that fill common gaps.
   - **Difficulty:** Easy (1-2 hours)
 
 ### Level
-- [ ] **Level** - Input/output level adjustment
+- [x] **Level** - Input/output level adjustment
   - **TD equivalent:** Level TOP
   - **Description:** Full color correction with input range, gamma, output range
   - **Params:** `inBlack`, `inWhite`, `gamma`, `outBlack`, `outWhite` (per-channel or master)
@@ -38,7 +38,7 @@ Simple texture operators that fill common gaps.
   - **Formats:** Support .cube LUT files for color grading
 
 ### Crop
-- [ ] **Crop** - Region extraction
+- [x] **Crop** - Region extraction
   - **TD equivalent:** Crop TOP
   - **Description:** Extract rectangular region from texture
   - **Params:** `left`, `right`, `top`, `bottom` (pixels or normalized)
@@ -72,7 +72,7 @@ Simple texture operators that fill common gaps.
 Operators for motion effects and advanced compositing.
 
 ### Normal Map
-- [ ] **NormalMap** - Height to normal conversion
+- [x] **NormalMap** - Height to normal conversion
   - **TD equivalent:** Normal Map TOP
   - **Description:** Generate normal map from height/displacement texture
   - **Params:** `strength`, `flipY`, `format` (tangent/object space)
@@ -179,7 +179,7 @@ Geometry operators and 3D post-processing.
   - **Note:** Render3D already outputs depth
 
 ### ToneMap
-- [ ] **ToneMap** - HDR to SDR
+- [x] **ToneMap** - HDR to SDR
   - **TD equivalent:** Tone Map TOP
   - **Description:** Map HDR values to displayable range
   - **Params:** `exposure`, `mode` (Reinhard/ACES/Filmic), `whitePoint`

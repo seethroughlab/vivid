@@ -71,8 +71,8 @@ float energy = beat.energy();       // Overall energy level
 ```cpp
 auto& fft = chain.add<FFT>("fft");
 fft.input("audioFile");
-fft.size(512);          // FFT size (power of 2)
-fft.smoothing(0.7f);
+fft.setSize(512);       // FFT size (power of 2)
+fft.smoothing = 0.7f;
 
 // Get spectrum data
 const float* bins = fft.bins();    // Raw FFT bins

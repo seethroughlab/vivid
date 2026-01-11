@@ -82,8 +82,8 @@ void init(Context& ctx) {
     WGPUDevice device = ctx.device();
     WGPUQueue queue = ctx.queue();
 
-    // Use BGRA8Unorm as default format (matches most surfaces)
-    WGPUTextureFormat format = WGPUTextureFormat_BGRA8Unorm;
+    // Use BGRA8UnormSrgb to match the surface format
+    WGPUTextureFormat format = WGPUTextureFormat_BGRA8UnormSrgb;
 
     init(device, queue, format);
 }

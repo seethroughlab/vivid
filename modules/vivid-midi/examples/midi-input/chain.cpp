@@ -52,7 +52,7 @@ void setup(Context& ctx) {
 
     // Canvas for UI
     auto& canvas = chain.add<Canvas>("canvas");
-    canvas.setSize(ctx.width(), ctx.height());
+    canvas.size(ctx.width(), ctx.height());
 }
 
 void update(Context& ctx) {
@@ -122,16 +122,14 @@ void update(Context& ctx) {
 
     // Draw note visualization
     if (g_noteDisplay > 0.01f) {
-        canvas.drawTexture(noteShape.output(), 0, 0, w, h);
+        canvas.drawImage(noteShape, 0, 0, static_cast<float>(w), static_cast<float>(h));
     }
 
     // Draw MIDI status
-    canvas.setFont(16);
-    canvas.setFillColor(1.0f, 1.0f, 1.0f, 1.0f);
+    canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
     canvas.fillText("MIDI Input Example", 20, 30);
 
-    canvas.setFont(12);
-    canvas.setFillColor(0.7f, 0.7f, 0.7f, 1.0f);
+    canvas.fillStyle(0.7f, 0.7f, 0.7f, 1.0f);
 
     // Input port status
     char inStatus[128];
@@ -146,9 +144,8 @@ void update(Context& ctx) {
     canvas.fillText(outStatus, 20, 80);
 
     // Note activity
-    canvas.setFillColor(g_noteActive ? 1.0f : 0.5f,
-                        g_noteActive ? 1.0f : 0.5f,
-                        g_noteActive ? 1.0f : 0.5f, 1.0f);
+    float noteGray = g_noteActive ? 1.0f : 0.5f;
+    canvas.fillStyle(noteGray, noteGray, noteGray, 1.0f);
     char noteStr[64];
     const char* noteNames[] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
     int octave = (g_lastNote / 12) - 1;
@@ -158,7 +155,7 @@ void update(Context& ctx) {
     canvas.fillText(noteStr, 20, 110);
 
     // CC bars
-    canvas.setFillColor(0.5f, 0.5f, 0.5f, 1.0f);
+    canvas.fillStyle(0.5f, 0.5f, 0.5f, 1.0f);
     canvas.fillText("CC 0-7:", 20, 150);
 
     for (int i = 0; i < 8; i++) {
@@ -167,25 +164,25 @@ void update(Context& ctx) {
         int barH = 40;
 
         // Background
-        canvas.setFillColor(0.2f, 0.2f, 0.25f, 1.0f);
-        canvas.fillRect(barX, barY, 20, barH);
+        canvas.fillStyle(0.2f, 0.2f, 0.25f, 1.0f);
+        canvas.fillRect(static_cast<float>(barX), static_cast<float>(barY), 20.0f, static_cast<float>(barH));
 
         // Value bar
         float val = g_ccValues[i];
-        canvas.setFillColor(0.3f, 0.7f, 0.4f, 1.0f);
-        canvas.fillRect(barX, barY + barH * (1.0f - val), 20, barH * val);
+        canvas.fillStyle(0.3f, 0.7f, 0.4f, 1.0f);
+        canvas.fillRect(static_cast<float>(barX), barY + barH * (1.0f - val), 20.0f, barH * val);
 
         // CC number
-        canvas.setFillColor(0.5f, 0.5f, 0.5f, 1.0f);
+        canvas.fillStyle(0.5f, 0.5f, 0.5f, 1.0f);
         char ccLabel[8];
         snprintf(ccLabel, sizeof(ccLabel), "%d", i);
-        canvas.fillText(ccLabel, barX + 4, barY + barH + 15);
+        canvas.fillText(ccLabel, static_cast<float>(barX + 4), static_cast<float>(barY + barH + 15));
     }
 
     // Instructions
-    canvas.setFillColor(0.5f, 0.5f, 0.6f, 1.0f);
-    canvas.fillText("Connect a MIDI controller to see input visualization", 20, h - 50);
-    canvas.fillText("Notes are echoed to MIDI output (if available)", 20, h - 30);
+    canvas.fillStyle(0.5f, 0.5f, 0.6f, 1.0f);
+    canvas.fillText("Connect a MIDI controller to see input visualization", 20, static_cast<float>(h - 50));
+    canvas.fillText("Notes are echoed to MIDI output (if available)", 20, static_cast<float>(h - 30));
 
     chain.setOutput(canvas);
 }

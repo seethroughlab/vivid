@@ -198,11 +198,18 @@ void update(Context& ctx) {
                         break;
                 }
 
-                // Draw white key
-                canvas.fill(playing ? Color(0.9f, 0.9f, 0.7f) : Color(0.95f, 0.95f, 0.95f));
-                canvas.stroke(Color(0.3f, 0.3f, 0.3f));
-                canvas.strokeWeight(2);
-                canvas.rect(x, y, keyWidth - 2, whiteHeight);
+                // Draw white key fill
+                if (playing) {
+                    canvas.fillStyle(0.9f, 0.9f, 0.7f, 1.0f);
+                } else {
+                    canvas.fillStyle(0.95f, 0.95f, 0.95f, 1.0f);
+                }
+                canvas.fillRect(x, y, keyWidth - 2, whiteHeight);
+
+                // Draw white key border
+                canvas.strokeStyle(0.3f, 0.3f, 0.3f, 1.0f);
+                canvas.lineWidth(2);
+                canvas.strokeRect(x, y, keyWidth - 2, whiteHeight);
 
                 whiteKeyIndex++;
             }
@@ -220,23 +227,20 @@ void update(Context& ctx) {
                 float x = startX + (whiteKeyIndex - 1) * keyWidth + keyWidth * blackOffset[note];
                 float y = startY;
 
-                canvas.fill(Color(0.15f, 0.15f, 0.15f));
-                canvas.noStroke();
-                canvas.rect(x, y, keyWidth * 0.6f, blackHeight);
+                canvas.fillStyle(0.15f, 0.15f, 0.15f, 1.0f);
+                canvas.fillRect(x, y, keyWidth * 0.6f, blackHeight);
             }
         }
     }
 
     // Demo label
-    canvas.fill(Color(1.0f, 1.0f, 1.0f));
-    canvas.textSize(24);
+    canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);
     const char* demoNames[] = {"Sampler (Chromatic)", "SamplePlayer (Drums)", "MultiSampler (Zones)"};
-    canvas.text(demoNames[static_cast<int>(g_demo)], 50, 50);
+    canvas.fillText(demoNames[static_cast<int>(g_demo)], 50, 50);
 
     // Instructions
-    canvas.textSize(16);
-    canvas.fill(Color(0.7f, 0.7f, 0.7f));
-    canvas.text("Keys 1/2/3: Switch demo | QWERTY row: Play notes | Mouse Y: Velocity", 50, 80);
+    canvas.fillStyle(0.7f, 0.7f, 0.7f, 1.0f);
+    canvas.fillText("Keys 1/2/3: Switch demo | QWERTY row: Play notes | Mouse Y: Velocity", 50, 80);
 
     // Voice count
     int voices = 0;
@@ -251,7 +255,7 @@ void update(Context& ctx) {
             voices = multi.activeVoiceCount();
             break;
     }
-    canvas.text("Active voices: " + std::to_string(voices), 50, 110);
+    canvas.fillText("Active voices: " + std::to_string(voices), 50, 110);
 }
 
 VIVID_CHAIN(setup, update)
