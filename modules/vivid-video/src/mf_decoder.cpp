@@ -13,6 +13,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <atomic>
+#include <deque>
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -89,6 +90,12 @@ enum class OutputFormat {
     NV12,   // MFVideoFormat_NV12 (GPU conversion)
 };
 
+// Timestamped audio chunk for A/V sync
+struct AudioChunk {
+    std::vector<float> samples;
+    double pts;  // Presentation timestamp in seconds
+};
+
 struct MFDecoder::Impl {
     std::unique_ptr<COMInitializer> comInit;
     std::unique_ptr<MFInitializer> mfInit;
@@ -112,6 +119,18 @@ struct MFDecoder::Impl {
     std::atomic<int> readBuffer{-1};      // Buffer ready to be read (-1 = none)
     std::atomic<bool> frameReady{false};
     LONGLONG frameTimestamp{0};           // Timestamp of ready frame
+
+    // A/V sync: timestamped audio chunks for chain routing
+    std::deque<AudioChunk> audioChunks;
+    std::mutex audioChunksMutex;
+    double audioBufferHeadPTS = 0.0;  // PTS of next sample to be read
+    double audioBufferTailPTS = 0.0;  // PTS of last sample added
+
+    // A/V sync: video time communication (atomic for thread-safe access from audio thread)
+    std::atomic<double> lastVideoTimeSeconds{-1.0};  // -1 = not yet set (startup)
+    std::atomic<bool> videoHasStarted{false};  // True after first video frame decoded
+    std::atomic<bool> initialSyncDone{false};  // True after initial A/V alignment
+    std::atomic<bool> isShuttingDown{false};  // True during cleanup
 };
 
 MFDecoder::MFDecoder() : impl_(std::make_unique<Impl>()) {
@@ -428,10 +447,24 @@ void MFDecoder::prebufferAudio() {
 }
 
 void MFDecoder::close() {
+    // Signal shutdown to prevent audio thread from accessing resources
+    impl_->isShuttingDown.store(true);
+
     if (audioPlayer_) {
         audioPlayer_->shutdown();
         audioPlayer_.reset();
     }
+
+    // Clear audio sync state
+    {
+        std::lock_guard<std::mutex> lock(impl_->audioChunksMutex);
+        impl_->audioChunks.clear();
+    }
+    impl_->audioBufferHeadPTS = 0.0;
+    impl_->audioBufferTailPTS = 0.0;
+    impl_->lastVideoTimeSeconds.store(-1.0);
+    impl_->videoHasStarted.store(false);
+    impl_->initialSyncDone.store(false);
 
     if (impl_->sourceReader) {
         impl_->sourceReader->Release();
@@ -558,12 +591,27 @@ void MFDecoder::resetReader() {
 }
 
 void MFDecoder::readAudioSamplesToBuffer() {
-    if (!audioPlayer_ || !impl_->sourceReader || !hasAudio_ || !internalAudioEnabled_) return;
+    if (!impl_->sourceReader || !hasAudio_) return;
 
-    // Keep audio buffer topped up - target ~0.25 seconds ahead
-    const uint32_t targetFrames = 48000 / 4;
+    // Keep audio buffer topped up - target ~0.5 seconds ahead
+    const uint32_t targetFrames = 48000 / 2;
 
-    while (audioPlayer_->getBufferedFrames() < targetFrames) {
+    // Check if we have enough in the audio player (for internal playback) or chunk queue (for chain routing)
+    size_t totalChunkSamples = 0;
+    {
+        std::lock_guard<std::mutex> lock(impl_->audioChunksMutex);
+        for (const auto& c : impl_->audioChunks) {
+            totalChunkSamples += c.samples.size();
+        }
+    }
+    uint32_t chunkFrames = static_cast<uint32_t>(totalChunkSamples / 2);
+
+    bool needMoreForPlayer = internalAudioEnabled_ && audioPlayer_ && audioPlayer_->getBufferedFrames() < targetFrames;
+    bool needMoreForChain = !internalAudioEnabled_ && chunkFrames < targetFrames;
+
+    if (!needMoreForPlayer && !needMoreForChain) return;
+
+    while (true) {
         DWORD streamIndex = 0;
         DWORD flags = 0;
         LONGLONG timestamp = 0;
@@ -598,12 +646,63 @@ void MFDecoder::readAudioSamplesToBuffer() {
             if (SUCCEEDED(hr)) {
                 // Data is float samples, interleaved stereo
                 uint32_t frameCount = currentLength / (2 * sizeof(float));
-                audioPlayer_->pushSamples(reinterpret_cast<float*>(data), frameCount);
+                float* floatData = reinterpret_cast<float*>(data);
+
+                // For internal audio playback
+                if (internalAudioEnabled_ && audioPlayer_) {
+                    audioPlayer_->pushSamples(floatData, frameCount);
+                }
+
+                // For chain audio routing - add to timestamped chunk queue
+                {
+                    std::lock_guard<std::mutex> lock(impl_->audioChunksMutex);
+                    AudioChunk chunk;
+                    chunk.pts = static_cast<double>(timestamp) / 10000000.0;  // 100ns to seconds
+                    chunk.samples.assign(floatData, floatData + frameCount * 2);
+
+                    // Update tail PTS
+                    double chunkDurationSec = static_cast<double>(frameCount) / 48000.0;
+                    impl_->audioBufferTailPTS = chunk.pts + chunkDurationSec;
+
+                    // If first chunk, set head PTS too
+                    if (impl_->audioChunks.empty()) {
+                        impl_->audioBufferHeadPTS = chunk.pts;
+                    }
+
+                    impl_->audioChunks.push_back(std::move(chunk));
+
+                    // Limit buffer to ~2 seconds
+                    size_t totalSamples = 0;
+                    for (const auto& c : impl_->audioChunks) {
+                        totalSamples += c.samples.size();
+                    }
+                    size_t maxSamples = 48000 * 2 * 2;  // 2 seconds * 2 channels
+                    while (totalSamples > maxSamples && impl_->audioChunks.size() > 1) {
+                        totalSamples -= impl_->audioChunks.front().samples.size();
+                        impl_->audioChunks.pop_front();
+                        if (!impl_->audioChunks.empty()) {
+                            impl_->audioBufferHeadPTS = impl_->audioChunks.front().pts;
+                        }
+                    }
+                }
+
                 buffer->Unlock();
             }
             buffer->Release();
         }
         sample->Release();
+
+        // Check if we have enough now
+        if (internalAudioEnabled_ && audioPlayer_) {
+            if (audioPlayer_->getBufferedFrames() >= targetFrames) break;
+        } else {
+            std::lock_guard<std::mutex> lock(impl_->audioChunksMutex);
+            size_t total = 0;
+            for (const auto& c : impl_->audioChunks) {
+                total += c.samples.size();
+            }
+            if (total / 2 >= targetFrames) break;
+        }
     }
 }
 
@@ -713,6 +812,10 @@ void MFDecoder::update(Context& ctx) {
         targetTime = playbackTime_;
     }
 
+    // Publish current video time for A/V sync
+    impl_->lastVideoTimeSeconds.store(targetTime);
+    impl_->videoHasStarted.store(true);
+
     // Check if we need a new frame based on target time
     if (targetTime < nextFrameTime_) {
         return;
@@ -800,6 +903,15 @@ void MFDecoder::seek(float seconds) {
     nextFrameTime_ = seconds;
     isFinished_ = false;
 
+    // Reset A/V sync state
+    {
+        std::lock_guard<std::mutex> lock(impl_->audioChunksMutex);
+        impl_->audioChunks.clear();
+    }
+    impl_->audioBufferHeadPTS = seconds;
+    impl_->audioBufferTailPTS = seconds;
+    impl_->initialSyncDone.store(false);
+
     if (audioPlayer_) {
         audioPlayer_->flush();
         // Re-prebuffer audio after seek
@@ -840,8 +952,133 @@ float MFDecoder::getVolume() const {
 }
 
 uint32_t MFDecoder::readAudioSamples(float* buffer, uint32_t maxFrames) {
-    // TODO: Audio extraction not yet implemented for Windows MFDecoder
-    return 0;
+    // Safety check for shutdown - audio thread may call this during cleanup
+    if (!impl_ || impl_->isShuttingDown.load()) {
+        if (buffer) {
+            for (uint32_t i = 0; i < maxFrames * audioChannels_; i++) {
+                buffer[i] = 0.0f;
+            }
+        }
+        return maxFrames;
+    }
+
+    if (!hasAudio_ || !buffer || maxFrames == 0) {
+        return 0;
+    }
+
+    uint32_t samplesNeeded = maxFrames * audioChannels_;
+    uint32_t samplesCopied = 0;
+
+    // Get current video time for A/V sync
+    double videoPTS = impl_->lastVideoTimeSeconds.load();
+    bool videoStarted = impl_->videoHasStarted.load();
+    bool initialSyncDone = impl_->initialSyncDone.load();
+
+    {
+        std::lock_guard<std::mutex> lock(impl_->audioChunksMutex);
+
+        // Skip sync correction until video has started playing
+        if (!videoStarted || videoPTS < 0.0) {
+            // Output silence during startup
+            for (uint32_t i = 0; i < samplesNeeded; i++) {
+                buffer[i] = 0.0f;
+            }
+            return maxFrames;
+        }
+
+        // Calculate sync error: positive = audio behind, negative = audio ahead
+        double syncError = videoPTS - impl_->audioBufferHeadPTS;
+
+        // Initial sync: align audio to video time
+        if (!initialSyncDone) {
+            if (syncError > 0.050) {
+                // Audio behind video - discard samples to catch up
+                double samplesToSkipSec = syncError;
+                size_t samplesToSkip = static_cast<size_t>(samplesToSkipSec * audioSampleRate_ * audioChannels_);
+
+                size_t skipped = 0;
+                while (skipped < samplesToSkip && !impl_->audioChunks.empty()) {
+                    auto& chunk = impl_->audioChunks.front();
+                    size_t canSkip = std::min(chunk.samples.size(), samplesToSkip - skipped);
+                    chunk.samples.erase(chunk.samples.begin(), chunk.samples.begin() + canSkip);
+                    skipped += canSkip;
+                    if (chunk.samples.empty()) {
+                        impl_->audioChunks.pop_front();
+                    }
+                }
+                if (!impl_->audioChunks.empty()) {
+                    impl_->audioBufferHeadPTS = impl_->audioChunks.front().pts;
+                }
+            }
+            else if (syncError < -0.050) {
+                // Audio ahead of video - set head PTS to match video
+                impl_->audioBufferHeadPTS = videoPTS;
+            }
+
+            impl_->initialSyncDone.store(true);
+            syncError = videoPTS - impl_->audioBufferHeadPTS;
+        }
+
+        // Sync thresholds (in seconds)
+        constexpr double SYNC_TOLERANCE = 0.100;      // ±100ms is imperceptible
+        constexpr double SYNC_CRITICAL = 0.500;       // 500ms triggers aggressive correction
+
+        // Handle sync correction
+        if (syncError > SYNC_CRITICAL) {
+            // Audio significantly behind video - skip samples
+            double samplesToSkipSec = syncError - SYNC_TOLERANCE;
+            size_t samplesToSkip = static_cast<size_t>(samplesToSkipSec * audioSampleRate_ * audioChannels_);
+
+            size_t skipped = 0;
+            while (skipped < samplesToSkip && !impl_->audioChunks.empty()) {
+                auto& chunk = impl_->audioChunks.front();
+                size_t canSkip = std::min(chunk.samples.size(), samplesToSkip - skipped);
+                chunk.samples.erase(chunk.samples.begin(), chunk.samples.begin() + canSkip);
+                skipped += canSkip;
+                if (chunk.samples.empty()) {
+                    impl_->audioChunks.pop_front();
+                }
+            }
+            if (!impl_->audioChunks.empty()) {
+                impl_->audioBufferHeadPTS = impl_->audioChunks.front().pts;
+            }
+        }
+        else if (syncError < -SYNC_CRITICAL) {
+            // Audio significantly ahead of video - insert silence
+            for (uint32_t i = 0; i < samplesNeeded; i++) {
+                buffer[i] = 0.0f;
+            }
+            return maxFrames;
+        }
+
+        // Copy samples from chunks to output buffer
+        while (samplesCopied < samplesNeeded && !impl_->audioChunks.empty()) {
+            auto& chunk = impl_->audioChunks.front();
+
+            while (samplesCopied < samplesNeeded && !chunk.samples.empty()) {
+                buffer[samplesCopied++] = chunk.samples.front();
+                chunk.samples.erase(chunk.samples.begin());
+            }
+
+            if (chunk.samples.empty()) {
+                impl_->audioChunks.pop_front();
+                if (!impl_->audioChunks.empty()) {
+                    impl_->audioBufferHeadPTS = impl_->audioChunks.front().pts;
+                }
+            }
+        }
+
+        // Update head PTS based on samples consumed
+        double consumedSec = static_cast<double>(samplesCopied / audioChannels_) / audioSampleRate_;
+        impl_->audioBufferHeadPTS += consumedSec;
+    }
+
+    // Zero-fill any remaining samples (buffer underrun)
+    while (samplesCopied < samplesNeeded) {
+        buffer[samplesCopied++] = 0.0f;
+    }
+
+    return maxFrames;
 }
 
 void MFDecoder::setInternalAudioEnabled(bool enable) {

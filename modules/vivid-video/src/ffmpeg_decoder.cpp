@@ -5,15 +5,55 @@
 
 #include <vivid/video/ffmpeg_decoder.h>
 #include <iostream>
+#include <mutex>
+#include <atomic>
+#include <deque>
+#include <vector>
 
 // FFmpeg headers would go here:
 // extern "C" {
 // #include <libavformat/avformat.h>
 // #include <libavcodec/avcodec.h>
 // #include <libswscale/swscale.h>
+// #include <libswresample/swresample.h>
 // }
 
 namespace vivid::video {
+
+// Timestamped audio chunk for A/V sync
+// NOTE: When implementing FFmpeg decoder, use this pattern for audio sync
+struct AudioChunk {
+    std::vector<float> samples;
+    double pts;  // Presentation timestamp in seconds
+};
+
+// A/V sync state - to be used when FFmpeg is implemented
+struct AVSyncState {
+    std::deque<AudioChunk> audioChunks;
+    std::mutex audioChunksMutex;
+    double audioBufferHeadPTS = 0.0;
+    double audioBufferTailPTS = 0.0;
+
+    std::atomic<double> lastVideoTimeSeconds{-1.0};
+    std::atomic<bool> videoHasStarted{false};
+    std::atomic<bool> initialSyncDone{false};
+    std::atomic<bool> isShuttingDown{false};
+
+    void reset() {
+        {
+            std::lock_guard<std::mutex> lock(audioChunksMutex);
+            audioChunks.clear();
+        }
+        audioBufferHeadPTS = 0.0;
+        audioBufferTailPTS = 0.0;
+        lastVideoTimeSeconds.store(-1.0);
+        videoHasStarted.store(false);
+        initialSyncDone.store(false);
+    }
+};
+
+// Static sync state (will be part of Impl struct when FFmpeg is implemented)
+static AVSyncState s_avSync;
 
 FFmpegDecoder::FFmpegDecoder() = default;
 
