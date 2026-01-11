@@ -574,32 +574,6 @@ std::set<std::string> scanChainForAssets(const fs::path& chainPath) {
     return assets;
 }
 
-// Scan chain.cpp for addAssetPath() calls
-// Returns map of prefix name -> path string
-std::map<std::string, std::string> scanChainForRegisteredPaths(const fs::path& chainPath) {
-    std::map<std::string, std::string> paths;
-
-    std::ifstream file(chainPath);
-    if (!file.is_open()) return paths;
-
-    std::string content((std::istreambuf_iterator<char>(file)),
-                        std::istreambuf_iterator<char>());
-
-    // Match: ctx.addAssetPath("prefix", "path") or addAssetPath("prefix", "path")
-    // Also match: chain.addAssetPath(...) or similar
-    std::regex pathPattern(R"(\.addAssetPath\s*\(\s*[\"']([^\"']+)[\"']\s*,\s*[\"']([^\"']+)[\"']\s*\))");
-
-    std::sregex_iterator it(content.begin(), content.end(), pathPattern);
-    std::sregex_iterator end;
-    for (; it != end; ++it) {
-        std::string prefix = (*it)[1].str();
-        std::string path = (*it)[2].str();
-        paths[prefix] = path;
-    }
-
-    return paths;
-}
-
 // Copy project files to bundle
 void copyProjectFiles(const fs::path& srcProject, const fs::path& chainPath,
                       const fs::path& destDir, const fs::path& rootDir) {
@@ -611,32 +585,6 @@ void copyProjectFiles(const fs::path& srcProject, const fs::path& chainPath,
     if (fs::exists(assetsDir) && fs::is_directory(assetsDir)) {
         fs::copy(assetsDir, destDir / "assets", fs::copy_options::recursive);
         std::cout << "Bundled: project assets folder\n";
-    }
-
-    // Scan for registered asset paths (addAssetPath calls)
-    auto registeredPaths = scanChainForRegisteredPaths(chainPath);
-    for (const auto& [prefix, pathStr] : registeredPaths) {
-        fs::path srcPath = pathStr;
-
-        // Absolute paths or paths starting with ".." reference external locations
-        // These are intentionally left as-is - the bundled app will use them at runtime
-        if (srcPath.is_absolute() || (pathStr.size() >= 2 && pathStr.substr(0, 2) == "..")) {
-            std::cout << "Note: Registered path '" << prefix << "' references external location: " << pathStr << "\n";
-            std::cout << "      This path will be resolved at runtime from the original location.\n";
-            continue;
-        }
-
-        // Relative paths within the project are copied to the bundle
-        srcPath = srcProject / pathStr;
-        if (fs::exists(srcPath) && fs::is_directory(srcPath)) {
-            // Copy to the same relative location in the bundle
-            fs::path destPath = destDir / pathStr;
-            fs::create_directories(destPath.parent_path());
-            fs::copy(srcPath, destPath, fs::copy_options::recursive | fs::copy_options::overwrite_existing);
-            std::cout << "Bundled registered path: " << prefix << " -> " << pathStr << "\n";
-        } else if (!fs::exists(srcPath)) {
-            std::cout << "Warning: Registered path not found: " << prefix << " -> " << pathStr << "\n";
-        }
     }
 
     // Copy project shaders if any

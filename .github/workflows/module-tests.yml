@@ -1,0 +1,147 @@
+name: Module Installation Tests
+
+# Run weekly and on manual trigger (module tests are slow due to ONNX Runtime download)
+on:
+  schedule:
+    - cron: '0 0 * * 0'  # Weekly on Sunday
+  workflow_dispatch:     # Manual trigger
+  push:
+    paths:
+      - 'modules/vivid-core/src/module_manager.cpp'
+      - 'modules/vivid-core/include/vivid/module_manager.h'
+      - 'src/cli/cli.cpp'
+
+jobs:
+  test-module-install-macos:
+    name: Module Install (macOS)
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout vivid
+        uses: actions/checkout@v4
+
+      - name: Download wgpu-native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WGPU_VERSION="v24.0.0.2"
+          ARCH=$(uname -m)
+          if [[ "$ARCH" == "arm64" ]]; then
+            WGPU_FILE="wgpu-macos-aarch64-release.zip"
+          else
+            WGPU_FILE="wgpu-macos-x86_64-release.zip"
+          fi
+          mkdir -p build/_deps/wgpu
+          curl -fL --retry 3 \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -o "build/_deps/wgpu/wgpu.zip" \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/${WGPU_FILE}"
+
+      - name: Build vivid
+        run: |
+          cmake -B build
+          cmake --build build --config Release --parallel
+
+      - name: Test module installation from GitHub
+        run: |
+          # Install vivid-onnx module
+          ./build/bin/vivid modules install https://github.com/seethroughlab/vivid-onnx
+
+          # Verify it's in the list
+          ./build/bin/vivid modules list | grep -q "vivid-onnx"
+
+          echo "Module installation successful!"
+
+      - name: Test module example runs
+        continue-on-error: true  # Example may fail if video assets missing
+        run: |
+          MODULE_PATH="$HOME/.vivid/modules/vivid-onnx"
+
+          # Check if pose-tracking example exists and try to run it
+          if [ -d "$MODULE_PATH/examples/pose-tracking" ]; then
+            timeout 60 ./build/bin/vivid "$MODULE_PATH/examples/pose-tracking" \
+              --snapshot /tmp/pose-test.png --snapshot-frame 30 || true
+          fi
+
+      - name: Clean up
+        run: |
+          ./build/bin/vivid modules remove vivid-onnx || true
+
+  test-module-install-linux:
+    name: Module Install (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout vivid
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libxext-dev libwayland-dev libxkbcommon-dev libgl1-mesa-dev
+
+      - name: Download wgpu-native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          WGPU_VERSION="v24.0.0.2"
+          mkdir -p build/_deps/wgpu
+          curl -fL --retry 3 \
+            -H "Authorization: token $GITHUB_TOKEN" \
+            -o "build/_deps/wgpu/wgpu.zip" \
+            "https://github.com/gfx-rs/wgpu-native/releases/download/${WGPU_VERSION}/wgpu-linux-x86_64-release.zip"
+
+      - name: Build vivid
+        run: |
+          cmake -B build
+          cmake --build build --config Release --parallel
+
+      - name: Test module installation from GitHub
+        run: |
+          ./build/bin/vivid modules install https://github.com/seethroughlab/vivid-onnx
+          ./build/bin/vivid modules list | grep -q "vivid-onnx"
+          echo "Module installation successful!"
+
+      - name: Clean up
+        run: |
+          ./build/bin/vivid modules remove vivid-onnx || true
+
+  test-module-install-windows:
+    name: Module Install (Windows)
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout vivid
+        uses: actions/checkout@v4
+
+      - name: Download wgpu-native
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $WGPU_VERSION = "v24.0.0.2"
+          New-Item -ItemType Directory -Force -Path build/_deps/wgpu | Out-Null
+          $headers = @{ Authorization = "token $env:GITHUB_TOKEN" }
+          Invoke-WebRequest -Uri "https://github.com/gfx-rs/wgpu-native/releases/download/$WGPU_VERSION/wgpu-windows-x86_64-msvc-release.zip" -Headers $headers -OutFile "build/_deps/wgpu/wgpu.zip"
+        shell: powershell
+
+      - name: Build vivid
+        run: |
+          cmake -B build
+          cmake --build build --config Release --parallel
+
+      - name: Test module installation from GitHub
+        run: |
+          .\build\bin\Release\vivid.exe modules install https://github.com/seethroughlab/vivid-onnx
+          .\build\bin\Release\vivid.exe modules list
+        shell: cmd
+
+      - name: Clean up
+        run: |
+          .\build\bin\Release\vivid.exe modules remove vivid-onnx
+        shell: cmd
+        continue-on-error: true

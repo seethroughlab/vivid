@@ -343,6 +343,7 @@ struct MainLoopContext {
     VideoExporter cliRecorder;
     bool cliRecordingStarted = false;
     bool chainNeedsSetup = true;
+    bool chainAlreadyLoaded = false;  // True if chain was loaded during early config extraction
     bool tabKeyWasPressed = false;
     bool visualizerVisible = false;  // Chain visualizer visibility (Tab to toggle)
     bool initialStatusShown = false;  // Have we shown the startup status banner?
@@ -1147,9 +1148,12 @@ int Application::init(const AppConfig& config) {
     bool startFullscreen = config.startFullscreen;
     DisplayMode displayMode = DisplayMode::Fit;  // Default display mode
 
+    // Create HotReload early so we can use it for config extraction
+    // The same instance will be used for the main loop hot-reload
+    m_impl->hotReload = std::make_unique<HotReload>();
+
     if (!config.projectPath.empty()) {
         // Compile chain early to get its config before window creation
-        HotReload earlyLoader;
         fs::path chainPath;
 
         if (fs::is_directory(config.projectPath)) {
@@ -1159,10 +1163,13 @@ int Application::init(const AppConfig& config) {
         }
 
         if (fs::exists(chainPath)) {
-            earlyLoader.setSourceFile(chainPath);
-            if (earlyLoader.tryCompile() && earlyLoader.loadCompiled()) {
-                if (earlyLoader.hasConfig()) {
-                    ChainConfig chainConfig = earlyLoader.getConfig();
+            // Compile and load chain to extract config
+            // The library stays loaded - no unload/reload cycle
+            m_impl->hotReload->setSourceFile(chainPath);
+            if (m_impl->hotReload->tryCompile() && m_impl->hotReload->loadCompiled()) {
+                m_impl->mlc.chainAlreadyLoaded = true;
+                if (m_impl->hotReload->hasConfig()) {
+                    ChainConfig chainConfig = m_impl->hotReload->getConfig();
                     windowWidth = chainConfig.windowWidth;
                     windowHeight = chainConfig.windowHeight;
                     windowResizable = chainConfig.resizable;
@@ -1392,8 +1399,8 @@ int Application::init(const AppConfig& config) {
         }
     }
 
-    // Create hot-reload system
-    m_impl->hotReload = std::make_unique<HotReload>();
+    // HotReload was created earlier (before window creation) for config extraction
+    // No need to create it again here
 
     // Create editor bridge
     m_impl->editorBridge = std::make_unique<EditorBridge>();
@@ -1691,9 +1698,16 @@ int Application::init(const AppConfig& config) {
         }
 
         if (fs::exists(chainPath)) {
-            std::cout << "Loading chain: " << chainPath << std::endl;
-            m_impl->hotReload->setSourceFile(chainPath);
             m_impl->ctx->setChainPath(chainPath.string());
+            if (m_impl->mlc.chainAlreadyLoaded) {
+                // Chain was already loaded during config extraction
+                // Just set path for watching, don't trigger reload
+                m_impl->hotReload->setSourcePath(chainPath);
+            } else {
+                // Chain not yet loaded, trigger compile and load
+                std::cout << "Loading chain: " << chainPath << std::endl;
+                m_impl->hotReload->setSourceFile(chainPath);
+            }
         } else {
             m_impl->ctx->setError("Chain file not found: " + chainPath.string());
         }

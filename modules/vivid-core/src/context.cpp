@@ -154,18 +154,6 @@ void Context::resetChain() {
     m_chain = std::make_unique<Chain>();
 }
 
-void Context::addAssetPath(const std::string& name, const std::string& path) {
-    namespace fs = std::filesystem;
-    fs::path resolvedPath = path;
-
-    // Resolve relative paths from project directory
-    if (!resolvedPath.is_absolute()) {
-        resolvedPath = AssetLoader::instance().projectDir() / path;
-    }
-
-    AssetLoader::instance().registerAssetPath(name, resolvedPath);
-}
-
 int Context::monitorCount() const {
     int count = 0;
     glfwGetMonitors(&count);

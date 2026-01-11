@@ -47,8 +47,12 @@ public:
     HotReload(const HotReload&) = delete;
     HotReload& operator=(const HotReload&) = delete;
 
-    // Set the source file to watch
+    // Set the source file to watch (triggers reload on next check)
     void setSourceFile(const fs::path& chainPath);
+
+    // Set source path for watching only (doesn't trigger reload)
+    // Use when chain is already loaded and you just want to watch for changes
+    void setSourcePath(const fs::path& chainPath);
 
     // Check for changes and reload if needed
     // Returns true if chain was reloaded
@@ -114,7 +118,7 @@ private:
     ConfigFn m_configFn = nullptr;
 
     fs::file_time_type m_lastModTime;
-    int m_buildNumber = 0;          // Incremented each build to avoid caching
+    static inline int s_buildNumber = 0;  // Shared across all instances to avoid path collisions
 
     std::string m_error;
     std::vector<CompileError> m_compileErrors;  // Parsed errors

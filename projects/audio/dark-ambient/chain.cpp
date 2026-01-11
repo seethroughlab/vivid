@@ -5,13 +5,17 @@
 #include <vivid/audio/audio.h>
 #include <vivid/audio/notes.h>
 #include <vivid/audio_output.h>
+#include <vivid/effects/gradient.h>
 
 using namespace vivid;
 using namespace vivid::audio;
+using namespace vivid::effects;
 
 WavetableSynth* drone1;
 WavetableSynth* drone2;
 WavetableSynth* shimmer;
+Levels* levels;
+Gradient* grad;
 int frame = 0;
 
 void setup(Context& ctx) {
@@ -132,6 +136,20 @@ void setup(Context& ctx) {
     auto& out = ctx.chain().add<AudioOutput>("out");
     out.setInput("mixer");
     ctx.chain().audioOutput("out");
+
+    // === VISUALS (glacial gradient) ===
+    levels = &ctx.chain().add<Levels>("levels");
+    levels->input("mixer");
+    levels->smoothing = 0.96f;  // Very smooth for drones
+
+    grad = &ctx.chain().add<Gradient>("grad");
+    grad->mode = GradientMode::Angular;
+    grad->scale = 0.8f;
+    // Deep, dark colors - near black with hints of cold blue and warm brown
+    grad->colorA.set(0.02f, 0.03f, 0.06f);  // Cold dark blue
+    grad->colorB.set(0.04f, 0.02f, 0.01f);  // Warm dark brown
+
+    ctx.chain().output("grad");
 }
 
 void update(Context& ctx) {
@@ -195,6 +213,20 @@ void update(Context& ctx) {
     shimmer->position = 0.3f + 0.4f * std::sin(t * 0.035f + 2.0f);
     shimmer->filterCutoff = 1800.0f + 800.0f * std::sin(t * 0.022f);
     shimmer->warpAmount = 0.2f + 0.1f * std::sin(t * 0.06f);
+
+    // === Glacial reactive visuals ===
+    float rms = levels->rms();
+
+    // Very slow angular rotation - one full cycle per ~2 minutes
+    grad->angle = t * 0.05f;
+
+    // Subtle brightness breathing with drone level
+    float glow = 0.02f + rms * 0.06f;
+    grad->colorA.set(glow, glow * 1.2f, glow * 2.0f);  // Cold blue glow
+
+    // Slow color temperature shift between chords
+    float warmth = std::sin(t * 0.02f) * 0.5f + 0.5f;
+    grad->colorB.set(0.04f * warmth, 0.02f, 0.01f + 0.02f * (1.0f - warmth));
 
     ctx.chain().process(ctx);
 }

@@ -1,6 +1,7 @@
 // Vivid - Module Manager Implementation
 
 #include <vivid/module_manager.h>
+#include <vivid/asset_loader.h>
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <fstream>
@@ -732,6 +733,14 @@ void ModuleManager::loadUserModules() {
 
     if (!m_loadedModules.empty()) {
         std::cout << "Loaded " << m_loadedModules.size() << " user modules" << std::endl;
+    }
+
+    // Auto-register module assets to search paths
+    for (const auto& lib : m_installedModules) {
+        fs::path assetsDir = lib.installPath / "assets";
+        if (fs::exists(assetsDir)) {
+            AssetLoader::instance().addSearchPath(assetsDir);
+        }
     }
 }
 

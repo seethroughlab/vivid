@@ -116,30 +116,6 @@ public:
      */
     std::filesystem::path projectDir() const { return m_projectDir; }
 
-    /**
-     * @brief Register a named asset path prefix
-     * @param name Prefix name (e.g., "shared", "fonts")
-     * @param path Directory path (absolute or relative to project)
-     *
-     * Allows using "prefix:filename" syntax in asset paths.
-     * Example: registerAssetPath("fonts", "/usr/share/fonts") enables
-     * loading "fonts:OpenSans.ttf" which resolves to "/usr/share/fonts/OpenSans.ttf"
-     */
-    void registerAssetPath(const std::string& name, const std::filesystem::path& path);
-
-    /**
-     * @brief Get all registered asset paths (for bundling)
-     * @return Map of prefix name to resolved directory path
-     */
-    std::unordered_map<std::string, std::filesystem::path> getRegisteredPaths() const {
-        return m_registeredPaths;
-    }
-
-    /**
-     * @brief Clear all registered asset paths
-     */
-    void clearRegisteredPaths() { m_registeredPaths.clear(); }
-
     /// @}
     // -------------------------------------------------------------------------
     /// @name Cache Management
@@ -193,9 +169,6 @@ private:
 
     // Track loaded assets: requested path -> resolved absolute path
     std::unordered_map<std::string, std::filesystem::path> m_loadedAssets;
-
-    // Registered asset path prefixes: prefix name -> directory path
-    std::unordered_map<std::string, std::filesystem::path> m_registeredPaths;
 };
 
 } // namespace vivid

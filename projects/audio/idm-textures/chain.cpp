@@ -5,16 +5,21 @@
 #include <vivid/audio/audio.h>
 #include <vivid/audio/notes.h>
 #include <vivid/audio_output.h>
+#include <vivid/effects/gradient.h>
 #include <cstdlib>
 
 using namespace vivid;
 using namespace vivid::audio;
+using namespace vivid::effects;
 
 WavetableSynth* lead;
 WavetableSynth* texture;
 Clock* clk;
+Levels* levels;
+Gradient* grad;
 int step = 0;
 uint32_t seed = 12345;
+float flashDecay = 0.0f;
 
 // Simple pseudo-random
 float randf() {
@@ -109,6 +114,20 @@ void setup(Context& ctx) {
     auto& out = ctx.chain().add<AudioOutput>("out");
     out.setInput("mixer");
     ctx.chain().audioOutput("out");
+
+    // === VISUALS (glitchy reactive gradient) ===
+    levels = &ctx.chain().add<Levels>("levels");
+    levels->input("mixer");
+    levels->smoothing = 0.85f;  // Responsive but not twitchy
+
+    grad = &ctx.chain().add<Gradient>("grad");
+    grad->mode = GradientMode::Linear;
+    grad->scale = 1.5f;
+    // Dark teal to deep purple - digital colors
+    grad->colorA.set(0.02f, 0.06f, 0.08f);
+    grad->colorB.set(0.06f, 0.02f, 0.06f);
+
+    ctx.chain().output("grad");
 }
 
 void update(Context& ctx) {
@@ -117,6 +136,7 @@ void update(Context& ctx) {
     // Trigger on 16th notes for glitchy patterns
     if (clk->triggered()) {
         step++;
+        flashDecay = 1.0f;  // Trigger visual flash
 
         // Probabilistic note triggering (skip some steps)
         if (randf() > 0.3f) {
@@ -154,6 +174,25 @@ void update(Context& ctx) {
     texture->position = 0.2f + 0.6f * std::sin(t * 0.05f);
     texture->filterCutoff = 800.0f + 700.0f * std::sin(t * 0.08f);
     texture->warpAmount = 0.1f + 0.15f * std::sin(t * 0.12f);
+
+    // === Glitchy reactive visuals ===
+    float rms = levels->rms();
+
+    // Flash decay for note triggers
+    flashDecay *= 0.92f;
+
+    // Gradient angle shifts with time and jerks on notes
+    float angleOffset = (step % 4) * 0.5f;  // Quantized angle changes
+    grad->angle = t * 0.3f + angleOffset;
+
+    // Colors pulse with audio level and flash
+    float flash = flashDecay * 0.15f;
+    float pulse = rms * 0.08f;
+    grad->colorA.set(0.02f + flash, 0.06f + pulse, 0.08f + pulse);
+    grad->colorB.set(0.06f + pulse, 0.02f + flash * 0.5f, 0.06f + flash);
+
+    // Scale breathes subtly
+    grad->scale = 1.5f + rms * 0.4f;
 
     ctx.chain().process(ctx);
 }

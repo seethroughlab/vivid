@@ -5,13 +5,17 @@
 #include <vivid/audio/audio.h>
 #include <vivid/audio/notes.h>
 #include <vivid/audio_output.h>
+#include <vivid/effects/gradient.h>
 
 using namespace vivid;
 using namespace vivid::audio;
+using namespace vivid::effects;
 
 WavetableSynth* pad;
 WavetableSynth* bass;
 Clock* clk;
+Levels* levels;
+Gradient* grad;
 int step = 0;
 
 // Moody minor chord progression (Am - F - C - G)
@@ -101,6 +105,20 @@ void setup(Context& ctx) {
     auto& out = ctx.chain().add<AudioOutput>("out");
     out.setInput("mixer");
     ctx.chain().audioOutput("out");
+
+    // === VISUALS (subtle reactive gradient) ===
+    levels = &ctx.chain().add<Levels>("levels");
+    levels->input("mixer");
+    levels->smoothing = 0.92f;  // Smooth response
+
+    grad = &ctx.chain().add<Gradient>("grad");
+    grad->mode = GradientMode::Radial;
+    grad->scale = 1.2f;
+    // Warm, muted colors - dark amber to deep purple
+    grad->colorA.set(0.15f, 0.08f, 0.05f);  // Dark amber center
+    grad->colorB.set(0.05f, 0.02f, 0.08f);  // Deep purple edge
+
+    ctx.chain().output("grad");
 }
 
 void update(Context& ctx) {
@@ -141,6 +159,20 @@ void update(Context& ctx) {
     // Subtle warp modulation
     pad->setWarpMode(WarpMode::FM);
     pad->warpAmount = 0.1f + 0.08f * std::sin(t * 0.2f);
+
+    // === Reactive visuals ===
+    float rms = levels->rms();
+
+    // Gradient breathes with audio - subtle center brightness pulse
+    float brightness = 0.15f + rms * 0.25f;
+    grad->colorA.set(brightness, brightness * 0.5f, brightness * 0.3f);
+
+    // Slow color drift based on chord
+    float hueShift = std::sin(t * 0.05f) * 0.03f;
+    grad->colorB.set(0.05f + hueShift, 0.02f, 0.08f - hueShift);
+
+    // Subtle scale pulse with bass
+    grad->scale = 1.2f + rms * 0.3f;
 
     ctx.chain().process(ctx);
 }

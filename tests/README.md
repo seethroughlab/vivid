@@ -99,3 +99,34 @@ TEST_CASE("MyOperator defaults", "[operators][myoperator]") {
 - `[integration]` - Integration tests
 - `[chain]` - Chain-related tests
 - `[noise]`, `[blur]`, etc. - Specific operator tests
+
+## Module Installation Tests
+
+Shell scripts for testing the `vivid modules` CLI commands:
+
+### Local Development (fast)
+
+Test module linking with a local checkout:
+
+```bash
+# Requires vivid-onnx cloned to ~/Developer/vivid-onnx and built
+./tests/scripts/test_module_link.sh
+
+# Or specify paths
+VIVID_BIN=./build/bin/vivid MODULE_PATH=/path/to/vivid-onnx ./tests/scripts/test_module_link.sh
+```
+
+### Full Installation (slow)
+
+Test module installation from GitHub:
+
+```bash
+./tests/scripts/test_module_install.sh
+```
+
+### CI Workflow
+
+The `.github/workflows/module-tests.yml` workflow runs weekly and tests:
+- Module installation from GitHub on macOS, Linux, Windows
+- Verifies module appears in `vivid modules list`
+- Runs module examples with `--snapshot` mode

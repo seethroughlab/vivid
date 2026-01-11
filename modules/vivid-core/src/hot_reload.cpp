@@ -134,6 +134,13 @@ void HotReload::setSourceFile(const fs::path& chainPath) {
     }
 }
 
+void HotReload::setSourcePath(const fs::path& chainPath) {
+    // Set path for watching without triggering reload
+    // Used when chain is already loaded (e.g., after early config extraction)
+    m_sourcePath = chainPath;
+    m_lastModTime = getFileModTime();  // Current time, won't trigger reload
+}
+
 fs::file_time_type HotReload::getFileModTime() const {
     if (m_sourcePath.empty() || !fs::exists(m_sourcePath)) {
         return fs::file_time_type::min();
@@ -268,7 +275,7 @@ static fs::path getExecutableDir() {
 
 bool HotReload::compile() {
     // Increment build number to avoid OS library caching
-    m_buildNumber++;
+    s_buildNumber++;
 
     // Build library name with process ID and build number
     // Using PID ensures different vivid instances don't conflict
@@ -277,7 +284,7 @@ bool HotReload::compile() {
 #else
     pid_t pid = getpid();
 #endif
-    std::string libName = "chain_" + std::to_string(pid) + "_" + std::to_string(m_buildNumber);
+    std::string libName = "chain_" + std::to_string(pid) + "_" + std::to_string(s_buildNumber);
 
 #ifdef _WIN32
     libName += ".dll";

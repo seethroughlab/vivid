@@ -99,10 +99,6 @@ void AssetLoader::setProjectDir(const fs::path& path) {
     m_searchPaths.insert(m_searchPaths.begin(), path);
 }
 
-void AssetLoader::registerAssetPath(const std::string& name, const fs::path& path) {
-    m_registeredPaths[name] = path;
-}
-
 void AssetLoader::clearCache() {
     m_textCache.clear();
     m_binaryCache.clear();
@@ -128,25 +124,6 @@ std::vector<fs::path> AssetLoader::getLoadedAssetPaths() const {
 }
 
 fs::path AssetLoader::findAsset(const std::string& path) {
-    // Check for named prefix (e.g., "shared:logo.jpg")
-    // Only treat as prefix if colon is not at position 1 (Windows drive letter like "C:")
-    auto colonPos = path.find(':');
-    if (colonPos != std::string::npos && colonPos > 1) {
-        std::string prefix = path.substr(0, colonPos);
-        std::string relativePath = path.substr(colonPos + 1);
-
-        auto it = m_registeredPaths.find(prefix);
-        if (it != m_registeredPaths.end()) {
-            fs::path fullPath = it->second / relativePath;
-            if (fs::exists(fullPath)) {
-                return fullPath;
-            }
-            // Prefix was registered but file not found - don't fall through
-            return {};
-        }
-        // Prefix not registered - fall through to normal resolution
-    }
-
     // If absolute path, use directly
     fs::path assetPath(path);
     if (assetPath.is_absolute()) {
