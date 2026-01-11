@@ -10,6 +10,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.23] - 2026-01-11
+
+### Added
+
+#### Video Audio Sync for Chain Routing
+PTS-based A/V synchronization when routing video audio through the effects chain (VideoAudio → Delay → Reverb → AudioOutput):
+
+- **Timestamp tracking** - Audio samples tagged with Presentation Timestamps (PTS) for sync calculation
+- **Drift detection** - Monitors video-audio offset with configurable thresholds (100ms tolerance, 500ms critical)
+- **Automatic correction** - Skips audio when behind, inserts silence when ahead
+- **Seek support** - Resyncs audio buffer after seeking
+- **Shutdown safety** - Atomic flags prevent race conditions on cleanup
+
+**Platform support:**
+| Platform | Decoder | Status |
+|----------|---------|--------|
+| macOS | AVFPlaybackDecoder | Full implementation |
+| Windows | DShowDecoder | Full implementation |
+| Windows | MFDecoder | Full implementation |
+| Linux | FFmpegDecoder | Infrastructure stub |
+
+See `dev/plans/AV_SYNC.md` for architecture decision rationale.
+
 ### Changed
 
 - **CI: Build parallelism limits** - Self-hosted runners now limit parallel jobs to prevent OOM during C++ compilation (Linux: 2, macOS: 4, Windows: 4, Raspberry Pi: 2)
@@ -537,7 +560,8 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.22...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.23...HEAD
+[0.1.0-alpha.23]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.22...v0.1.0-alpha.23
 [0.1.0-alpha.22]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.21...v0.1.0-alpha.22
 [0.1.0-alpha.20]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.19...v0.1.0-alpha.20
 [0.1.0-alpha.19]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.18...v0.1.0-alpha.19
