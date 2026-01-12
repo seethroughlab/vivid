@@ -69,7 +69,7 @@ This creates organic, wavy distortions in real-time.
 
 1. **Adjust displacement**: Change strength from 0.01 (subtle) to 0.15 (extreme)
 2. **Change noise scale**: Larger scale = broader waves, smaller = finer detail
-3. **Add color effects**: Try HSV or Colorize after the displacement
+3. **Add color effects**: Try HSV after the displacement
 4. **Mirror yourself**: Add a Mirror operator
 
 ## Multiple Cameras

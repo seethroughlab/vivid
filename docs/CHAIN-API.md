@@ -20,15 +20,15 @@ void setup(Context& ctx) {
     noise.speed = 0.3f;
 
     auto& fb = chain.add<Feedback>("fb");
-    fb.input(&noise);
+    fb.input("noise");
     fb.decay = 0.9f;
 
     auto& mirror = chain.add<Mirror>("mirror");
-    mirror.input(&fb);
+    mirror.input("fb");
     mirror.segments = 6;
 
     auto& color = chain.add<HSV>("color");
-    color.input(&mirror);
+    color.input("mirror");
     color.saturation = 0.8f;
 
     // Designate the output operator
@@ -144,23 +144,23 @@ noise.octaves = 4;
 - `Noise` - Animated fractal noise
 - `Gradient` - Linear/radial/angular gradients
 - `Shape` - SDF shapes (circle, rect, star, etc.)
-- `Constant` - Solid colors
+- `SolidColor` - Solid colors
 
 **Effects:**
 - `Blur` - Gaussian blur
 - `HSV` - Hue/saturation/brightness adjustment
 - `Feedback` - Video feedback with transform
 - `Mirror` - Mirroring and kaleidoscope
-- `Displacement` - Texture-based distortion
+- `Displace` - Texture-based distortion
 - `Transform` - Scale/rotate/translate
 - `Edge` - Sobel edge detection
 - `ChromaticAberration` - RGB separation
 - `Pixelate` - Mosaic effect
 - `Scanlines` - CRT effect
 
-**Media:**
-- `VideoFile` - Video playback
-- `ImageFile` - Static images
+**Media (require vivid-video module):**
+- `VideoPlayer` - Video playback
+- `Image` - Static images
 - `Webcam` - Camera input
 
 **Utility:**
@@ -170,24 +170,23 @@ noise.octaves = 4;
 
 ## Connecting Operators
 
-### Using .input() with Pointers (Recommended)
+### Using .input() with Names
 
-Use `chain->add<>()` to get a reference, then connect with pointers:
-
-```cpp
-auto& noise = chain->add<Noise>("noise");
-auto& blur = chain->add<Blur>("blur");
-auto& color = chain->add<HSV>("color");
-
-blur.input(&noise);   // blur reads from noise
-color.input(&blur);   // color reads from blur
-```
-
-Or use references captured during setup:
+Connect operators by referencing their string names:
 
 ```cpp
-auto& noise = chain->add<Noise>("noise").scale(4.0f);
-chain->add<Blur>("blur").input(&noise);
+auto& chain = ctx.chain();
+
+auto& noise = chain.add<Noise>("noise");
+noise.scale = 4.0f;
+
+auto& blur = chain.add<Blur>("blur");
+blur.input("noise");   // blur reads from noise
+
+auto& color = chain.add<HSV>("color");
+color.input("blur");   // color reads from blur
+
+chain.output("color");
 ```
 
 ### Two Inputs
@@ -195,12 +194,13 @@ chain->add<Blur>("blur").input(&noise);
 Some operators (like `Composite`) take two inputs:
 
 ```cpp
-auto& noise = chain->add<Noise>("noise");
-auto& gradient = chain->add<Gradient>("gradient");
-auto& comp = chain->add<Composite>("comp");
-comp.inputA(&gradient)     // Background
-    .inputB(&noise)        // Foreground
-    .mode = BlendMode::Add;
+auto& noise = chain.add<Noise>("noise");
+auto& gradient = chain.add<Gradient>("gradient");
+
+auto& comp = chain.add<Composite>("comp");
+comp.inputA("gradient");      // Background
+comp.inputB("noise");         // Foreground
+comp.mode = BlendMode::Add;
 ```
 
 ## Dynamic Updates
@@ -209,18 +209,18 @@ Use `update()` for per-frame parameter changes:
 
 ```cpp
 void update(Context& ctx) {
-    if (!chain) return;
+    auto& chain = ctx.chain();
 
     // Mouse control - mouseNorm() returns 0-1 range
     float rotation = (ctx.mouseNorm().x - 0.5f) * 0.1f;
-    chain->get<Feedback>("fb").rotate(rotation);
+    chain.get<Feedback>("fb").rotate = rotation;
 
     // Time-based animation
     float hue = std::fmod(ctx.time() * 0.1f, 1.0f);
-    chain->get<HSV>("color").hueShift(hue);
+    chain.get<HSV>("color").hueShift = hue;
 
     // Process chain - this handles all operator execution
-    chain->process(ctx);
+    chain.process(ctx);
 }
 ```
 
@@ -285,64 +285,59 @@ Operator state (like Feedback buffers, animation phases) is automatically preser
 using namespace vivid;
 using namespace vivid::effects;
 
-static Chain* chain = nullptr;
-
 void setup(Context& ctx) {
-    delete chain;
-    chain = new Chain();
+    auto& chain = ctx.chain();
 
     // Noise as seed pattern
-    auto& noise = chain->add<Noise>("noise")
-        .scale(4.0f)
-        .speed(0.3f)
-        .octaves(4);
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+    noise.speed = 0.3f;
+    noise.octaves = 4;
 
     // Feedback creates trails
-    auto& feedback = chain->add<Feedback>("feedback")
-        .input(&noise)
-        .decay(0.92f)
-        .zoom(1.02f)
-        .rotate(0.01f);
+    auto& feedback = chain.add<Feedback>("feedback");
+    feedback.input("noise");
+    feedback.decay = 0.92f;
+    feedback.zoom = 1.02f;
+    feedback.rotate = 0.01f;
 
     // Kaleidoscope symmetry
-    auto& mirror = chain->add<Mirror>("mirror")
-        .input(&feedback)
-        .kaleidoscope(6);
+    auto& mirror = chain.add<Mirror>("mirror");
+    mirror.input("feedback");
+    mirror.segments = 6;
 
-    // Colorize the result
-    auto& color = chain->add<HSV>("color")
-        .input(&mirror)
-        .colorize(true)
-        .saturation(0.8f);
+    // Color adjustment
+    auto& color = chain.add<HSV>("color");
+    color.input("mirror");
+    color.saturation = 0.8f;
 
     // Output to screen
-    chain->output("color");
-    chain->init(ctx);
+    chain.output("color");
 }
 
 void update(Context& ctx) {
-    if (!chain) return;
+    auto& chain = ctx.chain();
 
     // Mouse X: rotation - mouseNorm() returns 0-1 range
     float rot = (ctx.mouseNorm().x - 0.5f) * 0.1f;
-    chain->get<Feedback>("feedback").rotate(rot);
+    chain.get<Feedback>("feedback").rotate = rot;
 
     // Mouse Y: zoom
     float zoom = 0.98f + ctx.mouseNorm().y * 0.06f;
-    chain->get<Feedback>("feedback").zoom(zoom);
+    chain.get<Feedback>("feedback").zoom = zoom;
 
     // Cycle hue over time
     float hue = std::fmod(ctx.time() * 0.05f, 1.0f);
-    chain->get<HSV>("color").hueShift(hue);
+    chain.get<HSV>("color").hueShift = hue;
 
     // Click to clear
     if (ctx.mouseButton(0).pressed) {
-        chain->get<Feedback>("feedback").decay(0.0f);
+        chain.get<Feedback>("feedback").decay = 0.0f;
     } else {
-        chain->get<Feedback>("feedback").decay(0.92f);
+        chain.get<Feedback>("feedback").decay = 0.92f;
     }
 
-    chain->process(ctx);
+    chain.process(ctx);
 }
 
 VIVID_CHAIN(setup, update)
@@ -388,12 +383,11 @@ This outputs the processing order and shows which operator is the screen output:
 ## Tips
 
 1. **Name operators meaningfully** - You'll reference them in `update()`
-2. **Use `colorize(true)`** for grayscale generators feeding into HSV
-3. **Always use Output operator** - Required for displaying results
-4. **Call `chain->init(ctx)`** after building the graph
-5. **Call `chain->process(ctx)`** every frame in update()
-6. **Keep `update()` fast** - It runs every frame
-7. **State persists** - Animation phases survive hot-reload
+2. **Use HSV for color manipulation** - Adjust hue, saturation, and brightness
+3. **Set output** - Call `chain.output("name")` to designate the display operator
+4. **Call `chain.process(ctx)`** every frame in update()
+5. **Keep `update()` fast** - It runs every frame
+6. **State persists** - Animation phases survive hot-reload
 
 ## See Also
 

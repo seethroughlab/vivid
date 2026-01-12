@@ -46,6 +46,11 @@ fn gaussian(x: f32, sigma: f32) -> f32 {
 
 @fragment
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    // Pass through when radius is effectively 0
+    if (uniforms.radius < 0.5) {
+        return textureSample(inputTex, texSampler, input.uv);
+    }
+
     let texel = vec2f(uniforms.texelW, uniforms.texelH);
     var dir: vec2f;
     if (uniforms.direction < 0.5) {

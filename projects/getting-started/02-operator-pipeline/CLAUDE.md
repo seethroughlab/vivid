@@ -5,7 +5,7 @@ This lesson teaches how operators connect to form processing pipelines.
 ## Lesson Objectives
 
 1. Understand that operators form a directed graph
-2. Learn both connection methods: `.input("name")` and `.input = op.output()`
+2. Learn to connect operators using `.input("name")`
 3. Visualize the chain with Tab key
 4. Understand that order affects the result
 
@@ -14,17 +14,18 @@ This lesson teaches how operators connect to form processing pipelines.
 - **Pipeline**: Data flows from generators through effects to output
 - **Input/Output**: Each operator can have inputs and produces output
 - **Graph**: The chain is actually a directed graph, not just a linear chain
-- **Order matters**: Blur→Colorize differs from Colorize→Blur
+- **Order matters**: Blur→Lookup differs from Lookup→Blur
 
 ## What the Code Demonstrates
 
-- Creating a three-stage pipeline: Noise → Blur → Colorize
-- Two connection methods (string name vs direct reference)
-- Setting effect parameters (blur radius, colorize gradient)
+- Creating a multi-stage pipeline: Noise → Blur → Gradient + Lookup
+- Connecting operators by name with `.input("name")`
+- Using Lookup to colorize grayscale with a gradient LUT
+- Setting effect parameters (noise scale, blur radius, gradient colors)
 
 ## Suggested Modifications
 
-1. **Reorder effects**: Swap Blur and Colorize positions
+1. **Reorder effects**: Colorize before blur
    ```cpp
    colorize.input("noise");
    blur.input("colorize");

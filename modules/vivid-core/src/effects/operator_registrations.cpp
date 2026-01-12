@@ -17,6 +17,7 @@
 #include <vivid/effects/brightness.h>
 #include <vivid/effects/threshold.h>
 #include <vivid/effects/level.h>
+#include <vivid/effects/lookup.h>
 #include <vivid/effects/crop.h>
 #include <vivid/effects/tone_map.h>
 #include <vivid/effects/normal_map.h>
@@ -76,6 +77,7 @@ REGISTER_OPERATOR(HSV, "Effects", "HSV color adjustment", true);
 REGISTER_OPERATOR(Brightness, "Effects", "Brightness and contrast adjustment", true);
 REGISTER_OPERATOR(Threshold, "Effects", "Binary thresholding", true);
 REGISTER_OPERATOR(Level, "Effects", "Input/output level adjustment with gamma", true);
+REGISTER_OPERATOR(Lookup, "Effects", "Color lookup table / colorize", true);
 REGISTER_OPERATOR(Crop, "Effects", "Region extraction", true);
 REGISTER_OPERATOR(ToneMap, "Effects", "HDR to SDR tone mapping", true);
 REGISTER_OPERATOR(NormalMap, "Effects", "Height to normal map conversion", true);

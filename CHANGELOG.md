@@ -10,6 +10,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.26] - 2026-01-12
+
+### Added
+
+- **Lookup operator** - Color lookup table effect for colorizing grayscale textures using a gradient/LUT. Uses input luminance (or R/G/B channel) to sample from a horizontal gradient texture. Perfect for heat maps, false color, and artistic colorization.
+- **Transitive module dependencies** - Hot-reload compiler now resolves transitive dependencies declared in `module.json`. For example, vivid-midi depending on vivid-audio now automatically includes vivid-audio's include paths.
+- **vivid-midi module.json** - Added module metadata with vivid-audio dependency declaration
+
+### Fixed
+
+- **Blur radius=0 black output** - Fixed Gaussian blur producing black output when radius was 0 (division by zero in shader). Now passes through input unchanged when radius < 0.5.
+- **Documentation API errors** - Fixed incorrect API references in docs/CHAIN-API.md and getting-started lessons:
+  - Removed non-existent `Colorize` operator references (use `Lookup` or `HSV`)
+  - Removed non-existent `.output()` method on operators (use `.input("name")`)
+  - Removed non-existent fluent builder pattern (use separate assignment statements)
+  - Fixed operator names: `Constant`→`SolidColor`, `Displacement`→`Displace`, `VideoFile`→`VideoPlayer`, `ImageFile`→`Image`
+- **midi-input example** - Fixed outdated API usage (Shape.radius, SolidColor.setColor, chain.setOutput)
+
+### Changed
+
+- **Lesson 02** - Rewrote operator pipeline tutorial to use Noise → Blur → Lookup chain, demonstrating grayscale colorization with the new Lookup operator
+
 ## [0.1.0-alpha.25] - 2026-01-11
 
 ### Fixed

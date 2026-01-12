@@ -33,31 +33,24 @@ Each operator receives input from the previous one and passes its output to the 
 
 ### Connecting Operators
 
-There are two ways to connect operators:
+Use `.input()` with the operator name to connect operators:
 
-**Method 1: Using `.input()` with the operator name**
 ```cpp
 auto& blur = chain.add<Blur>("blur");
 blur.input("noise");  // Connect to the "noise" operator
 ```
 
-**Method 2: Using `.output()` from another operator**
-```cpp
-auto& blur = chain.add<Blur>("blur");
-blur.input = noise.output();  // Direct connection
-```
-
-Both methods work - use whichever reads better for your chain.
-
 ### The Chain in This Lesson
 
 ```
-Noise → Blur → Colorize → Output
-  │       │        │
-  │       │        └── Adds color gradient
-  │       └── Softens the image
-  └── Generates animated pattern
+Noise → Blur → Lookup → Output
+  │       │       │
+  │       │       └── Colorizes using gradient LUT
+  │       └── Softens the pattern
+  └── Generates grayscale pattern
 ```
+
+The `Lookup` operator uses the grayscale value as a coordinate to sample colors from a gradient texture. Dark values get the first color (dark blue), bright values get the second color (orange).
 
 ### Viewing the Graph
 
@@ -65,26 +58,25 @@ Press **Tab** to open the chain visualizer. You'll see your operators as nodes w
 
 ## Try It
 
-1. **Reorder the chain**: Put Colorize before Blur - notice the difference?
-2. **Add more effects**: Try adding `Pixelate` or `Mirror` between steps
-3. **Create branches**: Use the same input for multiple effects, then composite them
-4. **Remove a step**: Comment out the Blur to see the raw noise colorized
+1. **Change colors**: Modify the gradient's `colorA` and `colorB` values
+2. **Add more effects**: Try adding `Pixelate` or `Mirror` after the colorize step
+3. **Skip the blur**: Comment out the blur to see the raw noise colorized
+4. **Change noise parameters**: Adjust `scale`, `speed`, and `octaves`
 
 ## Example: Adding Another Effect
 
 ```cpp
-// After the blur, add edge detection
-auto& edge = chain.add<Edge>("edge");
-edge.input("blur");
+// After colorizing, add mirror symmetry
+auto& mirror = chain.add<Mirror>("mirror");
+mirror.input("colorize");
+mirror.axis = MirrorAxis::Both;
 
-// Then colorize the edges
-auto& colorize = chain.add<Colorize>("colorize");
-colorize.input("edge");
+chain.output("mirror");
 ```
 
 ## Key Insight
 
-**Order matters!** Blur → Colorize produces different results than Colorize → Blur. Experiment to understand how each effect transforms the image.
+**Order matters!** Blur → Lookup produces different results than Lookup → Blur. The blur smooths the grayscale before colorizing, creating softer color transitions.
 
 ## Next Steps
 

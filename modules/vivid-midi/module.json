@@ -1,0 +1,9 @@
+{
+  "name": "vivid-midi",
+  "version": "0.1.0",
+  "description": "MIDI input/output for controllers, sequencers, and instruments",
+  "author": "Vivid",
+  "license": "MIT",
+  "vivid": ">=0.1.0",
+  "dependencies": ["vivid-audio"]
+}

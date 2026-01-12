@@ -20,6 +20,7 @@ struct ModuleInfo {
     fs::path path;              // Path to library root directory
     fs::path includePath;       // Path to include directory
     std::string libraryName;    // Library name without prefix/suffix (e.g., "vivid-audio")
+    std::vector<std::string> dependencies;  // Other modules this module depends on
 };
 
 /// Registry for discovering and managing libraries

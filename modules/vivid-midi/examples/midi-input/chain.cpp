@@ -46,17 +46,19 @@ void setup(Context& ctx) {
 
     // Visual feedback - background color responds to notes
     auto& bg = chain.add<SolidColor>("bg");
-    bg.setColor(0.1f, 0.1f, 0.15f, 1.0f);
+    bg.color.set(0.1f, 0.1f, 0.15f, 1.0f);
 
     // Shape for note visualization
     auto& noteShape = chain.add<Shape>("noteShape");
-    noteShape.type = Shape::Circle;
-    noteShape.radius = 0.15f;
-    noteShape.color = glm::vec4(0.2f, 0.6f, 1.0f, 0.0f);
+    noteShape.type = ShapeType::Ellipse;
+    noteShape.size.set(0.15f, 0.15f);
+    noteShape.color.set(0.2f, 0.6f, 1.0f, 0.0f);
 
     // Canvas for UI
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(ctx.width(), ctx.height());
+
+    chain.output("canvas");
 }
 
 void update(Context& ctx) {
@@ -108,16 +110,17 @@ void update(Context& ctx) {
     // Update visual feedback
     auto& bg = chain.get<SolidColor>("bg");
     float brightness = 0.1f + noteDisplay * 0.3f;
-    bg.setColor(brightness * 0.8f, brightness * 0.8f, brightness, 1.0f);
+    bg.color.set(brightness * 0.8f, brightness * 0.8f, brightness, 1.0f);
 
     auto& noteShape = chain.get<Shape>("noteShape");
-    noteShape.radius = 0.1f + g_velocityDisplay * 0.1f;
-    noteShape.color = glm::vec4(0.2f, 0.6f, 1.0f, noteDisplay * 0.8f);
+    float shapeSize = 0.1f + g_velocityDisplay * 0.1f;
+    noteShape.size.set(shapeSize, shapeSize);
+    noteShape.color.set(0.2f, 0.6f, 1.0f, noteDisplay * 0.8f);
     // Position based on note (C4 = center)
     float noteX = (g_lastNote - 60) / 24.0f;  // -1 to 1 for 2 octaves
-    noteShape.position = glm::vec2(noteX * 0.5f, 0.0f);
+    noteShape.position.set(noteX * 0.5f, 0.0f);
 
-    chain.process();
+    chain.process(ctx);
 
     // Draw UI
     auto& canvas = chain.get<Canvas>("canvas");
@@ -190,7 +193,7 @@ void update(Context& ctx) {
     canvas.fillText("Connect a MIDI controller to see input visualization", 20, static_cast<float>(h - 50));
     canvas.fillText("Notes are echoed to MIDI output (if available)", 20, static_cast<float>(h - 30));
 
-    chain.setOutput(canvas);
+    chain.output("canvas");
 }
 
 VIVID_CHAIN(setup, update)

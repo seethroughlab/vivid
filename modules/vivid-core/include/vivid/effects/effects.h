@@ -21,6 +21,7 @@
 #include <vivid/effects/brightness.h>
 #include <vivid/effects/threshold.h>
 #include <vivid/effects/level.h>
+#include <vivid/effects/lookup.h>
 #include <vivid/effects/crop.h>
 #include <vivid/effects/tone_map.h>
 #include <vivid/effects/normal_map.h>

@@ -51,7 +51,7 @@ Many "custom" effects can be achieved with built-ins:
 | Color threshold | `Threshold` operator |
 | Custom blend | `Composite` with blend modes |
 | Edge detection | `Edge` operator |
-| Color manipulation | `HSV`, `Colorize`, `LUT` |
+| Color manipulation | `HSV`, `Brightness`, `Level` |
 | Distortion | `Displace`, `Transform` |
 
 ## For Advanced Users

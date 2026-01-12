@@ -28,14 +28,14 @@ Simple texture operators that fill common gaps.
   - **Note:** More powerful than existing Brightness operator
 
 ### Lookup / LUT
-- [ ] **Lookup** - Color lookup table
+- [x] **Lookup** - Color lookup table
   - **TD equivalent:** Lookup TOP
-  - **Description:** Remap colors using 1D gradient or 2D LUT texture
-  - **Params:** `lutInput` (texture), `mode` (1D/2D/3D), `intensity`
-  - **Base class:** `SimpleTextureEffect<Lookup>`
-  - **Shader:** Sample LUT texture using input color channels as UV
-  - **Difficulty:** Medium (3-4 hours)
-  - **Formats:** Support .cube LUT files for color grading
+  - **Description:** Remap colors using 1D gradient texture (colorize grayscale)
+  - **Params:** `intensity` (blend), `mode` (Luminance/Red/Green/Blue)
+  - **Base class:** `TextureOperator` (two inputs: source + LUT)
+  - **Shader:** Sample LUT texture using input luminance/channel as U coordinate
+  - **Difficulty:** Medium (implemented)
+  - **Future:** Support .cube LUT files for 3D color grading
 
 ### Crop
 - [x] **Crop** - Region extraction

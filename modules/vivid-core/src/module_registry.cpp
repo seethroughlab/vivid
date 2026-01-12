@@ -138,6 +138,15 @@ std::optional<ModuleInfo> ModuleRegistry::loadModuleJson(const fs::path& moduleP
 
         info.version = j.value("version", "");
         info.description = j.value("description", "");
+
+        // Parse dependencies array
+        if (j.contains("dependencies") && j["dependencies"].is_array()) {
+            for (const auto& dep : j["dependencies"]) {
+                if (dep.is_string()) {
+                    info.dependencies.push_back(dep.get<std::string>());
+                }
+            }
+        }
     } catch (const json::exception&) {
         // Invalid JSON - return with defaults
     }
@@ -162,24 +171,58 @@ std::vector<ModuleInfo> ModuleRegistry::discoverFromChain(const fs::path& chainP
 
     std::cout << "Scanning " << chainPath.filename() << " for library dependencies..." << std::endl;
 
+    // Track which modules we've already added to avoid duplicates
+    std::set<std::string> addedModules;
+
+    // Helper to add a module and its dependencies recursively
+    std::function<void(const std::string&, int)> addModuleWithDeps = [&](const std::string& moduleName, int depth) {
+        // Avoid infinite recursion and duplicates
+        if (addedModules.count(moduleName) > 0) {
+            return;
+        }
+
+        auto libPath = findModule(moduleName);
+        if (!libPath) {
+            if (depth == 0) {
+                // Only warn for direct dependencies, not transitive ones
+                std::cerr << "  Warning: Could not find module: " << moduleName << std::endl;
+            }
+            return;
+        }
+
+        auto info = loadModuleJson(*libPath);
+        if (!info) {
+            return;
+        }
+
+        addedModules.insert(moduleName);
+        m_modules.push_back(*info);
+
+        std::string indent(depth * 2 + 2, ' ');
+        std::cout << indent << "Found module: " << info->name;
+        if (!info->version.empty()) {
+            std::cout << " v" << info->version;
+        }
+        if (!info->dependencies.empty()) {
+            std::cout << " (deps: ";
+            for (size_t i = 0; i < info->dependencies.size(); ++i) {
+                if (i > 0) std::cout << ", ";
+                std::cout << info->dependencies[i];
+            }
+            std::cout << ")";
+        }
+        std::cout << std::endl;
+
+        // Recursively add dependencies
+        for (const auto& dep : info->dependencies) {
+            addModuleWithDeps(dep, depth + 1);
+        }
+    };
+
+    // Add each discovered namespace's module
     for (const auto& ns : namespaces) {
         std::string libName = namespaceToModule(ns);
-        auto libPath = findModule(libName);
-
-        if (libPath) {
-            auto info = loadModuleJson(*libPath);
-            if (info) {
-                m_modules.push_back(*info);
-                std::cout << "  Found module: " << info->name;
-                if (!info->version.empty()) {
-                    std::cout << " v" << info->version;
-                }
-                std::cout << std::endl;
-            }
-        } else {
-            std::cerr << "  Warning: Could not find library for namespace '" << ns
-                      << "' (looked for " << libName << ")" << std::endl;
-        }
+        addModuleWithDeps(libName, 0);
     }
 
     return m_modules;

@@ -14,24 +14,27 @@ using namespace vivid::effects;
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // STAGE 1: Generate a base pattern
+    // STAGE 1: Generate a base pattern (grayscale)
     auto& noise = chain.add<Noise>("noise");
     noise.scale = 6.0f;
     noise.speed = 0.3f;
     noise.octaves = 3;
 
     // STAGE 2: Soften with blur
-    // Method 1: Connect by name
     auto& blur = chain.add<Blur>("blur");
     blur.input("noise");      // Connect to "noise" operator
     blur.radius = 8.0f;       // Blur amount (pixels)
 
-    // STAGE 3: Add color
-    // Method 2: Connect directly
-    auto& colorize = chain.add<Colorize>("colorize");
-    colorize.input = blur.output();  // Direct connection
-    colorize.colorA.set(0.1f, 0.2f, 0.5f, 1.0f);  // Dark blue
-    colorize.colorB.set(1.0f, 0.6f, 0.2f, 1.0f);  // Orange
+    // STAGE 3: Colorize using a gradient lookup table
+    // The grayscale value from blur becomes the U coordinate
+    // to sample colors from the gradient
+    auto& gradient = chain.add<Gradient>("gradient");
+    gradient.colorA.set(0.1f, 0.2f, 0.5f, 1.0f);  // Dark blue
+    gradient.colorB.set(1.0f, 0.6f, 0.2f, 1.0f);  // Orange
+
+    auto& colorize = chain.add<Lookup>("colorize");
+    colorize.input("blur");       // Source: grayscale noise
+    colorize.lut("gradient");     // LUT: color gradient
 
     // EXPERIMENT: Try adding more effects here
     // auto& mirror = chain.add<Mirror>("mirror");
