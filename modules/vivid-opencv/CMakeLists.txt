@@ -26,9 +26,10 @@ else()
     message(STATUS "vivid-opencv: Detected Linux architecture: ${LINUX_ARCH}")
 
     if(LINUX_ARCH STREQUAL "aarch64" OR LINUX_ARCH STREQUAL "arm64")
-        # ARM64 Linux (Raspberry Pi, etc.) - use Debian Bookworm native aarch64 build
-        set(OPENCV_MOBILE_PLATFORM "debian-bookworm-arm")
-        set(OPENCV_MOBILE_URL "https://github.com/nihui/opencv-mobile/releases/download/${OPENCV_MOBILE_TAG}/opencv-mobile-${OPENCV_MOBILE_VERSION}-debian-bookworm-arm.zip")
+        # ARM64 Linux (Raspberry Pi, etc.) - use armlinux package with aarch64-linux-gnu
+        set(OPENCV_MOBILE_PLATFORM "armlinux")
+        set(OPENCV_MOBILE_URL "https://github.com/nihui/opencv-mobile/releases/download/${OPENCV_MOBILE_TAG}/opencv-mobile-${OPENCV_MOBILE_VERSION}-armlinux.zip")
+        set(OPENCV_ARM_SUBDIR "aarch64-linux-gnu")
     else()
         # x86_64 Linux - use Ubuntu 22.04 build
         set(OPENCV_MOBILE_PLATFORM "ubuntu-2204")
@@ -68,14 +69,22 @@ if(APPLE)
 else()
     # Windows/Linux: Try multiple possible locations
 
-    # 1. Direct include/opencv2/ structure (older archives)
-    if(EXISTS "${opencv_mobile_SOURCE_DIR}/include/opencv2")
+    # 1. ARM Linux with architecture subdirectory (aarch64-linux-gnu or arm-linux-gnueabi)
+    if(DEFINED OPENCV_ARM_SUBDIR AND EXISTS "${opencv_mobile_SOURCE_DIR}/${OPENCV_ARM_SUBDIR}/include/opencv4/opencv2")
+        set(OPENCV_INCLUDE_FOUND TRUE)
+        set(OPENCV_INCLUDE_DIR "${opencv_mobile_SOURCE_DIR}/${OPENCV_ARM_SUBDIR}/include/opencv4")
+        set(OPENCV_LIB_BASE_DIR "${opencv_mobile_SOURCE_DIR}/${OPENCV_ARM_SUBDIR}")
+        message(STATUS "vivid-opencv: Found ARM Linux opencv2 headers at ${OPENCV_INCLUDE_DIR}")
+    endif()
+
+    # 2. Direct include/opencv2/ structure (older archives)
+    if(NOT OPENCV_INCLUDE_FOUND AND EXISTS "${opencv_mobile_SOURCE_DIR}/include/opencv2")
         set(OPENCV_INCLUDE_FOUND TRUE)
         set(OPENCV_INCLUDE_DIR "${opencv_mobile_SOURCE_DIR}/include")
         message(STATUS "vivid-opencv: Found opencv2 headers at ${opencv_mobile_SOURCE_DIR}/include/opencv2")
     endif()
 
-    # 2. Linux archives use include/opencv4/opencv2 layout
+    # 3. Linux x64 archives use include/opencv4/opencv2 layout
     if(NOT OPENCV_INCLUDE_FOUND)
         if(EXISTS "${opencv_mobile_SOURCE_DIR}/include/opencv4/opencv2")
             set(OPENCV_INCLUDE_FOUND TRUE)
@@ -84,7 +93,7 @@ else()
         endif()
     endif()
 
-    # 3. Some archives may have nested opencv-mobile-* subdirectory (shouldn't happen with FetchContent)
+    # 4. Some archives may have nested opencv-mobile-* subdirectory (shouldn't happen with FetchContent)
     if(NOT OPENCV_INCLUDE_FOUND)
         file(GLOB OPENCV_SUBDIRS "${opencv_mobile_SOURCE_DIR}/opencv-mobile-*")
         if(OPENCV_SUBDIRS)
@@ -103,7 +112,7 @@ else()
         endif()
     endif()
 
-    # 4. Windows archive has platform subdirectories (x64, x86, arm64)
+    # 5. Windows archive has platform subdirectories (x64, x86, arm64)
     if(NOT OPENCV_INCLUDE_FOUND AND WIN32)
         # Check common Windows paths in order of preference
         set(OPENCV_WIN_PATHS
