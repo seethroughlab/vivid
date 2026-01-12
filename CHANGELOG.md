@@ -10,53 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha.32] - 2026-01-11
-
-### Fixed
-
-- **Build: Linux ARM64 OpenCV** - Fixed opencv-mobile archive path for ARM64 Linux (use aarch64-linux-gnu subdirectory)
-
-## [0.1.0-alpha.31] - 2026-01-11
-
-### Fixed
-
-- **Build: Fix broken symlink** - Fixed absolute symlink to HDR file that only worked on local machine
-
-## [0.1.0-alpha.30] - 2026-01-11
-
-### Fixed
-
-- **CI: Linux source permissions** - Fix both file and directory permissions on Linux runners (chmod 644 for files, 755 for dirs)
-
-## [0.1.0-alpha.29] - 2026-01-11
-
-### Fixed
-
-- **CI: Linux source permissions** - Added step to fix directory permissions on Linux runners after Git checkout (missed files)
-
-## [0.1.0-alpha.28] - 2026-01-11
-
-### Fixed
-
-- **CI: Cross-platform clean step** - Fixed clean build step to work on both Unix and Windows runners
-
-## [0.1.0-alpha.27] - 2026-01-11
-
-### Fixed
-
-- **CI: Clean build directory** - Added clean step before CMake configure on release builds to prevent stale build artifacts on self-hosted runners (broken on Windows)
-
-## [0.1.0-alpha.26] - 2026-01-11
-
-### Fixed
-
-- **Build: Linux OpenCV headers** - Fixed detection of `include/opencv4/opencv2` path in Linux opencv-mobile archives
-
 ## [0.1.0-alpha.25] - 2026-01-11
 
 ### Fixed
 
-- **Build: Linux OpenCV headers** - Fixed opencv-mobile archive structure detection for Linux x64 (ubuntu-2204) and ARM64 (debian-bookworm-arm) builds (incomplete fix)
+- **Build: Linux OpenCV** - Fixed opencv-mobile header detection for Linux x64 (include/opencv4/) and ARM64 (aarch64-linux-gnu/)
+- **Build: Broken symlink** - Fixed absolute symlink to HDR asset that only worked locally
+- **CI: Self-hosted runner cleanup** - Added cross-platform build directory clean and file permission fixes for self-hosted runners
 
 ## [0.1.0-alpha.24] - 2026-01-11
 
