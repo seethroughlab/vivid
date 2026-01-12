@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.27] - 2026-01-11
+
+### Fixed
+
+- **CI: Clean build directory** - Added clean step before CMake configure on release builds to prevent stale build artifacts on self-hosted runners
+
 ## [0.1.0-alpha.26] - 2026-01-11
 
 ### Fixed

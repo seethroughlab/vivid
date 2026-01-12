@@ -74,6 +74,10 @@ jobs:
             libxkbcommon-dev \
             libgl1-mesa-dev
 
+      - name: Clean build directory
+        shell: bash
+        run: rm -rf build
+
       - name: Configure CMake (darwin-x64 cross-compile)
         if: matrix.target == 'darwin-x64'
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES=x86_64 -DWGPU_FORCE_ARCH=x86_64 -DVIVID_VERSION_OVERRIDE=${{ steps.version_unix.outputs.VERSION || steps.version_windows.outputs.VERSION }}
