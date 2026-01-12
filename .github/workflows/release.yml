@@ -74,6 +74,12 @@ jobs:
             libxkbcommon-dev \
             libgl1-mesa-dev
 
+      - name: Fix source permissions (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          find modules -type d -exec chmod 755 {} \;
+          find projects tests -type d -exec chmod 755 {} \; 2>/dev/null || true
+
       - name: Clean build directory (Unix)
         if: runner.os != 'Windows'
         run: rm -rf build
