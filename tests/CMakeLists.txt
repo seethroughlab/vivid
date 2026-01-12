@@ -52,6 +52,27 @@ catch_discover_tests(test_effects_2d
 )
 
 # -----------------------------------------------------------------------------
+# Unit Tests (module registry)
+# -----------------------------------------------------------------------------
+
+add_executable(test_module_registry
+    unit/test_module_registry.cpp
+)
+
+target_link_libraries(test_module_registry PRIVATE
+    Catch2::Catch2WithMain
+    vivid-core
+)
+
+target_include_directories(test_module_registry PRIVATE
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
+)
+
+catch_discover_tests(test_module_registry
+    PROPERTIES LABELS "unit;modules"
+)
+
+# -----------------------------------------------------------------------------
 # Unit Tests (particle forces)
 # -----------------------------------------------------------------------------
 
