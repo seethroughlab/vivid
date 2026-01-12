@@ -10,6 +10,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.31] - 2026-01-11
+
+### Fixed
+
+- **Build: Fix broken symlink** - Fixed absolute symlink to HDR file that only worked on local machine
+
 ## [0.1.0-alpha.30] - 2026-01-11
 
 ### Fixed
