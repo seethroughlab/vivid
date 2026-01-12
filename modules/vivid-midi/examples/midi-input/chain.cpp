@@ -1,7 +1,8 @@
 // MIDI Input Example
-// Demonstrates: MidiIn, MidiOut, MidiFilePlayer
+// Demonstrates: MidiIn, MidiOut, Trigger
 //
-// Shows MIDI device connection and event handling with visual feedback
+// Shows MIDI device connection and event handling with visual feedback.
+// Uses Trigger operators to convert MIDI events into smooth envelopes.
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
@@ -12,7 +13,6 @@ using namespace vivid::effects;
 using namespace vivid::midi;
 
 // Store MIDI state globally for visualization
-static float g_noteDisplay = 0.0f;
 static float g_velocityDisplay = 0.0f;
 static float g_ccValues[8] = {0};
 static bool g_noteActive = false;
@@ -40,6 +40,10 @@ void setup(Context& ctx) {
         midiOut.openPort(0);
     }
 
+    // Trigger operator for note visualization (replaces manual decay)
+    auto& noteTrigger = chain.add<Trigger>("noteTrigger");
+    noteTrigger.decay = 0.92f;  // Smooth decay for visual feedback
+
     // Visual feedback - background color responds to notes
     auto& bg = chain.add<SolidColor>("bg");
     bg.setColor(0.1f, 0.1f, 0.15f, 1.0f);
@@ -61,6 +65,7 @@ void update(Context& ctx) {
 
     auto& midiIn = chain.get<MidiIn>("midiIn");
     auto& midiOut = chain.get<MidiOut>("midiOut");
+    auto& noteTrigger = chain.get<Trigger>("noteTrigger");
 
     // Process incoming MIDI events
     for (const auto& e : midiIn.events()) {
@@ -68,8 +73,10 @@ void update(Context& ctx) {
             case MidiEventType::NoteOn:
                 g_noteActive = true;
                 g_lastNote = e.note;
-                g_noteDisplay = 1.0f;
                 g_velocityDisplay = e.velocity / 127.0f;
+
+                // Fire trigger with velocity - handles decay automatically
+                noteTrigger.fire(g_velocityDisplay);
 
                 // Echo note to output (if open)
                 if (midiOut.isOpen()) {
@@ -95,18 +102,17 @@ void update(Context& ctx) {
         }
     }
 
-    // Decay note display
-    g_noteDisplay *= 0.95f;
-    if (g_noteDisplay < 0.01f) g_noteDisplay = 0.0f;
+    // Get trigger value (automatically decays each frame)
+    float noteDisplay = noteTrigger.value();
 
     // Update visual feedback
     auto& bg = chain.get<SolidColor>("bg");
-    float brightness = 0.1f + g_noteDisplay * 0.3f;
+    float brightness = 0.1f + noteDisplay * 0.3f;
     bg.setColor(brightness * 0.8f, brightness * 0.8f, brightness, 1.0f);
 
     auto& noteShape = chain.get<Shape>("noteShape");
     noteShape.radius = 0.1f + g_velocityDisplay * 0.1f;
-    noteShape.color = glm::vec4(0.2f, 0.6f, 1.0f, g_noteDisplay * 0.8f);
+    noteShape.color = glm::vec4(0.2f, 0.6f, 1.0f, noteDisplay * 0.8f);
     // Position based on note (C4 = center)
     float noteX = (g_lastNote - 60) / 24.0f;  // -1 to 1 for 2 octaves
     noteShape.position = glm::vec2(noteX * 0.5f, 0.0f);
@@ -120,8 +126,8 @@ void update(Context& ctx) {
     int w = ctx.width();
     int h = ctx.height();
 
-    // Draw note visualization
-    if (g_noteDisplay > 0.01f) {
+    // Draw note visualization (use noteTrigger.active() for cleaner check)
+    if (noteTrigger.active()) {
         canvas.drawImage(noteShape, 0, 0, static_cast<float>(w), static_cast<float>(h));
     }
 

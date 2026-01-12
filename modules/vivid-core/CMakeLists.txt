@@ -117,9 +117,8 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/canvas_renderer.cpp
     src/effects/canvas.cpp
     src/effects/operator_registrations.cpp
+    src/effects/trigger.cpp
     # Event operators (input handling)
-    src/effects/keyboard_in.cpp
-    src/effects/mouse_in.cpp
     src/effects/window_events.cpp
     src/gui/overlay_canvas.cpp
     src/gui/gui.cpp
@@ -154,8 +153,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/chain_visualizer.h
     include/vivid/viz_helpers.h
     include/vivid/event.h
-    include/vivid/effects/keyboard_in.h
-    include/vivid/effects/mouse_in.h
+    include/vivid/effects/trigger.h
     include/vivid/effects/window_events.h
 )
 

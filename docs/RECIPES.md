@@ -20,6 +20,9 @@ Complete chain.cpp examples for common effects. Vivid treats audio and visuals a
 11. [Audio-Reactive Particles](#audio-reactive-particles)
 12. [Bidirectional Modulation](#bidirectional-modulation)
 
+### Input Handling
+13. [Event-Driven Patterns](#event-driven-patterns) - MIDI, OSC, keyboard, mouse
+
 ---
 
 ## VHS/Retro Look
@@ -1075,3 +1078,165 @@ VIVID_CHAIN(setup, update)
 2. **Audio analysis** - `BandSplit` gives bass/mid/high; `Levels` gives RMS/peak
 3. **Parameter binding** - Same value drives both domains (mouse → pitch + scale)
 4. **Capture chain pointer** - Use `auto* chainPtr = &chain` in callbacks to avoid dangling references
+
+---
+
+## Event-Driven Patterns
+
+External events (MIDI, OSC, etc.) can trigger visual effects using the `Trigger` operator. Trigger provides an attack/decay envelope that converts discrete events into smooth values.
+
+### MIDI-Triggered Effects
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/midi/midi.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::midi;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // MIDI input
+    auto& midiIn = chain.add<MidiIn>("midi");
+    midiIn.openPortByName("Arturia");  // Partial match
+
+    // Triggers for different drum hits
+    auto& kickTrigger = chain.add<Trigger>("kick");
+    kickTrigger.decay = 0.85f;  // Fast decay
+
+    auto& snareTrigger = chain.add<Trigger>("snare");
+    snareTrigger.decay = 0.9f;  // Medium decay
+
+    auto& hihatTrigger = chain.add<Trigger>("hihat");
+    hihatTrigger.decay = 0.95f;  // Slow decay
+
+    // Visuals
+    auto& noise = chain.add<Noise>("noise");
+    noise.scale = 4.0f;
+
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input("noise");
+
+    auto& flash = chain.add<Flash>("flash");
+    flash.input("bloom");
+
+    chain.output("flash");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& midiIn = chain.get<MidiIn>("midi");
+    auto& kickTrigger = chain.get<Trigger>("kick");
+    auto& snareTrigger = chain.get<Trigger>("snare");
+    auto& hihatTrigger = chain.get<Trigger>("hihat");
+
+    // Fire triggers from MIDI events
+    for (const auto& e : midiIn.events()) {
+        if (e.type == MidiEventType::NoteOn) {
+            float vel = e.velocity / 127.0f;
+            if (e.note == 36) kickTrigger.fire(vel);
+            if (e.note == 38) snareTrigger.fire(vel);
+            if (e.note == 42) hihatTrigger.fire(vel);
+        }
+    }
+
+    // Use trigger values to drive effects
+    auto& noise = chain.get<Noise>("noise");
+    noise.scale = 4.0f + kickTrigger.value() * 8.0f;
+
+    auto& bloom = chain.get<Bloom>("bloom");
+    bloom.intensity = 0.3f + snareTrigger.value() * 1.5f;
+
+    auto& flash = chain.get<Flash>("flash");
+    if (hihatTrigger.active()) {
+        flash.trigger(hihatTrigger.value() * 0.3f);
+    }
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+### OSC Parameter Mapping
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/network/network.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::network;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // OSC receiver (TouchOSC, Lemur, etc.)
+    auto& osc = chain.add<OscIn>("osc");
+    osc.port(8000);
+
+    // Visual
+    auto& noise = chain.add<Noise>("noise");
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input("noise");
+
+    chain.output("bloom");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+    auto& osc = chain.get<OscIn>("osc");
+    auto& noise = chain.get<Noise>("noise");
+    auto& bloom = chain.get<Bloom>("bloom");
+
+    // Map OSC faders to parameters
+    noise.scale = osc.getFloat("/fader/1", 4.0f) * 10.0f;
+    noise.speed = osc.getFloat("/fader/2", 0.5f);
+    bloom.intensity = osc.getFloat("/fader/3", 0.5f) * 2.0f;
+
+    // Check for button triggers
+    if (osc.hasMessage("/button/1")) {
+        // Reset to defaults
+        noise.scale = 4.0f;
+    }
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+### Keyboard and Mouse Input
+
+For keyboard and mouse, use Context methods directly - they're simpler than operators:
+
+```cpp
+void update(Context& ctx) {
+    // Keyboard: Check key state
+    if (ctx.key(GLFW_KEY_SPACE).pressed) {
+        flash.trigger();
+    }
+    if (ctx.key(GLFW_KEY_UP).held) {
+        value += ctx.dt();  // Continuous while held
+    }
+
+    // Mouse: Position and buttons
+    glm::vec2 mouse = ctx.mouseNorm();  // 0-1 normalized
+    if (ctx.mouseButton(0).pressed) {
+        particles.burst(100);
+    }
+
+    // Modifiers
+    float speed = ctx.shiftHeld() ? 10.0f : 1.0f;
+}
+```
+
+**When to use each approach:**
+- **MIDI/OSC** → Use event operators + Trigger for decay envelopes
+- **Keyboard/Mouse** → Use `ctx.key()`, `ctx.mouse()` directly
+- **Window events** → Use `WindowEvents` operator for resize/focus

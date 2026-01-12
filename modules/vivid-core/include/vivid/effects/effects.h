@@ -41,6 +41,7 @@
 #include <vivid/effects/vignette.h>
 #include <vivid/effects/film_grain.h>
 #include <vivid/effects/flash.h>
+#include <vivid/effects/trigger.h>
 #include <vivid/effects/math_op.h>
 #include <vivid/effects/logic_op.h>
 

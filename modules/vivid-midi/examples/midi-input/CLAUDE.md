@@ -1,11 +1,12 @@
 # MIDI Input
 
-Demonstrates hardware MIDI input/output with visual feedback.
+Demonstrates hardware MIDI input/output with visual feedback using Trigger operators.
 
 ## Operators Used
 
 - **MidiIn** - Receive MIDI from hardware controllers
 - **MidiOut** - Send MIDI to external synthesizers/DAWs
+- **Trigger** - Convert MIDI events to smooth decay envelopes
 - **MidiFilePlayer** - Play Standard MIDI Files
 
 ## Key Concepts
@@ -124,6 +125,29 @@ struct MidiEvent {
 ```
 
 ## Common Patterns
+
+### Using Trigger for Smooth Envelopes
+```cpp
+// Setup: Create a trigger with decay
+auto& noteTrigger = chain.add<Trigger>("noteTrigger");
+noteTrigger.decay = 0.92f;  // 0.8 = fast, 0.99 = slow
+
+// Update: Fire trigger on MIDI note
+for (const auto& e : midiIn.events()) {
+    if (e.type == MidiEventType::NoteOn) {
+        noteTrigger.fire(e.velocity / 127.0f);
+    }
+}
+
+// Use trigger value to drive effects (decays automatically)
+float brightness = 0.1f + noteTrigger.value() * 0.5f;
+bloom.intensity = noteTrigger.value() * 2.0f;
+
+// Check if trigger is still active
+if (noteTrigger.active()) {
+    // Do something while decaying
+}
+```
 
 ### MIDI-Controlled Visuals
 ```cpp

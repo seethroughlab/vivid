@@ -51,13 +51,10 @@
 #include <vivid/effects/canvas.h>
 #include <vivid/effects/math_op.h>
 #include <vivid/effects/logic_op.h>
-#include <vivid/effects/keyboard_in.h>
-#include <vivid/effects/mouse_in.h>
+#include <vivid/effects/trigger.h>
 #include <vivid/effects/window_events.h>
 
 using namespace vivid::effects;
-using vivid::KeyboardIn;
-using vivid::MouseIn;
 using vivid::WindowEvents;
 
 // =============================================================================
@@ -133,10 +130,9 @@ REGISTER_OPERATOR(Canvas, "Drawing", "Imperative 2D drawing", false);
 // =============================================================================
 REGISTER_OPERATOR_EX(Math, "Utilities", "Mathematical operations", false, vivid::OutputKind::Value);
 REGISTER_OPERATOR_EX(Logic, "Utilities", "Logic operations", false, vivid::OutputKind::Value);
+REGISTER_OPERATOR_EX(Trigger, "Utilities", "Event trigger with attack/decay envelope", false, vivid::OutputKind::Value);
 
 // =============================================================================
 // Input (event-based operators)
 // =============================================================================
-REGISTER_OPERATOR_EX(KeyboardIn, "Input", "Keyboard input events", false, vivid::OutputKind::Event);
-REGISTER_OPERATOR_EX(MouseIn, "Input", "Mouse input events", false, vivid::OutputKind::Event);
 REGISTER_OPERATOR_EX(WindowEvents, "Input", "Window resize and focus events", false, vivid::OutputKind::Event);
