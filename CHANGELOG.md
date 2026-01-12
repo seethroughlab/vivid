@@ -10,11 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.30] - 2026-01-11
+
+### Fixed
+
+- **CI: Linux source permissions** - Fix both file and directory permissions on Linux runners (chmod 644 for files, 755 for dirs)
+
 ## [0.1.0-alpha.29] - 2026-01-11
 
 ### Fixed
 
-- **CI: Linux source permissions** - Added step to fix directory permissions on Linux runners after Git checkout
+- **CI: Linux source permissions** - Added step to fix directory permissions on Linux runners after Git checkout (missed files)
 
 ## [0.1.0-alpha.28] - 2026-01-11
 
