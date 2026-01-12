@@ -74,9 +74,14 @@ jobs:
             libxkbcommon-dev \
             libgl1-mesa-dev
 
-      - name: Clean build directory
-        shell: bash
+      - name: Clean build directory (Unix)
+        if: runner.os != 'Windows'
         run: rm -rf build
+
+      - name: Clean build directory (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: if (Test-Path build) { Remove-Item -Recurse -Force build }
 
       - name: Configure CMake (darwin-x64 cross-compile)
         if: matrix.target == 'darwin-x64'
