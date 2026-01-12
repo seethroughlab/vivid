@@ -68,19 +68,27 @@ if(APPLE)
 else()
     # Windows/Linux: Try multiple possible locations
 
-    # 1. Direct include/opencv2/ structure
+    # 1. Direct include/opencv2/ structure (older archives)
     if(EXISTS "${opencv_mobile_SOURCE_DIR}/include/opencv2")
         set(OPENCV_INCLUDE_FOUND TRUE)
         set(OPENCV_INCLUDE_DIR "${opencv_mobile_SOURCE_DIR}/include")
         message(STATUS "vivid-opencv: Found opencv2 headers at ${opencv_mobile_SOURCE_DIR}/include/opencv2")
     endif()
 
-    # 2. Some archives extract with opencv-mobile-* subdirectory
+    # 2. Linux archives use include/opencv4/opencv2 layout
+    if(NOT OPENCV_INCLUDE_FOUND)
+        if(EXISTS "${opencv_mobile_SOURCE_DIR}/include/opencv4/opencv2")
+            set(OPENCV_INCLUDE_FOUND TRUE)
+            set(OPENCV_INCLUDE_DIR "${opencv_mobile_SOURCE_DIR}/include/opencv4")
+            message(STATUS "vivid-opencv: Found opencv2 headers at ${opencv_mobile_SOURCE_DIR}/include/opencv4/opencv2")
+        endif()
+    endif()
+
+    # 3. Some archives may have nested opencv-mobile-* subdirectory (shouldn't happen with FetchContent)
     if(NOT OPENCV_INCLUDE_FOUND)
         file(GLOB OPENCV_SUBDIRS "${opencv_mobile_SOURCE_DIR}/opencv-mobile-*")
         if(OPENCV_SUBDIRS)
             list(GET OPENCV_SUBDIRS 0 OPENCV_SUBDIR)
-            # Try include/opencv4/ first (Linux archives use this layout)
             if(EXISTS "${OPENCV_SUBDIR}/include/opencv4/opencv2")
                 set(OPENCV_INCLUDE_FOUND TRUE)
                 set(OPENCV_INCLUDE_DIR "${OPENCV_SUBDIR}/include/opencv4")
@@ -95,7 +103,7 @@ else()
         endif()
     endif()
 
-    # 3. Windows archive has platform subdirectories (x64, x86, arm64)
+    # 4. Windows archive has platform subdirectories (x64, x86, arm64)
     if(NOT OPENCV_INCLUDE_FOUND AND WIN32)
         # Check common Windows paths in order of preference
         set(OPENCV_WIN_PATHS

@@ -10,11 +10,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.26] - 2026-01-11
+
+### Fixed
+
+- **Build: Linux OpenCV headers** - Fixed detection of `include/opencv4/opencv2` path in Linux opencv-mobile archives
+
 ## [0.1.0-alpha.25] - 2026-01-11
 
 ### Fixed
 
-- **Build: Linux OpenCV headers** - Fixed opencv-mobile archive structure detection for Linux x64 (ubuntu-2204) and ARM64 (debian-bookworm-arm) builds
+- **Build: Linux OpenCV headers** - Fixed opencv-mobile archive structure detection for Linux x64 (ubuntu-2204) and ARM64 (debian-bookworm-arm) builds (incomplete fix)
 
 ## [0.1.0-alpha.24] - 2026-01-11
 
