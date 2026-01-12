@@ -48,15 +48,19 @@ enum class ClockDiv {
  *
  * @par Example
  * @code
- * chain.add<Clock>("clock");
- * chain.get<Clock>("clock")->bpm = 120.0f;
- * chain.get<Clock>("clock")->division(ClockDiv::Sixteenth);
+ * auto& clock = chain.add<Clock>("clock");
+ * clock.bpm = 120.0f;
+ * clock.division(ClockDiv::Sixteenth);
+ * clock.start();
  *
- * void update(Context& ctx) {
- *     if (chain.get<Clock>("clock")->triggered()) {
- *         chain.get<Kick>("kick")->trigger();
- *     }
- * }
+ * // Audio-thread triggering (recommended)
+ * auto& seq = chain.add<Sequencer>("seq");
+ * seq.setTriggerSource("clock");  // Sequencer advances on clock
+ * auto& kick = chain.add<Kick>("kick");
+ * kick.setTriggerSource("seq");   // Drum triggers on sequencer
+ *
+ * // In update() - just poll for visual feedback:
+ * if (seq.triggered()) kickDecay = 1.0f;
  * @endcode
  *
  * @see Sequencer, Euclidean, Song, Kick, Snare, HiHat

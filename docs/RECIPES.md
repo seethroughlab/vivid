@@ -800,7 +800,8 @@ VIVID_CHAIN(setup, update)
 
 ## Drum Machine with Visual Triggers
 
-Sequenced drums with synchronized visual feedback. Audio triggers fire both sound and visual events.
+Sequenced drums with synchronized visual feedback. Audio triggers run on the audio thread
+for sample-accurate timing; visual feedback is polled in update().
 
 ```cpp
 #include <vivid/vivid.h>
@@ -818,23 +819,33 @@ void setup(Context& ctx) {
     // Audio: Clock and sequencers
     auto& clock = chain.add<Clock>("clock");
     clock.bpm = 120.0f;
+    clock.start();
 
+    // Sequencers advance on clock (audio thread)
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
+    kickSeq.setTriggerSource("clock");
     kickSeq.steps = 16;
     kickSeq.setPattern(0b0001000100010001);  // Four on floor
 
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
+    snareSeq.setTriggerSource("clock");
     snareSeq.steps = 16;
     snareSeq.setPattern(0b0000000100000001);  // Backbeat
 
     auto& hatSeq = chain.add<Euclidean>("hatSeq");
+    hatSeq.setTriggerSource("clock");
     hatSeq.steps = 16;
     hatSeq.hits = 7;
 
-    // Drum synths
+    // Drum synths trigger on sequencer output (audio thread)
     auto& kick = chain.add<Kick>("kick");
+    kick.setTriggerSource("kickSeq");
+
     auto& snare = chain.add<Snare>("snare");
+    snare.setTriggerSource("snareSeq");
+
     auto& hihat = chain.add<HiHat>("hihat");
+    hihat.setTriggerSource("hatSeq");
 
     // Audio mix
     auto& mixer = chain.add<AudioMixer>("mixer");
@@ -864,33 +875,17 @@ void setup(Context& ctx) {
     snareFlash.color.set(1.0f, 0.5f, 0.2f);
 
     chain.output("snareFlash");
-
-    // Connect triggers: audio + visual fire together
-    auto* chainPtr = &chain;
-
-    kickSeq.onTrigger([chainPtr](float vel) {
-        chainPtr->get<Kick>("kick").trigger();
-        chainPtr->get<Flash>("kickFlash").trigger(vel);
-    });
-
-    snareSeq.onTrigger([chainPtr](float vel) {
-        chainPtr->get<Snare>("snare").trigger();
-        chainPtr->get<Flash>("snareFlash").trigger(vel);
-    });
-
-    hatSeq.onTrigger([chainPtr]() {
-        chainPtr->get<HiHat>("hihat").trigger();
-    });
 }
 
 void update(Context& ctx) {
     auto& chain = ctx.chain();
-    auto& clock = chain.get<Clock>("clock");
 
-    if (clock.triggered()) {
-        chain.get<Sequencer>("kickSeq").advance();
-        chain.get<Sequencer>("snareSeq").advance();
-        chain.get<Euclidean>("hatSeq").advance();
+    // Poll sequencers for visual feedback (main thread)
+    if (chain.get<Sequencer>("kickSeq").triggered()) {
+        chain.get<Flash>("kickFlash").trigger(1.0f);
+    }
+    if (chain.get<Sequencer>("snareSeq").triggered()) {
+        chain.get<Flash>("snareFlash").trigger(1.0f);
     }
 
     chain.process(ctx);

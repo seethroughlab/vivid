@@ -619,9 +619,9 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
         // Show prominent status banner on initial load success
         if (!mlc.initialStatusShown) {
-            std::cout << "\n══════════════════════════════════════\n"
+            std::cout << "\n======================================\n"
                       << "  VIVID: READY\n"
-                      << "══════════════════════════════════════\n" << std::endl;
+                      << "======================================\n" << std::endl;
             mlc.initialStatusShown = true;
         }
     }

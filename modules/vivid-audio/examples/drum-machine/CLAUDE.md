@@ -19,17 +19,24 @@ Demonstrates audio synthesis with drum operators and step sequencing.
 ### Clock - Master Timing
 ```cpp
 auto& clock = chain.add<Clock>("clock");
-clock.bpm(120.0f);
+clock.bpm = 120.0f;
 clock.division(ClockDiv::Sixteenth);  // 16th notes
-clock.swing(0.0f);  // 0-1, shuffle amount
+clock.setSwingEnabled(true);          // Enable swing (disabled by default)
+clock.swing = 0.3f;                   // 0-1, shuffle amount
 
 clock.start();
 clock.stop();
+```
 
-// Check for trigger in update()
-if (clock.triggered()) {
-    // New step - trigger drums
-}
+### Audio-Thread Triggering (Recommended)
+Connect operators via `setTriggerSource()` for sample-accurate timing:
+```cpp
+// In setup():
+seq.setTriggerSource("clock");     // Sequencer advances on clock
+kick.setTriggerSource("seq");      // Drum triggers on sequencer output
+
+// In update() - just poll for visual feedback:
+if (seq.triggered()) kickDecay = 1.0f;
 ```
 
 ### Sequencer - Pattern Sequencing
@@ -41,7 +48,7 @@ seq.setPattern(0x1111);  // X...X...X...X...
 seq.setPattern(0x0404);  // ....X.......X...
 seq.setPattern(0xFFFF);  // XXXXXXXXXXXXXXXX
 
-// Step control
+// Legacy step control (still works, ~16ms jitter)
 seq.advance();           // Move to next step
 bool hit = seq.triggered(); // Check if current step is active
 seq.reset();             // Back to step 1
@@ -50,10 +57,12 @@ seq.reset();             // Back to step 1
 ### Euclidean - Algorithmic Rhythms
 ```cpp
 auto& eucl = chain.add<Euclidean>("eucl");
-eucl.steps(16);      // Total steps in pattern
-eucl.hits(4);        // Number of active steps (evenly distributed)
-eucl.rotation(0);    // Rotate pattern start position
+eucl.setTriggerSource("clock");  // Advances on audio thread
+eucl.steps = 16;      // Total steps in pattern
+eucl.hits = 4;        // Number of active steps (evenly distributed)
+eucl.rotation = 0;    // Rotate pattern start position
 
+// Legacy (still works, ~16ms jitter)
 eucl.advance();
 bool hit = eucl.triggered();
 ```

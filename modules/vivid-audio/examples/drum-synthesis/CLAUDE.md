@@ -74,8 +74,19 @@ Quick pattern setup:
 seq.setPattern(0b1001001001001001);
 ```
 
-### Update Loop
-Advance sequencers and trigger drums:
+### Audio-Thread Triggering (Recommended)
+Connect operators via `setTriggerSource()` for sample-accurate timing:
+```cpp
+// In setup():
+kick_seq.setTriggerSource("clock");   // Sequencer advances on clock
+kick.setTriggerSource("kick_seq");    // Drum triggers on sequencer
+
+// In update() - just poll for visual feedback:
+if (kick_seq.triggered()) kickDecay = 1.0f;
+```
+
+### Legacy Main-Thread Pattern
+Still works but has ~16ms timing jitter:
 ```cpp
 if (clock.triggered()) {
     kick_seq.advance();

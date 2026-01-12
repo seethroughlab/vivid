@@ -36,20 +36,45 @@ eucl.rotation = 0;    // Pattern offset
 - `hits` (int, 1-16) - Number of active steps
 - `rotation` (int, 0-15) - Rotate pattern forward
 
+### Audio-Thread Triggering (Recommended)
+Connect operators via `setTriggerSource()` for sample-accurate timing:
+```cpp
+// In setup():
+auto& kick_eucl = chain.add<Euclidean>("kick_eucl");
+kick_eucl.setTriggerSource("clock");  // Euclidean advances on clock
+kick_eucl.steps = 16;
+kick_eucl.hits = 4;
+
+auto& kick = chain.add<Kick>("kick");
+kick.setTriggerSource("kick_eucl");   // Drum triggers on Euclidean output
+
+// In update() - just poll for visual feedback:
+if (kick_eucl.triggered()) kickDecay = 1.0f;
+```
+
 ### Polyrhythm Example
 Layer multiple Euclidean patterns with different step counts:
 ```cpp
 // 16-step kick
 auto& kick_eucl = chain.add<Euclidean>("kick_eucl");
+kick_eucl.setTriggerSource("clock");
 kick_eucl.steps = 16;
 kick_eucl.hits = 4;
 
 // 8-step snare (2:1 ratio with kick)
 auto& snare_eucl = chain.add<Euclidean>("snare_eucl");
+snare_eucl.setTriggerSource("clock");
 snare_eucl.steps = 8;
 snare_eucl.hits = 3;  // Tresillo
 
-// Both advance on same clock
+// Connect drums to Euclidean patterns
+kick.setTriggerSource("kick_eucl");
+snare.setTriggerSource("snare_eucl");
+```
+
+### Legacy Main-Thread Pattern
+Still works but has ~16ms timing jitter:
+```cpp
 if (clock.triggered()) {
     kick_eucl.advance();
     snare_eucl.advance();
