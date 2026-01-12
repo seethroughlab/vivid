@@ -50,6 +50,7 @@ void setup(Context& ctx) {
 
     // ----- SEQUENCER -----
     auto& seq = chain.add<Sequencer>("seq");
+    seq.setTriggerSource("clock");  // Advances on audio thread
     seq.steps = 8;
     // Pattern: play on steps 0, 2, 3, 5, 7
     seq.setStep(0, true, 1.0f);
@@ -120,30 +121,28 @@ void update(Context& ctx) {
     // Y: Velocity (0.3-1.0)
     g_noteVelocity = 0.3f + mouseY * 0.7f;
 
-    // Process clock
+    // Process MIDI output based on sequencer state
+    // NOTE: Sequencer advances automatically via setTriggerSource("clock")
     static int lastNote = -1;
 
-    if (clock.triggered()) {
+    // Check if sequencer triggered (on main thread, checking audio thread state)
+    if (seq.triggered()) {
         // Turn off previous note
         if (lastNote >= 0 && midiOut.isOpen()) {
             midiOut.noteOff(0, static_cast<uint8_t>(lastNote));
         }
 
-        seq.advance();
+        // Get note from sequence
+        int step = seq.currentStep();
+        int note = g_notes[step % 8];
+        float vel = seq.currentVelocity() * g_noteVelocity;
 
-        if (seq.triggered()) {
-            // Get note from sequence
-            int step = seq.currentStep();
-            int note = g_notes[step % 8];
-            float vel = seq.currentVelocity() * g_noteVelocity;
-
-            // Send MIDI note
-            if (midiOut.isOpen()) {
-                midiOut.noteOn(0, static_cast<uint8_t>(note), vel);
-            }
-            lastNote = note;
-            g_currentNote = step;
+        // Send MIDI note
+        if (midiOut.isOpen()) {
+            midiOut.noteOn(0, static_cast<uint8_t>(note), vel);
         }
+        lastNote = note;
+        g_currentNote = step;
     }
 
     // Visual feedback - highlight active key

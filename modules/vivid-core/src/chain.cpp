@@ -369,6 +369,18 @@ void Chain::init(Context& ctx) {
     // Separate audio and visual operators
     // Audio operators go to AudioGraph (processed on audio thread)
     // Visual operators stay in m_visualExecutionOrder (processed on main thread)
+
+    // CRITICAL: Pause audio and disconnect from graph BEFORE clearing
+    // This prevents race conditions with the audio callback thread
+    bool wasPlaying = false;
+    if (m_audioOutput) {
+        wasPlaying = m_audioOutput->isPlaying();
+        if (wasPlaying) {
+            m_audioOutput->pause();
+        }
+        m_audioOutput->setAudioGraph(nullptr);  // Disconnect before clearing
+    }
+
     m_visualExecutionOrder.clear();
     m_audioGraph.clear();
 
@@ -404,6 +416,11 @@ void Chain::init(Context& ctx) {
     // Connect AudioOutput to the AudioGraph for pull-based generation
     if (m_audioOutput) {
         m_audioOutput->setAudioGraph(&m_audioGraph);
+
+        // Resume playback if it was playing before the rebuild
+        if (wasPlaying) {
+            m_audioOutput->play();
+        }
     }
 
     // Auto-register all operators for visualization

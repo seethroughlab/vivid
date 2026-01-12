@@ -69,7 +69,22 @@ void AudioGraph::processBlock(float* output, uint32_t frameCount) {
     processEvents();
 
     // 2. Generate audio from all operators in execution order
+    //    Operators must be in dependency order (sources before targets)
+    //    For each operator: check trigger source, then generate block
     for (AudioOperator* op : m_executionOrder) {
+        if (!op) continue;
+
+        // Check if this operator's trigger source fired
+        // The source was processed earlier in this loop (dependency order)
+        if (Operator* src = op->triggerSource()) {
+            if (src->triggered()) {
+                // Send trigger event (goes through handleEvent -> onTrigger)
+                AudioEvent triggerEvent;
+                triggerEvent.type = AudioEventType::Trigger;
+                op->handleEvent(triggerEvent);
+            }
+        }
+
         op->generateBlock(frameCount);
     }
 

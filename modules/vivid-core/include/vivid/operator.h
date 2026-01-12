@@ -442,22 +442,33 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
-    /// @name Trigger Source (for visualization)
+    /// @name Trigger Source (for audio-thread timing)
     /// @{
 
     /**
-     * @brief Set trigger source operator for visualization
+     * @brief Set trigger source operator
      * @param source Operator that triggers this one
      *
-     * This is for chain visualizer display only - it shows cyan dashed
-     * lines from trigger sources (e.g., Sequencer -> Kick).
-     * The actual triggering must still be done in update() code.
+     * For AudioOperators, this enables automatic audio-thread triggering.
+     * When the source operator's triggered() returns true, this operator's
+     * onTrigger() will be called automatically during generateBlock().
+     *
+     * Also displayed in chain visualizer as cyan dashed lines.
      */
     void setTriggerSource(Operator* source) { m_triggerSource = source; }
 
     /**
      * @brief Set trigger source by name (resolved at init time)
      * @param name Name of the trigger source operator
+     *
+     * @par Example
+     * @code
+     * auto& seq = chain.add<Sequencer>("seq");
+     * seq.setTriggerSource("clock");  // Advance on clock trigger
+     *
+     * auto& kick = chain.add<Kick>("kick");
+     * kick.setTriggerSource("seq");  // Trigger on sequencer output
+     * @endcode
      */
     void setTriggerSource(const std::string& name) { m_pendingTriggerSourceName = name; }
 
@@ -515,6 +526,20 @@ public:
      * @brief Clear pending event source name after resolution
      */
     void clearPendingEventSourceName() { m_pendingEventSourceName.clear(); }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Trigger State (for audio-thread timing)
+    /// @{
+
+    /**
+     * @brief Check if this operator triggered in the current audio block
+     * @return True if operator triggered, false otherwise
+     *
+     * Override in operators that can act as trigger sources (Sequencer, Euclidean).
+     * This allows downstream operators to check trigger state on the audio thread.
+     */
+    virtual bool triggered() const { return false; }
 
     /// @}
     // -------------------------------------------------------------------------

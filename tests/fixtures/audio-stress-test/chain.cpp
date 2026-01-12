@@ -49,10 +49,12 @@ void setup(Context& ctx) {
 
     // Kick - four on the floor
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
+    kickSeq.setTriggerSource("clock");
     kickSeq.steps = 16;
     kickSeq.setPattern(0b0001000100010001);
 
     auto& kick = chain.add<Kick>("kick");
+    kick.setTriggerSource("kickSeq");
     kick.pitch = 45.0f;
     kick.pitchEnv = 120.0f;
     kick.decay = 0.15f;  // Short for clear transients
@@ -60,10 +62,12 @@ void setup(Context& ctx) {
 
     // Snare - backbeat
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
+    snareSeq.setTriggerSource("clock");
     snareSeq.steps = 16;
     snareSeq.setPattern(0b0000000100000001);
 
     auto& snare = chain.add<Snare>("snare");
+    snare.setTriggerSource("snareSeq");
     snare.tone = 0.6f;
     snare.noise = 0.7f;
     snare.snappy = 0.5f;
@@ -72,19 +76,23 @@ void setup(Context& ctx) {
 
     // Hi-hat - busy pattern via euclidean
     auto& hatSeq = chain.add<Euclidean>("hatSeq");
+    hatSeq.setTriggerSource("clock");
     hatSeq.steps = 16;
     hatSeq.hits = 11;  // Dense pattern
 
     auto& hihat = chain.add<HiHat>("hihat");
+    hihat.setTriggerSource("hatSeq");
     hihat.decay = 0.08f;
     hihat.tone = 0.6f;
 
     // Clap - syncopated
     auto& clapSeq = chain.add<Sequencer>("clapSeq");
+    clapSeq.setTriggerSource("clock");
     clapSeq.steps = 16;
     clapSeq.setPattern(0b0010001000100010);
 
     auto& clap = chain.add<Clap>("clap");
+    clap.setTriggerSource("clapSeq");
     clap.decay = 0.1f;   // Short for clear transients
     clap.spread = 0.6f;
 
@@ -102,6 +110,7 @@ void setup(Context& ctx) {
 
     // Arp sequencer
     auto& arpSeq = chain.add<Euclidean>("arpSeq");
+    arpSeq.setTriggerSource("clock");
     arpSeq.steps = 16;
     arpSeq.hits = 7;
 
@@ -167,29 +176,28 @@ void setup(Context& ctx) {
     chain.output("flash");
 
     // =========================================================================
-    // Trigger callbacks - the stress test!
+    // Trigger callbacks - drums trigger automatically via setTriggerSource
+    // Callbacks used for visual effects and trigger counting
     // =========================================================================
 
     auto* chainPtr = &chain;
 
+    // NOTE: Drums trigger automatically via setTriggerSource()
+    // Callbacks handle visual effects and counting
     kickSeq.onTrigger([chainPtr](float vel) {
-        chainPtr->get<Kick>("kick").trigger();
         chainPtr->get<Flash>("flash").trigger(vel);
         triggerCount++;
     });
 
-    snareSeq.onTrigger([chainPtr](float vel) {
-        chainPtr->get<Snare>("snare").trigger();
+    snareSeq.onTrigger([chainPtr](float) {
         triggerCount++;
     });
 
     hatSeq.onTrigger([chainPtr]() {
-        chainPtr->get<HiHat>("hihat").trigger();
         triggerCount++;
     });
 
-    clapSeq.onTrigger([chainPtr](float vel) {
-        chainPtr->get<Clap>("clap").trigger();
+    clapSeq.onTrigger([chainPtr](float) {
         triggerCount++;
     });
 
@@ -200,6 +208,7 @@ void setup(Context& ctx) {
     };
     static int arpIndex = 0;
 
+    // Synth arp triggers via callback on audio thread
     arpSeq.onTrigger([chainPtr]() {
         auto& synth = chainPtr->get<PolySynth>("synth");
         synth.allNotesOff();
@@ -233,16 +242,8 @@ void update(Context& ctx) {
         startTime = time;
     }
 
-    // Advance clock
-    auto& clock = chain.get<Clock>("clock");
-
-    if (clock.triggered()) {
-        chain.get<Sequencer>("kickSeq").advance();
-        chain.get<Sequencer>("snareSeq").advance();
-        chain.get<Euclidean>("hatSeq").advance();
-        chain.get<Sequencer>("clapSeq").advance();
-        chain.get<Euclidean>("arpSeq").advance();
-    }
+    // NOTE: All sequencers advance automatically via setTriggerSource("clock")
+    // No manual advance() calls needed!
 
     // Modulate parameters (adds CPU load + tests param updates)
     float lfo = std::sin(time * 2.0f) * 0.5f + 0.5f;

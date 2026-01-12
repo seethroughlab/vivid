@@ -26,24 +26,30 @@ void setup(Context& ctx) {
 
     // Kick on 1, 5, 9, 13
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
+    kickSeq.setTriggerSource("clock");  // Advances on audio thread
     kickSeq.steps = 16;
     kickSeq.setPattern(0b0001000100010001);
 
     auto& kick = chain.add<Kick>("kick");
+    kick.setTriggerSource("kickSeq");  // Triggers on audio thread
 
     // Snare on 5, 13
     auto& snareSeq = chain.add<Sequencer>("snareSeq");
+    snareSeq.setTriggerSource("clock");
     snareSeq.steps = 16;
     snareSeq.setPattern(0b0001000000010000);
 
     auto& snare = chain.add<Snare>("snare");
+    snare.setTriggerSource("snareSeq");
 
     // Hi-hat euclidean pattern
     auto& hatSeq = chain.add<Euclidean>("hatSeq");
+    hatSeq.setTriggerSource("clock");
     hatSeq.steps = 16;
     hatSeq.hits = 7;
 
     auto& hihat = chain.add<HiHat>("hihat");
+    hihat.setTriggerSource("hatSeq");
 
     // Mix and output
     auto& mixer = chain.add<AudioMixer>("mixer");
@@ -114,22 +120,22 @@ void setup(Context& ctx) {
     // IMPORTANT: Capture chain pointer, not local references (they go out of scope)
     auto* chainPtr = &chain;
 
-    // Kick triggers: flash + particle burst
+    // NOTE: Drums now trigger automatically via setTriggerSource()
+    // Callbacks are used for visual effects only (they fire on audio thread)
+
+    // Kick triggers: visual flash + particle burst
     kickSeq.onTrigger([chainPtr](float velocity) {
-        chainPtr->get<Kick>("kick").trigger();
         chainPtr->get<Flash>("kickFlash").trigger(velocity);
         chainPtr->get<Particles>("particles").burst(static_cast<int>(30 * velocity));
     });
 
-    // Snare triggers: audio + flash
+    // Snare triggers: visual flash
     snareSeq.onTrigger([chainPtr](float velocity) {
-        chainPtr->get<Snare>("snare").trigger();
         chainPtr->get<Flash>("snareFlash").trigger(velocity);
     });
 
-    // Hat triggers (Euclidean - no velocity)
+    // Hat triggers (Euclidean - no velocity): visual flash
     hatSeq.onTrigger([chainPtr]() {
-        chainPtr->get<HiHat>("hihat").trigger();
         chainPtr->get<Flash>("hatFlash").trigger(0.4f);
     });
 
@@ -144,16 +150,8 @@ void setup(Context& ctx) {
 void update(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Advance clock
-    auto& clock = chain.get<Clock>("clock");
-
-    // Advance sequencers when clock ticks
-    // Callbacks automatically fire when steps trigger!
-    if (clock.triggered()) {
-        chain.get<Sequencer>("kickSeq").advance();
-        chain.get<Sequencer>("snareSeq").advance();
-        chain.get<Euclidean>("hatSeq").advance();
-    }
+    // NOTE: All sequencers advance automatically via setTriggerSource("clock")
+    // No manual advance() needed - callbacks fire on audio thread!
 
     chain.process(ctx);
 }

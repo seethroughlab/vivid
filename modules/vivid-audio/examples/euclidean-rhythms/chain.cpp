@@ -21,8 +21,42 @@ void setup(Context& ctx) {
     clock.division(ClockDiv::Sixteenth);
     clock.start();
 
+    // ----- EUCLIDEAN PATTERNS -----
+    // Each uses different steps/hits for polyrhythm
+    // All run on audio thread via trigger source pattern
+
+    // E(4,16) - Four on the floor kick
+    auto& kick_eucl = chain.add<Euclidean>("kick_eucl");
+    kick_eucl.setTriggerSource("clock");  // Advances on audio thread
+    kick_eucl.steps = 16;
+    kick_eucl.hits = 4;
+    kick_eucl.rotation = 0;
+
+    // E(3,8) - Tresillo (classic Cuban rhythm)
+    auto& snare_eucl = chain.add<Euclidean>("snare_eucl");
+    snare_eucl.setTriggerSource("clock");
+    snare_eucl.steps = 8;
+    snare_eucl.hits = 3;
+    snare_eucl.rotation = 0;
+
+    // E(5,16) - Bossa nova hat pattern
+    auto& hat_eucl = chain.add<Euclidean>("hat_eucl");
+    hat_eucl.setTriggerSource("clock");
+    hat_eucl.steps = 16;
+    hat_eucl.hits = 5;
+    hat_eucl.rotation = 0;
+
+    // E(7,16) - Samba-inspired clap
+    auto& clap_eucl = chain.add<Euclidean>("clap_eucl");
+    clap_eucl.setTriggerSource("clock");
+    clap_eucl.steps = 16;
+    clap_eucl.hits = 7;
+    clap_eucl.rotation = 2;  // Offset for groove
+
     // ----- DRUMS -----
+    // Each drum triggers from its Euclidean pattern on audio thread
     auto& kick = chain.add<Kick>("kick");
+    kick.setTriggerSource("kick_eucl");  // Triggers on Euclidean output
     kick.pitch = 45.0f;
     kick.pitchEnv = 120.0f;
     kick.decay = 0.4f;
@@ -30,47 +64,23 @@ void setup(Context& ctx) {
     kick.volume = 0.85f;
 
     auto& snare = chain.add<Snare>("snare");
+    snare.setTriggerSource("snare_eucl");
     snare.tone = 200.0f;
     snare.decay = 0.15f;
     snare.snappy = 0.6f;
     snare.volume = 0.7f;
 
     auto& hihat = chain.add<HiHat>("hihat");
+    hihat.setTriggerSource("hat_eucl");
     hihat.decay = 0.03f;
     hihat.tone = 0.4f;
     hihat.volume = 0.4f;
 
     auto& clap = chain.add<Clap>("clap");
+    clap.setTriggerSource("clap_eucl");
     clap.decay = 0.12f;
     clap.spread = 0.02f;
     clap.volume = 0.6f;
-
-    // ----- EUCLIDEAN PATTERNS -----
-    // Each uses different steps/hits for polyrhythm
-
-    // E(4,16) - Four on the floor kick
-    auto& kick_eucl = chain.add<Euclidean>("kick_eucl");
-    kick_eucl.steps = 16;
-    kick_eucl.hits = 4;
-    kick_eucl.rotation = 0;
-
-    // E(3,8) - Tresillo (classic Cuban rhythm)
-    auto& snare_eucl = chain.add<Euclidean>("snare_eucl");
-    snare_eucl.steps = 8;
-    snare_eucl.hits = 3;
-    snare_eucl.rotation = 0;
-
-    // E(5,16) - Bossa nova hat pattern
-    auto& hat_eucl = chain.add<Euclidean>("hat_eucl");
-    hat_eucl.steps = 16;
-    hat_eucl.hits = 5;
-    hat_eucl.rotation = 0;
-
-    // E(7,16) - Samba-inspired clap
-    auto& clap_eucl = chain.add<Euclidean>("clap_eucl");
-    clap_eucl.steps = 16;
-    clap_eucl.hits = 7;
-    clap_eucl.rotation = 2;  // Offset for groove
 
     // ----- MIXER -----
     auto& mixer = chain.add<AudioMixer>("mixer");
@@ -179,28 +189,10 @@ void update(Context& ctx) {
     hat_eucl.hits = std::min(baseHits + 2, 12);
     clap_eucl.hits = std::min(baseHits + 1, 10);
 
-    // Process clock
-    if (clock.triggered()) {
-        // Advance all euclidean patterns
-        kick_eucl.advance();
-        snare_eucl.advance();
-        hat_eucl.advance();
-        clap_eucl.advance();
-
-        // Trigger drums
-        if (kick_eucl.triggered()) {
-            kick.trigger();
-        }
-        if (snare_eucl.triggered()) {
-            snare.trigger();
-        }
-        if (hat_eucl.triggered()) {
-            hihat.trigger();
-        }
-        if (clap_eucl.triggered()) {
-            clap.trigger();
-        }
-    }
+    // NOTE: Triggering now happens automatically on the audio thread!
+    // Euclidean patterns advance via setTriggerSource("clock")
+    // Drums trigger via setTriggerSource("eucl_name")
+    // No manual advance() or trigger() calls needed here.
 
     // Visual feedback - rings pulse with envelopes
     float kickEnv = kick.ampEnvelope();

@@ -7,14 +7,14 @@
  * Generates rhythms using the Euclidean algorithm.
  */
 
-#include <vivid/operator.h>
+#include <vivid/audio_operator.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
-#include <vivid/param_registry.h>
 #include <string>
 #include <vector>
 #include <array>
 #include <functional>
+#include <atomic>
 
 namespace vivid::audio {
 
@@ -40,25 +40,22 @@ namespace vivid::audio {
  *
  * @par Example
  * @code
- * chain.add<Clock>("clock").bpm(120.0f).division(ClockDiv::Sixteenth);
- * chain.add<Euclidean>("eucl")
- *     .steps(16)
- *     .hits(5)
- *     .rotation(0);
+ * auto& clock = chain.add<Clock>("clock");
+ * clock.bpm = 120.0f;
+ * clock.division(ClockDiv::Sixteenth);
  *
- * void update(Context& ctx) {
- *     if (chain.get<Clock>("clock")->triggered()) {
- *         chain.get<Euclidean>("eucl")->advance();
- *         if (chain.get<Euclidean>("eucl")->triggered()) {
- *             chain.get<Kick>("kick")->trigger();
- *         }
- *     }
- * }
+ * auto& eucl = chain.add<Euclidean>("eucl");
+ * eucl.setTriggerSource("clock");  // Advances automatically on audio thread
+ * eucl.steps = 16;
+ * eucl.hits = 5;
+ *
+ * auto& kick = chain.add<Kick>("kick");
+ * kick.setTriggerSource("eucl");  // Triggers on Euclidean output
  * @endcode
  
  * @see Clock, Sequencer, Kick, Snare, HiHat
  */
-class Euclidean : public Operator, public ParamRegistry {
+class Euclidean : public AudioOperator {
 public:
     static constexpr int MAX_STEPS = 16;
 
@@ -85,24 +82,45 @@ public:
     /// @{
 
     /**
-     * @brief Advance to next step
+     * @brief Check if euclidean triggered for visualization (main thread)
+     *
+     * This reads a separate visualization flag that accumulates triggers until
+     * the main thread reads it. Use this for visual feedback in update().
      */
-    void advance();
+    bool triggered() {
+        return m_visualTriggeredFlag.exchange(false, std::memory_order_acquire);
+    }
 
     /**
-     * @brief Check if current step is a hit
+     * @brief Check if current step is a hit in this audio block (audio thread)
+     *
+     * This flag is set during generateBlock() and cleared at the start of the
+     * next block. Used by downstream audio operators (like drums) to detect triggers.
      */
-    bool triggered() const { return m_triggered; }
+    bool triggered() const override { return m_triggeredFlag.load(std::memory_order_acquire); }
 
     /**
      * @brief Get current step index
+     * @note Thread-safe, can be called from main thread for visualization
      */
-    int currentStep() const { return m_currentStep; }
+    int currentStep() const { return m_currentStep.load(std::memory_order_relaxed); }
 
     /**
      * @brief Reset to step 0
      */
     void reset();
+
+    /**
+     * @brief Advance to next step (backward-compatible API)
+     *
+     * This method advances the euclidean pattern immediately and sets the
+     * triggered flag synchronously, matching the original behavior where
+     * advance() was called from the main thread.
+     *
+     * For new code, prefer using setTriggerSource("clock") which runs
+     * on the audio thread with sample-accurate timing.
+     */
+    void advance();
 
     /**
      * @brief Get generated pattern as bitmask
@@ -139,7 +157,9 @@ public:
     void process(Context& ctx) override;
     void cleanup() override;
     std::string name() const override { return "Euclidean"; }
-    OutputKind outputKind() const override { return OutputKind::Value; }
+
+    // Audio thread interface
+    void generateBlock(uint32_t frameCount) override;
 
     /// @brief Draw step pattern visualization
     bool drawVisualization(VizDrawList* drawList, float minX, float minY,
@@ -147,19 +167,29 @@ public:
 
     /// @}
 
+protected:
+    void onTrigger() override;
+
 private:
-    void regenerate();  // Regenerate pattern from parameters
+    void regenerate();           // Regenerate pattern from parameters
+    void advanceInternalNoFlag();  // Advance without setting flag (for catchup)
+    void advanceInternal();      // Internal advance (called on audio thread)
 
     // Cached values for detecting changes
     int m_cachedSteps = 16;
     int m_cachedHits = 4;
 
-    // Generated pattern
+    // Generated pattern (set from main thread, read from audio thread)
     std::array<bool, MAX_STEPS> m_pattern = {};
 
-    // State
-    int m_currentStep = 0;
-    bool m_triggered = false;
+    // State (atomic for cross-thread access)
+    std::atomic<int> m_currentStep{-1};
+    std::atomic<bool> m_triggeredFlag{false};      // For audio thread (cleared each block)
+    std::atomic<bool> m_visualTriggeredFlag{false}; // For main thread (cleared on read)
+
+    // Audio thread internal state
+    bool m_pendingTrigger = false;
+    uint64_t m_lastTriggerCount = 0;  // For tracking Clock's trigger count
 
     // Callback
     std::function<void()> m_onTrigger;

@@ -40,6 +40,8 @@
 #include <regex>
 #include <functional>
 #include <mutex>
+#include <thread>
+#include <chrono>
 
 // Memory debugging (macOS)
 #ifdef __APPLE__
@@ -93,8 +95,8 @@ static void lookupFunctions() {
     shutdown = (ShutdownFn)dlsym(RTLD_DEFAULT, "vivid_gui_shutdown");
     isAvailable = (IsAvailableFn)dlsym(RTLD_DEFAULT, "vivid_gui_is_available");
 #elif defined(_WIN32)
-    // On Windows, try to get the vivid-gui.dll module handle
-    HMODULE guiModule = GetModuleHandleA("vivid-gui.dll");
+    // On Windows, try to get the vivid-imgui.dll module handle
+    HMODULE guiModule = GetModuleHandleA("vivid-imgui.dll");
     if (guiModule) {
         init = (InitFn)GetProcAddress(guiModule, "vivid_gui_init");
         beginFrame = (BeginFrameFn)GetProcAddress(guiModule, "vivid_gui_begin_frame");
@@ -546,7 +548,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         glfwSetWindowSize(mlc.window, mlc.ctx->targetWindowWidth(), mlc.ctx->targetWindowHeight());
     }
 
-    // Skip frame if minimized
+    // Skip frame if minimized (width/height = 0)
     if (mlc.width == 0 || mlc.height == 0) {
         mlc.ctx->endFrame();
         return true;  // continue

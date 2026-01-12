@@ -374,11 +374,11 @@ TEST_CASE("Kick params() declaration", "[audio][kick]") {
     Kick kick;
     auto params = kick.params();
 
-    SECTION("has all 7 params") {
-        REQUIRE(params.size() == 7);
+    SECTION("has all 9 params") {
+        REQUIRE(params.size() == 9);
 
         std::vector<std::string> expected = {
-            "pitch", "pitchEnv", "pitchDecay", "envelope", "click", "drive", "volume"
+            "pitch", "pitchEnv", "pitchDecay", "envelope", "click", "drive", "overtones", "attack", "volume"
         };
 
         for (const auto& name : expected) {
@@ -475,8 +475,8 @@ TEST_CASE("Snare params() declaration", "[audio][snare]") {
     Snare snare;
     auto params = snare.params();
 
-    SECTION("has all 7 params") {
-        REQUIRE(params.size() == 7);
+    SECTION("has all 8 params") {
+        REQUIRE(params.size() == 8);
     }
 }
 
@@ -539,9 +539,9 @@ TEST_CASE("Clap basic tests", "[audio][clap]") {
         REQUIRE(clap.getParam("decay", out));
     }
 
-    SECTION("has spread param") {
+    SECTION("has sloppy param") {
         float out[4] = {0};
-        REQUIRE(clap.getParam("spread", out));
+        REQUIRE(clap.getParam("sloppy", out));
     }
 
     SECTION("starts inactive") {

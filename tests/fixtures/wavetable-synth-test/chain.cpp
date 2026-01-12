@@ -48,8 +48,9 @@ void setup(Context& ctx) {
     clock.bpm = 120.0f;
     clock.division(ClockDiv::Sixteenth);
 
-    // Sequencer for arpeggios
+    // Sequencer for arpeggios - advances from clock on audio thread
     auto& seq = chain.add<Sequencer>("seq");
+    seq.setTriggerSource("clock");
     seq.steps = 16;
     seq.setPattern(0b1010101010101010);  // Every other step
 
@@ -135,11 +136,9 @@ void setup(Context& ctx) {
 void update(Context& ctx) {
     auto& chain = ctx.chain();
 
-    // Advance clock and check for triggers
-    auto& clock = chain.get<Clock>("clock");
-    if (clock.triggered()) {
-        chain.get<Sequencer>("seq").advance();
-    }
+    // NOTE: Sequencer advances automatically via setTriggerSource("clock")
+    // The onTrigger() callback fires on the audio thread when steps trigger.
+    // No manual advance() needed!
 
     // Modulate wavetable position with LFO
     float posLFO = chain.get<LFO>("posLFO").outputValue();

@@ -138,5 +138,5 @@ TEST_CASE("Clock operator params() declaration", "[audio][clock]") {
 TEST_CASE("Clock operator name and output kind", "[audio][clock]") {
     Clock clock;
     REQUIRE(clock.name() == "Clock");
-    REQUIRE(clock.outputKind() == vivid::OutputKind::Value);
+    REQUIRE(clock.outputKind() == vivid::OutputKind::Audio);
 }

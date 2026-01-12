@@ -409,9 +409,9 @@ bool HotReload::compile() {
     // Using /MD (Release) with a Debug exe causes CRT mismatch crashes
     std::stringstream clCmd;
 #ifdef _DEBUG
-    clCmd << "cl /nologo /EHsc /LD /Od /MDd /std:c++17 ";
+    clCmd << "cl /nologo /EHsc /LD /Od /MDd /std:c++20 ";
 #else
-    clCmd << "cl /nologo /EHsc /LD /O2 /MD /std:c++17 ";
+    clCmd << "cl /nologo /EHsc /LD /O2 /MD /std:c++20 ";
 #endif
     clCmd << "/I\"" << sourceDir.string() << "\" ";
     clCmd << "/I\"" << vividInclude.string() << "\" ";

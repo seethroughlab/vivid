@@ -19,8 +19,8 @@ TEST_CASE("Sequencer operator parameter defaults", "[audio][sequencer]") {
         REQUIRE(static_cast<int>(out[0]) == 16);
     }
 
-    SECTION("currentStep starts at 0") {
-        REQUIRE(seq.currentStep() == 0);
+    SECTION("currentStep starts at -1 (before first step)") {
+        REQUIRE(seq.currentStep() == -1);
     }
 
     SECTION("triggered starts false") {
@@ -81,47 +81,17 @@ TEST_CASE("Sequencer pattern editing", "[audio][sequencer]") {
     }
 }
 
-TEST_CASE("Sequencer playback", "[audio][sequencer]") {
+TEST_CASE("Sequencer playback state", "[audio][sequencer]") {
     Sequencer seq;
 
-    SECTION("advance increments step") {
-        REQUIRE(seq.currentStep() == 0);
-        seq.advance();
-        REQUIRE(seq.currentStep() == 1);
-        seq.advance();
-        REQUIRE(seq.currentStep() == 2);
-    }
-
-    SECTION("advance wraps at step count") {
-        seq.steps = 4;
-        REQUIRE(seq.currentStep() == 0);
-        seq.advance();  // 1
-        seq.advance();  // 2
-        seq.advance();  // 3
-        seq.advance();  // should wrap to 0
-        REQUIRE(seq.currentStep() == 0);
-    }
-
-    SECTION("triggered is true when step is active") {
-        seq.setStep(0, true);
-        seq.setStep(1, false);
-
-        // At step 0 (active)
-        seq.advance();  // Move to step 1
-        // Now we're at step 1
-        REQUIRE(seq.currentStep() == 1);
-    }
-
-    SECTION("reset prepares for step 0 on first advance") {
-        seq.advance();
-        seq.advance();
-        REQUIRE(seq.currentStep() == 2);
+    SECTION("reset sets step to -1") {
         seq.reset();
-        // After reset, step is -1 so first advance() lands on 0
         REQUIRE(seq.currentStep() == -1);
-        seq.advance();
-        REQUIRE(seq.currentStep() == 0);
+        REQUIRE(seq.triggered() == false);
     }
+
+    // Note: advance() has been removed - sequencer now advances
+    // automatically on audio thread via setTriggerSource()
 }
 
 TEST_CASE("Sequencer operator setParam/getParam", "[audio][sequencer]") {
@@ -158,7 +128,7 @@ TEST_CASE("Sequencer operator params() declaration", "[audio][sequencer]") {
 TEST_CASE("Sequencer operator name and output kind", "[audio][sequencer]") {
     Sequencer seq;
     REQUIRE(seq.name() == "Sequencer");
-    REQUIRE(seq.outputKind() == vivid::OutputKind::Value);
+    REQUIRE(seq.outputKind() == vivid::OutputKind::Audio);  // AudioOperator
 }
 
 TEST_CASE("Sequencer MAX_STEPS constant", "[audio][sequencer]") {

@@ -119,20 +119,26 @@ void setup(Context& ctx) {
     auto& clock = chain.add<Clock>("clock");
     clock.bpm(80.0f).division(ClockDiv::Eighth).swing(0.05f);
 
-    // Drum sequencers (16th note patterns, so 2 clock ticks per step)
+    // Drum sequencers - advance from clock on audio thread
     auto& kickSeq = chain.add<Sequencer>("kickSeq");
+    kickSeq.setTriggerSource("clock");
     kickSeq.setPattern(0x1001);  // Downbeats
 
     auto& hihatSeq = chain.add<Sequencer>("hihatSeq");
+    hihatSeq.setTriggerSource("clock");
     hihatSeq.setPattern(0x5555);  // Every other 8th
 
-    // Drums - very subtle
+    // Drums - trigger from sequencers on audio thread
     auto& kick = chain.add<Kick>("kick");
     kick.pitch(42.0f).pitchEnv(50.0f).pitchDecay(0.12f)
         .decay(0.5f).click(0.1f).drive(0.0f).volume(0.35f);
 
     auto& hihat = chain.add<HiHat>("hihat");
     hihat.decay(0.025f).tone(0.9f).ring(0.15f).volume(0.12f);
+
+    // Drums trigger automatically from sequencers
+    kick.setTriggerSource("kickSeq");
+    hihat.setTriggerSource("hihatSeq");
 
     // Lead synth - saw wave with envelope
     auto& lead = chain.add<Synth>("lead");
@@ -348,12 +354,10 @@ void update(Context& ctx) {
         printStatus();
     }
 
-    // Sequencer
+    // NOTE: Sequencers advance and drums trigger automatically via setTriggerSource()
+    // We only need to handle melodic parts and visual feedback here
     if (clock.triggered()) {
-        kickSeq.advance();
-        hihatSeq.advance();
-
-        // Lead melody
+        // Lead melody (manual control for musical expression)
         float noteFreq = getMelodyNote(stepInPhrase);
         if (noteFreq > 0.0f) {
             // Only trigger on note CHANGE (not same note continuing)
@@ -373,10 +377,10 @@ void update(Context& ctx) {
             lastLeadNote = 0.0f;
         }
 
-        // Drums
+        // Visual feedback for drums (drums trigger automatically, but we track for visuals)
         if (shouldPlayDrums()) {
-            if (kickSeq.triggered()) { kick.trigger(); kickVisual = 1.0f; }
-            if (hihatSeq.triggered()) { hihat.trigger(); hihatVisual = 1.0f; }
+            if (kickSeq.triggered()) { kickVisual = 1.0f; }
+            if (hihatSeq.triggered()) { hihatVisual = 1.0f; }
         }
 
         // Pads - only trigger when chord changes

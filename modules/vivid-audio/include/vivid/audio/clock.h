@@ -85,6 +85,13 @@ public:
 
     void division(ClockDiv div) { m_division = div; }
 
+    /**
+     * @brief Enable/disable swing
+     * @param enabled True to enable swing, false to disable
+     * @note Swing is disabled by default for testing
+     */
+    void setSwingEnabled(bool enabled) { m_swingEnabled = enabled; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Trigger State
@@ -96,13 +103,30 @@ public:
      *
      * This reads the atomic trigger flag set by the audio thread.
      * The flag is cleared after reading to detect the next trigger.
+     *
+     * @note When called directly on a Clock object, this non-const version
+     * is preferred and clears the flag. When called through the base class
+     * Operator* pointer (e.g., from AudioGraph), the const override below
+     * is used which does NOT clear the flag.
      */
     bool triggered() {
         return m_triggeredFlag.exchange(false, std::memory_order_acquire);
     }
 
     /**
-     * @brief Check trigger state without clearing (for visualization)
+     * @brief Check trigger state without clearing (audio thread polling)
+     * @return True if clock triggered in current audio block
+     *
+     * Override of base Operator::triggered() for audio thread trigger propagation.
+     * Does NOT clear the flag - safe for multiple downstream operators to poll.
+     * This version is called when accessing through Operator* base pointer.
+     */
+    bool triggered() const override {
+        return m_triggeredFlag.load(std::memory_order_acquire);
+    }
+
+    /**
+     * @brief Alias for triggered() const (for visualization)
      */
     bool triggeredPeek() const {
         return m_triggeredFlag.load(std::memory_order_relaxed);
@@ -183,10 +207,12 @@ private:
     float getDivisionMultiplier() const;
 
     ClockDiv m_division = ClockDiv::Quarter;
+    bool m_swingEnabled = false;  // Swing disabled by default for testing
 
     // State (accessed from audio thread)
     double m_phase = 0.0;
     bool m_lastTickOdd = false;
+    float m_capturedSwingDelay = 0.0f;  // Swing delay captured at odd beat time
 
     // Shared state (atomic for thread safety)
     std::atomic<uint64_t> m_triggerCount{0};

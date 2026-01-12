@@ -368,6 +368,19 @@ void update(Context& ctx) {
             // Reset sequencers on mode change
             kickSeq.reset(); snareSeq.reset(); hihatSeq.reset(); clapSeq.reset();
             kickEucl.reset(); snareEucl.reset(); hihatEucl.reset(); clapEucl.reset();
+
+            // Switch drum trigger sources based on mode (use pointers at runtime)
+            if (useEuclidean) {
+                kick.setTriggerSource(&kickEucl);
+                snare.setTriggerSource(&snareEucl);
+                hihat.setTriggerSource(&hihatEucl);
+                clap.setTriggerSource(&clapEucl);
+            } else {
+                kick.setTriggerSource(&kickSeq);
+                snare.setTriggerSource(&snareSeq);
+                hihat.setTriggerSource(&hihatSeq);
+                clap.setTriggerSource(&clapSeq);
+            }
             printStatus(static_cast<float>(clock.bpm), clock.isRunning());
         }
 
@@ -586,57 +599,21 @@ void update(Context& ctx) {
     }
 
     // =========================================================================
-    // Sequencer Logic
+    // Audio-thread triggering - no manual advance/trigger needed!
+    // Sequencers and Euclideans advance via setTriggerSource("clock")
+    // Drums trigger via setTriggerSource("kickSeq") etc.
     // =========================================================================
 
-    if (clock.triggered()) {
-        bool triggerKick = false;
-        bool triggerSnare = false;
-        bool triggerHihat = false;
-        bool triggerClap = false;
+    // Visual feedback - check if drums triggered (thread-safe)
+    bool triggerKick = useEuclidean ? kickEucl.triggered() : kickSeq.triggered();
+    bool triggerSnare = useEuclidean ? snareEucl.triggered() : snareSeq.triggered();
+    bool triggerHihat = useEuclidean ? hihatEucl.triggered() : hihatSeq.triggered();
+    bool triggerClap = useEuclidean ? clapEucl.triggered() : clapSeq.triggered();
 
-        if (useEuclidean) {
-            // Euclidean mode
-            kickEucl.advance();
-            snareEucl.advance();
-            hihatEucl.advance();
-            clapEucl.advance();
-
-            triggerKick = kickEucl.triggered();
-            triggerSnare = snareEucl.triggered();
-            triggerHihat = hihatEucl.triggered();
-            triggerClap = clapEucl.triggered();
-        } else {
-            // Pattern mode
-            kickSeq.advance();
-            snareSeq.advance();
-            hihatSeq.advance();
-            clapSeq.advance();
-
-            triggerKick = kickSeq.triggered();
-            triggerSnare = snareSeq.triggered();
-            triggerHihat = hihatSeq.triggered();
-            triggerClap = clapSeq.triggered();
-        }
-
-        // Trigger drums
-        if (triggerKick) {
-            kick.trigger();
-            kickDecay = 1.0f;
-        }
-        if (triggerSnare) {
-            snare.trigger();
-            snareDecay = 1.0f;
-        }
-        if (triggerHihat) {
-            hihat.trigger();
-            hihatDecay = 1.0f;
-        }
-        if (triggerClap) {
-            clap.trigger();
-            clapDecay = 1.0f;
-        }
-    }
+    if (triggerKick) kickDecay = 1.0f;
+    if (triggerSnare) snareDecay = 1.0f;
+    if (triggerHihat) hihatDecay = 1.0f;
+    if (triggerClap) clapDecay = 1.0f;
 
     // =========================================================================
     // Visual Feedback

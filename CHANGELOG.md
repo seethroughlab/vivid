@@ -10,6 +10,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.27] - 2026-01-12
+
+### Added
+
+- **Audio-thread trigger pattern** - Sequencer and Euclidean now inherit from `AudioOperator` and run on the audio thread for sample-accurate timing. Use `setTriggerSource("clock")` instead of manual `advance()` calls.
+  ```cpp
+  // New pattern (sample-accurate, runs on audio thread)
+  kick_seq.setTriggerSource("clock");
+  kick.setTriggerSource("kick_seq");
+
+  // Old pattern (still works, ~16ms jitter)
+  if (clock.triggered()) {
+      kick_seq.advance();
+      if (kick_seq.triggered()) kick.trigger();
+  }
+  ```
+
+- **Clock swing enable/disable** - `clock.setSwingEnabled(bool)` to programmatically enable/disable swing. Disabled by default.
+
+### Fixed
+
+- **Clock swing triggers lost** - Fixed swing triggers being permanently skipped when swing amount changed mid-beat (e.g., via mouse movement). Swing delay is now captured at odd beat time and won't change until the trigger fires.
+
+- **Visual triggers missing** - Fixed main thread (~60fps) missing audio triggers due to timing mismatch with audio blocks (~5ms). Sequencer and Euclidean now use dual-flag pattern: one flag for audio thread (cleared each block), one for main thread (accumulated until read).
+
+### Changed
+
+- **Example chains updated** - drum-machine, drum-synthesis, and euclidean-rhythms examples now use audio-thread trigger pattern for better timing accuracy
+
 ## [0.1.0-alpha.26] - 2026-01-12
 
 ### Added
@@ -606,7 +635,11 @@ tests/            Test suites and fixtures
 docs/             Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.23...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.27...HEAD
+[0.1.0-alpha.27]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.26...v0.1.0-alpha.27
+[0.1.0-alpha.26]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.25...v0.1.0-alpha.26
+[0.1.0-alpha.25]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.24...v0.1.0-alpha.25
+[0.1.0-alpha.24]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.23...v0.1.0-alpha.24
 [0.1.0-alpha.23]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.22...v0.1.0-alpha.23
 [0.1.0-alpha.22]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.21...v0.1.0-alpha.22
 [0.1.0-alpha.20]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.19...v0.1.0-alpha.20

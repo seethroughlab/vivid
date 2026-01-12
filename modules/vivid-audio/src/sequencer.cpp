@@ -1,5 +1,7 @@
 #include <vivid/audio/sequencer.h>
+#include <vivid/audio/clock.h>
 #include <vivid/operator_registry.h>
+#include <vivid/audio_graph.h>
 #include <vivid/context.h>
 
 namespace vivid::audio {
@@ -7,20 +9,144 @@ namespace vivid::audio {
 REGISTER_OPERATOR(Sequencer, "Audio Sequencing", "Step sequencer for triggering events", false);
 
 void Sequencer::init(Context& ctx) {
+    if (!beginInit()) return;
+
+    // Allocate minimal output buffer (Sequencer doesn't produce audio samples)
+    allocateOutput(256, 2, AUDIO_SAMPLE_RATE);
+
     // Don't clear pattern - it may have been set before init()
-    // Just reset the playback position
-    reset();
-    m_initialized = true;
+    // Reset playback position
+    m_currentStep.store(-1, std::memory_order_relaxed);
+    m_triggeredFlag.store(false, std::memory_order_relaxed);
+    m_visualTriggeredFlag.store(false, std::memory_order_relaxed);
+    m_currentVelocity.store(0.0f, std::memory_order_relaxed);
+    m_pendingTrigger = false;
+
+    // Sync with trigger source's current count to avoid triggering all past beats
+    Operator* trigSource = triggerSource();
+    if (trigSource) {
+        if (auto* clock = dynamic_cast<Clock*>(trigSource)) {
+            m_lastTriggerCount = clock->triggerCount();
+        }
+    } else {
+        m_lastTriggerCount = 0;
+    }
 }
 
 void Sequencer::process(Context& ctx) {
-    // Sequencer is typically advanced externally via advance()
-    // process() just clears the trigger flag each frame
-    // (trigger is set in advance() and should be read before next process)
+    // Main thread process() is a no-op for Sequencer
+    // All timing happens in generateBlock() on the audio thread
+}
+
+void Sequencer::generateBlock(uint32_t frameCount) {
+    // Called on audio thread each block
+
+    // Clear audio-thread trigger flag at start of block
+    // This ensures downstream audio operators only see the trigger for one block
+    m_triggeredFlag.store(false, std::memory_order_release);
+
+    // Track if a trigger happens this block
+    bool triggeredThisBlock = false;
+
+    // Check if our trigger source (e.g., Clock) has triggered
+    // This allows Sequencer to advance automatically on the audio thread
+    Operator* trigSource = triggerSource();
+    if (trigSource) {
+        // Try Clock first (most common trigger source)
+        if (auto* clock = dynamic_cast<Clock*>(trigSource)) {
+            uint64_t currentCount = clock->triggerCount();
+            if (currentCount > m_lastTriggerCount) {
+                // Clock has triggered - advance for each trigger we missed
+                // Important: accumulate triggers so we don't lose active steps during catchup
+                uint64_t triggers = currentCount - m_lastTriggerCount;
+                for (uint64_t i = 0; i < triggers; ++i) {
+                    advanceInternalNoFlag();  // Advance without setting flag
+                    if (m_pattern[m_currentStep.load(std::memory_order_relaxed)]) {
+                        triggeredThisBlock = true;
+                    }
+                }
+                m_lastTriggerCount = currentCount;
+            }
+        }
+        // Try another Sequencer
+        else if (auto* seq = dynamic_cast<Sequencer*>(trigSource)) {
+            // Check if the source sequencer triggered
+            if (seq->triggered()) {
+                advanceInternalNoFlag();
+                if (m_pattern[m_currentStep.load(std::memory_order_relaxed)]) {
+                    triggeredThisBlock = true;
+                }
+            }
+        }
+    }
+
+    // If we have a pending trigger (from onTrigger or external trigger() call), advance the step
+    if (m_pendingTrigger) {
+        m_pendingTrigger = false;
+        advanceInternalNoFlag();
+        if (m_pattern[m_currentStep.load(std::memory_order_relaxed)]) {
+            triggeredThisBlock = true;
+        }
+    }
+
+    // Set triggered flags if ANY step was active during this block
+    if (triggeredThisBlock) {
+        int current = m_currentStep.load(std::memory_order_relaxed);
+        float velocity = m_velocities[current];
+        m_currentVelocity.store(velocity, std::memory_order_relaxed);
+        m_triggeredFlag.store(true, std::memory_order_release);       // For audio thread
+        m_visualTriggeredFlag.store(true, std::memory_order_release); // For main thread
+    }
+
+    // Resize output buffer if needed (even though we don't produce audio)
+    if (m_output.frameCount != frameCount) {
+        m_output.resize(frameCount);
+    }
+}
+
+void Sequencer::onTrigger() {
+    // Called on audio thread when we receive a trigger event
+    // If our trigger source is a Clock, we poll triggerCount internally
+    // in generateBlock(), so ignore external trigger events to avoid double-advancing
+    Operator* src = triggerSource();
+    if (src && dynamic_cast<Clock*>(src)) {
+        return;  // Clock timing handled internally via triggerCount polling
+    }
+
+    // For non-Clock trigger sources, set pending flag
+    // We'll advance in generateBlock() to ensure the triggered flag
+    // is set at a consistent point in the block
+    m_pendingTrigger = true;
+}
+
+void Sequencer::advanceInternalNoFlag() {
+    // Called on audio thread - advances to next step WITHOUT setting triggered flag
+    // Used during catchup to avoid overwriting flag for intermediate steps
+    int numSteps = static_cast<int>(steps);
+    if (numSteps < 1) numSteps = 1;
+    if (numSteps > MAX_STEPS) numSteps = MAX_STEPS;
+
+    // Move to next step
+    int current = m_currentStep.load(std::memory_order_relaxed);
+    current = (current + 1) % numSteps;
+    m_currentStep.store(current, std::memory_order_relaxed);
+}
+
+void Sequencer::advanceInternal() {
+    // Called on audio thread - advances to next step and sets flag
+    advanceInternalNoFlag();
+
+    int current = m_currentStep.load(std::memory_order_relaxed);
+    bool stepActive = m_pattern[current];
+    float velocity = stepActive ? m_velocities[current] : 0.0f;
+
+    m_currentVelocity.store(velocity, std::memory_order_relaxed);
+    m_triggeredFlag.store(stepActive, std::memory_order_release);
 }
 
 void Sequencer::cleanup() {
-    m_initialized = false;
+    resetInit();
+    releaseOutput();
 }
 
 void Sequencer::setStep(int step, bool on, float velocity) {
@@ -58,27 +184,33 @@ void Sequencer::setPattern(uint16_t pattern) {
 }
 
 void Sequencer::advance() {
+    // Backward-compatible advance: directly advance and set flag
+    // This matches the original synchronous behavior for main-thread callers
     int numSteps = static_cast<int>(steps);
     if (numSteps < 1) numSteps = 1;
     if (numSteps > MAX_STEPS) numSteps = MAX_STEPS;
 
     // Move to next step
-    m_currentStep = (m_currentStep + 1) % numSteps;
+    int current = m_currentStep.load(std::memory_order_relaxed);
+    current = (current + 1) % numSteps;
+    m_currentStep.store(current, std::memory_order_relaxed);
 
-    // Check if current step is active
-    m_triggered = m_pattern[m_currentStep];
-    m_currentVelocity = m_triggered ? m_velocities[m_currentStep] : 0.0f;
+    // Check if current step is active and set triggered flags
+    bool stepActive = m_pattern[current];
+    float velocity = stepActive ? m_velocities[current] : 0.0f;
 
-    // Fire callback if triggered
-    if (m_triggered && m_onTrigger) {
-        m_onTrigger(m_currentVelocity);
-    }
+    m_currentVelocity.store(velocity, std::memory_order_relaxed);
+    m_triggeredFlag.store(stepActive, std::memory_order_release);
+    m_visualTriggeredFlag.store(stepActive, std::memory_order_release);
 }
 
 void Sequencer::reset() {
-    m_currentStep = -1;  // So first advance() goes to step 0
-    m_triggered = false;
-    m_currentVelocity = 0.0f;
+    m_currentStep.store(-1, std::memory_order_relaxed);
+    m_triggeredFlag.store(false, std::memory_order_relaxed);
+    m_visualTriggeredFlag.store(false, std::memory_order_relaxed);
+    m_currentVelocity.store(0.0f, std::memory_order_relaxed);
+    m_pendingTrigger = false;
+    m_lastTriggerCount = 0;
 }
 
 } // namespace vivid::audio

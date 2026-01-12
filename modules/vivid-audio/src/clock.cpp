@@ -26,13 +26,17 @@ void Clock::process(Context& ctx) {
 void Clock::generateBlock(uint32_t frameCount) {
     // Called on audio thread - sample-accurate timing
 
+    // NOTE: We do NOT clear m_triggeredFlag here. The flag is cleared by the main
+    // thread when it calls triggered() (which uses exchange). Audio-thread consumers
+    // (like Sequencer) use triggerCount() polling instead of the flag.
+
     if (!m_running.load(std::memory_order_relaxed)) {
         return;
     }
 
     // Get parameters (these are set from main thread, read here)
     float currentBpm = static_cast<float>(bpm);
-    float swingAmt = static_cast<float>(swing);
+    float swingAmt = m_swingEnabled ? static_cast<float>(swing) : 0.0f;
 
     // Calculate phase increment per sample
     float beatsPerSecond = currentBpm / 60.0f;
@@ -54,21 +58,25 @@ void Clock::generateBlock(uint32_t frameCount) {
             bool isOddBeat = (count % 2) == 1;
 
             if (!isOddBeat || swingAmt == 0.0f) {
-                // Trigger on this sample
+                // Trigger on this sample (even beats, or any beat when swing is 0)
                 m_triggeredFlag.store(true, std::memory_order_release);
                 m_triggerCount.fetch_add(1, std::memory_order_relaxed);
 
                 if (m_callback) {
                     m_callback();
                 }
+            } else {
+                // Odd beat with swing: capture the swing delay NOW so it doesn't change
+                // if the user moves the mouse before the threshold is crossed
+                m_capturedSwingDelay = swingAmt * 0.33f;
             }
             m_lastTickOdd = isOddBeat;
         }
 
         // Handle swing delay (trigger odd beats late)
-        if (swingAmt > 0.0f && m_lastTickOdd) {
-            float swingDelay = swingAmt * 0.33f;  // Max 33% of beat
-            if (oldPhase < swingDelay && m_phase >= swingDelay) {
+        // Use captured swing delay so changing swing mid-beat doesn't lose the trigger
+        if (m_capturedSwingDelay > 0.0f && m_lastTickOdd) {
+            if (oldPhase < m_capturedSwingDelay && m_phase >= m_capturedSwingDelay) {
                 m_triggeredFlag.store(true, std::memory_order_release);
                 m_triggerCount.fetch_add(1, std::memory_order_relaxed);
 
@@ -76,6 +84,7 @@ void Clock::generateBlock(uint32_t frameCount) {
                     m_callback();
                 }
                 m_lastTickOdd = false;
+                m_capturedSwingDelay = 0.0f;  // Reset after use
             }
         }
     }
@@ -91,6 +100,7 @@ void Clock::reset() {
     m_triggerCount.store(0, std::memory_order_relaxed);
     m_triggeredFlag.store(false, std::memory_order_relaxed);
     m_lastTickOdd = false;
+    m_capturedSwingDelay = 0.0f;
 }
 
 float Clock::getDivisionMultiplier() const {

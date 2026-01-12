@@ -24,8 +24,39 @@ void setup(Context& ctx) {
     clock.swing = 0.0f;
     clock.start();
 
+    // ----- SEQUENCERS -----
+    // NOTE: Sequencers must be added BEFORE drums for correct audio-thread execution order.
+    // The AudioGraph processes operators in the order they were added, so sequencers
+    // need to generate their triggered() state before drums check it.
+    auto& kick_seq = chain.add<Sequencer>("kick_seq");
+    kick_seq.steps = 16;
+    // Classic four-on-the-floor: 1, 5, 9, 13 (0-indexed: 0, 4, 8, 12)
+    kick_seq.setStep(0, true);
+    kick_seq.setStep(4, true);
+    kick_seq.setStep(8, true);
+    kick_seq.setStep(12, true);
+
+    auto& snare_seq = chain.add<Sequencer>("snare_seq");
+    snare_seq.steps = 16;
+    // Backbeat: 5, 13 (0-indexed: 4, 12)
+    snare_seq.setStep(4, true);
+    snare_seq.setStep(12, true);
+
+    auto& hihat_seq = chain.add<Sequencer>("hihat_seq");
+    hihat_seq.steps = 16;
+    // Every 16th note
+    for (int i = 0; i < 16; i++) {
+        hihat_seq.setStep(i, true, (i % 2 == 0) ? 1.0f : 0.6f);  // Accent downbeats
+    }
+
+    auto& clap_seq = chain.add<Sequencer>("clap_seq");
+    clap_seq.steps = 16;
+    // Same as snare, slightly different timing
+    clap_seq.setStep(4, true, 0.8f);
+    clap_seq.setStep(12, true, 1.0f);
+
     // ----- DRUM VOICES -----
-    // 808-style synthesized drums
+    // 808-style synthesized drums (added AFTER sequencers for correct execution order)
     auto& kick = chain.add<Kick>("kick");
     kick.pitch = 50.0f;        // Base frequency
     kick.pitchEnv = 150.0f;    // Pitch sweep amount
@@ -55,35 +86,6 @@ void setup(Context& ctx) {
     clap.tone = 0.5f;          // Tonal character
     clap.volume = 0.7f;
 
-    // ----- SEQUENCERS -----
-    // Each drum has its own pattern
-    auto& kick_seq = chain.add<Sequencer>("kick_seq");
-    kick_seq.steps = 16;
-    // Classic four-on-the-floor: 1, 5, 9, 13 (0-indexed: 0, 4, 8, 12)
-    kick_seq.setStep(0, true);
-    kick_seq.setStep(4, true);
-    kick_seq.setStep(8, true);
-    kick_seq.setStep(12, true);
-
-    auto& snare_seq = chain.add<Sequencer>("snare_seq");
-    snare_seq.steps = 16;
-    // Backbeat: 5, 13 (0-indexed: 4, 12)
-    snare_seq.setStep(4, true);
-    snare_seq.setStep(12, true);
-
-    auto& hihat_seq = chain.add<Sequencer>("hihat_seq");
-    hihat_seq.steps = 16;
-    // Every 16th note
-    for (int i = 0; i < 16; i++) {
-        hihat_seq.setStep(i, true, (i % 2 == 0) ? 1.0f : 0.6f);  // Accent downbeats
-    }
-
-    auto& clap_seq = chain.add<Sequencer>("clap_seq");
-    clap_seq.steps = 16;
-    // Same as snare, slightly different timing
-    clap_seq.setStep(4, true, 0.8f);
-    clap_seq.setStep(12, true, 1.0f);
-
     // ----- MIXER -----
     auto& mixer = chain.add<AudioMixer>("mixer");
     mixer.setInput(0, "kick");
@@ -101,6 +103,19 @@ void setup(Context& ctx) {
     auto& output = chain.add<AudioOutput>("audio_out");
     output.setInput("master");
     chain.audioOutput("audio_out");
+
+    // ----- TRIGGER CONNECTIONS (audio-thread timing) -----
+    // Sequencers advance on clock trigger
+    kick_seq.setTriggerSource("clock");
+    snare_seq.setTriggerSource("clock");
+    hihat_seq.setTriggerSource("clock");
+    clap_seq.setTriggerSource("clock");
+
+    // Drums trigger on their sequencer output
+    kick.setTriggerSource("kick_seq");
+    snare.setTriggerSource("snare_seq");
+    hihat.setTriggerSource("hihat_seq");
+    clap.setTriggerSource("clap_seq");
 
     // =========================================================================
     // 3D VISUALS - PBR Asteroid with Ring
@@ -299,13 +314,8 @@ void update(Context& ctx) {
     auto& chain = ctx.chain();
     float t = ctx.time();
 
-    // Get operators
+    // Get operators for runtime control and visualization
     auto& clock = chain.get<Clock>("clock");
-    auto& kick = chain.get<Kick>("kick");
-    auto& snare = chain.get<Snare>("snare");
-    auto& hihat = chain.get<HiHat>("hihat");
-    auto& clap = chain.get<Clap>("clap");
-
     auto& kick_seq = chain.get<Sequencer>("kick_seq");
     auto& snare_seq = chain.get<Sequencer>("snare_seq");
     auto& hihat_seq = chain.get<Sequencer>("hihat_seq");
@@ -315,31 +325,12 @@ void update(Context& ctx) {
     float mouseY = ctx.mouseNorm().y;  // 0-1
     clock.swing = mouseY * 0.5f;
 
-    // Process clock and advance sequencers
-    if (clock.triggered()) {
-        kick_seq.advance();
-        snare_seq.advance();
-        hihat_seq.advance();
-        clap_seq.advance();
-
-        // Trigger drums based on sequencer state
-        if (kick_seq.triggered()) {
-            kick.trigger();
-            kickDecay = 1.0f;
-        }
-        if (snare_seq.triggered()) {
-            snare.trigger();
-            snareDecay = 1.0f;
-        }
-        if (hihat_seq.triggered()) {
-            hihat.trigger();
-            hihatDecay = 1.0f;
-        }
-        if (clap_seq.triggered()) {
-            clap.trigger();
-            clapDecay = 1.0f;
-        }
-    }
+    // Audio-thread triggering: sequencers and drums trigger automatically via setTriggerSource()
+    // We just poll triggered() for visual feedback
+    if (kick_seq.triggered()) kickDecay = 1.0f;
+    if (snare_seq.triggered()) snareDecay = 1.0f;
+    if (hihat_seq.triggered()) hihatDecay = 1.0f;
+    if (clap_seq.triggered()) clapDecay = 1.0f;
 
     // Visual feedback - decay values (slower decay = effects stay visible longer)
     float decayRate = 1.0f - ctx.dt() * 4.0f;  // Slower decay

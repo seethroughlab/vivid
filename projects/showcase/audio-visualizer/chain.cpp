@@ -53,6 +53,11 @@ void setup(Context& ctx) {
     auto& hihatSeq = chain.add<Sequencer>("hihatSeq");
     hihatSeq.setPattern(0x5555);  // 8th notes
 
+    // Sequencers advance from clock on audio thread
+    kickSeq.setTriggerSource("clock");
+    snareSeq.setTriggerSource("clock");
+    hihatSeq.setTriggerSource("clock");
+
     auto& kick = chain.add<Kick>("kick");
     kick.pitch = 45.0f;
     kick.pitchEnv = 150.0f;
@@ -71,6 +76,11 @@ void setup(Context& ctx) {
     hihat.decay = 0.04f;
     hihat.tone = 0.8f;
     hihat.volume = 0.3f;
+
+    // Drums trigger from sequencers on audio thread
+    kick.setTriggerSource("kickSeq");
+    snare.setTriggerSource("snareSeq");
+    hihat.setTriggerSource("hihatSeq");
 
     auto& mixer = chain.add<AudioMixer>("mixer");
     mixer.setInput(0, "kick");
@@ -331,18 +341,10 @@ void update(Context& ctx) {
     }
 
     // =========================================================================
-    // Sequencer Logic (when using synth)
+    // NOTE: Audio triggering is automatic via setTriggerSource()
+    // Sequencers advance from Clock, drums trigger from Sequencers
+    // All timing happens on the audio thread for sample accuracy
     // =========================================================================
-
-    if (!useMic && clock.triggered()) {
-        kickSeq.advance();
-        snareSeq.advance();
-        hihatSeq.advance();
-
-        if (kickSeq.triggered()) kick.trigger();
-        if (snareSeq.triggered()) snare.trigger();
-        if (hihatSeq.triggered()) hihat.trigger();
-    }
 
     // =========================================================================
     // Audio Analysis
