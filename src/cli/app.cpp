@@ -1495,6 +1495,48 @@ int Application::init(const AppConfig& config) {
         return false;
     });
 
+    // MCP get_chain_structure tool: return chain operators and connections
+    m_impl->editorBridge->onRequestChainStructure([this]() -> std::vector<EditorBridge::ChainOperatorInfo> {
+        std::vector<EditorBridge::ChainOperatorInfo> result;
+        if (!m_impl->ctx->hasChain()) return result;
+
+        for (const auto& opInfo : m_impl->ctx->registeredOperators()) {
+            EditorBridge::ChainOperatorInfo info;
+            info.name = opInfo.name;
+            if (opInfo.op) {
+                info.displayName = opInfo.op->name();
+                info.outputType = outputKindName(opInfo.op->outputKind());
+                // Build inputs list from operator
+                for (size_t i = 0; i < opInfo.op->inputNameCount(); ++i) {
+                    std::string inputName = opInfo.op->getInputName(static_cast<int>(i));
+                    if (!inputName.empty()) {
+                        info.inputs.push_back(inputName);
+                    }
+                }
+            }
+            result.push_back(info);
+        }
+        return result;
+    });
+
+    // MCP get_frame_info tool: return current frame/time/fps
+    m_impl->editorBridge->onRequestFrameInfo([this]() -> EditorBridge::FrameInfo {
+        EditorBridge::FrameInfo info;
+        if (m_impl->ctx) {
+            info.frame = m_impl->ctx->frame();
+            info.time = m_impl->ctx->time();
+            info.fps = m_impl->mlc.perfStats.fps;
+        }
+        return info;
+    });
+
+    // MCP reset_time tool: reset animation to frame 0
+    m_impl->editorBridge->onResetTime([this]() {
+        if (m_impl->ctx) {
+            m_impl->ctx->resetTime();
+        }
+    });
+
     // Connect chain visualizer inspector panel to pending changes system
     m_impl->chainVisualizer->onParamChange([this](const std::string& opName, const std::string& paramName,
                                                    const float oldValue[4], const float newValue[4], int sourceLine) {
@@ -1750,6 +1792,7 @@ int Application::init(const AppConfig& config) {
             }
         } else {
             std::string errorMsg = "Chain file not found: " + chainPath.string();
+            std::cerr << "\n*** ERROR: " << errorMsg << " ***\n" << std::endl;
             m_impl->ctx->setError(errorMsg);
             // Notify MCP clients of the failure
             if (m_impl->editorBridge) {
@@ -1758,6 +1801,7 @@ int Application::init(const AppConfig& config) {
         }
     } else {
         std::string errorMsg = "No chain specified. Usage: vivid <path/to/chain.cpp>";
+        std::cerr << "\n*** ERROR: " << errorMsg << " ***\n" << std::endl;
         m_impl->ctx->setError(errorMsg);
         // Notify MCP clients of the failure
         if (m_impl->editorBridge) {

@@ -194,6 +194,27 @@ void EditorBridge::start(int port) {
                         requestFrameAdvance(count);
                         sendFrameAdvanceStarted(count);
                     }
+                    else if (type == "request_chain_structure") {
+                        std::cout << "[EditorBridge] Chain structure requested\n";
+                        if (m_requestChainStructureCallback) {
+                            auto operators = m_requestChainStructureCallback();
+                            sendChainStructure(operators);
+                        }
+                    }
+                    else if (type == "request_frame_info") {
+                        std::cout << "[EditorBridge] Frame info requested\n";
+                        if (m_requestFrameInfoCallback) {
+                            auto info = m_requestFrameInfoCallback();
+                            sendFrameInfo(info);
+                        }
+                    }
+                    else if (type == "reset_time") {
+                        std::cout << "[EditorBridge] Reset time requested\n";
+                        if (m_resetTimeCallback) {
+                            m_resetTimeCallback();
+                            sendResetTimeComplete();
+                        }
+                    }
                 } catch (const json::exception& e) {
                     std::cerr << "[EditorBridge] JSON parse error: " << e.what() << "\n";
                 }
@@ -536,6 +557,74 @@ void EditorBridge::sendFrameAdvanceComplete(int newFrame) {
     json j;
     j["type"] = "frame_advance_complete";
     j["frame"] = newFrame;
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Chain structure (MCP get_chain_structure tool)
+// -------------------------------------------------------------------------
+
+void EditorBridge::sendChainStructure(const std::vector<ChainOperatorInfo>& operators) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "chain_structure";
+    j["operators"] = json::array();
+
+    for (const auto& op : operators) {
+        json opJson;
+        opJson["name"] = op.name;
+        opJson["displayName"] = op.displayName;
+        opJson["outputType"] = op.outputType;
+        opJson["inputs"] = op.inputs;
+        j["operators"].push_back(opJson);
+    }
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Frame info (MCP get_frame_info tool)
+// -------------------------------------------------------------------------
+
+void EditorBridge::sendFrameInfo(const FrameInfo& info) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "frame_info";
+    j["frame"] = info.frame;
+    j["time"] = info.time;
+    j["fps"] = info.fps;
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Reset time (MCP reset_time tool)
+// -------------------------------------------------------------------------
+
+void EditorBridge::sendResetTimeComplete() {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "reset_time_complete";
+    j["success"] = true;
 
     std::string msg = j.dump();
 

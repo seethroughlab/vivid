@@ -250,6 +250,61 @@ public:
     /// Called when MCP requests a screenshot of the current frame
     void onCaptureFrame(CaptureFrameCallback callback) { m_captureFrameCallback = callback; }
 
+    // -------------------------------------------------------------------------
+    // Chain structure (MCP get_chain_structure tool)
+    // -------------------------------------------------------------------------
+
+    /// Info about a single operator in the chain structure
+    struct ChainOperatorInfo {
+        std::string name;           ///< Operator chain name
+        std::string displayName;    ///< Operator type name (e.g., "Noise")
+        std::string outputType;     ///< Output kind (e.g., "Texture")
+        std::vector<std::string> inputs;  ///< Input names
+    };
+
+    /// Callback type for request_chain_structure command
+    /// Should return the list of operators in the running chain
+    using RequestChainStructureCallback = std::function<std::vector<ChainOperatorInfo>()>;
+
+    /// Set callback for request_chain_structure command
+    void onRequestChainStructure(RequestChainStructureCallback callback) { m_requestChainStructureCallback = callback; }
+
+    /// Send chain structure to all connected clients
+    void sendChainStructure(const std::vector<ChainOperatorInfo>& operators);
+
+    // -------------------------------------------------------------------------
+    // Frame info (MCP get_frame_info tool)
+    // -------------------------------------------------------------------------
+
+    /// Frame info for MCP tool
+    struct FrameInfo {
+        uint64_t frame = 0;         ///< Current frame number
+        double time = 0.0;          ///< Elapsed time in seconds
+        float fps = 0.0f;           ///< Current FPS
+    };
+
+    /// Callback type for request_frame_info command
+    using RequestFrameInfoCallback = std::function<FrameInfo()>;
+
+    /// Set callback for request_frame_info command
+    void onRequestFrameInfo(RequestFrameInfoCallback callback) { m_requestFrameInfoCallback = callback; }
+
+    /// Send frame info to all connected clients
+    void sendFrameInfo(const FrameInfo& info);
+
+    // -------------------------------------------------------------------------
+    // Reset time (MCP reset_time tool)
+    // -------------------------------------------------------------------------
+
+    /// Callback type for reset_time command
+    using ResetTimeCallback = std::function<void()>;
+
+    /// Set callback for reset_time command
+    void onResetTime(ResetTimeCallback callback) { m_resetTimeCallback = callback; }
+
+    /// Send reset_time_complete acknowledgment
+    void sendResetTimeComplete();
+
     /// Send capture result back to clients
     /// @param success True if capture succeeded
     /// @param outputPath Path where the file was saved
@@ -311,6 +366,9 @@ private:
     DiscardChangesCallback m_discardChangesCallback;
     CaptureFrameCallback m_captureFrameCallback;
     SetParamImmediateCallback m_setParamImmediateCallback;
+    RequestChainStructureCallback m_requestChainStructureCallback;
+    RequestFrameInfoCallback m_requestFrameInfoCallback;
+    ResetTimeCallback m_resetTimeCallback;
 
     // Pending changes queue (Claude-first workflow)
     std::vector<PendingChange> m_pendingChanges;
