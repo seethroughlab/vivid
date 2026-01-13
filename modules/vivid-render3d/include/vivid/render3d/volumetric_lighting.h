@@ -83,8 +83,21 @@ public:
     /// Fog color tint (default: slight blue-gray for night fog)
     float fogColor[3] = {0.02f, 0.02f, 0.03f};
 
+    /// Enable shadow map sampling for occluded light shafts
+    Param<bool> useShadows{"useShadows", false};
+
+    /// Shadow depth bias to prevent shadow acne (0.0001-0.01)
+    Param<float> shadowBias{"shadowBias", 0.002f, 0.0f, 0.02f};
+
+    /// Shadow strength multiplier (0 = no shadow effect, 1 = full shadows)
+    Param<float> shadowStrength{"shadowStrength", 1.0f, 0.0f, 1.0f};
+
     /// Debug mode (0=off, 1=depth, 2=world pos, 3=distance, 4=light contrib, 5=passthrough)
     Param<int> debugMode{"debugMode", 0, 0, 5};
+
+    /// Resolution scale for performance (1=full, 2=half, 4=quarter)
+    /// Higher values improve performance at the cost of quality
+    Param<int> resolutionScale{"resolutionScale", 1, 1, 4};
 
     /// @}
     // -------------------------------------------------------------------------
@@ -104,6 +117,12 @@ public:
 
 private:
     void createPipeline(Context& ctx);
+    void createUpsamplePipeline(Context& ctx);
+    void ensureLowResTextures(Context& ctx, int lowW, int lowH);
+    void renderFullRes(Context& ctx);
+    void renderLowRes(Context& ctx);
+    void renderUpsample(Context& ctx);
+    void cleanupLowResTextures();
 
     Render3D* m_render3d = nullptr;
     LightOperator* m_lightOp = nullptr;
@@ -114,6 +133,24 @@ private:
     WGPUBindGroupLayout m_bindGroupLayout = nullptr;
     WGPUBuffer m_uniformBuffer = nullptr;
     WGPUSampler m_sampler = nullptr;
+    WGPUSampler m_shadowSampler = nullptr;  // Comparison sampler for shadow map
+
+    // Dummy shadow texture (used when shadows are disabled)
+    WGPUTexture m_dummyShadowTexture = nullptr;
+    WGPUTextureView m_dummyShadowView = nullptr;
+
+    // Low-res rendering for performance (Phase 3)
+    WGPUTexture m_lowResTexture = nullptr;
+    WGPUTextureView m_lowResView = nullptr;
+    WGPUTexture m_lowResDepthTexture = nullptr;
+    WGPUTextureView m_lowResDepthView = nullptr;
+    int m_lowResWidth = 0;
+    int m_lowResHeight = 0;
+
+    // Upsample pipeline for bilateral filtering
+    WGPURenderPipeline m_upsamplePipeline = nullptr;
+    WGPUBindGroupLayout m_upsampleBindGroupLayout = nullptr;
+    WGPUBuffer m_upsampleUniformBuffer = nullptr;
 };
 
 } // namespace vivid::render3d

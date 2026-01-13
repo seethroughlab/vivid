@@ -35,6 +35,15 @@
 #include <vivid/render3d/fog.h>
 #include <vivid/render3d/depth_mask.h>
 #include <vivid/render3d/volumetric_lighting.h>
+#include <vivid/render3d/god_rays.h>
 
 // Particle systems
 #include <vivid/render3d/particles3d.h>
+
+// Vegetation
+#include <vivid/render3d/procedural_mesh.h>
+#include <vivid/render3d/foliage_mesh.h>
+#include <vivid/render3d/grass_mesh.h>
+#include <vivid/render3d/tree_mesh.h>
+#include <vivid/render3d/grass_field.h>
+#include <vivid/render3d/foliage_cluster.h>

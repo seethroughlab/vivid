@@ -42,12 +42,23 @@ struct Uniforms {
     anisotropy: f32,
     fogColor: vec3f,
     debugMode: i32,         // 0=off, 1=depth, 2=worldPos, 3=distance, 4=light
+
+    // Shadow data (Phase 2)
+    lightViewProj: mat4x4f,
+    shadowBias: f32,
+    shadowStrength: f32,
+    useShadows: i32,
+
+    // Output mode (Phase 3): 0 = composite, 1 = volumetric only
+    outputMode: i32,
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 @group(0) @binding(1) var colorTexture: texture_2d<f32>;
 @group(0) @binding(2) var depthTexture: texture_2d<f32>;
 @group(0) @binding(3) var texSampler: sampler;
+@group(0) @binding(4) var shadowMap: texture_depth_2d;
+@group(0) @binding(5) var shadowSampler: sampler_comparison;
 
 struct VertexOutput {
     @builtin(position) position: vec4f,
@@ -110,6 +121,47 @@ fn spotAttenuation(lightToPoint: vec3f) -> f32 {
     let outerCos = uniforms.spotAngle;
     let innerCos = outerCos + uniforms.spotBlend * (1.0 - outerCos);
     return saturate((cosAngle - outerCos) / (innerCos - outerCos));
+}
+
+// Sample shadow map at world position (Phase 2)
+// Returns 1.0 if lit, 0.0 if in shadow
+fn sampleShadow(worldPos: vec3f) -> f32 {
+    // Skip shadow sampling if disabled
+    if (uniforms.useShadows == 0) {
+        return 1.0;
+    }
+
+    // Transform world position to light clip space
+    let lightSpacePos = uniforms.lightViewProj * vec4f(worldPos, 1.0);
+    let projCoords = lightSpacePos.xyz / lightSpacePos.w;
+
+    // Convert to shadow map UV coordinates
+    // Clip space: [-1, 1] -> UV: [0, 1]
+    let shadowUV = vec2f(
+        projCoords.x * 0.5 + 0.5,
+        projCoords.y * -0.5 + 0.5  // Flip Y for texture coordinates
+    );
+
+    // Current depth in light space (WebGPU uses 0-1 depth range)
+    let currentDepth = projCoords.z;
+
+    // Out of shadow map bounds = lit (no shadow data available)
+    if (shadowUV.x < 0.0 || shadowUV.x > 1.0 ||
+        shadowUV.y < 0.0 || shadowUV.y > 1.0 ||
+        currentDepth < 0.0 || currentDepth > 1.0) {
+        return 1.0;
+    }
+
+    // Sample shadow map with comparison sampler
+    // Returns 1.0 if currentDepth - bias <= shadowMapDepth (lit)
+    // Returns 0.0 if currentDepth - bias > shadowMapDepth (shadowed)
+    let shadow = textureSampleCompare(
+        shadowMap, shadowSampler,
+        shadowUV, currentDepth - uniforms.shadowBias
+    );
+
+    // Mix based on shadow strength (0 = ignore shadows, 1 = full shadows)
+    return mix(1.0, shadow, uniforms.shadowStrength);
 }
 
 // Get light contribution at a point in space
@@ -241,12 +293,15 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         // Get light contribution at this sample point
         let lightContrib = getLightContribution(samplePos, -rayDir);
 
+        // Sample shadow map to check if this point is occluded (Phase 2)
+        let shadowFactor = sampleShadow(samplePos);
+
         // Beer-Lambert extinction
         let extinction = uniforms.density * stepSize;
         let sampleTransmittance = exp(-extinction);
 
-        // Accumulate in-scattered light
-        scatteredLight += lightContrib * transmittance * (1.0 - sampleTransmittance);
+        // Accumulate in-scattered light (modulated by shadow)
+        scatteredLight += lightContrib * shadowFactor * transmittance * (1.0 - sampleTransmittance);
         transmittance *= sampleTransmittance;
     }
 
@@ -276,9 +331,13 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     // Clamp to prevent overflow
     scatteredLight = clamp(scatteredLight, vec3f(0.0), vec3f(2.0));
 
-    // Blend with scene color (additive for god rays)
-    let finalColor = color.rgb + scatteredLight;
+    // Output mode: 1 = volumetric only (for low-res pass)
+    if (uniforms.outputMode == 1) {
+        return vec4f(scatteredLight, transmittance);
+    }
 
+    // Output mode: 0 = composite (default, full-res pass)
+    let finalColor = color.rgb + scatteredLight;
     return vec4f(finalColor, color.a);
 }
 )";
@@ -349,7 +408,78 @@ struct VolumetricUniforms {
     float fogColorB;        // 184
 
     int debugMode;          // 188 (debugMode: i32)
+
+    // Shadow data (Phase 2)
+    // padding to align lightViewProj to 16-byte boundary (192)
+    // 188 + 4 bytes = 192, but we need to pad from 192 to mat4x4f alignment
+    // debugMode ends at 192, which is already 16-aligned
+
+    // lightViewProj: mat4x4f (align 16, size 64) - offset 192
+    float lightViewProj[16];    // 192-255
+
+    // Shadow parameters
+    float shadowBias;           // 256
+    float shadowStrength;       // 260
+    int useShadows;             // 264
+
+    // Output mode (Phase 3): 0 = composite, 1 = volumetric only
+    int outputMode;             // 268
+};  // Total size: 272 bytes (already 16-byte aligned)
+
+// Bilinear upsample shader (Phase 3)
+// Upsamples low-res volumetric and composites with full-res scene
+const char* BILATERAL_UPSAMPLE_SHADER_SOURCE = R"(
+struct UpsampleUniforms {
+    lowResSize: vec2f,      // Size of low-res texture
+    fullResSize: vec2f,     // Size of full-res texture
+    depthWeight: f32,       // Reserved for future bilateral filtering
+    _pad: vec3f,
 };
+
+@group(0) @binding(0) var<uniform> uniforms: UpsampleUniforms;
+@group(0) @binding(1) var lowResVolumetric: texture_2d<f32>;
+@group(0) @binding(2) var lowResDepth: texture_2d<f32>;
+@group(0) @binding(3) var fullResColor: texture_2d<f32>;
+@group(0) @binding(4) var fullResDepth: texture_2d<f32>;
+@group(0) @binding(5) var texSampler: sampler;
+
+struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) uv: vec2f,
+};
+
+@vertex
+fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
+    var output: VertexOutput;
+    let x = f32(i32(vertexIndex & 1u) * 4 - 1);
+    let y = f32(i32(vertexIndex >> 1u) * 4 - 1);
+    output.position = vec4f(x, y, 0.0, 1.0);
+    output.uv = vec2f((x + 1.0) * 0.5, (1.0 - y) * 0.5);
+    return output;
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    let sceneColor = textureSample(fullResColor, texSampler, input.uv);
+
+    // Bilinear upsample of low-res volumetric
+    // The sampler handles bilinear filtering automatically
+    let volumetric = textureSample(lowResVolumetric, texSampler, input.uv).rgb;
+
+    // Composite: add volumetric to scene color
+    return vec4f(sceneColor.rgb + volumetric, sceneColor.a);
+}
+)";
+
+// Upsample uniforms struct (C++ side)
+struct UpsampleUniforms {
+    float lowResWidth;      // 0
+    float lowResHeight;     // 4
+    float fullResWidth;     // 8
+    float fullResHeight;    // 12
+    float depthWeight;      // 16
+    float _pad[3];          // 20, 24, 28 (align to 32)
+};  // Total: 32 bytes
 
 } // namespace
 
@@ -359,7 +489,11 @@ VolumetricLighting::VolumetricLighting() {
     registerParam(density);
     registerParam(intensity);
     registerParam(anisotropy);
+    registerParam(useShadows);
+    registerParam(shadowBias);
+    registerParam(shadowStrength);
     registerParam(debugMode);
+    registerParam(resolutionScale);
 }
 
 VolumetricLighting::~VolumetricLighting() {
@@ -402,7 +536,7 @@ void VolumetricLighting::createPipeline(Context& ctx) {
     shaderDesc.nextInChain = &wgslDesc.chain;
     WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderDesc);
 
-    // Create sampler
+    // Create sampler for color/depth textures
     WGPUSamplerDescriptor samplerDesc = {};
     samplerDesc.magFilter = WGPUFilterMode_Linear;
     samplerDesc.minFilter = WGPUFilterMode_Linear;
@@ -411,14 +545,45 @@ void VolumetricLighting::createPipeline(Context& ctx) {
     samplerDesc.maxAnisotropy = 1;
     m_sampler = wgpuDeviceCreateSampler(device, &samplerDesc);
 
+    // Create shadow comparison sampler (Phase 2)
+    WGPUSamplerDescriptor shadowSamplerDesc = {};
+    shadowSamplerDesc.compare = WGPUCompareFunction_LessEqual;
+    shadowSamplerDesc.magFilter = WGPUFilterMode_Linear;
+    shadowSamplerDesc.minFilter = WGPUFilterMode_Linear;
+    shadowSamplerDesc.addressModeU = WGPUAddressMode_ClampToEdge;
+    shadowSamplerDesc.addressModeV = WGPUAddressMode_ClampToEdge;
+    shadowSamplerDesc.maxAnisotropy = 1;
+    m_shadowSampler = wgpuDeviceCreateSampler(device, &shadowSamplerDesc);
+
+    // Create dummy shadow texture (1x1 depth texture) for when shadows are disabled
+    WGPUTextureDescriptor dummyTexDesc = {};
+    dummyTexDesc.size.width = 1;
+    dummyTexDesc.size.height = 1;
+    dummyTexDesc.size.depthOrArrayLayers = 1;
+    dummyTexDesc.mipLevelCount = 1;
+    dummyTexDesc.sampleCount = 1;
+    dummyTexDesc.dimension = WGPUTextureDimension_2D;
+    dummyTexDesc.format = WGPUTextureFormat_Depth32Float;
+    dummyTexDesc.usage = WGPUTextureUsage_TextureBinding;
+    m_dummyShadowTexture = wgpuDeviceCreateTexture(device, &dummyTexDesc);
+
+    WGPUTextureViewDescriptor dummyViewDesc = {};
+    dummyViewDesc.format = WGPUTextureFormat_Depth32Float;
+    dummyViewDesc.dimension = WGPUTextureViewDimension_2D;
+    dummyViewDesc.baseMipLevel = 0;
+    dummyViewDesc.mipLevelCount = 1;
+    dummyViewDesc.baseArrayLayer = 0;
+    dummyViewDesc.arrayLayerCount = 1;
+    m_dummyShadowView = wgpuTextureCreateView(m_dummyShadowTexture, &dummyViewDesc);
+
     // Create uniform buffer
     WGPUBufferDescriptor bufferDesc = {};
     bufferDesc.size = sizeof(VolumetricUniforms);
     bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_uniformBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
 
-    // Bind group layout
-    WGPUBindGroupLayoutEntry layoutEntries[4] = {};
+    // Bind group layout (6 entries: uniforms, color, depth, sampler, shadow map, shadow sampler)
+    WGPUBindGroupLayoutEntry layoutEntries[6] = {};
 
     // Uniforms
     layoutEntries[0].binding = 0;
@@ -437,13 +602,24 @@ void VolumetricLighting::createPipeline(Context& ctx) {
     layoutEntries[2].texture.sampleType = WGPUTextureSampleType_Float;
     layoutEntries[2].texture.viewDimension = WGPUTextureViewDimension_2D;
 
-    // Sampler
+    // Sampler (for color/depth)
     layoutEntries[3].binding = 3;
     layoutEntries[3].visibility = WGPUShaderStage_Fragment;
     layoutEntries[3].sampler.type = WGPUSamplerBindingType_Filtering;
 
+    // Shadow map texture (Phase 2)
+    layoutEntries[4].binding = 4;
+    layoutEntries[4].visibility = WGPUShaderStage_Fragment;
+    layoutEntries[4].texture.sampleType = WGPUTextureSampleType_Depth;
+    layoutEntries[4].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+    // Shadow comparison sampler (Phase 2)
+    layoutEntries[5].binding = 5;
+    layoutEntries[5].visibility = WGPUShaderStage_Fragment;
+    layoutEntries[5].sampler.type = WGPUSamplerBindingType_Comparison;
+
     WGPUBindGroupLayoutDescriptor layoutDesc = {};
-    layoutDesc.entryCount = 4;
+    layoutDesc.entryCount = 6;
     layoutDesc.entries = layoutEntries;
     m_bindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &layoutDesc);
 
@@ -481,6 +657,164 @@ void VolumetricLighting::createPipeline(Context& ctx) {
     wgpuShaderModuleRelease(shaderModule);
 }
 
+void VolumetricLighting::createUpsamplePipeline(Context& ctx) {
+    WGPUDevice device = ctx.device();
+
+    // Create shader module
+    WGPUShaderSourceWGSL wgslDesc = {};
+    wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
+    wgslDesc.code = toStringView(BILATERAL_UPSAMPLE_SHADER_SOURCE);
+
+    WGPUShaderModuleDescriptor shaderDesc = {};
+    shaderDesc.nextInChain = &wgslDesc.chain;
+    WGPUShaderModule shaderModule = wgpuDeviceCreateShaderModule(device, &shaderDesc);
+
+    // Create uniform buffer
+    WGPUBufferDescriptor bufferDesc = {};
+    bufferDesc.size = sizeof(UpsampleUniforms);
+    bufferDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    m_upsampleUniformBuffer = wgpuDeviceCreateBuffer(device, &bufferDesc);
+
+    // Bind group layout (6 entries: uniforms, lowResVolumetric, lowResDepth, fullResColor, fullResDepth, sampler)
+    WGPUBindGroupLayoutEntry layoutEntries[6] = {};
+
+    // Uniforms
+    layoutEntries[0].binding = 0;
+    layoutEntries[0].visibility = WGPUShaderStage_Fragment;
+    layoutEntries[0].buffer.type = WGPUBufferBindingType_Uniform;
+
+    // Low-res volumetric texture
+    layoutEntries[1].binding = 1;
+    layoutEntries[1].visibility = WGPUShaderStage_Fragment;
+    layoutEntries[1].texture.sampleType = WGPUTextureSampleType_Float;
+    layoutEntries[1].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+    // Low-res depth texture (R32Float is unfilterable)
+    layoutEntries[2].binding = 2;
+    layoutEntries[2].visibility = WGPUShaderStage_Fragment;
+    layoutEntries[2].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+    layoutEntries[2].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+    // Full-res color texture
+    layoutEntries[3].binding = 3;
+    layoutEntries[3].visibility = WGPUShaderStage_Fragment;
+    layoutEntries[3].texture.sampleType = WGPUTextureSampleType_Float;
+    layoutEntries[3].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+    // Full-res depth texture (depth formats may be unfilterable)
+    layoutEntries[4].binding = 4;
+    layoutEntries[4].visibility = WGPUShaderStage_Fragment;
+    layoutEntries[4].texture.sampleType = WGPUTextureSampleType_UnfilterableFloat;
+    layoutEntries[4].texture.viewDimension = WGPUTextureViewDimension_2D;
+
+    // Sampler
+    layoutEntries[5].binding = 5;
+    layoutEntries[5].visibility = WGPUShaderStage_Fragment;
+    layoutEntries[5].sampler.type = WGPUSamplerBindingType_Filtering;
+
+    WGPUBindGroupLayoutDescriptor layoutDesc = {};
+    layoutDesc.entryCount = 6;
+    layoutDesc.entries = layoutEntries;
+    m_upsampleBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &layoutDesc);
+
+    // Pipeline layout
+    WGPUPipelineLayoutDescriptor pipelineLayoutDesc = {};
+    pipelineLayoutDesc.bindGroupLayoutCount = 1;
+    pipelineLayoutDesc.bindGroupLayouts = &m_upsampleBindGroupLayout;
+    WGPUPipelineLayout pipelineLayout = wgpuDeviceCreatePipelineLayout(device, &pipelineLayoutDesc);
+
+    // Color target - use RGBA16Float to match the chain's HDR format
+    WGPUColorTargetState colorTarget = {};
+    colorTarget.format = WGPUTextureFormat_RGBA16Float;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState fragmentState = {};
+    fragmentState.module = shaderModule;
+    fragmentState.entryPoint = toStringView("fs_main");
+    fragmentState.targetCount = 1;
+    fragmentState.targets = &colorTarget;
+
+    // Render pipeline
+    WGPURenderPipelineDescriptor pipelineDesc = {};
+    pipelineDesc.layout = pipelineLayout;
+    pipelineDesc.vertex.module = shaderModule;
+    pipelineDesc.vertex.entryPoint = toStringView("vs_main");
+    pipelineDesc.fragment = &fragmentState;
+    pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    pipelineDesc.primitive.cullMode = WGPUCullMode_None;
+    pipelineDesc.multisample.count = 1;
+    pipelineDesc.multisample.mask = ~0u;
+
+    m_upsamplePipeline = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
+
+    wgpuPipelineLayoutRelease(pipelineLayout);
+    wgpuShaderModuleRelease(shaderModule);
+}
+
+void VolumetricLighting::ensureLowResTextures(Context& ctx, int lowW, int lowH) {
+    // Check if textures need to be recreated
+    if (m_lowResWidth == lowW && m_lowResHeight == lowH && m_lowResTexture && m_lowResDepthTexture) {
+        return;
+    }
+
+    // Clean up old textures
+    cleanupLowResTextures();
+
+    m_lowResWidth = lowW;
+    m_lowResHeight = lowH;
+
+    WGPUDevice device = ctx.device();
+
+    // Create low-res volumetric texture (RGBA16Float for HDR)
+    WGPUTextureDescriptor texDesc = {};
+    texDesc.size.width = lowW;
+    texDesc.size.height = lowH;
+    texDesc.size.depthOrArrayLayers = 1;
+    texDesc.mipLevelCount = 1;
+    texDesc.sampleCount = 1;
+    texDesc.dimension = WGPUTextureDimension_2D;
+    texDesc.format = WGPUTextureFormat_RGBA16Float;
+    texDesc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_TextureBinding;
+    m_lowResTexture = wgpuDeviceCreateTexture(device, &texDesc);
+
+    WGPUTextureViewDescriptor viewDesc = {};
+    viewDesc.format = WGPUTextureFormat_RGBA16Float;
+    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.baseMipLevel = 0;
+    viewDesc.mipLevelCount = 1;
+    viewDesc.baseArrayLayer = 0;
+    viewDesc.arrayLayerCount = 1;
+    m_lowResView = wgpuTextureCreateView(m_lowResTexture, &viewDesc);
+
+    // Create low-res depth texture (R32Float - unfilterable, so we copy depth values)
+    texDesc.format = WGPUTextureFormat_R32Float;
+    m_lowResDepthTexture = wgpuDeviceCreateTexture(device, &texDesc);
+
+    viewDesc.format = WGPUTextureFormat_R32Float;
+    m_lowResDepthView = wgpuTextureCreateView(m_lowResDepthTexture, &viewDesc);
+}
+
+void VolumetricLighting::cleanupLowResTextures() {
+    if (m_lowResView) {
+        wgpuTextureViewRelease(m_lowResView);
+        m_lowResView = nullptr;
+    }
+    if (m_lowResTexture) {
+        wgpuTextureRelease(m_lowResTexture);
+        m_lowResTexture = nullptr;
+    }
+    if (m_lowResDepthView) {
+        wgpuTextureViewRelease(m_lowResDepthView);
+        m_lowResDepthView = nullptr;
+    }
+    if (m_lowResDepthTexture) {
+        wgpuTextureRelease(m_lowResDepthTexture);
+        m_lowResDepthTexture = nullptr;
+    }
+    m_lowResWidth = 0;
+    m_lowResHeight = 0;
+}
+
 void VolumetricLighting::process(Context& ctx) {
     if (!m_initialized) init(ctx);
 
@@ -494,6 +828,34 @@ void VolumetricLighting::process(Context& ctx) {
 
     if (!needsCook()) return;
 
+    int scale = static_cast<int>(resolutionScale);
+
+    if (scale <= 1) {
+        // Full resolution - single pass
+        renderFullRes(ctx);
+    } else {
+        // Half/quarter resolution - two-pass
+        int lowW = std::max(1, m_width / scale);
+        int lowH = std::max(1, m_height / scale);
+
+        // Create upsample pipeline if not yet created
+        if (!m_upsamplePipeline) {
+            createUpsamplePipeline(ctx);
+        }
+
+        ensureLowResTextures(ctx, lowW, lowH);
+
+        // Pass 1: Low-res volumetric
+        renderLowRes(ctx);
+
+        // Pass 2: Upsample + composite
+        renderUpsample(ctx);
+    }
+
+    didCook();
+}
+
+void VolumetricLighting::renderFullRes(Context& ctx) {
     WGPUDevice device = ctx.device();
 
     // Get input textures
@@ -561,26 +923,50 @@ void VolumetricLighting::process(Context& ctx) {
     uniforms.fogColorB = fogColor[2];
     uniforms.debugMode = static_cast<int>(debugMode);
 
+    // Shadow data
+    WGPUTextureView shadowMapView = m_render3d->getShadowMapView();
+    bool shadowsAvailable = static_cast<bool>(useShadows) && m_render3d->hasShadows() && shadowMapView != nullptr;
+
+    if (shadowsAvailable) {
+        const glm::mat4& lightViewProj = m_render3d->getLightViewProjection();
+        memcpy(uniforms.lightViewProj, &lightViewProj[0][0], sizeof(float) * 16);
+        uniforms.shadowBias = static_cast<float>(shadowBias);
+        uniforms.shadowStrength = static_cast<float>(shadowStrength);
+        uniforms.useShadows = 1;
+    } else {
+        glm::mat4 identity(1.0f);
+        memcpy(uniforms.lightViewProj, &identity[0][0], sizeof(float) * 16);
+        uniforms.shadowBias = 0.0f;
+        uniforms.shadowStrength = 0.0f;
+        uniforms.useShadows = 0;
+    }
+
+    // Output mode: composite (full-res path)
+    uniforms.outputMode = 0;
+
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 
+    WGPUTextureView shadowView = shadowsAvailable ? shadowMapView : m_dummyShadowView;
+
     // Create bind group
-    WGPUBindGroupEntry bindEntries[4] = {};
+    WGPUBindGroupEntry bindEntries[6] = {};
     bindEntries[0].binding = 0;
     bindEntries[0].buffer = m_uniformBuffer;
     bindEntries[0].size = sizeof(VolumetricUniforms);
-
     bindEntries[1].binding = 1;
     bindEntries[1].textureView = colorView;
-
     bindEntries[2].binding = 2;
     bindEntries[2].textureView = depthView;
-
     bindEntries[3].binding = 3;
     bindEntries[3].sampler = m_sampler;
+    bindEntries[4].binding = 4;
+    bindEntries[4].textureView = shadowView;
+    bindEntries[5].binding = 5;
+    bindEntries[5].sampler = m_shadowSampler;
 
     WGPUBindGroupDescriptor bindDesc = {};
     bindDesc.layout = m_bindGroupLayout;
-    bindDesc.entryCount = 4;
+    bindDesc.entryCount = 6;
     bindDesc.entries = bindEntries;
     WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
 
@@ -613,8 +999,223 @@ void VolumetricLighting::process(Context& ctx) {
     wgpuCommandEncoderRelease(encoder);
 
     wgpuBindGroupRelease(bindGroup);
+}
 
-    didCook();
+void VolumetricLighting::renderLowRes(Context& ctx) {
+    WGPUDevice device = ctx.device();
+
+    // Get input textures
+    WGPUTextureView colorView = m_render3d->outputView();
+    WGPUTextureView depthView = m_render3d->depthOutputView();
+
+    if (!colorView || !depthView) return;
+
+    // Get camera data
+    float nearPlane = m_render3d->getNearPlane();
+    float farPlane = m_render3d->getFarPlane();
+
+    glm::mat4 invViewProj = glm::mat4(1.0f);
+    glm::vec3 cameraPos = glm::vec3(0, 2, 5);
+
+    if (m_cameraOp) {
+        const Camera3D& cam = m_cameraOp->outputCamera();
+        glm::mat4 viewProj = cam.viewProjectionMatrix();
+        invViewProj = glm::inverse(viewProj);
+        cameraPos = cam.getPosition();
+    }
+
+    LightData lightData;
+    if (m_lightOp) {
+        lightData = m_lightOp->outputLight();
+    }
+
+    // Update uniforms
+    VolumetricUniforms uniforms = {};
+
+    // Camera
+    memcpy(uniforms.invViewProj, &invViewProj[0][0], sizeof(float) * 16);
+    uniforms.cameraPosX = cameraPos.x;
+    uniforms.cameraPosY = cameraPos.y;
+    uniforms.cameraPosZ = cameraPos.z;
+    uniforms.nearPlane = nearPlane;
+    uniforms.farPlane = farPlane;
+
+    // Light
+    uniforms.lightType = static_cast<int>(lightData.type);
+    uniforms.lightPosX = lightData.position.x;
+    uniforms.lightPosY = lightData.position.y;
+    uniforms.lightPosZ = lightData.position.z;
+    uniforms.lightDirX = lightData.direction.x;
+    uniforms.lightDirY = lightData.direction.y;
+    uniforms.lightDirZ = lightData.direction.z;
+    uniforms.lightColorR = lightData.color.r;
+    uniforms.lightColorG = lightData.color.g;
+    uniforms.lightColorB = lightData.color.b;
+    uniforms.lightIntensity = lightData.intensity;
+    uniforms.lightRange = lightData.range;
+    uniforms.spotAngle = std::cos(glm::radians(lightData.spotAngle));
+    uniforms.spotBlend = lightData.spotBlend;
+
+    // Volumetric params
+    uniforms.raySteps = static_cast<int>(raySteps);
+    uniforms.maxDistance = static_cast<float>(maxDistance);
+    uniforms.density = static_cast<float>(density);
+    uniforms.intensity = static_cast<float>(intensity);
+    uniforms.anisotropy = static_cast<float>(anisotropy);
+    uniforms.fogColorR = fogColor[0];
+    uniforms.fogColorG = fogColor[1];
+    uniforms.fogColorB = fogColor[2];
+    uniforms.debugMode = static_cast<int>(debugMode);
+
+    // Shadow data
+    WGPUTextureView shadowMapView = m_render3d->getShadowMapView();
+    bool shadowsAvailable = static_cast<bool>(useShadows) && m_render3d->hasShadows() && shadowMapView != nullptr;
+
+    if (shadowsAvailable) {
+        const glm::mat4& lightViewProj = m_render3d->getLightViewProjection();
+        memcpy(uniforms.lightViewProj, &lightViewProj[0][0], sizeof(float) * 16);
+        uniforms.shadowBias = static_cast<float>(shadowBias);
+        uniforms.shadowStrength = static_cast<float>(shadowStrength);
+        uniforms.useShadows = 1;
+    } else {
+        glm::mat4 identity(1.0f);
+        memcpy(uniforms.lightViewProj, &identity[0][0], sizeof(float) * 16);
+        uniforms.shadowBias = 0.0f;
+        uniforms.shadowStrength = 0.0f;
+        uniforms.useShadows = 0;
+    }
+
+    // Output mode: volumetric only (low-res pass)
+    uniforms.outputMode = 1;
+
+    wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
+
+    WGPUTextureView shadowView = shadowsAvailable ? shadowMapView : m_dummyShadowView;
+
+    // Create bind group
+    WGPUBindGroupEntry bindEntries[6] = {};
+    bindEntries[0].binding = 0;
+    bindEntries[0].buffer = m_uniformBuffer;
+    bindEntries[0].size = sizeof(VolumetricUniforms);
+    bindEntries[1].binding = 1;
+    bindEntries[1].textureView = colorView;
+    bindEntries[2].binding = 2;
+    bindEntries[2].textureView = depthView;
+    bindEntries[3].binding = 3;
+    bindEntries[3].sampler = m_sampler;
+    bindEntries[4].binding = 4;
+    bindEntries[4].textureView = shadowView;
+    bindEntries[5].binding = 5;
+    bindEntries[5].sampler = m_shadowSampler;
+
+    WGPUBindGroupDescriptor bindDesc = {};
+    bindDesc.layout = m_bindGroupLayout;
+    bindDesc.entryCount = 6;
+    bindDesc.entries = bindEntries;
+    WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+
+    // Render to low-res texture
+    WGPUCommandEncoderDescriptor encoderDesc = {};
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &encoderDesc);
+
+    WGPURenderPassColorAttachment colorAttachment = {};
+    colorAttachment.view = m_lowResView;
+    colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+    colorAttachment.loadOp = WGPULoadOp_Clear;
+    colorAttachment.storeOp = WGPUStoreOp_Store;
+    colorAttachment.clearValue = {0, 0, 0, 1};
+
+    WGPURenderPassDescriptor passDesc = {};
+    passDesc.colorAttachmentCount = 1;
+    passDesc.colorAttachments = &colorAttachment;
+
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
+    wgpuRenderPassEncoderSetPipeline(pass, m_pipeline);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+    wgpuRenderPassEncoderSetViewport(pass, 0, 0, static_cast<float>(m_lowResWidth), static_cast<float>(m_lowResHeight), 0, 1);
+    wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+    wgpuRenderPassEncoderEnd(pass);
+    wgpuRenderPassEncoderRelease(pass);
+
+    WGPUCommandBufferDescriptor cmdDesc = {};
+    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdDesc);
+    wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
+    wgpuCommandBufferRelease(cmdBuffer);
+    wgpuCommandEncoderRelease(encoder);
+
+    wgpuBindGroupRelease(bindGroup);
+}
+
+void VolumetricLighting::renderUpsample(Context& ctx) {
+    WGPUDevice device = ctx.device();
+
+    // Get input textures
+    WGPUTextureView colorView = m_render3d->outputView();
+    WGPUTextureView depthView = m_render3d->depthOutputView();
+
+    if (!colorView || !depthView) return;
+
+    // Update upsample uniforms
+    UpsampleUniforms uniforms = {};
+    uniforms.lowResWidth = static_cast<float>(m_lowResWidth);
+    uniforms.lowResHeight = static_cast<float>(m_lowResHeight);
+    uniforms.fullResWidth = static_cast<float>(m_width);
+    uniforms.fullResHeight = static_cast<float>(m_height);
+    uniforms.depthWeight = 100.0f;  // High weight for depth-aware filtering
+
+    wgpuQueueWriteBuffer(ctx.queue(), m_upsampleUniformBuffer, 0, &uniforms, sizeof(uniforms));
+
+    // Create bind group
+    WGPUBindGroupEntry bindEntries[6] = {};
+    bindEntries[0].binding = 0;
+    bindEntries[0].buffer = m_upsampleUniformBuffer;
+    bindEntries[0].size = sizeof(UpsampleUniforms);
+    bindEntries[1].binding = 1;
+    bindEntries[1].textureView = m_lowResView;
+    bindEntries[2].binding = 2;
+    bindEntries[2].textureView = m_lowResDepthView;
+    bindEntries[3].binding = 3;
+    bindEntries[3].textureView = colorView;
+    bindEntries[4].binding = 4;
+    bindEntries[4].textureView = depthView;
+    bindEntries[5].binding = 5;
+    bindEntries[5].sampler = m_sampler;
+
+    WGPUBindGroupDescriptor bindDesc = {};
+    bindDesc.layout = m_upsampleBindGroupLayout;
+    bindDesc.entryCount = 6;
+    bindDesc.entries = bindEntries;
+    WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(device, &bindDesc);
+
+    // Render to output texture
+    WGPUCommandEncoderDescriptor encoderDesc = {};
+    WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &encoderDesc);
+
+    WGPURenderPassColorAttachment colorAttachment = {};
+    colorAttachment.view = m_outputView;
+    colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+    colorAttachment.loadOp = WGPULoadOp_Clear;
+    colorAttachment.storeOp = WGPUStoreOp_Store;
+    colorAttachment.clearValue = {0, 0, 0, 1};
+
+    WGPURenderPassDescriptor passDesc = {};
+    passDesc.colorAttachmentCount = 1;
+    passDesc.colorAttachments = &colorAttachment;
+
+    WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
+    wgpuRenderPassEncoderSetPipeline(pass, m_upsamplePipeline);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+    wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+    wgpuRenderPassEncoderEnd(pass);
+    wgpuRenderPassEncoderRelease(pass);
+
+    WGPUCommandBufferDescriptor cmdDesc = {};
+    WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdDesc);
+    wgpuQueueSubmit(ctx.queue(), 1, &cmdBuffer);
+    wgpuCommandBufferRelease(cmdBuffer);
+    wgpuCommandEncoderRelease(encoder);
+
+    wgpuBindGroupRelease(bindGroup);
 }
 
 void VolumetricLighting::cleanup() {
@@ -634,6 +1235,35 @@ void VolumetricLighting::cleanup() {
         wgpuSamplerRelease(m_sampler);
         m_sampler = nullptr;
     }
+    if (m_shadowSampler) {
+        wgpuSamplerRelease(m_shadowSampler);
+        m_shadowSampler = nullptr;
+    }
+    if (m_dummyShadowView) {
+        wgpuTextureViewRelease(m_dummyShadowView);
+        m_dummyShadowView = nullptr;
+    }
+    if (m_dummyShadowTexture) {
+        wgpuTextureRelease(m_dummyShadowTexture);
+        m_dummyShadowTexture = nullptr;
+    }
+
+    // Clean up upsample pipeline resources (Phase 3)
+    if (m_upsamplePipeline) {
+        wgpuRenderPipelineRelease(m_upsamplePipeline);
+        m_upsamplePipeline = nullptr;
+    }
+    if (m_upsampleBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_upsampleBindGroupLayout);
+        m_upsampleBindGroupLayout = nullptr;
+    }
+    if (m_upsampleUniformBuffer) {
+        wgpuBufferRelease(m_upsampleUniformBuffer);
+        m_upsampleUniformBuffer = nullptr;
+    }
+
+    // Clean up low-res textures
+    cleanupLowResTextures();
 
     releaseOutput();
     m_initialized = false;
@@ -646,7 +1276,11 @@ std::vector<ParamDecl> VolumetricLighting::params() {
         density.decl(),
         intensity.decl(),
         anisotropy.decl(),
-        debugMode.decl()
+        useShadows.decl(),
+        shadowBias.decl(),
+        shadowStrength.decl(),
+        debugMode.decl(),
+        resolutionScale.decl()
     };
 }
 
@@ -659,7 +1293,11 @@ bool VolumetricLighting::getParam(const std::string& name, float out[4]) {
     if (name == "fogColorR") { out[0] = fogColor[0]; return true; }
     if (name == "fogColorG") { out[0] = fogColor[1]; return true; }
     if (name == "fogColorB") { out[0] = fogColor[2]; return true; }
+    if (name == "useShadows") { out[0] = static_cast<bool>(useShadows) ? 1.0f : 0.0f; return true; }
+    if (name == "shadowBias") { out[0] = static_cast<float>(shadowBias); return true; }
+    if (name == "shadowStrength") { out[0] = static_cast<float>(shadowStrength); return true; }
     if (name == "debugMode") { out[0] = static_cast<float>(static_cast<int>(debugMode)); return true; }
+    if (name == "resolutionScale") { out[0] = static_cast<float>(static_cast<int>(resolutionScale)); return true; }
     return false;
 }
 
@@ -672,7 +1310,11 @@ bool VolumetricLighting::setParam(const std::string& name, const float value[4])
     if (name == "fogColorR") { fogColor[0] = value[0]; markDirty(); return true; }
     if (name == "fogColorG") { fogColor[1] = value[0]; markDirty(); return true; }
     if (name == "fogColorB") { fogColor[2] = value[0]; markDirty(); return true; }
+    if (name == "useShadows") { useShadows = value[0] > 0.5f; markDirty(); return true; }
+    if (name == "shadowBias") { shadowBias = value[0]; markDirty(); return true; }
+    if (name == "shadowStrength") { shadowStrength = value[0]; markDirty(); return true; }
     if (name == "debugMode") { debugMode = static_cast<int>(value[0]); markDirty(); return true; }
+    if (name == "resolutionScale") { resolutionScale = static_cast<int>(value[0]); markDirty(); return true; }
     return false;
 }
 

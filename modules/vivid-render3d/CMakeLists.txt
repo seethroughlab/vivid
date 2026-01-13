@@ -51,7 +51,13 @@ add_library(vivid-render3d SHARED
     src/fog.cpp
     src/depth_mask.cpp
     src/volumetric_lighting.cpp
+    src/god_rays.cpp
     src/particles3d.cpp
+    src/grass_field.cpp
+    src/foliage_cluster.cpp
+    src/foliage_mesh.cpp
+    src/grass_mesh.cpp
+    src/tree_mesh.cpp
     src/registrations.cpp
 )
 

@@ -6,6 +6,7 @@
 #include <vivid/render3d/ibl_environment.h>
 #include <vivid/render3d/gpu_structs.h>
 #include <vivid/render3d/debug_geometry.h>
+#include <vivid/render3d/procedural_mesh.h>
 #include <vivid/asset_loader.h>
 #include <vivid/operator_registry.h>
 #include <vivid/context.h>
@@ -484,6 +485,480 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
         // Default fallback (shouldn't reach here for non-PBR modes)
         return vec4f(finalColor.rgb * (vec3f(uniforms.ambient) + in.lighting), finalColor.a);
     }
+}
+)";
+
+// Procedural wind shader for grass/foliage with instancing and shadows
+const char* PROCEDURAL_WIND_SHADER_SOURCE = R"(
+const PI: f32 = 3.14159265359;
+const EPSILON: f32 = 0.0001;
+const MAX_LIGHTS: u32 = 4u;
+
+const LIGHT_DIRECTIONAL: u32 = 0u;
+const LIGHT_POINT: u32 = 1u;
+const LIGHT_SPOT: u32 = 2u;
+
+struct Light {
+    position: vec3f,
+    range: f32,
+    direction: vec3f,
+    spotAngle: f32,
+    color: vec3f,
+    intensity: f32,
+    lightType: u32,
+    spotBlend: f32,
+    _pad: vec2f,
+}
+
+struct Uniforms {
+    viewProj: mat4x4f,
+    cameraPos: vec3f,
+    time: f32,
+    baseColor: vec3f,
+    windStrength: f32,
+    tipColor: vec3f,
+    windSpeed: f32,
+    windDir: vec2f,
+    stemCurve: f32,
+    stemLength: f32,
+    ambient: f32,
+    lightCount: u32,
+    receiveShadow: u32,
+    hasLeafTexture: u32,  // 1 if leaf texture bound, 0 otherwise
+    // Billboard support
+    cameraRight: vec3f,
+    leafFlutter: f32,
+    cameraUp: vec3f,
+    _pad1: f32,
+    leafColor: vec3f,
+    _pad2: f32,
+    lights: array<Light, 4>,
+}
+
+// Shadow uniforms (same layout as flat shader for compatibility)
+struct ShadowUniforms {
+    lightViewProj: mat4x4f,
+    shadowBias: f32,
+    shadowMapSize: f32,
+    shadowEnabled: u32,
+    pointShadowEnabled: u32,
+    pointLightPosAndRange: vec4f,
+}
+
+// Instance data from ProceduralInstance struct (starts at location 5 after vertex data)
+struct InstanceData {
+    @location(5) model0: vec4f,
+    @location(6) model1: vec4f,
+    @location(7) model2: vec4f,
+    @location(8) model3: vec4f,
+    @location(9) variation: vec4f,   // xyz = scale variation, w = phase offset
+    @location(10) color: vec4f,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: Uniforms;
+
+// Shadow resources (group 1)
+@group(1) @binding(0) var<uniform> shadow: ShadowUniforms;
+@group(1) @binding(1) var shadowMap: texture_depth_2d;
+@group(1) @binding(2) var shadowSampler: sampler_comparison;
+@group(1) @binding(3) var pointShadowAtlas: texture_2d<f32>;
+@group(1) @binding(4) var pointShadowSampler: sampler;
+
+// Leaf texture resources (group 2) - optional
+@group(2) @binding(0) var leafTexture: texture_2d<f32>;
+@group(2) @binding(1) var leafTextureSampler: sampler;
+
+// Vertex input matches Vertex3D struct layout
+struct VertexInput {
+    @location(0) position: vec3f,
+    @location(1) normal: vec3f,
+    @location(2) tangent: vec4f,  // Not used but needed for Vertex3D layout
+    @location(3) uv: vec2f,
+    @location(4) color: vec4f,
+}
+
+struct VertexOutput {
+    @builtin(position) clipPos: vec4f,
+    @location(0) worldPos: vec3f,
+    @location(1) worldNormal: vec3f,
+    @location(2) color: vec3f,
+    @location(3) height: f32,
+    @location(4) uv: vec2f,          // UV for texture sampling (billboards)
+    @location(5) isBillboard: f32,   // 1.0 for billboard, 0.0 otherwise
+}
+
+fn getAttenuation(distance: f32, range: f32) -> f32 {
+    if (range <= 0.0) { return 1.0; }
+    let d = max(distance, EPSILON);
+    let att = 1.0 / (d * d);
+    let falloff = saturate(1.0 - pow(d / range, 4.0));
+    return att * falloff * falloff;
+}
+
+fn getSpotFactor(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f32) -> f32 {
+    let cosAngle = dot(lightDir, spotDir);
+    return saturate((cosAngle - outerAngle) / max(innerAngle - outerAngle, EPSILON));
+}
+
+// PCF helpers for soft shadows
+fn interleavedGradientNoise(pos: vec2f) -> f32 {
+    return fract(52.9829189 * fract(dot(pos, vec2f(0.06711056, 0.00583715))));
+}
+
+fn vogelDiskSample(idx: i32, count: i32, phi: f32) -> vec2f {
+    let r = sqrt(f32(idx) + 0.5) / sqrt(f32(count));
+    let theta = f32(idx) * 2.39996323 + phi;
+    return r * vec2f(cos(theta), sin(theta));
+}
+
+fn sampleShadow(worldPos: vec3f) -> f32 {
+    if (shadow.shadowEnabled == 0u) {
+        return 1.0;
+    }
+
+    let lightSpacePos = shadow.lightViewProj * vec4f(worldPos, 1.0);
+    var projCoords = lightSpacePos.xyz / lightSpacePos.w;
+
+    let texCoordX = projCoords.x * 0.5 + 0.5;
+    let texCoordY = 1.0 - (projCoords.y * 0.5 + 0.5);
+    let texCoordZ = projCoords.z;
+
+    if (texCoordX < 0.0 || texCoordX > 1.0 ||
+        texCoordY < 0.0 || texCoordY > 1.0 ||
+        texCoordZ < 0.0 || texCoordZ > 1.0) {
+        return 1.0;
+    }
+
+    let currentDepth = texCoordZ - shadow.shadowBias;
+    let texelSize = 1.0 / shadow.shadowMapSize;
+    let phi = interleavedGradientNoise(vec2f(texCoordX, texCoordY) * shadow.shadowMapSize) * 6.28318;
+    let texCoord = vec2f(texCoordX, texCoordY);
+
+    var shadowSum = 0.0;
+    for (var i = 0; i < 5; i++) {
+        let offset = vogelDiskSample(i, 5, phi) * texelSize * 2.0;
+        shadowSum += textureSampleCompare(shadowMap, shadowSampler, texCoord + offset, currentDepth);
+    }
+
+    return shadowSum * 0.2;
+}
+
+fn samplePointShadow(worldPos: vec3f) -> f32 {
+    if (shadow.pointShadowEnabled == 0u) {
+        return 1.0;
+    }
+
+    let lightToFrag = worldPos - shadow.pointLightPosAndRange.xyz;
+    let fragDist = length(lightToFrag);
+    let absDir = abs(lightToFrag);
+
+    var faceIndex: i32;
+    var u: f32;
+    var v: f32;
+    var ma: f32;
+
+    if (absDir.x >= absDir.y && absDir.x >= absDir.z) {
+        ma = absDir.x;
+        if (lightToFrag.x > 0.0) {
+            faceIndex = 0;
+            u = -lightToFrag.z;
+            v = -lightToFrag.y;
+        } else {
+            faceIndex = 1;
+            u = lightToFrag.z;
+            v = -lightToFrag.y;
+        }
+    } else if (absDir.y >= absDir.x && absDir.y >= absDir.z) {
+        ma = absDir.y;
+        if (lightToFrag.y > 0.0) {
+            faceIndex = 2;
+            u = lightToFrag.x;
+            v = lightToFrag.z;
+        } else {
+            faceIndex = 3;
+            u = lightToFrag.x;
+            v = -lightToFrag.z;
+        }
+    } else {
+        ma = absDir.z;
+        if (lightToFrag.z > 0.0) {
+            faceIndex = 4;
+            u = lightToFrag.x;
+            v = -lightToFrag.y;
+        } else {
+            faceIndex = 5;
+            u = -lightToFrag.x;
+            v = -lightToFrag.y;
+        }
+    }
+
+    let texU = (u / ma) * 0.5 + 0.5;
+    let texV = 0.5 - (v / ma) * 0.5;
+    let faceUV = vec2f(texU, texV);
+
+    let col = f32(faceIndex % 3);
+    let row = f32(faceIndex / 3);
+    let atlasUV = (faceUV + vec2f(col, row)) / vec2f(3.0, 2.0);
+
+    let normalizedFragDist = fragDist / shadow.pointLightPosAndRange.w;
+    let biasedFragDist = normalizedFragDist - shadow.shadowBias;
+
+    let texelSize = 1.0 / (shadow.shadowMapSize * 3.0);
+    let phi = interleavedGradientNoise(faceUV * shadow.shadowMapSize) * 6.28318;
+
+    var shadowSum = 0.0;
+    for (var i = 0; i < 5; i++) {
+        let offset = vogelDiskSample(i, 5, phi) * texelSize * 2.0;
+        let sampleCoord = atlasUV + offset;
+        let sampledDepth = textureSample(pointShadowAtlas, pointShadowSampler, sampleCoord).r;
+        if (biasedFragDist <= sampledDepth) {
+            shadowSum += 1.0;
+        }
+    }
+
+    return shadowSum * 0.2;
+}
+
+@vertex
+fn vs_main(vert: VertexInput, inst: InstanceData) -> VertexOutput {
+    var out: VertexOutput;
+
+    // Reconstruct model matrix from instance data
+    let model = mat4x4f(inst.model0, inst.model1, inst.model2, inst.model3);
+
+    // Check if this is a billboard (color.w > 0 indicates billboard, value is size)
+    let isBillboard = vert.color.w > 0.0;
+    let billboardSize = vert.color.w;
+
+    // Get world position before wind
+    var worldPos = (model * vec4f(vert.position, 1.0)).xyz;
+
+    // Height factor from UV.y (0 at base, 1 at tip)
+    let heightFactor = vert.uv.y;
+    out.height = heightFactor;
+
+    // Per-instance phase offset from variation.w
+    let phaseOffset = inst.variation.w * PI * 2.0;
+
+    if (isBillboard) {
+        // Billboard leaf rendering
+        // Expand quad in camera plane using UV as corner offset
+        let corner = (vert.uv - 0.5) * 2.0 * billboardSize;
+        worldPos = worldPos + uniforms.cameraRight * corner.x + uniforms.cameraUp * corner.y;
+
+        // Apply wind sway to billboard position (gentler than branches)
+        let windPhase = worldPos.x * 0.3 + worldPos.z * 0.2 + uniforms.time * uniforms.windSpeed + phaseOffset;
+        let sway = sin(windPhase) * uniforms.windStrength * 0.5;
+        worldPos.x += uniforms.windDir.x * sway;
+        worldPos.z += uniforms.windDir.y * sway;
+
+        // High-frequency flutter for leaves
+        let flutterPhase = worldPos.x * 2.0 + worldPos.z * 1.5 + uniforms.time * uniforms.windSpeed * 3.0 + phaseOffset * 5.0;
+        let flutter = sin(flutterPhase) * uniforms.leafFlutter * 0.15;
+        worldPos = worldPos + uniforms.cameraRight * flutter + uniforms.cameraUp * flutter * 0.5;
+
+        out.worldPos = worldPos;
+        out.clipPos = uniforms.viewProj * vec4f(worldPos, 1.0);
+
+        // Billboard normal faces camera
+        out.worldNormal = normalize(uniforms.cameraPos - worldPos);
+
+        // Use leaf color (stored in vertex color RGB)
+        out.color = uniforms.leafColor * inst.color.rgb;
+
+        // Pass UV for texture sampling
+        out.uv = vert.uv;
+        out.isBillboard = 1.0;
+    } else {
+        // Standard branch/stem rendering with wind animation
+        // Multi-frequency wind waves for natural motion
+        let windPhase1 = worldPos.x * 0.5 + worldPos.z * 0.3 + uniforms.time * uniforms.windSpeed + phaseOffset;
+        let windPhase2 = worldPos.x * 0.8 + worldPos.z * 0.6 + uniforms.time * uniforms.windSpeed * 1.3 + phaseOffset * 1.7;
+
+        let windWave = sin(windPhase1) * 0.7 + sin(windPhase2) * 0.3;
+
+        // Displacement increases quadratically with height (tips bend more)
+        let bendAmount = windWave * uniforms.windStrength * heightFactor * heightFactor;
+
+        // Apply wind displacement
+        worldPos.x += uniforms.windDir.x * bendAmount;
+        worldPos.z += uniforms.windDir.y * bendAmount;
+
+        // Vertical droop when bent (uses stemCurve from wind params)
+        worldPos.y -= abs(bendAmount) * uniforms.stemCurve;
+
+        out.worldPos = worldPos;
+        out.clipPos = uniforms.viewProj * vec4f(worldPos, 1.0);
+
+        // Transform normal (simplified - assumes uniform scale)
+        let normalMat = mat3x3f(model[0].xyz, model[1].xyz, model[2].xyz);
+        out.worldNormal = normalize(normalMat * vert.normal);
+
+        // Interpolate color from base to tip, multiplied by instance color
+        out.color = mix(uniforms.baseColor, uniforms.tipColor, heightFactor) * inst.color.rgb;
+
+        // Not a billboard
+        out.uv = vec2f(0.0);
+        out.isBillboard = 0.0;
+    }
+
+    return out;
+}
+
+fn calculateLighting(worldPos: vec3f, normal: vec3f) -> f32 {
+    var totalLight = uniforms.ambient;
+
+    for (var i = 0u; i < uniforms.lightCount; i++) {
+        let light = uniforms.lights[i];
+        var lightDir: vec3f;
+        var attenuation = 1.0;
+
+        if (light.lightType == LIGHT_DIRECTIONAL) {
+            lightDir = -normalize(light.direction);
+        } else if (light.lightType == LIGHT_POINT) {
+            let toLight = light.position - worldPos;
+            let dist = length(toLight);
+            lightDir = toLight / max(dist, EPSILON);
+            attenuation = getAttenuation(dist, light.range);
+        } else {
+            let toLight = light.position - worldPos;
+            let dist = length(toLight);
+            lightDir = toLight / max(dist, EPSILON);
+            attenuation = getAttenuation(dist, light.range);
+            attenuation *= getSpotFactor(-lightDir, normalize(light.direction), light.spotBlend, light.spotAngle);
+        }
+
+        let NdotL = max(dot(normal, lightDir), 0.0);
+        totalLight += NdotL * light.intensity * attenuation;
+    }
+
+    return min(totalLight, 2.0);
+}
+
+@fragment
+fn fs_main(input: VertexOutput) -> @location(0) vec4f {
+    var color = input.color;
+    var alpha = 1.0;
+
+    // Billboard with leaf texture
+    if (input.isBillboard > 0.5 && uniforms.hasLeafTexture != 0u) {
+        let texColor = textureSample(leafTexture, leafTextureSampler, input.uv);
+        // Alpha discard for cutout effect
+        if (texColor.a < 0.5) {
+            discard;
+        }
+        // Multiply texture color with leaf color tint
+        color = texColor.rgb * input.color;
+        alpha = texColor.a;
+    }
+
+    var lighting = calculateLighting(input.worldPos, input.worldNormal);
+
+    // Apply shadows if enabled
+    if (uniforms.receiveShadow != 0u) {
+        let dirShadow = sampleShadow(input.worldPos);
+        let pointShadow = samplePointShadow(input.worldPos);
+        let shadowFactor = min(dirShadow, pointShadow);
+        // Apply shadow to non-ambient lighting
+        lighting = uniforms.ambient + (lighting - uniforms.ambient) * shadowFactor;
+    }
+
+    let finalColor = color * lighting;
+
+    // Slight alpha fade at tips for softer look (only for non-billboard geometry)
+    if (input.isBillboard < 0.5) {
+        alpha = 1.0 - smoothstep(0.9, 1.0, input.height) * 0.3;
+    }
+
+    return vec4f(finalColor, alpha);
+}
+)";
+
+// Shadow-only shader for procedural meshes (depth pass with wind animation)
+const char* PROCEDURAL_SHADOW_SHADER_SOURCE = R"(
+const PI: f32 = 3.14159265359;
+
+struct ShadowUniforms {
+    lightViewProj: mat4x4f,
+    time: f32,
+    windStrength: f32,
+    windSpeed: f32,
+    stemCurve: f32,
+    windDir: vec2f,
+    leafFlutter: f32,
+    _pad0: f32,
+    // Billboard support - camera vectors for expanding quads
+    cameraRight: vec3f,
+    _pad1: f32,
+    cameraUp: vec3f,
+    _pad2: f32,
+}
+
+struct InstanceData {
+    @location(5) model0: vec4f,
+    @location(6) model1: vec4f,
+    @location(7) model2: vec4f,
+    @location(8) model3: vec4f,
+    @location(9) variation: vec4f,
+    @location(10) color: vec4f,
+}
+
+@group(0) @binding(0) var<uniform> uniforms: ShadowUniforms;
+
+struct VertexInput {
+    @location(0) position: vec3f,
+    @location(1) normal: vec3f,
+    @location(2) tangent: vec4f,
+    @location(3) uv: vec2f,
+    @location(4) color: vec4f,
+}
+
+@vertex
+fn vs_main(vert: VertexInput, inst: InstanceData) -> @builtin(position) vec4f {
+    let model = mat4x4f(inst.model0, inst.model1, inst.model2, inst.model3);
+    var worldPos = (model * vec4f(vert.position, 1.0)).xyz;
+
+    // Check if this is a billboard (color.w > 0 indicates billboard, value is size)
+    let isBillboard = vert.color.w > 0.0;
+    let billboardSize = vert.color.w;
+
+    let heightFactor = vert.uv.y;
+    let phaseOffset = inst.variation.w * PI * 2.0;
+
+    if (isBillboard) {
+        // Billboard leaf rendering - expand quad in camera plane
+        let corner = (vert.uv - 0.5) * 2.0 * billboardSize;
+        worldPos = worldPos + uniforms.cameraRight * corner.x + uniforms.cameraUp * corner.y;
+
+        // Apply wind sway
+        let windPhase = worldPos.x * 0.3 + worldPos.z * 0.2 + uniforms.time * uniforms.windSpeed + phaseOffset;
+        let sway = sin(windPhase) * uniforms.windStrength * 0.5;
+        worldPos.x += uniforms.windDir.x * sway;
+        worldPos.z += uniforms.windDir.y * sway;
+
+        // Leaf flutter
+        let flutterPhase = worldPos.x * 2.0 + worldPos.z * 1.5 + uniforms.time * uniforms.windSpeed * 3.0 + phaseOffset * 5.0;
+        let flutter = sin(flutterPhase) * uniforms.leafFlutter * 0.15;
+        worldPos = worldPos + uniforms.cameraRight * flutter + uniforms.cameraUp * flutter * 0.5;
+    } else {
+        // Standard branch wind animation
+        let windPhase1 = worldPos.x * 0.5 + worldPos.z * 0.3 + uniforms.time * uniforms.windSpeed + phaseOffset;
+        let windPhase2 = worldPos.x * 0.8 + worldPos.z * 0.6 + uniforms.time * uniforms.windSpeed * 1.3 + phaseOffset * 1.7;
+
+        let windWave = sin(windPhase1) * 0.7 + sin(windPhase2) * 0.3;
+        let bendAmount = windWave * uniforms.windStrength * heightFactor * heightFactor;
+
+        worldPos.x += uniforms.windDir.x * bendAmount;
+        worldPos.z += uniforms.windDir.y * bendAmount;
+        worldPos.y -= abs(bendAmount) * uniforms.stemCurve;
+    }
+
+    return uniforms.lightViewProj * vec4f(worldPos, 1.0);
+}
+
+@fragment
+fn fs_main() -> @location(0) vec4f {
+    return vec4f(1.0);  // Depth-only pass
 }
 )";
 
@@ -1843,6 +2318,37 @@ bool Render3D::hasShadows() const {
     return m_shadowManager->hasShadows();
 }
 
+WGPUTextureView Render3D::getShadowMapView() const {
+    if (!m_shadowManager || !m_shadowManager->hasShadows()) return nullptr;
+    return m_shadowManager->getShadowMapView();
+}
+
+WGPUTextureView Render3D::getPointShadowAtlasView() const {
+    if (!m_shadowManager) return nullptr;
+    return m_shadowManager->getPointShadowAtlasView();
+}
+
+WGPUSampler Render3D::getShadowSampler() const {
+    if (!m_shadowManager) return nullptr;
+    return m_shadowManager->getShadowSampler();
+}
+
+const glm::mat4& Render3D::getLightViewProjection() const {
+    static glm::mat4 identity(1.0f);
+    if (!m_shadowManager) return identity;
+    return m_shadowManager->getLightViewProj();
+}
+
+glm::vec3 Render3D::getPointLightPosition() const {
+    if (!m_shadowManager) return glm::vec3(0.0f);
+    return m_shadowManager->getPointLightPos();
+}
+
+float Render3D::getPointLightRange() const {
+    if (!m_shadowManager) return 50.0f;
+    return m_shadowManager->getPointLightRange();
+}
+
 bool Render3D::hasShadowCastingLight() const {
     for (const auto* lightOp : m_lightOps) {
         if (lightOp && lightOp->outputLight().castShadow) {
@@ -1864,6 +2370,689 @@ bool Render3D::hasPointLightShadow() const {
         }
     }
     return false;
+}
+
+// =============================================================================
+// Procedural Mesh Support
+// =============================================================================
+
+void Render3D::addProceduralMesh(ProceduralMesh* mesh) {
+    if (mesh) {
+        // Check if already added
+        for (const auto* existing : m_proceduralMeshes) {
+            if (existing == mesh) return;
+        }
+        m_proceduralMeshes.push_back(mesh);
+        m_proceduralMeshGPU.push_back({});  // Allocate GPU resource slot
+        markDirty();
+    }
+}
+
+void Render3D::clearProceduralMeshes() {
+    // Release GPU resources
+    for (auto& gpu : m_proceduralMeshGPU) {
+        if (gpu.vertexBuffer) wgpuBufferRelease(gpu.vertexBuffer);
+        if (gpu.indexBuffer) wgpuBufferRelease(gpu.indexBuffer);
+        if (gpu.instanceBuffer) wgpuBufferRelease(gpu.instanceBuffer);
+        if (gpu.leafTextureBindGroup) wgpuBindGroupRelease(gpu.leafTextureBindGroup);
+    }
+    m_proceduralMeshGPU.clear();
+    m_proceduralMeshes.clear();
+    markDirty();
+}
+
+void Render3D::createProceduralPipeline(Context& ctx) {
+    if (m_proceduralWindPipeline) return;  // Already created
+
+    WGPUDevice device = ctx.device();
+
+    // =========================================================================
+    // Create main wind shader module
+    // =========================================================================
+    std::string windShaderSrc = loadShaderOrFallback("procedural_wind.wgsl", PROCEDURAL_WIND_SHADER_SOURCE);
+    WGPUShaderModule windShaderModule = createShaderModule(device, windShaderSrc, "Procedural Wind Shader");
+
+    // =========================================================================
+    // Create shadow shader module
+    // =========================================================================
+    std::string shadowShaderSrc = loadShaderOrFallback("procedural_shadow.wgsl", PROCEDURAL_SHADOW_SHADER_SOURCE);
+    WGPUShaderModule shadowShaderModule = createShaderModule(device, shadowShaderSrc, "Procedural Shadow Shader");
+
+    // =========================================================================
+    // Create bind group layouts
+    // =========================================================================
+
+    // Main shader uniform layout (group 0) - single uniform buffer binding
+    WGPUBindGroupLayoutEntry mainLayoutEntry = {};
+    mainLayoutEntry.binding = 0;
+    mainLayoutEntry.visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
+    mainLayoutEntry.buffer.type = WGPUBufferBindingType_Uniform;
+    mainLayoutEntry.buffer.minBindingSize = 0;  // Will be set based on struct size
+
+    WGPUBindGroupLayoutDescriptor mainLayoutDesc = {};
+    mainLayoutDesc.label = toStringView("Procedural Main Bind Group Layout");
+    mainLayoutDesc.entryCount = 1;
+    mainLayoutDesc.entries = &mainLayoutEntry;
+    m_proceduralBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &mainLayoutDesc);
+
+    // Shadow shader uniform layout (group 0)
+    WGPUBindGroupLayoutEntry shadowLayoutEntry = {};
+    shadowLayoutEntry.binding = 0;
+    shadowLayoutEntry.visibility = WGPUShaderStage_Vertex;
+    shadowLayoutEntry.buffer.type = WGPUBufferBindingType_Uniform;
+    shadowLayoutEntry.buffer.minBindingSize = 0;
+
+    WGPUBindGroupLayoutDescriptor shadowLayoutDesc = {};
+    shadowLayoutDesc.label = toStringView("Procedural Shadow Bind Group Layout");
+    shadowLayoutDesc.entryCount = 1;
+    shadowLayoutDesc.entries = &shadowLayoutEntry;
+    m_proceduralShadowBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &shadowLayoutDesc);
+
+    // Leaf texture bind group layout (group 2) - texture + sampler
+    WGPUBindGroupLayoutEntry leafTextureEntries[2] = {};
+    // Texture
+    leafTextureEntries[0].binding = 0;
+    leafTextureEntries[0].visibility = WGPUShaderStage_Fragment;
+    leafTextureEntries[0].texture.sampleType = WGPUTextureSampleType_Float;
+    leafTextureEntries[0].texture.viewDimension = WGPUTextureViewDimension_2D;
+    leafTextureEntries[0].texture.multisampled = false;
+    // Sampler
+    leafTextureEntries[1].binding = 1;
+    leafTextureEntries[1].visibility = WGPUShaderStage_Fragment;
+    leafTextureEntries[1].sampler.type = WGPUSamplerBindingType_Filtering;
+
+    WGPUBindGroupLayoutDescriptor leafTextureLayoutDesc = {};
+    leafTextureLayoutDesc.label = toStringView("Procedural Leaf Texture Bind Group Layout");
+    leafTextureLayoutDesc.entryCount = 2;
+    leafTextureLayoutDesc.entries = leafTextureEntries;
+    m_proceduralLeafTextureBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &leafTextureLayoutDesc);
+
+    // =========================================================================
+    // Create dummy texture for meshes without leaf texture
+    // =========================================================================
+
+    // 1x1 white texture
+    WGPUTextureDescriptor dummyTexDesc = {};
+    dummyTexDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+    dummyTexDesc.dimension = WGPUTextureDimension_2D;
+    dummyTexDesc.size = {1, 1, 1};
+    dummyTexDesc.format = WGPUTextureFormat_RGBA8Unorm;
+    dummyTexDesc.mipLevelCount = 1;
+    dummyTexDesc.sampleCount = 1;
+    m_proceduralDummyTexture = wgpuDeviceCreateTexture(device, &dummyTexDesc);
+
+    // Upload white pixel
+    uint8_t whitePixel[4] = {255, 255, 255, 255};
+    WGPUTexelCopyBufferLayout dataLayout = {};
+    dataLayout.bytesPerRow = 4;
+    dataLayout.rowsPerImage = 1;
+    WGPUExtent3D writeSize = {1, 1, 1};
+    WGPUTexelCopyTextureInfo destination = {};
+    destination.texture = m_proceduralDummyTexture;
+    destination.mipLevel = 0;
+    destination.origin = {0, 0, 0};
+    destination.aspect = WGPUTextureAspect_All;
+    wgpuQueueWriteTexture(ctx.queue(), &destination, whitePixel, 4, &dataLayout, &writeSize);
+
+    // Create dummy texture view
+    WGPUTextureViewDescriptor dummyViewDesc = {};
+    dummyViewDesc.format = WGPUTextureFormat_RGBA8Unorm;
+    dummyViewDesc.dimension = WGPUTextureViewDimension_2D;
+    dummyViewDesc.baseMipLevel = 0;
+    dummyViewDesc.mipLevelCount = 1;
+    dummyViewDesc.baseArrayLayer = 0;
+    dummyViewDesc.arrayLayerCount = 1;
+    dummyViewDesc.aspect = WGPUTextureAspect_All;
+    m_proceduralDummyTextureView = wgpuTextureCreateView(m_proceduralDummyTexture, &dummyViewDesc);
+
+    // Create default sampler
+    WGPUSamplerDescriptor defaultSamplerDesc = {};
+    defaultSamplerDesc.addressModeU = WGPUAddressMode_Repeat;
+    defaultSamplerDesc.addressModeV = WGPUAddressMode_Repeat;
+    defaultSamplerDesc.addressModeW = WGPUAddressMode_Repeat;
+    defaultSamplerDesc.magFilter = WGPUFilterMode_Linear;
+    defaultSamplerDesc.minFilter = WGPUFilterMode_Linear;
+    defaultSamplerDesc.mipmapFilter = WGPUMipmapFilterMode_Linear;
+    defaultSamplerDesc.maxAnisotropy = 1;
+    m_proceduralDefaultSampler = wgpuDeviceCreateSampler(device, &defaultSamplerDesc);
+
+    // Create default leaf bind group with dummy texture
+    WGPUBindGroupEntry defaultLeafEntries[2] = {};
+    defaultLeafEntries[0].binding = 0;
+    defaultLeafEntries[0].textureView = m_proceduralDummyTextureView;
+    defaultLeafEntries[1].binding = 1;
+    defaultLeafEntries[1].sampler = m_proceduralDefaultSampler;
+
+    WGPUBindGroupDescriptor defaultLeafBindDesc = {};
+    defaultLeafBindDesc.label = toStringView("Procedural Default Leaf Bind Group");
+    defaultLeafBindDesc.layout = m_proceduralLeafTextureBindGroupLayout;
+    defaultLeafBindDesc.entryCount = 2;
+    defaultLeafBindDesc.entries = defaultLeafEntries;
+    m_proceduralDefaultLeafBindGroup = wgpuDeviceCreateBindGroup(device, &defaultLeafBindDesc);
+
+    // =========================================================================
+    // Create uniform buffers
+    // =========================================================================
+
+    // Main uniform buffer (matches ProceduralWindUniforms struct in shader)
+    // viewProj(64) + cameraPos(12) + time(4) + baseColor(12) + windStrength(4) +
+    // tipColor(12) + windSpeed(4) + windDir(8) + stemCurve(4) + stemLength(4) +
+    // ambient(4) + lightCount(4) + receiveShadow(4) + pad(4) +
+    // cameraRight(12) + leafFlutter(4) + cameraUp(12) + pad(4) + leafColor(12) + pad(4) +
+    // lights(4*64=256) = Total: ~448 bytes, round up to 512 for alignment
+    WGPUBufferDescriptor mainUniformDesc = {};
+    mainUniformDesc.label = toStringView("Procedural Main Uniforms");
+    mainUniformDesc.size = 512;
+    mainUniformDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    m_proceduralUniformBuffer = wgpuDeviceCreateBuffer(device, &mainUniformDesc);
+
+    // Shadow uniform buffer (lightViewProj(64) + time(4) + windStrength(4) + windSpeed(4) +
+    // stemCurve(4) + windDir(8) + leafFlutter(4) + pad(4) + cameraRight(12) + pad(4) +
+    // cameraUp(12) + pad(4) = 128 bytes)
+    WGPUBufferDescriptor shadowUniformDesc = {};
+    shadowUniformDesc.label = toStringView("Procedural Shadow Uniforms");
+    shadowUniformDesc.size = 128;
+    shadowUniformDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
+    m_proceduralShadowUniformBuffer = wgpuDeviceCreateBuffer(device, &shadowUniformDesc);
+
+    // =========================================================================
+    // Create bind groups
+    // =========================================================================
+
+    WGPUBindGroupEntry mainBindEntry = {};
+    mainBindEntry.binding = 0;
+    mainBindEntry.buffer = m_proceduralUniformBuffer;
+    mainBindEntry.size = 512;
+
+    WGPUBindGroupDescriptor mainBindDesc = {};
+    mainBindDesc.label = toStringView("Procedural Main Bind Group");
+    mainBindDesc.layout = m_proceduralBindGroupLayout;
+    mainBindDesc.entryCount = 1;
+    mainBindDesc.entries = &mainBindEntry;
+    m_proceduralBindGroup = wgpuDeviceCreateBindGroup(device, &mainBindDesc);
+
+    WGPUBindGroupEntry shadowBindEntry = {};
+    shadowBindEntry.binding = 0;
+    shadowBindEntry.buffer = m_proceduralShadowUniformBuffer;
+    shadowBindEntry.size = 128;
+
+    WGPUBindGroupDescriptor shadowBindDesc = {};
+    shadowBindDesc.label = toStringView("Procedural Shadow Bind Group");
+    shadowBindDesc.layout = m_proceduralShadowBindGroupLayout;
+    shadowBindDesc.entryCount = 1;
+    shadowBindDesc.entries = &shadowBindEntry;
+    m_proceduralShadowBindGroup = wgpuDeviceCreateBindGroup(device, &shadowBindDesc);
+
+    // =========================================================================
+    // Create vertex buffer layouts for instanced rendering
+    // =========================================================================
+
+    // Vertex buffer layout (slot 0) - uses existing m_vertexLayout (position, normal, tangent, uv, color)
+
+    // Instance buffer layout (slot 1) - ProceduralInstance struct
+    // mat4 transform (4 vec4s) + vec4 variation + vec4 color = 6 vec4s = 96 bytes
+    static WGPUVertexAttribute instanceAttrs[6] = {};
+    instanceAttrs[0].format = WGPUVertexFormat_Float32x4;
+    instanceAttrs[0].offset = 0;
+    instanceAttrs[0].shaderLocation = 5;  // model0
+
+    instanceAttrs[1].format = WGPUVertexFormat_Float32x4;
+    instanceAttrs[1].offset = 16;
+    instanceAttrs[1].shaderLocation = 6;  // model1
+
+    instanceAttrs[2].format = WGPUVertexFormat_Float32x4;
+    instanceAttrs[2].offset = 32;
+    instanceAttrs[2].shaderLocation = 7;  // model2
+
+    instanceAttrs[3].format = WGPUVertexFormat_Float32x4;
+    instanceAttrs[3].offset = 48;
+    instanceAttrs[3].shaderLocation = 8;  // model3
+
+    instanceAttrs[4].format = WGPUVertexFormat_Float32x4;
+    instanceAttrs[4].offset = 64;
+    instanceAttrs[4].shaderLocation = 9;  // variation
+
+    instanceAttrs[5].format = WGPUVertexFormat_Float32x4;
+    instanceAttrs[5].offset = 80;
+    instanceAttrs[5].shaderLocation = 10; // color
+
+    static WGPUVertexBufferLayout instanceLayout = {};
+    instanceLayout.arrayStride = sizeof(ProceduralInstance);  // 96 bytes
+    instanceLayout.stepMode = WGPUVertexStepMode_Instance;
+    instanceLayout.attributeCount = 6;
+    instanceLayout.attributes = instanceAttrs;
+
+    // Combined vertex buffer layouts (vertex + instance)
+    WGPUVertexBufferLayout vertexBufferLayouts[2] = {m_vertexLayout, instanceLayout};
+
+    // =========================================================================
+    // Create main wind pipeline
+    // =========================================================================
+
+    // Pipeline layout with main uniforms (group 0), shadow sample (group 1), and leaf texture (group 2)
+    WGPUBindGroupLayout mainLayouts[3] = {m_proceduralBindGroupLayout, m_shadowManager->getShadowSampleBindGroupLayout(), m_proceduralLeafTextureBindGroupLayout};
+    WGPUPipelineLayoutDescriptor mainPipelineLayoutDesc = {};
+    mainPipelineLayoutDesc.bindGroupLayoutCount = 3;
+    mainPipelineLayoutDesc.bindGroupLayouts = mainLayouts;
+    WGPUPipelineLayout mainPipelineLayout = wgpuDeviceCreatePipelineLayout(device, &mainPipelineLayoutDesc);
+
+    // Color target with alpha blending for tip fade
+    WGPUBlendState blendState = {};
+    blendState.color.srcFactor = WGPUBlendFactor_SrcAlpha;
+    blendState.color.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blendState.color.operation = WGPUBlendOperation_Add;
+    blendState.alpha.srcFactor = WGPUBlendFactor_One;
+    blendState.alpha.dstFactor = WGPUBlendFactor_OneMinusSrcAlpha;
+    blendState.alpha.operation = WGPUBlendOperation_Add;
+
+    WGPUColorTargetState colorTarget = {};
+    colorTarget.format = EFFECTS_FORMAT;
+    colorTarget.blend = &blendState;
+    colorTarget.writeMask = WGPUColorWriteMask_All;
+
+    WGPUFragmentState fragmentState = {};
+    fragmentState.module = windShaderModule;
+    fragmentState.entryPoint = toStringView("fs_main");
+    fragmentState.targetCount = 1;
+    fragmentState.targets = &colorTarget;
+
+    WGPUDepthStencilState depthStencil = getStandardDepthStencil();
+
+    WGPURenderPipelineDescriptor pipelineDesc = {};
+    pipelineDesc.label = toStringView("Procedural Wind Pipeline");
+    pipelineDesc.layout = mainPipelineLayout;
+    pipelineDesc.vertex.module = windShaderModule;
+    pipelineDesc.vertex.entryPoint = toStringView("vs_main");
+    pipelineDesc.vertex.bufferCount = 2;
+    pipelineDesc.vertex.buffers = vertexBufferLayouts;
+    pipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    pipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
+    pipelineDesc.primitive.cullMode = WGPUCullMode_None;  // Disable culling for grass/foliage
+    pipelineDesc.depthStencil = &depthStencil;
+    pipelineDesc.multisample.count = 1;
+    pipelineDesc.multisample.mask = ~0u;
+    pipelineDesc.fragment = &fragmentState;
+
+    m_proceduralWindPipeline = wgpuDeviceCreateRenderPipeline(device, &pipelineDesc);
+
+    wgpuPipelineLayoutRelease(mainPipelineLayout);
+
+    // =========================================================================
+    // Create shadow pipeline
+    // =========================================================================
+
+    WGPUPipelineLayoutDescriptor shadowPipelineLayoutDesc = {};
+    shadowPipelineLayoutDesc.bindGroupLayoutCount = 1;
+    shadowPipelineLayoutDesc.bindGroupLayouts = &m_proceduralShadowBindGroupLayout;
+    WGPUPipelineLayout shadowPipelineLayout = wgpuDeviceCreatePipelineLayout(device, &shadowPipelineLayoutDesc);
+
+    // Shadow pass uses depth-only format
+    WGPUDepthStencilState shadowDepthStencil = {};
+    shadowDepthStencil.format = WGPUTextureFormat_Depth32Float;
+    shadowDepthStencil.depthWriteEnabled = WGPUOptionalBool_True;
+    shadowDepthStencil.depthCompare = WGPUCompareFunction_Less;
+
+    // Minimal fragment state (depth-only)
+    WGPUFragmentState shadowFragState = {};
+    shadowFragState.module = shadowShaderModule;
+    shadowFragState.entryPoint = toStringView("fs_main");
+    shadowFragState.targetCount = 0;  // No color attachment
+
+    WGPURenderPipelineDescriptor shadowPipelineDesc = {};
+    shadowPipelineDesc.label = toStringView("Procedural Shadow Pipeline");
+    shadowPipelineDesc.layout = shadowPipelineLayout;
+    shadowPipelineDesc.vertex.module = shadowShaderModule;
+    shadowPipelineDesc.vertex.entryPoint = toStringView("vs_main");
+    shadowPipelineDesc.vertex.bufferCount = 2;
+    shadowPipelineDesc.vertex.buffers = vertexBufferLayouts;
+    shadowPipelineDesc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+    shadowPipelineDesc.primitive.frontFace = WGPUFrontFace_CCW;
+    shadowPipelineDesc.primitive.cullMode = WGPUCullMode_None;
+    shadowPipelineDesc.depthStencil = &shadowDepthStencil;
+    shadowPipelineDesc.multisample.count = 1;
+    shadowPipelineDesc.multisample.mask = ~0u;
+    shadowPipelineDesc.fragment = &shadowFragState;
+
+    m_proceduralShadowPipeline = wgpuDeviceCreateRenderPipeline(device, &shadowPipelineDesc);
+
+    wgpuPipelineLayoutRelease(shadowPipelineLayout);
+
+    // Cleanup shader modules
+    wgpuShaderModuleRelease(windShaderModule);
+    wgpuShaderModuleRelease(shadowShaderModule);
+}
+
+void Render3D::updateProceduralMeshBuffers(Context& ctx) {
+    for (size_t i = 0; i < m_proceduralMeshes.size(); i++) {
+        ProceduralMesh* mesh = m_proceduralMeshes[i];
+        if (!mesh) continue;
+
+        // Process the mesh to update its data
+        mesh->process(ctx);
+
+        ProceduralMeshGPU& gpu = m_proceduralMeshGPU[i];
+        const Mesh& meshData = mesh->getMesh();
+        const auto& instances = mesh->getInstances();
+
+        // Upload vertex buffer if needed
+        if (mesh->meshDirty() || !gpu.vertexBuffer) {
+            size_t vertexSize = meshData.vertices.size() * sizeof(Vertex3D);
+            if (gpu.vertexCapacity < meshData.vertices.size()) {
+                if (gpu.vertexBuffer) wgpuBufferRelease(gpu.vertexBuffer);
+                WGPUBufferDescriptor desc = {};
+                desc.size = vertexSize;
+                desc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+                gpu.vertexBuffer = wgpuDeviceCreateBuffer(ctx.device(), &desc);
+                gpu.vertexCapacity = meshData.vertices.size();
+            }
+            if (!meshData.vertices.empty()) {
+                wgpuQueueWriteBuffer(ctx.queue(), gpu.vertexBuffer, 0,
+                                     meshData.vertices.data(), vertexSize);
+            }
+        }
+
+        // Upload index buffer if needed
+        if (mesh->meshDirty() || !gpu.indexBuffer) {
+            size_t indexSize = meshData.indices.size() * sizeof(uint32_t);
+            if (gpu.indexCapacity < meshData.indices.size()) {
+                if (gpu.indexBuffer) wgpuBufferRelease(gpu.indexBuffer);
+                WGPUBufferDescriptor desc = {};
+                desc.size = indexSize;
+                desc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+                gpu.indexBuffer = wgpuDeviceCreateBuffer(ctx.device(), &desc);
+                gpu.indexCapacity = meshData.indices.size();
+            }
+            if (!meshData.indices.empty()) {
+                wgpuQueueWriteBuffer(ctx.queue(), gpu.indexBuffer, 0,
+                                     meshData.indices.data(), indexSize);
+            }
+        }
+
+        // Upload instance buffer if needed
+        if (mesh->instancesDirty() || !gpu.instanceBuffer) {
+            size_t instanceSize = instances.size() * sizeof(ProceduralInstance);
+            if (gpu.instanceCapacity < instances.size()) {
+                if (gpu.instanceBuffer) wgpuBufferRelease(gpu.instanceBuffer);
+                WGPUBufferDescriptor desc = {};
+                desc.size = instanceSize;
+                desc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+                gpu.instanceBuffer = wgpuDeviceCreateBuffer(ctx.device(), &desc);
+                gpu.instanceCapacity = instances.size();
+            }
+            if (!instances.empty()) {
+                wgpuQueueWriteBuffer(ctx.queue(), gpu.instanceBuffer, 0,
+                                     instances.data(), instanceSize);
+            }
+        }
+
+        mesh->clearDirtyFlags();
+
+        // Create/update leaf texture bind group if mesh has texture
+        bool meshHasTexture = mesh->hasLeafTexture();
+        if (meshHasTexture != gpu.hasLeafTexture) {
+            // Texture state changed - release old bind group if any
+            if (gpu.leafTextureBindGroup) {
+                wgpuBindGroupRelease(gpu.leafTextureBindGroup);
+                gpu.leafTextureBindGroup = nullptr;
+            }
+            gpu.hasLeafTexture = meshHasTexture;
+        }
+
+        if (meshHasTexture && !gpu.leafTextureBindGroup) {
+            // Create bind group for this mesh's leaf texture
+            WGPUTextureView textureView = mesh->getLeafTextureView();
+            WGPUSampler sampler = mesh->getLeafSampler();
+            if (!sampler) sampler = m_proceduralDefaultSampler;
+
+            if (textureView && sampler) {
+                WGPUBindGroupEntry entries[2] = {};
+                entries[0].binding = 0;
+                entries[0].textureView = textureView;
+                entries[1].binding = 1;
+                entries[1].sampler = sampler;
+
+                WGPUBindGroupDescriptor bindDesc = {};
+                bindDesc.layout = m_proceduralLeafTextureBindGroupLayout;
+                bindDesc.entryCount = 2;
+                bindDesc.entries = entries;
+                gpu.leafTextureBindGroup = wgpuDeviceCreateBindGroup(ctx.device(), &bindDesc);
+            }
+        }
+    }
+}
+
+void Render3D::renderProceduralMeshes(WGPURenderPassEncoder pass, Context& ctx) {
+    if (m_proceduralMeshes.empty()) return;
+    if (!m_proceduralWindPipeline) return;
+
+    // Get camera for viewProj
+    if (!m_cameraOp) return;
+    Camera3D activeCamera = m_cameraOp->outputCamera();
+    activeCamera.aspect(static_cast<float>(m_width) / m_height);
+    glm::mat4 viewProj = activeCamera.viewProjectionMatrix();
+    glm::vec3 cameraPos = activeCamera.getPosition();
+
+    // Collect lights
+    GPULight gpuLights[MAX_LIGHTS] = {};
+    uint32_t lightCount = 0;
+    for (size_t i = 0; i < m_lightOps.size() && lightCount < MAX_LIGHTS; i++) {
+        if (m_lightOps[i]) {
+            gpuLights[lightCount++] = lightDataToGPU(m_lightOps[i]->outputLight());
+        }
+    }
+    if (lightCount == 0) {
+        LightData defaultLight;
+        defaultLight.type = LightType::Directional;
+        defaultLight.direction = m_lightDirection;
+        defaultLight.color = m_lightColor;
+        defaultLight.intensity = 1.0f;
+        gpuLights[lightCount++] = lightDataToGPU(defaultLight);
+    }
+
+    float time = static_cast<float>(ctx.time());
+
+    // Set pipeline and shadow bind group once
+    wgpuRenderPassEncoderSetPipeline(pass, m_proceduralWindPipeline);
+    wgpuRenderPassEncoderSetBindGroup(pass, 1, m_shadowManager->getShadowSampleBindGroup(), 0, nullptr);
+
+    // Render each procedural mesh
+    for (size_t i = 0; i < m_proceduralMeshes.size(); i++) {
+        ProceduralMesh* mesh = m_proceduralMeshes[i];
+        if (!mesh) continue;
+
+        const ProceduralMeshGPU& gpu = m_proceduralMeshGPU[i];
+        if (!gpu.vertexBuffer || !gpu.indexBuffer || !gpu.instanceBuffer) continue;
+
+        const Mesh& meshData = mesh->getMesh();
+        const auto& instances = mesh->getInstances();
+        if (meshData.indices.empty() || instances.empty()) continue;
+
+        // Get wind params and colors from mesh
+        WindParams wind = mesh->getWindParams();
+        glm::vec3 baseColor = mesh->getBaseColor();
+        glm::vec3 tipColor = mesh->getTipColor();
+
+        // Build uniform struct matching shader layout
+        // Must match the Uniforms struct in PROCEDURAL_WIND_SHADER_SOURCE
+        struct ProceduralUniforms {
+            float viewProj[16];         // 0-63
+            float cameraPos[3];         // 64-75
+            float time;                 // 76-79
+            float baseColor[3];         // 80-91
+            float windStrength;         // 92-95
+            float tipColor[3];          // 96-107
+            float windSpeed;            // 108-111
+            float windDir[2];           // 112-119
+            float stemCurve;            // 120-123
+            float stemLength;           // 124-127
+            float ambient;              // 128-131
+            uint32_t lightCount;        // 132-135
+            uint32_t receiveShadow;     // 136-139
+            uint32_t hasLeafTexture;    // 140-143 - 1 if leaf texture bound, 0 otherwise
+            // Billboard support
+            float cameraRight[3];       // 144-155
+            float leafFlutter;          // 156-159
+            float cameraUp[3];          // 160-171
+            float _pad1;                // 172-175
+            float leafColor[3];         // 176-187
+            float _pad2;                // 188-191
+            GPULight lights[4];         // 192-447 (64 bytes each)
+        } uniforms;
+
+        // Calculate camera right and up vectors for billboards
+        glm::vec3 cameraRight = glm::normalize(glm::cross(glm::vec3(0, 1, 0), glm::normalize(cameraPos)));
+        if (glm::length(cameraRight) < 0.001f) {
+            cameraRight = glm::vec3(1, 0, 0);
+        }
+        glm::vec3 cameraUp = glm::normalize(glm::cross(glm::normalize(cameraPos), cameraRight));
+
+        // Get leaf color and flutter from TreeMesh if available (check via dynamic cast would be heavy,
+        // so we use default green leaf color and allow meshes to override via getLeafColor if they add it)
+        glm::vec3 leafColor(0.15f, 0.4f, 0.1f);  // Default leaf green
+        float leafFlutter = 0.3f;  // Default flutter
+
+        memcpy(uniforms.viewProj, glm::value_ptr(viewProj), 64);
+        uniforms.cameraPos[0] = cameraPos.x;
+        uniforms.cameraPos[1] = cameraPos.y;
+        uniforms.cameraPos[2] = cameraPos.z;
+        uniforms.time = time;
+        uniforms.baseColor[0] = baseColor.r;
+        uniforms.baseColor[1] = baseColor.g;
+        uniforms.baseColor[2] = baseColor.b;
+        uniforms.windStrength = wind.strength;
+        uniforms.tipColor[0] = tipColor.r;
+        uniforms.tipColor[1] = tipColor.g;
+        uniforms.tipColor[2] = tipColor.b;
+        uniforms.windSpeed = wind.speed;
+        uniforms.windDir[0] = wind.direction.x;
+        uniforms.windDir[1] = wind.direction.y;
+        uniforms.stemCurve = wind.stemCurve;
+        uniforms.stemLength = wind.stemLength;
+        uniforms.ambient = m_ambient;
+        uniforms.lightCount = lightCount;
+        uniforms.receiveShadow = mesh->receiveShadow ? 1 : 0;
+        uniforms.hasLeafTexture = mesh->hasLeafTexture() ? 1 : 0;
+        // Billboard support
+        uniforms.cameraRight[0] = cameraRight.x;
+        uniforms.cameraRight[1] = cameraRight.y;
+        uniforms.cameraRight[2] = cameraRight.z;
+        uniforms.leafFlutter = leafFlutter;
+        uniforms.cameraUp[0] = cameraUp.x;
+        uniforms.cameraUp[1] = cameraUp.y;
+        uniforms.cameraUp[2] = cameraUp.z;
+        uniforms._pad1 = 0;
+        uniforms.leafColor[0] = leafColor.r;
+        uniforms.leafColor[1] = leafColor.g;
+        uniforms.leafColor[2] = leafColor.b;
+        uniforms._pad2 = 0;
+        memcpy(uniforms.lights, gpuLights, sizeof(gpuLights));
+
+        // Upload uniforms (per-mesh, not batched for now)
+        wgpuQueueWriteBuffer(ctx.queue(), m_proceduralUniformBuffer, 0, &uniforms, sizeof(uniforms));
+
+        // Set bind group and draw
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_proceduralBindGroup, 0, nullptr);
+
+        // Set leaf texture bind group (group 2) - per-mesh or default
+        WGPUBindGroup leafBindGroup = gpu.hasLeafTexture && gpu.leafTextureBindGroup
+                                      ? gpu.leafTextureBindGroup
+                                      : m_proceduralDefaultLeafBindGroup;
+        wgpuRenderPassEncoderSetBindGroup(pass, 2, leafBindGroup, 0, nullptr);
+
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, gpu.vertexBuffer, 0,
+                                              meshData.vertices.size() * sizeof(Vertex3D));
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 1, gpu.instanceBuffer, 0,
+                                              instances.size() * sizeof(ProceduralInstance));
+        wgpuRenderPassEncoderSetIndexBuffer(pass, gpu.indexBuffer, WGPUIndexFormat_Uint32, 0,
+                                             meshData.indices.size() * sizeof(uint32_t));
+        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(meshData.indices.size()),
+                                          static_cast<uint32_t>(instances.size()), 0, 0, 0);
+    }
+}
+
+void Render3D::renderProceduralMeshesToShadow(WGPURenderPassEncoder pass, const glm::mat4& lightViewProj, Context& ctx) {
+    if (m_proceduralMeshes.empty()) return;
+    if (!m_proceduralShadowPipeline) return;
+
+    float time = static_cast<float>(ctx.time());
+
+    // Set pipeline once
+    wgpuRenderPassEncoderSetPipeline(pass, m_proceduralShadowPipeline);
+
+    // Render each procedural mesh that casts shadows
+    for (size_t i = 0; i < m_proceduralMeshes.size(); i++) {
+        ProceduralMesh* mesh = m_proceduralMeshes[i];
+        if (!mesh || !mesh->castShadow) continue;
+
+        const ProceduralMeshGPU& gpu = m_proceduralMeshGPU[i];
+        if (!gpu.vertexBuffer || !gpu.indexBuffer || !gpu.instanceBuffer) continue;
+
+        const Mesh& meshData = mesh->getMesh();
+        const auto& instances = mesh->getInstances();
+        if (meshData.indices.empty() || instances.empty()) continue;
+
+        // Get wind params for shadow animation
+        WindParams wind = mesh->getWindParams();
+
+        // Build shadow uniform struct matching shader layout
+        struct ProceduralShadowUniforms {
+            float lightViewProj[16];    // 0-63
+            float time;                 // 64-67
+            float windStrength;         // 68-71
+            float windSpeed;            // 72-75
+            float stemCurve;            // 76-79
+            float windDir[2];           // 80-87
+            float leafFlutter;          // 88-91
+            float _pad0;                // 92-95
+            // Billboard support - camera vectors
+            float cameraRight[3];       // 96-107
+            float _pad1;                // 108-111
+            float cameraUp[3];          // 112-123
+            float _pad2;                // 124-127
+        } uniforms;
+
+        // Calculate camera right and up vectors for billboard shadows
+        // Use light direction for shadow pass (approximate, but better than nothing)
+        glm::vec3 lightForward = glm::normalize(glm::vec3(lightViewProj[2][0], lightViewProj[2][1], lightViewProj[2][2]));
+        glm::vec3 cameraRight = glm::normalize(glm::cross(glm::vec3(0, 1, 0), lightForward));
+        if (glm::length(cameraRight) < 0.001f) {
+            cameraRight = glm::vec3(1, 0, 0);
+        }
+        glm::vec3 cameraUp = glm::normalize(glm::cross(lightForward, cameraRight));
+
+        memcpy(uniforms.lightViewProj, glm::value_ptr(lightViewProj), 64);
+        uniforms.time = time;
+        uniforms.windStrength = wind.strength;
+        uniforms.windSpeed = wind.speed;
+        uniforms.stemCurve = wind.stemCurve;
+        uniforms.windDir[0] = wind.direction.x;
+        uniforms.windDir[1] = wind.direction.y;
+        uniforms.leafFlutter = 0.3f;  // Default flutter
+        uniforms._pad0 = 0;
+        uniforms.cameraRight[0] = cameraRight.x;
+        uniforms.cameraRight[1] = cameraRight.y;
+        uniforms.cameraRight[2] = cameraRight.z;
+        uniforms._pad1 = 0;
+        uniforms.cameraUp[0] = cameraUp.x;
+        uniforms.cameraUp[1] = cameraUp.y;
+        uniforms.cameraUp[2] = cameraUp.z;
+        uniforms._pad2 = 0;
+
+        // Upload uniforms
+        wgpuQueueWriteBuffer(ctx.queue(), m_proceduralShadowUniformBuffer, 0, &uniforms, sizeof(uniforms));
+
+        // Set bind group and draw
+        wgpuRenderPassEncoderSetBindGroup(pass, 0, m_proceduralShadowBindGroup, 0, nullptr);
+
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 0, gpu.vertexBuffer, 0,
+                                              meshData.vertices.size() * sizeof(Vertex3D));
+        wgpuRenderPassEncoderSetVertexBuffer(pass, 1, gpu.instanceBuffer, 0,
+                                              instances.size() * sizeof(ProceduralInstance));
+        wgpuRenderPassEncoderSetIndexBuffer(pass, gpu.indexBuffer, WGPUIndexFormat_Uint32, 0,
+                                             meshData.indices.size() * sizeof(uint32_t));
+        wgpuRenderPassEncoderDrawIndexed(pass, static_cast<uint32_t>(meshData.indices.size()),
+                                          static_cast<uint32_t>(instances.size()), 0, 0, 0);
+    }
 }
 
 void Render3D::renderDebugVisualization(Context& ctx, WGPURenderPassEncoder pass) {
@@ -2880,6 +4069,15 @@ void Render3D::process(Context& ctx) {
 
     createDepthBuffer(ctx);  // Recreate depth buffer if size changed
 
+    // Keep dirty if any procedural mesh has wind animation
+    // Wind animation changes every frame (time-based), so we must re-render
+    for (auto* mesh : m_proceduralMeshes) {
+        if (mesh && mesh->getWindParams().strength > 0.0f) {
+            markDirty();
+            break;
+        }
+    }
+
     if (!needsCook()) return;
 
     WGPUDevice device = ctx.device();
@@ -3051,6 +4249,14 @@ void Render3D::process(Context& ctx) {
     WGPUCommandEncoderDescriptor encoderDesc = {};
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(device, &encoderDesc);
 
+    // Update procedural mesh pipeline and buffers (if any procedural meshes are added)
+    if (!m_proceduralMeshes.empty()) {
+        if (!m_proceduralWindPipeline) {
+            createProceduralPipeline(ctx);
+        }
+        updateProceduralMeshBuffers(ctx);
+    }
+
     // Shadow pass (before main render pass)
     bool shadowPassRendered = false;
     bool pointShadowPassRendered = false;
@@ -3098,6 +4304,23 @@ void Render3D::process(Context& ctx) {
                 shadowPassRendered = m_shadowManager->renderShadowPass(ctx, encoder, *sceneForShadow, *dirSpotLight);
                 // Clear the manual update flag after rendering
                 const_cast<LightData*>(dirSpotLight)->shadowNeedsUpdate = false;
+
+                // Render procedural meshes to shadow map (in separate pass that loads existing depth)
+                if (shadowPassRendered && !m_proceduralMeshes.empty() && m_proceduralShadowPipeline) {
+                    WGPURenderPassDepthStencilAttachment procShadowDepthAttachment = {};
+                    procShadowDepthAttachment.view = m_shadowManager->getShadowMapView();
+                    procShadowDepthAttachment.depthLoadOp = WGPULoadOp_Load;  // Load existing depth
+                    procShadowDepthAttachment.depthStoreOp = WGPUStoreOp_Store;
+
+                    WGPURenderPassDescriptor procShadowPassDesc = {};
+                    procShadowPassDesc.colorAttachmentCount = 0;
+                    procShadowPassDesc.depthStencilAttachment = &procShadowDepthAttachment;
+
+                    WGPURenderPassEncoder procShadowPass = wgpuCommandEncoderBeginRenderPass(encoder, &procShadowPassDesc);
+                    renderProceduralMeshesToShadow(procShadowPass, m_shadowManager->getLightViewProj(), ctx);
+                    wgpuRenderPassEncoderEnd(procShadowPass);
+                    wgpuRenderPassEncoderRelease(procShadowPass);
+                }
             } else {
                 // Shadow map already rendered previously, still enabled for sampling
                 shadowPassRendered = true;
@@ -3453,6 +4676,9 @@ void Render3D::process(Context& ctx) {
         wgpuBindGroupRelease(bg);
     }
 
+    // Render procedural meshes (grass, foliage) with wind animation
+    renderProceduralMeshes(pass, ctx);
+
     // Render debug visualization wireframes for lights and camera
     renderDebugVisualization(ctx, pass);
 
@@ -3504,6 +4730,70 @@ void Render3D::process(Context& ctx) {
 void Render3D::cleanup() {
     // Clean up shadow resources
     m_shadowManager->destroyShadowResources();
+
+    // Clean up procedural mesh resources
+    if (m_proceduralWindPipeline) {
+        wgpuRenderPipelineRelease(m_proceduralWindPipeline);
+        m_proceduralWindPipeline = nullptr;
+    }
+    if (m_proceduralShadowPipeline) {
+        wgpuRenderPipelineRelease(m_proceduralShadowPipeline);
+        m_proceduralShadowPipeline = nullptr;
+    }
+    if (m_proceduralBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_proceduralBindGroupLayout);
+        m_proceduralBindGroupLayout = nullptr;
+    }
+    if (m_proceduralShadowBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_proceduralShadowBindGroupLayout);
+        m_proceduralShadowBindGroupLayout = nullptr;
+    }
+    if (m_proceduralUniformBuffer) {
+        wgpuBufferRelease(m_proceduralUniformBuffer);
+        m_proceduralUniformBuffer = nullptr;
+    }
+    if (m_proceduralShadowUniformBuffer) {
+        wgpuBufferRelease(m_proceduralShadowUniformBuffer);
+        m_proceduralShadowUniformBuffer = nullptr;
+    }
+    if (m_proceduralBindGroup) {
+        wgpuBindGroupRelease(m_proceduralBindGroup);
+        m_proceduralBindGroup = nullptr;
+    }
+    if (m_proceduralShadowBindGroup) {
+        wgpuBindGroupRelease(m_proceduralShadowBindGroup);
+        m_proceduralShadowBindGroup = nullptr;
+    }
+    // Clean up procedural leaf texture resources
+    if (m_proceduralLeafTextureBindGroupLayout) {
+        wgpuBindGroupLayoutRelease(m_proceduralLeafTextureBindGroupLayout);
+        m_proceduralLeafTextureBindGroupLayout = nullptr;
+    }
+    if (m_proceduralDefaultLeafBindGroup) {
+        wgpuBindGroupRelease(m_proceduralDefaultLeafBindGroup);
+        m_proceduralDefaultLeafBindGroup = nullptr;
+    }
+    if (m_proceduralDummyTextureView) {
+        wgpuTextureViewRelease(m_proceduralDummyTextureView);
+        m_proceduralDummyTextureView = nullptr;
+    }
+    if (m_proceduralDummyTexture) {
+        wgpuTextureRelease(m_proceduralDummyTexture);
+        m_proceduralDummyTexture = nullptr;
+    }
+    if (m_proceduralDefaultSampler) {
+        wgpuSamplerRelease(m_proceduralDefaultSampler);
+        m_proceduralDefaultSampler = nullptr;
+    }
+    // Clean up procedural mesh GPU buffers
+    for (auto& gpu : m_proceduralMeshGPU) {
+        if (gpu.vertexBuffer) wgpuBufferRelease(gpu.vertexBuffer);
+        if (gpu.indexBuffer) wgpuBufferRelease(gpu.indexBuffer);
+        if (gpu.instanceBuffer) wgpuBufferRelease(gpu.instanceBuffer);
+        if (gpu.leafTextureBindGroup) wgpuBindGroupRelease(gpu.leafTextureBindGroup);
+    }
+    m_proceduralMeshGPU.clear();
+    m_proceduralMeshes.clear();
 
     if (m_pipeline) {
         wgpuRenderPipelineRelease(m_pipeline);

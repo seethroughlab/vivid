@@ -21,6 +21,7 @@ class CameraOperator;
 class LightOperator;
 class TexturedMaterial;
 class IBLEnvironment;
+class ProceduralMesh;
 struct LightData;
 }
 
@@ -245,6 +246,41 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Shadow Access (for post-processing)
+    /// @{
+
+    /// Get directional/spot shadow map view (nullptr if shadows disabled)
+    [[nodiscard]] WGPUTextureView getShadowMapView() const;
+
+    /// Get point light shadow atlas view (nullptr if no point shadows)
+    [[nodiscard]] WGPUTextureView getPointShadowAtlasView() const;
+
+    /// Get shadow comparison sampler
+    [[nodiscard]] WGPUSampler getShadowSampler() const;
+
+    /// Get light view-projection matrix for shadow sampling
+    [[nodiscard]] const glm::mat4& getLightViewProjection() const;
+
+    /// Get point light position (for omnidirectional shadow lookup)
+    [[nodiscard]] glm::vec3 getPointLightPosition() const;
+
+    /// Get point light range
+    [[nodiscard]] float getPointLightRange() const;
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Procedural Meshes
+    /// @{
+
+    /// Add a procedural mesh for unified rendering with shadows
+    /// The mesh will be rendered with wind animation and participate in shadow maps
+    void addProceduralMesh(ProceduralMesh* mesh);
+
+    /// Clear all procedural mesh inputs
+    void clearProceduralMeshes();
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Debug
     /// @{
 
@@ -452,6 +488,43 @@ private:
     size_t m_uniformAlignment = 256;  // WebGPU minimum uniform buffer alignment
     size_t m_pbrUniformAlignment = 256;
     static constexpr size_t MAX_OBJECTS = 256;
+
+    // Procedural mesh support
+    std::vector<ProceduralMesh*> m_proceduralMeshes;
+
+    // Per-procedural-mesh GPU resources
+    struct ProceduralMeshGPU {
+        WGPUBuffer vertexBuffer = nullptr;
+        WGPUBuffer indexBuffer = nullptr;
+        WGPUBuffer instanceBuffer = nullptr;
+        size_t vertexCapacity = 0;
+        size_t indexCapacity = 0;
+        size_t instanceCapacity = 0;
+        // Per-mesh leaf texture bind group (group 2)
+        WGPUBindGroup leafTextureBindGroup = nullptr;
+        bool hasLeafTexture = false;
+    };
+    std::vector<ProceduralMeshGPU> m_proceduralMeshGPU;
+
+    // Procedural mesh rendering
+    WGPURenderPipeline m_proceduralWindPipeline = nullptr;
+    WGPURenderPipeline m_proceduralShadowPipeline = nullptr;
+    WGPUBindGroupLayout m_proceduralBindGroupLayout = nullptr;
+    WGPUBindGroupLayout m_proceduralShadowBindGroupLayout = nullptr;
+    WGPUBindGroupLayout m_proceduralLeafTextureBindGroupLayout = nullptr;  // For leaf textures (group 2)
+    WGPUBuffer m_proceduralUniformBuffer = nullptr;
+    WGPUBuffer m_proceduralShadowUniformBuffer = nullptr;
+    WGPUBindGroup m_proceduralBindGroup = nullptr;
+    WGPUBindGroup m_proceduralShadowBindGroup = nullptr;
+    WGPUBindGroup m_proceduralDefaultLeafBindGroup = nullptr;  // Default (no texture) bind group
+    WGPUTexture m_proceduralDummyTexture = nullptr;            // 1x1 white texture for when no leaf texture
+    WGPUTextureView m_proceduralDummyTextureView = nullptr;
+    WGPUSampler m_proceduralDefaultSampler = nullptr;
+
+    void createProceduralPipeline(Context& ctx);
+    void updateProceduralMeshBuffers(Context& ctx);
+    void renderProceduralMeshes(WGPURenderPassEncoder pass, Context& ctx);
+    void renderProceduralMeshesToShadow(WGPURenderPassEncoder pass, const glm::mat4& lightViewProj, Context& ctx);
 };
 
 } // namespace vivid::render3d

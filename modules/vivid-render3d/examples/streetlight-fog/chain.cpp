@@ -22,6 +22,14 @@ static float g_anisotropy = 0.2f;
 static int g_raySteps = 48;
 static float g_fogColor[3] = {0.01f, 0.015f, 0.025f};
 
+// Shadow controls (Phase 2)
+static bool g_useShadows = true;
+static float g_shadowBias = 0.002f;
+static float g_shadowStrength = 1.0f;
+
+// Performance controls (Phase 3)
+static int g_resolutionScale = 1;
+
 // Light controls
 static float g_lightIntensity = 3.0f;
 static float g_spotAngle = 45.0f;
@@ -73,6 +81,64 @@ void setup(Context& ctx) {
         glm::vec4(0.2f, 0.18f, 0.15f, 1.0f));
 
     // =========================================================================
+    // OBJECTS ON GROUND - To demonstrate shadow occlusion in volumetrics
+    // =========================================================================
+
+    // Trash can - cylindrical
+    auto& trashCan = scene.add<Cylinder>("trashCan",
+        glm::translate(glm::mat4(1.0f), glm::vec3(1.5f, 0.4f, 0.5f)),
+        glm::vec4(0.12f, 0.12f, 0.12f, 1.0f));
+    trashCan.radius(0.25f);
+    trashCan.height(0.8f);
+    trashCan.segments(16);
+
+    // Crate 1 - wooden box
+    auto& crate1 = scene.add<Box>("crate1",
+        glm::translate(glm::mat4(1.0f), glm::vec3(-0.5f, 0.25f, 1.2f)) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(15.0f), glm::vec3(0, 1, 0)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.5f, 0.5f, 0.5f)),
+        glm::vec4(0.25f, 0.18f, 0.1f, 1.0f));  // Brown wood
+
+    // Crate 2 - stacked slightly
+    auto& crate2 = scene.add<Box>("crate2",
+        glm::translate(glm::mat4(1.0f), glm::vec3(-0.3f, 0.65f, 1.0f)) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(-20.0f), glm::vec3(0, 1, 0)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.35f, 0.3f, 0.35f)),
+        glm::vec4(0.22f, 0.15f, 0.08f, 1.0f));
+
+    // Barrel - lying on its side
+    auto& barrel = scene.add<Cylinder>("barrel",
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.3f, 0.2f, -1.0f)) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(90.0f), glm::vec3(0, 0, 1)) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(30.0f), glm::vec3(0, 1, 0)),
+        glm::vec4(0.15f, 0.08f, 0.05f, 1.0f));  // Rusty
+    barrel.radius(0.2f);
+    barrel.height(0.5f);
+    barrel.segments(12);
+
+    // Concrete barrier
+    auto& barrier = scene.add<Box>("barrier",
+        glm::translate(glm::mat4(1.0f), glm::vec3(2.0f, 0.3f, -0.5f)) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(45.0f), glm::vec3(0, 1, 0)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(1.2f, 0.6f, 0.3f)),
+        glm::vec4(0.3f, 0.3f, 0.28f, 1.0f));  // Concrete gray
+
+    // Tall sign post - to cast visible shadow through light cone
+    auto& signPost = scene.add<Cylinder>("signPost",
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 1.0f, 0.8f)),
+        glm::vec4(0.2f, 0.2f, 0.2f, 1.0f));
+    signPost.radius(0.04f);
+    signPost.height(2.0f);
+    signPost.segments(8);
+
+    // Sign board on top of post
+    auto& signBoard = scene.add<Box>("signBoard",
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.5f, 2.2f, 0.8f)) *
+        glm::rotate(glm::mat4(1.0f), glm::radians(30.0f), glm::vec3(0, 1, 0)) *
+        glm::scale(glm::mat4(1.0f), glm::vec3(0.4f, 0.3f, 0.02f)),
+        glm::vec4(0.15f, 0.15f, 0.4f, 1.0f));  // Dark blue sign
+
+    // =========================================================================
     // CAMERA - Low angle looking up at the streetlight
     // =========================================================================
 
@@ -96,6 +162,7 @@ void setup(Context& ctx) {
     streetlight.range = 15.0f;
     streetlight.spotAngle = g_spotAngle;
     streetlight.spotBlend = g_spotBlend;
+    streetlight.castShadow(true);  // Enable shadows for volumetric occlusion
 
     // Very dim ambient (moon/sky)
     auto& ambient = chain.add<DirectionalLight>("ambient");
@@ -117,6 +184,7 @@ void setup(Context& ctx) {
     render.setClearColor(0.02f, 0.02f, 0.03f);  // Near-black night sky
     render.setResolution(1920, 1080);
     render.setDepthOutput(true);  // Required for volumetric lighting!
+    render.setShadows(true);      // Enable shadow mapping for volumetric occlusion
 
     // =========================================================================
     // VOLUMETRIC LIGHTING - God rays through the fog
@@ -136,6 +204,11 @@ void setup(Context& ctx) {
     volumetric.fogColor[0] = g_fogColor[0];
     volumetric.fogColor[1] = g_fogColor[1];
     volumetric.fogColor[2] = g_fogColor[2];
+
+    // Shadow-occluded volumetrics (Phase 2)
+    volumetric.useShadows = g_useShadows;
+    volumetric.shadowBias = g_shadowBias;
+    volumetric.shadowStrength = g_shadowStrength;
 
     chain.output("volumetric");
 
@@ -169,6 +242,15 @@ void update(Context& ctx) {
         ImGui::SliderFloat("Anisotropy", &g_anisotropy, -1.0f, 1.0f);
         ImGui::SliderInt("Ray Steps", &g_raySteps, 8, 128);
         ImGui::ColorEdit3("Fog Color", g_fogColor);
+
+        ImGui::SeparatorText("Shadow Occlusion");
+        ImGui::Checkbox("Use Shadows", &g_useShadows);
+        ImGui::SliderFloat("Shadow Bias", &g_shadowBias, 0.0f, 0.02f, "%.4f");
+        ImGui::SliderFloat("Shadow Strength", &g_shadowStrength, 0.0f, 1.0f);
+
+        ImGui::SeparatorText("Performance");
+        ImGui::SliderInt("Resolution Scale", &g_resolutionScale, 1, 4);
+        ImGui::Text("1=Full, 2=Half, 4=Quarter");
 
         ImGui::SeparatorText("Spotlight");
         ImGui::SliderFloat("Light Intensity", &g_lightIntensity, 0.0f, 10.0f);
@@ -220,6 +302,14 @@ void update(Context& ctx) {
     volumetric.fogColor[0] = g_fogColor[0];
     volumetric.fogColor[1] = g_fogColor[1];
     volumetric.fogColor[2] = g_fogColor[2];
+
+    // Apply shadow settings (Phase 2)
+    volumetric.useShadows = g_useShadows;
+    volumetric.shadowBias = g_shadowBias;
+    volumetric.shadowStrength = g_shadowStrength;
+
+    // Apply performance settings (Phase 3)
+    volumetric.resolutionScale = g_resolutionScale;
 }
 
 VIVID_CHAIN_CONFIG(setup, update, (vivid::ChainConfig{
