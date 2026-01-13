@@ -66,10 +66,12 @@ fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
 
 // Henyey-Greenstein phase function for anisotropic scattering
 // g: anisotropy (-1 = back scatter, 0 = isotropic, 1 = forward scatter)
+// Henyey-Greenstein phase function (artistic version - no 4π normalization)
 fn phaseHG(cosTheta: f32, g: f32) -> f32 {
     let g2 = g * g;
     let denom = 1.0 + g2 - 2.0 * g * cosTheta;
-    return (1.0 - g2) / (4.0 * 3.14159265 * pow(denom, 1.5));
+    // Removed 4π normalization for more visible artistic effect
+    return (1.0 - g2) / pow(denom, 1.5);
 }
 
 // Reconstruct world position from depth and UV
@@ -143,6 +145,57 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         return color;
     }
 
+    // Debug mode 6: Show light color/intensity (verify light data)
+    if (uniforms.debugMode == 6) {
+        return vec4f(uniforms.lightColor * uniforms.lightIntensity * 0.5, 1.0);
+    }
+
+    // Debug mode 7: Show light type as color (R=0 dir, G=1 point, B=2 spot)
+    if (uniforms.debugMode == 7) {
+        var typeColor = vec3f(0.0);
+        if (uniforms.lightType == 0) { typeColor = vec3f(1.0, 0.0, 0.0); }
+        if (uniforms.lightType == 1) { typeColor = vec3f(0.0, 1.0, 0.0); }
+        if (uniforms.lightType == 2) { typeColor = vec3f(0.0, 0.0, 1.0); }
+        return vec4f(typeColor, 1.0);
+    }
+
+    // Debug mode 8: Show light attenuation at midpoint of ray
+    if (uniforms.debugMode == 8) {
+        let worldPos = worldPosFromDepth(input.uv, normalizedDepth);
+        let toSurface = worldPos - uniforms.cameraPos;
+        let midpoint = uniforms.cameraPos + toSurface * 0.5;
+        let toLight = uniforms.lightPos - midpoint;
+        let dist = length(toLight);
+        let atten = lightAttenuation(dist);
+        return vec4f(vec3f(atten), 1.0);
+    }
+
+    // Debug mode 9: Show light range / distance ratio
+    if (uniforms.debugMode == 9) {
+        let worldPos = worldPosFromDepth(input.uv, normalizedDepth);
+        let toSurface = worldPos - uniforms.cameraPos;
+        let midpoint = uniforms.cameraPos + toSurface * 0.5;
+        let dist = length(uniforms.lightPos - midpoint);
+        let ratio = dist / uniforms.lightRange;
+        return vec4f(vec3f(ratio), 1.0);
+    }
+
+    // Debug mode 10: Show raySteps as grayscale (scaled to 0-1, assuming max 128)
+    if (uniforms.debugMode == 10) {
+        let stepsViz = f32(uniforms.raySteps) / 128.0;
+        return vec4f(vec3f(stepsViz), 1.0);
+    }
+
+    // Debug mode 11: Show single sample light contribution at midpoint (scaled up for visibility)
+    if (uniforms.debugMode == 11) {
+        let worldPos = worldPosFromDepth(input.uv, normalizedDepth);
+        let toSurface = worldPos - uniforms.cameraPos;
+        let midpoint = uniforms.cameraPos + toSurface * 0.5;
+        let viewDir = -normalize(toSurface);
+        let contrib = getLightContribution(midpoint, viewDir);
+        return vec4f(contrib * 10.0, 1.0);  // Scale up 10x for visibility
+    }
+
     // Debug mode 1: Show normalized depth (inverted so close=white, far=black)
     if (uniforms.debugMode == 1) {
         let invDepth = 1.0 - normalizedDepth;
@@ -168,15 +221,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
         return vec4f(vec3f(distViz), 1.0);
     }
 
-    // Skip sky pixels (depth at far plane)
-    if (normalizedDepth > 0.999) {
-        return color;
-    }
-
     // Ray marching setup
+    // For sky pixels, still ray march up to maxDistance to show light in empty air
+    let isSky = normalizedDepth > 0.999;
     let rayOrigin = uniforms.cameraPos;
     let rayDir = normalize(toSurface);
-    let rayLength = min(surfaceDist, uniforms.maxDistance);
+    let rayLength = select(min(surfaceDist, uniforms.maxDistance), uniforms.maxDistance, isSky);
     let steps = uniforms.raySteps;
     let stepSize = rayLength / f32(steps);
 
@@ -203,6 +253,20 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     // Debug mode 4: Show accumulated light contribution
     if (uniforms.debugMode == 4) {
         return vec4f(scatteredLight * uniforms.intensity, 1.0);
+    }
+
+    // Debug mode 12: Show loop iteration check (green if loop ran, red if not)
+    if (uniforms.debugMode == 12) {
+        var loopRan = 0.0;
+        for (var j = 0; j < uniforms.raySteps; j = j + 1) {
+            loopRan = 1.0;
+            break;
+        }
+        if (loopRan > 0.5) {
+            return vec4f(0.0, 1.0, 0.0, 1.0);  // Green = loop ran
+        } else {
+            return vec4f(1.0, 0.0, 0.0, 1.0);  // Red = loop didn't run
+        }
     }
 
     // Apply intensity and add fog color tint
@@ -241,7 +305,7 @@ struct VolumetricUniforms {
     int lightType;          // 84
 
     // padding to align lightPos: vec3f to 16-byte boundary (96)
-    float _pad1[3];         // 88, 92 (fills 88-95)
+    float _pad1[2];         // 88, 92 (fills 88-95, 2 floats = 8 bytes)
 
     // lightPos: vec3f (align 16) - offset 96
     float lightPosX;        // 96

@@ -6,7 +6,7 @@ This document provides a detailed phased implementation plan for adding volumetr
 
 ## Implementation Progress
 
-### Phase 1 Status: IN PROGRESS
+### Phase 1 Status: COMPLETE
 
 **Completed:**
 - [x] Created `volumetric_lighting.h` header file
@@ -15,39 +15,40 @@ This document provides a detailed phased implementation plan for adding volumetr
 - [x] Registered operator in registry
 - [x] Added `#include` to `render3d.h` umbrella header
 - [x] Created `streetlight-fog` example chain demonstrating the effect
-- [x] Implemented Henyey-Greenstein phase function
+- [x] Implemented Henyey-Greenstein phase function (artistic version without 4π normalization)
 - [x] Implemented world-space reconstruction from depth
-- [x] Added debug modes for visualization (0=off, 1=depth, 2=worldPos, 3=distance, 4=lightContrib, 5=passthrough)
+- [x] Added debug modes for visualization (0=off, 1=depth, 2=worldPos, 3=distance, 4=lightContrib, 5=passthrough, 6+=extended)
 - [x] Added `cameraInput()` method for world-space reconstruction
+- [x] Ray marching through empty air (sky pixels) for visible light shafts
 
-**Current Issue (Jan 2026):**
-The depth texture sampling is returning 0.0 for all pixels, causing:
-- Debug mode 1 (depth) shows white when inverted (1.0 - 0.0 = 1.0)
-- Normal mode produces all-white output due to accumulated scattered light
+**Bug Fix (Jan 2026):**
+The original implementation had a uniform buffer alignment bug that caused all texture sampling to fail:
 
-**Investigation Notes:**
-1. The depth output from Render3D uses `R16Float` format
-2. The depth copy pass linearizes depth to [0,1] where 0=near, 1=far
-3. The Fog operator uses the exact same pattern and works correctly
-4. The bind group layout uses `WGPUTextureSampleType_Float` (correct for R16Float)
-5. Pipeline setup is identical to Fog operator
-6. The color texture also appears to not be sampling correctly (debug mode 5 shows white)
+**Root Cause:** In `VolumetricUniforms` struct, `_pad1[3]` was incorrect:
+```cpp
+// WRONG: 3 floats = 12 bytes (offsets 88, 92, 96)
+float _pad1[3];  // Pushed lightPos to offset 100 instead of 96
 
-**Possible Causes to Investigate:**
-1. Bind group texture view not being bound correctly
-2. Input resolution mismatch between Render3D and VolumetricLighting
-3. Texture views becoming stale after resolution changes
-4. Sampler configuration issue
+// CORRECT: 2 floats = 8 bytes (offsets 88, 92)
+float _pad1[2];  // lightPos correctly at offset 96
+```
 
-**Files Created:**
+This misalignment caused all subsequent uniform fields (lightPos, lightColor, etc.) to be read from wrong offsets, resulting in garbage values.
+
+**Additional Changes:**
+1. Removed 4π normalization from phase function for more visible artistic effect
+2. Modified ray marching to process sky pixels (not early-exit) for light scattering in empty air
+3. Set default parameters for visible volumetric effect
+
+**Files:**
 - `modules/vivid-render3d/include/vivid/render3d/volumetric_lighting.h`
 - `modules/vivid-render3d/src/volumetric_lighting.cpp`
 - `modules/vivid-render3d/examples/streetlight-fog/chain.cpp`
 - `modules/vivid-render3d/examples/streetlight-fog/CLAUDE.md`
 
-### Uniform Buffer Alignment (Verified)
+### Uniform Buffer Alignment (Corrected)
 
-The C++ struct and WGSL struct alignment was carefully matched:
+The C++ struct and WGSL struct alignment must match exactly:
 ```
 WGSL vec3f = align 16, size 12
 WGSL mat4x4f = align 16, size 64
@@ -55,10 +56,11 @@ WGSL mat4x4f = align 16, size 64
 
 Key offsets in VolumetricUniforms struct:
 - `invViewProj`: offset 0-63 (mat4x4f)
-- `cameraPos`: offset 64-75 (vec3f components)
+- `cameraPos`: offset 64-75 (vec3f components as 3 floats)
 - `nearPlane`: offset 76
 - `farPlane`: offset 80
 - `lightType`: offset 84
+- `_pad1[2]`: offset 88-95 (padding to align vec3f)
 - `lightPos`: offset 96 (aligned to 16)
 - etc.
 
