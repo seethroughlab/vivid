@@ -159,6 +159,62 @@ void EditorBridge::start(int port) {
                             m_captureFrameCallback(outputPath);
                         }
                     }
+                    else if (type == "set_param_immediate") {
+                        // Direct parameter set (MCP debugging) - apply immediately, no pending queue
+                        std::string opName = j.value("operator", "");
+                        std::string paramName = j.value("param", "");
+                        float value[4] = {0, 0, 0, 0};
+
+                        // Parse value (can be scalar or array)
+                        if (j.contains("value")) {
+                            if (j["value"].is_array()) {
+                                const auto& arr = j["value"];
+                                for (size_t i = 0; i < std::min(arr.size(), size_t(4)); ++i) {
+                                    if (arr[i].is_number()) {
+                                        value[i] = arr[i].get<float>();
+                                    }
+                                }
+                            } else if (j["value"].is_number()) {
+                                value[0] = j["value"].get<float>();
+                            } else if (j["value"].is_boolean()) {
+                                value[0] = j["value"].get<bool>() ? 1.0f : 0.0f;
+                            }
+                        }
+
+                        std::cout << "[EditorBridge] Set param immediate: " << opName << "." << paramName << "\n";
+                        bool success = false;
+                        if (m_setParamImmediateCallback) {
+                            success = m_setParamImmediateCallback(opName, paramName, value);
+                        }
+                        sendSetParamResult(opName, paramName, success);
+                    }
+                    else if (type == "advance_frames") {
+                        int count = j.value("count", 1);
+                        std::cout << "[EditorBridge] Advance frames requested: " << count << "\n";
+                        requestFrameAdvance(count);
+                        sendFrameAdvanceStarted(count);
+                    }
+                    else if (type == "request_chain_structure") {
+                        std::cout << "[EditorBridge] Chain structure requested\n";
+                        if (m_requestChainStructureCallback) {
+                            auto operators = m_requestChainStructureCallback();
+                            sendChainStructure(operators);
+                        }
+                    }
+                    else if (type == "request_frame_info") {
+                        std::cout << "[EditorBridge] Frame info requested\n";
+                        if (m_requestFrameInfoCallback) {
+                            auto info = m_requestFrameInfoCallback();
+                            sendFrameInfo(info);
+                        }
+                    }
+                    else if (type == "reset_time") {
+                        std::cout << "[EditorBridge] Reset time requested\n";
+                        if (m_resetTimeCallback) {
+                            m_resetTimeCallback();
+                            sendResetTimeComplete();
+                        }
+                    }
                 } catch (const json::exception& e) {
                     std::cerr << "[EditorBridge] JSON parse error: " << e.what() << "\n";
                 }
@@ -195,6 +251,10 @@ size_t EditorBridge::clientCount() const {
 }
 
 void EditorBridge::sendCompileStatus(bool success, const std::string& message) {
+    // Cache the status for late-connecting clients
+    m_cachedCompileSuccess = success;
+    m_cachedCompileMessage = message;
+
     if (!m_running || !m_impl) return;
 
     json j;
@@ -437,6 +497,137 @@ void EditorBridge::sendCaptureResult(bool success, const std::string& outputPath
     std::string msg = j.dump();
 
     // Broadcast to all clients
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Direct parameter control (MCP debugging tools)
+// -------------------------------------------------------------------------
+
+void EditorBridge::sendSetParamResult(const std::string& opName, const std::string& paramName, bool success) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "set_param_result";
+    j["operator"] = opName;
+    j["param"] = paramName;
+    j["success"] = success;
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Frame advance control (MCP debugging tools)
+// -------------------------------------------------------------------------
+
+void EditorBridge::requestFrameAdvance(int count) {
+    m_pendingFrameAdvance.store(count);
+}
+
+int EditorBridge::consumePendingFrameAdvance() {
+    return m_pendingFrameAdvance.exchange(0);
+}
+
+void EditorBridge::sendFrameAdvanceStarted(int count) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "frame_advance_started";
+    j["count"] = count;
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+void EditorBridge::sendFrameAdvanceComplete(int newFrame) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "frame_advance_complete";
+    j["frame"] = newFrame;
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Chain structure (MCP get_chain_structure tool)
+// -------------------------------------------------------------------------
+
+void EditorBridge::sendChainStructure(const std::vector<ChainOperatorInfo>& operators) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "chain_structure";
+    j["operators"] = json::array();
+
+    for (const auto& op : operators) {
+        json opJson;
+        opJson["name"] = op.name;
+        opJson["displayName"] = op.displayName;
+        opJson["outputType"] = op.outputType;
+        opJson["inputs"] = op.inputs;
+        j["operators"].push_back(opJson);
+    }
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Frame info (MCP get_frame_info tool)
+// -------------------------------------------------------------------------
+
+void EditorBridge::sendFrameInfo(const FrameInfo& info) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "frame_info";
+    j["frame"] = info.frame;
+    j["time"] = info.time;
+    j["fps"] = info.fps;
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// Reset time (MCP reset_time tool)
+// -------------------------------------------------------------------------
+
+void EditorBridge::sendResetTimeComplete() {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "reset_time_complete";
+    j["success"] = true;
+
+    std::string msg = j.dump();
+
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     for (auto& client : m_impl->server.getClients()) {
         client->send(msg);

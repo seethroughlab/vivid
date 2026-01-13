@@ -151,6 +151,18 @@ When helping with this project:
 2. Suggest changes by showing the modified code
 3. Explain what each operator does when adding new ones
 4. Keep chains simple - fewer operators is usually better
+
+### Visual Validation Workflow
+
+Use MCP tools to run the project and verify visual output:
+
+1. **Start the project**: Ask "Would you like me to run your project?" then use `run_project`
+2. **Validate changes**: After code edits, use `capture_frame` to verify visuals
+3. **Monitor adjustments**: Check `get_pending_changes` - if user adjusted sliders, ask if they want those values in chain.cpp
+4. **Explore**: Use `orbit_camera` and `set_param` to test different views/values
+5. **Check errors**: Use `get_runtime_status` after edits to verify compilation succeeded
+
+Use `search_docs` for Vivid documentation and operator details.
 )";
 
 void printUsage() {

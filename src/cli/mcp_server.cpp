@@ -366,6 +366,168 @@ public:
         m_ws.send(cmd.dump());
     }
 
+    // Send set_param_immediate command and wait for result
+    json setParamImmediate(const std::string& opName, const std::string& paramName,
+                           const json& value, int timeoutMs = 2000) {
+        // Clear any previous result
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_setParamResult = json::object();
+            m_setParamResultReceived = false;
+        }
+
+        // Send command
+        json cmd;
+        cmd["type"] = "set_param_immediate";
+        cmd["operator"] = opName;
+        cmd["param"] = paramName;
+        cmd["value"] = value;
+        m_ws.send(cmd.dump());
+
+        // Wait for set_param_result response
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_setParamResultReceived) {
+                    return m_setParamResult;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        // Timeout
+        json result;
+        result["success"] = false;
+        result["error"] = "Timeout waiting for set_param result";
+        return result;
+    }
+
+    // Send advance_frames command and wait for completion
+    json advanceFrames(int count, int timeoutMs = 30000) {
+        // Clear any previous result
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_frameAdvanceResult = json::object();
+            m_frameAdvanceResultReceived = false;
+        }
+
+        // Send command
+        json cmd;
+        cmd["type"] = "advance_frames";
+        cmd["count"] = count;
+        m_ws.send(cmd.dump());
+
+        // Wait for frame_advance_complete response
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_frameAdvanceResultReceived) {
+                    return m_frameAdvanceResult;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        // Timeout
+        json result;
+        result["success"] = false;
+        result["error"] = "Timeout waiting for frame advance";
+        return result;
+    }
+
+    // Request chain structure and wait for response
+    json requestChainStructure(int timeoutMs = 5000) {
+        // Clear any previous result
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_chainStructure = json::object();
+            m_chainStructureReceived = false;
+        }
+
+        // Send request
+        sendCommand("request_chain_structure");
+
+        // Wait for response
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_chainStructureReceived) {
+                    return m_chainStructure;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        // Timeout
+        json result;
+        result["error"] = "Timeout waiting for chain structure";
+        return result;
+    }
+
+    // Request frame info and wait for response
+    json requestFrameInfo(int timeoutMs = 2000) {
+        // Clear any previous result
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_frameInfo = json::object();
+            m_frameInfoReceived = false;
+        }
+
+        // Send request
+        sendCommand("request_frame_info");
+
+        // Wait for response
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_frameInfoReceived) {
+                    return m_frameInfo;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        // Timeout
+        json result;
+        result["error"] = "Timeout waiting for frame info";
+        return result;
+    }
+
+    // Send reset_time command and wait for acknowledgment
+    json resetTime(int timeoutMs = 2000) {
+        // Clear any previous result
+        {
+            std::lock_guard<std::mutex> lock(m_mutex);
+            m_resetTimeResult = json::object();
+            m_resetTimeReceived = false;
+        }
+
+        // Send command
+        sendCommand("reset_time");
+
+        // Wait for response
+        auto start = std::chrono::steady_clock::now();
+        while (std::chrono::steady_clock::now() - start < std::chrono::milliseconds(timeoutMs)) {
+            {
+                std::lock_guard<std::mutex> lock(m_mutex);
+                if (m_resetTimeReceived) {
+                    return m_resetTimeResult;
+                }
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        }
+
+        // Timeout - but treat as success since the command was sent
+        json result;
+        result["success"] = true;
+        result["note"] = "Command sent, response timed out";
+        return result;
+    }
+
 private:
     void handleMessage(const std::string& msgStr) {
         try {
@@ -394,6 +556,21 @@ private:
             } else if (type == "capture_result") {
                 m_captureResult = msg;
                 m_captureResultReceived = true;
+            } else if (type == "set_param_result") {
+                m_setParamResult = msg;
+                m_setParamResultReceived = true;
+            } else if (type == "frame_advance_complete") {
+                m_frameAdvanceResult = msg;
+                m_frameAdvanceResultReceived = true;
+            } else if (type == "chain_structure") {
+                m_chainStructure = msg;
+                m_chainStructureReceived = true;
+            } else if (type == "frame_info") {
+                m_frameInfo = msg;
+                m_frameInfoReceived = true;
+            } else if (type == "reset_time_complete") {
+                m_resetTimeResult = msg;
+                m_resetTimeReceived = true;
             }
         } catch (const json::exception& e) {
             std::cerr << "[MCP] JSON parse error: " << e.what() << "\n";
@@ -421,6 +598,16 @@ private:
     json m_captureResult = json::object();
     bool m_captureResultReceived{false};
     bool m_compileStatusReceived{false};
+    json m_setParamResult = json::object();
+    bool m_setParamResultReceived{false};
+    json m_frameAdvanceResult = json::object();
+    bool m_frameAdvanceResultReceived{false};
+    json m_chainStructure = json::object();
+    bool m_chainStructureReceived{false};
+    json m_frameInfo = json::object();
+    bool m_frameInfoReceived{false};
+    json m_resetTimeResult = json::object();
+    bool m_resetTimeReceived{false};
 
     // Connection state tracking
     std::string m_lastError;
@@ -916,6 +1103,148 @@ private:
                 {"properties", {
                     {"outputPath", {{"type", "string"}, {"description", "Path to save the PNG file (default: /tmp/vivid_capture.png)"}}}
                 }}
+            }}
+        });
+
+        // set_param - Set parameter on running operator immediately
+        tools.push_back({
+            {"name", "set_param"},
+            {"description", "Set a parameter on a running operator immediately. Changes are applied directly without going through pending changes queue. Use for interactive debugging and experimentation."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"operator", {{"type", "string"}, {"description", "Operator name (e.g., 'noise', 'camera')"}}},
+                    {"param", {{"type", "string"}, {"description", "Parameter name (e.g., 'scale', 'distance')"}}},
+                    {"value", {{"description", "Number or array [x,y,z,w] for vector parameters"}}}
+                }},
+                {"required", json::array({"operator", "param", "value"})}
+            }}
+        });
+
+        // advance_frames - Advance simulation by N frames
+        tools.push_back({
+            {"name", "advance_frames"},
+            {"description", "Advance the simulation by N frames without rendering to display. Use for testing animations or reaching a specific point in time."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"count", {{"type", "integer"}, {"description", "Number of frames to advance"}}}
+                }},
+                {"required", json::array({"count"})}
+            }}
+        });
+
+        // orbit_camera - Position camera around a target
+        tools.push_back({
+            {"name", "orbit_camera"},
+            {"description", "Position the camera to orbit around a target point. Sets center, distance, azimuth, and elevation parameters on the camera operator."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"operator", {{"type", "string"}, {"description", "Camera operator name (default: 'camera')"}}},
+                    {"target", {{"type", "array"}, {"items", {{"type", "number"}}}, {"description", "[x, y, z] point to look at"}}},
+                    {"distance", {{"type", "number"}, {"description", "Distance from target"}}},
+                    {"azimuth", {{"type", "number"}, {"description", "Horizontal angle in degrees (0-360)"}}},
+                    {"elevation", {{"type", "number"}, {"description", "Vertical angle in degrees (-90 to 90)"}}}
+                }},
+                {"required", json::array({"target", "distance"})}
+            }}
+        });
+
+        // capture_at_frame - Advance to frame N and capture
+        tools.push_back({
+            {"name", "capture_at_frame"},
+            {"description", "Advance simulation to a specific frame number and capture a snapshot. Combines advance_frames and capture_frame for convenient debugging."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"frame", {{"type", "integer"}, {"description", "Target frame number to capture at"}}},
+                    {"outputPath", {{"type", "string"}, {"description", "Path to save the PNG file (default: /tmp/vivid_capture.png)"}}}
+                }},
+                {"required", json::array({"frame"})}
+            }}
+        });
+
+        // list_project_assets - List assets in project folder
+        tools.push_back({
+            {"name", "list_project_assets"},
+            {"description", "List assets in project's assets/ folder (images, audio, models, fonts, videos). Use this to know what files are available before referencing them in chain.cpp."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}}
+                }},
+                {"required", json::array({"path"})}
+            }}
+        });
+
+        // get_chain_structure - Get running chain's operators and connections
+        tools.push_back({
+            {"name", "get_chain_structure"},
+            {"description", "Get the structure of the running chain: operators, their types, input connections, and output types. Use this to understand what a project does without parsing code."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // wait_for_reload - Wait for hot-reload to complete
+        tools.push_back({
+            {"name", "wait_for_reload"},
+            {"description", "Wait for hot-reload to complete after editing chain.cpp. Blocks until compilation finishes (success or error) or timeout. Use after editing code to verify changes compiled successfully."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"timeout", {{"type", "integer"}, {"description", "Timeout in milliseconds (default: 10000)"}}}
+                }}
+            }}
+        });
+
+        // get_frame_info - Get current animation state
+        tools.push_back({
+            {"name", "get_frame_info"},
+            {"description", "Get current animation state: frame number, elapsed time, and FPS. Use to know where in the animation timeline you are before capturing."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // reset_time - Reset animation to frame 0
+        tools.push_back({
+            {"name", "reset_time"},
+            {"description", "Reset the animation to frame 0 and time 0. Use to start fresh before capturing or testing."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", json::object()}
+            }}
+        });
+
+        // save_preset - Save parameter snapshot
+        tools.push_back({
+            {"name", "save_preset"},
+            {"description", "Save current parameter values to a named preset file. Presets are stored in project/presets/ directory."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
+                    {"name", {{"type", "string"}, {"description", "Preset name (without extension)"}}}
+                }},
+                {"required", json::array({"path", "name"})}
+            }}
+        });
+
+        // load_preset - Load parameter snapshot
+        tools.push_back({
+            {"name", "load_preset"},
+            {"description", "Load parameter values from a saved preset. Applies all parameters to the running instance."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"path", {{"type", "string"}, {"description", "Path to project directory"}}},
+                    {"name", {{"type", "string"}, {"description", "Preset name (without extension)"}}}
+                }},
+                {"required", json::array({"path", "name"})}
             }}
         });
 
@@ -1830,6 +2159,487 @@ private:
             if (response["success"].get<bool>()) {
                 response["hint"] = "Use the Read tool to view the captured image";
             }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "set_param") {
+            std::string opName = args.value("operator", "");
+            std::string paramName = args.value("param", "");
+
+            if (opName.empty() || paramName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both 'operator' and 'param' are required"}}};
+                return result;
+            }
+
+            if (!args.contains("value")) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "'value' is required"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot set param: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Send set_param_immediate and wait for result
+            json setResult = m_vivid.setParamImmediate(opName, paramName, args["value"]);
+
+            json response;
+            response["connected"] = true;
+            response["success"] = setResult.value("success", false);
+            response["operator"] = opName;
+            response["param"] = paramName;
+            if (setResult.contains("error")) {
+                response["error"] = setResult["error"];
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "advance_frames") {
+            int count = args.value("count", 1);
+
+            if (count <= 0) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Frame count must be positive"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot advance frames: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Send advance_frames and wait for completion
+            json advResult = m_vivid.advanceFrames(count);
+
+            json response;
+            response["connected"] = true;
+            response["success"] = advResult.value("success", !advResult.contains("error"));
+            response["framesAdvanced"] = count;
+            if (advResult.contains("newFrame")) {
+                response["newFrame"] = advResult["newFrame"];
+            }
+            if (advResult.contains("error")) {
+                response["error"] = advResult["error"];
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "orbit_camera") {
+            std::string camOp = args.value("operator", "camera");
+
+            if (!args.contains("target") || !args.contains("distance")) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both 'target' and 'distance' are required"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot orbit camera: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Extract parameters
+            auto target = args["target"];
+            float distance = args["distance"].get<float>();
+            float azimuth = args.value("azimuth", 0.0f);
+            float elevation = args.value("elevation", 20.0f);
+
+            // Convert degrees to radians for azimuth/elevation
+            float azimuthRad = azimuth * 3.14159265f / 180.0f;
+            float elevationRad = elevation * 3.14159265f / 180.0f;
+
+            // Set camera parameters
+            bool allSuccess = true;
+
+            // Set center (target)
+            json centerResult = m_vivid.setParamImmediate(camOp, "center", target);
+            if (!centerResult.value("success", false)) allSuccess = false;
+
+            // Set distance
+            json distResult = m_vivid.setParamImmediate(camOp, "distance", distance);
+            if (!distResult.value("success", false)) allSuccess = false;
+
+            // Set azimuth
+            json azResult = m_vivid.setParamImmediate(camOp, "azimuth", azimuthRad);
+            if (!azResult.value("success", false)) allSuccess = false;
+
+            // Set elevation
+            json elResult = m_vivid.setParamImmediate(camOp, "elevation", elevationRad);
+            if (!elResult.value("success", false)) allSuccess = false;
+
+            json response;
+            response["connected"] = true;
+            response["success"] = allSuccess;
+            response["operator"] = camOp;
+            response["target"] = target;
+            response["distance"] = distance;
+            response["azimuth"] = azimuth;
+            response["elevation"] = elevation;
+            if (!allSuccess) {
+                response["warning"] = "Some parameters may not have been set. Check if operator '" + camOp + "' exists and has expected parameters.";
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "capture_at_frame") {
+            int targetFrame = args.value("frame", 0);
+            std::string outputPath = args.value("outputPath", "/tmp/vivid_capture.png");
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot capture at frame: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // First, advance to the target frame if needed
+            if (targetFrame > 0) {
+                json advResult = m_vivid.advanceFrames(targetFrame);
+                if (advResult.contains("error")) {
+                    json response;
+                    response["connected"] = true;
+                    response["success"] = false;
+                    response["error"] = "Failed to advance frames: " + advResult.value("error", "unknown");
+                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                    return result;
+                }
+            }
+
+            // Then capture the frame
+            json captureResult = m_vivid.captureFrame(outputPath);
+
+            json response;
+            response["connected"] = true;
+            response["success"] = captureResult.value("success", false);
+            response["frame"] = targetFrame;
+            response["outputPath"] = captureResult.value("outputPath", outputPath);
+            if (captureResult.contains("error")) {
+                response["error"] = captureResult["error"];
+            }
+            if (response["success"].get<bool>()) {
+                response["hint"] = "Use the Read tool to view the captured image";
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "list_project_assets") {
+            std::string projectPath = args.value("path", "");
+
+            if (projectPath.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Project path is required"}}};
+                return result;
+            }
+
+            fs::path assetsDir = fs::path(projectPath) / "assets";
+            if (!fs::exists(assetsDir) || !fs::is_directory(assetsDir)) {
+                json response;
+                response["path"] = projectPath;
+                response["assets"] = json::array();
+                response["note"] = "No assets/ directory found in project";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Scan assets directory recursively
+            json assets = json::array();
+            try {
+                for (const auto& entry : fs::recursive_directory_iterator(assetsDir)) {
+                    if (!entry.is_regular_file()) continue;
+
+                    json asset;
+                    fs::path relPath = fs::relative(entry.path(), assetsDir);
+                    asset["path"] = relPath.string();
+
+                    // Determine asset type from extension
+                    std::string ext = entry.path().extension().string();
+                    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+
+                    if (ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".bmp" || ext == ".tga") {
+                        asset["type"] = "image";
+                    } else if (ext == ".wav" || ext == ".mp3" || ext == ".ogg" || ext == ".flac" || ext == ".aiff") {
+                        asset["type"] = "audio";
+                    } else if (ext == ".gltf" || ext == ".glb" || ext == ".obj" || ext == ".fbx") {
+                        asset["type"] = "model";
+                    } else if (ext == ".mp4" || ext == ".mov" || ext == ".avi" || ext == ".webm") {
+                        asset["type"] = "video";
+                    } else if (ext == ".ttf" || ext == ".otf" || ext == ".woff" || ext == ".woff2") {
+                        asset["type"] = "font";
+                    } else if (ext == ".json" || ext == ".xml" || ext == ".csv" || ext == ".txt") {
+                        asset["type"] = "data";
+                    } else if (ext == ".wgsl" || ext == ".glsl" || ext == ".frag" || ext == ".vert") {
+                        asset["type"] = "shader";
+                    } else {
+                        asset["type"] = "other";
+                    }
+
+                    // Get file size
+                    asset["size"] = entry.file_size();
+
+                    assets.push_back(asset);
+                }
+            } catch (const std::exception& e) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", std::string("Error scanning assets: ") + e.what()}}};
+                return result;
+            }
+
+            json response;
+            response["path"] = projectPath;
+            response["assetsDir"] = assetsDir.string();
+            response["assets"] = assets;
+            response["count"] = assets.size();
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "get_chain_structure") {
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot get chain structure: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Request chain structure and wait for response
+            json structure = m_vivid.requestChainStructure();
+
+            json response;
+            response["connected"] = true;
+            response["success"] = !structure.contains("error");
+            if (structure.contains("operators")) {
+                response["operators"] = structure["operators"];
+                response["operatorCount"] = structure["operators"].size();
+            }
+            if (structure.contains("error")) {
+                response["error"] = structure["error"];
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "wait_for_reload") {
+            int timeoutMs = args.value("timeout", 10000);
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot wait for reload: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Wait for next compile_status message
+            json compileStatus = m_vivid.waitForCompileStatus(timeoutMs);
+
+            json response;
+            response["connected"] = true;
+            response["success"] = compileStatus.value("success", true);
+            response["timeout"] = compileStatus.value("timeout", false);
+            if (!compileStatus.value("success", true)) {
+                response["error"] = compileStatus.value("message", "Compilation failed");
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "get_frame_info") {
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot get frame info: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Request frame info and wait for response
+            json frameInfo = m_vivid.requestFrameInfo();
+
+            json response;
+            response["connected"] = true;
+            response["success"] = !frameInfo.contains("error");
+            if (frameInfo.contains("frame")) {
+                response["frame"] = frameInfo["frame"];
+                response["time"] = frameInfo["time"];
+                response["fps"] = frameInfo["fps"];
+            }
+            if (frameInfo.contains("error")) {
+                response["error"] = frameInfo["error"];
+            }
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "reset_time") {
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot reset time: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Send reset_time command and wait for acknowledgment
+            json resetResult = m_vivid.resetTime();
+
+            json response;
+            response["connected"] = true;
+            response["success"] = resetResult.value("success", true);
+            response["message"] = "Animation reset to frame 0";
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "save_preset") {
+            std::string projectPath = args.value("path", "");
+            std::string presetName = args.value("name", "");
+
+            if (projectPath.empty() || presetName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both 'path' and 'name' are required"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot save preset: Vivid not running (need live params)";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Get current params
+            json params = m_vivid.getParams();
+
+            // Create presets directory if needed
+            fs::path presetsDir = fs::path(projectPath) / "presets";
+            try {
+                fs::create_directories(presetsDir);
+            } catch (const std::exception& e) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", std::string("Cannot create presets directory: ") + e.what()}}};
+                return result;
+            }
+
+            // Save preset
+            fs::path presetPath = presetsDir / (presetName + ".json");
+            try {
+                json preset;
+                preset["name"] = presetName;
+                preset["params"] = params;
+                preset["savedAt"] = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::system_clock::now().time_since_epoch()).count();
+
+                std::ofstream file(presetPath);
+                file << preset.dump(2);
+            } catch (const std::exception& e) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", std::string("Failed to save preset: ") + e.what()}}};
+                return result;
+            }
+
+            json response;
+            response["success"] = true;
+            response["connected"] = true;
+            response["path"] = presetPath.string();
+            response["paramCount"] = params.size();
+            result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+        }
+        else if (name == "load_preset") {
+            std::string projectPath = args.value("path", "");
+            std::string presetName = args.value("name", "");
+
+            if (projectPath.empty() || presetName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Both 'path' and 'name' are required"}}};
+                return result;
+            }
+
+            auto connState = m_vivid.getConnectionState();
+            if (!connState.connected) {
+                json response;
+                response["success"] = false;
+                response["connected"] = false;
+                response["error"] = "Cannot load preset: Vivid not running";
+                response["suggestion"] = "Run: ./build/bin/vivid <project>";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                return result;
+            }
+
+            // Load preset file
+            fs::path presetPath = fs::path(projectPath) / "presets" / (presetName + ".json");
+            if (!fs::exists(presetPath)) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Preset not found: " + presetPath.string()}}};
+                return result;
+            }
+
+            json preset;
+            try {
+                std::ifstream file(presetPath);
+                preset = json::parse(file);
+            } catch (const std::exception& e) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", std::string("Failed to parse preset: ") + e.what()}}};
+                return result;
+            }
+
+            // Apply each parameter
+            int successCount = 0;
+            int failCount = 0;
+            for (const auto& param : preset["params"]) {
+                std::string opName = param.value("operator", "");
+                std::string paramName = param.value("name", "");
+                if (opName.empty() || paramName.empty()) continue;
+
+                // Build value array from param
+                json value;
+                if (param.contains("value")) {
+                    value = param["value"];
+                } else {
+                    continue;  // Skip params without values
+                }
+
+                json setResult = m_vivid.setParamImmediate(opName, paramName, value);
+                if (setResult.value("success", false)) {
+                    successCount++;
+                } else {
+                    failCount++;
+                }
+            }
+
+            json response;
+            response["success"] = true;
+            response["connected"] = true;
+            response["path"] = presetPath.string();
+            response["paramsApplied"] = successCount;
+            response["paramsFailed"] = failCount;
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
         else {

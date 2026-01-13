@@ -157,6 +157,18 @@ public:
      */
     [[nodiscard]] uint64_t frame() const { return m_frame; }
 
+    /**
+     * @brief Reset time and frame counter to zero
+     *
+     * Use this to restart animations from the beginning.
+     * Called by MCP reset_time tool.
+     */
+    void resetTime() {
+        m_time = 0.0;
+        m_frame = 0;
+        m_lastTime = 0.0;
+    }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Window

@@ -1020,6 +1020,20 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     // End frame
     mlc.ctx->endFrame();
 
+    // Process frame advance requests (MCP debugging tool)
+    // This advances simulation by N frames without rendering to display
+    if (mlc.editorBridge && mlc.hotReload->isLoaded()) {
+        if (int advanceCount = mlc.editorBridge->consumePendingFrameAdvance()) {
+            for (int i = 0; i < advanceCount; i++) {
+                mlc.ctx->beginFrame();
+                mlc.ctx->chain().process(*mlc.ctx);
+                mlc.ctx->endFrame();
+                mlc.snapshotFrameCounter++;
+            }
+            mlc.editorBridge->sendFrameAdvanceComplete(mlc.snapshotFrameCounter);
+        }
+    }
+
     // FPS counter and title update
     mlc.frameCount++;
     double currentTime = glfwGetTime();
@@ -1467,6 +1481,62 @@ int Application::init(const AppConfig& config) {
         }
     });
 
+    // Direct parameter control (MCP debugging tools) - apply immediately, no pending queue
+    m_impl->editorBridge->onSetParamImmediate([this](const std::string& opName, const std::string& paramName, const float value[4]) -> bool {
+        if (!m_impl->ctx->hasChain()) return false;
+        Operator* op = m_impl->ctx->chain().getByName(opName);
+        if (op) {
+            bool success = op->setParam(paramName, value);
+            if (success) {
+                op->markDirty();
+            }
+            return success;
+        }
+        return false;
+    });
+
+    // MCP get_chain_structure tool: return chain operators and connections
+    m_impl->editorBridge->onRequestChainStructure([this]() -> std::vector<EditorBridge::ChainOperatorInfo> {
+        std::vector<EditorBridge::ChainOperatorInfo> result;
+        if (!m_impl->ctx->hasChain()) return result;
+
+        for (const auto& opInfo : m_impl->ctx->registeredOperators()) {
+            EditorBridge::ChainOperatorInfo info;
+            info.name = opInfo.name;
+            if (opInfo.op) {
+                info.displayName = opInfo.op->name();
+                info.outputType = outputKindName(opInfo.op->outputKind());
+                // Build inputs list from operator
+                for (size_t i = 0; i < opInfo.op->inputNameCount(); ++i) {
+                    std::string inputName = opInfo.op->getInputName(static_cast<int>(i));
+                    if (!inputName.empty()) {
+                        info.inputs.push_back(inputName);
+                    }
+                }
+            }
+            result.push_back(info);
+        }
+        return result;
+    });
+
+    // MCP get_frame_info tool: return current frame/time/fps
+    m_impl->editorBridge->onRequestFrameInfo([this]() -> EditorBridge::FrameInfo {
+        EditorBridge::FrameInfo info;
+        if (m_impl->ctx) {
+            info.frame = m_impl->ctx->frame();
+            info.time = m_impl->ctx->time();
+            info.fps = m_impl->mlc.perfStats.fps;
+        }
+        return info;
+    });
+
+    // MCP reset_time tool: reset animation to frame 0
+    m_impl->editorBridge->onResetTime([this]() {
+        if (m_impl->ctx) {
+            m_impl->ctx->resetTime();
+        }
+    });
+
     // Connect chain visualizer inspector panel to pending changes system
     m_impl->chainVisualizer->onParamChange([this](const std::string& opName, const std::string& paramName,
                                                    const float oldValue[4], const float newValue[4], int sourceLine) {
@@ -1665,9 +1735,19 @@ int Application::init(const AppConfig& config) {
         m_impl->editorBridge->sendWindowState(gatherWindowState());
     });
 
-    // MCP compile status callback - sends current compile status from hot_reload
+    // MCP compile status callback - sends current compile status
+    // Check cached status first (for errors like "chain file not found"), then hot_reload
     m_impl->editorBridge->onRequestCompileStatus([this]() {
-        if (m_impl->hotReload->hasError()) {
+        bool cachedSuccess;
+        std::string cachedMessage;
+        m_impl->editorBridge->getCachedCompileStatus(cachedSuccess, cachedMessage);
+
+        // If cached status has an error, send that
+        if (!cachedSuccess) {
+            m_impl->editorBridge->sendCompileStatus(false, cachedMessage);
+        }
+        // Otherwise check hot reload for compile errors
+        else if (m_impl->hotReload->hasError()) {
             m_impl->editorBridge->sendCompileStatus(false, m_impl->hotReload->getError());
         } else {
             m_impl->editorBridge->sendCompileStatus(true, "");
@@ -1711,10 +1791,22 @@ int Application::init(const AppConfig& config) {
                 m_impl->hotReload->setSourceFile(chainPath);
             }
         } else {
-            m_impl->ctx->setError("Chain file not found: " + chainPath.string());
+            std::string errorMsg = "Chain file not found: " + chainPath.string();
+            std::cerr << "\n*** ERROR: " << errorMsg << " ***\n" << std::endl;
+            m_impl->ctx->setError(errorMsg);
+            // Notify MCP clients of the failure
+            if (m_impl->editorBridge) {
+                m_impl->editorBridge->sendCompileStatus(false, errorMsg);
+            }
         }
     } else {
-        m_impl->ctx->setError("No chain specified. Usage: vivid <path/to/chain.cpp>");
+        std::string errorMsg = "No chain specified. Usage: vivid <path/to/chain.cpp>";
+        std::cerr << "\n*** ERROR: " << errorMsg << " ***\n" << std::endl;
+        m_impl->ctx->setError(errorMsg);
+        // Notify MCP clients of the failure
+        if (m_impl->editorBridge) {
+            m_impl->editorBridge->sendCompileStatus(false, errorMsg);
+        }
     }
 
     // Initialize MainLoopContext

@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <deque>
+#include <atomic>
 
 namespace vivid {
 
@@ -112,6 +113,14 @@ public:
     /// @param success True if compilation succeeded
     /// @param message Error message if failed (with file:line:col format)
     void sendCompileStatus(bool success, const std::string& message);
+
+    /// Get cached compile status (for late-connecting clients)
+    /// @param success Output: True if last compilation succeeded
+    /// @param message Output: Error message if failed
+    void getCachedCompileStatus(bool& success, std::string& message) const {
+        success = m_cachedCompileSuccess;
+        message = m_cachedCompileMessage;
+    }
 
     /// Send operator list to all connected clients (Phase 2)
     /// @param operators Vector of operator info
@@ -241,11 +250,104 @@ public:
     /// Called when MCP requests a screenshot of the current frame
     void onCaptureFrame(CaptureFrameCallback callback) { m_captureFrameCallback = callback; }
 
+    // -------------------------------------------------------------------------
+    // Chain structure (MCP get_chain_structure tool)
+    // -------------------------------------------------------------------------
+
+    /// Info about a single operator in the chain structure
+    struct ChainOperatorInfo {
+        std::string name;           ///< Operator chain name
+        std::string displayName;    ///< Operator type name (e.g., "Noise")
+        std::string outputType;     ///< Output kind (e.g., "Texture")
+        std::vector<std::string> inputs;  ///< Input names
+    };
+
+    /// Callback type for request_chain_structure command
+    /// Should return the list of operators in the running chain
+    using RequestChainStructureCallback = std::function<std::vector<ChainOperatorInfo>()>;
+
+    /// Set callback for request_chain_structure command
+    void onRequestChainStructure(RequestChainStructureCallback callback) { m_requestChainStructureCallback = callback; }
+
+    /// Send chain structure to all connected clients
+    void sendChainStructure(const std::vector<ChainOperatorInfo>& operators);
+
+    // -------------------------------------------------------------------------
+    // Frame info (MCP get_frame_info tool)
+    // -------------------------------------------------------------------------
+
+    /// Frame info for MCP tool
+    struct FrameInfo {
+        uint64_t frame = 0;         ///< Current frame number
+        double time = 0.0;          ///< Elapsed time in seconds
+        float fps = 0.0f;           ///< Current FPS
+    };
+
+    /// Callback type for request_frame_info command
+    using RequestFrameInfoCallback = std::function<FrameInfo()>;
+
+    /// Set callback for request_frame_info command
+    void onRequestFrameInfo(RequestFrameInfoCallback callback) { m_requestFrameInfoCallback = callback; }
+
+    /// Send frame info to all connected clients
+    void sendFrameInfo(const FrameInfo& info);
+
+    // -------------------------------------------------------------------------
+    // Reset time (MCP reset_time tool)
+    // -------------------------------------------------------------------------
+
+    /// Callback type for reset_time command
+    using ResetTimeCallback = std::function<void()>;
+
+    /// Set callback for reset_time command
+    void onResetTime(ResetTimeCallback callback) { m_resetTimeCallback = callback; }
+
+    /// Send reset_time_complete acknowledgment
+    void sendResetTimeComplete();
+
     /// Send capture result back to clients
     /// @param success True if capture succeeded
     /// @param outputPath Path where the file was saved
     /// @param error Error message if failed
     void sendCaptureResult(bool success, const std::string& outputPath, const std::string& error = "");
+
+    // -------------------------------------------------------------------------
+    // Direct parameter control (MCP debugging tools)
+    // -------------------------------------------------------------------------
+
+    /// Callback type for set_param_immediate command (apply param directly, no pending queue)
+    /// @param opName Operator name
+    /// @param paramName Parameter name
+    /// @param value Parameter value (float[4])
+    /// @return true if param was successfully set
+    using SetParamImmediateCallback = std::function<bool(const std::string& opName,
+                                                          const std::string& paramName,
+                                                          const float value[4])>;
+
+    /// Set callback for set_param_immediate command
+    void onSetParamImmediate(SetParamImmediateCallback callback) { m_setParamImmediateCallback = callback; }
+
+    /// Send set_param result back to clients
+    void sendSetParamResult(const std::string& opName, const std::string& paramName, bool success);
+
+    // -------------------------------------------------------------------------
+    // Frame advance control (MCP debugging tools)
+    // -------------------------------------------------------------------------
+
+    /// Request N frames to be advanced (called from WebSocket handler)
+    /// Main loop should call consumePendingFrameAdvance() to get and clear this
+    void requestFrameAdvance(int count);
+
+    /// Get and clear pending frame advance count
+    /// @return Number of frames to advance (0 if none pending)
+    int consumePendingFrameAdvance();
+
+    /// Send frame advance started notification
+    void sendFrameAdvanceStarted(int count);
+
+    /// Send frame advance complete notification
+    /// @param newFrame The frame number after advancing
+    void sendFrameAdvanceComplete(int newFrame);
 
 private:
     class Impl;
@@ -263,9 +365,20 @@ private:
     WindowControlCallback m_windowControlCallback;
     DiscardChangesCallback m_discardChangesCallback;
     CaptureFrameCallback m_captureFrameCallback;
+    SetParamImmediateCallback m_setParamImmediateCallback;
+    RequestChainStructureCallback m_requestChainStructureCallback;
+    RequestFrameInfoCallback m_requestFrameInfoCallback;
+    ResetTimeCallback m_resetTimeCallback;
 
     // Pending changes queue (Claude-first workflow)
     std::vector<PendingChange> m_pendingChanges;
+
+    // Frame advance state (MCP debugging tools)
+    std::atomic<int> m_pendingFrameAdvance{0};
+
+    // Cached compile status (for late-connecting clients)
+    bool m_cachedCompileSuccess{true};
+    std::string m_cachedCompileMessage;
 };
 
 } // namespace vivid
