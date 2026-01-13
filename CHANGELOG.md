@@ -10,6 +10,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.28] - 2026-01-13
+
+### Added
+
+- **MCP debugging tools** - New tools for visual debugging and parameter control:
+  - `set_param` - Set operator parameters immediately without pending queue
+  - `advance_frames` - Advance simulation by N frames for animation testing
+  - `orbit_camera` - Position camera around a target point (sets center, distance, azimuth, elevation)
+  - `capture_at_frame` - Advance to specific frame and capture snapshot
+
+- **Visual validation workflow** - Updated documentation and project templates to guide Claude through the recommended workflow: run project, capture frames, monitor slider changes, verify compile status
+
+### Fixed
+
+- **Missing chain.cpp error reporting** - When a project directory has no chain.cpp, MCP now correctly reports `compileStatus.success: false` with "Chain file not found" message instead of misleading success with 0 operators
+
+### Changed
+
+- **Project templates** - New projects created with `vivid new` now include MCP visual validation workflow instructions in their CLAUDE.md
+
 ## [0.1.0-alpha.27] - 2026-01-12
 
 ### Added

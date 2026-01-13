@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <deque>
+#include <atomic>
 
 namespace vivid {
 
@@ -112,6 +113,14 @@ public:
     /// @param success True if compilation succeeded
     /// @param message Error message if failed (with file:line:col format)
     void sendCompileStatus(bool success, const std::string& message);
+
+    /// Get cached compile status (for late-connecting clients)
+    /// @param success Output: True if last compilation succeeded
+    /// @param message Output: Error message if failed
+    void getCachedCompileStatus(bool& success, std::string& message) const {
+        success = m_cachedCompileSuccess;
+        message = m_cachedCompileMessage;
+    }
 
     /// Send operator list to all connected clients (Phase 2)
     /// @param operators Vector of operator info
@@ -247,6 +256,44 @@ public:
     /// @param error Error message if failed
     void sendCaptureResult(bool success, const std::string& outputPath, const std::string& error = "");
 
+    // -------------------------------------------------------------------------
+    // Direct parameter control (MCP debugging tools)
+    // -------------------------------------------------------------------------
+
+    /// Callback type for set_param_immediate command (apply param directly, no pending queue)
+    /// @param opName Operator name
+    /// @param paramName Parameter name
+    /// @param value Parameter value (float[4])
+    /// @return true if param was successfully set
+    using SetParamImmediateCallback = std::function<bool(const std::string& opName,
+                                                          const std::string& paramName,
+                                                          const float value[4])>;
+
+    /// Set callback for set_param_immediate command
+    void onSetParamImmediate(SetParamImmediateCallback callback) { m_setParamImmediateCallback = callback; }
+
+    /// Send set_param result back to clients
+    void sendSetParamResult(const std::string& opName, const std::string& paramName, bool success);
+
+    // -------------------------------------------------------------------------
+    // Frame advance control (MCP debugging tools)
+    // -------------------------------------------------------------------------
+
+    /// Request N frames to be advanced (called from WebSocket handler)
+    /// Main loop should call consumePendingFrameAdvance() to get and clear this
+    void requestFrameAdvance(int count);
+
+    /// Get and clear pending frame advance count
+    /// @return Number of frames to advance (0 if none pending)
+    int consumePendingFrameAdvance();
+
+    /// Send frame advance started notification
+    void sendFrameAdvanceStarted(int count);
+
+    /// Send frame advance complete notification
+    /// @param newFrame The frame number after advancing
+    void sendFrameAdvanceComplete(int newFrame);
+
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
@@ -263,9 +310,17 @@ private:
     WindowControlCallback m_windowControlCallback;
     DiscardChangesCallback m_discardChangesCallback;
     CaptureFrameCallback m_captureFrameCallback;
+    SetParamImmediateCallback m_setParamImmediateCallback;
 
     // Pending changes queue (Claude-first workflow)
     std::vector<PendingChange> m_pendingChanges;
+
+    // Frame advance state (MCP debugging tools)
+    std::atomic<int> m_pendingFrameAdvance{0};
+
+    // Cached compile status (for late-connecting clients)
+    bool m_cachedCompileSuccess{true};
+    std::string m_cachedCompileMessage;
 };
 
 } // namespace vivid

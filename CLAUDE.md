@@ -41,12 +41,19 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 ### Available MCP Tools
 | Tool | Description |
 |------|-------------|
-| `get_pending_changes` | Get slider changes waiting to be applied to chain.cpp |
+| `run_project` | Start a Vivid project in background |
+| `stop_project` | Stop the running project |
+| `get_runtime_status` | Get compile errors, runtime status, and operator list |
 | `get_live_params` | Get real-time parameter values from running Vivid |
+| `get_pending_changes` | Get slider changes waiting to be applied to chain.cpp |
 | `clear_pending_changes` | Confirm changes were applied (call after editing code) |
 | `discard_pending_changes` | Revert parameters to original values |
-| `get_runtime_status` | Get compile errors and runtime status |
-| `list_operators` | List all available operators with parameters |
+| `capture_frame` | Capture current frame to PNG from running instance |
+| `set_param` | Set parameter on running operator immediately |
+| `advance_frames` | Advance simulation by N frames |
+| `orbit_camera` | Position camera around a target point |
+| `capture_at_frame` | Advance to frame N and capture snapshot |
+| `list_operators` | List all available operators (from registry) |
 | `get_operator` | Get details for a specific operator |
 | `search_docs` | Search Vivid documentation |
 
@@ -92,6 +99,26 @@ Frame specification formats:
 - `0-20:2` - Range with step (frames 0, 2, 4, ..., 20)
 
 When capturing multiple frames, filenames include frame numbers: `output.png` becomes `output_0000.png`, `output_0001.png`, etc.
+
+### Visual Validation Workflow
+
+When working on a Vivid project, Claude should run the project and use MCP tools for visual feedback:
+
+1. **Start the project**: When the user wants to see their work, ask "Would you like me to run your project?" then use `run_project`
+2. **Keep it running**: The visualizer stays open so you can capture frames and the user can adjust sliders
+3. **Validate changes**: After code edits, use `capture_frame` to verify the visual output
+4. **Explore the scene**: Use `orbit_camera` and `set_param` to view from different angles or test parameter values
+5. **Monitor for user adjustments**: Periodically check `get_pending_changes` - if the user adjusted sliders in the visualizer, ask "I see you changed X to Y. Would you like me to update chain.cpp with these values?"
+6. **Stop when done**: Use `stop_project` or let the user close the window
+
+**Key MCP tools for visual work:**
+- `capture_frame` - Capture current frame to PNG
+- `capture_at_frame` - Advance to frame N and capture (for animations)
+- `set_param` - Adjust parameters in real-time
+- `orbit_camera` - Reposition camera view
+- `advance_frames` - Progress animation forward
+
+**Note:** CLI snapshot mode (`--snapshot` flag) is for CI pipelines and automated testing only - not part of the normal Claude workflow.
 
 ## User Modules
 
