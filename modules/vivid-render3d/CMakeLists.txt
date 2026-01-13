@@ -50,6 +50,7 @@ add_library(vivid-render3d SHARED
     src/depth_of_field.cpp
     src/fog.cpp
     src/depth_mask.cpp
+    src/volumetric_lighting.cpp
     src/particles3d.cpp
     src/registrations.cpp
 )

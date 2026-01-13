@@ -34,6 +34,7 @@
 #include <vivid/render3d/depth_of_field.h>
 #include <vivid/render3d/fog.h>
 #include <vivid/render3d/depth_mask.h>
+#include <vivid/render3d/volumetric_lighting.h>
 
 // Particle systems
 #include <vivid/render3d/particles3d.h>

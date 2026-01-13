@@ -2,6 +2,68 @@
 
 This document provides a detailed phased implementation plan for adding volumetric lighting (god rays, light shafts, fog with light scattering) to Vivid's render3d module.
 
+---
+
+## Implementation Progress
+
+### Phase 1 Status: IN PROGRESS
+
+**Completed:**
+- [x] Created `volumetric_lighting.h` header file
+- [x] Created `volumetric_lighting.cpp` implementation with WGSL ray marching shader
+- [x] Added to CMakeLists.txt
+- [x] Registered operator in registry
+- [x] Added `#include` to `render3d.h` umbrella header
+- [x] Created `streetlight-fog` example chain demonstrating the effect
+- [x] Implemented Henyey-Greenstein phase function
+- [x] Implemented world-space reconstruction from depth
+- [x] Added debug modes for visualization (0=off, 1=depth, 2=worldPos, 3=distance, 4=lightContrib, 5=passthrough)
+- [x] Added `cameraInput()` method for world-space reconstruction
+
+**Current Issue (Jan 2026):**
+The depth texture sampling is returning 0.0 for all pixels, causing:
+- Debug mode 1 (depth) shows white when inverted (1.0 - 0.0 = 1.0)
+- Normal mode produces all-white output due to accumulated scattered light
+
+**Investigation Notes:**
+1. The depth output from Render3D uses `R16Float` format
+2. The depth copy pass linearizes depth to [0,1] where 0=near, 1=far
+3. The Fog operator uses the exact same pattern and works correctly
+4. The bind group layout uses `WGPUTextureSampleType_Float` (correct for R16Float)
+5. Pipeline setup is identical to Fog operator
+6. The color texture also appears to not be sampling correctly (debug mode 5 shows white)
+
+**Possible Causes to Investigate:**
+1. Bind group texture view not being bound correctly
+2. Input resolution mismatch between Render3D and VolumetricLighting
+3. Texture views becoming stale after resolution changes
+4. Sampler configuration issue
+
+**Files Created:**
+- `modules/vivid-render3d/include/vivid/render3d/volumetric_lighting.h`
+- `modules/vivid-render3d/src/volumetric_lighting.cpp`
+- `modules/vivid-render3d/examples/streetlight-fog/chain.cpp`
+- `modules/vivid-render3d/examples/streetlight-fog/CLAUDE.md`
+
+### Uniform Buffer Alignment (Verified)
+
+The C++ struct and WGSL struct alignment was carefully matched:
+```
+WGSL vec3f = align 16, size 12
+WGSL mat4x4f = align 16, size 64
+```
+
+Key offsets in VolumetricUniforms struct:
+- `invViewProj`: offset 0-63 (mat4x4f)
+- `cameraPos`: offset 64-75 (vec3f components)
+- `nearPlane`: offset 76
+- `farPlane`: offset 80
+- `lightType`: offset 84
+- `lightPos`: offset 96 (aligned to 16)
+- etc.
+
+---
+
 ## Overview
 
 Volumetric lighting simulates light scattering through a participating medium (dust, fog, smoke). When light passes through the medium, some is absorbed and some is scattered toward the camera, creating visible "light shafts" or "god rays."
