@@ -285,18 +285,19 @@ chain.audioOutput("out");
 
 See `modules/vivid-video/examples/video-audio/` for a complete example with both modes.
 
-## Known Issues
+## External Modules
 
-### Windows: vivid-opencv build disabled
-The OpenCV module is currently disabled on Windows due to MSVC STL ABI incompatibility.
+Some modules have been moved to separate repositories for independent versioning and CI:
 
-**Error:** `LNK2019: unresolved external symbol __std_find_first_of_trivial_pos_1`
+- **vivid-opencv**: https://github.com/seethroughlab/vivid-opencv
+  - Computer vision operators (Contours, OpticalFlow, BlobTrack)
+  - Builds OpenCV from source to avoid MSVC STL ABI issues on Windows
 
-**Cause:** opencv-mobile v35 prebuilt libraries use MSVC 14.3x STL, but newer Visual Studio versions (14.43+) have breaking ABI changes.
+- **vivid-onnx**: https://github.com/seethroughlab/vivid-onnx
+  - Machine learning inference (PoseDetector, FaceDetector)
+  - Uses ONNX Runtime
 
-**Workarounds:**
-1. Build OpenCV from source on Windows
-2. Wait for opencv-mobile to release builds with newer MSVC
+Install external modules with: `vivid modules install <repo-url>`
 
 ## Documentation
 

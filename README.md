@@ -416,6 +416,21 @@ Each addon has an `addon.json` with metadata:
 
 The hot-reload system automatically adds include paths and links libraries for discovered addons.
 
+## Coming Soon
+
+These features are in development and will be available in a future release:
+
+### Volumetric Lighting & God Rays
+Screen-space volumetric effects including atmospheric light shafts and radial god rays. Create dramatic fog, mist, and light beam effects in 3D scenes.
+
+### Procedural Vegetation
+GPU-instanced vegetation systems built on the `ProceduralMesh` architecture:
+- **GrassMesh** - Dense grass fields with wind animation
+- **FoliageMesh** - Ferns, palm fronds, and other plant types
+- **TreeMesh** - Procedural trees with leaf billboards and wind effects
+
+Preview these features on the [`feature/0.2.0-vegetation-volumetric`](https://github.com/seethroughlab/vivid/tree/feature/0.2.0-vegetation-volumetric) branch.
+
 ## Documentation
 
 | File | Purpose |
