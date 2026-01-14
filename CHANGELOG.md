@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.29] - 2026-01-13
+
+### Added
+
+- **CpuPixels output kind** - New `OutputKind::CpuPixels` for operators that output CPU pixel buffers instead of GPU textures. Chain visualizer automatically uploads these to a scratch texture for preview rendering.
+
+### Changed
+
+- **vivid-opencv compatibility** - Enables vivid-opencv module to use simplified CPU-only architecture without requiring wgpu linking
+
 ## [0.1.0-alpha.28] - 2026-01-13
 
 ### Added
