@@ -41,7 +41,7 @@ jobs:
       - name: Build vivid
         run: |
           cmake -B build
-          cmake --build build --config Release --parallel
+          cmake --build build --config Release --parallel --target vivid
 
       - name: Test module installation from GitHub
         run: |
@@ -98,7 +98,7 @@ jobs:
       - name: Build vivid
         run: |
           cmake -B build
-          cmake --build build --config Release --parallel
+          cmake --build build --config Release --parallel --target vivid
 
       - name: Test module installation from GitHub
         run: |
@@ -132,7 +132,7 @@ jobs:
       - name: Build vivid
         run: |
           cmake -B build
-          cmake --build build --config Release --parallel
+          cmake --build build --config Release --parallel --target vivid
 
       - name: Test module installation from GitHub
         run: |
