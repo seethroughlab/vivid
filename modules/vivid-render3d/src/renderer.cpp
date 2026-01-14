@@ -572,7 +572,7 @@ struct InstanceData {
 struct VertexInput {
     @location(0) position: vec3f,
     @location(1) normal: vec3f,
-    @location(2) tangent: vec4f,  // Not used but needed for Vertex3D layout
+    @location(2) tangent: vec4f,  // For billboards: xyz = leaf up direction, w = rotation angle
     @location(3) uv: vec2f,
     @location(4) color: vec4f,
 }
@@ -741,27 +741,68 @@ fn vs_main(vert: VertexInput, inst: InstanceData) -> VertexOutput {
     let phaseOffset = inst.variation.w * PI * 2.0;
 
     if (isBillboard) {
-        // Billboard leaf rendering
-        // Expand quad in camera plane using UV as corner offset
-        let corner = (vert.uv - 0.5) * 2.0 * billboardSize;
-        worldPos = worldPos + uniforms.cameraRight * corner.x + uniforms.cameraUp * corner.y;
+        // Billboard leaf rendering with stem orientation
+        // normal = stem direction (points toward twig), tangent.xyz = leaf up, tangent.w = rotation
+        let normalMat = mat3x3f(model[0].xyz, model[1].xyz, model[2].xyz);
+        let stemDir = normalize(normalMat * vert.normal);
+        var leafUp = normalize(normalMat * vert.tangent.xyz);
+        let baseRotation = vert.tangent.w;
 
-        // Apply wind sway to billboard position (gentler than branches)
-        let windPhase = worldPos.x * 0.3 + worldPos.z * 0.2 + uniforms.time * uniforms.windSpeed + phaseOffset;
-        let sway = sin(windPhase) * uniforms.windStrength * 0.5;
-        worldPos.x += uniforms.windDir.x * sway;
-        worldPos.z += uniforms.windDir.y * sway;
+        // FIRST: Apply branch wind displacement so leaves move WITH their parent branch
+        // Estimate height factor from Y position (higher leaves = more sway)
+        let leafHeight = clamp(worldPos.y / 5.0, 0.0, 1.0);  // Normalize by typical tree height
 
-        // High-frequency flutter for leaves
+        // Same multi-frequency wind as branches
+        let windPhase1 = worldPos.x * 0.5 + worldPos.z * 0.3 + uniforms.time * uniforms.windSpeed + phaseOffset;
+        let windPhase2 = worldPos.x * 0.8 + worldPos.z * 0.6 + uniforms.time * uniforms.windSpeed * 1.3 + phaseOffset * 1.7;
+        let windWave = sin(windPhase1) * 0.7 + sin(windPhase2) * 0.3;
+
+        // Apply branch-style displacement (quadratic with height)
+        let branchBend = windWave * uniforms.windStrength * leafHeight * leafHeight;
+        worldPos.x += uniforms.windDir.x * branchBend;
+        worldPos.z += uniforms.windDir.y * branchBend;
+        worldPos.y -= abs(branchBend) * uniforms.stemCurve;
+
+        // Build orthonormal basis for leaf: stem points toward branch, leafRight and leafUp define quad plane
+        // Safety: check for degenerate case where vectors are parallel
+        var leafRightRaw = cross(leafUp, stemDir);
+        var leafRightLen = length(leafRightRaw);
+        var leafRight = vec3f(1.0, 0.0, 0.0);  // Default fallback
+        if (leafRightLen > 0.001) {
+            leafRight = leafRightRaw / leafRightLen;
+            leafUp = normalize(cross(stemDir, leafRight));  // Ensure orthogonal
+        } else {
+            // Degenerate case: use camera vectors as fallback
+            leafRight = uniforms.cameraRight;
+            leafUp = uniforms.cameraUp;
+        }
+
+        // Apply base rotation around stem axis for variety
+        let cosRot = cos(baseRotation);
+        let sinRot = sin(baseRotation);
+        let rotatedRight = leafRight * cosRot + leafUp * sinRot;
+        let rotatedUp = leafUp * cosRot - leafRight * sinRot;
+        leafRight = rotatedRight;
+        leafUp = rotatedUp;
+
+        // Flutter: rotation around stem axis (additional leaf-specific motion)
         let flutterPhase = worldPos.x * 2.0 + worldPos.z * 1.5 + uniforms.time * uniforms.windSpeed * 3.0 + phaseOffset * 5.0;
-        let flutter = sin(flutterPhase) * uniforms.leafFlutter * 0.15;
-        worldPos = worldPos + uniforms.cameraRight * flutter + uniforms.cameraUp * flutter * 0.5;
+        let flutterAngle = sin(flutterPhase) * uniforms.leafFlutter * 0.4;
+        let cosFlutter = cos(flutterAngle);
+        let sinFlutter = sin(flutterAngle);
+        let flutteredRight = leafRight * cosFlutter + leafUp * sinFlutter;
+        let flutteredUp = leafUp * cosFlutter - leafRight * sinFlutter;
+
+        // Expand quad using leaf-local coordinates with stem at bottom
+        // UV (0,0)=bottom-left, (1,0)=bottom-right, (0.5,0)=stem attachment point
+        let corner = (vert.uv - vec2f(0.5, 0.0)) * 2.0 * billboardSize;
+        worldPos = worldPos + flutteredRight * corner.x + flutteredUp * corner.y;
 
         out.worldPos = worldPos;
         out.clipPos = uniforms.viewProj * vec4f(worldPos, 1.0);
 
-        // Billboard normal faces camera
-        out.worldNormal = normalize(uniforms.cameraPos - worldPos);
+        // Leaf normal faces outward from the leaf surface
+        out.worldNormal = normalize(cross(flutteredRight, flutteredUp));
 
         // Use leaf color (stored in vertex color RGB)
         out.color = uniforms.leafColor * inst.color.rgb;
@@ -926,20 +967,53 @@ fn vs_main(vert: VertexInput, inst: InstanceData) -> @builtin(position) vec4f {
     let phaseOffset = inst.variation.w * PI * 2.0;
 
     if (isBillboard) {
-        // Billboard leaf rendering - expand quad in camera plane
-        let corner = (vert.uv - 0.5) * 2.0 * billboardSize;
-        worldPos = worldPos + uniforms.cameraRight * corner.x + uniforms.cameraUp * corner.y;
+        // Billboard leaf rendering with stem orientation (matches main shader)
+        let normalMat = mat3x3f(model[0].xyz, model[1].xyz, model[2].xyz);
+        let stemDir = normalize(normalMat * vert.normal);
+        var leafUp = normalize(normalMat * vert.tangent.xyz);
+        let baseRotation = vert.tangent.w;
 
-        // Apply wind sway
-        let windPhase = worldPos.x * 0.3 + worldPos.z * 0.2 + uniforms.time * uniforms.windSpeed + phaseOffset;
-        let sway = sin(windPhase) * uniforms.windStrength * 0.5;
-        worldPos.x += uniforms.windDir.x * sway;
-        worldPos.z += uniforms.windDir.y * sway;
+        // FIRST: Apply branch wind displacement so leaves move WITH their parent branch
+        let leafHeight = clamp(worldPos.y / 5.0, 0.0, 1.0);
+        let windPhase1 = worldPos.x * 0.5 + worldPos.z * 0.3 + uniforms.time * uniforms.windSpeed + phaseOffset;
+        let windPhase2 = worldPos.x * 0.8 + worldPos.z * 0.6 + uniforms.time * uniforms.windSpeed * 1.3 + phaseOffset * 1.7;
+        let windWave = sin(windPhase1) * 0.7 + sin(windPhase2) * 0.3;
+        let branchBend = windWave * uniforms.windStrength * leafHeight * leafHeight;
+        worldPos.x += uniforms.windDir.x * branchBend;
+        worldPos.z += uniforms.windDir.y * branchBend;
+        worldPos.y -= abs(branchBend) * uniforms.stemCurve;
 
-        // Leaf flutter
+        // Build orthonormal basis for leaf (with safety check for parallel vectors)
+        var leafRightRaw = cross(leafUp, stemDir);
+        var leafRightLen = length(leafRightRaw);
+        var leafRight = vec3f(1.0, 0.0, 0.0);
+        if (leafRightLen > 0.001) {
+            leafRight = leafRightRaw / leafRightLen;
+            leafUp = normalize(cross(stemDir, leafRight));
+        } else {
+            leafRight = uniforms.cameraRight;
+            leafUp = uniforms.cameraUp;
+        }
+
+        // Apply base rotation around stem axis
+        let cosRot = cos(baseRotation);
+        let sinRot = sin(baseRotation);
+        let rotatedRight = leafRight * cosRot + leafUp * sinRot;
+        let rotatedUp = leafUp * cosRot - leafRight * sinRot;
+        leafRight = rotatedRight;
+        leafUp = rotatedUp;
+
+        // Flutter: rotation around stem axis
         let flutterPhase = worldPos.x * 2.0 + worldPos.z * 1.5 + uniforms.time * uniforms.windSpeed * 3.0 + phaseOffset * 5.0;
-        let flutter = sin(flutterPhase) * uniforms.leafFlutter * 0.15;
-        worldPos = worldPos + uniforms.cameraRight * flutter + uniforms.cameraUp * flutter * 0.5;
+        let flutterAngle = sin(flutterPhase) * uniforms.leafFlutter * 0.4;
+        let cosFlutter = cos(flutterAngle);
+        let sinFlutter = sin(flutterAngle);
+        let flutteredRight = leafRight * cosFlutter + leafUp * sinFlutter;
+        let flutteredUp = leafUp * cosFlutter - leafRight * sinFlutter;
+
+        // Expand quad with stem at bottom center
+        let corner = (vert.uv - vec2f(0.5, 0.0)) * 2.0 * billboardSize;
+        worldPos = worldPos + flutteredRight * corner.x + flutteredUp * corner.y;
     } else {
         // Standard branch wind animation
         let windPhase1 = worldPos.x * 0.5 + worldPos.z * 0.3 + uniforms.time * uniforms.windSpeed + phaseOffset;
@@ -2735,9 +2809,11 @@ void Render3D::updateProceduralMeshBuffers(Context& ctx) {
         const auto& instances = mesh->getInstances();
 
         // Upload vertex buffer if needed
-        if (mesh->meshDirty() || !gpu.vertexBuffer) {
-            size_t vertexSize = meshData.vertices.size() * sizeof(Vertex3D);
-            if (gpu.vertexCapacity < meshData.vertices.size()) {
+        // Always check capacity in case mesh grew without dirty flag being set
+        size_t vertexSize = meshData.vertices.size() * sizeof(Vertex3D);
+        bool needsResize = gpu.vertexCapacity < meshData.vertices.size();
+        if (mesh->meshDirty() || !gpu.vertexBuffer || needsResize) {
+            if (needsResize || !gpu.vertexBuffer) {
                 if (gpu.vertexBuffer) wgpuBufferRelease(gpu.vertexBuffer);
                 WGPUBufferDescriptor desc = {};
                 desc.size = vertexSize;
@@ -2752,9 +2828,11 @@ void Render3D::updateProceduralMeshBuffers(Context& ctx) {
         }
 
         // Upload index buffer if needed
-        if (mesh->meshDirty() || !gpu.indexBuffer) {
-            size_t indexSize = meshData.indices.size() * sizeof(uint32_t);
-            if (gpu.indexCapacity < meshData.indices.size()) {
+        // Always check capacity in case mesh grew without dirty flag being set
+        size_t indexSize = meshData.indices.size() * sizeof(uint32_t);
+        bool needsIndexResize = gpu.indexCapacity < meshData.indices.size();
+        if (mesh->meshDirty() || !gpu.indexBuffer || needsIndexResize) {
+            if (needsIndexResize || !gpu.indexBuffer) {
                 if (gpu.indexBuffer) wgpuBufferRelease(gpu.indexBuffer);
                 WGPUBufferDescriptor desc = {};
                 desc.size = indexSize;

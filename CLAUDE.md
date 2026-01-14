@@ -41,8 +41,6 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 ### Available MCP Tools
 | Tool | Description |
 |------|-------------|
-| `run_project` | Start a Vivid project in background |
-| `stop_project` | Stop the running project |
 | `get_runtime_status` | Get compile errors, runtime status, and operator list |
 | `get_live_params` | Get real-time parameter values from running Vivid |
 | `get_pending_changes` | Get slider changes waiting to be applied to chain.cpp |
@@ -57,14 +55,31 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 | `get_operator` | Get details for a specific operator |
 | `search_docs` | Search Vivid documentation |
 
+### Starting Vivid
+The MCP server queries and controls a running Vivid instance. **Start Vivid before using MCP tools:**
+
+**Option 1: VS Code Extension (Recommended)**
+- Run command: `Vivid: Run Project` (Cmd/Ctrl+Shift+P)
+- Offers options: default, fullscreen, with chain visualizer UI, custom window size
+- Opens a VS Code terminal running the project
+
+**Option 2: Terminal**
+```bash
+./build/bin/vivid path/to/project
+./build/bin/vivid path/to/project --show-ui    # With chain visualizer
+```
+
+If Vivid isn't running, MCP tools return `{"connected": false}` with a helpful suggestion.
+
 ### Claude-First Workflow
-1. Claude starts Vivid using MCP `run_project` tool (returns compile status)
-2. User adjusts sliders in visualizer (preview updates immediately)
-3. Claude calls `get_pending_changes` to see what changed
-4. Claude edits chain.cpp with the new values
-5. Claude calls `clear_pending_changes` to confirm
-6. Hot-reload applies the changes
-7. **IMPORTANT**: Claude calls `get_runtime_status` to verify compilation succeeded
+1. User starts Vivid via terminal or VS Code extension
+2. Claude connects automatically via MCP (port 9876)
+3. User adjusts sliders in visualizer (preview updates immediately)
+4. Claude calls `get_pending_changes` to see what changed
+5. Claude edits chain.cpp with the new values
+6. Claude calls `clear_pending_changes` to confirm
+7. Hot-reload applies the changes
+8. **IMPORTANT**: Claude calls `get_runtime_status` to verify compilation succeeded
 
 ### Checking Compile Status (Critical!)
 After editing `chain.cpp`, Vivid hot-reloads automatically. **You MUST check if compilation succeeded:**

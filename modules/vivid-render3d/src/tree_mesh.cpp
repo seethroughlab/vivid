@@ -345,26 +345,43 @@ void TreeMesh::generateLeafCluster(const TurtleState& turtle) {
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     std::uniform_real_distribution<float> sizeDist(0.7f, 1.3f);
     std::uniform_real_distribution<float> forwardDist(0.2f, 1.0f);
+    std::uniform_real_distribution<float> angleDist(0.0f, glm::two_pi<float>());
 
     // Generate leaves along and around the twig
     for (int i = 0; i < density; i++) {
-        // Position along the twig
+        // Position along the twig - leaves attach directly to twig
         float t = forwardDist(rng);
-        glm::vec3 basePos = turtle.position + turtle.heading * twigLength * t;
+        glm::vec3 attachPoint = turtle.position + turtle.heading * twigLength * t;
 
-        // Add lateral spread (perpendicular to heading)
-        float lateralAmount = radius * (0.3f + 0.7f * t);  // More spread toward tip
-        glm::vec3 lateralOffset = turtle.left * dist(rng) * lateralAmount +
-                                   turtle.up * dist(rng) * lateralAmount;
+        // Radial direction from twig for leaf orientation
+        // Create a rotation around the twig heading for radial placement
+        float radialAngle = angleDist(rng);
+        glm::vec3 radialDir = glm::normalize(
+            turtle.left * std::cos(radialAngle) + turtle.up * std::sin(radialAngle));
 
-        glm::vec3 leafPos = basePos + lateralOffset;
+        // Stem direction: points from leaf tip back toward twig attachment
+        // Leaves angle outward and slightly downward from the twig
+        float outwardAngle = 0.3f + dist(rng) * 0.2f;  // 15-30 degrees from perpendicular
+        glm::vec3 stemDir = glm::normalize(
+            -radialDir * std::cos(outwardAngle) +
+            turtle.heading * std::sin(outwardAngle) * 0.5f);
+
+        // Leaf position: slightly offset from twig along radial direction
+        // Smaller offset keeps leaves visually connected to branch
+        float stemLength = size * sizeDist(rng) * 0.3f;  // Short stem
+        glm::vec3 leafPos = attachPoint + radialDir * stemLength;
+
         float leafSizeVar = size * sizeDist(rng);
 
+        // Random rotation angle for variety in leaf orientation
+        float leafRotation = angleDist(rng);
+
         // Create billboard quad (4 vertices)
-        // The shader will expand this based on camera orientation
+        // The shader will expand this based on stem orientation
         uint32_t baseIdx = static_cast<uint32_t>(m_treeMesh.vertices.size());
 
         // UV coordinates for quad corners
+        // UV.x=0.5 is the stem attachment point (bottom center)
         glm::vec2 uvs[4] = {
             {0.0f, 0.0f},  // Bottom-left
             {1.0f, 0.0f},  // Bottom-right
@@ -372,17 +389,23 @@ void TreeMesh::generateLeafCluster(const TurtleState& turtle) {
             {0.0f, 1.0f}   // Top-left
         };
 
-        // Calculate UV.y for color gradient (based on depth)
-        float maxDepth = static_cast<float>(static_cast<int>(lsystemIterations) + 2);
-        float uvDepth = static_cast<float>(turtle.depth) / maxDepth;
-
         for (int j = 0; j < 4; j++) {
             Vertex3D v;
             v.position = leafPos;  // All vertices at same position initially
-            v.normal = turtle.heading;  // Not used for billboards
+
+            // Store stem direction in normal (points toward twig attachment)
+            v.normal = stemDir;
+
+            // Store leaf "up" direction in tangent.xyz, rotation angle in tangent.w
+            // Leaf up is perpendicular to stem, roughly following radial direction
+            glm::vec3 leafUp = glm::normalize(glm::cross(stemDir, radialDir));
+            if (glm::length(leafUp) < 0.001f) {
+                leafUp = glm::vec3(0, 1, 0);
+            }
+            v.tangent = glm::vec4(leafUp, leafRotation);
+
             v.uv = uvs[j];
             // Store billboard size in color.w (positive = billboard, 0 = branch)
-            // Store cluster position offset for variation in color.xyz
             v.color = glm::vec4(
                 leafColor[0],
                 leafColor[1],
