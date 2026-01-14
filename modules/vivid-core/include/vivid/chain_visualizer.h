@@ -213,6 +213,19 @@ private:
         bool active = false;
     };
     ActiveDragContext m_activeDrag;
+
+    // Context pointer for use in node content callbacks (set during renderNodeGraph)
+    Context* m_currentCtx = nullptr;
+
+    // Scratch texture for rendering CpuPixels operators
+    WGPUTexture m_cpuPixelScratchTex = nullptr;
+    WGPUTextureView m_cpuPixelScratchView = nullptr;
+    int m_cpuPixelScratchWidth = 0;
+    int m_cpuPixelScratchHeight = 0;
+
+    // Upload CPU pixels to scratch texture (creates/resizes as needed)
+    WGPUTextureView uploadCpuPixelsToScratch(Context& ctx, const Operator::CpuPixelView& view);
+    void releaseCpuPixelScratch();
 };
 
 } // namespace vivid

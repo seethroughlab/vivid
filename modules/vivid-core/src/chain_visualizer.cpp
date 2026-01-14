@@ -42,6 +42,14 @@ namespace fs = std::filesystem;
 
 namespace vivid {
 
+// Helper to create WGPUStringView from C string
+static inline WGPUStringView toStringView(const char* str) {
+    WGPUStringView sv;
+    sv.data = str;
+    sv.length = WGPU_STRLEN;
+    return sv;
+}
+
 // Special node IDs for output nodes
 static constexpr int SCREEN_NODE_ID = 9999;
 static constexpr int SPEAKERS_NODE_ID = 9998;
@@ -166,6 +174,9 @@ void ChainVisualizer::shutdown() {
         exitSoloMode();
     }
 
+    // Release CPU pixel scratch texture
+    releaseCpuPixelScratch();
+
     m_initialized = false;
 }
 
@@ -209,6 +220,13 @@ void ChainVisualizer::updateSoloOutput(vivid::Context& ctx) {
     vivid::OutputKind kind = m_soloOperator->outputKind();
     if (kind == vivid::OutputKind::Texture) {
         WGPUTextureView view = m_soloOperator->outputView();
+        if (view) {
+            ctx.setOutputTexture(view);
+        }
+    } else if (kind == vivid::OutputKind::CpuPixels) {
+        // Upload CPU pixels to scratch texture and use that
+        auto cpuView = m_soloOperator->cpuPixelView();
+        WGPUTextureView view = uploadCpuPixelsToScratch(ctx, cpuView);
         if (view) {
             ctx.setOutputTexture(view);
         }
@@ -384,6 +402,9 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
         if (!m_nodeGraphInitialized) return;
     }
 
+    // Store context for use in node content callbacks
+    m_currentCtx = &ctx;
+
     const auto& operators = ctx.registeredOperators();
     if (operators.empty()) return;
 
@@ -471,7 +492,7 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
 
         // Set content callback to render operator preview/thumbnail
         vivid::Operator* op = info.op;  // Capture for lambda
-        m_nodeGraph.setNodeContent([op](OverlayCanvas& canvas, float x, float y, float w, float h) {
+        m_nodeGraph.setNodeContent([this, op](OverlayCanvas& canvas, float x, float y, float w, float h) {
             if (!op) return;
 
             vivid::OutputKind kind = op->outputKind();
@@ -529,6 +550,38 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
                 // Simple wireframe cube representation
                 glm::vec4 lineColor = {0.4f, 0.7f, 1.0f, 0.8f};
                 canvas.strokeRect(cx - sz, cy - sz * 0.6f, sz * 1.6f, sz * 1.2f, 1.5f, lineColor);
+            } else if (kind == vivid::OutputKind::CpuPixels) {
+                // CPU Pixels - upload to scratch texture and render
+                auto cpuView = op->cpuPixelView();
+                WGPUTextureView view = nullptr;
+                if (cpuView.valid() && m_currentCtx) {
+                    view = const_cast<ChainVisualizer*>(this)->uploadCpuPixelsToScratch(*m_currentCtx, cpuView);
+                }
+                if (view) {
+                    // Get aspect ratio from CPU pixel dimensions
+                    float srcAspect = static_cast<float>(cpuView.width) / static_cast<float>(cpuView.height);
+
+                    // Preserve aspect ratio - fit image within area
+                    float areaAspect = w / h;
+                    float drawW, drawH, drawX, drawY;
+
+                    if (srcAspect > areaAspect) {
+                        drawW = w;
+                        drawH = w / srcAspect;
+                        drawX = x;
+                        drawY = y + (h - drawH) * 0.5f;
+                    } else {
+                        drawH = h;
+                        drawW = h * srcAspect;
+                        drawX = x + (w - drawW) * 0.5f;
+                        drawY = y;
+                    }
+
+                    canvas.texturedRect(drawX, drawY, drawW, drawH, view);
+                } else {
+                    // No pixels yet - draw placeholder
+                    canvas.fillRect(x, y, w, h, {0.15f, 0.18f, 0.12f, 1.0f});
+                }
             } else if (kind == vivid::OutputKind::Audio) {
                 // Audio - draw waveform icon
                 canvas.fillRect(x, y, w, h, {0.2f, 0.12f, 0.25f, 1.0f});
@@ -1238,6 +1291,15 @@ void ChainVisualizer::renderOutputPinTooltip(const FrameInput& input, const vivi
             tooltipText = buf;
         } else {
             tooltipText = "No texture";
+        }
+    } else if (kind == vivid::OutputKind::CpuPixels) {
+        auto cpuView = info.op->cpuPixelView();
+        if (cpuView.valid()) {
+            char buf[64];
+            snprintf(buf, sizeof(buf), "%dx%d BGRA (CPU)", cpuView.width, cpuView.height);
+            tooltipText = buf;
+        } else {
+            tooltipText = "No CPU pixels";
         }
     } else if (kind == vivid::OutputKind::Audio) {
         // TODO: Get actual audio stats from operator
@@ -2201,6 +2263,81 @@ void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Co
 
         y += lineHeight;
     }
+}
+
+// -----------------------------------------------------------------------------
+// CPU Pixel Scratch Texture (for CpuPixels output operators)
+// -----------------------------------------------------------------------------
+
+void ChainVisualizer::releaseCpuPixelScratch() {
+    if (m_cpuPixelScratchView) {
+        wgpuTextureViewRelease(m_cpuPixelScratchView);
+        m_cpuPixelScratchView = nullptr;
+    }
+    if (m_cpuPixelScratchTex) {
+        wgpuTextureRelease(m_cpuPixelScratchTex);
+        m_cpuPixelScratchTex = nullptr;
+    }
+    m_cpuPixelScratchWidth = 0;
+    m_cpuPixelScratchHeight = 0;
+}
+
+WGPUTextureView ChainVisualizer::uploadCpuPixelsToScratch(Context& ctx,
+                                                           const Operator::CpuPixelView& view) {
+    if (!view.valid()) return nullptr;
+
+    int width = view.width;
+    int height = view.height;
+
+    // Recreate texture if size changed
+    if (width != m_cpuPixelScratchWidth || height != m_cpuPixelScratchHeight) {
+        releaseCpuPixelScratch();
+
+        WGPUTextureDescriptor desc{};
+        desc.label = toStringView("cpu_pixel_scratch");
+        desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
+        desc.dimension = WGPUTextureDimension_2D;
+        desc.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+        desc.format = WGPUTextureFormat_BGRA8Unorm;  // Match CPU BGRA format
+        desc.mipLevelCount = 1;
+        desc.sampleCount = 1;
+
+        m_cpuPixelScratchTex = wgpuDeviceCreateTexture(ctx.device(), &desc);
+        if (!m_cpuPixelScratchTex) return nullptr;
+
+        WGPUTextureViewDescriptor viewDesc{};
+        viewDesc.format = WGPUTextureFormat_BGRA8Unorm;
+        viewDesc.dimension = WGPUTextureViewDimension_2D;
+        viewDesc.baseMipLevel = 0;
+        viewDesc.mipLevelCount = 1;
+        viewDesc.baseArrayLayer = 0;
+        viewDesc.arrayLayerCount = 1;
+        viewDesc.aspect = WGPUTextureAspect_All;
+
+        m_cpuPixelScratchView = wgpuTextureCreateView(m_cpuPixelScratchTex, &viewDesc);
+        m_cpuPixelScratchWidth = width;
+        m_cpuPixelScratchHeight = height;
+    }
+
+    // Upload pixels to texture
+    WGPUTexelCopyTextureInfo dstInfo{};
+    dstInfo.texture = m_cpuPixelScratchTex;
+    dstInfo.mipLevel = 0;
+    dstInfo.origin = {0, 0, 0};
+    dstInfo.aspect = WGPUTextureAspect_All;
+
+    size_t rowStride = view.rowStride();
+    WGPUTexelCopyBufferLayout layout{};
+    layout.offset = 0;
+    layout.bytesPerRow = static_cast<uint32_t>(rowStride);
+    layout.rowsPerImage = static_cast<uint32_t>(height);
+
+    WGPUExtent3D writeSize = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
+    size_t dataSize = rowStride * height;
+
+    wgpuQueueWriteTexture(ctx.queue(), &dstInfo, view.data, dataSize, &layout, &writeSize);
+
+    return m_cpuPixelScratchView;
 }
 
 } // namespace vivid

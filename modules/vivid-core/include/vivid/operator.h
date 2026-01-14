@@ -29,6 +29,7 @@ class Context;
  */
 enum class OutputKind {
     Texture,    ///< GPU texture output (most common)
+    CpuPixels,  ///< CPU pixel buffer (accessed via cpuPixelView())
     Value,      ///< Single float value
     ValueArray, ///< Array of float values
     Geometry,   ///< 3D geometry (meshes, scenes)
@@ -47,6 +48,7 @@ enum class OutputKind {
 inline const char* outputKindName(OutputKind kind) {
     switch (kind) {
         case OutputKind::Texture:    return "Texture";
+        case OutputKind::CpuPixels:  return "CpuPixels";
         case OutputKind::Value:      return "Value";
         case OutputKind::ValueArray: return "ValueArray";
         case OutputKind::Geometry:   return "Geometry";
