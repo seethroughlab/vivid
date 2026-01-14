@@ -15,7 +15,7 @@ jobs:
   test-module-install-macos:
     name: Module Install (macOS)
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout vivid

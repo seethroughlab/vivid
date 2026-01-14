@@ -27,6 +27,7 @@ FetchContent_Declare(
     GIT_TAG        master
     GIT_SHALLOW    TRUE
 )
+set(BUILD_MIDILIBRARY_ONLY ON CACHE BOOL "" FORCE)  # Skip building ~50 CLI tools
 FetchContent_MakeAvailable(midifile)
 
 set(MIDI_SOURCES
