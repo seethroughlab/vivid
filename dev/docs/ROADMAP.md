@@ -104,7 +104,8 @@ Understanding why V1 and V2 failed is essential context for V3's design decision
 ```
 my-project/
 ├── chain.cpp       # Required: Your visual program
-├── CLAUDE.md       # Recommended: AI context for this project
+├── AGENTS.md       # Recommended: Operational context for AI
+├── BRIEF.md        # Recommended: Creative vision
 ├── shaders/        # Optional: Custom WGSL shaders
 └── assets/         # Optional: textures/, models/, hdris/
 ```

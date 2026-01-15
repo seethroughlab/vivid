@@ -986,7 +986,7 @@ private:
         // search_docs - Search documentation
         tools.push_back({
             {"name", "search_docs"},
-            {"description", "Search Vivid documentation including core docs (RECIPES, CHAIN-API, etc.), module READMEs (Audio, Video, Render3D, etc.), and example CLAUDE.md files. Returns matching sections."},
+            {"description", "Search Vivid documentation including core docs (RECIPES, CHAIN-API, etc.), module READMEs (Audio, Video, Render3D, etc.), and example AGENTS.md files. Returns matching sections."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
@@ -2595,16 +2595,19 @@ private:
                     docs.push_back({readme.string(), prefix + moduleName + " Module"});
                 }
 
-                // Scan examples for CLAUDE.md files
+                // Scan examples for AGENTS.md files (or legacy CLAUDE.md)
                 fs::path examplesDir = moduleEntry.path() / "examples";
                 if (fs::exists(examplesDir) && fs::is_directory(examplesDir)) {
                     for (const auto& exampleEntry : fs::directory_iterator(examplesDir)) {
                         if (!exampleEntry.is_directory()) continue;
 
+                        // Prefer AGENTS.md (new standard), fall back to CLAUDE.md
+                        fs::path agentsMd = exampleEntry.path() / "AGENTS.md";
                         fs::path claudeMd = exampleEntry.path() / "CLAUDE.md";
-                        if (fs::exists(claudeMd)) {
+                        fs::path docFile = fs::exists(agentsMd) ? agentsMd : claudeMd;
+                        if (fs::exists(docFile)) {
                             std::string exampleName = formatExampleName(exampleEntry.path().filename().string());
-                            docs.push_back({claudeMd.string(), prefix + moduleName + ": " + exampleName});
+                            docs.push_back({docFile.string(), prefix + moduleName + ": " + exampleName});
                         }
                     }
                 }
@@ -2638,7 +2641,7 @@ private:
             }
         }
 
-        // 2. Scan built-in modules (modules/vivid-*/README.md and examples/*/CLAUDE.md)
+        // 2. Scan built-in modules (modules/vivid-*/README.md and examples/*/AGENTS.md)
         fs::path modulesDir = findModulesDir();
         scanModulesDir(modulesDir, docs, false);
 

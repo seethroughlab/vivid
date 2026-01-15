@@ -28,7 +28,8 @@ Every Vivid project can have an `assets/` folder:
 ```
 my-project/
 ├── chain.cpp
-├── CLAUDE.md
+├── AGENTS.md
+├── BRIEF.md
 └── assets/
     ├── photo.jpg
     ├── texture.png

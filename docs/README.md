@@ -3,6 +3,7 @@
 ## Getting Started
 
 - [RECIPES](RECIPES.md) - Complete working examples
+- [AI-WORKFLOW](AI-WORKFLOW.md) - Working with AI assistants (AGENTS.md, BRIEF.md)
 
 ## API Reference
 

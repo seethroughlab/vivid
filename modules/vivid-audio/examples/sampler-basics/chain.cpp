@@ -2,7 +2,7 @@
 // Demonstrates: Sampler, SamplePlayer, MultiSampler - Sample playback
 //
 // NOTE: Requires sample files in assets/ folder.
-// See CLAUDE.md for sample requirements.
+// See AGENTS.md for sample requirements.
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>

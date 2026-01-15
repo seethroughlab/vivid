@@ -114,55 +114,52 @@ void update(Context& ctx) {
 VIVID_CHAIN(setup, update)
 )";
 
-// CLAUDE.md template for AI assistance
-static const char* CLAUDE_MD_TEMPLATE = R"(# %PROJECT_NAME%
+// AGENTS.md template - operational context for AI assistants (industry standard)
+static const char* AGENTS_MD_TEMPLATE = R"(# %PROJECT_NAME%
 
-## What I Want to Create
+## Commands
+- **VS Code**: `Vivid: Run Project` (Cmd/Ctrl+Shift+P) - recommended
+- **Terminal**: `vivid .` or `vivid . --show-ui`
 
-[Describe your visual effect, installation, or creative coding project here. Be specific about:
-- What it should look like
-- How it should move/animate
-- What inputs it responds to (audio, MIDI, mouse, etc.)
-- The mood or aesthetic you're going for]
-
-## Current State
-
-- Working on: [current task]
-- Issues: [any problems]
-
-## Modules Enabled
-
+## Modules
 %MODULES_LIST%
 
-## Style Preferences
+## MCP Workflow
+After editing chain.cpp, Vivid hot-reloads automatically. Always verify:
+1. `get_pending_changes` - Check if user adjusted sliders
+2. Edit chain.cpp with new values
+3. `clear_pending_changes` - Confirm edit applied
+4. `get_runtime_status` - **Critical**: Verify compilation succeeded
 
-- [Add any preferences for how you want code written]
+## Conventions
+- Use setter pattern: `noise.scale = 4.0f;`
+- Explicit casts: `std::max(0.0f, static_cast<float>(m_param))`
+- Keep chains simple - fewer operators is better
+
+## Boundaries
+- Don't modify assets/ without asking
+- chain.cpp is the single entry point
+- Check `get_runtime_status` after every edit
 
 ## Resources
-
-- Run with: `vivid .` (from this directory)
-- Effect recipes: https://github.com/seethroughlab/vivid/blob/main/docs/RECIPES.md
+- Recipes: https://github.com/seethroughlab/vivid/blob/main/docs/RECIPES.md
 - Examples: https://github.com/seethroughlab/vivid/tree/main/modules/vivid-core/examples
+- Use `search_docs` MCP tool for operator details
+)";
 
-## Notes for AI Assistants
+// BRIEF.md template - creative vision (user-owned)
+static const char* BRIEF_MD_TEMPLATE = R"(# Vision
 
-When helping with this project:
-1. Read chain.cpp first to understand the current effect chain
-2. Suggest changes by showing the modified code
-3. Explain what each operator does when adding new ones
-4. Keep chains simple - fewer operators is usually better
+[Describe what you want to create - be specific about visuals, motion, inputs, mood]
 
-### Visual Validation Workflow
+## Aesthetic Goals
+- [Visual style, mood, references]
 
-Use MCP tools to run the project and verify visual output:
+## Constraints
+- [Resolution, performance, target platforms]
 
-1. **Start the project**: Ask "Would you like me to run your project?" then use `run_project`
-2. **Validate changes**: After code edits, use `capture_frame` to verify visuals
-3. **Monitor adjustments**: Check `get_pending_changes` - if user adjusted sliders, ask if they want those values in chain.cpp
-4. **Explore**: Use `orbit_camera` and `set_param` to test different views/values
-5. **Check errors**: Use `get_runtime_status` after edits to verify compilation succeeded
-
-Use `search_docs` for Vivid documentation and operator details.
+## Notes
+- [Any other context]
 )";
 
 void printUsage() {
@@ -342,12 +339,10 @@ int createProject(const std::string& name, const std::string& templateName,
         claudeSettings << "}\n";
         claudeSettings.close();
 
-        // Build modules list for CLAUDE.md
+        // Build modules list for AGENTS.md
         std::string modulesList;
-        modulesList += "- **Core** (always included): 2D effects, noise, blur, composite, feedback\n";
-        if (modules.empty()) {
-            modulesList += "\nNo additional modules selected. Add with `vivid new --modules vivid-audio,vivid-video`\n";
-        } else {
+        modulesList += "- **Core** (always included): noise, blur, composite, feedback\n";
+        if (!modules.empty()) {
             for (const auto& mod : modules) {
                 for (const auto& info : availableModules) {
                     if (mod == info.name) {
@@ -358,19 +353,27 @@ int createProject(const std::string& name, const std::string& templateName,
             }
         }
 
-        // Write CLAUDE.md
-        std::string claudeMd = replaceAll(CLAUDE_MD_TEMPLATE, "%PROJECT_NAME%", name);
-        claudeMd = replaceAll(claudeMd, "%MODULES_LIST%", modulesList);
-        std::ofstream claudeFile(projectPath / "CLAUDE.md");
-        if (claudeFile) {
-            claudeFile << claudeMd;
-            claudeFile.close();
+        // Write AGENTS.md (operational context for AI assistants)
+        std::string agentsMd = replaceAll(AGENTS_MD_TEMPLATE, "%PROJECT_NAME%", name);
+        agentsMd = replaceAll(agentsMd, "%MODULES_LIST%", modulesList);
+        std::ofstream agentsFile(projectPath / "AGENTS.md");
+        if (agentsFile) {
+            agentsFile << agentsMd;
+            agentsFile.close();
+        }
+
+        // Write BRIEF.md (creative vision - user-owned)
+        std::ofstream briefFile(projectPath / "BRIEF.md");
+        if (briefFile) {
+            briefFile << BRIEF_MD_TEMPLATE;
+            briefFile.close();
         }
 
         std::cout << "\n";
         std::cout << "  Created " << name << "/\n";
         std::cout << "  Created " << name << "/chain.cpp\n";
-        std::cout << "  Created " << name << "/CLAUDE.md\n";
+        std::cout << "  Created " << name << "/AGENTS.md\n";
+        std::cout << "  Created " << name << "/BRIEF.md\n";
         std::cout << "  Created " << name << "/assets/\n";
         std::cout << "  Created " << name << "/shaders/\n";
         std::cout << "  Created " << name << "/.gitignore\n";
@@ -381,7 +384,7 @@ int createProject(const std::string& name, const std::string& templateName,
         std::cout << "  cd " << name << "\n";
         std::cout << "  vivid .\n";
         std::cout << "\n";
-        std::cout << "Edit CLAUDE.md to describe what you want to create!\n";
+        std::cout << "Edit BRIEF.md to describe what you want to create!\n";
         std::cout << "Edit chain.cpp to start coding!\n";
 
     } catch (const fs::filesystem_error& e) {

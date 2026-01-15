@@ -449,8 +449,9 @@ Repository: [vivid-onnx](https://github.com/seethroughlab/vivid-onnx)
 |------|---------|
 | [docs/RECIPES.md](docs/RECIPES.md) | Complete chain.cpp examples |
 | [docs/CREATING-OPERATORS.md](docs/CREATING-OPERATORS.md) | Custom operators and addons |
+| [docs/AI-WORKFLOW.md](docs/AI-WORKFLOW.md) | Working with AI assistants |
 
-**Tip:** Create a `CLAUDE.md` in your project folder to give Claude context about your specific project. See `projects/getting-started/01-template/` for an example.
+**Tip:** Create `AGENTS.md` (operational context) and `BRIEF.md` (creative vision) in your project folder for AI assistants. See [docs/AI-WORKFLOW.md](docs/AI-WORKFLOW.md) for best practices.
 
 ## License
 

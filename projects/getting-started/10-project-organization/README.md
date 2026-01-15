@@ -6,7 +6,7 @@ Best practices for structuring Vivid projects, especially when working with AI a
 
 - Project folder structure
 - Asset organization patterns
-- CLAUDE.md for effective AI collaboration
+- AGENTS.md + BRIEF.md for effective AI collaboration
 - Configuration options with ChainConfig
 - Tips for maintainable projects
 
@@ -27,7 +27,8 @@ A well-organized Vivid project looks like this:
 ```
 my-project/
 ├── chain.cpp           # Main chain code
-├── CLAUDE.md           # AI assistance context (important!)
+├── AGENTS.md           # Operational context for AI (commands, conventions)
+├── BRIEF.md            # Creative vision (what you want to build)
 ├── README.md           # Human documentation (optional)
 └── assets/
     ├── images/         # Image files
@@ -36,63 +37,69 @@ my-project/
     └── models/         # 3D models (GLTF)
 ```
 
-## The CLAUDE.md File
+## AI Documentation Files
 
-**This is the most important file for AI-assisted development!**
+Vivid uses two files for AI-assisted development, following industry best practices:
 
-When you use Claude Code with Vivid, Claude reads CLAUDE.md to understand:
-- What the project does
-- Current state and issues
-- Your preferences and goals
+### AGENTS.md (Operational Context)
 
-### Recommended CLAUDE.md Structure
+Keep this **under 60 lines**. Contains:
+- Commands (how to run/build)
+- Modules used
+- MCP workflow
+- Code conventions
+- Boundaries (what not to modify)
 
 ```markdown
-# Project: [Name]
+# My Project
 
-## What This Does
-[1-2 sentence description of the visual effect]
+## Commands
+- Run: `vivid .`
 
-## Current State
-- Working on: [current task]
-- Issues: [any problems]
+## Modules
+- Core: Noise, Blur, HSV
 
-## Goals
-- [What you want to achieve]
-- [Specific effects or behaviors]
+## MCP Workflow
+1. `get_pending_changes` - Check slider adjustments
+2. Edit chain.cpp
+3. `clear_pending_changes` - Confirm
+4. `get_runtime_status` - Verify compilation
 
-## Style Preferences
-- [Code style preferences]
-- [Visual style preferences]
+## Conventions
+- Use setter pattern for operators
+- Keep chains simple
 
-## Notes
-- [Any important context]
-- [Known limitations]
+## Boundaries
+- Don't modify assets/ without asking
 ```
 
-### Example CLAUDE.md
+### BRIEF.md (Creative Vision)
+
+User-owned, can be as long as needed. Contains:
+- What you want to create
+- Aesthetic goals
+- Constraints
 
 ```markdown
-# Project: Audio Visualizer
+# Vision
 
-## What This Does
-Creates a audio-reactive 3D scene with geometric shapes
-that pulse and rotate to music.
+Audio-reactive 3D scene with geometric shapes that pulse to music.
 
-## Current State
-- Working on: Adding color transitions
-- Issues: Bloom is too bright on high notes
-
-## Goals
-- Smooth transitions between colors
-- Beat detection for flash effects
-- Export to video for social media
-
-## Style Preferences
-- Prefer subtle animations over flashy
+## Aesthetic Goals
+- Subtle, flowing animations
 - Dark backgrounds with bright accents
-- Use 1920x1080 resolution
+- 1920x1080 resolution
+
+## Constraints
+- Must run at 60fps
+- Target export for social media
 ```
+
+### Why Two Files?
+
+- **AGENTS.md** is read every session - keep it lean
+- **BRIEF.md** captures creative intent - evolves with project
+- Progress tracking is disposable - let AI regenerate task lists
 
 ## Window Configuration
 
@@ -147,7 +154,7 @@ assets/video/
 1. **Keep chain.cpp focused**: One main effect per project
 2. **Use meaningful names**: `bass_pulse` instead of `effect1`
 3. **Comment sections**: Divide code into labeled sections
-4. **Update CLAUDE.md**: Keep it current as the project evolves
+4. **Update BRIEF.md**: Keep creative vision current as project evolves
 5. **Version assets**: Use Git LFS for large files
 
 ## Working with Claude

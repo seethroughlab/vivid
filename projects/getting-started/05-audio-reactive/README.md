@@ -81,7 +81,7 @@ void update(Context& ctx) {
 1. **Play music**: The visuals should pulse with the beat
 2. **Try different music**: Notice how different genres affect the visuals
 3. **Adjust sensitivity**: Change the multipliers to find good responsiveness
-4. **Add beat detection**: See CLAUDE.md for `BeatDetect` examples
+4. **Add beat detection**: See AGENTS.md for `BeatDetect` examples
 
 ## Common Audio-Reactive Patterns
 

@@ -1,27 +1,20 @@
-# Lesson 02: Operator Pipeline
+# Lesson 2: Operator Pipeline
 
-This lesson teaches how operators connect to form processing pipelines.
+## Commands
+- Run: `vivid .`
+- Show UI: `vivid . --show-ui` (press Tab to toggle)
 
-## Lesson Objectives
+## Modules
+- Core: Noise, Blur, Gradient, Lookup
 
-1. Understand that operators form a directed graph
-2. Learn to connect operators using `.input("name")`
-3. Visualize the chain with Tab key
-4. Understand that order affects the result
+## Lesson Focus
+How operators connect to form processing pipelines using `.input("name")`.
 
 ## Key Concepts
-
 - **Pipeline**: Data flows from generators through effects to output
 - **Input/Output**: Each operator can have inputs and produces output
 - **Graph**: The chain is actually a directed graph, not just a linear chain
-- **Order matters**: Blur→Lookup differs from Lookup→Blur
-
-## What the Code Demonstrates
-
-- Creating a multi-stage pipeline: Noise → Blur → Gradient + Lookup
-- Connecting operators by name with `.input("name")`
-- Using Lookup to colorize grayscale with a gradient LUT
-- Setting effect parameters (noise scale, blur radius, gradient colors)
+- **Order matters**: Blur->Lookup differs from Lookup->Blur
 
 ## Suggested Modifications
 
@@ -34,30 +27,20 @@ This lesson teaches how operators connect to form processing pipelines.
 
 2. **Add parallel branches**:
    ```cpp
-   auto& blur = chain.add<Blur>("blur");
-   blur.input("noise");
-
    auto& edge = chain.add<Edge>("edge");
    edge.input("noise");  // Same input as blur!
-
    auto& comp = chain.add<Composite>("comp");
    comp.inputA("blur");
    comp.inputB("edge");
    comp.mode = BlendMode::Screen;
    ```
 
-3. **Insert effects**:
-   - `Pixelate` - blocky retro look
-   - `Mirror` - symmetry effects
-   - `ChromaticAberration` - RGB split
-   - `Bloom` - glow effect
+3. **Insert effects**: Pixelate, Mirror, ChromaticAberration, Bloom
 
-## Common Issues
-
+## Troubleshooting
 - **Output shows wrong thing**: Check `chain.output()` points to the last operator
 - **Effect not visible**: Make sure input is connected
 - **Unexpected results**: Check operator order in the pipeline
 
-## Next Lesson
-
+## Next
 03-parameters: Adding interactive sliders to control your chain
