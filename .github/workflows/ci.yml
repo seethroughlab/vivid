@@ -196,7 +196,7 @@ jobs:
           } else {
             cmake --build build --config Release --parallel
           }
-        shell: pwsh
+        shell: powershell
 
       - name: Run unit and integration tests
         run: ctest --test-dir build --output-on-failure -C Release -L "unit|integration|build"
