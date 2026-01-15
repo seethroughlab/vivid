@@ -433,6 +433,16 @@ GPU-instanced vegetation systems built on the `ProceduralMesh` architecture:
 
 Preview: [`feature/vegetation`](https://github.com/seethroughlab/vivid/tree/feature/vegetation)
 
+### Computer Vision (External Module)
+OpenCV-based computer vision operators including contour detection, optical flow, and blob tracking. Builds OpenCV from source for cross-platform compatibility.
+
+Repository: [vivid-opencv](https://github.com/seethroughlab/vivid-opencv)
+
+### Machine Learning Inference (External Module)
+ONNX Runtime-based ML operators for real-time pose detection, face detection, and other inference tasks.
+
+Repository: [vivid-onnx](https://github.com/seethroughlab/vivid-onnx)
+
 ## Documentation
 
 | File | Purpose |
