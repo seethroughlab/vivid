@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **vivid-texshare module** - Texture sharing between applications via Syphon (macOS) and Spout (Windows). New operators:
+  - `TextureShareOut` - Publish textures to other apps (VJ software, media servers)
+  - `TextureShareIn` - Receive textures from other apps
+  - Syphon framework auto-downloaded if not installed; Windows Spout support is stub for now
 - **`get_example` MCP tool** - Returns working code snippets for operators from RECIPES.md and example projects. Call before writing code to see correct API patterns (e.g., `get_example("Sequencer")` shows `setPattern(0x1111)` bitmask syntax).
 - **Examples vs Showcase documentation** - Module READMEs now document the distinction: `examples/` contains minimal (~50-100 line) API demonstrations for quick reference, while `showcase/` contains rich (200+ line) creative applications for inspiration. Added showcase/IDEAS.md files with future project proposals for modules without existing showcases.
 
