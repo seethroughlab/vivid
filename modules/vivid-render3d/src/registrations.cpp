@@ -4,6 +4,7 @@
 #include <vivid/render3d/camera_operator.h>
 #include <vivid/render3d/light_operators.h>
 #include <vivid/render3d/primitives.h>
+#include <vivid/render3d/sweep.h>
 #include <vivid/render3d/boolean.h>
 #include <vivid/operator_registry.h>
 
@@ -24,6 +25,7 @@ REGISTER_OPERATOR(Cylinder, "3D Primitives", "Cylinder mesh generator", false);
 REGISTER_OPERATOR(Cone, "3D Primitives", "Cone mesh generator", false);
 REGISTER_OPERATOR(Torus, "3D Primitives", "Torus (donut) mesh generator", false);
 REGISTER_OPERATOR(Plane, "3D Primitives", "Flat plane mesh generator", false);
+REGISTER_OPERATOR(Sweep, "3D Primitives", "Sweep profile along path (helix, tube, ring)", false);
 
 // CSG (Constructive Solid Geometry)
 REGISTER_OPERATOR(Boolean, "3D CSG", "CSG boolean operations (union, subtract, intersect)", true);

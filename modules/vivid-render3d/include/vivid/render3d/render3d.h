@@ -16,6 +16,7 @@
 #include <vivid/render3d/mesh_operator.h>
 #include <vivid/render3d/static_mesh.h>
 #include <vivid/render3d/primitives.h>
+#include <vivid/render3d/sweep.h>
 #include <vivid/render3d/boolean.h>
 #include <vivid/render3d/scene_composer.h>
 #include <vivid/render3d/gltf_loader.h>

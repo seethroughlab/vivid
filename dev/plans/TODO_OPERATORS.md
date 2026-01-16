@@ -47,10 +47,10 @@ Simple texture operators that fill common gaps.
   - **Difficulty:** Easy (1-2 hours)
 
 ### Fit
-- [ ] **Fit** - Resolution fitting
+- [x] **Fit** - Resolution fitting
   - **TD equivalent:** Fit TOP
   - **Description:** Fit texture to target resolution with letterbox/pillarbox
-  - **Params:** `width`, `height`, `fitMode` (Fill, Fit, Stretch, Native), `justify` (center/top/bottom/left/right)
+  - **Params:** `width`, `height`, `fitMode` (Fill, Fit, Stretch, Native), `hJustify`, `vJustify`, `backgroundColor`
   - **Base class:** `TextureOperator` (needs custom resolution)
   - **Shader:** UV transform with aspect ratio handling
   - **Difficulty:** Medium (2-3 hours)
@@ -79,15 +79,6 @@ Operators for motion effects and advanced compositing.
   - **Base class:** `SimpleTextureEffect<NormalMap>`
   - **Shader:** Sobel-based gradient to normal conversion
   - **Difficulty:** Easy (2-3 hours)
-
-### Layout
-- [ ] **Layout** - Multi-texture arrangement
-  - **TD equivalent:** Layout TOP
-  - **Description:** Arrange multiple textures in grid or custom positions
-  - **Params:** `columns`, `rows`, `spacing`, `justify`
-  - **Inputs:** Multiple texture inputs
-  - **Base class:** `TextureOperator` (multi-input)
-  - **Difficulty:** Medium (4-6 hours)
 
 ### Corner Pin
 - [ ] **CornerPin** - 4-point perspective warp
@@ -121,15 +112,6 @@ Channel operators for parameter control and animation.
   - **Outputs:** `fraction`, `seconds`, `segment`, `done`
   - **Difficulty:** Medium (3-4 hours)
 
-### Expression
-- [ ] **Expression** - Math expression evaluator
-  - **TD equivalent:** Expression CHOP
-  - **Description:** Evaluate math expressions for parameter values
-  - **Params:** `expression` (string), variable bindings
-  - **Implementation:** Simple expression parser or use exprtk library
-  - **Difficulty:** Hard (6-10 hours)
-  - **Alternative:** Enhance existing MathOp
-
 ---
 
 ## Phase 4: 3D Enhancement
@@ -146,12 +128,12 @@ Geometry operators and 3D post-processing.
   - **Dependency:** Need 2D path/curve representation
 
 ### Sweep
-- [ ] **Sweep** - Profile along path
+- [x] **Sweep** - Profile along path
   - **TD equivalent:** Sweep SOP
   - **Description:** Sweep cross-section profile along a path
-  - **Params:** `profile`, `path`, `twist`, `scale`
+  - **Params:** `pathType`, `pathHeight`, `pathRadius`, `pathTurns`, `profileType`, `profileRadius`, `twist`, `scaleStart`, `scaleEnd`, `caps`
   - **Difficulty:** Hard (8-12 hours)
-  - **Dependency:** Need curve/path operators
+  - **Implementation:** Self-contained with built-in path types (Line, Helix, Circle, Arc) and profile types (Circle, Square, Star, Triangle)
 
 ### Trail
 - [ ] **Trail** - Motion trails
@@ -200,11 +182,12 @@ External integration for professional workflows.
   - **Difficulty:** Medium (6-8 hours per direction)
   - **Uses:** Broadcast, multi-machine setups
 
-### Syphon/Spout
-- [ ] **SyphonSpoutIn** / **SyphonSpoutOut** - App texture sharing
+### Texture Sharing (vivid-texshare module)
+- [ ] **TextureShareIn** / **TextureShareOut** - App texture sharing
   - **TD equivalent:** Syphon Spout In/Out TOP
   - **Description:** Share textures between applications
-  - **Platform:** Syphon (macOS), Spout (Windows)
+  - **Platform:** Syphon (macOS), Spout (Windows) - unified API
+  - **Module:** `modules/vivid-texshare/` in main repo
   - **Difficulty:** Medium (4-6 hours per platform)
   - **Uses:** VJ software integration, multi-app workflows
 

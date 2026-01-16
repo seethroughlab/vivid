@@ -19,6 +19,7 @@
 #include <vivid/effects/level.h>
 #include <vivid/effects/lookup.h>
 #include <vivid/effects/crop.h>
+#include <vivid/effects/fit.h>
 #include <vivid/effects/tone_map.h>
 #include <vivid/effects/normal_map.h>
 #include <vivid/effects/transform.h>
@@ -79,6 +80,7 @@ REGISTER_OPERATOR(Threshold, "Effects", "Binary thresholding", true);
 REGISTER_OPERATOR(Level, "Effects", "Input/output level adjustment with gamma", true);
 REGISTER_OPERATOR(Lookup, "Effects", "Color lookup table / colorize", true);
 REGISTER_OPERATOR(Crop, "Effects", "Region extraction", true);
+REGISTER_OPERATOR(Fit, "Effects", "Resolution fitting with letterbox/pillarbox", true);
 REGISTER_OPERATOR(ToneMap, "Effects", "HDR to SDR tone mapping", true);
 REGISTER_OPERATOR(NormalMap, "Effects", "Height to normal map conversion", true);
 REGISTER_OPERATOR(Transform, "Effects", "2D transform (scale, rotate, translate)", true);

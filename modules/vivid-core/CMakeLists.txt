@@ -86,6 +86,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/level.cpp
     src/effects/lookup.cpp
     src/effects/crop.cpp
+    src/effects/fit.cpp
     src/effects/tone_map.cpp
     src/effects/normal_map.cpp
     src/effects/mirror.cpp

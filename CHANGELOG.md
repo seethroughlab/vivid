@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `TextureShareOut` - Publish textures to other apps (VJ software, media servers)
   - `TextureShareIn` - Receive textures from other apps
   - Syphon framework auto-downloaded if not installed; Windows Spout support is stub for now
+- **`Fit` operator** - Resolution fitting with letterbox, pillarbox, fill, and stretch modes. Configurable alignment and background color.
+- **`Sweep` operator** - Extrude 2D profiles along 3D parametric paths. Built-in paths (Line, Helix, Circle, Arc) and profiles (Circle, Square, Star, Triangle). Supports twist, scale taper, and UV mapping.
 - **`get_example` MCP tool** - Returns working code snippets for operators from RECIPES.md and example projects. Call before writing code to see correct API patterns (e.g., `get_example("Sequencer")` shows `setPattern(0x1111)` bitmask syntax).
 - **Examples vs Showcase documentation** - Module READMEs now document the distinction: `examples/` contains minimal (~50-100 line) API demonstrations for quick reference, while `showcase/` contains rich (200+ line) creative applications for inspiration. Added showcase/IDEAS.md files with future project proposals for modules without existing showcases.
 
