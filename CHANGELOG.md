@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.6] - 2026-01-16
+
+*Texture sharing, new operators, MCP improvements*
+
 ### Added
 
 - **vivid-texshare module** - Texture sharing between applications via Syphon (macOS) and Spout (Windows). New operators:
