@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - **`search_docs` uses OR logic** - Doc search now matches ANY query word (was ALL words required). Results ranked by relevance score. Query "audio mixer connect" now returns useful results instead of "No matches found".
+- **`get_operator` no longer guesses methods** - Removed ~195 lines of hardcoded method heuristics that caused false positives. Claude now reads the actual header files via `headerPath` to discover the real API.
 
 ### Fixed
 
