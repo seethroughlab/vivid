@@ -24,6 +24,21 @@ cmake --build build
 
 Copy the built library to `~/.vivid/addons/vivid-serial/`.
 
+## Examples
+
+Minimal, focused examples (~50-100 lines) demonstrating core API patterns:
+
+| Example | Description |
+|---------|-------------|
+| [arduino-led](examples/arduino-led) | Control Arduino LEDs via serial |
+| [dmx-lighting](examples/dmx-lighting) | DMX fixture control basics |
+| [dmx-control](examples/dmx-control) | Advanced DMX scene control |
+
+## Examples vs Showcase
+
+- **`examples/`** - Minimal, focused code (~50-100 lines) demonstrating core API patterns. Designed for quick reference and LLM consumption.
+- **`showcase/`** - Rich, complete demonstrations (200+ lines) with UI, visuals, and creative applications. Designed for user inspiration.
+
 ## Usage
 
 ### Arduino LED Control

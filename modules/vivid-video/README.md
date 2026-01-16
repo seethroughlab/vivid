@@ -37,6 +37,28 @@ HAP is recommended for high-performance playback. It uses GPU-accelerated DXT co
 
 ## Examples
 
+Minimal, focused examples (~50-100 lines) demonstrating core API patterns:
+
+| Example | Description |
+|---------|-------------|
+| [video-audio](examples/video-audio) | Video playback with audio modes |
+| [webcam-displace](examples/webcam-displace) | Webcam input with displacement |
+| [webcam-feedback](examples/webcam-feedback) | Webcam feedback effects |
+| [time-machine](examples/time-machine) | Video time manipulation |
+
+## Showcase
+
+Rich, complete demonstrations (200+ lines) with creative applications:
+
+| Showcase | Description |
+|----------|-------------|
+| [vj-mixer](showcase/vj-mixer) | Multi-layer video mixer with transitions |
+
+## Examples vs Showcase
+
+- **`examples/`** - Minimal, focused code (~50-100 lines) demonstrating core API patterns. Designed for quick reference and LLM consumption.
+- **`showcase/`** - Rich, complete demonstrations (200+ lines) with UI, visuals, and creative applications. Designed for user inspiration.
+
 See `tests/fixtures/video-demo` for codec testing and comparison.
 
 ## Quick Start

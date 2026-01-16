@@ -52,11 +52,29 @@ This addon is included with Vivid by default. No additional installation require
 
 ## Examples
 
+Minimal, focused examples (~50-100 lines) demonstrating core API patterns:
+
 | Example | Description |
 |---------|-------------|
 | [3d-basics](examples/3d-basics) | Primitives, CSG, camera control |
-| [gltf-loader](examples/gltf-loader) | Loading GLTF models with PBR+IBL |
+| [scene-composition](examples/scene-composition) | Composing meshes into scenes |
+| [csg-modeling](examples/csg-modeling) | Boolean operations on meshes |
 | [instancing](examples/instancing) | GPU instancing for 20K+ objects |
+| [tree-forest](examples/tree-forest) | Procedural trees with instancing |
+
+## Showcase
+
+Rich, complete demonstrations (200+ lines) with creative applications:
+
+| Showcase | Description |
+|----------|-------------|
+| [gltf-loader](showcase/gltf-loader) | Loading GLTF models with PBR+IBL |
+| [raycasting](showcase/raycasting) | Interactive 3D raycasting |
+
+## Examples vs Showcase
+
+- **`examples/`** - Minimal, focused code (~50-100 lines) demonstrating core API patterns. Designed for quick reference and LLM consumption.
+- **`showcase/`** - Rich, complete demonstrations (200+ lines) with UI, visuals, and creative applications. Designed for user inspiration.
 
 ## Quick Start
 

@@ -195,32 +195,46 @@ struct ModuleInfo {
 // Dynamically discover available modules by scanning the modules directory
 static std::vector<ModuleInfo> discoverModules() {
     std::vector<ModuleInfo> modules;
+    std::set<std::string> seenNames;  // Avoid duplicates
 
     fs::path exeDir = getExecutableDir();
-    fs::path modulesDir = exeDir.parent_path() / "modules";
 
-    if (!fs::exists(modulesDir) || !fs::is_directory(modulesDir)) {
-        return modules;
-    }
+    // Try multiple paths to find modules (scan all, don't stop at first)
+    std::vector<fs::path> searchPaths = {
+        fs::current_path() / "modules",                    // Dev: running from repo root
+        exeDir.parent_path().parent_path() / "modules",    // Dev: exe in build/bin/, modules at ../../modules/
+        exeDir.parent_path() / "modules"                   // Release: exe in bin/, modules at ../modules/
+    };
 
-    for (const auto& entry : fs::directory_iterator(modulesDir)) {
-        if (!entry.is_directory()) continue;
+    for (const auto& modulesDir : searchPaths) {
+        if (!fs::exists(modulesDir) || !fs::is_directory(modulesDir)) {
+            continue;
+        }
 
-        fs::path moduleJson = entry.path() / "module.json";
-        if (!fs::exists(moduleJson)) continue;
+        for (const auto& entry : fs::directory_iterator(modulesDir)) {
+            if (!entry.is_directory()) continue;
 
-        try {
-            std::ifstream f(moduleJson);
-            if (!f) continue;
+            fs::path moduleJson = entry.path() / "module.json";
+            if (!fs::exists(moduleJson)) continue;
 
-            json j = json::parse(f);
-            ModuleInfo info;
-            info.name = j.value("name", entry.path().filename().string());
-            info.description = j.value("description", "");
-            info.path = entry.path();
-            modules.push_back(info);
-        } catch (...) {
-            // Skip modules with invalid JSON
+            try {
+                std::ifstream f(moduleJson);
+                if (!f) continue;
+
+                json j = json::parse(f);
+                ModuleInfo info;
+                info.name = j.value("name", entry.path().filename().string());
+
+                // Skip if we already found this module
+                if (seenNames.count(info.name)) continue;
+                seenNames.insert(info.name);
+
+                info.description = j.value("description", "");
+                info.path = entry.path();
+                modules.push_back(info);
+            } catch (...) {
+                // Skip modules with invalid JSON
+            }
         }
     }
 
@@ -231,14 +245,107 @@ static std::vector<ModuleInfo> discoverModules() {
     return modules;
 }
 
-int createProject(const std::string& name, const std::string& templateName,
-                  bool minimal, bool skipPrompts, const std::vector<std::string>& modules) {
-    fs::path projectPath = fs::current_path() / name;
+// Files that don't count as "real content" when checking if directory is empty
+static const std::set<std::string> IGNORABLE_FILES = {
+    ".git", ".gitignore", ".gitattributes", ".DS_Store",
+    ".vscode", ".idea", "README.md", "BRIEF.md", "AGENTS.md"
+};
 
-    // Check if directory already exists
-    if (fs::exists(projectPath)) {
-        std::cerr << "Error: Directory '" << name << "' already exists.\n";
-        return 1;
+// Files created by vivid new (potential conflicts when creating in-place)
+static const std::vector<std::string> PROJECT_FILES = {
+    "chain.cpp", "AGENTS.md", ".gitignore", "assets", "shaders", ".claude"
+};
+
+// Check if a directory is "effectively empty" (only has ignorable files)
+static bool isEffectivelyEmpty(const fs::path& dir) {
+    if (!fs::exists(dir) || !fs::is_directory(dir)) {
+        return false;
+    }
+
+    for (const auto& entry : fs::directory_iterator(dir)) {
+        std::string name = entry.path().filename().string();
+        // Skip all hidden files/folders
+        if (!name.empty() && name[0] == '.') continue;
+        // Skip known ignorable files
+        if (IGNORABLE_FILES.count(name)) continue;
+        // Found a real file - not empty
+        return false;
+    }
+    return true;
+}
+
+// Check if directory has project setup (BRIEF.md exists but no chain.cpp)
+static bool hasProjectSetup(const fs::path& dir) {
+    return fs::exists(dir / "BRIEF.md") && !fs::exists(dir / "chain.cpp");
+}
+
+// Get list of project files that already exist (conflicts for in-place creation)
+static std::vector<std::string> getConflictingFiles(const fs::path& dir) {
+    std::vector<std::string> conflicts;
+    for (const auto& file : PROJECT_FILES) {
+        // Special case: AGENTS.md is regenerated, so skip conflict check if BRIEF.md exists
+        if (file == "AGENTS.md" && fs::exists(dir / "BRIEF.md")) continue;
+        if (fs::exists(dir / file)) {
+            conflicts.push_back(file);
+        }
+    }
+    return conflicts;
+}
+
+// Case-insensitive string comparison
+static bool iequals(const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); i++) {
+        if (std::tolower(a[i]) != std::tolower(b[i])) return false;
+    }
+    return true;
+}
+
+// Decide whether to create project in-place based on heuristics
+// Returns: true = create in place, false = create subdirectory
+// explicitInPlace: -1 = not specified, 0 = explicit false, 1 = explicit true
+static bool shouldCreateInPlace(const fs::path& dir, const std::string& projectName, int explicitInPlace) {
+    // 1. Explicit override takes precedence
+    if (explicitInPlace == 1) return true;
+    if (explicitInPlace == 0) return false;
+
+    // 2. Has BRIEF.md but no chain.cpp - user set up a project folder
+    if (hasProjectSetup(dir)) return true;
+
+    // 3. Directory is effectively empty
+    if (isEffectivelyEmpty(dir)) return true;
+
+    // 4. Directory name matches project name (case-insensitive)
+    if (iequals(dir.filename().string(), projectName)) return true;
+
+    // 5. Default: create subdirectory
+    return false;
+}
+
+int createProject(const std::string& name, const std::string& templateName,
+                  bool minimal, bool skipPrompts, const std::vector<std::string>& modules,
+                  int explicitInPlace = -1) {
+    fs::path cwd = fs::current_path();
+    bool inPlace = shouldCreateInPlace(cwd, name, explicitInPlace);
+    fs::path projectPath = inPlace ? cwd : (cwd / name);
+
+    if (inPlace) {
+        // Check for conflicting files that would be overwritten
+        auto conflicts = getConflictingFiles(projectPath);
+        if (!conflicts.empty()) {
+            std::cerr << "Error: Cannot create project in-place. The following files already exist:\n";
+            for (const auto& conflict : conflicts) {
+                std::cerr << "  " << conflict << "\n";
+            }
+            std::cerr << "\nEither remove these files or create the project in a different directory.\n";
+            return 1;
+        }
+    } else {
+        // Check if subdirectory already exists
+        if (fs::exists(projectPath)) {
+            std::cerr << "Error: Directory '" << name << "' already exists.\n";
+            return 1;
+        }
     }
 
     // Validate module names
@@ -263,7 +370,11 @@ int createProject(const std::string& name, const std::string& templateName,
 
     // Confirm creation (unless --yes flag)
     if (!skipPrompts && !minimal) {
-        std::cout << "Creating project '" << name << "' with template '" << templateName << "'";
+        if (inPlace) {
+            std::cout << "Creating project '" << name << "' in current directory";
+        } else {
+            std::cout << "Creating project '" << name << "' with template '" << templateName << "'";
+        }
         if (!modules.empty()) {
             std::cout << " and modules: ";
             for (size_t i = 0; i < modules.size(); i++) {
@@ -362,29 +473,44 @@ int createProject(const std::string& name, const std::string& templateName,
             agentsFile.close();
         }
 
-        // Write BRIEF.md (creative vision - user-owned)
-        std::ofstream briefFile(projectPath / "BRIEF.md");
-        if (briefFile) {
-            briefFile << BRIEF_MD_TEMPLATE;
-            briefFile.close();
+        // Write BRIEF.md (creative vision - user-owned) - skip if it already exists
+        bool briefExists = fs::exists(projectPath / "BRIEF.md");
+        if (!briefExists) {
+            std::ofstream briefFile(projectPath / "BRIEF.md");
+            if (briefFile) {
+                briefFile << BRIEF_MD_TEMPLATE;
+                briefFile.close();
+            }
         }
 
+        // Output what was created
         std::cout << "\n";
-        std::cout << "  Created " << name << "/\n";
-        std::cout << "  Created " << name << "/chain.cpp\n";
-        std::cout << "  Created " << name << "/AGENTS.md\n";
-        std::cout << "  Created " << name << "/BRIEF.md\n";
-        std::cout << "  Created " << name << "/assets/\n";
-        std::cout << "  Created " << name << "/shaders/\n";
-        std::cout << "  Created " << name << "/.gitignore\n";
-        std::cout << "  Created " << name << "/.claude/settings.local.json\n";
+        std::string prefix = inPlace ? "  Created " : ("  Created " + name + "/");
+        if (!inPlace) {
+            std::cout << "  Created " << name << "/\n";
+        }
+        std::cout << prefix << "chain.cpp\n";
+        std::cout << prefix << "AGENTS.md\n";
+        if (!briefExists) {
+            std::cout << prefix << "BRIEF.md\n";
+        } else {
+            std::cout << "  Kept existing BRIEF.md\n";
+        }
+        std::cout << prefix << "assets/\n";
+        std::cout << prefix << "shaders/\n";
+        std::cout << prefix << ".gitignore\n";
+        std::cout << prefix << ".claude/settings.local.json\n";
         std::cout << "\n";
         std::cout << "Project created successfully!\n\n";
         std::cout << "Next steps:\n";
-        std::cout << "  cd " << name << "\n";
+        if (!inPlace) {
+            std::cout << "  cd " << name << "\n";
+        }
         std::cout << "  vivid .\n";
         std::cout << "\n";
-        std::cout << "Edit BRIEF.md to describe what you want to create!\n";
+        if (!briefExists) {
+            std::cout << "Edit BRIEF.md to describe what you want to create!\n";
+        }
         std::cout << "Edit chain.cpp to start coding!\n";
 
     } catch (const fs::filesystem_error& e) {
@@ -1270,6 +1396,8 @@ ParseResult parseArgs(int argc, char** argv) {
     std::vector<std::string> newModules;
     bool newMinimal = false;
     bool newYes = false;
+    bool newInPlace = false;
+    bool newNoInPlace = false;
 
     auto* newCmd = app.add_subcommand("new", "Create a new project");
     newCmd->add_option("name", newProjectName, "Project name")->required();
@@ -1280,6 +1408,8 @@ ParseResult parseArgs(int argc, char** argv) {
           ->delimiter(',');
     newCmd->add_flag("--minimal", newMinimal, "Use minimal template");
     newCmd->add_flag("-y,--yes", newYes, "Skip confirmation prompts");
+    newCmd->add_flag("--in-place", newInPlace, "Create files in current directory instead of subdirectory");
+    newCmd->add_flag("--no-in-place", newNoInPlace, "Force creation in subdirectory (disable auto-detection)");
 
     // 'bundle' subcommand
     std::string bundleProjectPath;
@@ -1352,8 +1482,10 @@ ParseResult parseArgs(int argc, char** argv) {
     // Handle subcommands first
     if (newCmd->parsed()) {
         if (newMinimal) newTemplate = "minimal";
+        // Convert explicit flags to int: -1=auto, 0=no, 1=yes
+        int explicitInPlace = newInPlace ? 1 : (newNoInPlace ? 0 : -1);
         result.handled = true;
-        result.exitCode = createProject(newProjectName, newTemplate, newMinimal, newYes, newModules);
+        result.exitCode = createProject(newProjectName, newTemplate, newMinimal, newYes, newModules, explicitInPlace);
         return result;
     }
 

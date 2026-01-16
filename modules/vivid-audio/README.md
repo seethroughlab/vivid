@@ -63,12 +63,34 @@ This addon is included with Vivid by default. No additional installation require
 
 ## Examples
 
+Minimal, focused examples (~50-100 lines) demonstrating core API patterns:
+
 | Example | Description |
 |---------|-------------|
-| [audio-reactive](examples/audio-reactive) | Audio analysis driving visuals |
-| [drum-machine](examples/drum-machine) | Synthesized drums with sequencer |
-| [sample-trigger](examples/sample-trigger) | Sample triggering |
-| [formant-pad](examples/formant-pad) | Formant synthesis |
+| [clock-sequencer](examples/clock-sequencer) | Clock and sequencer basics |
+| [drums-basic](examples/drums-basic) | Synthesized kick, snare, hihat |
+| [fm-synthesis](examples/fm-synthesis) | FM oscillator modulation |
+| [filters](examples/filters) | Filter types and cutoff control |
+| [effects-chain](examples/effects-chain) | Delay, reverb, and effect routing |
+| [dynamics](examples/dynamics) | Compressor, limiter, gain staging |
+
+## Showcase
+
+Rich, complete demonstrations (200+ lines) with creative applications:
+
+| Showcase | Description |
+|----------|-------------|
+| [audio-reactive](showcase/audio-reactive) | Audio analysis driving visuals |
+| [drum-machine](showcase/drum-machine) | Synthesized drums with sequencer |
+| [sample-trigger](showcase/sample-trigger) | Sample triggering |
+| [formant-pad](showcase/formant-pad) | Formant synthesis |
+| [euclidean-rhythms](showcase/euclidean-rhythms) | Euclidean rhythm generator |
+| [glitch-effects](showcase/glitch-effects) | Glitch and stutter effects |
+
+## Examples vs Showcase
+
+- **`examples/`** - Minimal, focused code (~50-100 lines) demonstrating core API patterns. Designed for quick reference and LLM consumption.
+- **`showcase/`** - Rich, complete demonstrations (200+ lines) with UI, visuals, and creative applications. Designed for user inspiration.
 
 ## Quick Start
 

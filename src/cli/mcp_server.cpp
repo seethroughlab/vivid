@@ -906,27 +906,41 @@ private:
         // get_example - Get working code examples for an operator
         tools.push_back({
             {"name", "get_example"},
-            {"description", "Get working code examples showing how to use a Vivid operator. Returns snippets from RECIPES.md and example projects. Use this BEFORE writing code to see correct API patterns."},
+            {"description", "Get complete, working code examples showing how to use a Vivid operator. Returns FULL chain.cpp examples from RECIPES.md (with includes, namespaces, setup/update). Use this BEFORE writing code to see correct API patterns including method calls like input(), inputA(), trigger(), etc."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
-                    {"operator", {{"type", "string"}, {"description", "Operator name (e.g., 'Sequencer', 'AudioMixer', 'Displace')"}}}
+                    {"operator", {{"type", "string"}, {"description", "Operator name (e.g., 'Sequencer', 'AudioMixer', 'Displace')"}}},
+                    {"snippet_only", {{"type", "boolean"}, {"description", "If true, return only the operator usage lines instead of full examples (default: false)"}}}
                 }},
                 {"required", json::array({"operator"})}
+            }}
+        });
+
+        // get_recipe - Get complete recipe by name
+        tools.push_back({
+            {"name", "get_recipe"},
+            {"description", "Get a complete, working chain.cpp example by recipe name. Use with no arguments to list all available recipes. Recipes are complete examples you can use as starting points or reference for correct API patterns. IMPORTANT: When writing new chains, start with a simple recipe and modify incrementally - validate_chain after each significant change!"},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"name", {{"type", "string"}, {"description", "Recipe name (e.g., 'VHS/Retro Look', 'Drum Machine'). Leave empty to list all recipes."}}}
+                }}
             }}
         });
 
         // create_project - Create new project
         tools.push_back({
             {"name", "create_project"},
-            {"description", "Create a new Vivid project with the specified name and template."},
+            {"description", "Create a new Vivid project from a template. RECOMMENDED: Start with a working template (audio-visualizer, feedback, etc.) or use get_recipe to find a complete example similar to what you need. Modify incrementally and validate_chain frequently!"},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
                     {"name", {{"type", "string"}, {"description", "Project name"}}},
-                    {"path", {{"type", "string"}, {"description", "Parent directory (optional, defaults to current directory)"}}},
+                    {"path", {{"type", "string"}, {"description", "Directory to create project in (optional, defaults to current directory)"}}},
                     {"template", {{"type", "string"}, {"description", "Template: blank, noise-demo, feedback, audio-visualizer, 3d-orbit"}}},
-                    {"modules", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Modules to include (use list_modules to see available)"}}}
+                    {"modules", {{"type", "array"}, {"items", {{"type", "string"}}}, {"description", "Modules to include (use list_modules to see available)"}}},
+                    {"in_place", {{"type", "boolean"}, {"description", "If true, create files directly in path instead of path/name subdirectory. If false, force subdirectory creation. If not specified, auto-detect based on directory state."}}}
                 }},
                 {"required", json::array({"name"})}
             }}
@@ -950,7 +964,7 @@ private:
         // validate_chain - Check if chain compiles
         tools.push_back({
             {"name", "validate_chain"},
-            {"description", "Check if a project's chain.cpp compiles without running it. Returns compilation errors if any."},
+            {"description", "Check if a project's chain.cpp compiles without running it. Returns compilation errors if any. IMPORTANT: Use this frequently during development! Validate after every 30-50 lines of new code, or after adding each new operator. Catching errors early is much easier than debugging 700 lines at once."},
             {"inputSchema", {
                 {"type", "object"},
                 {"properties", {
@@ -1504,10 +1518,210 @@ private:
                 }
             }
 
+            // Add common methods based on operator type
+            info["methods"] = json::array();
+
+            // Common methods for operators that require input
+            if (meta->requiresInput) {
+                info["methods"].push_back({
+                    {"name", "input"},
+                    {"signature", "void input(const std::string& name)"},
+                    {"description", "Connect to another operator's output by name"},
+                    {"example", "effect.input(\"source\");"}
+                });
+            }
+
+            // Methods based on output type
+            switch (meta->outputKind) {
+                case OutputKind::Texture:
+                    // Check for common dual-input patterns (Composite, Blend, etc.)
+                    // Note: Displace uses source()/map() instead of inputA()/inputB()
+                    if (meta->category == "Compositing" || meta->name == "Composite" ||
+                        meta->name == "Blend" || meta->name == "ChannelMixer" || meta->name == "Mask") {
+                        info["methods"].push_back({
+                            {"name", "inputA"},
+                            {"signature", "void inputA(const std::string& name)"},
+                            {"description", "Connect first/background input"},
+                            {"example", "composite.inputA(\"background\");"}
+                        });
+                        info["methods"].push_back({
+                            {"name", "inputB"},
+                            {"signature", "void inputB(const std::string& name)"},
+                            {"description", "Connect second/foreground input"},
+                            {"example", "composite.inputB(\"foreground\");"}
+                        });
+                    }
+                    // Displace has different dual-input API
+                    if (meta->name == "Displace") {
+                        info["methods"].push_back({
+                            {"name", "source"},
+                            {"signature", "void source(const std::string& name)"},
+                            {"description", "Set source texture to distort"},
+                            {"example", "displace.source(\"image\");"}
+                        });
+                        info["methods"].push_back({
+                            {"name", "map"},
+                            {"signature", "void map(const std::string& name)"},
+                            {"description", "Set displacement map texture (R=X offset, G=Y offset)"},
+                            {"example", "displace.map(\"noise\");"}
+                        });
+                    }
+                    break;
+
+                case OutputKind::Audio:
+                    info["methods"].push_back({
+                        {"name", "setInput"},
+                        {"signature", "void setInput(const std::string& name)"},
+                        {"description", "Connect audio input from another operator"},
+                        {"example", "reverb.setInput(\"synth\");"}
+                    });
+                    // Synth-specific methods
+                    if (meta->category == "Audio Synth" || meta->name.find("Synth") != std::string::npos ||
+                        meta->name == "Kick" || meta->name == "Snare" || meta->name == "HiHat") {
+                        info["methods"].push_back({
+                            {"name", "trigger"},
+                            {"signature", "void trigger(float velocity = 1.0f)"},
+                            {"description", "Trigger the synth/drum with optional velocity"},
+                            {"example", "kick.trigger(); // or kick.trigger(0.8f);"}
+                        });
+                        info["methods"].push_back({
+                            {"name", "noteOn"},
+                            {"signature", "void noteOn(int note, float velocity = 1.0f)"},
+                            {"description", "Start a note (MIDI note number 0-127)"},
+                            {"example", "synth.noteOn(60, 0.8f); // Middle C"}
+                        });
+                        info["methods"].push_back({
+                            {"name", "noteOff"},
+                            {"signature", "void noteOff(int note)"},
+                            {"description", "Stop a note"},
+                            {"example", "synth.noteOff(60);"}
+                        });
+                    }
+                    break;
+
+                case OutputKind::Event:
+                    info["methods"].push_back({
+                        {"name", "onTrigger"},
+                        {"signature", "void onTrigger(std::function<void(float)> callback)"},
+                        {"description", "Register callback for trigger events"},
+                        {"example", "seq.onTrigger([&](float vel) { kick.trigger(vel); });"}
+                    });
+                    break;
+
+                case OutputKind::Value:
+                    info["methods"].push_back({
+                        {"name", "outputValue"},
+                        {"signature", "float outputValue() const"},
+                        {"description", "Get the current output value"},
+                        {"example", "float v = lfo.outputValue();"}
+                    });
+                    break;
+
+                default:
+                    break;
+            }
+
+            // Special methods for specific operator categories
+            if (meta->category == "Audio Sequencing" || meta->name == "Sequencer") {
+                info["methods"].push_back({
+                    {"name", "setPattern"},
+                    {"signature", "void setPattern(uint16_t pattern)"},
+                    {"description", "Set step pattern as bitmask (0b0001... or hex)"},
+                    {"example", "seq.setPattern(0b1000100010001000); // Kick on 1,5,9,13"}
+                });
+                info["methods"].push_back({
+                    {"name", "onTrigger"},
+                    {"signature", "void onTrigger(std::function<void(float)> callback)"},
+                    {"description", "Register callback when step triggers"},
+                    {"example", "seq.onTrigger([&](float v) { synth.trigger(v); });"}
+                });
+            }
+
+            if (meta->name == "Flash") {
+                info["methods"].push_back({
+                    {"name", "trigger"},
+                    {"signature", "void trigger(float intensity = 1.0f)"},
+                    {"description", "Trigger the flash effect"},
+                    {"example", "flash.trigger(); // or flash.trigger(0.5f);"}
+                });
+                info["methods"].push_back({
+                    {"name", "intensity"},
+                    {"signature", "float intensity() const"},
+                    {"description", "Get current flash intensity (for syncing other effects)"},
+                    {"example", "float i = flash.intensity();"}
+                });
+            }
+
+            if (meta->name == "Particles") {
+                info["methods"].push_back({
+                    {"name", "burst"},
+                    {"signature", "void burst(int count)"},
+                    {"description", "Emit a burst of particles"},
+                    {"example", "particles.burst(50);"}
+                });
+            }
+
+            if (meta->name == "VideoPlayer") {
+                // Configuration methods (call in setup)
+                info["methods"].push_back({
+                    {"name", "setFile"},
+                    {"signature", "void setFile(const std::string& path)"},
+                    {"description", "Set video file path (HAP-encoded MOV recommended)"},
+                    {"example", "video.setFile(\"assets/my_video.mov\");"}
+                });
+                info["methods"].push_back({
+                    {"name", "setLoop"},
+                    {"signature", "void setLoop(bool enable)"},
+                    {"description", "Enable/disable looping"},
+                    {"example", "video.setLoop(true);"}
+                });
+                info["methods"].push_back({
+                    {"name", "setSpeed"},
+                    {"signature", "void setSpeed(float speed)"},
+                    {"description", "Set playback speed (1.0 = normal, 0.5 = half, 2.0 = double)"},
+                    {"example", "video.setSpeed(0.5f);"}
+                });
+                info["methods"].push_back({
+                    {"name", "setVolume"},
+                    {"signature", "void setVolume(float volume)"},
+                    {"description", "Set audio volume (0.0 - 1.0)"},
+                    {"example", "video.setVolume(0.8f);"}
+                });
+                // Playback control methods
+                info["methods"].push_back({
+                    {"name", "play"},
+                    {"signature", "void play()"},
+                    {"description", "Start/resume playback"},
+                    {"example", "video.play();"}
+                });
+                info["methods"].push_back({
+                    {"name", "pause"},
+                    {"signature", "void pause()"},
+                    {"description", "Pause playback"},
+                    {"example", "video.pause();"}
+                });
+                info["methods"].push_back({
+                    {"name", "seek"},
+                    {"signature", "void seek(float seconds)"},
+                    {"description", "Seek to time in seconds"},
+                    {"example", "video.seek(10.5f);"}
+                });
+                info["methods"].push_back({
+                    {"name", "restart"},
+                    {"signature", "void restart()"},
+                    {"description", "Restart from beginning"},
+                    {"example", "video.restart();"}
+                });
+            }
+
+            // Add usage hint
+            info["usage_hint"] = "Use get_example with this operator name to see complete working code.";
+
             result["content"] = {{{"type", "text"}, {"text", info.dump(2)}}};
         }
         else if (name == "get_example") {
             std::string opName = args.value("operator", "");
+            bool snippetOnly = args.value("snippet_only", false);
             if (opName.empty()) {
                 result["isError"] = true;
                 result["content"] = {{{"type", "text"}, {"text", "Operator name is required"}}};
@@ -1535,39 +1749,68 @@ private:
                     if (codeBlock.find(pattern1) != std::string::npos ||
                         codeBlock.find(pattern2) != std::string::npos) {
 
-                        // Extract just the relevant lines (operator + next few lines)
-                        std::istringstream stream(codeBlock);
-                        std::string line;
-                        std::string snippet;
-                        bool capturing = false;
-                        int captureLines = 0;
+                        std::string outputCode;
 
-                        while (std::getline(stream, line)) {
-                            if (!capturing) {
-                                if (line.find(pattern1) != std::string::npos ||
-                                    line.find(pattern2) != std::string::npos) {
-                                    capturing = true;
+                        if (snippetOnly) {
+                            // Extract just the relevant lines (operator + next few lines)
+                            std::istringstream stream(codeBlock);
+                            std::string line;
+                            std::string snippet;
+                            bool capturing = false;
+                            int captureLines = 0;
+
+                            while (std::getline(stream, line)) {
+                                if (!capturing) {
+                                    if (line.find(pattern1) != std::string::npos ||
+                                        line.find(pattern2) != std::string::npos) {
+                                        capturing = true;
+                                    }
+                                }
+                                if (capturing) {
+                                    snippet += line + "\n";
+                                    captureLines++;
+                                    // Capture up to 10 lines or until we hit a blank line after first few
+                                    if (captureLines > 10 || (captureLines > 3 && line.empty())) {
+                                        break;
+                                    }
                                 }
                             }
-                            if (capturing) {
-                                snippet += line + "\n";
-                                captureLines++;
-                                // Capture up to 10 lines or until we hit a blank line after first few
-                                if (captureLines > 10 || (captureLines > 3 && line.empty())) {
-                                    break;
-                                }
-                            }
+                            outputCode = snippet;
+                        } else {
+                            // Return the FULL code block for complete context
+                            outputCode = codeBlock;
                         }
 
-                        if (!snippet.empty()) {
-                            // Trim trailing whitespace
-                            while (!snippet.empty() && (snippet.back() == '\n' || snippet.back() == ' ')) {
-                                snippet.pop_back();
+                        if (!outputCode.empty()) {
+                            // Trim leading/trailing whitespace
+                            while (!outputCode.empty() && (outputCode.front() == '\n' || outputCode.front() == ' ')) {
+                                outputCode.erase(0, 1);
                             }
-                            examples.push_back({
+                            while (!outputCode.empty() && (outputCode.back() == '\n' || outputCode.back() == ' ')) {
+                                outputCode.pop_back();
+                            }
+
+                            // Try to find the recipe title (look for ## heading before this code block)
+                            std::string recipeTitle;
+                            size_t searchStart = (pos > 500) ? pos - 500 : 0;
+                            std::string beforeCode = recipes.substr(searchStart, pos - searchStart);
+                            size_t headingPos = beforeCode.rfind("\n## ");
+                            if (headingPos != std::string::npos) {
+                                size_t titleStart = headingPos + 4;
+                                size_t titleEnd = beforeCode.find('\n', titleStart);
+                                if (titleEnd != std::string::npos) {
+                                    recipeTitle = beforeCode.substr(titleStart, titleEnd - titleStart);
+                                }
+                            }
+
+                            json example = {
                                 {"source", "docs/RECIPES.md"},
-                                {"code", snippet}
-                            });
+                                {"code", outputCode}
+                            };
+                            if (!recipeTitle.empty()) {
+                                example["recipe"] = recipeTitle;
+                            }
+                            examples.push_back(example);
                         }
                     }
                     pos = codeEnd + 3;
@@ -1607,48 +1850,56 @@ private:
                         std::string pattern1 = "add<" + opName + ">";
                         if (content.find(pattern1) == std::string::npos) continue;
 
-                        // Extract relevant lines
-                        std::istringstream stream(content);
-                        std::string line;
-                        std::string snippet;
-                        bool capturing = false;
-                        int captureLines = 0;
+                        std::string outputCode;
 
-                        while (std::getline(stream, line)) {
-                            if (!capturing) {
-                                if (line.find(pattern1) != std::string::npos) {
-                                    capturing = true;
+                        if (snippetOnly) {
+                            // Extract relevant lines
+                            std::istringstream stream(content);
+                            std::string line;
+                            std::string snippet;
+                            bool capturing = false;
+                            int captureLines = 0;
+
+                            while (std::getline(stream, line)) {
+                                if (!capturing) {
+                                    if (line.find(pattern1) != std::string::npos) {
+                                        capturing = true;
+                                    }
+                                }
+                                if (capturing) {
+                                    snippet += line + "\n";
+                                    captureLines++;
+                                    // Capture up to 12 lines or until we hit a function/block end
+                                    if (captureLines > 12 ||
+                                        (captureLines > 3 && (line.find("}") == 0 || line.empty()))) {
+                                        break;
+                                    }
                                 }
                             }
-                            if (capturing) {
-                                snippet += line + "\n";
-                                captureLines++;
-                                // Capture up to 12 lines or until we hit a function/block end
-                                if (captureLines > 12 ||
-                                    (captureLines > 3 && (line.find("}") == 0 || line.empty()))) {
-                                    break;
-                                }
-                            }
+                            outputCode = snippet;
+                        } else {
+                            // Return the FULL chain.cpp file for complete context
+                            outputCode = content;
                         }
 
-                        if (!snippet.empty()) {
-                            while (!snippet.empty() && (snippet.back() == '\n' || snippet.back() == ' ')) {
-                                snippet.pop_back();
+                        if (!outputCode.empty()) {
+                            while (!outputCode.empty() && (outputCode.back() == '\n' || outputCode.back() == ' ')) {
+                                outputCode.pop_back();
                             }
                             // Get relative path for cleaner output
                             std::string relPath = fs::relative(chainFile, modulesPath.parent_path()).string();
                             examples.push_back({
                                 {"source", relPath},
-                                {"code", snippet}
+                                {"code", outputCode}
                             });
                         }
 
                         // Limit examples per operator
-                        if (examples.size() >= 5) break;
+                        if (examples.size() >= 3) break;
                     }
-                    if (examples.size() >= 5) break;
+                    if (examples.size() >= 3) break;
                 }
-                if (examples.size() >= 5) break;
+                if (examples.size() >= 3) break;
             }
 
             if (examples.empty()) {
@@ -1665,9 +1916,132 @@ private:
                 result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
             }
         }
+        else if (name == "get_recipe") {
+            std::string recipeName = args.value("name", "");
+            std::string recipes = loadDocsFile("RECIPES.md");
+
+            if (recipes.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Could not load RECIPES.md"}}};
+                return result;
+            }
+
+            // Parse all recipes: find ## headings and their code blocks
+            struct Recipe {
+                std::string name;
+                std::string code;
+                std::string description;
+            };
+            std::vector<Recipe> allRecipes;
+
+            size_t pos = 0;
+            while ((pos = recipes.find("\n## ", pos)) != std::string::npos) {
+                // Extract recipe name
+                size_t titleStart = pos + 4;
+                size_t titleEnd = recipes.find('\n', titleStart);
+                if (titleEnd == std::string::npos) break;
+
+                std::string title = recipes.substr(titleStart, titleEnd - titleStart);
+
+                // Find the next ## or end of file to get recipe section
+                size_t nextSection = recipes.find("\n## ", titleEnd);
+                if (nextSection == std::string::npos) nextSection = recipes.length();
+
+                std::string section = recipes.substr(titleEnd, nextSection - titleEnd);
+
+                // Find code block in this section
+                size_t codeStart = section.find("```cpp");
+                if (codeStart != std::string::npos) {
+                    codeStart += 6;  // After ```cpp
+                    size_t codeEnd = section.find("```", codeStart);
+                    if (codeEnd != std::string::npos) {
+                        std::string code = section.substr(codeStart, codeEnd - codeStart);
+                        // Trim leading/trailing whitespace
+                        while (!code.empty() && (code.front() == '\n' || code.front() == ' ')) {
+                            code.erase(0, 1);
+                        }
+                        while (!code.empty() && (code.back() == '\n' || code.back() == ' ')) {
+                            code.pop_back();
+                        }
+
+                        // Extract description (text between title and code block)
+                        std::string desc;
+                        size_t descEnd = section.find("```cpp");
+                        if (descEnd != std::string::npos && descEnd > 0) {
+                            desc = section.substr(0, descEnd);
+                            // Trim and clean up
+                            while (!desc.empty() && (desc.front() == '\n' || desc.front() == ' ')) {
+                                desc.erase(0, 1);
+                            }
+                            while (!desc.empty() && (desc.back() == '\n' || desc.back() == ' ')) {
+                                desc.pop_back();
+                            }
+                            // Limit description length
+                            if (desc.length() > 200) {
+                                desc = desc.substr(0, 197) + "...";
+                            }
+                        }
+
+                        allRecipes.push_back({title, code, desc});
+                    }
+                }
+                pos = titleEnd;
+            }
+
+            if (recipeName.empty()) {
+                // List all recipes
+                json response;
+                response["count"] = allRecipes.size();
+                response["recipes"] = json::array();
+                response["hint"] = "Use get_recipe with a name to get the full code. Start with a simple recipe and modify incrementally!";
+                for (const auto& r : allRecipes) {
+                    json recipe;
+                    recipe["name"] = r.name;
+                    if (!r.description.empty()) {
+                        recipe["description"] = r.description;
+                    }
+                    response["recipes"].push_back(recipe);
+                }
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                // Find recipe by name (case-insensitive partial match)
+                std::string searchLower = recipeName;
+                std::transform(searchLower.begin(), searchLower.end(), searchLower.begin(), ::tolower);
+
+                const Recipe* match = nullptr;
+                for (const auto& r : allRecipes) {
+                    std::string nameLower = r.name;
+                    std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::tolower);
+                    if (nameLower.find(searchLower) != std::string::npos) {
+                        match = &r;
+                        break;
+                    }
+                }
+
+                if (match) {
+                    json response;
+                    response["name"] = match->name;
+                    response["code"] = match->code;
+                    if (!match->description.empty()) {
+                        response["description"] = match->description;
+                    }
+                    response["hint"] = "This is a complete, working example. After modifying, use validate_chain to check for errors!";
+                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                } else {
+                    // No match - suggest similar names
+                    json response;
+                    response["error"] = "Recipe '" + recipeName + "' not found";
+                    response["available"] = json::array();
+                    for (const auto& r : allRecipes) {
+                        response["available"].push_back(r.name);
+                    }
+                    result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+                }
+            }
+        }
         else if (name == "create_project") {
             std::string projectName = args.value("name", "");
-            std::string parentPath = args.value("path", ".");
+            std::string targetPath = args.value("path", ".");
             std::string templateName = args.value("template", "blank");
 
             if (projectName.empty()) {
@@ -1676,27 +2050,25 @@ private:
                 return result;
             }
 
-            // Check if project directory already exists - refuse to overwrite
-            fs::path fullPath = fs::path(parentPath) / projectName;
-            if (fs::exists(fullPath)) {
-                json error;
-                error["error"] = "Directory already exists";
-                error["path"] = fs::absolute(fullPath).string();
-                error["suggestions"] = json::array({
-                    "Use a different project name",
-                    "Ask the user if they want to delete the existing directory",
-                    "Work with the existing project instead"
-                });
-                result["isError"] = true;
-                result["content"] = {{{"type", "text"}, {"text", error.dump(2)}}};
-                return result;
-            }
+            // Determine in_place mode: explicit, or let CLI auto-detect
+            bool hasExplicitInPlace = args.contains("in_place") && args["in_place"].is_boolean();
+            bool explicitInPlace = hasExplicitInPlace ? args["in_place"].get<bool>() : false;
 
             std::vector<std::string> cmdArgs = {
                 getVividExecutable(), "new", projectName,
                 "-y",  // Skip prompts
                 "-t", templateName
             };
+
+            // Add in-place flags if explicitly specified
+            if (hasExplicitInPlace) {
+                if (explicitInPlace) {
+                    cmdArgs.push_back("--in-place");
+                } else {
+                    cmdArgs.push_back("--no-in-place");
+                }
+            }
+            // If not specified, CLI will auto-detect based on directory state
 
             // Add modules if specified
             if (args.contains("modules") && args["modules"].is_array()) {
@@ -1711,13 +2083,20 @@ private:
                 }
             }
 
-            // Change to parent directory for the command
+            // Validate target path exists
+            if (!fs::exists(targetPath)) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Directory does not exist: " + targetPath}}};
+                return result;
+            }
+
+            // Change to target directory for the command
             std::string origDir = fs::current_path().string();
             try {
-                fs::current_path(parentPath);
+                fs::current_path(targetPath);
             } catch (...) {
                 result["isError"] = true;
-                result["content"] = {{{"type", "text"}, {"text", "Invalid path: " + parentPath}}};
+                result["content"] = {{{"type", "text"}, {"text", "Invalid path: " + targetPath}}};
                 return result;
             }
 
@@ -1725,7 +2104,18 @@ private:
             fs::current_path(origDir);  // Restore directory
 
             if (cmdResult.exitCode == 0) {
-                fs::path projectPath = fs::path(parentPath) / projectName;
+                // Determine actual project path based on CLI output
+                // If in-place was used, project is at targetPath, otherwise targetPath/projectName
+                fs::path projectPath;
+                if (cmdResult.output.find("Created chain.cpp") != std::string::npos ||
+                    cmdResult.output.find("Created ./chain.cpp") != std::string::npos) {
+                    // In-place creation - files are in targetPath
+                    projectPath = fs::path(targetPath);
+                } else {
+                    // Subdirectory creation
+                    projectPath = fs::path(targetPath) / projectName;
+                }
+
                 json response;
                 response["success"] = true;
                 response["path"] = fs::absolute(projectPath).string();
