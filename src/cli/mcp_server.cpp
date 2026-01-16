@@ -903,6 +903,19 @@ private:
             }}
         });
 
+        // get_example - Get working code examples for an operator
+        tools.push_back({
+            {"name", "get_example"},
+            {"description", "Get working code examples showing how to use a Vivid operator. Returns snippets from RECIPES.md and example projects. Use this BEFORE writing code to see correct API patterns."},
+            {"inputSchema", {
+                {"type", "object"},
+                {"properties", {
+                    {"operator", {{"type", "string"}, {"description", "Operator name (e.g., 'Sequencer', 'AudioMixer', 'Displace')"}}}
+                }},
+                {"required", json::array({"operator"})}
+            }}
+        });
+
         // create_project - Create new project
         tools.push_back({
             {"name", "create_project"},
@@ -1493,6 +1506,165 @@ private:
 
             result["content"] = {{{"type", "text"}, {"text", info.dump(2)}}};
         }
+        else if (name == "get_example") {
+            std::string opName = args.value("operator", "");
+            if (opName.empty()) {
+                result["isError"] = true;
+                result["content"] = {{{"type", "text"}, {"text", "Operator name is required"}}};
+                return result;
+            }
+
+            json examples = json::array();
+
+            // Search RECIPES.md for code blocks containing the operator
+            std::string recipes = loadDocsFile("RECIPES.md");
+            if (!recipes.empty()) {
+                // Find code blocks that contain the operator name
+                size_t pos = 0;
+                while ((pos = recipes.find("```cpp", pos)) != std::string::npos) {
+                    size_t codeStart = pos + 6;  // After ```cpp
+                    size_t codeEnd = recipes.find("```", codeStart);
+                    if (codeEnd == std::string::npos) break;
+
+                    std::string codeBlock = recipes.substr(codeStart, codeEnd - codeStart);
+
+                    // Check if this code block uses the operator
+                    // Look for patterns like: add<Operator>, chain.add<Operator>, Operator(
+                    std::string pattern1 = "add<" + opName + ">";
+                    std::string pattern2 = opName + "(";
+                    if (codeBlock.find(pattern1) != std::string::npos ||
+                        codeBlock.find(pattern2) != std::string::npos) {
+
+                        // Extract just the relevant lines (operator + next few lines)
+                        std::istringstream stream(codeBlock);
+                        std::string line;
+                        std::string snippet;
+                        bool capturing = false;
+                        int captureLines = 0;
+
+                        while (std::getline(stream, line)) {
+                            if (!capturing) {
+                                if (line.find(pattern1) != std::string::npos ||
+                                    line.find(pattern2) != std::string::npos) {
+                                    capturing = true;
+                                }
+                            }
+                            if (capturing) {
+                                snippet += line + "\n";
+                                captureLines++;
+                                // Capture up to 10 lines or until we hit a blank line after first few
+                                if (captureLines > 10 || (captureLines > 3 && line.empty())) {
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!snippet.empty()) {
+                            // Trim trailing whitespace
+                            while (!snippet.empty() && (snippet.back() == '\n' || snippet.back() == ' ')) {
+                                snippet.pop_back();
+                            }
+                            examples.push_back({
+                                {"source", "docs/RECIPES.md"},
+                                {"code", snippet}
+                            });
+                        }
+                    }
+                    pos = codeEnd + 3;
+                }
+            }
+
+            // Search example chain.cpp files - try multiple locations
+            std::vector<fs::path> moduleSearchPaths;
+            moduleSearchPaths.push_back(fs::current_path() / "modules");
+
+            fs::path exeDir = fs::path(getVividExecutable()).parent_path();
+            if (!exeDir.empty()) {
+                // build/bin/vivid -> modules (go up 2 levels)
+                moduleSearchPaths.push_back(exeDir.parent_path().parent_path() / "modules");
+            }
+
+            for (const auto& modulesPath : moduleSearchPaths) {
+                if (!fs::exists(modulesPath)) continue;
+
+                for (const auto& moduleDir : fs::directory_iterator(modulesPath)) {
+                    if (!fs::is_directory(moduleDir)) continue;
+                    fs::path examplesPath = moduleDir.path() / "examples";
+                    if (!fs::exists(examplesPath)) continue;
+
+                    for (const auto& exampleDir : fs::directory_iterator(examplesPath)) {
+                        if (!fs::is_directory(exampleDir)) continue;
+                        fs::path chainFile = exampleDir.path() / "chain.cpp";
+                        if (!fs::exists(chainFile)) continue;
+
+                        std::ifstream file(chainFile);
+                        if (!file.is_open()) continue;
+
+                        std::string content((std::istreambuf_iterator<char>(file)),
+                                           std::istreambuf_iterator<char>());
+
+                        // Check if this file uses the operator
+                        std::string pattern1 = "add<" + opName + ">";
+                        if (content.find(pattern1) == std::string::npos) continue;
+
+                        // Extract relevant lines
+                        std::istringstream stream(content);
+                        std::string line;
+                        std::string snippet;
+                        bool capturing = false;
+                        int captureLines = 0;
+
+                        while (std::getline(stream, line)) {
+                            if (!capturing) {
+                                if (line.find(pattern1) != std::string::npos) {
+                                    capturing = true;
+                                }
+                            }
+                            if (capturing) {
+                                snippet += line + "\n";
+                                captureLines++;
+                                // Capture up to 12 lines or until we hit a function/block end
+                                if (captureLines > 12 ||
+                                    (captureLines > 3 && (line.find("}") == 0 || line.empty()))) {
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!snippet.empty()) {
+                            while (!snippet.empty() && (snippet.back() == '\n' || snippet.back() == ' ')) {
+                                snippet.pop_back();
+                            }
+                            // Get relative path for cleaner output
+                            std::string relPath = fs::relative(chainFile, modulesPath.parent_path()).string();
+                            examples.push_back({
+                                {"source", relPath},
+                                {"code", snippet}
+                            });
+                        }
+
+                        // Limit examples per operator
+                        if (examples.size() >= 5) break;
+                    }
+                    if (examples.size() >= 5) break;
+                }
+                if (examples.size() >= 5) break;
+            }
+
+            if (examples.empty()) {
+                json response;
+                response["operator"] = opName;
+                response["examples"] = json::array();
+                response["message"] = "No examples found for '" + opName + "'. Try list_operators to verify the name.";
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            } else {
+                json response;
+                response["operator"] = opName;
+                response["examples"] = examples;
+                response["count"] = examples.size();
+                result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
+            }
+        }
         else if (name == "create_project") {
             std::string projectName = args.value("name", "");
             std::string parentPath = args.value("path", ".");
@@ -1617,11 +1789,33 @@ private:
 
             auto cmdResult = runCommand(cmdArgs, 60000);
 
+            // Parse errors from output regardless of exit code
+            // (hot-reload may succeed with cached code even when new code has errors)
+            json errors = parseCompileErrors(cmdResult.output);
+
             json response;
-            response["valid"] = (cmdResult.exitCode == 0);
-            if (cmdResult.exitCode != 0) {
-                // Extract compile errors from output
-                response["errors"] = cmdResult.output;
+            // Valid only if exit code is 0 AND no errors were parsed
+            bool hasErrors = !errors.empty();
+            bool exitOk = (cmdResult.exitCode == 0);
+            response["valid"] = exitOk && !hasErrors;
+
+            if (hasErrors) {
+                response["errors"] = errors;
+                response["errorCount"] = errors.size();
+            }
+            if (!exitOk) {
+                response["exitCode"] = cmdResult.exitCode;
+            }
+            // Include raw output if there were issues
+            if (!exitOk || hasErrors) {
+                response["raw"] = cmdResult.output;
+            }
+            // Add helpful message
+            if (response["valid"]) {
+                response["message"] = "Compilation successful";
+            } else {
+                response["message"] = "Compilation failed. See 'errors' for details.";
+                response["suggestion"] = "Fix the errors and try again. After editing, use get_runtime_status to verify hot-reload succeeded.";
             }
             result["content"] = {{{"type", "text"}, {"text", response.dump(2)}}};
         }
@@ -1813,25 +2007,25 @@ private:
                 // Add final section
                 sections.emplace_back(currentHeader, currentStart, content.length());
 
-                // Search each section for ALL query words
+                // Search each section - use OR logic with relevance scoring
                 for (const auto& [section, sectionStart, sectionEnd] : sections) {
                     std::string sectionContent = contentLower.substr(sectionStart, sectionEnd - sectionStart);
 
-                    // Check if ALL words appear in this section
-                    bool allFound = true;
+                    // Count how many query words appear in this section (OR logic)
+                    int matchScore = 0;
                     size_t firstWordPos = std::string::npos;
                     for (const auto& word : queryWords) {
                         size_t wordPos = sectionContent.find(word);
-                        if (wordPos == std::string::npos) {
-                            allFound = false;
-                            break;
-                        }
-                        if (firstWordPos == std::string::npos || wordPos < firstWordPos) {
-                            firstWordPos = wordPos;
+                        if (wordPos != std::string::npos) {
+                            matchScore++;
+                            if (firstWordPos == std::string::npos || wordPos < firstWordPos) {
+                                firstWordPos = wordPos;
+                            }
                         }
                     }
 
-                    if (allFound && firstWordPos != std::string::npos) {
+                    // Include if ANY word matches (OR logic)
+                    if (matchScore > 0 && firstWordPos != std::string::npos) {
                         // Extract context around first word (in original case)
                         size_t contextStart = (firstWordPos > 150) ? firstWordPos - 150 : 0;
                         size_t contextLen = std::min(size_t(400), sectionEnd - sectionStart - contextStart);
@@ -1850,18 +2044,23 @@ private:
                         matches.push_back({
                             {"file", filename},
                             {"section", section},
-                            {"context", context}
+                            {"context", context},
+                            {"score", matchScore}
                         });
-
-                        if (matches.size() >= 10) break;
                     }
                 }
-                if (matches.size() >= 10) break;
             }
 
             if (matches.empty()) {
                 result["content"] = {{{"type", "text"}, {"text", "No matches found for '" + query + "'"}}};
             } else {
+                // Sort by score (highest first), then limit to 10
+                std::sort(matches.begin(), matches.end(), [](const json& a, const json& b) {
+                    return a["score"].get<int>() > b["score"].get<int>();
+                });
+                if (matches.size() > 10) {
+                    matches = json::array_t(matches.begin(), matches.begin() + 10);
+                }
                 result["content"] = {{{"type", "text"}, {"text", matches.dump(2)}}};
             }
         }

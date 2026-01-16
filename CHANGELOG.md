@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`get_example` MCP tool** - Returns working code snippets for operators from RECIPES.md and example projects. Call before writing code to see correct API patterns (e.g., `get_example("Sequencer")` shows `setPattern(0x1111)` bitmask syntax).
+
+### Changed
+
+- **`search_docs` uses OR logic** - Doc search now matches ANY query word (was ALL words required). Results ranked by relevance score. Query "audio mixer connect" now returns useful results instead of "No matches found".
+
+### Fixed
+
+- **`validate_chain` false positives** - Now parses compile errors into structured JSON with file, line, column, severity, and message. Returns `valid: false` when errors are detected, even if exit code is 0. Includes suggestions for fixing errors.
+
 ## [0.1.0-alpha.5] - 2026-01-13
 
 *Consolidates alphas 25-29: Lookup operator, audio-thread triggers, MCP debugging tools*
