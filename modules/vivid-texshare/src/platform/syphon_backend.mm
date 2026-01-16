@@ -8,6 +8,47 @@
 
 #ifdef __APPLE__
 
+#include <vivid/texshare/platform/syphon_backend.h>
+#include <iostream>
+#include <vector>
+
+#ifdef VIVID_TEXSHARE_NO_SYPHON
+
+// Stub implementation when Syphon framework is not available
+namespace vivid::texshare {
+
+SyphonBackend::SyphonBackend() {
+    std::cerr << "[SyphonBackend] Syphon framework not available - texture sharing disabled" << std::endl;
+}
+
+SyphonBackend::~SyphonBackend() {}
+
+void* SyphonBackend::getMetalDevice() { return nullptr; }
+void* SyphonBackend::getCommandQueue() { return nullptr; }
+
+bool SyphonBackend::createServer(const std::string&) { return false; }
+void SyphonBackend::publishTexture(WGPUTexture, int, int) {}
+void SyphonBackend::destroyServer() {}
+bool SyphonBackend::isServerActive() const { return false; }
+
+bool SyphonBackend::connectToServer(const std::string&) { return false; }
+bool SyphonBackend::hasNewFrame() { return false; }
+WGPUTexture SyphonBackend::receiveTexture(WGPUDevice) { return nullptr; }
+void SyphonBackend::getTextureSize(int& width, int& height) const { width = 0; height = 0; }
+void SyphonBackend::disconnect() {}
+bool SyphonBackend::isConnected() const { return false; }
+void SyphonBackend::releaseReceivedTexture() {}
+
+std::vector<ServerInfo> SyphonBackend::listServers() { return {}; }
+
+std::unique_ptr<ShareBackend> ShareBackend::create() {
+    return std::make_unique<SyphonBackend>();
+}
+
+} // namespace vivid::texshare
+
+#else // VIVID_TEXSHARE_NO_SYPHON not defined - full implementation
+
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
 
@@ -15,10 +56,6 @@
 #import <Syphon/SyphonMetalServer.h>
 #import <Syphon/SyphonMetalClient.h>
 #import <Syphon/SyphonServerDirectory.h>
-
-#include <vivid/texshare/platform/syphon_backend.h>
-#include <iostream>
-#include <vector>
 
 namespace vivid::texshare {
 
@@ -385,5 +422,7 @@ std::unique_ptr<ShareBackend> ShareBackend::create() {
 }
 
 } // namespace vivid::texshare
+
+#endif // VIVID_TEXSHARE_NO_SYPHON
 
 #endif // __APPLE__

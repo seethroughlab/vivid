@@ -1,6 +1,6 @@
 # Vivid Texture Sharing Addon
 # Cross-platform texture sharing between applications
-# - macOS: Syphon framework (auto-downloaded if not installed)
+# - macOS: Syphon framework (built from source for Metal support)
 # - Windows: Spout SDK (stub)
 # - Linux: Not supported
 
@@ -18,41 +18,72 @@ if(APPLE)
         src/platform/syphon_backend.mm
     )
 
-    # Check for installed Syphon framework first
-    find_library(SYPHON_FRAMEWORK Syphon
-        PATHS
-            /Library/Frameworks
-            ~/Library/Frameworks
-    )
+    # Build Syphon framework from source (required for Metal support)
+    # The official SDK release doesn't include Metal - must build from main branch
+    set(SYPHON_DIR "${CMAKE_BINARY_DIR}/_deps/syphon-src")
+    set(SYPHON_BUILD_DIR "${CMAKE_BINARY_DIR}/_deps/syphon-build")
+    set(SYPHON_FRAMEWORK_PATH "${SYPHON_BUILD_DIR}/Syphon.framework")
 
-    if(NOT SYPHON_FRAMEWORK)
-        # Download pre-built Syphon framework from GitHub releases
-        message(STATUS "Syphon framework not found - downloading from GitHub releases...")
+    # Check if we already have a built framework with the binary
+    if(NOT EXISTS "${SYPHON_FRAMEWORK_PATH}/Syphon")
+        message(STATUS "Syphon: Fetching source from GitHub...")
 
-        set(SYPHON_VERSION "5")
-        set(SYPHON_URL "https://github.com/Syphon/Syphon-Framework/releases/download/${SYPHON_VERSION}/Syphon.framework.zip")
-        set(SYPHON_DIR "${CMAKE_BINARY_DIR}/_deps/syphon")
+        FetchContent_Declare(
+            syphon
+            GIT_REPOSITORY https://github.com/Syphon/Syphon-Framework.git
+            GIT_TAG        main
+            GIT_SHALLOW    TRUE
+            SOURCE_DIR     "${SYPHON_DIR}"
+        )
 
-        file(MAKE_DIRECTORY "${SYPHON_DIR}")
+        FetchContent_Populate(syphon)
 
-        if(NOT EXISTS "${SYPHON_DIR}/Syphon.framework")
-            file(DOWNLOAD ${SYPHON_URL} "${SYPHON_DIR}/Syphon.framework.zip"
-                STATUS SYPHON_DOWNLOAD_STATUS
-                SHOW_PROGRESS
+        if(EXISTS "${SYPHON_DIR}/Syphon.xcodeproj")
+            # Build Syphon framework using xcodebuild
+            # Build universal binary (arm64 + x86_64) for CI compatibility
+            message(STATUS "Syphon: Building universal framework (arm64 + x86_64)...")
+            file(MAKE_DIRECTORY "${SYPHON_BUILD_DIR}")
+
+            execute_process(
+                COMMAND xcodebuild
+                    -project Syphon.xcodeproj
+                    -scheme Syphon
+                    -configuration Release
+                    -derivedDataPath "${SYPHON_BUILD_DIR}/DerivedData"
+                    CONFIGURATION_BUILD_DIR=${SYPHON_BUILD_DIR}
+                    ONLY_ACTIVE_ARCH=NO
+                    BUILD_LIBRARY_FOR_DISTRIBUTION=YES
+                    ARCHS=arm64\ x86_64
+                WORKING_DIRECTORY "${SYPHON_DIR}"
+                RESULT_VARIABLE SYPHON_BUILD_RESULT
+                OUTPUT_VARIABLE SYPHON_BUILD_OUTPUT
+                ERROR_VARIABLE SYPHON_BUILD_ERROR
             )
-            list(GET SYPHON_DOWNLOAD_STATUS 0 SYPHON_DOWNLOAD_OK)
-            if(NOT SYPHON_DOWNLOAD_OK EQUAL 0)
-                message(WARNING "Failed to download Syphon framework. Texture sharing will be disabled on macOS.")
-                message(WARNING "Install manually: https://github.com/Syphon/Syphon-Framework/releases")
-            else()
-                file(ARCHIVE_EXTRACT INPUT "${SYPHON_DIR}/Syphon.framework.zip" DESTINATION "${SYPHON_DIR}")
-                message(STATUS "Syphon framework downloaded to ${SYPHON_DIR}")
-            endif()
-        endif()
 
-        if(EXISTS "${SYPHON_DIR}/Syphon.framework")
-            set(SYPHON_FRAMEWORK "${SYPHON_DIR}/Syphon.framework")
+            if(NOT SYPHON_BUILD_RESULT EQUAL 0)
+                message(WARNING "Syphon: Build failed:")
+                message(WARNING "${SYPHON_BUILD_ERROR}")
+                message(WARNING "Syphon: Texture sharing will be disabled on macOS.")
+                set(SYPHON_BUILD_SUCCESS FALSE)
+            else()
+                message(STATUS "Syphon: Framework built successfully at ${SYPHON_FRAMEWORK_PATH}")
+                set(SYPHON_BUILD_SUCCESS TRUE)
+            endif()
+        else()
+            message(WARNING "Syphon: Failed to fetch source (Syphon.xcodeproj not found)")
+            set(SYPHON_BUILD_SUCCESS FALSE)
         endif()
+    else()
+        message(STATUS "Syphon: Using cached framework from ${SYPHON_BUILD_DIR}")
+        set(SYPHON_BUILD_SUCCESS TRUE)
+    endif()
+
+    # Only set SYPHON_FRAMEWORK if build succeeded AND framework exists
+    if(SYPHON_BUILD_SUCCESS AND EXISTS "${SYPHON_FRAMEWORK_PATH}/Syphon")
+        set(SYPHON_FRAMEWORK "${SYPHON_FRAMEWORK_PATH}")
+    else()
+        # Ensure we don't accidentally use any system framework
+        unset(SYPHON_FRAMEWORK)
     endif()
 
 elseif(WIN32)
@@ -98,18 +129,18 @@ if(APPLE)
         "-framework AppKit"
     )
 
-    # Link Syphon framework (found or downloaded above)
+    # Link Syphon framework (built from source above)
     if(SYPHON_FRAMEWORK)
-        target_link_libraries(vivid-texshare PRIVATE ${SYPHON_FRAMEWORK})
-        message(STATUS "Using Syphon framework: ${SYPHON_FRAMEWORK}")
+        # Use explicit path - don't let linker search system framework paths
+        target_link_libraries(vivid-texshare PRIVATE "${SYPHON_FRAMEWORK}")
+        message(STATUS "Syphon: Linking framework: ${SYPHON_FRAMEWORK}")
 
-        # Get the framework directory for include path
-        get_filename_component(SYPHON_FRAMEWORK_DIR ${SYPHON_FRAMEWORK} DIRECTORY)
+        # Add framework search path for headers
         target_compile_options(vivid-texshare PRIVATE
-            -F${SYPHON_FRAMEWORK_DIR}
+            -F${SYPHON_BUILD_DIR}
         )
     else()
-        message(WARNING "Syphon framework not available - texture sharing disabled on macOS")
+        message(WARNING "Syphon: Framework not available - texture sharing disabled on macOS")
         target_compile_definitions(vivid-texshare PRIVATE VIVID_TEXSHARE_NO_SYPHON)
     endif()
 
