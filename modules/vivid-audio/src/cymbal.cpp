@@ -118,9 +118,19 @@ void Cymbal::cleanup() {
     m_initialized = false;
 }
 
-void Cymbal::onTrigger() {
-    m_env = 1.0f;
+void Cymbal::midiNoteOn(uint8_t /*note*/, float velocity, uint8_t /*channel*/) {
+    m_velocity = velocity;
+    m_env = velocity;
     m_shimmerPhase = 0.0f;
+}
+
+void Cymbal::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // Note-off chokes the cymbal
+    choke();
+}
+
+void Cymbal::onTrigger() {
+    midiNoteOn(0, 1.0f, 0);
 }
 
 void Cymbal::choke() {

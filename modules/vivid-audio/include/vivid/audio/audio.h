@@ -66,10 +66,12 @@
 #include <vivid/audio/fm_drum.h>
 #include <vivid/audio/clang.h>
 #include <vivid/audio/drum_stack.h>
+#include <vivid/audio/drum_kit.h>
 
 // Sequencing
 #include <vivid/audio/clock.h>
 #include <vivid/audio/sequencer.h>
+#include <vivid/audio/arpeggiator.h>
 #include <vivid/audio/euclidean.h>
 #include <vivid/audio/song.h>
 

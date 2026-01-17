@@ -11,6 +11,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -100,7 +101,7 @@ enum class SynthFilterType {
  
  * @see Synth, FMSynth, PolySynth, Granular, MidiIn
  */
-class WavetableSynth : public AudioOperator {
+class WavetableSynth : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -272,6 +273,23 @@ public:
      */
     void panic();
 
+    /**
+     * @brief Set pitch bend range in semitones
+     * @param semitones Bend range (default 2.0 = standard ±2 semitones)
+     */
+    void setPitchBendRange(float semitones) { m_pitchBendRange = semitones; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+    void midiPitchBend(float value, uint8_t channel = 0) override;
+    void midiAllNotesOff() override { allNotesOff(); }
+    void midiPanic() override { panic(); }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name State Queries
@@ -365,6 +383,10 @@ private:
     WarpMode m_warpMode = WarpMode::None;  // Current warp mode
     SynthFilterType m_filterType = SynthFilterType::LP24;  // Default to classic 24dB LP
     uint32_t m_sampleRate = 48000;
+
+    // Pitch bend
+    float m_pitchBend = 0.0f;       // Current pitch bend value (-1 to +1)
+    float m_pitchBendRange = 2.0f;  // Pitch bend range in semitones
 
     // Voice management
     int findFreeVoice() const;

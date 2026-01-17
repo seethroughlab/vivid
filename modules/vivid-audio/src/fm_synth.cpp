@@ -157,7 +157,7 @@ void FMSynth::setEnvelope(int op, float a, float d, float s, float r) {
     m_opSettings[op].release = std::max(0.001f, r);
 }
 
-int FMSynth::noteOn(float hz) {
+int FMSynth::noteOn(float hz, float velocity) {
     int voiceIdx = findFreeVoice();
     if (voiceIdx < 0) {
         voiceIdx = findVoiceToSteal();
@@ -168,6 +168,7 @@ int FMSynth::noteOn(float hz) {
     voice.frequency = hz;
     voice.active = true;
     voice.noteId = ++m_noteCounter;
+    voice.velocity = velocity;
 
     // Initialize operators from settings
     for (int i = 0; i < NUM_OPS; ++i) {
@@ -198,9 +199,9 @@ void FMSynth::noteOff(float hz) {
     }
 }
 
-int FMSynth::noteOnMidi(int midiNote) {
+int FMSynth::noteOnMidi(int midiNote, float velocity) {
     float hz = 440.0f * std::pow(2.0f, (static_cast<float>(midiNote) - 69.0f) / 12.0f);
-    return noteOn(hz);
+    return noteOn(hz, velocity);
 }
 
 void FMSynth::noteOffMidi(int midiNote) {
@@ -224,6 +225,22 @@ void FMSynth::panic() {
     for (auto& voice : m_voices) {
         voice.active = false;
     }
+}
+
+// -----------------------------------------------------------------------------
+// MidiReceiver Interface
+// -----------------------------------------------------------------------------
+
+void FMSynth::midiNoteOn(uint8_t note, float velocity, uint8_t /*channel*/) {
+    noteOnMidi(static_cast<int>(note), velocity);
+}
+
+void FMSynth::midiNoteOff(uint8_t note, float /*velocity*/, uint8_t /*channel*/) {
+    noteOffMidi(static_cast<int>(note));
+}
+
+void FMSynth::midiPitchBend(float value, uint8_t /*channel*/) {
+    m_pitchBend = value;
 }
 
 int FMSynth::activeVoiceCount() const {
@@ -304,7 +321,9 @@ void FMSynth::generateBlock(uint32_t frameCount) {
 }
 
 float FMSynth::processVoice(Voice& voice, float ratios[4], float levels[4], float fb) {
-    float baseFreq = voice.frequency;
+    // Apply pitch bend to base frequency
+    float pitchBendRatio = std::pow(2.0f, m_pitchBend * m_pitchBendRange / 12.0f);
+    float baseFreq = voice.frequency * pitchBendRatio;
     float phaseInc[4];
 
     for (int i = 0; i < NUM_OPS; ++i) {
@@ -410,7 +429,8 @@ float FMSynth::processVoice(Voice& voice, float ratios[4], float levels[4], floa
         }
     }
 
-    return result;
+    // Apply velocity
+    return result * voice.velocity;
 }
 
 void FMSynth::advanceEnvelope(Voice& voice, int op, uint32_t samples) {

@@ -9,6 +9,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/dsp/filters.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -51,7 +52,7 @@ namespace vivid::audio {
  *
  * @see HiHat, Kick, Snare, DrumStack
  */
-class Cymbal : public AudioOperator {
+class Cymbal : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -89,6 +90,14 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
@@ -114,6 +123,7 @@ private:
     float generateNoise();
 
     // State
+    float m_velocity = 1.0f;
     float m_env = 0.0f;
     uint32_t m_seed = 54321;
 

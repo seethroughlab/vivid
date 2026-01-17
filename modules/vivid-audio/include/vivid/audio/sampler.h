@@ -10,6 +10,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <cmath>
@@ -61,7 +62,7 @@ enum class SamplerVoiceStealMode {
  
  * @see MultiSampler, SamplePlayer, SampleBank, AudioFile, MidiIn, Granular
  */
-class Sampler : public AudioOperator {
+class Sampler : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters
@@ -157,6 +158,23 @@ public:
      */
     void setVoiceStealMode(SamplerVoiceStealMode mode) { m_stealMode = mode; }
 
+    /**
+     * @brief Set pitch bend range in semitones
+     * @param semitones Bend range (default 2.0 = standard ±2 semitones)
+     */
+    void setPitchBendRange(float semitones) { m_pitchBendRange = semitones; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+    void midiPitchBend(float value, uint8_t channel = 0) override;
+    void midiAllNotesOff() override { allNotesOff(); }
+    void midiPanic() override { panic(); }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name State Queries
@@ -239,6 +257,10 @@ private:
     std::vector<Voice> m_voices;
     SamplerVoiceStealMode m_stealMode = SamplerVoiceStealMode::Oldest;
     uint64_t m_noteCounter = 0;
+
+    // Pitch bend
+    float m_pitchBend = 0.0f;       // Current pitch bend value (-1 to +1)
+    float m_pitchBendRange = 2.0f;  // Pitch bend range in semitones
 };
 
 } // namespace vivid::audio

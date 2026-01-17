@@ -132,13 +132,22 @@ void Kick::cleanup() {
     m_initialized = false;
 }
 
-void Kick::onTrigger() {
-    m_ampEnv = 1.0f;
+void Kick::midiNoteOn(uint8_t /*note*/, float velocity, uint8_t /*channel*/) {
+    m_velocity = velocity;
+    m_ampEnv = velocity;
     m_pitchEnvValue = 1.0f;
-    m_clickEnv = 1.0f;
+    m_clickEnv = velocity;
     m_attackEnv = 0.0f;  // Start at 0 for attack fade-in
     m_attackSample = 0;
     // Don't reset phase for punch
+}
+
+void Kick::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // One-shot drum, nothing to do
+}
+
+void Kick::onTrigger() {
+    midiNoteOn(0, 1.0f, 0);
 }
 
 void Kick::reset() {

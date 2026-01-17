@@ -10,6 +10,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/audio/preset.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
@@ -90,7 +91,7 @@ enum class FMPreset {
  
  * @see Synth, PolySynth, WavetableSynth, Oscillator, MidiIn
  */
-class FMSynth : public AudioOperator, public PresetCapable {
+class FMSynth : public AudioOperator, public MidiReceiver, public PresetCapable {
 public:
     static constexpr int MAX_VOICES = 8;
     static constexpr int NUM_OPS = 4;
@@ -171,9 +172,10 @@ public:
     /**
      * @brief Play a note at the given frequency
      * @param hz Frequency in Hz
+     * @param velocity Note velocity (0.0-1.0, default 1.0)
      * @return Voice index used, or -1 if no voice available
      */
-    int noteOn(float hz);
+    int noteOn(float hz, float velocity = 1.0f);
 
     /**
      * @brief Release a note at the given frequency
@@ -183,8 +185,10 @@ public:
 
     /**
      * @brief Play a MIDI note
+     * @param midiNote MIDI note number (60 = middle C)
+     * @param velocity Note velocity (0.0-1.0, default 1.0)
      */
-    int noteOnMidi(int midiNote);
+    int noteOnMidi(int midiNote, float velocity = 1.0f);
 
     /**
      * @brief Release a MIDI note
@@ -205,6 +209,23 @@ public:
      * @brief Get number of active voices
      */
     int activeVoiceCount() const;
+
+    /**
+     * @brief Set pitch bend range in semitones
+     * @param semitones Bend range (default 2.0 = standard ±2 semitones)
+     */
+    void setPitchBendRange(float semitones) { m_pitchBendRange = semitones; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+    void midiPitchBend(float value, uint8_t channel = 0) override;
+    void midiAllNotesOff() override { allNotesOff(); }
+    void midiPanic() override { panic(); }
 
     // Visualization access
     /**
@@ -260,6 +281,7 @@ private:
         std::array<float, NUM_OPS> releaseStartValue;
         bool active = false;
         uint64_t noteId = 0;
+        float velocity = 1.0f;   // Note velocity (0.0-1.0)
 
         bool isActive() const { return active; }
     };
@@ -273,6 +295,10 @@ private:
     std::array<Operator, NUM_OPS> m_opSettings;  // Template for new voices
 
     uint32_t m_sampleRate = 48000;
+
+    // Pitch bend
+    float m_pitchBend = 0.0f;       // Current pitch bend value (-1 to +1)
+    float m_pitchBendRange = 2.0f;  // Pitch bend range in semitones
 
     // Helpers
     int findFreeVoice() const;

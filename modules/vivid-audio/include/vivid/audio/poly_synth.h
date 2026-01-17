@@ -11,6 +11,7 @@
 #include <vivid/audio_operator.h>
 #include <vivid/audio/oscillator.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -67,7 +68,7 @@ enum class VoiceStealMode {
  
  * @see Synth, FMSynth, WavetableSynth, Oscillator, Envelope, MidiIn
  */
-class PolySynth : public AudioOperator {
+class PolySynth : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -113,9 +114,10 @@ public:
     /**
      * @brief Play a note at the given frequency
      * @param hz Frequency in Hz
+     * @param velocity Note velocity (0.0-1.0, default 1.0)
      * @return Voice index used, or -1 if no voice available
      */
-    int noteOn(float hz);
+    int noteOn(float hz, float velocity = 1.0f);
 
     /**
      * @brief Release a note at the given frequency
@@ -126,9 +128,10 @@ public:
     /**
      * @brief Play a MIDI note
      * @param midiNote MIDI note number (60 = middle C)
+     * @param velocity Note velocity (0.0-1.0, default 1.0)
      * @return Voice index used, or -1 if no voice available
      */
-    int noteOnMidi(int midiNote);
+    int noteOnMidi(int midiNote, float velocity = 1.0f);
 
     /**
      * @brief Release a MIDI note
@@ -145,6 +148,23 @@ public:
      * @brief Immediately silence all voices
      */
     void panic();
+
+    /**
+     * @brief Set pitch bend range in semitones
+     * @param semitones Bend range (default 2.0 = standard ±2 semitones)
+     */
+    void setPitchBendRange(float semitones) { m_pitchBendRange = semitones; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+    void midiPitchBend(float value, uint8_t channel = 0) override;
+    void midiAllNotesOff() override { allNotesOff(); }
+    void midiPanic() override { panic(); }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -194,7 +214,8 @@ private:
         float envValue = 0.0f;
         float envProgress = 0.0f;
         float releaseStartValue = 0.0f;
-        uint64_t noteId = 0;  // For voice stealing (oldest first)
+        uint64_t noteId = 0;      // For voice stealing (oldest first)
+        float velocity = 1.0f;    // Note velocity (0.0-1.0)
 
         bool isActive() const { return envStage != EnvelopeStage::Idle; }
         bool isReleasing() const { return envStage == EnvelopeStage::Release; }
@@ -214,6 +235,10 @@ private:
     VoiceStealMode m_stealMode = VoiceStealMode::Oldest;
     uint64_t m_noteCounter = 0;
     uint32_t m_sampleRate = 48000;
+
+    // Pitch bend
+    float m_pitchBend = 0.0f;       // Current pitch bend value (-1 to +1)
+    float m_pitchBendRange = 2.0f;  // Pitch bend range in semitones
 
     static constexpr float PI = 3.14159265358979323846f;
     static constexpr float TWO_PI = 2.0f * PI;

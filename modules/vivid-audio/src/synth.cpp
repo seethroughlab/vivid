@@ -31,10 +31,11 @@ void Synth::generateBlock(uint32_t frameCount) {
         m_output.resize(frameCount);
     }
 
-    // Calculate effective frequency with detune
+    // Calculate effective frequency with detune and pitch bend
     float baseFreq = static_cast<float>(frequency);
+    float pitchBendRatio = std::pow(2.0f, m_pitchBend * m_pitchBendRange / 12.0f);
     float detuneRatio = centsToRatio(static_cast<float>(detune));
-    float freq = baseFreq * detuneRatio;
+    float freq = baseFreq * detuneRatio * pitchBendRatio;
 
     // Phase increment per sample
     float phaseInc = freq / static_cast<float>(m_sampleRate);
@@ -45,8 +46,8 @@ void Synth::generateBlock(uint32_t frameCount) {
         // Compute envelope
         float env = computeEnvelope();
 
-        // Generate sample with envelope
-        float sample = generateSample(m_phase) * vol * env;
+        // Generate sample with envelope and velocity
+        float sample = generateSample(m_phase) * vol * env * m_velocity;
 
         // Write stereo
         m_output.samples[i * 2] = sample;
@@ -132,6 +133,31 @@ void Synth::reset() {
     m_envValue = 0.0f;
     m_envProgress = 0.0f;
     m_releaseStartValue = 0.0f;
+    m_velocity = 1.0f;
+    m_pitchBend = 0.0f;
+}
+
+// -----------------------------------------------------------------------------
+// MidiReceiver Interface
+// -----------------------------------------------------------------------------
+
+void Synth::midiNoteOn(uint8_t note, float velocity, uint8_t /*channel*/) {
+    m_lastMidiNote = note;
+    m_velocity = velocity;
+    // Convert MIDI note to frequency
+    float hz = 440.0f * std::pow(2.0f, (static_cast<float>(note) - 69.0f) / 12.0f);
+    noteOn(hz);
+}
+
+void Synth::midiNoteOff(uint8_t note, float /*velocity*/, uint8_t /*channel*/) {
+    // Only release if this is the note that's playing
+    if (note == m_lastMidiNote) {
+        noteOff();
+    }
+}
+
+void Synth::midiPitchBend(float value, uint8_t /*channel*/) {
+    m_pitchBend = value;
 }
 
 float Synth::generateSample(float phase) const {

@@ -10,6 +10,7 @@
 #include <vivid/audio_operator.h>
 #include <vivid/audio/oscillator.h>
 #include <vivid/audio/envelope.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -55,7 +56,7 @@ namespace vivid::audio {
  
  * @see PolySynth, FMSynth, WavetableSynth, Oscillator, Envelope, AudioFilter, MidiIn
  */
-class Synth : public AudioOperator {
+class Synth : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -129,10 +130,27 @@ public:
      */
     void reset();
 
+    /**
+     * @brief Set pitch bend range in semitones
+     * @param semitones Bend range (default 2.0 = standard ±2 semitones)
+     */
+    void setPitchBendRange(float semitones) { m_pitchBendRange = semitones; }
+
     // Visualization access
     Waveform waveform() const { return m_waveform; }
     float envelopeValue() const { return m_envValue; }
     EnvelopeStage envelopeStage() const { return m_envStage; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+    void midiPitchBend(float value, uint8_t channel = 0) override;
+    void midiAllNotesOff() override { noteOff(); }
+    void midiPanic() override { reset(); }
 
 private:
     void noteOnInternal();   // Called from audio thread
@@ -178,6 +196,11 @@ private:
     float m_envProgress = 0.0f;
     float m_releaseStartValue = 0.0f;
 
+    // Velocity and pitch bend
+    float m_velocity = 1.0f;        // Current note velocity (0.0-1.0)
+    float m_pitchBend = 0.0f;       // Current pitch bend value (-1 to +1)
+    float m_pitchBendRange = 2.0f;  // Pitch bend range in semitones
+    uint8_t m_lastMidiNote = 60;    // Last played MIDI note (for noteOff matching)
 
     static constexpr float PI = 3.14159265358979323846f;
     static constexpr float TWO_PI = 2.0f * PI;

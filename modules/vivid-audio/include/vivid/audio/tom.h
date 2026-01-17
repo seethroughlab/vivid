@@ -9,6 +9,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/audio/dsp/filters.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -53,7 +54,7 @@ namespace vivid::audio {
  *
  * @see Kick, Snare, Cymbal, DrumStack
  */
-class Tom : public AudioOperator {
+class Tom : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -93,6 +94,14 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
@@ -115,6 +124,7 @@ protected:
 
 private:
     // State
+    float m_velocity = 1.0f;
     float m_phase = 0.0f;
     float m_phase2 = 0.0f;
     float m_phase3 = 0.0f;

@@ -102,9 +102,18 @@ void Tom::cleanup() {
     m_initialized = false;
 }
 
-void Tom::onTrigger() {
-    m_ampEnv = 1.0f;
+void Tom::midiNoteOn(uint8_t /*note*/, float velocity, uint8_t /*channel*/) {
+    m_velocity = velocity;
+    m_ampEnv = velocity;
     m_pitchEnvValue = 1.0f;
+}
+
+void Tom::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // One-shot drum, nothing to do
+}
+
+void Tom::onTrigger() {
+    midiNoteOn(0, 1.0f, 0);
 }
 
 void Tom::reset() {

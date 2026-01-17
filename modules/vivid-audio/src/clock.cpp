@@ -101,6 +101,58 @@ void Clock::reset() {
     m_triggeredFlag.store(false, std::memory_order_relaxed);
     m_lastTickOdd = false;
     m_capturedSwingDelay = 0.0f;
+    m_midiClockCount = 0;
+    m_midiClockPhase = 0.0;
+}
+
+// -----------------------------------------------------------------------------
+// MIDI Clock Sync
+// -----------------------------------------------------------------------------
+
+void Clock::midiClock() {
+    if (!m_midiClockSync) return;
+
+    // Calculate BPM from MIDI clock timing (24 PPQ)
+    double now = static_cast<double>(m_triggerCount.load()) / 24.0;  // Rough time estimate
+
+    if (m_midiClockCount > 0 && m_lastMidiClockTime > 0.0) {
+        double interval = now - m_lastMidiClockTime;
+        if (interval > 0.0001) {  // Avoid division by zero
+            // Smooth the interval calculation
+            m_midiClockInterval = m_midiClockInterval * 0.9 + interval * 0.1;
+
+            // Convert 24 PPQ interval to BPM
+            // BPM = 60 / (interval_per_tick * 24)
+            float newBpm = 60.0f / static_cast<float>(m_midiClockInterval * 24.0);
+            newBpm = std::clamp(newBpm, 20.0f, 300.0f);
+            bpm = newBpm;
+        }
+    }
+
+    m_lastMidiClockTime = now;
+    m_midiClockCount++;
+
+    // Trigger on every 24th tick (quarter note at 24 PPQ)
+    if (m_midiClockCount % 24 == 0) {
+        m_triggeredFlag.store(true, std::memory_order_release);
+        m_triggerCount.fetch_add(1, std::memory_order_relaxed);
+        if (m_callback) {
+            m_callback();
+        }
+    }
+}
+
+void Clock::midiStart() {
+    reset();
+    start();
+}
+
+void Clock::midiStop() {
+    stop();
+}
+
+void Clock::midiContinue() {
+    start();
 }
 
 float Clock::getDivisionMultiplier() const {

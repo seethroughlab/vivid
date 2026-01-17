@@ -137,6 +137,22 @@ void Sampler::panic() {
     }
 }
 
+// -----------------------------------------------------------------------------
+// MidiReceiver Interface
+// -----------------------------------------------------------------------------
+
+void Sampler::midiNoteOn(uint8_t note, float velocity, uint8_t /*channel*/) {
+    noteOn(static_cast<int>(note), velocity);
+}
+
+void Sampler::midiNoteOff(uint8_t note, float /*velocity*/, uint8_t /*channel*/) {
+    noteOff(static_cast<int>(note));
+}
+
+void Sampler::midiPitchBend(float value, uint8_t /*channel*/) {
+    m_pitchBend = value;
+}
+
 int Sampler::activeVoiceCount() const {
     int count = 0;
     int max = static_cast<int>(maxVoices);
@@ -328,8 +344,9 @@ void Sampler::processVoice(Voice& voice, float* outputL, float* outputR, uint32_
         outputL[i] += sampleL;
         outputR[i] += sampleR;
 
-        // Advance position by pitch
-        voice.position += static_cast<double>(voice.pitch);
+        // Apply pitch bend to playback rate
+        float pitchBendRatio = std::pow(2.0f, m_pitchBend * m_pitchBendRange / 12.0f);
+        voice.position += static_cast<double>(voice.pitch * pitchBendRatio);
     }
 }
 

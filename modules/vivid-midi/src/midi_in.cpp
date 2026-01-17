@@ -1,6 +1,8 @@
 #include <vivid/midi/midi_in.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/context.h>
+#include <vivid/chain.h>
 #include <RtMidi.h>
 
 #include <iostream>
@@ -145,8 +147,9 @@ void MidiIn::onCC(std::function<void(uint8_t, float, uint8_t)> cb) {
     m_ccCallback = std::move(cb);
 }
 
-void MidiIn::init(Context& /*ctx*/) {
-    // Already initialized in constructor
+void MidiIn::init(Context& ctx) {
+    // Cache chain pointer for resolving targets
+    m_chain = &ctx.chain();
 }
 
 void MidiIn::process(Context& /*ctx*/) {
@@ -167,6 +170,122 @@ void MidiIn::process(Context& /*ctx*/) {
 
 void MidiIn::cleanup() {
     closePort();
+    m_chain = nullptr;
+    m_cachedTarget = nullptr;
+}
+
+// -----------------------------------------------------------------------------
+// MIDI Routing
+// -----------------------------------------------------------------------------
+
+void MidiIn::setTarget(const std::string& targetName) {
+    m_targetName = targetName;
+    m_cachedTarget = nullptr;  // Will be resolved on first use
+}
+
+void MidiIn::clearTarget() {
+    m_targetName.clear();
+    m_cachedTarget = nullptr;
+}
+
+void MidiIn::setClockTarget(const std::string& targetName) {
+    m_clockTargetName = targetName;
+}
+
+void MidiIn::clearClockTarget() {
+    m_clockTargetName.clear();
+}
+
+void MidiIn::mapCC(uint8_t cc, const std::string& targetOp,
+                   const std::string& paramName,
+                   float minVal, float maxVal) {
+    // Remove existing mapping for this CC
+    unmapCC(cc);
+
+    CCMapping mapping;
+    mapping.cc = cc;
+    mapping.targetOp = targetOp;
+    mapping.paramName = paramName;
+    mapping.minVal = minVal;
+    mapping.maxVal = maxVal;
+    m_ccMappings.push_back(mapping);
+}
+
+void MidiIn::unmapCC(uint8_t cc) {
+    m_ccMappings.erase(
+        std::remove_if(m_ccMappings.begin(), m_ccMappings.end(),
+                       [cc](const CCMapping& m) { return m.cc == cc; }),
+        m_ccMappings.end());
+}
+
+void MidiIn::clearCCMappings() {
+    m_ccMappings.clear();
+}
+
+void MidiIn::routeToTarget(const MidiEvent& event) {
+    if (m_targetName.empty() || !m_chain) return;
+
+    // Resolve target if not cached
+    if (!m_cachedTarget) {
+        Operator* op = m_chain->getByName(m_targetName);
+        if (op) {
+            m_cachedTarget = dynamic_cast<audio::MidiReceiver*>(op);
+            if (!m_cachedTarget) {
+                std::cerr << "MidiIn: Target '" << m_targetName
+                          << "' does not implement MidiReceiver" << std::endl;
+            }
+        } else {
+            std::cerr << "MidiIn: Target '" << m_targetName << "' not found" << std::endl;
+        }
+    }
+
+    if (!m_cachedTarget) return;
+
+    // Route event to target
+    switch (event.type) {
+        case MidiEventType::NoteOn:
+            m_cachedTarget->midiNoteOn(event.note, velocityToFloat(event.velocity), event.channel);
+            break;
+
+        case MidiEventType::NoteOff:
+            m_cachedTarget->midiNoteOff(event.note, velocityToFloat(event.velocity), event.channel);
+            break;
+
+        case MidiEventType::PitchBend:
+            m_cachedTarget->midiPitchBend(pitchBendToFloat(event.pitchBend), event.channel);
+            break;
+
+        case MidiEventType::ControlChange:
+            // Check for special CCs
+            if (event.cc == CC::AllNotesOff) {
+                m_cachedTarget->midiAllNotesOff();
+            } else if (event.cc == CC::AllSoundOff) {
+                m_cachedTarget->midiPanic();
+            } else {
+                // Forward CC to receiver
+                m_cachedTarget->midiCC(event.cc, ccToFloat(event.value), event.channel);
+            }
+            break;
+
+        default:
+            break;
+    }
+}
+
+void MidiIn::applyCCMapping(uint8_t cc, float value) {
+    if (!m_chain) return;
+
+    for (const auto& mapping : m_ccMappings) {
+        if (mapping.cc == cc) {
+            Operator* target = m_chain->getByName(mapping.targetOp);
+            if (target) {
+                // Scale value from 0-1 to minVal-maxVal
+                float scaled = mapping.minVal + (mapping.maxVal - mapping.minVal) * value;
+                float paramVal[4] = {scaled, 0.0f, 0.0f, 0.0f};
+                target->setParam(mapping.paramName, paramVal);
+            }
+        }
+    }
 }
 
 void MidiIn::clearFrameState() {
@@ -211,6 +330,9 @@ void MidiIn::processMessage(const std::vector<unsigned char>& message) {
                     if (m_noteOnCallback) {
                         m_noteOnCallback(event.note, m_lastVelocity, event.channel);
                     }
+
+                    // Auto-route to target synth
+                    routeToTarget(event);
                 } else {
                     // Velocity 0 = note off
                     event.type = MidiEventType::NoteOff;
@@ -219,6 +341,9 @@ void MidiIn::processMessage(const std::vector<unsigned char>& message) {
                     if (m_noteOffCallback) {
                         m_noteOffCallback(event.note, event.channel);
                     }
+
+                    // Auto-route to target synth
+                    routeToTarget(event);
                 }
                 m_frameEvents.push_back(event);
             }
@@ -234,6 +359,10 @@ void MidiIn::processMessage(const std::vector<unsigned char>& message) {
                 if (m_noteOffCallback) {
                     m_noteOffCallback(event.note, event.channel);
                 }
+
+                // Auto-route to target synth
+                routeToTarget(event);
+
                 m_frameEvents.push_back(event);
             }
             break;
@@ -250,6 +379,11 @@ void MidiIn::processMessage(const std::vector<unsigned char>& message) {
                 if (m_ccCallback) {
                     m_ccCallback(event.cc, m_ccValues[event.cc], event.channel);
                 }
+
+                // Apply CC mappings and route to target
+                applyCCMapping(event.cc, m_ccValues[event.cc]);
+                routeToTarget(event);
+
                 m_frameEvents.push_back(event);
             }
             break;
@@ -270,6 +404,10 @@ void MidiIn::processMessage(const std::vector<unsigned char>& message) {
                 event.pitchBend = static_cast<int16_t>(bend - 8192);
                 m_hasPitchBend = true;
                 m_pitchBendValue = pitchBendToFloat(event.pitchBend);
+
+                // Auto-route to target synth
+                routeToTarget(event);
+
                 m_frameEvents.push_back(event);
             }
             break;

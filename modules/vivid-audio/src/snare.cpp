@@ -119,9 +119,18 @@ void Snare::cleanup() {
     m_initialized = false;
 }
 
+void Snare::midiNoteOn(uint8_t /*note*/, float velocity, uint8_t /*channel*/) {
+    m_velocity = velocity;
+    m_toneEnv = velocity;
+    m_noiseEnv = velocity;
+}
+
+void Snare::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // One-shot drum, nothing to do
+}
+
 void Snare::onTrigger() {
-    m_toneEnv = 1.0f;
-    m_noiseEnv = 1.0f;
+    midiNoteOn(0, 1.0f, 0);
 }
 
 void Snare::reset() {

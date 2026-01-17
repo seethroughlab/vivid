@@ -124,9 +124,10 @@ void Clap::cleanup() {
     m_initialized = false;
 }
 
-void Clap::onTrigger() {
-    m_env = 1.0f;
-    m_tailEnv = 1.0f;
+void Clap::midiNoteOn(uint8_t /*note*/, float velocity, uint8_t /*channel*/) {
+    m_velocity = velocity;
+    m_env = velocity;
+    m_tailEnv = velocity;
     m_samplesSinceTrigger = 0;
 
     float sloppyAmt = static_cast<float>(sloppy);
@@ -137,13 +138,13 @@ void Clap::onTrigger() {
     uint32_t sloppyRange = static_cast<uint32_t>(m_sampleRate * 0.02f * sloppyAmt);  // 0-20ms variation
 
     m_burstDelay[0] = 0;
-    m_burstEnv[0] = 1.0f;
+    m_burstEnv[0] = velocity;
 
     for (int b = 1; b < NUM_BURSTS; ++b) {
         // Add some randomness to timing
         uint32_t variation = (m_seed >> (b * 3)) % (sloppyRange + 1);
         m_burstDelay[b] = m_burstDelay[b - 1] + baseSpacing + variation;
-        m_burstEnv[b] = 1.0f;
+        m_burstEnv[b] = velocity;
     }
 
     // Set up stereo panning for each burst (spread across stereo field)
@@ -156,6 +157,14 @@ void Clap::onTrigger() {
     m_seed ^= m_seed << 13;
     m_seed ^= m_seed >> 17;
     m_seed ^= m_seed << 5;
+}
+
+void Clap::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // One-shot drum, nothing to do
+}
+
+void Clap::onTrigger() {
+    midiNoteOn(0, 1.0f, 0);
 }
 
 void Clap::reset() {

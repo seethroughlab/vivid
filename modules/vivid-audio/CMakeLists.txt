@@ -78,9 +78,11 @@ set(AUDIO_SOURCES
     src/fm_drum.cpp
     src/clang.cpp
     src/drum_stack.cpp
+    src/drum_kit.cpp
     # Sequencing
     src/clock.cpp
     src/sequencer.cpp
+    src/arpeggiator.cpp
     src/euclidean.cpp
     src/song.cpp
     # Mixing

@@ -196,6 +196,30 @@ void MidiOut::panic() {
     }
 }
 
+// -----------------------------------------------------------------------------
+// MIDI Clock/Transport
+// -----------------------------------------------------------------------------
+
+void MidiOut::sendClock() {
+    std::vector<unsigned char> message = {0xF8};  // MIDI Clock
+    sendRaw(message);
+}
+
+void MidiOut::sendStart() {
+    std::vector<unsigned char> message = {0xFA};  // MIDI Start
+    sendRaw(message);
+}
+
+void MidiOut::sendStop() {
+    std::vector<unsigned char> message = {0xFC};  // MIDI Stop
+    sendRaw(message);
+}
+
+void MidiOut::sendContinue() {
+    std::vector<unsigned char> message = {0xFB};  // MIDI Continue
+    sendRaw(message);
+}
+
 void MidiOut::init(Context& /*ctx*/) {
     // Already initialized in constructor
 }

@@ -17,8 +17,28 @@
 #include <array>
 #include <memory>
 #include <functional>
+#include <unordered_map>
+
+namespace vivid {
+class Chain;  // Forward declaration
+}
+
+namespace vivid::audio {
+class MidiReceiver;  // Forward declaration
+}
 
 namespace vivid::midi {
+
+/**
+ * @brief CC-to-parameter mapping for routing CCs to operator parameters
+ */
+struct CCMapping {
+    uint8_t cc;                  ///< MIDI CC number (0-127)
+    std::string targetOp;        ///< Target operator name
+    std::string paramName;       ///< Target parameter name
+    float minVal = 0.0f;         ///< Minimum output value
+    float maxVal = 1.0f;         ///< Maximum output value
+};
 
 /**
  * @brief Hardware MIDI input operator
@@ -133,6 +153,96 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Native MIDI Routing
+    /// @{
+
+    /**
+     * @brief Route MIDI notes to a named synth operator
+     * @param targetName Name of the synth operator (must implement MidiReceiver)
+     *
+     * When a target is set, all note-on, note-off, and pitch bend events
+     * are automatically forwarded to the target synth without manual polling.
+     *
+     * @par Example
+     * @code
+     * auto& midiIn = chain.add<MidiIn>("midi");
+     * auto& synth = chain.add<PolySynth>("synth");
+     * midiIn.setTarget("synth");  // Notes now play on synth automatically
+     * @endcode
+     */
+    void setTarget(const std::string& targetName);
+
+    /**
+     * @brief Clear the MIDI target (stop auto-routing)
+     */
+    void clearTarget();
+
+    /**
+     * @brief Get the current target name
+     * @return Target operator name, or empty string if not set
+     */
+    [[nodiscard]] const std::string& targetName() const { return m_targetName; }
+
+    /**
+     * @brief Route MIDI clock events to a Clock operator
+     * @param targetName Name of the Clock operator
+     *
+     * When set, MIDI clock (24 PPQ), start, stop, and continue messages
+     * are forwarded to sync the Clock's tempo to external gear.
+     */
+    void setClockTarget(const std::string& targetName);
+
+    /**
+     * @brief Clear the clock target
+     */
+    void clearClockTarget();
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name CC-to-Parameter Mapping
+    /// @{
+
+    /**
+     * @brief Map a MIDI CC to an operator parameter
+     * @param cc MIDI controller number (0-127)
+     * @param targetOp Name of the target operator
+     * @param paramName Name of the parameter to control
+     * @param minVal Minimum output value (default 0.0)
+     * @param maxVal Maximum output value (default 1.0)
+     *
+     * When the specified CC is received, its value (0-127) is scaled to
+     * the minVal-maxVal range and applied to the target parameter.
+     *
+     * @par Example
+     * @code
+     * midiIn.mapCC(1, "synth", "filterCutoff");              // Mod wheel -> filter
+     * midiIn.mapCC(74, "synth", "volume", 0.0f, 0.8f);       // CC74 -> volume (max 80%)
+     * midiIn.mapCC(91, "reverb", "mix", 0.0f, 0.6f);         // CC91 -> reverb mix
+     * @endcode
+     */
+    void mapCC(uint8_t cc, const std::string& targetOp,
+               const std::string& paramName,
+               float minVal = 0.0f, float maxVal = 1.0f);
+
+    /**
+     * @brief Remove a CC mapping
+     * @param cc MIDI controller number to unmap
+     */
+    void unmapCC(uint8_t cc);
+
+    /**
+     * @brief Remove all CC mappings
+     */
+    void clearCCMappings();
+
+    /**
+     * @brief Get all CC mappings
+     * @return Vector of all current mappings
+     */
+    [[nodiscard]] const std::vector<CCMapping>& ccMappings() const { return m_ccMappings; }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
@@ -179,8 +289,21 @@ private:
     std::function<void(uint8_t, uint8_t)> m_noteOffCallback;
     std::function<void(uint8_t, float, uint8_t)> m_ccCallback;
 
+    // MIDI routing
+    std::string m_targetName;                           ///< Target synth name
+    audio::MidiReceiver* m_cachedTarget = nullptr;      ///< Cached target pointer
+    std::string m_clockTargetName;                      ///< Clock sync target name
+
+    // CC mappings
+    std::vector<CCMapping> m_ccMappings;
+
+    // Cached chain pointer for resolving targets
+    Chain* m_chain = nullptr;
+
     void clearFrameState();
     void processMessage(const std::vector<unsigned char>& message);
+    void routeToTarget(const MidiEvent& event);
+    void applyCCMapping(uint8_t cc, float value);
 };
 
 } // namespace vivid::midi

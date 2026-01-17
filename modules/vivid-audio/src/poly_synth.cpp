@@ -44,7 +44,7 @@ void PolySynth::cleanup() {
     m_initialized = false;
 }
 
-int PolySynth::noteOn(float hz) {
+int PolySynth::noteOn(float hz, float velocity) {
     // Find a voice to use
     int voiceIdx = findFreeVoice();
     if (voiceIdx < 0) {
@@ -62,6 +62,7 @@ int PolySynth::noteOn(float hz) {
     voice.envValue = 0.0f;
     voice.envProgress = 0.0f;
     voice.noteId = ++m_noteCounter;
+    voice.velocity = velocity;
 
     return voiceIdx;
 }
@@ -79,8 +80,8 @@ void PolySynth::noteOff(float hz) {
     }
 }
 
-int PolySynth::noteOnMidi(int midiNote) {
-    return noteOn(midiToFreq(midiNote));
+int PolySynth::noteOnMidi(int midiNote, float velocity) {
+    return noteOn(midiToFreq(midiNote), velocity);
 }
 
 void PolySynth::noteOffMidi(int midiNote) {
@@ -104,6 +105,22 @@ void PolySynth::panic() {
         voice.envValue = 0.0f;
         voice.frequency = 0.0f;
     }
+}
+
+// -----------------------------------------------------------------------------
+// MidiReceiver Interface
+// -----------------------------------------------------------------------------
+
+void PolySynth::midiNoteOn(uint8_t note, float velocity, uint8_t /*channel*/) {
+    noteOnMidi(static_cast<int>(note), velocity);
+}
+
+void PolySynth::midiNoteOff(uint8_t note, float /*velocity*/, uint8_t /*channel*/) {
+    noteOffMidi(static_cast<int>(note));
+}
+
+void PolySynth::midiPitchBend(float value, uint8_t /*channel*/) {
+    m_pitchBend = value;
 }
 
 int PolySynth::activeVoiceCount() const {
@@ -283,7 +300,10 @@ void PolySynth::advanceEnvelope(Voice& voice, uint32_t samples) {
 void PolySynth::processVoice(Voice& voice, float* outputL, float* outputR, uint32_t frames) {
     if (!voice.isActive()) return;
 
-    float freq = voice.frequency * centsToRatio(static_cast<float>(detune));
+    // Apply pitch bend: convert -1 to +1 range to semitone cents
+    float pitchBendCents = m_pitchBend * m_pitchBendRange * 100.0f;  // 100 cents per semitone
+
+    float freq = voice.frequency * centsToRatio(static_cast<float>(detune) + pitchBendCents);
     float unisonCents = static_cast<float>(unisonDetune);
     float freqL = freq * centsToRatio(-unisonCents * 0.5f);
     float freqR = freq * centsToRatio(unisonCents * 0.5f);
@@ -299,7 +319,8 @@ void PolySynth::processVoice(Voice& voice, float* outputL, float* outputR, uint3
             break;  // Voice became inactive
         }
 
-        float env = voice.envValue;
+        // Apply velocity to envelope output
+        float env = voice.envValue * voice.velocity;
         float sampleL = generateSample(voice.phaseL) * env;
         float sampleR = generateSample(voice.phaseR) * env;
 

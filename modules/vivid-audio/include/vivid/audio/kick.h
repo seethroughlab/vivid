@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -47,7 +48,7 @@ namespace vivid::audio {
  
  * @see Snare, HiHat, Clap, Sequencer, Clock, PitchEnv, Decay
  */
-class Kick : public AudioOperator {
+class Kick : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -98,6 +99,14 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
@@ -124,6 +133,7 @@ private:
     float softClip(float x) const;
 
     // State
+    float m_velocity = 1.0f;
     float m_phase = 0.0f;
     float m_phase2 = 0.0f;      // 2nd harmonic phase
     float m_phase3 = 0.0f;      // 3rd harmonic phase

@@ -133,10 +133,20 @@ void HiHat::cleanup() {
     m_initialized = false;
 }
 
-void HiHat::onTrigger() {
-    m_env = 1.0f;
+void HiHat::midiNoteOn(uint8_t /*note*/, float velocity, uint8_t /*channel*/) {
+    m_velocity = velocity;
+    m_env = velocity;
     m_filterEnv = 0.0f;
     m_attackSample = 0;
+}
+
+void HiHat::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // Note-off chokes the hi-hat (for open→closed transitions)
+    choke();
+}
+
+void HiHat::onTrigger() {
+    midiNoteOn(0, 1.0f, 0);
 }
 
 void HiHat::choke() {

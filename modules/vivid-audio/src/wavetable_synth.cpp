@@ -524,6 +524,22 @@ void WavetableSynth::panic() {
     }
 }
 
+// =============================================================================
+// MidiReceiver Interface
+// =============================================================================
+
+void WavetableSynth::midiNoteOn(uint8_t note, float velocity, uint8_t /*channel*/) {
+    noteOnMidi(static_cast<int>(note), static_cast<int>(velocity * 127.0f));
+}
+
+void WavetableSynth::midiNoteOff(uint8_t note, float /*velocity*/, uint8_t /*channel*/) {
+    noteOffMidi(static_cast<int>(note));
+}
+
+void WavetableSynth::midiPitchBend(float value, uint8_t /*channel*/) {
+    m_pitchBend = value;
+}
+
 int WavetableSynth::activeVoiceCount() const {
     int count = 0;
     int max = static_cast<int>(maxVoices);
@@ -1014,8 +1030,9 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
                 }
             }
 
-            // Calculate final frequency with unison detune + global detune
-            float totalDetune = voice.detuneOffset + detuneAmount * 0.5f;
+            // Calculate final frequency with unison detune + global detune + pitch bend
+            float pitchBendCents = m_pitchBend * m_pitchBendRange * 100.0f;  // 100 cents per semitone
+            float totalDetune = voice.detuneOffset + detuneAmount * 0.5f + pitchBendCents;
             float freq = voice.currentFrequency * centsToRatio(totalDetune);
             float phaseInc = freq / static_cast<float>(m_sampleRate);
 

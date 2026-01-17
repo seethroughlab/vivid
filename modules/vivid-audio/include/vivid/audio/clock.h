@@ -98,6 +98,65 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name MIDI Clock Sync
+    /// @{
+
+    /**
+     * @brief Enable MIDI clock sync mode (sync to external MIDI clock)
+     * @param enabled True to sync tempo from incoming MIDI clock
+     *
+     * When enabled, the clock derives BPM from incoming MIDI clock messages
+     * (24 pulses per quarter note). The bpm parameter becomes read-only
+     * and reflects the detected tempo.
+     *
+     * @note Call midiClock() from MidiIn when clock messages are received.
+     */
+    void setMidiClockSync(bool enabled) { m_midiClockSync = enabled; }
+
+    /**
+     * @brief Check if MIDI clock sync is enabled
+     */
+    bool isMidiClockSync() const { return m_midiClockSync; }
+
+    /**
+     * @brief Receive MIDI clock tick (called from MidiIn)
+     *
+     * When m_midiClockSync is enabled, this updates the internal BPM
+     * calculation based on 24 PPQ MIDI clock timing.
+     */
+    void midiClock();
+
+    /**
+     * @brief Receive MIDI Start message
+     */
+    void midiStart();
+
+    /**
+     * @brief Receive MIDI Stop message
+     */
+    void midiStop();
+
+    /**
+     * @brief Receive MIDI Continue message
+     */
+    void midiContinue();
+
+    /**
+     * @brief Set MidiOut operator name for sending MIDI clock
+     * @param midiOutName Name of MidiOut operator to send clock to
+     *
+     * When set, this clock will output MIDI clock (24 PPQ), start, stop,
+     * and continue messages to the specified MidiOut operator.
+     */
+    void setMidiClockOutput(const std::string& midiOutName) { m_midiClockOutput = midiOutName; }
+
+    /**
+     * @brief Clear the MIDI clock output
+     */
+    void clearMidiClockOutput() { m_midiClockOutput.clear(); }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Trigger State
     /// @{
 
@@ -224,6 +283,14 @@ private:
     std::atomic<bool> m_running{true};
 
     std::function<void()> m_callback;
+
+    // MIDI clock sync
+    bool m_midiClockSync = false;          // True when syncing to external MIDI clock
+    uint64_t m_midiClockCount = 0;         // Count of MIDI clock ticks received
+    double m_lastMidiClockTime = 0.0;      // Time of last MIDI clock tick (seconds)
+    double m_midiClockInterval = 0.0;      // Average interval between ticks
+    std::string m_midiClockOutput;         // MidiOut operator name for sending clock
+    double m_midiClockPhase = 0.0;         // Phase for sending MIDI clock (24 PPQ)
 
     static constexpr uint32_t SAMPLE_RATE = 48000;
 };

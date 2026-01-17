@@ -9,6 +9,7 @@
 
 #include <vivid/operator.h>
 #include <vivid/operator_registry.h>
+#include <vivid/audio/midi_sender.h>
 #include <vivid/midi/midi_event.h>
 #include <string>
 #include <vector>
@@ -34,7 +35,7 @@ namespace vivid::midi {
  
  * @see MidiIn, MidiFilePlayer, Sequencer, OscOut
  */
-class MidiOut : public Operator {
+class MidiOut : public Operator, public audio::MidiSender {
 public:
 
     MidiOut();
@@ -82,7 +83,7 @@ public:
     /// @param channel MIDI channel (0-15)
     /// @param cc Controller number (0-127)
     /// @param value Value (0.0-1.0)
-    void sendCC(uint8_t channel, uint8_t cc, float value);
+    void sendCC(uint8_t channel, uint8_t cc, float value) override;
 
     /// @brief Send program change message
     /// @param channel MIDI channel (0-15)
@@ -92,7 +93,7 @@ public:
     /// @brief Send pitch bend message
     /// @param channel MIDI channel (0-15)
     /// @param bend Bend amount (-1.0 to +1.0)
-    void sendPitchBend(uint8_t channel, float bend);
+    void sendPitchBend(uint8_t channel, float bend) override;
 
     /// @brief Send a raw MIDI event
     void send(const MidiEvent& event);
@@ -102,6 +103,46 @@ public:
 
     /// @brief Send all notes off on all channels (panic)
     void panic();
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name MidiSender Interface
+    /// @{
+
+    /// @brief MidiSender: Send note-on (routes to noteOn)
+    void sendNoteOn(uint8_t channel, uint8_t note, float velocity) override {
+        noteOn(channel, note, velocity);
+    }
+
+    /// @brief MidiSender: Send note-off (routes to noteOff)
+    void sendNoteOff(uint8_t channel, uint8_t note) override {
+        noteOff(channel, note);
+    }
+
+    /// @brief MidiSender: Send all notes off (routes to allNotesOff)
+    void sendAllNotesOff(uint8_t channel) override {
+        allNotesOff(channel);
+    }
+
+    // Note: sendCC and sendPitchBend already exist with matching signatures,
+    // so they automatically satisfy the MidiSender interface requirements
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name MIDI Clock/Transport
+    /// @{
+
+    /// @brief Send MIDI clock tick (0xF8)
+    void sendClock();
+
+    /// @brief Send MIDI Start message (0xFA)
+    void sendStart();
+
+    /// @brief Send MIDI Stop message (0xFC)
+    void sendStop();
+
+    /// @brief Send MIDI Continue message (0xFB)
+    void sendContinue();
 
     /// @}
     // -------------------------------------------------------------------------

@@ -107,13 +107,9 @@ Controls:
 
 ### macOS (Syphon)
 
-The Syphon framework is **automatically downloaded** during CMake configuration if not already installed. No manual installation required.
+The Syphon framework is **automatically downloaded** during CMake configuration. No manual installation required.
 
-CMake will check these locations first:
-- `/Library/Frameworks/Syphon.framework`
-- `~/Library/Frameworks/Syphon.framework`
-
-If not found, it downloads the pre-built framework from the [Syphon GitHub releases](https://github.com/Syphon/Syphon-Framework/releases).
+The pre-built universal framework (arm64 + x86_64) is downloaded from the [Syphon GitHub releases](https://github.com/Syphon/Syphon-Framework/releases) and cached in the build directory.
 
 ### Windows (Spout)
 
