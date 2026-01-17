@@ -527,19 +527,19 @@ void update(Context& ctx) {
 
     // Manual triggers (1-4)
     if (ctx.key(GLFW_KEY_1).pressed) {
-        kick.trigger();
+        kick.midiNoteOn(60, 1.0f, 0);
         kickDecay = 1.0f;
     }
     if (ctx.key(GLFW_KEY_2).pressed) {
-        snare.trigger();
+        snare.midiNoteOn(60, 1.0f, 0);
         snareDecay = 1.0f;
     }
     if (ctx.key(GLFW_KEY_3).pressed) {
-        hihat.trigger();
+        hihat.midiNoteOn(60, 1.0f, 0);
         hihatDecay = 1.0f;
     }
     if (ctx.key(GLFW_KEY_4).pressed) {
-        clap.trigger();
+        clap.midiNoteOn(60, 1.0f, 0);
         clapDecay = 1.0f;
     }
 

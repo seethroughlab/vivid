@@ -69,10 +69,14 @@ void Envelope::handleEvent(const AudioEvent& event) {
     }
 }
 
-void Envelope::onTrigger() {
+void Envelope::midiNoteOn(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
     m_stage = EnvelopeStage::Attack;
     m_stageProgress = 0.0f;
     // Note: don't reset m_currentValue - allows retriggering from current level
+}
+
+void Envelope::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    releaseNote();
 }
 
 void Envelope::releaseNote() {

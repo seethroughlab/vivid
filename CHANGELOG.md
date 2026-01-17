@@ -10,12 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0-alpha.6] - 2026-01-16
+## [0.1.0-alpha.6] - 2026-01-17
 
-*Texture sharing, new operators, MCP improvements*
+*Texture sharing, new operators, per-voice modulation, MCP improvements, improved Noise defaults*
 
 ### Added
 
+- **Per-voice modulation system** - Attach modulators (LFO, ADSR) to synths for per-voice parameter control:
+  - `LFO` modulator - Periodic waveforms (Sine, Triangle, Square, Saw, SampleHold) with tempo sync
+  - `ADSRMod` modulator - Attack-Decay-Sustain-Release envelope
+  - Per-voice vs global modes: `perVoice = true` for independent modulation per note
+  - Modulation routing: `synth.modulate(mod, "param", depth, bipolar)`
+  - New example: `modular-modulation` demonstrating per-voice filter envelopes and LFOs
 - **vivid-texshare module** - Texture sharing between applications via Syphon (macOS) and Spout (Windows). New operators:
   - `TextureShareOut` - Publish textures to other apps (VJ software, media servers)
   - `TextureShareIn` - Receive textures from other apps
@@ -24,11 +30,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`Sweep` operator** - Extrude 2D profiles along 3D parametric paths. Built-in paths (Line, Helix, Circle, Arc) and profiles (Circle, Square, Star, Triangle). Supports twist, scale taper, and UV mapping.
 - **`get_example` MCP tool** - Returns working code snippets for operators from RECIPES.md and example projects. Call before writing code to see correct API patterns (e.g., `get_example("Sequencer")` shows `setPattern(0x1111)` bitmask syntax).
 - **Examples vs Showcase documentation** - Module READMEs now document the distinction: `examples/` contains minimal (~50-100 line) API demonstrations for quick reference, while `showcase/` contains rich (200+ line) creative applications for inspiration. Added showcase/IDEAS.md files with future project proposals for modules without existing showcases.
+- **Noise `colorNoise` parameter** - When true, generates RGB noise with 3 independent channels instead of grayscale. Each color channel samples from a spatially offset noise field.
+- **Noise `centerOrigin` parameter** - When true (now default), scaling happens from the center of the texture instead of the corner. Makes audio-reactive scale modulation pulse outward naturally.
+- **New recipes in RECIPES.md** - Four non-noise recipes added at the top of the documentation:
+  - **Pulsing Shapes** - Audio-reactive geometry with Shape operator
+  - **Geometric Flash** - Beat-synced shapes with Flash operator
+  - **Gradient Pulse** - Color gradients driven by audio (no procedural noise)
+  - **Particle Burst** - Beat-synced particle system
+- **Lesson 11: shapes-reactive** - New getting-started example demonstrating audio-reactive visuals without noise, using Shape, Gradient, and Composite operators
+- **Alternative Approaches documentation** - Added guidance to AGENTS.md files showing alternatives to noise (Shape, Ramp, Particles, Flash, Feedback)
 
 ### Changed
 
 - **`search_docs` uses OR logic** - Doc search now matches ANY query word (was ALL words required). Results ranked by relevance score. Query "audio mixer connect" now returns useful results instead of "No matches found".
 - **`get_operator` no longer guesses methods** - Removed ~195 lines of hardcoded method heuristics that caused false positives. Claude now reads the actual header files via `headerPath` to discover the real API.
+- **Noise default behavior** - `centerOrigin` now defaults to `true`, so scale modulation pulses from center. Set to `false` for legacy corner-origin behavior.
+- **Documentation organization** - RECIPES.md now categorizes visual effects into "No Noise" and "With Noise" sections to highlight alternatives
 
 ### Fixed
 
@@ -36,22 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.1.0-alpha.5] - 2026-01-13
 
-*Consolidates alphas 25-29: Lookup operator, audio-thread triggers, MCP debugging tools*
+*Lookup operator, audio-thread triggers, MCP debugging tools*
 
 ### Added
 
-#### CpuPixels Output Kind (alpha.29)
 - **CpuPixels output kind** - New `OutputKind::CpuPixels` for operators that output CPU pixel buffers instead of GPU textures. Chain visualizer automatically uploads these to a scratch texture for preview rendering.
-
-#### MCP Debugging Tools (alpha.28)
 - **MCP debugging tools** - New tools for visual debugging and parameter control:
   - `set_param` - Set operator parameters immediately without pending queue
   - `advance_frames` - Advance simulation by N frames for animation testing
   - `orbit_camera` - Position camera around a target point (sets center, distance, azimuth, elevation)
   - `capture_at_frame` - Advance to specific frame and capture snapshot
 - **Visual validation workflow** - Updated documentation and project templates to guide Claude through the recommended workflow: run project, capture frames, monitor slider changes, verify compile status
-
-#### Audio-Thread Triggers (alpha.27)
 - **Audio-thread trigger pattern** - Sequencer and Euclidean now inherit from `AudioOperator` and run on the audio thread for sample-accurate timing. Use `setTriggerSource("clock")` instead of manual `advance()` calls.
   ```cpp
   // New pattern (sample-accurate, runs on audio thread)
@@ -65,37 +77,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   }
   ```
 - **Clock swing enable/disable** - `clock.setSwingEnabled(bool)` to programmatically enable/disable swing. Disabled by default.
-
-#### Lookup Operator (alpha.26)
 - **Lookup operator** - Color lookup table effect for colorizing grayscale textures using a gradient/LUT. Uses input luminance (or R/G/B channel) to sample from a horizontal gradient texture. Perfect for heat maps, false color, and artistic colorization.
 - **Transitive module dependencies** - Hot-reload compiler now resolves transitive dependencies declared in `module.json`. For example, vivid-midi depending on vivid-audio now automatically includes vivid-audio's include paths.
 - **vivid-midi module.json** - Added module metadata with vivid-audio dependency declaration
 
 ### Changed
 
-- **vivid-opencv compatibility** - Enables vivid-opencv module to use simplified CPU-only architecture without requiring wgpu linking (alpha.29)
-- **Example chains updated** - drum-machine, drum-synthesis, and euclidean-rhythms examples now use audio-thread trigger pattern for better timing accuracy (alpha.27)
-- **Lesson 02** - Rewrote operator pipeline tutorial to use Noise → Blur → Lookup chain, demonstrating grayscale colorization with the new Lookup operator (alpha.26)
+- **vivid-opencv compatibility** - Enables vivid-opencv module to use simplified CPU-only architecture without requiring wgpu linking
+- **Example chains updated** - drum-machine, drum-synthesis, and euclidean-rhythms examples now use audio-thread trigger pattern for better timing accuracy
+- **Lesson 02** - Rewrote operator pipeline tutorial to use Noise → Blur → Lookup chain, demonstrating grayscale colorization with the new Lookup operator
 
 ### Fixed
 
-- **Missing chain.cpp error reporting** - When a project directory has no chain.cpp, MCP now correctly reports `compileStatus.success: false` with "Chain file not found" message instead of misleading success with 0 operators (alpha.28)
-- **Clock swing triggers lost** - Fixed swing triggers being permanently skipped when swing amount changed mid-beat. Swing delay is now captured at odd beat time and won't change until the trigger fires. (alpha.27)
-- **Visual triggers missing** - Fixed main thread (~60fps) missing audio triggers due to timing mismatch with audio blocks (~5ms). Sequencer and Euclidean now use dual-flag pattern: one flag for audio thread (cleared each block), one for main thread (accumulated until read). (alpha.27)
-- **Blur radius=0 black output** - Fixed Gaussian blur producing black output when radius was 0 (division by zero in shader). Now passes through input unchanged when radius < 0.5. (alpha.26)
-- **Documentation API errors** - Fixed incorrect API references in docs/CHAIN-API.md and getting-started lessons (alpha.26)
-- **midi-input example** - Fixed outdated API usage (alpha.26)
-- **Build: Linux OpenCV** - Fixed opencv-mobile header detection for Linux x64 and ARM64 (alpha.25)
-- **Build: Broken symlink** - Fixed absolute symlink to HDR asset that only worked locally (alpha.25)
-- **CI: Self-hosted runner cleanup** - Added cross-platform build directory clean and file permission fixes (alpha.25)
+- **Missing chain.cpp error reporting** - When a project directory has no chain.cpp, MCP now correctly reports `compileStatus.success: false` with "Chain file not found" message instead of misleading success with 0 operators
+- **Clock swing triggers lost** - Fixed swing triggers being permanently skipped when swing amount changed mid-beat. Swing delay is now captured at odd beat time and won't change until the trigger fires.
+- **Visual triggers missing** - Fixed main thread (~60fps) missing audio triggers due to timing mismatch with audio blocks (~5ms). Sequencer and Euclidean now use dual-flag pattern: one flag for audio thread (cleared each block), one for main thread (accumulated until read).
+- **Blur radius=0 black output** - Fixed Gaussian blur producing black output when radius was 0 (division by zero in shader). Now passes through input unchanged when radius < 0.5.
+- **Documentation API errors** - Fixed incorrect API references in docs/CHAIN-API.md and getting-started lessons
+- **midi-input example** - Fixed outdated API usage
+- **Build: Linux OpenCV** - Fixed opencv-mobile header detection for Linux x64 and ARM64
+- **Build: Broken symlink** - Fixed absolute symlink to HDR asset that only worked locally
+- **CI: Self-hosted runner cleanup** - Added cross-platform build directory clean and file permission fixes
 
 ## [0.1.0-alpha.4] - 2026-01-11
 
-*Consolidates alphas 20-24: Glitch effects suite, display scaling modes, video audio sync*
+*Glitch effects suite, display scaling modes, video audio sync*
 
 ### Added
 
-#### Glitch Effects Suite (alpha.22)
+#### Glitch Effects Suite
 Complete tempo-synced audio manipulation system inspired by Ableton's Beat Repeat and Ned Rush's Lucky 16 MaxForLive pack:
 
 - **BeatRepeat** - Captures and loops audio slices rhythmically with configurable repeat count and decay
@@ -112,7 +122,7 @@ Complete tempo-synced audio manipulation system inspired by Ableton's Beat Repea
 - **rate_utils.h** - Tempo sync utilities: `divisionToSamples()`, `divisionToHz()`, `divisionToSeconds()`
 - **glitch-effects example** - Interactive demo of all 8 glitch operators with mouse control
 
-#### Display Scaling Modes (alpha.20)
+#### Display Scaling Modes
 New display mode system for controlling how the final output texture is rendered to the window:
 
 - **DisplayMode enum** with 5 modes:
@@ -140,7 +150,7 @@ New display mode system for controlling how the final output texture is rendered
 - **Screen inspector panel** - Display Mode dropdown in chain visualizer when Screen node is selected
 - **display-modes example** - Interactive demo showing all 5 modes with keyboard controls
 
-#### Video Audio Sync (alpha.23)
+#### Video Audio Sync
 PTS-based A/V synchronization when routing video audio through the effects chain:
 
 - **Timestamp tracking** - Audio samples tagged with Presentation Timestamps (PTS) for sync calculation
@@ -157,32 +167,32 @@ PTS-based A/V synchronization when routing video audio through the effects chain
 | Windows | MFDecoder | Full implementation |
 | Linux | FFmpegDecoder | Infrastructure stub |
 
-#### MCP & Documentation (alpha.24)
+#### MCP & Documentation
 - **MCP: Module documentation search** - `search_docs` now searches module READMEs and example CLAUDE.md files
 - **Docs: Video audio modes** - Documentation for internal audio vs chain audio routing modes
 
 ### Changed
 
-- Default display mode changed from implicit stretch to explicit `Fit` mode (alpha.20)
-- Blit shader now uses uniform buffer for aspect-ratio-aware UV calculations (alpha.20)
-- **Release: Self-contained modules** - Built-in modules now include `include/`, `README.md`, and `examples/` in releases (alpha.24)
-- **CI: Build parallelism limits** - Self-hosted runners now limit parallel jobs to prevent OOM (alpha.23)
+- Default display mode changed from implicit stretch to explicit `Fit` mode
+- Blit shader now uses uniform buffer for aspect-ratio-aware UV calculations
+- **Release: Self-contained modules** - Built-in modules now include `include/`, `README.md`, and `examples/` in releases
+- **CI: Build parallelism limits** - Self-hosted runners now limit parallel jobs to prevent OOM
 
 ### Fixed
 
-- **Hot reload** - Fixed hot reload not triggering in certain conditions (alpha.23)
-- **CI: darwin-arm64 builds** - Added `WGPU_FORCE_ARCH=arm64` for correct architecture detection on Apple Silicon (alpha.21, alpha.23)
-- **CI: cmake arm64→aarch64** - Convert arm64 to aarch64 for wgpu-native downloads (alpha.23)
-- **Docs: Windows OpenCV known issue** - Documented MSVC STL ABI incompatibility (alpha.24)
-- **CI: Linux x64 OOM** - Added `--parallel 4` limit for Linux x64 release builds (alpha.24)
+- **Hot reload** - Fixed hot reload not triggering in certain conditions
+- **CI: darwin-arm64 builds** - Added `WGPU_FORCE_ARCH=arm64` for correct architecture detection on Apple Silicon
+- **CI: cmake arm64→aarch64** - Convert arm64 to aarch64 for wgpu-native downloads
+- **Docs: Windows OpenCV known issue** - Documented MSVC STL ABI incompatibility
+- **CI: Linux x64 OOM** - Added `--parallel 4` limit for Linux x64 release builds
 
 ## [0.1.0-alpha.3] - 2026-01-10
 
-*Consolidates alphas 15-19: Self-describing operators, event system, Copy operator*
+*Self-describing operators, event system, Copy operator*
 
 ### Added
 
-#### Event Operator System (alpha.19)
+#### Event Operator System
 New `OutputKind::Event` type and input operators for exposing keyboard, mouse, and window events to user chains:
 
 - **KeyboardIn** - Keyboard input events with polling and convenience accessors
@@ -200,7 +210,7 @@ New `OutputKind::Event` type and input operators for exposing keyboard, mouse, a
 - `setEventSource(op)` / `setEventSource("name")` for connecting event flow in chain visualizer
 - Green dashed lines show event connections (similar to cyan trigger lines)
 
-#### Copy Operator (alpha.18)
+#### Copy Operator
 TouchDesigner-style replication operator that creates multiple copies of an input texture with per-copy transforms:
 - **Linear mode**: Trail effects with offset, rotation step, and scale step
 - **Radial mode**: Circular arrays like clock faces or flower petals
@@ -209,18 +219,18 @@ TouchDesigner-style replication operator that creates multiple copies of an inpu
 - Dynamic shader generation with pipeline caching (1-16 copies)
 - **copy-patterns example** - Demonstrates all three Copy modes with animated parameters
 
-#### Value Operators & Inspector (alpha.17)
+#### Value Operators & Inspector
 - **Value operators** - LFO, Ramp, and other value-producing operators for parameter modulation
 - **New inspector widgets** - Improved parameter editing in the inspector panel
 - **`withExamples()` OperatorMeta** - Operators can now declare example project paths in metadata
 
-#### Inspector & Render3D (alpha.16)
+#### Inspector & Render3D
 - **Inspector panel scrolling** - Parameter panels with many sliders now scroll when content exceeds visible area
 - **Dynamic window resize for Render3D** - Render target follows window size unless `setResolution()` is explicitly called
 
 ### Changed
 
-#### Self-Describing Operator Registration (alpha.15)
+#### Self-Describing Operator Registration
 All 120 operators now define metadata via a static `describe()` method in their header files. This consolidates operator information in one place instead of spreading it across registration macros and separate init blocks.
 
 **Before (multiple files):**
@@ -253,40 +263,40 @@ Benefits:
 - **Less boilerplate** - `REGISTER(Displace)` vs multi-argument macro + separate metadata
 
 #### Other Changes
-- **Distortion example** - Restored 4-quadrant layout with video + grid overlay (alpha.17)
-- **Deprecated legacy light methods** - `setLightDirection()` and `setLightColor()` are now deprecated; use `setParam()` or `setLightInput()` instead (alpha.16)
-- **3d-basics example** - Updated to use `DirectionalLight` operator (alpha.16)
-- **Preview renderers** - SceneComposer and MeshOperator preview thumbnails now use `setParam()` API (alpha.16)
+- **Distortion example** - Restored 4-quadrant layout with video + grid overlay
+- **Deprecated legacy light methods** - `setLightDirection()` and `setLightColor()` are now deprecated; use `setParam()` or `setLightInput()` instead
+- **3d-basics example** - Updated to use `DirectionalLight` operator
+- **Preview renderers** - SceneComposer and MeshOperator preview thumbnails now use `setParam()` API
 
 ### Fixed
 
-- **particles example** - Updated to use new `Param<>` property assignment syntax (alpha.15)
-- **Chain visualizer connections** - Fixed stale connections persisting after hot reloads (alpha.17)
-- **Chain visualizer auto-layout** - Fixed layout not resetting after chain hot-reload (alpha.17)
-- **Video decoder crash on macOS 15+** - Fixed memory management bug in async track loading (alpha.17)
-- **GPU encoder sharing** - Fixed SimpleTextureEffect and SimpleGeneratorEffect to use shared GPU encoder (alpha.17)
-- **Render3D texture resize** - Fixed depth/color buffer size mismatch when following window size (alpha.16)
+- **particles example** - Updated to use new `Param<>` property assignment syntax
+- **Chain visualizer connections** - Fixed stale connections persisting after hot reloads
+- **Chain visualizer auto-layout** - Fixed layout not resetting after chain hot-reload
+- **Video decoder crash on macOS 15+** - Fixed memory management bug in async track loading
+- **GPU encoder sharing** - Fixed SimpleTextureEffect and SimpleGeneratorEffect to use shared GPU encoder
+- **Render3D texture resize** - Fixed depth/color buffer size mismatch when following window size
 
 ## [0.1.0-alpha.2] - 2026-01-07
 
-*Consolidates alphas 10-14: ARM64 support, Param<> properties, MCP reliability*
+*ARM64 support, Param<> properties, MCP reliability*
 
 ### Added
 
-#### API Method Signatures for LLM Discovery (alpha.10)
+#### API Method Signatures for LLM Discovery
 - All 120 operators now include `.api()` metadata with method signatures
 - Enables LLMs to discover setter methods, configuration options, and static functions
 - Example: `FFT` shows `.setSize(int n)`, `MidiOut` shows `.noteOn(ch, note, velocity)`, etc.
 
-#### Examples in Release Packages (alpha.10)
+#### Examples in Release Packages
 - Release archives now include `examples/` directory with all example projects
 - Module-specific examples included in `modules/*/examples/`
 - Users can run examples immediately after downloading
 
-#### Raspberry Pi ARM64 Support (alpha.11)
+#### Raspberry Pi ARM64 Support
 - Added Raspberry Pi ARM64 to release builds
 
-#### Utility Examples for MCP Context (alpha.11)
+#### Utility Examples for MCP Context
 Three new examples demonstrating core API patterns for LLM discoverability:
 - **input-handling** - Mouse position/buttons, keyboard input, modifier keys, drag patterns
 - **window-control** - Window resize, fullscreen, vsync, time functions (dt, realDt, frame)
@@ -294,63 +304,63 @@ Three new examples demonstrating core API patterns for LLM discoverability:
 
 Each includes comprehensive `CLAUDE.md` documentation with code patterns and API reference.
 
-#### Unified CLI with CLI11 (alpha.11)
+#### Unified CLI with CLI11
 - All runtime options now handled by CLI11 argument parser
 - `vivid --help` now documents all 14 runtime options
 - Runtime options: `--snapshot`, `--snapshot-frame`, `--headless`, `--record`, `--width`, `--height`, `--fps`, `--window`, `--frames`, `--vsync`, `--fullscreen`, `--float`, `--span`, `--debug-mode`
 - Simplified main.cpp from ~250 lines to ~50 lines
 
-#### webcam-displace Example (alpha.12)
+#### webcam-displace Example
 - Demonstrates video operators interacting with generator operators (Webcam → Noise → Displace pipeline)
 
-#### LLM Metadata for Module Operators (alpha.13)
+#### LLM Metadata for Module Operators
 - Added `@see` tags and class-level documentation to audio, video, render3d, network, serial, and MIDI operators for better MCP discoverability
 - Dynamic MCP docs discovery - All docs/*.md files now exposed as MCP resources automatically
 
 ### Changed
 
-#### Particles Operator Uses Param<> Properties (alpha.14)
+#### Particles Operator Uses Param<> Properties
 Replaced 20+ setter methods with public `Param<>` properties for consistency with other operators:
 - Before: `particles.emitter(EmitterShape::Disc); particles.position(0.5f, 0.5f);`
 - After: `particles.emitterShape = EmitterShape::Disc; particles.position.set(0.5f, 0.5f);`
 - Action methods preserved: `burst()`, `seed()`, `setTexture()`, `setSpin()`
 
-#### MCP Connection Reliability (alpha.14)
+#### MCP Connection Reliability
 - Added heartbeat mechanism, better error handling, and proper state synchronization on connect
 
-#### Module Operator Registration (alpha.14)
+#### Module Operator Registration
 - All 80+ module operators now register with their module name for better MCP discoverability
 
-#### Simplified MCP Server (alpha.13)
+#### Simplified MCP Server
 - Reduced from 19 to 15 tools by removing redundant endpoints
 - Dynamic module discovery for `list_examples` and `search_docs`
 - Simplified operator registry - Removed verbose `REGISTER_OPERATOR_FULL` macros
 
 ### Removed
 
-- **LLM-REFERENCE.md** - Static operator reference (845 lines) removed; MCP tools provide dynamic, always-accurate operator information (alpha.12)
-- Removed `vivid://docs/reference` MCP resource endpoint (alpha.12)
+- **LLM-REFERENCE.md** - Static operator reference (845 lines) removed; MCP tools provide dynamic, always-accurate operator information
+- Removed `vivid://docs/reference` MCP resource endpoint
 
 ### Fixed
 
-- **Critical: Hot reload include path** - Fixed `hot_reload.cpp` to find headers at `modules/vivid-core/include` instead of old path (alpha.13)
-- **Critical: OperatorRegistry crash on exit** - Changed to leaky singleton to prevent static destruction order crash (alpha.13)
-- **MCP server tools** - Fixed `list_operators`, `get_operator`, `search_docs`, and `list_modules` returning empty/incorrect results (alpha.14)
-- **Documentation examples** - Fixed incorrect fluent-style syntax in RECIPES.md and CHAIN-API.md (alpha.14)
-- **Showcase examples** - Updated flow-field and audio-visualizer to use correct property assignment syntax (alpha.14)
-- **Release build: darwin-arm64** - Scoped `-Wsuggest-override` to C++ only via generator expression (alpha.13)
-- **Release build: win32-x64** - Fixed PowerShell packaging script failing when copying duplicate module headers (alpha.13)
-- **nlohmann JSON** - Fixed forward declaration causing build errors with newer compilers (alpha.10)
-- Fixed Doxyfile paths after project restructure (alpha.12)
-- Fixed operator registration example paths in metadata (alpha.12)
-- Snapshot mode now exits immediately on compile error or context error (alpha.11)
-- Added 30-second timeout for snapshot mode if no frames captured (alpha.11)
-- Use `powershell` instead of `pwsh` on Windows (alpha.13)
-- Add missing `<mutex>` include for Linux/Windows builds (alpha.14)
+- **Critical: Hot reload include path** - Fixed `hot_reload.cpp` to find headers at `modules/vivid-core/include` instead of old path
+- **Critical: OperatorRegistry crash on exit** - Changed to leaky singleton to prevent static destruction order crash
+- **MCP server tools** - Fixed `list_operators`, `get_operator`, `search_docs`, and `list_modules` returning empty/incorrect results
+- **Documentation examples** - Fixed incorrect fluent-style syntax in RECIPES.md and CHAIN-API.md
+- **Showcase examples** - Updated flow-field and audio-visualizer to use correct property assignment syntax
+- **Release build: darwin-arm64** - Scoped `-Wsuggest-override` to C++ only via generator expression
+- **Release build: win32-x64** - Fixed PowerShell packaging script failing when copying duplicate module headers
+- **nlohmann JSON** - Fixed forward declaration causing build errors with newer compilers
+- Fixed Doxyfile paths after project restructure
+- Fixed operator registration example paths in metadata
+- Snapshot mode now exits immediately on compile error or context error
+- Added 30-second timeout for snapshot mode if no frames captured
+- Use `powershell` instead of `pwsh` on Windows
+- Add missing `<mutex>` include for Linux/Windows builds
 
 ## [0.1.0-alpha.1] - 2026-01-06
 
-*Consolidates alphas 1-9: Initial release, metadata system, module restructure*
+*Initial release*
 
 ### Added
 
@@ -364,7 +374,7 @@ Replaced 20+ setter methods with public `Param<>` properties for consistency wit
 - Multi-window support with window spanning and multi-monitor configurations
 - String-based connections - operators use string names for inputs/outputs (type-safe)
 
-#### MCP Server (alpha.3)
+#### MCP Server
 - `create_project` tool - Create new projects with template and addon selection
 - `run_project` / `stop_project` tools - Start and stop Vivid projects from Claude Code
 - `capture_snapshot` tool - Render frame(s) to PNG for testing and verification
@@ -372,19 +382,19 @@ Replaced 20+ setter methods with public `Param<>` properties for consistency wit
 - `bundle_project` tool - Package projects as standalone applications
 - `list_addons` tool - List installed addons
 
-#### VS Code Extension (alpha.3)
+#### VS Code Extension
 - Auto-configure `~/.claude.json` with Vivid MCP server on extension activation
 - "Vivid: Configure Claude Code Integration" command
 - Warning notifications when MCP config is missing or broken
 - Validation by running `vivid mcp --help` to verify binary works
 
-#### Operator Metadata System (alpha.4)
+#### Operator Metadata System
 - Extended `OperatorMeta` struct with `limitations`, `related`, and `examples` vectors
 - New `OperatorMetaBuilder` class with fluent API for registering operators with rich metadata
 - All 35+ core operators now have related operators documented
 - Key operators include limitations and example paths
 
-#### Modular Particle Force System (alpha.5)
+#### Modular Particle Force System
 New force stack API: `ps.addForce<T>()`, `ps.clearForces()`, `ps.getForce<T>()`
 
 8 composable force types that work on both CPU and GPU:
@@ -399,7 +409,7 @@ New force stack API: `ps.addForce<T>()`, `ps.clearForces()`, `ps.getForce<T>()`
 
 Forces generate their own WGSL shader code for GPU compute simulation with dynamic shader composition.
 
-#### ParticleSystem Operator (alpha.5)
+#### ParticleSystem Operator
 - Unified particle system supporting 2D and 3D particles
 - 3 simulation modes: CPU, GPU (WebGPU compute)
 - 3 render modes: Circle (2D), Billboard (3D), Mesh (3D instanced)
@@ -408,11 +418,11 @@ Forces generate their own WGSL shader code for GPU compute simulation with dynam
 - Velocity-aligned mesh rendering for trail effects
 - 14 example projects demonstrating various force configurations
 
-#### cpuPixels API (alpha.7)
+#### cpuPixels API
 - `cpuPixels()` virtual method on `Operator` base class - returns `std::optional<io::ImageData>` for CPU-side pixel access
 - `Webcam::cpuPixels()` implementation - enables ML inference without GPU readback
 
-#### LLM Metadata for Module Operators (alpha.9)
+#### LLM Metadata for Module Operators
 All 81 module operators now have rich metadata for LLM assistants including:
 - `related` - Links to related operators for discovery
 - `limitations` - Constraints and caveats
@@ -473,7 +483,7 @@ All 81 module operators now have rich metadata for LLM assistants including:
 
 ### Changed
 
-#### Rename "libraries" to "modules" (alpha.8)
+#### Rename "libraries" to "modules"
 Renamed to avoid confusion with `lib/` (compiled .dylib files):
 - `libs/` → `modules/`
 - `~/.vivid/libs/` → `~/.vivid/modules/`
@@ -481,21 +491,21 @@ Renamed to avoid confusion with `lib/` (compiled .dylib files):
 - CLI: `vivid libs` → `vivid modules`
 - Classes: `LibraryManager` → `ModuleManager`
 
-#### Project Restructure (alpha.6)
+#### Project Restructure
 - Renamed `addons/` directory to `libs/` for clarity
 - Renamed "addon" terminology to "library" throughout codebase
 - All libraries now use `library.json` instead of `addon.json`
 
 #### MCP Updates
-- MCP server now exposes 15 tools (alpha.3)
-- MCP `get_operator` tool now returns limitations, related operators, and examples from registry (alpha.4)
-- MCP `get_operator` now returns enriched metadata for all 120 operators (alpha.9)
-- Removed hardcoded operator metadata maps from `mcp_server.cpp` (alpha.4)
-- Version string includes git hash for dev builds (alpha.4)
+- MCP server now exposes 15 tools
+- MCP `get_operator` tool now returns limitations, related operators, and examples from registry
+- MCP `get_operator` now returns enriched metadata for all 120 operators
+- Removed hardcoded operator metadata maps from `mcp_server.cpp`
+- Version string includes git hash for dev builds
 
 ### Breaking Changes
 
-#### Particle Force API (alpha.5)
+#### Particle Force API
 Removed legacy physics params from ParticleSystem:
 - `gravity`, `drag`, `turbulence`
 - `attractorPosition`, `attractorStrength`
@@ -514,14 +524,14 @@ ps.addForce<CurlNoiseForce>().strength = 1.5f;
 
 ### Fixed
 
-- Restored OPERATOR-API.md that was accidentally deleted (alpha.1)
-- Test assets moved to external S3 storage (alpha.2)
-- Prevent Windows min/max macro conflicts (alpha.3)
-- Add missing `<cstring>` include for Linux build (alpha.5)
-- Add missing `<algorithm>` include for `std::min`/`std::max` with initializer lists (alpha.6)
-- SDK release package now includes library headers (alpha.7)
-- CI: Use self-hosted runners for macOS, Windows, and Raspberry Pi builds (alpha.6)
-- CI: Fix build parallelism on Pi to avoid OOM (alpha.6)
+- Restored OPERATOR-API.md that was accidentally deleted
+- Test assets moved to external S3 storage
+- Prevent Windows min/max macro conflicts
+- Add missing `<cstring>` include for Linux build
+- Add missing `<algorithm>` include for `std::min`/`std::max` with initializer lists
+- SDK release package now includes library headers
+- CI: Use self-hosted runners for macOS, Windows, and Raspberry Pi builds
+- CI: Fix build parallelism on Pi to avoid OOM
 
 ### Technical Details
 
@@ -542,7 +552,8 @@ tests/              Test suites and fixtures
 docs/               Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.5...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.6...HEAD
+[0.1.0-alpha.6]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.5...v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.3...v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.2...v0.1.0-alpha.3

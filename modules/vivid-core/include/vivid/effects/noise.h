@@ -37,16 +37,19 @@ enum class NoiseType {
  * noise.speed = 0.5f;
  * noise.octaves = 4;
  *
- * // In update(), animate offset:
- * noise.offset.set(0, 0, ctx.time());
+ * // RGB noise (3 independent channels)
+ * noise.colorNoise = true;
+ *
+ * // Scale from corner instead of center
+ * noise.centerOrigin = false;
  * @endcode
  *
  * @par Inputs
  * None (generator)
  *
  * @par Output
- * Grayscale texture
- 
+ * Grayscale texture (or RGB when colorNoise=true)
+ *
  * @see Gradient, Displace, FBM
  */
 class Noise : public TextureOperator {
@@ -62,6 +65,8 @@ public:
     Param<float> lacunarity{"lacunarity", 2.0f, 1.0f, 4.0f}; ///< Frequency multiplier per octave
     Param<float> persistence{"persistence", 0.5f, 0.0f, 1.0f}; ///< Amplitude multiplier per octave
     Vec3Param offset{"offset", 0.0f, 0.0f, 0.0f, -100.0f, 100.0f}; ///< 3D spatial offset
+    Param<bool> colorNoise{"colorNoise", false};            ///< When true, R/G/B are independent noise fields
+    Param<bool> centerOrigin{"centerOrigin", true};         ///< Scale from center instead of corner (default: true)
 
     /// @}
     // -------------------------------------------------------------------------
@@ -74,6 +79,8 @@ public:
         registerParam(lacunarity);
         registerParam(persistence);
         registerParam(offset);
+        registerParam(colorNoise);
+        registerParam(centerOrigin);
     }
     ~Noise() override;
 

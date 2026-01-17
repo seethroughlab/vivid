@@ -119,9 +119,6 @@ public:
 
     /// @}
 
-protected:
-    void onTrigger() override;
-
 private:
     // State
     float m_velocity = 1.0f;

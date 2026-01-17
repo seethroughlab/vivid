@@ -220,7 +220,7 @@ void update(Context& ctx) {
             formant.setVowel(static_cast<Vowel>(newVowel));
 
             // Trigger envelope
-            env.trigger();
+            env.midiNoteOn(60, 1.0f, 0);
 
             // Visual feedback
             noteDecay = 1.0f;

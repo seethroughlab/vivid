@@ -129,10 +129,6 @@ void Cymbal::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel
     choke();
 }
 
-void Cymbal::onTrigger() {
-    midiNoteOn(0, 1.0f, 0);
-}
-
 void Cymbal::choke() {
     m_env = 0.0f;
 }

@@ -14,6 +14,10 @@
 #include <vivid/audio/snare.h>
 #include <vivid/audio/hihat.h>
 #include <vivid/audio/clap.h>
+#include <vivid/audio/tom.h>
+#include <vivid/audio/cymbal.h>
+#include <vivid/audio/fm_drum.h>
+#include <vivid/audio/clang.h>
 
 using namespace vivid::audio;
 using Catch::Matchers::WithinAbs;
@@ -546,5 +550,518 @@ TEST_CASE("Clap basic tests", "[audio][clap]") {
 
     SECTION("starts inactive") {
         REQUIRE(clap.isActive() == false);
+    }
+}
+
+// =============================================================================
+// Tom Drum Tests
+// =============================================================================
+
+TEST_CASE("Tom parameter defaults", "[audio][tom]") {
+    Tom tom;
+
+    SECTION("pitch defaults to 100 Hz") {
+        REQUIRE_THAT(static_cast<float>(tom.pitch), WithinAbs(100.0f, 0.001f));
+    }
+
+    SECTION("bend defaults to 0.5") {
+        REQUIRE_THAT(static_cast<float>(tom.bend), WithinAbs(0.5f, 0.001f));
+    }
+
+    SECTION("bendTime defaults to 0.08") {
+        REQUIRE_THAT(static_cast<float>(tom.bendTime), WithinAbs(0.08f, 0.001f));
+    }
+
+    SECTION("color defaults to 0.3") {
+        REQUIRE_THAT(static_cast<float>(tom.color), WithinAbs(0.3f, 0.001f));
+    }
+
+    SECTION("tone defaults to 0.6") {
+        REQUIRE_THAT(static_cast<float>(tom.tone), WithinAbs(0.6f, 0.001f));
+    }
+
+    SECTION("decay defaults to 0.4") {
+        REQUIRE_THAT(static_cast<float>(tom.decay), WithinAbs(0.4f, 0.001f));
+    }
+
+    SECTION("volume defaults to 0.8") {
+        REQUIRE_THAT(static_cast<float>(tom.volume), WithinAbs(0.8f, 0.001f));
+    }
+}
+
+TEST_CASE("Tom parameter assignment", "[audio][tom]") {
+    Tom tom;
+
+    SECTION("all params can be set") {
+        tom.pitch = 150.0f;
+        tom.bend = 0.7f;
+        tom.bendTime = 0.1f;
+        tom.color = 0.5f;
+        tom.tone = 0.8f;
+        tom.decay = 0.6f;
+        tom.volume = 0.9f;
+
+        REQUIRE_THAT(static_cast<float>(tom.pitch), WithinAbs(150.0f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(tom.bend), WithinAbs(0.7f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(tom.bendTime), WithinAbs(0.1f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(tom.color), WithinAbs(0.5f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(tom.tone), WithinAbs(0.8f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(tom.decay), WithinAbs(0.6f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(tom.volume), WithinAbs(0.9f, 0.001f));
+    }
+}
+
+TEST_CASE("Tom setParam/getParam", "[audio][tom]") {
+    Tom tom;
+    float out[4] = {0};
+
+    SECTION("setParam updates pitch") {
+        float value[4] = {200.0f, 0, 0, 0};
+        REQUIRE(tom.setParam("pitch", value));
+        REQUIRE(tom.getParam("pitch", out));
+        REQUIRE_THAT(out[0], WithinAbs(200.0f, 0.001f));
+    }
+
+    SECTION("setParam updates bend") {
+        float value[4] = {0.8f, 0, 0, 0};
+        REQUIRE(tom.setParam("bend", value));
+        REQUIRE(tom.getParam("bend", out));
+        REQUIRE_THAT(out[0], WithinAbs(0.8f, 0.001f));
+    }
+
+    SECTION("unknown param returns false") {
+        float value[4] = {0};
+        REQUIRE_FALSE(tom.setParam("nonexistent", value));
+        REQUIRE_FALSE(tom.getParam("nonexistent", out));
+    }
+}
+
+TEST_CASE("Tom params() declaration", "[audio][tom]") {
+    Tom tom;
+    auto params = tom.params();
+
+    SECTION("has all 7 params") {
+        REQUIRE(params.size() == 7);
+
+        std::vector<std::string> expected = {
+            "pitch", "bend", "bendTime", "color", "tone", "decay", "volume"
+        };
+
+        for (const auto& name : expected) {
+            bool found = false;
+            for (const auto& p : params) {
+                if (p.name == name) found = true;
+            }
+            REQUIRE(found);
+        }
+    }
+}
+
+TEST_CASE("Tom trigger and state", "[audio][tom]") {
+    Tom tom;
+
+    SECTION("name returns 'Tom'") {
+        REQUIRE(tom.name() == "Tom");
+    }
+
+    SECTION("starts inactive") {
+        REQUIRE(tom.isActive() == false);
+    }
+
+    SECTION("reset clears state") {
+        tom.reset();
+        REQUIRE(tom.isActive() == false);
+    }
+
+    SECTION("envelope accessors work") {
+        REQUIRE(tom.ampEnvelope() >= 0.0f);
+        REQUIRE(tom.pitchEnvelope() >= 0.0f);
+    }
+}
+
+// =============================================================================
+// Cymbal Tests
+// =============================================================================
+
+TEST_CASE("Cymbal parameter defaults", "[audio][cymbal]") {
+    Cymbal cymbal;
+
+    SECTION("decay defaults to 3.0") {
+        REQUIRE_THAT(static_cast<float>(cymbal.decay), WithinAbs(3.0f, 0.001f));
+    }
+
+    SECTION("tone defaults to 0.5") {
+        REQUIRE_THAT(static_cast<float>(cymbal.tone), WithinAbs(0.5f, 0.001f));
+    }
+
+    SECTION("pitch defaults to 1.0") {
+        REQUIRE_THAT(static_cast<float>(cymbal.pitch), WithinAbs(1.0f, 0.001f));
+    }
+
+    SECTION("shimmer defaults to 0.5") {
+        REQUIRE_THAT(static_cast<float>(cymbal.shimmer), WithinAbs(0.5f, 0.001f));
+    }
+
+    SECTION("sizzle defaults to 0.3") {
+        REQUIRE_THAT(static_cast<float>(cymbal.sizzle), WithinAbs(0.3f, 0.001f));
+    }
+
+    SECTION("volume defaults to 0.7") {
+        REQUIRE_THAT(static_cast<float>(cymbal.volume), WithinAbs(0.7f, 0.001f));
+    }
+}
+
+TEST_CASE("Cymbal parameter assignment", "[audio][cymbal]") {
+    Cymbal cymbal;
+
+    SECTION("all params can be set") {
+        cymbal.decay = 4.0f;
+        cymbal.tone = 0.7f;
+        cymbal.pitch = 1.5f;
+        cymbal.shimmer = 0.6f;
+        cymbal.sizzle = 0.5f;
+        cymbal.volume = 0.8f;
+
+        REQUIRE_THAT(static_cast<float>(cymbal.decay), WithinAbs(4.0f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(cymbal.tone), WithinAbs(0.7f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(cymbal.pitch), WithinAbs(1.5f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(cymbal.shimmer), WithinAbs(0.6f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(cymbal.sizzle), WithinAbs(0.5f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(cymbal.volume), WithinAbs(0.8f, 0.001f));
+    }
+}
+
+TEST_CASE("Cymbal setParam/getParam", "[audio][cymbal]") {
+    Cymbal cymbal;
+    float out[4] = {0};
+
+    SECTION("setParam updates decay") {
+        float value[4] = {5.0f, 0, 0, 0};
+        REQUIRE(cymbal.setParam("decay", value));
+        REQUIRE(cymbal.getParam("decay", out));
+        REQUIRE_THAT(out[0], WithinAbs(5.0f, 0.001f));
+    }
+
+    SECTION("setParam updates shimmer") {
+        float value[4] = {0.8f, 0, 0, 0};
+        REQUIRE(cymbal.setParam("shimmer", value));
+        REQUIRE(cymbal.getParam("shimmer", out));
+        REQUIRE_THAT(out[0], WithinAbs(0.8f, 0.001f));
+    }
+
+    SECTION("unknown param returns false") {
+        float value[4] = {0};
+        REQUIRE_FALSE(cymbal.setParam("nonexistent", value));
+        REQUIRE_FALSE(cymbal.getParam("nonexistent", out));
+    }
+}
+
+TEST_CASE("Cymbal params() declaration", "[audio][cymbal]") {
+    Cymbal cymbal;
+    auto params = cymbal.params();
+
+    SECTION("has all 6 params") {
+        REQUIRE(params.size() == 6);
+
+        std::vector<std::string> expected = {
+            "decay", "tone", "pitch", "shimmer", "sizzle", "volume"
+        };
+
+        for (const auto& name : expected) {
+            bool found = false;
+            for (const auto& p : params) {
+                if (p.name == name) found = true;
+            }
+            REQUIRE(found);
+        }
+    }
+}
+
+TEST_CASE("Cymbal trigger and state", "[audio][cymbal]") {
+    Cymbal cymbal;
+
+    SECTION("name returns 'Cymbal'") {
+        REQUIRE(cymbal.name() == "Cymbal");
+    }
+
+    SECTION("starts inactive") {
+        REQUIRE(cymbal.isActive() == false);
+    }
+
+    SECTION("reset clears state") {
+        cymbal.reset();
+        REQUIRE(cymbal.isActive() == false);
+    }
+
+    SECTION("choke stops sound") {
+        cymbal.choke();
+        REQUIRE(cymbal.isActive() == false);
+    }
+
+    SECTION("envelope accessor works") {
+        REQUIRE(cymbal.envelope() >= 0.0f);
+    }
+}
+
+// =============================================================================
+// FMDrum Tests
+// =============================================================================
+
+TEST_CASE("FMDrum parameter defaults", "[audio][fmdrum]") {
+    FMDrum fm;
+
+    SECTION("pitch defaults to 400 Hz") {
+        REQUIRE_THAT(static_cast<float>(fm.pitch), WithinAbs(400.0f, 0.001f));
+    }
+
+    SECTION("ratio defaults to 2.0") {
+        REQUIRE_THAT(static_cast<float>(fm.ratio), WithinAbs(2.0f, 0.001f));
+    }
+
+    SECTION("amount defaults to 0.5") {
+        REQUIRE_THAT(static_cast<float>(fm.amount), WithinAbs(0.5f, 0.001f));
+    }
+
+    SECTION("feedback defaults to 0.2") {
+        REQUIRE_THAT(static_cast<float>(fm.feedback), WithinAbs(0.2f, 0.001f));
+    }
+
+    SECTION("tone defaults to 0.5") {
+        REQUIRE_THAT(static_cast<float>(fm.tone), WithinAbs(0.5f, 0.001f));
+    }
+
+    SECTION("decay defaults to 0.3") {
+        REQUIRE_THAT(static_cast<float>(fm.decay), WithinAbs(0.3f, 0.001f));
+    }
+
+    SECTION("modDecay defaults to 0.1") {
+        REQUIRE_THAT(static_cast<float>(fm.modDecay), WithinAbs(0.1f, 0.001f));
+    }
+
+    SECTION("volume defaults to 0.8") {
+        REQUIRE_THAT(static_cast<float>(fm.volume), WithinAbs(0.8f, 0.001f));
+    }
+}
+
+TEST_CASE("FMDrum parameter assignment", "[audio][fmdrum]") {
+    FMDrum fm;
+
+    SECTION("all params can be set") {
+        fm.pitch = 600.0f;
+        fm.ratio = 3.0f;
+        fm.amount = 0.7f;
+        fm.feedback = 0.4f;
+        fm.tone = 0.6f;
+        fm.decay = 0.5f;
+        fm.modDecay = 0.15f;
+        fm.volume = 0.9f;
+
+        REQUIRE_THAT(static_cast<float>(fm.pitch), WithinAbs(600.0f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(fm.ratio), WithinAbs(3.0f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(fm.amount), WithinAbs(0.7f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(fm.feedback), WithinAbs(0.4f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(fm.tone), WithinAbs(0.6f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(fm.decay), WithinAbs(0.5f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(fm.modDecay), WithinAbs(0.15f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(fm.volume), WithinAbs(0.9f, 0.001f));
+    }
+}
+
+TEST_CASE("FMDrum setParam/getParam", "[audio][fmdrum]") {
+    FMDrum fm;
+    float out[4] = {0};
+
+    SECTION("setParam updates pitch") {
+        float value[4] = {800.0f, 0, 0, 0};
+        REQUIRE(fm.setParam("pitch", value));
+        REQUIRE(fm.getParam("pitch", out));
+        REQUIRE_THAT(out[0], WithinAbs(800.0f, 0.001f));
+    }
+
+    SECTION("setParam updates ratio") {
+        float value[4] = {4.0f, 0, 0, 0};
+        REQUIRE(fm.setParam("ratio", value));
+        REQUIRE(fm.getParam("ratio", out));
+        REQUIRE_THAT(out[0], WithinAbs(4.0f, 0.001f));
+    }
+
+    SECTION("unknown param returns false") {
+        float value[4] = {0};
+        REQUIRE_FALSE(fm.setParam("nonexistent", value));
+        REQUIRE_FALSE(fm.getParam("nonexistent", out));
+    }
+}
+
+TEST_CASE("FMDrum params() declaration", "[audio][fmdrum]") {
+    FMDrum fm;
+    auto params = fm.params();
+
+    SECTION("has all 8 params") {
+        REQUIRE(params.size() == 8);
+
+        std::vector<std::string> expected = {
+            "pitch", "ratio", "amount", "feedback", "tone", "decay", "modDecay", "volume"
+        };
+
+        for (const auto& name : expected) {
+            bool found = false;
+            for (const auto& p : params) {
+                if (p.name == name) found = true;
+            }
+            REQUIRE(found);
+        }
+    }
+}
+
+TEST_CASE("FMDrum trigger and state", "[audio][fmdrum]") {
+    FMDrum fm;
+
+    SECTION("name returns 'FMDrum'") {
+        REQUIRE(fm.name() == "FMDrum");
+    }
+
+    SECTION("starts inactive") {
+        REQUIRE(fm.isActive() == false);
+    }
+
+    SECTION("reset clears state") {
+        fm.reset();
+        REQUIRE(fm.isActive() == false);
+    }
+
+    SECTION("envelope accessors work") {
+        REQUIRE(fm.ampEnvelope() >= 0.0f);
+        REQUIRE(fm.modEnvelope() >= 0.0f);
+    }
+}
+
+// =============================================================================
+// Clang Tests
+// =============================================================================
+
+TEST_CASE("Clang parameter defaults", "[audio][clang]") {
+    Clang clang;
+
+    SECTION("pitch defaults to 800 Hz") {
+        REQUIRE_THAT(static_cast<float>(clang.pitch), WithinAbs(800.0f, 0.001f));
+    }
+
+    SECTION("toneA defaults to 0.7") {
+        REQUIRE_THAT(static_cast<float>(clang.toneA), WithinAbs(0.7f, 0.001f));
+    }
+
+    SECTION("toneB defaults to 0.6") {
+        REQUIRE_THAT(static_cast<float>(clang.toneB), WithinAbs(0.6f, 0.001f));
+    }
+
+    SECTION("ratio defaults to 1.5") {
+        REQUIRE_THAT(static_cast<float>(clang.ratio), WithinAbs(1.5f, 0.001f));
+    }
+
+    SECTION("filter defaults to 0.5") {
+        REQUIRE_THAT(static_cast<float>(clang.filter), WithinAbs(0.5f, 0.001f));
+    }
+
+    SECTION("noise defaults to 0.1") {
+        REQUIRE_THAT(static_cast<float>(clang.noise), WithinAbs(0.1f, 0.001f));
+    }
+
+    SECTION("decay defaults to 0.1") {
+        REQUIRE_THAT(static_cast<float>(clang.decay), WithinAbs(0.1f, 0.001f));
+    }
+
+    SECTION("volume defaults to 0.8") {
+        REQUIRE_THAT(static_cast<float>(clang.volume), WithinAbs(0.8f, 0.001f));
+    }
+}
+
+TEST_CASE("Clang parameter assignment", "[audio][clang]") {
+    Clang clang;
+
+    SECTION("all params can be set") {
+        clang.pitch = 1000.0f;
+        clang.toneA = 0.8f;
+        clang.toneB = 0.5f;
+        clang.ratio = 2.0f;
+        clang.filter = 0.7f;
+        clang.noise = 0.2f;
+        clang.decay = 0.15f;
+        clang.volume = 0.9f;
+
+        REQUIRE_THAT(static_cast<float>(clang.pitch), WithinAbs(1000.0f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(clang.toneA), WithinAbs(0.8f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(clang.toneB), WithinAbs(0.5f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(clang.ratio), WithinAbs(2.0f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(clang.filter), WithinAbs(0.7f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(clang.noise), WithinAbs(0.2f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(clang.decay), WithinAbs(0.15f, 0.001f));
+        REQUIRE_THAT(static_cast<float>(clang.volume), WithinAbs(0.9f, 0.001f));
+    }
+}
+
+TEST_CASE("Clang setParam/getParam", "[audio][clang]") {
+    Clang clang;
+    float out[4] = {0};
+
+    SECTION("setParam updates pitch") {
+        float value[4] = {1200.0f, 0, 0, 0};
+        REQUIRE(clang.setParam("pitch", value));
+        REQUIRE(clang.getParam("pitch", out));
+        REQUIRE_THAT(out[0], WithinAbs(1200.0f, 0.001f));
+    }
+
+    SECTION("setParam updates ratio") {
+        float value[4] = {2.5f, 0, 0, 0};
+        REQUIRE(clang.setParam("ratio", value));
+        REQUIRE(clang.getParam("ratio", out));
+        REQUIRE_THAT(out[0], WithinAbs(2.5f, 0.001f));
+    }
+
+    SECTION("unknown param returns false") {
+        float value[4] = {0};
+        REQUIRE_FALSE(clang.setParam("nonexistent", value));
+        REQUIRE_FALSE(clang.getParam("nonexistent", out));
+    }
+}
+
+TEST_CASE("Clang params() declaration", "[audio][clang]") {
+    Clang clang;
+    auto params = clang.params();
+
+    SECTION("has all 8 params") {
+        REQUIRE(params.size() == 8);
+
+        std::vector<std::string> expected = {
+            "pitch", "toneA", "toneB", "ratio", "filter", "noise", "decay", "volume"
+        };
+
+        for (const auto& name : expected) {
+            bool found = false;
+            for (const auto& p : params) {
+                if (p.name == name) found = true;
+            }
+            REQUIRE(found);
+        }
+    }
+}
+
+TEST_CASE("Clang trigger and state", "[audio][clang]") {
+    Clang clang;
+
+    SECTION("name returns 'Clang'") {
+        REQUIRE(clang.name() == "Clang");
+    }
+
+    SECTION("starts inactive") {
+        REQUIRE(clang.isActive() == false);
+    }
+
+    SECTION("reset clears state") {
+        clang.reset();
+        REQUIRE(clang.isActive() == false);
+    }
+
+    SECTION("envelope accessor works") {
+        REQUIRE(clang.envelope() >= 0.0f);
     }
 }

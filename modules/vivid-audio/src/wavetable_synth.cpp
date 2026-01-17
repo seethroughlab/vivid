@@ -54,6 +54,17 @@ WavetableSynth::WavetableSynth() {
     registerParam(filterRelease);
     registerParam(filterEnvAmount);
 
+    // LFO parameters
+    registerParam(lfoRate);
+    registerParam(lfoSync);
+    registerParam(lfoDivision);
+    registerParam(lfoWaveform);
+    registerParam(lfoRetrigger);
+    registerParam(lfoToVolume);
+    registerParam(lfoToFilter);
+    registerParam(lfoToPosition);
+    registerParam(bpm);
+
     // Pre-allocate voices (8 notes * 8 unison = 64 max)
     m_voices.resize(64);
 
@@ -388,6 +399,45 @@ void WavetableSynth::generatePWMTable() {
 }
 
 // =============================================================================
+// LFO Support
+// =============================================================================
+
+void WavetableSynth::setClockSource(const std::string& clockName) {
+    m_clockSourceName = clockName;
+    m_cachedClock = nullptr;  // Will be resolved on next process
+}
+
+float WavetableSynth::calculateLfoFrequency() const {
+    if (static_cast<int>(lfoSync) == 0) {
+        // Free mode: use lfoRate param directly
+        return static_cast<float>(lfoRate);
+    }
+
+    // Tempo sync mode: get BPM from clock source or internal param
+    float currentBpm = m_cachedClock ? static_cast<float>(m_cachedClock->bpm)
+                                     : static_cast<float>(bpm);
+
+    // Convert division to Hz
+    ClockDiv div = static_cast<ClockDiv>(static_cast<int>(lfoDivision));
+    return divisionToHz(div, currentBpm);
+}
+
+float WavetableSynth::generateLfoSample(float phase) const {
+    switch (static_cast<int>(lfoWaveform)) {
+        case 0:  // Sine
+            return std::sin(phase * TWO_PI);
+        case 1:  // Triangle
+            return (phase < 0.5f) ? (4.0f * phase - 1.0f) : (3.0f - 4.0f * phase);
+        case 2:  // Square
+            return (phase < 0.5f) ? 1.0f : -1.0f;
+        case 3:  // Saw (ramp up)
+            return 2.0f * phase - 1.0f;
+        default:
+            return 0.0f;
+    }
+}
+
+// =============================================================================
 // Voice Management
 // =============================================================================
 
@@ -446,6 +496,12 @@ int WavetableSynth::noteOn(float hz, float vel) {
         voice.subPhase = 0.0f;
         voice.lastSample = 0.0f;
 
+        // LFO state: retrigger resets phase on each noteOn
+        if (static_cast<int>(lfoRetrigger) == 1) {
+            voice.lfoPhase = 0.0f;
+        }
+        voice.lfoValue = 0.0f;
+
         // Amplitude envelope
         voice.envStage = EnvelopeStage::Attack;
         voice.envValue = 0.0f;
@@ -458,6 +514,10 @@ int WavetableSynth::noteOn(float hz, float vel) {
         voice.resetFilter();
 
         voice.noteId = ++m_noteCounter;
+
+        // Initialize per-voice modulator states
+        createVoiceModStates(voice.modStates);
+        modulatorsNoteOn(voice.modStates, m_globalModStates);
 
         ++voicesSpawned;
     }
@@ -485,6 +545,9 @@ void WavetableSynth::noteOff(float hz) {
             voice.filterEnvStage = EnvelopeStage::Release;
             voice.filterEnvProgress = 0.0f;
             voice.filterReleaseStartValue = voice.filterEnvValue;
+
+            // Release attached modulators
+            modulatorsNoteOff(voice.modStates, m_globalModStates);
         }
     }
 }
@@ -509,6 +572,9 @@ void WavetableSynth::allNotesOff() {
             voice.filterEnvStage = EnvelopeStage::Release;
             voice.filterEnvProgress = 0.0f;
             voice.filterReleaseStartValue = voice.filterEnvValue;
+
+            // Release attached modulators
+            modulatorsNoteOff(voice.modStates, m_globalModStates);
         }
     }
 }
@@ -521,7 +587,12 @@ void WavetableSynth::panic() {
         voice.filterEnvValue = 0.0f;
         voice.resetFilter();
         voice.frequency = 0.0f;
+
+        // Clear per-voice modulator states
+        voice.modStates.clear();
     }
+    // Clear global modulator states
+    m_globalModStates.clear();
 }
 
 // =============================================================================
@@ -972,6 +1043,15 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
     // Clear output
     std::memset(m_output.samples, 0, blockFrameCount * 2 * sizeof(float));
 
+    // Initialize global modulator states if not already done
+    if (m_globalModStates.empty() && !modulators().empty()) {
+        for (const auto& [name, mod] : modulators()) {
+            if (!static_cast<bool>(mod->perVoice)) {
+                m_globalModStates[mod.get()] = mod->createState();
+            }
+        }
+    }
+
     // Get parameters
     float pos = static_cast<float>(position);
     float vol = static_cast<float>(volume);
@@ -988,6 +1068,22 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
     float reso = static_cast<float>(filterResonance);
     float keytrack = static_cast<float>(filterKeytrack);
     float envAmt = static_cast<float>(filterEnvAmount);
+
+    // LFO parameters
+    float lfoVolDepth = static_cast<float>(lfoToVolume);
+    float lfoFilterDepth = static_cast<float>(lfoToFilter);
+    float lfoPosDepth = static_cast<float>(lfoToPosition);
+
+    // Resolve clock source for LFO tempo sync (lazy resolution)
+    if (!m_clockSourceName.empty() && m_cachedClock == nullptr) {
+        // Try to find the clock operator in the chain
+        // Note: This requires access to context, so we do it in process() if needed
+        // For now, we rely on bpm param if clock not resolved
+    }
+
+    // Calculate LFO frequency (shared by all voices, but phase is per-voice)
+    float lfoFreq = calculateLfoFrequency();
+    float lfoPhaseInc = lfoFreq / static_cast<float>(m_sampleRate);
 
     // Portamento rate coefficient (per sample)
     float portaRate = 1.0f;  // Instant by default
@@ -1036,11 +1132,32 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
             float freq = voice.currentFrequency * centsToRatio(totalDetune);
             float phaseInc = freq / static_cast<float>(m_sampleRate);
 
+            // Update per-voice LFO (built-in)
+            voice.lfoPhase += lfoPhaseInc;
+            if (voice.lfoPhase >= 1.0f) voice.lfoPhase -= 1.0f;
+            voice.lfoValue = generateLfoSample(voice.lfoPhase);
+
+            // Process attached modulators
+            m_currentModValues.clear();
+            processModulators(voice.modStates, m_globalModStates,
+                              static_cast<float>(m_sampleRate), m_currentModValues);
+
+            // Apply LFO to wavetable position (built-in)
+            float modPos = pos;
+            if (lfoPosDepth != 0.0f) {
+                modPos = std::clamp(pos + voice.lfoValue * lfoPosDepth * 0.5f, 0.0f, 1.0f);
+            }
+
+            // Apply attached modulator routing to position
+            if (!m_currentModValues.empty()) {
+                modPos = applyModulation("position", modPos, m_currentModValues, 0.0f, 1.0f);
+            }
+
             // Apply phase warp before sampling
             float warpedPhase = warpPhase(voice.phase, warpAmt, voice.lastSample);
 
-            // Sample main wavetable
-            float sample = sampleWavetable(warpedPhase, pos);
+            // Sample main wavetable (using modulated position)
+            float sample = sampleWavetable(warpedPhase, modPos);
 
             // Store sample for FM feedback (used next sample)
             voice.lastSample = sample;
@@ -1073,6 +1190,17 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
                 cutoff *= std::pow(2.0f, octavesFromC4 * keytrack);
             }
 
+            // LFO to filter modulation (in octaves for musical response) - built-in
+            if (lfoFilterDepth != 0.0f) {
+                float filterMod = std::pow(2.0f, voice.lfoValue * lfoFilterDepth * 2.0f);
+                cutoff = std::clamp(cutoff * filterMod, 20.0f, 20000.0f);
+            }
+
+            // Apply attached modulator routing to filterCutoff
+            if (!m_currentModValues.empty()) {
+                cutoff = applyModulation("filterCutoff", cutoff, m_currentModValues, 20.0f, 20000.0f);
+            }
+
             // Apply filter (only if cutoff is below Nyquist)
             if (cutoff < static_cast<float>(m_sampleRate) * 0.45f) {
                 sample = applyFilter(voice, sample, cutoff, reso);
@@ -1081,6 +1209,21 @@ void WavetableSynth::generateBlock(uint32_t blockFrameCount) {
             // Apply envelope and velocity
             float env = voice.envValue * velVolume;
             sample *= env;
+
+            // LFO to volume (tremolo/gate effect) - built-in
+            if (lfoVolDepth != 0.0f) {
+                // Map LFO [-1,1] to volume multiplier [0,1] based on depth
+                // depth > 0: LFO high = louder, depth < 0: LFO high = quieter
+                float volMod = 1.0f + voice.lfoValue * lfoVolDepth * 0.5f;
+                volMod = std::clamp(volMod, 0.0f, 1.0f);
+                sample *= volMod;
+            }
+
+            // Apply attached modulator routing to volume
+            if (!m_currentModValues.empty()) {
+                float volMod = applyModulation("volume", 1.0f, m_currentModValues, 0.0f, 1.0f);
+                sample *= volMod;
+            }
 
             // Apply panning for unison stereo spread
             float panL = std::min(1.0f, 1.0f - voice.pan);  // pan -1 = full left

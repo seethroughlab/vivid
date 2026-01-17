@@ -99,11 +99,18 @@ void DrumStack::cleanup() {
     m_initialized = false;
 }
 
-void DrumStack::onTrigger() {
-    // Forward trigger to all layers
-    if (m_layer1) m_layer1->trigger();
-    if (m_layer2) m_layer2->trigger();
-    if (m_layer3) m_layer3->trigger();
+void DrumStack::midiNoteOn(uint8_t note, float velocity, uint8_t channel) {
+    // Route MIDI to all layers (they're mixed, not note-mapped)
+    if (auto* r1 = dynamic_cast<MidiReceiver*>(m_layer1)) r1->midiNoteOn(note, velocity, channel);
+    if (auto* r2 = dynamic_cast<MidiReceiver*>(m_layer2)) r2->midiNoteOn(note, velocity, channel);
+    if (auto* r3 = dynamic_cast<MidiReceiver*>(m_layer3)) r3->midiNoteOn(note, velocity, channel);
+}
+
+void DrumStack::midiNoteOff(uint8_t note, float velocity, uint8_t channel) {
+    // Route note-off to all layers
+    if (auto* r1 = dynamic_cast<MidiReceiver*>(m_layer1)) r1->midiNoteOff(note, velocity, channel);
+    if (auto* r2 = dynamic_cast<MidiReceiver*>(m_layer2)) r2->midiNoteOff(note, velocity, channel);
+    if (auto* r3 = dynamic_cast<MidiReceiver*>(m_layer3)) r3->midiNoteOff(note, velocity, channel);
 }
 
 void DrumStack::reset() {

@@ -129,10 +129,6 @@ void Snare::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*
     // One-shot drum, nothing to do
 }
 
-void Snare::onTrigger() {
-    midiNoteOn(0, 1.0f, 0);
-}
-
 void Snare::reset() {
     m_phase = 0.0f;
     m_phase2 = 0.0f;

@@ -103,11 +103,16 @@ void Clang::cleanup() {
     m_initialized = false;
 }
 
-void Clang::onTrigger() {
-    m_env = 1.0f;
+void Clang::midiNoteOn(uint8_t /*note*/, float velocity, uint8_t /*channel*/) {
+    m_velocity = velocity;
+    m_env = velocity;
     // Reset phases for consistent attack
     m_phaseA = 0.0f;
     m_phaseB = 0.0f;
+}
+
+void Clang::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // One-shot drum, nothing to do
 }
 
 void Clang::reset() {

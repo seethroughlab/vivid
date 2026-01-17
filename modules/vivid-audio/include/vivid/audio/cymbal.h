@@ -114,9 +114,6 @@ public:
 
     /// @}
 
-protected:
-    void onTrigger() override;
-
 private:
     static constexpr int NUM_RINGS = 12;
 

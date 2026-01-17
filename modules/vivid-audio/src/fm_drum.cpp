@@ -104,10 +104,15 @@ void FMDrum::cleanup() {
     m_initialized = false;
 }
 
-void FMDrum::onTrigger() {
-    m_ampEnv = 1.0f;
-    m_modEnv = 1.0f;
+void FMDrum::midiNoteOn(uint8_t /*note*/, float velocity, uint8_t /*channel*/) {
+    m_velocity = velocity;
+    m_ampEnv = velocity;
+    m_modEnv = velocity;
     // Don't reset phases for natural retriggering
+}
+
+void FMDrum::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // One-shot drum, nothing to do
 }
 
 void FMDrum::reset() {

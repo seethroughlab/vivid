@@ -145,10 +145,6 @@ void HiHat::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*
     choke();
 }
 
-void HiHat::onTrigger() {
-    midiNoteOn(0, 1.0f, 0);
-}
-
 void HiHat::choke() {
     m_env = 0.0f;
 }

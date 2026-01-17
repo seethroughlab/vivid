@@ -119,8 +119,8 @@ void Euclidean::generateBlock(uint32_t frameCount) {
     }
 }
 
-void Euclidean::onTrigger() {
-    // Called on audio thread when we receive a trigger event
+void Euclidean::midiNoteOn(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // MIDI note-on advances the step (same as trigger)
     // If our trigger source is a Clock, we poll triggerCount internally
     // in generateBlock(), so ignore external trigger events to avoid double-advancing
     Operator* src = triggerSource();
@@ -132,6 +132,10 @@ void Euclidean::onTrigger() {
     // We'll advance in generateBlock() to ensure the triggered flag
     // is set at a consistent point in the block
     m_pendingTrigger = true;
+}
+
+void Euclidean::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/) {
+    // Nothing to do on note-off for step advance
 }
 
 void Euclidean::cleanup() {

@@ -187,18 +187,18 @@ void update(Context& ctx) {
 
         // Kick: four-on-the-floor with variation
         if (beat == 0 || beat == 4 || beat == 8 || beat == 12) {
-            kick.trigger();
+            kick.midiNoteOn(60, 1.0f, 0);
         }
 
         // Snare: backbeat
         if (beat == 4 || beat == 12) {
-            snare.trigger();
+            snare.midiNoteOn(60, 1.0f, 0);
         }
 
         // Hi-hat: every other 16th
         if (beat % 2 == 0) {
             hat.decay = (beat % 4 == 2) ? 0.15f : 0.06f;
-            hat.trigger();
+            hat.midiNoteOn(60, 1.0f, 0);
         }
 
         step++;

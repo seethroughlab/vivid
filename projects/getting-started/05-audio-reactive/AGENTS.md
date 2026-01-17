@@ -26,6 +26,20 @@ Audio analysis for driving visual parameters with amplitude and frequency data.
 | `BeatDetect` | Beat/onset detection | `.beat()`, `.intensity()` |
 | `FFT` | Full spectrum | `.bin(i)`, `.binCount()` |
 
+## Alternative Approaches
+
+Instead of always using Noise for audio-reactive visuals, consider:
+
+| Operator | Use Case | Audio Mapping |
+|----------|----------|---------------|
+| **Shape** | Geometric primitives | Size ← bass, rotation ← time |
+| **Ramp** | Smooth gradients | Radius ← bass, hue ← high |
+| **Particles** | Point-based effects | Burst on beat, emit rate ← energy |
+| **Flash** | Beat-synced intensity | Trigger on kick/snare |
+| **Feedback** | Motion trails | Decay ← energy, zoom ← bass |
+
+See lesson 11 (shapes-reactive) for a complete example without noise.
+
 ## Suggested Modifications
 
 1. **Add beat detection**: `if (beat.beat()) { /* trigger */ }`
@@ -33,6 +47,8 @@ Audio analysis for driving visual parameters with amplitude and frequency data.
 2. **Use different frequency bands**: `.subBass()`, `.lowMid()`, `.highMid()`
 
 3. **Adjust smoothing**: 0.5 (punchy), 0.9 (smooth), 0.95 (ambient)
+
+4. **Try shapes instead of noise**: Replace Noise with Shape for cleaner geometry
 
 ## Troubleshooting
 - **No audio response**: Check microphone is connected and not muted

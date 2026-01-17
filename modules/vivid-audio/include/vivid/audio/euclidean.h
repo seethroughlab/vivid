@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -55,7 +56,7 @@ namespace vivid::audio {
  
  * @see Clock, Sequencer, Kick, Snare, HiHat
  */
-class Euclidean : public AudioOperator {
+class Euclidean : public AudioOperator, public MidiReceiver {
 public:
     static constexpr int MAX_STEPS = 16;
 
@@ -150,6 +151,14 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
@@ -166,9 +175,6 @@ public:
                            float maxX, float maxY) override;
 
     /// @}
-
-protected:
-    void onTrigger() override;
 
 private:
     void regenerate();           // Regenerate pattern from parameters

@@ -12,6 +12,8 @@
 #include <vivid/audio_operator.h>
 #include <vivid/audio/envelope.h>
 #include <vivid/audio/midi_receiver.h>
+#include <vivid/audio/modulator.h>
+#include <vivid/audio/glitch/rate_utils.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -101,7 +103,7 @@ enum class SynthFilterType {
  
  * @see Synth, FMSynth, PolySynth, Granular, MidiIn
  */
-class WavetableSynth : public AudioOperator, public MidiReceiver {
+class WavetableSynth : public AudioOperator, public MidiReceiver, public ModulatorHost {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -148,6 +150,21 @@ public:
     Param<float> filterSustain{"filterSustain", 0.0f, 0.0f, 1.0f};        ///< Filter env sustain
     Param<float> filterRelease{"filterRelease", 0.3f, 0.001f, 10.0f};     ///< Filter env release
     Param<float> filterEnvAmount{"filterEnvAmount", 0.0f, -1.0f, 1.0f};   ///< Env to cutoff amount
+
+    // LFO parameters
+    Param<float> lfoRate{"lfoRate", 1.0f, 0.01f, 20.0f};      ///< LFO rate in Hz (free mode)
+    Param<int> lfoSync{"lfoSync", 0, 0, 1};                    ///< 0=free Hz, 1=tempo sync
+    Param<int> lfoDivision{"lfoDivision", 4, 0, 9};            ///< ClockDiv index for tempo sync
+    Param<int> lfoWaveform{"lfoWaveform", 0, 0, 3};            ///< 0=Sine, 1=Tri, 2=Square, 3=Saw
+    Param<int> lfoRetrigger{"lfoRetrigger", 1, 0, 1};          ///< Reset phase on noteOn
+
+    // LFO modulation depths (bipolar)
+    Param<float> lfoToVolume{"lfoToVolume", 0.0f, -1.0f, 1.0f};     ///< LFO to volume (tremolo/gate)
+    Param<float> lfoToFilter{"lfoToFilter", 0.0f, -1.0f, 1.0f};     ///< LFO to filter cutoff
+    Param<float> lfoToPosition{"lfoToPosition", 0.0f, -1.0f, 1.0f}; ///< LFO to wavetable position
+
+    // BPM for tempo sync (can also use setClockSource)
+    Param<float> bpm{"bpm", 120.0f, 20.0f, 300.0f};            ///< Internal BPM for tempo sync
 
     /// @}
     // -------------------------------------------------------------------------
@@ -279,6 +296,14 @@ public:
      */
     void setPitchBendRange(float semitones) { m_pitchBendRange = semitones; }
 
+    /**
+     * @brief Set external clock source for LFO tempo sync
+     * @param clockName Name of Clock operator in chain (uses its BPM)
+     *
+     * When set, the LFO uses this clock's BPM instead of the internal bpm param.
+     */
+    void setClockSource(const std::string& clockName);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name MidiReceiver Interface
@@ -367,6 +392,10 @@ private:
         float filterZ1[2] = {0.0f, 0.0f};
         float filterZ2[2] = {0.0f, 0.0f};
 
+        // Per-voice LFO state
+        float lfoPhase = 0.0f;    // [0, 1)
+        float lfoValue = 0.0f;    // [-1, 1]
+
         bool isActive() const { return envStage != EnvelopeStage::Idle; }
         bool isReleasing() const { return envStage == EnvelopeStage::Release; }
 
@@ -374,6 +403,9 @@ private:
             filterZ1[0] = filterZ1[1] = 0.0f;
             filterZ2[0] = filterZ2[1] = 0.0f;
         }
+
+        // Per-voice modulator states (for attached modulators)
+        VoiceModStates modStates;
     };
 
     std::vector<Voice> m_voices;
@@ -387,6 +419,16 @@ private:
     // Pitch bend
     float m_pitchBend = 0.0f;       // Current pitch bend value (-1 to +1)
     float m_pitchBendRange = 2.0f;  // Pitch bend range in semitones
+
+    // Clock source for tempo sync
+    std::string m_clockSourceName;
+    Clock* m_cachedClock = nullptr;
+
+    // Global modulator states (for non-perVoice modulators)
+    VoiceModStates m_globalModStates;
+
+    // Cached modulator values for current sample (avoids re-computation)
+    std::unordered_map<Modulator*, float> m_currentModValues;
 
     // Voice management
     int findFreeVoice() const;
@@ -420,6 +462,10 @@ private:
     void generateVocalTable();
     void generateTextureTable();
     void generatePWMTable();
+
+    // LFO helpers
+    float calculateLfoFrequency() const;
+    float generateLfoSample(float phase) const;
 
     static constexpr float PI = 3.14159265358979323846f;
     static constexpr float TWO_PI = 2.0f * PI;

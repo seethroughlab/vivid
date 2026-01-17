@@ -68,6 +68,9 @@ set(AUDIO_SOURCES
     # Envelopes
     src/decay.cpp
     src/ar.cpp
+    # Modulators
+    src/modulators/lfo.cpp
+    src/modulators/adsr.cpp
     # Drums
     src/kick.cpp
     src/snare.cpp

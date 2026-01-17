@@ -159,7 +159,7 @@ void update(Context& ctx) {
             float envVal = env1.currentValue();
             filter1.cutoff = 400.0f + envVal * 3000.0f;
 
-            if (shouldTrigger) env1.trigger();
+            if (shouldTrigger) env1.midiNoteOn(60, 1.0f, 0);
             if (shouldRelease) env1.releaseNote();
 
             envValue = env1.currentValue();

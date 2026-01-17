@@ -8,6 +8,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/operator_registry.h>
 #include <vivid/param.h>
 #include <string>
@@ -58,7 +59,7 @@ enum class EnvelopeStage {
  
  * @see AR, Decay, Synth, Oscillator, AudioGain
  */
-class Envelope : public AudioOperator {
+class Envelope : public AudioOperator, public MidiReceiver {
 public:
     // -------------------------------------------------------------------------
     /// @name Parameters (public for direct access)
@@ -117,6 +118,14 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
@@ -128,9 +137,6 @@ public:
     std::string name() const override { return "Envelope"; }
 
     /// @}
-
-protected:
-    void onTrigger() override;  // Called from audio thread
 
 private:
     float computeEnvelopeValue();

@@ -9,6 +9,7 @@
  */
 
 #include <vivid/audio_operator.h>
+#include <vivid/audio/midi_receiver.h>
 #include <vivid/param.h>
 #include <string>
 #include <vector>
@@ -24,7 +25,6 @@ class Chain;  // Forward declaration
 
 namespace vivid::audio {
 
-class MidiReceiver;  // Forward declaration
 class MidiSender;    // Forward declaration
 
 /**
@@ -55,7 +55,7 @@ class MidiSender;    // Forward declaration
  *
  * @see Clock, Euclidean, Song, Kick, Snare, HiHat, Synth
  */
-class Sequencer : public AudioOperator {
+class Sequencer : public AudioOperator, public MidiReceiver {
 public:
     static constexpr int MAX_STEPS = 16;
 
@@ -250,6 +250,14 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name MidiReceiver Interface
+    /// @{
+
+    void midiNoteOn(uint8_t note, float velocity, uint8_t channel = 0) override;
+    void midiNoteOff(uint8_t note, float velocity = 0.0f, uint8_t channel = 0) override;
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Operator Interface
     /// @{
 
@@ -262,9 +270,6 @@ public:
     void generateBlock(uint32_t frameCount) override;
 
     /// @}
-
-protected:
-    void onTrigger() override;
 
 private:
     // Pattern data (set from main thread, read from audio thread)

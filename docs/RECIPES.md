@@ -4,24 +4,366 @@ Complete chain.cpp examples for common effects. Vivid treats audio and visuals a
 
 ## Table of Contents
 
-### Visual Effects
-1. [VHS/Retro Look](#vhsretro-look)
-2. [Feedback Tunnel](#feedback-tunnel)
-3. [Video with Overlay Effects](#video-with-overlay-effects)
-4. [Animated Background](#animated-background)
-5. [Glitch Effect](#glitch-effect)
-6. [Dream Sequence](#dream-sequence)
-7. [Fire/Plasma](#fireplasma)
-8. [Kaleidoscope](#kaleidoscope)
-9. [Layer Compositing with Canvas](#layer-compositing-with-canvas)
+### Visual Effects (No Noise)
+1. [Pulsing Shapes](#pulsing-shapes) - Audio-reactive geometry ⭐
+2. [Geometric Flash](#geometric-flash) - Beat-synced shape effects ⭐
+3. [Gradient Pulse](#gradient-pulse) - Color transitions, no procedural noise ⭐
+4. [Particle Burst](#particle-burst) - Beat-synced particles ⭐
+
+### Visual Effects (With Noise)
+5. [VHS/Retro Look](#vhsretro-look)
+6. [Feedback Tunnel](#feedback-tunnel)
+7. [Video with Overlay Effects](#video-with-overlay-effects)
+8. [Animated Background](#animated-background)
+9. [Glitch Effect](#glitch-effect)
+10. [Dream Sequence](#dream-sequence)
+11. [Fire/Plasma](#fireplasma)
+12. [Kaleidoscope](#kaleidoscope)
+13. [Layer Compositing with Canvas](#layer-compositing-with-canvas)
 
 ### Audio-Visual
-10. [Drum Machine with Visual Triggers](#drum-machine-with-visual-triggers)
-11. [Audio-Reactive Particles](#audio-reactive-particles)
-12. [Bidirectional Modulation](#bidirectional-modulation)
+14. [Drum Machine with Visual Triggers](#drum-machine-with-visual-triggers)
+15. [Audio-Reactive Particles](#audio-reactive-particles)
+16. [Bidirectional Modulation](#bidirectional-modulation)
 
 ### Input Handling
-13. [Event-Driven Patterns](#event-driven-patterns) - MIDI, OSC, keyboard, mouse
+17. [Event-Driven Patterns](#event-driven-patterns) - MIDI, OSC, keyboard, mouse
+
+### Synthesis
+18. [Per-Voice Modulation](#per-voice-modulation) - LFO, ADSR modulators attached to synths
+
+---
+
+## Pulsing Shapes
+
+Audio-reactive geometric shapes without procedural noise. Great starting point for beat-reactive visuals.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Audio analysis
+    auto& audioIn = chain.add<AudioIn>("audioIn");
+    auto& bands = chain.add<BandSplit>("bands");
+    bands.input("audioIn");
+
+    // Star shape - size driven by bass
+    auto& shape = chain.add<Shape>("shape");
+    shape.type = ShapeType::Star;
+    shape.points = 5;
+    shape.size = 0.3f;
+    shape.softness = 0.1f;
+    shape.position.set(0.5f, 0.5f);
+
+    // Colorize with audio-driven hue
+    auto& hsv = chain.add<HSV>("color");
+    hsv.input("shape");
+
+    // Bloom for glow
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input("color");
+    bloom.threshold = 0.2f;
+    bloom.radius = 20.0f;
+
+    chain.output("bloom");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& bands = chain.get<BandSplit>("bands");
+    auto& shape = chain.get<Shape>("shape");
+    auto& hsv = chain.get<HSV>("color");
+    auto& bloom = chain.get<Bloom>("bloom");
+
+    float bass = bands.bass();
+    float mid = bands.mid();
+    float high = bands.high();
+
+    // Bass drives size (center-scaling, so it pulses outward)
+    shape.size = 0.2f + bass * 0.5f;
+
+    // Mid drives rotation speed
+    shape.rotation = static_cast<float>(ctx.time()) * (0.5f + mid);
+
+    // High drives hue shift
+    hsv.hueShift = high * 0.5f;
+
+    // Audio-driven color (RGB from frequency bands)
+    shape.color.set(bass, mid, high, 1.0f);
+
+    // Bass drives bloom intensity
+    bloom.intensity = 0.5f + bass * 1.5f;
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+---
+
+## Geometric Flash
+
+Beat-synced shape effects with Flash operator. Clean geometric look without noise.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Sequenced triggers
+    auto& clock = chain.add<Clock>("clock");
+    clock.bpm = 120.0f;
+    clock.start();
+
+    auto& seq = chain.add<Sequencer>("seq");
+    seq.setTriggerSource("clock");
+    seq.steps = 16;
+    seq.setPattern(0b1001001010010010);  // Syncopated rhythm
+
+    // Concentric circles
+    auto& circle1 = chain.add<Shape>("circle1");
+    circle1.type = ShapeType::Ellipse;
+    circle1.size = 0.3f;
+    circle1.softness = 0.4f;
+    circle1.position.set(0.5f, 0.5f);
+    circle1.color.set(0.2f, 0.5f, 1.0f, 1.0f);
+
+    auto& circle2 = chain.add<Shape>("circle2");
+    circle2.type = ShapeType::Ellipse;
+    circle2.size = 0.5f;
+    circle2.softness = 0.3f;
+    circle2.position.set(0.5f, 0.5f);
+    circle2.color.set(1.0f, 0.3f, 0.5f, 1.0f);
+
+    // Composite the shapes
+    auto& comp = chain.add<Composite>("comp");
+    comp.inputA("circle2");
+    comp.inputB("circle1");
+    comp.mode = BlendMode::Add;
+
+    // Flash overlay
+    auto& flash = chain.add<Flash>("flash");
+    flash.input("comp");
+    flash.decay = 0.88f;
+    flash.color.set(1.0f, 1.0f, 1.0f);
+
+    // Bloom
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input("flash");
+    bloom.threshold = 0.3f;
+    bloom.intensity = 1.2f;
+    bloom.radius = 15.0f;
+
+    chain.output("bloom");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& seq = chain.get<Sequencer>("seq");
+    auto& circle1 = chain.get<Shape>("circle1");
+    auto& circle2 = chain.get<Shape>("circle2");
+    auto& flash = chain.get<Flash>("flash");
+
+    // Trigger flash on beat
+    if (seq.triggered()) {
+        flash.trigger();
+    }
+
+    // Animate sizes with slow oscillation
+    float t = static_cast<float>(ctx.time());
+    circle1.size = 0.25f + 0.1f * std::sin(t * 2.0f);
+    circle2.size = 0.45f + 0.1f * std::sin(t * 1.5f + 1.0f);
+
+    // Counter-rotate
+    circle1.rotation = t * 0.3f;
+    circle2.rotation = -t * 0.2f;
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+---
+
+## Gradient Pulse
+
+Animated color gradients driven by audio. No procedural noise - pure color and geometry.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Audio analysis
+    auto& audioIn = chain.add<AudioIn>("audioIn");
+    auto& bands = chain.add<BandSplit>("bands");
+    bands.input("audioIn");
+
+    // Radial gradient - center glow
+    auto& ramp = chain.add<Ramp>("ramp");
+    ramp.type = RampType::Radial;
+    ramp.position.set(0.5f, 0.5f);
+
+    // HSV adjustment for animated color
+    auto& hsv = chain.add<HSV>("hsv");
+    hsv.input("ramp");
+
+    // Feedback for trails
+    auto& feedback = chain.add<Feedback>("feedback");
+    feedback.input("hsv");
+    feedback.decay = 0.92f;
+    feedback.zoom = 1.005f;
+    feedback.mix = 0.7f;
+
+    // Bloom for glow
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input("feedback");
+    bloom.threshold = 0.2f;
+    bloom.radius = 25.0f;
+
+    chain.output("bloom");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& bands = chain.get<BandSplit>("bands");
+    auto& ramp = chain.get<Ramp>("ramp");
+    auto& hsv = chain.get<HSV>("hsv");
+    auto& bloom = chain.get<Bloom>("bloom");
+
+    float bass = bands.bass();
+    float mid = bands.mid();
+    float high = bands.high();
+
+    // Bass drives gradient radius (breathing effect)
+    ramp.radius = 0.3f + bass * 0.5f;
+
+    // Time-based hue animation + high frequency boost
+    hsv.hueShift = static_cast<float>(ctx.time()) * 0.1f + high * 0.3f;
+    hsv.saturation = 0.7f + mid * 0.3f;
+    hsv.value = 0.5f + bass * 0.5f;
+
+    // Audio-driven bloom
+    bloom.intensity = 0.8f + bass * 1.5f;
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+---
+
+## Particle Burst
+
+Beat-synced particle system. Particles emit on triggers - no continuous noise texture.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/effects/effects.h>
+#include <vivid/audio/audio.h>
+
+using namespace vivid;
+using namespace vivid::effects;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Clock and triggers
+    auto& clock = chain.add<Clock>("clock");
+    clock.bpm = 128.0f;
+    clock.start();
+
+    auto& kickSeq = chain.add<Sequencer>("kickSeq");
+    kickSeq.setTriggerSource("clock");
+    kickSeq.steps = 16;
+    kickSeq.setPattern(0b0001000100010001);  // Four on floor
+
+    auto& snareSeq = chain.add<Sequencer>("snareSeq");
+    snareSeq.setTriggerSource("clock");
+    snareSeq.steps = 16;
+    snareSeq.setPattern(0b0000000100000001);  // Backbeat
+
+    // Particles - emit only on trigger
+    auto& particles = chain.add<Particles>("particles");
+    particles.emitRate = 0.0f;  // No continuous emission
+    particles.emitterShape = EmitterShape::Point;
+    particles.position.set(0.5f, 0.5f);
+    particles.maxParticles = 500;
+    particles.life = 1.5f;
+    particles.size = 0.03f;
+    particles.sizeEnd = 0.005f;
+    particles.radialVelocity = 0.4f;
+    particles.spread = 360.0f;
+    particles.color.set(0.2f, 0.8f, 1.0f, 1.0f);
+    particles.colorEnd.set(1.0f, 0.2f, 0.5f, 0.0f);
+
+    // Bloom for glow
+    auto& bloom = chain.add<Bloom>("bloom");
+    bloom.input("particles");
+    bloom.threshold = 0.2f;
+    bloom.intensity = 1.5f;
+    bloom.radius = 20.0f;
+
+    chain.output("bloom");
+}
+
+void update(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& kickSeq = chain.get<Sequencer>("kickSeq");
+    auto& snareSeq = chain.get<Sequencer>("snareSeq");
+    auto& particles = chain.get<Particles>("particles");
+
+    // Kick: big central burst
+    if (kickSeq.triggered()) {
+        particles.position.set(0.5f, 0.5f);
+        particles.radialVelocity = 0.5f;
+        particles.color.set(1.0f, 0.4f, 0.2f, 1.0f);  // Orange
+        particles.burst(80);
+    }
+
+    // Snare: smaller burst with different color
+    if (snareSeq.triggered()) {
+        particles.position.set(0.5f, 0.5f);
+        particles.radialVelocity = 0.3f;
+        particles.color.set(0.2f, 0.8f, 1.0f, 1.0f);  // Cyan
+        particles.burst(40);
+    }
+
+    chain.process(ctx);
+}
+
+VIVID_CHAIN(setup, update)
+```
 
 ---
 
@@ -1235,3 +1577,229 @@ void update(Context& ctx) {
 - **MIDI/OSC** → Use event operators + Trigger for decay envelopes
 - **Keyboard/Mouse** → Use `ctx.key()`, `ctx.mouse()` directly
 - **Window events** → Use `WindowEvents` operator for resize/focus
+
+---
+
+## Per-Voice Modulation
+
+Attach modulators (LFO, ADSR) to synths for per-voice control. Inspired by Bitwig's unified modulation system.
+
+### Key Concepts
+
+**Attached vs Standalone Modulators:**
+- **Standalone**: `chain.add<LFO>("lfo")` - Runs globally, access via `lfo.value()`
+- **Attached**: `synth.addModulator<LFO>("lfo")` - Runs per-voice inside synth
+
+**perVoice Toggle:**
+- `perVoice = true`: Each voice has independent modulator state (e.g., per-note envelope)
+- `perVoice = false`: All voices share one state (e.g., global filter sweep)
+
+**Modulation Routing:**
+```cpp
+synth.modulate(modulator, "paramName", depth, bipolar);
+// depth: How much modulation (0.0 - 1.0 = percentage of param range)
+// bipolar: true for -1 to +1 range, false for 0 to 1
+```
+
+### Per-Voice Filter Envelope
+
+Classic subtractive synth sound: each note gets its own filter sweep.
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/audio/modulators/lfo.h>
+#include <vivid/audio/modulators/adsr.h>
+
+using namespace vivid;
+using namespace vivid::audio;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    auto& synth = chain.add<WavetableSynth>("synth");
+    synth.loadBuiltin(BuiltinTable::Analog);
+    synth.filterCutoff = 500.0f;    // Low base cutoff
+    synth.filterResonance = 0.5f;
+
+    // Attach per-voice filter envelope
+    auto& filterEnv = synth.addModulator<ADSRMod>("filterEnv");
+    filterEnv.attack = 0.01f;
+    filterEnv.decay = 0.4f;
+    filterEnv.sustain = 0.1f;
+    filterEnv.release = 0.3f;
+    filterEnv.perVoice = true;  // Each note gets own envelope
+
+    // Route to filter cutoff (unipolar: envelope opens filter)
+    synth.modulate(filterEnv, "filterCutoff", 0.9f, false);
+
+    chain.audioOutput("synth");
+}
+```
+
+### Per-Voice LFO (Vibrato/Wobble)
+
+Each voice gets independent LFO phase - creates rich, organic sound.
+
+```cpp
+auto& synth = chain.add<WavetableSynth>("synth");
+synth.loadBuiltin(BuiltinTable::Digital);
+
+// Per-voice wavetable position LFO
+auto& posLfo = synth.addModulator<LFO>("posLfo");
+posLfo.rate = 0.5f;
+posLfo.waveform = LFOWaveform::Triangle;
+posLfo.perVoice = true;
+posLfo.retrigger = true;  // Reset phase on noteOn
+
+synth.modulate(posLfo, "position", 0.4f);  // Sweep 40% of wavetable
+```
+
+### Global vs Per-Voice Comparison
+
+```cpp
+// GLOBAL LFO: All voices move together (pulsing/breathing)
+auto& globalLfo = synth.addModulator<LFO>("globalLfo");
+globalLfo.rate = 0.1f;
+globalLfo.perVoice = false;  // Shared by all voices
+synth.modulate(globalLfo, "filterCutoff", 0.3f);
+
+// PER-VOICE LFO: Each voice has own phase (organic/alive)
+auto& voiceLfo = synth.addModulator<LFO>("voiceLfo");
+voiceLfo.rate = 2.0f;
+voiceLfo.perVoice = true;    // Independent per voice
+synth.modulate(voiceLfo, "volume", 0.2f);  // Tremolo
+```
+
+### Multiple Modulators on Same Parameter
+
+Modulators targeting the same parameter sum together.
+
+```cpp
+auto& synth = chain.add<WavetableSynth>("synth");
+synth.filterCutoff = 1000.0f;
+
+// Filter envelope (fast attack, opens filter on note start)
+auto& env = synth.addModulator<ADSRMod>("env");
+env.attack = 0.01f;
+env.decay = 0.3f;
+env.sustain = 0.2f;
+synth.modulate(env, "filterCutoff", 0.7f, false);
+
+// Slow LFO (adds subtle movement)
+auto& lfo = synth.addModulator<LFO>("lfo");
+lfo.rate = 0.2f;
+lfo.perVoice = false;
+synth.modulate(lfo, "filterCutoff", 0.15f);
+
+// Result: Envelope sweeps filter, LFO adds gentle wobble on top
+```
+
+### Complete Polyphonic Patch
+
+```cpp
+#include <vivid/vivid.h>
+#include <vivid/audio/modulators/lfo.h>
+#include <vivid/audio/modulators/adsr.h>
+
+using namespace vivid;
+using namespace vivid::audio;
+using namespace vivid::effects;
+
+void setup(Context& ctx) {
+    auto& chain = ctx.chain();
+
+    // Synth with modular modulation
+    auto& synth = chain.add<WavetableSynth>("synth");
+    synth.loadBuiltin(BuiltinTable::Analog);
+    synth.maxVoices = 6;
+    synth.unisonVoices = 2;
+    synth.unisonSpread = 10.0f;
+    synth.filterCutoff = 800.0f;
+    synth.filterResonance = 0.4f;
+
+    // Per-voice filter envelope
+    auto& filterEnv = synth.addModulator<ADSRMod>("filterEnv");
+    filterEnv.attack = 0.005f;
+    filterEnv.decay = 0.4f;
+    filterEnv.sustain = 0.1f;
+    filterEnv.perVoice = true;
+    synth.modulate(filterEnv, "filterCutoff", 0.8f, false);
+
+    // Per-voice position LFO
+    auto& posLfo = synth.addModulator<LFO>("posLfo");
+    posLfo.rate = 0.3f;
+    posLfo.waveform = LFOWaveform::Triangle;
+    posLfo.perVoice = true;
+    synth.modulate(posLfo, "position", 0.4f);
+
+    // Global filter LFO (breathing)
+    auto& filterLfo = synth.addModulator<LFO>("filterLfo");
+    filterLfo.rate = 0.15f;
+    filterLfo.perVoice = false;
+    synth.modulate(filterLfo, "filterCutoff", 0.15f);
+
+    // Effects
+    auto& delay = chain.add<Delay>("delay");
+    delay.setInput(&synth);
+    delay.time = 0.375f;
+    delay.feedback = 0.4f;
+    delay.mix = 0.25f;
+
+    auto& reverb = chain.add<Reverb>("reverb");
+    reverb.setInput(&delay);
+    reverb.roomSize = 0.7f;
+    reverb.wet = 0.3f;
+
+    chain.audioOutput("reverb");
+}
+
+void update(Context& ctx) {
+    auto& synth = ctx.chain().get<WavetableSynth>("synth");
+
+    // Play notes (example: simple arpeggio)
+    static float lastNote = -1.0f;
+    float notes[] = {261.63f, 329.63f, 392.00f, 493.88f};
+    int idx = static_cast<int>(ctx.time() * 4.0f) % 4;
+
+    if (notes[idx] != lastNote) {
+        if (lastNote > 0) synth.noteOff(lastNote);
+        synth.noteOn(notes[idx], 0.8f);
+        lastNote = notes[idx];
+    }
+
+    ctx.chain().process();
+}
+
+VIVID_CHAIN(setup, update)
+```
+
+### Available Modulators
+
+| Modulator | Output Range | Description |
+|-----------|--------------|-------------|
+| `LFO` | -1 to +1 | Periodic waveforms (sine, tri, square, saw) |
+| `ADSRMod` | 0 to 1 | Attack-Decay-Sustain-Release envelope |
+
+### LFO Waveforms
+
+```cpp
+lfo.waveform = LFOWaveform::Sine;       // Smooth, classic
+lfo.waveform = LFOWaveform::Triangle;   // Linear ramps
+lfo.waveform = LFOWaveform::Square;     // On/off gating
+lfo.waveform = LFOWaveform::Saw;        // Rising ramp
+lfo.waveform = LFOWaveform::SawDown;    // Falling ramp
+lfo.waveform = LFOWaveform::SampleHold; // Random steps
+```
+
+### Tempo Sync
+
+LFOs can sync to tempo:
+
+```cpp
+auto& lfo = synth.addModulator<LFO>("gateLfo");
+lfo.sync = true;
+lfo.division = static_cast<int>(ClockDiv::Sixteenth);
+lfo.bpm = 120.0f;  // Or use setClockSource("clockOperator")
+lfo.waveform = LFOWaveform::Square;
+synth.modulate(lfo, "volume", 1.0f);  // Tempo-synced gate
+```

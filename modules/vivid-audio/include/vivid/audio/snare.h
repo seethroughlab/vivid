@@ -140,9 +140,6 @@ public:
 
     /// @}
 
-protected:
-    void onTrigger() override;  // Called from audio thread
-
 private:
     float generateNoise();
 

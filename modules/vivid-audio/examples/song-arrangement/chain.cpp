@@ -73,7 +73,7 @@ void update(Context& ctx) {
 
     // Trigger kick from sequencer
     if (seq.triggered(0)) {
-        kick.trigger();
+        kick.midiNoteOn(60, 1.0f, 0);
     }
 
     // Adjust visuals based on song section

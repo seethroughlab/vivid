@@ -23,7 +23,8 @@ struct NoiseUniforms {
     float offsetY;
     int octaves;
     int noiseType;      // 0=Perlin, 1=Simplex, 2=Worley, 3=Value
-    float _pad[2];      // Padding to 64 bytes (multiple of 16)
+    int colorNoise;     // 0=grayscale, 1=RGB independent channels
+    int centerOrigin;   // 0=corner origin, 1=center origin
 };
 
 Noise::~Noise() {
@@ -56,8 +57,8 @@ struct Uniforms {
     offsetY: f32,
     octaves: i32,
     noiseType: i32,    // 0=Perlin, 1=Simplex, 2=Worley, 3=Value
-    _pad1: f32,
-    _pad2: f32,
+    colorNoise: i32,   // 0=grayscale, 1=RGB independent channels
+    centerOrigin: i32, // 0=corner origin, 1=center origin
 };
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -335,15 +336,30 @@ fn fbm3D(p: vec3f, octaves: i32, lacunarity: f32, persistence: f32, noiseType: i
 fn fs_main(input: VertexOutput) -> @location(0) vec4f {
     // Apply aspect ratio correction so noise isn't stretched
     let aspect = uniforms.resolution.x / uniforms.resolution.y;
-    let correctedUV = vec2f(input.uv.x * aspect, input.uv.y);
+    var correctedUV = vec2f(input.uv.x * aspect, input.uv.y);
+
+    // Center origin: scale from center instead of corner
+    if (uniforms.centerOrigin != 0) {
+        // Transform to centered coordinates (-aspect/2 to aspect/2, -0.5 to 0.5)
+        correctedUV = correctedUV - vec2f(aspect * 0.5, 0.5);
+    }
 
     // XY from UV, Z from parameter + time animation
     let xy = correctedUV * uniforms.scale + vec2f(uniforms.offsetX, uniforms.offsetY);
     let z = uniforms.z + uniforms.time * uniforms.speed;
 
     let p = vec3f(xy, z);
-    let n = fbm3D(p, uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
 
+    // Color noise: generate 3 independent noise channels
+    if (uniforms.colorNoise != 0) {
+        let r = fbm3D(p, uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
+        let g = fbm3D(p + vec3f(100.0, 0.0, 0.0), uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
+        let b = fbm3D(p + vec3f(0.0, 100.0, 0.0), uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
+        return vec4f(r, g, b, 1.0);
+    }
+
+    // Grayscale noise (default)
+    let n = fbm3D(p, uniforms.octaves, uniforms.lacunarity, uniforms.persistence, uniforms.noiseType);
     return vec4f(n, n, n, 1.0);
 }
 )";
@@ -406,6 +422,8 @@ void Noise::process(Context& ctx) {
     uniforms.offsetY = offset.y();
     uniforms.octaves = octaves;
     uniforms.noiseType = type.index();
+    uniforms.colorNoise = colorNoise ? 1 : 0;
+    uniforms.centerOrigin = centerOrigin ? 1 : 0;
 
     wgpuQueueWriteBuffer(ctx.queue(), m_uniformBuffer, 0, &uniforms, sizeof(uniforms));
 

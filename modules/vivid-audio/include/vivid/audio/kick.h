@@ -126,9 +126,6 @@ public:
 
     /// @}
 
-protected:
-    void onTrigger() override;  // Called from audio thread
-
 private:
     float softClip(float x) const;
 

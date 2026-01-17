@@ -163,10 +163,6 @@ void Clap::midiNoteOff(uint8_t /*note*/, float /*velocity*/, uint8_t /*channel*/
     // One-shot drum, nothing to do
 }
 
-void Clap::onTrigger() {
-    midiNoteOn(0, 1.0f, 0);
-}
-
 void Clap::reset() {
     m_env = 0.0f;
     m_tailEnv = 0.0f;
