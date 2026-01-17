@@ -37,48 +37,97 @@ Context::Context(GLFWwindow* window, WGPUDevice device, WGPUQueue queue)
     std::memset(m_keyPrev, 0, sizeof(m_keyPrev));
 }
 
+Context::Context(WGPUDevice device, WGPUQueue queue, int width, int height)
+    : m_window(nullptr)  // Headless mode
+    , m_device(device)
+    , m_queue(queue)
+{
+    // Set dimensions
+    m_width = width;
+    m_height = height;
+    m_renderWidth = width;
+    m_renderHeight = height;
+    m_renderResolutionSet = true;
+
+    // Initialize time to 0 (will be updated via injectDeltaTime)
+    m_time = 0.0;
+    m_lastTime = 0.0;
+    m_dt = 0.0;
+
+    // Initialize mouse position
+    m_mousePos = {0, 0};
+    m_lastMousePos = {0, 0};
+
+    // Initialize key states
+    std::memset(m_keyPrev, 0, sizeof(m_keyPrev));
+}
+
 Context::~Context() {
     // Nothing to clean up - we don't own the resources
 }
 
 void Context::beginFrame() {
-    // Update time
-    double now = glfwGetTime();
-    m_dt = now - m_lastTime;
-    m_lastTime = now;
-    m_time = now;
+    // Handle windowed vs headless mode
+    if (m_window) {
+        // Update time from GLFW
+        double now = glfwGetTime();
+        m_dt = now - m_lastTime;
+        m_lastTime = now;
+        m_time = now;
 
-    // Update window size and detect resizes
-    int prevWidth = m_width;
-    int prevHeight = m_height;
-    glfwGetFramebufferSize(m_window, &m_width, &m_height);
-    m_wasResized = (m_width != prevWidth || m_height != prevHeight);
+        // Update window size and detect resizes
+        int prevWidth = m_width;
+        int prevHeight = m_height;
+        glfwGetFramebufferSize(m_window, &m_width, &m_height);
+        m_wasResized = (m_width != prevWidth || m_height != prevHeight);
 
-    // Update window position
-    glfwGetWindowPos(m_window, &m_windowX, &m_windowY);
+        // Update window position
+        glfwGetWindowPos(m_window, &m_windowX, &m_windowY);
 
-    // Update mouse position
-    double mx, my;
-    glfwGetCursorPos(m_window, &mx, &my);
-    m_lastMousePos = m_mousePos;
-    m_mousePos = {static_cast<float>(mx), static_cast<float>(my)};
+        // Update mouse position
+        double mx, my;
+        glfwGetCursorPos(m_window, &mx, &my);
+        m_lastMousePos = m_mousePos;
+        m_mousePos = {static_cast<float>(mx), static_cast<float>(my)};
 
-    // Update mouse buttons
-    for (int i = 0; i < 3; ++i) {
-        bool current = glfwGetMouseButton(m_window, i) == GLFW_PRESS;
-        m_mouseButtons[i].pressed = current && !m_mouseButtonPrev[i];
-        m_mouseButtons[i].released = !current && m_mouseButtonPrev[i];
-        m_mouseButtons[i].held = current;
-        m_mouseButtonPrev[i] = current;
-    }
+        // Update mouse buttons
+        for (int i = 0; i < 3; ++i) {
+            bool current = glfwGetMouseButton(m_window, i) == GLFW_PRESS;
+            m_mouseButtons[i].pressed = current && !m_mouseButtonPrev[i];
+            m_mouseButtons[i].released = !current && m_mouseButtonPrev[i];
+            m_mouseButtons[i].held = current;
+            m_mouseButtonPrev[i] = current;
+        }
 
-    // Update keyboard
-    for (int i = 0; i < MAX_KEYS; ++i) {
-        bool current = glfwGetKey(m_window, i) == GLFW_PRESS;
-        m_keys[i].pressed = current && !m_keyPrev[i];
-        m_keys[i].released = !current && m_keyPrev[i];
-        m_keys[i].held = current;
-        m_keyPrev[i] = current;
+        // Update keyboard
+        for (int i = 0; i < MAX_KEYS; ++i) {
+            bool current = glfwGetKey(m_window, i) == GLFW_PRESS;
+            m_keys[i].pressed = current && !m_keyPrev[i];
+            m_keys[i].released = !current && m_keyPrev[i];
+            m_keys[i].held = current;
+            m_keyPrev[i] = current;
+        }
+    } else {
+        // Headless mode: time and input are injected externally
+        // Just update last mouse position for delta calculation
+        m_lastMousePos = m_mousePos;
+
+        // Update pressed/released states for injected input
+        for (int i = 0; i < 3; ++i) {
+            bool current = m_mouseButtonPrev[i];  // Current state from injection
+            m_mouseButtons[i].pressed = current && !m_mouseButtonPrevFrame[i];
+            m_mouseButtons[i].released = !current && m_mouseButtonPrevFrame[i];
+            m_mouseButtons[i].held = current;
+            m_mouseButtonPrevFrame[i] = current;
+        }
+
+        for (int i = 0; i < MAX_KEYS; ++i) {
+            bool current = m_keyPrev[i];  // Current state from injection
+            m_keys[i].pressed = current && !m_keyPrevFrame[i];
+            m_keys[i].released = !current && m_keyPrevFrame[i];
+            m_keys[i].held = current;
+            m_keyPrevFrame[i] = current;
+        }
     }
 
     // Clear output texture for this frame
@@ -95,6 +144,14 @@ void Context::endFrame() {
 
 glm::vec2 Context::mouseNorm() const {
     if (m_width <= 0 || m_height <= 0) return {0, 0};
+
+    // In headless mode, use render dimensions directly
+    if (!m_window) {
+        return {
+            m_mousePos.x / m_width,
+            m_mousePos.y / m_height
+        };
+    }
 
     // Mouse position from GLFW is in window coordinates, not framebuffer coordinates.
     // On HiDPI/Retina displays, framebuffer is 2x larger than window.
@@ -380,6 +437,37 @@ std::string Context::snapshot(const std::string& filename) {
         printf("[Snapshot] Failed to save: %s\n", outputPath.c_str());
         return "";
     }
+}
+
+// =============================================================================
+// Input Injection (for headless/embedded use)
+// =============================================================================
+
+void Context::injectMousePosition(float x, float y) {
+    m_mousePos = {x, y};
+}
+
+void Context::injectMouseButton(int button, bool pressed) {
+    if (button >= 0 && button < 3) {
+        m_mouseButtonPrev[button] = pressed;
+    }
+}
+
+void Context::injectKeyState(int keycode, bool pressed) {
+    if (keycode >= 0 && keycode < MAX_KEYS) {
+        m_keyPrev[keycode] = pressed;
+    }
+}
+
+void Context::injectScroll(float dx, float dy) {
+    m_scroll.x += dx;
+    m_scroll.y += dy;
+}
+
+void Context::injectDeltaTime(double dt) {
+    m_dt = dt;
+    m_time += dt;
+    ++m_frame;
 }
 
 } // namespace vivid

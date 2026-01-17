@@ -1,0 +1,13 @@
+[workspace]
+members = [
+    "src-tauri",
+    "crates/vivid-sys",
+    "crates/vivid",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Vivid"]
+license = "MIT"

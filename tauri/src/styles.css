@@ -1,0 +1,377 @@
+/* Vivid IDE - Transparent Overlay Styles */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-transparent: rgba(0, 0, 0, 0);
+  --bg-panel: rgba(20, 20, 25, 0.85);
+  --bg-panel-header: rgba(30, 30, 35, 0.9);
+  --border-color: rgba(100, 100, 120, 0.3);
+  --text-primary: rgba(255, 255, 255, 0.95);
+  --text-secondary: rgba(180, 180, 200, 0.8);
+  --accent-color: #6366f1;
+  --accent-glow: rgba(99, 102, 241, 0.3);
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+#app {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+}
+
+/* Title bar - uses data-tauri-drag-region for window dragging */
+.titlebar {
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border-color);
+  padding-left: 80px; /* Space for traffic lights on macOS */
+  user-select: none;
+}
+
+.titlebar .title {
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.titlebar .status {
+  position: absolute;
+  right: 16px;
+  font-size: 11px;
+  color: var(--accent-color);
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s ease;
+}
+
+.titlebar .status::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--accent-color);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent-glow);
+  transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+/* Connection status states */
+.titlebar .status.connected {
+  color: #4ade80;
+}
+
+.titlebar .status.connected::before {
+  background: #4ade80;
+  box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+}
+
+.titlebar .status.connecting {
+  color: #facc15;
+}
+
+.titlebar .status.connecting::before {
+  background: #facc15;
+  box-shadow: 0 0 8px rgba(250, 204, 21, 0.4);
+  animation: pulse 1s ease-in-out infinite;
+}
+
+.titlebar .status.disconnected {
+  color: #f87171;
+}
+
+.titlebar .status.disconnected::before {
+  background: #f87171;
+  box-shadow: 0 0 8px rgba(248, 113, 113, 0.4);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Main content area */
+.main-content {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+  background: transparent;
+}
+
+/* Panels */
+.panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+}
+
+.panel-left {
+  width: 240px;
+  border-left: none;
+  border-top: none;
+}
+
+.panel-right {
+  width: 400px;
+  border-right: none;
+  border-top: none;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--bg-panel-header);
+  border-bottom: 1px solid var(--border-color);
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.panel-toggle {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  -webkit-app-region: no-drag;
+}
+
+.panel-toggle:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.panel-content {
+  flex: 1;
+  overflow: auto;
+  padding: 12px;
+}
+
+/* Preview area (transparent) */
+.preview-area {
+  flex: 1;
+  background: transparent;
+  pointer-events: auto; /* Capture events and forward to egui */
+}
+
+/* Parameter controls */
+.param-group {
+  margin-bottom: 16px;
+}
+
+.param-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.param-group input[type="range"] {
+  width: 100%;
+  height: 4px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  outline: none;
+}
+
+.param-group input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  background: var(--accent-color);
+  border-radius: 50%;
+  cursor: pointer;
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+.param-value {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+/* Terminal */
+#terminal {
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+/* Status bar */
+.statusbar {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  background: var(--bg-panel-header);
+  border-top: 1px solid var(--border-color);
+  font-size: 11px;
+  color: var(--text-secondary);
+  gap: 16px;
+}
+
+.fps {
+  color: #4ade80;
+}
+
+/* Panel collapsed state */
+.panel.collapsed {
+  width: 40px;
+}
+
+.panel.collapsed .panel-content {
+  display: none;
+}
+
+.panel.collapsed .panel-header span:first-child {
+  display: none;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* xterm.js overrides */
+.xterm {
+  padding: 8px;
+}
+
+.xterm-viewport {
+  background: transparent !important;
+}
+
+/* Bottom panel (editor) */
+.panel-bottom {
+  height: 250px;
+  border-bottom: none;
+  border-left: none;
+  border-right: none;
+}
+
+.panel-bottom .panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.editor-filename {
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 300px;
+}
+
+.editor-filename.has-file {
+  color: var(--text-primary);
+}
+
+.editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editor-btn {
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-app-region: no-drag;
+}
+
+.editor-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: var(--text-primary);
+}
+
+.editor-btn:active {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.panel-bottom .panel-content {
+  padding: 0;
+  overflow: hidden;
+}
+
+#editor {
+  width: 100%;
+  height: 100%;
+}
+
+/* Editor status in statusbar */
+.editor-status {
+  color: var(--text-secondary);
+  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
+}
+
+.editor-status.modified::before {
+  content: '●';
+  color: var(--accent-color);
+  margin-right: 4px;
+}
+
+/* Panel collapsed state for bottom panel */
+.panel-bottom.collapsed {
+  height: 38px;
+}
+
+.panel-bottom.collapsed .panel-content {
+  display: none;
+}

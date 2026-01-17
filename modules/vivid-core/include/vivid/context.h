@@ -97,6 +97,22 @@ public:
      * @param queue WebGPU queue
      */
     Context(GLFWwindow* window, WGPUDevice device, WGPUQueue queue);
+
+    /**
+     * @brief Construct a headless context for embedded use
+     * @param device WebGPU device (owned by caller)
+     * @param queue WebGPU queue (owned by caller)
+     * @param width Render width in pixels
+     * @param height Render height in pixels
+     *
+     * Creates a context without a GLFW window, for use in embedded scenarios
+     * where the host application manages the window and GPU device.
+     *
+     * Input must be injected manually via setMousePosition(), setMouseButton(),
+     * setKeyState(), and injectScroll().
+     */
+    Context(WGPUDevice device, WGPUQueue queue, int width, int height);
+
     ~Context();
 
     /// @brief Called each frame before update
@@ -327,12 +343,22 @@ public:
      * Positive Y = mouse moved down (Y-down convention).
      */
     glm::vec2 mouseDeltaNorm() const {
+        glm::vec2 delta = m_mousePos - m_lastMousePos;
+
+        // In headless mode, use render dimensions directly
+        if (!m_window) {
+            if (m_width <= 0 || m_height <= 0) return {0, 0};
+            return {
+                delta.x / m_width,
+                delta.y / m_height
+            };
+        }
+
         // Mouse delta from GLFW is in window coordinates, not framebuffer coordinates.
         // Get window size for proper normalization.
         int windowW, windowH;
         glfwGetWindowSize(m_window, &windowW, &windowH);
         if (windowW <= 0 || windowH <= 0) return {0, 0};
-        glm::vec2 delta = m_mousePos - m_lastMousePos;
         return {
             delta.x / windowW,
             delta.y / windowH
@@ -401,6 +427,62 @@ public:
     bool superHeld() const {
         return m_keys[GLFW_KEY_LEFT_SUPER].held || m_keys[GLFW_KEY_RIGHT_SUPER].held;
     }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Input Injection (for headless/embedded use)
+    /// @{
+
+    /**
+     * @brief Check if context is running in headless mode
+     * @return True if no GLFW window (created via headless constructor)
+     */
+    bool isHeadless() const { return m_window == nullptr; }
+
+    /**
+     * @brief Inject mouse position (headless mode)
+     * @param x X position in pixels
+     * @param y Y position in pixels
+     *
+     * For embedded use when host manages input. In windowed mode,
+     * mouse position is read from GLFW automatically.
+     */
+    void injectMousePosition(float x, float y);
+
+    /**
+     * @brief Inject mouse button state (headless mode)
+     * @param button Button index (0=left, 1=right, 2=middle)
+     * @param pressed True if button is pressed
+     *
+     * For embedded use when host manages input.
+     */
+    void injectMouseButton(int button, bool pressed);
+
+    /**
+     * @brief Inject key state (headless mode)
+     * @param keycode GLFW key code
+     * @param pressed True if key is pressed
+     *
+     * For embedded use when host manages input.
+     */
+    void injectKeyState(int keycode, bool pressed);
+
+    /**
+     * @brief Inject scroll delta (headless mode)
+     * @param dx Horizontal scroll delta
+     * @param dy Vertical scroll delta
+     *
+     * For embedded use when host manages input.
+     */
+    void injectScroll(float dx, float dy);
+
+    /**
+     * @brief Update time manually (headless mode)
+     * @param dt Delta time since last frame
+     *
+     * For embedded use. In windowed mode, time is updated from GLFW.
+     */
+    void injectDeltaTime(double dt);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -1067,11 +1149,13 @@ private:
     glm::vec2 m_scroll = {0, 0};
     MouseButtonState m_mouseButtons[3];
     bool m_mouseButtonPrev[3] = {false, false, false};
+    bool m_mouseButtonPrevFrame[3] = {false, false, false};  // For headless mode edge detection
 
     // Keyboard
     static constexpr int MAX_KEYS = GLFW_KEY_LAST + 1;
     KeyState m_keys[MAX_KEYS];
     bool m_keyPrev[MAX_KEYS] = {};
+    bool m_keyPrevFrame[MAX_KEYS] = {};  // For headless mode edge detection
 
     // Output
     WGPUTextureView m_outputTexture = nullptr;

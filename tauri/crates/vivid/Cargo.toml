@@ -1,0 +1,15 @@
+[package]
+name = "vivid"
+version = "0.1.0"
+edition = "2021"
+description = "Safe Rust wrapper for vivid-core"
+authors = ["Vivid"]
+license = "MIT"
+
+[dependencies]
+vivid-sys = { path = "../vivid-sys" }
+thiserror = "1.0"
+wgpu = "23"
+
+[features]
+default = []

@@ -229,4 +229,48 @@ endif()
 
 message(STATUS "[vivid-core] Configured")
 
+# =============================================================================
+# Vivid C API library (for embedding in external applications like Tauri)
+# =============================================================================
+
+add_library(vivid-c SHARED
+    src/vivid_c.cpp
+)
+
+target_include_directories(vivid-c
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+target_link_libraries(vivid-c
+    PRIVATE vivid-core
+)
+
+target_compile_definitions(vivid-c PRIVATE VIVID_C_BUILDING_DLL)
+
+# Set library properties
+set_target_properties(vivid-c PROPERTIES
+    PUBLIC_HEADER "include/vivid/vivid_c.h"
+    VERSION ${PROJECT_VERSION}
+    SOVERSION 1
+)
+
+# Platform-specific settings for vivid-c
+if(APPLE)
+    set_target_properties(vivid-c PROPERTIES
+        INSTALL_RPATH "@executable_path;@loader_path"
+        BUILD_WITH_INSTALL_RPATH TRUE
+    )
+elseif(WIN32)
+    # Export all symbols to generate import library (.lib)
+    set_target_properties(vivid-c PROPERTIES
+        WINDOWS_EXPORT_ALL_SYMBOLS OFF
+        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+        ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug
+        ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release
+    )
+endif()
+
+message(STATUS "[vivid-c] C API library configured")
+
 # Note: The vivid executable is now built in cli/CMakeLists.txt
