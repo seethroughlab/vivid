@@ -8,6 +8,7 @@
 #include <vivid/chain.h>
 #include <vivid/operator.h>
 #include <vivid/hot_reload.h>
+#include <vivid/asset_loader.h>
 #include <vivid/video_exporter.h>
 #include <vivid/operator_registry.h>
 #include <vivid/chain_visualizer.h>
@@ -708,6 +709,35 @@ VIVID_C_API VividResult vivid_context_load_project(VividContext* ctx, const char
     }
 }
 
+VIVID_C_API VividResult vivid_configure_asset_paths(const char* vivid_root) {
+    if (!vivid_root) {
+        setError("Invalid argument");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    std::filesystem::path rootDir(vivid_root);
+    auto& assets = vivid::AssetLoader::instance();
+
+    // Add build directory (contains shaders/)
+    std::filesystem::path buildDir = rootDir / "build";
+    if (std::filesystem::exists(buildDir)) {
+        assets.addSearchPath(buildDir);
+    }
+
+    // Add modules directory for module-specific assets
+    std::filesystem::path modulesDir = rootDir / "modules";
+    if (std::filesystem::exists(modulesDir)) {
+        assets.addSearchPath(modulesDir);
+        // Add vivid-core assets specifically (fonts)
+        std::filesystem::path coreAssets = modulesDir / "vivid-core" / "assets";
+        if (std::filesystem::exists(coreAssets)) {
+            assets.addSearchPath(coreAssets);
+        }
+    }
+
+    return VIVID_OK;
+}
+
 VIVID_C_API VividResult vivid_context_set_root_dir(VividContext* ctx, const char* path) {
     if (!ctx || !path) {
         setError("Invalid argument");
@@ -715,7 +745,31 @@ VIVID_C_API VividResult vivid_context_set_root_dir(VividContext* ctx, const char
     }
 
     auto* internal = toInternal(ctx);
-    internal->hotReload->setRootDir(path);
+    std::filesystem::path rootDir(path);
+
+    // Configure hot-reload to find headers
+    internal->hotReload->setRootDir(rootDir);
+
+    // Configure asset loader to find shaders, fonts, etc.
+    auto& assets = vivid::AssetLoader::instance();
+
+    // Add build directory (contains shaders/, fonts from build process)
+    std::filesystem::path buildDir = rootDir / "build";
+    if (std::filesystem::exists(buildDir)) {
+        assets.addSearchPath(buildDir);
+    }
+
+    // Add modules directory for module-specific assets
+    std::filesystem::path modulesDir = rootDir / "modules";
+    if (std::filesystem::exists(modulesDir)) {
+        assets.addSearchPath(modulesDir);
+        // Add vivid-core assets specifically
+        std::filesystem::path coreAssets = modulesDir / "vivid-core" / "assets";
+        if (std::filesystem::exists(coreAssets)) {
+            assets.addSearchPath(coreAssets);
+        }
+    }
+
     return VIVID_OK;
 }
 
