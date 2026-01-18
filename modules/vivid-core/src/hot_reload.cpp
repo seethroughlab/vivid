@@ -158,6 +158,10 @@ void HotReload::forceReload() {
     m_lastModTime = fs::file_time_type::min();
 }
 
+void HotReload::setRootDir(const fs::path& rootDir) {
+    m_rootDir = rootDir;
+}
+
 bool HotReload::checkNeedsReload() {
     if (m_sourcePath.empty()) {
         return false;
@@ -314,17 +318,25 @@ bool HotReload::compile() {
     fs::path devVividInclude;
     bool isDevelopmentMode = false;
 
-    for (int i = 2; i <= 4; ++i) {
-        fs::path candidate = exeDir;
-        for (int j = 0; j < i; ++j) {
-            candidate = candidate / "..";
-        }
-        fs::path candidateInclude = candidate / "modules" / "vivid-core" / "include";
-        if (fs::exists(candidateInclude / "vivid")) {
-            rootDir = candidate;
-            devVividInclude = candidateInclude;
-            isDevelopmentMode = true;
-            break;
+    // If root was set explicitly, use it
+    if (!m_rootDir.empty() && fs::exists(m_rootDir / "modules" / "vivid-core" / "include" / "vivid")) {
+        rootDir = m_rootDir;
+        devVividInclude = m_rootDir / "modules" / "vivid-core" / "include";
+        isDevelopmentMode = true;
+    } else {
+        // Search upwards from executable directory
+        for (int i = 2; i <= 4; ++i) {
+            fs::path candidate = exeDir;
+            for (int j = 0; j < i; ++j) {
+                candidate = candidate / "..";
+            }
+            fs::path candidateInclude = candidate / "modules" / "vivid-core" / "include";
+            if (fs::exists(candidateInclude / "vivid")) {
+                rootDir = candidate;
+                devVividInclude = candidateInclude;
+                isDevelopmentMode = true;
+                break;
+            }
         }
     }
 

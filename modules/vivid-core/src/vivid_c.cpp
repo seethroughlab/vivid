@@ -708,6 +708,17 @@ VIVID_C_API VividResult vivid_context_load_project(VividContext* ctx, const char
     }
 }
 
+VIVID_C_API VividResult vivid_context_set_root_dir(VividContext* ctx, const char* path) {
+    if (!ctx || !path) {
+        setError("Invalid argument");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    auto* internal = toInternal(ctx);
+    internal->hotReload->setRootDir(path);
+    return VIVID_OK;
+}
+
 VIVID_C_API VividResult vivid_context_reload(VividContext* ctx) {
     if (!ctx) {
         setError("Invalid argument");

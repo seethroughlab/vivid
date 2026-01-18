@@ -102,6 +102,10 @@ public:
     // Force a reload
     void forceReload();
 
+    // Set the vivid root directory explicitly (for embedded use)
+    // When set, skips the automatic search for vivid installation
+    void setRootDir(const fs::path& rootDir);
+
 private:
     bool compile();
     bool load();
@@ -125,6 +129,7 @@ private:
     bool m_needsSetup = false;      // True after reload, before setup is called
 
     std::unique_ptr<ModuleRegistry> m_moduleRegistry;
+    fs::path m_rootDir;  // Explicit vivid root (if set, skips auto-search)
 
     // Parse compiler output into structured errors
     void parseCompilerOutput(const std::string& output);
