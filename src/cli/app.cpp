@@ -14,7 +14,7 @@
 #include <vivid/context.h>
 #include <vivid/display.h>
 #include <vivid/hot_reload.h>
-#include <vivid/editor_bridge.h>
+#include <vivid/runtime_api.h>
 #include <vivid/audio_buffer.h>
 #include <vivid/video_exporter.h>
 #include <vivid/cli.h>
@@ -333,7 +333,7 @@ struct MainLoopContext {
     double lastFpsTime = 0.0;
     int frameCount = 0;
     double lastFrameTime = 0.0;
-    EditorPerformanceStats perfStats;
+    RuntimePerformanceStats perfStats;
     static constexpr size_t kHistorySize = 60;
 
     // Loop control
@@ -359,7 +359,7 @@ struct MainLoopContext {
     Display* display = nullptr;
     HotReload* hotReload = nullptr;
     vivid::ChainVisualizer* chainVisualizer = nullptr;
-    EditorBridge* editorBridge = nullptr;
+    RuntimeAPI* editorBridge = nullptr;
 
     // CLI args needed in loop
     std::string snapshotPath;
@@ -382,9 +382,9 @@ struct MainLoopContext {
 
     // Callbacks (lambdas converted to std::function)
     std::function<void(const std::string&)> updateSourceLines;
-    std::function<std::vector<EditorOperatorInfo>()> gatherOperatorInfo;
-    std::function<std::vector<EditorParamInfo>()> gatherParamValues;
-    std::function<EditorWindowState()> gatherWindowState;
+    std::function<std::vector<RuntimeOperatorInfo>()> gatherOperatorInfo;
+    std::function<std::vector<RuntimeParamInfo>()> gatherParamValues;
+    std::function<RuntimeWindowState()> gatherWindowState;
 };
 
 // -----------------------------------------------------------------------------
@@ -1096,7 +1096,7 @@ struct Application::Impl {
     std::unique_ptr<Display> display;
     std::unique_ptr<HotReload> hotReload;
     std::unique_ptr<vivid::ChainVisualizer> chainVisualizer;
-    std::unique_ptr<EditorBridge> editorBridge;
+    std::unique_ptr<RuntimeAPI> editorBridge;
 
     // WebGPU objects
     WGPUInstance instance = nullptr;
@@ -1419,10 +1419,10 @@ int Application::init(const AppConfig& config) {
     // No need to create it again here
 
     // Create editor bridge
-    m_impl->editorBridge = std::make_unique<EditorBridge>();
+    m_impl->editorBridge = std::make_unique<RuntimeAPI>();
     m_impl->editorBridge->start();
     m_impl->editorBridge->onReloadCommand([this](const std::string&) {
-        std::cout << "[EditorBridge] Force reload triggered by editor\n";
+        std::cout << "[RuntimeAPI] Force reload triggered by editor\n";
         m_impl->hotReload->forceReload();
     });
     m_impl->editorBridge->onParamChange([this](const std::string& opName, const std::string& paramName, const float value[4]) {
@@ -1496,12 +1496,12 @@ int Application::init(const AppConfig& config) {
     });
 
     // MCP get_chain_structure tool: return chain operators and connections
-    m_impl->editorBridge->onRequestChainStructure([this]() -> std::vector<EditorBridge::ChainOperatorInfo> {
-        std::vector<EditorBridge::ChainOperatorInfo> result;
+    m_impl->editorBridge->onRequestChainStructure([this]() -> std::vector<RuntimeAPI::ChainOperatorInfo> {
+        std::vector<RuntimeAPI::ChainOperatorInfo> result;
         if (!m_impl->ctx->hasChain()) return result;
 
         for (const auto& opInfo : m_impl->ctx->registeredOperators()) {
-            EditorBridge::ChainOperatorInfo info;
+            RuntimeAPI::ChainOperatorInfo info;
             info.name = opInfo.name;
             if (opInfo.op) {
                 info.displayName = opInfo.op->name();
@@ -1520,8 +1520,8 @@ int Application::init(const AppConfig& config) {
     });
 
     // MCP get_frame_info tool: return current frame/time/fps
-    m_impl->editorBridge->onRequestFrameInfo([this]() -> EditorBridge::FrameInfo {
-        EditorBridge::FrameInfo info;
+    m_impl->editorBridge->onRequestFrameInfo([this]() -> RuntimeAPI::FrameInfo {
+        RuntimeAPI::FrameInfo info;
         if (m_impl->ctx) {
             info.frame = m_impl->ctx->frame();
             info.time = m_impl->ctx->time();
@@ -1643,8 +1643,8 @@ int Application::init(const AppConfig& config) {
         }
     };
 
-    auto gatherOperatorInfo = [this]() -> std::vector<EditorOperatorInfo> {
-        std::vector<EditorOperatorInfo> result;
+    auto gatherOperatorInfo = [this]() -> std::vector<RuntimeOperatorInfo> {
+        std::vector<RuntimeOperatorInfo> result;
         if (!m_impl->ctx->hasChain()) return result;
 
         Chain& chain = m_impl->ctx->chain();
@@ -1652,7 +1652,7 @@ int Application::init(const AppConfig& config) {
             Operator* op = chain.getByName(name);
             if (!op) continue;
 
-            EditorOperatorInfo info;
+            RuntimeOperatorInfo info;
             info.chainName = name;
             info.displayName = op->name();
             info.outputType = outputKindName(op->outputKind());
@@ -1669,8 +1669,8 @@ int Application::init(const AppConfig& config) {
         return result;
     };
 
-    auto gatherParamValues = [this]() -> std::vector<EditorParamInfo> {
-        std::vector<EditorParamInfo> result;
+    auto gatherParamValues = [this]() -> std::vector<RuntimeParamInfo> {
+        std::vector<RuntimeParamInfo> result;
         if (!m_impl->ctx->hasChain()) return result;
 
         Chain& chain = m_impl->ctx->chain();
@@ -1679,7 +1679,7 @@ int Application::init(const AppConfig& config) {
             if (!op) continue;
 
             for (const auto& decl : op->params()) {
-                EditorParamInfo info;
+                RuntimeParamInfo info;
                 info.operatorName = name;
                 info.paramName = decl.name;
                 info.minVal = decl.minVal;
@@ -1704,8 +1704,8 @@ int Application::init(const AppConfig& config) {
         return result;
     };
 
-    auto gatherWindowState = [this]() -> EditorWindowState {
-        EditorWindowState state;
+    auto gatherWindowState = [this]() -> RuntimeWindowState {
+        RuntimeWindowState state;
         state.fullscreen = m_impl->ctx->fullscreen();
         state.borderless = m_impl->ctx->borderless();
         state.alwaysOnTop = m_impl->ctx->alwaysOnTop();
@@ -1715,7 +1715,7 @@ int Application::init(const AppConfig& config) {
         int monitorCount = 0;
         GLFWmonitor** monitors = glfwGetMonitors(&monitorCount);
         for (int i = 0; i < monitorCount; ++i) {
-            EditorMonitorInfo mInfo;
+            RuntimeMonitorInfo mInfo;
             mInfo.index = i;
             const char* name = glfwGetMonitorName(monitors[i]);
             mInfo.name = name ? name : ("Monitor " + std::to_string(i + 1));

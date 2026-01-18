@@ -1,4 +1,4 @@
-/* Vivid IDE - Transparent Overlay Styles */
+/* Vivid IDE - AI Studio Style Layout */
 
 * {
   margin: 0;
@@ -52,6 +52,11 @@ html, body {
   font-size: 13px;
   color: var(--text-secondary);
   pointer-events: none;
+}
+
+.titlebar .title .project-name {
+  color: var(--text-primary);
+  margin-left: 8px;
 }
 
 .titlebar .status {
@@ -110,6 +115,87 @@ html, body {
   50% { opacity: 0.5; }
 }
 
+/* Menu bar */
+.menu-bar {
+  position: absolute;
+  left: 80px; /* After traffic lights */
+  display: flex;
+  align-items: center;
+  height: 100%;
+  z-index: 100;
+}
+
+.menu-item {
+  position: relative;
+  -webkit-app-region: no-drag;
+}
+
+.menu-label {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.menu-label:hover,
+.menu-item.open .menu-label {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.menu-dropdown {
+  display: none;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 200px;
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 4px 0;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+.menu-item.open .menu-dropdown {
+  display: block;
+}
+
+.menu-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 8px 16px;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.menu-option:hover {
+  background: var(--accent-color);
+}
+
+.menu-option:active {
+  background: rgba(99, 102, 241, 0.8);
+}
+
+.menu-separator {
+  height: 1px;
+  background: var(--border-color);
+  margin: 4px 8px;
+}
+
 /* Main content area */
 .main-content {
   flex: 1;
@@ -126,16 +212,19 @@ html, body {
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-color);
+  transition: width 0.2s ease;
 }
 
+/* Left panel: Terminal (Claude Code) - wider for code output */
 .panel-left {
-  width: 240px;
+  width: 350px;
   border-left: none;
   border-top: none;
 }
 
+/* Right panel: Parameters - narrower, just sliders */
 .panel-right {
-  width: 400px;
+  width: 280px;
   border-right: none;
   border-top: none;
 }
@@ -173,82 +262,6 @@ html, body {
   padding: 12px;
 }
 
-/* Preview area (transparent) */
-.preview-area {
-  flex: 1;
-  background: transparent;
-  pointer-events: auto; /* Capture events and forward to egui */
-}
-
-/* Parameter controls */
-.param-group {
-  margin-bottom: 16px;
-}
-
-.param-group label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 11px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.param-group input[type="range"] {
-  width: 100%;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 2px;
-  outline: none;
-}
-
-.param-group input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 14px;
-  height: 14px;
-  background: var(--accent-color);
-  border-radius: 50%;
-  cursor: pointer;
-  box-shadow: 0 0 8px var(--accent-glow);
-}
-
-.param-value {
-  display: block;
-  margin-top: 4px;
-  font-size: 12px;
-  color: var(--text-primary);
-  font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
-}
-
-/* Terminal */
-#terminal {
-  width: 100%;
-  height: 100%;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 4px;
-}
-
-/* Status bar */
-.statusbar {
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 0 12px;
-  background: var(--bg-panel-header);
-  border-top: 1px solid var(--border-color);
-  font-size: 11px;
-  color: var(--text-secondary);
-  gap: 16px;
-}
-
-.fps {
-  color: #4ade80;
-}
-
 /* Panel collapsed state */
 .panel.collapsed {
   width: 40px;
@@ -262,48 +275,65 @@ html, body {
   display: none;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Center area */
+.center-area {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
-::-webkit-scrollbar-track {
+/* Preview area (transparent - wgpu renders behind) */
+.preview-area {
+  flex: 1;
   background: transparent;
+  pointer-events: auto; /* Capture events and forward to egui */
 }
 
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 4px;
+/* Editor overlay - drops down from top of center area */
+.editor-overlay {
+  position: relative;
+  z-index: 10;
+  width: 100%;
+  height: 50%;
+  min-height: 150px;
+  max-height: 70%;
+  background: rgba(20, 20, 25, 0.9);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  transition: height 0.2s ease;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.3);
-}
-
-/* xterm.js overrides */
-.xterm {
-  padding: 8px;
-}
-
-.xterm-viewport {
-  background: transparent !important;
-}
-
-/* Bottom panel (editor) */
-.panel-bottom {
-  height: 250px;
-  border-bottom: none;
-  border-left: none;
-  border-right: none;
-}
-
-.panel-bottom .panel-header {
+.editor-overlay .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
 
+.editor-overlay .panel-content {
+  flex: 1;
+  padding: 0;
+  overflow: hidden;
+}
+
+.editor-overlay.collapsed {
+  height: 38px;
+  min-height: 38px;
+}
+
+.editor-overlay.collapsed .panel-content {
+  display: none;
+}
+
+.editor-overlay.hidden {
+  display: none;
+}
+
+/* Editor filename */
 .editor-filename {
   font-family: 'SF Mono', 'Monaco', 'Consolas', monospace;
   font-size: 12px;
@@ -345,11 +375,6 @@ html, body {
   background: rgba(255, 255, 255, 0.2);
 }
 
-.panel-bottom .panel-content {
-  padding: 0;
-  overflow: hidden;
-}
-
 #editor {
   width: 100%;
   height: 100%;
@@ -362,18 +387,45 @@ html, body {
 }
 
 .editor-status.modified::before {
-  content: '●';
+  content: '\25CF';
   color: var(--accent-color);
   margin-right: 4px;
 }
 
-/* Panel collapsed state for bottom panel */
-.panel-bottom.collapsed {
-  height: 38px;
+/* Editor with error state */
+.editor-overlay.has-error {
+  border-color: rgba(239, 68, 68, 0.4);
 }
 
-.panel-bottom.collapsed .panel-content {
-  display: none;
+.editor-overlay.has-error .panel-header {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), transparent);
+  border-bottom-color: rgba(239, 68, 68, 0.3);
+}
+
+/* Terminal */
+#terminal {
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 4px;
+}
+
+/* Status bar */
+.statusbar {
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 0 12px;
+  background: var(--bg-panel-header);
+  border-top: 1px solid var(--border-color);
+  font-size: 11px;
+  color: var(--text-secondary);
+  gap: 16px;
+}
+
+.fps {
+  color: #4ade80;
 }
 
 /* Inspector sections */
@@ -635,16 +687,6 @@ html, body {
   }
 }
 
-/* Editor panel with error state */
-.panel-bottom.has-error {
-  border-color: rgba(239, 68, 68, 0.4);
-}
-
-.panel-bottom.has-error .panel-header {
-  background: linear-gradient(135deg, rgba(239, 68, 68, 0.1), transparent);
-  border-bottom-color: rgba(239, 68, 68, 0.3);
-}
-
 /* Error line flash animation in Monaco editor */
 .error-line-flash {
   background: rgba(239, 68, 68, 0.3) !important;
@@ -658,4 +700,32 @@ html, body {
   100% {
     background: transparent;
   }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+/* xterm.js overrides */
+.xterm {
+  padding: 8px;
+}
+
+.xterm-viewport {
+  background: transparent !important;
 }

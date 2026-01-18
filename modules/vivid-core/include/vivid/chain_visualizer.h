@@ -100,7 +100,7 @@ public:
     void saveSnapshot(Context& ctx);
     bool snapshotRequested() const { return m_snapshotRequested; }
 
-    // Solo mode control (for EditorBridge integration)
+    // Solo mode control (for RuntimeAPI integration)
     void enterSoloMode(Operator* op, const std::string& name);
     void exitSoloMode();
     bool inSoloMode() const { return m_inSoloMode; }
@@ -110,14 +110,14 @@ public:
     // Sets ctx.outputTexture to solo operator's output when in solo mode
     void updateSoloOutput(Context& ctx);
 
-    // Focused node mode (for EditorBridge integration)
+    // Focused node mode (for RuntimeAPI integration)
     // When cursor is in an operator's code in the editor, that node gets a 3x larger preview
     void setFocusedNode(const std::string& operatorName);
     void clearFocusedNode();
     bool isFocused(const std::string& operatorName) const;
 
     // Pending changes indicator (Claude-first workflow)
-    // Set by app.cpp each frame based on EditorBridge pending count
+    // Set by app.cpp each frame based on RuntimeAPI pending count
     void setPendingChangeCount(size_t count) { m_pendingChangeCount = count; }
     size_t pendingChangeCount() const { return m_pendingChangeCount; }
 

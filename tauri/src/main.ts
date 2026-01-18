@@ -46,12 +46,77 @@ let isModified: boolean = false;
 let operators: vivid.OperatorInfo[] = [];
 let selectedOperator: string | null = null;
 
+// --- Persistent Layout ---
+
+interface LayoutState {
+  terminalCollapsed: boolean;
+  inspectorCollapsed: boolean;
+  editorCollapsed: boolean;
+}
+
+const LAYOUT_STORAGE_KEY = "vivid-ide-layout";
+
+function saveLayout() {
+  const terminalPanel = document.getElementById("terminal-panel");
+  const inspectorPanel = document.getElementById("inspector-panel");
+  const editorPanel = document.getElementById("editor-panel");
+
+  const layout: LayoutState = {
+    terminalCollapsed: terminalPanel?.classList.contains("collapsed") ?? false,
+    inspectorCollapsed: inspectorPanel?.classList.contains("collapsed") ?? false,
+    editorCollapsed: editorPanel?.classList.contains("collapsed") ?? false,
+  };
+
+  localStorage.setItem(LAYOUT_STORAGE_KEY, JSON.stringify(layout));
+}
+
+function restoreLayout() {
+  try {
+    const stored = localStorage.getItem(LAYOUT_STORAGE_KEY);
+    if (!stored) return;
+
+    const layout: LayoutState = JSON.parse(stored);
+
+    const terminalPanel = document.getElementById("terminal-panel");
+    const inspectorPanel = document.getElementById("inspector-panel");
+    const editorPanel = document.getElementById("editor-panel");
+    const terminalToggle = document.getElementById("toggle-terminal");
+    const inspectorToggle = document.getElementById("toggle-inspector");
+    const editorToggle = document.getElementById("toggle-editor");
+
+    if (layout.terminalCollapsed) {
+      terminalPanel?.classList.add("collapsed");
+      if (terminalToggle) terminalToggle.textContent = "+";
+    }
+
+    if (layout.inspectorCollapsed) {
+      inspectorPanel?.classList.add("collapsed");
+      if (inspectorToggle) inspectorToggle.textContent = "+";
+    }
+
+    if (layout.editorCollapsed) {
+      editorPanel?.classList.add("collapsed");
+      if (editorToggle) editorToggle.textContent = "+";
+    }
+
+    console.log("[Vivid] Layout restored:", layout);
+  } catch (e) {
+    console.error("[Vivid] Failed to restore layout:", e);
+  }
+}
+
 // Initialize the application
 async function init() {
   console.log("Vivid IDE initializing...");
 
+  // Restore saved layout before anything else
+  restoreLayout();
+
   // Set up window dragging on title bar
   setupWindowDragging();
+
+  // Set up file menu
+  setupFileMenu();
 
   // Set up panel toggles
   setupPanelToggles();
@@ -74,6 +139,9 @@ async function init() {
   // Set up keyboard shortcuts
   setupKeyboardShortcuts();
 
+  // Set up menu event listeners
+  setupMenuListeners();
+
   // Update resolution display
   updateResolution();
   window.addEventListener("resize", updateResolution);
@@ -86,7 +154,7 @@ function setupWindowDragging() {
       // Only drag on left mouse button and not on interactive elements
       if ((e as MouseEvent).button === 0) {
         const target = e.target as HTMLElement;
-        if (!target.closest("button") && !target.closest("input")) {
+        if (!target.closest("button") && !target.closest("input") && !target.closest(".menu-item")) {
           try {
             await getCurrentWindow().startDragging();
           } catch (err) {
@@ -98,6 +166,166 @@ function setupWindowDragging() {
   }
 }
 
+// --- File Menu ---
+
+function setupFileMenu() {
+  const fileMenu = document.getElementById("file-menu");
+  const fileDropdown = document.getElementById("file-dropdown");
+
+  if (!fileMenu || !fileDropdown) return;
+
+  // Toggle menu on click
+  fileMenu.querySelector(".menu-label")?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    fileMenu.classList.toggle("open");
+  });
+
+  // Close menu when clicking outside
+  document.addEventListener("click", (e) => {
+    if (!fileMenu.contains(e.target as Node)) {
+      fileMenu.classList.remove("open");
+    }
+  });
+
+  // Close menu on escape
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      fileMenu.classList.remove("open");
+    }
+  });
+
+  // Menu option handlers
+  document.getElementById("menu-new-project")?.addEventListener("click", async () => {
+    fileMenu.classList.remove("open");
+    await newProject();
+  });
+
+  document.getElementById("menu-open-project")?.addEventListener("click", async () => {
+    fileMenu.classList.remove("open");
+    await openProject();
+  });
+
+  document.getElementById("menu-open-file")?.addEventListener("click", async () => {
+    fileMenu.classList.remove("open");
+    await openFile();
+  });
+
+  document.getElementById("menu-save-file")?.addEventListener("click", async () => {
+    fileMenu.classList.remove("open");
+    await saveFile();
+  });
+}
+
+async function newProject() {
+  try {
+    // Ask for project name first
+    const projectName = await promptProjectName();
+    if (!projectName) return;
+
+    // Ask where to save the project
+    const parentDir = await open({
+      directory: true,
+      multiple: false,
+      title: "Choose location for new project",
+    });
+
+    if (!parentDir || typeof parentDir !== "string") return;
+
+    const projectPath = `${parentDir}/${projectName}`;
+    console.log("[Vivid] Creating new project at:", projectPath);
+
+    // Create the project using Tauri command (calls `vivid new` CLI)
+    // This creates the full project structure with AGENTS.md, BRIEF.md, etc.
+    await invoke("create_project", {
+      path: projectPath,
+      name: projectName,
+      template: "blank"  // TODO: Add template picker UI
+    });
+
+    // Load the new project
+    await vivid.loadProject(projectPath);
+    currentProjectPath = projectPath;
+    updateProjectTitle();
+
+    // Wait for project to initialize, then refresh state
+    await new Promise(resolve => setTimeout(resolve, 500));
+    await refreshVividState();
+
+    console.log("[Vivid] New project created successfully");
+  } catch (e) {
+    console.error("[Vivid] Failed to create new project:", e);
+    // Show error to user
+    alert(`Failed to create project: ${e}`);
+  }
+}
+
+// Simple prompt for project name using a dialog
+async function promptProjectName(): Promise<string | null> {
+  // For now, use a simple browser prompt
+  // TODO: Could be replaced with a custom modal
+  const name = window.prompt("Enter project name:", "my-project");
+  if (!name || name.trim() === "") return null;
+
+  // Sanitize the name (remove special characters, replace spaces with hyphens)
+  const sanitized = name.trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-");
+
+  return sanitized || null;
+}
+
+// --- Open Project ---
+
+// Current project path (for title display)
+let currentProjectPath: string | null = null;
+
+async function openProject() {
+  try {
+    // Open folder dialog
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: "Open Vivid Project",
+    });
+
+    if (selected && typeof selected === "string") {
+      console.log("[Vivid] Opening project:", selected);
+
+      // Load the project
+      await vivid.loadProject(selected);
+      currentProjectPath = selected;
+
+      // Update the title bar
+      updateProjectTitle();
+
+      // Clear the current file in editor (will be reloaded)
+      currentFilePath = null;
+
+      // Wait a moment for the project to initialize, then refresh state
+      await new Promise(resolve => setTimeout(resolve, 500));
+      await refreshVividState();
+
+      console.log("[Vivid] Project opened successfully");
+    }
+  } catch (e) {
+    console.error("[Vivid] Failed to open project:", e);
+  }
+}
+
+function updateProjectTitle() {
+  const titleEl = document.getElementById("title");
+  if (titleEl) {
+    if (currentProjectPath) {
+      // Extract just the project folder name from the path
+      const projectName = currentProjectPath.split("/").pop() || currentProjectPath;
+      titleEl.innerHTML = `Vivid — <span class="project-name">${projectName}</span>`;
+    } else {
+      titleEl.textContent = "Vivid";
+    }
+  }
+}
+
 function setupPanelToggles() {
   const inspectorToggle = document.getElementById("toggle-inspector");
   const terminalToggle = document.getElementById("toggle-terminal");
@@ -106,30 +334,43 @@ function setupPanelToggles() {
   const terminalPanel = document.getElementById("terminal-panel");
   const editorPanel = document.getElementById("editor-panel");
 
-  inspectorToggle?.addEventListener("click", () => {
-    inspectorPanel?.classList.toggle("collapsed");
-    if (inspectorToggle) {
-      inspectorToggle.textContent = inspectorPanel?.classList.contains("collapsed") ? "+" : "−";
-    }
-  });
+  inspectorToggle?.addEventListener("click", () => toggleInspector());
+  terminalToggle?.addEventListener("click", () => toggleTerminal());
+  editorToggle?.addEventListener("click", () => toggleEditor());
+}
 
-  terminalToggle?.addEventListener("click", () => {
-    terminalPanel?.classList.toggle("collapsed");
-    if (terminalToggle) {
-      terminalToggle.textContent = terminalPanel?.classList.contains("collapsed") ? "+" : "−";
-    }
-    // Resize terminal when panel is toggled
-    setTimeout(() => fitAddon?.fit(), 100);
-  });
+function toggleTerminal() {
+  const terminalPanel = document.getElementById("terminal-panel");
+  const terminalToggle = document.getElementById("toggle-terminal");
+  terminalPanel?.classList.toggle("collapsed");
+  if (terminalToggle) {
+    terminalToggle.textContent = terminalPanel?.classList.contains("collapsed") ? "+" : "−";
+  }
+  // Resize terminal when panel is toggled
+  setTimeout(() => fitAddon?.fit(), 100);
+  saveLayout();
+}
 
-  editorToggle?.addEventListener("click", () => {
-    editorPanel?.classList.toggle("collapsed");
-    if (editorToggle) {
-      editorToggle.textContent = editorPanel?.classList.contains("collapsed") ? "+" : "−";
-    }
-    // Resize editor when panel is toggled
-    setTimeout(() => editor?.layout(), 100);
-  });
+function toggleInspector() {
+  const inspectorPanel = document.getElementById("inspector-panel");
+  const inspectorToggle = document.getElementById("toggle-inspector");
+  inspectorPanel?.classList.toggle("collapsed");
+  if (inspectorToggle) {
+    inspectorToggle.textContent = inspectorPanel?.classList.contains("collapsed") ? "+" : "−";
+  }
+  saveLayout();
+}
+
+function toggleEditor() {
+  const editorPanel = document.getElementById("editor-panel");
+  const editorToggle = document.getElementById("toggle-editor");
+  editorPanel?.classList.toggle("collapsed");
+  if (editorToggle) {
+    editorToggle.textContent = editorPanel?.classList.contains("collapsed") ? "+" : "−";
+  }
+  // Resize editor when panel is toggled
+  setTimeout(() => editor?.layout(), 100);
+  saveLayout();
 }
 
 // Forward mouse/scroll events to vivid-core for node graph interaction
@@ -573,6 +814,18 @@ async function saveFile() {
     isModified = false;
     updateEditorStatus();
     console.log(`Saved: ${path}`);
+
+    // Trigger hot-reload if this is a chain source file
+    if (path.endsWith(".cpp") || path.endsWith(".h") || path.endsWith(".hpp")) {
+      try {
+        await vivid.reloadProject();
+        console.log("Hot-reload triggered");
+        // Refresh state after reload to pick up any changes
+        setTimeout(() => refreshVividState(), 500);
+      } catch (reloadErr) {
+        console.error("Hot-reload failed:", reloadErr);
+      }
+    }
   } catch (e) {
     console.error("Failed to save file:", e);
   }
@@ -616,6 +869,13 @@ async function refreshVividState() {
 
     if (projectInfo.loaded && projectInfo.chain_path) {
       console.log("[Vivid] Project loaded, chain path:", projectInfo.chain_path);
+
+      // Update the project title
+      if (projectInfo.project_path) {
+        currentProjectPath = projectInfo.project_path;
+        updateProjectTitle();
+      }
+
       // Auto-load chain.cpp in editor if no file is open
       if (!currentFilePath) {
         await loadFileInEditor(projectInfo.chain_path);
@@ -1041,6 +1301,50 @@ function createParamControl(opName: string, param: vivid.ParamInfo): HTMLElement
   return wrapper;
 }
 
+// --- Menu Event Listeners ---
+
+async function setupMenuListeners() {
+  console.log("[Vivid] Setting up menu listeners");
+
+  await listen<string>("menu-action", async (event) => {
+    const action = event.payload;
+    console.log("[Vivid] Menu action:", action);
+
+    switch (action) {
+      case "new_project":
+        await newProject();
+        break;
+      case "open_project":
+        await openProject();
+        break;
+      case "open_file":
+        await openFile();
+        break;
+      case "save":
+        await saveFile();
+        break;
+      case "reload":
+        try {
+          await vivid.reloadProject();
+          await refreshVividState();
+          console.log("Project reloaded via menu");
+        } catch (err) {
+          console.error("Failed to reload:", err);
+        }
+        break;
+      case "toggle_terminal":
+        toggleTerminal();
+        break;
+      case "toggle_inspector":
+        toggleInspector();
+        break;
+      case "toggle_editor":
+        toggleEditor();
+        break;
+    }
+  });
+}
+
 // --- Keyboard Shortcuts ---
 
 function setupKeyboardShortcuts() {
@@ -1063,6 +1367,46 @@ function setupKeyboardShortcuts() {
       } else {
         console.log("[Vivid] Tab ignored - inside editor/terminal");
       }
+    }
+
+    // Cmd+N / Ctrl+N - new project
+    if ((e.metaKey || e.ctrlKey) && e.key === "n") {
+      e.preventDefault();
+      await newProject();
+    }
+
+    // Cmd+O / Ctrl+O - open project
+    if ((e.metaKey || e.ctrlKey) && e.key === "o") {
+      e.preventDefault();
+      await openProject();
+    }
+
+    // Cmd+E / Ctrl+E - toggle editor overlay
+    if ((e.metaKey || e.ctrlKey) && e.key === "e") {
+      const target = e.target as HTMLElement;
+      // Don't intercept if we're in an input or the terminal
+      if (!target.closest("input, textarea, .xterm")) {
+        e.preventDefault();
+        toggleEditor();
+      }
+    }
+
+    // Cmd+1 / Ctrl+1 - toggle terminal panel
+    if ((e.metaKey || e.ctrlKey) && e.key === "1") {
+      e.preventDefault();
+      toggleTerminal();
+    }
+
+    // Cmd+2 / Ctrl+2 - toggle parameters/inspector panel
+    if ((e.metaKey || e.ctrlKey) && e.key === "2") {
+      e.preventDefault();
+      toggleInspector();
+    }
+
+    // Cmd+3 / Ctrl+3 - toggle editor panel
+    if ((e.metaKey || e.ctrlKey) && e.key === "3") {
+      e.preventDefault();
+      toggleEditor();
     }
 
     // Cmd+R / Ctrl+R - reload project (when not in editor)

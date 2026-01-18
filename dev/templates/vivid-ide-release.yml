@@ -1,0 +1,162 @@
+# .github/workflows/release.yml for vivid-ide repository
+#
+# This workflow builds and releases the Vivid IDE application.
+# It downloads pre-built vivid runtime artifacts from the vivid repo releases.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      vivid_version:
+        description: 'Vivid runtime version to use (e.g., v0.1.0)'
+        required: true
+        default: 'latest'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Get the vivid runtime version to use
+  resolve-version:
+    runs-on: ubuntu-latest
+    outputs:
+      vivid_version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Determine vivid version
+        id: version
+        run: |
+          if [ "${{ github.event.inputs.vivid_version }}" = "latest" ] || [ -z "${{ github.event.inputs.vivid_version }}" ]; then
+            # Get latest release from vivid repo
+            VERSION=$(curl -s https://api.github.com/repos/seethroughlab/vivid/releases/latest | jq -r '.tag_name')
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ github.event.inputs.vivid_version }}" >> $GITHUB_OUTPUT
+          fi
+
+  # Build the IDE for each platform
+  build:
+    needs: resolve-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            runtime_artifact: vivid-macos-arm64
+            ide_artifact: Vivid-IDE-macos-arm64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            runtime_artifact: vivid-macos-x64
+            ide_artifact: Vivid-IDE-macos-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            runtime_artifact: vivid-windows-x64
+            ide_artifact: Vivid-IDE-windows-x64
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            runtime_artifact: vivid-linux-x64
+            ide_artifact: Vivid-IDE-linux-x64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout vivid-ide
+        uses: actions/checkout@v4
+        with:
+          submodules: false  # We'll use pre-built runtime
+
+      - name: Download vivid runtime
+        run: |
+          mkdir -p vivid-runtime
+          # Download from vivid releases
+          curl -L -o runtime.tar.gz \
+            "https://github.com/seethroughlab/vivid/releases/download/${{ needs.resolve-version.outputs.vivid_version }}/${{ matrix.runtime_artifact }}.tar.gz"
+          tar -xzf runtime.tar.gz -C vivid-runtime
+          ls -la vivid-runtime/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Install dependencies (Linux)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VIVID_LIB_PATH: ${{ github.workspace }}/vivid-runtime/lib
+          # Code signing for macOS
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Vivid IDE ${{ github.ref_name }}'
+          releaseBody: |
+            ## Vivid IDE ${{ github.ref_name }}
+
+            Visual creative coding IDE with integrated runtime.
+
+            ### Downloads
+
+            | Platform | Download |
+            |----------|----------|
+            | macOS (Apple Silicon) | `Vivid-IDE-${{ github.ref_name }}-macos-arm64.dmg` |
+            | macOS (Intel) | `Vivid-IDE-${{ github.ref_name }}-macos-x64.dmg` |
+            | Windows | `Vivid-IDE-${{ github.ref_name }}-windows-x64.msi` |
+            | Linux | `Vivid-IDE-${{ github.ref_name }}-linux-x64.AppImage` |
+
+            ### What's New
+
+            See [CHANGELOG.md](CHANGELOG.md) for details.
+
+            ---
+
+            Built with Vivid runtime ${{ needs.resolve-version.outputs.vivid_version }}
+          releaseDraft: true
+          prerelease: false
+          args: --target ${{ matrix.target }}
+
+  # Notify on completion
+  notify:
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Release status
+        run: |
+          if [ "${{ needs.build.result }}" = "success" ]; then
+            echo "✅ Release build completed successfully!"
+          else
+            echo "❌ Release build failed"
+            exit 1
+          fi

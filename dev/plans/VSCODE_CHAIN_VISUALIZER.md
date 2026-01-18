@@ -181,7 +181,7 @@ The **solo mode preview** is the valuable part that must stay in the app. Everyt
 | `modules/vivid-core/src/chain_visualizer.cpp` | Simplify to solo mode + status only |
 | `modules/vivid-core/include/vivid/gui/node_graph.h` | Delete |
 | `modules/vivid-core/include/vivid/gui/gui.h` | Delete (keep OverlayCanvas) |
-| `src/cli/editor_bridge.cpp` | May need to enhance chain structure response |
+| `src/cli/runtime_api.cpp` | May need to enhance chain structure response |
 
 ---
 

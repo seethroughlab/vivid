@@ -5,7 +5,7 @@
 #endif
 #endif
 
-#include <vivid/editor_bridge.h>
+#include <vivid/runtime_api.h>
 #include <vivid/operator.h>
 #include <ixwebsocket/IXWebSocketServer.h>
 #include <nlohmann/json.hpp>
@@ -17,7 +17,7 @@ using json = nlohmann::json;
 
 namespace vivid {
 
-class EditorBridge::Impl {
+class RuntimeAPI::Impl {
 public:
     ix::WebSocketServer server;
     std::mutex mutex;
@@ -26,13 +26,13 @@ public:
     Impl(int p) : server(p, "0.0.0.0"), port(p) {}
 };
 
-EditorBridge::EditorBridge() : m_impl(std::make_unique<Impl>(9876)) {}
+RuntimeAPI::RuntimeAPI() : m_impl(std::make_unique<Impl>(9876)) {}
 
-EditorBridge::~EditorBridge() {
+RuntimeAPI::~RuntimeAPI() {
     stop();
 }
 
-void EditorBridge::start(int port) {
+void RuntimeAPI::start(int port) {
     if (m_running) return;
 
     m_port = port;
@@ -44,10 +44,10 @@ void EditorBridge::start(int port) {
                const ix::WebSocketMessagePtr& msg) {
 
             if (msg->type == ix::WebSocketMessageType::Open) {
-                std::cout << "[EditorBridge] Client connected from " << state->getRemoteIp() << "\n";
+                std::cout << "[RuntimeAPI] Client connected from " << state->getRemoteIp() << "\n";
             }
             else if (msg->type == ix::WebSocketMessageType::Close) {
-                std::cout << "[EditorBridge] Client disconnected\n";
+                std::cout << "[RuntimeAPI] Client disconnected\n";
             }
             else if (msg->type == ix::WebSocketMessageType::Message) {
                 // Parse incoming command
@@ -56,7 +56,7 @@ void EditorBridge::start(int port) {
                     std::string type = j.value("type", "");
 
                     if (type == "reload") {
-                        std::cout << "[EditorBridge] Reload command received\n";
+                        std::cout << "[RuntimeAPI] Reload command received\n";
                         if (m_reloadCallback) {
                             m_reloadCallback("reload");
                         }
@@ -70,7 +70,7 @@ void EditorBridge::start(int port) {
                             for (size_t i = 0; i < std::min(arr.size(), size_t(4)); ++i) {
                                 value[i] = arr[i].get<float>();
                             }
-                            std::cout << "[EditorBridge] Param change: " << opName << "." << paramName << "\n";
+                            std::cout << "[RuntimeAPI] Param change: " << opName << "." << paramName << "\n";
                             if (m_paramChangeCallback) {
                                 m_paramChangeCallback(opName, paramName, value);
                             }
@@ -78,20 +78,20 @@ void EditorBridge::start(int port) {
                     }
                     else if (type == "solo_node") {
                         std::string opName = j.value("operator", "");
-                        std::cout << "[EditorBridge] Solo node: " << opName << "\n";
+                        std::cout << "[RuntimeAPI] Solo node: " << opName << "\n";
                         if (m_soloNodeCallback) {
                             m_soloNodeCallback(opName);
                         }
                     }
                     else if (type == "solo_exit") {
-                        std::cout << "[EditorBridge] Solo exit\n";
+                        std::cout << "[RuntimeAPI] Solo exit\n";
                         if (m_soloExitCallback) {
                             m_soloExitCallback();
                         }
                     }
                     else if (type == "select_node") {
                         std::string opName = j.value("operator", "");
-                        std::cout << "[EditorBridge] Select node: " << opName << "\n";
+                        std::cout << "[RuntimeAPI] Select node: " << opName << "\n";
                         if (m_selectNodeCallback) {
                             m_selectNodeCallback(opName);
                         }
@@ -100,16 +100,16 @@ void EditorBridge::start(int port) {
                         std::string opName = j.value("operator", "");
                         // Empty operator name means clear focus
                         if (opName.empty()) {
-                            std::cout << "[EditorBridge] Clear focused node\n";
+                            std::cout << "[RuntimeAPI] Clear focused node\n";
                         } else {
-                            std::cout << "[EditorBridge] Focused node: " << opName << "\n";
+                            std::cout << "[RuntimeAPI] Focused node: " << opName << "\n";
                         }
                         if (m_focusedNodeCallback) {
                             m_focusedNodeCallback(opName);
                         }
                     }
                     else if (type == "request_operators") {
-                        std::cout << "[EditorBridge] Operators requested\n";
+                        std::cout << "[RuntimeAPI] Operators requested\n";
                         if (m_requestOperatorsCallback) {
                             m_requestOperatorsCallback();
                         }
@@ -117,13 +117,13 @@ void EditorBridge::start(int port) {
                     else if (type == "window_control") {
                         std::string setting = j.value("setting", "");
                         int value = j.value("value", 0);
-                        std::cout << "[EditorBridge] Window control: " << setting << " = " << value << "\n";
+                        std::cout << "[RuntimeAPI] Window control: " << setting << " = " << value << "\n";
                         if (m_windowControlCallback) {
                             m_windowControlCallback(setting, value);
                         }
                     }
                     else if (type == "request_window_state") {
-                        std::cout << "[EditorBridge] Window state requested\n";
+                        std::cout << "[RuntimeAPI] Window state requested\n";
                         // The main loop will handle this by calling sendWindowState
                         if (m_requestOperatorsCallback) {
                             // Piggyback on operator request to trigger window state send
@@ -132,29 +132,29 @@ void EditorBridge::start(int port) {
                         }
                     }
                     else if (type == "commit_changes") {
-                        std::cout << "[EditorBridge] Commit pending changes\n";
+                        std::cout << "[RuntimeAPI] Commit pending changes\n";
                         commitPendingChanges();
                     }
                     else if (type == "discard_changes") {
-                        std::cout << "[EditorBridge] Discard pending changes\n";
+                        std::cout << "[RuntimeAPI] Discard pending changes\n";
                         auto discarded = discardPendingChanges();
                         if (m_discardChangesCallback && !discarded.empty()) {
                             m_discardChangesCallback(discarded);
                         }
                     }
                     else if (type == "request_pending_changes") {
-                        std::cout << "[EditorBridge] Pending changes requested\n";
+                        std::cout << "[RuntimeAPI] Pending changes requested\n";
                         sendPendingChanges();
                     }
                     else if (type == "request_compile_status") {
-                        std::cout << "[EditorBridge] Compile status requested\n";
+                        std::cout << "[RuntimeAPI] Compile status requested\n";
                         if (m_requestCompileStatusCallback) {
                             m_requestCompileStatusCallback();
                         }
                     }
                     else if (type == "capture_frame") {
                         std::string outputPath = j.value("outputPath", "/tmp/vivid_capture.png");
-                        std::cout << "[EditorBridge] Capture frame requested: " << outputPath << "\n";
+                        std::cout << "[RuntimeAPI] Capture frame requested: " << outputPath << "\n";
                         if (m_captureFrameCallback) {
                             m_captureFrameCallback(outputPath);
                         }
@@ -181,7 +181,7 @@ void EditorBridge::start(int port) {
                             }
                         }
 
-                        std::cout << "[EditorBridge] Set param immediate: " << opName << "." << paramName << "\n";
+                        std::cout << "[RuntimeAPI] Set param immediate: " << opName << "." << paramName << "\n";
                         bool success = false;
                         if (m_setParamImmediateCallback) {
                             success = m_setParamImmediateCallback(opName, paramName, value);
@@ -190,67 +190,67 @@ void EditorBridge::start(int port) {
                     }
                     else if (type == "advance_frames") {
                         int count = j.value("count", 1);
-                        std::cout << "[EditorBridge] Advance frames requested: " << count << "\n";
+                        std::cout << "[RuntimeAPI] Advance frames requested: " << count << "\n";
                         requestFrameAdvance(count);
                         sendFrameAdvanceStarted(count);
                     }
                     else if (type == "request_chain_structure") {
-                        std::cout << "[EditorBridge] Chain structure requested\n";
+                        std::cout << "[RuntimeAPI] Chain structure requested\n";
                         if (m_requestChainStructureCallback) {
                             auto operators = m_requestChainStructureCallback();
                             sendChainStructure(operators);
                         }
                     }
                     else if (type == "request_frame_info") {
-                        std::cout << "[EditorBridge] Frame info requested\n";
+                        std::cout << "[RuntimeAPI] Frame info requested\n";
                         if (m_requestFrameInfoCallback) {
                             auto info = m_requestFrameInfoCallback();
                             sendFrameInfo(info);
                         }
                     }
                     else if (type == "reset_time") {
-                        std::cout << "[EditorBridge] Reset time requested\n";
+                        std::cout << "[RuntimeAPI] Reset time requested\n";
                         if (m_resetTimeCallback) {
                             m_resetTimeCallback();
                             sendResetTimeComplete();
                         }
                     }
                 } catch (const json::exception& e) {
-                    std::cerr << "[EditorBridge] JSON parse error: " << e.what() << "\n";
+                    std::cerr << "[RuntimeAPI] JSON parse error: " << e.what() << "\n";
                 }
             }
             else if (msg->type == ix::WebSocketMessageType::Error) {
-                std::cerr << "[EditorBridge] Error: " << msg->errorInfo.reason << "\n";
+                std::cerr << "[RuntimeAPI] Error: " << msg->errorInfo.reason << "\n";
             }
         }
     );
 
     auto res = m_impl->server.listen();
     if (!res.first) {
-        std::cerr << "[EditorBridge] Failed to start on port " << port << ": " << res.second << "\n";
+        std::cerr << "[RuntimeAPI] Failed to start on port " << port << ": " << res.second << "\n";
         return;
     }
 
     m_impl->server.start();
     m_running = true;
-    std::cout << "[EditorBridge] Listening on port " << port << "\n";
+    std::cout << "[RuntimeAPI] Listening on port " << port << "\n";
 }
 
-void EditorBridge::stop() {
+void RuntimeAPI::stop() {
     if (!m_running) return;
 
     m_impl->server.stop();
     m_running = false;
-    std::cout << "[EditorBridge] Stopped\n";
+    std::cout << "[RuntimeAPI] Stopped\n";
 }
 
-size_t EditorBridge::clientCount() const {
+size_t RuntimeAPI::clientCount() const {
     if (!m_impl) return 0;
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     return m_impl->server.getClients().size();
 }
 
-void EditorBridge::sendCompileStatus(bool success, const std::string& message) {
+void RuntimeAPI::sendCompileStatus(bool success, const std::string& message) {
     // Cache the status for late-connecting clients
     m_cachedCompileSuccess = success;
     m_cachedCompileMessage = message;
@@ -271,8 +271,8 @@ void EditorBridge::sendCompileStatus(bool success, const std::string& message) {
     }
 }
 
-void EditorBridge::sendOperatorList(const std::vector<EditorOperatorInfo>& operators) {
-    std::cout << "[EditorBridge] sendOperatorList called with " << operators.size() << " operators\n";
+void RuntimeAPI::sendOperatorList(const std::vector<RuntimeOperatorInfo>& operators) {
+    std::cout << "[RuntimeAPI] sendOperatorList called with " << operators.size() << " operators\n";
     if (!m_running || !m_impl) return;
 
     json j;
@@ -298,7 +298,7 @@ void EditorBridge::sendOperatorList(const std::vector<EditorOperatorInfo>& opera
     }
 }
 
-void EditorBridge::sendParamValues(const std::vector<EditorParamInfo>& params) {
+void RuntimeAPI::sendParamValues(const std::vector<RuntimeParamInfo>& params) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -337,7 +337,7 @@ void EditorBridge::sendParamValues(const std::vector<EditorParamInfo>& params) {
     }
 }
 
-void EditorBridge::sendPerformanceStats(const EditorPerformanceStats& stats) {
+void RuntimeAPI::sendPerformanceStats(const RuntimePerformanceStats& stats) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -363,7 +363,7 @@ void EditorBridge::sendPerformanceStats(const EditorPerformanceStats& stats) {
     }
 }
 
-void EditorBridge::sendSoloState(bool active, const std::string& operatorName) {
+void RuntimeAPI::sendSoloState(bool active, const std::string& operatorName) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -382,7 +382,7 @@ void EditorBridge::sendSoloState(bool active, const std::string& operatorName) {
     }
 }
 
-void EditorBridge::sendWindowState(const EditorWindowState& state) {
+void RuntimeAPI::sendWindowState(const RuntimeWindowState& state) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -412,7 +412,7 @@ void EditorBridge::sendWindowState(const EditorWindowState& state) {
     }
 }
 
-void EditorBridge::addPendingChange(const PendingChange& change) {
+void RuntimeAPI::addPendingChange(const PendingChange& change) {
     // Check if we already have a pending change for this operator.param
     for (auto& existing : m_pendingChanges) {
         if (existing.operatorName == change.operatorName &&
@@ -423,7 +423,7 @@ void EditorBridge::addPendingChange(const PendingChange& change) {
             }
             existing.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::system_clock::now().time_since_epoch()).count();
-            std::cout << "[EditorBridge] Updated pending change: " << change.operatorName
+            std::cout << "[RuntimeAPI] Updated pending change: " << change.operatorName
                       << "." << change.paramName << "\n";
             sendPendingChanges();
             return;
@@ -435,12 +435,12 @@ void EditorBridge::addPendingChange(const PendingChange& change) {
     newChange.timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();
     m_pendingChanges.push_back(newChange);
-    std::cout << "[EditorBridge] Added pending change: " << change.operatorName
+    std::cout << "[RuntimeAPI] Added pending change: " << change.operatorName
               << "." << change.paramName << " (total: " << m_pendingChanges.size() << ")\n";
     sendPendingChanges();
 }
 
-void EditorBridge::sendPendingChanges() {
+void RuntimeAPI::sendPendingChanges() {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -469,21 +469,21 @@ void EditorBridge::sendPendingChanges() {
     }
 }
 
-void EditorBridge::commitPendingChanges() {
-    std::cout << "[EditorBridge] Committing " << m_pendingChanges.size() << " pending changes\n";
+void RuntimeAPI::commitPendingChanges() {
+    std::cout << "[RuntimeAPI] Committing " << m_pendingChanges.size() << " pending changes\n";
     m_pendingChanges.clear();
     sendPendingChanges();
 }
 
-std::vector<PendingChange> EditorBridge::discardPendingChanges() {
-    std::cout << "[EditorBridge] Discarding " << m_pendingChanges.size() << " pending changes\n";
+std::vector<PendingChange> RuntimeAPI::discardPendingChanges() {
+    std::cout << "[RuntimeAPI] Discarding " << m_pendingChanges.size() << " pending changes\n";
     std::vector<PendingChange> discarded = std::move(m_pendingChanges);
     m_pendingChanges.clear();
     sendPendingChanges();
     return discarded;
 }
 
-void EditorBridge::sendCaptureResult(bool success, const std::string& outputPath, const std::string& error) {
+void RuntimeAPI::sendCaptureResult(bool success, const std::string& outputPath, const std::string& error) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -507,7 +507,7 @@ void EditorBridge::sendCaptureResult(bool success, const std::string& outputPath
 // Direct parameter control (MCP debugging tools)
 // -------------------------------------------------------------------------
 
-void EditorBridge::sendSetParamResult(const std::string& opName, const std::string& paramName, bool success) {
+void RuntimeAPI::sendSetParamResult(const std::string& opName, const std::string& paramName, bool success) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -528,15 +528,15 @@ void EditorBridge::sendSetParamResult(const std::string& opName, const std::stri
 // Frame advance control (MCP debugging tools)
 // -------------------------------------------------------------------------
 
-void EditorBridge::requestFrameAdvance(int count) {
+void RuntimeAPI::requestFrameAdvance(int count) {
     m_pendingFrameAdvance.store(count);
 }
 
-int EditorBridge::consumePendingFrameAdvance() {
+int RuntimeAPI::consumePendingFrameAdvance() {
     return m_pendingFrameAdvance.exchange(0);
 }
 
-void EditorBridge::sendFrameAdvanceStarted(int count) {
+void RuntimeAPI::sendFrameAdvanceStarted(int count) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -551,7 +551,7 @@ void EditorBridge::sendFrameAdvanceStarted(int count) {
     }
 }
 
-void EditorBridge::sendFrameAdvanceComplete(int newFrame) {
+void RuntimeAPI::sendFrameAdvanceComplete(int newFrame) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -570,7 +570,7 @@ void EditorBridge::sendFrameAdvanceComplete(int newFrame) {
 // Chain structure (MCP get_chain_structure tool)
 // -------------------------------------------------------------------------
 
-void EditorBridge::sendChainStructure(const std::vector<ChainOperatorInfo>& operators) {
+void RuntimeAPI::sendChainStructure(const std::vector<ChainOperatorInfo>& operators) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -598,7 +598,7 @@ void EditorBridge::sendChainStructure(const std::vector<ChainOperatorInfo>& oper
 // Frame info (MCP get_frame_info tool)
 // -------------------------------------------------------------------------
 
-void EditorBridge::sendFrameInfo(const FrameInfo& info) {
+void RuntimeAPI::sendFrameInfo(const FrameInfo& info) {
     if (!m_running || !m_impl) return;
 
     json j;
@@ -619,7 +619,7 @@ void EditorBridge::sendFrameInfo(const FrameInfo& info) {
 // Reset time (MCP reset_time tool)
 // -------------------------------------------------------------------------
 
-void EditorBridge::sendResetTimeComplete() {
+void RuntimeAPI::sendResetTimeComplete() {
     if (!m_running || !m_impl) return;
 
     json j;

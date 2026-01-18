@@ -29,9 +29,24 @@
     }
   },
   "bundle": {
-    "active": false,
+    "active": true,
     "targets": "all",
-    "icon": []
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "identifier": "com.seethroughlab.vivid-ide",
+    "shortDescription": "Creative coding IDE with hot-reload",
+    "longDescription": "Vivid IDE - Visual creative coding IDE with integrated runtime, node-based chain visualizer, and built-in terminal for Claude Code.",
+    "category": "DeveloperTool",
+    "copyright": "© 2025 See Through Lab",
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
   },
   "plugins": {
     "shell": {

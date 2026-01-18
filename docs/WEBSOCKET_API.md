@@ -1,6 +1,8 @@
-# Vivid WebSocket API
+# Vivid WebSocket API (RuntimeAPI)
 
-The WebSocket API allows external tools to control a running Vivid app in real-time. This is the same API used by the VSCode extension for live parameter editing, hot-reload, and performance monitoring.
+The WebSocket API allows external tools to control a running Vivid instance in real-time. This is used by the MCP server (Claude Code integration) and can be used by custom tools for live parameter editing, hot-reload, and performance monitoring.
+
+> **Note:** The Tauri IDE uses the C API directly (embedded vivid-core), not this WebSocket API. This API is for external tools connecting to a running Vivid CLI process.
 
 ## Quick Start
 

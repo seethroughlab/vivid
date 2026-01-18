@@ -1,5 +1,7 @@
-// Vivid EditorBridge WebSocket Connection
+// Vivid RuntimeAPI WebSocket Connection
 // Connects to running Vivid instance on port 9876
+// NOTE: This file is kept for reference but not used by the Tauri IDE
+// (the IDE uses C API via Tauri commands instead)
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 

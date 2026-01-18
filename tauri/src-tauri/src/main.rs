@@ -8,7 +8,8 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::sync::OnceLock;
 use std::time::Instant;
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{Manager, RunEvent, WindowEvent, Emitter};
+use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder, SubmenuBuilder, PredefinedMenuItem};
 use serde::{Deserialize, Serialize};
 
 // Vivid context wrapper
@@ -324,6 +325,99 @@ fn get_ns_window(_window: &tauri::WebviewWindow) -> Option<*mut std::ffi::c_void
     None
 }
 
+/// Create the native application menu
+fn create_app_menu(app: &tauri::App) -> Result<Menu<tauri::Wry>, Box<dyn std::error::Error>> {
+    // App menu (macOS only, but we define it anyway)
+    let app_menu = SubmenuBuilder::new(app, "Vivid")
+        .item(&PredefinedMenuItem::about(app, Some("About Vivid"), None)?)
+        .separator()
+        .item(&PredefinedMenuItem::services(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::hide(app, Some("Hide Vivid"))?)
+        .item(&PredefinedMenuItem::hide_others(app, Some("Hide Others"))?)
+        .item(&PredefinedMenuItem::show_all(app, Some("Show All"))?)
+        .separator()
+        .item(&PredefinedMenuItem::quit(app, Some("Quit Vivid"))?)
+        .build()?;
+
+    // File menu
+    let file_menu = SubmenuBuilder::new(app, "File")
+        .item(&MenuItemBuilder::with_id("new_project", "New Project...")
+            .accelerator("CmdOrCtrl+N")
+            .build(app)?)
+        .item(&MenuItemBuilder::with_id("open_project", "Open Project...")
+            .accelerator("CmdOrCtrl+O")
+            .build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("open_file", "Open File...")
+            .accelerator("CmdOrCtrl+Shift+O")
+            .build(app)?)
+        .item(&MenuItemBuilder::with_id("save", "Save")
+            .accelerator("CmdOrCtrl+S")
+            .build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("reload", "Reload Project")
+            .accelerator("CmdOrCtrl+R")
+            .build(app)?)
+        .build()?;
+
+    // Edit menu
+    let edit_menu = SubmenuBuilder::new(app, "Edit")
+        .item(&PredefinedMenuItem::undo(app, None)?)
+        .item(&PredefinedMenuItem::redo(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::cut(app, None)?)
+        .item(&PredefinedMenuItem::copy(app, None)?)
+        .item(&PredefinedMenuItem::paste(app, None)?)
+        .item(&PredefinedMenuItem::select_all(app, None)?)
+        .build()?;
+
+    // View menu
+    let view_menu = SubmenuBuilder::new(app, "View")
+        .item(&MenuItemBuilder::with_id("toggle_terminal", "Toggle Terminal")
+            .accelerator("CmdOrCtrl+1")
+            .build(app)?)
+        .item(&MenuItemBuilder::with_id("toggle_inspector", "Toggle Inspector")
+            .accelerator("CmdOrCtrl+2")
+            .build(app)?)
+        .item(&MenuItemBuilder::with_id("toggle_editor", "Toggle Editor")
+            .accelerator("CmdOrCtrl+3")
+            .build(app)?)
+        .separator()
+        .item(&MenuItemBuilder::with_id("toggle_visualizer", "Toggle Node Graph")
+            .accelerator("Tab")
+            .build(app)?)
+        .separator()
+        .item(&PredefinedMenuItem::fullscreen(app, None)?)
+        .build()?;
+
+    // Window menu
+    let window_menu = SubmenuBuilder::new(app, "Window")
+        .item(&PredefinedMenuItem::minimize(app, None)?)
+        .item(&PredefinedMenuItem::maximize(app, None)?)
+        .separator()
+        .item(&PredefinedMenuItem::close_window(app, Some("Close"))?)
+        .build()?;
+
+    // Help menu
+    let help_menu = SubmenuBuilder::new(app, "Help")
+        .item(&MenuItemBuilder::with_id("docs", "Vivid Documentation")
+            .build(app)?)
+        .build()?;
+
+    // Build the full menu
+    let menu = MenuBuilder::new(app)
+        .item(&app_menu)
+        .item(&file_menu)
+        .item(&edit_menu)
+        .item(&view_menu)
+        .item(&window_menu)
+        .item(&help_menu)
+        .build()?;
+
+    Ok(menu)
+}
+
 fn main() {
     env_logger::init();
 
@@ -334,9 +428,71 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(pty_manager)
-        .setup(|_app| {
+        .setup(|app| {
+            log::info!("Vivid Tauri app setup starting...");
+
+            // Build the application menu
+            let menu = create_app_menu(app)?;
+            app.set_menu(menu)?;
+
             log::info!("Vivid Tauri app setup complete");
             Ok(())
+        })
+        .on_menu_event(|app, event| {
+            log::info!("Menu event: {:?}", event.id());
+            let window = app.get_webview_window("main");
+
+            match event.id().0.as_str() {
+                "new_project" => {
+                    if let Some(win) = window {
+                        let _ = win.emit("menu-action", "new_project");
+                    }
+                }
+                "open_project" => {
+                    if let Some(win) = window {
+                        let _ = win.emit("menu-action", "open_project");
+                    }
+                }
+                "open_file" => {
+                    if let Some(win) = window {
+                        let _ = win.emit("menu-action", "open_file");
+                    }
+                }
+                "save" => {
+                    if let Some(win) = window {
+                        let _ = win.emit("menu-action", "save");
+                    }
+                }
+                "reload" => {
+                    if let Some(win) = window {
+                        let _ = win.emit("menu-action", "reload");
+                    }
+                }
+                "toggle_terminal" => {
+                    if let Some(win) = window {
+                        let _ = win.emit("menu-action", "toggle_terminal");
+                    }
+                }
+                "toggle_inspector" => {
+                    if let Some(win) = window {
+                        let _ = win.emit("menu-action", "toggle_inspector");
+                    }
+                }
+                "toggle_editor" => {
+                    if let Some(win) = window {
+                        let _ = win.emit("menu-action", "toggle_editor");
+                    }
+                }
+                "toggle_visualizer" => {
+                    if let Some(state) = VIVID_STATE.get() {
+                        if let Ok(mut state) = state.lock() {
+                            let visible = state.ctx.is_visualizer_visible();
+                            state.ctx.set_visualizer_visible(!visible);
+                        }
+                    }
+                }
+                _ => {}
+            }
         })
         .invoke_handler(tauri::generate_handler![
             // PTY commands
@@ -348,6 +504,7 @@ fn main() {
             file_ops::read_file,
             file_ops::write_file,
             file_ops::get_file_name,
+            file_ops::create_project,
             // Vivid state queries
             get_project_info,
             get_compile_status,

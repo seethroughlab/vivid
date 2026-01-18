@@ -65,6 +65,29 @@ extern "C" {
 #endif
 
 /* ============================================================================
+ * API Version
+ *
+ * The API version is incremented when breaking changes occur. Embedders can
+ * check VIVID_API_VERSION at compile time and vivid_get_api_version() at
+ * runtime to ensure compatibility.
+ *
+ * Version History:
+ *   1 - Initial stable API (2025-01)
+ *       - Context lifecycle (create_external, create_with_window, destroy)
+ *       - Project loading (load, reload, unload)
+ *       - Frame processing (process_frame, render_frame)
+ *       - Operator iteration and parameter access
+ *       - Input injection for embedded use
+ *       - Visualizer control (visibility, selection)
+ * ============================================================================ */
+
+#define VIVID_API_VERSION 1
+#define VIVID_VERSION_MAJOR 0
+#define VIVID_VERSION_MINOR 1
+#define VIVID_VERSION_PATCH 0
+#define VIVID_VERSION_STRING "0.1.0"
+
+/* ============================================================================
  * Platform-specific export macros
  * ============================================================================ */
 

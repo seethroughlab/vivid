@@ -185,7 +185,7 @@ target_link_libraries(vivid-core PUBLIC
     magic_enum::magic_enum
 )
 
-# Note: ixwebsocket moved to cli/ for EditorBridge
+# Note: ixwebsocket moved to cli/ for RuntimeAPI
 
 # Platform-specific settings for vivid-core
 if(APPLE)

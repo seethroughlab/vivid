@@ -264,7 +264,7 @@ if(WIN32)
     target_compile_definitions(glfw3webgpu PRIVATE _GLFW_WIN32)
 endif()
 
-# IXWebSocket - WebSocket server for EditorBridge and vivid-network
+# IXWebSocket - WebSocket server for RuntimeAPI and vivid-network
 set(USE_TLS OFF CACHE BOOL "" FORCE)
 set(USE_OPEN_SSL OFF CACHE BOOL "" FORCE)
 set(USE_MBED_TLS OFF CACHE BOOL "" FORCE)

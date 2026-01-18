@@ -4,17 +4,77 @@
 
 Build a single-window Vivid IDE using Tauri with native wgpu rendering and transparent webview overlay for UI.
 
-**Status: Phases 0-4 Complete** (2025-01-17)
+**Status: Phases 0-5 Complete, Phase 6 In Progress** (2025-01-18)
 - No flickering observed
 - Transparency working
 - wgpu + webview overlay architecture confirmed viable
 - Terminal with PTY working (Claude Code can run inside)
 - Monaco editor with C++/WGSL syntax highlighting
-- Vivid EditorBridge WebSocket connection with auto-reconnect
 - C API for vivid-core complete (libvivid-c.dylib)
 - Rust FFI bindings complete (vivid-sys + vivid crates)
 - egui node graph rendering working (wgpu + egui in single window!)
+- Inspector panel with operator list and parameter controls
+- Hot-reload on save (Cmd+S triggers reload)
 - **wgpu surface creation issue SOLVED** - use MainEventsCleared + frame delay
+
+---
+
+## Architecture Decision: C API vs WebSocket
+
+**Decision: Use C API for all Tauri IDE communication** (2025-01-18)
+
+### Context
+Vivid has two communication interfaces:
+1. **C API** (`libvivid-c.dylib`) - For embedding vivid-core in external apps
+2. **WebSocket RuntimeAPI** (port 9876) - For external tools (MCP, VS Code extension)
+
+### Why C API for Tauri IDE
+
+1. **RuntimeAPI is in CLI, not vivid-core**: The WebSocket server lives in `src/cli/runtime_api.cpp`. When Tauri embeds vivid-core directly, the CLI isn't running, so WebSocket isn't available.
+
+2. **Single-window architecture requires embedding**: The IDE renders vivid directly in its window via `Context::with_window()`. This requires C API for window handle passing and render loop control.
+
+3. **C API is already complete**: All needed functions exist:
+   - Window/render: `with_window()`, `render_frame()`, `resize()`
+   - Input: `set_mouse_position()`, `set_mouse_button()`, `scroll()`
+   - Control: `get_operators()`, `get_params()`, `set_param()`, `reload()`
+   - Selection: `select_operator()`, `get_selected_operator()`
+
+4. **No duplicate maintenance**: Both C API and RuntimeAPI wrap the same `Context`/`Chain` methods. The IDE uses C API; external tools use WebSocket. Each serves its purpose.
+
+### What WebSocket is for
+
+The RuntimeAPI WebSocket (port 9876) remains the interface for:
+- **MCP server** (`vivid mcp`) - Claude Code integration
+- **Future external tools** - Any tool that connects to a running vivid process
+
+The Tauri IDE **replaces** the VS Code extension. External tools connect to a **running vivid process** (CLI), while the Tauri IDE **embeds** vivid-core directly.
+
+### Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│ Tauri IDE (embeds vivid-core)                                           │
+│                                                                         │
+│   TypeScript UI ──Tauri Commands──► Rust ──C API──► vivid-core          │
+│                                                                         │
+│   - Inspector panel                 - get_operators()                   │
+│   - Parameter controls              - set_param()                       │
+│   - Monaco editor                   - reload_project()                  │
+│   - Error banner                    - get_compile_status()              │
+│                                                                         │
+│   Uses: invoke("get_operators")     Uses: libvivid-c.dylib              │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│ External Tools (connect to running vivid CLI)                           │
+│                                                                         │
+│   MCP Server ────┬──WebSocket (9876)──► RuntimeAPI ──► vivid-core     │
+│   Future Tools ──┘                                                      │
+│                                                                         │
+│   Uses: ws://localhost:9876         Lives in: src/cli/runtime_api.cpp │
+└─────────────────────────────────────────────────────────────────────────┘
+```
 
 ## Architecture
 
@@ -48,30 +108,26 @@ Build a single-window Vivid IDE using Tauri with native wgpu rendering and trans
 | 3 | Vivid Connection | ✅ Complete | Now uses Tauri commands (C API) instead of WebSocket |
 | 4 | Embed vivid-core | ✅ Complete | C API, Rust bindings, chain renders with visualizer |
 | 5 | Inspector Panel | ✅ Complete | Operator list, params, bidirectional selection sync, zoom |
-| 6 | Polish | 🔄 In Progress | Error display done, keyboard shortcuts pending |
-| 7 | Repository Separation | ⬜ Future | Extract to vivid-ide repo when C API stable |
+| 6 | Polish | ✅ Complete | Error display, shortcuts, layout, icons, menus |
+| 7 | Repository Separation | ✅ Complete | https://github.com/seethroughlab/vivid-ide |
 
 ---
 
 ## How to Run
 
 ```bash
-cd /Users/jeff/Developer/vivid/tauri
+# First, build vivid-core (required for the C API library)
+cd /Users/jeff/Developer/vivid
+cmake -B build && cmake --build build
 
-# Build (if needed)
-cargo tauri build --debug
-
-# Run the app
-./src-tauri/target/debug/vivid-tauri
-
-# Or use npm for development
+# Then run the Tauri IDE
+cd tauri
 npm run tauri dev
 ```
 
-To test Vivid connection:
-1. Start the Tauri IDE
-2. In another terminal, run Vivid: `./build/bin/vivid projects/getting-started/02-hello-noise`
-3. The status indicator in the IDE titlebar should turn green
+The IDE will auto-load a test project (`projects/getting-started/02-operator-pipeline`) on startup.
+
+**Note:** The embedded architecture means vivid-core runs inside the Tauri app - no separate vivid process needed. The chain renders directly in the IDE window.
 
 ---
 
@@ -82,19 +138,22 @@ vivid/tauri/
 ├── src-tauri/
 │   ├── Cargo.toml              # Rust dependencies
 │   ├── tauri.conf.json         # Tauri config (macOSPrivateApi enabled)
+│   ├── build.rs                # Copies libvivid-c.dylib to target dir
 │   ├── capabilities/
 │   │   └── default.json        # Permissions for events, dialogs, shell
 │   └── src/
-│       ├── main.rs             # App entry, wgpu render loop, command registration
+│       ├── main.rs             # App entry, vivid-core integration, Tauri commands
 │       ├── lib.rs              # Module exports
-│       ├── wgpu_state.rs       # WebGPU surface, pipeline, uniforms
-│       ├── shader.wgsl         # Animated noise shader (placeholder)
 │       ├── pty.rs              # PTY management for terminal
 │       └── file_ops.rs         # File read/write commands
+├── crates/
+│   ├── vivid-sys/              # Raw C FFI bindings (bindgen-style)
+│   └── vivid/                  # Safe Rust wrapper for vivid-core
 ├── src/
-│   ├── main.ts                 # Frontend entry, terminal, editor, Vivid connection
-│   ├── vivid-connection.ts     # WebSocket client for EditorBridge protocol
-│   └── styles.css              # Transparent overlay styles, connection status
+│   ├── main.ts                 # Frontend entry, terminal, editor, inspector
+│   ├── vivid-api.ts            # C API wrappers via Tauri commands
+│   ├── vivid-connection.ts     # WebSocket client (unused, kept for reference)
+│   └── styles.css              # Transparent overlay styles
 ├── index.html                  # App shell with panel layout
 ├── package.json                # NPM dependencies
 ├── vite.config.ts              # Vite + Monaco editor plugin
@@ -163,33 +222,29 @@ vivid/tauri/
 
 ## Phase 3: Vivid Connection (Complete)
 
-**Goal:** Connect the Tauri IDE to a running Vivid instance for live preview.
+**Goal:** Connect the IDE to vivid-core for live preview and control.
+
+**Implementation:**
+Originally planned as WebSocket connection, but switched to **C API via Tauri commands** because:
+- Tauri embeds vivid-core directly (no separate process)
+- RuntimeAPI WebSocket server is in CLI, not vivid-core
+- C API provides all needed functionality
 
 **Key Technical Details:**
-- WebSocket connection to `ws://localhost:9876` (EditorBridge)
-- Full protocol implementation with TypeScript types
-- Auto-reconnect every 2 seconds when disconnected
-- Connection status indicator: green (connected), yellow (connecting), red (disconnected)
-- Ready to receive: `operator_list`, `param_values`, `chain_structure`, `compile_status`, `frame_info`
+- Tauri commands invoke C API functions via Rust FFI
+- Status indicator shows "Vivid Active" when rendering
+- Polling for state updates (operators, compile status, selection)
 
 **Files:**
-- `src/vivid-connection.ts` - `VividConnection` class with all protocol messages
-- `src/main.ts` - `initVividConnection()`, `handleVividMessage()`, `updateVividStatus()`
-- `src/styles.css` - Connection status indicator styles with animations
+- `src/vivid-api.ts` - TypeScript wrappers for Tauri commands
+- `src/main.ts` - `initVividState()`, `refreshVividState()`, polling loops
+- `src-tauri/src/main.rs` - Tauri command handlers calling C API
 
-**Available Commands (via vividConnection):**
-- `setParam()`, `setParamImmediate()` - Parameter control
-- `soloNode()`, `soloExit()` - Preview isolation
-- `selectNode()`, `focusNode()` - Node selection
-- `reload()` - Trigger hot-reload
-- `commitChanges()`, `discardChanges()` - Pending changes workflow
-- `captureFrame()` - Screenshot
-- `advanceFrames()`, `resetTime()` - Animation control
-- Window controls: fullscreen, borderless, alwaysOnTop, monitor
+**Note:** `src/vivid-connection.ts` still exists with WebSocket client code, but is not used by the Tauri IDE. It remains as reference for how external tools connect to a running vivid process.
 
 ---
 
-## Phase 4: Embed vivid-core (Not Started)
+## Phase 4: Embed vivid-core (Complete)
 
 **Goal:** Run vivid-core as an embedded library within Tauri, sharing the GPU context.
 
@@ -312,51 +367,419 @@ Tauri (Rust)
   - Flash animation when jumping to error line
   - Success message shows briefly then fades
   - Dismiss button to hide banner
+- [x] Hot-reload on save (Cmd+S triggers reload for .cpp/.h/.hpp files)
 
-**Remaining Tasks:**
-- [ ] Keyboard shortcuts (Cmd+1/2/3 for panels)
-- [ ] Persistent layout (localStorage)
-- [ ] App icon and branding
-- [ ] macOS menu bar integration
+**All Tasks Complete:**
+- [x] **Open Project UI** - Folder button in titlebar, Cmd+O shortcut, title shows project name
+- [x] **Keyboard shortcuts** - Cmd+1 terminal, Cmd+2 inspector, Cmd+3 editor, Cmd+E editor, Cmd+O open project, Cmd+N new project, Cmd+R reload, Tab toggle visualizer
+- [x] **Persistent layout** - Panel collapsed states saved to localStorage, restored on startup
+- [x] **App icon and branding** - Configured in tauri.conf.json with bundle metadata
+- [x] **macOS menu bar integration** - Native menu with File, Edit, View, Window, Help menus
 
 ---
 
-## Phase 7: Repository Separation (Future)
+## Phase 7: Repository Separation & Distribution
 
-**Goal:** Extract the Tauri IDE to a separate repository (`vivid-ide`) once the C API stabilizes.
+**Status:** ✅ Complete - Repository created at https://github.com/seethroughlab/vivid-ide
 
-**Why wait:**
-- During active development, the C API is evolving
-- Easier to iterate with vivid-core and IDE in one repo
-- Need to stabilize: API surface, texture format contracts, build system
+**Goal:** Extract the Tauri IDE to a separate repository (`vivid-ide`) with comprehensive distribution strategy.
 
-**When ready:**
-- Version the C API (e.g., `VIVID_API_VERSION` constant)
-- Treat `vivid_c.h` as a stable contract
-- Publish `libvivid.dylib` / `.dll` / `.so` as release artifacts
-- Document the C API formally
-- Extract `tauri/` to `github.com/seethroughlab/vivid-ide`
-- IDE links against published libvivid
+### Preparation Complete:
+- [x] **C API Versioning** - `VIVID_API_VERSION 1` defined in `vivid_c.h`
+  - Compile-time constants: `VIVID_API_VERSION`, `VIVID_VERSION_STRING`, `VIVID_VERSION_MAJOR/MINOR/PATCH`
+  - Runtime functions: `vivid_get_api_version()`, `vivid_get_version()`
+  - Version history documented in header
+- [x] **C API Documentation** - Full doxygen-style docs in `vivid_c.h`
+- [x] **Repository Creation Script** - `dev/scripts/create-vivid-ide-repo.sh`
+  - Creates vivid-ide directory structure
+  - Sets up vivid as git submodule
+  - Copies Tauri app files
+  - Configures build.rs for library paths
+  - Creates README, LICENSE, and .gitignore
+- [x] **CI/CD Templates** - `dev/templates/vivid-ide-release.yml`
+  - Downloads pre-built vivid runtime from releases
+  - Builds Tauri app for all platforms
+  - Code signing configuration ready
 
-**What stays in vivid repo:**
+### To Execute Separation:
+
+```bash
+# 1. Run the creation script
+./dev/scripts/create-vivid-ide-repo.sh ~/Developer/vivid-ide
+
+# 2. Create GitHub repo and push
+cd ~/Developer/vivid-ide
+gh repo create seethroughlab/vivid-ide --public --source=. --push
+
+# 3. Set up secrets for code signing (in GitHub repo settings)
+# - APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD
+# - APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID
+
+# 4. Copy CI workflow
+mkdir -p .github/workflows
+cp /path/to/vivid/dev/templates/vivid-ide-release.yml .github/workflows/release.yml
+git add .github && git commit -m "Add release workflow" && git push
+```
+
+### When to Execute:
+- When the C API is considered stable (current version: 1)
+- When ready for public IDE releases
+- After testing the creation script in a local environment
+
+### What stays in vivid repo:
 - vivid-core (runtime, operators, chain)
 - C API (`vivid_c.h`, libvivid)
 - CLI (`./vivid` for standalone/headless use)
 - WebSocket API (for MCP, external tools)
 
-**What moves to vivid-ide repo:**
+### What moves to vivid-ide repo:
 - Tauri app
 - egui node graph
 - Inspector panel
 - Monaco editor integration
 - Terminal/PTY
 
-**Benefits after separation:**
+### Benefits after separation:
 - Keeps Vivid "pure" — focused on runtime/operators/chain
 - Independent release cycles
 - Smaller clone size for framework-only users
 - IDE can iterate faster without touching core
 - Other IDEs/tools can link against libvivid
+
+---
+
+## Runtime Distribution Strategy
+
+### Distribution Philosophy
+
+**Key Decision: IDE bundles everything, no download logic**
+
+Unlike VS Code extensions that download language servers on first run, the Vivid IDE bundles the complete runtime. This simplifies:
+- Installation (one download, works immediately)
+- Offline usage (no network required after install)
+- Version consistency (IDE and runtime always match)
+- Security (no runtime downloads from external sources)
+
+### Release Artifacts Structure
+
+Each release produces **parallel artifacts** - users choose what fits their workflow:
+
+#### 1. Runtime-Only Downloads (existing, unchanged)
+For CLI users, VS Code extension users, and developers embedding vivid-core.
+
+```
+vivid-v0.2.0-macos-arm64.tar.gz
+├── bin/
+│   └── vivid                    # CLI binary
+├── lib/
+│   ├── libvivid-c.dylib        # C API shared library
+│   └── libvivid-core.dylib     # Core runtime
+├── include/
+│   └── vivid/
+│       └── vivid_c.h           # C API header
+└── share/
+    └── vivid/
+        └── modules/            # Built-in modules
+
+vivid-v0.2.0-macos-x64.tar.gz
+vivid-v0.2.0-windows-x64.zip
+vivid-v0.2.0-linux-x64.tar.gz
+```
+
+#### 2. IDE Bundles (new)
+Self-contained app bundles with everything included.
+
+```
+# macOS
+Vivid-IDE-v0.2.0-macos-arm64.dmg
+Vivid-IDE-v0.2.0-macos-x64.dmg
+└── Vivid IDE.app/
+    └── Contents/
+        ├── MacOS/
+        │   └── vivid-ide        # Tauri binary (embeds libvivid-c)
+        ├── Frameworks/
+        │   └── libvivid-c.dylib # Bundled runtime
+        └── Resources/
+            └── modules/         # Built-in modules
+
+# Windows
+Vivid-IDE-v0.2.0-windows-x64.msi
+Vivid-IDE-v0.2.0-windows-x64-portable.zip
+└── Vivid IDE/
+    ├── vivid-ide.exe
+    ├── vivid-c.dll
+    └── modules/
+
+# Linux
+Vivid-IDE-v0.2.0-linux-x64.AppImage
+Vivid-IDE-v0.2.0-linux-x64.deb
+```
+
+### CI/CD Pipeline Changes
+
+Add Tauri build jobs to `.github/workflows/release.yml`:
+
+```yaml
+jobs:
+  # Existing job - unchanged
+  build-runtime:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: vivid-macos-arm64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: vivid-macos-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: vivid-windows-x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: vivid-linux-x64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build vivid
+        run: cmake -B build && cmake --build build --config Release
+      - name: Package runtime
+        run: ./scripts/package-runtime.sh ${{ matrix.artifact }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/${{ matrix.artifact }}.*
+
+  # New job - Tauri IDE builds
+  build-ide:
+    needs: build-runtime  # IDE embeds the runtime
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            artifact: Vivid-IDE-macos-arm64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            artifact: Vivid-IDE-macos-x64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: Vivid-IDE-windows-x64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: Vivid-IDE-linux-x64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: seethroughlab/vivid-ide
+          submodules: recursive  # Pulls vivid as submodule
+
+      - name: Download runtime artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vivid-${{ matrix.target }}
+          path: vivid-runtime/
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-action@stable
+
+      - name: Install Tauri dependencies (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VIVID_LIB_PATH: ${{ github.workspace }}/vivid-runtime/lib
+        with:
+          tagName: v__VERSION__
+          releaseName: 'Vivid IDE v__VERSION__'
+          releaseBody: 'See the assets for downloads.'
+          releaseDraft: true
+          prerelease: false
+
+  # Combine into single release
+  create-release:
+    needs: [build-runtime, build-ide]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            vivid-*/*
+            Vivid-IDE-*/*
+          draft: true
+```
+
+### Submodule Approach for vivid-ide Repository
+
+The `vivid-ide` repository uses `vivid` as a git submodule for building:
+
+```
+vivid-ide/
+├── .gitmodules
+├── vivid/                    # git submodule -> seethroughlab/vivid
+│   ├── modules/vivid-core/
+│   │   └── include/vivid/vivid_c.h
+│   └── ...
+├── src-tauri/
+│   ├── Cargo.toml
+│   ├── build.rs              # Finds libvivid-c from VIVID_LIB_PATH or builds
+│   └── src/
+├── crates/
+│   ├── vivid-sys/            # FFI bindings (references vivid/include)
+│   └── vivid/                # Safe wrapper
+├── src/                      # TypeScript frontend
+└── package.json
+```
+
+**.gitmodules:**
+```ini
+[submodule "vivid"]
+    path = vivid
+    url = https://github.com/seethroughlab/vivid.git
+    branch = master
+```
+
+**Development workflow:**
+```bash
+# Clone with submodule
+git clone --recursive https://github.com/seethroughlab/vivid-ide.git
+
+# Or init submodule after clone
+git clone https://github.com/seethroughlab/vivid-ide.git
+cd vivid-ide
+git submodule update --init --recursive
+
+# Build vivid first (for local development)
+cd vivid && cmake -B build && cmake --build build && cd ..
+
+# Then build IDE
+npm install && npm run tauri build
+```
+
+**build.rs library resolution:**
+```rust
+fn main() {
+    // Priority 1: CI provides pre-built library
+    if let Ok(lib_path) = std::env::var("VIVID_LIB_PATH") {
+        println!("cargo:rustc-link-search=native={}", lib_path);
+    }
+    // Priority 2: Local vivid submodule build
+    else if Path::new("vivid/build/lib").exists() {
+        println!("cargo:rustc-link-search=native=vivid/build/lib");
+    }
+    // Priority 3: System-installed vivid
+    else {
+        println!("cargo:rustc-link-search=native=/usr/local/lib");
+    }
+
+    println!("cargo:rustc-link-lib=dylib=vivid-c");
+}
+```
+
+### Installation Documentation
+
+**README.md for vivid-ide:**
+
+```markdown
+# Vivid IDE
+
+Visual creative coding IDE with integrated runtime, node-based chain visualizer,
+and built-in terminal for Claude Code.
+
+## Installation
+
+### Option 1: Download IDE (Recommended)
+
+Download the latest release for your platform:
+- **macOS (Apple Silicon)**: `Vivid-IDE-vX.X.X-macos-arm64.dmg`
+- **macOS (Intel)**: `Vivid-IDE-vX.X.X-macos-x64.dmg`
+- **Windows**: `Vivid-IDE-vX.X.X-windows-x64.msi`
+- **Linux**: `Vivid-IDE-vX.X.X-linux-x64.AppImage`
+
+The IDE includes everything you need - just install and run.
+
+### Option 2: Runtime Only (Advanced)
+
+If you prefer VS Code or command-line workflow:
+
+1. Download the runtime: `vivid-vX.X.X-<platform>.tar.gz`
+2. Extract and add `bin/` to your PATH
+3. Install the [VS Code extension](https://marketplace.visualstudio.com/...)
+4. Run projects with `vivid <project-path>`
+
+### Option 3: Build from Source
+
+```bash
+git clone --recursive https://github.com/seethroughlab/vivid-ide.git
+cd vivid-ide
+
+# Build the vivid runtime
+cd vivid && cmake -B build && cmake --build build && cd ..
+
+# Build the IDE
+npm install
+npm run tauri build
+```
+
+## Updating
+
+The IDE checks for updates on launch. When a new version is available:
+1. Download the new release
+2. Replace the existing installation
+3. Your projects and settings are preserved
+
+## VS Code Extension Compatibility
+
+The runtime-only download works with the existing VS Code extension. If you
+prefer VS Code's editing experience but want Vivid's visual preview, this
+is the right choice.
+```
+
+### Release Page Layout
+
+GitHub Releases page organization:
+
+```
+v0.2.0
+
+## Vivid IDE (Recommended)
+
+Full IDE with visual chain editor, Monaco code editor, and integrated terminal.
+
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon) | [Vivid-IDE-v0.2.0-macos-arm64.dmg](link) |
+| macOS (Intel) | [Vivid-IDE-v0.2.0-macos-x64.dmg](link) |
+| Windows | [Vivid-IDE-v0.2.0-windows-x64.msi](link) |
+| Linux | [Vivid-IDE-v0.2.0-linux-x64.AppImage](link) |
+
+## Runtime Only (Advanced)
+
+CLI and libraries for VS Code users or those embedding vivid-core.
+
+| Platform | Download |
+|----------|----------|
+| macOS (Apple Silicon) | [vivid-v0.2.0-macos-arm64.tar.gz](link) |
+| macOS (Intel) | [vivid-v0.2.0-macos-x64.tar.gz](link) |
+| Windows | [vivid-v0.2.0-windows-x64.zip](link) |
+| Linux | [vivid-v0.2.0-linux-x64.tar.gz](link) |
+
+## What's New
+
+- [changelog entries]
+```
 
 ---
 
@@ -518,4 +941,4 @@ vivid = { path = "../crates/vivid" }
 - [portable-pty](https://docs.rs/portable-pty) - Cross-platform PTY crate
 - [Monaco Editor](https://microsoft.github.io/monaco-editor/) - VS Code's editor component
 - [Elk.js](https://github.com/kieler/elkjs) - Graph layout library (for Phase 4)
-- [EditorBridge Protocol](../docs/WEBSOCKET_API.md) - Full WebSocket API documentation
+- [RuntimeAPI Protocol](../docs/WEBSOCKET_API.md) - Full WebSocket API documentation

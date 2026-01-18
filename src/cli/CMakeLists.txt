@@ -1,18 +1,18 @@
 # Vivid CLI - Main executable
-# Contains: entry point, argument parsing, editor bridge
+# Contains: entry point, argument parsing, runtime API (WebSocket server for MCP)
 
 set(VIVID_CLI_SOURCES
     main.cpp
     app.cpp
     cli.cpp
-    editor_bridge.cpp
+    runtime_api.cpp
     mcp_server.cpp
     module_loader.cpp
 )
 
 set(VIVID_CLI_HEADERS
     include/vivid/cli.h
-    include/vivid/editor_bridge.h
+    include/vivid/runtime_api.h
     include/vivid/mcp_server.h
     include/vivid/module_loader.h
 )

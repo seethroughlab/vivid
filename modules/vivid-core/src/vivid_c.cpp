@@ -31,10 +31,6 @@ extern "C" {
 // Thread-local error message
 static thread_local std::string s_lastError;
 
-// Version info
-static const char* VIVID_VERSION = "0.1.0";
-static const int VIVID_API_VERSION = 1;
-
 // =============================================================================
 // Internal helper functions
 // =============================================================================
@@ -673,6 +669,15 @@ VIVID_C_API VividResult vivid_context_load_project(VividContext* ctx, const char
         std::string projectPath = path;
         std::string chainPath = projectPath + "/chain.cpp";
 
+        // CRITICAL: Reset the chain BEFORE reloading the dylib!
+        // The old chain's operators have vtables pointing to the old dylib.
+        // If we unload the dylib first, the operator destructors will crash
+        // when trying to call virtual functions in unloaded memory.
+        if (internal->hasProject) {
+            internal->context->resetChain();
+            internal->context->clearRegisteredOperators();
+        }
+
         internal->projectPath = projectPath;
         internal->hotReload->setSourceFile(chainPath);
 
@@ -683,7 +688,7 @@ VIVID_C_API VividResult vivid_context_load_project(VividContext* ctx, const char
             return VIVID_ERROR_COMPILE_FAILED;
         }
 
-        // Reset the chain and call setup
+        // Reset chain again to clear any state (it's now safe since new dylib is loaded)
         internal->context->resetChain();
         internal->context->setChainPath(chainPath);
 
@@ -1234,9 +1239,9 @@ VIVID_C_API VividResult vivid_operator_capture_snapshot(VividOperator* op, const
 // =============================================================================
 
 VIVID_C_API const char* vivid_get_version(void) {
-    return VIVID_VERSION;
+    return VIVID_VERSION_STRING;
 }
 
 VIVID_C_API int vivid_get_api_version(void) {
-    return VIVID_API_VERSION;
+    return VIVID_API_VERSION;  // From vivid_c.h
 }

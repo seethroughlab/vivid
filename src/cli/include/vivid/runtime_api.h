@@ -11,8 +11,8 @@ namespace vivid {
 
 class Chain;
 
-/// Operator info for editor communication
-struct EditorOperatorInfo {
+/// Operator info for RuntimeAPI communication
+struct RuntimeOperatorInfo {
     std::string chainName;      ///< Name in chain (e.g., "noise")
     std::string displayName;    ///< Operator type (e.g., "Noise")
     std::string outputType;     ///< Output kind (e.g., "Texture")
@@ -20,8 +20,8 @@ struct EditorOperatorInfo {
     std::vector<std::string> inputNames; ///< Connected input names
 };
 
-/// Parameter info for editor communication
-struct EditorParamInfo {
+/// Parameter info for RuntimeAPI communication
+struct RuntimeParamInfo {
     std::string operatorName;   ///< Owning operator's chain name
     std::string paramName;      ///< Parameter name
     std::string paramType;      ///< Type (Float, Vec3, Color, FilePath, etc.)
@@ -36,13 +36,13 @@ struct EditorParamInfo {
 };
 
 /// Per-operator timing info
-struct EditorOperatorTiming {
+struct RuntimeOperatorTiming {
     std::string name;           ///< Operator chain name
     float timeMs = 0.0f;        ///< Processing time in milliseconds
 };
 
-/// Performance metrics for editor communication (Phase 3)
-struct EditorPerformanceStats {
+/// Performance metrics for RuntimeAPI
+struct RuntimePerformanceStats {
     // Frame timing
     float fps = 0.0f;                           ///< Current frames per second
     float frameTimeMs = 0.0f;                   ///< Last frame time in milliseconds
@@ -54,25 +54,25 @@ struct EditorPerformanceStats {
     size_t operatorCount = 0;                   ///< Number of operators in chain
 
     // Per-operator timing
-    std::vector<EditorOperatorTiming> operatorTimings;
+    std::vector<RuntimeOperatorTiming> operatorTimings;
 };
 
-/// Monitor info for editor communication
-struct EditorMonitorInfo {
+/// Monitor info for RuntimeAPI
+struct RuntimeMonitorInfo {
     int index = 0;                              ///< Monitor index (0-based)
     std::string name;                           ///< Monitor name from GLFW
     int width = 0;                              ///< Resolution width
     int height = 0;                             ///< Resolution height
 };
 
-/// Window state for editor communication (Phase 14)
-struct EditorWindowState {
+/// Window state for RuntimeAPI
+struct RuntimeWindowState {
     bool fullscreen = false;                    ///< Fullscreen mode active
     bool borderless = false;                    ///< Borderless (undecorated) window
     bool alwaysOnTop = false;                   ///< Window stays above others
     bool cursorVisible = true;                  ///< Mouse cursor visible
     int currentMonitor = 0;                     ///< Index of monitor containing window
-    std::vector<EditorMonitorInfo> monitors;    ///< Available monitors
+    std::vector<RuntimeMonitorInfo> monitors;   ///< Available monitors
 };
 
 /// Pending parameter change (slider adjustment waiting for Claude to apply)
@@ -86,12 +86,12 @@ struct PendingChange {
     int64_t timestamp = 0;                      ///< When the change was made (ms since epoch)
 };
 
-/// EditorBridge provides a WebSocket server for communication with external editors (VS Code, etc.)
-/// Handles compile status notifications and commands like reload.
-class EditorBridge {
+/// RuntimeAPI provides a WebSocket server for external tools (MCP, etc.) to query and control vivid.
+/// Handles compile status notifications, parameter queries, and commands like reload.
+class RuntimeAPI {
 public:
-    EditorBridge();
-    ~EditorBridge();
+    RuntimeAPI();
+    ~RuntimeAPI();
 
     /// Start the WebSocket server on the specified port
     void start(int port = 9876);
@@ -122,26 +122,26 @@ public:
         message = m_cachedCompileMessage;
     }
 
-    /// Send operator list to all connected clients (Phase 2)
+    /// Send operator list to all connected clients
     /// @param operators Vector of operator info
-    void sendOperatorList(const std::vector<EditorOperatorInfo>& operators);
+    void sendOperatorList(const std::vector<RuntimeOperatorInfo>& operators);
 
-    /// Send parameter values to all connected clients (Phase 2)
+    /// Send parameter values to all connected clients
     /// @param params Vector of parameter info with current values
-    void sendParamValues(const std::vector<EditorParamInfo>& params);
+    void sendParamValues(const std::vector<RuntimeParamInfo>& params);
 
-    /// Send performance stats to all connected clients (Phase 3)
+    /// Send performance stats to all connected clients
     /// @param stats Performance metrics including FPS, memory, timing
-    void sendPerformanceStats(const EditorPerformanceStats& stats);
+    void sendPerformanceStats(const RuntimePerformanceStats& stats);
 
     /// Send solo mode state to all connected clients
     /// @param active True if solo mode is active
     /// @param operatorName Name of the soloed operator (empty if not active)
     void sendSoloState(bool active, const std::string& operatorName);
 
-    /// Send window state to all connected clients (Phase 14)
+    /// Send window state to all connected clients
     /// @param state Current window state including fullscreen, borderless, monitors
-    void sendWindowState(const EditorWindowState& state);
+    void sendWindowState(const RuntimeWindowState& state);
 
     /// Send pending changes to all connected clients
     /// Called automatically when a pending change is added/removed

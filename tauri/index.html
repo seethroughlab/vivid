@@ -10,16 +10,61 @@
     <div id="app">
       <!-- Drag region for window movement (title bar area) -->
       <div class="titlebar" data-tauri-drag-region>
-        <span class="title">Vivid</span>
+        <!-- File menu -->
+        <div class="menu-bar">
+          <div class="menu-item" id="file-menu">
+            <span class="menu-label">File</span>
+            <div class="menu-dropdown" id="file-dropdown">
+              <button class="menu-option" id="menu-new-project">New Project...</button>
+              <button class="menu-option" id="menu-open-project">Open Project...</button>
+              <div class="menu-separator"></div>
+              <button class="menu-option" id="menu-open-file">Open File...</button>
+              <button class="menu-option" id="menu-save-file">Save</button>
+            </div>
+          </div>
+        </div>
+        <span class="title" id="title">Vivid</span>
         <span class="status" id="status">WebGPU Active</span>
       </div>
 
       <!-- Main content area with panels -->
       <div class="main-content">
-        <!-- Left panel: Inspector -->
-        <div class="panel panel-left" id="inspector-panel">
+        <!-- Left panel: Terminal (Claude Code) -->
+        <div class="panel panel-left" id="terminal-panel">
           <div class="panel-header">
-            <span>Inspector</span>
+            <span>Claude Code</span>
+            <button class="panel-toggle" id="toggle-terminal">−</button>
+          </div>
+          <div class="panel-content">
+            <div id="terminal"></div>
+          </div>
+        </div>
+
+        <!-- Center area: Editor overlay + Preview -->
+        <div class="center-area">
+          <!-- Editor drops down from top -->
+          <div class="editor-overlay" id="editor-panel">
+            <div class="panel-header">
+              <span class="editor-filename" id="editor-filename">No file open</span>
+              <div class="editor-actions">
+                <button class="editor-btn" id="open-file" title="Open File">Open</button>
+                <button class="editor-btn" id="save-file" title="Save (Cmd+S)">Save</button>
+                <button class="panel-toggle" id="toggle-editor">−</button>
+              </div>
+            </div>
+            <div class="panel-content">
+              <div id="editor"></div>
+            </div>
+          </div>
+
+          <!-- Preview area fills remaining space (transparent for wgpu) -->
+          <div class="preview-area" id="preview-area"></div>
+        </div>
+
+        <!-- Right panel: Parameters (Inspector) -->
+        <div class="panel panel-right" id="inspector-panel">
+          <div class="panel-header">
+            <span>Parameters</span>
             <button class="panel-toggle" id="toggle-inspector">−</button>
           </div>
           <div class="panel-content">
@@ -39,22 +84,6 @@
             </div>
           </div>
         </div>
-
-        <!-- Preview area (transparent - shows wgpu behind) -->
-        <div class="preview-area" id="preview-area">
-          <!-- This is transparent - wgpu renders behind -->
-        </div>
-
-        <!-- Right panel: Terminal -->
-        <div class="panel panel-right" id="terminal-panel">
-          <div class="panel-header">
-            <span>Claude Code</span>
-            <button class="panel-toggle" id="toggle-terminal">−</button>
-          </div>
-          <div class="panel-content">
-            <div id="terminal"></div>
-          </div>
-        </div>
       </div>
 
       <!-- Error banner (shown when compile errors occur) -->
@@ -63,21 +92,6 @@
         <span class="error-message" id="error-message">Compilation error</span>
         <span class="error-location" id="error-location"></span>
         <button class="error-dismiss" id="error-dismiss" title="Dismiss">×</button>
-      </div>
-
-      <!-- Bottom panel: Code Editor -->
-      <div class="panel panel-bottom" id="editor-panel">
-        <div class="panel-header">
-          <span class="editor-filename" id="editor-filename">No file open</span>
-          <div class="editor-actions">
-            <button class="editor-btn" id="open-file" title="Open File">Open</button>
-            <button class="editor-btn" id="save-file" title="Save (Cmd+S)">Save</button>
-            <button class="panel-toggle" id="toggle-editor">−</button>
-          </div>
-        </div>
-        <div class="panel-content">
-          <div id="editor"></div>
-        </div>
       </div>
 
       <!-- Bottom status bar -->
