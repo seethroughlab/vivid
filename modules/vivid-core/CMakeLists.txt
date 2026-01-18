@@ -233,8 +233,18 @@ message(STATUS "[vivid-core] Configured")
 # Vivid C API library (for embedding in external applications like Tauri)
 # =============================================================================
 
-add_library(vivid-c SHARED
+# vivid-c sources
+set(VIVID_C_SOURCES
     src/vivid_c.cpp
+)
+
+# Platform-specific vivid-c sources
+if(APPLE)
+    list(APPEND VIVID_C_SOURCES src/vivid_c_window.mm)
+endif()
+
+add_library(vivid-c SHARED
+    ${VIVID_C_SOURCES}
 )
 
 target_include_directories(vivid-c

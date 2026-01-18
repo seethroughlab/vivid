@@ -52,8 +52,8 @@ void update(Context& ctx) {
     }
 
     // EXPERIMENT: Animate parameters
-    // auto& blur = ctx.chain().get<Blur>("blur");
-    // blur.radius = 4.0f + sin(ctx.time()) * 4.0f;
+    auto& blur = ctx.chain().get<Blur>("blur");
+    blur.radius = 4.0f + sin(ctx.time()) * 4.0f;
 }
 
 VIVID_CHAIN(setup, update)

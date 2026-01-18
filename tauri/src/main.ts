@@ -4,7 +4,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import * as monaco from "monaco-editor";
 import { open, save } from "@tauri-apps/plugin-dialog";
-import { vividConnection, type VividMessage, type ConnectionStatus } from "./vivid-connection";
+import * as vivid from "./vivid-api";
 
 // Tauri API - will be available at runtime
 declare global {
@@ -42,6 +42,10 @@ let editor: monaco.editor.IStandaloneCodeEditor | null = null;
 let currentFilePath: string | null = null;
 let isModified: boolean = false;
 
+// Global vivid state
+let operators: vivid.OperatorInfo[] = [];
+let selectedOperator: string | null = null;
+
 // Initialize the application
 async function init() {
   console.log("Vivid IDE initializing...");
@@ -52,20 +56,23 @@ async function init() {
   // Set up panel toggles
   setupPanelToggles();
 
-  // Set up parameter sliders
-  setupSliders();
-
   // Initialize terminal with xterm.js
   await initTerminal();
 
   // Initialize Monaco editor
   initEditor();
 
-  // Initialize Vivid connection
-  initVividConnection();
+  // Initialize Vivid state polling
+  await initVividState();
+
+  // Set up error banner click handlers
+  setupErrorBanner();
 
   // Set up input forwarding to wgpu/egui
   setupInputForwarding();
+
+  // Set up keyboard shortcuts
+  setupKeyboardShortcuts();
 
   // Update resolution display
   updateResolution();
@@ -125,30 +132,10 @@ function setupPanelToggles() {
   });
 }
 
-function setupSliders() {
-  const sliders = ["scale", "speed", "octaves"];
-
-  sliders.forEach((param) => {
-    const slider = document.getElementById(`param-${param}`) as HTMLInputElement;
-    const valueDisplay = document.getElementById(`value-${param}`);
-
-    if (slider && valueDisplay) {
-      slider.addEventListener("input", () => {
-        const value = parseFloat(slider.value);
-        valueDisplay.textContent = param === "octaves" ? value.toString() : value.toFixed(1);
-
-        // TODO: Send to Rust backend via Tauri command
-        console.log(`Parameter ${param} changed to ${value}`);
-      });
-    }
-  });
-}
-
-// Forward mouse/scroll events to wgpu/egui for node graph interaction
+// Forward mouse/scroll events to vivid-core for node graph interaction
 function setupInputForwarding() {
-  // Forward all mouse events to egui since it renders behind the entire webview.
-  // The webview panels will still receive events first due to DOM structure.
-  // We forward from document.body to catch events in transparent areas.
+  console.log("[Vivid] Setting up input forwarding");
+  let lastLogTime = 0;
 
   // Mouse move - forward position for hover effects
   document.addEventListener("mousemove", (e) => {
@@ -156,6 +143,12 @@ function setupInputForwarding() {
     const target = e.target as HTMLElement;
     if (target.closest(".panel") || target.closest(".titlebar") || target.closest(".statusbar")) {
       return;
+    }
+    // Log occasionally to avoid spam
+    const now = Date.now();
+    if (now - lastLogTime > 1000) {
+      console.log("[Vivid] Forwarding mouse move:", e.clientX, e.clientY);
+      lastLogTime = now;
     }
     invoke("input_mouse_move", { x: e.clientX, y: e.clientY }).catch(() => {});
   });
@@ -182,7 +175,10 @@ function setupInputForwarding() {
     }
     // Prevent default scroll behavior when over node graph area
     e.preventDefault();
-    invoke("input_scroll", { dx: e.deltaX, dy: e.deltaY }).catch(() => {});
+    console.log("[Vivid] Forwarding scroll:", e.deltaX, e.deltaY);
+    invoke("input_scroll", { dx: e.deltaX, dy: e.deltaY }).catch((err) => {
+      console.error("[Vivid] input_scroll failed:", err);
+    });
   }, { passive: false });
 
   console.log("Input forwarding to egui enabled");
@@ -582,86 +578,527 @@ async function saveFile() {
   }
 }
 
-// --- Vivid Connection ---
+// --- Vivid State Management ---
 
-function initVividConnection() {
-  // Update status indicator on connection status change
-  vividConnection.onStatusChange(updateVividStatus);
+async function initVividState() {
+  console.log("[Vivid] initVividState() starting...");
 
-  // Handle messages from Vivid
-  vividConnection.onMessage(handleVividMessage);
+  // Wait a bit for vivid-core to initialize (it waits 30 frames after window ready)
+  // At 60fps, that's ~500ms, so we wait 1 second to be safe
+  console.log("[Vivid] Waiting 1.5s for vivid-core to initialize...");
+  await new Promise(resolve => setTimeout(resolve, 1500));
 
-  // Start connection
-  vividConnection.connect();
+  // Initial load of project info
+  await refreshVividState();
+
+  // Poll for updates periodically (compile status, operators, etc.)
+  window.setInterval(async () => {
+    await refreshVividState();
+  }, 2000);
+
+  // Faster polling for selection sync (100ms for responsive Inspector updates)
+  window.setInterval(async () => {
+    await syncSelectedOperator();
+  }, 100);
+
+  // Update status indicator
+  updateVividStatus("connected");
+  console.log("[Vivid] initVividState() complete");
 }
 
-function updateVividStatus(status: ConnectionStatus) {
+async function refreshVividState() {
+  console.log("[Vivid] refreshVividState() called");
+  try {
+    // Get project info and load chain.cpp if available
+    console.log("[Vivid] Calling get_project_info...");
+    const projectInfo = await vivid.getProjectInfo();
+    console.log("[Vivid] Project info:", projectInfo);
+
+    if (projectInfo.loaded && projectInfo.chain_path) {
+      console.log("[Vivid] Project loaded, chain path:", projectInfo.chain_path);
+      // Auto-load chain.cpp in editor if no file is open
+      if (!currentFilePath) {
+        await loadFileInEditor(projectInfo.chain_path);
+      }
+    } else {
+      console.log("[Vivid] No project loaded yet");
+    }
+
+    // Get operators and update inspector
+    console.log("[Vivid] Calling get_operators...");
+    operators = await vivid.getOperators();
+    console.log("[Vivid] Got operators:", operators);
+    updateOperatorList();
+
+    // Sync selection from vivid-core visualizer
+    await syncSelectedOperator();
+
+    // Check compile status
+    await checkCompileStatus();
+  } catch (e) {
+    console.error("[Vivid] Failed to refresh vivid state:", e);
+  }
+}
+
+// Sync the selected operator from vivid-core's visualizer to the webview Inspector
+async function syncSelectedOperator() {
+  try {
+    const coreSelection = await vivid.getSelectedOperator();
+
+    // If the selection changed in vivid-core, update our Inspector
+    if (coreSelection !== selectedOperator) {
+      if (coreSelection) {
+        await selectOperator(coreSelection);
+      } else if (selectedOperator) {
+        // Core has no selection, clear ours
+        selectedOperator = null;
+        updateOperatorList();
+        const container = document.getElementById("param-controls");
+        if (container) {
+          container.innerHTML = '<div class="no-params">Select an operator</div>';
+        }
+      }
+    }
+  } catch (e) {
+    // Silently ignore polling errors
+  }
+}
+
+async function checkCompileStatus() {
+  try {
+    const status = await vivid.getCompileStatus();
+    handleCompileStatus(status);
+  } catch (e) {
+    // Ignore errors during polling
+  }
+}
+
+// Track current error state
+let currentError: { line: number; column: number; message: string } | null = null;
+
+function handleCompileStatus(status: vivid.CompileStatusInfo) {
+  const statusEl = document.getElementById("compile-status");
+  const errorBanner = document.getElementById("error-banner");
+  const errorMessage = document.getElementById("error-message");
+  const errorLocation = document.getElementById("error-location");
+  const editorPanel = document.getElementById("editor-panel");
+
+  if (status.success) {
+    // Compilation succeeded - clear errors
+    if (statusEl) {
+      statusEl.textContent = "✓ Compiled";
+      statusEl.className = "compile-status success";
+      // Fade out the success message after 3 seconds
+      setTimeout(() => {
+        if (statusEl.textContent === "✓ Compiled") {
+          statusEl.textContent = "";
+          statusEl.className = "compile-status";
+        }
+      }, 3000);
+    }
+
+    // Hide error banner
+    errorBanner?.classList.add("hidden");
+    editorPanel?.classList.remove("has-error");
+
+    // Clear editor markers
+    clearEditorErrors();
+    currentError = null;
+  } else {
+    // Compilation failed - show error
+    currentError = {
+      line: status.error_line || 1,
+      column: status.error_column || 1,
+      message: status.message || "Compilation failed"
+    };
+
+    if (statusEl) {
+      statusEl.textContent = "Compile Error";
+      statusEl.className = "compile-status error";
+    }
+
+    // Show error banner with details
+    if (errorBanner && errorMessage) {
+      // Parse error message to extract just the core message
+      const msg = currentError.message;
+      // Try to extract the actual error (often after "error: ")
+      const errorMatch = msg.match(/error:\s*(.+?)(?:\n|$)/i);
+      const displayMessage = errorMatch ? errorMatch[1] : msg;
+
+      errorMessage.textContent = displayMessage;
+
+      if (errorLocation) {
+        if (status.error_line) {
+          errorLocation.textContent = `Line ${status.error_line}${status.error_column ? `:${status.error_column}` : ""}`;
+          errorLocation.style.display = "inline";
+        } else {
+          errorLocation.style.display = "none";
+        }
+      }
+
+      errorBanner.classList.remove("hidden");
+    }
+
+    // Add error styling to editor panel
+    editorPanel?.classList.add("has-error");
+
+    // Highlight error in editor
+    if (editor && currentError.line) {
+      highlightErrorInEditor(currentError.line, currentError.column, currentError.message);
+    }
+  }
+}
+
+function setupErrorBanner() {
+  const errorBanner = document.getElementById("error-banner");
+  const errorDismiss = document.getElementById("error-dismiss");
+
+  // Click on banner to jump to error
+  errorBanner?.addEventListener("click", (e) => {
+    // Don't jump if clicking dismiss button
+    if ((e.target as HTMLElement).id === "error-dismiss") return;
+
+    if (currentError && editor) {
+      jumpToError(currentError.line, currentError.column);
+    }
+  });
+
+  // Dismiss button
+  errorDismiss?.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const errorBanner = document.getElementById("error-banner");
+    const editorPanel = document.getElementById("editor-panel");
+    errorBanner?.classList.add("hidden");
+    editorPanel?.classList.remove("has-error");
+  });
+}
+
+function jumpToError(line: number, column: number) {
+  if (!editor) return;
+
+  // Reveal the line and set cursor
+  editor.revealLineInCenter(line);
+  editor.setPosition({ lineNumber: line, column: column });
+  editor.focus();
+
+  // Add a brief highlight animation
+  const model = editor.getModel();
+  if (model) {
+    const decorations = editor.createDecorationsCollection([
+      {
+        range: new monaco.Range(line, 1, line, model.getLineMaxColumn(line)),
+        options: {
+          className: "error-line-flash",
+          isWholeLine: true,
+        }
+      }
+    ]);
+
+    // Remove the flash decoration after animation
+    setTimeout(() => {
+      decorations.clear();
+    }, 1000);
+  }
+}
+
+function highlightErrorInEditor(line: number, column: number, message: string) {
+  if (!editor) return;
+
+  // Add error decoration
+  const model = editor.getModel();
+  if (model) {
+    monaco.editor.setModelMarkers(model, "vivid", [
+      {
+        severity: monaco.MarkerSeverity.Error,
+        message: message,
+        startLineNumber: line,
+        startColumn: column,
+        endLineNumber: line,
+        endColumn: column + 1,
+      },
+    ]);
+  }
+}
+
+function clearEditorErrors() {
+  if (!editor) return;
+  const model = editor.getModel();
+  if (model) {
+    monaco.editor.setModelMarkers(model, "vivid", []);
+  }
+}
+
+function updateVividStatus(status: "connected" | "disconnected") {
   const statusEl = document.getElementById("status");
   if (!statusEl) return;
 
-  switch (status) {
-    case "connected":
-      statusEl.textContent = "Vivid Connected";
-      statusEl.className = "status connected";
-      break;
-    case "connecting":
-      statusEl.textContent = "Connecting...";
-      statusEl.className = "status connecting";
-      break;
-    case "disconnected":
-      statusEl.textContent = "Vivid Disconnected";
-      statusEl.className = "status disconnected";
-      break;
+  if (status === "connected") {
+    statusEl.textContent = "Vivid Active";
+    statusEl.className = "status connected";
+  } else {
+    statusEl.textContent = "Vivid Inactive";
+    statusEl.className = "status disconnected";
   }
 }
 
-function handleVividMessage(message: VividMessage) {
-  switch (message.type) {
-    case "compile_status":
-      handleCompileStatus(message);
+// --- Operator List / Inspector ---
+
+function updateOperatorList() {
+  console.log("[Vivid] updateOperatorList called with", operators.length, "operators");
+  const listEl = document.getElementById("operator-list");
+  if (!listEl) {
+    console.error("[Vivid] operator-list element not found!");
+    return;
+  }
+
+  console.log("[Vivid] Found operator-list element:", listEl);
+  listEl.innerHTML = "";
+
+  for (const op of operators) {
+    console.log("[Vivid] Adding operator:", op.name, op.type_name);
+    const item = document.createElement("div");
+    item.className = "operator-item" + (op.name === selectedOperator ? " selected" : "");
+    item.innerHTML = `
+      <span class="op-name">${op.name}</span>
+      <span class="op-type">${op.type_name}</span>
+    `;
+    item.addEventListener("click", () => selectOperator(op.name));
+    listEl.appendChild(item);
+  }
+  console.log("[Vivid] Operator list updated, children:", listEl.children.length);
+}
+
+async function selectOperator(name: string) {
+  selectedOperator = name;
+  updateOperatorList();
+
+  // Tell vivid-core to select this operator in the visualizer
+  try {
+    await vivid.selectOperator(name);
+  } catch (e) {
+    console.error("Failed to select operator in vivid-core:", e);
+  }
+
+  // Load params for this operator
+  try {
+    const params = await vivid.getOperatorParams(name);
+    updateParamControls(name, params);
+  } catch (e) {
+    console.error("Failed to get operator params:", e);
+  }
+}
+
+function updateParamControls(opName: string, params: vivid.ParamInfo[]) {
+  const container = document.getElementById("param-controls");
+  if (!container) return;
+
+  container.innerHTML = "";
+
+  if (params.length === 0) {
+    container.innerHTML = '<div class="no-params">No parameters</div>';
+    return;
+  }
+
+  for (const param of params) {
+    const control = createParamControl(opName, param);
+    container.appendChild(control);
+  }
+}
+
+function createParamControl(opName: string, param: vivid.ParamInfo): HTMLElement {
+  const wrapper = document.createElement("div");
+  wrapper.className = "param-control";
+
+  const label = document.createElement("label");
+  label.textContent = param.name;
+  wrapper.appendChild(label);
+
+  // Create appropriate control based on param type
+  switch (param.param_type) {
+    case "Float":
+    case "Int": {
+      const slider = document.createElement("input");
+      slider.type = "range";
+      slider.min = String(param.min_val);
+      slider.max = String(param.max_val);
+      slider.step = param.param_type === "Int" ? "1" : "0.01";
+      slider.value = String(param.value[0]);
+
+      const valueDisplay = document.createElement("span");
+      valueDisplay.className = "param-value";
+      valueDisplay.textContent = param.param_type === "Int"
+        ? String(Math.round(param.value[0]))
+        : param.value[0].toFixed(2);
+
+      slider.addEventListener("input", async () => {
+        const value = parseFloat(slider.value);
+        valueDisplay.textContent = param.param_type === "Int"
+          ? String(Math.round(value))
+          : value.toFixed(2);
+        await vivid.setParamFloat(opName, param.name, value);
+      });
+
+      wrapper.appendChild(slider);
+      wrapper.appendChild(valueDisplay);
       break;
-    case "frame_info":
-      updateFpsDisplay(message.fps);
+    }
+
+    case "Bool": {
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.checked = param.value[0] > 0.5;
+
+      checkbox.addEventListener("change", async () => {
+        await vivid.setParamFloat(opName, param.name, checkbox.checked ? 1.0 : 0.0);
+      });
+
+      wrapper.appendChild(checkbox);
       break;
-    case "operator_list":
-      console.log("Received operator list:", message.operators.length, "operators");
-      // TODO: Update node graph (Phase 4)
+    }
+
+    case "Color": {
+      const colorInput = document.createElement("input");
+      colorInput.type = "color";
+      // Convert float [0-1] to hex
+      const r = Math.round(param.value[0] * 255);
+      const g = Math.round(param.value[1] * 255);
+      const b = Math.round(param.value[2] * 255);
+      colorInput.value = `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+
+      colorInput.addEventListener("input", async () => {
+        const hex = colorInput.value;
+        const r = parseInt(hex.slice(1, 3), 16) / 255;
+        const g = parseInt(hex.slice(3, 5), 16) / 255;
+        const b = parseInt(hex.slice(5, 7), 16) / 255;
+        await vivid.setParamColor(opName, param.name, r, g, b, param.value[3]);
+      });
+
+      wrapper.appendChild(colorInput);
       break;
-    case "param_values":
-      console.log("Received param values:", message.params.length, "params");
-      // TODO: Update inspector panel (Phase 5)
+    }
+
+    case "Enum": {
+      const select = document.createElement("select");
+      param.enum_labels.forEach((labelText, i) => {
+        const option = document.createElement("option");
+        option.value = String(i);
+        option.textContent = labelText;
+        if (Math.round(param.value[0]) === i) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+
+      select.addEventListener("change", async () => {
+        await vivid.setParamFloat(opName, param.name, parseInt(select.value));
+      });
+
+      wrapper.appendChild(select);
       break;
-    case "chain_structure":
-      console.log("Received chain structure:", message.operators.length, "operators");
-      // TODO: Update node graph (Phase 4)
-      break;
-    case "pending_changes":
-      if (message.hasChanges) {
-        console.log("Pending changes:", message.changes.length);
+    }
+
+    default: {
+      // For Vec2, Vec3, Vec4, show multiple sliders
+      const components = param.param_type === "Vec2" ? 2 :
+                         param.param_type === "Vec3" ? 3 :
+                         param.param_type === "Vec4" ? 4 : 1;
+
+      for (let i = 0; i < components; i++) {
+        const row = document.createElement("div");
+        row.className = "vec-component";
+
+        const compLabel = document.createElement("span");
+        compLabel.textContent = ["x", "y", "z", "w"][i];
+        row.appendChild(compLabel);
+
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.min = String(param.min_val);
+        slider.max = String(param.max_val);
+        slider.step = "0.01";
+        slider.value = String(param.value[i]);
+
+        const valueDisplay = document.createElement("span");
+        valueDisplay.className = "param-value";
+        valueDisplay.textContent = param.value[i].toFixed(2);
+
+        const componentIndex = i;
+        slider.addEventListener("input", async () => {
+          const newValue: [number, number, number, number] = [...param.value] as [number, number, number, number];
+          newValue[componentIndex] = parseFloat(slider.value);
+          valueDisplay.textContent = newValue[componentIndex].toFixed(2);
+          await vivid.setParam(opName, param.name, newValue);
+        });
+
+        row.appendChild(slider);
+        row.appendChild(valueDisplay);
+        wrapper.appendChild(row);
       }
       break;
-    case "performance_stats":
-      updateFpsDisplay(message.fps);
-      break;
-    default:
-      // Log other messages for debugging
-      console.log("Vivid message:", message);
+    }
   }
+
+  return wrapper;
 }
 
-function handleCompileStatus(status: { success: boolean; message: string }) {
-  if (status.success) {
-    console.log("Vivid chain compiled successfully");
-  } else {
-    console.error("Vivid compile error:", status.message);
-    // Could show error in editor or terminal
-  }
+// --- Keyboard Shortcuts ---
+
+function setupKeyboardShortcuts() {
+  console.log("[Vivid] Setting up keyboard shortcuts");
+  document.addEventListener("keydown", async (e) => {
+    // Tab - toggle visualizer
+    if (e.key === "Tab" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // Only if not focused on input elements
+      const target = e.target as HTMLElement;
+      console.log("[Vivid] Tab pressed, target:", target.tagName, target.className);
+      if (!target.closest("input, textarea, .xterm, .monaco-editor")) {
+        e.preventDefault();
+        console.log("[Vivid] Calling toggleVisualizer...");
+        try {
+          await vivid.toggleVisualizer();
+          console.log("[Vivid] toggleVisualizer succeeded");
+        } catch (err) {
+          console.error("[Vivid] toggleVisualizer failed:", err);
+        }
+      } else {
+        console.log("[Vivid] Tab ignored - inside editor/terminal");
+      }
+    }
+
+    // Cmd+R / Ctrl+R - reload project (when not in editor)
+    if ((e.metaKey || e.ctrlKey) && e.key === "r") {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".monaco-editor")) {
+        e.preventDefault();
+        try {
+          await vivid.reloadProject();
+          await refreshVividState();
+          console.log("Project reloaded");
+        } catch (err) {
+          console.error("Failed to reload:", err);
+        }
+      }
+    }
+  });
 }
 
-function updateFpsDisplay(fps: number) {
-  const fpsEl = document.getElementById("fps");
-  if (fpsEl) {
-    fpsEl.textContent = `${Math.round(fps)} FPS`;
+// --- File Loading ---
+
+async function loadFileInEditor(path: string) {
+  try {
+    const content = await invoke<string>("read_file", { path });
+    currentFilePath = path;
+    isModified = false;
+
+    const language = getLanguageForFile(path);
+    const model = monaco.editor.createModel(content, language);
+    editor?.setModel(model);
+
+    clearEditorErrors();
+    updateEditorStatus();
+    console.log(`Loaded: ${path}`);
+  } catch (e) {
+    console.error("Failed to load file:", e);
   }
 }
 

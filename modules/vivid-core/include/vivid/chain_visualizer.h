@@ -40,6 +40,9 @@ public:
     // Will highlight the node in the graph
     void selectNodeFromEditor(const std::string& operatorName);
 
+    // Get the currently selected operator name (for IDE sync)
+    const std::string& getSelectedOperatorName() const { return m_selectedOpName; }
+
 private:
     bool m_initialized = false;
 

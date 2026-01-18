@@ -185,6 +185,40 @@ extern "C" {
         out_ctx: *mut *mut VividContext,
     ) -> VividResult;
 
+    /// Create a context with a native window handle
+    /// On macOS, native_window is NSWindow*. On Windows, it's HWND.
+    /// vivid-core will create and own all GPU resources.
+    pub fn vivid_context_create_with_window(
+        native_window: *mut c_void,
+        config: *const VividContextConfig,
+        out_ctx: *mut *mut VividContext,
+    ) -> VividResult;
+
+    /// Render a complete frame (chain output + visualizer UI)
+    /// Only valid for contexts created with vivid_context_create_with_window
+    pub fn vivid_context_render_frame(ctx: *mut VividContext) -> VividResult;
+
+    /// Resize the rendering surface
+    /// Only valid for contexts created with vivid_context_create_with_window
+    pub fn vivid_context_resize_surface(
+        ctx: *mut VividContext,
+        width: c_int,
+        height: c_int,
+    ) -> VividResult;
+
+    /// Set visualizer UI visibility
+    pub fn vivid_context_set_visualizer_visible(ctx: *mut VividContext, visible: bool);
+
+    /// Check if visualizer UI is visible
+    pub fn vivid_context_is_visualizer_visible(ctx: *mut VividContext) -> bool;
+
+    /// Get the name of the currently selected operator in the visualizer
+    /// Returns NULL if no operator is selected
+    pub fn vivid_context_get_selected_operator(ctx: *mut VividContext) -> *const c_char;
+
+    /// Select an operator in the visualizer by name
+    pub fn vivid_context_select_operator(ctx: *mut VividContext, name: *const c_char);
+
     /// Destroy a context and free all resources
     pub fn vivid_context_destroy(ctx: *mut VividContext);
 

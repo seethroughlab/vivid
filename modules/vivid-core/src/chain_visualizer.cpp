@@ -831,8 +831,33 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
         m_autoLayoutDone = true;
     }
 
+    // Apply pending editor selection (from external source like Tauri webview)
+    if (!m_pendingEditorSelection.empty()) {
+        for (size_t i = 0; i < operators.size(); ++i) {
+            if (operators[i].name == m_pendingEditorSelection) {
+                m_nodeGraph.selectNode(static_cast<int>(i));
+                break;
+            }
+        }
+        m_pendingEditorSelection.clear();
+    }
+
     // End node graph editor
     m_nodeGraph.endEditor();
+
+    // Sync selected operator name from NodeGraph selection
+    int selectedNodeId = m_nodeGraph.getSelectedNode();
+    if (selectedNodeId >= 0 && selectedNodeId != SCREEN_NODE_ID && selectedNodeId != SPEAKERS_NODE_ID) {
+        if (static_cast<size_t>(selectedNodeId) < operators.size()) {
+            m_selectedOpName = operators[selectedNodeId].name;
+            m_selectedOp = operators[selectedNodeId].op;
+            m_selectedNodeId = selectedNodeId;
+        }
+    } else if (selectedNodeId < 0) {
+        m_selectedOpName.clear();
+        m_selectedOp = nullptr;
+        m_selectedNodeId = -1;
+    }
     } // end if (renderNodeGraph)
 
     // Render status bar (in screen space, not node graph space)

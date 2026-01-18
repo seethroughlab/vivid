@@ -240,11 +240,92 @@ VIVID_C_API VividResult vivid_context_create_external(
 );
 
 /**
+ * @brief Create a context with a native window handle
+ * @param native_window Native window handle (NSWindow* on macOS, HWND on Windows)
+ * @param config Context configuration
+ * @param out_ctx Output pointer to receive context handle
+ * @return VIVID_OK on success, error code otherwise
+ *
+ * Creates a context that owns the WebGPU device, surface, and rendering pipeline.
+ * This is the preferred entry point for IDE integration where vivid-core manages
+ * all GPU rendering including the chain visualizer UI.
+ *
+ * The caller is responsible for:
+ * - Providing a valid native window handle
+ * - Calling vivid_context_render_frame() each frame
+ * - Calling vivid_context_resize() when window size changes
+ * - Calling vivid_context_destroy() when done
+ */
+VIVID_C_API VividResult vivid_context_create_with_window(
+    void* native_window,
+    const VividContextConfig* config,
+    VividContext** out_ctx
+);
+
+/**
+ * @brief Render a complete frame (chain output + visualizer UI)
+ * @param ctx Context handle
+ * @return VIVID_OK on success, error code otherwise
+ *
+ * This renders the chain output and overlays the node graph visualizer.
+ * Call this once per frame after processing input events.
+ * Only valid for contexts created with vivid_context_create_with_window().
+ */
+VIVID_C_API VividResult vivid_context_render_frame(VividContext* ctx);
+
+/**
+ * @brief Resize the rendering surface
+ * @param ctx Context handle
+ * @param width New width in pixels
+ * @param height New height in pixels
+ * @return VIVID_OK on success, error code otherwise
+ *
+ * Call this when the window size changes.
+ * Only valid for contexts created with vivid_context_create_with_window().
+ */
+VIVID_C_API VividResult vivid_context_resize_surface(VividContext* ctx, int width, int height);
+
+/**
+ * @brief Set visualizer UI visibility
+ * @param ctx Context handle
+ * @param visible True to show node graph/inspector, false to show chain output only
+ *
+ * When hidden, only the chain output is rendered (useful for fullscreen preview).
+ */
+VIVID_C_API void vivid_context_set_visualizer_visible(VividContext* ctx, bool visible);
+
+/**
+ * @brief Check if visualizer UI is visible
+ * @param ctx Context handle
+ * @return True if visualizer is visible
+ */
+VIVID_C_API bool vivid_context_is_visualizer_visible(VividContext* ctx);
+
+/**
+ * @brief Get the name of the currently selected operator in the visualizer
+ * @param ctx Context handle
+ * @return Operator name string, or NULL if no operator is selected
+ *
+ * The returned string is valid until the selection changes or the context is destroyed.
+ */
+VIVID_C_API const char* vivid_context_get_selected_operator(VividContext* ctx);
+
+/**
+ * @brief Select an operator in the visualizer by name
+ * @param ctx Context handle
+ * @param name Operator name to select
+ *
+ * The selection will be applied on the next render frame.
+ */
+VIVID_C_API void vivid_context_select_operator(VividContext* ctx, const char* name);
+
+/**
  * @brief Destroy a context and free all resources
  * @param ctx Context to destroy
  *
- * After this call, the context handle is invalid. The WebGPU device and
- * queue (passed to create_external) remain valid as they are owned by the caller.
+ * After this call, the context handle is invalid. For contexts created with
+ * create_external, the WebGPU device/queue remain valid (owned by caller).
+ * For contexts created with create_with_window, all GPU resources are freed.
  */
 VIVID_C_API void vivid_context_destroy(VividContext* ctx);
 

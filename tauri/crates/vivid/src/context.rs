@@ -66,6 +66,102 @@ pub struct Context {
 unsafe impl Send for Context {}
 
 impl Context {
+    /// Create a new context with a native window handle
+    ///
+    /// This creates a context that owns all GPU resources (instance, device, surface).
+    /// vivid-core will handle all rendering including the node graph visualizer.
+    ///
+    /// # Arguments
+    ///
+    /// * `native_window` - Platform-specific window handle (NSWindow* on macOS, HWND on Windows)
+    /// * `config` - Context configuration
+    ///
+    /// # Safety
+    ///
+    /// The native_window must be a valid platform window handle that remains valid
+    /// for the lifetime of this context.
+    pub unsafe fn with_window(
+        native_window: *mut std::ffi::c_void,
+        config: ContextConfig,
+    ) -> Result<Self> {
+        let ffi_config = vivid_sys::VividContextConfig {
+            width: config.width as i32,
+            height: config.height as i32,
+            enable_validation: config.enable_validation,
+        };
+
+        let mut ctx_ptr: *mut vivid_sys::VividContext = ptr::null_mut();
+
+        let result = vivid_sys::vivid_context_create_with_window(
+            native_window,
+            &ffi_config,
+            &mut ctx_ptr,
+        );
+
+        check_result(result)?;
+
+        if ctx_ptr.is_null() {
+            return Err(Error::Internal("Context pointer is null".into()));
+        }
+
+        Ok(Self { ptr: ctx_ptr })
+    }
+
+    /// Render a complete frame (chain output + visualizer UI)
+    ///
+    /// This should be called once per frame. It handles all rendering including
+    /// the node graph visualizer overlay.
+    ///
+    /// Only valid for contexts created with `with_window()`.
+    pub fn render_frame(&self) -> Result<()> {
+        let result = unsafe { vivid_sys::vivid_context_render_frame(self.ptr) };
+        check_result(result)
+    }
+
+    /// Resize the rendering surface
+    ///
+    /// Call this when the window size changes.
+    /// Only valid for contexts created with `with_window()`.
+    pub fn resize_surface(&mut self, width: u32, height: u32) -> Result<()> {
+        let result = unsafe {
+            vivid_sys::vivid_context_resize_surface(self.ptr, width as i32, height as i32)
+        };
+        check_result(result)
+    }
+
+    /// Set visualizer UI visibility
+    ///
+    /// When false, only the chain output is rendered (useful for fullscreen preview).
+    pub fn set_visualizer_visible(&mut self, visible: bool) {
+        unsafe { vivid_sys::vivid_context_set_visualizer_visible(self.ptr, visible) }
+    }
+
+    /// Check if visualizer UI is visible
+    pub fn is_visualizer_visible(&self) -> bool {
+        unsafe { vivid_sys::vivid_context_is_visualizer_visible(self.ptr) }
+    }
+
+    /// Get the name of the currently selected operator in the visualizer
+    ///
+    /// Returns `None` if no operator is selected.
+    pub fn selected_operator(&self) -> Option<String> {
+        let ptr = unsafe { vivid_sys::vivid_context_get_selected_operator(self.ptr) };
+        if ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { CStr::from_ptr(ptr).to_string_lossy().into_owned() })
+        }
+    }
+
+    /// Select an operator in the visualizer by name
+    ///
+    /// The selection will be applied on the next render frame.
+    pub fn select_operator(&mut self, name: &str) {
+        if let Ok(c_name) = CString::new(name) {
+            unsafe { vivid_sys::vivid_context_select_operator(self.ptr, c_name.as_ptr()) }
+        }
+    }
+
     /// Create a new context with an external wgpu device and queue
     ///
     /// # Arguments

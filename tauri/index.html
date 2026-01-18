@@ -23,20 +23,19 @@
             <button class="panel-toggle" id="toggle-inspector">−</button>
           </div>
           <div class="panel-content">
-            <div class="param-group">
-              <label>Scale</label>
-              <input type="range" min="0.1" max="10" step="0.1" value="4" id="param-scale" />
-              <span class="param-value" id="value-scale">4.0</span>
+            <!-- Operator list -->
+            <div class="inspector-section">
+              <div class="section-title">Operators</div>
+              <div id="operator-list" class="operator-list">
+                <!-- Populated dynamically -->
+              </div>
             </div>
-            <div class="param-group">
-              <label>Speed</label>
-              <input type="range" min="0" max="2" step="0.05" value="0.3" id="param-speed" />
-              <span class="param-value" id="value-speed">0.3</span>
-            </div>
-            <div class="param-group">
-              <label>Octaves</label>
-              <input type="range" min="1" max="8" step="1" value="4" id="param-octaves" />
-              <span class="param-value" id="value-octaves">4</span>
+            <!-- Parameter controls -->
+            <div class="inspector-section">
+              <div class="section-title">Parameters</div>
+              <div id="param-controls" class="param-controls">
+                <div class="no-params">Select an operator</div>
+              </div>
             </div>
           </div>
         </div>
@@ -58,6 +57,14 @@
         </div>
       </div>
 
+      <!-- Error banner (shown when compile errors occur) -->
+      <div class="error-banner hidden" id="error-banner">
+        <span class="error-icon">⚠</span>
+        <span class="error-message" id="error-message">Compilation error</span>
+        <span class="error-location" id="error-location"></span>
+        <button class="error-dismiss" id="error-dismiss" title="Dismiss">×</button>
+      </div>
+
       <!-- Bottom panel: Code Editor -->
       <div class="panel panel-bottom" id="editor-panel">
         <div class="panel-header">
@@ -75,6 +82,7 @@
 
       <!-- Bottom status bar -->
       <div class="statusbar">
+        <span class="compile-status" id="compile-status"></span>
         <span class="editor-status" id="editor-status"></span>
         <span class="fps" id="fps">60 FPS</span>
         <span class="resolution" id="resolution">1280 × 800</span>

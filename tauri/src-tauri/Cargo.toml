@@ -18,22 +18,23 @@ tauri-plugin-dialog = "2"
 tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-wgpu = "22"
-pollster = "0.4"
 tokio = { version = "1", features = ["time", "rt", "sync", "io-util"] }
-bytemuck = { version = "1", features = ["derive"] }
 log = "0.4"
 env_logger = "0.11"
 portable-pty = "0.8"
 parking_lot = "0.12"
 
-# Vivid embedding
+# Vivid embedding (uses C API under the hood)
 vivid = { path = "../crates/vivid" }
 
-# egui for native UI (pinned to 0.29 for egui_node_graph2 compatibility)
-egui = "0.29"
-egui-wgpu = "0.29"
-egui_node_graph2 = "0.7"
+# For getting native window handle
+raw-window-handle = "0.6"
+
+# macOS-specific dependencies for NSWindow access
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["NSWindow", "NSView"] }
+objc2-foundation = "0.3"
 
 [features]
 default = ["custom-protocol"]

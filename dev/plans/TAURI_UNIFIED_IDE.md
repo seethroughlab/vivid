@@ -45,10 +45,10 @@ Build a single-window Vivid IDE using Tauri with native wgpu rendering and trans
 | 0 | Spike - Validate architecture | ✅ Complete | No flickering, transparency works |
 | 1 | Terminal Integration | ✅ Complete | PTY spawning, xterm.js connected |
 | 2 | Monaco Editor | ✅ Complete | C++/WGSL highlighting, file open/save, Cmd+S |
-| 3 | Vivid Connection | ✅ Complete | EditorBridge WebSocket, auto-reconnect, status UI |
-| 4 | Embed vivid-core | ✅ Complete | C API, Rust bindings, egui node graph rendering working |
-| 5 | Inspector Panel | ⬜ Not started | egui parameter controls |
-| 6 | Polish | ⬜ Not started | Keyboard shortcuts, layouts |
+| 3 | Vivid Connection | ✅ Complete | Now uses Tauri commands (C API) instead of WebSocket |
+| 4 | Embed vivid-core | ✅ Complete | C API, Rust bindings, chain renders with visualizer |
+| 5 | Inspector Panel | ✅ Complete | Operator list, params, bidirectional selection sync, zoom |
+| 6 | Polish | 🔄 In Progress | Error display done, keyboard shortcuts pending |
 | 7 | Repository Separation | ⬜ Future | Extract to vivid-ide repo when C API stable |
 
 ---
@@ -264,37 +264,58 @@ Tauri (Rust)
 
 ---
 
-## Phase 5: Inspector Panel (Not Started)
+## Phase 5: Inspector Panel (Complete)
 
 **Goal:** Live parameter controls that update operators in real-time.
 
-**Planned Approach:**
-- Build inspector as egui panel (native, not webview)
-- Query parameters via C API from vivid-core
-- Update parameters directly (no WebSocket round-trip)
-- Track pending changes for Claude-first workflow
+**Implementation (2025-01-17):**
+- Built inspector in webview (HTML/CSS/TypeScript) instead of egui
+- Uses Tauri commands to query/set parameters via C API
+- Operator list shows all chain operators
+- Click operator to see its parameters
+- Real-time parameter updates affect live rendering
+- **Bidirectional selection sync:** Click in webview Inspector ↔ updates vivid-core node graph
+- **Zoom/scroll:** Mouse wheel over node graph area zooms/pans correctly
+- **Enum labels:** Fixed dangling pointer issue with thread-local caching
 
-**Tasks:**
-- [ ] egui widgets for each param type (sliders, checkboxes, color pickers)
-- [ ] Query operator params via `vivid_operator_get_params()`
-- [ ] Set params via `vivid_operator_set_param()`
-- [ ] "Pending changes" indicator for Claude workflow
-- [ ] Keyboard shortcut to commit/discard changes
+**Tauri Commands Added:**
+- `get_project_info()` - Returns project path and chain.cpp location
+- `get_compile_status()` - Returns compilation errors with line numbers
+- `get_operators()` - Returns list of operators with names/types
+- `get_operator_params(op_name)` - Returns parameter declarations and current values
+- `set_param(op_name, param_name, value)` - Updates parameter in real-time
+- `reload_project()` - Triggers chain reload
+- `get_selected_operator()` - Gets selected operator name from vivid-core
+- `select_operator(name)` - Selects operator in vivid-core visualizer
 
-**Parameter Types to Support:**
-- Float, Int, Bool (sliders, checkboxes)
-- Vec2, Vec3, Vec4 (multi-value sliders)
-- Color (color picker)
-- String, FilePath (text input, file browser)
+**Parameter Types Supported:**
+- [x] Float, Int (sliders with min/max)
+- [x] Bool (checkboxes)
+- [x] Vec2, Vec3, Vec4 (multi-component sliders)
+- [x] Color (color picker)
+- [x] Enum (dropdown select)
+- [ ] String, FilePath (text input, file browser) - TODO
+
+**Keyboard Shortcuts:**
+- Tab - Toggle visualizer (outside editor/terminal)
+- Cmd+R - Reload project (outside editor)
 
 ---
 
-## Phase 6: Polish (Not Started)
+## Phase 6: Polish (In Progress)
 
-**Tasks:**
+**Completed:**
+- [x] Error display from compile_status
+  - Prominent error banner above editor with click-to-jump
+  - Shows error message and line:column location
+  - Editor panel gets red border/glow when errors exist
+  - Flash animation when jumping to error line
+  - Success message shows briefly then fades
+  - Dismiss button to hide banner
+
+**Remaining Tasks:**
 - [ ] Keyboard shortcuts (Cmd+1/2/3 for panels)
 - [ ] Persistent layout (localStorage)
-- [ ] Error display from compile_status
 - [ ] App icon and branding
 - [ ] macOS menu bar integration
 

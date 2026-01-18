@@ -10,10 +10,23 @@
 #include <vivid/hot_reload.h>
 #include <vivid/video_exporter.h>
 #include <vivid/operator_registry.h>
+#include <vivid/chain_visualizer.h>
+#include <vivid/display.h>
+#include <vivid/frame_input.h>
 
 #include <string>
 #include <mutex>
 #include <cstring>
+#include <chrono>
+
+// Platform-specific window functions (implemented in vivid_c_window.mm for macOS)
+#ifdef __APPLE__
+extern "C" {
+    WGPUSurface vivid_create_surface_from_nswindow(WGPUInstance instance, void* ns_window);
+    float vivid_get_window_scale_factor(void* ns_window);
+    void vivid_get_window_size(void* ns_window, int* out_width, int* out_height);
+}
+#endif
 
 // Thread-local error message
 static thread_local std::string s_lastError;
@@ -105,8 +118,45 @@ struct VividContextInternal {
     std::string compileError;
     bool hasProject = false;
 
+    // Window-based context state
+    bool ownsGpuResources = false;     // True if we created the instance/device/surface
+    void* nativeWindow = nullptr;       // Native window handle (NSWindow*, HWND, etc.)
+    WGPUInstance instance = nullptr;
+    WGPUAdapter adapter = nullptr;
+    WGPUSurface surface = nullptr;
+    WGPUSurfaceConfiguration surfaceConfig = {};
+
+    // Visualizer and display
+    std::unique_ptr<vivid::ChainVisualizer> visualizer;
+    std::unique_ptr<vivid::Display> display;
+    bool visualizerVisible = true;
+
+    // Frame timing
+    std::chrono::steady_clock::time_point lastFrameTime;
+    bool firstFrame = true;
+
     ~VividContextInternal() {
+        // Clean up visualizer first
+        if (visualizer) {
+            visualizer->shutdown();
+            visualizer.reset();
+        }
+
         delete context;
+
+        // Clean up GPU resources if we own them
+        if (ownsGpuResources) {
+            if (surface) {
+                wgpuSurfaceUnconfigure(surface);
+                wgpuSurfaceRelease(surface);
+            }
+            if (adapter) {
+                wgpuAdapterRelease(adapter);
+            }
+            if (instance) {
+                wgpuInstanceRelease(instance);
+            }
+        }
     }
 };
 
@@ -166,6 +216,438 @@ VIVID_C_API VividResult vivid_context_create_external(
         setError(std::string("Failed to create context: ") + e.what());
         return VIVID_ERROR_INTERNAL;
     }
+}
+
+// =============================================================================
+// Window-based Context Creation
+// =============================================================================
+
+// Adapter request callback state
+struct AdapterRequestData {
+    WGPUAdapter adapter = nullptr;
+    bool done = false;
+};
+
+static void onAdapterRequestEnded(WGPURequestAdapterStatus status,
+                                   WGPUAdapter adapter,
+                                   WGPUStringView message,
+                                   void* userdata1,
+                                   void* userdata2) {
+    (void)userdata2;
+    auto* data = static_cast<AdapterRequestData*>(userdata1);
+    if (status == WGPURequestAdapterStatus_Success) {
+        data->adapter = adapter;
+    }
+    data->done = true;
+}
+
+// Device request callback state
+struct DeviceRequestData {
+    WGPUDevice device = nullptr;
+    bool done = false;
+};
+
+static void onDeviceRequestEnded(WGPURequestDeviceStatus status,
+                                  WGPUDevice device,
+                                  WGPUStringView message,
+                                  void* userdata1,
+                                  void* userdata2) {
+    (void)userdata2;
+    auto* data = static_cast<DeviceRequestData*>(userdata1);
+    if (status == WGPURequestDeviceStatus_Success) {
+        data->device = device;
+    }
+    data->done = true;
+}
+
+VIVID_C_API VividResult vivid_context_create_with_window(
+    void* native_window,
+    const VividContextConfig* config,
+    VividContext** out_ctx
+) {
+    if (!native_window || !out_ctx) {
+        setError("Invalid argument: native_window and out_ctx must not be NULL");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (!config) {
+        setError("Invalid argument: config must not be NULL");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+#ifdef __APPLE__
+    try {
+        auto* internal = new VividContextInternal();
+        internal->nativeWindow = native_window;
+        internal->ownsGpuResources = true;
+
+        // Create WebGPU instance
+        WGPUInstanceDescriptor instanceDesc = {};
+        internal->instance = wgpuCreateInstance(&instanceDesc);
+        if (!internal->instance) {
+            delete internal;
+            setError("Failed to create WebGPU instance");
+            return VIVID_ERROR_INTERNAL;
+        }
+
+        // Create surface from native window
+        internal->surface = vivid_create_surface_from_nswindow(internal->instance, native_window);
+        if (!internal->surface) {
+            delete internal;
+            setError("Failed to create surface from native window");
+            return VIVID_ERROR_INTERNAL;
+        }
+
+        // Request adapter
+        WGPURequestAdapterOptions adapterOpts = {};
+        adapterOpts.compatibleSurface = internal->surface;
+        adapterOpts.powerPreference = WGPUPowerPreference_HighPerformance;
+
+        AdapterRequestData adapterData;
+        WGPURequestAdapterCallbackInfo adapterCallback = {};
+        adapterCallback.mode = WGPUCallbackMode_AllowSpontaneous;
+        adapterCallback.callback = onAdapterRequestEnded;
+        adapterCallback.userdata1 = &adapterData;
+        wgpuInstanceRequestAdapter(internal->instance, &adapterOpts, adapterCallback);
+
+        // Wait for adapter (wgpu-native is synchronous on native platforms)
+        while (!adapterData.done) {
+            // Busy wait - on native platforms this returns immediately
+        }
+
+        internal->adapter = adapterData.adapter;
+        if (!internal->adapter) {
+            delete internal;
+            setError("Failed to get WebGPU adapter");
+            return VIVID_ERROR_INTERNAL;
+        }
+
+        // Request device
+        WGPUDeviceDescriptor deviceDesc = {};
+        deviceDesc.label = (WGPUStringView){ "Vivid Device", WGPU_STRLEN };
+
+        DeviceRequestData deviceData;
+        WGPURequestDeviceCallbackInfo deviceCallback = {};
+        deviceCallback.mode = WGPUCallbackMode_AllowSpontaneous;
+        deviceCallback.callback = onDeviceRequestEnded;
+        deviceCallback.userdata1 = &deviceData;
+        wgpuAdapterRequestDevice(internal->adapter, &deviceDesc, deviceCallback);
+
+        while (!deviceData.done) {
+            // Busy wait
+        }
+
+        WGPUDevice device = deviceData.device;
+        if (!device) {
+            delete internal;
+            setError("Failed to create WebGPU device");
+            return VIVID_ERROR_INTERNAL;
+        }
+
+        WGPUQueue queue = wgpuDeviceGetQueue(device);
+
+        // Get window size
+        int width, height;
+        vivid_get_window_size(native_window, &width, &height);
+        if (width == 0 || height == 0) {
+            width = config->width > 0 ? config->width : 1280;
+            height = config->height > 0 ? config->height : 720;
+        }
+
+        // Configure surface
+        WGPUSurfaceCapabilities capabilities = {};
+        wgpuSurfaceGetCapabilities(internal->surface, internal->adapter, &capabilities);
+
+        // Choose format (prefer BGRA8Unorm for macOS)
+        WGPUTextureFormat surfaceFormat = WGPUTextureFormat_BGRA8UnormSrgb;
+        for (size_t i = 0; i < capabilities.formatCount; ++i) {
+            if (capabilities.formats[i] == WGPUTextureFormat_BGRA8UnormSrgb) {
+                surfaceFormat = capabilities.formats[i];
+                break;
+            } else if (capabilities.formats[i] == WGPUTextureFormat_BGRA8Unorm) {
+                surfaceFormat = capabilities.formats[i];
+            }
+        }
+
+        internal->surfaceConfig.device = device;
+        internal->surfaceConfig.format = surfaceFormat;
+        internal->surfaceConfig.usage = WGPUTextureUsage_RenderAttachment;
+        internal->surfaceConfig.width = static_cast<uint32_t>(width);
+        internal->surfaceConfig.height = static_cast<uint32_t>(height);
+        internal->surfaceConfig.presentMode = WGPUPresentMode_Fifo;
+        internal->surfaceConfig.alphaMode = WGPUCompositeAlphaMode_Auto;
+
+        wgpuSurfaceCapabilitiesFreeMembers(capabilities);
+        wgpuSurfaceConfigure(internal->surface, &internal->surfaceConfig);
+
+        // Create vivid Context
+        internal->context = new vivid::Context(device, queue, width, height);
+        internal->hotReload = std::make_unique<vivid::HotReload>();
+
+        // Create display for blitting chain output
+        internal->display = std::make_unique<vivid::Display>(
+            internal->context->device(),
+            internal->context->queue(),
+            surfaceFormat
+        );
+        internal->display->setScreenSize(config->width, config->height);
+        internal->display->setTextureSize(config->width, config->height);
+
+        // Create visualizer
+        internal->visualizer = std::make_unique<vivid::ChainVisualizer>();
+        internal->visualizer->init();
+        internal->visualizer->initNodeGraph(*internal->context, surfaceFormat);
+
+        internal->lastFrameTime = std::chrono::steady_clock::now();
+        internal->firstFrame = true;
+
+        *out_ctx = fromInternal(internal);
+        return VIVID_OK;
+    } catch (const std::exception& e) {
+        setError(std::string("Failed to create window context: ") + e.what());
+        return VIVID_ERROR_INTERNAL;
+    }
+#else
+    setError("Window-based context not implemented for this platform");
+    return VIVID_ERROR_INTERNAL;
+#endif
+}
+
+VIVID_C_API VividResult vivid_context_render_frame(VividContext* ctx) {
+    if (!ctx) {
+        setError("Invalid argument");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    auto* internal = toInternal(ctx);
+
+    if (!internal->ownsGpuResources) {
+        setError("render_frame only valid for window-based contexts");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    try {
+        // Calculate delta time
+        auto now = std::chrono::steady_clock::now();
+        float dt = 0.016f; // Default to ~60fps
+        if (!internal->firstFrame) {
+            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(
+                now - internal->lastFrameTime);
+            dt = duration.count() / 1000000.0f;
+        }
+        internal->lastFrameTime = now;
+        internal->firstFrame = false;
+
+        // Get current surface texture
+        WGPUSurfaceTexture surfaceTexture;
+        wgpuSurfaceGetCurrentTexture(internal->surface, &surfaceTexture);
+
+        if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
+            surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
+            // Surface not ready, skip frame
+            return VIVID_OK;
+        }
+
+        WGPUTextureViewDescriptor viewDesc = {};
+        viewDesc.format = internal->surfaceConfig.format;
+        viewDesc.dimension = WGPUTextureViewDimension_2D;
+        viewDesc.baseMipLevel = 0;
+        viewDesc.mipLevelCount = 1;
+        viewDesc.baseArrayLayer = 0;
+        viewDesc.arrayLayerCount = 1;
+        viewDesc.aspect = WGPUTextureAspect_All;
+        WGPUTextureView targetView = wgpuTextureCreateView(surfaceTexture.texture, &viewDesc);
+
+        // Build frame input for visualizer BEFORE processing
+        // (Need to capture scroll before endFrame clears it)
+        vivid::FrameInput frameInput;
+        frameInput.width = static_cast<int>(internal->surfaceConfig.width);
+        frameInput.height = static_cast<int>(internal->surfaceConfig.height);
+        frameInput.contentScale = 1.0f;
+#ifdef __APPLE__
+        if (internal->nativeWindow) {
+            frameInput.contentScale = vivid_get_window_scale_factor(internal->nativeWindow);
+        }
+#endif
+        // Copy input state from context (before endFrame clears scroll)
+        frameInput.mousePos = internal->context->mouse();
+        frameInput.mouseDown[0] = internal->context->mouseButton(0).held;
+        frameInput.mouseDown[1] = internal->context->mouseButton(1).held;
+        frameInput.mouseDown[2] = internal->context->mouseButton(2).held;
+        frameInput.scroll = internal->context->scroll();
+        frameInput.dt = dt;
+        frameInput.time = static_cast<float>(internal->context->time());
+        frameInput.surfaceFormat = internal->surfaceConfig.format;
+
+        // Process chain if project loaded
+        if (internal->hasProject && internal->context->hasChain()) {
+            internal->context->injectDeltaTime(dt);
+            internal->context->beginFrame();
+
+            // Call user's update function
+            auto updateFn = internal->hotReload->getUpdateFn();
+            if (updateFn) {
+                updateFn(*internal->context);
+            }
+
+            // Process the chain (runs all operators)
+            internal->context->chain().process(*internal->context);
+
+            internal->context->endFrame();
+
+            // Update solo mode output if active
+            if (internal->visualizer) {
+                internal->visualizer->updateSoloOutput(*internal->context);
+            }
+        }
+
+        // Create render pass for final output
+        WGPUCommandEncoderDescriptor encoderDesc = {};
+        WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(
+            internal->context->device(), &encoderDesc);
+
+        // Clear and blit chain output to surface
+        WGPURenderPassColorAttachment colorAttachment = {};
+        colorAttachment.view = targetView;
+        colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        colorAttachment.loadOp = WGPULoadOp_Clear;
+        colorAttachment.storeOp = WGPUStoreOp_Store;
+        colorAttachment.clearValue = {0.1, 0.1, 0.12, 1.0};
+
+        WGPURenderPassDescriptor passDesc = {};
+        passDesc.colorAttachmentCount = 1;
+        passDesc.colorAttachments = &colorAttachment;
+
+        WGPURenderPassEncoder pass = wgpuCommandEncoderBeginRenderPass(encoder, &passDesc);
+
+        // Update display dimensions
+        if (internal->display) {
+            internal->display->setScreenSize(
+                static_cast<int>(internal->surfaceConfig.width),
+                static_cast<int>(internal->surfaceConfig.height)
+            );
+        }
+
+        // Update solo mode output before blit
+        if (internal->visualizerVisible && internal->visualizer) {
+            internal->visualizer->updateSoloOutput(*internal->context);
+        }
+
+        // Blit chain output texture to surface
+        WGPUTextureView outputView = internal->context->outputTexture();
+
+        // Debug: log state on first few frames
+        static int debugFrameCount = 0;
+        if (debugFrameCount < 5) {
+            bool hasChain = internal->context->hasChain();
+            std::cout << "[vivid_c] Frame " << debugFrameCount
+                      << " hasProject=" << internal->hasProject
+                      << " hasChain=" << hasChain
+                      << " outputView=" << (outputView ? "yes" : "null")
+                      << " display=" << (internal->display ? "yes" : "null")
+                      << std::endl;
+            if (hasChain) {
+                WGPUTexture chainOut = internal->context->chain().outputTexture();
+                std::cout << "  chainOutputTex=" << (chainOut ? "yes" : "null") << std::endl;
+            }
+            debugFrameCount++;
+        }
+
+        if (internal->hasProject && outputView && internal->display) {
+            internal->display->setTextureSize(
+                internal->context->renderWidth(),
+                internal->context->renderHeight()
+            );
+            internal->display->blit(pass, outputView);
+        }
+
+        // Render visualizer if visible
+        if (internal->visualizerVisible && internal->visualizer) {
+            internal->visualizer->renderNodeGraph(pass, frameInput, *internal->context);
+        }
+
+        wgpuRenderPassEncoderEnd(pass);
+        wgpuRenderPassEncoderRelease(pass);
+
+        // Submit
+        WGPUCommandBufferDescriptor cmdDesc = {};
+        WGPUCommandBuffer cmdBuffer = wgpuCommandEncoderFinish(encoder, &cmdDesc);
+        wgpuQueueSubmit(internal->context->queue(), 1, &cmdBuffer);
+        wgpuCommandBufferRelease(cmdBuffer);
+        wgpuCommandEncoderRelease(encoder);
+
+        // Present
+        wgpuSurfacePresent(internal->surface);
+        wgpuTextureViewRelease(targetView);
+        wgpuTextureRelease(surfaceTexture.texture);
+
+        return VIVID_OK;
+    } catch (const std::exception& e) {
+        setError(e.what());
+        return VIVID_ERROR_INTERNAL;
+    }
+}
+
+VIVID_C_API VividResult vivid_context_resize_surface(VividContext* ctx, int width, int height) {
+    if (!ctx) {
+        setError("Invalid argument");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    auto* internal = toInternal(ctx);
+
+    if (!internal->ownsGpuResources) {
+        setError("resize_surface only valid for window-based contexts");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    if (width <= 0 || height <= 0) {
+        return VIVID_OK; // Ignore zero-size
+    }
+
+    internal->surfaceConfig.width = static_cast<uint32_t>(width);
+    internal->surfaceConfig.height = static_cast<uint32_t>(height);
+    wgpuSurfaceConfigure(internal->surface, &internal->surfaceConfig);
+
+    // Update context resolution too
+    internal->context->setRenderResolution(width, height);
+
+    // Update display dimensions
+    if (internal->display) {
+        internal->display->setScreenSize(width, height);
+        internal->display->setTextureSize(width, height);
+    }
+
+    return VIVID_OK;
+}
+
+VIVID_C_API void vivid_context_set_visualizer_visible(VividContext* ctx, bool visible) {
+    if (ctx) {
+        toInternal(ctx)->visualizerVisible = visible;
+    }
+}
+
+VIVID_C_API bool vivid_context_is_visualizer_visible(VividContext* ctx) {
+    if (!ctx) return false;
+    return toInternal(ctx)->visualizerVisible;
+}
+
+VIVID_C_API const char* vivid_context_get_selected_operator(VividContext* ctx) {
+    if (!ctx) return nullptr;
+    auto internal = toInternal(ctx);
+    if (!internal->visualizer) return nullptr;
+
+    const std::string& name = internal->visualizer->getSelectedOperatorName();
+    if (name.empty()) return nullptr;
+    return name.c_str();
+}
+
+VIVID_C_API void vivid_context_select_operator(VividContext* ctx, const char* name) {
+    if (!ctx || !name) return;
+    auto internal = toInternal(ctx);
+    if (!internal->visualizer) return;
+
+    internal->visualizer->selectNodeFromEditor(name);
 }
 
 VIVID_C_API void vivid_context_destroy(VividContext* ctx) {
@@ -559,8 +1041,38 @@ VIVID_C_API float vivid_operator_get_output_value(VividOperator* op) {
 // =============================================================================
 
 // Thread-local storage for parameter info
-static thread_local std::vector<vivid::ParamDecl> s_paramDecls;
-static thread_local std::vector<std::vector<const char*>> s_enumLabels;
+// We need to keep the strings alive because the ParamDecl returned from params() is temporary
+struct CachedParamInfo {
+    std::vector<vivid::ParamDecl> decls;
+    std::vector<std::vector<std::string>> enumLabelStrings;  // Own the strings
+    std::vector<std::vector<const char*>> enumLabelPtrs;     // Pointers to strings
+    VividOperator* cachedOp = nullptr;
+};
+static thread_local CachedParamInfo s_paramCache;
+
+// Helper to ensure param cache is valid for this operator
+static void ensureParamCache(VividOperator* op) {
+    if (s_paramCache.cachedOp == op) return;  // Already cached
+
+    auto* cppOp = toOperator(op);
+    s_paramCache.decls = cppOp->params();
+    s_paramCache.enumLabelStrings.resize(s_paramCache.decls.size());
+    s_paramCache.enumLabelPtrs.resize(s_paramCache.decls.size());
+
+    for (size_t i = 0; i < s_paramCache.decls.size(); ++i) {
+        const auto& p = s_paramCache.decls[i];
+        s_paramCache.enumLabelStrings[i].clear();
+        s_paramCache.enumLabelPtrs[i].clear();
+        for (const auto& label : p.enumLabels) {
+            s_paramCache.enumLabelStrings[i].push_back(label);
+        }
+        for (const auto& label : s_paramCache.enumLabelStrings[i]) {
+            s_paramCache.enumLabelPtrs[i].push_back(label.c_str());
+        }
+    }
+
+    s_paramCache.cachedOp = op;
+}
 
 VIVID_C_API int vivid_operator_get_param_count(VividOperator* op) {
     if (!op) return 0;
@@ -570,11 +1082,11 @@ VIVID_C_API int vivid_operator_get_param_count(VividOperator* op) {
 VIVID_C_API bool vivid_operator_get_param_decl(VividOperator* op, int index, VividParamDecl* out_decl) {
     if (!op || !out_decl || index < 0) return false;
 
-    auto* cppOp = toOperator(op);
-    auto params = cppOp->params();
-    if (index >= static_cast<int>(params.size())) return false;
+    ensureParamCache(op);
 
-    const auto& p = params[index];
+    if (index >= static_cast<int>(s_paramCache.decls.size())) return false;
+
+    const auto& p = s_paramCache.decls[index];
 
     out_decl->name = p.name.c_str();
     out_decl->type = convertParamType(p.type);
@@ -583,16 +1095,10 @@ VIVID_C_API bool vivid_operator_get_param_decl(VividOperator* op, int index, Viv
     std::memcpy(out_decl->default_val, p.defaultVal, sizeof(float) * 4);
     out_decl->string_default = p.stringDefault.c_str();
 
-    // Handle enum labels
-    if (!p.enumLabels.empty()) {
-        // Store in thread-local to keep pointers valid
-        s_enumLabels.resize(params.size());
-        s_enumLabels[index].clear();
-        for (const auto& label : p.enumLabels) {
-            s_enumLabels[index].push_back(label.c_str());
-        }
-        out_decl->enum_count = static_cast<int>(s_enumLabels[index].size());
-        out_decl->enum_labels = s_enumLabels[index].data();
+    // Handle enum labels - use cached strings
+    if (!s_paramCache.enumLabelPtrs[index].empty()) {
+        out_decl->enum_count = static_cast<int>(s_paramCache.enumLabelPtrs[index].size());
+        out_decl->enum_labels = s_paramCache.enumLabelPtrs[index].data();
     } else {
         out_decl->enum_count = 0;
         out_decl->enum_labels = nullptr;
