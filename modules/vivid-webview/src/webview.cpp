@@ -26,6 +26,9 @@ namespace vivid::webview {
 // Register the operator
 REGISTER_OPERATOR(WebView, "Effects", "Renders web content (HTML/CSS/JS) to texture", false);
 
+// Static focus tracking
+WebView* WebView::s_focusedWebView = nullptr;
+
 WebView::WebView() = default;
 
 WebView::~WebView() {
@@ -117,6 +120,9 @@ void WebView::process(Context& ctx) {
 }
 
 void WebView::cleanup() {
+    // Release focus if we had it
+    releaseFocus();
+
     if (m_backend) {
         m_backend->cleanup();
         m_backend.reset();
@@ -133,6 +139,30 @@ void WebView::cleanup() {
 
     m_activeTexture = nullptr;
     m_activeView = nullptr;
+}
+
+void WebView::requestFocus() {
+    if (s_focusedWebView == this) return;
+
+    // Unfocus previous WebView
+    if (s_focusedWebView && s_focusedWebView->m_backend) {
+        s_focusedWebView->m_backend->setFocus(false);
+    }
+
+    // Focus this WebView
+    s_focusedWebView = this;
+    if (m_backend) {
+        m_backend->setFocus(true);
+    }
+}
+
+void WebView::releaseFocus() {
+    if (s_focusedWebView == this) {
+        if (m_backend) {
+            m_backend->setFocus(false);
+        }
+        s_focusedWebView = nullptr;
+    }
 }
 
 void WebView::handleInputEvents(Context& ctx) {
@@ -179,6 +209,10 @@ void WebView::handleInputEvents(Context& ctx) {
             MouseButton button = static_cast<MouseButton>(i);
 
             if (btn.pressed) {
+                // Request focus when clicked inside the webview
+                if (mouseInBounds) {
+                    requestFocus();
+                }
                 m_backend->sendMouseEvent(MouseEventType::Down, webX, webY,
                                           button, 0, 0, mods);
             }
@@ -196,8 +230,10 @@ void WebView::handleInputEvents(Context& ctx) {
         }
     }
 
-    // Key events (always forward if webview has focus - for now, always forward)
-    // TODO: Add focus tracking
+    // Only forward keyboard/character events if this WebView has focus
+    if (!hasFocus()) return;
+
+    // Key events
     for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key) {
         const auto& keyState = ctx.key(key);
 
@@ -209,9 +245,10 @@ void WebView::handleInputEvents(Context& ctx) {
         }
     }
 
-    // Character input - handle printable characters
-    // GLFW provides character callbacks, but we're approximating here
-    // For proper text input, would need to hook into GLFW character callback
+    // Character input - forward typed characters for text editors/terminals
+    for (uint32_t codepoint : ctx.characterInput()) {
+        m_backend->sendKeyEvent(KeyEventType::Char, 0, 0, codepoint, mods);
+    }
 }
 
 void WebView::createFallbackTexture(Context& ctx) {

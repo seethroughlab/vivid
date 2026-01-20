@@ -138,6 +138,9 @@ void Context::endFrame() {
     // Reset per-frame scroll
     m_scroll = {0, 0};
 
+    // Clear per-frame character input
+    m_characterInput.clear();
+
     // Increment frame counter
     ++m_frame;
 }

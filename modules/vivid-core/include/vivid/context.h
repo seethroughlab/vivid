@@ -428,6 +428,24 @@ public:
         return m_keys[GLFW_KEY_LEFT_SUPER].held || m_keys[GLFW_KEY_RIGHT_SUPER].held;
     }
 
+    /**
+     * @brief Get character input received this frame
+     * @return Vector of Unicode codepoints from character callback
+     *
+     * Returns characters typed this frame (from GLFW character callback).
+     * Unlike key() which returns key codes, this returns actual characters
+     * accounting for keyboard layout, shift state, etc.
+     *
+     * Used by WebView for text input in editors/terminals.
+     */
+    const std::vector<uint32_t>& characterInput() const { return m_characterInput; }
+
+    /**
+     * @brief Add a character to the input queue (called by character callback)
+     * @param codepoint Unicode codepoint
+     */
+    void addCharacter(uint32_t codepoint) { m_characterInput.push_back(codepoint); }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Input Injection (for headless/embedded use)
@@ -1156,6 +1174,9 @@ private:
     KeyState m_keys[MAX_KEYS];
     bool m_keyPrev[MAX_KEYS] = {};
     bool m_keyPrevFrame[MAX_KEYS] = {};  // For headless mode edge detection
+
+    // Character input (for text editors, terminals)
+    std::vector<uint32_t> m_characterInput;
 
     // Output
     WGPUTextureView m_outputTexture = nullptr;

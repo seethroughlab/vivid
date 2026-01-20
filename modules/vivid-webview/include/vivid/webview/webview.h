@@ -146,6 +146,35 @@ public:
     [[nodiscard]] int webviewHeight() const;
 
     // -------------------------------------------------------------------------
+    // Focus Management
+    // -------------------------------------------------------------------------
+
+    /**
+     * @brief Check if this WebView currently has keyboard focus
+     * @return True if this WebView will receive keyboard/character input
+     */
+    [[nodiscard]] bool hasFocus() const { return s_focusedWebView == this; }
+
+    /**
+     * @brief Request keyboard focus for this WebView
+     *
+     * Only one WebView can have focus at a time. Calling this will
+     * unfocus any previously focused WebView.
+     */
+    void requestFocus();
+
+    /**
+     * @brief Release keyboard focus from this WebView
+     */
+    void releaseFocus();
+
+    /**
+     * @brief Get the currently focused WebView (if any)
+     * @return Pointer to focused WebView, or nullptr if none
+     */
+    static WebView* focusedWebView() { return s_focusedWebView; }
+
+    // -------------------------------------------------------------------------
     // Navigation
     // -------------------------------------------------------------------------
 
@@ -224,6 +253,9 @@ private:
 
     // JavaScript callbacks
     std::unordered_map<std::string, std::function<void(const std::string&)>> m_jsCallbacks;
+
+    // Global focus tracking - only one WebView can have keyboard focus
+    static WebView* s_focusedWebView;
 };
 
 } // namespace vivid::webview

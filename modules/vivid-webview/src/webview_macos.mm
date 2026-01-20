@@ -892,8 +892,50 @@ void WebViewMacOS::sendKeyEvent(KeyEventType type, int keyCode, int scanCode,
                                uint32_t character, KeyModifiers modifiers) {
     if (!webView_) return;
 
-    // Use JavaScript to dispatch key events - more reliable for hidden window
     @autoreleasepool {
+        // For character input (typed text), dispatch InputEvent for proper text insertion
+        // This is what Monaco Editor and xterm.js expect
+        if (type == KeyEventType::Char && character > 0) {
+            // Convert Unicode codepoint to UTF-16 string
+            NSString* charStr;
+            if (character <= 0xFFFF) {
+                unichar c = static_cast<unichar>(character);
+                charStr = [NSString stringWithCharacters:&c length:1];
+            } else {
+                // Handle characters outside BMP (emoji, etc) using surrogate pairs
+                uint32_t cp = character - 0x10000;
+                unichar surrogates[2] = {
+                    static_cast<unichar>((cp >> 10) + 0xD800),
+                    static_cast<unichar>((cp & 0x3FF) + 0xDC00)
+                };
+                charStr = [NSString stringWithCharacters:surrogates length:2];
+            }
+
+            // Escape for JavaScript string literal (backslash first, then single quotes)
+            charStr = [charStr stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
+            charStr = [charStr stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
+
+            // Dispatch InputEvent for text insertion (works with contenteditable, Monaco, xterm.js)
+            NSString* inputScript = [NSString stringWithFormat:
+                @"(function() {"
+                @"  var el = document.activeElement || document.body;"
+                @"  var evt = new InputEvent('beforeinput', {"
+                @"    bubbles: true, cancelable: true, inputType: 'insertText', data: '%@'"
+                @"  });"
+                @"  if (el.dispatchEvent(evt)) {"
+                @"    var inputEvt = new InputEvent('input', {"
+                @"      bubbles: true, cancelable: false, inputType: 'insertText', data: '%@'"
+                @"    });"
+                @"    el.dispatchEvent(inputEvt);"
+                @"  }"
+                @"})();",
+                charStr, charStr
+            ];
+            [webView_ evaluateJavaScript:inputScript completionHandler:nil];
+            return;
+        }
+
+        // For keydown/keyup events
         NSString* eventType = nil;
         switch (type) {
             case KeyEventType::Down: eventType = @"keydown"; break;
@@ -904,7 +946,6 @@ void WebViewMacOS::sendKeyEvent(KeyEventType type, int keyCode, int scanCode,
         if (!eventType) return;
 
         // Map GLFW key codes to DOM key codes
-        // This is a simplified mapping - expand as needed
         int domKeyCode = keyCode;
         NSString* key = @"";
         if (character > 0 && character < 128) {

@@ -10,6 +10,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **WebView character input** - Added character input support for text editors and terminals in WebView:
+  - New `characterInput()` method on Context returns Unicode codepoints from GLFW character callback
+  - Characters forwarded to WebView via `InputEvent` for proper text insertion
+  - Supports full Unicode including emoji and non-ASCII characters
+  - Enables Monaco Editor and xterm.js integration (Phase 1 of embedded editor/terminal plan)
+
+- **WebView focus management** - Added keyboard focus tracking for multiple WebViews:
+  - `hasFocus()`, `requestFocus()`, `releaseFocus()` methods on WebView operator
+  - Click on a WebView automatically gives it keyboard focus
+  - Only the focused WebView receives keyboard and character input
+  - Static `focusedWebView()` returns the currently focused WebView (Phase 2 of embedded editor/terminal plan)
+
 ### Fixed
 
 - **WebView mouse interaction** - Fixed slider dragging and mouse events not working in WebView operator:

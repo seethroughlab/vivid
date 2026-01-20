@@ -1397,6 +1397,12 @@ int Application::init(const AppConfig& config) {
         if (c) c->addScroll(static_cast<float>(xoffset), static_cast<float>(yoffset));
     });
 
+    // Set up character callback (for text input in editors/terminals)
+    glfwSetCharCallback(m_impl->window, [](GLFWwindow* w, unsigned int codepoint) {
+        Context* c = static_cast<Context*>(glfwGetWindowUserPointer(w));
+        if (c) c->addCharacter(codepoint);
+    });
+
     // Create display
     m_impl->display = std::make_unique<Display>(m_impl->device, m_impl->queue, m_impl->surfaceFormat);
     if (!m_impl->display->isValid()) {
