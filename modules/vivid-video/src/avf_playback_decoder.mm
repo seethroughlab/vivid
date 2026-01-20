@@ -17,24 +17,34 @@
 
 #include <vivid/video/avf_playback_decoder.h>
 #include <vivid/context.h>
+#include <vivid/render_lock.h>
 #include <iostream>
 #include <vector>
 #include <mutex>
 #include <deque>
 #include <atomic>
+#include <thread>
+#include <chrono>
 
 // Helper to load tracks synchronously using async API (avoids deprecation warning on macOS 15+)
+// IMPORTANT: The completion handler is dispatched to a global queue to avoid deadlock
+// when this function is called from the main thread (the semaphore wait would block
+// the main thread, and if the completion handler needs the main thread, it deadlocks)
 static NSArray* loadTracksWithMediaType(AVAsset* asset, AVMediaType mediaType) {
     __block NSArray* result = nil;
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
 
-    [asset loadTracksWithMediaType:mediaType completionHandler:^(NSArray<AVAssetTrack*>* tracks, NSError* error) {
-        if (!error && tracks) {
-            // Copy to ensure the array survives the async callback
-            result = [tracks copy];
-        }
-        dispatch_semaphore_signal(semaphore);
-    }];
+    // Dispatch the async load to a background queue to ensure the completion handler
+    // doesn't need to run on the main thread
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        [asset loadTracksWithMediaType:mediaType completionHandler:^(NSArray<AVAssetTrack*>* tracks, NSError* error) {
+            if (!error && tracks) {
+                // Copy to ensure the array survives the async callback
+                result = [tracks copy];
+            }
+            dispatch_semaphore_signal(semaphore);
+        }];
+    });
 
     dispatch_semaphore_wait(semaphore, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC));
     return result;
@@ -89,6 +99,7 @@ struct AVFPlaybackDecoder::Impl {
     std::atomic<bool> initialSyncDone{false};  // True after initial A/V alignment
     std::atomic<double> resyncToTime{-1.0};  // If >= 0, recreate audio reader at this time
     std::atomic<bool> isShuttingDown{false};  // True during cleanup - prevents audio thread access
+    std::atomic<bool> isLoopTransition{false};  // True during loop seek - skip rendering
 
     void cleanup() {
         // Signal shutdown to prevent audio thread from accessing resources
@@ -421,23 +432,35 @@ bool AVFPlaybackDecoder::open(Context& ctx, const std::string& path, bool loop) 
                 object:impl_->playerItem
                 queue:[NSOperationQueue mainQueue]
                 usingBlock:^(NSNotification* note) {
-                    // Seek back to start for seamless looping
-                    [implPtr->player seekToTime:kCMTimeZero toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+                    // Lock rendering globally to prevent GPU state conflicts
+                    vivid::RenderLock::instance().lock();
+                    implPtr->isLoopTransition.store(true);
+
+                    // Seek back to start with completion handler
+                    [implPtr->player seekToTime:kCMTimeZero
+                             toleranceBefore:kCMTimeZero
+                              toleranceAfter:kCMTimeZero
+                           completionHandler:^(BOOL finished) {
+                        // Clear flags and unlock rendering after seek completes
+                        implPtr->isLoopTransition.store(false);
+                        vivid::RenderLock::instance().unlock();
+                    }];
                     [implPtr->player play];
                     // Reset audio reader for loop
                     implPtr->resetAudioForLoop();
                 }];
         }
 
-        // Wait for ready to play - process runloop to allow AVFoundation to load
+        // Wait for ready to play
+        // Use a short timeout - if AVPlayer isn't ready quickly, fall back to AVAssetReader
+        // Note: CFRunLoopRunInMode causes freezes when embedded in Tauri's event loop
         bool ready = false;
         NSError* failureError = nil;
 
-        for (int i = 0; i < 300; i++) {  // 3 seconds max
-            // Process the runloop to allow AVFoundation async loading
-            CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.01, false);
+        for (int i = 0; i < 30; i++) {  // 300ms max - quick fallback to AVAssetReader
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-            // Check current item status (looper creates its own items)
+            // Check current item status
             AVPlayerItem* currentItem = impl_->player.currentItem;
             AVPlayerItemStatus itemStatus = currentItem ? currentItem.status : AVPlayerItemStatusUnknown;
 
@@ -573,6 +596,11 @@ void AVFPlaybackDecoder::uploadFrame(const uint8_t* pixels, size_t bytesPerRow) 
 
 bool AVFPlaybackDecoder::update(Context& ctx) {
     if (!isOpen()) {
+        return false;
+    }
+
+    // Skip update during loop transition to avoid GPU state issues
+    if (impl_->isLoopTransition.load()) {
         return false;
     }
 

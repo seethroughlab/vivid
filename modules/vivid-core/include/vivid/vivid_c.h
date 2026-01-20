@@ -368,6 +368,28 @@ VIVID_C_API void vivid_context_destroy(VividContext* ctx);
 VIVID_C_API VividResult vivid_context_load_project(VividContext* ctx, const char* path);
 
 /**
+ * @brief Set the vivid installation root directory
+ * @param ctx Context handle
+ * @param path Path to vivid root (directory containing modules/ and build/)
+ * @return VIVID_OK on success, error code otherwise
+ *
+ * For embedded use: tells the hot-reload compiler where to find vivid headers
+ * and libraries. Call this before load_project() when vivid is embedded as a
+ * submodule and the executable is not in the standard vivid directory structure.
+ */
+VIVID_C_API VividResult vivid_context_set_root_dir(VividContext* ctx, const char* path);
+
+/**
+ * @brief Configure asset search paths before creating a context
+ * @param vivid_root Path to vivid root (directory containing modules/ and build/)
+ * @return VIVID_OK on success, error code otherwise
+ *
+ * Call this BEFORE vivid_context_create_*() when vivid is embedded as a
+ * submodule. This ensures shaders and fonts can be found during initialization.
+ */
+VIVID_C_API VividResult vivid_configure_asset_paths(const char* vivid_root);
+
+/**
  * @brief Reload the current project
  * @param ctx Context handle
  * @return VIVID_OK on success, error code otherwise

@@ -336,20 +336,24 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
     // Font index 0: Inter Regular (body text, labels)
     // Font index 1: Inter Medium (node titles only)
     // Font index 2: Roboto Mono (numeric displays - FPS, timings, etc.)
-    auto exeDir = AssetLoader::instance().executableDir();
 
-    // Find project root by walking up until we find the assets folder
-    // This handles both single-config (build/bin/) and multi-config (build/bin/Debug/) generators
-    auto projectRoot = exeDir.parent_path().parent_path();  // build/bin -> build -> project
-    if (!std::filesystem::exists(projectRoot / "modules/vivid-core/assets")) {
-        // Try one more level up (for MSVC multi-config: build/bin/Debug -> build/bin -> build -> project)
-        projectRoot = projectRoot.parent_path();
+    // Use AssetLoader to resolve font paths
+    auto& assets = AssetLoader::instance();
+    std::string regularPath = assets.resolve("vivid-core/assets/fonts/Inter_18pt-Regular.ttf").string();
+    std::string mediumPath = assets.resolve("vivid-core/assets/fonts/Inter_18pt-Medium.ttf").string();
+    std::string monoPath = assets.resolve("vivid-core/assets/fonts/RobotoMono-Regular.ttf").string();
+
+    // Fallback to old path calculation if AssetLoader didn't find the fonts
+    if (regularPath.empty() || !std::filesystem::exists(regularPath)) {
+        auto exeDir = assets.executableDir();
+        auto projectRoot = exeDir.parent_path().parent_path();
+        if (!std::filesystem::exists(projectRoot / "modules/vivid-core/assets")) {
+            projectRoot = projectRoot.parent_path();
+        }
+        regularPath = (projectRoot / "modules/vivid-core/assets/fonts/Inter_18pt-Regular.ttf").string();
+        mediumPath = (projectRoot / "modules/vivid-core/assets/fonts/Inter_18pt-Medium.ttf").string();
+        monoPath = (projectRoot / "modules/vivid-core/assets/fonts/RobotoMono-Regular.ttf").string();
     }
-
-    // Paths to font files (in modules/vivid-core/assets/fonts/)
-    std::string regularPath = (projectRoot / "modules/vivid-core/assets/fonts/Inter_18pt-Regular.ttf").string();
-    std::string mediumPath = (projectRoot / "modules/vivid-core/assets/fonts/Inter_18pt-Medium.ttf").string();
-    std::string monoPath = (projectRoot / "modules/vivid-core/assets/fonts/RobotoMono-Regular.ttf").string();
 
     // Scale font sizes for HiDPI displays
     float scale = ctx.contentScale();

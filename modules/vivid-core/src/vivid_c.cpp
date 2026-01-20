@@ -8,11 +8,13 @@
 #include <vivid/chain.h>
 #include <vivid/operator.h>
 #include <vivid/hot_reload.h>
+#include <vivid/asset_loader.h>
 #include <vivid/video_exporter.h>
 #include <vivid/operator_registry.h>
 #include <vivid/chain_visualizer.h>
 #include <vivid/display.h>
 #include <vivid/frame_input.h>
+#include <vivid/render_lock.h>
 
 #include <string>
 #include <mutex>
@@ -25,6 +27,8 @@ extern "C" {
     WGPUSurface vivid_create_surface_from_nswindow(WGPUInstance instance, void* ns_window);
     float vivid_get_window_scale_factor(void* ns_window);
     void vivid_get_window_size(void* ns_window, int* out_width, int* out_height);
+    void vivid_begin_frame_transaction();
+    void vivid_commit_frame_transaction();
 }
 #endif
 
@@ -130,6 +134,9 @@ struct VividContextInternal {
     // Frame timing
     std::chrono::steady_clock::time_point lastFrameTime;
     bool firstFrame = true;
+
+    // Re-entrancy guard for rendering
+    bool isRendering = false;
 
     ~VividContextInternal() {
         // Clean up visualizer first
@@ -370,6 +377,7 @@ VIVID_C_API VividResult vivid_context_create_with_window(
         internal->surfaceConfig.usage = WGPUTextureUsage_RenderAttachment;
         internal->surfaceConfig.width = static_cast<uint32_t>(width);
         internal->surfaceConfig.height = static_cast<uint32_t>(height);
+        // Use Fifo (vsync) - standard present mode that's always supported
         internal->surfaceConfig.presentMode = WGPUPresentMode_Fifo;
         internal->surfaceConfig.alphaMode = WGPUCompositeAlphaMode_Auto;
 
@@ -422,6 +430,24 @@ VIVID_C_API VividResult vivid_context_render_frame(VividContext* ctx) {
         return VIVID_ERROR_INVALID_ARGUMENT;
     }
 
+    // Re-entrancy guard - skip if already rendering
+    if (internal->isRendering) {
+        return VIVID_OK;
+    }
+
+    // Check global render lock (set by video during loop transitions)
+    if (vivid::RenderLock::instance().isLocked()) {
+        return VIVID_OK;
+    }
+
+    internal->isRendering = true;
+
+    // RAII guard to reset isRendering on exit
+    struct RenderGuard {
+        VividContextInternal* ctx;
+        ~RenderGuard() { ctx->isRendering = false; }
+    } guard{internal};
+
     try {
         // Calculate delta time
         auto now = std::chrono::steady_clock::now();
@@ -434,13 +460,38 @@ VIVID_C_API VividResult vivid_context_render_frame(VividContext* ctx) {
         internal->lastFrameTime = now;
         internal->firstFrame = false;
 
+        // Check surface is valid before accessing
+        if (!internal->surface) {
+            setError("Surface is null");
+            return VIVID_ERROR_INTERNAL;
+        }
+
         // Get current surface texture
-        WGPUSurfaceTexture surfaceTexture;
+        WGPUSurfaceTexture surfaceTexture = {};
+        surfaceTexture.texture = nullptr;
+        surfaceTexture.status = WGPUSurfaceGetCurrentTextureStatus_Error;
+
         wgpuSurfaceGetCurrentTexture(internal->surface, &surfaceTexture);
+
+        // Check for various failure states
+        if (surfaceTexture.status == WGPUSurfaceGetCurrentTextureStatus_Error ||
+            surfaceTexture.status == WGPUSurfaceGetCurrentTextureStatus_Lost ||
+            surfaceTexture.status == WGPUSurfaceGetCurrentTextureStatus_OutOfMemory ||
+            surfaceTexture.status == WGPUSurfaceGetCurrentTextureStatus_DeviceLost) {
+            // Surface in error state - try to reconfigure
+            std::cerr << "[vivid_c] Surface texture error: status=" << surfaceTexture.status << std::endl;
+            wgpuSurfaceConfigure(internal->surface, &internal->surfaceConfig);
+            return VIVID_OK;
+        }
 
         if (surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessOptimal &&
             surfaceTexture.status != WGPUSurfaceGetCurrentTextureStatus_SuccessSuboptimal) {
             // Surface not ready, skip frame
+            return VIVID_OK;
+        }
+
+        if (!surfaceTexture.texture) {
+            // No texture returned even with success status
             return VIVID_OK;
         }
 
@@ -572,14 +623,19 @@ VIVID_C_API VividResult vivid_context_render_frame(VividContext* ctx) {
         wgpuCommandBufferRelease(cmdBuffer);
         wgpuCommandEncoderRelease(encoder);
 
-        // Present
+        // Present the frame
         wgpuSurfacePresent(internal->surface);
+
         wgpuTextureViewRelease(targetView);
         wgpuTextureRelease(surfaceTexture.texture);
 
         return VIVID_OK;
     } catch (const std::exception& e) {
         setError(e.what());
+        return VIVID_ERROR_INTERNAL;
+    } catch (...) {
+        // Catch any other C++ exceptions (Objective-C exceptions, etc.)
+        setError("Unknown exception in render_frame");
         return VIVID_ERROR_INTERNAL;
     }
 }
@@ -681,6 +737,9 @@ VIVID_C_API VividResult vivid_context_load_project(VividContext* ctx, const char
         internal->projectPath = projectPath;
         internal->hotReload->setSourceFile(chainPath);
 
+        // Set project directory for asset resolution (relative paths like "assets/file.mp4")
+        vivid::AssetLoader::instance().setProjectDir(projectPath);
+
         if (!internal->hotReload->reload()) {
             internal->compileError = internal->hotReload->getError();
             internal->hasProject = false;
@@ -706,6 +765,70 @@ VIVID_C_API VividResult vivid_context_load_project(VividContext* ctx, const char
         setError(e.what());
         return VIVID_ERROR_LOAD_FAILED;
     }
+}
+
+VIVID_C_API VividResult vivid_configure_asset_paths(const char* vivid_root) {
+    if (!vivid_root) {
+        setError("Invalid argument");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    std::filesystem::path rootDir(vivid_root);
+    auto& assets = vivid::AssetLoader::instance();
+
+    // Add build directory (contains shaders/)
+    std::filesystem::path buildDir = rootDir / "build";
+    if (std::filesystem::exists(buildDir)) {
+        assets.addSearchPath(buildDir);
+    }
+
+    // Add modules directory for module-specific assets
+    std::filesystem::path modulesDir = rootDir / "modules";
+    if (std::filesystem::exists(modulesDir)) {
+        assets.addSearchPath(modulesDir);
+        // Add vivid-core assets specifically (fonts)
+        std::filesystem::path coreAssets = modulesDir / "vivid-core" / "assets";
+        if (std::filesystem::exists(coreAssets)) {
+            assets.addSearchPath(coreAssets);
+        }
+    }
+
+    return VIVID_OK;
+}
+
+VIVID_C_API VividResult vivid_context_set_root_dir(VividContext* ctx, const char* path) {
+    if (!ctx || !path) {
+        setError("Invalid argument");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    auto* internal = toInternal(ctx);
+    std::filesystem::path rootDir(path);
+
+    // Configure hot-reload to find headers
+    internal->hotReload->setRootDir(rootDir);
+
+    // Configure asset loader to find shaders, fonts, etc.
+    auto& assets = vivid::AssetLoader::instance();
+
+    // Add build directory (contains shaders/, fonts from build process)
+    std::filesystem::path buildDir = rootDir / "build";
+    if (std::filesystem::exists(buildDir)) {
+        assets.addSearchPath(buildDir);
+    }
+
+    // Add modules directory for module-specific assets
+    std::filesystem::path modulesDir = rootDir / "modules";
+    if (std::filesystem::exists(modulesDir)) {
+        assets.addSearchPath(modulesDir);
+        // Add vivid-core assets specifically
+        std::filesystem::path coreAssets = modulesDir / "vivid-core" / "assets";
+        if (std::filesystem::exists(coreAssets)) {
+            assets.addSearchPath(coreAssets);
+        }
+    }
+
+    return VIVID_OK;
 }
 
 VIVID_C_API VividResult vivid_context_reload(VividContext* ctx) {

@@ -8,6 +8,7 @@
 #include <vivid/video/avf_decoder.h>
 #include <vivid/video/audio_player.h>
 #include <vivid/context.h>
+#include <vivid/render_lock.h>
 
 #include <iostream>
 
@@ -45,13 +46,18 @@ struct AVFDecoder::Impl {
     AVAssetReaderAudioMixOutput* audioOutput = nil;
 
     void cleanup() {
+        cleanupReader();
+        asset = nil;
+    }
+
+    // Reset reader without clearing asset (for seek operations)
+    void cleanupReader() {
         if (reader) {
             [reader cancelReading];
             reader = nil;
         }
         videoOutput = nil;
         audioOutput = nil;
-        asset = nil;
     }
 };
 
@@ -505,13 +511,20 @@ void AVFDecoder::seek(float seconds) {
     if (seconds < 0) seconds = 0;
     if (seconds > duration_) seconds = duration_;
 
+    // Lock rendering during the seek operation to prevent GPU state conflicts
+    // This is critical when looping because we recreate the entire reader
+    std::cout << "[AVFDecoder] Locking render for seek" << std::endl;
+    vivid::RenderLock::instance().lock();
+
     @autoreleasepool {
-        impl_->cleanup();
+        // Only cleanup reader, not asset (we need asset to create new reader)
+        impl_->cleanupReader();
 
         NSError* error = nil;
         impl_->reader = [[AVAssetReader alloc] initWithAsset:impl_->asset error:&error];
         if (error) {
             std::cerr << "[AVFDecoder] Failed to recreate reader for seek" << std::endl;
+            vivid::RenderLock::instance().unlock();
             return;
         }
 
@@ -562,6 +575,9 @@ void AVFDecoder::seek(float seconds) {
         nextFrameTime_ = seconds;
         isFinished_ = false;
     }
+
+    // Unlock rendering after seek is complete
+    vivid::RenderLock::instance().unlock();
 }
 
 } // namespace vivid::video
