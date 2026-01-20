@@ -296,6 +296,7 @@ add_subdirectory(modules/vivid-audio)
 add_subdirectory(modules/vivid-midi)
 add_subdirectory(modules/vivid-imgui)
 add_subdirectory(modules/vivid-texshare)
+add_subdirectory(modules/vivid-webview)
 
 # vivid-opencv moved to separate repo: https://github.com/seethroughlab/vivid-opencv
 # vivid-onnx moved to separate repo: https://github.com/seethroughlab/vivid-onnx

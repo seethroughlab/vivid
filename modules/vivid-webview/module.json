@@ -1,0 +1,8 @@
+{
+  "name": "vivid-webview",
+  "version": "0.1.0",
+  "description": "WebView operator for rendering interactive web content (HTML/CSS/JS/WebGL) to textures",
+  "author": "Vivid",
+  "license": "MIT",
+  "vivid": ">=0.1.0"
+}

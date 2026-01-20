@@ -4,13 +4,13 @@
 [![Docs](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml/badge.svg?branch=master)](https://github.com/seethroughlab/vivid/actions/workflows/docs.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A creative coding framework for real-time audio-visual work. Hot-reloadable C++ chains, WebGPU rendering, and optional AI-assisted development via built-in MCP.
+A creative coding framework for real-time audio-visual work. Hot-reloadable C++ chains, WebGPU rendering, and AI-assisted development with Claude Code.
 
 ## Features
 
 - **Audio-Visual Parity** - Audio and visuals are equal peers in code. Native synthesis, sequencing, and effects—no external plugins needed
 - **Hot Reload** - Edit your C++ code and see changes instantly without restarting
-- **IDE & AI Integration** - [VS Code extension](https://github.com/seethroughlab/vivid-vscode) for autocomplete and diagnostics, plus MCP server for AI-assisted development
+- **AI-Native IDE** - [Vivid IDE](https://github.com/seethroughlab/vivid-ide) with integrated Claude Code terminal, Monaco editor, and live parameter inspector
 - **WebGPU Backend** - Modern GPU API via wgpu-native (Metal on macOS, Vulkan/DX12 elsewhere)
 - **Chain-Based Architecture** - Connect operators to build audio-visual pipelines
 - **Addon System** - Modular design with automatic dependency discovery
@@ -37,15 +37,39 @@ A creative coding framework for real-time audio-visual work. Hot-reloadable C++ 
 
 *Chain basics (90 lines), 3D globe (306 lines), Candy physics (241 lines), Division raster (144 lines), Feedback spirals (78 lines), Particles (97 lines), Retro CRT (104 lines), Depth of field (376 lines)*
 
-## Quick Start
+## Getting Started
 
-### Requirements
+### Option 1: Vivid IDE (Recommended)
+
+The easiest way to use Vivid is with **Vivid IDE** — a standalone app with everything integrated:
+
+- **Monaco code editor** with C++ syntax highlighting
+- **Live preview** with real-time hot-reload
+- **Parameter inspector** for tweaking operator values
+- **Built-in Claude Code terminal** for AI-assisted development
+- **Node graph visualizer** to see your chain structure
+
+Download from [Vivid IDE Releases](https://github.com/seethroughlab/vivid-ide/releases) or build from source:
+
+```bash
+git clone https://github.com/seethroughlab/vivid-ide.git
+cd vivid-ide
+git submodule update --init --recursive
+npm install
+npm run tauri build
+```
+
+### Option 2: CLI Runtime (Advanced)
+
+For advanced users who prefer their own editor and workflow, you can use the Vivid runtime directly.
+
+#### Requirements
 
 - CMake 3.20+
 - C++17 compiler (Clang, GCC, or MSVC)
 - macOS, Windows, or Linux
 
-### Build
+#### Build
 
 ```bash
 git clone https://github.com/seethroughlab/vivid.git
@@ -53,7 +77,7 @@ cd vivid
 cmake -B build && cmake --build build
 ```
 
-### Run a Project
+#### Run a Project
 
 ```bash
 ./build/bin/vivid projects/2d-effects/chain-basics
@@ -61,9 +85,16 @@ cmake -B build && cmake --build build
 
 Press `F` to toggle fullscreen, `Tab` to view chain visualizer, `Esc` to quit.
 
-## Development Workflow
+## Development Workflows
 
-### VS Code Extension (Recommended)
+### With Vivid IDE
+
+1. Open a project folder (or create new from template)
+2. Edit `chain.cpp` in the built-in editor — changes hot-reload automatically
+3. Use the parameter inspector to tweak values in real-time
+4. Use Claude Code in the integrated terminal for AI assistance
+
+### With VS Code + CLI
 
 Install the [Vivid VS Code extension](https://github.com/seethroughlab/vivid-vscode) for:
 - Syntax highlighting for chain.cpp
@@ -71,16 +102,18 @@ Install the [Vivid VS Code extension](https://github.com/seethroughlab/vivid-vsc
 - Live error diagnostics
 - Parameter documentation on hover
 
-### Claude Code Integration
+Run the CLI in a terminal and edit in VS Code — hot-reload works across both.
 
-For AI-assisted development, add Vivid's MCP server to your Claude Code config:
+### AI-Assisted Development
+
+Whether using the IDE or CLI, you can enable Claude Code's MCP integration for AI-assisted development:
 
 ```json
 // ~/.claude.json
 {
   "mcpServers": {
     "vivid": {
-      "command": "/path/to/build/bin/vivid",
+      "command": "/path/to/vivid",
       "args": ["mcp"]
     }
   }
@@ -91,7 +124,7 @@ This enables Claude to:
 - See live parameter values from your running project
 - Apply slider adjustments directly to your code
 - Query available operators and documentation
-- Create, run, and test projects
+- Create, validate, and test projects
 
 **Workflow:** Edit code manually OR adjust sliders in the visualizer and let Claude sync the changes back to your chain.cpp.
 

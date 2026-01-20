@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Shape Controls</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: white;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 20px;
+            width: 280px;
+        }
+
+        .panel-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .section {
+            margin-bottom: 20px;
+        }
+
+        .section-title {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.6;
+            margin-bottom: 10px;
+        }
+
+        .control-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+
+        .control-label {
+            width: 70px;
+            font-size: 13px;
+        }
+
+        .control-value {
+            width: 45px;
+            text-align: right;
+            font-size: 12px;
+            font-family: 'SF Mono', monospace;
+            opacity: 0.8;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            margin: 0 10px;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            appearance: none;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: white;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+
+        /* Color sliders */
+        .color-r input[type="range"] { background: linear-gradient(to right, #333, #f44); }
+        .color-g input[type="range"] { background: linear-gradient(to right, #333, #4f4); }
+        .color-b input[type="range"] { background: linear-gradient(to right, #333, #44f); }
+
+        .color-preview {
+            width: 100%;
+            height: 30px;
+            border-radius: 6px;
+            margin-top: 10px;
+            border: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 10px;
+        }
+
+        .btn-animate {
+            background: rgba(59, 130, 246, 0.8);
+            color: white;
+        }
+
+        .btn-animate:hover {
+            background: rgba(59, 130, 246, 1);
+        }
+
+        .btn-animate.active {
+            background: rgba(239, 68, 68, 0.8);
+        }
+
+        .btn-animate.active:hover {
+            background: rgba(239, 68, 68, 1);
+        }
+
+        .btn-reset {
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+        }
+
+        .btn-reset:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="panel">
+        <div class="panel-title">Shape Controls</div>
+
+        <!-- Transform Section -->
+        <div class="section">
+            <div class="section-title">Transform</div>
+
+            <div class="control-row">
+                <span class="control-label">Size</span>
+                <input type="range" id="size" min="0.05" max="0.5" step="0.01" value="0.3">
+                <span class="control-value" id="size-value">0.30</span>
+            </div>
+
+            <div class="control-row">
+                <span class="control-label">X Position</span>
+                <input type="range" id="posX" min="-0.4" max="0.4" step="0.01" value="0">
+                <span class="control-value" id="posX-value">0.00</span>
+            </div>
+
+            <div class="control-row">
+                <span class="control-label">Y Position</span>
+                <input type="range" id="posY" min="-0.4" max="0.4" step="0.01" value="0">
+                <span class="control-value" id="posY-value">0.00</span>
+            </div>
+        </div>
+
+        <!-- Color Section -->
+        <div class="section">
+            <div class="section-title">Color</div>
+
+            <div class="control-row color-r">
+                <span class="control-label">Red</span>
+                <input type="range" id="colorR" min="0" max="1" step="0.01" value="1">
+                <span class="control-value" id="colorR-value">1.00</span>
+            </div>
+
+            <div class="control-row color-g">
+                <span class="control-label">Green</span>
+                <input type="range" id="colorG" min="0" max="1" step="0.01" value="0.5">
+                <span class="control-value" id="colorG-value">0.50</span>
+            </div>
+
+            <div class="control-row color-b">
+                <span class="control-label">Blue</span>
+                <input type="range" id="colorB" min="0" max="1" step="0.01" value="0.2">
+                <span class="control-value" id="colorB-value">0.20</span>
+            </div>
+
+            <div class="color-preview" id="color-preview"></div>
+        </div>
+
+        <!-- Actions Section -->
+        <div class="section">
+            <div class="section-title">Actions</div>
+            <button class="btn btn-animate" id="animate-btn">Start Animation</button>
+            <button class="btn btn-reset" id="reset-btn">Reset All</button>
+        </div>
+    </div>
+
+    <script>
+        // Send parameter update to Vivid
+        function sendParam(param, value) {
+            if (window.vivid && window.vivid.updateParam) {
+                window.vivid.updateParam(JSON.stringify({ param, value }));
+            }
+        }
+
+        // Update color preview
+        function updateColorPreview() {
+            const r = Math.round(parseFloat(document.getElementById('colorR').value) * 255);
+            const g = Math.round(parseFloat(document.getElementById('colorG').value) * 255);
+            const b = Math.round(parseFloat(document.getElementById('colorB').value) * 255);
+            document.getElementById('color-preview').style.background = `rgb(${r}, ${g}, ${b})`;
+        }
+
+        // Set up slider event handlers
+        const sliders = ['size', 'posX', 'posY', 'colorR', 'colorG', 'colorB'];
+
+        sliders.forEach(id => {
+            const slider = document.getElementById(id);
+            const display = document.getElementById(id + '-value');
+
+            // Update on input (while dragging)
+            slider.addEventListener('input', () => {
+                const value = parseFloat(slider.value);
+                display.textContent = value.toFixed(2);
+                sendParam(id, value);
+
+                if (id.startsWith('color')) {
+                    updateColorPreview();
+                }
+            });
+        });
+
+        // Initialize color preview
+        updateColorPreview();
+
+        // Animation toggle
+        let animating = false;
+        const animateBtn = document.getElementById('animate-btn');
+
+        animateBtn.addEventListener('click', () => {
+            animating = !animating;
+            animateBtn.textContent = animating ? 'Stop Animation' : 'Start Animation';
+            animateBtn.classList.toggle('active', animating);
+            sendParam('animate', animating);
+        });
+
+        // Reset button
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            // Reset values
+            document.getElementById('size').value = 0.3;
+            document.getElementById('size-value').textContent = '0.30';
+            sendParam('size', 0.3);
+
+            document.getElementById('posX').value = 0;
+            document.getElementById('posX-value').textContent = '0.00';
+            sendParam('posX', 0);
+
+            document.getElementById('posY').value = 0;
+            document.getElementById('posY-value').textContent = '0.00';
+            sendParam('posY', 0);
+
+            document.getElementById('colorR').value = 1;
+            document.getElementById('colorR-value').textContent = '1.00';
+            sendParam('colorR', 1);
+
+            document.getElementById('colorG').value = 0.5;
+            document.getElementById('colorG-value').textContent = '0.50';
+            sendParam('colorG', 0.5);
+
+            document.getElementById('colorB').value = 0.2;
+            document.getElementById('colorB-value').textContent = '0.20';
+            sendParam('colorB', 0.2);
+
+            updateColorPreview();
+
+            // Stop animation
+            if (animating) {
+                animating = false;
+                animateBtn.textContent = 'Start Animation';
+                animateBtn.classList.remove('active');
+                sendParam('animate', false);
+            }
+        });
+    </script>
+</body>
+</html>
