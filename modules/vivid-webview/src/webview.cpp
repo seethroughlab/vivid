@@ -146,15 +146,28 @@ void WebView::handleInputEvents(Context& ctx) {
     mods.meta = ctx.superHeld();
 
     // Calculate mouse position relative to webview
-    // Assume the webview fills the output - scale mouse coords accordingly
+    // GLFW mouse coordinates are in screen coordinates (logical pixels, origin top-left)
+    // We need to pass these directly - the backend will scale to CSS pixels
     glm::vec2 mousePos = ctx.mouse();
-    float scaleX = static_cast<float>(m_width) / static_cast<float>(ctx.width());
-    float scaleY = static_cast<float>(m_height) / static_cast<float>(ctx.height());
-    float webX = mousePos.x * scaleX;
-    float webY = mousePos.y * scaleY;
+    float webX = mousePos.x;
+    float webY = mousePos.y;
 
-    // Check if mouse is within webview bounds
-    bool mouseInBounds = webX >= 0 && webX < m_width && webY >= 0 && webY < m_height;
+    // Debug: log raw mouse position occasionally
+    static int dbgFrame = 0;
+    if (++dbgFrame % 120 == 0) {
+        std::cout << "[WebView] Mouse raw: (" << mousePos.x << ", " << mousePos.y
+                  << ") ctx: " << ctx.width() << "x" << ctx.height()
+                  << " web: " << m_width << "x" << m_height << std::endl;
+    }
+
+    // Check if mouse is within window bounds (logical pixels)
+    // The backend will handle scaling to WebView CSS pixels
+    int windowWidth = ctx.width();
+    int windowHeight = ctx.height();
+    // Get logical window size (GLFW mouse is in screen coordinates)
+    // On Retina, ctx.width/height are framebuffer size (2x logical)
+    // Estimate logical size - will be refined by actual scale factor
+    bool mouseInBounds = webX >= 0 && webY >= 0;
 
     // Track which mouse button is currently held for drag operations
     MouseButton heldButton = MouseButton::Left;
@@ -165,6 +178,12 @@ void WebView::handleInputEvents(Context& ctx) {
             anyButtonHeld = true;
             break;
         }
+    }
+
+    // Debug: show button state
+    static int frameCount = 0;
+    if (++frameCount % 60 == 0 && anyButtonHeld) {
+        std::cout << "[WebView] Button held: " << anyButtonHeld << " at (" << webX << ", " << webY << ")" << std::endl;
     }
 
     if (mouseInBounds || anyButtonHeld) {

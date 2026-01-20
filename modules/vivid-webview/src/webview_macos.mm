@@ -692,11 +692,21 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
     // Use JavaScript to dispatch mouse and pointer events
     // Pointer events are needed for form controls like sliders
     @autoreleasepool {
-        // Scale coordinates from GLFW logical pixels to WebView CSS pixels
+        // Debug: check the actual dimensions
+        static bool loggedOnce = false;
         CGFloat scaleFactor = window_.backingScaleFactor;
-        if (scaleFactor <= 0) scaleFactor = 1.0;
-        float cssX = x * scaleFactor;
-        float cssY = y * scaleFactor;
+        if (!loggedOnce) {
+            std::cout << "[WebView] backingScaleFactor: " << scaleFactor
+                      << " webview frame: " << webView_.frame.size.width << "x" << webView_.frame.size.height
+                      << " window frame: " << window_.frame.size.width << "x" << window_.frame.size.height
+                      << std::endl;
+            loggedOnce = true;
+        }
+
+        // Don't scale - coordinates from GLFW are in screen coordinates
+        // which should map directly to CSS pixels if WebView is sized correctly
+        float cssX = x;
+        float cssY = y;
 
         NSString* mouseEventType = nil;
         NSString* pointerEventType = nil;
