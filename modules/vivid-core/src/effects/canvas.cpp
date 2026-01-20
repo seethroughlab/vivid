@@ -165,17 +165,6 @@ bool Canvas::loadFont(Context& ctx, const std::string& path, float fontSize) {
 bool Canvas::loadBuiltinFont(Context& ctx, BuiltinFont font, float fontSize) {
     m_lastContext = &ctx;
 
-    // Resolve font path relative to executable
-    auto exeDir = AssetLoader::instance().executableDir();
-
-    // Find project root by walking up until we find the assets folder
-    // This handles both single-config (build/bin/) and multi-config (build/bin/Debug/) generators
-    auto projectRoot = exeDir.parent_path().parent_path();  // build/bin -> build -> project
-    if (!std::filesystem::exists(projectRoot / "modules/vivid-core/assets")) {
-        // Try one more level up (for MSVC multi-config)
-        projectRoot = projectRoot.parent_path();
-    }
-
     // Select font file based on enum
     std::string fontFile;
     switch (font) {
@@ -190,7 +179,19 @@ bool Canvas::loadBuiltinFont(Context& ctx, BuiltinFont font, float fontSize) {
             break;
     }
 
-    std::string fontPath = (projectRoot / "modules/vivid-core/assets/fonts" / fontFile).string();
+    // Use AssetLoader to resolve font path (respects configured search paths)
+    auto resolved = AssetLoader::instance().resolve("fonts/" + fontFile);
+    if (resolved.empty()) {
+        // Fallback: try vivid-core/assets/fonts path
+        resolved = AssetLoader::instance().resolve("vivid-core/assets/fonts/" + fontFile);
+    }
+    std::string fontPath = resolved.string();
+
+    if (fontPath.empty()) {
+        std::cerr << "[Canvas] Failed to find builtin font: " << fontFile << std::endl;
+        return false;
+    }
+
     return m_font->load(ctx, fontPath, fontSize);
 }
 
