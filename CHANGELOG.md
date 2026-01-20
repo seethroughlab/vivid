@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **WebView mouse interaction** - Fixed slider dragging and mouse events not working in WebView operator:
+  - External JS/CSS files now load correctly (changed to `loadFileURL:allowingReadAccessToURL:` for file:// URLs)
+  - Mouse coordinates now properly scaled by `backingScaleFactor` for Retina displays
+  - Fixed JavaScript syntax errors caused by `//` comments in single-line injected scripts
+  - Added page-ready check to prevent events before DOM is loaded
+  - Coordinates now clamped to viewport bounds
+
 ## [0.1.0-alpha.6] - 2026-01-17
 
 *Texture sharing, new operators, per-voice modulation, MCP improvements, improved Noise defaults*

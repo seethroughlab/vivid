@@ -145,28 +145,13 @@ void WebView::handleInputEvents(Context& ctx) {
     mods.alt = ctx.altHeld();
     mods.meta = ctx.superHeld();
 
-    // Calculate mouse position relative to webview
-    // GLFW mouse coordinates are in screen coordinates (logical pixels, origin top-left)
-    // We need to pass these directly - the backend will scale to CSS pixels
+    // Get mouse position in window logical coordinates
+    // Backend will scale to CSS pixels based on backing scale factor
     glm::vec2 mousePos = ctx.mouse();
     float webX = mousePos.x;
     float webY = mousePos.y;
 
-    // Debug: log raw mouse position occasionally
-    static int dbgFrame = 0;
-    if (++dbgFrame % 120 == 0) {
-        std::cout << "[WebView] Mouse raw: (" << mousePos.x << ", " << mousePos.y
-                  << ") ctx: " << ctx.width() << "x" << ctx.height()
-                  << " web: " << m_width << "x" << m_height << std::endl;
-    }
-
-    // Check if mouse is within window bounds (logical pixels)
-    // The backend will handle scaling to WebView CSS pixels
-    int windowWidth = ctx.width();
-    int windowHeight = ctx.height();
-    // Get logical window size (GLFW mouse is in screen coordinates)
-    // On Retina, ctx.width/height are framebuffer size (2x logical)
-    // Estimate logical size - will be refined by actual scale factor
+    // Check if mouse is within window bounds
     bool mouseInBounds = webX >= 0 && webY >= 0;
 
     // Track which mouse button is currently held for drag operations
@@ -178,12 +163,6 @@ void WebView::handleInputEvents(Context& ctx) {
             anyButtonHeld = true;
             break;
         }
-    }
-
-    // Debug: show button state
-    static int frameCount = 0;
-    if (++frameCount % 60 == 0 && anyButtonHeld) {
-        std::cout << "[WebView] Button held: " << anyButtonHeld << " at (" << webX << ", " << webY << ")" << std::endl;
     }
 
     if (mouseInBounds || anyButtonHeld) {

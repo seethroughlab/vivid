@@ -1,6 +1,8 @@
 // Shape Controls - JavaScript for Vivid WebView interaction
 // This file demonstrates loading external JS files in WebView
 
+console.log('[Controls.js] Script loaded successfully!');
+
 // Send parameter update to Vivid
 function sendParam(param, value) {
     if (window.vivid && window.vivid.updateParam) {
@@ -113,7 +115,7 @@ function showDebug(msg) {
 
 // Listen for all mouse events to debug
 document.addEventListener('mousedown', (e) => {
-    showDebug(`DOWN: ${e.target.tagName} #${e.target.id} @ (${Math.round(e.clientX)}, ${Math.round(e.clientY)})`);
+    showDebug(`DOWN: ${e.target.tagName} #${e.target.id} @ (${Math.round(e.clientX)}, ${Math.round(e.clientY)}) isTrusted=${e.isTrusted}`);
 });
 document.addEventListener('mousemove', (e) => {
     if (e.buttons > 0) {
@@ -122,6 +124,26 @@ document.addEventListener('mousemove', (e) => {
 });
 document.addEventListener('mouseup', (e) => {
     showDebug(`UP: ${e.target.tagName} @ (${Math.round(e.clientX)}, ${Math.round(e.clientY)})`);
+});
+
+// Also listen for pointer events (sliders may prefer these)
+document.addEventListener('pointerdown', (e) => {
+    console.log(`[JS] pointerdown on ${e.target.tagName}#${e.target.id} at (${e.clientX}, ${e.clientY})`);
+});
+document.addEventListener('pointermove', (e) => {
+    if (e.buttons > 0) {
+        console.log(`[JS] pointermove dragging at (${e.clientX}, ${e.clientY})`);
+    }
+});
+
+// Debug: Listen for input events on sliders
+document.querySelectorAll('input[type="range"]').forEach(slider => {
+    slider.addEventListener('input', (e) => {
+        console.log(`[JS] Slider ${slider.id} input event: value=${slider.value}`);
+    });
+    slider.addEventListener('change', (e) => {
+        console.log(`[JS] Slider ${slider.id} change event: value=${slider.value}`);
+    });
 });
 
 // Initialize when DOM is loaded

@@ -92,7 +92,6 @@ inline WGPUStringView toStringView(const char* str) {
 - (void)userContentController:(WKUserContentController *)userContentController
       didReceiveScriptMessage:(WKScriptMessage *)message {
     if (![message.name isEqualToString:@"vividCallback"]) return;
-    if (!self.callbacks) return;
 
     NSDictionary* body = message.body;
     if (![body isKindOfClass:[NSDictionary class]]) return;
@@ -101,6 +100,16 @@ inline WGPUStringView toStringView(const char* str) {
     id args = body[@"args"];
 
     if (!name) return;
+
+    // Handle console.log bridge
+    if ([name isEqualToString:@"_console"]) {
+        if ([args isKindOfClass:[NSString class]]) {
+            std::cout << "[JS] " << [args UTF8String] << std::endl;
+        }
+        return;
+    }
+
+    if (!self.callbacks) return;
 
     std::string callbackName = name.UTF8String;
     auto it = self.callbacks->find(callbackName);
@@ -280,6 +289,21 @@ bool WebViewMacOS::init(Context& ctx, int width, int height) {
 
         // Register script message handler for JavaScript callbacks
         [contentController_ addScriptMessageHandler:delegate_ name:@"vividCallback"];
+
+        // Inject console.log bridge to capture JS logs
+        NSString* consoleBridge = @"(function() {"
+            @"  var origLog = console.log;"
+            @"  console.log = function() {"
+            @"    var args = Array.prototype.slice.call(arguments);"
+            @"    var msg = args.map(function(a) { return String(a); }).join(' ');"
+            @"    window.webkit.messageHandlers.vividCallback.postMessage({name: '_console', args: msg});"
+            @"    origLog.apply(console, arguments);"
+            @"  };"
+            @"})();";
+        WKUserScript* consoleScript = [[WKUserScript alloc] initWithSource:consoleBridge
+                                                             injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                                                          forMainFrameOnly:YES];
+        [contentController_ addUserScript:consoleScript];
 
         // Add webview to window
         [window_ setContentView:webView_];
@@ -525,8 +549,15 @@ void WebViewMacOS::loadUrl(const std::string& url) {
         }
 
         if (nsUrl) {
-            NSURLRequest* request = [NSURLRequest requestWithURL:nsUrl];
-            [webView_ loadRequest:request];
+            if ([nsUrl isFileURL]) {
+                // For file:// URLs, use loadFileURL to allow loading external resources
+                // Grant read access to the directory containing the file
+                NSURL* accessDir = [nsUrl URLByDeletingLastPathComponent];
+                [webView_ loadFileURL:nsUrl allowingReadAccessToURL:accessDir];
+            } else {
+                NSURLRequest* request = [NSURLRequest requestWithURL:nsUrl];
+                [webView_ loadRequest:request];
+            }
         }
     }
 }
@@ -689,24 +720,23 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
                                   KeyModifiers modifiers) {
     if (!webView_) return;
 
+    // Don't send events until page is ready
+    if (!delegate_.isReady) return;
+
     // Use JavaScript to dispatch mouse and pointer events
     // Pointer events are needed for form controls like sliders
     @autoreleasepool {
-        // Debug: check the actual dimensions
-        static bool loggedOnce = false;
+        // Scale coordinates from GLFW window coordinates to CSS pixels
+        // GLFW mouse coordinates are in window logical coordinates (screen points)
+        // WebView CSS viewport is sized to framebuffer pixels (width_ x height_)
+        // On Retina displays, framebuffer = window * backingScaleFactor
         CGFloat scaleFactor = window_.backingScaleFactor;
-        if (!loggedOnce) {
-            std::cout << "[WebView] backingScaleFactor: " << scaleFactor
-                      << " webview frame: " << webView_.frame.size.width << "x" << webView_.frame.size.height
-                      << " window frame: " << window_.frame.size.width << "x" << window_.frame.size.height
-                      << std::endl;
-            loggedOnce = true;
-        }
+        float cssX = x * scaleFactor;
+        float cssY = y * scaleFactor;
 
-        // Don't scale - coordinates from GLFW are in screen coordinates
-        // which should map directly to CSS pixels if WebView is sized correctly
-        float cssX = x;
-        float cssY = y;
+        // Clamp coordinates to viewport bounds
+        cssX = std::max(0.0f, std::min(cssX, static_cast<float>(width_) - 1));
+        cssY = std::max(0.0f, std::min(cssY, static_cast<float>(height_) - 1));
 
         NSString* mouseEventType = nil;
         NSString* pointerEventType = nil;
@@ -754,12 +784,8 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
             @"  var button = %d;"
             @"  var buttons = %d;"
             @"  var mods = {%@};"
-            @"  "
-            @"  // Track dragged element for proper event targeting"
             @"  if (!window._vividDragTarget) window._vividDragTarget = null;"
             @"  if (!window._vividDragInput) window._vividDragInput = null;"
-            @"  "
-            @"  // Helper to find closest input element"
             @"  function findInput(el) {"
             @"    while (el && el !== document.body) {"
             @"      if (el.tagName === 'INPUT') return el;"
@@ -767,12 +793,10 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
             @"    }"
             @"    return null;"
             @"  }"
-            @"  "
             @"  var elem;"
             @"  if (mouseType === 'mousedown' || mouseType === 'pointerdown') {"
             @"    elem = document.elementFromPoint(x, y) || document.body;"
             @"    window._vividDragTarget = elem;"
-            @"    // Also track if we started on an input (or its child)"
             @"    window._vividDragInput = findInput(elem);"
             @"  } else if (mouseType === 'mouseup' || mouseType === 'pointerup') {"
             @"    elem = window._vividDragTarget || document.elementFromPoint(x, y) || document.body;"
@@ -781,8 +805,6 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
             @"  } else {"
             @"    elem = window._vividDragTarget || document.elementFromPoint(x, y) || document.body;"
             @"  }"
-            @"  "
-            @"  // Dispatch mouse event"
             @"  var mouseEvt = new MouseEvent(mouseType, {"
             @"    bubbles: true, cancelable: true, view: window,"
             @"    clientX: x, clientY: y,"
@@ -793,8 +815,6 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
             @"    metaKey: mods.metaKey || false"
             @"  });"
             @"  elem.dispatchEvent(mouseEvt);"
-            @"  "
-            @"  // Dispatch pointer event for form controls"
             @"  if (pointerType) {"
             @"    var pointerEvt = new PointerEvent(pointerType, {"
             @"      bubbles: true, cancelable: true, view: window,"
@@ -809,8 +829,6 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
             @"    });"
             @"    elem.dispatchEvent(pointerEvt);"
             @"  }"
-            @"  "
-            @"  // For range inputs, manually update value during drag"
             @"  var inputEl = window._vividDragInput;"
             @"  if (inputEl && inputEl.type === 'range' && buttons > 0) {"
             @"    var rect = inputEl.getBoundingClientRect();"
