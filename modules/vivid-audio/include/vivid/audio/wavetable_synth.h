@@ -359,6 +359,13 @@ private:
 
     // Voice state
     struct Voice {
+        // Make Voice movable-only (contains unique_ptr in modStates)
+        Voice() = default;
+        Voice(const Voice&) = delete;
+        Voice& operator=(const Voice&) = delete;
+        Voice(Voice&&) = default;
+        Voice& operator=(Voice&&) = default;
+
         float frequency = 0.0f;        // Base frequency (before detune)
         float targetFrequency = 0.0f;  // For portamento
         float currentFrequency = 0.0f; // Interpolated frequency

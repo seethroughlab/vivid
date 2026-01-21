@@ -14,6 +14,7 @@
 
 #include <vivid/audio_operator.h>
 #include <vivid/param.h>
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>

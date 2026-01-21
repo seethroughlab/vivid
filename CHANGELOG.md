@@ -10,6 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.8] - 2026-01-20
+
+*Windows build fix*
+
+### Fixed
+
+- **Windows build failure** - Fixed MSVC compilation errors in vivid-audio module:
+  - Added missing `#include <algorithm>` to `modulator.h` for `std::clamp`
+  - Made `Voice` struct explicitly movable-only to fix `vector::resize` with `unique_ptr` member
+
 ## [0.1.0-alpha.7] - 2026-01-20
 
 *Production bundle architecture redesign, WebView improvements*
