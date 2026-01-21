@@ -84,12 +84,16 @@ jobs:
 
       - name: Clean build directory (Unix)
         if: runner.os != 'Windows'
-        run: rm -rf build
+        run: |
+          rm -rf build
+          rm -rf package
 
       - name: Clean build directory (Windows)
         if: runner.os == 'Windows'
         shell: powershell
-        run: if (Test-Path build) { Remove-Item -Recurse -Force build }
+        run: |
+          if (Test-Path build) { Remove-Item -Recurse -Force build }
+          if (Test-Path package) { Remove-Item -Recurse -Force package }
 
       - name: Configure CMake (darwin-x64 cross-compile)
         if: matrix.target == 'darwin-x64'
@@ -119,6 +123,34 @@ jobs:
         if: runner.os == 'Windows'
         run: cmake --build build --config Release --parallel
 
+      - name: Verify build outputs (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          echo "=== Libraries in build/lib/ ==="
+          ls -la build/lib/*.dylib build/lib/*.so 2>/dev/null || true
+          echo "=== Checking for vivid-c library ==="
+          if ls build/lib/*vivid-c* 2>/dev/null; then
+            echo "vivid-c library found"
+          else
+            echo "ERROR: vivid-c library not found!"
+            exit 1
+          fi
+
+      - name: Verify build outputs (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          Write-Host "=== Libraries in build/lib/Release/ ==="
+          Get-ChildItem build/lib/Release/*.dll -ErrorAction SilentlyContinue
+          Write-Host "=== Checking for vivid-c library ==="
+          $vividc = Get-ChildItem build/lib/Release/*vivid-c* -ErrorAction SilentlyContinue
+          if ($vividc) {
+            Write-Host "vivid-c library found: $($vividc.Name)"
+          } else {
+            Write-Host "ERROR: vivid-c library not found!"
+            exit 1
+          }
+
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -131,11 +163,15 @@ jobs:
           # Copy binaries
           cp build/bin/vivid package/vivid-${{ matrix.target }}/bin/
 
-          # Copy libraries
-          cp build/bin/*.dylib package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
-          cp build/bin/*.so package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
-          cp build/lib/*.dylib package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
-          cp build/lib/*.so package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
+          # Copy libraries (use -L to dereference symlinks for versioned libs)
+          cp -L build/bin/*.dylib package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
+          cp -L build/bin/*.so package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
+          cp -L build/lib/*.dylib package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
+          cp -L build/lib/*.so package/vivid-${{ matrix.target }}/lib/ 2>/dev/null || true
+
+          # List what was copied
+          echo "=== Libraries in package ==="
+          ls -la package/vivid-${{ matrix.target }}/lib/
 
           # Copy headers (vivid-core + dependencies for SDK)
           cp -r modules/vivid-core/include/vivid package/vivid-${{ matrix.target }}/include/
