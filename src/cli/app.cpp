@@ -11,6 +11,7 @@
 #include <vivid/app.h>
 
 #include <vivid/vivid.h>
+#include <vivid/effects/texture_operator.h>
 #include <vivid/context.h>
 #include <vivid/display.h>
 #include <vivid/hot_reload.h>
@@ -1650,6 +1651,12 @@ int Application::init(const AppConfig& config) {
     m_impl->ctx = std::make_unique<Context>(m_impl->window, m_impl->device, m_impl->queue);
     m_impl->ctx->setWindowManager(m_impl->windowManager.get());
 
+    // Query GPU limits and pass to context
+    WGPULimits limits = {};
+    wgpuDeviceGetLimits(m_impl->device, &limits);
+    m_impl->ctx->setMaxTextureDimension2D(limits.maxTextureDimension2D);
+    std::cout << "Max texture size: " << limits.maxTextureDimension2D << "x" << limits.maxTextureDimension2D << std::endl;
+
     // Set render resolution from command-line (or default to window size)
     if (config.renderWidth > 0 && config.renderHeight > 0) {
         m_impl->ctx->setRenderResolution(config.renderWidth, config.renderHeight);
@@ -1948,6 +1955,13 @@ int Application::init(const AppConfig& config) {
             info.displayName = op->name();
             info.outputType = outputKindName(op->outputKind());
             info.sourceLine = op->sourceLine;
+
+            // Check for texture operator errors (e.g., texture size exceeded)
+            if (auto* texOp = dynamic_cast<vivid::effects::TextureOperator*>(op)) {
+                if (texOp->hasError()) {
+                    info.error = texOp->errorMessage();
+                }
+            }
 
             for (size_t i = 0; i < op->inputCount(); ++i) {
                 Operator* input = op->getInput(static_cast<int>(i));

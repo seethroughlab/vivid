@@ -186,6 +186,29 @@ public:
     /// @brief Get output height in pixels
     int outputHeight() const { return m_height; }
 
+    // -------------------------------------------------------------------------
+    /// @name Error State
+    /// @{
+
+    /**
+     * @brief Check if operator has an error (e.g., texture too large)
+     * @return True if operator is in error state
+     */
+    [[nodiscard]] bool hasError() const { return !m_error.empty(); }
+
+    /**
+     * @brief Get error message
+     * @return Error description, or empty string if no error
+     */
+    [[nodiscard]] const std::string& errorMessage() const { return m_error; }
+
+    /**
+     * @brief Clear error state
+     */
+    void clearError() { m_error.clear(); }
+
+    /// @}
+
     /**
      * @brief Set output resolution
      * @param w Width in pixels
@@ -294,6 +317,15 @@ protected:
     /// @brief Release output texture resources
     void releaseOutput();
 
+    /**
+     * @brief Create an error placeholder texture with checkerboard pattern
+     * @param ctx Runtime context
+     *
+     * Called internally when texture size exceeds GPU limits. Creates a small
+     * 64x64 magenta/black checkerboard to indicate the error visually.
+     */
+    void createErrorPlaceholder(Context& ctx);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Render Pass Helpers
@@ -322,6 +354,7 @@ protected:
     int m_width = 1280;   ///< Output width
     int m_height = 720;   ///< Output height
     bool m_hasExplicitResolution = false;  ///< True if setResolution() was called
+    std::string m_error;  ///< Error message (empty if no error)
 };
 
 } // namespace vivid::effects

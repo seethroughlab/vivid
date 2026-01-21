@@ -513,6 +513,21 @@ public:
     /// @brief Get WebGPU queue
     WGPUQueue queue() const { return m_queue; }
 
+    /**
+     * @brief Get maximum texture dimension (2D)
+     * @return Maximum width/height for 2D textures on this GPU
+     *
+     * WebGPU guarantees at least 8192. Most desktop GPUs support 16384.
+     * Use this to validate texture sizes before creation.
+     */
+    [[nodiscard]] uint32_t maxTextureDimension2D() const { return m_maxTextureDimension2D; }
+
+    /**
+     * @brief Set maximum texture dimension (called by runtime after device creation)
+     * @param limit The GPU's maxTextureDimension2D limit
+     */
+    void setMaxTextureDimension2D(uint32_t limit) { m_maxTextureDimension2D = limit; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Output Texture
@@ -1135,6 +1150,7 @@ private:
     GLFWwindow* m_window;
     WGPUDevice m_device;
     WGPUQueue m_queue;
+    uint32_t m_maxTextureDimension2D = 8192;  ///< GPU texture size limit (default: WebGPU minimum)
 
     // Time
     double m_time = 0.0;

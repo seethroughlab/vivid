@@ -388,6 +388,29 @@ Vivid includes a built-in chain visualizer powered by ImGui and ImNodes.
 - **Connection Visualization** - See how operators are wired together
 - **Performance Overlay** - FPS, frame time, and resolution display
 
+## Maximum Texture Size
+
+Vivid uses WebGPU via wgpu-native, which gives direct access to your GPU's full texture capabilities—no browser sandbox limits.
+
+| GPU Class | Typical Max Texture Size |
+|-----------|--------------------------|
+| Mobile/Integrated | 8192×8192 |
+| Desktop (most) | 16384×16384 |
+| High-end workstation | 32768×32768 |
+
+The actual limit depends on your GPU and is queried at runtime. Compare this to browser-based creative coding tools like p5.js or three.js, which are constrained by browser WebGL limits (typically 4096×4096 or 8192×8192) and suffer from additional overhead.
+
+**Error Handling:** If you request a texture larger than your GPU supports, Vivid displays a magenta/black checkerboard placeholder and reports the error via:
+- Console output
+- MCP `get_runtime_status` (Claude can detect and report the issue)
+- Chain visualizer (error operators are highlighted)
+
+To set custom texture resolution:
+```cpp
+auto& noise = chain.add<Noise>("noise");
+noise.setResolution(8192, 8192);  // Custom resolution
+```
+
 ## Project Structure
 
 ```

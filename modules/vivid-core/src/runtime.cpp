@@ -134,6 +134,11 @@ int Runtime::init(const RuntimeConfig& config) {
     // Create context
     m_ctx = new Context(m_window, m_device, m_queue);
 
+    // Query GPU limits and pass to context
+    WGPULimits limits = {};
+    wgpuDeviceGetLimits(m_device, &limits);
+    m_ctx->setMaxTextureDimension2D(limits.maxTextureDimension2D);
+
     // Set render resolution
     if (config.renderWidth > 0 && config.renderHeight > 0) {
         m_ctx->setRenderResolution(config.renderWidth, config.renderHeight);

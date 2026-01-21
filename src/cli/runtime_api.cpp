@@ -286,6 +286,9 @@ void RuntimeAPI::sendOperatorList(const std::vector<RuntimeOperatorInfo>& operat
         opJson["outputType"] = op.outputType;
         opJson["sourceLine"] = op.sourceLine;
         opJson["inputs"] = op.inputNames;
+        if (!op.error.empty()) {
+            opJson["error"] = op.error;
+        }
         j["operators"].push_back(opJson);
     }
 

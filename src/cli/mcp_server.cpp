@@ -1356,8 +1356,23 @@ private:
                 status["lastError"] = connState.lastError;
             }
             status["compileStatus"] = m_vivid.getCompileStatus();
-            status["operators"] = m_vivid.getOperators();
+            json operators = m_vivid.getOperators();
+            status["operators"] = operators;
             status["pendingChanges"] = m_vivid.getPendingChanges()["hasChanges"];
+
+            // Collect operator errors for easy access
+            json operatorErrors = json::array();
+            for (const auto& op : operators) {
+                if (op.contains("error") && !op["error"].get<std::string>().empty()) {
+                    operatorErrors.push_back({
+                        {"operator", op["name"]},
+                        {"error", op["error"]}
+                    });
+                }
+            }
+            if (!operatorErrors.empty()) {
+                status["operatorErrors"] = operatorErrors;
+            }
 
             result["content"] = {{
                 {"type", "text"},

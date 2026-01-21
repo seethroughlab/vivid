@@ -18,6 +18,7 @@ struct RuntimeOperatorInfo {
     std::string outputType;     ///< Output kind (e.g., "Texture")
     int sourceLine = 0;         ///< Line in chain.cpp
     std::vector<std::string> inputNames; ///< Connected input names
+    std::string error;          ///< Error message (empty if no error)
 };
 
 /// Parameter info for RuntimeAPI communication
