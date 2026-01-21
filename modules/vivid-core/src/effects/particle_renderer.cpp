@@ -3,11 +3,25 @@
 
 #include <vivid/effects/particle_renderer.h>
 #include <vivid/effects/texture_operator.h>
+#include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <cmath>
 #include <iostream>
 
 namespace vivid::effects {
+
+// Shader sources loaded from external files
+static std::string s_circleShader;
+static std::string s_spriteShader;
+
+static void ensureParticleRendererShadersLoaded() {
+    if (s_circleShader.empty()) {
+        s_circleShader = vivid::AssetLoader::instance().loadShader("particle_circle.wgsl");
+    }
+    if (s_spriteShader.empty()) {
+        s_spriteShader = vivid::AssetLoader::instance().loadShader("particle_sprite.wgsl");
+    }
+}
 
 // Circle uniforms (must match shader)
 struct CircleUniforms {
@@ -54,8 +68,8 @@ struct SpriteInstance {
     float uvScaleX, uvScaleY;
 };
 
-// WGSL shader for circle rendering (SDF-based)
-static const char* CIRCLE_SHADER = R"(
+// WGSL shader for circle rendering (SDF-based) - fallback
+static const char* CIRCLE_SHADER_FALLBACK = R"(
 struct Uniforms {
     resolution: vec2f,
     aspectRatio: f32,
@@ -116,8 +130,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-// WGSL shader for sprite rendering (textured quads)
-static const char* SPRITE_SHADER = R"(
+// WGSL shader for sprite rendering (textured quads) - fallback
+static const char* SPRITE_SHADER_FALLBACK = R"(
 struct Uniforms {
     resolution: vec2f,
     aspectRatio: f32,
@@ -255,10 +269,14 @@ void ParticleRenderer::createCircleMesh() {
 }
 
 void ParticleRenderer::createCirclePipeline() {
-    // Create shader module
+    // Ensure shaders are loaded
+    ensureParticleRendererShadersLoaded();
+
+    // Create shader module (use external shader, fallback to embedded)
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(CIRCLE_SHADER);
+    const std::string& shaderSource = s_circleShader.empty() ? CIRCLE_SHADER_FALLBACK : s_circleShader;
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;
@@ -400,10 +418,11 @@ void ParticleRenderer::createSpriteQuad() {
 }
 
 void ParticleRenderer::createSpritePipeline() {
-    // Create shader module
+    // Create shader module (use external shader, fallback to embedded)
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(SPRITE_SHADER);
+    const std::string& shaderSource = s_spriteShader.empty() ? SPRITE_SHADER_FALLBACK : s_spriteShader;
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;

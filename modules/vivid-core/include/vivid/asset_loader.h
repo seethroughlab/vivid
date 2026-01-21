@@ -49,11 +49,13 @@ public:
     /**
      * @brief Load shader by name (convenience for common pattern)
      * @param name Shader filename (e.g., "noise.wgsl")
+     * @param preprocess If true, process @include directives (default: true)
      * @return Shader source, or empty string if not found
      *
      * Searches in shader directories automatically.
+     * When preprocess is true, expands `// @include "path.wgsl"` directives.
      */
-    std::string loadShader(const std::string& name);
+    std::string loadShader(const std::string& name, bool preprocess = true);
 
     /// @}
     // -------------------------------------------------------------------------

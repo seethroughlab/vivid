@@ -60,3 +60,6 @@
 
 // Canvas (Phase 5)
 #include <vivid/effects/canvas.h>
+
+// Simulation
+#include <vivid/effects/fluid_sim.h>

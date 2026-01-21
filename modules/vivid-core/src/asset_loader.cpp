@@ -1,6 +1,7 @@
 // Vivid - Asset Loader Implementation
 
 #include <vivid/asset_loader.h>
+#include <vivid/shader_preprocessor.h>
 #include <fstream>
 #include <sstream>
 #include <iostream>
@@ -198,7 +199,7 @@ std::string AssetLoader::loadText(const std::string& path) {
     return content;
 }
 
-std::string AssetLoader::loadShader(const std::string& name) {
+std::string AssetLoader::loadShader(const std::string& name, bool preprocess) {
     // Try shader-specific paths
     std::vector<std::string> shaderPaths = {
         "shaders/" + name,                            // Installed build
@@ -208,14 +209,28 @@ std::string AssetLoader::loadShader(const std::string& name) {
     };
 
     for (const auto& path : shaderPaths) {
-        std::string content = loadText(path);
-        if (!content.empty()) {
-            return content;
+        fs::path resolvedPath = findAsset(path);
+        if (!resolvedPath.empty()) {
+            std::string content = loadText(path);
+            if (!content.empty()) {
+                if (preprocess) {
+                    // Process @include directives
+                    fs::path basePath = resolvedPath.parent_path();
+                    content = ShaderPreprocessor::instance().process(content, basePath);
+                }
+                return content;
+            }
         }
     }
 
     // Fallback: try the name directly
-    return loadText(name);
+    fs::path resolvedPath = findAsset(name);
+    std::string content = loadText(name);
+    if (!content.empty() && preprocess) {
+        fs::path basePath = resolvedPath.empty() ? fs::current_path() : resolvedPath.parent_path();
+        content = ShaderPreprocessor::instance().process(content, basePath);
+    }
+    return content;
 }
 
 std::vector<uint8_t> AssetLoader::loadBinary(const std::string& path) {

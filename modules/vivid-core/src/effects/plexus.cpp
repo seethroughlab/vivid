@@ -2,12 +2,26 @@
 // GPU-based particle network with proximity connections (2D/3D)
 
 #include <vivid/effects/plexus.h>
+#include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <cmath>
 #include <cstring>
 #include <iostream>
 
 namespace vivid::effects {
+
+// Shader sources loaded from external files
+static std::string s_lineShader;
+static std::string s_nodeShader;
+
+static void ensurePlexusShadersLoaded() {
+    if (s_lineShader.empty()) {
+        s_lineShader = vivid::AssetLoader::instance().loadShader("plexus_line.wgsl");
+    }
+    if (s_nodeShader.empty()) {
+        s_nodeShader = vivid::AssetLoader::instance().loadShader("plexus_node.wgsl");
+    }
+}
 
 // Uniforms for line rendering (with 3D camera matrix)
 struct PlexusLineUniforms {
@@ -38,8 +52,8 @@ struct NodeVertex {
     float x, y;
 };
 
-// WGSL shader for 3D line rendering
-static const char* LINE_SHADER = R"(
+// WGSL shader for 3D line rendering - fallback
+static const char* LINE_SHADER_FALLBACK = R"(
 struct Uniforms {
     viewProj: mat4x4f,
     resolution: vec2f,
@@ -107,8 +121,8 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4f {
 }
 )";
 
-// WGSL shader for 3D node rendering (billboards)
-static const char* NODE_SHADER = R"(
+// WGSL shader for 3D node rendering (billboards) - fallback
+static const char* NODE_SHADER_FALLBACK = R"(
 struct Uniforms {
     viewProj: mat4x4f,
     resolution: vec2f,
@@ -398,10 +412,14 @@ void Plexus::createPipelines(WGPUDevice device) {
     lineBgDesc.entries = &lineBgEntry;
     m_lineBindGroup = wgpuDeviceCreateBindGroup(device, &lineBgDesc);
 
-    // Line shader module
+    // Ensure shaders are loaded
+    ensurePlexusShadersLoaded();
+
+    // Line shader module (use external shader, fallback to embedded)
     WGPUShaderSourceWGSL lineWgslDesc = {};
     lineWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    lineWgslDesc.code = toStringView(LINE_SHADER);
+    const std::string& lineSource = s_lineShader.empty() ? LINE_SHADER_FALLBACK : s_lineShader;
+    lineWgslDesc.code = toStringView(lineSource.c_str());
 
     WGPUShaderModuleDescriptor lineShaderDesc = {};
     lineShaderDesc.nextInChain = &lineWgslDesc.chain;
@@ -524,10 +542,11 @@ void Plexus::createPipelines(WGPUDevice device) {
     nodeBgDesc.entries = &nodeBgEntry;
     m_nodeBindGroup = wgpuDeviceCreateBindGroup(device, &nodeBgDesc);
 
-    // Node shader module
+    // Node shader module (use external shader, fallback to embedded)
     WGPUShaderSourceWGSL nodeWgslDesc = {};
     nodeWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    nodeWgslDesc.code = toStringView(NODE_SHADER);
+    const std::string& nodeSource = s_nodeShader.empty() ? NODE_SHADER_FALLBACK : s_nodeShader;
+    nodeWgslDesc.code = toStringView(nodeSource.c_str());
 
     WGPUShaderModuleDescriptor nodeShaderDesc = {};
     nodeShaderDesc.nextInChain = &nodeWgslDesc.chain;

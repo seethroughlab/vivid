@@ -3,6 +3,7 @@
 #include <vivid/window_manager.h>
 #include <vivid/chain.h>
 #include <vivid/operator.h>
+#include <vivid/asset_loader.h>
 
 #include <iostream>
 #include <algorithm>
@@ -21,8 +22,17 @@ inline WGPUStringView toStringView(const char* str) {
 
 namespace vivid {
 
-// Blit shader source
-static const char* BLIT_REGION_SHADER = R"(
+// External shader loaded at runtime
+static std::string s_blitRegionShader;
+
+static void ensureBlitShaderLoaded() {
+    if (s_blitRegionShader.empty()) {
+        s_blitRegionShader = AssetLoader::instance().loadShader("blit_region.wgsl");
+    }
+}
+
+// Blit shader source (fallback)
+static const char* BLIT_REGION_SHADER_FALLBACK = R"(
 struct RegionUniforms {
     region: vec4<f32>,  // x, y, w, h in normalized coords
 };
@@ -622,10 +632,13 @@ void WindowManager::destroySurface(OutputWindow& win) {
 void WindowManager::createBlitResources() {
     if (m_blitPipeline) return;  // Already created
 
+    ensureBlitShaderLoaded();
+    const std::string& shaderSource = s_blitRegionShader.empty() ? BLIT_REGION_SHADER_FALLBACK : s_blitRegionShader;
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(BLIT_REGION_SHADER);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;

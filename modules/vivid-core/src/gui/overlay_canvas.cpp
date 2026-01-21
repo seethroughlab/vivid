@@ -1,4 +1,5 @@
 #include <vivid/gui/overlay_canvas.h>
+#include <vivid/asset_loader.h>
 #include "effects/font_atlas.h"  // For backward compatibility
 #include <cmath>
 #include <cstring>
@@ -8,8 +9,17 @@
 
 namespace vivid {
 
-// Shader for overlay rendering (no stencil, simple alpha blending)
-static const char* OVERLAY_SHADER = R"(
+// External shader loaded at runtime
+static std::string s_overlayShader;
+
+static void ensureOverlayShaderLoaded() {
+    if (s_overlayShader.empty()) {
+        s_overlayShader = AssetLoader::instance().loadShader("overlay.wgsl");
+    }
+}
+
+// Shader for overlay rendering (no stencil, simple alpha blending) - fallback
+static const char* OVERLAY_SHADER_FALLBACK = R"(
 struct Uniforms {
     resolution: vec2f,
     padding: vec2f,
@@ -149,10 +159,13 @@ bool OverlayCanvas::init(WGPUDevice device, WGPUQueue queue, WGPUTextureFormat s
 void OverlayCanvas::createPipeline() {
     WGPUDevice device = m_device;
 
+    ensureOverlayShaderLoaded();
+    const std::string& shaderSource = s_overlayShader.empty() ? OVERLAY_SHADER_FALLBACK : s_overlayShader;
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(OVERLAY_SHADER);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;

@@ -6,6 +6,7 @@
 #include <vivid/context.h>
 #include <vivid/io/image_loader.h>
 #include <vivid/effects/gpu_common.h>
+#include <vivid/asset_loader.h>
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -15,8 +16,17 @@ namespace vivid::render3d {
 
 REGISTER_OPERATOR(Particles3D, "3D Effects", "GPU billboard particle system with physics", false);
 
-// Billboard particle shader with spritesheet animation support
-static const char* PARTICLE3D_SHADER = R"(
+// External shader loaded at runtime
+static std::string s_particles3dShader;
+
+static void ensureParticles3dShaderLoaded() {
+    if (s_particles3dShader.empty()) {
+        s_particles3dShader = vivid::AssetLoader::instance().loadShader("particles3d.wgsl");
+    }
+}
+
+// Billboard particle shader with spritesheet animation support (fallback)
+static const char* PARTICLE3D_SHADER_FALLBACK = R"(
 struct Uniforms {
     viewProj: mat4x4f,
     cameraRight: vec3f,
@@ -179,10 +189,14 @@ void Particles3D::init(Context& ctx) {
 void Particles3D::createPipeline(Context& ctx) {
     using namespace vivid::effects;
 
+    // Load external shader with fallback
+    ensureParticles3dShaderLoaded();
+    const std::string& shaderSource = s_particles3dShader.empty() ? PARTICLE3D_SHADER_FALLBACK : s_particles3dShader;
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(PARTICLE3D_SHADER);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);

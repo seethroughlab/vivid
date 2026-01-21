@@ -55,6 +55,7 @@
 #include <vivid/effects/logic_op.h>
 #include <vivid/effects/trigger.h>
 #include <vivid/effects/window_events.h>
+#include <vivid/effects/fluid_sim.h>
 
 using namespace vivid::effects;
 using vivid::WindowEvents;
@@ -140,3 +141,8 @@ REGISTER_OPERATOR_EX(Trigger, "Utilities", "Event trigger with attack/decay enve
 // Input (event-based operators)
 // =============================================================================
 REGISTER_OPERATOR_EX(WindowEvents, "Input", "Window resize and focus events", false, vivid::OutputKind::Event);
+
+// =============================================================================
+// Simulation
+// =============================================================================
+REGISTER_OPERATOR(FluidSim, "Simulation", "GPU-accelerated 2D fluid simulation (Navier-Stokes)", false);

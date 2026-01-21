@@ -3,6 +3,7 @@
 #include <vivid/render3d/scene.h>
 #include <vivid/render3d/mesh.h>
 #include <vivid/context.h>
+#include <vivid/asset_loader.h>
 
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -21,8 +22,22 @@ static inline WGPUStringView toStringView(const char* str) {
     return sv;
 }
 
-// Shadow pass shader (depth only)
-static const char* SHADOW_SHADER_SOURCE = R"(
+// External shaders loaded at runtime
+static std::string s_shadowDepthShader;
+static std::string s_shadowPointShader;
+
+static void ensureShadowShadersLoaded() {
+    auto& loader = vivid::AssetLoader::instance();
+    if (s_shadowDepthShader.empty()) {
+        s_shadowDepthShader = loader.loadShader("shadow_depth.wgsl");
+    }
+    if (s_shadowPointShader.empty()) {
+        s_shadowPointShader = loader.loadShader("shadow_point.wgsl");
+    }
+}
+
+// Shadow pass shader (depth only) - fallback
+static const char* SHADOW_SHADER_SOURCE_FALLBACK = R"(
 struct ShadowUniforms {
     lightViewProj: mat4x4f,
     model: mat4x4f,
@@ -43,8 +58,8 @@ fn vs_main(in: VertexInput) -> @builtin(position) vec4f {
 fn fs_main() {}
 )";
 
-// Point shadow pass shader (outputs linear depth)
-static const char* POINT_SHADOW_SHADER_SOURCE = R"(
+// Point shadow pass shader (outputs linear depth) - fallback
+static const char* POINT_SHADOW_SHADER_SOURCE_FALLBACK = R"(
 struct PointShadowUniforms {
     lightViewProj: mat4x4f,
     model: mat4x4f,
@@ -320,10 +335,14 @@ void ShadowManager::createShadowResources(Context& ctx) {
     shadowLayoutDesc.entries = &shadowLayoutEntry;
     m_shadowBindGroupLayout = wgpuDeviceCreateBindGroupLayout(device, &shadowLayoutDesc);
 
+    // Load external shader with fallback
+    ensureShadowShadersLoaded();
+    const std::string& depthShaderSource = s_shadowDepthShader.empty() ? SHADOW_SHADER_SOURCE_FALLBACK : s_shadowDepthShader;
+
     // Create shader module
     WGPUShaderSourceWGSL shadowWgsl = {};
     shadowWgsl.chain.sType = WGPUSType_ShaderSourceWGSL;
-    shadowWgsl.code = toStringView(SHADOW_SHADER_SOURCE);
+    shadowWgsl.code = toStringView(depthShaderSource.c_str());
 
     WGPUShaderModuleDescriptor shadowModuleDesc = {};
     shadowModuleDesc.nextInChain = &shadowWgsl.chain;
@@ -468,10 +487,14 @@ void ShadowManager::createPointShadowResources(Context& ctx) {
     uniformBufDesc.usage = WGPUBufferUsage_Uniform | WGPUBufferUsage_CopyDst;
     m_pointShadowUniformBuffer = wgpuDeviceCreateBuffer(device, &uniformBufDesc);
 
+    // Load external shader with fallback
+    ensureShadowShadersLoaded();
+    const std::string& pointShaderSource = s_shadowPointShader.empty() ? POINT_SHADOW_SHADER_SOURCE_FALLBACK : s_shadowPointShader;
+
     // Create shader module
     WGPUShaderSourceWGSL shaderWgsl = {};
     shaderWgsl.chain.sType = WGPUSType_ShaderSourceWGSL;
-    shaderWgsl.code = toStringView(POINT_SHADOW_SHADER_SOURCE);
+    shaderWgsl.code = toStringView(pointShaderSource.c_str());
 
     WGPUShaderModuleDescriptor moduleDesc = {};
     moduleDesc.nextInChain = &shaderWgsl.chain;

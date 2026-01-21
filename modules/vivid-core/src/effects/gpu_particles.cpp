@@ -3,6 +3,7 @@
 
 #include <vivid/effects/gpu_particles.h>
 #include <vivid/effects/gpu_common.h>
+#include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <cmath>
 #include <algorithm>
@@ -10,11 +11,21 @@
 
 namespace vivid::effects {
 
-// =============================================================================
-// Compute Shader - Particle Simulation
-// =============================================================================
+// Shader sources loaded from external files
+static std::string s_simulateShader;
+static std::string s_renderShader;
 
-static constexpr const char* SIMULATE_SHADER = R"(
+static void ensureShadersLoaded() {
+    if (s_simulateShader.empty()) {
+        s_simulateShader = vivid::AssetLoader::instance().loadShader("gpu_particles_simulate.wgsl");
+    }
+    if (s_renderShader.empty()) {
+        s_renderShader = vivid::AssetLoader::instance().loadShader("gpu_particles_render.wgsl");
+    }
+}
+
+// Legacy embedded shader kept as fallback (will be removed in future)
+static constexpr const char* SIMULATE_SHADER_FALLBACK = R"(
 struct Particle {
     posX: f32, posY: f32,
     velX: f32, velY: f32,
@@ -232,7 +243,7 @@ fn main(@builtin(global_invocation_id) id: vec3u) {
 // Render Shader - Draw circles from particle buffer
 // =============================================================================
 
-static constexpr const char* RENDER_SHADER = R"(
+static constexpr const char* RENDER_SHADER_FALLBACK = R"(
 struct Particle {
     posX: f32, posY: f32,
     velX: f32, velY: f32,
@@ -417,10 +428,14 @@ void GPUParticles::createBuffers(WGPUDevice device, WGPUQueue queue) {
 }
 
 void GPUParticles::createComputePipeline(WGPUDevice device) {
-    // Create shader module
+    // Ensure shaders are loaded
+    ensureShadersLoaded();
+
+    // Create shader module (use external shader, fallback to embedded)
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = gpu::toStringView(SIMULATE_SHADER);
+    const std::string& shaderSource = s_simulateShader.empty() ? SIMULATE_SHADER_FALLBACK : s_simulateShader;
+    wgslDesc.code = gpu::toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor moduleDesc = {};
     moduleDesc.nextInChain = &wgslDesc.chain;
@@ -493,10 +508,11 @@ void GPUParticles::createComputePipeline(WGPUDevice device) {
 }
 
 void GPUParticles::createRenderPipeline(WGPUDevice device) {
-    // Create shader module
+    // Create shader module (use external shader, fallback to embedded)
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = gpu::toStringView(RENDER_SHADER);
+    const std::string& shaderSource = s_renderShader.empty() ? RENDER_SHADER_FALLBACK : s_renderShader;
+    wgslDesc.code = gpu::toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor moduleDesc = {};
     moduleDesc.nextInChain = &wgslDesc.chain;

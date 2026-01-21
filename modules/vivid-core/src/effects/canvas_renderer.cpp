@@ -1,5 +1,6 @@
 #include "canvas_renderer.h"
 #include "font_atlas.h"
+#include <vivid/asset_loader.h>
 #include <vivid/context.h>
 #include <vivid/effects/texture_operator.h>
 #include <cmath>
@@ -7,8 +8,17 @@
 
 namespace vivid {
 
-// Embedded shader for canvas rendering
-static const char* CANVAS_SHADER = R"(
+// Shader source loaded from external file
+static std::string s_canvasShader;
+
+static void ensureCanvasShadersLoaded() {
+    if (s_canvasShader.empty()) {
+        s_canvasShader = AssetLoader::instance().loadShader("canvas.wgsl");
+    }
+}
+
+// Embedded shader for canvas rendering - fallback
+static const char* CANVAS_SHADER_FALLBACK = R"(
 struct Uniforms {
     resolution: vec2f,
     padding: vec2f,
@@ -144,10 +154,14 @@ bool CanvasRenderer::init(Context& ctx) {
 void CanvasRenderer::createPipeline(Context& ctx) {
     WGPUDevice device = ctx.device();
 
-    // Create shader module
+    // Ensure shaders are loaded
+    ensureCanvasShadersLoaded();
+
+    // Create shader module (use external shader, fallback to embedded)
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = effects::toStringView(CANVAS_SHADER);
+    const std::string& shaderSource = s_canvasShader.empty() ? CANVAS_SHADER_FALLBACK : s_canvasShader;
+    wgslDesc.code = effects::toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = &wgslDesc.chain;

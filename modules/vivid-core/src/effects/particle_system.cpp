@@ -7,6 +7,7 @@
 #include <vivid/effects/types.h>
 #include <vivid/effects/forces/all_forces.h>
 #include <vivid/context.h>
+#include <vivid/asset_loader.h>
 #include <cmath>
 #include <algorithm>
 #include <iostream>
@@ -18,11 +19,29 @@
 
 namespace vivid::effects {
 
+// External shaders loaded at runtime
+static std::string s_billboardShader;
+static std::string s_meshShader;
+static std::string s_gpuSimulateShader;
+static std::string s_gpuCircleRenderShader;
+static std::string s_gpuBillboardRenderShader;
+static std::string s_gpuMeshRenderShader;
+
+static void ensureParticleSystemShadersLoaded() {
+    auto& loader = vivid::AssetLoader::instance();
+    if (s_billboardShader.empty()) s_billboardShader = loader.loadShader("particle_billboard.wgsl");
+    if (s_meshShader.empty()) s_meshShader = loader.loadShader("particle_mesh.wgsl");
+    if (s_gpuSimulateShader.empty()) s_gpuSimulateShader = loader.loadShader("particle_gpu_simulate.wgsl");
+    if (s_gpuCircleRenderShader.empty()) s_gpuCircleRenderShader = loader.loadShader("particle_gpu_circle.wgsl");
+    if (s_gpuBillboardRenderShader.empty()) s_gpuBillboardRenderShader = loader.loadShader("particle_gpu_billboard.wgsl");
+    if (s_gpuMeshRenderShader.empty()) s_gpuMeshRenderShader = loader.loadShader("particle_gpu_mesh.wgsl");
+}
+
 // =============================================================================
-// Billboard Shader
+// Billboard Shader (fallback)
 // =============================================================================
 
-static const char* BILLBOARD_SHADER = R"(
+static const char* BILLBOARD_SHADER_FALLBACK = R"(
 struct Uniforms {
     viewProj: mat4x4f,
     cameraRight: vec3f,
@@ -161,10 +180,10 @@ struct BillboardInstance {
 };
 
 // =============================================================================
-// Mesh Shader (instanced 3D meshes with velocity alignment)
+// Mesh Shader (instanced 3D meshes with velocity alignment) - fallback
 // =============================================================================
 
-static const char* MESH_SHADER = R"(
+static const char* MESH_SHADER_FALLBACK = R"(
 struct Uniforms {
     viewProj: mat4x4f,
 };
@@ -246,10 +265,10 @@ struct MeshInstance {
 };
 
 // =============================================================================
-// GPU Compute Shader - 3D Particle Simulation
+// GPU Compute Shader - 3D Particle Simulation (fallback)
 // =============================================================================
 
-static const char* GPU_SIMULATE_SHADER = R"(
+static const char* GPU_SIMULATE_SHADER_FALLBACK = R"(
 // GPU particle data (64 bytes, cache-aligned)
 struct Particle {
     posX: f32, posY: f32, posZ: f32,   // 12 bytes - position
@@ -718,10 +737,10 @@ struct GPUSimulateUniforms {
 };
 
 // =============================================================================
-// GPU Circle Rendering Shader - Reads directly from particle storage buffer
+// GPU Circle Rendering Shader - Reads directly from particle storage buffer (fallback)
 // =============================================================================
 
-static const char* GPU_CIRCLE_RENDER_SHADER = R"(
+static const char* GPU_CIRCLE_RENDER_SHADER_FALLBACK = R"(
 struct Particle {
     posX: f32, posY: f32, posZ: f32,
     velX: f32, velY: f32, velZ: f32,
@@ -824,10 +843,10 @@ struct GPUCircleRenderUniforms {
 };
 
 // =============================================================================
-// GPU Billboard Rendering Shader - Reads directly from particle storage buffer
+// GPU Billboard Rendering Shader - Reads directly from particle storage buffer (fallback)
 // =============================================================================
 
-static const char* GPU_BILLBOARD_RENDER_SHADER = R"(
+static const char* GPU_BILLBOARD_RENDER_SHADER_FALLBACK = R"(
 struct Particle {
     posX: f32, posY: f32, posZ: f32,
     velX: f32, velY: f32, velZ: f32,
@@ -964,10 +983,10 @@ struct GPUBillboardRenderUniforms {
 };
 
 // =============================================================================
-// GPU Mesh Rendering Shader - Reads directly from particle storage buffer
+// GPU Mesh Rendering Shader - Reads directly from particle storage buffer (fallback)
 // =============================================================================
 
-static const char* GPU_MESH_RENDER_SHADER = R"(
+static const char* GPU_MESH_RENDER_SHADER_FALLBACK = R"(
 struct Particle {
     posX: f32, posY: f32, posZ: f32,
     velX: f32, velY: f32, velZ: f32,
@@ -2132,10 +2151,13 @@ void ParticleSystem::initGPUBuffers(WGPUDevice device) {
 }
 
 void ParticleSystem::createComputePipeline(WGPUDevice device) {
+    ensureParticleSystemShadersLoaded();
+    const std::string& shaderSource = s_gpuSimulateShader.empty() ? GPU_SIMULATE_SHADER_FALLBACK : s_gpuSimulateShader;
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(GPU_SIMULATE_SHADER);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor moduleDesc = {};
     moduleDesc.nextInChain = &wgslDesc.chain;
@@ -2462,10 +2484,13 @@ void ParticleSystem::createGPUCircleMesh(WGPUDevice device) {
 }
 
 void ParticleSystem::createGPUCirclePipeline(WGPUDevice device) {
+    ensureParticleSystemShadersLoaded();
+    const std::string& shaderSource = s_gpuCircleRenderShader.empty() ? GPU_CIRCLE_RENDER_SHADER_FALLBACK : s_gpuCircleRenderShader;
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(GPU_CIRCLE_RENDER_SHADER);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor moduleDesc = {};
     moduleDesc.nextInChain = &wgslDesc.chain;
@@ -2648,10 +2673,13 @@ void ParticleSystem::renderCirclesGPU(Context& ctx) {
 // =============================================================================
 
 void ParticleSystem::createGPUBillboardPipeline(WGPUDevice device) {
+    ensureParticleSystemShadersLoaded();
+    const std::string& shaderSource = s_gpuBillboardRenderShader.empty() ? GPU_BILLBOARD_RENDER_SHADER_FALLBACK : s_gpuBillboardRenderShader;
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(GPU_BILLBOARD_RENDER_SHADER);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor moduleDesc = {};
     moduleDesc.nextInChain = &wgslDesc.chain;
@@ -2829,10 +2857,13 @@ void ParticleSystem::renderBillboardsGPU(Context& ctx) {
 // =============================================================================
 
 void ParticleSystem::createGPUMeshPipeline(WGPUDevice device) {
+    ensureParticleSystemShadersLoaded();
+    const std::string& shaderSource = s_gpuMeshRenderShader.empty() ? GPU_MESH_RENDER_SHADER_FALLBACK : s_gpuMeshRenderShader;
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(GPU_MESH_RENDER_SHADER);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor moduleDesc = {};
     moduleDesc.nextInChain = &wgslDesc.chain;
@@ -3042,10 +3073,13 @@ void ParticleSystem::renderMeshesGPU(Context& ctx) {
 }
 
 void ParticleSystem::createBillboardPipeline(WGPUDevice device) {
+    ensureParticleSystemShadersLoaded();
+    const std::string& shaderSource = s_billboardShader.empty() ? BILLBOARD_SHADER_FALLBACK : s_billboardShader;
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(BILLBOARD_SHADER);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);
@@ -3265,10 +3299,13 @@ void ParticleSystem::createBuiltinCubeMesh(WGPUDevice device) {
 }
 
 void ParticleSystem::createMeshPipeline(WGPUDevice device) {
+    ensureParticleSystemShadersLoaded();
+    const std::string& shaderSource = s_meshShader.empty() ? MESH_SHADER_FALLBACK : s_meshShader;
+
     // Create shader module
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    wgslDesc.code = toStringView(MESH_SHADER);
+    wgslDesc.code = toStringView(shaderSource.c_str());
 
     WGPUShaderModuleDescriptor shaderDesc = {};
     shaderDesc.nextInChain = reinterpret_cast<WGPUChainedStruct*>(&wgslDesc);

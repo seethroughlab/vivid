@@ -18,6 +18,7 @@
 #include <vivid/effects/gradient.h>
 #include <vivid/effects/shape.h>
 #include <vivid/effects/transform.h>
+#include <vivid/effects/fluid_sim.h>
 
 using namespace vivid;
 using namespace vivid::effects;
@@ -726,5 +727,128 @@ TEST_CASE("Transform operator", "[effects][transform]") {
         REQUIRE(uniforms.translateY == 0.2f);
         REQUIRE(uniforms.pivotX == 0.3f);
         REQUIRE(uniforms.pivotY == 0.7f);
+    }
+}
+
+// =============================================================================
+// FluidSim Operator Tests
+// =============================================================================
+
+TEST_CASE("FluidSim operator", "[effects][fluidsim][simulation]") {
+    FluidSim fluid;
+
+    SECTION("name returns 'FluidSim'") {
+        REQUIRE(fluid.name() == "FluidSim");
+    }
+
+    SECTION("parameter defaults") {
+        REQUIRE_THAT(static_cast<float>(fluid.viscosity), WithinRel(0.0001f, 0.01f));
+        REQUIRE_THAT(static_cast<float>(fluid.dissipation), WithinRel(0.99f, 0.01f));
+        REQUIRE_THAT(static_cast<float>(fluid.vorticity), WithinRel(0.3f, 0.01f));
+        REQUIRE_THAT(static_cast<float>(fluid.dyeDissipation), WithinRel(0.98f, 0.01f));
+        REQUIRE(static_cast<int>(fluid.pressureIterations) == 40);
+        REQUIRE_THAT(static_cast<float>(fluid.forceScale), WithinRel(1.0f, 0.01f));
+    }
+
+    SECTION("direct parameter assignment") {
+        fluid.viscosity = 0.005f;
+        fluid.dissipation = 0.95f;
+        fluid.vorticity = 0.5f;
+        fluid.dyeDissipation = 0.92f;
+        fluid.pressureIterations = 60;
+        fluid.forceScale = 2.5f;
+
+        REQUIRE_THAT(static_cast<float>(fluid.viscosity), WithinRel(0.005f, 0.01f));
+        REQUIRE_THAT(static_cast<float>(fluid.dissipation), WithinRel(0.95f, 0.01f));
+        REQUIRE_THAT(static_cast<float>(fluid.vorticity), WithinRel(0.5f, 0.01f));
+        REQUIRE_THAT(static_cast<float>(fluid.dyeDissipation), WithinRel(0.92f, 0.01f));
+        REQUIRE(static_cast<int>(fluid.pressureIterations) == 60);
+        REQUIRE_THAT(static_cast<float>(fluid.forceScale), WithinRel(2.5f, 0.01f));
+    }
+
+    SECTION("getParam API") {
+        fluid.viscosity = 0.002f;
+        fluid.vorticity = 0.6f;
+
+        float out[4] = {0};
+        REQUIRE(fluid.getParam("viscosity", out));
+        REQUIRE_THAT(out[0], WithinRel(0.002f, 0.01f));
+
+        REQUIRE(fluid.getParam("vorticity", out));
+        REQUIRE_THAT(out[0], WithinRel(0.6f, 0.01f));
+
+        REQUIRE(fluid.getParam("pressureIterations", out));
+        REQUIRE(out[0] == 40.0f);  // default (int as float)
+    }
+
+    SECTION("setParam API") {
+        float value[4] = {0.003f, 0, 0, 0};
+        REQUIRE(fluid.setParam("viscosity", value));
+        REQUIRE_THAT(static_cast<float>(fluid.viscosity), WithinRel(0.003f, 0.01f));
+
+        value[0] = 0.7f;
+        REQUIRE(fluid.setParam("vorticity", value));
+        REQUIRE_THAT(static_cast<float>(fluid.vorticity), WithinRel(0.7f, 0.01f));
+
+        value[0] = 50.0f;
+        REQUIRE(fluid.setParam("pressureIterations", value));
+        REQUIRE(static_cast<int>(fluid.pressureIterations) == 50);
+    }
+
+    SECTION("setParam returns false for unknown param") {
+        float value[4] = {1.0f, 0, 0, 0};
+        REQUIRE_FALSE(fluid.setParam("nonexistent", value));
+    }
+
+    SECTION("getParam returns false for unknown param") {
+        float out[4] = {0};
+        REQUIRE_FALSE(fluid.getParam("nonexistent", out));
+    }
+
+    SECTION("clearColor parameter") {
+        fluid.clearColor.set(0.1f, 0.2f, 0.3f, 1.0f);
+
+        float out[4] = {0};
+        REQUIRE(fluid.getParam("clearColor", out));
+        REQUIRE_THAT(out[0], WithinRel(0.1f, 0.01f));
+        REQUIRE_THAT(out[1], WithinRel(0.2f, 0.01f));
+        REQUIRE_THAT(out[2], WithinRel(0.3f, 0.01f));
+        REQUIRE_THAT(out[3], WithinRel(1.0f, 0.01f));
+    }
+
+    SECTION("params() returns declarations") {
+        auto paramList = fluid.params();
+        REQUIRE(paramList.size() >= 6);  // At least 6 main parameters
+
+        bool foundViscosity = false;
+        bool foundDissipation = false;
+        bool foundVorticity = false;
+        bool foundPressureIterations = false;
+
+        for (const auto& p : paramList) {
+            if (p.name == "viscosity") {
+                foundViscosity = true;
+                REQUIRE(p.type == ParamType::Float);
+                REQUIRE(p.minVal == 0.0f);
+                REQUIRE(p.maxVal == 0.01f);
+            }
+            if (p.name == "dissipation") {
+                foundDissipation = true;
+                REQUIRE(p.type == ParamType::Float);
+            }
+            if (p.name == "vorticity") {
+                foundVorticity = true;
+                REQUIRE(p.type == ParamType::Float);
+            }
+            if (p.name == "pressureIterations") {
+                foundPressureIterations = true;
+                REQUIRE(p.type == ParamType::Int);
+            }
+        }
+
+        REQUIRE(foundViscosity);
+        REQUIRE(foundDissipation);
+        REQUIRE(foundVorticity);
+        REQUIRE(foundPressureIterations);
     }
 }

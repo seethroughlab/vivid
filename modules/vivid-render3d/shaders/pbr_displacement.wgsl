@@ -1,28 +1,11 @@
-// PBR with displacement shader - extends textured PBR with vertex displacement
+// Vivid Render3D - PBR with Displacement Shader
+// Extends textured PBR with vertex displacement
 
-const PI: f32 = 3.14159265359;
-const EPSILON: f32 = 0.0001;
-const MAX_LIGHTS: u32 = 4u;
-
-const LIGHT_DIRECTIONAL: u32 = 0u;
-const LIGHT_POINT: u32 = 1u;
-const LIGHT_SPOT: u32 = 2u;
-
-const ALPHA_OPAQUE: u32 = 0u;
-const ALPHA_MASK: u32 = 1u;
-const ALPHA_BLEND: u32 = 2u;
-
-struct Light {
-    position: vec3f,
-    range: f32,
-    direction: vec3f,
-    spotAngle: f32,
-    color: vec3f,
-    intensity: f32,
-    lightType: u32,
-    spotBlend: f32,
-    _pad: vec2f,
-}
+// @include "lib/constants.wgsl"
+// @include "lib/pbr.wgsl"
+// @include "lib/lighting.wgsl"
+// @include "lib/alpha_modes.wgsl"
+// @include "lib/tonemapping.wgsl"
 
 struct Uniforms {
     mvp: mat4x4f,
@@ -145,41 +128,6 @@ fn vs_main(in: VertexInput) -> VertexOutput {
     return out;
 }
 
-fn D_GGX(NdotH: f32, roughness: f32) -> f32 {
-    let a = roughness * roughness;
-    let a2 = a * a;
-    let NdotH2 = NdotH * NdotH;
-    let denom = NdotH2 * (a2 - 1.0) + 1.0;
-    return a2 / (PI * denom * denom + EPSILON);
-}
-
-fn G_SchlickGGX(NdotV: f32, roughness: f32) -> f32 {
-    let r = roughness + 1.0;
-    let k = (r * r) / 8.0;
-    return NdotV / (NdotV * (1.0 - k) + k + EPSILON);
-}
-
-fn G_Smith(NdotV: f32, NdotL: f32, roughness: f32) -> f32 {
-    return G_SchlickGGX(NdotV, roughness) * G_SchlickGGX(NdotL, roughness);
-}
-
-fn F_Schlick(cosTheta: f32, F0: vec3f) -> vec3f {
-    return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-fn getAttenuation(distance: f32, range: f32) -> f32 {
-    if (range <= 0.0) { return 1.0; }
-    let d = max(distance, EPSILON);
-    let att = 1.0 / (d * d);
-    let falloff = saturate(1.0 - pow(d / range, 4.0));
-    return att * falloff * falloff;
-}
-
-fn getSpotFactor(lightDir: vec3f, spotDir: vec3f, innerAngle: f32, outerAngle: f32) -> f32 {
-    let cosAngle = dot(lightDir, spotDir);
-    return saturate((cosAngle - outerAngle) / max(innerAngle - outerAngle, EPSILON));
-}
-
 fn calculateLightContribution(
     light: Light,
     worldPos: vec3f,
@@ -289,8 +237,8 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     let ambient = vec3f(0.03) * albedo * uniforms.ambientIntensity * ao;
 
     var color = ambient + Lo + emissive;
-    color = color / (color + vec3f(1.0));
-    color = pow(color, vec3f(1.0 / 2.2));
+    color = reinhard(color);
+    color = gammaCorrect(color);
 
     var outAlpha = finalAlpha;
     if (uniforms.alphaMode == ALPHA_OPAQUE) {

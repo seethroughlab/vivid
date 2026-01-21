@@ -10,6 +10,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **FluidSim operator** - GPU-accelerated 2D fluid dynamics simulation:
+  - Real-time Navier-Stokes solver with vorticity confinement
+  - Mouse/touch interaction for adding dye and forces
+  - Configurable viscosity, dissipation, vorticity strength, and pressure iterations
+  - 11 compute shaders for simulation pipeline (advection, pressure solve, divergence, etc.)
+  - New example: `fluid-sim` demonstrating interactive fluid simulation
+
+- **Shader preprocessor** - Runtime `// @include "file.wgsl"` directive support:
+  - Enables code sharing between WGSL shaders (WGSL has no native include)
+  - Circular include detection and line number tracking for errors
+  - Processed at load time, works with hot-reload
+  - New files: `shader_preprocessor.h`, `shader_preprocessor.cpp`
+
+- **PBR shader libraries** - Shared code extracted to `shaders/lib/`:
+  - `lib/constants.wgsl` - PI, EPSILON, TWO_PI
+  - `lib/pbr.wgsl` - D_GGX, G_Smith, F_Schlick PBR functions
+  - `lib/lighting.wgsl` - Light struct, attenuation, spot factor calculations
+  - `lib/shadow.wgsl` - Shadow sampling for directional and point lights
+  - `lib/tonemapping.wgsl` - Reinhard tonemapping, gamma correction
+  - All PBR shaders refactored to use includes (pbr.wgsl, pbr_simple.wgsl, pbr_textured.wgsl, etc.)
+
+### Changed
+
+- **External shader extraction** - Embedded shaders moved to external `.wgsl` files for easier editing and hot-reload:
+  - vivid-core: 30+ shaders extracted (particles, fluid sim, canvas, overlay, plexus, etc.)
+  - vivid-render3d: particles3d, shadow_depth, shadow_point shaders extracted
+  - Original embedded shaders kept as `*_FALLBACK` for reliability
+  - Shaders loaded via `AssetLoader::loadShader()` with fallback pattern
+
 ## [0.1.0-alpha.8] - 2026-01-20
 
 *Windows build fix*

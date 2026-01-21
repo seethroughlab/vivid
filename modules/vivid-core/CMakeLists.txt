@@ -49,6 +49,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/context.cpp
     src/chain.cpp
     src/asset_loader.cpp
+    src/shader_preprocessor.cpp
     src/window_manager.cpp
     src/operator.cpp
     src/operator_registry.cpp
@@ -115,6 +116,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/point_sprites.cpp
     src/effects/gpu_particles.cpp
     src/effects/particle_system.cpp
+    src/effects/fluid_sim.cpp
     src/effects/forces/curl_noise_force.cpp
     src/effects/plexus.cpp
     src/effects/font_atlas.cpp
@@ -150,6 +152,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/hot_reload.h
     include/vivid/operator.h
     include/vivid/chain.h
+    include/vivid/shader_preprocessor.h
     include/vivid/library_registry.h
     include/vivid/video_exporter.h
     include/vivid/audio_buffer.h
@@ -230,6 +233,24 @@ if(WIN32)
             $<TARGET_FILE:glfw>
             ${CMAKE_BINARY_DIR}/lib/
         COMMENT "Copying GLFW DLL"
+    )
+endif()
+
+# Copy shaders to build root (matches release structure)
+file(GLOB CORE_SHADERS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/*.wgsl)
+file(GLOB CORE_SHADER_LIBS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lib/*.wgsl)
+if(CORE_SHADERS)
+    add_custom_command(TARGET vivid-core POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/shaders/lib
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CORE_SHADERS} ${CMAKE_BINARY_DIR}/shaders/
+        COMMENT "Copying core shaders"
+    )
+endif()
+if(CORE_SHADER_LIBS)
+    add_custom_command(TARGET vivid-core POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CORE_SHADER_LIBS} ${CMAKE_BINARY_DIR}/shaders/lib/
+        COMMENT "Copying core shader libraries"
     )
 endif()
 

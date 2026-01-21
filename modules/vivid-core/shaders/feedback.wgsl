@@ -1,5 +1,8 @@
 // Feedback shader - blends current input with transformed previous frame
 
+// @include "lib/fullscreen.wgsl"
+// @include "lib/coords.wgsl"
+
 struct Uniforms {
     resolution: vec2f,
     decay: f32,
@@ -22,16 +25,10 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f( 3.0, -1.0),
-        vec2f(-1.0,  3.0)
-    );
+    let fs = fullscreenTriangle(vertexIndex, true);
     var out: VertexOutput;
-    let pos = positions[vertexIndex];
-    out.position = vec4f(pos, 0.0, 1.0);
-    out.uv = pos * 0.5 + 0.5;
-    out.uv.y = 1.0 - out.uv.y;
+    out.position = fs.position;
+    out.uv = fs.uv;
     return out;
 }
 
@@ -42,23 +39,17 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
 
     // Transform UV for feedback buffer sampling
     var feedback_uv = in.uv;
+    let center = vec2f(0.5, 0.5);
 
     // Apply offset (in normalized coordinates)
     let pixel_offset = vec2f(u.offsetX, u.offsetY) / u.resolution;
     feedback_uv = feedback_uv - pixel_offset;
 
     // Apply zoom around center
-    let center = vec2f(0.5, 0.5);
-    feedback_uv = (feedback_uv - center) * u.zoom + center;
+    feedback_uv = scaleUv(feedback_uv, center, u.zoom);
 
     // Apply rotation around center
-    let rotated = feedback_uv - center;
-    let cos_r = cos(u.rotate);
-    let sin_r = sin(u.rotate);
-    feedback_uv = vec2f(
-        rotated.x * cos_r - rotated.y * sin_r,
-        rotated.x * sin_r + rotated.y * cos_r
-    ) + center;
+    feedback_uv = rotateUv(feedback_uv, center, u.rotate);
 
     // Sample feedback buffer with decay
     let feedback_color = textureSample(bufferTexture, texSampler, feedback_uv) * u.decay;

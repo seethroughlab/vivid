@@ -1,5 +1,10 @@
 // Ramp shader - generates animated HSV color gradients
 
+// @include "lib/constants.wgsl"
+// @include "lib/fullscreen.wgsl"
+// @include "lib/color.wgsl"
+// @include "lib/coords.wgsl"
+
 struct Uniforms {
     resolution: vec2f,
     time: f32,
@@ -26,46 +31,11 @@ struct VertexOutput {
 
 @vertex
 fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f( 3.0, -1.0),
-        vec2f(-1.0,  3.0)
-    );
+    let fs = fullscreenTriangle(vertexIndex, true);
     var out: VertexOutput;
-    let pos = positions[vertexIndex];
-    out.position = vec4f(pos, 0.0, 1.0);
-    out.uv = pos * 0.5 + 0.5;
-    out.uv.y = 1.0 - out.uv.y;
+    out.position = fs.position;
+    out.uv = fs.uv;
     return out;
-}
-
-// HSV to RGB conversion
-fn hsv2rgb(hsv: vec3f) -> vec3f {
-    let h = hsv.x;
-    let s = hsv.y;
-    let v = hsv.z;
-
-    let c = v * s;
-    let hp = h * 6.0;
-    let x = c * (1.0 - abs(hp % 2.0 - 1.0));
-    let m = v - c;
-
-    var rgb: vec3f;
-    if (hp < 1.0) {
-        rgb = vec3f(c, x, 0.0);
-    } else if (hp < 2.0) {
-        rgb = vec3f(x, c, 0.0);
-    } else if (hp < 3.0) {
-        rgb = vec3f(0.0, c, x);
-    } else if (hp < 4.0) {
-        rgb = vec3f(0.0, x, c);
-    } else if (hp < 5.0) {
-        rgb = vec3f(x, 0.0, c);
-    } else {
-        rgb = vec3f(c, 0.0, x);
-    }
-
-    return rgb + vec3f(m, m, m);
 }
 
 @fragment
@@ -74,18 +44,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     var uv = (in.uv - vec2f(0.5, 0.5) + vec2f(u.offsetX, u.offsetY)) * u.scale + vec2f(0.5, 0.5);
 
     // Rotate around center based on angle
-    let center = vec2f(0.5, 0.5);
-    let rotated = uv - center;
-    let cosA = cos(u.angle);
-    let sinA = sin(u.angle);
-    uv = vec2f(
-        rotated.x * cosA - rotated.y * sinA,
-        rotated.x * sinA + rotated.y * cosA
-    ) + center;
+    uv = rotateUv(uv, vec2f(0.5, 0.5), u.angle);
 
     // Apply aspect ratio correction for radial/diamond modes
-    let aspect = u.resolution.x / u.resolution.y;
-    let aspectCorrectedUV = vec2f((uv.x - 0.5) * aspect + 0.5, uv.y);
+    let aspectCorrectedUV = correctAspect(uv, u.resolution);
+    let center = vec2f(0.5, 0.5);
 
     // Calculate ramp value based on type
     var t: f32;
@@ -98,7 +61,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4f {
     } else if (u.rampType == 2) {
         // Angular (aspect corrected)
         let d = aspectCorrectedUV - center;
-        t = (atan2(d.y, d.x) + 3.14159265) / (2.0 * 3.14159265);
+        t = (atan2(d.y, d.x) + PI) / TWO_PI;
     } else {
         // Diamond (aspect corrected for square shape)
         let d = abs(aspectCorrectedUV - center);

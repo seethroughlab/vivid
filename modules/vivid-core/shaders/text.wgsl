@@ -1,5 +1,7 @@
 // Text rendering shader - renders bitmap font characters
 
+// @include "lib/coords.wgsl"
+
 struct Uniforms {
     screenSize: vec2f,
     _padding: vec2f,
@@ -26,10 +28,7 @@ fn vs_main(input: VertexInput) -> VertexOutput {
     var output: VertexOutput;
 
     // Convert from pixel coordinates to NDC (-1 to 1)
-    let ndc = vec2f(
-        (input.position.x / uniforms.screenSize.x) * 2.0 - 1.0,
-        1.0 - (input.position.y / uniforms.screenSize.y) * 2.0
-    );
+    let ndc = pixelToNdc(input.position, uniforms.screenSize);
 
     output.position = vec4f(ndc, 0.0, 1.0);
     output.uv = input.uv;
