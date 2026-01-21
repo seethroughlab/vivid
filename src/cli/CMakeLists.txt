@@ -79,6 +79,13 @@ target_link_libraries(vivid
         ixwebsocket  # For MCP server (always enabled in dev build)
 )
 
+# Link vivid-visualizer for dev builds (Tab to show visualizer)
+# The visualizer is loaded dynamically via dlsym, but the library must be loaded first
+if(TARGET vivid-visualizer)
+    target_link_libraries(vivid PRIVATE vivid-visualizer)
+    message(STATUS "[vivid-cli] Linked with vivid-visualizer for Tab visualizer")
+endif()
+
 
 # Platform-specific settings
 if(APPLE)
