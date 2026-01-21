@@ -793,18 +793,9 @@ void copyCommonResources(const fs::path& exeDir, const fs::path& destDir, const 
         fs::copy(jsonInclude / "nlohmann", includeDir / "nlohmann", fs::copy_options::recursive);
     }
 
-    // Copy default assets (fonts, etc.) from vivid-core
-    // Place at assets/ relative to exe parent (Contents/ on macOS, bundle root on Win/Linux)
-    // AssetLoader uses node_modules-style resolution: walks up looking for assets/ folders
-    fs::path rootDir = exeDir.parent_path().parent_path();
-    fs::path coreAssetsPath = rootDir / "modules" / "vivid-core" / "assets";
-    fs::path bundleAssetsPath = destDir.parent_path() / "assets";
-
-    if (fs::exists(coreAssetsPath)) {
-        fs::create_directories(bundleAssetsPath);
-        fs::copy(coreAssetsPath, bundleAssetsPath,
-                 fs::copy_options::recursive | fs::copy_options::overwrite_existing);
-    }
+    // Note: Core assets (fonts, icons) are now merged into project/assets/ at bundle time
+    // by the platform-specific bundlers. This keeps all assets in one place so the
+    // walk-up-hierarchy asset resolution finds them automatically.
 }
 
 // Scan chain.cpp for asset paths (e.g., "assets/images/foo.jpg")
@@ -956,9 +947,19 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
         fs::path rootDir = buildDir.parent_path();  // buildDir is rootDir/build-bundle
         copyProjectFiles(srcProject, chainPath, projectDest, rootDir);
 
+        // Merge core assets (fonts) into project/assets/
+        // This keeps all assets in one place - walk-up-hierarchy finds them automatically
+        fs::path coreAssetsPath = buildDir / "assets";
+        if (fs::exists(coreAssetsPath)) {
+            fs::path projectAssets = projectDest / "assets";
+            fs::create_directories(projectAssets);
+            fs::copy(coreAssetsPath, projectAssets,
+                     fs::copy_options::recursive | fs::copy_options::skip_existing);
+        }
+
         // Copy app icon (project icon overrides default)
         fs::path projectIcon = srcProject / "icon.icns";
-        fs::path defaultIcon = rootDir / "modules" / "vivid-core" / "assets" / "icons" / "vivid.icns";
+        fs::path defaultIcon = buildDir / "assets" / "icons" / "vivid.icns";
         fs::path destIcon = resourcesPath / "AppIcon.icns";
 
         if (fs::exists(projectIcon)) {
@@ -1089,10 +1090,20 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
         fs::path rootDir = buildDir.parent_path();  // buildDir is rootDir/build-bundle
         copyProjectFiles(srcProject, chainPath, projectPath, rootDir);
 
+        // Merge core assets (fonts) into project/assets/
+        // This keeps all assets in one place - walk-up-hierarchy finds them automatically
+        fs::path coreAssetsPath = buildDir / "assets";
+        if (fs::exists(coreAssetsPath)) {
+            fs::path projectAssets = projectPath / "assets";
+            fs::create_directories(projectAssets);
+            fs::copy(coreAssetsPath, projectAssets,
+                     fs::copy_options::recursive | fs::copy_options::skip_existing);
+        }
+
         // Copy app icon (project icon overrides default)
         // Note: .ico can be used for creating shortcuts with custom icons
         fs::path projectIcon = srcProject / "icon.ico";
-        fs::path defaultIcon = rootDir / "src" / "core" / "assets" / "icons" / "vivid.ico";
+        fs::path defaultIcon = buildDir / "assets" / "icons" / "vivid.ico";
         fs::path destIcon = bundlePath / (appName + ".ico");
 
         if (fs::exists(projectIcon)) {
@@ -1199,6 +1210,16 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
         // Copy project files (including shared assets from root)
         fs::path rootDir = buildDir.parent_path();  // buildDir is rootDir/build-bundle
         copyProjectFiles(srcProject, chainPath, projectPath, rootDir);
+
+        // Merge core assets (fonts) into project/assets/
+        // This keeps all assets in one place - walk-up-hierarchy finds them automatically
+        fs::path coreAssetsPath = buildDir / "assets";
+        if (fs::exists(coreAssetsPath)) {
+            fs::path projectAssets = projectPath / "assets";
+            fs::create_directories(projectAssets);
+            fs::copy(coreAssetsPath, projectAssets,
+                     fs::copy_options::recursive | fs::copy_options::skip_existing);
+        }
 
         // Create launcher script (sets up LD_LIBRARY_PATH)
         fs::path launcherPath = bundlePath / ("run-" + appName + ".sh");

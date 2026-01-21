@@ -125,6 +125,14 @@ add_custom_command(TARGET vivid POST_BUILD
     COMMENT "Copying templates..."
 )
 
+# Copy assets to build root (matches release structure)
+add_custom_command(TARGET vivid POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_SOURCE_DIR}/modules/vivid-core/assets
+        ${CMAKE_BINARY_DIR}/assets
+    COMMENT "Copying assets..."
+)
+
 # Copy presets to build root (matches release structure)
 add_custom_command(TARGET vivid POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
