@@ -678,21 +678,21 @@ void FluidSim::createTextures(WGPUDevice device) {
     velDesc.mipLevelCount = 1;
     velDesc.sampleCount = 1;
     velDesc.dimension = WGPUTextureDimension_2D;
-    velDesc.format = WGPUTextureFormat_RG16Float;
+    velDesc.format = WGPUTextureFormat_RGBA16Float;  // RGBA16Float supports both storage binding AND filtering
     velDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_StorageBinding;
 
     m_velocityA.reset(wgpuDeviceCreateTexture(device, &velDesc));
     m_velocityB.reset(wgpuDeviceCreateTexture(device, &velDesc));
 
     WGPUTextureViewDescriptor viewDesc = {};
-    viewDesc.format = WGPUTextureFormat_RG16Float;
+    viewDesc.format = WGPUTextureFormat_RGBA16Float;
     viewDesc.dimension = WGPUTextureViewDimension_2D;
     viewDesc.mipLevelCount = 1;
     viewDesc.arrayLayerCount = 1;
     m_velocityViewA.reset(wgpuTextureCreateView(m_velocityA, &viewDesc));
     m_velocityViewB.reset(wgpuTextureCreateView(m_velocityB, &viewDesc));
 
-    // Pressure texture (R16Float)
+    // Pressure texture (RGBA16Float supports both storage binding AND filtering on Metal)
     WGPUTextureDescriptor pressDesc = {};
     pressDesc.size.width = m_simWidth;
     pressDesc.size.height = m_simHeight;
@@ -700,18 +700,18 @@ void FluidSim::createTextures(WGPUDevice device) {
     pressDesc.mipLevelCount = 1;
     pressDesc.sampleCount = 1;
     pressDesc.dimension = WGPUTextureDimension_2D;
-    pressDesc.format = WGPUTextureFormat_R16Float;
+    pressDesc.format = WGPUTextureFormat_RGBA16Float;
     pressDesc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_StorageBinding;
 
     m_pressure.reset(wgpuDeviceCreateTexture(device, &pressDesc));
-    viewDesc.format = WGPUTextureFormat_R16Float;
+    viewDesc.format = WGPUTextureFormat_RGBA16Float;
     m_pressureView.reset(wgpuTextureCreateView(m_pressure, &viewDesc));
 
-    // Divergence texture (R16Float)
+    // Divergence texture (RGBA16Float)
     m_divergence.reset(wgpuDeviceCreateTexture(device, &pressDesc));
     m_divergenceView.reset(wgpuTextureCreateView(m_divergence, &viewDesc));
 
-    // Vorticity texture (R16Float)
+    // Vorticity texture (RGBA16Float)
     m_vorticity.reset(wgpuDeviceCreateTexture(device, &pressDesc));
     m_vorticityView.reset(wgpuTextureCreateView(m_vorticity, &viewDesc));
 
@@ -786,7 +786,7 @@ void FluidSim::createAdvectPipeline(WGPUDevice device) {
         entries[2].binding = 2;
         entries[2].visibility = WGPUShaderStage_Compute;
         entries[2].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-        entries[2].storageTexture.format = WGPUTextureFormat_RG16Float;
+        entries[2].storageTexture.format = WGPUTextureFormat_RGBA16Float;
         entries[2].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
 
         entries[3].binding = 3;
@@ -898,7 +898,7 @@ void FluidSim::createDivergencePipeline(WGPUDevice device) {
     entries[2].binding = 2;
     entries[2].visibility = WGPUShaderStage_Compute;
     entries[2].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-    entries[2].storageTexture.format = WGPUTextureFormat_R16Float;
+    entries[2].storageTexture.format = WGPUTextureFormat_RGBA16Float;
     entries[2].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
 
     WGPUBindGroupLayoutDescriptor layoutDesc = {};
@@ -952,7 +952,7 @@ void FluidSim::createPressurePipeline(WGPUDevice device) {
     entries[3].binding = 3;
     entries[3].visibility = WGPUShaderStage_Compute;
     entries[3].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-    entries[3].storageTexture.format = WGPUTextureFormat_R16Float;
+    entries[3].storageTexture.format = WGPUTextureFormat_RGBA16Float;
     entries[3].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
 
     WGPUBindGroupLayoutDescriptor layoutDesc = {};
@@ -1006,7 +1006,7 @@ void FluidSim::createGradientSubtractPipeline(WGPUDevice device) {
     entries[3].binding = 3;
     entries[3].visibility = WGPUShaderStage_Compute;
     entries[3].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-    entries[3].storageTexture.format = WGPUTextureFormat_RG16Float;
+    entries[3].storageTexture.format = WGPUTextureFormat_RGBA16Float;
     entries[3].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
 
     WGPUBindGroupLayoutDescriptor layoutDesc = {};
@@ -1058,7 +1058,7 @@ void FluidSim::createVorticityPipelines(WGPUDevice device) {
         entries[2].binding = 2;
         entries[2].visibility = WGPUShaderStage_Compute;
         entries[2].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-        entries[2].storageTexture.format = WGPUTextureFormat_R16Float;
+        entries[2].storageTexture.format = WGPUTextureFormat_RGBA16Float;
         entries[2].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
 
         WGPUBindGroupLayoutDescriptor layoutDesc = {};
@@ -1112,7 +1112,7 @@ void FluidSim::createVorticityPipelines(WGPUDevice device) {
         entries[3].binding = 3;
         entries[3].visibility = WGPUShaderStage_Compute;
         entries[3].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-        entries[3].storageTexture.format = WGPUTextureFormat_RG16Float;
+        entries[3].storageTexture.format = WGPUTextureFormat_RGBA16Float;
         entries[3].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
 
         WGPUBindGroupLayoutDescriptor layoutDesc = {};
@@ -1169,7 +1169,7 @@ void FluidSim::createAddForcePipeline(WGPUDevice device) {
         entries[3].binding = 3;
         entries[3].visibility = WGPUShaderStage_Compute;
         entries[3].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-        entries[3].storageTexture.format = WGPUTextureFormat_RG16Float;
+        entries[3].storageTexture.format = WGPUTextureFormat_RGBA16Float;
         entries[3].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
 
         WGPUBindGroupLayoutDescriptor layoutDesc = {};
@@ -1267,13 +1267,13 @@ void FluidSim::createClearPipeline(WGPUDevice device) {
     entries[1].binding = 1;
     entries[1].visibility = WGPUShaderStage_Compute;
     entries[1].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-    entries[1].storageTexture.format = WGPUTextureFormat_RG16Float;
+    entries[1].storageTexture.format = WGPUTextureFormat_RGBA16Float;
     entries[1].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
 
     entries[2].binding = 2;
     entries[2].visibility = WGPUShaderStage_Compute;
     entries[2].storageTexture.access = WGPUStorageTextureAccess_WriteOnly;
-    entries[2].storageTexture.format = WGPUTextureFormat_R16Float;
+    entries[2].storageTexture.format = WGPUTextureFormat_RGBA16Float;
     entries[2].storageTexture.viewDimension = WGPUTextureViewDimension_2D;
 
     entries[3].binding = 3;

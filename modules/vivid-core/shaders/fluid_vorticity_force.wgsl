@@ -19,7 +19,7 @@ struct Uniforms {
 @group(0) @binding(0) var<uniform> u: Uniforms;
 @group(0) @binding(1) var vorticityIn: texture_2d<f32>;
 @group(0) @binding(2) var velocityIn: texture_2d<f32>;
-@group(0) @binding(3) var velocityOut: texture_storage_2d<rg16float, write>;
+@group(0) @binding(3) var velocityOut: texture_storage_2d<rgba16float, write>;
 
 @compute @workgroup_size(8, 8)
 fn main(@builtin(global_invocation_id) id: vec3u) {

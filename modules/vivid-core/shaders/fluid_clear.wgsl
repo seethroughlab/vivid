@@ -17,8 +17,8 @@ struct Uniforms {
 }
 
 @group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var velocityOut: texture_storage_2d<rg16float, write>;
-@group(0) @binding(2) var pressureOut: texture_storage_2d<r16float, write>;
+@group(0) @binding(1) var velocityOut: texture_storage_2d<rgba16float, write>;
+@group(0) @binding(2) var pressureOut: texture_storage_2d<rgba16float, write>;
 @group(0) @binding(3) var dyeOut: texture_storage_2d<rgba16float, write>;
 
 @compute @workgroup_size(8, 8)
