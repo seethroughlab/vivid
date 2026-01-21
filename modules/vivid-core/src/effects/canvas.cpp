@@ -179,12 +179,9 @@ bool Canvas::loadBuiltinFont(Context& ctx, BuiltinFont font, float fontSize) {
             break;
     }
 
-    // Use AssetLoader to resolve font path (respects configured search paths)
+    // Use AssetLoader to resolve font path
+    // node_modules-style resolution will find fonts in any assets/ folder up the tree
     auto resolved = AssetLoader::instance().resolve("fonts/" + fontFile);
-    if (resolved.empty()) {
-        // Fallback: try vivid-core/assets/fonts path
-        resolved = AssetLoader::instance().resolve("vivid-core/assets/fonts/" + fontFile);
-    }
     std::string fontPath = resolved.string();
 
     if (fontPath.empty()) {

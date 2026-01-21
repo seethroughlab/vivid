@@ -1,5 +1,9 @@
 # Vivid Core - Runtime library
-# Includes: window, timing, input, hot-reload, display, chain visualization (OverlayCanvas)
+# Includes: window, timing, input, hot-reload, display, rendering primitives (OverlayCanvas)
+# Note: Chain visualizer (NodeGraph, ChainVisualizer) moved to vivid-visualizer module
+#
+# Production bundles use vivid-production executable (main_production.cpp + Runtime class)
+# which does NOT include HotReload or MCP. The dev build (vivid) uses all features.
 
 include(FetchContent)
 
@@ -53,14 +57,12 @@ set(VIVID_CORE_LIB_SOURCES
     src/audio_graph.cpp
     # Runtime utilities (used by CLI but also useful for library consumers)
     src/display.cpp
-    src/hot_reload.cpp
+    src/runtime.cpp  # Production runtime (no dev tools)
+    # Hot-reload is added conditionally below
     src/log.cpp
     src/module_registry.cpp
     src/module_manager.cpp
-    # Chain visualizer (uses OverlayCanvas, no ImGui)
-    src/chain_visualizer.cpp
-    # Node graph (OverlayCanvas-based node editor)
-    src/gui/node_graph.cpp
+    # Note: chain_visualizer.cpp and node_graph.cpp moved to vivid-visualizer module
     # vivid-io (image loading)
     src/io/image_loader.cpp
     # vivid-effects-2d (2D texture effects)
@@ -127,6 +129,10 @@ set(VIVID_CORE_LIB_SOURCES
     src/viz_helpers.cpp
 )
 
+# Hot-reload is always included in vivid-core (used by dev build)
+# Production bundles use vivid-production which doesn't call HotReload
+list(APPEND VIVID_CORE_LIB_SOURCES src/hot_reload.cpp)
+
 # Platform-specific library sources
 if(APPLE)
     list(APPEND VIVID_CORE_LIB_SOURCES src/video_exporter.mm src/platform_macos.mm)
@@ -140,6 +146,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/vivid.h
     include/vivid/context.h
     include/vivid/display.h
+    include/vivid/runtime.h
     include/vivid/hot_reload.h
     include/vivid/operator.h
     include/vivid/chain.h
@@ -149,14 +156,13 @@ set(VIVID_CORE_HEADERS
     include/vivid/audio_operator.h
     include/vivid/audio_output.h
     include/vivid/gui/overlay_canvas.h
-    include/vivid/gui/node_graph.h
     include/vivid/gui/ui_style.h
     include/vivid/frame_input.h
-    include/vivid/chain_visualizer.h
     include/vivid/viz_helpers.h
     include/vivid/event.h
     include/vivid/effects/trigger.h
     include/vivid/effects/window_events.h
+    # Note: chain_visualizer.h and node_graph.h moved to vivid-visualizer module
 )
 
 # Core library (shared between executable and modules)
@@ -255,6 +261,8 @@ target_include_directories(vivid-c
 target_link_libraries(vivid-c
     PRIVATE vivid-core
 )
+
+# Note: vivid-visualizer is linked in the main CMakeLists.txt after both targets exist
 
 target_compile_definitions(vivid-c PRIVATE VIVID_C_BUILDING_DLL)
 

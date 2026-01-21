@@ -22,7 +22,8 @@
 #include <vivid/window_manager.h>
 #include <vivid/asset_loader.h>
 #include <vivid/frame_input.h>
-#include <vivid/chain_visualizer.h>
+// Note: ChainVisualizer is loaded dynamically from vivid-visualizer module
+// See visualizer_dynamic namespace below
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>  // wgpu-native extensions (wgpuDevicePoll)
 #include <glfw3webgpu.h>
@@ -43,14 +44,17 @@
 #include <thread>
 #include <chrono>
 
-// Memory debugging (macOS)
+// Memory debugging and path lookup (macOS)
 #ifdef __APPLE__
 #include <mach/mach.h>
+#include <mach-o/dyld.h>  // For _NSGetExecutablePath
 #include <dlfcn.h>  // For dlsym
 #endif
 
 #ifdef __linux__
 #include <dlfcn.h>
+#include <unistd.h>  // For readlink
+#include <linux/limits.h>  // For PATH_MAX
 #endif
 
 #ifdef _WIN32
@@ -146,9 +150,276 @@ static void resetLookup() {
 
 } // namespace vivid::imgui_dynamic
 
+// -----------------------------------------------------------------------------
+// Dynamic Visualizer Support (vivid-visualizer module)
+// -----------------------------------------------------------------------------
+// Function pointers for optional vivid-visualizer module
+// These are looked up at runtime if the module is loaded
+// Production bundles can exclude this module for smaller size
+
+namespace vivid::visualizer_dynamic {
+
+// Forward declarations for types used in function signatures
+class Context;
+class Operator;
+class VideoExporter;
+struct FrameInput;
+
+// Function pointer types matching visualizer_exports.cpp
+using InitFn = void(*)(void* ctx, WGPUTextureFormat surfaceFormat);
+using RenderFn = void(*)(WGPURenderPassEncoder pass, const void* input, void* ctx);
+using UpdateSoloFn = void(*)(void* ctx);
+using ShutdownFn = void(*)();
+using IsAvailableFn = bool(*)();
+using SaveSnapshotFn = void(*)(void* ctx);
+using SnapshotRequestedFn = bool(*)();
+using GetExporterFn = void*(*)();
+using EnterSoloFn = void(*)(void* op, const char* name);
+using ExitSoloFn = void(*)();
+using InSoloModeFn = bool(*)();
+using SoloNameFn = const char*(*)();
+using SelectNodeFn = void(*)(const char* name);
+using SetFocusedNodeFn = void(*)(const char* name);
+using ClearFocusedNodeFn = void(*)();
+using SetPendingCountFn = void(*)(size_t count);
+using SetMcpWarningFn = void(*)(const char* warning);
+using SetParamCallbackFn = void(*)(void (*callback)(const char*, const char*, const float*, const float*, int));
+using ConsumedInputFn = bool(*)();
+using IsInteractingFn = bool(*)();
+
+static InitFn init = nullptr;
+static RenderFn render = nullptr;
+static UpdateSoloFn updateSolo = nullptr;
+static ShutdownFn shutdown = nullptr;
+static IsAvailableFn isAvailable = nullptr;
+static SaveSnapshotFn saveSnapshot = nullptr;
+static SnapshotRequestedFn snapshotRequested = nullptr;
+static GetExporterFn getExporter = nullptr;
+static EnterSoloFn enterSolo = nullptr;
+static ExitSoloFn exitSolo = nullptr;
+static InSoloModeFn inSoloMode = nullptr;
+static SoloNameFn soloName = nullptr;
+static SelectNodeFn selectNode = nullptr;
+static SetFocusedNodeFn setFocusedNode = nullptr;
+static ClearFocusedNodeFn clearFocusedNode = nullptr;
+static SetPendingCountFn setPendingCount = nullptr;
+static SetMcpWarningFn setMcpWarning = nullptr;
+static SetParamCallbackFn setParamCallback = nullptr;
+static ConsumedInputFn consumedInput = nullptr;
+static IsInteractingFn isInteracting = nullptr;
+static bool g_lookedUp = false;
+static bool g_initialized = false;
+
+// Try to find vivid-visualizer functions via dlsym/GetProcAddress (C-linkage names)
+static void lookupFunctions() {
+    if (g_lookedUp) return;
+    g_lookedUp = true;
+
+#if defined(__APPLE__) || defined(__linux__)
+    // RTLD_DEFAULT searches all loaded libraries
+    init = (InitFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_init");
+    render = (RenderFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_render");
+    updateSolo = (UpdateSoloFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_update_solo");
+    shutdown = (ShutdownFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_shutdown");
+    isAvailable = (IsAvailableFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_is_available");
+    saveSnapshot = (SaveSnapshotFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_save_snapshot");
+    snapshotRequested = (SnapshotRequestedFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_snapshot_requested");
+    getExporter = (GetExporterFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_get_exporter");
+    enterSolo = (EnterSoloFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_enter_solo");
+    exitSolo = (ExitSoloFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_exit_solo");
+    inSoloMode = (InSoloModeFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_in_solo_mode");
+    soloName = (SoloNameFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_solo_name");
+    selectNode = (SelectNodeFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_select_node");
+    setFocusedNode = (SetFocusedNodeFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_set_focused_node");
+    clearFocusedNode = (ClearFocusedNodeFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_clear_focused_node");
+    setPendingCount = (SetPendingCountFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_set_pending_count");
+    setMcpWarning = (SetMcpWarningFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_set_mcp_warning");
+    setParamCallback = (SetParamCallbackFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_set_param_callback");
+    consumedInput = (ConsumedInputFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_consumed_input");
+    isInteracting = (IsInteractingFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_is_interacting");
+#elif defined(_WIN32)
+    // On Windows, try to get the vivid-visualizer.dll module handle
+    HMODULE vizModule = GetModuleHandleA("vivid-visualizer.dll");
+    if (vizModule) {
+        init = (InitFn)GetProcAddress(vizModule, "vivid_visualizer_init");
+        render = (RenderFn)GetProcAddress(vizModule, "vivid_visualizer_render");
+        updateSolo = (UpdateSoloFn)GetProcAddress(vizModule, "vivid_visualizer_update_solo");
+        shutdown = (ShutdownFn)GetProcAddress(vizModule, "vivid_visualizer_shutdown");
+        isAvailable = (IsAvailableFn)GetProcAddress(vizModule, "vivid_visualizer_is_available");
+        saveSnapshot = (SaveSnapshotFn)GetProcAddress(vizModule, "vivid_visualizer_save_snapshot");
+        snapshotRequested = (SnapshotRequestedFn)GetProcAddress(vizModule, "vivid_visualizer_snapshot_requested");
+        getExporter = (GetExporterFn)GetProcAddress(vizModule, "vivid_visualizer_get_exporter");
+        enterSolo = (EnterSoloFn)GetProcAddress(vizModule, "vivid_visualizer_enter_solo");
+        exitSolo = (ExitSoloFn)GetProcAddress(vizModule, "vivid_visualizer_exit_solo");
+        inSoloMode = (InSoloModeFn)GetProcAddress(vizModule, "vivid_visualizer_in_solo_mode");
+        soloName = (SoloNameFn)GetProcAddress(vizModule, "vivid_visualizer_solo_name");
+        selectNode = (SelectNodeFn)GetProcAddress(vizModule, "vivid_visualizer_select_node");
+        setFocusedNode = (SetFocusedNodeFn)GetProcAddress(vizModule, "vivid_visualizer_set_focused_node");
+        clearFocusedNode = (ClearFocusedNodeFn)GetProcAddress(vizModule, "vivid_visualizer_clear_focused_node");
+        setPendingCount = (SetPendingCountFn)GetProcAddress(vizModule, "vivid_visualizer_set_pending_count");
+        setMcpWarning = (SetMcpWarningFn)GetProcAddress(vizModule, "vivid_visualizer_set_mcp_warning");
+        setParamCallback = (SetParamCallbackFn)GetProcAddress(vizModule, "vivid_visualizer_set_param_callback");
+        consumedInput = (ConsumedInputFn)GetProcAddress(vizModule, "vivid_visualizer_consumed_input");
+        isInteracting = (IsInteractingFn)GetProcAddress(vizModule, "vivid_visualizer_is_interacting");
+    }
+#endif
+}
+
+static bool available() {
+    lookupFunctions();
+    return init != nullptr && render != nullptr;
+}
+
+static void tryInit(void* ctx, WGPUTextureFormat format) {
+    if (!available() || g_initialized) return;
+    init(ctx, format);
+    g_initialized = true;
+}
+
+static void tryRender(WGPURenderPassEncoder pass, const void* input, void* ctx) {
+    if (!available() || !g_initialized) return;
+    render(pass, input, ctx);
+}
+
+static void tryUpdateSolo(void* ctx) {
+    if (!available() || !g_initialized) return;
+    updateSolo(ctx);
+}
+
+static void tryShutdown() {
+    if (!available() || !g_initialized) return;
+    shutdown();
+    g_initialized = false;
+}
+
+static void trySaveSnapshot(void* ctx) {
+    if (!available() || !g_initialized) return;
+    saveSnapshot(ctx);
+}
+
+static bool trySnapshotRequested() {
+    if (!available() || !g_initialized) return false;
+    return snapshotRequested();
+}
+
+static void* tryGetExporter() {
+    if (!available() || !g_initialized) return nullptr;
+    return getExporter();
+}
+
+static void tryEnterSolo(void* op, const char* name) {
+    if (!available() || !g_initialized) return;
+    enterSolo(op, name);
+}
+
+static void tryExitSolo() {
+    if (!available() || !g_initialized) return;
+    exitSolo();
+}
+
+static bool tryInSoloMode() {
+    if (!available() || !g_initialized) return false;
+    return inSoloMode();
+}
+
+static const char* trySoloName() {
+    if (!available() || !g_initialized) return "";
+    return soloName();
+}
+
+static void trySelectNode(const char* name) {
+    if (!available() || !g_initialized) return;
+    selectNode(name);
+}
+
+static void trySetFocusedNode(const char* name) {
+    if (!available() || !g_initialized) return;
+    setFocusedNode(name);
+}
+
+static void tryClearFocusedNode() {
+    if (!available() || !g_initialized) return;
+    clearFocusedNode();
+}
+
+static void trySetPendingCount(size_t count) {
+    if (!available() || !g_initialized) return;
+    setPendingCount(count);
+}
+
+static void trySetMcpWarning(const char* warning) {
+    if (!available() || !g_initialized) return;
+    setMcpWarning(warning);
+}
+
+static void trySetParamCallback(void (*callback)(const char*, const char*, const float*, const float*, int)) {
+    if (!available() || !g_initialized) return;
+    setParamCallback(callback);
+}
+
+static bool tryConsumedInput() {
+    if (!available() || !g_initialized) return false;
+    return consumedInput();
+}
+
+static bool tryIsInteracting() {
+    if (!available() || !g_initialized) return false;
+    return isInteracting();
+}
+
+// Reset lookup state (called after chain reload since libs may have changed)
+static void resetLookup() {
+    g_lookedUp = false;
+    init = nullptr;
+    render = nullptr;
+    updateSolo = nullptr;
+    shutdown = nullptr;
+    isAvailable = nullptr;
+    saveSnapshot = nullptr;
+    snapshotRequested = nullptr;
+    getExporter = nullptr;
+    enterSolo = nullptr;
+    exitSolo = nullptr;
+    inSoloMode = nullptr;
+    soloName = nullptr;
+    selectNode = nullptr;
+    setFocusedNode = nullptr;
+    clearFocusedNode = nullptr;
+    setPendingCount = nullptr;
+    setMcpWarning = nullptr;
+    setParamCallback = nullptr;
+    consumedInput = nullptr;
+    isInteracting = nullptr;
+}
+
+} // namespace vivid::visualizer_dynamic
+
 namespace fs = std::filesystem;
 
 namespace vivid {
+
+// Get executable directory for checking bundle markers
+static fs::path getExecutableDir() {
+#ifdef __APPLE__
+    char pathBuf[4096];
+    uint32_t size = sizeof(pathBuf);
+    if (_NSGetExecutablePath(pathBuf, &size) == 0) {
+        return fs::canonical(pathBuf).parent_path();
+    }
+#elif defined(_WIN32)
+    char pathBuf[MAX_PATH];
+    GetModuleFileNameA(nullptr, pathBuf, MAX_PATH);
+    return fs::path(pathBuf).parent_path();
+#elif defined(__linux__)
+    char pathBuf[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", pathBuf, sizeof(pathBuf) - 1);
+    if (len != -1) {
+        pathBuf[len] = '\0';
+        return fs::path(pathBuf).parent_path();
+    }
+#endif
+    return fs::current_path();
+}
 
 // -----------------------------------------------------------------------------
 // MCP Configuration Check
@@ -358,8 +629,10 @@ struct MainLoopContext {
     Context* ctx = nullptr;
     Display* display = nullptr;
     HotReload* hotReload = nullptr;
-    vivid::ChainVisualizer* chainVisualizer = nullptr;
     RuntimeAPI* editorBridge = nullptr;
+
+    // Visualizer state (dynamically loaded module)
+    bool visualizerAvailable = false;
 
     // CLI args needed in loop
     std::string snapshotPath;
@@ -432,11 +705,12 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
     }
 
-    // Toggle chain visualizer on Tab key
+    // Toggle chain visualizer on Tab key (only if visualizer module is loaded)
     // Note: Tab won't work when ImGui widgets have keyboard focus (click outside first)
+    // Production bundles without vivid-visualizer will not have this feature
     {
         bool tabKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_TAB) == GLFW_PRESS;
-        if (tabKeyPressed && !mlc.tabKeyWasPressed) {
+        if (tabKeyPressed && !mlc.tabKeyWasPressed && mlc.visualizerAvailable) {
             mlc.visualizerVisible = !mlc.visualizerVisible;
         }
         mlc.tabKeyWasPressed = tabKeyPressed;
@@ -759,14 +1033,15 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         // Auto-process the chain
         mlc.ctx->chain().process(*mlc.ctx);
 
-        // Capture frame for video export if recording
-        if (mlc.chainVisualizer->exporter().isRecording() && mlc.ctx->outputTexture()) {
+        // Capture frame for video export if recording (visualizer UI initiated)
+        auto* vizExporter = static_cast<VideoExporter*>(visualizer_dynamic::tryGetExporter());
+        if (vizExporter && vizExporter->isRecording() && mlc.ctx->outputTexture()) {
             WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
             if (outputTex) {
-                mlc.chainVisualizer->exporter().captureFrame(mlc.device, mlc.queue, outputTex);
+                vizExporter->captureFrame(mlc.device, mlc.queue, outputTex);
 
                 // Capture audio if recording with audio (using non-blocking tap)
-                if (mlc.chainVisualizer->exporter().hasAudio()) {
+                if (vizExporter->hasAudio()) {
                     // Pop available audio from the recording tap
                     // The tap buffer holds audio generated by the audio thread
                     static std::vector<float> audioBuffer;
@@ -779,7 +1054,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     uint32_t framesRead = mlc.ctx->chain().popAudioRecordedSamples(
                         audioBuffer.data(), MAX_FRAMES_PER_CALL);
                     if (framesRead > 0) {
-                        mlc.chainVisualizer->exporter().pushAudioSamples(
+                        vizExporter->pushAudioSamples(
                             audioBuffer.data(), framesRead);
                     }
                 }
@@ -819,9 +1094,9 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             }
         }
 
-        // Save snapshot if requested (interactive UI)
-        if (mlc.chainVisualizer->snapshotRequested()) {
-            mlc.chainVisualizer->saveSnapshot(*mlc.ctx);
+        // Save snapshot if requested (interactive UI via visualizer)
+        if (visualizer_dynamic::trySnapshotRequested()) {
+            visualizer_dynamic::trySaveSnapshot(mlc.ctx);
         }
 
         // MCP live capture request (WebSocket command from Claude Code)
@@ -958,8 +1233,8 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     frameInput.surfaceFormat = mlc.surfaceFormat;
 
     // Update solo mode output texture before blit
-    if (mlc.visualizerVisible) {
-        mlc.chainVisualizer->updateSoloOutput(*mlc.ctx);
+    if (mlc.visualizerVisible && mlc.visualizerAvailable) {
+        visualizer_dynamic::tryUpdateSolo(mlc.ctx);
     }
 
     // Blit output texture (may have been modified by solo mode)
@@ -972,7 +1247,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     imgui_dynamic::tryRender(pass);
 
     // Render NodeGraph overlay (uses OverlayCanvas, no ImGui dependency)
-    if (mlc.visualizerVisible) {
+    if (mlc.visualizerVisible && mlc.visualizerAvailable) {
         static bool firstRender = true;
         if (firstRender) {
             std::cout << "[DEBUG] Rendering NodeGraph for first time" << std::endl;
@@ -980,9 +1255,9 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
         // Update pending change count for status bar display
         if (mlc.editorBridge) {
-            mlc.chainVisualizer->setPendingChangeCount(mlc.editorBridge->pendingChangeCount());
+            visualizer_dynamic::trySetPendingCount(mlc.editorBridge->pendingChangeCount());
         }
-        mlc.chainVisualizer->renderNodeGraph(pass, frameInput, *mlc.ctx);
+        visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
     }
 
     // Render error message if present
@@ -1095,7 +1370,7 @@ struct Application::Impl {
     std::unique_ptr<Context> ctx;
     std::unique_ptr<Display> display;
     std::unique_ptr<HotReload> hotReload;
-    std::unique_ptr<vivid::ChainVisualizer> chainVisualizer;
+    // Note: ChainVisualizer is now loaded dynamically from vivid-visualizer module
     std::unique_ptr<RuntimeAPI> editorBridge;
 
     // WebGPU objects
@@ -1410,14 +1685,15 @@ int Application::init(const AppConfig& config) {
     }
     m_impl->display->setDisplayMode(displayMode);
 
-    // Create chain visualizer
-    m_impl->chainVisualizer = std::make_unique<vivid::ChainVisualizer>();
+    // Initialize chain visualizer (dynamically loaded from vivid-visualizer module)
+    // If the module is not present (e.g., production bundles), this is a no-op
+    visualizer_dynamic::tryInit(m_impl->ctx.get(), m_impl->surfaceFormat);
 
-    // Check MCP configuration
-    {
+    // Check MCP configuration and set warning on visualizer
+    if (visualizer_dynamic::available()) {
         std::string warning = checkMcpConfiguration();
         if (!warning.empty()) {
-            m_impl->chainVisualizer->setMcpWarning(warning);
+            visualizer_dynamic::trySetMcpWarning(warning.c_str());
         }
     }
 
@@ -1543,68 +1819,77 @@ int Application::init(const AppConfig& config) {
         }
     });
 
-    // Connect chain visualizer inspector panel to pending changes system
-    m_impl->chainVisualizer->onParamChange([this](const std::string& opName, const std::string& paramName,
-                                                   const float oldValue[4], const float newValue[4], int sourceLine) {
-        // Queue as pending change for Claude to review
-        PendingChange change;
-        change.operatorName = opName;
-        change.paramName = paramName;
-        change.sourceLine = sourceLine;
-        for (int i = 0; i < 4; ++i) {
-            change.oldValue[i] = oldValue[i];
-            change.newValue[i] = newValue[i];
-        }
+    // Connect chain visualizer inspector panel to pending changes system (if available)
+    // The callback needs access to m_impl, so we store a static pointer (single instance)
+    static Application::Impl* s_paramCallbackImpl = nullptr;
+    s_paramCallbackImpl = m_impl;
 
-        // Get param type from operator
-        if (m_impl->ctx->hasChain()) {
-            Operator* op = m_impl->ctx->chain().getByName(opName);
-            if (op) {
-                for (const auto& decl : op->params()) {
-                    if (decl.name == paramName) {
-                        switch (decl.type) {
-                            case ParamType::Float:      change.paramType = "Float"; break;
-                            case ParamType::Int:        change.paramType = "Int"; break;
-                            case ParamType::Bool:       change.paramType = "Bool"; break;
-                            case ParamType::Vec2:       change.paramType = "Vec2"; break;
-                            case ParamType::Vec3:       change.paramType = "Vec3"; break;
-                            case ParamType::Vec4:       change.paramType = "Vec4"; break;
-                            case ParamType::Color:      change.paramType = "Color"; break;
-                            case ParamType::String:     change.paramType = "String"; break;
-                            case ParamType::FilePath:   change.paramType = "FilePath"; break;
-                            case ParamType::Enum:       change.paramType = "Enum"; break;
-                            case ParamType::ADSR:       change.paramType = "ADSR"; break;
-                            case ParamType::DeviceList: change.paramType = "DeviceList"; break;
+    if (visualizer_dynamic::available()) {
+        visualizer_dynamic::trySetParamCallback([](const char* opName, const char* paramName,
+                                                    const float* oldValue, const float* newValue, int sourceLine) {
+            if (!s_paramCallbackImpl || !s_paramCallbackImpl->editorBridge) return;
+            auto* impl = s_paramCallbackImpl;
+
+            // Queue as pending change for Claude to review
+            PendingChange change;
+            change.operatorName = opName;
+            change.paramName = paramName;
+            change.sourceLine = sourceLine;
+            for (int i = 0; i < 4; ++i) {
+                change.oldValue[i] = oldValue[i];
+                change.newValue[i] = newValue[i];
+            }
+
+            // Get param type from operator
+            if (impl->ctx && impl->ctx->hasChain()) {
+                Operator* op = impl->ctx->chain().getByName(opName);
+                if (op) {
+                    for (const auto& decl : op->params()) {
+                        if (decl.name == paramName) {
+                            switch (decl.type) {
+                                case ParamType::Float:      change.paramType = "Float"; break;
+                                case ParamType::Int:        change.paramType = "Int"; break;
+                                case ParamType::Bool:       change.paramType = "Bool"; break;
+                                case ParamType::Vec2:       change.paramType = "Vec2"; break;
+                                case ParamType::Vec3:       change.paramType = "Vec3"; break;
+                                case ParamType::Vec4:       change.paramType = "Vec4"; break;
+                                case ParamType::Color:      change.paramType = "Color"; break;
+                                case ParamType::String:     change.paramType = "String"; break;
+                                case ParamType::FilePath:   change.paramType = "FilePath"; break;
+                                case ParamType::Enum:       change.paramType = "Enum"; break;
+                                case ParamType::ADSR:       change.paramType = "ADSR"; break;
+                                case ParamType::DeviceList: change.paramType = "DeviceList"; break;
+                            }
+                            break;
                         }
-                        break;
                     }
                 }
             }
-        }
 
-        m_impl->editorBridge->addPendingChange(change);
-    });
+            impl->editorBridge->addPendingChange(change);
+        });
+    }
 
     m_impl->editorBridge->onSoloNode([this](const std::string& opName) {
         if (!m_impl->ctx->hasChain()) return;
         Operator* op = m_impl->ctx->chain().getByName(opName);
         if (op) {
-            m_impl->chainVisualizer->enterSoloMode(op, opName);
+            visualizer_dynamic::tryEnterSolo(op, opName.c_str());
             m_impl->editorBridge->sendSoloState(true, opName);
         }
     });
     m_impl->editorBridge->onSelectNode([this](const std::string& opName) {
-        m_impl->chainVisualizer->selectNodeFromEditor(opName);
+        visualizer_dynamic::trySelectNode(opName.c_str());
     });
     m_impl->editorBridge->onSoloExit([this]() {
-        m_impl->chainVisualizer->exitSoloMode();
+        visualizer_dynamic::tryExitSolo();
         m_impl->editorBridge->sendSoloState(false, "");
     });
     m_impl->editorBridge->onFocusedNode([this](const std::string& opName) {
         if (opName.empty()) {
-            m_impl->chainVisualizer->clearFocusedNode();
+            visualizer_dynamic::tryClearFocusedNode();
         } else {
-            m_impl->chainVisualizer->setFocusedNode(opName);
+            visualizer_dynamic::trySetFocusedNode(opName.c_str());
         }
     });
     m_impl->editorBridge->onWindowControl([this](const std::string& setting, int value) {
@@ -1847,11 +2132,14 @@ int Application::init(const AppConfig& config) {
     mlc.ctx = m_impl->ctx.get();
     mlc.display = m_impl->display.get();
     mlc.hotReload = m_impl->hotReload.get();
-    mlc.chainVisualizer = m_impl->chainVisualizer.get();
     mlc.editorBridge = m_impl->editorBridge.get();
 
-    // Show visualizer if requested via --show-ui flag
-    mlc.visualizerVisible = config.showUI;
+    // Check if visualizer module is available (dynamically loaded)
+    // In production bundles without vivid-visualizer.dylib, this will be false
+    mlc.visualizerAvailable = visualizer_dynamic::available();
+
+    // Show visualizer if requested via --show-ui flag (and module is available)
+    mlc.visualizerVisible = mlc.visualizerAvailable && config.showUI;
 
     // CLI args
     mlc.snapshotPath = config.snapshotPath;
@@ -1941,10 +2229,8 @@ void Application::shutdown() {
     // Shutdown ImGui if vivid-gui was loaded
     imgui_dynamic::tryShutdown();
 
-    // Shutdown chain visualizer
-    if (m_impl->chainVisualizer) {
-        m_impl->chainVisualizer->shutdown();
-    }
+    // Shutdown chain visualizer (if dynamically loaded)
+    visualizer_dynamic::tryShutdown();
 
     // Release display resources
     if (m_impl->display) {

@@ -45,6 +45,10 @@ public:
     /// Get all discovered modules
     const std::vector<ModuleInfo>& modules() const { return m_modules; }
 
+    /// Register a bundled library directly (for installed/bundled apps)
+    /// This adds a minimal ModuleInfo so the library gets linked
+    void registerBundledLibrary(const std::string& libraryName, const fs::path& libDir);
+
 private:
     /// Scan a source file for #include directives and extract module names
     std::vector<std::string> scanIncludes(const fs::path& sourcePath);

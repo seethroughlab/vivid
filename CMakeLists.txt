@@ -43,6 +43,26 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Options
 option(VIVID_BUILD_EXAMPLES "Build example projects" ON)
+option(VIVID_PRODUCTION "Build for production (excludes dev tools like visualizer)" OFF)
+option(VIVID_ENABLE_HOT_RELOAD "Enable hot-reload (set OFF for static chain linking)" ON)
+option(VIVID_ENABLE_MCP "Enable MCP server for Claude Code integration" ON)
+
+# Static chain linking for production bundles
+# When set, chain.cpp is compiled directly into the executable
+set(VIVID_CHAIN_SOURCE "" CACHE FILEPATH "Path to chain.cpp for static linking (production builds)")
+
+# Production builds disable dev features by default
+# When VIVID_CHAIN_SOURCE is provided, chain is statically linked and hot-reload is disabled
+# When VIVID_CHAIN_SOURCE is not provided, keep hot-reload for dynamic chain loading
+if(VIVID_PRODUCTION)
+    set(VIVID_ENABLE_MCP OFF CACHE BOOL "" FORCE)
+    if(VIVID_CHAIN_SOURCE)
+        set(VIVID_ENABLE_HOT_RELOAD OFF CACHE BOOL "" FORCE)
+        message(STATUS "Production build: Static chain linking, hot-reload and MCP disabled")
+    else()
+        message(STATUS "Production build: MCP disabled (hot-reload kept for dynamic chain)")
+    endif()
+endif()
 
 # -----------------------------------------------------------------------------
 # Dependencies via FetchContent
@@ -297,6 +317,19 @@ add_subdirectory(modules/vivid-midi)
 add_subdirectory(modules/vivid-imgui)
 add_subdirectory(modules/vivid-texshare)
 add_subdirectory(modules/vivid-webview)
+
+# Chain visualizer (dev tool) - only built for development, excluded from production bundles
+if(NOT VIVID_PRODUCTION)
+    add_subdirectory(modules/vivid-visualizer)
+    # Link vivid-c against visualizer (vivid-c is used for IDE embedding)
+    if(TARGET vivid-c)
+        target_link_libraries(vivid-c PRIVATE vivid-visualizer)
+        message(STATUS "[vivid-c] Linked with vivid-visualizer for IDE support")
+    endif()
+    message(STATUS "Chain visualizer enabled (development build)")
+else()
+    message(STATUS "Chain visualizer disabled (production build)")
+endif()
 
 # vivid-opencv moved to separate repo: https://github.com/seethroughlab/vivid-opencv
 # vivid-onnx moved to separate repo: https://github.com/seethroughlab/vivid-onnx

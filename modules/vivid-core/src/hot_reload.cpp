@@ -394,9 +394,28 @@ bool HotReload::compile() {
             }
         }
     } else {
-        // Fallback to installed location
+        // Fallback to installed/bundled location
         vividInclude = exeDir / ".." / "include";
-        modulesLib = exeDir;
+        modulesLib = exeDir / ".." / "lib";
+
+        // For bundled apps, scan the lib directory and register all dylibs
+        if (fs::exists(modulesLib)) {
+            for (const auto& entry : fs::directory_iterator(modulesLib)) {
+                if (entry.path().extension() == ".dylib") {
+                    std::string filename = entry.path().filename().string();
+                    // Extract library name: libvivid-video.dylib -> vivid-video
+                    if (filename.rfind("lib", 0) == 0) {
+                        std::string libName = filename.substr(3);
+                        size_t dotPos = libName.rfind('.');
+                        if (dotPos != std::string::npos) {
+                            libName = libName.substr(0, dotPos);
+                        }
+                        // Register with module registry so it gets linked
+                        m_moduleRegistry->registerBundledLibrary(libName, modulesLib);
+                    }
+                }
+            }
+        }
     }
 
     // Add user library paths from ~/.vivid/libs/

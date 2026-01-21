@@ -3,7 +3,9 @@
 
 #include <vivid/cli.h>
 #include <vivid/app.h>
+#ifdef VIVID_ENABLE_MCP
 #include <vivid/mcp_server.h>
+#endif
 #include <vivid/operator_registry.h>
 #include <vivid/module_loader.h>
 #include <vivid/module_manager.h>
@@ -561,14 +563,95 @@ std::vector<std::string> getValidPlatforms() {
 }
 
 // Forward declarations for platform-specific bundlers
+// buildDir is the production build directory containing bin/, lib/, etc.
 int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
-                 const std::string& appName, const fs::path& outputPath);
+                 const std::string& appName, const fs::path& outputPath,
+                 const fs::path& buildDir);
 int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
-                     const std::string& appName, const fs::path& outputPath);
+                     const std::string& appName, const fs::path& outputPath,
+                     const fs::path& buildDir);
 int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
-                   const std::string& appName, const fs::path& outputPath);
+                   const std::string& appName, const fs::path& outputPath,
+                   const fs::path& buildDir);
 int bundleForIOS(const fs::path& srcProject, const fs::path& chainPath,
-                 const std::string& appName, const fs::path& outputPath);
+                 const std::string& appName, const fs::path& outputPath,
+                 const fs::path& buildDir);
+
+// Forward declaration for chain analysis
+std::vector<std::string> getRequiredLibraries(const fs::path& chainPath, const fs::path& exeDir);
+
+// Build a production version of vivid for bundling
+// chainPath: Path to chain.cpp for static linking (makes bundle self-contained)
+// Returns the build directory path on success, empty path on failure
+fs::path buildProductionVersion(const fs::path& chainPath) {
+    fs::path exeDir = getExecutableDir();
+    // Find the vivid source root (parent of build directory)
+    // exeDir is typically build/bin, so root is build/bin/../..
+    fs::path rootDir = exeDir.parent_path().parent_path();
+
+    // Check if we're in a development environment (has CMakeLists.txt)
+    if (!fs::exists(rootDir / "CMakeLists.txt")) {
+        // Try one level up (might be in installed location)
+        rootDir = rootDir.parent_path();
+        if (!fs::exists(rootDir / "CMakeLists.txt")) {
+            std::cerr << "Error: Cannot find vivid source directory for production build.\n";
+            std::cerr << "Bundle command requires building from source.\n";
+            return {};
+        }
+    }
+
+    // Analyze chain.cpp to determine required modules
+    std::cout << "Scanning chain.cpp for dependencies...\n";
+    auto requiredLibs = getRequiredLibraries(chainPath, exeDir);
+
+    // Build cmake module list (semicolon-separated for cmake)
+    std::string moduleList;
+    std::cout << "  Required modules: ";
+    for (size_t i = 0; i < requiredLibs.size(); i++) {
+        if (i > 0) {
+            std::cout << ", ";
+            moduleList += ";";
+        }
+        std::cout << requiredLibs[i];
+        moduleList += requiredLibs[i];
+    }
+    std::cout << "\n\n";
+
+    fs::path buildDir = rootDir / "build-bundle";
+
+    std::cout << "Building production version with static chain linking...\n";
+
+    // Configure with production flags, static chain, and only required modules
+    std::string configureCmd = "cmake -B \"" + buildDir.string() + "\" "
+        "-DVIVID_PRODUCTION=ON "
+        "-DVIVID_CHAIN_SOURCE=\"" + chainPath.string() + "\" "
+        "-DVIVID_CHAIN_MODULES=\"" + moduleList + "\" "
+        "-DCMAKE_BUILD_TYPE=Release "
+        "\"" + rootDir.string() + "\" 2>&1";
+
+    std::cout << "  Configuring...\n";
+    int configResult = std::system(configureCmd.c_str());
+    if (configResult != 0) {
+        std::cerr << "Error: CMake configure failed.\n";
+        return {};
+    }
+
+    // Build the production executable (vivid-production, not vivid)
+    // vivid-production uses main_production.cpp and the Runtime class
+    // NO HotReload, NO MCP, NO Visualizer - just the core rendering loop
+    std::string buildCmd = "cmake --build \"" + buildDir.string() + "\" "
+        "--target vivid-production --config Release -j 2>&1";
+
+    std::cout << "  Compiling chain and linking...\n";
+    int buildResult = std::system(buildCmd.c_str());
+    if (buildResult != 0) {
+        std::cerr << "Error: Build failed.\n";
+        return {};
+    }
+
+    std::cout << "  Production build complete.\n\n";
+    return buildDir;
+}
 
 int bundleProject(const std::string& projectPath, const std::string& outputPath,
                   const std::string& appName, const std::string& platform) {
@@ -612,15 +695,21 @@ int bundleProject(const std::string& projectPath, const std::string& outputPath,
     std::string finalAppName = appName.empty() ? toCamelCase(srcProject.filename().string()) : appName;
     fs::path finalOutput = outputPath.empty() ? fs::current_path() : fs::path(outputPath);
 
+    // Build production version with static chain linking
+    fs::path buildDir = buildProductionVersion(chainPath);
+    if (buildDir.empty()) {
+        return 1;
+    }
+
     // Dispatch to platform-specific bundler
     if (targetPlatform == "mac") {
-        return bundleForMac(srcProject, chainPath, finalAppName, finalOutput);
+        return bundleForMac(srcProject, chainPath, finalAppName, finalOutput, buildDir);
     } else if (targetPlatform == "windows") {
-        return bundleForWindows(srcProject, chainPath, finalAppName, finalOutput);
+        return bundleForWindows(srcProject, chainPath, finalAppName, finalOutput, buildDir);
     } else if (targetPlatform == "linux") {
-        return bundleForLinux(srcProject, chainPath, finalAppName, finalOutput);
+        return bundleForLinux(srcProject, chainPath, finalAppName, finalOutput, buildDir);
     } else if (targetPlatform == "ios") {
-        return bundleForIOS(srcProject, chainPath, finalAppName, finalOutput);
+        return bundleForIOS(srcProject, chainPath, finalAppName, finalOutput, buildDir);
     }
 
     std::cerr << "Error: Platform '" << targetPlatform << "' not yet implemented.\n";
@@ -690,6 +779,31 @@ void copyCommonResources(const fs::path& exeDir, const fs::path& destDir, const 
     if (fs::exists(glfw3wgpuDir / "glfw3webgpu.h")) {
         fs::copy_file(glfw3wgpuDir / "glfw3webgpu.h", includeDir / "glfw3webgpu.h",
                       fs::copy_options::overwrite_existing);
+    }
+
+    // Copy magic_enum headers
+    fs::path magicEnumInclude = exeDir.parent_path().parent_path() / "build" / "_deps" / "magic_enum-src" / "include";
+    if (fs::exists(magicEnumInclude / "magic_enum")) {
+        fs::copy(magicEnumInclude / "magic_enum", includeDir / "magic_enum", fs::copy_options::recursive);
+    }
+
+    // Copy nlohmann/json headers
+    fs::path jsonInclude = exeDir.parent_path().parent_path() / "build" / "_deps" / "nlohmann_json-src" / "include";
+    if (fs::exists(jsonInclude / "nlohmann")) {
+        fs::copy(jsonInclude / "nlohmann", includeDir / "nlohmann", fs::copy_options::recursive);
+    }
+
+    // Copy default assets (fonts, etc.) from vivid-core
+    // Place at assets/ relative to exe parent (Contents/ on macOS, bundle root on Win/Linux)
+    // AssetLoader uses node_modules-style resolution: walks up looking for assets/ folders
+    fs::path rootDir = exeDir.parent_path().parent_path();
+    fs::path coreAssetsPath = rootDir / "modules" / "vivid-core" / "assets";
+    fs::path bundleAssetsPath = destDir.parent_path() / "assets";
+
+    if (fs::exists(coreAssetsPath)) {
+        fs::create_directories(bundleAssetsPath);
+        fs::copy(coreAssetsPath, bundleAssetsPath,
+                 fs::copy_options::recursive | fs::copy_options::overwrite_existing);
     }
 }
 
@@ -771,7 +885,8 @@ std::string getLibraryFilename(const std::string& libName) {
 
 // macOS .app bundle
 int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
-                 const std::string& appName, const fs::path& outputDir) {
+                 const std::string& appName, const fs::path& outputDir,
+                 const fs::path& buildDir) {
 #ifdef __APPLE__
     fs::path appPath = outputDir / (appName + ".app");
 
@@ -782,15 +897,16 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
 
     std::cout << "Bundling " << srcProject.filename().string() << " -> " << appPath.filename().string() << "\n";
 
-    // Get vivid executable path
-    char pathBuf[4096];
-    uint32_t size = sizeof(pathBuf);
-    if (_NSGetExecutablePath(pathBuf, &size) != 0) {
-        std::cerr << "Error: Could not determine executable path\n";
+    // Use the production build directory
+    // Look for vivid-production (clean executable with Runtime class)
+    fs::path exeDir = buildDir / "bin";
+    fs::path exePath = exeDir / "vivid-production";
+
+    if (!fs::exists(exePath)) {
+        std::cerr << "Error: Production executable not found: " << exePath << "\n";
+        std::cerr << "Make sure the build completed successfully.\n";
         return 1;
     }
-    fs::path exePath = fs::canonical(pathBuf);
-    fs::path exeDir = exePath.parent_path();
 
     try {
         // Create .app bundle structure
@@ -799,18 +915,20 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
         fs::path resourcesPath = contentsPath / "Resources";
         fs::path frameworksPath = contentsPath / "Frameworks";
         fs::path bundleInclude = contentsPath / "include";
+        fs::path bundleLibPath = contentsPath / "lib";
 
         fs::create_directories(macosPath);
         fs::create_directories(resourcesPath);
         fs::create_directories(frameworksPath);
         fs::create_directories(bundleInclude);
+        fs::create_directories(bundleLibPath);
 
-        // Copy vivid executable
-        fs::copy_file(exePath, macosPath / "vivid");
+        // Copy production executable (renamed to appName for cleaner bundle)
+        fs::copy_file(exePath, macosPath / appName);
 
         // Copy only required dylibs (based on chain analysis)
         auto requiredLibs = getRequiredLibraries(chainPath, exeDir);
-        std::cout << "Required libraries: ";
+        std::cout << "Bundled libraries: ";
         for (size_t i = 0; i < requiredLibs.size(); i++) {
             if (i > 0) std::cout << ", ";
             std::cout << requiredLibs[i];
@@ -818,12 +936,13 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
         std::cout << "\n";
 
         // Libraries are in lib/ directory (sibling to bin/)
+        // Copy to Contents/lib/ to match RPATH (@executable_path/../lib)
         fs::path libDir = exeDir.parent_path() / "lib";
         for (const auto& libName : requiredLibs) {
             std::string libFile = getLibraryFilename(libName);
             fs::path libPath = libDir / libFile;
             if (fs::exists(libPath)) {
-                fs::copy_file(libPath, macosPath / libFile);
+                fs::copy_file(libPath, bundleLibPath / libFile);
             } else {
                 std::cerr << "Warning: Library not found: " << libFile << "\n";
             }
@@ -834,12 +953,12 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
 
         // Copy project files (including shared assets from root)
         fs::path projectDest = resourcesPath / "project";
-        fs::path rootDir = exeDir.parent_path().parent_path();
+        fs::path rootDir = buildDir.parent_path();  // buildDir is rootDir/build-bundle
         copyProjectFiles(srcProject, chainPath, projectDest, rootDir);
 
         // Copy app icon (project icon overrides default)
         fs::path projectIcon = srcProject / "icon.icns";
-        fs::path defaultIcon = rootDir / "src" / "core" / "assets" / "icons" / "vivid.icns";
+        fs::path defaultIcon = rootDir / "modules" / "vivid-core" / "assets" / "icons" / "vivid.icns";
         fs::path destIcon = resourcesPath / "AppIcon.icns";
 
         if (fs::exists(projectIcon)) {
@@ -852,18 +971,8 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
             std::cout << "Warning: No icon found (looked for " << projectIcon << " and " << defaultIcon << ")\n";
         }
 
-        // Create launcher script
-        fs::path launcherPath = macosPath / appName;
-        std::ofstream launcher(launcherPath);
-        launcher << "#!/bin/bash\n";
-        launcher << "cd \"$(dirname \"$0\")\"\n";
-        launcher << "exec ./vivid \"../Resources/project\" \"$@\"\n";
-        launcher.close();
-
-        fs::permissions(launcherPath, fs::perms::owner_exec | fs::perms::group_exec |
-                                       fs::perms::others_exec | fs::perms::owner_read |
-                                       fs::perms::group_read | fs::perms::others_read |
-                                       fs::perms::owner_write, fs::perm_options::add);
+        // Production executable is self-contained - no launcher script needed
+        // The executable finds assets relative to itself (../Resources/project)
 
         // Create Info.plist
         std::ofstream plist(contentsPath / "Info.plist");
@@ -891,10 +1000,11 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
 
         std::cout << "\nBundle created: " << appPath << "\n\n";
         std::cout << "Contents:\n";
-        std::cout << "  " << appPath.filename().string() << "/Contents/MacOS/" << appName << " (launcher)\n";
-        std::cout << "  " << appPath.filename().string() << "/Contents/MacOS/vivid (runtime)\n";
-        std::cout << "  " << appPath.filename().string() << "/Contents/Resources/project/ (your code)\n";
+        std::cout << "  " << appPath.filename().string() << "/Contents/MacOS/" << appName << " (executable)\n";
+        std::cout << "  " << appPath.filename().string() << "/Contents/Resources/project/ (assets)\n";
+        std::cout << "  " << appPath.filename().string() << "/Contents/lib/ (libraries)\n";
         std::cout << "\nRun with:\n  open " << appPath.filename().string() << "\n";
+        std::cout << "\nNote: Production bundle - NO hot-reload, NO MCP server, NO visualizer.\n";
 
     } catch (const fs::filesystem_error& e) {
         std::cerr << "Error creating bundle: " << e.what() << "\n";
@@ -903,7 +1013,7 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
 
     return 0;
 #else
-    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
+    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir; (void)buildDir;
     std::cerr << "Error: Mac bundling only available on macOS.\n";
     return 1;
 #endif
@@ -911,7 +1021,8 @@ int bundleForMac(const fs::path& srcProject, const fs::path& chainPath,
 
 // Windows bundling - creates a folder with exe + dlls
 int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
-                     const std::string& appName, const fs::path& outputDir) {
+                     const std::string& appName, const fs::path& outputDir,
+                     const fs::path& buildDir) {
 #ifdef _WIN32
     fs::path bundlePath = outputDir / appName;
 
@@ -922,8 +1033,16 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
 
     std::cout << "Bundling " << srcProject.filename().string() << " -> " << bundlePath.filename().string() << "\n";
 
-    fs::path exeDir = getExecutableDir();
-    fs::path exePath = exeDir / "vivid.exe";
+    // Use the production build directory
+    // Look for vivid-production.exe (clean executable with Runtime class)
+    fs::path exeDir = buildDir / "bin";
+    fs::path exePath = exeDir / "vivid-production.exe";
+
+    if (!fs::exists(exePath)) {
+        std::cerr << "Error: Production executable not found: " << exePath << "\n";
+        std::cerr << "Make sure the build completed successfully.\n";
+        return 1;
+    }
 
     try {
         fs::path binPath = bundlePath / "bin";
@@ -933,21 +1052,23 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
         fs::create_directories(binPath);
         fs::create_directories(includePath);
 
-        // Copy executable
-        fs::copy_file(exePath, binPath / "vivid.exe");
+        // Copy production executable (renamed to appName.exe)
+        fs::copy_file(exePath, binPath / (appName + ".exe"));
 
         // Copy only required DLLs (based on chain analysis)
         auto requiredLibs = getRequiredLibraries(chainPath, exeDir);
-        std::cout << "Required libraries: ";
+        std::cout << "Bundled libraries: ";
         for (size_t i = 0; i < requiredLibs.size(); i++) {
             if (i > 0) std::cout << ", ";
             std::cout << requiredLibs[i];
         }
         std::cout << "\n";
 
+        // DLLs are in lib/ directory on Windows
+        fs::path libDir = buildDir / "lib";
         for (const auto& libName : requiredLibs) {
             std::string dllFile = getLibraryFilename(libName);
-            fs::path dllPath = exeDir / dllFile;
+            fs::path dllPath = libDir / dllFile;
             if (fs::exists(dllPath)) {
                 fs::copy_file(dllPath, binPath / dllFile);
             } else {
@@ -956,7 +1077,7 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
         }
 
         // Copy glfw3.dll (always required for windowing)
-        fs::path glfwPath = exeDir / "glfw3.dll";
+        fs::path glfwPath = libDir / "glfw3.dll";
         if (fs::exists(glfwPath)) {
             fs::copy_file(glfwPath, binPath / "glfw3.dll");
         }
@@ -965,7 +1086,7 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
         copyCommonResources(exeDir, binPath, includePath);
 
         // Copy project files (including shared assets from root)
-        fs::path rootDir = exeDir.parent_path().parent_path();
+        fs::path rootDir = buildDir.parent_path();  // buildDir is rootDir/build-bundle
         copyProjectFiles(srcProject, chainPath, projectPath, rootDir);
 
         // Copy app icon (project icon overrides default)
@@ -982,20 +1103,21 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
             std::cout << "Using default Vivid icon\n";
         }
 
-        // Create launcher batch file
+        // Production executable is self-contained, but a batch file makes it easier to run
         fs::path launcherPath = bundlePath / (appName + ".bat");
         std::ofstream launcher(launcherPath);
         launcher << "@echo off\r\n";
         launcher << "cd /d \"%~dp0bin\"\r\n";
-        launcher << "start vivid.exe \"..\\project\" %*\r\n";
+        launcher << "start " << appName << ".exe %*\r\n";
         launcher.close();
 
         std::cout << "\nBundle created: " << bundlePath << "\n\n";
         std::cout << "Contents:\n";
         std::cout << "  " << appName << "/" << appName << ".bat (launcher)\n";
-        std::cout << "  " << appName << "/bin/vivid.exe (runtime)\n";
-        std::cout << "  " << appName << "/project/ (your code)\n";
-        std::cout << "\nRun with:\n  " << appName << ".bat\n";
+        std::cout << "  " << appName << "/bin/" << appName << ".exe (executable)\n";
+        std::cout << "  " << appName << "/project/ (assets)\n";
+        std::cout << "\nRun with:\n  " << appName << ".bat  or  bin\\" << appName << ".exe\n";
+        std::cout << "\nNote: Production bundle - NO hot-reload, NO MCP server, NO visualizer.\n";
 
     } catch (const fs::filesystem_error& e) {
         std::cerr << "Error creating bundle: " << e.what() << "\n";
@@ -1004,7 +1126,7 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
 
     return 0;
 #else
-    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
+    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir; (void)buildDir;
     std::cerr << "Error: Windows bundling only available on Windows.\n";
     return 1;
 #endif
@@ -1012,7 +1134,8 @@ int bundleForWindows(const fs::path& srcProject, const fs::path& chainPath,
 
 // Linux bundling - creates a folder structure (works for Raspberry Pi too)
 int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
-                   const std::string& appName, const fs::path& outputDir) {
+                   const std::string& appName, const fs::path& outputDir,
+                   const fs::path& buildDir) {
 #if defined(__linux__)
     fs::path bundlePath = outputDir / appName;
 
@@ -1023,8 +1146,16 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
 
     std::cout << "Bundling " << srcProject.filename().string() << " -> " << bundlePath.filename().string() << "\n";
 
-    fs::path exeDir = getExecutableDir();
-    fs::path exePath = exeDir / "vivid";
+    // Use the production build directory
+    // Look for vivid-production (clean executable with Runtime class)
+    fs::path exeDir = buildDir / "bin";
+    fs::path exePath = exeDir / "vivid-production";
+
+    if (!fs::exists(exePath)) {
+        std::cerr << "Error: Production executable not found: " << exePath << "\n";
+        std::cerr << "Make sure the build completed successfully.\n";
+        return 1;
+    }
 
     try {
         fs::path binPath = bundlePath / "bin";
@@ -1036,9 +1167,9 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
         fs::create_directories(libPath);
         fs::create_directories(includePath);
 
-        // Copy executable
-        fs::copy_file(exePath, binPath / "vivid");
-        fs::permissions(binPath / "vivid", fs::perms::owner_exec | fs::perms::group_exec |
+        // Copy production executable (renamed to appName)
+        fs::copy_file(exePath, binPath / appName);
+        fs::permissions(binPath / appName, fs::perms::owner_exec | fs::perms::group_exec |
                                             fs::perms::others_exec, fs::perm_options::add);
 
         // Copy only required shared libraries (based on chain analysis)
@@ -1050,8 +1181,8 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
         }
         std::cout << "\n";
 
-        // Libraries are in lib/ directory (sibling to bin/)
-        fs::path srcLibDir = exeDir.parent_path() / "lib";
+        // Libraries are in lib/ directory
+        fs::path srcLibDir = buildDir / "lib";
         for (const auto& libName : requiredLibs) {
             std::string soFile = getLibraryFilename(libName);
             fs::path srcLib = srcLibDir / soFile;
@@ -1066,16 +1197,16 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
         copyCommonResources(exeDir, binPath, includePath);
 
         // Copy project files (including shared assets from root)
-        fs::path rootDir = exeDir.parent_path().parent_path();
+        fs::path rootDir = buildDir.parent_path();  // buildDir is rootDir/build-bundle
         copyProjectFiles(srcProject, chainPath, projectPath, rootDir);
 
-        // Create launcher script
-        fs::path launcherPath = bundlePath / appName;
+        // Create launcher script (sets up LD_LIBRARY_PATH)
+        fs::path launcherPath = bundlePath / ("run-" + appName + ".sh");
         std::ofstream launcher(launcherPath);
         launcher << "#!/bin/bash\n";
         launcher << "SCRIPT_DIR=\"$(cd \"$(dirname \"$0\")\" && pwd)\"\n";
         launcher << "export LD_LIBRARY_PATH=\"$SCRIPT_DIR/lib:$LD_LIBRARY_PATH\"\n";
-        launcher << "exec \"$SCRIPT_DIR/bin/vivid\" \"$SCRIPT_DIR/project\" \"$@\"\n";
+        launcher << "exec \"$SCRIPT_DIR/bin/" << appName << "\" \"$@\"\n";
         launcher.close();
 
         fs::permissions(launcherPath, fs::perms::owner_exec | fs::perms::group_exec |
@@ -1089,18 +1220,19 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
         desktop << "[Desktop Entry]\n";
         desktop << "Type=Application\n";
         desktop << "Name=" << appName << "\n";
-        desktop << "Exec=" << bundlePath.string() << "/" << appName << "\n";
+        desktop << "Exec=" << bundlePath.string() << "/run-" << appName << ".sh\n";
         desktop << "Terminal=false\n";
         desktop << "Categories=Graphics;AudioVideo;\n";
         desktop.close();
 
         std::cout << "\nBundle created: " << bundlePath << "\n\n";
         std::cout << "Contents:\n";
-        std::cout << "  " << appName << "/" << appName << " (launcher)\n";
-        std::cout << "  " << appName << "/bin/vivid (runtime)\n";
+        std::cout << "  " << appName << "/run-" << appName << ".sh (launcher)\n";
+        std::cout << "  " << appName << "/bin/" << appName << " (executable)\n";
         std::cout << "  " << appName << "/lib/ (shared libraries)\n";
-        std::cout << "  " << appName << "/project/ (your code)\n";
-        std::cout << "\nRun with:\n  ./" << appName << "/" << appName << "\n";
+        std::cout << "  " << appName << "/project/ (assets)\n";
+        std::cout << "\nRun with:\n  ./" << appName << "/run-" << appName << ".sh\n";
+        std::cout << "\nNote: Production bundle - NO hot-reload, NO MCP server, NO visualizer.\n";
 
     } catch (const fs::filesystem_error& e) {
         std::cerr << "Error creating bundle: " << e.what() << "\n";
@@ -1109,7 +1241,7 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
 
     return 0;
 #else
-    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
+    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir; (void)buildDir;
     std::cerr << "Error: Linux bundling only available on Linux.\n";
     return 1;
 #endif
@@ -1117,8 +1249,9 @@ int bundleForLinux(const fs::path& srcProject, const fs::path& chainPath,
 
 // iOS bundling - placeholder for now
 int bundleForIOS(const fs::path& srcProject, const fs::path& chainPath,
-                 const std::string& appName, const fs::path& outputDir) {
-    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir;
+                 const std::string& appName, const fs::path& outputDir,
+                 const fs::path& buildDir) {
+    (void)srcProject; (void)chainPath; (void)appName; (void)outputDir; (void)buildDir;
     std::cerr << "Error: iOS export is not yet implemented.\n";
     std::cerr << "This requires Xcode and iOS provisioning profiles.\n";
     return 1;
@@ -1468,7 +1601,9 @@ ParseResult parseArgs(int argc, char** argv) {
     modulesUnlinkCmd->add_option("name", modulesUnlinkName, "Module name")->required();
 
     // 'mcp' subcommand - MCP server for Claude Code integration
+#ifdef VIVID_ENABLE_MCP
     auto* mcpCmd = app.add_subcommand("mcp", "Run MCP server for Claude Code integration");
+#endif
 
     // Parse arguments
     try {
@@ -1495,11 +1630,13 @@ ParseResult parseArgs(int argc, char** argv) {
         return result;
     }
 
+#ifdef VIVID_ENABLE_MCP
     if (mcpCmd->parsed()) {
         result.handled = true;
         result.exitCode = mcp::runServer();
         return result;
     }
+#endif
 
     if (operatorsCmd->parsed()) {
         loadAllModules();

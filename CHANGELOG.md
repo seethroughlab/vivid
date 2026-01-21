@@ -10,6 +10,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.0-alpha.7] - 2026-01-20
+
+*Production bundle architecture redesign, WebView improvements*
+
 ### Added
 
 - **WebView character input** - Added character input support for text editors and terminals in WebView:
@@ -24,6 +28,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Only the focused WebView receives keyboard and character input
   - Static `focusedWebView()` returns the currently focused WebView (Phase 2 of embedded editor/terminal plan)
 
+### Changed
+
+#### Production Bundle Architecture Redesign
+Production bundles now use a dedicated runtime instead of the development `vivid` executable with stubs disabled:
+
+- **New `Runtime` class** (`modules/vivid-core/include/vivid/runtime.h`) - Minimal WebGPU runtime loop with no HotReload, MCP, or Visualizer dependencies
+- **New `main_production.cpp`** (`src/cli/main_production.cpp`) - Clean entry point that calls `vivid_setup`/`vivid_update` directly
+- **New `vivid-production` build target** - Dedicated executable for bundled apps
+- **Removed stub files** - Deleted `hot_reload_stub.cpp` and `runtime_api_stub.cpp` (no longer needed)
+- **Simplified bundle command** - Builds `vivid-production` target instead of configuring `vivid` with production flags
+
+Benefits:
+- Production bundles contain no dev tool code (not even disabled stubs)
+- Cleaner separation between development and production code paths
+- Bundled apps start immediately (no "Loading chain..." message)
+- No MCP server or visualizer symbols in production binaries
+
 ### Fixed
 
 - **WebView mouse interaction** - Fixed slider dragging and mouse events not working in WebView operator:
@@ -32,6 +53,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Fixed JavaScript syntax errors caused by `//` comments in single-line injected scripts
   - Added page-ready check to prevent events before DOM is loaded
   - Coordinates now clamped to viewport bounds
+
+- **Production bundle asset loading** - Fixed videos and other assets not loading in bundled apps. Production runtime now correctly sets project directory via `AssetLoader::instance().setProjectDir()`.
 
 ## [0.1.0-alpha.6] - 2026-01-17
 
@@ -575,7 +598,8 @@ tests/              Test suites and fixtures
 docs/               Documentation
 ```
 
-[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.6...HEAD
+[Unreleased]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.7...HEAD
+[0.1.0-alpha.7]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.6...v0.1.0-alpha.7
 [0.1.0-alpha.6]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.5...v0.1.0-alpha.6
 [0.1.0-alpha.5]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.4...v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/seethroughlab/vivid/compare/v0.1.0-alpha.3...v0.1.0-alpha.4

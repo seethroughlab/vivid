@@ -228,4 +228,21 @@ std::vector<ModuleInfo> ModuleRegistry::discoverFromChain(const fs::path& chainP
     return m_modules;
 }
 
+void ModuleRegistry::registerBundledLibrary(const std::string& libraryName, const fs::path& libDir) {
+    // Check if already registered
+    for (const auto& mod : m_modules) {
+        if (mod.libraryName == libraryName) {
+            return;
+        }
+    }
+
+    ModuleInfo info;
+    info.name = libraryName;
+    info.libraryName = libraryName;
+    info.path = libDir;
+    info.includePath = libDir.parent_path() / "include";
+
+    m_modules.push_back(info);
+}
+
 } // namespace vivid

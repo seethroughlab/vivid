@@ -135,9 +135,21 @@ fs::path AssetLoader::findAsset(const std::string& path) {
 
     // Search in all paths
     for (const auto& searchPath : m_searchPaths) {
+        // Direct path check
         fs::path fullPath = searchPath / path;
         if (fs::exists(fullPath)) {
             return fullPath;
+        }
+
+        // node_modules-style resolution: walk up looking for assets/ folders
+        fs::path current = searchPath;
+        fs::path root = current.root_path();
+        while (current != root && !current.empty()) {
+            fs::path assetsPath = current / "assets" / path;
+            if (fs::exists(assetsPath)) {
+                return assetsPath;
+            }
+            current = current.parent_path();
         }
     }
 
