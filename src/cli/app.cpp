@@ -69,6 +69,7 @@
 // CEF Browser support for IDE panel (optional)
 #ifdef VIVID_HAS_CEF
 #include <vivid/cef/browser.h>
+#include <vivid/cef/terminal_utils.h>
 #include <vivid/pty.h>
 #endif
 
@@ -625,7 +626,7 @@ struct MainLoopContext {
     bool cliRecordingStarted = false;
     bool chainNeedsSetup = true;
     bool chainAlreadyLoaded = false;  // True if chain was loaded during early config extraction
-    bool tabKeyWasPressed = false;
+    bool toggleKeyWasPressed = false;
     bool visualizerVisible = false;  // Chain visualizer visibility (Tab to toggle)
     bool initialStatusShown = false;  // Have we shown the startup status banner?
 
@@ -707,7 +708,7 @@ static bool g_keyPrevDown[512] = {};     // Keys down previous frame
 static void updateKeyStates(GLFWwindow* window) {
     // Check common keys and detect rising edge (was up, now down)
     const int keysToCheck[] = {
-        GLFW_KEY_ESCAPE, GLFW_KEY_ENTER, GLFW_KEY_TAB, GLFW_KEY_SPACE,
+        GLFW_KEY_ESCAPE, GLFW_KEY_ENTER, GLFW_KEY_GRAVE_ACCENT, GLFW_KEY_SPACE,
         GLFW_KEY_B, GLFW_KEY_F, GLFW_KEY_R, GLFW_KEY_S,
         GLFW_KEY_RIGHT, GLFW_KEY_LEFT, GLFW_KEY_DOWN, GLFW_KEY_UP,
         GLFW_KEY_0, GLFW_KEY_1, GLFW_KEY_2
@@ -735,19 +736,18 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
     }
 
-    // Toggle chain visualizer and IDE panel on Tab key (only if visualizer module is loaded)
-    // Note: Tab won't work when ImGui widgets have keyboard focus (click outside first)
+    // Toggle chain visualizer and IDE panel on backtick key (only if visualizer module is loaded)
     // Production bundles without vivid-visualizer will not have this feature
     {
-        bool tabKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_TAB) == GLFW_PRESS;
-        if (tabKeyPressed && !mlc.tabKeyWasPressed && mlc.visualizerAvailable) {
+        bool toggleKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_GRAVE_ACCENT) == GLFW_PRESS;
+        if (toggleKeyPressed && !mlc.toggleKeyWasPressed && mlc.visualizerAvailable) {
             mlc.visualizerVisible = !mlc.visualizerVisible;
 #ifdef VIVID_HAS_CEF
             // IDE panel visibility follows visualizer
             mlc.idePanelVisible = mlc.visualizerVisible;
 #endif
         }
-        mlc.tabKeyWasPressed = tabKeyPressed;
+        mlc.toggleKeyWasPressed = toggleKeyPressed;
     }
 
     // Begin frame (updates time, input, etc.)
@@ -2577,13 +2577,7 @@ int Application::init(const AppConfig& config) {
                 std::cerr << "[IDE] Failed to start PTY\n";
             }
 
-            // Register PTY callbacks (JS calls window.vivid.ptyInput(data))
-            mlc.ideBrowser->registerCallback("ptyInput", [&mlc](const std::string& data) {
-                if (mlc.idePty && mlc.idePtyStarted) {
-                    mlc.idePty->write(data);
-                }
-            });
-
+            // Register PTY resize callback (JS calls window.vivid.ptyResize(data))
             mlc.ideBrowser->registerCallback("ptyResize", [&mlc](const std::string& json) {
                 // Parse JSON: {"cols": 80, "rows": 24}
                 if (mlc.idePty && mlc.idePtyStarted) {
@@ -2598,6 +2592,49 @@ int Application::init(const AppConfig& config) {
                     }
                     mlc.idePty->setSize(cols, rows);
                 }
+            });
+
+            // Set up keyboard intercept for direct PTY input
+            // This bypasses CEF/IPC for reliable terminal input
+            // Only active when terminal mode is enabled (vs editor mode)
+            mlc.ideBrowser->setKeyInterceptCallback([&mlc](int key, bool pressed, uint32_t mods) -> bool {
+                // Only intercept in terminal mode
+                if (!mlc.ideBrowser->isTerminalMode()) return false;
+
+                // Only handle key press (not release)
+                if (!pressed) return false;
+                if (!mlc.idePty || !mlc.idePtyStarted) return false;
+
+                // Let Cmd+C/V/A pass through to CEF for copy/paste/select-all
+                if ((mods & vivid::cef::ModSuper) && (key == 67 || key == 86 || key == 65)) {  // C, V, A
+                    return false;
+                }
+
+                // Convert to terminal sequence
+                std::string seq = vivid::cef::keyToTerminalSequence(key, mods);
+                if (!seq.empty()) {
+                    mlc.idePty->write(seq);
+                    return true;  // Consumed
+                }
+
+                return false;  // Not a special key, let char callback handle
+            });
+
+            mlc.ideBrowser->setCharInterceptCallback([&mlc](uint32_t codepoint) -> bool {
+                // Only intercept in terminal mode
+                if (!mlc.ideBrowser->isTerminalMode()) return false;
+
+                if (!mlc.idePty || !mlc.idePtyStarted) return false;
+
+                // Send character directly to PTY as UTF-8
+                mlc.idePty->write(vivid::cef::codepointToUtf8(codepoint));
+                return true;  // Consumed
+            });
+
+            // Register callback for JS to switch terminal/editor mode
+            mlc.ideBrowser->registerCallback("setTerminalMode", [&mlc](const std::string& data) {
+                bool enabled = (data == "true" || data == "1");
+                mlc.ideBrowser->setTerminalMode(enabled);
             });
 
             // Get logical window size

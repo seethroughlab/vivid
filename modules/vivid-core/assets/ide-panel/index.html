@@ -453,19 +453,28 @@
             }
         };
 
+        // Helper to update active component and notify C++
+        function setActiveComponent(component) {
+            activeComponent = component;
+            // Notify C++ to enable/disable keyboard intercepts
+            if (window.vivid && window.vivid.setTerminalMode) {
+                window.vivid.setTerminalMode(component === 'terminal');
+            }
+        }
+
         // Update active component when switching tabs
         document.querySelectorAll('.tab').forEach(tab => {
             tab.addEventListener('click', () => {
-                activeComponent = tab.dataset.panel;
+                setActiveComponent(tab.dataset.panel);
             });
         });
 
         // Click inside panels should update active component
         document.getElementById('terminal-panel').addEventListener('mousedown', () => {
-            activeComponent = 'terminal';
+            setActiveComponent('terminal');
         });
         document.getElementById('editor-panel').addEventListener('mousedown', () => {
-            activeComponent = 'editor';
+            setActiveComponent('editor');
         });
 
         // Initialize everything
@@ -473,6 +482,9 @@
             initTerminal();
             initEditor();
             connectWebSocket();
+
+            // Set initial terminal mode (terminal tab is active by default)
+            setActiveComponent('terminal');
         });
     </script>
 </body>

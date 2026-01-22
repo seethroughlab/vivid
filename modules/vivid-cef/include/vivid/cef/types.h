@@ -85,4 +85,28 @@ using JSResultCallback = std::function<void(bool success, const std::string& val
 using JSCallback = std::function<void(const std::string& jsonArgs)>;
 using CursorChangeCallback = std::function<void(CursorType cursor)>;
 
+/**
+ * @brief Modifier flags for keyboard intercept callbacks
+ */
+enum KeyModifiers : uint32_t {
+    ModShift   = 1 << 0,
+    ModControl = 1 << 1,
+    ModAlt     = 1 << 2,
+    ModSuper   = 1 << 3
+};
+
+/**
+ * @brief Keyboard intercept callback - return true to consume event, false to pass to CEF
+ * @param glfwKeyCode The GLFW key code
+ * @param pressed True if key was pressed, false if released
+ * @param modifiers Bitmask of KeyModifiers
+ */
+using KeyInterceptCallback = std::function<bool(int glfwKeyCode, bool pressed, uint32_t modifiers)>;
+
+/**
+ * @brief Character intercept callback - return true to consume, false to pass to CEF
+ * @param codepoint Unicode codepoint
+ */
+using CharInterceptCallback = std::function<bool(uint32_t codepoint)>;
+
 } // namespace vivid::cef

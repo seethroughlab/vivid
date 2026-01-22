@@ -48,6 +48,10 @@ public:
         if (!arguments.empty()) {
             if (arguments[0]->IsString()) {
                 args->SetString(1, arguments[0]->GetStringValue());
+            } else if (arguments[0]->IsBool()) {
+                args->SetString(1, arguments[0]->GetBoolValue() ? "true" : "false");
+            } else if (arguments[0]->IsInt()) {
+                args->SetString(1, std::to_string(arguments[0]->GetIntValue()));
             } else if (arguments[0]->IsObject()) {
                 // For objects (like {cols, rows}), serialize to JSON-like string
                 // For PTY resize, we expect {cols: N, rows: N}
@@ -120,6 +124,10 @@ public:
         // Add ptyResize function: window.vivid.ptyResize({cols, rows})
         CefRefPtr<CefV8Value> ptyResizeFunc = CefV8Value::CreateFunction("ptyResize", handler);
         vividObj->SetValue("ptyResize", ptyResizeFunc, V8_PROPERTY_ATTRIBUTE_NONE);
+
+        // Add setTerminalMode function: window.vivid.setTerminalMode(true/false)
+        CefRefPtr<CefV8Value> setTerminalModeFunc = CefV8Value::CreateFunction("setTerminalMode", handler);
+        vividObj->SetValue("setTerminalMode", setTerminalModeFunc, V8_PROPERTY_ATTRIBUTE_NONE);
 
         // Set window.vivid
         global->SetValue("vivid", vividObj, V8_PROPERTY_ATTRIBUTE_NONE);

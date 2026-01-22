@@ -516,11 +516,92 @@ void BrowserImpl::sendMouseWheel(int x, int y, float deltaX, float deltaY) {
     );
 }
 
+// Map GLFW key codes to Windows virtual key codes (used by CEF)
+static int glfwKeyToWindowsVK(int glfwKey) {
+    // GLFW special keys start at 256
+    // Letters (A-Z) and numbers (0-9) are the same in both systems
+    if (glfwKey >= 32 && glfwKey < 256) {
+        return glfwKey;  // Printable ASCII and letters/numbers match
+    }
+
+    // Map GLFW special keys to Windows VK codes
+    switch (glfwKey) {
+        // Function keys
+        case 256: return 0x1B;  // GLFW_KEY_ESCAPE -> VK_ESCAPE
+        case 257: return 0x0D;  // GLFW_KEY_ENTER -> VK_RETURN
+        case 258: return 0x09;  // GLFW_KEY_TAB -> VK_TAB
+        case 259: return 0x08;  // GLFW_KEY_BACKSPACE -> VK_BACK
+        case 260: return 0x2D;  // GLFW_KEY_INSERT -> VK_INSERT
+        case 261: return 0x2E;  // GLFW_KEY_DELETE -> VK_DELETE
+        case 262: return 0x27;  // GLFW_KEY_RIGHT -> VK_RIGHT
+        case 263: return 0x25;  // GLFW_KEY_LEFT -> VK_LEFT
+        case 264: return 0x28;  // GLFW_KEY_DOWN -> VK_DOWN
+        case 265: return 0x26;  // GLFW_KEY_UP -> VK_UP
+        case 266: return 0x21;  // GLFW_KEY_PAGE_UP -> VK_PRIOR
+        case 267: return 0x22;  // GLFW_KEY_PAGE_DOWN -> VK_NEXT
+        case 268: return 0x24;  // GLFW_KEY_HOME -> VK_HOME
+        case 269: return 0x23;  // GLFW_KEY_END -> VK_END
+        case 280: return 0x14;  // GLFW_KEY_CAPS_LOCK -> VK_CAPITAL
+        case 281: return 0x91;  // GLFW_KEY_SCROLL_LOCK -> VK_SCROLL
+        case 282: return 0x90;  // GLFW_KEY_NUM_LOCK -> VK_NUMLOCK
+        case 283: return 0x2C;  // GLFW_KEY_PRINT_SCREEN -> VK_SNAPSHOT
+        case 284: return 0x13;  // GLFW_KEY_PAUSE -> VK_PAUSE
+
+        // F1-F12
+        case 290: return 0x70;  // GLFW_KEY_F1 -> VK_F1
+        case 291: return 0x71;
+        case 292: return 0x72;
+        case 293: return 0x73;
+        case 294: return 0x74;
+        case 295: return 0x75;
+        case 296: return 0x76;
+        case 297: return 0x77;
+        case 298: return 0x78;
+        case 299: return 0x79;
+        case 300: return 0x7A;
+        case 301: return 0x7B;  // GLFW_KEY_F12 -> VK_F12
+
+        // Modifier keys
+        case 340: return 0x10;  // GLFW_KEY_LEFT_SHIFT -> VK_SHIFT
+        case 341: return 0x11;  // GLFW_KEY_LEFT_CONTROL -> VK_CONTROL
+        case 342: return 0x12;  // GLFW_KEY_LEFT_ALT -> VK_MENU
+        case 343: return 0x5B;  // GLFW_KEY_LEFT_SUPER -> VK_LWIN
+        case 344: return 0x10;  // GLFW_KEY_RIGHT_SHIFT -> VK_SHIFT
+        case 345: return 0x11;  // GLFW_KEY_RIGHT_CONTROL -> VK_CONTROL
+        case 346: return 0x12;  // GLFW_KEY_RIGHT_ALT -> VK_MENU
+        case 347: return 0x5C;  // GLFW_KEY_RIGHT_SUPER -> VK_RWIN
+
+        // Numpad
+        case 320: return 0x60;  // GLFW_KEY_KP_0 -> VK_NUMPAD0
+        case 321: return 0x61;
+        case 322: return 0x62;
+        case 323: return 0x63;
+        case 324: return 0x64;
+        case 325: return 0x65;
+        case 326: return 0x66;
+        case 327: return 0x67;
+        case 328: return 0x68;
+        case 329: return 0x69;  // GLFW_KEY_KP_9 -> VK_NUMPAD9
+        case 330: return 0x6E;  // GLFW_KEY_KP_DECIMAL -> VK_DECIMAL
+        case 331: return 0x6F;  // GLFW_KEY_KP_DIVIDE -> VK_DIVIDE
+        case 332: return 0x6A;  // GLFW_KEY_KP_MULTIPLY -> VK_MULTIPLY
+        case 333: return 0x6D;  // GLFW_KEY_KP_SUBTRACT -> VK_SUBTRACT
+        case 334: return 0x6B;  // GLFW_KEY_KP_ADD -> VK_ADD
+        case 335: return 0x0D;  // GLFW_KEY_KP_ENTER -> VK_RETURN
+        case 336: return 0x00;  // GLFW_KEY_KP_EQUAL -> no direct mapping
+
+        default: return glfwKey;  // Return as-is if no mapping
+    }
+}
+
 void BrowserImpl::sendKeyEvent(int keyCode, bool pressed) {
     if (!m_client || !m_client->browser()) return;
 
+    int windowsKey = glfwKeyToWindowsVK(keyCode);
+    if (windowsKey == 0) return;  // No valid mapping
+
     CefKeyEvent event;
-    event.windows_key_code = keyCode;  // Assuming GLFW key codes map reasonably
+    event.windows_key_code = windowsKey;
     event.native_key_code = keyCode;
     event.is_system_key = false;
     event.modifiers = 0;

@@ -249,19 +249,52 @@ void Browser::processRawInput(const RawInputState& input) {
         m_impl->sendMouseWheel(bx, by, input.scrollX, input.scrollY);
     }
 
-    // Keyboard
+    // Keyboard - with intercept callbacks
     if (hasFocus()) {
+        // Build modifier flags
+        uint32_t mods = 0;
+        if (input.shiftHeld) mods |= ModShift;
+        if (input.ctrlHeld)  mods |= ModControl;
+        if (input.altHeld)   mods |= ModAlt;
+        if (input.superHeld) mods |= ModSuper;
+
+        // Key events
         for (int key = 0; key < 512; ++key) {
             if (input.keyDown[key] != m_prevKeyDown[key]) {
-                m_impl->sendKeyEvent(key, input.keyDown[key]);
+                bool intercepted = false;
+                if (m_keyInterceptCallback) {
+                    intercepted = m_keyInterceptCallback(key, input.keyDown[key], mods);
+                }
+                if (!intercepted) {
+                    m_impl->sendKeyEvent(key, input.keyDown[key]);
+                }
                 m_prevKeyDown[key] = input.keyDown[key];
             }
         }
 
+        // Character events
         for (uint32_t ch : input.characterInput) {
-            m_impl->sendCharacter(ch);
+            bool intercepted = false;
+            if (m_charInterceptCallback) {
+                intercepted = m_charInterceptCallback(ch);
+            }
+            if (!intercepted) {
+                m_impl->sendCharacter(ch);
+            }
         }
     }
+}
+
+void Browser::setKeyInterceptCallback(KeyInterceptCallback callback) {
+    m_keyInterceptCallback = std::move(callback);
+}
+
+void Browser::setCharInterceptCallback(CharInterceptCallback callback) {
+    m_charInterceptCallback = std::move(callback);
+}
+
+void Browser::setTerminalMode(bool enabled) {
+    m_terminalMode = enabled;
 }
 
 void Browser::sendMouseMove(int x, int y) {

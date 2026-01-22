@@ -41,6 +41,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Original embedded shaders kept as `*_FALLBACK` for reliability
   - Shaders loaded via `AssetLoader::loadShader()` with fallback pattern
 
+## [0.1.0-alpha.10] - 2026-01-22
+
+*CEF keyboard handling improvements for IDE panel*
+
+### Added
+
+- **Browser keyboard intercept callbacks** - New API for intercepting keyboard input before CEF processing:
+  - `setKeyInterceptCallback()` - Intercept key events (return true to consume, false to pass to CEF)
+  - `setCharInterceptCallback()` - Intercept character input
+  - `setTerminalMode(bool)` / `isTerminalMode()` - Toggle between terminal and editor input modes
+  - `KeyModifiers` enum (ModShift, ModControl, ModAlt, ModSuper) for modifier key detection
+  - New `terminal_utils.h` with `keyToTerminalSequence()` and `codepointToUtf8()` helpers
+
+- **Direct PTY input for terminal** - Terminal keyboard input now bypasses CEF/IPC for reliable operation:
+  - GLFW keys converted directly to terminal escape sequences (arrows, Enter, Backspace, etc.)
+  - Character input sent directly to PTY as UTF-8
+  - Cmd+C/V/A still pass through to CEF for copy/paste/select-all in xterm.js
+
+### Changed
+
+- **UI toggle key changed to backtick** - Chain visualizer and IDE panel now toggle with `` ` `` instead of Tab:
+  - Frees Tab key for terminal autocomplete
+  - Backtick is the standard "console toggle" key in creative/game apps
+
+### Fixed
+
+- **IDE panel editor tab** - Monaco editor now receives keyboard input correctly:
+  - JS calls `window.vivid.setTerminalMode(false)` when editor tab is active
+  - Terminal mode re-enabled when switching back to terminal tab
+  - Click detection on panels also updates input mode
+
 ## [0.1.0-alpha.8] - 2026-01-20
 
 *Windows build fix*

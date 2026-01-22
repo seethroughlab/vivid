@@ -218,6 +218,35 @@ public:
     void sendKeyEvent(int keyCode, bool pressed);
     void sendCharacter(uint32_t codepoint);
 
+    /**
+     * @brief Set callback to intercept key events before CEF processing
+     * @param callback Return true to consume event, false to pass to CEF
+     *
+     * Use this for terminal input or custom keybinding handlers.
+     * Example: Terminal intercepts Enter/arrows, passes Cmd+C to CEF for copy.
+     */
+    void setKeyInterceptCallback(KeyInterceptCallback callback);
+
+    /**
+     * @brief Set callback to intercept character input before CEF processing
+     * @param callback Return true to consume, false to pass to CEF
+     */
+    void setCharInterceptCallback(CharInterceptCallback callback);
+
+    /**
+     * @brief Set terminal mode for keyboard intercept behavior
+     * @param enabled If true, intercept callbacks are active; if false, input passes to CEF
+     *
+     * Use this to switch between terminal mode (intercepts go to PTY) and
+     * editor mode (input goes to CEF/Monaco). JS can call window.vivid.setTerminalMode().
+     */
+    void setTerminalMode(bool enabled);
+
+    /**
+     * @brief Check if terminal mode is active
+     */
+    [[nodiscard]] bool isTerminalMode() const { return m_terminalMode; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Event Callbacks
@@ -377,6 +406,11 @@ private:
     bool m_prevKeyDown[512] = {};
     float m_prevMouseX = 0;
     float m_prevMouseY = 0;
+
+    // Keyboard intercept callbacks
+    KeyInterceptCallback m_keyInterceptCallback;
+    CharInterceptCallback m_charInterceptCallback;
+    bool m_terminalMode = false;  // Off by default; enable for terminal/PTY input
 
     // Global focus tracking
     static Browser* s_focusedBrowser;
