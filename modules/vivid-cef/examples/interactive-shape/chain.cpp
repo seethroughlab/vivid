@@ -1,16 +1,16 @@
-// WebView - Interactive Shape Example
+// Browser - Interactive Shape Example
 //
 // This example demonstrates HTML UI controlling Vivid shapes in real-time.
 // The HTML sliders directly modify operator parameters.
 
 #include <vivid/vivid.h>
 #include <vivid/effects/effects.h>
-#include <vivid/webview/webview_all.h>
+#include <vivid/cef/browser.h>
 #include <nlohmann/json.hpp>
 
 using namespace vivid;
 using namespace vivid::effects;
-using namespace vivid::webview;
+using namespace vivid::cef;
 using json = nlohmann::json;
 
 // Shape parameters controlled by HTML
@@ -25,6 +25,15 @@ static bool g_animating = false;
 
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
+
+    // Initialize CEF if not already done
+    if (!isCefInitialized()) {
+        static char* argv[] = { (char*)"vivid", nullptr };
+        if (!initializeCef(1, argv)) {
+            fprintf(stderr, "Failed to initialize CEF!\n");
+            return;
+        }
+    }
 
     // Background gradient
     auto& grad = chain.add<Gradient>("gradient");
@@ -47,12 +56,25 @@ void setup(Context& ctx) {
     comp1.inputB("shape");
     comp1.mode = BlendMode::Over;
 
-    // WebView UI overlay
-    auto& ui = chain.add<WebView>("ui");
+    // Browser UI overlay
+    auto& ui = chain.add<Browser>("ui");
     ui.setUrl("file://assets/controls.html");
     ui.setSize(ctx.width(), ctx.height());
     ui.setTransparent(true);
     ui.setInputEnabled(true);
+
+    // Console logging
+    ui.onConsole([](ConsoleMessage::Level level, const std::string& message,
+                    const std::string& source, int line) {
+        const char* levelStr = "INFO";
+        switch (level) {
+            case ConsoleMessage::Level::Debug:   levelStr = "DEBUG"; break;
+            case ConsoleMessage::Level::Info:    levelStr = "INFO"; break;
+            case ConsoleMessage::Level::Warning: levelStr = "WARN"; break;
+            case ConsoleMessage::Level::Error:   levelStr = "ERROR"; break;
+        }
+        printf("[JS %s] %s\n", levelStr, message.c_str());
+    });
 
     // Handle parameter updates from JavaScript
     ui.registerCallback("updateParam", [](const std::string& args) {
@@ -78,7 +100,7 @@ void setup(Context& ctx) {
                 g_animating = data["value"].get<bool>();
             }
         } catch (const std::exception& e) {
-            std::cerr << "[Chain] JSON parse error: " << e.what() << std::endl;
+            fprintf(stderr, "[Chain] JSON parse error: %s\n", e.what());
         }
     });
 
@@ -90,17 +112,20 @@ void setup(Context& ctx) {
 
     chain.output("comp2");
 
-    std::cout << "\n========================================" << std::endl;
-    std::cout << "Interactive Shape Demo" << std::endl;
-    std::cout << "========================================" << std::endl;
-    std::cout << "Use the HTML controls to modify the shape!" << std::endl;
-    std::cout << "========================================\n" << std::endl;
+    printf("\n========================================\n");
+    printf("Interactive Shape Demo (CEF)\n");
+    printf("========================================\n");
+    printf("Use the HTML controls to modify the shape!\n");
+    printf("========================================\n\n");
 }
 
 void update(Context& ctx) {
+    // Pump CEF message loop
+    pumpCefMessageLoop();
+
     auto& chain = ctx.chain();
     auto& shape = chain.get<Shape>("shape");
-    auto& ui = chain.get<WebView>("ui");
+    auto& ui = chain.get<Browser>("ui");
 
     // Apply animation if enabled
     float rotation = g_shapeRotation;
@@ -121,9 +146,14 @@ void update(Context& ctx) {
     shape.color.set(g_colorR, g_colorG, g_colorB, 1.0f);
 
     // Update UI size if window resized
-    if (ui.webviewWidth() != ctx.width() || ui.webviewHeight() != ctx.height()) {
+    if (ui.browserWidth() != ctx.width() || ui.browserHeight() != ctx.height()) {
         ui.setSize(ctx.width(), ctx.height());
     }
+
+    // Process input for the browser
+    ui.processInput(ctx);
+
+    ctx.chain().process(ctx);
 }
 
 VIVID_CHAIN(setup, update)

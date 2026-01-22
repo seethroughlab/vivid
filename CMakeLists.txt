@@ -46,6 +46,7 @@ option(VIVID_BUILD_EXAMPLES "Build example projects" ON)
 option(VIVID_PRODUCTION "Build for production (excludes dev tools like visualizer)" OFF)
 option(VIVID_ENABLE_HOT_RELOAD "Enable hot-reload (set OFF for static chain linking)" ON)
 option(VIVID_ENABLE_MCP "Enable MCP server for Claude Code integration" ON)
+option(VIVID_USE_CEF "Enable CEF (Chromium Embedded Framework) browser module" OFF)
 
 # Static chain linking for production bundles
 # When set, chain.cpp is compiled directly into the executable
@@ -316,7 +317,12 @@ add_subdirectory(modules/vivid-audio)
 add_subdirectory(modules/vivid-midi)
 add_subdirectory(modules/vivid-imgui)
 add_subdirectory(modules/vivid-texshare)
-add_subdirectory(modules/vivid-webview)
+
+# CEF (Chromium Embedded Framework) - replaces vivid-webview for browser-based IDE panel
+if(VIVID_USE_CEF)
+    add_subdirectory(modules/vivid-cef)
+    message(STATUS "CEF browser module enabled")
+endif()
 
 # Chain visualizer (dev tool) - only built for development, excluded from production bundles
 if(NOT VIVID_PRODUCTION)

@@ -66,9 +66,9 @@
 // Platform-specific helpers (autoreleasepool for macOS)
 #include <vivid/platform_macos.h>
 
-// WebView support for IDE panel (optional)
-#ifdef VIVID_HAS_WEBVIEW
-#include <vivid/webview/webview.h>
+// CEF Browser support for IDE panel (optional)
+#ifdef VIVID_HAS_CEF
+#include <vivid/cef/browser.h>
 #include <vivid/pty.h>
 #endif
 
@@ -642,9 +642,9 @@ struct MainLoopContext {
     // Visualizer state (dynamically loaded module)
     bool visualizerAvailable = false;
 
-    // IDE WebView panel (part of the UI, enabled with --show-ui)
-#ifdef VIVID_HAS_WEBVIEW
-    std::unique_ptr<vivid::webview::WebView> ideWebView;
+    // IDE CEF Browser panel (part of the UI, enabled with --show-ui)
+#ifdef VIVID_HAS_CEF
+    std::unique_ptr<vivid::cef::Browser> ideBrowser;
     bool idePanelVisible = false;
     bool idePanelInitialized = false;
     glm::vec4 idePanelBounds = {0, 0, 400, 600};  // x, y, w, h
@@ -742,7 +742,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         bool tabKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_TAB) == GLFW_PRESS;
         if (tabKeyPressed && !mlc.tabKeyWasPressed && mlc.visualizerAvailable) {
             mlc.visualizerVisible = !mlc.visualizerVisible;
-#ifdef VIVID_HAS_WEBVIEW
+#ifdef VIVID_HAS_CEF
             // IDE panel visibility follows visualizer
             mlc.idePanelVisible = mlc.visualizerVisible;
 #endif
@@ -1281,10 +1281,9 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     imgui_dynamic::tryRender(pass);
 
     // Check IDE panel hover state BEFORE visualizer render (to block input if needed)
-#if 0 // VIVID_IDE_PANEL disabled
-#ifdef VIVID_HAS_WEBVIEW
+#ifdef VIVID_HAS_CEF
     bool idePanelConsumedInput = false;
-    if (mlc.idePanelInitialized && mlc.idePanelVisible && mlc.ideWebView) {
+    if (mlc.idePanelInitialized && mlc.idePanelVisible && mlc.ideBrowser) {
         glm::vec2 mousePos = frameInput.mousePos;
 
         // Check if mouse is over the whole panel (including resize handles)
@@ -1300,7 +1299,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
     }
 #endif
-#endif // VIVID_IDE_PANEL disabled
 
     // Render NodeGraph overlay (uses OverlayCanvas, no ImGui dependency)
     if (mlc.visualizerVisible && mlc.visualizerAvailable) {
@@ -1314,27 +1312,42 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             visualizer_dynamic::trySetPendingCount(mlc.editorBridge->pendingChangeCount());
         }
 
-        // IDE panel input blocking disabled - will be re-enabled with vivid-cef
+        // Block visualizer input if IDE panel is being interacted with
+#ifdef VIVID_HAS_CEF
+        if (idePanelConsumedInput) {
+            FrameInput blockedInput = frameInput;
+            blockedInput.mouseDown[0] = blockedInput.mouseDown[1] = blockedInput.mouseDown[2] = false;
+            visualizer_dynamic::tryRender(pass, &blockedInput, mlc.ctx);
+        } else {
+            visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
+        }
+#else
         visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
+#endif
     }
 
-#if 0 // VIVID_IDE_PANEL disabled
-#ifdef VIVID_HAS_WEBVIEW
-    // Update IDE WebView panel (if initialized and visible)
-    if (mlc.idePanelInitialized && mlc.idePanelVisible && mlc.ideWebView) {
+#ifdef VIVID_HAS_CEF
+    // Update IDE CEF Browser panel (if initialized and visible)
+    if (mlc.idePanelInitialized && mlc.idePanelVisible && mlc.ideBrowser) {
+        // Pump CEF message loop
+        vivid::cef::pumpCefMessageLoop();
+
         // Handle dragging
         const float titleBarHeight = 37.0f;  // Height of the tab bar
+        const float dragHandleWidth = 80.0f; // Width of drag handle at right side of title bar
         glm::vec2 mousePos = frameInput.mousePos;
         bool leftMouseDown = frameInput.mouseDown[0];
 
-        // Check if mouse is over title bar
-        bool overTitleBar = mousePos.x >= mlc.idePanelBounds.x &&
-                           mousePos.x <= mlc.idePanelBounds.x + mlc.idePanelBounds.z &&
-                           mousePos.y >= mlc.idePanelBounds.y &&
-                           mousePos.y <= mlc.idePanelBounds.y + titleBarHeight;
+        // Check if mouse is over the drag handle (right side of title bar only)
+        // This allows clicking on tabs on the left side while still allowing drag from right
+        float dragHandleX = mlc.idePanelBounds.x + mlc.idePanelBounds.z - dragHandleWidth;
+        bool overDragHandle = mousePos.x >= dragHandleX &&
+                             mousePos.x <= mlc.idePanelBounds.x + mlc.idePanelBounds.z &&
+                             mousePos.y >= mlc.idePanelBounds.y &&
+                             mousePos.y <= mlc.idePanelBounds.y + titleBarHeight;
 
-        // Start dragging if clicking on title bar
-        if (overTitleBar && leftMouseDown && !mlc.idePanelDragging) {
+        // Start dragging if clicking on drag handle area (right side of title bar)
+        if (overDragHandle && leftMouseDown && !mlc.idePanelDragging) {
             mlc.idePanelDragging = true;
             mlc.ideDragOffset = mousePos - glm::vec2(mlc.idePanelBounds.x, mlc.idePanelBounds.y);
         }
@@ -1345,7 +1358,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 mlc.idePanelBounds.x = mousePos.x - mlc.ideDragOffset.x;
                 mlc.idePanelBounds.y = mousePos.y - mlc.ideDragOffset.y;
 
-                // Clamp to logical window bounds (idePanelBounds is in logical coords)
+                // Clamp to logical window bounds
                 float logicalWidth = mlc.windowWidth / frameInput.contentScale;
                 float logicalHeight = mlc.windowHeight / frameInput.contentScale;
                 mlc.idePanelBounds.x = std::max(0.0f, std::min(mlc.idePanelBounds.x,
@@ -1353,46 +1366,34 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 mlc.idePanelBounds.y = std::max(0.0f, std::min(mlc.idePanelBounds.y,
                     logicalHeight - mlc.idePanelBounds.w));
             } else {
-                // Stop dragging when mouse released
                 mlc.idePanelDragging = false;
             }
         }
 
         // Handle resize edges/corners (only if not dragging title bar)
         if (!mlc.idePanelDragging) {
-            const float hs = mlc.ideResizeHandleSize;  // Handle size
+            const float hs = mlc.ideResizeHandleSize;
             float px = mlc.idePanelBounds.x;
             float py = mlc.idePanelBounds.y;
             float pw = mlc.idePanelBounds.z;
             float ph = mlc.idePanelBounds.w;
 
-            // Detect which edge(s) the mouse is over (1=left, 2=right, 4=top, 8=bottom)
             int hoveredEdge = 0;
             if (mousePos.x >= px - hs && mousePos.x <= px + hs &&
-                mousePos.y >= py && mousePos.y <= py + ph) {
-                hoveredEdge |= 1;  // Left
-            }
+                mousePos.y >= py && mousePos.y <= py + ph) hoveredEdge |= 1;
             if (mousePos.x >= px + pw - hs && mousePos.x <= px + pw + hs &&
-                mousePos.y >= py && mousePos.y <= py + ph) {
-                hoveredEdge |= 2;  // Right
-            }
+                mousePos.y >= py && mousePos.y <= py + ph) hoveredEdge |= 2;
             if (mousePos.y >= py - hs && mousePos.y <= py + hs &&
-                mousePos.x >= px && mousePos.x <= px + pw) {
-                hoveredEdge |= 4;  // Top
-            }
+                mousePos.x >= px && mousePos.x <= px + pw) hoveredEdge |= 4;
             if (mousePos.y >= py + ph - hs && mousePos.y <= py + ph + hs &&
-                mousePos.x >= px && mousePos.x <= px + pw) {
-                hoveredEdge |= 8;  // Bottom
-            }
+                mousePos.x >= px && mousePos.x <= px + pw) hoveredEdge |= 8;
 
-            // Start resizing if clicking on an edge
             if (hoveredEdge != 0 && leftMouseDown && mlc.idePanelResizing == 0) {
                 mlc.idePanelResizing = hoveredEdge;
                 mlc.ideResizeStart = mousePos;
                 mlc.ideResizeStartBounds = mlc.idePanelBounds;
             }
 
-            // Update bounds while resizing
             if (mlc.idePanelResizing != 0) {
                 if (leftMouseDown) {
                     glm::vec2 delta = mousePos - mlc.ideResizeStart;
@@ -1401,97 +1402,84 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                     float newW = mlc.ideResizeStartBounds.z;
                     float newH = mlc.ideResizeStartBounds.w;
 
-                    if (mlc.idePanelResizing & 1) {  // Left edge
-                        newX = mlc.ideResizeStartBounds.x + delta.x;
-                        newW = mlc.ideResizeStartBounds.z - delta.x;
-                    }
-                    if (mlc.idePanelResizing & 2) {  // Right edge
-                        newW = mlc.ideResizeStartBounds.z + delta.x;
-                    }
-                    if (mlc.idePanelResizing & 4) {  // Top edge
-                        newY = mlc.ideResizeStartBounds.y + delta.y;
-                        newH = mlc.ideResizeStartBounds.w - delta.y;
-                    }
-                    if (mlc.idePanelResizing & 8) {  // Bottom edge
-                        newH = mlc.ideResizeStartBounds.w + delta.y;
-                    }
+                    if (mlc.idePanelResizing & 1) { newX += delta.x; newW -= delta.x; }
+                    if (mlc.idePanelResizing & 2) { newW += delta.x; }
+                    if (mlc.idePanelResizing & 4) { newY += delta.y; newH -= delta.y; }
+                    if (mlc.idePanelResizing & 8) { newH += delta.y; }
 
                     // Enforce minimum size
                     if (newW < mlc.ideMinPanelWidth) {
-                        if (mlc.idePanelResizing & 1) {
+                        if (mlc.idePanelResizing & 1)
                             newX = mlc.ideResizeStartBounds.x + mlc.ideResizeStartBounds.z - mlc.ideMinPanelWidth;
-                        }
                         newW = mlc.ideMinPanelWidth;
                     }
                     if (newH < mlc.ideMinPanelHeight) {
-                        if (mlc.idePanelResizing & 4) {
+                        if (mlc.idePanelResizing & 4)
                             newY = mlc.ideResizeStartBounds.y + mlc.ideResizeStartBounds.w - mlc.ideMinPanelHeight;
-                        }
                         newH = mlc.ideMinPanelHeight;
                     }
 
                     // Clamp to window bounds
                     float logicalWidth = mlc.windowWidth / frameInput.contentScale;
                     float logicalHeight = mlc.windowHeight / frameInput.contentScale;
-
-                    // Keep position non-negative
-                    if (newX < 0) {
-                        newW += newX;  // Shrink width by amount we went negative
-                        newX = 0;
-                    }
-                    if (newY < 0) {
-                        newH += newY;  // Shrink height by amount we went negative
-                        newY = 0;
-                    }
-
-                    // Keep within window bounds
-                    if (newX + newW > logicalWidth) {
-                        newW = logicalWidth - newX;
-                    }
-                    if (newY + newH > logicalHeight) {
-                        newH = logicalHeight - newY;
-                    }
-
-                    // Re-enforce minimum size after clamping
+                    if (newX < 0) { newW += newX; newX = 0; }
+                    if (newY < 0) { newH += newY; newY = 0; }
+                    if (newX + newW > logicalWidth) newW = logicalWidth - newX;
+                    if (newY + newH > logicalHeight) newH = logicalHeight - newY;
                     newW = std::max(newW, mlc.ideMinPanelWidth);
                     newH = std::max(newH, mlc.ideMinPanelHeight);
 
                     mlc.idePanelBounds = glm::vec4(newX, newY, newW, newH);
                 } else {
-                    // Stop resizing and update WebView size
                     mlc.idePanelResizing = 0;
-                    mlc.ideWebView->setSize((int)mlc.idePanelBounds.z, (int)mlc.idePanelBounds.w);
+                    mlc.ideBrowser->setSize((int)mlc.idePanelBounds.z, (int)mlc.idePanelBounds.w);
                 }
             }
         }
 
         // Set input offset so mouse coordinates are properly translated
-        mlc.ideWebView->setInputOffset((int)mlc.idePanelBounds.x, (int)mlc.idePanelBounds.y);
+        mlc.ideBrowser->setInputOffset((int)mlc.idePanelBounds.x, (int)mlc.idePanelBounds.y);
 
-        // Build RawInputState from GLFW state (bypasses Context's blocked mouse state)
-        vivid::webview::RawInputState rawInput;
+        // Handle focus: request when clicking inside panel, release when clicking outside
+        static bool wasMouseDown = false;
+        bool mouseJustPressed = frameInput.mouseDown[0] && !wasMouseDown;
+        wasMouseDown = frameInput.mouseDown[0];
+
+        if (mouseJustPressed) {
+            if (mlc.idePanelHovered && !overDragHandle) {
+                mlc.ideBrowser->requestFocus();
+            } else if (!mlc.idePanelHovered) {
+                mlc.ideBrowser->releaseFocus();
+            }
+        }
+
+        // Process browser input using raw GLFW state (Context's state may be blocked)
+        vivid::cef::RawInputState rawInput;
         rawInput.mouseX = frameInput.mousePos.x;
         rawInput.mouseY = frameInput.mousePos.y;
         rawInput.mouseButtons[0] = frameInput.mouseDown[0];
         rawInput.mouseButtons[1] = frameInput.mouseDown[1];
         rawInput.mouseButtons[2] = frameInput.mouseDown[2];
-        rawInput.scrollX = g_savedScrollForVisualizer.x;
-        rawInput.scrollY = g_savedScrollForVisualizer.y;
+        rawInput.scrollX = frameInput.scroll.x;
+        rawInput.scrollY = frameInput.scroll.y;
         rawInput.shiftHeld = frameInput.keyShift;
         rawInput.ctrlHeld = frameInput.keyCtrl;
-        rawInput.altHeld = frameInput.keyAlt;
-        rawInput.superHeld = frameInput.keySuper;
-        // Copy key states from GLFW (frameInput.keyPressed is one-shot, we need held state)
-        for (int k = 0; k < 512; ++k) {
-            rawInput.keyDown[k] = glfwGetKey(mlc.window, k) == GLFW_PRESS;
+        rawInput.altHeld = glfwGetKey(mlc.window, GLFW_KEY_LEFT_ALT) == GLFW_PRESS ||
+                          glfwGetKey(mlc.window, GLFW_KEY_RIGHT_ALT) == GLFW_PRESS;
+        rawInput.superHeld = glfwGetKey(mlc.window, GLFW_KEY_LEFT_SUPER) == GLFW_PRESS ||
+                            glfwGetKey(mlc.window, GLFW_KEY_RIGHT_SUPER) == GLFW_PRESS;
+
+        // Populate keyboard state from GLFW
+        for (int key = 0; key < 512 && key <= GLFW_KEY_LAST; ++key) {
+            rawInput.keyDown[key] = glfwGetKey(mlc.window, key) == GLFW_PRESS;
         }
-        // Get character input from Context (still valid after blockMouseInput)
+
+        // Pass character input from Context (collected by glfwSetCharCallback)
         rawInput.characterInput = mlc.ctx->characterInput();
 
-        // Process WebView with raw input (bypasses Context's blocked mouse state)
-        mlc.ideWebView->processWithRawInput(*mlc.ctx, rawInput);
+        mlc.ideBrowser->processRawInput(rawInput);
 
-        // Clamp panel position to current window bounds (handle window resize)
+        // Clamp panel position to current window bounds
         float logicalWidth = mlc.windowWidth / frameInput.contentScale;
         float logicalHeight = mlc.windowHeight / frameInput.contentScale;
         mlc.idePanelBounds.x = std::max(0.0f, std::min(mlc.idePanelBounds.x,
@@ -1499,19 +1487,17 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         mlc.idePanelBounds.y = std::max(0.0f, std::min(mlc.idePanelBounds.y,
             logicalHeight - mlc.idePanelBounds.w));
 
-        // Render WebView texture as an overlay
-        // idePanelBounds is in logical coordinates (for input handling)
-        // blitAtPosition expects framebuffer coordinates, so multiply by content scale
-        WGPUTextureView webviewTexture = mlc.ideWebView->outputView();
-        if (webviewTexture && mlc.display) {
+        // Render browser texture as an overlay
+        WGPUTextureView browserTexture = mlc.ideBrowser->outputView();
+        if (browserTexture && mlc.display) {
             float scale = frameInput.contentScale;
-            mlc.display->blitAtPosition(pass, webviewTexture,
+            mlc.display->blitAtPosition(pass, browserTexture,
                 (int)(mlc.idePanelBounds.z * scale), (int)(mlc.idePanelBounds.w * scale),
                 (int)(mlc.idePanelBounds.x * scale), (int)(mlc.idePanelBounds.y * scale));
         }
 
-        // Read PTY output and send to terminal via executeJS (only when page is ready)
-        if (mlc.idePty && mlc.idePtyStarted && mlc.ideWebView && mlc.ideWebView->isReady()) {
+        // Read PTY output and send to terminal
+        if (mlc.idePty && mlc.idePtyStarted && mlc.ideBrowser && mlc.ideBrowser->isReady()) {
             std::string ptyOutput = mlc.idePty->read();
             if (!ptyOutput.empty()) {
                 // Escape for JavaScript string literal
@@ -1526,7 +1512,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                         case '\t': escaped += "\\t"; break;
                         default:
                             if (static_cast<unsigned char>(c) < 32) {
-                                // Escape control characters as \xNN
                                 char buf[8];
                                 snprintf(buf, sizeof(buf), "\\x%02x", static_cast<unsigned char>(c));
                                 escaped += buf;
@@ -1536,12 +1521,11 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                             break;
                     }
                 }
-                mlc.ideWebView->executeJS("window.vividIDE && window.vividIDE.writePtyOutput('" + escaped + "')");
+                mlc.ideBrowser->executeJS("window.vividIDE && window.vividIDE.writePtyOutput('" + escaped + "')");
             }
         }
     }
 #endif
-#endif // VIVID_IDE_PANEL disabled
 
     // Render error message if present
     if (mlc.ctx->hasError() && mlc.display->isValid()) {
@@ -2548,87 +2532,110 @@ int Application::init(const AppConfig& config) {
     mlc.windowWidth = m_impl->width;   // Use actual window size (may differ from CLI if chain config used)
     mlc.windowHeight = m_impl->height;
     mlc.showUI = config.showUI;
-// TODO: IDE panel temporarily disabled - will be replaced with vivid-cef
-// See planning doc for CEF integration roadmap
-#if 0 // VIVID_IDE_PANEL - disabled until vivid-cef is ready
-#ifdef VIVID_HAS_WEBVIEW
+// IDE panel using CEF Browser
+#ifdef VIVID_HAS_CEF
     // IDE panel visibility follows visualizer visibility
     mlc.idePanelVisible = mlc.visualizerVisible;
 
-    // Initialize IDE WebView panel (always, so it's ready when Tab is pressed)
+    // Initialize IDE Browser panel (always, so it's ready when Tab is pressed)
     if (mlc.visualizerAvailable) {
-        mlc.ideWebView = std::make_unique<vivid::webview::WebView>();
-        int panelWidth = 500;
-        int panelHeight = 400;
-        mlc.ideWebView->setSize(panelWidth, panelHeight);
-        mlc.ideWebView->init(*m_impl->ctx);
-        mlc.ideWebView->setTransparent(false);
-        mlc.ideWebView->setInputEnabled(true);
-
-        // Initialize PTY for terminal BEFORE registering callbacks
-        mlc.idePty = std::make_unique<PTY>();
-        fs::path chainPath = m_impl->ctx->chainPath();
-        std::string ptyWorkDir = chainPath.empty() ? "" : chainPath.parent_path().string();
-        if (mlc.idePty->start("", ptyWorkDir)) {
-            mlc.idePtyStarted = true;
-            std::cout << "[IDE] PTY started in " << ptyWorkDir << "\n";
-        } else {
-            std::cerr << "[IDE] Failed to start PTY\n";
+        // Initialize CEF if not already done
+        if (!vivid::cef::isCefInitialized()) {
+            static char* argv[] = { (char*)"vivid", nullptr };
+            if (!vivid::cef::initializeCef(1, argv)) {
+                std::cerr << "[IDE] Failed to initialize CEF\n";
+            }
         }
 
-        // Register PTY callbacks via WKScriptMessageHandler (must be before setUrl)
-        // JS calls window.vivid.ptyInput(data) → native receives it here
-        mlc.ideWebView->registerCallback("ptyInput", [&mlc](const std::string& data) {
-            if (mlc.idePty && mlc.idePtyStarted) {
-                mlc.idePty->write(data);
+        if (vivid::cef::isCefInitialized()) {
+            mlc.ideBrowser = std::make_unique<vivid::cef::Browser>();
+            int panelWidth = 500;
+            int panelHeight = 400;
+            mlc.ideBrowser->setSize(panelWidth, panelHeight);
+            mlc.ideBrowser->setTransparent(false);
+            mlc.ideBrowser->setInputEnabled(true);
+
+            // Console callback for JS debugging
+            mlc.ideBrowser->onConsole([](vivid::cef::ConsoleMessage::Level level,
+                                         const std::string& message,
+                                         const std::string& source,
+                                         int line) {
+                const char* levelStr = "INFO";
+                if (level == vivid::cef::ConsoleMessage::Level::Warning) levelStr = "WARN";
+                else if (level == vivid::cef::ConsoleMessage::Level::Error) levelStr = "ERROR";
+                std::cerr << "[IDE JS:" << levelStr << "] " << message << " (" << source << ":" << line << ")\n";
+            });
+
+            // Initialize PTY for terminal BEFORE registering callbacks
+            mlc.idePty = std::make_unique<PTY>();
+            fs::path chainPath = m_impl->ctx->chainPath();
+            std::string ptyWorkDir = chainPath.empty() ? "" : chainPath.parent_path().string();
+            if (mlc.idePty->start("", ptyWorkDir)) {
+                mlc.idePtyStarted = true;
+                std::cout << "[IDE] PTY started in " << ptyWorkDir << "\n";
+            } else {
+                std::cerr << "[IDE] Failed to start PTY\n";
             }
-        });
 
-        mlc.ideWebView->registerCallback("ptyResize", [&mlc](const std::string& json) {
-            // Parse JSON: {"cols": 80, "rows": 24}
-            if (mlc.idePty && mlc.idePtyStarted) {
-                // Simple JSON parsing for cols/rows
-                int cols = 80, rows = 24;
-                size_t colsPos = json.find("\"cols\":");
-                size_t rowsPos = json.find("\"rows\":");
-                if (colsPos != std::string::npos) {
-                    cols = std::atoi(json.c_str() + colsPos + 7);
+            // Register PTY callbacks (JS calls window.vivid.ptyInput(data))
+            mlc.ideBrowser->registerCallback("ptyInput", [&mlc](const std::string& data) {
+                if (mlc.idePty && mlc.idePtyStarted) {
+                    mlc.idePty->write(data);
                 }
-                if (rowsPos != std::string::npos) {
-                    rows = std::atoi(json.c_str() + rowsPos + 7);
+            });
+
+            mlc.ideBrowser->registerCallback("ptyResize", [&mlc](const std::string& json) {
+                // Parse JSON: {"cols": 80, "rows": 24}
+                if (mlc.idePty && mlc.idePtyStarted) {
+                    int cols = 80, rows = 24;
+                    size_t colsPos = json.find("\"cols\":");
+                    size_t rowsPos = json.find("\"rows\":");
+                    if (colsPos != std::string::npos) {
+                        cols = std::atoi(json.c_str() + colsPos + 7);
+                    }
+                    if (rowsPos != std::string::npos) {
+                        rows = std::atoi(json.c_str() + rowsPos + 7);
+                    }
+                    mlc.idePty->setSize(cols, rows);
                 }
-                mlc.idePty->setSize(cols, rows);
+            });
+
+            // Get logical window size
+            int logicalWidth, logicalHeight;
+            glfwGetWindowSize(m_impl->window, &logicalWidth, &logicalHeight);
+
+            // Position in bottom-left corner with padding
+            mlc.idePanelBounds = glm::vec4(20, logicalHeight - panelHeight - 60, panelWidth, panelHeight);
+
+            // Load IDE panel from HTTP server
+            if (m_impl->editorBridge && m_impl->editorBridge->isRunning()) {
+                mlc.ideBrowser->setUrl("http://localhost:9876/");
+            } else {
+                mlc.ideBrowser->loadHtml(
+                    "<html><body style='background:#1e1e1e;color:#f14c4c;font-family:system-ui;padding:20px;'>"
+                    "<h2>IDE Panel Failed to Load</h2>"
+                    "<p>The RuntimeAPI server could not start (port 9876 may be in use).</p>"
+                    "</body></html>", "");
+                std::cerr << "[IDE] RuntimeAPI not running - showing error page\n";
             }
-        });
 
-        // Get logical window size (mouse coords are in logical coords, not framebuffer coords)
-        // On Retina displays, framebuffer is 2x the logical size
-        int logicalWidth, logicalHeight;
-        glfwGetWindowSize(m_impl->window, &logicalWidth, &logicalHeight);
+            // Initialize the browser (creates CEF browser instance asynchronously)
+            mlc.ideBrowser->init(*m_impl->ctx);
+            mlc.idePanelInitialized = true;
 
-        // Position in bottom-left corner with padding (using logical coords)
-        mlc.idePanelBounds = glm::vec4(20, logicalHeight - panelHeight - 60, panelWidth, panelHeight);
+            // Pump the CEF message loop to allow browser creation to complete
+            // Browser creation is async, so we need to pump until OnAfterCreated fires
+            for (int i = 0; i < 50; i++) {
+                vivid::cef::pumpCefMessageLoop();
+                glfwPollEvents();
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                if (mlc.ideBrowser->isReady()) break;
+            }
 
-        // Load IDE panel from HTTP server (avoids file:// CORS restrictions)
-        // Check if RuntimeAPI started successfully, otherwise show error
-        if (m_impl->editorBridge && m_impl->editorBridge->isRunning()) {
-            mlc.ideWebView->setUrl("http://localhost:9876/");
-        } else {
-            // Show error page when RuntimeAPI failed to start (e.g., port in use)
-            mlc.ideWebView->loadHtml(
-                "<html><body style='background:#1e1e1e;color:#f14c4c;font-family:system-ui;padding:20px;'>"
-                "<h2>IDE Panel Failed to Load</h2>"
-                "<p>The RuntimeAPI server could not start (port 9876 may be in use).</p>"
-                "<p>Try running: <code style='background:#333;padding:2px 6px;'>lsof -ti:9876 | xargs kill</code></p>"
-                "</body></html>", "");
-            std::cerr << "[IDE] RuntimeAPI not running - showing error page\n";
+            std::cout << "[IDE] CEF Browser panel initialized (" << panelWidth << "x" << panelHeight << ")" << std::endl;
         }
-        mlc.idePanelInitialized = true;
-
-        std::cout << "[IDE] WebView panel initialized (" << panelWidth << "x" << panelHeight << ")" << std::endl;
     }
 #endif
-#endif // VIVID_IDE_PANEL disabled
 
     // Project info
     mlc.projectName = projectName;
@@ -2696,7 +2703,7 @@ void Application::shutdown() {
     // Shutdown chain visualizer (if dynamically loaded)
     visualizer_dynamic::tryShutdown();
 
-#ifdef VIVID_HAS_WEBVIEW
+#ifdef VIVID_HAS_CEF
     // Shutdown PTY
     if (mlc.idePty) {
         mlc.idePty->stop();
@@ -2704,13 +2711,13 @@ void Application::shutdown() {
         mlc.idePtyStarted = false;
     }
 
-    // Mark WebView as shutting down and wait for callbacks to complete
-    if (mlc.ideWebView) {
-        mlc.ideWebView->cleanup();
+    // Cleanup CEF Browser
+    if (mlc.ideBrowser) {
+        mlc.ideBrowser->cleanup();
 
-        // Pump the event loop to process any pending WebKit callbacks
-        // This ensures callbacks complete while the WebView object is still valid
+        // Pump CEF message loop to process any pending callbacks
         for (int i = 0; i < 10; i++) {
+            vivid::cef::pumpCefMessageLoop();
             glfwPollEvents();
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
@@ -2746,11 +2753,14 @@ void Application::shutdown() {
     }
     glfwTerminate();
 
-#ifdef VIVID_HAS_WEBVIEW
-    // Now safe to destroy WebView - event loop is done pumping
-    if (mlc.ideWebView) {
-        mlc.ideWebView.reset();
+#ifdef VIVID_HAS_CEF
+    // Now safe to destroy CEF Browser - message loop is done pumping
+    if (mlc.ideBrowser) {
+        mlc.ideBrowser.reset();
     }
+
+    // Shutdown CEF
+    vivid::cef::shutdownCef();
 #endif
 
     delete m_impl;

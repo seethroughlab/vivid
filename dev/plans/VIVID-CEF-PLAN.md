@@ -247,54 +247,125 @@ Vivid.app/
 
 ---
 
+## GPU Texture Sharing (Zero-Copy Rendering)
+
+### Platform Support Summary
+
+| Platform | Standard CEF | Custom CEF Builds |
+|----------|--------------|-------------------|
+| Windows  | ✅ D3D11 shared textures via `OnAcceleratedPaint` | ✅ |
+| macOS    | ❌ CPU only via `OnPaint` | ⚠️ OBS CEF 5060 has patches |
+| Linux    | ❌ CPU only via `OnPaint` | ⚠️ OBS CEF 5060 / Ozone (future) |
+
+### Why Only Windows?
+
+CEF's `OnAcceleratedPaint` with `shared_texture_enabled` only works on Windows with D3D11 shared textures. On macOS and Linux, CEF falls back to `OnPaint` which provides a CPU buffer.
+
+**References:**
+- [CEF Issue #3216](https://bitbucket.org/chromiumembedded/cef/issues/3216) - Shared texture rendering calls OnPaint instead of OnAcceleratedPaint
+- [CEF Forum Discussion](https://www.magpcss.org/ceforum/viewtopic.php?f=6&t=17551) - OnAcceleratedPaint not called
+
+### Alternatives for Zero-Copy on macOS/Linux
+
+1. **OBS's Custom CEF Build**
+   - OBS maintains a forked CEF with `OnAcceleratedPaint2` support
+   - Available from OBS CDN, pinned to CEF version 5060 (older Chromium)
+   - Used in production by OBS Studio
+
+2. **Custom CEF Patches**
+   - [PR #285](https://www.magpcss.org/ceforum/viewtopic.php?f=6&t=19404) added Mac/Linux shared texture support
+   - Cannot be rebased beyond CEF 5060 due to Chromium compositor changes
+   - Requires building CEF from source
+
+3. **Chromium Ozone Layer**
+   - Chromium's preferred abstraction for GPU surfaces
+   - Currently only supported on Linux
+   - Not yet integrated into CEF's OSR (offscreen rendering) mode
+   - See [CEF Issue #3263](https://github.com/chromiumembedded/cef/issues/3263)
+
+### Current vivid-cef Implementation
+
+**Windows (TODO):**
+- `OnAcceleratedPaint` receives D3D11 shared texture handle
+- Import via `ID3D11Device::OpenSharedResource`
+- Copy to wgpu texture (D3D11→D3D12 interop if needed)
+
+**macOS (Implemented):**
+- `OnPaint` receives BGRA CPU buffer
+- Upload to wgpu texture via `wgpuQueueWriteTexture`
+- On Apple Silicon: ~0.5-1ms for 1080p (unified memory helps)
+- IOSurface code exists for future use with custom CEF builds
+
+**Linux (Implemented):**
+- Same as macOS: CPU buffer upload
+- DMABuf code path exists for future use
+
+### Performance Notes
+
+The CPU fallback is functional and reasonably performant:
+- Apple Silicon unified memory makes uploads fast
+- Double-buffering prevents stalls
+- 60fps easily achievable for typical UI content
+- WebGL/heavy content may see higher latency
+
+For production apps requiring maximum performance on macOS/Linux, consider:
+1. Using OBS's custom CEF build (version 5060)
+2. Building CEF from source with shared texture patches
+3. Accepting CPU path performance (often sufficient)
+
+---
+
 ## Implementation Phases
 
-### Phase 1: Basic Integration (Week 1-2)
+### Phase 1: Basic Integration ✅ COMPLETE
 
-- [ ] Set up CEF binary download in CMake
-- [ ] Create subprocess executable
-- [ ] Implement `CefApp` for process initialization
-- [ ] Basic `Browser` class with URL loading
-- [ ] Offscreen rendering to BGRA buffer
-- [ ] Upload buffer to WebGPU texture
+- [x] Set up CEF binary download in CMake (Spotify CDN, auto-download)
+- [x] Create subprocess executable (`vivid-cef-helper`)
+- [x] Implement `CefApp` for process initialization
+- [x] Basic `Browser` class with URL loading
+- [x] Offscreen rendering to BGRA buffer
+- [x] Upload buffer to WebGPU texture
+- [x] Relative file:// URL resolution
 
-**Milestone**: Load a webpage and see it rendered as a texture
+**Milestone**: Load a webpage and see it rendered as a texture ✅
 
-### Phase 2: Input Handling (Week 2-3)
+### Phase 2: Input Handling ✅ COMPLETE
 
-- [ ] Mouse event forwarding (click, move, scroll)
-- [ ] Keyboard event forwarding
-- [ ] Focus management
-- [ ] Cursor change callbacks
+- [x] Mouse event forwarding (click, move, scroll)
+- [x] Keyboard event forwarding
+- [x] Focus management
+- [x] Cursor change callbacks
+- [x] `processInput(Context&)` convenience method
 
-**Milestone**: Interactive webpage (clickable links, text input)
+**Milestone**: Interactive webpage (clickable links, text input) ✅
 
-### Phase 3: JavaScript Bridge (Week 3-4)
+### Phase 3: JavaScript Bridge ✅ COMPLETE
 
-- [ ] `executeJS()` implementation
-- [ ] `registerCallback()` for JS-to-native calls
-- [ ] Console message forwarding
-- [ ] Error handling
+- [x] `executeJS()` implementation
+- [x] `registerCallback()` for JS-to-native calls
+- [x] Console message forwarding
+- [x] Error handling
+- [x] Load end callbacks
 
-**Milestone**: Bidirectional JS/native communication
+**Milestone**: Bidirectional JS/native communication ✅
 
-### Phase 4: IDE Panel Migration (Week 4-5)
+### Phase 4: IDE Panel Migration (TODO)
 
 - [ ] Port IDE panel HTML to work with CEF
 - [ ] PTY integration (same as before)
 - [ ] Terminal (xterm.js) working
 - [ ] Editor (Monaco) working
-- [ ] DevTools support for debugging
+- [ ] DevTools support for debugging (currently disabled - needs windowed browser)
 
 **Milestone**: Full IDE panel functionality with CEF
 
-### Phase 5: Polish & Optimization (Week 5-6)
+### Phase 5: Polish & Optimization (PARTIAL)
 
-- [ ] Shared memory for pixel transfer (avoid copies)
-- [ ] Frame synchronization with Vivid render loop
-- [ ] Resource cleanup and error handling
-- [ ] Documentation
-- [ ] Example projects
+- [x] Double-buffering for frame synchronization
+- [x] Resource cleanup and error handling
+- [x] Example projects (4 examples working)
+- [ ] Windows D3D11 shared texture implementation (only platform with zero-copy)
+- [ ] Documentation (API docs)
 
 **Milestone**: Production-ready vivid-cef module
 
@@ -337,13 +408,13 @@ Keep `vivid-webview` API available, backed by either implementation:
 
 ---
 
-## Open Questions
+## Open Questions (Updated)
 
-1. **Minimum CEF version?** Latest stable vs LTS
-2. **GPU acceleration?** CEF supports GPU compositing, investigate WebGPU interop
-3. **Multi-browser support?** Multiple Browser instances in one Vivid app
-4. **Sandboxing?** CEF sandbox on/off trade-offs
-5. **Build from source?** For custom patches or platform support
+1. **Minimum CEF version?** ✅ Using CEF 120 LTS series for stability
+2. **GPU acceleration?** ✅ RESOLVED - Only Windows supports `OnAcceleratedPaint` with D3D11. macOS/Linux use CPU path (see GPU Texture Sharing section above)
+3. **Multi-browser support?** Multiple Browser instances work - each gets own CefBrowser
+4. **Sandboxing?** Currently disabled (`no_sandbox = true`) for simplicity
+5. **Build from source?** Only needed for macOS/Linux zero-copy (OBS CEF 5060 or custom patches)
 
 ---
 

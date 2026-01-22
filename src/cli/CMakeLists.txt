@@ -88,11 +88,11 @@ if(TARGET vivid-visualizer)
     message(STATUS "[vivid-cli] Linked with vivid-visualizer for Tab visualizer")
 endif()
 
-# Link vivid-webview for IDE panel (optional)
-if(TARGET vivid-webview)
-    target_link_libraries(vivid PRIVATE vivid-webview)
-    target_compile_definitions(vivid PRIVATE VIVID_HAS_WEBVIEW)
-    message(STATUS "[vivid-cli] Linked with vivid-webview for IDE panel")
+# Link vivid-cef for IDE panel (CEF browser for proper offscreen rendering)
+if(TARGET vivid-cef)
+    target_link_libraries(vivid PRIVATE vivid-cef)
+    target_compile_definitions(vivid PRIVATE VIVID_HAS_CEF)
+    message(STATUS "[vivid-cli] Linked with vivid-cef for IDE panel")
 endif()
 
 

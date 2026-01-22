@@ -1,5 +1,5 @@
-// Shape Controls - JavaScript for Vivid WebView interaction
-// This file demonstrates loading external JS files in WebView
+// Shape Controls - JavaScript for Vivid CEF Browser interaction
+// This file demonstrates loading external JS files in CEF Browser
 
 console.log('[Controls.js] Script loaded successfully!');
 
