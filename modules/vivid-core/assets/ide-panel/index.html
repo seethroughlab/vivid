@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Vivid IDE Panel</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1e1e1e;
+            color: #d4d4d4;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .tabs {
+            display: flex;
+            background: #252526;
+            border-bottom: 1px solid #3c3c3c;
+        }
+
+        .tab {
+            padding: 8px 16px;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            color: #808080;
+            font-size: 13px;
+            border-bottom: 2px solid transparent;
+            transition: all 0.2s;
+        }
+
+        .tab:hover {
+            color: #d4d4d4;
+        }
+
+        .tab.active {
+            color: #d4d4d4;
+            border-bottom-color: #007acc;
+            background: #1e1e1e;
+        }
+
+        .panel {
+            display: none;
+            height: calc(100vh - 37px - 29px);  /* tabs height - status bar height */
+        }
+
+        .panel.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        #terminal-container {
+            flex: 1;
+            padding: 8px;
+            background: #1e1e1e;
+        }
+
+        #editor-container {
+            flex: 1;
+            height: 100%;
+            min-height: 0;  /* Allow flex child to shrink */
+            position: relative;
+        }
+
+        #editor-container .placeholder {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+        }
+
+        .status-bar {
+            background: #007acc;
+            color: white;
+            padding: 4px 12px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ec9b0;
+        }
+
+        .dot.disconnected {
+            background: #f14c4c;
+        }
+
+        .placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            color: #808080;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div class="tabs">
+        <button class="tab active" data-panel="terminal">Terminal</button>
+        <button class="tab" data-panel="editor">Editor</button>
+    </div>
+
+    <div id="terminal-panel" class="panel active">
+        <div id="terminal-container">
+            <div class="placeholder" id="terminal-placeholder">Terminal loading...</div>
+        </div>
+    </div>
+
+    <div id="editor-panel" class="panel">
+        <div id="editor-container">
+            <div class="placeholder">Editor loading...</div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-item">
+            <span class="dot" id="ws-status"></span>
+            <span id="ws-status-text">Connecting...</span>
+        </div>
+        <div class="status-item">
+            <span id="chain-status">chain.cpp</span>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+    <script>
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+                tab.classList.add('active');
+                document.getElementById(tab.dataset.panel + '-panel').classList.add('active');
+
+                // Fit terminal when switching to terminal tab
+                if (tab.dataset.panel === 'terminal' && fitAddon) {
+                    setTimeout(() => fitAddon.fit(), 0);
+                }
+                // Trigger Monaco layout when switching to editor tab
+                if (tab.dataset.panel === 'editor' && editor) {
+                    setTimeout(() => editor.layout(), 0);
+                }
+            });
+        });
+
+        // WebSocket connection
+        let ws = null;
+        let wsConnected = false;
+
+        function updateWsStatus(connected, text) {
+            wsConnected = connected;
+            const dot = document.getElementById('ws-status');
+            const statusText = document.getElementById('ws-status-text');
+            dot.className = connected ? 'dot' : 'dot disconnected';
+            statusText.textContent = text || (connected ? 'Connected' : 'Disconnected');
+        }
+
+        function connectWebSocket() {
+            ws = new WebSocket('ws://localhost:9876');
+
+            ws.onopen = () => {
+                updateWsStatus(true, 'Connected to Vivid');
+                console.log('[IDE] WebSocket connected');
+
+                // Request initial state
+                ws.send(JSON.stringify({ type: 'get_compile_status' }));
+            };
+
+            ws.onclose = () => {
+                updateWsStatus(false, 'Disconnected');
+                console.log('[IDE] WebSocket disconnected');
+                // Reconnect after 2 seconds
+                setTimeout(connectWebSocket, 2000);
+            };
+
+            ws.onerror = (err) => {
+                console.error('[IDE] WebSocket error:', err);
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    handleMessage(msg);
+                } catch (e) {
+                    console.error('[IDE] Failed to parse message:', e);
+                }
+            };
+        }
+
+        function handleMessage(msg) {
+            switch (msg.type) {
+                case 'compile_status':
+                    const status = msg.success ? 'chain.cpp' : 'chain.cpp (error)';
+                    document.getElementById('chain-status').textContent = status;
+                    break;
+                case 'pty_output':
+                    if (term) {
+                        term.write(msg.data);
+                    }
+                    break;
+                case 'file_content':
+                    if (editor && msg.path === 'chain.cpp') {
+                        editor.setValue(msg.content);
+                    }
+                    break;
+                default:
+                    console.log('[IDE] Unhandled message:', msg.type);
+            }
+        }
+
+        // Initialize terminal
+        let term = null;
+        let fitAddon = null;
+
+        function initTerminal() {
+            // Check if xterm.js loaded
+            if (typeof Terminal === 'undefined') {
+                console.log('[IDE] ERROR: xterm.js not loaded - CDN may be blocked');
+                document.getElementById('terminal-placeholder').textContent = 'Terminal failed to load (CDN blocked)';
+                return;
+            }
+            console.log('[IDE] xterm.js loaded successfully');
+
+            term = new Terminal({
+                cursorBlink: true,
+                fontSize: 13,
+                fontFamily: 'SF Mono, Monaco, Menlo, monospace',
+                theme: {
+                    background: '#1e1e1e',
+                    foreground: '#d4d4d4',
+                    cursor: '#d4d4d4',
+                    selection: 'rgba(255, 255, 255, 0.3)',
+                    black: '#1e1e1e',
+                    red: '#f14c4c',
+                    green: '#4ec9b0',
+                    yellow: '#dcdcaa',
+                    blue: '#569cd6',
+                    magenta: '#c586c0',
+                    cyan: '#9cdcfe',
+                    white: '#d4d4d4',
+                }
+            });
+
+            fitAddon = new FitAddon.FitAddon();
+            term.loadAddon(fitAddon);
+
+            // Hide placeholder before opening terminal
+            const placeholder = document.getElementById('terminal-placeholder');
+            if (placeholder) placeholder.style.display = 'none';
+
+            const container = document.getElementById('terminal-container');
+            console.log('[IDE] Terminal container size:', container.clientWidth, 'x', container.clientHeight);
+            term.open(container);
+            fitAddon.fit();
+            console.log('[IDE] Terminal fitted, rows:', term.rows, 'cols:', term.cols);
+
+            // Send input to PTY
+            term.onData(data => {
+                if (ws && wsConnected) {
+                    ws.send(JSON.stringify({ type: 'pty_input', data: data }));
+                }
+            });
+
+            // Resize handler - notify PTY of new size
+            const notifyPtyResize = () => {
+                if (ws && wsConnected && term) {
+                    ws.send(JSON.stringify({
+                        type: 'pty_resize',
+                        cols: term.cols,
+                        rows: term.rows
+                    }));
+                }
+            };
+
+            window.addEventListener('resize', () => {
+                if (fitAddon) {
+                    fitAddon.fit();
+                    notifyPtyResize();
+                }
+            });
+
+            // Send initial size when WebSocket connects
+            if (ws && wsConnected) {
+                notifyPtyResize();
+            }
+
+            // Welcome message (PTY will send actual shell prompt)
+            term.writeln('\x1b[1;36m=== Vivid IDE Terminal ===\x1b[0m');
+            term.writeln('');
+        }
+
+        // Initialize Monaco editor
+        let editor = null;
+
+        function initEditor() {
+            require.config({ paths: { vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' } });
+            require(['vs/editor/editor.main'], function () {
+                // Remove placeholder before creating editor
+                const container = document.getElementById('editor-container');
+                const placeholder = container.querySelector('.placeholder');
+                if (placeholder) placeholder.remove();
+
+                editor = monaco.editor.create(container, {
+                    value: '// Loading chain.cpp...',
+                    language: 'cpp',
+                    theme: 'vs-dark',
+                    automaticLayout: true,
+                    minimap: { enabled: false },
+                    fontSize: 13,
+                    fontFamily: 'SF Mono, Monaco, Menlo, monospace',
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'off'
+                });
+
+                // Save on Cmd+S
+                editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+                    if (ws && wsConnected) {
+                        ws.send(JSON.stringify({
+                            type: 'file_write',
+                            path: 'chain.cpp',
+                            content: editor.getValue()
+                        }));
+                        console.log('[IDE] Saving chain.cpp...');
+                    }
+                });
+
+                // Request file content
+                if (ws && wsConnected) {
+                    ws.send(JSON.stringify({ type: 'file_read', path: 'chain.cpp' }));
+                }
+            });
+        }
+
+        // Track active component for keyboard routing
+        let activeComponent = 'terminal';  // 'terminal' or 'editor'
+
+        // Expose API for native code to query/set the active component
+        window.vividIDE = {
+            getActiveComponent: () => activeComponent,
+            setActiveComponent: (component) => {
+                activeComponent = component;
+                // Focus the appropriate element
+                if (component === 'terminal' && term) {
+                    term.focus();
+                } else if (component === 'editor' && editor) {
+                    editor.focus();
+                }
+            },
+            // Get the target element for keyboard input
+            getKeyboardTarget: () => {
+                if (activeComponent === 'terminal') {
+                    return document.querySelector('.xterm-helper-textarea') || document.activeElement || document.body;
+                } else if (activeComponent === 'editor') {
+                    const monaco = document.querySelector('.monaco-editor');
+                    if (monaco) {
+                        return monaco.querySelector('textarea.inputarea') ||
+                               monaco.querySelector('textarea') ||
+                               document.activeElement || document.body;
+                    }
+                }
+                return document.activeElement || document.body;
+            },
+            // Directly insert text into the active component
+            insertText: (text) => {
+                if (activeComponent === 'terminal') {
+                    // Terminal: keyboard events already trigger xterm's onData -> pty_input
+                    // Don't send again here to avoid double input
+                    return;
+                } else if (activeComponent === 'editor' && editor) {
+                    // For Monaco, insert at cursor position
+                    const position = editor.getPosition();
+                    if (position) {
+                        editor.executeEdits('keyboard', [{
+                            range: {
+                                startLineNumber: position.lineNumber,
+                                startColumn: position.column,
+                                endLineNumber: position.lineNumber,
+                                endColumn: position.column
+                            },
+                            text: text,
+                            forceMoveMarkers: true
+                        }]);
+                        editor.setPosition({
+                            lineNumber: position.lineNumber,
+                            column: position.column + text.length
+                        });
+                    }
+                }
+            }
+        };
+
+        // Update active component when switching tabs
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                activeComponent = tab.dataset.panel;
+            });
+        });
+
+        // Click inside panels should update active component
+        document.getElementById('terminal-panel').addEventListener('mousedown', () => {
+            activeComponent = 'terminal';
+        });
+        document.getElementById('editor-panel').addEventListener('mousedown', () => {
+            activeComponent = 'editor';
+        });
+
+        // Initialize everything
+        window.addEventListener('load', () => {
+            initTerminal();
+            initEditor();
+            connectWebSocket();
+        });
+    </script>
+</body>
+</html>

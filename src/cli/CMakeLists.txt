@@ -11,6 +11,7 @@ set(VIVID_CLI_SOURCES
     module_loader.cpp
     runtime_api.cpp
     mcp_server.cpp
+    pty.cpp
 )
 
 set(VIVID_CLI_HEADERS
@@ -18,6 +19,7 @@ set(VIVID_CLI_HEADERS
     include/vivid/runtime_api.h
     include/vivid/mcp_server.h
     include/vivid/module_loader.h
+    include/vivid/pty.h
 )
 
 add_executable(vivid
@@ -84,6 +86,13 @@ target_link_libraries(vivid
 if(TARGET vivid-visualizer)
     target_link_libraries(vivid PRIVATE vivid-visualizer)
     message(STATUS "[vivid-cli] Linked with vivid-visualizer for Tab visualizer")
+endif()
+
+# Link vivid-webview for IDE panel (optional)
+if(TARGET vivid-webview)
+    target_link_libraries(vivid PRIVATE vivid-webview)
+    target_compile_definitions(vivid PRIVATE VIVID_HAS_WEBVIEW)
+    message(STATUS "[vivid-cli] Linked with vivid-webview for IDE panel")
 endif()
 
 

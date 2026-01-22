@@ -100,6 +100,9 @@ public:
     /// Stop the WebSocket server
     void stop();
 
+    /// Set asset directory for serving static files (IDE panel, etc.)
+    void setAssetDirectory(const std::string& dir);
+
     /// Check if the server is running
     bool isRunning() const { return m_running; }
 
@@ -306,6 +309,55 @@ public:
     /// Send reset_time_complete acknowledgment
     void sendResetTimeComplete();
 
+    // -------------------------------------------------------------------------
+    // File operations (IDE panel)
+    // -------------------------------------------------------------------------
+
+    /// Callback type for file read request
+    /// @param path Relative file path (e.g., "chain.cpp")
+    /// @return File content or empty string on error
+    using FileReadCallback = std::function<std::string(const std::string& path)>;
+
+    /// Callback type for file write request
+    /// @param path Relative file path (e.g., "chain.cpp")
+    /// @param content Content to write
+    /// @return true on success
+    using FileWriteCallback = std::function<bool(const std::string& path, const std::string& content)>;
+
+    /// Set callback for file read request
+    void onFileRead(FileReadCallback callback) { m_fileReadCallback = callback; }
+
+    /// Set callback for file write request
+    void onFileWrite(FileWriteCallback callback) { m_fileWriteCallback = callback; }
+
+    /// Send file content to all connected clients
+    void sendFileContent(const std::string& path, const std::string& content);
+
+    /// Send file write result to all connected clients
+    void sendFileWriteResult(const std::string& path, bool success, const std::string& error = "");
+
+    // -------------------------------------------------------------------------
+    // PTY operations (IDE panel terminal)
+    // -------------------------------------------------------------------------
+
+    /// Callback type for PTY input (data from terminal to shell)
+    /// @param data Input data to send to PTY
+    using PtyInputCallback = std::function<void(const std::string& data)>;
+
+    /// Callback type for PTY resize
+    /// @param cols Number of columns
+    /// @param rows Number of rows
+    using PtyResizeCallback = std::function<void(int cols, int rows)>;
+
+    /// Set callback for PTY input
+    void onPtyInput(PtyInputCallback callback) { m_ptyInputCallback = callback; }
+
+    /// Set callback for PTY resize
+    void onPtyResize(PtyResizeCallback callback) { m_ptyResizeCallback = callback; }
+
+    /// Send PTY output to all connected clients (data from shell to terminal)
+    void sendPtyOutput(const std::string& data);
+
     /// Send capture result back to clients
     /// @param success True if capture succeeded
     /// @param outputPath Path where the file was saved
@@ -370,6 +422,10 @@ private:
     RequestChainStructureCallback m_requestChainStructureCallback;
     RequestFrameInfoCallback m_requestFrameInfoCallback;
     ResetTimeCallback m_resetTimeCallback;
+    FileReadCallback m_fileReadCallback;
+    FileWriteCallback m_fileWriteCallback;
+    PtyInputCallback m_ptyInputCallback;
+    PtyResizeCallback m_ptyResizeCallback;
 
     // Pending changes queue (Claude-first workflow)
     std::vector<PendingChange> m_pendingChanges;

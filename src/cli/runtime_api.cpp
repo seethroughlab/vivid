@@ -7,21 +7,41 @@
 
 #include <vivid/runtime_api.h>
 #include <vivid/operator.h>
-#include <ixwebsocket/IXWebSocketServer.h>
+#include <ixwebsocket/IXHttpServer.h>
 #include <nlohmann/json.hpp>
 #include <iostream>
 #include <mutex>
 #include <chrono>
+#include <fstream>
+#include <sstream>
+#include <filesystem>
 
 using json = nlohmann::json;
 
 namespace vivid {
 
+// Helper to get MIME type from file extension
+static std::string getMimeType(const std::string& path) {
+    auto ext = std::filesystem::path(path).extension().string();
+    if (ext == ".html") return "text/html";
+    if (ext == ".css") return "text/css";
+    if (ext == ".js") return "application/javascript";
+    if (ext == ".json") return "application/json";
+    if (ext == ".png") return "image/png";
+    if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
+    if (ext == ".svg") return "image/svg+xml";
+    if (ext == ".woff") return "font/woff";
+    if (ext == ".woff2") return "font/woff2";
+    if (ext == ".ttf") return "font/ttf";
+    return "application/octet-stream";
+}
+
 class RuntimeAPI::Impl {
 public:
-    ix::WebSocketServer server;
+    ix::HttpServer server;
     std::mutex mutex;
     int port = 9876;
+    std::string assetDir;  // Directory for serving static files
 
     Impl(int p) : server(p, "0.0.0.0"), port(p) {}
 };
@@ -215,6 +235,43 @@ void RuntimeAPI::start(int port) {
                             sendResetTimeComplete();
                         }
                     }
+                    else if (type == "file_read") {
+                        std::string path = j.value("path", "");
+                        std::cout << "[RuntimeAPI] File read requested: " << path << "\n";
+                        if (m_fileReadCallback && !path.empty()) {
+                            std::string content = m_fileReadCallback(path);
+                            sendFileContent(path, content);
+                        }
+                    }
+                    else if (type == "file_write") {
+                        std::string path = j.value("path", "");
+                        std::string content = j.value("content", "");
+                        std::cout << "[RuntimeAPI] File write requested: " << path << "\n";
+                        if (m_fileWriteCallback && !path.empty()) {
+                            bool success = m_fileWriteCallback(path, content);
+                            sendFileWriteResult(path, success);
+                        }
+                    }
+                    else if (type == "get_compile_status") {
+                        // Alias for request_compile_status (used by IDE panel)
+                        std::cout << "[RuntimeAPI] Compile status requested (get_compile_status)\n";
+                        if (m_requestCompileStatusCallback) {
+                            m_requestCompileStatusCallback();
+                        }
+                    }
+                    else if (type == "pty_input") {
+                        std::string data = j.value("data", "");
+                        if (m_ptyInputCallback && !data.empty()) {
+                            m_ptyInputCallback(data);
+                        }
+                    }
+                    else if (type == "pty_resize") {
+                        int cols = j.value("cols", 80);
+                        int rows = j.value("rows", 24);
+                        if (m_ptyResizeCallback) {
+                            m_ptyResizeCallback(cols, rows);
+                        }
+                    }
                 } catch (const json::exception& e) {
                     std::cerr << "[RuntimeAPI] JSON parse error: " << e.what() << "\n";
                 }
@@ -222,6 +279,65 @@ void RuntimeAPI::start(int port) {
             else if (msg->type == ix::WebSocketMessageType::Error) {
                 std::cerr << "[RuntimeAPI] Error: " << msg->errorInfo.reason << "\n";
             }
+        }
+    );
+
+    // HTTP handler for serving static files (IDE panel)
+    m_impl->server.setOnConnectionCallback(
+        [this](ix::HttpRequestPtr request, std::shared_ptr<ix::ConnectionState> /*state*/)
+        -> ix::HttpResponsePtr {
+            // Check if this is a WebSocket upgrade request - let it through
+            auto it = request->headers.find("Upgrade");
+            if (it != request->headers.end() && it->second == "websocket") {
+                return nullptr;  // Let WebSocket handler take over
+            }
+
+            // Handle HTTP GET requests for static files
+            if (request->method == "GET") {
+                std::string uri = request->uri;
+
+                // Default to index.html for root
+                if (uri == "/" || uri == "/ide" || uri == "/ide/") {
+                    uri = "/index.html";
+                }
+
+                // Security: prevent directory traversal
+                if (uri.find("..") != std::string::npos) {
+                    return std::make_shared<ix::HttpResponse>(403, "Forbidden",
+                        ix::HttpErrorCode::Ok, ix::WebSocketHttpHeaders(), "Forbidden");
+                }
+
+                // Build file path
+                if (!m_impl->assetDir.empty()) {
+                    std::string filePath = m_impl->assetDir + uri;
+
+                    // Check if file exists
+                    if (std::filesystem::exists(filePath) && std::filesystem::is_regular_file(filePath)) {
+                        // Read file content
+                        std::ifstream file(filePath, std::ios::binary);
+                        if (file) {
+                            std::stringstream buffer;
+                            buffer << file.rdbuf();
+                            std::string content = buffer.str();
+
+                            ix::WebSocketHttpHeaders headers;
+                            headers["Content-Type"] = getMimeType(filePath);
+                            headers["Access-Control-Allow-Origin"] = "*";
+
+                            return std::make_shared<ix::HttpResponse>(200, "OK",
+                                ix::HttpErrorCode::Ok, headers, content);
+                        }
+                    }
+                }
+
+                // File not found
+                return std::make_shared<ix::HttpResponse>(404, "Not Found",
+                    ix::HttpErrorCode::Ok, ix::WebSocketHttpHeaders(), "Not Found");
+            }
+
+            // Method not allowed
+            return std::make_shared<ix::HttpResponse>(405, "Method Not Allowed",
+                ix::HttpErrorCode::Ok, ix::WebSocketHttpHeaders(), "Method Not Allowed");
         }
     );
 
@@ -242,6 +358,13 @@ void RuntimeAPI::stop() {
     m_impl->server.stop();
     m_running = false;
     std::cout << "[RuntimeAPI] Stopped\n";
+}
+
+void RuntimeAPI::setAssetDirectory(const std::string& dir) {
+    if (m_impl) {
+        m_impl->assetDir = dir;
+        std::cout << "[RuntimeAPI] Serving static files from: " << dir << "\n";
+    }
 }
 
 size_t RuntimeAPI::clientCount() const {
@@ -628,6 +751,64 @@ void RuntimeAPI::sendResetTimeComplete() {
     json j;
     j["type"] = "reset_time_complete";
     j["success"] = true;
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// File operations (IDE panel)
+// -------------------------------------------------------------------------
+
+void RuntimeAPI::sendFileContent(const std::string& path, const std::string& content) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "file_content";
+    j["path"] = path;
+    j["content"] = content;
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+void RuntimeAPI::sendFileWriteResult(const std::string& path, bool success, const std::string& error) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "file_write_result";
+    j["path"] = path;
+    j["success"] = success;
+    if (!error.empty()) {
+        j["error"] = error;
+    }
+
+    std::string msg = j.dump();
+
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+// -------------------------------------------------------------------------
+// PTY operations (IDE panel terminal)
+// -------------------------------------------------------------------------
+
+void RuntimeAPI::sendPtyOutput(const std::string& data) {
+    if (!m_running || !m_impl || data.empty()) return;
+
+    json j;
+    j["type"] = "pty_output";
+    j["data"] = data;
 
     std::string msg = j.dump();
 

@@ -10,14 +10,39 @@
 #include <vivid/effects/texture_operator.h>
 #include <vivid/webview/export.h>
 #include <vivid/operator_registry.h>
+#include <glm/glm.hpp>
 #include <string>
 #include <memory>
 #include <functional>
+#include <vector>
 
 namespace vivid::webview {
 
 // Forward declarations for platform backends
 class WebViewBackend;
+
+/**
+ * @brief Input state for WebView when Context's state has been blocked
+ *
+ * Use this to pass raw input state to WebView when the Context's mouse
+ * state has been zeroed (e.g., when visualizer is visible and blockMouseInput
+ * was called). The WebView will calculate transitions internally.
+ */
+struct RawInputState {
+    float mouseX = 0;
+    float mouseY = 0;
+    bool mouseButtons[3] = {false, false, false};  // Left, Right, Middle
+    float scrollX = 0;
+    float scrollY = 0;
+    bool shiftHeld = false;
+    bool ctrlHeld = false;
+    bool altHeld = false;
+    bool superHeld = false;
+    // Keyboard state (from GLFW key codes)
+    bool keyDown[512] = {};
+    // Character input for text entry
+    std::vector<uint32_t> characterInput;
+};
 
 /**
  * @brief WebView operator for rendering web content to texture.
@@ -98,6 +123,16 @@ public:
      * @param enabled If true, Vivid forwards input events to webview
      */
     void setInputEnabled(bool enabled);
+
+    /**
+     * @brief Set input offset for positioned WebViews
+     * @param x X offset from window origin to WebView top-left
+     * @param y Y offset from window origin to WebView top-left
+     *
+     * When the WebView is rendered at a position other than (0,0),
+     * set this offset so mouse coordinates are properly translated.
+     */
+    void setInputOffset(int x, int y);
 
     /**
      * @brief Set frame rate limit for webview rendering
@@ -192,6 +227,14 @@ public:
     void cleanup() override;
     std::string name() const override { return "WebView"; }
 
+    /**
+     * @brief Process with raw input state (bypasses Context's mouse state)
+     *
+     * Use this when Context's mouse state has been blocked (e.g., when
+     * visualizer is visible). Pass input read directly from GLFW.
+     */
+    void processWithRawInput(Context& ctx, const RawInputState& input);
+
     // Override to return texture from backend
     WGPUTextureView outputView() const override { return m_activeView; }
     WGPUTexture outputTexture() const override { return m_activeTexture; }
@@ -233,6 +276,8 @@ private:
     float m_zoom = 1.0f;
     bool m_inputEnabled = true;
     int m_frameRate = 0;  // 0 = match Vivid
+    int m_inputOffsetX = 0;  // Offset from window origin to WebView position
+    int m_inputOffsetY = 0;
 
     // State
     bool m_needsReload = false;
@@ -253,6 +298,11 @@ private:
 
     // JavaScript callbacks
     std::unordered_map<std::string, std::function<void(const std::string&)>> m_jsCallbacks;
+
+    // Tracking for raw input state (to calculate transitions)
+    bool m_prevMouseButtons[3] = {false, false, false};
+    bool m_prevKeyDown[512] = {};
+    glm::vec2 m_prevMousePos = {0, 0};
 
     // Global focus tracking - only one WebView can have keyboard focus
     static WebView* s_focusedWebView;

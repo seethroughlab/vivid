@@ -711,6 +711,66 @@ void Display::blit(WGPURenderPassEncoder pass, WGPUTextureView texture) {
     wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
 }
 
+void Display::blitAtPosition(WGPURenderPassEncoder pass, WGPUTextureView texture,
+                             int texWidth, int texHeight,
+                             int screenX, int screenY) {
+    if (!m_blitPipeline || !texture) {
+        return;
+    }
+
+    // Create a temporary bind group for this blit (don't cache, since we may have multiple)
+    WGPUBindGroupEntry entries[3] = {};
+    entries[0].binding = 0;
+    entries[0].sampler = m_sampler;
+    entries[1].binding = 1;
+    entries[1].textureView = texture;
+    entries[2].binding = 2;
+    entries[2].buffer = m_blitUniformBuffer;
+    entries[2].offset = 0;
+    entries[2].size = 32;
+
+    WGPUBindGroupDescriptor bindGroupDesc = {};
+    bindGroupDesc.label = toStringView("Blit Position Bind Group");
+    bindGroupDesc.layout = m_blitBindGroupLayout;
+    bindGroupDesc.entryCount = 3;
+    bindGroupDesc.entries = entries;
+
+    WGPUBindGroup bindGroup = wgpuDeviceCreateBindGroup(m_device, &bindGroupDesc);
+    if (!bindGroup) {
+        return;
+    }
+
+    // Update uniform buffer - use Stretch mode (0) for direct 1:1 mapping
+    struct BlitUniforms {
+        float screenWidth;
+        float screenHeight;
+        float textureWidth;
+        float textureHeight;
+        uint32_t displayMode;
+        float padding[3];
+    } uniforms = {
+        (float)texWidth,
+        (float)texHeight,
+        (float)texWidth,
+        (float)texHeight,
+        0,  // DisplayMode::Stretch
+        {0.0f, 0.0f, 0.0f}
+    };
+    wgpuQueueWriteBuffer(m_queue, m_blitUniformBuffer, 0, &uniforms, sizeof(uniforms));
+
+    // Set viewport to the desired screen region
+    wgpuRenderPassEncoderSetViewport(pass, (float)screenX, (float)screenY,
+                                     (float)texWidth, (float)texHeight, 0, 1);
+    wgpuRenderPassEncoderSetScissorRect(pass, screenX, screenY, texWidth, texHeight);
+
+    wgpuRenderPassEncoderSetPipeline(pass, m_blitPipeline);
+    wgpuRenderPassEncoderSetBindGroup(pass, 0, bindGroup, 0, nullptr);
+    wgpuRenderPassEncoderDraw(pass, 3, 1, 0, 0);
+
+    // Release the temporary bind group
+    wgpuBindGroupRelease(bindGroup);
+}
+
 void Display::setDisplayMode(DisplayMode mode) {
     m_displayMode = mode;
 }

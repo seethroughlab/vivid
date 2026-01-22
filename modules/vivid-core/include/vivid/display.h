@@ -26,8 +26,13 @@ public:
     Display(const Display&) = delete;
     Display& operator=(const Display&) = delete;
 
-    // Blit a texture to the render target
+    // Blit a texture to the render target (fills screen)
     void blit(WGPURenderPassEncoder pass, WGPUTextureView texture);
+
+    // Blit a texture at a specific screen position and size
+    void blitAtPosition(WGPURenderPassEncoder pass, WGPUTextureView texture,
+                        int texWidth, int texHeight,
+                        int screenX, int screenY);
 
     // Render text (for error messages)
     void renderText(WGPURenderPassEncoder pass, const std::string& text,

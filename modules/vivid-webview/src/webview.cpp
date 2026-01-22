@@ -12,6 +12,7 @@
 #include <vivid/operator_registry.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
+#include <cstring>
 
 // Helper to create WGPUStringView from C string
 inline WGPUStringView toStringView(const char* str) {
@@ -119,6 +120,144 @@ void WebView::process(Context& ctx) {
     }
 }
 
+void WebView::processWithRawInput(Context& ctx, const RawInputState& input) {
+    if (!m_backend) {
+        return;
+    }
+
+    // Handle size changes
+    if (m_sizeChanged) {
+        m_backend->resize(m_width, m_height);
+        m_sizeChanged = false;
+    }
+
+    // Handle URL reload
+    if (m_needsReload) {
+        if (!m_pendingHtml.empty()) {
+            m_backend->loadHtml(m_pendingHtml, m_pendingBaseUrl);
+            m_pendingHtml.clear();
+            m_pendingBaseUrl.clear();
+        } else if (!m_url.empty()) {
+            m_backend->loadUrl(m_url);
+        }
+        m_needsReload = false;
+    }
+
+    // Handle input if enabled
+    if (m_inputEnabled) {
+        // Build modifiers
+        KeyModifiers mods;
+        mods.shift = input.shiftHeld;
+        mods.ctrl = input.ctrlHeld;
+        mods.alt = input.altHeld;
+        mods.meta = input.superHeld;
+
+        // Apply input offset for positioned WebViews
+        float webX = input.mouseX - m_inputOffsetX;
+        float webY = input.mouseY - m_inputOffsetY;
+
+        // Check if mouse is within WebView bounds
+        bool mouseInBounds = webX >= 0 && webY >= 0 &&
+                             webX < m_width && webY < m_height;
+
+        // Calculate mouse button transitions
+        bool pressed[3], released[3], held[3];
+        for (int i = 0; i < 3; ++i) {
+            held[i] = input.mouseButtons[i];
+            pressed[i] = input.mouseButtons[i] && !m_prevMouseButtons[i];
+            released[i] = !input.mouseButtons[i] && m_prevMouseButtons[i];
+        }
+
+        // Track which button is held for drag operations
+        MouseButton heldButton = MouseButton::Left;
+        bool anyButtonHeld = false;
+        for (int i = 0; i < 3; ++i) {
+            if (held[i]) {
+                heldButton = static_cast<MouseButton>(i);
+                anyButtonHeld = true;
+                break;
+            }
+        }
+
+        if (mouseInBounds || anyButtonHeld) {
+            // Mouse move - send when mouse moves
+            glm::vec2 currentPos(input.mouseX, input.mouseY);
+            if (currentPos != m_prevMousePos) {
+                m_backend->sendMouseEvent(MouseEventType::Move, webX, webY,
+                                          heldButton, 0, 0, mods);
+            }
+
+            // Mouse buttons
+            for (int i = 0; i < 3; ++i) {
+                MouseButton button = static_cast<MouseButton>(i);
+
+                if (pressed[i]) {
+                    // Request focus when clicked inside the webview
+                    if (mouseInBounds) {
+                        requestFocus();
+                    }
+                    m_backend->sendMouseEvent(MouseEventType::Down, webX, webY,
+                                              button, 0, 0, mods);
+                }
+                if (released[i]) {
+                    m_backend->sendMouseEvent(MouseEventType::Up, webX, webY,
+                                              button, 0, 0, mods);
+                }
+            }
+
+            // Scroll
+            if (input.scrollX != 0 || input.scrollY != 0) {
+                m_backend->sendMouseEvent(MouseEventType::Scroll, webX, webY,
+                                          MouseButton::Left, input.scrollX, input.scrollY, mods);
+            }
+        }
+
+        // Only forward keyboard events if this WebView has focus
+        if (hasFocus()) {
+            // Key events - calculate transitions from raw state
+            for (int key = GLFW_KEY_SPACE; key <= GLFW_KEY_LAST; ++key) {
+                bool keyHeld = input.keyDown[key];
+                bool keyPressed = keyHeld && !m_prevKeyDown[key];
+                bool keyReleased = !keyHeld && m_prevKeyDown[key];
+
+                if (keyPressed) {
+                    m_backend->sendKeyEvent(KeyEventType::Down, key, key, 0, mods);
+                }
+                if (keyReleased) {
+                    m_backend->sendKeyEvent(KeyEventType::Up, key, key, 0, mods);
+                }
+            }
+
+            // Character input
+            for (uint32_t codepoint : input.characterInput) {
+                m_backend->sendKeyEvent(KeyEventType::Char, 0, 0, codepoint, mods);
+            }
+        }
+
+        // Update previous state for next frame
+        for (int i = 0; i < 3; ++i) {
+            m_prevMouseButtons[i] = input.mouseButtons[i];
+        }
+        m_prevMousePos = glm::vec2(input.mouseX, input.mouseY);
+        std::memcpy(m_prevKeyDown, input.keyDown, sizeof(m_prevKeyDown));
+    }
+
+    // Update backend and capture frame
+    bool gotNewFrame = m_backend->update(ctx);
+
+    // Update active texture
+    m_activeTexture = m_backend->texture();
+    m_activeView = m_backend->textureView();
+
+    // Update state
+    m_currentUrl = m_backend->currentUrl();
+    m_pageTitle = m_backend->pageTitle();
+
+    if (gotNewFrame) {
+        didCook();
+    }
+}
+
 void WebView::cleanup() {
     // Release focus if we had it
     releaseFocus();
@@ -178,11 +317,20 @@ void WebView::handleInputEvents(Context& ctx) {
     // Get mouse position in window logical coordinates
     // Backend will scale to CSS pixels based on backing scale factor
     glm::vec2 mousePos = ctx.mouse();
-    float webX = mousePos.x;
-    float webY = mousePos.y;
+    // Apply input offset (for positioned WebViews like IDE panel)
+    float webX = mousePos.x - m_inputOffsetX;
+    float webY = mousePos.y - m_inputOffsetY;
 
-    // Check if mouse is within window bounds
-    bool mouseInBounds = webX >= 0 && webY >= 0;
+    // Check if mouse is within WebView bounds
+    bool mouseInBounds = webX >= 0 && webY >= 0 &&
+                         webX < m_width && webY < m_height;
+
+    // Debug: log click events
+    if (ctx.mouseButton(0).pressed) {
+        std::cout << "[WebView] Click at window(" << mousePos.x << "," << mousePos.y
+                  << ") -> webview(" << webX << "," << webY << ") inBounds=" << mouseInBounds
+                  << " offset=(" << m_inputOffsetX << "," << m_inputOffsetY << ")" << std::endl;
+    }
 
     // Track which mouse button is currently held for drag operations
     MouseButton heldButton = MouseButton::Left;
@@ -356,6 +504,11 @@ void WebView::setZoom(float zoom) {
 
 void WebView::setInputEnabled(bool enabled) {
     m_inputEnabled = enabled;
+}
+
+void WebView::setInputOffset(int x, int y) {
+    m_inputOffsetX = x;
+    m_inputOffsetY = y;
 }
 
 void WebView::setFrameRate(int fps) {

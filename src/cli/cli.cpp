@@ -1540,7 +1540,7 @@ ParseResult parseArgs(int argc, char** argv) {
        ->type_name("CODEC");
     app.add_option("--frames", maxFrames, "Exit after N frames")
        ->check(CLI::Range(1, 10000000));
-    app.add_flag("--show-ui", showUI, "Show chain visualizer UI");
+    app.add_flag("--show-ui", showUI, "Show chain visualizer and IDE panel");
 
     // === Subcommands ===
 

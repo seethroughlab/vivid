@@ -138,30 +138,50 @@ struct VividContextInternal {
     // Re-entrancy guard for rendering
     bool isRendering = false;
 
-    ~VividContextInternal() {
-        // Clean up visualizer first
-        if (visualizer) {
-            visualizer->shutdown();
-            visualizer.reset();
+    // IOSurface sharing state (macOS only)
+#ifdef __APPLE__
+    void* iosurfaceSharingState = nullptr;  // Opaque pointer to IOSurfaceSharingState
+#endif
+
+    ~VividContextInternal();
+};
+
+// Forward declaration for IOSurface cleanup (defined in vivid_c_iosurface.mm)
+#ifdef __APPLE__
+extern "C" void vivid_iosurface_destroy_state(void* state);
+#endif
+
+VividContextInternal::~VividContextInternal() {
+    // Clean up visualizer first
+    if (visualizer) {
+        visualizer->shutdown();
+        visualizer.reset();
+    }
+
+#ifdef __APPLE__
+    // Clean up IOSurface sharing state
+    if (iosurfaceSharingState) {
+        vivid_iosurface_destroy_state(iosurfaceSharingState);
+        iosurfaceSharingState = nullptr;
+    }
+#endif
+
+    delete context;
+
+    // Clean up GPU resources if we own them
+    if (ownsGpuResources) {
+        if (surface) {
+            wgpuSurfaceUnconfigure(surface);
+            wgpuSurfaceRelease(surface);
         }
-
-        delete context;
-
-        // Clean up GPU resources if we own them
-        if (ownsGpuResources) {
-            if (surface) {
-                wgpuSurfaceUnconfigure(surface);
-                wgpuSurfaceRelease(surface);
-            }
-            if (adapter) {
-                wgpuAdapterRelease(adapter);
-            }
-            if (instance) {
-                wgpuInstanceRelease(instance);
-            }
+        if (adapter) {
+            wgpuAdapterRelease(adapter);
+        }
+        if (instance) {
+            wgpuInstanceRelease(instance);
         }
     }
-};
+}
 
 static VividContextInternal* toInternal(VividContext* ctx) {
     return reinterpret_cast<VividContextInternal*>(ctx);
@@ -1063,6 +1083,20 @@ VIVID_C_API VividWGPUTexture vivid_context_get_output_texture(VividContext* ctx)
     return internal->context->chain().outputTexture();
 }
 
+VIVID_C_API VividWGPUDevice vivid_context_get_device(VividContext* ctx) {
+    if (!ctx) return nullptr;
+    auto* internal = toInternal(ctx);
+    if (!internal->context) return nullptr;
+    return internal->context->device();
+}
+
+VIVID_C_API VividWGPUQueue vivid_context_get_queue(VividContext* ctx) {
+    if (!ctx) return nullptr;
+    auto* internal = toInternal(ctx);
+    if (!internal->context) return nullptr;
+    return internal->context->queue();
+}
+
 // =============================================================================
 // Operator Iteration
 // =============================================================================
@@ -1083,6 +1117,18 @@ VIVID_C_API VividOperator* vivid_chain_get_operator_by_index(VividChain* chain, 
 VIVID_C_API VividOperator* vivid_chain_get_operator_by_name(VividChain* chain, const char* name) {
     if (!chain || !name) return nullptr;
     return fromOperator(toChain(chain)->getByName(name));
+}
+
+// Thread-local storage for chain operator name
+static thread_local std::string s_chainOperatorName;
+
+VIVID_C_API const char* vivid_chain_get_operator_name_by_index(VividChain* chain, int index) {
+    if (!chain || index < 0) return "";
+    auto* c = toChain(chain);
+    const auto& names = c->operatorNames();
+    if (index >= static_cast<int>(names.size())) return "";
+    s_chainOperatorName = names[index];
+    return s_chainOperatorName.c_str();
 }
 
 VIVID_C_API VividOperator* vivid_chain_get_output_operator(VividChain* chain) {
@@ -1368,3 +1414,145 @@ VIVID_C_API const char* vivid_get_version(void) {
 VIVID_C_API int vivid_get_api_version(void) {
     return VIVID_API_VERSION;  // From vivid_c.h
 }
+
+// =============================================================================
+// IOSurface Sharing (macOS only)
+// =============================================================================
+
+#ifdef __APPLE__
+
+// Forward declarations of macOS-specific implementation (vivid_c_iosurface.mm)
+extern "C" {
+    bool vivid_iosurface_supported();
+    void* vivid_iosurface_create_state();
+    void vivid_iosurface_destroy_state(void* state);
+    VividResult vivid_iosurface_get_surface(
+        void* state,
+        WGPUDevice device,
+        WGPUQueue queue,
+        WGPUTexture outputTexture,
+        void** outIOSurface,
+        int* outWidth,
+        int* outHeight
+    );
+    VividResult vivid_iosurface_update(
+        void* state,
+        WGPUDevice device,
+        WGPUQueue queue,
+        WGPUTexture outputTexture
+    );
+    VividResult vivid_iosurface_update_from_texture(
+        void* state,
+        VividWGPUDevice device,
+        VividWGPUQueue queue,
+        VividWGPUTexture texture,
+        void** out_iosurface,
+        int* out_width,
+        int* out_height
+    );
+    bool vivid_iosurface_is_available(void* state);
+    void vivid_iosurface_get_dimensions(void* state, int* outWidth, int* outHeight);
+}
+
+VIVID_C_API VividResult vivid_context_get_output_iosurface(
+    VividContext* ctx,
+    void** out_iosurface,
+    int* out_width,
+    int* out_height
+) {
+    if (!ctx || !out_iosurface || !out_width || !out_height) {
+        setError("Invalid argument");
+        return VIVID_ERROR_INVALID_ARGUMENT;
+    }
+
+    auto* internal = toInternal(ctx);
+
+    if (!internal->hasProject || !internal->context->hasChain()) {
+        setError("No project loaded");
+        return VIVID_ERROR_NO_CHAIN;
+    }
+
+    // Get output texture
+    WGPUTexture outputTex = internal->context->chain().outputTexture();
+    if (!outputTex) {
+        setError("No output texture");
+        return VIVID_ERROR_NO_CHAIN;
+    }
+
+    // Create IOSurface sharing state if needed
+    if (!internal->iosurfaceSharingState) {
+        internal->iosurfaceSharingState = vivid_iosurface_create_state();
+        if (!internal->iosurfaceSharingState) {
+            setError("Failed to create IOSurface sharing state");
+            return VIVID_ERROR_INTERNAL;
+        }
+    }
+
+    // Get the IOSurface (creates/updates it as needed)
+    VividResult result = vivid_iosurface_get_surface(
+        internal->iosurfaceSharingState,
+        internal->context->device(),
+        internal->context->queue(),
+        outputTex,
+        out_iosurface,
+        out_width,
+        out_height
+    );
+
+    if (result != VIVID_OK) {
+        setError("Failed to get IOSurface");
+    }
+
+    return result;
+}
+
+#else
+
+// Non-macOS platforms
+VIVID_C_API VividResult vivid_context_get_output_iosurface(
+    VividContext* ctx,
+    void** out_iosurface,
+    int* out_width,
+    int* out_height
+) {
+    (void)ctx;
+    (void)out_iosurface;
+    (void)out_width;
+    (void)out_height;
+    setError("IOSurface sharing is only supported on macOS");
+    return VIVID_ERROR_NOT_SUPPORTED;
+}
+
+VIVID_C_API bool vivid_iosurface_supported(void) {
+    return false;
+}
+
+VIVID_C_API void* vivid_iosurface_create_state(void) {
+    return nullptr;
+}
+
+VIVID_C_API void vivid_iosurface_destroy_state(void* state) {
+    (void)state;
+}
+
+VIVID_C_API VividResult vivid_iosurface_update_from_texture(
+    void* state,
+    VividWGPUDevice device,
+    VividWGPUQueue queue,
+    VividWGPUTexture texture,
+    void** out_iosurface,
+    int* out_width,
+    int* out_height
+) {
+    (void)state;
+    (void)device;
+    (void)queue;
+    (void)texture;
+    (void)out_iosurface;
+    (void)out_width;
+    (void)out_height;
+    setError("IOSurface sharing is only supported on macOS");
+    return VIVID_ERROR_NOT_SUPPORTED;
+}
+
+#endif // __APPLE__

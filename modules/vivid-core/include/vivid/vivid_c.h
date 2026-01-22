@@ -138,6 +138,7 @@ typedef enum VividResult {
     VIVID_ERROR_NO_CHAIN = 5,           /**< No chain loaded */
     VIVID_ERROR_OPERATOR_NOT_FOUND = 6, /**< Operator not found */
     VIVID_ERROR_PARAM_NOT_FOUND = 7,    /**< Parameter not found */
+    VIVID_ERROR_NOT_SUPPORTED = 8,      /**< Operation not supported on this platform */
     VIVID_ERROR_INTERNAL = 99           /**< Internal error */
 } VividResult;
 
@@ -550,6 +551,92 @@ VIVID_C_API VividWGPUTextureView vivid_context_get_output_view(VividContext* ctx
  */
 VIVID_C_API VividWGPUTexture vivid_context_get_output_texture(VividContext* ctx);
 
+/**
+ * @brief Get the WebGPU device
+ * @param ctx Context handle
+ * @return WGPUDevice handle, or NULL if context not initialized
+ */
+VIVID_C_API VividWGPUDevice vivid_context_get_device(VividContext* ctx);
+
+/**
+ * @brief Get the WebGPU queue
+ * @param ctx Context handle
+ * @return WGPUQueue handle, or NULL if context not initialized
+ */
+VIVID_C_API VividWGPUQueue vivid_context_get_queue(VividContext* ctx);
+
+/* ============================================================================
+ * IOSurface Sharing (macOS only)
+ * ============================================================================ */
+
+/**
+ * @brief Create an IOSurface-backed texture for the chain output
+ * @param ctx Context handle
+ * @param out_iosurface Output IOSurfaceRef (caller does NOT own, valid until context destroyed)
+ * @param out_width Output texture width
+ * @param out_height Output texture height
+ * @return VIVID_OK on success, VIVID_ERROR_NOT_SUPPORTED on non-macOS platforms
+ *
+ * Creates or returns existing IOSurface-backed texture that receives chain output.
+ * Call this once to set up sharing, then the IOSurface updates automatically each frame.
+ * The IOSurface can be used to create a Metal texture in another context for zero-copy
+ * GPU texture sharing.
+ *
+ * macOS only - returns VIVID_ERROR_NOT_SUPPORTED on other platforms.
+ */
+VIVID_C_API VividResult vivid_context_get_output_iosurface(
+    VividContext* ctx,
+    void** out_iosurface,
+    int* out_width,
+    int* out_height
+);
+
+/**
+ * @brief Check if IOSurface sharing is supported on this platform
+ * @return true on macOS, false on other platforms
+ */
+VIVID_C_API bool vivid_iosurface_supported(void);
+
+/**
+ * @brief Create an IOSurface sharing state
+ * @return Opaque state handle, or NULL on failure
+ *
+ * Use this to create IOSurface sharing for individual operators.
+ * Each state manages its own IOSurface and Metal resources.
+ * Call vivid_iosurface_destroy_state when done.
+ */
+VIVID_C_API void* vivid_iosurface_create_state(void);
+
+/**
+ * @brief Destroy an IOSurface sharing state
+ * @param state State handle from vivid_iosurface_create_state
+ */
+VIVID_C_API void vivid_iosurface_destroy_state(void* state);
+
+/**
+ * @brief Update an IOSurface from a texture
+ * @param state IOSurface state handle
+ * @param device WebGPU device
+ * @param queue WebGPU queue
+ * @param texture Source texture to copy to IOSurface
+ * @param out_iosurface Output IOSurface ref (valid until next call or destroy)
+ * @param out_width Output texture width
+ * @param out_height Output texture height
+ * @return VIVID_OK on success
+ *
+ * Copies the texture data to the IOSurface. The IOSurface is created
+ * or resized as needed to match the texture dimensions.
+ */
+VIVID_C_API VividResult vivid_iosurface_update_from_texture(
+    void* state,
+    VividWGPUDevice device,
+    VividWGPUQueue queue,
+    VividWGPUTexture texture,
+    void** out_iosurface,
+    int* out_width,
+    int* out_height
+);
+
 /* ============================================================================
  * Operator Iteration
  * ============================================================================ */
@@ -576,6 +663,15 @@ VIVID_C_API VividOperator* vivid_chain_get_operator_by_index(VividChain* chain, 
  * @return Operator handle, or NULL if not found
  */
 VIVID_C_API VividOperator* vivid_chain_get_operator_by_name(VividChain* chain, const char* name);
+
+/**
+ * @brief Get operator instance name by index
+ * @param chain Chain handle
+ * @param index Operator index (0-based)
+ * @return Operator instance name, or empty string if index out of bounds
+ * @note Returns the instance name (e.g., "noise") not the type name (e.g., "Noise")
+ */
+VIVID_C_API const char* vivid_chain_get_operator_name_by_index(VividChain* chain, int index);
 
 /**
  * @brief Get the output operator (final output of the chain)

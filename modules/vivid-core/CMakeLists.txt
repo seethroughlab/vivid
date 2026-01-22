@@ -267,7 +267,10 @@ set(VIVID_C_SOURCES
 
 # Platform-specific vivid-c sources
 if(APPLE)
-    list(APPEND VIVID_C_SOURCES src/vivid_c_window.mm)
+    list(APPEND VIVID_C_SOURCES
+        src/vivid_c_window.mm
+        src/vivid_c_iosurface.mm
+    )
 endif()
 
 add_library(vivid-c SHARED
@@ -299,6 +302,13 @@ if(APPLE)
     set_target_properties(vivid-c PROPERTIES
         INSTALL_RPATH "@executable_path;@loader_path"
         BUILD_WITH_INSTALL_RPATH TRUE
+    )
+    # Link against required frameworks for IOSurface sharing
+    target_link_libraries(vivid-c PRIVATE
+        "-framework Cocoa"
+        "-framework QuartzCore"
+        "-framework Metal"
+        "-framework IOSurface"
     )
 elseif(WIN32)
     # Export all symbols to generate import library (.lib)

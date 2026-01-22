@@ -39,6 +39,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <regex>
 #include <functional>
 #include <mutex>
@@ -64,6 +65,12 @@
 
 // Platform-specific helpers (autoreleasepool for macOS)
 #include <vivid/platform_macos.h>
+
+// WebView support for IDE panel (optional)
+#ifdef VIVID_HAS_WEBVIEW
+#include <vivid/webview/webview.h>
+#include <vivid/pty.h>
+#endif
 
 // -----------------------------------------------------------------------------
 // Dynamic ImGui Support (vivid-gui module)
@@ -635,6 +642,21 @@ struct MainLoopContext {
     // Visualizer state (dynamically loaded module)
     bool visualizerAvailable = false;
 
+    // IDE WebView panel (part of the UI, enabled with --show-ui)
+#ifdef VIVID_HAS_WEBVIEW
+    std::unique_ptr<vivid::webview::WebView> ideWebView;
+    bool idePanelVisible = false;
+    bool idePanelInitialized = false;
+    glm::vec4 idePanelBounds = {0, 0, 400, 600};  // x, y, w, h
+    bool idePanelHovered = false;
+    // Dragging state
+    bool idePanelDragging = false;
+    glm::vec2 ideDragOffset = {0, 0};  // Offset from panel corner to mouse position
+    // PTY for terminal
+    std::unique_ptr<vivid::PTY> idePty;
+    bool idePtyStarted = false;
+#endif
+
     // CLI args needed in loop
     std::string snapshotPath;
     std::set<int> snapshotFrames;  // All frames to capture
@@ -706,13 +728,17 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
     }
 
-    // Toggle chain visualizer on Tab key (only if visualizer module is loaded)
+    // Toggle chain visualizer and IDE panel on Tab key (only if visualizer module is loaded)
     // Note: Tab won't work when ImGui widgets have keyboard focus (click outside first)
     // Production bundles without vivid-visualizer will not have this feature
     {
         bool tabKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_TAB) == GLFW_PRESS;
         if (tabKeyPressed && !mlc.tabKeyWasPressed && mlc.visualizerAvailable) {
             mlc.visualizerVisible = !mlc.visualizerVisible;
+#ifdef VIVID_HAS_WEBVIEW
+            // IDE panel visibility follows visualizer
+            mlc.idePanelVisible = mlc.visualizerVisible;
+#endif
         }
         mlc.tabKeyWasPressed = tabKeyPressed;
     }
@@ -1247,6 +1273,25 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     // Render ImGui if vivid-gui is loaded (user chain UI)
     imgui_dynamic::tryRender(pass);
 
+    // Check IDE panel hover state BEFORE visualizer render (to block input if needed)
+#ifdef VIVID_HAS_WEBVIEW
+    bool idePanelConsumedInput = false;
+    if (mlc.idePanelInitialized && mlc.idePanelVisible && mlc.ideWebView) {
+        glm::vec2 mousePos = frameInput.mousePos;
+
+        // Check if mouse is over the whole panel
+        mlc.idePanelHovered = mousePos.x >= mlc.idePanelBounds.x &&
+                             mousePos.x <= mlc.idePanelBounds.x + mlc.idePanelBounds.z &&
+                             mousePos.y >= mlc.idePanelBounds.y &&
+                             mousePos.y <= mlc.idePanelBounds.y + mlc.idePanelBounds.w;
+
+        // Block input to visualizer if IDE panel is hovered or being dragged
+        if (mlc.idePanelHovered || mlc.idePanelDragging) {
+            idePanelConsumedInput = true;
+        }
+    }
+#endif
+
     // Render NodeGraph overlay (uses OverlayCanvas, no ImGui dependency)
     if (mlc.visualizerVisible && mlc.visualizerAvailable) {
         static bool firstRender = true;
@@ -1258,8 +1303,116 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         if (mlc.editorBridge) {
             visualizer_dynamic::trySetPendingCount(mlc.editorBridge->pendingChangeCount());
         }
+
+        // Block mouse input to visualizer if IDE panel consumed it
+#ifdef VIVID_HAS_WEBVIEW
+        if (idePanelConsumedInput) {
+            vivid::FrameInput blockedInput = frameInput;
+            blockedInput.mouseDown[0] = false;
+            blockedInput.mouseDown[1] = false;
+            blockedInput.mouseDown[2] = false;
+            visualizer_dynamic::tryRender(pass, &blockedInput, mlc.ctx);
+        } else {
+            visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
+        }
+#else
         visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
+#endif
     }
+
+#ifdef VIVID_HAS_WEBVIEW
+    // Update IDE WebView panel (if initialized and visible)
+    if (mlc.idePanelInitialized && mlc.idePanelVisible && mlc.ideWebView) {
+        // Handle dragging
+        const float titleBarHeight = 37.0f;  // Height of the tab bar
+        glm::vec2 mousePos = frameInput.mousePos;
+        bool leftMouseDown = frameInput.mouseDown[0];
+
+        // Check if mouse is over title bar
+        bool overTitleBar = mousePos.x >= mlc.idePanelBounds.x &&
+                           mousePos.x <= mlc.idePanelBounds.x + mlc.idePanelBounds.z &&
+                           mousePos.y >= mlc.idePanelBounds.y &&
+                           mousePos.y <= mlc.idePanelBounds.y + titleBarHeight;
+
+        // Start dragging if clicking on title bar
+        if (overTitleBar && leftMouseDown && !mlc.idePanelDragging) {
+            mlc.idePanelDragging = true;
+            mlc.ideDragOffset = mousePos - glm::vec2(mlc.idePanelBounds.x, mlc.idePanelBounds.y);
+        }
+
+        // Update position while dragging
+        if (mlc.idePanelDragging) {
+            if (leftMouseDown) {
+                mlc.idePanelBounds.x = mousePos.x - mlc.ideDragOffset.x;
+                mlc.idePanelBounds.y = mousePos.y - mlc.ideDragOffset.y;
+
+                // Clamp to logical window bounds (idePanelBounds is in logical coords)
+                float logicalWidth = mlc.windowWidth / frameInput.contentScale;
+                float logicalHeight = mlc.windowHeight / frameInput.contentScale;
+                mlc.idePanelBounds.x = std::max(0.0f, std::min(mlc.idePanelBounds.x,
+                    logicalWidth - mlc.idePanelBounds.z));
+                mlc.idePanelBounds.y = std::max(0.0f, std::min(mlc.idePanelBounds.y,
+                    logicalHeight - mlc.idePanelBounds.w));
+            } else {
+                // Stop dragging when mouse released
+                mlc.idePanelDragging = false;
+            }
+        }
+
+        // Set input offset so mouse coordinates are properly translated
+        mlc.ideWebView->setInputOffset((int)mlc.idePanelBounds.x, (int)mlc.idePanelBounds.y);
+
+        // Build RawInputState from GLFW state (bypasses Context's blocked mouse state)
+        vivid::webview::RawInputState rawInput;
+        rawInput.mouseX = frameInput.mousePos.x;
+        rawInput.mouseY = frameInput.mousePos.y;
+        rawInput.mouseButtons[0] = frameInput.mouseDown[0];
+        rawInput.mouseButtons[1] = frameInput.mouseDown[1];
+        rawInput.mouseButtons[2] = frameInput.mouseDown[2];
+        rawInput.scrollX = g_savedScrollForVisualizer.x;
+        rawInput.scrollY = g_savedScrollForVisualizer.y;
+        rawInput.shiftHeld = frameInput.keyShift;
+        rawInput.ctrlHeld = frameInput.keyCtrl;
+        rawInput.altHeld = frameInput.keyAlt;
+        rawInput.superHeld = frameInput.keySuper;
+        // Copy key states from GLFW (frameInput.keyPressed is one-shot, we need held state)
+        for (int k = 0; k < 512; ++k) {
+            rawInput.keyDown[k] = glfwGetKey(mlc.window, k) == GLFW_PRESS;
+        }
+        // Get character input from Context (still valid after blockMouseInput)
+        rawInput.characterInput = mlc.ctx->characterInput();
+
+        // Process WebView with raw input (bypasses Context's blocked mouse state)
+        mlc.ideWebView->processWithRawInput(*mlc.ctx, rawInput);
+
+        // Clamp panel position to current window bounds (handle window resize)
+        float logicalWidth = mlc.windowWidth / frameInput.contentScale;
+        float logicalHeight = mlc.windowHeight / frameInput.contentScale;
+        mlc.idePanelBounds.x = std::max(0.0f, std::min(mlc.idePanelBounds.x,
+            logicalWidth - mlc.idePanelBounds.z));
+        mlc.idePanelBounds.y = std::max(0.0f, std::min(mlc.idePanelBounds.y,
+            logicalHeight - mlc.idePanelBounds.w));
+
+        // Render WebView texture as an overlay
+        // idePanelBounds is in logical coordinates (for input handling)
+        // blitAtPosition expects framebuffer coordinates, so multiply by content scale
+        WGPUTextureView webviewTexture = mlc.ideWebView->outputView();
+        if (webviewTexture && mlc.display) {
+            float scale = frameInput.contentScale;
+            mlc.display->blitAtPosition(pass, webviewTexture,
+                (int)(mlc.idePanelBounds.z * scale), (int)(mlc.idePanelBounds.w * scale),
+                (int)(mlc.idePanelBounds.x * scale), (int)(mlc.idePanelBounds.y * scale));
+        }
+
+        // Read PTY output and send to terminal
+        if (mlc.idePty && mlc.idePtyStarted && mlc.editorBridge) {
+            std::string ptyOutput = mlc.idePty->read();
+            if (!ptyOutput.empty()) {
+                mlc.editorBridge->sendPtyOutput(ptyOutput);
+            }
+        }
+    }
+#endif
 
     // Render error message if present
     if (mlc.ctx->hasError() && mlc.display->isValid()) {
@@ -1710,6 +1863,13 @@ int Application::init(const AppConfig& config) {
     // Create editor bridge
     m_impl->editorBridge = std::make_unique<RuntimeAPI>();
     m_impl->editorBridge->start();
+
+    // Set asset directory for serving IDE panel files via HTTP
+    auto exeDir = vivid::AssetLoader::instance().executableDir();
+    std::filesystem::path idePanelDir = exeDir / ".." / "assets" / "ide-panel";
+    idePanelDir = std::filesystem::weakly_canonical(idePanelDir);
+    m_impl->editorBridge->setAssetDirectory(idePanelDir.string());
+
     m_impl->editorBridge->onReloadCommand([this](const std::string&) {
         std::cout << "[RuntimeAPI] Force reload triggered by editor\n";
         m_impl->hotReload->forceReload();
@@ -1825,6 +1985,98 @@ int Application::init(const AppConfig& config) {
             m_impl->ctx->resetTime();
         }
     });
+
+    // IDE panel file operations
+    m_impl->editorBridge->onFileRead([this](const std::string& path) -> std::string {
+        if (!m_impl->ctx || path.empty()) return "";
+
+        // Get the project directory from chainPath
+        fs::path chainPath = m_impl->ctx->chainPath();
+        if (chainPath.empty()) return "";
+
+        fs::path projectDir = chainPath.parent_path();
+        fs::path filePath;
+
+        // Allow reading chain.cpp specifically
+        if (path == "chain.cpp") {
+            filePath = chainPath;
+        } else {
+            // Restrict to project directory for security
+            filePath = projectDir / path;
+            // Ensure the resolved path is still within project directory
+            filePath = fs::weakly_canonical(filePath);
+            if (filePath.string().find(projectDir.string()) != 0) {
+                std::cerr << "[RuntimeAPI] File read denied (outside project): " << path << "\n";
+                return "";
+            }
+        }
+
+        if (!fs::exists(filePath)) {
+            std::cerr << "[RuntimeAPI] File not found: " << filePath << "\n";
+            return "";
+        }
+
+        std::ifstream file(filePath);
+        if (!file.is_open()) {
+            std::cerr << "[RuntimeAPI] Failed to open: " << filePath << "\n";
+            return "";
+        }
+
+        std::stringstream buffer;
+        buffer << file.rdbuf();
+        return buffer.str();
+    });
+
+    m_impl->editorBridge->onFileWrite([this](const std::string& path, const std::string& content) -> bool {
+        if (!m_impl->ctx || path.empty()) return false;
+
+        // Get the project directory from chainPath
+        fs::path chainPath = m_impl->ctx->chainPath();
+        if (chainPath.empty()) return false;
+
+        fs::path projectDir = chainPath.parent_path();
+        fs::path filePath;
+
+        // Allow writing chain.cpp specifically
+        if (path == "chain.cpp") {
+            filePath = chainPath;
+        } else {
+            // Restrict to project directory for security
+            filePath = projectDir / path;
+            // Ensure the resolved path is still within project directory
+            filePath = fs::weakly_canonical(filePath);
+            if (filePath.string().find(projectDir.string()) != 0) {
+                std::cerr << "[RuntimeAPI] File write denied (outside project): " << path << "\n";
+                return false;
+            }
+        }
+
+        std::ofstream file(filePath);
+        if (!file.is_open()) {
+            std::cerr << "[RuntimeAPI] Failed to open for writing: " << filePath << "\n";
+            return false;
+        }
+
+        file << content;
+        file.close();
+        std::cout << "[RuntimeAPI] File written: " << filePath << "\n";
+        return true;
+    });
+
+#ifdef VIVID_HAS_WEBVIEW
+    // PTY callbacks for terminal
+    m_impl->editorBridge->onPtyInput([this](const std::string& data) {
+        if (m_impl->mlc.idePty && m_impl->mlc.idePtyStarted) {
+            m_impl->mlc.idePty->write(data);
+        }
+    });
+
+    m_impl->editorBridge->onPtyResize([this](int cols, int rows) {
+        if (m_impl->mlc.idePty && m_impl->mlc.idePtyStarted) {
+            m_impl->mlc.idePty->setSize(cols, rows);
+        }
+    });
+#endif
 
     // Connect chain visualizer inspector panel to pending changes system (if available)
     // The callback needs access to m_impl, so we store a static pointer (single instance)
@@ -2179,6 +2431,47 @@ int Application::init(const AppConfig& config) {
     mlc.windowWidth = m_impl->width;   // Use actual window size (may differ from CLI if chain config used)
     mlc.windowHeight = m_impl->height;
     mlc.showUI = config.showUI;
+#ifdef VIVID_HAS_WEBVIEW
+    // IDE panel visibility follows visualizer visibility
+    mlc.idePanelVisible = mlc.visualizerVisible;
+
+    // Initialize IDE WebView panel (always, so it's ready when Tab is pressed)
+    if (mlc.visualizerAvailable) {
+        mlc.ideWebView = std::make_unique<vivid::webview::WebView>();
+        int panelWidth = 500;
+        int panelHeight = 400;
+        mlc.ideWebView->setSize(panelWidth, panelHeight);
+        mlc.ideWebView->init(*m_impl->ctx);
+        mlc.ideWebView->setTransparent(false);
+        mlc.ideWebView->setInputEnabled(true);
+
+        // Get logical window size (mouse coords are in logical coords, not framebuffer coords)
+        // On Retina displays, framebuffer is 2x the logical size
+        int logicalWidth, logicalHeight;
+        glfwGetWindowSize(m_impl->window, &logicalWidth, &logicalHeight);
+
+        // Position in bottom-left corner with padding (using logical coords)
+        mlc.idePanelBounds = glm::vec4(20, logicalHeight - panelHeight - 60, panelWidth, panelHeight);
+
+        // Load IDE panel from HTTP server (avoids file:// CORS restrictions)
+        mlc.ideWebView->setUrl("http://localhost:9876/");
+        mlc.idePanelInitialized = true;
+
+        std::cout << "[IDE] WebView panel initialized (" << panelWidth << "x" << panelHeight << ")" << std::endl;
+
+        // Initialize PTY for terminal
+        mlc.idePty = std::make_unique<PTY>();
+        // Get project directory for PTY working directory
+        fs::path chainPath = m_impl->ctx->chainPath();
+        std::string ptyWorkDir = chainPath.empty() ? "" : chainPath.parent_path().string();
+        if (mlc.idePty->start("", ptyWorkDir)) {
+            mlc.idePtyStarted = true;
+            std::cout << "[IDE] PTY started in " << ptyWorkDir << "\n";
+        } else {
+            std::cerr << "[IDE] Failed to start PTY\n";
+        }
+    }
+#endif
 
     // Project info
     mlc.projectName = projectName;
@@ -2246,6 +2539,27 @@ void Application::shutdown() {
     // Shutdown chain visualizer (if dynamically loaded)
     visualizer_dynamic::tryShutdown();
 
+#ifdef VIVID_HAS_WEBVIEW
+    // Shutdown PTY
+    if (mlc.idePty) {
+        mlc.idePty->stop();
+        mlc.idePty.reset();
+        mlc.idePtyStarted = false;
+    }
+
+    // Mark WebView as shutting down and wait for callbacks to complete
+    if (mlc.ideWebView) {
+        mlc.ideWebView->cleanup();
+
+        // Pump the event loop to process any pending WebKit callbacks
+        // This ensures callbacks complete while the WebView object is still valid
+        for (int i = 0; i < 10; i++) {
+            glfwPollEvents();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+    }
+#endif
+
     // Release display resources
     if (m_impl->display) {
         m_impl->display->shutdown();
@@ -2274,6 +2588,13 @@ void Application::shutdown() {
         glfwDestroyWindow(m_impl->window);
     }
     glfwTerminate();
+
+#ifdef VIVID_HAS_WEBVIEW
+    // Now safe to destroy WebView - event loop is done pumping
+    if (mlc.ideWebView) {
+        mlc.ideWebView.reset();
+    }
+#endif
 
     delete m_impl;
     m_impl = nullptr;

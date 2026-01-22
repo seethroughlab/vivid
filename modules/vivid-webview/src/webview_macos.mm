@@ -2,21 +2,25 @@
  * @file webview_macos.mm
  * @brief macOS WebView backend using WKWebView
  *
- * Renders WKWebView content to a GPU texture using snapshot-based capture.
+ * Renders WKWebView content to a GPU texture using IOSurface-backed capture.
  * Supports transparent backgrounds for UI overlays and input forwarding.
  *
  * Implementation approach:
  * - Uses a hidden NSWindow containing WKWebView for offscreen rendering
  * - Captures frames via WKWebView's takeSnapshot API
- * - Uploads BGRA pixels to WGPU texture via CPU copy
+ * - Draws snapshots to IOSurface-backed CGBitmapContext (GPU unified memory)
+ * - Uploads to WGPU texture via wgpuQueueWriteTexture from IOSurface
  *
- * Future optimization: IOSurface sharing for GPU-direct path
+ * The IOSurface approach keeps pixel data in GPU-accessible unified memory,
+ * eliminating the separate CPU buffer allocation and improving cache locality.
  */
 
 #import <WebKit/WebKit.h>
 #import <AppKit/AppKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import <CoreGraphics/CoreGraphics.h>
+#import <IOSurface/IOSurface.h>
+#import <Metal/Metal.h>
 
 #include <vivid/webview/webview_backend.h>
 #include <vivid/context.h>
@@ -25,6 +29,8 @@
 #include <vector>
 #include <mutex>
 #include <atomic>
+#include <thread>
+#include <chrono>
 
 // Helper to create WGPUStringView from C string
 inline WGPUStringView toStringView(const char* str) {
@@ -213,8 +219,11 @@ private:
     bool javaScriptEnabled_ = true;
     bool focused_ = false;
 
-    // Frame capture
-    std::vector<uint8_t> pixelBuffer_;
+    // IOSurface-based frame capture
+    IOSurfaceRef ioSurface_ = nullptr;
+    id<MTLDevice> metalDevice_ = nil;
+    CGColorSpaceRef colorSpace_ = nullptr;
+    size_t ioSurfaceBytesPerRow_ = 0;
     std::atomic<bool> captureInProgress_{false};
     std::atomic<bool> frameReady_{false};
     std::atomic<bool> isShuttingDown_{false};
@@ -222,6 +231,10 @@ private:
 
     // JavaScript callbacks
     std::unordered_map<std::string, std::function<void(const std::string&)>> jsCallbacks_;
+
+    // IOSurface management
+    void createIOSurface();
+    void releaseIOSurface();
 };
 
 WebViewMacOS::WebViewMacOS() = default;
@@ -253,25 +266,35 @@ bool WebViewMacOS::init(Context& ctx, int width, int height) {
 #pragma clang diagnostic pop
         config.preferences = prefs;
 
+        // Allow loading remote resources from file:// URLs (needed for CDN scripts)
+        // This uses private API via KVC - necessary for loading xterm.js/Monaco from CDN
+        @try {
+            [config setValue:@YES forKey:@"allowUniversalAccessFromFileURLs"];
+        } @catch (NSException* e) {
+            std::cerr << "[WebView] Warning: Could not set allowUniversalAccessFromFileURLs" << std::endl;
+        }
+
         // Create WKWebView first
         NSRect webFrame = NSMakeRect(0, 0, width_, height_);
         webView_ = [[WKWebView alloc] initWithFrame:webFrame configuration:config];
 
         // WKWebView needs to be in a window for snapshots to work
-        // Create a utility panel window that won't interfere with main app
-        NSRect frame = NSMakeRect(0, 0, width_, height_);
+        // Canvas/WebGL content requires the window to be at least partially on-screen
+        // Position with 1 pixel visible at bottom-left corner
+        NSRect frame = NSMakeRect(0, -height_ + 1, width_, height_);
         window_ = [[NSPanel alloc] initWithContentRect:frame
                                              styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                                                backing:NSBackingStoreBuffered
-                                                 defer:YES];
-        [(NSPanel*)window_ setFloatingPanel:YES];
+                                                 defer:NO];  // Don't defer creation - needed for WebGL
+        [(NSPanel*)window_ setFloatingPanel:NO];  // Not floating - stay behind
         [(NSPanel*)window_ setBecomesKeyOnlyIfNeeded:YES];
         [window_ setReleasedWhenClosed:NO];
         [window_ setExcludedFromWindowsMenu:YES];
         [window_ setIgnoresMouseEvents:YES];
-        [window_ setAlphaValue:0.0];  // Fully transparent
-        [window_ setOpaque:NO];
-        [window_ setBackgroundColor:[NSColor clearColor]];
+        [window_ setAlphaValue:1.0];  // Keep visible for WebGL/canvas rendering
+        [window_ setOpaque:YES];  // Opaque for proper rendering
+        [window_ setBackgroundColor:[NSColor whiteColor]];  // White background
+        [window_ setLevel:NSNormalWindowLevel - 1];  // Behind normal windows
         [window_ setCollectionBehavior:NSWindowCollectionBehaviorCanJoinAllSpaces |
                                        NSWindowCollectionBehaviorStationary |
                                        NSWindowCollectionBehaviorIgnoresCycle];
@@ -308,11 +331,64 @@ bool WebViewMacOS::init(Context& ctx, int width, int height) {
         // Add webview to window
         [window_ setContentView:webView_];
 
+        // Force layer-backed rendering for proper canvas/WebGL capture
+        [webView_ setWantsLayer:YES];
+        webView_.layer.drawsAsynchronously = NO;  // Synchronous drawing for capture
+
+        // Order window front - required for WebGL/canvas rendering
+        [window_ orderFront:nil];
+
         // Create GPU texture
         createTexture();
     }
 
     return true;
+}
+
+void WebViewMacOS::createIOSurface() {
+    releaseIOSurface();
+
+    // Create Metal device for IOSurface texture creation (optional, for future use)
+    if (!metalDevice_) {
+        metalDevice_ = MTLCreateSystemDefaultDevice();
+    }
+
+    // Create color space once
+    if (!colorSpace_) {
+        colorSpace_ = CGColorSpaceCreateDeviceRGB();
+    }
+
+    // Calculate bytes per row with 16-byte alignment for optimal GPU access
+    size_t bytesPerPixel = 4;  // BGRA8
+    ioSurfaceBytesPerRow_ = ((width_ * bytesPerPixel + 15) / 16) * 16;
+
+    // Create IOSurface properties
+    NSDictionary* properties = @{
+        (NSString*)kIOSurfaceWidth: @(width_),
+        (NSString*)kIOSurfaceHeight: @(height_),
+        (NSString*)kIOSurfaceBytesPerElement: @(bytesPerPixel),
+        (NSString*)kIOSurfaceBytesPerRow: @(ioSurfaceBytesPerRow_),
+        (NSString*)kIOSurfacePixelFormat: @(kCVPixelFormatType_32BGRA),
+    };
+
+    ioSurface_ = IOSurfaceCreate((__bridge CFDictionaryRef)properties);
+    if (!ioSurface_) {
+        std::cerr << "[WebView] Failed to create IOSurface " << width_ << "x" << height_ << std::endl;
+        return;
+    }
+
+    // Zero-initialize the IOSurface to avoid garbage on first frame
+    IOSurfaceLock(ioSurface_, 0, nullptr);
+    void* baseAddr = IOSurfaceGetBaseAddress(ioSurface_);
+    memset(baseAddr, 0, ioSurfaceBytesPerRow_ * height_);
+    IOSurfaceUnlock(ioSurface_, 0, nullptr);
+}
+
+void WebViewMacOS::releaseIOSurface() {
+    if (ioSurface_) {
+        CFRelease(ioSurface_);
+        ioSurface_ = nullptr;
+    }
 }
 
 void WebViewMacOS::createTexture() {
@@ -352,11 +428,25 @@ void WebViewMacOS::createTexture() {
 
     textureView_ = wgpuTextureCreateView(texture_, &viewDesc);
 
-    // Initialize pixel buffer
-    pixelBuffer_.resize(width_ * height_ * 4);
+    // Create IOSurface for frame capture (replaces CPU pixel buffer)
+    createIOSurface();
 }
 
 void WebViewMacOS::uploadFrame(const uint8_t* pixels, size_t bytesPerRow) {
+    // Read from IOSurface and upload to GPU texture
+    // The pixels parameter is ignored - we read directly from IOSurface
+    // bytesPerRow is also ignored - we use ioSurfaceBytesPerRow_
+    (void)pixels;
+    (void)bytesPerRow;
+
+    if (!ioSurface_ || !texture_) return;
+
+    // Lock IOSurface for reading
+    IOSurfaceLock(ioSurface_, kIOSurfaceLockReadOnly, nullptr);
+
+    void* baseAddr = IOSurfaceGetBaseAddress(ioSurface_);
+    size_t actualBytesPerRow = IOSurfaceGetBytesPerRow(ioSurface_);
+
     WGPUTexelCopyTextureInfo destination = {};
     destination.texture = texture_;
     destination.mipLevel = 0;
@@ -365,17 +455,22 @@ void WebViewMacOS::uploadFrame(const uint8_t* pixels, size_t bytesPerRow) {
 
     WGPUTexelCopyBufferLayout dataLayout = {};
     dataLayout.offset = 0;
-    dataLayout.bytesPerRow = static_cast<uint32_t>(bytesPerRow);
+    dataLayout.bytesPerRow = static_cast<uint32_t>(actualBytesPerRow);
     dataLayout.rowsPerImage = static_cast<uint32_t>(height_);
 
     WGPUExtent3D writeSize = {static_cast<uint32_t>(width_), static_cast<uint32_t>(height_), 1};
 
-    wgpuQueueWriteTexture(queue_, &destination, pixels,
-                          bytesPerRow * height_, &dataLayout, &writeSize);
+    // Upload from IOSurface memory (in GPU unified memory) to wgpu texture
+    // This is faster than a separate CPU buffer because IOSurface is in
+    // the GPU's unified memory space on Apple Silicon
+    wgpuQueueWriteTexture(queue_, &destination, baseAddr,
+                          actualBytesPerRow * height_, &dataLayout, &writeSize);
+
+    IOSurfaceUnlock(ioSurface_, kIOSurfaceLockReadOnly, nullptr);
 }
 
 void WebViewMacOS::captureFrame() {
-    if (!webView_ || captureInProgress_.load()) {
+    if (!webView_ || !ioSurface_ || captureInProgress_.load()) {
         return;
     }
 
@@ -385,6 +480,7 @@ void WebViewMacOS::captureFrame() {
         WKSnapshotConfiguration* snapshotConfig = [[WKSnapshotConfiguration alloc] init];
         snapshotConfig.rect = NSMakeRect(0, 0, width_, height_);
         snapshotConfig.snapshotWidth = @(width_);
+        snapshotConfig.afterScreenUpdates = YES;  // Wait for canvas/WebGL content to render
 
         [webView_ takeSnapshotWithConfiguration:snapshotConfig
                               completionHandler:^(NSImage* image, NSError* error) {
@@ -408,7 +504,7 @@ void WebViewMacOS::captureFrame() {
                 return;
             }
 
-            // Convert NSImage to BGRA pixel data
+            // Convert NSImage to CGImage
             NSRect imageRect = NSMakeRect(0, 0, width_, height_);
             CGImageRef cgImage = [image CGImageForProposedRect:&imageRect context:nil hints:nil];
 
@@ -417,42 +513,47 @@ void WebViewMacOS::captureFrame() {
                 return;
             }
 
-            // Create a bitmap context for BGRA format
-            size_t bytesPerRow = width_ * 4;
-            CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
+            // Lock IOSurface and create CGBitmapContext backed by it
+            // This writes directly to GPU unified memory without intermediate buffer
+            // Use try_lock to avoid crashes during shutdown when mutex may be invalid
+            if (!isShuttingDown_.load()) {
+                std::unique_lock<std::mutex> lock(captureMutex_, std::try_to_lock);
+                if (!lock.owns_lock()) {
+                    // Couldn't acquire lock - likely shutting down
+                    captureInProgress_.store(false);
+                    return;
+                }
+                if (!isShuttingDown_.load() && ioSurface_) {
+                    IOSurfaceLock(ioSurface_, 0, nullptr);
 
-            // Use premultiplied alpha for proper compositing
-            CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little; // BGRA
+                    void* baseAddr = IOSurfaceGetBaseAddress(ioSurface_);
+                    size_t bytesPerRow = IOSurfaceGetBytesPerRow(ioSurface_);
 
-            // Use a local buffer to avoid mutex issues during shutdown
-            // The mutex is only used when copying to the main buffer
-            std::vector<uint8_t> localBuffer(bytesPerRow * height_);
+                    // Use premultiplied alpha for proper compositing (BGRA format)
+                    CGBitmapInfo bitmapInfo = kCGImageAlphaPremultipliedFirst | kCGBitmapByteOrder32Little;
 
-            CGContextRef context = CGBitmapContextCreate(
-                localBuffer.data(),
-                width_, height_,
-                8, bytesPerRow,
-                colorSpace,
-                bitmapInfo
-            );
+                    // Create CGContext backed by IOSurface memory
+                    CGContextRef context = CGBitmapContextCreate(
+                        baseAddr,
+                        width_, height_,
+                        8, bytesPerRow,
+                        colorSpace_,
+                        bitmapInfo
+                    );
 
-            if (context) {
-                // Draw image directly - WKWebView snapshot + CGBitmapContext with
-                // kCGBitmapByteOrder32Little produces correct orientation for WebGPU
-                CGContextDrawImage(context, CGRectMake(0, 0, width_, height_), cgImage);
-                CGContextRelease(context);
-
-                // Only copy to main buffer if not shutting down
-                if (!isShuttingDown_.load()) {
-                    std::lock_guard<std::mutex> lock(captureMutex_);
-                    if (!isShuttingDown_.load()) {
-                        pixelBuffer_ = std::move(localBuffer);
+                    if (context) {
+                        // Draw image directly to IOSurface-backed context
+                        // WKWebView snapshot + CGBitmapContext with
+                        // kCGBitmapByteOrder32Little produces correct orientation for WebGPU
+                        CGContextDrawImage(context, CGRectMake(0, 0, width_, height_), cgImage);
+                        CGContextRelease(context);
                         frameReady_.store(true);
                     }
+
+                    IOSurfaceUnlock(ioSurface_, 0, nullptr);
                 }
             }
 
-            CGColorSpaceRelease(colorSpace);
             captureInProgress_.store(false);
         }];
     }
@@ -468,10 +569,10 @@ bool WebViewMacOS::update(Context& ctx) {
         captureFrame();
     }
 
-    // Upload the frame if ready
+    // Upload the frame if ready (reads from IOSurface)
     if (frameReady_.exchange(false) && !isShuttingDown_.load()) {
         std::lock_guard<std::mutex> lock(captureMutex_);
-        uploadFrame(pixelBuffer_.data(), width_ * 4);
+        uploadFrame(nullptr, 0);  // Parameters ignored, reads from IOSurface
         return true;
     }
 
@@ -485,7 +586,7 @@ void WebViewMacOS::cleanup() {
     // Wait for any in-progress capture to complete
     int waitCount = 0;
     while (captureInProgress_.load() && waitCount < 100) {
-        usleep(10000);  // 10ms
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
         waitCount++;
     }
 
@@ -512,6 +613,17 @@ void WebViewMacOS::cleanup() {
             [window_ close];
             window_ = nil;
         }
+
+        // Release Metal device
+        metalDevice_ = nil;
+    }
+
+    // Release IOSurface resources
+    releaseIOSurface();
+
+    if (colorSpace_) {
+        CGColorSpaceRelease(colorSpace_);
+        colorSpace_ = nullptr;
     }
 
     if (textureView_) {
@@ -726,13 +838,11 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
     // Use JavaScript to dispatch mouse and pointer events
     // Pointer events are needed for form controls like sliders
     @autoreleasepool {
-        // Scale coordinates from GLFW window coordinates to CSS pixels
-        // GLFW mouse coordinates are in window logical coordinates (screen points)
-        // WebView CSS viewport is sized to framebuffer pixels (width_ x height_)
-        // On Retina displays, framebuffer = window * backingScaleFactor
-        CGFloat scaleFactor = window_.backingScaleFactor;
-        float cssX = x * scaleFactor;
-        float cssY = y * scaleFactor;
+        // Coordinates are already in WebView's coordinate space (0 to width_/height_)
+        // No scaling needed - the caller has already converted window coordinates
+        // to WebView-relative coordinates
+        float cssX = x;
+        float cssY = y;
 
         // Clamp coordinates to viewport bounds
         cssX = std::max(0.0f, std::min(cssX, static_cast<float>(width_) - 1));
@@ -851,6 +961,36 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
 
         [webView_ evaluateJavaScript:script completionHandler:nil];
 
+        // On mousedown, trigger focus on the clicked element
+        if (type == MouseEventType::Down) {
+            NSString* focusScript = [NSString stringWithFormat:
+                @"(function() {"
+                @"  var x = %f, y = %f;"
+                @"  var elem = document.elementFromPoint(x, y);"
+                @"  if (!elem) return;"
+                @"  "
+                @"  // Find focusable parent or element itself"
+                @"  var focusable = elem;"
+                @"  while (focusable && focusable !== document.body) {"
+                @"    if (focusable.tabIndex >= 0 || "
+                @"        focusable.tagName === 'INPUT' || "
+                @"        focusable.tagName === 'TEXTAREA' || "
+                @"        focusable.tagName === 'BUTTON' || "
+                @"        focusable.tagName === 'SELECT' || "
+                @"        focusable.contentEditable === 'true') {"
+                @"      break;"
+                @"    }"
+                @"    focusable = focusable.parentElement;"
+                @"  }"
+                @"  if (focusable && focusable.focus) {"
+                @"    focusable.focus();"
+                @"  }"
+                @"})();",
+                cssX, cssY
+            ];
+            [webView_ evaluateJavaScript:focusScript completionHandler:nil];
+        }
+
         // Dispatch click event after mouseup
         if (type == MouseEventType::Up && button == MouseButton::Left) {
             NSString* clickScript = [NSString stringWithFormat:
@@ -915,23 +1055,21 @@ void WebViewMacOS::sendKeyEvent(KeyEventType type, int keyCode, int scanCode,
             charStr = [charStr stringByReplacingOccurrencesOfString:@"\\" withString:@"\\\\"];
             charStr = [charStr stringByReplacingOccurrencesOfString:@"'" withString:@"\\'"];
 
-            // Dispatch InputEvent for text insertion (works with contenteditable, Monaco, xterm.js)
+            // For character input - use vividIDE API if available, else dispatch InputEvent
             NSString* inputScript = [NSString stringWithFormat:
-                @"(function() {"
-                @"  var el = document.activeElement || document.body;"
-                @"  var evt = new InputEvent('beforeinput', {"
-                @"    bubbles: true, cancelable: true, inputType: 'insertText', data: '%@'"
-                @"  });"
-                @"  if (el.dispatchEvent(evt)) {"
-                @"    var inputEvt = new InputEvent('input', {"
-                @"      bubbles: true, cancelable: false, inputType: 'insertText', data: '%@'"
-                @"    });"
-                @"    el.dispatchEvent(inputEvt);"
-                @"  }"
-                @"})();",
+                @"if (window.vividIDE && window.vividIDE.insertText) {"
+                @"  window.vividIDE.insertText('%@');"
+                @"} else {"
+                @"  var el = document.activeElement;"
+                @"  if (el) el.dispatchEvent(new InputEvent('beforeinput', {bubbles:true, data:'%@', inputType:'insertText'}));"
+                @"}",
                 charStr, charStr
             ];
-            [webView_ evaluateJavaScript:inputScript completionHandler:nil];
+            [webView_ evaluateJavaScript:inputScript completionHandler:^(id result, NSError* error) {
+                if (error) {
+                    std::cerr << "[WebView] Char script error: " << error.localizedDescription.UTF8String << std::endl;
+                }
+            }];
             return;
         }
 
@@ -945,9 +1083,71 @@ void WebViewMacOS::sendKeyEvent(KeyEventType type, int keyCode, int scanCode,
 
         if (!eventType) return;
 
-        // Map GLFW key codes to DOM key codes
+        // Map GLFW key codes to DOM key codes and key names
+        // GLFW key codes: https://www.glfw.org/docs/latest/group__keys.html
         int domKeyCode = keyCode;
-        NSString* key = @"";
+        NSString* key = @"Unidentified";
+
+        // Map special keys to DOM key names
+        switch (keyCode) {
+            // Function keys
+            case 256: key = @"Escape"; domKeyCode = 27; break;
+            case 257: key = @"Enter"; domKeyCode = 13; break;
+            case 258: key = @"Tab"; domKeyCode = 9; break;
+            case 259: key = @"Backspace"; domKeyCode = 8; break;
+            case 260: key = @"Insert"; domKeyCode = 45; break;
+            case 261: key = @"Delete"; domKeyCode = 46; break;
+            case 262: key = @"ArrowRight"; domKeyCode = 39; break;
+            case 263: key = @"ArrowLeft"; domKeyCode = 37; break;
+            case 264: key = @"ArrowDown"; domKeyCode = 40; break;
+            case 265: key = @"ArrowUp"; domKeyCode = 38; break;
+            case 266: key = @"PageUp"; domKeyCode = 33; break;
+            case 267: key = @"PageDown"; domKeyCode = 34; break;
+            case 268: key = @"Home"; domKeyCode = 36; break;
+            case 269: key = @"End"; domKeyCode = 35; break;
+            case 280: key = @"CapsLock"; domKeyCode = 20; break;
+            case 281: key = @"ScrollLock"; domKeyCode = 145; break;
+            case 282: key = @"NumLock"; domKeyCode = 144; break;
+            case 283: key = @"PrintScreen"; domKeyCode = 44; break;
+            case 284: key = @"Pause"; domKeyCode = 19; break;
+            // F1-F12
+            case 290: key = @"F1"; domKeyCode = 112; break;
+            case 291: key = @"F2"; domKeyCode = 113; break;
+            case 292: key = @"F3"; domKeyCode = 114; break;
+            case 293: key = @"F4"; domKeyCode = 115; break;
+            case 294: key = @"F5"; domKeyCode = 116; break;
+            case 295: key = @"F6"; domKeyCode = 117; break;
+            case 296: key = @"F7"; domKeyCode = 118; break;
+            case 297: key = @"F8"; domKeyCode = 119; break;
+            case 298: key = @"F9"; domKeyCode = 120; break;
+            case 299: key = @"F10"; domKeyCode = 121; break;
+            case 300: key = @"F11"; domKeyCode = 122; break;
+            case 301: key = @"F12"; domKeyCode = 123; break;
+            // Modifiers
+            case 340: key = @"Shift"; domKeyCode = 16; break;
+            case 341: key = @"Control"; domKeyCode = 17; break;
+            case 342: key = @"Alt"; domKeyCode = 18; break;
+            case 343: key = @"Meta"; domKeyCode = 91; break;
+            case 344: key = @"Shift"; domKeyCode = 16; break;  // Right shift
+            case 345: key = @"Control"; domKeyCode = 17; break;  // Right control
+            case 346: key = @"Alt"; domKeyCode = 18; break;  // Right alt
+            case 347: key = @"Meta"; domKeyCode = 93; break;  // Right meta
+            default:
+                // For printable ASCII characters, use the character itself
+                if (keyCode >= 32 && keyCode <= 126) {
+                    // GLFW uses ASCII for printable keys
+                    unichar c = static_cast<unichar>(keyCode);
+                    // Handle shift for letters
+                    if (keyCode >= 65 && keyCode <= 90 && !modifiers.shift) {
+                        c = c + 32;  // Convert to lowercase
+                    }
+                    key = [NSString stringWithCharacters:&c length:1];
+                    domKeyCode = keyCode;
+                }
+                break;
+        }
+
+        // Override with actual character if provided
         if (character > 0 && character < 128) {
             unichar c = static_cast<unichar>(character);
             key = [NSString stringWithCharacters:&c length:1];
@@ -961,15 +1161,15 @@ void WebViewMacOS::sendKeyEvent(KeyEventType type, int keyCode, int scanCode,
         if (modifiers.meta) [modArray addObject:@"metaKey: true"];
         NSString* modString = [modArray componentsJoinedByString:@", "];
 
+        // Dispatch keyboard event - use vividIDE API if available, else activeElement
         NSString* script = [NSString stringWithFormat:
-            @"(function() {"
-            @"  var evt = new KeyboardEvent('%@', {"
-            @"    bubbles: true, cancelable: true,"
-            @"    keyCode: %d, which: %d, key: '%@'%@%@"
-            @"  });"
-            @"  (document.activeElement || document.body).dispatchEvent(evt);"
-            @"})();",
-            eventType, domKeyCode, domKeyCode, key,
+            @"var el = (window.vividIDE && window.vividIDE.getKeyboardTarget) "
+            @"  ? window.vividIDE.getKeyboardTarget() "
+            @"  : (document.activeElement || document.body);"
+            @"el.dispatchEvent(new KeyboardEvent('%@', {"
+            @"  bubbles:true, cancelable:true, keyCode:%d, which:%d, key:'%@', code:'%@'%@%@"
+            @"}));",
+            eventType, domKeyCode, domKeyCode, key, key,
             modString.length > 0 ? @", " : @"",
             modString
         ];

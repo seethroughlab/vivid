@@ -33,7 +33,7 @@ struct AppConfig {
     // Frame limit
     int maxFrames = 0;  // 0 = unlimited
 
-    // Start with UI visible (for snapshots including node graph)
+    // Start with UI visible (includes chain visualizer and IDE panel)
     bool showUI = false;
 };
 
