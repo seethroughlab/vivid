@@ -230,6 +230,11 @@ std::string AssetLoader::loadShader(const std::string& name, bool preprocess) {
         fs::path basePath = resolvedPath.empty() ? fs::current_path() : resolvedPath.parent_path();
         content = ShaderPreprocessor::instance().process(content, basePath);
     }
+
+    if (content.empty()) {
+        fprintf(stderr, "[AssetLoader] ERROR: Shader not found: %s\n", name.c_str());
+    }
+
     return content;
 }
 

@@ -52,130 +52,6 @@ struct NodeVertex {
     float x, y;
 };
 
-// WGSL shader for 3D line rendering - fallback
-static const char* LINE_SHADER_FALLBACK = R"(
-struct Uniforms {
-    viewProj: mat4x4f,
-    resolution: vec2f,
-    lineWidth: f32,
-    _pad: f32,
-    color: vec4f,
-}
-
-struct VertexInput {
-    @location(0) localPos: vec2f,
-    @location(1) alongAcross: vec2f,
-}
-
-struct InstanceInput {
-    @location(2) start: vec4f,   // xyz + pad
-    @location(3) endAlpha: vec4f, // xyz + alpha
-}
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) alpha: f32,
-}
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-@vertex
-fn vs_main(vert: VertexInput, inst: InstanceInput) -> VertexOutput {
-    var output: VertexOutput;
-
-    let start3d = inst.start.xyz;
-    let end3d = inst.endAlpha.xyz;
-    let lineAlpha = inst.endAlpha.w;
-
-    // Project start and end points
-    let startClip = uniforms.viewProj * vec4f(start3d, 1.0);
-    let endClip = uniforms.viewProj * vec4f(end3d, 1.0);
-
-    // Convert to NDC
-    let startNdc = startClip.xy / startClip.w;
-    let endNdc = endClip.xy / endClip.w;
-
-    // Direction in screen space
-    let dir = endNdc - startNdc;
-    let len = length(dir);
-    let tangent = select(vec2f(1.0, 0.0), dir / len, len > 0.0001);
-    let normal = vec2f(-tangent.y, tangent.x);
-
-    // Interpolate along line
-    let t = vert.alongAcross.x;
-    let clipPos = mix(startClip, endClip, t);
-
-    // Offset perpendicular to line for width (in screen space)
-    let halfWidth = uniforms.lineWidth / uniforms.resolution.y;
-    let offset = normal * vert.alongAcross.y * halfWidth * clipPos.w;
-
-    output.position = vec4f(clipPos.xy + offset, clipPos.z, clipPos.w);
-    output.alpha = lineAlpha;
-
-    return output;
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    return vec4f(uniforms.color.rgb, uniforms.color.a * input.alpha);
-}
-)";
-
-// WGSL shader for 3D node rendering (billboards) - fallback
-static const char* NODE_SHADER_FALLBACK = R"(
-struct Uniforms {
-    viewProj: mat4x4f,
-    resolution: vec2f,
-    aspectRatio: f32,
-    _pad: f32,
-}
-
-struct VertexInput {
-    @location(0) localPos: vec2f,
-}
-
-struct InstanceInput {
-    @location(1) posSize: vec4f,  // xyz + size
-    @location(2) color: vec4f,
-}
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) localPos: vec2f,
-    @location(1) color: vec4f,
-}
-
-@group(0) @binding(0) var<uniform> uniforms: Uniforms;
-
-@vertex
-fn vs_main(vert: VertexInput, inst: InstanceInput) -> VertexOutput {
-    var output: VertexOutput;
-
-    let worldPos = inst.posSize.xyz;
-    let size = inst.posSize.w;
-
-    // Project center to clip space
-    let clipPos = uniforms.viewProj * vec4f(worldPos, 1.0);
-
-    // Billboard offset in screen space (size scales with distance for consistency)
-    var offset = vert.localPos * size;
-    offset.x /= uniforms.aspectRatio;
-
-    output.position = vec4f(clipPos.xy + offset * clipPos.w, clipPos.z, clipPos.w);
-    output.localPos = vert.localPos;
-    output.color = inst.color;
-
-    return output;
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let dist = length(input.localPos);
-    let edge = smoothstep(1.0, 0.9, dist);
-    return vec4f(input.color.rgb, input.color.a * edge);
-}
-)";
-
 // Simple hash for noise
 static float hash(float n) {
     return std::fmod(std::sin(n) * 43758.5453f, 1.0f);
@@ -418,7 +294,7 @@ void Plexus::createPipelines(WGPUDevice device) {
     // Line shader module (use external shader, fallback to embedded)
     WGPUShaderSourceWGSL lineWgslDesc = {};
     lineWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    const std::string& lineSource = s_lineShader.empty() ? LINE_SHADER_FALLBACK : s_lineShader;
+    const std::string& lineSource = s_lineShader;
     lineWgslDesc.code = toStringView(lineSource.c_str());
 
     WGPUShaderModuleDescriptor lineShaderDesc = {};
@@ -545,7 +421,7 @@ void Plexus::createPipelines(WGPUDevice device) {
     // Node shader module (use external shader, fallback to embedded)
     WGPUShaderSourceWGSL nodeWgslDesc = {};
     nodeWgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
-    const std::string& nodeSource = s_nodeShader.empty() ? NODE_SHADER_FALLBACK : s_nodeShader;
+    const std::string& nodeSource = s_nodeShader;
     nodeWgslDesc.code = toStringView(nodeSource.c_str());
 
     WGPUShaderModuleDescriptor nodeShaderDesc = {};

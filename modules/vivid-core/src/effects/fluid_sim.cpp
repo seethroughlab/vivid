@@ -64,551 +64,6 @@ struct ImpulseUniforms {
 };
 
 // =============================================================================
-// WGSL Shaders - Advection
-// =============================================================================
-
-static constexpr const char* ADVECT_VELOCITY_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var velocityIn: texture_2d<f32>;
-@group(0) @binding(2) var velocityOut: texture_storage_2d<rg16float, write>;
-@group(0) @binding(3) var linearSampler: sampler;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    let texel = vec2f(u.texelW, u.texelH);
-    let uv = (vec2f(id.xy) + 0.5) * texel;
-
-    // Sample current velocity
-    let vel = textureSampleLevel(velocityIn, linearSampler, uv, 0.0).xy;
-
-    // Semi-Lagrangian: trace back in time
-    let backPos = uv - vel * u.dt * texel * vec2f(f32(u.width), f32(u.height));
-
-    // Sample velocity at traced position
-    let advectedVel = textureSampleLevel(velocityIn, linearSampler, backPos, 0.0).xy;
-
-    // Apply dissipation
-    let result = advectedVel * u.dissipation;
-
-    textureStore(velocityOut, id.xy, vec4f(result, 0.0, 1.0));
-}
-)";
-
-static constexpr const char* ADVECT_DYE_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var velocityIn: texture_2d<f32>;
-@group(0) @binding(2) var dyeIn: texture_2d<f32>;
-@group(0) @binding(3) var dyeOut: texture_storage_2d<rgba16float, write>;
-@group(0) @binding(4) var linearSampler: sampler;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    let texel = vec2f(u.texelW, u.texelH);
-    let uv = (vec2f(id.xy) + 0.5) * texel;
-
-    // Sample velocity
-    let vel = textureSampleLevel(velocityIn, linearSampler, uv, 0.0).xy;
-
-    // Semi-Lagrangian: trace back in time
-    let backPos = uv - vel * u.dt * texel * vec2f(f32(u.width), f32(u.height));
-
-    // Sample dye at traced position
-    let advectedDye = textureSampleLevel(dyeIn, linearSampler, backPos, 0.0);
-
-    // Apply dye dissipation
-    let result = advectedDye * u.dyeDissipation;
-
-    textureStore(dyeOut, id.xy, result);
-}
-)";
-
-// =============================================================================
-// WGSL Shaders - Divergence
-// =============================================================================
-
-static constexpr const char* DIVERGENCE_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var velocityIn: texture_2d<f32>;
-@group(0) @binding(2) var divergenceOut: texture_storage_2d<r16float, write>;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    let x = i32(id.x);
-    let y = i32(id.y);
-    let w = i32(u.width);
-    let h = i32(u.height);
-
-    // Sample neighboring velocities (with boundary clamping)
-    let vL = textureLoad(velocityIn, vec2i(max(x - 1, 0), y), 0).xy;
-    let vR = textureLoad(velocityIn, vec2i(min(x + 1, w - 1), y), 0).xy;
-    let vB = textureLoad(velocityIn, vec2i(x, max(y - 1, 0)), 0).xy;
-    let vT = textureLoad(velocityIn, vec2i(x, min(y + 1, h - 1)), 0).xy;
-
-    // Compute divergence using central differences
-    let div = 0.5 * ((vR.x - vL.x) + (vT.y - vB.y));
-
-    textureStore(divergenceOut, id.xy, vec4f(-div, 0.0, 0.0, 1.0));
-}
-)";
-
-// =============================================================================
-// WGSL Shaders - Pressure Solve (Jacobi Iteration)
-// =============================================================================
-
-static constexpr const char* PRESSURE_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var pressureIn: texture_2d<f32>;
-@group(0) @binding(2) var divergenceIn: texture_2d<f32>;
-@group(0) @binding(3) var pressureOut: texture_storage_2d<r16float, write>;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    let x = i32(id.x);
-    let y = i32(id.y);
-    let w = i32(u.width);
-    let h = i32(u.height);
-
-    // Sample neighboring pressure (with boundary: pressure = 0 at edges)
-    let pL = textureLoad(pressureIn, vec2i(max(x - 1, 0), y), 0).r;
-    let pR = textureLoad(pressureIn, vec2i(min(x + 1, w - 1), y), 0).r;
-    let pB = textureLoad(pressureIn, vec2i(x, max(y - 1, 0)), 0).r;
-    let pT = textureLoad(pressureIn, vec2i(x, min(y + 1, h - 1)), 0).r;
-
-    // Sample divergence
-    let div = textureLoad(divergenceIn, vec2i(x, y), 0).r;
-
-    // Jacobi iteration: solve Poisson equation (Laplacian(p) = divergence)
-    let pressure = (pL + pR + pB + pT + div) * 0.25;
-
-    textureStore(pressureOut, id.xy, vec4f(pressure, 0.0, 0.0, 1.0));
-}
-)";
-
-// =============================================================================
-// WGSL Shaders - Gradient Subtraction
-// =============================================================================
-
-static constexpr const char* GRADIENT_SUBTRACT_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var pressureIn: texture_2d<f32>;
-@group(0) @binding(2) var velocityIn: texture_2d<f32>;
-@group(0) @binding(3) var velocityOut: texture_storage_2d<rg16float, write>;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    let x = i32(id.x);
-    let y = i32(id.y);
-    let w = i32(u.width);
-    let h = i32(u.height);
-
-    // Sample neighboring pressure
-    let pL = textureLoad(pressureIn, vec2i(max(x - 1, 0), y), 0).r;
-    let pR = textureLoad(pressureIn, vec2i(min(x + 1, w - 1), y), 0).r;
-    let pB = textureLoad(pressureIn, vec2i(x, max(y - 1, 0)), 0).r;
-    let pT = textureLoad(pressureIn, vec2i(x, min(y + 1, h - 1)), 0).r;
-
-    // Compute pressure gradient
-    let grad = 0.5 * vec2f(pR - pL, pT - pB);
-
-    // Sample current velocity
-    let vel = textureLoad(velocityIn, vec2i(x, y), 0).xy;
-
-    // Subtract gradient to make velocity divergence-free
-    let result = vel - grad;
-
-    textureStore(velocityOut, id.xy, vec4f(result, 0.0, 1.0));
-}
-)";
-
-// =============================================================================
-// WGSL Shaders - Vorticity
-// =============================================================================
-
-static constexpr const char* VORTICITY_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var velocityIn: texture_2d<f32>;
-@group(0) @binding(2) var vorticityOut: texture_storage_2d<r16float, write>;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    let x = i32(id.x);
-    let y = i32(id.y);
-    let w = i32(u.width);
-    let h = i32(u.height);
-
-    // Sample neighboring velocities
-    let vL = textureLoad(velocityIn, vec2i(max(x - 1, 0), y), 0).xy;
-    let vR = textureLoad(velocityIn, vec2i(min(x + 1, w - 1), y), 0).xy;
-    let vB = textureLoad(velocityIn, vec2i(x, max(y - 1, 0)), 0).xy;
-    let vT = textureLoad(velocityIn, vec2i(x, min(y + 1, h - 1)), 0).xy;
-
-    // Compute curl (vorticity) = dVy/dx - dVx/dy
-    let curl = 0.5 * ((vR.y - vL.y) - (vT.x - vB.x));
-
-    textureStore(vorticityOut, id.xy, vec4f(curl, 0.0, 0.0, 1.0));
-}
-)";
-
-static constexpr const char* VORTICITY_FORCE_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var vorticityIn: texture_2d<f32>;
-@group(0) @binding(2) var velocityIn: texture_2d<f32>;
-@group(0) @binding(3) var velocityOut: texture_storage_2d<rg16float, write>;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    let x = i32(id.x);
-    let y = i32(id.y);
-    let w = i32(u.width);
-    let h = i32(u.height);
-
-    // Sample neighboring vorticity (absolute values for gradient)
-    let vL = abs(textureLoad(vorticityIn, vec2i(max(x - 1, 0), y), 0).r);
-    let vR = abs(textureLoad(vorticityIn, vec2i(min(x + 1, w - 1), y), 0).r);
-    let vB = abs(textureLoad(vorticityIn, vec2i(x, max(y - 1, 0)), 0).r);
-    let vT = abs(textureLoad(vorticityIn, vec2i(x, min(y + 1, h - 1)), 0).r);
-    let vC = textureLoad(vorticityIn, vec2i(x, y), 0).r;
-
-    // Compute gradient of vorticity magnitude
-    var grad = vec2f(vR - vL, vT - vB) * 0.5;
-    let len = length(grad);
-    if (len > 0.0001) {
-        grad = grad / len;
-    }
-
-    // Vorticity confinement force (perpendicular to gradient)
-    let force = vec2f(grad.y, -grad.x) * vC * u.vorticityScale;
-
-    // Add force to velocity
-    let vel = textureLoad(velocityIn, vec2i(x, y), 0).xy;
-    let result = vel + force * u.dt;
-
-    textureStore(velocityOut, id.xy, vec4f(result, 0.0, 1.0));
-}
-)";
-
-// =============================================================================
-// WGSL Shaders - Force/Dye Injection
-// =============================================================================
-
-static constexpr const char* ADD_FORCE_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-struct Impulse {
-    posX: f32,
-    posY: f32,
-    valueX: f32,
-    valueY: f32,
-    valueZ: f32,
-    valueW: f32,
-    radius: f32,
-    _pad: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var<uniform> impulse: Impulse;
-@group(0) @binding(2) var velocityIn: texture_2d<f32>;
-@group(0) @binding(3) var velocityOut: texture_storage_2d<rg16float, write>;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    let uv = (vec2f(id.xy) + 0.5) / vec2f(f32(u.width), f32(u.height));
-    let pos = vec2f(impulse.posX, impulse.posY);
-
-    // Distance to impulse center
-    let dist = length(uv - pos);
-
-    // Gaussian falloff
-    let sigma = impulse.radius;
-    let weight = exp(-dist * dist / (2.0 * sigma * sigma));
-
-    // Sample current velocity
-    let vel = textureLoad(velocityIn, vec2i(id.xy), 0).xy;
-
-    // Add force impulse
-    let force = vec2f(impulse.valueX, impulse.valueY) * u.forceScale;
-    let result = vel + force * weight * u.dt;
-
-    textureStore(velocityOut, id.xy, vec4f(result, 0.0, 1.0));
-}
-)";
-
-static constexpr const char* ADD_DYE_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-struct Impulse {
-    posX: f32,
-    posY: f32,
-    valueX: f32,
-    valueY: f32,
-    valueZ: f32,
-    valueW: f32,
-    radius: f32,
-    _pad: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var<uniform> impulse: Impulse;
-@group(0) @binding(2) var dyeIn: texture_2d<f32>;
-@group(0) @binding(3) var dyeOut: texture_storage_2d<rgba16float, write>;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    let uv = (vec2f(id.xy) + 0.5) / vec2f(f32(u.width), f32(u.height));
-    let pos = vec2f(impulse.posX, impulse.posY);
-
-    // Distance to impulse center
-    let dist = length(uv - pos);
-
-    // Gaussian falloff
-    let sigma = impulse.radius;
-    let weight = exp(-dist * dist / (2.0 * sigma * sigma));
-
-    // Sample current dye
-    let dye = textureLoad(dyeIn, vec2i(id.xy), 0);
-
-    // Add dye color
-    let color = vec4f(impulse.valueX, impulse.valueY, impulse.valueZ, impulse.valueW);
-    let result = dye + color * weight;
-
-    textureStore(dyeOut, id.xy, result);
-}
-)";
-
-// =============================================================================
-// WGSL Shaders - Clear
-// =============================================================================
-
-static constexpr const char* CLEAR_SHADER_FALLBACK = R"(
-struct Uniforms {
-    dt: f32,
-    dissipation: f32,
-    texelW: f32,
-    texelH: f32,
-    dyeDissipation: f32,
-    viscosity: f32,
-    vorticityScale: f32,
-    forceScale: f32,
-    width: u32,
-    height: u32,
-    _pad0: f32,
-    _pad1: f32,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var velocityOut: texture_storage_2d<rg16float, write>;
-@group(0) @binding(2) var pressureOut: texture_storage_2d<r16float, write>;
-@group(0) @binding(3) var dyeOut: texture_storage_2d<rgba16float, write>;
-
-@compute @workgroup_size(8, 8)
-fn main(@builtin(global_invocation_id) id: vec3u) {
-    if (id.x >= u.width || id.y >= u.height) { return; }
-
-    textureStore(velocityOut, id.xy, vec4f(0.0, 0.0, 0.0, 1.0));
-    textureStore(pressureOut, id.xy, vec4f(0.0, 0.0, 0.0, 1.0));
-    textureStore(dyeOut, id.xy, vec4f(0.0, 0.0, 0.0, 0.0));
-}
-)";
-
-// =============================================================================
-// WGSL Shaders - Render (output dye to texture)
-// =============================================================================
-
-static constexpr const char* RENDER_SHADER_FALLBACK = R"(
-struct Uniforms {
-    clearR: f32,
-    clearG: f32,
-    clearB: f32,
-    clearA: f32,
-}
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f,
-}
-
-@group(0) @binding(0) var<uniform> u: Uniforms;
-@group(0) @binding(1) var dyeTex: texture_2d<f32>;
-@group(0) @binding(2) var linearSampler: sampler;
-
-@vertex
-fn vs_main(@builtin(vertex_index) vertexIndex: u32) -> VertexOutput {
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-    var output: VertexOutput;
-    output.position = vec4f(positions[vertexIndex], 0.0, 1.0);
-    output.uv = (positions[vertexIndex] + 1.0) * 0.5;
-    output.uv.y = 1.0 - output.uv.y;
-    return output;
-}
-
-@fragment
-fn fs_main(input: VertexOutput) -> @location(0) vec4f {
-    let dye = textureSample(dyeTex, linearSampler, input.uv);
-    let clear = vec4f(u.clearR, u.clearG, u.clearB, u.clearA);
-
-    // Blend dye over clear color
-    let result = vec4f(
-        mix(clear.rgb, dye.rgb, dye.a),
-        max(clear.a, dye.a)
-    );
-    return result;
-}
-)";
-
-// =============================================================================
 // FluidSim Implementation
 // =============================================================================
 
@@ -763,7 +218,7 @@ void FluidSim::createAdvectPipeline(WGPUDevice device) {
 
     // Advect velocity pipeline
     {
-        const std::string& shaderSource = s_advectVelocityShader.empty() ? ADVECT_VELOCITY_SHADER_FALLBACK : s_advectVelocityShader;
+        const std::string& shaderSource = s_advectVelocityShader;
         WGPUShaderSourceWGSL wgslDesc = {};
         wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
         wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -816,7 +271,7 @@ void FluidSim::createAdvectPipeline(WGPUDevice device) {
 
     // Advect dye pipeline
     {
-        const std::string& shaderSource = s_advectDyeShader.empty() ? ADVECT_DYE_SHADER_FALLBACK : s_advectDyeShader;
+        const std::string& shaderSource = s_advectDyeShader;
         WGPUShaderSourceWGSL wgslDesc = {};
         wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
         wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -875,7 +330,7 @@ void FluidSim::createAdvectPipeline(WGPUDevice device) {
 
 void FluidSim::createDivergencePipeline(WGPUDevice device) {
     ensureFluidShadersLoaded();
-    const std::string& shaderSource = s_divergenceShader.empty() ? DIVERGENCE_SHADER_FALLBACK : s_divergenceShader;
+    const std::string& shaderSource = s_divergenceShader;
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
     wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -924,7 +379,7 @@ void FluidSim::createDivergencePipeline(WGPUDevice device) {
 
 void FluidSim::createPressurePipeline(WGPUDevice device) {
     ensureFluidShadersLoaded();
-    const std::string& shaderSource = s_pressureShader.empty() ? PRESSURE_SHADER_FALLBACK : s_pressureShader;
+    const std::string& shaderSource = s_pressureShader;
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
     wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -978,7 +433,7 @@ void FluidSim::createPressurePipeline(WGPUDevice device) {
 
 void FluidSim::createGradientSubtractPipeline(WGPUDevice device) {
     ensureFluidShadersLoaded();
-    const std::string& shaderSource = s_gradientSubtractShader.empty() ? GRADIENT_SUBTRACT_SHADER_FALLBACK : s_gradientSubtractShader;
+    const std::string& shaderSource = s_gradientSubtractShader;
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
     wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -1035,7 +490,7 @@ void FluidSim::createVorticityPipelines(WGPUDevice device) {
 
     // Vorticity computation pipeline
     {
-        const std::string& shaderSource = s_vorticityShader.empty() ? VORTICITY_SHADER_FALLBACK : s_vorticityShader;
+        const std::string& shaderSource = s_vorticityShader;
         WGPUShaderSourceWGSL wgslDesc = {};
         wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
         wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -1084,7 +539,7 @@ void FluidSim::createVorticityPipelines(WGPUDevice device) {
 
     // Vorticity force application pipeline
     {
-        const std::string& shaderSource = s_vorticityForceShader.empty() ? VORTICITY_FORCE_SHADER_FALLBACK : s_vorticityForceShader;
+        const std::string& shaderSource = s_vorticityForceShader;
         WGPUShaderSourceWGSL wgslDesc = {};
         wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
         wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -1142,7 +597,7 @@ void FluidSim::createAddForcePipeline(WGPUDevice device) {
 
     // Force pipeline
     {
-        const std::string& shaderSource = s_addForceShader.empty() ? ADD_FORCE_SHADER_FALLBACK : s_addForceShader;
+        const std::string& shaderSource = s_addForceShader;
         WGPUShaderSourceWGSL wgslDesc = {};
         wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
         wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -1195,7 +650,7 @@ void FluidSim::createAddForcePipeline(WGPUDevice device) {
 
     // Dye injection pipeline
     {
-        const std::string& shaderSource = s_addDyeShader.empty() ? ADD_DYE_SHADER_FALLBACK : s_addDyeShader;
+        const std::string& shaderSource = s_addDyeShader;
         WGPUShaderSourceWGSL wgslDesc = {};
         wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
         wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -1249,7 +704,7 @@ void FluidSim::createAddForcePipeline(WGPUDevice device) {
 
 void FluidSim::createClearPipeline(WGPUDevice device) {
     ensureFluidShadersLoaded();
-    const std::string& shaderSource = s_clearShader.empty() ? CLEAR_SHADER_FALLBACK : s_clearShader;
+    const std::string& shaderSource = s_clearShader;
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
     wgslDesc.code = gpu::toStringView(shaderSource.c_str());
@@ -1305,7 +760,7 @@ void FluidSim::createClearPipeline(WGPUDevice device) {
 
 void FluidSim::createRenderPipeline(WGPUDevice device) {
     ensureFluidShadersLoaded();
-    const std::string& shaderSource = s_renderShader.empty() ? RENDER_SHADER_FALLBACK : s_renderShader;
+    const std::string& shaderSource = s_renderShader;
     WGPUShaderSourceWGSL wgslDesc = {};
     wgslDesc.chain.sType = WGPUSType_ShaderSourceWGSL;
     wgslDesc.code = gpu::toStringView(shaderSource.c_str());
