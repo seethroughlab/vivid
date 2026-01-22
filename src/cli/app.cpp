@@ -652,6 +652,13 @@ struct MainLoopContext {
     // Dragging state
     bool idePanelDragging = false;
     glm::vec2 ideDragOffset = {0, 0};  // Offset from panel corner to mouse position
+    // Resize state (bitmask: 1=left, 2=right, 4=top, 8=bottom)
+    int idePanelResizing = 0;
+    glm::vec2 ideResizeStart = {0, 0};      // Mouse position when resize started
+    glm::vec4 ideResizeStartBounds = {0, 0, 0, 0};  // Bounds when resize started
+    static constexpr float ideResizeHandleSize = 8.0f;
+    static constexpr float ideMinPanelWidth = 300.0f;
+    static constexpr float ideMinPanelHeight = 200.0f;
     // PTY for terminal
     std::unique_ptr<vivid::PTY> idePty;
     bool idePtyStarted = false;
@@ -1274,23 +1281,26 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     imgui_dynamic::tryRender(pass);
 
     // Check IDE panel hover state BEFORE visualizer render (to block input if needed)
+#if 0 // VIVID_IDE_PANEL disabled
 #ifdef VIVID_HAS_WEBVIEW
     bool idePanelConsumedInput = false;
     if (mlc.idePanelInitialized && mlc.idePanelVisible && mlc.ideWebView) {
         glm::vec2 mousePos = frameInput.mousePos;
 
-        // Check if mouse is over the whole panel
-        mlc.idePanelHovered = mousePos.x >= mlc.idePanelBounds.x &&
-                             mousePos.x <= mlc.idePanelBounds.x + mlc.idePanelBounds.z &&
-                             mousePos.y >= mlc.idePanelBounds.y &&
-                             mousePos.y <= mlc.idePanelBounds.y + mlc.idePanelBounds.w;
+        // Check if mouse is over the whole panel (including resize handles)
+        const float hs = mlc.ideResizeHandleSize;
+        mlc.idePanelHovered = mousePos.x >= mlc.idePanelBounds.x - hs &&
+                             mousePos.x <= mlc.idePanelBounds.x + mlc.idePanelBounds.z + hs &&
+                             mousePos.y >= mlc.idePanelBounds.y - hs &&
+                             mousePos.y <= mlc.idePanelBounds.y + mlc.idePanelBounds.w + hs;
 
-        // Block input to visualizer if IDE panel is hovered or being dragged
-        if (mlc.idePanelHovered || mlc.idePanelDragging) {
+        // Block input to visualizer if IDE panel is hovered, being dragged, or being resized
+        if (mlc.idePanelHovered || mlc.idePanelDragging || mlc.idePanelResizing != 0) {
             idePanelConsumedInput = true;
         }
     }
 #endif
+#endif // VIVID_IDE_PANEL disabled
 
     // Render NodeGraph overlay (uses OverlayCanvas, no ImGui dependency)
     if (mlc.visualizerVisible && mlc.visualizerAvailable) {
@@ -1304,22 +1314,11 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             visualizer_dynamic::trySetPendingCount(mlc.editorBridge->pendingChangeCount());
         }
 
-        // Block mouse input to visualizer if IDE panel consumed it
-#ifdef VIVID_HAS_WEBVIEW
-        if (idePanelConsumedInput) {
-            vivid::FrameInput blockedInput = frameInput;
-            blockedInput.mouseDown[0] = false;
-            blockedInput.mouseDown[1] = false;
-            blockedInput.mouseDown[2] = false;
-            visualizer_dynamic::tryRender(pass, &blockedInput, mlc.ctx);
-        } else {
-            visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
-        }
-#else
+        // IDE panel input blocking disabled - will be re-enabled with vivid-cef
         visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
-#endif
     }
 
+#if 0 // VIVID_IDE_PANEL disabled
 #ifdef VIVID_HAS_WEBVIEW
     // Update IDE WebView panel (if initialized and visible)
     if (mlc.idePanelInitialized && mlc.idePanelVisible && mlc.ideWebView) {
@@ -1356,6 +1355,113 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             } else {
                 // Stop dragging when mouse released
                 mlc.idePanelDragging = false;
+            }
+        }
+
+        // Handle resize edges/corners (only if not dragging title bar)
+        if (!mlc.idePanelDragging) {
+            const float hs = mlc.ideResizeHandleSize;  // Handle size
+            float px = mlc.idePanelBounds.x;
+            float py = mlc.idePanelBounds.y;
+            float pw = mlc.idePanelBounds.z;
+            float ph = mlc.idePanelBounds.w;
+
+            // Detect which edge(s) the mouse is over (1=left, 2=right, 4=top, 8=bottom)
+            int hoveredEdge = 0;
+            if (mousePos.x >= px - hs && mousePos.x <= px + hs &&
+                mousePos.y >= py && mousePos.y <= py + ph) {
+                hoveredEdge |= 1;  // Left
+            }
+            if (mousePos.x >= px + pw - hs && mousePos.x <= px + pw + hs &&
+                mousePos.y >= py && mousePos.y <= py + ph) {
+                hoveredEdge |= 2;  // Right
+            }
+            if (mousePos.y >= py - hs && mousePos.y <= py + hs &&
+                mousePos.x >= px && mousePos.x <= px + pw) {
+                hoveredEdge |= 4;  // Top
+            }
+            if (mousePos.y >= py + ph - hs && mousePos.y <= py + ph + hs &&
+                mousePos.x >= px && mousePos.x <= px + pw) {
+                hoveredEdge |= 8;  // Bottom
+            }
+
+            // Start resizing if clicking on an edge
+            if (hoveredEdge != 0 && leftMouseDown && mlc.idePanelResizing == 0) {
+                mlc.idePanelResizing = hoveredEdge;
+                mlc.ideResizeStart = mousePos;
+                mlc.ideResizeStartBounds = mlc.idePanelBounds;
+            }
+
+            // Update bounds while resizing
+            if (mlc.idePanelResizing != 0) {
+                if (leftMouseDown) {
+                    glm::vec2 delta = mousePos - mlc.ideResizeStart;
+                    float newX = mlc.ideResizeStartBounds.x;
+                    float newY = mlc.ideResizeStartBounds.y;
+                    float newW = mlc.ideResizeStartBounds.z;
+                    float newH = mlc.ideResizeStartBounds.w;
+
+                    if (mlc.idePanelResizing & 1) {  // Left edge
+                        newX = mlc.ideResizeStartBounds.x + delta.x;
+                        newW = mlc.ideResizeStartBounds.z - delta.x;
+                    }
+                    if (mlc.idePanelResizing & 2) {  // Right edge
+                        newW = mlc.ideResizeStartBounds.z + delta.x;
+                    }
+                    if (mlc.idePanelResizing & 4) {  // Top edge
+                        newY = mlc.ideResizeStartBounds.y + delta.y;
+                        newH = mlc.ideResizeStartBounds.w - delta.y;
+                    }
+                    if (mlc.idePanelResizing & 8) {  // Bottom edge
+                        newH = mlc.ideResizeStartBounds.w + delta.y;
+                    }
+
+                    // Enforce minimum size
+                    if (newW < mlc.ideMinPanelWidth) {
+                        if (mlc.idePanelResizing & 1) {
+                            newX = mlc.ideResizeStartBounds.x + mlc.ideResizeStartBounds.z - mlc.ideMinPanelWidth;
+                        }
+                        newW = mlc.ideMinPanelWidth;
+                    }
+                    if (newH < mlc.ideMinPanelHeight) {
+                        if (mlc.idePanelResizing & 4) {
+                            newY = mlc.ideResizeStartBounds.y + mlc.ideResizeStartBounds.w - mlc.ideMinPanelHeight;
+                        }
+                        newH = mlc.ideMinPanelHeight;
+                    }
+
+                    // Clamp to window bounds
+                    float logicalWidth = mlc.windowWidth / frameInput.contentScale;
+                    float logicalHeight = mlc.windowHeight / frameInput.contentScale;
+
+                    // Keep position non-negative
+                    if (newX < 0) {
+                        newW += newX;  // Shrink width by amount we went negative
+                        newX = 0;
+                    }
+                    if (newY < 0) {
+                        newH += newY;  // Shrink height by amount we went negative
+                        newY = 0;
+                    }
+
+                    // Keep within window bounds
+                    if (newX + newW > logicalWidth) {
+                        newW = logicalWidth - newX;
+                    }
+                    if (newY + newH > logicalHeight) {
+                        newH = logicalHeight - newY;
+                    }
+
+                    // Re-enforce minimum size after clamping
+                    newW = std::max(newW, mlc.ideMinPanelWidth);
+                    newH = std::max(newH, mlc.ideMinPanelHeight);
+
+                    mlc.idePanelBounds = glm::vec4(newX, newY, newW, newH);
+                } else {
+                    // Stop resizing and update WebView size
+                    mlc.idePanelResizing = 0;
+                    mlc.ideWebView->setSize((int)mlc.idePanelBounds.z, (int)mlc.idePanelBounds.w);
+                }
             }
         }
 
@@ -1404,15 +1510,38 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
                 (int)(mlc.idePanelBounds.x * scale), (int)(mlc.idePanelBounds.y * scale));
         }
 
-        // Read PTY output and send to terminal
-        if (mlc.idePty && mlc.idePtyStarted && mlc.editorBridge) {
+        // Read PTY output and send to terminal via executeJS (only when page is ready)
+        if (mlc.idePty && mlc.idePtyStarted && mlc.ideWebView && mlc.ideWebView->isReady()) {
             std::string ptyOutput = mlc.idePty->read();
             if (!ptyOutput.empty()) {
-                mlc.editorBridge->sendPtyOutput(ptyOutput);
+                // Escape for JavaScript string literal
+                std::string escaped;
+                escaped.reserve(ptyOutput.size() * 2);
+                for (char c : ptyOutput) {
+                    switch (c) {
+                        case '\\': escaped += "\\\\"; break;
+                        case '\'': escaped += "\\'"; break;
+                        case '\n': escaped += "\\n"; break;
+                        case '\r': escaped += "\\r"; break;
+                        case '\t': escaped += "\\t"; break;
+                        default:
+                            if (static_cast<unsigned char>(c) < 32) {
+                                // Escape control characters as \xNN
+                                char buf[8];
+                                snprintf(buf, sizeof(buf), "\\x%02x", static_cast<unsigned char>(c));
+                                escaped += buf;
+                            } else {
+                                escaped += c;
+                            }
+                            break;
+                    }
+                }
+                mlc.ideWebView->executeJS("window.vividIDE && window.vividIDE.writePtyOutput('" + escaped + "')");
             }
         }
     }
 #endif
+#endif // VIVID_IDE_PANEL disabled
 
     // Render error message if present
     if (mlc.ctx->hasError() && mlc.display->isValid()) {
@@ -2063,20 +2192,8 @@ int Application::init(const AppConfig& config) {
         return true;
     });
 
-#ifdef VIVID_HAS_WEBVIEW
-    // PTY callbacks for terminal
-    m_impl->editorBridge->onPtyInput([this](const std::string& data) {
-        if (m_impl->mlc.idePty && m_impl->mlc.idePtyStarted) {
-            m_impl->mlc.idePty->write(data);
-        }
-    });
-
-    m_impl->editorBridge->onPtyResize([this](int cols, int rows) {
-        if (m_impl->mlc.idePty && m_impl->mlc.idePtyStarted) {
-            m_impl->mlc.idePty->setSize(cols, rows);
-        }
-    });
-#endif
+    // PTY callbacks are now handled via WKScriptMessageHandler in the WebView
+    // (registered in initChainVisualizer before setUrl)
 
     // Connect chain visualizer inspector panel to pending changes system (if available)
     // The callback needs access to m_impl, so we store a static pointer (single instance)
@@ -2431,6 +2548,9 @@ int Application::init(const AppConfig& config) {
     mlc.windowWidth = m_impl->width;   // Use actual window size (may differ from CLI if chain config used)
     mlc.windowHeight = m_impl->height;
     mlc.showUI = config.showUI;
+// TODO: IDE panel temporarily disabled - will be replaced with vivid-cef
+// See planning doc for CEF integration roadmap
+#if 0 // VIVID_IDE_PANEL - disabled until vivid-cef is ready
 #ifdef VIVID_HAS_WEBVIEW
     // IDE panel visibility follows visualizer visibility
     mlc.idePanelVisible = mlc.visualizerVisible;
@@ -2445,6 +2565,42 @@ int Application::init(const AppConfig& config) {
         mlc.ideWebView->setTransparent(false);
         mlc.ideWebView->setInputEnabled(true);
 
+        // Initialize PTY for terminal BEFORE registering callbacks
+        mlc.idePty = std::make_unique<PTY>();
+        fs::path chainPath = m_impl->ctx->chainPath();
+        std::string ptyWorkDir = chainPath.empty() ? "" : chainPath.parent_path().string();
+        if (mlc.idePty->start("", ptyWorkDir)) {
+            mlc.idePtyStarted = true;
+            std::cout << "[IDE] PTY started in " << ptyWorkDir << "\n";
+        } else {
+            std::cerr << "[IDE] Failed to start PTY\n";
+        }
+
+        // Register PTY callbacks via WKScriptMessageHandler (must be before setUrl)
+        // JS calls window.vivid.ptyInput(data) → native receives it here
+        mlc.ideWebView->registerCallback("ptyInput", [&mlc](const std::string& data) {
+            if (mlc.idePty && mlc.idePtyStarted) {
+                mlc.idePty->write(data);
+            }
+        });
+
+        mlc.ideWebView->registerCallback("ptyResize", [&mlc](const std::string& json) {
+            // Parse JSON: {"cols": 80, "rows": 24}
+            if (mlc.idePty && mlc.idePtyStarted) {
+                // Simple JSON parsing for cols/rows
+                int cols = 80, rows = 24;
+                size_t colsPos = json.find("\"cols\":");
+                size_t rowsPos = json.find("\"rows\":");
+                if (colsPos != std::string::npos) {
+                    cols = std::atoi(json.c_str() + colsPos + 7);
+                }
+                if (rowsPos != std::string::npos) {
+                    rows = std::atoi(json.c_str() + rowsPos + 7);
+                }
+                mlc.idePty->setSize(cols, rows);
+            }
+        });
+
         // Get logical window size (mouse coords are in logical coords, not framebuffer coords)
         // On Retina displays, framebuffer is 2x the logical size
         int logicalWidth, logicalHeight;
@@ -2454,24 +2610,25 @@ int Application::init(const AppConfig& config) {
         mlc.idePanelBounds = glm::vec4(20, logicalHeight - panelHeight - 60, panelWidth, panelHeight);
 
         // Load IDE panel from HTTP server (avoids file:// CORS restrictions)
-        mlc.ideWebView->setUrl("http://localhost:9876/");
+        // Check if RuntimeAPI started successfully, otherwise show error
+        if (m_impl->editorBridge && m_impl->editorBridge->isRunning()) {
+            mlc.ideWebView->setUrl("http://localhost:9876/");
+        } else {
+            // Show error page when RuntimeAPI failed to start (e.g., port in use)
+            mlc.ideWebView->loadHtml(
+                "<html><body style='background:#1e1e1e;color:#f14c4c;font-family:system-ui;padding:20px;'>"
+                "<h2>IDE Panel Failed to Load</h2>"
+                "<p>The RuntimeAPI server could not start (port 9876 may be in use).</p>"
+                "<p>Try running: <code style='background:#333;padding:2px 6px;'>lsof -ti:9876 | xargs kill</code></p>"
+                "</body></html>", "");
+            std::cerr << "[IDE] RuntimeAPI not running - showing error page\n";
+        }
         mlc.idePanelInitialized = true;
 
         std::cout << "[IDE] WebView panel initialized (" << panelWidth << "x" << panelHeight << ")" << std::endl;
-
-        // Initialize PTY for terminal
-        mlc.idePty = std::make_unique<PTY>();
-        // Get project directory for PTY working directory
-        fs::path chainPath = m_impl->ctx->chainPath();
-        std::string ptyWorkDir = chainPath.empty() ? "" : chainPath.parent_path().string();
-        if (mlc.idePty->start("", ptyWorkDir)) {
-            mlc.idePtyStarted = true;
-            std::cout << "[IDE] PTY started in " << ptyWorkDir << "\n";
-        } else {
-            std::cerr << "[IDE] Failed to start PTY\n";
-        }
     }
 #endif
+#endif // VIVID_IDE_PANEL disabled
 
     // Project info
     mlc.projectName = projectName;

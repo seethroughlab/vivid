@@ -279,9 +279,8 @@ bool WebViewMacOS::init(Context& ctx, int width, int height) {
         webView_ = [[WKWebView alloc] initWithFrame:webFrame configuration:config];
 
         // WKWebView needs to be in a window for snapshots to work
-        // Canvas/WebGL content requires the window to be at least partially on-screen
-        // Position with 1 pixel visible at bottom-left corner
-        NSRect frame = NSMakeRect(0, -height_ + 1, width_, height_);
+        // Position completely off-screen (far below visible area)
+        NSRect frame = NSMakeRect(-10000, -10000, width_, height_);
         window_ = [[NSPanel alloc] initWithContentRect:frame
                                              styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskNonactivatingPanel
                                                backing:NSBackingStoreBuffered
@@ -291,7 +290,7 @@ bool WebViewMacOS::init(Context& ctx, int width, int height) {
         [window_ setReleasedWhenClosed:NO];
         [window_ setExcludedFromWindowsMenu:YES];
         [window_ setIgnoresMouseEvents:YES];
-        [window_ setAlphaValue:1.0];  // Keep visible for WebGL/canvas rendering
+        // Alpha will be set to 0 later to make window invisible while still rendering
         [window_ setOpaque:YES];  // Opaque for proper rendering
         [window_ setBackgroundColor:[NSColor whiteColor]];  // White background
         [window_ setLevel:NSNormalWindowLevel - 1];  // Behind normal windows
@@ -335,8 +334,10 @@ bool WebViewMacOS::init(Context& ctx, int width, int height) {
         [webView_ setWantsLayer:YES];
         webView_.layer.drawsAsynchronously = NO;  // Synchronous drawing for capture
 
-        // Order window front - required for WebGL/canvas rendering
-        [window_ orderFront:nil];
+        // Make window invisible but still rendering (alpha=0)
+        // Window must be ordered for WKWebView to render, but we capture via snapshots
+        [window_ setAlphaValue:0.0];
+        [window_ orderBack:nil];
 
         // Create GPU texture
         createTexture();
@@ -1009,7 +1010,13 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
         }
 
         // Dispatch wheel event for scroll
+        // GLFW gives scroll in "lines" (~1.0 per notch), but WheelEvent deltaMode:0 expects pixels
+        // Scale by typical line height (~40px) and invert Y for natural scrolling direction
         if (type == MouseEventType::Scroll) {
+            const float scrollScale = 40.0f;
+            float scaledDeltaX = scrollDeltaX * scrollScale;
+            float scaledDeltaY = -scrollDeltaY * scrollScale;  // Invert for natural scrolling
+
             NSString* wheelScript = [NSString stringWithFormat:
                 @"(function() {"
                 @"  var x = %f, y = %f;"
@@ -1021,7 +1028,7 @@ void WebViewMacOS::sendMouseEvent(MouseEventType type, float x, float y,
                 @"  });"
                 @"  elem.dispatchEvent(evt);"
                 @"})();",
-                cssX, cssY, scrollDeltaX, scrollDeltaY
+                cssX, cssY, scaledDeltaX, scaledDeltaY
             ];
             [webView_ evaluateJavaScript:wheelScript completionHandler:nil];
         }
@@ -1162,16 +1169,26 @@ void WebViewMacOS::sendKeyEvent(KeyEventType type, int keyCode, int scanCode,
         NSString* modString = [modArray componentsJoinedByString:@", "];
 
         // Dispatch keyboard event - use vividIDE API if available, else activeElement
+        // If getKeyboardTarget returns null, try sendKeyDown for terminal escape sequences
         NSString* script = [NSString stringWithFormat:
             @"var el = (window.vividIDE && window.vividIDE.getKeyboardTarget) "
             @"  ? window.vividIDE.getKeyboardTarget() "
             @"  : (document.activeElement || document.body);"
-            @"el.dispatchEvent(new KeyboardEvent('%@', {"
-            @"  bubbles:true, cancelable:true, keyCode:%d, which:%d, key:'%@', code:'%@'%@%@"
-            @"}));",
+            @"if (el) {"
+            @"  el.dispatchEvent(new KeyboardEvent('%@', {"
+            @"    bubbles:true, cancelable:true, keyCode:%d, which:%d, key:'%@', code:'%@'%@%@"
+            @"  }));"
+            @"} else if (window.vividIDE && window.vividIDE.sendKeyDown && '%@' === 'keydown') {"
+            @"  window.vividIDE.sendKeyDown(%d, {shift:%@, ctrl:%@, alt:%@, meta:%@});"
+            @"}",
             eventType, domKeyCode, domKeyCode, key, key,
             modString.length > 0 ? @", " : @"",
-            modString
+            modString,
+            eventType, domKeyCode,
+            modifiers.shift ? @"true" : @"false",
+            modifiers.ctrl ? @"true" : @"false",
+            modifiers.alt ? @"true" : @"false",
+            modifiers.meta ? @"true" : @"false"
         ];
 
         [webView_ evaluateJavaScript:script completionHandler:nil];
@@ -1180,9 +1197,8 @@ void WebViewMacOS::sendKeyEvent(KeyEventType type, int keyCode, int scanCode,
 
 void WebViewMacOS::setFocus(bool focused) {
     focused_ = focused;
-    if (window_ && focused_) {
-        [window_ makeKeyWindow];
-    }
+    // Don't make the backing window key - it's hidden/offscreen and we render to texture
+    // Making it key would bring it to the foreground and make it visible
 }
 
 bool WebViewMacOS::isLoading() const {

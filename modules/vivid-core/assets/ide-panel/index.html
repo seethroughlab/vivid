@@ -275,21 +275,17 @@
             fitAddon.fit();
             console.log('[IDE] Terminal fitted, rows:', term.rows, 'cols:', term.cols);
 
-            // Send input to PTY
+            // Send input to PTY via native bridge (WKScriptMessageHandler)
             term.onData(data => {
-                if (ws && wsConnected) {
-                    ws.send(JSON.stringify({ type: 'pty_input', data: data }));
+                if (window.vivid && window.vivid.ptyInput) {
+                    window.vivid.ptyInput(data);
                 }
             });
 
-            // Resize handler - notify PTY of new size
+            // Resize handler - notify PTY of new size via native bridge
             const notifyPtyResize = () => {
-                if (ws && wsConnected && term) {
-                    ws.send(JSON.stringify({
-                        type: 'pty_resize',
-                        cols: term.cols,
-                        rows: term.rows
-                    }));
+                if (window.vivid && window.vivid.ptyResize && term) {
+                    window.vivid.ptyResize({cols: term.cols, rows: term.rows});
                 }
             };
 
@@ -300,10 +296,8 @@
                 }
             });
 
-            // Send initial size when WebSocket connects
-            if (ws && wsConnected) {
-                notifyPtyResize();
-            }
+            // Send initial size after a short delay (wait for native bridge to be ready)
+            setTimeout(notifyPtyResize, 100);
 
             // Welcome message (PTY will send actual shell prompt)
             term.writeln('\x1b[1;36m=== Vivid IDE Terminal ===\x1b[0m');
@@ -371,7 +365,9 @@
             // Get the target element for keyboard input
             getKeyboardTarget: () => {
                 if (activeComponent === 'terminal') {
-                    return document.querySelector('.xterm-helper-textarea') || document.activeElement || document.body;
+                    // Terminal: return null to skip keyboard event dispatch
+                    // We handle input via insertText (chars) and sendKeyDown (special keys)
+                    return null;
                 } else if (activeComponent === 'editor') {
                     const monaco = document.querySelector('.monaco-editor');
                     if (monaco) {
@@ -382,11 +378,51 @@
                 }
                 return document.activeElement || document.body;
             },
+            // Handle keydown events - for terminal, convert to escape sequences
+            // domKeyCode: DOM keyCode (13=Enter, 8=Backspace, etc.)
+            // modifiers: {shift, ctrl, alt, meta}
+            sendKeyDown: (domKeyCode, modifiers) => {
+                if (activeComponent !== 'terminal') return false;
+
+                let seq = null;
+                const ctrl = modifiers && modifiers.ctrl;
+
+                // Map DOM keyCodes to terminal escape sequences
+                switch (domKeyCode) {
+                    case 13: seq = '\r'; break;           // Enter
+                    case 8:  seq = '\x7f'; break;         // Backspace (DEL)
+                    case 9:  seq = '\t'; break;           // Tab
+                    case 27: seq = '\x1b'; break;         // Escape
+                    case 38: seq = '\x1b[A'; break;       // Arrow Up
+                    case 40: seq = '\x1b[B'; break;       // Arrow Down
+                    case 39: seq = '\x1b[C'; break;       // Arrow Right
+                    case 37: seq = '\x1b[D'; break;       // Arrow Left
+                    case 36: seq = '\x1b[H'; break;       // Home
+                    case 35: seq = '\x1b[F'; break;       // End
+                    case 46: seq = '\x1b[3~'; break;      // Delete
+                    case 33: seq = '\x1b[5~'; break;      // Page Up
+                    case 34: seq = '\x1b[6~'; break;      // Page Down
+                    default:
+                        // Handle Ctrl+letter combinations (Ctrl+C, Ctrl+D, etc.)
+                        if (ctrl && domKeyCode >= 65 && domKeyCode <= 90) {
+                            seq = String.fromCharCode(domKeyCode - 64);
+                        }
+                        break;
+                }
+
+                if (seq && window.vivid && window.vivid.ptyInput) {
+                    window.vivid.ptyInput(seq);
+                    return true;  // Handled
+                }
+                return false;  // Not handled
+            },
             // Directly insert text into the active component
             insertText: (text) => {
                 if (activeComponent === 'terminal') {
-                    // Terminal: keyboard events already trigger xterm's onData -> pty_input
-                    // Don't send again here to avoid double input
+                    // Terminal: send character directly to PTY via native bridge
+                    if (window.vivid && window.vivid.ptyInput) {
+                        window.vivid.ptyInput(text);
+                    }
                     return;
                 } else if (activeComponent === 'editor' && editor) {
                     // For Monaco, insert at cursor position
@@ -407,6 +443,12 @@
                             column: position.column + text.length
                         });
                     }
+                }
+            },
+            // Called by native code to write PTY output to terminal
+            writePtyOutput: (data) => {
+                if (term) {
+                    term.write(data);
                 }
             }
         };
