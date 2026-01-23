@@ -337,6 +337,12 @@ else()
     message(STATUS "Chain visualizer disabled (production build)")
 endif()
 
+# Native IDE panel (terminal + editor) - only built for development
+if(NOT VIVID_PRODUCTION)
+    add_subdirectory(modules/vivid-ide)
+    message(STATUS "Native IDE panel enabled (development build)")
+endif()
+
 # vivid-opencv moved to separate repo: https://github.com/seethroughlab/vivid-opencv
 # vivid-onnx moved to separate repo: https://github.com/seethroughlab/vivid-onnx
 

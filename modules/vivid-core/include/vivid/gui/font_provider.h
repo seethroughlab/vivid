@@ -40,8 +40,14 @@ public:
     /// @brief Get glyph info for a character (nullptr if not found)
     virtual const GlyphInfo* getGlyph(char c) const = 0;
 
+    /// @brief Get glyph info for a Unicode codepoint (nullptr if not found)
+    virtual const GlyphInfo* getGlyphUnicode(uint32_t codepoint) const { return getGlyph(static_cast<char>(codepoint)); }
+
     /// @brief Get kerning adjustment between two characters
     virtual float getKerning(char left, char right) const = 0;
+
+    /// @brief Get kerning adjustment between two Unicode codepoints
+    virtual float getKerningUnicode(uint32_t left, uint32_t right) const { return getKerning(static_cast<char>(left), static_cast<char>(right)); }
 
     /// @brief Check if font has kerning information
     virtual bool hasKerning() const = 0;

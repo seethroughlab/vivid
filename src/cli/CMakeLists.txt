@@ -89,10 +89,18 @@ if(TARGET vivid-visualizer)
 endif()
 
 # Link vivid-cef for IDE panel (CEF browser for proper offscreen rendering)
-if(TARGET vivid-cef)
-    target_link_libraries(vivid PRIVATE vivid-cef)
-    target_compile_definitions(vivid PRIVATE VIVID_HAS_CEF)
-    message(STATUS "[vivid-cli] Linked with vivid-cef for IDE panel")
+# DISABLED: Using native vivid-ide module instead
+# if(TARGET vivid-cef)
+#     target_link_libraries(vivid PRIVATE vivid-cef)
+#     target_compile_definitions(vivid PRIVATE VIVID_HAS_CEF)
+#     message(STATUS "[vivid-cli] Linked with vivid-cef for IDE panel")
+# endif()
+
+# Link vivid-ide for native terminal/editor panel
+if(TARGET vivid-ide)
+    target_link_libraries(vivid PRIVATE vivid-ide)
+    target_compile_definitions(vivid PRIVATE VIVID_HAS_IDE)
+    message(STATUS "[vivid-cli] Linked with vivid-ide for native IDE panel")
 endif()
 
 

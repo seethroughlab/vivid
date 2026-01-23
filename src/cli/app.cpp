@@ -403,6 +403,173 @@ static void resetLookup() {
 
 } // namespace vivid::visualizer_dynamic
 
+// -----------------------------------------------------------------------------
+// Dynamic IDE Support (vivid-ide module)
+// -----------------------------------------------------------------------------
+// Function pointers for optional vivid-ide module (native terminal + editor)
+
+namespace vivid::ide_dynamic {
+
+// Function pointer types matching ide_exports.cpp
+using InitFn = void(*)(void*, WGPUTextureFormat);  // void* = Context*
+using ShutdownFn = void(*)();
+using UpdateFn = void(*)();
+using RenderFn = void(*)(WGPURenderPassEncoder, const void*, float, float);
+using ConsumedInputFn = bool(*)();
+using IsAvailableFn = bool(*)();
+using IsVisibleFn = bool(*)();
+using SetVisibleFn = void(*)(bool);
+using ToggleVisibleFn = void(*)();
+using SetWorkingDirFn = void(*)(const char*);
+using OpenFileFn = bool(*)(const char*);
+using SetCompileStatusFn = void(*)(bool, const char*);
+using OnCharFn = void(*)(uint32_t);
+using OnKeyFn = void(*)(int, int);
+using GetBoundsFn = void(*)(float*, float*, float*, float*);
+using IsInteractingFn = bool(*)();
+using IsHoveredFn = bool(*)();
+
+static InitFn init = nullptr;
+static ShutdownFn shutdown = nullptr;
+static UpdateFn update = nullptr;
+static RenderFn render = nullptr;
+static ConsumedInputFn consumedInput = nullptr;
+static IsAvailableFn isAvailable = nullptr;
+static IsVisibleFn isVisible = nullptr;
+static SetVisibleFn setVisible = nullptr;
+static ToggleVisibleFn toggleVisible = nullptr;
+static SetWorkingDirFn setWorkingDir = nullptr;
+static OpenFileFn openFile = nullptr;
+static SetCompileStatusFn setCompileStatus = nullptr;
+static OnCharFn onChar = nullptr;
+static OnKeyFn onKey = nullptr;
+static GetBoundsFn getBounds = nullptr;
+static IsInteractingFn isInteracting = nullptr;
+static IsHoveredFn isHovered = nullptr;
+static bool g_lookedUp = false;
+static bool g_initialized = false;
+
+static void lookupFunctions() {
+    if (g_lookedUp) return;
+    g_lookedUp = true;
+
+#if defined(__APPLE__) || defined(__linux__)
+    init = (InitFn)dlsym(RTLD_DEFAULT, "vivid_ide_init");
+    shutdown = (ShutdownFn)dlsym(RTLD_DEFAULT, "vivid_ide_shutdown");
+    update = (UpdateFn)dlsym(RTLD_DEFAULT, "vivid_ide_update");
+    render = (RenderFn)dlsym(RTLD_DEFAULT, "vivid_ide_render");
+    consumedInput = (ConsumedInputFn)dlsym(RTLD_DEFAULT, "vivid_ide_consumed_input");
+    isAvailable = (IsAvailableFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_available");
+    isVisible = (IsVisibleFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_visible");
+    setVisible = (SetVisibleFn)dlsym(RTLD_DEFAULT, "vivid_ide_set_visible");
+    toggleVisible = (ToggleVisibleFn)dlsym(RTLD_DEFAULT, "vivid_ide_toggle_visible");
+    setWorkingDir = (SetWorkingDirFn)dlsym(RTLD_DEFAULT, "vivid_ide_set_working_dir");
+    openFile = (OpenFileFn)dlsym(RTLD_DEFAULT, "vivid_ide_open_file");
+    setCompileStatus = (SetCompileStatusFn)dlsym(RTLD_DEFAULT, "vivid_ide_set_compile_status");
+    onChar = (OnCharFn)dlsym(RTLD_DEFAULT, "vivid_ide_on_char");
+    onKey = (OnKeyFn)dlsym(RTLD_DEFAULT, "vivid_ide_on_key");
+    getBounds = (GetBoundsFn)dlsym(RTLD_DEFAULT, "vivid_ide_get_bounds");
+    isInteracting = (IsInteractingFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_interacting");
+    isHovered = (IsHoveredFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_hovered");
+#elif defined(_WIN32)
+    HMODULE ideModule = GetModuleHandleA("vivid-ide.dll");
+    if (ideModule) {
+        init = (InitFn)GetProcAddress(ideModule, "vivid_ide_init");
+        shutdown = (ShutdownFn)GetProcAddress(ideModule, "vivid_ide_shutdown");
+        update = (UpdateFn)GetProcAddress(ideModule, "vivid_ide_update");
+        render = (RenderFn)GetProcAddress(ideModule, "vivid_ide_render");
+        consumedInput = (ConsumedInputFn)GetProcAddress(ideModule, "vivid_ide_consumed_input");
+        isAvailable = (IsAvailableFn)GetProcAddress(ideModule, "vivid_ide_is_available");
+        isVisible = (IsVisibleFn)GetProcAddress(ideModule, "vivid_ide_is_visible");
+        setVisible = (SetVisibleFn)GetProcAddress(ideModule, "vivid_ide_set_visible");
+        toggleVisible = (ToggleVisibleFn)GetProcAddress(ideModule, "vivid_ide_toggle_visible");
+        setWorkingDir = (SetWorkingDirFn)GetProcAddress(ideModule, "vivid_ide_set_working_dir");
+        openFile = (OpenFileFn)GetProcAddress(ideModule, "vivid_ide_open_file");
+        setCompileStatus = (SetCompileStatusFn)GetProcAddress(ideModule, "vivid_ide_set_compile_status");
+        onChar = (OnCharFn)GetProcAddress(ideModule, "vivid_ide_on_char");
+        onKey = (OnKeyFn)GetProcAddress(ideModule, "vivid_ide_on_key");
+        getBounds = (GetBoundsFn)GetProcAddress(ideModule, "vivid_ide_get_bounds");
+        isInteracting = (IsInteractingFn)GetProcAddress(ideModule, "vivid_ide_is_interacting");
+        isHovered = (IsHoveredFn)GetProcAddress(ideModule, "vivid_ide_is_hovered");
+    }
+#endif
+}
+
+static bool available() {
+    lookupFunctions();
+    return isAvailable && isAvailable();
+}
+
+static void tryInit(void* ctx, WGPUTextureFormat fmt) {
+    lookupFunctions();
+    if (init) {
+        init(ctx, fmt);
+        g_initialized = true;
+    }
+}
+
+static void tryShutdown() {
+    if (shutdown && g_initialized) {
+        shutdown();
+        g_initialized = false;
+    }
+}
+
+static void tryUpdate() {
+    if (update && g_initialized) update();
+}
+
+static void tryRender(WGPURenderPassEncoder pass, const void* input, float w, float h) {
+    if (render && g_initialized) render(pass, input, w, h);
+}
+
+static bool tryConsumedInput() {
+    return consumedInput && g_initialized && consumedInput();
+}
+
+static bool tryIsVisible() {
+    return isVisible && g_initialized && isVisible();
+}
+
+static void trySetVisible(bool visible) {
+    if (setVisible && g_initialized) setVisible(visible);
+}
+
+static void tryToggleVisible() {
+    if (toggleVisible && g_initialized) toggleVisible();
+}
+
+static void trySetWorkingDir(const char* path) {
+    if (setWorkingDir && g_initialized) setWorkingDir(path);
+}
+
+static bool tryOpenFile(const char* path) {
+    if (openFile && g_initialized) return openFile(path);
+    return false;
+}
+
+static void trySetCompileStatus(bool success, const char* message) {
+    if (setCompileStatus && g_initialized) setCompileStatus(success, message);
+}
+
+static void tryOnChar(uint32_t codepoint) {
+    if (onChar && g_initialized) onChar(codepoint);
+}
+
+static void tryOnKey(int key, int mods) {
+    if (onKey && g_initialized) onKey(key, mods);
+}
+
+static bool tryIsInteracting() {
+    return isInteracting && g_initialized && isInteracting();
+}
+
+static bool tryIsHovered() {
+    return isHovered && g_initialized && isHovered();
+}
+
+} // namespace vivid::ide_dynamic
+
 namespace fs = std::filesystem;
 
 namespace vivid {
@@ -709,9 +876,17 @@ static void updateKeyStates(GLFWwindow* window) {
     // Check common keys and detect rising edge (was up, now down)
     const int keysToCheck[] = {
         GLFW_KEY_ESCAPE, GLFW_KEY_ENTER, GLFW_KEY_GRAVE_ACCENT, GLFW_KEY_SPACE,
-        GLFW_KEY_B, GLFW_KEY_F, GLFW_KEY_R, GLFW_KEY_S,
         GLFW_KEY_RIGHT, GLFW_KEY_LEFT, GLFW_KEY_DOWN, GLFW_KEY_UP,
-        GLFW_KEY_0, GLFW_KEY_1, GLFW_KEY_2
+        GLFW_KEY_0, GLFW_KEY_1, GLFW_KEY_2,
+        // Terminal special keys
+        GLFW_KEY_BACKSPACE, GLFW_KEY_TAB, GLFW_KEY_DELETE, GLFW_KEY_INSERT,
+        GLFW_KEY_HOME, GLFW_KEY_END, GLFW_KEY_PAGE_UP, GLFW_KEY_PAGE_DOWN,
+        // Letter keys A-Z for Ctrl+letter combinations
+        GLFW_KEY_A, GLFW_KEY_B, GLFW_KEY_C, GLFW_KEY_D, GLFW_KEY_E, GLFW_KEY_F,
+        GLFW_KEY_G, GLFW_KEY_H, GLFW_KEY_I, GLFW_KEY_J, GLFW_KEY_K, GLFW_KEY_L,
+        GLFW_KEY_M, GLFW_KEY_N, GLFW_KEY_O, GLFW_KEY_P, GLFW_KEY_Q, GLFW_KEY_R,
+        GLFW_KEY_S, GLFW_KEY_T, GLFW_KEY_U, GLFW_KEY_V, GLFW_KEY_W, GLFW_KEY_X,
+        GLFW_KEY_Y, GLFW_KEY_Z
     };
 
     for (int key : keysToCheck) {
@@ -743,9 +918,13 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         if (toggleKeyPressed && !mlc.toggleKeyWasPressed && mlc.visualizerAvailable) {
             mlc.visualizerVisible = !mlc.visualizerVisible;
 #ifdef VIVID_HAS_CEF
-            // IDE panel visibility follows visualizer
+            // CEF IDE panel visibility follows visualizer
             mlc.idePanelVisible = mlc.visualizerVisible;
 #endif
+            // Native IDE panel visibility follows visualizer
+            if (ide_dynamic::available()) {
+                ide_dynamic::trySetVisible(mlc.visualizerVisible);
+            }
         }
         mlc.toggleKeyWasPressed = toggleKeyPressed;
     }
@@ -1527,6 +1706,69 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     }
 #endif
 
+    // Render native IDE panel (if vivid-ide module is loaded)
+    static bool nativeIdeInitialized = false;
+    if (ide_dynamic::available() && ide_dynamic::tryIsVisible()) {
+        // Initialize IDE on first show (spawn terminal, open chain.cpp)
+        if (!nativeIdeInitialized) {
+            fs::path chainPath = mlc.ctx->chainPath();
+            if (!chainPath.empty()) {
+                std::string projectDir = chainPath.parent_path().string();
+                ide_dynamic::trySetWorkingDir(projectDir.c_str());
+                ide_dynamic::tryOpenFile(chainPath.string().c_str());
+                std::cerr << "[vivid-ide] Opened: " << chainPath << std::endl;
+            }
+            nativeIdeInitialized = true;
+        }
+
+        ide_dynamic::tryUpdate();
+
+        // Forward ALL input to IDE when it's visible (IDE handles its own focus)
+        // Forward characters collected this frame (except backtick which toggles the UI)
+        for (uint32_t codepoint : mlc.ctx->characterInput()) {
+            if (codepoint == '`') continue;  // Backtick is used to toggle UI, don't forward
+            ide_dynamic::tryOnChar(codepoint);
+        }
+
+        // Forward key press events (for special keys: Enter, Backspace, arrows, etc.)
+        int mods = 0;
+        if (frameInput.keyCtrl) mods |= 0x2;
+        if (frameInput.keyShift) mods |= 0x1;
+        if (frameInput.keyAlt) mods |= 0x4;
+        if (frameInput.keySuper) mods |= 0x8;
+
+        // Forward special keys that were pressed this frame
+        static const int specialKeys[] = {
+            257,  // Enter
+            259,  // Backspace
+            258,  // Tab
+            256,  // Escape
+            265, 264, 263, 262,  // Arrow keys
+            268, 269,  // Home, End
+            266, 267,  // Page Up, Page Down
+            261,  // Delete
+            260,  // Insert
+        };
+        for (int key : specialKeys) {
+            if (frameInput.keyPressed[key]) {
+                ide_dynamic::tryOnKey(key, mods);
+            }
+        }
+
+        // Forward Ctrl+letter combinations (for Ctrl+C, Ctrl+D, etc.)
+        if (frameInput.keyCtrl) {
+            for (int key = 65; key <= 90; key++) {  // A-Z (GLFW key codes)
+                if (frameInput.keyPressed[key]) {
+                    ide_dynamic::tryOnKey(key, mods);
+                }
+            }
+        }
+
+        float logicalWidth = static_cast<float>(mlc.windowWidth) / frameInput.contentScale;
+        float logicalHeight = static_cast<float>(mlc.windowHeight) / frameInput.contentScale;
+        ide_dynamic::tryRender(pass, &frameInput, logicalWidth, logicalHeight);
+    }
+
     // Render error message if present
     if (mlc.ctx->hasError() && mlc.display->isValid()) {
         mlc.display->renderText(pass, mlc.ctx->errorMessage(), 20.0f, 20.0f, 2.0f);
@@ -1969,6 +2211,9 @@ int Application::init(const AppConfig& config) {
             visualizer_dynamic::trySetMcpWarning(warning.c_str());
         }
     }
+
+    // Initialize native IDE panel (dynamically loaded from vivid-ide module)
+    ide_dynamic::tryInit(m_impl->ctx.get(), m_impl->surfaceFormat);
 
     // HotReload was created earlier (before window creation) for config extraction
     // No need to create it again here
@@ -2739,6 +2984,9 @@ void Application::shutdown() {
 
     // Shutdown chain visualizer (if dynamically loaded)
     visualizer_dynamic::tryShutdown();
+
+    // Shutdown native IDE panel (if dynamically loaded)
+    ide_dynamic::tryShutdown();
 
 #ifdef VIVID_HAS_CEF
     // Shutdown PTY

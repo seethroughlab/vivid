@@ -60,8 +60,10 @@ public:
 
     // FontProvider interface implementation
     const GlyphInfo* getGlyph(char c) const override;
+    const GlyphInfo* getGlyphUnicode(uint32_t codepoint) const override;
     glm::vec2 measureText(const std::string& text) const override;
     float getKerning(char left, char right) const override;
+    float getKerningUnicode(uint32_t left, uint32_t right) const override;
     bool hasKerning() const override { return m_hasKerning; }
     WGPUTextureView textureView() const override { return m_textureView; }
     bool valid() const override { return m_texture != nullptr; }
@@ -77,8 +79,8 @@ private:
     WGPUTexture m_texture = nullptr;
     WGPUTextureView m_textureView = nullptr;
 
-    std::unordered_map<char, GlyphInfo> m_glyphs;
-    std::unordered_map<char, unsigned int> m_glyphIndices;  // For kerning lookups
+    std::unordered_map<uint32_t, GlyphInfo> m_glyphs;
+    std::unordered_map<uint32_t, unsigned int> m_glyphIndices;  // For kerning lookups
     float m_fontSize = 0;
     float m_lineHeight = 0;
     float m_ascent = 0;

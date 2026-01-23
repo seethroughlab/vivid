@@ -1189,21 +1189,61 @@ void OverlayCanvas::textScaled(const std::string& str, float x, float y, const g
     FontProvider& font = *m_fonts[fontIndex];
     float cursorX = x;
     float cursorY = y;
-    char prevChar = 0;
+    uint32_t prevCodepoint = 0;
 
-    for (char c : str) {
-        if (c == '\n') {
-            cursorX = x;
-            cursorY += font.lineHeight() * scale;
-            prevChar = 0;
+    // Iterate through UTF-8 string decoding codepoints
+    size_t i = 0;
+    while (i < str.size()) {
+        uint32_t codepoint = 0;
+        unsigned char c = static_cast<unsigned char>(str[i]);
+
+        // Decode UTF-8 sequence
+        if ((c & 0x80) == 0) {
+            // Single byte (ASCII)
+            codepoint = c;
+            i += 1;
+        } else if ((c & 0xE0) == 0xC0) {
+            // Two byte sequence
+            if (i + 1 < str.size()) {
+                codepoint = ((c & 0x1F) << 6) |
+                            (static_cast<unsigned char>(str[i + 1]) & 0x3F);
+            }
+            i += 2;
+        } else if ((c & 0xF0) == 0xE0) {
+            // Three byte sequence
+            if (i + 2 < str.size()) {
+                codepoint = ((c & 0x0F) << 12) |
+                            ((static_cast<unsigned char>(str[i + 1]) & 0x3F) << 6) |
+                            (static_cast<unsigned char>(str[i + 2]) & 0x3F);
+            }
+            i += 3;
+        } else if ((c & 0xF8) == 0xF0) {
+            // Four byte sequence
+            if (i + 3 < str.size()) {
+                codepoint = ((c & 0x07) << 18) |
+                            ((static_cast<unsigned char>(str[i + 1]) & 0x3F) << 12) |
+                            ((static_cast<unsigned char>(str[i + 2]) & 0x3F) << 6) |
+                            (static_cast<unsigned char>(str[i + 3]) & 0x3F);
+            }
+            i += 4;
+        } else {
+            // Invalid UTF-8, skip byte
+            i += 1;
             continue;
         }
 
-        const GlyphInfo* glyph = font.getGlyph(c);
+        if (codepoint == '\n') {
+            cursorX = x;
+            cursorY += font.lineHeight() * scale;
+            prevCodepoint = 0;
+            continue;
+        }
+
+        const GlyphInfo* glyph = font.getGlyphUnicode(codepoint);
         if (!glyph) continue;
 
-        if (prevChar != 0) {
-            cursorX += font.getKerning(prevChar, c) * scale;
+        if (prevCodepoint != 0) {
+            cursorX += font.getKerningUnicode(prevCodepoint, codepoint) * scale;
         }
 
         // Scale glyph dimensions by scale factor
@@ -1224,7 +1264,7 @@ void OverlayCanvas::textScaled(const std::string& str, float x, float y, const g
                     color, fontIndex);
 
         cursorX += glyph->xadvance * scale;
-        prevChar = c;
+        prevCodepoint = codepoint;
     }
 }
 

@@ -102,20 +102,15 @@ bool FontAtlas::loadFromMemory(Context& ctx, const uint8_t* data, size_t size,
     int shelfHeight = 0; // Height of current shelf
     int cursorX = 0;     // X position in current shelf
     const int padding = 2;  // Padding between glyphs
-
-    // Pack ASCII characters 32-126
-    const int firstChar = 32;
-    const int lastChar = 126;
     float invAtlasSize = 1.0f / atlasSize;
 
-    for (int c = firstChar; c <= lastChar; c++) {
-        // Load glyph
-        FT_UInt glyphIndex = FT_Get_Char_Index(m_ftFace, c);
-        error = FT_Load_Glyph(m_ftFace, glyphIndex, FT_LOAD_RENDER);
-        if (error) {
-            std::cerr << "[FontAtlas] Failed to load glyph for character " << c << "\n";
-            continue;
-        }
+    // Helper to load a single glyph into the atlas
+    auto loadGlyph = [&](uint32_t codepoint) -> bool {
+        FT_UInt glyphIndex = FT_Get_Char_Index(m_ftFace, codepoint);
+        if (glyphIndex == 0) return false;  // Glyph not in font
+
+        FT_Error err = FT_Load_Glyph(m_ftFace, glyphIndex, FT_LOAD_RENDER);
+        if (err) return false;
 
         FT_GlyphSlot g = m_ftFace->glyph;
         int glyphWidth = static_cast<int>(g->bitmap.width);
@@ -130,8 +125,7 @@ bool FontAtlas::loadFromMemory(Context& ctx, const uint8_t* data, size_t size,
 
         // Check if we've run out of vertical space
         if (shelfY + glyphHeight > atlasSize) {
-            std::cerr << "[FontAtlas] Atlas too small for all glyphs\n";
-            break;
+            return false;  // Atlas full
         }
 
         // Copy glyph bitmap to atlas
@@ -157,12 +151,54 @@ bool FontAtlas::loadFromMemory(Context& ctx, const uint8_t* data, size_t size,
         glyph.width = static_cast<float>(glyphWidth);
         glyph.height = static_cast<float>(glyphHeight);
 
-        m_glyphs[static_cast<char>(c)] = glyph;
-        m_glyphIndices[static_cast<char>(c)] = glyphIndex;
+        m_glyphs[codepoint] = glyph;
+        m_glyphIndices[codepoint] = glyphIndex;
 
         // Advance cursor
         cursorX += glyphWidth + padding;
         shelfHeight = std::max(shelfHeight, glyphHeight);
+        return true;
+    };
+
+    // Load ASCII characters 32-126
+    for (uint32_t c = 32; c <= 126; c++) {
+        loadGlyph(c);
+    }
+
+    // Load box drawing characters (U+2500-U+257F) for terminal UI
+    for (uint32_t c = 0x2500; c <= 0x257F; c++) {
+        loadGlyph(c);
+    }
+
+    // Load additional Unicode blocks for terminal support
+    // Block elements (U+2580-U+259F)
+    for (uint32_t c = 0x2580; c <= 0x259F; c++) {
+        loadGlyph(c);
+    }
+
+    // Geometric shapes (U+25A0-U+25FF) - includes checkmarks, bullets
+    for (uint32_t c = 0x25A0; c <= 0x25FF; c++) {
+        loadGlyph(c);
+    }
+
+    // Miscellaneous symbols (U+2600-U+26FF) - includes common UI symbols
+    for (uint32_t c = 0x2600; c <= 0x26FF; c++) {
+        loadGlyph(c);
+    }
+
+    // Dingbats (U+2700-U+27BF) - includes check marks, arrows
+    for (uint32_t c = 0x2700; c <= 0x27BF; c++) {
+        loadGlyph(c);
+    }
+
+    // Arrows (U+2190-U+21FF)
+    for (uint32_t c = 0x2190; c <= 0x21FF; c++) {
+        loadGlyph(c);
+    }
+
+    // Mathematical operators (U+2200-U+22FF)
+    for (uint32_t c = 0x2200; c <= 0x22FF; c++) {
+        loadGlyph(c);
     }
 
     // Convert single-channel to RGBA for GPU texture
@@ -224,7 +260,11 @@ bool FontAtlas::loadFromMemory(Context& ctx, const uint8_t* data, size_t size,
 }
 
 const GlyphInfo* FontAtlas::getGlyph(char c) const {
-    auto it = m_glyphs.find(c);
+    return getGlyphUnicode(static_cast<uint8_t>(c));
+}
+
+const GlyphInfo* FontAtlas::getGlyphUnicode(uint32_t codepoint) const {
+    auto it = m_glyphs.find(codepoint);
     if (it != m_glyphs.end()) {
         return &it->second;
     }
@@ -234,6 +274,10 @@ const GlyphInfo* FontAtlas::getGlyph(char c) const {
 }
 
 float FontAtlas::getKerning(char left, char right) const {
+    return getKerningUnicode(static_cast<uint8_t>(left), static_cast<uint8_t>(right));
+}
+
+float FontAtlas::getKerningUnicode(uint32_t left, uint32_t right) const {
     if (!m_hasKerning || !m_ftFace) {
         return 0.0f;
     }

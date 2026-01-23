@@ -74,6 +74,7 @@ public:
             }
 
             // Set up environment for interactive shell
+            // Use xterm-256color since libvterm supports full xterm emulation
             setenv("TERM", "xterm-256color", 1);
 
             if (command.empty()) {
@@ -114,7 +115,10 @@ public:
     }
 
     void write(const std::string& data) {
-        if (!running || masterFd < 0) return;
+        if (!running || masterFd < 0) {
+            std::cerr << "[PTY] Write ignored (not running)\n";
+            return;
+        }
         ssize_t written = ::write(masterFd, data.c_str(), data.size());
         if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
             std::cerr << "[PTY] Write error: " << strerror(errno) << "\n";

@@ -1,0 +1,457 @@
+// Terminal Panel Implementation
+// Uses libvterm for VT220/xterm emulation and PTY for shell integration
+
+#include <vivid/ide/terminal_panel.h>
+#include <vivid/pty.h>
+#include <vivid/gui/ui_style.h>
+
+#include <vterm.h>
+
+#include <vector>
+#include <algorithm>
+#include <iostream>
+#include <cstring>
+
+namespace vivid {
+
+// Convert libvterm color to glm::vec4
+static glm::vec4 vtermColorToVec4(const VTermColor& color, const VTermScreen* screen, bool isForeground) {
+    VTermColor col = color;
+
+    // Check for default colors
+    if (VTERM_COLOR_IS_DEFAULT_FG(&col)) {
+        return glm::vec4(0.9f, 0.9f, 0.9f, 1.0f);  // Light gray foreground
+    }
+    if (VTERM_COLOR_IS_DEFAULT_BG(&col)) {
+        return glm::vec4(0.1f, 0.1f, 0.12f, 1.0f);  // Dark background
+    }
+
+    // Convert indexed colors to RGB
+    if (VTERM_COLOR_IS_INDEXED(&col)) {
+        vterm_screen_convert_color_to_rgb(screen, &col);
+    }
+
+    // Now it should be RGB
+    if (VTERM_COLOR_IS_RGB(&col)) {
+        return glm::vec4(
+            col.rgb.red / 255.0f,
+            col.rgb.green / 255.0f,
+            col.rgb.blue / 255.0f,
+            1.0f
+        );
+    }
+
+    // Fallback
+    return isForeground ? glm::vec4(0.9f, 0.9f, 0.9f, 1.0f) : glm::vec4(0.1f, 0.1f, 0.12f, 1.0f);
+}
+
+class TerminalPanel::Impl {
+public:
+    VTerm* vt = nullptr;
+    VTermScreen* screen = nullptr;
+    std::unique_ptr<PTY> pty;
+    int cols = 80;
+    int rows = 24;
+    bool cursorVisible = true;      // Whether terminal wants cursor shown
+    bool cursorBlink = true;        // Blink state for animation
+    int cursorBlinkFrame = 0;
+
+    // Scrollback buffer
+    struct ScrollLine {
+        std::vector<VTermScreenCell> cells;
+    };
+    std::vector<ScrollLine> scrollback;
+    static constexpr int MAX_SCROLLBACK = 1000;
+
+    // Output callback - sends data from terminal back to PTY
+    static void outputCallback(const char* s, size_t len, void* user) {
+        auto* impl = static_cast<Impl*>(user);
+        if (impl->pty && len > 0) {
+            impl->pty->write(std::string(s, len));
+        }
+    }
+
+    // Screen callback for cursor movement - tracks visibility
+    static int moveCursor(VTermPos pos, VTermPos oldpos, int visible, void* user) {
+        auto* impl = static_cast<Impl*>(user);
+        impl->cursorVisible = (visible != 0);
+        return 1;
+    }
+
+    // Screen callbacks for scrollback
+    static int sbPushLine(int cols, const VTermScreenCell* cells, void* user) {
+        auto* impl = static_cast<Impl*>(user);
+        if (impl->scrollback.size() >= MAX_SCROLLBACK) {
+            impl->scrollback.erase(impl->scrollback.begin());
+        }
+        ScrollLine line;
+        line.cells.assign(cells, cells + cols);
+        impl->scrollback.push_back(std::move(line));
+        return 1;
+    }
+
+    static int sbPopLine(int cols, VTermScreenCell* cells, void* user) {
+        auto* impl = static_cast<Impl*>(user);
+        if (impl->scrollback.empty()) {
+            return 0;
+        }
+        auto& line = impl->scrollback.back();
+        size_t copyLen = std::min(static_cast<size_t>(cols), line.cells.size());
+        std::memcpy(cells, line.cells.data(), copyLen * sizeof(VTermScreenCell));
+        impl->scrollback.pop_back();
+        return 1;
+    }
+};
+
+TerminalPanel::TerminalPanel() : m_impl(std::make_unique<Impl>()) {}
+
+TerminalPanel::~TerminalPanel() {
+    stop();
+    if (m_impl->vt) {
+        vterm_free(m_impl->vt);
+    }
+}
+
+bool TerminalPanel::init(int cols, int rows) {
+    m_impl->cols = cols;
+    m_impl->rows = rows;
+
+    // Create terminal emulator
+    m_impl->vt = vterm_new(rows, cols);
+    if (!m_impl->vt) {
+        return false;
+    }
+
+    // Enable UTF-8
+    vterm_set_utf8(m_impl->vt, 1);
+
+    // Set output callback for data going back to PTY
+    vterm_output_set_callback(m_impl->vt, Impl::outputCallback, m_impl.get());
+
+    // Get screen layer
+    m_impl->screen = vterm_obtain_screen(m_impl->vt);
+
+    // Enable alternate screen buffer (for apps like vim, htop, etc.)
+    vterm_screen_enable_altscreen(m_impl->screen, 1);
+
+    // Set up screen callbacks for scrollback and cursor tracking
+    static VTermScreenCallbacks screenCallbacks = {};
+    screenCallbacks.movecursor = Impl::moveCursor;
+    screenCallbacks.sb_pushline = Impl::sbPushLine;
+    screenCallbacks.sb_popline = Impl::sbPopLine;
+    vterm_screen_set_callbacks(m_impl->screen, &screenCallbacks, m_impl.get());
+
+    // Reset screen
+    vterm_screen_reset(m_impl->screen, 1);
+
+    // Create PTY
+    m_impl->pty = std::make_unique<PTY>();
+    return true;
+}
+
+bool TerminalPanel::spawn(const std::string& shell, const std::string& workingDir) {
+    if (!m_impl->pty) return false;
+
+    bool ok = m_impl->pty->start(shell, workingDir);
+    if (ok) {
+        m_impl->pty->setSize(m_impl->cols, m_impl->rows);
+    }
+    return ok;
+}
+
+bool TerminalPanel::isRunning() const {
+    return m_impl->pty && m_impl->pty->isRunning();
+}
+
+void TerminalPanel::update() {
+    if (!m_impl->pty || !m_impl->vt) return;
+
+    // Read from PTY and feed to terminal emulator
+    std::string output = m_impl->pty->read();
+    if (!output.empty()) {
+        vterm_input_write(m_impl->vt, output.c_str(), output.size());
+    }
+
+    // Cursor blink animation
+    m_impl->cursorBlinkFrame++;
+    if (m_impl->cursorBlinkFrame >= 30) {  // ~0.5s at 60fps
+        m_impl->cursorBlink = !m_impl->cursorBlink;
+        m_impl->cursorBlinkFrame = 0;
+    }
+
+    // Check if process exited
+    if (!m_impl->pty->isRunning() && m_onExit) {
+        m_onExit(0);  // TODO: get actual exit code
+    }
+}
+
+void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds, int fontIndex) {
+    if (!m_impl->vt || !m_impl->screen) return;
+
+    float x = bounds.x;
+    float y = bounds.y;
+    float w = bounds.z;
+    float h = bounds.w;
+
+    // Get font metrics
+    float lineHeight = canvas.fontLineHeight(fontIndex);
+    float charWidth = canvas.measureText("M", fontIndex);
+
+    if (lineHeight <= 0 || charWidth <= 0) {
+        lineHeight = 16.0f;
+        charWidth = 8.0f;
+    }
+
+    // Background
+    canvas.fillRect(x, y, w, h, glm::vec4(0.1f, 0.1f, 0.12f, 1.0f));
+
+    // Clip to panel bounds
+    canvas.beginClipRect(x, y, w, h);
+
+    // Get terminal dimensions
+    int termRows, termCols;
+    vterm_get_size(m_impl->vt, &termRows, &termCols);
+
+    // Calculate visible rows
+    int visibleRows = static_cast<int>(h / lineHeight);
+
+    // Get cursor position
+    VTermPos cursorPos;
+    VTermState* state = vterm_obtain_state(m_impl->vt);
+    vterm_state_get_cursorpos(state, &cursorPos);
+
+    // Render each line
+    for (int row = 0; row < termRows && row < visibleRows; row++) {
+        float lineY = y + (row + 1) * lineHeight;  // +1 because text() uses baseline
+
+        for (int col = 0; col < termCols; col++) {
+            VTermPos pos = {row, col};
+            VTermScreenCell cell;
+            vterm_screen_get_cell(m_impl->screen, pos, &cell);
+
+            // Skip empty cells
+            if (cell.chars[0] == 0 || cell.chars[0] == ' ') {
+                // Still draw background if it's not default
+                if (!VTERM_COLOR_IS_DEFAULT_BG(&cell.bg)) {
+                    glm::vec4 bg = vtermColorToVec4(cell.bg, m_impl->screen, false);
+                    float charX = x + col * charWidth;
+                    canvas.fillRect(charX, lineY - lineHeight + 2, charWidth * cell.width, lineHeight, bg);
+                }
+                continue;
+            }
+
+            // Get colors
+            glm::vec4 fg = vtermColorToVec4(cell.fg, m_impl->screen, true);
+            glm::vec4 bg = vtermColorToVec4(cell.bg, m_impl->screen, false);
+
+            // Handle attributes
+            if (cell.attrs.reverse) {
+                std::swap(fg, bg);
+            }
+
+            if (cell.attrs.bold) {
+                // Bold: brighten the color
+                fg = glm::vec4(std::min(fg.r * 1.3f, 1.0f),
+                               std::min(fg.g * 1.3f, 1.0f),
+                               std::min(fg.b * 1.3f, 1.0f), 1.0f);
+            }
+
+            // Italic: we don't have italic font, but could tint slightly
+            // (italic rendering requires font support, skip for now)
+
+            // Conceal: completely hidden text
+            if (cell.attrs.conceal) {
+                fg.a = 0.0f;
+            }
+
+            float charX = x + col * charWidth;
+
+            // Draw background if not default or has special attributes
+            if (!VTERM_COLOR_IS_DEFAULT_BG(&cell.bg) || cell.attrs.reverse) {
+                canvas.fillRect(charX, lineY - lineHeight + 2, charWidth * cell.width, lineHeight, bg);
+            }
+
+            // Skip hidden text
+            if (cell.attrs.conceal) {
+                if (cell.width > 1) col += cell.width - 1;
+                continue;
+            }
+
+            // Convert UTF-32 to UTF-8
+            char utf8[32] = {0};
+            int utf8Len = 0;
+            for (int i = 0; i < VTERM_MAX_CHARS_PER_CELL && cell.chars[i] != 0; i++) {
+                uint32_t c = cell.chars[i];
+                if (c < 0x80) {
+                    utf8[utf8Len++] = static_cast<char>(c);
+                } else if (c < 0x800) {
+                    utf8[utf8Len++] = static_cast<char>(0xC0 | (c >> 6));
+                    utf8[utf8Len++] = static_cast<char>(0x80 | (c & 0x3F));
+                } else if (c < 0x10000) {
+                    utf8[utf8Len++] = static_cast<char>(0xE0 | (c >> 12));
+                    utf8[utf8Len++] = static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+                    utf8[utf8Len++] = static_cast<char>(0x80 | (c & 0x3F));
+                } else {
+                    utf8[utf8Len++] = static_cast<char>(0xF0 | (c >> 18));
+                    utf8[utf8Len++] = static_cast<char>(0x80 | ((c >> 12) & 0x3F));
+                    utf8[utf8Len++] = static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+                    utf8[utf8Len++] = static_cast<char>(0x80 | (c & 0x3F));
+                }
+                if (utf8Len >= 28) break;  // Safety limit
+            }
+            utf8[utf8Len] = 0;
+
+            canvas.text(utf8, charX, lineY, fg, fontIndex);
+
+            // Underline
+            if (cell.attrs.underline) {
+                canvas.line(charX, lineY + 1, charX + charWidth * cell.width, lineY + 1, 1.0f, fg);
+            }
+
+            // Strikethrough
+            if (cell.attrs.strike) {
+                float strikeY = lineY - lineHeight / 3;
+                canvas.line(charX, strikeY, charX + charWidth * cell.width, strikeY, 1.0f, fg);
+            }
+
+            // Skip wide character's second cell
+            if (cell.width > 1) {
+                col += cell.width - 1;
+            }
+        }
+    }
+
+    // Draw cursor - only if terminal says cursor is visible (via movecursor callback)
+    // and we're focused. Applications like Claude Code hide the cursor for their TUI.
+    if (m_focused && m_impl->cursorVisible && m_impl->cursorBlink) {
+        float cursorX = x + cursorPos.col * charWidth;
+        // Cell top position matches text cell background
+        float cursorY = y + cursorPos.row * lineHeight;
+
+        // Block cursor
+        canvas.fillRect(cursorX, cursorY, charWidth, lineHeight,
+                       glm::vec4(0.9f, 0.9f, 0.9f, 0.7f));
+    }
+
+    canvas.endClipRect();
+}
+
+bool TerminalPanel::handleInput(const FrameInput& input) {
+    if (!m_focused) return false;
+
+    // Handle scroll
+    if (input.scroll.y != 0) {
+        scroll(static_cast<int>(-input.scroll.y * 3));
+        return true;
+    }
+
+    return false;
+}
+
+void TerminalPanel::onChar(uint32_t codepoint) {
+    if (!m_impl->vt) return;
+
+    // Send character to terminal via keyboard API
+    vterm_keyboard_unichar(m_impl->vt, codepoint, VTERM_MOD_NONE);
+    scrollToBottom();
+}
+
+void TerminalPanel::onKeyDown(int key, int mods) {
+    if (!m_impl->vt) return;
+
+    // Convert GLFW modifiers to VTerm modifiers
+    VTermModifier vtMod = VTERM_MOD_NONE;
+    if (mods & 0x1) vtMod = static_cast<VTermModifier>(vtMod | VTERM_MOD_SHIFT);
+    if (mods & 0x2) vtMod = static_cast<VTermModifier>(vtMod | VTERM_MOD_CTRL);
+    if (mods & 0x4) vtMod = static_cast<VTermModifier>(vtMod | VTERM_MOD_ALT);
+
+    // Convert GLFW keys to VTerm keys
+    VTermKey vtKey = VTERM_KEY_NONE;
+
+    switch (key) {
+        case 257: vtKey = VTERM_KEY_ENTER; break;       // Enter
+        case 259: vtKey = VTERM_KEY_BACKSPACE; break;   // Backspace
+        case 258: vtKey = VTERM_KEY_TAB; break;         // Tab
+        case 256: vtKey = VTERM_KEY_ESCAPE; break;      // Escape
+        case 265: vtKey = VTERM_KEY_UP; break;          // Up
+        case 264: vtKey = VTERM_KEY_DOWN; break;        // Down
+        case 263: vtKey = VTERM_KEY_LEFT; break;        // Left
+        case 262: vtKey = VTERM_KEY_RIGHT; break;       // Right
+        case 268: vtKey = VTERM_KEY_HOME; break;        // Home
+        case 269: vtKey = VTERM_KEY_END; break;         // End
+        case 266: vtKey = VTERM_KEY_PAGEUP; break;      // Page Up
+        case 267: vtKey = VTERM_KEY_PAGEDOWN; break;    // Page Down
+        case 261: vtKey = VTERM_KEY_DEL; break;         // Delete
+        case 260: vtKey = VTERM_KEY_INS; break;         // Insert
+        // Function keys
+        case 290: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(1)); break;
+        case 291: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(2)); break;
+        case 292: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(3)); break;
+        case 293: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(4)); break;
+        case 294: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(5)); break;
+        case 295: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(6)); break;
+        case 296: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(7)); break;
+        case 297: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(8)); break;
+        case 298: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(9)); break;
+        case 299: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(10)); break;
+        case 300: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(11)); break;
+        case 301: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(12)); break;
+        default:
+            // For Ctrl+letter combinations, send as unichar with ctrl modifier
+            if ((mods & 0x2) && key >= 65 && key <= 90) {
+                vterm_keyboard_unichar(m_impl->vt, key, vtMod);
+                scrollToBottom();
+                return;
+            }
+            break;
+    }
+
+    if (vtKey != VTERM_KEY_NONE) {
+        vterm_keyboard_key(m_impl->vt, vtKey, vtMod);
+        scrollToBottom();
+    }
+}
+
+void TerminalPanel::resize(int cols, int rows) {
+    if (!m_impl->vt) return;
+
+    m_impl->cols = cols;
+    m_impl->rows = rows;
+
+    vterm_set_size(m_impl->vt, rows, cols);
+
+    if (m_impl->pty) {
+        m_impl->pty->setSize(cols, rows);
+    }
+}
+
+int TerminalPanel::cols() const { return m_impl->cols; }
+int TerminalPanel::rows() const { return m_impl->rows; }
+
+void TerminalPanel::write(const std::string& data) {
+    if (m_impl->pty) {
+        m_impl->pty->write(data);
+    }
+}
+
+void TerminalPanel::stop() {
+    if (m_impl->pty) {
+        m_impl->pty->stop();
+    }
+}
+
+void TerminalPanel::onExit(std::function<void(int)> callback) {
+    m_onExit = std::move(callback);
+}
+
+void TerminalPanel::scroll(int delta) {
+    m_scrollOffset = std::max(0, m_scrollOffset + delta);
+    // Limit scroll to scrollback size
+    m_scrollOffset = std::min(m_scrollOffset, static_cast<int>(m_impl->scrollback.size()));
+}
+
+void TerminalPanel::scrollToBottom() {
+    m_scrollOffset = 0;
+}
+
+} // namespace vivid
