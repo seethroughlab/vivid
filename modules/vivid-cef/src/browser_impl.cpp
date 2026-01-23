@@ -594,7 +594,25 @@ static int glfwKeyToWindowsVK(int glfwKey) {
     }
 }
 
-void BrowserImpl::sendKeyEvent(int keyCode, bool pressed) {
+// Convert our modifier flags to CEF event flags
+static uint32_t modifiersToCefFlags(uint32_t mods) {
+    uint32_t cefFlags = 0;
+    // Our flags: ModShift=1, ModControl=2, ModAlt=4, ModSuper=8
+    // CEF flags: SHIFT=2, CONTROL=4, ALT=8, COMMAND=16
+    if (mods & ModShift)   cefFlags |= EVENTFLAG_SHIFT_DOWN;
+    if (mods & ModControl) cefFlags |= EVENTFLAG_CONTROL_DOWN;
+    if (mods & ModAlt)     cefFlags |= EVENTFLAG_ALT_DOWN;
+#if defined(__APPLE__)
+    // On macOS, Super (Command) should map to COMMAND flag for copy/paste
+    if (mods & ModSuper)   cefFlags |= EVENTFLAG_COMMAND_DOWN;
+#else
+    // On Windows/Linux, Super is the Windows key
+    if (mods & ModSuper)   cefFlags |= EVENTFLAG_COMMAND_DOWN;
+#endif
+    return cefFlags;
+}
+
+void BrowserImpl::sendKeyEvent(int keyCode, bool pressed, uint32_t modifiers) {
     if (!m_client || !m_client->browser()) return;
 
     int windowsKey = glfwKeyToWindowsVK(keyCode);
@@ -604,7 +622,7 @@ void BrowserImpl::sendKeyEvent(int keyCode, bool pressed) {
     event.windows_key_code = windowsKey;
     event.native_key_code = keyCode;
     event.is_system_key = false;
-    event.modifiers = 0;
+    event.modifiers = modifiersToCefFlags(modifiers);
 
     if (pressed) {
         event.type = KEYEVENT_RAWKEYDOWN;

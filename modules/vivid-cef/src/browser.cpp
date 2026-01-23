@@ -208,10 +208,17 @@ void Browser::processInput(Context& ctx) {
 
     // Keyboard (only if focused)
     if (hasFocus()) {
+        // Build modifier flags
+        uint32_t mods = 0;
+        if (ctx.shiftHeld()) mods |= ModShift;
+        if (ctx.ctrlHeld())  mods |= ModControl;
+        if (ctx.altHeld())   mods |= ModAlt;
+        if (ctx.superHeld()) mods |= ModSuper;
+
         for (int key = 0; key < 512; ++key) {
             bool held = ctx.key(key).held;
             if (held != m_prevKeyDown[key]) {
-                m_impl->sendKeyEvent(key, held);
+                m_impl->sendKeyEvent(key, held, mods);
                 m_prevKeyDown[key] = held;
             }
         }
@@ -266,7 +273,7 @@ void Browser::processRawInput(const RawInputState& input) {
                     intercepted = m_keyInterceptCallback(key, input.keyDown[key], mods);
                 }
                 if (!intercepted) {
-                    m_impl->sendKeyEvent(key, input.keyDown[key]);
+                    m_impl->sendKeyEvent(key, input.keyDown[key], mods);
                 }
                 m_prevKeyDown[key] = input.keyDown[key];
             }
@@ -315,9 +322,9 @@ void Browser::sendMouseWheel(int x, int y, float deltaX, float deltaY) {
     }
 }
 
-void Browser::sendKeyEvent(int keyCode, bool pressed) {
+void Browser::sendKeyEvent(int keyCode, bool pressed, uint32_t modifiers) {
     if (m_impl && m_impl->isCreated()) {
-        m_impl->sendKeyEvent(keyCode, pressed);
+        m_impl->sendKeyEvent(keyCode, pressed, modifiers);
     }
 }
 

@@ -215,7 +215,7 @@ public:
     void sendMouseMove(int x, int y);
     void sendMouseButton(MouseButton btn, bool pressed, int x, int y, int clicks = 1);
     void sendMouseWheel(int x, int y, float deltaX, float deltaY);
-    void sendKeyEvent(int keyCode, bool pressed);
+    void sendKeyEvent(int keyCode, bool pressed, uint32_t modifiers = 0);
     void sendCharacter(uint32_t codepoint);
 
     /**
