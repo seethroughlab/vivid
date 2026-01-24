@@ -6,6 +6,7 @@
 #include <vivid/context.h>
 #include <effects/font_atlas.h>
 #include <vivid/asset_loader.h>
+#include <GLFW/glfw3.h>
 #include <iostream>
 
 namespace vivid {
@@ -175,10 +176,11 @@ void IdePanel::render(WGPURenderPassEncoder pass, const FrameInput& input,
 
     // Render active panel
     int fontIndex = 2;  // Monospace font
+    float lineHeight = m_canvas->fontLineHeight(fontIndex);
+    float charWidth = m_canvas->measureText("M", fontIndex);
+
     if (m_activeTab == IdeTab::Terminal) {
         // Sync terminal size with actual visible area using real font metrics
-        float lineHeight = m_canvas->fontLineHeight(fontIndex);
-        float charWidth = m_canvas->measureText("M", fontIndex);
         if (lineHeight > 0 && charWidth > 0) {
             int cols = static_cast<int>(contentBounds.z / charWidth);
             int rows = static_cast<int>(contentBounds.w / lineHeight);
@@ -192,6 +194,11 @@ void IdePanel::render(WGPURenderPassEncoder pass, const FrameInput& input,
     } else {
         m_editor->render(*m_canvas, contentBounds, fontIndex);
     }
+
+    // Store content bounds and metrics for mouse click handling
+    m_editorContentBounds = contentBounds;
+    m_editorLineHeight = lineHeight;
+    m_editorCharWidth = charWidth;
 
     // Compile status indicator
     if (!m_compileSuccess) {
@@ -308,13 +315,12 @@ void IdePanel::handleDragAndResize(const FrameInput& input, float screenW, float
     bool leftMouseClicked = leftMouseDown && !lastMouseDown;
     lastMouseDown = leftMouseDown;
 
-    // Drag handle area (title bar, right portion)
-    float dragHandleX = x + w - 80;
-    bool overDragHandle = mousePos.x >= dragHandleX && mousePos.x <= x + w &&
-                          mousePos.y >= y && mousePos.y <= y + titleBarHeight;
+    // Drag area - entire title bar (except tabs area below)
+    bool overTitleBar = mousePos.x >= x && mousePos.x <= x + w &&
+                        mousePos.y >= y && mousePos.y <= y + titleBarHeight;
 
-    // Start drag
-    if (overDragHandle && leftMouseClicked && !m_dragging && m_resizing == 0) {
+    // Start drag from anywhere on title bar
+    if (overTitleBar && leftMouseClicked && !m_dragging && m_resizing == 0) {
         m_dragging = true;
         m_dragOffset = mousePos - glm::vec2(x, y);
     }
@@ -348,6 +354,36 @@ void IdePanel::handleDragAndResize(const FrameInput& input, float screenW, float
                 setActiveTab(IdeTab::Editor);
             }
         }
+
+        // Editor content click - convert logical mouse pos to physical and pass to editor
+        if (m_activeTab == IdeTab::Editor && m_editorLineHeight > 0 && m_editorCharWidth > 0) {
+            // m_editorContentBounds is in physical pixels, mousePos is in logical
+            float scale = input.contentScale;
+            float physicalMouseX = mousePos.x * scale;
+            float physicalMouseY = mousePos.y * scale;
+
+            // Check if click is in editor content area
+            if (physicalMouseX >= m_editorContentBounds.x &&
+                physicalMouseX <= m_editorContentBounds.x + m_editorContentBounds.z &&
+                physicalMouseY >= m_editorContentBounds.y &&
+                physicalMouseY <= m_editorContentBounds.y + m_editorContentBounds.w) {
+                m_editor->onMouseClick(physicalMouseX, physicalMouseY, m_editorContentBounds,
+                                       m_editorLineHeight, m_editorCharWidth);
+            }
+        }
+    }
+
+    // Editor mouse drag for selection (while left mouse is held and editor is dragging)
+    if (m_activeTab == IdeTab::Editor && leftMouseDown && m_editor->isDragging()) {
+        float scale = input.contentScale;
+        float physicalMouseX = mousePos.x * scale;
+        float physicalMouseY = mousePos.y * scale;
+        m_editor->onMouseDrag(physicalMouseX, physicalMouseY);
+    }
+
+    // Editor mouse up to finish selection
+    if (m_activeTab == IdeTab::Editor && !leftMouseDown && m_editor->isDragging()) {
+        m_editor->onMouseUp();
     }
 
     // Resize detection (edges)
@@ -442,6 +478,23 @@ void IdePanel::setCompileStatus(bool success, const std::string& message) {
     if (m_onCompileError) {
         m_onCompileError(success, message);
     }
+}
+
+void IdePanel::setWindow(GLFWwindow* window) {
+    if (!window) return;
+
+    // Set up clipboard callbacks for the editor
+    m_editor->setClipboardCallbacks(
+        // Get clipboard
+        [window]() -> std::string {
+            const char* text = glfwGetClipboardString(window);
+            return text ? std::string(text) : std::string();
+        },
+        // Set clipboard
+        [window](const std::string& text) {
+            glfwSetClipboardString(window, text.c_str());
+        }
+    );
 }
 
 } // namespace vivid

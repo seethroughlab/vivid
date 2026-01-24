@@ -428,6 +428,7 @@ using OnKeyFn = void(*)(int, int);
 using GetBoundsFn = void(*)(float*, float*, float*, float*);
 using IsInteractingFn = bool(*)();
 using IsHoveredFn = bool(*)();
+using SetWindowFn = void(*)(GLFWwindow*);
 
 static InitFn init = nullptr;
 static ShutdownFn shutdown = nullptr;
@@ -446,6 +447,7 @@ static OnKeyFn onKey = nullptr;
 static GetBoundsFn getBounds = nullptr;
 static IsInteractingFn isInteracting = nullptr;
 static IsHoveredFn isHovered = nullptr;
+static SetWindowFn setWindow = nullptr;
 static bool g_lookedUp = false;
 static bool g_initialized = false;
 
@@ -471,6 +473,7 @@ static void lookupFunctions() {
     getBounds = (GetBoundsFn)dlsym(RTLD_DEFAULT, "vivid_ide_get_bounds");
     isInteracting = (IsInteractingFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_interacting");
     isHovered = (IsHoveredFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_hovered");
+    setWindow = (SetWindowFn)dlsym(RTLD_DEFAULT, "vivid_ide_set_window");
 #elif defined(_WIN32)
     HMODULE ideModule = GetModuleHandleA("vivid-ide.dll");
     if (ideModule) {
@@ -491,6 +494,7 @@ static void lookupFunctions() {
         getBounds = (GetBoundsFn)GetProcAddress(ideModule, "vivid_ide_get_bounds");
         isInteracting = (IsInteractingFn)GetProcAddress(ideModule, "vivid_ide_is_interacting");
         isHovered = (IsHoveredFn)GetProcAddress(ideModule, "vivid_ide_is_hovered");
+        setWindow = (SetWindowFn)GetProcAddress(ideModule, "vivid_ide_set_window");
     }
 #endif
 }
@@ -566,6 +570,10 @@ static bool tryIsInteracting() {
 
 static bool tryIsHovered() {
     return isHovered && g_initialized && isHovered();
+}
+
+static void trySetWindow(GLFWwindow* window) {
+    if (setWindow && g_initialized) setWindow(window);
 }
 
 } // namespace vivid::ide_dynamic
@@ -1492,17 +1500,25 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
 
         // Block visualizer input if IDE panel is being interacted with
+        bool blockVisualizerInput = false;
 #ifdef VIVID_HAS_CEF
-        if (idePanelConsumedInput) {
+        blockVisualizerInput = idePanelConsumedInput;
+#endif
+        // Also check native IDE panel (vivid-ide module)
+        if (ide_dynamic::available() && ide_dynamic::tryIsVisible()) {
+            if (ide_dynamic::tryIsHovered() || ide_dynamic::tryIsInteracting()) {
+                blockVisualizerInput = true;
+            }
+        }
+
+        if (blockVisualizerInput) {
             FrameInput blockedInput = frameInput;
             blockedInput.mouseDown[0] = blockedInput.mouseDown[1] = blockedInput.mouseDown[2] = false;
+            blockedInput.scroll = {0, 0};  // Also block scroll
             visualizer_dynamic::tryRender(pass, &blockedInput, mlc.ctx);
         } else {
             visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
         }
-#else
-        visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
-#endif
     }
 
 #ifdef VIVID_HAS_CEF
@@ -2214,6 +2230,7 @@ int Application::init(const AppConfig& config) {
 
     // Initialize native IDE panel (dynamically loaded from vivid-ide module)
     ide_dynamic::tryInit(m_impl->ctx.get(), m_impl->surfaceFormat);
+    ide_dynamic::trySetWindow(m_impl->window);  // For clipboard support
 
     // HotReload was created earlier (before window creation) for config extraction
     // No need to create it again here

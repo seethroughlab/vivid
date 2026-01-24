@@ -9,6 +9,8 @@
 #include <vivid/context.h>
 #include <memory>
 
+struct GLFWwindow;
+
 namespace {
     // Global IDE panel instance
     std::unique_ptr<vivid::IdePanel> g_idePanel;
@@ -168,6 +170,12 @@ bool vivid_ide_is_interacting() {
 bool vivid_ide_is_hovered() {
     if (!g_initialized || !g_idePanel) return false;
     return g_idePanel->isHovered();
+}
+
+// Set GLFW window for clipboard support
+void vivid_ide_set_window(GLFWwindow* window) {
+    if (!g_initialized || !g_idePanel) return;
+    g_idePanel->setWindow(window);
 }
 
 } // extern "C"

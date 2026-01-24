@@ -149,6 +149,43 @@ public:
      */
     void scroll(int delta);
 
+    /**
+     * @brief Handle mouse click at position (starts selection)
+     * @param x Click x position (in physical pixels)
+     * @param y Click y position (in physical pixels)
+     * @param bounds Current render bounds (x, y, w, h in physical pixels)
+     * @param fontLineHeight Line height from font
+     * @param charWidth Character width from font
+     */
+    void onMouseClick(float x, float y, const glm::vec4& bounds, float fontLineHeight, float charWidth);
+
+    /**
+     * @brief Handle mouse drag (extends selection)
+     * @param x Drag x position (in physical pixels)
+     * @param y Drag y position (in physical pixels)
+     */
+    void onMouseDrag(float x, float y);
+
+    /**
+     * @brief Handle mouse button release (finishes selection)
+     */
+    void onMouseUp();
+
+    /**
+     * @brief Check if currently dragging (for selection)
+     */
+    bool isDragging() const { return m_isDragging; }
+
+    /**
+     * @brief Set clipboard callbacks for system clipboard integration
+     * @param getCb Callback to get clipboard text (returns clipboard contents)
+     * @param setCb Callback to set clipboard text (takes text to copy)
+     */
+    void setClipboardCallbacks(
+        std::function<std::string()> getCb,
+        std::function<void(const std::string&)> setCb
+    );
+
 private:
     class Impl;
     std::unique_ptr<Impl> m_impl;
@@ -156,6 +193,16 @@ private:
     bool m_focused = false;
     int m_scrollOffset = 0;
     std::function<void(const std::string&)> m_onSave;
+
+    // Mouse drag state for selection
+    bool m_isDragging = false;
+    glm::vec4 m_lastBounds = {0, 0, 0, 0};
+    float m_lastLineHeight = 0;
+    float m_lastCharWidth = 0;
+
+    // Clipboard callbacks (for system clipboard integration)
+    std::function<std::string()> m_getClipboard;
+    std::function<void(const std::string&)> m_setClipboard;
 };
 
 } // namespace vivid

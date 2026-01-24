@@ -38,9 +38,14 @@ public:
     std::string errorMessage;
 
     // Selection state
-    bool selecting = false;
+    bool hasSelection = false;
     int selStartLine = 0;
     int selStartCol = 0;
+    int selEndLine = 0;
+    int selEndCol = 0;
+
+    // Clipboard (simple internal clipboard, can be extended to system clipboard)
+    std::string clipboard;
 
     // Undo/redo
     struct EditAction {
@@ -65,6 +70,94 @@ public:
         } else {
             cursorCol = 0;
         }
+    }
+
+    void clearSelection() {
+        hasSelection = false;
+    }
+
+    void startSelection() {
+        selStartLine = cursorLine;
+        selStartCol = cursorCol;
+        selEndLine = cursorLine;
+        selEndCol = cursorCol;
+        hasSelection = true;
+    }
+
+    void updateSelection() {
+        selEndLine = cursorLine;
+        selEndCol = cursorCol;
+    }
+
+    // Get normalized selection (start before end)
+    void getNormalizedSelection(int& startLine, int& startCol, int& endLine, int& endCol) const {
+        if (selStartLine < selEndLine || (selStartLine == selEndLine && selStartCol <= selEndCol)) {
+            startLine = selStartLine;
+            startCol = selStartCol;
+            endLine = selEndLine;
+            endCol = selEndCol;
+        } else {
+            startLine = selEndLine;
+            startCol = selEndCol;
+            endLine = selStartLine;
+            endCol = selStartCol;
+        }
+    }
+
+    std::string getSelectedText() const {
+        if (!hasSelection) return "";
+
+        int startLine, startCol, endLine, endCol;
+        getNormalizedSelection(startLine, startCol, endLine, endCol);
+
+        if (startLine == endLine) {
+            // Single line selection
+            return lines[startLine].substr(startCol, endCol - startCol);
+        }
+
+        // Multi-line selection
+        std::string result;
+        result += lines[startLine].substr(startCol);
+        result += '\n';
+        for (int i = startLine + 1; i < endLine; i++) {
+            result += lines[i];
+            result += '\n';
+        }
+        result += lines[endLine].substr(0, endCol);
+        return result;
+    }
+
+    void deleteSelection() {
+        if (!hasSelection) return;
+
+        int startLine, startCol, endLine, endCol;
+        getNormalizedSelection(startLine, startCol, endLine, endCol);
+
+        if (startLine == endLine) {
+            // Single line deletion
+            lines[startLine].erase(startCol, endCol - startCol);
+        } else {
+            // Multi-line deletion
+            std::string newLine = lines[startLine].substr(0, startCol) + lines[endLine].substr(endCol);
+            lines[startLine] = newLine;
+            lines.erase(lines.begin() + startLine + 1, lines.begin() + endLine + 1);
+        }
+
+        cursorLine = startLine;
+        cursorCol = startCol;
+        hasSelection = false;
+        dirty = true;
+    }
+
+    void selectAll() {
+        if (lines.empty()) return;
+        selStartLine = 0;
+        selStartCol = 0;
+        selEndLine = static_cast<int>(lines.size()) - 1;
+        selEndCol = static_cast<int>(lines[selEndLine].size());
+        hasSelection = true;
+        cursorLine = selEndLine;
+        cursorCol = selEndCol;
     }
 
     bool isKeyword(const std::string& word, bool wgsl) {
@@ -167,6 +260,13 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds, int fon
     glm::vec4 numberColor(0.8f, 0.8f, 0.5f, 1.0f);
     glm::vec4 errorLineColor(0.5f, 0.2f, 0.2f, 0.5f);
     glm::vec4 cursorLineColor(0.2f, 0.2f, 0.25f, 1.0f);
+    glm::vec4 selectionColor(0.3f, 0.4f, 0.6f, 0.5f);
+
+    // Get normalized selection bounds
+    int selStartLine = 0, selStartCol = 0, selEndLine = 0, selEndCol = 0;
+    if (m_impl->hasSelection) {
+        m_impl->getNormalizedSelection(selStartLine, selStartCol, selEndLine, selEndCol);
+    }
 
     // Line number gutter width
     int lineCount = static_cast<int>(m_impl->lines.size());
@@ -192,14 +292,36 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds, int fon
     for (int i = startLine; i < endLine; i++) {
         float lineY = y + (i - startLine) * lineHeight;
 
-        // Current line highlight
-        if (i == m_impl->cursorLine && m_focused) {
+        // Current line highlight (only if no selection)
+        if (i == m_impl->cursorLine && m_focused && !m_impl->hasSelection) {
             canvas.fillRect(x + gutterWidth, lineY, w - gutterWidth, lineHeight, cursorLineColor);
         }
 
         // Error line highlight
         if (i + 1 == m_impl->errorLine) {
             canvas.fillRect(x + gutterWidth, lineY, w - gutterWidth, lineHeight, errorLineColor);
+        }
+
+        // Selection highlight
+        if (m_impl->hasSelection && i >= selStartLine && i <= selEndLine) {
+            float textX = x + gutterWidth + charWidth;
+            int lineLen = static_cast<int>(m_impl->lines[i].size());
+
+            int selColStart = 0;
+            int selColEnd = lineLen;
+
+            if (i == selStartLine) {
+                selColStart = selStartCol;
+            }
+            if (i == selEndLine) {
+                selColEnd = selEndCol;
+            }
+
+            float selX = textX + selColStart * charWidth;
+            float selW = (selColEnd - selColStart) * charWidth;
+            if (selW > 0) {
+                canvas.fillRect(selX, lineY, selW, lineHeight, selectionColor);
+            }
         }
 
         // Line number
@@ -327,6 +449,11 @@ bool EditorPanel::handleInput(const FrameInput& input) {
 void EditorPanel::onChar(uint32_t codepoint) {
     if (codepoint < 32 || codepoint > 126) return;
 
+    // Delete selection if any
+    if (m_impl->hasSelection) {
+        m_impl->deleteSelection();
+    }
+
     m_impl->ensureLine(m_impl->cursorLine);
     std::string& line = m_impl->lines[m_impl->cursorLine];
 
@@ -340,6 +467,7 @@ void EditorPanel::onChar(uint32_t codepoint) {
 void EditorPanel::onKeyDown(int key, int mods) {
 
     bool ctrl = (mods & 0x2) != 0;   // GLFW_MOD_CONTROL
+    bool shift = (mods & 0x1) != 0;  // GLFW_MOD_SHIFT
     bool super = (mods & 0x8) != 0;  // GLFW_MOD_SUPER (Cmd on macOS)
     bool cmdOrCtrl = ctrl || super;
 
@@ -349,15 +477,107 @@ void EditorPanel::onKeyDown(int key, int mods) {
         return;
     }
 
+    // Copy: Cmd+C or Ctrl+C
+    if (cmdOrCtrl && key == 67) {  // C
+        if (m_impl->hasSelection) {
+            std::string text = m_impl->getSelectedText();
+            if (m_setClipboard) {
+                m_setClipboard(text);
+            }
+            m_impl->clipboard = text;  // Also store internally as fallback
+        }
+        return;
+    }
+
+    // Cut: Cmd+X or Ctrl+X
+    if (cmdOrCtrl && key == 88) {  // X
+        if (m_impl->hasSelection) {
+            std::string text = m_impl->getSelectedText();
+            if (m_setClipboard) {
+                m_setClipboard(text);
+            }
+            m_impl->clipboard = text;  // Also store internally as fallback
+            m_impl->deleteSelection();
+        }
+        return;
+    }
+
+    // Paste: Cmd+V or Ctrl+V
+    if (cmdOrCtrl && key == 86) {  // V
+        std::string clipText;
+        if (m_getClipboard) {
+            clipText = m_getClipboard();
+        }
+        if (clipText.empty()) {
+            clipText = m_impl->clipboard;  // Fallback to internal
+        }
+
+        if (!clipText.empty()) {
+            // Delete selection if any
+            if (m_impl->hasSelection) {
+                m_impl->deleteSelection();
+            }
+            // Insert clipboard text
+            for (char c : clipText) {
+                if (c == '\n') {
+                    // Split line at cursor
+                    m_impl->ensureLine(m_impl->cursorLine);
+                    std::string& line = m_impl->lines[m_impl->cursorLine];
+                    std::string rest = line.substr(m_impl->cursorCol);
+                    line = line.substr(0, m_impl->cursorCol);
+                    m_impl->lines.insert(m_impl->lines.begin() + m_impl->cursorLine + 1, rest);
+                    m_impl->cursorLine++;
+                    m_impl->cursorCol = 0;
+                } else if (c != '\r') {  // Skip carriage returns
+                    m_impl->ensureLine(m_impl->cursorLine);
+                    m_impl->lines[m_impl->cursorLine].insert(m_impl->cursorCol, 1, c);
+                    m_impl->cursorCol++;
+                }
+            }
+            m_impl->dirty = true;
+        }
+        return;
+    }
+
+    // Select All: Cmd+A or Ctrl+A
+    if (cmdOrCtrl && key == 65) {  // A
+        m_impl->selectAll();
+        return;
+    }
+
     // Undo: Cmd+Z or Ctrl+Z
     if (cmdOrCtrl && key == 90) {  // Z
         // TODO: implement undo
         return;
     }
 
+    // Helper to handle selection with arrow keys
+    auto handleArrowWithSelection = [&](bool movingCursor) {
+        if (shift) {
+            // Extend/start selection
+            if (!m_impl->hasSelection) {
+                m_impl->startSelection();
+            }
+        } else {
+            // Clear selection on arrow key without shift
+            if (m_impl->hasSelection && movingCursor) {
+                m_impl->clearSelection();
+            }
+        }
+    };
+
+    auto updateSelectionAfterMove = [&]() {
+        if (shift && m_impl->hasSelection) {
+            m_impl->updateSelection();
+        }
+    };
+
     switch (key) {
         case 257:  // Enter
             {
+                if (m_impl->hasSelection) {
+                    m_impl->deleteSelection();
+                }
                 m_impl->ensureLine(m_impl->cursorLine);
                 std::string& line = m_impl->lines[m_impl->cursorLine];
                 std::string rest = line.substr(m_impl->cursorCol);
@@ -370,7 +590,9 @@ void EditorPanel::onKeyDown(int key, int mods) {
             break;
 
         case 259:  // Backspace
-            if (m_impl->cursorCol > 0) {
+            if (m_impl->hasSelection) {
+                m_impl->deleteSelection();
+            } else if (m_impl->cursorCol > 0) {
                 m_impl->lines[m_impl->cursorLine].erase(m_impl->cursorCol - 1, 1);
                 m_impl->cursorCol--;
                 m_impl->dirty = true;
@@ -385,7 +607,9 @@ void EditorPanel::onKeyDown(int key, int mods) {
             break;
 
         case 261:  // Delete
-            if (m_impl->cursorCol < static_cast<int>(m_impl->lines[m_impl->cursorLine].size())) {
+            if (m_impl->hasSelection) {
+                m_impl->deleteSelection();
+            } else if (m_impl->cursorCol < static_cast<int>(m_impl->lines[m_impl->cursorLine].size())) {
                 m_impl->lines[m_impl->cursorLine].erase(m_impl->cursorCol, 1);
                 m_impl->dirty = true;
             } else if (m_impl->cursorLine < static_cast<int>(m_impl->lines.size()) - 1) {
@@ -397,59 +621,78 @@ void EditorPanel::onKeyDown(int key, int mods) {
             break;
 
         case 265:  // Up
+            handleArrowWithSelection(true);
             if (m_impl->cursorLine > 0) {
                 m_impl->cursorLine--;
                 m_impl->clampCursor();
             }
+            updateSelectionAfterMove();
             break;
 
         case 264:  // Down
+            handleArrowWithSelection(true);
             if (m_impl->cursorLine < static_cast<int>(m_impl->lines.size()) - 1) {
                 m_impl->cursorLine++;
                 m_impl->clampCursor();
             }
+            updateSelectionAfterMove();
             break;
 
         case 263:  // Left
+            handleArrowWithSelection(true);
             if (m_impl->cursorCol > 0) {
                 m_impl->cursorCol--;
             } else if (m_impl->cursorLine > 0) {
                 m_impl->cursorLine--;
                 m_impl->cursorCol = static_cast<int>(m_impl->lines[m_impl->cursorLine].size());
             }
+            updateSelectionAfterMove();
             break;
 
         case 262:  // Right
+            handleArrowWithSelection(true);
             if (m_impl->cursorCol < static_cast<int>(m_impl->lines[m_impl->cursorLine].size())) {
                 m_impl->cursorCol++;
             } else if (m_impl->cursorLine < static_cast<int>(m_impl->lines.size()) - 1) {
                 m_impl->cursorLine++;
                 m_impl->cursorCol = 0;
             }
+            updateSelectionAfterMove();
             break;
 
         case 268:  // Home
+            handleArrowWithSelection(true);
             m_impl->cursorCol = 0;
+            updateSelectionAfterMove();
             break;
 
         case 269:  // End
+            handleArrowWithSelection(true);
             m_impl->cursorCol = static_cast<int>(m_impl->lines[m_impl->cursorLine].size());
+            updateSelectionAfterMove();
             break;
 
         case 266:  // Page Up
+            handleArrowWithSelection(true);
             m_impl->cursorLine = std::max(0, m_impl->cursorLine - 20);
             m_impl->clampCursor();
             scroll(-20);
+            updateSelectionAfterMove();
             break;
 
         case 267:  // Page Down
+            handleArrowWithSelection(true);
             m_impl->cursorLine = std::min(static_cast<int>(m_impl->lines.size()) - 1, m_impl->cursorLine + 20);
             m_impl->clampCursor();
             scroll(20);
+            updateSelectionAfterMove();
             break;
 
         case 258:  // Tab
             {
+                if (m_impl->hasSelection) {
+                    m_impl->deleteSelection();
+                }
                 m_impl->ensureLine(m_impl->cursorLine);
                 m_impl->lines[m_impl->cursorLine].insert(m_impl->cursorCol, "    ");
                 m_impl->cursorCol += 4;
@@ -498,6 +741,114 @@ void EditorPanel::scroll(int delta) {
     m_scrollOffset = std::max(0, m_scrollOffset + delta);
     int maxScroll = std::max(0, static_cast<int>(m_impl->lines.size()) - 10);
     m_scrollOffset = std::min(m_scrollOffset, maxScroll);
+}
+
+void EditorPanel::onMouseClick(float x, float y, const glm::vec4& bounds, float fontLineHeight, float charWidth) {
+    if (!m_focused) return;
+    if (fontLineHeight <= 0 || charWidth <= 0) return;
+
+    // Store metrics for drag operations
+    m_lastBounds = bounds;
+    m_lastLineHeight = fontLineHeight;
+    m_lastCharWidth = charWidth;
+
+    // Calculate gutter width (same as in render())
+    int lineCount = static_cast<int>(m_impl->lines.size());
+    int gutterDigits = 1;
+    int temp = lineCount;
+    while (temp >= 10) { gutterDigits++; temp /= 10; }
+    float gutterWidth = (gutterDigits + 2) * charWidth;
+
+    // Content area starts after gutter
+    float contentX = bounds.x + gutterWidth + charWidth;
+    float contentY = bounds.y;
+
+    // Check if click is in the content area (not in gutter)
+    if (x < contentX) return;
+
+    // Calculate line from Y position
+    float relY = y - contentY;
+    int clickedLine = static_cast<int>(relY / fontLineHeight) + m_scrollOffset;
+
+    // Clamp to valid line range
+    clickedLine = std::max(0, std::min(clickedLine, static_cast<int>(m_impl->lines.size()) - 1));
+
+    // Calculate column from X position
+    float relX = x - contentX;
+    int clickedCol = static_cast<int>(relX / charWidth);
+
+    // Clamp to valid column range for this line
+    clickedCol = std::max(0, clickedCol);
+    if (clickedLine >= 0 && clickedLine < static_cast<int>(m_impl->lines.size())) {
+        clickedCol = std::min(clickedCol, static_cast<int>(m_impl->lines[clickedLine].size()));
+    }
+
+    // Clear any existing selection and start new one
+    m_impl->clearSelection();
+
+    // Update cursor position
+    m_impl->cursorLine = clickedLine;
+    m_impl->cursorCol = clickedCol;
+
+    // Start selection (will be extended by drag)
+    m_impl->startSelection();
+    m_isDragging = true;
+}
+
+void EditorPanel::onMouseDrag(float x, float y) {
+    if (!m_focused || !m_isDragging) return;
+    if (m_lastLineHeight <= 0 || m_lastCharWidth <= 0) return;
+
+    // Use stored metrics from click
+    float charWidth = m_lastCharWidth;
+    float fontLineHeight = m_lastLineHeight;
+    glm::vec4 bounds = m_lastBounds;
+
+    // Calculate gutter width
+    int lineCount = static_cast<int>(m_impl->lines.size());
+    int gutterDigits = 1;
+    int temp = lineCount;
+    while (temp >= 10) { gutterDigits++; temp /= 10; }
+    float gutterWidth = (gutterDigits + 2) * charWidth;
+
+    float contentX = bounds.x + gutterWidth + charWidth;
+    float contentY = bounds.y;
+
+    // Calculate line from Y position
+    float relY = y - contentY;
+    int clickedLine = static_cast<int>(relY / fontLineHeight) + m_scrollOffset;
+    clickedLine = std::max(0, std::min(clickedLine, static_cast<int>(m_impl->lines.size()) - 1));
+
+    // Calculate column from X position
+    float relX = x - contentX;
+    int clickedCol = static_cast<int>(std::max(0.0f, relX) / charWidth);
+    if (clickedLine >= 0 && clickedLine < static_cast<int>(m_impl->lines.size())) {
+        clickedCol = std::min(clickedCol, static_cast<int>(m_impl->lines[clickedLine].size()));
+    }
+
+    // Update cursor and selection end
+    m_impl->cursorLine = clickedLine;
+    m_impl->cursorCol = clickedCol;
+    m_impl->updateSelection();
+}
+
+void EditorPanel::onMouseUp() {
+    m_isDragging = false;
+
+    // If selection start equals end, clear selection (just a click, no drag)
+    if (m_impl->hasSelection &&
+        m_impl->selStartLine == m_impl->selEndLine &&
+        m_impl->selStartCol == m_impl->selEndCol) {
+        m_impl->clearSelection();
+    }
+}
+
+void EditorPanel::setClipboardCallbacks(
+    std::function<std::string()> getCb,
+    std::function<void(const std::string&)> setCb
+) {
+    m_getClipboard = std::move(getCb);
+    m_setClipboard = std::move(setCb);
 }
 
 } // namespace vivid

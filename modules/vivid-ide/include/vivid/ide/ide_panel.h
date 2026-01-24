@@ -17,6 +17,8 @@
 #include <string>
 #include <functional>
 
+struct GLFWwindow;
+
 namespace vivid {
 
 class Context;  // Forward declaration
@@ -184,6 +186,12 @@ public:
      */
     void setCompileStatus(bool success, const std::string& message);
 
+    /**
+     * @brief Set GLFW window for clipboard integration
+     * @param window The GLFW window handle
+     */
+    void setWindow(GLFWwindow* window);
+
     /// @}
 
 private:
@@ -209,6 +217,11 @@ private:
     glm::vec2 m_dragOffset = {0, 0};
     glm::vec4 m_resizeStartBounds = {0, 0, 0, 0};
     glm::vec2 m_resizeStartMouse = {0, 0};
+
+    // Editor click handling (stored from last render, in physical pixels)
+    glm::vec4 m_editorContentBounds = {0, 0, 0, 0};
+    float m_editorLineHeight = 0;
+    float m_editorCharWidth = 0;
 
     // Working directory
     std::string m_workingDir;
