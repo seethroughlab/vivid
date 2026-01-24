@@ -1,41 +1,54 @@
-# Vivid IDE Module
-# Native terminal and code editor for development
+# Vivid DevTools Module
+# Unified development tools: terminal, editor, node graph, inspector, console
 #
 # This module is optional - production bundles can exclude it.
-# Provides integrated terminal (libvterm) and editor (Zep) panels
-# that render via OverlayCanvas, matching the visualizer's look.
 #
 # Architecture:
 # - Uses OverlayCanvas and GUI widgets from vivid-core
-# - Contains IdePanel (orchestrator), TerminalPanel, EditorPanel
+# - Contains Panel system with Terminal, Editor, NodeGraph, Inspector panels
 # - Loaded dynamically by app.cpp via dlsym/GetProcAddress
 # - Production bundles simply don't include this library
 #
 # Dependencies:
 # - libvterm: VT220/xterm terminal emulator (from third_party/)
-# - Zep: Embeddable code editor (vendored in deps/)
 
 # -----------------------------------------------------------------------------
 # libvterm (terminal emulation - full xterm support)
 # -----------------------------------------------------------------------------
-add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/libvterm ${CMAKE_BINARY_DIR}/libvterm)
-set_target_properties(vterm PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(NOT TARGET vterm)
+    add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/libvterm ${CMAKE_BINARY_DIR}/libvterm_devtools)
+    set_target_properties(vterm PROPERTIES POSITION_INDEPENDENT_CODE ON)
+endif()
 
 # -----------------------------------------------------------------------------
-# vivid-ide module
+# vivid-devtools module
 # -----------------------------------------------------------------------------
-set(IDE_SOURCES
-    src/ide_panel.cpp
-    src/terminal_panel.cpp
-    src/editor_panel.cpp
-    src/ide_exports.cpp
+set(DEVTOOLS_SOURCES
+    # Core panel system
+    src/panel.cpp
+    src/panel_manager.cpp
+    src/devtools.cpp
+    src/devtools_exports.cpp
+
+    # Panels
+    src/panels/terminal_panel.cpp
+    src/panels/editor_panel.cpp
+    src/panels/node_graph_panel.cpp
+    src/panels/inspector_panel.cpp
+    src/panels/status_bar_panel.cpp
+    src/panels/console_panel.cpp
+
+    # ChainVisualizer and NodeGraph (used by vivid-c for embedding)
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/src/chain_visualizer.cpp
+    ${CMAKE_SOURCE_DIR}/modules/vivid-core/src/gui/node_graph.cpp
+
     # PTY is needed for terminal - include source directly
     ${CMAKE_SOURCE_DIR}/src/cli/pty.cpp
 )
 
-add_library(vivid-ide SHARED ${IDE_SOURCES})
+add_library(vivid-devtools SHARED ${DEVTOOLS_SOURCES})
 
-target_include_directories(vivid-ide
+target_include_directories(vivid-devtools
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
@@ -47,36 +60,36 @@ target_include_directories(vivid-ide
 
 # Link against vivid-core for OverlayCanvas, Gui, Context, etc.
 # Link against libvterm for terminal emulation
-target_link_libraries(vivid-ide
+target_link_libraries(vivid-devtools
     PUBLIC vivid-core
     PRIVATE vterm
 )
 
 # Platform-specific configuration
 if(APPLE)
-    set_target_properties(vivid-ide PROPERTIES
+    set_target_properties(vivid-devtools PROPERTIES
         INSTALL_RPATH "@executable_path/../lib"
         BUILD_WITH_INSTALL_RPATH TRUE
     )
 elseif(WIN32)
-    set_target_properties(vivid-ide PROPERTIES
+    set_target_properties(vivid-devtools PROPERTIES
         WINDOWS_EXPORT_ALL_SYMBOLS ON
         ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
         ARCHIVE_OUTPUT_DIRECTORY_DEBUG ${CMAKE_BINARY_DIR}/lib/Debug
         ARCHIVE_OUTPUT_DIRECTORY_RELEASE ${CMAKE_BINARY_DIR}/lib/Release
     )
     # Windows: DLLs must be in same directory as exe
-    add_custom_command(TARGET vivid-ide POST_BUILD
+    add_custom_command(TARGET vivid-devtools POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            $<TARGET_FILE:vivid-ide>
+            $<TARGET_FILE:vivid-devtools>
             ${CMAKE_BINARY_DIR}/bin/
-        COMMENT "Copying vivid-ide DLL to bin"
+        COMMENT "Copying vivid-devtools DLL to bin"
     )
 elseif(UNIX)
-    set_target_properties(vivid-ide PROPERTIES
+    set_target_properties(vivid-devtools PROPERTIES
         INSTALL_RPATH "$ORIGIN/../lib"
         BUILD_WITH_INSTALL_RPATH TRUE
     )
 endif()
 
-message(STATUS "[vivid-ide] Configured native IDE module")
+message(STATUS "[vivid-devtools] Configured unified devtools module")

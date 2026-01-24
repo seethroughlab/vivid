@@ -23,8 +23,8 @@
 #include <vivid/window_manager.h>
 #include <vivid/asset_loader.h>
 #include <vivid/frame_input.h>
-// Note: ChainVisualizer is loaded dynamically from vivid-visualizer module
-// See visualizer_dynamic namespace below
+// Note: DevTools (terminal, editor, node graph, inspector) is loaded dynamically
+// from vivid-devtools module. See devtools_dynamic namespace below.
 #include <webgpu/webgpu.h>
 #include <webgpu/wgpu.h>  // wgpu-native extensions (wgpuDevicePoll)
 #include <glfw3webgpu.h>
@@ -160,116 +160,206 @@ static void resetLookup() {
 } // namespace vivid::imgui_dynamic
 
 // -----------------------------------------------------------------------------
-// Dynamic Visualizer Support (vivid-visualizer module)
+// Dynamic DevTools Support (vivid-devtools module)
 // -----------------------------------------------------------------------------
-// Function pointers for optional vivid-visualizer module
-// These are looked up at runtime if the module is loaded
+// Function pointers for optional vivid-devtools module
+// Provides unified IDE (terminal + editor) and visualizer (node graph + inspector)
 // Production bundles can exclude this module for smaller size
 
-namespace vivid::visualizer_dynamic {
+namespace vivid::devtools_dynamic {
 
-// Forward declarations for types used in function signatures
-class Context;
-class Operator;
-class VideoExporter;
-struct FrameInput;
-
-// Function pointer types matching visualizer_exports.cpp
+// Function pointer types matching devtools_exports.cpp
 using InitFn = void(*)(void* ctx, WGPUTextureFormat surfaceFormat);
-using RenderFn = void(*)(WGPURenderPassEncoder pass, const void* input, void* ctx);
-using UpdateSoloFn = void(*)(void* ctx);
 using ShutdownFn = void(*)();
+using UpdateFn = void(*)();
+using RenderFn = void(*)(WGPURenderPassEncoder pass, const void* input, void* ctx);
 using IsAvailableFn = bool(*)();
-using SaveSnapshotFn = void(*)(void* ctx);
-using SnapshotRequestedFn = bool(*)();
-using GetExporterFn = void*(*)();
+using ConsumedInputFn = bool(*)();
+using IsInteractingFn = bool(*)();
+using OnCharFn = void(*)(uint32_t codepoint);
+using OnKeyFn = void(*)(int key, int mods);
+
+// Panel control
+using ShowPanelFn = void(*)(const char* panelId);
+using HidePanelFn = void(*)(const char* panelId);
+using TogglePanelFn = void(*)(const char* panelId);
+using IsPanelVisibleFn = bool(*)(const char* panelId);
+
+// IDE features
+using ToggleIdeFn = void(*)();
+using IsIdeVisibleFn = bool(*)();
+using SetIdeVisibleFn = void(*)(bool visible);
+using SetWorkingDirFn = void(*)(const char* path);
+using OpenFileFn = bool(*)(const char* path);
+using SetCompileStatusFn = void(*)(bool success, const char* message);
+using SetWindowFn = void(*)(GLFWwindow* window);
+using GetIdeBoundsFn = void(*)(float* x, float* y, float* w, float* h);
+using SetIdeBoundsFn = void(*)(float x, float y, float w, float h);
+
+// Visualizer features
+using ToggleVisualizerFn = void(*)();
+using IsVisualizerVisibleFn = bool(*)();
 using EnterSoloFn = void(*)(void* op, const char* name);
 using ExitSoloFn = void(*)();
 using InSoloModeFn = bool(*)();
 using SoloNameFn = const char*(*)();
+using UpdateSoloFn = void(*)(void* ctx);
 using SelectNodeFn = void(*)(const char* name);
 using SetFocusedNodeFn = void(*)(const char* name);
 using ClearFocusedNodeFn = void(*)();
+
+// Status & callbacks
 using SetPendingCountFn = void(*)(size_t count);
 using SetMcpWarningFn = void(*)(const char* warning);
 using SetParamCallbackFn = void(*)(void (*callback)(const char*, const char*, const float*, const float*, int));
-using ConsumedInputFn = bool(*)();
-using IsInteractingFn = bool(*)();
 
+// Video/snapshot
+using SaveSnapshotFn = void(*)(void* ctx);
+using SnapshotRequestedFn = bool(*)();
+using GetExporterFn = void*(*)();
+
+// Console
+using SetCompileErrorsFn = void(*)(const void* errors, size_t count);
+using ClearCompileErrorsFn = void(*)();
+using ConsoleHasErrorsFn = bool(*)();
+
+// Function pointers
 static InitFn init = nullptr;
-static RenderFn render = nullptr;
-static UpdateSoloFn updateSolo = nullptr;
 static ShutdownFn shutdown = nullptr;
+static UpdateFn update = nullptr;
+static RenderFn render = nullptr;
 static IsAvailableFn isAvailable = nullptr;
-static SaveSnapshotFn saveSnapshot = nullptr;
-static SnapshotRequestedFn snapshotRequested = nullptr;
-static GetExporterFn getExporter = nullptr;
+static ConsumedInputFn consumedInput = nullptr;
+static IsInteractingFn isInteracting = nullptr;
+static OnCharFn onChar = nullptr;
+static OnKeyFn onKey = nullptr;
+static ShowPanelFn showPanel = nullptr;
+static HidePanelFn hidePanel = nullptr;
+static TogglePanelFn togglePanel = nullptr;
+static IsPanelVisibleFn isPanelVisible = nullptr;
+static ToggleIdeFn toggleIde = nullptr;
+static IsIdeVisibleFn isIdeVisible = nullptr;
+static SetIdeVisibleFn setIdeVisible = nullptr;
+static SetWorkingDirFn setWorkingDir = nullptr;
+static OpenFileFn openFile = nullptr;
+static SetCompileStatusFn setCompileStatus = nullptr;
+static SetWindowFn setWindow = nullptr;
+static GetIdeBoundsFn getIdeBounds = nullptr;
+static SetIdeBoundsFn setIdeBounds = nullptr;
+static ToggleVisualizerFn toggleVisualizer = nullptr;
+static IsVisualizerVisibleFn isVisualizerVisible = nullptr;
 static EnterSoloFn enterSolo = nullptr;
 static ExitSoloFn exitSolo = nullptr;
 static InSoloModeFn inSoloMode = nullptr;
 static SoloNameFn soloName = nullptr;
+static UpdateSoloFn updateSolo = nullptr;
 static SelectNodeFn selectNode = nullptr;
 static SetFocusedNodeFn setFocusedNode = nullptr;
 static ClearFocusedNodeFn clearFocusedNode = nullptr;
 static SetPendingCountFn setPendingCount = nullptr;
 static SetMcpWarningFn setMcpWarning = nullptr;
 static SetParamCallbackFn setParamCallback = nullptr;
-static ConsumedInputFn consumedInput = nullptr;
-static IsInteractingFn isInteracting = nullptr;
+static SaveSnapshotFn saveSnapshot = nullptr;
+static SnapshotRequestedFn snapshotRequested = nullptr;
+static GetExporterFn getExporter = nullptr;
+static SetCompileErrorsFn setCompileErrors = nullptr;
+static ClearCompileErrorsFn clearCompileErrors = nullptr;
+static ConsoleHasErrorsFn consoleHasErrors = nullptr;
+
 static bool g_lookedUp = false;
 static bool g_initialized = false;
 
-// Try to find vivid-visualizer functions via dlsym/GetProcAddress (C-linkage names)
 static void lookupFunctions() {
     if (g_lookedUp) return;
     g_lookedUp = true;
 
 #if defined(__APPLE__) || defined(__linux__)
     // RTLD_DEFAULT searches all loaded libraries
-    init = (InitFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_init");
-    render = (RenderFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_render");
-    updateSolo = (UpdateSoloFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_update_solo");
-    shutdown = (ShutdownFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_shutdown");
-    isAvailable = (IsAvailableFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_is_available");
-    saveSnapshot = (SaveSnapshotFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_save_snapshot");
-    snapshotRequested = (SnapshotRequestedFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_snapshot_requested");
-    getExporter = (GetExporterFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_get_exporter");
-    enterSolo = (EnterSoloFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_enter_solo");
-    exitSolo = (ExitSoloFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_exit_solo");
-    inSoloMode = (InSoloModeFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_in_solo_mode");
-    soloName = (SoloNameFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_solo_name");
-    selectNode = (SelectNodeFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_select_node");
-    setFocusedNode = (SetFocusedNodeFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_set_focused_node");
-    clearFocusedNode = (ClearFocusedNodeFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_clear_focused_node");
-    setPendingCount = (SetPendingCountFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_set_pending_count");
-    setMcpWarning = (SetMcpWarningFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_set_mcp_warning");
-    setParamCallback = (SetParamCallbackFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_set_param_callback");
-    consumedInput = (ConsumedInputFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_consumed_input");
-    isInteracting = (IsInteractingFn)dlsym(RTLD_DEFAULT, "vivid_visualizer_is_interacting");
+    init = (InitFn)dlsym(RTLD_DEFAULT, "vivid_devtools_init");
+    shutdown = (ShutdownFn)dlsym(RTLD_DEFAULT, "vivid_devtools_shutdown");
+    update = (UpdateFn)dlsym(RTLD_DEFAULT, "vivid_devtools_update");
+    render = (RenderFn)dlsym(RTLD_DEFAULT, "vivid_devtools_render");
+    isAvailable = (IsAvailableFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_available");
+    consumedInput = (ConsumedInputFn)dlsym(RTLD_DEFAULT, "vivid_devtools_consumed_input");
+    isInteracting = (IsInteractingFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_interacting");
+    onChar = (OnCharFn)dlsym(RTLD_DEFAULT, "vivid_devtools_on_char");
+    onKey = (OnKeyFn)dlsym(RTLD_DEFAULT, "vivid_devtools_on_key");
+    showPanel = (ShowPanelFn)dlsym(RTLD_DEFAULT, "vivid_devtools_show_panel");
+    hidePanel = (HidePanelFn)dlsym(RTLD_DEFAULT, "vivid_devtools_hide_panel");
+    togglePanel = (TogglePanelFn)dlsym(RTLD_DEFAULT, "vivid_devtools_toggle_panel");
+    isPanelVisible = (IsPanelVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_panel_visible");
+    toggleIde = (ToggleIdeFn)dlsym(RTLD_DEFAULT, "vivid_devtools_toggle_ide");
+    isIdeVisible = (IsIdeVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_ide_visible");
+    setIdeVisible = (SetIdeVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_ide_visible");
+    setWorkingDir = (SetWorkingDirFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_working_dir");
+    openFile = (OpenFileFn)dlsym(RTLD_DEFAULT, "vivid_devtools_open_file");
+    setCompileStatus = (SetCompileStatusFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_compile_status");
+    setWindow = (SetWindowFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_window");
+    getIdeBounds = (GetIdeBoundsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_get_ide_bounds");
+    setIdeBounds = (SetIdeBoundsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_ide_bounds");
+    toggleVisualizer = (ToggleVisualizerFn)dlsym(RTLD_DEFAULT, "vivid_devtools_toggle_visualizer");
+    isVisualizerVisible = (IsVisualizerVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_visualizer_visible");
+    enterSolo = (EnterSoloFn)dlsym(RTLD_DEFAULT, "vivid_devtools_enter_solo");
+    exitSolo = (ExitSoloFn)dlsym(RTLD_DEFAULT, "vivid_devtools_exit_solo");
+    inSoloMode = (InSoloModeFn)dlsym(RTLD_DEFAULT, "vivid_devtools_in_solo_mode");
+    soloName = (SoloNameFn)dlsym(RTLD_DEFAULT, "vivid_devtools_solo_name");
+    updateSolo = (UpdateSoloFn)dlsym(RTLD_DEFAULT, "vivid_devtools_update_solo");
+    selectNode = (SelectNodeFn)dlsym(RTLD_DEFAULT, "vivid_devtools_select_node");
+    setFocusedNode = (SetFocusedNodeFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_focused_node");
+    clearFocusedNode = (ClearFocusedNodeFn)dlsym(RTLD_DEFAULT, "vivid_devtools_clear_focused_node");
+    setPendingCount = (SetPendingCountFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_pending_count");
+    setMcpWarning = (SetMcpWarningFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_mcp_warning");
+    setParamCallback = (SetParamCallbackFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_param_callback");
+    saveSnapshot = (SaveSnapshotFn)dlsym(RTLD_DEFAULT, "vivid_devtools_save_snapshot");
+    snapshotRequested = (SnapshotRequestedFn)dlsym(RTLD_DEFAULT, "vivid_devtools_snapshot_requested");
+    getExporter = (GetExporterFn)dlsym(RTLD_DEFAULT, "vivid_devtools_get_exporter");
+    setCompileErrors = (SetCompileErrorsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_compile_errors");
+    clearCompileErrors = (ClearCompileErrorsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_clear_compile_errors");
+    consoleHasErrors = (ConsoleHasErrorsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_console_has_errors");
 #elif defined(_WIN32)
-    // On Windows, try to get the vivid-visualizer.dll module handle
-    HMODULE vizModule = GetModuleHandleA("vivid-visualizer.dll");
-    if (vizModule) {
-        init = (InitFn)GetProcAddress(vizModule, "vivid_visualizer_init");
-        render = (RenderFn)GetProcAddress(vizModule, "vivid_visualizer_render");
-        updateSolo = (UpdateSoloFn)GetProcAddress(vizModule, "vivid_visualizer_update_solo");
-        shutdown = (ShutdownFn)GetProcAddress(vizModule, "vivid_visualizer_shutdown");
-        isAvailable = (IsAvailableFn)GetProcAddress(vizModule, "vivid_visualizer_is_available");
-        saveSnapshot = (SaveSnapshotFn)GetProcAddress(vizModule, "vivid_visualizer_save_snapshot");
-        snapshotRequested = (SnapshotRequestedFn)GetProcAddress(vizModule, "vivid_visualizer_snapshot_requested");
-        getExporter = (GetExporterFn)GetProcAddress(vizModule, "vivid_visualizer_get_exporter");
-        enterSolo = (EnterSoloFn)GetProcAddress(vizModule, "vivid_visualizer_enter_solo");
-        exitSolo = (ExitSoloFn)GetProcAddress(vizModule, "vivid_visualizer_exit_solo");
-        inSoloMode = (InSoloModeFn)GetProcAddress(vizModule, "vivid_visualizer_in_solo_mode");
-        soloName = (SoloNameFn)GetProcAddress(vizModule, "vivid_visualizer_solo_name");
-        selectNode = (SelectNodeFn)GetProcAddress(vizModule, "vivid_visualizer_select_node");
-        setFocusedNode = (SetFocusedNodeFn)GetProcAddress(vizModule, "vivid_visualizer_set_focused_node");
-        clearFocusedNode = (ClearFocusedNodeFn)GetProcAddress(vizModule, "vivid_visualizer_clear_focused_node");
-        setPendingCount = (SetPendingCountFn)GetProcAddress(vizModule, "vivid_visualizer_set_pending_count");
-        setMcpWarning = (SetMcpWarningFn)GetProcAddress(vizModule, "vivid_visualizer_set_mcp_warning");
-        setParamCallback = (SetParamCallbackFn)GetProcAddress(vizModule, "vivid_visualizer_set_param_callback");
-        consumedInput = (ConsumedInputFn)GetProcAddress(vizModule, "vivid_visualizer_consumed_input");
-        isInteracting = (IsInteractingFn)GetProcAddress(vizModule, "vivid_visualizer_is_interacting");
+    HMODULE devtoolsModule = GetModuleHandleA("vivid-devtools.dll");
+    if (devtoolsModule) {
+        init = (InitFn)GetProcAddress(devtoolsModule, "vivid_devtools_init");
+        shutdown = (ShutdownFn)GetProcAddress(devtoolsModule, "vivid_devtools_shutdown");
+        update = (UpdateFn)GetProcAddress(devtoolsModule, "vivid_devtools_update");
+        render = (RenderFn)GetProcAddress(devtoolsModule, "vivid_devtools_render");
+        isAvailable = (IsAvailableFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_available");
+        consumedInput = (ConsumedInputFn)GetProcAddress(devtoolsModule, "vivid_devtools_consumed_input");
+        isInteracting = (IsInteractingFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_interacting");
+        onChar = (OnCharFn)GetProcAddress(devtoolsModule, "vivid_devtools_on_char");
+        onKey = (OnKeyFn)GetProcAddress(devtoolsModule, "vivid_devtools_on_key");
+        showPanel = (ShowPanelFn)GetProcAddress(devtoolsModule, "vivid_devtools_show_panel");
+        hidePanel = (HidePanelFn)GetProcAddress(devtoolsModule, "vivid_devtools_hide_panel");
+        togglePanel = (TogglePanelFn)GetProcAddress(devtoolsModule, "vivid_devtools_toggle_panel");
+        isPanelVisible = (IsPanelVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_panel_visible");
+        toggleIde = (ToggleIdeFn)GetProcAddress(devtoolsModule, "vivid_devtools_toggle_ide");
+        isIdeVisible = (IsIdeVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_ide_visible");
+        setIdeVisible = (SetIdeVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_ide_visible");
+        setWorkingDir = (SetWorkingDirFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_working_dir");
+        openFile = (OpenFileFn)GetProcAddress(devtoolsModule, "vivid_devtools_open_file");
+        setCompileStatus = (SetCompileStatusFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_compile_status");
+        setWindow = (SetWindowFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_window");
+        getIdeBounds = (GetIdeBoundsFn)GetProcAddress(devtoolsModule, "vivid_devtools_get_ide_bounds");
+        setIdeBounds = (SetIdeBoundsFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_ide_bounds");
+        toggleVisualizer = (ToggleVisualizerFn)GetProcAddress(devtoolsModule, "vivid_devtools_toggle_visualizer");
+        isVisualizerVisible = (IsVisualizerVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_visualizer_visible");
+        enterSolo = (EnterSoloFn)GetProcAddress(devtoolsModule, "vivid_devtools_enter_solo");
+        exitSolo = (ExitSoloFn)GetProcAddress(devtoolsModule, "vivid_devtools_exit_solo");
+        inSoloMode = (InSoloModeFn)GetProcAddress(devtoolsModule, "vivid_devtools_in_solo_mode");
+        soloName = (SoloNameFn)GetProcAddress(devtoolsModule, "vivid_devtools_solo_name");
+        updateSolo = (UpdateSoloFn)GetProcAddress(devtoolsModule, "vivid_devtools_update_solo");
+        selectNode = (SelectNodeFn)GetProcAddress(devtoolsModule, "vivid_devtools_select_node");
+        setFocusedNode = (SetFocusedNodeFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_focused_node");
+        clearFocusedNode = (ClearFocusedNodeFn)GetProcAddress(devtoolsModule, "vivid_devtools_clear_focused_node");
+        setPendingCount = (SetPendingCountFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_pending_count");
+        setMcpWarning = (SetMcpWarningFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_mcp_warning");
+        setParamCallback = (SetParamCallbackFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_param_callback");
+        saveSnapshot = (SaveSnapshotFn)GetProcAddress(devtoolsModule, "vivid_devtools_save_snapshot");
+        snapshotRequested = (SnapshotRequestedFn)GetProcAddress(devtoolsModule, "vivid_devtools_snapshot_requested");
+        getExporter = (GetExporterFn)GetProcAddress(devtoolsModule, "vivid_devtools_get_exporter");
+        setCompileErrors = (SetCompileErrorsFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_compile_errors");
+        clearCompileErrors = (ClearCompileErrorsFn)GetProcAddress(devtoolsModule, "vivid_devtools_clear_compile_errors");
+        consoleHasErrors = (ConsoleHasErrorsFn)GetProcAddress(devtoolsModule, "vivid_devtools_console_has_errors");
     }
 #endif
 }
@@ -285,85 +375,20 @@ static void tryInit(void* ctx, WGPUTextureFormat format) {
     g_initialized = true;
 }
 
-static void tryRender(WGPURenderPassEncoder pass, const void* input, void* ctx) {
-    if (!available() || !g_initialized) return;
-    render(pass, input, ctx);
-}
-
-static void tryUpdateSolo(void* ctx) {
-    if (!available() || !g_initialized) return;
-    updateSolo(ctx);
-}
-
 static void tryShutdown() {
     if (!available() || !g_initialized) return;
     shutdown();
     g_initialized = false;
 }
 
-static void trySaveSnapshot(void* ctx) {
+static void tryUpdate() {
     if (!available() || !g_initialized) return;
-    saveSnapshot(ctx);
+    update();
 }
 
-static bool trySnapshotRequested() {
-    if (!available() || !g_initialized) return false;
-    return snapshotRequested();
-}
-
-static void* tryGetExporter() {
-    if (!available() || !g_initialized) return nullptr;
-    return getExporter();
-}
-
-static void tryEnterSolo(void* op, const char* name) {
+static void tryRender(WGPURenderPassEncoder pass, const void* input, void* ctx) {
     if (!available() || !g_initialized) return;
-    enterSolo(op, name);
-}
-
-static void tryExitSolo() {
-    if (!available() || !g_initialized) return;
-    exitSolo();
-}
-
-static bool tryInSoloMode() {
-    if (!available() || !g_initialized) return false;
-    return inSoloMode();
-}
-
-static const char* trySoloName() {
-    if (!available() || !g_initialized) return "";
-    return soloName();
-}
-
-static void trySelectNode(const char* name) {
-    if (!available() || !g_initialized) return;
-    selectNode(name);
-}
-
-static void trySetFocusedNode(const char* name) {
-    if (!available() || !g_initialized) return;
-    setFocusedNode(name);
-}
-
-static void tryClearFocusedNode() {
-    if (!available() || !g_initialized) return;
-    clearFocusedNode();
-}
-
-static void trySetPendingCount(size_t count) {
-    if (!available() || !g_initialized) return;
-    setPendingCount(count);
-}
-
-static void trySetMcpWarning(const char* warning) {
-    if (!available() || !g_initialized) return;
-    setMcpWarning(warning);
-}
-
-static void trySetParamCallback(void (*callback)(const char*, const char*, const float*, const float*, int)) {
-    if (!available() || !g_initialized) return;
-    setParamCallback(callback);
+    render(pass, input, ctx);
 }
 
 static bool tryConsumedInput() {
@@ -376,207 +401,129 @@ static bool tryIsInteracting() {
     return isInteracting();
 }
 
-// Reset lookup state (called after chain reload since libs may have changed)
-static void resetLookup() {
-    g_lookedUp = false;
-    init = nullptr;
-    render = nullptr;
-    updateSolo = nullptr;
-    shutdown = nullptr;
-    isAvailable = nullptr;
-    saveSnapshot = nullptr;
-    snapshotRequested = nullptr;
-    getExporter = nullptr;
-    enterSolo = nullptr;
-    exitSolo = nullptr;
-    inSoloMode = nullptr;
-    soloName = nullptr;
-    selectNode = nullptr;
-    setFocusedNode = nullptr;
-    clearFocusedNode = nullptr;
-    setPendingCount = nullptr;
-    setMcpWarning = nullptr;
-    setParamCallback = nullptr;
-    consumedInput = nullptr;
-    isInteracting = nullptr;
-}
-
-} // namespace vivid::visualizer_dynamic
-
-// -----------------------------------------------------------------------------
-// Dynamic IDE Support (vivid-ide module)
-// -----------------------------------------------------------------------------
-// Function pointers for optional vivid-ide module (native terminal + editor)
-
-namespace vivid::ide_dynamic {
-
-// Function pointer types matching ide_exports.cpp
-using InitFn = void(*)(void*, WGPUTextureFormat);  // void* = Context*
-using ShutdownFn = void(*)();
-using UpdateFn = void(*)();
-using RenderFn = void(*)(WGPURenderPassEncoder, const void*, float, float);
-using ConsumedInputFn = bool(*)();
-using IsAvailableFn = bool(*)();
-using IsVisibleFn = bool(*)();
-using SetVisibleFn = void(*)(bool);
-using ToggleVisibleFn = void(*)();
-using SetWorkingDirFn = void(*)(const char*);
-using OpenFileFn = bool(*)(const char*);
-using SetCompileStatusFn = void(*)(bool, const char*);
-using OnCharFn = void(*)(uint32_t);
-using OnKeyFn = void(*)(int, int);
-using GetBoundsFn = void(*)(float*, float*, float*, float*);
-using IsInteractingFn = bool(*)();
-using IsHoveredFn = bool(*)();
-using SetWindowFn = void(*)(GLFWwindow*);
-
-static InitFn init = nullptr;
-static ShutdownFn shutdown = nullptr;
-static UpdateFn update = nullptr;
-static RenderFn render = nullptr;
-static ConsumedInputFn consumedInput = nullptr;
-static IsAvailableFn isAvailable = nullptr;
-static IsVisibleFn isVisible = nullptr;
-static SetVisibleFn setVisible = nullptr;
-static ToggleVisibleFn toggleVisible = nullptr;
-static SetWorkingDirFn setWorkingDir = nullptr;
-static OpenFileFn openFile = nullptr;
-static SetCompileStatusFn setCompileStatus = nullptr;
-static OnCharFn onChar = nullptr;
-static OnKeyFn onKey = nullptr;
-static GetBoundsFn getBounds = nullptr;
-static IsInteractingFn isInteracting = nullptr;
-static IsHoveredFn isHovered = nullptr;
-static SetWindowFn setWindow = nullptr;
-static bool g_lookedUp = false;
-static bool g_initialized = false;
-
-static void lookupFunctions() {
-    if (g_lookedUp) return;
-    g_lookedUp = true;
-
-#if defined(__APPLE__) || defined(__linux__)
-    init = (InitFn)dlsym(RTLD_DEFAULT, "vivid_ide_init");
-    shutdown = (ShutdownFn)dlsym(RTLD_DEFAULT, "vivid_ide_shutdown");
-    update = (UpdateFn)dlsym(RTLD_DEFAULT, "vivid_ide_update");
-    render = (RenderFn)dlsym(RTLD_DEFAULT, "vivid_ide_render");
-    consumedInput = (ConsumedInputFn)dlsym(RTLD_DEFAULT, "vivid_ide_consumed_input");
-    isAvailable = (IsAvailableFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_available");
-    isVisible = (IsVisibleFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_visible");
-    setVisible = (SetVisibleFn)dlsym(RTLD_DEFAULT, "vivid_ide_set_visible");
-    toggleVisible = (ToggleVisibleFn)dlsym(RTLD_DEFAULT, "vivid_ide_toggle_visible");
-    setWorkingDir = (SetWorkingDirFn)dlsym(RTLD_DEFAULT, "vivid_ide_set_working_dir");
-    openFile = (OpenFileFn)dlsym(RTLD_DEFAULT, "vivid_ide_open_file");
-    setCompileStatus = (SetCompileStatusFn)dlsym(RTLD_DEFAULT, "vivid_ide_set_compile_status");
-    onChar = (OnCharFn)dlsym(RTLD_DEFAULT, "vivid_ide_on_char");
-    onKey = (OnKeyFn)dlsym(RTLD_DEFAULT, "vivid_ide_on_key");
-    getBounds = (GetBoundsFn)dlsym(RTLD_DEFAULT, "vivid_ide_get_bounds");
-    isInteracting = (IsInteractingFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_interacting");
-    isHovered = (IsHoveredFn)dlsym(RTLD_DEFAULT, "vivid_ide_is_hovered");
-    setWindow = (SetWindowFn)dlsym(RTLD_DEFAULT, "vivid_ide_set_window");
-#elif defined(_WIN32)
-    HMODULE ideModule = GetModuleHandleA("vivid-ide.dll");
-    if (ideModule) {
-        init = (InitFn)GetProcAddress(ideModule, "vivid_ide_init");
-        shutdown = (ShutdownFn)GetProcAddress(ideModule, "vivid_ide_shutdown");
-        update = (UpdateFn)GetProcAddress(ideModule, "vivid_ide_update");
-        render = (RenderFn)GetProcAddress(ideModule, "vivid_ide_render");
-        consumedInput = (ConsumedInputFn)GetProcAddress(ideModule, "vivid_ide_consumed_input");
-        isAvailable = (IsAvailableFn)GetProcAddress(ideModule, "vivid_ide_is_available");
-        isVisible = (IsVisibleFn)GetProcAddress(ideModule, "vivid_ide_is_visible");
-        setVisible = (SetVisibleFn)GetProcAddress(ideModule, "vivid_ide_set_visible");
-        toggleVisible = (ToggleVisibleFn)GetProcAddress(ideModule, "vivid_ide_toggle_visible");
-        setWorkingDir = (SetWorkingDirFn)GetProcAddress(ideModule, "vivid_ide_set_working_dir");
-        openFile = (OpenFileFn)GetProcAddress(ideModule, "vivid_ide_open_file");
-        setCompileStatus = (SetCompileStatusFn)GetProcAddress(ideModule, "vivid_ide_set_compile_status");
-        onChar = (OnCharFn)GetProcAddress(ideModule, "vivid_ide_on_char");
-        onKey = (OnKeyFn)GetProcAddress(ideModule, "vivid_ide_on_key");
-        getBounds = (GetBoundsFn)GetProcAddress(ideModule, "vivid_ide_get_bounds");
-        isInteracting = (IsInteractingFn)GetProcAddress(ideModule, "vivid_ide_is_interacting");
-        isHovered = (IsHoveredFn)GetProcAddress(ideModule, "vivid_ide_is_hovered");
-        setWindow = (SetWindowFn)GetProcAddress(ideModule, "vivid_ide_set_window");
-    }
-#endif
-}
-
-static bool available() {
-    lookupFunctions();
-    return isAvailable && isAvailable();
-}
-
-static void tryInit(void* ctx, WGPUTextureFormat fmt) {
-    lookupFunctions();
-    if (init) {
-        init(ctx, fmt);
-        g_initialized = true;
-    }
-}
-
-static void tryShutdown() {
-    if (shutdown && g_initialized) {
-        shutdown();
-        g_initialized = false;
-    }
-}
-
-static void tryUpdate() {
-    if (update && g_initialized) update();
-}
-
-static void tryRender(WGPURenderPassEncoder pass, const void* input, float w, float h) {
-    if (render && g_initialized) render(pass, input, w, h);
-}
-
-static bool tryConsumedInput() {
-    return consumedInput && g_initialized && consumedInput();
-}
-
-static bool tryIsVisible() {
-    return isVisible && g_initialized && isVisible();
-}
-
-static void trySetVisible(bool visible) {
-    if (setVisible && g_initialized) setVisible(visible);
-}
-
-static void tryToggleVisible() {
-    if (toggleVisible && g_initialized) toggleVisible();
-}
-
-static void trySetWorkingDir(const char* path) {
-    if (setWorkingDir && g_initialized) setWorkingDir(path);
-}
-
-static bool tryOpenFile(const char* path) {
-    if (openFile && g_initialized) return openFile(path);
-    return false;
-}
-
-static void trySetCompileStatus(bool success, const char* message) {
-    if (setCompileStatus && g_initialized) setCompileStatus(success, message);
-}
-
 static void tryOnChar(uint32_t codepoint) {
-    if (onChar && g_initialized) onChar(codepoint);
+    if (!available() || !g_initialized) return;
+    onChar(codepoint);
 }
 
 static void tryOnKey(int key, int mods) {
-    if (onKey && g_initialized) onKey(key, mods);
+    if (!available() || !g_initialized) return;
+    onKey(key, mods);
 }
 
-static bool tryIsInteracting() {
-    return isInteracting && g_initialized && isInteracting();
+// IDE helpers
+static bool tryIsIdeVisible() {
+    if (!available() || !g_initialized || !isIdeVisible) return false;
+    return isIdeVisible();
 }
 
-static bool tryIsHovered() {
-    return isHovered && g_initialized && isHovered();
+static void trySetIdeVisible(bool visible) {
+    if (!available() || !g_initialized || !setIdeVisible) return;
+    setIdeVisible(visible);
+}
+
+static void trySetWorkingDir(const char* path) {
+    if (!available() || !g_initialized || !setWorkingDir) return;
+    setWorkingDir(path);
+}
+
+static bool tryOpenFile(const char* path) {
+    if (!available() || !g_initialized || !openFile) return false;
+    return openFile(path);
+}
+
+static void trySetCompileStatus(bool success, const char* message) {
+    if (!available() || !g_initialized || !setCompileStatus) return;
+    setCompileStatus(success, message);
 }
 
 static void trySetWindow(GLFWwindow* window) {
-    if (setWindow && g_initialized) setWindow(window);
+    if (!available() || !g_initialized || !setWindow) return;
+    setWindow(window);
 }
 
-} // namespace vivid::ide_dynamic
+// Visualizer helpers
+static void tryUpdateSolo(void* ctx) {
+    if (!available() || !g_initialized || !updateSolo) return;
+    updateSolo(ctx);
+}
+
+static void trySaveSnapshot(void* ctx) {
+    if (!available() || !g_initialized || !saveSnapshot) return;
+    saveSnapshot(ctx);
+}
+
+static bool trySnapshotRequested() {
+    if (!available() || !g_initialized || !snapshotRequested) return false;
+    return snapshotRequested();
+}
+
+static void* tryGetExporter() {
+    if (!available() || !g_initialized || !getExporter) return nullptr;
+    return getExporter();
+}
+
+static void tryEnterSolo(void* op, const char* name) {
+    if (!available() || !g_initialized || !enterSolo) return;
+    enterSolo(op, name);
+}
+
+static void tryExitSolo() {
+    if (!available() || !g_initialized || !exitSolo) return;
+    exitSolo();
+}
+
+static void trySelectNode(const char* name) {
+    if (!available() || !g_initialized || !selectNode) return;
+    selectNode(name);
+}
+
+static void trySetFocusedNode(const char* name) {
+    if (!available() || !g_initialized || !setFocusedNode) return;
+    setFocusedNode(name);
+}
+
+static void tryClearFocusedNode() {
+    if (!available() || !g_initialized || !clearFocusedNode) return;
+    clearFocusedNode();
+}
+
+static void trySetPendingCount(size_t count) {
+    if (!available() || !g_initialized || !setPendingCount) return;
+    setPendingCount(count);
+}
+
+static void trySetMcpWarning(const char* warning) {
+    if (!available() || !g_initialized || !setMcpWarning) return;
+    setMcpWarning(warning);
+}
+
+static void trySetParamCallback(void (*callback)(const char*, const char*, const float*, const float*, int)) {
+    if (!available() || !g_initialized || !setParamCallback) return;
+    setParamCallback(callback);
+}
+
+static void trySetCompileErrors(const void* errors, size_t count) {
+    if (!available() || !g_initialized || !setCompileErrors) return;
+    setCompileErrors(errors, count);
+}
+
+static void tryClearCompileErrors() {
+    if (!available() || !g_initialized || !clearCompileErrors) return;
+    clearCompileErrors();
+}
+
+static bool tryConsoleHasErrors() {
+    if (!available() || !g_initialized || !consoleHasErrors) return false;
+    return consoleHasErrors();
+}
+
+static bool tryIsPanelVisible(const char* panelId) {
+    if (!available() || !g_initialized || !isPanelVisible) return false;
+    return isPanelVisible(panelId);
+}
+
+} // namespace vivid::devtools_dynamic
 
 namespace fs = std::filesystem;
 
@@ -920,7 +867,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     }
 
     // Toggle chain visualizer and IDE panel on backtick key (only if visualizer module is loaded)
-    // Production bundles without vivid-visualizer will not have this feature
+    // Production bundles without vivid-devtools will not have this feature
     {
         bool toggleKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_GRAVE_ACCENT) == GLFW_PRESS;
         if (toggleKeyPressed && !mlc.toggleKeyWasPressed && mlc.visualizerAvailable) {
@@ -930,8 +877,8 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             mlc.idePanelVisible = mlc.visualizerVisible;
 #endif
             // Native IDE panel visibility follows visualizer
-            if (ide_dynamic::available()) {
-                ide_dynamic::trySetVisible(mlc.visualizerVisible);
+            if (devtools_dynamic::available()) {
+                devtools_dynamic::trySetIdeVisible(mlc.visualizerVisible);
             }
         }
         mlc.toggleKeyWasPressed = toggleKeyPressed;
@@ -1095,6 +1042,12 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     if (mlc.hotReload->hasError()) {
         mlc.ctx->setError(mlc.hotReload->getError());
 
+        // Send structured errors to console panel (if devtools available)
+        if (devtools_dynamic::available()) {
+            const auto& errors = mlc.hotReload->getCompileErrors();
+            devtools_dynamic::trySetCompileErrors(errors.data(), errors.size());
+        }
+
         // Show prominent status banner on initial load failure
         if (!mlc.initialStatusShown) {
             std::cerr << "\n══════════════════════════════════════\n"
@@ -1111,6 +1064,11 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
     } else if (mlc.hotReload->isLoaded()) {
         mlc.ctx->clearError();
+
+        // Clear compile errors from console panel (if devtools available)
+        if (devtools_dynamic::available()) {
+            devtools_dynamic::tryClearCompileErrors();
+        }
 
         // Show prominent status banner on initial load success
         if (!mlc.initialStatusShown) {
@@ -1255,7 +1213,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         mlc.ctx->chain().process(*mlc.ctx);
 
         // Capture frame for video export if recording (visualizer UI initiated)
-        auto* vizExporter = static_cast<VideoExporter*>(visualizer_dynamic::tryGetExporter());
+        auto* vizExporter = static_cast<VideoExporter*>(devtools_dynamic::tryGetExporter());
         if (vizExporter && vizExporter->isRecording() && mlc.ctx->outputTexture()) {
             WGPUTexture outputTex = mlc.ctx->chain().outputTexture();
             if (outputTex) {
@@ -1316,8 +1274,8 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
 
         // Save snapshot if requested (interactive UI via visualizer)
-        if (visualizer_dynamic::trySnapshotRequested()) {
-            visualizer_dynamic::trySaveSnapshot(mlc.ctx);
+        if (devtools_dynamic::trySnapshotRequested()) {
+            devtools_dynamic::trySaveSnapshot(mlc.ctx);
         }
 
         // MCP live capture request (WebSocket command from Claude Code)
@@ -1455,7 +1413,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
     // Update solo mode output texture before blit
     if (mlc.visualizerVisible && mlc.visualizerAvailable) {
-        visualizer_dynamic::tryUpdateSolo(mlc.ctx);
+        devtools_dynamic::tryUpdateSolo(mlc.ctx);
     }
 
     // Blit output texture (may have been modified by solo mode)
@@ -1496,29 +1454,11 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         }
         // Update pending change count for status bar display
         if (mlc.editorBridge) {
-            visualizer_dynamic::trySetPendingCount(mlc.editorBridge->pendingChangeCount());
+            devtools_dynamic::trySetPendingCount(mlc.editorBridge->pendingChangeCount());
         }
 
-        // Block visualizer input if IDE panel is being interacted with
-        bool blockVisualizerInput = false;
-#ifdef VIVID_HAS_CEF
-        blockVisualizerInput = idePanelConsumedInput;
-#endif
-        // Also check native IDE panel (vivid-ide module)
-        if (ide_dynamic::available() && ide_dynamic::tryIsVisible()) {
-            if (ide_dynamic::tryIsHovered() || ide_dynamic::tryIsInteracting()) {
-                blockVisualizerInput = true;
-            }
-        }
-
-        if (blockVisualizerInput) {
-            FrameInput blockedInput = frameInput;
-            blockedInput.mouseDown[0] = blockedInput.mouseDown[1] = blockedInput.mouseDown[2] = false;
-            blockedInput.scroll = {0, 0};  // Also block scroll
-            visualizer_dynamic::tryRender(pass, &blockedInput, mlc.ctx);
-        } else {
-            visualizer_dynamic::tryRender(pass, &frameInput, mlc.ctx);
-        }
+        // Render devtools (handles input routing internally)
+        devtools_dynamic::tryRender(pass, &frameInput, mlc.ctx);
     }
 
 #ifdef VIVID_HAS_CEF
@@ -1722,28 +1662,28 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     }
 #endif
 
-    // Render native IDE panel (if vivid-ide module is loaded)
+    // Handle IDE panel input and updates (if devtools module is loaded)
     static bool nativeIdeInitialized = false;
-    if (ide_dynamic::available() && ide_dynamic::tryIsVisible()) {
+    if (devtools_dynamic::available()) {
         // Initialize IDE on first show (spawn terminal, open chain.cpp)
-        if (!nativeIdeInitialized) {
+        if (!nativeIdeInitialized && devtools_dynamic::tryIsIdeVisible()) {
             fs::path chainPath = mlc.ctx->chainPath();
             if (!chainPath.empty()) {
                 std::string projectDir = chainPath.parent_path().string();
-                ide_dynamic::trySetWorkingDir(projectDir.c_str());
-                ide_dynamic::tryOpenFile(chainPath.string().c_str());
-                std::cerr << "[vivid-ide] Opened: " << chainPath << std::endl;
+                devtools_dynamic::trySetWorkingDir(projectDir.c_str());
+                devtools_dynamic::tryOpenFile(chainPath.string().c_str());
+                std::cerr << "[vivid-devtools] Opened: " << chainPath << std::endl;
             }
             nativeIdeInitialized = true;
         }
 
-        ide_dynamic::tryUpdate();
+        devtools_dynamic::tryUpdate();
 
-        // Forward ALL input to IDE when it's visible (IDE handles its own focus)
+        // Forward input to devtools (it handles focus internally)
         // Forward characters collected this frame (except backtick which toggles the UI)
         for (uint32_t codepoint : mlc.ctx->characterInput()) {
             if (codepoint == '`') continue;  // Backtick is used to toggle UI, don't forward
-            ide_dynamic::tryOnChar(codepoint);
+            devtools_dynamic::tryOnChar(codepoint);
         }
 
         // Forward key press events (for special keys: Enter, Backspace, arrows, etc.)
@@ -1767,7 +1707,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         };
         for (int key : specialKeys) {
             if (frameInput.keyPressed[key]) {
-                ide_dynamic::tryOnKey(key, mods);
+                devtools_dynamic::tryOnKey(key, mods);
             }
         }
 
@@ -1775,19 +1715,29 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         if (frameInput.keyCtrl) {
             for (int key = 65; key <= 90; key++) {  // A-Z (GLFW key codes)
                 if (frameInput.keyPressed[key]) {
-                    ide_dynamic::tryOnKey(key, mods);
+                    devtools_dynamic::tryOnKey(key, mods);
                 }
             }
         }
 
-        float logicalWidth = static_cast<float>(mlc.windowWidth) / frameInput.contentScale;
-        float logicalHeight = static_cast<float>(mlc.windowHeight) / frameInput.contentScale;
-        ide_dynamic::tryRender(pass, &frameInput, logicalWidth, logicalHeight);
+        // Render devtools if we didn't already render in the visualizer block
+        if (!mlc.visualizerVisible) {
+            devtools_dynamic::tryRender(pass, &frameInput, mlc.ctx);
+        }
     }
 
-    // Render error message if present
+    // Render error message if present (fallback when console panel isn't showing errors)
     if (mlc.ctx->hasError() && mlc.display->isValid()) {
-        mlc.display->renderText(pass, mlc.ctx->errorMessage(), 20.0f, 20.0f, 2.0f);
+        // Only show bitmap font if devtools console isn't handling the errors
+        bool consoleShowingErrors = false;
+        if (devtools_dynamic::available()) {
+            consoleShowingErrors = devtools_dynamic::tryConsoleHasErrors() &&
+                                   devtools_dynamic::tryIsPanelVisible("console");
+        }
+
+        if (!consoleShowingErrors) {
+            mlc.display->renderText(pass, mlc.ctx->errorMessage(), 20.0f, 20.0f, 2.0f);
+        }
     }
 
     wgpuRenderPassEncoderEnd(pass);
@@ -1895,7 +1845,7 @@ struct Application::Impl {
     std::unique_ptr<Context> ctx;
     std::unique_ptr<Display> display;
     std::unique_ptr<HotReload> hotReload;
-    // Note: ChainVisualizer is now loaded dynamically from vivid-visualizer module
+    // Note: ChainVisualizer is now loaded dynamically from vivid-devtools module
     std::unique_ptr<RuntimeAPI> editorBridge;
 
     // WebGPU objects
@@ -2216,21 +2166,18 @@ int Application::init(const AppConfig& config) {
     }
     m_impl->display->setDisplayMode(displayMode);
 
-    // Initialize chain visualizer (dynamically loaded from vivid-visualizer module)
+    // Initialize devtools (dynamically loaded from vivid-devtools module)
     // If the module is not present (e.g., production bundles), this is a no-op
-    visualizer_dynamic::tryInit(m_impl->ctx.get(), m_impl->surfaceFormat);
+    devtools_dynamic::tryInit(m_impl->ctx.get(), m_impl->surfaceFormat);
+    devtools_dynamic::trySetWindow(m_impl->window);  // For clipboard support
 
-    // Check MCP configuration and set warning on visualizer
-    if (visualizer_dynamic::available()) {
+    // Check MCP configuration and set warning on devtools status bar
+    if (devtools_dynamic::available()) {
         std::string warning = checkMcpConfiguration();
         if (!warning.empty()) {
-            visualizer_dynamic::trySetMcpWarning(warning.c_str());
+            devtools_dynamic::trySetMcpWarning(warning.c_str());
         }
     }
-
-    // Initialize native IDE panel (dynamically loaded from vivid-ide module)
-    ide_dynamic::tryInit(m_impl->ctx.get(), m_impl->surfaceFormat);
-    ide_dynamic::trySetWindow(m_impl->window);  // For clipboard support
 
     // HotReload was created earlier (before window creation) for config extraction
     // No need to create it again here
@@ -2446,8 +2393,8 @@ int Application::init(const AppConfig& config) {
     static Application::Impl* s_paramCallbackImpl = nullptr;
     s_paramCallbackImpl = m_impl;
 
-    if (visualizer_dynamic::available()) {
-        visualizer_dynamic::trySetParamCallback([](const char* opName, const char* paramName,
+    if (devtools_dynamic::available()) {
+        devtools_dynamic::trySetParamCallback([](const char* opName, const char* paramName,
                                                     const float* oldValue, const float* newValue, int sourceLine) {
             if (!s_paramCallbackImpl || !s_paramCallbackImpl->editorBridge) return;
             auto* impl = s_paramCallbackImpl;
@@ -2496,22 +2443,22 @@ int Application::init(const AppConfig& config) {
         if (!m_impl->ctx->hasChain()) return;
         Operator* op = m_impl->ctx->chain().getByName(opName);
         if (op) {
-            visualizer_dynamic::tryEnterSolo(op, opName.c_str());
+            devtools_dynamic::tryEnterSolo(op, opName.c_str());
             m_impl->editorBridge->sendSoloState(true, opName);
         }
     });
     m_impl->editorBridge->onSelectNode([this](const std::string& opName) {
-        visualizer_dynamic::trySelectNode(opName.c_str());
+        devtools_dynamic::trySelectNode(opName.c_str());
     });
     m_impl->editorBridge->onSoloExit([this]() {
-        visualizer_dynamic::tryExitSolo();
+        devtools_dynamic::tryExitSolo();
         m_impl->editorBridge->sendSoloState(false, "");
     });
     m_impl->editorBridge->onFocusedNode([this](const std::string& opName) {
         if (opName.empty()) {
-            visualizer_dynamic::tryClearFocusedNode();
+            devtools_dynamic::tryClearFocusedNode();
         } else {
-            visualizer_dynamic::trySetFocusedNode(opName.c_str());
+            devtools_dynamic::trySetFocusedNode(opName.c_str());
         }
     });
     m_impl->editorBridge->onWindowControl([this](const std::string& setting, int value) {
@@ -2764,8 +2711,8 @@ int Application::init(const AppConfig& config) {
     mlc.editorBridge = m_impl->editorBridge.get();
 
     // Check if visualizer module is available (dynamically loaded)
-    // In production bundles without vivid-visualizer.dylib, this will be false
-    mlc.visualizerAvailable = visualizer_dynamic::available();
+    // In production bundles without vivid-devtools.dylib, this will be false
+    mlc.visualizerAvailable = devtools_dynamic::available();
 
     // Show visualizer if requested via --show-ui flag (and module is available)
     mlc.visualizerVisible = mlc.visualizerAvailable && config.showUI;
@@ -2999,11 +2946,8 @@ void Application::shutdown() {
     // Shutdown ImGui if vivid-gui was loaded
     imgui_dynamic::tryShutdown();
 
-    // Shutdown chain visualizer (if dynamically loaded)
-    visualizer_dynamic::tryShutdown();
-
-    // Shutdown native IDE panel (if dynamically loaded)
-    ide_dynamic::tryShutdown();
+    // Shutdown devtools (if dynamically loaded)
+    devtools_dynamic::tryShutdown();
 
 #ifdef VIVID_HAS_CEF
     // Shutdown PTY

@@ -324,23 +324,18 @@ if(VIVID_USE_CEF)
     message(STATUS "CEF browser module enabled")
 endif()
 
-# Chain visualizer (dev tool) - only built for development, excluded from production bundles
+# DevTools (terminal, editor, node graph, inspector, console)
+# Only built for development, excluded from production bundles
 if(NOT VIVID_PRODUCTION)
-    add_subdirectory(modules/vivid-visualizer)
-    # Link vivid-c against visualizer (vivid-c is used for IDE embedding)
+    add_subdirectory(modules/vivid-devtools)
+    # Link vivid-c against devtools (vivid-c is used for IDE embedding)
     if(TARGET vivid-c)
-        target_link_libraries(vivid-c PRIVATE vivid-visualizer)
-        message(STATUS "[vivid-c] Linked with vivid-visualizer for IDE support")
+        target_link_libraries(vivid-c PRIVATE vivid-devtools)
+        message(STATUS "[vivid-c] Linked with vivid-devtools for IDE support")
     endif()
-    message(STATUS "Chain visualizer enabled (development build)")
+    message(STATUS "DevTools enabled (development build)")
 else()
-    message(STATUS "Chain visualizer disabled (production build)")
-endif()
-
-# Native IDE panel (terminal + editor) - only built for development
-if(NOT VIVID_PRODUCTION)
-    add_subdirectory(modules/vivid-ide)
-    message(STATUS "Native IDE panel enabled (development build)")
+    message(STATUS "DevTools disabled (production build)")
 endif()
 
 # vivid-opencv moved to separate repo: https://github.com/seethroughlab/vivid-opencv

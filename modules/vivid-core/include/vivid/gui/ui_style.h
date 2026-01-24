@@ -76,6 +76,55 @@ struct UIStyle {
     glm::vec4 checkboxCheck{0.4f, 0.7f, 0.9f, 1.0f};    ///< Checkmark color
 
     // -------------------------------------------------------------------------
+    // Syntax highlighting (for code editors)
+    // -------------------------------------------------------------------------
+    glm::vec4 syntaxKeyword{0.6f, 0.8f, 1.0f, 1.0f};    ///< Keywords (if, for, class)
+    glm::vec4 syntaxComment{0.5f, 0.6f, 0.5f, 1.0f};    ///< Comments (// or /* */)
+    glm::vec4 syntaxString{0.8f, 0.6f, 0.5f, 1.0f};     ///< String literals
+    glm::vec4 syntaxNumber{0.8f, 0.8f, 0.5f, 1.0f};     ///< Numeric literals
+    glm::vec4 syntaxFunction{0.9f, 0.8f, 0.6f, 1.0f};   ///< Function names
+    glm::vec4 syntaxType{0.6f, 0.9f, 0.7f, 1.0f};       ///< Type names
+    glm::vec4 syntaxOperator{0.9f, 0.9f, 0.9f, 1.0f};   ///< Operators (+, -, etc.)
+    glm::vec4 syntaxPreproc{0.8f, 0.6f, 0.8f, 1.0f};    ///< Preprocessor (#include)
+
+    // -------------------------------------------------------------------------
+    // Terminal colors
+    // -------------------------------------------------------------------------
+    glm::vec4 terminalFg{0.9f, 0.9f, 0.9f, 1.0f};       ///< Terminal foreground
+    glm::vec4 terminalBg{0.1f, 0.1f, 0.12f, 1.0f};      ///< Terminal background
+    glm::vec4 terminalCursor{0.9f, 0.9f, 0.9f, 0.7f};   ///< Terminal cursor
+    glm::vec4 terminalSelection{0.3f, 0.4f, 0.6f, 0.5f}; ///< Terminal selection
+
+    // -------------------------------------------------------------------------
+    // Editor colors
+    // -------------------------------------------------------------------------
+    glm::vec4 editorGutter{0.15f, 0.15f, 0.17f, 1.0f};  ///< Line number gutter
+    glm::vec4 editorLineNum{0.5f, 0.5f, 0.5f, 1.0f};    ///< Line numbers
+    glm::vec4 editorSelection{0.3f, 0.4f, 0.6f, 0.5f};  ///< Text selection
+    glm::vec4 editorCursorLine{0.2f, 0.2f, 0.25f, 1.0f}; ///< Current line highlight
+    glm::vec4 editorErrorLine{0.5f, 0.2f, 0.2f, 0.5f};  ///< Line with error
+    glm::vec4 editorMatchBracket{0.4f, 0.6f, 0.8f, 0.3f}; ///< Matching bracket highlight
+
+    // -------------------------------------------------------------------------
+    // Connection/link colors (for node graphs)
+    // -------------------------------------------------------------------------
+    glm::vec4 connectionValue{1.0f, 0.7f, 0.3f, 0.9f};    ///< Value links (orange)
+    glm::vec4 connectionTrigger{0.4f, 0.8f, 1.0f, 0.9f};  ///< Trigger links (cyan)
+    glm::vec4 connectionEvent{0.4f, 1.0f, 0.6f, 0.9f};    ///< Event links (green)
+    glm::vec4 connectionAudio{0.9f, 0.5f, 0.9f, 0.9f};    ///< Audio links (magenta)
+
+    // -------------------------------------------------------------------------
+    // Node graph colors
+    // -------------------------------------------------------------------------
+    glm::vec4 nodeSelected{0.8f, 0.6f, 0.2f, 1.0f};     ///< Selected node border (gold)
+    glm::vec4 nodeFocused{0.4f, 0.7f, 0.9f, 1.0f};      ///< Focused node border (blue)
+    glm::vec4 nodeHovered{0.5f, 0.5f, 0.55f, 1.0f};     ///< Hovered node border
+    glm::vec4 pinInput{0.3f, 0.6f, 0.3f, 1.0f};         ///< Input pin (green)
+    glm::vec4 pinOutput{0.6f, 0.3f, 0.3f, 1.0f};        ///< Output pin (red)
+    glm::vec4 gridLine{0.2f, 0.2f, 0.22f, 1.0f};        ///< Grid lines
+    glm::vec4 gridLineMajor{0.25f, 0.25f, 0.28f, 1.0f}; ///< Major grid lines
+
+    // -------------------------------------------------------------------------
     // Scaled layout helpers
     // All return values scaled by the HiDPI factor
     // -------------------------------------------------------------------------
@@ -95,7 +144,117 @@ struct UIStyle {
     float buttonPaddingY() const { return 4.0f * scale; }
 
     float scrollSpeed() const { return 30.0f * scale; }
+
+    // -------------------------------------------------------------------------
+    // DevTools-specific layout helpers
+    // -------------------------------------------------------------------------
+
+    float titleBarHeight() const { return 28.0f * scale; }
+    float tabBarHeight() const { return 32.0f * scale; }
+    float statusBarHeight() const { return 40.0f * scale; }
+    float inspectorWidth() const { return 280.0f * scale; }
+    float nodeWidth() const { return 180.0f * scale; }
+    float nodeHeaderHeight() const { return 24.0f * scale; }
+    float pinRadius() const { return 6.0f * scale; }
+    float connectionThickness() const { return 2.0f * scale; }
 };
+
+// =============================================================================
+// Theme presets
+// =============================================================================
+
+/// Create the default dark theme (matches current Vivid styling)
+inline UIStyle createDarkTheme() {
+    UIStyle style;
+    // All defaults are already set to dark theme values
+    return style;
+}
+
+/// Create a light theme for daylight/high-brightness environments
+inline UIStyle createLightTheme() {
+    UIStyle style;
+
+    // Panel colors (inverted)
+    style.panelBg = {0.95f, 0.95f, 0.96f, 0.98f};
+    style.panelBorder = {0.75f, 0.75f, 0.78f, 1.0f};
+    style.headerBg = {0.9f, 0.9f, 0.92f, 1.0f};
+
+    // Button colors
+    style.buttonBg = {0.85f, 0.85f, 0.88f, 1.0f};
+    style.buttonHover = {0.8f, 0.8f, 0.83f, 1.0f};
+    style.buttonBorder = {0.7f, 0.7f, 0.73f, 1.0f};
+
+    // Slider colors
+    style.sliderBg = {0.85f, 0.85f, 0.88f, 1.0f};
+    style.sliderFill = {0.3f, 0.5f, 0.8f, 1.0f};
+    style.sliderActive = {0.4f, 0.6f, 0.9f, 1.0f};
+
+    // Text colors
+    style.textPrimary = {0.15f, 0.15f, 0.18f, 1.0f};
+    style.textDim = {0.5f, 0.5f, 0.52f, 1.0f};
+    style.textTitle = {0.2f, 0.4f, 0.7f, 1.0f};
+
+    // Syntax highlighting (darker for light bg)
+    style.syntaxKeyword = {0.2f, 0.4f, 0.8f, 1.0f};
+    style.syntaxComment = {0.35f, 0.5f, 0.35f, 1.0f};
+    style.syntaxString = {0.7f, 0.3f, 0.2f, 1.0f};
+    style.syntaxNumber = {0.6f, 0.5f, 0.1f, 1.0f};
+    style.syntaxFunction = {0.6f, 0.4f, 0.1f, 1.0f};
+
+    // Terminal colors
+    style.terminalFg = {0.1f, 0.1f, 0.12f, 1.0f};
+    style.terminalBg = {0.98f, 0.98f, 0.99f, 1.0f};
+    style.terminalCursor = {0.1f, 0.1f, 0.12f, 0.8f};
+
+    // Editor colors
+    style.editorGutter = {0.92f, 0.92f, 0.94f, 1.0f};
+    style.editorLineNum = {0.6f, 0.6f, 0.62f, 1.0f};
+    style.editorSelection = {0.3f, 0.5f, 0.8f, 0.3f};
+    style.editorCursorLine = {0.9f, 0.92f, 0.95f, 1.0f};
+
+    // Grid colors
+    style.gridLine = {0.88f, 0.88f, 0.9f, 1.0f};
+    style.gridLineMajor = {0.82f, 0.82f, 0.85f, 1.0f};
+
+    return style;
+}
+
+/// Create a high-contrast theme for accessibility
+inline UIStyle createHighContrastTheme() {
+    UIStyle style;
+
+    // Strong contrast
+    style.panelBg = {0.0f, 0.0f, 0.0f, 1.0f};
+    style.panelBorder = {1.0f, 1.0f, 1.0f, 1.0f};
+    style.headerBg = {0.1f, 0.1f, 0.1f, 1.0f};
+
+    // Text
+    style.textPrimary = {1.0f, 1.0f, 1.0f, 1.0f};
+    style.textDim = {0.8f, 0.8f, 0.8f, 1.0f};
+    style.textTitle = {0.0f, 1.0f, 1.0f, 1.0f};
+
+    // Strong accent colors
+    style.accent = {0.0f, 1.0f, 1.0f, 1.0f};
+    style.warning = {1.0f, 1.0f, 0.0f, 1.0f};
+    style.error = {1.0f, 0.0f, 0.0f, 1.0f};
+    style.success = {0.0f, 1.0f, 0.0f, 1.0f};
+
+    // Bright syntax colors
+    style.syntaxKeyword = {0.5f, 0.8f, 1.0f, 1.0f};
+    style.syntaxComment = {0.5f, 0.8f, 0.5f, 1.0f};
+    style.syntaxString = {1.0f, 0.8f, 0.5f, 1.0f};
+    style.syntaxNumber = {1.0f, 1.0f, 0.5f, 1.0f};
+
+    // Strong selection
+    style.editorSelection = {0.3f, 0.6f, 1.0f, 0.6f};
+    style.terminalSelection = {0.3f, 0.6f, 1.0f, 0.6f};
+
+    // Node graph
+    style.nodeSelected = {1.0f, 1.0f, 0.0f, 1.0f};
+    style.nodeFocused = {0.0f, 1.0f, 1.0f, 1.0f};
+
+    return style;
+}
 
 // =============================================================================
 // TODO: Future widget system - immediate-mode API like Dear ImGui

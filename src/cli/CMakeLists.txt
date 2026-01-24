@@ -81,26 +81,12 @@ target_link_libraries(vivid
         ixwebsocket  # For MCP server (always enabled in dev build)
 )
 
-# Link vivid-visualizer for dev builds (Tab to show visualizer)
-# The visualizer is loaded dynamically via dlsym, but the library must be loaded first
-if(TARGET vivid-visualizer)
-    target_link_libraries(vivid PRIVATE vivid-visualizer)
-    message(STATUS "[vivid-cli] Linked with vivid-visualizer for Tab visualizer")
-endif()
-
-# Link vivid-cef for IDE panel (CEF browser for proper offscreen rendering)
-# DISABLED: Using native vivid-ide module instead
-# if(TARGET vivid-cef)
-#     target_link_libraries(vivid PRIVATE vivid-cef)
-#     target_compile_definitions(vivid PRIVATE VIVID_HAS_CEF)
-#     message(STATUS "[vivid-cli] Linked with vivid-cef for IDE panel")
-# endif()
-
-# Link vivid-ide for native terminal/editor panel
-if(TARGET vivid-ide)
-    target_link_libraries(vivid PRIVATE vivid-ide)
-    target_compile_definitions(vivid PRIVATE VIVID_HAS_IDE)
-    message(STATUS "[vivid-cli] Linked with vivid-ide for native IDE panel")
+# Link vivid-devtools for dev builds (Tab to show visualizer, terminal, etc.)
+# The devtools are loaded dynamically via dlsym, but the library must be loaded first
+if(TARGET vivid-devtools)
+    target_link_libraries(vivid PRIVATE vivid-devtools)
+    target_compile_definitions(vivid PRIVATE VIVID_HAS_DEVTOOLS)
+    message(STATUS "[vivid-cli] Linked with vivid-devtools")
 endif()
 
 

@@ -1,7 +1,0 @@
-{
-  "name": "vivid-visualizer",
-  "version": "0.1.0",
-  "description": "Chain visualizer (node graph) for development and debugging",
-  "author": "Vivid",
-  "operators": []
-}

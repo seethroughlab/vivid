@@ -1,9 +1,11 @@
 // Terminal Panel Implementation
 // Uses libvterm for VT220/xterm emulation and PTY for shell integration
+// Migrated from vivid-ide to vivid-devtools
 
-#include <vivid/ide/terminal_panel.h>
-#include <vivid/pty.h>
+#include <vivid/devtools/panels/terminal_panel.h>
+#include <vivid/context.h>
 #include <vivid/gui/ui_style.h>
+#include <vivid/pty.h>
 
 #include <vterm.h>
 
@@ -15,15 +17,15 @@
 namespace vivid {
 
 // Convert libvterm color to glm::vec4
-static glm::vec4 vtermColorToVec4(const VTermColor& color, const VTermScreen* screen, bool isForeground) {
+static glm::vec4 vtermColorToVec4(const VTermColor& color, const VTermScreen* screen, bool isForeground, const UIStyle& style) {
     VTermColor col = color;
 
-    // Check for default colors
+    // Check for default colors - use style colors
     if (VTERM_COLOR_IS_DEFAULT_FG(&col)) {
-        return glm::vec4(0.9f, 0.9f, 0.9f, 1.0f);  // Light gray foreground
+        return style.terminalFg;
     }
     if (VTERM_COLOR_IS_DEFAULT_BG(&col)) {
-        return glm::vec4(0.1f, 0.1f, 0.12f, 1.0f);  // Dark background
+        return style.terminalBg;
     }
 
     // Convert indexed colors to RGB
@@ -42,19 +44,22 @@ static glm::vec4 vtermColorToVec4(const VTermColor& color, const VTermScreen* sc
     }
 
     // Fallback
-    return isForeground ? glm::vec4(0.9f, 0.9f, 0.9f, 1.0f) : glm::vec4(0.1f, 0.1f, 0.12f, 1.0f);
+    return isForeground ? style.terminalFg : style.terminalBg;
 }
 
-class TerminalPanel::Impl {
-public:
+struct TerminalPanel::Impl {
     VTerm* vt = nullptr;
     VTermScreen* screen = nullptr;
     std::unique_ptr<PTY> pty;
     int cols = 80;
     int rows = 24;
-    bool cursorVisible = true;      // Whether terminal wants cursor shown
-    bool cursorBlink = true;        // Blink state for animation
+    bool cursorVisible = true;
+    bool cursorBlink = true;
     int cursorBlinkFrame = 0;
+    UIStyle style;  // Copy of style for rendering
+
+    // Scroll state
+    int scrollOffset = 0;
 
     // Scrollback buffer
     struct ScrollLine {
@@ -62,6 +67,9 @@ public:
     };
     std::vector<ScrollLine> scrollback;
     static constexpr int MAX_SCROLLBACK = 1000;
+
+    // Exit callback
+    std::function<void(int)> onExit;
 
     // Output callback - sends data from terminal back to PTY
     static void outputCallback(const char* s, size_t len, void* user) {
@@ -101,23 +109,39 @@ public:
         impl->scrollback.pop_back();
         return 1;
     }
+
+    void scroll(int delta) {
+        scrollOffset = std::max(0, scrollOffset + delta);
+        scrollOffset = std::min(scrollOffset, static_cast<int>(scrollback.size()));
+    }
+
+    void scrollToBottom() {
+        scrollOffset = 0;
+    }
 };
 
-TerminalPanel::TerminalPanel() : m_impl(std::make_unique<Impl>()) {}
-
-TerminalPanel::~TerminalPanel() {
-    stop();
-    if (m_impl->vt) {
-        vterm_free(m_impl->vt);
-    }
+TerminalPanel::TerminalPanel() {
+    m_config.id = "terminal";
+    m_config.title = "Terminal";
+    m_config.bounds = {20, 60, 900, 600};
+    m_config.dockSide = DockSide::None;
+    m_config.visible = false;
+    m_config.resizable = true;
+    m_config.draggable = true;
+    m_config.minWidth = 400.0f;
+    m_config.minHeight = 200.0f;
 }
 
-bool TerminalPanel::init(int cols, int rows) {
-    m_impl->cols = cols;
-    m_impl->rows = rows;
+TerminalPanel::~TerminalPanel() {
+    shutdown();
+}
+
+bool TerminalPanel::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
+    m_impl = std::make_unique<Impl>();
+    m_impl->style.scale = ctx.contentScale();
 
     // Create terminal emulator
-    m_impl->vt = vterm_new(rows, cols);
+    m_impl->vt = vterm_new(m_rows, m_cols);
     if (!m_impl->vt) {
         return false;
     }
@@ -149,22 +173,17 @@ bool TerminalPanel::init(int cols, int rows) {
     return true;
 }
 
-bool TerminalPanel::spawn(const std::string& shell, const std::string& workingDir) {
-    if (!m_impl->pty) return false;
-
-    bool ok = m_impl->pty->start(shell, workingDir);
-    if (ok) {
-        m_impl->pty->setSize(m_impl->cols, m_impl->rows);
+void TerminalPanel::shutdown() {
+    stop();
+    if (m_impl && m_impl->vt) {
+        vterm_free(m_impl->vt);
+        m_impl->vt = nullptr;
     }
-    return ok;
-}
-
-bool TerminalPanel::isRunning() const {
-    return m_impl->pty && m_impl->pty->isRunning();
+    m_impl.reset();
 }
 
 void TerminalPanel::update() {
-    if (!m_impl->pty || !m_impl->vt) return;
+    if (!m_impl || !m_impl->pty || !m_impl->vt) return;
 
     // Read from PTY and feed to terminal emulator
     std::string output = m_impl->pty->read();
@@ -180,40 +199,70 @@ void TerminalPanel::update() {
     }
 
     // Check if process exited
-    if (!m_impl->pty->isRunning() && m_onExit) {
-        m_onExit(0);  // TODO: get actual exit code
+    if (!m_impl->pty->isRunning() && m_impl->onExit) {
+        m_impl->onExit(0);
     }
 }
 
-void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds, int fontIndex) {
-    if (!m_impl->vt || !m_impl->screen) return;
+void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
+                           const FrameInput& input, float scale) {
+    if (!m_config.visible || !m_impl || !m_impl->vt || !m_impl->screen) {
+        m_consumedInput = false;
+        m_hovered = false;
+        return;
+    }
 
-    float x = bounds.x;
-    float y = bounds.y;
-    float w = bounds.z;
-    float h = bounds.w;
+    // Handle drag/resize (in logical coordinates)
+    float screenW = static_cast<float>(input.width) / scale;
+    float screenH = static_cast<float>(input.height) / scale;
+    handleDragAndResize(input, screenW, screenH);
 
-    // Get font metrics
+    // Get scaled bounds
+    glm::vec4 scaledBounds = m_config.bounds * scale;
+
+    float x = scaledBounds.x;
+    float y = scaledBounds.y;
+    float w = scaledBounds.z;
+    float h = scaledBounds.w;
+
+    // Panel chrome
+    float titleBarHeight = m_impl->style.titleBarHeight();
+    float tabBarHeight = m_impl->style.tabBarHeight();
+    float contentY = y + titleBarHeight + tabBarHeight;
+    float contentH = h - titleBarHeight - tabBarHeight;
+
+    // Render chrome
+    renderChrome(canvas, x, y, w, h, scale);
+
+    // Get font metrics (monospace font at index 2)
+    int fontIndex = 2;
     float lineHeight = canvas.fontLineHeight(fontIndex);
     float charWidth = canvas.measureText("M", fontIndex);
 
     if (lineHeight <= 0 || charWidth <= 0) {
-        lineHeight = 16.0f;
-        charWidth = 8.0f;
+        lineHeight = 16.0f * scale;
+        charWidth = 8.0f * scale;
     }
 
-    // Background
-    canvas.fillRect(x, y, w, h, glm::vec4(0.1f, 0.1f, 0.12f, 1.0f));
+    // Content area
+    float padding = 4 * scale;
+    float contentX = x + padding;
+    float contentW = w - padding * 2;
+    contentY += padding;
+    contentH -= padding;
 
-    // Clip to panel bounds
-    canvas.beginClipRect(x, y, w, h);
+    // Background
+    canvas.fillRect(contentX, contentY, contentW, contentH, m_impl->style.terminalBg);
+
+    // Clip to content area
+    canvas.beginClipRect(contentX, contentY, contentW, contentH);
 
     // Get terminal dimensions
     int termRows, termCols;
     vterm_get_size(m_impl->vt, &termRows, &termCols);
 
     // Calculate visible rows
-    int visibleRows = static_cast<int>(h / lineHeight);
+    int visibleRows = static_cast<int>(contentH / lineHeight);
 
     // Get cursor position
     VTermPos cursorPos;
@@ -222,7 +271,7 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds, int f
 
     // Render each line
     for (int row = 0; row < termRows && row < visibleRows; row++) {
-        float lineY = y + (row + 1) * lineHeight;  // +1 because text() uses baseline
+        float lineY = contentY + (row + 1) * lineHeight;
 
         for (int col = 0; col < termCols; col++) {
             VTermPos pos = {row, col};
@@ -231,18 +280,18 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds, int f
 
             // Skip empty cells
             if (cell.chars[0] == 0 || cell.chars[0] == ' ') {
-                // Still draw background if it's not default
+                // Still draw background if not default
                 if (!VTERM_COLOR_IS_DEFAULT_BG(&cell.bg)) {
-                    glm::vec4 bg = vtermColorToVec4(cell.bg, m_impl->screen, false);
-                    float charX = x + col * charWidth;
+                    glm::vec4 bg = vtermColorToVec4(cell.bg, m_impl->screen, false, m_impl->style);
+                    float charX = contentX + col * charWidth;
                     canvas.fillRect(charX, lineY - lineHeight + 2, charWidth * cell.width, lineHeight, bg);
                 }
                 continue;
             }
 
             // Get colors
-            glm::vec4 fg = vtermColorToVec4(cell.fg, m_impl->screen, true);
-            glm::vec4 bg = vtermColorToVec4(cell.bg, m_impl->screen, false);
+            glm::vec4 fg = vtermColorToVec4(cell.fg, m_impl->screen, true, m_impl->style);
+            glm::vec4 bg = vtermColorToVec4(cell.bg, m_impl->screen, false, m_impl->style);
 
             // Handle attributes
             if (cell.attrs.reverse) {
@@ -250,23 +299,18 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds, int f
             }
 
             if (cell.attrs.bold) {
-                // Bold: brighten the color
                 fg = glm::vec4(std::min(fg.r * 1.3f, 1.0f),
                                std::min(fg.g * 1.3f, 1.0f),
                                std::min(fg.b * 1.3f, 1.0f), 1.0f);
             }
 
-            // Italic: we don't have italic font, but could tint slightly
-            // (italic rendering requires font support, skip for now)
-
-            // Conceal: completely hidden text
             if (cell.attrs.conceal) {
                 fg.a = 0.0f;
             }
 
-            float charX = x + col * charWidth;
+            float charX = contentX + col * charWidth;
 
-            // Draw background if not default or has special attributes
+            // Draw background if not default
             if (!VTERM_COLOR_IS_DEFAULT_BG(&cell.bg) || cell.attrs.reverse) {
                 canvas.fillRect(charX, lineY - lineHeight + 2, charWidth * cell.width, lineHeight, bg);
             }
@@ -297,7 +341,7 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds, int f
                     utf8[utf8Len++] = static_cast<char>(0x80 | ((c >> 6) & 0x3F));
                     utf8[utf8Len++] = static_cast<char>(0x80 | (c & 0x3F));
                 }
-                if (utf8Len >= 28) break;  // Safety limit
+                if (utf8Len >= 28) break;
             }
             utf8[utf8Len] = 0;
 
@@ -321,16 +365,11 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds, int f
         }
     }
 
-    // Draw cursor - only if terminal says cursor is visible (via movecursor callback)
-    // and we're focused. Applications like Claude Code hide the cursor for their TUI.
+    // Draw cursor
     if (m_focused && m_impl->cursorVisible && m_impl->cursorBlink) {
-        float cursorX = x + cursorPos.col * charWidth;
-        // Cell top position matches text cell background
-        float cursorY = y + cursorPos.row * lineHeight;
-
-        // Block cursor
-        canvas.fillRect(cursorX, cursorY, charWidth, lineHeight,
-                       glm::vec4(0.9f, 0.9f, 0.9f, 0.7f));
+        float cursorX = contentX + cursorPos.col * charWidth;
+        float cursorY = contentY + cursorPos.row * lineHeight;
+        canvas.fillRect(cursorX, cursorY, charWidth, lineHeight, m_impl->style.terminalCursor);
     }
 
     canvas.endClipRect();
@@ -341,7 +380,7 @@ bool TerminalPanel::handleInput(const FrameInput& input) {
 
     // Handle scroll
     if (input.scroll.y != 0) {
-        scroll(static_cast<int>(-input.scroll.y * 3));
+        m_impl->scroll(static_cast<int>(-input.scroll.y * 3));
         return true;
     }
 
@@ -349,15 +388,13 @@ bool TerminalPanel::handleInput(const FrameInput& input) {
 }
 
 void TerminalPanel::onChar(uint32_t codepoint) {
-    if (!m_impl->vt) return;
-
-    // Send character to terminal via keyboard API
+    if (!m_impl || !m_impl->vt) return;
     vterm_keyboard_unichar(m_impl->vt, codepoint, VTERM_MOD_NONE);
-    scrollToBottom();
+    m_impl->scrollToBottom();
 }
 
 void TerminalPanel::onKeyDown(int key, int mods) {
-    if (!m_impl->vt) return;
+    if (!m_impl || !m_impl->vt) return;
 
     // Convert GLFW modifiers to VTerm modifiers
     VTermModifier vtMod = VTERM_MOD_NONE;
@@ -365,25 +402,23 @@ void TerminalPanel::onKeyDown(int key, int mods) {
     if (mods & 0x2) vtMod = static_cast<VTermModifier>(vtMod | VTERM_MOD_CTRL);
     if (mods & 0x4) vtMod = static_cast<VTermModifier>(vtMod | VTERM_MOD_ALT);
 
-    // Convert GLFW keys to VTerm keys
     VTermKey vtKey = VTERM_KEY_NONE;
 
     switch (key) {
-        case 257: vtKey = VTERM_KEY_ENTER; break;       // Enter
-        case 259: vtKey = VTERM_KEY_BACKSPACE; break;   // Backspace
-        case 258: vtKey = VTERM_KEY_TAB; break;         // Tab
-        case 256: vtKey = VTERM_KEY_ESCAPE; break;      // Escape
-        case 265: vtKey = VTERM_KEY_UP; break;          // Up
-        case 264: vtKey = VTERM_KEY_DOWN; break;        // Down
-        case 263: vtKey = VTERM_KEY_LEFT; break;        // Left
-        case 262: vtKey = VTERM_KEY_RIGHT; break;       // Right
-        case 268: vtKey = VTERM_KEY_HOME; break;        // Home
-        case 269: vtKey = VTERM_KEY_END; break;         // End
-        case 266: vtKey = VTERM_KEY_PAGEUP; break;      // Page Up
-        case 267: vtKey = VTERM_KEY_PAGEDOWN; break;    // Page Down
-        case 261: vtKey = VTERM_KEY_DEL; break;         // Delete
-        case 260: vtKey = VTERM_KEY_INS; break;         // Insert
-        // Function keys
+        case 257: vtKey = VTERM_KEY_ENTER; break;
+        case 259: vtKey = VTERM_KEY_BACKSPACE; break;
+        case 258: vtKey = VTERM_KEY_TAB; break;
+        case 256: vtKey = VTERM_KEY_ESCAPE; break;
+        case 265: vtKey = VTERM_KEY_UP; break;
+        case 264: vtKey = VTERM_KEY_DOWN; break;
+        case 263: vtKey = VTERM_KEY_LEFT; break;
+        case 262: vtKey = VTERM_KEY_RIGHT; break;
+        case 268: vtKey = VTERM_KEY_HOME; break;
+        case 269: vtKey = VTERM_KEY_END; break;
+        case 266: vtKey = VTERM_KEY_PAGEUP; break;
+        case 267: vtKey = VTERM_KEY_PAGEDOWN; break;
+        case 261: vtKey = VTERM_KEY_DEL; break;
+        case 260: vtKey = VTERM_KEY_INS; break;
         case 290: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(1)); break;
         case 291: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(2)); break;
         case 292: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(3)); break;
@@ -397,10 +432,10 @@ void TerminalPanel::onKeyDown(int key, int mods) {
         case 300: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(11)); break;
         case 301: vtKey = static_cast<VTermKey>(VTERM_KEY_FUNCTION(12)); break;
         default:
-            // For Ctrl+letter combinations, send as unichar with ctrl modifier
+            // For Ctrl+letter combinations
             if ((mods & 0x2) && key >= 65 && key <= 90) {
                 vterm_keyboard_unichar(m_impl->vt, key, vtMod);
-                scrollToBottom();
+                m_impl->scrollToBottom();
                 return;
             }
             break;
@@ -408,50 +443,40 @@ void TerminalPanel::onKeyDown(int key, int mods) {
 
     if (vtKey != VTERM_KEY_NONE) {
         vterm_keyboard_key(m_impl->vt, vtKey, vtMod);
-        scrollToBottom();
+        m_impl->scrollToBottom();
     }
 }
 
-void TerminalPanel::resize(int cols, int rows) {
-    if (!m_impl->vt) return;
+void TerminalPanel::spawn(const std::string& command, const std::string& workingDir) {
+    if (!m_impl || !m_impl->pty) return;
 
-    m_impl->cols = cols;
-    m_impl->rows = rows;
-
-    vterm_set_size(m_impl->vt, rows, cols);
-
-    if (m_impl->pty) {
-        m_impl->pty->setSize(cols, rows);
-    }
-}
-
-int TerminalPanel::cols() const { return m_impl->cols; }
-int TerminalPanel::rows() const { return m_impl->rows; }
-
-void TerminalPanel::write(const std::string& data) {
-    if (m_impl->pty) {
-        m_impl->pty->write(data);
+    bool ok = m_impl->pty->start(command, workingDir);
+    if (ok) {
+        m_impl->pty->setSize(m_cols, m_rows);
+        m_running = true;
     }
 }
 
 void TerminalPanel::stop() {
-    if (m_impl->pty) {
+    if (m_impl && m_impl->pty) {
         m_impl->pty->stop();
     }
+    m_running = false;
 }
 
-void TerminalPanel::onExit(std::function<void(int)> callback) {
-    m_onExit = std::move(callback);
-}
-
-void TerminalPanel::scroll(int delta) {
-    m_scrollOffset = std::max(0, m_scrollOffset + delta);
-    // Limit scroll to scrollback size
-    m_scrollOffset = std::min(m_scrollOffset, static_cast<int>(m_impl->scrollback.size()));
-}
-
-void TerminalPanel::scrollToBottom() {
-    m_scrollOffset = 0;
+void TerminalPanel::resize(int cols, int rows) {
+    m_cols = cols;
+    m_rows = rows;
+    if (m_impl) {
+        m_impl->cols = cols;
+        m_impl->rows = rows;
+        if (m_impl->vt) {
+            vterm_set_size(m_impl->vt, rows, cols);
+        }
+        if (m_impl->pty) {
+            m_impl->pty->setSize(cols, rows);
+        }
+    }
 }
 
 } // namespace vivid

@@ -1,0 +1,393 @@
+#pragma once
+
+/**
+ * @file devtools.h
+ * @brief Main DevTools orchestrator
+ *
+ * Entry point for the vivid-devtools module. Owns:
+ * - PanelManager (all panels)
+ * - Shared OverlayCanvas
+ * - Font management
+ * - Video/snapshot export
+ *
+ * Provides backward-compatible APIs for vivid_ide_* and vivid_visualizer_* functions.
+ */
+
+#include <vivid/devtools/panel_manager.h>
+#include <vivid/gui/overlay_canvas.h>
+#include <vivid/gui/ui_style.h>
+#include <vivid/video_exporter.h>
+#include <vivid/frame_input.h>
+#include <vivid/hot_reload.h>
+#include <webgpu/webgpu.h>
+#include <memory>
+#include <string>
+#include <vector>
+#include <functional>
+
+struct GLFWwindow;
+
+namespace vivid {
+
+class Context;
+class Operator;
+class FontAtlas;
+
+/**
+ * @brief Main DevTools orchestrator
+ *
+ * Singleton that manages all devtools functionality:
+ * - Terminal panel for shell access
+ * - Editor panel for chain.cpp editing
+ * - NodeGraph panel for operator visualization
+ * - Inspector panel for parameter editing
+ * - StatusBar panel for record/snapshot controls
+ *
+ * Usage (via exports):
+ * @code
+ * vivid_devtools_init(&ctx, surfaceFormat);
+ * vivid_devtools_set_working_dir("/path/to/project");
+ *
+ * // Each frame:
+ * vivid_devtools_update();
+ * vivid_devtools_render(pass, &input, &ctx);
+ *
+ * // Cleanup:
+ * vivid_devtools_shutdown();
+ * @endcode
+ */
+class DevTools {
+public:
+    /**
+     * @brief Get the singleton instance
+     */
+    static DevTools& instance();
+
+    // -------------------------------------------------------------------------
+    /// @name Lifecycle
+    /// @{
+
+    /**
+     * @brief Initialize DevTools
+     * @param ctx Vivid context
+     * @param surfaceFormat Surface texture format
+     * @return true on success
+     */
+    bool init(Context& ctx, WGPUTextureFormat surfaceFormat);
+
+    /**
+     * @brief Shutdown and release resources
+     */
+    void shutdown();
+
+    /**
+     * @brief Update state (called each frame)
+     */
+    void update();
+
+    /**
+     * @brief Render all visible panels
+     * @param pass Render pass encoder
+     * @param input Frame input state
+     * @param ctx Vivid context
+     */
+    void render(WGPURenderPassEncoder pass, const FrameInput& input, Context& ctx);
+
+    /**
+     * @brief Check if DevTools is available (initialized)
+     */
+    bool isAvailable() const { return m_initialized; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Input
+    /// @{
+
+    /**
+     * @brief Check if DevTools consumed input this frame
+     */
+    bool consumedInput() const;
+
+    /**
+     * @brief Check if DevTools is currently being interacted with
+     */
+    bool isInteracting() const;
+
+    /**
+     * @brief Handle character input
+     * @param codepoint Unicode codepoint
+     */
+    void onChar(uint32_t codepoint);
+
+    /**
+     * @brief Handle key down event
+     * @param key Key code
+     * @param mods Modifier flags
+     */
+    void onKeyDown(int key, int mods);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Panel Control
+    /// @{
+
+    /**
+     * @brief Show a panel
+     * @param panelId Panel ID (e.g., "terminal", "editor", "nodegraph", "inspector")
+     */
+    void showPanel(const std::string& panelId);
+
+    /**
+     * @brief Hide a panel
+     */
+    void hidePanel(const std::string& panelId);
+
+    /**
+     * @brief Toggle panel visibility
+     */
+    void togglePanel(const std::string& panelId);
+
+    /**
+     * @brief Check if a panel is visible
+     */
+    bool isPanelVisible(const std::string& panelId) const;
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Backward Compatibility (IDE)
+    /// @{
+
+    /**
+     * @brief Toggle IDE panels (terminal + editor)
+     *
+     * Backward-compatible with vivid_ide_toggle_visible()
+     */
+    void toggleIde();
+
+    /**
+     * @brief Check if IDE panels are visible
+     */
+    bool isIdeVisible() const;
+
+    /**
+     * @brief Set IDE visibility
+     */
+    void setIdeVisible(bool visible);
+
+    /**
+     * @brief Set working directory for terminal
+     */
+    void setWorkingDirectory(const std::string& path);
+
+    /**
+     * @brief Open a file in the editor
+     */
+    bool openFile(const std::string& path);
+
+    /**
+     * @brief Set compile status
+     */
+    void setCompileStatus(bool success, const std::string& message);
+
+    /**
+     * @brief Set GLFW window for clipboard
+     */
+    void setWindow(GLFWwindow* window);
+
+    /**
+     * @brief Get IDE bounds
+     */
+    glm::vec4 getIdeBounds() const;
+
+    /**
+     * @brief Set IDE bounds
+     */
+    void setIdeBounds(const glm::vec4& bounds);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Backward Compatibility (Visualizer)
+    /// @{
+
+    /**
+     * @brief Toggle visualizer panels (nodegraph + inspector)
+     *
+     * Backward-compatible with pressing Tab
+     */
+    void toggleVisualizer();
+
+    /**
+     * @brief Check if visualizer panels are visible
+     */
+    bool isVisualizerVisible() const;
+
+    /**
+     * @brief Enter solo mode (show single operator output)
+     */
+    void enterSoloMode(Operator* op, const std::string& name);
+
+    /**
+     * @brief Exit solo mode
+     */
+    void exitSoloMode();
+
+    /**
+     * @brief Check if in solo mode
+     */
+    bool inSoloMode() const { return m_inSoloMode; }
+
+    /**
+     * @brief Get solo operator name
+     */
+    const std::string& soloOperatorName() const { return m_soloOperatorName; }
+
+    /**
+     * @brief Update solo output (call before blit)
+     */
+    void updateSoloOutput(Context& ctx);
+
+    /**
+     * @brief Select a node by name (for editor sync)
+     */
+    void selectNode(const std::string& name);
+
+    /**
+     * @brief Set focused node (3x preview)
+     */
+    void setFocusedNode(const std::string& name);
+
+    /**
+     * @brief Clear focused node
+     */
+    void clearFocusedNode();
+
+    /**
+     * @brief Set pending change count (Claude workflow)
+     */
+    void setPendingChangeCount(size_t count);
+
+    /**
+     * @brief Set MCP warning message
+     */
+    void setMcpWarning(const std::string& warning);
+
+    /**
+     * @brief Set parameter change callback
+     */
+    using ParamChangeCallback = std::function<void(const std::string&, const std::string&,
+                                                    const float[4], const float[4], int)>;
+    void onParamChange(ParamChangeCallback callback);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Console
+    /// @{
+
+    /**
+     * @brief Set compile errors in the console panel
+     * @param errors Structured compile errors from HotReload
+     */
+    void setCompileErrors(const std::vector<CompileError>& errors);
+
+    /**
+     * @brief Clear compile errors from the console panel
+     */
+    void clearCompileErrors();
+
+    /**
+     * @brief Add a message to the console panel
+     * @param type Message type (0=Info, 1=Warning, 2=Error, 3=Debug)
+     * @param message Message text
+     */
+    void addConsoleMessage(int type, const std::string& message);
+
+    /**
+     * @brief Clear all console messages
+     */
+    void clearConsole();
+
+    /**
+     * @brief Check if console panel is showing errors
+     */
+    bool consoleHasErrors() const;
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Video/Snapshot Export
+    /// @{
+
+    /**
+     * @brief Save a snapshot
+     */
+    void saveSnapshot(Context& ctx);
+
+    /**
+     * @brief Check if snapshot was requested
+     */
+    bool snapshotRequested() const { return m_snapshotRequested; }
+
+    /**
+     * @brief Get video exporter
+     */
+    VideoExporter* getExporter() { return &m_exporter; }
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Style
+    /// @{
+
+    /**
+     * @brief Get the UI style
+     */
+    const UIStyle& style() const { return m_style; }
+
+    /**
+     * @brief Get mutable style (for theme changes)
+     */
+    UIStyle& style() { return m_style; }
+
+    /// @}
+
+private:
+    DevTools() = default;
+    ~DevTools();
+
+    // Non-copyable
+    DevTools(const DevTools&) = delete;
+    DevTools& operator=(const DevTools&) = delete;
+
+    // State
+    bool m_initialized = false;
+    Context* m_ctx = nullptr;
+
+    // Panel management
+    std::unique_ptr<PanelManager> m_panelManager;
+    std::unique_ptr<OverlayCanvas> m_canvas;
+
+    // Fonts (shared across all panels)
+    std::unique_ptr<FontAtlas> m_fonts[3];
+
+    // Style
+    UIStyle m_style;
+
+    // Solo mode state
+    Operator* m_soloOperator = nullptr;
+    std::string m_soloOperatorName;
+    bool m_inSoloMode = false;
+
+    // Video export
+    VideoExporter m_exporter;
+    bool m_snapshotRequested = false;
+
+    // Parameter callback
+    ParamChangeCallback m_paramChangeCallback;
+
+    // Pending changes (Claude workflow)
+    size_t m_pendingChangeCount = 0;
+    std::string m_mcpWarning;
+
+    // Window handle for clipboard
+    GLFWwindow* m_window = nullptr;
+};
+
+} // namespace vivid

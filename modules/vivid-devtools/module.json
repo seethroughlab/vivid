@@ -1,0 +1,7 @@
+{
+  "name": "vivid-devtools",
+  "version": "0.1.0",
+  "description": "Unified development tools: terminal, editor, node graph, inspector",
+  "author": "Vivid",
+  "operators": []
+}

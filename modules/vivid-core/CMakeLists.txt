@@ -1,6 +1,6 @@
 # Vivid Core - Runtime library
 # Includes: window, timing, input, hot-reload, display, rendering primitives (OverlayCanvas)
-# Note: Chain visualizer (NodeGraph, ChainVisualizer) moved to vivid-visualizer module
+# Note: Chain visualizer (NodeGraph, ChainVisualizer) is in vivid-devtools module
 #
 # Production bundles use vivid-production executable (main_production.cpp + Runtime class)
 # which does NOT include HotReload or MCP. The dev build (vivid) uses all features.
@@ -63,7 +63,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/log.cpp
     src/module_registry.cpp
     src/module_manager.cpp
-    # Note: chain_visualizer.cpp and node_graph.cpp moved to vivid-visualizer module
+    # Note: chain_visualizer.cpp and node_graph.cpp are compiled by vivid-devtools module
     # vivid-io (image loading)
     src/io/image_loader.cpp
     # vivid-effects-2d (2D texture effects)
@@ -165,7 +165,7 @@ set(VIVID_CORE_HEADERS
     include/vivid/event.h
     include/vivid/effects/trigger.h
     include/vivid/effects/window_events.h
-    # Note: chain_visualizer.h and node_graph.h moved to vivid-visualizer module
+    # Note: chain_visualizer.h and node_graph.h moved to vivid-devtools module
 )
 
 # Core library (shared between executable and modules)
@@ -286,7 +286,7 @@ target_link_libraries(vivid-c
     PRIVATE vivid-core
 )
 
-# Note: vivid-visualizer is linked in the main CMakeLists.txt after both targets exist
+# Note: vivid-devtools is linked in the main CMakeLists.txt after both targets exist
 
 target_compile_definitions(vivid-c PRIVATE VIVID_C_BUILDING_DLL)
 
