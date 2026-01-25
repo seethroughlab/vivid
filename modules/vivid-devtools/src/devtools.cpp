@@ -10,6 +10,7 @@
 // Provides backward-compatible APIs for vivid_ide_* and vivid_visualizer_* functions.
 
 #include <vivid/devtools/devtools.h>
+#include <vivid/devtools/preferences.h>
 #include <vivid/devtools/panels/terminal_panel.h>
 #include <vivid/devtools/panels/editor_panel.h>
 #include <vivid/devtools/panels/node_graph_panel.h>
@@ -38,8 +39,15 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
 
     m_ctx = &ctx;
 
-    // Initialize style with dark theme
-    m_style = createDarkTheme();
+    // Load user preferences (includes theme/style)
+    Preferences::instance().load();
+    m_style = Preferences::instance().style();
+
+    // Set up callback for when preferences change
+    Preferences::instance().onStyleChange([this](const UIStyle& newStyle) {
+        m_style = newStyle;
+        m_style.scale = m_ctx ? m_ctx->contentScale() : 1.0f;
+    });
 
     // Initialize canvas
     m_canvas = std::make_unique<OverlayCanvas>();
@@ -168,9 +176,124 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
         setWindow(m_window);
     }
 
+    // Register default keyboard shortcuts
+    registerDefaultShortcuts();
+
+    // Create preferences panel
+    m_preferencesPanel = std::make_unique<PreferencesPanel>();
+    m_preferencesPanel->setStyle(&m_style);
+    m_preferencesPanel->setShortcuts(&m_shortcuts);
+    m_preferencesPanel->setPanelManager(m_panelManager.get());
+
     m_initialized = true;
     std::cerr << "[vivid-devtools] Initialized with " << m_panelManager->panelCount() << " panels\n";
     return true;
+}
+
+void DevTools::registerDefaultShortcuts() {
+    // Cmd/Ctrl+1: Toggle Terminal
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_1,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_terminal",
+        "Toggle Terminal",
+        [this]() { togglePanel("terminal"); }
+    });
+
+    // Cmd/Ctrl+2: Toggle Console
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_2,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_console",
+        "Toggle Console",
+        [this]() { togglePanel("console"); }
+    });
+
+    // Cmd/Ctrl+3: Toggle Editor
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_3,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_editor",
+        "Toggle Editor",
+        [this]() { togglePanel("editor"); }
+    });
+
+    // Cmd/Ctrl+4: Toggle Chain Visualizer (nodegraph + inspector + statusbar)
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_4,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_visualizer",
+        "Toggle Chain Visualizer",
+        [this]() { toggleVisualizer(); }
+    });
+
+    // Cmd/Ctrl+F: Toggle Fullscreen
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_F,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_fullscreen",
+        "Toggle Fullscreen",
+        [this]() {
+            if (m_fullscreenCallback) {
+                m_fullscreenCallback();
+            }
+        }
+    });
+
+    // F1 or Cmd/Ctrl+?: Show Help
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_F1,
+        0,  // No modifiers
+        "show_help",
+        "Show Shortcuts",
+        [this]() {
+            if (m_helpCallback) {
+                m_helpCallback();
+            }
+        }
+    });
+
+    // Cmd/Ctrl+L: Toggle Layout Mode (experimental docking)
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_L,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_layout_mode",
+        "Toggle Layout Mode",
+        [this]() {
+            if (m_panelManager) {
+                bool newMode = !m_panelManager->isLayoutMode();
+                if (newMode && !m_panelManager->layoutRoot()) {
+                    // Build default layout if not yet created
+                    m_panelManager->buildDefaultLayout();
+                    std::cerr << "[vivid-devtools] Built default layout\n";
+                }
+                m_panelManager->setLayoutMode(newMode);
+                std::cerr << "[vivid-devtools] Layout mode: " << (newMode ? "ON" : "OFF") << "\n";
+            }
+        }
+    });
+
+    // Cmd/Ctrl+,: Open Preferences
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_COMMA,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "open_preferences",
+        "Open Preferences",
+        [this]() { showPreferences(); }
+    });
+
+    // Escape: Exit solo mode if active
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_ESCAPE,
+        0,
+        "exit_solo",
+        "Exit Solo Mode",
+        [this]() {
+            if (m_inSoloMode) {
+                exitSoloMode();
+            }
+        }
+    });
 }
 
 void DevTools::shutdown() {
@@ -204,12 +327,18 @@ void DevTools::render(WGPURenderPassEncoder pass, const FrameInput& input, Conte
 
     float screenWidth = static_cast<float>(input.width) / input.contentScale;
     float screenHeight = static_cast<float>(input.height) / input.contentScale;
+    float scale = input.contentScale;
 
     // Begin canvas with physical dimensions
     m_canvas->begin(input.width, input.height);
 
     // Render all panels
-    m_panelManager->render(*m_canvas, input, screenWidth, screenHeight);
+    m_panelManager->render(*m_canvas, input, screenWidth, screenHeight, m_style);
+
+    // Render preferences dialog (on top of everything)
+    if (m_preferencesPanel && m_preferencesPanel->isVisible()) {
+        m_preferencesPanel->render(*m_canvas, input, screenWidth, screenHeight, scale, m_style);
+    }
 
     // Render canvas
     m_canvas->render(pass);
@@ -229,10 +358,50 @@ void DevTools::onChar(uint32_t codepoint) {
     }
 }
 
-void DevTools::onKeyDown(int key, int mods) {
+bool DevTools::onKeyDown(int key, int mods) {
+    if (!m_initialized) return false;
+
+    // If preferences dialog is open, forward input to it
+    if (m_preferencesPanel && m_preferencesPanel->isVisible()) {
+        if (m_preferencesPanel->onKeyDown(key, mods)) {
+            return true;
+        }
+    }
+
+    // Check shortcuts first (global hotkeys)
+    if (m_shortcuts.handleKeyDown(key, mods)) {
+        return true;  // Shortcut consumed input
+    }
+
+    // Forward to focused panel
     if (m_panelManager) {
         m_panelManager->onKeyDown(key, mods);
     }
+    return false;
+}
+
+void DevTools::onFullscreenToggle(FullscreenCallback callback) {
+    m_fullscreenCallback = std::move(callback);
+}
+
+void DevTools::onHelpToggle(HelpCallback callback) {
+    m_helpCallback = std::move(callback);
+}
+
+void DevTools::showPreferences() {
+    if (m_preferencesPanel) {
+        m_preferencesPanel->show();
+    }
+}
+
+void DevTools::hidePreferences() {
+    if (m_preferencesPanel) {
+        m_preferencesPanel->hide();
+    }
+}
+
+bool DevTools::isPreferencesVisible() const {
+    return m_preferencesPanel && m_preferencesPanel->isVisible();
 }
 
 // -------------------------------------------------------------------------
@@ -360,11 +529,9 @@ glm::vec4 DevTools::getIdeBounds() const {
 }
 
 void DevTools::setIdeBounds(const glm::vec4& bounds) {
+    // Only set terminal bounds - editor is now a separate panel
     if (auto* terminal = m_panelManager->getPanelAs<TerminalPanel>("terminal")) {
         terminal->setBounds(bounds);
-    }
-    if (auto* editor = m_panelManager->getPanelAs<EditorPanel>("editor")) {
-        editor->setBounds(bounds);
     }
 }
 

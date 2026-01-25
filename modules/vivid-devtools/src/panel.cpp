@@ -23,7 +23,7 @@ Panel::Panel() {
 Panel::~Panel() = default;
 
 void Panel::handleDragAndResize(const FrameInput& input, float screenW, float screenH,
-                                 float titleBarHeight) {
+                                 float titleBarHeight, bool /*allowNewInteraction*/) {
     if (!m_config.visible) {
         m_hovered = false;
         m_consumedInput = false;
@@ -53,11 +53,13 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
         bool overTitleBar = mousePos.x >= x && mousePos.x <= x + w &&
                             mousePos.y >= y && mousePos.y <= y + titleBarHeight;
 
-        if (overTitleBar && leftMouseClicked && !m_dragging && m_resizing == 0) {
+        // Only start new drag if this panel owns input and can start interactions
+        if (m_ownsInput && m_canStartInteraction && overTitleBar && leftMouseClicked && !m_dragging && m_resizing == 0) {
             m_dragging = true;
             m_dragOffset = mousePos - glm::vec2(x, y);
         }
 
+        // Continue existing drag regardless of m_canStartInteraction or inputBlocked
         if (m_dragging) {
             if (leftMouseDown) {
                 m_config.bounds.x = mousePos.x - m_dragOffset.x;
@@ -71,7 +73,8 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     // -------------------------------------------------------------------------
     // Resizing (from edges)
     // -------------------------------------------------------------------------
-    if (m_config.resizable && !m_dragging && m_resizing == 0 && leftMouseClicked) {
+    // Only start new resize if allowed (this panel is topmost at mouse position and input not blocked)
+    if (!inputBlocked && m_canStartInteraction && m_config.resizable && !m_dragging && m_resizing == 0 && leftMouseClicked) {
         int edge = 0;
         if (mousePos.x >= x - hitSize && mousePos.x <= x + hitSize) edge |= 1;  // left
         if (mousePos.x >= x + w - hitSize && mousePos.x <= x + w + hitSize) edge |= 2;  // right
@@ -127,31 +130,32 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
 }
 
 void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
-                          float scale, bool showTitleBar) {
+                          float scale, const UIStyle& style, bool showTitleBar) {
     float cornerRadius = 8.0f * scale;
     float titleBarHeight = 28.0f * scale;
 
-    // Background with rounded corners
-    glm::vec4 bgColor(0.1f, 0.1f, 0.12f, 0.95f);
-    glm::vec4 borderColor(0.3f, 0.3f, 0.35f, 1.0f);
+    // Background with rounded corners - use fully opaque to prevent bleed-through
+    glm::vec4 bgColor = style.panelBg;
+    bgColor.a = 1.0f;  // Force opaque
     canvas.fillRoundedRect(x, y, w, h, cornerRadius, bgColor);
-    canvas.strokeRoundedRect(x, y, w, h, cornerRadius, 1.0f * scale, borderColor);
+    canvas.strokeRoundedRect(x, y, w, h, cornerRadius, 1.0f * scale, style.panelBorder);
 
-    // Title bar
+    // Title bar - use fully opaque
     if (showTitleBar) {
-        canvas.fillRoundedRectTop(x, y, w, titleBarHeight, cornerRadius,
-                                   glm::vec4(0.15f, 0.15f, 0.18f, 1.0f));
+        glm::vec4 headerColor = style.headerBg;
+        headerColor.a = 1.0f;  // Force opaque
+        canvas.fillRoundedRectTop(x, y, w, titleBarHeight, cornerRadius, headerColor);
 
         // Title text
         canvas.text(m_config.title, x + 10 * scale, y + 18 * scale,
-                    glm::vec4(0.8f, 0.8f, 0.8f, 1.0f), 0);
+                    style.textPrimary, 0);
 
         // Drag handle indicator (right side)
         float handleX = x + w - 60 * scale;
         for (int i = 0; i < 3; i++) {
             float dotX = handleX + i * 8 * scale;
             canvas.fillCircle(dotX, y + titleBarHeight / 2, 2 * scale,
-                              glm::vec4(0.4f, 0.4f, 0.4f, 1.0f), 8);
+                              style.textDim, 8);
         }
     }
 }

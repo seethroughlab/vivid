@@ -83,8 +83,9 @@ void InspectorPanel::shutdown() {
 }
 
 void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                            const FrameInput& input, float scale) {
+                            const FrameInput& input, float scale, const UIStyle& style) {
     if (!m_config.visible || !m_impl) return;
+    // Style parameter is available for use throughout this function
     if (!m_impl->selectedOp) {
         m_impl->scrollOffset = 0.0f;
         return;

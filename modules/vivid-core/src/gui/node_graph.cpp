@@ -967,6 +967,11 @@ void NodeGraph::handleInput() {
     // Reset consumed flag at start of frame
     m_consumedInput = false;
 
+    // If input is blocked by a higher-z panel, don't process any input
+    if (m_input.inputBlocked) {
+        return;
+    }
+
     // Handle mini-map input first (takes priority)
     handleMiniMapInput();
 

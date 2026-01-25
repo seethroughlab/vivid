@@ -174,7 +174,7 @@ struct EditorPanel::Impl {
 EditorPanel::EditorPanel() {
     m_config.id = "editor";
     m_config.title = "Editor";
-    m_config.bounds = {20, 60, 900, 600};
+    m_config.bounds = {500, 60, 800, 600};  // Offset from terminal
     m_config.dockSide = DockSide::None;
     m_config.visible = false;
     m_config.resizable = true;
@@ -197,12 +197,15 @@ void EditorPanel::shutdown() {
 }
 
 void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                         const FrameInput& input, float scale) {
+                         const FrameInput& input, float scale, const UIStyle& style) {
     if (!m_config.visible || !m_impl) {
         m_consumedInput = false;
         m_hovered = false;
         return;
     }
+
+    // Store style for use throughout render
+    m_impl->style = style;
 
     // Handle drag/resize (in logical coordinates)
     float screenW = static_cast<float>(input.width) / scale;
@@ -218,13 +221,12 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float h = scaledBounds.w;
 
     // Panel chrome
-    float titleBarHeight = m_impl->style.titleBarHeight();
-    float tabBarHeight = m_impl->style.tabBarHeight();
-    float contentY = y + titleBarHeight + tabBarHeight;
-    float contentH = h - titleBarHeight - tabBarHeight;
+    float titleBarHeight = style.titleBarHeight();
+    float contentY = y + titleBarHeight;
+    float contentH = h - titleBarHeight;
 
     // Render chrome
-    renderChrome(canvas, x, y, w, h, scale);
+    renderChrome(canvas, x, y, w, h, scale, style);
 
     // Get font metrics (monospace font at index 2)
     int fontIndex = 2;
@@ -250,7 +252,6 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     m_impl->lastBounds = {contentX, contentY, contentW, contentH};
 
     // Colors from style
-    const UIStyle& style = m_impl->style;
     glm::vec4 bgColor = style.panelBg;
     glm::vec4 gutterColor = style.editorGutter;
     glm::vec4 lineNumColor = style.editorLineNum;
@@ -421,7 +422,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     if (m_focused && m_impl->cursorLine >= startLine && m_impl->cursorLine < endLine) {
         float cursorX = contentX + gutterWidth + charWidth + m_impl->cursorCol * charWidth;
         float cursorY = contentY + (m_impl->cursorLine - startLine) * lineHeight;
-        canvas.fillRect(cursorX, cursorY, 2 * scale, lineHeight, glm::vec4(0.9f, 0.9f, 0.9f, 0.9f));
+        canvas.fillRect(cursorX, cursorY, 2 * scale, lineHeight, style.terminalCursor);
     }
 
     canvas.endClipRect();
@@ -429,7 +430,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     // Error message at bottom
     if (!m_impl->errorMessage.empty()) {
         float errorY = y + h - lineHeight - 4 * scale;
-        canvas.fillRect(x, errorY, w, lineHeight + 4 * scale, glm::vec4(0.3f, 0.1f, 0.1f, 0.9f));
+        canvas.fillRect(x, errorY, w, lineHeight + 4 * scale, style.editorErrorLine);
         canvas.text(m_impl->errorMessage, x + 8 * scale, errorY + lineHeight - 2, style.error, fontIndex);
     }
 }

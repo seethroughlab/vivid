@@ -234,12 +234,15 @@ void ConsolePanel::update() {
 }
 
 void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                          const FrameInput& input, float scale) {
+                          const FrameInput& input, float scale, const UIStyle& style) {
     if (!m_config.visible || !m_impl) {
         m_consumedInput = false;
         m_hovered = false;
         return;
     }
+
+    // Store style for use throughout render
+    m_impl->style = style;
 
     // Handle drag/resize (in logical coordinates)
     float screenW = static_cast<float>(input.width) / scale;
@@ -255,12 +258,12 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float h = scaledBounds.w;
 
     // Panel chrome
-    float titleBarHeight = m_impl->style.titleBarHeight();
+    float titleBarHeight = style.titleBarHeight();
     float contentY = y + titleBarHeight;
     float contentH = h - titleBarHeight;
 
     // Render chrome
-    renderChrome(canvas, x, y, w, h, scale);
+    renderChrome(canvas, x, y, w, h, scale, style);
 
     // Get font metrics (monospace font at index 2)
     int fontIndex = 2;

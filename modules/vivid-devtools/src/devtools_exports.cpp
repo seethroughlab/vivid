@@ -50,8 +50,44 @@ void vivid_devtools_on_char(uint32_t codepoint) {
     vivid::DevTools::instance().onChar(codepoint);
 }
 
-void vivid_devtools_on_key(int key, int mods) {
-    vivid::DevTools::instance().onKeyDown(key, mods);
+bool vivid_devtools_on_key(int key, int mods) {
+    return vivid::DevTools::instance().onKeyDown(key, mods);
+}
+
+// =============================================================================
+// Shortcuts
+// =============================================================================
+
+void vivid_devtools_set_fullscreen_callback(void (*callback)()) {
+    if (!callback) {
+        vivid::DevTools::instance().onFullscreenToggle(nullptr);
+        return;
+    }
+    vivid::DevTools::instance().onFullscreenToggle([callback]() { callback(); });
+}
+
+void vivid_devtools_set_help_callback(void (*callback)()) {
+    if (!callback) {
+        vivid::DevTools::instance().onHelpToggle(nullptr);
+        return;
+    }
+    vivid::DevTools::instance().onHelpToggle([callback]() { callback(); });
+}
+
+// =============================================================================
+// Preferences
+// =============================================================================
+
+void vivid_devtools_show_preferences() {
+    vivid::DevTools::instance().showPreferences();
+}
+
+void vivid_devtools_hide_preferences() {
+    vivid::DevTools::instance().hidePreferences();
+}
+
+bool vivid_devtools_is_preferences_visible() {
+    return vivid::DevTools::instance().isPreferencesVisible();
 }
 
 // =============================================================================

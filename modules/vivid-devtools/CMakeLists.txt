@@ -27,8 +27,19 @@ set(DEVTOOLS_SOURCES
     # Core panel system
     src/panel.cpp
     src/panel_manager.cpp
+    src/shortcut_manager.cpp
+    src/preferences.cpp
     src/devtools.cpp
     src/devtools_exports.cpp
+
+    # Layout system
+    src/panel_group.cpp
+    src/split_container.cpp
+    src/panel_leaf.cpp
+
+    # Modal dialogs
+    src/modal_dialog.cpp
+    src/preferences_panel.cpp
 
     # Panels
     src/panels/terminal_panel.cpp

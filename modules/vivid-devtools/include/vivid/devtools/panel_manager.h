@@ -9,9 +9,14 @@
  * - Handles keyboard shortcuts for panel visibility
  * - Routes input to the focused panel
  * - Manages panel z-ordering and layout
+ *
+ * Supports two modes:
+ * - Flat mode (default): Panels are rendered based on DockSide settings
+ * - Layout mode: Panels are arranged in a tree of PanelGroups and SplitContainers
  */
 
 #include <vivid/devtools/panel.h>
+#include <vivid/devtools/layout_node.h>
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/frame_input.h>
 #include <memory>
@@ -22,6 +27,8 @@
 namespace vivid {
 
 class Context;
+class PanelGroup;
+class SplitContainer;
 
 /**
  * @brief Manages multiple devtools panels
@@ -85,9 +92,10 @@ public:
      * @param input Frame input state
      * @param screenWidth Screen width in logical pixels
      * @param screenHeight Screen height in logical pixels
+     * @param style UI style for colors and layout
      */
     void render(OverlayCanvas& canvas, const FrameInput& input,
-                float screenWidth, float screenHeight);
+                float screenWidth, float screenHeight, const UIStyle& style);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -226,8 +234,68 @@ public:
     void calculateLayout(float screenWidth, float screenHeight);
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Layout Tree (Advanced)
+    /// @{
+
+    /**
+     * @brief Enable layout tree mode
+     *
+     * When enabled, panels are arranged using the layout tree (PanelGroups
+     * and SplitContainers) instead of the flat DockSide-based layout.
+     */
+    void setLayoutMode(bool enabled) { m_layoutMode = enabled; }
+    bool isLayoutMode() const { return m_layoutMode; }
+
+    /**
+     * @brief Set the root of the layout tree
+     * @param root Layout node (ownership transferred)
+     */
+    void setLayoutRoot(std::unique_ptr<LayoutNode> root);
+
+    /**
+     * @brief Get the layout root
+     */
+    LayoutNode* layoutRoot() { return m_layoutRoot.get(); }
+    const LayoutNode* layoutRoot() const { return m_layoutRoot.get(); }
+
+    /**
+     * @brief Build a default layout from current panels
+     *
+     * Creates a layout tree based on panel DockSide settings:
+     * - Fill panels go in the center
+     * - Docked panels are placed in SplitContainers
+     * - Floating panels are grouped in a PanelGroup
+     */
+    void buildDefaultLayout();
+
+    /**
+     * @brief Save layout to JSON
+     * @param path File path to save to
+     * @return true on success
+     */
+    bool saveLayout(const std::string& path) const;
+
+    /**
+     * @brief Load layout from JSON
+     * @param path File path to load from
+     * @return true on success
+     */
+    bool loadLayout(const std::string& path);
+
+    /// @}
 
 private:
+    void renderFlatMode(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style);
+    void renderLayoutMode(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style);
+
+    /**
+     * @brief Determine which panel owns input this frame
+     * @param input Frame input state
+     * @return Panel ID that should receive input, or empty string if none
+     */
+    std::string determineInputTarget(const FrameInput& input);
+
     std::vector<std::unique_ptr<Panel>> m_panels;
     std::unordered_map<std::string, Panel*> m_panelMap;
     std::string m_focusedPanelId;
@@ -237,10 +305,20 @@ private:
     float m_screenWidth = 0;
     float m_screenHeight = 0;
 
+    // Layout tree (optional, when layoutMode is enabled)
+    bool m_layoutMode = false;
+    std::unique_ptr<LayoutNode> m_layoutRoot;
+
+    // Z-order for floating panels (panel IDs in back-to-front order)
+    std::vector<std::string> m_floatingZOrder;
+
     // Initialization state
     bool m_initialized = false;
     Context* m_ctx = nullptr;
     WGPUTextureFormat m_surfaceFormat;
+
+    // Helper to bring a panel to the front of z-order
+    void bringToFront(const std::string& id);
 };
 
 } // namespace vivid

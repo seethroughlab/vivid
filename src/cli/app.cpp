@@ -177,7 +177,7 @@ using IsAvailableFn = bool(*)();
 using ConsumedInputFn = bool(*)();
 using IsInteractingFn = bool(*)();
 using OnCharFn = void(*)(uint32_t codepoint);
-using OnKeyFn = void(*)(int key, int mods);
+using OnKeyFn = bool(*)(int key, int mods);
 
 // Panel control
 using ShowPanelFn = void(*)(const char* panelId);
@@ -223,6 +223,10 @@ using SetCompileErrorsFn = void(*)(const void* errors, size_t count);
 using ClearCompileErrorsFn = void(*)();
 using ConsoleHasErrorsFn = bool(*)();
 
+// Shortcuts
+using SetFullscreenCallbackFn = void(*)(void (*)());
+using SetHelpCallbackFn = void(*)(void (*)());
+
 // Function pointers
 static InitFn init = nullptr;
 static ShutdownFn shutdown = nullptr;
@@ -265,6 +269,11 @@ static GetExporterFn getExporter = nullptr;
 static SetCompileErrorsFn setCompileErrors = nullptr;
 static ClearCompileErrorsFn clearCompileErrors = nullptr;
 static ConsoleHasErrorsFn consoleHasErrors = nullptr;
+static SetFullscreenCallbackFn setFullscreenCallback = nullptr;
+static SetHelpCallbackFn setHelpCallback = nullptr;
+
+// Static context pointer for callbacks (set during init)
+static vivid::Context* g_callbackContext = nullptr;
 
 static bool g_lookedUp = false;
 static bool g_initialized = false;
@@ -316,6 +325,8 @@ static void lookupFunctions() {
     setCompileErrors = (SetCompileErrorsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_compile_errors");
     clearCompileErrors = (ClearCompileErrorsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_clear_compile_errors");
     consoleHasErrors = (ConsoleHasErrorsFn)dlsym(RTLD_DEFAULT, "vivid_devtools_console_has_errors");
+    setFullscreenCallback = (SetFullscreenCallbackFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_fullscreen_callback");
+    setHelpCallback = (SetHelpCallbackFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_help_callback");
 #elif defined(_WIN32)
     HMODULE devtoolsModule = GetModuleHandleA("vivid-devtools.dll");
     if (devtoolsModule) {
@@ -360,6 +371,8 @@ static void lookupFunctions() {
         setCompileErrors = (SetCompileErrorsFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_compile_errors");
         clearCompileErrors = (ClearCompileErrorsFn)GetProcAddress(devtoolsModule, "vivid_devtools_clear_compile_errors");
         consoleHasErrors = (ConsoleHasErrorsFn)GetProcAddress(devtoolsModule, "vivid_devtools_console_has_errors");
+        setFullscreenCallback = (SetFullscreenCallbackFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_fullscreen_callback");
+        setHelpCallback = (SetHelpCallbackFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_help_callback");
     }
 #endif
 }
@@ -406,9 +419,33 @@ static void tryOnChar(uint32_t codepoint) {
     onChar(codepoint);
 }
 
-static void tryOnKey(int key, int mods) {
-    if (!available() || !g_initialized) return;
-    onKey(key, mods);
+static bool tryOnKey(int key, int mods) {
+    if (!available() || !g_initialized || !onKey) return false;
+    return onKey(key, mods);
+}
+
+static void trySetFullscreenCallback(void (*callback)()) {
+    if (!available() || !g_initialized || !setFullscreenCallback) return;
+    setFullscreenCallback(callback);
+}
+
+static void trySetHelpCallback(void (*callback)()) {
+    if (!available() || !g_initialized || !setHelpCallback) return;
+    setHelpCallback(callback);
+}
+
+// Callback for fullscreen toggle shortcut
+static void fullscreenToggleCallback() {
+    if (g_callbackContext) {
+        g_callbackContext->fullscreen(!g_callbackContext->fullscreen());
+    }
+}
+
+// Set up all shortcut callbacks after init
+static void setupShortcutCallbacks(vivid::Context* ctx) {
+    g_callbackContext = ctx;
+    trySetFullscreenCallback(fullscreenToggleCallback);
+    // Help callback can be set up later when we have a help panel
 }
 
 // IDE helpers
@@ -748,8 +785,7 @@ struct MainLoopContext {
     bool cliRecordingStarted = false;
     bool chainNeedsSetup = true;
     bool chainAlreadyLoaded = false;  // True if chain was loaded during early config extraction
-    bool toggleKeyWasPressed = false;
-    bool visualizerVisible = false;  // Chain visualizer visibility (Tab to toggle)
+    bool visualizerVisible = false;  // Chain visualizer visibility (Cmd/Ctrl+4 to toggle)
     bool initialStatusShown = false;  // Have we shown the startup status banner?
 
     // MCP live capture request (set by WebSocket command, cleared after capture)
@@ -832,10 +868,16 @@ static void updateKeyStates(GLFWwindow* window) {
     const int keysToCheck[] = {
         GLFW_KEY_ESCAPE, GLFW_KEY_ENTER, GLFW_KEY_GRAVE_ACCENT, GLFW_KEY_SPACE,
         GLFW_KEY_RIGHT, GLFW_KEY_LEFT, GLFW_KEY_DOWN, GLFW_KEY_UP,
-        GLFW_KEY_0, GLFW_KEY_1, GLFW_KEY_2,
+        // Number keys 0-9 for Cmd+1..4 shortcuts
+        GLFW_KEY_0, GLFW_KEY_1, GLFW_KEY_2, GLFW_KEY_3, GLFW_KEY_4,
+        GLFW_KEY_5, GLFW_KEY_6, GLFW_KEY_7, GLFW_KEY_8, GLFW_KEY_9,
         // Terminal special keys
         GLFW_KEY_BACKSPACE, GLFW_KEY_TAB, GLFW_KEY_DELETE, GLFW_KEY_INSERT,
         GLFW_KEY_HOME, GLFW_KEY_END, GLFW_KEY_PAGE_UP, GLFW_KEY_PAGE_DOWN,
+        // Punctuation for shortcuts (Cmd+, for preferences)
+        GLFW_KEY_COMMA,
+        // Function keys
+        GLFW_KEY_F1,
         // Letter keys A-Z for Ctrl+letter combinations
         GLFW_KEY_A, GLFW_KEY_B, GLFW_KEY_C, GLFW_KEY_D, GLFW_KEY_E, GLFW_KEY_F,
         GLFW_KEY_G, GLFW_KEY_H, GLFW_KEY_I, GLFW_KEY_J, GLFW_KEY_K, GLFW_KEY_L,
@@ -864,24 +906,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             logMemoryUsage(now);
             g_lastMemoryLogTime = now;
         }
-    }
-
-    // Toggle chain visualizer and IDE panel on backtick key (only if visualizer module is loaded)
-    // Production bundles without vivid-devtools will not have this feature
-    {
-        bool toggleKeyPressed = glfwGetKey(mlc.window, GLFW_KEY_GRAVE_ACCENT) == GLFW_PRESS;
-        if (toggleKeyPressed && !mlc.toggleKeyWasPressed && mlc.visualizerAvailable) {
-            mlc.visualizerVisible = !mlc.visualizerVisible;
-#ifdef VIVID_HAS_CEF
-            // CEF IDE panel visibility follows visualizer
-            mlc.idePanelVisible = mlc.visualizerVisible;
-#endif
-            // Native IDE panel visibility follows visualizer
-            if (devtools_dynamic::available()) {
-                devtools_dynamic::trySetIdeVisible(mlc.visualizerVisible);
-            }
-        }
-        mlc.toggleKeyWasPressed = toggleKeyPressed;
     }
 
     // Begin frame (updates time, input, etc.)
@@ -1386,16 +1410,33 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     double mx, my;
     glfwGetCursorPos(mlc.window, &mx, &my);
 
+    // Static variables for computing mouse delta and click states
+    static glm::vec2 lastMousePos = {0, 0};
+    static bool lastMouseDown[3] = {false, false, false};
+
+    glm::vec2 currentMousePos = glm::vec2(static_cast<float>(mx), static_cast<float>(my));
+    bool currentMouseDown[3] = {
+        glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS,
+        glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS,
+        glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS
+    };
+
     vivid::FrameInput frameInput;
     frameInput.width = mlc.ctx->width();
     frameInput.height = mlc.ctx->height();
     frameInput.contentScale = xscale;
     frameInput.dt = static_cast<float>(mlc.ctx->dt());
     frameInput.time = static_cast<float>(mlc.ctx->time());
-    frameInput.mousePos = glm::vec2(static_cast<float>(mx), static_cast<float>(my));
-    frameInput.mouseDown[0] = glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
-    frameInput.mouseDown[1] = glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
-    frameInput.mouseDown[2] = glfwGetMouseButton(mlc.window, GLFW_MOUSE_BUTTON_MIDDLE) == GLFW_PRESS;
+    frameInput.mousePos = currentMousePos;
+    frameInput.mouseDelta = currentMousePos - lastMousePos;
+    frameInput.mouseDown[0] = currentMouseDown[0];
+    frameInput.mouseDown[1] = currentMouseDown[1];
+    frameInput.mouseDown[2] = currentMouseDown[2];
+    // Compute one-shot click/release states
+    for (int i = 0; i < 3; i++) {
+        frameInput.mouseClicked[i] = currentMouseDown[i] && !lastMouseDown[i];
+        frameInput.mouseReleased[i] = !currentMouseDown[i] && lastMouseDown[i];
+    }
     // Use saved scroll from before blockMouseInput() was called
     // This ensures NodeGraph can still zoom even when we're blocking input to user code
     frameInput.scroll = g_savedScrollForVisualizer;
@@ -1410,6 +1451,12 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     // Copy one-shot key states
     std::memcpy(frameInput.keyPressed, g_keyPressed, sizeof(g_keyPressed));
     frameInput.surfaceFormat = mlc.surfaceFormat;
+
+    // Update previous mouse state for next frame
+    lastMousePos = currentMousePos;
+    for (int i = 0; i < 3; i++) {
+        lastMouseDown[i] = currentMouseDown[i];
+    }
 
     // Update solo mode output texture before blit
     if (mlc.visualizerVisible && mlc.visualizerAvailable) {
@@ -1680,9 +1727,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         devtools_dynamic::tryUpdate();
 
         // Forward input to devtools (it handles focus internally)
-        // Forward characters collected this frame (except backtick which toggles the UI)
         for (uint32_t codepoint : mlc.ctx->characterInput()) {
-            if (codepoint == '`') continue;  // Backtick is used to toggle UI, don't forward
             devtools_dynamic::tryOnChar(codepoint);
         }
 
@@ -1704,6 +1749,7 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             266, 267,  // Page Up, Page Down
             261,  // Delete
             260,  // Insert
+            290,  // F1 (help shortcut)
         };
         for (int key : specialKeys) {
             if (frameInput.keyPressed[key]) {
@@ -1711,9 +1757,35 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             }
         }
 
-        // Forward Ctrl+letter combinations (for Ctrl+C, Ctrl+D, etc.)
-        if (frameInput.keyCtrl) {
+        // Forward Cmd/Ctrl+letter combinations (for Ctrl+C, Ctrl+D, Cmd+F, etc.)
+        // On macOS, use Super (Cmd); on Windows/Linux, use Ctrl
+#ifdef __APPLE__
+        bool hasCmdOrCtrl = frameInput.keySuper;
+#else
+        bool hasCmdOrCtrl = frameInput.keyCtrl;
+#endif
+        if (hasCmdOrCtrl) {
+            // Forward A-Z keys (for shortcuts like Cmd+F fullscreen)
             for (int key = 65; key <= 90; key++) {  // A-Z (GLFW key codes)
+                if (frameInput.keyPressed[key]) {
+                    devtools_dynamic::tryOnKey(key, mods);
+                }
+            }
+            // Forward 0-9 keys (for Cmd+1..4 panel shortcuts)
+            for (int key = 48; key <= 57; key++) {  // 0-9 (GLFW key codes)
+                if (frameInput.keyPressed[key]) {
+                    devtools_dynamic::tryOnKey(key, mods);
+                }
+            }
+            // Forward comma key (for Cmd+, preferences shortcut)
+            if (frameInput.keyPressed[GLFW_KEY_COMMA]) {
+                devtools_dynamic::tryOnKey(GLFW_KEY_COMMA, mods);
+            }
+        }
+
+        // Also forward plain Ctrl+letter for terminal (Ctrl+C, Ctrl+D, etc.)
+        if (frameInput.keyCtrl && !frameInput.keySuper) {
+            for (int key = 65; key <= 90; key++) {  // A-Z
                 if (frameInput.keyPressed[key]) {
                     devtools_dynamic::tryOnKey(key, mods);
                 }
@@ -2170,6 +2242,7 @@ int Application::init(const AppConfig& config) {
     // If the module is not present (e.g., production bundles), this is a no-op
     devtools_dynamic::tryInit(m_impl->ctx.get(), m_impl->surfaceFormat);
     devtools_dynamic::trySetWindow(m_impl->window);  // For clipboard support
+    devtools_dynamic::setupShortcutCallbacks(m_impl->ctx.get());  // Set up Cmd/Ctrl+F fullscreen etc.
 
     // Check MCP configuration and set warning on devtools status bar
     if (devtools_dynamic::available()) {

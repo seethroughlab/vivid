@@ -14,6 +14,8 @@
  */
 
 #include <vivid/devtools/panel_manager.h>
+#include <vivid/devtools/shortcut_manager.h>
+#include <vivid/devtools/preferences_panel.h>
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/gui/ui_style.h>
 #include <vivid/video_exporter.h>
@@ -123,8 +125,47 @@ public:
      * @brief Handle key down event
      * @param key Key code
      * @param mods Modifier flags
+     * @return true if input was consumed by a shortcut
      */
-    void onKeyDown(int key, int mods);
+    bool onKeyDown(int key, int mods);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Shortcuts
+    /// @{
+
+    /**
+     * @brief Get the shortcut manager
+     */
+    ShortcutManager& shortcuts() { return m_shortcuts; }
+    const ShortcutManager& shortcuts() const { return m_shortcuts; }
+
+    /**
+     * @brief Set callback for fullscreen toggle (handled by app.cpp)
+     */
+    using FullscreenCallback = std::function<void()>;
+    void onFullscreenToggle(FullscreenCallback callback);
+
+    /**
+     * @brief Set callback for help panel toggle
+     */
+    using HelpCallback = std::function<void()>;
+    void onHelpToggle(HelpCallback callback);
+
+    /**
+     * @brief Show the preferences dialog
+     */
+    void showPreferences();
+
+    /**
+     * @brief Hide the preferences dialog
+     */
+    void hidePreferences();
+
+    /**
+     * @brief Check if preferences dialog is visible
+     */
+    bool isPreferencesVisible() const;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -356,6 +397,9 @@ private:
     DevTools(const DevTools&) = delete;
     DevTools& operator=(const DevTools&) = delete;
 
+    // Helper methods
+    void registerDefaultShortcuts();
+
     // State
     bool m_initialized = false;
     Context* m_ctx = nullptr;
@@ -363,6 +407,12 @@ private:
     // Panel management
     std::unique_ptr<PanelManager> m_panelManager;
     std::unique_ptr<OverlayCanvas> m_canvas;
+
+    // Keyboard shortcuts
+    ShortcutManager m_shortcuts;
+
+    // Preferences dialog
+    std::unique_ptr<PreferencesPanel> m_preferencesPanel;
 
     // Fonts (shared across all panels)
     std::unique_ptr<FontAtlas> m_fonts[3];
@@ -388,6 +438,10 @@ private:
 
     // Window handle for clipboard
     GLFWwindow* m_window = nullptr;
+
+    // Shortcut callbacks
+    FullscreenCallback m_fullscreenCallback;
+    HelpCallback m_helpCallback;
 };
 
 } // namespace vivid

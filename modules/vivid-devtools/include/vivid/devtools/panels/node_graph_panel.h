@@ -28,7 +28,7 @@ public:
     bool init(Context& ctx, WGPUTextureFormat surfaceFormat) override;
     void shutdown() override;
     void render(OverlayCanvas& canvas, const glm::vec4& bounds,
-               const FrameInput& input, float scale) override;
+               const FrameInput& input, float scale, const UIStyle& style) override;
     bool handleInput(const FrameInput& input) override;
 
     // Node graph specific

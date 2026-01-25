@@ -139,8 +139,9 @@ void StatusBarPanel::shutdown() {
 }
 
 void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                            const FrameInput& input, float scale) {
+                            const FrameInput& input, float scale, const UIStyle& style) {
     if (!m_config.visible || !m_impl) return;
+    // Style parameter is available for use throughout this function
 
     // Use mono font metrics for bar height calculation
     const int monoFont = 2;
@@ -162,15 +163,16 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     m_impl->smoothedMs = m_impl->smoothedMs + smoothing * (instantMs - m_impl->smoothedMs);
 
     // Semi-transparent background
-    canvas.fillRect(0, 0, static_cast<float>(input.width), barHeight,
-                   {0.1f, 0.1f, 0.12f, 0.85f});
+    glm::vec4 barBg = style.headerBg;
+    barBg.a = 0.95f;
+    canvas.fillRect(0, 0, static_cast<float>(input.width), barHeight, barBg);
 
-    // Colors
-    glm::vec4 textColor = {0.9f, 0.9f, 0.9f, 1.0f};
-    glm::vec4 dimColor = {0.5f, 0.5f, 0.55f, 1.0f};
-    glm::vec4 greenColor = {0.4f, 0.9f, 0.4f, 1.0f};
-    glm::vec4 yellowColor = {0.9f, 0.9f, 0.4f, 1.0f};
-    glm::vec4 redColor = {0.9f, 0.4f, 0.4f, 1.0f};
+    // Colors from style
+    glm::vec4 textColor = style.textPrimary;
+    glm::vec4 dimColor = style.textDim;
+    glm::vec4 greenColor = style.success;
+    glm::vec4 yellowColor = style.warning;
+    glm::vec4 redColor = style.error;
 
     char buf[64];
     const float sepInset = padding;
@@ -287,9 +289,9 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
         float checkSize = lineH * 0.7f;
         float checkY = (barHeight - checkSize) * 0.5f;
-        glm::vec4 checkBg = {0.2f, 0.2f, 0.25f, 1.0f};
-        glm::vec4 checkBorder = {0.4f, 0.4f, 0.45f, 1.0f};
-        glm::vec4 checkFill = {0.4f, 0.7f, 0.9f, 1.0f};
+        glm::vec4 checkBg = style.checkboxBg;
+        glm::vec4 checkBorder = style.checkboxBorder;
+        glm::vec4 checkFill = style.checkboxCheck;
 
         canvas.fillRect(x, checkY, checkSize, checkSize, checkBg);
         canvas.strokeRect(x, checkY, checkSize, checkSize, 1, checkBorder);
@@ -313,9 +315,9 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     // Recording controls (right side)
-    glm::vec4 buttonBg = {0.25f, 0.25f, 0.3f, 1.0f};
-    glm::vec4 buttonHover = {0.35f, 0.35f, 0.4f, 1.0f};
-    glm::vec4 buttonBorder = {0.4f, 0.4f, 0.45f, 1.0f};
+    glm::vec4 buttonBg = style.buttonBg;
+    glm::vec4 buttonHover = style.buttonHover;
+    glm::vec4 buttonBorder = style.buttonBorder;
     const float buttonPadX = 8.0f;
     const float buttonPadY = 4.0f;
     const float buttonSpacing = 6.0f;
@@ -397,7 +399,8 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
             float itemH = lineH + buttonPadY * 2;
             float menuH = itemH * 3;
 
-            glm::vec4 menuBg = {0.18f, 0.18f, 0.2f, 0.98f};
+            glm::vec4 menuBg = style.panelBg;
+            menuBg.a = 0.98f;
 
             canvas.fillRoundedRect(menuX, menuY, menuWidth, menuH, 4, menuBg);
             canvas.strokeRoundedRect(menuX, menuY, menuWidth, menuH, 4, 1, buttonBorder);

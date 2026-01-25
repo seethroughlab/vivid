@@ -101,9 +101,10 @@ public:
      * @param bounds Panel bounds in physical pixels (x, y, w, h)
      * @param input Frame input state
      * @param scale Content scale factor (for HiDPI)
+     * @param style UI style for colors and layout
      */
     virtual void render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                       const FrameInput& input, float scale) = 0;
+                       const FrameInput& input, float scale, const UIStyle& style) = 0;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -174,6 +175,25 @@ public:
      */
     bool consumedInput() const { return m_consumedInput; }
 
+    /**
+     * @brief Set whether this panel can start new interactions
+     *
+     * Set to false for panels that are behind others at the mouse position.
+     * This prevents multiple overlapping panels from starting drags.
+     */
+    void setCanStartInteraction(bool can) { m_canStartInteraction = can; }
+    bool canStartInteraction() const { return m_canStartInteraction; }
+
+    /**
+     * @brief Input ownership model
+     *
+     * Each frame, exactly one panel "owns" input. The owner is determined by
+     * PanelManager based on z-order and interaction state. Panels should check
+     * ownsInput() before processing mouse/keyboard events.
+     */
+    void setInputOwnership(bool owns) { m_ownsInput = owns; }
+    bool ownsInput() const { return m_ownsInput; }
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Drag and Resize
@@ -189,9 +209,10 @@ public:
      * @param screenW Screen width in logical pixels
      * @param screenH Screen height in logical pixels
      * @param titleBarHeight Height of title bar (drag zone) in logical pixels
+     * @param allowNewInteraction If false, won't start new drags/resizes (but continues existing ones)
      */
     void handleDragAndResize(const FrameInput& input, float screenW, float screenH,
-                             float titleBarHeight = 28.0f);
+                             float titleBarHeight = 28.0f, bool allowNewInteraction = true);
 
     /// @}
 
@@ -205,6 +226,8 @@ protected:
     bool m_dragging = false;
     int m_resizing = 0;  // Bit flags: 1=left, 2=right, 4=top, 8=bottom
     bool m_consumedInput = false;
+    bool m_canStartInteraction = true;  // Set by panel manager based on z-order
+    bool m_ownsInput = false;           // Set by panel manager each frame
 
     // Drag/resize state
     glm::vec2 m_dragOffset = {0, 0};
@@ -223,10 +246,11 @@ protected:
      * @param w Panel width in physical pixels
      * @param h Panel height in physical pixels
      * @param scale Content scale factor
+     * @param style UI style for colors
      * @param showTitleBar Whether to render title bar
      */
     void renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
-                      float scale, bool showTitleBar = true);
+                      float scale, const UIStyle& style, bool showTitleBar = true);
 };
 
 } // namespace vivid

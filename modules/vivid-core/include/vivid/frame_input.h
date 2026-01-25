@@ -37,22 +37,33 @@ enum class Key : int {
 
 // Input state for frame rendering
 struct FrameInput {
-    int width = 0;              // Framebuffer width (pixels)
-    int height = 0;             // Framebuffer height (pixels)
+    // Screen dimensions (logical pixels)
+    int width = 0;
+    int height = 0;
     float contentScale = 1.0f;  // DPI scale (2.0 on Retina)
+
+    // Time
     float dt = 1.0f / 60.0f;
     float time = 0.0f;          // Time since start in seconds
+
+    // Mouse (logical pixels)
     glm::vec2 mousePos = {0, 0};
-    bool mouseDown[3] = {false, false, false};
+    glm::vec2 mouseDelta = {0, 0};      // Movement since last frame
     glm::vec2 scroll = {0, 0};
+    bool mouseDown[3] = {false, false, false};
+    bool mouseClicked[3] = {false, false, false};   // One-shot press this frame
+    bool mouseReleased[3] = {false, false, false};  // One-shot release this frame
+
     // Modifier keys
     bool keyCtrl = false;
     bool keyShift = false;
     bool keyAlt = false;
     bool keySuper = false;      // Command on Mac
+
     // Key states (for shortcuts)
     bool keyPressed[512] = {};   // Keys pressed this frame (one-shot)
     bool keyDown[512] = {};      // Keys currently held down
+
     // Surface format for overlay rendering
     WGPUTextureFormat surfaceFormat = WGPUTextureFormat_BGRA8UnormSrgb;
 

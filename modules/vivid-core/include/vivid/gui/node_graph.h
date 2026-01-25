@@ -155,6 +155,8 @@ struct NodeGraphInput {
     bool keyEnter = false;  // Solo mode
     bool keyB = false;      // Bypass
     bool keyEscape = false; // Exit solo / deselect
+    // Input blocking (set when a higher-z panel owns input)
+    bool inputBlocked = false;
 };
 
 // -------------------------------------------------------------------------

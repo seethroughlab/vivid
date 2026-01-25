@@ -205,12 +205,15 @@ void TerminalPanel::update() {
 }
 
 void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                           const FrameInput& input, float scale) {
+                           const FrameInput& input, float scale, const UIStyle& style) {
     if (!m_config.visible || !m_impl || !m_impl->vt || !m_impl->screen) {
         m_consumedInput = false;
         m_hovered = false;
         return;
     }
+
+    // Store style for use in color conversion
+    m_impl->style = style;
 
     // Handle drag/resize (in logical coordinates)
     float screenW = static_cast<float>(input.width) / scale;
@@ -226,13 +229,12 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float h = scaledBounds.w;
 
     // Panel chrome
-    float titleBarHeight = m_impl->style.titleBarHeight();
-    float tabBarHeight = m_impl->style.tabBarHeight();
-    float contentY = y + titleBarHeight + tabBarHeight;
-    float contentH = h - titleBarHeight - tabBarHeight;
+    float titleBarHeight = style.titleBarHeight();
+    float contentY = y + titleBarHeight;
+    float contentH = h - titleBarHeight;
 
     // Render chrome
-    renderChrome(canvas, x, y, w, h, scale);
+    renderChrome(canvas, x, y, w, h, scale, style);
 
     // Get font metrics (monospace font at index 2)
     int fontIndex = 2;
@@ -256,6 +258,17 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Clip to content area
     canvas.beginClipRect(contentX, contentY, contentW, contentH);
+
+    // Calculate terminal dimensions based on content area
+    int newCols = static_cast<int>(contentW / charWidth);
+    int newRows = static_cast<int>(contentH / lineHeight);
+    newCols = std::max(10, newCols);  // Minimum 10 columns
+    newRows = std::max(3, newRows);   // Minimum 3 rows
+
+    // Resize terminal if dimensions changed
+    if (newCols != m_cols || newRows != m_rows) {
+        resize(newCols, newRows);
+    }
 
     // Get terminal dimensions
     int termRows, termCols;

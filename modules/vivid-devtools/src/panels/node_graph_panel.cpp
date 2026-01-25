@@ -171,8 +171,9 @@ void NodeGraphPanel::shutdown() {
 }
 
 void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                            const FrameInput& input, float scale) {
+                            const FrameInput& input, float scale, const UIStyle& style) {
     if (!m_config.visible || !m_impl || !m_impl->ctx) return;
+    // Style parameter is available for use throughout this function
 
     Context& ctx = *m_impl->ctx;
     const auto& operators = ctx.registeredOperators();
@@ -182,6 +183,10 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     glm::vec2 scaledMousePos = input.mousePos * scale;
 
     NodeGraphInput graphInput;
+
+    // Bridge input block state from FrameInput to NodeGraphInput
+    graphInput.inputBlocked = input.isInputBlocked();
+
     graphInput.mousePos = scaledMousePos;
     static glm::vec2 lastMousePos = scaledMousePos;
     graphInput.mouseDelta = scaledMousePos - lastMousePos;

@@ -11,7 +11,10 @@ namespace UILayer {
     constexpr int Nodes = 100;         ///< Node boxes, connections, links
     constexpr int NodeContent = 200;   ///< Textured thumbnails, operator previews
     constexpr int Panels = 300;        ///< Inspector panel, debug panel
+    constexpr int FloatingPanels = 350; ///< Floating panels (terminal, editor, console)
     constexpr int Menus = 400;         ///< Dropdown menus, context menus
+    constexpr int ModalOverlay = 450;  ///< Modal dialog darkened overlay
+    constexpr int ModalDialog = 460;   ///< Modal dialog content
     constexpr int Tooltips = 500;      ///< Tooltips (highest priority)
 }
 
