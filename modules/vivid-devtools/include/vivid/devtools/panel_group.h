@@ -41,7 +41,7 @@ public:
     // LayoutNode interface
     LayoutNodeType type() const override { return LayoutNodeType::PanelGroup; }
     void updateLayout() override;
-    void render(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style) override;
+    void render(OverlayCanvas& canvas, const FrameInput& input, const UIStyle& style) override;
     bool handleInput(const FrameInput& input) override;
     void collectPanels(std::vector<Panel*>& outPanels) override;
     Panel* findPanel(const std::string& id) override;
@@ -148,7 +148,7 @@ public:
     /// @}
 
 private:
-    void renderTabBar(OverlayCanvas& canvas, float scale);
+    void renderTabBar(OverlayCanvas& canvas);
     int hitTestTab(const glm::vec2& pos) const;  // Returns tab index or -1
 
     std::string m_id;

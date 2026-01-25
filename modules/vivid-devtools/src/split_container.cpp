@@ -49,20 +49,20 @@ void SplitContainer::calculateChildBounds() {
     }
 }
 
-void SplitContainer::render(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style) {
+void SplitContainer::render(OverlayCanvas& canvas, const FrameInput& input, const UIStyle& style) {
     // Render children
     if (m_first) {
-        m_first->render(canvas, input, scale, style);
+        m_first->render(canvas, input, style);
     }
     if (m_second) {
-        m_second->render(canvas, input, scale, style);
+        m_second->render(canvas, input, style);
     }
 
-    // Render divider
-    float dx = m_dividerBounds.x * scale;
-    float dy = m_dividerBounds.y * scale;
-    float dw = m_dividerBounds.z * scale;
-    float dh = m_dividerBounds.w * scale;
+    // Render divider (all dimensions in logical pixels)
+    float dx = m_dividerBounds.x;
+    float dy = m_dividerBounds.y;
+    float dw = m_dividerBounds.z;
+    float dh = m_dividerBounds.w;
 
     // Divider background
     glm::vec4 dividerColor = m_dividerHovered || m_dividerDragging
@@ -72,8 +72,8 @@ void SplitContainer::render(OverlayCanvas& canvas, const FrameInput& input, floa
 
     // Divider grip dots
     glm::vec4 gripColor(0.4f, 0.4f, 0.45f, 1.0f);
-    float dotSize = 2.0f * scale;
-    float dotSpacing = 6.0f * scale;
+    float dotSize = 2.0f;
+    float dotSpacing = 6.0f;
 
     if (m_direction == SplitDirection::Horizontal) {
         float cx = dx + dw / 2;

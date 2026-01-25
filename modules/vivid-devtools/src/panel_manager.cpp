@@ -187,11 +187,14 @@ void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input
         }
     }
 
+    // Set content scale on canvas for HiDPI support
+    canvas.setContentScale(scale);
+
     // Render docked panels at Panels layer
+    // All coordinates are in logical pixels - canvas handles scaling
     canvas.setLayer(UILayer::Panels);
     for (auto* panel : dockedPanels) {
-        glm::vec4 scaledBounds = panel->bounds() * scale;
-        panel->render(canvas, scaledBounds, input, scale, style);
+        panel->render(canvas, panel->bounds(), input, style);
         if (panel->consumedInput()) {
             m_consumedInput = true;
         }
@@ -205,8 +208,7 @@ void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input
         if (!panel || !panel->isVisible()) continue;
 
         canvas.setLayer(floatingLayer);
-        glm::vec4 scaledBounds = panel->bounds() * scale;
-        panel->render(canvas, scaledBounds, input, scale, style);
+        panel->render(canvas, panel->bounds(), input, style);
         if (panel->consumedInput()) {
             m_consumedInput = true;
         }
@@ -218,7 +220,10 @@ void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input
 }
 
 void PanelManager::renderLayoutMode(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style) {
-    // Update layout tree bounds
+    // Set content scale on canvas for HiDPI support
+    canvas.setContentScale(scale);
+
+    // Update layout tree bounds (logical pixels)
     m_layoutRoot->setBounds({0, 0, m_screenWidth, m_screenHeight});
     m_layoutRoot->updateLayout();
 
@@ -227,8 +232,8 @@ void PanelManager::renderLayoutMode(OverlayCanvas& canvas, const FrameInput& inp
         m_consumedInput = true;
     }
 
-    // Render layout tree
-    m_layoutRoot->render(canvas, input, scale, style);
+    // Render layout tree (all coordinates in logical pixels)
+    m_layoutRoot->render(canvas, input, style);
 
     if (m_layoutRoot->isInteracting()) {
         m_consumedInput = true;

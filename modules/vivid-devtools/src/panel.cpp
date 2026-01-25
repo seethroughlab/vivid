@@ -73,8 +73,8 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     // -------------------------------------------------------------------------
     // Resizing (from edges)
     // -------------------------------------------------------------------------
-    // Only start new resize if allowed (this panel is topmost at mouse position and input not blocked)
-    if (!inputBlocked && m_canStartInteraction && m_config.resizable && !m_dragging && m_resizing == 0 && leftMouseClicked) {
+    // Only start new resize if this panel owns input and can start interactions
+    if (m_ownsInput && m_canStartInteraction && m_config.resizable && !m_dragging && m_resizing == 0 && leftMouseClicked) {
         int edge = 0;
         if (mousePos.x >= x - hitSize && mousePos.x <= x + hitSize) edge |= 1;  // left
         if (mousePos.x >= x + w - hitSize && mousePos.x <= x + w + hitSize) edge |= 2;  // right
@@ -130,15 +130,16 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
 }
 
 void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
-                          float scale, const UIStyle& style, bool showTitleBar) {
-    float cornerRadius = 8.0f * scale;
-    float titleBarHeight = 28.0f * scale;
+                          const UIStyle& style, bool showTitleBar) {
+    // All dimensions in logical pixels - canvas handles scaling
+    float cornerRadius = 8.0f;
+    float titleBarHeight = 28.0f;
 
     // Background with rounded corners - use fully opaque to prevent bleed-through
     glm::vec4 bgColor = style.panelBg;
     bgColor.a = 1.0f;  // Force opaque
     canvas.fillRoundedRect(x, y, w, h, cornerRadius, bgColor);
-    canvas.strokeRoundedRect(x, y, w, h, cornerRadius, 1.0f * scale, style.panelBorder);
+    canvas.strokeRoundedRect(x, y, w, h, cornerRadius, 1.0f, style.panelBorder);
 
     // Title bar - use fully opaque
     if (showTitleBar) {
@@ -147,14 +148,14 @@ void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float
         canvas.fillRoundedRectTop(x, y, w, titleBarHeight, cornerRadius, headerColor);
 
         // Title text
-        canvas.text(m_config.title, x + 10 * scale, y + 18 * scale,
+        canvas.text(m_config.title, x + 10, y + 18,
                     style.textPrimary, 0);
 
         // Drag handle indicator (right side)
-        float handleX = x + w - 60 * scale;
+        float handleX = x + w - 60;
         for (int i = 0; i < 3; i++) {
-            float dotX = handleX + i * 8 * scale;
-            canvas.fillCircle(dotX, y + titleBarHeight / 2, 2 * scale,
+            float dotX = handleX + i * 8;
+            canvas.fillCircle(dotX, y + titleBarHeight / 2, 2,
                               style.textDim, 8);
         }
     }

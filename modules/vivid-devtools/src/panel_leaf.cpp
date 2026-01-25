@@ -15,11 +15,11 @@ void PanelLeaf::updateLayout() {
     }
 }
 
-void PanelLeaf::render(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style) {
+void PanelLeaf::render(OverlayCanvas& canvas, const FrameInput& input, const UIStyle& style) {
     if (!m_panel) return;
 
-    glm::vec4 scaledBounds = m_bounds * scale;
-    m_panel->render(canvas, scaledBounds, input, scale, style);
+    // Pass logical pixel bounds directly - canvas handles scaling
+    m_panel->render(canvas, m_bounds, input, style);
 }
 
 bool PanelLeaf::handleInput(const FrameInput& input) {

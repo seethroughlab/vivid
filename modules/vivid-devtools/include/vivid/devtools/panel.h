@@ -98,13 +98,15 @@ public:
     /**
      * @brief Render the panel
      * @param canvas OverlayCanvas for drawing
-     * @param bounds Panel bounds in physical pixels (x, y, w, h)
+     * @param bounds Panel bounds in logical pixels (x, y, w, h)
      * @param input Frame input state
-     * @param scale Content scale factor (for HiDPI)
      * @param style UI style for colors and layout
+     *
+     * All coordinates are in logical pixels. The canvas handles scaling
+     * to physical pixels internally based on contentScale.
      */
     virtual void render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                       const FrameInput& input, float scale, const UIStyle& style) = 0;
+                       const FrameInput& input, const UIStyle& style) = 0;
 
     /// @}
     // -------------------------------------------------------------------------
@@ -241,16 +243,17 @@ protected:
      * @brief Render common panel chrome (background, border, title bar)
      *
      * @param canvas OverlayCanvas for drawing
-     * @param x Panel x position in physical pixels
-     * @param y Panel y position in physical pixels
-     * @param w Panel width in physical pixels
-     * @param h Panel height in physical pixels
-     * @param scale Content scale factor
+     * @param x Panel x position in logical pixels
+     * @param y Panel y position in logical pixels
+     * @param w Panel width in logical pixels
+     * @param h Panel height in logical pixels
      * @param style UI style for colors
      * @param showTitleBar Whether to render title bar
+     *
+     * All coordinates are in logical pixels. The canvas handles scaling internally.
      */
     void renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
-                      float scale, const UIStyle& style, bool showTitleBar = true);
+                      const UIStyle& style, bool showTitleBar = true);
 };
 
 } // namespace vivid

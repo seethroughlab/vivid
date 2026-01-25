@@ -90,11 +90,12 @@ public:
      * @param input Frame input
      * @param screenWidth Screen width in logical pixels
      * @param screenHeight Screen height in logical pixels
-     * @param scale Content scale factor
      * @param style UI style for colors
+     *
+     * All coordinates are in logical pixels. The canvas handles scaling internally.
      */
     void render(OverlayCanvas& canvas, const FrameInput& input,
-                float screenWidth, float screenHeight, float scale,
+                float screenWidth, float screenHeight,
                 const UIStyle& style);
 
     /// @}
@@ -160,14 +161,12 @@ protected:
     /**
      * @brief Render dialog content (override in subclasses)
      * @param canvas Canvas for drawing
-     * @param contentBounds Content area bounds (inside dialog chrome)
+     * @param contentBounds Content area bounds (inside dialog chrome) in logical pixels
      * @param input Frame input
-     * @param scale Content scale
      * @param style UI style
      */
     virtual void renderContent(OverlayCanvas& canvas, const glm::vec4& contentBounds,
-                               const FrameInput& input, float scale,
-                               const UIStyle& style) = 0;
+                               const FrameInput& input, const UIStyle& style) = 0;
 
     /**
      * @brief Handle content-specific input (override in subclasses)

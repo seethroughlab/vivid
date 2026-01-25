@@ -171,7 +171,7 @@ void NodeGraphPanel::shutdown() {
 }
 
 void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                            const FrameInput& input, float scale, const UIStyle& style) {
+                            const FrameInput& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl || !m_impl->ctx) return;
     // Style parameter is available for use throughout this function
 
@@ -179,29 +179,25 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     const auto& operators = ctx.registeredOperators();
     if (operators.empty()) return;
 
-    // Build input for node graph
-    glm::vec2 scaledMousePos = input.mousePos * scale;
-
+    // Build input for node graph (all coordinates in logical pixels)
     NodeGraphInput graphInput;
 
-    // Bridge input block state from FrameInput to NodeGraphInput
-    graphInput.inputBlocked = input.isInputBlocked();
+    // Use panel's input ownership to determine if NodeGraph should process input
+    graphInput.inputBlocked = !m_ownsInput;
 
-    graphInput.mousePos = scaledMousePos;
-    static glm::vec2 lastMousePos = scaledMousePos;
-    graphInput.mouseDelta = scaledMousePos - lastMousePos;
-    lastMousePos = scaledMousePos;
+    // Mouse position relative to panel bounds (for NodeGraph which renders at 0,0)
+    graphInput.mousePos = input.mousePos - glm::vec2(bounds.x, bounds.y);
+    graphInput.mouseDelta = input.mouseDelta;
     graphInput.scroll = input.scroll;
     graphInput.mouseDown[0] = input.mouseDown[0];
     graphInput.mouseDown[1] = input.mouseDown[1];
     graphInput.mouseDown[2] = input.mouseDown[2];
-
-    static bool lastMouseDown[3] = {false, false, false};
-    for (int i = 0; i < 3; i++) {
-        graphInput.mouseClicked[i] = input.mouseDown[i] && !lastMouseDown[i];
-        graphInput.mouseReleased[i] = !input.mouseDown[i] && lastMouseDown[i];
-        lastMouseDown[i] = input.mouseDown[i];
-    }
+    graphInput.mouseClicked[0] = input.mouseClicked[0];
+    graphInput.mouseClicked[1] = input.mouseClicked[1];
+    graphInput.mouseClicked[2] = input.mouseClicked[2];
+    graphInput.mouseReleased[0] = input.mouseReleased[0];
+    graphInput.mouseReleased[1] = input.mouseReleased[1];
+    graphInput.mouseReleased[2] = input.mouseReleased[2];
     graphInput.keyCtrl = input.keyCtrl;
     graphInput.keyShift = input.keyShift;
     graphInput.keyAlt = input.keyAlt;
@@ -216,7 +212,7 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     graphInput.keyEscape = input.isKeyPressed(Key::Escape);
     graphInput.time = input.time;
 
-    // Begin node graph editor
+    // Begin node graph editor (bounds in logical pixels)
     m_impl->nodeGraph.beginEditor(canvas, bounds.z, bounds.w, graphInput);
 
     // Add nodes for each operator

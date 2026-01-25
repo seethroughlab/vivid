@@ -19,17 +19,17 @@ void PanelGroup::updateLayout() {
     }
 }
 
-void PanelGroup::render(OverlayCanvas& canvas, const FrameInput& input, float scale, const UIStyle& style) {
+void PanelGroup::render(OverlayCanvas& canvas, const FrameInput& input, const UIStyle& style) {
     if (m_panels.empty()) return;
 
-    m_tabBarHeight = 28.0f;  // Logical pixels
+    // All dimensions in logical pixels - canvas handles scaling
+    m_tabBarHeight = 28.0f;
 
-    // Calculate scaled bounds
-    float x = m_bounds.x * scale;
-    float y = m_bounds.y * scale;
-    float w = m_bounds.z * scale;
-    float h = m_bounds.w * scale;
-    float tabBarH = m_tabBarHeight * scale;
+    float x = m_bounds.x;
+    float y = m_bounds.y;
+    float w = m_bounds.z;
+    float h = m_bounds.w;
+    float tabBarH = m_tabBarHeight;
 
     // Background
     canvas.fillRect(x, y, w, h, style.panelBg);
@@ -38,45 +38,41 @@ void PanelGroup::render(OverlayCanvas& canvas, const FrameInput& input, float sc
     canvas.fillRect(x, y, w, tabBarH, style.headerBg);
 
     // Render tabs
-    renderTabBar(canvas, scale);
+    renderTabBar(canvas);
 
     // Render active panel content
     if (Panel* panel = activePanel()) {
         glm::vec4 contentBounds(x, y + tabBarH, w, h - tabBarH);
-        panel->render(canvas, contentBounds, input, scale, style);
+        panel->render(canvas, contentBounds, input, style);
     }
 
     // Border
-    canvas.strokeRect(x, y, w, h, 1.0f * scale, style.panelBorder);
+    canvas.strokeRect(x, y, w, h, 1.0f, style.panelBorder);
 }
 
-void PanelGroup::renderTabBar(OverlayCanvas& canvas, float scale) {
+void PanelGroup::renderTabBar(OverlayCanvas& canvas) {
     m_tabRects.clear();
 
-    float x = m_bounds.x * scale;
-    float y = m_bounds.y * scale;
-    float tabBarH = m_tabBarHeight * scale;
+    // All dimensions in logical pixels
+    float x = m_bounds.x;
+    float y = m_bounds.y;
+    float tabBarH = m_tabBarHeight;
 
-    float tabX = x + 4 * scale;
-    float tabPadding = 12 * scale;
-    float tabHeight = tabBarH - 4 * scale;
-    float tabY = y + 2 * scale;
+    float tabX = x + 4;
+    float tabPadding = 12;
+    float tabHeight = tabBarH - 4;
+    float tabY = y + 2;
 
     for (size_t i = 0; i < m_panels.size(); i++) {
         Panel* panel = m_panels[i];
         const std::string& title = panel->config().title;
 
         // Estimate tab width based on title
-        float textWidth = title.length() * 8.0f * scale;  // Rough estimate
+        float textWidth = title.length() * 8.0f;  // Rough estimate
         float tabWidth = textWidth + tabPadding * 2;
 
         // Store tab rect for hit testing (in logical coordinates)
-        m_tabRects.push_back({
-            tabX / scale,
-            tabY / scale,
-            tabWidth / scale,
-            tabHeight / scale
-        });
+        m_tabRects.push_back({tabX, tabY, tabWidth, tabHeight});
 
         // Tab background
         bool isActive = (static_cast<int>(i) == m_activeTab);
@@ -92,32 +88,32 @@ void PanelGroup::renderTabBar(OverlayCanvas& canvas, float scale) {
         }
 
         // Draw tab with rounded top corners
-        canvas.fillRoundedRectTop(tabX, tabY, tabWidth, tabHeight, 4.0f * scale, tabBg);
+        canvas.fillRoundedRectTop(tabX, tabY, tabWidth, tabHeight, 4.0f, tabBg);
 
         // Active tab indicator (bottom line)
         if (isActive) {
             glm::vec4 accentColor(0.4f, 0.6f, 1.0f, 1.0f);
-            canvas.fillRect(tabX, tabY + tabHeight - 2 * scale, tabWidth, 2 * scale, accentColor);
+            canvas.fillRect(tabX, tabY + tabHeight - 2, tabWidth, 2, accentColor);
         }
 
         // Tab title
         glm::vec4 textColor = isActive ? glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
                                         : glm::vec4(0.7f, 0.7f, 0.7f, 1.0f);
-        canvas.text(title, tabX + tabPadding, tabY + tabHeight - 8 * scale, textColor, 0);
+        canvas.text(title, tabX + tabPadding, tabY + tabHeight - 8, textColor, 0);
 
         // Close button (if enabled)
         if (m_showCloseButtons) {
-            float closeX = tabX + tabWidth - 18 * scale;
+            float closeX = tabX + tabWidth - 18;
             float closeY = tabY + tabHeight / 2;
-            float closeSize = 5 * scale;
+            float closeSize = 5;
             glm::vec4 closeColor(0.5f, 0.5f, 0.5f, 1.0f);
             canvas.line(closeX - closeSize, closeY - closeSize,
-                        closeX + closeSize, closeY + closeSize, 1.5f * scale, closeColor);
+                        closeX + closeSize, closeY + closeSize, 1.5f, closeColor);
             canvas.line(closeX + closeSize, closeY - closeSize,
-                        closeX - closeSize, closeY + closeSize, 1.5f * scale, closeColor);
+                        closeX - closeSize, closeY + closeSize, 1.5f, closeColor);
         }
 
-        tabX += tabWidth + 2 * scale;
+        tabX += tabWidth + 2;
     }
 }
 

@@ -89,29 +89,28 @@ public:
 
 protected:
     void renderContent(OverlayCanvas& canvas, const glm::vec4& contentBounds,
-                       const FrameInput& input, float scale,
-                       const UIStyle& style) override;
+                       const FrameInput& input, const UIStyle& style) override;
 
     bool handleContentInput(const FrameInput& input, const glm::vec4& contentBounds) override;
 
 private:
-    void renderTabs(OverlayCanvas& canvas, float x, float y, float w, float scale,
+    void renderTabs(OverlayCanvas& canvas, float x, float y, float w,
                     const UIStyle& style);
     void renderAppearanceTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                              const FrameInput& input, float scale, const UIStyle& style);
+                              const FrameInput& input, const UIStyle& style);
     void renderShortcutsTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                             const FrameInput& input, float scale, const UIStyle& style);
+                             const FrameInput& input, const UIStyle& style);
     void renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                          const FrameInput& input, float scale, const UIStyle& style);
+                          const FrameInput& input, const UIStyle& style);
 
     // Helper to render a button
     bool renderButton(OverlayCanvas& canvas, const std::string& label,
-                      float x, float y, float w, float h, float scale,
+                      float x, float y, float w, float h,
                       const UIStyle& style, const FrameInput& input, bool selected = false);
 
     // Helper to render a color swatch
     void renderColorSwatch(OverlayCanvas& canvas, const glm::vec4& color,
-                           float x, float y, float size, float scale, const UIStyle& style);
+                           float x, float y, float size, const UIStyle& style);
 
     PreferenceTab m_activeTab = PreferenceTab::Appearance;
     ThemePreset m_currentTheme = ThemePreset::Dark;

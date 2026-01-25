@@ -52,7 +52,7 @@ public:
     void shutdown() override;
     void update() override;
     void render(OverlayCanvas& canvas, const glm::vec4& bounds,
-               const FrameInput& input, float scale, const UIStyle& style) override;
+               const FrameInput& input, const UIStyle& style) override;
     bool handleInput(const FrameInput& input) override;
     void onChar(uint32_t codepoint) override;
     void onKeyDown(int key, int mods) override;

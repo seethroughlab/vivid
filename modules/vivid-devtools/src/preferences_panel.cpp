@@ -18,30 +18,30 @@ void PreferencesPanel::onChar(uint32_t codepoint) {
 }
 
 void PreferencesPanel::renderContent(OverlayCanvas& canvas, const glm::vec4& contentBounds,
-                                      const FrameInput& input, float scale,
-                                      const UIStyle& style) {
+                                      const FrameInput& input, const UIStyle& style) {
+    // All dimensions in logical pixels - canvas handles scaling
     float x = contentBounds.x;
     float y = contentBounds.y;
     float w = contentBounds.z;
     float h = contentBounds.w;
 
     // Render tabs
-    float tabBarH = kTabHeight * scale;
-    renderTabs(canvas, x, y, w, scale, style);
+    float tabBarH = kTabHeight;
+    renderTabs(canvas, x, y, w, style);
 
     // Content area below tabs
-    glm::vec4 tabContent(x, y + tabBarH + 8 * scale, w, h - tabBarH - 8 * scale);
+    glm::vec4 tabContent(x, y + tabBarH + 8, w, h - tabBarH - 8);
 
     // Render active tab content
     switch (m_activeTab) {
         case PreferenceTab::Appearance:
-            renderAppearanceTab(canvas, tabContent, input, scale, style);
+            renderAppearanceTab(canvas, tabContent, input, style);
             break;
         case PreferenceTab::Shortcuts:
-            renderShortcutsTab(canvas, tabContent, input, scale, style);
+            renderShortcutsTab(canvas, tabContent, input, style);
             break;
         case PreferenceTab::Layout:
-            renderLayoutTab(canvas, tabContent, input, scale, style);
+            renderLayoutTab(canvas, tabContent, input, style);
             break;
     }
 }
@@ -78,13 +78,13 @@ bool PreferencesPanel::handleContentInput(const FrameInput& input, const glm::ve
     return false;
 }
 
-void PreferencesPanel::renderTabs(OverlayCanvas& canvas, float x, float y, float w, float scale,
+void PreferencesPanel::renderTabs(OverlayCanvas& canvas, float x, float y, float w,
                                    const UIStyle& style) {
     m_tabRects.clear();
 
     const char* tabNames[] = {"Appearance", "Shortcuts", "Layout"};
     float tabW = w / 3.0f;
-    float tabH = kTabHeight * scale;
+    float tabH = kTabHeight;
 
     for (int i = 0; i < 3; i++) {
         float tabX = x + i * tabW;
@@ -92,7 +92,7 @@ void PreferencesPanel::renderTabs(OverlayCanvas& canvas, float x, float y, float
         bool isHovered = (m_hoveredTab == i);
 
         // Store for hit testing (in logical pixels)
-        m_tabRects.push_back({tabX / scale, y / scale, tabW / scale, tabH / scale});
+        m_tabRects.push_back({tabX, y, tabW, tabH});
 
         // Tab background
         glm::vec4 tabBg;
@@ -111,64 +111,63 @@ void PreferencesPanel::renderTabs(OverlayCanvas& canvas, float x, float y, float
 
         // Tab text
         glm::vec4 textColor = isActive ? style.accent : style.textPrimary;
-        float textX = tabX + tabW / 2 - strlen(tabNames[i]) * 3.5f * scale;
-        canvas.text(tabNames[i], textX, y + tabH - 10 * scale, textColor, 0);
+        float textX = tabX + tabW / 2 - strlen(tabNames[i]) * 3.5f;
+        canvas.text(tabNames[i], textX, y + tabH - 10, textColor, 0);
 
         // Active indicator
         if (isActive) {
-            canvas.fillRect(tabX, y + tabH - 2 * scale, tabW, 2 * scale, style.accent);
+            canvas.fillRect(tabX, y + tabH - 2, tabW, 2, style.accent);
         }
     }
 
     // Separator line
-    canvas.fillRect(x, y + tabH, w, 1 * scale, style.panelBorder);
+    canvas.fillRect(x, y + tabH, w, 1, style.panelBorder);
 }
 
 void PreferencesPanel::renderAppearanceTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                                            const FrameInput& input, float scale,
-                                            const UIStyle& style) {
+                                            const FrameInput& input, const UIStyle& style) {
     float x = bounds.x;
     float y = bounds.y;
     float w = bounds.z;
 
     // Theme section
-    canvas.text("Theme", x, y + 16 * scale, style.textTitle, 0);
-    y += 28 * scale;
+    canvas.text("Theme", x, y + 16, style.textTitle, 0);
+    y += 28;
 
     // Theme buttons
-    float buttonW = (w - 16 * scale) / 3.0f;
-    float buttonH = kButtonHeight * scale;
+    float buttonW = (w - 16) / 3.0f;
+    float buttonH = kButtonHeight;
 
     // Get current theme from preferences
     ThemePreset currentPreset = Preferences::instance().themePreset();
 
-    if (renderButton(canvas, "Dark", x, y, buttonW - 4 * scale, buttonH, scale, style, input,
+    if (renderButton(canvas, "Dark", x, y, buttonW - 4, buttonH, style, input,
                      currentPreset == ThemePreset::Dark)) {
         Preferences::instance().setThemePreset(ThemePreset::Dark);
         if (m_onThemeChange) m_onThemeChange(ThemePreset::Dark);
     }
 
-    if (renderButton(canvas, "Light", x + buttonW + 4 * scale, y, buttonW - 4 * scale, buttonH,
-                     scale, style, input, currentPreset == ThemePreset::Light)) {
+    if (renderButton(canvas, "Light", x + buttonW + 4, y, buttonW - 4, buttonH,
+                     style, input, currentPreset == ThemePreset::Light)) {
         Preferences::instance().setThemePreset(ThemePreset::Light);
         if (m_onThemeChange) m_onThemeChange(ThemePreset::Light);
     }
 
-    if (renderButton(canvas, "High Contrast", x + 2 * buttonW + 8 * scale, y, buttonW - 4 * scale,
-                     buttonH, scale, style, input, currentPreset == ThemePreset::HighContrast)) {
+    if (renderButton(canvas, "High Contrast", x + 2 * buttonW + 8, y, buttonW - 4,
+                     buttonH, style, input, currentPreset == ThemePreset::HighContrast)) {
         Preferences::instance().setThemePreset(ThemePreset::HighContrast);
         if (m_onThemeChange) m_onThemeChange(ThemePreset::HighContrast);
     }
 
-    y += buttonH + 20 * scale;
+    y += buttonH + 20;
 
     // Color preview section
-    canvas.text("Color Preview", x, y + 16 * scale, style.textTitle, 0);
-    y += 28 * scale;
+    canvas.text("Color Preview", x, y + 16, style.textTitle, 0);
+    y += 28;
 
     // Show current colors
-    float swatchSize = 24 * scale;
-    float swatchSpacing = 8 * scale;
+    float swatchSize = 24;
+    float swatchSpacing = 8;
 
     struct ColorPreview {
         const char* name;
@@ -192,53 +191,52 @@ void PreferencesPanel::renderAppearanceTab(OverlayCanvas& canvas, const glm::vec
 
     float colorX = x;
     for (const auto& cp : colors) {
-        renderColorSwatch(canvas, cp.color, colorX, y, swatchSize, scale, style);
+        renderColorSwatch(canvas, cp.color, colorX, y, swatchSize, style);
 
         // Label below
-        float labelW = strlen(cp.name) * 6.0f * scale;
+        float labelW = strlen(cp.name) * 6.0f;
         canvas.text(cp.name, colorX + swatchSize / 2 - labelW / 2,
-                    y + swatchSize + 12 * scale, style.textDim, 0);
+                    y + swatchSize + 12, style.textDim, 0);
 
-        colorX += swatchSize + swatchSpacing + 32 * scale;
+        colorX += swatchSize + swatchSpacing + 32;
         if (colorX + swatchSize > x + w) {
             colorX = x;
-            y += swatchSize + 28 * scale;
+            y += swatchSize + 28;
         }
     }
 }
 
 void PreferencesPanel::renderShortcutsTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                                           const FrameInput& input, float scale,
-                                           const UIStyle& style) {
+                                           const FrameInput& input, const UIStyle& style) {
     float x = bounds.x;
     float y = bounds.y;
     float w = bounds.z;
     float h = bounds.w;
 
     if (!m_shortcuts) {
-        canvas.text("No shortcuts available", x, y + 20 * scale, style.textDim, 0);
+        canvas.text("No shortcuts available", x, y + 20, style.textDim, 0);
         return;
     }
 
     // Header
-    canvas.text("Keyboard Shortcuts", x, y + 16 * scale, style.textTitle, 0);
-    y += 28 * scale;
+    canvas.text("Keyboard Shortcuts", x, y + 16, style.textTitle, 0);
+    y += 28;
 
     // Column headers
     float labelColW = w * 0.6f;
     float shortcutColW = w * 0.4f;
 
-    canvas.text("Action", x, y + 14 * scale, style.textDim, 0);
-    canvas.text("Shortcut", x + labelColW, y + 14 * scale, style.textDim, 0);
-    y += 20 * scale;
+    canvas.text("Action", x, y + 14, style.textDim, 0);
+    canvas.text("Shortcut", x + labelColW, y + 14, style.textDim, 0);
+    y += 20;
 
     // Separator
-    canvas.fillRect(x, y, w, 1 * scale, style.panelBorder);
-    y += 8 * scale;
+    canvas.fillRect(x, y, w, 1, style.panelBorder);
+    y += 8;
 
     // List shortcuts
     const auto& shortcuts = m_shortcuts->shortcuts();
-    float rowH = kRowHeight * scale;
+    float rowH = kRowHeight;
 
     for (size_t i = 0; i < shortcuts.size(); i++) {
         const Shortcut& sc = shortcuts[i];
@@ -253,76 +251,75 @@ void PreferencesPanel::renderShortcutsTab(OverlayCanvas& canvas, const glm::vec4
         // Row background on hover
         glm::vec2 mousePos = input.mousePos;
         bool rowHovered = mousePos.x >= x && mousePos.x <= x + w &&
-                          mousePos.y >= y / scale && mousePos.y <= (y + rowH) / scale;
+                          mousePos.y >= y && mousePos.y <= y + rowH;
 
         if (rowHovered) {
             canvas.fillRect(x, y, w, rowH, style.buttonHover);
         }
 
         // Action label
-        canvas.text(sc.label, x + 4 * scale, y + rowH - 6 * scale, style.textPrimary, 0);
+        canvas.text(sc.label, x + 4, y + rowH - 6, style.textPrimary, 0);
 
         // Shortcut key
         std::string shortcutStr = ShortcutManager::formatShortcut(sc);
-        canvas.text(shortcutStr, x + labelColW, y + rowH - 6 * scale, style.accent, 0);
+        canvas.text(shortcutStr, x + labelColW, y + rowH - 6, style.accent, 0);
 
         y += rowH;
     }
 }
 
 void PreferencesPanel::renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& bounds,
-                                        const FrameInput& input, float scale,
-                                        const UIStyle& style) {
+                                        const FrameInput& input, const UIStyle& style) {
     float x = bounds.x;
     float y = bounds.y;
     float w = bounds.z;
 
     // Layout presets section
-    canvas.text("Layout Presets", x, y + 16 * scale, style.textTitle, 0);
-    y += 28 * scale;
+    canvas.text("Layout Presets", x, y + 16, style.textTitle, 0);
+    y += 28;
 
-    float buttonW = (w - 8 * scale) / 2.0f;
-    float buttonH = kButtonHeight * scale;
+    float buttonW = (w - 8) / 2.0f;
+    float buttonH = kButtonHeight;
 
-    if (renderButton(canvas, "Default", x, y, buttonW, buttonH, scale, style, input, false)) {
+    if (renderButton(canvas, "Default", x, y, buttonW, buttonH, style, input, false)) {
         if (m_onLayoutPreset) m_onLayoutPreset("default");
     }
 
-    if (renderButton(canvas, "IDE Focus", x + buttonW + 8 * scale, y, buttonW, buttonH,
-                     scale, style, input, false)) {
+    if (renderButton(canvas, "IDE Focus", x + buttonW + 8, y, buttonW, buttonH,
+                     style, input, false)) {
         if (m_onLayoutPreset) m_onLayoutPreset("ide");
     }
 
-    y += buttonH + 8 * scale;
+    y += buttonH + 8;
 
-    if (renderButton(canvas, "Visualizer Focus", x, y, buttonW, buttonH, scale, style, input, false)) {
+    if (renderButton(canvas, "Visualizer Focus", x, y, buttonW, buttonH, style, input, false)) {
         if (m_onLayoutPreset) m_onLayoutPreset("visualizer");
     }
 
-    if (renderButton(canvas, "Minimal", x + buttonW + 8 * scale, y, buttonW, buttonH,
-                     scale, style, input, false)) {
+    if (renderButton(canvas, "Minimal", x + buttonW + 8, y, buttonW, buttonH,
+                     style, input, false)) {
         if (m_onLayoutPreset) m_onLayoutPreset("minimal");
     }
 
-    y += buttonH + 24 * scale;
+    y += buttonH + 24;
 
     // Layout mode section
-    canvas.text("Layout Mode", x, y + 16 * scale, style.textTitle, 0);
-    y += 28 * scale;
+    canvas.text("Layout Mode", x, y + 16, style.textTitle, 0);
+    y += 28;
 
     bool layoutMode = m_panelManager && m_panelManager->isLayoutMode();
     std::string modeLabel = layoutMode ? "Docking Mode (Experimental)" : "Classic Mode";
-    canvas.text(modeLabel, x, y + 14 * scale, style.textPrimary, 0);
-    y += 24 * scale;
+    canvas.text(modeLabel, x, y + 14, style.textPrimary, 0);
+    y += 24;
 
-    canvas.text("Press Cmd/Ctrl+L to toggle layout mode", x, y + 14 * scale, style.textDim, 0);
-    y += 32 * scale;
+    canvas.text("Press Cmd/Ctrl+L to toggle layout mode", x, y + 14, style.textDim, 0);
+    y += 32;
 
     // Reset section
-    canvas.text("Reset", x, y + 16 * scale, style.textTitle, 0);
-    y += 28 * scale;
+    canvas.text("Reset", x, y + 16, style.textTitle, 0);
+    y += 28;
 
-    if (renderButton(canvas, "Reset to Defaults", x, y, w, buttonH, scale, style, input, false)) {
+    if (renderButton(canvas, "Reset to Defaults", x, y, w, buttonH, style, input, false)) {
         // Reset theme via Preferences (will save automatically)
         Preferences::instance().setThemePreset(ThemePreset::Dark);
         if (m_onThemeChange) m_onThemeChange(ThemePreset::Dark);
@@ -335,10 +332,11 @@ void PreferencesPanel::renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& b
 }
 
 bool PreferencesPanel::renderButton(OverlayCanvas& canvas, const std::string& label,
-                                     float x, float y, float w, float h, float scale,
+                                     float x, float y, float w, float h,
                                      const UIStyle& style, const FrameInput& input,
                                      bool selected) {
-    glm::vec2 mousePos = input.mousePos * scale;
+    // Input is in logical pixels
+    glm::vec2 mousePos = input.mousePos;
     bool hovered = mousePos.x >= x && mousePos.x <= x + w &&
                    mousePos.y >= y && mousePos.y <= y + h;
 
@@ -355,17 +353,17 @@ bool PreferencesPanel::renderButton(OverlayCanvas& canvas, const std::string& la
         bg = style.buttonBg;
     }
 
-    float radius = 4.0f * scale;
+    float radius = 4.0f;
     canvas.fillRoundedRect(x, y, w, h, radius, bg);
 
     // Border
     glm::vec4 border = selected ? style.accent : style.buttonBorder;
-    canvas.strokeRoundedRect(x, y, w, h, radius, 1.0f * scale, border);
+    canvas.strokeRoundedRect(x, y, w, h, radius, 1.0f, border);
 
     // Text (centered)
-    float textW = label.length() * 7.0f * scale;
+    float textW = label.length() * 7.0f;
     float textX = x + (w - textW) / 2;
-    float textY = y + h - 8 * scale;
+    float textY = y + h - 8;
     glm::vec4 textColor = selected ? style.accent : style.textPrimary;
     canvas.text(label, textX, textY, textColor, 0);
 
@@ -373,10 +371,9 @@ bool PreferencesPanel::renderButton(OverlayCanvas& canvas, const std::string& la
 }
 
 void PreferencesPanel::renderColorSwatch(OverlayCanvas& canvas, const glm::vec4& color,
-                                          float x, float y, float size, float scale,
-                                          const UIStyle& style) {
+                                          float x, float y, float size, const UIStyle& style) {
     // Checkerboard background for alpha
-    float checkSize = 4 * scale;
+    float checkSize = 4;
     glm::vec4 checkLight(0.4f, 0.4f, 0.4f, 1.0f);
     glm::vec4 checkDark(0.2f, 0.2f, 0.2f, 1.0f);
 
@@ -393,7 +390,7 @@ void PreferencesPanel::renderColorSwatch(OverlayCanvas& canvas, const glm::vec4&
     canvas.fillRect(x, y, size, size, color);
 
     // Border
-    canvas.strokeRect(x, y, size, size, 1.0f * scale, style.panelBorder);
+    canvas.strokeRect(x, y, size, size, 1.0f, style.panelBorder);
 }
 
 } // namespace vivid

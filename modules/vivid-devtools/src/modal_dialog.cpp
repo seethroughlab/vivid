@@ -25,67 +25,67 @@ void ModalDialog::hide() {
 }
 
 void ModalDialog::render(OverlayCanvas& canvas, const FrameInput& input,
-                          float screenWidth, float screenHeight, float scale,
+                          float screenWidth, float screenHeight,
                           const UIStyle& style) {
     if (!m_visible) return;
 
-    // Calculate dialog position (centered)
-    float dialogW = m_width * scale;
-    float dialogH = m_height * scale;
-    float dialogX = (screenWidth * scale - dialogW) / 2.0f;
-    float dialogY = (screenHeight * scale - dialogH) / 2.0f;
+    // All dimensions in logical pixels - canvas handles scaling
+    float dialogW = m_width;
+    float dialogH = m_height;
+    float dialogX = (screenWidth - dialogW) / 2.0f;
+    float dialogY = (screenHeight - dialogH) / 2.0f;
 
     // Store for input handling
-    m_dialogBounds = {dialogX / scale, dialogY / scale, m_width, m_height};
+    m_dialogBounds = {dialogX, dialogY, m_width, m_height};
 
     // Set layer for modal overlay (blocks content behind it)
     canvas.setLayer(UILayer::ModalOverlay);
 
     // Darkened background overlay - use solid color to fully block content behind
     glm::vec4 overlayColor(0.0f, 0.0f, 0.0f, 0.85f);
-    canvas.fillRect(0, 0, screenWidth * scale, screenHeight * scale, overlayColor);
+    canvas.fillRect(0, 0, screenWidth, screenHeight, overlayColor);
 
     // Set layer for modal dialog content
     canvas.setLayer(UILayer::ModalDialog);
 
     // Dialog background with shadow
-    float shadowOffset = 4.0f * scale;
+    float shadowOffset = 4.0f;
     glm::vec4 shadowColor(0.0f, 0.0f, 0.0f, 0.3f);
     canvas.fillRoundedRect(dialogX + shadowOffset, dialogY + shadowOffset,
-                           dialogW, dialogH, kCornerRadius * scale, shadowColor);
+                           dialogW, dialogH, kCornerRadius, shadowColor);
 
     // Dialog background - force opaque
     glm::vec4 bgColor = style.panelBg;
     bgColor.a = 1.0f;
     canvas.fillRoundedRect(dialogX, dialogY, dialogW, dialogH,
-                           kCornerRadius * scale, bgColor);
+                           kCornerRadius, bgColor);
 
     // Title bar - force opaque
-    float titleBarH = kTitleBarHeight * scale;
+    float titleBarH = kTitleBarHeight;
     glm::vec4 headerColor = style.headerBg;
     headerColor.a = 1.0f;
     canvas.fillRoundedRectTop(dialogX, dialogY, dialogW, titleBarH,
-                               kCornerRadius * scale, headerColor);
+                               kCornerRadius, headerColor);
 
     // Title text
-    canvas.text(m_title, dialogX + 12 * scale, dialogY + titleBarH - 10 * scale,
+    canvas.text(m_title, dialogX + 12, dialogY + titleBarH - 10,
                 style.textPrimary, 1);  // Font index 1 = medium
 
     // Close button (X)
-    float closeX = dialogX + dialogW - 28 * scale;
+    float closeX = dialogX + dialogW - 28;
     float closeY = dialogY + titleBarH / 2;
-    float closeSize = 6 * scale;
+    float closeSize = 6;
 
-    // Check if mouse is over close button
-    glm::vec2 mousePos = input.mousePos * scale;
-    bool closeHovered = mousePos.x >= closeX - 12 * scale && mousePos.x <= closeX + 12 * scale &&
-                        mousePos.y >= closeY - 12 * scale && mousePos.y <= closeY + 12 * scale;
+    // Check if mouse is over close button (input is in logical pixels)
+    glm::vec2 mousePos = input.mousePos;
+    bool closeHovered = mousePos.x >= closeX - 12 && mousePos.x <= closeX + 12 &&
+                        mousePos.y >= closeY - 12 && mousePos.y <= closeY + 12;
 
     glm::vec4 closeColor = closeHovered ? style.error : style.textDim;
     canvas.line(closeX - closeSize, closeY - closeSize,
-                closeX + closeSize, closeY + closeSize, 2.0f * scale, closeColor);
+                closeX + closeSize, closeY + closeSize, 2.0f, closeColor);
     canvas.line(closeX + closeSize, closeY - closeSize,
-                closeX - closeSize, closeY + closeSize, 2.0f * scale, closeColor);
+                closeX - closeSize, closeY + closeSize, 2.0f, closeColor);
 
     // Handle close button click
     bool leftMouseDown = input.mouseDown[0];
@@ -112,26 +112,21 @@ void ModalDialog::render(OverlayCanvas& canvas, const FrameInput& input,
 
     // Border
     canvas.strokeRoundedRect(dialogX, dialogY, dialogW, dialogH,
-                              kCornerRadius * scale, 1.0f * scale, style.panelBorder);
+                              kCornerRadius, 1.0f, style.panelBorder);
 
-    // Content area
+    // Content area (in logical pixels)
     glm::vec4 contentBounds(
-        dialogX + 12 * scale,
-        dialogY + titleBarH + 8 * scale,
-        dialogW - 24 * scale,
-        dialogH - titleBarH - 20 * scale
+        dialogX + 12,
+        dialogY + titleBarH + 8,
+        dialogW - 24,
+        dialogH - titleBarH - 20
     );
 
     // Render subclass content
-    renderContent(canvas, contentBounds, input, scale, style);
+    renderContent(canvas, contentBounds, input, style);
 
     // Handle content input
-    handleContentInput(input, {
-        (dialogX + 12 * scale) / scale,
-        (dialogY + titleBarH + 8 * scale) / scale,
-        (dialogW - 24 * scale) / scale,
-        (dialogH - titleBarH - 20 * scale) / scale
-    });
+    handleContentInput(input, contentBounds);
 
     // Reset layer
     canvas.setLayer(0);

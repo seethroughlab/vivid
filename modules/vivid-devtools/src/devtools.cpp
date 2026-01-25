@@ -337,7 +337,7 @@ void DevTools::render(WGPURenderPassEncoder pass, const FrameInput& input, Conte
 
     // Render preferences dialog (on top of everything)
     if (m_preferencesPanel && m_preferencesPanel->isVisible()) {
-        m_preferencesPanel->render(*m_canvas, input, screenWidth, screenHeight, scale, m_style);
+        m_preferencesPanel->render(*m_canvas, input, screenWidth, screenHeight, m_style);
     }
 
     // Render canvas
