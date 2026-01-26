@@ -41,12 +41,23 @@ public:
     void setMcpWarning(const std::string& warning);
     void setVideoExporter(VideoExporter* exporter);
 
+    // Grid toggle (synced with DevTools background grid)
+    void setGridVisible(bool visible);
+    bool isGridVisible() const;
+
+    // Panel visibility (synced with DevTools)
+    void setPanelVisibility(const std::string& panelId, bool visible);
+
     // Callbacks
     using SnapshotCallback = std::function<void()>;
     using RecordCallback = std::function<void(bool start)>;
+    using GridToggleCallback = std::function<void(bool visible)>;
+    using PanelToggleCallback = std::function<void(const std::string& panelId)>;
 
     void onSnapshot(SnapshotCallback callback);
     void onRecord(RecordCallback callback);
+    void onGridToggle(GridToggleCallback callback);
+    void onPanelToggle(PanelToggleCallback callback);
 
 private:
     struct Impl;

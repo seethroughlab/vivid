@@ -165,7 +165,7 @@ void setup(Context& ctx) {
     // ----- VISUALS -----
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(1280, 720);
-    canvas.loadBuiltinFont(ctx, BuiltinFont::Mono, 14.0f);
+    canvas.loadBuiltinFont(ctx, 14.0f);
 
     chain.output("canvas");
 }

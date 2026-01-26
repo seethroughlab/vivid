@@ -113,10 +113,6 @@ void update(Context& ctx) {
     auto& threshold = ctx.chain().get<Threshold>("threshold");
     float t = ctx.time();
     threshold.level = 0.4f + sin(t * 0.5f) * 0.2f;
-
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
 }
 
 VIVID_CHAIN(setup, update)

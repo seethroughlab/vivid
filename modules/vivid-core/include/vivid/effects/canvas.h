@@ -36,10 +36,9 @@ enum class FitMode {
 };
 
 /// @brief Built-in fonts bundled with Vivid
+/// @deprecated Use loadBuiltinFont(ctx, fontSize) without font parameter instead
 enum class BuiltinFont {
-    Inter,        ///< Inter Regular - clean sans-serif (default)
-    InterMedium,  ///< Inter Medium - slightly bolder
-    Mono          ///< Roboto Mono - monospace font
+    Default       ///< Inter Regular - clean sans-serif (the only built-in font)
 };
 
 /// @brief Line cap style for stroke endpoints
@@ -296,17 +295,24 @@ public:
     bool loadFont(Context& ctx, const std::string& path, float fontSize);
 
     /**
-     * @brief Load a built-in font bundled with Vivid
+     * @brief Load the built-in font bundled with Vivid
      * @param ctx Context for GPU access
-     * @param font Which built-in font to load
      * @param fontSize Font size in pixels
      * @return true on success
      *
+     * Loads Inter Regular, a clean sans-serif font suitable for UI and general text.
+     *
      * @par Example
      * @code
-     * canvas.loadBuiltinFont(ctx, BuiltinFont::Inter, 24.0f);
+     * canvas.loadBuiltinFont(ctx, 24.0f);
      * canvas.fillText("Hello", 10, 30);
      * @endcode
+     */
+    bool loadBuiltinFont(Context& ctx, float fontSize);
+
+    /**
+     * @brief Load a built-in font bundled with Vivid (deprecated)
+     * @deprecated Use loadBuiltinFont(ctx, fontSize) instead - only one font is bundled
      */
     bool loadBuiltinFont(Context& ctx, BuiltinFont font, float fontSize);
 

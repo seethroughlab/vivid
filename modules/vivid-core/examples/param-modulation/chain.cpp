@@ -76,7 +76,7 @@ void setup(Context& ctx) {
     canvas.input(1, "shape1");
     canvas.input(2, "shape2");
     canvas.input(3, "shape3");
-    canvas.loadBuiltinFont(ctx, BuiltinFont::Mono, 14.0f);
+    canvas.loadBuiltinFont(ctx, 14.0f);
 
     chain.output("canvas");
 }

@@ -112,6 +112,12 @@ private:
     void renderColorSwatch(OverlayCanvas& canvas, const glm::vec4& color,
                            float x, float y, float size, const UIStyle& style);
 
+    // Helper to render a slider, returns true if value changed
+    bool renderSlider(OverlayCanvas& canvas, const std::string& label,
+                      float x, float y, float w, float h,
+                      const UIStyle& style, const FrameInput& input,
+                      float* value, float minVal, float maxVal);
+
     PreferenceTab m_activeTab = PreferenceTab::Appearance;
     ThemePreset m_currentTheme = ThemePreset::Dark;
 
@@ -140,6 +146,14 @@ private:
     static constexpr float kTabHeight = 32.0f;
     static constexpr float kButtonHeight = 28.0f;
     static constexpr float kRowHeight = 24.0f;
+    static constexpr float kSliderHeight = 24.0f;
+
+    // Slider dragging state
+    bool m_draggingSlider = false;
+    float* m_draggingSliderValue = nullptr;
+    float m_draggingSliderMin = 0.0f;
+    float m_draggingSliderMax = 1.0f;
+    glm::vec4 m_draggingSliderRect{0, 0, 0, 0};
 };
 
 } // namespace vivid

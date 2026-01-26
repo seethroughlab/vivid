@@ -19,6 +19,7 @@
 
 #include <vivid/gui/ui_style.h>  // For UILayer constants
 #include <vivid/gui/font_provider.h>
+#include <vivid/frame_input.h>
 #include <webgpu/webgpu.h>
 #include <glm/glm.hpp>
 #include <string>
@@ -96,13 +97,37 @@ public:
     /// @{
 
     /**
-     * @brief Begin a new frame
+     * @brief Begin a new frame with HiDPI support (preferred)
+     * @param input Frame input containing dimensions and content scale
+     *
+     * Extracts physical dimensions from input.width/height and computes
+     * logical dimensions using input.contentScale. This is the recommended
+     * entry point for overlay rendering.
+     *
+     * Clears batched geometry from previous frame.
+     */
+    void begin(const FrameInput& input);
+
+    /**
+     * @brief Begin a new frame (assumes scale=1, for legacy use)
      * @param width Canvas width in pixels
      * @param height Canvas height in pixels
      *
      * Clears batched geometry from previous frame.
      */
     void begin(int width, int height);
+
+    /**
+     * @brief Start a new frame with explicit HiDPI dimensions
+     * @param logicalWidth Canvas width in logical pixels (for coordinates)
+     * @param logicalHeight Canvas height in logical pixels (for coordinates)
+     * @param physicalWidth Framebuffer width in physical pixels (for scissor)
+     * @param physicalHeight Framebuffer height in physical pixels (for scissor)
+     *
+     * Use this overload on HiDPI displays where logical != physical.
+     * Prefer begin(const FrameInput&) for simpler API.
+     */
+    void begin(int logicalWidth, int logicalHeight, int physicalWidth, int physicalHeight);
 
     /**
      * @brief Render all batched geometry to the render pass
@@ -382,6 +407,44 @@ public:
     float measureTextScaled(const std::string& str, float scale, int fontIndex = 0) const;
 
     /**
+     * @brief Draw text at native HiDPI resolution
+     * @param str Text string
+     * @param x X position (left edge) in logical pixels
+     * @param y Y position (baseline) in logical pixels
+     * @param color Text color
+     * @param fontIndex Which font to use (must be loaded at physical pixel size)
+     *
+     * Use this when fonts are loaded at physical pixel size (e.g., 28px on 2x display
+     * for 14px logical text). The font metrics are automatically divided by contentScale
+     * so text renders at native resolution without double-scaling.
+     */
+    void textHiDPI(const std::string& str, float x, float y, const glm::vec4& color, int fontIndex = 0);
+
+    /**
+     * @brief Measure text width for HiDPI fonts
+     * @param str Text string
+     * @param fontIndex Which font to use (must be loaded at physical pixel size)
+     * @return Width in logical pixels
+     *
+     * Use this when fonts are loaded at physical pixel size.
+     */
+    float measureTextHiDPI(const std::string& str, int fontIndex = 0) const;
+
+    /**
+     * @brief Get font line height for HiDPI fonts
+     * @param fontIndex Which font to use (must be loaded at physical pixel size)
+     * @return Line height in logical pixels
+     */
+    float fontLineHeightHiDPI(int fontIndex = 0) const;
+
+    /**
+     * @brief Get font ascent for HiDPI fonts
+     * @param fontIndex Which font to use (must be loaded at physical pixel size)
+     * @return Ascent in logical pixels
+     */
+    float fontAscentHiDPI(int fontIndex = 0) const;
+
+    /**
      * @brief Get recommended font index for current zoom level
      * @param zoom Current zoom factor
      * @return Font index (0, 1, or 2)
@@ -440,11 +503,27 @@ public:
     glm::vec2 inverseTransformPoint(const glm::vec2& p) const;
 
     /**
-     * @brief Set content scale for VizDrawList text rendering
+     * @brief Set VizDrawList zoom scale
      * @param scale Scale factor (typically zoom level)
      *
      * This is used by NodeGraph to communicate zoom level to operator
      * preview callbacks that use VizDrawList for drawing.
+     * This is SEPARATE from the HiDPI content scale.
+     */
+    void setVizScale(float scale) { m_vizScale = scale; }
+
+    /**
+     * @brief Get current VizDrawList zoom scale
+     * @return Zoom scale factor (1.0 = no scaling)
+     */
+    float vizScale() const { return m_vizScale; }
+
+    /**
+     * @brief Set content scale (for HiDPI text mode)
+     * @param scale Display content scale factor (e.g., 2.0 on Retina)
+     *
+     * This is used internally for HiDPI text mode calculations.
+     * Prefer using begin(const FrameInput&) which sets this automatically.
      */
     void setContentScale(float scale) { m_contentScale = scale; }
 
@@ -453,6 +532,23 @@ public:
      * @return Content scale factor (1.0 = no scaling)
      */
     float contentScale() const { return m_contentScale; }
+
+    /**
+     * @brief Enable HiDPI text mode
+     * @param enabled If true, fonts are assumed to be loaded at physical pixel size
+     *
+     * When enabled, text(), measureText(), fontLineHeight(), and fontAscent()
+     * automatically compensate for contentScale, resulting in crisp native-resolution
+     * text without double-scaling.
+     *
+     * Enable this when fonts are loaded at physical size (e.g., 28px for 14px logical on 2x display).
+     */
+    void setHiDPITextMode(bool enabled) { m_hiDPITextMode = enabled; }
+
+    /**
+     * @brief Check if HiDPI text mode is enabled
+     */
+    bool hiDPITextMode() const { return m_hiDPITextMode; }
 
     /// @}
 
@@ -542,12 +638,22 @@ private:
     glm::mat3 m_transform = glm::mat3(1.0f);
     std::vector<glm::mat3> m_transformStack;
 
-    // Content scale for VizDrawList text rendering (set by NodeGraph)
+    // Content scale for HiDPI text mode (display scale, e.g. 2.0 on Retina)
     float m_contentScale = 1.0f;
 
-    // Frame state
+    // VizDrawList zoom scale (set by NodeGraph for preview text scaling)
+    float m_vizScale = 1.0f;
+
+    // HiDPI text mode: when true, fonts are assumed to be at physical pixel size
+    // and text methods automatically compensate for contentScale
+    bool m_hiDPITextMode = false;
+
+    // Frame state (logical dimensions for coordinate system)
     int m_width = 0;
     int m_height = 0;
+    // Physical dimensions for scissor rect (defaults to logical if not set)
+    int m_physicalWidth = 0;
+    int m_physicalHeight = 0;
     WGPUDevice m_device = nullptr;
     WGPUQueue m_queue = nullptr;
     WGPUTextureFormat m_surfaceFormat = WGPUTextureFormat_BGRA8UnormSrgb;

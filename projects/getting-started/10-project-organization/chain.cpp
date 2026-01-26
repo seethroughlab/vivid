@@ -140,13 +140,6 @@ void update(Context& ctx) {
     // ========================================
     auto& bloom = chain.get<Bloom>("bloom");
     bloom.intensity = 0.2f + high * 0.5f;
-
-    // ========================================
-    // Input handling
-    // ========================================
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
 }
 
 // ============================================================================

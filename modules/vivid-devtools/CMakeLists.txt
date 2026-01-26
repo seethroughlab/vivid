@@ -103,4 +103,13 @@ elseif(UNIX)
     )
 endif()
 
+# Copy devtools assets (fonts) to build directory
+add_custom_command(TARGET vivid-devtools POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/assets/devtools/fonts
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts
+        ${CMAKE_BINARY_DIR}/assets/devtools/fonts
+    COMMENT "Copying devtools assets..."
+)
+
 message(STATUS "[vivid-devtools] Configured unified devtools module")

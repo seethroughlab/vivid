@@ -42,6 +42,13 @@ struct UIStyle {
     glm::vec4 headerBg{0.16f, 0.16f, 0.2f, 1.0f};       ///< Panel header background
 
     // -------------------------------------------------------------------------
+    // Corner radii (unscaled base values, use helper methods for scaled)
+    // -------------------------------------------------------------------------
+    float panelCornerRadiusBase = 6.0f;    ///< Panel corner radius (0 = square)
+    float buttonCornerRadiusBase = 4.0f;   ///< Button corner radius
+    float sliderCornerRadiusBase = 3.0f;   ///< Slider track corner radius
+
+    // -------------------------------------------------------------------------
     // Button colors
     // -------------------------------------------------------------------------
     glm::vec4 buttonBg{0.25f, 0.25f, 0.3f, 1.0f};       ///< Button background
@@ -128,38 +135,40 @@ struct UIStyle {
     glm::vec4 gridLineMajor{0.25f, 0.25f, 0.28f, 1.0f}; ///< Major grid lines
 
     // -------------------------------------------------------------------------
-    // Scaled layout helpers
-    // All return values scaled by the HiDPI factor
+    // Layout helpers (return logical pixels - canvas handles HiDPI scaling)
     // -------------------------------------------------------------------------
 
-    float padding() const { return 8.0f * scale; }
-    float smallPadding() const { return 4.0f * scale; }
-    float largePadding() const { return 12.0f * scale; }
+    float padding() const { return 8.0f; }
+    float smallPadding() const { return 4.0f; }
+    float largePadding() const { return 12.0f; }
 
-    float cornerRadius() const { return 4.0f * scale; }
-    float largeCornerRadius() const { return 6.0f * scale; }
+    float cornerRadius() const { return buttonCornerRadiusBase; }
+    float largeCornerRadius() const { return panelCornerRadiusBase; }
+    float panelCornerRadius() const { return panelCornerRadiusBase; }
+    float buttonCornerRadius() const { return buttonCornerRadiusBase; }
+    float sliderCornerRadius() const { return sliderCornerRadiusBase; }
 
-    float strokeWidth() const { return 1.0f * scale; }
-    float thickStrokeWidth() const { return 2.0f * scale; }
+    float strokeWidth() const { return 1.0f; }
+    float thickStrokeWidth() const { return 2.0f; }
 
-    float sliderHeight() const { return 20.0f * scale; }
-    float buttonPaddingX() const { return 8.0f * scale; }
-    float buttonPaddingY() const { return 4.0f * scale; }
+    float sliderHeight() const { return 20.0f; }
+    float buttonPaddingX() const { return 8.0f; }
+    float buttonPaddingY() const { return 4.0f; }
 
-    float scrollSpeed() const { return 30.0f * scale; }
+    float scrollSpeed() const { return 30.0f; }
 
     // -------------------------------------------------------------------------
-    // DevTools-specific layout helpers
+    // DevTools-specific layout helpers (logical pixels)
     // -------------------------------------------------------------------------
 
-    float titleBarHeight() const { return 28.0f * scale; }
-    float tabBarHeight() const { return 32.0f * scale; }
-    float statusBarHeight() const { return 40.0f * scale; }
-    float inspectorWidth() const { return 280.0f * scale; }
-    float nodeWidth() const { return 180.0f * scale; }
-    float nodeHeaderHeight() const { return 24.0f * scale; }
-    float pinRadius() const { return 6.0f * scale; }
-    float connectionThickness() const { return 2.0f * scale; }
+    float titleBarHeight() const { return 28.0f; }
+    float tabBarHeight() const { return 32.0f; }
+    float statusBarHeight() const { return 40.0f; }
+    float inspectorWidth() const { return 280.0f; }
+    float nodeWidth() const { return 180.0f; }
+    float nodeHeaderHeight() const { return 24.0f; }
+    float pinRadius() const { return 6.0f; }
+    float connectionThickness() const { return 2.0f; }
 };
 
 // =============================================================================

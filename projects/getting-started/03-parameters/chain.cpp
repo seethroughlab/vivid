@@ -42,9 +42,7 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
+    // Called every frame - add interactive behavior here
 }
 
 VIVID_CHAIN(setup, update)

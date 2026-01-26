@@ -122,11 +122,17 @@ void ModalDialog::render(OverlayCanvas& canvas, const FrameInput& input,
         dialogH - titleBarH - 20
     );
 
+    // Clip content to dialog bounds
+    canvas.beginClipRect(contentBounds.x, contentBounds.y, contentBounds.z, contentBounds.w);
+
     // Render subclass content
     renderContent(canvas, contentBounds, input, style);
 
     // Handle content input
     handleContentInput(input, contentBounds);
+
+    // End content clipping
+    canvas.endClipRect();
 
     // Reset layer
     canvas.setLayer(0);

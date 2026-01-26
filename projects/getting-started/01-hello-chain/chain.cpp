@@ -33,11 +33,6 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    // Toggle fullscreen with F key
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
-
     // EXPERIMENT: Uncomment to animate the scale
     // auto& noise = ctx.chain().get<Noise>("noise");
     // noise.scale = 4.0f + sin(ctx.time()) * 2.0f;

@@ -302,7 +302,7 @@ void update(Context& ctx) {
     }
 
     // Toggle feedback (F)
-    if (ctx.key(GLFW_KEY_F).pressed) {
+    if (ctx.key(GLFW_KEY_F).pressed && !ctx.superHeld()) {
         g_feedbackEnabled = !g_feedbackEnabled;
         std::cout << "\nFeedback: " << (g_feedbackEnabled ? "ON" : "OFF") << std::endl;
         printStatus();

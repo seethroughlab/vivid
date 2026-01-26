@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Built-in fullscreen shortcut** - Cmd/Ctrl+F now works without devtools loaded:
+  - Fullscreen toggle moved from devtools to vivid-core
+  - Works in both development and exported production apps
+  - Removed manual fullscreen handling from all example projects
+
+- **Corner radius preferences** - UI corner radius is now configurable:
+  - Panel, button, and slider corner radii in Preferences > Appearance
+  - Persisted to `~/.vivid/preferences.json`
+  - New UIStyle helpers: `panelCornerRadius()`, `buttonCornerRadius()`, `sliderCornerRadius()`
+
 - **FluidSim operator** - GPU-accelerated 2D fluid dynamics simulation:
   - Real-time Navier-Stokes solver with vorticity confinement
   - Mouse/touch interaction for adding dye and forces
@@ -40,6 +50,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - vivid-render3d: particles3d, shadow_depth, shadow_point shaders extracted
   - Original embedded shaders kept as `*_FALLBACK` for reliability
   - Shaders loaded via `AssetLoader::loadShader()` with fallback pattern
+
+### Fixed
+
+- **HiDPI font rendering with node visualizer** - Fixed font size doubling when node graph panel is visible:
+  - Separated `vizScale` (for VizDrawList zoom) from `contentScale` (for HiDPI text mode)
+  - VizDrawList now uses dedicated `vizScale()` method instead of overloading `contentScale()`
+
+- **Modal dialog content clipping** - Preferences and other modal dialogs now properly clip content:
+  - Added `beginClipRect`/`endClipRect` around modal content rendering
+  - Prevents content overflow beyond dialog bounds
+
+- **Inspector panel value labels** - Fixed missing slider value text on light themes:
+  - Added `gui.style().text = style.textPrimary` for proper text color
+  - Removed redundant double clipping that caused display issues
+
+- **Editor text selection** - Fixed inability to select text with mouse in editor panel:
+  - Added mouse click/drag/release handling in `handleInput()`
+  - Selection methods were defined but never called
 
 ## [0.1.0-alpha.10] - 2026-01-22
 

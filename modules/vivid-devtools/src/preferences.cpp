@@ -85,7 +85,15 @@ bool Preferences::load() {
             else if (theme == "custom") m_themePreset = ThemePreset::Custom;
         }
 
-        // Apply theme
+        // Corner radii (load before applying theme)
+        if (j.contains("cornerRadius")) {
+            auto& cr = j["cornerRadius"];
+            if (cr.contains("panel")) m_panelCornerRadius = cr["panel"].get<float>();
+            if (cr.contains("button")) m_buttonCornerRadius = cr["button"].get<float>();
+            if (cr.contains("slider")) m_sliderCornerRadius = cr["slider"].get<float>();
+        }
+
+        // Apply theme (and custom corner radii)
         applyThemeToStyle();
 
         // Panel visibility
@@ -127,6 +135,13 @@ bool Preferences::save() {
             {"editor", m_editorVisible},
             {"console", m_consoleVisible},
             {"visualizer", m_visualizerVisible}
+        };
+
+        // Corner radii
+        j["cornerRadius"] = {
+            {"panel", m_panelCornerRadius},
+            {"button", m_buttonCornerRadius},
+            {"slider", m_sliderCornerRadius}
         };
 
         std::ofstream file(path);
@@ -171,6 +186,44 @@ void Preferences::applyThemeToStyle() {
             // Keep current style (don't overwrite custom colors)
             break;
     }
+
+    // Apply custom corner radii (override theme defaults)
+    m_style.panelCornerRadiusBase = m_panelCornerRadius;
+    m_style.buttonCornerRadiusBase = m_buttonCornerRadius;
+    m_style.sliderCornerRadiusBase = m_sliderCornerRadius;
+}
+
+void Preferences::setPanelCornerRadius(float radius) {
+    m_panelCornerRadius = radius;
+    m_style.panelCornerRadiusBase = radius;
+
+    if (m_styleChangeCallback) {
+        m_styleChangeCallback(m_style);
+    }
+
+    save();
+}
+
+void Preferences::setButtonCornerRadius(float radius) {
+    m_buttonCornerRadius = radius;
+    m_style.buttonCornerRadiusBase = radius;
+
+    if (m_styleChangeCallback) {
+        m_styleChangeCallback(m_style);
+    }
+
+    save();
+}
+
+void Preferences::setSliderCornerRadius(float radius) {
+    m_sliderCornerRadius = radius;
+    m_style.sliderCornerRadiusBase = radius;
+
+    if (m_styleChangeCallback) {
+        m_styleChangeCallback(m_style);
+    }
+
+    save();
 }
 
 } // namespace vivid

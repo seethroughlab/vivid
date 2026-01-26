@@ -18,7 +18,7 @@ Audio-reactive visuals using geometric shapes instead of procedural noise.
 
 ## Controls
 
-- **F**: Toggle fullscreen
+- **Cmd/Ctrl+F**: Toggle fullscreen
 - Play music or make sounds to see the shapes react!
 
 ## Key Concepts

@@ -104,6 +104,41 @@ public:
     void setVisualizerVisible(bool v) { m_visualizerVisible = v; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Corner Radius Settings
+    /// @{
+
+    /**
+     * @brief Get panel corner radius (0 = square corners)
+     */
+    float panelCornerRadius() const { return m_panelCornerRadius; }
+
+    /**
+     * @brief Set panel corner radius and update style
+     */
+    void setPanelCornerRadius(float radius);
+
+    /**
+     * @brief Get button corner radius
+     */
+    float buttonCornerRadius() const { return m_buttonCornerRadius; }
+
+    /**
+     * @brief Set button corner radius and update style
+     */
+    void setButtonCornerRadius(float radius);
+
+    /**
+     * @brief Get slider corner radius
+     */
+    float sliderCornerRadius() const { return m_sliderCornerRadius; }
+
+    /**
+     * @brief Set slider corner radius and update style
+     */
+    void setSliderCornerRadius(float radius);
+
+    /// @}
 
 private:
     Preferences() = default;
@@ -122,6 +157,11 @@ private:
     bool m_editorVisible = false;
     bool m_consoleVisible = false;
     bool m_visualizerVisible = true;
+
+    // Corner radii (default to UIStyle defaults)
+    float m_panelCornerRadius = 6.0f;
+    float m_buttonCornerRadius = 4.0f;
+    float m_sliderCornerRadius = 3.0f;
 
     // Callbacks
     StyleChangeCallback m_styleChangeCallback;

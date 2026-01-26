@@ -4,6 +4,7 @@
 #include <vivid/devtools/panel.h>
 #include <vivid/gui/ui_style.h>
 #include <algorithm>
+#include <iostream>
 
 namespace vivid {
 
@@ -38,13 +39,19 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     float h = m_config.bounds.w;
     float hitSize = 8.0f;
 
+    // Debug: log when handleDragAndResize is called with a click
+    if (input.mouseClicked[0]) {
+        std::cerr << "[Panel:" << m_config.id << "] bounds=(" << x << "," << y << "," << w << "," << h
+                  << ") titleBar=[" << y << "-" << (y + titleBarHeight) << "] mouse=("
+                  << mousePos.x << "," << mousePos.y << ") canStart=" << m_canStartInteraction << "\n";
+    }
+
     // Check if mouse is in panel bounds (with resize margin)
     m_hovered = mousePos.x >= x - hitSize && mousePos.x <= x + w + hitSize &&
                 mousePos.y >= y - hitSize && mousePos.y <= y + h + hitSize;
 
     bool leftMouseDown = input.mouseDown[0];
-    bool leftMouseClicked = leftMouseDown && !m_lastMouseDown;
-    m_lastMouseDown = leftMouseDown;
+    bool leftMouseClicked = input.mouseClicked[0];  // Use FrameInput's computed click
 
     // -------------------------------------------------------------------------
     // Dragging (from title bar)
@@ -53,8 +60,18 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
         bool overTitleBar = mousePos.x >= x && mousePos.x <= x + w &&
                             mousePos.y >= y && mousePos.y <= y + titleBarHeight;
 
-        // Only start new drag if this panel owns input and can start interactions
-        if (m_ownsInput && m_canStartInteraction && overTitleBar && leftMouseClicked && !m_dragging && m_resizing == 0) {
+        // Debug: log when we're over the title bar and clicking
+        if (overTitleBar && leftMouseClicked) {
+            std::cerr << "[Panel:" << m_config.id << "] Click on title bar! "
+                      << "canStart=" << m_canStartInteraction
+                      << " dragging=" << m_dragging
+                      << " resizing=" << m_resizing << "\n";
+        }
+
+        // Only start new drag if this panel can start interactions
+        // (m_canStartInteraction is true if panel owns input OR is already interacting)
+        if (m_canStartInteraction && overTitleBar && leftMouseClicked && !m_dragging && m_resizing == 0) {
+            std::cerr << "[Panel:" << m_config.id << "] Starting drag!\n";
             m_dragging = true;
             m_dragOffset = mousePos - glm::vec2(x, y);
         }
@@ -73,8 +90,8 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     // -------------------------------------------------------------------------
     // Resizing (from edges)
     // -------------------------------------------------------------------------
-    // Only start new resize if this panel owns input and can start interactions
-    if (m_ownsInput && m_canStartInteraction && m_config.resizable && !m_dragging && m_resizing == 0 && leftMouseClicked) {
+    // Only start new resize if this panel can start interactions
+    if (m_canStartInteraction && m_config.resizable && !m_dragging && m_resizing == 0 && leftMouseClicked) {
         int edge = 0;
         if (mousePos.x >= x - hitSize && mousePos.x <= x + hitSize) edge |= 1;  // left
         if (mousePos.x >= x + w - hitSize && mousePos.x <= x + w + hitSize) edge |= 2;  // right
@@ -132,8 +149,8 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
 void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
                           const UIStyle& style, bool showTitleBar) {
     // All dimensions in logical pixels - canvas handles scaling
-    float cornerRadius = 8.0f;
-    float titleBarHeight = 28.0f;
+    float cornerRadius = style.panelCornerRadius();
+    float titleBarHeight = style.titleBarHeight();
 
     // Background with rounded corners - use fully opaque to prevent bleed-through
     glm::vec4 bgColor = style.panelBg;

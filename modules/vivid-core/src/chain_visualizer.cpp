@@ -332,48 +332,37 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
         return;
     }
 
-    // Load fonts for node graph:
-    // Font index 0: Inter Regular (body text, labels)
-    // Font index 1: Inter Medium (node titles only)
-    // Font index 2: Roboto Mono (numeric displays - FPS, timings, etc.)
-
-    // Use AssetLoader to resolve font paths
-    // Use simple paths like "fonts/Inter.ttf" - the node_modules-style resolution
-    // will find them in any assets/ folder up the directory tree
+    // Load JetBrains Mono at different sizes for different uses:
+    // Font index 0: Labels (14px)
+    // Font index 1: Titles (16px)
+    // Font index 2: Metrics/status bar (14px)
+    //
+    // ChainVisualizer is compiled into vivid-devtools, so it uses devtools assets
     auto& assets = AssetLoader::instance();
-    std::string regularPath = assets.resolve("fonts/Inter_18pt-Regular.ttf").string();
-    std::string mediumPath = assets.resolve("fonts/Inter_18pt-Medium.ttf").string();
-    std::string monoPath = assets.resolve("fonts/RobotoMono-Regular.ttf").string();
+    std::string fontPath = assets.resolve("devtools/fonts/JetBrainsMono-Regular.ttf").string();
 
     // Scale font sizes for HiDPI displays
     float scale = ctx.contentScale();
     if (scale < 1.0f) scale = 1.0f;
 
-    // Load Inter Regular as primary font (index 0) - for tooltips/labels
+    // Load font at 14px for labels (index 0)
     m_fonts[0] = std::make_unique<FontAtlas>();
-    if (m_fonts[0]->load(ctx, regularPath, 16.0f * scale)) {
+    if (m_fonts[0]->load(ctx, fontPath, 14.0f * scale)) {
         m_overlay.setFont(0, m_fonts[0].get());
-        std::cerr << "[ChainVisualizer] Loaded Inter Regular (" << (16 * scale) << "px)\n";
     } else {
-        std::cerr << "[ChainVisualizer] Warning: Could not load Inter Regular font\n";
+        std::cerr << "[ChainVisualizer] Warning: Could not load JetBrains Mono font\n";
     }
 
-    // Load Inter Medium for node titles (index 1)
+    // Load font at 16px for titles (index 1)
     m_fonts[1] = std::make_unique<FontAtlas>();
-    if (m_fonts[1]->load(ctx, mediumPath, 18.0f * scale)) {
+    if (m_fonts[1]->load(ctx, fontPath, 16.0f * scale)) {
         m_overlay.setFont(1, m_fonts[1].get());
-        std::cerr << "[ChainVisualizer] Loaded Inter Medium (" << (18 * scale) << "px) for titles\n";
-    } else {
-        std::cerr << "[ChainVisualizer] Warning: Could not load Inter Medium font\n";
     }
 
-    // Load Roboto Mono for numeric displays (index 2) - status bar
+    // Load font at 14px for metrics (index 2)
     m_fonts[2] = std::make_unique<FontAtlas>();
-    if (m_fonts[2]->load(ctx, monoPath, 14.0f * scale)) {
+    if (m_fonts[2]->load(ctx, fontPath, 14.0f * scale)) {
         m_overlay.setFont(2, m_fonts[2].get());
-        std::cerr << "[ChainVisualizer] Loaded Roboto Mono (" << (14 * scale) << "px) for metrics\n";
-    } else {
-        std::cerr << "[ChainVisualizer] Warning: Could not load Roboto Mono font\n";
     }
 
     // Set up callbacks for node graph interactions
@@ -439,8 +428,8 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     graphInput.keyEscape = input.isKeyPressed(vivid::Key::Escape);
     graphInput.time = input.time;
 
-    // Begin overlay rendering
-    m_overlay.begin(input.width, input.height);
+    // Begin overlay rendering (handles HiDPI scaling internally)
+    m_overlay.begin(input);
 
     // Check if mouse is in inspector panel area (block node graph panning if so)
     // But don't block if the mouse is in the mini-map (which is in bottom-right)

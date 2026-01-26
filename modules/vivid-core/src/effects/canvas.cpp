@@ -162,34 +162,25 @@ bool Canvas::loadFont(Context& ctx, const std::string& path, float fontSize) {
     return m_font->load(ctx, path, fontSize);
 }
 
-bool Canvas::loadBuiltinFont(Context& ctx, BuiltinFont font, float fontSize) {
+bool Canvas::loadBuiltinFont(Context& ctx, float fontSize) {
     m_lastContext = &ctx;
 
-    // Select font file based on enum
-    std::string fontFile;
-    switch (font) {
-        case BuiltinFont::Inter:
-            fontFile = "Inter_18pt-Regular.ttf";
-            break;
-        case BuiltinFont::InterMedium:
-            fontFile = "Inter_18pt-Medium.ttf";
-            break;
-        case BuiltinFont::Mono:
-            fontFile = "RobotoMono-Regular.ttf";
-            break;
-    }
-
     // Use AssetLoader to resolve font path
-    // node_modules-style resolution will find fonts in any assets/ folder up the tree
-    auto resolved = AssetLoader::instance().resolve("fonts/" + fontFile);
+    // The default font is Inter Regular - a clean sans-serif suitable for UI text
+    auto resolved = AssetLoader::instance().resolve("fonts/Inter_18pt-Regular.ttf");
     std::string fontPath = resolved.string();
 
     if (fontPath.empty()) {
-        std::cerr << "[Canvas] Failed to find builtin font: " << fontFile << std::endl;
+        std::cerr << "[Canvas] Failed to find builtin font: Inter_18pt-Regular.ttf" << std::endl;
         return false;
     }
 
     return m_font->load(ctx, fontPath, fontSize);
+}
+
+bool Canvas::loadBuiltinFont(Context& ctx, BuiltinFont /*font*/, float fontSize) {
+    // Deprecated: all BuiltinFont values now map to the same font
+    return loadBuiltinFont(ctx, fontSize);
 }
 
 void Canvas::ensureDefaultFont() {
@@ -213,7 +204,7 @@ void Canvas::ensureDefaultFont() {
     float scaledSize = m_defaultFontSize * scale;
 
     // Load default font (Inter at scaled size)
-    if (!loadBuiltinFont(*m_lastContext, BuiltinFont::Inter, scaledSize)) {
+    if (!loadBuiltinFont(*m_lastContext, scaledSize)) {
         static bool warned = false;
         if (!warned) {
             std::cerr << "[Canvas] Warning: Could not auto-load default font. "

@@ -84,15 +84,15 @@ public:
                               glm::vec2(p3.x, p3.y), col32ToVec4(col));
     }
 
-    // Text (scales with canvas contentScale, typically set to zoom level)
+    // Text (scales with canvas vizScale, typically set to zoom level)
     void AddText(VizVec2 pos, uint32_t col, const char* textStr) {
-        float scale = m_canvas.contentScale();
+        float scale = m_canvas.vizScale();
         m_canvas.textScaled(textStr, pos.x, pos.y, col32ToVec4(col), scale, 0);
     }
 
     void AddText(VizVec2 pos, uint32_t col, const char* textStr, float fontSize) {
         (void)fontSize; // OverlayCanvas uses font index, not size
-        float scale = m_canvas.contentScale();
+        float scale = m_canvas.vizScale();
         m_canvas.textScaled(textStr, pos.x, pos.y, col32ToVec4(col), scale, 0);
     }
 
@@ -131,11 +131,11 @@ public:
         }
     }
 
-    // Text size calculation (approximate, accounts for content scale)
+    // Text size calculation (approximate, accounts for viz scale)
     VizTextSize CalcTextSize(const char* textStr, float fontSize = 12.0f) const {
         // Approximate: 7 pixels per character width, fontSize for height
-        // Scaled by contentScale to match actual rendered size
-        float scale = m_canvas.contentScale();
+        // Scaled by vizScale to match actual rendered size
+        float scale = m_canvas.vizScale();
         size_t len = 0;
         while (textStr && textStr[len]) len++;
         return { static_cast<float>(len) * fontSize * 0.6f * scale, fontSize * scale };

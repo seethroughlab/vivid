@@ -112,7 +112,7 @@ void setup(Context& ctx) {
     // Canvas for text labels and spectrum visualization
     auto& canvas = chain.add<Canvas>("canvas");
     canvas.size(1280, 720);
-    canvas.loadBuiltinFont(ctx, BuiltinFont::Mono, 14.0f);  // Load font once
+    canvas.loadBuiltinFont(ctx, 14.0f);  // Load font once
 
     chain.output("canvas");
 }

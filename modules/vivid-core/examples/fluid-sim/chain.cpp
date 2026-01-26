@@ -67,7 +67,7 @@ void update(Context& ctx) {
     float dt = static_cast<float>(ctx.dt());
 
     // Toggle fullscreen with F key
-    if (ctx.key(GLFW_KEY_F).pressed) {
+    if (ctx.key(GLFW_KEY_F).pressed && !ctx.superHeld()) {
         ctx.fullscreen(!ctx.fullscreen());
     }
 

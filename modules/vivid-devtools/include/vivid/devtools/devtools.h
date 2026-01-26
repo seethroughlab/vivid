@@ -388,6 +388,30 @@ public:
     UIStyle& style() { return m_style; }
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Background Grid
+    /// @{
+
+    /**
+     * @brief Toggle full-window background grid
+     *
+     * The background grid provides a dimmed backdrop with grid lines,
+     * making it easier to focus on devtools panels. Independent of
+     * the node graph visualizer.
+     */
+    void toggleBackgroundGrid();
+
+    /**
+     * @brief Check if background grid is visible
+     */
+    bool isBackgroundGridVisible() const { return m_showBackgroundGrid; }
+
+    /**
+     * @brief Set background grid visibility
+     */
+    void setBackgroundGridVisible(bool visible) { m_showBackgroundGrid = visible; }
+
+    /// @}
 
 private:
     DevTools() = default;
@@ -399,6 +423,7 @@ private:
 
     // Helper methods
     void registerDefaultShortcuts();
+    void renderBackgroundGrid(OverlayCanvas& canvas, float screenWidth, float screenHeight);
 
     // State
     bool m_initialized = false;
@@ -442,6 +467,9 @@ private:
     // Shortcut callbacks
     FullscreenCallback m_fullscreenCallback;
     HelpCallback m_helpCallback;
+
+    // Background grid (full-window focus backdrop)
+    bool m_showBackgroundGrid = false;
 };
 
 } // namespace vivid

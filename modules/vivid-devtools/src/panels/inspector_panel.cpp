@@ -61,11 +61,11 @@ struct InspectorPanel::Impl {
 InspectorPanel::InspectorPanel() {
     m_config.id = "inspector";
     m_config.title = "Inspector";
-    m_config.bounds = {0, 0, 280, 600};
-    m_config.dockSide = DockSide::Right;
+    m_config.bounds = {20, 60, 280, 400};   // Floating, positioned on left side (away from minimap)
+    m_config.dockSide = DockSide::None;     // Floating panel
     m_config.visible = false;
     m_config.resizable = true;
-    m_config.draggable = false;
+    m_config.draggable = true;              // Allow dragging
     m_config.minWidth = 200.0f;
     m_config.minHeight = 200.0f;
 }
@@ -83,9 +83,25 @@ void InspectorPanel::shutdown() {
 }
 
 void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                            const FrameInput& input, float scale, const UIStyle& style) {
+                             const FrameInput& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) return;
-    // Style parameter is available for use throughout this function
+
+    // Handle drag/resize like other floating panels
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+    float screenW = static_cast<float>(input.width) / scale;
+    float screenH = static_cast<float>(input.height) / scale;
+    handleDragAndResize(input, screenW, screenH);
+
+    // Get bounds after drag/resize
+    float x = m_config.bounds.x;
+    float y = m_config.bounds.y;
+    float w = m_config.bounds.z;
+    float h = m_config.bounds.w;
+
+    // Render standard panel chrome (background, border, title bar)
+    renderChrome(canvas, x, y, w, h, style);
+
+    // If no operator selected, just show empty panel
     if (!m_impl->selectedOp) {
         m_impl->scrollOffset = 0.0f;
         return;
@@ -99,35 +115,32 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     if (params.empty()) return;
 
     // Font metrics
-    const int labelFont = 0;  // Inter Regular
+    const int labelFont = 0;  // JetBrains Mono 14px
     float lineH = canvas.fontLineHeight(labelFont);
     float ascent = canvas.fontAscent(labelFont);
     if (lineH <= 0) lineH = 20.0f;
     if (ascent <= 0) ascent = 14.0f;
 
-    // Layout values (scaled for HiDPI)
-    float inspectorWidth = bounds.z;
-    const float padding = 12.0f * scale;
-    const float sliderHeight = 20.0f * scale;
-    const float rowHeight = lineH + sliderHeight + 4.0f * scale;
-    const float headerHeight = lineH + padding * 2;
-
-    // Create scaled FrameInput for Gui widgets
-    FrameInput scaledInput = input;
-    scaledInput.mousePos *= scale;
+    // Layout values (in logical pixels)
+    float inspectorWidth = w;
+    const float padding = 12.0f;
+    const float sliderHeight = 20.0f;
+    const float rowHeight = lineH + sliderHeight + 4.0f;
+    const float titleBarHeight = style.titleBarHeight();
 
     // Create Gui instance
-    Gui gui(canvas, scaledInput);
+    Gui gui(canvas, input);
     gui.style().labelPosition = LabelPosition::Above;
     gui.style().valuePosition = ValuePosition::Right;
     gui.style().padding = padding;
     gui.style().widgetHeight = sliderHeight;
-    gui.style().valueWidth = 60.0f * scale;
-    gui.style().cornerRadius = 3.0f * scale;
-    gui.style().widgetBackground = {0.2f, 0.2f, 0.25f, 1.0f};
-    gui.style().sliderFill = {0.4f, 0.6f, 0.9f, 1.0f};
-    gui.style().sliderFillActive = {0.5f, 0.7f, 1.0f, 1.0f};
-    gui.style().textDim = {0.5f, 0.5f, 0.55f, 1.0f};
+    gui.style().valueWidth = 60.0f;
+    gui.style().cornerRadius = style.sliderCornerRadius();
+    gui.style().widgetBackground = style.sliderBg;
+    gui.style().sliderFill = style.sliderFill;
+    gui.style().sliderFillActive = style.sliderActive;
+    gui.style().text = style.textPrimary;
+    gui.style().textDim = style.textDim;
 
     // Calculate total content height
     float totalRowsHeight = 0;
@@ -155,44 +168,28 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 break;
         }
     }
+
+    // Content area starts below the title bar
+    float contentY = y + titleBarHeight;
+    float contentAreaHeight = h - titleBarHeight;
     m_impl->contentHeight = totalRowsHeight + padding * 2;
 
-    // Panel position
-    float panelX = bounds.x;
-    float panelY = bounds.y;
-    float panelHeight = bounds.w;
-    float contentAreaHeight = panelHeight - headerHeight;
-
     // Handle scroll
-    glm::vec2 mousePos = input.mousePos * scale;
-    bool mouseInPanel = mousePos.x >= panelX && mousePos.x <= panelX + inspectorWidth &&
-                        mousePos.y >= panelY && mousePos.y <= panelY + panelHeight;
+    glm::vec2 mousePos = input.mousePos;
+    bool mouseInPanel = mousePos.x >= x && mousePos.x <= x + w &&
+                        mousePos.y >= y && mousePos.y <= y + h;
 
     if (mouseInPanel && input.scroll.y != 0.0f) {
-        m_impl->scrollOffset -= input.scroll.y * 30.0f * scale;
+        m_impl->scrollOffset -= input.scroll.y * 30.0f;
         float maxScroll = std::max(0.0f, m_impl->contentHeight - contentAreaHeight);
         m_impl->scrollOffset = std::max(0.0f, std::min(m_impl->scrollOffset, maxScroll));
     }
 
-    // Colors
-    glm::vec4 bgColor = {0.12f, 0.12f, 0.15f, 0.95f};
-    glm::vec4 headerBg = {0.16f, 0.16f, 0.2f, 1.0f};
-    glm::vec4 borderColor = {0.3f, 0.3f, 0.35f, 1.0f};
-    glm::vec4 titleColor = {0.5f, 0.8f, 1.0f, 1.0f};
-
-    // Draw panel background
-    canvas.setLayer(UILayer::Panels - 1);
-    float cornerRadius = 6.0f * scale;
-    canvas.fillRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, bgColor);
-    canvas.strokeRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, 1.0f * scale, borderColor);
-
-    // Header
-    canvas.fillRoundedRectTop(panelX, panelY, inspectorWidth, headerHeight, cornerRadius, headerBg);
+    // Draw operator name in content area header
+    glm::vec4 titleColor = style.textTitle;
     std::string headerTitle = op->name() + " (" + title + ")";
-    canvas.text(headerTitle, panelX + padding, panelY + padding + ascent, titleColor, labelFont);
-
-    // Content layer
-    canvas.setLayer(UILayer::Panels);
+    canvas.text(headerTitle, x + padding, contentY + padding + ascent, titleColor, labelFont);
+    contentY += lineH + padding;
 
     // Mouse state
     bool mouseDown = input.mouseDown[0];
@@ -201,16 +198,16 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     lastMouseDown = mouseDown;
 
     // Visible content bounds
-    float visibleTop = panelY + headerHeight;
-    float visibleBottom = panelY + panelHeight;
+    float visibleTop = contentY;
+    float visibleBottom = y + h;
 
     // Content area with scroll
-    float contentY = panelY + headerHeight + padding - m_impl->scrollOffset;
-    float contentAreaX = panelX + padding;
+    float scrolledY = contentY - m_impl->scrollOffset;
+    float contentAreaX = x + padding;
     float contentAreaW = inspectorWidth - padding * 2;
 
-    gui.beginArea(contentAreaX, visibleTop, contentAreaW, contentAreaHeight);
-    canvas.setLayerClipRect(UILayer::Panels, panelX, visibleTop, inspectorWidth, contentAreaHeight);
+    // Note: gui.beginArea() already sets up clipping internally
+    gui.beginArea(contentAreaX, visibleTop, contentAreaW, visibleBottom - visibleTop);
 
     for (const auto& p : params) {
         float value[4] = {0};
@@ -244,12 +241,12 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
         // Handle Enum type
         if (p.type == ParamType::Enum) {
-            float y = contentY;
-            float itemBottom = y + rowHeight;
-            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+            float itemY = scrolledY;
+            float itemBottom = itemY + rowHeight;
+            bool isVisible = (itemBottom > visibleTop) && (itemY < visibleBottom);
 
             if (isVisible && !p.enumLabels.empty()) {
-                gui.setCursorY(y);
+                gui.setCursorY(itemY);
                 gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
@@ -270,18 +267,18 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 gui.popId();
             }
 
-            contentY += rowHeight;
+            scrolledY += rowHeight;
             continue;
         }
 
         // Handle DeviceList type
         if (p.type == ParamType::DeviceList) {
-            float y = contentY;
-            float itemBottom = y + rowHeight;
-            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+            float itemY = scrolledY;
+            float itemBottom = itemY + rowHeight;
+            bool isVisible = (itemBottom > visibleTop) && (itemY < visibleBottom);
 
             if (isVisible && p.deviceListProvider) {
-                gui.setCursorY(y);
+                gui.setCursorY(itemY);
                 gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
@@ -308,18 +305,18 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 gui.popId();
             }
 
-            contentY += rowHeight;
+            scrolledY += rowHeight;
             continue;
         }
 
         // Handle Color type
         if (p.type == ParamType::Color) {
-            float y = contentY;
-            float itemBottom = y + rowHeight;
-            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+            float itemY = scrolledY;
+            float itemBottom = itemY + rowHeight;
+            bool isVisible = (itemBottom > visibleTop) && (itemY < visibleBottom);
 
             if (isVisible) {
-                gui.setCursorY(y);
+                gui.setCursorY(itemY);
                 gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
@@ -376,26 +373,26 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 gui.popId();
             }
 
-            float swatchHeight = sliderHeight + lineH + 8.0f * scale;
+            float swatchHeight = sliderHeight + lineH + 8.0f;
             bool isExpanded = m_impl->colorPicker.expanded &&
                              m_impl->colorPicker.operatorName == title &&
                              m_impl->colorPicker.paramName == p.name;
-            contentY += swatchHeight;
+            scrolledY += swatchHeight;
             if (isExpanded) {
-                contentY += 4 * rowHeight;
+                scrolledY += 4 * rowHeight;
             }
             continue;
         }
 
         // Handle ADSR type
         if (p.type == ParamType::ADSR) {
-            float y = contentY;
+            float itemY = scrolledY;
             float adsrHeight = rowHeight * 4;
-            float itemBottom = y + adsrHeight;
-            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+            float itemBottom = itemY + adsrHeight;
+            bool isVisible = (itemBottom > visibleTop) && (itemY < visibleBottom);
 
             if (isVisible) {
-                gui.setCursorY(y);
+                gui.setCursorY(itemY);
                 gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
@@ -438,18 +435,18 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 gui.popId();
             }
 
-            contentY += adsrHeight;
+            scrolledY += adsrHeight;
             continue;
         }
 
         // Simple params (Float/Int/Bool)
         if (componentCount == 1) {
-            float y = contentY;
-            float itemBottom = y + rowHeight;
-            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+            float itemY = scrolledY;
+            float itemBottom = itemY + rowHeight;
+            bool isVisible = (itemBottom > visibleTop) && (itemY < visibleBottom);
 
             if (isVisible) {
-                gui.setCursorY(y);
+                gui.setCursorY(itemY);
                 gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
@@ -486,19 +483,19 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 gui.popId();
             }
 
-            contentY += rowHeight;
+            scrolledY += rowHeight;
             continue;
         }
 
         // Vec2 params - XY pad
         if (p.type == ParamType::Vec2) {
-            float y = contentY;
+            float itemY = scrolledY;
             float padHeight = rowHeight * 2.5f;
-            float itemBottom = y + padHeight;
-            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+            float itemBottom = itemY + padHeight;
+            bool isVisible = (itemBottom > visibleTop) && (itemY < visibleBottom);
 
             if (isVisible) {
-                gui.setCursorY(y);
+                gui.setCursorY(itemY);
                 gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
@@ -536,19 +533,19 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 gui.popId();
             }
 
-            contentY += padHeight;
+            scrolledY += padHeight;
             continue;
         }
 
         // Vec3 params - compact row
         if (p.type == ParamType::Vec3) {
-            float y = contentY;
+            float itemY = scrolledY;
             float rowH = rowHeight * 2.0f;
-            float itemBottom = y + rowH;
-            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+            float itemBottom = itemY + rowH;
+            bool isVisible = (itemBottom > visibleTop) && (itemY < visibleBottom);
 
             if (isVisible) {
-                gui.setCursorY(y);
+                gui.setCursorY(itemY);
                 gui.pushId(title.c_str());
                 gui.pushId(p.name.c_str());
 
@@ -586,7 +583,7 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 gui.popId();
             }
 
-            contentY += rowH;
+            scrolledY += rowH;
             continue;
         }
 
@@ -595,12 +592,12 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         gui.pushId(p.name.c_str());
 
         for (int c = 0; c < componentCount; ++c) {
-            float y = contentY;
-            float itemBottom = y + rowHeight;
-            bool isVisible = (itemBottom > visibleTop) && (y < visibleBottom);
+            float itemY = scrolledY;
+            float itemBottom = itemY + rowHeight;
+            bool isVisible = (itemBottom > visibleTop) && (itemY < visibleBottom);
 
             if (isVisible) {
-                gui.setCursorY(y);
+                gui.setCursorY(itemY);
                 gui.pushId(std::to_string(c).c_str());
 
                 std::string label = p.name + "." + componentLabels[c];
@@ -638,7 +635,7 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 gui.popId();
             }
 
-            contentY += rowHeight;
+            scrolledY += rowHeight;
         }
 
         gui.popId();

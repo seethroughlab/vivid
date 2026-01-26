@@ -204,6 +204,47 @@ void PreferencesPanel::renderAppearanceTab(OverlayCanvas& canvas, const glm::vec
             y += swatchSize + 28;
         }
     }
+
+    // Skip past color swatches
+    y += swatchSize + 32;
+
+    // Corner Radius section
+    canvas.text("Corner Radius", x, y + 16, style.textTitle, 0);
+    y += 28;
+
+    auto& prefs = Preferences::instance();
+    float sliderW = w - 60;  // Leave room for value label
+
+    // Panel corner radius slider
+    float panelRadius = prefs.panelCornerRadius();
+    if (renderSlider(canvas, "Panels", x, y, sliderW, kSliderHeight, style, input,
+                     &panelRadius, 0.0f, 12.0f)) {
+        prefs.setPanelCornerRadius(panelRadius);
+    }
+    // Value label
+    char valBuf[16];
+    snprintf(valBuf, sizeof(valBuf), "%.0f", panelRadius);
+    canvas.text(valBuf, x + sliderW + 8, y + kSliderHeight - 4, style.textDim, 0);
+    y += kSliderHeight + 8;
+
+    // Button corner radius slider
+    float buttonRadius = prefs.buttonCornerRadius();
+    if (renderSlider(canvas, "Buttons", x, y, sliderW, kSliderHeight, style, input,
+                     &buttonRadius, 0.0f, 8.0f)) {
+        prefs.setButtonCornerRadius(buttonRadius);
+    }
+    snprintf(valBuf, sizeof(valBuf), "%.0f", buttonRadius);
+    canvas.text(valBuf, x + sliderW + 8, y + kSliderHeight - 4, style.textDim, 0);
+    y += kSliderHeight + 8;
+
+    // Slider corner radius slider
+    float sliderRadius = prefs.sliderCornerRadius();
+    if (renderSlider(canvas, "Sliders", x, y, sliderW, kSliderHeight, style, input,
+                     &sliderRadius, 0.0f, 6.0f)) {
+        prefs.setSliderCornerRadius(sliderRadius);
+    }
+    snprintf(valBuf, sizeof(valBuf), "%.0f", sliderRadius);
+    canvas.text(valBuf, x + sliderW + 8, y + kSliderHeight - 4, style.textDim, 0);
 }
 
 void PreferencesPanel::renderShortcutsTab(OverlayCanvas& canvas, const glm::vec4& bounds,
@@ -353,12 +394,12 @@ bool PreferencesPanel::renderButton(OverlayCanvas& canvas, const std::string& la
         bg = style.buttonBg;
     }
 
-    float radius = 4.0f;
+    float radius = style.buttonCornerRadius();
     canvas.fillRoundedRect(x, y, w, h, radius, bg);
 
     // Border
     glm::vec4 border = selected ? style.accent : style.buttonBorder;
-    canvas.strokeRoundedRect(x, y, w, h, radius, 1.0f, border);
+    canvas.strokeRoundedRect(x, y, w, h, radius, style.strokeWidth(), border);
 
     // Text (centered)
     float textW = label.length() * 7.0f;
@@ -368,6 +409,80 @@ bool PreferencesPanel::renderButton(OverlayCanvas& canvas, const std::string& la
     canvas.text(label, textX, textY, textColor, 0);
 
     return clicked;
+}
+
+bool PreferencesPanel::renderSlider(OverlayCanvas& canvas, const std::string& label,
+                                     float x, float y, float w, float h,
+                                     const UIStyle& style, const FrameInput& input,
+                                     float* value, float minVal, float maxVal) {
+    bool changed = false;
+    glm::vec2 mousePos = input.mousePos;
+
+    // Label on the left
+    float labelW = 60.0f;
+    canvas.text(label, x, y + h - 6, style.textDim, 0);
+
+    // Slider track
+    float trackX = x + labelW;
+    float trackW = w - labelW;
+    float trackH = 6.0f;
+    float trackY = y + (h - trackH) / 2;
+
+    // Track background
+    float radius = style.sliderCornerRadius();
+    canvas.fillRoundedRect(trackX, trackY, trackW, trackH, radius, style.sliderBg);
+
+    // Calculate fill width
+    float normalizedVal = (*value - minVal) / (maxVal - minVal);
+    normalizedVal = std::max(0.0f, std::min(1.0f, normalizedVal));
+    float fillW = trackW * normalizedVal;
+
+    // Track fill
+    if (fillW > 0) {
+        canvas.fillRoundedRect(trackX, trackY, fillW, trackH, radius, style.sliderFill);
+    }
+
+    // Handle
+    float handleRadius = 8.0f;
+    float handleX = trackX + fillW;
+    float handleY = trackY + trackH / 2;
+
+    bool hovered = mousePos.x >= trackX - handleRadius && mousePos.x <= trackX + trackW + handleRadius &&
+                   mousePos.y >= y && mousePos.y <= y + h;
+
+    // Check for drag start
+    if (hovered && input.mouseDown[0] && !m_lastMouseDown && !m_draggingSlider) {
+        m_draggingSlider = true;
+        m_draggingSliderValue = value;
+        m_draggingSliderMin = minVal;
+        m_draggingSliderMax = maxVal;
+        m_draggingSliderRect = {trackX, trackY, trackW, trackH};
+    }
+
+    // Handle ongoing drag
+    if (m_draggingSlider && m_draggingSliderValue == value) {
+        if (input.mouseDown[0]) {
+            float newNorm = (mousePos.x - trackX) / trackW;
+            newNorm = std::max(0.0f, std::min(1.0f, newNorm));
+            float newVal = minVal + newNorm * (maxVal - minVal);
+            // Round to integer for cleaner values
+            newVal = std::round(newVal);
+            if (newVal != *value) {
+                *value = newVal;
+                changed = true;
+            }
+        } else {
+            m_draggingSlider = false;
+            m_draggingSliderValue = nullptr;
+        }
+    }
+
+    // Draw handle
+    glm::vec4 handleColor = (m_draggingSlider && m_draggingSliderValue == value)
+        ? style.sliderActive : (hovered ? style.accent : style.sliderFill);
+    canvas.fillCircle(handleX, handleY, handleRadius, handleColor, 16);
+
+    return changed;
 }
 
 void PreferencesPanel::renderColorSwatch(OverlayCanvas& canvas, const glm::vec4& color,

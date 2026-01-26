@@ -86,11 +86,6 @@ void update(Context& ctx) {
     entries[0].transform =
         glm::rotate(glm::mat4(1.0f), time * 0.5f, glm::vec3(0, 1, 0)) *
         glm::rotate(glm::mat4(1.0f), time * 0.3f, glm::vec3(1, 0, 0));
-
-    // Fullscreen toggle
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
 }
 
 VIVID_CHAIN(setup, update)

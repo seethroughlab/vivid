@@ -96,11 +96,6 @@ void update(Context& ctx) {
 
     // Highs control bloom intensity
     bloom.intensity = 0.2f + high * 0.6f;
-
-    // Fullscreen toggle
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
 }
 
 VIVID_CHAIN(setup, update)

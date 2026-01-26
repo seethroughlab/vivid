@@ -11,6 +11,8 @@
 using namespace vivid;
 using namespace vivid::effects;
 
+// hey
+
 void setup(Context& ctx) {
     auto& chain = ctx.chain();
 
@@ -47,10 +49,6 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
-
     // EXPERIMENT: Animate parameters
     auto& blur = ctx.chain().get<Blur>("blur");
     blur.radius = 4.0f + sin(ctx.time()) * 4.0f;

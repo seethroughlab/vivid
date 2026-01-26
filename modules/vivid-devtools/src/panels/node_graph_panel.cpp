@@ -133,7 +133,9 @@ struct NodeGraphPanel::Impl {
     }
 };
 
-NodeGraphPanel::NodeGraphPanel() {
+NodeGraphPanel::NodeGraphPanel()
+    : m_impl(std::make_unique<Impl>())
+{
     m_config.id = "nodegraph";
     m_config.title = "";  // No title bar for fill panel
     m_config.bounds = {0, 0, 800, 600};
@@ -152,8 +154,10 @@ NodeGraphPanel::~NodeGraphPanel() {
 }
 
 bool NodeGraphPanel::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
-    m_impl = std::make_unique<Impl>();
     m_impl->ctx = &ctx;
+
+    // Disable NodeGraph's built-in grid (DevTools has its own background grid)
+    m_impl->nodeGraph.style().showGrid = false;
 
     // Set up callbacks
     m_impl->nodeGraph.setDoubleClickCallback([this](int nodeId) {
@@ -179,41 +183,13 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     const auto& operators = ctx.registeredOperators();
     if (operators.empty()) return;
 
-    // Build input for node graph (all coordinates in logical pixels)
-    NodeGraphInput graphInput;
+    // Create a local copy of input with mouse position relative to panel bounds
+    // (NodeGraph renders at 0,0 within the panel area)
+    FrameInput localInput = input;
+    localInput.mousePos = input.mousePos - glm::vec2(bounds.x, bounds.y);
 
-    // Use panel's input ownership to determine if NodeGraph should process input
-    graphInput.inputBlocked = !m_ownsInput;
-
-    // Mouse position relative to panel bounds (for NodeGraph which renders at 0,0)
-    graphInput.mousePos = input.mousePos - glm::vec2(bounds.x, bounds.y);
-    graphInput.mouseDelta = input.mouseDelta;
-    graphInput.scroll = input.scroll;
-    graphInput.mouseDown[0] = input.mouseDown[0];
-    graphInput.mouseDown[1] = input.mouseDown[1];
-    graphInput.mouseDown[2] = input.mouseDown[2];
-    graphInput.mouseClicked[0] = input.mouseClicked[0];
-    graphInput.mouseClicked[1] = input.mouseClicked[1];
-    graphInput.mouseClicked[2] = input.mouseClicked[2];
-    graphInput.mouseReleased[0] = input.mouseReleased[0];
-    graphInput.mouseReleased[1] = input.mouseReleased[1];
-    graphInput.mouseReleased[2] = input.mouseReleased[2];
-    graphInput.keyCtrl = input.keyCtrl;
-    graphInput.keyShift = input.keyShift;
-    graphInput.keyAlt = input.keyAlt;
-    graphInput.keyF = input.isKeyPressed(Key::F);
-    graphInput.key1 = input.isKeyPressed(Key::Num1);
-    graphInput.keyUp = input.isKeyPressed(Key::Up);
-    graphInput.keyDown = input.isKeyPressed(Key::Down);
-    graphInput.keyLeft = input.isKeyPressed(Key::Left);
-    graphInput.keyRight = input.isKeyPressed(Key::Right);
-    graphInput.keyEnter = input.isKeyPressed(Key::Enter);
-    graphInput.keyB = input.isKeyPressed(Key::B);
-    graphInput.keyEscape = input.isKeyPressed(Key::Escape);
-    graphInput.time = input.time;
-
-    // Begin node graph editor (bounds in logical pixels)
-    m_impl->nodeGraph.beginEditor(canvas, bounds.z, bounds.w, graphInput);
+    // Begin node graph editor (uses new simplified API)
+    m_impl->nodeGraph.beginEditor(canvas, bounds.z, bounds.w, localInput, m_ownsInput);
 
     // Add nodes for each operator
     for (size_t i = 0; i < operators.size(); ++i) {

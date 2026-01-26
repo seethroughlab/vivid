@@ -234,7 +234,7 @@ void ConsolePanel::update() {
 }
 
 void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                          const FrameInput& input, float scale, const UIStyle& style) {
+                           const FrameInput& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) {
         m_consumedInput = false;
         m_hovered = false;
@@ -245,12 +245,14 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     m_impl->style = style;
 
     // Handle drag/resize (in logical coordinates)
+    // Compute logical screen dimensions for proper clamping on HiDPI displays
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
     float screenW = static_cast<float>(input.width) / scale;
     float screenH = static_cast<float>(input.height) / scale;
     handleDragAndResize(input, screenW, screenH);
 
-    // Get scaled bounds
-    glm::vec4 scaledBounds = m_config.bounds * scale;
+    // Get bounds
+    glm::vec4 scaledBounds = m_config.bounds;
 
     float x = scaledBounds.x;
     float y = scaledBounds.y;
@@ -263,7 +265,7 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float contentH = h - titleBarHeight;
 
     // Render chrome
-    renderChrome(canvas, x, y, w, h, scale, style);
+    renderChrome(canvas, x, y, w, h, style);
 
     // Get font metrics (monospace font at index 2)
     int fontIndex = 2;
@@ -271,15 +273,15 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float charWidth = canvas.measureText("M", fontIndex);
 
     if (lineHeight <= 0 || charWidth <= 0) {
-        lineHeight = 14.0f * scale;
-        charWidth = 8.0f * scale;
+        lineHeight = 14.0f;
+        charWidth = 8.0f;
     }
 
     m_impl->lineHeight = lineHeight;
     m_impl->charWidth = charWidth;
 
     // Content area
-    float padding = 8 * scale;
+    float padding = 8;
     float contentX = x + padding;
     float contentW = w - padding * 2;
     contentY += padding;
@@ -310,8 +312,8 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     int visibleLineCount = static_cast<int>(contentH / lineHeight) + 2;
 
     // Mouse position for selection
-    float mouseX = input.mousePos.x * scale;
-    float mouseY = input.mousePos.y * scale;
+    float mouseX = input.mousePos.x;
+    float mouseY = input.mousePos.y;
 
     // Handle mouse selection
     bool mouseInContent = mouseX >= contentX && mouseX < contentX + contentW &&
@@ -416,8 +418,8 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Draw scrollbar if content exceeds view
     if (m_impl->maxScroll > 0) {
-        float scrollbarWidth = 8 * scale;
-        float scrollbarX = x + w - scrollbarWidth - 2 * scale;
+        float scrollbarWidth = 8;
+        float scrollbarX = x + w - scrollbarWidth - 2;
         float scrollbarTrackY = contentY;
         float scrollbarTrackH = contentH;
 
@@ -427,7 +429,7 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
         // Thumb
         float thumbRatio = contentH / m_impl->contentHeight;
-        float thumbHeight = std::max(20.0f * scale, scrollbarTrackH * thumbRatio);
+        float thumbHeight = std::max(20.0f, scrollbarTrackH * thumbRatio);
         float thumbY = scrollbarTrackY + (m_impl->scrollOffset / m_impl->maxScroll) * (scrollbarTrackH - thumbHeight);
 
         canvas.fillRect(scrollbarX, thumbY, scrollbarWidth, thumbHeight,

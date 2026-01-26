@@ -205,7 +205,7 @@ void TerminalPanel::update() {
 }
 
 void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                           const FrameInput& input, float scale, const UIStyle& style) {
+                            const FrameInput& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl || !m_impl->vt || !m_impl->screen) {
         m_consumedInput = false;
         m_hovered = false;
@@ -216,17 +216,17 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     m_impl->style = style;
 
     // Handle drag/resize (in logical coordinates)
+    // Compute logical screen dimensions for proper clamping on HiDPI displays
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
     float screenW = static_cast<float>(input.width) / scale;
     float screenH = static_cast<float>(input.height) / scale;
     handleDragAndResize(input, screenW, screenH);
 
-    // Get scaled bounds
-    glm::vec4 scaledBounds = m_config.bounds * scale;
-
-    float x = scaledBounds.x;
-    float y = scaledBounds.y;
-    float w = scaledBounds.z;
-    float h = scaledBounds.w;
+    // Get bounds (already in logical pixels)
+    float x = m_config.bounds.x;
+    float y = m_config.bounds.y;
+    float w = m_config.bounds.z;
+    float h = m_config.bounds.w;
 
     // Panel chrome
     float titleBarHeight = style.titleBarHeight();
@@ -234,7 +234,7 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float contentH = h - titleBarHeight;
 
     // Render chrome
-    renderChrome(canvas, x, y, w, h, scale, style);
+    renderChrome(canvas, x, y, w, h, style);
 
     // Get font metrics (monospace font at index 2)
     int fontIndex = 2;
@@ -242,12 +242,12 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float charWidth = canvas.measureText("M", fontIndex);
 
     if (lineHeight <= 0 || charWidth <= 0) {
-        lineHeight = 16.0f * scale;
-        charWidth = 8.0f * scale;
+        lineHeight = 16.0f;
+        charWidth = 8.0f;
     }
 
     // Content area
-    float padding = 4 * scale;
+    float padding = 4.0f;
     float contentX = x + padding;
     float contentW = w - padding * 2;
     contentY += padding;

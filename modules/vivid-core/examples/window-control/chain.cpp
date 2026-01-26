@@ -78,7 +78,7 @@ void update(Context& ctx) {
     // =========================================================================
 
     // F: Toggle fullscreen
-    if (ctx.key(GLFW_KEY_F).pressed) {
+    if (ctx.key(GLFW_KEY_F).pressed && !ctx.superHeld()) {
         static bool isFullscreen = false;
         isFullscreen = !isFullscreen;
         ctx.fullscreen(isFullscreen);

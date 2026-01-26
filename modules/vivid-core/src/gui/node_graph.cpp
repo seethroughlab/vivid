@@ -11,6 +11,37 @@ namespace vivid {
 // Frame Lifecycle
 // -------------------------------------------------------------------------
 
+void NodeGraph::beginEditor(OverlayCanvas& canvas, float width, float height,
+                            const FrameInput& input, bool inputEnabled) {
+    // Convert FrameInput to internal NodeGraphInput
+    NodeGraphInput graphInput;
+    graphInput.mousePos = input.mousePos;
+    graphInput.mouseDelta = input.mouseDelta;
+    graphInput.scroll = input.scroll;
+    for (int i = 0; i < 3; i++) {
+        graphInput.mouseDown[i] = input.mouseDown[i];
+        graphInput.mouseClicked[i] = input.mouseClicked[i];
+        graphInput.mouseReleased[i] = input.mouseReleased[i];
+    }
+    graphInput.keyCtrl = input.keyCtrl;
+    graphInput.keyShift = input.keyShift;
+    graphInput.keyAlt = input.keyAlt;
+    graphInput.time = input.time;
+    graphInput.keyF = input.isKeyPressed(Key::F);
+    graphInput.key1 = input.isKeyPressed(Key::Num1);
+    graphInput.keyUp = input.isKeyPressed(Key::Up);
+    graphInput.keyDown = input.isKeyPressed(Key::Down);
+    graphInput.keyLeft = input.isKeyPressed(Key::Left);
+    graphInput.keyRight = input.isKeyPressed(Key::Right);
+    graphInput.keyEnter = input.isKeyPressed(Key::Enter);
+    graphInput.keyB = input.isKeyPressed(Key::B);
+    graphInput.keyEscape = input.isKeyPressed(Key::Escape);
+    graphInput.inputBlocked = !inputEnabled;
+
+    // Call the legacy implementation
+    beginEditor(canvas, width, height, graphInput);
+}
+
 void NodeGraph::beginEditor(OverlayCanvas& canvas, float width, float height, const NodeGraphInput& input) {
     m_canvas = &canvas;
     m_width = width;
@@ -770,10 +801,10 @@ void NodeGraph::renderNode(NodeState& node) {
         float contentY = pos.y + titleH + padding * 0.5f;
         float contentW = w - padding * 2;
         float contentH = contentAreaH - padding;
-        // Set content scale so VizDrawList can scale text appropriately
-        m_canvas->setContentScale(m_zoom);
+        // Set viz scale so VizDrawList can scale text appropriately
+        // (uses separate vizScale to not interfere with HiDPI contentScale)
+        m_canvas->setVizScale(m_zoom);
         node.contentCallback(*m_canvas, contentX, contentY, contentW, contentH);
-        m_canvas->setContentScale(1.0f);  // Reset after callback
         m_canvas->setLayer(UILayer::Nodes);  // Switch back for pins
     }
 

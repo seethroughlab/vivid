@@ -197,7 +197,7 @@ void EditorPanel::shutdown() {
 }
 
 void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                         const FrameInput& input, float scale, const UIStyle& style) {
+                         const FrameInput& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) {
         m_consumedInput = false;
         m_hovered = false;
@@ -208,12 +208,14 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     m_impl->style = style;
 
     // Handle drag/resize (in logical coordinates)
+    // Compute logical screen dimensions for proper clamping on HiDPI displays
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
     float screenW = static_cast<float>(input.width) / scale;
     float screenH = static_cast<float>(input.height) / scale;
     handleDragAndResize(input, screenW, screenH);
 
-    // Get scaled bounds
-    glm::vec4 scaledBounds = m_config.bounds * scale;
+    // Get bounds (already in logical coordinates)
+    glm::vec4 scaledBounds = m_config.bounds;
 
     float x = scaledBounds.x;
     float y = scaledBounds.y;
@@ -226,7 +228,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float contentH = h - titleBarHeight;
 
     // Render chrome
-    renderChrome(canvas, x, y, w, h, scale, style);
+    renderChrome(canvas, x, y, w, h, style);
 
     // Get font metrics (monospace font at index 2)
     int fontIndex = 2;
@@ -234,8 +236,8 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float charWidth = canvas.measureText("M", fontIndex);
 
     if (lineHeight <= 0 || charWidth <= 0) {
-        lineHeight = 16.0f * scale;
-        charWidth = 8.0f * scale;
+        lineHeight = 16.0f;
+        charWidth = 8.0f;
     }
 
     // Store metrics for mouse handling
@@ -243,7 +245,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     m_impl->lastCharWidth = charWidth;
 
     // Content area
-    float padding = 4 * scale;
+    float padding = 4;
     float contentX = x + padding;
     float contentW = w - padding * 2;
     contentY += padding;
@@ -422,16 +424,16 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     if (m_focused && m_impl->cursorLine >= startLine && m_impl->cursorLine < endLine) {
         float cursorX = contentX + gutterWidth + charWidth + m_impl->cursorCol * charWidth;
         float cursorY = contentY + (m_impl->cursorLine - startLine) * lineHeight;
-        canvas.fillRect(cursorX, cursorY, 2 * scale, lineHeight, style.terminalCursor);
+        canvas.fillRect(cursorX, cursorY, 2, lineHeight, style.terminalCursor);
     }
 
     canvas.endClipRect();
 
     // Error message at bottom
     if (!m_impl->errorMessage.empty()) {
-        float errorY = y + h - lineHeight - 4 * scale;
-        canvas.fillRect(x, errorY, w, lineHeight + 4 * scale, style.editorErrorLine);
-        canvas.text(m_impl->errorMessage, x + 8 * scale, errorY + lineHeight - 2, style.error, fontIndex);
+        float errorY = y + h - lineHeight - 4;
+        canvas.fillRect(x, errorY, w, lineHeight + 4, style.editorErrorLine);
+        canvas.text(m_impl->errorMessage, x + 8, errorY + lineHeight - 2, style.error, fontIndex);
     }
 }
 
@@ -441,6 +443,32 @@ bool EditorPanel::handleInput(const FrameInput& input) {
     // Handle scroll
     if (input.scroll.y != 0) {
         m_impl->scroll(static_cast<int>(-input.scroll.y * 3));
+        return true;
+    }
+
+    // Get stored bounds and metrics from render pass
+    glm::vec4 contentBounds = m_impl->lastBounds;
+    float lineHeight = m_impl->lastLineHeight;
+    float charWidth = m_impl->lastCharWidth;
+
+    // Check if mouse is in content area
+    bool mouseInContent = input.mousePos.x >= contentBounds.x &&
+                          input.mousePos.x <= contentBounds.x + contentBounds.z &&
+                          input.mousePos.y >= contentBounds.y &&
+                          input.mousePos.y <= contentBounds.y + contentBounds.w;
+
+    // Handle mouse selection
+    if (mouseInContent && input.mouseClicked[0]) {
+        // Start selection on click
+        onMouseClick(input.mousePos.x, input.mousePos.y, contentBounds, lineHeight, charWidth);
+        return true;
+    } else if (m_dragging && input.mouseDown[0]) {
+        // Continue selection while dragging
+        onMouseDrag(input.mousePos.x, input.mousePos.y);
+        return true;
+    } else if (m_dragging && !input.mouseDown[0]) {
+        // End selection on release
+        onMouseUp();
         return true;
     }
 

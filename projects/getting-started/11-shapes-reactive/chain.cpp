@@ -138,11 +138,6 @@ void update(Context& ctx) {
 
     // Bloom intensity from overall energy
     bloom.intensity = 0.8f + (bass + mid + high) * 0.5f;
-
-    // Fullscreen toggle
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
 }
 
 VIVID_CHAIN(setup, update)

@@ -4,7 +4,7 @@
 // Controls:
 //   Mouse drag - Orbit camera
 //   Scroll     - Zoom in/out
-//   F          - Toggle fullscreen
+//   Cmd/Ctrl+F - Toggle fullscreen
 //   TAB        - Toggle chain visualizer
 //   ESC        - Quit
 
@@ -103,11 +103,6 @@ void setup(Context& ctx) {
 
 void update(Context& ctx) {
     float dt = static_cast<float>(ctx.dt());
-
-    // Toggle fullscreen with F key
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
 
     // Interactive camera: drag to orbit, scroll to zoom
     if (ctx.mouseButton(0).held) {

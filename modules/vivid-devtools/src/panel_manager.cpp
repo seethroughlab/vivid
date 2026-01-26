@@ -70,6 +70,28 @@ void PanelManager::render(OverlayCanvas& canvas, const FrameInput& input,
     // Track if any panel consumed input
     m_consumedInput = false;
 
+    // Debug: log mode once
+    static bool loggedMode = false;
+    if (!loggedMode) {
+        std::cerr << "[PanelManager] Layout mode: " << m_layoutMode
+                  << ", floating panels: " << m_floatingZOrder.size()
+                  << ", contentScale: " << input.contentScale
+                  << ", screen: " << screenWidth << "x" << screenHeight << "\n";
+        for (const auto& id : m_floatingZOrder) {
+            std::cerr << "  - " << id << "\n";
+        }
+        loggedMode = true;
+    }
+
+    // Debug: verify z-order integrity
+    if (input.mouseClicked[0]) {
+        std::cerr << "[PanelManager] Z-order check: ";
+        for (const auto& id : m_floatingZOrder) {
+            std::cerr << id << " ";
+        }
+        std::cerr << "\n";
+    }
+
     if (m_layoutMode && m_layoutRoot) {
         renderLayoutMode(canvas, input, scale, style);
     } else {
@@ -90,32 +112,41 @@ void PanelManager::render(OverlayCanvas& canvas, const FrameInput& input,
 
     // If a panel was clicked and it's not the focused one, change focus
     // Check panels in z-order (front to back) to only process the topmost one
-    static bool wasMouseDown = false;
-    bool mouseClicked = input.mouseDown[0] && !wasMouseDown;
-    wasMouseDown = input.mouseDown[0];
+    // Use mouseClicked from FrameInput (computed once per frame in app.cpp)
+    if (input.mouseClicked[0]) {
+        // Find which panel to focus (don't modify z-order while searching)
+        std::string panelToFocus;
 
-    if (mouseClicked) {
         // Check floating panels first (in reverse z-order = front to back)
-        for (auto it = m_floatingZOrder.rbegin(); it != m_floatingZOrder.rend(); ++it) {
+        // Make a copy to avoid iterator invalidation
+        std::vector<std::string> floatingCopy = m_floatingZOrder;
+        for (auto it = floatingCopy.rbegin(); it != floatingCopy.rend(); ++it) {
             Panel* panel = getPanel(*it);
             if (panel && panel->isVisible() && panel->isHovered()) {
                 if (*it != m_focusedPanelId) {
-                    setFocus(*it);
+                    panelToFocus = *it;
                 }
-                return;  // Found the topmost panel, don't check others
+                break;  // Found the topmost panel, don't check others
             }
         }
 
-        // Then check docked panels
-        for (auto& panel : m_panels) {
-            if (panel->config().dockSide == DockSide::None) continue;  // Skip floating
-            if (panel->isVisible() && panel->isHovered()) {
-                const std::string& id = panel->config().id;
-                if (id != m_focusedPanelId) {
-                    setFocus(id);
+        // If no floating panel, check docked panels
+        if (panelToFocus.empty()) {
+            for (auto& panel : m_panels) {
+                if (panel->config().dockSide == DockSide::None) continue;  // Skip floating
+                if (panel->isVisible() && panel->isHovered()) {
+                    const std::string& id = panel->config().id;
+                    if (id != m_focusedPanelId) {
+                        panelToFocus = id;
+                    }
+                    break;
                 }
-                break;
             }
+        }
+
+        // Now set focus (safe to modify z-order)
+        if (!panelToFocus.empty()) {
+            setFocus(panelToFocus);
         }
     }
 }
@@ -165,6 +196,11 @@ void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input
     // Pre-pass: determine which panel owns input this frame
     std::string inputTarget = determineInputTarget(input);
 
+    // Debug: log click detection
+    if (input.mouseClicked[0]) {
+        std::cerr << "[PanelManager] Mouse clicked! inputTarget=" << (inputTarget.empty() ? "(none)" : inputTarget) << "\n";
+    }
+
     // Set interaction and ownership flags on all panels
     for (auto& panel : m_panels) {
         const std::string& id = panel->config().id;
@@ -195,6 +231,12 @@ void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input
     canvas.setLayer(UILayer::Panels);
     for (auto* panel : dockedPanels) {
         panel->render(canvas, panel->bounds(), input, style);
+        // Call handleInput for panels that own input or are interacting
+        if (panel->ownsInput() || panel->isInteracting()) {
+            if (panel->handleInput(input)) {
+                m_consumedInput = true;
+            }
+        }
         if (panel->consumedInput()) {
             m_consumedInput = true;
         }
@@ -205,10 +247,25 @@ void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input
     int floatingLayer = UILayer::FloatingPanels;
     for (const std::string& id : m_floatingZOrder) {
         Panel* panel = getPanel(id);
-        if (!panel || !panel->isVisible()) continue;
+        if (!panel) {
+            std::cerr << "[PanelManager] Floating panel '" << id << "' not found!\n";
+            continue;
+        }
+        if (!panel->isVisible()) {
+            if (input.mouseClicked[0]) {
+                std::cerr << "[PanelManager] Floating panel '" << id << "' is NOT visible\n";
+            }
+            continue;
+        }
 
         canvas.setLayer(floatingLayer);
         panel->render(canvas, panel->bounds(), input, style);
+        // Call handleInput for panels that own input or are interacting
+        if (panel->ownsInput() || panel->isInteracting()) {
+            if (panel->handleInput(input)) {
+                m_consumedInput = true;
+            }
+        }
         if (panel->consumedInput()) {
             m_consumedInput = true;
         }
@@ -226,6 +283,17 @@ void PanelManager::renderLayoutMode(OverlayCanvas& canvas, const FrameInput& inp
     // Update layout tree bounds (logical pixels)
     m_layoutRoot->setBounds({0, 0, m_screenWidth, m_screenHeight});
     m_layoutRoot->updateLayout();
+
+    // Set interaction flags on all panels in layout mode
+    // In layout mode, the layout nodes handle determining which panel owns input
+    std::string inputTarget = determineInputTarget(input);
+    for (auto& panel : m_panels) {
+        const std::string& id = panel->config().id;
+        bool ownsInput = (id == inputTarget);
+        panel->setInputOwnership(ownsInput);
+        bool canStart = ownsInput || panel->isInteracting();
+        panel->setCanStartInteraction(canStart);
+    }
 
     // Handle input through layout tree
     if (m_layoutRoot->handleInput(input)) {
@@ -282,10 +350,8 @@ const Panel* PanelManager::getPanel(const std::string& id) const {
 void PanelManager::showPanel(const std::string& id) {
     if (Panel* p = getPanel(id)) {
         p->setVisible(true);
-        // Bring floating panels to front when shown
-        if (p->config().dockSide == DockSide::None) {
-            bringToFront(id);
-        }
+        // Focus and bring to front when shown
+        setFocus(id);
     }
 }
 
@@ -299,9 +365,9 @@ void PanelManager::togglePanel(const std::string& id) {
     if (Panel* p = getPanel(id)) {
         bool wasVisible = p->isVisible();
         p->toggleVisible();
-        // Bring floating panels to front when becoming visible
-        if (!wasVisible && p->isVisible() && p->config().dockSide == DockSide::None) {
-            bringToFront(id);
+        // Focus and bring to front when becoming visible
+        if (!wasVisible && p->isVisible()) {
+            setFocus(id);
         }
     }
 }

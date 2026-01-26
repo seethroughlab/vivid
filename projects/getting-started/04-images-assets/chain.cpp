@@ -48,10 +48,6 @@ void setup(Context& ctx) {
 }
 
 void update(Context& ctx) {
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
-
     // EXPERIMENT: Animate the hue shift
     // auto& hsv = ctx.chain().get<HSV>("hsv");
     // hsv.hueShift = fmod(ctx.time() * 0.1f, 1.0f);

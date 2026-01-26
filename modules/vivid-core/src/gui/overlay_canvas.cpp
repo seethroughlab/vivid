@@ -316,9 +316,26 @@ FontProvider* OverlayCanvas::getFont(int index) const {
     return m_fonts[index];
 }
 
+void OverlayCanvas::begin(const FrameInput& input) {
+    // FrameInput.width/height are physical pixels
+    // Compute logical dimensions from content scale
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+    m_contentScale = scale;  // Store for HiDPI text rendering
+    int logicalWidth = static_cast<int>(input.width / scale);
+    int logicalHeight = static_cast<int>(input.height / scale);
+    begin(logicalWidth, logicalHeight, input.width, input.height);
+}
+
 void OverlayCanvas::begin(int width, int height) {
-    m_width = width;
-    m_height = height;
+    // When only logical dimensions provided, use them for both
+    begin(width, height, width, height);
+}
+
+void OverlayCanvas::begin(int logicalWidth, int logicalHeight, int physicalWidth, int physicalHeight) {
+    m_width = logicalWidth;
+    m_height = logicalHeight;
+    m_physicalWidth = physicalWidth;
+    m_physicalHeight = physicalHeight;
 
     // Clear all per-layer batched geometry
     m_layers.clear();
@@ -538,26 +555,30 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
     // Apply scissor rects per segment for clipping
     // =======================================================================
 
-    // Helper to apply scissor rect
+    // Scale factors for converting logical coordinates to physical pixels
+    float scaleX = (m_width > 0) ? static_cast<float>(m_physicalWidth) / m_width : 1.0f;
+    float scaleY = (m_height > 0) ? static_cast<float>(m_physicalHeight) / m_height : 1.0f;
+
+    // Helper to apply scissor rect (converts from logical to physical coordinates)
     auto applyScissor = [&](const CombinedSegment& seg) {
         if (seg.hasClip) {
-            // Clamp to viewport bounds and ensure positive dimensions
-            uint32_t x = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.x));
-            uint32_t y = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.y));
-            uint32_t w = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.w));
-            uint32_t h = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.h));
-            // Clamp to viewport
-            if (x + w > static_cast<uint32_t>(m_width)) w = static_cast<uint32_t>(m_width) - x;
-            if (y + h > static_cast<uint32_t>(m_height)) h = static_cast<uint32_t>(m_height) - y;
+            // Scale from logical to physical coordinates
+            uint32_t x = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.x * scaleX));
+            uint32_t y = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.y * scaleY));
+            uint32_t w = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.w * scaleX));
+            uint32_t h = static_cast<uint32_t>(std::max(0.0f, seg.clipRect.h * scaleY));
+            // Clamp to physical viewport
+            if (x + w > static_cast<uint32_t>(m_physicalWidth)) w = static_cast<uint32_t>(m_physicalWidth) - x;
+            if (y + h > static_cast<uint32_t>(m_physicalHeight)) h = static_cast<uint32_t>(m_physicalHeight) - y;
             // Only set scissor if we have valid dimensions
             if (w > 0 && h > 0) {
                 wgpuRenderPassEncoderSetScissorRect(pass, x, y, w, h);
             }
         } else {
-            // Reset to full viewport
+            // Reset to full physical viewport
             wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
-                                                 static_cast<uint32_t>(m_width),
-                                                 static_cast<uint32_t>(m_height));
+                                                 static_cast<uint32_t>(m_physicalWidth),
+                                                 static_cast<uint32_t>(m_physicalHeight));
         }
     };
 
@@ -571,20 +592,22 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
         bool hasLayerClip = (layerClipIt != m_layerClipRects.end());
         if (hasLayerClip) {
             const auto& clip = layerClipIt->second;
-            uint32_t x = static_cast<uint32_t>(std::max(0.0f, clip.x));
-            uint32_t y = static_cast<uint32_t>(std::max(0.0f, clip.y));
-            uint32_t w = static_cast<uint32_t>(std::max(0.0f, clip.w));
-            uint32_t h = static_cast<uint32_t>(std::max(0.0f, clip.h));
-            if (x + w > static_cast<uint32_t>(m_width)) w = static_cast<uint32_t>(m_width) - x;
-            if (y + h > static_cast<uint32_t>(m_height)) h = static_cast<uint32_t>(m_height) - y;
+            // Scale from logical to physical coordinates
+            uint32_t x = static_cast<uint32_t>(std::max(0.0f, clip.x * scaleX));
+            uint32_t y = static_cast<uint32_t>(std::max(0.0f, clip.y * scaleY));
+            uint32_t w = static_cast<uint32_t>(std::max(0.0f, clip.w * scaleX));
+            uint32_t h = static_cast<uint32_t>(std::max(0.0f, clip.h * scaleY));
+            // Clamp to physical viewport
+            if (x + w > static_cast<uint32_t>(m_physicalWidth)) w = static_cast<uint32_t>(m_physicalWidth) - x;
+            if (y + h > static_cast<uint32_t>(m_physicalHeight)) h = static_cast<uint32_t>(m_physicalHeight) - y;
             if (w > 0 && h > 0) {
                 wgpuRenderPassEncoderSetScissorRect(pass, x, y, w, h);
             }
         } else {
-            // Reset to full viewport for layers without clip
+            // Reset to full physical viewport for layers without clip
             wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
-                                                 static_cast<uint32_t>(m_width),
-                                                 static_cast<uint32_t>(m_height));
+                                                 static_cast<uint32_t>(m_physicalWidth),
+                                                 static_cast<uint32_t>(m_physicalHeight));
         }
 
         // 1. Render solid segments for this layer
@@ -611,8 +634,8 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
             // Only reset scissor if no layer clip (layer clip is already set above)
             if (!hasLayerClip) {
                 wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
-                                                     static_cast<uint32_t>(m_width),
-                                                     static_cast<uint32_t>(m_height));
+                                                     static_cast<uint32_t>(m_physicalWidth),
+                                                     static_cast<uint32_t>(m_physicalHeight));
             }
 
             const auto& rects = texIt->second;
@@ -712,10 +735,10 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
         }
     }
 
-    // Reset scissor to full viewport at the end
+    // Reset scissor to full physical viewport at the end
     wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
-                                         static_cast<uint32_t>(m_width),
-                                         static_cast<uint32_t>(m_height));
+                                         static_cast<uint32_t>(m_physicalWidth),
+                                         static_cast<uint32_t>(m_physicalHeight));
 }
 
 // -------------------------------------------------------------------------
@@ -1180,7 +1203,10 @@ void OverlayCanvas::fillRoundedRectTop(float x, float y, float w, float h, float
 // -------------------------------------------------------------------------
 
 void OverlayCanvas::text(const std::string& str, float x, float y, const glm::vec4& color, int fontIndex) {
-    textScaled(str, x, y, color, 1.0f, fontIndex);
+    // In HiDPI text mode, fonts are loaded at physical pixel size, so we need
+    // to divide by contentScale to get correct logical pixel size
+    float scale = m_hiDPITextMode && m_contentScale > 0.0f ? 1.0f / m_contentScale : 1.0f;
+    textScaled(str, x, y, color, scale, fontIndex);
 }
 
 void OverlayCanvas::textScaled(const std::string& str, float x, float y, const glm::vec4& color, float scale, int fontIndex) {
@@ -1292,11 +1318,38 @@ float OverlayCanvas::measureText(const std::string& str, int fontIndex) const {
         prevChar = c;
     }
 
+    // In HiDPI text mode, divide by contentScale to get logical pixel width
+    if (m_hiDPITextMode && m_contentScale > 0.0f) {
+        width /= m_contentScale;
+    }
+
     return width;
 }
 
 float OverlayCanvas::measureTextScaled(const std::string& str, float scale, int fontIndex) const {
     return measureText(str, fontIndex) * scale;
+}
+
+void OverlayCanvas::textHiDPI(const std::string& str, float x, float y, const glm::vec4& color, int fontIndex) {
+    // For fonts loaded at physical pixel size, divide by contentScale to get logical size
+    // This cancels out the canvas scaling, resulting in crisp native-resolution text
+    float invScale = m_contentScale > 0.0f ? 1.0f / m_contentScale : 1.0f;
+    textScaled(str, x, y, color, invScale, fontIndex);
+}
+
+float OverlayCanvas::measureTextHiDPI(const std::string& str, int fontIndex) const {
+    float invScale = m_contentScale > 0.0f ? 1.0f / m_contentScale : 1.0f;
+    return measureText(str, fontIndex) * invScale;
+}
+
+float OverlayCanvas::fontLineHeightHiDPI(int fontIndex) const {
+    float invScale = m_contentScale > 0.0f ? 1.0f / m_contentScale : 1.0f;
+    return fontLineHeight(fontIndex) * invScale;
+}
+
+float OverlayCanvas::fontAscentHiDPI(int fontIndex) const {
+    float invScale = m_contentScale > 0.0f ? 1.0f / m_contentScale : 1.0f;
+    return fontAscent(fontIndex) * invScale;
 }
 
 int OverlayCanvas::getFontForZoom(float zoom) const {
@@ -1308,17 +1361,30 @@ int OverlayCanvas::getFontForZoom(float zoom) const {
 
 float OverlayCanvas::fontLineHeight(int fontIndex) const {
     if (fontIndex < 0 || fontIndex >= 3 || !m_fonts[fontIndex]) return 0.0f;
-    return m_fonts[fontIndex]->lineHeight();
+    float height = m_fonts[fontIndex]->lineHeight();
+    // In HiDPI text mode, divide by contentScale to get logical pixel height
+    if (m_hiDPITextMode && m_contentScale > 0.0f) {
+        height /= m_contentScale;
+    }
+    return height;
 }
 
 float OverlayCanvas::fontAscent(int fontIndex) const {
     if (fontIndex < 0 || fontIndex >= 3 || !m_fonts[fontIndex]) return 0.0f;
-    return m_fonts[fontIndex]->ascent();
+    float ascent = m_fonts[fontIndex]->ascent();
+    if (m_hiDPITextMode && m_contentScale > 0.0f) {
+        ascent /= m_contentScale;
+    }
+    return ascent;
 }
 
 float OverlayCanvas::fontDescent(int fontIndex) const {
     if (fontIndex < 0 || fontIndex >= 3 || !m_fonts[fontIndex]) return 0.0f;
-    return m_fonts[fontIndex]->descent();
+    float descent = m_fonts[fontIndex]->descent();
+    if (m_hiDPITextMode && m_contentScale > 0.0f) {
+        descent /= m_contentScale;
+    }
+    return descent;
 }
 
 float OverlayCanvas::fontSize(int fontIndex) const {

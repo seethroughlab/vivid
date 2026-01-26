@@ -1437,6 +1437,10 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         frameInput.mouseClicked[i] = currentMouseDown[i] && !lastMouseDown[i];
         frameInput.mouseReleased[i] = !currentMouseDown[i] && lastMouseDown[i];
     }
+    // Debug: log when mouse is clicked
+    if (frameInput.mouseClicked[0]) {
+        std::cerr << "[app.cpp] Mouse clicked at (" << frameInput.mousePos.x << ", " << frameInput.mousePos.y << ")\n";
+    }
     // Use saved scroll from before blockMouseInput() was called
     // This ensures NodeGraph can still zoom even when we're blocking input to user code
     frameInput.scroll = g_savedScrollForVisualizer;
@@ -1497,6 +1501,10 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         static bool firstRender = true;
         if (firstRender) {
             std::cout << "[DEBUG] Rendering NodeGraph for first time" << std::endl;
+            // Show the visualizer panels (nodegraph + inspector) when --show-ui is passed
+            if (mlc.showUI && devtools_dynamic::toggleVisualizer) {
+                devtools_dynamic::toggleVisualizer();
+            }
             firstRender = false;
         }
         // Update pending change count for status bar display
@@ -1757,16 +1765,24 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             }
         }
 
-        // Forward Cmd/Ctrl+letter combinations (for Ctrl+C, Ctrl+D, Cmd+F, etc.)
+        // Forward Cmd/Ctrl+letter combinations (for Ctrl+C, Ctrl+D, etc.)
         // On macOS, use Super (Cmd); on Windows/Linux, use Ctrl
 #ifdef __APPLE__
         bool hasCmdOrCtrl = frameInput.keySuper;
 #else
         bool hasCmdOrCtrl = frameInput.keyCtrl;
 #endif
+
+        // Built-in shortcuts (always available, even without devtools)
+        if (hasCmdOrCtrl && frameInput.keyPressed[GLFW_KEY_F]) {
+            // Cmd/Ctrl+F: Toggle fullscreen
+            mlc.ctx->fullscreen(!mlc.ctx->fullscreen());
+        }
+
         if (hasCmdOrCtrl) {
-            // Forward A-Z keys (for shortcuts like Cmd+F fullscreen)
+            // Forward A-Z keys to devtools (skip F since it's handled above)
             for (int key = 65; key <= 90; key++) {  // A-Z (GLFW key codes)
+                if (key == GLFW_KEY_F) continue;  // Handled as built-in shortcut
                 if (frameInput.keyPressed[key]) {
                     devtools_dynamic::tryOnKey(key, mods);
                 }
@@ -2213,6 +2229,8 @@ int Application::init(const AppConfig& config) {
     // Start in fullscreen if requested
     if (startFullscreen) {
         m_impl->ctx->fullscreen(true);
+        // Consume the change flag since we're handling it here via glfwSetWindowMonitor
+        m_impl->ctx->consumeFullscreenChange();
     }
 
     // Set initial display mode

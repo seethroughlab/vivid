@@ -46,7 +46,7 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     // Set up callback for when preferences change
     Preferences::instance().onStyleChange([this](const UIStyle& newStyle) {
         m_style = newStyle;
-        m_style.scale = m_ctx ? m_ctx->contentScale() : 1.0f;
+        // Note: scale will be updated in render() from input.contentScale
     });
 
     // Initialize canvas
@@ -56,38 +56,40 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
         return false;
     }
 
-    // Load fonts for text rendering
+    // Load fonts for text rendering - use JetBrains Mono for everything
     auto& assets = AssetLoader::instance();
-    std::string regularPath = assets.resolve("fonts/Inter_18pt-Regular.ttf").string();
-    std::string mediumPath = assets.resolve("fonts/Inter_18pt-Medium.ttf").string();
-    std::string monoPath = assets.resolve("fonts/JetBrainsMono-Regular.ttf").string();
+    std::string fontPath = assets.resolve("devtools/fonts/JetBrainsMono-Regular.ttf").string();
 
     float scale = ctx.contentScale();
     if (scale < 1.0f) scale = 1.0f;
 
-    // Set style scale
+    // Set style scale (may be 1.0 during init if window not ready; updated in render())
     m_style.scale = scale;
 
-    // Load Inter Regular (index 0) for labels
+    // Load JetBrains Mono at different sizes for UI hierarchy
+    // Fonts are loaded at PHYSICAL pixel size for crisp HiDPI rendering
+    // Use textHiDPI() methods which compensate for content scale
+    // Index 0: Labels (14px logical = 28px physical on 2x display)
     m_fonts[0] = std::make_unique<FontAtlas>();
-    if (m_fonts[0]->load(ctx, regularPath, 14.0f * scale)) {
+    if (m_fonts[0]->load(ctx, fontPath, 14.0f * scale)) {
         m_canvas->setFont(0, m_fonts[0].get());
-        std::cerr << "[vivid-devtools] Loaded Inter Regular (" << (14 * scale) << "px)\n";
+        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (14.0f * scale) << "px\n";
     }
 
-    // Load Inter Medium (index 1) for titles
+    // Index 1: Titles (16px logical = 32px physical on 2x display)
     m_fonts[1] = std::make_unique<FontAtlas>();
-    if (m_fonts[1]->load(ctx, mediumPath, 16.0f * scale)) {
+    if (m_fonts[1]->load(ctx, fontPath, 16.0f * scale)) {
         m_canvas->setFont(1, m_fonts[1].get());
-        std::cerr << "[vivid-devtools] Loaded Inter Medium (" << (16 * scale) << "px)\n";
+        std::cerr << "[vivid-devtools] Loaded JetBrains Mono " << (16.0f * scale) << "px\n";
     }
 
-    // Load JetBrains Mono (index 2) for terminal/editor
-    m_fonts[2] = std::make_unique<FontAtlas>();
-    if (m_fonts[2]->load(ctx, monoPath, 14.0f * scale)) {
-        m_canvas->setFont(2, m_fonts[2].get());
-        std::cerr << "[vivid-devtools] Loaded JetBrains Mono (" << (14 * scale) << "px)\n";
-    }
+    // Index 2: Terminal/editor - reuse font 0 (same size, same font)
+    // This avoids loading a duplicate font atlas
+    m_canvas->setFont(2, m_fonts[0].get());
+
+    // Enable HiDPI text mode since fonts are loaded at physical pixel size
+    // This makes text(), measureText(), etc. automatically compensate for contentScale
+    m_canvas->setHiDPITextMode(true);
 
     // Initialize panel manager
     m_panelManager = std::make_unique<PanelManager>();
@@ -109,12 +111,20 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
             std::cerr << "[vivid-devtools] Recording stopped\n";
         }
     });
+    statusBar->onGridToggle([this](bool visible) {
+        // Sync with DevTools background grid
+        m_showBackgroundGrid = visible;
+    });
+    statusBar->onPanelToggle([this](const std::string& panelId) {
+        // Toggle the requested panel
+        togglePanel(panelId);
+    });
     m_panelManager->addPanel(std::move(statusBar));
 
     // NodeGraph (fill) - background for visualizer
     auto nodeGraph = std::make_unique<NodeGraphPanel>();
     nodeGraph->onNodeSelect([this](const std::string& name) {
-        // When a node is selected, update the inspector
+        // When a node is selected, update the inspector and show it
         if (m_ctx) {
             const auto& operators = m_ctx->registeredOperators();
             for (const auto& info : operators) {
@@ -122,6 +132,8 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
                     auto* inspector = m_panelManager->getPanelAs<InspectorPanel>("inspector");
                     if (inspector) {
                         inspector->setSelectedOperator(info.op, name);
+                        // Auto-show inspector when a node is selected
+                        showPanel("inspector");
                     }
                     break;
                 }
@@ -227,18 +239,8 @@ void DevTools::registerDefaultShortcuts() {
         [this]() { toggleVisualizer(); }
     });
 
-    // Cmd/Ctrl+F: Toggle Fullscreen
-    m_shortcuts.registerShortcut({
-        GLFW_KEY_F,
-        ShortcutManager::MOD_CMD_OR_CTRL,
-        "toggle_fullscreen",
-        "Toggle Fullscreen",
-        [this]() {
-            if (m_fullscreenCallback) {
-                m_fullscreenCallback();
-            }
-        }
-    });
+    // Note: Cmd/Ctrl+F (fullscreen) is now a built-in shortcut in vivid-core,
+    // so it works even without devtools loaded.
 
     // F1 or Cmd/Ctrl+?: Show Help
     m_shortcuts.registerShortcut({
@@ -294,6 +296,15 @@ void DevTools::registerDefaultShortcuts() {
             }
         }
     });
+
+    // Cmd/Ctrl+G: Toggle Background Grid
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_G,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_grid",
+        "Toggle Background Grid",
+        [this]() { toggleBackgroundGrid(); }
+    });
 }
 
 void DevTools::shutdown() {
@@ -315,24 +326,49 @@ void DevTools::update() {
     if (!m_initialized) return;
     m_panelManager->update();
 
-    // Sync pending change count to status bar
+    // Auto-hide status bar when no content panels are visible
+    bool hasVisibleContent = isPanelVisible("terminal") ||
+                             isPanelVisible("editor") ||
+                             isPanelVisible("console") ||
+                             isPanelVisible("nodegraph") ||
+                             isPanelVisible("inspector");
+
     if (auto* statusBar = m_panelManager->getPanelAs<StatusBarPanel>("statusbar")) {
+        // Only show status bar if there's visible content OR background grid is shown
+        statusBar->setVisible(hasVisibleContent || m_showBackgroundGrid);
+
+        // Sync pending change count
         statusBar->setPendingChangeCount(m_pendingChangeCount);
         statusBar->setMcpWarning(m_mcpWarning);
+
+        // Sync panel visibility state to toggle buttons
+        statusBar->setPanelVisibility("terminal", isPanelVisible("terminal"));
+        statusBar->setPanelVisibility("console", isPanelVisible("console"));
+        statusBar->setPanelVisibility("editor", isPanelVisible("editor"));
+        statusBar->setPanelVisibility("nodegraph", isPanelVisible("nodegraph"));
+        statusBar->setPanelVisibility("grid", m_showBackgroundGrid);
     }
 }
 
 void DevTools::render(WGPURenderPassEncoder pass, const FrameInput& input, Context& ctx) {
     if (!m_initialized) return;
 
-    float screenWidth = static_cast<float>(input.width) / input.contentScale;
-    float screenHeight = static_cast<float>(input.height) / input.contentScale;
-    float scale = input.contentScale;
+    // Begin canvas - handles HiDPI scaling internally
+    m_canvas->begin(input);
 
-    // Begin canvas with physical dimensions
-    m_canvas->begin(input.width, input.height);
+    // Compute logical dimensions for panel layout
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+    float screenWidth = static_cast<float>(input.width) / scale;
+    float screenHeight = static_cast<float>(input.height) / scale;
 
-    // Render all panels
+    // Ensure style scale is always up-to-date (contentScale may not be available during init)
+    m_style.scale = scale;
+
+    // Render background grid if visible (before panels)
+    if (m_showBackgroundGrid) {
+        renderBackgroundGrid(*m_canvas, screenWidth, screenHeight);
+    }
+
     m_panelManager->render(*m_canvas, input, screenWidth, screenHeight, m_style);
 
     // Render preferences dialog (on top of everything)
@@ -540,17 +576,16 @@ void DevTools::setIdeBounds(const glm::vec4& bounds) {
 // -------------------------------------------------------------------------
 
 void DevTools::toggleVisualizer() {
-    // Toggle nodegraph + inspector + statusbar + console panels
+    // Toggle nodegraph + inspector + console panels
+    // Status bar is auto-managed based on whether any content panels are visible
     bool currentlyVisible = isVisualizerVisible();
     if (currentlyVisible) {
         hidePanel("nodegraph");
         hidePanel("inspector");
-        hidePanel("statusbar");
         hidePanel("console");
     } else {
         showPanel("nodegraph");
         showPanel("inspector");
-        showPanel("statusbar");
         // Show console only if it has errors
         if (auto* console = m_panelManager->getPanelAs<ConsolePanel>("console")) {
             if (console->hasErrors()) {
@@ -673,6 +708,54 @@ bool DevTools::consoleHasErrors() const {
 void DevTools::saveSnapshot(Context& ctx) {
     m_snapshotRequested = false;
     ctx.snapshot();
+}
+
+// -------------------------------------------------------------------------
+// Background Grid
+// -------------------------------------------------------------------------
+
+void DevTools::toggleBackgroundGrid() {
+    m_showBackgroundGrid = !m_showBackgroundGrid;
+
+    // Sync status bar checkbox
+    if (auto* statusBar = m_panelManager->getPanelAs<StatusBarPanel>("statusbar")) {
+        statusBar->setGridVisible(m_showBackgroundGrid);
+    }
+}
+
+void DevTools::renderBackgroundGrid(OverlayCanvas& canvas, float screenWidth, float screenHeight) {
+    // Render at background layer
+    canvas.setLayer(UILayer::Background);
+
+    // Semi-transparent dark background
+    glm::vec4 bgColor = m_style.panelBg;
+    bgColor.a = 0.85f;  // Slightly more transparent
+    canvas.fillRect(0, 0, screenWidth, screenHeight, bgColor);
+
+    // Grid parameters
+    const float gridSpacing = 40.0f;  // Base grid spacing in logical pixels
+    const int majorEvery = 5;         // Major line every N minor lines
+
+    // Draw minor grid lines
+    for (float x = 0; x < screenWidth; x += gridSpacing) {
+        int lineIndex = static_cast<int>(x / gridSpacing);
+        if (lineIndex % majorEvery == 0) continue;  // Skip majors
+        canvas.line(x, 0, x, screenHeight, 1.0f, m_style.gridLine);
+    }
+    for (float y = 0; y < screenHeight; y += gridSpacing) {
+        int lineIndex = static_cast<int>(y / gridSpacing);
+        if (lineIndex % majorEvery == 0) continue;  // Skip majors
+        canvas.line(0, y, screenWidth, y, 1.0f, m_style.gridLine);
+    }
+
+    // Draw major grid lines
+    float majorSpacing = gridSpacing * majorEvery;
+    for (float x = 0; x < screenWidth; x += majorSpacing) {
+        canvas.line(x, 0, x, screenHeight, 1.0f, m_style.gridLineMajor);
+    }
+    for (float y = 0; y < screenHeight; y += majorSpacing) {
+        canvas.line(0, y, screenWidth, y, 1.0f, m_style.gridLineMajor);
+    }
 }
 
 } // namespace vivid

@@ -2,9 +2,9 @@
 // Interactive particle playground with force parameter tweaking
 //
 // Controls:
-//   TAB - Toggle chain visualizer
-//   F   - Toggle fullscreen
-//   ESC - Quit
+//   TAB        - Toggle chain visualizer
+//   Cmd/Ctrl+F - Toggle fullscreen
+//   ESC        - Quit
 
 #include <vivid/vivid.h>
 #include <vivid/effects/particle_system.h>
@@ -139,11 +139,6 @@ void setup(Context& ctx) {
 
 void update(Context& ctx) {
     float dt = static_cast<float>(ctx.dt());
-
-    // Toggle fullscreen
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
 
     // ImGui Panel
     ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);

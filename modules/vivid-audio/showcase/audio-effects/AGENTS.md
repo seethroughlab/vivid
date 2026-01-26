@@ -125,7 +125,7 @@ Display text labels with Canvas:
 auto& canvas = chain.get<Canvas>("canvas");
 
 // Load font
-canvas.loadBuiltinFont(ctx, BuiltinFont::Mono, 14.0f);
+canvas.loadBuiltinFont(ctx, 14.0f);
 
 // Set text style
 canvas.fillStyle(1.0f, 1.0f, 1.0f, 1.0f);

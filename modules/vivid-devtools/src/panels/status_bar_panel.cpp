@@ -22,6 +22,7 @@
 #include <cmath>
 #include <cstdio>
 #include <algorithm>
+#include <iostream>
 
 // Platform-specific memory monitoring
 #if defined(__APPLE__)
@@ -83,6 +84,8 @@ struct StatusBarPanel::Impl {
     // Callbacks
     SnapshotCallback snapshotCallback;
     RecordCallback recordCallback;
+    GridToggleCallback gridToggleCallback;
+    PanelToggleCallback panelToggleCallback;
 
     // State
     size_t pendingChangeCount = 0;
@@ -97,14 +100,25 @@ struct StatusBarPanel::Impl {
     ButtonRect snapshotButton;
     ButtonRect gridToggleButton;
 
+    // Panel toggle buttons (left side of status bar)
+    struct PanelToggle {
+        std::string id;       // "terminal", "console", etc.
+        std::string label;    // "T", "C", "E", "N", "G"
+        std::string tooltip;  // "Terminal (⌘1)"
+        bool visible = false;
+        ButtonRect hitRect;
+    };
+    std::vector<PanelToggle> panelToggles;
+    int hoveredToggle = -1;
+
     // Codec dropdown
     bool codecDropdownOpen = false;
     ButtonRect codecH264;
     ButtonRect codecH265;
     ButtonRect codecProRes;
 
-    // Grid visibility (stored here, but should be synced with NodeGraph)
-    bool showGrid = true;
+    // Grid visibility (synced with DevTools background grid via callback)
+    bool showGrid = false;
 
     // Smoothed values for FPS
     float smoothedFps = 60.0f;
@@ -114,9 +128,21 @@ struct StatusBarPanel::Impl {
         return r.valid && mousePos.x >= r.x && mousePos.x < r.x + r.w &&
                mousePos.y >= r.y && mousePos.y < r.y + r.h;
     }
+
+    void initPanelToggles() {
+        panelToggles = {
+            {"terminal",  "T", "Terminal (\u23181)", false, {}},
+            {"console",   "C", "Console (\u23182)", false, {}},
+            {"editor",    "E", "Editor (\u23183)", false, {}},
+            {"nodegraph", "N", "Visualizer (\u23184)", false, {}},
+            {"grid",      "G", "Grid (\u2318G)", false, {}}
+        };
+    }
 };
 
-StatusBarPanel::StatusBarPanel() {
+StatusBarPanel::StatusBarPanel()
+    : m_impl(std::make_unique<Impl>())
+{
     m_config.id = "statusbar";
     m_config.title = "";
     m_config.bounds = {0, 0, 0, 32};  // Full width, fixed height
@@ -124,12 +150,12 @@ StatusBarPanel::StatusBarPanel() {
     m_config.visible = true;
     m_config.resizable = false;
     m_config.draggable = false;
+    m_impl->initPanelToggles();
 }
 
 StatusBarPanel::~StatusBarPanel() = default;
 
 bool StatusBarPanel::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
-    m_impl = std::make_unique<Impl>();
     m_impl->ctx = &ctx;
     return true;
 }
@@ -139,9 +165,13 @@ void StatusBarPanel::shutdown() {
 }
 
 void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
-                            const FrameInput& input, float scale, const UIStyle& style) {
+                            const FrameInput& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) return;
     // Style parameter is available for use throughout this function
+
+    // Compute logical screen dimensions for HiDPI displays
+    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+    float screenWidth = static_cast<float>(input.width) / scale;
 
     // Use mono font metrics for bar height calculation
     const int monoFont = 2;
@@ -165,7 +195,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     // Semi-transparent background
     glm::vec4 barBg = style.headerBg;
     barBg.a = 0.95f;
-    canvas.fillRect(0, 0, static_cast<float>(input.width), barHeight, barBg);
+    canvas.fillRect(0, 0, screenWidth, barHeight, barBg);
 
     // Colors from style
     glm::vec4 textColor = style.textPrimary;
@@ -176,6 +206,76 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     char buf[64];
     const float sepInset = padding;
+
+    // Panel toggle buttons (left side)
+    glm::vec2 mousePos = input.mousePos;
+    m_impl->hoveredToggle = -1;
+
+    const float btnW = 24.0f;
+    const float btnH = lineH + 4.0f;
+    const float btnY = (barHeight - btnH) * 0.5f;
+    const float btnGap = 4.0f;
+
+    for (size_t i = 0; i < m_impl->panelToggles.size(); i++) {
+        auto& toggle = m_impl->panelToggles[i];
+
+        // Determine colors based on state
+        bool isHovered = (mousePos.x >= x && mousePos.x < x + btnW &&
+                          mousePos.y >= btnY && mousePos.y < btnY + btnH);
+        if (isHovered) {
+            m_impl->hoveredToggle = static_cast<int>(i);
+        }
+
+        glm::vec4 bgColor;
+        glm::vec4 labelColor;
+        if (toggle.visible) {
+            bgColor = isHovered ? style.accentActive : style.accent;
+            labelColor = glm::vec4(1, 1, 1, 1);
+        } else {
+            bgColor = isHovered ? style.buttonHover : glm::vec4(0, 0, 0, 0);
+            labelColor = dimColor;
+        }
+
+        // Draw button background
+        if (toggle.visible || isHovered) {
+            canvas.fillRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), bgColor);
+        }
+
+        // Draw label centered
+        float labelW = canvas.measureText(toggle.label, monoFont);
+        float labelX = x + (btnW - labelW) * 0.5f;
+        canvas.text(toggle.label, labelX, btnY + ascent + 2, labelColor, monoFont);
+
+        // Store hit rect
+        toggle.hitRect = {x, btnY, btnW, btnH, true};
+        x += btnW + btnGap;
+    }
+
+    // Render tooltip for hovered toggle
+    if (m_impl->hoveredToggle >= 0 && m_impl->hoveredToggle < static_cast<int>(m_impl->panelToggles.size())) {
+        canvas.setLayer(UILayer::Tooltips);
+        const auto& toggle = m_impl->panelToggles[m_impl->hoveredToggle];
+        float tooltipW = canvas.measureText(toggle.tooltip, monoFont) + padding * 2;
+        float tooltipH = lineH + padding;
+        float tooltipX = toggle.hitRect.x;
+        float tooltipY = barHeight + 4;
+
+        // Ensure tooltip doesn't go off screen
+        if (tooltipX + tooltipW > screenWidth - padding) {
+            tooltipX = screenWidth - tooltipW - padding;
+        }
+
+        glm::vec4 tooltipBg = style.panelBg;
+        tooltipBg.a = 0.95f;
+        canvas.fillRoundedRect(tooltipX, tooltipY, tooltipW, tooltipH, style.buttonCornerRadius(), tooltipBg);
+        canvas.strokeRoundedRect(tooltipX, tooltipY, tooltipW, tooltipH, style.buttonCornerRadius(), 1, style.panelBorder);
+        canvas.text(toggle.tooltip, tooltipX + padding, tooltipY + ascent + padding * 0.5f, textColor, monoFont);
+        canvas.setLayer(UILayer::Panels);
+    }
+
+    // Separator after panel toggles
+    canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    x += padding * 2;
 
     // FPS
     snprintf(buf, sizeof(buf), "%5.1f FPS", m_impl->smoothedFps);
@@ -282,38 +382,6 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         }
     }
 
-    // Grid toggle checkbox
-    {
-        canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
-        x += padding * 2;
-
-        float checkSize = lineH * 0.7f;
-        float checkY = (barHeight - checkSize) * 0.5f;
-        glm::vec4 checkBg = style.checkboxBg;
-        glm::vec4 checkBorder = style.checkboxBorder;
-        glm::vec4 checkFill = style.checkboxCheck;
-
-        canvas.fillRect(x, checkY, checkSize, checkSize, checkBg);
-        canvas.strokeRect(x, checkY, checkSize, checkSize, 1, checkBorder);
-
-        if (m_impl->showGrid) {
-            float cx = x + checkSize * 0.5f;
-            float cy = checkY + checkSize * 0.5f;
-            float s = checkSize * 0.3f;
-            canvas.line(cx - s, cy, cx - s * 0.3f, cy + s * 0.7f, 2.0f, checkFill);
-            canvas.line(cx - s * 0.3f, cy + s * 0.7f, cx + s, cy - s * 0.5f, 2.0f, checkFill);
-        }
-
-        float checkboxWidth = checkSize;
-        x += checkboxWidth + 4;
-
-        canvas.text("Grid", x, y, textColor, monoFont);
-        float labelWidth = canvas.measureText("Grid", monoFont);
-
-        m_impl->gridToggleButton = {x - checkboxWidth - 4, checkY, checkboxWidth + 4 + labelWidth, checkSize, true};
-        x += labelWidth + padding * 2;
-    }
-
     // Recording controls (right side)
     glm::vec4 buttonBg = style.buttonBg;
     glm::vec4 buttonHover = style.buttonHover;
@@ -336,12 +404,12 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         float stopTextWidth = canvas.measureText(stopText, monoFont);
         float stopBtnW = stopTextWidth + buttonPadX * 2;
         float stopBtnH = lineH + buttonPadY * 2;
-        float stopBtnX = input.width - stopBtnW - padding;
+        float stopBtnX = screenWidth - stopBtnW - padding;
         float stopBtnY = (barHeight - stopBtnH) * 0.5f;
 
         m_impl->stopButton = {stopBtnX, stopBtnY, stopBtnW, stopBtnH, true};
-        canvas.fillRoundedRect(stopBtnX, stopBtnY, stopBtnW, stopBtnH, 4, buttonBg);
-        canvas.strokeRoundedRect(stopBtnX, stopBtnY, stopBtnW, stopBtnH, 4, 1, redColor);
+        canvas.fillRoundedRect(stopBtnX, stopBtnY, stopBtnW, stopBtnH, style.buttonCornerRadius(), buttonBg);
+        canvas.strokeRoundedRect(stopBtnX, stopBtnY, stopBtnW, stopBtnH, style.buttonCornerRadius(), 1, redColor);
         canvas.text(stopText, stopBtnX + buttonPadX, stopBtnY + buttonPadY + ascent, redColor, monoFont);
 
         float recX = stopBtnX - recTextWidth - 24 - buttonSpacing;
@@ -349,7 +417,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         canvas.text(buf, recX + 16, y, redColor, monoFont);
     } else {
         // Not recording
-        float rightX = input.width - padding;
+        float rightX = screenWidth - padding;
 
         // Snapshot button
         const char* snapText = "Snapshot";
@@ -360,8 +428,8 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         float snapBtnY = (barHeight - snapBtnH) * 0.5f;
 
         m_impl->snapshotButton = {snapBtnX, snapBtnY, snapBtnW, snapBtnH, true};
-        canvas.fillRoundedRect(snapBtnX, snapBtnY, snapBtnW, snapBtnH, 4, buttonBg);
-        canvas.strokeRoundedRect(snapBtnX, snapBtnY, snapBtnW, snapBtnH, 4, 1, buttonBorder);
+        canvas.fillRoundedRect(snapBtnX, snapBtnY, snapBtnW, snapBtnH, style.buttonCornerRadius(), buttonBg);
+        canvas.strokeRoundedRect(snapBtnX, snapBtnY, snapBtnW, snapBtnH, style.buttonCornerRadius(), 1, buttonBorder);
         canvas.text(snapText, snapBtnX + buttonPadX, snapBtnY + buttonPadY + ascent, textColor, monoFont);
 
         // Record button
@@ -374,8 +442,8 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
         m_impl->recordButton = {recBtnX, recBtnY, recBtnW, recBtnH, true};
         glm::vec4 recBtnBg = m_impl->codecDropdownOpen ? buttonHover : buttonBg;
-        canvas.fillRoundedRect(recBtnX, recBtnY, recBtnW, recBtnH, 4, recBtnBg);
-        canvas.strokeRoundedRect(recBtnX, recBtnY, recBtnW, recBtnH, 4, 1, redColor);
+        canvas.fillRoundedRect(recBtnX, recBtnY, recBtnW, recBtnH, style.buttonCornerRadius(), recBtnBg);
+        canvas.strokeRoundedRect(recBtnX, recBtnY, recBtnW, recBtnH, style.buttonCornerRadius(), 1, redColor);
         canvas.fillCircle(recBtnX + buttonPadX + 4, barHeight * 0.5f, 3, redColor);
         canvas.text(recText, recBtnX + buttonPadX + 12, recBtnY + buttonPadY + ascent, textColor, monoFont);
 
@@ -402,8 +470,8 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
             glm::vec4 menuBg = style.panelBg;
             menuBg.a = 0.98f;
 
-            canvas.fillRoundedRect(menuX, menuY, menuWidth, menuH, 4, menuBg);
-            canvas.strokeRoundedRect(menuX, menuY, menuWidth, menuH, 4, 1, buttonBorder);
+            canvas.fillRoundedRect(menuX, menuY, menuWidth, menuH, style.panelCornerRadius(), menuBg);
+            canvas.strokeRoundedRect(menuX, menuY, menuWidth, menuH, style.panelCornerRadius(), 1, buttonBorder);
 
             float itemY = menuY;
             m_impl->codecH264 = {menuX, itemY, menuWidth, itemH, true};
@@ -423,15 +491,10 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 bool StatusBarPanel::handleInput(const FrameInput& input) {
     if (!m_impl) return false;
 
-    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-    glm::vec2 mousePos = input.mousePos * scale;
+    glm::vec2 mousePos = input.mousePos;
 
-    // Check for mouse click
-    static bool lastMouseDown = false;
-    bool mouseClicked = input.mouseDown[0] && !lastMouseDown;
-    lastMouseDown = input.mouseDown[0];
-
-    if (!mouseClicked) return false;
+    // Use FrameInput's pre-computed mouseClicked
+    if (!input.mouseClicked[0]) return false;
 
     // Check codec dropdown first
     if (m_impl->codecDropdownOpen) {
@@ -453,6 +516,27 @@ bool StatusBarPanel::handleInput(const FrameInput& input) {
         }
     }
 
+    // Panel toggle button clicks
+    for (size_t i = 0; i < m_impl->panelToggles.size(); i++) {
+        auto& toggle = m_impl->panelToggles[i];
+        if (m_impl->isMouseInRect(toggle.hitRect, mousePos)) {
+            if (toggle.id == "grid") {
+                // Special handling for grid toggle (uses gridToggleCallback)
+                m_impl->showGrid = !m_impl->showGrid;
+                toggle.visible = m_impl->showGrid;
+                if (m_impl->gridToggleCallback) {
+                    m_impl->gridToggleCallback(m_impl->showGrid);
+                }
+            } else {
+                // Regular panel toggle
+                if (m_impl->panelToggleCallback) {
+                    m_impl->panelToggleCallback(toggle.id);
+                }
+            }
+            return true;
+        }
+    }
+
     // Button clicks
     if (m_impl->isMouseInRect(m_impl->recordButton, mousePos)) {
         m_impl->codecDropdownOpen = true;
@@ -462,10 +546,6 @@ bool StatusBarPanel::handleInput(const FrameInput& input) {
         return true;
     } else if (m_impl->isMouseInRect(m_impl->snapshotButton, mousePos)) {
         if (m_impl->snapshotCallback) m_impl->snapshotCallback();
-        return true;
-    } else if (m_impl->isMouseInRect(m_impl->gridToggleButton, mousePos)) {
-        m_impl->showGrid = !m_impl->showGrid;
-        // TODO: Sync with NodeGraph
         return true;
     }
 
@@ -490,6 +570,37 @@ void StatusBarPanel::onSnapshot(SnapshotCallback callback) {
 
 void StatusBarPanel::onRecord(RecordCallback callback) {
     if (m_impl) m_impl->recordCallback = std::move(callback);
+}
+
+void StatusBarPanel::onGridToggle(GridToggleCallback callback) {
+    if (m_impl) m_impl->gridToggleCallback = std::move(callback);
+}
+
+void StatusBarPanel::setGridVisible(bool visible) {
+    if (m_impl) m_impl->showGrid = visible;
+}
+
+bool StatusBarPanel::isGridVisible() const {
+    return m_impl ? m_impl->showGrid : false;
+}
+
+void StatusBarPanel::setPanelVisibility(const std::string& panelId, bool visible) {
+    if (!m_impl) return;
+
+    for (auto& toggle : m_impl->panelToggles) {
+        if (toggle.id == panelId) {
+            toggle.visible = visible;
+            // Special case: sync grid toggle with showGrid state
+            if (panelId == "grid") {
+                m_impl->showGrid = visible;
+            }
+            return;
+        }
+    }
+}
+
+void StatusBarPanel::onPanelToggle(PanelToggleCallback callback) {
+    if (m_impl) m_impl->panelToggleCallback = std::move(callback);
 }
 
 } // namespace vivid

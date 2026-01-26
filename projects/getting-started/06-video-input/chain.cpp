@@ -75,11 +75,6 @@ void update(Context& ctx) {
     // Y position controls noise scale
     noise.scale = 2.0f + mouse.y * 8.0f;
 
-    // Fullscreen toggle
-    if (ctx.key(GLFW_KEY_F).pressed) {
-        ctx.fullscreen(!ctx.fullscreen());
-    }
-
     // Space pauses the noise animation
     static bool animating = true;
     if (ctx.key(GLFW_KEY_SPACE).pressed) {

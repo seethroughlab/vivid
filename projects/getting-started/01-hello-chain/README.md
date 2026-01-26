@@ -76,14 +76,14 @@ If there's a compile error, check the terminal for details.
 2. **Add color**: Uncomment the HSV section to add color shifting
 3. **Change speed**: Make it faster (2.0) or slower (0.1)
 4. **Press Tab**: Toggle the chain visualizer to see your node graph
-5. **Press F**: Toggle fullscreen
+5. **Press Cmd/Ctrl+F**: Toggle fullscreen
 
 ## Key Controls
 
 | Key | Action |
 |-----|--------|
 | Tab | Toggle chain visualizer |
-| F | Toggle fullscreen |
+| Cmd/Ctrl+F | Toggle fullscreen |
 | Esc | Quit |
 
 ## Next Steps

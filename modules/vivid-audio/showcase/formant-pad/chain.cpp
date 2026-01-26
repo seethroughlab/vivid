@@ -256,7 +256,7 @@ void update(Context& ctx) {
     }
 
     // Toggle fullscreen
-    if (ctx.key(GLFW_KEY_F).pressed) {
+    if (ctx.key(GLFW_KEY_F).pressed && !ctx.superHeld()) {
         ctx.fullscreen(!ctx.fullscreen());
     }
 
