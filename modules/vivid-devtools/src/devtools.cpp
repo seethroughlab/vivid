@@ -11,16 +11,20 @@
 
 #include <vivid/devtools/devtools.h>
 #include <vivid/devtools/preferences.h>
+#include <vivid/devtools/dock_zone.h>
+#include <vivid/devtools/dock_manager.h>
 #include <vivid/devtools/panels/terminal_panel.h>
 #include <vivid/devtools/panels/editor_panel.h>
 #include <vivid/devtools/panels/node_graph_panel.h>
 #include <vivid/devtools/panels/inspector_panel.h>
 #include <vivid/devtools/panels/status_bar_panel.h>
 #include <vivid/devtools/panels/console_panel.h>
+#include <vivid/devtools/panels/file_browser_panel.h>
 #include <vivid/context.h>
 #include <vivid/asset_loader.h>
 #include "effects/font_atlas.h"
 #include <GLFW/glfw3.h>
+#include <algorithm>
 #include <iostream>
 
 namespace vivid {
@@ -111,13 +115,66 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
             std::cerr << "[vivid-devtools] Recording stopped\n";
         }
     });
-    statusBar->onGridToggle([this](bool visible) {
+    statusBar->onGridOpacityChange([this](float opacity) {
         // Sync with DevTools background grid
-        m_showBackgroundGrid = visible;
+        m_gridOpacity = opacity;
+        // Save to preferences
+        Preferences::instance().setGridOpacity(opacity);
     });
     statusBar->onPanelToggle([this](const std::string& panelId) {
         // Toggle the requested panel
         togglePanel(panelId);
+    });
+    statusBar->onPanelDrag([this](const std::string& panelId, const glm::vec2& pos) {
+        // Drag from status bar button creates floating panel
+        if (auto* panel = m_panelManager->getPanel(panelId)) {
+            // Show the panel as floating at the drag position
+            if (!panel->isVisible()) {
+                panel->setVisible(true);
+            }
+            // Position the panel at the drag location
+            glm::vec4 bounds = panel->bounds();
+            bounds.x = pos.x - 50;  // Center-ish on cursor
+            bounds.y = pos.y;
+            bounds.z = std::max(bounds.z, 300.0f);
+            bounds.w = std::max(bounds.w, 200.0f);
+            panel->setBounds(bounds);
+
+            // Add to floating order and remove from layout
+            if (m_panelManager->isLayoutMode() && m_panelManager->dockManager()) {
+                m_panelManager->dockManager()->removePanelFromLayout(panel);
+                m_panelManager->dockManager()->cleanupEmptyNodes();
+            }
+            m_panelManager->addToFloatingOrder(panelId);
+        }
+    });
+    statusBar->onPanelDock([this](const std::string& panelId, DockPosition position) {
+        // Context menu dock action
+        auto* panel = m_panelManager->getPanel(panelId);
+        if (!panel) return;
+
+        if (position == DockPosition::None) {
+            // Hide the panel
+            hidePanel(panelId);
+        } else if (position == DockPosition::Float) {
+            // Float the panel
+            if (!panel->isVisible()) {
+                panel->setVisible(true);
+            }
+            // Remove from layout if present
+            if (m_panelManager->isLayoutMode() && m_panelManager->dockManager()) {
+                m_panelManager->dockManager()->removePanelFromLayout(panel);
+                m_panelManager->dockManager()->cleanupEmptyNodes();
+            }
+            m_panelManager->addToFloatingOrder(panelId);
+        } else {
+            // Dock the panel at the specified position
+            // This would require more complex logic to insert at a specific position
+            // For now, just show the panel and let the user drag it
+            showPanel(panelId);
+            std::cerr << "[DevTools] Dock to position " << static_cast<int>(position)
+                      << " not fully implemented - showing panel instead\n";
+        }
     });
     m_panelManager->addPanel(std::move(statusBar));
 
@@ -173,6 +230,17 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     auto editor = std::make_unique<EditorPanel>();
     m_panelManager->addPanel(std::move(editor));
 
+    // File browser (floating)
+    auto fileBrowser = std::make_unique<FileBrowserPanel>();
+    fileBrowser->onFileSelected([this](const std::string& path) {
+        // Open selected file in editor
+        if (auto* ed = m_panelManager->getPanelAs<EditorPanel>("editor")) {
+            ed->openFile(path);
+            showPanel("editor");
+        }
+    });
+    m_panelManager->addPanel(std::move(fileBrowser));
+
     // Console (floating - for compile errors)
     auto console = std::make_unique<ConsolePanel>();
     m_panelManager->addPanel(std::move(console));
@@ -182,6 +250,10 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
         std::cerr << "[vivid-devtools] Failed to initialize panel manager\n";
         return false;
     }
+
+    // Enable layout mode by default for docking support
+    m_panelManager->buildDefaultLayout();
+    m_panelManager->setLayoutMode(true);
 
     // Set up clipboard callbacks for editor if window is set
     if (m_window) {
@@ -196,6 +268,39 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     m_preferencesPanel->setStyle(&m_style);
     m_preferencesPanel->setShortcuts(&m_shortcuts);
     m_preferencesPanel->setPanelManager(m_panelManager.get());
+
+    // Load grid opacity from preferences
+    m_gridOpacity = Preferences::instance().gridOpacity();
+
+    // Restore editor session (open files)
+    if (auto* ed = m_panelManager->getPanelAs<EditorPanel>("editor")) {
+        const auto& openFiles = Preferences::instance().openFiles();
+        for (const auto& path : openFiles) {
+            ed->openFile(path);
+        }
+        // Set active file
+        const auto& activeFile = Preferences::instance().activeFile();
+        if (!activeFile.empty()) {
+            for (int i = 0; i < ed->tabCount(); i++) {
+                if (ed->tabPath(i) == activeFile) {
+                    ed->setActiveTab(i);
+                    break;
+                }
+            }
+        }
+        // Set callback to save session when tabs change
+        ed->onTabChange([](const std::string&) {
+            // Session saving is done on shutdown
+        });
+        ed->onFileSave([](const std::string&) {
+            // Could save session here too
+        });
+    }
+
+    // Restore file browser session (expanded folders)
+    if (auto* fb = m_panelManager->getPanelAs<FileBrowserPanel>("filebrowser")) {
+        fb->setExpandedFolders(Preferences::instance().expandedFolders());
+    }
 
     m_initialized = true;
     std::cerr << "[vivid-devtools] Initialized with " << m_panelManager->panelCount() << " panels\n";
@@ -237,6 +342,15 @@ void DevTools::registerDefaultShortcuts() {
         "toggle_visualizer",
         "Toggle Chain Visualizer",
         [this]() { toggleVisualizer(); }
+    });
+
+    // Cmd/Ctrl+5: Toggle File Browser
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_5,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_filebrowser",
+        "Toggle File Browser",
+        [this]() { toggleFileBrowser(); }
     });
 
     // Note: Cmd/Ctrl+F (fullscreen) is now a built-in shortcut in vivid-core,
@@ -310,6 +424,19 @@ void DevTools::registerDefaultShortcuts() {
 void DevTools::shutdown() {
     if (!m_initialized) return;
 
+    // Save editor session before shutdown
+    if (auto* ed = m_panelManager->getPanelAs<EditorPanel>("editor")) {
+        Preferences::instance().setOpenFiles(ed->openFiles());
+        if (ed->activeTab() >= 0) {
+            Preferences::instance().setActiveFile(ed->tabPath(ed->activeTab()));
+        }
+    }
+
+    // Save file browser session
+    if (auto* fb = m_panelManager->getPanelAs<FileBrowserPanel>("filebrowser")) {
+        Preferences::instance().setExpandedFolders(fb->expandedFolders());
+    }
+
     if (m_panelManager) {
         m_panelManager->shutdown();
         m_panelManager.reset();
@@ -331,22 +458,41 @@ void DevTools::update() {
                              isPanelVisible("editor") ||
                              isPanelVisible("console") ||
                              isPanelVisible("nodegraph") ||
-                             isPanelVisible("inspector");
+                             isPanelVisible("inspector") ||
+                             isPanelVisible("filebrowser");
 
     if (auto* statusBar = m_panelManager->getPanelAs<StatusBarPanel>("statusbar")) {
         // Only show status bar if there's visible content OR background grid is shown
-        statusBar->setVisible(hasVisibleContent || m_showBackgroundGrid);
+        statusBar->setVisible(hasVisibleContent || m_gridOpacity > 0.0f);
 
         // Sync pending change count
         statusBar->setPendingChangeCount(m_pendingChangeCount);
         statusBar->setMcpWarning(m_mcpWarning);
 
-        // Sync panel visibility state to toggle buttons
-        statusBar->setPanelVisibility("terminal", isPanelVisible("terminal"));
-        statusBar->setPanelVisibility("console", isPanelVisible("console"));
-        statusBar->setPanelVisibility("editor", isPanelVisible("editor"));
-        statusBar->setPanelVisibility("nodegraph", isPanelVisible("nodegraph"));
-        statusBar->setPanelVisibility("grid", m_showBackgroundGrid);
+        // Sync panel dock mode to toggle buttons
+        auto getDockMode = [this](const std::string& id) -> DockMode {
+            auto* panel = m_panelManager->getPanel(id);
+            if (!panel || !panel->isVisible()) {
+                return DockMode::Hidden;
+            }
+            // Check if panel is in floating order
+            // If in layout tree, it's docked; otherwise floating
+            if (m_panelManager->isLayoutMode() && m_panelManager->layoutRoot()) {
+                if (m_panelManager->layoutRoot()->containsPanel(panel)) {
+                    return DockMode::Docked;
+                }
+            }
+            return DockMode::Floating;
+        };
+
+        statusBar->setPanelDockMode("terminal", getDockMode("terminal"));
+        statusBar->setPanelDockMode("console", getDockMode("console"));
+        statusBar->setPanelDockMode("editor", getDockMode("editor"));
+        statusBar->setPanelDockMode("nodegraph", getDockMode("nodegraph"));
+        statusBar->setPanelDockMode("filebrowser", getDockMode("filebrowser"));
+
+        // Sync grid opacity slider
+        statusBar->setGridOpacity(m_gridOpacity);
     }
 }
 
@@ -365,7 +511,7 @@ void DevTools::render(WGPURenderPassEncoder pass, const FrameInput& input, Conte
     m_style.scale = scale;
 
     // Render background grid if visible (before panels)
-    if (m_showBackgroundGrid) {
+    if (m_gridOpacity > 0.0f) {
         renderBackgroundGrid(*m_canvas, screenWidth, screenHeight);
     }
 
@@ -466,6 +612,56 @@ bool DevTools::isPanelVisible(const std::string& panelId) const {
     return m_panelManager && m_panelManager->isPanelVisible(panelId);
 }
 
+bool DevTools::dockPanel(const std::string& panelId, const std::string& position) {
+    if (!m_panelManager) return false;
+
+    Panel* panel = m_panelManager->getPanel(panelId);
+    if (!panel) {
+        std::cerr << "[DevTools] dockPanel: panel not found: " << panelId << std::endl;
+        return false;
+    }
+
+    // Parse position string to DockPosition enum
+    DockPosition dockPos = DockPosition::None;
+    if (position == "left") {
+        dockPos = DockPosition::Left;
+    } else if (position == "right") {
+        dockPos = DockPosition::Right;
+    } else if (position == "top") {
+        dockPos = DockPosition::Top;
+    } else if (position == "bottom") {
+        dockPos = DockPosition::Bottom;
+    } else if (position == "center") {
+        dockPos = DockPosition::Center;
+    } else if (position == "float") {
+        dockPos = DockPosition::Float;
+    } else {
+        std::cerr << "[DevTools] dockPanel: invalid position: " << position << std::endl;
+        return false;
+    }
+
+    // Ensure layout mode is enabled
+    if (!m_panelManager->isLayoutMode()) {
+        m_panelManager->buildDefaultLayout();
+        m_panelManager->setLayoutMode(true);
+    }
+
+    // Make the panel visible if it's hidden
+    if (!panel->isVisible()) {
+        panel->setVisible(true);
+    }
+
+    // Use DockManager to dock the panel programmatically
+    auto* dm = m_panelManager->dockManager();
+    if (!dm) {
+        std::cerr << "[DevTools] dockPanel: DockManager not available" << std::endl;
+        return false;
+    }
+
+    dm->dockPanelProgrammatically(panel, dockPos);
+    return true;
+}
+
 // -------------------------------------------------------------------------
 // IDE Backward Compatibility
 // -------------------------------------------------------------------------
@@ -501,6 +697,31 @@ void DevTools::setWorkingDirectory(const std::string& path) {
         // Spawn shell in the working directory
         terminal->spawn("", path);
     }
+
+    // Also set file browser root directory
+    if (auto* fileBrowser = m_panelManager->getPanelAs<FileBrowserPanel>("filebrowser")) {
+        fileBrowser->setRootDirectory(path);
+    }
+}
+
+// -------------------------------------------------------------------------
+// File Browser
+// -------------------------------------------------------------------------
+
+void DevTools::showFileBrowser() {
+    showPanel("filebrowser");
+}
+
+void DevTools::hideFileBrowser() {
+    hidePanel("filebrowser");
+}
+
+void DevTools::toggleFileBrowser() {
+    togglePanel("filebrowser");
+}
+
+bool DevTools::isFileBrowserVisible() const {
+    return isPanelVisible("filebrowser");
 }
 
 bool DevTools::openFile(const std::string& path) {
@@ -715,11 +936,28 @@ void DevTools::saveSnapshot(Context& ctx) {
 // -------------------------------------------------------------------------
 
 void DevTools::toggleBackgroundGrid() {
-    m_showBackgroundGrid = !m_showBackgroundGrid;
+    // Toggle between 0 and 0.85 (the default visible opacity)
+    if (m_gridOpacity > 0.0f) {
+        m_gridOpacity = 0.0f;
+    } else {
+        m_gridOpacity = 0.85f;
+    }
 
-    // Sync status bar checkbox
+    // Sync status bar slider
     if (auto* statusBar = m_panelManager->getPanelAs<StatusBarPanel>("statusbar")) {
-        statusBar->setGridVisible(m_showBackgroundGrid);
+        statusBar->setGridOpacity(m_gridOpacity);
+    }
+
+    // Save to preferences
+    Preferences::instance().setGridOpacity(m_gridOpacity);
+}
+
+void DevTools::setGridOpacity(float opacity) {
+    m_gridOpacity = std::max(0.0f, std::min(1.0f, opacity));
+
+    // Sync status bar slider
+    if (auto* statusBar = m_panelManager->getPanelAs<StatusBarPanel>("statusbar")) {
+        statusBar->setGridOpacity(m_gridOpacity);
     }
 }
 
@@ -727,34 +965,40 @@ void DevTools::renderBackgroundGrid(OverlayCanvas& canvas, float screenWidth, fl
     // Render at background layer
     canvas.setLayer(UILayer::Background);
 
-    // Semi-transparent dark background
+    // Semi-transparent dark background - use grid opacity for overall visibility
     glm::vec4 bgColor = m_style.panelBg;
-    bgColor.a = 0.85f;  // Slightly more transparent
+    bgColor.a = m_gridOpacity;
     canvas.fillRect(0, 0, screenWidth, screenHeight, bgColor);
 
     // Grid parameters
     const float gridSpacing = 40.0f;  // Base grid spacing in logical pixels
     const int majorEvery = 5;         // Major line every N minor lines
 
+    // Scale line colors by grid opacity
+    glm::vec4 minorColor = m_style.gridLine;
+    minorColor.a *= m_gridOpacity;
+    glm::vec4 majorColor = m_style.gridLineMajor;
+    majorColor.a *= m_gridOpacity;
+
     // Draw minor grid lines
     for (float x = 0; x < screenWidth; x += gridSpacing) {
         int lineIndex = static_cast<int>(x / gridSpacing);
         if (lineIndex % majorEvery == 0) continue;  // Skip majors
-        canvas.line(x, 0, x, screenHeight, 1.0f, m_style.gridLine);
+        canvas.line(x, 0, x, screenHeight, 1.0f, minorColor);
     }
     for (float y = 0; y < screenHeight; y += gridSpacing) {
         int lineIndex = static_cast<int>(y / gridSpacing);
         if (lineIndex % majorEvery == 0) continue;  // Skip majors
-        canvas.line(0, y, screenWidth, y, 1.0f, m_style.gridLine);
+        canvas.line(0, y, screenWidth, y, 1.0f, minorColor);
     }
 
     // Draw major grid lines
     float majorSpacing = gridSpacing * majorEvery;
     for (float x = 0; x < screenWidth; x += majorSpacing) {
-        canvas.line(x, 0, x, screenHeight, 1.0f, m_style.gridLineMajor);
+        canvas.line(x, 0, x, screenHeight, 1.0f, majorColor);
     }
     for (float y = 0; y < screenHeight; y += majorSpacing) {
-        canvas.line(0, y, screenWidth, y, 1.0f, m_style.gridLineMajor);
+        canvas.line(0, y, screenWidth, y, 1.0f, majorColor);
     }
 }
 

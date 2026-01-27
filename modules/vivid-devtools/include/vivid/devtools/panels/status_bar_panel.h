@@ -5,6 +5,7 @@
  * @brief Status bar panel (docked at top)
  *
  * Shows:
+ * - Panel toggle buttons with three-state rendering (docked/floating/hidden)
  * - Record button
  * - Snapshot button
  * - Pending changes indicator
@@ -13,6 +14,7 @@
  */
 
 #include <vivid/devtools/panel.h>
+#include <vivid/devtools/dock_zone.h>
 #include <memory>
 #include <string>
 #include <functional>
@@ -41,23 +43,28 @@ public:
     void setMcpWarning(const std::string& warning);
     void setVideoExporter(VideoExporter* exporter);
 
-    // Grid toggle (synced with DevTools background grid)
-    void setGridVisible(bool visible);
-    bool isGridVisible() const;
+    // Grid opacity (synced with DevTools background grid)
+    void setGridOpacity(float opacity);
+    float gridOpacity() const;
 
-    // Panel visibility (synced with DevTools)
+    // Panel visibility and dock mode (synced with DevTools)
     void setPanelVisibility(const std::string& panelId, bool visible);
+    void setPanelDockMode(const std::string& panelId, DockMode mode);
 
     // Callbacks
     using SnapshotCallback = std::function<void()>;
     using RecordCallback = std::function<void(bool start)>;
-    using GridToggleCallback = std::function<void(bool visible)>;
+    using GridOpacityCallback = std::function<void(float opacity)>;
     using PanelToggleCallback = std::function<void(const std::string& panelId)>;
+    using PanelDragCallback = std::function<void(const std::string& panelId, const glm::vec2& pos)>;
+    using PanelDockCallback = std::function<void(const std::string& panelId, DockPosition position)>;
 
     void onSnapshot(SnapshotCallback callback);
     void onRecord(RecordCallback callback);
-    void onGridToggle(GridToggleCallback callback);
+    void onGridOpacityChange(GridOpacityCallback callback);
     void onPanelToggle(PanelToggleCallback callback);
+    void onPanelDrag(PanelDragCallback callback);      // Drag from button to create floating
+    void onPanelDock(PanelDockCallback callback);      // Context menu dock action
 
 private:
     struct Impl;

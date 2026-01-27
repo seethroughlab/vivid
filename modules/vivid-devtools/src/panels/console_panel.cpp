@@ -244,28 +244,35 @@ void ConsolePanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     // Store style for use throughout render
     m_impl->style = style;
 
-    // Handle drag/resize (in logical coordinates)
-    // Compute logical screen dimensions for proper clamping on HiDPI displays
-    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-    float screenW = static_cast<float>(input.width) / scale;
-    float screenH = static_cast<float>(input.height) / scale;
-    handleDragAndResize(input, screenW, screenH);
+    // When docked (no title bar), use passed bounds; when floating, use m_config.bounds
+    glm::vec4 renderBounds;
+    if (m_showTitleBar) {
+        // Floating panel - handle drag/resize and use own bounds
+        float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+        float screenW = static_cast<float>(input.width) / scale;
+        float screenH = static_cast<float>(input.height) / scale;
+        handleDragAndResize(input, screenW, screenH);
+        renderBounds = m_config.bounds;
+    } else {
+        // Docked panel - use bounds from parent container
+        renderBounds = bounds;
+        // Set hover state for docked panels (normally done in handleDragAndResize)
+        m_hovered = input.mousePos.x >= bounds.x && input.mousePos.x <= bounds.x + bounds.z &&
+                    input.mousePos.y >= bounds.y && input.mousePos.y <= bounds.y + bounds.w;
+    }
 
-    // Get bounds
-    glm::vec4 scaledBounds = m_config.bounds;
-
-    float x = scaledBounds.x;
-    float y = scaledBounds.y;
-    float w = scaledBounds.z;
-    float h = scaledBounds.w;
+    float x = renderBounds.x;
+    float y = renderBounds.y;
+    float w = renderBounds.z;
+    float h = renderBounds.w;
 
     // Panel chrome
-    float titleBarHeight = style.titleBarHeight();
+    float titleBarHeight = m_showTitleBar ? style.titleBarHeight() : 0.0f;
     float contentY = y + titleBarHeight;
     float contentH = h - titleBarHeight;
 
-    // Render chrome
-    renderChrome(canvas, x, y, w, h, style);
+    // Render chrome (title bar controlled by m_showTitleBar)
+    renderChrome(canvas, x, y, w, h, style, m_showTitleBar, &input);
 
     // Get font metrics (monospace font at index 2)
     int fontIndex = 2;

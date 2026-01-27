@@ -114,6 +114,11 @@ bool vivid_devtools_is_panel_visible(const char* panelId) {
     return vivid::DevTools::instance().isPanelVisible(panelId);
 }
 
+bool vivid_devtools_dock_panel(const char* panelId, const char* position) {
+    if (!panelId || !position) return false;
+    return vivid::DevTools::instance().dockPanel(panelId, position);
+}
+
 // =============================================================================
 // IDE Features (Terminal + Editor)
 // =============================================================================

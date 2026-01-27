@@ -184,6 +184,7 @@ using ShowPanelFn = void(*)(const char* panelId);
 using HidePanelFn = void(*)(const char* panelId);
 using TogglePanelFn = void(*)(const char* panelId);
 using IsPanelVisibleFn = bool(*)(const char* panelId);
+using DockPanelFn = bool(*)(const char* panelId, const char* position);
 
 // IDE features
 using ToggleIdeFn = void(*)();
@@ -241,6 +242,7 @@ static ShowPanelFn showPanel = nullptr;
 static HidePanelFn hidePanel = nullptr;
 static TogglePanelFn togglePanel = nullptr;
 static IsPanelVisibleFn isPanelVisible = nullptr;
+static DockPanelFn dockPanel = nullptr;
 static ToggleIdeFn toggleIde = nullptr;
 static IsIdeVisibleFn isIdeVisible = nullptr;
 static SetIdeVisibleFn setIdeVisible = nullptr;
@@ -297,6 +299,7 @@ static void lookupFunctions() {
     hidePanel = (HidePanelFn)dlsym(RTLD_DEFAULT, "vivid_devtools_hide_panel");
     togglePanel = (TogglePanelFn)dlsym(RTLD_DEFAULT, "vivid_devtools_toggle_panel");
     isPanelVisible = (IsPanelVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_panel_visible");
+    dockPanel = (DockPanelFn)dlsym(RTLD_DEFAULT, "vivid_devtools_dock_panel");
     toggleIde = (ToggleIdeFn)dlsym(RTLD_DEFAULT, "vivid_devtools_toggle_ide");
     isIdeVisible = (IsIdeVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_is_ide_visible");
     setIdeVisible = (SetIdeVisibleFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_ide_visible");
@@ -343,6 +346,7 @@ static void lookupFunctions() {
         hidePanel = (HidePanelFn)GetProcAddress(devtoolsModule, "vivid_devtools_hide_panel");
         togglePanel = (TogglePanelFn)GetProcAddress(devtoolsModule, "vivid_devtools_toggle_panel");
         isPanelVisible = (IsPanelVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_panel_visible");
+        dockPanel = (DockPanelFn)GetProcAddress(devtoolsModule, "vivid_devtools_dock_panel");
         toggleIde = (ToggleIdeFn)GetProcAddress(devtoolsModule, "vivid_devtools_toggle_ide");
         isIdeVisible = (IsIdeVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_is_ide_visible");
         setIdeVisible = (SetIdeVisibleFn)GetProcAddress(devtoolsModule, "vivid_devtools_set_ide_visible");
@@ -558,6 +562,11 @@ static bool tryConsoleHasErrors() {
 static bool tryIsPanelVisible(const char* panelId) {
     if (!available() || !g_initialized || !isPanelVisible) return false;
     return isPanelVisible(panelId);
+}
+
+static bool tryDockPanel(const char* panelId, const char* position) {
+    if (!available() || !g_initialized || !dockPanel) return false;
+    return dockPanel(panelId, position);
 }
 
 } // namespace vivid::devtools_dynamic
@@ -842,6 +851,13 @@ struct MainLoopContext {
     // Project info
     std::string projectName;
 
+    // Composite texture for UI-inclusive screenshots
+    // Renders chain + ImGui + DevTools to this texture before blitting to swapchain
+    WGPUTexture compositeTexture = nullptr;
+    WGPUTextureView compositeTextureView = nullptr;
+    uint32_t compositeWidth = 0;
+    uint32_t compositeHeight = 0;
+
     // Callbacks (lambdas converted to std::function)
     std::function<void(const std::string&)> updateSourceLines;
     std::function<std::vector<RuntimeOperatorInfo>()> gatherOperatorInfo;
@@ -891,6 +907,77 @@ static void updateKeyStates(GLFWwindow* window) {
         g_keyPressed[key] = isDown && !g_keyPrevDown[key];  // Rising edge
         g_keyPrevDown[key] = isDown;
     }
+}
+
+// Ensure composite texture exists and matches window size
+// Returns false if texture creation failed
+static bool ensureCompositeTexture(MainLoopContext& mlc, uint32_t width, uint32_t height) {
+    if (mlc.compositeTexture && mlc.compositeWidth == width && mlc.compositeHeight == height) {
+        return true;  // Already correct size
+    }
+
+    // Release old texture if any
+    if (mlc.compositeTextureView) {
+        wgpuTextureViewRelease(mlc.compositeTextureView);
+        mlc.compositeTextureView = nullptr;
+    }
+    if (mlc.compositeTexture) {
+        wgpuTextureRelease(mlc.compositeTexture);
+        mlc.compositeTexture = nullptr;
+    }
+
+    if (width == 0 || height == 0) {
+        return false;
+    }
+
+    // Create new composite texture
+    WGPUTextureDescriptor textureDesc = {};
+    textureDesc.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc | WGPUTextureUsage_TextureBinding;
+    textureDesc.dimension = WGPUTextureDimension_2D;
+    textureDesc.size = {width, height, 1};
+    textureDesc.format = mlc.surfaceFormat;
+    textureDesc.mipLevelCount = 1;
+    textureDesc.sampleCount = 1;
+
+    mlc.compositeTexture = wgpuDeviceCreateTexture(mlc.device, &textureDesc);
+    if (!mlc.compositeTexture) {
+        std::cerr << "[vivid] Failed to create composite texture" << std::endl;
+        return false;
+    }
+
+    // Create view
+    WGPUTextureViewDescriptor viewDesc = {};
+    viewDesc.format = mlc.surfaceFormat;
+    viewDesc.dimension = WGPUTextureViewDimension_2D;
+    viewDesc.mipLevelCount = 1;
+    viewDesc.arrayLayerCount = 1;
+
+    mlc.compositeTextureView = wgpuTextureCreateView(mlc.compositeTexture, &viewDesc);
+    if (!mlc.compositeTextureView) {
+        std::cerr << "[vivid] Failed to create composite texture view" << std::endl;
+        wgpuTextureRelease(mlc.compositeTexture);
+        mlc.compositeTexture = nullptr;
+        return false;
+    }
+
+    mlc.compositeWidth = width;
+    mlc.compositeHeight = height;
+
+    return true;
+}
+
+// Cleanup composite texture on shutdown
+static void releaseCompositeTexture(MainLoopContext& mlc) {
+    if (mlc.compositeTextureView) {
+        wgpuTextureViewRelease(mlc.compositeTextureView);
+        mlc.compositeTextureView = nullptr;
+    }
+    if (mlc.compositeTexture) {
+        wgpuTextureRelease(mlc.compositeTexture);
+        mlc.compositeTexture = nullptr;
+    }
+    mlc.compositeWidth = 0;
+    mlc.compositeHeight = 0;
 }
 
 static bool mainLoopIteration(MainLoopContext& mlc) {
@@ -1302,25 +1389,8 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
             devtools_dynamic::trySaveSnapshot(mlc.ctx);
         }
 
-        // MCP live capture request (WebSocket command from Claude Code)
-        {
-            std::lock_guard<std::mutex> lock(mlc.mcpCaptureMutex);
-            if (!mlc.mcpCaptureRequestPath.empty()) {
-                std::string requestedPath = mlc.mcpCaptureRequestPath;
-                mlc.mcpCaptureRequestPath.clear();  // Clear the request
-
-                std::string savedPath = mlc.ctx->snapshot(requestedPath);
-                if (!savedPath.empty()) {
-                    if (mlc.editorBridge) {
-                        mlc.editorBridge->sendCaptureResult(true, savedPath);
-                    }
-                } else {
-                    if (mlc.editorBridge) {
-                        mlc.editorBridge->sendCaptureResult(false, requestedPath, "Failed to save snapshot");
-                    }
-                }
-            }
-        }
+        // MCP live capture request - defer to after render so we capture with UI
+        // (actual capture happens after render pass ends, using composite texture)
 
         // Track total frames for --snapshot and --frames options
         int currentFrame = mlc.snapshotFrameCounter;
@@ -1380,9 +1450,16 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
     WGPUCommandEncoderDescriptor encoderDesc = {};
     WGPUCommandEncoder encoder = wgpuDeviceCreateCommandEncoder(mlc.device, &encoderDesc);
 
+    // Decide whether to use composite texture (for UI-inclusive captures)
+    // Use composite when devtools is available (so MCP captures include UI)
+    bool useComposite = devtools_dynamic::available() &&
+                        ensureCompositeTexture(mlc, static_cast<uint32_t>(mlc.width),
+                                               static_cast<uint32_t>(mlc.height));
+
     // Render pass - clear to black
+    // Target composite texture if available, otherwise swapchain
     WGPURenderPassColorAttachment colorAttachment = {};
-    colorAttachment.view = view;
+    colorAttachment.view = useComposite ? mlc.compositeTextureView : view;
     colorAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
     colorAttachment.loadOp = WGPULoadOp_Clear;
     colorAttachment.storeOp = WGPUStoreOp_Store;
@@ -1830,6 +1907,57 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
 
     wgpuRenderPassEncoderEnd(pass);
     wgpuRenderPassEncoderRelease(pass);
+
+    // If we rendered to composite texture, blit it to swapchain
+    if (useComposite && mlc.display->isValid()) {
+        // Create a new render pass targeting swapchain
+        WGPURenderPassColorAttachment swapchainAttachment = {};
+        swapchainAttachment.view = view;
+        swapchainAttachment.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+        swapchainAttachment.loadOp = WGPULoadOp_Clear;
+        swapchainAttachment.storeOp = WGPUStoreOp_Store;
+        swapchainAttachment.clearValue = {0.0, 0.0, 0.0, 1.0};
+
+        WGPURenderPassDescriptor swapchainPassDesc = {};
+        swapchainPassDesc.colorAttachmentCount = 1;
+        swapchainPassDesc.colorAttachments = &swapchainAttachment;
+
+        WGPURenderPassEncoder swapchainPass = wgpuCommandEncoderBeginRenderPass(encoder, &swapchainPassDesc);
+        mlc.display->blit(swapchainPass, mlc.compositeTextureView);
+        wgpuRenderPassEncoderEnd(swapchainPass);
+        wgpuRenderPassEncoderRelease(swapchainPass);
+    }
+
+    // MCP live capture request (captures from composite texture if available - includes UI)
+    {
+        std::lock_guard<std::mutex> lock(mlc.mcpCaptureMutex);
+        if (!mlc.mcpCaptureRequestPath.empty()) {
+            std::string requestedPath = mlc.mcpCaptureRequestPath;
+            mlc.mcpCaptureRequestPath.clear();  // Clear the request
+
+            // Use composite texture if available (includes UI), otherwise chain output
+            WGPUTexture captureSource = useComposite ? mlc.compositeTexture :
+                (mlc.ctx->hasChain() ? mlc.ctx->chain().outputTexture() : nullptr);
+            std::string savedPath;
+            if (captureSource) {
+                if (VideoExporter::saveSnapshot(mlc.device, mlc.queue, captureSource, requestedPath)) {
+                    savedPath = requestedPath;
+                    printf("[MCP Capture] Saved %s snapshot: %s\n",
+                           useComposite ? "UI-inclusive" : "chain-only", savedPath.c_str());
+                }
+            }
+
+            if (!savedPath.empty()) {
+                if (mlc.editorBridge) {
+                    mlc.editorBridge->sendCaptureResult(true, savedPath);
+                }
+            } else {
+                if (mlc.editorBridge) {
+                    mlc.editorBridge->sendCaptureResult(false, requestedPath, "Failed to save snapshot");
+                }
+            }
+        }
+    }
 
     // Submit
     WGPUCommandBufferDescriptor cmdBufferDesc = {};
@@ -2718,6 +2846,11 @@ int Application::init(const AppConfig& config) {
         m_impl->mlc.mcpCaptureRequestPath = outputPath;
     });
 
+    // MCP dock_panel callback - programmatically dock panels for UI testing
+    m_impl->editorBridge->onDockPanel([](const std::string& panelId, const std::string& position) {
+        return devtools_dynamic::tryDockPanel(panelId.c_str(), position.c_str());
+    });
+
     // Extract project name and set up chain path
     std::string projectName;
     fs::path projectDir;
@@ -3065,6 +3198,9 @@ void Application::shutdown() {
     if (m_impl->display) {
         m_impl->display->shutdown();
     }
+
+    // Release composite texture
+    releaseCompositeTexture(mlc);
 
     // WebGPU cleanup
     if (m_impl->surface) {

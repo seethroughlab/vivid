@@ -3,6 +3,7 @@
 #include <vivid/devtools/split_container.h>
 #include <vivid/gui/ui_style.h>
 #include <algorithm>
+#include <iostream>
 
 namespace vivid {
 
@@ -12,6 +13,12 @@ SplitContainer::SplitContainer(SplitDirection direction)
 SplitContainer::~SplitContainer() = default;
 
 void SplitContainer::updateLayout() {
+    // Skip layout if we don't have valid bounds yet
+    // This prevents setting invalid (negative) bounds on children
+    if (m_bounds.z <= 0 || m_bounds.w <= 0) {
+        return;
+    }
+
     calculateChildBounds();
 
     if (m_first) {
@@ -30,21 +37,34 @@ void SplitContainer::calculateChildBounds() {
     float w = m_bounds.z;
     float h = m_bounds.w;
 
+    // Don't reserve space for divider when not resizable
+    float dividerHalf = m_resizable ? (m_dividerSize / 2.0f) : 0.0f;
+    float dividerWidth = m_resizable ? m_dividerSize : 0.0f;
+
+    // Clamp split ratio to enforce minimum child sizes
+    float totalSize = (m_direction == SplitDirection::Horizontal) ? w : h;
+    float effectiveRatio = m_splitRatio;
+    if (totalSize > 0 && m_resizable) {
+        float minRatio = m_minChildSize / totalSize;
+        float maxRatio = 1.0f - minRatio;
+        if (minRatio < maxRatio) {
+            effectiveRatio = std::max(minRatio, std::min(maxRatio, m_splitRatio));
+        }
+    }
+
     if (m_direction == SplitDirection::Horizontal) {
         // Left-right split
-        float splitPos = w * m_splitRatio;
-        float dividerHalf = m_dividerSize / 2.0f;
+        float splitPos = w * effectiveRatio;
 
         m_firstBounds = {x, y, splitPos - dividerHalf, h};
-        m_dividerBounds = {x + splitPos - dividerHalf, y, m_dividerSize, h};
+        m_dividerBounds = {x + splitPos - dividerHalf, y, dividerWidth, h};
         m_secondBounds = {x + splitPos + dividerHalf, y, w - splitPos - dividerHalf, h};
     } else {
         // Top-bottom split
-        float splitPos = h * m_splitRatio;
-        float dividerHalf = m_dividerSize / 2.0f;
+        float splitPos = h * effectiveRatio;
 
         m_firstBounds = {x, y, w, splitPos - dividerHalf};
-        m_dividerBounds = {x, y + splitPos - dividerHalf, w, m_dividerSize};
+        m_dividerBounds = {x, y + splitPos - dividerHalf, w, dividerWidth};
         m_secondBounds = {x, y + splitPos + dividerHalf, w, h - splitPos - dividerHalf};
     }
 }
@@ -57,6 +77,9 @@ void SplitContainer::render(OverlayCanvas& canvas, const FrameInput& input, cons
     if (m_second) {
         m_second->render(canvas, input, style);
     }
+
+    // Skip divider rendering if not resizable
+    if (!m_resizable) return;
 
     // Render divider (all dimensions in logical pixels)
     float dx = m_dividerBounds.x;
@@ -91,6 +114,18 @@ void SplitContainer::render(OverlayCanvas& canvas, const FrameInput& input, cons
 }
 
 bool SplitContainer::handleInput(const FrameInput& input) {
+    // Skip divider interaction if not resizable - just forward to children
+    if (!m_resizable) {
+        bool consumed = false;
+        if (m_second && m_second->handleInput(input)) {
+            consumed = true;
+        }
+        if (!consumed && m_first && m_first->handleInput(input)) {
+            consumed = true;
+        }
+        return consumed;
+    }
+
     glm::vec2 mousePos = input.mousePos;
     bool leftMouseDown = input.mouseDown[0];
     bool leftMouseClicked = leftMouseDown && !m_lastMouseDown;
@@ -184,14 +219,14 @@ bool SplitContainer::containsPanel(Panel* panel) const {
 }
 
 bool SplitContainer::isHovered() const {
-    if (m_dividerHovered) return true;
+    if (m_resizable && m_dividerHovered) return true;
     if (m_first && m_first->isHovered()) return true;
     if (m_second && m_second->isHovered()) return true;
     return false;
 }
 
 bool SplitContainer::isInteracting() const {
-    if (m_dividerDragging) return true;
+    if (m_resizable && m_dividerDragging) return true;
     if (m_first && m_first->isInteracting()) return true;
     if (m_second && m_second->isInteracting()) return true;
     return false;
@@ -199,20 +234,20 @@ bool SplitContainer::isInteracting() const {
 
 void SplitContainer::setFirst(std::unique_ptr<LayoutNode> node) {
     m_first = std::move(node);
-    if (m_first) {
-        m_first->setBounds(m_firstBounds);
-    }
+    // Recalculate bounds and propagate to children
+    updateLayout();
 }
 
 void SplitContainer::setSecond(std::unique_ptr<LayoutNode> node) {
     m_second = std::move(node);
-    if (m_second) {
-        m_second->setBounds(m_secondBounds);
-    }
+    // Recalculate bounds and propagate to children
+    updateLayout();
 }
 
 void SplitContainer::setSplitRatio(float ratio) {
-    m_splitRatio = std::max(0.1f, std::min(0.9f, ratio));
+    // Allow smaller ratios (down to 0.02) for non-resizable splits like status bars
+    // For resizable splits, use a wider range but still enforce some minimum
+    m_splitRatio = std::max(0.02f, std::min(0.98f, ratio));
 }
 
 } // namespace vivid

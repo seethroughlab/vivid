@@ -135,6 +135,15 @@ struct UIStyle {
     glm::vec4 gridLineMajor{0.25f, 0.25f, 0.28f, 1.0f}; ///< Major grid lines
 
     // -------------------------------------------------------------------------
+    // Dock guide colors (for panel drag-and-drop docking)
+    // -------------------------------------------------------------------------
+    glm::vec4 dockGuideIcon{0.2f, 0.3f, 0.5f, 0.9f};        ///< Dock guide icon background
+    glm::vec4 dockGuideIconActive{0.3f, 0.5f, 0.8f, 1.0f};  ///< Active dock guide icon
+    glm::vec4 dockGuideIconFg{1.0f, 1.0f, 1.0f, 1.0f};      ///< Dock guide icon foreground
+    glm::vec4 dockPreview{0.3f, 0.5f, 0.8f, 0.3f};          ///< Dock preview overlay
+    glm::vec4 dockPreviewBorder{0.4f, 0.6f, 1.0f, 0.8f};    ///< Dock preview border
+
+    // -------------------------------------------------------------------------
     // Layout helpers (return logical pixels - canvas handles HiDPI scaling)
     // -------------------------------------------------------------------------
 
@@ -228,6 +237,12 @@ inline UIStyle createLightTheme() {
     style.gridLine = {0.88f, 0.88f, 0.9f, 1.0f};
     style.gridLineMajor = {0.82f, 0.82f, 0.85f, 1.0f};
 
+    // Dock guide colors
+    style.dockGuideIcon = {0.7f, 0.8f, 0.95f, 0.9f};
+    style.dockGuideIconActive = {0.5f, 0.7f, 0.95f, 1.0f};
+    style.dockPreview = {0.4f, 0.6f, 0.9f, 0.25f};
+    style.dockPreviewBorder = {0.3f, 0.5f, 0.9f, 0.7f};
+
     return style;
 }
 
@@ -264,6 +279,12 @@ inline UIStyle createHighContrastTheme() {
     // Node graph
     style.nodeSelected = {1.0f, 1.0f, 0.0f, 1.0f};
     style.nodeFocused = {0.0f, 1.0f, 1.0f, 1.0f};
+
+    // Dock guide colors (high visibility)
+    style.dockGuideIcon = {0.0f, 0.5f, 0.8f, 1.0f};
+    style.dockGuideIconActive = {0.0f, 1.0f, 1.0f, 1.0f};
+    style.dockPreview = {0.0f, 1.0f, 1.0f, 0.4f};
+    style.dockPreviewBorder = {0.0f, 1.0f, 1.0f, 1.0f};
 
     return style;
 }

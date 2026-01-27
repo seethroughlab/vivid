@@ -103,6 +103,33 @@ bool Preferences::load() {
             if (panels.contains("editor")) m_editorVisible = panels["editor"].get<bool>();
             if (panels.contains("console")) m_consoleVisible = panels["console"].get<bool>();
             if (panels.contains("visualizer")) m_visualizerVisible = panels["visualizer"].get<bool>();
+            if (panels.contains("gridOpacity")) m_gridOpacity = panels["gridOpacity"].get<float>();
+            if (panels.contains("fileBrowser")) m_fileBrowserVisible = panels["fileBrowser"].get<bool>();
+        }
+
+        // Editor session
+        if (j.contains("editor")) {
+            auto& editor = j["editor"];
+            if (editor.contains("openFiles")) {
+                m_openFiles.clear();
+                for (const auto& f : editor["openFiles"]) {
+                    m_openFiles.push_back(f.get<std::string>());
+                }
+            }
+            if (editor.contains("activeFile")) {
+                m_activeFile = editor["activeFile"].get<std::string>();
+            }
+        }
+
+        // File browser session
+        if (j.contains("fileBrowser")) {
+            auto& fb = j["fileBrowser"];
+            if (fb.contains("expandedFolders")) {
+                m_expandedFolders.clear();
+                for (const auto& f : fb["expandedFolders"]) {
+                    m_expandedFolders.insert(f.get<std::string>());
+                }
+            }
         }
 
         std::cerr << "[Preferences] Loaded from " << path << std::endl;
@@ -134,7 +161,9 @@ bool Preferences::save() {
             {"terminal", m_terminalVisible},
             {"editor", m_editorVisible},
             {"console", m_consoleVisible},
-            {"visualizer", m_visualizerVisible}
+            {"visualizer", m_visualizerVisible},
+            {"gridOpacity", m_gridOpacity},
+            {"fileBrowser", m_fileBrowserVisible}
         };
 
         // Corner radii
@@ -142,6 +171,21 @@ bool Preferences::save() {
             {"panel", m_panelCornerRadius},
             {"button", m_buttonCornerRadius},
             {"slider", m_sliderCornerRadius}
+        };
+
+        // Editor session
+        j["editor"] = {
+            {"openFiles", m_openFiles},
+            {"activeFile", m_activeFile}
+        };
+
+        // File browser session
+        nlohmann::json expandedArray = nlohmann::json::array();
+        for (const auto& folder : m_expandedFolders) {
+            expandedArray.push_back(folder);
+        }
+        j["fileBrowser"] = {
+            {"expandedFolders", expandedArray}
         };
 
         std::ofstream file(path);
@@ -223,6 +267,26 @@ void Preferences::setSliderCornerRadius(float radius) {
         m_styleChangeCallback(m_style);
     }
 
+    save();
+}
+
+void Preferences::setGridOpacity(float opacity) {
+    m_gridOpacity = std::max(0.0f, std::min(1.0f, opacity));
+    save();
+}
+
+void Preferences::setOpenFiles(const std::vector<std::string>& files) {
+    m_openFiles = files;
+    save();
+}
+
+void Preferences::setActiveFile(const std::string& path) {
+    m_activeFile = path;
+    save();
+}
+
+void Preferences::setExpandedFolders(const std::set<std::string>& folders) {
+    m_expandedFolders = folders;
     save();
 }
 

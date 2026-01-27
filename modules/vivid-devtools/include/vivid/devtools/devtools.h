@@ -193,6 +193,39 @@ public:
      */
     bool isPanelVisible(const std::string& panelId) const;
 
+    /**
+     * @brief Dock a panel to a specific position programmatically
+     * @param panelId Panel ID (e.g., "terminal", "editor", "nodegraph", "inspector")
+     * @param position Dock position: "left", "right", "top", "bottom", "center", "float"
+     * @return true if docking succeeded
+     */
+    bool dockPanel(const std::string& panelId, const std::string& position);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name File Browser
+    /// @{
+
+    /**
+     * @brief Show the file browser panel
+     */
+    void showFileBrowser();
+
+    /**
+     * @brief Hide the file browser panel
+     */
+    void hideFileBrowser();
+
+    /**
+     * @brief Toggle file browser visibility
+     */
+    void toggleFileBrowser();
+
+    /**
+     * @brief Check if file browser is visible
+     */
+    bool isFileBrowserVisible() const;
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Backward Compatibility (IDE)
@@ -404,12 +437,17 @@ public:
     /**
      * @brief Check if background grid is visible
      */
-    bool isBackgroundGridVisible() const { return m_showBackgroundGrid; }
+    bool isBackgroundGridVisible() const { return m_gridOpacity > 0.0f; }
 
     /**
-     * @brief Set background grid visibility
+     * @brief Get background grid opacity (0.0 = hidden, 1.0 = fully visible)
      */
-    void setBackgroundGridVisible(bool visible) { m_showBackgroundGrid = visible; }
+    float gridOpacity() const { return m_gridOpacity; }
+
+    /**
+     * @brief Set background grid opacity
+     */
+    void setGridOpacity(float opacity);
 
     /// @}
 
@@ -468,8 +506,8 @@ private:
     FullscreenCallback m_fullscreenCallback;
     HelpCallback m_helpCallback;
 
-    // Background grid (full-window focus backdrop)
-    bool m_showBackgroundGrid = false;
+    // Background grid (full-window focus backdrop, 0.0-1.0 opacity)
+    float m_gridOpacity = 0.0f;
 };
 
 } // namespace vivid

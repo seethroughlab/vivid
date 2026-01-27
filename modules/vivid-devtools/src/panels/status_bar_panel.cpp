@@ -84,8 +84,10 @@ struct StatusBarPanel::Impl {
     // Callbacks
     SnapshotCallback snapshotCallback;
     RecordCallback recordCallback;
-    GridToggleCallback gridToggleCallback;
+    GridOpacityCallback gridOpacityCallback;
     PanelToggleCallback panelToggleCallback;
+    PanelDragCallback panelDragCallback;
+    PanelDockCallback panelDockCallback;
 
     // State
     size_t pendingChangeCount = 0;
@@ -98,27 +100,45 @@ struct StatusBarPanel::Impl {
     ButtonRect recordButton;
     ButtonRect stopButton;
     ButtonRect snapshotButton;
-    ButtonRect gridToggleButton;
 
     // Panel toggle buttons (left side of status bar)
     struct PanelToggle {
         std::string id;       // "terminal", "console", etc.
-        std::string label;    // "T", "C", "E", "N", "G"
+        std::string label;    // "T", "C", "E", "N"
         std::string tooltip;  // "Terminal (⌘1)"
-        bool visible = false;
+        DockMode dockMode = DockMode::Hidden;
         ButtonRect hitRect;
     };
     std::vector<PanelToggle> panelToggles;
     int hoveredToggle = -1;
+
+    // Drag state for drag-from-button
+    bool draggingToggle = false;
+    int dragToggleIndex = -1;
+    glm::vec2 dragStartPos = {0, 0};
+    static constexpr float kDragThreshold = 5.0f;
+
+    // Context menu state
+    bool contextMenuOpen = false;
+    int contextMenuToggleIndex = -1;
+    ButtonRect contextMenuRect;
+    ButtonRect menuItemDockLeft;
+    ButtonRect menuItemDockRight;
+    ButtonRect menuItemDockTop;
+    ButtonRect menuItemDockBottom;
+    ButtonRect menuItemFloat;
+    ButtonRect menuItemHide;
+
+    // Grid opacity slider
+    float gridOpacity = 0.0f;
+    ButtonRect gridSliderRect;
+    bool draggingGridSlider = false;
 
     // Codec dropdown
     bool codecDropdownOpen = false;
     ButtonRect codecH264;
     ButtonRect codecH265;
     ButtonRect codecProRes;
-
-    // Grid visibility (synced with DevTools background grid via callback)
-    bool showGrid = false;
 
     // Smoothed values for FPS
     float smoothedFps = 60.0f;
@@ -131,11 +151,11 @@ struct StatusBarPanel::Impl {
 
     void initPanelToggles() {
         panelToggles = {
-            {"terminal",  "T", "Terminal (\u23181)", false, {}},
-            {"console",   "C", "Console (\u23182)", false, {}},
-            {"editor",    "E", "Editor (\u23183)", false, {}},
-            {"nodegraph", "N", "Visualizer (\u23184)", false, {}},
-            {"grid",      "G", "Grid (\u2318G)", false, {}}
+            {"terminal",    "T", "Terminal (\u23181)", DockMode::Hidden, {}},
+            {"console",     "C", "Console (\u23182)", DockMode::Hidden, {}},
+            {"editor",      "E", "Editor (\u23183)", DockMode::Hidden, {}},
+            {"nodegraph",   "N", "Visualizer (\u23184)", DockMode::Hidden, {}},
+            {"filebrowser", "F", "Files (\u23185)", DockMode::Hidden, {}}
         };
     }
 };
@@ -173,7 +193,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
     float screenWidth = static_cast<float>(input.width) / scale;
 
-    // Use mono font metrics for bar height calculation
+    // Use bounds height for the bar (from layout), fall back to calculated if bounds not set
     const int monoFont = 2;
     float lineH = canvas.fontLineHeight(monoFont);
     float ascent = canvas.fontAscent(monoFont);
@@ -181,7 +201,8 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     if (ascent <= 0) ascent = 14.0f;
 
     const float padding = 6.0f;
-    const float barHeight = lineH + padding * 2;
+    // Use bounds height if provided, otherwise calculate from font
+    const float barHeight = (bounds.w > 0) ? bounds.w : (lineH + padding * 2);
     float x = padding;
     float y = padding + ascent;
 
@@ -192,10 +213,10 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     m_impl->smoothedFps = m_impl->smoothedFps + smoothing * (instantFps - m_impl->smoothedFps);
     m_impl->smoothedMs = m_impl->smoothedMs + smoothing * (instantMs - m_impl->smoothedMs);
 
-    // Semi-transparent background
+    // Semi-transparent background - fill the entire allocated bounds
     glm::vec4 barBg = style.headerBg;
     barBg.a = 0.95f;
-    canvas.fillRect(0, 0, screenWidth, barHeight, barBg);
+    canvas.fillRect(bounds.x, bounds.y, screenWidth, barHeight, barBg);
 
     // Colors from style
     glm::vec4 textColor = style.textPrimary;
@@ -226,19 +247,43 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
             m_impl->hoveredToggle = static_cast<int>(i);
         }
 
+        // Three-state rendering:
+        // - Docked: Filled with accent color
+        // - Floating: Filled with dim color (semi-transparent)
+        // - Hidden: Hollow (border only)
         glm::vec4 bgColor;
         glm::vec4 labelColor;
-        if (toggle.visible) {
-            bgColor = isHovered ? style.accentActive : style.accent;
-            labelColor = glm::vec4(1, 1, 1, 1);
-        } else {
-            bgColor = isHovered ? style.buttonHover : glm::vec4(0, 0, 0, 0);
-            labelColor = dimColor;
+        glm::vec4 borderColor = style.buttonBorder;
+        bool drawBorder = false;
+
+        switch (toggle.dockMode) {
+            case DockMode::Docked:
+                bgColor = isHovered ? style.accentActive : style.accent;
+                labelColor = glm::vec4(1, 1, 1, 1);
+                break;
+            case DockMode::Floating:
+                bgColor = isHovered ? style.buttonHover : glm::vec4(0.3f, 0.3f, 0.35f, 0.8f);
+                labelColor = textColor;
+                borderColor = style.accent;
+                drawBorder = true;
+                break;
+            case DockMode::Hidden:
+            default:
+                bgColor = isHovered ? style.buttonHover : glm::vec4(0, 0, 0, 0);
+                labelColor = dimColor;
+                drawBorder = true;
+                break;
         }
 
         // Draw button background
-        if (toggle.visible || isHovered) {
+        bool hasBackground = toggle.dockMode != DockMode::Hidden || isHovered;
+        if (hasBackground) {
             canvas.fillRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), bgColor);
+        }
+
+        // Draw border for floating/hidden states
+        if (drawBorder) {
+            canvas.strokeRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), 1, borderColor);
         }
 
         // Draw label centered
@@ -274,6 +319,54 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     // Separator after panel toggles
+    canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
+    x += padding * 2;
+
+    // Grid opacity slider
+    {
+        const char* gridLabel = "Grid";
+        float labelW = canvas.measureText(gridLabel, monoFont);
+        canvas.text(gridLabel, x, y, dimColor, monoFont);
+        x += labelW + 6;
+
+        // Slider dimensions
+        const float sliderW = 60.0f;
+        const float sliderH = btnH - 4.0f;
+        const float sliderY = (barHeight - sliderH) * 0.5f;
+        const float sliderRadius = style.sliderCornerRadius();
+
+        // Slider track background
+        glm::vec4 trackColor = style.sliderBg;
+        canvas.fillRoundedRect(x, sliderY, sliderW, sliderH, sliderRadius, trackColor);
+
+        // Filled portion based on opacity
+        float fillW = sliderW * m_impl->gridOpacity;
+        if (fillW > 0) {
+            // Clip the fill to the slider bounds with rounded corners
+            glm::vec4 fillColor = style.accent;
+            fillColor.a = 0.7f;
+            if (fillW >= sliderW - sliderRadius) {
+                // Full or nearly full - draw full rounded rect
+                canvas.fillRoundedRect(x, sliderY, fillW, sliderH, sliderRadius, fillColor);
+            } else {
+                // Partial fill - draw with left rounded corners only
+                canvas.fillRoundedRect(x, sliderY, std::max(fillW, sliderRadius * 2), sliderH, sliderRadius, fillColor);
+                // Clip off the right rounded edge if needed
+                if (fillW < sliderRadius * 2) {
+                    canvas.fillRect(x + fillW, sliderY, sliderRadius * 2 - fillW, sliderH, trackColor);
+                }
+            }
+        }
+
+        // Border
+        canvas.strokeRoundedRect(x, sliderY, sliderW, sliderH, sliderRadius, 1, style.buttonBorder);
+
+        // Store hit rect for interaction
+        m_impl->gridSliderRect = {x, sliderY, sliderW, sliderH, true};
+        x += sliderW + padding;
+    }
+
+    // Separator after grid slider
     canvas.fillRect(x, sepInset, 1, barHeight - sepInset * 2, dimColor);
     x += padding * 2;
 
@@ -486,6 +579,69 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
             canvas.text(items[2], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
         }
     }
+
+    // Panel toggle context menu (right-click)
+    m_impl->menuItemDockLeft.valid = false;
+    m_impl->menuItemDockRight.valid = false;
+    m_impl->menuItemDockTop.valid = false;
+    m_impl->menuItemDockBottom.valid = false;
+    m_impl->menuItemFloat.valid = false;
+    m_impl->menuItemHide.valid = false;
+
+    if (m_impl->contextMenuOpen && m_impl->contextMenuToggleIndex >= 0 &&
+        m_impl->contextMenuToggleIndex < static_cast<int>(m_impl->panelToggles.size())) {
+        canvas.setLayer(UILayer::Menus + 10);
+
+        const auto& toggle = m_impl->panelToggles[m_impl->contextMenuToggleIndex];
+        const char* menuItems[] = {"Dock Left", "Dock Right", "Dock Top", "Dock Bottom", "Float", "Hide"};
+        const int numItems = 6;
+
+        float menuWidth = 0;
+        for (const char* item : menuItems) {
+            menuWidth = std::max(menuWidth, canvas.measureText(item, monoFont));
+        }
+        menuWidth += buttonPadX * 2;
+
+        float menuX = toggle.hitRect.x;
+        float menuY = barHeight + 2;
+        float itemH = lineH + buttonPadY * 2;
+        float menuH = itemH * numItems;
+
+        // Ensure menu doesn't go off screen
+        if (menuX + menuWidth > screenWidth - padding) {
+            menuX = screenWidth - menuWidth - padding;
+        }
+
+        glm::vec4 menuBg = style.panelBg;
+        menuBg.a = 0.98f;
+
+        m_impl->contextMenuRect = {menuX, menuY, menuWidth, menuH, true};
+        canvas.fillRoundedRect(menuX, menuY, menuWidth, menuH, style.panelCornerRadius(), menuBg);
+        canvas.strokeRoundedRect(menuX, menuY, menuWidth, menuH, style.panelCornerRadius(), 1, buttonBorder);
+
+        float itemY = menuY;
+        Impl::ButtonRect* menuRects[] = {
+            &m_impl->menuItemDockLeft, &m_impl->menuItemDockRight,
+            &m_impl->menuItemDockTop, &m_impl->menuItemDockBottom,
+            &m_impl->menuItemFloat, &m_impl->menuItemHide
+        };
+
+        for (int i = 0; i < numItems; i++) {
+            *menuRects[i] = {menuX, itemY, menuWidth, itemH, true};
+
+            // Highlight hovered item
+            bool itemHovered = m_impl->isMouseInRect(*menuRects[i], mousePos);
+            if (itemHovered) {
+                canvas.fillRoundedRect(menuX + 2, itemY + 1, menuWidth - 4, itemH - 2,
+                                       style.buttonCornerRadius(), style.buttonHover);
+            }
+
+            canvas.text(menuItems[i], menuX + buttonPadX, itemY + buttonPadY + ascent, textColor, monoFont);
+            itemY += itemH;
+        }
+
+        canvas.setLayer(UILayer::Panels);
+    }
 }
 
 bool StatusBarPanel::handleInput(const FrameInput& input) {
@@ -493,11 +649,134 @@ bool StatusBarPanel::handleInput(const FrameInput& input) {
 
     glm::vec2 mousePos = input.mousePos;
 
-    // Use FrameInput's pre-computed mouseClicked
-    if (!input.mouseClicked[0]) return false;
+    // Handle toggle button dragging (drag-from-button to create floating panel)
+    if (m_impl->draggingToggle) {
+        if (input.mouseDown[0]) {
+            // Check if we've exceeded drag threshold
+            float dx = mousePos.x - m_impl->dragStartPos.x;
+            float dy = mousePos.y - m_impl->dragStartPos.y;
+            float dist = std::sqrt(dx * dx + dy * dy);
 
-    // Check codec dropdown first
-    if (m_impl->codecDropdownOpen) {
+            if (dist > Impl::kDragThreshold && m_impl->dragToggleIndex >= 0 &&
+                m_impl->dragToggleIndex < static_cast<int>(m_impl->panelToggles.size())) {
+                // Trigger drag callback and stop tracking
+                const auto& toggle = m_impl->panelToggles[m_impl->dragToggleIndex];
+                if (m_impl->panelDragCallback) {
+                    m_impl->panelDragCallback(toggle.id, mousePos);
+                }
+                m_impl->draggingToggle = false;
+                m_impl->dragToggleIndex = -1;
+                return true;
+            }
+            return true;
+        } else {
+            // Mouse released without exceeding threshold - treat as click
+            if (m_impl->dragToggleIndex >= 0 &&
+                m_impl->dragToggleIndex < static_cast<int>(m_impl->panelToggles.size())) {
+                const auto& toggle = m_impl->panelToggles[m_impl->dragToggleIndex];
+                if (m_impl->panelToggleCallback) {
+                    m_impl->panelToggleCallback(toggle.id);
+                }
+            }
+            m_impl->draggingToggle = false;
+            m_impl->dragToggleIndex = -1;
+            return true;
+        }
+    }
+
+    // Handle grid slider dragging
+    if (m_impl->draggingGridSlider) {
+        if (input.mouseDown[0]) {
+            // Update opacity based on mouse position
+            const auto& r = m_impl->gridSliderRect;
+            float newOpacity = (mousePos.x - r.x) / r.w;
+            newOpacity = std::max(0.0f, std::min(1.0f, newOpacity));
+            if (newOpacity != m_impl->gridOpacity) {
+                m_impl->gridOpacity = newOpacity;
+                if (m_impl->gridOpacityCallback) {
+                    m_impl->gridOpacityCallback(newOpacity);
+                }
+            }
+            return true;
+        } else {
+            // Mouse released - stop dragging
+            m_impl->draggingGridSlider = false;
+            return true;
+        }
+    }
+
+    // Check for slider click to start dragging
+    if (input.mouseClicked[0] && m_impl->isMouseInRect(m_impl->gridSliderRect, mousePos)) {
+        m_impl->draggingGridSlider = true;
+        // Set initial value based on click position
+        const auto& r = m_impl->gridSliderRect;
+        float newOpacity = (mousePos.x - r.x) / r.w;
+        newOpacity = std::max(0.0f, std::min(1.0f, newOpacity));
+        if (newOpacity != m_impl->gridOpacity) {
+            m_impl->gridOpacity = newOpacity;
+            if (m_impl->gridOpacityCallback) {
+                m_impl->gridOpacityCallback(newOpacity);
+            }
+        }
+        return true;
+    }
+
+    // Handle right-click on panel toggle buttons (context menu)
+    if (input.mouseClicked[1]) {  // Right click
+        for (size_t i = 0; i < m_impl->panelToggles.size(); i++) {
+            auto& toggle = m_impl->panelToggles[i];
+            if (m_impl->isMouseInRect(toggle.hitRect, mousePos)) {
+                m_impl->contextMenuOpen = true;
+                m_impl->contextMenuToggleIndex = static_cast<int>(i);
+                m_impl->codecDropdownOpen = false;  // Close other menus
+                return true;
+            }
+        }
+        // Right-click elsewhere closes context menu
+        if (m_impl->contextMenuOpen) {
+            m_impl->contextMenuOpen = false;
+            m_impl->contextMenuToggleIndex = -1;
+            return true;
+        }
+    }
+
+    // Handle context menu clicks
+    if (m_impl->contextMenuOpen && input.mouseClicked[0]) {
+        const auto& toggle = m_impl->panelToggles[m_impl->contextMenuToggleIndex];
+
+        if (m_impl->isMouseInRect(m_impl->menuItemDockLeft, mousePos)) {
+            if (m_impl->panelDockCallback) m_impl->panelDockCallback(toggle.id, DockPosition::Left);
+            m_impl->contextMenuOpen = false;
+            return true;
+        } else if (m_impl->isMouseInRect(m_impl->menuItemDockRight, mousePos)) {
+            if (m_impl->panelDockCallback) m_impl->panelDockCallback(toggle.id, DockPosition::Right);
+            m_impl->contextMenuOpen = false;
+            return true;
+        } else if (m_impl->isMouseInRect(m_impl->menuItemDockTop, mousePos)) {
+            if (m_impl->panelDockCallback) m_impl->panelDockCallback(toggle.id, DockPosition::Top);
+            m_impl->contextMenuOpen = false;
+            return true;
+        } else if (m_impl->isMouseInRect(m_impl->menuItemDockBottom, mousePos)) {
+            if (m_impl->panelDockCallback) m_impl->panelDockCallback(toggle.id, DockPosition::Bottom);
+            m_impl->contextMenuOpen = false;
+            return true;
+        } else if (m_impl->isMouseInRect(m_impl->menuItemFloat, mousePos)) {
+            if (m_impl->panelDockCallback) m_impl->panelDockCallback(toggle.id, DockPosition::Float);
+            m_impl->contextMenuOpen = false;
+            return true;
+        } else if (m_impl->isMouseInRect(m_impl->menuItemHide, mousePos)) {
+            if (m_impl->panelDockCallback) m_impl->panelDockCallback(toggle.id, DockPosition::None);
+            m_impl->contextMenuOpen = false;
+            return true;
+        } else if (!m_impl->isMouseInRect(m_impl->contextMenuRect, mousePos)) {
+            // Click outside menu closes it
+            m_impl->contextMenuOpen = false;
+            return true;
+        }
+    }
+
+    // Check codec dropdown
+    if (m_impl->codecDropdownOpen && input.mouseClicked[0]) {
         if (m_impl->isMouseInRect(m_impl->codecH264, mousePos)) {
             if (m_impl->recordCallback) m_impl->recordCallback(true);  // H264
             m_impl->codecDropdownOpen = false;
@@ -516,23 +795,21 @@ bool StatusBarPanel::handleInput(const FrameInput& input) {
         }
     }
 
-    // Panel toggle button clicks
+    // Use FrameInput's pre-computed mouseClicked for other interactions
+    if (!input.mouseClicked[0]) return false;
+
+    // Panel toggle button clicks - start potential drag
     for (size_t i = 0; i < m_impl->panelToggles.size(); i++) {
         auto& toggle = m_impl->panelToggles[i];
         if (m_impl->isMouseInRect(toggle.hitRect, mousePos)) {
-            if (toggle.id == "grid") {
-                // Special handling for grid toggle (uses gridToggleCallback)
-                m_impl->showGrid = !m_impl->showGrid;
-                toggle.visible = m_impl->showGrid;
-                if (m_impl->gridToggleCallback) {
-                    m_impl->gridToggleCallback(m_impl->showGrid);
-                }
-            } else {
-                // Regular panel toggle
-                if (m_impl->panelToggleCallback) {
-                    m_impl->panelToggleCallback(toggle.id);
-                }
-            }
+            // Close context menu if open
+            m_impl->contextMenuOpen = false;
+            m_impl->contextMenuToggleIndex = -1;
+
+            // Start potential drag
+            m_impl->draggingToggle = true;
+            m_impl->dragToggleIndex = static_cast<int>(i);
+            m_impl->dragStartPos = mousePos;
             return true;
         }
     }
@@ -572,16 +849,16 @@ void StatusBarPanel::onRecord(RecordCallback callback) {
     if (m_impl) m_impl->recordCallback = std::move(callback);
 }
 
-void StatusBarPanel::onGridToggle(GridToggleCallback callback) {
-    if (m_impl) m_impl->gridToggleCallback = std::move(callback);
+void StatusBarPanel::onGridOpacityChange(GridOpacityCallback callback) {
+    if (m_impl) m_impl->gridOpacityCallback = std::move(callback);
 }
 
-void StatusBarPanel::setGridVisible(bool visible) {
-    if (m_impl) m_impl->showGrid = visible;
+void StatusBarPanel::setGridOpacity(float opacity) {
+    if (m_impl) m_impl->gridOpacity = std::max(0.0f, std::min(1.0f, opacity));
 }
 
-bool StatusBarPanel::isGridVisible() const {
-    return m_impl ? m_impl->showGrid : false;
+float StatusBarPanel::gridOpacity() const {
+    return m_impl ? m_impl->gridOpacity : 0.0f;
 }
 
 void StatusBarPanel::setPanelVisibility(const std::string& panelId, bool visible) {
@@ -589,11 +866,23 @@ void StatusBarPanel::setPanelVisibility(const std::string& panelId, bool visible
 
     for (auto& toggle : m_impl->panelToggles) {
         if (toggle.id == panelId) {
-            toggle.visible = visible;
-            // Special case: sync grid toggle with showGrid state
-            if (panelId == "grid") {
-                m_impl->showGrid = visible;
+            // Legacy compatibility: map visibility to dock mode
+            if (visible && toggle.dockMode == DockMode::Hidden) {
+                toggle.dockMode = DockMode::Docked;  // Default to docked when showing
+            } else if (!visible) {
+                toggle.dockMode = DockMode::Hidden;
             }
+            return;
+        }
+    }
+}
+
+void StatusBarPanel::setPanelDockMode(const std::string& panelId, DockMode mode) {
+    if (!m_impl) return;
+
+    for (auto& toggle : m_impl->panelToggles) {
+        if (toggle.id == panelId) {
+            toggle.dockMode = mode;
             return;
         }
     }
@@ -601,6 +890,14 @@ void StatusBarPanel::setPanelVisibility(const std::string& panelId, bool visible
 
 void StatusBarPanel::onPanelToggle(PanelToggleCallback callback) {
     if (m_impl) m_impl->panelToggleCallback = std::move(callback);
+}
+
+void StatusBarPanel::onPanelDrag(PanelDragCallback callback) {
+    if (m_impl) m_impl->panelDragCallback = std::move(callback);
+}
+
+void StatusBarPanel::onPanelDock(PanelDockCallback callback) {
+    if (m_impl) m_impl->panelDockCallback = std::move(callback);
 }
 
 } // namespace vivid

@@ -36,10 +36,14 @@ set(DEVTOOLS_SOURCES
     src/panel_group.cpp
     src/split_container.cpp
     src/panel_leaf.cpp
+    src/dock_manager.cpp
 
     # Modal dialogs
     src/modal_dialog.cpp
     src/preferences_panel.cpp
+
+    # File buffer for tabbed editor
+    src/file_buffer.cpp
 
     # Panels
     src/panels/terminal_panel.cpp
@@ -48,6 +52,7 @@ set(DEVTOOLS_SOURCES
     src/panels/inspector_panel.cpp
     src/panels/status_bar_panel.cpp
     src/panels/console_panel.cpp
+    src/panels/file_browser_panel.cpp
 
     # ChainVisualizer and NodeGraph (used by vivid-c for embedding)
     ${CMAKE_SOURCE_DIR}/modules/vivid-core/src/chain_visualizer.cpp

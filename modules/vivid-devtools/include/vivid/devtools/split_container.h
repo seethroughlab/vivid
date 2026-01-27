@@ -126,6 +126,15 @@ public:
     const std::string& id() const { return m_id; }
     void setId(const std::string& id) { m_id = id; }
 
+    /**
+     * @brief Get/set whether the divider is resizable
+     *
+     * When false, the divider is not rendered and cannot be dragged.
+     * The split ratio remains fixed. Useful for status bars and fixed UI elements.
+     */
+    bool isResizable() const { return m_resizable; }
+    void setResizable(bool resizable) { m_resizable = resizable; }
+
     /// @}
 
 private:
@@ -135,8 +144,9 @@ private:
     std::string m_id;
     SplitDirection m_direction;
     float m_splitRatio = 0.5f;
-    float m_minChildSize = 100.0f;
+    float m_minChildSize = 150.0f;
     float m_dividerSize = 6.0f;
+    bool m_resizable = true;
 
     std::unique_ptr<LayoutNode> m_first;
     std::unique_ptr<LayoutNode> m_second;

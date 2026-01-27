@@ -1,8 +1,9 @@
 // Editor Panel Implementation
-// Basic text editor with syntax highlighting
+// Multi-file tabbed editor with syntax highlighting
 // Migrated from vivid-ide to vivid-devtools
 
 #include <vivid/devtools/panels/editor_panel.h>
+#include <vivid/devtools/file_buffer.h>
 #include <vivid/context.h>
 #include <vivid/gui/ui_style.h>
 #include <fstream>
@@ -30,27 +31,22 @@ static const std::vector<std::string> WGSL_KEYWORDS = {
 };
 
 struct EditorPanel::Impl {
-    std::string filePath;
-    std::vector<std::string> lines;
-    bool dirty = false;
-    int cursorLine = 0;
-    int cursorCol = 0;
-    int errorLine = 0;
-    std::string errorMessage;
-    int scrollOffset = 0;
-    UIStyle style;
+    // All open file buffers (tabs)
+    std::vector<std::unique_ptr<FileBuffer>> buffers;
+    int activeIndex = -1;  // -1 means no file open
 
-    // Selection state
-    bool hasSelection = false;
-    int selStartLine = 0;
-    int selStartCol = 0;
-    int selEndLine = 0;
-    int selEndCol = 0;
+    UIStyle style;
 
     // Clipboard callbacks
     ClipboardGetCallback getClipboard;
     ClipboardSetCallback setClipboard;
     std::string internalClipboard;  // Fallback
+
+    // File save callback
+    FileSaveCallback onSave;
+
+    // Tab change callback
+    TabChangeCallback onTabChange;
 
     // Mouse drag state
     bool isDragging = false;
@@ -58,116 +54,40 @@ struct EditorPanel::Impl {
     float lastLineHeight = 0;
     float lastCharWidth = 0;
 
-    // Save callback
-    std::function<void(const std::string&)> onSave;
+    // Tab bar state
+    float tabScrollOffset = 0;  // Horizontal scroll for many tabs
+    int hoveredTab = -1;
+    int hoveredCloseButton = -1;
+    bool tabClosePressed = false;
 
-    void ensureLine(int line) {
-        while (lines.size() <= static_cast<size_t>(line)) {
-            lines.push_back("");
+    // Active buffer accessor (may return nullptr)
+    FileBuffer* active() {
+        if (activeIndex >= 0 && activeIndex < static_cast<int>(buffers.size())) {
+            return buffers[activeIndex].get();
         }
+        return nullptr;
     }
 
-    void clampCursor() {
-        cursorLine = std::max(0, std::min(cursorLine, static_cast<int>(lines.size()) - 1));
-        if (cursorLine >= 0 && cursorLine < static_cast<int>(lines.size())) {
-            cursorCol = std::max(0, std::min(cursorCol, static_cast<int>(lines[cursorLine].size())));
-        } else {
-            cursorCol = 0;
+    const FileBuffer* active() const {
+        if (activeIndex >= 0 && activeIndex < static_cast<int>(buffers.size())) {
+            return buffers[activeIndex].get();
         }
+        return nullptr;
     }
 
-    void clearSelection() {
-        hasSelection = false;
-    }
-
-    void startSelection() {
-        selStartLine = cursorLine;
-        selStartCol = cursorCol;
-        selEndLine = cursorLine;
-        selEndCol = cursorCol;
-        hasSelection = true;
-    }
-
-    void updateSelection() {
-        selEndLine = cursorLine;
-        selEndCol = cursorCol;
-    }
-
-    void getNormalizedSelection(int& startLine, int& startCol, int& endLine, int& endCol) const {
-        if (selStartLine < selEndLine || (selStartLine == selEndLine && selStartCol <= selEndCol)) {
-            startLine = selStartLine;
-            startCol = selStartCol;
-            endLine = selEndLine;
-            endCol = selEndCol;
-        } else {
-            startLine = selEndLine;
-            startCol = selEndCol;
-            endLine = selStartLine;
-            endCol = selStartCol;
+    // Find buffer by path (-1 if not found)
+    int findBuffer(const std::string& path) const {
+        for (size_t i = 0; i < buffers.size(); i++) {
+            if (buffers[i]->path() == path) {
+                return static_cast<int>(i);
+            }
         }
-    }
-
-    std::string getSelectedText() const {
-        if (!hasSelection) return "";
-
-        int startLine, startCol, endLine, endCol;
-        getNormalizedSelection(startLine, startCol, endLine, endCol);
-
-        if (startLine == endLine) {
-            return lines[startLine].substr(startCol, endCol - startCol);
-        }
-
-        std::string result;
-        result += lines[startLine].substr(startCol);
-        result += '\n';
-        for (int i = startLine + 1; i < endLine; i++) {
-            result += lines[i];
-            result += '\n';
-        }
-        result += lines[endLine].substr(0, endCol);
-        return result;
-    }
-
-    void deleteSelection() {
-        if (!hasSelection) return;
-
-        int startLine, startCol, endLine, endCol;
-        getNormalizedSelection(startLine, startCol, endLine, endCol);
-
-        if (startLine == endLine) {
-            lines[startLine].erase(startCol, endCol - startCol);
-        } else {
-            std::string newLine = lines[startLine].substr(0, startCol) + lines[endLine].substr(endCol);
-            lines[startLine] = newLine;
-            lines.erase(lines.begin() + startLine + 1, lines.begin() + endLine + 1);
-        }
-
-        cursorLine = startLine;
-        cursorCol = startCol;
-        hasSelection = false;
-        dirty = true;
-    }
-
-    void selectAll() {
-        if (lines.empty()) return;
-        selStartLine = 0;
-        selStartCol = 0;
-        selEndLine = static_cast<int>(lines.size()) - 1;
-        selEndCol = static_cast<int>(lines[selEndLine].size());
-        hasSelection = true;
-        cursorLine = selEndLine;
-        cursorCol = selEndCol;
+        return -1;
     }
 
     bool isKeyword(const std::string& word, bool wgsl) {
         const auto& keywords = wgsl ? WGSL_KEYWORDS : CPP_KEYWORDS;
         return std::find(keywords.begin(), keywords.end(), word) != keywords.end();
-    }
-
-    void scroll(int delta) {
-        scrollOffset = std::max(0, scrollOffset + delta);
-        int maxScroll = std::max(0, static_cast<int>(lines.size()) - 10);
-        scrollOffset = std::min(scrollOffset, maxScroll);
     }
 };
 
@@ -188,12 +108,146 @@ EditorPanel::~EditorPanel() = default;
 bool EditorPanel::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     m_impl = std::make_unique<Impl>();
     m_impl->style.scale = ctx.contentScale();
-    m_impl->lines.push_back("");  // Start with one empty line
     return true;
 }
 
 void EditorPanel::shutdown() {
     m_impl.reset();
+}
+
+void EditorPanel::renderTabBar(OverlayCanvas& canvas, float x, float y, float w,
+                                const FrameInput& input, const UIStyle& style) {
+    if (!m_impl || m_impl->buffers.empty()) return;
+
+    const float tabHeight = 28.0f;
+    const float tabPadding = 8.0f;
+    const float closeButtonSize = 14.0f;
+    const float maxTabWidth = 180.0f;
+    const float minTabWidth = 80.0f;
+
+    int fontIndex = 0;  // Labels font
+
+    // Tab bar background
+    canvas.fillRect(x, y, w, tabHeight, style.panelBg * 0.9f);
+
+    // Calculate tab widths
+    float totalTabWidth = 0;
+    std::vector<float> tabWidths;
+    for (const auto& buf : m_impl->buffers) {
+        std::string name = buf->filename();
+        if (buf->isDirty()) name += "*";
+        float textWidth = canvas.measureText(name, fontIndex);
+        float tabW = std::min(maxTabWidth, std::max(minTabWidth, textWidth + tabPadding * 3 + closeButtonSize));
+        tabWidths.push_back(tabW);
+        totalTabWidth += tabW;
+    }
+
+    // Render tabs
+    float tabX = x - m_impl->tabScrollOffset;
+    canvas.beginClipRect(x, y, w, tabHeight);
+
+    for (size_t i = 0; i < m_impl->buffers.size(); i++) {
+        auto& buf = m_impl->buffers[i];
+        float tabW = tabWidths[i];
+        bool isActive = (static_cast<int>(i) == m_impl->activeIndex);
+        bool isHovered = (static_cast<int>(i) == m_impl->hoveredTab);
+
+        // Tab background
+        glm::vec4 tabBg = isActive ? style.panelBg : (isHovered ? style.panelBg * 0.8f : style.panelBg * 0.6f);
+        canvas.fillRect(tabX, y, tabW - 1, tabHeight, tabBg);
+
+        // Active tab indicator (bottom border)
+        if (isActive) {
+            canvas.fillRect(tabX, y + tabHeight - 2, tabW - 1, 2, style.accent);
+        }
+
+        // Tab text
+        std::string name = buf->filename();
+        if (buf->isDirty()) name += "*";
+        glm::vec4 textColor = isActive ? style.textPrimary : style.textDim;
+        canvas.text(name, tabX + tabPadding, y + tabHeight - 8, textColor, fontIndex);
+
+        // Close button (x)
+        float closeX = tabX + tabW - closeButtonSize - tabPadding;
+        float closeY = y + (tabHeight - closeButtonSize) / 2;
+        bool closeHovered = (static_cast<int>(i) == m_impl->hoveredCloseButton);
+
+        if (isHovered || isActive) {
+            glm::vec4 closeBg = closeHovered ? style.buttonHover : glm::vec4(0, 0, 0, 0);
+            canvas.fillRect(closeX - 2, closeY - 2, closeButtonSize + 4, closeButtonSize + 4, closeBg);
+            canvas.text("x", closeX + 2, closeY + closeButtonSize - 3,
+                        closeHovered ? style.textPrimary : style.textDim, fontIndex);
+        }
+
+        tabX += tabW;
+    }
+
+    canvas.endClipRect();
+
+    // Tab bar bottom border
+    canvas.fillRect(x, y + tabHeight - 1, w, 1, style.panelBorder);
+}
+
+bool EditorPanel::handleTabBarInput(const FrameInput& input, float x, float y, float w, float tabHeight) {
+    if (!m_impl) return false;
+
+    m_impl->hoveredTab = -1;
+    m_impl->hoveredCloseButton = -1;
+
+    if (m_impl->buffers.empty()) return false;
+
+    // Check if mouse is in tab bar
+    if (input.mousePos.y < y || input.mousePos.y > y + tabHeight) {
+        return false;
+    }
+    if (input.mousePos.x < x || input.mousePos.x > x + w) {
+        return false;
+    }
+
+    const float tabPadding = 8.0f;
+    const float closeButtonSize = 14.0f;
+    const float maxTabWidth = 180.0f;
+    const float minTabWidth = 80.0f;
+
+    // Find which tab is hovered
+    float tabX = x - m_impl->tabScrollOffset;
+    for (size_t i = 0; i < m_impl->buffers.size(); i++) {
+        auto& buf = m_impl->buffers[i];
+        std::string name = buf->filename();
+        if (buf->isDirty()) name += "*";
+        // Approximate text width (we don't have canvas here)
+        float textWidth = name.length() * 8.0f;
+        float tabW = std::min(maxTabWidth, std::max(minTabWidth, textWidth + tabPadding * 3 + closeButtonSize));
+
+        if (input.mousePos.x >= tabX && input.mousePos.x < tabX + tabW) {
+            m_impl->hoveredTab = static_cast<int>(i);
+
+            // Check close button
+            float closeX = tabX + tabW - closeButtonSize - tabPadding;
+            float closeY = y + (tabHeight - closeButtonSize) / 2;
+            if (input.mousePos.x >= closeX - 2 && input.mousePos.x <= closeX + closeButtonSize + 2 &&
+                input.mousePos.y >= closeY - 2 && input.mousePos.y <= closeY + closeButtonSize + 2) {
+                m_impl->hoveredCloseButton = static_cast<int>(i);
+            }
+            break;
+        }
+        tabX += tabW;
+    }
+
+    // Handle click
+    if (input.mouseClicked[0]) {
+        if (m_impl->hoveredCloseButton >= 0) {
+            // Close tab
+            closeFile(m_impl->hoveredCloseButton);
+            return true;
+        } else if (m_impl->hoveredTab >= 0) {
+            // Switch tab
+            setActiveTab(m_impl->hoveredTab);
+            return true;
+        }
+    }
+
+    return m_impl->hoveredTab >= 0;
 }
 
 void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
@@ -207,28 +261,48 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     // Store style for use throughout render
     m_impl->style = style;
 
-    // Handle drag/resize (in logical coordinates)
-    // Compute logical screen dimensions for proper clamping on HiDPI displays
-    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-    float screenW = static_cast<float>(input.width) / scale;
-    float screenH = static_cast<float>(input.height) / scale;
-    handleDragAndResize(input, screenW, screenH);
+    // When docked (no title bar), use passed bounds; when floating, use m_config.bounds
+    glm::vec4 renderBounds;
+    if (m_showTitleBar) {
+        // Floating panel - handle drag/resize and use own bounds
+        float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+        float screenW = static_cast<float>(input.width) / scale;
+        float screenH = static_cast<float>(input.height) / scale;
+        handleDragAndResize(input, screenW, screenH);
+        renderBounds = m_config.bounds;
+    } else {
+        // Docked panel - use bounds from parent container
+        renderBounds = bounds;
+        // Set hover state for docked panels (normally done in handleDragAndResize)
+        m_hovered = input.mousePos.x >= bounds.x && input.mousePos.x <= bounds.x + bounds.z &&
+                    input.mousePos.y >= bounds.y && input.mousePos.y <= bounds.y + bounds.w;
+    }
 
-    // Get bounds (already in logical coordinates)
-    glm::vec4 scaledBounds = m_config.bounds;
-
-    float x = scaledBounds.x;
-    float y = scaledBounds.y;
-    float w = scaledBounds.z;
-    float h = scaledBounds.w;
+    float x = renderBounds.x;
+    float y = renderBounds.y;
+    float w = renderBounds.z;
+    float h = renderBounds.w;
 
     // Panel chrome
-    float titleBarHeight = style.titleBarHeight();
+    float titleBarHeight = m_showTitleBar ? style.titleBarHeight() : 0.0f;
+    float tabBarHeight = 28.0f;
     float contentY = y + titleBarHeight;
     float contentH = h - titleBarHeight;
 
-    // Render chrome
-    renderChrome(canvas, x, y, w, h, style);
+    // Render chrome (title bar controlled by m_showTitleBar)
+    renderChrome(canvas, x, y, w, h, style, m_showTitleBar, &input);
+
+    // Render tab bar (if we have files)
+    if (!m_impl->buffers.empty()) {
+        renderTabBar(canvas, x, contentY, w, input, style);
+        contentY += tabBarHeight;
+        contentH -= tabBarHeight;
+    }
+
+    // Handle tab bar input
+    if (m_hovered && !m_impl->buffers.empty()) {
+        handleTabBarInput(input, x, y + titleBarHeight, w, tabBarHeight);
+    }
 
     // Get font metrics (monospace font at index 2)
     int fontIndex = 2;
@@ -253,6 +327,16 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     m_impl->lastBounds = {contentX, contentY, contentW, contentH};
 
+    // Get active buffer
+    FileBuffer* buf = m_impl->active();
+    if (!buf) {
+        // No file open - show placeholder
+        canvas.fillRect(contentX, contentY, contentW, contentH, style.panelBg);
+        canvas.text("No file open", contentX + contentW / 2 - 40, contentY + contentH / 2,
+                    style.textDim, fontIndex);
+        return;
+    }
+
     // Colors from style
     glm::vec4 bgColor = style.panelBg;
     glm::vec4 gutterColor = style.editorGutter;
@@ -268,12 +352,12 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Get normalized selection bounds
     int selStartLine = 0, selStartCol = 0, selEndLine = 0, selEndCol = 0;
-    if (m_impl->hasSelection) {
-        m_impl->getNormalizedSelection(selStartLine, selStartCol, selEndLine, selEndCol);
+    if (buf->hasSelection) {
+        buf->getNormalizedSelection(selStartLine, selStartCol, selEndLine, selEndCol);
     }
 
     // Line number gutter width
-    int lineCount = static_cast<int>(m_impl->lines.size());
+    int lineCount = static_cast<int>(buf->lines().size());
     int gutterDigits = 1;
     int temp = lineCount;
     while (temp >= 10) { gutterDigits++; temp /= 10; }
@@ -288,28 +372,28 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Calculate visible lines
     int visibleLines = static_cast<int>(contentH / lineHeight) + 1;
-    int startLine = m_impl->scrollOffset;
+    int startLine = buf->scrollOffset;
     int endLine = std::min(startLine + visibleLines, lineCount);
 
-    bool isWgsl = m_impl->filePath.find(".wgsl") != std::string::npos;
+    bool isWgsl = buf->isWgsl();
 
     for (int i = startLine; i < endLine; i++) {
         float lineY = contentY + (i - startLine) * lineHeight;
 
         // Current line highlight (only if no selection)
-        if (i == m_impl->cursorLine && m_focused && !m_impl->hasSelection) {
+        if (i == buf->cursorLine && m_focused && !buf->hasSelection) {
             canvas.fillRect(contentX + gutterWidth, lineY, contentW - gutterWidth, lineHeight, cursorLineColor);
         }
 
         // Error line highlight
-        if (i + 1 == m_impl->errorLine) {
+        if (i + 1 == buf->errorLine) {
             canvas.fillRect(contentX + gutterWidth, lineY, contentW - gutterWidth, lineHeight, errorLineColor);
         }
 
         // Selection highlight
-        if (m_impl->hasSelection && i >= selStartLine && i <= selEndLine) {
+        if (buf->hasSelection && i >= selStartLine && i <= selEndLine) {
             float textX = contentX + gutterWidth + charWidth;
-            int lineLen = static_cast<int>(m_impl->lines[i].size());
+            int lineLen = static_cast<int>(buf->lines()[i].size());
 
             int selColStart = 0;
             int selColEnd = lineLen;
@@ -334,7 +418,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         canvas.text(lineNum, contentX + charWidth, lineY + lineHeight - 4, lineNumColor, fontIndex);
 
         // Line text with basic syntax highlighting
-        const std::string& line = m_impl->lines[i];
+        const std::string& line = buf->lines()[i];
         float textX = contentX + gutterWidth + charWidth;
 
         bool inString = false;
@@ -421,28 +505,31 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     // Draw cursor
-    if (m_focused && m_impl->cursorLine >= startLine && m_impl->cursorLine < endLine) {
-        float cursorX = contentX + gutterWidth + charWidth + m_impl->cursorCol * charWidth;
-        float cursorY = contentY + (m_impl->cursorLine - startLine) * lineHeight;
+    if (m_focused && buf->cursorLine >= startLine && buf->cursorLine < endLine) {
+        float cursorX = contentX + gutterWidth + charWidth + buf->cursorCol * charWidth;
+        float cursorY = contentY + (buf->cursorLine - startLine) * lineHeight;
         canvas.fillRect(cursorX, cursorY, 2, lineHeight, style.terminalCursor);
     }
 
     canvas.endClipRect();
 
     // Error message at bottom
-    if (!m_impl->errorMessage.empty()) {
+    if (!buf->errorMessage.empty()) {
         float errorY = y + h - lineHeight - 4;
         canvas.fillRect(x, errorY, w, lineHeight + 4, style.editorErrorLine);
-        canvas.text(m_impl->errorMessage, x + 8, errorY + lineHeight - 2, style.error, fontIndex);
+        canvas.text(buf->errorMessage, x + 8, errorY + lineHeight - 2, style.error, fontIndex);
     }
 }
 
 bool EditorPanel::handleInput(const FrameInput& input) {
     if (!m_focused || !m_impl) return false;
 
+    FileBuffer* buf = m_impl->active();
+    if (!buf) return false;
+
     // Handle scroll
     if (input.scroll.y != 0) {
-        m_impl->scroll(static_cast<int>(-input.scroll.y * 3));
+        buf->scroll(static_cast<int>(-input.scroll.y * 3));
         return true;
     }
 
@@ -459,15 +546,12 @@ bool EditorPanel::handleInput(const FrameInput& input) {
 
     // Handle mouse selection
     if (mouseInContent && input.mouseClicked[0]) {
-        // Start selection on click
         onMouseClick(input.mousePos.x, input.mousePos.y, contentBounds, lineHeight, charWidth);
         return true;
-    } else if (m_dragging && input.mouseDown[0]) {
-        // Continue selection while dragging
+    } else if (m_editorDragging && input.mouseDown[0]) {
         onMouseDrag(input.mousePos.x, input.mousePos.y);
         return true;
-    } else if (m_dragging && !input.mouseDown[0]) {
-        // End selection on release
+    } else if (m_editorDragging && !input.mouseDown[0]) {
         onMouseUp();
         return true;
     }
@@ -477,21 +561,24 @@ bool EditorPanel::handleInput(const FrameInput& input) {
 
 void EditorPanel::onChar(uint32_t codepoint) {
     if (!m_impl) return;
+    FileBuffer* buf = m_impl->active();
+    if (!buf) return;
+
     if (codepoint < 32 || codepoint > 126) return;
 
     // Delete selection if any
-    if (m_impl->hasSelection) {
-        m_impl->deleteSelection();
+    if (buf->hasSelection) {
+        buf->deleteSelection();
     }
 
-    m_impl->ensureLine(m_impl->cursorLine);
-    std::string& line = m_impl->lines[m_impl->cursorLine];
+    buf->ensureLine(buf->cursorLine);
+    std::string& line = buf->lines()[buf->cursorLine];
 
     char c = static_cast<char>(codepoint);
-    line.insert(m_impl->cursorCol, 1, c);
-    m_impl->cursorCol++;
-    m_impl->dirty = true;
-    m_impl->clampCursor();
+    line.insert(buf->cursorCol, 1, c);
+    buf->cursorCol++;
+    buf->setDirty(true);
+    buf->clampCursor();
 }
 
 void EditorPanel::onKeyDown(int key, int mods) {
@@ -502,6 +589,26 @@ void EditorPanel::onKeyDown(int key, int mods) {
     bool super = (mods & 0x8) != 0;  // GLFW_MOD_SUPER (Cmd on macOS)
     bool cmdOrCtrl = ctrl || super;
 
+    // Tab management shortcuts
+    // Cmd+W: Close current tab
+    if (cmdOrCtrl && key == 87) {  // W
+        closeFile();
+        return;
+    }
+
+    // Cmd+Tab or Ctrl+Tab: Next tab
+    if (cmdOrCtrl && key == 258) {  // Tab key
+        if (shift) {
+            prevTab();
+        } else {
+            nextTab();
+        }
+        return;
+    }
+
+    FileBuffer* buf = m_impl->active();
+    if (!buf) return;
+
     // Save: Cmd+S or Ctrl+S
     if (cmdOrCtrl && key == 83) {
         saveFile();
@@ -510,8 +617,8 @@ void EditorPanel::onKeyDown(int key, int mods) {
 
     // Copy: Cmd+C or Ctrl+C
     if (cmdOrCtrl && key == 67) {
-        if (m_impl->hasSelection) {
-            std::string text = m_impl->getSelectedText();
+        if (buf->hasSelection) {
+            std::string text = buf->getSelectedText();
             if (m_impl->setClipboard) {
                 m_impl->setClipboard(text);
             }
@@ -522,13 +629,13 @@ void EditorPanel::onKeyDown(int key, int mods) {
 
     // Cut: Cmd+X or Ctrl+X
     if (cmdOrCtrl && key == 88) {
-        if (m_impl->hasSelection) {
-            std::string text = m_impl->getSelectedText();
+        if (buf->hasSelection) {
+            std::string text = buf->getSelectedText();
             if (m_impl->setClipboard) {
                 m_impl->setClipboard(text);
             }
             m_impl->internalClipboard = text;
-            m_impl->deleteSelection();
+            buf->deleteSelection();
         }
         return;
     }
@@ -544,254 +651,378 @@ void EditorPanel::onKeyDown(int key, int mods) {
         }
 
         if (!clipText.empty()) {
-            if (m_impl->hasSelection) {
-                m_impl->deleteSelection();
+            if (buf->hasSelection) {
+                buf->deleteSelection();
             }
             for (char c : clipText) {
                 if (c == '\n') {
-                    m_impl->ensureLine(m_impl->cursorLine);
-                    std::string& line = m_impl->lines[m_impl->cursorLine];
-                    std::string rest = line.substr(m_impl->cursorCol);
-                    line = line.substr(0, m_impl->cursorCol);
-                    m_impl->lines.insert(m_impl->lines.begin() + m_impl->cursorLine + 1, rest);
-                    m_impl->cursorLine++;
-                    m_impl->cursorCol = 0;
+                    buf->ensureLine(buf->cursorLine);
+                    std::string& line = buf->lines()[buf->cursorLine];
+                    std::string rest = line.substr(buf->cursorCol);
+                    line = line.substr(0, buf->cursorCol);
+                    buf->lines().insert(buf->lines().begin() + buf->cursorLine + 1, rest);
+                    buf->cursorLine++;
+                    buf->cursorCol = 0;
                 } else if (c != '\r') {
-                    m_impl->ensureLine(m_impl->cursorLine);
-                    m_impl->lines[m_impl->cursorLine].insert(m_impl->cursorCol, 1, c);
-                    m_impl->cursorCol++;
+                    buf->ensureLine(buf->cursorLine);
+                    buf->lines()[buf->cursorLine].insert(buf->cursorCol, 1, c);
+                    buf->cursorCol++;
                 }
             }
-            m_impl->dirty = true;
+            buf->setDirty(true);
         }
         return;
     }
 
     // Select All: Cmd+A or Ctrl+A
     if (cmdOrCtrl && key == 65) {
-        m_impl->selectAll();
+        buf->selectAll();
         return;
     }
 
     // Helper for selection with arrow keys
     auto handleArrowWithSelection = [&](bool movingCursor) {
         if (shift) {
-            if (!m_impl->hasSelection) {
-                m_impl->startSelection();
+            if (!buf->hasSelection) {
+                buf->startSelection();
             }
         } else {
-            if (m_impl->hasSelection && movingCursor) {
-                m_impl->clearSelection();
+            if (buf->hasSelection && movingCursor) {
+                buf->clearSelection();
             }
         }
     };
 
     auto updateSelectionAfterMove = [&]() {
-        if (shift && m_impl->hasSelection) {
-            m_impl->updateSelection();
+        if (shift && buf->hasSelection) {
+            buf->updateSelection();
         }
     };
 
     switch (key) {
         case 257:  // Enter
             {
-                if (m_impl->hasSelection) {
-                    m_impl->deleteSelection();
+                if (buf->hasSelection) {
+                    buf->deleteSelection();
                 }
-                m_impl->ensureLine(m_impl->cursorLine);
-                std::string& line = m_impl->lines[m_impl->cursorLine];
-                std::string rest = line.substr(m_impl->cursorCol);
-                line = line.substr(0, m_impl->cursorCol);
-                m_impl->lines.insert(m_impl->lines.begin() + m_impl->cursorLine + 1, rest);
-                m_impl->cursorLine++;
-                m_impl->cursorCol = 0;
-                m_impl->dirty = true;
+                buf->ensureLine(buf->cursorLine);
+                std::string& line = buf->lines()[buf->cursorLine];
+                std::string rest = line.substr(buf->cursorCol);
+                line = line.substr(0, buf->cursorCol);
+                buf->lines().insert(buf->lines().begin() + buf->cursorLine + 1, rest);
+                buf->cursorLine++;
+                buf->cursorCol = 0;
+                buf->setDirty(true);
             }
             break;
 
         case 259:  // Backspace
-            if (m_impl->hasSelection) {
-                m_impl->deleteSelection();
-            } else if (m_impl->cursorCol > 0) {
-                m_impl->lines[m_impl->cursorLine].erase(m_impl->cursorCol - 1, 1);
-                m_impl->cursorCol--;
-                m_impl->dirty = true;
-            } else if (m_impl->cursorLine > 0) {
-                m_impl->cursorCol = static_cast<int>(m_impl->lines[m_impl->cursorLine - 1].size());
-                m_impl->lines[m_impl->cursorLine - 1] += m_impl->lines[m_impl->cursorLine];
-                m_impl->lines.erase(m_impl->lines.begin() + m_impl->cursorLine);
-                m_impl->cursorLine--;
-                m_impl->dirty = true;
+            if (buf->hasSelection) {
+                buf->deleteSelection();
+            } else if (buf->cursorCol > 0) {
+                buf->lines()[buf->cursorLine].erase(buf->cursorCol - 1, 1);
+                buf->cursorCol--;
+                buf->setDirty(true);
+            } else if (buf->cursorLine > 0) {
+                buf->cursorCol = static_cast<int>(buf->lines()[buf->cursorLine - 1].size());
+                buf->lines()[buf->cursorLine - 1] += buf->lines()[buf->cursorLine];
+                buf->lines().erase(buf->lines().begin() + buf->cursorLine);
+                buf->cursorLine--;
+                buf->setDirty(true);
             }
             break;
 
         case 261:  // Delete
-            if (m_impl->hasSelection) {
-                m_impl->deleteSelection();
-            } else if (m_impl->cursorCol < static_cast<int>(m_impl->lines[m_impl->cursorLine].size())) {
-                m_impl->lines[m_impl->cursorLine].erase(m_impl->cursorCol, 1);
-                m_impl->dirty = true;
-            } else if (m_impl->cursorLine < static_cast<int>(m_impl->lines.size()) - 1) {
-                m_impl->lines[m_impl->cursorLine] += m_impl->lines[m_impl->cursorLine + 1];
-                m_impl->lines.erase(m_impl->lines.begin() + m_impl->cursorLine + 1);
-                m_impl->dirty = true;
+            if (buf->hasSelection) {
+                buf->deleteSelection();
+            } else if (buf->cursorCol < static_cast<int>(buf->lines()[buf->cursorLine].size())) {
+                buf->lines()[buf->cursorLine].erase(buf->cursorCol, 1);
+                buf->setDirty(true);
+            } else if (buf->cursorLine < static_cast<int>(buf->lines().size()) - 1) {
+                buf->lines()[buf->cursorLine] += buf->lines()[buf->cursorLine + 1];
+                buf->lines().erase(buf->lines().begin() + buf->cursorLine + 1);
+                buf->setDirty(true);
             }
             break;
 
         case 265:  // Up
             handleArrowWithSelection(true);
-            if (m_impl->cursorLine > 0) {
-                m_impl->cursorLine--;
-                m_impl->clampCursor();
+            if (buf->cursorLine > 0) {
+                buf->cursorLine--;
+                buf->clampCursor();
             }
             updateSelectionAfterMove();
             break;
 
         case 264:  // Down
             handleArrowWithSelection(true);
-            if (m_impl->cursorLine < static_cast<int>(m_impl->lines.size()) - 1) {
-                m_impl->cursorLine++;
-                m_impl->clampCursor();
+            if (buf->cursorLine < static_cast<int>(buf->lines().size()) - 1) {
+                buf->cursorLine++;
+                buf->clampCursor();
             }
             updateSelectionAfterMove();
             break;
 
         case 263:  // Left
             handleArrowWithSelection(true);
-            if (m_impl->cursorCol > 0) {
-                m_impl->cursorCol--;
-            } else if (m_impl->cursorLine > 0) {
-                m_impl->cursorLine--;
-                m_impl->cursorCol = static_cast<int>(m_impl->lines[m_impl->cursorLine].size());
+            if (buf->cursorCol > 0) {
+                buf->cursorCol--;
+            } else if (buf->cursorLine > 0) {
+                buf->cursorLine--;
+                buf->cursorCol = static_cast<int>(buf->lines()[buf->cursorLine].size());
             }
             updateSelectionAfterMove();
             break;
 
         case 262:  // Right
             handleArrowWithSelection(true);
-            if (m_impl->cursorCol < static_cast<int>(m_impl->lines[m_impl->cursorLine].size())) {
-                m_impl->cursorCol++;
-            } else if (m_impl->cursorLine < static_cast<int>(m_impl->lines.size()) - 1) {
-                m_impl->cursorLine++;
-                m_impl->cursorCol = 0;
+            if (buf->cursorCol < static_cast<int>(buf->lines()[buf->cursorLine].size())) {
+                buf->cursorCol++;
+            } else if (buf->cursorLine < static_cast<int>(buf->lines().size()) - 1) {
+                buf->cursorLine++;
+                buf->cursorCol = 0;
             }
             updateSelectionAfterMove();
             break;
 
         case 268:  // Home
             handleArrowWithSelection(true);
-            m_impl->cursorCol = 0;
+            buf->cursorCol = 0;
             updateSelectionAfterMove();
             break;
 
         case 269:  // End
             handleArrowWithSelection(true);
-            m_impl->cursorCol = static_cast<int>(m_impl->lines[m_impl->cursorLine].size());
+            buf->cursorCol = static_cast<int>(buf->lines()[buf->cursorLine].size());
             updateSelectionAfterMove();
             break;
 
         case 266:  // Page Up
             handleArrowWithSelection(true);
-            m_impl->cursorLine = std::max(0, m_impl->cursorLine - 20);
-            m_impl->clampCursor();
-            m_impl->scroll(-20);
+            buf->cursorLine = std::max(0, buf->cursorLine - 20);
+            buf->clampCursor();
+            buf->scroll(-20);
             updateSelectionAfterMove();
             break;
 
         case 267:  // Page Down
             handleArrowWithSelection(true);
-            m_impl->cursorLine = std::min(static_cast<int>(m_impl->lines.size()) - 1, m_impl->cursorLine + 20);
-            m_impl->clampCursor();
-            m_impl->scroll(20);
+            buf->cursorLine = std::min(static_cast<int>(buf->lines().size()) - 1, buf->cursorLine + 20);
+            buf->clampCursor();
+            buf->scroll(20);
             updateSelectionAfterMove();
             break;
 
-        case 258:  // Tab
-            {
-                if (m_impl->hasSelection) {
-                    m_impl->deleteSelection();
+        case 258:  // Tab (not Cmd+Tab which is handled above)
+            if (!cmdOrCtrl) {
+                if (buf->hasSelection) {
+                    buf->deleteSelection();
                 }
-                m_impl->ensureLine(m_impl->cursorLine);
-                m_impl->lines[m_impl->cursorLine].insert(m_impl->cursorCol, "    ");
-                m_impl->cursorCol += 4;
-                m_impl->dirty = true;
+                buf->ensureLine(buf->cursorLine);
+                buf->lines()[buf->cursorLine].insert(buf->cursorCol, "    ");
+                buf->cursorCol += 4;
+                buf->setDirty(true);
             }
             break;
     }
 
     // Keep cursor visible
     int visibleLines = 20;
-    if (m_impl->cursorLine < m_impl->scrollOffset) {
-        m_impl->scrollOffset = m_impl->cursorLine;
-    } else if (m_impl->cursorLine >= m_impl->scrollOffset + visibleLines) {
-        m_impl->scrollOffset = m_impl->cursorLine - visibleLines + 1;
+    if (buf->cursorLine < buf->scrollOffset) {
+        buf->scrollOffset = buf->cursorLine;
+    } else if (buf->cursorLine >= buf->scrollOffset + visibleLines) {
+        buf->scrollOffset = buf->cursorLine - visibleLines + 1;
     }
 }
 
 bool EditorPanel::openFile(const std::string& path) {
     if (!m_impl) return false;
 
-    std::ifstream file(path);
-    if (!file.is_open()) {
+    // Check if already open
+    int existing = m_impl->findBuffer(path);
+    if (existing >= 0) {
+        setActiveTab(existing);
+        return true;
+    }
+
+    // Load new file
+    auto buffer = std::make_unique<FileBuffer>();
+    if (!buffer->load(path)) {
         return false;
     }
 
-    m_impl->filePath = path;
-    m_impl->lines.clear();
-    m_impl->dirty = false;
-    m_impl->cursorLine = 0;
-    m_impl->cursorCol = 0;
-    m_impl->scrollOffset = 0;
-    m_impl->clearSelection();
+    m_impl->buffers.push_back(std::move(buffer));
+    m_impl->activeIndex = static_cast<int>(m_impl->buffers.size()) - 1;
 
-    std::string line;
-    while (std::getline(file, line)) {
-        m_impl->lines.push_back(line);
+    if (m_impl->onTabChange) {
+        m_impl->onTabChange(path);
     }
 
-    if (m_impl->lines.empty()) {
-        m_impl->lines.push_back("");
+    return true;
+}
+
+bool EditorPanel::closeFile(int index, bool force) {
+    if (!m_impl) return false;
+
+    if (index < 0) {
+        index = m_impl->activeIndex;
     }
 
+    if (index < 0 || index >= static_cast<int>(m_impl->buffers.size())) {
+        return false;
+    }
+
+    // Check for unsaved changes
+    if (!force && m_impl->buffers[index]->isDirty()) {
+        // TODO: Show unsaved changes dialog
+        // For now, just close anyway
+    }
+
+    m_impl->buffers.erase(m_impl->buffers.begin() + index);
+
+    // Adjust active index
+    if (m_impl->buffers.empty()) {
+        m_impl->activeIndex = -1;
+    } else if (m_impl->activeIndex >= static_cast<int>(m_impl->buffers.size())) {
+        m_impl->activeIndex = static_cast<int>(m_impl->buffers.size()) - 1;
+    } else if (index < m_impl->activeIndex) {
+        m_impl->activeIndex--;
+    }
+
+    if (m_impl->onTabChange && m_impl->activeIndex >= 0) {
+        m_impl->onTabChange(m_impl->buffers[m_impl->activeIndex]->path());
+    }
+
+    return true;
+}
+
+bool EditorPanel::closeAllFiles(bool force) {
+    if (!m_impl) return false;
+
+    while (!m_impl->buffers.empty()) {
+        if (!closeFile(0, force)) {
+            return false;
+        }
+    }
     return true;
 }
 
 bool EditorPanel::saveFile() {
-    if (!m_impl || m_impl->filePath.empty()) {
+    return saveFile(-1);
+}
+
+bool EditorPanel::saveFile(int index) {
+    if (!m_impl) return false;
+
+    if (index < 0) {
+        index = m_impl->activeIndex;
+    }
+
+    if (index < 0 || index >= static_cast<int>(m_impl->buffers.size())) {
         return false;
     }
 
-    std::ofstream file(m_impl->filePath);
-    if (!file.is_open()) {
+    FileBuffer* buf = m_impl->buffers[index].get();
+    if (!buf->save()) {
         return false;
     }
-
-    for (size_t i = 0; i < m_impl->lines.size(); i++) {
-        file << m_impl->lines[i];
-        if (i < m_impl->lines.size() - 1) {
-            file << '\n';
-        }
-    }
-
-    m_impl->dirty = false;
 
     if (m_impl->onSave) {
-        m_impl->onSave(m_impl->filePath);
+        m_impl->onSave(buf->path());
     }
 
     return true;
 }
 
+int EditorPanel::tabCount() const {
+    return m_impl ? static_cast<int>(m_impl->buffers.size()) : 0;
+}
+
+int EditorPanel::activeTab() const {
+    return m_impl ? m_impl->activeIndex : -1;
+}
+
+void EditorPanel::setActiveTab(int index) {
+    if (!m_impl) return;
+    if (index < 0 || index >= static_cast<int>(m_impl->buffers.size())) return;
+
+    m_impl->activeIndex = index;
+
+    if (m_impl->onTabChange) {
+        m_impl->onTabChange(m_impl->buffers[index]->path());
+    }
+}
+
+void EditorPanel::nextTab() {
+    if (!m_impl || m_impl->buffers.empty()) return;
+    int next = (m_impl->activeIndex + 1) % static_cast<int>(m_impl->buffers.size());
+    setActiveTab(next);
+}
+
+void EditorPanel::prevTab() {
+    if (!m_impl || m_impl->buffers.empty()) return;
+    int prev = m_impl->activeIndex - 1;
+    if (prev < 0) prev = static_cast<int>(m_impl->buffers.size()) - 1;
+    setActiveTab(prev);
+}
+
+std::string EditorPanel::tabPath(int index) const {
+    if (!m_impl) return "";
+    if (index < 0 || index >= static_cast<int>(m_impl->buffers.size())) return "";
+    return m_impl->buffers[index]->path();
+}
+
+bool EditorPanel::hasUnsavedChanges() const {
+    if (!m_impl) return false;
+    for (const auto& buf : m_impl->buffers) {
+        if (buf->isDirty()) return true;
+    }
+    return false;
+}
+
+std::vector<std::string> EditorPanel::openFiles() const {
+    std::vector<std::string> paths;
+    if (m_impl) {
+        for (const auto& buf : m_impl->buffers) {
+            paths.push_back(buf->path());
+        }
+    }
+    return paths;
+}
+
 void EditorPanel::setError(int line, const std::string& message) {
     if (!m_impl) return;
-    m_impl->errorLine = line;
-    m_impl->errorMessage = message;
+    FileBuffer* buf = m_impl->active();
+    if (buf) {
+        buf->errorLine = line;
+        buf->errorMessage = message;
+    }
 }
 
 void EditorPanel::clearError() {
     if (!m_impl) return;
-    m_impl->errorLine = 0;
-    m_impl->errorMessage.clear();
+    FileBuffer* buf = m_impl->active();
+    if (buf) {
+        buf->errorLine = 0;
+        buf->errorMessage.clear();
+    }
+}
+
+void EditorPanel::setError(const std::string& path, int line, const std::string& message) {
+    if (!m_impl) return;
+    int index = m_impl->findBuffer(path);
+    if (index >= 0) {
+        m_impl->buffers[index]->errorLine = line;
+        m_impl->buffers[index]->errorMessage = message;
+    }
+}
+
+void EditorPanel::clearAllErrors() {
+    if (!m_impl) return;
+    for (auto& buf : m_impl->buffers) {
+        buf->errorLine = 0;
+        buf->errorMessage.clear();
+    }
 }
 
 void EditorPanel::setClipboardCallbacks(ClipboardGetCallback get, ClipboardSetCallback set) {
@@ -801,13 +1032,27 @@ void EditorPanel::setClipboardCallbacks(ClipboardGetCallback get, ClipboardSetCa
     }
 }
 
+void EditorPanel::onFileSave(FileSaveCallback callback) {
+    if (m_impl) {
+        m_impl->onSave = std::move(callback);
+    }
+}
+
+void EditorPanel::onTabChange(TabChangeCallback callback) {
+    if (m_impl) {
+        m_impl->onTabChange = std::move(callback);
+    }
+}
+
 void EditorPanel::onMouseClick(float x, float y, const glm::vec4& contentBounds,
                                float lineHeight, float charWidth) {
     if (!m_focused || !m_impl) return;
+    FileBuffer* buf = m_impl->active();
+    if (!buf) return;
     if (lineHeight <= 0 || charWidth <= 0) return;
 
     // Calculate gutter width
-    int lineCount = static_cast<int>(m_impl->lines.size());
+    int lineCount = static_cast<int>(buf->lines().size());
     int gutterDigits = 1;
     int temp = lineCount;
     while (temp >= 10) { gutterDigits++; temp /= 10; }
@@ -820,26 +1065,28 @@ void EditorPanel::onMouseClick(float x, float y, const glm::vec4& contentBounds,
 
     // Calculate line from Y position
     float relY = y - contentY;
-    int clickedLine = static_cast<int>(relY / lineHeight) + m_impl->scrollOffset;
-    clickedLine = std::max(0, std::min(clickedLine, static_cast<int>(m_impl->lines.size()) - 1));
+    int clickedLine = static_cast<int>(relY / lineHeight) + buf->scrollOffset;
+    clickedLine = std::max(0, std::min(clickedLine, static_cast<int>(buf->lines().size()) - 1));
 
     // Calculate column from X position
     float relX = x - contentX;
     int clickedCol = static_cast<int>(relX / charWidth);
     clickedCol = std::max(0, clickedCol);
-    if (clickedLine >= 0 && clickedLine < static_cast<int>(m_impl->lines.size())) {
-        clickedCol = std::min(clickedCol, static_cast<int>(m_impl->lines[clickedLine].size()));
+    if (clickedLine >= 0 && clickedLine < static_cast<int>(buf->lines().size())) {
+        clickedCol = std::min(clickedCol, static_cast<int>(buf->lines()[clickedLine].size()));
     }
 
-    m_impl->clearSelection();
-    m_impl->cursorLine = clickedLine;
-    m_impl->cursorCol = clickedCol;
-    m_impl->startSelection();
-    m_dragging = true;
+    buf->clearSelection();
+    buf->cursorLine = clickedLine;
+    buf->cursorCol = clickedCol;
+    buf->startSelection();
+    m_editorDragging = true;
 }
 
 void EditorPanel::onMouseDrag(float x, float y) {
-    if (!m_focused || !m_dragging || !m_impl) return;
+    if (!m_focused || !m_editorDragging || !m_impl) return;
+    FileBuffer* buf = m_impl->active();
+    if (!buf) return;
 
     float charWidth = m_impl->lastCharWidth;
     float lineHeight = m_impl->lastLineHeight;
@@ -847,7 +1094,7 @@ void EditorPanel::onMouseDrag(float x, float y) {
 
     if (lineHeight <= 0 || charWidth <= 0) return;
 
-    int lineCount = static_cast<int>(m_impl->lines.size());
+    int lineCount = static_cast<int>(buf->lines().size());
     int gutterDigits = 1;
     int temp = lineCount;
     while (temp >= 10) { gutterDigits++; temp /= 10; }
@@ -857,27 +1104,30 @@ void EditorPanel::onMouseDrag(float x, float y) {
     float contentY = bounds.y;
 
     float relY = y - contentY;
-    int clickedLine = static_cast<int>(relY / lineHeight) + m_impl->scrollOffset;
-    clickedLine = std::max(0, std::min(clickedLine, static_cast<int>(m_impl->lines.size()) - 1));
+    int clickedLine = static_cast<int>(relY / lineHeight) + buf->scrollOffset;
+    clickedLine = std::max(0, std::min(clickedLine, static_cast<int>(buf->lines().size()) - 1));
 
     float relX = x - contentX;
     int clickedCol = static_cast<int>(std::max(0.0f, relX) / charWidth);
-    if (clickedLine >= 0 && clickedLine < static_cast<int>(m_impl->lines.size())) {
-        clickedCol = std::min(clickedCol, static_cast<int>(m_impl->lines[clickedLine].size()));
+    if (clickedLine >= 0 && clickedLine < static_cast<int>(buf->lines().size())) {
+        clickedCol = std::min(clickedCol, static_cast<int>(buf->lines()[clickedLine].size()));
     }
 
-    m_impl->cursorLine = clickedLine;
-    m_impl->cursorCol = clickedCol;
-    m_impl->updateSelection();
+    buf->cursorLine = clickedLine;
+    buf->cursorCol = clickedCol;
+    buf->updateSelection();
 }
 
 void EditorPanel::onMouseUp() {
-    m_dragging = false;
+    m_editorDragging = false;
 
-    if (m_impl && m_impl->hasSelection &&
-        m_impl->selStartLine == m_impl->selEndLine &&
-        m_impl->selStartCol == m_impl->selEndCol) {
-        m_impl->clearSelection();
+    if (m_impl) {
+        FileBuffer* buf = m_impl->active();
+        if (buf && buf->hasSelection &&
+            buf->selStartLine == buf->selEndLine &&
+            buf->selStartCol == buf->selEndCol) {
+            buf->clearSelection();
+        }
     }
 }
 

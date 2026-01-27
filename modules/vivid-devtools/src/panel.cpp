@@ -4,7 +4,6 @@
 #include <vivid/devtools/panel.h>
 #include <vivid/gui/ui_style.h>
 #include <algorithm>
-#include <iostream>
 
 namespace vivid {
 
@@ -39,19 +38,12 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     float h = m_config.bounds.w;
     float hitSize = 8.0f;
 
-    // Debug: log when handleDragAndResize is called with a click
-    if (input.mouseClicked[0]) {
-        std::cerr << "[Panel:" << m_config.id << "] bounds=(" << x << "," << y << "," << w << "," << h
-                  << ") titleBar=[" << y << "-" << (y + titleBarHeight) << "] mouse=("
-                  << mousePos.x << "," << mousePos.y << ") canStart=" << m_canStartInteraction << "\n";
-    }
-
     // Check if mouse is in panel bounds (with resize margin)
     m_hovered = mousePos.x >= x - hitSize && mousePos.x <= x + w + hitSize &&
                 mousePos.y >= y - hitSize && mousePos.y <= y + h + hitSize;
 
     bool leftMouseDown = input.mouseDown[0];
-    bool leftMouseClicked = input.mouseClicked[0];  // Use FrameInput's computed click
+    bool leftMouseClicked = input.mouseClicked[0];
 
     // -------------------------------------------------------------------------
     // Dragging (from title bar)
@@ -60,18 +52,8 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
         bool overTitleBar = mousePos.x >= x && mousePos.x <= x + w &&
                             mousePos.y >= y && mousePos.y <= y + titleBarHeight;
 
-        // Debug: log when we're over the title bar and clicking
-        if (overTitleBar && leftMouseClicked) {
-            std::cerr << "[Panel:" << m_config.id << "] Click on title bar! "
-                      << "canStart=" << m_canStartInteraction
-                      << " dragging=" << m_dragging
-                      << " resizing=" << m_resizing << "\n";
-        }
-
         // Only start new drag if this panel can start interactions
-        // (m_canStartInteraction is true if panel owns input OR is already interacting)
         if (m_canStartInteraction && overTitleBar && leftMouseClicked && !m_dragging && m_resizing == 0) {
-            std::cerr << "[Panel:" << m_config.id << "] Starting drag!\n";
             m_dragging = true;
             m_dragOffset = mousePos - glm::vec2(x, y);
         }
@@ -135,46 +117,95 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     }
 
     // -------------------------------------------------------------------------
-    // Clamp to screen bounds
+    // Soft clamp to screen bounds - allow panels to go partially off-screen
+    // but keep at least 50px visible so user can grab them
     // -------------------------------------------------------------------------
-    m_config.bounds.x = std::max(0.0f, std::min(m_config.bounds.x, screenW - m_config.bounds.z));
-    m_config.bounds.y = std::max(0.0f, std::min(m_config.bounds.y, screenH - m_config.bounds.w));
-    m_config.bounds.z = std::max(m_config.minWidth, std::min(m_config.bounds.z, screenW - m_config.bounds.x));
-    m_config.bounds.w = std::max(m_config.minHeight, std::min(m_config.bounds.w, screenH - m_config.bounds.y));
+    constexpr float kMinVisiblePx = 50.0f;
+    m_config.bounds.x = std::max(-m_config.bounds.z + kMinVisiblePx, std::min(m_config.bounds.x, screenW - kMinVisiblePx));
+    m_config.bounds.y = std::max(-m_config.bounds.w + kMinVisiblePx, std::min(m_config.bounds.y, screenH - kMinVisiblePx));
+    m_config.bounds.z = std::max(m_config.minWidth, m_config.bounds.z);
+    m_config.bounds.w = std::max(m_config.minHeight, m_config.bounds.w);
 
     // Update consumed input state
     m_consumedInput = m_hovered || m_dragging || m_resizing != 0;
 }
 
 void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
-                          const UIStyle& style, bool showTitleBar) {
+                          const UIStyle& style, bool showTitleBar,
+                          const FrameInput* input) {
+    // Reset close button state
+    m_closeButtonClicked = false;
+
     // All dimensions in logical pixels - canvas handles scaling
     float cornerRadius = style.panelCornerRadius();
     float titleBarHeight = style.titleBarHeight();
 
-    // Background with rounded corners - use fully opaque to prevent bleed-through
+    // Use square corners when docked to edge (no rounded corners at top)
+    float effectiveRadius = m_squareTopCorners ? 0.0f : cornerRadius;
+
+    // Background - use fully opaque to prevent bleed-through
     glm::vec4 bgColor = style.panelBg;
     bgColor.a = 1.0f;  // Force opaque
-    canvas.fillRoundedRect(x, y, w, h, cornerRadius, bgColor);
-    canvas.strokeRoundedRect(x, y, w, h, cornerRadius, 1.0f, style.panelBorder);
+
+    if (effectiveRadius > 0.0f) {
+        canvas.fillRoundedRect(x, y, w, h, effectiveRadius, bgColor);
+        canvas.strokeRoundedRect(x, y, w, h, effectiveRadius, 1.0f, style.panelBorder);
+    } else {
+        canvas.fillRect(x, y, w, h, bgColor);
+        canvas.strokeRect(x, y, w, h, 1.0f, style.panelBorder);
+    }
 
     // Title bar - use fully opaque
     if (showTitleBar) {
         glm::vec4 headerColor = style.headerBg;
         headerColor.a = 1.0f;  // Force opaque
-        canvas.fillRoundedRectTop(x, y, w, titleBarHeight, cornerRadius, headerColor);
+        if (m_squareTopCorners) {
+            // Square corners at top
+            canvas.fillRect(x, y, w, titleBarHeight, headerColor);
+        } else {
+            canvas.fillRoundedRectTop(x, y, w, titleBarHeight, cornerRadius, headerColor);
+        }
 
         // Title text
         canvas.text(m_config.title, x + 10, y + 18,
                     style.textPrimary, 0);
 
-        // Drag handle indicator (right side)
-        float handleX = x + w - 60;
-        for (int i = 0; i < 3; i++) {
-            float dotX = handleX + i * 8;
-            canvas.fillCircle(dotX, y + titleBarHeight / 2, 2,
-                              style.textDim, 8);
+        // Close button (X) on right side
+        float closeSize = 8.0f;
+        float closePadding = 12.0f;
+        float closeX = x + w - closePadding - closeSize;
+        float closeY = y + titleBarHeight / 2;
+
+        // Check hover and click
+        m_closeButtonHovered = false;
+        if (input) {
+            float hitPadding = 4.0f;
+            bool overClose = input->mousePos.x >= closeX - closeSize - hitPadding &&
+                             input->mousePos.x <= closeX + closeSize + hitPadding &&
+                             input->mousePos.y >= closeY - closeSize - hitPadding &&
+                             input->mousePos.y <= closeY + closeSize + hitPadding;
+
+            if (overClose) {
+                m_closeButtonHovered = true;
+                if (input->mouseClicked[0]) {
+                    m_closeButtonClicked = true;
+                    if (m_onClose) {
+                        m_onClose(this);
+                    }
+                }
+            }
         }
+
+        // Draw X with hover effect
+        glm::vec4 closeColor = m_closeButtonHovered
+            ? glm::vec4(1.0f, 0.4f, 0.4f, 1.0f)  // Red on hover
+            : style.textDim;
+        float lineWidth = m_closeButtonHovered ? 2.0f : 1.5f;
+
+        canvas.line(closeX - closeSize, closeY - closeSize,
+                    closeX + closeSize, closeY + closeSize, lineWidth, closeColor);
+        canvas.line(closeX + closeSize, closeY - closeSize,
+                    closeX - closeSize, closeY + closeSize, lineWidth, closeColor);
     }
 }
 

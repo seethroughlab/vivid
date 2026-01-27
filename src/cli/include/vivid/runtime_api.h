@@ -254,6 +254,22 @@ public:
     /// Called when MCP requests a screenshot of the current frame
     void onCaptureFrame(CaptureFrameCallback callback) { m_captureFrameCallback = callback; }
 
+    /// Callback type for dock_panel command (MCP UI testing)
+    /// @param panelId Panel to dock (e.g., "terminal", "editor", "nodegraph")
+    /// @param position Dock position ("left", "right", "top", "bottom", "center", "float")
+    /// @return true if docking succeeded
+    using DockPanelCallback = std::function<bool(const std::string& panelId, const std::string& position)>;
+
+    /// Set callback for dock_panel command
+    /// Called when MCP requests to programmatically dock a panel
+    void onDockPanel(DockPanelCallback callback) { m_dockPanelCallback = callback; }
+
+    /// Send dock_panel result back to clients
+    /// @param panelId Panel that was docked
+    /// @param position Position it was docked to
+    /// @param success True if docking succeeded
+    void sendDockPanelResult(const std::string& panelId, const std::string& position, bool success);
+
     // -------------------------------------------------------------------------
     // Chain structure (MCP get_chain_structure tool)
     // -------------------------------------------------------------------------
@@ -418,6 +434,7 @@ private:
     WindowControlCallback m_windowControlCallback;
     DiscardChangesCallback m_discardChangesCallback;
     CaptureFrameCallback m_captureFrameCallback;
+    DockPanelCallback m_dockPanelCallback;
     SetParamImmediateCallback m_setParamImmediateCallback;
     RequestChainStructureCallback m_requestChainStructureCallback;
     RequestFrameInfoCallback m_requestFrameInfoCallback;

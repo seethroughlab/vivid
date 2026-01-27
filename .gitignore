@@ -81,3 +81,4 @@ tests/assets/*.zip
 projects/jeff/
 Testing/
 EXAMPLES_CHECKLIST.md
+.mcp.json

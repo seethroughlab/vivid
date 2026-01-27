@@ -17,6 +17,7 @@
 
 #include <vivid/devtools/panel.h>
 #include <vivid/devtools/layout_node.h>
+#include <vivid/devtools/dock_zone.h>
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/frame_input.h>
 #include <memory>
@@ -29,6 +30,7 @@ namespace vivid {
 class Context;
 class PanelGroup;
 class SplitContainer;
+class DockManager;
 
 /**
  * @brief Manages multiple devtools panels
@@ -260,6 +262,12 @@ public:
     const LayoutNode* layoutRoot() const { return m_layoutRoot.get(); }
 
     /**
+     * @brief Release ownership of the layout root
+     * @return The layout root (ownership transferred to caller)
+     */
+    std::unique_ptr<LayoutNode> releaseLayoutRoot() { return std::move(m_layoutRoot); }
+
+    /**
      * @brief Build a default layout from current panels
      *
      * Creates a layout tree based on panel DockSide settings:
@@ -282,6 +290,49 @@ public:
      * @return true on success
      */
     bool loadLayout(const std::string& path);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name Docking System
+    /// @{
+
+    /**
+     * @brief Get the dock manager
+     */
+    DockManager* dockManager() { return m_dockManager.get(); }
+    const DockManager* dockManager() const { return m_dockManager.get(); }
+
+    /**
+     * @brief Float a panel (remove from layout, add to floating list)
+     * @param panel Panel to float
+     * @param pos Position for floating panel
+     */
+    void floatPanel(Panel* panel, const glm::vec2& pos);
+
+    /**
+     * @brief Add a panel to the floating z-order list
+     * @param id Panel ID
+     */
+    void addToFloatingOrder(const std::string& id);
+
+    /**
+     * @brief Remove a panel from the floating z-order list
+     * @param id Panel ID
+     */
+    void removeFromFloatingOrder(const std::string& id);
+
+    /**
+     * @brief Hide a panel (saves tree slot for restoration)
+     * @param id Panel ID
+     * @param saveSlot If true, saves the panel's position for restoration
+     */
+    void hidePanelWithSlot(const std::string& id, bool saveSlot = true);
+
+    /**
+     * @brief Show a hidden panel (restores from tree slot if available)
+     * @param id Panel ID
+     */
+    void showPanelFromSlot(const std::string& id);
 
     /// @}
 
@@ -319,6 +370,18 @@ private:
 
     // Helper to bring a panel to the front of z-order
     void bringToFront(const std::string& id);
+
+    // Docking system
+    std::unique_ptr<DockManager> m_dockManager;
+
+    // Tree slot storage for hidden panels (panel ID -> tree slot)
+    std::unordered_map<std::string, TreeSlot> m_savedTreeSlots;
+
+    // Saved floating bounds for hidden panels (panel ID -> bounds)
+    std::unordered_map<std::string, glm::vec4> m_savedFloatBounds;
+
+    // Wire up dock manager callbacks to PanelGroups
+    void wireGroupDockCallbacks(PanelGroup* group);
 };
 
 } // namespace vivid

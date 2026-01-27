@@ -5,6 +5,7 @@
 #include <vivid/devtools/panel_group.h>
 #include <vivid/devtools/split_container.h>
 #include <vivid/devtools/panel_leaf.h>
+#include <vivid/devtools/dock_manager.h>
 #include <vivid/context.h>
 #include <algorithm>
 #include <fstream>
@@ -13,7 +14,9 @@
 
 namespace vivid {
 
-PanelManager::PanelManager() = default;
+PanelManager::PanelManager()
+    : m_dockManager(std::make_unique<DockManager>(this)) {
+}
 
 PanelManager::~PanelManager() {
     shutdown();
@@ -32,6 +35,21 @@ bool PanelManager::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
                       << panel->config().id << "\n";
             return false;
         }
+    }
+
+    // Set up dock manager callbacks
+    if (m_dockManager) {
+        m_dockManager->onPanelFloated([this](Panel* panel, const glm::vec2& pos) {
+            floatPanel(panel, pos);
+            // Reset interaction state so panel can be dragged again
+            panel->resetInteractionState();
+        });
+        m_dockManager->onPanelDocked([this](Panel* panel) {
+            // Remove from floating order if it was floating
+            removeFromFloatingOrder(panel->config().id);
+            // Reset interaction state so isInteracting() returns false
+            panel->resetInteractionState();
+        });
     }
 
     m_initialized = true;
@@ -69,28 +87,6 @@ void PanelManager::render(OverlayCanvas& canvas, const FrameInput& input,
 
     // Track if any panel consumed input
     m_consumedInput = false;
-
-    // Debug: log mode once
-    static bool loggedMode = false;
-    if (!loggedMode) {
-        std::cerr << "[PanelManager] Layout mode: " << m_layoutMode
-                  << ", floating panels: " << m_floatingZOrder.size()
-                  << ", contentScale: " << input.contentScale
-                  << ", screen: " << screenWidth << "x" << screenHeight << "\n";
-        for (const auto& id : m_floatingZOrder) {
-            std::cerr << "  - " << id << "\n";
-        }
-        loggedMode = true;
-    }
-
-    // Debug: verify z-order integrity
-    if (input.mouseClicked[0]) {
-        std::cerr << "[PanelManager] Z-order check: ";
-        for (const auto& id : m_floatingZOrder) {
-            std::cerr << id << " ";
-        }
-        std::cerr << "\n";
-    }
 
     if (m_layoutMode && m_layoutRoot) {
         renderLayoutMode(canvas, input, scale, style);
@@ -166,10 +162,12 @@ std::string PanelManager::determineInputTarget(const FrameInput& input) {
 
         glm::vec4 bounds = panel->bounds();
         float hitSize = 8.0f;
-        if (input.mousePos.x >= bounds.x - hitSize &&
-            input.mousePos.x <= bounds.x + bounds.z + hitSize &&
-            input.mousePos.y >= bounds.y - hitSize &&
-            input.mousePos.y <= bounds.y + bounds.w + hitSize) {
+        bool hit = input.mousePos.x >= bounds.x - hitSize &&
+                   input.mousePos.x <= bounds.x + bounds.z + hitSize &&
+                   input.mousePos.y >= bounds.y - hitSize &&
+                   input.mousePos.y <= bounds.y + bounds.w + hitSize;
+
+        if (hit) {
             return *it;
         }
     }
@@ -195,11 +193,6 @@ void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input
 
     // Pre-pass: determine which panel owns input this frame
     std::string inputTarget = determineInputTarget(input);
-
-    // Debug: log click detection
-    if (input.mouseClicked[0]) {
-        std::cerr << "[PanelManager] Mouse clicked! inputTarget=" << (inputTarget.empty() ? "(none)" : inputTarget) << "\n";
-    }
 
     // Set interaction and ownership flags on all panels
     for (auto& panel : m_panels) {
@@ -258,6 +251,9 @@ void PanelManager::renderFlatMode(OverlayCanvas& canvas, const FrameInput& input
             continue;
         }
 
+        // Floating panels always show their title bar
+        panel->setShowTitleBar(true);
+
         canvas.setLayer(floatingLayer);
         panel->render(canvas, panel->bounds(), input, style);
         // Call handleInput for panels that own input or are interacting
@@ -280,13 +276,44 @@ void PanelManager::renderLayoutMode(OverlayCanvas& canvas, const FrameInput& inp
     // Set content scale on canvas for HiDPI support
     canvas.setContentScale(scale);
 
+    // Ensure floating panels have showTitleBar=true BEFORE input determination
+    // This is important because determineInputTarget() checks panel->bounds() which
+    // only gets updated correctly when showTitleBar is true
+    for (const std::string& id : m_floatingZOrder) {
+        if (Panel* panel = getPanel(id)) {
+            panel->setShowTitleBar(true);
+        }
+    }
+
+    // Check if a floating panel started dragging (for dock-on-drop)
+    // Only start dock drag if mouse is still down - panel->isInteracting() may be stale
+    // from the previous frame if mouse was just released
+    if (m_dockManager && !m_dockManager->isDragging() && input.mouseDown[0]) {
+        for (const std::string& id : m_floatingZOrder) {
+            Panel* panel = getPanel(id);
+            if (panel && panel->isVisible() && panel->isInteracting()) {
+                // Panel just started dragging - begin floating panel dock drag
+                m_dockManager->beginFloatingPanelDrag(panel, input.mousePos);
+                break;
+            }
+        }
+    }
+
+    // Update dock manager (must happen before layout to handle drag state)
+    if (m_dockManager) {
+        m_dockManager->update(input);
+    }
+
     // Update layout tree bounds (logical pixels)
     m_layoutRoot->setBounds({0, 0, m_screenWidth, m_screenHeight});
     m_layoutRoot->updateLayout();
 
     // Set interaction flags on all panels in layout mode
     // In layout mode, the layout nodes handle determining which panel owns input
-    std::string inputTarget = determineInputTarget(input);
+    // Skip if dock manager is handling a drag
+    bool dockDragging = m_dockManager && m_dockManager->isDragging();
+
+    std::string inputTarget = dockDragging ? "" : determineInputTarget(input);
     for (auto& panel : m_panels) {
         const std::string& id = panel->config().id;
         bool ownsInput = (id == inputTarget);
@@ -295,15 +322,56 @@ void PanelManager::renderLayoutMode(OverlayCanvas& canvas, const FrameInput& inp
         panel->setCanStartInteraction(canStart);
     }
 
-    // Handle input through layout tree
-    if (m_layoutRoot->handleInput(input)) {
+    // Handle input through layout tree (skip if dock dragging)
+    if (!dockDragging && m_layoutRoot->handleInput(input)) {
         m_consumedInput = true;
     }
 
     // Render layout tree (all coordinates in logical pixels)
     m_layoutRoot->render(canvas, input, style);
 
+    // Render floating panels in z-order (back to front)
+    // These are panels that have been dragged out of the layout tree
+    int floatingLayer = UILayer::FloatingPanels;
+    for (const std::string& id : m_floatingZOrder) {
+        Panel* panel = getPanel(id);
+        if (!panel || !panel->isVisible()) continue;
+
+        // For tab drags, the panel is rendered as an outline by dock manager
+        // For floating panel drags, we still render the actual panel (it moves with the mouse)
+        if (dockDragging && m_dockManager->dragState().panel == panel &&
+            m_dockManager->dragState().type != DragState::Type::FloatingPanel) continue;
+
+        // Floating panels always show their title bar (may have been turned off when docked)
+        panel->setShowTitleBar(true);
+
+        canvas.setLayer(floatingLayer);
+        panel->render(canvas, panel->bounds(), input, style);
+
+        // Handle input for floating panels
+        if (panel->ownsInput() || panel->isInteracting()) {
+            if (panel->handleInput(input)) {
+                m_consumedInput = true;
+            }
+        }
+        if (panel->consumedInput()) {
+            m_consumedInput = true;
+        }
+        floatingLayer += 5;
+    }
+
+    // Render dock guides on top of everything
+    if (m_dockManager) {
+        m_dockManager->renderGuides(canvas, style);
+    }
+
+    // Reset layer
+    canvas.setLayer(0);
+
     if (m_layoutRoot->isInteracting()) {
+        m_consumedInput = true;
+    }
+    if (dockDragging) {
         m_consumedInput = true;
     }
 }
@@ -315,6 +383,11 @@ void PanelManager::addPanel(std::unique_ptr<Panel> panel) {
     if (panel->config().dockSide == DockSide::None) {
         m_floatingZOrder.push_back(id);
     }
+
+    // Set up close button callback to hide the panel
+    panel->setOnClose([this](Panel* p) {
+        hidePanel(p->config().id);
+    });
 
     m_panelMap[id] = panel.get();
     m_panels.push_back(std::move(panel));
@@ -498,6 +571,11 @@ void PanelManager::calculateLayout(float screenWidth, float screenHeight) {
 
 void PanelManager::setLayoutRoot(std::unique_ptr<LayoutNode> root) {
     m_layoutRoot = std::move(root);
+    // Set bounds immediately so updateLayout() works correctly
+    if (m_layoutRoot && m_screenWidth > 0 && m_screenHeight > 0) {
+        m_layoutRoot->setBounds({0, 0, m_screenWidth, m_screenHeight});
+        m_layoutRoot->updateLayout();
+    }
 }
 
 void PanelManager::buildDefaultLayout() {
@@ -521,7 +599,7 @@ void PanelManager::buildDefaultLayout() {
     }
 
     // Helper to create a group or leaf from a panel list
-    auto makeGroup = [](const std::vector<Panel*>& panels) -> std::unique_ptr<LayoutNode> {
+    auto makeGroup = [this](const std::vector<Panel*>& panels) -> std::unique_ptr<LayoutNode> {
         if (panels.empty()) return nullptr;
         if (panels.size() == 1) {
             return std::make_unique<PanelLeaf>(panels[0]);
@@ -530,6 +608,8 @@ void PanelManager::buildDefaultLayout() {
         for (Panel* p : panels) {
             group->addPanel(p);
         }
+        // Wire up dock callbacks
+        wireGroupDockCallbacks(group.get());
         return group;
     };
 
@@ -574,14 +654,19 @@ void PanelManager::buildDefaultLayout() {
     if (!topPanels.empty()) {
         auto topGroup = makeGroup(topPanels);
         auto split = std::make_unique<SplitContainer>(SplitDirection::Vertical);
-        split->setSplitRatio(0.05f);  // Small top section
+        split->setSplitRatio(0.044f);  // Match status bar height (~32px at 720 height)
+        split->setResizable(false);   // Status bar split should not be resizable
         split->setFirst(std::move(topGroup));
         split->setSecond(std::move(center));
         center = std::move(split);
     }
 
-    // Floating panels are handled separately (rendered on top)
-    // For now, they remain in the flat rendering path
+    // Clear floating z-order for panels that are now in the layout tree
+    // Only truly floating panels (DockSide::None that weren't added to layout) remain
+    m_floatingZOrder.clear();
+    for (Panel* p : floatingPanels) {
+        m_floatingZOrder.push_back(p->config().id);
+    }
 
     m_layoutRoot = std::move(center);
     m_layoutMode = true;
@@ -624,6 +709,7 @@ bool PanelManager::saveLayout(const std::string& path) const {
                 j["id"] = split->id();
                 j["direction"] = split->direction() == SplitDirection::Horizontal ? "horizontal" : "vertical";
                 j["ratio"] = split->splitRatio();
+                j["resizable"] = split->isResizable();
                 if (split->first()) {
                     j["first"] = serialize(split->first());
                 }
@@ -638,8 +724,34 @@ bool PanelManager::saveLayout(const std::string& path) const {
     };
 
     nlohmann::json root;
-    root["version"] = 1;
+    root["version"] = 2;  // Bumped version for TreeSlot support
     root["layout"] = serialize(m_layoutRoot.get());
+
+    // Serialize saved TreeSlots for hidden panels
+    if (!m_savedTreeSlots.empty()) {
+        nlohmann::json slots = nlohmann::json::object();
+        for (const auto& [panelId, slot] : m_savedTreeSlots) {
+            nlohmann::json slotJson;
+            slotJson["type"] = static_cast<int>(slot.type);
+            slotJson["groupId"] = slot.groupId;
+            slotJson["tabIndex"] = slot.tabIndex;
+            slotJson["splitDirection"] = slot.splitInfo.direction;
+            slotJson["splitRatio"] = slot.splitInfo.ratio;
+            slotJson["splitWasFirst"] = slot.splitInfo.wasFirst;
+            slotJson["splitSiblingId"] = slot.splitInfo.siblingId;
+            slots[panelId] = slotJson;
+        }
+        root["savedTreeSlots"] = slots;
+    }
+
+    // Serialize saved floating bounds for hidden panels
+    if (!m_savedFloatBounds.empty()) {
+        nlohmann::json bounds = nlohmann::json::object();
+        for (const auto& [panelId, b] : m_savedFloatBounds) {
+            bounds[panelId] = {b.x, b.y, b.z, b.w};
+        }
+        root["savedFloatBounds"] = bounds;
+    }
 
     try {
         std::ofstream file(path);
@@ -688,6 +800,10 @@ bool PanelManager::loadLayout(const std::string& path) {
 
                 int activeTab = j.value("activeTab", 0);
                 group->setActiveTab(activeTab);
+
+                // Wire up dock callbacks
+                wireGroupDockCallbacks(group.get());
+
                 return group;
             }
             else if (type == "split") {
@@ -699,6 +815,7 @@ bool PanelManager::loadLayout(const std::string& path) {
                 auto split = std::make_unique<SplitContainer>(direction);
                 split->setId(j.value("id", ""));
                 split->setSplitRatio(j.value("ratio", 0.5f));
+                split->setResizable(j.value("resizable", true));
 
                 if (j.contains("first")) {
                     split->setFirst(deserialize(j["first"]));
@@ -714,10 +831,162 @@ bool PanelManager::loadLayout(const std::string& path) {
 
         m_layoutRoot = deserialize(root["layout"]);
         m_layoutMode = (m_layoutRoot != nullptr);
+
+        // Restore saved TreeSlots for hidden panels
+        if (root.contains("savedTreeSlots") && root["savedTreeSlots"].is_object()) {
+            m_savedTreeSlots.clear();
+            for (auto& [panelId, slotJson] : root["savedTreeSlots"].items()) {
+                TreeSlot slot;
+                slot.type = static_cast<TreeSlot::Type>(slotJson.value("type", 0));
+                slot.groupId = slotJson.value("groupId", "");
+                slot.tabIndex = slotJson.value("tabIndex", -1);
+                slot.splitInfo.direction = slotJson.value("splitDirection", 0);
+                slot.splitInfo.ratio = slotJson.value("splitRatio", 0.5f);
+                slot.splitInfo.wasFirst = slotJson.value("splitWasFirst", true);
+                slot.splitInfo.siblingId = slotJson.value("splitSiblingId", "");
+                m_savedTreeSlots[panelId] = slot;
+            }
+        }
+
+        // Restore saved floating bounds for hidden panels
+        if (root.contains("savedFloatBounds") && root["savedFloatBounds"].is_object()) {
+            m_savedFloatBounds.clear();
+            for (auto& [panelId, boundsJson] : root["savedFloatBounds"].items()) {
+                if (boundsJson.is_array() && boundsJson.size() == 4) {
+                    m_savedFloatBounds[panelId] = {
+                        boundsJson[0].get<float>(),
+                        boundsJson[1].get<float>(),
+                        boundsJson[2].get<float>(),
+                        boundsJson[3].get<float>()
+                    };
+                }
+            }
+        }
+
         return m_layoutMode;
     } catch (...) {
         return false;
     }
+}
+
+// -----------------------------------------------------------------------------
+// Docking System
+// -----------------------------------------------------------------------------
+
+void PanelManager::floatPanel(Panel* panel, const glm::vec2& pos) {
+    if (!panel) return;
+
+    const std::string& id = panel->config().id;
+
+    // Set panel bounds at position
+    glm::vec4 bounds = panel->bounds();
+    bounds.x = pos.x;
+    bounds.y = pos.y;
+    bounds.z = std::max(bounds.z, 200.0f);
+    bounds.w = std::max(bounds.w, 150.0f);
+    panel->setBounds(bounds);
+
+    // Add to floating z-order if not already there
+    addToFloatingOrder(id);
+
+    std::cerr << "[PanelManager] Floated panel: " << id << " at " << pos.x << ", " << pos.y << "\n";
+}
+
+void PanelManager::addToFloatingOrder(const std::string& id) {
+    // Check if already in list
+    auto it = std::find(m_floatingZOrder.begin(), m_floatingZOrder.end(), id);
+    if (it == m_floatingZOrder.end()) {
+        m_floatingZOrder.push_back(id);
+    }
+}
+
+void PanelManager::removeFromFloatingOrder(const std::string& id) {
+    auto it = std::find(m_floatingZOrder.begin(), m_floatingZOrder.end(), id);
+    if (it != m_floatingZOrder.end()) {
+        m_floatingZOrder.erase(it);
+    }
+}
+
+void PanelManager::hidePanelWithSlot(const std::string& id, bool saveSlot) {
+    Panel* panel = getPanel(id);
+    if (!panel) return;
+
+    if (saveSlot && m_dockManager && m_layoutMode) {
+        // Save tree slot for restoration
+        TreeSlot slot = m_dockManager->captureTreeSlot(panel);
+        if (slot.isValid()) {
+            m_savedTreeSlots[id] = slot;
+        }
+
+        // Save floating bounds if panel is floating
+        auto floatIt = std::find(m_floatingZOrder.begin(), m_floatingZOrder.end(), id);
+        if (floatIt != m_floatingZOrder.end()) {
+            m_savedFloatBounds[id] = panel->bounds();
+        }
+
+        // Remove from layout tree
+        m_dockManager->removePanelFromLayout(panel);
+        m_dockManager->cleanupEmptyNodes();
+    }
+
+    // Remove from floating order
+    removeFromFloatingOrder(id);
+
+    // Hide the panel
+    panel->setVisible(false);
+
+    std::cerr << "[PanelManager] Hidden panel with slot: " << id << "\n";
+}
+
+void PanelManager::showPanelFromSlot(const std::string& id) {
+    Panel* panel = getPanel(id);
+    if (!panel) return;
+
+    // Make visible first
+    panel->setVisible(true);
+
+    // Try to restore from tree slot
+    auto slotIt = m_savedTreeSlots.find(id);
+    if (slotIt != m_savedTreeSlots.end() && m_dockManager) {
+        TreeSlot& slot = slotIt->second;
+        if (m_dockManager->restoreFromTreeSlot(panel, slot)) {
+            m_savedTreeSlots.erase(slotIt);
+            std::cerr << "[PanelManager] Restored panel from tree slot: " << id << "\n";
+            setFocus(id);
+            return;
+        }
+    }
+
+    // Fall back to floating at saved position or default
+    auto boundsIt = m_savedFloatBounds.find(id);
+    if (boundsIt != m_savedFloatBounds.end()) {
+        panel->setBounds(boundsIt->second);
+        m_savedFloatBounds.erase(boundsIt);
+    } else {
+        // Default floating position
+        glm::vec4 bounds = panel->bounds();
+        bounds.x = 100;
+        bounds.y = 100;
+        bounds.z = std::max(bounds.z, 300.0f);
+        bounds.w = std::max(bounds.w, 200.0f);
+        panel->setBounds(bounds);
+    }
+
+    addToFloatingOrder(id);
+    setFocus(id);
+
+    std::cerr << "[PanelManager] Showed panel as floating: " << id << "\n";
+}
+
+void PanelManager::wireGroupDockCallbacks(PanelGroup* group) {
+    if (!group || !m_dockManager) return;
+
+    // Set up tab drag callback to initiate docking
+    group->onTabDrag([this, group](Panel* panel, const glm::vec2& pos) {
+        if (m_dockManager && panel) {
+            m_dockManager->beginTabDrag(panel, group, pos);
+        }
+    });
 }
 
 } // namespace vivid

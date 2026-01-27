@@ -12,6 +12,7 @@
 #include <vivid/frame_input.h>
 #include <glm/glm.hpp>
 #include <string>
+#include <functional>
 
 namespace vivid {
 
@@ -167,6 +168,16 @@ public:
     bool isInteracting() const { return m_dragging || m_resizing != 0; }
 
     /**
+     * @brief Reset interaction state (dragging/resizing)
+     *
+     * Call this when a panel is docked to clear stale drag state.
+     */
+    void resetInteractionState() {
+        m_dragging = false;
+        m_resizing = 0;
+    }
+
+    /**
      * @brief Get/set bounds
      */
     const glm::vec4& bounds() const { return m_config.bounds; }
@@ -185,6 +196,36 @@ public:
      */
     void setCanStartInteraction(bool can) { m_canStartInteraction = can; }
     bool canStartInteraction() const { return m_canStartInteraction; }
+
+    /**
+     * @brief Control title bar visibility
+     *
+     * Set to false when panel is in a tabbed group (tab bar shows title).
+     * Set to true for floating panels.
+     */
+    void setShowTitleBar(bool show) { m_showTitleBar = show; }
+    bool showTitleBar() const { return m_showTitleBar; }
+
+    /**
+     * @brief Control rounded corners at the top
+     *
+     * Set to true when panel is docked at an edge (no rounded corners at top).
+     * Set to false for floating panels (rounded corners on all sides).
+     */
+    void setSquareTopCorners(bool square) { m_squareTopCorners = square; }
+    bool squareTopCorners() const { return m_squareTopCorners; }
+
+    /**
+     * @brief Set callback for when close button is clicked
+     */
+    using CloseCallback = std::function<void(Panel*)>;
+    void setOnClose(CloseCallback callback) { m_onClose = std::move(callback); }
+
+    /**
+     * @brief Check if close button was clicked this frame
+     * Call from render() after renderChrome() to check if panel should close
+     */
+    bool closeButtonClicked() const { return m_closeButtonClicked; }
 
     /**
      * @brief Input ownership model
@@ -230,6 +271,11 @@ protected:
     bool m_consumedInput = false;
     bool m_canStartInteraction = true;  // Set by panel manager based on z-order
     bool m_ownsInput = false;           // Set by panel manager each frame
+    bool m_showTitleBar = true;         // Set to false when in tabbed group
+    bool m_squareTopCorners = false;    // Set to true when docked (no rounded top corners)
+    bool m_closeButtonClicked = false;  // Set by renderChrome when close button clicked
+    bool m_closeButtonHovered = false;  // For hover effect on close button
+    CloseCallback m_onClose;            // Called when close button clicked
 
     // Drag/resize state
     glm::vec2 m_dragOffset = {0, 0};
@@ -249,11 +295,13 @@ protected:
      * @param h Panel height in logical pixels
      * @param style UI style for colors
      * @param showTitleBar Whether to render title bar
+     * @param input Frame input for close button click detection (optional)
      *
      * All coordinates are in logical pixels. The canvas handles scaling internally.
      */
     void renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
-                      const UIStyle& style, bool showTitleBar = true);
+                      const UIStyle& style, bool showTitleBar = true,
+                      const FrameInput* input = nullptr);
 };
 
 } // namespace vivid

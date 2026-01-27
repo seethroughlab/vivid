@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Panel docking system** - Visual Studio-like drag-to-dock panel management:
+  - Drag tabs out of panel groups to create floating panels
+  - Drag floating panels to dock guides to dock into layout
+  - Visual dock guides with directional arrows (left/right/top/bottom/center)
+  - Preview highlight shows where panel will dock
+  - Status bar buttons show three states: docked (accent), floating (dim), hidden (hollow)
+  - Right-click status bar buttons for dock position context menu
+  - Drag from status bar buttons to create floating panels
+  - Non-resizable splits for status bar (fixed height, no divider)
+  - TreeSlot system remembers panel positions for restoration
+  - Layout serialization includes TreeSlot and floating bounds
+  - Dock guide colors added to UIStyle for theme support
+  - Layout mode is now the default (no longer experimental)
+
+- **Grid opacity slider** - Background grid visibility now controlled by slider:
+  - Replaced grid toggle button ("G") with opacity slider in status bar
+  - Smooth fade from 0% (hidden) to 100% (fully visible)
+  - Grid opacity persisted to `~/.vivid/preferences.json`
+  - Cmd/Ctrl+G toggles between 0% and 85% opacity
+
 - **Built-in fullscreen shortcut** - Cmd/Ctrl+F now works without devtools loaded:
   - Fullscreen toggle moved from devtools to vivid-core
   - Works in both development and exported production apps

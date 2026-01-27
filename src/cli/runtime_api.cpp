@@ -179,6 +179,16 @@ void RuntimeAPI::start(int port) {
                             m_captureFrameCallback(outputPath);
                         }
                     }
+                    else if (type == "dock_panel") {
+                        std::string panelId = j.value("panel", "");
+                        std::string position = j.value("position", "");
+                        std::cout << "[RuntimeAPI] Dock panel requested: " << panelId << " -> " << position << "\n";
+                        bool success = false;
+                        if (m_dockPanelCallback) {
+                            success = m_dockPanelCallback(panelId, position);
+                        }
+                        sendDockPanelResult(panelId, position, success);
+                    }
                     else if (type == "set_param_immediate") {
                         // Direct parameter set (MCP debugging) - apply immediately, no pending queue
                         std::string opName = j.value("operator", "");
@@ -623,6 +633,23 @@ void RuntimeAPI::sendCaptureResult(bool success, const std::string& outputPath, 
     std::string msg = j.dump();
 
     // Broadcast to all clients
+    std::lock_guard<std::mutex> lock(m_impl->mutex);
+    for (auto& client : m_impl->server.getClients()) {
+        client->send(msg);
+    }
+}
+
+void RuntimeAPI::sendDockPanelResult(const std::string& panelId, const std::string& position, bool success) {
+    if (!m_running || !m_impl) return;
+
+    json j;
+    j["type"] = "dock_panel_result";
+    j["panel"] = panelId;
+    j["position"] = position;
+    j["success"] = success;
+
+    std::string msg = j.dump();
+
     std::lock_guard<std::mutex> lock(m_impl->mutex);
     for (auto& client : m_impl->server.getClients()) {
         client->send(msg);

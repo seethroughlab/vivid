@@ -349,7 +349,7 @@ void PreferencesPanel::renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& b
     y += 28;
 
     bool layoutMode = m_panelManager && m_panelManager->isLayoutMode();
-    std::string modeLabel = layoutMode ? "Docking Mode (Experimental)" : "Classic Mode";
+    std::string modeLabel = layoutMode ? "Docking Mode" : "Classic Mode";
     canvas.text(modeLabel, x, y + 14, style.textPrimary, 0);
     y += 24;
 
@@ -365,9 +365,10 @@ void PreferencesPanel::renderLayoutTab(OverlayCanvas& canvas, const glm::vec4& b
         Preferences::instance().setThemePreset(ThemePreset::Dark);
         if (m_onThemeChange) m_onThemeChange(ThemePreset::Dark);
 
-        // Reset layout mode
+        // Reset to docking layout mode (the default)
         if (m_panelManager) {
-            m_panelManager->setLayoutMode(false);
+            m_panelManager->buildDefaultLayout();
+            m_panelManager->setLayoutMode(true);
         }
     }
 }

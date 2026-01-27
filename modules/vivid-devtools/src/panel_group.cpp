@@ -10,7 +10,11 @@ PanelGroup::PanelGroup() = default;
 PanelGroup::~PanelGroup() = default;
 
 void PanelGroup::updateLayout() {
-    // Update active panel bounds to fill space below tab bar
+    // Hide tab bar when there's only one panel
+    bool showTabBar = m_panels.size() > 1;
+    m_tabBarHeight = showTabBar ? 28.0f : 0.0f;
+
+    // Update active panel bounds to fill space below tab bar (or full bounds if no tab bar)
     if (Panel* panel = activePanel()) {
         glm::vec4 contentBounds = m_bounds;
         contentBounds.y += m_tabBarHeight;
@@ -23,26 +27,36 @@ void PanelGroup::render(OverlayCanvas& canvas, const FrameInput& input, const UI
     if (m_panels.empty()) return;
 
     // All dimensions in logical pixels - canvas handles scaling
-    m_tabBarHeight = 28.0f;
+    // Hide tab bar when there's only one panel (panel fills full height)
+    bool showTabBar = m_panels.size() > 1;
+    m_tabBarHeight = showTabBar ? 28.0f : 0.0f;
 
     float x = m_bounds.x;
     float y = m_bounds.y;
     float w = m_bounds.z;
     float h = m_bounds.w;
+
     float tabBarH = m_tabBarHeight;
 
     // Background
     canvas.fillRect(x, y, w, h, style.panelBg);
 
-    // Tab bar background
-    canvas.fillRect(x, y, w, tabBarH, style.headerBg);
+    if (showTabBar) {
+        // Tab bar background
+        canvas.fillRect(x, y, w, tabBarH, style.headerBg);
 
-    // Render tabs
-    renderTabBar(canvas);
+        // Render tabs
+        renderTabBar(canvas);
+    }
 
     // Render active panel content
     if (Panel* panel = activePanel()) {
         glm::vec4 contentBounds(x, y + tabBarH, w, h - tabBarH);
+        // Show panel title bar only when tab bar is hidden (single panel)
+        panel->setShowTitleBar(!showTabBar);
+        // Use square corners when docked (single panel fills the group)
+        panel->setSquareTopCorners(!showTabBar);
+
         panel->render(canvas, contentBounds, input, style);
     }
 
@@ -120,6 +134,10 @@ void PanelGroup::renderTabBar(OverlayCanvas& canvas) {
 bool PanelGroup::handleInput(const FrameInput& input) {
     if (m_panels.empty()) return false;
 
+    // Update tab bar state based on panel count
+    bool showTabBar = m_panels.size() > 1;
+    m_tabBarHeight = showTabBar ? 28.0f : 0.0f;
+
     glm::vec2 mousePos = input.mousePos;
     bool leftMouseDown = input.mouseDown[0];
     bool leftMouseClicked = leftMouseDown && !m_lastMouseDown;
@@ -129,17 +147,18 @@ bool PanelGroup::handleInput(const FrameInput& input) {
     m_hovered = mousePos.x >= m_bounds.x && mousePos.x <= m_bounds.x + m_bounds.z &&
                 mousePos.y >= m_bounds.y && mousePos.y <= m_bounds.y + m_bounds.w;
 
-    // Check tab bar hover
-    m_tabBarHovered = mousePos.y >= m_bounds.y && mousePos.y <= m_bounds.y + m_tabBarHeight;
+    // Check tab bar hover (only when tab bar is visible)
+    m_tabBarHovered = showTabBar &&
+                      mousePos.y >= m_bounds.y && mousePos.y <= m_bounds.y + m_tabBarHeight;
 
-    // Hit test tabs
+    // Hit test tabs (only when tab bar is visible)
     m_hoveredTab = -1;
-    if (m_tabBarHovered) {
+    if (showTabBar && m_tabBarHovered) {
         m_hoveredTab = hitTestTab(mousePos);
     }
 
-    // Handle tab click
-    if (leftMouseClicked && m_hoveredTab >= 0) {
+    // Handle tab click (only when tab bar is visible)
+    if (showTabBar && leftMouseClicked && m_hoveredTab >= 0) {
         setActiveTab(m_hoveredTab);
         m_draggingTab = m_hoveredTab;
         m_dragStartPos = mousePos;

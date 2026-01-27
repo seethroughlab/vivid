@@ -10,6 +10,8 @@
 
 #include <vivid/gui/ui_style.h>
 #include <string>
+#include <vector>
+#include <set>
 #include <functional>
 
 namespace vivid {
@@ -103,6 +105,9 @@ public:
     bool visualizerVisible() const { return m_visualizerVisible; }
     void setVisualizerVisible(bool v) { m_visualizerVisible = v; }
 
+    float gridOpacity() const { return m_gridOpacity; }
+    void setGridOpacity(float opacity);
+
     /// @}
     // -------------------------------------------------------------------------
     /// @name Corner Radius Settings
@@ -139,6 +144,56 @@ public:
     void setSliderCornerRadius(float radius);
 
     /// @}
+    // -------------------------------------------------------------------------
+    /// @name Editor Session
+    /// @{
+
+    /**
+     * @brief Get list of open file paths
+     */
+    const std::vector<std::string>& openFiles() const { return m_openFiles; }
+
+    /**
+     * @brief Set list of open file paths
+     */
+    void setOpenFiles(const std::vector<std::string>& files);
+
+    /**
+     * @brief Get active file path
+     */
+    const std::string& activeFile() const { return m_activeFile; }
+
+    /**
+     * @brief Set active file path
+     */
+    void setActiveFile(const std::string& path);
+
+    /// @}
+    // -------------------------------------------------------------------------
+    /// @name File Browser Session
+    /// @{
+
+    /**
+     * @brief Get expanded folders
+     */
+    const std::set<std::string>& expandedFolders() const { return m_expandedFolders; }
+
+    /**
+     * @brief Set expanded folders
+     */
+    void setExpandedFolders(const std::set<std::string>& folders);
+
+    /**
+     * @brief Check if file browser is visible
+     */
+    bool fileBrowserVisible() const { return m_fileBrowserVisible; }
+
+    /**
+     * @brief Set file browser visibility
+     */
+    void setFileBrowserVisible(bool v) { m_fileBrowserVisible = v; }
+
+    /// @}
 
 private:
     Preferences() = default;
@@ -157,11 +212,20 @@ private:
     bool m_editorVisible = false;
     bool m_consoleVisible = false;
     bool m_visualizerVisible = true;
+    float m_gridOpacity = 0.0f;
 
     // Corner radii (default to UIStyle defaults)
     float m_panelCornerRadius = 6.0f;
     float m_buttonCornerRadius = 4.0f;
     float m_sliderCornerRadius = 3.0f;
+
+    // Editor session
+    std::vector<std::string> m_openFiles;
+    std::string m_activeFile;
+
+    // File browser session
+    std::set<std::string> m_expandedFolders;
+    bool m_fileBrowserVisible = false;
 
     // Callbacks
     StyleChangeCallback m_styleChangeCallback;
