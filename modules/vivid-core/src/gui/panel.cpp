@@ -134,10 +134,9 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
 
 glm::vec4 Panel::beginRender(const FrameInput& input, const glm::vec4& bounds) {
     if (m_display.showTitleBar) {
-        // Floating panel - handle drag/resize and use own bounds
-        float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-        float screenW = static_cast<float>(input.width) / scale;
-        float screenH = static_cast<float>(input.height) / scale;
+        // Floating panel - handle drag/resize and use own bounds (logical coordinates)
+        float screenW = static_cast<float>(input.logicalWidth());
+        float screenH = static_cast<float>(input.logicalHeight());
         handleDragAndResize(input, screenW, screenH);
         return m_config.bounds;
     } else {

@@ -150,9 +150,9 @@ void DockManager::endDrag() {
 // -----------------------------------------------------------------------------
 
 void DockManager::update(const FrameInput& input) {
-    // Store screen size for zone calculations
-    m_screenWidth = static_cast<float>(input.width);
-    m_screenHeight = static_cast<float>(input.height);
+    // Store screen size for zone calculations (use logical pixels to match mousePos)
+    m_screenWidth = static_cast<float>(input.logicalWidth());
+    m_screenHeight = static_cast<float>(input.logicalHeight());
 
     if (!m_dragState.isActive()) return;
 
@@ -703,6 +703,11 @@ void DockManager::cleanupEmptyNodes() {
             bool isFirst;
             SplitContainer* parent = findParent(group, isFirst);
             if (parent) {
+                // Don't collapse non-resizable splits (e.g., status bar split)
+                // These are structural and should remain even when one side is empty
+                if (!parent->isResizable()) {
+                    continue;
+                }
                 // Replace parent with the other child
                 auto otherChild = isFirst ? parent->releaseSecond() : parent->releaseFirst();
                 replaceInParent(parent, std::move(otherChild));
@@ -726,6 +731,10 @@ void DockManager::cleanupEmptyNodes() {
             bool isFirst;
             SplitContainer* parent = findParent(leaf, isFirst);
             if (parent) {
+                // Don't collapse non-resizable splits (e.g., status bar split)
+                if (!parent->isResizable()) {
+                    continue;
+                }
                 auto otherChild = isFirst ? parent->releaseSecond() : parent->releaseFirst();
                 replaceInParent(parent, std::move(otherChild));
                 changed = true;

@@ -588,12 +588,29 @@ void PanelManager::buildDefaultLayout() {
 
     for (auto& panel : m_panels) {
         switch (panel->config().dockSide) {
-            case DockSide::Fill: fillPanels.push_back(panel.get()); break;
-            case DockSide::Left: leftPanels.push_back(panel.get()); break;
-            case DockSide::Right: rightPanels.push_back(panel.get()); break;
-            case DockSide::Top: topPanels.push_back(panel.get()); break;
-            case DockSide::Bottom: bottomPanels.push_back(panel.get()); break;
-            default: floatingPanels.push_back(panel.get()); break;
+            case DockSide::Fill:
+                fillPanels.push_back(panel.get());
+                panel->setVisible(true);  // Panels in layout tree should be visible
+                break;
+            case DockSide::Left:
+                leftPanels.push_back(panel.get());
+                panel->setVisible(true);
+                break;
+            case DockSide::Right:
+                rightPanels.push_back(panel.get());
+                panel->setVisible(true);
+                break;
+            case DockSide::Top:
+                topPanels.push_back(panel.get());
+                panel->setVisible(true);
+                break;
+            case DockSide::Bottom:
+                bottomPanels.push_back(panel.get());
+                panel->setVisible(true);
+                break;
+            default:
+                floatingPanels.push_back(panel.get());
+                break;
         }
     }
 
@@ -943,6 +960,13 @@ void PanelManager::showPanelFromSlot(const std::string& id) {
 
     // Make visible first
     panel->setVisible(true);
+
+    // If the panel is already in the layout tree, just make it visible there
+    // (don't add to floating order which would cause double-rendering)
+    if (m_layoutRoot && m_layoutRoot->findPanel(id)) {
+        setFocus(id);
+        return;
+    }
 
     // Try to restore from tree slot
     auto slotIt = m_savedTreeSlots.find(id);

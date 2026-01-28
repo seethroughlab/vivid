@@ -394,32 +394,28 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     const auto& operators = ctx.registeredOperators();
     if (operators.empty()) return;
 
-    // Build input for node graph
-    // Scale mouse from window coords to framebuffer coords (for HiDPI/Retina)
-    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-    glm::vec2 scaledMousePos = input.mousePos * scale;
+    // Chain visualizer uses LOGICAL coordinates for all UI positioning
+    // This matches mouse position from GLFW. Physical pixels only for GPU framebuffer.
+    int logicalW = input.logicalWidth();
+    int logicalH = input.logicalHeight();
 
+    // Build input for node graph - all in logical coordinates
     vivid::NodeGraphInput graphInput;
-    graphInput.mousePos = scaledMousePos;
-    // Calculate mouse delta from previous frame
-    static glm::vec2 lastMousePos = scaledMousePos;
-    graphInput.mouseDelta = scaledMousePos - lastMousePos;
-    lastMousePos = scaledMousePos;
+    graphInput.mousePos = input.mousePos;      // Already logical from GLFW
+    graphInput.mouseDelta = input.mouseDelta;  // Already logical from app.cpp
     graphInput.scroll = input.scroll;
     graphInput.mouseDown[0] = input.mouseDown[0];
     graphInput.mouseDown[1] = input.mouseDown[1];
     graphInput.mouseDown[2] = input.mouseDown[2];
-    // Track clicks
-    static bool lastMouseDown[3] = {false, false, false};
-    for (int i = 0; i < 3; i++) {
-        graphInput.mouseClicked[i] = input.mouseDown[i] && !lastMouseDown[i];
-        graphInput.mouseReleased[i] = !input.mouseDown[i] && lastMouseDown[i];
-        lastMouseDown[i] = input.mouseDown[i];
-    }
+    graphInput.mouseClicked[0] = input.mouseClicked[0];
+    graphInput.mouseClicked[1] = input.mouseClicked[1];
+    graphInput.mouseClicked[2] = input.mouseClicked[2];
+    graphInput.mouseReleased[0] = input.mouseReleased[0];
+    graphInput.mouseReleased[1] = input.mouseReleased[1];
+    graphInput.mouseReleased[2] = input.mouseReleased[2];
     graphInput.keyCtrl = input.keyCtrl;
     graphInput.keyShift = input.keyShift;
     graphInput.keyAlt = input.keyAlt;
-    // Key presses for shortcuts
     graphInput.keyF = input.isKeyPressed(vivid::Key::F);
     graphInput.key1 = input.isKeyPressed(vivid::Key::Num1);
     graphInput.keyUp = input.isKeyPressed(vivid::Key::Up);
@@ -431,20 +427,20 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     graphInput.keyEscape = input.isKeyPressed(vivid::Key::Escape);
     graphInput.time = input.time;
 
-    // Begin overlay rendering (handles HiDPI scaling internally)
-    m_overlay.begin(input);
+    // Begin overlay rendering with logical coordinates for drawing, physical for GPU
+    m_overlay.begin(logicalW, logicalH, input.width, input.height);
+    // Enable HiDPI text mode so font metrics are returned in logical units
+    m_overlay.setHiDPITextMode(true);
 
     // Check if mouse is in inspector panel area (block node graph panning if so)
-    // But don't block if the mouse is in the mini-map (which is in bottom-right)
+    // All coordinates are in logical pixels
     bool blockNodeGraphInput = m_activeDrag.active;
     if (!blockNodeGraphInput && m_inspectorVisible && m_inspectorBounds.valid) {
-        // Use tracked inspector bounds for accurate hit testing
-        if (scaledMousePos.x >= m_inspectorBounds.x &&
-            scaledMousePos.x <= m_inspectorBounds.x + m_inspectorBounds.w &&
-            scaledMousePos.y >= m_inspectorBounds.y &&
-            scaledMousePos.y <= m_inspectorBounds.y + m_inspectorBounds.h) {
-            // Don't block if in mini-map area
-            if (!m_nodeGraph.isPointInMiniMap(scaledMousePos)) {
+        if (input.mousePos.x >= m_inspectorBounds.x &&
+            input.mousePos.x <= m_inspectorBounds.x + m_inspectorBounds.w &&
+            input.mousePos.y >= m_inspectorBounds.y &&
+            input.mousePos.y <= m_inspectorBounds.y + m_inspectorBounds.h) {
+            if (!m_nodeGraph.isPointInMiniMap(input.mousePos)) {
                 blockNodeGraphInput = true;
             }
         }
@@ -455,16 +451,16 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
     if (blockNodeGraphInput) {
         nodeGraphInput.mouseClicked[0] = false;
         nodeGraphInput.mouseDown[0] = false;
-        nodeGraphInput.mouseReleased[0] = false;  // Block release too, prevents selection clearing
-        nodeGraphInput.scroll = {0, 0};  // Block scroll to prevent zoom while scrolling inspector
+        nodeGraphInput.mouseReleased[0] = false;
+        nodeGraphInput.scroll = {0, 0};
     }
 
     // Skip node graph rendering when in solo mode (but keep inspector)
     bool renderNodeGraph = !m_inSoloMode;
 
     if (renderNodeGraph) {
-    // Begin node graph editor
-    m_nodeGraph.beginEditor(m_overlay, static_cast<float>(input.width), static_cast<float>(input.height), nodeGraphInput);
+    // Begin node graph editor with logical dimensions
+    m_nodeGraph.beginEditor(m_overlay, static_cast<float>(logicalW), static_cast<float>(logicalH), nodeGraphInput);
 
     // Add nodes for each operator
     for (size_t i = 0; i < operators.size(); ++i) {
@@ -990,8 +986,8 @@ void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& c
     smoothedFps = smoothedFps + smoothing * (instantFps - smoothedFps);
     smoothedMs = smoothedMs + smoothing * (instantMs - smoothedMs);
 
-    // Semi-transparent background
-    m_overlay.fillRect(0, 0, static_cast<float>(input.width), barHeight,
+    // Semi-transparent background (use logical width for UI)
+    m_overlay.fillRect(0, 0, static_cast<float>(input.logicalWidth()), barHeight,
                        {0.1f, 0.1f, 0.12f, 0.85f});
 
     // Colors
@@ -1175,7 +1171,7 @@ void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& c
         float stopTextWidth = m_overlay.measureText(stopText, monoFont);
         float stopBtnW = stopTextWidth + buttonPadX * 2;
         float stopBtnH = lineH + buttonPadY * 2;
-        float stopBtnX = input.width - stopBtnW - padding;
+        float stopBtnX = input.logicalWidth() - stopBtnW - padding;
         float stopBtnY = (barHeight - stopBtnH) * 0.5f;
 
         m_stopButton = {stopBtnX, stopBtnY, stopBtnW, stopBtnH, true};
@@ -1189,7 +1185,7 @@ void ChainVisualizer::renderStatusBar(const FrameInput& input, vivid::Context& c
         m_overlay.text(buf, recX + 16, y, redColor, monoFont);
     } else {
         // Not recording: show Snapshot + Record buttons
-        float rightX = input.width - padding;
+        float rightX = input.logicalWidth() - padding;
 
         // Snapshot button
         const char* snapText = "Snapshot";
@@ -1327,18 +1323,16 @@ void ChainVisualizer::renderOutputPinTooltip(const FrameInput& input, const vivi
     float tooltipWidth = m_overlay.measureText(tooltipText) + padding * 2;
     float tooltipHeight = lineH + padding * 2;
 
-    // Position near mouse
-    float mouseX = input.mousePos.x * (input.contentScale > 0 ? input.contentScale : 1.0f);
-    float mouseY = input.mousePos.y * (input.contentScale > 0 ? input.contentScale : 1.0f);
-    float tooltipX = mouseX + 12;
-    float tooltipY = mouseY + 12;
+    // Position near mouse (all in logical coordinates)
+    float tooltipX = input.mousePos.x + 12;
+    float tooltipY = input.mousePos.y + 12;
 
-    // Keep on screen
-    if (tooltipX + tooltipWidth > input.width) {
-        tooltipX = mouseX - tooltipWidth - 8;
+    // Keep on screen (use logical dimensions)
+    if (tooltipX + tooltipWidth > input.logicalWidth()) {
+        tooltipX = input.mousePos.x - tooltipWidth - 8;
     }
-    if (tooltipY + tooltipHeight > input.height) {
-        tooltipY = mouseY - tooltipHeight - 8;
+    if (tooltipY + tooltipHeight > input.logicalHeight()) {
+        tooltipY = input.mousePos.y - tooltipHeight - 8;
     }
 
     // Draw tooltip
@@ -1460,31 +1454,26 @@ void ChainVisualizer::renderOperatorInspector(const FrameInput& input, vivid::Op
     if (lineH <= 0) lineH = 20.0f;
     if (ascent <= 0) ascent = 14.0f;
 
-    // Scale layout values for HiDPI
-    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-    float inspectorWidth = m_inspectorWidth * scale;  // Scale the panel width
+    // All coordinates are in LOGICAL pixels (HiDPI text mode is enabled, font metrics are logical)
+    float inspectorWidth = m_inspectorWidth;
 
-    // Create scaled FrameInput for Gui widgets (HiDPI support)
-    FrameInput scaledInput = input;
-    scaledInput.mousePos *= scale;
-
-    // Create Gui instance with inspector-compatible style
-    Gui gui(m_overlay, scaledInput);
+    // Create Gui instance with inspector-compatible style (all sizes in logical pixels)
+    Gui gui(m_overlay, input);
     gui.style().labelPosition = LabelPosition::Above;
     gui.style().valuePosition = ValuePosition::Right;
-    gui.style().padding = 12.0f * scale;
-    gui.style().widgetHeight = 20.0f * scale;
-    gui.style().valueWidth = 60.0f * scale;
-    gui.style().cornerRadius = 3.0f * scale;
+    gui.style().padding = 12.0f;
+    gui.style().widgetHeight = 20.0f;
+    gui.style().valueWidth = 60.0f;
+    gui.style().cornerRadius = 3.0f;
     gui.style().widgetBackground = {0.2f, 0.2f, 0.25f, 1.0f};
     gui.style().sliderFill = {0.4f, 0.6f, 0.9f, 1.0f};
     gui.style().sliderFillActive = {0.5f, 0.7f, 1.0f, 1.0f};
     gui.style().textDim = {0.5f, 0.5f, 0.55f, 1.0f};
 
-    // Layout (scaled for HiDPI)
-    const float padding = 12.0f * scale;
-    const float sliderHeight = 20.0f * scale;
-    const float rowHeight = lineH + sliderHeight + 4.0f * scale;  // Label + slider + spacing
+    // Layout constants (all in logical pixels)
+    const float padding = 12.0f;
+    const float sliderHeight = 20.0f;
+    const float rowHeight = lineH + sliderHeight + 4.0f;  // Label + slider + spacing
     const float headerHeight = lineH + padding * 2;
 
     // Calculate total content height based on parameters
@@ -1492,50 +1481,45 @@ void ChainVisualizer::renderOperatorInspector(const FrameInput& input, vivid::Op
     for (const auto& p : params) {
         switch (p.type) {
             case ParamType::Vec2:
-                // XY pad takes ~3.5 row heights (label + square pad)
                 totalRowsHeight += rowHeight * 2.5f;
                 break;
             case ParamType::Vec3:
-                // Compact row takes ~2 row heights (label + component labels + sliders)
                 totalRowsHeight += rowHeight * 2.0f;
                 break;
             case ParamType::Vec4:
             case ParamType::Color: totalRowsHeight += rowHeight * 4; break;
-            case ParamType::Enum: totalRowsHeight += rowHeight; break;  // Dropdown is single row
-            case ParamType::DeviceList: totalRowsHeight += rowHeight; break;  // Dynamic dropdown is single row
-            case ParamType::ADSR: totalRowsHeight += rowHeight * 4; break;  // Graph + 4 mini-sliders
+            case ParamType::Enum: totalRowsHeight += rowHeight; break;
+            case ParamType::DeviceList: totalRowsHeight += rowHeight; break;
+            case ParamType::ADSR: totalRowsHeight += rowHeight * 4; break;
             default: totalRowsHeight += rowHeight; break;
         }
     }
     m_inspectorContentHeight = totalRowsHeight + padding * 2;
 
-    // Panel position (right side, below status bar)
-    float statusBarHeight = lineH + 12.0f * scale;
-    float panelX = input.width - inspectorWidth - padding;
+    // Panel position (right side, below status bar) - all in logical pixels
+    float statusBarHeight = lineH + 12.0f;
+    float panelX = input.logicalWidth() - inspectorWidth - padding;
     float panelY = statusBarHeight + padding;
 
-    // Calculate visible area height (clamped to screen, accounting for mini map)
-    // Mini map is in bottom-right corner: height=150, margin=16 (from NodeGraphStyle defaults)
-    float miniMapReservedHeight = (150.0f + 16.0f + padding) * scale;
-    float maxPanelHeight = input.height - panelY - miniMapReservedHeight;
-    float contentAreaHeight = maxPanelHeight - headerHeight;  // Visible content area
+    // Calculate visible area height (mini map is 150 logical pixels)
+    float miniMapReservedHeight = 150.0f + 16.0f + padding;
+    float maxPanelHeight = input.logicalHeight() - panelY - miniMapReservedHeight;
+    float contentAreaHeight = maxPanelHeight - headerHeight;
     float panelHeight = std::min(headerHeight + m_inspectorContentHeight, maxPanelHeight);
 
-    // Store bounds for input blocking (used in renderNodeGraph)
+    // Store bounds for input blocking (in logical pixels)
     m_inspectorBounds.x = panelX;
     m_inspectorBounds.y = panelY;
     m_inspectorBounds.w = inspectorWidth;
     m_inspectorBounds.h = panelHeight;
     m_inspectorBounds.valid = true;
 
-    // Handle scroll input (UI-only, no GPU operations)
-    // Only scroll if mouse is in the panel area
-    glm::vec2 mousePos = input.mousePos * scale;
-    bool mouseInPanel = mousePos.x >= panelX && mousePos.x <= panelX + inspectorWidth &&
-                        mousePos.y >= panelY && mousePos.y <= panelY + panelHeight;
+    // Handle scroll input - mouse position is already in logical pixels
+    bool mouseInPanel = input.mousePos.x >= panelX && input.mousePos.x <= panelX + inspectorWidth &&
+                        input.mousePos.y >= panelY && input.mousePos.y <= panelY + panelHeight;
 
     if (mouseInPanel && (input.scroll.y != 0.0f)) {
-        m_inspectorScrollOffset -= input.scroll.y * 30.0f * scale;
+        m_inspectorScrollOffset -= input.scroll.y * 30.0f;
         float maxScroll = std::max(0.0f, m_inspectorContentHeight - contentAreaHeight);
         m_inspectorScrollOffset = std::max(0.0f, std::min(m_inspectorScrollOffset, maxScroll));
     }
@@ -1551,31 +1535,30 @@ void ChainVisualizer::renderOperatorInspector(const FrameInput& input, vivid::Op
     glm::vec4 sliderFill = {0.4f, 0.6f, 0.9f, 1.0f};
     glm::vec4 sliderActive = {0.5f, 0.7f, 1.0f, 1.0f};
 
-    // Draw panel background on a layer below the content (so it's not clipped)
-    m_overlay.setLayer(UILayer::Panels - 1);  // Panel background layer
-    float cornerRadius = 6.0f * scale;
+    // Draw panel background
+    m_overlay.setLayer(UILayer::Panels - 1);
+    float cornerRadius = 6.0f;
     m_overlay.fillRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, bgColor);
-    m_overlay.strokeRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, 1.0f * scale, borderColor);
+    m_overlay.strokeRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, 1.0f, borderColor);
 
-    // Header (use fillRoundedRectTop so top corners match the panel's rounded corners)
+    // Header
     m_overlay.fillRoundedRectTop(panelX, panelY, inspectorWidth, headerHeight, cornerRadius, headerBg);
     std::string headerTitle = op->name() + " (" + title + ")";
     m_overlay.text(headerTitle, panelX + padding, panelY + padding + ascent, titleColor, labelFont);
 
-    // Switch to main Panels layer for content (this layer will be clipped)
     m_overlay.setLayer(UILayer::Panels);
 
-    // Mouse state (mousePos and scale already calculated above for scroll)
+    // Mouse state
     bool mouseDown = input.mouseDown[0];
     static bool lastMouseDown = false;
     bool mouseClicked = mouseDown && !lastMouseDown;
     bool mouseReleased = !mouseDown && lastMouseDown;
     lastMouseDown = mouseDown;
 
-    // Visible content bounds (for visibility culling)
+    // Visible content bounds
     float visibleTop = panelY + headerHeight;
     float visibleBottom = panelY + panelHeight;
-    float sliderWidth = inspectorWidth - padding * 4 - 60.0f * scale;  // Leave room for value label
+    float sliderWidth = inspectorWidth - padding * 4 - 60.0f;
 
     // Content area - apply scroll offset (UI coordinate only)
     float contentY = panelY + headerHeight + padding - m_inspectorScrollOffset;
@@ -1777,7 +1760,7 @@ void ChainVisualizer::renderOperatorInspector(const FrameInput& input, vivid::Op
             }
 
             // Advance content by appropriate height
-            float swatchHeight = sliderHeight + lineH + 8.0f * scale;
+            float swatchHeight = sliderHeight + lineH + 8.0f;
             bool isExpanded = m_colorPicker.expanded &&
                              m_colorPicker.operatorName == title &&
                              m_colorPicker.paramName == p.name;
@@ -2084,49 +2067,44 @@ void ChainVisualizer::renderScreenInspector(const FrameInput& input, vivid::Cont
     // Inspector panel renders on Panels layer (above nodes/thumbnails)
     m_overlay.setLayer(UILayer::Panels);
 
-    // Font metrics
+    // Font metrics (logical pixels with HiDPI text mode)
     const int labelFont = 0;
     float lineH = m_overlay.fontLineHeight(labelFont);
     float ascent = m_overlay.fontAscent(labelFont);
     if (lineH <= 0) lineH = 20.0f;
     if (ascent <= 0) ascent = 14.0f;
 
-    // Scale layout values for HiDPI
-    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-    float inspectorWidth = m_inspectorWidth * scale;
+    // All coordinates in logical pixels
+    float inspectorWidth = m_inspectorWidth;
 
-    // Create scaled FrameInput for Gui widgets (HiDPI support)
-    FrameInput scaledInput = input;
-    scaledInput.mousePos *= scale;
-
-    // Create Gui instance with inspector-compatible style
-    Gui gui(m_overlay, scaledInput);
+    // Create Gui instance (coordinates already in logical pixels)
+    Gui gui(m_overlay, input);
     gui.style().labelPosition = LabelPosition::Above;
     gui.style().valuePosition = ValuePosition::Right;
-    gui.style().padding = 12.0f * scale;
-    gui.style().widgetHeight = 20.0f * scale;
-    gui.style().valueWidth = 60.0f * scale;
-    gui.style().cornerRadius = 3.0f * scale;
+    gui.style().padding = 12.0f;
+    gui.style().widgetHeight = 20.0f;
+    gui.style().valueWidth = 60.0f;
+    gui.style().cornerRadius = 3.0f;
     gui.style().widgetBackground = {0.2f, 0.2f, 0.25f, 1.0f};
     gui.style().sliderFill = {0.4f, 0.6f, 0.9f, 1.0f};
     gui.style().sliderFillActive = {0.5f, 0.7f, 1.0f, 1.0f};
     gui.style().textDim = {0.5f, 0.5f, 0.55f, 1.0f};
 
-    // Layout
-    const float padding = 12.0f * scale;
-    const float rowHeight = lineH + 20.0f * scale + 4.0f * scale;
+    // Layout (all in logical pixels)
+    const float padding = 12.0f;
+    const float rowHeight = lineH + 20.0f + 4.0f;
     const float headerHeight = lineH + padding * 2;
 
     // Single dropdown for display mode
     m_inspectorContentHeight = rowHeight + padding * 2;
 
-    // Panel position (right side, below status bar)
-    float statusBarHeight = lineH + 12.0f * scale;
-    float panelX = input.width - inspectorWidth - padding;
+    // Panel position (right side, below status bar) - logical pixels
+    float statusBarHeight = lineH + 12.0f;
+    float panelX = input.logicalWidth() - inspectorWidth - padding;
     float panelY = statusBarHeight + padding;
     float panelHeight = headerHeight + m_inspectorContentHeight;
 
-    // Store bounds for input blocking
+    // Store bounds for input blocking (logical pixels)
     m_inspectorBounds.x = panelX;
     m_inspectorBounds.y = panelY;
     m_inspectorBounds.w = inspectorWidth;
@@ -2141,15 +2119,14 @@ void ChainVisualizer::renderScreenInspector(const FrameInput& input, vivid::Cont
 
     // Draw panel background
     m_overlay.setLayer(UILayer::Panels - 1);
-    float cornerRadius = 6.0f * scale;
+    float cornerRadius = 6.0f;
     m_overlay.fillRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, bgColor);
-    m_overlay.strokeRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, 1.0f * scale, borderColor);
+    m_overlay.strokeRoundedRect(panelX, panelY, inspectorWidth, panelHeight, cornerRadius, 1.0f, borderColor);
 
     // Header
     m_overlay.fillRoundedRectTop(panelX, panelY, inspectorWidth, headerHeight, cornerRadius, headerBg);
     m_overlay.text("Screen", panelX + padding, panelY + padding + ascent, titleColor, labelFont);
 
-    // Switch to main Panels layer for content
     m_overlay.setLayer(UILayer::Panels);
 
     // Content area
@@ -2186,28 +2163,26 @@ void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Co
     // Debug panel renders on Panels layer (above nodes/thumbnails)
     m_overlay.setLayer(UILayer::Panels);
 
-    // Scale for HiDPI
-    float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-
-    // Use font metrics for layout
+    // Use font metrics for layout (logical pixels with HiDPI text mode)
     const int monoFont = 2;
     float lineH = m_overlay.fontLineHeight(monoFont);
     float ascent = m_overlay.fontAscent(monoFont);
-    if (lineH <= 0) lineH = 20.0f * scale;  // Fallback (scaled)
-    if (ascent <= 0) ascent = 14.0f * scale;
+    if (lineH <= 0) lineH = 20.0f;
+    if (ascent <= 0) ascent = 14.0f;
 
-    const float padding = 8.0f * scale;
-    const float lineHeight = lineH + 4 * scale;  // Add some spacing between rows
-    const float nameWidth = 90.0f * scale;
-    const float sparklineWidth = 100.0f * scale;
-    const float sparklineHeight = lineH - 2 * scale;
-    const float valueWidth = 65.0f * scale;
+    // Layout constants (all in logical pixels)
+    const float padding = 8.0f;
+    const float lineHeight = lineH + 4.0f;
+    const float nameWidth = 90.0f;
+    const float sparklineWidth = 100.0f;
+    const float sparklineHeight = lineH - 2.0f;
+    const float valueWidth = 65.0f;
     const float panelWidth = nameWidth + sparklineWidth + valueWidth + padding * 4;
     const float panelHeight = debugValues.size() * lineHeight + padding * 2;
 
-    // Position in bottom-left corner
+    // Position in bottom-left corner (logical pixels)
     float panelX = padding;
-    float panelY = input.height - panelHeight - padding;
+    float panelY = input.logicalHeight() - panelHeight - padding;
 
     // Colors
     glm::vec4 bgColor = {0.12f, 0.12f, 0.15f, 0.9f};
@@ -2218,8 +2193,8 @@ void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Co
     glm::vec4 graphBgColor = {0.08f, 0.08f, 0.1f, 1.0f};
 
     // Draw panel background
-    m_overlay.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f * scale, bgColor);
-    m_overlay.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f * scale, 1.0f * scale, borderColor);
+    m_overlay.fillRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f, bgColor);
+    m_overlay.strokeRoundedRect(panelX, panelY, panelWidth, panelHeight, 4.0f, 1.0f, borderColor);
 
     float y = panelY + padding;
     for (const auto& [name, dv] : debugValues) {
@@ -2259,7 +2234,7 @@ void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Co
                 float x2 = graphX + i * sparklineWidth / (historyVec.size() - 1);
                 float y1 = graphBottom - ((historyVec[i-1] - minVal) / range) * sparklineHeight;
                 float y2 = graphBottom - ((historyVec[i] - minVal) / range) * sparklineHeight;
-                m_overlay.line(x1, y1, x2, y2, 1.5f * scale, graphColor);
+                m_overlay.line(x1, y1, x2, y2, 1.5f, graphColor);
             }
         }
         x += sparklineWidth + padding;

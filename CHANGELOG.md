@@ -89,6 +89,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added mouse click/drag/release handling in `handleInput()`
   - Selection methods were defined but never called
 
+- **Panel double-rendering on Retina** - Fixed NodeGraph panning moving 2x distance on HiDPI displays:
+  - Panel was being rendered twice: once from layout tree, once from floating order
+  - `showPanelFromSlot()` now checks if panel is already in layout tree before adding to floating order
+
+- **Docked panel content visibility** - Fixed panels not rendering until manually activated:
+  - `buildDefaultLayout()` now sets `setVisible(true)` on panels added to the layout tree
+  - Previously panels with non-None dockSide defaulted to visible=false
+
+- **Status bar expansion** - Fixed status bar taking over entire window when all panels closed:
+  - `cleanupEmptyNodes()` now skips non-resizable splits (structural layout elements)
+  - Status bar split remains at fixed height even when content area is empty
+
+- **Fullscreen input handling** - Fixed all panels becoming unclickable after entering fullscreen:
+  - DockManager was using physical pixels for screen dimensions but logical pixels for mouse position
+  - Now consistently uses `input.logicalWidth()`/`logicalHeight()` throughout GUI system
+
 ## [0.1.0-alpha.10] - 2026-01-22
 
 *CEF keyboard handling improvements for IDE panel*

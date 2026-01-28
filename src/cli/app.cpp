@@ -1514,10 +1514,6 @@ static bool mainLoopIteration(MainLoopContext& mlc) {
         frameInput.mouseClicked[i] = currentMouseDown[i] && !lastMouseDown[i];
         frameInput.mouseReleased[i] = !currentMouseDown[i] && lastMouseDown[i];
     }
-    // Debug: log when mouse is clicked
-    if (frameInput.mouseClicked[0]) {
-        std::cerr << "[app.cpp] Mouse clicked at (" << frameInput.mousePos.x << ", " << frameInput.mousePos.y << ")\n";
-    }
     // Use saved scroll from before blockMouseInput() was called
     // This ensures NodeGraph can still zoom even when we're blocking input to user code
     frameInput.scroll = g_savedScrollForVisualizer;

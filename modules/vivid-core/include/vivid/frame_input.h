@@ -37,10 +37,18 @@ enum class Key : int {
 
 // Input state for frame rendering
 struct FrameInput {
-    // Screen dimensions (logical pixels)
+    // Screen dimensions in PHYSICAL pixels (GPU framebuffer size)
+    // On 2x Retina with 1280x720 window: width=2560, height=1440
     int width = 0;
     int height = 0;
-    float contentScale = 1.0f;  // DPI scale (2.0 on Retina)
+
+    // DPI scale factor: physical / logical (2.0 on Retina, 1.0 on standard displays)
+    float contentScale = 1.0f;
+
+    // Helper methods for logical (screen) coordinates - these match mouse position coordinates
+    // On 2x Retina with 1280x720 window: logicalWidth()=1280, logicalHeight()=720
+    int logicalWidth() const { return contentScale > 0 ? static_cast<int>(width / contentScale) : width; }
+    int logicalHeight() const { return contentScale > 0 ? static_cast<int>(height / contentScale) : height; }
 
     // Time
     float dt = 1.0f / 60.0f;
