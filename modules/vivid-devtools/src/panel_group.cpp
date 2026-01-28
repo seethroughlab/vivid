@@ -166,7 +166,20 @@ bool PanelGroup::handleInput(const FrameInput& input) {
         return true;
     }
 
-    // Handle tab dragging
+    // Handle title bar click for single-panel groups (allows dragging to undock)
+    const float titleBarHeight = 28.0f;  // Panel title bar height
+    bool inTitleBar = !showTabBar && m_panels.size() == 1 &&
+                      mousePos.x >= m_bounds.x && mousePos.x <= m_bounds.x + m_bounds.z &&
+                      mousePos.y >= m_bounds.y && mousePos.y <= m_bounds.y + titleBarHeight;
+
+    if (!showTabBar && leftMouseClicked && inTitleBar) {
+        m_draggingTab = 0;  // Single panel is always index 0
+        m_dragStartPos = mousePos;
+        m_dragStarted = false;
+        return true;
+    }
+
+    // Handle tab/title bar dragging
     if (m_draggingTab >= 0) {
         if (leftMouseDown) {
             glm::vec2 delta = mousePos - m_dragStartPos;
@@ -177,8 +190,20 @@ bool PanelGroup::handleInput(const FrameInput& input) {
             }
 
             if (m_dragStarted) {
+                // For single-panel groups, trigger drag when moving outside the group bounds
+                if (!showTabBar) {
+                    // Trigger undock when dragging away from the panel
+                    if (mousePos.y > m_bounds.y + titleBarHeight + 20.0f ||
+                        mousePos.y < m_bounds.y - 20.0f ||
+                        mousePos.x < m_bounds.x - 20.0f ||
+                        mousePos.x > m_bounds.x + m_bounds.z + 20.0f) {
+                        if (m_onTabDrag && m_draggingTab < static_cast<int>(m_panels.size())) {
+                            m_onTabDrag(m_panels[m_draggingTab], mousePos);
+                        }
+                    }
+                }
                 // Check if dragging out of tab bar (to detach)
-                if (mousePos.y > m_bounds.y + m_tabBarHeight + 20.0f ||
+                else if (mousePos.y > m_bounds.y + m_tabBarHeight + 20.0f ||
                     mousePos.y < m_bounds.y - 20.0f) {
                     if (m_onTabDrag && m_draggingTab < static_cast<int>(m_panels.size())) {
                         m_onTabDrag(m_panels[m_draggingTab], mousePos);

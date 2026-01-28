@@ -422,25 +422,24 @@ const Panel* PanelManager::getPanel(const std::string& id) const {
 
 void PanelManager::showPanel(const std::string& id) {
     if (Panel* p = getPanel(id)) {
-        p->setVisible(true);
-        // Focus and bring to front when shown
-        setFocus(id);
+        showPanelFromSlot(id);
     }
 }
 
 void PanelManager::hidePanel(const std::string& id) {
     if (Panel* p = getPanel(id)) {
-        p->setVisible(false);
+        hidePanelWithSlot(id, true);
     }
 }
 
 void PanelManager::togglePanel(const std::string& id) {
     if (Panel* p = getPanel(id)) {
-        bool wasVisible = p->isVisible();
-        p->toggleVisible();
-        // Focus and bring to front when becoming visible
-        if (!wasVisible && p->isVisible()) {
-            setFocus(id);
+        if (p->isVisible()) {
+            // When hiding, use hidePanelWithSlot to properly remove from layout
+            hidePanelWithSlot(id, true);
+        } else {
+            // When showing, use showPanelFromSlot to restore position
+            showPanelFromSlot(id);
         }
     }
 }
