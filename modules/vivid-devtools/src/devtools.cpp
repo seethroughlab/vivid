@@ -11,8 +11,8 @@
 
 #include <vivid/devtools/devtools.h>
 #include <vivid/devtools/preferences.h>
-#include <vivid/devtools/dock_zone.h>
-#include <vivid/devtools/dock_manager.h>
+#include <vivid/gui/dock_zone.h>
+#include <vivid/gui/dock_manager.h>
 #include <vivid/devtools/panels/terminal_panel.h>
 #include <vivid/devtools/panels/editor_panel.h>
 #include <vivid/devtools/panels/node_graph_panel.h>
@@ -20,6 +20,8 @@
 #include <vivid/devtools/panels/status_bar_panel.h>
 #include <vivid/devtools/panels/console_panel.h>
 #include <vivid/devtools/panels/file_browser_panel.h>
+#include <vivid/devtools/panels/performance_panel.h>
+#include <vivid/devtools/panels/operator_library_panel.h>
 #include <vivid/context.h>
 #include <vivid/asset_loader.h>
 #include "effects/font_atlas.h"
@@ -245,6 +247,14 @@ bool DevTools::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     auto console = std::make_unique<ConsolePanel>();
     m_panelManager->addPanel(std::move(console));
 
+    // Performance (floating - for real-time metrics)
+    auto performance = std::make_unique<PerformancePanel>();
+    m_panelManager->addPanel(std::move(performance));
+
+    // Operator Library (floating - browse all operators from all modules)
+    auto library = std::make_unique<OperatorLibraryPanel>();
+    m_panelManager->addPanel(std::move(library));
+
     // Initialize panel manager (initializes all panels)
     if (!m_panelManager->init(ctx, surfaceFormat)) {
         std::cerr << "[vivid-devtools] Failed to initialize panel manager\n";
@@ -353,6 +363,24 @@ void DevTools::registerDefaultShortcuts() {
         [this]() { toggleFileBrowser(); }
     });
 
+    // Cmd/Ctrl+6: Toggle Performance Panel
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_6,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_performance",
+        "Toggle Performance",
+        [this]() { togglePanel("performance"); }
+    });
+
+    // Cmd/Ctrl+7: Toggle Operator Library
+    m_shortcuts.registerShortcut({
+        GLFW_KEY_7,
+        ShortcutManager::MOD_CMD_OR_CTRL,
+        "toggle_library",
+        "Toggle Operator Library",
+        [this]() { togglePanel("library"); }
+    });
+
     // Note: Cmd/Ctrl+F (fullscreen) is now a built-in shortcut in vivid-core,
     // so it works even without devtools loaded.
 
@@ -459,7 +487,8 @@ void DevTools::update() {
                              isPanelVisible("console") ||
                              isPanelVisible("nodegraph") ||
                              isPanelVisible("inspector") ||
-                             isPanelVisible("filebrowser");
+                             isPanelVisible("filebrowser") ||
+                             isPanelVisible("library");
 
     if (auto* statusBar = m_panelManager->getPanelAs<StatusBarPanel>("statusbar")) {
         // Only show status bar if there's visible content OR background grid is shown
@@ -490,6 +519,8 @@ void DevTools::update() {
         statusBar->setPanelDockMode("editor", getDockMode("editor"));
         statusBar->setPanelDockMode("nodegraph", getDockMode("nodegraph"));
         statusBar->setPanelDockMode("filebrowser", getDockMode("filebrowser"));
+        statusBar->setPanelDockMode("performance", getDockMode("performance"));
+        statusBar->setPanelDockMode("library", getDockMode("library"));
 
         // Sync grid opacity slider
         statusBar->setGridOpacity(m_gridOpacity);

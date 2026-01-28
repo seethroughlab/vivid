@@ -18,21 +18,27 @@ namespace UILayer {
     constexpr int Tooltips = 500;      ///< Tooltips (highest priority)
 }
 
-/// Centralized UI style - colors and HiDPI-scaled layout values.
+/// Centralized UI style - colors and layout values.
+///
+/// Layout values are in **logical pixels** - the canvas handles HiDPI scaling
+/// internally via its content scale factor. This means you should NOT manually
+/// scale values from this style.
 ///
 /// Usage:
 /// @code
 /// UIStyle style;
-/// style.scale = ctx.contentScale();  // Set from context for HiDPI
 ///
 /// // Use colors directly
 /// canvas.fillRect(x, y, w, h, style.panelBg);
 ///
-/// // Use scaled layout helpers
-/// float p = style.padding();  // Returns 8.0f * scale
+/// // Layout helpers return logical (unscaled) pixels
+/// float p = style.padding();  // Returns 8.0f (canvas scales internally)
 /// @endcode
+///
+/// @note The `scale` member is provided for cases where you need the HiDPI
+/// factor outside the canvas system (e.g., text sizing or external rendering).
 struct UIStyle {
-    float scale = 1.0f;  ///< HiDPI scale factor (1.0 = standard, 2.0 = Retina)
+    float scale = 1.0f;  ///< HiDPI scale factor for external use (1.0 = standard, 2.0 = Retina)
 
     // -------------------------------------------------------------------------
     // Panel colors

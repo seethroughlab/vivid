@@ -15,9 +15,9 @@
  * - Layout mode: Panels are arranged in a tree of PanelGroups and SplitContainers
  */
 
-#include <vivid/devtools/panel.h>
-#include <vivid/devtools/layout_node.h>
-#include <vivid/devtools/dock_zone.h>
+#include <vivid/gui/panel.h>
+#include <vivid/gui/layout_node.h>
+#include <vivid/gui/dock_zone.h>
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/frame_input.h>
 #include <memory>

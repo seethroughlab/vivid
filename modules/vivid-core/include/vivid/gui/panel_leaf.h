@@ -8,8 +8,8 @@
  * in the layout tree without needing a full PanelGroup.
  */
 
-#include <vivid/devtools/layout_node.h>
-#include <vivid/devtools/panel.h>
+#include <vivid/gui/layout_node.h>
+#include <vivid/gui/panel.h>
 
 namespace vivid {
 

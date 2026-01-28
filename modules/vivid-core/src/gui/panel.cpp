@@ -1,7 +1,7 @@
 // Panel base class implementation
 // Provides common drag/resize functionality for all panels
 
-#include <vivid/devtools/panel.h>
+#include <vivid/gui/panel.h>
 #include <vivid/gui/ui_style.h>
 #include <algorithm>
 
@@ -25,8 +25,8 @@ Panel::~Panel() = default;
 void Panel::handleDragAndResize(const FrameInput& input, float screenW, float screenH,
                                  float titleBarHeight, bool /*allowNewInteraction*/) {
     if (!m_config.visible) {
-        m_hovered = false;
-        m_consumedInput = false;
+        m_focus.hovered = false;
+        m_inputRouting.consumedInput = false;
         return;
     }
 
@@ -39,8 +39,8 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     float hitSize = 8.0f;
 
     // Check if mouse is in panel bounds (with resize margin)
-    m_hovered = mousePos.x >= x - hitSize && mousePos.x <= x + w + hitSize &&
-                mousePos.y >= y - hitSize && mousePos.y <= y + h + hitSize;
+    m_focus.hovered = mousePos.x >= x - hitSize && mousePos.x <= x + w + hitSize &&
+                      mousePos.y >= y - hitSize && mousePos.y <= y + h + hitSize;
 
     bool leftMouseDown = input.mouseDown[0];
     bool leftMouseClicked = input.mouseClicked[0];
@@ -53,18 +53,19 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
                             mousePos.y >= y && mousePos.y <= y + titleBarHeight;
 
         // Only start new drag if this panel can start interactions
-        if (m_canStartInteraction && overTitleBar && leftMouseClicked && !m_dragging && m_resizing == 0) {
-            m_dragging = true;
-            m_dragOffset = mousePos - glm::vec2(x, y);
+        if (m_inputRouting.canStartInteraction && overTitleBar && leftMouseClicked &&
+            !m_dragResize.dragging && m_dragResize.resizing == 0) {
+            m_dragResize.dragging = true;
+            m_dragResize.dragOffset = mousePos - glm::vec2(x, y);
         }
 
-        // Continue existing drag regardless of m_canStartInteraction or inputBlocked
-        if (m_dragging) {
+        // Continue existing drag regardless of canStartInteraction or inputBlocked
+        if (m_dragResize.dragging) {
             if (leftMouseDown) {
-                m_config.bounds.x = mousePos.x - m_dragOffset.x;
-                m_config.bounds.y = mousePos.y - m_dragOffset.y;
+                m_config.bounds.x = mousePos.x - m_dragResize.dragOffset.x;
+                m_config.bounds.y = mousePos.y - m_dragResize.dragOffset.y;
             } else {
-                m_dragging = false;
+                m_dragResize.dragging = false;
             }
         }
     }
@@ -73,7 +74,8 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     // Resizing (from edges)
     // -------------------------------------------------------------------------
     // Only start new resize if this panel can start interactions
-    if (m_canStartInteraction && m_config.resizable && !m_dragging && m_resizing == 0 && leftMouseClicked) {
+    if (m_inputRouting.canStartInteraction && m_config.resizable &&
+        !m_dragResize.dragging && m_dragResize.resizing == 0 && leftMouseClicked) {
         int edge = 0;
         if (mousePos.x >= x - hitSize && mousePos.x <= x + hitSize) edge |= 1;  // left
         if (mousePos.x >= x + w - hitSize && mousePos.x <= x + w + hitSize) edge |= 2;  // right
@@ -81,38 +83,38 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
         if (mousePos.y >= y + h - hitSize && mousePos.y <= y + h + hitSize) edge |= 8;  // bottom
 
         if (edge != 0) {
-            m_resizing = edge;
-            m_resizeStartBounds = m_config.bounds;
-            m_resizeStartMouse = mousePos;
+            m_dragResize.resizing = edge;
+            m_dragResize.startBounds = m_config.bounds;
+            m_dragResize.startMouse = mousePos;
         }
     }
 
-    if (m_resizing != 0) {
+    if (m_dragResize.resizing != 0) {
         if (leftMouseDown) {
-            glm::vec2 delta = mousePos - m_resizeStartMouse;
-            float newX = m_resizeStartBounds.x;
-            float newY = m_resizeStartBounds.y;
-            float newW = m_resizeStartBounds.z;
-            float newH = m_resizeStartBounds.w;
+            glm::vec2 delta = mousePos - m_dragResize.startMouse;
+            float newX = m_dragResize.startBounds.x;
+            float newY = m_dragResize.startBounds.y;
+            float newW = m_dragResize.startBounds.z;
+            float newH = m_dragResize.startBounds.w;
 
-            if (m_resizing & 1) { newX += delta.x; newW -= delta.x; }  // left
-            if (m_resizing & 2) { newW += delta.x; }  // right
-            if (m_resizing & 4) { newY += delta.y; newH -= delta.y; }  // top
-            if (m_resizing & 8) { newH += delta.y; }  // bottom
+            if (m_dragResize.resizing & 1) { newX += delta.x; newW -= delta.x; }  // left
+            if (m_dragResize.resizing & 2) { newW += delta.x; }  // right
+            if (m_dragResize.resizing & 4) { newY += delta.y; newH -= delta.y; }  // top
+            if (m_dragResize.resizing & 8) { newH += delta.y; }  // bottom
 
             // Enforce minimum size
             if (newW < m_config.minWidth) {
-                if (m_resizing & 1) newX = m_resizeStartBounds.x + m_resizeStartBounds.z - m_config.minWidth;
+                if (m_dragResize.resizing & 1) newX = m_dragResize.startBounds.x + m_dragResize.startBounds.z - m_config.minWidth;
                 newW = m_config.minWidth;
             }
             if (newH < m_config.minHeight) {
-                if (m_resizing & 4) newY = m_resizeStartBounds.y + m_resizeStartBounds.w - m_config.minHeight;
+                if (m_dragResize.resizing & 4) newY = m_dragResize.startBounds.y + m_dragResize.startBounds.w - m_config.minHeight;
                 newH = m_config.minHeight;
             }
 
             m_config.bounds = glm::vec4(newX, newY, newW, newH);
         } else {
-            m_resizing = 0;
+            m_dragResize.resizing = 0;
         }
     }
 
@@ -127,21 +129,38 @@ void Panel::handleDragAndResize(const FrameInput& input, float screenW, float sc
     m_config.bounds.w = std::max(m_config.minHeight, m_config.bounds.w);
 
     // Update consumed input state
-    m_consumedInput = m_hovered || m_dragging || m_resizing != 0;
+    m_inputRouting.consumedInput = m_focus.hovered || m_dragResize.isActive();
+}
+
+glm::vec4 Panel::beginRender(const FrameInput& input, const glm::vec4& bounds) {
+    if (m_display.showTitleBar) {
+        // Floating panel - handle drag/resize and use own bounds
+        float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
+        float screenW = static_cast<float>(input.width) / scale;
+        float screenH = static_cast<float>(input.height) / scale;
+        handleDragAndResize(input, screenW, screenH);
+        return m_config.bounds;
+    } else {
+        // Docked panel - use bounds from parent container
+        // Set hover state (normally done in handleDragAndResize)
+        m_focus.hovered = input.mousePos.x >= bounds.x && input.mousePos.x <= bounds.x + bounds.z &&
+                          input.mousePos.y >= bounds.y && input.mousePos.y <= bounds.y + bounds.w;
+        return bounds;
+    }
 }
 
 void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float h,
                           const UIStyle& style, bool showTitleBar,
                           const FrameInput* input) {
     // Reset close button state
-    m_closeButtonClicked = false;
+    m_closeButton.clicked = false;
 
     // All dimensions in logical pixels - canvas handles scaling
     float cornerRadius = style.panelCornerRadius();
     float titleBarHeight = style.titleBarHeight();
 
     // Use square corners when docked to edge (no rounded corners at top)
-    float effectiveRadius = m_squareTopCorners ? 0.0f : cornerRadius;
+    float effectiveRadius = m_display.squareTopCorners ? 0.0f : cornerRadius;
 
     // Background - use fully opaque to prevent bleed-through
     glm::vec4 bgColor = style.panelBg;
@@ -159,7 +178,7 @@ void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float
     if (showTitleBar) {
         glm::vec4 headerColor = style.headerBg;
         headerColor.a = 1.0f;  // Force opaque
-        if (m_squareTopCorners) {
+        if (m_display.squareTopCorners) {
             // Square corners at top
             canvas.fillRect(x, y, w, titleBarHeight, headerColor);
         } else {
@@ -177,7 +196,7 @@ void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float
         float closeY = y + titleBarHeight / 2;
 
         // Check hover and click
-        m_closeButtonHovered = false;
+        m_closeButton.hovered = false;
         if (input) {
             float hitPadding = 4.0f;
             bool overClose = input->mousePos.x >= closeX - closeSize - hitPadding &&
@@ -186,9 +205,9 @@ void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float
                              input->mousePos.y <= closeY + closeSize + hitPadding;
 
             if (overClose) {
-                m_closeButtonHovered = true;
+                m_closeButton.hovered = true;
                 if (input->mouseClicked[0]) {
-                    m_closeButtonClicked = true;
+                    m_closeButton.clicked = true;
                     if (m_onClose) {
                         m_onClose(this);
                     }
@@ -197,10 +216,10 @@ void Panel::renderChrome(OverlayCanvas& canvas, float x, float y, float w, float
         }
 
         // Draw X with hover effect
-        glm::vec4 closeColor = m_closeButtonHovered
+        glm::vec4 closeColor = m_closeButton.hovered
             ? glm::vec4(1.0f, 0.4f, 0.4f, 1.0f)  // Red on hover
             : style.textDim;
-        float lineWidth = m_closeButtonHovered ? 2.0f : 1.5f;
+        float lineWidth = m_closeButton.hovered ? 2.0f : 1.5f;
 
         canvas.line(closeX - closeSize, closeY - closeSize,
                     closeX + closeSize, closeY + closeSize, lineWidth, closeColor);

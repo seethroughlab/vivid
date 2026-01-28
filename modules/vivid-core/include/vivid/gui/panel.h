@@ -154,28 +154,25 @@ public:
     /**
      * @brief Get/set focus state
      */
-    bool isFocused() const { return m_focused; }
-    void setFocused(bool focused) { m_focused = focused; }
+    bool isFocused() const { return m_focus.focused; }
+    void setFocused(bool focused) { m_focus.focused = focused; }
 
     /**
      * @brief Check if mouse is hovering over panel
      */
-    bool isHovered() const { return m_hovered; }
+    bool isHovered() const { return m_focus.hovered; }
 
     /**
      * @brief Check if panel is being interacted with (dragging, resizing)
      */
-    bool isInteracting() const { return m_dragging || m_resizing != 0; }
+    bool isInteracting() const { return m_dragResize.isActive(); }
 
     /**
      * @brief Reset interaction state (dragging/resizing)
      *
      * Call this when a panel is docked to clear stale drag state.
      */
-    void resetInteractionState() {
-        m_dragging = false;
-        m_resizing = 0;
-    }
+    void resetInteractionState() { m_dragResize.reset(); }
 
     /**
      * @brief Get/set bounds
@@ -186,7 +183,7 @@ public:
     /**
      * @brief Check if input was consumed by this panel
      */
-    bool consumedInput() const { return m_consumedInput; }
+    bool consumedInput() const { return m_inputRouting.consumedInput; }
 
     /**
      * @brief Set whether this panel can start new interactions
@@ -194,8 +191,8 @@ public:
      * Set to false for panels that are behind others at the mouse position.
      * This prevents multiple overlapping panels from starting drags.
      */
-    void setCanStartInteraction(bool can) { m_canStartInteraction = can; }
-    bool canStartInteraction() const { return m_canStartInteraction; }
+    void setCanStartInteraction(bool can) { m_inputRouting.canStartInteraction = can; }
+    bool canStartInteraction() const { return m_inputRouting.canStartInteraction; }
 
     /**
      * @brief Control title bar visibility
@@ -203,8 +200,8 @@ public:
      * Set to false when panel is in a tabbed group (tab bar shows title).
      * Set to true for floating panels.
      */
-    void setShowTitleBar(bool show) { m_showTitleBar = show; }
-    bool showTitleBar() const { return m_showTitleBar; }
+    void setShowTitleBar(bool show) { m_display.showTitleBar = show; }
+    bool showTitleBar() const { return m_display.showTitleBar; }
 
     /**
      * @brief Control rounded corners at the top
@@ -212,8 +209,8 @@ public:
      * Set to true when panel is docked at an edge (no rounded corners at top).
      * Set to false for floating panels (rounded corners on all sides).
      */
-    void setSquareTopCorners(bool square) { m_squareTopCorners = square; }
-    bool squareTopCorners() const { return m_squareTopCorners; }
+    void setSquareTopCorners(bool square) { m_display.squareTopCorners = square; }
+    bool squareTopCorners() const { return m_display.squareTopCorners; }
 
     /**
      * @brief Set callback for when close button is clicked
@@ -225,7 +222,7 @@ public:
      * @brief Check if close button was clicked this frame
      * Call from render() after renderChrome() to check if panel should close
      */
-    bool closeButtonClicked() const { return m_closeButtonClicked; }
+    bool closeButtonClicked() const { return m_closeButton.clicked; }
 
     /**
      * @brief Input ownership model
@@ -234,8 +231,8 @@ public:
      * PanelManager based on z-order and interaction state. Panels should check
      * ownsInput() before processing mouse/keyboard events.
      */
-    void setInputOwnership(bool owns) { m_ownsInput = owns; }
-    bool ownsInput() const { return m_ownsInput; }
+    void setInputOwnership(bool owns) { m_inputRouting.ownsInput = owns; }
+    bool ownsInput() const { return m_inputRouting.ownsInput; }
 
     /// @}
     // -------------------------------------------------------------------------
@@ -263,27 +260,74 @@ protected:
     // Configuration
     PanelConfig m_config;
 
-    // Interaction state
-    bool m_focused = false;
-    bool m_hovered = false;
-    bool m_dragging = false;
-    int m_resizing = 0;  // Bit flags: 1=left, 2=right, 4=top, 8=bottom
-    bool m_consumedInput = false;
-    bool m_canStartInteraction = true;  // Set by panel manager based on z-order
-    bool m_ownsInput = false;           // Set by panel manager each frame
-    bool m_showTitleBar = true;         // Set to false when in tabbed group
-    bool m_squareTopCorners = false;    // Set to true when docked (no rounded top corners)
-    bool m_closeButtonClicked = false;  // Set by renderChrome when close button clicked
-    bool m_closeButtonHovered = false;  // For hover effect on close button
-    CloseCallback m_onClose;            // Called when close button clicked
+    // -------------------------------------------------------------------------
+    // Interaction State (grouped into logical structs)
+    // -------------------------------------------------------------------------
 
-    // Drag/resize state
-    glm::vec2 m_dragOffset = {0, 0};
-    glm::vec4 m_resizeStartBounds = {0, 0, 0, 0};
-    glm::vec2 m_resizeStartMouse = {0, 0};
+    /// Focus and hover state
+    struct FocusState {
+        bool focused = false;   ///< Has keyboard focus
+        bool hovered = false;   ///< Mouse is over panel
+    };
+    FocusState m_focus;
 
-    // Mouse tracking
-    bool m_lastMouseDown = false;  // For click detection
+    /// Drag/resize state (mutually exclusive actions)
+    struct DragResizeState {
+        bool dragging = false;
+        int resizing = 0;  // Bit flags: 1=left, 2=right, 4=top, 8=bottom
+        glm::vec2 dragOffset = {0, 0};
+        glm::vec4 startBounds = {0, 0, 0, 0};
+        glm::vec2 startMouse = {0, 0};
+
+        bool isActive() const { return dragging || resizing != 0; }
+        void reset() {
+            dragging = false;
+            resizing = 0;
+            dragOffset = {0, 0};
+            startBounds = {0, 0, 0, 0};
+            startMouse = {0, 0};
+        }
+    };
+    DragResizeState m_dragResize;
+
+    /// Input routing state (set by PanelManager each frame)
+    struct InputRouting {
+        bool consumedInput = false;       ///< Panel consumed input this frame
+        bool canStartInteraction = true;  ///< Can start new drag/resize (based on z-order)
+        bool ownsInput = false;           ///< Has exclusive input ownership
+    };
+    InputRouting m_inputRouting;
+
+    /// Display options (affect rendering)
+    struct DisplayOptions {
+        bool showTitleBar = true;       ///< False when in tabbed group
+        bool squareTopCorners = false;  ///< True when docked
+    };
+    DisplayOptions m_display;
+
+    /// Close button state
+    struct CloseButtonState {
+        bool clicked = false;   ///< Clicked this frame
+        bool hovered = false;   ///< Mouse is over button
+    };
+    CloseButtonState m_closeButton;
+    CloseCallback m_onClose;
+
+    /// Mouse tracking for click detection
+    bool m_lastMouseDown = false;
+
+    /**
+     * @brief Resolve render bounds for floating vs docked panels
+     *
+     * Call this at the start of render() to get the correct bounds to use.
+     * For floating panels (m_showTitleBar = true): handles drag/resize and returns m_config.bounds
+     * For docked panels: returns passed bounds and sets m_hovered state
+     *
+     * @param input Frame input state
+     * @param bounds Bounds passed from parent (used when docked)
+     * @return The bounds to use for rendering
+     */
+    glm::vec4 beginRender(const FrameInput& input, const glm::vec4& bounds);
 
     /**
      * @brief Render common panel chrome (background, border, title bar)

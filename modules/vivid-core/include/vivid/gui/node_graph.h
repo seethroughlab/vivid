@@ -538,6 +538,7 @@ private:
     std::unordered_map<int, NodeState> m_nodes;
     std::unordered_map<int, LinkState> m_links;
     std::unordered_map<int, int> m_pinToNode;  // Pin ID -> Node ID
+    std::unordered_map<int, glm::vec2> m_pinScreenPosCache;  // Pin ID -> screen position (updated in computePinPositions)
 
     // Current build state
     int m_currentNodeId = -1;
@@ -553,6 +554,7 @@ private:
     // Drag state
     bool m_isPanning = false;
     bool m_isDraggingNode = false;
+    bool m_wasPanning = false;  // Track previous frame's panning state for deselection logic
     glm::vec2 m_dragStartPos = {0, 0};
     glm::vec2 m_dragNodeStartGridPos = {0, 0};
 
@@ -576,7 +578,9 @@ private:
     // Double-click detection state
     float m_lastClickTime = 0.0f;
     int m_lastClickedNodeId = -1;
+    glm::vec2 m_lastClickPos = {0, 0};  // Screen position of last click
     static constexpr float DOUBLE_CLICK_TIME = 0.3f;  // 300ms window
+    static constexpr float DOUBLE_CLICK_DISTANCE = 10.0f;  // Max distance in pixels
 };
 
 } // namespace vivid

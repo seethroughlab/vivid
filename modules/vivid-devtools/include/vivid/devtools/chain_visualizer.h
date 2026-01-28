@@ -12,6 +12,7 @@
 #include <vivid/video_exporter.h>
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/gui/node_graph.h>
+#include <vivid/gui/scratch_texture.h>
 #include <webgpu/webgpu.h>
 #include <string>
 #include <unordered_map>
@@ -221,14 +222,7 @@ private:
     Context* m_currentCtx = nullptr;
 
     // Scratch texture for rendering CpuPixels operators
-    WGPUTexture m_cpuPixelScratchTex = nullptr;
-    WGPUTextureView m_cpuPixelScratchView = nullptr;
-    int m_cpuPixelScratchWidth = 0;
-    int m_cpuPixelScratchHeight = 0;
-
-    // Upload CPU pixels to scratch texture (creates/resizes as needed)
-    WGPUTextureView uploadCpuPixelsToScratch(Context& ctx, const Operator::CpuPixelView& view);
-    void releaseCpuPixelScratch();
+    ScratchTexture m_cpuPixelScratch;
 };
 
 } // namespace vivid

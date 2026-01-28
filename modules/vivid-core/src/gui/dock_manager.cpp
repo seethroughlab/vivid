@@ -1,12 +1,12 @@
 // DockManager implementation
 // Handles panel drag-to-dock operations
 
-#include <vivid/devtools/dock_manager.h>
-#include <vivid/devtools/panel_manager.h>
-#include <vivid/devtools/panel_group.h>
-#include <vivid/devtools/split_container.h>
-#include <vivid/devtools/panel_leaf.h>
-#include <vivid/devtools/panel.h>
+#include <vivid/gui/dock_manager.h>
+#include <vivid/gui/panel_manager.h>
+#include <vivid/gui/panel_group.h>
+#include <vivid/gui/split_container.h>
+#include <vivid/gui/panel_leaf.h>
+#include <vivid/gui/panel.h>
 #include <vivid/gui/ui_style.h>
 #include <algorithm>
 #include <functional>
@@ -493,6 +493,23 @@ void DockManager::executeDockCenter(const DockZone& zone) {
 
     if (!zone.targetNode) {
         // Root level - shouldn't happen for center
+        executeFloat();
+        return;
+    }
+
+    // Validate that the target node is still in the layout tree
+    // This guards against stale pointers if the tree was modified during drag
+    bool nodeStillValid = false;
+    if (m_panelManager && m_panelManager->layoutRoot()) {
+        traverseLayout(m_panelManager->layoutRoot(), [&](LayoutNode* node) {
+            if (node == zone.targetNode) {
+                nodeStillValid = true;
+            }
+        });
+    }
+
+    if (!nodeStillValid) {
+        std::cerr << "[DockManager] Warning: target node no longer in tree, floating panel instead\n";
         executeFloat();
         return;
     }

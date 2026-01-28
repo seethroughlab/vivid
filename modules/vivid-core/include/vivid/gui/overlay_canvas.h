@@ -296,6 +296,24 @@ public:
                       const glm::vec4& tint = glm::vec4(1.0f));
 
     /**
+     * @brief Draw a textured rectangle with mipmap level hint (for smoother thumbnails)
+     * @param x Left edge
+     * @param y Top edge
+     * @param w Width (display size)
+     * @param h Height (display size)
+     * @param textureView WebGPU texture view to sample from
+     * @param srcWidth Source texture width (for mip level calculation)
+     * @param srcHeight Source texture height (for mip level calculation)
+     * @param tint Optional tint color (default white = no tint)
+     *
+     * Calculates optimal mip level based on ratio of source to display size.
+     * Textures must have mipmaps for this to have any effect.
+     */
+    void texturedRectMip(float x, float y, float w, float h, WGPUTextureView textureView,
+                         int srcWidth, int srcHeight,
+                         const glm::vec4& tint = glm::vec4(1.0f));
+
+    /**
      * @brief Draw a filled polygon
      * @param points Polygon vertices (minimum 3)
      * @param color Fill color
@@ -347,21 +365,6 @@ public:
      * @return Current clip rect (x, y, w, h), or (0,0,0,0) if no clipping
      */
     glm::vec4 currentClipRect() const;
-
-    /**
-     * @brief Set a clip rect for a specific layer (applied during render)
-     * @param layer The layer index
-     * @param x Left edge
-     * @param y Top edge
-     * @param w Width
-     * @param h Height
-     */
-    void setLayerClipRect(int layer, float x, float y, float w, float h);
-
-    /**
-     * @brief Clear the clip rect for a specific layer
-     */
-    void clearLayerClipRect(int layer);
 
     /// @}
     // -------------------------------------------------------------------------
@@ -573,8 +576,6 @@ private:
     };
     std::vector<ClipRect> m_clipStack;
 
-    // Per-layer clip rects (simpler alternative to segment-based clipping)
-    std::map<int, ClipRect> m_layerClipRects;
 
     // Draw segment with optional clip rect (for scissor clipping)
     struct DrawSegment {
@@ -605,6 +606,7 @@ private:
         glm::vec2 size;
         WGPUTextureView textureView;
         glm::vec4 tint;
+        float mipLevel = 0.0f;  // Explicit mip level (0 = base level)
     };
     std::map<int, std::vector<TexturedRect>> m_texturedRects;
 
@@ -624,15 +626,19 @@ private:
     FontProvider* m_fonts[3] = {nullptr, nullptr, nullptr};
     WGPUBindGroup m_fontBindGroups[3] = {nullptr, nullptr, nullptr};
 
-    // Persistent buffers (reused across layers)
+    // Persistent buffers (reused across frames to avoid allocation churn)
     WGPUBuffer m_solidVertexBuffer = nullptr;
     WGPUBuffer m_solidIndexBuffer = nullptr;
     WGPUBuffer m_textVertexBuffer[3] = {nullptr, nullptr, nullptr};
     WGPUBuffer m_textIndexBuffer[3] = {nullptr, nullptr, nullptr};
+    WGPUBuffer m_texRectVertexBuffer = nullptr;  // For textured rects
+    WGPUBuffer m_texRectIndexBuffer = nullptr;
     size_t m_solidVertexCapacity = 0;
     size_t m_solidIndexCapacity = 0;
     size_t m_textVertexCapacity[3] = {0, 0, 0};
     size_t m_textIndexCapacity[3] = {0, 0, 0};
+    size_t m_texRectVertexCapacity = 0;
+    size_t m_texRectIndexCapacity = 0;
 
     // Transform state
     glm::mat3 m_transform = glm::mat3(1.0f);

@@ -77,6 +77,18 @@ void OverlayCanvas::cleanup() {
     m_solidVertexCapacity = 0;
     m_solidIndexCapacity = 0;
 
+    // Release textured rect buffers
+    if (m_texRectVertexBuffer) {
+        wgpuBufferRelease(m_texRectVertexBuffer);
+        m_texRectVertexBuffer = nullptr;
+    }
+    if (m_texRectIndexBuffer) {
+        wgpuBufferRelease(m_texRectIndexBuffer);
+        m_texRectIndexBuffer = nullptr;
+    }
+    m_texRectVertexCapacity = 0;
+    m_texRectIndexCapacity = 0;
+
     // Release pipeline resources
     if (m_sampler) {
         wgpuSamplerRelease(m_sampler);
@@ -130,9 +142,9 @@ void OverlayCanvas::createPipeline() {
     // Bind group layout
     WGPUBindGroupLayoutEntry entries[3] = {};
 
-    // Uniforms
+    // Uniforms (used in both vertex for resolution and fragment for mipLevel)
     entries[0].binding = 0;
-    entries[0].visibility = WGPUShaderStage_Vertex;
+    entries[0].visibility = WGPUShaderStage_Vertex | WGPUShaderStage_Fragment;
     entries[0].buffer.type = WGPUBufferBindingType_Uniform;
     entries[0].buffer.minBindingSize = 16;
 
@@ -349,8 +361,6 @@ void OverlayCanvas::begin(int logicalWidth, int logicalHeight, int physicalWidth
     m_lastHasClip = false;
     m_lastClipRect = {0, 0, 0, 0};
 
-    // Clear per-layer clip rects
-    m_layerClipRects.clear();
 
     // Reset transform
     m_transform = glm::mat3(1.0f);
@@ -587,37 +597,11 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
     size_t textSegIdx[3] = {0, 0, 0};
 
     for (int layer : allLayers) {
-        // Check if this layer has a clip rect
-        auto layerClipIt = m_layerClipRects.find(layer);
-        bool hasLayerClip = (layerClipIt != m_layerClipRects.end());
-        if (hasLayerClip) {
-            const auto& clip = layerClipIt->second;
-            // Scale from logical to physical coordinates
-            uint32_t x = static_cast<uint32_t>(std::max(0.0f, clip.x * scaleX));
-            uint32_t y = static_cast<uint32_t>(std::max(0.0f, clip.y * scaleY));
-            uint32_t w = static_cast<uint32_t>(std::max(0.0f, clip.w * scaleX));
-            uint32_t h = static_cast<uint32_t>(std::max(0.0f, clip.h * scaleY));
-            // Clamp to physical viewport
-            if (x + w > static_cast<uint32_t>(m_physicalWidth)) w = static_cast<uint32_t>(m_physicalWidth) - x;
-            if (y + h > static_cast<uint32_t>(m_physicalHeight)) h = static_cast<uint32_t>(m_physicalHeight) - y;
-            if (w > 0 && h > 0) {
-                wgpuRenderPassEncoderSetScissorRect(pass, x, y, w, h);
-            }
-        } else {
-            // Reset to full physical viewport for layers without clip
-            wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
-                                                 static_cast<uint32_t>(m_physicalWidth),
-                                                 static_cast<uint32_t>(m_physicalHeight));
-        }
-
         // 1. Render solid segments for this layer
         while (solidSegIdx < allSolidSegments.size() && allSolidSegments[solidSegIdx].layer == layer) {
             const auto& seg = allSolidSegments[solidSegIdx];
             if (seg.indexCount > 0) {
-                // Only apply segment scissor if no layer clip (layer clip takes precedence)
-                if (!hasLayerClip) {
-                    applyScissor(seg);
-                }
+                applyScissor(seg);
                 wgpuRenderPassEncoderSetBindGroup(pass, 0, m_whiteBindGroup, 0, nullptr);
                 wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_solidVertexBuffer, 0,
                                                       allSolidVertices.size() * sizeof(OverlayVertex));
@@ -631,12 +615,10 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
         // 2. Render textured rects for this layer
         auto texIt = m_texturedRects.find(layer);
         if (texIt != m_texturedRects.end() && !texIt->second.empty()) {
-            // Only reset scissor if no layer clip (layer clip is already set above)
-            if (!hasLayerClip) {
-                wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
-                                                     static_cast<uint32_t>(m_physicalWidth),
-                                                     static_cast<uint32_t>(m_physicalHeight));
-            }
+            // Reset scissor to full viewport for textured rects (no per-segment clipping for these)
+            wgpuRenderPassEncoderSetScissorRect(pass, 0, 0,
+                                                 static_cast<uint32_t>(m_physicalWidth),
+                                                 static_cast<uint32_t>(m_physicalHeight));
 
             const auto& rects = texIt->second;
 
@@ -685,29 +667,47 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
                 size_t vertexSize = texVertices.size() * sizeof(OverlayVertex);
                 size_t indexSize = texIndices.size() * sizeof(uint32_t);
 
-                WGPUBufferDescriptor vbDesc = {};
-                vbDesc.size = vertexSize;
-                vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
-                WGPUBuffer vertexBuffer = wgpuDeviceCreateBuffer(m_device, &vbDesc);
+                // Grow persistent buffers if needed (same pattern as solid vertex buffers)
+                if (vertexSize > m_texRectVertexCapacity) {
+                    if (m_texRectVertexBuffer) wgpuBufferRelease(m_texRectVertexBuffer);
+                    size_t newCapacity = std::max(vertexSize, INITIAL_VERTEX_CAPACITY * sizeof(OverlayVertex));
+                    newCapacity = std::max(newCapacity, m_texRectVertexCapacity * 2);
+                    WGPUBufferDescriptor vbDesc = {};
+                    vbDesc.size = newCapacity;
+                    vbDesc.usage = WGPUBufferUsage_Vertex | WGPUBufferUsage_CopyDst;
+                    m_texRectVertexBuffer = wgpuDeviceCreateBuffer(m_device, &vbDesc);
+                    m_texRectVertexCapacity = newCapacity;
+                }
+                if (indexSize > m_texRectIndexCapacity) {
+                    if (m_texRectIndexBuffer) wgpuBufferRelease(m_texRectIndexBuffer);
+                    size_t newCapacity = std::max(indexSize, INITIAL_INDEX_CAPACITY * sizeof(uint32_t));
+                    newCapacity = std::max(newCapacity, m_texRectIndexCapacity * 2);
+                    WGPUBufferDescriptor ibDesc = {};
+                    ibDesc.size = newCapacity;
+                    ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
+                    m_texRectIndexBuffer = wgpuDeviceCreateBuffer(m_device, &ibDesc);
+                    m_texRectIndexCapacity = newCapacity;
+                }
 
-                WGPUBufferDescriptor ibDesc = {};
-                ibDesc.size = indexSize;
-                ibDesc.usage = WGPUBufferUsage_Index | WGPUBufferUsage_CopyDst;
-                WGPUBuffer indexBuffer = wgpuDeviceCreateBuffer(m_device, &ibDesc);
+                wgpuQueueWriteBuffer(m_queue, m_texRectVertexBuffer, 0, texVertices.data(), vertexSize);
+                wgpuQueueWriteBuffer(m_queue, m_texRectIndexBuffer, 0, texIndices.data(), indexSize);
 
-                wgpuQueueWriteBuffer(m_queue, vertexBuffer, 0, texVertices.data(), vertexSize);
-                wgpuQueueWriteBuffer(m_queue, indexBuffer, 0, texIndices.data(), indexSize);
-
-                wgpuRenderPassEncoderSetVertexBuffer(pass, 0, vertexBuffer, 0, vertexSize);
-                wgpuRenderPassEncoderSetIndexBuffer(pass, indexBuffer, WGPUIndexFormat_Uint32, 0, indexSize);
+                wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_texRectVertexBuffer, 0, vertexSize);
+                wgpuRenderPassEncoderSetIndexBuffer(pass, m_texRectIndexBuffer, WGPUIndexFormat_Uint32, 0, indexSize);
 
                 for (size_t i = 0; i < rects.size(); i++) {
+                    // Update uniform buffer with mip level for this rect
+                    float texUniforms[4] = {static_cast<float>(m_width), static_cast<float>(m_height),
+                                            rects[i].mipLevel, 0.0f};
+                    wgpuQueueWriteBuffer(m_queue, m_uniformBuffer, 0, texUniforms, sizeof(texUniforms));
+
                     wgpuRenderPassEncoderSetBindGroup(pass, 0, tempBindGroups[i], 0, nullptr);
                     wgpuRenderPassEncoderDrawIndexed(pass, 6, 1, static_cast<uint32_t>(i * 6), 0, 0);
                 }
 
-                wgpuBufferRelease(vertexBuffer);
-                wgpuBufferRelease(indexBuffer);
+                // Restore uniform buffer to default (mipLevel = 0)
+                float defaultUniforms[4] = {static_cast<float>(m_width), static_cast<float>(m_height), 0.0f, 0.0f};
+                wgpuQueueWriteBuffer(m_queue, m_uniformBuffer, 0, defaultUniforms, sizeof(defaultUniforms));
             }
 
             for (auto bg : tempBindGroups) wgpuBindGroupRelease(bg);
@@ -719,10 +719,7 @@ void OverlayCanvas::render(WGPURenderPassEncoder pass) {
                    allTextSegments[fontIdx][textSegIdx[fontIdx]].layer == layer) {
                 const auto& seg = allTextSegments[fontIdx][textSegIdx[fontIdx]];
                 if (seg.indexCount > 0) {
-                    // Only apply segment scissor if no layer clip (layer clip takes precedence)
-                    if (!hasLayerClip) {
-                        applyScissor(seg);
-                    }
+                    applyScissor(seg);
                     wgpuRenderPassEncoderSetBindGroup(pass, 0, m_fontBindGroups[fontIdx], 0, nullptr);
                     wgpuRenderPassEncoderSetVertexBuffer(pass, 0, m_textVertexBuffer[fontIdx], 0,
                                                           allTextVertices[fontIdx].size() * sizeof(OverlayVertex));
@@ -912,6 +909,38 @@ void OverlayCanvas::texturedRect(float x, float y, float w, float h, WGPUTexture
     rect.size = p1 - p0;
     rect.textureView = textureView;
     rect.tint = tint;
+    rect.mipLevel = 0.0f;  // Base level
+    m_texturedRects[m_currentLayer].push_back(rect);
+}
+
+void OverlayCanvas::texturedRectMip(float x, float y, float w, float h, WGPUTextureView textureView,
+                                     int srcWidth, int srcHeight, const glm::vec4& tint) {
+    if (!textureView) return;
+
+    // Transform corners to screen space
+    glm::vec2 p0 = transformPoint({x, y});
+    glm::vec2 p1 = transformPoint({x + w, y + h});
+    glm::vec2 displaySize = p1 - p0;
+
+    // Calculate mip level based on size ratio
+    // log2(srcWidth / displayWidth) gives the ideal mip level
+    float mipLevel = 0.0f;
+    if (srcWidth > 0 && srcHeight > 0 && displaySize.x > 0 && displaySize.y > 0) {
+        float scaleX = static_cast<float>(srcWidth) / std::abs(displaySize.x);
+        float scaleY = static_cast<float>(srcHeight) / std::abs(displaySize.y);
+        float maxScale = std::max(scaleX, scaleY);
+        if (maxScale > 1.0f) {
+            mipLevel = std::log2(maxScale);
+        }
+    }
+
+    // Store for deferred rendering at current layer
+    TexturedRect rect;
+    rect.pos = p0;
+    rect.size = displaySize;
+    rect.textureView = textureView;
+    rect.tint = tint;
+    rect.mipLevel = mipLevel;
     m_texturedRects[m_currentLayer].push_back(rect);
 }
 
@@ -1438,13 +1467,6 @@ glm::vec4 OverlayCanvas::currentClipRect() const {
     return glm::vec4(rect.x, rect.y, rect.w, rect.h);
 }
 
-void OverlayCanvas::setLayerClipRect(int layer, float x, float y, float w, float h) {
-    m_layerClipRects[layer] = {x, y, w, h};
-}
-
-void OverlayCanvas::clearLayerClipRect(int layer) {
-    m_layerClipRects.erase(layer);
-}
 
 // -------------------------------------------------------------------------
 // Polygon/Polyline

@@ -1,6 +1,6 @@
 // SplitContainer implementation - splits space between two children
 
-#include <vivid/devtools/split_container.h>
+#include <vivid/gui/split_container.h>
 #include <vivid/gui/ui_style.h>
 #include <algorithm>
 #include <iostream>

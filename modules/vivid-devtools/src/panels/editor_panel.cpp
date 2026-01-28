@@ -253,44 +253,28 @@ bool EditorPanel::handleTabBarInput(const FrameInput& input, float x, float y, f
 void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                          const FrameInput& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) {
-        m_consumedInput = false;
-        m_hovered = false;
+        m_inputRouting.consumedInput = false;
+        m_focus.hovered = false;
         return;
     }
 
     // Store style for use throughout render
     m_impl->style = style;
 
-    // When docked (no title bar), use passed bounds; when floating, use m_config.bounds
-    glm::vec4 renderBounds;
-    if (m_showTitleBar) {
-        // Floating panel - handle drag/resize and use own bounds
-        float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-        float screenW = static_cast<float>(input.width) / scale;
-        float screenH = static_cast<float>(input.height) / scale;
-        handleDragAndResize(input, screenW, screenH);
-        renderBounds = m_config.bounds;
-    } else {
-        // Docked panel - use bounds from parent container
-        renderBounds = bounds;
-        // Set hover state for docked panels (normally done in handleDragAndResize)
-        m_hovered = input.mousePos.x >= bounds.x && input.mousePos.x <= bounds.x + bounds.z &&
-                    input.mousePos.y >= bounds.y && input.mousePos.y <= bounds.y + bounds.w;
-    }
-
+    glm::vec4 renderBounds = beginRender(input, bounds);
     float x = renderBounds.x;
     float y = renderBounds.y;
     float w = renderBounds.z;
     float h = renderBounds.w;
 
     // Panel chrome
-    float titleBarHeight = m_showTitleBar ? style.titleBarHeight() : 0.0f;
+    float titleBarHeight = m_display.showTitleBar ? style.titleBarHeight() : 0.0f;
     float tabBarHeight = 28.0f;
     float contentY = y + titleBarHeight;
     float contentH = h - titleBarHeight;
 
-    // Render chrome (title bar controlled by m_showTitleBar)
-    renderChrome(canvas, x, y, w, h, style, m_showTitleBar, &input);
+    // Render chrome (title bar controlled by m_display.showTitleBar)
+    renderChrome(canvas, x, y, w, h, style, m_display.showTitleBar, &input);
 
     // Render tab bar (if we have files)
     if (!m_impl->buffers.empty()) {
@@ -300,7 +284,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     // Handle tab bar input
-    if (m_hovered && !m_impl->buffers.empty()) {
+    if (m_focus.hovered && !m_impl->buffers.empty()) {
         handleTabBarInput(input, x, y + titleBarHeight, w, tabBarHeight);
     }
 
@@ -381,7 +365,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         float lineY = contentY + (i - startLine) * lineHeight;
 
         // Current line highlight (only if no selection)
-        if (i == buf->cursorLine && m_focused && !buf->hasSelection) {
+        if (i == buf->cursorLine && m_focus.focused && !buf->hasSelection) {
             canvas.fillRect(contentX + gutterWidth, lineY, contentW - gutterWidth, lineHeight, cursorLineColor);
         }
 
@@ -505,7 +489,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     // Draw cursor
-    if (m_focused && buf->cursorLine >= startLine && buf->cursorLine < endLine) {
+    if (m_focus.focused && buf->cursorLine >= startLine && buf->cursorLine < endLine) {
         float cursorX = contentX + gutterWidth + charWidth + buf->cursorCol * charWidth;
         float cursorY = contentY + (buf->cursorLine - startLine) * lineHeight;
         canvas.fillRect(cursorX, cursorY, 2, lineHeight, style.terminalCursor);
@@ -522,7 +506,7 @@ void EditorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 }
 
 bool EditorPanel::handleInput(const FrameInput& input) {
-    if (!m_focused || !m_impl) return false;
+    if (!m_focus.focused || !m_impl) return false;
 
     FileBuffer* buf = m_impl->active();
     if (!buf) return false;
@@ -1046,7 +1030,7 @@ void EditorPanel::onTabChange(TabChangeCallback callback) {
 
 void EditorPanel::onMouseClick(float x, float y, const glm::vec4& contentBounds,
                                float lineHeight, float charWidth) {
-    if (!m_focused || !m_impl) return;
+    if (!m_focus.focused || !m_impl) return;
     FileBuffer* buf = m_impl->active();
     if (!buf) return;
     if (lineHeight <= 0 || charWidth <= 0) return;
@@ -1084,7 +1068,7 @@ void EditorPanel::onMouseClick(float x, float y, const glm::vec4& contentBounds,
 }
 
 void EditorPanel::onMouseDrag(float x, float y) {
-    if (!m_focused || !m_editorDragging || !m_impl) return;
+    if (!m_focus.focused || !m_editorDragging || !m_impl) return;
     FileBuffer* buf = m_impl->active();
     if (!buf) return;
 

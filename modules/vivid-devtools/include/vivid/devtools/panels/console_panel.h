@@ -8,7 +8,7 @@
  * warnings, and debug messages. Replaces bitmap font error display.
  */
 
-#include <vivid/devtools/panel.h>
+#include <vivid/gui/panel.h>
 #include <vivid/hot_reload.h>
 #include <memory>
 #include <string>

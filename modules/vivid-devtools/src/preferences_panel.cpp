@@ -2,7 +2,7 @@
 
 #include <vivid/devtools/preferences_panel.h>
 #include <vivid/devtools/preferences.h>
-#include <vivid/devtools/panel_manager.h>
+#include <vivid/gui/panel_manager.h>
 #include <GLFW/glfw3.h>
 #include <algorithm>
 

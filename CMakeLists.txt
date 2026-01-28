@@ -325,6 +325,7 @@ if(VIVID_USE_CEF)
 endif()
 
 # DevTools (terminal, editor, node graph, inspector, console)
+# GUI primitives (OverlayCanvas, NodeGraph, Panel system) are in vivid-core
 # Only built for development, excluded from production bundles
 if(NOT VIVID_PRODUCTION)
     add_subdirectory(modules/vivid-devtools)

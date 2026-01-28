@@ -1,6 +1,6 @@
 // PanelLeaf implementation - wraps a single panel as a layout node
 
-#include <vivid/devtools/panel_leaf.h>
+#include <vivid/gui/panel_leaf.h>
 
 namespace vivid {
 

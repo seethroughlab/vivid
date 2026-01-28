@@ -6,6 +6,7 @@
 #include <vivid/context.h>
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 
@@ -52,8 +53,11 @@ void hsvToRgb(float h, float s, float v, float& r, float& g, float& b) {
 
 namespace vivid {
 
-// Static interaction state (persists across frames)
-Gui::InteractionState Gui::s_state;
+// Thread-local interaction state (persists across frames, thread-safe)
+thread_local Gui::InteractionState Gui::s_state;
+
+// Thread-local mouse state tracking for click detection
+static thread_local bool s_lastMouseDown = false;
 
 // -------------------------------------------------------------------------
 // Construction
@@ -64,10 +68,9 @@ Gui::Gui(OverlayCanvas& canvas, const FrameInput& input)
     , m_input(input)
 {
     // Track mouse state for click detection
-    static bool lastMouseDown = false;
-    m_mouseClicked = input.mouseDown[0] && !lastMouseDown;
-    m_mouseReleased = !input.mouseDown[0] && lastMouseDown;
-    lastMouseDown = input.mouseDown[0];
+    m_mouseClicked = input.mouseDown[0] && !s_lastMouseDown;
+    m_mouseReleased = !input.mouseDown[0] && s_lastMouseDown;
+    s_lastMouseDown = input.mouseDown[0];
     m_mousePos = input.mousePos;
 }
 
@@ -1551,6 +1554,233 @@ Gui::ADSRResult Gui::adsrEnvelope(const char* label,
         m_canvas.strokeRoundedRect(sliderX, slidersY, sliderW, sliderH,
                                    m_style.cornerRadius * 0.5f, m_style.borderWidth * 0.5f, m_style.widgetBorder);
     }
+
+    advanceCursor(totalHeight);
+    return result;
+}
+
+// -------------------------------------------------------------------------
+// Graph Widget
+// -------------------------------------------------------------------------
+
+Gui::GraphResult Gui::graph(const char* label, const float* data, size_t count,
+                             const GraphConfig& config, float height) {
+    GraphSeries series;
+    series.data = data;
+    series.count = count;
+    series.offset = 0;
+    return graph(label, &series, 1, config, height);
+}
+
+Gui::GraphResult Gui::graph(const char* label, const GraphSeries* series, size_t seriesCount,
+                             const GraphConfig& config, float height) {
+    GraphResult result;
+    if (!m_inPanel || !series || seriesCount == 0) return result;
+
+    float x = m_panel.x + m_style.padding;
+    float y = m_panel.cursorY;
+    float w = contentWidth();
+
+    // Label height
+    float labelH = m_canvas.fontLineHeight(0);
+    if (labelH <= 0) labelH = 16.0f;
+
+    // Graph dimensions
+    float graphH = height > 0 ? height : 60.0f;
+    float graphY = y + labelH + 4.0f;
+
+    // Account for Y-axis labels on the left
+    float yLabelWidth = config.showYLabels ? 40.0f : 0.0f;
+    float graphX = x + yLabelWidth;
+    float graphW = w - yLabelWidth;
+
+    // Total height
+    float totalHeight = labelH + 4.0f + graphH;
+
+    // Track widget bounds
+    m_lastWidgetTop = y;
+    m_lastWidgetBottom = y + totalHeight;
+
+    // Draw label
+    float baseline = y + m_canvas.fontAscent(0);
+    m_canvas.text(label, x, baseline, m_style.textDim, 0);
+
+    // Calculate Y range
+    float yMin = config.yMin;
+    float yMax = config.yMax;
+
+    if (config.autoScaleY) {
+        yMin = std::numeric_limits<float>::max();
+        yMax = std::numeric_limits<float>::lowest();
+
+        for (size_t s = 0; s < seriesCount; ++s) {
+            const GraphSeries& ser = series[s];
+            if (!ser.data || ser.count == 0) continue;
+
+            // For ring buffers: offset tells us where oldest element is
+            // Physical data layout: [newest-n ... newest | oldest ... oldest+n]
+            //                                   ^offset
+            // Logical iteration: start at offset, wrap at count
+            for (size_t i = 0; i < ser.count; ++i) {
+                // Logical index i maps to physical (offset + i) % count
+                size_t physIdx = (ser.offset + i) % ser.count;
+                float val = ser.data[physIdx];
+                if (val < yMin) yMin = val;
+                if (val > yMax) yMax = val;
+            }
+        }
+
+        // Add 10% padding
+        float range = yMax - yMin;
+        if (range < 0.001f) range = 1.0f;
+        yMin -= range * 0.05f;
+        yMax += range * 0.05f;
+    }
+
+    float yRange = yMax - yMin;
+    if (yRange < 0.001f) yRange = 1.0f;
+
+    // Draw graph background
+    m_canvas.fillRoundedRect(graphX, graphY, graphW, graphH,
+                             m_style.cornerRadius, m_style.graphBackground);
+
+    // Draw grid lines
+    if (config.showGrid) {
+        const int gridLines = 4;
+        for (int i = 0; i <= gridLines; ++i) {
+            float t = static_cast<float>(i) / gridLines;
+            float lineY = graphY + graphH - t * graphH;
+            m_canvas.line(graphX, lineY, graphX + graphW, lineY, 1.0f, m_style.graphGrid);
+        }
+    }
+
+    // Draw Y-axis labels
+    if (config.showYLabels) {
+        char labelBuf[32];
+        float textAscent = m_canvas.fontAscent(0);
+
+        // Min label
+        snprintf(labelBuf, sizeof(labelBuf), config.yFormat, yMin);
+        m_canvas.text(labelBuf, x, graphY + graphH - 2, m_style.textDim, 0);
+
+        // Max label
+        snprintf(labelBuf, sizeof(labelBuf), config.yFormat, yMax);
+        m_canvas.text(labelBuf, x, graphY + textAscent, m_style.textDim, 0);
+    }
+
+    // Check hover state
+    result.hovered = isMouseInRect(graphX, graphY, graphW, graphH);
+
+    // Draw each series
+    for (size_t s = 0; s < seriesCount; ++s) {
+        const GraphSeries& ser = series[s];
+        if (!ser.data || ser.count < 2) continue;
+
+        // Build polyline points
+        std::vector<glm::vec2> points;
+        points.reserve(ser.count);
+
+        for (size_t i = 0; i < ser.count; ++i) {
+            // Ring buffer: logical index i maps to physical (offset + i) % count
+            size_t physIdx = (ser.offset + i) % ser.count;
+            float val = ser.data[physIdx];
+
+            float px = graphX + (static_cast<float>(i) / (ser.count - 1)) * graphW;
+            float py = graphY + graphH - ((val - yMin) / yRange) * graphH;
+
+            // Clamp Y to graph bounds
+            py = std::clamp(py, graphY, graphY + graphH);
+
+            points.push_back({px, py});
+        }
+
+        // Draw filled area if requested
+        if (ser.filled && points.size() >= 2) {
+            std::vector<glm::vec2> fillPoints;
+            fillPoints.reserve(points.size() + 2);
+
+            // Start at bottom-left
+            fillPoints.push_back({points.front().x, graphY + graphH});
+
+            // Add all line points
+            for (const auto& p : points) {
+                fillPoints.push_back(p);
+            }
+
+            // End at bottom-right
+            fillPoints.push_back({points.back().x, graphY + graphH});
+
+            glm::vec4 fillColor = ser.color;
+            fillColor.a *= 0.2f;
+            m_canvas.fillPolygon(fillPoints, fillColor);
+        }
+
+        // Draw the line
+        if (points.size() >= 2) {
+            m_canvas.polyline(points, ser.lineWidth, ser.color, false);
+        }
+    }
+
+    // Handle tooltip on hover
+    if (result.hovered && config.showTooltip && seriesCount > 0) {
+        const GraphSeries& ser = series[0];  // Use first series for tooltip
+        if (ser.data && ser.count > 0) {
+            // Calculate which sample is under the mouse
+            float relX = m_mousePos.x - graphX;
+            float t = std::clamp(relX / graphW, 0.0f, 1.0f);
+            int sampleIdx = static_cast<int>(t * (ser.count - 1) + 0.5f);
+            sampleIdx = std::clamp(sampleIdx, 0, static_cast<int>(ser.count) - 1);
+
+            // Get value at sample
+            size_t dataIdx = sampleIdx;
+            if (ser.offset > 0) {
+                dataIdx = (ser.offset + sampleIdx) % ser.count;
+            }
+            float val = ser.data[dataIdx];
+
+            result.hoveredSampleIndex = sampleIdx;
+            result.hoveredValue = val;
+
+            // Draw tooltip
+            m_canvas.setLayer(UILayer::Tooltips);
+
+            char tooltipBuf[32];
+            snprintf(tooltipBuf, sizeof(tooltipBuf), config.yFormat, val);
+
+            float tooltipW = m_canvas.measureText(tooltipBuf, 0) + 8.0f;
+            float tooltipH = labelH + 4.0f;
+            float tooltipX = m_mousePos.x - tooltipW / 2;
+            float tooltipY = m_mousePos.y - tooltipH - 4.0f;
+
+            // Keep tooltip in bounds
+            tooltipX = std::clamp(tooltipX, graphX, graphX + graphW - tooltipW);
+            if (tooltipY < graphY) tooltipY = m_mousePos.y + 8.0f;
+
+            m_canvas.fillRoundedRect(tooltipX, tooltipY, tooltipW, tooltipH,
+                                     m_style.cornerRadius, m_style.panelBackground);
+            m_canvas.strokeRoundedRect(tooltipX, tooltipY, tooltipW, tooltipH,
+                                       m_style.cornerRadius, 1.0f, m_style.panelBorder);
+
+            float textAscent = m_canvas.fontAscent(0);
+            float textDescent = std::abs(m_canvas.fontDescent(0));
+            float textY = tooltipY + tooltipH * 0.5f + (textAscent - textDescent) * 0.5f;
+            m_canvas.text(tooltipBuf, tooltipX + 4.0f, textY, m_style.text, 0);
+
+            // Draw indicator line
+            float indicatorX = graphX + t * graphW;
+            float indicatorY = graphY + graphH - ((val - yMin) / yRange) * graphH;
+            indicatorY = std::clamp(indicatorY, graphY, graphY + graphH);
+
+            m_canvas.setLayer(UILayer::Panels);
+            m_canvas.line(indicatorX, graphY, indicatorX, graphY + graphH, 1.0f,
+                          glm::vec4(1.0f, 1.0f, 1.0f, 0.3f));
+            m_canvas.fillCircle(indicatorX, indicatorY, 3.0f, ser.color, 8);
+        }
+    }
+
+    // Draw border
+    m_canvas.strokeRoundedRect(graphX, graphY, graphW, graphH,
+                               m_style.cornerRadius, m_style.borderWidth, m_style.graphBorder);
 
     advanceCursor(totalHeight);
     return result;

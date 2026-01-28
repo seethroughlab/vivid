@@ -9,7 +9,7 @@
  * vertical (top/bottom) splits.
  */
 
-#include <vivid/devtools/layout_node.h>
+#include <vivid/gui/layout_node.h>
 #include <memory>
 
 namespace vivid {

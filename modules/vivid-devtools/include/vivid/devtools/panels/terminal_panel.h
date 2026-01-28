@@ -8,7 +8,7 @@
  * Uses libvterm for VT220/xterm terminal emulation.
  */
 
-#include <vivid/devtools/panel.h>
+#include <vivid/gui/panel.h>
 #include <memory>
 #include <string>
 #include <functional>

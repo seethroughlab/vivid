@@ -17,6 +17,7 @@
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/gui/node_graph.h>
 #include <vivid/gui/ui_style.h>
+#include <vivid/gui/scratch_texture.h>
 #include <vivid/viz_draw_list.h>
 #include <webgpu/webgpu.h>
 #include <iostream>
@@ -56,81 +57,7 @@ struct NodeGraphPanel::Impl {
     Context* ctx = nullptr;
 
     // CPU pixel scratch texture
-    WGPUTexture cpuPixelScratchTex = nullptr;
-    WGPUTextureView cpuPixelScratchView = nullptr;
-    int cpuPixelScratchWidth = 0;
-    int cpuPixelScratchHeight = 0;
-
-    void releaseCpuPixelScratch() {
-        if (cpuPixelScratchView) {
-            wgpuTextureViewRelease(cpuPixelScratchView);
-            cpuPixelScratchView = nullptr;
-        }
-        if (cpuPixelScratchTex) {
-            wgpuTextureRelease(cpuPixelScratchTex);
-            cpuPixelScratchTex = nullptr;
-        }
-        cpuPixelScratchWidth = 0;
-        cpuPixelScratchHeight = 0;
-    }
-
-    WGPUTextureView uploadCpuPixelsToScratch(const Operator::CpuPixelView& view) {
-        if (!view.valid() || !ctx) return nullptr;
-
-        int width = view.width;
-        int height = view.height;
-
-        // Recreate texture if size changed
-        if (width != cpuPixelScratchWidth || height != cpuPixelScratchHeight) {
-            releaseCpuPixelScratch();
-
-            WGPUTextureDescriptor desc{};
-            desc.label.data = "cpu_pixel_scratch";
-            desc.label.length = WGPU_STRLEN;
-            desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-            desc.dimension = WGPUTextureDimension_2D;
-            desc.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
-            desc.format = WGPUTextureFormat_BGRA8Unorm;
-            desc.mipLevelCount = 1;
-            desc.sampleCount = 1;
-
-            cpuPixelScratchTex = wgpuDeviceCreateTexture(ctx->device(), &desc);
-            if (!cpuPixelScratchTex) return nullptr;
-
-            WGPUTextureViewDescriptor viewDesc{};
-            viewDesc.format = WGPUTextureFormat_BGRA8Unorm;
-            viewDesc.dimension = WGPUTextureViewDimension_2D;
-            viewDesc.baseMipLevel = 0;
-            viewDesc.mipLevelCount = 1;
-            viewDesc.baseArrayLayer = 0;
-            viewDesc.arrayLayerCount = 1;
-            viewDesc.aspect = WGPUTextureAspect_All;
-
-            cpuPixelScratchView = wgpuTextureCreateView(cpuPixelScratchTex, &viewDesc);
-            cpuPixelScratchWidth = width;
-            cpuPixelScratchHeight = height;
-        }
-
-        // Upload pixels
-        WGPUTexelCopyTextureInfo dstInfo{};
-        dstInfo.texture = cpuPixelScratchTex;
-        dstInfo.mipLevel = 0;
-        dstInfo.origin = {0, 0, 0};
-        dstInfo.aspect = WGPUTextureAspect_All;
-
-        size_t rowStride = view.rowStride();
-        WGPUTexelCopyBufferLayout layout{};
-        layout.offset = 0;
-        layout.bytesPerRow = static_cast<uint32_t>(rowStride);
-        layout.rowsPerImage = static_cast<uint32_t>(height);
-
-        WGPUExtent3D writeSize = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
-        size_t dataSize = rowStride * height;
-
-        wgpuQueueWriteTexture(ctx->queue(), &dstInfo, view.data, dataSize, &layout, &writeSize);
-
-        return cpuPixelScratchView;
-    }
+    ScratchTexture cpuPixelScratch;
 };
 
 NodeGraphPanel::NodeGraphPanel()
@@ -148,13 +75,14 @@ NodeGraphPanel::NodeGraphPanel()
 }
 
 NodeGraphPanel::~NodeGraphPanel() {
-    if (m_impl) {
-        m_impl->releaseCpuPixelScratch();
-    }
+    // ScratchTexture releases its resources in its destructor
 }
 
 bool NodeGraphPanel::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
     m_impl->ctx = &ctx;
+
+    // Initialize scratch texture for CPU pixel operators
+    m_impl->cpuPixelScratch.init(ctx.device(), ctx.queue());
 
     // Disable NodeGraph's built-in grid (DevTools has its own background grid)
     m_impl->nodeGraph.style().showGrid = false;
@@ -169,7 +97,7 @@ bool NodeGraphPanel::init(Context& ctx, WGPUTextureFormat surfaceFormat) {
 
 void NodeGraphPanel::shutdown() {
     if (m_impl) {
-        m_impl->releaseCpuPixelScratch();
+        m_impl->cpuPixelScratch.release();
     }
     m_impl.reset();
 }
@@ -189,7 +117,7 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     localInput.mousePos = input.mousePos - glm::vec2(bounds.x, bounds.y);
 
     // Begin node graph editor (uses new simplified API)
-    m_impl->nodeGraph.beginEditor(canvas, bounds.z, bounds.w, localInput, m_ownsInput);
+    m_impl->nodeGraph.beginEditor(canvas, bounds.z, bounds.w, localInput, m_inputRouting.ownsInput);
 
     // Add nodes for each operator
     for (size_t i = 0; i < operators.size(); ++i) {
@@ -256,7 +184,7 @@ void NodeGraphPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                 auto cpuView = op->cpuPixelView();
                 WGPUTextureView view = nullptr;
                 if (cpuView.valid() && impl) {
-                    view = impl->uploadCpuPixelsToScratch(cpuView);
+                    view = impl->cpuPixelScratch.upload(cpuView);
                 }
                 if (view) {
                     float srcAspect = static_cast<float>(cpuView.width) / static_cast<float>(cpuView.height);

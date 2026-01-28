@@ -1,6 +1,8 @@
 # Vivid Core - Runtime library
-# Includes: window, timing, input, hot-reload, display, rendering primitives (OverlayCanvas)
-# Note: Chain visualizer (NodeGraph, ChainVisualizer) is in vivid-devtools module
+# Includes: window, timing, input, hot-reload, display, rendering primitives,
+# and GUI primitives (OverlayCanvas, NodeGraph, Panel system)
+#
+# Note: ChainVisualizer is in vivid-devtools module
 #
 # Production bundles use vivid-production executable (main_production.cpp + Runtime class)
 # which does NOT include HotReload or MCP. The dev build (vivid) uses all features.
@@ -63,7 +65,7 @@ set(VIVID_CORE_LIB_SOURCES
     src/log.cpp
     src/module_registry.cpp
     src/module_manager.cpp
-    # Note: chain_visualizer.cpp and node_graph.cpp are compiled by vivid-devtools module
+    # Note: chain_visualizer.cpp is compiled by vivid-devtools module
     # vivid-io (image loading)
     src/io/image_loader.cpp
     # vivid-effects-2d (2D texture effects)
@@ -126,8 +128,17 @@ set(VIVID_CORE_LIB_SOURCES
     src/effects/trigger.cpp
     # Event operators (input handling)
     src/effects/window_events.cpp
+    # GUI primitives (all consolidated in vivid-core)
     src/gui/overlay_canvas.cpp
     src/gui/gui.cpp
+    src/gui/node_graph.cpp
+    src/gui/scratch_texture.cpp
+    src/gui/panel.cpp
+    src/gui/panel_manager.cpp
+    src/gui/dock_manager.cpp
+    src/gui/panel_group.cpp
+    src/gui/panel_leaf.cpp
+    src/gui/split_container.cpp
     src/viz_helpers.cpp
 )
 
@@ -158,14 +169,13 @@ set(VIVID_CORE_HEADERS
     include/vivid/audio_buffer.h
     include/vivid/audio_operator.h
     include/vivid/audio_output.h
-    include/vivid/gui/overlay_canvas.h
-    include/vivid/gui/ui_style.h
     include/vivid/frame_input.h
     include/vivid/viz_helpers.h
     include/vivid/event.h
     include/vivid/effects/trigger.h
     include/vivid/effects/window_events.h
-    # Note: chain_visualizer.h and node_graph.h moved to vivid-devtools module
+    # Note: chain_visualizer.h is in vivid-devtools module
+    # GUI headers are in include/vivid/gui/
 )
 
 # Core library (shared between executable and modules)

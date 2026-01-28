@@ -26,6 +26,7 @@
  */
 
 #include <vivid/gui/overlay_canvas.h>
+#include <vivid/gui/ring_buffer.h>
 #include <vivid/frame_input.h>
 #include <glm/glm.hpp>
 #include <string>
@@ -78,6 +79,11 @@ struct GuiStyle {
     glm::vec4 text = {0.9f, 0.9f, 0.9f, 1.0f};
     glm::vec4 textDim = {0.6f, 0.6f, 0.6f, 1.0f};
     glm::vec4 textDisabled = {0.4f, 0.4f, 0.4f, 1.0f};
+
+    // Graph widget colors
+    glm::vec4 graphBackground = {0.12f, 0.12f, 0.15f, 1.0f};
+    glm::vec4 graphGrid = {0.25f, 0.25f, 0.28f, 0.5f};
+    glm::vec4 graphBorder = {0.3f, 0.3f, 0.35f, 1.0f};
 
     // Layout
     float padding = 8.0f;           ///< Panel padding
@@ -476,6 +482,112 @@ public:
 
     /// @}
     // -------------------------------------------------------------------------
+    /// @name Graph Widgets
+    /// @{
+
+    /**
+     * @brief Graph series configuration for multi-line graphs
+     */
+    struct GraphSeries {
+        const float* data = nullptr;     ///< Pointer to data array
+        size_t count = 0;                ///< Number of data points
+        size_t offset = 0;               ///< Start index for ring buffers
+        glm::vec4 color = {0.4f, 0.7f, 0.9f, 1.0f};  ///< Line color
+        const char* label = nullptr;     ///< Optional series label
+        float lineWidth = 1.5f;          ///< Line thickness
+        bool filled = false;             ///< Fill area under line
+    };
+
+    /**
+     * @brief Graph configuration
+     */
+    struct GraphConfig {
+        float yMin = 0.0f;               ///< Minimum Y value (if not auto-scaling)
+        float yMax = 1.0f;               ///< Maximum Y value (if not auto-scaling)
+        bool autoScaleY = true;          ///< Automatically determine Y range from data
+        bool showGrid = true;            ///< Show horizontal grid lines
+        bool showYLabels = true;         ///< Show Y-axis value labels
+        const char* yFormat = "%.1f";    ///< Printf format for Y labels
+        bool showTooltip = true;         ///< Show value tooltip on hover
+    };
+
+    /**
+     * @brief Graph interaction result
+     */
+    struct GraphResult {
+        bool hovered = false;            ///< Mouse is over the graph
+        int hoveredSampleIndex = -1;     ///< Index of hovered sample (-1 if none)
+        float hoveredValue = 0.0f;       ///< Value at hovered sample
+    };
+
+    /**
+     * @brief Display a time-series graph with multiple series
+     * @param label Widget label
+     * @param series Array of series configurations
+     * @param seriesCount Number of series
+     * @param config Graph configuration
+     * @param height Graph height in pixels (0 = use default)
+     * @return GraphResult with interaction state
+     */
+    GraphResult graph(const char* label, const GraphSeries* series, size_t seriesCount,
+                      const GraphConfig& config, float height = 0);
+
+    /**
+     * @brief Display a time-series graph with multiple series (default config)
+     */
+    GraphResult graph(const char* label, const GraphSeries* series, size_t seriesCount) {
+        return graph(label, series, seriesCount, GraphConfig{}, 0);
+    }
+
+    /**
+     * @brief Display a simple single-series graph (convenience overload)
+     * @param label Widget label
+     * @param data Pointer to data array
+     * @param count Number of data points
+     * @param config Graph configuration
+     * @param height Graph height in pixels (0 = use default)
+     * @return GraphResult with interaction state
+     */
+    GraphResult graph(const char* label, const float* data, size_t count,
+                      const GraphConfig& config, float height = 0);
+
+    /**
+     * @brief Display a simple single-series graph (default config)
+     */
+    GraphResult graph(const char* label, const float* data, size_t count) {
+        return graph(label, data, count, GraphConfig{}, 0);
+    }
+
+    /**
+     * @brief Display a graph from a ring buffer
+     * @tparam T Value type
+     * @tparam Capacity Ring buffer capacity
+     * @param label Widget label
+     * @param buffer Ring buffer containing data
+     * @param config Graph configuration
+     * @param height Graph height in pixels (0 = use default)
+     * @return GraphResult with interaction state
+     */
+    template<typename T, size_t Capacity>
+    GraphResult graph(const char* label, const RingBuffer<T, Capacity>& buffer,
+                      const GraphConfig& config, float height = 0) {
+        GraphSeries series;
+        series.data = buffer.data();
+        series.count = buffer.size();
+        series.offset = buffer.offset();
+        return graph(label, &series, 1, config, height);
+    }
+
+    /**
+     * @brief Display a graph from a ring buffer (default config)
+     */
+    template<typename T, size_t Capacity>
+    GraphResult graph(const char* label, const RingBuffer<T, Capacity>& buffer) {
+        return graph(label, buffer, GraphConfig{}, 0);
+    }
+
+    /// @}
+    // -------------------------------------------------------------------------
     /// @name Style
     /// @{
 
@@ -507,9 +619,12 @@ private:
     PanelState m_panel;
     bool m_inPanel = false;
 
-    // Persistent interaction state (static to survive across frames)
-    // Uses widget IDs (hash of label) to track which widget is active
-    static struct InteractionState {
+    // Interaction state for tracking active widgets across frames
+    // Uses widget IDs (hash of label) to track which widget is active.
+    // Thread-local for thread safety - each thread has its own state.
+    // This allows the same drag operation to persist across Gui instances
+    // created on consecutive frames (which is the normal immediate-mode pattern).
+    struct InteractionState {
         uint32_t activeSlider = 0;          // ID of slider being dragged
         uint32_t openDropdown = 0;          // ID of open dropdown
         uint32_t expandedColorPicker = 0;   // ID of expanded color picker
@@ -531,7 +646,8 @@ private:
         uint32_t activeADSR = 0;            // ID of ADSR widget being dragged
         int adsrActiveComponent = -1;       // Which component (0=A, 1=D, 2=S, 3=R)
         float adsrStartA = 0, adsrStartD = 0, adsrStartS = 0, adsrStartR = 0;  // Values when drag started
-    } s_state;
+    };
+    static thread_local InteractionState s_state;  // Thread-local interaction state
 
     // Input tracking
     bool m_mouseClicked = false;

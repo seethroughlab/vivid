@@ -1,11 +1,11 @@
 // PanelManager implementation
 // Manages layout and focus for devtools panels
 
-#include <vivid/devtools/panel_manager.h>
-#include <vivid/devtools/panel_group.h>
-#include <vivid/devtools/split_container.h>
-#include <vivid/devtools/panel_leaf.h>
-#include <vivid/devtools/dock_manager.h>
+#include <vivid/gui/panel_manager.h>
+#include <vivid/gui/panel_group.h>
+#include <vivid/gui/split_container.h>
+#include <vivid/gui/panel_leaf.h>
+#include <vivid/gui/dock_manager.h>
 #include <vivid/context.h>
 #include <algorithm>
 #include <fstream>

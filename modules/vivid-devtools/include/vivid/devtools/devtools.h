@@ -13,7 +13,7 @@
  * Provides backward-compatible APIs for vivid_ide_* and vivid_visualizer_* functions.
  */
 
-#include <vivid/devtools/panel_manager.h>
+#include <vivid/gui/panel_manager.h>
 #include <vivid/devtools/shortcut_manager.h>
 #include <vivid/devtools/preferences_panel.h>
 #include <vivid/gui/overlay_canvas.h>

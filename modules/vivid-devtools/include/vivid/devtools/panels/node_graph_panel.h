@@ -7,7 +7,7 @@
  * Wraps the NodeGraph class and provides panel chrome.
  */
 
-#include <vivid/devtools/panel.h>
+#include <vivid/gui/panel.h>
 #include <memory>
 #include <string>
 #include <functional>

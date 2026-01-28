@@ -4,12 +4,14 @@
 # This module is optional - production bundles can exclude it.
 #
 # Architecture:
-# - Uses OverlayCanvas and GUI widgets from vivid-core
-# - Contains Panel system with Terminal, Editor, NodeGraph, Inspector panels
+# - Uses GUI primitives from vivid-core (OverlayCanvas, Panel system)
+# - Contains developer-specific panels (Terminal, Editor, NodeGraph, Inspector, etc.)
+# - Contains ChainVisualizer for operator chain visualization
 # - Loaded dynamically by app.cpp via dlsym/GetProcAddress
 # - Production bundles simply don't include this library
 #
 # Dependencies:
+# - vivid-core: Core library including GUI primitives (OverlayCanvas, NodeGraph, Panel system)
 # - libvterm: VT220/xterm terminal emulator (from third_party/)
 
 # -----------------------------------------------------------------------------
@@ -24,19 +26,11 @@ endif()
 # vivid-devtools module
 # -----------------------------------------------------------------------------
 set(DEVTOOLS_SOURCES
-    # Core panel system
-    src/panel.cpp
-    src/panel_manager.cpp
+    # DevTools core
     src/shortcut_manager.cpp
     src/preferences.cpp
     src/devtools.cpp
     src/devtools_exports.cpp
-
-    # Layout system
-    src/panel_group.cpp
-    src/split_container.cpp
-    src/panel_leaf.cpp
-    src/dock_manager.cpp
 
     # Modal dialogs
     src/modal_dialog.cpp
@@ -45,7 +39,7 @@ set(DEVTOOLS_SOURCES
     # File buffer for tabbed editor
     src/file_buffer.cpp
 
-    # Panels
+    # Panels (developer-specific)
     src/panels/terminal_panel.cpp
     src/panels/editor_panel.cpp
     src/panels/node_graph_panel.cpp
@@ -53,13 +47,17 @@ set(DEVTOOLS_SOURCES
     src/panels/status_bar_panel.cpp
     src/panels/console_panel.cpp
     src/panels/file_browser_panel.cpp
+    src/panels/performance_panel.cpp
+    src/panels/operator_library_panel.cpp
 
-    # ChainVisualizer and NodeGraph (used by vivid-c for embedding)
-    ${CMAKE_SOURCE_DIR}/modules/vivid-core/src/chain_visualizer.cpp
-    ${CMAKE_SOURCE_DIR}/modules/vivid-core/src/gui/node_graph.cpp
+    # ChainVisualizer (moved from vivid-core)
+    src/chain_visualizer.cpp
 
     # PTY is needed for terminal - include source directly
     ${CMAKE_SOURCE_DIR}/src/cli/pty.cpp
+
+    # Note: Panel system (panel.cpp, panel_manager.cpp, dock_manager.cpp, etc.)
+    # is in vivid-core module
 )
 
 add_library(vivid-devtools SHARED ${DEVTOOLS_SOURCES})
@@ -68,13 +66,12 @@ target_include_directories(vivid-devtools
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
-        ${CMAKE_SOURCE_DIR}/modules/vivid-core/include
-        ${CMAKE_SOURCE_DIR}/modules/vivid-core/src
+        ${CMAKE_SOURCE_DIR}/modules/vivid-core/src  # For font_atlas.h (private header)
         ${CMAKE_SOURCE_DIR}/src/cli/include
         ${CMAKE_SOURCE_DIR}/third_party/libvterm/include
 )
 
-# Link against vivid-core for OverlayCanvas, Gui, Context, etc.
+# Link against vivid-core for GUI primitives (OverlayCanvas, Panel system, etc.)
 # Link against libvterm for terminal emulation
 target_link_libraries(vivid-devtools
     PUBLIC vivid-core

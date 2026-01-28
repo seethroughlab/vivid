@@ -13,8 +13,8 @@
  * - FPS
  */
 
-#include <vivid/devtools/panel.h>
-#include <vivid/devtools/dock_zone.h>
+#include <vivid/gui/panel.h>
+#include <vivid/gui/dock_zone.h>
 #include <memory>
 #include <string>
 #include <functional>

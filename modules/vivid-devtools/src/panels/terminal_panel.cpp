@@ -207,31 +207,15 @@ void TerminalPanel::update() {
 void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                             const FrameInput& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl || !m_impl->vt || !m_impl->screen) {
-        m_consumedInput = false;
-        m_hovered = false;
+        m_inputRouting.consumedInput = false;
+        m_focus.hovered = false;
         return;
     }
 
     // Store style for use in color conversion
     m_impl->style = style;
 
-    // When docked (no title bar), use passed bounds; when floating, use m_config.bounds
-    glm::vec4 renderBounds;
-    if (m_showTitleBar) {
-        // Floating panel - handle drag/resize and use own bounds
-        float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-        float screenW = static_cast<float>(input.width) / scale;
-        float screenH = static_cast<float>(input.height) / scale;
-        handleDragAndResize(input, screenW, screenH);
-        renderBounds = m_config.bounds;
-    } else {
-        // Docked panel - use bounds from parent container
-        renderBounds = bounds;
-        // Set hover state for docked panels (normally done in handleDragAndResize)
-        m_hovered = input.mousePos.x >= bounds.x && input.mousePos.x <= bounds.x + bounds.z &&
-                    input.mousePos.y >= bounds.y && input.mousePos.y <= bounds.y + bounds.w;
-    }
-
+    glm::vec4 renderBounds = beginRender(input, bounds);
     float x = renderBounds.x;
     float y = renderBounds.y;
     float w = renderBounds.z;
@@ -239,20 +223,20 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 
     // Debug: log render bounds once
     static bool loggedTerminalBounds = false;
-    if (!loggedTerminalBounds && !m_showTitleBar) {
-        std::cerr << "[TerminalPanel] showTitleBar=" << m_showTitleBar
+    if (!loggedTerminalBounds && !m_display.showTitleBar) {
+        std::cerr << "[TerminalPanel] showTitleBar=" << m_display.showTitleBar
                   << " passed bounds: " << bounds.x << "," << bounds.y << " " << bounds.z << "x" << bounds.w
                   << " renderBounds: " << x << "," << y << " " << w << "x" << h << "\n";
         loggedTerminalBounds = true;
     }
 
     // Panel chrome
-    float titleBarHeight = m_showTitleBar ? style.titleBarHeight() : 0.0f;
+    float titleBarHeight = m_display.showTitleBar ? style.titleBarHeight() : 0.0f;
     float contentY = y + titleBarHeight;
     float contentH = h - titleBarHeight;
 
-    // Render chrome (title bar controlled by m_showTitleBar)
-    renderChrome(canvas, x, y, w, h, style, m_showTitleBar, &input);
+    // Render chrome (title bar controlled by m_display.showTitleBar)
+    renderChrome(canvas, x, y, w, h, style, m_display.showTitleBar, &input);
 
     // Get font metrics (monospace font at index 2)
     int fontIndex = 2;
@@ -397,7 +381,7 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     }
 
     // Draw cursor
-    if (m_focused && m_impl->cursorVisible && m_impl->cursorBlink) {
+    if (m_focus.focused && m_impl->cursorVisible && m_impl->cursorBlink) {
         float cursorX = contentX + cursorPos.col * charWidth;
         float cursorY = contentY + cursorPos.row * lineHeight;
         canvas.fillRect(cursorX, cursorY, charWidth, lineHeight, m_impl->style.terminalCursor);
@@ -407,7 +391,7 @@ void TerminalPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
 }
 
 bool TerminalPanel::handleInput(const FrameInput& input) {
-    if (!m_focused) return false;
+    if (!m_focus.focused) return false;
 
     // Handle scroll
     if (input.scroll.y != 0) {

@@ -4,7 +4,7 @@
 // Module-agnostic: operators provide their own visualization via drawVisualization().
 // No direct dependencies on audio, render3d, or other modules.
 
-#include <vivid/chain_visualizer.h>
+#include <vivid/devtools/chain_visualizer.h>
 #include <vivid/viz_draw_list.h>
 #include <vivid/operator_viz.h>
 #include <vivid/audio_operator.h>
@@ -175,7 +175,7 @@ void ChainVisualizer::shutdown() {
     }
 
     // Release CPU pixel scratch texture
-    releaseCpuPixelScratch();
+    m_cpuPixelScratch.release();
 
     m_initialized = false;
 }
@@ -226,7 +226,7 @@ void ChainVisualizer::updateSoloOutput(vivid::Context& ctx) {
     } else if (kind == vivid::OutputKind::CpuPixels) {
         // Upload CPU pixels to scratch texture and use that
         auto cpuView = m_soloOperator->cpuPixelView();
-        WGPUTextureView view = uploadCpuPixelsToScratch(ctx, cpuView);
+        WGPUTextureView view = m_cpuPixelScratch.upload(cpuView);
         if (view) {
             ctx.setOutputTexture(view);
         }
@@ -374,6 +374,9 @@ void ChainVisualizer::initNodeGraph(vivid::Context& ctx, WGPUTextureFormat surfa
         m_hoveredOutputNodeId = nodeId;
         m_hoveredOutputPinIndex = pinIndex;
     });
+
+    // Initialize scratch texture for CPU pixel operators
+    m_cpuPixelScratch.init(ctx.device(), ctx.queue());
 
     m_nodeGraphInitialized = true;
     std::cerr << "[ChainVisualizer] NodeGraph initialized\n";
@@ -538,7 +541,7 @@ void ChainVisualizer::renderNodeGraph(WGPURenderPassEncoder pass, const FrameInp
                 auto cpuView = op->cpuPixelView();
                 WGPUTextureView view = nullptr;
                 if (cpuView.valid() && m_currentCtx) {
-                    view = const_cast<ChainVisualizer*>(this)->uploadCpuPixelsToScratch(*m_currentCtx, cpuView);
+                    view = const_cast<ChainVisualizer*>(this)->m_cpuPixelScratch.upload(cpuView);
                 }
                 if (view) {
                     // Get aspect ratio from CPU pixel dimensions
@@ -1578,13 +1581,10 @@ void ChainVisualizer::renderOperatorInspector(const FrameInput& input, vivid::Op
     float contentY = panelY + headerHeight + padding - m_inspectorScrollOffset;
 
     // Set up Gui content area for widgets
+    // Note: beginArea() sets up clipping via beginClipRect internally
     float contentAreaX = panelX + padding;
     float contentAreaW = inspectorWidth - padding * 2;
     gui.beginArea(contentAreaX, visibleTop, contentAreaW, contentAreaHeight);
-
-    // Set layer clip rect to clip content to panel bounds
-    // This applies scissor rect when rendering the Panels layer
-    m_overlay.setLayerClipRect(UILayer::Panels, panelX, visibleTop, inspectorWidth, contentAreaHeight);
 
     for (const auto& p : params) {
         float value[4] = {0};
@@ -2271,81 +2271,6 @@ void ChainVisualizer::renderDebugPanelOverlay(const FrameInput& input, vivid::Co
 
         y += lineHeight;
     }
-}
-
-// -----------------------------------------------------------------------------
-// CPU Pixel Scratch Texture (for CpuPixels output operators)
-// -----------------------------------------------------------------------------
-
-void ChainVisualizer::releaseCpuPixelScratch() {
-    if (m_cpuPixelScratchView) {
-        wgpuTextureViewRelease(m_cpuPixelScratchView);
-        m_cpuPixelScratchView = nullptr;
-    }
-    if (m_cpuPixelScratchTex) {
-        wgpuTextureRelease(m_cpuPixelScratchTex);
-        m_cpuPixelScratchTex = nullptr;
-    }
-    m_cpuPixelScratchWidth = 0;
-    m_cpuPixelScratchHeight = 0;
-}
-
-WGPUTextureView ChainVisualizer::uploadCpuPixelsToScratch(Context& ctx,
-                                                           const Operator::CpuPixelView& view) {
-    if (!view.valid()) return nullptr;
-
-    int width = view.width;
-    int height = view.height;
-
-    // Recreate texture if size changed
-    if (width != m_cpuPixelScratchWidth || height != m_cpuPixelScratchHeight) {
-        releaseCpuPixelScratch();
-
-        WGPUTextureDescriptor desc{};
-        desc.label = toStringView("cpu_pixel_scratch");
-        desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-        desc.dimension = WGPUTextureDimension_2D;
-        desc.size = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
-        desc.format = WGPUTextureFormat_BGRA8Unorm;  // Match CPU BGRA format
-        desc.mipLevelCount = 1;
-        desc.sampleCount = 1;
-
-        m_cpuPixelScratchTex = wgpuDeviceCreateTexture(ctx.device(), &desc);
-        if (!m_cpuPixelScratchTex) return nullptr;
-
-        WGPUTextureViewDescriptor viewDesc{};
-        viewDesc.format = WGPUTextureFormat_BGRA8Unorm;
-        viewDesc.dimension = WGPUTextureViewDimension_2D;
-        viewDesc.baseMipLevel = 0;
-        viewDesc.mipLevelCount = 1;
-        viewDesc.baseArrayLayer = 0;
-        viewDesc.arrayLayerCount = 1;
-        viewDesc.aspect = WGPUTextureAspect_All;
-
-        m_cpuPixelScratchView = wgpuTextureCreateView(m_cpuPixelScratchTex, &viewDesc);
-        m_cpuPixelScratchWidth = width;
-        m_cpuPixelScratchHeight = height;
-    }
-
-    // Upload pixels to texture
-    WGPUTexelCopyTextureInfo dstInfo{};
-    dstInfo.texture = m_cpuPixelScratchTex;
-    dstInfo.mipLevel = 0;
-    dstInfo.origin = {0, 0, 0};
-    dstInfo.aspect = WGPUTextureAspect_All;
-
-    size_t rowStride = view.rowStride();
-    WGPUTexelCopyBufferLayout layout{};
-    layout.offset = 0;
-    layout.bytesPerRow = static_cast<uint32_t>(rowStride);
-    layout.rowsPerImage = static_cast<uint32_t>(height);
-
-    WGPUExtent3D writeSize = {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1};
-    size_t dataSize = rowStride * height;
-
-    wgpuQueueWriteTexture(ctx.queue(), &dstInfo, view.data, dataSize, &layout, &writeSize);
-
-    return m_cpuPixelScratchView;
 }
 
 } // namespace vivid

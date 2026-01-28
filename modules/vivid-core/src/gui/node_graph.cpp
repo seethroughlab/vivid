@@ -630,9 +630,14 @@ void NodeGraph::renderLinks() {
             glm::vec2 cp1 = {cx1, cy1};
             glm::vec2 cp2 = {cx2, cy2};
             float polyLength = glm::length(cp1 - start) + glm::length(cp2 - cp1) + glm::length(end - cp2);
-            // Sample at least every 3 pixels for smooth dashes (smaller than gap)
-            int numSamples = std::max(16, static_cast<int>(polyLength / 3.0f));
-            numSamples = std::min(numSamples, 512);  // Cap for performance
+
+            // Scale samples based on screen-space size (polyLength * zoom gives screen pixels)
+            // Sample every 3 screen pixels for smooth dashes
+            float screenLength = polyLength * m_zoom;
+            int numSamples = std::max(8, static_cast<int>(screenLength / 3.0f));
+            // At low zoom, we can use fewer samples since details aren't visible
+            // Cap for performance: max 256 at any zoom level
+            numSamples = std::min(numSamples, 256);
 
             // Sample points along the bezier curve
             std::vector<glm::vec2> points(numSamples + 1);
@@ -722,8 +727,11 @@ void NodeGraph::renderNodes() {
 }
 
 void NodeGraph::computePinPositions() {
-    // Compute screen positions for all pins (for hover detection)
+    // Compute screen positions for all pins (for hover detection and link rendering)
     // Must be called before updateHover() and uses same math as renderNode()
+    // Populates both node.inputs/outputs[i].screenPos AND m_pinScreenPosCache for O(1) lookup
+    m_pinScreenPosCache.clear();
+
     for (auto& [id, node] : m_nodes) {
         glm::vec2 pos = gridToScreen(node.gridPos);
         float w = node.size.x * m_zoom;
@@ -735,13 +743,17 @@ void NodeGraph::computePinPositions() {
         for (size_t i = 0; i < node.inputs.size(); i++) {
             float pinY = pinStartY + i * m_style.pinSpacing * m_zoom + pinR;
             float pinX = pos.x;
-            node.inputs[i].screenPos = {pinX, pinY};
+            glm::vec2 screenPos = {pinX, pinY};
+            node.inputs[i].screenPos = screenPos;
+            m_pinScreenPosCache[node.inputs[i].id] = screenPos;
         }
 
         for (size_t i = 0; i < node.outputs.size(); i++) {
             float pinY = pinStartY + i * m_style.pinSpacing * m_zoom + pinR;
             float pinX = pos.x + w;
-            node.outputs[i].screenPos = {pinX, pinY};
+            glm::vec2 screenPos = {pinX, pinY};
+            node.outputs[i].screenPos = screenPos;
+            m_pinScreenPosCache[node.outputs[i].id] = screenPos;
         }
     }
 }
@@ -972,21 +984,11 @@ int NodeGraph::findPinAtPosition(glm::vec2 screenPos) const {
 }
 
 glm::vec2 NodeGraph::getPinScreenPos(int pinId) const {
-    auto nodeIt = m_pinToNode.find(pinId);
-    if (nodeIt == m_pinToNode.end()) return {0, 0};
-
-    auto it = m_nodes.find(nodeIt->second);
-    if (it == m_nodes.end()) return {0, 0};
-
-    const NodeState& node = it->second;
-
-    for (const auto& pin : node.inputs) {
-        if (pin.id == pinId) return pin.screenPos;
+    // O(1) lookup using the pin position cache (populated in computePinPositions)
+    auto it = m_pinScreenPosCache.find(pinId);
+    if (it != m_pinScreenPosCache.end()) {
+        return it->second;
     }
-    for (const auto& pin : node.outputs) {
-        if (pin.id == pinId) return pin.screenPos;
-    }
-
     return {0, 0};
 }
 
@@ -1068,9 +1070,14 @@ void NodeGraph::handlePan() {
 void NodeGraph::handleNodeDrag() {
     // Left click on node to drag (unless Ctrl is held for pan)
     if (m_input.mouseClicked[0] && !m_input.keyCtrl && m_hoveredNodeId >= 0) {
-        // Check for double-click
+        // Check for double-click (requires same node, short time, and close position)
         float timeSinceLastClick = m_input.time - m_lastClickTime;
-        if (m_lastClickedNodeId == m_hoveredNodeId && timeSinceLastClick < DOUBLE_CLICK_TIME) {
+        float clickDistance = glm::length(m_input.mousePos - m_lastClickPos);
+        bool isSameNode = (m_lastClickedNodeId == m_hoveredNodeId);
+        bool isQuickClick = (timeSinceLastClick < DOUBLE_CLICK_TIME);
+        bool isClosePosition = (clickDistance < DOUBLE_CLICK_DISTANCE);
+
+        if (isSameNode && isQuickClick && isClosePosition) {
             // Double-click detected!
             if (m_doubleClickCallback) {
                 m_doubleClickCallback(m_hoveredNodeId);
@@ -1078,12 +1085,14 @@ void NodeGraph::handleNodeDrag() {
             // Reset double-click state
             m_lastClickedNodeId = -1;
             m_lastClickTime = 0.0f;
+            m_lastClickPos = {0, 0};
             return;  // Don't start a drag on double-click
         }
 
         // Record this click for double-click detection
         m_lastClickTime = m_input.time;
         m_lastClickedNodeId = m_hoveredNodeId;
+        m_lastClickPos = m_input.mousePos;
 
         m_isDraggingNode = true;
         m_selectedNodeId = m_hoveredNodeId;
@@ -1111,12 +1120,11 @@ void NodeGraph::handleNodeDrag() {
 void NodeGraph::handleSelection() {
     // Click on empty space deselects - but NOT if we're panning
     // (panning starts on click in empty space, so we only deselect on release without drag)
-    static bool wasPanning = false;
-    if (m_input.mouseReleased[0] && !wasPanning && m_hoveredNodeId < 0 && !m_isDraggingNode) {
+    if (m_input.mouseReleased[0] && !m_wasPanning && m_hoveredNodeId < 0 && !m_isDraggingNode) {
         // Only deselect if we didn't move much (wasn't a pan gesture)
         clearSelection();
     }
-    wasPanning = m_isPanning;
+    m_wasPanning = m_isPanning;
 }
 
 void NodeGraph::handleKeyboard() {

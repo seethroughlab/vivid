@@ -11,7 +11,7 @@
 #include <vivid/asset_loader.h>
 #include <vivid/video_exporter.h>
 #include <vivid/operator_registry.h>
-#include <vivid/chain_visualizer.h>
+#include <vivid/devtools/chain_visualizer.h>
 #include <vivid/display.h>
 #include <vivid/frame_input.h>
 #include <vivid/render_lock.h>

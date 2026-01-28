@@ -1,6 +1,6 @@
 // PanelGroup implementation - tabbed panel container
 
-#include <vivid/devtools/panel_group.h>
+#include <vivid/gui/panel_group.h>
 #include <vivid/gui/ui_style.h>
 #include <algorithm>
 

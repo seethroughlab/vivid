@@ -155,7 +155,9 @@ struct StatusBarPanel::Impl {
             {"console",     "C", "Console (\u23182)", DockMode::Hidden, {}},
             {"editor",      "E", "Editor (\u23183)", DockMode::Hidden, {}},
             {"nodegraph",   "N", "Visualizer (\u23184)", DockMode::Hidden, {}},
-            {"filebrowser", "F", "Files (\u23185)", DockMode::Hidden, {}}
+            {"filebrowser", "F", "Files (\u23185)", DockMode::Hidden, {}},
+            {"performance", "P", "Performance (\u23186)", DockMode::Hidden, {}},
+            {"library",     "L", "Library (\u23187)", DockMode::Hidden, {}}
         };
     }
 };

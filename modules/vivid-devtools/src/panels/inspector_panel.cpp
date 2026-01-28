@@ -86,30 +86,14 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
                              const FrameInput& input, const UIStyle& style) {
     if (!m_config.visible || !m_impl) return;
 
-    // When docked (no title bar), use passed bounds; when floating, use m_config.bounds
-    glm::vec4 renderBounds;
-    if (m_showTitleBar) {
-        // Floating panel - handle drag/resize and use own bounds
-        float scale = input.contentScale > 0.0f ? input.contentScale : 1.0f;
-        float screenW = static_cast<float>(input.width) / scale;
-        float screenH = static_cast<float>(input.height) / scale;
-        handleDragAndResize(input, screenW, screenH);
-        renderBounds = m_config.bounds;
-    } else {
-        // Docked panel - use bounds from parent container
-        renderBounds = bounds;
-        // Set hover state for docked panels (normally done in handleDragAndResize)
-        m_hovered = input.mousePos.x >= bounds.x && input.mousePos.x <= bounds.x + bounds.z &&
-                    input.mousePos.y >= bounds.y && input.mousePos.y <= bounds.y + bounds.w;
-    }
-
+    glm::vec4 renderBounds = beginRender(input, bounds);
     float x = renderBounds.x;
     float y = renderBounds.y;
     float w = renderBounds.z;
     float h = renderBounds.w;
 
-    // Render standard panel chrome (title bar controlled by m_showTitleBar)
-    renderChrome(canvas, x, y, w, h, style, m_showTitleBar, &input);
+    // Render standard panel chrome (title bar controlled by m_display.showTitleBar)
+    renderChrome(canvas, x, y, w, h, style, m_display.showTitleBar, &input);
 
     // If no operator selected, just show empty panel
     if (!m_impl->selectedOp) {
@@ -136,7 +120,7 @@ void InspectorPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     const float padding = 12.0f;
     const float sliderHeight = 20.0f;
     const float rowHeight = lineH + sliderHeight + 4.0f;
-    const float titleBarHeight = m_showTitleBar ? style.titleBarHeight() : 0.0f;
+    const float titleBarHeight = m_display.showTitleBar ? style.titleBarHeight() : 0.0f;
 
     // Create Gui instance
     Gui gui(canvas, input);

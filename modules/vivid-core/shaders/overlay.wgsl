@@ -3,7 +3,8 @@
 
 struct Uniforms {
     resolution: vec2f,
-    padding: vec2f,
+    mipLevel: f32,      // Mip level hint for textured rects (0 = auto/base level)
+    padding: f32,
 }
 
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
@@ -36,7 +37,10 @@ fn vs_main(in: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4f {
-    let texColor = textureSample(tex, texSampler, in.uv);
+    // Use textureSampleLevel for explicit mip level control
+    // When mipLevel > 0, sample from that specific mip level for smoother thumbnails
+    // When mipLevel == 0, sample from base level (equivalent to textureSample at level 0)
+    let texColor = textureSampleLevel(tex, texSampler, in.uv, uniforms.mipLevel);
     // For text: texture has alpha in .a channel
     // For solids: texture is white (1,1,1,1)
     return vec4f(in.color.rgb * texColor.rgb, in.color.a * texColor.a);

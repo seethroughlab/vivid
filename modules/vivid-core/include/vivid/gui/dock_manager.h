@@ -13,8 +13,8 @@
  * It integrates with PanelManager and the layout tree system.
  */
 
-#include <vivid/devtools/dock_zone.h>
-#include <vivid/devtools/layout_node.h>
+#include <vivid/gui/dock_zone.h>
+#include <vivid/gui/layout_node.h>
 #include <vivid/gui/overlay_canvas.h>
 #include <vivid/frame_input.h>
 #include <memory>

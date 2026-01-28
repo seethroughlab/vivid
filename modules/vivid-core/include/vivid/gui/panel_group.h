@@ -8,8 +8,8 @@
  * Users can click tabs to switch, drag tabs to reorder, or drag tabs out to detach.
  */
 
-#include <vivid/devtools/layout_node.h>
-#include <vivid/devtools/panel.h>
+#include <vivid/gui/layout_node.h>
+#include <vivid/gui/panel.h>
 #include <memory>
 #include <vector>
 
