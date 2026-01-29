@@ -324,7 +324,7 @@ someOp.input(feedback);  // This works with Feedback
 
 ### WebSocket Connection Failed
 
-**Symptom:** VSCode extension can't connect to vivid.
+**Symptom:** MCP server can't connect to running Vivid instance.
 
 **Cause:** Wrong port or vivid not running.
 

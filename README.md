@@ -10,7 +10,8 @@ A creative coding framework for real-time audio-visual work. Hot-reloadable C++ 
 
 - **Audio-Visual Parity** - Audio and visuals are equal peers in code. Native synthesis, sequencing, and effects—no external plugins needed
 - **Hot Reload** - Edit your C++ code and see changes instantly without restarting
-- **AI-Native IDE** - [Vivid IDE](https://github.com/seethroughlab/vivid-ide) with integrated Claude Code terminal, Monaco editor, and live parameter inspector
+- **Built-in Devtools** - Terminal, code editor, node graph, inspector, and console panels — all in one window
+- **AI-Native Workflow** - MCP integration for Claude Code: see parameters, capture frames, sync slider changes to code
 - **WebGPU Backend** - Modern GPU API via wgpu-native (Metal on macOS, Vulkan/DX12 elsewhere)
 - **Chain-Based Architecture** - Connect operators to build audio-visual pipelines
 - **Addon System** - Modular design with automatic dependency discovery
@@ -39,37 +40,13 @@ A creative coding framework for real-time audio-visual work. Hot-reloadable C++ 
 
 ## Getting Started
 
-### Option 1: Vivid IDE (Recommended)
-
-The easiest way to use Vivid is with **Vivid IDE** — a standalone app with everything integrated:
-
-- **Monaco code editor** with C++ syntax highlighting
-- **Live preview** with real-time hot-reload
-- **Parameter inspector** for tweaking operator values
-- **Built-in Claude Code terminal** for AI-assisted development
-- **Node graph visualizer** to see your chain structure
-
-Download from [Vivid IDE Releases](https://github.com/seethroughlab/vivid-ide/releases) or build from source:
-
-```bash
-git clone https://github.com/seethroughlab/vivid-ide.git
-cd vivid-ide
-git submodule update --init --recursive
-npm install
-npm run tauri build
-```
-
-### Option 2: CLI Runtime (Advanced)
-
-For advanced users who prefer their own editor and workflow, you can use the Vivid runtime directly.
-
-#### Requirements
+### Requirements
 
 - CMake 3.20+
 - C++17 compiler (Clang, GCC, or MSVC)
 - macOS, Windows, or Linux
 
-#### Build
+### Build
 
 ```bash
 git clone https://github.com/seethroughlab/vivid.git
@@ -77,13 +54,19 @@ cd vivid
 cmake -B build && cmake --build build
 ```
 
-#### Run a Project
+### Run a Project
 
 ```bash
+# With built-in devtools (recommended)
+./build/bin/vivid projects/2d-effects/chain-basics --show-ui
+
+# Minimal output window only
 ./build/bin/vivid projects/2d-effects/chain-basics
 ```
 
-Press `F` to toggle fullscreen, `Tab` to view chain visualizer, `Esc` to quit.
+The `--show-ui` flag enables the full development environment with terminal, editor, node graph, and inspector panels.
+
+Press `Tab` to toggle all panels, `Cmd+F` for fullscreen, `Escape` to quit.
 
 ## Development Workflows
 
@@ -94,15 +77,33 @@ Press `F` to toggle fullscreen, `Tab` to view chain visualizer, `Esc` to quit.
 3. Use the parameter inspector to tweak values in real-time
 4. Use Claude Code in the integrated terminal for AI assistance
 
-### With VS Code + CLI
+### With Built-in Devtools
 
-Install the [Vivid VS Code extension](https://github.com/seethroughlab/vivid-vscode) for:
-- Syntax highlighting for chain.cpp
-- Autocomplete for operators and parameters
-- Live error diagnostics
-- Parameter documentation on hover
+Run any project with the `--show-ui` flag to get a full development environment:
 
-Run the CLI in a terminal and edit in VS Code — hot-reload works across both.
+```bash
+./build/bin/vivid projects/2d-effects/chain-basics --show-ui
+```
+
+The built-in devtools include:
+- **Terminal** (`Cmd+1`) — Interactive shell for running Claude Code or other commands
+- **Console** (`Cmd+2`) — Compile errors and log messages with clickable locations
+- **Editor** (`Cmd+3`) — Code editor with syntax highlighting and error markers
+- **Node Graph** (`Cmd+4`) — Visual chain representation with live thumbnails
+- **Inspector** — Parameter sliders for real-time tweaking (select a node to inspect)
+- **Status Bar** — Panel toggles, FPS stats, snapshot/record buttons
+
+Press `Tab` to quickly show/hide all panels, or use `Cmd+F` for fullscreen output.
+
+### With Your Own Editor
+
+Use any editor (VS Code, Neovim, etc.) alongside the Vivid runtime:
+
+```bash
+./build/bin/vivid path/to/project    # Minimal window, just the output
+```
+
+Hot-reload works regardless of which editor you use — save your file and see changes instantly.
 
 ### AI-Assisted Development
 
@@ -372,21 +373,44 @@ VIVID_CHAIN(setup, update)
 
 ## UI & Visualization
 
-Vivid includes a built-in chain visualizer powered by ImGui and ImNodes.
+Vivid includes built-in devtools for a complete development experience. Run with `--show-ui` to enable:
 
-### Controls
-- `Tab` - Toggle the visualizer overlay
-- `F` - Toggle fullscreen
-- `V` - Toggle vsync (in examples that support it)
-- `Ctrl+Drag` - Pan the chain visualizer
-- `Esc` - Quit
+```bash
+./build/bin/vivid projects/2d-effects/chain-basics --show-ui
+```
 
-### Chain Visualizer Features
-- **Node Graph** - See your operator chain as connected nodes
-- **Live Thumbnails** - Each node shows its real-time output texture
-- **Parameter Display** - View current parameter values on each node
-- **Connection Visualization** - See how operators are wired together
-- **Performance Overlay** - FPS, frame time, and resolution display
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Tab` | Toggle all panels |
+| `Cmd+1` | Toggle Terminal |
+| `Cmd+2` | Toggle Console |
+| `Cmd+3` | Toggle Editor |
+| `Cmd+4` | Toggle Node Graph |
+| `Cmd+F` | Toggle Fullscreen |
+| `Cmd+G` | Toggle Background Grid |
+| `Cmd+,` | Open Preferences |
+| `Escape` | Exit Solo Mode / Quit |
+| `Ctrl+Drag` | Pan the node graph |
+| `Scroll` | Zoom the node graph |
+
+### Devtools Panels
+
+| Panel | Description |
+|-------|-------------|
+| **Terminal** | Interactive shell — run Claude Code, build commands, etc. |
+| **Console** | Compile errors and runtime logs with clickable file:line links |
+| **Editor** | Code editor with C++ syntax highlighting and error markers |
+| **Node Graph** | Visual chain with live thumbnails and connections |
+| **Inspector** | Parameter sliders for the selected operator |
+| **Status Bar** | Panel toggles, FPS/memory stats, snapshot/record buttons |
+
+### Node Graph Features
+- **Live Thumbnails** — Each node shows its real-time output texture
+- **Solo Mode** — Double-click a node to view fullscreen (Escape to exit)
+- **Minimap** — Overview in bottom-right corner for navigation
+- **Parameter Editing** — Select a node, adjust sliders in Inspector
 
 ## Maximum Texture Size
 

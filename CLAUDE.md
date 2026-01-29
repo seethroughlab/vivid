@@ -58,23 +58,28 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 ### Starting Vivid
 The MCP server queries and controls a running Vivid instance. **Start Vivid before using MCP tools:**
 
-**Option 1: VS Code Extension (Recommended)**
-- Run command: `Vivid: Run Project` (Cmd/Ctrl+Shift+P)
-- Offers options: default, fullscreen, with chain visualizer UI, custom window size
-- Opens a VS Code terminal running the project
-
-**Option 2: Terminal**
 ```bash
+# Minimal output window (use with external editor)
 ./build/bin/vivid path/to/project
-./build/bin/vivid path/to/project --show-ui    # With chain visualizer
+
+# With built-in devtools (recommended for MCP workflow)
+./build/bin/vivid path/to/project --show-ui
 ```
+
+The `--show-ui` flag enables built-in devtools with:
+- **Terminal** (`Cmd+1`) — Run Claude Code or other commands
+- **Console** (`Cmd+2`) — View compile errors and logs
+- **Editor** (`Cmd+3`) — Edit chain.cpp with syntax highlighting
+- **Node Graph** (`Cmd+4`) — Visual chain with live thumbnails
+- **Inspector** — Parameter sliders (select a node first)
+- **Status Bar** — Panel toggles, stats, snapshot/record
 
 If Vivid isn't running, MCP tools return `{"connected": false}` with a helpful suggestion.
 
 ### Claude-First Workflow
-1. User starts Vivid via terminal or VS Code extension
+1. User starts Vivid with `--show-ui` or via Vivid IDE
 2. Claude connects automatically via MCP (port 9876)
-3. User adjusts sliders in visualizer (preview updates immediately)
+3. User adjusts sliders in the Inspector (preview updates immediately)
 4. Claude calls `get_pending_changes` to see what changed
 5. Claude edits chain.cpp with the new values
 6. Claude calls `clear_pending_changes` to confirm
