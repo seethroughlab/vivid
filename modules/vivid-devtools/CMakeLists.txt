@@ -18,7 +18,14 @@
 # libvterm (terminal emulation - full xterm support)
 # -----------------------------------------------------------------------------
 if(NOT TARGET vterm)
-    add_subdirectory(${CMAKE_SOURCE_DIR}/third_party/libvterm ${CMAKE_BINARY_DIR}/libvterm_devtools)
+    include(FetchContent)
+    FetchContent_Declare(
+        libvterm
+        GIT_REPOSITORY https://github.com/neovim/libvterm.git
+        GIT_TAG 934bc2fbf21800ac3458a499df8820ca5fb45fd3
+        GIT_SHALLOW TRUE
+    )
+    FetchContent_MakeAvailable(libvterm)
     set_target_properties(vterm PROPERTIES POSITION_INDEPENDENT_CODE ON)
 endif()
 
