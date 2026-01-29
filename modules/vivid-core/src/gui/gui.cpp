@@ -6,6 +6,7 @@
 #include <vivid/context.h>
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <limits>
 
 namespace {
