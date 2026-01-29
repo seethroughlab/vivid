@@ -331,7 +331,11 @@ static void lookupFunctions() {
     setFullscreenCallback = (SetFullscreenCallbackFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_fullscreen_callback");
     setHelpCallback = (SetHelpCallbackFn)dlsym(RTLD_DEFAULT, "vivid_devtools_set_help_callback");
 #elif defined(_WIN32)
+    // First try GetModuleHandle (already loaded), then LoadLibrary (load from disk)
     HMODULE devtoolsModule = GetModuleHandleA("vivid-devtools.dll");
+    if (!devtoolsModule) {
+        devtoolsModule = LoadLibraryA("vivid-devtools.dll");
+    }
     if (devtoolsModule) {
         init = (InitFn)GetProcAddress(devtoolsModule, "vivid_devtools_init");
         shutdown = (ShutdownFn)GetProcAddress(devtoolsModule, "vivid_devtools_shutdown");

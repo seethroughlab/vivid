@@ -23,8 +23,15 @@
 #include <signal.h>
 #include <termios.h>
 #include <pwd.h>
-#else
-// Windows stub - PTY not supported
+#elif defined(_WIN32)
+// Windows ConPTY implementation
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <string>
+#include <algorithm>
+#include <cstdio>
 #endif
 
 namespace vivid {
@@ -193,21 +200,269 @@ public:
     int pid() const {
         return childPid;
     }
-#else
-    // Windows stub
-    bool running = false;
+#elif defined(_WIN32)
+    // Windows ConPTY implementation
+    HPCON m_hPC = nullptr;           // Pseudo console handle
+    HANDLE m_hPipeIn = nullptr;      // Read from child (our end)
+    HANDLE m_hPipeOut = nullptr;     // Write to child (our end)
+    HANDLE m_hProcess = nullptr;     // Child process handle
+    DWORD m_processId = 0;
+    bool m_running = false;
+    int m_cols = 80;
+    int m_rows = 24;
 
-    bool start(const std::string&, const std::string&) {
-        std::cerr << "[PTY] Not supported on this platform\n";
-        return false;
+    ~Impl() {
+        stop();
     }
 
-    bool isRunning() const { return false; }
-    void write(const std::string&) {}
-    std::string read() { return ""; }
-    void setSize(int, int) {}
-    void stop() {}
-    int pid() const { return -1; }
+    bool start(const std::string& command, const std::string& workingDir) {
+        if (m_running) {
+            stop();
+        }
+
+        // Create the pipes for ConPTY communication
+        HANDLE hPipeInRead = nullptr, hPipeInWrite = nullptr;
+        HANDLE hPipeOutRead = nullptr, hPipeOutWrite = nullptr;
+
+        if (!CreatePipe(&hPipeInRead, &hPipeInWrite, nullptr, 0)) {
+            std::cerr << "[PTY] CreatePipe (in) failed: " << GetLastError() << "\n";
+            return false;
+        }
+        if (!CreatePipe(&hPipeOutRead, &hPipeOutWrite, nullptr, 0)) {
+            std::cerr << "[PTY] CreatePipe (out) failed: " << GetLastError() << "\n";
+            CloseHandle(hPipeInRead);
+            CloseHandle(hPipeInWrite);
+            return false;
+        }
+
+        // Create the pseudo console
+        COORD size = { static_cast<SHORT>(m_cols), static_cast<SHORT>(m_rows) };
+        HRESULT hr = CreatePseudoConsole(size, hPipeInRead, hPipeOutWrite, 0, &m_hPC);
+        if (FAILED(hr)) {
+            std::cerr << "[PTY] CreatePseudoConsole failed: 0x" << std::hex << hr << std::dec << "\n";
+            CloseHandle(hPipeInRead);
+            CloseHandle(hPipeInWrite);
+            CloseHandle(hPipeOutRead);
+            CloseHandle(hPipeOutWrite);
+            return false;
+        }
+
+        // Close the handles that the pseudo console now owns
+        CloseHandle(hPipeInRead);
+        CloseHandle(hPipeOutWrite);
+
+        // Keep our ends of the pipes
+        m_hPipeIn = hPipeOutRead;   // We read from this
+        m_hPipeOut = hPipeInWrite;  // We write to this
+
+        // Set up the startup info with the pseudo console
+        STARTUPINFOEXW si = {};
+        si.StartupInfo.cb = sizeof(STARTUPINFOEXW);
+
+        // Initialize the attribute list
+        SIZE_T attrListSize = 0;
+        InitializeProcThreadAttributeList(nullptr, 1, 0, &attrListSize);
+        si.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
+            HeapAlloc(GetProcessHeap(), 0, attrListSize));
+        if (!si.lpAttributeList) {
+            std::cerr << "[PTY] HeapAlloc failed\n";
+            cleanup();
+            return false;
+        }
+
+        if (!InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0, &attrListSize)) {
+            std::cerr << "[PTY] InitializeProcThreadAttributeList failed: " << GetLastError() << "\n";
+            HeapFree(GetProcessHeap(), 0, si.lpAttributeList);
+            cleanup();
+            return false;
+        }
+
+        if (!UpdateProcThreadAttribute(si.lpAttributeList, 0,
+                PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, m_hPC,
+                sizeof(HPCON), nullptr, nullptr)) {
+            std::cerr << "[PTY] UpdateProcThreadAttribute failed: " << GetLastError() << "\n";
+            DeleteProcThreadAttributeList(si.lpAttributeList);
+            HeapFree(GetProcessHeap(), 0, si.lpAttributeList);
+            cleanup();
+            return false;
+        }
+
+        // Build the command line
+        std::wstring cmdLine = getShellCommand(command);
+
+        // Convert working directory to wide string
+        std::wstring wWorkingDir;
+        if (!workingDir.empty()) {
+            wWorkingDir = utf8ToWide(workingDir);
+        }
+
+        PROCESS_INFORMATION pi = {};
+        // Use EXTENDED_STARTUPINFO_PRESENT so the pseudo console attribute is used
+        // Also use CREATE_NEW_PROCESS_GROUP to prevent console inheritance
+        DWORD creationFlags = EXTENDED_STARTUPINFO_PRESENT | CREATE_NEW_PROCESS_GROUP;
+        BOOL success = CreateProcessW(
+            nullptr,                                    // lpApplicationName
+            const_cast<LPWSTR>(cmdLine.c_str()),       // lpCommandLine
+            nullptr,                                    // lpProcessAttributes
+            nullptr,                                    // lpThreadAttributes
+            FALSE,                                      // bInheritHandles
+            creationFlags,                             // dwCreationFlags
+            nullptr,                                    // lpEnvironment
+            wWorkingDir.empty() ? nullptr : wWorkingDir.c_str(), // lpCurrentDirectory
+            &si.StartupInfo,                           // lpStartupInfo
+            &pi                                        // lpProcessInformation
+        );
+
+        // Clean up attribute list
+        DeleteProcThreadAttributeList(si.lpAttributeList);
+        HeapFree(GetProcessHeap(), 0, si.lpAttributeList);
+
+        if (!success) {
+            std::cerr << "[PTY] CreateProcessW failed: " << GetLastError() << "\n";
+            cleanup();
+            return false;
+        }
+
+        m_hProcess = pi.hProcess;
+        m_processId = pi.dwProcessId;
+        CloseHandle(pi.hThread);  // Don't need thread handle
+
+        m_running = true;
+        std::cout << "[PTY] Started shell (pid: " << m_processId << ")\n";
+        return true;
+    }
+
+    bool isRunning() const {
+        if (!m_running || m_hProcess == nullptr) {
+            return false;
+        }
+
+        DWORD exitCode;
+        if (GetExitCodeProcess(m_hProcess, &exitCode)) {
+            if (exitCode != STILL_ACTIVE) {
+                const_cast<Impl*>(this)->m_running = false;
+                return false;
+            }
+        }
+        return true;
+    }
+
+    void write(const std::string& data) {
+        if (!m_running || m_hPipeOut == nullptr) {
+            return;
+        }
+        DWORD written;
+        WriteFile(m_hPipeOut, data.c_str(), static_cast<DWORD>(data.size()),
+                  &written, nullptr);
+    }
+
+    std::string read() {
+        if (!m_running || m_hPipeIn == nullptr) return "";
+
+        std::string result;
+        char buffer[4096];
+
+        while (true) {
+            DWORD available = 0;
+            if (!PeekNamedPipe(m_hPipeIn, nullptr, 0, nullptr, &available, nullptr)) {
+                // Pipe error (process may have exited)
+                break;
+            }
+
+            if (available == 0) {
+                // No data available
+                break;
+            }
+
+            DWORD bytesRead = 0;
+            DWORD toRead = (std::min)(available, static_cast<DWORD>(sizeof(buffer)));
+            if (ReadFile(m_hPipeIn, buffer, toRead, &bytesRead, nullptr) && bytesRead > 0) {
+                result.append(buffer, bytesRead);
+            } else {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    void setSize(int cols, int rows) {
+        m_cols = cols;
+        m_rows = rows;
+        if (m_hPC != nullptr) {
+            COORD size = { static_cast<SHORT>(cols), static_cast<SHORT>(rows) };
+            HRESULT hr = ResizePseudoConsole(m_hPC, size);
+            if (FAILED(hr)) {
+                std::cerr << "[PTY] ResizePseudoConsole failed: 0x" << std::hex << hr << std::dec << "\n";
+            }
+        }
+    }
+
+    void stop() {
+        if (m_hProcess != nullptr) {
+            // Send Ctrl+C first (graceful termination)
+            if (m_hPipeOut != nullptr) {
+                char ctrlC = 3;
+                DWORD written;
+                WriteFile(m_hPipeOut, &ctrlC, 1, &written, nullptr);
+            }
+            Sleep(50);  // Give process time to exit
+
+            // Check if still running, then terminate
+            DWORD exitCode;
+            if (GetExitCodeProcess(m_hProcess, &exitCode) && exitCode == STILL_ACTIVE) {
+                TerminateProcess(m_hProcess, 0);
+                WaitForSingleObject(m_hProcess, 1000);
+            }
+            CloseHandle(m_hProcess);
+            m_hProcess = nullptr;
+        }
+
+        cleanup();
+        m_running = false;
+        m_processId = 0;
+    }
+
+    int pid() const {
+        return static_cast<int>(m_processId);
+    }
+
+private:
+    void cleanup() {
+        if (m_hPipeIn != nullptr) {
+            CloseHandle(m_hPipeIn);
+            m_hPipeIn = nullptr;
+        }
+        if (m_hPipeOut != nullptr) {
+            CloseHandle(m_hPipeOut);
+            m_hPipeOut = nullptr;
+        }
+        if (m_hPC != nullptr) {
+            ClosePseudoConsole(m_hPC);
+            m_hPC = nullptr;
+        }
+    }
+
+    std::wstring utf8ToWide(const std::string& str) {
+        if (str.empty()) return L"";
+        int size = MultiByteToWideChar(CP_UTF8, 0, str.c_str(),
+                                       static_cast<int>(str.size()), nullptr, 0);
+        std::wstring result(size, 0);
+        MultiByteToWideChar(CP_UTF8, 0, str.c_str(),
+                           static_cast<int>(str.size()), &result[0], size);
+        return result;
+    }
+
+    std::wstring getShellCommand(const std::string& command) {
+        if (!command.empty()) {
+            // Run a specific command via cmd.exe /c
+            return L"cmd.exe /c " + utf8ToWide(command);
+        }
+
+        // Try PowerShell first (more modern, better ConPTY support)
+        // -NoLogo suppresses the banner, -NoExit keeps it running
+        return L"powershell.exe -NoLogo -NoExit";
+    }
 #endif
 };
 
