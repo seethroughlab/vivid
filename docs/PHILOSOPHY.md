@@ -71,7 +71,7 @@ Your project is C++ files, shader files, and a simple YAML config. No binary for
 
 When you define an operator chain, each step shows its output. Textures render as thumbnails. Numeric values display inline. You never have to guess what's happening inside the pipeline.
 
-The VS Code extension shows `[img]` decorations with hover previews for each operator's output.
+The built-in devtools show live thumbnails for each operator in the node graph. Select any node to see its parameters in the Inspector panel.
 
 ### Hot Reload Everything
 
@@ -116,22 +116,28 @@ The framework is designed so that an LLM can be a genuine collaborator, not just
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  VS Code + Vivid Extension                               │
-│  - Code editing                                          │
-│  - Inline preview decorations                            │
-│  - Side panel with full node outputs                     │
-│  - Parameter tweaking via hover widgets                  │
-└────────────────────────┬─────────────────────────────────┘
-                         │ WebSocket
-                         ▼
-┌──────────────────────────────────────────────────────────┐
-│  Vivid Runtime                                           │
+│  Vivid Runtime + Built-in Devtools                       │
 │  - File watcher (source + shaders)                       │
 │  - Incremental C++ compilation                           │
 │  - Shared library hot-reload                             │
 │  - Operator graph execution                              │
-│  - Preview capture and streaming                         │
 │  - Output window rendering                               │
+│                                                          │
+│  Devtools Panels (--show-ui):                            │
+│  - Terminal: interactive shell, Claude Code              │
+│  - Editor: code editing with syntax highlighting         │
+│  - Node Graph: visual chain with live thumbnails         │
+│  - Inspector: parameter sliders for selected node        │
+│  - Console: compile errors and runtime logs              │
+└────────────────────────┬─────────────────────────────────┘
+                         │ WebSocket (port 9876)
+                         ▼
+┌──────────────────────────────────────────────────────────┐
+│  MCP Server (vivid mcp)                                  │
+│  - Claude Code integration                               │
+│  - Parameter queries and updates                         │
+│  - Frame capture and inspection                          │
+│  - Documentation search                                  │
 └──────────────────────────────────────────────────────────┘
 ```
 

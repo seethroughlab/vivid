@@ -37,8 +37,8 @@ Created automatically by `vivid new`. Keep it **under 60 lines** - AI re-reads t
 # My Audio Visualizer
 
 ## Commands
-- **VS Code**: `Vivid: Run Project` (Cmd/Ctrl+Shift+P)
-- **Terminal**: `vivid .` or `vivid . --show-ui`
+- **With devtools**: `vivid . --show-ui`
+- **Minimal output**: `vivid .`
 
 ## Modules
 - Core: Noise, Blur, HSV, Bloom
@@ -113,9 +113,9 @@ Add to your Claude Code MCP config (`~/.claude.json`):
 
 ### The Slider-to-Code Workflow
 
-1. **Start your project** (VS Code extension or `vivid . --show-ui`)
-2. **Press Tab** to open the chain visualizer
-3. **Adjust sliders** - see changes in real-time
+1. **Start your project** with devtools: `vivid . --show-ui`
+2. **Press Tab** to toggle all panels, or `Cmd+4` to show the node graph
+3. **Select a node** and **adjust sliders** in the Inspector - see changes in real-time
 4. **Ask Claude** to persist your changes:
    - Claude calls `get_pending_changes` to see what you adjusted
    - Claude edits chain.cpp with the new values
