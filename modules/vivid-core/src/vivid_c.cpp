@@ -11,7 +11,9 @@
 #include <vivid/asset_loader.h>
 #include <vivid/video_exporter.h>
 #include <vivid/operator_registry.h>
+#ifdef VIVID_HAS_DEVTOOLS
 #include <vivid/devtools/chain_visualizer.h>
+#endif
 #include <vivid/display.h>
 #include <vivid/frame_input.h>
 #include <vivid/gui/input_state.h>
@@ -150,9 +152,11 @@ struct VividContextInternal {
     WGPUSurfaceConfiguration surfaceConfig = {};
 
     // Visualizer and display
+#ifdef VIVID_HAS_DEVTOOLS
     std::unique_ptr<vivid::ChainVisualizer> visualizer;
-    std::unique_ptr<vivid::Display> display;
     bool visualizerVisible = true;
+#endif
+    std::unique_ptr<vivid::Display> display;
 
     // Frame timing
     std::chrono::steady_clock::time_point lastFrameTime;
@@ -175,11 +179,13 @@ extern "C" void vivid_iosurface_destroy_state(void* state);
 #endif
 
 VividContextInternal::~VividContextInternal() {
+#ifdef VIVID_HAS_DEVTOOLS
     // Clean up visualizer first
     if (visualizer) {
         visualizer->shutdown();
         visualizer.reset();
     }
+#endif
 
 #ifdef __APPLE__
     // Clean up IOSurface sharing state
@@ -440,10 +446,12 @@ VIVID_C_API VividResult vivid_context_create_with_window(
         internal->display->setScreenSize(config->width, config->height);
         internal->display->setTextureSize(config->width, config->height);
 
+#ifdef VIVID_HAS_DEVTOOLS
         // Create visualizer
         internal->visualizer = std::make_unique<vivid::ChainVisualizer>();
         internal->visualizer->init();
         internal->visualizer->initNodeGraph(*internal->context, surfaceFormat);
+#endif
 
         internal->lastFrameTime = std::chrono::steady_clock::now();
         internal->firstFrame = true;
@@ -585,10 +593,12 @@ VIVID_C_API VividResult vivid_context_render_frame(VividContext* ctx) {
 
             internal->context->endFrame();
 
+#ifdef VIVID_HAS_DEVTOOLS
             // Update solo mode output if active
             if (internal->visualizer) {
                 internal->visualizer->updateSoloOutput(*internal->context);
             }
+#endif
         }
 
         // Create render pass for final output
@@ -618,10 +628,12 @@ VIVID_C_API VividResult vivid_context_render_frame(VividContext* ctx) {
             );
         }
 
+#ifdef VIVID_HAS_DEVTOOLS
         // Update solo mode output before blit
         if (internal->visualizerVisible && internal->visualizer) {
             internal->visualizer->updateSoloOutput(*internal->context);
         }
+#endif
 
         // Blit chain output texture to surface
         WGPUTextureView outputView = internal->context->outputTexture();
@@ -651,10 +663,12 @@ VIVID_C_API VividResult vivid_context_render_frame(VividContext* ctx) {
             internal->display->blit(pass, outputView);
         }
 
+#ifdef VIVID_HAS_DEVTOOLS
         // Render visualizer if visible
         if (internal->visualizerVisible && internal->visualizer) {
             internal->visualizer->renderNodeGraph(pass, toInputState(frameInput), *internal->context);
         }
+#endif
 
         wgpuRenderPassEncoderEnd(pass);
         wgpuRenderPassEncoderRelease(pass);
@@ -717,17 +731,27 @@ VIVID_C_API VividResult vivid_context_resize_surface(VividContext* ctx, int widt
 }
 
 VIVID_C_API void vivid_context_set_visualizer_visible(VividContext* ctx, bool visible) {
+#ifdef VIVID_HAS_DEVTOOLS
     if (ctx) {
         toInternal(ctx)->visualizerVisible = visible;
     }
+#else
+    (void)ctx; (void)visible;
+#endif
 }
 
 VIVID_C_API bool vivid_context_is_visualizer_visible(VividContext* ctx) {
+#ifdef VIVID_HAS_DEVTOOLS
     if (!ctx) return false;
     return toInternal(ctx)->visualizerVisible;
+#else
+    (void)ctx;
+    return false;
+#endif
 }
 
 VIVID_C_API const char* vivid_context_get_selected_operator(VividContext* ctx) {
+#ifdef VIVID_HAS_DEVTOOLS
     if (!ctx) return nullptr;
     auto internal = toInternal(ctx);
     if (!internal->visualizer) return nullptr;
@@ -735,14 +759,22 @@ VIVID_C_API const char* vivid_context_get_selected_operator(VividContext* ctx) {
     const std::string& name = internal->visualizer->getSelectedOperatorName();
     if (name.empty()) return nullptr;
     return name.c_str();
+#else
+    (void)ctx;
+    return nullptr;
+#endif
 }
 
 VIVID_C_API void vivid_context_select_operator(VividContext* ctx, const char* name) {
+#ifdef VIVID_HAS_DEVTOOLS
     if (!ctx || !name) return;
     auto internal = toInternal(ctx);
     if (!internal->visualizer) return;
 
     internal->visualizer->selectNodeFromEditor(name);
+#else
+    (void)ctx; (void)name;
+#endif
 }
 
 VIVID_C_API void vivid_context_destroy(VividContext* ctx) {

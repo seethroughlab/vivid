@@ -463,7 +463,9 @@ void TerminalPanel::onKeyDown(int key, int mods) {
 }
 
 void TerminalPanel::spawn(const std::string& command, const std::string& workingDir) {
-    if (!m_impl || !m_impl->pty) return;
+    if (!m_impl || !m_impl->pty) {
+        return;
+    }
 
     bool ok = m_impl->pty->start(command, workingDir);
     if (ok) {
