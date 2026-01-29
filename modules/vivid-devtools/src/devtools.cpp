@@ -626,9 +626,23 @@ void DevTools::render(WGPURenderPassEncoder pass, const FrameInput& input, Conte
     // Ensure style scale is always up-to-date (contentScale may not be available during init)
     m_style.scale = scale;
 
-    // Render background grid if visible (before panels)
+    // Render background grid if visible and there are visible panels (besides status bar)
+    // This prevents the gray background from showing when all panels are hidden
     if (m_gridOpacity > 0.0f) {
-        renderBackgroundGrid(*m_canvas, screenWidth, screenHeight);
+        // Check if any content panel is visible (excludes status bar)
+        const char* contentPanelIds[] = {"terminal", "console", "editor", "nodegraph",
+                                          "filebrowser", "performance", "library", "inspector"};
+        bool hasVisiblePanels = false;
+        for (const char* id : contentPanelIds) {
+            if (m_panelManager->isPanelVisible(id)) {
+                hasVisiblePanels = true;
+                break;
+            }
+        }
+
+        if (hasVisiblePanels) {
+            renderBackgroundGrid(*m_canvas, screenWidth, screenHeight);
+        }
     }
 
     m_panelManager->render(*m_canvas, guiInput, screenWidth, screenHeight, m_style);

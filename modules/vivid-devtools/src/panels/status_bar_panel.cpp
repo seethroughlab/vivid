@@ -229,7 +229,9 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
     const float barHeight = (bounds.w > 0) ? bounds.w : (lineH + padding * 2);
     // Offset all positions by bounds origin for correct positioning in layout
     float x = bounds.x + padding;
-    float y = bounds.y + padding + ascent;
+    // Vertically center text baseline within the bar
+    // Text visual center is roughly at baseline - ascent/2, so we offset to center that
+    float y = bounds.y + (barHeight + ascent) * 0.5f;
 
     // Update smoothed FPS (exponential moving average)
     const float smoothing = 0.05f;
@@ -310,10 +312,11 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
             canvas.strokeRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), 1, borderColor);
         }
 
-        // Draw label centered
+        // Draw label centered (horizontally and vertically)
         float labelW = canvas.measureText(toggle.label, monoFont);
         float labelX = x + (btnW - labelW) * 0.5f;
-        canvas.text(toggle.label, labelX, btnY + ascent + 2, labelColor, monoFont);
+        float labelY = btnY + (btnH + ascent) * 0.5f;
+        canvas.text(toggle.label, labelX, labelY, labelColor, monoFont);
 
         // Store hit rect
         toggle.hitRect = {x, btnY, btnW, btnH, true};
@@ -368,7 +371,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         glm::vec4 presetBtnBg = m_impl->presetDropdownOpen ? btnHover : (isHovered ? btnHover : btnBg);
         canvas.fillRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), presetBtnBg);
         canvas.strokeRoundedRect(x, btnY, btnW, btnH, style.buttonCornerRadius(), 1, btnBorder);
-        canvas.text(presetLabel, x + btnPadX, btnY + btnPadY + ascent, textColor, monoFont);
+        canvas.text(presetLabel, x + btnPadX, btnY + (btnH + ascent) * 0.5f, textColor, monoFont);
 
         m_impl->presetButton = {x, btnY, btnW, btnH, true};
         x += btnW + padding;
@@ -559,11 +562,12 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         m_impl->stopButton = {stopBtnX, stopBtnY, stopBtnW, stopBtnH, true};
         canvas.fillRoundedRect(stopBtnX, stopBtnY, stopBtnW, stopBtnH, style.buttonCornerRadius(), buttonBg);
         canvas.strokeRoundedRect(stopBtnX, stopBtnY, stopBtnW, stopBtnH, style.buttonCornerRadius(), 1, redColor);
-        canvas.text(stopText, stopBtnX + buttonPadX, stopBtnY + buttonPadY + ascent, redColor, monoFont);
+        canvas.text(stopText, stopBtnX + buttonPadX, stopBtnY + (stopBtnH + ascent) * 0.5f, redColor, monoFont);
 
         float recX = stopBtnX - recTextWidth - 24 - buttonSpacing;
+        float recTextY = bounds.y + (barHeight + ascent) * 0.5f;
         canvas.fillCircle(recX + 6, bounds.y + barHeight * 0.5f, 4, redColor);
-        canvas.text(buf, recX + 16, y, redColor, monoFont);
+        canvas.text(buf, recX + 16, recTextY, redColor, monoFont);
     } else {
         // Not recording
         float rightX = screenWidth - padding;
@@ -579,7 +583,7 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         m_impl->snapshotButton = {snapBtnX, snapBtnY, snapBtnW, snapBtnH, true};
         canvas.fillRoundedRect(snapBtnX, snapBtnY, snapBtnW, snapBtnH, style.buttonCornerRadius(), buttonBg);
         canvas.strokeRoundedRect(snapBtnX, snapBtnY, snapBtnW, snapBtnH, style.buttonCornerRadius(), 1, buttonBorder);
-        canvas.text(snapText, snapBtnX + buttonPadX, snapBtnY + buttonPadY + ascent, textColor, monoFont);
+        canvas.text(snapText, snapBtnX + buttonPadX, snapBtnY + (snapBtnH + ascent) * 0.5f, textColor, monoFont);
 
         // Record button
         const char* recText = "Record ▾";
@@ -593,8 +597,8 @@ void StatusBarPanel::render(OverlayCanvas& canvas, const glm::vec4& bounds,
         glm::vec4 recBtnBg = m_impl->codecDropdownOpen ? buttonHover : buttonBg;
         canvas.fillRoundedRect(recBtnX, recBtnY, recBtnW, recBtnH, style.buttonCornerRadius(), recBtnBg);
         canvas.strokeRoundedRect(recBtnX, recBtnY, recBtnW, recBtnH, style.buttonCornerRadius(), 1, redColor);
-        canvas.fillCircle(recBtnX + buttonPadX + 4, bounds.y + barHeight * 0.5f, 3, redColor);
-        canvas.text(recText, recBtnX + buttonPadX + 12, recBtnY + buttonPadY + ascent, textColor, monoFont);
+        canvas.fillCircle(recBtnX + buttonPadX + 4, recBtnY + recBtnH * 0.5f, 3, redColor);
+        canvas.text(recText, recBtnX + buttonPadX + 12, recBtnY + (recBtnH + ascent) * 0.5f, textColor, monoFont);
 
         // Codec dropdown
         m_impl->codecH264.valid = false;

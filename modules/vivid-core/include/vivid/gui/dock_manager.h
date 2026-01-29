@@ -361,6 +361,9 @@ private:
      */
     PanelGroup* findGroupById(const std::string& id);
 
+    /** Check if the content area (below status bar) has no visible panels */
+    bool isContentAreaEmpty() const;
+
     PanelManager* m_panelManager;
     DragState m_dragState;
     std::vector<DockZone> m_dropZones;

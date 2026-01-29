@@ -248,12 +248,18 @@ void DockManager::addGroupZones(PanelGroup* group) {
 
     // Directional zones all dock into the content area (below status bar)
     // Preview bounds reflect the actual dock result
+    // If content area is empty, first panel fills 100%
+    bool contentEmpty = isContentAreaEmpty();
 
     // Left zone - content area height on left side
     DockZone leftZone;
     leftZone.position = DockPosition::Left;
     leftZone.hitBounds = {cx - offset - iconSize/2, cy - iconSize/2, iconSize, iconSize};
-    leftZone.previewBounds = {0, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    if (contentEmpty) {
+        leftZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        leftZone.previewBounds = {0, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    }
     leftZone.targetNode = group;
     m_dropZones.push_back(leftZone);
 
@@ -261,7 +267,11 @@ void DockManager::addGroupZones(PanelGroup* group) {
     DockZone rightZone;
     rightZone.position = DockPosition::Right;
     rightZone.hitBounds = {cx + offset - iconSize/2, cy - iconSize/2, iconSize, iconSize};
-    rightZone.previewBounds = {m_screenWidth * 0.75f, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    if (contentEmpty) {
+        rightZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        rightZone.previewBounds = {m_screenWidth * 0.75f, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    }
     rightZone.targetNode = group;
     m_dropZones.push_back(rightZone);
 
@@ -269,7 +279,11 @@ void DockManager::addGroupZones(PanelGroup* group) {
     DockZone topZone;
     topZone.position = DockPosition::Top;
     topZone.hitBounds = {cx - iconSize/2, cy - offset - iconSize/2, iconSize, iconSize};
-    topZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight * 0.25f};
+    if (contentEmpty) {
+        topZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        topZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight * 0.25f};
+    }
     topZone.targetNode = group;
     m_dropZones.push_back(topZone);
 
@@ -277,7 +291,11 @@ void DockManager::addGroupZones(PanelGroup* group) {
     DockZone bottomZone;
     bottomZone.position = DockPosition::Bottom;
     bottomZone.hitBounds = {cx - iconSize/2, cy + offset - iconSize/2, iconSize, iconSize};
-    bottomZone.previewBounds = {0, m_screenHeight - contentHeight * 0.25f, m_screenWidth, contentHeight * 0.25f};
+    if (contentEmpty) {
+        bottomZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        bottomZone.previewBounds = {0, m_screenHeight - contentHeight * 0.25f, m_screenWidth, contentHeight * 0.25f};
+    }
     bottomZone.targetNode = group;
     m_dropZones.push_back(bottomZone);
 }
@@ -323,12 +341,18 @@ void DockManager::addLeafZones(PanelLeaf* leaf) {
     m_dropZones.push_back(centerZone);
 
     // Directional zones all dock into the content area (below status bar)
+    // If content area is empty, first panel fills 100%
+    bool contentEmpty = isContentAreaEmpty();
 
     // Left zone - content area height on left side
     DockZone leftZone;
     leftZone.position = DockPosition::Left;
     leftZone.hitBounds = {cx - offset - iconSize/2, cy - iconSize/2, iconSize, iconSize};
-    leftZone.previewBounds = {0, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    if (contentEmpty) {
+        leftZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        leftZone.previewBounds = {0, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    }
     leftZone.targetNode = leaf;
     m_dropZones.push_back(leftZone);
 
@@ -336,7 +360,11 @@ void DockManager::addLeafZones(PanelLeaf* leaf) {
     DockZone rightZone;
     rightZone.position = DockPosition::Right;
     rightZone.hitBounds = {cx + offset - iconSize/2, cy - iconSize/2, iconSize, iconSize};
-    rightZone.previewBounds = {m_screenWidth * 0.75f, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    if (contentEmpty) {
+        rightZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        rightZone.previewBounds = {m_screenWidth * 0.75f, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    }
     rightZone.targetNode = leaf;
     m_dropZones.push_back(rightZone);
 
@@ -344,7 +372,11 @@ void DockManager::addLeafZones(PanelLeaf* leaf) {
     DockZone topZone;
     topZone.position = DockPosition::Top;
     topZone.hitBounds = {cx - iconSize/2, cy - offset - iconSize/2, iconSize, iconSize};
-    topZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight * 0.25f};
+    if (contentEmpty) {
+        topZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        topZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight * 0.25f};
+    }
     topZone.targetNode = leaf;
     m_dropZones.push_back(topZone);
 
@@ -352,7 +384,11 @@ void DockManager::addLeafZones(PanelLeaf* leaf) {
     DockZone bottomZone;
     bottomZone.position = DockPosition::Bottom;
     bottomZone.hitBounds = {cx - iconSize/2, cy + offset - iconSize/2, iconSize, iconSize};
-    bottomZone.previewBounds = {0, m_screenHeight - contentHeight * 0.25f, m_screenWidth, contentHeight * 0.25f};
+    if (contentEmpty) {
+        bottomZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        bottomZone.previewBounds = {0, m_screenHeight - contentHeight * 0.25f, m_screenWidth, contentHeight * 0.25f};
+    }
     bottomZone.targetNode = leaf;
     m_dropZones.push_back(bottomZone);
 }
@@ -371,11 +407,18 @@ void DockManager::addRootZones() {
     }
     float contentHeight = m_screenHeight - statusBarHeight;
 
+    // If content area is empty, first panel fills 100%
+    bool contentEmpty = isContentAreaEmpty();
+
     // Left edge - content area only (below status bar)
     DockZone leftZone;
     leftZone.position = DockPosition::Left;
     leftZone.hitBounds = {0, statusBarHeight, edgeSize, contentHeight};
-    leftZone.previewBounds = {0, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    if (contentEmpty) {
+        leftZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        leftZone.previewBounds = {0, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    }
     leftZone.targetNode = nullptr;
     leftZone.isRootZone = true;
     m_dropZones.push_back(leftZone);
@@ -384,7 +427,11 @@ void DockManager::addRootZones() {
     DockZone rightZone;
     rightZone.position = DockPosition::Right;
     rightZone.hitBounds = {m_screenWidth - edgeSize, statusBarHeight, edgeSize, contentHeight};
-    rightZone.previewBounds = {m_screenWidth * 0.75f, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    if (contentEmpty) {
+        rightZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        rightZone.previewBounds = {m_screenWidth * 0.75f, statusBarHeight, m_screenWidth * 0.25f, contentHeight};
+    }
     rightZone.targetNode = nullptr;
     rightZone.isRootZone = true;
     m_dropZones.push_back(rightZone);
@@ -393,7 +440,11 @@ void DockManager::addRootZones() {
     DockZone topZone;
     topZone.position = DockPosition::Top;
     topZone.hitBounds = {0, statusBarHeight, m_screenWidth, edgeSize};
-    topZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight * 0.25f};
+    if (contentEmpty) {
+        topZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        topZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight * 0.25f};
+    }
     topZone.targetNode = nullptr;
     topZone.isRootZone = true;
     m_dropZones.push_back(topZone);
@@ -402,7 +453,11 @@ void DockManager::addRootZones() {
     DockZone bottomZone;
     bottomZone.position = DockPosition::Bottom;
     bottomZone.hitBounds = {0, m_screenHeight - edgeSize, m_screenWidth, edgeSize};
-    bottomZone.previewBounds = {0, m_screenHeight - contentHeight * 0.25f, m_screenWidth, contentHeight * 0.25f};
+    if (contentEmpty) {
+        bottomZone.previewBounds = {0, statusBarHeight, m_screenWidth, contentHeight};
+    } else {
+        bottomZone.previewBounds = {0, m_screenHeight - contentHeight * 0.25f, m_screenWidth, contentHeight * 0.25f};
+    }
     bottomZone.targetNode = nullptr;
     bottomZone.isRootZone = true;
     m_dropZones.push_back(bottomZone);
@@ -555,6 +610,42 @@ void DockManager::executeDockEdge(const DockZone& zone) {
     Panel* panel = m_dragState.panel;
     if (!panel || !m_panelManager) return;
 
+    // Create a PanelGroup for the dragged panel (so it can be re-dragged via tab)
+    auto newGroup = createDockedGroup(panel);
+
+    // Check if content area is empty - if so, just replace it directly (no split needed)
+    LayoutNode* root = m_panelManager->layoutRoot();
+    if (root && root->type() == LayoutNodeType::SplitContainer) {
+        auto* rootSplit = static_cast<SplitContainer*>(root);
+        bool isStatusBarSplit = rootSplit->direction() == SplitDirection::Vertical &&
+                                !rootSplit->isResizable();
+
+        if (isStatusBarSplit) {
+            LayoutNode* contentArea = rootSplit->second();
+
+            // Check if content area is empty
+            bool contentEmpty = !contentArea;
+            if (contentArea && contentArea->type() == LayoutNodeType::PanelGroup) {
+                auto* group = static_cast<PanelGroup*>(contentArea);
+                contentEmpty = group->isEmpty();
+            }
+
+            if (contentEmpty) {
+                // Content is empty - just replace with the new panel group
+                rootSplit->setSecond(std::move(newGroup));
+
+                if (m_screenWidth > 0 && m_screenHeight > 0) {
+                    rootSplit->setBounds({0, 0, m_screenWidth, m_screenHeight});
+                    rootSplit->updateLayout();
+                }
+
+                std::cerr << "[DockManager] Content empty - replaced directly (no split)\n";
+                return;
+            }
+        }
+    }
+
+    // Content not empty - proceed with normal split creation
     // Determine split direction
     SplitDirection dir = (zone.position == DockPosition::Left || zone.position == DockPosition::Right)
                          ? SplitDirection::Horizontal
@@ -573,12 +664,8 @@ void DockManager::executeDockEdge(const DockZone& zone) {
 
     std::cerr << "[DockManager] Created split with ratio=" << split->splitRatio() << "\n";
 
-    // Create a PanelGroup for the dragged panel (so it can be re-dragged via tab)
-    auto newGroup = createDockedGroup(panel);
-
     // All directional docking goes into the content area (below status bar if present)
     // This ensures panels don't overlap the status bar
-    LayoutNode* root = m_panelManager->layoutRoot();
 
     std::cerr << "[DockManager] root=" << root
               << " type=" << (root ? static_cast<int>(root->type()) : -1) << "\n";
@@ -1273,6 +1360,49 @@ PanelGroup* DockManager::findGroupById(const std::string& id) {
     });
 
     return result;
+}
+
+bool DockManager::isContentAreaEmpty() const {
+    if (!m_panelManager || !m_panelManager->layoutRoot()) return true;
+
+    LayoutNode* root = m_panelManager->layoutRoot();
+
+    // Check for status bar split
+    if (root->type() == LayoutNodeType::SplitContainer) {
+        auto* rootSplit = static_cast<SplitContainer*>(root);
+        if (rootSplit->direction() == SplitDirection::Vertical &&
+            !rootSplit->isResizable()) {
+            // Content area is second child
+            LayoutNode* contentArea = rootSplit->second();
+            if (!contentArea) return true;
+
+            // Check if content area has any panels
+            bool hasPanels = false;
+            const_cast<DockManager*>(this)->traverseLayout(contentArea, [&](LayoutNode* node) {
+                if (node->type() == LayoutNodeType::PanelGroup) {
+                    auto* group = static_cast<PanelGroup*>(node);
+                    if (!group->isEmpty()) hasPanels = true;
+                } else if (node->type() == LayoutNodeType::PanelLeaf) {
+                    auto* leaf = static_cast<PanelLeaf*>(node);
+                    if (leaf->panel()) hasPanels = true;
+                }
+            });
+            return !hasPanels;
+        }
+    }
+
+    // No status bar split - check entire tree
+    bool hasPanels = false;
+    const_cast<DockManager*>(this)->traverseLayout(root, [&](LayoutNode* node) {
+        if (node->type() == LayoutNodeType::PanelGroup) {
+            auto* group = static_cast<PanelGroup*>(node);
+            if (!group->isEmpty()) hasPanels = true;
+        } else if (node->type() == LayoutNodeType::PanelLeaf) {
+            auto* leaf = static_cast<PanelLeaf*>(node);
+            if (leaf->panel()) hasPanels = true;
+        }
+    });
+    return !hasPanels;
 }
 
 } // namespace vivid
